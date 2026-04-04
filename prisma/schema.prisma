@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  clerkId         String    @id
+  email           String    @unique
+  name            String?
+  imageUrl        String?
+  plan            String    @default("free")
+  stripeCustomerId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  projects        Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  status      String   @default("setup")
+  setupStep   Int      @default(0)
+  config      Json?
+  voice       String?
+  niche       String?
+  targetAudience String?
+  colorPalette   String?
+  postFrequency  String?
+  timezone       String   @default("America/Sao_Paulo")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user          User              @relation(fields: [userId], references: [clerkId])
+  agents        ProjectAgent[]
+  socialAccounts SocialAccount[]
+  posts         Post[]
+  runs          PipelineRun[]
+  memories      ProjectMemory[]
+  cards         CampaignCard[]
+  contexts      ProjectContext[]
+
+  @@map("projects")
+}
+
+model ProjectAgent {
+  id          String   @id @default(cuid())
+  projectId   String
+  agentId     String
+  name        String
+  role        String
+  persona     String?
+  style       String?
+  skills      Json     @default("[]")
+  tasks       Json     @default("[]")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_agents")
+}
+
+model SocialAccount {
+  id               String    @id @default(cuid())
+  projectId        String
+  platform         String
+  accountType      String    @default("personal") // "personal" | "organization"
+  organizationId   String?   // LinkedIn org numeric ID (only for accountType=organization)
+  blotatoAccountId String?
+  displayName      String?
+  username         String?
+  platformUserId   String?
+  avatarUrl        String?
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  posts            Post[]
+
+  @@unique([projectId, platform, platformUserId])
+  @@map("social_accounts")
+}
+
+model Post {
+  id            String    @id @default(cuid())
+  projectId     String
+  socialAccountId String?
+  platform      String
+  content       String
+  imageUrl      String?   // base64 data URL — limpo após publicação
+  imagePrompt   String?   // prompt que gerou a mídia — guardado permanentemente
+  mediaType     String?   // "text" | "image" | "video" | "carousel" | "poll" | "article" | "thread"
+  metadata      Json?     // structured data: poll options, thread tweets, carousel slide count
+  dayOfWeek     Int?      // 1=Seg … 7=Dom
+  // draft | scheduled | published | failed | rejected | cancelled
+  status        String    @default("draft")
+  scheduledAt   DateTime?
+  publishedAt   DateTime?
+  externalUrl   String?
+  externalId    String?
+  sourcesComment String?
+  /// Token opaco para URL pública do artigo LinkedIn (/a/[token]) — texto completo fora do limite de post
+  articlePublicToken String? @unique
+  runId         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
+  run           PipelineRun?   @relation(fields: [runId], references: [id])
+  metrics       PostMetric?
+  cards         CampaignCard[]
+
+  @@map("posts")
+}
+
+model PipelineRun {
+  id           String    @id @default(cuid())
+  projectId    String
+  status       String    @default("running")
+  topic        String?
+  campaignMode String    @default("weekly") // "single" | "weekly" | "biweekly" | "recurring"
+  weekStart    DateTime? // Monday of the target week (ISO)
+  config       Json?     // { funnelStage, weeklySchedule, singleDay?, singlePlatform? }
+  output       Json?
+  logs         Json      @default("[]")
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  archived     Boolean   @default(false)
+  archivedAt   DateTime?
+
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  posts     Post[]
+  cards     CampaignCard[]
+
+  @@map("pipeline_runs")
+}
+
+model PostMetric {
+  id          String   @id @default(cuid())
+  postId      String   @unique
+  impressions Int      @default(0)
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  clicks      Int      @default(0)
+  videoViews  Int      @default(0)
+  syncedAt    DateTime @default(now())
+
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_metrics")
+}
+
+model CampaignCard {
+  id            String    @id @default(cuid())
+  runId         String
+  projectId     String
+  agentId       String
+  agentName     String
+  dayOfWeek     Int       // 1=Mon … 7=Sun
+  scheduledDate DateTime? // actual calendar date of this card
+  cardType      String    // "research" | "post_linkedin" | "post_twitter" | "media" | "preview" | "publish"
+  mediaType     String?   // "image" | "video" | "carousel" | "poll" | "article" | "thread"
+  content       String?   @db.Text
+  mediaUrl      String?   @db.Text
+  metadata      Json?     // structured data: poll options, thread tweets
+  status        String    @default("pending")
+  postId        String?
+  chatHistory   Json      @default("[]")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  run         PipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  post        Post?       @relation(fields: [postId], references: [id])
+
+  @@map("campaign_cards")
+}
+
+model ProjectContext {
+  id          String   @id @default(cuid())
+  projectId   String
+  type        String   // "brand" | "references" | "regulations" | "editorial" | "examples"
+  title       String
+  rawInput    String   @db.Text
+  compiled    String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_contexts")
+}
+
+model ProjectMemory {
+  id        String   @id @default(cuid())
+  projectId String
+  type      String
+  key       String
+  value     Json
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type, key])
+  @@map("project_memories")
+}

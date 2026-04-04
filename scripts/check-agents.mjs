@@ -1,0 +1,11 @@
+import { config } from "dotenv";
+config({ path: ".env.local" });
+import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
+const count = await prisma.projectAgent.count();
+console.log("Total de agentes no banco:", count);
+const agents = await prisma.projectAgent.findMany({ select: { projectId: true, agentId: true, name: true } });
+console.log(JSON.stringify(agents, null, 2));
+await prisma.$disconnect();

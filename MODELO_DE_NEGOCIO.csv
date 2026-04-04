@@ -1,0 +1,181 @@
+OPENSQUAD — MODELO DE NEGÓCIO E ESTRUTURA DE CUSTOS,,,,,,,,,
+Atualizado em: Abril 2026,,,,,,,,,
+Câmbio de referência: R$ 5,50 / USD,,,,,,,,,
+Conversão de créditos: 1 Real = 10 créditos → 1 crédito = R$ 0,10,,,,,,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 1 — CUSTOS VARIÁVEIS DE IA (por operação),,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+--- 1A. GERAÇÃO DE TEXTO (Claude API — Anthropic) ---,,,,,,,,,
+Modelo,Uso na plataforma,Input ($/M tokens),Output ($/M tokens),Tokens médios/chamada (input),Tokens médios/chamada (output),Custo USD / chamada,Custo BRL / chamada,,
+claude-sonnet-4-5,Agentes principais (Roberto / Tiago / Lucas / Vera / Paulo),$3.00,$15.00,800,600,$0.0114,R$ 0.063,,
+claude-haiku-4-5,Ajustes rápidos / chat de card (alternativa),$ 1.00,$ 5.00,800,600,$0.0038,R$ 0.021,,
+,,,,,,,,,
+--- Custo por campanha completa (estimativa real) ---,,,,,,,,,
+Etapa,Agente,Nº de chamadas / campanha,Tokens input,Tokens output,Custo USD,Custo BRL,,
+Pesquisa,Roberto Radar,1,1500,800,$0.016,R$ 0.090,,
+Conteúdo X (Twitter),Tiago Tweet,5,900,500,$0.010,R$ 0.057,,
+Conteúdo LinkedIn,Lucas LinkedIn,5,900,500,$0.010,R$ 0.057,,
+Prompt de mídia,Diana Design,5,600,400,$0.008,R$ 0.043,,
+Revisão,Vera Veredito,5,700,300,$0.007,R$ 0.039,,
+Publicação,Paulo Publish,5,400,200,$0.004,R$ 0.023,,
+Chat de ajuste por card (estimativa),Todos os agentes,3,600,400,$0.004,R$ 0.024,,
+TOTAL — Campanha semanal (apenas LLM),,,,,,$0.060,R$ 0.330,,
+,,,,,,,,,
+--- 1B. GERAÇÃO DE IMAGENS (Vertex AI — Google) ---,,,,,,,,,
+Modelo,Qualidade,Custo USD / imagem,Custo BRL / imagem,Uso recomendado,,,,
+Imagen 4 Fast,Padrão (recomendado),$ 0.02,R$ 0.110,Imagens únicas e slides de carrossel,,,,
+Imagen 4,Alta qualidade,$ 0.04,R$ 0.220,Quando máxima qualidade exigida,,,,
+Imagen 4 Ultra,Ultra HD,$ 0.06,R$ 0.330,Apenas para campanhas premium,,,,
+,,,,,,,,,
+--- 1C. GERAÇÃO DE VÍDEO (Veo — Vertex AI — Google) ---,,,,,,,,,
+Modelo,Tipo,Duração,Custo USD / vídeo,Custo BRL / vídeo,Uso recomendado,,,,
+Veo 3 Fast (PADRÃO),Apenas vídeo,5s,$ 0.50,R$ 2.75,Vídeos B-roll social media,,
+Veo 3 Fast (PADRÃO),Apenas vídeo,6s,$ 0.60,R$ 3.30,Vídeos B-roll social media,,
+Veo 3 Fast (PADRÃO),Apenas vídeo,8s,$ 0.80,R$ 4.40,Vídeos B-roll social media,,
+Veo 3 Fast (PADRÃO),Vídeo + narração PT-BR,5s,$ 0.75,R$ 4.13,Vídeos com locução,,
+Veo 3 Fast (PADRÃO),Vídeo + narração PT-BR,6s,$ 0.90,R$ 4.95,Vídeos com locução,,
+Veo 3 Fast (PADRÃO),Vídeo + narração PT-BR,8s,$ 1.20,R$ 6.60,Vídeos com locução,,
+Veo 3 (qualidade superior),Apenas vídeo,8s,$ 1.60,R$ 8.80,Campanhas premium,,
+Veo 2 (fallback),Apenas vídeo,8s,$ 4.00,R$ 22.00,"NÃO USAR como padrão — caro!",,
+,,,,,,,,,
+--- Custo total estimado por tipo de campanha semanal (5 posts) ---,,,,,,,,,
+Tipo de conteúdo,Custo LLM,Custo mídia,Custo total USD,Custo total BRL,,,,
+Campanha de TEXTO (sem mídia),$0.06,$ 0.00,$ 0.06,R$ 0.33,,,,
+Campanha de IMAGEM,$0.06,$ 0.10 (5×$0.02),$ 0.16,R$ 0.88,,,,
+Campanha de CARROSSEL (3 slides),$0.06,$ 0.30 (5×$0.06),$ 0.36,R$ 1.98,,,,
+Campanha de VÍDEO 8s (sem áudio),$0.06,$ 4.00 (5×$0.80),$ 4.06,R$ 22.33,,,,
+Campanha de VÍDEO 8s (com narração),$0.06,$ 6.00 (5×$1.20),$ 6.06,R$ 33.33,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 2 — CUSTOS FIXOS DE INFRAESTRUTURA (mensais),,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+Serviço,Plano atual,Custo mensal USD,Custo mensal BRL,Limite do plano,Quando escalar,Próximo plano,Custo próximo plano BRL,
+Neon PostgreSQL,Launch (uso-baseado),$ 15.00,R$ 82.50,Banco compartilhado / ~10GB,>50 projetos ativos,Scale,R$ 385.00/mês (estimado)
+Vercel,Pro,$ 20.00,R$ 110.00,Serverless functions ilimitadas,Sempre (plataforma),Enterprise,R$ 550.00+/mês
+Clerk (autenticação),Pro,$ 25.00,R$ 137.50,10.000 usuários ativos,>10K MAU,$0.02 por MAU adicional,
+Pusher (realtime),Sandbox (gratuito),$ 0.00,R$ 0.00,"100 conexões, 200K msg/dia",>100 usuários simultâneos,Starter,R$ 269.50/mês
+Google Cloud Storage,Pay-as-you-go,$ 2.00,R$ 11.00,~100GB de mídia temporária,>1TB,Scale GCS,R$ 55+/mês
+Domínio,Registro anual,$ 1.00,R$ 5.50,—,—,—,—
+TOTAL FIXO MENSAL ATUAL,,$ 63.00,R$ 346.50,,,,
+,,,,,,,,,
+--- Custo fixo por usuário ativo (break-even) ---,,,,,,,,,
+Nº usuários ativos,Custo fixo / usuário / mês,Viabilidade,,,,,,
+10 usuários,R$ 34.65 / usuário,Alto custo fixo,,,,,,
+50 usuários,R$ 6.93 / usuário,Razoável,,,,,,
+100 usuários,R$ 3.47 / usuário,Bom,,,,,,
+500 usuários,R$ 0.69 / usuário,Ótimo,,,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 3 — SISTEMA DE CRÉDITOS,,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+Regra base: 1 Real = 10 créditos → 1 crédito = R$ 0,10 = ~US$ 0,018,,,,,,,,,
+Margem-alvo: 100% sobre custo variável (cobrar 2× o custo real em créditos),,,,,,,,,
+,,,,,,,,,
+Operação,Custo USD,Custo BRL,Créditos ao custo,Créditos cobrados (2× margem),Receita BRL cobrada,Margem real
+Post de TEXTO (1 post = 1/5 da campanha),$ 0.012,R$ 0.066,0.7 créditos,5 créditos,R$ 0.50,+657%
+Post de IMAGEM única,$ 0.032,R$ 0.176,1.8 créditos,15 créditos,R$ 1.50,+752%
+Carrossel (3 slides = 1 post),$ 0.072,R$ 0.396,4.0 créditos,30 créditos,R$ 3.00,+657%
+Vídeo 5s (B-roll sem áudio),$ 0.112,R$ 0.616,6.2 créditos,50 créditos,R$ 5.00,+712%
+Vídeo 6s (B-roll sem áudio),$ 0.132,R$ 0.726,7.3 créditos,60 créditos,R$ 6.00,+726%
+Vídeo 8s (B-roll sem áudio),$ 0.172,R$ 0.946,9.5 créditos,80 créditos,R$ 8.00,+746%
+Vídeo 5s + narração PT-BR,$ 0.162,R$ 0.891,8.9 créditos,80 créditos,R$ 8.00,+798%
+Vídeo 6s + narração PT-BR,$ 0.192,R$ 1.056,10.6 créditos,100 créditos,R$ 10.00,+847%
+Vídeo 8s + narração PT-BR,$ 0.252,R$ 1.386,13.9 créditos,130 créditos,R$ 13.00,+838%
+,,,,,,,,,
+NOTA: A margem alta nos posts de texto/imagem é intencional — ela cobre:,,,,,,,,,
+(1) Custos fixos de infraestrutura rateados por usuário,,,,,,,,,
+(2) CAC (Custo de Aquisição de Cliente) amortizado,,,,,,,,,
+(3) Custo de suporte e desenvolvimento do produto,,,,,,,,,
+(4) Margem de lucro para reinvestimento,,,,,,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 4 — PLANOS DE ASSINATURA (Proposta),,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+Plano,Preço Mensal (BRL),Créditos Incluídos,Crédito extra (acima do plano),Posts de texto equiv.,Posts de imagem equiv.,Campanhas semanais equiv.
+FREE (Gratuito),R$ 0,"100 créditos (bônus único, sem renovação)",Não disponível,20 posts,6 posts,Não disponível
+STARTER,R$ 49,500 créditos,R$ 0,15 por crédito extra,100 posts,33 posts,1 campanha/mês texto
+PRO,R$ 99,1.100 créditos,R$ 0,12 por crédito extra,220 posts,73 posts,2 campanhas/mês (mix)
+BUSINESS,R$ 199,2.500 créditos,R$ 0,10 por crédito extra,500 posts,166 posts,5 campanhas/mês (mix)
+AGENCY,R$ 399,5.500 créditos,R$ 0,08 por crédito extra,1100 posts,366 posts,"11 campanhas/mês (projetos ilimitados)"
+,,,,,,,,,
+--- Análise de margem por plano (com 100 usuários ativos) ---,,,,,,,,,
+Plano,Receita bruta,Custo variável estimado (70% uso),Custo fixo rateado (R$3,47/usuário),Lucro bruto estimado,Margem bruta
+STARTER (R$49),R$ 49.00,R$ 7.35,R$ 3.47,R$ 38.18,78%
+PRO (R$99),R$ 99.00,R$ 16.50,R$ 3.47,R$ 79.03,80%
+BUSINESS (R$199),R$ 199.00,R$ 37.50,R$ 3.47,R$ 158.03,79%
+AGENCY (R$399),R$ 399.00,R$ 82.50,R$ 3.47,R$ 313.03,78%
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 5 — ANÁLISE DE CAC E PAYBACK,,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+CAC estimado para SaaS B2B no Brasil (2026):,,,,,,,,,
+Canal,CAC estimado,Fonte,,,,,,
+Google Ads (performance),R$ 150 – R$ 400,Benchmark SaaS BR,,,,,,
+Meta Ads (social),R$ 100 – R$ 300,Benchmark SaaS BR,,,,,,
+LinkedIn Ads,R$ 300 – R$ 800,Benchmark B2B BR,,,,,,
+Indicação / boca a boca,R$ 30 – R$ 80,Estimado,,,,,,
+Orgânico (SEO / conteúdo),R$ 50 – R$ 150,Estimado,,,,,,
+CAC META da plataforma: R$ 150,,,,,,,,,
+,,,,,,,,,
+--- Payback por plano (tempo para recuperar o CAC de R$150) ---,,,,,,,,,
+Plano,Mensalidade,Margem bruta estimada,Contribuição mensal líquida,Payback do CAC
+STARTER,R$ 49,78%,R$ 38.22,3.9 meses
+PRO,R$ 99,80%,R$ 79.20,1.9 meses
+BUSINESS,R$ 199,79%,R$ 157.21,0.95 meses
+AGENCY,R$ 399,78%,R$ 311.22,0.48 meses
+,,,,,,,,,
+META: Payback < 3 meses → STARTER está no limite. Foco de marketing no PRO e BUSINESS.,,,,,,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 6 — PROJEÇÃO DE RECEITA (MRR),,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+Cenário CONSERVADOR (100 usuários pagantes):,,,,,,,,,
+Mix de planos estimado:,,,,,,,,,
+30% STARTER (30 usuários × R$49),"= R$ 1,470",,,,,,,
+50% PRO (50 usuários × R$99),"= R$ 4,950",,,,,,,
+15% BUSINESS (15 usuários × R$199),"= R$ 2,985",,,,,,,
+5% AGENCY (5 usuários × R$399),"= R$ 1,995",,,,,,,
+MRR TOTAL:,"= R$ 11,400 / mês",,,,,,
+Custo fixo infra:,"= R$ 347 / mês",,,,,,
+Custo variável (70% uso médio):,"= R$ 1,710 / mês",,,,,,
+LUCRO LÍQUIDO ESTIMADO:,"= R$ 9,343 / mês",,,,,,
+Margem líquida estimada:,82%,,,,,,
+,,,,,,,,,
+Cenário CRESCIMENTO (500 usuários pagantes):,,,,,,,,,
+MRR estimado (mesmo mix):,"= R$ 57,000 / mês",,,,,,
+Custo fixo infra (escalonado):,"≈ R$ 1,500 / mês",,,,,,
+Custo variável:,"≈ R$ 8,550 / mês",,,,,,
+LUCRO LÍQUIDO ESTIMADO:,"≈ R$ 46,950 / mês",,,,,,
+,,,,,,,,,
+
+============================================================,,,,,,,,,
+SEÇÃO 7 — TABELA RESUMO DE CRÉDITOS (para UI da plataforma),,,,,,,,,
+============================================================,,,,,,,,,
+,,,,,,,,,
+Operação,Créditos cobrados,Equivalência em Reais,Tempo estimado de geração
+Post texto (sem mídia),5 créditos,R$ 0,50,~15 segundos
+Post imagem única,15 créditos,R$ 1,50,~45 segundos
+Carrossel 3 slides,30 créditos,R$ 3,00,~2 minutos
+Vídeo 5s (B-roll),50 créditos,R$ 5,00,~3 minutos
+Vídeo 6s (B-roll),60 créditos,R$ 6,00,~3 minutos
+Vídeo 8s (B-roll),80 créditos,R$ 8,00,~4 minutos
+Vídeo 5s + narração,80 créditos,R$ 8,00,~4 minutos
+Vídeo 6s + narração,100 créditos,R$ 10,00,~4 minutos
+Vídeo 8s + narração,130 créditos,R$ 13,00,~5 minutos
+Campanha semanal texto (5 posts),25 créditos,R$ 2,50,~2 minutos
+Campanha semanal imagem (5 posts),75 créditos,R$ 7,50,~5 minutos
+Campanha semanal carrossel (5 posts),150 créditos,R$ 15,00,~10 minutos
+Campanha semanal vídeo 8s (5 posts),400 créditos,R$ 40,00,~20 minutos
