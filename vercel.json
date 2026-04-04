@@ -4,10 +4,5 @@
       "path": "/api/cron/pipeline",
       "schedule": "0 12 * * *"
     }
-  ],
-  "functions": {
-    "app/api/pipeline/run/route.ts": {
-      "maxDuration": 300
-    }
-  }
+  ]
 }
