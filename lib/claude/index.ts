@@ -54,7 +54,7 @@ export async function streamClaude(
   return fullText;
 }
 
-export const KANBAN_SYSTEM_PROMPT = `Você é o assistente de configuração do Opensquad, especialista em estratégia de conteúdo para redes sociais. 
+export const KANBAN_SYSTEM_PROMPT = `Você é o assistente de configuração do Demandou, especialista em estratégia de conteúdo para redes sociais. 
 Seu trabalho é ajudar o usuário a configurar seu projeto de forma clara, objetiva e estratégica.
 Responda sempre em português, de forma amigável mas profissional.
 Dê sugestões concretas e práticas baseadas no contexto fornecido.

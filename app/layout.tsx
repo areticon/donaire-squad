@@ -13,13 +13,15 @@ export const metadata: Metadata = {
   description:
     "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
   icons: {
-    apple: "/logo-mark-light.png",
+    icon: [{ url: "/favicon-dark.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon-dark.svg",
+    apple: "/favicon-dark.svg",
   },
   openGraph: {
     title: "Demandou — Seus Agentes de IA Trabalhando por Você",
     description:
       "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
-    url: "https://demandou.com.br",
+    url: "https://demandou.com",
     siteName: "Demandou",
     locale: "pt_BR",
     type: "website",

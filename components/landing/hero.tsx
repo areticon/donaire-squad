@@ -86,7 +86,7 @@ export function Hero() {
                 <div className="w-3 h-3 rounded-full bg-red-500" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-2 text-xs text-[#9ca3af] font-mono">opensquad — ao vivo</span>
+                <span className="ml-2 text-xs text-[#9ca3af] font-mono">demandou — ao vivo</span>
               </div>
 
               {AGENT_NAMES.map((agent, i) => (

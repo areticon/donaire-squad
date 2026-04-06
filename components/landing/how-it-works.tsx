@@ -50,7 +50,7 @@ export function HowItWorks() {
             <span className="text-orange-500">sem você digitar</span>
           </h2>
           <p className="text-xl text-[#9ca3af] max-w-2xl mx-auto">
-            O Opensquad faz o trabalho pesado. Você foca no que importa.
+            O Demandou faz o trabalho pesado. Você foca no que importa.
           </p>
         </motion.div>
 

@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandMarkThemed } from "@/components/brand-mark-client";
 import { useTheme } from "./theme-provider";
 
 const NAV = [
@@ -78,12 +79,7 @@ export function Sidebar({
           )}
           title="Início"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={theme === "dark" ? "/logo-mark-dark.png" : "/logo-mark-light.png"}
-            alt="Demandou"
-            className="w-8 h-8 object-contain shrink-0"
-          />
+          <BrandMarkThemed className="w-8 h-8" />
           {!collapsed && (
             <span
               className="font-mont font-bold text-lg leading-none tracking-tight truncate"
