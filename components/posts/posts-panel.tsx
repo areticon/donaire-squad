@@ -40,6 +40,7 @@ interface Post {
   externalUrl: string | null;
   sourcesComment: string | null;
   createdAt: Date;
+  socialAccountId: string | null;
   socialAccount: { displayName: string | null; platform: string } | null;
 }
 
@@ -47,6 +48,18 @@ interface SocialAccount {
   id: string;
   platform: string;
   displayName: string | null;
+  accountType: string;
+}
+
+function pickSocialAccount(post: Post, accounts: SocialAccount[]): SocialAccount | undefined {
+  const same = accounts.filter((a) => a.platform === post.platform);
+  if (same.length === 0) return undefined;
+  if (post.socialAccountId) {
+    const exact = same.find((a) => a.id === post.socialAccountId);
+    if (exact) return exact;
+  }
+  const personal = same.find((a) => a.accountType === "personal");
+  return personal ?? same[0];
 }
 
 interface Project {
@@ -155,9 +168,11 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
   }
 
   async function publishPost(post: Post) {
-    const account = socialAccounts.find((a) => a.platform === post.platform);
+    const account = pickSocialAccount(post, socialAccounts);
     if (!account) {
-      toast.error(`Nenhuma conta ${PLATFORM_LABELS[post.platform] ?? post.platform} conectada`);
+      toast.error(
+        `Nenhuma conta ${PLATFORM_LABELS[post.platform] ?? post.platform} pronta para publicar (token ou permissões). Reconecte em Configurações.`
+      );
       return;
     }
 
@@ -168,19 +183,30 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: account.id }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      let data: { error?: string; url?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = { error: `Resposta inválida do servidor (HTTP ${res.status}).` };
+      }
+      if (!res.ok) {
+        throw new Error(data.error || `Erro HTTP ${res.status}`);
+      }
 
       setPosts((prev) =>
         prev.map((p) =>
           p.id === post.id
-            ? { ...p, status: "published", publishedAt: new Date(), externalUrl: data.url }
+            ? { ...p, status: "published", publishedAt: new Date(), externalUrl: data.url ?? null }
             : p
         )
       );
       toast.success("Post publicado com sucesso!");
     } catch (err) {
-      toast.error("Erro ao publicar. Verifique as contas conectadas.");
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Erro ao publicar. Tente reconectar a rede em Configurações.";
+      toast.error(message.length > 220 ? `${message.slice(0, 217)}…` : message);
       console.error(err);
     } finally {
       setPublishing(null);

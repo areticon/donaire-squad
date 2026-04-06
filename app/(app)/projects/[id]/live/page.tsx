@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { ContentManager } from "@/components/content/content-manager";
+import { whereSocialAccountCanPublish } from "@/lib/social/account-filters";
 
 function getMonday(d: Date): Date {
   const day = d.getUTCDay();
@@ -22,7 +23,10 @@ export default async function LivePage({
   const project = await prisma.project.findUnique({
     where: { id },
     include: {
-      socialAccounts: { where: { isActive: true }, select: { id: true, platform: true, displayName: true } },
+      socialAccounts: {
+        where: whereSocialAccountCanPublish,
+        select: { id: true, platform: true, displayName: true, accountType: true },
+      },
     },
   });
 

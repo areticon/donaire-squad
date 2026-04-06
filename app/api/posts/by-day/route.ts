@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     metadata: unknown;
     scheduledAt: Date | null;
     status: string;
+    socialAccountId: string | null;
   }>;
 
   if (scheduledDate) {
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
         metadata: true,
         scheduledAt: true,
         status: true,
+        socialAccountId: true,
       },
     });
   } else if (postId) {
@@ -92,6 +94,7 @@ export async function GET(req: NextRequest) {
           metadata: true,
           scheduledAt: true,
           status: true,
+          socialAccountId: true,
         },
       });
     } else if (ref?.dayOfWeek !== undefined) {
@@ -113,6 +116,7 @@ export async function GET(req: NextRequest) {
           metadata: true,
           scheduledAt: true,
           status: true,
+          socialAccountId: true,
         },
       });
     } else {

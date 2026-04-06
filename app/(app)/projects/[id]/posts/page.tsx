@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { PostsPanel } from "@/components/posts/posts-panel";
+import { whereSocialAccountCanPublish } from "@/lib/social/account-filters";
 
 export default async function PostsPage({
   params,
@@ -16,7 +17,10 @@ export default async function PostsPage({
   const project = await prisma.project.findUnique({
     where: { id },
     include: {
-      socialAccounts: { where: { isActive: true } },
+      socialAccounts: {
+        where: whereSocialAccountCanPublish,
+        select: { id: true, platform: true, displayName: true, accountType: true },
+      },
     },
   });
 
@@ -25,7 +29,20 @@ export default async function PostsPage({
   const posts = await prisma.post.findMany({
     where: { projectId: id },
     orderBy: { createdAt: "desc" },
-    include: {
+    select: {
+      id: true,
+      platform: true,
+      content: true,
+      imageUrl: true,
+      imagePrompt: true,
+      mediaType: true,
+      status: true,
+      scheduledAt: true,
+      publishedAt: true,
+      externalUrl: true,
+      sourcesComment: true,
+      createdAt: true,
+      socialAccountId: true,
       socialAccount: { select: { displayName: true, platform: true } },
     },
   });

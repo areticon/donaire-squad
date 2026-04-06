@@ -53,6 +53,7 @@ interface SocialAccount {
   id: string;
   platform: string;
   displayName: string | null;
+  accountType: string;
 }
 
 interface ContentManagerProps {
@@ -809,8 +810,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const [postImageUrl, setPostImageUrl] = useState<string | null>(null);
   // All platform posts for the same day (linkedin + twitter)
   const [dayPosts, setDayPosts] = useState<Array<{
-    id: string; platform: string; content: string;
-    imageUrl: string | null; scheduledAt: string | null; status: string;
+    id: string;
+    platform: string;
+    content: string;
+    imageUrl: string | null;
+    scheduledAt: string | null;
+    status: string;
+    socialAccountId: string | null;
   }>>([]);
   const [loadingPost, setLoadingPost] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -936,8 +942,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     setPostScheduledAt(d2.post?.scheduledAt ?? null);
   }
 
-  function accountFor(platform: string) {
-    return socialAccounts.find((a) => a.platform === platform);
+  function accountFor(platform: string, socialAccountId?: string | null) {
+    const candidates = socialAccounts.filter((a) => a.platform === platform);
+    if (candidates.length === 0) return undefined;
+    if (socialAccountId) {
+      const exact = candidates.find((a) => a.id === socialAccountId);
+      if (exact) return exact;
+    }
+    const personal = candidates.find((a) => a.accountType === "personal");
+    return personal ?? candidates[0];
   }
 
   async function publishNowPlatform(platform: "linkedin" | "twitter") {
@@ -946,9 +959,11 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
       toast.error(`Não há post para ${platform === "linkedin" ? "LinkedIn" : "X"} neste dia.`);
       return;
     }
-    const acc = accountFor(platform);
+    const acc = accountFor(platform, p.socialAccountId);
     if (!acc) {
-      toast.error(`Conecte uma conta ${platform === "linkedin" ? "LinkedIn" : "X"} em Configurações.`);
+      toast.error(
+        `Não há conta ${platform === "linkedin" ? "LinkedIn" : "X"} com token válido. Reconecte em Configurações do projeto.`
+      );
       return;
     }
     setApproving(true);
@@ -987,8 +1002,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     setApproving(true);
     try {
       if (li) {
-        const acc = accountFor("linkedin");
-        if (!acc) throw new Error("Conecte o LinkedIn.");
+        const acc = accountFor("linkedin", li.socialAccountId);
+        if (!acc) throw new Error("Não há LinkedIn com token válido. Reconecte em Configurações.");
         const res = await fetch(`/api/posts/${li.id}/publish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1004,8 +1019,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         });
       }
       if (tw) {
-        const acc = accountFor("twitter");
-        if (!acc) throw new Error("Conecte o X.");
+        const acc = accountFor("twitter", tw.socialAccountId);
+        if (!acc) throw new Error("Não há X com token válido. Reconecte em Configurações.");
         const res = await fetch(`/api/posts/${tw.id}/publish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

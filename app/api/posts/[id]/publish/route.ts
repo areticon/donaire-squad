@@ -35,6 +35,13 @@ export async function POST(
     );
   }
 
+  if (account.projectId !== post.projectId) {
+    return NextResponse.json(
+      { error: "Esta conta não pertence a este projeto." },
+      { status: 403 }
+    );
+  }
+
   // ── Pre-flight platform validations ───────────────────────────────────────
   if (account.platform === "linkedin" && post.content && post.mediaType !== "article") {
     if (post.content.length > LINKEDIN_MAX_COMMENTARY_CHARS) {
@@ -71,10 +78,18 @@ export async function POST(
   } catch (err) {
     console.error("[publish]", err);
     const msg = err instanceof Error ? err.message : "Falha ao publicar";
-    if (msg.includes("Token") || msg.includes("expirado")) {
+    const lower = msg.toLowerCase();
+    if (
+      msg.includes("Token") ||
+      msg.includes("expirado") ||
+      lower.includes("401") ||
+      lower.includes("unauthorized") ||
+      lower.includes("invalid_token") ||
+      lower.includes("failed to refresh twitter")
+    ) {
       await prisma.post.update({ where: { id }, data: { status: "failed" } });
       return NextResponse.json(
-        { error: "Token expirado. Reconecte sua conta em Configurações." },
+        { error: "Token expirado ou inválido. Reconecte a rede em Configurações do projeto." },
         { status: 401 }
       );
     }
@@ -85,8 +100,21 @@ export async function POST(
       );
     }
     await prisma.post.update({ where: { id }, data: { status: "failed" } });
+    // Erros das APIs já vêm com contexto (LinkedIn/Twitter/HTTP) — mostrar ao utilizador
+    const detailed =
+      msg.includes("não suportada") ||
+      msg.includes("LinkedIn") ||
+      msg.includes("Twitter") ||
+      msg.includes("HTTP") ||
+      msg.includes("ugcPosts") ||
+      lower.includes("forbidden") ||
+      lower.includes("403");
     return NextResponse.json(
-      { error: msg.includes("não suportada") ? msg : "Falha ao publicar. Verifique as permissões da conta." },
+      {
+        error: detailed
+          ? msg.slice(0, 600)
+          : "Falha ao publicar. Verifique permissões do app na rede social ou reconecte em Configurações.",
+      },
       { status: 500 }
     );
   }
