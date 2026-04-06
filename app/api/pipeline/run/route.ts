@@ -71,6 +71,29 @@ const DAY_NAMES: Record<number, string> = {
   7: "Domingo",
 };
 
+/**
+ * Extrai URLs da seção "FONTES:" do brief de pesquisa e retorna texto formatado
+ * para ser publicado como primeiro comentário no LinkedIn.
+ */
+function extractFirstComment(researchBrief: string): string | undefined {
+  const sourcesMatch = researchBrief.match(/FONTES:\s*([\s\S]+?)(?:\n\n|$)/i);
+  if (!sourcesMatch) return undefined;
+
+  const lines = sourcesMatch[1]
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("-") && l.includes("http"));
+
+  if (lines.length === 0) return undefined;
+
+  const formatted = lines
+    .slice(0, 5)
+    .map((l) => l.replace(/^-\s*/, "").trim())
+    .join("\n");
+
+  return `📚 Fontes e referências:\n\n${formatted}`;
+}
+
 /** Returns the Date for a given dayOfWeek (1=Mon) relative to weekStart (a Monday ISO string) */
 function getScheduledDate(weekStartIso: string, dayOfWeek: number): Date {
   const base = new Date(weekStartIso);
@@ -558,7 +581,13 @@ async function runPipeline(
       researcher,
       `Pesquise e compile um brief sobre: "${topic}".
 Inclua: dados recentes, estatísticas verificáveis, tendências e insights acionáveis.
-Nicho: ${project.niche ?? "geral"}. Público: ${project.targetAudience ?? "profissionais"}.`,
+Nicho: ${project.niche ?? "geral"}. Público: ${project.targetAudience ?? "profissionais"}.
+
+Ao final do brief, adicione obrigatoriamente uma seção no formato exato abaixo (máx 5 fontes reais e verificáveis):
+
+FONTES:
+- [Nome da fonte 1](https://url-real.com)
+- [Nome da fonte 2](https://url-real.com)`,
       baseContext,
       runId,
       funnelInstruction
@@ -814,6 +843,14 @@ ${linkedinContent}`,
             message: `⚠ Segunda tentativa ainda acima do limite (${rewritten.length} chars). Usando versão original — publicação pode falhar.`,
             status: "warning",
           });
+        }
+      }
+
+      // Adiciona primeiro comentário com fontes da pesquisa (exceto artigos, que já têm link)
+      if (resolvedType !== "article" && resolvedType !== "poll") {
+        const firstComment = extractFirstComment(researchBrief);
+        if (firstComment) {
+          linkedinMetadata = { ...(linkedinMetadata ?? {}), firstComment };
         }
       }
 

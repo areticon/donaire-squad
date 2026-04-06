@@ -650,6 +650,48 @@ export async function publishLinkedInCarousel(
 export type PollDuration = "ONE_DAY" | "THREE_DAYS" | "ONE_WEEK" | "TWO_WEEKS";
 
 /**
+ * Publish a comment on a LinkedIn post (used for first comment with references).
+ * postUrn: e.g. "urn:li:share:1234" or "urn:li:ugcPost:1234"
+ */
+export async function publishLinkedInComment(
+  accessToken: string,
+  platformUserId: string,
+  postUrn: string,
+  text: string,
+  accountType: "personal" | "organization" = "personal"
+): Promise<void> {
+  const actor = authorUrn(platformUserId, accountType);
+  const encodedUrn = encodeURIComponent(postUrn);
+
+  for (const version of LINKEDIN_VERSION_CANDIDATES) {
+    let res: Response;
+    try {
+      res = await fetch(
+        `https://api.linkedin.com/rest/socialActions/${encodedUrn}/comments`,
+        {
+          method: "POST",
+          headers: buildHeaders(accessToken, version),
+          body: JSON.stringify({ actor, message: { text } }),
+          signal: AbortSignal.timeout(15_000),
+        }
+      );
+    } catch {
+      continue;
+    }
+
+    if (LINKEDIN_RETRY_STATUSES.has(res.status)) continue;
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn(`[LinkedIn] comment failed (${version} / ${res.status}): ${err.slice(0, 200)}`);
+      return; // não fatal — post já foi publicado
+    }
+    console.log(`[LinkedIn] ✓ First comment published (version ${version})`);
+    return;
+  }
+  console.warn("[LinkedIn] First comment: all versions failed — skipping.");
+}
+
+/**
  * Publish a LinkedIn poll.
  * question: max 140 chars.
  * options: 2–4 strings, each max 30 chars.
