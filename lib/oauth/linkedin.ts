@@ -4,7 +4,19 @@ const USERINFO_URL = "https://api.linkedin.com/v2/userinfo";
 const POSTS_URL = "https://api.linkedin.com/rest/posts";
 const IMAGES_URL = "https://api.linkedin.com/rest/images";
 const VIDEOS_URL = "https://api.linkedin.com/rest/videos";
-const ACTIVE_VERSION = "202410";
+
+// Ordem: mais recente primeiro. 426 NONEXISTENT_VERSION → usar próximo em tryLinkedInRestPost.
+const LINKEDIN_VERSION_CANDIDATES = [
+  "202504", "202503", "202502", "202501",
+  "202412", "202411", "202410", "202407",
+  "202404", "202401",
+  "202312", "202310", "202307", "202304",
+];
+
+/** REST default: vídeos, organizationAcls — alinhado ao candidato mais recente. */
+const ACTIVE_VERSION = LINKEDIN_VERSION_CANDIDATES[0];
+
+const LINKEDIN_RETRY_STATUSES = new Set([404, 405, 426, 429]);
 
 // ── OAuth ────────────────────────────────────────────────────────────────────
 
@@ -228,26 +240,41 @@ export async function uploadLinkedInImage(
     dataUrl = await fetchHttpsImageAsDataUrl(dataUrl);
   }
 
-  // Step 1: Initialize upload
-  const initRes = await fetch(`${IMAGES_URL}?action=initializeUpload`, {
-    method: "POST",
-    headers: buildHeaders(accessToken),
-    body: JSON.stringify({ initializeUploadRequest: { owner: ownerUrn } }),
-  });
+  // Step 1: Initialize upload (várias versões — 426 NONEXISTENT_VERSION se versão REST expirou)
+  let uploadUrl: string | undefined;
+  let imageUrn: string | undefined;
+  let lastInitErr = "";
 
-  if (!initRes.ok) {
-    const err = await initRes.text();
-    throw new Error(`LinkedIn image init failed: ${err}`);
+  for (const version of LINKEDIN_VERSION_CANDIDATES) {
+    const initRes = await fetch(`${IMAGES_URL}?action=initializeUpload`, {
+      method: "POST",
+      headers: buildHeaders(accessToken, version),
+      body: JSON.stringify({ initializeUploadRequest: { owner: ownerUrn } }),
+    });
+
+    const errText = initRes.ok ? "" : await initRes.text();
+    if (!initRes.ok) {
+      lastInitErr = errText;
+      if (LINKEDIN_RETRY_STATUSES.has(initRes.status)) continue;
+      throw new Error(`LinkedIn image init failed: ${errText}`);
+    }
+
+    const initData = (await initRes.json()) as {
+      value?: { uploadUrl: string; image: string };
+    };
+    uploadUrl = initData.value?.uploadUrl;
+    imageUrn = initData.value?.image;
+    if (!uploadUrl || !imageUrn) {
+      throw new Error(
+        `LinkedIn image init: resposta sem uploadUrl/image. Corpo: ${JSON.stringify(initData).slice(0, 400)}`
+      );
+    }
+    break;
   }
 
-  const initData = await initRes.json() as {
-    value?: { uploadUrl: string; image: string };
-  };
-  const uploadUrl = initData.value?.uploadUrl;
-  const imageUrn = initData.value?.image;
   if (!uploadUrl || !imageUrn) {
     throw new Error(
-      `LinkedIn image init: resposta sem uploadUrl/image. Corpo: ${JSON.stringify(initData).slice(0, 400)}`
+      `LinkedIn image init failed (todas as versões tentadas). Último erro: ${lastInitErr.slice(0, 500)}`
     );
   }
 
@@ -324,20 +351,6 @@ export async function uploadLinkedInVideo(
 
   return videoUrn;
 }
-
-// ── LinkedIn version candidates ───────────────────────────────────────────────
-// Ordered newest → oldest. The loop skips 426/404 (version not available/removed)
-// and falls back to the legacy ugcPosts v2 API as last resort.
-
-const LINKEDIN_VERSION_CANDIDATES = [
-  "202504", "202503", "202502", "202501",  // 2025 — current
-  "202412", "202411", "202410", "202407",  // 2024 late
-  "202404", "202401",                      // 2024 early
-  "202312", "202310", "202307", "202304",  // 2023 — older
-];
-
-// Status codes that mean "try next version instead of failing"
-const LINKEDIN_RETRY_STATUSES = new Set([404, 405, 426, 429]);
 
 /**
  * Legacy fallback: POST to /v2/ugcPosts (deprecated but still widely functional).
