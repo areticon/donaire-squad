@@ -119,10 +119,16 @@ export async function publishToTwitter(
     throw new Error(`Twitter publish failed: ${error}`);
   }
 
-  const json = await res.json() as { data: { id: string; text: string } };
+  const json = (await res.json()) as { data?: { id?: string; text?: string }; errors?: unknown };
+  const tid = json.data?.id;
+  if (!tid) {
+    throw new Error(
+      `Twitter publish failed: resposta sem data.id (${JSON.stringify(json).slice(0, 400)})`
+    );
+  }
   return {
-    tweetId: json.data.id,
-    url: `https://twitter.com/i/web/status/${json.data.id}`,
+    tweetId: tid,
+    url: `https://twitter.com/i/web/status/${tid}`,
   };
 }
 
@@ -163,9 +169,15 @@ export async function publishTwitterThread(
       throw new Error(`Twitter thread failed at tweet ${tweetIds.length + 1}: ${error}`);
     }
 
-    const json = await res.json() as { data: { id: string } };
-    tweetIds.push(json.data.id);
-    replyToId = json.data.id;
+    const json = (await res.json()) as { data?: { id?: string } };
+    const tid = json.data?.id;
+    if (!tid) {
+      throw new Error(
+        `Twitter thread tweet ${tweetIds.length + 1}: resposta sem id (${JSON.stringify(json).slice(0, 300)})`
+      );
+    }
+    tweetIds.push(tid);
+    replyToId = tid;
 
     // Small delay between tweets to avoid rate limits
     if (sanitized.indexOf(text) < sanitized.length - 1) {

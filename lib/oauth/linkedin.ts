@@ -174,10 +174,20 @@ function buildHeaders(accessToken: string, version = ACTIVE_VERSION) {
   };
 }
 
+/** Evita `urn:li:person:urn:li:person:...` se o ID já vier com prefixo da API. */
+function stripLinkedInUrnId(raw: string, kind: "person" | "organization"): string {
+  const u = raw.trim();
+  const prefix = kind === "person" ? "urn:li:person:" : "urn:li:organization:";
+  return u.startsWith(prefix) ? u.slice(prefix.length) : u;
+}
+
 function authorUrn(platformUserId: string, accountType: "personal" | "organization") {
-  return accountType === "organization"
-    ? `urn:li:organization:${platformUserId}`
-    : `urn:li:person:${platformUserId}`;
+  if (accountType === "organization") {
+    const id = stripLinkedInUrnId(platformUserId, "organization");
+    return `urn:li:organization:${id}`;
+  }
+  const id = stripLinkedInUrnId(platformUserId, "person");
+  return `urn:li:person:${id}`;
 }
 
 const BASE_DISTRIBUTION = {
@@ -191,7 +201,12 @@ const BASE_DISTRIBUTION = {
  * Input: "data:image/jpeg;base64,/9j/4AA..."
  */
 function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; mimeType: string } {
-  const [header, b64] = dataUrl.split(",");
+  const comma = dataUrl.indexOf(",");
+  if (comma === -1 || !dataUrl.startsWith("data:")) {
+    throw new Error("Imagem inválida: esperado data URL base64 (data:image/...;base64,...).");
+  }
+  const header = dataUrl.slice(0, comma);
+  const b64 = dataUrl.slice(comma + 1);
   const mimeType = header.replace("data:", "").replace(";base64", "");
   return { buffer: Buffer.from(b64, "base64"), mimeType };
 }
@@ -221,9 +236,15 @@ export async function uploadLinkedInImage(
   }
 
   const initData = await initRes.json() as {
-    value: { uploadUrl: string; image: string };
+    value?: { uploadUrl: string; image: string };
   };
-  const { uploadUrl, image: imageUrn } = initData.value;
+  const uploadUrl = initData.value?.uploadUrl;
+  const imageUrn = initData.value?.image;
+  if (!uploadUrl || !imageUrn) {
+    throw new Error(
+      `LinkedIn image init: resposta sem uploadUrl/image. Corpo: ${JSON.stringify(initData).slice(0, 400)}`
+    );
+  }
 
   // Step 2: Upload binary
   const { buffer, mimeType } = dataUrlToBuffer(imageDataUrl);
