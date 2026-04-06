@@ -1,8 +1,5 @@
 {
   "framework": "nextjs",
-  "installCommand": "echo '--- vercel: install (default path) ---' && npm install",
-  "buildCommand": "bash scripts/vercel-build.sh",
-  "ignoreCommand": "bash -c 'exit 1'",
   "crons": [
     {
       "path": "/api/cron/pipeline",
