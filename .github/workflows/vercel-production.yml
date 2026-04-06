@@ -9,7 +9,9 @@
 # Obter IDs certos: na Vercel abra o projeto donaire-squad → Settings → General, ou rode
 #   npx vercel link  (escolha o time e o projeto donaire-squad) e copie .vercel/project.json
 #
-# Opcional: na Vercel, desative deploy automático por Git se quiser evitar deploys “vazios” paralelos.
+# vercel.json tem ignoreCommand "exit 0": o deploy automático pelo Git na Vercel NÃO roda build
+# (evita o deploy vazio ~3s sobrescrever o deploy bom do Actions). O workflow abaixo continua usando
+# vercel pull / build / deploy normalmente (CLI não aplica esse skip da mesma forma).
 
 name: Vercel Production
 
@@ -71,4 +73,4 @@ jobs:
         run: vercel build --prod --token=$VERCEL_TOKEN
 
       - name: Deploy prebuilt
-        run: vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+        run: vercel deploy --prebuilt --prod --yes --token=$VERCEL_TOKEN

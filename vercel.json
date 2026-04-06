@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "ignoreCommand": "exit 0",
   "crons": [
     {
       "path": "/api/cron/pipeline",
