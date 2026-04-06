@@ -4,6 +4,7 @@ const AUTH_URL = "https://twitter.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const USERINFO_URL = "https://api.twitter.com/2/users/me";
 const TWEETS_URL = "https://api.twitter.com/2/tweets";
+const MEDIA_UPLOAD_URL = "https://upload.twitter.com/1/media/upload.json";
 
 export function generatePKCE() {
   const codeVerifier = crypto.randomBytes(32).toString("base64url");
@@ -119,17 +120,78 @@ function throwTwitterWriteFailure(rawBody: string, fallbackPrefix: string): neve
   throw new Error(`${fallbackPrefix}: ${rawBody}`);
 }
 
+/**
+ * Upload an image to Twitter and return the media_id_string.
+ * Uses the v1.1 media upload endpoint with OAuth 2.0 User Context (PKCE token).
+ * imageInput: data URL (base64) ou URL https.
+ */
+export async function uploadTwitterMedia(
+  accessToken: string,
+  imageInput: string
+): Promise<string> {
+  let base64Data: string;
+  let mimeType: string;
+
+  if (imageInput.startsWith("https://") || imageInput.startsWith("http://")) {
+    const res = await fetch(imageInput, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) throw new Error(`Twitter media: falha ao baixar imagem (${res.status})`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+    if (!mimeType.startsWith("image/")) throw new Error("Twitter media: URL não é uma imagem");
+    base64Data = buf.toString("base64");
+  } else {
+    const comma = imageInput.indexOf(",");
+    if (comma === -1 || !imageInput.startsWith("data:")) {
+      throw new Error("Twitter media: esperado data URL base64 ou URL https");
+    }
+    mimeType = imageInput.slice(0, comma).replace("data:", "").replace(";base64", "");
+    base64Data = imageInput.slice(comma + 1);
+  }
+
+  const body = new URLSearchParams({
+    media_data: base64Data,
+    media_type: mimeType,
+  });
+
+  const res = await fetch(MEDIA_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body.toString(),
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Twitter media upload failed (${res.status}): ${err.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as { media_id_string?: string };
+  if (!json.media_id_string) {
+    throw new Error("Twitter media upload: resposta sem media_id_string");
+  }
+  return json.media_id_string;
+}
+
 export async function publishToTwitter(
   accessToken: string,
-  text: string
+  text: string,
+  mediaIds?: string[]
 ): Promise<{ tweetId: string; url: string }> {
+  const tweetBody: Record<string, unknown> = { text };
+  if (mediaIds && mediaIds.length > 0) {
+    tweetBody.media = { media_ids: mediaIds };
+  }
+
   const res = await fetch(TWEETS_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(tweetBody),
   });
 
   if (!res.ok) {
@@ -157,7 +219,8 @@ export async function publishToTwitter(
  */
 export async function publishTwitterThread(
   accessToken: string,
-  tweets: string[]
+  tweets: string[],
+  firstTweetMediaIds?: string[]
 ): Promise<{ firstTweetId: string; url: string; tweetIds: string[] }> {
   if (tweets.length === 0) throw new Error("Thread requires at least one tweet");
 
@@ -171,6 +234,10 @@ export async function publishTwitterThread(
     const body: Record<string, unknown> = { text };
     if (replyToId) {
       body.reply = { in_reply_to_tweet_id: replyToId };
+    }
+    // Attach media only to the first tweet
+    if (tweetIds.length === 0 && firstTweetMediaIds && firstTweetMediaIds.length > 0) {
+      body.media = { media_ids: firstTweetMediaIds };
     }
 
     const res = await fetch(TWEETS_URL, {

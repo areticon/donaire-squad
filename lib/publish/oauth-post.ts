@@ -7,6 +7,7 @@ import {
   publishLinkedInCarousel,
   publishLinkedInPoll,
   publishLinkedInArticleLinkPost,
+  publishLinkedInComment,
   LINKEDIN_MAX_COMMENTARY_CHARS,
   type PollDuration,
 } from "@/lib/oauth/linkedin";
@@ -20,6 +21,7 @@ import {
   publishTwitterThread,
   parseTwitterThread,
   refreshTwitterToken,
+  uploadTwitterMedia,
 } from "@/lib/oauth/twitter";
 
 /**
@@ -153,7 +155,7 @@ export async function executeOAuthPostPublish(
         externalId = result.postId;
       }
     } else if (
-      mediaType === "image" &&
+      (mediaType === "image" || mediaType === "infographic") &&
       post.imageUrl &&
       (post.imageUrl.startsWith("data:image") || post.imageUrl.startsWith("https://"))
     ) {
@@ -194,14 +196,32 @@ export async function executeOAuthPostPublish(
       externalId = result.postId;
     }
   } else if (account.platform === "twitter") {
+    // Upload de mídia (imagem ou infográfico) antes de publicar
+    let twitterMediaIds: string[] | undefined;
+    const hasImage =
+      post.imageUrl &&
+      (mediaType === "image" || mediaType === "infographic") &&
+      (post.imageUrl.startsWith("data:image") || post.imageUrl.startsWith("https://"));
+
+    if (hasImage) {
+      try {
+        const mediaId = await uploadTwitterMedia(accessToken, post.imageUrl!);
+        twitterMediaIds = [mediaId];
+      } catch (e) {
+        // Upload de mídia não-fatal: publica só o texto se falhar
+        console.warn("[twitter] media upload falhou, publicando só texto:", e);
+      }
+    }
+
     if (mediaType === "thread" || bodyText.match(/\n\d+[\/\)]\s/)) {
       const tweets = parseTwitterThread(bodyText);
       if (tweets.length > 1) {
-        const result = await publishTwitterThread(accessToken, tweets);
+        // Imagem vai apenas no primeiro tweet da thread
+        const result = await publishTwitterThread(accessToken, tweets, twitterMediaIds);
         externalUrl = result.url;
         externalId = result.firstTweetId;
       } else {
-        const result = await publishToTwitter(accessToken, bodyText.slice(0, 280));
+        const result = await publishToTwitter(accessToken, bodyText.slice(0, 280), twitterMediaIds);
         externalUrl = result.url;
         externalId = result.tweetId;
       }
@@ -211,7 +231,7 @@ export async function executeOAuthPostPublish(
           .split(/\n(?=\d+\/)/)
           .map((t) => t.trim())
           .filter(Boolean)[0] ?? bodyText;
-      const result = await publishToTwitter(accessToken, mainText.slice(0, 280));
+      const result = await publishToTwitter(accessToken, mainText.slice(0, 280), twitterMediaIds);
       externalUrl = result.url;
       externalId = result.tweetId;
     }
@@ -231,6 +251,28 @@ export async function executeOAuthPostPublish(
       socialAccountId: account.id,
     },
   });
+
+  // Primeiro comentário com referências (LinkedIn apenas)
+  if (account.platform === "linkedin" && externalId) {
+    const firstComment = (metadata as Record<string, unknown> | null)?.firstComment;
+    if (typeof firstComment === "string" && firstComment.trim().length > 0) {
+      // Reconstrói o URN do post a partir do externalId
+      const postUrn = externalUrl?.includes("ugcPost")
+        ? `urn:li:ugcPost:${externalId}`
+        : `urn:li:share:${externalId}`;
+      try {
+        await publishLinkedInComment(
+          accessToken,
+          platformUserId,
+          postUrn,
+          firstComment.trim(),
+          accountType
+        );
+      } catch (e) {
+        console.warn("[publish] primeiro comentário falhou (não fatal):", e);
+      }
+    }
+  }
 
   return { url: externalUrl, externalId };
 }
