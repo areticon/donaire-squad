@@ -15,7 +15,17 @@ export async function POST(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { accountId } = await req.json();
+
+  let accountId: string;
+  try {
+    const body = (await req.json()) as { accountId?: unknown };
+    accountId = typeof body?.accountId === "string" ? body.accountId.trim() : "";
+  } catch {
+    return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+  }
+  if (!accountId) {
+    return NextResponse.json({ error: "accountId é obrigatório." }, { status: 400 });
+  }
 
   const post = await prisma.post.findUnique({
     where: { id },
@@ -108,7 +118,9 @@ export async function POST(
       msg.includes("HTTP") ||
       msg.includes("ugcPosts") ||
       lower.includes("forbidden") ||
-      lower.includes("403");
+      lower.includes("403") ||
+      lower.includes("inválid") ||
+      lower.includes("cannot read properties");
     return NextResponse.json(
       {
         error: detailed

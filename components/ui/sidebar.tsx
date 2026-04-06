@@ -199,8 +199,8 @@ export function Sidebar({
             </div>
           )}
           <Link
-            href="/settings"
-            title="Configurações"
+            href="/projects"
+            title="Projetos — configurações e redes por projeto"
             className={cn("p-1 rounded-lg hover:bg-white/5", collapsed ? "flex items-center justify-center w-full" : "")}
           >
             <Settings

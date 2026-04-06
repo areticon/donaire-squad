@@ -64,6 +64,7 @@ export async function executeOAuthPostPublish(
   let externalUrl: string | null = null;
   let externalId: string | null = null;
 
+  const bodyText = post.content ?? "";
   const mediaType = post.mediaType ?? "text";
   const accountType = (account.accountType as "personal" | "organization") ?? "personal";
   const platformUserId = account.platformUserId ?? "";
@@ -81,7 +82,7 @@ export async function executeOAuthPostPublish(
         await prisma.post.update({ where: { id: post.id }, data: { articlePublicToken: token } });
       }
       const articlePublicUrl = buildArticlePublicUrl(token);
-      const parsed = parseLinkedInArticleContent(post.content ?? "");
+      const parsed = parseLinkedInArticleContent(bodyText);
       const meta = metadata as { articleTitle?: string; articleTeaser?: string; linkedinFeedIntro?: string } | null;
       const title = (meta?.articleTitle ?? parsed.title).slice(0, 200);
       const description = (meta?.articleTeaser ?? parsed.teaser).slice(0, 400);
@@ -112,14 +113,14 @@ export async function executeOAuthPostPublish(
       } | null;
 
       if (!pollData?.question || !pollData.options || pollData.options.length < 2) {
-        const result = await publishToLinkedIn(accessToken, platformUserId, post.content, accountType);
+        const result = await publishToLinkedIn(accessToken, platformUserId, bodyText, accountType);
         externalUrl = result.url;
         externalId = result.postId;
       } else {
         const result = await publishLinkedInPoll(
           accessToken,
           platformUserId,
-          pollData.intro ?? post.content,
+          pollData.intro ?? bodyText,
           pollData.question,
           pollData.options,
           (pollData.duration ?? "THREE_DAYS") as PollDuration,
@@ -134,7 +135,7 @@ export async function executeOAuthPostPublish(
         const result = await publishLinkedInCarousel(
           accessToken,
           platformUserId,
-          post.content,
+          bodyText,
           imageUrls,
           accountType
         );
@@ -144,7 +145,7 @@ export async function executeOAuthPostPublish(
         const result = await publishLinkedInImagePost(
           accessToken,
           platformUserId,
-          post.content,
+          bodyText,
           imageUrls[0],
           accountType
         );
@@ -155,7 +156,7 @@ export async function executeOAuthPostPublish(
       const result = await publishLinkedInImagePost(
         accessToken,
         platformUserId,
-        post.content,
+        bodyText,
         post.imageUrl,
         accountType
       );
@@ -177,35 +178,35 @@ export async function executeOAuthPostPublish(
         externalId = result.postId;
       } else {
         const textWithLink = post.imageUrl.startsWith("https")
-          ? `${post.content}\n\n🎬 ${post.imageUrl}`
-          : post.content;
+          ? `${bodyText}\n\n🎬 ${post.imageUrl}`
+          : bodyText;
         const result = await publishToLinkedIn(accessToken, platformUserId, textWithLink, accountType);
         externalUrl = result.url;
         externalId = result.postId;
       }
     } else {
-      const result = await publishToLinkedIn(accessToken, platformUserId, post.content, accountType);
+      const result = await publishToLinkedIn(accessToken, platformUserId, bodyText, accountType);
       externalUrl = result.url;
       externalId = result.postId;
     }
   } else if (account.platform === "twitter") {
-    if (mediaType === "thread" || post.content.match(/\n\d+[\/\)]\s/)) {
-      const tweets = parseTwitterThread(post.content);
+    if (mediaType === "thread" || bodyText.match(/\n\d+[\/\)]\s/)) {
+      const tweets = parseTwitterThread(bodyText);
       if (tweets.length > 1) {
         const result = await publishTwitterThread(accessToken, tweets);
         externalUrl = result.url;
         externalId = result.firstTweetId;
       } else {
-        const result = await publishToTwitter(accessToken, post.content.slice(0, 280));
+        const result = await publishToTwitter(accessToken, bodyText.slice(0, 280));
         externalUrl = result.url;
         externalId = result.tweetId;
       }
     } else {
       const mainText =
-        post.content
+        bodyText
           .split(/\n(?=\d+\/)/)
           .map((t) => t.trim())
-          .filter(Boolean)[0] ?? post.content;
+          .filter(Boolean)[0] ?? bodyText;
       const result = await publishToTwitter(accessToken, mainText.slice(0, 280));
       externalUrl = result.url;
       externalId = result.tweetId;
