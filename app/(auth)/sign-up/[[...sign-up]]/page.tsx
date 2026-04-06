@@ -8,7 +8,7 @@ export default function SignUpPage() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <BrandMarkImg variant="dark" className="h-8 w-8 rounded-md" />
-            <span className="font-bold text-[#f5f5f5] text-xl">Demandou</span>
+            <span className="font-bold text-[#f5f5f5] text-xl lowercase">demandou</span>
           </div>
           <h1 className="text-2xl font-bold text-[#f5f5f5]">Crie sua conta</h1>
           <p className="text-[#9ca3af] mt-1">Comece grátis, sem cartão de crédito</p>

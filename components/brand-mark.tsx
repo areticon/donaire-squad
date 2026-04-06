@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 type Variant = "dark" | "light";
 
-/** Ícone da marca (favicons SVG em /public). Use variant conforme o fundo. */
+/** Logo da marca em PNG (`demandou marca/`). `dark` = fundo escuro da página; `light` = fundo claro. */
 export function BrandMarkImg({
   variant = "dark",
   className,
@@ -12,12 +12,12 @@ export function BrandMarkImg({
   className?: string;
   size?: number;
 }) {
-  const src = variant === "dark" ? "/favicon-dark.svg" : "/favicon-light.svg";
+  const src = variant === "dark" ? "/brand-mark-on-dark.png" : "/brand-mark-on-light.png";
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- SVG local pequeno
+    // eslint-disable-next-line @next/next/no-img-element -- asset estático pequeno
     <img
       src={src}
-      alt=""
+      alt="demandou"
       width={size}
       height={size}
       className={cn("object-contain shrink-0", className)}

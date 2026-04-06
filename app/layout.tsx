@@ -9,20 +9,32 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-mont", weight: ["700", "800"] });
 
 export const metadata: Metadata = {
-  title: "Demandou — Seus Agentes de IA Trabalhando por Você",
+  title: "demandou — Seus Agentes de IA Trabalhando por Você",
   description:
     "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
   icons: {
-    icon: [{ url: "/favicon-dark.svg", type: "image/svg+xml" }],
-    shortcut: "/favicon-dark.svg",
-    apple: "/favicon-dark.svg",
+    icon: [
+      { url: "/brand-mark-on-dark.png", type: "image/png" },
+      {
+        url: "/brand-mark-on-light.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/brand-mark-on-dark.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    shortcut: "/brand-mark-on-dark.png",
+    apple: "/brand-mark-on-light.png",
   },
   openGraph: {
-    title: "Demandou — Seus Agentes de IA Trabalhando por Você",
+    title: "demandou — Seus Agentes de IA Trabalhando por Você",
     description:
       "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
     url: "https://demandou.com",
-    siteName: "Demandou",
+    siteName: "demandou",
     locale: "pt_BR",
     type: "website",
   },

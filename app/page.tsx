@@ -7,7 +7,7 @@ import { Pricing } from "@/components/landing/pricing";
 import { Footer } from "@/components/landing/footer";
 
 export const metadata: Metadata = {
-  title: "Demandou — Seus Agentes de IA Trabalhando por Você",
+  title: "demandou — Seus Agentes de IA Trabalhando por Você",
   description:
     "Gestão de redes sociais com inteligência artificial. Crie, publique e escale sua presença online com uma equipe de agentes autônomos.",
 };

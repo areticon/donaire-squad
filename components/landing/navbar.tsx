@@ -27,7 +27,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <BrandMarkImg variant="dark" className="h-8 w-8 rounded-md" />
-          <span className="font-bold text-[#f5f5f5] text-lg">Demandou</span>
+          <span className="font-bold text-[#f5f5f5] text-lg lowercase">demandou</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-8">

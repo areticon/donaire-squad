@@ -9,7 +9,7 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <BrandMarkImg variant="dark" className="h-7 w-7 rounded-md" size={28} />
-              <span className="font-bold text-[#f5f5f5]">Demandou</span>
+              <span className="font-bold text-[#f5f5f5] lowercase">demandou</span>
             </div>
             <p className="text-sm text-[#9ca3af] leading-relaxed">
               Seus agentes de IA trabalhando para construir sua autoridade nas redes sociais.
@@ -45,7 +45,7 @@ export function Footer() {
 
         <div className="border-t border-[#1a1a1a] pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-[#9ca3af]">
-            © 2026 Demandou. Feito com IA no Brasil.
+            © 2026 demandou. Feito com IA no Brasil.
           </p>
           <p className="text-xs text-[#9ca3af]">
             Powered by Claude · Gemini · Blotato
