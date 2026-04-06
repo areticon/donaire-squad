@@ -95,7 +95,12 @@ export async function POST(
       return NextResponse.json({ success: true, url });
     } catch (err) {
       console.error("[publish]", err);
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : JSON.stringify(err).slice(0, 400);
       const lower = msg.toLowerCase();
       if (
         msg.includes("Token") ||
@@ -121,30 +126,22 @@ export async function POST(
         );
       }
       await safeMarkPostFailed(id);
-      const detailed =
-        msg.includes("não suportada") ||
-        msg.includes("LinkedIn") ||
-        msg.includes("Twitter") ||
-        msg.includes("HTTP") ||
-        msg.includes("ugcPosts") ||
-        msg.includes("Imagem") ||
-        msg.includes("resposta sem") ||
-        lower.includes("forbidden") ||
-        lower.includes("403") ||
-        lower.includes("inválid") ||
-        lower.includes("cannot read properties");
       return NextResponse.json(
         {
-          error: detailed
-            ? msg.slice(0, 600)
-            : "Falha ao publicar. Verifique permissões do app na rede social ou reconecte em Configurações.",
+          error: msg.slice(0, 800),
+          code: "PUBLISH_FAILED",
         },
         { status: 500 }
       );
     }
   } catch (fatal) {
     console.error("[publish] erro não tratado (antes/durante publicação)", fatal);
-    const m = fatal instanceof Error ? fatal.message : String(fatal);
+    const m =
+      fatal instanceof Error
+        ? fatal.message
+        : typeof fatal === "object" && fatal !== null && "message" in fatal
+          ? String((fatal as { message: unknown }).message)
+          : String(fatal);
     return NextResponse.json(
       {
         error: m.length > 0 ? m.slice(0, 600) : "Erro interno ao publicar.",

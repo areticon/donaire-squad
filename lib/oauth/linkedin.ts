@@ -216,13 +216,18 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; mimeType: string } 
 /**
  * Upload an image to LinkedIn and return the image URN.
  * ownerUrn: e.g. "urn:li:person:XYZ" or "urn:li:organization:123"
- * imageDataUrl: "data:image/jpeg;base64,..."
+ * imageInput: data URL base64 ou URL https (carrosséis / CDN) — convertida antes do upload.
  */
 export async function uploadLinkedInImage(
   accessToken: string,
   ownerUrn: string,
-  imageDataUrl: string
+  imageInput: string
 ): Promise<string> {
+  let dataUrl = imageInput.trim();
+  if (dataUrl.startsWith("https://") || dataUrl.startsWith("http://")) {
+    dataUrl = await fetchHttpsImageAsDataUrl(dataUrl);
+  }
+
   // Step 1: Initialize upload
   const initRes = await fetch(`${IMAGES_URL}?action=initializeUpload`, {
     method: "POST",
@@ -247,7 +252,7 @@ export async function uploadLinkedInImage(
   }
 
   // Step 2: Upload binary
-  const { buffer, mimeType } = dataUrlToBuffer(imageDataUrl);
+  const { buffer, mimeType } = dataUrlToBuffer(dataUrl);
   const uploadRes = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": mimeType },

@@ -152,7 +152,11 @@ export async function executeOAuthPostPublish(
         externalUrl = result.url;
         externalId = result.postId;
       }
-    } else if (mediaType === "image" && post.imageUrl?.startsWith("data:image")) {
+    } else if (
+      mediaType === "image" &&
+      post.imageUrl &&
+      (post.imageUrl.startsWith("data:image") || post.imageUrl.startsWith("https://"))
+    ) {
       const result = await publishLinkedInImagePost(
         accessToken,
         platformUserId,
