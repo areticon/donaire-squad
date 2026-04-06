@@ -101,6 +101,24 @@ export async function getTwitterProfile(accessToken: string) {
   return json.data;
 }
 
+/** Erros JSON da API v2 (ex.: CreditsDepleted) → mensagem legível em PT. */
+function throwTwitterWriteFailure(rawBody: string, fallbackPrefix: string): never {
+  try {
+    const j = JSON.parse(rawBody) as { title?: string; detail?: string; type?: string };
+    const isCredits =
+      j.title === "CreditsDepleted" ||
+      (typeof j.type === "string" && j.type.toLowerCase().includes("credit"));
+    if (isCredits) {
+      throw new Error(
+        "X (Twitter): sem créditos de API para publicar. Em https://developer.x.com abre o projeto da app → Billing / Usage (ou plano API v2), compra créditos ou faz upgrade. Cada publicação consome créditos neste modelo."
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("X (Twitter):")) throw e;
+  }
+  throw new Error(`${fallbackPrefix}: ${rawBody}`);
+}
+
 export async function publishToTwitter(
   accessToken: string,
   text: string
@@ -116,7 +134,7 @@ export async function publishToTwitter(
 
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(`Twitter publish failed: ${error}`);
+    throwTwitterWriteFailure(error, "Twitter publish failed");
   }
 
   const json = (await res.json()) as { data?: { id?: string; text?: string }; errors?: unknown };
@@ -166,7 +184,7 @@ export async function publishTwitterThread(
 
     if (!res.ok) {
       const error = await res.text();
-      throw new Error(`Twitter thread failed at tweet ${tweetIds.length + 1}: ${error}`);
+      throwTwitterWriteFailure(error, `Twitter thread failed at tweet ${tweetIds.length + 1}`);
     }
 
     const json = (await res.json()) as { data?: { id?: string } };
