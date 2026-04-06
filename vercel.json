@@ -1,7 +1,7 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "installCommand": "echo '--- vercel: install (default path) ---' && npm install",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "ignoreCommand": "bash -c 'exit 1'",
   "crons": [
     {
