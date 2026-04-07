@@ -5,6 +5,51 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 
+/** Busca o que está em alta agora no nicho via Gemini + Google Search Grounding */
+async function fetchTrendingTopics(
+  niche: string,
+  targetAudience: string,
+  apiKey: string
+): Promise<string> {
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
+
+  const prompt = `O que está em alta AGORA em ${currentMonth} de ${currentYear} no nicho de "${niche}" para o público "${targetAudience}" no Brasil?
+
+Traga:
+1. Últimas notícias e acontecimentos do setor (últimos 30 dias)
+2. Temas que estão gerando mais engajamento no LinkedIn e X (Twitter) agora
+3. Dados, pesquisas ou relatórios recentes publicados em ${currentYear}
+4. Debates quentes, controvérsias ou tendências emergentes no nicho
+5. Cases, lançamentos ou eventos recentes relevantes
+
+Seja específico — cite nomes, números, datas e fontes reais. Evite informações genéricas.`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tools: [{ googleSearch: {} }],
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+      }),
+      signal: AbortSignal.timeout(40_000),
+    }
+  );
+
+  if (!res.ok) return "";
+
+  const data = await res.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  return (data.candidates?.[0]?.content?.parts ?? [])
+    .map((p) => p.text ?? "")
+    .join("") || "";
+}
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,6 +81,25 @@ export async function POST(req: NextRequest) {
     .map((p) => p.content.slice(0, 80))
     .join("\n");
 
+  // Busca dados em tempo real do que está em alta agora no nicho
+  let trendingContext = "";
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    try {
+      trendingContext = await fetchTrendingTopics(
+        project.niche ?? "geral",
+        project.targetAudience ?? "profissionais",
+        geminiKey
+      );
+    } catch {
+      // Continua sem dados em tempo real se falhar
+    }
+  }
+
+  const trendingBlock = trendingContext
+    ? `\n=== O QUE ESTÁ EM ALTA AGORA (dados reais da internet) ===\n${trendingContext}\n=== FIM DOS DADOS EM TEMPO REAL ===\n`
+    : "";
+
   const prompt = `Você é um estrategista de conteúdo especialista em redes sociais no Brasil.
 
 Projeto: ${project.name}
@@ -43,10 +107,10 @@ Nicho: ${project.niche || "não definido"}
 Público-alvo: ${project.targetAudience || "não definido"}
 Tom de voz: ${project.voice || "profissional"}
 ${recentTopics ? `\nÚltimos posts criados (para evitar repetição):\n${recentTopics}` : ""}
-
-Sugira exatamente 5 temas de conteúdo para essa semana. Os temas devem:
-- Estar em alta no Brasil agora (tendências, hype, notícias relevantes do setor)
-- Ser específicos e acionáveis (não genéricos)
+${trendingBlock}
+Baseado nos dados em tempo real acima, sugira exatamente 5 temas de conteúdo para essa semana. Os temas devem:
+- Ser baseados no que está em alta AGORA (use os dados reais fornecidos acima)
+- Ser específicos e acionáveis — citar dados, nomes, números reais
 - Variar em formato: dados/estatística, opinião provocativa, dica prática, case/história, tendência
 - Ser diferentes dos posts recentes acima
 
