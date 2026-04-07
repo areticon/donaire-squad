@@ -53,10 +53,10 @@ const NICHE_THEMES: Record<string, InfographicTheme> = {
   saúde:           "growth_green",
   health:          "growth_green",
   tech:            "tech_dark",
-  tecnologia:      "tech_dark",
+  tecnologia:      "linkedin_blue",
   saas:            "tech_dark",
-  ia:              "tech_dark",
-  ai:              "tech_dark",
+  ia:              "executive_navy",
+  ai:              "executive_navy",
   finance:         "executive_navy",
   finanças:        "executive_navy",
   consultoria:     "executive_navy",
@@ -87,12 +87,13 @@ async function extractContent(
 2. NUNCA use lorem ipsum, placeholders ou inventar dados.
 3. Use apenas informações reais do post.
 4. Se faltar dado para algum campo, resuma a ideia principal do post.
+5. O título NÃO pode começar com rótulos de categoria como "IA:", "AI:", "Tech:", "Digital:", "Inovação:" ou similares. Escreva direto a manchete.
 
 Retorne APENAS JSON válido sem markdown:
 {
-  "title": "manchete impactante em português (máx 60 chars)",
+  "title": "manchete impactante em português (máx 60 chars — NÃO inicie com 'IA:', 'AI:' ou qualquer prefixo de categoria)",
   "subtitle": "frase complementar em português (máx 100 chars)",
-  "theme": "linkedin_blue|energy_orange|growth_green|tech_dark|executive_navy",
+  "theme": "${detectTheme(niche)}",
   "sections": [
     {"heading": "título da seção em português (máx 40 chars)", "body": "descrição em português (máx 90 chars)", "stat": "número destaque opcional como '50 GW' ou 'R$ 7,6bi'"}
   ],
@@ -100,12 +101,7 @@ Retorne APENAS JSON válido sem markdown:
   "keyNumbers": [{"value": "número", "label": "descrição em português (máx 30 chars)"}]
 }
 
-Escolha theme com base no nicho "${niche}":
-- linkedin_blue: corporativo/geral/gestão
-- energy_orange: energia/urgência/startups/inovação  
-- growth_green: sustentabilidade/crescimento/agro/saúde
-- tech_dark: tecnologia/SaaS/dados/IA
-- executive_navy: finanças/investimento/consultoria/jurídico
+O campo "theme" já está definido como "${detectTheme(niche)}" — mantenha esse valor exatamente.
 
 CONTEÚDO DO POST:
 ${postContent.slice(0, 3000)}`;

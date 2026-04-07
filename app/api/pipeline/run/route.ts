@@ -8,6 +8,7 @@ import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { generateVideo, VeoUnavailableError } from "@/lib/media/veo3";
 import { generateInfographic } from "@/lib/media/infographic";
+import { researchTopic, formatSourcesSection } from "@/lib/research/web-search";
 import { newArticlePublicToken, parseLinkedInArticleContent } from "@/lib/articles/linkedin-article";
 import {
   getMediaStylePromptFragment,
@@ -76,19 +77,19 @@ const DAY_NAMES: Record<number, string> = {
  * para ser publicado como primeiro comentário no LinkedIn.
  */
 function extractFirstComment(researchBrief: string): string | undefined {
-  const sourcesMatch = researchBrief.match(/FONTES:\s*([\s\S]+?)(?:\n\n|$)/i);
+  const sourcesMatch = researchBrief.match(/FONTES:\s*([\s\S]+?)(?:\n\n|\n(?=[A-Z])|$)/i);
   if (!sourcesMatch) return undefined;
 
   const lines = sourcesMatch[1]
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l.startsWith("-") && l.includes("http"));
+    .filter((l) => l.length > 2 && (l.startsWith("-") || l.startsWith("•") || l.match(/^\d+\./)));
 
   if (lines.length === 0) return undefined;
 
   const formatted = lines
     .slice(0, 5)
-    .map((l) => l.replace(/^-\s*/, "").trim())
+    .map((l) => l.replace(/^[-•]\s*/, "").replace(/^\d+\.\s*/, "").trim())
     .join("\n");
 
   return `📚 Fontes e referências:\n\n${formatted}`;
@@ -459,17 +460,23 @@ async function runPipeline(
 
   /** Get scheduledAt datetime for a given dayOfWeek + weekOffset, including time from config */
   function getScheduledAt(dayOfWeek: number, weekOffset: number): Date {
+    const now = new Date();
+
     // Prefer pre-computed UTC ISO from the browser (timezone-correct)
     if (config.campaignMode === "single" && config.singleScheduledAt) {
-      return new Date(config.singleScheduledAt);
+      const d = new Date(config.singleScheduledAt);
+      // Never schedule in the past — bump to 10 min from now
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     if (weekOffset === 0 && config.postingTimestamps?.[String(dayOfWeek)]) {
-      return new Date(config.postingTimestamps[String(dayOfWeek)]);
+      const d = new Date(config.postingTimestamps[String(dayOfWeek)]);
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     // Fallback: compute server-side (always use UTC to avoid local-timezone drift)
     if (config.campaignMode === "single" && config.singleDate) {
       const time = config.singleTime ?? "09:00";
-      return mergeDateTime(config.singleDate, time);
+      const d = mergeDateTime(config.singleDate, time);
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     const offsetDays = weekOffset * 7;
     const d = new Date(weekStartIso + "T00:00:00.000Z");
@@ -480,6 +487,8 @@ async function runPipeline(
         : (config.postingTimes?.[String(dayOfWeek)] ?? "09:00");
     const [hours, minutes] = timeStr.split(":").map(Number);
     d.setUTCHours(hours, minutes, 0, 0);
+    // If the computed date is in the past, advance by one week
+    if (d <= now) d.setUTCDate(d.getUTCDate() + 7);
     return d;
   }
 
@@ -575,22 +584,59 @@ async function runPipeline(
   await appendLog(runId, { agent: "Sistema", message: "Iniciando pesquisa...", status: "running" });
   const researcher = makeAgent("roberto-radar");
   let researchBrief = "";
+  let webSourcesGlobal: Array<{ title: string; url: string }> = [];
 
   if (researcher) {
+    // 1a. Busca web em tempo real via Gemini + Google Search Grounding
+    let webSearchData = "";
+    let webSources: Array<{ title: string; url: string }> = [];
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    if (geminiKey) {
+      try {
+        await appendLog(runId, { agent: "Roberto Radar", message: "Buscando dados em tempo real (Google Search)...", status: "running" });
+        const searchResult = await researchTopic(
+          topic,
+          project.niche ?? "geral",
+          project.targetAudience ?? "profissionais",
+          geminiKey
+        );
+        webSearchData = searchResult.summary;
+        webSources = searchResult.sources;
+        webSourcesGlobal = searchResult.sources;
+        await appendLog(runId, {
+          agent: "Roberto Radar",
+          message: `Pesquisa web concluída — ${webSources.length} fontes encontradas.`,
+          status: "running",
+        });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca web falhou (${errMsg.slice(0, 120)}). Usando conhecimento interno.`, status: "warning" });
+      }
+    }
+
+    // 1b. Roberto sintetiza os dados reais em um brief estruturado
+    const sourcesSection = formatSourcesSection(webSources);
+    const webContext = webSearchData
+      ? `\n\n=== DADOS REAIS ENCONTRADOS NA WEB (use estes dados — são atuais e verificados) ===\n\n${webSearchData}\n\n=== FIM DOS DADOS WEB ===`
+      : "";
+
     researchBrief = await runAgent(
       researcher,
-      `Pesquise e compile um brief sobre: "${topic}".
-Inclua: dados recentes, estatísticas verificáveis, tendências e insights acionáveis.
+      `Compile um brief de pesquisa completo sobre: "${topic}".
 Nicho: ${project.niche ?? "geral"}. Público: ${project.targetAudience ?? "profissionais"}.
+${webSearchData ? `\nVocê tem acesso aos dados reais mais recentes encontrados na web (veja abaixo). Use-os como base principal do brief.` : ""}
 
-Ao final do brief, adicione obrigatoriamente uma seção no formato exato abaixo (máx 5 fontes reais e verificáveis):
-
-FONTES:
-- [Nome da fonte 1](https://url-real.com)
-- [Nome da fonte 2](https://url-real.com)`,
-      baseContext,
+ESTRUTURA DO BRIEF (siga esta ordem):
+1. Contexto atual: o que está acontecendo AGORA com este tema (últimas semanas/meses)
+2. Dados e estatísticas: números reais com fonte explícita
+3. Tendências quentes: o que está em alta no LinkedIn, X e Google
+4. Insights acionáveis: o que o público-alvo precisa saber/fazer
+5. Ângulos de conteúdo: 3 perspectivas diferentes para abordar o tema${sourcesSection ? `\n\nAo final, inclua a seção de fontes abaixo exatamente como está:\n${sourcesSection}` : `\n\nAo final do brief, adicione:\nFONTES:\n- [Nome da fonte com URL real]`}`,
+      baseContext + webContext,
       runId,
-      funnelInstruction
+      funnelInstruction,
+      { maxTokens: 4096 }
     );
 
     // Save research card for each unique day
@@ -848,7 +894,15 @@ ${linkedinContent}`,
 
       // Adiciona primeiro comentário com fontes da pesquisa (exceto artigos, que já têm link)
       if (resolvedType !== "article" && resolvedType !== "poll") {
-        const firstComment = extractFirstComment(researchBrief);
+        let firstComment = extractFirstComment(researchBrief);
+        // Fallback: use web sources collected from Gemini search directly
+        if (!firstComment && webSourcesGlobal.length > 0) {
+          const lines = webSourcesGlobal
+            .slice(0, 5)
+            .map((s) => `- ${s.title}: ${s.url}`)
+            .join("\n");
+          firstComment = `📚 Fontes e referências:\n\n${lines}`;
+        }
         if (firstComment) {
           linkedinMetadata = { ...(linkedinMetadata ?? {}), firstComment };
         }
