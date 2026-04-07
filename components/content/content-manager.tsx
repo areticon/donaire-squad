@@ -376,7 +376,7 @@ function KanbanCard({
     <motion.div
       whileHover={{ scale: 1.01 }}
       className={cn(
-        "rounded-lg border cursor-pointer transition-all hover:shadow-md",
+        "rounded-lg border cursor-pointer transition-all hover:shadow-md overflow-hidden",
         compact ? "text-[9px]" : "",
         card.status === "approved" ? "border-green-500/40" : card.status === "rejected" ? "border-red-500/40" : ""
       )}
@@ -2508,7 +2508,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                       const isGeneratingThisAgent = generating && !hasAnyCard;
 
                       return (
-                        <div key={day.dayOfWeek} className={cn("p-2 border-l", isToday ? "bg-orange-500/5" : "")} style={{ borderColor: "var(--border)", minHeight: 64 }}>
+                        <div key={day.dayOfWeek} className={cn("p-2 border-l min-w-0 overflow-hidden", isToday ? "bg-orange-500/5" : "")} style={{ borderColor: "var(--border)", minHeight: 64 }}>
                           {isGeneratingThisAgent && dayRowCards.length === 0 ? (
                             <div className="rounded-lg border border-dashed h-16 flex items-center justify-center gap-1" style={{ borderColor: "var(--border)" }}>
                               <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--border)" }} />
