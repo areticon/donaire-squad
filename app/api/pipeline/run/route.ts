@@ -460,17 +460,23 @@ async function runPipeline(
 
   /** Get scheduledAt datetime for a given dayOfWeek + weekOffset, including time from config */
   function getScheduledAt(dayOfWeek: number, weekOffset: number): Date {
+    const now = new Date();
+
     // Prefer pre-computed UTC ISO from the browser (timezone-correct)
     if (config.campaignMode === "single" && config.singleScheduledAt) {
-      return new Date(config.singleScheduledAt);
+      const d = new Date(config.singleScheduledAt);
+      // Never schedule in the past — bump to 10 min from now
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     if (weekOffset === 0 && config.postingTimestamps?.[String(dayOfWeek)]) {
-      return new Date(config.postingTimestamps[String(dayOfWeek)]);
+      const d = new Date(config.postingTimestamps[String(dayOfWeek)]);
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     // Fallback: compute server-side (always use UTC to avoid local-timezone drift)
     if (config.campaignMode === "single" && config.singleDate) {
       const time = config.singleTime ?? "09:00";
-      return mergeDateTime(config.singleDate, time);
+      const d = mergeDateTime(config.singleDate, time);
+      return d <= now ? new Date(now.getTime() + 10 * 60 * 1000) : d;
     }
     const offsetDays = weekOffset * 7;
     const d = new Date(weekStartIso + "T00:00:00.000Z");
@@ -481,6 +487,8 @@ async function runPipeline(
         : (config.postingTimes?.[String(dayOfWeek)] ?? "09:00");
     const [hours, minutes] = timeStr.split(":").map(Number);
     d.setUTCHours(hours, minutes, 0, 0);
+    // If the computed date is in the past, advance by one week
+    if (d <= now) d.setUTCDate(d.getUTCDate() + 7);
     return d;
   }
 
@@ -576,6 +584,7 @@ async function runPipeline(
   await appendLog(runId, { agent: "Sistema", message: "Iniciando pesquisa...", status: "running" });
   const researcher = makeAgent("roberto-radar");
   let researchBrief = "";
+  let webSourcesGlobal: Array<{ title: string; url: string }> = [];
 
   if (researcher) {
     // 1a. Busca web em tempo real via Gemini + Google Search Grounding
@@ -594,6 +603,7 @@ async function runPipeline(
         );
         webSearchData = searchResult.summary;
         webSources = searchResult.sources;
+        webSourcesGlobal = searchResult.sources;
         await appendLog(runId, {
           agent: "Roberto Radar",
           message: `Pesquisa web concluída — ${webSources.length} fontes encontradas.`,
@@ -884,7 +894,15 @@ ${linkedinContent}`,
 
       // Adiciona primeiro comentário com fontes da pesquisa (exceto artigos, que já têm link)
       if (resolvedType !== "article" && resolvedType !== "poll") {
-        const firstComment = extractFirstComment(researchBrief);
+        let firstComment = extractFirstComment(researchBrief);
+        // Fallback: use web sources collected from Gemini search directly
+        if (!firstComment && webSourcesGlobal.length > 0) {
+          const lines = webSourcesGlobal
+            .slice(0, 5)
+            .map((s) => `- ${s.title}: ${s.url}`)
+            .join("\n");
+          firstComment = `📚 Fontes e referências:\n\n${lines}`;
+        }
         if (firstComment) {
           linkedinMetadata = { ...(linkedinMetadata ?? {}), firstComment };
         }

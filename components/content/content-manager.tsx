@@ -543,7 +543,7 @@ function SocialPostPreview({
         {/* Post text */}
         <div
           className="text-sm leading-relaxed whitespace-pre-wrap"
-          style={{ color: "var(--text-primary)", maxHeight: 220, overflowY: "auto" }}
+          style={{ color: "var(--text-primary)", maxHeight: 480, overflowY: "auto" }}
         >
           {content}
         </div>
@@ -1626,11 +1626,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           onClick={() => void publishNowPlatform("twitter")}
                           className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
                           style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
+                          title={!accountFor("twitter") ? "Conecte sua conta do X em Configurações para publicar" : undefined}
                           onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(29,155,240,0.12)"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
                         >
                           <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                           <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>X (Twitter)</span>
+                          {!accountFor("twitter") && (
+                            <span className="text-[9px] text-center leading-tight" style={{ color: "var(--text-muted)" }}>Conecte a conta</span>
+                          )}
                         </button>
                         {/* Ambas now */}
                         <button
