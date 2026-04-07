@@ -76,19 +76,19 @@ const DAY_NAMES: Record<number, string> = {
  * para ser publicado como primeiro comentário no LinkedIn.
  */
 function extractFirstComment(researchBrief: string): string | undefined {
-  const sourcesMatch = researchBrief.match(/FONTES:\s*([\s\S]+?)(?:\n\n|$)/i);
+  const sourcesMatch = researchBrief.match(/FONTES:\s*([\s\S]+?)(?:\n\n|\n(?=[A-Z])|$)/i);
   if (!sourcesMatch) return undefined;
 
   const lines = sourcesMatch[1]
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l.startsWith("-") && l.includes("http"));
+    .filter((l) => l.length > 2 && (l.startsWith("-") || l.startsWith("•") || l.match(/^\d+\./)));
 
   if (lines.length === 0) return undefined;
 
   const formatted = lines
     .slice(0, 5)
-    .map((l) => l.replace(/^-\s*/, "").trim())
+    .map((l) => l.replace(/^[-•]\s*/, "").replace(/^\d+\.\s*/, "").trim())
     .join("\n");
 
   return `📚 Fontes e referências:\n\n${formatted}`;

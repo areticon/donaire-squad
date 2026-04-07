@@ -256,15 +256,17 @@ export async function executeOAuthPostPublish(
   if (account.platform === "linkedin" && externalId) {
     const firstComment = (metadata as Record<string, unknown> | null)?.firstComment;
     if (typeof firstComment === "string" && firstComment.trim().length > 0) {
-      // Reconstrói o URN do post a partir do externalId
-      const postUrn = externalUrl?.includes("ugcPost")
-        ? `urn:li:ugcPost:${externalId}`
-        : `urn:li:share:${externalId}`;
+      // externalId pode ser URN completo (urn:li:share:XXXX) ou só o ID numérico
+      const rawId = externalId.startsWith("urn:li:")
+        ? externalId
+        : externalUrl?.includes("ugcPost")
+          ? `urn:li:ugcPost:${externalId}`
+          : `urn:li:share:${externalId}`;
       try {
         await publishLinkedInComment(
           accessToken,
           platformUserId,
-          postUrn,
+          rawId,
           firstComment.trim(),
           accountType
         );

@@ -1452,7 +1452,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     {dayPosts.map((p) => {
                       const mt = (p as { mediaType?: string }).mediaType;
                       if (mt === "poll") return <PollPreview key={p.id} content={p.content} platform={p.platform} />;
-                      if (mt === "thread" || p.platform === "twitter") return <ThreadPreview key={p.id} content={p.content} />;
+                      if (mt === "thread") return <ThreadPreview key={p.id} content={p.content} />;
                       if (mt === "article") return <ArticlePreview key={p.id} content={p.content} />;
                       return (
                         <SocialPostPreview
