@@ -1,0 +1,170 @@
+/**
+ * Roberto Radar — Real-time Web Research Module
+ *
+ * Uses Gemini 2.0 Flash with Google Search Grounding to fetch live data:
+ * - Google News (últimas notícias)
+ * - Tendências do nicho no LinkedIn/X indexados pelo Google
+ * - Estatísticas e relatórios recentes
+ * - Posts virais e debates atuais
+ *
+ * Grounding retorna URLs reais usadas na resposta (evita fontes inventadas).
+ */
+
+export interface WebSearchResult {
+  summary: string;
+  sources: Array<{ title: string; url: string }>;
+  rawText: string;
+}
+
+interface GeminiGroundingChunk {
+  web?: { uri?: string; title?: string };
+}
+
+interface GeminiCandidate {
+  content?: { parts?: Array<{ text?: string }> };
+  groundingMetadata?: {
+    groundingChunks?: GeminiGroundingChunk[];
+    webSearchQueries?: string[];
+  };
+}
+
+interface GeminiResponse {
+  candidates?: GeminiCandidate[];
+  error?: { message?: string };
+}
+
+/**
+ * Executa uma busca web com Gemini 2.0 Flash + Google Search Grounding.
+ * Retorna o texto sintetizado e as fontes reais usadas.
+ */
+async function searchGemini(
+  prompt: string,
+  apiKey: string,
+  maxTokens = 4096
+): Promise<WebSearchResult> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tools: [{ googleSearch: {} }],
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: maxTokens,
+        },
+      }),
+      signal: AbortSignal.timeout(45_000),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini Search failed (${res.status}): ${err.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as GeminiResponse;
+
+  if (data.error) {
+    throw new Error(`Gemini Search error: ${data.error.message}`);
+  }
+
+  const candidate = data.candidates?.[0];
+  const rawText =
+    (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("") || "";
+
+  const sources: Array<{ title: string; url: string }> = (
+    candidate?.groundingMetadata?.groundingChunks ?? []
+  )
+    .filter((c) => c.web?.uri)
+    .map((c) => ({ title: c.web!.title ?? c.web!.uri!, url: c.web!.uri! }))
+    .filter(
+      (s, i, arr) => arr.findIndex((x) => x.url === s.url) === i // deduplica
+    )
+    .slice(0, 8);
+
+  return { summary: rawText, sources, rawText };
+}
+
+/**
+ * Pesquisa completa sobre um tópico para o Roberto Radar.
+ * Executa múltiplas buscas paralelas cobrindo:
+ * - Notícias recentes (últimos 30 dias)
+ * - Tendências X/Twitter e LinkedIn
+ * - Dados, relatórios e estatísticas recentes
+ * - Debates e conteúdo viral do nicho
+ */
+export async function researchTopic(
+  topic: string,
+  niche: string,
+  targetAudience: string,
+  apiKey: string
+): Promise<WebSearchResult> {
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
+
+  // Múltiplas buscas cobrindo diferentes ângulos
+  const searches = [
+    // 1. Notícias e tendências recentes
+    `Quais são as últimas notícias e tendências sobre "${topic}" em ${currentMonth} de ${currentYear}?
+Foco em: inovações recentes, novidades do setor, dados atuais.
+Nicho: ${niche}. Público: ${targetAudience}.
+Inclua dados numéricos, percentuais e estatísticas recentes com fontes.`,
+
+    // 2. Debates e hype nas redes sociais
+    `O que está em alta no LinkedIn e X (Twitter) sobre "${topic}" agora em ${currentYear}?
+Quais temas estão gerando mais engajamento? Quais são os posts virais? Quais os debates mais quentes?
+Nicho: ${niche}. Traga exemplos reais e dados de engajamento se disponível.`,
+
+    // 3. Dados, pesquisas e relatórios recentes
+    `Pesquisas, relatórios e estudos recentes sobre "${topic}" publicados em ${currentYear}.
+Estatísticas atuais, benchmarks do setor, dados de mercado.
+Foco em: ${niche}. Cite as fontes (McKinsey, Gartner, IBGE, FGV, etc.) com dados verificáveis.`,
+  ];
+
+  // Executa todas as buscas em paralelo
+  const results = await Promise.allSettled(
+    searches.map((prompt) => searchGemini(prompt, apiKey))
+  );
+
+  // Agrega os resultados bem-sucedidos
+  const successfulResults = results
+    .filter((r): r is PromiseFulfilledResult<WebSearchResult> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  if (successfulResults.length === 0) {
+    throw new Error("Todas as buscas web falharam — verifique a GEMINI_API_KEY.");
+  }
+
+  // Consolida fontes únicas
+  const allSources = successfulResults
+    .flatMap((r) => r.sources)
+    .filter((s, i, arr) => arr.findIndex((x) => x.url === s.url) === i)
+    .slice(0, 8);
+
+  // Consolida o texto de pesquisa
+  const combinedSummary = successfulResults
+    .map((r, i) => {
+      const labels = ["NOTÍCIAS E TENDÊNCIAS RECENTES", "REDES SOCIAIS E HYPE", "DADOS E PESQUISAS"];
+      return `=== ${labels[i] ?? `PESQUISA ${i + 1}`} ===\n\n${r.summary}`;
+    })
+    .join("\n\n");
+
+  return {
+    summary: combinedSummary,
+    sources: allSources,
+    rawText: combinedSummary,
+  };
+}
+
+/**
+ * Formata as fontes web para o brief do Roberto (seção FONTES).
+ */
+export function formatSourcesSection(sources: Array<{ title: string; url: string }>): string {
+  if (sources.length === 0) return "";
+  const lines = sources
+    .slice(0, 5)
+    .map((s) => `- [${s.title}](${s.url})`);
+  return `\nFONTES:\n${lines.join("\n")}`;
+}

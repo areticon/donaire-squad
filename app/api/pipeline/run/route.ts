@@ -8,6 +8,7 @@ import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { generateVideo, VeoUnavailableError } from "@/lib/media/veo3";
 import { generateInfographic } from "@/lib/media/infographic";
+import { researchTopic, formatSourcesSection } from "@/lib/research/web-search";
 import { newArticlePublicToken, parseLinkedInArticleContent } from "@/lib/articles/linkedin-article";
 import {
   getMediaStylePromptFragment,
@@ -577,20 +578,55 @@ async function runPipeline(
   let researchBrief = "";
 
   if (researcher) {
+    // 1a. Busca web em tempo real via Gemini + Google Search Grounding
+    let webSearchData = "";
+    let webSources: Array<{ title: string; url: string }> = [];
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    if (geminiKey) {
+      try {
+        await appendLog(runId, { agent: "Roberto Radar", message: "Buscando dados em tempo real (Google Search)...", status: "running" });
+        const searchResult = await researchTopic(
+          topic,
+          project.niche ?? "geral",
+          project.targetAudience ?? "profissionais",
+          geminiKey
+        );
+        webSearchData = searchResult.summary;
+        webSources = searchResult.sources;
+        await appendLog(runId, {
+          agent: "Roberto Radar",
+          message: `Pesquisa web concluída — ${webSources.length} fontes encontradas.`,
+          status: "running",
+        });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca web falhou (${errMsg.slice(0, 120)}). Usando conhecimento interno.`, status: "warning" });
+      }
+    }
+
+    // 1b. Roberto sintetiza os dados reais em um brief estruturado
+    const sourcesSection = formatSourcesSection(webSources);
+    const webContext = webSearchData
+      ? `\n\n=== DADOS REAIS ENCONTRADOS NA WEB (use estes dados — são atuais e verificados) ===\n\n${webSearchData}\n\n=== FIM DOS DADOS WEB ===`
+      : "";
+
     researchBrief = await runAgent(
       researcher,
-      `Pesquise e compile um brief sobre: "${topic}".
-Inclua: dados recentes, estatísticas verificáveis, tendências e insights acionáveis.
+      `Compile um brief de pesquisa completo sobre: "${topic}".
 Nicho: ${project.niche ?? "geral"}. Público: ${project.targetAudience ?? "profissionais"}.
+${webSearchData ? `\nVocê tem acesso aos dados reais mais recentes encontrados na web (veja abaixo). Use-os como base principal do brief.` : ""}
 
-Ao final do brief, adicione obrigatoriamente uma seção no formato exato abaixo (máx 5 fontes reais e verificáveis):
-
-FONTES:
-- [Nome da fonte 1](https://url-real.com)
-- [Nome da fonte 2](https://url-real.com)`,
-      baseContext,
+ESTRUTURA DO BRIEF (siga esta ordem):
+1. Contexto atual: o que está acontecendo AGORA com este tema (últimas semanas/meses)
+2. Dados e estatísticas: números reais com fonte explícita
+3. Tendências quentes: o que está em alta no LinkedIn, X e Google
+4. Insights acionáveis: o que o público-alvo precisa saber/fazer
+5. Ângulos de conteúdo: 3 perspectivas diferentes para abordar o tema${sourcesSection ? `\n\nAo final, inclua a seção de fontes abaixo exatamente como está:\n${sourcesSection}` : `\n\nAo final do brief, adicione:\nFONTES:\n- [Nome da fonte com URL real]`}`,
+      baseContext + webContext,
       runId,
-      funnelInstruction
+      funnelInstruction,
+      { maxTokens: 4096 }
     );
 
     // Save research card for each unique day
