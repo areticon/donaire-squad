@@ -2083,8 +2083,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   }
 
   function openNewCampaign() {
-    setShowTopicInput(true);
-    setSuggestedTopics([]);
+    setShowSetupModal(true);
   }
 
   async function openArchive() {
@@ -2209,11 +2208,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   }
 
   function handleTopicConfirmed() {
-    if (!topic.trim()) {
-      toast.error("Digite o tema da campanha.");
-      return;
-    }
-    // Topic is ready → open campaign config modal
+    // Open campaign config modal directly (topics are now configured per-day inside the modal)
     setShowSetupModal(true);
   }
 
@@ -2224,11 +2219,16 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
 
     const finalConfig: CampaignConfig = { ...config, weekStart: weekStartIso };
 
+    // Derive a global topic summary from per-day topics (used for Roberto's research context)
+    const derivedTopic = topic.trim() ||
+      Object.values(finalConfig.topicsPerDay ?? {}).filter(Boolean).join(", ") ||
+      "conteúdo relevante para o nicho";
+
     try {
       const res = await fetch("/api/pipeline/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, topic, campaignConfig: finalConfig }),
+        body: JSON.stringify({ projectId, topic: derivedTopic, campaignConfig: finalConfig }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -2609,6 +2609,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
             onConfirm={handleSetupConfirm}
             onClose={() => setShowSetupModal(false)}
             defaultWeekStart={weekStartIso}
+            projectId={projectId}
           />
         )}
       </AnimatePresence>

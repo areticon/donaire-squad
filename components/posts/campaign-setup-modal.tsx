@@ -47,12 +47,14 @@ export interface CampaignConfig {
   videoDuration?: 5 | 6 | 8; // seconds
   videoAudio?: boolean; // generate audio/narration in Portuguese
   mediaStyle?: MediaStyleId; // visual style for image / video / carousel
+  topicsPerDay: Record<string, string>; // dayOfWeek (1-7) -> topic string
 }
 
 interface Props {
   onConfirm: (config: CampaignConfig) => void;
   onClose: () => void;
   defaultWeekStart?: string; // passed by ContentManager
+  projectId?: string;
 }
 
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -158,6 +160,12 @@ const WEEK_DAYS = [
   { key: "7" as keyof WeeklySchedule, label: "Domingo", short: "Dom", dayNum: 7, isWeekend: true  },
 ];
 
+// Carousel, article, thread are kept in CONTENT_TYPES for legacy data display
+// but hidden from the UI picker (stand-by features not fully working yet)
+const VISIBLE_CONTENT_TYPES = CONTENT_TYPES.filter(
+  (ct) => !["carousel", "article", "thread"].includes(ct.id)
+);
+
 function getThisMonday(): string {
   const d = new Date();
   const day = d.getDay();
@@ -226,7 +234,7 @@ function campaignUsesMediaStyle(
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Props) {
+export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, projectId }: Props) {
   const [step, setStep] = useState(0);
   const [campaignMode, setCampaignMode] = useState<CampaignMode>("weekly");
   const [funnelStage, setFunnelStage] = useState<FunnelStage>("tofu");
@@ -248,6 +256,9 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Pro
   const [postingTimes, setPostingTimes] = useState<Record<string, string>>({
     "1": "09:00", "2": "09:00", "3": "09:00", "4": "09:00", "5": "09:00", "6": "09:00", "7": "09:00",
   });
+
+  const [topicsPerDay, setTopicsPerDay] = useState<Record<string, string>>({});
+  const [loadingTopicsPerDay, setLoadingTopicsPerDay] = useState(false);
 
   // Default to next Monday if today is not Monday (to avoid suggesting past days)
   const todayIso = new Date().toISOString().split("T")[0];
@@ -315,7 +326,34 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Pro
       videoDuration: (isSingle ? singleContentType : Object.values(weeklySchedule).find(v => v === "video") ? "video" : undefined) === "video" ? videoDuration : undefined,
       videoAudio: (isSingle ? singleContentType : Object.values(weeklySchedule).find(v => v === "video") ? "video" : undefined) === "video" ? videoAudio : undefined,
       mediaStyle: campaignUsesMediaStyle(isSingle, singleContentType, weeklySchedule, isRecurring) ? mediaStyle : undefined,
+      topicsPerDay,
     });
+  }
+
+  async function fetchTopicsPerDay() {
+    if (!projectId) return;
+    setLoadingTopicsPerDay(true);
+    try {
+      // Build list of active days for this campaign
+      const days = isSingle
+        ? [{ dayOfWeek: String(singleDay), dayName: WEEK_DAYS.find((d) => d.dayNum === singleDay)?.label ?? "Dia", contentType: singleContentType }]
+        : WEEK_DAYS
+            .filter((d) => weeklySchedule[d.key] !== undefined)
+            .map((d) => ({ dayOfWeek: d.key, dayName: d.label, contentType: weeklySchedule[d.key] ?? "text" }));
+
+      const res = await fetch("/api/ai/topics/per-day", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, days }),
+      });
+      const data = await res.json() as { topicsPerDay?: Record<string, string>; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Erro");
+      setTopicsPerDay((prev) => ({ ...prev, ...data.topicsPerDay }));
+    } catch {
+      // silently fail — user can type manually
+    } finally {
+      setLoadingTopicsPerDay(false);
+    }
   }
 
   function nextStep() {
@@ -565,7 +603,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Pro
                         {/* Content type picker — only when active */}
                         {isActive && (
                           <div className="flex gap-1.5 flex-wrap px-3 pb-2.5">
-                            {CONTENT_TYPES.map((ct) => {
+                            {VISIBLE_CONTENT_TYPES.map((ct) => {
                               const Icon = ct.icon;
                               const isSel = selected === ct.id;
                               return (
@@ -696,7 +734,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Pro
                 <div>
                   <p className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>Tipo de conteúdo</p>
                   <div className="grid grid-cols-3 gap-2">
-                    {CONTENT_TYPES.map((ct) => {
+                    {VISIBLE_CONTENT_TYPES.map((ct) => {
                       const Icon = ct.icon;
                       const isActive = singleContentType === ct.id;
                       return (
@@ -1036,6 +1074,73 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart }: Pro
             {/* Step 3: Confirmation (single/recurring) or Step 4: Confirmation (weekly/biweekly) */}
             {((step === 3 && (isSingle || isRecurring)) || step === 4) && (
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Temas por dia</h3>
+                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>A IA sugere um tema atual por dia. Edite ou confirme cada um antes de gerar.</p>
+                </div>
+
+                {/* Per-day topics */}
+                {(() => {
+                  const activeDaysForThemes = isSingle
+                    ? [{ key: String(singleDay), label: WEEK_DAYS.find((d) => d.dayNum === singleDay)?.label ?? "Dia", contentType: singleContentType }]
+                    : WEEK_DAYS
+                        .filter((d) => weeklySchedule[d.key] !== undefined)
+                        .map((d) => ({ key: d.key, label: d.label, contentType: weeklySchedule[d.key] ?? "text" }));
+
+                  const contentTypeLabel = (ct: string) => CONTENT_TYPES.find((c) => c.id === ct)?.label ?? ct;
+
+                  return (
+                    <div className="space-y-2 rounded-xl border p-3" style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                          {activeDaysForThemes.length} {activeDaysForThemes.length === 1 ? "dia" : "dias"} selecionado{activeDaysForThemes.length !== 1 ? "s" : ""}
+                        </p>
+                        {projectId && (
+                          <button
+                            type="button"
+                            onClick={fetchTopicsPerDay}
+                            disabled={loadingTopicsPerDay}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all"
+                            style={{
+                              borderColor: "var(--border)",
+                              color: loadingTopicsPerDay ? "var(--text-muted)" : "var(--accent-orange)",
+                              background: "var(--bg-elevated)",
+                            }}
+                          >
+                            {loadingTopicsPerDay ? (
+                              <><span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> Buscando...</>
+                            ) : (
+                              <><Zap className="w-3 h-3" /> Sugerir todos com IA</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      {activeDaysForThemes.map((d) => (
+                        <div key={d.key} className="space-y-1">
+                          <p className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                            {d.label}
+                            <span className="text-[10px] font-normal px-1.5 py-0.5 rounded" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+                              {contentTypeLabel(d.contentType)}
+                            </span>
+                          </p>
+                          <input
+                            type="text"
+                            placeholder={loadingTopicsPerDay ? "Buscando tema..." : "Ex: Como IA está redefinindo o setor financeiro em 2025"}
+                            value={topicsPerDay[d.key] ?? ""}
+                            onChange={(e) => setTopicsPerDay((prev) => ({ ...prev, [d.key]: e.target.value }))}
+                            className="w-full text-xs px-3 py-2 rounded-lg border outline-none transition-all"
+                            style={{
+                              background: "var(--bg-input)",
+                              borderColor: "var(--border)",
+                              color: "var(--text-primary)",
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
                 <div>
                   <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Resumo da campanha</h3>
                   <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Confirme as configurações antes de iniciar.</p>

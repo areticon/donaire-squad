@@ -104,23 +104,27 @@ export async function researchTopic(
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
 
-  // Múltiplas buscas cobrindo diferentes ângulos
+  const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+
   const searches = [
     // 1. Notícias e tendências recentes
-    `Quais são as últimas notícias e tendências sobre "${topic}" em ${currentMonth} de ${currentYear}?
-Foco em: inovações recentes, novidades do setor, dados atuais.
+    `IMPORTANTE: Use APENAS as informações retornadas pelo Google Search agora. Ignore seu conhecimento de treinamento.
+Hoje é ${today}. Busque as últimas notícias e tendências sobre "${topic}" publicadas nos últimos 30 dias.
 Nicho: ${niche}. Público: ${targetAudience}.
-Inclua dados numéricos, percentuais e estatísticas recentes com fontes.`,
+Inclua: títulos reais de notícias, datas de publicação, dados numéricos e percentuais com fonte.
+Se não encontrar resultados recentes, diga explicitamente "Sem resultados recentes encontrados".`,
 
     // 2. Debates e hype nas redes sociais
-    `O que está em alta no LinkedIn e X (Twitter) sobre "${topic}" agora em ${currentYear}?
-Quais temas estão gerando mais engajamento? Quais são os posts virais? Quais os debates mais quentes?
-Nicho: ${niche}. Traga exemplos reais e dados de engajamento se disponível.`,
+    `IMPORTANTE: Use APENAS resultados do Google Search de ${currentMonth} de ${currentYear}. Não use memória de treinamento.
+O que está em alta AGORA sobre "${topic}" no LinkedIn, X (Twitter) e outras redes sociais?
+Nicho: ${niche}. Busque posts virais, hashtags, debates e engajamento recente.
+Cite exemplos reais com datas. Se não houver dados recentes, indique claramente.`,
 
     // 3. Dados, pesquisas e relatórios recentes
-    `Pesquisas, relatórios e estudos recentes sobre "${topic}" publicados em ${currentYear}.
-Estatísticas atuais, benchmarks do setor, dados de mercado.
-Foco em: ${niche}. Cite as fontes (McKinsey, Gartner, IBGE, FGV, etc.) com dados verificáveis.`,
+    `IMPORTANTE: Busque via Google Search apenas. Hoje é ${today}.
+Relatórios, pesquisas e estudos publicados em ${currentYear} sobre "${topic}".
+Fontes: McKinsey, Gartner, IBGE, FGV, Statista, Forrester, IDC, etc.
+Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publicação.`,
   ];
 
   // Executa todas as buscas em paralelo

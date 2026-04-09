@@ -46,6 +46,7 @@ interface CampaignConfig {
   videoDuration?: 5 | 6 | 8; // seconds — Veo supported values
   videoAudio?: boolean; // generate Portuguese narration via Veo 3 audio
   mediaStyle?: MediaStyleId; // visual style for image / video / carousel
+  topicsPerDay?: Record<string, string>; // dayOfWeek (1-7) -> specific topic for that day
 }
 
 interface AgentStep {
@@ -761,6 +762,8 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
     const dayName = DAY_NAMES[dayOfWeek];
     const scheduledDate = getScheduledAt(dayOfWeek, weekOffset);
     const dayKey = `${dayOfWeek}-${weekOffset}`;
+    // Use per-day topic if provided (from modal), fall back to the global topic
+    const dayTopic = config.topicsPerDay?.[String(dayOfWeek)]?.trim() || topic;
     let dianaCardId: string | undefined;
 
     // ── Step 1 (per day): Save Roberto's research card at the START of each day ──
@@ -798,7 +801,7 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
         // Poll: generate structured question + 4 options
         linkedinContent = await runAgent(
           linkedinWriter,
-          `Crie uma ENQUETE (poll) para LinkedIn para ${dayName} sobre: "${topic}".
+          `Crie uma ENQUETE (poll) para LinkedIn para ${dayName} sobre: "${dayTopic}".
 ${linkedinRules("poll")}
 
 Formato OBRIGATÓRIO (siga exatamente, sem acrescentar campos extras):
@@ -822,7 +825,7 @@ Use os dados da pesquisa. Não invente estatísticas.${uniquenessBlock}`,
       } else if (resolvedType === "article") {
         linkedinContent = await runAgent(
           linkedinWriter,
-          `Escreva um ARTIGO COMPLETO para LinkedIn para ${dayName} sobre: "${topic}".
+          `Escreva um ARTIGO COMPLETO para LinkedIn para ${dayName} sobre: "${dayTopic}".
 Tom de voz: ${project.voice || "especialista e reflexivo"}.
 Estrutura sugerida no CORPO: abertura forte → desenvolvimento com dados reais e fontes → conclusão com CTA.
 ${linkedinRules("article")}
@@ -851,7 +854,7 @@ Use os dados da pesquisa. Não invente fatos.${uniquenessBlock}`,
 
         linkedinContent = await runAgent(
           linkedinWriter,
-          `Escreva um post de LinkedIn para ${dayName} sobre: "${topic}".
+          `Escreva um post de LinkedIn para ${dayName} sobre: "${dayTopic}".
 Tom de voz: ${project.voice || "provocativo e direto, usa dados"}.
 Formato: ${formatHint}.
 ${linkedinRules("post")}
@@ -941,7 +944,7 @@ ${linkedinContent}`,
         // Twitter poll: single tweet with question + 2 options
         twitterContent = await runAgent(
           twitterWriter,
-          `Crie uma ENQUETE para X (Twitter) para ${dayName} sobre: "${topic}".
+          `Crie uma ENQUETE para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("poll")}
 
 Formato OBRIGATÓRIO (siga exatamente):
@@ -961,7 +964,7 @@ Seja direto e provocativo.${uniquenessBlock}`,
         // Explicit thread
         twitterContent = await runAgent(
           twitterWriter,
-          `Crie uma THREAD para X (Twitter) para ${dayName} sobre: "${topic}".
+          `Crie uma THREAD para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("thread")}
 6-8 tweets no total. Numere como 1/ 2/ 3/ etc.
 → Tweet 1: abertura impactante que gere curiosidade imediata
@@ -977,7 +980,7 @@ Aborde um ângulo diferente dos posts anteriores.${uniquenessBlock}`,
         // Default: thread format (Twitter's default for all other content types)
         twitterContent = await runAgent(
           twitterWriter,
-          `Crie uma thread para X (Twitter) para ${dayName} sobre: "${topic}".
+          `Crie uma thread para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("thread")}
 5-7 tweets no total. Numere como 1/ 2/ etc.
 → Tweet 1: abertura impactante
