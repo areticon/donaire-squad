@@ -414,9 +414,9 @@ export async function POST(req: NextRequest) {
   // even after the HTTP response has already been sent to the client.
   // Without this, changing browser tabs or closing the window could kill the generation.
   after(async () => {
-    // Safety timeout: if pipeline takes more than 260s, emit a warning and mark as completed
-    // (Vercel kills the function at maxDuration=300 — this ensures Pusher gets a final event)
-    const SAFETY_TIMEOUT_MS = 260_000;
+    // Safety timeout: if pipeline takes more than 750s, emit a warning and mark as completed
+    // (Vercel kills the function at maxDuration=800 — this ensures Pusher gets a final event)
+    const SAFETY_TIMEOUT_MS = 750_000;
     let safetyFired = false;
 
     const safetyTimer = setTimeout(async () => {
@@ -832,16 +832,20 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
       ? `\n\n⛔ POSTS JÁ ESCRITOS NESTA CAMPANHA (NUNCA repita o mesmo ângulo, dado, frase de abertura, conclusão ou CTA):\n${writtenPostsLog.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
       : "";
 
-    // LinkedIn
-    if (shouldWriteLinkedin && linkedinWriter) {
-      let linkedinContent: string;
-      let linkedinMetadata: Record<string, unknown> | undefined;
+    // ── Lucas (LinkedIn) + Tiago (Twitter) em paralelo ───────────────────────
+    // Os dois redatores são independentes — usam o mesmo brief de pesquisa e o
+    // mesmo snapshot do uniquenessBlock. Rodar em paralelo poupa ~20-30s por dia.
+    const [liResult, twResult] = await Promise.allSettled([
+      // ── Lucas — LinkedIn ──────────────────────────────────────────────────
+      (async () => {
+        if (!shouldWriteLinkedin || !linkedinWriter) return null;
+        let linkedinContent: string;
+        let linkedinMetadata: Record<string, unknown> | undefined;
 
-      if (resolvedType === "poll") {
-        // Poll: generate structured question + 4 options
-        linkedinContent = await runAgent(
-          linkedinWriter,
-          `Crie uma ENQUETE (poll) para LinkedIn para ${dayName} sobre: "${dayTopic}".
+        if (resolvedType === "poll") {
+          linkedinContent = await runAgent(
+            linkedinWriter,
+            `Crie uma ENQUETE (poll) para LinkedIn para ${dayName} sobre: "${dayTopic}".
 ${linkedinRules("poll")}
 
 Formato OBRIGATÓRIO (siga exatamente, sem acrescentar campos extras):
@@ -854,137 +858,128 @@ OPCAO_4: [opção, máx ${PLATFORM_LIMITS.linkedin.pollOption} chars]
 DURACAO: THREE_DAYS
 
 Use os dados da pesquisa. Não invente estatísticas.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction
-        );
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
+          linkedinMetadata = parsePollContent(linkedinContent);
 
-        // Parse poll structure from the output
-        linkedinMetadata = parsePollContent(linkedinContent);
-
-      } else if (resolvedType === "article") {
-        linkedinContent = await runAgent(
-          linkedinWriter,
-          `Escreva um ARTIGO COMPLETO para LinkedIn para ${dayName} sobre: "${dayTopic}".
+        } else if (resolvedType === "article") {
+          linkedinContent = await runAgent(
+            linkedinWriter,
+            `Escreva um ARTIGO COMPLETO para LinkedIn para ${dayName} sobre: "${dayTopic}".
 Tom de voz: ${project.voice || "especialista e reflexivo"}.
 Estrutura sugerida no CORPO: abertura forte → desenvolvimento com dados reais e fontes → conclusão com CTA.
 ${linkedinRules("article")}
 Use os dados da pesquisa. Não invente fatos.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction,
-          { maxTokens: 8192 }
-        );
-        const parsedArt = parseLinkedInArticleContent(linkedinContent);
-        linkedinMetadata = {
-          type: "linkedin_article",
-          articleTitle: parsedArt.title,
-          articleTeaser: parsedArt.teaser,
-        };
+            contextWithResearch,
+            runId,
+            funnelInstruction,
+            { maxTokens: 8192 }
+          );
+          const parsedArt = parseLinkedInArticleContent(linkedinContent);
+          linkedinMetadata = {
+            type: "linkedin_article",
+            articleTitle: parsedArt.title,
+            articleTeaser: parsedArt.teaser,
+          };
 
-      } else {
-        // Default: text, image, video, carousel, infographic
-        const formatHint = resolvedType === "text"
-          ? "apenas texto"
-          : resolvedType === "image" || resolvedType === "carousel" || resolvedType === "infographic"
-          ? "acompanha imagem/infográfico — o texto deve ser auto-suficiente sem ver a imagem"
-          : resolvedType === "video"
-          ? "acompanha vídeo — apresente o tema e chame para assistir"
-          : "conteúdo rico";
+        } else {
+          const formatHint = resolvedType === "text"
+            ? "apenas texto"
+            : resolvedType === "image" || resolvedType === "carousel" || resolvedType === "infographic"
+            ? "acompanha imagem/infográfico — o texto deve ser auto-suficiente sem ver a imagem"
+            : resolvedType === "video"
+            ? "acompanha vídeo — apresente o tema e chame para assistir"
+            : "conteúdo rico";
 
-        linkedinContent = await runAgent(
-          linkedinWriter,
-          `Escreva um post de LinkedIn para ${dayName} sobre: "${dayTopic}".
+          linkedinContent = await runAgent(
+            linkedinWriter,
+            `Escreva um post de LinkedIn para ${dayName} sobre: "${dayTopic}".
 Tom de voz: ${project.voice || "provocativo e direto, usa dados"}.
 Formato: ${formatHint}.
 ${linkedinRules("post")}
 Aborde um ÂNGULO DIFERENTE dos posts anteriores — perspectiva nova, dado diferente, CTA distinto.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction
-        );
-      }
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
+        }
 
-      // ── LinkedIn character limit enforcement ──────────────────────────────
-      // If Lucas generated content over 3000 chars, ask him to rewrite it
-      const LI_LIMIT = 3000;
-      if (linkedinContent.length > LI_LIMIT && resolvedType !== "poll" && resolvedType !== "article") {
-        await appendLog(runId, {
-          agent: "Lucas LinkedIn",
-          message: `Post gerado com ${linkedinContent.length} chars (limite: ${LI_LIMIT}). Solicitando reescrita...`,
-          status: "warning",
-        });
-        const overLimitType = "post" as const;
-        const rewritten = await runAgent(
-          linkedinWriter,
-          `O post abaixo ultrapassou o limite de ${LI_LIMIT} caracteres do LinkedIn (gerado com ${linkedinContent.length} chars).
+        // ── LinkedIn character limit enforcement ────────────────────────────
+        const LI_LIMIT = 3000;
+        if (linkedinContent.length > LI_LIMIT && resolvedType !== "poll" && resolvedType !== "article") {
+          await appendLog(runId, {
+            agent: "Lucas LinkedIn",
+            message: `Post gerado com ${linkedinContent.length} chars (limite: ${LI_LIMIT}). Solicitando reescrita...`,
+            status: "warning",
+          });
+          const overLimitType = "post" as const;
+          const rewritten = await runAgent(
+            linkedinWriter,
+            `O post abaixo ultrapassou o limite de ${LI_LIMIT} caracteres do LinkedIn (gerado com ${linkedinContent.length} chars).
 Reescreva-o mantendo as ideias principais, mas OBRIGATORIAMENTE dentro de ${LI_LIMIT} caracteres. Não corte abruptamente — conclua com CTA.
 ${linkedinRules(overLimitType)}
 
 POST ORIGINAL:
 ${linkedinContent}`,
-          contextWithResearch,
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
+          if (rewritten.length <= LI_LIMIT) {
+            linkedinContent = rewritten;
+            await appendLog(runId, { agent: "Lucas LinkedIn", message: `Reescrito com ${linkedinContent.length} chars ✓`, status: "running" });
+          } else {
+            await appendLog(runId, {
+              agent: "Lucas LinkedIn",
+              message: `⚠ Segunda tentativa ainda acima do limite (${rewritten.length} chars). Usando versão original — publicação pode falhar.`,
+              status: "warning",
+            });
+          }
+        }
+
+        // Primeiro comentário com fontes da pesquisa
+        if (resolvedType !== "article" && resolvedType !== "poll") {
+          let firstComment = extractFirstComment(researchBrief);
+          if (!firstComment && webSourcesGlobal.length > 0) {
+            const lines = webSourcesGlobal
+              .slice(0, 5)
+              .map((s) => `- ${s.title}: ${s.url}`)
+              .join("\n");
+            firstComment = `📚 Fontes e referências:\n\n${lines}`;
+          }
+          if (firstComment) {
+            linkedinMetadata = { ...(linkedinMetadata ?? {}), firstComment };
+          }
+        }
+
+        const card = await saveCard({
           runId,
-          funnelInstruction
-        );
-        if (rewritten.length <= LI_LIMIT) {
-          linkedinContent = rewritten;
-          await appendLog(runId, { agent: "Lucas LinkedIn", message: `Reescrito com ${linkedinContent.length} chars ✓`, status: "running" });
-        } else {
-          // Second attempt failed too — hard-cap at generation level to avoid publish failure
-          await appendLog(runId, {
-            agent: "Lucas LinkedIn",
-            message: `⚠ Segunda tentativa ainda acima do limite (${rewritten.length} chars). Usando versão original — publicação pode falhar.`,
-            status: "warning",
-          });
-        }
-      }
+          projectId: project.id,
+          agentId: "lucas-linkedin",
+          agentName: linkedinWriter.name,
+          dayOfWeek,
+          scheduledDate,
+          cardType: "post_linkedin",
+          mediaType: resolvedType,
+          content: linkedinContent,
+          ...(linkedinMetadata ? { metadata: linkedinMetadata } : {}),
+        });
 
-      // Adiciona primeiro comentário com fontes da pesquisa (exceto artigos, que já têm link)
-      if (resolvedType !== "article" && resolvedType !== "poll") {
-        let firstComment = extractFirstComment(researchBrief);
-        // Fallback: use web sources collected from Gemini search directly
-        if (!firstComment && webSourcesGlobal.length > 0) {
-          const lines = webSourcesGlobal
-            .slice(0, 5)
-            .map((s) => `- ${s.title}: ${s.url}`)
-            .join("\n");
-          firstComment = `📚 Fontes e referências:\n\n${lines}`;
-        }
-        if (firstComment) {
-          linkedinMetadata = { ...(linkedinMetadata ?? {}), firstComment };
-        }
-      }
+        return { content: linkedinContent, metadata: linkedinMetadata, card };
+      })(),
 
-      const card = await saveCard({
-        runId,
-        projectId: project.id,
-        agentId: "lucas-linkedin",
-        agentName: linkedinWriter.name,
-        dayOfWeek,
-        scheduledDate,
-        cardType: "post_linkedin",
-        mediaType: resolvedType,
-        content: linkedinContent,
-        ...(linkedinMetadata ? { metadata: linkedinMetadata } : {}),
-      });
+      // ── Tiago — Twitter ───────────────────────────────────────────────────
+      (async () => {
+        if (!shouldWriteTwitter || !twitterWriter) return null;
+        let twitterContent: string;
+        let twitterMetadata: Record<string, unknown> | undefined;
 
-      dayPosts.push({ day: dayName, platform: "linkedin", content: linkedinContent, mediaType: resolvedType, dayOfWeek, scheduledDate, cardId: card.id, metadata: linkedinMetadata });
-
-      // Register this post in the uniqueness log (first 120 chars as summary)
-      writtenPostsLog.push(`[${dayName} - LinkedIn] ${linkedinContent.slice(0, 120).replace(/\n/g, " ")}…`);
-    }
-
-    // Twitter
-    if (shouldWriteTwitter && twitterWriter) {
-      let twitterContent: string;
-      let twitterMetadata: Record<string, unknown> | undefined;
-
-      if (resolvedType === "poll") {
-        // Twitter poll: single tweet with question + 2 options
-        twitterContent = await runAgent(
-          twitterWriter,
-          `Crie uma ENQUETE para X (Twitter) para ${dayName} sobre: "${dayTopic}".
+        if (resolvedType === "poll") {
+          twitterContent = await runAgent(
+            twitterWriter,
+            `Crie uma ENQUETE para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("poll")}
 
 Formato OBRIGATÓRIO (siga exatamente):
@@ -994,57 +989,55 @@ OPCAO_2: [máx ${PLATFORM_LIMITS.twitter.pollOption} chars]
 DURACAO_HORAS: 1440
 
 Seja direto e provocativo.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction
-        );
-        twitterMetadata = parseTwitterPollContent(twitterContent);
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
+          twitterMetadata = parseTwitterPollContent(twitterContent);
 
-      } else if (resolvedType === "thread") {
-        // Explicit thread
-        twitterContent = await runAgent(
-          twitterWriter,
-          `Crie uma THREAD para X (Twitter) para ${dayName} sobre: "${dayTopic}".
+        } else if (resolvedType === "thread") {
+          twitterContent = await runAgent(
+            twitterWriter,
+            `Crie uma THREAD para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("thread")}
 6-8 tweets no total. Numere como 1/ 2/ 3/ etc.
 → Tweet 1: abertura impactante que gere curiosidade imediata
 → Tweets 2-N: desenvolvimento com dados e argumentos
 → Último tweet: CTA claro + hashtags (máx 2)
 Aborde um ângulo diferente dos posts anteriores.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction
-        );
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
 
-      } else {
-        // Default: thread format (Twitter's default for all other content types)
-        twitterContent = await runAgent(
-          twitterWriter,
-          `Crie uma thread para X (Twitter) para ${dayName} sobre: "${dayTopic}".
+        } else {
+          twitterContent = await runAgent(
+            twitterWriter,
+            `Crie uma thread para X (Twitter) para ${dayName} sobre: "${dayTopic}".
 ${twitterRules("thread")}
 5-7 tweets no total. Numere como 1/ 2/ etc.
 → Tweet 1: abertura impactante
 → Tweets intermediários: conteúdo de valor
 → Último tweet: CTA claro
 Aborde um ângulo diferente dos posts anteriores.${uniquenessBlock}`,
-          contextWithResearch,
-          runId,
-          funnelInstruction
-        );
-      }
+            contextWithResearch,
+            runId,
+            funnelInstruction
+          );
+        }
 
-      // ── Twitter thread validation ─────────────────────────────────────────
-      if (resolvedType === "thread" || resolvedType !== "poll") {
-        const { violations } = validateTwitterThread(twitterContent);
-        if (violations.length > 0) {
-          await appendLog(runId, {
-            agent: "Tiago Twitter",
-            message: `Thread com tweets acima do limite: ${violations.join("; ")}. Solicitando correção...`,
-            status: "warning",
-          });
-          const fixed = await runAgent(
-            twitterWriter,
-            `A thread abaixo tem tweets que ultrapassam o limite de ${PLATFORM_LIMITS.twitter.tweet} chars do X/Twitter.
+        // ── Twitter thread validation ───────────────────────────────────────
+        if (resolvedType === "thread" || resolvedType !== "poll") {
+          const { violations } = validateTwitterThread(twitterContent);
+          if (violations.length > 0) {
+            await appendLog(runId, {
+              agent: "Tiago Twitter",
+              message: `Thread com tweets acima do limite: ${violations.join("; ")}. Solicitando correção...`,
+              status: "warning",
+            });
+            const fixed = await runAgent(
+              twitterWriter,
+              `A thread abaixo tem tweets que ultrapassam o limite de ${PLATFORM_LIMITS.twitter.tweet} chars do X/Twitter.
 Problemas encontrados: ${violations.join("; ")}.
 
 Reescreva APENAS os tweets problemáticos, mantendo o conteúdo e a numeração dos demais.
@@ -1052,50 +1045,55 @@ CADA tweet deve ter NO MÁXIMO ${PLATFORM_LIMITS.twitter.tweet} chars — conte 
 
 THREAD ORIGINAL:
 ${twitterContent}`,
-            contextWithResearch,
-            runId,
-            funnelInstruction
-          );
-          const { violations: remaining } = validateTwitterThread(fixed);
-          if (remaining.length === 0) {
-            twitterContent = fixed;
-            await appendLog(runId, { agent: "Tiago Twitter", message: "Thread corrigida ✓", status: "running" });
-          } else {
-            await appendLog(runId, {
-              agent: "Tiago Twitter",
-              message: `⚠ Thread ainda com problemas após correção (${remaining.join("; ")}). Publicador aplicará limite por tweet.`,
-              status: "warning",
-            });
+              contextWithResearch,
+              runId,
+              funnelInstruction
+            );
+            const { violations: remaining } = validateTwitterThread(fixed);
+            if (remaining.length === 0) {
+              twitterContent = fixed;
+              await appendLog(runId, { agent: "Tiago Twitter", message: "Thread corrigida ✓", status: "running" });
+            } else {
+              await appendLog(runId, {
+                agent: "Tiago Twitter",
+                message: `⚠ Thread ainda com problemas após correção (${remaining.join("; ")}). Publicador aplicará limite por tweet.`,
+                status: "warning",
+              });
+            }
           }
         }
-      }
 
-      const card = await saveCard({
-        runId,
-        projectId: project.id,
-        agentId: "tiago-twitter",
-        agentName: twitterWriter.name,
-        dayOfWeek,
-        scheduledDate,
-        cardType: "post_twitter",
-        mediaType: resolvedType === "thread" || resolvedType === "free" ? "thread" : resolvedType,
-        content: twitterContent,
-        ...(twitterMetadata ? { metadata: twitterMetadata } : {}),
-      });
+        const card = await saveCard({
+          runId,
+          projectId: project.id,
+          agentId: "tiago-twitter",
+          agentName: twitterWriter.name,
+          dayOfWeek,
+          scheduledDate,
+          cardType: "post_twitter",
+          mediaType: resolvedType === "thread" || resolvedType === "free" ? "thread" : resolvedType,
+          content: twitterContent,
+          ...(twitterMetadata ? { metadata: twitterMetadata } : {}),
+        });
 
-      dayPosts.push({
-        day: dayName,
-        platform: "twitter",
-        content: twitterContent,
-        mediaType: resolvedType === "thread" ? "thread" as ContentType : resolvedType,
-        dayOfWeek,
-        scheduledDate,
-        cardId: card.id,
-        metadata: twitterMetadata,
-      });
+        return { content: twitterContent, metadata: twitterMetadata, card };
+      })(),
+    ]);
 
-      // Register Twitter post in uniqueness log
-      writtenPostsLog.push(`[${dayName} - X] ${twitterContent.slice(0, 100).replace(/\n/g, " ")}…`);
+    // Collect results into dayPosts and uniqueness log
+    if (liResult.status === "fulfilled" && liResult.value) {
+      const { content, metadata, card } = liResult.value;
+      dayPosts.push({ day: dayName, platform: "linkedin", content, mediaType: resolvedType, dayOfWeek, scheduledDate, cardId: card.id, metadata });
+      writtenPostsLog.push(`[${dayName} - LinkedIn] ${content.slice(0, 120).replace(/\n/g, " ")}…`);
+    } else if (liResult.status === "rejected") {
+      await appendLog(runId, { agent: "Lucas LinkedIn", message: `Erro ao gerar post: ${liResult.reason instanceof Error ? liResult.reason.message : String(liResult.reason)}`, status: "warning" });
+    }
+    if (twResult.status === "fulfilled" && twResult.value) {
+      const { content, metadata, card } = twResult.value;
+      dayPosts.push({ day: dayName, platform: "twitter", content, mediaType: resolvedType === "thread" ? "thread" as ContentType : resolvedType, dayOfWeek, scheduledDate, cardId: card.id, metadata });
+      writtenPostsLog.push(`[${dayName} - X] ${content.slice(0, 100).replace(/\n/g, " ")}…`);
+    } else if (twResult.status === "rejected") {
+      await appendLog(runId, { agent: "Tiago Twitter", message: `Erro ao gerar post: ${twResult.reason instanceof Error ? twResult.reason.message : String(twResult.reason)}`, status: "warning" });
     }
 
     // Look up what was just generated for this day (used by Diana, Vera, Paulo below)
