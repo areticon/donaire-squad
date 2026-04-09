@@ -4,29 +4,17 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
-import { fetchNicheTrendingGrok } from "@/lib/research/grok-search";
 
-/** Busca o que está em alta agora: Grok (xAI) → Gemini fallback */
+/** Busca tendências em tempo real via Gemini 2.5 Flash + Google Search Grounding */
 async function fetchTrendingTopics(
   niche: string,
   targetAudience: string,
   geminiKey: string
 ): Promise<string> {
+  if (!geminiKey) return "";
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const currentYear = new Date().getFullYear();
 
-  // 1. Tenta Grok (posts do X hoje + notícias + web em tempo real)
-  const grokKey = process.env.XAI_API_KEY;
-  if (grokKey) {
-    try {
-      return await fetchNicheTrendingGrok(niche, targetAudience, grokKey);
-    } catch (err) {
-      console.warn("[topics] Grok falhou, tentando Gemini:", err);
-    }
-  }
-
-  // 2. Fallback: Gemini + Google Search Grounding
-  if (!geminiKey) return "";
   const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search retornados agora. NÃO use seu conhecimento de treinamento.
 
 Hoje é ${today}. Busque o que está em alta NESTE MOMENTO no nicho de "${niche}" para "${targetAudience}" no Brasil.

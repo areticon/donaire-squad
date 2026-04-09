@@ -4,7 +4,6 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
-import { fetchNicheTrendingGrok } from "@/lib/research/grok-search";
 
 interface DayInput {
   dayOfWeek: string; // "1"-"7"
@@ -12,23 +11,12 @@ interface DayInput {
   contentType: string;
 }
 
-/** Busca tendências do nicho: Grok (xAI) → Gemini fallback */
+/** Busca tendências do nicho via Gemini 2.5 Flash + Google Search Grounding */
 async function fetchTrendingForNiche(
   niche: string,
   targetAudience: string,
   geminiKey: string
 ): Promise<string> {
-  // 1. Tenta Grok (posts do X hoje + notícias + web)
-  const grokKey = process.env.XAI_API_KEY;
-  if (grokKey) {
-    try {
-      return await fetchNicheTrendingGrok(niche, targetAudience, grokKey);
-    } catch (err) {
-      console.warn("[topics/per-day] Grok falhou, tentando Gemini:", err);
-    }
-  }
-
-  // 2. Fallback: Gemini + Google Search Grounding
   if (!geminiKey) return "";
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const currentYear = new Date().getFullYear();
