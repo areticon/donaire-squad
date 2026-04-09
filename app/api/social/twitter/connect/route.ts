@@ -21,9 +21,11 @@ export async function GET(req: NextRequest) {
   const authUrl = getTwitterAuthUrl(redirectUri, state, codeChallenge);
 
   const res = NextResponse.redirect(authUrl);
-  res.cookies.set("oauth_state", state, { httpOnly: true, maxAge: 600, path: "/" });
-  res.cookies.set("oauth_project_id", projectId, { httpOnly: true, maxAge: 600, path: "/" });
-  res.cookies.set("oauth_code_verifier", codeVerifier, { httpOnly: true, maxAge: 600, path: "/" });
-  res.cookies.set("oauth_return_to", returnTo, { httpOnly: true, maxAge: 600, path: "/" });
+  const cookieOpts = { httpOnly: true, maxAge: 600, path: "/" } as const;
+  res.cookies.set("oauth_state", state, cookieOpts);
+  res.cookies.set("oauth_user_id", userId, cookieOpts);
+  res.cookies.set("oauth_project_id", projectId, cookieOpts);
+  res.cookies.set("oauth_code_verifier", codeVerifier, cookieOpts);
+  res.cookies.set("oauth_return_to", returnTo, cookieOpts);
   return res;
 }

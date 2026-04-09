@@ -4,17 +4,24 @@ import { exchangeTwitterCode, getTwitterProfile } from "@/lib/oauth/twitter";
 import { prisma } from "@/lib/db/prisma";
 
 export async function GET(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.redirect(new URL("/sign-in", req.url));
-
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   const error = req.nextUrl.searchParams.get("error");
 
   const savedState = req.cookies.get("oauth_state")?.value;
+  // userId stored in cookie during connect to avoid Clerk session loss across OAuth redirect
+  const cookieUserId = req.cookies.get("oauth_user_id")?.value;
   const projectId = req.cookies.get("oauth_project_id")?.value;
   const codeVerifier = req.cookies.get("oauth_code_verifier")?.value;
   const returnTo = req.cookies.get("oauth_return_to")?.value;
+
+  // Fall back to Clerk session if cookie is missing (e.g. direct navigation)
+  let userId = cookieUserId;
+  if (!userId) {
+    const session = await auth();
+    userId = session.userId ?? undefined;
+  }
+  if (!userId) return NextResponse.redirect(new URL("/sign-in", req.url));
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
   const baseReturn = returnTo ?? (projectId ? `/projects/${projectId}/settings` : "/dashboard");
@@ -65,6 +72,7 @@ export async function GET(req: NextRequest) {
 
     const res = NextResponse.redirect(settingsUrl);
     res.cookies.delete("oauth_state");
+    res.cookies.delete("oauth_user_id");
     res.cookies.delete("oauth_project_id");
     res.cookies.delete("oauth_code_verifier");
     res.cookies.delete("oauth_return_to");
