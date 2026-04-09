@@ -1,14 +1,13 @@
 /**
- * Roberto Radar — Real-time Web Research Module
+ * Roberto Radar — Real-time Research Module
  *
- * Uses Gemini 2.0 Flash with Google Search Grounding to fetch live data:
- * - Google News (últimas notícias)
- * - Tendências do nicho no LinkedIn/X indexados pelo Google
- * - Estatísticas e relatórios recentes
- * - Posts virais e debates atuais
- *
- * Grounding retorna URLs reais usadas na resposta (evita fontes inventadas).
+ * Priority:
+ *   1. Grok-3 (xAI) — live X/Twitter posts, breaking news, web (XAI_API_KEY)
+ *   2. Gemini 2.0 Flash + Google Search Grounding (GEMINI_API_KEY)
+ *   3. Empty result (pipeline continues without research)
  */
+
+import { researchTopicGrok } from "./grok-search";
 
 export interface WebSearchResult {
   summary: string;
@@ -33,10 +32,6 @@ interface GeminiResponse {
   error?: { message?: string };
 }
 
-/**
- * Executa uma busca web com Gemini 2.0 Flash + Google Search Grounding.
- * Retorna o texto sintetizado e as fontes reais usadas.
- */
 async function searchGemini(
   prompt: string,
   apiKey: string,
@@ -50,10 +45,7 @@ async function searchGemini(
       body: JSON.stringify({
         tools: [{ googleSearch: {} }],
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: maxTokens,
-        },
+        generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
       }),
       signal: AbortSignal.timeout(45_000),
     }
@@ -65,10 +57,7 @@ async function searchGemini(
   }
 
   const data = (await res.json()) as GeminiResponse;
-
-  if (data.error) {
-    throw new Error(`Gemini Search error: ${data.error.message}`);
-  }
+  if (data.error) throw new Error(`Gemini Search error: ${data.error.message}`);
 
   const candidate = data.candidates?.[0];
   const rawText =
@@ -79,87 +68,99 @@ async function searchGemini(
   )
     .filter((c) => c.web?.uri)
     .map((c) => ({ title: c.web!.title ?? c.web!.uri!, url: c.web!.uri! }))
-    .filter(
-      (s, i, arr) => arr.findIndex((x) => x.url === s.url) === i // deduplica
-    )
+    .filter((s, i, arr) => arr.findIndex((x) => x.url === s.url) === i)
     .slice(0, 8);
 
   return { summary: rawText, sources, rawText };
 }
 
-/**
- * Pesquisa completa sobre um tópico para o Roberto Radar.
- * Executa múltiplas buscas paralelas cobrindo:
- * - Notícias recentes (últimos 30 dias)
- * - Tendências X/Twitter e LinkedIn
- * - Dados, relatórios e estatísticas recentes
- * - Debates e conteúdo viral do nicho
- */
-export async function researchTopic(
+async function researchTopicGemini(
   topic: string,
   niche: string,
   targetAudience: string,
   apiKey: string
 ): Promise<WebSearchResult> {
+  const today = new Date().toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
 
-  const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-
   const searches = [
-    // 1. Notícias e tendências recentes
     `IMPORTANTE: Use APENAS as informações retornadas pelo Google Search agora. Ignore seu conhecimento de treinamento.
 Hoje é ${today}. Busque as últimas notícias e tendências sobre "${topic}" publicadas nos últimos 30 dias.
 Nicho: ${niche}. Público: ${targetAudience}.
 Inclua: títulos reais de notícias, datas de publicação, dados numéricos e percentuais com fonte.
 Se não encontrar resultados recentes, diga explicitamente "Sem resultados recentes encontrados".`,
 
-    // 2. Debates e hype nas redes sociais
     `IMPORTANTE: Use APENAS resultados do Google Search de ${currentMonth} de ${currentYear}. Não use memória de treinamento.
 O que está em alta AGORA sobre "${topic}" no LinkedIn, X (Twitter) e outras redes sociais?
 Nicho: ${niche}. Busque posts virais, hashtags, debates e engajamento recente.
 Cite exemplos reais com datas. Se não houver dados recentes, indique claramente.`,
 
-    // 3. Dados, pesquisas e relatórios recentes
     `IMPORTANTE: Busque via Google Search apenas. Hoje é ${today}.
 Relatórios, pesquisas e estudos publicados em ${currentYear} sobre "${topic}".
 Fontes: McKinsey, Gartner, IBGE, FGV, Statista, Forrester, IDC, etc.
 Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publicação.`,
   ];
 
-  // Executa todas as buscas em paralelo
   const results = await Promise.allSettled(
     searches.map((prompt) => searchGemini(prompt, apiKey))
   );
 
-  // Agrega os resultados bem-sucedidos
-  const successfulResults = results
+  const successful = results
     .filter((r): r is PromiseFulfilledResult<WebSearchResult> => r.status === "fulfilled")
     .map((r) => r.value);
 
-  if (successfulResults.length === 0) {
-    throw new Error("Todas as buscas web falharam — verifique a GEMINI_API_KEY.");
+  if (successful.length === 0) {
+    throw new Error("Todas as buscas Gemini falharam.");
   }
 
-  // Consolida fontes únicas
-  const allSources = successfulResults
+  const allSources = successful
     .flatMap((r) => r.sources)
     .filter((s, i, arr) => arr.findIndex((x) => x.url === s.url) === i)
     .slice(0, 8);
 
-  // Consolida o texto de pesquisa
-  const combinedSummary = successfulResults
+  const combinedSummary = successful
     .map((r, i) => {
       const labels = ["NOTÍCIAS E TENDÊNCIAS RECENTES", "REDES SOCIAIS E HYPE", "DADOS E PESQUISAS"];
       return `=== ${labels[i] ?? `PESQUISA ${i + 1}`} ===\n\n${r.summary}`;
     })
     .join("\n\n");
 
-  return {
-    summary: combinedSummary,
-    sources: allSources,
-    rawText: combinedSummary,
-  };
+  return { summary: combinedSummary, sources: allSources, rawText: combinedSummary };
+}
+
+/**
+ * Pesquisa completa sobre um tópico para o Roberto Radar.
+ * Tenta Grok primeiro (dados do X em tempo real), fallback para Gemini.
+ */
+export async function researchTopic(
+  topic: string,
+  niche: string,
+  targetAudience: string,
+  apiKey: string // mantido para compatibilidade — é o GEMINI_API_KEY
+): Promise<WebSearchResult> {
+  const grokKey = process.env.XAI_API_KEY;
+
+  // 1. Tenta Grok (xAI) — posts do X de hoje + notícias + web
+  if (grokKey) {
+    try {
+      return await researchTopicGrok(topic, niche, targetAudience, grokKey);
+    } catch (err) {
+      console.warn("[web-search] Grok falhou, tentando Gemini:", err);
+    }
+  }
+
+  // 2. Fallback: Gemini + Google Search Grounding
+  if (apiKey) {
+    return await researchTopicGemini(topic, niche, targetAudience, apiKey);
+  }
+
+  // 3. Sem chaves disponíveis
+  throw new Error("Nenhuma chave de API disponível (XAI_API_KEY ou GEMINI_API_KEY).");
 }
 
 /**

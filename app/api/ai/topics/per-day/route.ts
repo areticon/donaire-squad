@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
+import { fetchNicheTrendingGrok } from "@/lib/research/grok-search";
 
 interface DayInput {
   dayOfWeek: string; // "1"-"7"
@@ -11,22 +12,33 @@ interface DayInput {
   contentType: string;
 }
 
+/** Busca tendências do nicho: Grok (xAI) → Gemini fallback */
 async function fetchTrendingForNiche(
   niche: string,
   targetAudience: string,
-  apiKey: string
+  geminiKey: string
 ): Promise<string> {
+  // 1. Tenta Grok (posts do X hoje + notícias + web)
+  const grokKey = process.env.XAI_API_KEY;
+  if (grokKey) {
+    try {
+      return await fetchNicheTrendingGrok(niche, targetAudience, grokKey);
+    } catch (err) {
+      console.warn("[topics/per-day] Grok falhou, tentando Gemini:", err);
+    }
+  }
+
+  // 2. Fallback: Gemini + Google Search Grounding
+  if (!geminiKey) return "";
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
-
   const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search agora. NÃO use treinamento.
 Hoje é ${today}. O que está em alta no nicho "${niche}" para "${targetAudience}" no Brasil nas últimas 4 semanas?
 Traga: notícias recentes, temas virais no LinkedIn/X, dados de ${currentYear}, debates quentes.
 Seja específico com datas, números e fontes reais.`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

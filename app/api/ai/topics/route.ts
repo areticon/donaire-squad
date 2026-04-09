@@ -4,32 +4,41 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
+import { fetchNicheTrendingGrok } from "@/lib/research/grok-search";
 
-/** Busca o que está em alta agora no nicho via Gemini + Google Search Grounding */
+/** Busca o que está em alta agora: Grok (xAI) → Gemini fallback */
 async function fetchTrendingTopics(
   niche: string,
   targetAudience: string,
-  apiKey: string
+  geminiKey: string
 ): Promise<string> {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
-
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-  const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search retornados agora. NÃO use seu conhecimento de treinamento. Se o Google Search não retornar dados recentes, diga explicitamente.
+  const currentYear = new Date().getFullYear();
+
+  // 1. Tenta Grok (posts do X hoje + notícias + web em tempo real)
+  const grokKey = process.env.XAI_API_KEY;
+  if (grokKey) {
+    try {
+      return await fetchNicheTrendingGrok(niche, targetAudience, grokKey);
+    } catch (err) {
+      console.warn("[topics] Grok falhou, tentando Gemini:", err);
+    }
+  }
+
+  // 2. Fallback: Gemini + Google Search Grounding
+  if (!geminiKey) return "";
+  const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search retornados agora. NÃO use seu conhecimento de treinamento.
 
 Hoje é ${today}. Busque o que está em alta NESTE MOMENTO no nicho de "${niche}" para "${targetAudience}" no Brasil.
-
-Traga apenas informações das últimas 4 semanas:
+Traga apenas das últimas 4 semanas:
 1. Notícias recentes com título, data e fonte real
-2. Temas com alto engajamento no LinkedIn e X agora (posts virais, hashtags)
-3. Relatórios ou pesquisas publicados em ${currentYear} com dados numéricos
+2. Temas com alto engajamento no LinkedIn e X (posts virais, hashtags)
+3. Relatórios publicados em ${currentYear} com dados numéricos
 4. Debates ou controvérsias atuais no setor
-5. Lançamentos, eventos ou cases da semana/mês
-
-Para cada item: cite a fonte, a data e os números reais encontrados.`;
+Para cada item: cite a fonte, a data e os números reais.`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -43,14 +52,10 @@ Para cada item: cite a fonte, a data e os números reais encontrados.`;
   );
 
   if (!res.ok) return "";
-
   const data = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-
-  return (data.candidates?.[0]?.content?.parts ?? [])
-    .map((p) => p.text ?? "")
-    .join("") || "";
+  return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("") || "";
 }
 
 export async function POST(req: NextRequest) {
