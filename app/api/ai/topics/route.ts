@@ -14,16 +14,19 @@ async function fetchTrendingTopics(
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().toLocaleString("pt-BR", { month: "long" });
 
-  const prompt = `O que está em alta AGORA em ${currentMonth} de ${currentYear} no nicho de "${niche}" para o público "${targetAudience}" no Brasil?
+  const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search retornados agora. NÃO use seu conhecimento de treinamento. Se o Google Search não retornar dados recentes, diga explicitamente.
 
-Traga:
-1. Últimas notícias e acontecimentos do setor (últimos 30 dias)
-2. Temas que estão gerando mais engajamento no LinkedIn e X (Twitter) agora
-3. Dados, pesquisas ou relatórios recentes publicados em ${currentYear}
-4. Debates quentes, controvérsias ou tendências emergentes no nicho
-5. Cases, lançamentos ou eventos recentes relevantes
+Hoje é ${today}. Busque o que está em alta NESTE MOMENTO no nicho de "${niche}" para "${targetAudience}" no Brasil.
 
-Seja específico — cite nomes, números, datas e fontes reais. Evite informações genéricas.`;
+Traga apenas informações das últimas 4 semanas:
+1. Notícias recentes com título, data e fonte real
+2. Temas com alto engajamento no LinkedIn e X agora (posts virais, hashtags)
+3. Relatórios ou pesquisas publicados em ${currentYear} com dados numéricos
+4. Debates ou controvérsias atuais no setor
+5. Lançamentos, eventos ou cases da semana/mês
+
+Para cada item: cite a fonte, a data e os números reais encontrados.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
