@@ -613,57 +613,72 @@ async function runPipeline(
   let webSourcesGlobal: Array<{ title: string; url: string }> = [];
 
   if (researcher) {
-    // 1a. Busca web em tempo real via Gemini + Google Search Grounding
+    // 1a. Busca web em tempo real — Grok (xAI) com live X/news/web, fallback Gemini
     let webSearchData = "";
     let webSources: Array<{ title: string; url: string }> = [];
     const geminiKey = process.env.GEMINI_API_KEY;
 
-    if (geminiKey) {
-      try {
-        await appendLog(runId, { agent: "Roberto Radar", message: "Buscando dados em tempo real (Google Search)...", status: "running" });
-        const searchResult = await researchTopic(
-          topic,
-          project.niche ?? "geral",
-          project.targetAudience ?? "profissionais",
-          geminiKey
-        );
-        webSearchData = searchResult.summary;
-        webSources = searchResult.sources;
-        webSourcesGlobal = searchResult.sources;
-        await appendLog(runId, {
-          agent: "Roberto Radar",
-          message: `Pesquisa web concluída — ${webSources.length} fontes encontradas.`,
-          status: "running",
-        });
-      } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca web falhou (${errMsg.slice(0, 120)}). Usando conhecimento interno.`, status: "warning" });
-      }
+    try {
+      await appendLog(runId, { agent: "Roberto Radar", message: "Buscando dados em tempo real no X e web...", status: "running" });
+      const searchResult = await researchTopic(
+        topic,
+        project.niche ?? "geral",
+        project.targetAudience ?? "profissionais",
+        geminiKey ?? ""
+      );
+      webSearchData = searchResult.summary;
+      webSources = searchResult.sources;
+      webSourcesGlobal = searchResult.sources;
+      await appendLog(runId, {
+        agent: "Roberto Radar",
+        message: `Pesquisa concluída — ${webSources.length} fontes encontradas.`,
+        status: "running",
+      });
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca falhou (${errMsg.slice(0, 120)}).`, status: "warning" });
     }
 
-    // 1b. Roberto sintetiza os dados reais em um brief estruturado
+    // 1b. Roberto estrutura os dados reais em um brief — SEM inventar nada
     const sourcesSection = formatSourcesSection(webSources);
-    const webContext = webSearchData
-      ? `\n\n=== DADOS REAIS ENCONTRADOS NA WEB (use estes dados — são atuais e verificados) ===\n\n${webSearchData}\n\n=== FIM DOS DADOS WEB ===`
-      : "";
 
-    researchBrief = await runAgent(
-      researcher,
-      `Compile um brief de pesquisa completo sobre: "${topic}".
+    if (!webSearchData) {
+      // Sem dados reais, brief mínimo sem alucinar fontes
+      researchBrief = `AVISO: Busca em tempo real não retornou dados. Brief baseado apenas no tema: "${topic}".
 Nicho: ${project.niche ?? "geral"}. Público: ${project.targetAudience ?? "profissionais"}.
-${webSearchData ? `\nVocê tem acesso aos dados reais mais recentes encontrados na web (veja abaixo). Use-os como base principal do brief.` : ""}
+Gere o conteúdo com base no conhecimento do nicho, sem citar fontes ou números que não puder verificar.`;
+    } else {
+      const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 
-ESTRUTURA DO BRIEF (siga esta ordem):
-1. Contexto atual: o que está acontecendo AGORA com este tema (últimas semanas/meses)
-2. Dados e estatísticas: números reais com fonte explícita
-3. Tendências quentes: o que está em alta no LinkedIn, X e Google
-4. Insights acionáveis: o que o público-alvo precisa saber/fazer
-5. Ângulos de conteúdo: 3 perspectivas diferentes para abordar o tema${sourcesSection ? `\n\nAo final, inclua a seção de fontes abaixo exatamente como está:\n${sourcesSection}` : `\n\nAo final do brief, adicione:\nFONTES:\n- [Nome da fonte com URL real]`}`,
-      baseContext + webContext,
-      runId,
-      funnelInstruction,
-      { maxTokens: 4096 }
-    );
+      researchBrief = await runAgent(
+        researcher,
+        `Você é o Roberto Radar. Sua função é estruturar e apresentar os dados reais encontrados agora na internet — NÃO inventar nada.
+
+DADOS REAIS COLETADOS AGORA (${today}) via busca live no X, notícias e web:
+═══════════════════════════════════════════════════════════
+${webSearchData}
+═══════════════════════════════════════════════════════════
+
+⚠️ REGRAS ABSOLUTAS:
+- Use APENAS os dados acima. Não adicione fontes, números, pesquisas ou casos que não estejam nos dados acima.
+- Se os dados citam posts do X, cite-os. Se citam notícias, cite-as. Se não há dados suficientes sobre um ponto, diga "não encontrado nos dados desta pesquisa".
+- NUNCA invente percentuais, estatísticas, relatórios (McKinsey, Gartner, etc.) que não estejam explicitamente nos dados acima.
+- Se os dados acima forem ricos em posts do X e notícias do dia, isso é ouro — use tudo.
+
+ESTRUTURA DO BRIEF (organize os dados acima nesta ordem):
+1. O QUE ESTÁ ACONTECENDO AGORA: posts do X, notícias do dia, debates de hoje (use os dados acima)
+2. NÚMEROS E FATOS REAIS: apenas os dados e estatísticas que aparecem nos resultados acima
+3. QUEM ESTÁ FALANDO E O QUE ESTÁ DIZENDO: influenciadores, empresas, pessoas mencionadas nos dados
+4. OPORTUNIDADE DE CONTEÚDO: ângulos para o criador de conteúdo explorar ESTE tema AGORA
+
+Tema: "${topic}" | Nicho: ${project.niche ?? "geral"} | Público: ${project.targetAudience ?? "profissionais"}
+${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSection}` : ""}`,
+        baseContext,
+        runId,
+        funnelInstruction,
+        { maxTokens: 4096 }
+      );
+    }
 
     // Research card is saved inside the day loop (one per day, at the start of each day)
     // so the sequence Roberto → Lucas → Tiago → Diana → Vera → Paulo is visible per day.

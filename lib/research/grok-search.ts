@@ -55,7 +55,7 @@ export async function searchGrok(
       max_tokens: maxTokens,
       temperature: 0.2,
     }),
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(40_000),
   });
 
   if (!res.ok) {
@@ -83,7 +83,8 @@ export async function searchGrok(
 
 /**
  * Pesquisa completa para Roberto Radar usando Grok live search.
- * Cobre: posts do X hoje, notícias de hoje, debates atuais, dados recentes.
+ * Uma única chamada abrangente que cobre: posts do X hoje, notícias, debates e hype.
+ * Usar uma chamada evita timeout acumulado de 3 paralelas.
  */
 export async function researchTopicGrok(
   topic: string,
@@ -97,55 +98,20 @@ export async function researchTopicGrok(
     year: "numeric",
   });
 
-  const searches = [
-    // 1. X/Twitter — posts de hoje e tendências
-    `Hoje é ${today}. Busque os posts mais recentes e virais do X (Twitter) sobre "${topic}" publicados nos últimos 7 dias.
-Nicho: ${niche}. Público-alvo: ${targetAudience} no Brasil.
-Traga: posts com alto engajamento, threads em alta, hashtags populares agora, opiniões de líderes de opinião.
-Inclua: usuário/autor, data do post, métricas se disponível (curtidas, retweets). Seja específico.`,
+  // Uma única chamada abrangente — mais rápido e mais confiável que 3 paralelas
+  const prompt = `Hoje é ${today}. Faça uma pesquisa completa e atual sobre "${topic}" cobrindo TODOS os itens abaixo:
 
-    // 2. Notícias de hoje — o que foi publicado agora
-    `Hoje é ${today}. Busque notícias e artigos publicados nos últimos 7 dias sobre "${topic}".
-Nicho: ${niche}. Contexto Brasil e global.
-Traga: título real do artigo, veículo de mídia, data de publicação, dados e números concretos.
-Foque em fatos novos, não em retrospectivas antigas.`,
+1. POSTS DO X AGORA: Quais são os posts mais recentes e virais no X (Twitter) sobre "${topic}" nos últimos 7 dias? Cite autores reais (@usuário), datas, métricas de engajamento e o que estão dizendo.
 
-    // 3. Debates, controvérsias e hype atual
-    `Hoje é ${today}. O que está sendo debatido AGORA sobre "${topic}" no LinkedIn, X e mídia especializada?
-Nicho: ${niche}. Público: ${targetAudience}.
-Traga: controvérsias, polarizações, cases recentes, lançamentos da semana, events desta semana.
-Cite datas e fontes reais. Prefira conteúdo de ${today} ou dos últimos 7 dias.`,
-  ];
+2. NOTÍCIAS DO DIA: Quais notícias e artigos foram publicados nos últimos 7 dias sobre "${topic}"? Cite título real, veículo, data e principais dados/números.
 
-  const results = await Promise.allSettled(
-    searches.map((prompt) => searchGrok(prompt, apiKey))
-  );
+3. DEBATES E HYPE ATUAL: O que está sendo mais debatido agora sobre "${topic}"? Quais as polêmicas, controvérsias ou lançamentos mais recentes? O que está dividindo opiniões?
 
-  const successful = results
-    .filter((r): r is PromiseFulfilledResult<GrokSearchResult> => r.status === "fulfilled")
-    .map((r) => r.value);
+4. TENDÊNCIAS BRASIL: O que está em alta especificamente no Brasil sobre "${topic}" para ${targetAudience} no nicho de ${niche}? Casos reais, eventos, movimentos atuais.
 
-  if (successful.length === 0) {
-    throw new Error("Todas as buscas Grok falharam — verifique a XAI_API_KEY.");
-  }
+IMPORTANTE: Use APENAS dados encontrados agora. Inclua datas reais, nomes reais de pessoas/empresas, URLs quando disponível. NÃO use dados de 2023 ou anteriores se houver algo mais recente.`;
 
-  const allSources = successful
-    .flatMap((r) => r.sources)
-    .filter((s, i, arr) => arr.findIndex((x) => x.url === s.url) === i)
-    .slice(0, 10);
-
-  const combinedSummary = successful
-    .map((r, i) => {
-      const labels = [
-        "POSTS DO X E TENDÊNCIAS AGORA",
-        "NOTÍCIAS PUBLICADAS HOJE",
-        "DEBATES E HYPE ATUAL",
-      ];
-      return `=== ${labels[i] ?? `PESQUISA ${i + 1}`} ===\n\n${r.summary}`;
-    })
-    .join("\n\n");
-
-  return { summary: combinedSummary, sources: allSources, rawText: combinedSummary };
+  return await searchGrok(prompt, apiKey, 4096);
 }
 
 /**

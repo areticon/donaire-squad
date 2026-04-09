@@ -47,7 +47,7 @@ async function searchGemini(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
       }),
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(30_000),
     }
   );
 
