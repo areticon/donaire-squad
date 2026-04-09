@@ -4,7 +4,10 @@ let _client: Anthropic | null = null;
 
 function getClient(): Anthropic {
   if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    _client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      timeout: 60_000, // 60s max per Claude call — prevents hanging forever
+    });
   }
   return _client;
 }
