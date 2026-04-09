@@ -76,7 +76,7 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
             addWatermark: false,
           },
         }),
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(35_000),
       });
 
       if (!res.ok) {
@@ -130,7 +130,7 @@ async function tryGeminiFlashImage(prompt: string, apiKey: string): Promise<stri
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
           }),
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(25_000),
         }
       );
 
@@ -187,7 +187,7 @@ async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio): Promi
               addWatermark: false,
             },
           }),
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(35_000),
         });
 
         if (!res.ok) {
@@ -236,7 +236,7 @@ async function tryPollinationsAI(
 
       try {
         console.log(`[Pollinations] ${model} ${width}x${height} tentativa ${attempt + 1}...`);
-        const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(75_000) });
+        const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(25_000) });
 
         if (!res.ok) { console.warn(`[Pollinations] ${model} HTTP ${res.status}`); break; }
 

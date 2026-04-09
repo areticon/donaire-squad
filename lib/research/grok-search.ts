@@ -55,7 +55,7 @@ export async function searchGrok(
       max_tokens: maxTokens,
       temperature: 0.2,
     }),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(12_000),
   });
 
   if (!res.ok) {
