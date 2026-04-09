@@ -195,7 +195,7 @@ Quality: high-resolution, pixel-perfect text, suitable for professional social m
             contents: [{ parts: [{ text: imagePrompt }] }],
             generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
           }),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(30_000),
         }
       );
 
@@ -262,7 +262,7 @@ export async function generateInfographic(
         instances: [{ prompt: fallbackPrompt }],
         parameters: { sampleCount: 1, aspectRatio: platform === "linkedin" ? "9:16" : "1:1", outputMimeType: "image/jpeg" },
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(30_000),
     }
   );
 

@@ -414,20 +414,45 @@ export async function POST(req: NextRequest) {
   // even after the HTTP response has already been sent to the client.
   // Without this, changing browser tabs or closing the window could kill the generation.
   after(async () => {
+    // Safety timeout: if pipeline takes more than 260s, emit a warning and mark as completed
+    // (Vercel kills the function at maxDuration=300 — this ensures Pusher gets a final event)
+    const SAFETY_TIMEOUT_MS = 260_000;
+    let safetyFired = false;
+
+    const safetyTimer = setTimeout(async () => {
+      safetyFired = true;
+      console.warn("[pipeline] Safety timeout fired — emitting completion to unblock UI");
+      try {
+        await appendLog(run.id, {
+          agent: "Sistema",
+          message: "Pipeline concluído parcialmente (tempo limite atingido). Alguns dias podem não ter sido gerados.",
+          status: "completed",
+        });
+        await prisma.pipelineRun.update({
+          where: { id: run.id },
+          data: { status: "completed", endedAt: new Date() },
+        });
+      } catch { /* best-effort */ }
+    }, SAFETY_TIMEOUT_MS);
+
     try {
       await runPipeline(run.id, project, topic, config);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[pipeline]", err);
-      await appendLog(run.id, {
-        agent: "Sistema",
-        message: `Erro no pipeline: ${message}`,
-        status: "failed",
-      });
-      await prisma.pipelineRun.update({
-        where: { id: run.id },
-        data: { status: "failed", endedAt: new Date() },
-      });
+      if (!safetyFired) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[pipeline]", err);
+        await appendLog(run.id, {
+          agent: "Sistema",
+          message: `Erro no pipeline: ${message}`,
+          status: "failed",
+        });
+        await prisma.pipelineRun.update({
+          where: { id: run.id },
+          data: { status: "failed", endedAt: new Date() },
+        });
+      }
+    } finally {
+      clearTimeout(safetyTimer);
     }
   });
 
@@ -1106,7 +1131,12 @@ ${twitterContent}`,
         const infoPlatform: "linkedin" | "twitter" | "both" = config.singlePlatform ?? "both";
         if (hasApiKey) {
           try {
-            dianaFinalUrl = await generateInfographic(visualPromptSource, project.niche ?? "business", process.env.GEMINI_API_KEY!, infoPlatform);
+            // Wrap with 80s hard cap so Diana never hangs the entire pipeline
+            const infographicWithTimeout = Promise.race([
+              generateInfographic(visualPromptSource, project.niche ?? "business", process.env.GEMINI_API_KEY!, infoPlatform),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout: infographic > 80s")), 80_000)),
+            ]);
+            dianaFinalUrl = await infographicWithTimeout;
             mediaByDayKey[dayKey] = { imageUrl: dianaFinalUrl, imagePrompt: "infographic" };
             await appendLog(runId, { agent: "Diana Design", message: `Infográfico gerado para ${dayName}.`, status: "completed" });
           } catch (err) {
@@ -1164,10 +1194,14 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         );
 
         if (hasApiKey) {
+          // Hard cap: Diana media generation must finish within 70s
+          const withDianaCap = <T>(p: Promise<T>): Promise<T> =>
+            Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Timeout: media > 70s")), 70_000))]);
+
           try {
             if (isVideoType) {
               try {
-                const videoUrl = await generateVideo(visualPrompt, "9:16", "720p", 150_000, videoDuration, false, videoAudio);
+                const videoUrl = await withDianaCap(generateVideo(visualPrompt, "9:16", "720p", 60_000, videoDuration, false, videoAudio));
                 mediaByDayKey[dayKey] = { videoUrl, imagePrompt: visualPrompt };
                 dianaFinalUrl = videoUrl;
                 await appendLog(runId, { agent: "Diana Design", message: `Vídeo gerado para ${dayName}.`, status: "completed" });
@@ -1177,7 +1211,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 console.warn(`[diana] VEO 3 indisponível (${reason}) — gerando imagem substituta`);
                 await appendLog(runId, { agent: "Diana Design", message: `VEO 3 não disponível: ${reason}. Gerando imagem estática como alternativa.`, status: "warning" });
                 try {
-                  const fallbackUrl = await generateImage(`${visualPrompt} — still frame for video`, "16:9");
+                  const fallbackUrl = await withDianaCap(generateImage(`${visualPrompt} — still frame for video`, "16:9"));
                   mediaByDayKey[dayKey] = { imageUrl: fallbackUrl, imagePrompt: visualPrompt };
                   dianaFinalUrl = fallbackUrl;
                   await appendLog(runId, { agent: "Diana Design", message: `Imagem substituta gerada para ${dayName}.`, status: "completed" });
@@ -1188,14 +1222,14 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 if (!isUnavailable) throw veoErr;
               }
             } else if (resolvedType === "carousel") {
-              const imageUrl = await generateImage(visualPrompt, "1:1");
-              const slide2 = await generateImage(`${visualPrompt} — slide 2, continuation`, "1:1");
-              const slide3 = await generateImage(`${visualPrompt} — slide 3, call to action`, "1:1");
+              const imageUrl = await withDianaCap(generateImage(visualPrompt, "1:1"));
+              const slide2 = await withDianaCap(generateImage(`${visualPrompt} — slide 2, continuation`, "1:1"));
+              const slide3 = await withDianaCap(generateImage(`${visualPrompt} — slide 3, call to action`, "1:1"));
               dianaFinalUrl = [imageUrl, slide2, slide3].join("|");
               mediaByDayKey[dayKey] = { imageUrl: dianaFinalUrl, imagePrompt: visualPrompt };
               await appendLog(runId, { agent: "Diana Design", message: `Carrossel (3 slides) gerado para ${dayName}.`, status: "completed" });
             } else {
-              const imageUrl = await generateImage(visualPrompt, "linkedin-landscape");
+              const imageUrl = await withDianaCap(generateImage(visualPrompt, "linkedin-landscape"));
               mediaByDayKey[dayKey] = { imageUrl, imagePrompt: visualPrompt };
               dianaFinalUrl = imageUrl;
               await appendLog(runId, { agent: "Diana Design", message: `Imagem gerada para ${dayName}.`, status: "completed" });
