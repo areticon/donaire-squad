@@ -45,7 +45,7 @@ async function searchGemini(
       body: JSON.stringify({
         tools: [{ googleSearch: {} }],
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
+        generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
       }),
       signal: AbortSignal.timeout(30_000),
     }

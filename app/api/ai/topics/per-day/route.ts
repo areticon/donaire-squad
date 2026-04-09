@@ -33,7 +33,7 @@ Seja específico com datas, números e fontes reais.`;
       body: JSON.stringify({
         tools: [{ googleSearch: {} }],
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
       }),
       signal: AbortSignal.timeout(35_000),
     }
