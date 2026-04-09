@@ -513,8 +513,9 @@ async function runPipeline(
         : (config.postingTimes?.[String(dayOfWeek)] ?? "09:00");
     const [hours, minutes] = timeStr.split(":").map(Number);
     d.setUTCHours(hours, minutes, 0, 0);
-    // If the computed date is in the past, advance by one week
-    if (d <= now) d.setUTCDate(d.getUTCDate() + 7);
+    // If the computed date is in the past, schedule for +10min (don't advance to next week —
+    // the user explicitly requested this week's campaign and wants today's content generated)
+    if (d <= now) return new Date(now.getTime() + 10 * 60 * 1000);
     return d;
   }
 
@@ -556,18 +557,17 @@ async function runPipeline(
         const dayOfWeek = parseInt(dayKey);
 
         if (weekOffset === 0) {
-          // If the frontend provided explicit timestamps, only generate days that are included.
-          // Missing days were intentionally excluded (e.g. they fall in the past).
-          if (config.postingTimestamps && !(dayKey in config.postingTimestamps)) {
-            continue;
-          }
+          // Always skip days whose calendar date is strictly before today (Mon-Wed when today is Thu)
+          const dayDate = new Date(config.weekStart + "T00:00:00.000Z");
+          dayDate.setUTCDate(dayDate.getUTCDate() + (dayOfWeek - 1));
+          if (dayDate < nowUtc) continue;
 
-          // Safety net: even without explicit timestamps, skip days whose calendar date
-          // is strictly before today (handles edge cases / old clients).
-          if (!config.postingTimestamps) {
-            const dayDate = new Date(config.weekStart + "T00:00:00.000Z");
-            dayDate.setUTCDate(dayDate.getUTCDate() + (dayOfWeek - 1));
-            if (dayDate < nowUtc) continue;
+          // If the frontend provided explicit timestamps, respect them for future days.
+          // But for TODAY: even if the scheduled time has passed, still generate — the post
+          // can be published manually or rescheduled. Don't silently skip today's content.
+          const isToday = dayDate.getTime() === nowUtc.getTime();
+          if (!isToday && config.postingTimestamps && !(dayKey in config.postingTimestamps)) {
+            continue;
           }
         }
 

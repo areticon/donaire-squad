@@ -47,7 +47,7 @@ async function searchGemini(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(50_000),
     }
   );
 
@@ -62,6 +62,13 @@ async function searchGemini(
   const candidate = data.candidates?.[0];
   const rawText =
     (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("") || "";
+
+  if (!rawText) {
+    // Gemini 2.5 Flash thinking mode: if parts are empty despite 200 OK, log the full finish reason
+    const finishReason = (candidate as Record<string, unknown>)?.finishReason ?? "unknown";
+    const partsCount = candidate?.content?.parts?.length ?? 0;
+    throw new Error(`Gemini retornou resposta vazia (finishReason=${finishReason}, parts=${partsCount}). Verifique thinkingBudget.`);
+  }
 
   const sources: Array<{ title: string; url: string }> = (
     candidate?.groundingMetadata?.groundingChunks ?? []
