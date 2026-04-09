@@ -7,7 +7,7 @@
  *   3. Empty result (pipeline continues without research)
  */
 
-import { researchTopicGrok } from "./grok-search";
+// grok-search import removed — xAI live search API deprecated (use Agent Tools API)
 
 export interface WebSearchResult {
   summary: string;
@@ -135,32 +135,22 @@ Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publ
 
 /**
  * Pesquisa completa sobre um tópico para o Roberto Radar.
- * Tenta Grok primeiro (dados do X em tempo real), fallback para Gemini.
+ * Usa Gemini 2.5 Flash + Google Search Grounding (dados reais em tempo real).
+ *
+ * Nota: Grok (xAI) live search foi depreciado pela xAI em favor do "Agent Tools API"
+ * que requer implementação de function calling — não compatível com nosso fluxo atual.
+ * Removido para não desperdiçar créditos xAI a cada campanha.
  */
 export async function researchTopic(
   topic: string,
   niche: string,
   targetAudience: string,
-  apiKey: string // mantido para compatibilidade — é o GEMINI_API_KEY
+  apiKey: string // GEMINI_API_KEY
 ): Promise<WebSearchResult> {
-  const grokKey = process.env.XAI_API_KEY;
-
-  // 1. Tenta Grok (xAI) — posts do X de hoje + notícias + web
-  if (grokKey) {
-    try {
-      return await researchTopicGrok(topic, niche, targetAudience, grokKey);
-    } catch (err) {
-      console.warn("[web-search] Grok falhou, tentando Gemini:", err);
-    }
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY não configurada.");
   }
-
-  // 2. Fallback: Gemini + Google Search Grounding
-  if (apiKey) {
-    return await researchTopicGemini(topic, niche, targetAudience, apiKey);
-  }
-
-  // 3. Sem chaves disponíveis
-  throw new Error("Nenhuma chave de API disponível (XAI_API_KEY ou GEMINI_API_KEY).");
+  return await researchTopicGemini(topic, niche, targetAudience, apiKey);
 }
 
 /**
