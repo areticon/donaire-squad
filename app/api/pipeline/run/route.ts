@@ -16,7 +16,7 @@ import {
   type MediaStyleId,
 } from "@/lib/media/media-style";
 
-export const maxDuration = 300;
+export const maxDuration = 800; // Vercel Pro — gives pipeline room for full weekly campaigns
 
 type FunnelStage = "tofu" | "mofu" | "bofu";
 type ContentType = "text" | "image" | "video" | "carousel" | "infographic" | "poll" | "article" | "thread" | "free";
@@ -1282,138 +1282,17 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         funnelInstruction
       );
 
-      let { needsTextRetry, needsMediaRetry, approved, verdict } = parseVeraVerdict(firstOutput);
-      let finalOutput = firstOutput;
-      let didRetry = false;
+      // Vera reviews once — no automatic retry (retry doubles execution time and causes timeouts)
+      // If content needs correction, Paulo's card shows the verdict for manual action
+      const { approved, verdict } = parseVeraVerdict(firstOutput);
+      const finalOutput = firstOutput;
 
       if (!approved) {
-        const lucasKey = `lucas-${dayOfWeek}-${weekOffset}`;
-        const dianaKey = `diana-${dayOfWeek}-${weekOffset}`;
-        const lucasRetries = agentRetries[lucasKey] ?? 0;
-        const dianaRetries = agentRetries[dianaKey] ?? 0;
-        const canRetryText = needsTextRetry && lucasRetries < 1 && linkedinWriter;
-        const canRetryMedia = needsMediaRetry && dianaRetries < 1 && designer;
-        const blockedAgents: string[] = [];
-
-        // Retry Lucas (text)
-        if (canRetryText && linkedinWriter) {
-          agentRetries[lucasKey] = lucasRetries + 1;
-          await appendLog(runId, { agent: "Sistema", message: `Vera reprovou o texto de ${dayName}. Pedindo ao Lucas para reescrever...`, status: "running" });
-          const retryType = (liPost?.mediaType === "article" ? "article" : "post") as "post" | "article";
-          const newContent = await runAgent(
-            linkedinWriter,
-            `REESCRITA SOLICITADA PELA VERA — corrija os problemas apontados e reescreva o post de LinkedIn para ${dayName}:
-
-PROBLEMAS IDENTIFICADOS PELA VERA:
-${firstOutput.slice(0, 600)}
-
-CONTEÚDO ANTERIOR (melhore, não copie):
-${liPost?.content ?? ""}
-
-${liPost?.mediaType === "article" ? "Mantenha obrigatoriamente o formato TITULO:, RESUMO_CARD: e CORPO:.\n\n" : ""}Reescreva do zero se necessário. Tom: ${project.voice || "profissional e direto"}.
-${linkedinRules(retryType)}
-Use os dados da pesquisa. Não invente fatos.`,
-            contextWithResearch,
-            runId,
-            funnelInstruction,
-            liPost?.mediaType === "article" ? { maxTokens: 8192 } : undefined
-          );
-          if (liPost?.cardId) {
-            await prisma.campaignCard.update({
-              where: { id: liPost.cardId },
-              data: { content: newContent, metadata: { retried: true, veraFeedback: firstOutput.slice(0, 400) } as unknown as import("@prisma/client").Prisma.InputJsonValue },
-            });
-          }
-          const liIdx = dayPosts.findIndex((p) => p.platform === "linkedin" && p.dayOfWeek === dayOfWeek && p.scheduledDate.toDateString() === scheduledDate.toDateString());
-          if (liIdx >= 0) dayPosts[liIdx] = { ...dayPosts[liIdx], content: newContent };
-          liPost = dayPosts.find(
-            (p) => p.platform === "linkedin" && p.dayOfWeek === dayOfWeek && p.scheduledDate.toDateString() === scheduledDate.toDateString()
-          );
-          didRetry = true;
-        } else if (needsTextRetry && lucasRetries >= 1) {
-          blockedAgents.push("Lucas (texto)");
-        }
-
-        // Retry Diana (media)
-        if (canRetryMedia && designer) {
-          agentRetries[dianaKey] = dianaRetries + 1;
-          await appendLog(runId, { agent: "Sistema", message: `Vera reprovou a mídia de ${dayName}. Pedindo à Diana para regenerar...`, status: "running" });
-          const liContentForRetry = liPost?.content ?? "";
-          const resolvedMediaType: ContentType = liPost?.mediaType ?? "image";
-          const newPrompt = await runAgent(
-            designer,
-            `REMEDIAÇÃO DE MÍDIA — a Vera reprovou a mídia anterior. Crie um NOVO prompt visual em inglês para ${dayName} baseado neste post:
-
-${liContentForRetry}
-
-Problemas apontados: ${firstOutput.slice(0, 400)}
-
-O prompt deve ser específico: composição, iluminação, materiais, mood. Paleta alinhada ao nicho: ${project.niche ?? "business"}.`,
-            contextWithResearch,
-            runId,
-            funnelInstruction
-          );
-
-          let newMediaUrl: string | undefined;
-          const apiKey = process.env.GEMINI_API_KEY;
-          if (apiKey) {
-            try {
-              if (resolvedMediaType === "infographic") {
-                const retryPlatform: "linkedin" | "twitter" | "both" = config.singlePlatform ?? "both";
-                newMediaUrl = await generateInfographic(liContentForRetry, project.niche ?? "business", apiKey, retryPlatform);
-              } else {
-                newMediaUrl = await generateImage(newPrompt, "linkedin-landscape");
-              }
-              mediaByDayKey[dayKey] = { imageUrl: newMediaUrl, imagePrompt: newPrompt };
-              await appendLog(runId, { agent: "Diana Design", message: `Mídia regenerada com sucesso para ${dayName}.`, status: "completed" });
-            } catch (err) {
-              await appendLog(runId, { agent: "Diana Design", message: `Segunda tentativa de geração de mídia também falhou: ${err instanceof Error ? err.message : "erro"}`, status: "warning" });
-            }
-          }
-          // Update Diana card (use dianaCardId if available, otherwise query)
-          const dianaCardToUpdate = (dianaCardId ? { id: dianaCardId } : null) ?? await prisma.campaignCard.findFirst({ where: { runId, agentId: "diana-design", dayOfWeek, scheduledDate } });
-          if (dianaCardToUpdate) {
-            await prisma.campaignCard.update({
-              where: { id: dianaCardToUpdate.id },
-              data: { content: newPrompt, ...(newMediaUrl ? { mediaUrl: newMediaUrl } : {}), metadata: { retried: true, veraFeedback: firstOutput.slice(0, 400) } as unknown as import("@prisma/client").Prisma.InputJsonValue },
-            });
-          }
-          didRetry = true;
-        } else if (needsMediaRetry && dianaRetries >= 1) {
-          blockedAgents.push("Diana (mídia)");
-        }
-
-        // Second review if anything was retried
-        if (didRetry) {
-          await appendLog(runId, { agent: "Vera Veredito", message: `Revisando novamente ${dayName} após correções...`, status: "running" });
-          const secondOutput = await runAgent(
-            reviewer,
-            buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), true),
-            `${contextWithResearch}\n\nTema da campanha: ${topic}`,
-            runId,
-            funnelInstruction
-          );
-          finalOutput = secondOutput;
-          const secondParsed = parseVeraVerdict(secondOutput);
-          approved = secondParsed.approved;
-          verdict = secondParsed.verdict;
-          if (!approved) {
-            const blockedFrom = [
-              ...(secondParsed.needsTextRetry ? ["Lucas (texto)"] : []),
-              ...(secondParsed.needsMediaRetry ? ["Diana (mídia)"] : []),
-            ];
-            blockedAgents.push(...blockedFrom.filter((a) => !blockedAgents.includes(a)));
-          }
-        }
-
-        if (blockedAgents.length > 0) {
-          await appendLog(runId, {
-            agent: "Vera Veredito",
-            message: `🚨 ATENÇÃO: A campanha para ${dayName} não passou na revisão após 2 tentativas. Agentes com problema: ${blockedAgents.join(", ")}. Acesse o card e ajuste manualmente ou use o chat para pedir correções.`,
-            status: "error",
-          });
-          await prisma.pipelineRun.update({ where: { id: runId }, data: { status: "needs_attention" } }).catch(() => {});
-        }
+        await appendLog(runId, {
+          agent: "Vera Veredito",
+          message: `Conteúdo de ${dayName} marcado para revisão. Veja o card da Vera para detalhes.`,
+          status: "warning",
+        });
       }
 
       const hasMediaError = getMediaStatus().startsWith("FALHOU");
@@ -1428,7 +1307,6 @@ O prompt deve ser específico: composição, iluminação, materiais, mood. Pale
         cardType: "preview",
         content: [
           hasMediaError ? "⚠ ATENÇÃO: Mídia não gerada — deve ser corrigida antes de publicar.\n" : "",
-          didRetry ? "↺ Este conteúdo passou por revisão e correção automática.\n" : "",
           `LinkedIn:\n${liPost?.content ?? "—"}\n\nX (Twitter):\n${twPost?.content ?? "—"}\n\nVeredito da Vera:\n${finalOutput}`,
         ].filter(Boolean).join("\n"),
         ...(cardStatus === "needs_revision" ? { status: "needs_revision" } : {}),
