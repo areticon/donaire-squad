@@ -639,21 +639,8 @@ ESTRUTURA DO BRIEF (siga esta ordem):
       { maxTokens: 4096 }
     );
 
-    // Save research card for each unique day
-    for (const { dayOfWeek, weekOffset } of daysList.filter((v, i, a) => a.findIndex((x) => x.dayOfWeek === v.dayOfWeek && x.weekOffset === v.weekOffset) === i)) {
-      const scheduledDate = getScheduledAt(dayOfWeek, weekOffset);
-
-      await saveCard({
-        runId,
-        projectId: project.id,
-        agentId: "roberto-radar",
-        agentName: researcher.name,
-        dayOfWeek,
-        scheduledDate,
-        cardType: "research",
-        content: researchBrief,
-      });
-    }
+    // Research card is saved inside the day loop (one per day, at the start of each day)
+    // so the sequence Roberto → Lucas → Tiago → Diana → Vera → Paulo is visible per day.
   }
 
   const contextWithResearch = JSON.stringify({
@@ -761,6 +748,8 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
     };
   }
 
+  const robertoCardSavedForDays = new Set<string>();
+
   for (const { dayOfWeek, contentType, weekOffset } of daysList) {
     // ── Cancellation check ────────────────────────────────────────────────────
     const runCheck = await prisma.pipelineRun.findUnique({ where: { id: runId }, select: { status: true } });
@@ -773,6 +762,22 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
     const scheduledDate = getScheduledAt(dayOfWeek, weekOffset);
     const dayKey = `${dayOfWeek}-${weekOffset}`;
     let dianaCardId: string | undefined;
+
+    // ── Step 1 (per day): Save Roberto's research card at the START of each day ──
+    // This preserves the sequence Roberto → Lucas → Tiago → Diana → Vera → Paulo per day.
+    if (researchBrief && researcher && !robertoCardSavedForDays.has(dayKey)) {
+      robertoCardSavedForDays.add(dayKey);
+      await saveCard({
+        runId,
+        projectId: project.id,
+        agentId: "roberto-radar",
+        agentName: researcher.name,
+        dayOfWeek,
+        scheduledDate,
+        cardType: "research",
+        content: researchBrief,
+      });
+    }
 
     const resolvedType: ContentType =
       contentType === "free"
