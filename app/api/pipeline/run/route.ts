@@ -579,6 +579,17 @@ async function runPipeline(
 
   const daysList = getDaysList();
 
+  if (daysList.length === 0) {
+    await appendLog(runId, { agent: "Sistema", message: "Nenhum dia para gerar (todos os dias configurados já passaram ou não há agendamento).", status: "failed" });
+    await prisma.pipelineRun.update({ where: { id: runId }, data: { status: "failed", endedAt: new Date() } });
+    return;
+  }
+  await appendLog(runId, {
+    agent: "Sistema",
+    message: `Gerando ${daysList.length} dia(s): ${daysList.map(d => DAY_NAMES[d.dayOfWeek]).join(", ")}`,
+    status: "running",
+  });
+
   // Build context block from ProjectContext
   const contextDocs = project.contexts.length > 0
     ? "\n\n--- CONTEXTO DO PROJETO ---\n" + project.contexts.map((c) => `## ${c.title}\n${c.compiled}`).join("\n\n")
@@ -988,7 +999,8 @@ OPCAO_1: [máx ${PLATFORM_LIMITS.twitter.pollOption} chars]
 OPCAO_2: [máx ${PLATFORM_LIMITS.twitter.pollOption} chars]
 DURACAO_HORAS: 1440
 
-Seja direto e provocativo.${uniquenessBlock}`,
+Seja direto e provocativo.
+⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva sem números.${uniquenessBlock}`,
             contextWithResearch,
             runId,
             funnelInstruction
@@ -1004,7 +1016,8 @@ ${twitterRules("thread")}
 → Tweet 1: abertura impactante que gere curiosidade imediata
 → Tweets 2-N: desenvolvimento com dados e argumentos
 → Último tweet: CTA claro + hashtags (máx 2)
-Aborde um ângulo diferente dos posts anteriores.${uniquenessBlock}`,
+Aborde um ângulo diferente dos posts anteriores.
+⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva narrativa qualitativa sem números inventados.${uniquenessBlock}`,
             contextWithResearch,
             runId,
             funnelInstruction
@@ -1019,7 +1032,8 @@ ${twitterRules("thread")}
 → Tweet 1: abertura impactante
 → Tweets intermediários: conteúdo de valor
 → Último tweet: CTA claro
-Aborde um ângulo diferente dos posts anteriores.${uniquenessBlock}`,
+Aborde um ângulo diferente dos posts anteriores.
+⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva narrativa qualitativa sem números inventados.${uniquenessBlock}`,
             contextWithResearch,
             runId,
             funnelInstruction
@@ -1280,21 +1294,90 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         funnelInstruction
       );
 
-      // Vera reviews once — no automatic retry (retry doubles execution time and causes timeouts)
-      // If content needs correction, Paulo's card shows the verdict for manual action
-      const { approved, verdict } = parseVeraVerdict(firstOutput);
-      const finalOutput = firstOutput;
+      const { approved, verdict, needsTextRetry } = parseVeraVerdict(firstOutput);
+
+      // ── Auto-correction: if Vera rejected text, ask the writers to fix it once ──
+      let liContentFinal = liPost?.content;
+      let twContentFinal = twPost?.content;
+
+      if (needsTextRetry) {
+        await appendLog(runId, {
+          agent: "Vera Veredito",
+          message: `Problemas detectados em ${dayName} — iniciando correção automática...`,
+          status: "running",
+        });
+
+        const [liFixed, twFixed] = await Promise.allSettled([
+          // LinkedIn: retry only if Vera's output mentions linkedin-specific issues
+          (async () => {
+            if (!liPost?.cardId || !linkedinWriter) return null;
+            const veraLower = firstOutput.toLowerCase();
+            const liMentionedBad = /linkedin[\s\S]{0,400}(violação|invent|problem|reprovad|errad|incorret)/i.test(firstOutput);
+            if (!liMentionedBad) return null; // LinkedIn was OK — don't touch it
+            const fixed = await runAgent(
+              linkedinWriter,
+              `A Vera reprovou o post do LinkedIn. Corrija os problemas identificados e reescreva.
+
+FEEDBACK DA VERA:
+${firstOutput.slice(0, 2000)}
+
+⚠ NUNCA invente estatísticas, percentuais ou dados — use APENAS fatos do brief de pesquisa acima.
+
+POST ATUAL:
+${liPost.content}`,
+              contextWithResearch, runId, funnelInstruction
+            );
+            await prisma.campaignCard.update({ where: { id: liPost.cardId }, data: { content: fixed } });
+            return fixed;
+          })(),
+          // Twitter: always retry when REPROVADO_TEXTO (Tiago is the main offender for invented stats)
+          (async () => {
+            if (!twPost?.cardId || !twitterWriter) return null;
+            const fixed = await runAgent(
+              twitterWriter,
+              `A Vera reprovou a thread do Twitter. Corrija os problemas identificados e reescreva.
+
+FEEDBACK DA VERA:
+${firstOutput.slice(0, 2000)}
+
+⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos do brief de pesquisa acima. Se não há dados reais, escreva narrativa qualitativa sem números inventados.
+
+THREAD ATUAL:
+${twPost.content}`,
+              contextWithResearch, runId, funnelInstruction
+            );
+            await prisma.campaignCard.update({ where: { id: twPost.cardId }, data: { content: fixed } });
+            return fixed;
+          })(),
+        ]);
+
+        if (liFixed.status === "fulfilled" && liFixed.value) {
+          liContentFinal = liFixed.value;
+          const idx = dayPosts.findIndex(p => p.cardId === liPost!.cardId);
+          if (idx >= 0) dayPosts[idx].content = liFixed.value;
+          await appendLog(runId, { agent: "Lucas LinkedIn", message: `Post de ${dayName} corrigido automaticamente ✓`, status: "running" });
+        }
+        if (twFixed.status === "fulfilled" && twFixed.value) {
+          twContentFinal = twFixed.value;
+          const idx = dayPosts.findIndex(p => p.cardId === twPost!.cardId);
+          if (idx >= 0) dayPosts[idx].content = twFixed.value;
+          await appendLog(runId, { agent: "Tiago Twitter", message: `Thread de ${dayName} corrigida automaticamente ✓`, status: "running" });
+        }
+      }
 
       if (!approved) {
         await appendLog(runId, {
           agent: "Vera Veredito",
-          message: `Conteúdo de ${dayName} marcado para revisão. Veja o card da Vera para detalhes.`,
-          status: "warning",
+          message: needsTextRetry
+            ? `Conteúdo de ${dayName} corrigido automaticamente. Veja o card da Vera para o veredito original.`
+            : `Conteúdo de ${dayName} marcado para revisão. Veja o card da Vera para detalhes.`,
+          status: needsTextRetry ? "running" : "warning",
         });
       }
 
       const hasMediaError = getMediaStatus().startsWith("FALHOU");
-      const cardStatus = approved ? "pending" : "needs_revision";
+      // After auto-correction, mark as pending (reviewer approved the intent, writers fixed the issues)
+      const cardStatus = (approved || needsTextRetry) ? "pending" : "needs_revision";
       await saveCard({
         runId,
         projectId: project.id,
@@ -1305,12 +1388,12 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         cardType: "preview",
         content: [
           hasMediaError ? "⚠ ATENÇÃO: Mídia não gerada — deve ser corrigida antes de publicar.\n" : "",
-          `LinkedIn:\n${liPost?.content ?? "—"}\n\nX (Twitter):\n${twPost?.content ?? "—"}\n\nVeredito da Vera:\n${finalOutput}`,
+          needsTextRetry ? "✅ Correção automática aplicada com base no feedback da Vera.\n" : "",
+          `LinkedIn:\n${liContentFinal ?? "—"}\n\nX (Twitter):\n${twContentFinal ?? "—"}\n\nVeredito da Vera:\n${firstOutput}`,
         ].filter(Boolean).join("\n"),
         ...(cardStatus === "needs_revision" ? { status: "needs_revision" } : {}),
       });
 
-      // suppress unused warning
       void verdict;
     }
 
