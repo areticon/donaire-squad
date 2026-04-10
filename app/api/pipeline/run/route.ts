@@ -16,7 +16,7 @@ import {
   type MediaStyleId,
 } from "@/lib/media/media-style";
 
-export const maxDuration = 800; // Vercel Pro — gives pipeline room for full weekly campaigns
+export const maxDuration = 300; // Vercel Hobby plan limit — Pro allows up to 800s
 
 type FunnelStage = "tofu" | "mofu" | "bofu";
 type ContentType = "text" | "image" | "video" | "carousel" | "infographic" | "poll" | "article" | "thread" | "free";
@@ -414,9 +414,9 @@ export async function POST(req: NextRequest) {
   // even after the HTTP response has already been sent to the client.
   // Without this, changing browser tabs or closing the window could kill the generation.
   after(async () => {
-    // Safety timeout: if pipeline takes more than 750s, emit a warning and mark as completed
-    // (Vercel kills the function at maxDuration=800 — this ensures Pusher gets a final event)
-    const SAFETY_TIMEOUT_MS = 750_000;
+    // Safety timeout: if pipeline takes more than 275s, emit a warning and mark as completed
+    // (Vercel kills the function at maxDuration=300 — this ensures Pusher gets a final event)
+    const SAFETY_TIMEOUT_MS = 275_000;
     let safetyFired = false;
 
     const safetyTimer = setTimeout(async () => {
