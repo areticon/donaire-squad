@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
         let plan = "free";
         if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "starter";
         if (priceId === process.env.STRIPE_PRO_PRICE_ID) plan = "pro";
+        if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) plan = "business";
+        if (priceId === process.env.STRIPE_AGENCY_PRICE_ID) plan = "agency";
 
         const status = sub.status;
         if (status === "active" || status === "trialing") {
