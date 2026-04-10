@@ -546,9 +546,12 @@ async function runPipeline(
 
     const result: Array<{ dayOfWeek: number; contentType: ContentType; weekOffset: number }> = [];
 
-    // Today midnight (UTC) — used to skip past days when no explicit timestamp is provided
+    // Cutoff: yesterday midnight UTC.
+    // Using "yesterday" instead of "today" gives a 24h buffer so that a user in UTC-3
+    // who is generating at 9pm local time (= midnight UTC next day) doesn't lose "today".
     const nowUtc = new Date();
     nowUtc.setUTCHours(0, 0, 0, 0);
+    const cutoffUtc = new Date(nowUtc.getTime() - 24 * 60 * 60 * 1000); // yesterday midnight UTC
 
     for (const weekOffset of weeksToGenerate) {
       for (const [dayKey, contentType] of Object.entries(config.weeklySchedule)) {
@@ -557,18 +560,15 @@ async function runPipeline(
         const dayOfWeek = parseInt(dayKey);
 
         if (weekOffset === 0) {
-          // Always skip days whose calendar date is strictly before today (Mon-Wed when today is Thu)
+          // Skip days that are clearly in the past (more than 1 full day ago in UTC).
+          // The 24h buffer handles users in UTC-3 (Brazil): at 9pm local time the UTC
+          // clock already shows "tomorrow", so without buffer "today" would be skipped.
           const dayDate = new Date(config.weekStart + "T00:00:00.000Z");
           dayDate.setUTCDate(dayDate.getUTCDate() + (dayOfWeek - 1));
-          if (dayDate < nowUtc) continue;
-
-          // If the frontend provided explicit timestamps, respect them for future days.
-          // But for TODAY: even if the scheduled time has passed, still generate — the post
-          // can be published manually or rescheduled. Don't silently skip today's content.
-          const isToday = dayDate.getTime() === nowUtc.getTime();
-          if (!isToday && config.postingTimestamps && !(dayKey in config.postingTimestamps)) {
-            continue;
-          }
+          if (dayDate < cutoffUtc) continue;
+          // postingTimestamps are used only by getScheduledAt for the exact posting time.
+          // Never skip a day just because its timestamp is absent — the user explicitly
+          // requested this week and getScheduledAt will schedule past slots for +10min.
         }
 
         result.push({ dayOfWeek, contentType: contentType as ContentType, weekOffset });
@@ -647,7 +647,7 @@ async function runPipeline(
       });
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
-      await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca falhou (${errMsg.slice(0, 120)}).`, status: "warning" });
+      await appendLog(runId, { agent: "Roberto Radar", message: `Aviso: busca falhou — ${errMsg.slice(0, 300)}`, status: "warning" });
     }
 
     // 1b. Roberto estrutura os dados reais em um brief — SEM inventar nada
