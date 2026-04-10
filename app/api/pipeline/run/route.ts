@@ -1239,26 +1239,18 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
 
           try {
             if (isVideoType) {
+              // Veo takes 60-300s to generate — impossible within the 300s pipeline budget.
+              // Generate a cinematic still image instead; the video prompt is saved so the
+              // user can manually regenerate the actual video from the card later.
+              await appendLog(runId, { agent: "Diana Design", message: `Gerando imagem cinematográfica para ${dayName} (vídeo gerado separadamente após a campanha).`, status: "running" });
               try {
-                const videoUrl = await withDianaCap(generateVideo(visualPrompt, "9:16", "720p", 60_000, videoDuration, false, videoAudio));
-                mediaByDayKey[dayKey] = { videoUrl, imagePrompt: visualPrompt };
-                dianaFinalUrl = videoUrl;
-                await appendLog(runId, { agent: "Diana Design", message: `Vídeo gerado para ${dayName}.`, status: "completed" });
-              } catch (veoErr) {
-                const isUnavailable = veoErr instanceof VeoUnavailableError;
-                const reason = veoErr instanceof Error ? veoErr.message : "erro desconhecido";
-                console.warn(`[diana] VEO 3 indisponível (${reason}) — gerando imagem substituta`);
-                await appendLog(runId, { agent: "Diana Design", message: `VEO 3 não disponível: ${reason}. Gerando imagem estática como alternativa.`, status: "warning" });
-                try {
-                  const fallbackUrl = await withDianaCap(generateImage(`${visualPrompt} — still frame for video`, "16:9"));
-                  mediaByDayKey[dayKey] = { imageUrl: fallbackUrl, imagePrompt: visualPrompt };
-                  dianaFinalUrl = fallbackUrl;
-                  await appendLog(runId, { agent: "Diana Design", message: `Imagem substituta gerada para ${dayName}.`, status: "completed" });
-                } catch {
-                  mediaByDayKey[dayKey] = { imagePrompt: visualPrompt };
-                  await appendLog(runId, { agent: "Diana Design", message: `Falha ao gerar imagem substituta.`, status: "warning" });
-                }
-                if (!isUnavailable) throw veoErr;
+                const fallbackUrl = await withDianaCap(generateImage(`${visualPrompt} — cinematic still frame, 16:9`, "16:9"));
+                mediaByDayKey[dayKey] = { imageUrl: fallbackUrl, imagePrompt: visualPrompt };
+                dianaFinalUrl = fallbackUrl;
+                await appendLog(runId, { agent: "Diana Design", message: `Imagem gerada para ${dayName}. Clique no card para gerar o vídeo final.`, status: "completed" });
+              } catch {
+                mediaByDayKey[dayKey] = { imagePrompt: visualPrompt };
+                await appendLog(runId, { agent: "Diana Design", message: `Falha ao gerar imagem para ${dayName}. Prompt salvo.`, status: "warning" });
               }
             } else if (resolvedType === "carousel") {
               const imageUrl = await withDianaCap(generateImage(visualPrompt, "1:1"));
