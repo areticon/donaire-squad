@@ -687,7 +687,7 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
         baseContext,
         runId,
         funnelInstruction,
-        { maxTokens: 4096 }
+        { maxTokens: 2048 } // 4096 levava 60-70s e causava timeout — 2048 é suficiente para um brief
       );
     }
 
