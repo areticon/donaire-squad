@@ -663,32 +663,35 @@ export async function publishLinkedInComment(
   const actor = authorUrn(platformUserId, accountType);
   const encodedUrn = encodeURIComponent(postUrn);
 
-  for (const version of LINKEDIN_VERSION_CANDIDATES) {
-    let res: Response;
-    try {
-      res = await fetch(
-        `https://api.linkedin.com/rest/socialActions/${encodedUrn}/comments`,
-        {
-          method: "POST",
-          headers: buildHeaders(accessToken, version),
-          body: JSON.stringify({ actor, message: { text } }),
-          signal: AbortSignal.timeout(15_000),
-        }
-      );
-    } catch {
-      continue;
-    }
-
-    if (LINKEDIN_RETRY_STATUSES.has(res.status)) continue;
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn(`[LinkedIn] comment failed (${version} / ${res.status}): ${err.slice(0, 200)}`);
-      return; // não fatal — post já foi publicado
-    }
-    console.log(`[LinkedIn] ✓ First comment published (version ${version})`);
+  // Use the public v2 socialActions endpoint (requires w_member_social scope only).
+  // The /rest/socialActions endpoint requires partnerApiSocialActions.CREATE (Partner API),
+  // which is not available to standard apps. The v2 endpoint works with w_member_social.
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://api.linkedin.com/v2/socialActions/${encodedUrn}/comments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({ actor, message: { text } }),
+        signal: AbortSignal.timeout(15_000),
+      }
+    );
+  } catch (e) {
+    console.warn("[LinkedIn] First comment: network error —", e);
     return;
   }
-  console.warn("[LinkedIn] First comment: all versions failed — skipping.");
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.warn(`[LinkedIn] comment failed (v2 / ${res.status}): ${err.slice(0, 300)}`);
+    return; // não fatal — post já foi publicado
+  }
+  console.log("[LinkedIn] ✓ First comment published (v2)");
 }
 
 /**
