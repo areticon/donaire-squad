@@ -6,7 +6,7 @@ function getClient(): Anthropic {
   if (!_client) {
     _client = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      timeout: 60_000, // 60s max per Claude call — prevents hanging forever
+      timeout: 90_000, // 90s max per Claude call — 60s was too short for Roberto (Gemini 50s + Claude 70s)
     });
   }
   return _client;
