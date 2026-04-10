@@ -9,70 +9,86 @@ import { cn } from "@/lib/utils";
 
 const PLANS = [
   {
-    id: "free",
-    name: "Free",
-    price: 0,
-    description: "Para experimentar",
-    cta: "Começar grátis",
-    href: "/sign-up",
-    features: [
-      "1 projeto",
-      "2 agentes de IA",
-      "5 posts por mês",
-      "LinkedIn e X",
-      "Aprovação manual",
-    ],
-    notIncluded: [
-      "Agendamento automático",
-      "Infográficos com IA",
-      "Visualização em tempo real",
-    ],
-    popular: false,
-  },
-  {
     id: "starter",
     name: "Starter",
-    price: 97,
-    description: "Para profissionais e pequenas empresas",
+    price: 49,
+    credits: "500 créditos",
     cta: "Assinar Starter",
     href: "/sign-up?plan=starter",
+    popular: false,
     features: [
-      "3 projetos",
-      "8 agentes de IA",
-      "30 posts por mês",
-      "LinkedIn, X e Instagram",
+      "500 créditos/mês",
+      "LinkedIn (texto, imagem, carrossel)",
+      "X — somente texto*",
+      "6 agentes de IA (pesquisa, redação, design, revisão)",
       "Agendamento automático",
-      "Infográficos com IA",
-      "Memória persistente",
-      "Dashboard de métricas",
+      "Aprovação antes de publicar",
     ],
     notIncluded: [
-      "Visualização em tempo real",
-      "API access",
+      "Créditos extras",
+      "Dashboard de métricas",
+      "Suporte prioritário",
     ],
-    popular: true,
   },
   {
     id: "pro",
     name: "Pro",
-    price: 297,
-    description: "Para agências e equipes",
+    price: 99,
+    credits: "1.100 créditos",
     cta: "Assinar Pro",
     href: "/sign-up?plan=pro",
+    popular: true,
     features: [
-      "Projetos ilimitados",
-      "Agentes ilimitados",
-      "Posts ilimitados",
-      "Todas as redes sociais",
+      "1.100 créditos/mês",
+      "LinkedIn (texto, imagem, carrossel, vídeo)",
+      "X — somente texto*",
+      "Todos os agentes de IA",
       "Agendamento automático",
-      "Infográficos com IA",
-      "Visualização em tempo real",
-      "Dashboard avançado",
-      "API access",
+      "Créditos extras por R$0,12/crédito",
+      "Dashboard de métricas",
+    ],
+    notIncluded: ["Suporte prioritário"],
+  },
+  {
+    id: "business",
+    name: "Business",
+    price: 199,
+    credits: "2.500 créditos",
+    cta: "Assinar Business",
+    href: "/sign-up?plan=business",
+    popular: false,
+    features: [
+      "2.500 créditos/mês",
+      "LinkedIn (texto, imagem, carrossel, vídeo)",
+      "X — somente texto*",
+      "Todos os agentes de IA",
+      "Múltiplos projetos simultâneos",
+      "Créditos extras por R$0,10/crédito",
+      "Dashboard de métricas",
       "Suporte prioritário",
     ],
     notIncluded: [],
+  },
+  {
+    id: "agency",
+    name: "Agency",
+    price: 399,
+    credits: "5.500 créditos",
+    cta: "Assinar Agency",
+    href: "/sign-up?plan=agency",
     popular: false,
+    features: [
+      "5.500 créditos/mês",
+      "LinkedIn (texto, imagem, carrossel, vídeo)",
+      "X — somente texto*",
+      "Todos os agentes de IA",
+      "Projetos ilimitados",
+      "Créditos extras por R$0,08/crédito",
+      "Dashboard de métricas",
+      "Onboarding dedicado",
+      "Suporte prioritário",
+    ],
+    notIncluded: [],
   },
 ];
 
@@ -95,14 +111,22 @@ export function Pricing() {
             Preços simples e transparentes
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[#f5f5f5] mb-4">
-            Escolha o plano <span className="text-orange-500">certo para você</span>
+            Escolha o plano{" "}
+            <span className="text-orange-500">certo para você</span>
           </h2>
-          <p className="text-xl text-[#9ca3af] max-w-xl mx-auto">
+          <p className="text-xl text-[#9ca3af] max-w-xl mx-auto mb-4">
             Cancele quando quiser. Sem fidelidade, sem surpresas.
           </p>
+          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-5 py-2 text-sm text-orange-300 font-medium">
+            <Zap className="w-3.5 h-3.5 shrink-0" />
+            Lançamento — 50% off nos 3 primeiros meses com o código{" "}
+            <span className="font-bold tracking-wide text-orange-400">
+              50LANCAMENTO
+            </span>
+          </div>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6 items-start">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
           {PLANS.map((plan, i) => (
             <motion.div
               key={plan.id}
@@ -119,28 +143,27 @@ export function Pricing() {
             >
               {plan.popular && (
                 <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                  <span className="bg-orange-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                  <span className="bg-orange-500 text-white text-xs font-bold px-4 py-1 rounded-full whitespace-nowrap">
                     MAIS POPULAR
                   </span>
                 </div>
               )}
 
               <div className="mb-6">
-                <h3 className="text-xl font-bold text-[#f5f5f5] mb-1">{plan.name}</h3>
-                <p className="text-sm text-[#9ca3af]">{plan.description}</p>
+                <h3 className="text-xl font-bold text-[#f5f5f5] mb-1">
+                  {plan.name}
+                </h3>
+                <p className="text-sm text-[#9ca3af]">{plan.credits}</p>
               </div>
 
               <div className="mb-8">
                 <div className="flex items-baseline gap-1">
                   <span className="text-[#9ca3af] text-lg">R$</span>
-                  <span className="text-5xl font-black text-[#f5f5f5]">{plan.price}</span>
-                  {plan.price > 0 && (
-                    <span className="text-[#9ca3af] text-sm">/mês</span>
-                  )}
+                  <span className="text-5xl font-black text-[#f5f5f5]">
+                    {plan.price}
+                  </span>
+                  <span className="text-[#9ca3af] text-sm">/mês</span>
                 </div>
-                {plan.price === 0 && (
-                  <span className="text-[#9ca3af] text-sm">Para sempre</span>
-                )}
               </div>
 
               <Button
@@ -159,11 +182,16 @@ export function Pricing() {
                   </li>
                 ))}
                 {plan.notIncluded.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2.5 text-sm opacity-40">
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2.5 text-sm opacity-40"
+                  >
                     <div className="w-4 h-4 shrink-0 mt-0.5 flex items-center justify-center">
                       <div className="w-3 h-px bg-[#9ca3af]" />
                     </div>
-                    <span className="text-[#9ca3af] line-through">{feature}</span>
+                    <span className="text-[#9ca3af] line-through">
+                      {feature}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -171,8 +199,9 @@ export function Pricing() {
           ))}
         </div>
 
-        <p className="text-center text-sm text-[#9ca3af] mt-8">
-          Todos os planos incluem setup assistido por IA e suporte via email.
+        <p className="text-center text-sm text-[#9ca3af] mt-8 max-w-2xl mx-auto">
+          * Imagens no X requerem plano API pago da plataforma X (Basic tier).
+          Por ora, posts no X são publicados em texto.
         </p>
       </div>
     </section>
