@@ -148,18 +148,21 @@ export async function uploadTwitterMedia(
     base64Data = imageInput.slice(comma + 1);
   }
 
-  const body = new URLSearchParams({
-    media_data: base64Data,
-    media_type: mimeType,
-  });
+  // Use multipart/form-data with binary data (not base64 URL-encoded).
+  // The base64 form (media_data + x-www-form-urlencoded) can fail silently
+  // for images > ~1MB because the encoded payload hits server size limits.
+  const buffer = Buffer.from(base64Data, "base64");
+  const blob = new Blob([buffer], { type: mimeType });
+  const formData = new FormData();
+  formData.append("media", blob, `upload.${mimeType.split("/")[1] ?? "jpg"}`);
 
   const res = await fetch(MEDIA_UPLOAD_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/x-www-form-urlencoded",
+      // Content-Type is set automatically by fetch with the correct multipart boundary
     },
-    body: body.toString(),
+    body: formData,
     signal: AbortSignal.timeout(60_000),
   });
 
