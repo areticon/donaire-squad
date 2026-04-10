@@ -256,6 +256,9 @@ export async function executeOAuthPostPublish(
   if (account.platform === "linkedin" && externalId) {
     const firstComment = (metadata as Record<string, unknown> | null)?.firstComment;
     if (typeof firstComment === "string" && firstComment.trim().length > 0) {
+      // Aguarda 3s para o LinkedIn indexar o post antes de postar o comentário
+      // (sem delay, o endpoint socialActions pode retornar 404 e silenciosamente falhar)
+      await new Promise((r) => setTimeout(r, 3_000));
       // externalId pode ser URN completo (urn:li:share:XXXX) ou só o ID numérico
       const rawId = externalId.startsWith("urn:li:")
         ? externalId

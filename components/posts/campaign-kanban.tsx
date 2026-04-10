@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle,
@@ -165,6 +165,9 @@ function KanbanCard({
   const [chatLoading, setChatLoading] = useState(false);
   const [localCard, setLocalCard] = useState(card);
   const [approving, setApproving] = useState(false);
+  // Sync when the card prop changes — navigating between days reuses this component instance
+  // without this, localCard keeps the previous day's dayOfWeek and shows the wrong image
+  useEffect(() => { setLocalCard(card); }, [card]);
 
   if (!localCard) {
     return (

@@ -813,8 +813,20 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
     const dayName = DAY_NAMES[dayOfWeek];
     const scheduledDate = getScheduledAt(dayOfWeek, weekOffset);
     const dayKey = `${dayOfWeek}-${weekOffset}`;
-    // Use per-day topic if provided (from modal), fall back to the global topic
-    const dayTopic = config.topicsPerDay?.[String(dayOfWeek)]?.trim() || topic;
+    // Use per-day topic if provided (from modal).
+    // If not, add a day-specific angle so each day's content has a distinct focus
+    // even when the global topic is the same — prevents Twitter threads from repeating.
+    const DAY_ANGLES: Record<number, string> = {
+      1: "(ângulo: o PROBLEMA — dores e desafios que o público enfrenta)",
+      2: "(ângulo: a SOLUÇÃO — estratégias práticas e como superar os obstáculos)",
+      3: "(ângulo: DADOS e evidências — pesquisas e tendências reais)",
+      4: "(ângulo: CASOS REAIS — exemplos concretos e situações que o público reconhece)",
+      5: "(ângulo: FUTURO — oportunidades, riscos e próximos passos para agir agora)",
+      6: "(ângulo: MITOS — derrube uma crença comum ou questione o senso comum)",
+      7: "(ângulo: IMPACTO HUMANO — o lado humano, efeitos nas pessoas e nas equipes)",
+    };
+    const dayTopic = config.topicsPerDay?.[String(dayOfWeek)]?.trim()
+      || `${topic} ${DAY_ANGLES[dayOfWeek] ?? ""}`;
     let dianaCardId: string | undefined;
 
     // ── Step 1 (per day): Save Roberto's research card at the START of each day ──
