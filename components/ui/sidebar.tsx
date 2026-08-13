@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useClerk } from "@clerk/nextjs";
+import { authClient, useSession } from "@/lib/auth/client";
+import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -34,8 +35,14 @@ export function Sidebar({
   onToggle?: () => void;
 }) {
   const pathname = usePathname();
-  const { signOut } = useClerk();
+  const router = useRouter();
+  const { data: session } = useSession();
   const { theme, toggle } = useTheme();
+
+  const userInitial =
+    session?.user?.name?.trim()?.charAt(0)?.toUpperCase() ??
+    session?.user?.email?.charAt(0)?.toUpperCase() ??
+    "?";
 
   return (
     <aside
@@ -185,11 +192,21 @@ export function Sidebar({
           )}
         >
           <div className={cn("flex items-center justify-center", collapsed ? "w-full" : "")}>
-            <UserButton
-              appearance={{
-                elements: { avatarBox: "w-8 h-8" },
-              }}
-            />
+            {session?.user?.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={session.user.image}
+                alt={session.user.name ?? "Avatar"}
+                className="w-8 h-8 rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm font-semibold"
+                title={session?.user?.email ?? undefined}
+              >
+                {userInitial}
+              </div>
+            )}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
@@ -211,7 +228,11 @@ export function Sidebar({
         </div>
         <button
           type="button"
-          onClick={() => signOut({ redirectUrl: "/" })}
+          onClick={() =>
+            authClient.signOut({
+              fetchOptions: { onSuccess: () => router.push("/") },
+            })
+          }
           className={cn(
             "w-full flex items-center rounded-lg text-sm transition-all hover:text-red-400 hover:bg-red-900/10",
             collapsed ? "justify-center px-2 py-2" : "gap-2 px-3 py-2"

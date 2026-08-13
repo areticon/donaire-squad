@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { askClaude, KANBAN_SYSTEM_PROMPT } from "@/lib/claude";
 

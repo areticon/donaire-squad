@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";

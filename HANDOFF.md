@@ -1,0 +1,336 @@
+# demandou — Estado Completo do Projeto (09/04/2026)
+
+> **Use este arquivo para dar contexto ao Claude Code ao continuar o trabalho.**
+> Copie este conteúdo inteiro ou referencie o arquivo ao iniciar uma nova sessão.
+
+---
+
+## 1. O que é o demandou
+
+SaaS de criação e publicação de conteúdo com agentes de IA para redes sociais (LinkedIn e X/Twitter).
+
+**Stack:** Next.js 16 (App Router) · React · Tailwind · Prisma (Neon Postgres) · Clerk (auth) · Stripe (pagamentos) · Vercel (hosting, Hobby plan) · Pusher (real-time logs)
+
+**Empresa:** DEMANDOU TECNOLOGIA DA INFORMACAO LTDA · CNPJ 66.140.770/0001-48 · Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP · CEP 05.424-150
+
+**Repo:** `github.com/areticon/donaire-squad` (branch: `master`)
+
+---
+
+## 2. Agentes de IA (Pipeline)
+
+O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes por dia:
+
+| Agente | Função | Tech |
+|--------|--------|------|
+| **Roberto** | Pesquisa web em tempo real | Gemini 2.5 Flash com Google Search Grounding (50s timeout) |
+| **Lucas** | Redação LinkedIn (texto/carrossel/artigo/poll) | Claude (Anthropic SDK, 90s timeout, maxTokens 2048) |
+| **Tiago** | Redação X/Twitter (thread/poll/default) | Claude (Anthropic SDK, 90s timeout) |
+| **Diana** | Geração de imagem/infográfico | Nano Banana (imagem) · Veo 3 (vídeo — DESABILITADO, gera imagem estática no lugar) |
+| **Vera** | Revisão de qualidade (APROVADO/REPROVADO_TEXTO) | Claude — auto-corrige REPROVADO_TEXTO sem intervenção humana |
+| **Paulo** | Agendamento dos posts nos horários configurados | Interno (getScheduledAt) |
+
+**Lucas + Tiago rodam em paralelo** (Promise.allSettled).
+
+**Vera auto-corrige:** se REPROVADO_TEXTO, faz retry paralelo de LinkedIn (se Vera mencionar) + Twitter (sempre).
+
+**DAY_ANGLES:** quando `topicsPerDay` não está configurado, cada dia da semana recebe um ângulo diferente (PROBLEMA, SOLUÇÃO, DADOS, CASOS REAIS, FUTURO, MITOS, IMPACTO HUMANO) para evitar repetição.
+
+---
+
+## 3. Planos e Stripe
+
+### Planos atuais (PR #26)
+
+| Plano | Preço | Créditos | Price ID env var |
+|-------|-------|----------|------------------|
+| Starter | R$49/mês | 500 | `STRIPE_STARTER_PRICE_ID` |
+| Pro | R$99/mês | 1.100 | `STRIPE_PRO_PRICE_ID` |
+| Business | R$199/mês | 2.500 | `STRIPE_BUSINESS_PRICE_ID` |
+| Agency | R$399/mês | 5.500 | `STRIPE_AGENCY_PRICE_ID` |
+
+**Cupom de lançamento:** `50LANCAMENTO` — 50% off nos 3 primeiros meses (criado no Stripe)
+
+### Arquivos Stripe
+- `lib/stripe/index.ts` — PLANS, createCheckoutSession (card + boleto, BRL), createBillingPortalSession
+- `app/api/stripe/checkout/route.ts` — POST cria sessão checkout
+- `app/api/webhooks/stripe/route.ts` — webhook: checkout.session.completed, subscription.created/updated/deleted
+- `components/landing/pricing.tsx` — 4 cards, grid 2x2→4col
+
+### Variáveis de ambiente Stripe (no Vercel)
+```
+STRIPE_SECRET_KEY=sk_live_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_STARTER_PRICE_ID=price_...
+STRIPE_PRO_PRICE_ID=price_...
+STRIPE_BUSINESS_PRICE_ID=price_...
+STRIPE_AGENCY_PRICE_ID=price_...
+```
+
+### Webhook Stripe
+- URL: `https://demandou.com/api/webhooks/stripe`
+- Eventos: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
+
+---
+
+## 4. Bugs Corrigidos (PRs #21-#28)
+
+| PR | Bug | Correção |
+|----|-----|----------|
+| #21 | Deploy falhando silenciosamente (maxDuration=800 incompatível com Hobby) | `maxDuration = 300` |
+| #21 | Safety timer disparando cedo | `SAFETY_TIMEOUT_MS = 275_000` (25s antes dos 300s) |
+| #22 | Claude timeout matando pipeline | Anthropic SDK timeout `60s → 90s`, Roberto maxTokens `4096 → 2048` |
+| #22 | Vera não auto-corrigindo | Auto-retry paralelo para REPROVADO_TEXTO |
+| #19 | Roberto AVISO sempre (Gemini timeout) | Gemini timeout `30s → 50s` |
+| #20 | Thursday pulado (UTC-3 timezone) | `cutoffUtc = nowUtc - 24h` (buffer para Brazil) |
+| #23 | Thread X igual todo dia | DAY_ANGLES por dia da semana |
+| #23 | Preview mostrando imagem errada | `useEffect(() => setLocalCard(card), [card])` |
+| #23 | Imagem X não subindo | Multipart/form-data upload (mas ainda 403 — tier da API) |
+| #23 | LinkedIn 1º comentário não postando | Delay 3s antes do comment |
+| #24 | Diana travando no Veo | Skip Veo, gera imagem estática (prompt salvo) |
+| #25 | LinkedIn comment 403 (partnerApiSocialActions) | Trocou `/rest/socialActions/` → `/v2/socialActions/` (usa w_member_social) |
+| #26 | Planos e preços desatualizados na LP | 4 novos planos, X somente texto, cron horário |
+| #27 | Páginas legais inexistentes | `/privacy` e `/terms` (LGPD compliant) |
+| #28 | Cron horário bloqueando deploy no Hobby | Revertido para `"0 12 * * *"` (diário) |
+
+---
+
+## 5. Limitações Conhecidas / NÃO Resolvidas
+
+### X/Twitter — somente texto (403 code 453)
+- **Causa:** Twitter Free tier API não permite upload de mídia
+- **Solução:** Upgrade para Twitter Basic tier ($100/mês) no Developer Portal do Bruno (dono da plataforma, NÃO dos usuários)
+- **Código:** já faz fallback para texto-only quando upload falha
+- **Arquivo:** `lib/oauth/twitter.ts`
+
+### Veo vídeo — desabilitado no pipeline
+- **Causa:** Veo leva 60-300s, incompatível com budget de 300s do Hobby
+- **Workaround atual:** Diana gera imagem cinematográfica estática; prompt visual salvo no card
+- **Solução real:** Vercel Pro (maxDuration=800) + reabilitar `generateVideo` em `app/api/pipeline/run/route.ts`
+- **Arquivo:** bloco `if (isVideoType)` em route.ts (~linha 1240)
+
+### Cron diário — posts agendados depois das 9h BRT atrasam
+- **Causa:** Vercel Hobby só permite cron 1x/dia. Schedule: `"0 12 * * *"` = 9h BRT
+- **Impacto:** post agendado para 14h ou 21h só publica no dia seguinte às 9h
+- **Soluções:**
+  1. Vercel Pro ($20/mês) → permite cron por minuto
+  2. Cron externo grátis (cron-job.org) → chama `https://demandou.com/api/cron/pipeline` com header `Authorization: Bearer $CRON_SECRET` a cada 5-15 min
+- **Arquivo:** `vercel.json` e `app/api/cron/pipeline/route.ts`
+
+### LinkedIn primeiro comentário — pode falhar
+- **Status:** endpoint trocado para v2 (PR #25), precisa testar em produção
+- **Escopo OAuth:** `w_member_social` já está ativado no LinkedIn Developer Portal
+- **Se falhar novamente:** verificar se o post URN está no formato correto (share vs ugcPost)
+
+---
+
+## 6. Variáveis de Ambiente Completas (Vercel)
+
+```
+# Auth
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
+CLERK_SECRET_KEY=sk_live_...
+CLERK_WEBHOOK_SECRET=whsec_...
+
+# Database
+DATABASE_URL=postgresql://...@...neon.tech/...?sslmode=require
+
+# AI
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
+
+# Media
+NANO_BANANA_API_KEY=...
+GOOGLE_VEO_API_KEY=... (atualmente não usado no pipeline)
+
+# Social
+LINKEDIN_CLIENT_ID=776y3qlu5ltco1
+LINKEDIN_CLIENT_SECRET=...
+TWITTER_CLIENT_ID=...
+TWITTER_CLIENT_SECRET=...
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_STARTER_PRICE_ID=price_...
+STRIPE_PRO_PRICE_ID=price_...
+STRIPE_BUSINESS_PRICE_ID=price_...
+STRIPE_AGENCY_PRICE_ID=price_...
+
+# Real-time
+PUSHER_APP_ID=...
+PUSHER_KEY=...
+PUSHER_SECRET=...
+NEXT_PUBLIC_PUSHER_KEY=...
+NEXT_PUBLIC_PUSHER_CLUSTER=...
+
+# Cron
+CRON_SECRET=...
+
+# App
+NEXT_PUBLIC_APP_URL=https://demandou.com
+```
+
+---
+
+## 7. Estrutura de Arquivos Críticos
+
+```
+app/
+├── api/
+│   ├── pipeline/run/route.ts          ← Pipeline principal (todos os agentes)
+│   ├── cron/pipeline/route.ts         ← Cron job: publica posts agendados
+│   ├── stripe/checkout/route.ts       ← Cria sessão Stripe checkout
+│   ├── webhooks/stripe/route.ts       ← Webhook Stripe (subscription lifecycle)
+│   ├── posts/[id]/publish/route.ts    ← Publicação manual de post
+│   └── social/                        ← OAuth callbacks (LinkedIn, Twitter)
+├── privacy/page.tsx                   ← Política de Privacidade (LGPD)
+├── terms/page.tsx                     ← Termos de Uso
+├── billing/                           ← Página de billing/assinatura
+└── dashboard/                         ← Dashboard principal
+
+components/
+├── landing/
+│   ├── pricing.tsx                    ← 4 planos (Starter/Pro/Business/Agency)
+│   ├── features.tsx                   ← Features (X somente texto)
+│   ├── footer.tsx                     ← Footer com links legais
+│   └── hero.tsx                       ← Hero section
+└── posts/
+    └── campaign-kanban.tsx            ← Kanban de cards (useEffect sync fix)
+
+lib/
+├── stripe/index.ts                    ← PLANS, checkout, billing portal
+├── claude/index.ts                    ← Anthropic SDK (timeout 90s)
+├── research/web-search.ts            ← Gemini 2.5 Flash + Google Search (50s timeout)
+├── oauth/
+│   ├── linkedin.ts                    ← LinkedIn API (v2 socialActions para comments)
+│   └── twitter.ts                     ← Twitter API (multipart upload, 403 fallback)
+├── publish/oauth-post.ts             ← executeOAuthPostPublish (LinkedIn + Twitter)
+└── media/
+    ├── nano-banana.ts                 ← Geração de imagem
+    ├── veo3.ts                        ← Geração de vídeo (desabilitado no pipeline)
+    └── infographic.ts                 ← Infográficos
+
+vercel.json                            ← Cron diário: "0 12 * * *"
+prisma/schema.prisma                   ← User (plan field), Post (status, scheduledAt)
+```
+
+---
+
+## 8. Deploy (ATENÇÃO — lições aprendidas)
+
+### Vercel projeto correto: `donaire-squad-1aos`
+- Domínio: `demandou.com` e `www.demandou.com`
+- **NÃO** confundir com `donaire-squad` (projeto fantasma, deploy de 3s)
+
+### Como fazer deploy manual (quando automático falhar)
+```bash
+cd C:\Users\devan\opensquad-app
+git pull origin master --ff-only
+npx vercel deploy --prod --force
+```
+
+### ARMADILHAS que já nos pegaram:
+1. **`maxDuration > 300`** → deploy falha silenciosamente no Hobby plan
+2. **Cron mais frequente que diário** → deploy falha silenciosamente no Hobby plan
+3. **`vercel deploy` sem `git pull`** → deploya código antigo (usa arquivos locais!)
+4. **"Redeploy" no dashboard** → redeploya o MESMO build antigo, não pega commits novos
+5. **`.claude/settings.local.json`** → contém API keys, NUNCA commitar (está no .gitignore)
+
+### Deploy automático via GitHub
+- Vercel está conectado ao GitHub repo
+- Push para `master` → deploy automático
+- **Mas:** se o deploy falhar (ex: vercel.json inválido), falha silenciosamente e o site continua com a versão antiga
+
+---
+
+## 9. Próximos Passos / TODO
+
+### Checkout Stripe (PRIORIDADE)
+- [ ] Testar checkout end-to-end: clicar "Assinar Pro" → redirect Stripe → pagamento → webhook → user.plan atualizado
+- [ ] Verificar se `CRON_SECRET` está configurado no Vercel (necessário para cron funcionar)
+- [ ] Testar webhook Stripe: criar assinatura teste → verificar user.plan no banco
+
+### Cron / Agendamento
+- [ ] Configurar cron externo (cron-job.org) OU upgrade Vercel Pro para posts agendarem fora das 9h BRT
+- [ ] Testar publicação automática: criar post com scheduledAt no passado → chamar GET /api/cron/pipeline
+
+### Landing page
+- [ ] Revisar LP completa — copys, CTAs, responsividade
+- [ ] Testar botões de checkout com os Price IDs reais do Stripe
+- [ ] Verificar se /privacy e /terms renderizam corretamente em produção
+
+### Integrações
+- [ ] LinkedIn primeiro comentário: testar se o endpoint v2 funciona em produção
+- [ ] Twitter: decidir se vale $100/mês para upload de imagens
+- [ ] Veo: quando tiver Vercel Pro, reabilitar vídeo no pipeline
+
+### Infraestrutura
+- [ ] Upgrade Vercel para Pro ($20/mês) — resolve 3 problemas de uma vez:
+  - maxDuration 800s (pipeline mais robusto)
+  - Cron por minuto (agendamento preciso)
+  - Previews por branch
+- [ ] Monitorar pipeline timing: 5 dias com imagens é apertado em 300s
+
+---
+
+## 10. Comandos Úteis
+
+```bash
+# Type check
+npx tsc --noEmit
+
+# Deploy manual
+cd C:\Users\devan\opensquad-app && git pull origin master --ff-only && npx vercel deploy --prod --force
+
+# Ver deploys recentes
+npx vercel ls --scope areticons-projects
+
+# Inspecionar deploy
+npx vercel inspect <deploy-url> --scope areticons-projects
+
+# Ver logs do Vercel
+npx vercel logs <deploy-url> --scope areticons-projects
+
+# Criar PR e mergear
+gh pr create --title "..." --body "..." && gh pr merge <N> --squash --repo areticon/donaire-squad
+
+# Testar cron manualmente
+curl -H "Authorization: Bearer $CRON_SECRET" https://demandou.com/api/cron/pipeline
+```
+
+---
+
+## 11. Informações da Empresa (para documentos legais)
+
+```
+Razão Social: DEMANDOU TECNOLOGIA DA INFORMACAO LTDA
+Nome Fantasia: DEMANDOU
+CNPJ: 66.140.770/0001-48
+Natureza Jurídica: 206-2 - Sociedade Empresária Limitada
+Porte: ME (Microempresa)
+Data de Abertura: 08/04/2026
+
+Endereço:
+  Rua Pais Leme, 215, Conj. 1713
+  Pinheiros — São Paulo/SP
+  CEP 05.424-150
+
+CNAE Principal: 63.11-9-00 - Tratamento de dados, provedores de serviços
+CNAE Secundários: 62.01-5-01, 62.04-0-00, 70.20-4-00, 73.11-4-00, 85.99-6-04
+
+LinkedIn App: demandou (Client ID: 776y3qlu5ltco1)
+  OAuth scopes: openid, profile, w_member_social, email
+  Redirect URLs:
+    - http://localhost:3000/api/social/linkedin/callback
+    - https://demandou.com/api/social/linkedin/callback
+
+Contato: contato@demandou.com
+E-mail CNPJ (contabilidade): meucnpj@contabilizei.com.br
+```
+
+---
+
+*Documento gerado em 09/04/2026 por Claude Code. Última sessão: PRs #21-#28 corrigindo pipeline, Stripe, LP, legal e deploy.*

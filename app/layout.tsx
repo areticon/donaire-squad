@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Inter, Montserrat } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "@/components/ui/theme-provider";
@@ -46,24 +45,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
-      <html lang="pt-BR" data-theme="dark">
-        <body className={`${inter.variable} ${montserrat.variable} ${inter.className}`}>
-          <ThemeProvider>
-            {children}
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                style: {
-                  background: "var(--bg-elevated)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                },
-              }}
-            />
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="pt-BR" data-theme="dark">
+      <body className={`${inter.variable} ${montserrat.variable} ${inter.className}`}>
+        <ThemeProvider>
+          {children}
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+              },
+            }}
+          />
+        </ThemeProvider>
+      </body>
+    </html>
   );
 }

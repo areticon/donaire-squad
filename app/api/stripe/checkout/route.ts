@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckoutSession, PLANS } from "@/lib/stripe";
 import { prisma } from "@/lib/db/prisma";
@@ -19,20 +19,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    const clerkUser = await currentUser();
-    const email = clerkUser?.emailAddresses?.[0]?.emailAddress ?? "";
-
-    // Ensure user exists in our DB
-    await prisma.user.upsert({
-      where: { clerkId: userId },
-      update: {},
-      create: {
-        clerkId: userId,
-        email,
-        name: `${clerkUser?.firstName ?? ""} ${clerkUser?.lastName ?? ""}`.trim(),
-        imageUrl: clerkUser?.imageUrl,
-      },
-    });
+    const user = await currentUser();
+    const email = user?.email ?? "";
 
     const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/billing`;
     const checkoutUrl = await createCheckoutSession(

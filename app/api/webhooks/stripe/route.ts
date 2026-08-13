@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
         if (userId && customerId) {
           await prisma.user.update({
-            where: { clerkId: userId },
+            where: { id: userId },
             data: { stripeCustomerId: customerId },
           });
         }

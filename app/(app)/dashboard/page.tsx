@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
@@ -17,7 +17,7 @@ import { formatDate } from "@/lib/utils";
 
 async function getDashboardData(userId: string) {
   const [user, projects, recentPosts, recentRuns] = await Promise.all([
-    prisma.user.findUnique({ where: { clerkId: userId } }),
+    prisma.user.findUnique({ where: { id: userId } }),
     prisma.project.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
