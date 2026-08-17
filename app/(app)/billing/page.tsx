@@ -9,27 +9,58 @@ import toast from "react-hot-toast";
 
 const PLANS = [
   {
-    id: "free",
-    name: "Free",
-    price: 0,
-    features: ["1 projeto", "2 agentes de IA", "5 posts por mês", "LinkedIn e X"],
-    cta: "Plano atual",
-    disabled: true,
-  },
-  {
     id: "starter",
     name: "Starter",
-    price: 97,
-    features: ["3 projetos", "8 agentes de IA", "30 posts por mês", "LinkedIn, X e Instagram", "Agendamento automático", "Infográficos com IA"],
+    price: 49,
+    features: [
+      "400 créditos/mês",
+      "LinkedIn completo (texto, imagem, carrossel)",
+      "Cerca de 5 posts de texto por semana",
+      "Todos os agentes de IA",
+      "Aprovação antes de publicar",
+    ],
     cta: "Assinar Starter",
-    popular: true,
   },
   {
     id: "pro",
     name: "Pro",
-    price: 297,
-    features: ["Projetos ilimitados", "Agentes ilimitados", "Posts ilimitados", "Todas as redes sociais", "Visualização em tempo real", "API access"],
+    price: 149,
+    features: [
+      "1.800 créditos/mês",
+      "Campanha semanal completa: LinkedIn, X e Instagram",
+      "Imagens e carrosséis com IA",
+      "Comentário de fontes automático",
+      "Créditos extras por R$0,12",
+      "Dashboard de métricas",
+    ],
     cta: "Assinar Pro",
+    popular: true,
+  },
+  {
+    id: "business",
+    name: "Business",
+    price: 249,
+    features: [
+      "3.500 créditos/mês",
+      "Tudo do Pro + vídeo com IA",
+      "Múltiplos projetos simultâneos",
+      "Créditos extras por R$0,10",
+      "Suporte prioritário",
+    ],
+    cta: "Assinar Business",
+  },
+  {
+    id: "studio",
+    name: "Studio",
+    price: 449,
+    features: [
+      "7.000 créditos/mês",
+      "Tudo do Business",
+      "Projetos ilimitados",
+      "Créditos extras por R$0,08",
+      "Onboarding dedicado",
+    ],
+    cta: "Assinar Studio",
   },
 ];
 
@@ -95,7 +126,7 @@ export default function BillingPage() {
         </Button>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
         {PLANS.map((plan, i) => (
           <motion.div
             key={plan.id}
@@ -140,9 +171,9 @@ export default function BillingPage() {
             <Button
               className="w-full"
               variant={plan.popular ? "default" : "outline"}
-              disabled={plan.disabled || loading === plan.id}
+              disabled={loading === plan.id}
               loading={loading === plan.id}
-              onClick={() => !plan.disabled && subscribe(plan.id)}
+              onClick={() => subscribe(plan.id)}
             >
               {plan.cta}
             </Button>

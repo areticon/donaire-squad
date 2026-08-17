@@ -133,6 +133,20 @@ Custos verificados das APIs diretas (ago/2026):
 Sequência crítica: **registrar os apps de desenvolvedor (Meta, X, LinkedIn) ANTES de
 codar** — a revisão da Meta é o caminho crítico de 2–4 semanas.
 
+## Decisão de preços (2026-08-16): Opção B do MODELO_DE_NEGOCIO_v2.md
+
+Planos recalibrados com custos reais (ver MODELO_DE_NEGOCIO_v2.md):
+- STARTER R$ 49 / 400 créditos (LinkedIn texto, porta de entrada)
+- **PRO R$ 149 / 1.800 créditos: o plano-herói. Entrega a campanha completa
+  nas 3 redes (a promessa da landing e da regra 7-11-4)**
+- BUSINESS R$ 249 / 3.500 créditos
+- STUDIO R$ 449 / 7.000 créditos (novo nome no lugar de AGENCY)
+
+Créditos por operação (3× custo): post texto 15, comentário fontes X 20,
+imagem 25, carrossel 40, vídeo 8s 100, vídeo narrado 150.
+Margem bruta esperada: 59 a 71% por plano; líquida 55 a 65% após Simples.
+Prompt caching no pipeline é pré-requisito dessa margem.
+
 ## Próxima sessão de trabalho (execução)
 
 1. Instrumentar custo por operação no app (tokens in/out por chamada, custo por

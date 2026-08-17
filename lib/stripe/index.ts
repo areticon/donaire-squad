@@ -21,77 +21,87 @@ export const stripe = {
   get prices() { return getStripe().prices; },
 };
 
+// Calibração Opção B (2026-08-16): ver MODELO_DE_NEGOCIO_v2.md.
+// Créditos por operação em CREDIT_COSTS abaixo (3x o custo variável real).
 export const PLANS = {
   starter: {
     name: "Starter",
-    description: "Para profissionais que postam 1-2x por semana",
+    description: "Para construir presença no LinkedIn",
     price: 4900,
     priceId: process.env.STRIPE_STARTER_PRICE_ID,
-    credits: 500,
+    credits: 400,
     features: [
-      "500 créditos/mês",
-      "LinkedIn (texto, imagem, carrossel)",
-      "X — somente texto",
-      "6 agentes de IA",
-      "Agendamento automático",
+      "400 créditos/mês",
+      "LinkedIn completo (texto, imagem, carrossel)",
+      "Cerca de 5 posts de texto por semana",
+      "Todos os agentes de IA",
+      "Aprovação antes de publicar",
     ],
-    limits: { projects: 2, postsPerMonth: 30, credits: 500 },
+    limits: { projects: 1, postsPerMonth: 30, credits: 400 },
   },
   pro: {
     name: "Pro",
-    description: "Para profissionais que postam diariamente",
-    price: 9900,
+    description: "A campanha completa nas 3 redes, toda semana",
+    price: 14900,
     priceId: process.env.STRIPE_PRO_PRICE_ID,
-    credits: 1100,
+    credits: 1800,
     extraCreditPrice: 0.12,
     features: [
-      "1.100 créditos/mês",
-      "LinkedIn (texto, imagem, carrossel, vídeo)",
-      "X — somente texto",
+      "1.800 créditos/mês",
+      "Campanha semanal completa: LinkedIn, X e Instagram",
+      "Imagens e carrosséis com IA",
+      "Comentário de fontes automático",
       "Todos os agentes de IA",
       "Créditos extras por R$0,12",
       "Dashboard de métricas",
     ],
-    limits: { projects: 5, postsPerMonth: -1, credits: 1100 },
+    limits: { projects: 3, postsPerMonth: -1, credits: 1800 },
   },
   business: {
     name: "Business",
-    description: "Para equipes e alto volume de conteúdo",
-    price: 19900,
+    description: "Três redes com vídeo e fôlego para crescer",
+    price: 24900,
     priceId: process.env.STRIPE_BUSINESS_PRICE_ID,
-    credits: 2500,
+    credits: 3500,
     extraCreditPrice: 0.10,
     features: [
-      "2.500 créditos/mês",
-      "LinkedIn (texto, imagem, carrossel, vídeo)",
-      "X — somente texto",
-      "Todos os agentes de IA",
-      "Múltiplos projetos",
+      "3.500 créditos/mês",
+      "Tudo do Pro + vídeo com IA",
+      "Múltiplos projetos simultâneos",
       "Créditos extras por R$0,10",
       "Suporte prioritário",
     ],
-    limits: { projects: 15, postsPerMonth: -1, credits: 2500 },
+    limits: { projects: 10, postsPerMonth: -1, credits: 3500 },
   },
-  agency: {
-    name: "Agency",
-    description: "Para agências e gestores de múltiplas marcas",
-    price: 39900,
-    priceId: process.env.STRIPE_AGENCY_PRICE_ID,
-    credits: 5500,
+  studio: {
+    name: "Studio",
+    description: "Para quem gerencia várias marcas ou alto volume",
+    price: 44900,
+    priceId: process.env.STRIPE_STUDIO_PRICE_ID,
+    credits: 7000,
     extraCreditPrice: 0.08,
     features: [
-      "5.500 créditos/mês",
-      "LinkedIn (texto, imagem, carrossel, vídeo)",
-      "X — somente texto",
-      "Todos os agentes de IA",
+      "7.000 créditos/mês",
+      "Tudo do Business",
       "Projetos ilimitados",
       "Créditos extras por R$0,08",
       "Onboarding dedicado",
       "Suporte prioritário",
     ],
-    limits: { projects: -1, postsPerMonth: -1, credits: 5500 },
+    limits: { projects: -1, postsPerMonth: -1, credits: 7000 },
   },
 };
+
+// Créditos cobrados por operação (1 crédito = R$ 0,10).
+// Calibrados a ~3x o custo variável medido; ver MODELO_DE_NEGOCIO_v2.md seção 4.
+export const CREDIT_COSTS = {
+  post_text: 15, // post de texto em qualquer rede
+  x_sources_comment: 20, // comentário com fontes no X (link custa $0,20 na API do X)
+  post_image: 25, // post com 1 imagem gerada
+  carousel_3: 40, // carrossel de 3 slides
+  video_8s: 100, // vídeo Veo 8s sem narração
+  video_8s_narrated: 150, // vídeo Veo 8s com narração PT-BR
+} as const;
 
 export async function createCheckoutSession(
   userId: string,

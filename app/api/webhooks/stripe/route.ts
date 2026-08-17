@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
         if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "starter";
         if (priceId === process.env.STRIPE_PRO_PRICE_ID) plan = "pro";
         if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) plan = "business";
-        if (priceId === process.env.STRIPE_AGENCY_PRICE_ID) plan = "agency";
+        if (priceId === process.env.STRIPE_STUDIO_PRICE_ID) plan = "studio";
+        // Assinaturas antigas do plano Agency (pré Opção B) mapeiam para studio
+        if (priceId === process.env.STRIPE_AGENCY_PRICE_ID) plan = "studio";
 
         const status = sub.status;
         if (status === "active" || status === "trialing") {
