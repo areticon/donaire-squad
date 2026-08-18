@@ -456,3 +456,15 @@ Upload direto do navegador para o storage com `@vercel/blob/client`. **O arquivo
 6. Débito dos 100 créditos
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+### Blob privado: restrição de arquitetura descoberta em 18/08
+
+O Blob store foi criado como **privado**, e isso está correto: vídeo cru do cliente é material não publicado e não pode ficar acessível por URL.
+
+Verificado: upload privado funciona, acesso pela URL sem token devolve **403**, leitura pelo servidor com token devolve o conteúdo.
+
+**Consequência que define o desenho do Passo 2:** nenhum serviço externo consegue buscar o vídeo por URL. O SDK `@vercel/blob` v2.3.2 **não gera URL assinada**; a leitura de blob privado é só server-side, via `get(url, { access: "private", token })`, que devolve um stream.
+
+Portanto a transcrição não pode ser "manda o link para o fornecedor". O nosso servidor precisa ler o blob e repassar os bytes em stream, sem bufferizar em memória. Fornecedores que só aceitam URL ficam descartados; fornecedores com limite pequeno de arquivo (Whisper da OpenAI, 25 MB) também, já que vídeo de 20 minutos passa disso.
+
+*Atualizado em 18/08/2026 por Claude Code.*
