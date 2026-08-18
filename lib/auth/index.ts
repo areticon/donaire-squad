@@ -12,9 +12,29 @@ const socialProviders =
       }
     : undefined;
 
+// Origens que o better-auth aceita. Sem isso, o navegador recebe "Invalid
+// origin" sempre que a porta ou o domínio diferirem do baseURL configurado.
+// Em desenvolvimento aceitamos as portas alternativas que o Next escolhe
+// sozinho quando a 3000 está ocupada.
+const trustedOrigins = [
+  process.env.BETTER_AUTH_URL,
+  process.env.NEXT_PUBLIC_APP_URL,
+  "https://demandou.com",
+  "https://www.demandou.com",
+  ...(process.env.NODE_ENV === "production"
+    ? []
+    : [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+      ]),
+].filter((origin): origin is string => Boolean(origin));
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   baseURL: process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL,
+  trustedOrigins,
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
