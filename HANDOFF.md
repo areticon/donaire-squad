@@ -1031,3 +1031,77 @@ por demo. É a alavanca de conversão que só a Demandou tem, porque o produto �
 própria demonstração. Sem ela, o teste mede a landing errada.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 10): tema, landing e o mapa da jornada
+
+### Tema escuro no padrão Discord
+
+Commit `16bfe4a`. O tema usava `#0d0d0d`, praticamente preto. Dois problemas:
+cansa a vista em uso longo e achata a hierarquia, porque sem luz suficiente
+entre os níveis o card e o fundo viram a mesma coisa.
+
+Nova escala, cada nível subindo de luminosidade, então elevação se lê sozinha
+sem depender de borda:
+
+| Token | Antes | Depois |
+|---|---|---|
+| `--bg-primary` | #0d0d0d | #1e1f22 |
+| `--bg-surface` | #111111 | #2b2d31 |
+| `--bg-elevated` | #1a1a1a | #313338 |
+| `--bg-input` | #1a1a1a | #1e1f22 |
+| `--border` | #2a2a2a | #3f4147 |
+| `--text-primary` | #f5f5f5 | #dbdee1 |
+| `--text-muted` | #9ca3af | #949ba4 |
+
+Além dos tokens, 210 ocorrências de cor fixa em 16 arquivos foram migradas.
+
+**Fica pendente:** landing, termos e privacidade têm cor fixa e não respondem ao
+tema claro. É um problema separado.
+
+### Landing: narrativa de dor no lugar de feature
+
+Commit `3c721e4`. O hero vendia a ferramenta ("multi-agentes de IA para redes
+sociais"). Agora segue a narrativa em camadas da `ESTRATEGIA.md`: dor, solução,
+anti-objeção.
+
+Seção nova com a regra 7-11-4 do Daniel Priestley (7 horas de conteúdo, 11
+pontos de contato, 4 canais). Ela transforma "publique mais" em quantidade
+concreta, e a quantidade concreta é impossível de manter sozinho. É o argumento
+que justifica o produto existir.
+
+**Duas afirmações falsas corrigidas:**
+1. A landing prometia "sem cartão de crédito", mas o trial de 7 dias exige
+   cartão. Contradição direta entre a landing e o código do checkout.
+2. As features vendiam publicação de vídeo no LinkedIn, e vídeo gerado por IA
+   saiu hoje.
+
+### Mapa do site e da jornada
+
+Levantado do código, não do que a gente imagina que existe. Vive no Notion em
+"Mapa do site e da jornada do usuário".
+
+Estrutura real: 4 itens de navegação global (Dashboard, Projetos, Agenda,
+Plano), setup do projeto em 7 passos (Ideação, Voz e Estilo, Time de Agentes,
+Design, Redes Sociais, Agenda, Ativação), e 7 abas dentro do projeto (Posts,
+Gestor de Conteúdo, Agentes, Configurações, Analytics, Editar setup,
+Treinamento).
+
+**Os buracos que o mapa expôs, em ordem de custo:**
+
+1. **Sem demonstração na landing.** É a variável de maior alavancagem no CAC e a
+   única que depende só de nós.
+2. **Portão de 7 passos antes de qualquer valor.** Posts, Gestor de Conteúdo e
+   Analytics só aparecem com `status === "active"`. Quem abandona no passo 3
+   nunca viu o produto funcionar.
+3. **Dashboard vazio como primeira tela.** Quatro números zerados para quem
+   acabou de chegar, quando deveria ser a próxima ação.
+4. **Vídeo sem tela.** Upload e transcrição prontos e inalcançáveis pelo usuário.
+
+### Tabela de custos atualizada
+
+Veo removido da tabela, CAC refeito com os três canais, e seção 10 nova com a
+composição completa: custo de um cliente Pro camada por camada com fornecedor e
+percentual da receita, preço e margem por produto, e as três coisas que mais
+mexem no resultado (bitrate, plano anual, conversão da landing).
+
+*Atualizado em 18/08/2026 por Claude Code.*
