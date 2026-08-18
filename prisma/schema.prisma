@@ -98,6 +98,7 @@ model Project {
   memories      ProjectMemory[]
   cards         CampaignCard[]
   contexts      ProjectContext[]
+  videoJobs     VideoJob[]
 
   @@map("projects")
 }
@@ -254,6 +255,36 @@ model ProjectContext {
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("project_contexts")
+}
+
+/// Um vídeo cru enviado pelo cliente e tudo que o squad extrai dele.
+/// O arquivo em si mora no object storage; aqui ficam só os metadados, a
+/// transcrição e os cortes escolhidos. Vídeo nunca vai para dentro do Postgres.
+model VideoJob {
+  id             String   @id @default(cuid())
+  projectId      String
+  userId         String
+  /// uploaded, transcribing, selecting, writing, ready, failed
+  status         String   @default("uploaded")
+  originalName   String?
+  blobUrl        String   @db.Text
+  sizeBytes      BigInt?
+  durationSec    Int?
+  /// Transcrição com marcação de tempo por palavra, vinda do Whisper.
+  transcript     Json?
+  /// Trechos escolhidos pela IA: início, fim, motivo, título e os textos de
+  /// cada rede gerados a partir dele.
+  clips          Json?
+  error          String?  @db.Text
+  creditsCharged Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([status])
+  @@map("video_jobs")
 }
 
 /// Consumo real de cada chamada de IA. Existe para responder duas perguntas
