@@ -772,3 +772,122 @@ Commit `f6e1888` com as correções dos achados 2, 3 e 5. A troca para `multi`
 ainda não foi feita, aguardando decisão.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 7): multi ligado e a economia do vídeo
+
+### Decisão 1 aplicada: `language=multi` com keyterm dos nomes próprios
+
+Commit `1f70f1a`. `lib/media/keyterms.ts` novo, extrai até 5 nomes próprios do
+contexto de marca do projeto (`ProjectContext` de tipo `brand`), com o nome do
+projeto sempre em primeiro lugar. A rota passa isso para a transcrição.
+
+Verificado ponta a ponta: "payback", "budget" e "Demandou" saem os três corretos
+na mesma chamada. Permanecem as perdas conhecidas do multi ("vou fazer vídeo
+curto", "pelo quanto").
+
+Limitação conhecida da heurística: ela ignora a primeira palavra de cada frase,
+porque maiúscula ali é posição e não nome próprio. Nome que só aparece começando
+frase é perdido. É o preço de não gastar uma chamada de IA nisso.
+
+### Decisão 2: guardar o vídeo. E a conta que isso obriga
+
+Bruno decidiu guardar o vídeo, não só o áudio, porque a Fase 2 promete cortes e
+não dá para prometer e não entregar. Pediu o cálculo de limite de duração e de
+consumo de créditos por vídeo.
+
+Preços verificados na documentação da Vercel em 18/08/2026: storage
+US$ 0,023/GB-mês (5 GB inclusos no Pro), Blob Data Transfer US$ 0,05/GB, Fast
+Origin Transfer US$ 0,06/GB, operações simples US$ 0,40/M, avançadas US$ 5,00/M.
+
+Dois detalhes que mudam a conta:
+1. **Blob acima de 512 MB nunca entra em cache.** Todo acesso é MISS, então paga
+   Fast Origin Transfer sempre.
+2. **Store privado paga transferência duas vezes**: a função busca no store e
+   depois entrega ao navegador.
+
+Resultado: no desenho de hoje, **transferência é 58% do custo** de um trabalho de
+vídeo, não a transcrição nem a IA.
+
+### O custo real por trabalho, e onde o preço fixo quebra
+
+Com a taxa de gravação do Bruno (OBS padrão, 16 Mbps, medido em 118 MB/min):
+
+| Duração | Clipes | Custo real | Receita a 100 créditos | Margem |
+|---|---|---|---|---|
+| 20 min | 5 | R$ 4,84 | R$ 10,00 | 52% |
+| 30 min | 8 | R$ 7,31 | R$ 10,00 | 27% |
+| 45 min | 11 | R$ 10,84 | R$ 10,00 | prejuízo |
+| 60 min | 15 | R$ 14,50 | R$ 10,00 | prejuízo de R$ 4,50 |
+
+Cobrança fixa por trabalho vira prejuízo por volta dos 40 minutos.
+
+### Fórmula proposta: 2 créditos por minuto mais 4 créditos por clipe
+
+Separa o que escala com o quê. O minuto paga transcrição, seleção, storage e
+transferência; o clipe paga a escrita dos 3 textos.
+
+| Duração | Clipes | Créditos | Face | Custo | Margem |
+|---|---|---|---|---|---|
+| 10 min | 3 | 32 | R$ 3,20 | R$ 0,85 | 73% |
+| 20 min | 5 | 60 | R$ 6,00 | R$ 1,58 | 74% |
+| 30 min | 8 | 92 | R$ 9,20 | R$ 2,42 | 74% |
+| 60 min | 15 | 180 | R$ 18,00 | R$ 4,72 | 74% |
+| 90 min | 15 | 240 | R$ 24,00 | R$ 6,17 | 74% |
+
+Margem constante em qualquer duração, sem penhasco. Custo unitário medido:
+R$ 0,049 por minuto processado e R$ 0,121 por clipe escrito nas 3 redes.
+
+### Duas premissas que os números não confirmam
+
+**O vídeo longo não come o mês.** No Pro de 1.800 créditos, um vídeo de 60
+minutos consome 180, ou seja 10% do plano. Dá para gravar 10 vídeos de uma hora
+por mês. Se a intenção for segurar vídeo longo, tem que ser limite explícito, não
+preço.
+
+**Conteúdo de vídeo fica 3,75 vezes mais barato por post.** Um trabalho de 20
+minutos entrega 15 posts (5 clipes vezes 3 redes) por 60 créditos; os mesmos 15
+posts pela tabela atual custariam 225. É coerente com o custo real, porque o
+agente adapta em vez de pesquisar e inventar, mas significa que o cliente que
+migrar para vídeo usa uma fração do plano e o crédito deixa de ser o limitador.
+
+### O que a fórmula exige para não operar no vermelho
+
+| Cenário | Margem a 20 min | Margem a 60 min | Precisa de |
+|---|---|---|---|
+| Hoje, sem mexer em nada | -3% | -3% | nada |
+| Limitar o bitrate a 4 Mbps | 59% | 60% | validação no navegador |
+| Mais extrair o áudio | 65% | 65% | ffmpeg |
+| Mais preview de 800 kbps | 74% | 74% | ffmpeg com transcode |
+
+**O limite de bitrate sozinho faz quase todo o trabalho, e é a única coisa da
+lista que não precisa de ffmpeg.** O navegador sabe a duração (metadados do
+elemento video) e o tamanho do arquivo antes de enviar, então dá para calcular
+MB por minuto e recusar na hora, com instrução de ajuste no OBS.
+
+Sem isso a fórmula opera no vermelho em qualquer duração. O problema nunca foi o
+vídeo longo, foi o bitrate.
+
+### O limite de tamanho é consequência, não escolha
+
+Vídeo de 60 minutos, contra os 2 GB da rota de upload:
+
+| Bitrate | Tamanho | |
+|---|---|---|
+| 16 Mbps (OBS padrão) | 6,92 GB | rejeitado |
+| 8 Mbps | 3,52 GB | rejeitado |
+| 4 Mbps | 1,76 GB | cabe |
+| 2 Mbps | 0,88 GB | cabe |
+
+### Detalhe de implementação do débito
+
+A duração só é conhecida depois da transcrição, que é quem devolve
+`metadata.duration`. Então o débito exato só pode acontecer no fim. Antes de
+processar é preciso estimar pelo tamanho do arquivo e checar saldo, para não
+fazer o trabalho de graça.
+
+### Nada disso está implementado
+
+A fórmula, o limite de bitrate e o débito são proposta. O que está no código é a
+troca para `multi` com keyterm.
+
+*Atualizado em 18/08/2026 por Claude Code.*
