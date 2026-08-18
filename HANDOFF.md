@@ -1253,3 +1253,83 @@ curto demais ou longo demais. 16,7s para a chamada.
 | 6. Débito dos créditos | não começado |
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 13): Passo 4 e Passo 6
+
+### Passo 4: os textos de cada rede
+
+Commit `e1dd98d`. `lib/media/write-posts.ts` e `/api/videos/[id]/write`.
+
+Uma chamada por trecho devolvendo as três redes juntas, que era a restrição de
+custo definida antes. O comentário no arquivo avisa quem for mexer depois: uma
+chamada por trecho por rede levaria o trabalho de R$ 1,50 para R$ 7,50 contra a
+mesma receita, derrubando a margem de 85% para 25%.
+
+Roda em paralelo porque os trechos são independentes, e um que falhar não
+derruba os outros. Entregar quatro de cinco é melhor que entregar zero.
+
+**Dois achados do teste com dado real:**
+
+**1. O modelo estourou o limite do X.** Saiu um post de 286 caracteres, e o
+limite duro da rede é 280. Esse post seria recusado na publicação. Agora a
+instrução pede 240 e existe guarda: se estourar, uma chamada curta encurta, e se
+ainda estourar, corta na fronteira de frase. Nunca publica cortado no meio da
+palavra.
+
+**2. O prompt caching não pegou.** `cacheW=0` e `cacheR=0` nas três chamadas. O
+prefixo deu uns 700 tokens, abaixo do mínimo de 1024. É a armadilha já
+documentada: projeto sem documento de contexto não cacheia e a API não avisa.
+Com o contexto de marca preenchido o prefixo passa do mínimo, o que reforça o
+card de tornar o contexto obrigatório no onboarding.
+
+Custo medido do Passo 4 com 3 trechos: US$ 0,032, ou R$ 0,175.
+
+### Passo 6: o sistema de créditos, que não existia
+
+Descoberta ao começar: **não havia saldo, extrato nem débito em lugar nenhum.**
+A `CREDIT_COSTS` estava definida em `lib/stripe` e nada a usava. O único campo
+de crédito no banco era o `creditsCharged` do `VideoJob`.
+
+Modelo novo: `creditsBalance` e `creditsResetAt` no `User`, e
+`CreditTransaction` como extrato, uma linha por movimento. Saldo sozinho não
+responde onde o cliente gastou, se a cobrança bate com a entrega, nem quanto
+estornar quando algo falha.
+
+`lib/credits` é o único lugar que mexe em saldo. O débito usa a condição de
+saldo no `where` do `updateMany`, então a corrida não existe: ou a linha bate a
+condição e debita, ou não bate e falha.
+
+**Verificado, incluindo a corrida:** 10 débitos simultâneos de 200 sobre saldo
+de 1.740. Passaram exatamente 8, o saldo terminou em 140 e nunca negativou, e a
+soma do extrato bate com o saldo.
+
+**Onde a cobrança acontece, e por quê.** No Passo 4, não no upload, porque a
+duração real só é conhecida depois da transcrição e é ela que define o preço
+junto com o número de trechos. Cobra antes de escrever: sem saldo, o cliente
+descobre antes de a gente gastar com a API. Idempotente por `refId`, então
+retentativa não cobra duas vezes.
+
+**Reposição do ciclo no webhook do Stripe.** Repõe em vez de somar, senão quem
+usa pouco vira um passivo crescente e a projeção de custo deixa de valer. Com
+guarda de data, porque o Stripe dispara `customer.subscription.updated` por
+vários motivos que não são renovação (troca de cartão, mudança de metadados), e
+sem o guarda cada um desses daria um mês de créditos de graça.
+
+### Estado da fase 1 do vídeo
+
+| Passo | Situação |
+|---|---|
+| 1. Armazenamento e upload | pronto, com tela e limite de bitrate |
+| 2. Transcrição | pronta e testada |
+| 3. Agente que escolhe os trechos | pronto e testado |
+| 4. Textos de cada rede por trecho | **pronto e testado** |
+| 5. Tela de acompanhamento e aprovação | parcial: envio, lista com estado e botões de cada etapa. Falta a tela que mostra os posts para aprovar |
+| 6. Débito dos créditos | **pronto e testado** |
+
+### Pendente que a parte 13 criou
+
+- A tela de aprovação dos posts gerados, que é o que falta do Passo 5.
+- Nenhum outro pipeline debita crédito ainda. O de texto e imagem continua sem
+  cobrar, porque o sistema não existia até hoje.
+
+*Atualizado em 18/08/2026 por Claude Code.*
