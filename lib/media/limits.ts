@@ -37,6 +37,16 @@ export const TIPOS_ACEITOS = [
   "video/webm",
 ];
 
+/**
+ * Limite duro de caracteres do X. Post acima disso é recusado na publicação.
+ *
+ * Mora aqui, e não junto do redator, porque a tela de aprovação precisa dele
+ * para avisar antes de o cliente tentar publicar. O módulo do redator importa
+ * o cliente do Claude, que importa o Prisma, que arrasta o driver do Postgres
+ * para o bundle do navegador e quebra o build.
+ */
+export const MAX_X = 280;
+
 /** Créditos do trabalho: 2 por minuto de vídeo mais 4 por clipe entregue. */
 export const CREDITOS_POR_MINUTO = 2;
 export const CREDITOS_POR_CLIPE = 4;

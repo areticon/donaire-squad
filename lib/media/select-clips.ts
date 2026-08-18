@@ -62,7 +62,13 @@ Regras de escrita:
 - No campo "ideia", escreva a tese do trecho em uma frase, na voz da pessoa.
 - No campo "transcricao", copie o que ela falou naquele intervalo, sem editar.
 
-Responda SOMENTE com JSON válido, sem cercas de código:
+Responda SOMENTE com JSON válido, sem cercas de código.
+
+Regra que evita JSON quebrado, e ela é obrigatória: **nunca use quebra de linha
+dentro de um campo de texto.** Se a fala tinha pausa, use ponto ou vírgula. JSON
+com quebra de linha crua dentro de string é inválido, e aí o trabalho inteiro
+falha.
+
 {"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"...","transcricao":"..."}]}`;
 
 type Paragrafo = { text: string; start: number; end: number };
@@ -105,11 +111,45 @@ ${blocos}`,
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```$/, "");
 
-  const dados = JSON.parse(limpo) as { trechos?: Trecho[] };
+  // Rede de segurança para o mesmo problema que derrubou o Passo 4: o modelo
+  // às vezes emite quebra de linha crua dentro da string, o que invalida o
+  // JSON. Escapar antes de parsear salva a chamada em vez de perder o trabalho
+  // inteiro por um caractere.
+  const dados = parseTolerante(limpo);
   const trechos = dados.trechos ?? [];
   if (!trechos.length) throw new Error("O agente não devolveu nenhum trecho.");
 
   return sanear(trechos, duracaoSegundos);
+}
+
+/** Escapa quebra de linha crua dentro de string antes de parsear. */
+function parseTolerante(bruto: string): { trechos?: Trecho[] } {
+  try {
+    return JSON.parse(bruto) as { trechos?: Trecho[] };
+  } catch {
+    let dentro = false;
+    let escapando = false;
+    let saida = "";
+    for (const ch of bruto) {
+      if (escapando) {
+        saida += ch;
+        escapando = false;
+        continue;
+      }
+      if (ch === "\\") {
+        saida += ch;
+        escapando = true;
+        continue;
+      }
+      if (ch === '"') dentro = !dentro;
+      if (dentro && (ch === "\n" || ch === "\r")) {
+        saida += "\\n";
+        continue;
+      }
+      saida += ch;
+    }
+    return JSON.parse(saida) as { trechos?: Trecho[] };
+  }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { askClaude } from "@/lib/claude";
 import type { Trecho } from "@/lib/media/select-clips";
+import { MAX_X } from "@/lib/media/limits";
 
 /**
  * Passo 4: transformar cada trecho escolhido em post para as três redes.
@@ -52,8 +53,14 @@ Formatos, e eles são diferentes de propósito porque as redes são diferentes:
 - instagram: 500 a 800 caracteres, mais pessoal e mais narrativo que o LinkedIn.
   Linha em branco entre cada bloco de ideia.
 
-Responda SOMENTE com JSON válido, sem cercas de código:
-{"linkedin":"...","x":"...","instagram":"..."}`;
+Responda exatamente neste formato, sem nada antes nem depois:
+
+===LINKEDIN===
+o post do linkedin aqui
+===X===
+o post do x aqui
+===INSTAGRAM===
+o post do instagram aqui`;
 
 export function montarPrefixoCacheavel(contexto: {
   nicho?: string | null;
@@ -73,9 +80,6 @@ export function montarPrefixoCacheavel(contexto: {
     .filter(Boolean)
     .join("\n");
 }
-
-/** Limite duro da rede. Post acima disso é recusado na publicação. */
-export const MAX_X = 280;
 
 /**
  * O modelo estoura o limite do X com alguma frequência, mesmo instruído: no
@@ -101,6 +105,43 @@ async function encurtarParaX(texto: string, prefixoCacheavel: string, usageCtx?:
   return fim > 80 ? corte.slice(0, fim + 1) : corte.trimEnd();
 }
 
+/**
+ * Separa as três redes por marcador, e não por JSON, de propósito.
+ *
+ * A versão em JSON falhava de forma intermitente: o modelo emitia quebra de
+ * linha crua dentro da string, o que invalida o JSON, e post de LinkedIn é
+ * cheio de quebra de linha. Um em cada três trechos morria assim no primeiro
+ * teste com dado real, e o pior é que não falhava sempre, então passava no
+ * teste e quebrava em produção de vez em quando.
+ *
+ * Marcador não tem esse problema: não existe caractere para escapar.
+ */
+export function separarPorMarcador(bruto: string): PostsDoTrecho {
+  const texto = bruto.trim().replace(/^```[a-z]*\s*/i, "").replace(/```$/, "");
+
+  const pegar = (marcador: string, proximo?: string): string => {
+    const inicio = texto.indexOf(`===${marcador}===`);
+    if (inicio === -1) return "";
+    const depois = inicio + marcador.length + 6;
+    const fim = proximo ? texto.indexOf(`===${proximo}===`, depois) : -1;
+    return texto.slice(depois, fim === -1 ? undefined : fim).trim();
+  };
+
+  const posts = {
+    linkedin: pegar("LINKEDIN", "X"),
+    x: pegar("X", "INSTAGRAM"),
+    instagram: pegar("INSTAGRAM"),
+  };
+
+  const faltando = Object.entries(posts)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (faltando.length) {
+    throw new Error(`O redator não devolveu: ${faltando.join(", ")}.`);
+  }
+  return posts;
+}
+
 export async function escreverPosts(
   trecho: Trecho,
   prefixoCacheavel: string,
@@ -120,15 +161,7 @@ ${trecho.transcricao}`,
     }
   );
 
-  const limpo = resposta
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```$/, "");
-
-  const posts = JSON.parse(limpo) as PostsDoTrecho;
-  if (!posts.linkedin || !posts.x || !posts.instagram) {
-    throw new Error("O redator não devolveu as três redes.");
-  }
+  const posts = separarPorMarcador(resposta);
 
   if (posts.x.length > MAX_X) {
     posts.x = await encurtarParaX(posts.x, prefixoCacheavel, usageCtx);

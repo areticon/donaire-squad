@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { ClipApproval, type TrechoComPosts } from "@/components/video/clip-approval";
 
 /**
  * A tela do produto de vídeo.
@@ -23,6 +24,7 @@ type Video = {
   error: string | null;
   creditsCharged: number;
   createdAt: string;
+  clips: TrechoComPosts[] | null;
 };
 
 /**
@@ -99,9 +101,12 @@ export function VideoPanel({
                 rotulo: v.status,
                 cor: "secondary",
               };
+              const paraAprovar = (v.clips ?? []).filter(
+                (c) => c.posts || c.erro
+              );
               return (
+                <div key={v.id} className="space-y-3">
                 <div
-                  key={v.id}
                   className="rounded-xl border p-4 flex items-center justify-between gap-4"
                   style={{
                     background: "var(--bg-surface)",
@@ -151,6 +156,32 @@ export function VideoPanel({
                       </Button>
                     )}
                   </div>
+                </div>
+
+                {/* Os posts prontos ficam sob o vídeo que os gerou, e não em
+                    uma tela separada, porque o cliente precisa lembrar de qual
+                    momento da gravação cada texto saiu para julgar se ficou
+                    fiel ao que ele quis dizer. */}
+                {v.status === "ready" && paraAprovar.length > 0 && (
+                  <div className="pl-4 space-y-3">
+                    <p
+                      className="text-sm"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {paraAprovar.filter((c) => c.posts).length} trechos viraram
+                      post. Edite o que quiser antes de aprovar.
+                    </p>
+                    {paraAprovar.map((c, i) => (
+                      <ClipApproval
+                        key={`${v.id}-${i}`}
+                        videoId={v.id}
+                        index={(v.clips ?? []).indexOf(c)}
+                        trecho={c}
+                        onAprovado={() => router.refresh()}
+                      />
+                    ))}
+                  </div>
+                )}
                 </div>
               );
             })}

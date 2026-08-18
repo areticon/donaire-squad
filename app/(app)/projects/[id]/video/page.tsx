@@ -30,13 +30,18 @@ export default async function VideoPage({
       error: true,
       creditsCharged: true,
       createdAt: true,
+      clips: true,
     },
   });
 
   return (
     <VideoPanel
       projectId={project.id}
-      videos={videos.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
+      videos={videos.map((v) => ({
+        ...v,
+        createdAt: v.createdAt.toISOString(),
+        clips: (v.clips as never) ?? null,
+      }))}
     />
   );
 }
