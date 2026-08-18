@@ -497,3 +497,154 @@ Escrito e compilando, mas não testado com dado real: transcrição (falta a cha
 Não começado: Passo 3 (agente que escolhe os trechos), Passo 4 (textos por rede), Passo 5 (tela), Passo 6 (débito de créditos).
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 5): transcrição testada com áudio real
+
+### Chave e validação
+
+`DEEPGRAM_API_KEY` no `.env.local` (gitignored, linha 34 do `.gitignore`). A linha
+que a sessão anterior dizia ter criado vazia não existia: o arquivo terminava em
+`BLOB_READ_WRITE_TOKEN`.
+
+Chave validada contra a API: HTTP 200, `nova-3` e `pt-BR` aceitos.
+
+### Teste ponta a ponta executado
+
+Sem arquivo de mídia na máquina, o áudio de teste foi gerado por TTS do Windows
+(voz Microsoft Maria Desktop, pt-BR) a partir de um roteiro de consultor B2B de
+566 palavras. Percurso completo exercitado: arquivo local, `put` no Blob privado,
+registro em `video_jobs`, leitura server-side por stream, Deepgram, gravação da
+transcrição em JSON.
+
+| Medida | Valor |
+|---|---|
+| Duração do áudio | 272 s (4,5 min) |
+| Palavras com tempo | 563 |
+| Parágrafos | 9 |
+| Confiança média | 0,994 |
+| Tempo de transcrição | 46,5 s |
+| Custo | US$ 0,0195 = R$ 0,107 |
+
+Extrapolando para 20 minutos: R$ 0,47, que confirma a estimativa do handoff
+anterior. O JSON da transcrição ocupou 44 KB para 4,5 min, ou seja cerca de
+200 KB para 20 min, tranquilo para uma coluna Json do Postgres.
+
+### Achado 1: palavra não reconhecida some sem deixar rastro
+
+A palavra "payback", falada três vezes, não apareceu nenhuma vez. Não veio
+errada, veio ausente: "se o payback é de quatro anos" virou "se o é de 4 anos".
+
+Testadas quatro configurações, nenhuma recupera: `language=multi`,
+`keyterm=payback`, `smart_format=false` e `multi` sem `smart_format`.
+
+Pior: **o sumiço é indetectável pelo tempo por palavra.** No ponto do corte o
+buraco entre palavras foi de 0,00 s e 0,16 s, enquanto as pausas naturais de
+frase medem de 0,88 s a 1,25 s. A Deepgram estica as palavras vizinhas para
+cobrir o áudio que ela descartou. Não existe marcador, nem token de confiança
+baixa, nem lacuna temporal. Nosso código não tem como saber que perdeu conteúdo.
+
+**Causa ainda não estabelecida.** O áudio é sintético e a voz pt-BR pronuncia
+uma palavra inglesa de um jeito que nenhum humano pronuncia. Pode ser limitação
+do modelo com jargão em inglês, pode ser o TTS. Só uma gravação humana resolve.
+Se for o modelo, é problema sério: o ICP fala payback, budget, board, deadline,
+ROI, insight, benchmark e framework o tempo todo.
+
+### Achado 2: smart_format corrompe o artigo indefinido
+
+Com `smart_format=true`, "uma indústria" virou "1 indústria" e "um resumo de uma
+linha" virou "1 resumo de 1 linha". Números de verdade saem certos
+("3 reuniões", "18 meses", "4º vez").
+
+Com `smart_format=false`, o texto fica correto ("uma indústria", "um resumo de
+uma linha", "três frases") e os números vêm por extenso. Verificado que os
+parágrafos continuam vindo idênticos: 9 blocos, mesmos limites de tempo.
+
+Decisão: desligar `smart_format`. Transcript corrompido é pior que transcript sem
+formatação de numeral, porque é o que o cliente vê na tela de aprovação e é a
+matéria-prima dos Passos 3 e 4. O agente que escreve o post normaliza número
+sozinho.
+
+### Achado 3: transcript vazio volta como sucesso
+
+Áudio em inglês com `language=pt-BR` devolve **HTTP 200 com transcript vazio**,
+não erro. O código atual gravaria `status: "selecting"` com transcrição vazia e o
+Passo 3 receberia nada. Precisa de guarda.
+
+### Achado 4: risco de estouro do maxDuration
+
+4,5 min de áudio levaram 46,5 s incluindo o stream do Blob. O `maxDuration` é de
+300 s. Vídeo de 20 minutos, com arquivo muito maior atravessando nosso servidor,
+tem margem fina. A saída limpa é o modo assíncrono da Deepgram (parâmetro
+`callback`), que devolve na hora e chama um webhook nosso quando termina,
+eliminando o teto. Não implementado.
+
+### Achado 5: contentType não é propagado
+
+A rota chama `transcribeBlob(video.blobUrl)` sem `contentType`, então tudo vira
+`video/mp4`, inclusive `.mov`, `.mkv` e `.webm`. O upload aceita os quatro.
+
+### Dados de teste que ficaram no banco
+
+Usuário `teste@demandou.com`, projeto "Projeto de teste" e um `VideoJob` com a
+transcrição completa gravada. Servem de fixture para desenvolver o Passo 3 sem
+pagar transcrição de novo.
+
+### Correções aplicadas (achados 2, 3 e 5)
+
+Tudo em `lib/media/transcribe.ts`, mais a persistência na rota.
+
+**`smart_format=false`**, com o porquê registrado em comentário longo no código,
+para ninguém religar por achar que formatação é sempre melhor.
+
+**`contentType` vem do storage.** Descoberto que o `get()` do `@vercel/blob`
+v2.3.2 devolve `blob.contentType` e `blob.size` junto com o stream. Não precisou
+de coluna nova nem de migration nem de adivinhação por extensão. De quebra,
+adicionada a guarda do `statusCode`: o retorno do `get` é união discriminada e o
+304 vem sem corpo, o que viraria um POST de corpo vazio.
+
+**Guarda de transcrição ruim, e aqui a primeira versão estava errada.** Eu havia
+escrito só a guarda de transcript vazio. Testando com idioma errado de propósito,
+a Deepgram não devolveu vazio: devolveu 63 palavras de lixo
+(`。。。[[[[nconsistenceadowlunchmwintotmpoplicand`). Texto vazio é o caso fácil e
+raro; lixo com aparência de texto é o caso perigoso.
+
+Sinais medidos nos três cenários, mesmo áudio:
+
+| Caso | Palavras/min | Confiança média | Palavras abaixo de 0,6 |
+|---|---|---|---|
+| pt-BR correto | 124,0 | 0,994 | 0,2% |
+| ja, lixo | 13,9 | 0,459 | 69,8% |
+| en, vazio | 0 | 0 | zero palavras |
+
+Escolhida a **fração de palavras com confiança abaixo de 0,6**, com corte em 40%.
+Separa 0,2% de 69,8%. A confiança média também separaria, mas é diluída por um
+trecho bom no meio de um ruim. Palavras por minuto foi descartada de propósito:
+cliente que grava 20 minutos e fala pouco, com pausas longas, cairia no falso
+positivo.
+
+`meanConfidence` e `wordsPerMinute` passaram a fazer parte do `TranscriptResult`
+e são gravados no JSON da transcrição, para a tela de aprovação (Passo 5) poder
+avisar que a gravação saiu ruim sem transcrever de novo para medir.
+
+**O limite de 40% está calibrado com áudio sintético, que é limpo demais.**
+Gravação humana com ruído de sala vai ter fração maior que 0,2%. Recalibrar
+quando a gravação real chegar.
+
+Verificado contra a API real: caminho feliz passa com 563 palavras e confiança
+0,994; idioma japonês é barrado com a mensagem de confiança baixa; idioma inglês
+é barrado com a mensagem de transcrição vazia.
+
+### Pendente
+
+- Gravação humana de 60 a 90 s em pt-BR com jargão em inglês. Fecha o Achado 1 e
+  serve para recalibrar o limite de 40% da guarda.
+- Achado 4 (modo `callback` assíncrono da Deepgram) continua aberto. Foi decidido
+  deixar para depois do Passo 3.
+- Passo 3 não começado. Fixture pronta no banco para desenvolver sem pagar
+  transcrição de novo.
+- Notion não atualizado nesta sessão. O conector está saudável no CLI
+  (`claude mcp list` mostra "claude.ai Notion: Connected"), mas as ferramentas
+  não foram expostas a esta sessão, que só recebeu o servidor `obs`. Resolve
+  reiniciando a sessão.
+
+*Atualizado em 18/08/2026 por Claude Code.*

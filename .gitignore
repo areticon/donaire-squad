@@ -47,3 +47,6 @@ next-env.d.ts
 /.clerk/
 .claude/settings.local.json
 .claude/
+
+# Artefatos de teste local (audio gerado, scripts descartaveis)
+scripts/tmp/

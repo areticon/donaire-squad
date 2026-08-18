@@ -45,6 +45,10 @@ export async function POST(
           language: result.language,
           words: result.words,
           paragraphs: result.paragraphs,
+          // Guardados para a tela de aprovação poder avisar o cliente quando a
+          // gravação saiu ruim, sem precisar transcrever de novo para medir.
+          meanConfidence: result.meanConfidence,
+          wordsPerMinute: result.wordsPerMinute,
         },
       },
     });
@@ -54,6 +58,8 @@ export async function POST(
       durationSec: result.durationSec,
       words: result.words.length,
       paragraphs: result.paragraphs.length,
+      meanConfidence: Number(result.meanConfidence.toFixed(3)),
+      wordsPerMinute: Math.round(result.wordsPerMinute),
       preview: result.text.slice(0, 300),
     });
   } catch (err) {
