@@ -648,3 +648,127 @@ Verificado contra a API real: caminho feliz passa com 563 palavras e confiança
   reiniciando a sessão.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 6): gravação humana, jargão confirmado e o áudio
+
+### O achado 1 está confirmado: nova-3 em pt-BR apaga jargão em inglês
+
+Gravação humana de 47 s feita pelo Bruno no OBS. O transcript em pt-BR não trouxe
+nenhum dos termos em inglês, e a análise de buracos apontou onde: um vazio de
+**3,68 s** entre "em inglês, não é então," e "esse tipo de palavra é importante",
+sendo que o segundo maior buraco da gravação inteira é de 1,04 s.
+
+Três configurações independentes recuperaram as mesmas duas palavras naquele
+ponto, o que fecha a dúvida: era "payback, budget". Não é culpa da voz sintética.
+
+| Configuração | O trecho |
+|---|---|
+| pt-BR (o que estava no código) | "em inglês, não é então, [buraco 3,68 s] esse tipo de palavra" |
+| `language=multi` | "em inglês, né? Então, é payback, budget, esse tipo de palavra" |
+| pt-BR + `keyterm` | "em inglês, não é então, payback, budget, esse tipo de palavra" |
+| nova-2 + `keywords` | "em inglês, né, então, payback, budget, esse tipo" |
+
+Confirma-se também que o sumiço de **palavra isolada** não deixa rastro. Só o
+sumiço de uma sequência (aqui, duas palavras mais a pausa em volta) abriu buraco
+grande o bastante para ser detectado.
+
+### O keyterm satura, e cedo
+
+Contraintuitivo e importante: quanto mais termos, menor o reforço em cada um.
+
+| Keyterms passados | payback e budget | Maior buraco |
+|---|---|---|
+| 2 | recuperados | 1,04 s |
+| 5 | recuperados | 1,04 s |
+| 10 | apagados | 3,68 s |
+| 20 | apagados | 3,68 s |
+| 30 | apagados | 3,68 s |
+
+Mandar um glossário grande de anglicismos não funciona. O orçamento útil é de
+cerca de 5 termos.
+
+Nota lateral: a documentação da Deepgram trata `keyterm` como recurso de inglês.
+Ele funcionou em pt-BR aqui. Comportamento não documentado, então pode mudar sem
+aviso.
+
+### O que o multi troca
+
+| | pt-BR | multi |
+|---|---|---|
+| payback, budget | apagados | recuperados |
+| "Demandou" | correto | vira "Demando" (corrigível com keyterm) |
+| Artigo "um" | correto | apagado 4 vezes, e keyterm não corrige |
+| "por enquanto" | correto | vira "pelo quanto" |
+| Palavras com confiança baixa | 2,9% | 5,0% |
+
+**Decisão recomendada: `language=multi` mais `keyterm` com os nomes próprios do
+cliente, no máximo 5.** O critério é qual perda dói menos: o multi perde palavra
+funcional, o pt-BR perde palavra de conteúdo. Perder "um" vira ruído gramatical
+que o agente redator conserta sozinho ao escrever o post. Perder "payback" apaga
+o assunto da frase e deixa a referência seguinte sem antecedente, o que faz o
+Passo 3 escolher trecho incoerente.
+
+O orçamento de 5 keyterms é gasto com o que dá para saber de antemão, os nomes
+próprios do cliente, que já vivem no contexto do projeto. O jargão, imprevisível,
+fica por conta do multi.
+
+Ressalva: uma gravação de 47 s. O padrão se repetiu em todas as rodadas, mas é
+amostra única.
+
+### A guarda de confiança está bem calibrada
+
+Gravação humana deu 2,9% de palavras abaixo de 0,6, contra 0,2% do sintético e
+69,8% do lixo. O corte de 40% tem folga larga dos dois lados. Mantido.
+
+### O arquivo de vídeo não cabe no nosso próprio limite
+
+A gravação do OBS: 92,53 MB para 47 s, vídeo a 16,16 Mbps e áudio a 159 kbps.
+
+| | Na taxa do OBS do Bruno |
+|---|---|
+| Vídeo de 20 min | 2,42 GB |
+| `MAX_BYTES` na rota de upload | 2,00 GB |
+
+O vídeo semanal que o produto pede seria rejeitado pelo próprio upload. O upload
+de 92,5 MB da casa do Bruno levou 107 s, então 2,42 GB levariam cerca de 45 min.
+
+Custo fixo: o `MODELO_DE_NEGOCIO_v2.md` orça storage em R$ 11/mês. Com 30
+clientes gravando 4 vídeos por mês nessa taxa entram 277 GB por mês,
+acumulando. No terceiro mês são 830 GB, uns R$ 105/mês, e subindo sempre.
+
+### Extrair o áudio resolve quase tudo, e o ffmpeg já está na máquina
+
+`ffmpeg -vn -acodec copy` tira a faixa de áudio sem reencodar, instantâneo:
+**92,53 MB viram 0,92 MB, 100 vezes menos.** O upload caiu de 107 s para 2,5 s e
+a transcrição de 321 s para 3 s.
+
+| | 20 min de vídeo | 20 min só do áudio |
+|---|---|---|
+| Tamanho | 2,42 GB | 23,9 MB |
+| Upload da casa do cliente | ~45 min | ~30 s |
+| Storage de 30 clientes/mês | 277 GB | 2,8 GB |
+
+Os Passos 3 a 6 produzem texto e nenhum deles corta vídeo. Se a Fase 1 entrega
+texto, os bytes do vídeo não precisam ser guardados, só o áudio. O preço é que a
+Fase 2, quando for cortar clipes, vai precisar do vídeo. **Decisão de produto
+ainda não tomada.**
+
+O ffmpeg está instalado (WinGet, Gyan build 9.0). Não aparecia antes porque o
+PATH da sessão anterior não tinha o diretório do WinGet.
+
+### Falha de arquitetura observada no caminho
+
+Transcrever direto do blob de 92,5 MB estourou: `SocketError: other side closed`
+depois de 28 MB lidos. É contrapressão. O cano é Blob, servidor, Deepgram, e a
+perna de saída era muito mais lenta que a de entrada, então a conexão com o Blob
+ficou ociosa e o CDN a derrubou. Em produção as duas pernas são rápidas, então
+isso não prova falha na Vercel, mas mostra que o desenho é frágil quando as
+pernas são assimétricas. Mais um argumento para o áudio pequeno e para o modo
+`callback`.
+
+### Estado
+
+Commit `f6e1888` com as correções dos achados 2, 3 e 5. A troca para `multi`
+ainda não foi feita, aguardando decisão.
+
+*Atualizado em 18/08/2026 por Claude Code.*
