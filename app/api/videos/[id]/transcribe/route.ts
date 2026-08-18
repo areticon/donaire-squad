@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { transcribeBlob } from "@/lib/media/transcribe";
+import { buildKeyterms } from "@/lib/media/keyterms";
 
 export async function POST(
   _req: NextRequest,
@@ -18,7 +19,23 @@ export async function POST(
 
   const video = await prisma.videoJob.findFirst({
     where: { id, project: { userId } },
-    select: { id: true, blobUrl: true, status: true },
+    select: {
+      id: true,
+      blobUrl: true,
+      status: true,
+      project: {
+        select: {
+          name: true,
+          // O contexto de marca é onde vivem os nomes próprios do cliente, que
+          // são o que o keyterm consegue proteger.
+          contexts: {
+            where: { type: "brand" },
+            select: { compiled: true },
+            take: 1,
+          },
+        },
+      },
+    },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -33,7 +50,11 @@ export async function POST(
   });
 
   try {
-    const result = await transcribeBlob(video.blobUrl);
+    const keyterms = buildKeyterms(
+      video.project.name,
+      video.project.contexts[0]?.compiled
+    );
+    const result = await transcribeBlob(video.blobUrl, { keyterms });
 
     await prisma.videoJob.update({
       where: { id },

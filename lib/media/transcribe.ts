@@ -1,4 +1,5 @@
 import { get } from "@vercel/blob";
+import { MAX_KEYTERMS } from "./keyterms";
 
 /**
  * Transcrição de vídeo com marcação de tempo por palavra.
@@ -60,7 +61,7 @@ type DeepgramResponse = {
 
 export async function transcribeBlob(
   blobUrl: string,
-  options?: { language?: string; contentType?: string }
+  options?: { language?: string; contentType?: string; keyterms?: string[] }
 ): Promise<TranscriptResult> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) throw new Error("DEEPGRAM_API_KEY não configurada");
@@ -79,7 +80,25 @@ export async function transcribeBlob(
 
   const params = new URLSearchParams({
     model: "nova-3",
-    language: options?.language ?? "pt-BR",
+    // multi, e não pt-BR, decisão medida contra gravação humana em 18/08/2026.
+    //
+    // O nova-3 em pt-BR APAGA jargão em inglês, sem erro e sem rastro. Numa
+    // gravação de teste o cliente disse "payback, budget" e o transcript
+    // deixou um buraco de 3,68 s no lugar, contra 1,04 s do segundo maior
+    // buraco da gravação inteira. Palavra isolada some sem deixar nem buraco:
+    // o modelo estica as palavras vizinhas para cobrir o áudio descartado.
+    // Isso é fatal para o ICP, que fala payback, budget, deadline, board, ROI,
+    // insight, benchmark e framework o tempo todo.
+    //
+    // O multi recupera o inglês sem precisar saber nada de antemão. O preço é
+    // que ele come o artigo indefinido ("vou fazer vídeo curto" no lugar de
+    // "vou fazer um vídeo curto") e erra nome próprio, que o keyterm conserta.
+    //
+    // O critério da escolha: perder palavra funcional é ruído gramatical que o
+    // agente redator conserta sozinho ao escrever o post. Perder palavra de
+    // conteúdo apaga o assunto da frase e deixa a referência seguinte sem
+    // antecedente, o que faz o agente do Passo 3 escolher trecho incoerente.
+    language: options?.language ?? "multi",
     // Precisamos de tempo por palavra para cortar no ponto exato. Sem isso o
     // corte cai no meio de uma palavra.
     punctuate: "true",
@@ -97,6 +116,12 @@ export async function transcribeBlob(
     paragraphs: "true",
     utterances: "true",
   });
+
+  // Nomes próprios do cliente. Limitado a MAX_KEYTERMS porque o keyterm satura:
+  // ver a explicação medida em lib/media/keyterms.ts.
+  for (const termo of (options?.keyterms ?? []).slice(0, MAX_KEYTERMS)) {
+    params.append("keyterm", termo);
+  }
 
   const dgRes = await fetch(`${DEEPGRAM_URL}?${params}`, {
     method: "POST",
