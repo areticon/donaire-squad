@@ -79,9 +79,38 @@ export async function askClaude(
 
   void recordUsage(model, message.usage, options?.usage);
 
-  const block = message.content[0];
-  if (block.type !== "text") throw new Error("Unexpected response type");
-  return block.text;
+  return extrairTexto(message.content);
+}
+
+/**
+ * Junta os blocos de texto da resposta, ignorando o resto.
+ *
+ * Isto existe por causa de um bug que só apareceu em produção. O código antes
+ * pegava `content[0]` e exigia que fosse texto. Funcionava no Sonnet 4.5, e
+ * quebrou na migração para o Sonnet 5, porque **nele o pensamento adaptativo
+ * vem ligado por padrão quando o parâmetro `thinking` é omitido**. Aí o
+ * primeiro bloco da resposta é de pensamento, não de texto, e a chamada
+ * inteira morria com "Unexpected response type".
+ *
+ * O teste local passou porque o prompt era curto e não acionou o pensamento. O
+ * prompt real da demonstração acionou. Ou seja: dependia do tamanho da tarefa,
+ * que é a pior forma de bug, porque parece aleatório.
+ *
+ * Ler todos os blocos de texto, em vez do primeiro bloco, é o que torna isto
+ * imune à próxima mudança de formato: bloco novo que a API introduza é
+ * simplesmente ignorado.
+ */
+function extrairTexto(content: Anthropic.ContentBlock[]): string {
+  const texto = content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+
+  if (!texto) {
+    const tipos = content.map((b) => b.type).join(", ") || "nenhum";
+    throw new Error(`A resposta não trouxe texto. Blocos recebidos: ${tipos}.`);
+  }
+  return texto;
 }
 
 export async function streamClaude(
