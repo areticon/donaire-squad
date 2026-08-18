@@ -5,7 +5,8 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
-import { transcribeBlob } from "@/lib/media/transcribe";
+import { transcribeBlob, transcribeBlobAsync, suportaCallback } from "@/lib/media/transcribe";
+import { assinarVideo } from "@/lib/media/callback-token";
 import { buildKeyterms } from "@/lib/media/keyterms";
 
 export async function POST(
@@ -55,6 +56,30 @@ export async function POST(
       video.project.name,
       video.project.contexts[0]?.compiled
     );
+    // Assíncrono quando dá, direto quando não dá.
+    //
+    // No modo direto a função segura a requisição enquanto o áudio inteiro
+    // atravessa o nosso servidor duas vezes, e vídeo longo esbarra no
+    // maxDuration. Pior: transcrever um arquivo de 92 MB direto do blob
+    // estourou com SocketError depois de 28 MB, por contrapressão, porque a
+    // perna de saída era mais lenta que a de entrada e o CDN derrubou a
+    // conexão ociosa.
+    //
+    // O assíncrono resolve, mas exige que a Deepgram alcance a gente, o que não
+    // acontece em localhost. Mandar callback para endereço inalcançável seria o
+    // pior desfecho: ela transcreveria, cobraria, e o resultado não voltaria
+    // para lugar nenhum.
+    if (suportaCallback()) {
+      const callback = `${process.env.NEXT_PUBLIC_APP_URL}/api/videos/${id}/transcribe-callback?sig=${assinarVideo(id)}`;
+      const { requestId } = await transcribeBlobAsync(video.blobUrl, callback, { keyterms });
+      return NextResponse.json({
+        ok: true,
+        modo: "assincrono",
+        requestId,
+        mensagem: "Transcrição em andamento. O status muda sozinho quando terminar.",
+      });
+    }
+
     const result = await transcribeBlob(video.blobUrl, {
       keyterms,
       usage: { projectId: video.projectId, operation: "video_transcricao" },

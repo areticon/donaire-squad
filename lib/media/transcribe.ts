@@ -60,31 +60,16 @@ type DeepgramResponse = {
   };
 };
 
-export async function transcribeBlob(
-  blobUrl: string,
-  options?: {
-    language?: string;
-    contentType?: string;
-    keyterms?: string[];
-    /** Sem isto o custo da transcrição não aparece em lugar nenhum. */
-    usage?: ContextoMidia;
-  }
-): Promise<TranscriptResult> {
-  const apiKey = process.env.DEEPGRAM_API_KEY;
-  if (!apiKey) throw new Error("DEEPGRAM_API_KEY não configurada");
-
-  const res0 = await get(blobUrl, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-  if (!res0) throw new Error("Vídeo não encontrado no storage");
-  // O retorno do get é união discriminada: 304 vem sem corpo. Sem esta guarda o
-  // stream nulo viraria um POST de corpo vazio e a Deepgram devolveria 200 com
-  // transcrição vazia, que é o pior desfecho possível (erro que parece sucesso).
-  if (res0.statusCode !== 200 || !res0.stream) {
-    throw new Error(`Storage devolveu ${res0.statusCode} sem corpo para o vídeo`);
-  }
-
+/**
+ * Parâmetros da chamada, compartilhados pelo modo direto e pelo assíncrono.
+ *
+ * Ficam juntos porque cada decisão aqui foi medida contra a API real, e ter
+ * duas cópias garantiria que uma delas ficaria para trás na próxima mudança.
+ */
+function montarParametros(options?: {
+  language?: string;
+  keyterms?: string[];
+}): URLSearchParams {
   const params = new URLSearchParams({
     model: "nova-3",
     // multi, e não pt-BR, decisão medida contra gravação humana em 18/08/2026.
@@ -129,6 +114,35 @@ export async function transcribeBlob(
   for (const termo of (options?.keyterms ?? []).slice(0, MAX_KEYTERMS)) {
     params.append("keyterm", termo);
   }
+  return params;
+}
+
+export async function transcribeBlob(
+  blobUrl: string,
+  options?: {
+    language?: string;
+    contentType?: string;
+    keyterms?: string[];
+    /** Sem isto o custo da transcrição não aparece em lugar nenhum. */
+    usage?: ContextoMidia;
+  }
+): Promise<TranscriptResult> {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) throw new Error("DEEPGRAM_API_KEY não configurada");
+
+  const res0 = await get(blobUrl, {
+    access: "private",
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
+  if (!res0) throw new Error("Vídeo não encontrado no storage");
+  // O retorno do get é união discriminada: 304 vem sem corpo. Sem esta guarda o
+  // stream nulo viraria um POST de corpo vazio e a Deepgram devolveria 200 com
+  // transcrição vazia, que é o pior desfecho possível (erro que parece sucesso).
+  if (res0.statusCode !== 200 || !res0.stream) {
+    throw new Error(`Storage devolveu ${res0.statusCode} sem corpo para o vídeo`);
+  }
+
+  const params = montarParametros(options);
 
   const dgRes = await fetch(`${DEEPGRAM_URL}?${params}`, {
     method: "POST",
@@ -141,7 +155,6 @@ export async function transcribeBlob(
         options?.contentType ?? res0.blob.contentType ?? "video/mp4",
     },
     body: res0.stream as unknown as BodyInit,
-    // Exigido pelo fetch do Node quando o corpo é um stream.
     // @ts-expect-error duplex não está nos tipos do DOM, mas o Node exige.
     duplex: "half",
   });
@@ -152,8 +165,28 @@ export async function transcribeBlob(
       `Deepgram respondeu ${dgRes.status}: ${detail.slice(0, 300)}`
     );
   }
-
   const data = (await dgRes.json()) as DeepgramResponse;
+  const resultado = interpretarResposta(data, options?.language);
+
+  if (options?.usage) {
+    const usado = (options?.language ?? "multi") === "multi" ? "nova-3-multi" : "nova-3";
+    recordTranscricao(usado, resultado.durationSec, options.usage);
+  }
+
+  return resultado;
+}
+
+/**
+ * Interpreta a resposta da Deepgram e aplica as guardas.
+ *
+ * Vive separado porque o modo assíncrono recebe exatamente o mesmo corpo, só
+ * que por webhook em vez de resposta direta. Duplicar as guardas seria garantir
+ * que uma das duas cópias ficaria para trás.
+ */
+export function interpretarResposta(
+  data: DeepgramResponse,
+  idiomaPedido?: string
+): TranscriptResult {
   const alt = data.results?.channels?.[0]?.alternatives?.[0];
   if (!alt) throw new Error("Deepgram não devolveu transcrição");
 
@@ -219,20 +252,11 @@ export async function transcribeBlob(
     end: p.end ?? p.sentences?.[p.sentences.length - 1]?.end ?? 0,
   }));
 
-  // O modelo multilíngue custa 21% a mais que o monolíngue (US$ 0,0052 contra
-  // US$ 0,0043 por minuto), então o que é gravado precisa distinguir os dois.
-  if (options?.usage) {
-    const usado = (options?.language ?? "multi") === "multi" ? "nova-3-multi" : "nova-3";
-    recordTranscricao(usado, durationSec, options.usage);
-  }
-
   return {
     text,
     durationSec,
     language:
-      data.results?.channels?.[0]?.detected_language ??
-      options?.language ??
-      "pt-BR",
+      data.results?.channels?.[0]?.detected_language ?? idiomaPedido ?? "multi",
     words,
     paragraphs,
     meanConfidence,
@@ -244,4 +268,76 @@ export async function transcribeBlob(
 export function estimateTranscriptionCostUsd(durationSec: number): number {
   const PER_MINUTE = 0.0043;
   return (durationSec / 60) * PER_MINUTE;
+}
+
+/**
+ * Modo assíncrono: a Deepgram devolve na hora e avisa por webhook quando termina.
+ *
+ * Por que isto existe: no modo direto a função fica segurando a requisição
+ * enquanto o áudio inteiro atravessa o nosso servidor duas vezes, e vídeo longo
+ * esbarra no `maxDuration` da Vercel. Pior, medido em 18/08: transcrever um
+ * arquivo de 92 MB direto do blob estourou com `SocketError: other side closed`
+ * depois de 28 MB, por contrapressão, porque a perna de saída era mais lenta
+ * que a de entrada e o CDN derrubou a conexão ociosa.
+ *
+ * A restrição que define o desenho: **o callback precisa alcançar um endereço
+ * público.** Em desenvolvimento a Deepgram não enxerga o localhost, então quem
+ * chama precisa decidir entre os dois modos, e é por isso que
+ * `suportaCallback()` existe.
+ */
+export async function transcribeBlobAsync(
+  blobUrl: string,
+  callbackUrl: string,
+  options?: { language?: string; contentType?: string; keyterms?: string[] }
+): Promise<{ requestId: string }> {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) throw new Error("DEEPGRAM_API_KEY não configurada");
+
+  const res0 = await get(blobUrl, {
+    access: "private",
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
+  if (!res0 || res0.statusCode !== 200 || !res0.stream) {
+    throw new Error("Vídeo não encontrado ou sem corpo no storage");
+  }
+
+  const params = montarParametros(options);
+  params.set("callback", callbackUrl);
+  params.set("callback_method", "post");
+
+  const dgRes = await fetch(`${DEEPGRAM_URL}?${params}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      "Content-Type":
+        options?.contentType ?? res0.blob.contentType ?? "video/mp4",
+    },
+    body: res0.stream as unknown as BodyInit,
+    // @ts-expect-error duplex não está nos tipos do DOM, mas o Node exige.
+    duplex: "half",
+  });
+
+  if (!dgRes.ok) {
+    const detail = await dgRes.text().catch(() => "");
+    throw new Error(
+      `Deepgram respondeu ${dgRes.status}: ${detail.slice(0, 300)}`
+    );
+  }
+
+  const data = (await dgRes.json()) as { request_id?: string };
+  if (!data.request_id) {
+    throw new Error("Deepgram não devolveu request_id no modo assíncrono");
+  }
+  return { requestId: data.request_id };
+}
+
+/**
+ * O callback só serve se a Deepgram conseguir chegar até nós. Em localhost ela
+ * não chega, e mandar um callback para um endereço inalcançável faria o
+ * trabalho sumir em silêncio: a Deepgram transcreveria, cobraria, e o resultado
+ * não voltaria para lugar nenhum.
+ */
+export function suportaCallback(): boolean {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  return /^https:\/\//.test(base) && !base.includes("localhost");
 }
