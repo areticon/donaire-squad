@@ -1574,3 +1574,66 @@ nossa devolve 200 de propósito: repetir não conserta transcrição ruim e o er
 já fica gravado no vídeo.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 17): produção no Supabase, e o que travou
+
+### A decisão: banco de produção separado, sem custo
+
+Ao tentar criar um projeto Supabase novo para produção, o limite apareceu:
+
+```
+areticon (2 project limit)
+```
+
+O plano gratuito permite 2 projetos ativos por organização, e a `donaire` já
+tem `demandou` e `bem-natura`. Um terceiro exigiria o Pro, US$ 25 por mês, que
+são R$ 138 e mais que dobrariam o custo fixo de R$ 116.
+
+**A saída foi o PostgreSQL 17 que já está instalado na máquina do Bruno**, na
+mesma versão do Supabase:
+
+| | Produção | Desenvolvimento | Custo extra |
+|---|---|---|---|
+| Escolhido | Supabase `demandou` | Postgres local | zero |
+
+O projeto `demandou` do Supabase virou produção. Tinha só o usuário de teste
+dentro, então promover foi apagar uma linha, não migrar dados.
+
+**Limitação assumida:** o Postgres local não reproduz duas coisas do Supabase
+que já morderam este projeto, a Data API e os grants do `anon`. Mas as duas são
+exatamente o que a migration `revoke_data_api_access` resolve, e ela roda igual
+nos dois.
+
+### Limpeza do banco de produção
+
+Apagados o usuário de teste, o projeto, os dois vídeos, as 30 linhas de
+`ai_usage` e as 3 de `demo_runs`. Banco zerado.
+
+**Achado do caminho:** `Project` não tem cascade a partir de `User`, então
+apagar um usuário falha com violação de chave estrangeira enquanto ele tiver
+projeto. Vale lembrar quando a exclusão de conta virar requisito de LGPD.
+
+### O que já foi escrito na Vercel
+
+`BETTER_AUTH_SECRET` (novo, diferente do de desenvolvimento, porque é ele que
+assina as sessões e reusar faria uma sessão local valer em produção),
+`BETTER_AUTH_URL`, `DEEPGRAM_API_KEY` e `BLOB_READ_WRITE_TOKEN`.
+
+### O que travou, e por quê
+
+`DATABASE_URL` e `DIRECT_URL` **existem** em produção, apontando para o Neon
+morto. Trocar exige remover antes, e o `vercel env rm` foi bloqueado pelo
+classificador de segurança, por ser remoção em produção. Não foi contornado.
+
+**Correção de um erro meu:** eu tinha relatado que `DIRECT_URL` estava ausente.
+Estava presente. Eu havia cortado a listagem de variáveis em 40 linhas e
+concluído de dado incompleto. A lista real tem 31 variáveis.
+
+### O que falta para o deploy subir
+
+1. Trocar `DATABASE_URL` e `DIRECT_URL` para o Supabase (valores no `.env.local`).
+2. Remover as 8 variáveis do Clerk, que descrevem integração que saiu do produto.
+3. A senha do PostgreSQL local, para montar o banco de desenvolvimento.
+4. Os preços R$ 149, R$ 249 e R$ 449 continuam sem existir no Stripe.
+
+*Atualizado em 18/08/2026 por Claude Code.*
