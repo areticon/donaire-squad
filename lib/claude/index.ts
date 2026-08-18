@@ -13,7 +13,23 @@ function getClient(): Anthropic {
   return _client;
 }
 
-export const DEFAULT_MODEL = "claude-sonnet-4-5";
+/**
+ * Migrado de claude-sonnet-4-5 para claude-sonnet-5 em 18/08/2026.
+ *
+ * Motivo imediato: o Sonnet 5 está com preço promocional de US$ 2,00 na entrada
+ * e US$ 10,00 na saída até 31/08/2026, contra US$ 3,00 e US$ 15,00 do 4.5. Um
+ * terço a menos no custo de texto enquanto durar, e depois iguala, então não há
+ * cenário em que a troca fique mais cara.
+ *
+ * Verificado antes de trocar: nenhuma chamada nossa ao Claude usa temperature,
+ * top_p, top_k, budget_tokens nem prefill de assistente, que são os parâmetros
+ * que o Sonnet 5 rejeita com 400. Os temperature que existem no projeto são de
+ * chamadas ao Gemini e ao Grok.
+ *
+ * Efeito colateral esperado: trocar de modelo invalida o cache de prompt, então
+ * a primeira chamada de cada projeto reescreve o cache. É custo único.
+ */
+export const DEFAULT_MODEL = "claude-sonnet-5";
 
 export type AskOptions = {
   maxTokens?: number;

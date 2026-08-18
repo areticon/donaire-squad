@@ -7,6 +7,10 @@ import { prisma } from "@/lib/db/prisma";
  */
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-5": { input: 3, output: 15 },
+  // Preço de tabela. O Sonnet 5 está em intro de US$ 2 / US$ 10 até 31/08/2026,
+  // mas manter o preço cheio aqui é deliberado: superestimar o custo é seguro,
+  // subestimar é o que quebra projeção. Quando a intro acabar, este número já
+  // está certo e ninguém precisa lembrar de mexer.
   "claude-sonnet-5": { input: 3, output: 15 },
   "claude-haiku-4-5": { input: 1, output: 5 },
   "claude-opus-4-8": { input: 5, output: 25 },
@@ -31,7 +35,7 @@ type AnthropicUsage = {
 };
 
 export function computeCostUsd(model: string, usage: AnthropicUsage): number {
-  const price = PRICING[model] ?? PRICING["claude-sonnet-4-5"];
+  const price = PRICING[model] ?? PRICING["claude-sonnet-5"];
   const cacheWrite = usage.cache_creation_input_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
 
