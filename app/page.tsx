@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Navbar } from "@/components/landing/navbar";
 import { Hero } from "@/components/landing/hero";
+import { Demo } from "@/components/landing/demo";
 import { Why } from "@/components/landing/why";
 import { Features } from "@/components/landing/features";
 import { HowItWorks } from "@/components/landing/how-it-works";
@@ -18,6 +19,7 @@ export default function HomePage() {
     <main className="bg-[#1e1f22] min-h-screen">
       <Navbar />
       <Hero />
+      <Demo />
       <Why />
       <Features />
       <HowItWorks />

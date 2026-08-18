@@ -324,3 +324,27 @@ model ProjectMemory {
   @@unique([projectId, type, key])
   @@map("project_memories")
 }
+
+/// Cada uso da demonstração pública da landing.
+///
+/// Existe por três motivos, nesta ordem: conter abuso (endpoint público que
+/// chama a API do Claude é carteira aberta), medir a conversão da demo em
+/// cadastro, e guardar o que as pessoas escrevem, que é a melhor pesquisa de
+/// posicionamento que existe, porque vem de quem ainda não é cliente.
+///
+/// O IP nunca é gravado em texto puro: só o hash com sal do BETTER_AUTH_SECRET.
+model DemoRun {
+  id        String   @id @default(cuid())
+  ipHash    String
+  input     String   @db.Text
+  output    Json?
+  error     String?  @db.Text
+  costUsd   Float    @default(0)
+  /// Preenchido se a pessoa criar conta depois, para medir a conversão da demo.
+  convertedUserId String?
+  createdAt DateTime @default(now())
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+  @@map("demo_runs")
+}
