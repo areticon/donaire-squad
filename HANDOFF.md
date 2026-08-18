@@ -891,3 +891,74 @@ A fórmula, o limite de bitrate e o débito são proposta. O que está no códig
 troca para `multi` com keyterm.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 8): tabela de custos completa
+
+Pedido do Bruno: tabela viva no Notion com o custo de cada ponto de feature, o
+fornecedor, o preço, como fica por plano, e a margem considerando CAC de
+tráfego pago. Vive em "Tabela de custos e margem da Demandou (viva)", na pasta
+`10-profissional/demandou`, linkada no Mapa Profissional.
+
+Todos os preços foram verificados na documentação oficial em 18/08/2026, não
+tirados de memória: Anthropic, Google, Deepgram, X, Vercel e Stripe.
+
+### Achados que mudam número
+
+**Só o Claude é instrumentado.** `ai_usage` recebe apenas as chamadas de
+`lib/claude`. Gemini, Veo e Deepgram não gravam nada, e são justamente o custo
+dominante nas operações de mídia. A instrumentação cobre a menor parte do custo.
+
+**Os fallbacks tornam o custo não determinístico.** São cascatas, não escolhas:
+
+| Arquivo | Tenta primeiro | Custo | Também na fila | Custo |
+|---|---|---|---|---|
+| `infographic.ts` | `gemini-3-pro-image` | US$ 0,134 | `gemini-2.5-flash-image` | US$ 0,039 |
+| `nano-banana.ts` | `gemini-3.1-flash-image` | | `gemini-3-pro-image` | US$ 0,134 |
+| `veo3.ts` | `veo-3.0-fast` | US$ 0,10/s | `veo-3.0` standard | US$ 0,40/s |
+
+O caso do Veo é o pior: se o standard disparar, um vídeo de 8 segundos custa
+R$ 18,05 contra R$ 10,00 de receita, **80% de prejuízo**, e ninguém saberia.
+
+**O Stripe cobra 0,7% de Billing sobre assinatura**, além dos 3,99% + R$ 0,39.
+Não estava no `MODELO_DE_NEGOCIO_v2.md`. E o Pix custa 1,19% + 0,7%, o que dá
+R$ 4,56 por cliente por mês de diferença no Pro, 3% da receita.
+
+**A transcrição multilíngue custa 21% a mais** que a monolíngue (US$ 0,0052
+contra US$ 0,0043 por minuto). É consequência direta da decisão de hoje de usar
+`language=multi` para recuperar jargão em inglês. Vale o preço, mas a constante
+`estimateTranscriptionCostUsd` ainda tem o valor antigo.
+
+**O Sonnet 5 está em preço promocional até 31/08/2026**: US$ 2,00 entrada e
+US$ 10,00 saída, contra US$ 3,00 e US$ 15,00 do Sonnet 4.5 que o pipeline usa.
+Migrar corta um terço do custo de texto enquanto durar, e depois iguala, então
+não há risco de piorar.
+
+**O custo fixo caiu para R$ 116/mês**, não R$ 232. O Supabase está no plano
+gratuito e o Neon saiu. Break-even de infraestrutura: 2 clientes Pro.
+
+### O CAC de tráfego pago não fecha
+
+Montado por componentes, não chutado: CAC igual a CPC dividido pela conversão de
+visita em teste, dividido pela conversão de teste em pagante. Faixas de
+levantamentos brasileiros de SaaS B2B em 2026. Margem líquida do Pro: R$ 89,52.
+
+| Cenário | CPC | Visita→teste | Teste→pagante | CAC | Payback | LTV | LTV/CAC |
+|---|---|---|---|---|---|---|---|
+| Otimista | R$ 4,50 | 5,0% | 22% | R$ 409 | 4,6 meses | R$ 895 | 2,19 |
+| Provável | R$ 7,00 | 3,2% | 17% | R$ 1.287 | 14,4 meses | R$ 895 | 0,70 |
+| Pessimista | R$ 10,00 | 2,0% | 12% | R$ 4.167 | 46,5 meses | R$ 895 | 0,21 |
+
+No cenário provável, o cliente custa R$ 1.287 para entrar e devolve R$ 895 antes
+de sair. Isso põe número na decisão que a estratégia já tinha tomado por
+intuição: fase 1 é conteúdo do fundador, com CAC perto de zero.
+
+A alavanca que muda o quadro não é o anúncio, é o preço. Plano anual ou ticket
+maior encurta o payback proporcionalmente.
+
+### Cards criados
+
+Cinco, todos com o número que os justifica: travar o fallback do Veo
+(bloqueante), instrumentar Gemini/Veo/Deepgram, migrar para Sonnet 5 antes de
+31/08, corrigir a constante da transcrição, e avaliar Pix.
+
+*Atualizado em 18/08/2026 por Claude Code.*
