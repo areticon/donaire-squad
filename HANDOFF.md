@@ -1503,3 +1503,74 @@ que bate exatamente com o preço por minuto, e com o `projectId` vinculado.
 - Nada foi enviado ao GitHub: o branch `feat/own-auth` continua só na máquina.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 16): o código foi para o GitHub
+
+### Push feito, e duas correções de rumo
+
+Os 42 commits que existiam só nesta máquina foram enviados. **Dois fatos que
+mudaram o plano na hora de executar:**
+
+1. **O branch padrão do repositório é `master`, não `main`.** Não existe `main`.
+2. **O build não rodava migration.** Deployar assim quebraria em runtime com
+   "tabela não existe" em toda rota que tocasse `credit_transactions`,
+   `demo_runs` ou as colunas novas de saldo.
+
+Corrigido antes de empurrar, commit `d36ab43`: o build passou a rodar
+`prisma migrate deploy --config prisma.config.ts`. Usa o config de propósito, e
+não a `DATABASE_URL`: o config aponta para a `DIRECT_URL`, e o pooler do
+Supabase em modo transaction não aceita o DDL do Prisma Migrate. Essa armadilha
+já tinha sido paga na migração para o Supabase.
+
+**Consequência: `DIRECT_URL` virou obrigatória na Vercel.** Sem ela o build
+falha.
+
+### O que precisa estar na Vercel
+
+| Variável | O que quebra sem ela |
+|---|---|
+| `DIRECT_URL` | o build inteiro |
+| `DEEPGRAM_API_KEY` | transcrição de vídeo |
+| `STRIPE_BUSINESS_PRICE_ID`, `STRIPE_STUDIO_PRICE_ID` | checkout desses planos |
+| `DATABASE_URL` no Supabase | tudo, se ainda apontar para o Neon morto |
+
+Os preços R$ 149, R$ 249 e R$ 449 continuam sem existir no Stripe.
+
+Referências mortas que ainda leem env de integração removida:
+`lib/blotato/index.ts` e `lib/pusher/index.ts`.
+
+### Estado do banco na hora do push
+
+Um usuário (o de teste), um projeto, zero posts. Ou seja, **nenhum cliente real
+foi afetado** pela chegada do sistema de créditos, que era o maior risco do
+deploy: usuário existente nasce com saldo zero e o pipeline recusa com 402 até a
+renovação repor.
+
+### Transcrição assíncrona
+
+Commit `71fddd3`. O modo direto segura a requisição enquanto o áudio atravessa o
+nosso servidor duas vezes. Vídeo longo esbarra no `maxDuration`, e o caso medido
+foi pior: 92 MB direto do blob estourou com `SocketError` depois de 28 MB, por
+contrapressão.
+
+**A restrição que define o desenho:** o callback precisa alcançar um endereço
+público, e em localhost a Deepgram não chega. Por isso `suportaCallback()`
+decide, e o modo direto continua como caminho de desenvolvimento. Mandar
+callback para endereço inalcançável seria o pior desfecho: ela transcreveria,
+cobraria, e o resultado não voltaria para lugar nenhum.
+
+**Autenticação.** O endereço é público por definição. Sem assinatura, qualquer
+um que descobrisse a rota poderia sobrescrever a transcrição de um cliente, ou
+plantar texto que viraria post publicado no nome dele. A assinatura é HMAC do id
+do vídeo com o segredo da aplicação, comparada em tempo constante, porque `===`
+vaza pelo tempo de resposta quantos caracteres do começo estavam certos.
+
+**O corpo do webhook passa pelas mesmas guardas do modo direto.** Confiar no
+corpo só porque a assinatura conferiu seria confundir "veio de quem eu espero"
+com "veio correto".
+
+Idempotente, porque a Deepgram repete o callback se não receber 200. Em falha
+nossa devolve 200 de propósito: repetir não conserta transcrição ruim e o erro
+já fica gravado no vídeo.
+
+*Atualizado em 18/08/2026 por Claude Code.*
