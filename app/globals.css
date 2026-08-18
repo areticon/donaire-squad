@@ -7,18 +7,23 @@
 /* ── Dark theme (default) ── */
 :root,
 [data-theme="dark"] {
-  --bg-primary: #0d0d0d;
-  --bg-surface: #111111;
-  --bg-elevated: #1a1a1a;
-  --bg-card: #111111;
-  --bg-input: #1a1a1a;
+  /* Paleta cinza-escuro no padrão do Discord, adotada em 18/08/2026.
+     O tema anterior era quase preto (#0d0d0d), o que cansa a vista em uso
+     longo e achata a hierarquia: sem luz suficiente entre os níveis, card e
+     fundo viram a mesma coisa. Aqui cada nível sobe de luminosidade, então
+     elevação se lê sozinha, sem depender de borda. */
+  --bg-primary: #1e1f22;   /* moldura, o nível mais fundo */
+  --bg-surface: #2b2d31;   /* barra lateral e superfícies */
+  --bg-elevated: #313338;  /* área principal e cards elevados */
+  --bg-card: #2b2d31;
+  --bg-input: #1e1f22;     /* campo afunda em relação ao container */
   --accent-orange: #f97316;
   --accent-amber: #d97706;
-  --text-primary: #f5f5f5;
-  --text-muted: #9ca3af;
-  --border: #2a2a2a;
+  --text-primary: #dbdee1;
+  --text-muted: #949ba4;
+  --border: #3f4147;
   --border-accent: #f97316;
-  --shadow: 0 1px 3px rgba(0,0,0,.6);
+  --shadow: 0 1px 3px rgba(0,0,0,.32);
 
   /* Status badge colors */
   --badge-success-bg: rgba(21, 128, 61, 0.2);

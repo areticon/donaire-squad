@@ -92,11 +92,11 @@ export function Features() {
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Funcionalidades
           </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[#f5f5f5] mb-4">
+          <h2 className="text-4xl lg:text-5xl font-black text-[#dbdee1] mb-4">
             Tudo que você precisa para{" "}
             <span className="text-orange-500">dominar</span> as redes
           </h2>
-          <p className="text-xl text-[#9ca3af] max-w-2xl mx-auto">
+          <p className="text-xl text-[#949ba4] max-w-2xl mx-auto">
             Uma plataforma completa. Sem ferramentas dispersas, sem integração
             manual, sem perda de tempo.
           </p>
@@ -112,15 +112,15 @@ export function Features() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07 }}
-                className="bg-[#111] border border-[#2a2a2a] rounded-xl p-6 hover:border-orange-500/30 transition-all duration-300 group"
+                className="bg-[#111] border border-[#3f4147] rounded-xl p-6 hover:border-orange-500/30 transition-all duration-300 group"
               >
                 <div className={`${feature.bg} w-10 h-10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <Icon className={`w-5 h-5 ${feature.color}`} />
                 </div>
-                <h3 className="font-semibold text-[#f5f5f5] mb-2 text-sm leading-snug">
+                <h3 className="font-semibold text-[#dbdee1] mb-2 text-sm leading-snug">
                   {feature.title}
                 </h3>
-                <p className="text-xs text-[#9ca3af] leading-relaxed">
+                <p className="text-xs text-[#949ba4] leading-relaxed">
                   {feature.description}
                 </p>
               </motion.div>

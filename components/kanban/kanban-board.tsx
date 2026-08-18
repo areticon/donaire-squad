@@ -88,7 +88,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     niche: project.niche ?? "",
     targetAudience: project.targetAudience ?? "",
     voice: project.voice ?? "",
-    colorPalette: project.colorPalette ?? "#F97316,#0D0D0D,#F5F5F5",
+    colorPalette: project.colorPalette ?? "#F97316,#1e1f22,#dbdee1",
     postFrequency: project.postFrequency ?? "3x por semana",
     timezone: project.timezone ?? "America/Sao_Paulo",
   });
@@ -509,7 +509,7 @@ function StepDesign({
         <Input
           value={form.colorPalette}
           onChange={(e) => set("colorPalette", e.target.value)}
-          placeholder="#F97316,#0D0D0D,#F5F5F5"
+          placeholder="#F97316,#1e1f22,#dbdee1"
         />
         <div className="flex gap-2 mt-3">
           {form.colorPalette.split(",").map((color, i) => (
@@ -528,7 +528,7 @@ function StepDesign({
         </label>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { name: "Dark Orange (padrão)", value: "#F97316,#0D0D0D,#F5F5F5" },
+            { name: "Dark Orange (padrão)", value: "#F97316,#1e1f22,#dbdee1" },
             { name: "Midnight Blue", value: "#3B82F6,#0F172A,#E2E8F0" },
             { name: "Emerald", value: "#10B981,#0D1F1A,#F0FDF4" },
             { name: "Purple Pro", value: "#8B5CF6,#0D0D1F,#F5F5FF" },

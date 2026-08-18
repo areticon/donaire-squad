@@ -216,7 +216,7 @@ export function AnalyticsDashboard({ project, posts, recentRuns }: Props) {
 
       {!hasData ? (
         <div className="text-center py-20">
-          <BarChart2 className="w-12 h-12 mx-auto text-[#2a2a2a] mb-4" />
+          <BarChart2 className="w-12 h-12 mx-auto text-[#3f4147] mb-4" />
           <h2 className="text-lg font-semibold text-[var(--text-muted)] mb-2">Nenhum dado ainda</h2>
           <p className="text-sm text-[#666] max-w-md mx-auto mb-6">
             Publique posts e clique em &quot;Sincronizar métricas&quot; para ver o desempenho por tipo de conteúdo, plataforma e mais.

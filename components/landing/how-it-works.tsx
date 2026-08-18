@@ -33,7 +33,7 @@ export function HowItWorks() {
   return (
     <section id="how" className="py-32 relative">
       {/* Subtle separator */}
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#2a2a2a] to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#3f4147] to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -45,11 +45,11 @@ export function HowItWorks() {
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Como funciona
           </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[#f5f5f5] mb-4">
+          <h2 className="text-4xl lg:text-5xl font-black text-[#dbdee1] mb-4">
             Da ideia ao post publicado{" "}
             <span className="text-orange-500">sem você digitar</span>
           </h2>
-          <p className="text-xl text-[#9ca3af] max-w-2xl mx-auto">
+          <p className="text-xl text-[#949ba4] max-w-2xl mx-auto">
             O demandou faz o trabalho pesado. Você foca no que importa.
           </p>
         </motion.div>
@@ -71,11 +71,11 @@ export function HowItWorks() {
                 <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-lg z-10">
                   {step.number}
                 </div>
-                <div className="flex-1 bg-[#111] border border-[#2a2a2a] rounded-xl p-6">
-                  <h3 className="text-xl font-bold text-[#f5f5f5] mb-2">
+                <div className="flex-1 bg-[#111] border border-[#3f4147] rounded-xl p-6">
+                  <h3 className="text-xl font-bold text-[#dbdee1] mb-2">
                     {step.title}
                   </h3>
-                  <p className="text-[#9ca3af] leading-relaxed">
+                  <p className="text-[#949ba4] leading-relaxed">
                     {step.description}
                   </p>
                 </div>

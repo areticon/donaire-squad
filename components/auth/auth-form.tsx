@@ -53,13 +53,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
   }
 
   return (
-    <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-6">
+    <div className="bg-[#111] border border-[#3f4147] rounded-xl p-6">
       {showGoogle && (
         <>
           <button
             type="button"
             onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] text-[#f5f5f5] hover:bg-[#242424] rounded-lg py-2.5 text-sm font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-[#313338] border border-[#3f4147] text-[#dbdee1] hover:bg-[#2b2d31] rounded-lg py-2.5 text-sm font-medium transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
               <path
@@ -82,9 +82,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             Continuar com Google
           </button>
           <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-[#2a2a2a]" />
-            <span className="text-xs text-[#9ca3af]">ou</span>
-            <div className="flex-1 h-px bg-[#2a2a2a]" />
+            <div className="flex-1 h-px bg-[#3f4147]" />
+            <span className="text-xs text-[#949ba4]">ou</span>
+            <div className="flex-1 h-px bg-[#3f4147]" />
           </div>
         </>
       )}
@@ -92,7 +92,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === "sign-up" && (
           <div>
-            <label htmlFor="name" className="block text-sm text-[#9ca3af] mb-1.5">
+            <label htmlFor="name" className="block text-sm text-[#949ba4] mb-1.5">
               Nome
             </label>
             <input
@@ -102,14 +102,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
-              className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#f5f5f5] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
+              className="w-full bg-[#313338] border border-[#3f4147] text-[#dbdee1] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
               placeholder="Seu nome"
             />
           </div>
         )}
 
         <div>
-          <label htmlFor="email" className="block text-sm text-[#9ca3af] mb-1.5">
+          <label htmlFor="email" className="block text-sm text-[#949ba4] mb-1.5">
             Email
           </label>
           <input
@@ -119,13 +119,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
-            className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#f5f5f5] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
+            className="w-full bg-[#313338] border border-[#3f4147] text-[#dbdee1] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
             placeholder="voce@empresa.com"
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm text-[#9ca3af] mb-1.5">
+          <label htmlFor="password" className="block text-sm text-[#949ba4] mb-1.5">
             Senha
           </label>
           <input
@@ -136,7 +136,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-            className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#f5f5f5] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
+            className="w-full bg-[#313338] border border-[#3f4147] text-[#dbdee1] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition-colors"
             placeholder={mode === "sign-up" ? "Mínimo 8 caracteres" : "Sua senha"}
           />
         </div>
@@ -160,7 +160,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </button>
       </form>
 
-      <p className="text-sm text-[#9ca3af] text-center mt-5">
+      <p className="text-sm text-[#949ba4] text-center mt-5">
         {mode === "sign-in" ? (
           <>
             Não tem conta?{" "}

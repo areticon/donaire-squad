@@ -359,7 +359,7 @@ export function PipelineLive({ runId, onComplete, onError }: PipelineLiveProps) 
                   </button>
                 </div>
                 {/* Content */}
-                <div className="p-4 max-h-[600px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#2a2a2a]">
+                <div className="p-4 max-h-[600px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#3f4147]">
                   {renderMarkdown(output)}
                 </div>
               </div>

@@ -71,7 +71,7 @@ export function Pricing() {
 
   return (
     <section id="pricing" className="py-32 relative">
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#2a2a2a] to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#3f4147] to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -84,11 +84,11 @@ export function Pricing() {
             <Zap className="w-3.5 h-3.5" />
             Preços simples e transparentes
           </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[#f5f5f5] mb-4">
+          <h2 className="text-4xl lg:text-5xl font-black text-[#dbdee1] mb-4">
             Escolha o plano{" "}
             <span className="text-orange-500">certo para você</span>
           </h2>
-          <p className="text-xl text-[#9ca3af] max-w-xl mx-auto mb-4">
+          <p className="text-xl text-[#949ba4] max-w-xl mx-auto mb-4">
             Cancele quando quiser. Sem fidelidade, sem surpresas.
           </p>
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-5 py-2 text-sm text-orange-300 font-medium">
@@ -112,7 +112,7 @@ export function Pricing() {
                 "relative rounded-2xl p-8 border",
                 plan.popular
                   ? "bg-[#111] border-orange-500 shadow-[0_0_40px_rgba(249,115,22,0.15)]"
-                  : "bg-[#111] border-[#2a2a2a]"
+                  : "bg-[#111] border-[#3f4147]"
               )}
             >
               {plan.popular && (
@@ -124,19 +124,19 @@ export function Pricing() {
               )}
 
               <div className="mb-6">
-                <h3 className="text-xl font-bold text-[#f5f5f5] mb-1">
+                <h3 className="text-xl font-bold text-[#dbdee1] mb-1">
                   {plan.name}
                 </h3>
-                <p className="text-sm text-[#9ca3af]">{plan.credits}</p>
+                <p className="text-sm text-[#949ba4]">{plan.credits}</p>
               </div>
 
               <div className="mb-8">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-[#9ca3af] text-lg">R$</span>
-                  <span className="text-5xl font-black text-[#f5f5f5]">
+                  <span className="text-[#949ba4] text-lg">R$</span>
+                  <span className="text-5xl font-black text-[#dbdee1]">
                     {plan.price}
                   </span>
-                  <span className="text-[#9ca3af] text-sm">/mês</span>
+                  <span className="text-[#949ba4] text-sm">/mês</span>
                 </div>
               </div>
 
@@ -152,7 +152,7 @@ export function Pricing() {
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-2.5 text-sm">
                     <Check className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                    <span className="text-[#f5f5f5]">{feature}</span>
+                    <span className="text-[#dbdee1]">{feature}</span>
                   </li>
                 ))}
                 {plan.notIncluded.map((feature) => (
@@ -161,9 +161,9 @@ export function Pricing() {
                     className="flex items-start gap-2.5 text-sm opacity-40"
                   >
                     <div className="w-4 h-4 shrink-0 mt-0.5 flex items-center justify-center">
-                      <div className="w-3 h-px bg-[#9ca3af]" />
+                      <div className="w-3 h-px bg-[#949ba4]" />
                     </div>
-                    <span className="text-[#9ca3af] line-through">
+                    <span className="text-[#949ba4] line-through">
                       {feature}
                     </span>
                   </li>
@@ -173,7 +173,7 @@ export function Pricing() {
           ))}
         </div>
 
-        <p className="text-center text-sm text-[#9ca3af] mt-8 max-w-2xl mx-auto">
+        <p className="text-center text-sm text-[#949ba4] mt-8 max-w-2xl mx-auto">
           * Imagens no X requerem plano API pago da plataforma X (Basic tier).
           Por ora, posts no X são publicados em texto.
         </p>
