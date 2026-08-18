@@ -1416,3 +1416,90 @@ idempotência, redação, e três posts criados como rascunho.
 - Instrumentar Gemini e Deepgram em `ai_usage`.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 15): fechando o vazamento de receita
+
+### O pipeline passou a cobrar
+
+Commit `ad6e2ff`. A `CREDIT_COSTS` existia desde agosto e **não era usada por
+ninguém**: o pipeline gerava texto, imagem e carrossel sem cobrar nada. Enquanto
+foi assim, o plano era ilimitado na prática e a margem por plano do modelo não
+valia.
+
+Dois pontos, e a separação é deliberada:
+
+**Verificação na entrada**, antes de qualquer chamada paga. A estimativa
+superestima de propósito (assume que todo dia agendado vira post em todas as
+redes e que "free" custa como imagem). Barrar quem não tem saldo é o objetivo.
+Rodar a campanha inteira para descobrir no fim que o cliente não podia pagar
+seria gastar com a API e não receber.
+
+**Cobrança no fim, pelo que foi entregue**, não pelo que foi planejado. Se a
+geração de imagem falhou e o post saiu só com texto, o cliente paga texto.
+Idempotente por `runId`.
+
+Se o saldo faltar na hora de cobrar, o trabalho já foi feito: cobrar não pode
+apagar a entrega, então vira registro no log e não erro para o cliente.
+
+**Consumo verificado contra o que o plano oferece:**
+
+| Cenário | Por mês | Cabe no Pro (1.800)? |
+|---|---|---|
+| 3 redes, imagem todo dia | 1.500 | sim, sobram 300 |
+| 3 redes, imagem 2x por semana | 1.300 | sim, sobram 500 |
+| 2 redes com imagem | 1.200 | sim, sobram 600 |
+| só LinkedIn com imagem | 500 | sim, sobram 1.300 |
+
+A promessa da landing (campanha completa nas 3 redes) cabe no plano Pro.
+
+A página de Plano ganhou saldo, barra de consumo, aviso quando está acabando e
+os últimos movimentos. O extrato vem junto do saldo porque saldo sozinho gera a
+pergunta "onde foi parar", e responder por suporte custa mais caro que mostrar.
+
+### Migração para Sonnet 5
+
+Commit `e90f495`. Preço promocional de US$ 2,00 na entrada e US$ 10,00 na saída
+até 31/08/2026, contra US$ 3,00 e US$ 15,00 do 4.5. Um terço a menos no custo de
+texto, e depois iguala, então não existe cenário em que a troca fique mais cara.
+
+**Verificado antes de trocar:** nenhuma chamada nossa ao Claude usa
+`temperature`, `top_p`, `top_k`, `budget_tokens` nem prefill de assistente, que
+são os parâmetros que o Sonnet 5 rejeita com 400. Os `temperature` que existem
+no projeto são de chamadas ao Gemini e ao Grok.
+
+**Verificado depois:** chamada real respondeu em 3,8s e a instrumentação gravou
+`modelo=claude-sonnet-5` com custo correto.
+
+A tabela de preço mantém o valor cheio, e não o promocional, de propósito:
+superestimar custo é seguro, subestimar é o que quebra projeção. Quando a intro
+acabar, o número já está certo.
+
+### Gemini e Deepgram instrumentados
+
+Commit `bfe50b4`. Até agora só o Claude gravava consumo, e nas operações de
+mídia o Claude é a **menor** parte do custo.
+
+**O modelo gravado é o que realmente respondeu, não o que foi pedido.** Em
+cascata de fallback essa distinção é o dado inteiro: entre o Gemini Flash a
+US$ 0,039 e o Pro a US$ 0,134 há 3,4 vezes de diferença, e nada no retorno da
+função denuncia qual rodou. Por isso a gravação acontece dentro da cascata, no
+ponto de sucesso, onde o nome do modelo está em escopo.
+
+A transcrição grava distinguindo monolíngue de multilíngue, porque o multi custa
+21% a mais e é o que usamos.
+
+Mídia não tem token, então as colunas de token ficam em zero de propósito:
+misturar unidades na mesma coluna daria número errado em qualquer soma futura.
+
+Verificado com transcrição real: gravou `nova-3-multi`, US$ 0,00407 para 47s,
+que bate exatamente com o preço por minuto, e com o `projectId` vinculado.
+
+### O que continua aberto
+
+- Modo assíncrono da Deepgram (`callback`), para vídeo longo não esbarrar no
+  `maxDuration`.
+- Consolidar os três modelos de imagem do Gemini em um. Agora que o consumo é
+  gravado, dá para decidir com dado em vez de opinião.
+- Nada foi enviado ao GitHub: o branch `feat/own-auth` continua só na máquina.
+
+*Atualizado em 18/08/2026 por Claude Code.*
