@@ -37,23 +37,32 @@ export function Hero() {
           >
             <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
               <Zap className="w-3.5 h-3.5" />
-              <span>Multi-agentes de IA para redes sociais</span>
+              <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
             </div>
 
             <h1 className="text-5xl lg:text-6xl font-black text-[#dbdee1] leading-[1.05] mb-6">
-              Seus agentes de IA{" "}
-              <span className="text-orange-500">trabalhando</span> por você
+              Quem não publica{" "}
+              <span className="text-orange-500">não existe</span> para o mercado
             </h1>
 
-            <p className="text-xl text-[#949ba4] leading-relaxed mb-8 max-w-lg">
-              Uma equipe de agentes autônomos pesquisa, escreve, cria imagens e
-              publica nas suas redes sociais. Você só aprova.
+            <p className="text-xl text-[#949ba4] leading-relaxed mb-6 max-w-lg">
+              Autoridade é o que faz você cobrar mais caro, ser lembrado na hora
+              da indicação e receber a proposta sem disputar preço. Ela vem de
+              publicar com consistência, e é exatamente isso que 99% não
+              conseguem manter.
+            </p>
+
+            <p className="text-xl text-[#dbdee1] leading-relaxed mb-8 max-w-lg">
+              Um time de agentes pesquisa, escreve, desenha e publica enquanto
+              você trabalha.{" "}
+              <span className="text-orange-400">E soa como você</span>, porque
+              eles estudam o seu perfil, o seu tom e os seus temas.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-12">
               <Button size="xl" asChild>
                 <Link href="/sign-up">
-                  Começar grátis
+                  Começar os 7 dias grátis
                   <ArrowRight className="w-5 h-5" />
                 </Link>
               </Button>
@@ -65,11 +74,11 @@ export function Hero() {
             <div className="flex items-center gap-6 text-sm text-[#949ba4]">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-orange-400" />
-                <span>Sem cartão de crédito</span>
+                <span>7 dias grátis</span>
               </div>
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-orange-400" />
-                <span>Setup em 5 minutos</span>
+                <span>Cancele quando quiser</span>
               </div>
             </div>
           </motion.div>

@@ -33,7 +33,7 @@ const FEATURES = [
     icon: Share2,
     title: "Publicação automática",
     description:
-      "LinkedIn (texto, imagem, carrossel e vídeo) e X/Twitter (texto). Conecte uma vez e publique automaticamente.",
+      "LinkedIn (texto, imagem e carrossel) e X/Twitter (texto). Conecte uma vez e publique automaticamente.",
     color: "text-green-400",
     bg: "bg-green-400/10",
   },
