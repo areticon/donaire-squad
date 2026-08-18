@@ -46,7 +46,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" data-theme="dark">
-      <body className={`${inter.variable} ${montserrat.variable} ${inter.className}`}>
+      {/*
+        suppressHydrationWarning aqui porque extensões de navegador (ColorZilla,
+        Grammarly, LastPass) injetam atributos no body antes do React hidratar,
+        gerando um aviso de hydration mismatch que não vem do nosso código.
+        O efeito é limitado aos atributos deste elemento: diferenças reais em
+        qualquer componente filho continuam sendo reportadas normalmente.
+      */}
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${montserrat.variable} ${inter.className}`}
+      >
         <ThemeProvider>
           {children}
           <Toaster
