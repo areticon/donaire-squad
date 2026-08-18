@@ -23,6 +23,7 @@ export async function POST(
       id: true,
       blobUrl: true,
       status: true,
+      projectId: true,
       project: {
         select: {
           name: true,
@@ -54,7 +55,10 @@ export async function POST(
       video.project.name,
       video.project.contexts[0]?.compiled
     );
-    const result = await transcribeBlob(video.blobUrl, { keyterms });
+    const result = await transcribeBlob(video.blobUrl, {
+      keyterms,
+      usage: { projectId: video.projectId, operation: "video_transcricao" },
+    });
 
     await prisma.videoJob.update({
       where: { id },

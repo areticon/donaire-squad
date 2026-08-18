@@ -1,5 +1,6 @@
 import { get } from "@vercel/blob";
 import { MAX_KEYTERMS } from "./keyterms";
+import { recordTranscricao, type ContextoMidia } from "./usage";
 
 /**
  * Transcrição de vídeo com marcação de tempo por palavra.
@@ -61,7 +62,13 @@ type DeepgramResponse = {
 
 export async function transcribeBlob(
   blobUrl: string,
-  options?: { language?: string; contentType?: string; keyterms?: string[] }
+  options?: {
+    language?: string;
+    contentType?: string;
+    keyterms?: string[];
+    /** Sem isto o custo da transcrição não aparece em lugar nenhum. */
+    usage?: ContextoMidia;
+  }
 ): Promise<TranscriptResult> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) throw new Error("DEEPGRAM_API_KEY não configurada");
@@ -211,6 +218,13 @@ export async function transcribeBlob(
     start: p.start ?? p.sentences?.[0]?.start ?? 0,
     end: p.end ?? p.sentences?.[p.sentences.length - 1]?.end ?? 0,
   }));
+
+  // O modelo multilíngue custa 21% a mais que o monolíngue (US$ 0,0052 contra
+  // US$ 0,0043 por minuto), então o que é gravado precisa distinguir os dois.
+  if (options?.usage) {
+    const usado = (options?.language ?? "multi") === "multi" ? "nova-3-multi" : "nova-3";
+    recordTranscricao(usado, durationSec, options.usage);
+  }
 
   return {
     text,

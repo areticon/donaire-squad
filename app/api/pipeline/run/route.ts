@@ -1312,7 +1312,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
               // user can manually regenerate the actual video from the card later.
               await appendLog(runId, { agent: "Diana Design", message: `Gerando imagem cinematográfica para ${dayName} (vídeo gerado separadamente após a campanha).`, status: "running" });
               try {
-                const fallbackUrl = await withDianaCap(generateImage(`${visualPrompt} — cinematic still frame, 16:9`, "16:9"));
+                const fallbackUrl = await withDianaCap(generateImage(`${visualPrompt} — cinematic still frame, 16:9`, "16:9", "standard", { projectId: project.id, runId, operation: "campanha_imagem" }));
                 mediaByDayKey[dayKey] = { imageUrl: fallbackUrl, imagePrompt: visualPrompt };
                 dianaFinalUrl = fallbackUrl;
                 await appendLog(runId, { agent: "Diana Design", message: `Imagem gerada para ${dayName}. Clique no card para gerar o vídeo final.`, status: "completed" });
@@ -1321,14 +1321,14 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 await appendLog(runId, { agent: "Diana Design", message: `Falha ao gerar imagem para ${dayName}. Prompt salvo.`, status: "warning" });
               }
             } else if (resolvedType === "carousel") {
-              const imageUrl = await withDianaCap(generateImage(visualPrompt, "1:1"));
-              const slide2 = await withDianaCap(generateImage(`${visualPrompt} — slide 2, continuation`, "1:1"));
-              const slide3 = await withDianaCap(generateImage(`${visualPrompt} — slide 3, call to action`, "1:1"));
+              const imageUrl = await withDianaCap(generateImage(visualPrompt, "1:1", "standard", { projectId: project.id, runId, operation: "campanha_imagem" }));
+              const slide2 = await withDianaCap(generateImage(`${visualPrompt} — slide 2, continuation`, "1:1", "standard", { projectId: project.id, runId, operation: "campanha_imagem" }));
+              const slide3 = await withDianaCap(generateImage(`${visualPrompt} — slide 3, call to action`, "1:1", "standard", { projectId: project.id, runId, operation: "campanha_imagem" }));
               dianaFinalUrl = [imageUrl, slide2, slide3].join("|");
               mediaByDayKey[dayKey] = { imageUrl: dianaFinalUrl, imagePrompt: visualPrompt };
               await appendLog(runId, { agent: "Diana Design", message: `Carrossel (3 slides) gerado para ${dayName}.`, status: "completed" });
             } else {
-              const imageUrl = await withDianaCap(generateImage(visualPrompt, "linkedin-landscape"));
+              const imageUrl = await withDianaCap(generateImage(visualPrompt, "linkedin-landscape", "standard", { projectId: project.id, runId, operation: "campanha_imagem" }));
               mediaByDayKey[dayKey] = { imageUrl, imagePrompt: visualPrompt };
               dianaFinalUrl = imageUrl;
               await appendLog(runId, { agent: "Diana Design", message: `Imagem gerada para ${dayName}.`, status: "completed" });

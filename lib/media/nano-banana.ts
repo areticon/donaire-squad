@@ -1,3 +1,4 @@
+import { recordImagem, type ContextoMidia } from "@/lib/media/usage";
 /**
  * Image generation — priority order:
  * 1. Imagen 3 via Gemini API key (generativelanguage.googleapis.com — best quality, API key only)
@@ -57,7 +58,7 @@ const IMAGEN_ASPECT_MAP: Record<AspectRatio, string> = {
  * Same quality as Vertex AI but only requires GEMINI_API_KEY, no service account.
  * Models tried: imagen-3.0-generate-001 → imagen-3.0-fast-generate-001
  */
-async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, apiKey: string): Promise<string | null> {
+async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, apiKey: string, ctx?: ContextoMidia): Promise<string | null> {
   const models = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"];
   const aspectParam = IMAGEN_ASPECT_MAP[aspectRatio] ?? "4:3";
 
@@ -97,6 +98,7 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
       const base64 = data.predictions?.[0]?.bytesBase64Encoded;
       if (base64) {
         console.log(`[Imagen3 API] ✓ Imagem gerada com ${model}`);
+        if (ctx) recordImagem(model, 1, ctx);
         return `data:image/jpeg;base64,${base64}`;
       }
 
@@ -112,7 +114,7 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
  * Gemini Nano Banana — geração de imagem via generateContent com modality IMAGE.
  * Usa os modelos mais recentes: Nano Banana 2 → Nano Banana → Nano Banana Pro.
  */
-async function tryGeminiFlashImage(prompt: string, apiKey: string): Promise<string | null> {
+async function tryGeminiFlashImage(prompt: string, apiKey: string, ctx?: ContextoMidia): Promise<string | null> {
   const models = [
     "gemini-3.1-flash-image-preview",   // Nano Banana 2 — rápido, 4K
     "gemini-2.5-flash-image",           // Nano Banana — estável
@@ -146,6 +148,7 @@ async function tryGeminiFlashImage(prompt: string, apiKey: string): Promise<stri
       if (imgPart?.inlineData) {
         const { data: b64, mimeType } = imgPart.inlineData;
         console.log(`[Gemini Flash Image] ✓ Gerada com ${model}`);
+        if (ctx) recordImagem(model, 1, ctx);
         return `data:${mimeType ?? "image/jpeg"};base64,${b64}`;
       }
     } catch (e) {
@@ -159,7 +162,7 @@ async function tryGeminiFlashImage(prompt: string, apiKey: string): Promise<stri
  * Vertex AI Imagen 3 — usa Service Account (GCP credentials).
  * Alternativa corporativa quando não se usa AI Studio key.
  */
-async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio): Promise<string | null> {
+async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: ContextoMidia): Promise<string | null> {
   const creds = getGCPCredentials();
   if (!creds) return null;
 
@@ -202,6 +205,7 @@ async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio): Promi
         const base64 = data.predictions?.[0]?.bytesBase64Encoded;
         if (base64) {
           console.log(`[Vertex Imagen] ✓ Imagem gerada com ${model}`);
+          if (ctx) recordImagem(model, 1, ctx);
           return `data:image/jpeg;base64,${base64}`;
         }
       } catch (modelErr) {
@@ -267,24 +271,31 @@ async function tryPollinationsAI(
 export async function generateImage(
   prompt: string,
   aspectRatio: AspectRatio = "4:3",
-  quality: ImageQuality = "standard"
+  quality: ImageQuality = "standard",
+  /**
+   * Sem isto, o custo de imagem fica invisível. E como isto aqui é uma cascata
+   * de fallback, o que precisa ser gravado é o modelo que **respondeu**, não o
+   * que foi pedido: entre o Flash a US$ 0,039 e o Pro a US$ 0,134 há 3,4 vezes
+   * de diferença, e nada no retorno denuncia qual rodou.
+   */
+  ctx?: ContextoMidia
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   // ── 1. Imagen 3 via Gemini API key (melhor qualidade, só precisa da API key) ──
   if (apiKey) {
-    const imagen3Result = await tryImagen3ViaApiKey(prompt, aspectRatio, apiKey);
+    const imagen3Result = await tryImagen3ViaApiKey(prompt, aspectRatio, apiKey, ctx);
     if (imagen3Result) return imagen3Result;
   }
 
   // ── 2. Gemini 2.0 Flash image generation (também via API key) ────────────────
   if (apiKey) {
-    const flashResult = await tryGeminiFlashImage(prompt, apiKey);
+    const flashResult = await tryGeminiFlashImage(prompt, apiKey, ctx);
     if (flashResult) return flashResult;
   }
 
   // ── 3. Vertex AI Imagen 3 (service account — alternativa corporativa) ─────────
-  const vertexResult = await tryVertexImagen3(prompt, aspectRatio);
+  const vertexResult = await tryVertexImagen3(prompt, aspectRatio, ctx);
   if (vertexResult) return vertexResult;
 
   // ── 4. Pollinations.ai (último recurso, sem chave) ────────────────────────────
