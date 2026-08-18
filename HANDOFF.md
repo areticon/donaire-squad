@@ -1105,3 +1105,74 @@ percentual da receita, preço e margem por produto, e as três coisas que mais
 mexem no resultado (bitrate, plano anual, conversão da landing).
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 11): demo pública e os buracos da jornada
+
+### Demonstração pública na landing
+
+Commit `10e8045`. O visitante escreve cru, do jeito que falaria com um cliente,
+e recebe o post pronto para LinkedIn, X e Instagram. Sem cadastro.
+
+**O desenho mudou em relação ao que eu tinha proposto.** Eu havia sugerido
+"cola a URL do LinkedIn". Isso não funciona: nosso escopo OAuth
+(`openid, profile, w_member_social`) só lê o perfil de quem já autorizou, e ler
+o de um visitante qualquer exigiria raspar o LinkedIn, que é bloqueado e viola
+os termos deles. Pedir texto cru ainda demonstra melhor o produto novo, onde
+matéria-prima crua entra e conteúdo sai.
+
+**Contenção de abuso**, porque é o único endpoint que chama o Claude sem sessão:
+3 por IP por dia e 200 por dia global, os dois por env. O contador vive no
+Postgres e não em memória, porque função serverless não compartilha memória
+entre instâncias e um contador em módulo zeraria a cada cold start. O IP nunca é
+gravado em texto puro, só o hash com sal do `BETTER_AUTH_SECRET`.
+
+A tabela `demo_runs` guarda entrada e saída. Serve para medir a conversão da
+demo em cadastro e, principalmente, para ler o que quem ainda não é cliente
+escreve, que é a melhor pesquisa de posicionamento disponível.
+
+**Custo medido contra a API real: R$ 0,04 por demo**, não os R$ 0,45 que eu
+tinha estimado. A diferença é o desenho: estimei 4 chamadas com contexto cheio,
+e o final usa 1 chamada com prompt curto.
+
+| | Estimado | Medido |
+|---|---|---|
+| Por demo | R$ 0,45 | R$ 0,04 |
+| Teto diário (200 demos) | R$ 90 | R$ 8 |
+| No teste de R$ 2.000, se todos usarem | R$ 300 | R$ 27 |
+
+Verificado: 200 em 15s com saída de qualidade real, 429 na quarta chamada do
+mesmo IP com convite para criar conta, 400 em entrada curta demais.
+
+### Os buracos da jornada, fechados
+
+Commit `9293f7c`.
+
+**1. O portão de 7 passos, o mais caro.** As abas Posts, Gestor de Conteúdo e
+Analytics só apareciam com `status === "active"`, que é o passo 7 de 7. O
+produto entregava zero valor até o último passo, e como o teste é de 7 dias com
+cartão já cobrado, cada dia parado no setup era risco direto de cancelamento.
+
+Agora, no passo 2 (Voz e Estilo), assim que existe nicho e tom, o cliente vê um
+post de verdade escrito pelo squad dele. É a mesma prova da demo pública, já
+personalizada. Rota nova `/api/projects/[id]/preview`, uma chamada, não grava
+nada como post porque é prévia e não entrega.
+
+**2. Dashboard vazio como primeira tela.** Quem acabava de criar conta via
+quatro números zerados, que é a pior primeira tela possível porque não diz o que
+fazer. Sem projeto nenhum, a tela agora vira a próxima ação.
+
+**3. Landing, termos e privacidade não respondiam ao tema claro.** Tinham 206
+cores fixas. Migradas para os mesmos tokens que o app inteiro usa.
+
+### Descoberta de ambiente
+
+A porta 3000 desta máquina serve o site da **Bem Natura**, outro projeto do
+Bruno. O Demandou roda na 3001. Não confundir ao testar.
+
+### Continua aberto do mapa da jornada
+
+Vídeo sem tela: upload e transcrição prontos e inalcançáveis pelo usuário. É o
+Passo 5 da fase 1, junto com o Passo 3 (agente que escolhe os trechos) e o
+Passo 4 (textos por rede).
+
+*Atualizado em 18/08/2026 por Claude Code.*
