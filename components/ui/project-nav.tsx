@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Settings, Radio, Bot, PencilLine, BarChart2, BrainCircuit } from "lucide-react";
+import { FileText, Settings, Radio, Bot, PencilLine, BarChart2, BrainCircuit, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ProjectNav({ projectId, isActive }: { projectId: string; isActive: boolean }) {
@@ -13,6 +13,12 @@ export function ProjectNav({ projectId, isActive }: { projectId: string; isActiv
       href: `/projects/${projectId}/posts`,
       label: "Posts",
       icon: FileText,
+      show: isActive,
+    },
+    {
+      href: `/projects/${projectId}/video`,
+      label: "Vídeo",
+      icon: Video,
       show: isActive,
     },
     {

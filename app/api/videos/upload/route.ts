@@ -14,14 +14,10 @@ import { prisma } from "@/lib/db/prisma";
  * de 20 minutos passa de 1 GB. O navegador envia direto para o storage.
  */
 
-const MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
-
-const ALLOWED = [
-  "video/mp4",
-  "video/quicktime",
-  "video/x-matroska",
-  "video/webm",
-];
+// Limites e o porquê de cada número vivem em lib/media/limits.ts, que o
+// navegador também usa. Duplicar os valores aqui sairia caro no dia em que um
+// dos dois lados mudasse sozinho.
+import { MAX_BYTES, TIPOS_ACEITOS } from "@/lib/media/limits";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = (await req.json()) as HandleUploadBody;
@@ -48,7 +44,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (!project) throw new Error("Projeto não encontrado");
 
         return {
-          allowedContentTypes: ALLOWED,
+          allowedContentTypes: TIPOS_ACEITOS,
           maximumSizeInBytes: MAX_BYTES,
           addRandomSuffix: true,
           // Volta para nós no onUploadCompleted, já validado.
