@@ -1176,3 +1176,80 @@ Passo 5 da fase 1, junto com o Passo 3 (agente que escolhe os trechos) e o
 Passo 4 (textos por rede).
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 12): limite de bitrate e Passo 3
+
+### O limite de bitrate obrigou a construir a tela
+
+Commit `915672b`. Descoberta ao começar: o limite não existia como mudança
+isolada porque **não havia tela de upload nenhuma**. A rota de API estava pronta
+e nada a chamava, então metade do fluxo de vídeo era invisível.
+
+A validação roda no navegador, antes de subir um byte, porque é o único lugar
+onde duração e tamanho já são conhecidos e ainda dá tempo de recusar. Deixar a
+pessoa esperar 45 minutos de upload para descobrir que o arquivo não serve seria
+a pior experiência possível, e é exatamente o que aconteceria com a taxa padrão
+do OBS.
+
+Limites em `lib/media/limits.ts`, compartilhados entre navegador e rota para os
+dois não divergirem: 40 MB por minuto (5,3 Mbps), 60 minutos, 2 GB.
+
+**O bitrate é checado antes do tamanho, de propósito.** Quando os dois estouram,
+e é o caso de quem grava no padrão do OBS, o tamanho é sintoma e o bitrate é a
+causa. "O arquivo tem 2,31 GB" não diz o que fazer; "abaixe para 4000 Kbps" diz.
+
+Verificado com números reais, incluindo a gravação do Bruno:
+
+| Caso | Resultado |
+|---|---|
+| OBS padrão, qualquer duração | recusa, com instrução de baixar para 4000 Kbps |
+| 4 Mbps, 20 min | aceita, 60 créditos |
+| 4 Mbps, 60 min | aceita, 180 créditos |
+| 5 Mbps, 20 min | aceita |
+| 90 min | recusa por duração |
+| Arquivo sem metadados | recusa, com dica de exportar em MP4 |
+
+A tela mostra o custo em créditos antes de enviar e a lista do que já foi
+enviado, com o estado em português do que o squad está fazendo.
+
+**Um erro que quase passou:** eu escrevi `access: "public"` no upload. O store é
+privado por decisão tomada em sessão anterior, porque vídeo cru do cliente é
+material não publicado. Corrigido para `private`, e `multipart` ligado, que a
+documentação recomenda acima de 100 MB porque repete só a parte que falhar em
+vez de perder o upload inteiro.
+
+### Passo 3: o agente que escolhe os trechos
+
+Commit `1d96060`. `lib/media/select-clips.ts` e a rota
+`/api/videos/[id]/select`.
+
+O desenho é ditado pela restrição de custo, não por elegância: a saída precisa
+alimentar UMA chamada por trecho no Passo 4. Por isso cada trecho já sai com
+`ideia` e `transcricao` literal, para o redator não reler a gravação inteira nem
+inventar o que a pessoa falou.
+
+O agente lê os parágrafos com marcação de tempo, não a transcrição corrida,
+porque precisa devolver início e fim em segundos.
+
+**Saneamento antes de gravar.** O modelo às vezes devolve tempo fora da
+gravação, trecho invertido ou sobreposto, e nada disso pode chegar ao Passo 4:
+vira corte errado e post sobre a frase errada.
+
+**Testado contra a transcrição real.** O agente escolheu os três momentos fortes
+do roteiro (a tese do payback, o caso da indústria de embalagem, e a tese de
+consistência) e descartou sozinho a abertura, o encerramento e a dica fraca. As
+cinco verificações passaram: nenhum fora da duração, invertido, sobreposto,
+curto demais ou longo demais. 16,7s para a chamada.
+
+### Estado da fase 1 do vídeo
+
+| Passo | Situação |
+|---|---|
+| 1. Armazenamento e upload | pronto, agora com tela e limite de bitrate |
+| 2. Transcrição | pronta e testada |
+| 3. Agente que escolhe os trechos | **pronto e testado** |
+| 4. Textos de cada rede por trecho | não começado |
+| 5. Tela de acompanhamento e aprovação | parcial: existe a tela de envio e a lista com estado |
+| 6. Débito dos créditos | não começado |
+
+*Atualizado em 18/08/2026 por Claude Code.*
