@@ -40,7 +40,7 @@ const REGRA = [
 export function Why() {
   return (
     <section id="por-que" className="relative py-24">
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#3f4147] to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -53,10 +53,10 @@ export function Why() {
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             <span>A regra 7-11-4</span>
           </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[#dbdee1] mb-4">
+          <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
             Autoridade tem uma conta. E ela não fecha no braço.
           </h2>
-          <p className="text-xl text-[#949ba4] max-w-2xl mx-auto">
+          <p className="text-xl text-[var(--text-muted)] max-w-2xl mx-auto">
             Daniel Priestley mediu o que separa quem é lembrado de quem é
             ignorado. Não é talento, é volume.
           </p>
@@ -70,17 +70,17 @@ export function Why() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="bg-[#2b2d31] border border-[#3f4147] rounded-xl p-8"
+              className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-8"
             >
               <div className="flex items-baseline gap-3 mb-4">
                 <span className="text-5xl font-black text-orange-500">
                   {item.numero}
                 </span>
-                <span className="text-lg font-bold text-[#dbdee1]">
+                <span className="text-lg font-bold text-[var(--text-primary)]">
                   {item.titulo}
                 </span>
               </div>
-              <p className="text-[#949ba4] leading-relaxed">{item.texto}</p>
+              <p className="text-[var(--text-muted)] leading-relaxed">{item.texto}</p>
             </motion.div>
           ))}
         </div>
@@ -92,11 +92,11 @@ export function Why() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className="max-w-3xl mx-auto text-center"
         >
-          <p className="text-2xl lg:text-3xl font-bold text-[#dbdee1] leading-snug mb-4">
+          <p className="text-2xl lg:text-3xl font-bold text-[var(--text-primary)] leading-snug mb-4">
             Essa conta é impossível de fechar sozinho. Por isso 99% desiste no
             terceiro post.
           </p>
-          <p className="text-lg text-[#949ba4] leading-relaxed">
+          <p className="text-lg text-[var(--text-muted)] leading-relaxed">
             E é por isso que o 1% que mantém a consistência cobra mais caro,
             recebe indicação sem pedir e não disputa preço. Eles não são
             melhores no ofício. Eles são os únicos que o mercado enxerga.

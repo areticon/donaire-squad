@@ -10,17 +10,17 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-[#1e1f22] text-[#dbdee1]">
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Nav */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1e1f22]/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[var(--bg-primary)]/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2">
             <BrandMarkImg variant="dark" size={28} />
-            <span className="font-semibold text-[#dbdee1]">demandou</span>
+            <span className="font-semibold text-[var(--text-primary)]">demandou</span>
           </Link>
           <Link
             href="/"
-            className="flex items-center gap-1 text-sm text-[#949ba4] transition-colors hover:text-orange-500"
+            className="flex items-center gap-1 text-sm text-[var(--text-muted)] transition-colors hover:text-orange-500"
           >
             ← Voltar ao início
           </Link>
@@ -33,10 +33,10 @@ export default function PrivacyPage() {
           <p className="mb-2 text-sm font-medium uppercase tracking-widest text-orange-500">
             Legal
           </p>
-          <h1 className="mb-3 text-3xl font-bold text-[#dbdee1]">
+          <h1 className="mb-3 text-3xl font-bold text-[var(--text-primary)]">
             Política de Privacidade
           </h1>
-          <p className="text-sm text-[#949ba4]">
+          <p className="text-sm text-[var(--text-muted)]">
             Última atualização: 09/04/2026
           </p>
         </div>
@@ -45,20 +45,20 @@ export default function PrivacyPage() {
 
           {/* 1 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               1. Identificação do Controlador
             </h2>
             <p className="mb-3">
               Esta Política de Privacidade é aplicável à plataforma{" "}
-              <strong className="text-[#dbdee1]">demandou</strong>, operada por:
+              <strong className="text-[var(--text-primary)]">demandou</strong>, operada por:
             </p>
             <div className="rounded-lg border border-white/10 bg-white/5 p-5 space-y-1 text-sm">
-              <p><span className="text-[#949ba4]">Razão Social:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
-              <p><span className="text-[#949ba4]">Nome Fantasia:</span> DEMANDOU</p>
-              <p><span className="text-[#949ba4]">CNPJ:</span> 66.140.770/0001-48</p>
-              <p><span className="text-[#949ba4]">Endereço:</span> Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
-              <p><span className="text-[#949ba4]">Natureza Jurídica:</span> Sociedade Empresária Limitada (ME)</p>
-              <p><span className="text-[#949ba4]">E-mail:</span>{" "}
+              <p><span className="text-[var(--text-muted)]">Razão Social:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
+              <p><span className="text-[var(--text-muted)]">Nome Fantasia:</span> DEMANDOU</p>
+              <p><span className="text-[var(--text-muted)]">CNPJ:</span> 66.140.770/0001-48</p>
+              <p><span className="text-[var(--text-muted)]">Endereço:</span> Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
+              <p><span className="text-[var(--text-muted)]">Natureza Jurídica:</span> Sociedade Empresária Limitada (ME)</p>
+              <p><span className="text-[var(--text-muted)]">E-mail:</span>{" "}
                 <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
                   contato@demandou.com
                 </a>
@@ -66,13 +66,13 @@ export default function PrivacyPage() {
             </div>
             <p className="mt-3 text-sm">
               Para os fins da Lei nº 13.709/2018 (LGPD), a demandou atua como{" "}
-              <strong className="text-[#dbdee1]">controladora</strong> dos dados pessoais tratados por meio desta plataforma.
+              <strong className="text-[var(--text-primary)]">controladora</strong> dos dados pessoais tratados por meio desta plataforma.
             </p>
           </section>
 
           {/* 2 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               2. Dados que Coletamos
             </h2>
             <p className="mb-4">
@@ -80,37 +80,37 @@ export default function PrivacyPage() {
             </p>
             <div className="space-y-4">
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.1 Dados de cadastro</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.1 Dados de cadastro</h3>
                 <p className="text-sm">
                   Nome completo e endereço de e-mail, fornecidos no momento do registro na plataforma (via Clerk).
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.2 Dados de uso</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.2 Dados de uso</h3>
                 <p className="text-sm">
                   Informações sobre como você utiliza a plataforma: páginas acessadas, funcionalidades utilizadas, frequência de acesso, logs de erros e dados de diagnóstico.
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.3 Tokens de redes sociais</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.3 Tokens de redes sociais</h3>
                 <p className="text-sm">
                   Tokens de acesso OAuth fornecidos voluntariamente para integração com plataformas de redes sociais (LinkedIn, X/Twitter), necessários para publicação de conteúdo em seu nome.
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.4 Conteúdo gerado</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.4 Conteúdo gerado</h3>
                 <p className="text-sm">
                   Textos, rascunhos, posts e demais conteúdos criados ou editados por você na plataforma, incluindo insumos fornecidos para a geração de conteúdo por inteligência artificial.
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.5 Dados de pagamento</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.5 Dados de pagamento</h3>
                 <p className="text-sm">
                   Dados de cobrança e histórico de transações, processados diretamente pelo Stripe. Não armazenamos dados de cartão de crédito em nossos servidores.
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">2.6 Dados técnicos</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.6 Dados técnicos</h3>
                 <p className="text-sm">
                   Endereço IP, tipo e versão de navegador, sistema operacional, fuso horário e outros dados técnicos coletados automaticamente.
                 </p>
@@ -120,7 +120,7 @@ export default function PrivacyPage() {
 
           {/* 3 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               3. Finalidade do Tratamento
             </h2>
             <p className="mb-3">Utilizamos seus dados pessoais para as seguintes finalidades:</p>
@@ -147,7 +147,7 @@ export default function PrivacyPage() {
 
           {/* 4 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               4. Base Legal (LGPD)
             </h2>
             <p className="mb-4">
@@ -155,19 +155,19 @@ export default function PrivacyPage() {
             </p>
             <div className="space-y-3">
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
-                <p className="mb-1 font-medium text-[#dbdee1]">Execução de contrato (art. 7º, V)</p>
+                <p className="mb-1 font-medium text-[var(--text-primary)]">Execução de contrato (art. 7º, V)</p>
                 <p>Tratamento necessário para a prestação dos serviços contratados, incluindo autenticação, armazenamento de dados, publicação de conteúdo e processamento de pagamentos.</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
-                <p className="mb-1 font-medium text-[#dbdee1]">Legítimo interesse (art. 7º, IX)</p>
+                <p className="mb-1 font-medium text-[var(--text-primary)]">Legítimo interesse (art. 7º, IX)</p>
                 <p>Melhorias contínuas da plataforma, segurança, prevenção a fraudes e comunicações sobre o serviço, desde que não violem seus direitos e liberdades fundamentais.</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
-                <p className="mb-1 font-medium text-[#dbdee1]">Consentimento (art. 7º, I)</p>
+                <p className="mb-1 font-medium text-[var(--text-primary)]">Consentimento (art. 7º, I)</p>
                 <p>Para finalidades específicas não cobertas pelas bases acima, como envio de comunicações de marketing. O consentimento pode ser revogado a qualquer momento.</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
-                <p className="mb-1 font-medium text-[#dbdee1]">Cumprimento de obrigação legal (art. 7º, II)</p>
+                <p className="mb-1 font-medium text-[var(--text-primary)]">Cumprimento de obrigação legal (art. 7º, II)</p>
                 <p>Retenção de dados para fins fiscais, contábeis e atendimento a requisições de autoridades competentes.</p>
               </div>
             </div>
@@ -175,7 +175,7 @@ export default function PrivacyPage() {
 
           {/* 5 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               5. Compartilhamento de Dados
             </h2>
             <p className="mb-4">
@@ -217,7 +217,7 @@ export default function PrivacyPage() {
                 <div key={item.name} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
                   <p className="mb-1">
                     <strong className="text-orange-500">{item.name}</strong>{" "}
-                    <span className="text-[#949ba4]">— {item.role}</span>
+                    <span className="text-[var(--text-muted)]">— {item.role}</span>
                   </p>
                   <p>{item.detail}</p>
                 </div>
@@ -230,7 +230,7 @@ export default function PrivacyPage() {
 
           {/* 6 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               6. Retenção de Dados
             </h2>
             <p className="mb-3">
@@ -240,19 +240,19 @@ export default function PrivacyPage() {
               <li className="flex gap-2">
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
-                  <strong className="text-[#dbdee1]">Dados de conta e uso:</strong> enquanto sua conta permanecer ativa na plataforma.
+                  <strong className="text-[var(--text-primary)]">Dados de conta e uso:</strong> enquanto sua conta permanecer ativa na plataforma.
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
-                  <strong className="text-[#dbdee1]">Dados fiscais e financeiros:</strong> por 5 (cinco) anos após o encerramento da conta, em cumprimento às obrigações legais tributárias e contábeis (Código Tributário Nacional e legislação correlata).
+                  <strong className="text-[var(--text-primary)]">Dados fiscais e financeiros:</strong> por 5 (cinco) anos após o encerramento da conta, em cumprimento às obrigações legais tributárias e contábeis (Código Tributário Nacional e legislação correlata).
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
-                  <strong className="text-[#dbdee1]">Logs de acesso:</strong> por 6 (seis) meses, conforme exigido pelo Marco Civil da Internet (Lei nº 12.965/2014).
+                  <strong className="text-[var(--text-primary)]">Logs de acesso:</strong> por 6 (seis) meses, conforme exigido pelo Marco Civil da Internet (Lei nº 12.965/2014).
                 </span>
               </li>
             </ul>
@@ -263,7 +263,7 @@ export default function PrivacyPage() {
 
           {/* 7 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               7. Seus Direitos como Titular
             </h2>
             <p className="mb-4">
@@ -281,8 +281,8 @@ export default function PrivacyPage() {
                 { right: "Revisão de decisões automatizadas", desc: "Solicitar revisão de decisões tomadas exclusivamente por meios automatizados." },
               ].map((item) => (
                 <div key={item.right} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
-                  <p className="mb-1 font-medium text-[#dbdee1]">{item.right}</p>
-                  <p className="text-[#949ba4]">{item.desc}</p>
+                  <p className="mb-1 font-medium text-[var(--text-primary)]">{item.right}</p>
+                  <p className="text-[var(--text-muted)]">{item.desc}</p>
                 </div>
               ))}
             </div>
@@ -297,7 +297,7 @@ export default function PrivacyPage() {
 
           {/* 8 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               8. Cookies e Rastreamento
             </h2>
             <p className="mb-3">
@@ -305,15 +305,15 @@ export default function PrivacyPage() {
             </p>
             <div className="space-y-3 text-sm">
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">Cookies essenciais</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies essenciais</h3>
                 <p>Necessários para autenticação, segurança de sessão e funcionamento básico da plataforma. Não podem ser desativados.</p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">Cookies de desempenho</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies de desempenho</h3>
                 <p>Coletam informações anônimas sobre como os usuários interagem com a plataforma, permitindo identificar e corrigir problemas.</p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[#dbdee1]">Cookies de terceiros</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies de terceiros</h3>
                 <p>Nossos provedores de serviço (como Clerk e Stripe) podem definir seus próprios cookies. Consulte as políticas de privacidade de cada fornecedor para mais informações.</p>
               </div>
             </div>
@@ -324,7 +324,7 @@ export default function PrivacyPage() {
 
           {/* 9 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               9. Segurança dos Dados
             </h2>
             <p className="mb-3">
@@ -351,12 +351,12 @@ export default function PrivacyPage() {
 
           {/* 10 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               10. Menores de Idade
             </h2>
             <p className="text-sm">
               A plataforma demandou é destinada exclusivamente a pessoas com{" "}
-              <strong className="text-[#dbdee1]">18 anos ou mais</strong>. Não coletamos conscientemente dados pessoais de menores de 18 anos. Caso identifiquemos que dados de um menor foram fornecidos sem autorização, os excluiremos imediatamente. Se você acredita que isso ocorreu, entre em contato com a gente pelo e-mail{" "}
+              <strong className="text-[var(--text-primary)]">18 anos ou mais</strong>. Não coletamos conscientemente dados pessoais de menores de 18 anos. Caso identifiquemos que dados de um menor foram fornecidos sem autorização, os excluiremos imediatamente. Se você acredita que isso ocorreu, entre em contato com a gente pelo e-mail{" "}
               <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
                 contato@demandou.com
               </a>
@@ -366,7 +366,7 @@ export default function PrivacyPage() {
 
           {/* 11 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               11. Alterações nesta Política
             </h2>
             <p className="mb-3 text-sm">
@@ -374,30 +374,30 @@ export default function PrivacyPage() {
             </p>
             <p className="text-sm">
               Quando realizarmos alterações relevantes, notificaremos você por e-mail ou por meio de aviso destacado na plataforma com antecedência mínima de{" "}
-              <strong className="text-[#dbdee1]">30 dias</strong> antes da entrada em vigor. O uso continuado da plataforma após esse prazo implica a aceitação da nova versão.
+              <strong className="text-[var(--text-primary)]">30 dias</strong> antes da entrada em vigor. O uso continuado da plataforma após esse prazo implica a aceitação da nova versão.
             </p>
           </section>
 
           {/* 12 */}
           <section>
-            <h2 className="mb-4 text-xl font-semibold text-[#dbdee1]">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               12. Contato e DPO
             </h2>
             <p className="mb-3 text-sm">
               Para dúvidas, solicitações relacionadas aos seus dados pessoais ou para exercer seus direitos como titular, entre em contato com nosso Encarregado pelo Tratamento de Dados Pessoais (DPO):
             </p>
             <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-sm space-y-1">
-              <p><span className="text-[#949ba4]">Empresa:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
-              <p><span className="text-[#949ba4]">E-mail:</span>{" "}
+              <p><span className="text-[var(--text-muted)]">Empresa:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
+              <p><span className="text-[var(--text-muted)]">E-mail:</span>{" "}
                 <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
                   contato@demandou.com
                 </a>
               </p>
-              <p><span className="text-[#949ba4]">Endereço:</span> Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
+              <p><span className="text-[var(--text-muted)]">Endereço:</span> Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
             </div>
             <p className="mt-3 text-sm">
               Você também pode apresentar reclamação à{" "}
-              <strong className="text-[#dbdee1]">Autoridade Nacional de Proteção de Dados (ANPD)</strong> em{" "}
+              <strong className="text-[var(--text-primary)]">Autoridade Nacional de Proteção de Dados (ANPD)</strong> em{" "}
               <a
                 href="https://www.gov.br/anpd"
                 target="_blank"
@@ -413,7 +413,7 @@ export default function PrivacyPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 py-8 text-center text-xs text-[#949ba4]">
+      <footer className="border-t border-white/10 py-8 text-center text-xs text-[var(--text-muted)]">
         <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA — CNPJ 66.140.770/0001-48</p>
         <p className="mt-1">Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
         <div className="mt-3 flex justify-center gap-4">

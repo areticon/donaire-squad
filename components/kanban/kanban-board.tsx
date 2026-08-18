@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SetupPreview } from "@/components/kanban/setup-preview";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -228,7 +229,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
         >
           {currentStep === 0 && <StepIdeation form={form} set={set} askAI={askAI} />}
-          {currentStep === 1 && <StepVoice form={form} set={set} askAI={askAI} />}
+          {currentStep === 1 && <StepVoice form={form} set={set} askAI={askAI} projectId={project.id} />}
           {currentStep === 2 && <StepAgents form={form} set={set} askAI={askAI} />}
           {currentStep === 3 && <StepDesign form={form} set={set} askAI={askAI} />}
           {currentStep === 4 && <StepNetworks projectId={project.id} />}
@@ -356,10 +357,12 @@ function StepVoice({
   form,
   set,
   askAI,
+  projectId,
 }: {
   form: Record<string, string>;
   set: (f: string, v: string) => void;
   askAI: (msg: string) => void;
+  projectId: string;
 }) {
   return (
     <div className="space-y-6">
@@ -410,6 +413,13 @@ function StepVoice({
         <Bot className="w-3.5 h-3.5" />
         Gerar guia de voz automaticamente
       </Button>
+
+      {/* A prova de que funciona vem aqui, no passo 2 de 7, e não no 7.
+          Sem isto o cliente paga o cartão e só vê o produto no último passo. */}
+      <SetupPreview
+        projectId={projectId}
+        pronto={Boolean(form.voice && form.voice.trim().length > 20 && form.niche)}
+      />
     </div>
   );
 }

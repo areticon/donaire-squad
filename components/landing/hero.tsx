@@ -22,7 +22,7 @@ export function Hero() {
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
       {/* Background grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#313338_1px,transparent_1px),linear-gradient(to_bottom,#313338_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--bg-elevated)_1px,transparent_1px),linear-gradient(to_bottom,var(--bg-elevated)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
 
       {/* Orange glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-500/5 rounded-full blur-3xl" />
@@ -40,19 +40,19 @@ export function Hero() {
               <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
             </div>
 
-            <h1 className="text-5xl lg:text-6xl font-black text-[#dbdee1] leading-[1.05] mb-6">
+            <h1 className="text-5xl lg:text-6xl font-black text-[var(--text-primary)] leading-[1.05] mb-6">
               Quem não publica{" "}
               <span className="text-orange-500">não existe</span> para o mercado
             </h1>
 
-            <p className="text-xl text-[#949ba4] leading-relaxed mb-6 max-w-lg">
+            <p className="text-xl text-[var(--text-muted)] leading-relaxed mb-6 max-w-lg">
               Autoridade é o que faz você cobrar mais caro, ser lembrado na hora
               da indicação e receber a proposta sem disputar preço. Ela vem de
               publicar com consistência, e é exatamente isso que 99% não
               conseguem manter.
             </p>
 
-            <p className="text-xl text-[#dbdee1] leading-relaxed mb-8 max-w-lg">
+            <p className="text-xl text-[var(--text-primary)] leading-relaxed mb-8 max-w-lg">
               Um time de agentes pesquisa, escreve, desenha e publica enquanto
               você trabalha.{" "}
               <span className="text-orange-400">E soa como você</span>, porque
@@ -71,7 +71,7 @@ export function Hero() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-6 text-sm text-[#949ba4]">
+            <div className="flex items-center gap-6 text-sm text-[var(--text-muted)]">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-orange-400" />
                 <span>7 dias grátis</span>
@@ -90,12 +90,12 @@ export function Hero() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="relative"
           >
-            <div className="bg-[#111] border border-[#3f4147] rounded-2xl p-6 space-y-3">
+            <div className="bg-[#111] border border-[var(--border)] rounded-2xl p-6 space-y-3">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-2 text-xs text-[#949ba4] font-mono">demandou — ao vivo</span>
+                <span className="ml-2 text-xs text-[var(--text-muted)] font-mono">demandou — ao vivo</span>
               </div>
 
               {AGENT_NAMES.map((agent, i) => (
@@ -104,14 +104,14 @@ export function Hero() {
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 + i * 0.15 }}
-                  className="flex items-center gap-3 bg-[#313338] rounded-lg p-3 border border-[#3f4147]"
+                  className="flex items-center gap-3 bg-[var(--bg-elevated)] rounded-lg p-3 border border-[var(--border)]"
                 >
                   <div className={`w-8 h-8 ${agent.color} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0`}>
                     {agent.name.split(" ").map(n => n[0]).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-[#dbdee1]">{agent.name}</div>
-                    <div className="text-xs text-[#949ba4]">{agent.role}</div>
+                    <div className="text-sm font-medium text-[var(--text-primary)]">{agent.name}</div>
+                    <div className="text-xs text-[var(--text-muted)]">{agent.role}</div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />

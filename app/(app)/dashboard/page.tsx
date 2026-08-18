@@ -64,6 +64,44 @@ export default async function DashboardPage() {
   const { user, projects, recentPosts, recentRuns, totalPosts } =
     await getDashboardData(userId);
 
+  // Primeira vez: sem projeto nenhum, os quatro números são zero. Painel de
+  // zeros é a pior primeira tela possível, porque não diz o que fazer. Aqui a
+  // tela vira a próxima ação, e só depois vira painel.
+  if (projects.length === 0) {
+    return (
+      <div className="p-6 lg:p-8 max-w-2xl">
+        <h1 className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>
+          Bem-vindo, {user?.name?.split(" ")[0] ?? "por aqui"}
+        </h1>
+        <p className="mt-2 text-lg" style={{ color: "var(--text-muted)" }}>
+          Falta uma coisa para o seu squad começar a trabalhar: contar para ele
+          quem é você e como você fala.
+        </p>
+
+        <div
+          className="mt-8 rounded-xl border p-6"
+          style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+        >
+          <p className="font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
+            São três minutos, e no segundo passo você já vê o squad escrevendo
+            um post seu.
+          </p>
+          <ol className="space-y-2 mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
+            <li>1. Seu nicho e o seu público</li>
+            <li>2. Como você fala, e aí o squad te mostra um post</li>
+            <li>3. Conecte as redes e escolha o ritmo</li>
+          </ol>
+          <Button size="lg" asChild>
+            <Link href="/projects/new">
+              <Plus className="w-4 h-4" />
+              Criar meu primeiro projeto
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 lg:p-8">
       {/* Header */}
@@ -72,7 +110,7 @@ export default async function DashboardPage() {
           Olá, {user?.name?.split(" ")[0] ?? "usuário"}
         </h1>
         <p className="mt-1" style={{ color: "var(--text-muted)" }}>
-          Seu squad de IA está pronto para operar — gerencie campanhas, monitore resultados e automatize sua presença digital.
+          Seu squad de IA está pronto para operar: gerencie campanhas, monitore resultados e automatize sua presença digital.
         </p>
       </div>
 

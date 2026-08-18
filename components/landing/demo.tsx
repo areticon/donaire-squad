@@ -66,7 +66,7 @@ export function Demo() {
 
   return (
     <section id="demo" className="relative py-24">
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#3f4147] to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -80,17 +80,17 @@ export function Demo() {
             <Sparkles className="w-3.5 h-3.5" />
             <span>Sem cadastro. Agora.</span>
           </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[#dbdee1] mb-4">
+          <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
             Não acredite em mim. Testa.
           </h2>
-          <p className="text-xl text-[#949ba4] max-w-2xl mx-auto">
+          <p className="text-xl text-[var(--text-muted)] max-w-2xl mx-auto">
             Escreva do jeito que você falaria para um cliente, sem se preocupar
             com forma. O squad devolve o post pronto para as três redes.
           </p>
         </motion.div>
 
-        <div className="bg-[#2b2d31] border border-[#3f4147] rounded-2xl p-6 lg:p-8">
-          <label className="block text-sm font-medium text-[#949ba4] mb-2">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 lg:p-8">
+          <label className="block text-sm font-medium text-[var(--text-muted)] mb-2">
             O que você diria para um cliente hoje?
           </label>
           <textarea
@@ -99,7 +99,7 @@ export function Demo() {
             rows={5}
             maxLength={1200}
             placeholder={EXEMPLO}
-            className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl p-4 text-[#dbdee1] placeholder:text-[#6b6f76] focus:outline-none focus:border-orange-500 resize-none"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-4 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500 resize-none"
           />
 
           <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -108,7 +108,7 @@ export function Demo() {
               onChange={(e) => setProfissao(e.target.value)}
               maxLength={120}
               placeholder="O que você faz? (consultor industrial, advogado, nutricionista...)"
-              className="flex-1 bg-[#1e1f22] border border-[#3f4147] rounded-xl px-4 py-3 text-[#dbdee1] placeholder:text-[#6b6f76] focus:outline-none focus:border-orange-500"
+              className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500"
             />
             <Button
               size="lg"
@@ -130,7 +130,7 @@ export function Demo() {
           </div>
 
           {texto.trim().length > 0 && texto.trim().length < 40 && (
-            <p className="text-sm text-[#949ba4] mt-3">
+            <p className="text-sm text-[var(--text-muted)] mt-3">
               Escreva mais um pouco, umas duas frases. Quanto mais cru, melhor.
             </p>
           )}
@@ -146,7 +146,7 @@ export function Demo() {
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
-                className="mt-8 pt-8 border-t border-[#3f4147]"
+                className="mt-8 pt-8 border-t border-[var(--border)]"
               >
                 <div className="flex gap-2 mb-4">
                   {REDES.map((r) => (
@@ -155,8 +155,8 @@ export function Demo() {
                       onClick={() => setAba(r.chave)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         aba === r.chave
-                          ? "bg-[#313338] text-[#dbdee1]"
-                          : "text-[#949ba4] hover:text-[#dbdee1]"
+                          ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       {r.nome}
@@ -164,18 +164,18 @@ export function Demo() {
                   ))}
                 </div>
 
-                <div className="bg-[#1e1f22] border border-[#3f4147] rounded-xl p-5 whitespace-pre-wrap text-[#dbdee1] leading-relaxed">
+                <div className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-5 whitespace-pre-wrap text-[var(--text-primary)] leading-relaxed">
                   {posts[aba]}
                 </div>
 
                 {posts.observacao && (
-                  <p className="text-sm text-[#949ba4] mt-4 italic">
+                  <p className="text-sm text-[var(--text-muted)] mt-4 italic">
                     {posts.observacao}
                   </p>
                 )}
 
                 <div className="mt-6 bg-orange-500/10 border border-orange-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <p className="text-[#dbdee1]">
+                  <p className="text-[var(--text-primary)]">
                     Isso foi um post, sem saber nada sobre você.{" "}
                     <strong>
                       Imagina o squad depois de estudar o seu perfil inteiro.
