@@ -962,3 +962,72 @@ Cinco, todos com o número que os justifica: travar o fallback do Veo
 31/08, corrigir a constante da transcrição, e avaliar Pix.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 9): Veo removido e o CAC refeito
+
+### Veo removido
+
+Commit `6148d94`. Motivo: o custo não era determinístico. A cascata tentava
+`veo-3.0-fast` a US$ 0,10 por segundo e caía para `veo-3.0` standard a US$ 0,40,
+o que levava um vídeo de 8 segundos de R$ 4,85 para R$ 18,05 contra R$ 10,00 de
+receita. Prejuízo de 80% por operação, invisível, porque Veo nunca gravou em
+`ai_usage`.
+
+`lib/media/veo3.ts` deletado. O raio de alcance era menor do que parecia:
+`generateVideo` tinha um único call site real, na rota de chat do card, e o
+pipeline importava sem usar (ele já gerava um quadro estático). `video_8s` e
+`video_8s_narrated` saíram da `CREDIT_COSTS`, e a opção Vídeo saiu do modal de
+campanha. Build passa.
+
+Vídeo passa a vir da gravação do próprio cliente, cortada e legendada, cobrada
+por 2 créditos por minuto mais 4 por clipe.
+
+### O CAC refeito, e uma correção minha
+
+A análise anterior usou só Meta e uma conversão de 0,54% de visitante para
+pagante. Os dois estavam errados.
+
+O benchmark certo para **trial com cartão exigido**, que é o nosso caso, é de 35
+cadastros e 10,5 pagantes por mil visitas, ou seja **1,05%**. Isso sozinho corta
+o CAC pela metade.
+
+CPC verificado por canal e nicho no Brasil em 2026: Saúde B2B R$ 4,50, Indústria
+R$ 5,00, Meta SaaS R$ 7,00, Contabilidade R$ 8,00, Google Tech R$ 10,00,
+Advocacia R$ 15,00, LinkedIn R$ 15 a R$ 50. **LinkedIn está descartado.**
+
+**Armadilha do nicho barato:** o CPC de R$ 5 da indústria é de quem anuncia para
+o setor industrial. Nós vendemos para um consultor industrial, e as palavras que
+ele busca estão no leilão de SaaS a R$ 10 ou R$ 18. O setor do público não
+define o leilão, a palavra define. O que resolve é cauda longa.
+
+**O nicho não é a alavanca principal.** Mantendo R$ 149, o CPC máximo viável:
+
+| Conversão visitante para pagante | churn 10% | churn 5% | churn 3% |
+|---|---|---|---|
+| 0,54% (a premissa errada) | R$ 1,62 | R$ 3,24 | R$ 5,40 |
+| 1,05% (benchmark) | R$ 3,13 | R$ 6,26 | R$ 10,43 |
+| 2,00% (bom) | R$ 5,96 | R$ 11,92 | R$ 19,87 |
+| 3,50% (melhor da classe) | R$ 10,43 | R$ 20,86 | R$ 34,77 |
+
+**A alavanca decisiva é o plano anual.** CAC máximo para LTV/CAC de 3: mensal
+com churn 10% dá R$ 298; anual com renovação de 60% dá R$ 710. Trava 12 meses e
+põe R$ 894 de margem no caixa no dia 1 contra CAC de R$ 200 a R$ 500.
+
+### O cenário que fecha, e o teste que decide
+
+Cauda longa a R$ 4, conversão de 2%, anual a R$ 1.490: CAC R$ 200, LTV/CAC 10,6,
+R$ 2.000 por mês de anúncio para 30 clientes, R$ 44.700 na entrada.
+
+Aguenta uma premissa cair, não duas. Quebra quando CPC e conversão falham juntos
+(LTV/CAC 2,23).
+
+**Recomendação: não decidir continuar ou pivotar com benchmark.** R$ 2.000 e duas
+a três semanas medem as duas variáveis que decidem. Critério de sucesso: CPC
+abaixo de R$ 6 e conversão de visita para cadastro acima de 3,5%.
+
+Antes do teste precisa estar no ar a **demo instantânea**: página onde a pessoa
+cola a URL do LinkedIn e recebe um post real na voz dela, de graça. Custa R$ 0,45
+por demo. É a alavanca de conversão que só a Demandou tem, porque o produto é a
+própria demonstração. Sem ela, o teste mede a landing errada.
+
+*Atualizado em 18/08/2026 por Claude Code.*
