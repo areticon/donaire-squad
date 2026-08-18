@@ -1333,3 +1333,86 @@ sem o guarda cada um desses daria um mês de créditos de graça.
   cobrar, porque o sistema não existia até hoje.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 14): tela de aprovação e o bug intermitente
+
+### A Fase 1 do vídeo está completa
+
+Commit `d1c0276`. Quando o trabalho fica pronto, os posts aparecem **sob o vídeo
+que os gerou**, e não numa tela separada: o cliente precisa lembrar de qual
+momento da gravação cada texto saiu para julgar se ficou fiel ao que ele quis
+dizer.
+
+Editável de propósito. O squad acerta o tom na maior parte das vezes, mas a
+pessoa conhece o próprio caso melhor que qualquer modelo, e obrigar a aprovar
+como está transformaria uma correção de dez segundos em um pedido de refazer,
+que custa uma chamada nova.
+
+Aprovar cria `Post` de verdade no fluxo que já existe, com publicação,
+agendamento e métricas. O vídeo não ganha caminho próprio de publicação, seria
+duplicar tudo. Instagram entra como rascunho mesmo sem poder publicar, porque o
+App Review da Meta está pendente, e assim o texto fica pronto para o dia que
+sair.
+
+### O bug que quase passou, e a lição
+
+O teste ponta a ponta mostrou **2 de 3 trechos virando post**. Um terço
+falhando. Ao investigar, rodou 3 de 3: a falha era **intermitente**.
+
+Intermitente é pior que determinística, porque passa no teste e quebra em
+produção de vez em quando, e aí ninguém liga o defeito à causa.
+
+Causa: o modelo emite quebra de linha crua dentro da string JSON, o que invalida
+o JSON, e post de LinkedIn é cheio de quebra de linha.
+
+**Em vez de torcer para não repetir, o formato saiu do JSON e virou delimitador**
+(`===LINKEDIN===`), que não tem caractere para escapar.
+
+| | JSON | Delimitador |
+|---|---|---|
+| Primeiro teste real | 2 de 3 | |
+| Três rodadas seguidas | | 9 de 9 |
+
+O parser foi testado também com cerca de código, preâmbulo do modelo, aspas,
+chaves e barras dentro do texto, e com rede faltando.
+
+O Passo 3 continua em JSON, porque são seis campos por trecho e delimitador
+ficaria ruim, mas ganhou instrução explícita e um parse tolerante que escapa a
+quebra de linha antes de tentar de novo.
+
+### Um erro de arquitetura que o build pegou
+
+Mover `MAX_X` para `lib/media/limits.ts` foi necessário, não estética. A tela de
+aprovação é componente de cliente e importava a constante de `write-posts`, que
+importa o Claude, que importa o Prisma, que arrastava o driver do Postgres para
+o bundle do navegador. O build falhou com `Can't resolve 'dns'`.
+
+Regra que fica: **constante compartilhada entre cliente e servidor mora em
+módulo sem import de servidor.** `lib/media/limits.ts` é esse lugar para o
+fluxo de vídeo.
+
+### Estado da fase 1 do vídeo: completa
+
+| Passo | Situação |
+|---|---|
+| 1. Armazenamento e upload | pronto, com tela e limite de bitrate |
+| 2. Transcrição | pronta e testada |
+| 3. Agente que escolhe os trechos | pronto e testado |
+| 4. Textos de cada rede por trecho | pronto e testado |
+| 5. Tela de acompanhamento e aprovação | **pronta** |
+| 6. Débito dos créditos | pronto e testado |
+
+Fluxo verificado ponta a ponta no banco: seleção, cobrança de 22 créditos com
+idempotência, redação, e três posts criados como rascunho.
+
+### O que continua aberto
+
+- **Nenhum outro pipeline debita crédito.** Texto, imagem e carrossel continuam
+  gerando sem cobrar, porque o sistema de créditos nasceu hoje. Enquanto isso, o
+  plano é ilimitado na prática e a margem por plano do modelo não vale.
+- Modo assíncrono da Deepgram (`callback`), para vídeo longo não esbarrar no
+  `maxDuration`.
+- Migrar o pipeline para Sonnet 5 antes de 31/08, enquanto dura o preço intro.
+- Instrumentar Gemini e Deepgram em `ai_usage`.
+
+*Atualizado em 18/08/2026 por Claude Code.*
