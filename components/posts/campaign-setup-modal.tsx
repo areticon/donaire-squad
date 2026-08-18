@@ -143,7 +143,6 @@ const CONTENT_TYPES = [
   { id: "image" as ContentType,   label: "Imagem",   icon: Image,     description: "Imagem gerada por IA",           credits: 8,    time: "~30s",  activeColor: "border-blue-500 bg-blue-500/10" },
   { id: "carousel" as ContentType,    label: "Carrossel",    icon: LayoutGrid, description: "3 imagens com slides navegáveis", credits: 24,   time: "~90s",  activeColor: "border-purple-500 bg-purple-500/10" },
   { id: "infographic" as ContentType, label: "Infográfico",  icon: PieChart,   description: "Visual com dados, texto e gráficos perfeitos", credits: 5, time: "~45s", activeColor: "border-teal-500 bg-teal-500/10" },
-  { id: "video" as ContentType,       label: "Vídeo",        icon: Video,      description: "Vídeo com VEO3 (Veo 3 Fast)",   credits: 10,   time: "~3min", activeColor: "border-red-500 bg-red-500/10" },
   { id: "poll" as ContentType,    label: "Enquete",  icon: BarChart2, description: "LinkedIn poll / X poll",         credits: 0,    time: null,    activeColor: "border-cyan-500 bg-cyan-500/10" },
   { id: "article" as ContentType, label: "Artigo",   icon: FileText,  description: "Post longo — LinkedIn Article",  credits: 0,    time: null,    activeColor: "border-emerald-500 bg-emerald-500/10" },
   { id: "thread" as ContentType,  label: "Thread",   icon: List,      description: "Série de tweets encadeados (X)", credits: 0,    time: null,    activeColor: "border-sky-500 bg-sky-500/10" },

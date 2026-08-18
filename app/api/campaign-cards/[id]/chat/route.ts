@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
-import { generateVideo, VeoUnavailableError } from "@/lib/media/veo3";
 import { generateInfographic } from "@/lib/media/infographic";
 
 /** Detect if a media URL represents a video (GCS URL, external .mp4, or base64 video) */
@@ -157,16 +156,17 @@ No explanations, no prefixes — just the prompt text.`;
 
       try {
         if (isVideo) {
-          newSlideUrl = await generateVideo(updatedPrompt, "9:16", "720p", 150_000);
+          // Geração de vídeo por IA saiu em 18/08/2026. Vídeo agora vem da
+          // gravação do próprio cliente, cortada e legendada pelo fluxo de
+          // vídeo. Cards antigos marcados como vídeo caem para quadro estático.
+          mediaError =
+            "Vídeo gerado por IA foi descontinuado. O vídeo agora vem da sua " +
+            "própria gravação, com cortes automáticos.";
         } else {
           newSlideUrl = await generateImage(updatedPrompt, isCarousel ? "1:1" : "linkedin-landscape");
         }
       } catch (err) {
-        if (err instanceof VeoUnavailableError) {
-          mediaError = `Vídeo não disponível: ${err.message}. Verifique se o bucket GCS está configurado e se o Vertex AI API está habilitado.`;
-        } else {
-          mediaError = err instanceof Error ? err.message : "Erro desconhecido na geração de mídia";
-        }
+        mediaError = err instanceof Error ? err.message : "Erro desconhecido na geração de mídia";
         console.error("[chat/media] generation failed:", err);
       }
     }

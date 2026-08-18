@@ -6,7 +6,6 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
-import { generateVideo, VeoUnavailableError } from "@/lib/media/veo3";
 import { generateInfographic } from "@/lib/media/infographic";
 import { researchTopic, formatSourcesSection } from "@/lib/research/web-search";
 import { newArticlePublicToken, parseLinkedInArticleContent } from "@/lib/articles/linkedin-article";

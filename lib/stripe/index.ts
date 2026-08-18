@@ -95,8 +95,13 @@ export const CREDIT_COSTS = {
   x_sources_comment: 20, // comentário com fontes no X (link custa $0,20 na API do X)
   post_image: 25, // post com 1 imagem gerada
   carousel_3: 40, // carrossel de 3 slides
-  video_8s: 100, // vídeo Veo 8s sem narração
-  video_8s_narrated: 150, // vídeo Veo 8s com narração PT-BR
+  // Vídeo gerado por IA (Veo) saiu em 18/08/2026. Motivo: o custo não era
+  // determinístico. A cascata de fallback tentava veo-3.0-fast a US$ 0,10 por
+  // segundo e caía para veo-3.0 standard a US$ 0,40, o que levava um vídeo de
+  // 8 segundos de R$ 4,85 para R$ 18,05 contra R$ 10,00 de receita, 80% de
+  // prejuízo, sem nada registrado que denunciasse. Vídeo passa a vir da
+  // gravação do próprio cliente, cortada e legendada, cobrada por
+  // 2 créditos por minuto de vídeo mais 4 créditos por clipe entregue.
 } as const;
 
 export async function createCheckoutSession(
