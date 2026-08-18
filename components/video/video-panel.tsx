@@ -34,6 +34,7 @@ type Video = {
 const ACOES: Record<string, { rotulo: string; rota: string } | undefined> = {
   uploaded: { rotulo: "Transcrever", rota: "transcribe" },
   selecting: { rotulo: "Escolher os trechos", rota: "select" },
+  writing: { rotulo: "Escrever os posts", rota: "write" },
   failed: { rotulo: "Tentar de novo", rota: "transcribe" },
 };
 

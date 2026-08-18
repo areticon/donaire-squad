@@ -14,14 +14,49 @@ model User {
   image           String?
   plan            String    @default("free")
   stripeCustomerId String?
+  /// Saldo de créditos do ciclo atual. Reposto pelo webhook do Stripe a cada
+  /// renovação. Nunca alterar direto: use lib/credits, que grava o extrato
+  /// junto na mesma transação.
+  creditsBalance  Int       @default(0)
+  /// Quando o saldo foi reposto pela última vez.
+  creditsResetAt  DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   projects        Project[]
   sessions        Session[]
   accounts        Account[]
+  creditTx        CreditTransaction[]
 
   @@map("users")
+}
+
+/// Extrato de créditos, uma linha por movimento.
+///
+/// Existe separado do saldo porque saldo sozinho não responde as perguntas que
+/// importam: onde o cliente gastou, se a cobrança bate com o que foi entregue,
+/// e o que devolver quando algo falha no meio. Débito é negativo, crédito é
+/// positivo, e a soma do extrato tem que bater com o saldo.
+model CreditTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String?
+  /// Negativo debita, positivo credita.
+  amount    Int
+  /// O que gerou: "video_job", "post_text", "recarga", "renovacao", "estorno".
+  operation String
+  /// Id do que gerou, para conciliar entrega com cobrança.
+  refId     String?
+  /// Saldo depois deste movimento, para auditar sem somar o extrato inteiro.
+  balance   Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([operation, refId])
+  @@map("credit_transactions")
 }
 
 model Session {
