@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { VideoUpload } from "@/components/video/video-upload";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 /**
@@ -20,6 +23,18 @@ type Video = {
   error: string | null;
   creditsCharged: number;
   createdAt: string;
+};
+
+/**
+ * O que cada status quer dizer para quem está esperando, e qual é a próxima
+ * ação. O fluxo é encadeado a mão de propósito enquanto não existe fila: cada
+ * etapa é uma chamada cara e demorada, e juntar tudo numa requisição só
+ * estouraria o maxDuration da Vercel.
+ */
+const ACOES: Record<string, { rotulo: string; rota: string } | undefined> = {
+  uploaded: { rotulo: "Transcrever", rota: "transcribe" },
+  selecting: { rotulo: "Escolher os trechos", rota: "select" },
+  failed: { rotulo: "Tentar de novo", rota: "transcribe" },
 };
 
 /** O que cada status quer dizer para quem está esperando. */
@@ -40,6 +55,17 @@ export function VideoPanel({
   videos: Video[];
 }) {
   const router = useRouter();
+  const [rodando, setRodando] = useState<string | null>(null);
+
+  async function executar(videoId: string, rota: string) {
+    setRodando(videoId);
+    try {
+      await fetch(`/api/videos/${videoId}/${rota}`, { method: "POST" });
+      router.refresh();
+    } finally {
+      setRodando(null);
+    }
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -104,7 +130,26 @@ export function VideoPanel({
                       <p className="text-sm text-orange-400 mt-1">{v.error}</p>
                     )}
                   </div>
-                  <Badge variant={estado.cor as never}>{estado.rotulo}</Badge>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Badge variant={estado.cor as never}>{estado.rotulo}</Badge>
+                    {ACOES[v.status] && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={rodando === v.id}
+                        onClick={() => executar(v.id, ACOES[v.status]!.rota)}
+                      >
+                        {rodando === v.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Rodando
+                          </>
+                        ) : (
+                          ACOES[v.status]!.rotulo
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
