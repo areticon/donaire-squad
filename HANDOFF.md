@@ -468,3 +468,32 @@ Verificado: upload privado funciona, acesso pela URL sem token devolve **403**, 
 Portanto a transcrição não pode ser "manda o link para o fornecedor". O nosso servidor precisa ler o blob e repassar os bytes em stream, sem bufferizar em memória. Fornecedores que só aceitam URL ficam descartados; fornecedores com limite pequeno de arquivo (Whisper da OpenAI, 25 MB) também, já que vídeo de 20 minutos passa disso.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 4): transcrição e fechamento da sessão
+
+### Passo 2 do vídeo: transcrição
+
+Deepgram `nova-3` com `pt-BR`, confirmado na documentação oficial (Nova-3 ganhou português em 2026). Devolve tempo por palavra, pontuação, formatação inteligente e parágrafos agrupados.
+
+Arquivos novos: `lib/media/transcribe.ts` e `app/api/videos/[id]/transcribe/route.ts`.
+
+Cuidados que já estão no código:
+- `maxDuration` de 300s no arquivo e no `vercel.json`. O padrão da Vercel é 10s e vídeo longo não cabe.
+- Idempotência: vídeo já transcrito devolve 409 em vez de pagar de novo.
+- Stream de ponta a ponta, sem carregar o vídeo em memória.
+
+Custo real: cerca de R$0,47 por vídeo de 20 minutos, abaixo dos R$0,66 estimados.
+
+**Pendente:** `DEEPGRAM_API_KEY` no `.env.local` (a linha já está criada, vazia). Conta nova ganha US$200 de crédito.
+
+### Estado ao fim da sessão
+
+Branch `feat/own-auth`, 14 commits desde o início, todos locais. **Nenhum push foi feito**: falta a permissão de `git push` no settings.json ou o push manual.
+
+Funcionando e testado: login próprio, banco Supabase, prompt caching (89% de economia medida), instrumentação de custo, upload privado.
+
+Escrito e compilando, mas não testado com dado real: transcrição (falta a chave da Deepgram).
+
+Não começado: Passo 3 (agente que escolhe os trechos), Passo 4 (textos por rede), Passo 5 (tela), Passo 6 (débito de créditos).
+
+*Atualizado em 18/08/2026 por Claude Code.*
