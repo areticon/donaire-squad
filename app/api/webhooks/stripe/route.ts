@@ -45,7 +45,10 @@ export async function POST(req: NextRequest) {
         const priceId = sub.items.data[0]?.price?.id;
 
         let plan = "free";
-        if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "starter";
+        // Starter foi descontinuado em 18/08/2026. A linha continua aqui só
+        // para não deixar órfã uma assinatura antiga: ela vira pro, que é o
+        // plano de entrada atual.
+        if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "pro";
         if (priceId === process.env.STRIPE_PRO_PRICE_ID) plan = "pro";
         if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) plan = "business";
         if (priceId === process.env.STRIPE_STUDIO_PRICE_ID) plan = "studio";

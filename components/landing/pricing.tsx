@@ -9,27 +9,6 @@ import { cn } from "@/lib/utils";
 
 const PLANS = [
   {
-    id: "starter",
-    name: "Starter",
-    price: 49,
-    credits: "400 créditos",
-    cta: "Assinar Starter",
-    href: "/sign-up?plan=starter",
-    popular: false,
-    features: [
-      "400 créditos/mês",
-      "LinkedIn completo (texto, imagem, carrossel)",
-      "Cerca de 5 posts de texto por semana",
-      "Todos os agentes de IA",
-      "Aprovação antes de publicar",
-    ],
-    notIncluded: [
-      "X e Instagram",
-      "Créditos extras",
-      "Dashboard de métricas",
-    ],
-  },
-  {
     id: "pro",
     name: "Pro",
     price: 149,
@@ -38,6 +17,7 @@ const PLANS = [
     href: "/sign-up?plan=pro",
     popular: true,
     features: [
+      "7 dias grátis para testar",
       "1.800 créditos/mês",
       "Campanha semanal completa: LinkedIn, X e Instagram",
       "Imagens e carrosséis com IA",
@@ -120,7 +100,7 @@ export function Pricing() {
           </div>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
           {PLANS.map((plan, i) => (
             <motion.div
               key={plan.id}

@@ -21,24 +21,19 @@ export const stripe = {
   get prices() { return getStripe().prices; },
 };
 
-// Calibração Opção B (2026-08-16): ver MODELO_DE_NEGOCIO_v2.md.
+// Calibração Opção B (2026-08-16), revisada em 18/08/2026.
 // Créditos por operação em CREDIT_COSTS abaixo (3x o custo variável real).
+//
+// O plano Starter de R$49 foi removido em 18/08/2026. Motivos: entregava uma
+// rede só, contradizendo a promessa de campanha completa nas 3 redes que a
+// landing vende; rendia R$35 de margem contra R$98 do Pro, com o mesmo custo
+// de suporte (86 clientes Starter para o mesmo resultado de 31 Pro); e atraía
+// fora do ICP, que decide por resultado e não por R$100 de diferença.
+// No lugar entrou o período de teste do Pro: para esse público a barreira é
+// desconfiança de que a IA escreve como ele, e isso se resolve mostrando.
+export const TRIAL_DAYS = 7;
+
 export const PLANS = {
-  starter: {
-    name: "Starter",
-    description: "Para construir presença no LinkedIn",
-    price: 4900,
-    priceId: process.env.STRIPE_STARTER_PRICE_ID,
-    credits: 400,
-    features: [
-      "400 créditos/mês",
-      "LinkedIn completo (texto, imagem, carrossel)",
-      "Cerca de 5 posts de texto por semana",
-      "Todos os agentes de IA",
-      "Aprovação antes de publicar",
-    ],
-    limits: { projects: 1, postsPerMonth: 30, credits: 400 },
-  },
   pro: {
     name: "Pro",
     description: "A campanha completa nas 3 redes, toda semana",
@@ -47,6 +42,7 @@ export const PLANS = {
     credits: 1800,
     extraCreditPrice: 0.12,
     features: [
+      `${TRIAL_DAYS} dias grátis para testar`,
       "1.800 créditos/mês",
       "Campanha semanal completa: LinkedIn, X e Instagram",
       "Imagens e carrosséis com IA",
@@ -118,7 +114,13 @@ export async function createCheckoutSession(
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${returnUrl}?success=true&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${returnUrl}?canceled=true`,
-    subscription_data: { metadata: { userId } },
+    subscription_data: {
+      metadata: { userId },
+      // O cartão é exigido no checkout mesmo durante o teste. Isso reduz abuso
+      // e melhora a conversão: quem cadastra cartão já decidiu experimentar
+      // para valer, não para passear.
+      trial_period_days: TRIAL_DAYS,
+    },
   });
   return session.url!;
 }
