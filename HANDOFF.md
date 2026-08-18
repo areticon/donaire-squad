@@ -1637,3 +1637,71 @@ concluído de dado incompleto. A lista real tem 31 variáveis.
 4. Os preços R$ 149, R$ 249 e R$ 449 continuam sem existir no Stripe.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 18): o site subiu, e dois bugs que só produção mostra
+
+### Decisão: um ambiente só, por enquanto
+
+Bruno: produção sozinha até entrarem 10 clientes, e aí assina o Supabase Pro e
+separa. Consequência assumida: o `.env.local` aponta para o mesmo banco que o
+site, então teste na máquina mexe em dado de produção. Com zero cliente, aceito.
+
+Isso torna o card do Postgres local uma otimização adiada, não um bloqueio.
+
+### Bug 1: variável Sensitive não existe durante o build
+
+O deploy falhava com `Connection url is empty` mesmo depois de o Bruno colar as
+URLs no painel. E ele relatava que ao voltar na tela o campo estava vazio.
+
+As duas coisas têm a mesma causa: **as variáveis recriadas nasceram como
+`Sensitive`**, e variável Sensitive na Vercel é write-only (o painel nunca
+mostra de volta) e **não é exposta durante o build**, só em runtime. O
+`prisma migrate deploy` roda no build.
+
+| Variável | Tipo depois da edição | Tipo das que funcionavam |
+|---|---|---|
+| `DATABASE_URL` | Sensitive | Non-sensitive |
+| `DIRECT_URL` | Sensitive | Non-sensitive |
+
+A saída foi `vercel env add --force --no-sensitive`, que sobrescreve sem
+precisar do `rm` (que estava bloqueado) e grava como legível pelo build.
+
+**Regra que fica: qualquer variável usada no build precisa ser Non-sensitive.**
+Hoje isso vale para `DATABASE_URL` e `DIRECT_URL`.
+
+**Detalhe que também confundia:** no `.env.local` o dotenv retira as aspas ao
+ler; o painel da Vercel guarda literalmente o que for digitado. Colar com aspas
+faz as aspas virarem parte do valor.
+
+### Bug 2: o Sonnet 5 devolve pensamento antes do texto
+
+Com o deploy no ar, a demonstração pública respondia 500. O erro gravado em
+`demo_runs`: `Unexpected response type`.
+
+Causa: `askClaude` pegava `message.content[0]` e exigia que fosse texto.
+Funcionava no Sonnet 4.5. **No Sonnet 5 o pensamento adaptativo vem ligado por
+padrão quando o parâmetro `thinking` é omitido**, então o primeiro bloco passa a
+ser de pensamento e a chamada morria.
+
+O teste que fiz na migração passou porque o prompt era curto e não acionou o
+pensamento. O prompt real da demonstração acionou. **O bug dependia do tamanho
+da tarefa**, que é a pior forma de falha: parece aleatória e passa em qualquer
+teste rápido.
+
+Corrigido lendo **todos** os blocos de texto em vez do primeiro bloco, o que
+também deixa o código imune a bloco novo que a API venha a introduzir. E quando
+não vier texto nenhum, a mensagem agora diz quais blocos vieram.
+
+Verificado com prompt curto (2,2 s) e com o prompt longo da demo (16,3 s).
+
+### Estado
+
+O demandou.com responde 200 com a landing nova. As migrations rodaram no build
+contra o Supabase. Falta confirmar a demo em produção depois do deploy da
+correção.
+
+Pendências que não dependem de código: os preços R$ 149, R$ 249 e R$ 449 ainda
+não existem no Stripe, e as 8 variáveis do Clerk continuam na Vercel como peso
+morto (o `vercel env rm` está bloqueado para mim).
+
+*Atualizado em 18/08/2026 por Claude Code.*
