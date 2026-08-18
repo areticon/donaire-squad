@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Zap, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CreditBalance } from "@/components/billing/credit-balance";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -94,6 +95,10 @@ export default function BillingPage() {
         <p className="mt-1" style={{ color: "var(--text-muted)" }}>
           Gerencie sua assinatura e faturamento
         </p>
+      </div>
+
+      <div className="mb-8">
+        <CreditBalance />
       </div>
 
       <div className="mb-8 p-4 rounded-xl border flex items-center justify-between" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>

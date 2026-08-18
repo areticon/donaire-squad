@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth/server";
 import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { debitar, saldo, jaCobrado, SaldoInsuficiente } from "@/lib/credits";
+import { custoTotal, estimarCampanha } from "@/lib/credits/pricing";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { generateInfographic } from "@/lib/media/infographic";
@@ -414,6 +416,27 @@ export async function POST(req: NextRequest) {
       },
       data: { imageUrl: null },
     });
+  }
+
+  // Verificação de saldo antes de qualquer chamada paga. A estimativa
+  // superestima de propósito: barrar quem não tem saldo é o objetivo, e a
+  // cobrança real acontece no fim, pelo que foi entregue. Rodar a campanha
+  // inteira para descobrir no fim que o cliente não podia pagar seria gastar
+  // com a API e não receber.
+  const estimativa = estimarCampanha(
+    Object.values(config.weeklySchedule ?? {}),
+    Math.max(1, project.socialAccounts.length)
+  );
+  const disponivel = await saldo(userId);
+  if (disponivel < estimativa) {
+    return NextResponse.json(
+      {
+        error: `Essa campanha custa cerca de ${estimativa} créditos e você tem ${disponivel}. Recarregue ou reduza os dias da semana.`,
+        necessario: estimativa,
+        disponivel,
+      },
+      { status: 402 }
+    );
   }
 
   const weekStartDate = new Date(config.weekStart + "T00:00:00.000Z");
@@ -1504,6 +1527,49 @@ ${twPost.content}`,
     }
   }
 
+  // ── Cobrança ──────────────────────────────────────────────────────────────
+  // Cobra pelo que foi entregue, não pelo que foi planejado: se a geração de
+  // imagem falhou e o post saiu só com texto, o cliente paga texto. Idempotente
+  // por runId, então retentativa não cobra duas vezes.
+  let creditosCobrados = 0;
+  if (createdPostIds.length > 0 && !(await jaCobrado("campanha", runId))) {
+    const entregues = await prisma.post.findMany({
+      where: { id: { in: createdPostIds } },
+      select: { mediaType: true, platform: true, sourcesComment: true },
+    });
+    creditosCobrados = custoTotal(
+      entregues.map((p) => ({
+        mediaType: p.mediaType,
+        platform: p.platform,
+        temLink: Boolean(p.sourcesComment),
+      }))
+    );
+    try {
+      await debitar({
+        // project.userId, e não o userId da sessão: este bloco roda dentro da
+        // execução do pipeline, fora do escopo do handler. São a mesma pessoa,
+        // porque a posse do projeto já foi verificada na entrada.
+        userId: project.userId,
+        quantidade: creditosCobrados,
+        operation: "campanha",
+        projectId: project.id,
+        refId: runId,
+        note: `${createdPostIds.length} posts`,
+      });
+    } catch (err) {
+      // O trabalho já foi feito e entregue. Cobrar não pode apagar a entrega,
+      // então o saldo insuficiente aqui vira registro, não erro para o cliente.
+      // A estimativa na entrada existe justamente para isso quase nunca cair
+      // aqui.
+      if (err instanceof SaldoInsuficiente) {
+        creditosCobrados = 0;
+        console.error(`[pipeline] run ${runId} entregue sem cobrar: ${err.message}`);
+      } else {
+        throw err;
+      }
+    }
+  }
+
   // ── Complete ──────────────────────────────────────────────────────────────
   await prisma.pipelineRun.update({
     where: { id: runId },
@@ -1522,6 +1588,7 @@ ${twPost.content}`,
 
   await appendLog(runId, {
     agent: "Sistema",
+    creditsCharged: creditosCobrados,
     message: `Campanha ${config.campaignMode} concluída! ${createdPostIds.length} posts criados para aprovação.`,
     status: "completed",
   });
