@@ -45,7 +45,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" data-theme="dark">
+    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning>
+      <head>
+        {/*
+          Aplica o tema salvo antes da primeira pintura. Sem isso a página
+          nasce escura (o padrão do HTML) e pisca para o claro só depois que o
+          JavaScript carrega. Precisa ser síncrono e inline no head: qualquer
+          coisa assíncrona já chega tarde demais para evitar o flash.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`,
+          }}
+        />
+      </head>
       {/*
         suppressHydrationWarning aqui porque extensões de navegador (ColorZilla,
         Grammarly, LastPass) injetam atributos no body antes do React hidratar,

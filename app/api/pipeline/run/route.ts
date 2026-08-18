@@ -301,12 +301,39 @@ function parseTwitterPollContent(content: string): Record<string, unknown> {
   return { type: "twitter_poll", tweet, options, durationHours };
 }
 
+/**
+ * Regras que valem para todo agente, de todo projeto. Ficam separadas e
+ * imutáveis de propósito: é o começo do prefixo cacheável, e qualquer byte
+ * diferente aqui invalida o cache de todas as chamadas seguintes.
+ */
+const REGRAS_GLOBAIS = `Você está trabalhando em um projeto de conteúdo para redes sociais.
+Responda sempre em português, com qualidade profissional e acentos corretos.
+IMPORTANTE: Não use markdown (sem #, sem **, sem *). Escreva texto limpo com parágrafos separados por linha em branco.
+
+REGRA DE OURO - INTEGRIDADE DE DADOS (obrigatório):
+Você NUNCA pode inventar estatísticas, nomes de pessoas reais, nomes de empresas, estudos, pesquisas ou indicadores de mercado.
+Se precisar citar um número, um estudo, uma empresa ou indicador, use SOMENTE dados reais e verificáveis, indicando sempre a fonte (ex: "segundo a McKinsey, 2024" ou "de acordo com o IBGE, 2025").
+Apenas a redação, argumentação e estrutura textual devem ser criativas: os fatos devem ser sempre reais.
+Se não tiver dados reais sobre um ponto específico, deixe em aberto para o usuário preencher com dados reais, não invente.`;
+
+/**
+ * Monta o prefixo cacheável de um projeto: regras globais mais os documentos
+ * de contexto. Idêntico em todas as chamadas de agente do mesmo projeto, que é
+ * exatamente o que o cache exige. Numa campanha de 5 dias são mais de 20
+ * chamadas compartilhando esse mesmo bloco.
+ */
+function buildCachedPrefix(contextDocs: string): string {
+  return REGRAS_GLOBAIS + contextDocs;
+}
+
 async function runAgent(
   agent: AgentStep,
   task: string,
   context: string,
   runId: string,
   funnelInstruction: string,
+  cachedPrefix: string,
+  projectId: string,
   agentOptions?: { maxTokens?: number }
 ): Promise<string> {
   await appendLog(runId, {
@@ -315,24 +342,18 @@ async function runAgent(
     status: "running",
   });
 
+  // A parte variável (quem é o agente, qual a tarefa) fica no system normal.
+  // A parte estável vai em cachedPrefix, logo antes, e é o que a API cacheia.
   const system = `Você é ${agent.name}, ${agent.role}.
 Persona: ${agent.persona}
 Estilo: ${agent.style}
 
-Diretriz de funil: ${funnelInstruction}
-
-Você está trabalhando em um projeto de conteúdo para redes sociais.
-Responda sempre em português, com qualidade profissional e acentos corretos.
-IMPORTANTE: Não use markdown (sem #, sem **, sem *). Escreva texto limpo com parágrafos separados por linha em branco.
-
-REGRA DE OURO — INTEGRIDADE DE DADOS (obrigatório):
-Você NUNCA pode inventar estatísticas, nomes de pessoas reais, nomes de empresas, estudos, pesquisas ou indicadores de mercado.
-Se precisar citar um número, um estudo, uma empresa ou indicador, use SOMENTE dados reais e verificáveis, indicando sempre a fonte (ex: "segundo a McKinsey, 2024" ou "de acordo com o IBGE, 2025").
-Apenas a redação, argumentação e estrutura textual devem ser criativas — os fatos devem ser sempre reais.
-Se não tiver dados reais sobre um ponto específico, deixe em aberto para o usuário preencher com dados reais — não invente.`;
+Diretriz de funil: ${funnelInstruction}`;
 
   const result = await askClaude(system, `${task}\n\nContexto:\n${context}`, {
     maxTokens: agentOptions?.maxTokens ?? 2048,
+    cachedPrefix,
+    usage: { operation: "agent", runId, agentId: agent.agentId, projectId },
   });
 
   await appendLog(runId, {
@@ -595,6 +616,10 @@ async function runPipeline(
     ? "\n\n--- CONTEXTO DO PROJETO ---\n" + project.contexts.map((c) => `## ${c.title}\n${c.compiled}`).join("\n\n")
     : "";
 
+  // Prefixo cacheável: idêntico em todas as chamadas de agente deste run.
+  // Numa campanha de 5 dias isso é reaproveitado por mais de 20 chamadas.
+  const cachedPrefix = buildCachedPrefix(contextDocs);
+
   function makeAgent(agentId: string): AgentStep | null {
     const a = project!.agents.find((x) => x.agentId === agentId);
     if (!a) return null;
@@ -687,7 +712,10 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
         baseContext,
         runId,
         funnelInstruction,
-        { maxTokens: 2048 } // 4096 levava 60-70s e causava timeout — 2048 é suficiente para um brief
+        cachedPrefix,
+        project.id,
+        // 4096 levava 60-70s e causava timeout: 2048 é suficiente para um brief
+        { maxTokens: 2048 },
       );
     }
 
@@ -883,7 +911,9 @@ DURACAO: THREE_DAYS
 Use os dados da pesquisa. Não invente estatísticas.${uniquenessBlock}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
           linkedinMetadata = parsePollContent(linkedinContent);
 
@@ -898,7 +928,9 @@ Use os dados da pesquisa. Não invente fatos.${uniquenessBlock}`,
             contextWithResearch,
             runId,
             funnelInstruction,
-            { maxTokens: 8192 }
+            cachedPrefix,
+            project.id,
+            { maxTokens: 8192 },
           );
           const parsedArt = parseLinkedInArticleContent(linkedinContent);
           linkedinMetadata = {
@@ -925,7 +957,9 @@ ${linkedinRules("post")}
 Aborde um ÂNGULO DIFERENTE dos posts anteriores — perspectiva nova, dado diferente, CTA distinto.${uniquenessBlock}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
         }
 
@@ -948,7 +982,9 @@ POST ORIGINAL:
 ${linkedinContent}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
           if (rewritten.length <= LI_LIMIT) {
             linkedinContent = rewritten;
@@ -1015,7 +1051,9 @@ Seja direto e provocativo.
 ⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva sem números.${uniquenessBlock}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
           twitterMetadata = parseTwitterPollContent(twitterContent);
 
@@ -1032,7 +1070,9 @@ Aborde um ângulo diferente dos posts anteriores.
 ⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva narrativa qualitativa sem números inventados.${uniquenessBlock}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
 
         } else {
@@ -1048,7 +1088,9 @@ Aborde um ângulo diferente dos posts anteriores.
 ⚠ REGRA ABSOLUTA: NUNCA invente percentuais, estatísticas ou dados — use APENAS fatos presentes no brief de pesquisa acima. Se não há dados reais, escreva narrativa qualitativa sem números inventados.${uniquenessBlock}`,
             contextWithResearch,
             runId,
-            funnelInstruction
+            funnelInstruction,
+            cachedPrefix,
+            project.id,
           );
         }
 
@@ -1073,7 +1115,9 @@ THREAD ORIGINAL:
 ${twitterContent}`,
               contextWithResearch,
               runId,
-              funnelInstruction
+              funnelInstruction,
+              cachedPrefix,
+              project.id,
             );
             const { violations: remaining } = validateTwitterThread(fixed);
             if (remaining.length === 0) {
@@ -1229,7 +1273,9 @@ Paleta alinhada ao nicho: ${project.niche ?? "business"}.
 Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
           contextWithResearch,
           runId,
-          funnelInstruction
+          funnelInstruction,
+          cachedPrefix,
+          project.id,
         );
 
         if (hasApiKey) {
@@ -1295,7 +1341,9 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), false),
         `${contextWithResearch}\n\nTema da campanha: ${topic}`,
         runId,
-        funnelInstruction
+        funnelInstruction,
+        cachedPrefix,
+        project.id,
       );
 
       const { approved, verdict, needsTextRetry } = parseVeraVerdict(firstOutput);
@@ -1329,7 +1377,9 @@ ${firstOutput.slice(0, 2000)}
 
 POST ATUAL:
 ${liPost.content}`,
-              contextWithResearch, runId, funnelInstruction
+              contextWithResearch, runId, funnelInstruction,
+              cachedPrefix,
+              project.id,
             );
             await prisma.campaignCard.update({ where: { id: liPost.cardId }, data: { content: fixed } });
             return fixed;
@@ -1348,7 +1398,9 @@ ${firstOutput.slice(0, 2000)}
 
 THREAD ATUAL:
 ${twPost.content}`,
-              contextWithResearch, runId, funnelInstruction
+              contextWithResearch, runId, funnelInstruction,
+              cachedPrefix,
+              project.id,
             );
             await prisma.campaignCard.update({ where: { id: twPost.cardId }, data: { content: fixed } });
             return fixed;

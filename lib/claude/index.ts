@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage, type UsageContext } from "@/lib/claude/usage";
 
 let _client: Anthropic | null = null;
 
@@ -12,17 +13,55 @@ function getClient(): Anthropic {
   return _client;
 }
 
+export const DEFAULT_MODEL = "claude-sonnet-4-5";
+
+export type AskOptions = {
+  maxTokens?: number;
+  model?: string;
+  /**
+   * Bloco estável que vira o começo do system prompt e recebe o marcador de
+   * cache. Precisa ser byte a byte idêntico entre as chamadas, senão o cache
+   * não casa. Coisa que muda a cada chamada (tarefa, persona do agente) deve
+   * ficar no systemPrompt normal ou na mensagem do usuário, nunca aqui.
+   *
+   * O mínimo cacheável no Sonnet 4.5 é 1024 tokens: prefixos menores são
+   * ignorados silenciosamente pela API, sem erro.
+   */
+  cachedPrefix?: string;
+  /** Metadados para registrar consumo e custo no banco. */
+  usage?: UsageContext;
+};
+
+function buildSystem(
+  systemPrompt: string,
+  cachedPrefix?: string
+): string | Anthropic.TextBlockParam[] {
+  if (!cachedPrefix) return systemPrompt;
+  return [
+    {
+      type: "text",
+      text: cachedPrefix,
+      cache_control: { type: "ephemeral" },
+    },
+    { type: "text", text: systemPrompt },
+  ];
+}
+
 export async function askClaude(
   systemPrompt: string,
   userMessage: string,
-  options?: { maxTokens?: number; model?: string }
+  options?: AskOptions
 ): Promise<string> {
+  const model = options?.model ?? DEFAULT_MODEL;
+
   const message = await getClient().messages.create({
-    model: options?.model ?? "claude-sonnet-4-5",
+    model,
     max_tokens: options?.maxTokens ?? 2048,
-    system: systemPrompt,
+    system: buildSystem(systemPrompt, options?.cachedPrefix),
     messages: [{ role: "user", content: userMessage }],
   });
+
+  void recordUsage(model, message.usage, options?.usage);
 
   const block = message.content[0];
   if (block.type !== "text") throw new Error("Unexpected response type");
@@ -33,14 +72,15 @@ export async function streamClaude(
   systemPrompt: string,
   userMessage: string,
   onChunk: (text: string) => void,
-  options?: { maxTokens?: number }
+  options?: AskOptions
 ): Promise<string> {
   let fullText = "";
+  const model = options?.model ?? DEFAULT_MODEL;
 
   const stream = getClient().messages.stream({
-    model: "claude-sonnet-4-5",
+    model,
     max_tokens: options?.maxTokens ?? 2048,
-    system: systemPrompt,
+    system: buildSystem(systemPrompt, options?.cachedPrefix),
     messages: [{ role: "user", content: userMessage }],
   });
 
@@ -54,10 +94,13 @@ export async function streamClaude(
     }
   }
 
+  const final = await stream.finalMessage();
+  void recordUsage(model, final.usage, options?.usage);
+
   return fullText;
 }
 
-export const KANBAN_SYSTEM_PROMPT = `Você é o assistente de configuração do demandou, especialista em estratégia de conteúdo para redes sociais. 
+export const KANBAN_SYSTEM_PROMPT = `Você é o assistente de configuração do demandou, especialista em estratégia de conteúdo para redes sociais.
 Seu trabalho é ajudar o usuário a configurar seu projeto de forma clara, objetiva e estratégica.
 Responda sempre em português, de forma amigável mas profissional.
 Dê sugestões concretas e práticas baseadas no contexto fornecido.
