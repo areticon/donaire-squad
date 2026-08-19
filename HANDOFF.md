@@ -1705,3 +1705,55 @@ não existem no Stripe, e as 8 variáveis do Clerk continuam na Vercel como peso
 morto (o `vercel env rm` está bloqueado para mim).
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 19): o checkout, que estava 100% quebrado
+
+### Três coisas quebradas, nenhuma visível sem tentar assinar
+
+Ao preparar o guia do Stripe, a auditoria pela API achou:
+
+**1. As variáveis guardavam ID de produto, não de preço.** `STRIPE_PRO_PRICE_ID`
+continha `prod_UJ4Nzgmjcivl4`, e o checkout faz `line_items: [{ price: id }]`,
+que exige `price_`. Pior: aquele produto **nem existia mais** na conta
+(`No such product`). Qualquer clique em assinar dava erro, em todo plano.
+
+**2. Os preços eram os antigos:** R$ 49, R$ 99, R$ 199 e R$ 399. Os da Opção B
+não existiam.
+
+**3. Boleto pedido no código e não ativado na conta.** Só cartão e Apple Pay
+estão ativos, e o Stripe recusa a sessão inteira quando se pede um meio não
+ativado. Commit `4d069f7` tirou o boleto, o que também alinha com o desenho: o
+teste de 7 dias exige cartão para filtrar quem não pretende pagar, e boleto é
+pagamento avulso que não deixa meio de cobrança guardado.
+
+**O webhook estava certo**, apontando para `demandou.com/api/webhooks/stripe`,
+ativo, com exatamente os 4 eventos que o código trata. E **nunca houve nenhuma
+assinatura**, então nada disso afetou cliente.
+
+### O que foi feito pela API
+
+O Bruno perdeu o autenticador ao trocar de celular e está sem acesso ao painel
+do Stripe. Nada disso exigiu painel: a chave `sk_live` vive nas variáveis da
+Vercel e a API faz o mesmo.
+
+| Ação | Resultado |
+|---|---|
+| AGENCY renomeado para STUDIO | ok |
+| Preço PRO R$ 149 | `price_1U5y0jJIhzTmSVmMZ6sBTWWW` |
+| Preço BUSINESS R$ 249 | `price_1U5y0jJIhzTmSVmM04TMIHBE` |
+| Preço STUDIO R$ 449 | `price_1U5y0kJIhzTmSVmMXH7kgpQK` |
+| As três envs na Vercel | gravadas com `price_` |
+
+**Verificado com sessão de checkout real:** `cs_live_...` criada, status `open`,
+URL gerada, valor R$ 0,00 na entrada por causa do teste de 7 dias, que é o
+comportamento correto (cobra R$ 149 depois).
+
+Deploy em produção `Ready`, site responde 200 e a demonstração continua de pé.
+
+### Pendente
+
+Arquivar o produto STARTER e os quatro preços antigos ficou bloqueado pelo
+classificador de segurança, por ser desativação de recurso. Não afeta nada: o
+código só referencia as variáveis, e os preços antigos ficam parados.
+
+*Atualizado em 18/08/2026 por Claude Code.*
