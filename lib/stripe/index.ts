@@ -112,7 +112,19 @@ export async function createCheckoutSession(
 ): Promise<string> {
   const session = await getStripe().checkout.sessions.create({
     mode: "subscription",
-    payment_method_types: ["card", "boleto"],
+    // Só cartão, e é decisão, não esquecimento.
+    //
+    // Duas razões. A técnica: boleto não está ativado na conta, e o Stripe
+    // recusa a sessão inteira quando se pede um meio de pagamento não ativado,
+    // então a linha antiga quebrava todo checkout. A de produto: o teste de 7
+    // dias exige cartão justamente para filtrar quem não pretende pagar, e
+    // boleto é pagamento avulso que não deixa meio de cobrança guardado para a
+    // renovação, o que anula o filtro.
+    //
+    // Pix vale revisitar: custa 1,19% contra 4,69% do cartão com o Billing, o
+    // que dá R$ 4,56 por cliente por mês no Pro. Depende do Pix automático
+    // funcionar para assinatura recorrente.
+    payment_method_types: ["card"],
     currency: "brl",
     customer_email: email,
     metadata: { userId },
