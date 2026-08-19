@@ -9,8 +9,12 @@ const PUBLIC_ROUTES: RegExp[] = [
   /^\/api\/webhooks\//,
   /^\/api\/cron\//,
   /^\/a\//,
-  /^\/termos/,
-  /^\/privacidade/,
+  // As páginas legais vivem em /terms e /privacy. As variantes em português
+  // ficaram aqui um tempo apontando para rotas que nunca existiram, e o efeito
+  // era um visitante deslogado cair no login ao clicar em "Termos" no rodapé.
+  // Documento legal atrás de login não cumpre o papel de documento legal.
+  /^\/terms/,
+  /^\/privacy/,
 ];
 
 export function proxy(req: NextRequest) {
