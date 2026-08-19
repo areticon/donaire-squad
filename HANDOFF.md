@@ -1923,4 +1923,17 @@ cupom e o Blotato sumiram, e o site responde com os termos novos.
 ponta a ponta (ele ainda não testou nada em produção), e o caminho do
 Instagram via API da Meta, que virou prioridade de produto.
 
+### A oitava falha do dia: os termos atrás do login
+
+Ao verificar em produção se os termos novos subiram, o `curl` seguiu o
+redirect e parou em `/sign-in?redirect=%2Fterms`. O proxy liberava `/termos` e
+`/privacidade`, rotas que nunca existiram; as páginas reais são `/terms` e
+`/privacy`. Desde que o auth próprio entrou, todo visitante deslogado que
+clicava em "Termos" no rodapé caía no login. Documento legal que exige login
+não cumpre papel de documento legal, e ninguém tinha notado porque quem testava
+estava sempre logado.
+
+Mesma família das sete falhas do dia: só apareceu medindo o que voltou, e o
+grep sem `-L` teria dito que estava tudo bem. Corrigido em `93002ea`.
+
 *Atualizado em 18/08/2026 por Claude Code.*
