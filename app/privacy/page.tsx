@@ -37,7 +37,7 @@ export default function PrivacyPage() {
             Política de Privacidade
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 09/04/2026
+            Última atualização: 18/08/2026
           </p>
         </div>
 
@@ -82,7 +82,7 @@ export default function PrivacyPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.1 Dados de cadastro</h3>
                 <p className="text-sm">
-                  Nome completo e endereço de e-mail, fornecidos no momento do registro na plataforma (via Clerk).
+                  Nome completo, endereço de e-mail e senha, fornecidos no momento do registro. A autenticação é própria da plataforma e a senha é armazenada exclusivamente na forma de hash criptográfico, nunca em texto legível.
                 </p>
               </div>
               <div>
@@ -104,13 +104,25 @@ export default function PrivacyPage() {
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.5 Dados de pagamento</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.5 Vídeos e áudio</h3>
+                <p className="text-sm">
+                  Arquivos de vídeo enviados por você para transformação em conteúdo, e as transcrições de áudio geradas a partir deles. Os arquivos são armazenados em repositório privado, sem acesso público, e processados apenas para as finalidades do serviço.
+                </p>
+              </div>
+              <div>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.6 Dados da demonstração pública</h3>
+                <p className="text-sm">
+                  Na demonstração gratuita da página inicial, o texto e a profissão informados são enviados ao provedor de IA para gerar o exemplo e ficam registrados junto com o resultado, para operação e melhoria do serviço, sem vínculo com nome ou e-mail do visitante.
+                </p>
+              </div>
+              <div>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.7 Dados de pagamento</h3>
                 <p className="text-sm">
                   Dados de cobrança e histórico de transações, processados diretamente pelo Stripe. Não armazenamos dados de cartão de crédito em nossos servidores.
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.6 Dados técnicos</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.8 Dados técnicos</h3>
                 <p className="text-sm">
                   Endereço IP, tipo e versão de navegador, sistema operacional, fuso horário e outros dados técnicos coletados automaticamente.
                 </p>
@@ -184,11 +196,6 @@ export default function PrivacyPage() {
             <div className="space-y-3">
               {[
                 {
-                  name: "Clerk",
-                  role: "Autenticação e gerenciamento de identidade",
-                  detail: "Armazena e gerencia credenciais de acesso, sessões e dados de perfil.",
-                },
-                {
                   name: "Stripe",
                   role: "Processamento de pagamentos",
                   detail: "Responsável pelo processamento seguro de cobranças, assinaturas e histórico financeiro.",
@@ -196,28 +203,28 @@ export default function PrivacyPage() {
                 {
                   name: "Anthropic / Google",
                   role: "Inteligência artificial",
-                  detail: "Seus insumos (prompts e contextos) são enviados para modelos de linguagem a fim de gerar conteúdo. Consulte as políticas de privacidade de cada fornecedor.",
+                  detail: "Seus insumos (textos, contextos e materiais do projeto) são enviados para modelos de linguagem e de imagem a fim de gerar conteúdo. Consulte as políticas de privacidade de cada fornecedor.",
+                },
+                {
+                  name: "Deepgram",
+                  role: "Transcrição de áudio",
+                  detail: "O áudio dos vídeos enviados por você é processado para gerar a transcrição usada na criação de conteúdo.",
+                },
+                {
+                  name: "Supabase",
+                  role: "Banco de dados",
+                  detail: "Armazenamento persistente dos dados da plataforma em banco de dados PostgreSQL gerenciado.",
                 },
                 {
                   name: "Vercel",
-                  role: "Hospedagem e infraestrutura",
-                  detail: "Plataforma de implantação e distribuição da aplicação web.",
-                },
-                {
-                  name: "Pusher",
-                  role: "Comunicação em tempo real",
-                  detail: "Utilizado para notificações e atualizações em tempo real dentro da plataforma.",
-                },
-                {
-                  name: "Neon / Prisma",
-                  role: "Banco de dados",
-                  detail: "Armazenamento persistente dos dados da plataforma em banco de dados PostgreSQL gerenciado.",
+                  role: "Hospedagem, infraestrutura e arquivos",
+                  detail: "Plataforma de implantação da aplicação web e armazenamento privado dos arquivos de vídeo enviados.",
                 },
               ].map((item) => (
                 <div key={item.name} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
                   <p className="mb-1">
                     <strong className="text-orange-500">{item.name}</strong>{" "}
-                    <span className="text-[var(--text-muted)]">— {item.role}</span>
+                    <span className="text-[var(--text-muted)]">· {item.role}</span>
                   </p>
                   <p>{item.detail}</p>
                 </div>
@@ -314,7 +321,7 @@ export default function PrivacyPage() {
               </div>
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies de terceiros</h3>
-                <p>Nossos provedores de serviço (como Clerk e Stripe) podem definir seus próprios cookies. Consulte as políticas de privacidade de cada fornecedor para mais informações.</p>
+                <p>Nossos provedores de serviço (como o Stripe, no checkout) podem definir seus próprios cookies. Consulte as políticas de privacidade de cada fornecedor para mais informações.</p>
               </div>
             </div>
             <p className="mt-3 text-sm">
@@ -333,10 +340,10 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-sm list-none">
               {[
                 "Criptografia de dados em trânsito (TLS/HTTPS) e em repouso",
-                "Controle de acesso baseado em funções (RBAC), com princípio do menor privilégio",
-                "Autenticação gerenciada por fornecedor especializado (Clerk)",
-                "Monitoramento contínuo de atividades suspeitas",
-                "Banco de dados hospedado em infraestrutura segura e gerenciada (Neon)",
+                "Senhas armazenadas exclusivamente como hash criptográfico",
+                "Controle de acesso com princípio do menor privilégio",
+                "Arquivos de vídeo em armazenamento privado, sem acesso público",
+                "Banco de dados hospedado em infraestrutura segura e gerenciada (Supabase)",
               ].map((item) => (
                 <li key={item} className="flex gap-2">
                   <span className="mt-1 text-orange-500 shrink-0">•</span>
@@ -414,7 +421,7 @@ export default function PrivacyPage() {
 
       {/* Footer */}
       <footer className="border-t border-white/10 py-8 text-center text-xs text-[var(--text-muted)]">
-        <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA — CNPJ 66.140.770/0001-48</p>
+        <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA · CNPJ 66.140.770/0001-48</p>
         <p className="mt-1">Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
         <div className="mt-3 flex justify-center gap-4">
           <Link href="/privacy" className="hover:text-orange-500 transition-colors">

@@ -37,7 +37,7 @@ export default function TermsPage() {
             Termos de Uso e Condições de Serviço
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 09/04/2026
+            Última atualização: 18/08/2026
           </p>
         </div>
 
@@ -98,7 +98,8 @@ export default function TermsPage() {
             <p className="mb-3 text-sm">Os serviços incluem, sem limitação:</p>
             <ul className="space-y-2 text-sm list-none">
               {[
-                "Criação de conteúdo textual por meio de agentes de IA configuráveis",
+                "Criação de conteúdo textual e visual por meio de agentes de IA configuráveis",
+                "Transformação de vídeos enviados pelo Usuário em conteúdo para redes sociais, incluindo transcrição de áudio, seleção de trechos e redação de posts",
                 "Agendamento e publicação automática de posts em redes sociais conectadas",
                 "Gestão de projetos e múltiplos perfis de redes sociais",
                 "Dashboard analítico de desempenho",
@@ -149,29 +150,55 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.1 Assinatura</h3>
                 <p>
-                  A demandou oferece planos de assinatura mensal com diferentes níveis de recursos. Os valores são exibidos na página de planos e podem ser alterados com aviso prévio de 30 dias.
+                  A demandou oferece planos de assinatura com{" "}
+                  <strong className="text-[var(--text-primary)]">ciclo mensal ou anual</strong>, com diferentes níveis de recursos. Os valores vigentes são os exibidos na página de planos no momento da contratação e podem ser alterados com aviso prévio de 30 dias, valendo apenas para o ciclo seguinte.
                 </p>
               </div>
               <div>
-                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.2 Cobrança e renovação automática</h3>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.2 Período de teste gratuito</h3>
                 <p>
-                  As assinaturas são cobradas antecipadamente no início de cada período de faturamento e renovadas automaticamente, salvo cancelamento pelo Usuário antes do término do período vigente. O processamento é realizado pelo Stripe.
+                  Planos elegíveis incluem período de teste gratuito de{" "}
+                  <strong className="text-[var(--text-primary)]">7 (sete) dias corridos</strong>, contados da contratação. O cadastro de um cartão de crédito válido é exigido para iniciar o teste. Ao término do período de teste, a primeira cobrança é realizada automaticamente, salvo se o Usuário cancelar antes do fim do teste, hipótese em que{" "}
+                  <strong className="text-[var(--text-primary)]">nada será cobrado</strong>.
                 </p>
               </div>
               <div>
-                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.3 Cancelamento</h3>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.3 Cobrança e renovação automática</h3>
                 <p>
-                  O Usuário pode cancelar sua assinatura a qualquer momento pelo painel de configurações ou entrando em contato com o suporte. O cancelamento entra em vigor no fim do período de faturamento vigente. O Usuário mantém acesso à plataforma até essa data.
+                  As assinaturas são cobradas antecipadamente no início de cada período de faturamento (mês ou ano, conforme o ciclo contratado) e renovadas automaticamente, salvo cancelamento pelo Usuário antes do término do período vigente. O processamento é realizado pelo Stripe. No plano anual, o valor integral dos 12 meses é cobrado de uma vez, e os créditos do plano são repostos mensalmente ao longo do ano contratado.
                 </p>
               </div>
               <div>
-                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.4 Política de reembolso</h3>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.4 Cancelamento</h3>
                 <p>
-                  <strong className="text-[var(--text-primary)]">Não há reembolso proporcional</strong> por período não utilizado após a cobrança do ciclo vigente. Em caso de dúvidas sobre cobranças, entre em contato em até 7 dias após a transação pelo e-mail{" "}
+                  O Usuário pode cancelar sua assinatura{" "}
+                  <strong className="text-[var(--text-primary)]">a qualquer momento</strong>, pelo portal de gerenciamento de assinatura (acessível na página de plano e billing) ou pelo e-mail{" "}
                   <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
                     contato@demandou.com
                   </a>
-                  . Situações excepcionais serão analisadas individualmente.
+                  , sem multa, taxa de cancelamento ou fidelidade. O cancelamento interrompe a renovação seguinte: o Usuário mantém acesso à plataforma e aos créditos já repostos até o fim do período de faturamento já pago (fim do mês vigente no ciclo mensal; fim dos 12 meses contratados no ciclo anual).
+                </p>
+              </div>
+              <div>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.5 Direito de arrependimento (art. 49 do CDC)</h3>
+                <p className="mb-2">
+                  Em conformidade com o art. 49 do Código de Defesa do Consumidor, o Usuário consumidor pode desistir da contratação no prazo de{" "}
+                  <strong className="text-[var(--text-primary)]">7 (sete) dias corridos a contar da primeira cobrança</strong> de cada nova contratação (mensal ou anual), com direito a{" "}
+                  <strong className="text-[var(--text-primary)]">reembolso integral</strong> do valor pago, pelo mesmo meio de pagamento. Para exercer o direito, basta solicitar pelo portal de assinatura ou pelo e-mail{" "}
+                  <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
+                    contato@demandou.com
+                  </a>
+                  .
+                </p>
+                <p>
+                  Como o período de teste gratuito antecede a primeira cobrança, na prática o Usuário dispõe do teste inteiro sem custo e de mais 7 dias após a primeira cobrança para desistir com devolução integral.
+                </p>
+              </div>
+              <div>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.6 Política de reembolso após o prazo de arrependimento</h3>
+                <p>
+                  Decorrido o prazo do item 5.5,{" "}
+                  <strong className="text-[var(--text-primary)]">não há reembolso proporcional</strong> por período não utilizado do ciclo já pago; o cancelamento vale para a renovação seguinte, conforme item 5.4. Cobranças indevidas ou em duplicidade serão estornadas integralmente. Situações excepcionais serão analisadas individualmente pelo e-mail de contato.
                 </p>
               </div>
             </div>
@@ -299,7 +326,7 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">10.2 Conteúdo do Usuário</h3>
                 <p>
-                  O conteúdo criado e publicado pelo Usuário por meio da plataforma — incluindo textos, imagens e demais materiais — pertence ao próprio Usuário. A demandou não reivindica propriedade sobre o conteúdo gerado pelo Usuário.
+                  O conteúdo criado e publicado pelo Usuário por meio da plataforma (incluindo textos, imagens, vídeos enviados e demais materiais) pertence ao próprio Usuário. A demandou não reivindica propriedade sobre o conteúdo gerado pelo Usuário.
                 </p>
               </div>
               <div>
@@ -346,8 +373,8 @@ export default function TermsPage() {
             </h2>
             <div className="space-y-3 text-sm">
               <p>
-                A demandou envidarà seus melhores esforços para manter a plataforma disponível de forma contínua. No entanto,{" "}
-                <strong className="text-[var(--text-primary)]">não há garantia formal de SLA (Service Level Agreement)</strong> — o serviço é fornecido &quot;como está&quot; e &quot;conforme disponível&quot;.
+                A demandou envidará seus melhores esforços para manter a plataforma disponível de forma contínua. No entanto,{" "}
+                <strong className="text-[var(--text-primary)]">não há garantia formal de SLA (Service Level Agreement)</strong>: o serviço é fornecido &quot;como está&quot; e &quot;conforme disponível&quot;.
               </p>
               <p>
                 Eventuais interrupções para manutenção programada serão comunicadas com antecedência razoável. A demandou não se responsabiliza por interrupções decorrentes de falhas em serviços de terceiros, casos fortuitos ou de força maior.
@@ -364,7 +391,7 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">13.1 Pelo Usuário</h3>
                 <p>
-                  O Usuário pode cancelar sua conta e encerrar o uso da plataforma a qualquer momento, pelo painel de configurações ou por contato com o suporte. O acesso permanece ativo até o fim do período de faturamento vigente.
+                  O Usuário pode cancelar sua assinatura e encerrar o uso da plataforma a qualquer momento, conforme os itens 5.4 e 5.5. O acesso permanece ativo até o fim do período de faturamento já pago.
                 </p>
               </div>
               <div>
@@ -440,7 +467,7 @@ export default function TermsPage() {
 
       {/* Footer */}
       <footer className="border-t border-white/10 py-8 text-center text-xs text-[var(--text-muted)]">
-        <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA — CNPJ 66.140.770/0001-48</p>
+        <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA · CNPJ 66.140.770/0001-48</p>
         <p className="mt-1">Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
         <div className="mt-3 flex justify-center gap-4">
           <Link href="/privacy" className="hover:text-orange-500 transition-colors">
