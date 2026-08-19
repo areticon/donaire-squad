@@ -73,7 +73,7 @@ const FEATURES = [
     icon: Zap,
     title: "Memória persistente",
     description:
-      "Os agentes aprendem com cada run. Tom de voz, preferências, feedback — tudo guardado e evoluído.",
+      "Os agentes aprendem com cada run. Tom de voz, preferências, feedback: tudo guardado e evoluído.",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
   },
@@ -81,13 +81,13 @@ const FEATURES = [
 
 export function Features() {
   return (
-    <section id="features" className="py-32 relative">
+    <section id="features" className="py-24 lg:py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-center mb-20"
+          className="text-center mb-16"
         >
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Funcionalidades
@@ -102,7 +102,7 @@ export function Features() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {FEATURES.map((feature, i) => {
             const Icon = feature.icon;
             return (
@@ -112,15 +112,15 @@ export function Features() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07 }}
-                className="bg-[#111] border border-[var(--border)] rounded-xl p-6 hover:border-orange-500/30 transition-all duration-300 group"
+                className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 hover:border-orange-500/30 transition-all duration-300 group"
               >
                 <div className={`${feature.bg} w-10 h-10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <Icon className={`w-5 h-5 ${feature.color}`} />
                 </div>
-                <h3 className="font-semibold text-[var(--text-primary)] mb-2 text-sm leading-snug">
+                <h3 className="font-semibold text-[var(--text-primary)] mb-2 leading-snug">
                   {feature.title}
                 </h3>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                <p className="text-sm text-[var(--text-muted)] leading-relaxed">
                   {feature.description}
                 </p>
               </motion.div>

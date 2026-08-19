@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
@@ -67,10 +66,8 @@ const PLANS = [
 ];
 
 export function Pricing() {
-  const [, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
-
   return (
-    <section id="pricing" className="py-32 relative">
+    <section id="pricing" className="py-24 lg:py-32 relative">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -88,16 +85,9 @@ export function Pricing() {
             Escolha o plano{" "}
             <span className="text-orange-500">certo para você</span>
           </h2>
-          <p className="text-xl text-[var(--text-muted)] max-w-xl mx-auto mb-4">
+          <p className="text-xl text-[var(--text-muted)] max-w-xl mx-auto">
             Cancele quando quiser. Sem fidelidade, sem surpresas.
           </p>
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-5 py-2 text-sm text-orange-300 font-medium">
-            <Zap className="w-3.5 h-3.5 shrink-0" />
-            Lançamento: 50% off nos 3 primeiros meses com o código{" "}
-            <span className="font-bold tracking-wide text-orange-400">
-              50LANCAMENTO
-            </span>
-          </div>
         </motion.div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
@@ -111,8 +101,8 @@ export function Pricing() {
               className={cn(
                 "relative rounded-2xl p-8 border",
                 plan.popular
-                  ? "bg-[#111] border-orange-500 shadow-[0_0_40px_rgba(249,115,22,0.15)]"
-                  : "bg-[#111] border-[var(--border)]"
+                  ? "bg-[var(--bg-card)] border-orange-500 shadow-[0_0_40px_rgba(249,115,22,0.15)]"
+                  : "bg-[var(--bg-card)] border-[var(--border)]"
               )}
             >
               {plan.popular && (
@@ -138,6 +128,11 @@ export function Pricing() {
                   </span>
                   <span className="text-[var(--text-muted)] text-sm">/mês</span>
                 </div>
+                {plan.id === "pro" && (
+                  <p className="mt-1.5 text-sm text-orange-400">
+                    ou R$ 1.490/ano (2 meses grátis)
+                  </p>
+                )}
               </div>
 
               <Button

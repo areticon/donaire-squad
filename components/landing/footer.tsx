@@ -3,7 +3,7 @@ import { BrandMarkImg } from "@/components/brand-mark";
 
 export function Footer() {
   return (
-    <footer className="border-t border-[var(--bg-elevated)] py-16">
+    <footer className="border-t border-[var(--border)] py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
@@ -43,12 +43,9 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-[var(--bg-elevated)] pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="border-t border-[var(--border)] pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-[var(--text-muted)]">
             © 2026 demandou. Feito com IA no Brasil.
-          </p>
-          <p className="text-xs text-[var(--text-muted)]">
-            Powered by Claude · Gemini · Blotato
           </p>
         </div>
       </div>

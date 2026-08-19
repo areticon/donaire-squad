@@ -25,13 +25,13 @@ const STEPS = [
     number: "04",
     title: "Publicado em todas as redes",
     description:
-      "Com sua aprovação, Paulo Publicador distribui o conteúdo em LinkedIn, X, Instagram e mais — com fontes no primeiro comentário.",
+      "Com sua aprovação, Paulo Publicador publica no LinkedIn e no X, com fontes no primeiro comentário. O conteúdo do Instagram sai pronto para você postar.",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how" className="py-32 relative">
+    <section id="how" className="py-24 lg:py-32 relative">
       {/* Subtle separator */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
@@ -40,7 +40,7 @@ export function HowItWorks() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-center mb-20"
+          className="text-center mb-16"
         >
           <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Como funciona
@@ -71,7 +71,7 @@ export function HowItWorks() {
                 <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-lg z-10">
                   {step.number}
                 </div>
-                <div className="flex-1 bg-[#111] border border-[var(--border)] rounded-xl p-6">
+                <div className="flex-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
                   <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">
                     {step.title}
                   </h3>

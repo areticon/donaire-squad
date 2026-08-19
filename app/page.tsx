@@ -16,7 +16,13 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <main className="bg-[var(--bg-primary)] min-h-screen">
+    // data-theme="dark" trava a landing no escuro, seja qual for o tema salvo
+    // na plataforma. As variáveis CSS herdam do ancestral mais próximo, então
+    // este atributo vence o do <html> para tudo aqui dentro. Sem isso, quem
+    // escolhia o claro no app via a landing misturar texto claro de variável
+    // com fundo escuro fixo, ilegível. Tema é preferência de quem usa a
+    // plataforma; a landing é a vitrine, e vitrine tem uma cara só.
+    <main data-theme="dark" className="bg-[var(--bg-primary)] min-h-screen">
       <Navbar />
       <Hero />
       <Demo />
