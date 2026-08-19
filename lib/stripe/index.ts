@@ -39,6 +39,17 @@ export const PLANS = {
     description: "A campanha completa nas 3 redes, toda semana",
     price: 14900,
     priceId: process.env.STRIPE_PRO_PRICE_ID,
+    // Anual: R$ 1.490 cobrados de uma vez (12x R$ 149 = R$ 1.788, dois meses
+    // de desconto). Existe por causa do CAC, não do desconto: o anual sobe o
+    // CAC máximo viável de R$ 298 para R$ 710 e põe a margem no caixa antes
+    // de a fatura do anúncio fechar. Ver a nota do CAC no Notion.
+    //
+    // O plano no banco continua "pro": quem sabe se o cliente é anual é o
+    // Stripe, e o cron /api/cron/annual-credits pergunta lá para repor os
+    // créditos mensais, porque o webhook de renovação só dispara 1x por ano
+    // em assinatura anual.
+    annualPrice: 149000,
+    annualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
     credits: 1800,
     extraCreditPrice: 0.12,
     features: [
@@ -126,6 +137,9 @@ export async function createCheckoutSession(
     // funcionar para assinatura recorrente.
     payment_method_types: ["card"],
     currency: "brl",
+    // Sem isto o campo de cupom nem aparece no checkout, e a landing promete
+    // 50% off com o código 50LANCAMENTO. Promessa sem campo é bug.
+    allow_promotion_codes: true,
     customer_email: email,
     metadata: { userId },
     line_items: [{ price: priceId, quantity: 1 }],

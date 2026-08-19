@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
         // plano de entrada atual.
         if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "pro";
         if (priceId === process.env.STRIPE_PRO_PRICE_ID) plan = "pro";
+        // Anual e mensal são o mesmo plano; o que muda é o ciclo de cobrança.
+        // A reposição mensal de créditos do anual vive em /api/cron/annual-credits,
+        // porque este webhook só dispara na renovação, que no anual é 1x por ano.
+        if (priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID) plan = "pro";
         if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) plan = "business";
         if (priceId === process.env.STRIPE_STUDIO_PRICE_ID) plan = "studio";
         // Assinaturas antigas do plano Agency (pré Opção B) mapeiam para studio

@@ -56,13 +56,13 @@ const PLANS = [
 export default function BillingPage() {
   const [loading, setLoading] = useState<string | null>(null);
 
-  async function subscribe(planId: string) {
-    setLoading(planId);
+  async function subscribe(planId: string, ciclo?: "anual") {
+    setLoading(ciclo ? `${planId}-anual` : planId);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, ciclo }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -170,6 +170,20 @@ export default function BillingPage() {
             >
               {plan.cta}
             </Button>
+
+            {plan.id === "pro" && (
+              <div className="mt-3 text-center">
+                <button
+                  className="text-sm font-medium text-orange-400 hover:text-orange-300 disabled:opacity-50"
+                  disabled={loading === "pro-anual"}
+                  onClick={() => subscribe("pro", "anual")}
+                >
+                  {loading === "pro-anual"
+                    ? "Abrindo checkout..."
+                    : "ou R$ 1.490/ano (2 meses grátis)"}
+                </button>
+              </div>
+            )}
           </motion.div>
         ))}
       </div>
