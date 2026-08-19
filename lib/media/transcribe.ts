@@ -264,9 +264,17 @@ export function interpretarResposta(
   };
 }
 
-/** Custo estimado em dólar. Nova-3 pré-gravado custa por minuto de áudio. */
+/**
+ * Custo estimado em dólar, cobrado por minuto de áudio.
+ *
+ * US$ 0,0052 é o preço do Nova-3 **multilíngue**, que é o que usamos desde
+ * 18/08/2026. O monolíngue custa US$ 0,0043, e a constante ficou nele por
+ * engano depois da troca, subestimando o custo em 21%. Subestimar custo é o
+ * erro que quebra projeção de margem, então vale conferir este número sempre
+ * que o parâmetro `language` mudar.
+ */
 export function estimateTranscriptionCostUsd(durationSec: number): number {
-  const PER_MINUTE = 0.0043;
+  const PER_MINUTE = 0.0052;
   return (durationSec / 60) * PER_MINUTE;
 }
 
