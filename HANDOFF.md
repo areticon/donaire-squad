@@ -1757,3 +1757,61 @@ classificador de segurança, por ser desativação de recurso. Não afeta nada: 
 código só referencia as variáveis, e os preços antigos ficam parados.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Fechamento da sessão de 18/08/2026
+
+### O que existe em produção agora
+
+demandou.com no ar, servindo o deploy de hoje. Login próprio, banco Supabase com
+migrations aplicadas pelo build, checkout do Stripe com os preços da Opção B,
+demonstração pública funcionando, fluxo de vídeo completo e sistema de créditos
+com saldo, extrato e cobrança.
+
+45 commits que estavam represados foram para o GitHub, em `master`.
+
+### A constante da transcrição, corrigida no fim
+
+`estimateTranscriptionCostUsd` passou de US$ 0,0043 para US$ 0,0052, que é o
+preço do multilíngue que usamos desde hoje. Subestimava 21%, e subestimar custo
+é o erro que quebra projeção de margem.
+
+### As sete falhas do dia, e o que elas têm em comum
+
+Nenhuma quebrava compilação. Todas apareceram ao encostar em dado real:
+
+1. A Deepgram apagando jargão em inglês, sem erro e sem rastro
+2. A Deepgram devolvendo 200 com lixo dentro quando o idioma está errado
+3. O prompt caching que não cacheia abaixo de 1024 tokens e não avisa
+4. O modelo estourando o limite de 280 caracteres do X
+5. JSON quebrando de forma intermitente por quebra de linha crua
+6. O Sonnet 5 devolvendo bloco de pensamento antes do texto
+7. O checkout do Stripe apontando para produtos que nem existiam
+
+**Regra que fica: em integração com terceiro, medir o que voltou.** Nunca
+confiar no código de status nem na instrução dada. E quando a falha for
+intermitente, eliminar a classe do problema em vez de reduzir a probabilidade.
+
+### O que decide o próximo passo, em ordem de peso
+
+1. **Teste de R$ 2.000 em tráfego pago.** Mede o CPC real em cauda longa e a
+   conversão real da landing, que são as duas variáveis que decidem se o negócio
+   escala. Precisa da demo no ar, e ela está.
+2. **Plano anual de R$ 1.490.** Sobe o CAC máximo viável de R$ 298 para R$ 710 e
+   põe o dinheiro no caixa antes de pagar o anúncio.
+3. **Fórmula de crédito do vídeo na `CREDIT_COSTS`.** O limite de bitrate já
+   está no código; falta a cobrança de 2 por minuto mais 4 por clipe entrar na
+   tabela canônica.
+
+### Aberto e conhecido
+
+- Arquivar o STARTER e os preços antigos no Stripe (bloqueado pelo classificador,
+  sem efeito prático).
+- Consolidar os três modelos de imagem do Gemini. Agora dá para decidir com dado,
+  porque a instrumentação grava qual modelo respondeu.
+- Tornar o contexto do projeto obrigatório no onboarding. Sem ele o prompt
+  caching não pega e o conteúdo fica genérico: os dois motivos apontam para a
+  mesma mudança.
+- Banco de desenvolvimento no Postgres local, quando fizer sentido separar.
+- App Review da Meta para publicar no Instagram.
+
+*Atualizado em 18/08/2026 por Claude Code.*
