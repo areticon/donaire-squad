@@ -1815,3 +1815,86 @@ intermitente, eliminar a classe do problema em vez de reduzir a probabilidade.
 - App Review da Meta para publicar no Instagram.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 18/08/2026 (parte 20): plano anual e a landing travada no escuro
+
+### O plano anual de R$ 1.490, inteiro
+
+O passo 1 da lista de fechamento virou código e produção. O que parecia "criar
+o price e ligar no checkout" tinha um buraco que só a leitura do webhook
+mostrou: quem repõe os 1.800 créditos mensais é o `customer.subscription.updated`
+guardado por `current_period_start`, e numa assinatura anual esse valor só muda
+uma vez por ano. Sem tratamento, o assinante anual receberia créditos no dia 1
+e nada até o mês 13.
+
+O desenho que entrou:
+
+- **Price live** `price_1U5yu2JIhzTmSVmM6gvWfh2j`, R$ 1.490/ano no mesmo
+  produto Pro, criado pela API (Bruno perdeu o autenticador do painel).
+  Verificado com sessão de checkout real, expirada em seguida.
+- **No banco o plano continua `"pro"`.** Quem sabe se o cliente é anual é o
+  Stripe. Nenhuma migration.
+- **`/api/cron/annual-credits`**, diário às 13h UTC: pergunta ao Stripe quem
+  tem assinatura ativa no price anual e repõe via `reporCiclo` quando
+  `creditsResetAt` passou de 30 dias. `reporCiclo` zera para o teto, não soma,
+  então rodar duas vezes não dá crédito. O corte de 30 dias dá 12,1 reposições
+  por ano; imprecisão aceita pela simplicidade.
+- **Isso usou o segundo e último cron do plano Hobby da Vercel.** O próximo
+  cron exige plano pago ou cron externo.
+- Checkout aceita `ciclo: "anual"` e devolve 400 se o price não estiver no
+  ambiente, em vez de cair no mensal em silêncio.
+- `STRIPE_PRO_ANNUAL_PRICE_ID` na Vercel como Non-sensitive (regra da parte 18)
+  e no `.env.local`.
+
+Por que o anual importa: sobe o CAC máximo viável de R$ 298 para R$ 710 e põe
+R$ 894 de margem no caixa no dia 1. É a alavanca que torna o teste de tráfego
+pago menos arriscado. A conta inteira vive na nota do CAC no Notion.
+
+### O cupom que a landing prometia não existia
+
+A auditoria pela API achou: o código 50LANCAMENTO nunca foi criado no Stripe, e
+o checkout nem mostrava campo de cupom (`allow_promotion_codes` ausente). Dupla
+promessa quebrada. Decisão do Bruno: **remover a promessa da landing** em vez
+de criar o cupom. Motivo de não criar às pressas: cupom de 50% por 3 meses no
+Stripe se aplica por fatura e não distingue mensal de anual no mesmo produto,
+então o código público descontaria R$ 745 da fatura anual. Se um dia o cupom
+voltar, o caminho limpo é price anual em produto separado e cupom restrito por
+produto. O campo de cupom ficou habilitado no checkout, para cupons futuros.
+
+### A landing misturava claro e escuro
+
+Bruno trocou o tema para claro dentro da plataforma e a landing quebrou: o
+script inline aplica o tema salvo no `<html>` inteiro, e a landing misturava
+variáveis de tema (que clareiam) com fundos fixos escuros (`bg-[#111]`). Texto
+escuro em fundo escuro.
+
+**Decisão: tema é preferência de quem usa a plataforma; a landing é vitrine e
+tem uma cara só, a escura.** Um `data-theme="dark"` no `<main>` da landing
+resolve, porque variável CSS herda do ancestral mais próximo, então o wrapper
+vence o `<html>` para tudo dentro dele.
+
+Verificado com screenshot nos dois cenários (tema claro salvo e escuro salvo):
+renderização idêntica. A lição da sessão continua valendo: o build passava nos
+dois casos, só o render mostrava o bug.
+
+De carona, o passe de design que o Bruno pediu:
+
+- Cards saíram do `#111` (paleta quase preta aposentada em 18/08) para
+  `var(--bg-card)` da paleta Discord: card agora eleva em vez de afundar.
+- Espaçamento unificado: seções em `py-24 lg:py-32`, títulos em `mb-16`.
+- Descrições dos cards de funcionalidades de `text-xs` para `text-sm`.
+- "Powered by Claude · Gemini · Blotato" removido do rodapé. O Blotato saiu do
+  produto há duas semanas; era propaganda de intermediário que não existe mais.
+- Passo 04 do "Como funciona" parou de prometer publicação automática no
+  Instagram, que aguarda App Review da Meta. Agora diz que o conteúdo do
+  Instagram sai pronto para postar, que é o que o produto faz hoje.
+- Dois travessões removidos de textos da landing.
+
+### O que o classificador bloqueou desta vez
+
+`vercel env pull` (segredos de produção para arquivo local) foi bloqueado
+mesmo com autorização verbal do Bruno; ele rodou o comando no terminal dele e o
+arquivo temporário foi apagado depois do uso. Padrão que se repete nas partes
+17, 19 e agora: operação sensível em produção é do Bruno, o resto é meu.
+
+*Atualizado em 18/08/2026 por Claude Code.*
