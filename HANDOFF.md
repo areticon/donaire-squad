@@ -1897,4 +1897,30 @@ mesmo com autorização verbal do Bruno; ele rodou o comando no terminal dele e 
 arquivo temporário foi apagado depois do uso. Padrão que se repete nas partes
 17, 19 e agora: operação sensível em produção é do Bruno, o resto é meu.
 
+### Termos e privacidade atualizados para o produto real
+
+Os dois documentos estavam datados de 09/04/2026 e descreviam um produto que
+não existe mais. O que entrou:
+
+**Termos:** ciclo anual na cláusula de planos; o trial de 7 dias com cartão
+descrito com a regra de cobrança; **direito de arrependimento do art. 49 do
+CDC**, que não era citado (7 dias corridos da primeira cobrança, reembolso
+integral, e vale para o anual de R$ 1.490); cancelamento a qualquer momento sem
+multa, com acesso até o fim do período pago; vídeo na descrição do serviço.
+
+**Privacidade:** saíram Clerk, Pusher e Neon, que não tocam mais nenhum dado;
+entraram Deepgram (áudio), Supabase (banco), Vercel Blob (vídeo privado), a
+categoria de dados de vídeo/transcrição e os dados da demonstração pública,
+que grava o texto do visitante em `demo_runs` e ninguém declarava.
+
+Pendente da esfera jurídica: revisão por advogado. O texto segue CDC e LGPD no
+desenho, mas foi escrito por IA e o Bruno sabe disso.
+
+**Deploys da noite verificados em produção:** o anual aparece na landing, o
+cupom e o Blotato sumiram, e o site responde com os termos novos.
+
+**Aberto que o Bruno pediu nesta sequência:** testar a jornada completa de
+ponta a ponta (ele ainda não testou nada em produção), e o caminho do
+Instagram via API da Meta, que virou prioridade de produto.
+
 *Atualizado em 18/08/2026 por Claude Code.*
