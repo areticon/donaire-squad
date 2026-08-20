@@ -1937,3 +1937,72 @@ Mesma família das sete falhas do dia: só apareceu medindo o que voltou, e o
 grep sem `-L` teria dito que estava tudo bem. Corrigido em `93002ea`.
 
 *Atualizado em 18/08/2026 por Claude Code.*
+
+## Sessão 19-20/08/2026 (parte 21): Instagram, do zero da conta ao código no ar
+
+### O contexto que virou dependência: a conta da Meta
+
+O Instagram virou prioridade de produto por decisão do Bruno. O caminho
+técnico escolhido é a **API do Instagram com login do Instagram** (a variante
+de 2024 que dispensa página do Facebook): o cliente conecta a conta
+profissional direto, no gesto dos outros conectores.
+
+Só que criar o app exige conta do Facebook, e a do Bruno estava num loop de
+login sem saída: sem os dispositivos antigos, sem o telefone antigo, e o
+e-mail era da globo.com, serviço extinto. **Conta dada como perdida.** A
+recuperação formal da Meta foi tentada e não tem porta sem esses três.
+
+**Plano executado:** conta nova de substituição criada em 20/08 (nome real,
+e-mail atual, celular atual, 2FA com códigos de recuperação guardados, a lição
+do Stripe aplicada no dia zero), perfil completo, e os dois Instagrams
+vinculados na Central de Contas, o que dá lastro e cria porta de recuperação.
+**A conta fica em lastro por 7 a 14 dias antes de registrar developer**: conta
+recém-nascida criando app Business com permissão de publicação é o gatilho
+clássico de derrubada, e o app derrubado leva junto a conexão de todo cliente.
+Válvula de escape se o prazo apertar: a Elisa cria o app num portfólio de
+negócios da Demandou e o Bruno entra como admin depois.
+
+As páginas do Facebook da Demandou e da Bem Natura também não existem; criar
+semana que vem, pela conta já rodada (anúncio na Meta exige página).
+
+### O código, pronto e no ar antes do app existir
+
+Commit `94ae9a3`, produção. Sem `INSTAGRAM_APP_ID`/`SECRET` o conectar devolve
+503 por desenho, então nada muda para quem usa até as chaves entrarem.
+
+- **`lib/oauth/instagram.ts`**: OAuth completo. O token curto (1h) é trocado
+  pelo longo (~60 dias) já no callback; a renovação acontece em
+  `resolveSocialAccountAccessToken` quando faltam menos de 7 dias, e token
+  vencido vira erro claro pedindo reconexão.
+- **Publicação em dois passos** (container, depois publish), imagem única e
+  carrossel de 2 a 10. Post sem imagem é recusado com mensagem em português:
+  Instagram não tem post de texto puro.
+- **`/api/media/ig/[token]`**: a Meta busca mídia por URL https pública, e as
+  nossas imagens vivem como data URL no banco ou em Blob privado. A rota serve
+  a imagem com token HMAC (postId e índice, assinados com o segredo do
+  servidor), sem migration. Post publicado tem a imageUrl limpa, e a URL morre
+  junto.
+- **Deauthorize e data deletion**: os callbacks que o cadastro do app exige,
+  com verificação de assinatura do `signed_request` (sem ela, qualquer POST
+  desativaria conexão de cliente).
+- UI: seção do Instagram no painel de conexões e no kanban.
+
+**Testado contra dado real**, como manda a regra da casa: user, projeto e post
+de teste criados no banco, rota servindo os bytes exatos do PNG, token
+adulterado, post inexistente e índice inválido dando 404, e a limpeza no fim.
+
+### Armadilha nova para a lista: `.next` misturado
+
+O teste começou dando 404 em HTML para **todas** as rotas dinâmicas do dev
+server, incluindo rotas antigas que funcionam em produção. Causa: `next build
+--webpack` e `next dev` (Turbopack) compartilham o diretório `.next`, e o
+manifesto de um confunde o outro. **`rm -rf .next` antes de `next dev` depois
+de qualquer build local.** Rotas estáticas continuam funcionando, o que
+disfarça o problema.
+
+### Decisão pendente do Bruno nesta parte
+
+Avaliação do Blotato como intermediário temporário para acelerar (a conta está
+na conversa e no Notion) e a inclusão do Facebook como rede de publicação.
+
+*Atualizado em 20/08/2026 por Claude Code.*
