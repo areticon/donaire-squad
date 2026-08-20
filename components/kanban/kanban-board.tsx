@@ -600,6 +600,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
   const NETWORKS = [
     { platform: "linkedin", label: "LinkedIn", icon: "in", color: "bg-blue-600", connectUrl: `/api/social/linkedin/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
     { platform: "twitter", label: "X (Twitter)", icon: "𝕏", color: "bg-slate-800", connectUrl: `/api/social/twitter/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
+    { platform: "instagram", label: "Instagram", icon: "IG", color: "bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600", connectUrl: `/api/social/instagram/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
   ];
 
   return (

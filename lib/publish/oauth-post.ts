@@ -23,6 +23,13 @@ import {
   refreshTwitterToken,
   uploadTwitterMedia,
 } from "@/lib/oauth/twitter";
+import {
+  buildIgMediaPublicUrl,
+  publishInstagramCarousel,
+  publishInstagramImage,
+  refreshInstagramToken,
+  INSTAGRAM_MAX_CAPTION,
+} from "@/lib/oauth/instagram";
 
 /**
  * Garante access token válido (Twitter refresh quando necessário).
@@ -50,6 +57,38 @@ export async function resolveSocialAccountAccessToken(
       },
     });
     return { account: updated, accessToken };
+  }
+
+  // Instagram: o token longo (~60 dias) não tem refresh token; renova-se o
+  // próprio token antes de expirar. Renovar com 7 dias de antecedência cobre
+  // o cliente que publica ao menos 1x por semana; quem sumir por mais de 60
+  // dias precisa reconectar, e a falha abaixo vira erro claro na publicação.
+  if (
+    account.platform === "instagram" &&
+    accessToken &&
+    account.tokenExpiresAt &&
+    account.tokenExpiresAt.getTime() < Date.now() + 7 * 24 * 60 * 60 * 1000
+  ) {
+    if (account.tokenExpiresAt < new Date()) {
+      throw new Error(
+        "A conexão com o Instagram expirou. Reconecte a conta nas configurações do projeto."
+      );
+    }
+    try {
+      const refreshed = await refreshInstagramToken(accessToken);
+      const updated = await prisma.socialAccount.update({
+        where: { id: account.id },
+        data: {
+          accessToken: refreshed.accessToken,
+          tokenExpiresAt: refreshed.expiresAt,
+        },
+      });
+      return { account: updated, accessToken: refreshed.accessToken };
+    } catch (e) {
+      // Renovação falhou mas o token atual ainda vale: publica com ele e
+      // tenta renovar de novo na próxima. Só loga para deixar rastro.
+      console.warn("[instagram] refresh do token falhou, usando o atual:", e);
+    }
   }
   return { account, accessToken };
 }
@@ -235,6 +274,31 @@ export async function executeOAuthPostPublish(
       externalUrl = result.url;
       externalId = result.tweetId;
     }
+  } else if (account.platform === "instagram") {
+    if (!platformUserId) throw new Error("Conta Instagram inválida");
+
+    // Instagram não tem post sem mídia. Post de texto puro é recusado aqui
+    // com mensagem clara em vez de deixar a API da Meta devolver erro críptico.
+    const rawImages = (post.imageUrl ?? "").split("|").filter(Boolean);
+    if (rawImages.length === 0) {
+      throw new Error(
+        "O Instagram exige imagem no post. Gere o post com imagem ou carrossel para publicar lá."
+      );
+    }
+
+    // A Meta busca a mídia por URL pública. https passa direto; data URL vai
+    // pela rota assinada /api/media/ig/[token], que serve a imagem do banco.
+    const publicUrls = rawImages.map((img, i) =>
+      img.startsWith("https://") ? img : buildIgMediaPublicUrl(post.id, i)
+    );
+
+    const caption = bodyText.slice(0, INSTAGRAM_MAX_CAPTION);
+    const result =
+      publicUrls.length >= 2
+        ? await publishInstagramCarousel(accessToken, platformUserId, publicUrls, caption)
+        : await publishInstagramImage(accessToken, platformUserId, publicUrls[0], caption);
+    externalUrl = result.url;
+    externalId = result.mediaId;
   } else {
     throw new Error(`Plataforma "${account.platform}" ainda não suportada`);
   }

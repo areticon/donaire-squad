@@ -37,6 +37,12 @@ const PLATFORM_CONFIG = {
     color: "bg-[#1a1a2e]",
     description: "Posts, threads e conversas",
   },
+  instagram: {
+    label: "Instagram",
+    icon: "IG",
+    color: "bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600",
+    description: "Posts com imagem e carrosséis no feed",
+  },
 };
 
 export function SocialConnectPanel({
@@ -65,6 +71,11 @@ export function SocialConnectPanel({
       refreshAccounts();
     } else if (searchParams.get("twitter") === "error") {
       toast.error("Erro ao conectar X. Tente novamente.");
+    } else if (searchParams.get("instagram") === "success") {
+      toast.success("Instagram conectado com sucesso!");
+      refreshAccounts();
+    } else if (searchParams.get("instagram") === "error") {
+      toast.error("Erro ao conectar Instagram. A conta precisa ser profissional (Business ou Creator).");
     }
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,8 +127,10 @@ export function SocialConnectPanel({
   // Group accounts by platform, then by type
   const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
   const twitterAccounts = accounts.filter((a) => a.platform === "twitter");
+  const instagramAccounts = accounts.filter((a) => a.platform === "instagram");
   const hasLinkedIn = linkedinAccounts.length > 0;
   const hasTwitter = twitterAccounts.length > 0;
+  const hasInstagram = instagramAccounts.length > 0;
 
   const linkedinPersonal = linkedinAccounts.filter((a) => a.accountType === "personal");
   const linkedinPages = linkedinAccounts.filter((a) => a.accountType === "organization");
@@ -270,6 +283,46 @@ export function SocialConnectPanel({
         ) : (
           <div className="space-y-2">
             {twitterAccounts.map((account) => (
+              <AccountRow
+                key={account.id}
+                account={account}
+                type="personal"
+                toggling={togglingId === account.id}
+                onToggle={toggleActive}
+                onDisconnect={disconnectAccount}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Instagram section ────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+              IG
+            </div>
+            Instagram
+          </h2>
+          {!hasInstagram && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
+            </Button>
+          )}
+        </div>
+
+        {!hasInstagram ? (
+          <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
+            <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Instagram não conectado</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              A conta precisa ser profissional (Business ou Creator)
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {instagramAccounts.map((account) => (
               <AccountRow
                 key={account.id}
                 account={account}
