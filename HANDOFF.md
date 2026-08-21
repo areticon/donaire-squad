@@ -2351,9 +2351,15 @@ classificador procura, e a falta dele custou a marcação do domínio inteiro.
 
 ### Estado ao fim da sessão
 
-Os dois commits estão em `feat/own-auth` e **ainda não em `master`**, que é o
-branch que a Vercel serve. O deploy depende do Bruno. Depois do deploy no ar,
-pedir a revisão no Search Console em Segurança e ações manuais.
+**Deploy feito em 21/08.** `master` levado a `d9d88f0` com autorização do
+Bruno, build da Vercel em 53s. Verificado contra o site no ar, não contra o
+build local: os cinco cabeçalhos respondem em demandou.com, o CNPJ aparece em
+`/`, `/sign-in`, `/sign-up` e `/planos`, e nada regrediu (os botões de Google e
+LinkedIn continuam renderizando, o que prova que `/api/auth/providers` sobreviveu
+aos cabeçalhos novos, e o console não acusa erro).
+
+Falta o pedido de revisão no Search Console, em Segurança e ações manuais, que
+é a mão do Bruno. Revisão de páginas enganosas costuma sair em até 72 horas.
 
 Fica pendente, na fila combinada: responsividade no celular (medição com
 prints começou, a landing se comporta bem a 390px, a suspeita é a plataforma
