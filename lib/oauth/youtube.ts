@@ -1,0 +1,177 @@
+/**
+ * YouTube pela Data API v3, com OAuth próprio do Google.
+ *
+ * Não reusa o cliente OAuth do login: o escopo de envio
+ * (youtube.upload) é sensível e verificado separadamente pelo Google, e
+ * misturar os dois faria a tela de login pedir permissão de canal a quem só
+ * quer entrar. Projeto e credenciais separados no Google Cloud.
+ *
+ * O refresh token só vem com access_type=offline e prompt=consent, e o
+ * Google só o entrega NA PRIMEIRA autorização: reconexão sem prompt=consent
+ * volta sem refresh token e a conexão morre em 1 hora. Por isso o consent
+ * forçado aqui, mesmo custando uma tela a mais.
+ *
+ * Cota (verificada em 21/08/2026): desde junho de 2026 o envio tem cota
+ * própria de 100 vídeos/dia por projeto, fora do pool de 10.000 unidades.
+ * Com 30 clientes a 1 vídeo/semana são ~4/dia. Não é gargalo.
+ */
+
+const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const API = "https://www.googleapis.com/youtube/v3";
+const UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos";
+
+export const YOUTUBE_SCOPES = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.readonly",
+].join(" ");
+
+export function youtubeConfigured(): boolean {
+  return Boolean(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET);
+}
+
+export function getYouTubeAuthUrl(redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    client_id: process.env.YOUTUBE_CLIENT_ID!,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: YOUTUBE_SCOPES,
+    state,
+    access_type: "offline",
+    prompt: "consent",
+  });
+  return `${AUTH_URL}?${params.toString()}`;
+}
+
+export async function exchangeYouTubeCode(
+  code: string,
+  redirectUri: string
+): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date }> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.YOUTUBE_CLIENT_ID!,
+      client_secret: process.env.YOUTUBE_CLIENT_SECRET!,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      code,
+    }),
+  });
+  if (!res.ok) throw new Error(`YouTube token exchange failed: ${await res.text()}`);
+  const json = (await res.json()) as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+  };
+  if (!json.refresh_token) {
+    // Sem refresh token a conexão morre em 1h. Melhor falhar aqui, com o
+    // usuário na frente da tela, do que na primeira publicação agendada.
+    throw new Error(
+      "YouTube não devolveu refresh token. Desconecte o app em myaccount.google.com/permissions e conecte de novo."
+    );
+  }
+  return {
+    accessToken: json.access_token,
+    refreshToken: json.refresh_token,
+    expiresAt: new Date(Date.now() + json.expires_in * 1000),
+  };
+}
+
+export async function refreshYouTubeToken(
+  refreshToken: string
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.YOUTUBE_CLIENT_ID!,
+      client_secret: process.env.YOUTUBE_CLIENT_SECRET!,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+  if (!res.ok) throw new Error(`YouTube token refresh failed: ${await res.text()}`);
+  const json = (await res.json()) as { access_token: string; expires_in: number };
+  return {
+    accessToken: json.access_token,
+    expiresAt: new Date(Date.now() + json.expires_in * 1000),
+  };
+}
+
+export async function getYouTubeChannel(accessToken: string): Promise<{
+  channelId: string;
+  title: string;
+  avatarUrl: string | null;
+}> {
+  const res = await fetch(`${API}/channels?part=snippet&mine=true`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`YouTube channel failed: ${await res.text()}`);
+  const json = (await res.json()) as {
+    items?: Array<{
+      id: string;
+      snippet?: { title?: string; thumbnails?: { default?: { url?: string } } };
+    }>;
+  };
+  const ch = json.items?.[0];
+  if (!ch) {
+    throw new Error(
+      "Esta conta do Google não tem canal no YouTube. Crie o canal antes de conectar."
+    );
+  }
+  return {
+    channelId: ch.id,
+    title: ch.snippet?.title ?? "Canal",
+    avatarUrl: ch.snippet?.thumbnails?.default?.url ?? null,
+  };
+}
+
+/**
+ * Envia um vídeo. Upload resumable em duas pernas: abre a sessão com os
+ * metadados, envia os bytes na URL que ela devolve. É o caminho que a doc
+ * recomenda e o único que sobrevive a vídeo grande.
+ *
+ * `privacyStatus` nasce "unlisted" por decisão: em app não verificado pelo
+ * Google, vídeos enviados pela API ficam privados à força até a verificação
+ * passar; "unlisted" documenta a intenção e vira efetivo depois dela.
+ */
+export async function publishYouTubeVideo(
+  accessToken: string,
+  video: { bytes: ArrayBuffer; mimeType: string },
+  meta: { title: string; description: string; privacyStatus?: "public" | "unlisted" | "private" }
+): Promise<{ videoId: string; url: string }> {
+  const start = await fetch(`${UPLOAD}?uploadType=resumable&part=snippet,status`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": video.mimeType,
+      "X-Upload-Content-Length": String(video.bytes.byteLength),
+    },
+    body: JSON.stringify({
+      snippet: {
+        // O título aceita no máximo 100 caracteres e recusa "<" e ">".
+        title: meta.title.replace(/[<>]/g, "").slice(0, 100),
+        description: meta.description.slice(0, 5000),
+      },
+      status: { privacyStatus: meta.privacyStatus ?? "unlisted" },
+    }),
+  });
+  if (!start.ok) throw new Error(`YouTube upload start failed: ${await start.text()}`);
+  const sessionUrl = start.headers.get("location");
+  if (!sessionUrl) throw new Error("YouTube upload: sessão sem URL de envio");
+
+  const up = await fetch(sessionUrl, {
+    method: "PUT",
+    headers: { "Content-Type": video.mimeType },
+    body: video.bytes,
+    // Vídeo de cliente pode ser grande; o timeout cobre o upload inteiro.
+    signal: AbortSignal.timeout(280_000),
+  });
+  const text = await up.text();
+  if (!up.ok) throw new Error(`YouTube upload failed (${up.status}): ${text.slice(0, 400)}`);
+  const json = JSON.parse(text) as { id?: string };
+  if (!json.id) throw new Error(`YouTube upload: resposta sem id (${text.slice(0, 300)})`);
+  return { videoId: json.id, url: `https://www.youtube.com/watch?v=${json.id}` };
+}

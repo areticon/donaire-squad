@@ -30,6 +30,11 @@ import {
   refreshInstagramToken,
   INSTAGRAM_MAX_CAPTION,
 } from "@/lib/oauth/instagram";
+import {
+  publishFacebookImagePost,
+  publishFacebookText,
+} from "@/lib/oauth/facebook";
+import { publishYouTubeVideo, refreshYouTubeToken } from "@/lib/oauth/youtube";
 
 /**
  * Garante access token válido (Twitter refresh quando necessário).
@@ -38,6 +43,26 @@ export async function resolveSocialAccountAccessToken(
   account: SocialAccount
 ): Promise<{ account: SocialAccount; accessToken: string }> {
   let accessToken = account.accessToken ?? "";
+
+  // YouTube: o access token do Google dura 1h; o refresh token e permanente.
+  // Renova sempre que faltar menos de 5 minutos.
+  if (
+    account.platform === "youtube" &&
+    account.refreshToken &&
+    account.tokenExpiresAt &&
+    account.tokenExpiresAt.getTime() < Date.now() + 5 * 60 * 1000
+  ) {
+    const refreshed = await refreshYouTubeToken(account.refreshToken);
+    const updated = await prisma.socialAccount.update({
+      where: { id: account.id },
+      data: {
+        accessToken: refreshed.accessToken,
+        tokenExpiresAt: refreshed.expiresAt,
+      },
+    });
+    return { account: updated, accessToken: refreshed.accessToken };
+  }
+
   if (
     account.platform === "twitter" &&
     account.refreshToken &&
@@ -299,6 +324,60 @@ export async function executeOAuthPostPublish(
         : await publishInstagramImage(accessToken, platformUserId, publicUrls[0], caption);
     externalUrl = result.url;
     externalId = result.mediaId;
+  } else if (account.platform === "facebook") {
+    if (!platformUserId) throw new Error("Página do Facebook inválida");
+
+    // A Meta busca a imagem por URL pública, mesma regra do Instagram: a
+    // rota assinada /api/media/ig/[token] serve para as duas plataformas.
+    const rawImages = (post.imageUrl ?? "").split("|").filter(Boolean);
+    const publicUrls = rawImages
+      .filter((img) => img.startsWith("https://") || img.startsWith("data:image"))
+      .map((img, i) => (img.startsWith("https://") ? img : buildIgMediaPublicUrl(post.id, i)));
+
+    const result =
+      publicUrls.length > 0
+        ? await publishFacebookImagePost(accessToken, platformUserId, bodyText, publicUrls)
+        : await publishFacebookText(accessToken, platformUserId, bodyText);
+    externalUrl = result.url;
+    externalId = result.postId;
+  } else if (account.platform === "youtube") {
+    // YouTube só recebe vídeo. Post de outro tipo é recusado com mensagem
+    // clara, no padrão do Instagram sem imagem.
+    if (mediaType !== "video" || !post.imageUrl) {
+      throw new Error(
+        "O YouTube só recebe posts de vídeo. Gere o post com vídeo para publicar lá."
+      );
+    }
+
+    let bytes: ArrayBuffer;
+    let mime = "video/mp4";
+    if (post.imageUrl.startsWith("data:video")) {
+      const [head, b64] = post.imageUrl.split(",", 2);
+      mime = head.slice(5, head.indexOf(";")) || "video/mp4";
+      bytes = Buffer.from(b64, "base64").buffer as ArrayBuffer;
+    } else if (post.imageUrl.startsWith("https://")) {
+      // Blob privado é alcançável daqui (server-side); serviço externo não
+      // alcança, mas quem baixa somos nós e quem sobe também.
+      const res = await fetch(post.imageUrl, { signal: AbortSignal.timeout(120_000) });
+      if (!res.ok) throw new Error(`Não consegui baixar o vídeo (${res.status})`);
+      mime = res.headers.get("content-type") ?? "video/mp4";
+      bytes = await res.arrayBuffer();
+    } else {
+      throw new Error("Vídeo do post em formato não reconhecido");
+    }
+
+    // Título vem da primeira linha do texto; o resto vira descrição.
+    const [primeiraLinha, ...resto] = bodyText.split("\n");
+    const result = await publishYouTubeVideo(
+      accessToken,
+      { bytes, mimeType: mime },
+      {
+        title: primeiraLinha || "Vídeo",
+        description: resto.join("\n").trim() || bodyText,
+      }
+    );
+    externalUrl = result.url;
+    externalId = result.videoId;
   } else {
     throw new Error(`Plataforma "${account.platform}" ainda não suportada`);
   }
