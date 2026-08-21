@@ -2443,3 +2443,55 @@ apagado a pedido dele, junto com o projeto (a relação continua `RESTRICT`, o
 card do cascade segue aberto).
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 27): as cinco redes ligadas, guiado clique a clique
+
+Sequência de painel com o Bruno, no padrão de uma instrução por vez.
+
+### Facebook, pelo app da Meta que já existia
+
+- **Página do Facebook da Demandou criada** (pendência da parte 21), com bio.
+- O produto "Login do Facebook para Empresas" já estava no app; foi só
+  cadastrar a redirect `https://demandou.com/api/social/facebook/callback`.
+- **A tela Básico do app foi completada de caminho**: política de privacidade
+  e termos apontando para demandou.com (os campos estavam vazios ou apontando
+  para facebook.com, o que reprovaria o App Review), exclusão de dados
+  apontando para o callback real, domínio, categoria Empresa e o ícone de
+  1024px gerado do SVG oficial da marca (composto, não recriado), salvo em
+  Downloads. Isso desbloqueou o checklist "ineligible for submission" que
+  barrava a submissão do App Review do Instagram.
+- `FACEBOOK_APP_ID` e `FACEBOOK_APP_SECRET` na Vercel (Sensitive) e no
+  `.env.local`, redeploy, e `/api/social/providers` respondendo
+  `facebook: true` em produção.
+
+### YouTube, no projeto Google que já existia
+
+Decisão: cliente OAuth novo no projeto `demandoupostou` (o do login), em vez
+de projeto novo. A tela de consentimento já tem o domínio verificado, o que
+poupa uma verificação inteira; só o escopo de upload será novidade.
+
+- YouTube Data API v3 já estava ativa no projeto.
+- Cliente OAuth web "Demandou YouTube" criado com a redirect
+  `https://demandou.com/api/social/youtube/callback`.
+- `YOUTUBE_CLIENT_ID` e `YOUTUBE_CLIENT_SECRET` na Vercel e no `.env.local`,
+  redeploy, e `/api/social/providers` respondendo **as cinco redes true**.
+
+### O que esperar no teste (avisos que não são bugs)
+
+- **YouTube**: como o escopo `youtube.upload` é sensível e o app não passou
+  pela verificação do Google, a tela de consentimento vai mostrar o aviso
+  "o Google não verificou este app". Caminho: Avançado, prosseguir. E vídeo
+  enviado por app não verificado fica **privado à força** no YouTube até a
+  verificação; o código já manda unlisted para valer depois dela.
+- **Facebook**: em modo dev, publicar funciona só para admin do app, que é o
+  caso do Bruno. Cliente de verdade depende do App Review.
+- **YouTube exige canal**: conta Google sem canal falha com mensagem clara
+  pedindo para criar o canal antes.
+
+### Estado
+
+Falta o teste de ponta a ponta do Bruno, que agora cobre as cinco redes na
+etapa 1. A revisão do Search Console segue pendente de pedido (a tela estava
+aberta na parte 25; confirmar se o botão "Solicitar revisão" foi clicado).
+
+*Atualizado em 21/08/2026 por Claude Code.*
