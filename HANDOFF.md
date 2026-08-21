@@ -2133,3 +2133,113 @@ mesma forma girada 180 graus e dividem a mesma bola, então a simetria é exata.
 - PNGs gerados por `sharp` a partir do vetor, fundo transparente.
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 24): jornada testada de verdade, e o que ela mudou
+
+O Bruno começou a percorrer a jornada real em produção e cada tropeço virou
+correção no ato. O que entrou:
+
+### O login com Google que não logava (duas travas, e a segunda escondida)
+
+Cadastro por senha + clique em "Continuar com Google" no mesmo e-mail dava
+`account_not_linked` e jogava a pessoa na home com o erro cru na URL.
+
+1. **Primeira trava**: o better-auth não vincula provedor social a conta
+   existente por padrão. Liberado com `trustedProviders: ["google",
+   "linkedin"]`, seguro porque os dois confirmam o e-mail.
+2. **Segunda trava, a que continuava barrando**: `requireLocalEmailVerified`
+   (padrão `true`) exige que a conta local tenha e-mail verificado, e o nosso
+   cadastro por senha não verifica e-mail, então todo usuário nasce com
+   `emailVerified: false` e a vinculação era impossível para qualquer pessoa.
+   Descoberto lendo `link-account.mjs` do better-auth, não adivinhando.
+   Desligado; não abre buraco novo porque o risco coberto já existe pela
+   ausência de verificação no cadastro. **Card criado: verificação de e-mail
+   no cadastro; quando existir, religar a trava.**
+
+O erro social agora volta para a tela de login com mensagem em português.
+
+### Anual nos três planos, e a hierarquia de preço que vende
+
+Preços anuais criados também para Business (R$ 2.490) e Studio (R$ 4.490),
+sempre 10 mensalidades. Os cards mostram o **mensal equivalente** grande
+(124, 208, 374), a economia em laranja e o total do ano pequeno, porque
+número de quatro dígitos derruba conversão. Descrições dos três produtos no
+Stripe corrigidas (falavam 1.100 e 2.500 créditos, números da Opção A).
+Verificado com sessão de checkout real nos três.
+
+**Decisão de negócio registrada:** o Bruno pediu fidelidade com multa
+proporcional no anual; a premissa foi corrigida com número. Anual à vista não
+tem o que multar (o caixa já entrou, que é a razão do plano existir), multa
+sobre valor pago seria cobrança dupla (art. 51 CDC), e a barreira real já é
+máxima: quem pagou 12 meses fica 12 meses. Termos descrevem o compromisso de
+12 meses como contrapartida do desconto. Conta Stripe para recuperação de
+acesso: `acct_1TJzMgJIhzTmSVmM`, e-mail `bruno.donaire88@gmail.com`.
+
+### O assistente de setup foi redesenhado no meio do teste
+
+Três mudanças de produto pedidas pelo Bruno, todas no ar:
+
+- **Redes Sociais é a etapa 1** do assistente (era a 5ª). Conectar primeiro é
+  o que permitirá ler o perfil e pré-preencher o resto.
+- **A IA preenche em vez de sugerir**: na Ideação, "Preencher com IA" propõe e
+  aplica nome, descrição, nicho e público; na Voz, o guia completo. Ao lado,
+  campo "Quer ajustar?" que refaz com a instrução do usuário. JSON extraído e
+  validado em código (modelo desobedece formato). Verificado com jornada real.
+- **Campo de referências e inspirações** (perfis a modelar) na Ideação,
+  persistido em `config.references` (sem migration), alimentando a IA.
+
+**Fase 2 virou card com limites de API mapeados**: análise automática das
+redes conectadas ("Analisamos seu perfil, você é especialista em X...") mais
+tamanho da campanha no onboarding. Instagram dá bio e mídia; X dá tweets
+(leitura paga); **LinkedIn não expõe leitura dos posts do membro**; YouTube é
+futuro.
+
+### Estado ao fim da sessão
+
+A jornada do Bruno parou de novo antes de conectar o Instagram: o próximo
+teste é entrar com Google (fix no ar), criar projeto e conectar a
+`@prdonaire` na etapa 1 do assistente, e publicar o primeiro post real.
+
+*Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 24): auditoria de funil para a estratégia de venda
+
+Nenhum código mudou nesta parte. Levantamento do que existe entre a visita e o
+pagamento, para montar a estratégia de venda. Três lacunas confirmadas no
+código, e todas viraram card na Frente Demandou do planner.
+
+### 1. A demo pública não captura contato
+
+`app/api/demo/route.ts` grava `ipHash`, `input` e `output` na tabela de demos.
+Nenhum e-mail, nenhum identificador de pessoa. É o ponto de maior intenção da
+jornada (a pessoa acabou de ler um post escrito na voz dela) e ele termina em
+anônimo. O Resend já está no custo fixo mensal e não é usado para nada.
+
+### 2. Não existe instrumentação de funil
+
+Nenhum pacote de analytics no projeto (a única ocorrência de `posthog` e
+similares está em `package-lock.json`, como dependência transitiva). Sem origem
+de visita e sem etapas medidas, o teste de R$ 2.000 em tráfego pago não mede o
+CPC real nem a conversão de visita para cadastro, que são exatamente as duas
+variáveis que ele existe para medir. Virou pré-requisito duro daquele card.
+
+Eventos mínimos: origem da visita, demo iniciada, demo concluída, e-mail
+deixado, cadastro, checkout aberto, pagamento.
+
+### 3. Checkout aceita somente cartão
+
+`lib/stripe/index.ts:142` fixa `payment_method_types: ["card"]`. O comentário
+acima explica a exclusão do boleto (não ativado na conta, e pagamento avulso não
+deixa meio de cobrança guardado para renovação), o que é correto, mas o Pix
+herdou a exclusão sem decisão própria. No anual de R$ 1.490 o Pix economiza
+cerca de R$ 45 por venda e, mais importante que a taxa, contorna limite de
+fatura de cartão, que é objeção de caixa e não de valor. A ressalva do
+comentário vale igual para o Pix: renovação precisa de tratamento próprio.
+
+### Pendência de produto que a venda impõe
+
+A descrição dos produtos no Stripe ainda diz "1.100 créditos/mês", de antes da
+Opção B. O cliente lê isso na tela do checkout, no último passo antes de pagar.
+Corrigir via `products.update` com a `sk_live` na máquina.
+
+*Atualizado em 21/08/2026 por Claude Code.*

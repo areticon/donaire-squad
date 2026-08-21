@@ -1,8 +1,7 @@
 # Demandou: contexto do projeto
 
-> Documento de entrada. Reescrito em 18/08/2026, ao fim de uma sessão longa que
-> mudou stack, produto e economia. Se algo aqui divergir do código, o código
-> manda.
+> Documento de entrada. Reescrito em 18/08/2026 e atualizado em 21/08/2026. Se
+> algo aqui divergir do código, o código manda.
 
 ## O que é
 
@@ -23,14 +22,14 @@ desenha e publica conteúdo nas redes do cliente. Site: demandou.com, **no ar**.
 |---|---|
 | Framework | Next.js 16 (Turbopack) + TypeScript |
 | UI | Tailwind, tema escuro na paleta do Discord |
-| Auth | better-auth próprio |
+| Auth | better-auth próprio, com login por senha, Google e LinkedIn |
 | Banco | Supabase Postgres + Prisma 7 com adapter-pg |
 | Storage | Vercel Blob, store **privado** |
 | Pagamentos | Stripe, só cartão |
 | Texto | **Claude Sonnet 5** com prompt caching |
 | Imagem | Gemini (três modelos em cascata, a consolidar) |
 | Transcrição | Deepgram nova-3 **multilíngue** |
-| Publicação | APIs diretas de LinkedIn e X |
+| Publicação | APIs diretas de LinkedIn, X e Instagram |
 | Deploy | Vercel, com `prisma migrate deploy` no build |
 
 **Vídeo gerado por IA (Veo) foi removido em 18/08.** Vídeo agora vem da gravação
@@ -56,9 +55,18 @@ que o dobro do custo fixo atual de R$ 116.
 3. **ICP: quem vende conhecimento.** Canal dos primeiros clientes: rede Recrie,
    filtrada. O Recrie é canal, não nicho.
 4. **Preços:** Pro R$ 149 (entrada e herói, 7 dias grátis com cartão),
-   Business R$ 249, Studio R$ 449. Existem no Stripe desde 18/08.
+   Business R$ 249, Studio R$ 449. Os três têm **plano anual a 10
+   mensalidades** (R$ 1.490, R$ 2.490 e R$ 4.490), e o card mostra o mensal
+   equivalente em destaque, não o total do ano. O anual existe pelo CAC, não
+   pelo desconto: põe a margem no caixa antes de a fatura do anúncio fechar.
+   Anual à vista não tem multa de fidelidade, e não deve ter: o caixa já
+   entrou, e cobrar sobre valor pago é cobrança dupla (art. 51 do CDC).
 5. **O cliente grava um vídeo por semana** e o squad transforma em conteúdo para
    todas as redes. Inverte o hábito vendido.
+7. **O onboarding começa conectando as redes** (decisão de 21/08). Conectar
+   primeiro é o que permite ler o perfil e pré-preencher o resto, e o
+   assistente **preenche os campos** em vez de sugerir em texto, sempre com
+   opção de ajuste. A análise automática do perfil é a fase seguinte.
 6. **Tráfego pago é a decisão em aberto.** O cenário que fecha existe, mas
    depende de duas variáveis não medidas. Ver a nota do CAC no Notion.
 
@@ -95,6 +103,17 @@ que o dobro do custo fixo atual de R$ 116.
   a transferência é 58% do custo, não a transcrição nem a IA.
 
 **Integrações**
+- **A Meta busca a mídia por URL pública.** Blob privado e data URL não
+  alcançam; quem resolve é a rota assinada `/api/media/ig/[token]`.
+- **O LinkedIn não expõe leitura dos posts do membro.** Só perfil básico e
+  publicar. Qualquer análise do conteúdo do cliente depende de Instagram e X.
+- **`NEXT_PUBLIC_*` é resolvida em tempo de build.** Gravar a variável na
+  Vercel não basta, e a ausência não gera erro nenhum: o recurso só some. Onde
+  o servidor puder responder em runtime, prefira isso (ver
+  `/api/auth/providers`).
+- **Logo próprio na tela de consentimento do Google dispara verificação de
+  marca**, mesmo com escopos básicos. E ela reprova semelhança com marcas
+  conhecidas, o que é um bom detector gratuito de risco de trademark.
 - Teste com curl não envia header `Origin`, então esconde erro de CSRF.
 - Pedir um meio de pagamento não ativado faz o Stripe recusar a sessão inteira.
 - Constante compartilhada entre cliente e servidor precisa morar em módulo sem
