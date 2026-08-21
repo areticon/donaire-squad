@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 80 120" fill="none">
+  <!--
+    Marca da demandou: monograma "dp" de "demandou, postou".
+    O d e o p são a mesma forma girada 180 graus e compartilham a bola central,
+    então a marca tem simetria rotacional exata.
+
+    Cor fixa aqui de propósito: este arquivo é servido como favicon e imagem
+    solta, contextos onde `currentColor` não tem de quem herdar. O componente
+    animado do header traz o mesmo desenho inline, aí sim herdando a cor.
+    O laranja da marca tem contraste suficiente no tema claro e no escuro.
+  -->
+  <circle cx="32" cy="52" r="26" stroke="#f97316" stroke-width="12" />
+  <rect x="52" y="4" width="12" height="56" rx="6" fill="#f97316" />
+  <rect x="0" y="44" width="12" height="56" rx="6" fill="#f97316" />
+</svg>

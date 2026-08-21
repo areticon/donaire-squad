@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BrandMarkImg } from "@/components/brand-mark";
+import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -25,8 +25,8 @@ export function Navbar() {
       )}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <BrandMarkImg variant="dark" className="h-8 w-8 rounded-md" />
+        <Link href="/" className="flex items-center gap-2.5">
+          <BrandMarkAnimated size={28} className="text-orange-500" />
           <span className="font-bold text-[var(--text-primary)] text-lg lowercase">demandou</span>
         </Link>
 

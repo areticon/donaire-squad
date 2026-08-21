@@ -12,21 +12,15 @@ export const metadata: Metadata = {
   description:
     "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
   icons: {
+    // O SVG vem primeiro porque a marca é vetorial e fica nítida em qualquer
+    // densidade de tela; o PNG fica de reserva para quem não suporta SVG.
+    // O laranja tem contraste nos dois temas, então não há versão por tema.
     icon: [
-      { url: "/brand-mark-on-dark.png", type: "image/png" },
-      {
-        url: "/brand-mark-on-light.png",
-        type: "image/png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/brand-mark-on-dark.png",
-        type: "image/png",
-        media: "(prefers-color-scheme: dark)",
-      },
+      { url: "/brand-mark.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
     ],
-    shortcut: "/brand-mark-on-dark.png",
-    apple: "/brand-mark-on-light.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
   openGraph: {
     title: "demandou — Seus Agentes de IA Trabalhando por Você",

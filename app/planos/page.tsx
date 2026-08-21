@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BrandMarkImg } from "@/components/brand-mark";
+import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { cn } from "@/lib/utils";
 
 /**
@@ -78,7 +78,7 @@ export default function PlanosPage() {
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
       <header className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <BrandMarkImg variant="dark" className="h-8 w-8 rounded-md" />
+          <BrandMarkAnimated size={28} className="text-orange-500" />
           <span className="font-bold text-[var(--text-primary)] text-lg lowercase">demandou</span>
         </Link>
         <Link href="/sign-in" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
