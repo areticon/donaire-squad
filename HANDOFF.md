@@ -2004,5 +2004,60 @@ disfarça o problema.
 
 Avaliação do Blotato como intermediário temporário para acelerar (a conta está
 na conversa e no Notion) e a inclusão do Facebook como rede de publicação.
+Decidido na sequência: Blotato não entra (zero clientes + review em paralelo =
+o tempo comprado não existe; fica como contingência com gatilho no card), e o
+Facebook entra no backlog para depois do App Review, no mesmo app da Meta.
+
+## Sessão 20/08/2026 (parte 22): app da Meta no ar e o teste de jornada começou
+
+### O app da Meta existe e o painel está completo para modo dev
+
+Guiado clique a clique com o Bruno: app **Demandou** (id 1808987136949506),
+caso de uso "Gerenciar mensagens e conteúdo no Instagram", configuração **API
+com login do Instagram** (Instagram App ID `1073129042249854`), permissões
+`instagram_business_basic` e `instagram_business_content_publish` prontas para
+teste, `@prdonaire` como Instagram Tester, as três URLs de callback
+cadastradas, e as chaves na Vercel e no `.env.local`. Portfólio empresarial
+"Demandou" criado, **domínio demandou.com verificado por TXT no DNS**.
+
+**A verificação da empresa emperrou de propósito:** o e-mail com código foi
+aceito e recusado em seguida (padrão de sistema de risco em conta de dia 1), e
+a alternativa por telefone morreria no número da Contabilizei que consta no
+CNPJ. Regra de abortar aplicada: retomar em 2 ou 3 dias. Só bloqueia o App
+Review, não o modo dev.
+
+De caminho: **contato@demandou.com criado** (Titan da HostGator, grátis), com
+DKIM no DNS e encaminhamento para o Gmail, tudo testado. Era promessa dos
+Termos que não existia. E o telefone do cadastro CNPJ é o da Contabilizei;
+card criado para trocar.
+
+### Teste de jornada: primeiros achados corrigidos no ato
+
+Bruno começou a jornada real (cadastro, projeto). O combinado era catalogar e
+corrigir em lote; ele pediu correção imediata, e o lote 1 já está em produção:
+
+- **Placeholders ilegíveis sem foco**: regra global de `::placeholder` com
+  `var(--text-muted)`.
+- **Tela "Novo projeto" duplicava a etapa 1 do setup**: morreu; o clique cria
+  o projeto e cai direto no assistente.
+- **Assistente de setup em tela cheia** (sem sidebar) para projeto em setup,
+  com marca e "Continuar depois"; modo edição continua no layout normal.
+- **Resposta do assistente IA vinha em Markdown cru e cortada**: prompt agora
+  exige texto puro, o cliente limpa resíduos (modelo desobedece instrução de
+  formato, valide em código), caixa com rolagem, maxTokens 1024 para 2048.
+
+Verificado com jornada real em dev server (cadastro novo, clique, tela cheia,
+placeholders visíveis); usuário de teste apagado do banco depois.
+
+**Backlog do teste (cards no planner):** login social (Google, depois
+LinkedIn), fluxo plano-antes-do-cadastro desaguando no checkout, logo novo
+gerado via nano banana (Claude gera as opções). O teste de jornada continua:
+Bruno parou na Ideação do projeto "Empreendedorismo Cristão".
+
+### Armadilha nova
+
+`BETTER_AUTH_URL` de produção rejeita origem localhost com "Invalid origin" no
+cadastro. Para testar auth em dev: `BETTER_AUTH_URL=http://localhost:PORTA
+NEXT_PUBLIC_APP_URL=http://localhost:PORTA npx next dev`.
 
 *Atualizado em 20/08/2026 por Claude Code.*
