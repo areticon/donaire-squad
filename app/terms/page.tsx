@@ -165,7 +165,10 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.3 Cobrança e renovação automática</h3>
                 <p>
-                  As assinaturas são cobradas antecipadamente no início de cada período de faturamento (mês ou ano, conforme o ciclo contratado) e renovadas automaticamente, salvo cancelamento pelo Usuário antes do término do período vigente. O processamento é realizado pelo Stripe. No plano anual, o valor integral dos 12 meses é cobrado de uma vez, e os créditos do plano são repostos mensalmente ao longo do ano contratado.
+                  As assinaturas são cobradas antecipadamente no início de cada período de faturamento (mês ou ano, conforme o ciclo contratado) e renovadas automaticamente, salvo cancelamento pelo Usuário antes do término do período vigente. O processamento é realizado pelo Stripe.
+                </p>
+                <p className="mt-2">
+                  <strong className="text-[var(--text-primary)]">No ciclo anual</strong>, o Usuário contrata 12 meses de serviço e paga, de uma só vez, o equivalente a 10 mensalidades. O desconto é a contrapartida direta desse compromisso de permanência. O valor é cobrado integralmente na contratação e os créditos do plano são repostos mensalmente ao longo dos 12 meses.
                 </p>
               </div>
               <div>
@@ -176,7 +179,7 @@ export default function TermsPage() {
                   <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
                     contato@demandou.com
                   </a>
-                  , sem multa, taxa de cancelamento ou fidelidade. O cancelamento interrompe a renovação seguinte: o Usuário mantém acesso à plataforma e aos créditos já repostos até o fim do período de faturamento já pago (fim do mês vigente no ciclo mensal; fim dos 12 meses contratados no ciclo anual).
+                  , sem multa e sem taxa de cancelamento. O cancelamento interrompe a renovação seguinte: o Usuário mantém acesso à plataforma e aos créditos já repostos até o fim do período de faturamento já pago (fim do mês vigente no ciclo mensal; fim dos 12 meses contratados no ciclo anual). No ciclo anual, como o período inteiro já foi pago e o acesso permanece disponível até o fim dele, não há cobrança adicional de qualquer espécie em razão do cancelamento.
                 </p>
               </div>
               <div>

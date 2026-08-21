@@ -19,12 +19,17 @@ import { cn } from "@/lib/utils";
  * paga, ver PROJETO.md).
  */
 
+/**
+ * O anual é sempre 10 mensalidades: dois meses de desconto, mesma conta nos
+ * três planos. O card mostra o **mensal equivalente** em destaque e o total do
+ * ano em letra pequena: número grande de quatro dígitos assusta e derruba a
+ * conversão, e o que vende o anual é a economia, não o valor cheio.
+ */
 const PLANOS = [
   {
     id: "pro",
     nome: "Pro",
     mensal: 149,
-    anual: 1490,
     creditos: "1.800 créditos/mês",
     destaque: true,
     cta: "Começar os 7 dias grátis",
@@ -42,7 +47,6 @@ const PLANOS = [
     id: "business",
     nome: "Business",
     mensal: 249,
-    anual: null,
     creditos: "3.500 créditos/mês",
     destaque: false,
     cta: "Assinar Business",
@@ -57,7 +61,6 @@ const PLANOS = [
     id: "studio",
     nome: "Studio",
     mensal: 449,
-    anual: null,
     creditos: "7.000 créditos/mês",
     destaque: false,
     cta: "Assinar Studio",
@@ -69,7 +72,12 @@ const PLANOS = [
       "Suporte prioritário",
     ],
   },
-];
+].map((p) => ({
+  ...p,
+  anual: p.mensal * 10,
+  mensalNoAnual: Math.round((p.mensal * 10) / 12),
+  economiaAno: p.mensal * 12 - p.mensal * 10,
+}));
 
 export default function PlanosPage() {
   const [ciclo, setCiclo] = useState<"mensal" | "anual">("mensal");
@@ -120,8 +128,7 @@ export default function PlanosPage() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
           {PLANOS.map((plano) => {
-            const anualDisponivel = plano.anual !== null;
-            const mostrandoAnual = ciclo === "anual" && anualDisponivel;
+            const mostrandoAnual = ciclo === "anual";
             const href = `/sign-up?plan=${plano.id}${mostrandoAnual ? "&ciclo=anual" : ""}`;
             return (
               <div
@@ -145,28 +152,27 @@ export default function PlanosPage() {
                 </div>
 
                 <div className="mb-8">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[var(--text-muted)] text-lg">R$</span>
+                    <span className="text-5xl font-black text-[var(--text-primary)]">
+                      {mostrandoAnual ? plano.mensalNoAnual : plano.mensal}
+                    </span>
+                    <span className="text-[var(--text-muted)] text-sm">/mês</span>
+                  </div>
                   {mostrandoAnual ? (
-                    <>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-[var(--text-muted)] text-lg">R$</span>
-                        <span className="text-5xl font-black text-[var(--text-primary)]">{plano.anual}</span>
-                        <span className="text-[var(--text-muted)] text-sm">/ano</span>
-                      </div>
-                      <p className="mt-1.5 text-sm text-orange-400">
-                        equivale a R$ {Math.round((plano.anual as number) / 12)}/mês
+                    <div className="mt-2 space-y-1">
+                      <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-400">
+                        <Zap className="w-3.5 h-3.5" />
+                        Economize R$ {plano.economiaAno} por ano
                       </p>
-                    </>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        R$ {plano.anual.toLocaleString("pt-BR")} cobrados uma vez, equivalentes a 10 mensalidades
+                      </p>
+                    </div>
                   ) : (
-                    <>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-[var(--text-muted)] text-lg">R$</span>
-                        <span className="text-5xl font-black text-[var(--text-primary)]">{plano.mensal}</span>
-                        <span className="text-[var(--text-muted)] text-sm">/mês</span>
-                      </div>
-                      {ciclo === "anual" && !anualDisponivel && (
-                        <p className="mt-1.5 text-sm text-[var(--text-muted)]">Disponível no ciclo mensal</p>
-                      )}
-                    </>
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">
+                      No anual sai por R$ {plano.mensalNoAnual}/mês
+                    </p>
                   )}
                 </div>
 
@@ -190,8 +196,15 @@ export default function PlanosPage() {
           })}
         </div>
 
-        <p className="text-center text-sm text-[var(--text-muted)] mt-10">
+        <p className="text-center text-sm text-[var(--text-muted)] mt-10 max-w-2xl mx-auto">
           O teste grátis pede cartão e não cobra nada se você cancelar dentro dos 7 dias.
+          {ciclo === "anual" && (
+            <>
+              {" "}No plano anual você contrata 12 meses de uma vez e é por isso que
+              o preço por mês cai; o acesso vale o período inteiro, mesmo que você
+              pare de usar antes.
+            </>
+          )}
         </p>
       </div>
     </main>

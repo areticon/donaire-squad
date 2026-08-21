@@ -171,19 +171,17 @@ export default function BillingPage() {
               {plan.cta}
             </Button>
 
-            {plan.id === "pro" && (
-              <div className="mt-3 text-center">
-                <button
-                  className="text-sm font-medium text-orange-400 hover:text-orange-300 disabled:opacity-50"
-                  disabled={loading === "pro-anual"}
-                  onClick={() => subscribe("pro", "anual")}
-                >
-                  {loading === "pro-anual"
-                    ? "Abrindo checkout..."
-                    : "ou R$ 1.490/ano (2 meses grátis)"}
-                </button>
-              </div>
-            )}
+            <div className="mt-3 text-center">
+              <button
+                className="text-sm font-medium text-orange-400 hover:text-orange-300 disabled:opacity-50"
+                disabled={loading === `${plan.id}-anual`}
+                onClick={() => subscribe(plan.id, "anual")}
+              >
+                {loading === `${plan.id}-anual`
+                  ? "Abrindo checkout..."
+                  : `ou R$ ${Math.round((plan.price * 10) / 12)}/mês no anual (2 meses grátis)`}
+              </button>
+            </div>
           </motion.div>
         ))}
       </div>

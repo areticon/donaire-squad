@@ -39,8 +39,8 @@ export const PLANS = {
     description: "A campanha completa nas 3 redes, toda semana",
     price: 14900,
     priceId: process.env.STRIPE_PRO_PRICE_ID,
-    // Anual: R$ 1.490 cobrados de uma vez (12x R$ 149 = R$ 1.788, dois meses
-    // de desconto). Existe por causa do CAC, não do desconto: o anual sobe o
+    // Anual: 10 mensalidades cobradas de uma vez, ou seja dois meses de
+    // desconto. Existe por causa do CAC, não do desconto: o anual sobe o
     // CAC máximo viável de R$ 298 para R$ 710 e põe a margem no caixa antes
     // de a fatura do anúncio fechar. Ver a nota do CAC no Notion.
     //
@@ -69,6 +69,8 @@ export const PLANS = {
     description: "Três redes com vídeo e fôlego para crescer",
     price: 24900,
     priceId: process.env.STRIPE_BUSINESS_PRICE_ID,
+    annualPrice: 249000,
+    annualPriceId: process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID,
     credits: 3500,
     extraCreditPrice: 0.10,
     features: [
@@ -85,6 +87,8 @@ export const PLANS = {
     description: "Para quem gerencia várias marcas ou alto volume",
     price: 44900,
     priceId: process.env.STRIPE_STUDIO_PRICE_ID,
+    annualPrice: 449000,
+    annualPriceId: process.env.STRIPE_STUDIO_ANNUAL_PRICE_ID,
     credits: 7000,
     extraCreditPrice: 0.08,
     features: [
