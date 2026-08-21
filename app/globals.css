@@ -68,6 +68,15 @@
   box-sizing: border-box;
 }
 
+/* Placeholder legível sem depender do foco. O padrão do navegador usa um
+   cinza próprio que, sobre --bg-input, some no tema claro até a pessoa
+   clicar no campo (achado do teste de jornada de 20/08). */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
 html,
 body {
   background-color: var(--bg-primary);

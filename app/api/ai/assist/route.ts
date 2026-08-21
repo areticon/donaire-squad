@@ -16,8 +16,10 @@ export async function POST(req: NextRequest) {
     ? `${KANBAN_SYSTEM_PROMPT}\n\nContexto atual do projeto:\n${JSON.stringify(context, null, 2)}`
     : KANBAN_SYSTEM_PROMPT;
 
+  // 1024 cortava respostas no meio (visto no teste de 20/08). O prompt agora
+  // pede no máximo 200 palavras, e a folga aqui é para nunca truncar.
   const response = await askClaude(systemWithContext, message, {
-    maxTokens: 1024,
+    maxTokens: 2048,
   });
 
   return NextResponse.json({ reply: response });

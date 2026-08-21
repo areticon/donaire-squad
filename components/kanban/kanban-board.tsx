@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { BrandMarkThemed } from "@/components/brand-mark-client";
 import toast from "react-hot-toast";
 import {
   Lightbulb,
@@ -154,6 +156,31 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
   const progress = Math.round(((currentStep + 1) / STEPS.length) * 100);
 
   return (
+    // Projeto em setup toma a tela inteira, sem a sidebar em volta: usuário
+    // novo merece foco total no assistente, padrão Neon/Supabase/Vercel
+    // (feedback do teste de jornada de 20/08). Em modo edição (projeto ativo),
+    // o layout normal da plataforma continua valendo.
+    <div
+      className={cn(!editMode && "fixed inset-0 z-40 overflow-y-auto")}
+      style={!editMode ? { background: "var(--bg-primary)" } : undefined}
+    >
+      {!editMode && (
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b backdrop-blur-sm"
+          style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--bg-primary) 85%, transparent)" }}
+        >
+          <div className="flex items-center gap-2">
+            <BrandMarkThemed className="h-7 w-7 rounded-md" size={28} />
+            <span className="font-bold lowercase text-[var(--text-primary)]">demandou</span>
+          </div>
+          <Link
+            href="/dashboard"
+            className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            Continuar depois
+          </Link>
+        </div>
+      )}
     <div className="p-8 max-w-4xl mx-auto overflow-x-hidden">
       {/* Edit mode warning */}
       {editMode && !warningDismissed && (
@@ -249,8 +276,8 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
                   Pensando...
                 </div>
               ) : (
-                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
-                  {aiReply}
+                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto pr-2">
+                  {limparMarkdown(aiReply ?? "")}
                 </p>
               )}
             </div>
@@ -282,7 +309,21 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         </Button>
       </div>
     </div>
+    </div>
   );
+}
+
+/**
+ * O prompt manda o modelo responder em texto puro, mas modelo desobedece de
+ * vez em quando (lição da sessão de 18/08: valide em código o que você pediu
+ * na instrução). Isto tira o Markdown residual antes de exibir.
+ */
+function limparMarkdown(texto: string): string {
+  return texto
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/`{1,3}/g, "");
 }
 
 // ── Step components ──────────────────────────────────────────────────────────
