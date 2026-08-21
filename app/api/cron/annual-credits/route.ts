@@ -31,16 +31,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Price anual -> plano da tabela canônica. Quando Business e Studio
-  // ganharem anual, é uma linha cada aqui.
+  // Price anual -> plano, derivado da tabela canônica PLANS em vez de uma
+  // lista escrita à mão. A versão anterior tinha uma linha só, a do Pro, com
+  // um comentário pedindo uma linha nova quando Business e Studio ganhassem
+  // anual. Eles ganharam em 21/08 e a linha não entrou, então o assinante
+  // Business anual (R$ 2.490 à vista) receberia 3.500 créditos no dia 1 e
+  // nada nos 11 meses seguintes, sem erro nenhum no log. Derivar de PLANS
+  // elimina a classe do problema: plano novo com anual já entra sozinho.
   const priceParaPlano: Record<string, keyof typeof PLANS> = {};
-  if (process.env.STRIPE_PRO_ANNUAL_PRICE_ID) {
-    priceParaPlano[process.env.STRIPE_PRO_ANNUAL_PRICE_ID] = "pro";
+  for (const [plano, cfg] of Object.entries(PLANS) as Array<
+    [keyof typeof PLANS, (typeof PLANS)[keyof typeof PLANS]]
+  >) {
+    if (cfg.annualPriceId) priceParaPlano[cfg.annualPriceId] = plano;
   }
 
   if (Object.keys(priceParaPlano).length === 0) {
     return NextResponse.json(
-      { error: "Nenhum price anual configurado (STRIPE_PRO_ANNUAL_PRICE_ID)" },
+      { error: "Nenhum price anual configurado (STRIPE_*_ANNUAL_PRICE_ID)" },
       { status: 500 }
     );
   }
