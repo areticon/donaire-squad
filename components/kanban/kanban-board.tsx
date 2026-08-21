@@ -37,14 +37,21 @@ interface Project {
   postFrequency?: string | null;
   timezone?: string;
   status: string;
+  // JsonValue do Prisma: pode ser objeto, mas o tipo não garante.
+  config?: unknown;
 }
 
+// As redes vêm primeiro, por decisão de produto de 21/08: conectar as contas
+// logo na chegada é o que vai permitir à plataforma ler o perfil e
+// pré-preencher o resto do assistente, e mesmo antes dessa análise existir,
+// pedir a conexão de cara aumenta quantos terminam com rede conectada, sem a
+// qual nada publica sozinho.
 const STEPS = [
-  { id: 0, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
-  { id: 1, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
-  { id: 2, icon: Users, label: "Time de Agentes", color: "text-blue-400" },
-  { id: 3, icon: Palette, label: "Design", color: "text-pink-400" },
-  { id: 4, icon: Share2, label: "Redes Sociais", color: "text-green-400" },
+  { id: 0, icon: Share2, label: "Redes Sociais", color: "text-green-400" },
+  { id: 1, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
+  { id: 2, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  { id: 3, icon: Users, label: "Time de Agentes", color: "text-blue-400" },
+  { id: 4, icon: Palette, label: "Design", color: "text-pink-400" },
   { id: 5, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
   { id: 6, icon: Rocket, label: "Ativação", color: "text-orange-400" },
 ];
@@ -94,6 +101,13 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     colorPalette: project.colorPalette ?? "#F97316,#1e1f22,#dbdee1",
     postFrequency: project.postFrequency ?? "3x por semana",
     timezone: project.timezone ?? "America/Sao_Paulo",
+    // Vive dentro de config (Json) para não exigir migration: são os perfis
+    // que o cliente quer modelar, e alimentam o pré-preenchimento por IA.
+    references: String(
+      (typeof project.config === "object" && project.config !== null
+        ? (project.config as Record<string, unknown>).references
+        : "") ?? ""
+    ),
   });
 
   const set = (field: string, value: string) =>
@@ -108,6 +122,14 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          // `references` não é coluna: persiste dentro do config (Json),
+          // preservando o que já existir lá.
+          config: {
+            ...(typeof project.config === "object" && project.config !== null
+              ? (project.config as Record<string, unknown>)
+              : {}),
+            references: form.references,
+          },
           setupStep: nextStep,
           status: nextStep >= STEPS.length ? "active" : "setup",
         }),
@@ -146,6 +168,60 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         setAiReply(data.reply);
       } catch {
         setAiReply("Erro ao consultar o assistente. Tente novamente.");
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    [form]
+  );
+
+  /**
+   * A IA preenche os campos em vez de só sugerir em texto (pedido do Bruno no
+   * teste de 21/08: "sugerir e preencher, com opção de pedir ajuste"). Pede um
+   * JSON com exatamente as chaves dos campos, aplica o que voltar e deixa a
+   * pessoa editar ou pedir refinamento com uma instrução extra.
+   */
+  const preencherIA = useCallback(
+    async (campos: string[], instrucao?: string) => {
+      setAiLoading(true);
+      setAiReply("");
+      try {
+        const res = await fetch("/api/ai/assist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message:
+              `Preencha os campos do projeto com uma proposta concreta e específica, pronta para uso. ` +
+              `Responda SOMENTE um objeto JSON válido, sem markdown e sem texto fora dele, com as chaves: ${campos.join(", ")} ` +
+              `e opcionalmente "observacao" (uma frase curta explicando as escolhas). ` +
+              `Nas strings, não use quebras de linha cruas; se precisar de parágrafos, use \\n. ` +
+              (instrucao ? `Leve em conta este pedido do usuário: ${instrucao}. ` : "") +
+              `Use o contexto atual do projeto, especialmente as referências e inspirações se houver, e escreva em português.`,
+            context: form,
+          }),
+        });
+        const data = await res.json();
+        const bruto = String(data.reply ?? "");
+        // O modelo desobedece formato de vez em quando (lição da sessão de
+        // 18/08): extrai o primeiro bloco {...} e valida em código.
+        const bloco = bruto.match(/\{[\s\S]*\}/)?.[0];
+        if (!bloco) throw new Error("resposta sem JSON");
+        const obj = JSON.parse(bloco) as Record<string, unknown>;
+        const aplicados: string[] = [];
+        for (const campo of campos) {
+          const valor = obj[campo];
+          if (typeof valor === "string" && valor.trim()) {
+            set(campo, valor.trim());
+            aplicados.push(campo);
+          }
+        }
+        if (aplicados.length === 0) throw new Error("JSON sem os campos pedidos");
+        setAiReply(
+          (typeof obj.observacao === "string" && obj.observacao.trim()) ||
+            "Preenchi com uma proposta. Edite à vontade, ou me diga o que considerar e clique em Ajustar."
+        );
+      } catch {
+        setAiReply("Não consegui montar a proposta agora. Tente de novo em instantes.");
       } finally {
         setAiLoading(false);
       }
@@ -255,11 +331,11 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           className="border rounded-2xl p-8"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
         >
-          {currentStep === 0 && <StepIdeation form={form} set={set} askAI={askAI} />}
-          {currentStep === 1 && <StepVoice form={form} set={set} askAI={askAI} projectId={project.id} />}
-          {currentStep === 2 && <StepAgents form={form} set={set} askAI={askAI} />}
-          {currentStep === 3 && <StepDesign form={form} set={set} askAI={askAI} />}
-          {currentStep === 4 && <StepNetworks projectId={project.id} />}
+          {currentStep === 0 && <StepNetworks projectId={project.id} />}
+          {currentStep === 1 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
+          {currentStep === 2 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
+          {currentStep === 3 && <StepAgents form={form} set={set} askAI={askAI} />}
+          {currentStep === 4 && <StepDesign form={form} set={set} askAI={askAI} />}
           {currentStep === 5 && <StepSchedule form={form} set={set} askAI={askAI} />}
           {currentStep === 6 && <StepActivation project={project} form={form} />}
 
@@ -328,15 +404,20 @@ function limparMarkdown(texto: string): string {
 
 // ── Step components ──────────────────────────────────────────────────────────
 
+const CAMPOS_IDEACAO = ["name", "description", "niche", "targetAudience"];
+
 function StepIdeation({
   form,
   set,
-  askAI,
+  preencherIA,
+  aiLoading,
 }: {
   form: Record<string, string>;
   set: (f: string, v: string) => void;
-  askAI: (msg: string) => void;
+  preencherIA: (campos: string[], instrucao?: string) => void;
+  aiLoading: boolean;
 }) {
+  const [ajuste, setAjuste] = useState("");
   return (
     <div className="space-y-6">
       <div>
@@ -344,8 +425,44 @@ function StepIdeation({
           Ideação — O que é seu projeto?
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
-          Defina o nome, nicho e público-alvo. Nosso assistente pode ajudar.
+          Conte suas referências e deixe a IA propor o resto; tudo fica
+          editável.
         </p>
+      </div>
+
+      <Textarea
+        label="Referências e inspirações"
+        value={form.references}
+        onChange={(e) => set("references", e.target.value)}
+        placeholder="Perfis de influenciadores e autoridades da sua área que você quer modelar. Ex: @fulano no LinkedIn, @beltrano no Instagram, canal Sicrano no YouTube..."
+        className="min-h-[80px]"
+      />
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Button
+          size="sm"
+          loading={aiLoading}
+          onClick={() => preencherIA(CAMPOS_IDEACAO)}
+        >
+          <Bot className="w-3.5 h-3.5" />
+          Preencher com IA
+        </Button>
+        <div className="flex flex-1 gap-2">
+          <Input
+            value={ajuste}
+            onChange={(e) => setAjuste(e.target.value)}
+            placeholder="Quer ajustar? Diga o que a IA deve considerar..."
+            className="flex-1"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={aiLoading || !ajuste.trim()}
+            onClick={() => preencherIA(CAMPOS_IDEACAO, ajuste.trim())}
+          >
+            Ajustar
+          </Button>
+        </div>
       </div>
 
       <Input
@@ -377,19 +494,6 @@ function StepIdeation({
         placeholder="Quem você quer atingir? Cargo, setor, dores..."
         className="min-h-[80px]"
       />
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() =>
-          askAI(
-            `Com base nessas informações: nicho "${form.niche}", público "${form.targetAudience}", me dê 3 sugestões de estratégia de conteúdo para LinkedIn e X no Brasil.`
-          )
-        }
-      >
-        <Bot className="w-3.5 h-3.5" />
-        Pedir sugestões ao assistente
-      </Button>
     </div>
   );
 }
@@ -397,14 +501,17 @@ function StepIdeation({
 function StepVoice({
   form,
   set,
-  askAI,
+  preencherIA,
+  aiLoading,
   projectId,
 }: {
   form: Record<string, string>;
   set: (f: string, v: string) => void;
-  askAI: (msg: string) => void;
+  preencherIA: (campos: string[], instrucao?: string) => void;
+  aiLoading: boolean;
   projectId: string;
 }) {
+  const [ajuste, setAjuste] = useState("");
   return (
     <div className="space-y-6">
       <div>
@@ -442,18 +549,42 @@ function StepVoice({
         ))}
       </div>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() =>
-          askAI(
-            `Crie um guia de voz e estilo completo para um projeto no nicho "${form.niche}" voltado para "${form.targetAudience}". Inclua: tom, palavras proibidas, exemplos de frases, o que fazer e o que nunca fazer.`
-          )
-        }
-      >
-        <Bot className="w-3.5 h-3.5" />
-        Gerar guia de voz automaticamente
-      </Button>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Button
+          size="sm"
+          loading={aiLoading}
+          onClick={() =>
+            preencherIA(
+              ["voice"],
+              "o campo voice deve ser um guia de voz completo: tom, palavras proibidas, exemplos de frases, o que fazer e o que nunca fazer"
+            )
+          }
+        >
+          <Bot className="w-3.5 h-3.5" />
+          Gerar e preencher o guia de voz
+        </Button>
+        <div className="flex flex-1 gap-2">
+          <Input
+            value={ajuste}
+            onChange={(e) => setAjuste(e.target.value)}
+            placeholder="Quer ajustar? Ex: mais provocativo, sem emojis..."
+            className="flex-1"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={aiLoading || !ajuste.trim()}
+            onClick={() =>
+              preencherIA(
+                ["voice"],
+                `o campo voice deve ser um guia de voz completo (tom, palavras proibidas, exemplos, o que fazer e o que nunca fazer). Pedido do usuário: ${ajuste.trim()}`
+              )
+            }
+          >
+            Ajustar
+          </Button>
+        </div>
+      </div>
 
       {/* A prova de que funciona vem aqui, no passo 2 de 7, e não no 7.
           Sem isto o cliente paga o cartão e só vê o produto no último passo. */}
@@ -621,7 +752,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
   const [connected, setConnected] = useState<string[]>([]);
 
   // returnTo points back to this wizard so the user returns here after OAuth
-  const returnTo = `/projects/${projectId}?step=4`;
+  const returnTo = `/projects/${projectId}?step=0`;
 
   const refresh = () => {
     fetch(`/api/social/connect?projectId=${projectId}`)
