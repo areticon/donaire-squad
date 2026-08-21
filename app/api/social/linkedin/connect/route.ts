@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getLinkedInAuthUrl } from "@/lib/oauth/linkedin";
@@ -16,7 +17,10 @@ export async function GET(req: NextRequest) {
   // returnTo: where to redirect after OAuth completes (defaults to settings)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
   const defaultReturn = `/projects/${projectId}/settings`;
-  const returnTo = req.nextUrl.searchParams.get("returnTo") ?? defaultReturn;
+  const returnTo = returnToSeguro(
+    req.nextUrl.searchParams.get("returnTo"),
+    defaultReturn
+  );
 
   const state = crypto.randomBytes(16).toString("hex");
   const redirectUri = `${appUrl}/api/social/linkedin/callback`;

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BrandMarkImg } from "@/components/brand-mark";
 
 export const metadata: Metadata = {
-  title: "Termos de Uso — demandou",
+  title: "Termos de Uso da demandou",
   description:
     "Termos de Uso e Condições de Serviço da plataforma demandou. Leia antes de usar a plataforma.",
 };

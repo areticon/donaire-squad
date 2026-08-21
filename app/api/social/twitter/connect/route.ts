@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { generatePKCE, getTwitterAuthUrl } from "@/lib/oauth/twitter";
@@ -16,7 +17,10 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${appUrl}/api/social/twitter/callback`;
 
   const defaultReturn = `/projects/${projectId}/settings`;
-  const returnTo = req.nextUrl.searchParams.get("returnTo") ?? defaultReturn;
+  const returnTo = returnToSeguro(
+    req.nextUrl.searchParams.get("returnTo"),
+    defaultReturn
+  );
 
   const authUrl = getTwitterAuthUrl(redirectUri, state, codeChallenge);
 

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeInstagramCode, getInstagramProfile } from "@/lib/oauth/instagram";
 import { prisma } from "@/lib/db/prisma";
@@ -21,7 +22,10 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.redirect(new URL("/sign-in", req.url));
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
-  const baseReturn = returnTo ?? (projectId ? `/projects/${projectId}/settings` : "/dashboard");
+  const baseReturn = returnToSeguro(
+    returnTo,
+    projectId ? `/projects/${projectId}/settings` : "/dashboard"
+  );
   const sep = baseReturn.includes("?") ? "&" : "?";
   const settingsUrl = `${appUrl}${baseReturn}${sep}instagram=success`;
   const errorUrl = `${appUrl}${baseReturn}${sep}instagram=error`;

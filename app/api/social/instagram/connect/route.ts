@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getInstagramAuthUrl, instagramConfigured } from "@/lib/oauth/instagram";
@@ -22,7 +23,10 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${appUrl}/api/social/instagram/callback`;
 
   const defaultReturn = `/projects/${projectId}/settings`;
-  const returnTo = req.nextUrl.searchParams.get("returnTo") ?? defaultReturn;
+  const returnTo = returnToSeguro(
+    req.nextUrl.searchParams.get("returnTo"),
+    defaultReturn
+  );
 
   const res = NextResponse.redirect(getInstagramAuthUrl(redirectUri, state));
   const cookieOpts = { httpOnly: true, maxAge: 600, path: "/" } as const;

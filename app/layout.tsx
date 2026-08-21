@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-mont", weight: ["700", "800"] });
 
 export const metadata: Metadata = {
-  title: "demandou — Seus Agentes de IA Trabalhando por Você",
+  title: "demandou: seus agentes de IA trabalhando por você",
   description:
     "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
   icons: {
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     apple: "/icon.png",
   },
   openGraph: {
-    title: "demandou — Seus Agentes de IA Trabalhando por Você",
+    title: "demandou: seus agentes de IA trabalhando por você",
     description:
       "Plataforma de gestão de redes sociais com agentes de IA. Crie, publique e escale sua presença online com automação inteligente.",
     url: "https://demandou.com",

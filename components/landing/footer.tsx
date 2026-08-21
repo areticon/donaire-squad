@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandMarkImg } from "@/components/brand-mark";
+import { IdentificacaoLegal } from "@/components/identificacao-legal";
 
 export function Footer() {
   return (
@@ -11,9 +12,10 @@ export function Footer() {
               <BrandMarkImg variant="dark" className="h-7 w-7 rounded-md" size={28} />
               <span className="font-bold text-[var(--text-primary)] lowercase">demandou</span>
             </div>
-            <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-4">
               Seus agentes de IA trabalhando para construir sua autoridade nas redes sociais.
             </p>
+            <IdentificacaoLegal />
           </div>
 
           <div>
@@ -39,6 +41,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-[var(--text-muted)]">
               <li><Link href="/privacy" className="hover:text-[var(--text-primary)] transition-colors">Privacidade</Link></li>
               <li><Link href="/terms" className="hover:text-[var(--text-primary)] transition-colors">Termos de uso</Link></li>
+              <li><a href="mailto:contato@demandou.com" className="hover:text-[var(--text-primary)] transition-colors">Falar com a gente</a></li>
             </ul>
           </div>
         </div>

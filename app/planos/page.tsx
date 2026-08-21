@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,8 @@ export default function PlanosPage() {
             </>
           )}
         </p>
+
+        <IdentificacaoCurta className="mt-12" />
       </div>
     </main>
   );

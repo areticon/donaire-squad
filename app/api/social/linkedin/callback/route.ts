@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import {
   exchangeLinkedInCode,
@@ -23,7 +24,10 @@ export async function GET(req: NextRequest) {
   const returnTo = req.cookies.get("oauth_return_to")?.value;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
-  const baseReturn = returnTo ?? (projectId ? `/projects/${projectId}/settings` : "/dashboard");
+  const baseReturn = returnToSeguro(
+    returnTo,
+    projectId ? `/projects/${projectId}/settings` : "/dashboard"
+  );
   const settingsUrl = `${appUrl}${baseReturn}${baseReturn.includes("?") ? "&" : "?"}linkedin=success`;
   const errorUrl = `${appUrl}${baseReturn}${baseReturn.includes("?") ? "&" : "?"}linkedin=error`;
 

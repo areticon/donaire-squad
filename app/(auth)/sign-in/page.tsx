@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import { AuthForm } from "@/components/auth/auth-form";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 
@@ -17,6 +18,7 @@ export default function SignInPage() {
         <Suspense>
           <AuthForm mode="sign-in" />
         </Suspense>
+        <IdentificacaoCurta className="mt-8" />
       </div>
     </div>
   );

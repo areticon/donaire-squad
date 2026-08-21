@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BrandMarkImg } from "@/components/brand-mark";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade — demandou",
+  title: "Política de Privacidade da demandou",
   description:
     "Saiba como a demandou coleta, utiliza e protege seus dados pessoais em conformidade com a LGPD (Lei nº 13.709/2018).",
 };
