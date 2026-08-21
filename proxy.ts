@@ -39,7 +39,13 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  return NextResponse.next();
+  // O layout do app precisa saber em que rota está para decidir o portão de
+  // plano, e o App Router não entrega o pathname para um layout. O proxy roda
+  // na borda e não alcança o banco, então quem decide é o layout; aqui só
+  // carimbamos o caminho no cabeçalho da requisição.
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

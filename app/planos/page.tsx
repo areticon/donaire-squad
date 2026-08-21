@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
@@ -80,8 +82,12 @@ const PLANOS = [
   economiaAno: p.mensal * 12 - p.mensal * 10,
 }));
 
-export default function PlanosPage() {
+function PlanosConteudo() {
   const [ciclo, setCiclo] = useState<"mensal" | "anual">("mensal");
+  // Quem já tem conta mas ainda não tem plano é mandado para cá pelo portão
+  // do app (lib/onboarding/portao.ts). Sem explicar por que, a pessoa acha
+  // que o login falhou.
+  const veioDoPortao = useSearchParams().get("assinar") === "1";
 
   return (
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
@@ -96,6 +102,13 @@ export default function PlanosPage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 lg:py-16">
+        {veioDoPortao && (
+          <div className="max-w-xl mx-auto mb-8 p-4 rounded-xl border border-orange-500/25 bg-orange-500/5 text-sm text-orange-300 text-center">
+            Sua conta está criada. Falta escolher o plano para o seu squad
+            começar a trabalhar. O teste de 7 dias não cobra nada se você
+            cancelar dentro do prazo.
+          </div>
+        )}
         <div className="text-center mb-10">
           <h1 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-3">
             Escolha o plano <span className="text-orange-500">certo para você</span>
@@ -211,5 +224,15 @@ export default function PlanosPage() {
         <IdentificacaoCurta className="mt-12" />
       </div>
     </main>
+  );
+}
+
+export default function PlanosPage() {
+  // useSearchParams precisa de Suspense em torno, senão o build reclama de
+  // pré-renderização.
+  return (
+    <Suspense>
+      <PlanosConteudo />
+    </Suspense>
   );
 }

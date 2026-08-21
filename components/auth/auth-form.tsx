@@ -87,6 +87,16 @@ export function AuthForm({ mode }: { mode: Mode }) {
       callbackURL: redirect,
       // Sem isto o erro cai na home, longe do formulário que resolve.
       errorCallbackURL: mode === "sign-in" ? "/sign-in" : "/sign-up",
+      // Decisão de 21/08: quem entra pelo LinkedIn já sai conectado para
+      // publicar. Publicar exige `w_member_social`, que é escopo separado do
+      // login (o padrão pede só openid, profile e email), então o token da
+      // sessão não serviria para postar e a pessoa teria que autorizar de
+      // novo na etapa 1. Pedindo aqui, é uma tela de consentimento só.
+      //
+      // O custo é honesto e está assumido: a tela do LinkedIn passa a avisar
+      // no cadastro que a Demandou vai criar posts em nome da pessoa. É
+      // exatamente o que o produto faz.
+      ...(provider === "linkedin" ? { scopes: ["w_member_social"] } : {}),
     });
   }
 

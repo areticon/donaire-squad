@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -760,8 +761,16 @@ function StepNetworks({ projectId }: { projectId: string }) {
       .then((d) => setConnected((d.storedAccounts ?? []).filter((a: { isActive: boolean }) => a.isActive).map((a: { platform: string }) => a.platform)));
   };
 
+  // Quais redes tem credencial no servidor. Perguntado em runtime de
+  // proposito: ver app/api/social/providers/route.ts.
+  const [prontas, setProntas] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     refresh();
+    fetch("/api/social/providers")
+      .then((r) => r.json())
+      .then(setProntas)
+      .catch(() => setProntas({}));
     // If we just returned from OAuth, refresh accounts
     const params = new URLSearchParams(window.location.search);
     if (params.get("linkedin") === "success" || params.get("twitter") === "success") {
@@ -769,10 +778,22 @@ function StepNetworks({ projectId }: { projectId: string }) {
     }
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const NETWORKS = [
-    { platform: "linkedin", label: "LinkedIn", icon: "in", color: "bg-blue-600", connectUrl: `/api/social/linkedin/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
-    { platform: "twitter", label: "X (Twitter)", icon: "𝕏", color: "bg-slate-800", connectUrl: `/api/social/twitter/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
-    { platform: "instagram", label: "Instagram", icon: "IG", color: "bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600", connectUrl: `/api/social/instagram/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}` },
+  // Logos oficiais em SVG, não texto dentro de um círculo. Ver
+  // components/social/logos-redes.tsx.
+  const conectar = (rede: string) =>
+    `/api/social/${rede}/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}`;
+
+  const NETWORKS: Array<{
+    platform: RedeComLogo;
+    label: string;
+    descricao: string;
+    connectUrl: string;
+  }> = [
+    { platform: "linkedin", label: "LinkedIn", descricao: "Autorize via OAuth, sem senha", connectUrl: conectar("linkedin") },
+    { platform: "instagram", label: "Instagram", descricao: "Conta profissional, autorize via OAuth", connectUrl: conectar("instagram") },
+    { platform: "twitter", label: "X (Twitter)", descricao: "Autorize via OAuth, sem senha", connectUrl: conectar("twitter") },
+    { platform: "facebook", label: "Facebook", descricao: "Publica na sua página, autorize via OAuth", connectUrl: conectar("facebook") },
+    { platform: "youtube", label: "YouTube", descricao: "Publica os vídeos do seu canal", connectUrl: conectar("youtube") },
   ];
 
   return (
@@ -799,20 +820,21 @@ function StepNetworks({ projectId }: { projectId: string }) {
               className="p-4 rounded-xl border flex items-center gap-4"
               style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
             >
-              <div className={`w-9 h-9 ${net.color} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                {net.icon}
-              </div>
+              {(() => {
+                const Logo = LOGO_POR_REDE[net.platform];
+                return <Logo />;
+              })()}
               <div className="flex-1">
                 <p className="text-sm font-medium text-[var(--text-primary)]">{net.label}</p>
                 <p className="text-xs text-[var(--text-muted)]">
-                  {isConnected ? "Conta conectada ✓" : "Autorize via OAuth — sem senha"}
+                  {isConnected ? "Conta conectada ✓" : net.descricao}
                 </p>
               </div>
               {isConnected ? (
                 <span className="text-xs px-3 py-1.5 rounded-lg bg-green-900/20 border border-green-800/40 text-green-400">
                   conectado
                 </span>
-              ) : (
+              ) : prontas[net.platform] ? (
                 <a
                   href={net.connectUrl}
                   className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
@@ -820,6 +842,13 @@ function StepNetworks({ projectId }: { projectId: string }) {
                 >
                   Conectar
                 </a>
+              ) : (
+                <span
+                  className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] opacity-60"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  em breve
+                </span>
               )}
             </div>
           );

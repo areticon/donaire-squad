@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { garantirPrimeiroProjeto } from "@/lib/onboarding/portao";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
@@ -60,6 +61,12 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function DashboardPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  // Quem acabou de assinar não deve ver dashboard vazio com um quadrinho de
+  // "criar projeto": o primeiro projeto nasce sozinho e a pessoa cai na etapa
+  // 1 do assistente, que é conectar as redes. Ver lib/onboarding/portao.ts.
+  const primeiroProjeto = await garantirPrimeiroProjeto(userId);
+  if (primeiroProjeto) redirect(`/projects/${primeiroProjeto}/setup`);
 
   const { user, projects, recentPosts, recentRuns, totalPosts } =
     await getDashboardData(userId);
