@@ -64,6 +64,18 @@ export const auth = betterAuth({
       // com eles.
       enabled: true,
       trustedProviders: ["google", "linkedin"],
+      // Segunda trava do better-auth, e a que realmente barrava: além do
+      // provedor confiável, ele exige por padrão que a conta LOCAL já tenha
+      // e-mail verificado. Como o cadastro por senha ainda não envia e-mail
+      // de confirmação, todo usuário nasce com `emailVerified: false` e a
+      // vinculação nunca aconteceria.
+      //
+      // Desligar isto não abre um buraco novo: o risco que a trava cobre
+      // (alguém cadastrar com e-mail alheio e depois herdar a conta do dono
+      // real) já existe hoje pela ausência de verificação no cadastro. O
+      // conserto de raiz é enviar o e-mail de confirmação, que tem card no
+      // planner. Quando existir, esta linha volta a ser `true`.
+      requireLocalEmailVerified: false,
     },
   },
   session: {
