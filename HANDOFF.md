@@ -2367,3 +2367,79 @@ logada), personalização do checkout, e o fluxo da plataforma, que o Bruno vai
 percorrer relatando cada trava com URL.
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 26): a jornada de novo, e a causa raiz que ela expôs
+
+O Bruno entrou pelo LinkedIn e relatou em lote. O achado que vale mais é que
+dois dos relatos eram o mesmo problema.
+
+### Entrar sem cartão e não conseguir gerar campanha são o mesmo bug
+
+O desvio para o checkout só acontecia quando a URL trazia `?plan=`, ou seja,
+quando a pessoa vinha clicando num card de preço. Entrando direto pelo login,
+ela caía no dashboard como plano `free`. E `free` não é plano gratuito, é
+ausência de plano: `creditsBalance` nasce em 0, então o pipeline barra em
+`app/api/pipeline/run/route.ts:431` com "essa campanha custa X créditos e você
+tem 0".
+
+A plataforma deixava a pessoa percorrer o onboarding inteiro para bater no
+muro no último passo. Não era bug do gerador.
+
+### O que entrou (commit `86be5d7`, em produção)
+
+1. **Portão de plano** em `lib/onboarding/portao.ts`. Sem plano ativo, o app
+   manda para `/planos` com aviso explicando por quê. `/billing` e
+   `/settings` ficam isentas, senão o próprio checkout ficaria inacessível.
+   O `proxy.ts` passou a carimbar `x-pathname` na requisição, porque o App
+   Router não entrega a rota para um layout e o proxy roda na borda, sem
+   acesso ao banco.
+2. **Primeiro projeto automático.** Quem tem plano e nenhum projeto não vê
+   mais dashboard vazio: o projeto nasce sozinho e a pessoa cai na etapa 1,
+   conectar as redes.
+3. **LinkedIn já conectado pelo login.** Só funciona porque o login passou a
+   pedir `w_member_social`, escopo separado do padrão. A herança confere o
+   escopo antes de criar a conexão: sem essa checagem, criaria uma conexão que
+   falharia na hora de postar. Quem entrou antes da mudança continua
+   precisando do clique.
+4. **Logos oficiais** em `components/social/logos-redes.tsx`, em SVG. Eram
+   texto dentro de círculo colorido. Facebook e YouTube entram na lista.
+5. **`/api/social/providers`**, mesmo padrão do `/api/auth/providers`: o
+   servidor diz quais redes têm credencial e a tela pergunta em runtime.
+   Facebook e YouTube aparecem como "em breve" em vez de levar a 404.
+
+### Decisões do Bruno nesta parte
+
+- **LinkedIn pedindo permissão de publicar já no login.** Custo assumido: a
+  tela do LinkedIn passa a avisar no cadastro que a Demandou vai criar posts
+  em nome da pessoa.
+- **Facebook e YouTube de verdade**, não rótulo. O código ainda não existe;
+  é o próximo lote e depende de painel de terceiro.
+- **Plano de R$ 1 descartado com dado.** O Bruno queria criar um plano de R$ 1
+  para testar com cartão real. Conferido no webhook: `status === "trialing"`
+  já concede o plano e repõe os 1.800 créditos, então o teste de 7 dias já é
+  a jornada real, com cartão real, e custa R$ 0 se cancelar no prazo. Criar o
+  plano de R$ 1 só adicionaria um caminho que nenhum cliente percorre, e o
+  risco de um estranho assiná-lo.
+
+### Números que mudaram uma premissa
+
+O YouTube parecia inviável pela cota: no modelo antigo, um envio custava 1.600
+unidades de um teto diário de 10.000, ou seja seis vídeos por dia para a
+plataforma inteira. **Em junho de 2026 o Google separou o envio numa cota
+própria de 100 por dia.** Com 30 clientes postando um vídeo por semana dá
+cerca de 4 por dia. Deixou de ser teto que atrapalha.
+
+### Achado que não era da lista
+
+Existe **uma conta de terceiro no banco de produção**:
+`h.u.l.o.hexiv.e.c.4.5@gmail.com`, nome "ZPDjJvpxpMJeVmOz", criada em 21/08 às
+08:06 por senha. Endereço com pontos espalhados e nome aleatório é padrão de
+robô. Não causou a marcação do Google (veio nove horas depois dela), mas prova
+que o site já está sendo varrido e que dá para criar conta sem confirmar nada.
+Reforça o card da verificação de e-mail. Não apagada, aguardando decisão.
+
+O usuário `bruno@areticon.com`, criado pelo Bruno no teste via LinkedIn, foi
+apagado a pedido dele, junto com o projeto (a relação continua `RESTRICT`, o
+card do cascade segue aberto).
+
+*Atualizado em 21/08/2026 por Claude Code.*
