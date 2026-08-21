@@ -2243,3 +2243,121 @@ Opção B. O cliente lê isso na tela do checkout, no último passo antes de pag
 Corrigir via `products.update` com a `sk_live` na máquina.
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 25): o Google marcou o site como golpe
+
+O Bruno tentou entrar pelo celular e levou tela vermelha do Chrome dizendo que
+o site não é confiável, com menção a phishing. Isso passou na frente de tudo:
+enquanto durar, todo tráfego pago, todo link no Instagram e toda abordagem no
+LinkedIn caem nessa tela.
+
+### Confirmado com dado, não com suposição
+
+Consulta à base do Safe Browsing, calibrada com controles (wikipedia.org como
+limpo, o site oficial de teste do Google como sujo, para descobrir o que cada
+código significa):
+
+- **demandou.com está marcado**, categoria de engenharia social
+- **www.demandou.com não está.** A marcação é no domínio raiz
+- Marcado em **20/08/2026 às 23:10** de Brasília, uma hora depois do deploy
+  `c3e797f`, que publicou a página de planos e o cadastro que vai ao checkout
+
+O Search Console confirmou: "Páginas enganosas", **sem URL de amostra**. Sem
+amostra significa classificação do site, não arquivo encontrado.
+
+### O que foi eliminado, cada um com evidência
+
+- **Domínio novo ou herdado:** não. RDAP mostra registro em 13/01/2025, sem
+  dono anterior.
+- **Conteúdo de terceiro hospedado por nós:** não existe. O banco de produção
+  tem 2 usuários, 2 projetos e **zero posts**. A única página que serviria
+  texto de terceiro é `/a/[token]`, e ela está vazia.
+- **Landing enganosa:** sem depoimento falso, sem escassez falsa, sem
+  contador, sem download, sem um único script externo.
+- **Redirecionamento aberto alcançável por robô:** não. As três rotas
+  `connect` respondem 401 em produção sem sessão, testado contra o site no ar.
+- **`callbackURL` do better-auth:** protegido, `trustedOrigins` restrito.
+- **Logo reprovado pelo Google:** eliminado pela linha do tempo. A credencial
+  OAuth do Google só passou a existir cerca de três horas depois da marcação.
+
+### A causa que sobrou, e ela é constrangedora
+
+O site pedia senha e cartão **sem dizer quem era o dono**. Razão social, CNPJ,
+endereço e e-mail existiam apenas dentro de `/terms`. Landing, entrada,
+cadastro e planos eram anônimos, com zero link externo. Para um classificador
+esse é o retrato de phishing, e a página de entrada ainda exibe a marca do
+Google e a do LinkedIn logo acima de um campo de senha.
+
+**Descoberta que vale mais que o Google:** o Decreto 7.962/2013, art. 2º,
+obriga todo site que vende no Brasil a exibir nome empresarial, CNPJ e
+endereço físico e eletrônico em local de destaque. Estávamos vendendo sem
+isso. O conserto era obrigatório de qualquer jeito.
+
+### O que entrou (commit `0f94f8c`)
+
+1. **`components/identificacao-legal.tsx`**, fonte única com razão social,
+   CNPJ, endereço e contato, no rodapé da landing e no pé de `/sign-in`,
+   `/sign-up` e `/planos`.
+2. **Cabeçalhos de segurança.** O site respondia só o HSTS que a Vercel põe
+   sozinha. Entraram `X-Frame-Options: DENY` e `CSP frame-ancestors 'none'`,
+   que impedem embutir a nossa tela de login dentro de uma página de golpe,
+   mais nosniff, Referrer-Policy e Permissions-Policy. Conferido antes de
+   travar: o projeto não usa `getUserMedia` nem `MediaRecorder` (vídeo é
+   upload) e não tem um único iframe, então nada quebra.
+3. **Redirecionamento aberto fechado.** `returnTo` caía direto em
+   `${appUrl}${returnTo}`, então `returnTo=@site-de-golpe.com` virava
+   `https://demandou.com@site-de-golpe.com`: o link mostra o nosso domínio e
+   leva para outro. `lib/oauth/return-to.ts` com 16 casos de teste, todos
+   passando, ligado nas três rotas connect e nos três callbacks.
+4. **Travessão nos títulos das páginas**, que aparecem na aba e no resultado
+   de busca.
+
+Verificado com build de produção rodando local: os cinco cabeçalhos respondem
+e o CNPJ aparece nas quatro páginas públicas.
+
+### Decisão registrada: a passagem em massa de travessão foi desfeita
+
+O primeiro impulso trocou 216 travessões em 28 arquivos. Desfeito de
+propósito: boa parte caía dentro dos prompts do pipeline, e o PROJETO.md já
+registra que mudar um byte nas regras globais invalida o cache de prompt
+inteiro. A regra do travessão vale para texto que sai para gente, não para
+comentário de código nem instrução interna de modelo.
+
+### Antes disso, na mesma sessão: o cron do anual (commit `5bb798a`)
+
+O mapa de price anual para plano era escrito à mão e tinha uma linha só, a do
+Pro, com um comentário pedindo uma linha nova quando Business e Studio
+ganhassem anual. Eles ganharam na parte 24 e a linha não entrou. Assinante
+Business anual (R$ 2.490 à vista) receberia 3.500 créditos no dia 1 e nada
+nos 11 meses seguintes, com o cron respondendo 200 e lista de repostos vazia.
+Falha silenciosa outra vez.
+
+Conserto elimina a classe: o mapa passa a ser derivado de `PLANS`. Verificado
+contra a conta live: os três price ids existem, são anuais, batem com o plano
+certo e têm **zero assinatura ativa**, então ninguém foi lesado.
+
+De caminho, a contradição da parte 24 foi resolvida contra dado real: as
+descrições dos produtos no Stripe **já estavam corretas** (1.800, 3.500,
+7.000). Quem estava errada era a nota da auditoria de funil, escrita de
+memória. Sobrou lixo: os preços da Opção A (STARTER R$ 49, Pro R$ 99,
+Business R$ 199, Studio R$ 399) continuam ativos no Stripe e o Bruno vai
+arquivar.
+
+### Armadilha nova para a lista
+
+**Site que vende sem identificar o fornecedor é lido como phishing.** Não é
+detalhe jurídico nem rodapé decorativo: é sinal de confiança que o
+classificador procura, e a falta dele custou a marcação do domínio inteiro.
+
+### Estado ao fim da sessão
+
+Os dois commits estão em `feat/own-auth` e **ainda não em `master`**, que é o
+branch que a Vercel serve. O deploy depende do Bruno. Depois do deploy no ar,
+pedir a revisão no Search Console em Segurança e ações manuais.
+
+Fica pendente, na fila combinada: responsividade no celular (medição com
+prints começou, a landing se comporta bem a 390px, a suspeita é a plataforma
+logada), personalização do checkout, e o fluxo da plataforma, que o Bruno vai
+percorrer relatando cada trava com URL.
+
+*Atualizado em 21/08/2026 por Claude Code.*

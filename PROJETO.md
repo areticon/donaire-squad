@@ -119,6 +119,20 @@ que o dobro do custo fixo atual de R$ 116.
 - Constante compartilhada entre cliente e servidor precisa morar em módulo sem
   import de servidor, senão o driver do banco vai para o bundle do navegador.
 
+**Confiança e reputação do domínio**
+- **Site que vende sem identificar o fornecedor é lido como phishing.** O
+  demandou.com foi marcado pelo Google como "página enganosa" em 20/08 porque
+  pedia senha e cartão sem dizer quem era o dono: razão social, CNPJ, endereço
+  e contato existiam só dentro de `/terms`. Isso também é obrigação legal, pelo
+  Decreto 7.962/2013 art. 2º.
+- Página de login que exibe a marca do Google ou do LinkedIn acima de um campo
+  de senha, em domínio sem tráfego, é o padrão que a heurística procura.
+- Sem `X-Frame-Options` ou `frame-ancestors`, qualquer site embute a nossa tela
+  de login dentro de uma página de golpe.
+- `returnTo` sem validação vira redirecionamento aberto pelo truque do
+  userinfo: `https://demandou.com@site-de-golpe.com` mostra o nosso domínio e
+  leva para outro.
+
 **A regra geral que resume todas:** em integração com terceiro, medir o que
 voltou. Nunca confiar no código de status nem na instrução dada.
 
