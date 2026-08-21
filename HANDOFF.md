@@ -2083,3 +2083,53 @@ NEXT_PUBLIC_APP_URL=http://localhost:PORTA npx next dev`.
   aguardando escolha do Bruno para gerar as variações (claro, favicon, landing).
 
 *Atualizado em 20/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 23): login social no ar e a marca nova
+
+### Login com Google e LinkedIn, funcionando
+
+**Google:** app OAuth criado no projeto `demandoupostou`, público Externo,
+tela de consentimento com o domínio verificado no Search Console (mais um TXT
+no DNS da HostGator), credenciais na Vercel e app publicado.
+
+**LinkedIn:** o produto "Sign In with LinkedIn using OpenID Connect" já estava
+adicionado no app `demandou` (`776y3qlu5ltco1`), então bastou somar a redirect
+`https://demandou.com/api/auth/callback/linkedin` às que já existiam. Nenhuma
+credencial nova: o mesmo app que publica agora também autentica.
+
+Os dois fluxos foram verificados em produção até a tela de login de cada
+provedor, conferindo client id, escopos e redirect na URL.
+
+**Armadilha nova, e ela tem classe:** `NEXT_PUBLIC_*` é resolvida em tempo de
+build. Gravar a credencial na Vercel não fazia o botão aparecer, e não havia
+erro nenhum, só ausência. Eliminada a classe do problema: agora
+`/api/auth/providers` responde quais provedores têm credencial (só booleanos)
+e o formulário pergunta em runtime. Credencial nova passa a valer sem rebuild.
+
+**Pegadinha do Google:** logo próprio na tela de consentimento dispara
+verificação de marca, mesmo com escopos básicos. Como o logo é opcional lá,
+removê-lo destrava a publicação na hora.
+
+### A marca nova, e por que a anterior morreu
+
+O conceito escolhido antes (seta-sorriso sob o "d", inspirada na Amazon a
+pedido do Bruno) foi **reprovado pela verificação de marca do Google**: "seu
+logotipo não identifica sua marca de forma exclusiva". Não era burocracia: a
+seta-sorriso laranja da Amazon é marca registrada, e o risco de trademark é
+real. Sinal externo e objetivo, aceito na hora.
+
+A marca nova é um **monograma "dp", de "demandou, postou"**: o d e o p são a
+mesma forma girada 180 graus e dividem a mesma bola, então a simetria é exata.
+
+- **Recriada em SVG vetorial**, não recortada da imagem gerada: escala sem
+  perda, pesa poucos bytes, herda cor e permite animar as metades.
+- **Animação no header, cadastro e /planos**: o "d" entra pela direita e o "p"
+  pela esquerda até se encaixarem. CSS puro, sem JavaScript, e parada para quem
+  pede menos movimento. Verificada medindo o DOM no meio da animação, e não a
+  olho: as duas metades ficam em posições distintas e convergem.
+- **Favicon passa a ser o SVG** (nítido em qualquer densidade), com PNG de
+  reserva. O SVG do arquivo usa cor fixa de propósito: como favicon não existe
+  de quem herdar `currentColor`.
+- PNGs gerados por `sharp` a partir do vetor, fundo transparente.
+
+*Atualizado em 21/08/2026 por Claude Code.*
