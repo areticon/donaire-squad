@@ -2060,4 +2060,26 @@ Bruno parou na Ideação do projeto "Empreendedorismo Cristão".
 cadastro. Para testar auth em dev: `BETTER_AUTH_URL=http://localhost:PORTA
 NEXT_PUBLIC_APP_URL=http://localhost:PORTA npx next dev`.
 
+### Lote 2: login social e plano antes do cadastro (commit c3e797f)
+
+- **Login social**: botões de Google e LinkedIn no auth, gateados por
+  `NEXT_PUBLIC_GOOGLE_AUTH=1` / `NEXT_PUBLIC_LINKEDIN_AUTH=1`; o servidor ativa
+  cada provedor quando as credenciais existem no ambiente. O Google já estava
+  half-pronto no código (descoberta boa); o LinkedIn reusa o app OAuth de
+  publicação, bastando ativar o produto "Sign In with LinkedIn (OpenID
+  Connect)" e a redirect `/api/auth/callback/linkedin` no painel deles. Falta
+  só a parte de console do Bruno nas duas pontas.
+- **Fluxo plano antes do cadastro**: página pública `/planos` (toggle mensal e
+  anual), CTAs genéricos da landing apontando para ela, cards de preço levando
+  a `/sign-up?plan=` e o cadastro desaguando direto no checkout do plano via
+  `/billing/start`, sem soltar a pessoa no dashboard no meio da decisão.
+  **Validado em produção com cadastro real**: o checkout do anual abriu com "7
+  dias grátis" e "R$ 1.490,00 por ano". Usuários de teste apagados do banco.
+- **Achado do teste**: a descrição dos produtos no Stripe ainda diz "1.100
+  créditos/mês" (pré Opção B). Corrigir via `products.update` quando a sk_live
+  estiver na máquina de novo; card no planner.
+- **Logos novos**: 4 conceitos gerados pelo Nano Banana Pro (Gemini
+  `gemini-3-pro-image-preview`) em `C:\Users\devan\Downloads\demandou-logos\`,
+  aguardando escolha do Bruno para gerar as variações (claro, favicon, landing).
+
 *Atualizado em 20/08/2026 por Claude Code.*
