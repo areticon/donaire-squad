@@ -67,11 +67,26 @@ export function AuthForm({ mode }: { mode: Mode }) {
     router.refresh();
   }
 
+  // Erro do provedor social volta como query param. Sem tratar, a pessoa é
+  // jogada na home com "?error=account_not_linked" na barra e nenhuma pista
+  // do que fazer (achado do teste de jornada de 21/08).
+  const erroSocial = searchParams.get("error");
+  useEffect(() => {
+    if (!erroSocial) return;
+    setError(
+      erroSocial === "account_not_linked"
+        ? "Já existe uma conta com esse e-mail criada com senha. Entre com a senha abaixo, ou peça a redefinição por e-mail."
+        : "Não consegui concluir o login pelo provedor. Tente de novo ou use e-mail e senha."
+    );
+  }, [erroSocial]);
+
   async function handleSocial(provider: "google" | "linkedin") {
     setError(null);
     await authClient.signIn.social({
       provider,
       callbackURL: redirect,
+      // Sem isto o erro cai na home, longe do formulário que resolve.
+      errorCallbackURL: mode === "sign-in" ? "/sign-in" : "/sign-up",
     });
   }
 

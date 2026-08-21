@@ -51,6 +51,21 @@ export const auth = betterAuth({
   },
   socialProviders:
     Object.keys(socialProviders).length > 0 ? socialProviders : undefined,
+  account: {
+    accountLinking: {
+      // Sem isto, quem criou a conta com senha e depois clica em "Continuar
+      // com Google" no mesmo e-mail leva `account_not_linked` e não entra
+      // nunca (achado do teste de jornada de 21/08).
+      //
+      // A recusa padrão existe para impedir que alguém crie conta social com
+      // e-mail alheio e assuma a conta da vítima. O risco só existe quando o
+      // provedor não confirma o e-mail; Google e LinkedIn confirmam antes de
+      // emitir o token, então vincular pelo e-mail é seguro com eles, e só
+      // com eles.
+      enabled: true,
+      trustedProviders: ["google", "linkedin"],
+    },
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 dias
     updateAge: 60 * 60 * 24, // renova o cookie 1x/dia
