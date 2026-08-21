@@ -129,9 +129,12 @@ export function Pricing() {
                   <span className="text-[var(--text-muted)] text-sm">/mês</span>
                 </div>
                 {plan.id === "pro" && (
-                  <p className="mt-1.5 text-sm text-orange-400">
+                  <Link
+                    href="/sign-up?plan=pro&ciclo=anual"
+                    className="inline-block mt-1.5 text-sm text-orange-400 hover:text-orange-300"
+                  >
                     ou R$ 1.490/ano (2 meses grátis)
-                  </p>
+                  </Link>
                 )}
               </div>
 

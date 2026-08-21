@@ -7,11 +7,21 @@ import { authClient } from "@/lib/auth/client";
 type Mode = "sign-in" | "sign-up";
 
 const showGoogle = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
+const showLinkedIn = process.env.NEXT_PUBLIC_LINKEDIN_AUTH === "1";
 
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") ?? "/dashboard";
+
+  // Quem chegou por um card de preço traz ?plan= (e ?ciclo=anual no anual).
+  // Nesse caso o destino depois da conta criada é o checkout daquele plano,
+  // não o dashboard: a pessoa já decidiu, o caminho não pode soltá-la no meio.
+  const plan = searchParams.get("plan");
+  const ciclo = searchParams.get("ciclo");
+  const planRedirect = plan
+    ? `/billing/start?plan=${encodeURIComponent(plan)}${ciclo ? `&ciclo=${encodeURIComponent(ciclo)}` : ""}`
+    : null;
+  const redirect = planRedirect ?? searchParams.get("redirect") ?? "/dashboard";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -44,22 +54,26 @@ export function AuthForm({ mode }: { mode: Mode }) {
     router.refresh();
   }
 
-  async function handleGoogle() {
+  async function handleSocial(provider: "google" | "linkedin") {
     setError(null);
     await authClient.signIn.social({
-      provider: "google",
+      provider,
       callbackURL: redirect,
     });
   }
 
+  const socialBtnClass =
+    "w-full flex items-center justify-center gap-2 bg-[#313338] border border-[#3f4147] text-[#dbdee1] hover:bg-[#2b2d31] rounded-lg py-2.5 text-sm font-medium transition-colors";
+
   return (
     <div className="bg-[#111] border border-[#3f4147] rounded-xl p-6">
-      {showGoogle && (
-        <>
+      {(showGoogle || showLinkedIn) && (
+        <div className="space-y-2">
+        {showGoogle && (
           <button
             type="button"
-            onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2 bg-[#313338] border border-[#3f4147] text-[#dbdee1] hover:bg-[#2b2d31] rounded-lg py-2.5 text-sm font-medium transition-colors"
+            onClick={() => handleSocial("google")}
+            className={socialBtnClass}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
               <path
@@ -81,12 +95,28 @@ export function AuthForm({ mode }: { mode: Mode }) {
             </svg>
             Continuar com Google
           </button>
+        )}
+        {showLinkedIn && (
+          <button
+            type="button"
+            onClick={() => handleSocial("linkedin")}
+            className={socialBtnClass}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+              <path
+                fill="#0A66C2"
+                d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.47-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45z"
+              />
+            </svg>
+            Continuar com LinkedIn
+          </button>
+        )}
           <div className="flex items-center gap-3 my-4">
             <div className="flex-1 h-px bg-[#3f4147]" />
             <span className="text-xs text-[#949ba4]">ou</span>
             <div className="flex-1 h-px bg-[#3f4147]" />
           </div>
-        </>
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">

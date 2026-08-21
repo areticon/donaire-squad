@@ -2,15 +2,25 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "@/lib/db/prisma";
 
-const socialProviders =
-  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-    ? {
-        google: {
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        },
-      }
-    : undefined;
+// Cada provedor entra sozinho quando as credenciais existem no ambiente, e o
+// botão correspondente é gateado por NEXT_PUBLIC_*_AUTH=1 no cliente. Assim o
+// código sobe antes das credenciais sem quebrar nada.
+const socialProviders: Record<string, { clientId: string; clientSecret: string }> = {};
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  socialProviders.google = {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  };
+}
+// Reusa o app OAuth do LinkedIn que já publica posts; para o login funcionar,
+// o app precisa do produto "Sign In with LinkedIn using OpenID Connect" e da
+// redirect https://demandou.com/api/auth/callback/linkedin no painel deles.
+if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+  socialProviders.linkedin = {
+    clientId: process.env.LINKEDIN_CLIENT_ID,
+    clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+  };
+}
 
 // Origens que o better-auth aceita. Sem isso, o navegador recebe "Invalid
 // origin" sempre que a porta ou o domínio diferirem do baseURL configurado.
@@ -39,7 +49,8 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
   },
-  socialProviders,
+  socialProviders:
+    Object.keys(socialProviders).length > 0 ? socialProviders : undefined,
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 dias
     updateAge: 60 * 60 * 24, // renova o cookie 1x/dia

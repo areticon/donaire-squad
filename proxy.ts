@@ -15,6 +15,8 @@ const PUBLIC_ROUTES: RegExp[] = [
   // Documento legal atrás de login não cumpre o papel de documento legal.
   /^\/terms/,
   /^\/privacy/,
+  // Escolha de plano vem antes do cadastro; visitante deslogado é o público.
+  /^\/planos/,
 ];
 
 export function proxy(req: NextRequest) {

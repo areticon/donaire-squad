@@ -61,7 +61,7 @@ export function Hero() {
 
             <div className="flex flex-col sm:flex-row gap-4 mb-12">
               <Button size="xl" asChild>
-                <Link href="/sign-up">
+                <Link href="/planos">
                   Começar os 7 dias grátis
                   <ArrowRight className="w-5 h-5" />
                 </Link>

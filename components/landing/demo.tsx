@@ -182,7 +182,7 @@ export function Demo() {
                     </strong>
                   </p>
                   <Button asChild>
-                    <Link href="/sign-up">
+                    <Link href="/planos">
                       Começar os 7 dias grátis
                       <ArrowRight className="w-4 h-4" />
                     </Link>
