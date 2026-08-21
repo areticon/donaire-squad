@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
 
 type Mode = "sign-in" | "sign-up";
 
-const showGoogle = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
-const showLinkedIn = process.env.NEXT_PUBLIC_LINKEDIN_AUTH === "1";
-
 export function AuthForm({ mode }: { mode: Mode }) {
+  // Quem sabe se o provedor está de pé é o servidor, que enxerga as
+  // credenciais. Flag de build (NEXT_PUBLIC_*) exigia rebuild depois de
+  // gravar a credencial, e falhava em silêncio quando esquecido.
+  const [provedores, setProvedores] = useState<{ google: boolean; linkedin: boolean }>({
+    google: false,
+    linkedin: false,
+  });
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((r) => r.json())
+      .then((d) => setProvedores({ google: Boolean(d.google), linkedin: Boolean(d.linkedin) }))
+      .catch(() => undefined);
+  }, []);
+  const showGoogle = provedores.google;
+  const showLinkedIn = provedores.linkedin;
+
   const router = useRouter();
   const searchParams = useSearchParams();
 
