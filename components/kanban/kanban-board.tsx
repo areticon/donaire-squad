@@ -765,6 +765,20 @@ function StepNetworks({ projectId }: { projectId: string }) {
   // proposito: ver app/api/social/providers/route.ts.
   const [prontas, setProntas] = useState<Record<string, boolean>>({});
 
+  // A conexão acontece em outra aba; quando esta volta ao foco, o status
+  // verde precisa aparecer sem recarregar na mão.
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     refresh();
     fetch("/api/social/providers")
@@ -837,6 +851,12 @@ function StepNetworks({ projectId }: { projectId: string }) {
               ) : prontas[net.platform] ? (
                 <a
                   href={net.connectUrl}
+                  // Aba nova por pedido do Bruno (21/08): o OAuth de serviço em
+                  // que a pessoa ainda não está logada vira um vai e vem que
+                  // destrói a aba do assistente. A aba original se atualiza
+                  // sozinha ao receber o foco de volta.
+                  target="_blank"
+                  rel="noopener"
                   className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
                   style={{ borderColor: "var(--border)" }}
                 >

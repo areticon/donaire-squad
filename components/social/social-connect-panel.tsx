@@ -79,6 +79,20 @@ export function SocialConnectPanel({
     }
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // O OAuth abre em aba nova; quando esta aba volta ao foco, a lista precisa
+  // refletir a conexão feita lá sem recarregar na mão.
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") refreshAccounts();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function refreshAccounts() {
     try {
       const res = await fetch(`/api/social/connect?projectId=${project.id}`);
@@ -183,7 +197,7 @@ export function SocialConnectPanel({
               <Badge variant="success" className="text-[10px] shrink-0">conectado</Badge>
             ) : (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
-                <a href={`/api/social/linkedin/connect?projectId=${project.id}`}>Conectar</a>
+                <a target="_blank" rel="noopener" href={`/api/social/linkedin/connect?projectId=${project.id}`}>Conectar</a>
               </Button>
             )}
           </div>
@@ -204,7 +218,7 @@ export function SocialConnectPanel({
               <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
             ) : hasPagesApp ? (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
-                <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
+                <a target="_blank" rel="noopener" href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
               </Button>
             ) : (
               <span className="text-[10px] shrink-0" style={{ color: "var(--text-muted)" }}>Em breve</span>
@@ -270,7 +284,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasTwitter && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`/api/social/twitter/connect?projectId=${project.id}`}>Conectar</a>
+              <a target="_blank" rel="noopener" href={`/api/social/twitter/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
@@ -307,7 +321,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasInstagram && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
+              <a target="_blank" rel="noopener" href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
