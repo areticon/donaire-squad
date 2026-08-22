@@ -76,7 +76,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setError(
       erroSocial === "account_not_linked"
         ? "Já existe uma conta com esse e-mail criada com senha. Entre com a senha abaixo, ou peça a redefinição por e-mail."
-        : "Não consegui concluir o login pelo provedor. Tente de novo ou use e-mail e senha."
+        : // O código cru vai junto de propósito: sem ele, um erro de provedor
+          // vira "não consegui" e ninguém descobre a causa (aconteceu em
+          // 21/08, e o diagnóstico ficou às cegas).
+          `Não consegui concluir o login pelo provedor (código: ${erroSocial}). Tente de novo ou use e-mail e senha.`
     );
   }, [erroSocial]);
 
@@ -87,24 +90,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
       callbackURL: redirect,
       // Sem isto o erro cai na home, longe do formulário que resolve.
       errorCallbackURL: mode === "sign-in" ? "/sign-in" : "/sign-up",
-      // Decisão de 21/08: quem entra pelo LinkedIn já sai conectado para
-      // publicar. Publicar exige `w_member_social`, que é escopo separado do
-      // login, então o token da sessão não serviria para postar e a pessoa
-      // teria que autorizar de novo na etapa 1. Pedindo aqui, é uma tela de
-      // consentimento só.
-      //
-      // ATENÇÃO à semântica: `scopes` SUBSTITUI os padrões, não soma (está
-      // na descrição do parâmetro no better-auth). A primeira versão passou
-      // só w_member_social, o openid saiu do pedido, o LinkedIn não devolveu
-      // identidade e o login inteiro quebrou em produção. A lista tem que
-      // ser completa: os três do OIDC mais o de publicar.
-      //
-      // O custo é honesto e está assumido: a tela do LinkedIn avisa no
-      // cadastro que a Demandou vai criar posts em nome da pessoa. É
-      // exatamente o que o produto faz.
-      ...(provider === "linkedin"
-        ? { scopes: ["openid", "profile", "email", "w_member_social"] }
-        : {}),
+      // O escopo extra do LinkedIn (w_member_social) vive na configuração do
+      // provedor em lib/auth/index.ts, não aqui. Ver o comentário de lá.
     });
   }
 

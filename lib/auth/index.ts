@@ -5,7 +5,10 @@ import { prisma } from "@/lib/db/prisma";
 // Cada provedor entra sozinho quando as credenciais existem no ambiente, e o
 // botão correspondente é gateado por NEXT_PUBLIC_*_AUTH=1 no cliente. Assim o
 // código sobe antes das credenciais sem quebrar nada.
-const socialProviders: Record<string, { clientId: string; clientSecret: string }> = {};
+const socialProviders: Record<
+  string,
+  { clientId: string; clientSecret: string; scope?: string[] }
+> = {};
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   socialProviders.google = {
     clientId: process.env.GOOGLE_CLIENT_ID,
@@ -19,6 +22,14 @@ if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
   socialProviders.linkedin = {
     clientId: process.env.LINKEDIN_CLIENT_ID,
     clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    // Publicar exige w_member_social, e pedir ja no login e o que deixa o
+    // LinkedIn conectado sem segunda autorizacao (decisao de 21/08).
+    //
+    // AQUI, e nao no signIn.social do cliente: o provedor soma este campo aos
+    // padroes (profile, email, openid) sem duplicar, conferido no fonte do
+    // @better-auth/core. Passar pelo cliente somava em cima dos padroes que
+    // ja estavam somados e o pedido saia com escopos duplicados.
+    scope: ["w_member_social"],
   };
 }
 
