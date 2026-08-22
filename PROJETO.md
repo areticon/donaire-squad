@@ -138,6 +138,28 @@ que o dobro do custo fixo atual de R$ 116.
   www para apex no next.config elimina a classe. Diagnóstico veio do log de
   produção em tempo real, não de suposição.
 
+**Banco, parte 2: o pooler**
+- **`DATABASE_URL` na porta 5432 é modo SESSÃO e derruba a produção.** Cada
+  conexão fica presa ao cliente, teto de 15, e em serverless isso estoura.
+  Runtime usa a **6543** (modo transação, multiplexa); `DIRECT_URL` fica na
+  5432 porque migrations precisam dela. Diagnóstico contra produção usa a
+  6543 e fecha a conexão no `finally`.
+
+**Meta, além do Instagram**
+- App Business com "Login do Facebook para Empresas" **não aceita permissão
+  solta no `scope`**: exige uma Configuração criada no painel, passada por
+  `config_id`.
+- A lista de permissões disponíveis é filtrada pelo **caso de uso** do app.
+- Sem `auth_type=rerequest`, a Meta oferece "continuar com as configurações
+  anteriores" e reaproveita concessão velha, inclusive de tentativa falha.
+- **Página dentro de portfólio empresarial não aparece em `/me/accounts`** se
+  o app estiver em outro portfólio. Permissão concedida e lista vazia é
+  sintoma de propriedade de ativo, não de permissão.
+
+**Interface**
+- **Retorno de integração precisa falar na tela.** Fluxo de OAuth que volta
+  calado transforma bug de 5 minutos em investigação de uma hora.
+
 **A regra geral que resume todas:** em integração com terceiro, medir o que
 voltou. Nunca confiar no código de status nem na instrução dada.
 

@@ -2618,3 +2618,85 @@ advogado e CREA para engenheiro). Os três têm encaixe técnico anotado nos
 cards; nenhum entra antes do fim da jornada de teste.
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21-22/08/2026 (parte 31): a produção caiu, e o Facebook virou uma escola
+
+Madrugada longa. Três coisas grandes, e a primeira derrubou o site inteiro.
+
+### A produção caiu por esgotar o pool de conexões
+
+No meio do teste, todas as páginas passaram a devolver 500. O log deu a
+mensagem exata: `(EMAXCONNSESSION) max clients reached in session mode - max
+clients are limited to pool_size: 15`.
+
+**Causa: a `DATABASE_URL` apontava para a porta 5432 do pooler do Supabase,
+que é o modo SESSÃO.** Nesse modo cada conexão fica presa ao cliente até ele
+desconectar, com teto de 15. Em serverless, cada instância nova abre conexão
+e o teto estoura. O correto é a **6543, modo transação**, que multiplexa.
+
+O detalhe que dói: o comentário em `lib/db/prisma.ts` já documentava a
+intenção certa ("em runtime usamos o pooler na porta 6543"). Quem tinha
+divergido do código era a variável de ambiente.
+
+Corrigido na Vercel e no `.env.local` (6543 com
+`pgbouncer=true&connection_limit=1`; `DIRECT_URL` segue na 5432, que é o certo
+para migrations). Cinto de segurança no código: teto de 3 conexões por
+instância e timeouts explícitos no adapter, porque o default do
+node-postgres é 10 por pool e em serverless isso multiplica.
+
+**Contribuição própria, registrada por honestidade:** vários scripts de
+diagnóstico rodados contra a produção nesta madrugada não fechavam a conexão
+no caminho de erro, e dois foram mortos por timeout no meio. Em modo sessão,
+cada um ficou pendurado. A configuração errada era a bomba; os scripts
+puxaram o pino. Regra nova: diagnóstico contra produção usa a porta de
+transação e sempre fecha no `finally`.
+
+### O Facebook, e três armadilhas em sequência
+
+1. **"Invalid Scopes" com os nomes oficiais das permissões.** App Business com
+   "Login do Facebook para Empresas" não aceita permissão solta no `scope`:
+   exige uma **Configuração** criada no painel, passada por `config_id`.
+   Suporte a `config_id` no código, com fallback por scope para app clássico.
+   Config criada: `1950233499004876`.
+2. **A lista de permissões só oferecia as do Instagram.** A lista é filtrada
+   pelo **caso de uso** do app. Foi preciso adicionar "Gerenciar tudo na sua
+   Página" para as de página aparecerem.
+3. **"Continuar com suas configurações anteriores" reaproveitou a concessão
+   da tentativa que falhou.** O OAuth passava, `/me/accounts` voltava vazio e
+   a conexão morria calada. Conserto: `auth_type=rerequest`, que força a tela
+   de escolha de páginas em toda conexão.
+
+### O bug que mais custou tempo foi o silêncio
+
+A etapa 1 do assistente só lia os parâmetros de retorno de LinkedIn e X.
+Todo erro de Facebook voltava para uma tela que não dizia **nada**, e o Bruno
+ficou recarregando achando que era problema de interface. Agora as cinco
+redes têm aviso de sucesso e de erro, com mensagem específica por motivo e
+limpeza dos parâmetros da URL.
+
+**Lição que vale mais que os consertos: fluxo de terceiro sem retorno visível
+transforma bug de 5 minutos em investigação de uma hora.** Todo retorno de
+integração precisa falar na tela.
+
+### O diagnóstico final do Facebook: propriedade de ativo, não permissão
+
+Com log da resposta crua, a Meta foi clara:
+
+```
+permissões efetivas: pages_show_list granted, pages_read_engagement granted,
+                     pages_manage_posts granted
+/me/accounts:        {"data":[]}
+```
+
+Tudo concedido e zero páginas. **Não é permissão, é propriedade.** O app vive
+no portfólio empresarial `4461308494133875` e a página pertence ao portfólio
+"Demandou 1" (`1282862464907699`). Página dentro de portfólio fica atrás
+dessa cerca: o app só enxerga ativos do próprio portfólio, enquanto página
+que vive só no perfil pessoal aparece livremente no `/me/accounts`.
+
+Existem **três portfólios** na conta ("Demandou 1" com a página, um
+"Demandou" vazio, e o do app), o que precisa ser consolidado. Caminho em
+curso: remover a página do portfólio (reversível, não apaga a página) e
+reconectar. Plano B: mover a página para o portfólio do app.
+
+*Atualizado em 22/08/2026 por Claude Code.*
