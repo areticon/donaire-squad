@@ -2700,3 +2700,66 @@ curso: remover a página do portfólio (reversível, não apaga a página) e
 reconectar. Plano B: mover a página para o portfólio do app.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 32): as cinco redes conectadas e o domínio limpo
+
+Manhã de fechamento das duas frentes que estavam abertas desde a madrugada.
+
+### O Safe Browsing aprovou, e o domínio saiu da lista
+
+Verificado com a mesma consulta calibrada que diagnosticou o problema: o
+status do `demandou.com` foi de **3** (marcado, engenharia social) para **1**
+(sem dado adverso), sinalizadores todos falsos, apex e www. Cerca de **12
+horas** entre o pedido (21/08 às 21h50) e a aprovação.
+
+Detalhe operacional que vale para a próxima: o recibo do pedido é apenas um
+popup cinza, o painel continua exibindo o problema durante a análise, e o
+primeiro pedido do Bruno nunca chegou a entrar (sem recibo, sem e-mail).
+Conferir o recibo antes de fechar a tela.
+
+### O Facebook, enfim, e a causa real
+
+A cadeia inteira, em ordem, cada elo provado por log:
+
+1. Permissão solta no `scope` não funciona em app Business: exige
+   Configuração criada no painel, passada por `config_id`.
+2. A lista de permissões é filtrada pelo **caso de uso** do app (faltava
+   "Gerenciar tudo na sua Página").
+3. `auth_type=rerequest` é obrigatório, senão a Meta reaproveita concessão
+   anterior (inclusive de tentativa que falhou).
+4. Página e app precisam estar no **mesmo portfólio**; "Conectar ativos" não
+   oferece páginas entre portfólios diferentes.
+5. **`/me/accounts` não devolve página nenhuma nessa variante.** As páginas
+   saem por `/me/businesses` mais `owned_pages`/`client_pages`, e o token de
+   publicação exige uma terceira chamada, na leitura direta da página.
+6. **E `/me/businesses` exige `business_management`.** Sem ela o token não
+   enxerga portfólio nenhum: era o elo que faltava, e o log entregou com
+   `portfólios visíveis ao token: []`.
+
+Resultado no banco: página **Demandou** (`1282854214908524`), tipo
+organização, com token de publicação.
+
+### Estado das conexões (verificado no banco)
+
+| Rede | Conta | Token |
+|---|---|---|
+| LinkedIn | Bruno Donaire | expira 21/10 |
+| Instagram | prdonaire | expira 20/10 |
+| X | prbrunodonaire | com refresh |
+| Facebook | Demandou (página) | sem prazo |
+| YouTube | Bruno Donaire | com refresh |
+
+O YouTube conectou depois do aviso "O Google não verificou este app", que é
+esperado enquanto o escopo sensível não passar pela verificação. Card criado,
+com prioridade baixa justificada: os 10 primeiros clientes vivem em LinkedIn
+e Instagram, e a fila que destrava cliente pagante é o App Review da Meta.
+
+### O que falta na jornada
+
+Tudo antes do produto já foi validado: login social, portão de plano,
+checkout com cartão real, entrega de plano e créditos, e as cinco conexões.
+**Falta a parte que ainda nunca rodou:** treinar os agentes, gerar a
+campanha, aprovar, publicar o primeiro post real, conferir o extrato de
+créditos e cancelar pelo portal.
+
+*Atualizado em 22/08/2026 por Claude Code.*
