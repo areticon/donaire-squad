@@ -215,7 +215,7 @@ export function VideoUpload({
 
           {v && v.ok && (
             <div
-              className="rounded-xl border p-4 mb-4"
+              className="rounded-xl border p-4 mb-4 space-y-3"
               style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
             >
               <p className="text-sm text-[var(--text-muted)]">
@@ -225,10 +225,22 @@ export function VideoUpload({
                 </strong>{" "}
                 e render cerca de{" "}
                 <strong className="text-[var(--text-primary)]">
-                  {(v.creditos - Math.ceil(arquivo.duracao / 60) * 2) / 4} trechos
+                  {v.clipes} trechos
                 </strong>
-                , cada um virando post nas três redes.
+                , cada um virando post nas suas redes.
               </p>
+
+              {/*
+                Sugestão em vez de bloqueio (decisão do Bruno, 22/08). A versão
+                anterior recusava o vídeo por taxa de gravação alta; agora ele
+                sobe, custa mais, e a pessoa fica sabendo quanto economizaria
+                gravando mais leve. Quem grava na taxa recomendada não vê nada.
+              */}
+              {v.sugestao && (
+                <p className="text-sm text-orange-300 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+                  {v.sugestao}
+                </p>
+              )}
             </div>
           )}
 
