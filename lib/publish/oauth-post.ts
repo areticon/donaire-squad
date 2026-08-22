@@ -370,7 +370,10 @@ export async function executeOAuthPostPublish(
       // O corpo é repassado como FLUXO. A gravação do Bruno tem 850 MB, e
       // materializar isso na memória da função derruba a execução antes de o
       // primeiro byte chegar ao Google.
-      const blob = await get(post.imageUrl, { access: "private" });
+      const blob = await get(post.imageUrl, {
+    access: "private",
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
       if (!blob || blob.statusCode !== 200) {
         throw new Error("Não consegui ler o vídeo no storage.");
       }

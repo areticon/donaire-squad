@@ -1,0 +1,17 @@
+{
+  "name": "demandou-worker-video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Corta e prepara o video do cliente. Roda no Railway porque ffmpeg com arquivo de centenas de MB nao cabe em funcao serverless.",
+  "main": "src/index.mjs",
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.3.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

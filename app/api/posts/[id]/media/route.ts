@@ -65,7 +65,10 @@ export async function GET(
   // URL, mesmo do servidor, devolve 403, ao contrário do que o comentário
   // antigo do código afirmava. Foi essa suposição errada que fez a publicação
   // no YouTube falhar com "Não consegui baixar o vídeo (403)".
-  const blob = await get(post.imageUrl, { access: "private" });
+  const blob = await get(post.imageUrl, {
+    access: "private",
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
   if (!blob || blob.statusCode !== 200) {
     return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
   }
