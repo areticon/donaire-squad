@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { LogoFacebook, LogoYouTube } from "@/components/social/logos-redes";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { CheckCircle2, Share2, Trash2, ExternalLink, Building2, User, RefreshCw } from "lucide-react";
@@ -74,6 +75,20 @@ export function SocialConnectPanel({
     } else if (searchParams.get("instagram") === "success") {
       toast.success("Instagram conectado com sucesso!");
       refreshAccounts();
+    } else if (searchParams.get("facebook") === "success") {
+      toast.success("Facebook conectado com sucesso!");
+      refreshAccounts();
+    } else if (searchParams.get("facebook") === "error") {
+      toast.error(
+        searchParams.get("motivo") === "sem-pagina"
+          ? "Nenhuma página foi liberada. Na tela da Meta, escolha Editar configurações e marque a página."
+          : "Erro ao conectar Facebook. Tente novamente."
+      );
+    } else if (searchParams.get("youtube") === "success") {
+      toast.success("YouTube conectado com sucesso!");
+      refreshAccounts();
+    } else if (searchParams.get("youtube") === "error") {
+      toast.error("Erro ao conectar YouTube. A conta do Google precisa ter um canal.");
     } else if (searchParams.get("instagram") === "error") {
       toast.error("Erro ao conectar Instagram. A conta precisa ser profissional (Business ou Creator).");
     }
@@ -142,9 +157,16 @@ export function SocialConnectPanel({
   const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
   const twitterAccounts = accounts.filter((a) => a.platform === "twitter");
   const instagramAccounts = accounts.filter((a) => a.platform === "instagram");
+  // Facebook e YouTube entraram na etapa 1 do assistente em 22/08 mas não
+  // nesta tela, então não havia como gerenciar nem desconectar (achado do
+  // Bruno ao preparar a gravação).
+  const facebookAccounts = accounts.filter((a) => a.platform === "facebook");
+  const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
   const hasLinkedIn = linkedinAccounts.length > 0;
   const hasTwitter = twitterAccounts.length > 0;
   const hasInstagram = instagramAccounts.length > 0;
+  const hasFacebook = facebookAccounts.length > 0;
+  const hasYouTube = youtubeAccounts.length > 0;
 
   const linkedinPersonal = linkedinAccounts.filter((a) => a.accountType === "personal");
   const linkedinPages = linkedinAccounts.filter((a) => a.accountType === "organization");
@@ -337,6 +359,82 @@ export function SocialConnectPanel({
         ) : (
           <div className="space-y-2">
             {instagramAccounts.map((account) => (
+              <AccountRow
+                key={account.id}
+                account={account}
+                type="personal"
+                toggling={togglingId === account.id}
+                onToggle={toggleActive}
+                onDisconnect={disconnectAccount}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Facebook ─────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <LogoFacebook className="!w-7 !h-7" />
+            Facebook
+          </h2>
+          {!hasFacebook && (
+            <Button size="sm" variant="outline" asChild>
+              <a target="_blank" rel="noopener" href={`/api/social/facebook/connect?projectId=${project.id}`}>Conectar</a>
+            </Button>
+          )}
+        </div>
+
+        {!hasFacebook ? (
+          <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
+            <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Facebook não conectado</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              A publicação acontece na sua página, não no perfil pessoal
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {facebookAccounts.map((account) => (
+              <AccountRow
+                key={account.id}
+                account={account}
+                type="organization"
+                toggling={togglingId === account.id}
+                onToggle={toggleActive}
+                onDisconnect={disconnectAccount}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── YouTube ──────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <LogoYouTube className="!w-7 !h-7" />
+            YouTube
+          </h2>
+          {!hasYouTube && (
+            <Button size="sm" variant="outline" asChild>
+              <a target="_blank" rel="noopener" href={`/api/social/youtube/connect?projectId=${project.id}`}>Conectar</a>
+            </Button>
+          )}
+        </div>
+
+        {!hasYouTube ? (
+          <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
+            <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>YouTube não conectado</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              A conta do Google precisa ter um canal
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {youtubeAccounts.map((account) => (
               <AccountRow
                 key={account.id}
                 account={account}
