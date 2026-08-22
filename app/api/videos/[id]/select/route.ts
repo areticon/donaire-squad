@@ -55,6 +55,7 @@ export async function POST(
 
   const transcript = video.transcript as {
     paragraphs?: Array<{ text: string; start: number; end: number }>;
+    words?: Array<{ word: string; start: number; end: number; confidence: number }>;
   } | null;
 
   const paragrafos = transcript?.paragraphs ?? [];
@@ -67,7 +68,10 @@ export async function POST(
 
   try {
     const trechos = await selecionarTrechos(
-      paragrafos,
+      // As palavras vão junto porque é delas que sai o recorte da fala de cada
+      // trecho. Antes quem copiava a fala era o modelo, e isso respondia por
+      // quase toda a duração desta chamada.
+      { paragrafos, palavras: transcript?.words },
       video.durationSec ?? paragrafos[paragrafos.length - 1].end,
       {
         nicho: video.project.niche,
