@@ -3015,3 +3015,64 @@ de `keyterm` que já está documentada, e vai sair assim nos posts. Card aberto,
 não bloqueia a gravação.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 36): o YouTube era código inalcançável
+
+Continuação direta da parte 35, para destravar a gravação dos screencasts.
+
+### O bloqueio que ninguém tinha visto
+
+O roteiro do screencast do Google pede abrir um post de vídeo, publicar, e
+mostrar o vídeo no canal. **Esse caminho não existia.** A rota de aprovação do
+fluxo de vídeo grava `mediaType: "text"` fixo, e a varredura do projeto inteiro
+mostrou que **nenhum lugar cria post com `mediaType: "video"`**: só existe quem
+lê, no ramo do YouTube da publicação.
+
+Quem criava era o Veo, removido em 18/08. O ramo do YouTube virou código
+inalcançável naquele dia, e o defeito ficou invisível porque nunca foi
+exercitado. A submissão do Google, que o Bruno tinha como "só depende do vídeo",
+estava na verdade bloqueada por falta de produto.
+
+**Achado maior de carona: não existe recorte de vídeo no projeto.** Sem ffmpeg,
+sem dependência de mídia, nada. Os trechos são início, fim e texto. Ou seja, a
+decisão de rumo "o cliente grava e o squad edita" não tem implementação da parte
+de editar, e a promessa de shorts e reels é só promessa. Isso virou card
+bloqueante próprio, porque é decisão de rumo e não tarefa.
+
+### A saída, escolhida pelo Bruno (opção A)
+
+A gravação vai **inteira** para o canal do cliente, e os trechos escolhidos
+viram **capítulos** na descrição. Aproveita o mesmo trabalho de seleção de outra
+forma, em vez de prometer o que não existe. Quando o recorte existir, cada
+trecho vira um vídeo próprio e isto passa a ser um caso particular.
+
+É um post por gravação, não um por trecho: um por trecho mandaria o mesmo
+arquivo de centenas de megabytes várias vezes. Nasce como rascunho, porque quem
+publica é o cliente pelo quadro de posts, e a aprovação explícita por post é
+exatamente o que o Google exige demonstrar.
+
+Conferido com os cinco trechos reais da gravação de 27 minutos: **6 capítulos, o
+primeiro em `0:00`, o menor com 69s**. As três regras do YouTube (primeiro
+marcador em zero, mínimo de três, mínimo de 10s cada) fecham com folga.
+
+### Dois defeitos que só apareceriam na hora de gravar
+
+1. **`publishYouTubeVideo` carregava o vídeo inteiro num `ArrayBuffer`.** A
+   gravação do Bruno tem 850 MB, e isso derruba a função por memória antes de o
+   primeiro byte subir. Agora o corpo atravessa em fluxo, com `Content-Length`
+   declarado e `duplex: "half"`, que o fetch do Node exige quando o corpo é
+   fluxo e cuja ausência falha com erro que não menciona vídeo nenhum.
+2. **A rota de publicação não declarava `maxDuration`** e não estava coberta
+   pelo `functions` do `vercel.json` (que só pega `api/videos/**`), então caía
+   no padrão de segundos e teria morrido no primeiro envio.
+
+### Descoberta operacional: os previews da Vercel sempre falham
+
+Todo deploy de Preview falha em 7 segundos, e todo deploy de Produção passa.
+Causa no log: `Error: Connection url is empty`. O ambiente de Preview não tem
+`DIRECT_URL`, e o `prisma migrate deploy` do build morre antes de compilar.
+
+Isso é anterior a esta sessão e vale saber: **o check vermelho de todo PR é
+falso alarme**, e nenhum PR tem verificação real hoje. Card aberto.
+
+*Atualizado em 22/08/2026 por Claude Code.*
