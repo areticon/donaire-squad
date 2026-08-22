@@ -1,3 +1,11 @@
+// Publicar um vídeo no YouTube sobe o arquivo inteiro do cliente, e isso não
+// cabe no padrão de segundos da Vercel. A rota NÃO estava coberta pelo
+// `functions` do vercel.json (que só pega api/videos), então caía no padrão e
+// teria morrido no primeiro envio de vídeo. Achado em 22/08, junto com a
+// descoberta de que nenhum post de vídeo era criado em lugar nenhum, o que
+// mantinha o ramo do YouTube inalcançável e o defeito invisível.
+export const maxDuration = 800;
+
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";

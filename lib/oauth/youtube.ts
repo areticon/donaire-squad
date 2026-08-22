@@ -135,10 +135,23 @@ export async function getYouTubeChannel(accessToken: string): Promise<{
  * `privacyStatus` nasce "unlisted" por decisão: em app não verificado pelo
  * Google, vídeos enviados pela API ficam privados à força até a verificação
  * passar; "unlisted" documenta a intenção e vira efetivo depois dela.
+ *
+ * O corpo aceita FLUXO, e não só bytes na memória, porque a gravação de um
+ * cliente é grande de verdade: a do Bruno tem 850 MB, e carregar isso num
+ * ArrayBuffer derruba a função por memória antes de qualquer byte subir. Com
+ * fluxo, o arquivo atravessa sem nunca existir inteiro na memória.
+ *
+ * `contentLength` é obrigatório e não sai do fluxo: o upload resumable exige
+ * saber o tamanho na abertura da sessão, então quem chama precisa ter medido
+ * antes (no cabeçalho da resposta do storage, ou no tamanho do buffer).
  */
 export async function publishYouTubeVideo(
   accessToken: string,
-  video: { bytes: ArrayBuffer; mimeType: string },
+  video: {
+    body: ReadableStream<Uint8Array> | ArrayBuffer;
+    contentLength: number;
+    mimeType: string;
+  },
   meta: { title: string; description: string; privacyStatus?: "public" | "unlisted" | "private" }
 ): Promise<{ videoId: string; url: string }> {
   const start = await fetch(`${UPLOAD}?uploadType=resumable&part=snippet,status`, {
@@ -147,7 +160,7 @@ export async function publishYouTubeVideo(
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json; charset=UTF-8",
       "X-Upload-Content-Type": video.mimeType,
-      "X-Upload-Content-Length": String(video.bytes.byteLength),
+      "X-Upload-Content-Length": String(video.contentLength),
     },
     body: JSON.stringify({
       snippet: {
@@ -164,11 +177,19 @@ export async function publishYouTubeVideo(
 
   const up = await fetch(sessionUrl, {
     method: "PUT",
-    headers: { "Content-Type": video.mimeType },
-    body: video.bytes,
+    headers: {
+      "Content-Type": video.mimeType,
+      // Obrigatório quando o corpo é fluxo: sem isto o fetch tentaria
+      // "chunked", que o endpoint resumable do Google recusa.
+      "Content-Length": String(video.contentLength),
+    },
+    body: video.body,
+    // `duplex` é exigido pelo fetch do Node sempre que o corpo é um fluxo.
+    // Sem ele a chamada falha na hora, com erro que não menciona vídeo nenhum.
+    ...(video.body instanceof ArrayBuffer ? {} : { duplex: "half" }),
     // Vídeo de cliente pode ser grande; o timeout cobre o upload inteiro.
-    signal: AbortSignal.timeout(280_000),
-  });
+    signal: AbortSignal.timeout(600_000),
+  } as RequestInit);
   const text = await up.text();
   if (!up.ok) throw new Error(`YouTube upload failed (${up.status}): ${text.slice(0, 400)}`);
   const json = JSON.parse(text) as { id?: string };

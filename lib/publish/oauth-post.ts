@@ -349,19 +349,37 @@ export async function executeOAuthPostPublish(
       );
     }
 
-    let bytes: ArrayBuffer;
+    let corpo: ReadableStream<Uint8Array> | ArrayBuffer;
+    let tamanho: number;
     let mime = "video/mp4";
     if (post.imageUrl.startsWith("data:video")) {
       const [head, b64] = post.imageUrl.split(",", 2);
       mime = head.slice(5, head.indexOf(";")) || "video/mp4";
-      bytes = Buffer.from(b64, "base64").buffer as ArrayBuffer;
+      const buf = Buffer.from(b64, "base64");
+      corpo = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+      tamanho = buf.byteLength;
     } else if (post.imageUrl.startsWith("https://")) {
       // Blob privado é alcançável daqui (server-side); serviço externo não
       // alcança, mas quem baixa somos nós e quem sobe também.
-      const res = await fetch(post.imageUrl, { signal: AbortSignal.timeout(120_000) });
+      //
+      // O corpo é repassado como FLUXO, sem `arrayBuffer()`. A gravação do
+      // Bruno tem 850 MB, e materializar isso na memória da função derruba a
+      // execução antes de o primeiro byte chegar ao Google. Assim o arquivo
+      // atravessa sem nunca existir inteiro aqui dentro.
+      const res = await fetch(post.imageUrl, { signal: AbortSignal.timeout(600_000) });
       if (!res.ok) throw new Error(`Não consegui baixar o vídeo (${res.status})`);
       mime = res.headers.get("content-type") ?? "video/mp4";
-      bytes = await res.arrayBuffer();
+      const declarado = Number(res.headers.get("content-length"));
+      if (!declarado || !res.body) {
+        // Sem tamanho declarado não dá para abrir a sessão resumable, e sem
+        // corpo não há o que enviar. Falhar aqui, com o motivo, é melhor que
+        // abrir uma sessão que o Google vai recusar por tamanho errado.
+        throw new Error(
+          "O storage não informou o tamanho do vídeo, então não dá para enviar ao YouTube."
+        );
+      }
+      corpo = res.body;
+      tamanho = declarado;
     } else {
       throw new Error("Vídeo do post em formato não reconhecido");
     }
@@ -370,7 +388,7 @@ export async function executeOAuthPostPublish(
     const [primeiraLinha, ...resto] = bodyText.split("\n");
     const result = await publishYouTubeVideo(
       accessToken,
-      { bytes, mimeType: mime },
+      { body: corpo, contentLength: tamanho, mimeType: mime },
       {
         title: primeiraLinha || "Vídeo",
         description: resto.join("\n").trim() || bodyText,

@@ -57,8 +57,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // isso a criação do registro também é exposta na rota /api/videos.
       onUploadCompleted: async ({ blob, tokenPayload }) => {
         const { userId, projectId } = JSON.parse(tokenPayload ?? "{}");
-        await prisma.videoJob.create({
-          data: {
+        // `upsert` porque o navegador também registra, pela rota /api/videos, e
+        // os dois chegam quase juntos. Quem garante um registro só é a restrição
+        // única do banco, não a ordem de chegada.
+        await prisma.videoJob.upsert({
+          where: { projectId_blobUrl: { projectId, blobUrl: blob.url } },
+          update: {},
+          create: {
             projectId,
             userId,
             status: "uploaded",

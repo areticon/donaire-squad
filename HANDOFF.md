@@ -2906,3 +2906,173 @@ memória do Claude. A 16 Mbps o mesmo vídeo dava 3,1 GB; a 4 Mbps dá 811 MB co
 imagem igual.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 35): a falha silenciosa era a máquina de estados
+
+Sessão de conserto antes da gravação dos screencasts. Três bugs, e o primeiro
+era estrutural, não um descuido.
+
+### O dado que abriu a sessão
+
+Uma única linha de `video_selecao` em toda a história do projeto: 12.364 tokens
+de entrada, **exatamente 4.000** de saída. Saída redonda no teto é
+`stop_reason: max_tokens`, ou seja a tentativa que voltou vazia. Depois do teto
+subir para 16.000, **nenhuma linha nova foi gravada**. Como `recordUsage` roda
+depois do `messages.create` retornar, a ausência de linha prova que a chamada
+nunca voltou. Não é hipótese: é ausência de registro onde o registro seria
+obrigatório.
+
+### Premissa questionada, e metade dela caiu
+
+A hipótese que abriu o trabalho: o campo `transcricao`, em que o modelo copiava
+verbatim a fala de cada trecho, seria o custo dominante do tempo. Cortá-lo e
+recortar a fala em código (a transcrição com marcação por palavra já está no
+banco) deveria derrubar a saída para uns 800 tokens.
+
+**Medido contra a gravação real de 27 minutos: 121,1s de parede, `end_turn`, 5
+trechos, JSON válido. Entrada 12.358, saída 10.916.** A resposta em si caiu para
+menos de 1.000 tokens, como previsto, mas a saída total continuou alta porque
+**quase tudo é pensamento**. Quem manda no tempo é o pensamento, que escala com
+a entrada e não se corta tirando campo.
+
+Conclusão honesta: o conserto vale (179s de folga onde antes não voltava), mas
+pelo motivo errado. Gravação de 60 minutos dobra a entrada e volta para perto do
+teto. **A fila continua sendo o conserto de raiz**, e a premissa original do
+Bruno estava certa.
+
+De caminho, um defeito que só apareceu porque o recorte virou código: os tempos
+do modelo são aproximados e abriam o trecho no meio da frase ("faço? Eu coloco
+o Cloud..."). Enquanto ele copiava, fechava a frase sozinho e o defeito ficava
+escondido. `encaixarNaFrase` move as duas bordas para a frente, nunca para trás
+no início: aparar o fragmento custa palavras, recuar custa importar fala que o
+modelo não escolheu (medido: recuar trouxe 30 palavras de outro assunto). Sem
+fronteira dentro do limite, desiste e mantém a borda original.
+
+### A causa real do silêncio: `selecting` queria dizer duas coisas
+
+`selecting` significava **ao mesmo tempo** "pronto para selecionar" e
+"selecionando agora". Idem `writing`. Quando a Vercel derruba a função no teto,
+o `catch` nunca roda, então o status fica exatamente igual ao de quem nunca
+começou. Não era falta de log: os dois casos eram literalmente o mesmo valor.
+
+Separados agora:
+
+| espera | trabalho |
+|---|---|
+| uploaded, transcribed, selected, ready, failed | transcribing, selecting, writing |
+
+Todo estado de trabalho grava `startedAt` e tem prazo (`lib/media/video-state.ts`).
+Quem lê declara morto o que passou do prazo, porque trabalho derrubado pela
+plataforma não consegue se declarar morto. Enquanto não existe fila, **quem abre
+a tela é o relógio do sistema**.
+
+As três rotas passaram a tomar o trabalho de forma atômica (`updateMany` com o
+status no filtro), então dois cliques ou duas abas não viram dois trabalhos. E o
+`write` devolve o estado se a cobrança falhar por saldo, senão quem não tem
+crédito ficaria preso em "writing" até o prazo, vendo a plataforma escrever um
+post que ninguém está escrevendo.
+
+`maxDuration` foi de 300 para 800, o teto do Pro. **Confirmado com o Bruno que o
+plano é Pro**, o que resolve a contradição do HANDOFF (a nota de 18/08 falava em
+2 crons do plano gratuito). Pro também libera cron por minuto, que é o que
+torna a fila viável.
+
+### A tela agora anda sozinha
+
+Era o mais grave do relato. `/api/videos/status` responde enxuto a cada 4s
+enquanto houver trabalho, e só chama `router.refresh()` quando um status
+realmente muda, porque é o refresh que traz os posts inteiros.
+
+A tela de espera segue o desenho decidido: tempo correndo, três etapas nomeadas
+e frases girando dos próprios agentes. Sem barra de porcentagem e sem figuras
+públicas reais, os dois com o porquê no código para não serem desfeitos.
+
+O cronômetro vem do servidor: máquina com hora dessincronizada mostraria tempo
+negativo justamente na tela em que o cliente está ansioso.
+
+### Um vídeo, um registro
+
+O mesmo arquivo virava duas linhas. A checagem de idempotência existia, mas as
+duas rotas que registram um vídeo leem antes de qualquer uma escrever, então a
+checagem não decidia nada. **Medido: as duas linhas do vídeo de 22/08 nasceram
+com 33 milissegundos de diferença.** Checagem na aplicação não resolve corrida;
+restrição no banco resolve. Unique em `(projectId, blobUrl)`, `upsert` nos dois
+lados, e a migration limpa o que já entrou mantendo o registro que andou.
+Conferido com consulta seca antes de subir: apaga exatamente 1 linha, o
+fantasma, sem transcrição e sem crédito.
+
+### Armadilha do projeto que quase foi repetida
+
+`video-state.ts` nasceu importando o Prisma e sendo usado pela tela do cliente,
+o que mandaria o driver do banco para o bundle do navegador. O `PROJETO.md` já
+avisava. Separado: o módulo puro em `video-state.ts`, a varredura em
+`video-sweep.ts`.
+
+### Achado que não estava na lista
+
+Na transcrição do Bruno, **"Claude" virou "Cloud" cinco vezes**. É a armadilha
+de `keyterm` que já está documentada, e vai sair assim nos posts. Card aberto,
+não bloqueia a gravação.
+
+*Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 36): o YouTube era código inalcançável
+
+Continuação direta da parte 35, para destravar a gravação dos screencasts.
+
+### O bloqueio que ninguém tinha visto
+
+O roteiro do screencast do Google pede abrir um post de vídeo, publicar, e
+mostrar o vídeo no canal. **Esse caminho não existia.** A rota de aprovação do
+fluxo de vídeo grava `mediaType: "text"` fixo, e a varredura do projeto inteiro
+mostrou que **nenhum lugar cria post com `mediaType: "video"`**: só existe quem
+lê, no ramo do YouTube da publicação.
+
+Quem criava era o Veo, removido em 18/08. O ramo do YouTube virou código
+inalcançável naquele dia, e o defeito ficou invisível porque nunca foi
+exercitado. A submissão do Google, que o Bruno tinha como "só depende do vídeo",
+estava na verdade bloqueada por falta de produto.
+
+**Achado maior de carona: não existe recorte de vídeo no projeto.** Sem ffmpeg,
+sem dependência de mídia, nada. Os trechos são início, fim e texto. Ou seja, a
+decisão de rumo "o cliente grava e o squad edita" não tem implementação da parte
+de editar, e a promessa de shorts e reels é só promessa. Isso virou card
+bloqueante próprio, porque é decisão de rumo e não tarefa.
+
+### A saída, escolhida pelo Bruno (opção A)
+
+A gravação vai **inteira** para o canal do cliente, e os trechos escolhidos
+viram **capítulos** na descrição. Aproveita o mesmo trabalho de seleção de outra
+forma, em vez de prometer o que não existe. Quando o recorte existir, cada
+trecho vira um vídeo próprio e isto passa a ser um caso particular.
+
+É um post por gravação, não um por trecho: um por trecho mandaria o mesmo
+arquivo de centenas de megabytes várias vezes. Nasce como rascunho, porque quem
+publica é o cliente pelo quadro de posts, e a aprovação explícita por post é
+exatamente o que o Google exige demonstrar.
+
+Conferido com os cinco trechos reais da gravação de 27 minutos: **6 capítulos, o
+primeiro em `0:00`, o menor com 69s**. As três regras do YouTube (primeiro
+marcador em zero, mínimo de três, mínimo de 10s cada) fecham com folga.
+
+### Dois defeitos que só apareceriam na hora de gravar
+
+1. **`publishYouTubeVideo` carregava o vídeo inteiro num `ArrayBuffer`.** A
+   gravação do Bruno tem 850 MB, e isso derruba a função por memória antes de o
+   primeiro byte subir. Agora o corpo atravessa em fluxo, com `Content-Length`
+   declarado e `duplex: "half"`, que o fetch do Node exige quando o corpo é
+   fluxo e cuja ausência falha com erro que não menciona vídeo nenhum.
+2. **A rota de publicação não declarava `maxDuration`** e não estava coberta
+   pelo `functions` do `vercel.json` (que só pega `api/videos/**`), então caía
+   no padrão de segundos e teria morrido no primeiro envio.
+
+### Descoberta operacional: os previews da Vercel sempre falham
+
+Todo deploy de Preview falha em 7 segundos, e todo deploy de Produção passa.
+Causa no log: `Error: Connection url is empty`. O ambiente de Preview não tem
+`DIRECT_URL`, e o `prisma migrate deploy` do build morre antes de compilar.
+
+Isso é anterior a esta sessão e vale saber: **o check vermelho de todo PR é
+falso alarme**, e nenhum PR tem verificação real hoje. Card aberto.
+
+*Atualizado em 22/08/2026 por Claude Code.*

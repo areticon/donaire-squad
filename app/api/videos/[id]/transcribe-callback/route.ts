@@ -56,7 +56,9 @@ export async function POST(
     await prisma.videoJob.update({
       where: { id },
       data: {
-        status: "selecting",
+        status: "transcribed",
+        startedAt: null,
+        attempts: 0,
         durationSec: resultado.durationSec,
         error: null,
         transcript: {
@@ -75,7 +77,7 @@ export async function POST(
     const message = err instanceof Error ? err.message : "Falha ao processar";
     await prisma.videoJob.update({
       where: { id },
-      data: { status: "failed", error: message },
+      data: { status: "failed", startedAt: null, error: message },
     });
     // 200 de propósito mesmo em falha nossa: a Deepgram repetiria o callback, e
     // repetir não conserta transcrição ruim. O erro já está gravado no vídeo,

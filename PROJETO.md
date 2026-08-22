@@ -187,12 +187,32 @@ que o dobro do custo fixo atual de R$ 116.
   `stop_reason: max_tokens`. Regra da casa: nada abaixo de 4000 em chamada que
   faz trabalho de verdade. Subir o teto não encarece por si, porque o cobrado é
   o que o modelo gera.
+- **E o pensamento costuma ser a MAIOR parte da saída, não a resposta.** Medido
+  em 22/08 na seleção de trechos de um vídeo de 27 minutos: 10.916 tokens de
+  saída para menos de 1.000 tokens de JSON. Consequência prática: para prever
+  quanto tempo uma chamada leva, olhe o tamanho da ENTRADA, não o da resposta
+  esperada, e não conte com encolher a resposta para caber num teto de tempo.
+- **Não peça ao modelo que copie de volta o que você já tem.** A seleção pedia
+  a fala verbatim de cada trecho, que já estava no banco com marcação de tempo
+  por palavra. Recortar em código é instantâneo, de graça e mais fiel, porque
+  o modelo era só *instruído* a não editar. Cuidado ao fazer isso: os tempos
+  que ele devolve são aproximados e abrem o trecho no meio da frase, então o
+  recorte precisa encaixar em fronteira de frase.
 
 **Serverless**
 - **Função morta por timeout não consegue gravar erro.** A Vercel derruba no
   `maxDuration` e o `catch` nunca roda: o status fica como estava e a interface
   parece que nada aconteceu. Falha silenciosa por construção. Trabalho longo
   não pode viver dentro do ciclo da requisição.
+- **E o que torna esse silêncio indetectável é o vocabulário do estado.** Se
+  "pronto para rodar" e "rodando" forem o mesmo valor, os dois casos são
+  literalmente indistinguíveis, e nenhum log conserta isso. Estado de trabalho
+  precisa ser diferente de estado de espera, e precisa de `startedAt` com
+  prazo. Quem lê declara morto o que passou do prazo, porque o morto não fala.
+- **A Vercel aqui é Pro** (confirmado em 22/08): teto de função 800s e cron por
+  minuto. A nota antiga de "2 crons do plano gratuito" está errada.
+- Verificação de duplicata na aplicação não resolve corrida: as duas rotas leem
+  antes de qualquer uma escrever. Só restrição no banco resolve.
 
 **Interface**
 - **Retorno de integração precisa falar na tela.** Fluxo de OAuth que volta

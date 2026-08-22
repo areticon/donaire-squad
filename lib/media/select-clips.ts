@@ -1,5 +1,6 @@
 import { askClaude } from "@/lib/claude";
 import { clipesEstimados } from "@/lib/media/limits";
+import type { Word } from "@/lib/media/transcribe";
 
 /**
  * Passo 3: escolher os melhores trechos da gravação.
@@ -27,9 +28,19 @@ export type Trecho = {
   motivo: string;
   /** A ideia central em uma frase, que é o que o redator do Passo 4 recebe. */
   ideia: string;
-  /** O que a pessoa realmente falou ali, para o redator não inventar. */
+  /**
+   * O que a pessoa realmente falou ali, para o redator não inventar.
+   *
+   * **Preenchido em código, não pelo modelo.** Ver `recortarFala`: a
+   * transcrição com marcação de tempo por palavra já está no banco, então
+   * pedir ao modelo que copiasse era gastar token para reescrever o que já
+   * temos, e ainda por cima sem garantia de fidelidade.
+   */
   transcricao: string;
 };
+
+/** O que o modelo devolve. A fala entra depois, recortada por nós. */
+type TrechoBruto = Omit<Trecho, "transcricao">;
 
 const SISTEMA = `Você escolhe os melhores momentos de uma gravação crua.
 
@@ -60,7 +71,7 @@ Regras de escrita:
 - Nunca use travessão. Use vírgula, dois-pontos, ponto e vírgula ou parênteses.
 - Português do Brasil.
 - No campo "ideia", escreva a tese do trecho em uma frase, na voz da pessoa.
-- No campo "transcricao", copie o que ela falou naquele intervalo, sem editar.
+- NÃO copie a fala. Nós recortamos a fala pelos tempos que você devolver.
 
 Responda SOMENTE com JSON válido, sem cercas de código.
 
@@ -69,16 +80,24 @@ dentro de um campo de texto.** Se a fala tinha pausa, use ponto ou vírgula. JSO
 com quebra de linha crua dentro de string é inválido, e aí o trabalho inteiro
 falha.
 
-{"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"...","transcricao":"..."}]}`;
+{"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"..."}]}`;
 
 type Paragrafo = { text: string; start: number; end: number };
 
+/**
+ * O que já está gravado no banco sobre a fala. `palavras` é opcional porque
+ * transcrição antiga pode não ter sido salva com marcação por palavra; sem ela
+ * o recorte cai para fronteira de parágrafo, que é mais grosso mas funciona.
+ */
+export type FonteDaFala = { paragrafos: Paragrafo[]; palavras?: Word[] };
+
 export async function selecionarTrechos(
-  paragrafos: Paragrafo[],
+  fonte: FonteDaFala,
   duracaoSegundos: number,
   contexto?: { nicho?: string | null; publico?: string | null; voz?: string | null },
   usageCtx?: { projectId?: string; runId?: string }
 ): Promise<Trecho[]> {
+  const { paragrafos, palavras } = fonte;
   if (!paragrafos.length) {
     throw new Error("Transcrição sem parágrafos: nada para escolher.");
   }
@@ -103,10 +122,12 @@ export async function selecionarTrechos(
 Escolha até ${alvo} trechos, menos se não houver ${alvo} que prestem.
 
 ${blocos}`,
-    // 16000, e não 4000: a tarefa recebe a transcrição inteira e devolve até
-    // 15 trechos com texto para cada rede, então precisa de espaço para
-    // pensar E escrever. Com 4000 o modelo de um vídeo de 27 minutos gastou
-    // tudo pensando e voltou sem texto nenhum.
+    // 16000 é teto, não meta, e teto não custa: o cobrado é o que o modelo
+    // gera. Ele precisa ser alto porque o teto INCLUI o pensamento, e com 4000
+    // o vídeo de 27 minutos gastou tudo pensando e voltou sem texto nenhum
+    // (22/08). O que encolheu de verdade foi a resposta: sem o campo da fala
+    // copiada, a saída real caiu de uns 4.500 tokens para menos de 1.000, que
+    // é o que tira esta chamada da beirada do maxDuration da Vercel.
     { maxTokens: 16000, usage: { operation: "video_selecao", ...usageCtx } }
   );
 
@@ -123,13 +144,64 @@ ${blocos}`,
   const trechos = dados.trechos ?? [];
   if (!trechos.length) throw new Error("O agente não devolveu nenhum trecho.");
 
-  return sanear(trechos, duracaoSegundos);
+  // A fala entra aqui, recortada do que já está no banco. O modelo devolve só
+  // os tempos.
+  return sanear(trechos, duracaoSegundos).map((t) => ({
+    ...t,
+    transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras),
+  }));
+}
+
+/**
+ * Recorta o que foi falado entre dois instantes, a partir da transcrição que já
+ * está gravada.
+ *
+ * Existe para tirar do modelo o trabalho de copiar a fala de volta. Isso era a
+ * maior parte da resposta dele (cerca de 3.700 dos ~4.500 tokens de saída num
+ * vídeo de 27 minutos), e a chamada inteira vivia na beirada do teto de tempo
+ * da Vercel por causa disso. Recortar em código é instantâneo, de graça, e mais
+ * fiel: o modelo era só *instruído* a não editar, aqui ele não tem como.
+ *
+ * Prefere palavra a parágrafo porque parágrafo tem fronteira grossa e arrastaria
+ * fala de fora do trecho para dentro do post.
+ */
+export function recortarFala(
+  inicio: number,
+  fim: number,
+  paragrafos: Paragrafo[],
+  palavras?: Word[]
+): string {
+  if (palavras?.length) {
+    const primeira = palavras.findIndex((w) => w.end > inicio);
+    let ultima = -1;
+    for (let i = palavras.length - 1; i >= 0; i--) {
+      if (palavras[i].start < fim) {
+        ultima = i;
+        break;
+      }
+    }
+    if (primeira >= 0 && ultima >= primeira) {
+      const [a, b] = encaixarNaFrase(palavras, primeira, ultima);
+      return palavras
+        .slice(a, b + 1)
+        .map((w) => w.word)
+        .join(" ");
+    }
+  }
+
+  // Sem marcação por palavra, cai para parágrafo que encoste no intervalo.
+  // Parágrafo já vem fechado em frase, então não precisa de encaixe.
+  return paragrafos
+    .filter((p) => p.start < fim && p.end > inicio)
+    .map((p) => p.text)
+    .join(" ")
+    .trim();
 }
 
 /** Escapa quebra de linha crua dentro de string antes de parsear. */
-function parseTolerante(bruto: string): { trechos?: Trecho[] } {
+function parseTolerante(bruto: string): { trechos?: TrechoBruto[] } {
   try {
-    return JSON.parse(bruto) as { trechos?: Trecho[] };
+    return JSON.parse(bruto) as { trechos?: TrechoBruto[] };
   } catch {
     let dentro = false;
     let escapando = false;
@@ -152,8 +224,62 @@ function parseTolerante(bruto: string): { trechos?: Trecho[] } {
       }
       saida += ch;
     }
-    return JSON.parse(saida) as { trechos?: Trecho[] };
+    return JSON.parse(saida) as { trechos?: TrechoBruto[] };
   }
+}
+
+/**
+ * Encaixa as bordas do recorte em fronteira de frase.
+ *
+ * Necessário desde que a fala passou a ser recortada em código: o modelo devolve
+ * segundos aproximados, e cortar exatamente ali abre o trecho no meio da frase
+ * ("faço? Eu coloco o Cloud..."), o que o redator do Passo 4 recebe como se
+ * fosse a fala inteira. Enquanto era o modelo que copiava, ele fechava a frase
+ * sozinho e o defeito ficava escondido.
+ *
+ * As duas bordas se movem para o MESMO lado, para a frente, e a razão é
+ * assimétrica de propósito:
+ *
+ * - No início, aparar o fragmento da frase anterior custa algumas palavras.
+ *   Recuar até o começo dela custaria importar fala que o modelo não escolheu.
+ *   Medido na gravação de 27 minutos do Bruno: recuar trouxe trinta palavras
+ *   sobre outro assunto para dentro do trecho. Perder o pedaço é mais barato
+ *   que ganhar o pedaço errado.
+ * - No fim, avançar é a única direção que fecha a frase.
+ *
+ * O limite de palavras existe para o caso de a Deepgram não pontuar o trecho, e
+ * ao batê-lo o encaixe **desiste** e devolve a borda original, em vez de parar
+ * num lugar arbitrário. Um dos cinco trechos daquela gravação cai justamente
+ * numa parte de fala corrida, sem ponto final nenhum.
+ */
+const MAX_PALAVRAS_DE_ENCAIXE = 40;
+
+function fechaFrase(palavra: string): boolean {
+  return /[.!?…]["')\]]?$/.test(palavra);
+}
+
+function encaixarNaFrase(
+  palavras: Word[],
+  primeira: number,
+  ultima: number
+): [number, number] {
+  // Início: avança até a primeira palavra cuja anterior fecha frase.
+  let a = primeira;
+  let achouInicio = a === 0 || fechaFrase(palavras[a - 1].word);
+  while (!achouInicio && a < ultima && a - primeira < MAX_PALAVRAS_DE_ENCAIXE) {
+    a++;
+    achouInicio = fechaFrase(palavras[a - 1].word);
+  }
+
+  // Fim: avança até a primeira palavra que fecha frase.
+  let b = ultima;
+  let achouFim = fechaFrase(palavras[b].word);
+  while (!achouFim && b < palavras.length - 1 && b - ultima < MAX_PALAVRAS_DE_ENCAIXE) {
+    b++;
+    achouFim = fechaFrase(palavras[b].word);
+  }
+
+  return [achouInicio ? a : primeira, achouFim ? b : ultima];
 }
 
 /**
@@ -161,7 +287,10 @@ function parseTolerante(bruto: string): { trechos?: Trecho[] } {
  * sobreposto. Nada disso pode chegar ao Passo 4, porque vira corte errado e
  * post sobre a frase errada. A limpeza é barata e evita retrabalho caro.
  */
-export function sanear(trechos: Trecho[], duracaoSegundos: number): Trecho[] {
+export function sanear(
+  trechos: TrechoBruto[],
+  duracaoSegundos: number
+): TrechoBruto[] {
   const limpos = trechos
     .map((t) => ({
       ...t,
@@ -171,7 +300,7 @@ export function sanear(trechos: Trecho[], duracaoSegundos: number): Trecho[] {
     .filter((t) => t.fim - t.inicio >= 10)
     .sort((a, b) => a.inicio - b.inicio);
 
-  const semSobreposicao: Trecho[] = [];
+  const semSobreposicao: TrechoBruto[] = [];
   for (const t of limpos) {
     const anterior = semSobreposicao[semSobreposicao.length - 1];
     if (anterior && t.inicio < anterior.fim) {

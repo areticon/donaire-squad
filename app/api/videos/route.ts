@@ -42,9 +42,9 @@ export async function GET(req: NextRequest) {
  * Registra um vídeo já enviado ao storage.
  *
  * Existe porque o callback do storage (onUploadCompleted) não alcança o
- * localhost em desenvolvimento. Em produção o callback cria o registro e esta
- * rota é idempotente: se já existir registro para a mesma URL, devolve o que
- * está lá em vez de duplicar.
+ * localhost em desenvolvimento. Em produção as duas coisas acontecem, e é isso
+ * que produzia registro duplicado até 22/08: as duas escritas são concorrentes.
+ * A garantia de "um arquivo, um registro" está na restrição única do banco.
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -64,14 +64,15 @@ export async function POST(req: NextRequest) {
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
-  const existing = await prisma.videoJob.findFirst({
-    where: { projectId, blobUrl },
-    select: { id: true, status: true },
-  });
-  if (existing) return NextResponse.json({ video: existing, created: false });
-
-  const video = await prisma.videoJob.create({
-    data: {
+  // `upsert` e não "procura, e se não achar cria": as duas rotas que registram
+  // um vídeo (esta e o aviso do storage) leem antes de qualquer uma escrever,
+  // então a checagem na aplicação não decide nada e as duas criavam. Quem
+  // resolve corrida é a restrição no banco, e o `update` vazio significa
+  // exatamente "já existe, deixa como está".
+  const video = await prisma.videoJob.upsert({
+    where: { projectId_blobUrl: { projectId, blobUrl } },
+    update: {},
+    create: {
       projectId,
       userId,
       status: "uploaded",
@@ -82,5 +83,5 @@ export async function POST(req: NextRequest) {
     select: { id: true, status: true },
   });
 
-  return NextResponse.json({ video, created: true });
+  return NextResponse.json({ video });
 }
