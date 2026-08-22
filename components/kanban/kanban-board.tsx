@@ -49,8 +49,11 @@ interface Project {
 // qual nada publica sozinho.
 const STEPS = [
   { id: 0, icon: Share2, label: "Redes Sociais", color: "text-green-400" },
-  { id: 1, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
-  { id: 2, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  // Voz ANTES de Ideação, por correção do Bruno em 22/08: pedir ideia antes
+  // de conhecer voz, referências e temas de domínio produz ideia genérica,
+  // que não conecta com o universo de quem vai publicar.
+  { id: 1, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  { id: 2, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
   { id: 3, icon: Users, label: "Time de Agentes", color: "text-blue-400" },
   { id: 4, icon: Palette, label: "Design", color: "text-pink-400" },
   { id: 5, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
@@ -333,8 +336,8 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
         >
           {currentStep === 0 && <StepNetworks projectId={project.id} />}
-          {currentStep === 1 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
-          {currentStep === 2 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
+          {currentStep === 1 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
+          {currentStep === 2 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
           {currentStep === 3 && <StepAgents form={form} set={set} askAI={askAI} />}
           {currentStep === 4 && <StepDesign form={form} set={set} askAI={askAI} />}
           {currentStep === 5 && <StepSchedule form={form} set={set} askAI={askAI} />}
