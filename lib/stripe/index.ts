@@ -148,7 +148,10 @@ export async function createCheckoutSession(
     metadata: { userId },
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${returnUrl}?success=true&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${returnUrl}?canceled=true`,
+    // Cancelou o checkout, volta para a escolha de plano, não para o destino
+    // de sucesso: sem plano o dashboard redirecionaria de novo e a pessoa
+    // ficaria num pingue-pongue.
+    cancel_url: `${returnUrl.replace(/\/dashboard$/, "")}/planos?canceled=true`,
     subscription_data: {
       metadata: { userId },
       // O cartão é exigido no checkout mesmo durante o teste. Isso reduz abuso

@@ -37,14 +37,59 @@ export async function POST(req: NextRequest) {
             data: { stripeCustomerId: customerId },
           });
         }
+
+        // Corrida real, paga pelo primeiro assinante em 21/08: o
+        // customer.subscription.created chegou ANTES deste evento, procurou o
+        // usuário pelo stripeCustomerId que ainda não existia, atualizou zero
+        // linhas em silêncio e o plano nunca foi concedido. O dinheiro entrou
+        // e o produto não. Agora que o customerId está salvo, buscamos a
+        // assinatura da sessão e aplicamos o plano aqui também; a aplicação é
+        // idempotente (repõe para o teto, com guarda de ciclo), então os dois
+        // eventos podem rodar em qualquer ordem.
+        if (session.subscription) {
+          const sub = await getStripe().subscriptions.retrieve(
+            session.subscription as string
+          );
+          await aplicarPlanoDaAssinatura(sub);
+        }
         break;
       }
 
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
+        await aplicarPlanoDaAssinatura(sub);
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const sub = event.data.object as Stripe.Subscription;
         const customerId = sub.customer as string;
-        const priceId = sub.items.data[0]?.price?.id;
+        await prisma.user.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { plan: "free" },
+        });
+        break;
+      }
+    }
+  } catch (err) {
+    console.error("[stripe/webhook] handler error", err);
+    return NextResponse.json({ error: "Handler error" }, { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
+}
+
+/**
+ * Aplica plano e créditos a partir de uma assinatura do Stripe. Chamada pelos
+ * eventos de assinatura E pelo checkout.session.completed, porque a ordem de
+ * chegada dos dois não é garantida (ver o comentário no case do checkout).
+ * Idempotente: repõe para o teto do plano com guarda de início de ciclo.
+ */
+async function aplicarPlanoDaAssinatura(sub: Stripe.Subscription) {
+  {
+    const customerId = sub.customer as string;
+    const priceId = sub.items.data[0]?.price?.id;
 
         let plan = "free";
         // Starter foi descontinuado em 18/08/2026. A linha continua aqui só
@@ -103,23 +148,5 @@ export async function POST(req: NextRequest) {
             data: { plan: "free" },
           });
         }
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        const customerId = sub.customer as string;
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: customerId },
-          data: { plan: "free" },
-        });
-        break;
-      }
-    }
-  } catch (err) {
-    console.error("[stripe/webhook] handler error", err);
-    return NextResponse.json({ error: "Handler error" }, { status: 500 });
   }
-
-  return NextResponse.json({ received: true });
 }

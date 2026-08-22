@@ -37,7 +37,11 @@ export async function POST(req: NextRequest) {
     const user = await currentUser();
     const email = user?.email ?? "";
 
-    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/billing`;
+    // Quem acabou de pagar não quer ver tela de billing: o dashboard cria o
+    // primeiro projeto sozinho e derruba a pessoa na etapa 1 do assistente
+    // (pedido do Bruno no teste de jornada de 21/08). O cancelado continua
+    // voltando para /billing, onde estão os planos.
+    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
     const checkoutUrl = await createCheckoutSession(
       userId,
       email,
