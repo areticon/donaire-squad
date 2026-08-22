@@ -12,7 +12,18 @@ function createPrismaClient(): PrismaClient {
     process.env.DATABASE_URL ??
     "postgresql://postgres:placeholder@localhost:5432/postgres";
 
-  const adapter = new PrismaPg({ connectionString });
+  // Teto de conexões por instância. Sem isto o pool do node-postgres abre até
+  // 10 por função, e em serverless cada instância nova multiplica isso: em
+  // 21/08 a produção caiu inteira com "max clients reached in session mode",
+  // porque a DATABASE_URL estava na 5432 (modo sessão, teto 15) em vez da
+  // 6543 (modo transação, que multiplexa). Corrigida a porta, o teto baixo
+  // aqui é o cinto de segurança para a próxima vez.
+  const adapter = new PrismaPg({
+    connectionString,
+    max: 3,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new (PrismaClient as any)({ adapter });
 }
