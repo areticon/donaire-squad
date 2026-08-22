@@ -2531,3 +2531,41 @@ submissão; Facebook na segunda. Bloqueio duro continua sendo a verificação
 da empresa, retomada ~23/08.
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 29): o state_mismatch era o www
+
+O login social continuou falhando com `state_mismatch` mesmo em fluxo limpo
+no Edge, o que derrubou a explicação de página requentada. A sequência de
+diagnóstico que funcionou, na ordem:
+
+1. Simulação por fora (POST de início + callback com cookies de verdade):
+   validação de estado passa e morre só no código falso. Servidor são.
+2. Banco: nenhum usuário e nenhuma sessão novos. O fluxo dele morria mesmo
+   na validação.
+3. **Log de produção em tempo real** (o que decidiu): a tentativa das 22:02
+   caiu como "State mismatch: State not persisted correctly", ou seja, o
+   cookie de estado não voltou no callback.
+4. `curl -I https://www.demandou.com/sign-in`: **200**. O www servia o site
+   inteiro sem redirecionar.
+
+A mecânica: cookie é host-only. Quem navegava pelo www iniciava o login com o
+cookie de estado gravado em www.demandou.com, e o callback do provedor chega
+sempre no apex (`BETTER_AUTH_URL`), sem cookie nenhum. E o agravante que
+fechou tudo: o Safe Browsing marcou SÓ o apex, então a tela vermelha do
+Chrome empurrava o usuário exatamente para o host quebrado.
+
+Conserto: redirect 308 permanente de www para apex no `next.config.ts`,
+verificado no ar. De quebra consolida SEO.
+
+De caminho nesta mesma investigação: a mensagem de erro do login agora mostra
+o código cru do provedor (foi ela que entregou o `state_mismatch`), e dois
+falsos suspeitos foram descartados com dado: o escopo do LinkedIn (o conserto
+da parte 28 continua certo, mas não era ele) e o scanner de URL consumindo o
+estado (o estado é protegido pelo cookie justamente contra isso).
+
+A revisão do Safe Browsing foi enviada de verdade às ~21h50 (a primeira
+tentativa do Bruno nunca tinha entrado: sem recibo, sem e-mail; o recibo real
+é um popup cinza "solicitação de revisão enviada", e o painel NÃO muda depois
+dele, o que confunde).
+
+*Atualizado em 21/08/2026 por Claude Code.*

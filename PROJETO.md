@@ -132,6 +132,11 @@ que o dobro do custo fixo atual de R$ 116.
 - `returnTo` sem validação vira redirecionamento aberto pelo truque do
   userinfo: `https://demandou.com@site-de-golpe.com` mostra o nosso domínio e
   leva para outro.
+- **www e apex servindo o mesmo site quebra OAuth em silêncio.** Cookie é
+  host-only: quem navega pelo www inicia o login com o cookie no www e o
+  callback chega no apex sem cookie, dando state_mismatch. O redirect 308 de
+  www para apex no next.config elimina a classe. Diagnóstico veio do log de
+  produção em tempo real, não de suposição.
 
 **A regra geral que resume todas:** em integração com terceiro, medir o que
 voltou. Nunca confiar no código de status nem na instrução dada.
