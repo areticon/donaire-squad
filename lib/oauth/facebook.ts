@@ -32,9 +32,20 @@ export function getFacebookAuthUrl(redirectUri: string, state: string): string {
     client_id: process.env.FACEBOOK_APP_ID!,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: FACEBOOK_SCOPES,
     state,
   });
+
+  // App Business com "Login do Facebook para Empresas" NÃO aceita permissões
+  // soltas no parâmetro scope: o diálogo responde "Invalid Scopes" mesmo com
+  // os nomes oficiais (pago em 21/08 no teste do Bruno). Essa variante exige
+  // uma Configuração criada no painel do app, que empacota as permissões, e
+  // a URL passa só o id dela. O fallback por scope fica para o caso de app
+  // clássico (Consumer), que aceita.
+  if (process.env.FACEBOOK_CONFIG_ID) {
+    params.set("config_id", process.env.FACEBOOK_CONFIG_ID);
+  } else {
+    params.set("scope", FACEBOOK_SCOPES);
+  }
   return `${FB}/dialog/oauth?${params.toString()}`;
 }
 
