@@ -33,6 +33,25 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  /**
+   * www redireciona para o apex, permanente. Descoberto em 21/08 da pior
+   * forma: os dois hosts serviam o site inteiro, cookie e host-only, e o
+   * callback de OAuth chega sempre no apex (BETTER_AUTH_URL). Quem navegava
+   * pelo www iniciava o login com o cookie de estado gravado no www e o
+   * retorno caia no apex sem cookie nenhum: state_mismatch para qualquer
+   * provedor, e sessao "sumindo" depois de logar. Um host so elimina a
+   * classe inteira, e de quebra consolida o SEO.
+   */
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host" as const, value: "www.demandou.com" }],
+        destination: "https://demandou.com/:path*",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.vercel-storage.com" },
