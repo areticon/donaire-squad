@@ -152,9 +152,17 @@ que o dobro do custo fixo atual de R$ 116.
 - A lista de permissões disponíveis é filtrada pelo **caso de uso** do app.
 - Sem `auth_type=rerequest`, a Meta oferece "continuar com as configurações
   anteriores" e reaproveita concessão velha, inclusive de tentativa falha.
-- **Página dentro de portfólio empresarial não aparece em `/me/accounts`** se
-  o app estiver em outro portfólio. Permissão concedida e lista vazia é
-  sintoma de propriedade de ativo, não de permissão.
+- **No "Login do Facebook para Empresas", `/me/accounts` não devolve página
+  nenhuma.** O token é vinculado ao portfólio: as páginas saem por
+  `/me/businesses` e, em cada portfólio, `owned_pages` e `client_pages`; o
+  token de publicação da página exige uma terceira chamada, na leitura direta
+  dela. Provado no log com as três permissões de página "granted" e
+  `{"data":[]}` na resposta.
+- **E `/me/businesses` exige `business_management`.** Sem ela o token não
+  enxerga portfólio nenhum, e como as páginas só saem por lá, o app fica cego
+  para tudo mesmo com todas as permissões de página concedidas.
+- Página e app precisam estar no mesmo portfólio; vínculo entre portfólios
+  diferentes ("Conectar ativos") não é oferecido para páginas.
 
 **Interface**
 - **Retorno de integração precisa falar na tela.** Fluxo de OAuth que volta
