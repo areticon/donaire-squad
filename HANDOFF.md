@@ -2906,3 +2906,112 @@ memória do Claude. A 16 Mbps o mesmo vídeo dava 3,1 GB; a 4 Mbps dá 811 MB co
 imagem igual.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 35): a falha silenciosa era a máquina de estados
+
+Sessão de conserto antes da gravação dos screencasts. Três bugs, e o primeiro
+era estrutural, não um descuido.
+
+### O dado que abriu a sessão
+
+Uma única linha de `video_selecao` em toda a história do projeto: 12.364 tokens
+de entrada, **exatamente 4.000** de saída. Saída redonda no teto é
+`stop_reason: max_tokens`, ou seja a tentativa que voltou vazia. Depois do teto
+subir para 16.000, **nenhuma linha nova foi gravada**. Como `recordUsage` roda
+depois do `messages.create` retornar, a ausência de linha prova que a chamada
+nunca voltou. Não é hipótese: é ausência de registro onde o registro seria
+obrigatório.
+
+### Premissa questionada, e metade dela caiu
+
+A hipótese que abriu o trabalho: o campo `transcricao`, em que o modelo copiava
+verbatim a fala de cada trecho, seria o custo dominante do tempo. Cortá-lo e
+recortar a fala em código (a transcrição com marcação por palavra já está no
+banco) deveria derrubar a saída para uns 800 tokens.
+
+**Medido contra a gravação real de 27 minutos: 121,1s de parede, `end_turn`, 5
+trechos, JSON válido. Entrada 12.358, saída 10.916.** A resposta em si caiu para
+menos de 1.000 tokens, como previsto, mas a saída total continuou alta porque
+**quase tudo é pensamento**. Quem manda no tempo é o pensamento, que escala com
+a entrada e não se corta tirando campo.
+
+Conclusão honesta: o conserto vale (179s de folga onde antes não voltava), mas
+pelo motivo errado. Gravação de 60 minutos dobra a entrada e volta para perto do
+teto. **A fila continua sendo o conserto de raiz**, e a premissa original do
+Bruno estava certa.
+
+De caminho, um defeito que só apareceu porque o recorte virou código: os tempos
+do modelo são aproximados e abriam o trecho no meio da frase ("faço? Eu coloco
+o Cloud..."). Enquanto ele copiava, fechava a frase sozinho e o defeito ficava
+escondido. `encaixarNaFrase` move as duas bordas para a frente, nunca para trás
+no início: aparar o fragmento custa palavras, recuar custa importar fala que o
+modelo não escolheu (medido: recuar trouxe 30 palavras de outro assunto). Sem
+fronteira dentro do limite, desiste e mantém a borda original.
+
+### A causa real do silêncio: `selecting` queria dizer duas coisas
+
+`selecting` significava **ao mesmo tempo** "pronto para selecionar" e
+"selecionando agora". Idem `writing`. Quando a Vercel derruba a função no teto,
+o `catch` nunca roda, então o status fica exatamente igual ao de quem nunca
+começou. Não era falta de log: os dois casos eram literalmente o mesmo valor.
+
+Separados agora:
+
+| espera | trabalho |
+|---|---|
+| uploaded, transcribed, selected, ready, failed | transcribing, selecting, writing |
+
+Todo estado de trabalho grava `startedAt` e tem prazo (`lib/media/video-state.ts`).
+Quem lê declara morto o que passou do prazo, porque trabalho derrubado pela
+plataforma não consegue se declarar morto. Enquanto não existe fila, **quem abre
+a tela é o relógio do sistema**.
+
+As três rotas passaram a tomar o trabalho de forma atômica (`updateMany` com o
+status no filtro), então dois cliques ou duas abas não viram dois trabalhos. E o
+`write` devolve o estado se a cobrança falhar por saldo, senão quem não tem
+crédito ficaria preso em "writing" até o prazo, vendo a plataforma escrever um
+post que ninguém está escrevendo.
+
+`maxDuration` foi de 300 para 800, o teto do Pro. **Confirmado com o Bruno que o
+plano é Pro**, o que resolve a contradição do HANDOFF (a nota de 18/08 falava em
+2 crons do plano gratuito). Pro também libera cron por minuto, que é o que
+torna a fila viável.
+
+### A tela agora anda sozinha
+
+Era o mais grave do relato. `/api/videos/status` responde enxuto a cada 4s
+enquanto houver trabalho, e só chama `router.refresh()` quando um status
+realmente muda, porque é o refresh que traz os posts inteiros.
+
+A tela de espera segue o desenho decidido: tempo correndo, três etapas nomeadas
+e frases girando dos próprios agentes. Sem barra de porcentagem e sem figuras
+públicas reais, os dois com o porquê no código para não serem desfeitos.
+
+O cronômetro vem do servidor: máquina com hora dessincronizada mostraria tempo
+negativo justamente na tela em que o cliente está ansioso.
+
+### Um vídeo, um registro
+
+O mesmo arquivo virava duas linhas. A checagem de idempotência existia, mas as
+duas rotas que registram um vídeo leem antes de qualquer uma escrever, então a
+checagem não decidia nada. **Medido: as duas linhas do vídeo de 22/08 nasceram
+com 33 milissegundos de diferença.** Checagem na aplicação não resolve corrida;
+restrição no banco resolve. Unique em `(projectId, blobUrl)`, `upsert` nos dois
+lados, e a migration limpa o que já entrou mantendo o registro que andou.
+Conferido com consulta seca antes de subir: apaga exatamente 1 linha, o
+fantasma, sem transcrição e sem crédito.
+
+### Armadilha do projeto que quase foi repetida
+
+`video-state.ts` nasceu importando o Prisma e sendo usado pela tela do cliente,
+o que mandaria o driver do banco para o bundle do navegador. O `PROJETO.md` já
+avisava. Separado: o módulo puro em `video-state.ts`, a varredura em
+`video-sweep.ts`.
+
+### Achado que não estava na lista
+
+Na transcrição do Bruno, **"Claude" virou "Cloud" cinco vezes**. É a armadilha
+de `keyterm` que já está documentada, e vai sair assim nos posts. Card aberto,
+não bloqueia a gravação.
+
+*Atualizado em 22/08/2026 por Claude Code.*
