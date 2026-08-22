@@ -463,28 +463,59 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
                           {post.content}
                         </div>
 
-                        {/* Image */}
+                        {/* Mídia do post */}
                         {post.imageUrl ? (
                           <div className="space-y-2">
-                            <img
-                              src={post.imageUrl}
-                              alt="Post image"
-                              className="rounded-lg max-h-48 object-cover w-full"
-                            />
+                            {/* Vídeo ganha player, imagem ganha <img>, e os
+                                dois passam pela rota autenticada. Antes a URL
+                                crua do storage ia direto para o <img>: como o
+                                store é privado, o navegador levava 403 e a
+                                pessoa via um ícone de imagem quebrada escrito
+                                "Post image" sem entender que aquilo era o
+                                vídeo dela (relatado em 22/08). */}
+                            {post.mediaType === "video" ? (
+                              <video
+                                src={`/api/posts/${post.id}/media`}
+                                controls
+                                preload="metadata"
+                                className="rounded-lg max-h-64 w-full bg-black"
+                              />
+                            ) : (
+                              <img
+                                src={`/api/posts/${post.id}/media`}
+                                alt="Imagem do post"
+                                className="rounded-lg max-h-48 object-cover w-full"
+                              />
+                            )}
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 text-xs text-amber-400/80">
-                                <AlertCircle className="w-3 h-3 shrink-0" />
-                                <span>Salve a mídia antes de publicar — ela será removida do servidor após publicação</span>
-                              </div>
+                              {/* O aviso de mídia expirada vale para IMAGEM
+                                  GERADA, que é apagada do servidor depois de
+                                  publicada. Não vale para a gravação que a
+                                  própria pessoa enviou: ela tem o arquivo, e
+                                  mandar "salve antes de publicar" só confunde
+                                  (relatado em 22/08: "baixar o vídeo pra quê?
+                                  não entendi"). */}
+                              {post.mediaType === "video" ? (
+                                <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  <span>Esta é a sua gravação, do jeito que vai para o canal</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 text-xs text-amber-400/80">
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  <span>Salve a mídia antes de publicar, ela será removida do servidor após publicação</span>
+                                </div>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="shrink-0 text-xs h-7 px-2"
                                 onClick={() => {
+                                  // Pela rota autenticada, e não pela URL do
+                                  // storage: o store é privado e a URL crua
+                                  // responde 403 numa aba branca.
                                   const a = document.createElement("a");
-                                  a.href = post.imageUrl!;
-                                  const ext = post.mediaType === "video" ? "mp4" : "jpg";
-                                  a.download = `post-${post.id}.${ext}`;
+                                  a.href = `/api/posts/${post.id}/media?download=1`;
                                   a.click();
                                 }}
                               >

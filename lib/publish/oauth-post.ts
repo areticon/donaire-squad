@@ -34,6 +34,7 @@ import {
   publishFacebookImagePost,
   publishFacebookText,
 } from "@/lib/oauth/facebook";
+import { get } from "@vercel/blob";
 import { publishYouTubeVideo, refreshYouTubeToken } from "@/lib/oauth/youtube";
 
 /**
@@ -359,27 +360,23 @@ export async function executeOAuthPostPublish(
       corpo = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
       tamanho = buf.byteLength;
     } else if (post.imageUrl.startsWith("https://")) {
-      // Blob privado é alcançável daqui (server-side); serviço externo não
-      // alcança, mas quem baixa somos nós e quem sobe também.
+      // `get` do SDK do Blob, e NÃO `fetch` na URL.
       //
-      // O corpo é repassado como FLUXO, sem `arrayBuffer()`. A gravação do
-      // Bruno tem 850 MB, e materializar isso na memória da função derruba a
-      // execução antes de o primeiro byte chegar ao Google. Assim o arquivo
-      // atravessa sem nunca existir inteiro aqui dentro.
-      const res = await fetch(post.imageUrl, { signal: AbortSignal.timeout(600_000) });
-      if (!res.ok) throw new Error(`Não consegui baixar o vídeo (${res.status})`);
-      mime = res.headers.get("content-type") ?? "video/mp4";
-      const declarado = Number(res.headers.get("content-length"));
-      if (!declarado || !res.body) {
-        // Sem tamanho declarado não dá para abrir a sessão resumable, e sem
-        // corpo não há o que enviar. Falhar aqui, com o motivo, é melhor que
-        // abrir uma sessão que o Google vai recusar por tamanho errado.
-        throw new Error(
-          "O storage não informou o tamanho do vídeo, então não dá para enviar ao YouTube."
-        );
+      // O comentário que estava aqui afirmava que blob privado era alcançável
+      // do servidor por fetch comum. É falso, e custou uma tentativa de
+      // publicação em produção: "Não consegui baixar o vídeo (403)". Store
+      // privado exige o SDK, que assina a leitura com o token do ambiente.
+      //
+      // O corpo é repassado como FLUXO. A gravação do Bruno tem 850 MB, e
+      // materializar isso na memória da função derruba a execução antes de o
+      // primeiro byte chegar ao Google.
+      const blob = await get(post.imageUrl, { access: "private" });
+      if (!blob || blob.statusCode !== 200) {
+        throw new Error("Não consegui ler o vídeo no storage.");
       }
-      corpo = res.body;
-      tamanho = declarado;
+      mime = blob.blob.contentType || "video/mp4";
+      corpo = blob.stream;
+      tamanho = blob.blob.size;
     } else {
       throw new Error("Vídeo do post em formato não reconhecido");
     }
