@@ -177,6 +177,27 @@ export function VideoPanel({
     }
   }
 
+  async function prepararYouTube(videoId: string) {
+    setRodando(`yt-${videoId}`);
+    setErroDaAcao(null);
+    try {
+      const r = await fetch(`/api/videos/${videoId}/youtube`, { method: "POST" });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
+        return;
+      }
+      setErroDaAcao(
+        corpo.criado
+          ? "Rascunho criado. Ele está no quadro de posts, esperando a sua revisão."
+          : "Esta gravação já tinha um rascunho de YouTube no quadro de posts."
+      );
+      router.refresh();
+    } finally {
+      setRodando(null);
+    }
+  }
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <div>
@@ -305,6 +326,52 @@ export function VideoPanel({
                       {paraAprovar.filter((c) => c.posts).length} trechos viraram
                       post. Edite o que quiser antes de aprovar.
                     </p>
+
+                    {/* A gravação inteira, para o canal do cliente. Os trechos
+                        escolhidos viram capítulos, que é o mesmo trabalho de
+                        seleção aproveitado de outra forma. Fica separado dos
+                        trechos porque é UM envio por gravação, não um por
+                        trecho: o arquivo tem centenas de megabytes. */}
+                    <div
+                      className="rounded-xl border p-4 flex items-center justify-between gap-4"
+                      style={{
+                        background: "var(--bg-surface)",
+                        borderColor: "var(--border)",
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          Publicar a gravação no seu canal do YouTube
+                        </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          Vai inteira, com os {paraAprovar.length} momentos
+                          escolhidos virando capítulos. Cria um rascunho para
+                          você revisar e publicar no quadro de posts.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={rodando === `yt-${v.id}`}
+                        onClick={() => prepararYouTube(v.id)}
+                      >
+                        {rodando === `yt-${v.id}` ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Preparando
+                          </>
+                        ) : (
+                          "Preparar para o YouTube"
+                        )}
+                      </Button>
+                    </div>
                     {paraAprovar.map((c, i) => (
                       <ClipApproval
                         key={`${v.id}-${i}`}

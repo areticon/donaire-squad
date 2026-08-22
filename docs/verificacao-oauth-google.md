@@ -40,6 +40,19 @@ Registrados em 22/08:
 > identifying the connected channel, and there is no narrower read scope that
 > returns channel identity.
 
+## O que o vídeo publica, e por quê
+
+**A gravação inteira, com capítulos.** Não os trechos recortados, porque
+recorte de vídeo não existe no produto (verificado no código em 22/08: sem
+ffmpeg, sem dependência de mídia). Os trechos escolhidos pelo squad viram
+marcadores de capítulo na descrição, o que aproveita o mesmo trabalho de
+seleção e entrega valor real a quem assiste.
+
+Conferido com os cinco trechos reais de uma gravação de 27 minutos: 6
+capítulos, o primeiro em `0:00`, o menor com 69 segundos. As três regras do
+YouTube (primeiro marcador em zero, mínimo de três, mínimo de 10 segundos
+cada) fecham com folga.
+
 ## Roteiro do vídeo de demonstração
 
 Requisitos do Google: mostrar a tela de consentimento com os escopos, mostrar
@@ -51,10 +64,18 @@ não listado serve).
    com os dois escopos legíveis, e autorizar.
 3. De volta à plataforma, mostrar o **nome do canal conectado** aparecendo no
    painel. É o uso visível do `youtube.readonly`.
-4. Abrir um post de vídeo pronto, mostrar o cliente revisando e clicando em
-   **Publicar**. É o uso do `youtube.upload`, e mostra a aprovação explícita.
-5. Abrir o YouTube na conta e mostrar o vídeo publicado.
-6. Mostrar a desconexão, provando que o cliente controla o acesso.
+4. Na tela do vídeo, com a gravação já processada, clicar em **Preparar para o
+   YouTube**. Mostrar o aviso de que o rascunho foi criado.
+5. Abrir o quadro de posts, abrir o rascunho de YouTube, **mostrar a descrição
+   com os capítulos** e clicar em **Publicar**. É o uso do `youtube.upload`, e
+   mostra a aprovação explícita por post, que é o ponto que o Google quer ver.
+6. Abrir o YouTube na conta e mostrar o vídeo publicado, com os capítulos.
+7. Mostrar a desconexão, provando que o cliente controla o acesso.
+
+**Grave com um vídeo curto.** O envio atravessa a nossa função em fluxo, sem
+carregar na memória, mas quanto menor o arquivo menos tempo de gravação parada
+esperando barra de progresso. Um recorte de 1 a 2 minutos basta para demonstrar
+e evita um screencast com três minutos de espera no meio.
 
 ## Ressalva que o próprio painel levanta
 
