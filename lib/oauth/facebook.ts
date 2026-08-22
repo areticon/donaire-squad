@@ -106,8 +106,10 @@ export async function listFacebookPages(userToken: string): Promise<FacebookPage
   const res = await fetch(
     `${GRAPH}/me/accounts?fields=id,name,access_token,picture{url}&access_token=${userToken}`
   );
-  if (!res.ok) throw new Error(`Facebook pages list failed: ${await res.text()}`);
-  const json = (await res.json()) as {
+  const bruto = await res.text();
+  if (!res.ok) throw new Error(`Facebook pages list failed: ${bruto}`);
+
+  const json = JSON.parse(bruto) as {
     data?: Array<{
       id: string;
       name: string;
@@ -115,7 +117,26 @@ export async function listFacebookPages(userToken: string): Promise<FacebookPage
       picture?: { data?: { url?: string } };
     }>;
   };
-  return (json.data ?? []).map((p) => ({
+
+  const paginas = json.data ?? [];
+
+  // Lista vazia com consentimento concedido é o caso que custou horas em
+  // 21/08: o usuário aceitava tudo na tela da Meta e nada chegava aqui.
+  // Registrar o que a Meta REALMENTE devolveu (páginas e permissões
+  // efetivas) é a única forma de separar "usuário não liberou" de
+  // "permissão não foi concedida" de "conta não administra página".
+  if (paginas.length === 0) {
+    const perms = await fetch(
+      `${GRAPH}/me/permissions?access_token=${userToken}`
+    ).then((r) => r.text()).catch((e) => `falhou: ${e}`);
+    console.error(
+      "[facebook] /me/accounts veio vazio.",
+      "resposta:", bruto.slice(0, 500),
+      "| permissoes efetivas:", perms.slice(0, 500)
+    );
+  }
+
+  return paginas.map((p) => ({
     pageId: p.id,
     name: p.name,
     pageToken: p.access_token,
