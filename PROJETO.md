@@ -169,6 +169,17 @@ que o dobro do custo fixo atual de R$ 116.
 - Página e app precisam estar no mesmo portfólio; vínculo entre portfólios
   diferentes ("Conectar ativos") não é oferecido para páginas.
 
+**Storage**
+- **Token do Vercel Blob quebra em silêncio.** O store segue ativo e listando
+  arquivos antigos, e só o upload novo falha, com "Access denied, please
+  provide a valid token for this resource". Em 22/08 o token estava inválido
+  em produção e local, e o produto de vídeo ficou quebrado sem ninguém notar,
+  porque ninguém tinha subido vídeo desde a rotação. Testar token novo com
+  `vercel blob put --access private --rw-token <token>` ANTES de gravar em
+  qualquer ambiente: reproduz o erro exato do navegador em cinco segundos.
+- `vercel env pull` escreve `[SENSITIVE]` no lugar do valor de variáveis
+  sensíveis. Comparar tamanho de string puxada assim leva a diagnóstico errado.
+
 **Interface**
 - **Retorno de integração precisa falar na tela.** Fluxo de OAuth que volta
   calado transforma bug de 5 minutos em investigação de uma hora.
