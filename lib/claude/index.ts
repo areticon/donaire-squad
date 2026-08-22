@@ -7,7 +7,23 @@ function getClient(): Anthropic {
   if (!_client) {
     _client = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      timeout: 90_000, // 90s max per Claude call — 60s was too short for Roberto (Gemini 50s + Claude 70s)
+      // ATENÇÃO: teto global aqui é armadilha, e já cobrou caro.
+      //
+      // Ele era 90s, escolhido para as chamadas curtas do pipeline. Em 22/08 a
+      // seleção de trechos de um vídeo de 27 minutos passou a levar 121s
+      // MEDIDOS, e o SDK abortava aos 90, RETENTAVA duas vezes (o padrão dele)
+      // e devolvia "Request timed out." depois de uns 270s. Pior: cada
+      // tentativa abortada gera tokens do lado da Anthropic e é cobrada, mas
+      // não vira linha em `ai_usage`, porque a nossa gravação só acontece
+      // depois da resposta voltar. Ou seja, timeout aqui vira custo invisível.
+      //
+      // O teto real de cada chamada é decidido em `askClaude`, por tarefa.
+      // 300s é só a rede de segurança para quem não decidir nada.
+      timeout: 300_000,
+      // 1, e não 2: quando a causa é lentidão, retentar multiplica o tempo de
+      // parede e o custo sem aumentar a chance de sucesso. Erro que vale
+      // retentar (429, 5xx) continua sendo retentado uma vez.
+      maxRetries: 1,
     });
   }
   return _client;
@@ -46,6 +62,11 @@ export type AskOptions = {
   cachedPrefix?: string;
   /** Metadados para registrar consumo e custo no banco. */
   usage?: UsageContext;
+  /**
+   * Teto de tempo desta chamada. Sobe para tarefa pesada, desce para tarefa
+   * interativa em que esperar muito é pior que falhar rápido.
+   */
+  timeoutMs?: number;
 };
 
 function buildSystem(
@@ -81,12 +102,33 @@ export async function askClaude(
   // de trechos de um vídeo de 27 minutos em 22/08.
   const maxTokens = options?.maxTokens ?? 8192;
 
-  const message = await getClient().messages.create({
-    model,
-    max_tokens: maxTokens,
-    system: buildSystem(systemPrompt, options?.cachedPrefix),
-    messages: [{ role: "user", content: userMessage }],
-  });
+  // Teto de tempo proporcional ao trabalho pedido, com piso de 90s.
+  //
+  // A base vem de medição, não de chute: 10.916 tokens de saída levaram 121s
+  // numa seleção real, ou seja perto de 90 tokens por segundo. 25s por mil
+  // tokens dá quase três vezes de folga sobre isso, e o teto de 300s mantém o
+  // pior caso dentro do `maxDuration` de 800s das rotas de vídeo mesmo com a
+  // retentativa (300 + 300 = 600).
+  const timeoutMs =
+    options?.timeoutMs ?? Math.min(300_000, Math.max(90_000, (maxTokens / 1000) * 25_000));
+
+  // STREAMING, sempre. Não é para mostrar texto aparecendo: é porque resposta
+  // longa sem streaming vive presa a heurísticas de timeout de requisição
+  // HTTP, e foi assim que a seleção quebrou em produção. Com streaming os
+  // bytes chegam continuamente e a conexão nunca fica ociosa.
+  //
+  // `finalMessage()` devolve a mensagem completa, então o resto do código não
+  // muda: quem chama continua recebendo o texto pronto.
+  const stream = getClient().messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      system: buildSystem(systemPrompt, options?.cachedPrefix),
+      messages: [{ role: "user", content: userMessage }],
+    },
+    { timeout: timeoutMs }
+  );
+  const message = await stream.finalMessage();
 
   void recordUsage(model, message.usage, options?.usage);
 
