@@ -7,26 +7,26 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique
-  name            String?
-  emailVerified   Boolean   @default(false)
-  image           String?
-  plan            String    @default("free")
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String?
+  emailVerified    Boolean   @default(false)
+  image            String?
+  plan             String    @default("free")
   stripeCustomerId String?
   /// Saldo de créditos do ciclo atual. Reposto pelo webhook do Stripe a cada
   /// renovação. Nunca alterar direto: use lib/credits, que grava o extrato
   /// junto na mesma transação.
-  creditsBalance  Int       @default(0)
+  creditsBalance   Int       @default(0)
   /// Quando o saldo foi reposto pela última vez.
-  creditsResetAt  DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  creditsResetAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  projects        Project[]
-  sessions        Session[]
-  accounts        Account[]
-  creditTx        CreditTransaction[]
+  projects Project[]
+  sessions Session[]
+  accounts Account[]
+  creditTx CreditTransaction[]
 
   @@map("users")
 }
@@ -52,7 +52,7 @@ model CreditTransaction {
   note      String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([operation, refId])
@@ -69,7 +69,7 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("sessions")
@@ -90,7 +90,7 @@ model Account {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("accounts")
@@ -109,49 +109,49 @@ model Verification {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  description String?
-  status      String   @default("setup")
-  setupStep   Int      @default(0)
-  config      Json?
-  voice       String?
-  niche       String?
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  description    String?
+  status         String   @default("setup")
+  setupStep      Int      @default(0)
+  config         Json?
+  voice          String?
+  niche          String?
   targetAudience String?
   colorPalette   String?
   postFrequency  String?
   timezone       String   @default("America/Sao_Paulo")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  user          User              @relation(fields: [userId], references: [id])
-  agents        ProjectAgent[]
+  user           User             @relation(fields: [userId], references: [id])
+  agents         ProjectAgent[]
   socialAccounts SocialAccount[]
-  posts         Post[]
-  runs          PipelineRun[]
-  memories      ProjectMemory[]
-  cards         CampaignCard[]
-  contexts      ProjectContext[]
-  videoJobs     VideoJob[]
+  posts          Post[]
+  runs           PipelineRun[]
+  memories       ProjectMemory[]
+  cards          CampaignCard[]
+  contexts       ProjectContext[]
+  videoJobs      VideoJob[]
 
   @@map("projects")
 }
 
 model ProjectAgent {
-  id          String   @id @default(cuid())
-  projectId   String
-  agentId     String
-  name        String
-  role        String
-  persona     String?
-  style       String?
-  skills      Json     @default("[]")
-  tasks       Json     @default("[]")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  projectId String
+  agentId   String
+  name      String
+  role      String
+  persona   String?
+  style     String?
+  skills    Json     @default("[]")
+  tasks     Json     @default("[]")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("project_agents")
 }
@@ -161,7 +161,7 @@ model SocialAccount {
   projectId        String
   platform         String
   accountType      String    @default("personal") // "personal" | "organization"
-  organizationId   String?   // LinkedIn org numeric ID (only for accountType=organization)
+  organizationId   String? // LinkedIn org numeric ID (only for accountType=organization)
   blotatoAccountId String?
   displayName      String?
   username         String?
@@ -173,36 +173,36 @@ model SocialAccount {
   isActive         Boolean   @default(true)
   createdAt        DateTime  @default(now())
 
-  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  posts            Post[]
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  posts   Post[]
 
   @@unique([projectId, platform, platformUserId])
   @@map("social_accounts")
 }
 
 model Post {
-  id            String    @id @default(cuid())
-  projectId     String
-  socialAccountId String?
-  platform      String
-  content       String
-  imageUrl      String?   // base64 data URL — limpo após publicação
-  imagePrompt   String?   // prompt que gerou a mídia — guardado permanentemente
-  mediaType     String?   // "text" | "image" | "video" | "carousel" | "poll" | "article" | "thread"
-  metadata      Json?     // structured data: poll options, thread tweets, carousel slide count
-  dayOfWeek     Int?      // 1=Seg … 7=Dom
+  id                 String    @id @default(cuid())
+  projectId          String
+  socialAccountId    String?
+  platform           String
+  content            String
+  imageUrl           String? // base64 data URL — limpo após publicação
+  imagePrompt        String? // prompt que gerou a mídia — guardado permanentemente
+  mediaType          String? // "text" | "image" | "video" | "carousel" | "poll" | "article" | "thread"
+  metadata           Json? // structured data: poll options, thread tweets, carousel slide count
+  dayOfWeek          Int? // 1=Seg … 7=Dom
   // draft | scheduled | published | failed | rejected | cancelled
-  status        String    @default("draft")
-  scheduledAt   DateTime?
-  publishedAt   DateTime?
-  externalUrl   String?
-  externalId    String?
-  sourcesComment String?
+  status             String    @default("draft")
+  scheduledAt        DateTime?
+  publishedAt        DateTime?
+  externalUrl        String?
+  externalId         String?
+  sourcesComment     String?
   /// Token opaco para URL pública do artigo LinkedIn (/a/[token]) — texto completo fora do limite de post
-  articlePublicToken String? @unique
-  runId         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  articlePublicToken String?   @unique
+  runId              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
@@ -220,7 +220,7 @@ model PipelineRun {
   topic        String?
   campaignMode String    @default("weekly") // "single" | "weekly" | "biweekly" | "recurring"
   weekStart    DateTime? // Monday of the target week (ISO)
-  config       Json?     // { funnelStage, weeklySchedule, singleDay?, singlePlatform? }
+  config       Json? // { funnelStage, weeklySchedule, singleDay?, singlePlatform? }
   output       Json?
   logs         Json      @default("[]")
   startedAt    DateTime  @default(now())
@@ -228,9 +228,9 @@ model PipelineRun {
   archived     Boolean   @default(false)
   archivedAt   DateTime?
 
-  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  posts     Post[]
-  cards     CampaignCard[]
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  posts   Post[]
+  cards   CampaignCard[]
 
   @@map("pipeline_runs")
 }
@@ -246,7 +246,7 @@ model PostMetric {
   videoViews  Int      @default(0)
   syncedAt    DateTime @default(now())
 
-  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@map("post_metrics")
 }
@@ -257,37 +257,37 @@ model CampaignCard {
   projectId     String
   agentId       String
   agentName     String
-  dayOfWeek     Int       // 1=Mon … 7=Sun
+  dayOfWeek     Int // 1=Mon … 7=Sun
   scheduledDate DateTime? // actual calendar date of this card
-  cardType      String    // "research" | "post_linkedin" | "post_twitter" | "media" | "preview" | "publish"
-  mediaType     String?   // "image" | "video" | "carousel" | "poll" | "article" | "thread"
+  cardType      String // "research" | "post_linkedin" | "post_twitter" | "media" | "preview" | "publish"
+  mediaType     String? // "image" | "video" | "carousel" | "poll" | "article" | "thread"
   content       String?   @db.Text
   mediaUrl      String?   @db.Text
-  metadata      Json?     // structured data: poll options, thread tweets
+  metadata      Json? // structured data: poll options, thread tweets
   status        String    @default("pending")
   postId        String?
   chatHistory   Json      @default("[]")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  run         PipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  post        Post?       @relation(fields: [postId], references: [id])
+  run     PipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  post    Post?       @relation(fields: [postId], references: [id])
 
   @@map("campaign_cards")
 }
 
 model ProjectContext {
-  id          String   @id @default(cuid())
-  projectId   String
-  type        String   // "brand" | "references" | "regulations" | "editorial" | "examples"
-  title       String
-  rawInput    String   @db.Text
-  compiled    String   @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  projectId String
+  type      String // "brand" | "references" | "regulations" | "editorial" | "examples"
+  title     String
+  rawInput  String   @db.Text
+  compiled  String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("project_contexts")
 }
@@ -296,13 +296,30 @@ model ProjectContext {
 /// O arquivo em si mora no object storage; aqui ficam só os metadados, a
 /// transcrição e os cortes escolhidos. Vídeo nunca vai para dentro do Postgres.
 model VideoJob {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   projectId      String
   userId         String
-  /// uploaded, transcribing, selecting, writing, ready, failed
-  status         String   @default("uploaded")
+  /// Estados de ESPERA (a plataforma aguarda o cliente):    uploaded,
+  /// transcribed, selected, ready, failed.
+  /// Estados de TRABALHO (algo está rodando agora):          transcribing,
+  /// selecting, writing.
+  ///
+  /// A separação existe porque antes não existia: "selecting" queria dizer ao
+  /// mesmo tempo "pronto para selecionar" e "selecionando agora". Quando a
+  /// Vercel matava a função no teto de tempo, o `catch` nunca rodava e o status
+  /// ficava exatamente igual ao de quem nunca tinha começado. A falha era
+  /// invisível por construção. Ver `lib/media/video-state.ts`.
+  status         String    @default("uploaded")
+  /// Quando o estado de TRABALHO atual começou. Null em estado de espera.
+  /// É isto que permite declarar morto o trabalho que passou do prazo, que é o
+  /// único jeito de perceber uma função derrubada pela plataforma: ela não
+  /// consegue gravar o próprio erro.
+  startedAt      DateTime?
+  /// Quantas vezes a etapa atual foi tentada. Existe para a fila não repetir
+  /// para sempre um trabalho que falha sozinho.
+  attempts       Int       @default(0)
   originalName   String?
-  blobUrl        String   @db.Text
+  blobUrl        String    @db.Text
   sizeBytes      BigInt?
   durationSec    Int?
   /// Transcrição com marcação de tempo por palavra, vinda do Whisper.
@@ -310,15 +327,20 @@ model VideoJob {
   /// Trechos escolhidos pela IA: início, fim, motivo, título e os textos de
   /// cada rede gerados a partir dele.
   clips          Json?
-  error          String?  @db.Text
-  creditsCharged Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  error          String?   @db.Text
+  creditsCharged Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  /// Um arquivo, um registro, garantido pelo banco. A checagem na aplicação
+  /// não bastava: as duas rotas que criam o registro leem antes de qualquer
+  /// uma escrever, então a corrida passava por baixo dela.
+  @@unique([projectId, blobUrl])
   @@index([projectId, createdAt])
   @@index([status])
+  @@index([status, startedAt])
   @@map("video_jobs")
 }
 
@@ -354,7 +376,7 @@ model ProjectMemory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, type, key])
   @@map("project_memories")
@@ -369,15 +391,15 @@ model ProjectMemory {
 ///
 /// O IP nunca é gravado em texto puro: só o hash com sal do BETTER_AUTH_SECRET.
 model DemoRun {
-  id        String   @id @default(cuid())
-  ipHash    String
-  input     String   @db.Text
-  output    Json?
-  error     String?  @db.Text
-  costUsd   Float    @default(0)
+  id              String   @id @default(cuid())
+  ipHash          String
+  input           String   @db.Text
+  output          Json?
+  error           String?  @db.Text
+  costUsd         Float    @default(0)
   /// Preenchido se a pessoa criar conta depois, para medir a conversão da demo.
   convertedUserId String?
-  createdAt DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   @@index([ipHash, createdAt])
   @@index([createdAt])

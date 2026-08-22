@@ -1,21 +1,19 @@
 export const dynamic = "force-dynamic";
-// Selecionar trechos lê a transcrição inteira e escreve alguns milhares de
-// tokens. O padrão de 10s da Vercel não serve.
-// 300 é o teto do plano atual da Vercel. Estava em 120 e a função era MORTA
-// no meio com uma transcrição de 27 minutos: a plataforma derruba sem deixar
-// o código gravar erro nenhum, então o status voltava ao anterior e o botão
-// reaparecia como se nada tivesse acontecido. Falha silenciosa por
-// construção, e a pior de diagnosticar (achada no log em 22/08).
+// Medido em 22/08 contra a gravação real de 27 minutos: 121s de parede, com
+// 12.358 tokens de entrada e 10.916 de saída, quase toda ela de pensamento. O
+// pensamento escala com a entrada, então gravação de 60 minutos anda para perto
+// do dobro. 800 é o teto do plano Pro e existe para essa folga.
 //
-// 300 dá folga para o vídeo do Bruno, mas não é conserto definitivo: vídeo
-// mais longo volta a estourar. O conserto de raiz é tirar a seleção do
-// caminho da requisição, com card no planner.
-export const maxDuration = 300;
+// Isto NÃO conserta o timeout, apenas afasta. O que conserta o silêncio é o
+// estado explícito com prazo em `lib/media/video-state.ts`: função morta pela
+// plataforma não consegue gravar erro nenhum, e sem prazo ninguém percebe.
+export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { selecionarTrechos } from "@/lib/media/select-clips";
+import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 
 /**
  * Passo 3 do fluxo de vídeo: escolher os melhores trechos.
@@ -38,6 +36,7 @@ export async function POST(
     select: {
       id: true,
       status: true,
+      attempts: true,
       durationSec: true,
       transcript: true,
       projectId: true,
@@ -46,9 +45,16 @@ export async function POST(
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
-  if (video.status !== "selecting" && video.status !== "failed") {
+  if (video.status !== "transcribed" && video.status !== "failed") {
     return NextResponse.json(
       { error: `Vídeo está em "${video.status}". A seleção roda depois da transcrição.` },
+      { status: 409 }
+    );
+  }
+
+  if (video.attempts >= MAX_TENTATIVAS) {
+    return NextResponse.json(
+      { error: "Esta etapa já falhou vezes demais. Fale com o suporte antes de tentar outra vez." },
       { status: 409 }
     );
   }
@@ -63,6 +69,26 @@ export async function POST(
     return NextResponse.json(
       { error: "Esse vídeo não tem transcrição com parágrafos. Transcreva antes." },
       { status: 400 }
+    );
+  }
+
+  // Toma o trabalho para si antes de começar. O `status` no filtro é o que
+  // torna isto atômico: dois cliques seguidos, ou duas abas, e só um passa. E
+  // gravar `startedAt` agora é o que permite declarar isto morto depois, se a
+  // plataforma derrubar a função sem deixar o `catch` rodar.
+  const tomado = await prisma.videoJob.updateMany({
+    where: { id, status: video.status },
+    data: {
+      status: "selecting",
+      startedAt: new Date(),
+      attempts: { increment: 1 },
+      error: null,
+    },
+  });
+  if (tomado.count === 0) {
+    return NextResponse.json(
+      { error: "Outra aba já começou a escolher os trechos deste vídeo." },
+      { status: 409 }
     );
   }
 
@@ -83,7 +109,13 @@ export async function POST(
 
     await prisma.videoJob.update({
       where: { id },
-      data: { status: "writing", clips: trechos, error: null },
+      data: {
+        status: "selected",
+        startedAt: null,
+        attempts: 0,
+        clips: trechos,
+        error: null,
+      },
     });
 
     return NextResponse.json({
@@ -99,7 +131,7 @@ export async function POST(
     const message = err instanceof Error ? err.message : "Falha ao escolher os trechos";
     await prisma.videoJob.update({
       where: { id },
-      data: { status: "failed", error: message },
+      data: { status: "failed", startedAt: null, error: message },
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }

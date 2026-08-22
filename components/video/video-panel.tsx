@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { VideoUpload } from "@/components/video/video-upload";
+import { VideoEspera } from "@/components/video/video-espera";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ClipApproval, type TrechoComPosts } from "@/components/video/clip-approval";
+import {
+  estaTrabalhando,
+  proximaAcao,
+  MAX_TENTATIVAS,
+} from "@/lib/media/video-state";
 
 /**
  * A tela do produto de vídeo.
@@ -24,30 +30,33 @@ type Video = {
   error: string | null;
   creditsCharged: number;
   createdAt: string;
+  attempts: number;
+  temTranscricao: boolean;
+  temTrechos: boolean;
+  rodandoHaSegundos: number | null;
   clips: TrechoComPosts[] | null;
 };
 
-/**
- * O que cada status quer dizer para quem está esperando, e qual é a próxima
- * ação. O fluxo é encadeado a mão de propósito enquanto não existe fila: cada
- * etapa é uma chamada cara e demorada, e juntar tudo numa requisição só
- * estouraria o maxDuration da Vercel.
- */
-const ACOES: Record<string, { rotulo: string; rota: string } | undefined> = {
-  uploaded: { rotulo: "Transcrever", rota: "transcribe" },
-  selecting: { rotulo: "Escolher os trechos", rota: "select" },
-  writing: { rotulo: "Escrever os posts", rota: "write" },
-  failed: { rotulo: "Tentar de novo", rota: "transcribe" },
-};
-
-/** O que cada status quer dizer para quem está esperando. */
+/** O que cada estado quer dizer para quem está olhando. */
 const ESTADOS: Record<string, { rotulo: string; cor: string }> = {
-  uploaded: { rotulo: "Na fila", cor: "secondary" },
+  uploaded: { rotulo: "Pronto para transcrever", cor: "secondary" },
   transcribing: { rotulo: "Transcrevendo", cor: "warning" },
-  selecting: { rotulo: "Escolhendo os melhores trechos", cor: "warning" },
+  transcribed: { rotulo: "Pronto para escolher os trechos", cor: "secondary" },
+  selecting: { rotulo: "Escolhendo os trechos", cor: "warning" },
+  selected: { rotulo: "Pronto para escrever", cor: "secondary" },
   writing: { rotulo: "Escrevendo os posts", cor: "warning" },
   ready: { rotulo: "Pronto para aprovar", cor: "success" },
   failed: { rotulo: "Falhou", cor: "destructive" },
+};
+
+/** De quanto em quanto tempo perguntar ao servidor se algo mudou. */
+const INTERVALO_MS = 4000;
+
+type AoVivo = {
+  status: string;
+  error: string | null;
+  attempts: number;
+  rodandoHaSegundos: number | null;
 };
 
 export function VideoPanel({
@@ -59,14 +68,112 @@ export function VideoPanel({
 }) {
   const router = useRouter();
   const [rodando, setRodando] = useState<string | null>(null);
+  const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
+
+  /**
+   * O estado fresco vindo da consulta periódica, por vídeo.
+   *
+   * Fica separado da lista que veio do servidor porque as duas têm papéis
+   * diferentes: a consulta é leve e frequente (só status e tempo), e o
+   * `router.refresh()` é caro e só vale a pena quando algo realmente mudou,
+   * porque é ele que traz os posts prontos.
+   */
+  const [aoVivo, setAoVivo] = useState<Record<string, AoVivo>>({});
+
+  const combinados = videos.map((v) => {
+    const fresco = aoVivo[v.id];
+    return fresco ? { ...v, ...fresco } : v;
+  });
+
+  const algumTrabalhando = combinados.some((v) => estaTrabalhando(v.status));
+
+  // Guardado em ref para o efeito de consulta não precisar dele como
+  // dependência: incluí-lo faria o intervalo ser desmontado e remontado a cada
+  // resposta, e a consulta nunca aconteceria no ritmo pedido.
+  const statusConhecidos = useRef<Record<string, string>>({});
+  useEffect(() => {
+    statusConhecidos.current = Object.fromEntries(
+      combinados.map((v) => [v.id, v.status])
+    );
+  });
+
+  const consultar = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/videos/status?projectId=${projectId}`, {
+        cache: "no-store",
+      });
+      if (!r.ok) return;
+      const { videos: frescos } = (await r.json()) as {
+        videos: Array<AoVivo & { id: string }>;
+      };
+
+      setAoVivo(
+        Object.fromEntries(
+          frescos.map((v) => [
+            v.id,
+            {
+              status: v.status,
+              error: v.error,
+              attempts: v.attempts,
+              rodandoHaSegundos: v.rodandoHaSegundos,
+            },
+          ])
+        )
+      );
+
+      // Só recarrega do servidor quando um status realmente mudou. Sem esta
+      // guarda, seria um `router.refresh()` a cada quatro segundos para sempre,
+      // e cada um deles refaz a consulta pesada que traz os posts inteiros.
+      const mudou = frescos.some(
+        (v) =>
+          statusConhecidos.current[v.id] !== undefined &&
+          statusConhecidos.current[v.id] !== v.status
+      );
+      if (mudou) router.refresh();
+    } catch {
+      // Consulta que falha não vira erro na tela: a próxima tenta de novo em
+      // quatro segundos, e piscar "falha de rede" a cada oscilação de sinal
+      // assustaria mais do que ajudaria.
+    }
+  }, [projectId, router]);
+
+  useEffect(() => {
+    if (!algumTrabalhando) return;
+    // Uma consulta na hora, antes de entrar no ritmo. Sem ela o cronômetro da
+    // tela de espera ficaria escondido pelos primeiros quatro segundos, que é
+    // justamente quando a pessoa está olhando para ver se aconteceu alguma
+    // coisa.
+    consultar();
+    const t = setInterval(consultar, INTERVALO_MS);
+    return () => clearInterval(t);
+  }, [algumTrabalhando, consultar]);
 
   async function executar(videoId: string, rota: string) {
     setRodando(videoId);
+    setErroDaAcao(null);
+
+    // Consulta logo depois de disparar, sem esperar o trabalho terminar. É isto
+    // que faz a tela entrar em estado de espera na hora: a etapa longa pode
+    // levar minutos, e antes o botão ficava girando o tempo todo sem contar
+    // nada. A resposta do POST ainda é lida, mas só para mostrar erro imediato.
+    const disparo = fetch(`/api/videos/${videoId}/${rota}`, { method: "POST" });
+    setTimeout(consultar, 400);
+
     try {
-      await fetch(`/api/videos/${videoId}/${rota}`, { method: "POST" });
-      router.refresh();
+      const r = await disparo;
+      if (!r.ok) {
+        const corpo = await r.json().catch(() => ({}));
+        setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
+      }
+    } catch {
+      // A requisição pode cair antes de a etapa longa terminar (rede, aba
+      // trocada, proxy impaciente). Isso não quer dizer que o trabalho parou:
+      // quem sabe o estado de verdade é o banco, e a consulta periódica vai
+      // contar. Por isso aqui não se declara falha.
     } finally {
       setRodando(null);
+      consultar();
+      router.refresh();
     }
   }
 
@@ -87,7 +194,16 @@ export function VideoPanel({
 
       <VideoUpload projectId={projectId} onEnviado={() => router.refresh()} />
 
-      {videos.length > 0 && (
+      {erroDaAcao && (
+        <p
+          className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3 text-sm text-orange-300"
+          role="alert"
+        >
+          {erroDaAcao}
+        </p>
+      )}
+
+      {combinados.length > 0 && (
         <div>
           <h2
             className="text-sm font-semibold mb-3"
@@ -96,7 +212,7 @@ export function VideoPanel({
             Enviados
           </h2>
           <div className="space-y-2">
-            {videos.map((v) => {
+            {combinados.map((v) => {
               const estado = ESTADOS[v.status] ?? {
                 rotulo: v.status,
                 cor: "secondary",
@@ -104,6 +220,8 @@ export function VideoPanel({
               const paraAprovar = (v.clips ?? []).filter(
                 (c) => c.posts || c.erro
               );
+              const acao = proximaAcao(v);
+              const trabalhando = estaTrabalhando(v.status);
               return (
                 <div key={v.id} className="space-y-3">
                 <div
@@ -135,28 +253,44 @@ export function VideoPanel({
                     {v.error && (
                       <p className="text-sm text-orange-400 mt-1">{v.error}</p>
                     )}
+                    {v.status === "failed" && v.attempts >= MAX_TENTATIVAS && (
+                      <p className="text-sm text-orange-400 mt-1">
+                        Esta etapa já falhou {v.attempts} vezes. Repetir de novo
+                        provavelmente falharia igual, então o botão saiu do ar de
+                        propósito. Fale com o suporte.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <Badge variant={estado.cor as never}>{estado.rotulo}</Badge>
-                    {ACOES[v.status] && (
+                    {acao && (
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={rodando === v.id}
-                        onClick={() => executar(v.id, ACOES[v.status]!.rota)}
+                        onClick={() => executar(v.id, acao.rota)}
                       >
                         {rodando === v.id ? (
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            Rodando
+                            Começando
                           </>
                         ) : (
-                          ACOES[v.status]!.rotulo
+                          acao.rotulo
                         )}
                       </Button>
                     )}
                   </div>
                 </div>
+
+                {trabalhando && (
+                  <div className="pl-4">
+                    <VideoEspera
+                      status={v.status as "transcribing" | "selecting" | "writing"}
+                      rodandoHaSegundos={v.rodandoHaSegundos}
+                    />
+                  </div>
+                )}
 
                 {/* Os posts prontos ficam sob o vídeo que os gerou, e não em
                     uma tela separada, porque o cliente precisa lembrar de qual

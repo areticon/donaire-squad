@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic";
-// Transcrever um vídeo longo leva mais que o padrão de 10s da Vercel.
-export const maxDuration = 300;
+// Transcrever um vídeo longo leva mais que o padrão de 10s da Vercel. Só o
+// modo direto usa isto de verdade; o assíncrono devolve na hora e o resultado
+// chega por callback.
+export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
@@ -8,6 +10,7 @@ import { prisma } from "@/lib/db/prisma";
 import { transcribeBlob, transcribeBlobAsync, suportaCallback } from "@/lib/media/transcribe";
 import { assinarVideo } from "@/lib/media/callback-token";
 import { buildKeyterms } from "@/lib/media/keyterms";
+import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 
 export async function POST(
   _req: NextRequest,
@@ -24,6 +27,7 @@ export async function POST(
       id: true,
       blobUrl: true,
       status: true,
+      attempts: true,
       projectId: true,
       project: {
         select: {
@@ -41,15 +45,37 @@ export async function POST(
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
-  // Idempotência: se já transcreveu, não paga de novo.
+  // Idempotência: se já transcreveu, não paga de novo. Transcrição é a etapa
+  // que custa dinheiro de verdade por repetição, então a guarda importa mais
+  // aqui que nas outras.
   if (video.status !== "uploaded" && video.status !== "failed") {
     return NextResponse.json({ error: `Vídeo já está em "${video.status}"` }, { status: 409 });
   }
 
-  await prisma.videoJob.update({
-    where: { id },
-    data: { status: "transcribing", error: null },
+  if (video.attempts >= MAX_TENTATIVAS) {
+    return NextResponse.json(
+      { error: "Esta etapa já falhou vezes demais. Fale com o suporte antes de tentar outra vez." },
+      { status: 409 }
+    );
+  }
+
+  // Toma o trabalho de forma atômica: dois cliques não podem virar duas
+  // transcrições cobradas.
+  const tomado = await prisma.videoJob.updateMany({
+    where: { id, status: video.status },
+    data: {
+      status: "transcribing",
+      startedAt: new Date(),
+      attempts: { increment: 1 },
+      error: null,
+    },
   });
+  if (tomado.count === 0) {
+    return NextResponse.json(
+      { error: "Outra aba já começou a transcrever este vídeo." },
+      { status: 409 }
+    );
+  }
 
   try {
     const keyterms = buildKeyterms(
@@ -88,7 +114,9 @@ export async function POST(
     await prisma.videoJob.update({
       where: { id },
       data: {
-        status: "selecting",
+        status: "transcribed",
+        startedAt: null,
+        attempts: 0,
         durationSec: result.durationSec,
         transcript: {
           text: result.text,
@@ -116,7 +144,7 @@ export async function POST(
     const message = err instanceof Error ? err.message : "Falha na transcrição";
     await prisma.videoJob.update({
       where: { id },
-      data: { status: "failed", error: message },
+      data: { status: "failed", startedAt: null, error: message },
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }
