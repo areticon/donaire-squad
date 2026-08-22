@@ -46,6 +46,14 @@ export function getFacebookAuthUrl(redirectUri: string, state: string): string {
   } else {
     params.set("scope", FACEBOOK_SCOPES);
   }
+
+  // Força a tela de escolha de páginas em toda conexão. Sem isto a Meta
+  // oferece "continuar com suas configurações anteriores", e quem já tinha
+  // autorizado o app antes (inclusive numa tentativa que falhou) entra
+  // reaproveitando a concessão velha: o OAuth passa, /me/accounts volta
+  // vazio, e a conexão morre em silêncio. Pago em 21/08 no teste do Bruno.
+  params.set("auth_type", "rerequest");
+
   return `${FB}/dialog/oauth?${params.toString()}`;
 }
 

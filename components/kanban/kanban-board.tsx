@@ -785,10 +785,45 @@ function StepNetworks({ projectId }: { projectId: string }) {
       .then((r) => r.json())
       .then(setProntas)
       .catch(() => setProntas({}));
-    // If we just returned from OAuth, refresh accounts
+
+    // Retorno do OAuth. Antes só LinkedIn e X eram lidos aqui, então uma
+    // conexão de Facebook que falhava voltava para uma tela que não dizia
+    // absolutamente nada (achado do teste de 21/08: o Facebook não conectou
+    // e a plataforma ficou muda, com o Bruno recarregando à toa).
     const params = new URLSearchParams(window.location.search);
-    if (params.get("linkedin") === "success" || params.get("twitter") === "success") {
-      refresh();
+    const REDES = ["linkedin", "twitter", "instagram", "facebook", "youtube"] as const;
+    const NOMES: Record<string, string> = {
+      linkedin: "LinkedIn",
+      twitter: "X (Twitter)",
+      instagram: "Instagram",
+      facebook: "Facebook",
+      youtube: "YouTube",
+    };
+    const MOTIVOS: Record<string, string> = {
+      "sem-pagina":
+        "Nenhuma página foi liberada. Na tela da Meta, escolha Editar configurações e marque a página que o squad vai usar.",
+    };
+
+    for (const rede of REDES) {
+      const estado = params.get(rede);
+      if (!estado) continue;
+      if (estado === "success") {
+        toast.success(`${NOMES[rede]} conectado com sucesso.`);
+        refresh();
+      } else if (estado === "error") {
+        const motivo = params.get("motivo");
+        toast.error(
+          motivo && MOTIVOS[motivo]
+            ? MOTIVOS[motivo]
+            : `Não consegui conectar o ${NOMES[rede]}. Tente de novo.`,
+          { duration: 8000 }
+        );
+      }
+      // Limpa a URL para o aviso não repetir a cada recarga.
+      const limpa = new URL(window.location.href);
+      REDES.forEach((r) => limpa.searchParams.delete(r));
+      limpa.searchParams.delete("motivo");
+      window.history.replaceState({}, "", limpa.toString());
     }
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
