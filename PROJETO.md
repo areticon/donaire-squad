@@ -61,8 +61,13 @@ que o dobro do custo fixo atual de R$ 116.
    pelo desconto: põe a margem no caixa antes de a fatura do anúncio fechar.
    Anual à vista não tem multa de fidelidade, e não deve ter: o caixa já
    entrou, e cobrar sobre valor pago é cobrança dupla (art. 51 do CDC).
-5. **O cliente grava um vídeo por semana** e o squad transforma em conteúdo para
-   todas as redes. Inverte o hábito vendido.
+5. **O vídeo é o produto, não um formato entre outros** (decisão de 22/08, que
+   promove a decisão anterior). O cliente grava um vídeo e o squad edita e
+   transforma em conteúdo para todas as redes. Consequências práticas: a
+   verificação do app OAuth no Google deixa de ser item de backlog e vira
+   caminho crítico; a Ideação passa a ter dois caminhos (a partir de um vídeo,
+   gerando shorts e reels; ou a partir de um tema com IA, gerando imagem,
+   carrossel, artigo e texto); e a landing precisa contar essa história.
 7. **O onboarding começa conectando as redes** (decisão de 21/08). Conectar
    primeiro é o que permite ler o perfil e pré-preencher o resto, e o
    assistente **preenche os campos** em vez de sugerir em texto, sempre com
