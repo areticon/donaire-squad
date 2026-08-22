@@ -2495,3 +2495,39 @@ etapa 1. A revisão do Search Console segue pendente de pedido (a tela estava
 aberta na parte 25; confirmar se o botão "Solicitar revisão" foi clicado).
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 28): o login do LinkedIn quebrou, e a lição é sobre documentação
+
+O Bruno abriu a jornada e o login pelo LinkedIn falhou no primeiro clique. A
+causa era a mudança da parte 26 (escopo de publicar no login), mas não pelo
+motivo que o primeiro diagnóstico apontou, e o caminho até a causa real vale
+registro.
+
+1. O parâmetro `scopes` do signIn.social diz na própria descrição que
+   SUBSTITUI os escopos padrão. Primeiro conserto confiou nisso e passou a
+   lista completa. **A descrição está errada**: lido o fonte do
+   @better-auth/core, o provedor soma os padrões, depois soma o `scope` da
+   configuração, depois soma o `scopes` do clique, sem deduplicação. O
+   "conserto" saiu com escopos duplicados no pedido.
+2. Conserto real (commit da parte 28): `w_member_social` declarado uma vez
+   só, em `socialProviders.linkedin.scope` no `lib/auth/index.ts`, e o clique
+   não passa escopo nenhum. Verificado contra produção: o pedido sai
+   `profile email openid w_member_social`, o mesmo formato que o fluxo de
+   publicação já usa com sucesso no mesmo app do LinkedIn.
+3. De quebra: o formulário agora mostra o código cru do erro social
+   ("código: xyz"), porque o relato do Bruno chegou sem código e o
+   diagnóstico começou às cegas.
+
+**Armadilha nova para a lista: em biblioteca de terceiro, semântica de merge
+se confere no fonte, não na descrição do parâmetro.** A descrição mentiu duas
+vezes no mesmo dia (dizia "override", faz append).
+
+O dossiê do App Review da Meta ficou pronto nesta sessão:
+`docs/app-review-meta.md`, com roteiro do screencast, textos em inglês das
+duas permissões, instruções de teste e o desenho da conta reviewer@ (com
+plano direto no banco, porque o portão de plano mandaria um revisor sem
+plano para a página de preços). Escopo decidido: só Instagram na primeira
+submissão; Facebook na segunda. Bloqueio duro continua sendo a verificação
+da empresa, retomada ~23/08.
+
+*Atualizado em 21/08/2026 por Claude Code.*
