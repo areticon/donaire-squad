@@ -1,15 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 80 120" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-28 -8 120 120" fill="none">
   <!--
     Marca da demandou: monograma "dp" de "demandou, postou".
     O d e o p são a mesma forma girada 180 graus e compartilham a bola central,
     então a marca tem simetria rotacional exata.
 
+    Versão de 22/08/2026, a partir do desenho novo do Bruno: disco escuro de
+    fundo e contorno branco em volta do laranja, que dão peso à marca em
+    qualquer fundo. Vetorizada, não recortada do PNG: escala sem perda, pesa
+    poucos bytes e continua permitindo animar as duas metades.
+
+    Cores medidas do arquivo original do Bruno, não estimadas: laranja
+    #f36a22, disco #373643.
+
     Cor fixa aqui de propósito: este arquivo é servido como favicon e imagem
-    solta, contextos onde `currentColor` não tem de quem herdar. O componente
-    animado do header traz o mesmo desenho inline, aí sim herdando a cor.
-    O laranja da marca tem contraste suficiente no tema claro e no escuro.
+    solta, contextos onde `currentColor` não tem de quem herdar.
   -->
-  <circle cx="32" cy="52" r="26" stroke="#f97316" stroke-width="12" />
-  <rect x="52" y="4" width="12" height="56" rx="6" fill="#f97316" />
-  <rect x="0" y="44" width="12" height="56" rx="6" fill="#f97316" />
+
+  <!-- Disco de fundo -->
+  <circle cx="32" cy="52" r="60" fill="#373643" />
+
+  <!-- Contorno branco: as mesmas formas, mais largas, por baixo do laranja -->
+  <circle cx="32" cy="52" r="26" stroke="#ffffff" stroke-width="17" />
+  <rect x="49.5" y="1.5" width="17" height="61" rx="8.5" fill="#ffffff" />
+  <rect x="-2.5" y="41.5" width="17" height="61" rx="8.5" fill="#ffffff" />
+
+  <!-- A marca -->
+  <circle cx="32" cy="52" r="26" stroke="#f36a22" stroke-width="12" />
+  <rect x="52" y="4" width="12" height="56" rx="6" fill="#f36a22" />
+  <rect x="0" y="44" width="12" height="56" rx="6" fill="#f36a22" />
 </svg>

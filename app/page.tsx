@@ -9,7 +9,7 @@ import { Pricing } from "@/components/landing/pricing";
 import { Footer } from "@/components/landing/footer";
 
 export const metadata: Metadata = {
-  title: "demandou: quem não publica não existe para o mercado",
+  title: "demandou. postou. Você grava um vídeo, seu squad de IA publica.",
   description:
     "Apenas 1% publica toda semana, e esse 1% leva os clientes. Um time de agentes de IA pesquisa, escreve, desenha e publica nas suas redes. E soa como você.",
 };

@@ -17,12 +17,12 @@
   --bg-elevated: #313338;  /* área principal e cards elevados */
   --bg-card: #2b2d31;
   --bg-input: #1e1f22;     /* campo afunda em relação ao container */
-  --accent-orange: #f97316;
+  --accent-orange: #f36a22; /* laranja da marca, medido do logo */
   --accent-amber: #d97706;
   --text-primary: #dbdee1;
   --text-muted: #949ba4;
   --border: #3f4147;
-  --border-accent: #f97316;
+  --border-accent: #f36a22;
   --shadow: 0 1px 3px rgba(0,0,0,.32);
 
   /* Status badge colors */
@@ -44,7 +44,7 @@
   --bg-elevated: #f9f9f9;
   --bg-card: #ffffff;
   --bg-input: #f1f1f1;
-  --accent-orange: #ea6c0a;
+  --accent-orange: #e05f18; /* mesma familia, um tom abaixo para o tema claro */
   --accent-amber: #b45309;
   --text-primary: #111111;
   --text-muted: #6b7280;

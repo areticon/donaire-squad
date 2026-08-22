@@ -40,23 +40,32 @@ export function Hero() {
               <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
             </div>
 
+            {/*
+              O trocadilho é o nome do produto e a promessa inteira: você
+              demandou (falou o que precisa), ele postou (o conteúdo saiu
+              pronto). Recolocado no hero em 22/08 a pedido do Bruno, e o
+              subtítulo passou a contar a história do vídeo, que virou o
+              produto.
+            */}
             <h1 className="text-5xl lg:text-6xl font-black text-[var(--text-primary)] leading-[1.05] mb-6">
-              Quem não publica{" "}
-              <span className="text-orange-500">não existe</span> para o mercado
+              Você falou.{" "}
+              <span className="text-orange-500">demandou</span>.{" "}
+              <span className="text-orange-500">postou</span>.
             </h1>
 
             <p className="text-xl text-[var(--text-muted)] leading-relaxed mb-6 max-w-lg">
-              Autoridade é o que faz você cobrar mais caro, ser lembrado na hora
-              da indicação e receber a proposta sem disputar preço. Ela vem de
-              publicar com consistência, e é exatamente isso que 99% não
-              conseguem manter.
+              Quem não publica não existe para o mercado. E autoridade é o que
+              faz você cobrar mais caro, ser lembrado na hora da indicação e
+              receber a proposta sem disputar preço. Ela vem de publicar com
+              consistência, que é exatamente o que 99% não conseguem manter.
             </p>
 
             <p className="text-xl text-[var(--text-primary)] leading-relaxed mb-8 max-w-lg">
-              Um time de agentes pesquisa, escreve, desenha e publica enquanto
-              você trabalha.{" "}
+              Grave um vídeo falando do jeito que você fala. Seu squad de
+              agentes transcreve, corta, escreve, desenha e publica em todas as
+              suas redes.{" "}
               <span className="text-orange-400">E soa como você</span>, porque
-              eles estudam o seu perfil, o seu tom e os seus temas.
+              eles estudam o seu tom, os seus temas e as suas referências.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-12">
