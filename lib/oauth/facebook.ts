@@ -103,12 +103,37 @@ export interface FacebookPage {
  * negar as outras, e lista vazia aqui é isso, não erro.
  */
 export async function listFacebookPages(userToken: string): Promise<FacebookPage[]> {
+  const paginas = await viaMeAccounts(userToken);
+  if (paginas.length > 0) return paginas;
+
+  // Caminho do Login para Empresas. Descoberto em 22/08 depois de horas: com
+  // a variante Business, o token é vinculado ao PORTFÓLIO, e as páginas
+  // concedidas não saem por /me/accounts, que devolve {"data":[]} mesmo com
+  // pages_show_list, pages_read_engagement e pages_manage_posts todas
+  // "granted" (conferido no log de produção). Elas saem pelos portfólios do
+  // usuário, em owned_pages e client_pages.
+  const doPortfolio = await viaPortfolios(userToken);
+  if (doPortfolio.length > 0) return doPortfolio;
+
+  const perms = await fetch(`${GRAPH}/me/permissions?access_token=${userToken}`)
+    .then((r) => r.text())
+    .catch((e) => `falhou: ${e}`);
+  console.error(
+    "[facebook] nenhuma página por /me/accounts nem pelos portfólios.",
+    "permissões efetivas:", perms.slice(0, 400)
+  );
+  return [];
+}
+
+async function viaMeAccounts(userToken: string): Promise<FacebookPage[]> {
   const res = await fetch(
     `${GRAPH}/me/accounts?fields=id,name,access_token,picture{url}&access_token=${userToken}`
   );
   const bruto = await res.text();
-  if (!res.ok) throw new Error(`Facebook pages list failed: ${bruto}`);
-
+  if (!res.ok) {
+    console.error("[facebook] /me/accounts falhou:", bruto.slice(0, 300));
+    return [];
+  }
   const json = JSON.parse(bruto) as {
     data?: Array<{
       id: string;
@@ -117,31 +142,83 @@ export async function listFacebookPages(userToken: string): Promise<FacebookPage
       picture?: { data?: { url?: string } };
     }>;
   };
-
-  const paginas = json.data ?? [];
-
-  // Lista vazia com consentimento concedido é o caso que custou horas em
-  // 21/08: o usuário aceitava tudo na tela da Meta e nada chegava aqui.
-  // Registrar o que a Meta REALMENTE devolveu (páginas e permissões
-  // efetivas) é a única forma de separar "usuário não liberou" de
-  // "permissão não foi concedida" de "conta não administra página".
-  if (paginas.length === 0) {
-    const perms = await fetch(
-      `${GRAPH}/me/permissions?access_token=${userToken}`
-    ).then((r) => r.text()).catch((e) => `falhou: ${e}`);
-    console.error(
-      "[facebook] /me/accounts veio vazio.",
-      "resposta:", bruto.slice(0, 500),
-      "| permissoes efetivas:", perms.slice(0, 500)
-    );
-  }
-
-  return paginas.map((p) => ({
+  return (json.data ?? []).map((p) => ({
     pageId: p.id,
     name: p.name,
     pageToken: p.access_token,
     avatarUrl: p.picture?.data?.url ?? null,
   }));
+}
+
+/**
+ * Páginas alcançáveis pelos portfólios empresariais do usuário. O token de
+ * página vem numa segunda chamada, por página: o campo access_token não vem
+ * nas listas de portfólio, só na leitura direta da página.
+ */
+async function viaPortfolios(userToken: string): Promise<FacebookPage[]> {
+  const negocios = await fetch(
+    `${GRAPH}/me/businesses?fields=id,name&access_token=${userToken}`
+  )
+    .then((r) => r.json())
+    .catch(() => null);
+
+  const lista = (negocios?.data ?? []) as Array<{ id: string; name: string }>;
+  console.error(
+    "[facebook] portfólios visíveis ao token:",
+    JSON.stringify(lista).slice(0, 300)
+  );
+
+  const encontradas: FacebookPage[] = [];
+  const vistas = new Set<string>();
+
+  for (const negocio of lista) {
+    for (const rel of ["owned_pages", "client_pages"]) {
+      const r = await fetch(
+        `${GRAPH}/${negocio.id}/${rel}?fields=id,name,picture{url}&access_token=${userToken}`
+      )
+        .then((x) => x.json())
+        .catch(() => null);
+
+      const itens = (r?.data ?? []) as Array<{
+        id: string;
+        name: string;
+        picture?: { data?: { url?: string } };
+      }>;
+      if (r?.error) {
+        console.error(`[facebook] ${rel} de ${negocio.id}:`, JSON.stringify(r.error).slice(0, 200));
+      }
+
+      for (const pag of itens) {
+        if (vistas.has(pag.id)) continue;
+        vistas.add(pag.id);
+
+        // O token da página só vem na leitura direta dela.
+        const det = await fetch(
+          `${GRAPH}/${pag.id}?fields=access_token,name,picture{url}&access_token=${userToken}`
+        )
+          .then((x) => x.json())
+          .catch(() => null);
+
+        if (!det?.access_token) {
+          console.error(
+            `[facebook] página ${pag.id} (${pag.name}) sem access_token:`,
+            JSON.stringify(det?.error ?? det).slice(0, 200)
+          );
+          continue;
+        }
+
+        encontradas.push({
+          pageId: pag.id,
+          name: det.name ?? pag.name,
+          pageToken: det.access_token,
+          avatarUrl:
+            det.picture?.data?.url ?? pag.picture?.data?.url ?? null,
+        });
+      }
+    }
+  }
+
+  return encontradas;
 }
 
 async function fbPost(
