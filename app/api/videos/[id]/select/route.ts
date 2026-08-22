@@ -1,7 +1,16 @@
 export const dynamic = "force-dynamic";
 // Selecionar trechos lê a transcrição inteira e escreve alguns milhares de
 // tokens. O padrão de 10s da Vercel não serve.
-export const maxDuration = 120;
+// 300 é o teto do plano atual da Vercel. Estava em 120 e a função era MORTA
+// no meio com uma transcrição de 27 minutos: a plataforma derruba sem deixar
+// o código gravar erro nenhum, então o status voltava ao anterior e o botão
+// reaparecia como se nada tivesse acontecido. Falha silenciosa por
+// construção, e a pior de diagnosticar (achada no log em 22/08).
+//
+// 300 dá folga para o vídeo do Bruno, mas não é conserto definitivo: vídeo
+// mais longo volta a estourar. O conserto de raiz é tirar a seleção do
+// caminho da requisição, com card no planner.
+export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
