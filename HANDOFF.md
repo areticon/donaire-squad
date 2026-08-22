@@ -2763,3 +2763,64 @@ campanha, aprovar, publicar o primeiro post real, conferir o extrato de
 créditos e cancelar pelo portal.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 33): vídeo vira o produto, marca nova e a landing certa
+
+Sessão de ajuste, sem teste, a pedido do Bruno ("deixa a plataforma pronta,
+só então volto ao teste").
+
+### A virada de rumo
+
+**Vídeo deixou de ser um formato entre outros e virou o produto.** O cliente
+grava, o squad edita e distribui. Consequências registradas no `PROJETO.md`:
+a verificação do app OAuth do Google saiu do backlog e virou bloqueante (sem
+ela todo cliente vê "app não verificado" ao conectar o YouTube), a Ideação
+ganhou dois caminhos, e a landing precisou contar outra história.
+
+### Correção de sequência do assistente
+
+**Voz & Estilo passou a vir antes da Ideação.** Erro óbvio depois de
+apontado: pedir ideia antes de conhecer voz, referências e temas de domínio
+produz ideia genérica. Os passos são renderizados por índice, então a troca
+foi de rótulo e componente na mesma posição, sem perda de progresso.
+
+### Premissa corrigida: onde mora a escolha vídeo ou tema
+
+O Bruno pediu a escolha "na tela da Ideação". A Ideação do assistente roda
+uma vez por projeto, então subir vídeo ali seria um vídeo na vida do projeto.
+O que se repete toda semana é a campanha, e é lá que os formatos já vivem.
+Apresentado com a razão, ele escolheu a campanha.
+
+Implementado como tela **antes** do passo 0 do modal, não como passo novo:
+inserir índice renumeraria todos os `step === N` de um arquivo de 1300 linhas.
+Escolher vídeo leva ao fluxo que já existe em página própria; escolher tema
+segue o fluxo atual. E o fim do assistente agora abre essa escolha sozinho
+(`?novaCampanha=1`), em vez de largar quem ativou num quadro vazio.
+
+### Marca nova
+
+O Bruno desenhou uma versão com disco escuro e contorno branco. Aplicada como
+**vetor**, não como recorte do PNG: escala, pesa pouco e mantém a animação das
+duas metades. Cores **medidas** do arquivo dele, não estimadas: laranja
+`#f36a22`, disco `#373643`. O `--accent-orange` da interface passou de
+`#f97316` para o laranja da marca, porque quase igual parece defeito.
+
+**Descoberta de caminho:** os favicons ainda eram da marca ANTIGA (um balão de
+fala), nunca atualizados na troca de 21/08. Agora alinhados.
+
+### Landing
+
+O trocadilho "demandou. postou." voltou ao hero e virou o título das páginas.
+A seção "Como funciona" foi reescrita para o fluxo real em cinco etapas, na
+mesma ordem do assistente, com os logos oficiais das cinco redes reusados do
+componente do app. Antes ela descrevia "agentes que escrevem posts" e não
+mostrava rede nenhuma.
+
+### Estado do Google OAuth (verificado no painel)
+
+App **em produção**, tipo externo, 1 de 100 usuários. O aviso de app não
+verificado aparece porque os escopos sensíveis não foram aprovados, e existe
+uma "Central de verificação" no painel que é por onde se submete. Não há
+submissão em andamento.
+
+*Atualizado em 22/08/2026 por Claude Code.*
