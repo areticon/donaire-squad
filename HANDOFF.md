@@ -2569,3 +2569,52 @@ tentativa do Bruno nunca tinha entrado: sem recibo, sem e-mail; o recibo real
 dele, o que confunde).
 
 *Atualizado em 21/08/2026 por Claude Code.*
+
+## Sessão 21/08/2026 (parte 30): o primeiro pagamento real, e o que ele ensinou
+
+O Bruno completou o caminho até o pagamento: LinkedIn (funcionando após o
+fix do www), portão de plano, checkout do Stripe com cartão real, assinatura
+`trialing` criada. E três problemas apareceram do lado de cá.
+
+### 1. O dinheiro entrou e o produto não (corrida do webhook)
+
+A assinatura existia no Stripe, o `stripeCustomerId` estava salvo, e o plano
+continuava `free` com 0 créditos. Causa provada pelos dados: o
+`customer.subscription.created` chegou ANTES do `checkout.session.completed`,
+procurou o usuário pelo customerId que ainda não tinha sido salvo, atualizou
+zero linhas em silêncio, e o evento que salvava o customerId chegou tarde.
+
+- **Destravamento imediato**: update inócuo de metadados na assinatura
+  re-disparou o `subscription.updated`, e o webhook aplicou plano pro + 1.800
+  créditos (verificado no banco).
+- **Conserto de raiz** (commit da parte 30): a aplicação de plano virou
+  função compartilhada chamada pelos eventos de assinatura E pelo
+  `checkout.session.completed` (que agora busca a assinatura da sessão).
+  Idempotente com a guarda de ciclo, então a ordem dos eventos deixou de
+  importar.
+
+### 2. Quem paga caía na tela de billing
+
+`success_url` apontava para `/billing`. Agora aponta para `/dashboard`, que
+cria o primeiro projeto sozinho e derruba a pessoa na etapa 1 do assistente.
+Cancelamento volta para `/planos` (dashboard sem plano redirecionaria de novo,
+virando pingue-pongue).
+
+### 3. A sessão sumiu na volta do Stripe (não reproduzido)
+
+Ele voltou do pagamento deslogado e teve que entrar de novo. O cookie de
+sessão está correto (Lax, 30 dias, conferido em produção com usuário sonda,
+apagado depois). Causa não encontrada; mitigação no ar: o bounce do layout
+preserva o destino via `?redirect=`, então se repetir, a pessoa reloga e cai
+onde ia. Se voltar a acontecer, investigar com o log ao vivo.
+
+### Visão de produto que o teste rendeu (cards no planner)
+
+Três pedidos do Bruno para o treinamento dos agentes: upload de arquivos
+(PDFs, normas, artigos) para RAG do projeto; comando "torne-se especialista"
+(a IA pesquisa o setor e monta dossiê); e conversa investigativa de
+onboarding (a IA entrevista sobre nicho, órgãos e referências, tipo OAB para
+advogado e CREA para engenheiro). Os três têm encaixe técnico anotado nos
+cards; nenhum entra antes do fim da jornada de teste.
+
+*Atualizado em 21/08/2026 por Claude Code.*
