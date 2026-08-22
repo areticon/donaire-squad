@@ -55,7 +55,13 @@ interface Props {
   onConfirm: (config: CampaignConfig) => void;
   onClose: () => void;
   defaultWeekStart?: string; // passed by ContentManager
-  projectId?: string;
+  /**
+   * Obrigatório desde 22/08. Era opcional, e o posts-panel abria o modal sem
+   * passar: a escolha "de um vídeo" montava /projects/undefined/video e caía
+   * em 404 na cara do Bruno, no meio da gravação. Opcional aqui significa que
+   * o compilador não avisa quem esquecer, então virou obrigatório.
+   */
+  projectId: string;
 }
 
 // ── Data ──────────────────────────────────────────────────────────────────────

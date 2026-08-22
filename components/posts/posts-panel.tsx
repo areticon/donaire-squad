@@ -564,6 +564,7 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
           <CampaignSetupModal
             onConfirm={generateCampaign}
             onClose={() => setShowCampaignModal(false)}
+            projectId={project.id}
           />
         )}
       </AnimatePresence>
