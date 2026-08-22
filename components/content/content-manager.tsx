@@ -1991,6 +1991,18 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [runningPipelineId, setRunningPipelineId] = useState<string | null>(activeRun?.status === "running" ? activeRun.id : null);
   const [generating, setGenerating] = useState(activeRun?.status === "running");
   const [showSetupModal, setShowSetupModal] = useState(false);
+
+  // Quem acabou de ativar o projeto chega aqui com ?novaCampanha=1 e a escolha
+  // de origem (vídeo ou tema) abre sozinha. Sem isto a pessoa termina o
+  // assistente e cai num quadro vazio, tendo que procurar por onde começar.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("novaCampanha") !== "1") return;
+    setShowSetupModal(true);
+    const limpa = new URL(window.location.href);
+    limpa.searchParams.delete("novaCampanha");
+    window.history.replaceState({}, "", limpa.toString());
+  }, []);
   // Topic flow state
   const [topic, setTopic] = useState("");
   const [showTopicInput, setShowTopicInput] = useState(false);

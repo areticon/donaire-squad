@@ -146,7 +146,9 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           router.push(`/projects/${project.id}/posts`);
         } else {
           toast.success("Projeto ativado! Vamos gerar sua primeira campanha.");
-          router.push(`/projects/${project.id}/posts`);
+          // ?novaCampanha=1 abre direto a escolha de origem (vídeo ou tema),
+          // em vez de largar quem acabou de ativar num quadro vazio.
+          router.push(`/projects/${project.id}/posts?novaCampanha=1`);
         }
       } else {
         setCurrentStep(nextStep);

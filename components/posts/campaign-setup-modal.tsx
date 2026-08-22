@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X, ChevronRight, ChevronLeft, Zap, Image, Video, LayoutGrid, Type,
+  X, ChevronRight, ChevronLeft, Zap, Image, Video, LayoutGrid, Type, Lightbulb,
   Shuffle, AlertTriangle, CalendarDays, Repeat2, Split, Bot,
   BarChart2, FileText, List, PieChart,
 } from "lucide-react";
@@ -234,6 +235,23 @@ function campaignUsesMediaStyle(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, projectId }: Props) {
+  const router = useRouter();
+
+  /**
+   * De onde vem o conteúdo desta campanha, escolha que abre o fluxo.
+   *
+   * Decisão do Bruno em 22/08, junto com a virada de que vídeo é o produto:
+   * o cliente ou grava um vídeo e o squad tira cortes dele, ou dá um tema e o
+   * squad cria peça do zero. São dois produtos diferentes e os formatos
+   * disponíveis mudam conforme a escolha.
+   *
+   * Fica aqui e não na Ideação do assistente porque o assistente roda uma vez
+   * por projeto, e isto se repete toda semana. Enquanto ninguém escolheu, o
+   * resto do modal não aparece; escolher "vídeo" leva ao fluxo de vídeo, que
+   * já existe inteiro em página própria (upload, transcrição, seleção de
+   * trechos e redação).
+   */
+  const [origem, setOrigem] = useState<"video" | "tema" | null>(null);
   const [step, setStep] = useState(0);
   const [campaignMode, setCampaignMode] = useState<CampaignMode>("weekly");
   const [funnelStage, setFunnelStage] = useState<FunnelStage>("tofu");
@@ -427,6 +445,54 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
 
         {/* Content — scrollable */}
         <div className="p-6 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
+          {origem === null ? (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  De onde vem o conteúdo desta campanha?
+                </h3>
+                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                  Você fala e o squad recorta, ou você dá o tema e ele cria do zero.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => router.push(`/projects/${projectId}/video`)}
+                  className="text-left p-5 rounded-xl border transition-all duration-200 border-orange-500/30 bg-orange-500/5 hover:border-orange-500/60"
+                >
+                  <Video className="w-6 h-6 mb-3 text-orange-400" />
+                  <div className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+                    De um vídeo que você gravou
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                    Suba o vídeo e o squad transcreve, escolhe os melhores trechos e
+                    monta os cortes para reels, shorts e feed, com o texto de cada rede.
+                  </p>
+                  <div className="mt-3 text-[10px] font-bold px-2 py-1 rounded inline-block bg-orange-500/20 text-orange-300">
+                    cortes, reels e shorts
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setOrigem("tema")}
+                  className="text-left p-5 rounded-xl border transition-all duration-200 border-[var(--border)] hover:border-[var(--text-muted)]"
+                >
+                  <Lightbulb className="w-6 h-6 mb-3 text-[var(--text-muted)]" />
+                  <div className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+                    De um tema, criado por IA
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                    Sem vídeo para gravar hoje? Diga o assunto e o squad pesquisa,
+                    escreve e desenha a peça do zero, na sua voz.
+                  </p>
+                  <div className="mt-3 text-[10px] font-bold px-2 py-1 rounded inline-block bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                    imagem, carrossel, artigo, enquete e texto
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : (
           <AnimatePresence mode="wait">
 
             {/* Step 0: Campaign mode */}
@@ -1309,15 +1375,20 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
             )}
 
           </AnimatePresence>
+          )}
         </div>
 
         {/* Footer — fixed */}
         <div className="flex items-center justify-between px-6 py-4 border-t shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-          <Button variant="ghost" onClick={prevStep} style={{ color: "var(--text-muted)" }}>
-            {step === 0 ? "Cancelar" : <><ChevronLeft className="w-4 h-4" />Voltar</>}
+          <Button
+            variant="ghost"
+            onClick={origem === null ? onClose : step === 0 ? () => setOrigem(null) : prevStep}
+            style={{ color: "var(--text-muted)" }}
+          >
+            {origem === null ? "Cancelar" : <><ChevronLeft className="w-4 h-4" />Voltar</>}
           </Button>
 
-          {!isLastStep ? (
+          {origem === null ? null : !isLastStep ? (
             <Button onClick={nextStep}>
               Próximo
               <ChevronRight className="w-4 h-4" />
