@@ -180,6 +180,20 @@ que o dobro do custo fixo atual de R$ 116.
 - `vercel env pull` escreve `[SENSITIVE]` no lugar do valor de variáveis
   sensíveis. Comparar tamanho de string puxada assim leva a diagnóstico errado.
 
+**IA e modelos, parte 2**
+- **`max_tokens` inclui os tokens de PENSAMENTO.** No Sonnet 5 o pensamento
+  adaptativo vem ligado por padrão, então teto apertado não gera resposta
+  curta, gera resposta VAZIA: a resposta volta só com blocos de pensamento e
+  `stop_reason: max_tokens`. Regra da casa: nada abaixo de 4000 em chamada que
+  faz trabalho de verdade. Subir o teto não encarece por si, porque o cobrado é
+  o que o modelo gera.
+
+**Serverless**
+- **Função morta por timeout não consegue gravar erro.** A Vercel derruba no
+  `maxDuration` e o `catch` nunca roda: o status fica como estava e a interface
+  parece que nada aconteceu. Falha silenciosa por construção. Trabalho longo
+  não pode viver dentro do ciclo da requisição.
+
 **Interface**
 - **Retorno de integração precisa falar na tela.** Fluxo de OAuth que volta
   calado transforma bug de 5 minutos em investigação de uma hora.

@@ -2824,3 +2824,85 @@ uma "Central de verificação" no painel que é por onde se submete. Não há
 submissão em andamento.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22/08/2026 (parte 34): o teste do vídeo, e o produto principal quebrado em três camadas
+
+Sessão longa de gravação do screencast das duas submissões (Meta e Google),
+que virou o teste real do produto de vídeo. Ele nunca tinha rodado de ponta a
+ponta em produção, e estava quebrado em três lugares diferentes.
+
+### O que foi consertado, em ordem de descoberta
+
+**1. Token do Vercel Blob inválido.** O upload morria com "Access denied,
+please provide a valid token for this resource". Reproduzido pela linha de
+comando com o mesmo texto, o que provou ser a credencial e não o código. O
+store seguia ativo com os 4 arquivos antigos, e só o upload novo falhava:
+**o produto de vídeo estava quebrado em produção sem ninguém saber**, porque
+ninguém tinha subido vídeo desde a rotação do token. Token novo em produção e
+local, testado com upload real antes de qualquer outra coisa.
+
+**2. Limites de vídeo barrando o próprio dono.** O Bruno não conseguiu subir a
+gravação de 27 minutos que abre o canal dele (3,1 GB a 16 Mbps). Decisão dele,
+acatada: **não limitar o cliente, cobrar por ele**. Taxa de gravação alta
+deixou de recusar e virou preço, duração subiu para 120 minutos, e o crédito
+extra passou a ser cobrado por GB, que é onde o custo escala (transferência é
+58% do custo do produto). Conferido antes de mexer: **a Deepgram aceita no
+máximo 2 GB e recomenda extrair o áudio de vídeos grandes**, então o teto que
+sobrou é dela, não nosso, e a mensagem diz isso. O arquivo do Bruno foi
+recodificado para 811 MB a 4 Mbps, com a mesma imagem.
+
+**3. Teto de tokens gerando resposta vazia.** A seleção de trechos falhou com
+"A resposta não trouxe texto. Blocos recebidos: thinking". Confirmado na
+referência da API: no Sonnet 5 o pensamento adaptativo vem ligado por padrão e
+o `max_tokens` é um teto que **inclui os tokens de pensamento**. Com a
+transcrição de 27 minutos, o modelo gastou os 4000 pensando e nunca escreveu.
+Contraintuitivo e por isso perigoso: **teto apertado não gera resposta curta,
+gera resposta vazia**. Varrida a classe inteira: a redação dos posts estava em
+**300 tokens** e teria quebrado no passo seguinte. Regra escrita no código:
+nada abaixo de 4000 em chamada que faz trabalho.
+
+**4. Timeout matando a função sem deixar rastro.** Depois do conserto acima, a
+seleção passou a rodar mais e bateu no `maxDuration = 120`. O log de produção:
+"Vercel Runtime Timeout Error: Task timed out after 120 seconds". Quando a
+plataforma mata a função, **o código não consegue gravar erro nenhum**: o
+status volta ao anterior e o botão reaparece como se nada tivesse acontecido.
+Teto para 300s, que é o máximo do plano. **É remendo**, e o card do conserto de
+raiz está aberto.
+
+### O que o teste revelou e ainda não foi consertado (cards abertos)
+
+- **A tela não se atualiza sozinha.** O Bruno só descobriu que a transcrição
+  tinha terminado porque apertou F5 por conta própria. Mais grave que o tédio:
+  não dá para distinguir travado de rodando.
+- **A tela de espera não mostra nada.** Decidido o desenho: tempo correndo,
+  estimativa honesta, as três etapas nomeadas, e frases girando dos próprios
+  agentes. **Sem figuras públicas reais** (uso de imagem de terceiro) e **sem
+  barra de porcentagem** (a transcrição é assíncrona e não reporta progresso,
+  então seria mentira animada).
+- **Upload gera registro duplicado**, um pelo aviso do storage e outro pela
+  rota de contingência. O fantasma não cobra crédito, mas polui.
+- **Tempo de upload alto.** A medir antes de otimizar: velocidade efetiva
+  contra a banda contratada. Ideia do Bruno de conectar Drive e Google Fotos
+  tem mérito real, porque elimina a perna de upload do cliente.
+
+### Outros consertos da sessão
+
+- Facebook e YouTube faltavam na tela de Configurações, então apareciam
+  conectados no assistente e sumiam nas configurações.
+- `projectId` opcional no modal de campanha montava `/projects/undefined/video`
+  e caía em 404. Virou obrigatório, para o compilador pegar.
+- Marca nova do Bruno vetorizada (disco escuro, contorno branco), laranja da
+  interface alinhado ao da marca, favicons corrigidos (ainda eram da marca
+  anterior). Trocadilho "demandou. postou." de volta ao hero e nos títulos.
+- Landing com o fluxo real em cinco etapas e os logos oficiais das redes.
+- Voz & Estilo antes da Ideação, por correção do Bruno.
+- Escolha de origem da campanha (vídeo ou tema), com a Ativação levando direto
+  para ela.
+
+### Configuração do OBS, definida nesta sessão
+
+4000 Kbps, MP4 híbrido, 30 quadros, áudio mudo nas três fontes. Salvo também na
+memória do Claude. A 16 Mbps o mesmo vídeo dava 3,1 GB; a 4 Mbps dá 811 MB com
+imagem igual.
+
+*Atualizado em 22/08/2026 por Claude Code.*
