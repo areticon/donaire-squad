@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const resposta = await askClaude(
       SISTEMA,
       `${profissao ? `A pessoa se descreve como: ${profissao}\n\n` : ""}Matéria-prima:\n${texto}`,
-      { maxTokens: 2000, usage: { operation: "demo_publica" } }
+      { maxTokens: 6000, usage: { operation: "demo_publica" } }
     );
 
     // O modelo às vezes embrulha o JSON em cerca de código, mesmo instruído.

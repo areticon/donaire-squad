@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   // 1024 cortava respostas no meio (visto no teste de 20/08). O prompt agora
   // pede no máximo 200 palavras, e a folga aqui é para nunca truncar.
   const response = await askClaude(systemWithContext, message, {
-    maxTokens: 2048,
+    maxTokens: 6000,
   });
 
   return NextResponse.json({ reply: response });

@@ -116,7 +116,7 @@ Responda APENAS com um JSON válido neste formato exato (sem markdown, sem expli
   ...
 ]`;
 
-  const raw = await askClaude("Você é um estrategista de conteúdo.", prompt, { maxTokens: 1024 });
+  const raw = await askClaude("Você é um estrategista de conteúdo.", prompt, { maxTokens: 6000 });
 
   try {
     const jsonMatch = raw.match(/\[[\s\S]*\]/);

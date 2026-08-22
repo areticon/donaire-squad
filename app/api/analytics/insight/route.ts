@@ -73,7 +73,7 @@ Seja direto, use números específicos dos dados. Responda em português sem mar
   const insight = await askClaude(
     "Você é um estrategista de marketing digital especializado em análise de dados de redes sociais no Brasil.",
     prompt,
-    { maxTokens: 512 }
+    { maxTokens: 4000 }
   );
 
   // Save to project memory

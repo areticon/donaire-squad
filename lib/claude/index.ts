@@ -70,16 +70,27 @@ export async function askClaude(
 ): Promise<string> {
   const model = options?.model ?? DEFAULT_MODEL;
 
+  // REGRA DA CASA desde 22/08: nenhum maxTokens abaixo de 4000 numa chamada
+  // que faz trabalho de verdade. O teto inclui os tokens de pensamento, então
+  // teto apertado não gera resposta curta, gera resposta VAZIA. E subir o teto
+  // não encarece por si: o cobrado é o que o modelo gera, e o pensamento
+  // adaptativo decide a profundidade sozinho.
+  // 8192 de padrão, não 2048: o teto inclui os tokens de pensamento, que no
+  // Sonnet 5 vem ligado por padrão. Teto baixo faz o modelo gastar tudo
+  // pensando e devolver resposta sem texto, que foi o que quebrou a seleção
+  // de trechos de um vídeo de 27 minutos em 22/08.
+  const maxTokens = options?.maxTokens ?? 8192;
+
   const message = await getClient().messages.create({
     model,
-    max_tokens: options?.maxTokens ?? 2048,
+    max_tokens: maxTokens,
     system: buildSystem(systemPrompt, options?.cachedPrefix),
     messages: [{ role: "user", content: userMessage }],
   });
 
   void recordUsage(model, message.usage, options?.usage);
 
-  return extrairTexto(message.content);
+  return extrairTexto(message.content, message.stop_reason, maxTokens);
 }
 
 /**
@@ -100,7 +111,11 @@ export async function askClaude(
  * imune à próxima mudança de formato: bloco novo que a API introduza é
  * simplesmente ignorado.
  */
-function extrairTexto(content: Anthropic.ContentBlock[]): string {
+function extrairTexto(
+  content: Anthropic.ContentBlock[],
+  stopReason?: string | null,
+  maxTokens?: number
+): string {
   const texto = content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -108,6 +123,20 @@ function extrairTexto(content: Anthropic.ContentBlock[]): string {
 
   if (!texto) {
     const tipos = content.map((b) => b.type).join(", ") || "nenhum";
+
+    // Caso que derrubou a seleção de trechos em 22/08, com uma transcrição de
+    // 27 minutos: o `max_tokens` é um teto que inclui os tokens de PENSAMENTO,
+    // e o modelo gastou os 4000 inteiros pensando, sem sobrar nada para
+    // escrever. A resposta volta só com blocos de pensamento e stop_reason
+    // "max_tokens". Dizer isso é a diferença entre um erro acionável e um
+    // enigma, porque o conserto é aumentar o teto, não mexer no prompt.
+    if (stopReason === "max_tokens") {
+      throw new Error(
+        `O modelo gastou o limite de ${maxTokens ?? "?"} tokens pensando e não chegou a responder. ` +
+          `Aumente o maxTokens desta chamada. Blocos recebidos: ${tipos}.`
+      );
+    }
+
     throw new Error(`A resposta não trouxe texto. Blocos recebidos: ${tipos}.`);
   }
   return texto;

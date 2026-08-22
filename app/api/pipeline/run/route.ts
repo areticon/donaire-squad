@@ -737,7 +737,7 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
         cachedPrefix,
         project.id,
         // 4096 levava 60-70s e causava timeout: 2048 é suficiente para um brief
-        { maxTokens: 2048 },
+        { maxTokens: 6000 },
       );
     }
 

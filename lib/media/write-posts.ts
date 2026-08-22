@@ -93,7 +93,7 @@ async function encurtarParaX(texto: string, prefixoCacheavel: string, usageCtx?:
     const menor = await askClaude(
       "Encurte o post abaixo para no máximo 240 caracteres, mantendo a ideia e a voz. Responda só com o texto, sem aspas e sem explicação.",
       texto,
-      { maxTokens: 300, cachedPrefix: prefixoCacheavel, usage: { operation: "video_redacao_x", ...usageCtx } }
+      { maxTokens: 4000, cachedPrefix: prefixoCacheavel, usage: { operation: "video_redacao_x", ...usageCtx } }
     );
     const limpo = menor.trim().replace(/^["']|["']$/g, "");
     if (limpo.length <= MAX_X) return limpo;
@@ -155,7 +155,7 @@ Ideia central: ${trecho.ideia}
 O que a pessoa falou, literalmente:
 ${trecho.transcricao}`,
     {
-      maxTokens: 2500,
+      maxTokens: 6000,
       cachedPrefix: prefixoCacheavel,
       usage: { operation: "video_redacao", ...usageCtx },
     }

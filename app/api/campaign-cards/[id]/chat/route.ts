@@ -151,7 +151,7 @@ No explanations, no prefixes — just the prompt text.`;
       updatedPrompt = await askClaude(
         promptSystem,
         `Current prompt:\n${currentPrompt}${slideContext}\n\nUser instruction: ${message}${historyContext}`,
-        { maxTokens: 600 }
+        { maxTokens: 4000 }
       );
 
       try {
@@ -248,7 +248,7 @@ Responda em português com acentuação correta.
 REGRA DE OURO: Nunca invente dados, estatísticas ou referências. Use apenas fatos reais com fonte.`;
 
   const userPrompt = `Texto atual:\n\n${card.content ?? ""}\n\nInstrução: ${message}${historyContext}`;
-  const updatedContent = await askClaude(system, userPrompt, { maxTokens: 1500 });
+  const updatedContent = await askClaude(system, userPrompt, { maxTokens: 6000 });
 
   const newHistory = [
     ...chatHistory,

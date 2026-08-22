@@ -103,7 +103,11 @@ export async function selecionarTrechos(
 Escolha até ${alvo} trechos, menos se não houver ${alvo} que prestem.
 
 ${blocos}`,
-    { maxTokens: 4000, usage: { operation: "video_selecao", ...usageCtx } }
+    // 16000, e não 4000: a tarefa recebe a transcrição inteira e devolve até
+    // 15 trechos com texto para cada rede, então precisa de espaço para
+    // pensar E escrever. Com 4000 o modelo de um vídeo de 27 minutos gastou
+    // tudo pensando e voltou sem texto nenhum.
+    { maxTokens: 16000, usage: { operation: "video_selecao", ...usageCtx } }
   );
 
   const limpo = resposta

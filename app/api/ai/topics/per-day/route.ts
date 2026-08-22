@@ -104,7 +104,7 @@ Responda SOMENTE com JSON válido neste formato (sem markdown):
   ${days.map((d) => `"${d.dayOfWeek}": "Tema para ${d.dayName}"`).join(",\n  ")}
 }`;
 
-  const raw = await askClaude("Você é um estrategista de conteúdo.", prompt, { maxTokens: 800 });
+  const raw = await askClaude("Você é um estrategista de conteúdo.", prompt, { maxTokens: 6000 });
 
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
