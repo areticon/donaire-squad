@@ -3367,3 +3367,77 @@ Publicação de vídeo em LinkedIn, X e Facebook; a fusão com o Gestor de
 Conteúdo; e a landing.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 40): a capa procura o rosto, e o vídeo entra no quadro
+
+### A crítica da capa era estrutural, não de prompt
+
+O Bruno apontou, com exemplo na mão (canal do Dan Martell), que a capa estava
+pegando um quadro de tela compartilhada e escrevendo um texto branco simples em
+cima. A causa não era o prompt: **o quadro vinha de dentro do trecho**.
+
+Os melhores momentos de FALA não coincidem com os melhores momentos de IMAGEM.
+A seleção de trechos descarta abertura de propósito, e é justamente ali que
+muita gente aparece falando em tela cheia. Provado na gravação real: **os sete
+trechos escolhidos caem todos em slide, e o quadro bom está no segundo 20**.
+
+Agora o worker varre o vídeo inteiro, tira dez candidatos, e o mesmo agente que
+decide o enquadramento escolhe qual tem rosto grande, olhando para a câmera,
+com expressão viva. Depois o quadro é reextraído em resolução cheia e recortado
+em 1280x720, que é o que o YouTube pede. Os candidatos vão na mesma chamada do
+enquadramento, então não custam prompt novo.
+
+A capa mora no VÍDEO e não no trecho: uma escolha de rosto serve para todas as
+capas, e o que muda por corte é o texto.
+
+### O prompt refeito no padrão das referências
+
+As thumbnails que ele mandou têm o mesmo esqueleto: pouquíssimas palavras em
+corpo enorme, contraste alto, uma palavra destacada em bloco de cor, a pessoa
+grande, e o texto nunca cobrindo o rosto. O prompt novo descreve isso em seções
+(TEXTO, PESSOA, FUNDO, NÃO FAÇA).
+
+A palavra destacada é escolhida em código, a mais longa da frase, porque deixar
+o modelo escolher produzia destaque em preposição.
+
+Resultado medido: 17,5s no Pro, com "CONSULTORIA" em bloco laranja da marca,
+texto à direita sem tocar o rosto, fundo simplificado.
+
+**Risco em aberto e vigiado:** o modelo está preservando o rosto, mas isso é
+comportamento e não garantia. Se algum dia sair uma capa com outra pessoa, a
+composição vira caminho de risco e o certo é trocar por sobreposição de texto em
+código, que é feia mas nunca inventa gente.
+
+### A fusão com o Gestor de Conteúdo
+
+Linha de agente nova, **Vitor Vídeo**, subtítulo Cortes. Sem ela os cortes
+cairiam na linha da Diana Design, misturados com imagem gerada, e quem olha o
+quadro precisa ver que houve trabalho de vídeo.
+
+Os cortes são **espalhados na semana**, com espaçamento uniforme: 3 caem em
+segunda, quinta e domingo; 7 caem um por dia. Sete publicações na mesma manhã é
+spam, e o quadro carrega por semana, então distribuir também é o que faz eles
+aparecerem. O vídeo completo entra como card próprio na segunda de manhã.
+
+Idempotência pelo `config` do run, sem coluna nova: clique repetido devolve o
+run existente em vez de duplicar cards e posts.
+
+**Detalhe que teria quebrado calado:** a detecção de vídeo do `MediaPreview` só
+aceitava URL terminada em `.mp4`, e a nossa rota serve por consulta porque o
+storage é privado. Sem ajustar, o corte apareceria como imagem quebrada dentro
+do quadro.
+
+### O fluxo completo hoje
+
+```
+sobe → transcreve → escolhe momentos → CORTA no Railway (enquadramento por
+visão + capa por varredura de rosto) → cliente marca o que sobe e para onde →
+capas, títulos e textos → cronograma da semana → quadro do Gestor → publica
+```
+
+### O que falta
+
+A landing contando essa história, e a publicação de vídeo em LinkedIn, X e
+Facebook.
+
+*Atualizado em 23/08/2026 por Claude Code.*
