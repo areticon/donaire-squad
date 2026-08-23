@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { writeFile } from "node:fs/promises";
 
 /**
  * As receitas de ffmpeg do produto, num lugar só.
@@ -165,6 +166,84 @@ function intervalosQueFicam(remocoes, duracaoSec) {
   // simplesmente para no fim do arquivo, e chutar a duração daria corte cedo.
   fica.push({ de: cursor, ate: duracaoSec && duracaoSec > cursor ? duracaoSec : 999999 });
   return fica.filter((f) => f.ate - f.de > 0.05);
+}
+
+/**
+ * A abertura: os ganchos, um atrás do outro, com corte seco entre eles.
+ *
+ * Feita em arquivo separado e depois emendada ao corpo com `-c copy`, e não num
+ * filtro só. A razão é a ORDEM: o filtro `select` que remove pausas mantém os
+ * pedaços na sequência original e não sabe reordenar, e a abertura precisa
+ * justamente disso, trazer o minuto 20 para antes do segundo zero.
+ *
+ * Emendar com `-c copy` no fim exige que os dois arquivos tenham os mesmos
+ * parâmetros de codificação, e por isso a abertura usa exatamente os mesmos que
+ * o corpo. Não é detalhe: com parâmetros diferentes a emenda ou falha ou
+ * produz um vídeo que trava na virada.
+ *
+ * O fade de meio segundo no fim é a transição que separa a promessa do vídeo de
+ * verdade. Sem ele o corte a frio emenda direto no "vamos lá" e parece defeito.
+ */
+export async function montarAbertura(entrada, saida, ganchos) {
+  if (!ganchos?.length) return false;
+
+  const partes = [];
+  const mapa = [];
+  ganchos.forEach((g, i) => {
+    const dur = g.fim - g.inicio;
+    partes.push(
+      `[0:v]trim=start=${g.inicio.toFixed(3)}:end=${g.fim.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+      `[0:a]atrim=start=${g.inicio.toFixed(3)}:end=${g.fim.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+    );
+    mapa.push(`[v${i}][a${i}]`);
+    void dur;
+  });
+
+  const total = ganchos.reduce((s, g) => s + (g.fim - g.inicio), 0);
+  const filtro = [
+    ...partes,
+    `${mapa.join("")}concat=n=${ganchos.length}:v=1:a=1[vc][ac]`,
+    // O escurecer entra nos últimos 0,5s, e o áudio some junto: fade só na
+    // imagem deixa a voz cortada no escuro, que soa pior que sem transição.
+    `[vc]fade=t=out:st=${Math.max(0, total - 0.5).toFixed(3)}:d=0.5[v]`,
+    `[ac]afade=t=out:st=${Math.max(0, total - 0.5).toFixed(3)}:d=0.5[a]`,
+  ].join(";");
+
+  await rodar([
+    "-i", entrada,
+    "-filter_complex", filtro,
+    "-map", "[v]", "-map", "[a]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k",
+    "-movflags", "+faststart",
+    saida,
+  ]);
+  return true;
+}
+
+/**
+ * Emenda abertura e corpo sem recodificar.
+ *
+ * `-c copy` porque os dois já saíram do mesmo codificador com os mesmos
+ * parâmetros. Recodificar de novo seria uma terceira geração de perda em cima
+ * de um arquivo que já passou por uma, e a regra da casa é que o que sai nunca
+ * pode ser pior que o que entrou.
+ */
+export async function emendar(partes, saida, pasta) {
+  const lista = join(pasta, "emenda.txt");
+  await writeFile(
+    lista,
+    // `file '...'` com o NOME apenas, e o ffmpeg rodando dentro da pasta: o
+    // demuxer de concatenação resolve caminho relativo à lista, e caminho
+    // absoluto do Windows com dois-pontos quebra a leitura.
+    partes.map((p) => "file '" + basename(p) + "'").join(String.fromCharCode(10)),
+    "utf8"
+  );
+  await rodar(
+    ["-f", "concat", "-safe", "0", "-i", basename(lista), "-c", "copy", "-movflags", "+faststart", saida],
+    { cwd: pasta }
+  );
 }
 
 /**
