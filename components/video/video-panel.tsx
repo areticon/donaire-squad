@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ClipApproval, type TrechoComPosts } from "@/components/video/clip-approval";
+import { CortesPanel, type Corte } from "@/components/video/cortes-panel";
 import {
   estaTrabalhando,
   proximaAcao,
@@ -33,6 +34,9 @@ type Video = {
   attempts: number;
   temTranscricao: boolean;
   temTrechos: boolean;
+  temCortes: boolean;
+  completoUrl: string | null;
+  completoBytes: number | null;
   rodandoHaSegundos: number | null;
   clips: TrechoComPosts[] | null;
 };
@@ -41,6 +45,8 @@ type Video = {
 const ESTADOS: Record<string, { rotulo: string; cor: string }> = {
   uploaded: { rotulo: "Pronto para transcrever", cor: "secondary" },
   transcribing: { rotulo: "Transcrevendo", cor: "warning" },
+  cutting: { rotulo: "Cortando os vídeos", cor: "warning" },
+  cut: { rotulo: "Cortes prontos", cor: "secondary" },
   transcribed: { rotulo: "Pronto para escolher os trechos", cor: "secondary" },
   selecting: { rotulo: "Escolhendo os trechos", cor: "warning" },
   selected: { rotulo: "Pronto para escrever", cor: "secondary" },
@@ -69,6 +75,15 @@ export function VideoPanel({
   const router = useRouter();
   const [rodando, setRodando] = useState<string | null>(null);
   const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
+  /**
+   * Resultado do preparo do YouTube, por vídeo.
+   *
+   * Fica separado do aviso geral porque o aviso geral mora no TOPO da página, e
+   * o botão fica lá embaixo: o Bruno clicou, a mensagem apareceu fora do campo
+   * de visão dele, e a conclusão foi "não aconteceu nada". Retorno de ação
+   * precisa nascer ao lado do que foi clicado.
+   */
+  const [avisoYouTube, setAvisoYouTube] = useState<Record<string, string>>({});
 
   /**
    * O estado fresco vindo da consulta periódica, por vídeo.
@@ -179,20 +194,22 @@ export function VideoPanel({
 
   async function prepararYouTube(videoId: string) {
     setRodando(`yt-${videoId}`);
-    setErroDaAcao(null);
+    setAvisoYouTube((a) => ({ ...a, [videoId]: "" }));
     try {
       const r = await fetch(`/api/videos/${videoId}/youtube`, { method: "POST" });
       const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
-        return;
-      }
-      setErroDaAcao(
-        corpo.criado
-          ? "Rascunho criado. Ele está no quadro de posts, esperando a sua revisão."
-          : "Esta gravação já tinha um rascunho de YouTube no quadro de posts."
-      );
-      router.refresh();
+      const mensagem = !r.ok
+        ? (corpo.error ?? `A plataforma recusou com código ${r.status}.`)
+        : corpo.criado
+          ? "Rascunho criado. Abra o quadro de Posts para revisar e publicar."
+          : "Esta gravação já tinha um rascunho, e ele está no quadro de Posts.";
+      setAvisoYouTube((a) => ({ ...a, [videoId]: mensagem }));
+      if (r.ok) router.refresh();
+    } catch {
+      setAvisoYouTube((a) => ({
+        ...a,
+        [videoId]: "A requisição não completou. Recarregue e veja se o rascunho apareceu.",
+      }));
     } finally {
       setRodando(null);
     }
@@ -304,6 +321,24 @@ export function VideoPanel({
                   </div>
                 </div>
 
+                {/* A entrega: a gravação editada e os cortes, com as escolhas
+                    de publicação. Aparece em "cut" e continua aparecendo depois,
+                    porque o cliente volta para rever o que marcou. */}
+                {(v.status === "cut" || (v.status === "ready" && v.temCortes)) && (
+                  <div className="pl-4">
+                    <CortesPanel
+                      videoId={v.id}
+                      projectId={projectId}
+                      cortes={(v.clips as unknown as Corte[]) ?? []}
+                      completo={{
+                        url: v.completoUrl,
+                        bytes: v.completoBytes,
+                        duracaoSec: v.durationSec,
+                      }}
+                    />
+                  </div>
+                )}
+
                 {trabalhando && (
                   <div className="pl-4">
                     <VideoEspera
@@ -355,22 +390,32 @@ export function VideoPanel({
                           você revisar e publicar no quadro de posts.
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0"
-                        disabled={rodando === `yt-${v.id}`}
-                        onClick={() => prepararYouTube(v.id)}
-                      >
-                        {rodando === `yt-${v.id}` ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            Preparando
-                          </>
-                        ) : (
-                          "Preparar para o YouTube"
+                      <div className="shrink-0 text-right space-y-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={rodando === `yt-${v.id}`}
+                          onClick={() => prepararYouTube(v.id)}
+                        >
+                          {rodando === `yt-${v.id}` ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Preparando
+                            </>
+                          ) : (
+                            "Preparar para o YouTube"
+                          )}
+                        </Button>
+                        {avisoYouTube[v.id] && (
+                          <p
+                            className="text-xs max-w-[16rem]"
+                            style={{ color: "var(--text-muted)" }}
+                            role="status"
+                          >
+                            {avisoYouTube[v.id]}
+                          </p>
                         )}
-                      </Button>
+                      </div>
                     </div>
                     {paraAprovar.map((c, i) => (
                       <ClipApproval

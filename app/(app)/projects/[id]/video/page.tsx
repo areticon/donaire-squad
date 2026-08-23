@@ -39,6 +39,8 @@ export default async function VideoPage({
       createdAt: true,
       attempts: true,
       clips: true,
+      completoUrl: true,
+      completoBytes: true,
       // A transcrição inteira passa de 390 KB num vídeo de 27 minutos, e aqui
       // só interessa se ela existe. `durationSec` serve de sinal porque é
       // gravado na MESMA escrita que a transcrição, nos dois caminhos (direto e
@@ -60,6 +62,18 @@ export default async function VideoPage({
         attempts: v.attempts,
         temTranscricao: v.durationSec !== null,
         temTrechos: Array.isArray(v.clips) && v.clips.length > 0,
+        // Corte pronto é diferente de trecho escolhido: o trecho é só marcação
+        // de tempo, o corte é o arquivo de vídeo que existe no storage.
+        temCortes:
+          Array.isArray(v.clips) &&
+          v.clips.some(
+            (c) => (c as { midia?: { vertical?: unknown } })?.midia?.vertical
+          ),
+        completoUrl: v.completoUrl,
+        // BigInt não atravessa a fronteira de servidor para cliente: o React
+        // não sabe serializar. Vira número aqui, que é seguro porque nenhum
+        // arquivo de vídeo chega perto do limite de inteiro seguro.
+        completoBytes: v.completoBytes ? Number(v.completoBytes) : null,
         // Nulo de propósito: o cronômetro chega na primeira consulta de
         // status, que acontece assim que a tela monta. Ler o relógio aqui
         // tornaria a renderização impura (o mesmo componente daria resultados

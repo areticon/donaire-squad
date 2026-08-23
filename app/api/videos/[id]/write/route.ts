@@ -71,10 +71,25 @@ export async function POST(
     );
   }
 
-  const trechos = (video.clips as unknown as Trecho[] | null) ?? [];
-  if (!trechos.length) {
+  const todos = (video.clips as unknown as Array<Trecho & { publicar?: boolean }> | null) ?? [];
+  if (!todos.length) {
     return NextResponse.json(
       { error: "Esse vídeo não tem trechos escolhidos. Rode a seleção antes." },
+      { status: 400 }
+    );
+  }
+
+  // Só escreve para o que o cliente marcou. Escrever para tudo cobraria crédito
+  // por trabalho que ele desmarcou de propósito, e um post que ele não pediu no
+  // quadro é lixo que ele vai ter que apagar.
+  //
+  // `publicar` ausente conta como marcado: os trechos antigos, de antes de a
+  // tela de cortes existir, não têm o campo, e tratá-los como recusados faria a
+  // etapa não escrever nada num vídeo que já estava pronto.
+  const trechos = todos.filter((t) => t.publicar !== false);
+  if (!trechos.length) {
+    return NextResponse.json(
+      { error: "Nenhum corte está marcado para publicar. Marque pelo menos um." },
       { status: 400 }
     );
   }
@@ -112,7 +127,7 @@ export async function POST(
         operation: "video_job",
         projectId: video.projectId,
         refId: video.id,
-        note: `${Math.round((video.durationSec ?? 0) / 60)} min, ${trechos.length} trechos`,
+        note: `${Math.round((video.durationSec ?? 0) / 60)} min, ${trechos.length} de ${todos.length} trechos`,
       });
       await prisma.videoJob.update({
         where: { id },
@@ -142,7 +157,11 @@ export async function POST(
   });
 
   const resultados = await Promise.all(
-    trechos.map(async (t) => {
+    todos.map(async (t) => {
+      // Os desmarcados atravessam intactos, sem chamada ao modelo. Sumir com
+      // eles perderia o corte de vídeo que já foi produzido e pago, e o cliente
+      // pode mudar de ideia depois de ver o resultado dos outros.
+      if (t.publicar === false) return t;
       try {
         const posts = await escreverPosts(t, prefixo, { projectId: video.projectId });
         return { ...t, posts };
@@ -156,7 +175,11 @@ export async function POST(
   );
 
   const comPosts = resultados.filter((r) => "posts" in r).length;
-  const falhas = resultados.length - comPosts;
+  // As falhas se contam sobre o que a gente TENTOU escrever, não sobre a lista
+  // inteira: os desmarcados atravessam sem posts de propósito, e contá-los como
+  // falha faria a tela dizer "3 de 7 trechos falharam" num vídeo em que nada
+  // falhou.
+  const falhas = trechos.length - comPosts;
 
   await prisma.videoJob.update({
     where: { id },
@@ -174,7 +197,8 @@ export async function POST(
 
   return NextResponse.json({
     ok: comPosts > 0,
-    trechos: resultados.length,
+    trechos: trechos.length,
+    ignorados: todos.length - trechos.length,
     comPosts,
     falhas,
   });

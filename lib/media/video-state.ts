@@ -21,7 +21,7 @@
  */
 
 /** Estado de trabalho: alguma coisa está rodando agora. */
-export const TRABALHANDO = ["transcribing", "selecting", "writing"] as const;
+export const TRABALHANDO = ["transcribing", "selecting", "writing", "cutting"] as const;
 export type EstadoDeTrabalho = (typeof TRABALHANDO)[number];
 
 export function estaTrabalhando(status: string): status is EstadoDeTrabalho {
@@ -44,6 +44,10 @@ export const PRAZO_SEGUNDOS: Record<EstadoDeTrabalho, number> = {
   transcribing: 20 * 60,
   selecting: 830,
   writing: 830,
+  // O corte roda no worker, que não tem teto de tempo nosso. Uma gravação de 2
+  // horas recodifica em torno de 30 minutos, e o prazo aqui cobre só o desfecho
+  // em que o aviso do worker nunca chega.
+  cutting: 90 * 60,
 };
 
 /** O que dizer ao cliente quando o prazo estoura. */
@@ -54,6 +58,8 @@ export const MORTE: Record<EstadoDeTrabalho, string> = {
     "A escolha dos trechos passou do tempo permitido e foi interrompida. Gravação muito longa é a causa mais comum. Pode tentar de novo.",
   writing:
     "A redação dos posts passou do tempo permitido e foi interrompida. Pode tentar de novo.",
+  cutting:
+    "O corte da gravação não voltou no prazo. Pode tentar de novo, e nada do que já foi feito se perde.",
 };
 
 /** Quantas tentativas antes de parar de oferecer o botão de repetir. */
@@ -86,8 +92,10 @@ export function expirado(video: VideoParaLeitura, agora = new Date()): boolean {
 export function etapaDeRetomada(video: {
   temTranscricao: boolean;
   temTrechos: boolean;
-}): "transcribe" | "select" | "write" {
-  if (video.temTrechos) return "write";
+  temCortes?: boolean;
+}): "transcribe" | "select" | "write" | "cortar" {
+  if (video.temCortes) return "write";
+  if (video.temTrechos) return "cortar";
   if (video.temTranscricao) return "select";
   return "transcribe";
 }
@@ -97,6 +105,7 @@ export function proximaAcao(video: {
   status: string;
   temTranscricao: boolean;
   temTrechos: boolean;
+  temCortes?: boolean;
   attempts: number;
 }): { rotulo: string; rota: string } | null {
   switch (video.status) {
@@ -105,6 +114,8 @@ export function proximaAcao(video: {
     case "transcribed":
       return { rotulo: "Escolher os trechos", rota: "select" };
     case "selected":
+      return { rotulo: "Cortar os vídeos", rota: "cortar" };
+    case "cut":
       return { rotulo: "Escrever os posts", rota: "write" };
     case "failed":
       if (video.attempts >= MAX_TENTATIVAS) return null;

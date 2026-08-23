@@ -1,0 +1,63 @@
+export const dynamic = "force-dynamic";
+
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth/server";
+import { prisma } from "@/lib/db/prisma";
+import { destinoPorId } from "@/lib/media/destinos";
+
+/**
+ * Guarda o que o cliente marcou: quais cortes vão, e para onde.
+ *
+ * Salva a cada clique, sem botão de salvar. O modelo mental que o Bruno pediu é
+ * o de revisar uma entrega, e numa revisão ninguém espera ter que confirmar que
+ * quer manter o que acabou de marcar. Botão de salvar aqui só criaria a chance
+ * de perder a escolha ao sair da tela.
+ *
+ * A validação existe porque o corpo vem do navegador: destino inventado é
+ * ignorado em silêncio, e não gravado, senão a publicação depois tentaria
+ * mandar vídeo para uma rede que não existe.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const { trecho, publicar, destinos } = (await req.json().catch(() => ({}))) as {
+    trecho?: number;
+    publicar?: boolean;
+    destinos?: string[];
+  };
+
+  if (typeof trecho !== "number") {
+    return NextResponse.json({ error: "Informe o trecho." }, { status: 400 });
+  }
+
+  const video = await prisma.videoJob.findFirst({
+    where: { id, project: { userId } },
+    select: { clips: true },
+  });
+  if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
+
+  const trechos = (video.clips as unknown as Array<Record<string, unknown>>) ?? [];
+  if (!trechos[trecho]) {
+    return NextResponse.json({ error: "Trecho não encontrado." }, { status: 404 });
+  }
+
+  const limpos = (destinos ?? []).filter((d) => destinoPorId(d));
+
+  trechos[trecho] = {
+    ...trechos[trecho],
+    publicar: publicar ?? trechos[trecho].publicar ?? false,
+    destinos: limpos,
+  };
+
+  await prisma.videoJob.update({
+    where: { id },
+    data: { clips: trechos as never },
+  });
+
+  return NextResponse.json({ ok: true });
+}

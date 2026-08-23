@@ -3076,3 +3076,530 @@ Isso é anterior a esta sessão e vale saber: **o check vermelho de todo PR é
 falso alarme**, e nenhum PR tem verificação real hoje. Card aberto.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22-23/08/2026 (parte 37): o vídeo vira produto de verdade
+
+Sessão longa, com uma virada de rumo do Bruno no meio e um achado que expôs a
+distância entre a decisão "vídeo é o produto" e o que existia.
+
+### O que o teste da tela expôs
+
+O Bruno rodou o fluxo e criticou, com razão, em três frentes: o vídeo deveria
+desaguar no Gestor de Conteúdo (2.757 linhas de kanban, agentes e cronograma) em
+vez de numa lista primitiva; "YouTube" sem escolher entre vídeo longo e Shorts
+não faz sentido; e o trabalho dele deveria ser aprovar, não montar.
+
+**E o achado que muda tudo: não existia recorte de vídeo no projeto.** Sem
+ffmpeg, sem dependência de mídia. Os "trechos" eram só marcação de tempo mais
+texto. A promessa de shorts e reels não tinha implementação nenhuma.
+
+### Quatro bugs consertados, com uma raiz só
+
+O comentário no código afirmava que blob privado era alcançável por `fetch` do
+servidor. **É falso**, e gerou três sintomas que pareciam problemas diferentes:
+publicar no YouTube dava `403`, o botão Baixar abria tela branca de Forbidden, e
+o vídeo aparecia como ícone de imagem quebrada escrito "Post image". Conserto:
+`get()` do SDK do Blob com `access: "private"` e o token, que é o padrão que a
+transcrição já usava e a publicação não seguia. Mais uma rota autenticada
+`/api/posts/[id]/media` servindo em fluxo, com player de verdade.
+
+O quarto foi meu: o retorno do "Preparar para o YouTube" ia para um aviso no
+TOPO da página, com o botão lá embaixo. O Bruno clicou, a mensagem apareceu fora
+do campo de visão, e a conclusão foi "nada aconteceu". **A armadilha antiga
+ganhou segunda metade: retorno precisa falar AO LADO do que foi clicado.**
+
+### Decisão do Bruno: worker próprio no Railway
+
+Das três opções (worker próprio, API de mídia, corte no navegador), ele escolheu
+a primeira, porque já usa Railway na Areticon. Projeto `demandou` criado
+(`cfe1921f`), serviço `video-worker` no ar em
+`https://video-worker-production-2eb6.up.railway.app`.
+
+Contrato deliberadamente burro: `POST /cortar` com HMAC sobre o corpo cru,
+responde **202 na hora** e avisa por callback. `cutting` é o primeiro estado de
+trabalho que roda de verdade fora da requisição, e nasce certo.
+
+### Medido contra a gravação real de 27 minutos, 811 MB
+
+| Operação | Tempo |
+|---|---|
+| corte vertical de 35s | 13,2s |
+| corte horizontal de 35s | 5,3s |
+| recodificar o completo | 4,3x tempo real |
+
+E um ganho não previsto: **811 MB caem para cerca de 140 MB** no completo. Isso
+ataca a transferência, que é 58% do custo do produto.
+
+### A ideia do Bruno que resolveu o enquadramento
+
+O primeiro corte vertical saiu tecnicamente perfeito e **inútil**: a gravação é
+screencast de slides, e o resultado era um slide minúsculo boiando no meio.
+
+Ideia dele: em vez de perguntar ao cliente que tipo de gravação é, o squad tira
+alguns quadros, olha e decide. Os quadros são descartados depois.
+
+Implementado, com uma extensão: o agente devolve **onde cada coisa está** (caixa
+do slide, caixa da webcam), não só a classificação. Com as caixas, o corte vira
+slide grande em cima e rosto embaixo, que é o formato que Shorts de screencast
+usam. Testado com as caixas reais: de slide ilegível para slide legível no
+celular com o rosto grande embaixo.
+
+Custo calculado antes de construir: **R$ 0,07 por vídeo**, contra R$ 1,51 de
+custo que o trabalho já tem. 4%.
+
+A decisão mora no app e não no worker, por dois motivos: a conta de custo de IA
+vive num lugar só (worker chamando o modelo por fora seria gasto invisível, que
+é exatamente o que o timeout de 90s criou hoje), e prompt de agente é produto.
+
+### O timeout de 90s, e um erro de método meu
+
+`lib/claude/index.ts` construía o cliente com `timeout: 90_000`. A seleção leva
+121s. O SDK abortava aos 90s, **retentava duas vezes** e devolvia "Request timed
+out." O número que fecha o caso: com streaming ligado para medir, **o primeiro
+texto sai aos 98,2s**. O modelo pensa 98 segundos antes de escrever a primeira
+letra, e o teto abortava 8 segundos antes.
+
+Meu teste anterior passou porque criou um cliente novo, sem esse teto. **Testei
+a API, não o caminho do código do app.** Regra reforçada.
+
+Consertado com streaming sempre, teto por chamada proporcional ao trabalho, e
+`maxRetries` de 2 para 1. Medido com a configuração real: 105s, com 195s de
+folga.
+
+**Custo invisível que isso gerava:** cada tentativa abortada é cobrada pela
+Anthropic mas não vira linha em `ai_usage`, porque a gravação só acontece depois
+da resposta voltar. A tabela de custo subestima o gasto real quando há timeout.
+
+### Descoberta operacional
+
+Todo deploy de Preview da Vercel falha em 7 segundos e todo deploy de Produção
+passa. Causa: o ambiente de Preview não tem `DIRECT_URL`, e o `prisma migrate
+deploy` do build morre antes de compilar. **O check vermelho de todo PR é falso
+alarme**, e nenhum PR tem verificação real hoje. Card aberto.
+
+### O que falta para o produto que o Bruno descreveu
+
+A tela que lista os cortes com caixinha de marcar e destino por corte, título e
+descrição e capa automáticos, e a fusão disso com o Gestor de Conteúdo. O
+worker e o enquadramento, que eram a parte que não existia, estão prontos.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 38): a edição do vídeo, e a regra de não piorar
+
+Continuação da parte 37, fechando o produto de vídeo.
+
+### A regra que o Bruno fixou, e o defeito que ela achou
+
+Pergunta dele: "já imaginou você pagar uma agência, enviar um vídeo, e ele
+devolver um vídeo inferior?" Virou regra da casa: **o que sai da Demandou nunca
+pode ser pior que o que entrou.**
+
+E ele estava certo numa parte que era invisível: **o áudio estava sendo
+degradado.** A versão anterior pegava AAC 128k e gravava AAC 160k. Recodificar
+lossy para lossy é sempre segunda geração de perda, e subir o bitrate não
+recupera nada. Gastava mais bytes para entregar um som pior.
+
+As três regras que entraram no código:
+
+1. **Sem edição, sem recodificar.** Só remux com faststart. Perda zero por
+   definição, 0,23s em vez de minutos.
+2. **CRF 18**, o patamar de visualmente sem perda.
+3. **Áudio copiado** sempre que o tempo não é editado.
+
+Resolução e quadros por segundo nunca mudam.
+
+### Medido, não prometido
+
+| | tamanho | fidelidade |
+|---|---|---|
+| Original (amostra 60s) | 32,3 MB | referência |
+| Só remux | 32,3 MB | perda zero |
+| Editado CRF 18 | 5,2 MB | **SSIM 0,999085** |
+
+**Por que encolhe tanto:** o OBS grava a 4 Mbps fixos, independente do
+conteúdo. Numa gravação de tela, a maior parte do quadro fica parada, e isso
+gasta bits em pixel que não mudou. O x264 aloca por necessidade. O que sai é
+desperdício, não detalhe.
+
+**E o limite dessa conclusão:** isso NÃO generaliza para vídeo de câmera. Rosto
+em movimento e grão de sensor comprimem muito pior. A política protege a
+qualidade nos dois casos; o tamanho é que varia.
+
+`medirFidelidade` mede SSIM de uma amostra e devolve junto com a entrega, para
+a promessa ser verificável em vez de prometida.
+
+### A remoção de pausas vale menos do que parecia
+
+Medido na gravação real antes de construir:
+
+- pausas > 0,5s: 89 ocorrências, **54s removíveis (3,3%)**
+- maior pausa da gravação inteira: **3,1 segundos**
+
+Ou seja, para quem fala corrido, cortar pausa devolve menos de um minuto em 27.
+Onde o tempo realmente está é em hesitação: 78 "então", 44 "né", 70 repetições
+imediatas da mesma palavra. Cortar isso é mais valioso e mais arriscado, porque
+corta no meio da fala, e ficou para uma etapa com aprovação do cliente.
+
+As pausas são achadas pelo buraco entre palavras, e não por detecção de
+silêncio no áudio: silêncio também acusa respiração e ruído de sala, enquanto o
+buraco entre palavras diz exatamente "aqui ninguém está falando". Fica um
+respiro de 0,25s em cada corte, porque colar as frases soa artificial.
+
+### O detalhe que teria quebrado tudo em silêncio
+
+Cada remoção empurra o resto do vídeo. Sem `mapearTempo`, o destaque do trecho
+aos 721s apareceria **28 segundos atrasado**. A conta mora num lugar só, no
+app, e as legendas saem de lá já convertidas.
+
+### Legendas de destaque, não legenda contínua
+
+Decisão do Bruno: no YouTube não entra legenda em tudo, só tópicos e frases de
+destaque. São os mesmos momentos que o squad já escolheu para virar corte, o
+que dá coerência de graça: o destaque na tela, o capítulo do YouTube e o corte
+publicado falam do mesmo instante.
+
+ASS e não SRT porque SRT não tem estilo. Caixa atrás do texto para ler tanto
+sobre slide claro quanto sobre cena escura, no laranja da marca.
+
+### Armadilha nova: caminho de arquivo dentro de filtro do ffmpeg
+
+O filtro usa dois-pontos para separar as próprias opções, então `C:/pasta/a.ass`
+faz o ffmpeg entender que `/pasta/a.ass` é o valor da opção seguinte. O erro
+fala de `original_size` e não menciona legenda nenhuma. Escapar funciona mas
+muda entre plataformas. **Solução: rodar com `cwd` na pasta e passar só o nome.**
+
+### A tela dos cortes
+
+Tudo nasce marcado, com destino escolhido, e a interação é desmarcar. Destino
+que não cabe aparece desabilitado com o motivo (Shorts corta em 3 min, Reels em
+90s, X em 140s na conta comum).
+
+Dois bugs meus, achados ao ligar as pontas: o passo de escrever escrevia para
+todos os cortes inclusive os desmarcados (cobrando crédito por trabalho
+recusado), e ao filtrar isso a contagem de falhas passou a incluir os pulados.
+
+### O que falta
+
+Título, descrição e capa automáticos por corte; a publicação dos cortes nos
+destinos marcados; a fusão com o Gestor de Conteúdo; e a landing.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 39): publicação dos cortes, capas e títulos
+
+### O mesmo padrão do YouTube apareceu de novo, e é o que mais dói
+
+Das cinco redes que a tela de destinos oferecia, **só uma publicava vídeo**.
+Conferido no código, não suposto:
+
+| Destino | Estado antes |
+|---|---|
+| YouTube | funcionava |
+| Instagram Reels | **não existia**, só imagem e carrossel |
+| LinkedIn | só aceita vídeo em `data:`. Com URL do storage, posta a **URL como texto**, e a URL é privada |
+| X | só imagem |
+| Facebook | só imagem e texto |
+
+Ou seja, uma tela que aceitava o clique e falharia depois. **Regra reforçada:
+antes de oferecer um destino, conferir que o caminho existe de ponta a ponta.**
+
+Conserto em duas partes: o Reels passou a existir (container `REELS`, espera de
+até 5 minutos porque a Meta transcodifica e os 90s das imagens derrubaria Reels
+legítimo, `share_to_feed` ligado porque Reels fora do feed perde metade do
+alcance), e os destinos sem publicação de vídeo aparecem **desabilitados,
+escritos "em breve"**, com o motivo no título.
+
+### Dois defeitos na rota que serve mídia para a Meta
+
+Ela só tinha visto imagem, que vive como data URL no banco, então nunca havia
+encostado nos dois problemas: usava `fetch` no blob privado (403, a mesma
+armadilha pela quarta vez) e bufferizava o arquivo inteiro. Agora usa o SDK do
+Blob e vai em fluxo, com `Accept-Ranges`, que a Meta usa ao buscar vídeo e sem
+o qual ela desiste.
+
+### A aprovação virou por destino
+
+Antes criava post de texto para linkedin, x e instagram, fixo. Agora usa os
+destinos marcados e anexa o corte vertical, **mas só onde a publicação de vídeo
+existe de verdade**: anexar onde não existe faria a rota de publicação tropeçar
+num arquivo que ela não sabe mandar, e o cliente veria erro numa etapa sem
+relação com a causa.
+
+### Capa: composição sobre o quadro real (opção A do Bruno)
+
+`comporSobreImagem` é novo no nano banana: o que existia gerava a partir de
+texto, e aqui a imagem entra junto, **antes** do texto, para o modelo tratá-lo
+como instrução sobre a imagem e não como descrição de cena nova.
+
+**Só a cascata do Nano Banana entra.** Imagen 3 e Pollinations geram a partir de
+texto e ignoram a imagem de entrada, então incluí-los como fallback devolveria
+arte bonita e sem o cliente dentro, que é exatamente o que a decisão descartou.
+
+Testado contra o quadro real:
+
+| Modelo | Tempo | Resultado |
+|---|---|---|
+| `gemini-3-pro-image-preview` | 16,3s | **escolhido** |
+| `gemini-3.1-flash-image-preview` | 9,6s | texto cobre o título do slide |
+| `gemini-2.5-flash-image` | 9,8s | arquivo 2,4x maior |
+
+O Pro fica na frente apesar de 60% mais lento, porque no Flash o texto tapa
+conteúdo e sai com menos peso. Verificado olhando as três saídas.
+
+Nos três a pessoa foi preservada sem substituição, que era o risco real da
+abordagem. O prompt descreve **acabamento e não conteúdo**, de propósito: pedir
+cena faria o modelo trocar a pessoa por alguém inventado.
+
+### Três textos, com trabalhos diferentes
+
+`titulo` (até 100 caracteres, com o corte aplicado em código porque o modelo é
+instruído mas não garante, e título estourado é recusado pelo YouTube depois de
+o cliente aprovar), `descricao` (2 a 4 frases terminando em pergunta) e
+`fraseDaCapa` (no máximo 6 palavras, para ler em miniatura).
+
+Gerados **só para os cortes marcados**: com 7 cortes, gerar para todos custaria
+quase o dobro de quem publica 4.
+
+### O que falta
+
+Publicação de vídeo em LinkedIn, X e Facebook; a fusão com o Gestor de
+Conteúdo; e a landing.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 40): a capa procura o rosto, e o vídeo entra no quadro
+
+### A crítica da capa era estrutural, não de prompt
+
+O Bruno apontou, com exemplo na mão (canal do Dan Martell), que a capa estava
+pegando um quadro de tela compartilhada e escrevendo um texto branco simples em
+cima. A causa não era o prompt: **o quadro vinha de dentro do trecho**.
+
+Os melhores momentos de FALA não coincidem com os melhores momentos de IMAGEM.
+A seleção de trechos descarta abertura de propósito, e é justamente ali que
+muita gente aparece falando em tela cheia. Provado na gravação real: **os sete
+trechos escolhidos caem todos em slide, e o quadro bom está no segundo 20**.
+
+Agora o worker varre o vídeo inteiro, tira dez candidatos, e o mesmo agente que
+decide o enquadramento escolhe qual tem rosto grande, olhando para a câmera,
+com expressão viva. Depois o quadro é reextraído em resolução cheia e recortado
+em 1280x720, que é o que o YouTube pede. Os candidatos vão na mesma chamada do
+enquadramento, então não custam prompt novo.
+
+A capa mora no VÍDEO e não no trecho: uma escolha de rosto serve para todas as
+capas, e o que muda por corte é o texto.
+
+### O prompt refeito no padrão das referências
+
+As thumbnails que ele mandou têm o mesmo esqueleto: pouquíssimas palavras em
+corpo enorme, contraste alto, uma palavra destacada em bloco de cor, a pessoa
+grande, e o texto nunca cobrindo o rosto. O prompt novo descreve isso em seções
+(TEXTO, PESSOA, FUNDO, NÃO FAÇA).
+
+A palavra destacada é escolhida em código, a mais longa da frase, porque deixar
+o modelo escolher produzia destaque em preposição.
+
+Resultado medido: 17,5s no Pro, com "CONSULTORIA" em bloco laranja da marca,
+texto à direita sem tocar o rosto, fundo simplificado.
+
+**Risco em aberto e vigiado:** o modelo está preservando o rosto, mas isso é
+comportamento e não garantia. Se algum dia sair uma capa com outra pessoa, a
+composição vira caminho de risco e o certo é trocar por sobreposição de texto em
+código, que é feia mas nunca inventa gente.
+
+### A fusão com o Gestor de Conteúdo
+
+Linha de agente nova, **Vitor Vídeo**, subtítulo Cortes. Sem ela os cortes
+cairiam na linha da Diana Design, misturados com imagem gerada, e quem olha o
+quadro precisa ver que houve trabalho de vídeo.
+
+Os cortes são **espalhados na semana**, com espaçamento uniforme: 3 caem em
+segunda, quinta e domingo; 7 caem um por dia. Sete publicações na mesma manhã é
+spam, e o quadro carrega por semana, então distribuir também é o que faz eles
+aparecerem. O vídeo completo entra como card próprio na segunda de manhã.
+
+Idempotência pelo `config` do run, sem coluna nova: clique repetido devolve o
+run existente em vez de duplicar cards e posts.
+
+**Detalhe que teria quebrado calado:** a detecção de vídeo do `MediaPreview` só
+aceitava URL terminada em `.mp4`, e a nossa rota serve por consulta porque o
+storage é privado. Sem ajustar, o corte apareceria como imagem quebrada dentro
+do quadro.
+
+### O fluxo completo hoje
+
+```
+sobe → transcreve → escolhe momentos → CORTA no Railway (enquadramento por
+visão + capa por varredura de rosto) → cliente marca o que sobe e para onde →
+capas, títulos e textos → cronograma da semana → quadro do Gestor → publica
+```
+
+### O que falta
+
+A landing contando essa história, e a publicação de vídeo em LinkedIn, X e
+Facebook.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 41): a capa profissional e a landing com prova
+
+### A capa passou a recortar, corrigir expressão e trocar o fundo
+
+Terceira evolução, cada uma vinda de uma crítica do Bruno com o resultado na
+mão. Ele apontou que a boca dele estava aberta no meio de uma sílaba, e que um
+quadro ao lado a postura já muda, então escolher melhor ajuda mas não resolve:
+**em vídeo de fala contínua, a maioria dos quadros é ruim como foto.**
+
+Agora a pessoa é recortada do fundo, a expressão é ajustada e o cenário é
+substituído por um alinhado ao nicho do cliente.
+
+**A expressão sai do CONTEÚDO, não da imagem.** Quem escolhe é o agente que leu
+a fala, porque a emoção certa vem do que a pessoa disse e o modelo de imagem só
+vê um quadro parado. Cinco opções, cada uma traduzida em instrução concreta de
+boca, olhos e sobrancelhas, porque "pareça confiante" não diz ao modelo o que
+desenhar.
+
+Testado com o quadro real de boca aberta:
+
+| Expressão | Tempo | Resultado |
+|---|---|---|
+| confiante | 17,2s | boca fechada, sorriso leve, escritório desfocado |
+| sério | 18,2s | boca fechada sem sorrir, parede de concreto, luz lateral |
+
+**RISCO NOVO, e é real.** Até aqui a trava contra o modelo trocar a pessoa por
+alguém inventado era a instrução de NÃO alterar o rosto. Pedir mudança de
+expressão remove essa trava. A compensação é a seção IDENTIDADE, primeira e mais
+longa do prompt, que lista item por item o que preservar e manda manter a
+expressão original se não der para ajustar sem mudar a pessoa. **Mas isso é
+instrução, não garantia.**
+
+Se um dia sair capa com outra pessoa, o caminho certo NÃO é ajustar o prompt de
+novo: é voltar para sobreposição de texto em código sobre a foto real, que é
+mais feia e nunca inventa gente. Já há leve deriva de traços no caso "sério",
+que é o limite a vigiar.
+
+### A landing ganhou a seção da entrega
+
+A landing contava a história do vídeo em prosa, e prosa não vende
+transformação. Agora há uma seção com as **saídas reais do produto**, geradas de
+uma gravação de verdade, ao lado do material cru de onde vieram.
+
+**O antes é o argumento.** Sozinho, o depois parece uma imagem bonita que
+qualquer um faria no Canva; com o antes ao lado, fica claro que houve trabalho.
+
+Fica entre o Como funciona e o Preço: quem chegou ali já entendeu o que a
+plataforma faz, e o que decide a compra é ver o resultado. Preço antes da prova
+é pedir decisão sem argumento.
+
+**Três problemas achados abrindo no navegador, não lendo o código:** dois itens
+ficavam com caixa cinza vazia (trocadas pelos capítulos reais e pelos três
+textos por rede); o corte vertical de 9:16 estourava a altura da linha ao lado
+de um 16:9; e o celular precisou de conferência, que passou sem rolagem lateral.
+
+**Decisão pendente do Bruno:** as imagens são o rosto dele, na home pública.
+Ele é o dono e disse que vai usar a plataforma nas próprias empresas para
+mostrar valor, mas aparecer na home é decisão dele. Trocar é substituir os
+arquivos em `public/exemplo/`.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 42): o teste de ponta a ponta, e os quatro defeitos que ele achou
+
+Rodado antes de o Bruno testar, a pedido dele. Estratégia: as rotas `enquadrar`
+e `cortar-callback` são autenticadas por HMAC e não por sessão, então dá para
+rodar o worker localmente contra o servidor local e exercitar o caminho real
+inteiro (mesmo ffmpeg, mesmo agente de visão, mesmo storage, mesmos
+manipuladores de rota). O que fica de fora é o salto de rede entre Railway e
+Vercel, verificado à parte.
+
+### Os quatro defeitos
+
+**1. O worker desistia do aviso de conclusão na primeira falha.** O trabalho de
+cortar leva minutos e gasta CPU e transferência de verdade; se o aviso se perde,
+tudo isso vira lixo, o cliente vê "cortando" até o prazo e a única saída é
+refazer. Aconteceu no teste quando o servidor do outro lado caiu no meio.
+Agora insiste quatro vezes com espera crescente (5s, 15s, 45s, 135s), porque a
+falha típica é um deploy do app, que leva perto de um minuto.
+
+**2. Duas migrations nunca tinham sido aplicadas.** `completoUrl` e
+`capaFonteUrl` só existiam no código: elas rodam no build da Vercel, e o PR não
+tinha sido mergeado. O callback teria quebrado. Aplicadas pelo Prisma, com
+registro correto para o build não tentar de novo.
+
+**3. O recorte do slide cortava a primeira e a última palavra de cada linha.**
+Este só apareceu **olhando o vídeo produzido**, não o banco: dava para ler "rês
+negócios" sem o T e "eticon" sem o Ar. O prompt mandava apertar a caixa "sem
+margem vazia" e o agente apertou demais. Como ele erra sempre para o mesmo lado,
+a correção entrou nos dois lugares: o prompt passou a proibir cortar texto, e o
+worker abre a caixa em 3% de cada lado, preso ao quadro. A folga vale só para a
+tela; a caixa da pessoa é a janela da webcam e alargar traria pedaço de slide
+para dentro do rosto.
+
+**4. As caixas do enquadramento eram descartadas** pelo callback, que guardava
+só cena, tratamento e motivo. Sem as coordenadas, "está cortando o slide" não
+tem diagnóstico possível: não dá para saber se errou quem mediu ou quem aplicou.
+
+### Dois erros meus no próprio teste, que valem registro
+
+- **O token do Blob está entre aspas no `.env.local`**, e `cut -d= -f2-` levou as
+  aspas junto, gerando 403. Conferido depois que o valor no Railway está correto.
+- **Apontei o worker para a porta errada** do servidor local, o que produziu
+  "fetch failed" no enquadramento e me fez desconfiar do código antes de
+  desconfiar do teste.
+
+Os dois reforçam a mesma regra: quando o teste falha, a primeira hipótese
+razoável é o teste.
+
+### O que funcionou, medido
+
+| | |
+|---|---|
+| Vídeo completo | **811 MB → 176 MB** |
+| Cortes | 6, todos 1080x1920, com áudio |
+| Enquadramento | 6 de 6 classificados como misto, com motivo coerente |
+| Capa do rosto | achou o Bruno olhando para a câmera, boca quase fechada |
+| Consumo da visão | 11.439 tokens de entrada, 1.179 de saída |
+
+O agente de visão descreveu cada cena com precisão ("slide comparando os três
+negócios com webcam pequena no canto"). Ele está enxergando de verdade.
+
+### Correção de número que eu tinha dado errado
+
+Estimei R$ 0,07 por vídeo para a visão. O real medido é **R$ 0,19**, porque são
+22 imagens e não 14 (12 dos trechos mais 10 candidatos de capa). Continua
+pequeno perto dos R$ 1,51 do trabalho, mas o número estava errado.
+
+### Observação de produto para o Bruno
+
+A gravação dele é screencast do começo ao fim, então **6 de 6 cortes viraram o
+layout empilhado** e nenhum tem ele em tela cheia. Funciona, mas quando ele
+gravar olhando para a câmera os cortes ficam melhores. Vale entrar no roteiro de
+gravação dele.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+### Continuação da parte 42: os dois defeitos que só o vídeo mostrava
+
+Depois do primeiro reprocessamento, mais dois consertos, ambos achados olhando
+o corte produzido e não o banco.
+
+**A folga de 3% não bastava, e agora ela tem medida.** No quadro do slide de
+três colunas, o texto ocupa de **12,3% a 86,7%** da largura e o agente devolveu
+**17% a 85%**: erro de 4,7% para dentro no lado esquerdo. Com 3% ainda cortava a
+primeira letra de cada linha. Passou para **6%**, com o número escrito no código
+para a próxima pessoa não ter que remedir. O custo é o texto sair 7% menor, o
+que é invisível perto de perder a primeira palavra.
+
+**A pessoa aparecia duas vezes no mesmo quadro.** No empilhado ela aparece
+grande embaixo, e como a janela da webcam fica dentro da área do slide, o
+recorte de cima pegava ela também: uma minúscula em cima e uma grande embaixo.
+`semAPessoa` encurta a tela até onde a pessoa começa, o que não perde conteúdo
+porque slide bem feito não põe texto embaixo da janela do apresentador. Só
+encurta quando sobra tela de verdade.
+
+**A lição que atravessa os dois:** o banco dizia "6 cortes prontos" e estava
+certo. Seis cortes prontos não é seis cortes bons, e a verificação tem que
+chegar até o artefato, aberto e olhado.
+
+*Atualizado em 23/08/2026 por Claude Code.*
