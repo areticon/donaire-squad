@@ -125,3 +125,18 @@ body {
 .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
 .animate-slide-in { animation: slide-in-right 0.3s ease-out forwards; }
 .animate-pulse-orange { animation: pulse-orange 2s infinite; }
+
+/*
+ * Rolagem horizontal sem a barra visível.
+ *
+ * Usada em barras de aba e grades largas no celular, onde o gesto é arrastar e
+ * a barra só rouba a altura de uma linha de texto. No computador esses mesmos
+ * elementos cabem inteiros e a regra não tem efeito.
+ */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
