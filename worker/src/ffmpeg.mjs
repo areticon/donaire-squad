@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { basename, dirname, join } from "node:path";
 import { writeFile } from "node:fs/promises";
 
@@ -36,6 +36,56 @@ function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
       else reject(new Error(`ffmpeg saiu com ${code}: ${erro.slice(-600)}`));
     });
   });
+}
+
+/**
+ * Como este ffmpeg aceita um filtro vindo de arquivo.
+ *
+ * Precisa vir de arquivo porque o filtro de um vídeo muito editado fica enorme:
+ * o corte real de 23/08 gerou 22 mil caracteres e 700 segmentos passariam de 50
+ * mil. No Windows o teto de linha de comando é 32.767, então quem recusa é o
+ * shell, com um erro que não menciona filtro nenhum. No Linux o teto é maior,
+ * mas o arquivo funciona nos dois e tira a diferença da conta.
+ *
+ * A opção mudou de nome: até a versão 6 é `-filter_complex_script`, e da 7 em
+ * diante é `-/filter_complex`, com a antiga REMOVIDA. Isso importa de verdade
+ * aqui, porque o contêiner do Railway roda o ffmpeg do Debian, mais antigo que
+ * o da máquina de desenvolvimento. Escolher pela versão evita um bug que só
+ * apareceria em produção.
+ */
+let _opcaoDeFiltro = null;
+
+let _diagnostico = null;
+
+/**
+ * Qual ffmpeg está instalado e qual opção de filtro ele aceita.
+ *
+ * Calculado UMA vez e guardado. Isto é servido na rota de saúde, e o Railway
+ * bate nela de tempos em tempos: sem o cache, cada verificação de saúde criaria
+ * um processo só para perguntar uma versão que não muda enquanto o contêiner
+ * vive.
+ */
+export function diagnostico() {
+  if (_diagnostico) return _diagnostico;
+  const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
+  _diagnostico = {
+    ffmpeg: ((r.stdout ?? "").split(String.fromCharCode(10))[0] || "desconhecido").trim(),
+    opcaoDeFiltro: opcaoDeFiltro(),
+  };
+  return _diagnostico;
+}
+
+function opcaoDeFiltro() {
+  if (_opcaoDeFiltro) return _opcaoDeFiltro;
+  try {
+    const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
+    const m = (r.stdout ?? "").match(/ffmpeg version n?(\d+)/i);
+    const maior = m ? Number(m[1]) : 0;
+    _opcaoDeFiltro = maior >= 7 ? "-/filter_complex" : "-filter_complex_script";
+  } catch {
+    _opcaoDeFiltro = "-filter_complex_script";
+  }
+  return _opcaoDeFiltro;
 }
 
 export function ffprobe(caminho) {
@@ -102,38 +152,64 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   }
 
   const args = ["-i", entrada];
-  const filtrosVideo = [];
   let cwdDoFiltro;
+  let arquivoDeFiltro;
 
   if (editaTempo) {
-    // O que FICA é o complemento do que sai. `select` recebe a lista de
-    // intervalos que sobrevivem, e `setpts` remonta a linha do tempo sem os
-    // buracos, senão o player exibiria o vídeo congelado no lugar do corte.
+    // TRIM e CONCAT, e não uma expressão `select` gigante.
     //
-    // Um passe só, e não cortar em N arquivos e concatenar: concatenação exige
-    // que cada pedaço comece em quadro-chave, e forçar isso ou recodifica tudo
-    // duas vezes ou desalinha o áudio.
+    // A versão anterior montava `select='between(t,a,b)+between(t,c,d)+...'`
+    // com um termo por pedaço mantido. Funcionava com 67 remoções e MORRIA com
+    // 155, que foi o que apareceu quando a limpeza de fala entrou: o parser de
+    // expressão do ffmpeg quebra entre 80 e 120 termos, e o erro é "Cannot
+    // allocate memory", que não diz nada sobre o motivo real.
+    //
+    // Medido em 23/08, expressão `select`:  80 termos OK, 120 falha.
+    // Medido em 23/08, `trim` mais `concat`: 700 segmentos em 157s.
+    //
+    // A diferença é estrutural: cada pedaço vira um NÓ de filtro em vez de um
+    // termo numa única expressão, e o ffmpeg lida bem com centenas de nós.
     const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
-    const expr = manter
-      .map((m) => `between(t,${m.de.toFixed(3)},${m.ate.toFixed(3)})`)
-      .join("+");
-    filtrosVideo.push(`select='${expr}'`, "setpts=N/FRAME_RATE/TB");
-    args.push("-af", `aselect='${expr}',asetpts=N/SR/TB`);
-  }
+    const partes = [];
+    const mapa = [];
+    manter.forEach((m, i) => {
+      partes.push(
+        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+        `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+      );
+      mapa.push(`[v${i}][a${i}]`);
+    });
 
-  if (editaImagem) {
-    // Só o NOME do arquivo, com o ffmpeg rodando dentro da pasta dele.
-    //
-    // Caminho completo aqui é armadilha: o filtro usa dois-pontos para separar
-    // as próprias opções, então `C:/pasta/a.ass` faz o ffmpeg entender que
-    // `/pasta/a.ass` é o valor da opção seguinte, e o erro que ele devolve fala
-    // de "original_size", sem mencionar legenda nenhuma. Escapar funciona mas
-    // muda entre plataformas. Sem letra de unidade, o problema não existe.
-    filtrosVideo.push("subtitles=" + basename(opcoes.legendasArquivo));
+    let grafo =
+      partes.join(";") +
+      ";" +
+      mapa.join("") +
+      `concat=n=${manter.length}:v=1:a=1[vc][ac]`;
+
+    // A legenda entra DEPOIS da concatenação, porque os tempos dela já foram
+    // calculados para a linha do tempo editada.
+    if (editaImagem) {
+      grafo += `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`;
+    } else {
+      grafo += ";[vc]null[v]";
+    }
+
+    // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
+    // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
+    // de 50 mil. O teto de linha de comando do Windows é 32.767, então lá quem
+    // recusa é o shell, antes de o ffmpeg ver. No Linux o teto é bem maior, mas
+    // o arquivo funciona nos dois e tira essa diferença da conta.
+    cwdDoFiltro = dirname(opcoes.legendasArquivo ?? saida);
+    arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
+    await writeFile(arquivoDeFiltro, grafo, "utf8");
+
+    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[ac]");
+  } else {
+    // Só legenda: o caminho simples continua sendo o melhor.
     cwdDoFiltro = dirname(opcoes.legendasArquivo);
+    args.push("-vf", "subtitles=" + basename(opcoes.legendasArquivo));
   }
 
-  args.push("-vf", filtrosVideo.join(","));
   args.push(
     "-c:v", "libx264", "-preset", "medium", "-crf", "18",
     "-pix_fmt", "yuv420p"
@@ -145,12 +221,21 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
 
   args.push("-movflags", "+faststart", saida);
-  await rodar(args, { cwd: cwdDoFiltro });
 
-  const partes = [];
-  if (editaTempo) partes.push(`${remocoes.length} trechos removidos`);
-  if (editaImagem) partes.push("legendas de destaque");
-  return { recodificado: true, motivo: partes.join(" e ") };
+  // O teto de tempo acompanha a duração, e não é fixo.
+  //
+  // Medido em 23/08 na gravação real: com o grafo de trim e concat mais a
+  // legenda, o ffmpeg roda a cerca de 4x o tempo real. Um teto fixo de 30
+  // minutos aguenta gravação de 2 horas e mata uma de 3, e o sintoma seria um
+  // corte que "some" sem erro que explique. Um segundo de teto por segundo de
+  // vídeo dá quatro vezes a folga medida, e nunca menos que os 30 minutos.
+  const teto = Math.max(30 * 60 * 1000, Math.round((opcoes.duracaoSec ?? 0) * 1000));
+  await rodar(args, { cwd: cwdDoFiltro, timeoutMs: teto });
+
+  const partesDoMotivo = [];
+  if (editaTempo) partesDoMotivo.push(`${remocoes.length} trechos removidos`);
+  if (editaImagem) partesDoMotivo.push("legendas de destaque");
+  return { recodificado: true, motivo: partesDoMotivo.join(" e ") };
 }
 
 /** O complemento das remoções: os pedaços que sobrevivem, em ordem. */

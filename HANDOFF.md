@@ -248,33 +248,23 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-### Checkout Stripe (PRIORIDADE)
-- [ ] Testar checkout end-to-end: clicar "Assinar Pro" → redirect Stripe → pagamento → webhook → user.plan atualizado
-- [ ] Verificar se `CRON_SECRET` está configurado no Vercel (necessário para cron funcionar)
-- [ ] Testar webhook Stripe: criar assinatura teste → verificar user.plan no banco
+> Revisado em 23/08/2026. O que estava aqui antes era de abril e já tinha sido
+> feito (Vercel Pro, cron por minuto, Previews por branch). Lista de abril
+> mantida como histórico nas seções de sessão mais abaixo.
 
-### Cron / Agendamento
-- [ ] Configurar cron externo (cron-job.org) OU upgrade Vercel Pro para posts agendarem fora das 9h BRT
-- [ ] Testar publicação automática: criar post com scheduledAt no passado → chamar GET /api/cron/pipeline
+### Fora do código, só o Bruno faz
+- [ ] Verificação de negócio na Meta (trava o app de produção)
+- [ ] Submissão do OAuth do Google para revisão
+- [ ] Busca de anterioridade no INPI para a marca
+- [ ] Fechar os primeiros clientes pagantes
+- [ ] Teste de tráfego de R$ 2.000
 
-### Landing page
-- [ ] Revisar LP completa — copys, CTAs, responsividade
-- [ ] Testar botões de checkout com os Price IDs reais do Stripe
-- [ ] Verificar se /privacy e /terms renderizam corretamente em produção
-
-### Integrações
-- [ ] LinkedIn primeiro comentário: testar se o endpoint v2 funciona em produção
-- [ ] Twitter: decidir se vale $100/mês para upload de imagens
-- [ ] Veo: quando tiver Vercel Pro, reabilitar vídeo no pipeline
-
-### Infraestrutura
-- [ ] Upgrade Vercel para Pro ($20/mês) — resolve 3 problemas de uma vez:
-  - maxDuration 800s (pipeline mais robusto)
-  - Cron por minuto (agendamento preciso)
-  - Previews por branch
-- [ ] Monitorar pipeline timing: 5 dias com imagens é apertado em 300s
-
----
+### Produto, ainda aberto
+- [ ] Gravar o vídeo de demonstração para Meta e Google (o passo a passo está na
+      seção de sessão de 22/08)
+- [ ] Checkout Stripe de ponta a ponta com cartão real de teste
+- [ ] Revisar copy e CTA da landing page com o produto já pronto
+- [ ] Twitter: decidir se vale US$ 100/mês pelo upload de imagem
 
 ## 10. Comandos Úteis
 
@@ -3766,5 +3756,114 @@ aplicar suas migrações em produção. O build virou um script que só migra qu
 `VERCEL_ENV` é production.
 
 **Verificado: primeiro Preview verde em 1 minuto**, contra 7 segundos de erro.
+
+*Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 44): dois bugs que só aparecem em vídeo longo
+
+Os dois foram criados pela mesma coisa: a limpeza de fala, que entrou ontem,
+triplicou o número de cortes por vídeo. O que aguentava 67 remoções passou a
+receber 155, e duas peças quebraram.
+
+### 1. O ffmpeg morria com "Cannot allocate memory", e não era memória
+
+A remoção de trechos montava uma expressão única:
+
+```
+select='between(t,a,b)+between(t,c,d)+...'
+```
+
+Um termo por pedaço mantido. Com 67 remoções funcionava; com 155 o ffmpeg
+respondia `Error opening output files: Cannot allocate memory`, que manda
+procurar RAM e não tem nada a ver com o problema.
+
+**Medido em 23/08, onde exatamente quebra:**
+
+| Termos na expressão | Tamanho | Resultado |
+|---|---|---|
+| 40 | 932 chars | ok |
+| 80 | 1.932 chars | ok |
+| 120 | 2.932 chars | **falha ao parsear** |
+
+O limite é do parser de expressão, entre 80 e 120 termos.
+
+**A forma que escala** é `trim` mais `concat`: cada pedaço vira um NÓ do grafo
+de filtros em vez de um termo de uma expressão só.
+
+| Formulação | Segmentos | Resultado |
+|---|---|---|
+| `trim` + `concat` na linha de comando | 120 | ok em 4s |
+| idem | 200 | ok em 14s |
+| idem | 400 e 700 | falha do SHELL, não do ffmpeg |
+| `trim` + `concat` com filtro em ARQUIVO | 400 | ok em 27s |
+| idem | **700** | **ok em 157s** |
+
+Passar de 200 segmentos exige o filtro em arquivo. O grafo cresce rápido: o
+corte real de 23/08, com 161 remoções, gerou 322 nós e 22.007 caracteres, e 700
+segmentos passam de 50 mil. O teto de linha de comando do Windows é 32.767
+caracteres, então na máquina de desenvolvimento quem recusa é o SHELL, antes de
+o ffmpeg ver qualquer coisa. No Linux do Railway o teto é muito maior e o
+estouro viria depois, mas o filtro em arquivo funciona nos dois e tira a
+diferença da conta.
+
+**Armadilha de versão, e ela morde só em produção.** A opção que lê o filtro de
+arquivo MUDOU DE NOME: até a 6 é `-filter_complex_script`, da 7 em diante é
+`-/filter_complex`, e a antiga foi REMOVIDA. A máquina de desenvolvimento roda
+ffmpeg 9; o contêiner do Railway roda o do Debian bookworm, que é 5.1. Escolher
+pela versão detectada em tempo de execução é o que impede um bug que passa
+local e quebra no Railway.
+
+A rota `/saude` do worker passou a devolver a versão do ffmpeg e a opção
+escolhida, para essa diferença nunca mais precisar de adivinhação.
+
+### 2. O teto de tempo do ffmpeg era fixo em 30 minutos
+
+Medido na gravação real: com o grafo de 294 nós mais a legenda, o ffmpeg roda a
+cerca de **4x o tempo real**. Teto fixo de 30 minutos aguenta gravação de 2
+horas e mata uma de 3, e o sintoma seria um corte sumindo sem erro que explique.
+Agora o teto é um segundo por segundo de vídeo, com piso de 30 minutos, o que dá
+quatro vezes a folga medida.
+
+**Enquanto media isso, corrigi uma extrapolação minha errada.** Parei um corte
+achando que ia estourar o teto, com base num palpite de que o arquivo final
+teria 760 MB. Medido depois:
+
+| Preset (CRF 18) | Tempo para 60s | Bitrate | SSIM vs fonte |
+|---|---|---|---|
+| medium | 14,8s (4,0x tempo real) | 0,88 Mbps | 0,9988 |
+| fast | 15,6s (3,9x) | 0,86 Mbps | 0,9988 |
+| veryfast | 9,8s (6,1x) | 0,77 Mbps | 0,9979 |
+| ultrafast | 6,6s (9,1x) | 4,15 Mbps | 0,9996 |
+
+A fonte é OBS a 4,43 Mbps. O CRF 18 sai a 0,88 Mbps, **cinco vezes menor**, com
+SSIM 0,9988, porque o conteúdo é rosto falando e tela parada, que comprime bem.
+O arquivo final tem uns 167 MB e a codificação leva uns 7 minutos, não 45.
+`preset medium` fica como está: é o menor arquivo com qualidade praticamente
+idêntica à fonte.
+
+### 3. A abertura falhava em metade dos vídeos, calada
+
+Achado por acidente enquanto testava o item 1. A escolha de ganchos usava
+`maxTokens: 8000`, e o teto inclui os tokens de PENSAMENTO.
+
+**Medido em 23/08, 8 execuções com a mesma entrada:**
+
+| Teto | Falhas | Saída quando responde |
+|---|---|---|
+| 8.000 | ~metade, com `stop_reason: max_tokens` e ZERO texto | 6.188 a 6.248 |
+| **16.000** | **0 de 8** | 5.271 a 9.312 |
+
+O efeito era pior do que o número sugere. Quem chama pega a exceção e segue sem
+abertura, então o corte nunca morria: o vídeo simplesmente saía sem gancho, e
+nada no sistema dizia por quê. Um vídeo em cada dois perdia justamente a peça
+que o Bruno pediu ontem por causa de retenção.
+
+Duas correções: o teto virou 16.000, e a falha passou a ser registrada em vez de
+engolida.
+
+Medido também com esforço médio: resolve em 147 a 3.501 tokens, três vezes mais
+barato, e escolhe os MESMOS trechos. Fica no padrão mesmo assim, porque escolher
+gancho é julgamento e a regra da casa manda julgamento no padrão. O número para
+trocar está no código, se o custo apertar.
 
 *Atualizado em 23/08/2026 por Claude Code.*

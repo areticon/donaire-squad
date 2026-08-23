@@ -85,7 +85,26 @@ export async function escolherGanchos(
   const resposta = await askClaude(
     SISTEMA,
     `Momentos escolhidos da gravação:\n\n${lista}`,
-    { maxTokens: 8000, usage: { operation: "video_abertura", ...usageCtx } }
+    {
+      // 16000, e não 8000. Com 8000 esta chamada falhava em torno de METADE das
+      // vezes, medido em 23/08: 8 execuções, e as que falharam gastaram os 8000
+      // inteiros pensando e voltaram com stop_reason "max_tokens" e ZERO blocos
+      // de texto. Com 16000, 8 de 8 responderam, gastando de 5.271 a 9.312.
+      //
+      // O efeito da falha era pior do que parecia. Quem chama pega a exceção e
+      // segue sem abertura, então o corte não morria: simplesmente saía sem
+      // gancho, calado. Um vídeo em cada dois perdia a abertura e nada no
+      // sistema dizia por quê.
+      //
+      // Subir o teto não encarece por si: o cobrado é o que o modelo GERA, e o
+      // teto só decide se ele consegue terminar. Medido também com esforço
+      // médio, que resolveu em 147 a 3.501 tokens e escolheu os MESMOS trechos,
+      // três vezes mais barato. Fica no padrão mesmo assim, porque escolher o
+      // gancho é julgamento, e a regra da casa manda tarefa de julgamento no
+      // padrão. Se o custo apertar, o número para trocar está aqui.
+      maxTokens: 16000,
+      usage: { operation: "video_abertura", ...usageCtx },
+    }
   );
 
   const limpo = resposta
