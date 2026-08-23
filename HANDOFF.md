@@ -4071,4 +4071,75 @@ Nota de ambiente: a conexao desta maquina estava entre 265 e 560 kbps de subida
 neste dia, o que derrubou dois envios de arquivo e um download pela metade. Nada
 disso e do produto; o Railway sobe e desce de datacenter.
 
+## Sessao 23/08/2026 (parte 45): confirmacao de e-mail no cadastro
+
+Todo usuario nascia com `emailVerified: false`, porque o cadastro por senha nunca
+mandou e-mail de confirmacao. Isso obrigou a desligar `requireLocalEmailVerified`
+em 21/08 (senao o login social nunca vinculava a conta existente) e permitia, em
+tese, alguem cadastrar com e-mail alheio e herdar a conta do dono real.
+
+### A decisao que evita tiro no pe
+
+As duas travas (`requireEmailVerification` e `requireLocalEmailVerified`) sao
+amarradas a `emailHabilitado()`, que so e verdadeiro quando `RESEND_API_KEY`
+existe no ambiente. Ligar verificacao obrigatoria sem ter como MANDAR o e-mail
+trancaria o produto inteiro: a pessoa se cadastra, nunca recebe nada, nunca
+entra. Assim o codigo subiu antes da credencial e a trava fechou sozinha quando
+a chave chegou, sem outro deploy. Mesmo padrao que os provedores sociais.
+
+### Resend e nao SMTP do Titan
+
+SMTP em funcao serverless e conexao longa com estado, e o runtime derruba socket
+ocioso; o erro que aparece e de rede e nao de e-mail. O Resend e HTTP, ja estava
+no `package.json` sem nunca ter sido usado, e ja esta no custo fixo. O Titan
+continua recebendo, intocado: os registros do Resend usam SUBDOMINIO para envio
+(`send.demandou.com`), entao nao encostam no SPF nem no MX da raiz.
+
+**Nao habilitar "Enable Receiving" no Resend.** Isso pediria MX na raiz, que
+substituiria os do Titan e derrubaria todo o e-mail recebido em demandou.com.
+
+### A armadilha do cPanel da HostGator, que vai morder de novo
+
+O Editor de Zona do cPanel **trunca valor TXT no caractere `+`**. O DKIM tem 218
+caracteres e o `+` aparece na posicao 121: o registro gravou 121 caracteres e
+parou ali. Nao da erro, so grava errado, e o sintoma e o Resend reprovar o
+dominio sem dizer por que.
+
+Comportamento observado nas tres tentativas, em 23/08:
+
+| O que foi colado | O que o cPanel gravou |
+|---|---|
+| `p=...IDAQAB` (sem aspas) | 121 caracteres, cortado no `+` |
+| `"p=...IDAQAB"` (aspas dos dois lados) | 219 caracteres, com a aspa final virando conteudo |
+| `"p=...IDAQAB` (**aspa so na frente**) | 218 caracteres, exatos |
+
+A aspa da frente e consumida como delimitador e faz o `+` passar; sem aspa no
+fim, nao sobra lixo. **Vale para qualquer TXT com `+`**, ou seja o proximo DKIM,
+qualquer chave de verificacao de servico, e SPF com mecanismos.
+
+Conferir sempre pelo tamanho, e nao de olho:
+
+```powershell
+((Resolve-DnsName resend._domainkey.demandou.com -Type TXT -Server 8.8.8.8).Strings -join '').Length
+```
+
+### Verificado de ponta a ponta em producao, 23/08
+
+| Etapa | Resultado |
+|---|---|
+| Cadastro sem a chave no ambiente | HTTP 200 com token, usuario entra, log avisa que nao enviou |
+| Cadastro com a chave | HTTP 200 com **`token: null`**, sem sessao ate confirmar |
+| Envio pelo Resend | 330 ms, de `contato@demandou.com` |
+| Entrega | **caixa principal, nao spam**, remetente aparece como "Demandou" |
+| Clique no link | conta passou a `emailVerified: true` |
+
+Quem seria afetado, checado ANTES de ligar em producao: das 3 contas, as duas do
+Bruno ja estavam verificadas; a unica que ficou trancada e
+`d.eb.iy.oxe.d26.0@gmail.com`, endereco com pontos no Gmail, cadastro
+descartavel, que e a "conta de robo" do card Ref 174. Trancar e ganho.
+
+`sendOnSignIn` fica ligado de proposito: quem se cadastrou antes disto esta com
+`emailVerified: false` e bateria numa parede sem saida; assim a tentativa de
+entrar dispara e-mail novo em vez de so recusar.
+
 *Atualizado em 23/08/2026 por Claude Code.*
