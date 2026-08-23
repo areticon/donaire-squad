@@ -338,8 +338,14 @@ export async function cortarVertical(entrada, saida, inicio, duracao, enquadrame
  * Ilegível é pior que ter margem sobrando, e o modelo erra sempre para o mesmo
  * lado, então a folga entra em código em vez de virar mais uma súplica no
  * prompt.
+ *
+ * O 6% saiu de medição, não de chute. No quadro do slide de três colunas, o
+ * texto ocupa de 12,3% a 86,7% da largura e o agente devolveu 17% a 85%: erro de
+ * 4,7% para dentro no lado esquerdo. Com 3% ainda cortava a primeira letra de
+ * cada linha. 6% cobre com folga, e o custo é o texto sair cerca de 7% menor,
+ * que é invisível perto de perder a primeira palavra.
  */
-function comFolga(c, folga = 0.03) {
+function comFolga(c, folga = 0.06) {
   const x = Math.max(0, c.x - folga);
   const y = Math.max(0, c.y - folga);
   return {
@@ -348,6 +354,32 @@ function comFolga(c, folga = 0.03) {
     w: Math.min(1 - x, c.w + folga * 2),
     h: Math.min(1 - y, c.h + folga * 2),
   };
+}
+
+/**
+ * Tira a janela da webcam de dentro do recorte da tela.
+ *
+ * No empilhado, a pessoa aparece grande embaixo. Se o recorte de cima também
+ * pegar a janelinha da webcam, ela aparece DUAS VEZES no mesmo quadro, uma
+ * minúscula em cima e uma grande embaixo, e o resultado parece defeito de
+ * edição (visto no teste de 23/08).
+ *
+ * A webcam quase sempre fica num canto inferior, então encurtar a tela até onde
+ * a pessoa começa resolve sem perder conteúdo: slide bem feito não põe texto
+ * embaixo da janela do apresentador.
+ *
+ * Só encurta quando sobra tela de verdade. Se a pessoa ocupa a metade de cima do
+ * quadro, encurtar deixaria uma faixa fina e inútil, e aí é melhor conviver com
+ * a duplicata.
+ */
+function semAPessoa(tela, pessoa) {
+  if (!pessoa) return tela;
+  const fimDaTela = tela.y + tela.h;
+  // A pessoa não invade a tela: nada a fazer.
+  if (pessoa.y >= fimDaTela) return tela;
+  const alturaNova = pessoa.y - tela.y;
+  if (alturaNova < 0.25) return tela;
+  return { ...tela, h: alturaNova };
 }
 
 /** Recorte em fração do quadro vira expressão de crop do ffmpeg. */
@@ -402,7 +434,7 @@ function montarFiltroVertical(enq) {
   // A tela ganha folga porque texto cortado é ilegível. A pessoa não ganha: a
   // caixa dela é a janela da webcam, que já tem borda de sobra, e alargar
   // traria pedaço do slide para dentro do recorte do rosto.
-  const tela = cropDeCaixa(comFolga(enq.tela));
+  const tela = cropDeCaixa(semAPessoa(comFolga(enq.tela), enq.pessoa));
   const pessoa = cropDeCaixa(enq.pessoa);
   return (
     FUNDO +
