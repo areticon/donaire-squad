@@ -30,7 +30,13 @@ type TrechoComTudo = Trecho & {
     capa?: { url: string } | null;
     capaArte?: { url: string } | null;
   } | null;
-  texto?: { titulo: string; descricao: string; fraseDaCapa: string };
+  texto?: {
+    titulo: string;
+    descricao: string;
+    fraseDaCapa: string;
+    expressao?: string;
+    cenario?: string;
+  };
 };
 
 export async function POST(
@@ -109,11 +115,12 @@ export async function POST(
           });
           if (blob && blob.statusCode === 200) {
             const bytes = Buffer.from(await new Response(blob.stream).arrayBuffer());
-            const arte = await comporCapa(
-              bytes.toString("base64"),
-              texto.fraseDaCapa,
-              { projectId: video.projectId }
-            );
+            const arte = await comporCapa(bytes.toString("base64"), texto.fraseDaCapa, {
+              expressao: texto.expressao,
+              cenario: texto.cenario,
+              nicho: video.project.niche,
+              usageCtx: { projectId: video.projectId },
+            });
             if (arte) {
               const { url } = await put(
                 `cortes/${video.id}/capa-arte-${i}.jpg`,
