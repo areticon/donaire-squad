@@ -5,6 +5,7 @@ import { Demo } from "@/components/landing/demo";
 import { Why } from "@/components/landing/why";
 import { Features } from "@/components/landing/features";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { Entrega } from "@/components/landing/entrega";
 import { Pricing } from "@/components/landing/pricing";
 import { Footer } from "@/components/landing/footer";
 
@@ -29,6 +30,10 @@ export default function HomePage() {
       <Why />
       <Features />
       <HowItWorks />
+      {/* A prova vem DEPOIS de explicar o fluxo e ANTES do preço: quem chegou
+          até aqui já entendeu o que a plataforma faz, e o que decide a compra é
+          ver o resultado. Preço antes da prova é pedir decisão sem argumento. */}
+      <Entrega />
       <Pricing />
       <Footer />
     </main>
