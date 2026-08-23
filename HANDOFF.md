@@ -3076,3 +3076,111 @@ Isso é anterior a esta sessão e vale saber: **o check vermelho de todo PR é
 falso alarme**, e nenhum PR tem verificação real hoje. Card aberto.
 
 *Atualizado em 22/08/2026 por Claude Code.*
+
+## Sessão 22-23/08/2026 (parte 37): o vídeo vira produto de verdade
+
+Sessão longa, com uma virada de rumo do Bruno no meio e um achado que expôs a
+distância entre a decisão "vídeo é o produto" e o que existia.
+
+### O que o teste da tela expôs
+
+O Bruno rodou o fluxo e criticou, com razão, em três frentes: o vídeo deveria
+desaguar no Gestor de Conteúdo (2.757 linhas de kanban, agentes e cronograma) em
+vez de numa lista primitiva; "YouTube" sem escolher entre vídeo longo e Shorts
+não faz sentido; e o trabalho dele deveria ser aprovar, não montar.
+
+**E o achado que muda tudo: não existia recorte de vídeo no projeto.** Sem
+ffmpeg, sem dependência de mídia. Os "trechos" eram só marcação de tempo mais
+texto. A promessa de shorts e reels não tinha implementação nenhuma.
+
+### Quatro bugs consertados, com uma raiz só
+
+O comentário no código afirmava que blob privado era alcançável por `fetch` do
+servidor. **É falso**, e gerou três sintomas que pareciam problemas diferentes:
+publicar no YouTube dava `403`, o botão Baixar abria tela branca de Forbidden, e
+o vídeo aparecia como ícone de imagem quebrada escrito "Post image". Conserto:
+`get()` do SDK do Blob com `access: "private"` e o token, que é o padrão que a
+transcrição já usava e a publicação não seguia. Mais uma rota autenticada
+`/api/posts/[id]/media` servindo em fluxo, com player de verdade.
+
+O quarto foi meu: o retorno do "Preparar para o YouTube" ia para um aviso no
+TOPO da página, com o botão lá embaixo. O Bruno clicou, a mensagem apareceu fora
+do campo de visão, e a conclusão foi "nada aconteceu". **A armadilha antiga
+ganhou segunda metade: retorno precisa falar AO LADO do que foi clicado.**
+
+### Decisão do Bruno: worker próprio no Railway
+
+Das três opções (worker próprio, API de mídia, corte no navegador), ele escolheu
+a primeira, porque já usa Railway na Areticon. Projeto `demandou` criado
+(`cfe1921f`), serviço `video-worker` no ar em
+`https://video-worker-production-2eb6.up.railway.app`.
+
+Contrato deliberadamente burro: `POST /cortar` com HMAC sobre o corpo cru,
+responde **202 na hora** e avisa por callback. `cutting` é o primeiro estado de
+trabalho que roda de verdade fora da requisição, e nasce certo.
+
+### Medido contra a gravação real de 27 minutos, 811 MB
+
+| Operação | Tempo |
+|---|---|
+| corte vertical de 35s | 13,2s |
+| corte horizontal de 35s | 5,3s |
+| recodificar o completo | 4,3x tempo real |
+
+E um ganho não previsto: **811 MB caem para cerca de 140 MB** no completo. Isso
+ataca a transferência, que é 58% do custo do produto.
+
+### A ideia do Bruno que resolveu o enquadramento
+
+O primeiro corte vertical saiu tecnicamente perfeito e **inútil**: a gravação é
+screencast de slides, e o resultado era um slide minúsculo boiando no meio.
+
+Ideia dele: em vez de perguntar ao cliente que tipo de gravação é, o squad tira
+alguns quadros, olha e decide. Os quadros são descartados depois.
+
+Implementado, com uma extensão: o agente devolve **onde cada coisa está** (caixa
+do slide, caixa da webcam), não só a classificação. Com as caixas, o corte vira
+slide grande em cima e rosto embaixo, que é o formato que Shorts de screencast
+usam. Testado com as caixas reais: de slide ilegível para slide legível no
+celular com o rosto grande embaixo.
+
+Custo calculado antes de construir: **R$ 0,07 por vídeo**, contra R$ 1,51 de
+custo que o trabalho já tem. 4%.
+
+A decisão mora no app e não no worker, por dois motivos: a conta de custo de IA
+vive num lugar só (worker chamando o modelo por fora seria gasto invisível, que
+é exatamente o que o timeout de 90s criou hoje), e prompt de agente é produto.
+
+### O timeout de 90s, e um erro de método meu
+
+`lib/claude/index.ts` construía o cliente com `timeout: 90_000`. A seleção leva
+121s. O SDK abortava aos 90s, **retentava duas vezes** e devolvia "Request timed
+out." O número que fecha o caso: com streaming ligado para medir, **o primeiro
+texto sai aos 98,2s**. O modelo pensa 98 segundos antes de escrever a primeira
+letra, e o teto abortava 8 segundos antes.
+
+Meu teste anterior passou porque criou um cliente novo, sem esse teto. **Testei
+a API, não o caminho do código do app.** Regra reforçada.
+
+Consertado com streaming sempre, teto por chamada proporcional ao trabalho, e
+`maxRetries` de 2 para 1. Medido com a configuração real: 105s, com 195s de
+folga.
+
+**Custo invisível que isso gerava:** cada tentativa abortada é cobrada pela
+Anthropic mas não vira linha em `ai_usage`, porque a gravação só acontece depois
+da resposta voltar. A tabela de custo subestima o gasto real quando há timeout.
+
+### Descoberta operacional
+
+Todo deploy de Preview da Vercel falha em 7 segundos e todo deploy de Produção
+passa. Causa: o ambiente de Preview não tem `DIRECT_URL`, e o `prisma migrate
+deploy` do build morre antes de compilar. **O check vermelho de todo PR é falso
+alarme**, e nenhum PR tem verificação real hoje. Card aberto.
+
+### O que falta para o produto que o Bruno descreveu
+
+A tela que lista os cortes com caixinha de marcar e destino por corte, título e
+descrição e capa automáticos, e a fusão disso com o Gestor de Conteúdo. O
+worker e o enquadramento, que eram a parte que não existia, estão prontos.
+
+*Atualizado em 23/08/2026 por Claude Code.*
