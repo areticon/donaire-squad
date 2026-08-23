@@ -299,17 +299,63 @@ async function processar(trabalho) {
   }
 }
 
+/**
+ * Avisa o app que terminou, insistindo.
+ *
+ * A retentativa não é zelo excessivo: o trabalho de cortar leva minutos e custa
+ * CPU e transferência de verdade. Se o aviso se perder por um soluço de rede
+ * entre as duas hospedagens, TUDO isso vira lixo, o cliente vê "cortando" até o
+ * prazo estourar, e a única saída é refazer do zero.
+ *
+ * Encontrado no teste de ponta a ponta de 23/08, quando o servidor do outro
+ * lado caiu no meio: o worker cortou tudo, avisou uma vez, levou "fetch
+ * failed", e desistiu em silêncio.
+ *
+ * A espera cresce (5s, 15s, 45s, 135s) porque a falha típica aqui é um deploy
+ * do app, que leva perto de um minuto. Insistir de segundo em segundo não
+ * atravessaria a janela; esperar mais atravessa.
+ *
+ * O callback é idempotente do outro lado (ele ignora o que não está em
+ * "cutting"), então repetir não estraga nada.
+ */
 async function avisar(trabalho, corpo) {
   const texto = JSON.stringify(corpo);
-  await fetch(trabalho.callbackUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-demandou-assinatura": assinar(texto),
-    },
-    body: texto,
-    signal: AbortSignal.timeout(60_000),
-  });
+  const esperas = [5_000, 15_000, 45_000, 135_000];
+
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      const res = await fetch(trabalho.callbackUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-demandou-assinatura": assinar(texto),
+        },
+        body: texto,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (res.ok) return;
+      // 4xx é problema do corpo ou da assinatura, e repetir não conserta.
+      // 5xx e falha de rede valem retentativa.
+      if (res.status < 500) {
+        console.error(
+          `[${trabalho.videoJobId}] callback recusado com ${res.status}, sem retentativa`
+        );
+        return;
+      }
+      throw new Error(`callback respondeu ${res.status}`);
+    } catch (e) {
+      if (tentativa >= esperas.length) {
+        console.error(
+          `[${trabalho.videoJobId}] callback falhou ${tentativa + 1} vezes, desistindo: ${e.message}`
+        );
+        return;
+      }
+      console.warn(
+        `[${trabalho.videoJobId}] callback falhou (${e.message}), nova tentativa em ${esperas[tentativa] / 1000}s`
+      );
+      await new Promise((r) => setTimeout(r, esperas[tentativa]));
+    }
+  }
 }
 
 const servidor = createServer((req, res) => {
