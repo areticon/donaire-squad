@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ClipApproval, type TrechoComPosts } from "@/components/video/clip-approval";
+import { CortesPanel, type Corte } from "@/components/video/cortes-panel";
 import {
   estaTrabalhando,
   proximaAcao,
@@ -35,6 +36,7 @@ type Video = {
   temTrechos: boolean;
   temCortes: boolean;
   completoUrl: string | null;
+  completoBytes: number | null;
   rodandoHaSegundos: number | null;
   clips: TrechoComPosts[] | null;
 };
@@ -318,6 +320,23 @@ export function VideoPanel({
                     )}
                   </div>
                 </div>
+
+                {/* A entrega: a gravação editada e os cortes, com as escolhas
+                    de publicação. Aparece em "cut" e continua aparecendo depois,
+                    porque o cliente volta para rever o que marcou. */}
+                {(v.status === "cut" || (v.status === "ready" && v.temCortes)) && (
+                  <div className="pl-4">
+                    <CortesPanel
+                      videoId={v.id}
+                      cortes={(v.clips as unknown as Corte[]) ?? []}
+                      completo={{
+                        url: v.completoUrl,
+                        bytes: v.completoBytes,
+                        duracaoSec: v.durationSec,
+                      }}
+                    />
+                  </div>
+                )}
 
                 {trabalhando && (
                   <div className="pl-4">
