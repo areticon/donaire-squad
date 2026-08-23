@@ -68,9 +68,19 @@ let _diagnostico = null;
 export function diagnostico() {
   if (_diagnostico) return _diagnostico;
   const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
+  // O Python entra aqui porque o recorte da pessoa depende dele, e sem esta
+  // linha a única forma de descobrir que ele faltou no contêiner seria um corte
+  // saindo na composição antiga sem ninguém entender por quê.
+  const py = spawnSync("python3", ["-c", "import mediapipe, cv2, numpy; print(mediapipe.__version__)"], {
+    encoding: "utf8",
+  });
   _diagnostico = {
     ffmpeg: ((r.stdout ?? "").split(String.fromCharCode(10))[0] || "desconhecido").trim(),
     opcaoDeFiltro: opcaoDeFiltro(),
+    recorte:
+      py.status === 0
+        ? `mediapipe ${(py.stdout ?? "").trim()}`
+        : "indisponível, cortes saem na composição antiga",
   };
   return _diagnostico;
 }
