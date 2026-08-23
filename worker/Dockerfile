@@ -27,7 +27,7 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ffmpeg ca-certificates python3 python3-pip \
-        libegl1 libgl1 libglib2.0-0 libgomp1 \
+        libegl1 libgles2 libgl1 libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --no-cache-dir --break-system-packages \
@@ -42,6 +42,22 @@ WORKDIR /app
 # caminho que já tem download de vídeo para dar errado.
 ADD https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite /app/modelos/selfie_segmenter.tflite
 RUN chmod 644 /app/modelos/selfie_segmenter.tflite
+
+# PROVA EM TEMPO DE CONSTRUCAO, e nao verificacao em producao.
+#
+# Isto existe porque a mesma falha me pegou tres vezes seguidas em 23/08, e
+# sempre da mesma forma: o verificador testava MENOS do que o produto faz, dava
+# verde, e o recorte caia calado na composicao antiga.
+#
+#   1a  `import mediapipe`            passa; falta libEGL.so.1
+#   2a  `import ...tasks.python.vision` passa; falta libGLESv2.so.2
+#   3a  so `create_from_options` de verdade carrega tudo
+#
+# Cada biblioteca so e aberta no momento exato em que e usada, entao a unica
+# checagem honesta e FAZER o que o produto faz: criar o segmentador com o modelo
+# real. Aqui, se faltar qualquer biblioteca, a IMAGEM NAO SOBE, e o problema
+# aparece na construcao em vez de virar um corte pior sem explicacao.
+RUN python3 -c "from mediapipe.tasks.python import vision, BaseOptions; seg = vision.ImageSegmenter.create_from_options(vision.ImageSegmenterOptions(     base_options=BaseOptions(model_asset_path='/app/modelos/selfie_segmenter.tflite'),     output_category_mask=False, output_confidence_masks=True)); import numpy, cv2, mediapipe as mp; img = mp.Image(image_format=mp.ImageFormat.SRGB, data=numpy.zeros((64,64,3), numpy.uint8)); r = seg.segment(img); assert r.confidence_masks, 'segmentador nao devolveu mascara'; seg.close(); print('recorte provado na construcao:', mp.__version__)"
 
 # As dependências primeiro, para a camada de npm ficar em cache quando só o
 # código mudar.
