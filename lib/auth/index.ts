@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "@/lib/db/prisma";
+import { emailHabilitado, enviarEmail, emailDeConfirmacao } from "@/lib/email";
 
 // Cada provedor entra sozinho quando as credenciais existem no ambiente, e o
 // botão correspondente é gateado por NEXT_PUBLIC_*_AUTH=1 no cliente. Assim o
@@ -59,6 +60,28 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    // Exigir e-mail confirmado para entrar, MAS só quando existe como mandar
+    // o e-mail. Ligar isto sem `RESEND_API_KEY` no ambiente trancaria o
+    // produto inteiro: a pessoa se cadastra, nunca recebe nada, e nunca entra.
+    // Amarrado à configuração, o código sobe hoje e a trava fecha sozinha no
+    // instante em que a chave existir, sem precisar de outro deploy.
+    requireEmailVerification: emailHabilitado(),
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    // Também no login: quem se cadastrou ANTES desta mudança está com
+    // `emailVerified: false` e bateria numa parede sem saída. Assim a
+    // tentativa de entrar dispara um e-mail novo em vez de só recusar.
+    sendOnSignIn: true,
+    // Confirmou, está dentro. Mandar a pessoa digitar a senha de novo logo
+    // depois de clicar no link é atrito sem ganho de segurança: quem clicou
+    // provou que tem a caixa de e-mail.
+    autoSignInAfterVerification: true,
+    expiresIn: 60 * 60,
+    async sendVerificationEmail({ user, url }) {
+      const email = emailDeConfirmacao(user.name ?? "", url);
+      await enviarEmail({ ...email, para: user.email });
+    },
   },
   socialProviders:
     Object.keys(socialProviders).length > 0 ? socialProviders : undefined,
@@ -81,12 +104,14 @@ export const auth = betterAuth({
       // de confirmação, todo usuário nasce com `emailVerified: false` e a
       // vinculação nunca aconteceria.
       //
-      // Desligar isto não abre um buraco novo: o risco que a trava cobre
-      // (alguém cadastrar com e-mail alheio e depois herdar a conta do dono
-      // real) já existe hoje pela ausência de verificação no cadastro. O
-      // conserto de raiz é enviar o e-mail de confirmação, que tem card no
-      // planner. Quando existir, esta linha volta a ser `true`.
-      requireLocalEmailVerified: false,
+      // Estava `false` desde 21/08, porque o cadastro por senha não mandava
+      // e-mail de confirmação e todo usuário nascia com `emailVerified: false`,
+      // o que fazia a vinculação nunca acontecer. Em 23/08 o envio passou a
+      // existir, então a trava volta, e ela volta amarrada à MESMA condição do
+      // `requireEmailVerification`: sem forma de mandar e-mail, ninguém
+      // consegue verificar, e exigir verificado seria recriar o bloqueio que
+      // esta linha existia para contornar.
+      requireLocalEmailVerified: emailHabilitado(),
     },
   },
   session: {

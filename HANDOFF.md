@@ -1,15 +1,35 @@
-# demandou — Estado Completo do Projeto (09/04/2026)
+# demandou — Estado Completo do Projeto
 
 > **Use este arquivo para dar contexto ao Claude Code ao continuar o trabalho.**
 > Copie este conteúdo inteiro ou referencie o arquivo ao iniciar uma nova sessão.
+>
+> **Cabeçalho conferido contra o código em 23/08/2026.** As seções 1 e 3 estavam
+> descrevendo o projeto de abril (Clerk, Neon, Pusher e os planos antigos) e foram
+> corrigidas. Os registros de sessão, do 17/08 em diante, sempre estiveram corretos.
 
 ---
 
 ## 1. O que é o demandou
 
-SaaS de criação e publicação de conteúdo com agentes de IA para redes sociais (LinkedIn e X/Twitter).
+SaaS de criação e publicação de conteúdo com agentes de IA. Publica em cinco redes:
+LinkedIn, Instagram, X, Facebook e YouTube.
 
-**Stack:** Next.js 16 (App Router) · React · Tailwind · Prisma (Neon Postgres) · Clerk (auth) · Stripe (pagamentos) · Vercel (hosting, Hobby plan) · Pusher (real-time logs)
+**Stack (verificada no `package.json`):** Next.js 16.2 (App Router) · React 19.2 ·
+Tailwind · Prisma 7.6 sobre **Supabase Postgres** · **better-auth 1.6** (auth própria,
+mais Google e LinkedIn) · Stripe 21 (pagamentos) · Vercel **Pro** (hosting, Blob e cron)
+
+**Fornecedores de IA e mídia:** Anthropic (texto) · Google Gemini (pesquisa e imagem) ·
+Deepgram (transcrição) · Resend (e-mail)
+
+**Custo fixo mensal:** R$ 116 (Vercel Pro R$ 110 + domínio R$ 6). Supabase e Resend
+ainda no plano gratuito. Break-even de infraestrutura: 2 clientes Pro.
+
+**Saíram do projeto:** Clerk (virou better-auth), Neon (virou Supabase), Blotato e
+Veo (removido em 18/08, cascata de fallback dava 80% de prejuízo por operação).
+
+> ⚠️ **Dívida técnica conhecida:** `lib/pusher/index.ts` e as dependências `pusher` e
+> `pusher-js` continuam no repositório, mas **nenhum arquivo importa esse módulo**.
+> É resto da migração para o Realtime do Supabase. Remover quando conveniente.
 
 **Empresa:** DEMANDOU TECNOLOGIA DA INFORMACAO LTDA · CNPJ 66.140.770/0001-48 · Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP · CEP 05.424-150
 
@@ -26,9 +46,16 @@ O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes p
 | **Roberto** | Pesquisa web em tempo real | Gemini 2.5 Flash com Google Search Grounding (50s timeout) |
 | **Lucas** | Redação LinkedIn (texto/carrossel/artigo/poll) | Claude (Anthropic SDK, 90s timeout, maxTokens 2048) |
 | **Tiago** | Redação X/Twitter (thread/poll/default) | Claude (Anthropic SDK, 90s timeout) |
-| **Diana** | Geração de imagem/infográfico | Nano Banana (imagem) · Veo 3 (vídeo — DESABILITADO, gera imagem estática no lugar) |
+| **Diana** | Geração de imagem/infográfico | Gemini (família Nano Banana), com cascata `gemini-3-pro-image-preview` → `gemini-3.1-flash-image-preview` → `gemini-2.5-flash-image`. Chave: `GEMINI_API_KEY` |
 | **Vera** | Revisão de qualidade (APROVADO/REPROVADO_TEXTO) | Claude — auto-corrige REPROVADO_TEXTO sem intervenção humana |
 | **Paulo** | Agendamento dos posts nos horários configurados | Interno (getScheduledAt) |
+
+**Geração de vídeo por IA saiu em 18/08/2026** (commit `6148d94`). A cascata de fallback
+do Veo tentava o modelo rápido a US$ 0,10 por segundo e caía para o padrão a US$ 0,40,
+levando um vídeo de 8 segundos de R$ 4,85 para R$ 18,05 contra R$ 10,00 de receita, ou
+seja 80% de prejuízo por operação, invisível porque o Veo nunca gravava em `ai_usage`.
+Vídeo passou a vir da gravação do próprio cliente. Sobraram menções ao Veo em comentários
+e num construtor de prompt, mas a geração está desligada.
 
 **Lucas + Tiago rodam em paralelo** (Promise.allSettled).
 
@@ -40,16 +67,31 @@ O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes p
 
 ## 3. Planos e Stripe
 
-### Planos atuais (PR #26)
+### Planos atuais (conferidos em `lib/stripe/index.ts` em 23/08/2026)
 
-| Plano | Preço | Créditos | Price ID env var |
-|-------|-------|----------|------------------|
-| Starter | R$49/mês | 500 | `STRIPE_STARTER_PRICE_ID` |
-| Pro | R$99/mês | 1.100 | `STRIPE_PRO_PRICE_ID` |
-| Business | R$199/mês | 2.500 | `STRIPE_BUSINESS_PRICE_ID` |
-| Agency | R$399/mês | 5.500 | `STRIPE_AGENCY_PRICE_ID` |
+| Plano | Mensal | Anual | Créditos | Projetos |
+|-------|--------|-------|----------|----------|
+| **Pro** | R$ 149 | R$ 1.490 | 1.800 | 3 |
+| Business | R$ 249 | R$ 2.490 | 3.500 | 10 |
+| Studio | R$ 449 | R$ 4.490 | 7.000 | ilimitado |
 
-**Cupom de lançamento:** `50LANCAMENTO` — 50% off nos 3 primeiros meses (criado no Stripe)
+O anual é sempre **10 mensalidades**, ou seja dois meses de desconto. O Pro é o plano
+de entrada e o plano-herói.
+
+**Starter de R$ 49 foi removido em 18/08/2026.** Três motivos: entregava uma rede só,
+contradizendo a promessa de campanha completa nas três redes; rendia R$ 35 de margem
+contra R$ 98 do Pro com o mesmo custo de suporte (86 clientes Starter para o mesmo
+resultado de 31 Pro); e atraía fora do ICP. No lugar entrou **teste de 7 dias do Pro,
+com cartão exigido no checkout**.
+
+**Cupom `50LANCAMENTO` não existe e foi removido da landing.** Ele era prometido na
+página mas nunca chegou a ser criado no Stripe. Decisão: remover a promessa em vez de
+criar o cupom, porque 50% público descontaria R$ 745 da fatura anual (o Stripe não
+distingue mensal de anual no mesmo produto).
+
+**Oferta de fundador:** os 10 primeiros travam **R$ 1.490 por ano para sempre**, com
+renovação garantida no mesmo preço. Era R$ 149 mensal travado, e mudou porque a mesma
+conversa põe dez vezes mais caixa no dia 1, que é o que financia o tráfego pago.
 
 ### Arquivos Stripe
 - `lib/stripe/index.ts` — PLANS, createCheckoutSession (card + boleto, BRL), createBillingPortalSession
@@ -62,11 +104,17 @@ O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes p
 STRIPE_SECRET_KEY=sk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_STARTER_PRICE_ID=price_...
 STRIPE_PRO_PRICE_ID=price_...
+STRIPE_PRO_ANNUAL_PRICE_ID=price_...
 STRIPE_BUSINESS_PRICE_ID=price_...
-STRIPE_AGENCY_PRICE_ID=price_...
+STRIPE_BUSINESS_ANNUAL_PRICE_ID=price_...
+STRIPE_STUDIO_PRICE_ID=price_...
+STRIPE_STUDIO_ANNUAL_PRICE_ID=price_...
 ```
+
+`STRIPE_STARTER_PRICE_ID` e `STRIPE_AGENCY_PRICE_ID` não existem mais. O webhook ainda
+lê `STRIPE_STARTER_PRICE_ID` de propósito, mapeando para o plano `pro`, de forma que
+quem tenha comprado o Starter antes da remoção não fique sem plano.
 
 ### Webhook Stripe
 - URL: `https://demandou.com/api/webhooks/stripe`
@@ -75,6 +123,11 @@ STRIPE_AGENCY_PRICE_ID=price_...
 ---
 
 ## 4. Bugs Corrigidos (PRs #21-#28)
+
+> **Contexto histórico.** Vários itens desta seção citam limitações do plano **Hobby**
+> da Vercel (budget de 300s, cron uma vez por dia). O projeto está no **Vercel Pro**
+> desde então, então essas restrições não valem mais. A seção fica como registro do
+> que foi resolvido, não como descrição do ambiente atual.
 
 | PR | Bug | Correção |
 |----|-----|----------|
@@ -127,43 +180,72 @@ STRIPE_AGENCY_PRICE_ID=price_...
 
 ## 6. Variáveis de Ambiente Completas (Vercel)
 
+> Lista levantada do próprio código em 23/08/2026 (`grep process.env`), não de memória.
+
 ```
-# Auth
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
-CLERK_SECRET_KEY=sk_live_...
-CLERK_WEBHOOK_SECRET=whsec_...
+# Auth (better-auth, Clerk saiu)
+BETTER_AUTH_SECRET=...
+BETTER_AUTH_URL=https://demandou.com
+GOOGLE_CLIENT_ID=...            # login com Google
+GOOGLE_CLIENT_SECRET=...
 
-# Database
-DATABASE_URL=postgresql://...@...neon.tech/...?sslmode=require
+# Database (Supabase Postgres, Neon saiu). Usar sempre o pooler.
+DATABASE_URL=postgresql://...@...pooler.supabase.com:6543/...
 
-# AI
+# AI e mídia
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
+DEEPGRAM_API_KEY=...
+GOOGLE_APPLICATION_CREDENTIALS_JSON=...
+GOOGLE_CLOUD_PROJECT_ID=...
+GOOGLE_CLOUD_LOCATION=...
 
-# Media
-NANO_BANANA_API_KEY=...
-GOOGLE_VEO_API_KEY=... (atualmente não usado no pipeline)
+# Storage e worker de vídeo
+BLOB_READ_WRITE_TOKEN=...
+VIDEO_WORKER_URL=...
+VIDEO_WORKER_SECRET=...
 
-# Social
+# Social (as cinco redes)
 LINKEDIN_CLIENT_ID=776y3qlu5ltco1
 LINKEDIN_CLIENT_SECRET=...
+LINKEDIN_PAGES_CLIENT_ID=...
+LINKEDIN_PAGES_CLIENT_SECRET=...
+INSTAGRAM_APP_ID=...
+INSTAGRAM_APP_SECRET=...
+FACEBOOK_APP_ID=...
+FACEBOOK_APP_SECRET=...
+FACEBOOK_CONFIG_ID=...           # app empresarial exige configuração, não permissão solta
 TWITTER_CLIENT_ID=...
 TWITTER_CLIENT_SECRET=...
+YOUTUBE_CLIENT_ID=...
+YOUTUBE_CLIENT_SECRET=...
 
 # Stripe
 STRIPE_SECRET_KEY=sk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_STARTER_PRICE_ID=price_...
 STRIPE_PRO_PRICE_ID=price_...
+STRIPE_PRO_ANNUAL_PRICE_ID=price_...
 STRIPE_BUSINESS_PRICE_ID=price_...
-STRIPE_AGENCY_PRICE_ID=price_...
+STRIPE_BUSINESS_ANNUAL_PRICE_ID=price_...
+STRIPE_STUDIO_PRICE_ID=price_...
+STRIPE_STUDIO_ANNUAL_PRICE_ID=price_...
 
-# Real-time
-PUSHER_APP_ID=...
-PUSHER_KEY=...
-PUSHER_SECRET=...
-NEXT_PUBLIC_PUSHER_KEY=...
+# Operação
+CRON_SECRET=...
+NEXT_PUBLIC_APP_URL=https://demandou.com
+DEMO_LIMITE_IP=3                 # demo pública, por IP por dia
+DEMO_LIMITE_GLOBAL=...
+```
+
+**Legado proposital no webhook:** ele ainda lê `STRIPE_STARTER_PRICE_ID` e
+`STRIPE_AGENCY_PRICE_ID`, mapeando para `pro` e `studio`. É para que alguém que tenha
+assinado antes da mudança de planos não fique sem plano. As variáveis em si não
+precisam mais existir no ambiente.
+
+**Código morto a limpar:** `lib/pusher/index.ts` e `lib/blotato/index.ts` continuam no
+repositório e ninguém os importa. Enquanto existirem, as variáveis `PUSHER_*` e
+`BLOTATO_API_KEY` aparecem num `grep` e confundem quem for mapear o ambiente.
 NEXT_PUBLIC_PUSHER_CLUSTER=...
 
 # Cron
