@@ -3285,3 +3285,85 @@ Título, descrição e capa automáticos por corte; a publicação dos cortes no
 destinos marcados; a fusão com o Gestor de Conteúdo; e a landing.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 39): publicação dos cortes, capas e títulos
+
+### O mesmo padrão do YouTube apareceu de novo, e é o que mais dói
+
+Das cinco redes que a tela de destinos oferecia, **só uma publicava vídeo**.
+Conferido no código, não suposto:
+
+| Destino | Estado antes |
+|---|---|
+| YouTube | funcionava |
+| Instagram Reels | **não existia**, só imagem e carrossel |
+| LinkedIn | só aceita vídeo em `data:`. Com URL do storage, posta a **URL como texto**, e a URL é privada |
+| X | só imagem |
+| Facebook | só imagem e texto |
+
+Ou seja, uma tela que aceitava o clique e falharia depois. **Regra reforçada:
+antes de oferecer um destino, conferir que o caminho existe de ponta a ponta.**
+
+Conserto em duas partes: o Reels passou a existir (container `REELS`, espera de
+até 5 minutos porque a Meta transcodifica e os 90s das imagens derrubaria Reels
+legítimo, `share_to_feed` ligado porque Reels fora do feed perde metade do
+alcance), e os destinos sem publicação de vídeo aparecem **desabilitados,
+escritos "em breve"**, com o motivo no título.
+
+### Dois defeitos na rota que serve mídia para a Meta
+
+Ela só tinha visto imagem, que vive como data URL no banco, então nunca havia
+encostado nos dois problemas: usava `fetch` no blob privado (403, a mesma
+armadilha pela quarta vez) e bufferizava o arquivo inteiro. Agora usa o SDK do
+Blob e vai em fluxo, com `Accept-Ranges`, que a Meta usa ao buscar vídeo e sem
+o qual ela desiste.
+
+### A aprovação virou por destino
+
+Antes criava post de texto para linkedin, x e instagram, fixo. Agora usa os
+destinos marcados e anexa o corte vertical, **mas só onde a publicação de vídeo
+existe de verdade**: anexar onde não existe faria a rota de publicação tropeçar
+num arquivo que ela não sabe mandar, e o cliente veria erro numa etapa sem
+relação com a causa.
+
+### Capa: composição sobre o quadro real (opção A do Bruno)
+
+`comporSobreImagem` é novo no nano banana: o que existia gerava a partir de
+texto, e aqui a imagem entra junto, **antes** do texto, para o modelo tratá-lo
+como instrução sobre a imagem e não como descrição de cena nova.
+
+**Só a cascata do Nano Banana entra.** Imagen 3 e Pollinations geram a partir de
+texto e ignoram a imagem de entrada, então incluí-los como fallback devolveria
+arte bonita e sem o cliente dentro, que é exatamente o que a decisão descartou.
+
+Testado contra o quadro real:
+
+| Modelo | Tempo | Resultado |
+|---|---|---|
+| `gemini-3-pro-image-preview` | 16,3s | **escolhido** |
+| `gemini-3.1-flash-image-preview` | 9,6s | texto cobre o título do slide |
+| `gemini-2.5-flash-image` | 9,8s | arquivo 2,4x maior |
+
+O Pro fica na frente apesar de 60% mais lento, porque no Flash o texto tapa
+conteúdo e sai com menos peso. Verificado olhando as três saídas.
+
+Nos três a pessoa foi preservada sem substituição, que era o risco real da
+abordagem. O prompt descreve **acabamento e não conteúdo**, de propósito: pedir
+cena faria o modelo trocar a pessoa por alguém inventado.
+
+### Três textos, com trabalhos diferentes
+
+`titulo` (até 100 caracteres, com o corte aplicado em código porque o modelo é
+instruído mas não garante, e título estourado é recusado pelo YouTube depois de
+o cliente aprovar), `descricao` (2 a 4 frases terminando em pergunta) e
+`fraseDaCapa` (no máximo 6 palavras, para ler em miniatura).
+
+Gerados **só para os cortes marcados**: com 7 cortes, gerar para todos custaria
+quase o dobro de quem publica 4.
+
+### O que falta
+
+Publicação de vídeo em LinkedIn, X e Facebook; a fusão com o Gestor de
+Conteúdo; e a landing.
+
+*Atualizado em 23/08/2026 por Claude Code.*
