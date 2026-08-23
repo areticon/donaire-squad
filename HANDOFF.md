@@ -3441,3 +3441,65 @@ A landing contando essa história, e a publicação de vídeo em LinkedIn, X e
 Facebook.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 41): a capa profissional e a landing com prova
+
+### A capa passou a recortar, corrigir expressão e trocar o fundo
+
+Terceira evolução, cada uma vinda de uma crítica do Bruno com o resultado na
+mão. Ele apontou que a boca dele estava aberta no meio de uma sílaba, e que um
+quadro ao lado a postura já muda, então escolher melhor ajuda mas não resolve:
+**em vídeo de fala contínua, a maioria dos quadros é ruim como foto.**
+
+Agora a pessoa é recortada do fundo, a expressão é ajustada e o cenário é
+substituído por um alinhado ao nicho do cliente.
+
+**A expressão sai do CONTEÚDO, não da imagem.** Quem escolhe é o agente que leu
+a fala, porque a emoção certa vem do que a pessoa disse e o modelo de imagem só
+vê um quadro parado. Cinco opções, cada uma traduzida em instrução concreta de
+boca, olhos e sobrancelhas, porque "pareça confiante" não diz ao modelo o que
+desenhar.
+
+Testado com o quadro real de boca aberta:
+
+| Expressão | Tempo | Resultado |
+|---|---|---|
+| confiante | 17,2s | boca fechada, sorriso leve, escritório desfocado |
+| sério | 18,2s | boca fechada sem sorrir, parede de concreto, luz lateral |
+
+**RISCO NOVO, e é real.** Até aqui a trava contra o modelo trocar a pessoa por
+alguém inventado era a instrução de NÃO alterar o rosto. Pedir mudança de
+expressão remove essa trava. A compensação é a seção IDENTIDADE, primeira e mais
+longa do prompt, que lista item por item o que preservar e manda manter a
+expressão original se não der para ajustar sem mudar a pessoa. **Mas isso é
+instrução, não garantia.**
+
+Se um dia sair capa com outra pessoa, o caminho certo NÃO é ajustar o prompt de
+novo: é voltar para sobreposição de texto em código sobre a foto real, que é
+mais feia e nunca inventa gente. Já há leve deriva de traços no caso "sério",
+que é o limite a vigiar.
+
+### A landing ganhou a seção da entrega
+
+A landing contava a história do vídeo em prosa, e prosa não vende
+transformação. Agora há uma seção com as **saídas reais do produto**, geradas de
+uma gravação de verdade, ao lado do material cru de onde vieram.
+
+**O antes é o argumento.** Sozinho, o depois parece uma imagem bonita que
+qualquer um faria no Canva; com o antes ao lado, fica claro que houve trabalho.
+
+Fica entre o Como funciona e o Preço: quem chegou ali já entendeu o que a
+plataforma faz, e o que decide a compra é ver o resultado. Preço antes da prova
+é pedir decisão sem argumento.
+
+**Três problemas achados abrindo no navegador, não lendo o código:** dois itens
+ficavam com caixa cinza vazia (trocadas pelos capítulos reais e pelos três
+textos por rede); o corte vertical de 9:16 estourava a altura da linha ao lado
+de um 16:9; e o celular precisou de conferência, que passou sem rolagem lateral.
+
+**Decisão pendente do Bruno:** as imagens são o rosto dele, na home pública.
+Ele é o dono e disse que vai usar a plataforma nas próprias empresas para
+mostrar valor, mas aparecer na home é decisão dele. Trocar é substituir os
+arquivos em `public/exemplo/`.
+
+*Atualizado em 23/08/2026 por Claude Code.*
