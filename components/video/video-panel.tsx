@@ -328,6 +328,7 @@ export function VideoPanel({
                   <div className="pl-4">
                     <CortesPanel
                       videoId={v.id}
+                      projectId={projectId}
                       cortes={(v.clips as unknown as Corte[]) ?? []}
                       completo={{
                         url: v.completoUrl,

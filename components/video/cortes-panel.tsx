@@ -62,10 +62,12 @@ const NOME_DA_CENA: Record<string, string> = {
 
 export function CortesPanel({
   videoId,
+  projectId,
   cortes,
   completo,
 }: {
   videoId: string;
+  projectId: string;
   cortes: Corte[];
   completo: { url: string | null; bytes: number | null; duracaoSec: number | null };
 }) {
@@ -141,7 +143,19 @@ export function CortesPanel({
         setErro(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
         return;
       }
-      router.refresh();
+
+      setEtapa("Montando o cronograma da semana");
+      const agenda = await fetch(`/api/videos/${videoId}/agendar`, { method: "POST" });
+      if (!agenda.ok) {
+        const corpo = await agenda.json().catch(() => ({}));
+        setErro(corpo.error ?? `A plataforma recusou com código ${agenda.status}.`);
+        return;
+      }
+
+      // Vai direto para o quadro. É lá que o cliente revisa, conversa com os
+      // agentes e publica, e mandar ele voltar sozinho seria pedir para
+      // descobrir que o trabalho terminou em outro lugar.
+      router.push(`/projects/${projectId}/live`);
     } catch {
       setErro("A requisição não completou. Recarregue para ver o estado.");
     } finally {
@@ -325,7 +339,7 @@ export function CortesPanel({
               {etapa || "Trabalhando"}
             </>
           ) : (
-            `Preparar os ${marcados} cortes para publicar`
+            `Preparar os ${marcados} cortes e levar para o quadro`
           )}
         </Button>
       </div>

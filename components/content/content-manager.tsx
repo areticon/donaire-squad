@@ -82,11 +82,16 @@ const AGENT_ROWS = [
   { agentId: "lucas-linkedin", label: "Lucas LinkedIn", subtitle: "Post LinkedIn", color: "bg-blue-700", cardType: "post_linkedin", icon: Globe },
   { agentId: "tiago-twitter", label: "Tiago Twitter", subtitle: "Thread X", color: "bg-sky-500", cardType: "post_twitter", icon: Globe },
   { agentId: "diana-design", label: "Diana Design", subtitle: "Mídia", color: "bg-purple-500", cardType: "media", icon: ImageIcon },
+  // A linha do vídeo existe porque o squad EDITA vídeo desde 23/08, e sem ela
+  // os cortes cairiam na linha da Diana, misturados com imagem gerada. Quem
+  // olha o quadro precisa ver que houve trabalho de vídeo.
+  { agentId: "vitor-video", label: "Vitor Vídeo", subtitle: "Cortes", color: "bg-rose-500", cardType: "video_clip", icon: Video },
   { agentId: "vera-veredito", label: "Vera Veredito", subtitle: "Preview", color: "bg-yellow-500", cardType: "preview", icon: FileText },
   { agentId: "paulo-publicador", label: "Paulo Publicador", subtitle: "Publicação", color: "bg-green-500", cardType: "publish", icon: Send },
 ];
 
 const CARD_TYPE_LABELS: Record<string, string> = {
+  video_clip: "Corte de vídeo",
   research: "Pesquisa",
   post_linkedin: "Post LinkedIn",
   post_twitter: "Thread X",
@@ -256,8 +261,15 @@ function MediaPreview({
     return null;
   }
 
-  // Only treat as video if MIME type explicitly says so
+  // Only treat as video if MIME type explicitly says so.
+  //
+  // A rota de mídia do vídeo entra na lista porque ela serve o arquivo por
+  // consulta (`?tipo=vertical`) e não termina em .mp4: o storage é privado e a
+  // URL crua responde 403, então o caminho tem que passar pela nossa rota
+  // autenticada. Sem esta linha, o corte apareceria como imagem quebrada
+  // dentro do quadro.
   const isVideo = mediaUrl.startsWith("data:video/") ||
+    /\/api\/videos\/[^/]+\/midia\?.*tipo=(vertical|horizontal|completo)/.test(mediaUrl) ||
     (!mediaUrl.startsWith("data:") && (mediaUrl.toLowerCase().endsWith(".mp4") || mediaUrl.toLowerCase().endsWith(".webm")));
 
   // Carousel: multiple images joined by "|"
