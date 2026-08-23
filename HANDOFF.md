@@ -3798,8 +3798,13 @@ de filtros em vez de um termo de uma expressão só.
 | `trim` + `concat` com filtro em ARQUIVO | 400 | ok em 27s |
 | idem | **700** | **ok em 157s** |
 
-Passar de 200 segmentos exige o filtro em arquivo, porque o grafo passa de 20
-mil caracteres e a linha de comando do sistema recusa antes de o ffmpeg ver.
+Passar de 200 segmentos exige o filtro em arquivo. O grafo cresce rápido: o
+corte real de 23/08, com 161 remoções, gerou 322 nós e 22.007 caracteres, e 700
+segmentos passam de 50 mil. O teto de linha de comando do Windows é 32.767
+caracteres, então na máquina de desenvolvimento quem recusa é o SHELL, antes de
+o ffmpeg ver qualquer coisa. No Linux do Railway o teto é muito maior e o
+estouro viria depois, mas o filtro em arquivo funciona nos dois e tira a
+diferença da conta.
 
 **Armadilha de versão, e ela morde só em produção.** A opção que lê o filtro de
 arquivo MUDOU DE NOME: até a 6 é `-filter_complex_script`, da 7 em diante é

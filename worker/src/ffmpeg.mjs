@@ -41,9 +41,11 @@ function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
 /**
  * Como este ffmpeg aceita um filtro vindo de arquivo.
  *
- * Precisa vir de arquivo porque o filtro de um vídeo muito editado passa de 50
- * mil caracteres, e a linha de comando do sistema não aceita isso: o erro que
- * aparece é do shell, não do ffmpeg, e não menciona filtro nenhum.
+ * Precisa vir de arquivo porque o filtro de um vídeo muito editado fica enorme:
+ * o corte real de 23/08 gerou 22 mil caracteres e 700 segmentos passariam de 50
+ * mil. No Windows o teto de linha de comando é 32.767, então quem recusa é o
+ * shell, com um erro que não menciona filtro nenhum. No Linux o teto é maior,
+ * mas o arquivo funciona nos dois e tira a diferença da conta.
  *
  * A opção mudou de nome: até a versão 6 é `-filter_complex_script`, e da 7 em
  * diante é `-/filter_complex`, com a antiga REMOVIDA. Isso importa de verdade
@@ -53,12 +55,24 @@ function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
  */
 let _opcaoDeFiltro = null;
 
+let _diagnostico = null;
+
+/**
+ * Qual ffmpeg está instalado e qual opção de filtro ele aceita.
+ *
+ * Calculado UMA vez e guardado. Isto é servido na rota de saúde, e o Railway
+ * bate nela de tempos em tempos: sem o cache, cada verificação de saúde criaria
+ * um processo só para perguntar uma versão que não muda enquanto o contêiner
+ * vive.
+ */
 export function diagnostico() {
+  if (_diagnostico) return _diagnostico;
   const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
-  return {
+  _diagnostico = {
     ffmpeg: ((r.stdout ?? "").split(String.fromCharCode(10))[0] || "desconhecido").trim(),
     opcaoDeFiltro: opcaoDeFiltro(),
   };
+  return _diagnostico;
 }
 
 function opcaoDeFiltro() {
@@ -180,8 +194,11 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
       grafo += ";[vc]null[v]";
     }
 
-    // O grafo vai em ARQUIVO. Num vídeo muito editado ele passa de 50 mil
-    // caracteres, e a linha de comando do sistema recusa antes de o ffmpeg ver.
+    // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
+    // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
+    // de 50 mil. O teto de linha de comando do Windows é 32.767, então lá quem
+    // recusa é o shell, antes de o ffmpeg ver. No Linux o teto é bem maior, mas
+    // o arquivo funciona nos dois e tira essa diferença da conta.
     cwdDoFiltro = dirname(opcoes.legendasArquivo ?? saida);
     arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
     await writeFile(arquivoDeFiltro, grafo, "utf8");
