@@ -308,6 +308,88 @@ export async function generateImage(
   );
 }
 
+/**
+ * Compõe uma imagem NOVA em cima de uma que já existe.
+ *
+ * Diferente de `generateImage`, que cria do zero: aqui a imagem de entrada vai
+ * junto do texto, e o modelo edita em vez de inventar. É o que a capa do vídeo
+ * exige (decisão do Bruno em 23/08, opção A): o quadro real da gravação
+ * continua ali, com quem fala no enquadramento, e o modelo só acrescenta
+ * título, contraste e acabamento.
+ *
+ * O motivo de não gerar do zero é de resultado, não de custo: capa sem o rosto
+ * de quem fala rende menos em canal pessoal, e o rosto já está no quadro.
+ *
+ * Só a cascata do Nano Banana serve para isto. O Imagen 3 e o Pollinations
+ * geram a partir de texto e ignoram a imagem de entrada, então incluí-los como
+ * fallback devolveria uma arte bonita e SEM o cliente dentro, que é exatamente
+ * o que a decisão descartou. Falhar e manter o quadro real é melhor.
+ */
+export async function comporSobreImagem(
+  prompt: string,
+  imagemBase64: string,
+  mimeType: string,
+  ctx?: ContextoMidia
+): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const models = [
+    "gemini-3-pro-image-preview",        // Nano Banana Pro: melhor acabamento
+    "gemini-3.1-flash-image-preview",    // Nano Banana 2
+    "gemini-2.5-flash-image",            // Nano Banana estável
+  ];
+
+  for (const model of models) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  // A imagem ANTES do texto: a ordem importa para o modelo
+                  // tratar o texto como instrução sobre a imagem, e não como
+                  // descrição de uma cena nova.
+                  { inlineData: { mimeType, data: imagemBase64 } },
+                  { text: prompt },
+                ],
+              },
+            ],
+            generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+          }),
+          // Composição em cima de imagem demora mais que geração pura, e o Pro
+          // é o mais lento dos três.
+          signal: AbortSignal.timeout(90_000),
+        }
+      );
+
+      if (!res.ok) {
+        if (res.status === 404 || res.status === 429) continue;
+        console.warn(`[comporSobreImagem][${model}] HTTP ${res.status}`);
+        continue;
+      }
+
+      const data = (await res.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ inlineData?: { data: string; mimeType: string } }> };
+        }>;
+      };
+      const parte = (data.candidates?.[0]?.content?.parts ?? []).find((p) => p.inlineData?.data);
+      if (parte?.inlineData) {
+        if (ctx) recordImagem(model, 1, ctx);
+        return `data:${parte.inlineData.mimeType ?? "image/jpeg"};base64,${parte.inlineData.data}`;
+      }
+    } catch (e) {
+      console.warn(`[comporSobreImagem][${model}] erro:`, e);
+    }
+  }
+  return null;
+}
+
 /** Extract raw base64 bytes from a data URL for uploading to social APIs */
 export function dataUrlToBuffer(dataUrl: string): Buffer {
   const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");

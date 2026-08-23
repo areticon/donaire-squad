@@ -24,6 +24,7 @@ type MidiaDoTrecho = {
   vertical?: { url: string } | null;
   horizontal?: { url: string } | null;
   capa?: { url: string } | null;
+  capaArte?: { url: string } | null;
 };
 
 export async function GET(
@@ -58,6 +59,9 @@ export async function GET(
       if (tipo === "vertical") url = midia.vertical?.url ?? null;
       else if (tipo === "horizontal") url = midia.horizontal?.url ?? null;
       else if (tipo === "capa") url = midia.capa?.url ?? null;
+      // A capa composta pelo nano banana, quando existe. Cai no quadro real se
+      // a composição falhou: melhor a foto crua que arte sem o cliente dentro.
+      else if (tipo === "capa-arte") url = midia.capaArte?.url ?? midia.capa?.url ?? null;
     }
     nome = `corte-${trechoParam}-${tipo}`;
   }
@@ -72,7 +76,7 @@ export async function GET(
     return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
   }
 
-  const extensao = tipo === "capa" ? "jpg" : "mp4";
+  const extensao = tipo === "capa" || tipo === "capa-arte" ? "jpg" : "mp4";
 
   return new NextResponse(blob.stream, {
     headers: {

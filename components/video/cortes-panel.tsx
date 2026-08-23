@@ -32,10 +32,12 @@ export type Corte = {
   fim: number;
   publicar?: boolean;
   destinos?: string[];
+  texto?: { titulo: string; descricao: string; fraseDaCapa: string };
   midia?: {
     vertical?: { url: string; bytes: number } | null;
     horizontal?: { url: string; bytes: number } | null;
     capa?: { url: string; bytes: number } | null;
+    capaArte?: { url: string } | null;
     enquadramento?: { cena: string; vertical: string; motivo: string } | null;
     erro?: string | null;
   } | null;
@@ -110,10 +112,29 @@ export function CortesPanel({
   const [escrevendo, setEscrevendo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [etapa, setEtapa] = useState<string>("");
+
+  /**
+   * Título, descrição, capa e os textos das redes, num clique só.
+   *
+   * São duas rotas porque fazem coisas diferentes, mas para quem usa é UMA
+   * ação: "manda seguir". Expor dois botões devolveria ao cliente a decisão de
+   * em que ordem rodar as etapas do nosso pipeline, que é o oposto da regra de
+   * que o trabalho dele é aprovar.
+   */
   async function escrever() {
     setEscrevendo(true);
     setErro(null);
     try {
+      setEtapa("Escrevendo título, descrição e montando as capas");
+      const capas = await fetch(`/api/videos/${videoId}/capas`, { method: "POST" });
+      if (!capas.ok) {
+        const corpo = await capas.json().catch(() => ({}));
+        setErro(corpo.error ?? `A plataforma recusou com código ${capas.status}.`);
+        return;
+      }
+
+      setEtapa("Escrevendo os textos de cada rede");
       const r = await fetch(`/api/videos/${videoId}/write`, { method: "POST" });
       if (!r.ok) {
         const corpo = await r.json().catch(() => ({}));
@@ -125,6 +146,7 @@ export function CortesPanel({
       setErro("A requisição não completou. Recarregue para ver o estado.");
     } finally {
       setEscrevendo(false);
+      setEtapa("");
     }
   }
 
@@ -213,7 +235,7 @@ export function CortesPanel({
                 ) : (
                   <video
                     src={`/api/videos/${videoId}/midia?trecho=${i}&tipo=vertical`}
-                    poster={`/api/videos/${videoId}/midia?trecho=${i}&tipo=capa`}
+                    poster={`/api/videos/${videoId}/midia?trecho=${i}&tipo=${c.midia?.capaArte ? "capa-arte" : "capa"}`}
                     controls
                     preload="none"
                     className="w-full aspect-[9/16] object-cover bg-black"
@@ -223,8 +245,13 @@ export function CortesPanel({
                 <div className="p-3 space-y-2.5 flex-1 flex flex-col">
                   <div>
                     <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>
-                      {c.titulo ?? `Corte ${i + 1}`}
+                      {c.texto?.titulo ?? c.titulo ?? `Corte ${i + 1}`}
                     </p>
+                    {c.texto?.descricao && (
+                      <p className="text-xs mt-1 line-clamp-3" style={{ color: "var(--text-muted)" }}>
+                        {c.texto.descricao}
+                      </p>
+                    )}
                     <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                       {duracao(dur)}
                       {c.midia?.enquadramento
@@ -295,10 +322,10 @@ export function CortesPanel({
           {escrevendo ? (
             <>
               <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-              Escrevendo
+              {etapa || "Trabalhando"}
             </>
           ) : (
-            `Escrever os textos dos ${marcados} cortes`
+            `Preparar os ${marcados} cortes para publicar`
           )}
         </Button>
       </div>
