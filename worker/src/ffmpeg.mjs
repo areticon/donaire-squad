@@ -71,16 +71,31 @@ export function diagnostico() {
   // O Python entra aqui porque o recorte da pessoa depende dele, e sem esta
   // linha a única forma de descobrir que ele faltou no contêiner seria um corte
   // saindo na composição antiga sem ninguém entender por quê.
-  const py = spawnSync("python3", ["-c", "import mediapipe, cv2, numpy; print(mediapipe.__version__)"], {
-    encoding: "utf8",
-  });
+  // O teste importa `mediapipe.tasks.python.vision`, e NAO so `mediapipe`.
+  // A diferenca nao e preciosismo: em 23/08 este diagnostico respondeu
+  // "mediapipe 1.0.1" enquanto o recorte estava quebrado, porque `import
+  // mediapipe` passa sem as bibliotecas de OpenGL e o import de visao e que
+  // morre com `libEGL.so.1`. Verificador que testa MENOS do que o produto usa
+  // da verde falso, que e pior que nao ter verificador.
+  const py = spawnSync(
+    "python3",
+    [
+      "-c",
+      "import cv2, numpy, mediapipe as mp; from mediapipe.tasks.python import vision, BaseOptions; " +
+        "vision.ImageSegmenterOptions; print(mp.__version__)",
+    ],
+    { encoding: "utf8" }
+  );
   _diagnostico = {
     ffmpeg: ((r.stdout ?? "").split(String.fromCharCode(10))[0] || "desconhecido").trim(),
     opcaoDeFiltro: opcaoDeFiltro(),
     recorte:
       py.status === 0
         ? `mediapipe ${(py.stdout ?? "").trim()}`
-        : "indisponível, cortes saem na composição antiga",
+        : `indisponivel, cortes saem na composicao antiga: ${
+            (py.stderr ?? "").trim().split(String.fromCharCode(10)).pop() ||
+            "motivo desconhecido"
+          }`,
   };
   return _diagnostico;
 }
