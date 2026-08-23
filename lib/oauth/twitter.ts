@@ -125,6 +125,104 @@ function throwTwitterWriteFailure(rawBody: string, fallbackPrefix: string): neve
  * Uses the v1.1 media upload endpoint with OAuth 2.0 User Context (PKCE token).
  * imageInput: data URL (base64) ou URL https.
  */
+/**
+ * Envia VÍDEO ao X, em pedaços.
+ *
+ * O caminho simples de multipart que serve para imagem não serve aqui: vídeo no
+ * X exige o protocolo em três atos, INIT para reservar, APPEND para mandar cada
+ * pedaço e FINALIZE para fechar, mais uma espera enquanto eles transcodificam.
+ *
+ * Existe desde 23/08. Antes disso o X só aceitava imagem, e marcar um corte de
+ * vídeo para lá teria falhado na publicação, depois de o cliente aprovar.
+ *
+ * 4 MB por pedaço porque é o teto que o endpoint aceita. Pedaço maior é recusado
+ * com erro que não diz o motivo.
+ */
+const PEDACO_BYTES = 4 * 1024 * 1024;
+
+export async function uploadTwitterVideo(
+  accessToken: string,
+  video: { buffer: Buffer; mimeType: string }
+): Promise<string> {
+  const { buffer, mimeType } = video;
+
+  const cabecalho = { Authorization: `Bearer ${accessToken}` };
+
+  const init = new FormData();
+  init.append("command", "INIT");
+  init.append("total_bytes", String(buffer.byteLength));
+  init.append("media_type", mimeType);
+  // Sem `media_category`, o X trata o arquivo como mídia genérica e recusa
+  // anexar a um post. "tweet_video" é o que libera o anexo.
+  init.append("media_category", "tweet_video");
+
+  const initRes = await fetch(MEDIA_UPLOAD_URL, {
+    method: "POST",
+    headers: cabecalho,
+    body: init,
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!initRes.ok) {
+    throw new Error(`X vídeo INIT falhou (${initRes.status}): ${(await initRes.text()).slice(0, 300)}`);
+  }
+  const { media_id_string: mediaId } = (await initRes.json()) as { media_id_string?: string };
+  if (!mediaId) throw new Error("X vídeo INIT: resposta sem id");
+
+  for (let i = 0, seg = 0; i < buffer.byteLength; i += PEDACO_BYTES, seg++) {
+    const pedaco = buffer.subarray(i, Math.min(i + PEDACO_BYTES, buffer.byteLength));
+    const form = new FormData();
+    form.append("command", "APPEND");
+    form.append("media_id", mediaId);
+    form.append("segment_index", String(seg));
+    form.append("media", new Blob([new Uint8Array(pedaco)]), "pedaco");
+
+    const res = await fetch(MEDIA_UPLOAD_URL, {
+      method: "POST",
+      headers: cabecalho,
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) {
+      throw new Error(`X vídeo APPEND ${seg} falhou (${res.status}): ${(await res.text()).slice(0, 200)}`);
+    }
+  }
+
+  const fim = new FormData();
+  fim.append("command", "FINALIZE");
+  fim.append("media_id", mediaId);
+  const fimRes = await fetch(MEDIA_UPLOAD_URL, {
+    method: "POST",
+    headers: cabecalho,
+    body: fim,
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!fimRes.ok) {
+    throw new Error(`X vídeo FINALIZE falhou (${fimRes.status}): ${(await fimRes.text()).slice(0, 300)}`);
+  }
+  const finalizado = (await fimRes.json()) as {
+    processing_info?: { state: string; check_after_secs?: number };
+  };
+
+  // O X transcodifica depois do FINALIZE. Anexar antes de terminar devolve erro
+  // de mídia inválida, então a espera é obrigatória e não zelo.
+  let info = finalizado.processing_info;
+  const limite = Date.now() + 5 * 60_000;
+  while (info && info.state !== "succeeded") {
+    if (info.state === "failed") throw new Error("X vídeo: processamento falhou do lado deles");
+    if (Date.now() > limite) throw new Error("X vídeo: processamento passou de 5 minutos");
+    await new Promise((r) => setTimeout(r, Math.max(1, info!.check_after_secs ?? 3) * 1000));
+    const st = await fetch(
+      `${MEDIA_UPLOAD_URL}?command=STATUS&media_id=${mediaId}`,
+      { headers: cabecalho, signal: AbortSignal.timeout(30_000) }
+    );
+    if (!st.ok) break;
+    info = ((await st.json()) as { processing_info?: { state: string; check_after_secs?: number } })
+      .processing_info;
+  }
+
+  return mediaId;
+}
+
 export async function uploadTwitterMedia(
   accessToken: string,
   imageInput: string

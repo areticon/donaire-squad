@@ -255,6 +255,34 @@ export async function publishFacebookText(
  * num post só. A Meta busca a imagem por URL pública, a mesma regra do
  * Instagram, então quem chama passa URLs já alcançáveis.
  */
+/**
+ * Publica vídeo na página, pelo mesmo caminho de busca por URL do Instagram.
+ *
+ * A Meta BUSCA o arquivo, ela não recebe upload, então a URL precisa ser
+ * alcançável da internet. Blob privado não serve, e por isso quem chama passa a
+ * rota assinada.
+ *
+ * `/videos` e não `/feed` com anexo: vídeo postado como anexo de feed vira um
+ * link, sem player nem alcance de vídeo, que é o motivo de alguém publicar
+ * vídeo na página.
+ */
+export async function publishFacebookVideo(
+  pageToken: string,
+  pageId: string,
+  message: string,
+  videoUrl: string
+): Promise<{ postId: string; url: string }> {
+  const json = await fbPost(`${pageId}/videos`, pageToken, {
+    file_url: videoUrl,
+    description: message,
+  });
+  const videoId = String(json.id ?? "");
+  if (!videoId) throw new Error("Facebook videos: resposta sem id");
+  // A resposta traz o id do VÍDEO, não o do post. O endereço abaixo abre o
+  // vídeo na página, que é o que o cliente quer ver ao clicar no link.
+  return { postId: videoId, url: `https://www.facebook.com/${pageId}/videos/${videoId}` };
+}
+
 export async function publishFacebookImagePost(
   pageToken: string,
   pageId: string,
