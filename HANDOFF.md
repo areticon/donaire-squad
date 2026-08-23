@@ -3578,3 +3578,28 @@ gravar olhando para a câmera os cortes ficam melhores. Vale entrar no roteiro d
 gravação dele.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+### Continuação da parte 42: os dois defeitos que só o vídeo mostrava
+
+Depois do primeiro reprocessamento, mais dois consertos, ambos achados olhando
+o corte produzido e não o banco.
+
+**A folga de 3% não bastava, e agora ela tem medida.** No quadro do slide de
+três colunas, o texto ocupa de **12,3% a 86,7%** da largura e o agente devolveu
+**17% a 85%**: erro de 4,7% para dentro no lado esquerdo. Com 3% ainda cortava a
+primeira letra de cada linha. Passou para **6%**, com o número escrito no código
+para a próxima pessoa não ter que remedir. O custo é o texto sair 7% menor, o
+que é invisível perto de perder a primeira palavra.
+
+**A pessoa aparecia duas vezes no mesmo quadro.** No empilhado ela aparece
+grande embaixo, e como a janela da webcam fica dentro da área do slide, o
+recorte de cima pegava ela também: uma minúscula em cima e uma grande embaixo.
+`semAPessoa` encurta a tela até onde a pessoa começa, o que não perde conteúdo
+porque slide bem feito não põe texto embaixo da janela do apresentador. Só
+encurta quando sobra tela de verdade.
+
+**A lição que atravessa os dois:** o banco dizia "6 cortes prontos" e estava
+certo. Seis cortes prontos não é seis cortes bons, e a verificação tem que
+chegar até o artefato, aberto e olhado.
+
+*Atualizado em 23/08/2026 por Claude Code.*
