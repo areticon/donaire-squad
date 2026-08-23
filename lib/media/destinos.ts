@@ -20,6 +20,20 @@ export type Destino = {
   formato: "vertical" | "horizontal";
   /** Teto de duração da plataforma, em segundos. Null quando não há. */
   limiteSegundos: number | null;
+  /**
+   * A publicação de VÍDEO existe para esta rede?
+   *
+   * Não é firula: conferido no código em 23/08, das cinco redes só o YouTube
+   * publicava vídeo. O Reels entrou no mesmo dia. Faltam LinkedIn (que só
+   * aceita vídeo em data URL, e com URL do storage posta o LINK como texto, e o
+   * link é privado, então não abre para ninguém), X e Facebook, que só têm
+   * imagem.
+   *
+   * Oferecer destino que não publica é o mesmo erro que deixou o ramo do
+   * YouTube inalcançável por dias sem ninguém notar. Aqui o destino aparece
+   * como "em breve" em vez de aceitar o clique e falhar depois.
+   */
+  publicaVideo: boolean;
 };
 
 export const DESTINOS_DE_CORTE: Destino[] = [
@@ -31,6 +45,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     // O Shorts corta em 3 minutos. Acima disso o vídeo entra como vídeo comum,
     // sem o alcance do formato, que é o motivo de alguém escolher Shorts.
     limiteSegundos: 180,
+    publicaVideo: true,
   },
   {
     id: "instagram_reels",
@@ -38,6 +53,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     plataforma: "instagram",
     formato: "vertical",
     limiteSegundos: 90,
+    publicaVideo: true,
   },
   {
     id: "linkedin",
@@ -45,6 +61,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     plataforma: "linkedin",
     formato: "vertical",
     limiteSegundos: 600,
+    publicaVideo: false,
   },
   {
     id: "x",
@@ -54,6 +71,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     // 140s é o teto de conta comum. Acima disso só assinante paga, e prometer
     // o que a conta do cliente não faz é pior que avisar antes.
     limiteSegundos: 140,
+    publicaVideo: false,
   },
   {
     id: "facebook",
@@ -61,6 +79,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     plataforma: "facebook",
     formato: "vertical",
     limiteSegundos: 90,
+    publicaVideo: false,
   },
 ];
 
@@ -70,6 +89,7 @@ export const DESTINO_COMPLETO: Destino = {
   plataforma: "youtube",
   formato: "horizontal",
   limiteSegundos: null,
+  publicaVideo: true,
 };
 
 export function destinoPorId(id: string): Destino | undefined {

@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { MAX_X } from "@/lib/media/limits";
+import { destinoPorId } from "@/lib/media/destinos";
 
 /**
  * Aprovação de um trecho: os textos viram posts de verdade.
@@ -67,20 +68,60 @@ export async function POST(
     );
   }
 
+  // O corte de vídeo deste trecho, se o worker já produziu. É ele que
+  // transforma um post de texto num post de vídeo de verdade.
+  const midia = (trecho as { midia?: { vertical?: { url: string } | null } }).midia;
+  const videoUrl = midia?.vertical?.url ?? null;
+
+  // Os destinos que o cliente marcou na tela de cortes. Sem marcação, cai nas
+  // redes que vieram no corpo, que é o caminho antigo, de antes de a tela
+  // existir: quebrar vídeo já processado por causa de campo novo seria trocar
+  // um problema por outro.
+  const destinosMarcados = ((trecho as { destinos?: string[] }).destinos ?? [])
+    .map((d) => destinoPorId(d))
+    .filter((d): d is NonNullable<typeof d> => Boolean(d));
+
+  const aCriar = destinosMarcados.length
+    ? destinosMarcados.map((d) => {
+        const chaveDoTexto =
+          d.plataforma === "twitter" ? "x" : d.plataforma === "youtube" ? "linkedin" : d.plataforma;
+        const texto = redes[chaveDoTexto as keyof typeof redes];
+        return {
+          plataforma: d.plataforma,
+          texto: (texto ?? trecho.titulo ?? "").trim(),
+          // Só anexa o vídeo onde a publicação de vídeo existe de verdade.
+          // Anexar onde não existe faria a rota de publicação tropeçar num
+          // arquivo que ela não sabe mandar, e o cliente veria erro numa etapa
+          // que não tem nada a ver com a causa.
+          comVideo: d.publicaVideo && Boolean(videoUrl),
+          destino: d.id,
+        };
+      })
+    : Object.entries(redes)
+        .filter(([, texto]) => texto && texto.trim())
+        .map(([rede, texto]) => ({
+          plataforma: MAPA_PLATAFORMA[rede] ?? rede,
+          texto: texto!.trim(),
+          comVideo: false,
+          destino: rede,
+        }));
+
   const criados = await prisma.$transaction(
-    Object.entries(redes)
-      .filter(([, texto]) => texto && texto.trim())
-      .map(([rede, texto]) =>
+    aCriar
+      .filter((c) => c.texto)
+      .map((c) =>
         prisma.post.create({
           data: {
             projectId: video.projectId,
-            platform: MAPA_PLATAFORMA[rede] ?? rede,
-            content: texto!.trim(),
-            mediaType: "text",
+            platform: c.plataforma,
+            content: c.texto,
+            mediaType: c.comVideo ? "video" : "text",
+            imageUrl: c.comVideo ? videoUrl : null,
             status: "draft",
             metadata: {
               origem: "video",
               videoJobId: video.id,
+              destino: c.destino,
               trecho: { inicio: trecho.inicio, fim: trecho.fim, titulo: trecho.titulo },
             },
           },

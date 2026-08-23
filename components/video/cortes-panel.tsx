@@ -257,12 +257,14 @@ export function CortesPanel({
                             <button
                               key={d.id}
                               type="button"
-                              disabled={!cabe || !estado.publicar}
+                              disabled={!cabe || !estado.publicar || !d.publicaVideo}
                               onClick={() => alternarDestino(i, d.id)}
                               title={
-                                cabe
-                                  ? d.rotulo
-                                  : `Este corte tem ${duracao(dur)} e o ${d.rotulo} aceita até ${duracao(d.limiteSegundos!)}`
+                                !d.publicaVideo
+                                  ? `Publicar vídeo no ${d.rotulo} ainda não existe na plataforma. Está no caminho.`
+                                  : cabe
+                                    ? d.rotulo
+                                    : `Este corte tem ${duracao(dur)} e o ${d.rotulo} aceita até ${duracao(d.limiteSegundos!)}`
                               }
                               className="text-xs px-2 py-1 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               style={{
@@ -273,6 +275,7 @@ export function CortesPanel({
                             >
                               {marcado && <Check className="w-3 h-3 inline mr-0.5" />}
                               {d.rotulo}
+                              {!d.publicaVideo && " (em breve)"}
                             </button>
                           );
                         })}

@@ -27,6 +27,7 @@ import {
   buildIgMediaPublicUrl,
   publishInstagramCarousel,
   publishInstagramImage,
+  publishInstagramReels,
   refreshInstagramToken,
   INSTAGRAM_MAX_CAPTION,
 } from "@/lib/oauth/instagram";
@@ -312,19 +313,36 @@ export async function executeOAuthPostPublish(
       );
     }
 
-    // A Meta busca a mídia por URL pública. https passa direto; data URL vai
-    // pela rota assinada /api/media/ig/[token], que serve a imagem do banco.
-    const publicUrls = rawImages.map((img, i) =>
-      img.startsWith("https://") ? img : buildIgMediaPublicUrl(post.id, i)
-    );
-
     const caption = bodyText.slice(0, INSTAGRAM_MAX_CAPTION);
-    const result =
-      publicUrls.length >= 2
-        ? await publishInstagramCarousel(accessToken, platformUserId, publicUrls, caption)
-        : await publishInstagramImage(accessToken, platformUserId, publicUrls[0], caption);
-    externalUrl = result.url;
-    externalId = result.mediaId;
+
+    if (mediaType === "video") {
+      // Vídeo vira Reels, e não tentativa de publicar vídeo como imagem, que é
+      // o que acontecia antes: a Meta recusava com erro que não explicava nada.
+      //
+      // Sempre pela rota assinada, mesmo quando a URL já é https: a nossa é do
+      // storage PRIVADO, e a Meta precisa alcançar o arquivo de fora.
+      const result = await publishInstagramReels(
+        accessToken,
+        platformUserId,
+        buildIgMediaPublicUrl(post.id, 0),
+        caption
+      );
+      externalUrl = result.url;
+      externalId = result.mediaId;
+    } else {
+      // A Meta busca a mídia por URL pública. https passa direto; data URL vai
+      // pela rota assinada /api/media/ig/[token], que serve a imagem do banco.
+      const publicUrls = rawImages.map((img, i) =>
+        img.startsWith("https://") ? img : buildIgMediaPublicUrl(post.id, i)
+      );
+
+      const result =
+        publicUrls.length >= 2
+          ? await publishInstagramCarousel(accessToken, platformUserId, publicUrls, caption)
+          : await publishInstagramImage(accessToken, platformUserId, publicUrls[0], caption);
+      externalUrl = result.url;
+      externalId = result.mediaId;
+    }
   } else if (account.platform === "facebook") {
     if (!platformUserId) throw new Error("Página do Facebook inválida");
 

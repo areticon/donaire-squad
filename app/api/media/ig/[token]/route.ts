@@ -1,6 +1,10 @@
 export const dynamic = "force-dynamic";
+// A Meta busca o arquivo inteiro por aqui. Com vídeo, o padrão de segundos não
+// serve: um Reels de um minuto leva mais que isso só para atravessar.
+export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
+import { get } from "@vercel/blob";
 import { prisma } from "@/lib/db/prisma";
 import { verifyIgMediaToken } from "@/lib/oauth/instagram";
 
@@ -44,17 +48,30 @@ export async function GET(
   }
 
   if (image.startsWith("https://")) {
-    // Proxy em vez de redirect: a URL de origem pode ser assinada ou privada
-    // para a Meta, e o que prometemos aqui é a imagem em si.
-    const res = await fetch(image, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const mime = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-    return new NextResponse(new Uint8Array(buffer), {
+    // Proxy em vez de redirect: a URL de origem é privada, e o que prometemos
+    // aqui é o arquivo em si.
+    //
+    // `get` do SDK do Blob, e NÃO `fetch` na URL: store privado responde 403
+    // para fetch comum, inclusive do servidor. Enquanto só imagens passavam por
+    // aqui isso nunca apareceu, porque elas viviam como data URL no banco. Com
+    // vídeo, que vive no storage, a rota quebraria na primeira publicação.
+    const blob = await get(image, {
+      access: "private",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    if (!blob || blob.statusCode !== 200) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    // Em FLUXO. Um Reels de um minuto passa de 10 MB, e a Meta busca o arquivo
+    // inteiro: materializar isso na memória da função é desnecessário e, com
+    // vídeo mais longo, fatal.
+    return new NextResponse(blob.stream, {
       headers: {
-        "Content-Type": mime,
-        "Content-Length": String(buffer.length),
+        "Content-Type": blob.blob.contentType,
+        "Content-Length": String(blob.blob.size),
         "Cache-Control": "no-store",
+        // A Meta pede faixas de bytes ao buscar vídeo. Sem isto ela desiste.
+        "Accept-Ranges": "bytes",
       },
     });
   }

@@ -211,6 +211,40 @@ export async function publishInstagramImage(
   return { mediaId, url: await fetchPermalink(mediaId, accessToken) };
 }
 
+/**
+ * Publica um Reels a partir de uma URL de vídeo pública.
+ *
+ * A Meta BUSCA o arquivo na URL, ela não recebe upload. Isso importa duas
+ * vezes: a URL precisa ser alcançável da internet (blob privado não serve, e
+ * por isso existe a rota assinada), e ela precisa continuar respondendo durante
+ * todo o processamento, que num vídeo de um minuto costuma levar de 20 a 60
+ * segundos.
+ *
+ * O tempo de espera é maior que o das imagens de propósito: vídeo é transcodado
+ * do lado deles, e 90 segundos derruba Reels legítimo que estava só demorando.
+ *
+ * `share_to_feed` fica ligado porque um Reels que não aparece no feed perde
+ * metade do alcance, e quem publica pela Demandou quer alcance.
+ */
+export async function publishInstagramReels(
+  accessToken: string,
+  igUserId: string,
+  videoUrl: string,
+  caption: string
+): Promise<{ mediaId: string; url: string | null }> {
+  const containerId = await igPost(`${igUserId}/media`, accessToken, {
+    media_type: "REELS",
+    video_url: videoUrl,
+    caption: caption.slice(0, INSTAGRAM_MAX_CAPTION),
+    share_to_feed: "true",
+  });
+  await waitForContainer(containerId, accessToken, 5 * 60_000);
+  const mediaId = await igPost(`${igUserId}/media_publish`, accessToken, {
+    creation_id: containerId,
+  });
+  return { mediaId, url: await fetchPermalink(mediaId, accessToken) };
+}
+
 /** Publica carrossel de 2 a 10 imagens, todas https públicas. */
 export async function publishInstagramCarousel(
   accessToken: string,
