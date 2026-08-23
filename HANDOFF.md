@@ -3603,3 +3603,49 @@ certo. Seis cortes prontos não é seis cortes bons, e a verificação tem que
 chegar até o artefato, aberto e olhado.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Fechamento de 23/08/2026: o produto de vídeo está em produção
+
+PR #30 mergeado, 23 commits. Deploy de produção verde em 56s, as 10 migrations
+aplicadas, o worker do Railway respondendo.
+
+**Estado verificado no banco de produção:** o vídeo de teste está em `cut`, com
+6 cortes, o completo recodificado e a capa do rosto. Ou seja, o Bruno cai direto
+na tela de cortes sem precisar reprocessar.
+
+### O que a jornada de hoje mudou
+
+O vídeo saiu de "decisão de rumo sem implementação" para fluxo completo:
+
+```
+sobe → transcreve → escolhe momentos → CORTA no worker do Railway
+  (enquadramento decidido por visão, capa escolhida varrendo o rosto)
+→ cliente marca o que sobe e para onde
+→ título, descrição e capa automáticos
+→ cronograma da semana
+→ quadro do Gestor de Conteúdo
+→ publica
+```
+
+### As três regras que ficaram, e valem mais que o código
+
+1. **O que sai da Demandou nunca pode ser pior que o que entrou.** Ela achou um
+   defeito invisível (áudio recodificado de 128k para 160k) e virou política:
+   sem edição não recodifica, CRF 18, áudio copiado quando dá, resolução
+   intocada, e fidelidade medida por entrega.
+2. **Antes de oferecer um caminho, conferir que ele existe de ponta a ponta.**
+   Aconteceu duas vezes hoje: o ramo do YouTube era código inalcançável desde a
+   remoção do Veo, e dos cinco destinos de corte só um publicava vídeo.
+3. **A verificação tem que chegar até o artefato.** O banco dizia "6 cortes
+   prontos" e estava certo; seis cortes prontos não é seis cortes bons. Os três
+   últimos defeitos do dia só apareceram abrindo o vídeo.
+
+### O que falta
+
+- Publicação de vídeo em LinkedIn, X e Facebook
+- Cortar hesitação e recomeço de frase, com aprovação por trecho
+- Preview da Vercel sem `DIRECT_URL`, que deixa todo PR sem verificação real
+- Verificação da empresa na Meta e submissão da OAuth do Google, que agora
+  dependem só da gravação do screencast
+
+*Atualizado em 23/08/2026 por Claude Code.*
