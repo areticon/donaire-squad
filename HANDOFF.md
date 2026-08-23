@@ -4142,4 +4142,89 @@ descartavel, que e a "conta de robo" do card Ref 174. Trancar e ganho.
 `emailVerified: false` e bateria numa parede sem saida; assim a tentativa de
 entrar dispara e-mail novo em vez de so recusar.
 
+## Sessao 23/08/2026 (parte 46): o corte ficou pessimo, e por que
+
+O Bruno assistiu ao resultado e disse que a edicao ficou pessima. Estava certo,
+e o erro de metodo foi meu: **de manha eu verifiquei que o arquivo era
+tecnicamente valido e chamei isso de produto pronto**. Duracao batendo, zero
+erro de decodificacao, SSIM alto. Nada disso diz se o corte e BOM. Eu tinha
+escrito na propria wiki, horas antes, que a verificacao precisa chegar ate o
+artefato, e nao cheguei: medi o encanamento em vez de assistir.
+
+### O que o quadro mostrava, medido
+
+| O que se via | Causa |
+|---|---|
+| Slide cortado no meio da ultima linha | `semAPessoa` cortava pelo eixo Y |
+| Faixa BORRADA de 269 px no meio | o empilhado deixa buraco, o fundo desfocado preenche |
+| 192 px vazios no topo | overlay comecava em 10% da altura, sem razao |
+| Botoes VOLTAR/RECOMECAR no video | a caixa da pessoa incluia a barra do app de slides |
+| Pessoa macia | webcam de 422x302 ampliada 2,56 vezes |
+| Sem legenda, musica, transicao | nao existia no codigo |
+
+**26% do quadro era desperdicio**, preenchido com uma copia ilegivel do proprio
+slide que estava legivel logo acima.
+
+### O corte do slide: escolhi o eixo errado
+
+A webcam fica no canto inferior DIREITO (x=1488 y=778 w=422 h=302) dentro de uma
+tela de x=209 y=119 w=1500 h=907. Cortar pela altura remove uma faixa da largura
+INTEIRA por causa de uma janelinha que ocupa so o canto:
+
+    pela altura  ate y=778  -> perde 27% e come o ultimo topico
+    pela largura ate x=1488 -> perde 15% e nao come nada
+
+O comentario que eu tinha escrito dizia "slide bem feito nao poe texto embaixo da
+janela do apresentador". O slide do Bruno poe. Agora escolhe por AREA entre as
+quatro formas de tirar a webcam encolhendo um lado so. Verificado nas caixas
+reais dos 6 cortes: **17% mais slide em 5 deles**, e em nenhum o recorte novo
+sobrepoe a webcam.
+
+### O recorte da pessoa: medido antes de prometer
+
+| | |
+|---|---|
+| Modelo | Selfie Segmenter do MediaPipe, 224 KB, CPU |
+| Velocidade | 7,2 ms por quadro (139 por segundo) |
+| Corte de 60 s | cerca de 13 s de segmentacao |
+| Silhueta | cabelo e ombros limpos |
+
+**Duas descobertas que fazem funcionar:**
+
+1. **A caixa precisa ser apertada ANTES.** Com a caixa que o agente de visao
+   devolve, que inclui a faixa branca do slide e a barra de botoes, o modelo
+   inventa manchas em volta. Apertando so na janela da webcam, sai limpo de
+   primeira. Apertar a caixa nao e estetica, e o que faz o recorte funcionar.
+
+2. **A janela da webcam e a regiao que MUDA.** Barra de botoes e slide sao
+   estaticos, entao diferenca entre quadros distantes acha a webcam sem
+   heuristica de cor. Verificado: detectou y=95 h=563 contra 97 e 558 a olho.
+
+Falhar no recorte nao derruba o corte: sem mascara sai na composicao antiga.
+
+### Um bug que travaria para sempre
+
+O `-t` estava entre dois `-i`, onde ele vira opcao de INPUT do ultimo arquivo em
+vez de limitar a saida. Como o gradiente do fundo e uma fonte SEM FIM, o ffmpeg
+codificava ate o disco acabar. O primeiro teste da composicao nova ficou 10
+minutos sem terminar por causa disso. Agora o `-t` vem depois de todos os inputs
+E o gradiente tem duracao propria, que sao duas travas para o mesmo erro.
+
+### Decidido com o Bruno
+
+- **Musica:** biblioteca com licenca comercial clara, pesquisada e aprovada por
+  ele antes de entrar. Nada de pegar faixa solta.
+- **Efeitos:** so o que sai da FALA. Emoji e frase de destaque escolhidos pelo
+  agente a partir do que ele disse. Sem print de noticia, que traz direito
+  autoral e risco de manchete inventada.
+
+### O que falta nesta frente
+
+- [ ] Legenda queimada palavra a palavra (o tempo por palavra ja existe, do
+      Deepgram). E a maior alavanca de retencao em Shorts e hoje nao existe.
+- [ ] Musica de biblioteca licenciada, com a voz abaixando a trilha
+- [ ] Emoji e frase de destaque a partir da fala
+- [ ] Julgar a composicao nova rodada sobre a FONTE ORIGINAL, e nao sobre o
+      corte ja composto, que e entrada degradada
+
 *Atualizado em 23/08/2026 por Claude Code.*
