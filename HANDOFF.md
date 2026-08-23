@@ -3866,4 +3866,65 @@ barato, e escolhe os MESMOS trechos. Fica no padrão mesmo assim, porque escolhe
 gancho é julgamento e a regra da casa manda julgamento no padrão. O número para
 trocar está no código, se o custo apertar.
 
+### Verificacao no video real, 23/08 as 10:09
+
+Rodado de ponta a ponta na gravacao de 1646s do Bruno, com 161 remocoes:
+
+| Medida | Previsto | Obtido |
+|---|---|---|
+| Nos no grafo de filtro | ~322 | 322, em 22.007 caracteres |
+| Duracao do corpo | 1508s (1646 menos 137,9) | 1509,1s |
+| Duracao final com abertura | 1522s | 1523,15s |
+| Bitrate | 0,88 Mbps | 0,946 Mbps |
+| Tamanho | ~167 MB | 171 MB |
+
+A abertura saiu com 14,0s exatos, que sao os dois ganchos de 7s. Decodificacao
+do arquivo inteiro sem um unico erro. Deriva total entre audio e video de 88 ms
+em 25 minutos, que e quantizacao de quadro de AAC e nao deriva progressiva: com
+161 emendas, erro sistematico daria quase 4 segundos.
+
+**O que ainda NAO foi verificado:** o mesmo corte contra o worker do Railway,
+que roda ffmpeg 5.1 e portanto o outro nome da opcao de filtro. Enquanto isso
+nao rodar, a correcao esta provada no ffmpeg 9 e apenas raciocinada no 5.1.
+
+### 4. O envio ao storage podia ficar pendurado para sempre
+
+Achado logo depois, e de novo por acidente. Depois do corte pronto o worker
+ficou 38 minutos sem terminar, e eu matei o processo achando que estava travado.
+**Errado pela segunda vez no mesmo dia, pelo mesmo motivo: extrapolei em vez de
+medir.**
+
+Medido depois, o envio ao Vercel Blob a partir desta maquina:
+
+| Arquivo | Tempo | Velocidade |
+|---|---|---|
+| 1,9 MB | 28s | 0,07 MB/s |
+| 19,1 MB | 577s | 0,033 MB/s |
+
+Isso e 265 a 560 kbps de subida. Nessa faixa, os 171 MB do video completo levam
+entre 41 e 86 minutos, entao aos 38 minutos o envio estava mais ou menos na
+metade. O worker nao estava travado.
+
+**Mas o bug existe assim mesmo, e e serio:** `subir()` nao tinha prazo nenhum.
+Um envio que emperra de verdade prenderia o worker para sempre, vivo e ocioso,
+segurando o video, e o cliente veria "cortando" ate o prazo do app estourar uma
+hora e meia depois. Tres correcoes:
+
+- **Fluxo em vez de `readFile`.** A versao anterior carregava o arquivo inteiro
+  na memoria antes de comecar. O conteiner tem menos memoria que os arquivos que
+  processa, e a descida ja tomava esse cuidado que a subida nao tomava.
+- **`multipart` acima de 50 MB.** Divide, manda em paralelo e retenta a parte
+  que falhar. Sem isso um solucao aos 90% joga fora tudo e recomeca do zero.
+- **Prazo proporcional ao tamanho**, com piso de 10 minutos e teto de 45.
+
+Verificado: fluxo com multipart sobe, e o prazo corta de verdade, abortando em
+1,2s com mensagem que diz o que foi cortado e por que.
+
+**Uma questao de produto que isto levantou e nao e bug:** a velocidade de subida
+daqui e do BRUNO, e no Railway o envio sai de datacenter, entao nada disso afeta
+producao. Mas o CLIENTE sobe a gravacao pela conexao dele. Uma gravacao de 3,33
+GB a 265 kbps levaria 28 horas. Vale medir quanto tempo o upload leva na pratica
+e decidir se a tela precisa avisar o tamanho recomendado antes de o cliente
+escolher o arquivo.
+
 *Atualizado em 23/08/2026 por Claude Code.*

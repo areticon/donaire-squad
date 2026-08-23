@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { mkdtemp, rm, stat, readFile, writeFile, copyFile } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
@@ -71,16 +71,65 @@ async function baixarFonte(sourceUrl, destino) {
   return blob.blob.contentType || "video/mp4";
 }
 
+/**
+ * Manda um arquivo para o storage, sem poder ficar pendurado para sempre.
+ *
+ * Três decisões, e as três vieram de um envio real de 171 MB em 23/08.
+ *
+ * **Fluxo, e não `readFile`.** A versão anterior lia o arquivo inteiro para a
+ * memória antes de começar. Num vídeo completo isso é o arquivo todo em RAM ao
+ * mesmo tempo, e o contêiner do worker tem bem menos memória do que os arquivos
+ * que ele processa. É o mesmo cuidado que a descida já tinha e a subida não.
+ *
+ * **`multipart` acima de 50 MB.** Divide em partes, manda em paralelo e
+ * RETENTA a parte que falhar. Sem isso, um soluço de rede aos 90% joga fora
+ * tudo que já subiu e o envio recomeça do zero.
+ *
+ * **Prazo, que é o que faltava de verdade.** Não havia nenhum, e sem prazo um
+ * envio que emperra prende o trabalho para sempre: o worker fica vivo, ocioso,
+ * segurando o vídeo, e o cliente vê "cortando" até o prazo do app estourar lá
+ * na outra ponta, uma hora e meia depois. Falhar alto em vinte minutos é muito
+ * melhor que pendurar em silêncio por noventa.
+ *
+ * O prazo acompanha o tamanho porque a velocidade de subida varia demais entre
+ * o contêiner e uma máquina de casa. Medido em 23/08 na máquina do Bruno: 0,07
+ * MB/s, ou seja 171 MB levariam 41 minutos. O piso de 10 minutos mais um minuto
+ * a cada 3 MB dá margem para uma conexão ruim sem transformar emperramento em
+ * espera eterna.
+ */
+function prazoDeEnvio(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return Math.round(Math.min(45 * 60_000, 10 * 60_000 + (mb / 3) * 60_000));
+}
+
 async function subir(caminho, chave, contentType) {
-  const conteudo = await readFile(caminho);
-  const { url } = await put(chave, conteudo, {
-    access: "private",
-    token: BLOB_TOKEN,
-    contentType,
-    addRandomSuffix: true,
-  });
   const { size } = await stat(caminho);
-  return { url, bytes: size };
+
+  const controle = new AbortController();
+  const limite = setTimeout(() => controle.abort(), prazoDeEnvio(size));
+  try {
+    const { url } = await put(chave, createReadStream(caminho), {
+      access: "private",
+      token: BLOB_TOKEN,
+      contentType,
+      addRandomSuffix: true,
+      multipart: size > 50 * 1024 * 1024,
+      abortSignal: controle.signal,
+    });
+    return { url, bytes: size };
+  } catch (e) {
+    // Sem isto, o estouro de prazo chega como "This operation was aborted", que
+    // não diz o que foi abortado nem por quê.
+    if (controle.signal.aborted) {
+      throw new Error(
+        `envio de ${chave} passou de ${Math.round(prazoDeEnvio(size) / 60_000)} min ` +
+          `para ${(size / 1048576).toFixed(0)} MB e foi cortado`
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(limite);
+  }
 }
 
 /**
