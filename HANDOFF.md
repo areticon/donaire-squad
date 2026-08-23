@@ -3649,3 +3649,122 @@ sobe → transcreve → escolhe momentos → CORTA no worker do Railway
   dependem só da gravação do screencast
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 43): a noite do backlog
+
+O Bruno entrou pelo celular, apontou três coisas, deu autonomia e pediu para
+zerar o backlog de código. Ordem dele mais a minha recomendação de sequência.
+
+### 1. A plataforma não funcionava no celular
+
+Diagnóstico pior que o sintoma: o `app-shell` fixava a barra lateral em 240px e
+empurrava o conteúdo com `ml-60`, **sem nenhuma regra de tela pequena**, e a
+barra lateral tinha **zero classes responsivas em 249 linhas**. Num telefone de
+390px sobravam 150 para o conteúdo.
+
+A barra virou gaveta, com barra superior própria, fundo que fecha ao tocar fora,
+X e tecla Esc. No computador nada mudou, inclusive o recolher (conferido: 240
+para 64 e de volta, com a preferência salva).
+
+Toda variante "recolhida" passou a valer só do `lg` para cima: no celular a
+gaveta é larga e mostra os rótulos, porque ícone sem rótulo em tela pequena vira
+adivinhação.
+
+**Medido pelo sintoma objetivo, rolagem lateral:**
+
+| | antes | depois |
+|---|---|---|
+| Gestor de Conteúdo | 556px numa janela de 390 | 385 |
+
+Culpados: a barra de 8 abas numa linha (passou a rolar por dentro) e a
+navegação de semana com cinco controles (passou a quebrar linha).
+
+De carona: o cabeçalho do projeto ganhou `top-14` no celular, e o texto do
+upload dizia "Até 60 minutos" enquanto o limite subiu para 120 em 22/08.
+
+Dívida antiga paga: a preferência de barra recolhida era lida num `useEffect`
+com `setState`, erro de lint desde antes desta sessão. Virou
+`useSyncExternalStore`, que é o primitivo para isso.
+
+### 2. A edição não limpava erro de fala
+
+Eu removia **silêncio**, e hesitação **tem áudio**. Estava adiado num card, e ele
+bateu nisso na primeira vez que assistiu. Adiar estava errado.
+
+Medido: 147 "é", 78 "então", 44 "né", 35 "aí". A abertura era "Bom, vamos lá
+gente. Quero falar com vocês aqui de tema sobre, **é**, a minha trajetória", com
+um recomeço logo depois. Depois da limpeza: "Quero falar com vocês aqui de tema
+sobre, a minha trajetória". **Cerca de 30s só no primeiro bloco de 800
+palavras**, contra 49,6s de todas as pausas do vídeo inteiro.
+
+**Precisa de agente**, porque "é" é verbo e "então" liga ideias metade das
+vezes: a diferença está no papel da palavra, não na palavra.
+
+**E precisa de verificação em código em cima do agente**, porque ele erra do
+jeito mais caro: devolveu "sobre, é" como hesitação, e cortar isso deixaria "de
+tema a minha trajetória". `cortePlausivel` só aceita corte que ou é todo muleta,
+ou tem palavra de conteúdo reaparecendo ao lado, que é a assinatura objetiva de
+repetição e de recomeço.
+
+Detalhe que custou um teste: a junção de cortes vizinhos precisa vir ANTES da
+validação. Recomeço vem partido em dois, e aplicar só uma metade deixaria "eu
+saí eu quero falar", pior que o original.
+
+**Descoberta de custo que vale para o projeto inteiro.** Mesma entrada, mesmo
+prompt:
+
+| Esforço | Tempo | Saída | Custo por vídeo |
+|---|---|---|---|
+| alto | 97,9s | 10.213 tokens | R$ 3,65 |
+| médio | 62,7s | 6.776 | |
+| **baixo** | **~25s** | **~2.500** | **R$ 1,17** |
+
+Resultado equivalente nos três, porque achar muleta é leitura e não raciocínio.
+Regra escrita no código: tarefa de julgamento fica no padrão, tarefa mecânica
+sobre lista vai em `low` COM verificação. Sem isso a margem virava negativa: o
+trabalho de vídeo rende R$ 4,48 e o esforço alto sozinho custaria R$ 3,65.
+
+### 3. O vídeo abre com gancho, não com "vamos lá"
+
+Pesquisa que o Bruno mandou fazer, e os números mandaram no desenho: o
+espectador decide em **3 segundos**; gancho desalinhado perde **mais de 40% nos
+primeiros 5s**; gancho alinhado retém **78% até os 30s**; com 70% aos 30s o
+YouTube empurra o vídeo. O padrão mais forte não é choque, é a **alça aberta**.
+
+**Ressalva:** em 2024 o MrBeast abandonou publicamente a edição hiper-rápida,
+desacelerou, e as views subiram. Copia-se a alça aberta, não o ritmo de 2020.
+
+Testado no vídeo real, os dois ganchos escolhidos são alça aberta de verdade:
+"anuncia dificuldade inesperada com a câmera, sem explicar por quê" e "revela
+dois anos vendendo consultoria sem contar o que buscava".
+
+A abertura sai em arquivo separado e é emendada ao corpo com `-c copy`, porque o
+filtro `select` que remove pausas **não sabe reordenar**, e a abertura precisa
+exatamente disso. Emenda em 0,15s, sem terceira geração de perda. Transição
+conferida por medição de brilho: 222 no meio, 37,5 no fade, 226 quando o corpo
+começa.
+
+### 4. LinkedIn, X e Facebook passaram a publicar vídeo
+
+O LinkedIn tinha o maquinário pronto mas só aceitava data URL, e com URL do
+storage postava o **link como texto**, publicando um link quebrado no nome do
+cliente. O X precisou de envio em três atos mais espera de transcodificação. O
+Facebook usa busca por URL, em `/videos` e não `/feed`, porque vídeo como anexo
+de feed vira link sem player.
+
+Diferença deliberada: falha de imagem no X publica só o texto, falha de **vídeo**
+é fatal, porque quem marcou um corte quer o corte.
+
+### 5. O Preview da Vercel parou de falhar
+
+Todo Preview falhava em 7 segundos porque o `build` rodava `prisma migrate
+deploy` incondicional e o ambiente não tem variável de banco. **O check vermelho
+de todo PR era falso alarme.**
+
+A correção óbvia seria pior: dar a variável faria cada branch não mergeado
+aplicar suas migrações em produção. O build virou um script que só migra quando
+`VERCEL_ENV` é production.
+
+**Verificado: primeiro Preview verde em 1 minuto**, contra 7 segundos de erro.
+
+*Atualizado em 23/08/2026 por Claude Code.*
