@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Upload, Video, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   MB_POR_MINUTO_RECOMENDADO,
+  MAX_DURACAO_SEGUNDOS,
   TIPOS_ACEITOS,
   validarVideo,
   type Veredito,
@@ -159,7 +160,10 @@ export function VideoUpload({
                 Escolher vídeo
               </span>
               <span className="block text-sm text-[var(--text-muted)] mt-1">
-                MP4, MOV, MKV ou WebM. Até 60 minutos.
+                {/* O número vem da constante, e não escrito à mão. O limite
+                    subiu de 60 para 120 em 22/08 e este texto ficou para trás,
+                    prometendo metade do que a plataforma aceita. */}
+                MP4, MOV, MKV ou WebM. Até {MAX_DURACAO_SEGUNDOS / 60} minutos.
               </span>
             </>
           )}

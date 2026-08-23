@@ -22,6 +22,7 @@ import {
   parseTwitterThread,
   refreshTwitterToken,
   uploadTwitterMedia,
+  uploadTwitterVideo,
 } from "@/lib/oauth/twitter";
 import {
   buildIgMediaPublicUrl,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/oauth/instagram";
 import {
   publishFacebookImagePost,
+  publishFacebookVideo,
   publishFacebookText,
 } from "@/lib/oauth/facebook";
 import { get } from "@vercel/blob";
@@ -118,6 +120,41 @@ export async function resolveSocialAccountAccessToken(
     }
   }
   return { account, accessToken };
+}
+
+/**
+ * Lê o vídeo do post, venha ele do storage ou do banco.
+ *
+ * Existe para as três redes que enviam BYTES (LinkedIn, X e YouTube) não
+ * repetirem a mesma leitura, e principalmente para não repetirem o erro: blob
+ * privado responde 403 a `fetch` comum, e só o SDK com token resolve. Essa
+ * armadilha já apareceu quatro vezes neste projeto.
+ *
+ * Devolve buffer, e não fluxo, porque LinkedIn e X pedem pedaços por índice de
+ * byte, o que exige acesso aleatório. Aceitável para corte de rede, que fica em
+ * 5 a 10 MB; para a gravação inteira o YouTube usa o caminho de fluxo próprio.
+ */
+async function lerVideoDoPost(
+  imageUrl: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  if (imageUrl.startsWith("data:")) {
+    const [head, b64] = imageUrl.split(",", 2);
+    return {
+      buffer: Buffer.from(b64, "base64"),
+      mimeType: head.slice(5, head.indexOf(";")) || "video/mp4",
+    };
+  }
+  const blob = await get(imageUrl, {
+    access: "private",
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
+  if (!blob || blob.statusCode !== 200) {
+    throw new Error("Não consegui ler o vídeo no storage.");
+  }
+  return {
+    buffer: Buffer.from(await new Response(blob.stream).arrayBuffer()),
+    mimeType: blob.blob.contentType || "video/mp4",
+  };
 }
 
 /**
@@ -277,6 +314,12 @@ export async function executeOAuthPostPublish(
         // Upload de mídia não-fatal: publica só o texto se falhar
         console.warn("[twitter] media upload falhou, publicando só texto:", e);
       }
+    } else if (mediaType === "video" && post.imageUrl) {
+      // Vídeo aqui é FATAL se falhar, ao contrário de imagem: quem marcou um
+      // corte para o X quer o corte, e publicar só a legenda entregaria um
+      // texto solto que não faz sentido sozinho.
+      const video = await lerVideoDoPost(post.imageUrl);
+      twitterMediaIds = [await uploadTwitterVideo(accessToken, video)];
     }
 
     if (mediaType === "thread" || bodyText.match(/\n\d+[\/\)]\s/)) {
@@ -343,6 +386,18 @@ export async function executeOAuthPostPublish(
       externalUrl = result.url;
       externalId = result.mediaId;
     }
+  } else if (account.platform === "facebook" && mediaType === "video" && post.imageUrl) {
+    if (!platformUserId) throw new Error("Página do Facebook inválida");
+    // Pela rota assinada, sempre: a Meta busca o arquivo de fora e o storage é
+    // privado.
+    const result = await publishFacebookVideo(
+      accessToken,
+      platformUserId,
+      bodyText,
+      buildIgMediaPublicUrl(post.id, 0)
+    );
+    externalUrl = result.url;
+    externalId = result.postId;
   } else if (account.platform === "facebook") {
     if (!platformUserId) throw new Error("Página do Facebook inválida");
 

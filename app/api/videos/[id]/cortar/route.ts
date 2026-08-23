@@ -1,6 +1,9 @@
 export const dynamic = "force-dynamic";
 // Só despacha e responde. O trabalho pesado vive no worker, que não tem teto.
-export const maxDuration = 60;
+// A limpeza de fala roda aqui antes de despachar, e são várias chamadas em
+// paralelo. Medido: cerca de 30s por bloco de 800 palavras, e uma gravação de
+// duas horas tem uns 20 blocos.
+export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
@@ -13,6 +16,12 @@ import {
   montarLegendasDestaque,
   segundosRemovidos,
 } from "@/lib/media/edicao";
+import {
+  detectarHesitacao,
+  limpezaParaRemocoes,
+  unirRemocoes,
+} from "@/lib/media/limpeza";
+import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import type { Word } from "@/lib/media/transcribe";
 
 /**
@@ -53,6 +62,7 @@ export async function POST(
       clips: true,
       transcript: true,
       durationSec: true,
+      projectId: true,
     },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -100,11 +110,44 @@ export async function POST(
   // depois das remoções, senão o destaque do fim do vídeo apareceria quase
   // meio minuto atrasado.
   const transcript = video.transcript as { words?: Word[] } | null;
-  const remocoes = detectarPausas(
-    transcript?.words ?? [],
-    video.durationSec ?? 0
-  );
+  const palavras = transcript?.words ?? [];
+
+  const pausas = detectarPausas(palavras, video.durationSec ?? 0);
+
+  // A limpeza de fala vem DEPOIS das pausas e junto com elas, porque as duas
+  // atacam problemas diferentes: pausa é silêncio, hesitação tem áudio.
+  //
+  // Medido na gravação real: as pausas devolvem 49,6s no vídeo inteiro, e a
+  // limpeza devolve cerca de 30s só no primeiro bloco de 800 palavras. É onde
+  // o tempo realmente está.
+  //
+  // Falhar aqui não derruba o corte: o vídeo sai com as pausas removidas e a
+  // fala como estava, que é pior mas existe.
+  let fala: Awaited<ReturnType<typeof detectarHesitacao>> = [];
+  try {
+    fala = await detectarHesitacao(palavras, { projectId: video.projectId });
+  } catch {
+    /* segue sem limpeza de fala */
+  }
+
+  const remocoes = unirRemocoes(pausas, limpezaParaRemocoes(fala, palavras));
   const legendasAss = montarLegendasDestaque(trechos, remocoes);
+
+  // Os ganchos da abertura, já convertidos para o tempo DEPOIS da edição.
+  // Converter aqui e não no worker é a mesma regra do resto: a matemática do
+  // deslocamento mora num lugar só.
+  //
+  // Falhar aqui não derruba o corte: o vídeo sai começando do começo, que
+  // retém menos mas existe.
+  let ganchos: ReturnType<typeof ganchosNoTempoEditado> = [];
+  try {
+    ganchos = ganchosNoTempoEditado(
+      await escolherGanchos(trechos, { projectId: video.projectId }),
+      remocoes
+    );
+  } catch {
+    /* segue sem abertura */
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com";
   const corpo = JSON.stringify({
@@ -118,6 +161,7 @@ export async function POST(
       titulo: t.titulo,
     })),
     remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
+    ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
     legendasAss,
     enquadramentoUrl: `${appUrl}/api/videos/${id}/enquadrar`,
     callbackUrl: `${appUrl}/api/videos/${id}/cortar-callback`,
@@ -153,6 +197,9 @@ export async function POST(
     ok: true,
     trechos: trechos.length,
     remocoes: remocoes.length,
+    pausas: pausas.length,
+    hesitacoes: fala.length,
+    ganchos: ganchos.length,
     segundosRemovidos: Math.round(segundosRemovidos(remocoes)),
   });
 }

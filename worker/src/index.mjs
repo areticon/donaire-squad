@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdtemp, rm, stat, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, readFile, writeFile, copyFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -16,6 +16,8 @@ import {
   extrairQuadros,
   extrairCandidatosDeCapa,
   extrairCapaFinal,
+  montarAbertura,
+  emendar,
   medirFidelidade,
 } from "./ffmpeg.mjs";
 
@@ -275,23 +277,53 @@ async function processar(trabalho) {
         await writeFile(legendasArquivo, trabalho.legendasAss, "utf8");
       }
 
-      const como = await prepararCompleto(fonte, completo, {
+      // O CORPO primeiro: a gravação editada, do começo.
+      const corpo = join(pasta, "corpo.mp4");
+      const como = await prepararCompleto(fonte, corpo, {
         remocoes: trabalho.remocoes,
         duracaoSec: info.duracaoSec,
         legendasArquivo,
       });
+
+      // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os
+      // tempos dela já chegam convertidos para depois da edição, senão
+      // apontariam para o instante errado do arquivo original.
+      //
+      // Se a abertura falhar, o vídeo sai sem ela: um vídeo que começa do
+      // começo é pior de reter, mas é um vídeo. Sem corpo não há entrega.
+      let temAbertura = false;
+      try {
+        const abertura = join(pasta, "abertura.mp4");
+        temAbertura = await montarAbertura(corpo, abertura, trabalho.ganchos);
+        if (temAbertura) {
+          await emendar([abertura, corpo], completo, pasta);
+        }
+      } catch (e) {
+        temAbertura = false;
+        resultados.erros.push(
+          `abertura: ${e instanceof Error ? e.message : "falhou"}`
+        );
+      }
+      if (!temAbertura) {
+        await copyFile(corpo, completo);
+      }
+
       resultados.completo = await subir(
         completo,
         `cortes/${trabalho.videoJobId}/completo.mp4`,
         "video/mp4"
       );
+      resultados.completo.abertura = temAbertura ? trabalho.ganchos.length : 0;
       resultados.completo.recodificado = como.recodificado;
       resultados.completo.motivo = como.motivo;
       // A promessa de qualidade tem que ser verificável, não prometida. Só faz
       // sentido medir quando houve recodificação: remux é idêntico por
       // definição, e comparar um arquivo com ele mesmo custa CPU à toa.
+      // A fidelidade compara o CORPO com a fonte, e não o arquivo final: o
+      // final tem a abertura na frente, então os dois estariam desalinhados no
+      // tempo e o SSIM mediria desencontro, não perda de qualidade.
       resultados.completo.fidelidade = como.recodificado
-        ? await medirFidelidade(fonte, completo, info.duracaoSec)
+        ? await medirFidelidade(fonte, corpo, info.duracaoSec)
         : 1;
     } catch (e) {
       resultados.erros.push(

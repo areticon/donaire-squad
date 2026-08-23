@@ -296,12 +296,28 @@ export async function uploadLinkedInImage(
 /**
  * Upload a video to LinkedIn and return the video URN.
  */
+/**
+ * O vídeo, aceito como data URL OU como bytes já lidos.
+ *
+ * A segunda forma existe desde 23/08, quando os cortes passaram a viver no
+ * storage privado em vez de virem embutidos no banco. Antes só havia data URL,
+ * e o ramo de vídeo do LinkedIn caía num `else` que postava a URL COMO TEXTO,
+ * com um link privado que não abre para ninguém.
+ *
+ * Buffer e não fluxo porque o envio do LinkedIn é em pedaços e ele diz quais
+ * bytes quer em cada um (`firstByte`, `lastByte`): sem acesso aleatório não dá
+ * para atender. Para corte de rede isso é aceitável, porque um corte vertical
+ * fica na casa de 5 a 10 MB.
+ */
+export type VideoParaEnvio = string | { buffer: Buffer; mimeType: string };
+
 export async function uploadLinkedInVideo(
   accessToken: string,
   ownerUrn: string,
-  videoDataUrl: string
+  video: VideoParaEnvio
 ): Promise<string> {
-  const { buffer, mimeType } = dataUrlToBuffer(videoDataUrl);
+  const { buffer, mimeType } =
+    typeof video === "string" ? dataUrlToBuffer(video) : video;
   const fileSizeBytes = buffer.byteLength;
 
   const initRes = await fetch(`${VIDEOS_URL}?action=initializeUpload`, {
@@ -597,11 +613,11 @@ export async function publishLinkedInVideoPost(
   accessToken: string,
   platformUserId: string,
   text: string,
-  videoDataUrl: string,
+  video: VideoParaEnvio,
   accountType: "personal" | "organization" = "personal"
 ): Promise<{ postId: string | null; url: string | null }> {
   const owner = authorUrn(platformUserId, accountType);
-  const videoUrn = await uploadLinkedInVideo(accessToken, owner, videoDataUrl);
+  const videoUrn = await uploadLinkedInVideo(accessToken, owner, video);
 
   return postToLinkedIn(accessToken, {
     author: owner,

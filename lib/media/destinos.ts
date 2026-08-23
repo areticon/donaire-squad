@@ -23,11 +23,14 @@ export type Destino = {
   /**
    * A publicação de VÍDEO existe para esta rede?
    *
-   * Não é firula: conferido no código em 23/08, das cinco redes só o YouTube
-   * publicava vídeo. O Reels entrou no mesmo dia. Faltam LinkedIn (que só
-   * aceita vídeo em data URL, e com URL do storage posta o LINK como texto, e o
-   * link é privado, então não abre para ninguém), X e Facebook, que só têm
-   * imagem.
+   * Não é firula, e o campo nasceu de um erro real: em 23/08, das cinco redes
+   * que a tela oferecia, só o YouTube publicava vídeo. O Reels, o LinkedIn, o X
+   * e o Facebook entraram no mesmo dia, cada um com o protocolo que a rede
+   * exige (busca por URL na Meta, envio em pedaços no LinkedIn e no X).
+   *
+   * O campo continua porque a próxima rede vai nascer sem publicação de vídeo
+   * também, e é melhor ela aparecer como "em breve" do que aceitar o clique e
+   * falhar depois de o cliente aprovar.
    *
    * Oferecer destino que não publica é o mesmo erro que deixou o ramo do
    * YouTube inalcançável por dias sem ninguém notar. Aqui o destino aparece
@@ -61,7 +64,7 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     plataforma: "linkedin",
     formato: "vertical",
     limiteSegundos: 600,
-    publicaVideo: false,
+    publicaVideo: true,
   },
   {
     id: "x",
@@ -71,15 +74,17 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     // 140s é o teto de conta comum. Acima disso só assinante paga, e prometer
     // o que a conta do cliente não faz é pior que avisar antes.
     limiteSegundos: 140,
-    publicaVideo: false,
+    publicaVideo: true,
   },
   {
     id: "facebook",
     rotulo: "Facebook",
     plataforma: "facebook",
     formato: "vertical",
+    // A página aceita vídeo bem mais longo, mas 90s é o que rende: acima disso
+    // o alcance cai porque deixa de competir como conteúdo curto.
     limiteSegundos: 90,
-    publicaVideo: false,
+    publicaVideo: true,
   },
 ];
 

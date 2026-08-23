@@ -67,6 +67,28 @@ export type AskOptions = {
    * interativa em que esperar muito é pior que falhar rápido.
    */
   timeoutMs?: number;
+  /**
+   * Profundidade de raciocínio. O padrão do modelo é alto, e ele NÃO é o certo
+   * para toda tarefa.
+   *
+   * Medido em 23/08 na limpeza de hesitação, mesma entrada, mesmo prompt:
+   *
+   *   alto   97,9s   10.213 tokens de saída
+   *   médio  62,7s    6.776
+   *   baixo  ~25s     ~2.500
+   *
+   * O resultado foi equivalente nos três, porque a tarefa é mecânica: achar
+   * muleta numa lista de palavras não exige raciocínio profundo, exige leitura.
+   * Como o cobrado é o que o modelo GERA, e quase tudo ali é pensamento, baixar
+   * o esforço cortou o custo em quatro vezes sem perder qualidade.
+   *
+   * Regra: tarefa de julgamento (escolher trechos, escrever) fica no padrão;
+   * tarefa mecânica sobre lista (marcar, classificar, extrair) vai em "low",
+   * COM verificação em código do que voltou.
+   */
+  // Os níveis são os que o SDK instalado aceita. `xhigh` existe na API mais
+  // nova mas não nos tipos desta versão, e inventar aqui só quebraria o build.
+  effort?: "low" | "medium" | "high" | "max";
 };
 
 function buildSystem(
@@ -125,6 +147,7 @@ export async function askClaude(
       max_tokens: maxTokens,
       system: buildSystem(systemPrompt, options?.cachedPrefix),
       messages: [{ role: "user", content: userMessage }],
+      ...(options?.effort ? { output_config: { effort: options.effort } } : {}),
     },
     { timeout: timeoutMs }
   );

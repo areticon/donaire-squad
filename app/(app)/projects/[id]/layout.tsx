@@ -26,14 +26,16 @@ export default async function ProjectLayout({
     <div className="min-h-screen">
       {/* Project header */}
       <div
-        className="sticky top-0 z-30"
+        // `top-14` no celular porque a barra do aplicativo já ocupa 14 ali.
+        // Sem isso os dois cabeçalhos grudados ficariam um por cima do outro.
+        className="sticky top-14 lg:top-0 z-20 lg:z-30"
         style={{
           borderBottom: "1px solid var(--border)",
           background: "var(--bg-surface)",
         }}
       >
-        <div className="px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+        <div className="px-4 lg:px-8">
+          <div className="flex items-center justify-between gap-2 h-14 min-w-0">
             <div className="flex items-center gap-3">
               <Link
                 href="/projects"

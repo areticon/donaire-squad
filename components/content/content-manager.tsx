@@ -2296,7 +2296,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const activeDays = DAYS;
 
   return (
-    <div className="w-full space-y-4 p-6 lg:p-8">
+    <div className="w-full min-w-0 space-y-4 p-4 lg:p-8">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -2304,11 +2304,14 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{projectName}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap` porque são cinco controles numa linha: no computador
+            cabem, num telefone de 390px empurravam a página inteira e criavam
+            rolagem lateral (medido em 23/08: 532px numa janela de 390). */}
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <button onClick={prevWeek} className="p-2 rounded-lg border transition-all hover:border-orange-500" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div className="text-center min-w-[160px]">
+          <div className="text-center min-w-[130px] sm:min-w-[160px]">
             <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{formatWeekLabel(selectedMonday)}</p>
             <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
               {isCurrentWeek ? "Semana atual" : `Semana ${Math.ceil((selectedMonday.getTime() - new Date(selectedMonday.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))}`}
