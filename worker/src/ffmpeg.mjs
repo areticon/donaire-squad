@@ -233,6 +233,75 @@ export async function extrairQuadros(entrada, saidaPrefixo, inicio, duracao, qua
 }
 
 /**
+ * Quadros candidatos a capa, espalhados pelo vídeo INTEIRO.
+ *
+ * Diferente de `extrairQuadros`, que olha dentro de um trecho: aqui a varredura
+ * cobre a gravação toda, INCLUSIVE a abertura. O motivo é que os melhores
+ * momentos de fala não coincidem com os melhores momentos de imagem: a seleção
+ * de trechos descarta abertura de propósito, e é justamente ali que muita gente
+ * aparece falando em tela cheia, que é o quadro que vira boa capa.
+ *
+ * Apontado pelo Bruno em 23/08, com o próprio vídeo como prova: os trechos
+ * escolhidos caíam todos em tela compartilhada, e a capa saía com texto branco
+ * em cima de um slide.
+ *
+ * Devolve o caminho e o SEGUNDO de cada candidato, porque depois de escolhido é
+ * preciso voltar ao vídeo e extrair o mesmo instante em resolução cheia: o
+ * candidato tem 768 de largura, que serve para o agente olhar e é pouco para
+ * virar thumbnail.
+ */
+export async function extrairCandidatosDeCapa(entrada, saidaPrefixo, duracaoSec, quantos = 10) {
+  const candidatos = [];
+  for (let i = 0; i < quantos; i++) {
+    // Começa cedo e termina antes do fim: os últimos segundos costumam ser
+    // despedida e tela parada.
+    const instante = duracaoSec * (0.02 + (0.9 * i) / Math.max(1, quantos - 1));
+    const caminho = `${saidaPrefixo}-${i}.jpg`;
+    try {
+      await rodar([
+        "-ss", String(instante),
+        "-i", entrada,
+        "-frames:v", "1",
+        "-vf", "scale=768:-2",
+        "-q:v", "5",
+        caminho,
+      ], { timeoutMs: 2 * 60 * 1000 });
+      candidatos.push({ caminho, instante });
+    } catch {
+      // Um candidato que falha não interessa: sobram nove.
+    }
+  }
+  return candidatos;
+}
+
+/** O quadro escolhido, em resolução cheia e já recortado para 16:9. */
+export async function extrairCapaFinal(entrada, saida, instante, recorte) {
+  const filtros = [];
+  if (recorte) {
+    const par = (n) => `floor(${n}/2)*2`;
+    filtros.push(
+      `crop=${par(`iw*${recorte.w}`)}:${par(`ih*${recorte.h}`)}:` +
+        `${par(`iw*${recorte.x}`)}:${par(`ih*${recorte.y}`)}`
+    );
+  }
+  // 1280x720 é o tamanho que o YouTube pede para thumbnail. Maior não melhora e
+  // só aumenta o que atravessa para o modelo de imagem.
+  filtros.push(
+    "scale=1280:720:force_original_aspect_ratio=increase",
+    "crop=1280:720"
+  );
+
+  await rodar([
+    "-ss", String(instante),
+    "-i", entrada,
+    "-frames:v", "1",
+    "-vf", filtros.join(","),
+    "-q:v", "2",
+    saida,
+  ], { timeoutMs: 2 * 60 * 1000 });
+}
+
+/**
  * Um trecho em 9:16, para Shorts, Reels e TikTok.
  *
  * O tratamento é fundo desfocado, e não barra preta. A receita comum de

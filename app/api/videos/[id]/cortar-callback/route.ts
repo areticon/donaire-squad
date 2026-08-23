@@ -55,6 +55,7 @@ export async function POST(
     erro?: string;
     trechos?: TrechoCortado[];
     completo?: MidiaProduzida | null;
+    capaFonte?: (MidiaProduzida & { instante?: number; motivo?: string }) | null;
     erros?: string[];
   };
   try {
@@ -117,6 +118,11 @@ export async function POST(
       clips: atualizados as never,
       completoUrl: corpo.completo?.url ?? null,
       completoBytes: corpo.completo?.bytes ? BigInt(corpo.completo.bytes) : null,
+      // O quadro que o squad escolheu como melhor rosto do vídeo inteiro. É a
+      // base de TODAS as capas: as dos cortes e a do vídeo completo. Guardar por
+      // vídeo, e não por trecho, é o que resolve o caso do Bruno, em que os
+      // trechos bons caíam todos em tela compartilhada.
+      capaFonteUrl: corpo.capaFonte?.url ?? null,
       error:
         comMidia > 0
           ? (corpo.erros?.length ? corpo.erros.join("; ") : null)

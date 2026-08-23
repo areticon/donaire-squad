@@ -338,6 +338,12 @@ model VideoJob {
   /// ataca a transferência, que é 58% do custo do produto de vídeo.
   completoUrl    String?   @db.Text
   completoBytes  BigInt?
+  /// O quadro com o melhor rosto da gravação inteira, escolhido pelo squad.
+  /// Base de todas as capas. Mora aqui e não no trecho porque os melhores
+  /// momentos de FALA não coincidem com os melhores momentos de IMAGEM: numa
+  /// gravação com slides, todos os trechos escolhidos caem em tela
+  /// compartilhada, e a capa saía com texto branco em cima de um slide.
+  capaFonteUrl   String?   @db.Text
   error          String?   @db.Text
   creditsCharged Int       @default(0)
   createdAt      DateTime  @default(now())

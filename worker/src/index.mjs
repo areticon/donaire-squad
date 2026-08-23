@@ -14,6 +14,8 @@ import {
   cortarHorizontal,
   extrairCapa,
   extrairQuadros,
+  extrairCandidatosDeCapa,
+  extrairCapaFinal,
   medirFidelidade,
 } from "./ffmpeg.mjs";
 
@@ -93,8 +95,8 @@ async function subir(caminho, chave, contentType) {
  * tratamento seguro, que é pior mas existe. Entregar corte mediano é muito
  * melhor que não entregar corte porque o agente de visão teve um dia ruim.
  */
-async function pedirEnquadramento(trabalho, fonte, pasta) {
-  if (!trabalho.enquadramentoUrl) return new Map();
+async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
+  if (!trabalho.enquadramentoUrl) return { enquadramentos: new Map(), capa: null };
 
   try {
     const paraOlhar = [];
@@ -114,7 +116,21 @@ async function pedirEnquadramento(trabalho, fonte, pasta) {
       paraOlhar.push({ indice: t.indice, quadros, mediaType: "image/jpeg" });
     }
 
-    const texto = JSON.stringify({ trechos: paraOlhar });
+    // Candidatos a capa, do vídeo inteiro. Vão na mesma chamada que o
+    // enquadramento: são as mesmas imagens do mesmo vídeo olhadas pelo mesmo
+    // agente, e duas chamadas custariam duas vezes o prompt sem ganhar nada.
+    const candidatos = await extrairCandidatosDeCapa(
+      fonte,
+      join(pasta, "capa-cand"),
+      duracaoSec,
+      10
+    );
+    const candidatosB64 = [];
+    for (const c of candidatos) {
+      candidatosB64.push((await readFile(c.caminho)).toString("base64"));
+    }
+
+    const texto = JSON.stringify({ trechos: paraOlhar, candidatosDeCapa: candidatosB64 });
     const res = await fetch(trabalho.enquadramentoUrl, {
       method: "POST",
       headers: {
@@ -126,10 +142,24 @@ async function pedirEnquadramento(trabalho, fonte, pasta) {
     });
     if (!res.ok) throw new Error(`enquadramento respondeu ${res.status}`);
     const corpo = await res.json();
-    return new Map((corpo.enquadramentos ?? []).map((e) => [e.indice, e]));
+
+    // O instante do candidato escolhido, para reextrair em resolução cheia.
+    let capa = null;
+    if (corpo.capa && candidatos[corpo.capa.indice]) {
+      capa = {
+        instante: candidatos[corpo.capa.indice].instante,
+        recorte: corpo.capa.recorte ?? null,
+        motivo: corpo.capa.motivo ?? "",
+      };
+    }
+
+    return {
+      enquadramentos: new Map((corpo.enquadramentos ?? []).map((e) => [e.indice, e])),
+      capa,
+    };
   } catch (e) {
     console.error(`[${trabalho.videoJobId}] enquadramento falhou: ${e.message}`);
-    return new Map();
+    return { enquadramentos: new Map(), capa: null };
   }
 }
 
@@ -144,14 +174,39 @@ async function pedirEnquadramento(trabalho, fonte, pasta) {
  */
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
-  const resultados = { trechos: [], completo: null, erros: [] };
+  const resultados = { trechos: [], completo: null, capaFonte: null, erros: [] };
 
   try {
     const fonte = join(pasta, "fonte.mp4");
     await baixarFonte(trabalho.sourceUrl, fonte);
     const info = await ffprobe(fonte);
 
-    const enquadramentos = await pedirEnquadramento(trabalho, fonte, pasta);
+    const { enquadramentos, capa } = await pedirEnquadramento(
+      trabalho,
+      fonte,
+      pasta,
+      info.duracaoSec
+    );
+
+    // A capa da gravação sai antes dos cortes: é barata (um quadro) e é o que a
+    // tela mostra primeiro.
+    if (capa) {
+      try {
+        const arquivo = join(pasta, "capa-fonte.jpg");
+        await extrairCapaFinal(fonte, arquivo, capa.instante, capa.recorte);
+        resultados.capaFonte = await subir(
+          arquivo,
+          `cortes/${trabalho.videoJobId}/capa-fonte.jpg`,
+          "image/jpeg"
+        );
+        resultados.capaFonte.instante = Math.round(capa.instante);
+        resultados.capaFonte.motivo = capa.motivo;
+      } catch (e) {
+        resultados.erros.push(
+          `capa: ${e instanceof Error ? e.message : "falhou"}`
+        );
+      }
+    }
 
     for (const t of trabalho.trechos) {
       const duracao = Math.max(1, t.fim - t.inicio);

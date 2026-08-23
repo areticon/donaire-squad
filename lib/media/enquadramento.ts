@@ -26,6 +26,27 @@ import { DEFAULT_MODEL } from "@/lib/claude";
 
 export type Caixa = { x: number; y: number; w: number; h: number };
 
+/**
+ * O quadro escolhido para virar capa, entre os candidatos do vídeo inteiro.
+ *
+ * Existe porque o quadro de DENTRO do trecho não serve: os melhores momentos de
+ * fala não coincidem com os melhores momentos de imagem. Numa gravação com
+ * slides, o trecho bom quase sempre cai numa tela compartilhada, e a capa saía
+ * com um texto branco por cima de um slide, que é feio e não faz ninguém clicar
+ * (apontado pelo Bruno em 23/08).
+ *
+ * A varredura cobre o vídeo todo, inclusive a abertura, que a seleção de
+ * trechos descarta de propósito e é justamente onde muita gente aparece falando
+ * em tela cheia.
+ */
+export type EscolhaDeCapa = {
+  /** Índice do quadro candidato escolhido. */
+  indice: number;
+  /** Onde recortar para a capa, em fração do quadro. Null usa o quadro todo. */
+  recorte: Caixa | null;
+  motivo: string;
+};
+
 export type Enquadramento = {
   indice: number;
   cena: "pessoa" | "tela" | "misto";
@@ -62,8 +83,26 @@ Regras das caixas:
 
 Escreva o campo "motivo" em português do Brasil, em uma frase, dizendo o que você viu. Nunca use travessão.
 
+## Segunda tarefa: escolher a capa
+
+Depois dos trechos, você recebe quadros numerados marcados como CANDIDATOS A CAPA, tirados do vídeo inteiro. Escolha UM para virar a capa do vídeo.
+
+O que faz um quadro ser boa capa, em ordem:
+1. O rosto da pessoa aparece GRANDE e nítido, de preferência ocupando boa parte do quadro. Capa de canal pessoal vive do rosto.
+2. Ela está olhando para a câmera, ou perto disso.
+3. Expressão viva: falando, gesticulando, reagindo. Não boca aberta no meio de uma sílaba, não olho fechado.
+4. Boa luz e fundo limpo.
+
+O que NÃO serve:
+- Quadro só de slide, tela compartilhada ou apresentação, mesmo que tenha uma webcam pequena no canto. Rosto pequeno não vira capa.
+- Pessoa desfocada, de costas, ou saindo do quadro.
+
+No campo "recorte", diga onde cortar para a capa ficar em 16 por 9 com o rosto grande e bem posicionado, em fração do quadro. Se o quadro inteiro já serve, use null.
+
+Se NENHUM candidato tiver rosto grande, escolha o menos ruim e diga isso no motivo.
+
 Responda SOMENTE com JSON válido, sem cercas de código, sem quebra de linha dentro de string:
-{"trechos":[{"indice":0,"cena":"misto","vertical":"empilhado","pessoa":{"x":0,"y":0,"w":0,"h":0},"tela":{"x":0,"y":0,"w":0,"h":0},"motivo":"..."}]}`;
+{"trechos":[{"indice":0,"cena":"misto","vertical":"empilhado","pessoa":{"x":0,"y":0,"w":0,"h":0},"tela":{"x":0,"y":0,"w":0,"h":0},"motivo":"..."}],"capa":{"indice":0,"recorte":{"x":0,"y":0,"w":0,"h":0},"motivo":"..."}}`;
 
 let _client: Anthropic | null = null;
 function cliente(): Anthropic {
@@ -98,9 +137,10 @@ export type QuadroDeTrecho = {
 
 export async function decidirEnquadramento(
   trechos: QuadroDeTrecho[],
-  usageCtx?: { projectId?: string }
-): Promise<Enquadramento[]> {
-  if (!trechos.length) return [];
+  usageCtx?: { projectId?: string },
+  candidatosDeCapa: string[] = []
+): Promise<{ enquadramentos: Enquadramento[]; capa: EscolhaDeCapa | null }> {
+  if (!trechos.length) return { enquadramentos: [], capa: null };
 
   const conteudo: Anthropic.ContentBlockParam[] = [];
   for (const t of trechos) {
@@ -120,6 +160,20 @@ export async function decidirEnquadramento(
     type: "text",
     text: `Decida o enquadramento dos ${trechos.length} trechos acima, na ordem em que aparecem.`,
   });
+
+  if (candidatosDeCapa.length) {
+    conteudo.push({
+      type: "text",
+      text: `Agora os CANDIDATOS A CAPA, numerados de 0 a ${candidatosDeCapa.length - 1}, tirados ao longo do vídeo inteiro:`,
+    });
+    candidatosDeCapa.forEach((q, i) => {
+      conteudo.push({ type: "text", text: `Candidato ${i}:` });
+      conteudo.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: q },
+      });
+    });
+  }
 
   const stream = cliente().messages.stream(
     {
@@ -148,10 +202,23 @@ export async function decidirEnquadramento(
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```$/, "");
 
-  const dados = JSON.parse(texto) as { trechos?: unknown[] };
+  const dados = JSON.parse(texto) as { trechos?: unknown[]; capa?: Record<string, unknown> };
   const brutos = Array.isArray(dados.trechos) ? dados.trechos : [];
 
-  return trechos.map((t, i) => {
+  let capa: EscolhaDeCapa | null = null;
+  if (candidatosDeCapa.length && dados.capa) {
+    const indice = Number(dados.capa.indice);
+    // Índice fora da lista vira o primeiro candidato, e não erro: capa mediana
+    // é melhor que trabalho abortado por um número errado.
+    const valido = Number.isInteger(indice) && indice >= 0 && indice < candidatosDeCapa.length;
+    capa = {
+      indice: valido ? indice : 0,
+      recorte: caixaValida(dados.capa.recorte),
+      motivo: typeof dados.capa.motivo === "string" ? dados.capa.motivo : "",
+    };
+  }
+
+  const enquadramentos: Enquadramento[] = trechos.map((t, i) => {
     const b = (brutos[i] ?? {}) as Record<string, unknown>;
     const pessoa = caixaValida(b.pessoa);
     const tela = caixaValida(b.tela);
@@ -177,4 +244,6 @@ export async function decidirEnquadramento(
       motivo: typeof b.motivo === "string" ? b.motivo : "",
     };
   });
+
+  return { enquadramentos, capa };
 }

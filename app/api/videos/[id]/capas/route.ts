@@ -48,6 +48,7 @@ export async function POST(
       id: true,
       status: true,
       clips: true,
+      capaFonteUrl: true,
       projectId: true,
       project: { select: { niche: true, targetAudience: true, voice: true } },
     },
@@ -87,7 +88,18 @@ export async function POST(
         });
 
         let capaArte: { url: string } | null = null;
-        const quadro = t.midia?.capa?.url;
+        // O quadro do ROSTO, escolhido pelo squad varrendo o vídeo inteiro, e
+        // não o quadro de dentro do trecho.
+        //
+        // A diferença decide se a capa presta: os melhores momentos de fala não
+        // coincidem com os melhores momentos de imagem. Na gravação de teste,
+        // todos os sete trechos caíam em tela compartilhada, e a capa saía com
+        // texto branco em cima de um slide. O quadro certo estava no segundo 20,
+        // na abertura, que a seleção de trechos descarta de propósito.
+        //
+        // Cai para o quadro do trecho quando a varredura não achou nada, que é
+        // melhor que não ter capa.
+        const quadro = video.capaFonteUrl ?? t.midia?.capa?.url;
         if (quadro) {
           // O quadro vive no storage privado, então precisa do SDK. `fetch`
           // devolveria 403, armadilha que este projeto já pagou três vezes.

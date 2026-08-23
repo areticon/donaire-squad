@@ -88,31 +88,65 @@ ${trecho.transcricao}`,
 }
 
 /**
- * A capa: o quadro real da gravação, com a frase escrita por cima.
+ * A capa: o quadro com o ROSTO, tratado como thumbnail de YouTube.
  *
- * O prompt descreve ACABAMENTO, e não conteúdo, de propósito. Pedir cena nova
- * faria o modelo substituir a pessoa por alguém inventado, que é o oposto do
- * que a decisão do Bruno quis. Aqui ele só põe texto, contraste e enquadramento
- * em cima do que já existe.
+ * O prompt foi refeito em 23/08 depois de uma crítica do Bruno com exemplo na
+ * mão. A primeira versão pegava um quadro qualquer do trecho, que numa gravação
+ * com slides caía numa tela compartilhada, e escrevia um texto branco simples
+ * por cima. O resultado era feio e ninguém clicaria.
  *
- * Devolve null quando não dá. Nesse caso a capa continua sendo o quadro real
- * sem tratamento, que é pior mas honesto, em vez de uma arte genérica sem o
- * cliente dentro.
+ * Duas coisas mudaram por causa disso:
+ *
+ * 1. O quadro vem de uma varredura do vídeo INTEIRO procurando rosto grande,
+ *    e não de dentro do trecho. Ver `EscolhaDeCapa` em `enquadramento.ts`.
+ * 2. O prompt descreve o padrão de thumbnail que funciona, e não "escreva um
+ *    texto em cima". As referências que o Bruno mandou (canal do Dan Martell)
+ *    têm todas o mesmo esqueleto: pouquíssimas palavras em corpo enorme,
+ *    contraste alto, uma palavra destacada em bloco de cor, a pessoa grande
+ *    olhando para a câmera, e o texto nunca cobrindo o rosto.
+ *
+ * O que continua valendo: é COMPOSIÇÃO, não geração. A pessoa não pode ser
+ * substituída, e a instrução de preservar o rosto é a primeira do prompt.
  */
 export async function comporCapa(
   quadroBase64: string,
   frase: string,
   usageCtx?: { projectId?: string }
 ): Promise<string | null> {
-  const prompt = `Esta é uma captura real de um vídeo. Mantenha a pessoa e a cena exatamente como estão, sem substituir, redesenhar nem alterar o rosto.
+  // A palavra destacada é a mais longa da frase, que quase sempre é a que
+  // carrega o sentido ("consultoria", "escala", "sozinho"). Deixar o modelo
+  // escolher produzia destaque em preposição.
+  const palavras = frase.split(/\s+/).filter(Boolean);
+  const destaque = palavras.reduce((a, b) => (b.length > a.length ? b : a), palavras[0] ?? "");
 
-Trate esta imagem como capa de vídeo, fazendo apenas isto:
-1. Escreva o texto "${frase}" em letras grandes, muito legíveis, em português, com boa margem das bordas. Posicione onde não cobrir o rosto da pessoa.
-2. Use tipografia pesada, sem serifa, branca com contorno ou sombra escura, para ler em miniatura pequena.
-3. Aumente levemente o contraste e a saturação da imagem para ela se destacar numa lista de vídeos.
-4. Não adicione logotipos, marcas d'água, molduras, setas, círculos vermelhos nem elementos decorativos.
+  const prompt = `Você está montando a THUMBNAIL de um vídeo de YouTube a partir desta captura real.
 
-O resultado deve continuar sendo claramente a mesma foto, com o texto aplicado por cima.`;
+REGRA MAIS IMPORTANTE: a pessoa da imagem é uma pessoa real. Mantenha o rosto, o corpo, a roupa e a identidade dela exatamente como estão. Não substitua, não redesenhe o rosto, não troque por outra pessoa, não gere alguém novo.
+
+Faça o seguinte, no estilo das thumbnails que funcionam em canal pessoal:
+
+TEXTO
+- Escreva exatamente: "${frase}"
+- Corpo ENORME, ocupando de um terço a metade da largura da imagem. Se em dúvida, aumente.
+- Fonte sem serifa, muito pesada, condensada, em caixa alta.
+- Branco com contorno escuro grosso, OU preto sobre um bloco de cor sólida.
+- Destaque a palavra "${destaque}" com um bloco de cor sólida atrás dela (amarelo forte ou o laranja da marca), em contraste com o resto do texto.
+- O texto NUNCA pode cobrir o rosto da pessoa. Ponha acima, abaixo ou ao lado, no espaço vazio.
+
+PESSOA
+- Ela precisa aparecer grande e nítida, com o rosto bem visível.
+- Aumente o contraste e a nitidez dela para separar do fundo.
+
+FUNDO
+- Simplifique. Escureça, desfoque levemente ou limpe elementos que competem com o rosto e com o texto.
+- Se houver conteúdo de tela ou slide atrás, deixe apenas como textura de fundo, sem tentar manter o texto dele legível.
+
+NÃO FAÇA
+- Nada de logotipo, marca d'água, moldura, borda arredondada, setas, círculos vermelhos ou emoji.
+- Nada de texto além da frase pedida. Nenhuma legenda extra, nenhuma assinatura.
+- Não invente números nem promessas que não estejam na frase.
+
+Formato final: 16 por 9, cheio, sem barras.`;
 
   return comporSobreImagem(prompt, quadroBase64, "image/jpeg", {
     operation: "video_capa",

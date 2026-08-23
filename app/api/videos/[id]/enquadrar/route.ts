@@ -40,9 +40,14 @@ export async function POST(
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
   let trechos: QuadroDeTrecho[];
+  let candidatosDeCapa: string[] = [];
   try {
-    const corpo = JSON.parse(corpoCru) as { trechos?: QuadroDeTrecho[] };
+    const corpo = JSON.parse(corpoCru) as {
+      trechos?: QuadroDeTrecho[];
+      candidatosDeCapa?: string[];
+    };
     trechos = Array.isArray(corpo.trechos) ? corpo.trechos : [];
+    candidatosDeCapa = Array.isArray(corpo.candidatosDeCapa) ? corpo.candidatosDeCapa : [];
   } catch {
     return NextResponse.json({ error: "Corpo não é JSON" }, { status: 400 });
   }
@@ -51,16 +56,18 @@ export async function POST(
   }
 
   try {
-    const enquadramentos = await decidirEnquadramento(trechos, {
-      projectId: video.projectId,
-    });
-    return NextResponse.json({ enquadramentos });
+    const { enquadramentos, capa } = await decidirEnquadramento(
+      trechos,
+      { projectId: video.projectId },
+      candidatosDeCapa
+    );
+    return NextResponse.json({ enquadramentos, capa });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Falha ao decidir o enquadramento";
     // 200 com `ok: false` de propósito: o worker deve SEGUIR, usando o
     // tratamento seguro, em vez de abortar o trabalho inteiro. Entregar corte
     // com enquadramento mediano é muito melhor que não entregar corte nenhum
     // porque o agente de visão teve um dia ruim.
-    return NextResponse.json({ ok: false, erro: message, enquadramentos: [] });
+    return NextResponse.json({ ok: false, erro: message, enquadramentos: [], capa: null });
   }
 }
