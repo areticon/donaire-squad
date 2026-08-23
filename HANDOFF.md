@@ -3503,3 +3503,78 @@ mostrar valor, mas aparecer na home é decisão dele. Trocar é substituir os
 arquivos em `public/exemplo/`.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 42): o teste de ponta a ponta, e os quatro defeitos que ele achou
+
+Rodado antes de o Bruno testar, a pedido dele. Estratégia: as rotas `enquadrar`
+e `cortar-callback` são autenticadas por HMAC e não por sessão, então dá para
+rodar o worker localmente contra o servidor local e exercitar o caminho real
+inteiro (mesmo ffmpeg, mesmo agente de visão, mesmo storage, mesmos
+manipuladores de rota). O que fica de fora é o salto de rede entre Railway e
+Vercel, verificado à parte.
+
+### Os quatro defeitos
+
+**1. O worker desistia do aviso de conclusão na primeira falha.** O trabalho de
+cortar leva minutos e gasta CPU e transferência de verdade; se o aviso se perde,
+tudo isso vira lixo, o cliente vê "cortando" até o prazo e a única saída é
+refazer. Aconteceu no teste quando o servidor do outro lado caiu no meio.
+Agora insiste quatro vezes com espera crescente (5s, 15s, 45s, 135s), porque a
+falha típica é um deploy do app, que leva perto de um minuto.
+
+**2. Duas migrations nunca tinham sido aplicadas.** `completoUrl` e
+`capaFonteUrl` só existiam no código: elas rodam no build da Vercel, e o PR não
+tinha sido mergeado. O callback teria quebrado. Aplicadas pelo Prisma, com
+registro correto para o build não tentar de novo.
+
+**3. O recorte do slide cortava a primeira e a última palavra de cada linha.**
+Este só apareceu **olhando o vídeo produzido**, não o banco: dava para ler "rês
+negócios" sem o T e "eticon" sem o Ar. O prompt mandava apertar a caixa "sem
+margem vazia" e o agente apertou demais. Como ele erra sempre para o mesmo lado,
+a correção entrou nos dois lugares: o prompt passou a proibir cortar texto, e o
+worker abre a caixa em 3% de cada lado, preso ao quadro. A folga vale só para a
+tela; a caixa da pessoa é a janela da webcam e alargar traria pedaço de slide
+para dentro do rosto.
+
+**4. As caixas do enquadramento eram descartadas** pelo callback, que guardava
+só cena, tratamento e motivo. Sem as coordenadas, "está cortando o slide" não
+tem diagnóstico possível: não dá para saber se errou quem mediu ou quem aplicou.
+
+### Dois erros meus no próprio teste, que valem registro
+
+- **O token do Blob está entre aspas no `.env.local`**, e `cut -d= -f2-` levou as
+  aspas junto, gerando 403. Conferido depois que o valor no Railway está correto.
+- **Apontei o worker para a porta errada** do servidor local, o que produziu
+  "fetch failed" no enquadramento e me fez desconfiar do código antes de
+  desconfiar do teste.
+
+Os dois reforçam a mesma regra: quando o teste falha, a primeira hipótese
+razoável é o teste.
+
+### O que funcionou, medido
+
+| | |
+|---|---|
+| Vídeo completo | **811 MB → 176 MB** |
+| Cortes | 6, todos 1080x1920, com áudio |
+| Enquadramento | 6 de 6 classificados como misto, com motivo coerente |
+| Capa do rosto | achou o Bruno olhando para a câmera, boca quase fechada |
+| Consumo da visão | 11.439 tokens de entrada, 1.179 de saída |
+
+O agente de visão descreveu cada cena com precisão ("slide comparando os três
+negócios com webcam pequena no canto"). Ele está enxergando de verdade.
+
+### Correção de número que eu tinha dado errado
+
+Estimei R$ 0,07 por vídeo para a visão. O real medido é **R$ 0,19**, porque são
+22 imagens e não 14 (12 dos trechos mais 10 candidatos de capa). Continua
+pequeno perto dos R$ 1,51 do trabalho, mas o número estava errado.
+
+### Observação de produto para o Bruno
+
+A gravação dele é screencast do começo ao fim, então **6 de 6 cortes viraram o
+layout empilhado** e nenhum tem ele em tela cheia. Funciona, mas quando ele
+gravar olhando para a câmera os cortes ficam melhores. Vale entrar no roteiro de
+gravação dele.
+
+*Atualizado em 23/08/2026 por Claude Code.*
