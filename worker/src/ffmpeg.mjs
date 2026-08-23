@@ -478,20 +478,88 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
  * Cortar em vez de desfocar cortaria a cabeça ou o corpo de quem fala, porque
  * não temos detecção de rosto para saber onde centralizar.
  */
-export async function cortarVertical(entrada, saida, inicio, duracao, enquadramento) {
-  const filtro = montarFiltroVertical(enquadramento);
+export async function cortarVertical(
+  entrada,
+  saida,
+  inicio,
+  duracao,
+  enquadramento,
+  matte
+) {
+  const comRecorte = matte && enquadramento?.tela;
+  const filtro = comRecorte
+    ? montarFiltroRecortado(enquadramento, matte, duracao)
+    : montarFiltroVertical(enquadramento);
 
   await rodar([
     "-ss", String(inicio),
     "-i", entrada,
-    "-t", String(duracao),
+    ...(comRecorte ? ["-i", matte.arquivo] : []),
     "-filter_complex", filtro,
     "-map", "[v]", "-map", "0:a?",
+    // O `-t` fica DEPOIS de todos os inputs, senão ele vira opção de input do
+    // último `-i` e limita o arquivo errado. Foi assim que o primeiro teste da
+    // composição nova travou para sempre: o `-t` truncava a máscara em vez da
+    // saída, e o gradiente do fundo é uma fonte SEM FIM, então o ffmpeg
+    // codificava até o disco acabar.
+    "-t", String(duracao),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
   ]);
+}
+
+/** Onde cada peça mora no quadro de 1080x1920. Em pixels, para conferir a conta. */
+const LAYOUT = {
+  CARTAO_LARGURA: 1000,
+  CARTAO_TOPO: 150,
+  PESSOA_LARGURA: 900,
+  PESSOA_BASE: 70, // distância do rodapé até o pé do recorte
+};
+
+/**
+ * A composição com a pessoa recortada do fundo.
+ *
+ * Substitui o empilhamento, que o Bruno olhou em 23/08 e chamou de péssimo, com
+ * razão. O que ele viu, medido no quadro real:
+ *
+ *   192 px vazios no topo, 269 px de faixa BORRADA no meio, e a interface do
+ *   app de slides dentro do recorte da pessoa. 26% do quadro era desperdício,
+ *   preenchido com uma cópia ilegível do próprio slide.
+ *
+ * O desenho novo não tem buraco para preencher: fundo desenhado, o slide como
+ * cartão, a pessoa recortada e maior embaixo. A faixa entre o cartão e a pessoa
+ * fica LIVRE de propósito, porque é onde a legenda entra.
+ *
+ * O fundo é gradiente e não desfoque do próprio vídeo. Desfoque do vídeo parece
+ * defeito de compressão numa tela pequena, e ainda repete o conteúdo que já está
+ * legível logo acima.
+ */
+function montarFiltroRecortado(enq, matte, duracao) {
+  const { x, y, w, h } = matte.recorte;
+  const tela = cropDeCaixa(semAPessoa(comFolga(enq.tela), enq.pessoa));
+
+  return [
+    // Fundo: gradiente escuro, de cima para baixo. Escuro porque o slide é
+    // claro, e cartão claro sobre fundo claro some.
+    // `d` é obrigatório aqui: sem duração o gradiente é uma fonte sem fim, e
+    // um erro de ordem de argumento vira um ffmpeg que nunca termina.
+    `gradients=s=1080x1920:c0=0x101728:c1=0x1d2942:x0=0:y0=0:x1=1080:y1=1920:n=2:d=${duracao.toFixed(3)}[fundo]`,
+
+    // O slide vira cartão: largura fixa com margem dos dois lados, e uma borda
+    // clara de 4 px que separa o cartão do fundo sem precisar de sombra.
+    `[0:v]${tela},scale=${LAYOUT.CARTAO_LARGURA}:-2[cartao]`,
+    `[cartao]pad=iw+8:ih+8:4:4:color=0x2f3d5c[cartaoBorda]`,
+    `[fundo][cartaoBorda]overlay=(W-w)/2:${LAYOUT.CARTAO_TOPO}[comCartao]`,
+
+    // A pessoa: recorta a janela da webcam, junta com a máscara, e o alpha faz
+    // o fundo do quarto sumir.
+    `[0:v]crop=${w}:${h}:${x}:${y},scale=${LAYOUT.PESSOA_LARGURA}:-2[pessoaRgb]`,
+    `[1:v]format=gray,scale=${LAYOUT.PESSOA_LARGURA}:-2[pessoaAlpha]`,
+    "[pessoaRgb][pessoaAlpha]alphamerge[pessoa]",
+    `[comCartao][pessoa]overlay=(W-w)/2:H-h-${LAYOUT.PESSOA_BASE}:format=auto,format=yuv420p[v]`,
+  ].join(";");
 }
 
 /**

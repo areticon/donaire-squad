@@ -21,6 +21,7 @@ import {
   medirFidelidade,
   diagnostico,
 } from "./ffmpeg.mjs";
+import { gerarMatte } from "./segmentacao.mjs";
 
 /**
  * Worker de vídeo da Demandou.
@@ -282,8 +283,21 @@ async function processar(trabalho) {
           : null,
       };
       try {
+        // O recorte da pessoa vem antes do corte, porque a composição precisa
+        // da máscara. Devolve null quando não dá, e aí o corte sai na
+        // composição antiga: pior, mas sai.
+        const matte = enq?.pessoa
+          ? await gerarMatte(fonte, pasta, t.indice, t.inicio, duracao, enq.pessoa)
+          : null;
+        if (enq?.pessoa && !matte) {
+          console.warn(
+            `[${trabalho.videoJobId}] trecho ${t.indice} sem recorte, ` +
+              "sai na composição antiga"
+          );
+        }
+
         const vertical = join(pasta, `v-${t.indice}.mp4`);
-        await cortarVertical(fonte, vertical, t.inicio, duracao, enq);
+        await cortarVertical(fonte, vertical, t.inicio, duracao, enq, matte);
         saida.vertical = await subir(
           vertical,
           `cortes/${trabalho.videoJobId}/vertical-${t.indice}.mp4`,
