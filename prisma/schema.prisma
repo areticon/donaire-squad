@@ -300,9 +300,13 @@ model VideoJob {
   projectId      String
   userId         String
   /// Estados de ESPERA (a plataforma aguarda o cliente):    uploaded,
-  /// transcribed, selected, ready, failed.
+  /// transcribed, selected, cut, ready, failed.
   /// Estados de TRABALHO (algo está rodando agora):          transcribing,
-  /// selecting, writing.
+  /// selecting, writing, cutting.
+  ///
+  /// `cutting` é o primeiro que roda FORA da requisição de verdade: quem
+  /// trabalha é o worker no Railway, e o prazo aqui é só a rede de segurança
+  /// para o caso de o aviso dele nunca chegar.
   ///
   /// A separação existe porque antes não existia: "selecting" queria dizer ao
   /// mesmo tempo "pronto para selecionar" e "selecionando agora". Quando a
@@ -325,8 +329,15 @@ model VideoJob {
   /// Transcrição com marcação de tempo por palavra, vinda do Whisper.
   transcript     Json?
   /// Trechos escolhidos pela IA: início, fim, motivo, título e os textos de
-  /// cada rede gerados a partir dele.
+  /// cada rede gerados a partir dele. Depois do corte, cada trecho ganha
+  /// também a mídia produzida (vertical, horizontal, capa), o enquadramento
+  /// que o squad decidiu, e as escolhas do cliente sobre publicar e para onde.
   clips          Json?
+  /// A gravação inteira, recodificada para o canal: faststart, tamanho menor.
+  /// Medido em 22/08: 811 MB de upload viraram cerca de 140 MB aqui, o que
+  /// ataca a transferência, que é 58% do custo do produto de vídeo.
+  completoUrl    String?   @db.Text
+  completoBytes  BigInt?
   error          String?   @db.Text
   creditsCharged Int       @default(0)
   createdAt      DateTime  @default(now())

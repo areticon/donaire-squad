@@ -13,6 +13,7 @@ import {
   cortarVertical,
   cortarHorizontal,
   extrairCapa,
+  extrairQuadros,
 } from "./ffmpeg.mjs";
 
 /**
@@ -77,6 +78,61 @@ async function subir(caminho, chave, contentType) {
 }
 
 /**
+ * Pergunta ao squad como enquadrar cada trecho, mandando alguns quadros.
+ *
+ * Ideia do Bruno: em vez de perguntar ao cliente que tipo de gravação ele
+ * mandou, o time olha e decide. Os quadros existem só para essa decisão e
+ * morrem com a pasta temporária.
+ *
+ * A decisão mora no app, e não aqui, por dois motivos: a conta de custo de IA
+ * do projeto vive num lugar só, e prompt de agente é produto, que se edita num
+ * lugar só.
+ *
+ * Falhar aqui NÃO derruba o trabalho. Sem enquadramento o corte sai com o
+ * tratamento seguro, que é pior mas existe. Entregar corte mediano é muito
+ * melhor que não entregar corte porque o agente de visão teve um dia ruim.
+ */
+async function pedirEnquadramento(trabalho, fonte, pasta) {
+  if (!trabalho.enquadramentoUrl) return new Map();
+
+  try {
+    const paraOlhar = [];
+    for (const t of trabalho.trechos) {
+      const duracao = Math.max(1, t.fim - t.inicio);
+      const caminhos = await extrairQuadros(
+        fonte,
+        join(pasta, `q-${t.indice}`),
+        t.inicio,
+        duracao,
+        2
+      );
+      const quadros = [];
+      for (const c of caminhos) {
+        quadros.push((await readFile(c)).toString("base64"));
+      }
+      paraOlhar.push({ indice: t.indice, quadros, mediaType: "image/jpeg" });
+    }
+
+    const texto = JSON.stringify({ trechos: paraOlhar });
+    const res = await fetch(trabalho.enquadramentoUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-demandou-assinatura": assinar(texto),
+      },
+      body: texto,
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!res.ok) throw new Error(`enquadramento respondeu ${res.status}`);
+    const corpo = await res.json();
+    return new Map((corpo.enquadramentos ?? []).map((e) => [e.indice, e]));
+  } catch (e) {
+    console.error(`[${trabalho.videoJobId}] enquadramento falhou: ${e.message}`);
+    return new Map();
+  }
+}
+
+/**
  * O trabalho de verdade.
  *
  * Ordem deliberada: os TRECHOS saem primeiro, e o vídeo completo por último. O
@@ -94,12 +150,22 @@ async function processar(trabalho) {
     await baixarFonte(trabalho.sourceUrl, fonte);
     const info = await ffprobe(fonte);
 
+    const enquadramentos = await pedirEnquadramento(trabalho, fonte, pasta);
+
     for (const t of trabalho.trechos) {
       const duracao = Math.max(1, t.fim - t.inicio);
-      const saida = { indice: t.indice, titulo: t.titulo, duracaoSec: duracao };
+      const enq = enquadramentos.get(t.indice) ?? null;
+      const saida = {
+        indice: t.indice,
+        titulo: t.titulo,
+        duracaoSec: duracao,
+        enquadramento: enq
+          ? { cena: enq.cena, vertical: enq.vertical, motivo: enq.motivo }
+          : null,
+      };
       try {
         const vertical = join(pasta, `v-${t.indice}.mp4`);
-        await cortarVertical(fonte, vertical, t.inicio, duracao);
+        await cortarVertical(fonte, vertical, t.inicio, duracao, enq);
         saida.vertical = await subir(
           vertical,
           `cortes/${trabalho.videoJobId}/vertical-${t.indice}.mp4`,

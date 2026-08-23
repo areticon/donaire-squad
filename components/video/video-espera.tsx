@@ -38,6 +38,11 @@ const ETAPAS: Array<{ chave: EstadoDeTrabalho; rotulo: string; detalhe: string }
     detalhe: "Procurando as falas que sustentam um post sozinhas",
   },
   {
+    chave: "cutting",
+    rotulo: "Cortando os vídeos",
+    detalhe: "Enquadrando cada corte para o formato de cada rede",
+  },
+  {
     chave: "writing",
     rotulo: "Escrevendo os posts",
     detalhe: "Um texto por rede, na sua voz",
@@ -61,6 +66,12 @@ const FRASES: Record<EstadoDeTrabalho, string[]> = {
     "Trecho que só faz sentido junto com o que veio dez minutos antes está sendo descartado.",
     "Abertura e encerramento saem fora: ninguém compartilha um 'então é isso, pessoal'.",
     "Melhor devolver três momentos bons que sete para encher cota.",
+  ],
+  cutting: [
+    "Diana Design está olhando os quadros para decidir o enquadramento de cada corte.",
+    "Gravação de tela vira slide grande em cima e você embaixo, não slide minúsculo no meio.",
+    "Cada corte sai em vertical para Shorts e Reels, e em horizontal para LinkedIn e X.",
+    "A gravação inteira também está sendo preparada, com capítulos, para o seu canal.",
   ],
   writing: [
     "Lucas LinkedIn está escrevendo para quem lê no meio do expediente.",

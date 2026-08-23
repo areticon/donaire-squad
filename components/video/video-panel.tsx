@@ -33,6 +33,8 @@ type Video = {
   attempts: number;
   temTranscricao: boolean;
   temTrechos: boolean;
+  temCortes: boolean;
+  completoUrl: string | null;
   rodandoHaSegundos: number | null;
   clips: TrechoComPosts[] | null;
 };
@@ -41,6 +43,8 @@ type Video = {
 const ESTADOS: Record<string, { rotulo: string; cor: string }> = {
   uploaded: { rotulo: "Pronto para transcrever", cor: "secondary" },
   transcribing: { rotulo: "Transcrevendo", cor: "warning" },
+  cutting: { rotulo: "Cortando os vídeos", cor: "warning" },
+  cut: { rotulo: "Cortes prontos", cor: "secondary" },
   transcribed: { rotulo: "Pronto para escolher os trechos", cor: "secondary" },
   selecting: { rotulo: "Escolhendo os trechos", cor: "warning" },
   selected: { rotulo: "Pronto para escrever", cor: "secondary" },

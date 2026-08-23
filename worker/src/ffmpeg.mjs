@@ -89,6 +89,38 @@ export async function prepararCompleto(entrada, saida) {
 }
 
 /**
+ * Alguns quadros de um trecho, para o squad olhar e decidir o enquadramento.
+ *
+ * Ideia do Bruno: em vez de perguntar ao cliente que tipo de gravação ele
+ * mandou, o time olha. Os quadros são descartados assim que a decisão volta,
+ * então não custam armazenamento nenhum.
+ *
+ * Pequenos de propósito: 768 de largura é mais que suficiente para distinguir
+ * slide de rosto e localizar uma webcam, e o custo de imagem no modelo cresce
+ * com a área. A 768x432 cada quadro sai por volta de 440 tokens.
+ */
+export async function extrairQuadros(entrada, saidaPrefixo, inicio, duracao, quantos = 2) {
+  const caminhos = [];
+  for (let i = 0; i < quantos; i++) {
+    // Espalha os quadros dentro do trecho, evitando as bordas: o primeiro e o
+    // último segundo costumam pegar transição.
+    const fracao = (i + 1) / (quantos + 1);
+    const instante = inicio + duracao * fracao;
+    const caminho = `${saidaPrefixo}-${i}.jpg`;
+    await rodar([
+      "-ss", String(instante),
+      "-i", entrada,
+      "-frames:v", "1",
+      "-vf", "scale=768:-2",
+      "-q:v", "5",
+      caminho,
+    ], { timeoutMs: 2 * 60 * 1000 });
+    caminhos.push(caminho);
+  }
+  return caminhos;
+}
+
+/**
  * Um trecho em 9:16, para Shorts, Reels e TikTok.
  *
  * O tratamento é fundo desfocado, e não barra preta. A receita comum de
@@ -101,15 +133,8 @@ export async function prepararCompleto(entrada, saida) {
  * Cortar em vez de desfocar cortaria a cabeça ou o corpo de quem fala, porque
  * não temos detecção de rosto para saber onde centralizar.
  */
-export async function cortarVertical(entrada, saida, inicio, duracao) {
-  const filtro = [
-    // Fundo: preenche 1080x1920 cobrindo tudo, corta o excesso e borra forte.
-    "[0:v]scale=1080:1920:force_original_aspect_ratio=increase," +
-      "crop=1080:1920,gblur=sigma=28[fundo]",
-    // Frente: o vídeo inteiro, cabendo na largura, sem perder nada.
-    "[0:v]scale=1080:-2[frente]",
-    "[fundo][frente]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]",
-  ].join(";");
+export async function cortarVertical(entrada, saida, inicio, duracao, enquadramento) {
+  const filtro = montarFiltroVertical(enquadramento);
 
   await rodar([
     "-ss", String(inicio),
@@ -122,6 +147,67 @@ export async function cortarVertical(entrada, saida, inicio, duracao) {
     "-movflags", "+faststart",
     saida,
   ]);
+}
+
+/** Recorte em fração do quadro vira expressão de crop do ffmpeg. */
+function cropDeCaixa(c) {
+  // `iw` e `ih` são a largura e a altura da entrada. Usar fração em cima delas
+  // deixa o filtro independente da resolução da gravação, então a mesma
+  // decisão do agente serve para 1080p e para 4K.
+  const par = (n) => `floor(${n}/2)*2`; // libx264 exige dimensão par
+  return `crop=${par(`iw*${c.w}`)}:${par(`ih*${c.h}`)}:${par(`iw*${c.x}`)}:${par(`ih*${c.y}`)}`;
+}
+
+/**
+ * Monta o filtro do vertical conforme o que o squad viu na cena.
+ *
+ * Os três tratamentos existem porque um só não serve. Testado contra gravação
+ * real em 22/08: o tratamento de fundo desfocado, que é o certo para pessoa
+ * falando, entregou um slide minúsculo e ilegível quando a gravação era
+ * screencast. O enquadramento é a decisão que falta para o corte prestar.
+ */
+function montarFiltroVertical(enq) {
+  const FUNDO =
+    "[0:v]scale=1080:1920:force_original_aspect_ratio=increase," +
+    "crop=1080:1920,gblur=sigma=28[fundo]";
+
+  // Pessoa falando: recorta o meio em 9:16 e ela preenche a tela. Sem fundo
+  // desfocado, porque não sobra borda nenhuma.
+  if (enq?.vertical === "corte-central" || !enq) {
+    const foco = enq?.pessoa
+      ? cropDeCaixa(enq.pessoa) + ","
+      : "";
+    return (
+      `[0:v]${foco}crop='min(iw,ih*9/16)':ih:'(iw-min(iw,ih*9/16))/2':0,` +
+      "scale=1080:1920,format=yuv420p[v]"
+    );
+  }
+
+  // Só tela: aperta na área útil do conteúdo (sem barra de navegador nem
+  // margem vazia) e ocupa a largura inteira. É esse aperto que torna o texto
+  // legível no celular.
+  if (enq.vertical === "tela-grande") {
+    const recorte = enq.tela ? cropDeCaixa(enq.tela) + "," : "";
+    return (
+      FUNDO +
+      `;[0:v]${recorte}scale=1080:-2[frente]` +
+      ";[fundo][frente]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]"
+    );
+  }
+
+  // Misto: a tela grande em cima, a pessoa embaixo, as duas ocupando a largura
+  // inteira. É o formato que Shorts de screencast usam, e é o único em que o
+  // slide fica legível E o rosto aparece.
+  const tela = cropDeCaixa(enq.tela);
+  const pessoa = cropDeCaixa(enq.pessoa);
+  return (
+    FUNDO +
+    `;[0:v]${tela},scale=1080:-2[cima]` +
+    `;[0:v]${pessoa},scale=1080:-2[baixo]` +
+    // A tela encosta no topo com uma margem, e a pessoa fica na parte de baixo.
+    ";[fundo][cima]overlay=(W-w)/2:H*0.10[t1]" +
+    ";[t1][baixo]overlay=(W-w)/2:H*0.58,format=yuv420p[v]"
+  );
 }
 
 /**
