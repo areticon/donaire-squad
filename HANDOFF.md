@@ -3927,4 +3927,40 @@ GB a 265 kbps levaria 28 horas. Vale medir quanto tempo o upload leva na pratica
 e decidir se a tela precisa avisar o tamanho recomendado antes de o cliente
 escolher o arquivo.
 
+### 5. O worker do Railway NAO sobe sozinho com o push
+
+Descoberto em 23/08 e vale mais que os bugs acima, porque e o tipo de coisa que
+faz alguem depurar por horas o codigo errado.
+
+O servico `video-worker` no projeto `demandou` do Railway **nao esta ligado ao
+GitHub**. Verificado pelo CLI: `source: null`, builder DOCKERFILE com
+`dockerfilePath: /Dockerfile`. Ele foi publicado com `railway up` a partir da
+pasta `worker/`, e continua assim. O merge no master publica o APP na Vercel e
+nao toca no worker.
+
+Consequencia pratica: depois de mexer em `worker/src/*`, o deploy e manual.
+
+```bash
+cd C:/Users/devan/opensquad-app/worker
+railway link --project demandou --environment production   # so na primeira vez
+railway up --service video-worker --detach
+```
+
+Para conferir que subiu, a rota de saude agora diz a versao:
+
+```bash
+curl https://video-worker-production-2eb6.up.railway.app/saude
+```
+
+**Confirmacao da armadilha de versao, medida em 23/08 as 11:34.** O mesmo codigo
+respondeu coisas diferentes nos dois lugares, que era exatamente o previsto:
+
+| Onde | ffmpeg | Opcao escolhida |
+|---|---|---|
+| maquina de desenvolvimento | 9.0 | `-/filter_complex` |
+| conteiner do Railway | 5.1.9-0+deb12u1 | `-filter_complex_script` |
+
+Se a opcao estivesse fixa no codigo, uma das duas quebraria, e como a de
+desenvolvimento e a mais nova, o bug so apareceria em producao.
+
 *Atualizado em 23/08/2026 por Claude Code.*
