@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdtemp, rm, stat, readFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, readFile, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -199,9 +199,21 @@ async function processar(trabalho) {
 
     try {
       const completo = join(pasta, "completo.mp4");
+
+      // As legendas de destaque chegam prontas do app, já com os tempos
+      // convertidos para o vídeo DEPOIS das remoções. Convertê-las aqui
+      // exigiria repetir a mesma matemática de deslocamento nos dois lados, e
+      // duas contas iguais em lugares diferentes divergem com o tempo.
+      let legendasArquivo = null;
+      if (trabalho.legendasAss) {
+        legendasArquivo = join(pasta, "destaques.ass");
+        await writeFile(legendasArquivo, trabalho.legendasAss, "utf8");
+      }
+
       const como = await prepararCompleto(fonte, completo, {
         remocoes: trabalho.remocoes,
-        legendasArquivo: null,
+        duracaoSec: info.duracaoSec,
+        legendasArquivo,
       });
       resultados.completo = await subir(
         completo,

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { basename, dirname } from "node:path";
 
 /**
  * As receitas de ffmpeg do produto, num lugar só.
@@ -11,9 +12,9 @@ import { spawn } from "node:child_process";
  * por fala, já arredondada para fronteira de frase.
  */
 
-function rodar(args, { timeoutMs = 30 * 60 * 1000 } = {}) {
+function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args]);
+    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { cwd });
     let erro = "";
     p.stderr.on("data", (d) => {
       erro += d.toString();
@@ -90,7 +91,8 @@ export function ffprobe(caminho) {
  * sai em 1080p30.
  */
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
-  const editaTempo = Boolean(opcoes.remocoes?.length);
+  const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
+  const editaTempo = remocoes.length > 0;
   const editaImagem = Boolean(opcoes.legendasArquivo);
 
   if (!editaTempo && !editaImagem) {
@@ -99,36 +101,70 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   }
 
   const args = ["-i", entrada];
+  const filtrosVideo = [];
+  let cwdDoFiltro;
 
-  if (editaImagem) {
-    // As legendas de destaque queimadas. Só a imagem muda, então o áudio
-    // continua podendo ser copiado byte a byte.
-    // O caminho do arquivo de legenda entra dentro de um filtro, então as
-    // barras invertidas e os dois-pontos precisam ser escapados, senão o ffmpeg
-    // lê o caminho como se fossem mais opções do filtro.
-    const caminho = opcoes.legendasArquivo
-      .split("\\").join("/")
-      .split(":").join("\:");
-    args.push("-vf", "subtitles='" + caminho + "'");
+  if (editaTempo) {
+    // O que FICA é o complemento do que sai. `select` recebe a lista de
+    // intervalos que sobrevivem, e `setpts` remonta a linha do tempo sem os
+    // buracos, senão o player exibiria o vídeo congelado no lugar do corte.
+    //
+    // Um passe só, e não cortar em N arquivos e concatenar: concatenação exige
+    // que cada pedaço comece em quadro-chave, e forçar isso ou recodifica tudo
+    // duas vezes ou desalinha o áudio.
+    const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
+    const expr = manter
+      .map((m) => `between(t,${m.de.toFixed(3)},${m.ate.toFixed(3)})`)
+      .join("+");
+    filtrosVideo.push(`select='${expr}'`, "setpts=N/FRAME_RATE/TB");
+    args.push("-af", `aselect='${expr}',asetpts=N/SR/TB`);
   }
 
+  if (editaImagem) {
+    // Só o NOME do arquivo, com o ffmpeg rodando dentro da pasta dele.
+    //
+    // Caminho completo aqui é armadilha: o filtro usa dois-pontos para separar
+    // as próprias opções, então `C:/pasta/a.ass` faz o ffmpeg entender que
+    // `/pasta/a.ass` é o valor da opção seguinte, e o erro que ele devolve fala
+    // de "original_size", sem mencionar legenda nenhuma. Escapar funciona mas
+    // muda entre plataformas. Sem letra de unidade, o problema não existe.
+    filtrosVideo.push("subtitles=" + basename(opcoes.legendasArquivo));
+    cwdDoFiltro = dirname(opcoes.legendasArquivo);
+  }
+
+  args.push("-vf", filtrosVideo.join(","));
   args.push(
     "-c:v", "libx264", "-preset", "medium", "-crf", "18",
     "-pix_fmt", "yuv420p"
   );
 
-  // Áudio: copiado sempre que o tempo não é mexido. Quando há remoção de
-  // trechos, o áudio precisa ser recortado junto e aí não tem como copiar; nesse
-  // caso vai em 192k, acima do original, que é o mínimo dano possível.
+  // Áudio: copiado sempre que o tempo não é mexido. Quando há remoção, o áudio
+  // precisa ser recortado junto e aí não tem como copiar; nesse caso vai em
+  // 192k, acima do original, que é o mínimo dano possível.
   args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
 
   args.push("-movflags", "+faststart", saida);
-  await rodar(args);
+  await rodar(args, { cwd: cwdDoFiltro });
 
-  return {
-    recodificado: true,
-    motivo: editaTempo ? "trechos removidos" : "legendas de destaque",
-  };
+  const partes = [];
+  if (editaTempo) partes.push(`${remocoes.length} trechos removidos`);
+  if (editaImagem) partes.push("legendas de destaque");
+  return { recodificado: true, motivo: partes.join(" e ") };
+}
+
+/** O complemento das remoções: os pedaços que sobrevivem, em ordem. */
+function intervalosQueFicam(remocoes, duracaoSec) {
+  const ordenadas = [...remocoes].sort((a, b) => a.de - b.de);
+  const fica = [];
+  let cursor = 0;
+  for (const r of ordenadas) {
+    if (r.de > cursor) fica.push({ de: cursor, ate: r.de });
+    cursor = Math.max(cursor, r.ate);
+  }
+  // Sem duração conhecida, o último pedaço vai até um valor bem alto: o ffmpeg
+  // simplesmente para no fim do arquivo, e chutar a duração daria corte cedo.
+  fica.push({ de: cursor, ate: duracaoSec && duracaoSec > cursor ? duracaoSec : 999999 });
+  return fica.filter((f) => f.ate - f.de > 0.05);
 }
 
 /**

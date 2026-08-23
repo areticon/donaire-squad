@@ -8,6 +8,12 @@ import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
+import {
+  detectarPausas,
+  montarLegendasDestaque,
+  segundosRemovidos,
+} from "@/lib/media/edicao";
+import type { Word } from "@/lib/media/transcribe";
 
 /**
  * Manda o worker cortar a gravação.
@@ -45,6 +51,7 @@ export async function POST(
       attempts: true,
       blobUrl: true,
       clips: true,
+      transcript: true,
       durationSec: true,
     },
   });
@@ -87,6 +94,18 @@ export async function POST(
     );
   }
 
+  // A edição do vídeo completo é decidida AQUI, e não no worker, pelo mesmo
+  // motivo do enquadramento: a matemática do deslocamento de tempo precisa
+  // existir num lugar só. As legendas já saem com os tempos convertidos para
+  // depois das remoções, senão o destaque do fim do vídeo apareceria quase
+  // meio minuto atrasado.
+  const transcript = video.transcript as { words?: Word[] } | null;
+  const remocoes = detectarPausas(
+    transcript?.words ?? [],
+    video.durationSec ?? 0
+  );
+  const legendasAss = montarLegendasDestaque(trechos, remocoes);
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com";
   const corpo = JSON.stringify({
     videoJobId: id,
@@ -98,6 +117,8 @@ export async function POST(
       fim: Math.ceil(t.fim),
       titulo: t.titulo,
     })),
+    remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
+    legendasAss,
     enquadramentoUrl: `${appUrl}/api/videos/${id}/enquadrar`,
     callbackUrl: `${appUrl}/api/videos/${id}/cortar-callback`,
   });
@@ -128,5 +149,10 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true, trechos: trechos.length });
+  return NextResponse.json({
+    ok: true,
+    trechos: trechos.length,
+    remocoes: remocoes.length,
+    segundosRemovidos: Math.round(segundosRemovidos(remocoes)),
+  });
 }
