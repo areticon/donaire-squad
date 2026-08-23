@@ -14,6 +14,7 @@ import {
   cortarHorizontal,
   extrairCapa,
   extrairQuadros,
+  medirFidelidade,
 } from "./ffmpeg.mjs";
 
 /**
@@ -198,12 +199,23 @@ async function processar(trabalho) {
 
     try {
       const completo = join(pasta, "completo.mp4");
-      await prepararCompleto(fonte, completo);
+      const como = await prepararCompleto(fonte, completo, {
+        remocoes: trabalho.remocoes,
+        legendasArquivo: null,
+      });
       resultados.completo = await subir(
         completo,
         `cortes/${trabalho.videoJobId}/completo.mp4`,
         "video/mp4"
       );
+      resultados.completo.recodificado = como.recodificado;
+      resultados.completo.motivo = como.motivo;
+      // A promessa de qualidade tem que ser verificável, não prometida. Só faz
+      // sentido medir quando houve recodificação: remux é idêntico por
+      // definição, e comparar um arquivo com ele mesmo custa CPU à toa.
+      resultados.completo.fidelidade = como.recodificado
+        ? await medirFidelidade(fonte, completo, info.duracaoSec)
+        : 1;
     } catch (e) {
       resultados.erros.push(
         `completo: ${e instanceof Error ? e.message : "falhou"}`

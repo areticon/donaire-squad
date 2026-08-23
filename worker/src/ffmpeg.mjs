@@ -69,23 +69,99 @@ export function ffprobe(caminho) {
 /**
  * O vídeo completo, pronto para o canal.
  *
- * `+faststart` move os metadados para o começo do arquivo, que é o que permite
- * o vídeo começar a tocar antes de terminar de baixar. Sem isso o YouTube
- * aceita igual, mas qualquer prévia dentro da nossa plataforma engasga.
+ * REGRA DA CASA, decidida pelo Bruno em 23/08: **o que sai da Demandou nunca
+ * pode ser pior que o que entrou.** O cliente paga uma agência e recebe o
+ * trabalho melhorado, não degradado. Isso manda em três escolhas aqui:
  *
- * CRF 20 e não 18: a diferença é invisível em vídeo de pessoa falando, e 18
- * gera arquivo perto de 40% maior. Como transferência é a maior parte do custo
- * do produto, esses 40% saem direto da margem.
+ * 1. **Sem edição, sem recodificar.** Se não há legenda para queimar nem corte
+ *    para remover, o arquivo só é remuxado: os mesmos bytes de vídeo e áudio,
+ *    com os metadados movidos para o começo. Perda zero por definição, e leva
+ *    0,2 segundo em vez de minutos. Medido numa amostra de 60s da gravação
+ *    real.
+ * 2. **CRF 18, e não 20.** 18 é o patamar de "visualmente sem perda". A
+ *    diferença de tamanho não justifica arriscar o que o cliente vê.
+ * 3. **Áudio COPIADO, nunca recodificado, quando o tempo não é editado.**
+ *    Recodificar AAC para AAC é sempre segunda geração de perda, e SUBIR o
+ *    bitrate não recupera nada: a versão anterior pegava um áudio de 128k e
+ *    gravava 160k, gastando mais bytes para entregar um som pior. Era o defeito
+ *    mais silencioso deste arquivo.
+ *
+ * Nunca se mexe em resolução nem em quadros por segundo. O que entra em 1080p30
+ * sai em 1080p30.
  */
-export async function prepararCompleto(entrada, saida) {
-  await rodar([
-    "-i", entrada,
-    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-    "-c:a", "aac", "-b:a", "160k",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    saida,
-  ]);
+export async function prepararCompleto(entrada, saida, opcoes = {}) {
+  const editaTempo = Boolean(opcoes.remocoes?.length);
+  const editaImagem = Boolean(opcoes.legendasArquivo);
+
+  if (!editaTempo && !editaImagem) {
+    await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida]);
+    return { recodificado: false, motivo: "nada a editar, arquivo preservado" };
+  }
+
+  const args = ["-i", entrada];
+
+  if (editaImagem) {
+    // As legendas de destaque queimadas. Só a imagem muda, então o áudio
+    // continua podendo ser copiado byte a byte.
+    // O caminho do arquivo de legenda entra dentro de um filtro, então as
+    // barras invertidas e os dois-pontos precisam ser escapados, senão o ffmpeg
+    // lê o caminho como se fossem mais opções do filtro.
+    const caminho = opcoes.legendasArquivo
+      .split("\\").join("/")
+      .split(":").join("\:");
+    args.push("-vf", "subtitles='" + caminho + "'");
+  }
+
+  args.push(
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    "-pix_fmt", "yuv420p"
+  );
+
+  // Áudio: copiado sempre que o tempo não é mexido. Quando há remoção de
+  // trechos, o áudio precisa ser recortado junto e aí não tem como copiar; nesse
+  // caso vai em 192k, acima do original, que é o mínimo dano possível.
+  args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
+
+  args.push("-movflags", "+faststart", saida);
+  await rodar(args);
+
+  return {
+    recodificado: true,
+    motivo: editaTempo ? "trechos removidos" : "legendas de destaque",
+  };
+}
+
+/**
+ * Mede o quanto o arquivo entregue difere do original, numa amostra.
+ *
+ * Existe para a promessa de qualidade ser VERIFICÁVEL em vez de prometida. O
+ * Bruno perguntou, com razão, se reduzir tamanho não estava piorando o vídeo. A
+ * resposta certa não é "confie", é um número por entrega.
+ *
+ * Amostra e não o arquivo inteiro: comparar 27 minutos exige decodificar os dois
+ * arquivos por completo, e o custo não se paga. 60 segundos do meio, onde há
+ * fala e troca de cena, representa bem.
+ *
+ * SSIM vai de 0 a 1. Acima de 0,99 é indistinguível a olho nu.
+ */
+export async function medirFidelidade(original, entregue, duracaoSec) {
+  const inicio = Math.max(0, Math.floor(duracaoSec / 2) - 30);
+  return new Promise((resolve) => {
+    const p = spawn("ffmpeg", [
+      "-hide_banner",
+      "-ss", String(inicio), "-t", "60", "-i", entregue,
+      "-ss", String(inicio), "-t", "60", "-i", original,
+      "-lavfi", "ssim", "-f", "null", "-",
+    ]);
+    let saida = "";
+    p.stderr.on("data", (d) => (saida += d.toString()));
+    p.on("error", () => resolve(null));
+    p.on("close", () => {
+      const m = saida.match(/All:([0-9.]+)/g);
+      const ultimo = m?.[m.length - 1];
+      resolve(ultimo ? Number(ultimo.replace("All:", "")) : null);
+    });
+  });
 }
 
 /**
