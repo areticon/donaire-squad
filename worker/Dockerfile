@@ -16,9 +16,18 @@ FROM node:22-bookworm-slim
 # `opencv-python-headless` e não `opencv-python`: a versão cheia arrasta Qt, GTK
 # e mais de 400 MB de bibliotecas de janela, que num contêiner sem tela nunca
 # são usadas.
+# libegl1, libgl1 e libglib2.0-0 não são enfeite. O MediaPipe carrega EGL na
+# IMPORTAÇÃO, mesmo quando o trabalho é só inferência em CPU, e sem elas o import
+# morre com "libEGL.so.1: cannot open shared object file".
+#
+# Descoberto em produção em 23/08, no primeiro deploy com recorte. O corte saiu
+# inteiro, na composição antiga, porque a rede de segurança segurou, e o único
+# sinal foi uma linha no log. Sem aquela linha, o sintoma seria "o recorte que a
+# gente implementou simplesmente não aparece", que é a pior forma de bug.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ffmpeg ca-certificates python3 python3-pip \
+        libegl1 libgl1 libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --no-cache-dir --break-system-packages \
