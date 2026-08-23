@@ -3184,3 +3184,104 @@ descrição e capa automáticos, e a fusão disso com o Gestor de Conteúdo. O
 worker e o enquadramento, que eram a parte que não existia, estão prontos.
 
 *Atualizado em 23/08/2026 por Claude Code.*
+
+## Sessão 23/08/2026 (parte 38): a edição do vídeo, e a regra de não piorar
+
+Continuação da parte 37, fechando o produto de vídeo.
+
+### A regra que o Bruno fixou, e o defeito que ela achou
+
+Pergunta dele: "já imaginou você pagar uma agência, enviar um vídeo, e ele
+devolver um vídeo inferior?" Virou regra da casa: **o que sai da Demandou nunca
+pode ser pior que o que entrou.**
+
+E ele estava certo numa parte que era invisível: **o áudio estava sendo
+degradado.** A versão anterior pegava AAC 128k e gravava AAC 160k. Recodificar
+lossy para lossy é sempre segunda geração de perda, e subir o bitrate não
+recupera nada. Gastava mais bytes para entregar um som pior.
+
+As três regras que entraram no código:
+
+1. **Sem edição, sem recodificar.** Só remux com faststart. Perda zero por
+   definição, 0,23s em vez de minutos.
+2. **CRF 18**, o patamar de visualmente sem perda.
+3. **Áudio copiado** sempre que o tempo não é editado.
+
+Resolução e quadros por segundo nunca mudam.
+
+### Medido, não prometido
+
+| | tamanho | fidelidade |
+|---|---|---|
+| Original (amostra 60s) | 32,3 MB | referência |
+| Só remux | 32,3 MB | perda zero |
+| Editado CRF 18 | 5,2 MB | **SSIM 0,999085** |
+
+**Por que encolhe tanto:** o OBS grava a 4 Mbps fixos, independente do
+conteúdo. Numa gravação de tela, a maior parte do quadro fica parada, e isso
+gasta bits em pixel que não mudou. O x264 aloca por necessidade. O que sai é
+desperdício, não detalhe.
+
+**E o limite dessa conclusão:** isso NÃO generaliza para vídeo de câmera. Rosto
+em movimento e grão de sensor comprimem muito pior. A política protege a
+qualidade nos dois casos; o tamanho é que varia.
+
+`medirFidelidade` mede SSIM de uma amostra e devolve junto com a entrega, para
+a promessa ser verificável em vez de prometida.
+
+### A remoção de pausas vale menos do que parecia
+
+Medido na gravação real antes de construir:
+
+- pausas > 0,5s: 89 ocorrências, **54s removíveis (3,3%)**
+- maior pausa da gravação inteira: **3,1 segundos**
+
+Ou seja, para quem fala corrido, cortar pausa devolve menos de um minuto em 27.
+Onde o tempo realmente está é em hesitação: 78 "então", 44 "né", 70 repetições
+imediatas da mesma palavra. Cortar isso é mais valioso e mais arriscado, porque
+corta no meio da fala, e ficou para uma etapa com aprovação do cliente.
+
+As pausas são achadas pelo buraco entre palavras, e não por detecção de
+silêncio no áudio: silêncio também acusa respiração e ruído de sala, enquanto o
+buraco entre palavras diz exatamente "aqui ninguém está falando". Fica um
+respiro de 0,25s em cada corte, porque colar as frases soa artificial.
+
+### O detalhe que teria quebrado tudo em silêncio
+
+Cada remoção empurra o resto do vídeo. Sem `mapearTempo`, o destaque do trecho
+aos 721s apareceria **28 segundos atrasado**. A conta mora num lugar só, no
+app, e as legendas saem de lá já convertidas.
+
+### Legendas de destaque, não legenda contínua
+
+Decisão do Bruno: no YouTube não entra legenda em tudo, só tópicos e frases de
+destaque. São os mesmos momentos que o squad já escolheu para virar corte, o
+que dá coerência de graça: o destaque na tela, o capítulo do YouTube e o corte
+publicado falam do mesmo instante.
+
+ASS e não SRT porque SRT não tem estilo. Caixa atrás do texto para ler tanto
+sobre slide claro quanto sobre cena escura, no laranja da marca.
+
+### Armadilha nova: caminho de arquivo dentro de filtro do ffmpeg
+
+O filtro usa dois-pontos para separar as próprias opções, então `C:/pasta/a.ass`
+faz o ffmpeg entender que `/pasta/a.ass` é o valor da opção seguinte. O erro
+fala de `original_size` e não menciona legenda nenhuma. Escapar funciona mas
+muda entre plataformas. **Solução: rodar com `cwd` na pasta e passar só o nome.**
+
+### A tela dos cortes
+
+Tudo nasce marcado, com destino escolhido, e a interação é desmarcar. Destino
+que não cabe aparece desabilitado com o motivo (Shorts corta em 3 min, Reels em
+90s, X em 140s na conta comum).
+
+Dois bugs meus, achados ao ligar as pontas: o passo de escrever escrevia para
+todos os cortes inclusive os desmarcados (cobrando crédito por trabalho
+recusado), e ao filtrar isso a contagem de falhas passou a incluir os pulados.
+
+### O que falta
+
+Título, descrição e capa automáticos por corte; a publicação dos cortes nos
+destinos marcados; a fusão com o Gestor de Conteúdo; e a landing.
+
+*Atualizado em 23/08/2026 por Claude Code.*
