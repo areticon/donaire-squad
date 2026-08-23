@@ -521,29 +521,60 @@ function comFolga(c, folga = 0.06) {
 }
 
 /**
- * Tira a janela da webcam de dentro do recorte da tela.
+ * Tira a janela da webcam de dentro do recorte da tela, pelo lado mais barato.
  *
- * No empilhado, a pessoa aparece grande embaixo. Se o recorte de cima também
- * pegar a janelinha da webcam, ela aparece DUAS VEZES no mesmo quadro, uma
- * minúscula em cima e uma grande embaixo, e o resultado parece defeito de
- * edição (visto no teste de 23/08).
+ * No empilhado a pessoa aparece grande embaixo. Se o recorte de cima também
+ * pegar a janelinha da webcam, ela aparece DUAS VEZES no mesmo quadro, e parece
+ * defeito de edição.
  *
- * A webcam quase sempre fica num canto inferior, então encurtar a tela até onde
- * a pessoa começa resolve sem perder conteúdo: slide bem feito não põe texto
- * embaixo da janela do apresentador.
+ * ## A versão anterior cortava sempre pelo eixo Y, e isso destruía o slide
  *
- * Só encurta quando sobra tela de verdade. Se a pessoa ocupa a metade de cima do
- * quadro, encurtar deixaria uma faixa fina e inútil, e aí é melhor conviver com
- * a duplicata.
+ * O raciocínio era "a webcam fica num canto inferior, então encurtar a tela até
+ * onde ela começa não perde conteúdo, porque slide bem feito não põe texto
+ * embaixo do apresentador". A premissa está errada: o slide do Bruno põe.
+ *
+ * Medido no vídeo real em 23/08, com a webcam no canto inferior DIREITO:
+ *
+ *   tela   x=209  y=119  w=1500  h=907
+ *   webcam x=1488 y=778  w=422   h=302
+ *
+ *   cortar pela ALTURA  ate y=778  -> h=659, perde 27% e come o ultimo topico
+ *   cortar pela LARGURA ate x=1488 -> w=1279, perde 15% e nao come nada
+ *
+ * Cortar pela altura tira uma faixa da largura INTEIRA por causa de uma
+ * janelinha que ocupa só o canto. É desproporcional.
+ *
+ * ## Agora escolhe por área
+ *
+ * A webcam é um retângulo invadindo outro retângulo. Há quatro formas de tirá-la
+ * encolhendo um lado só (por cima, por baixo, pela esquerda, pela direita).
+ * Calcula a área que sobra em cada uma e fica com a maior. Isso resolve para
+ * qualquer canto, e não só para o de baixo, sem heurística sobre onde a pessoa
+ * costuma estar.
  */
 function semAPessoa(tela, pessoa) {
   if (!pessoa) return tela;
-  const fimDaTela = tela.y + tela.h;
-  // A pessoa não invade a tela: nada a fazer.
-  if (pessoa.y >= fimDaTela) return tela;
-  const alturaNova = pessoa.y - tela.y;
-  if (alturaNova < 0.25) return tela;
-  return { ...tela, h: alturaNova };
+
+  const telaFimX = tela.x + tela.w;
+  const telaFimY = tela.y + tela.h;
+  const pFimX = pessoa.x + pessoa.w;
+  const pFimY = pessoa.y + pessoa.h;
+
+  // Sem sobreposição real: nada a fazer.
+  const invade =
+    pessoa.x < telaFimX && pFimX > tela.x && pessoa.y < telaFimY && pFimY > tela.y;
+  if (!invade) return tela;
+
+  const candidatos = [
+    { ...tela, h: pessoa.y - tela.y }, // corta embaixo
+    { ...tela, y: pFimY, h: telaFimY - pFimY }, // corta em cima
+    { ...tela, w: pessoa.x - tela.x }, // corta a direita
+    { ...tela, x: pFimX, w: telaFimX - pFimX }, // corta a esquerda
+  ].filter((c) => c.w > 0.2 && c.h > 0.2);
+
+  if (!candidatos.length) return tela; // nada sobra: conviver com a duplicata
+
+  return candidatos.reduce((m, c) => (c.w * c.h > m.w * m.h ? c : m));
 }
 
 /** Recorte em fração do quadro vira expressão de crop do ffmpeg. */
