@@ -19,6 +19,7 @@ import {
   montarAbertura,
   emendar,
   medirFidelidade,
+  diagnostico,
 } from "./ffmpeg.mjs";
 
 /**
@@ -407,8 +408,13 @@ const servidor = createServer((req, res) => {
   };
 
   // O Railway checa a saúde do contêiner por aqui.
+  //
+  // Devolve também qual ffmpeg está instalado, porque o contêiner de produção
+  // roda o do Debian (5.x) e a máquina de desenvolvimento roda o 9, e a opção
+  // que passa o filtro por arquivo MUDOU DE NOME entre as duas. Sem isso a
+  // diferença só apareceria como uma falha em produção que não reproduz local.
   if (req.method === "GET" && req.url === "/saude") {
-    return responder(200, { ok: true });
+    return responder(200, { ok: true, ...diagnostico() });
   }
 
   if (req.method !== "POST" || !req.url?.startsWith("/cortar")) {

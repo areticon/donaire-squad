@@ -145,8 +145,15 @@ export async function POST(
       await escolherGanchos(trechos, { projectId: video.projectId }),
       remocoes
     );
-  } catch {
-    /* segue sem abertura */
+  } catch (e) {
+    // Seguir sem abertura é o certo: vídeo que começa do começo retém menos,
+    // mas existe. O que NÃO pode é seguir calado, que foi o que aconteceu por
+    // um tempo: a chamada estourava o teto de tokens em torno de metade das
+    // vezes e o vídeo saía sem gancho, sem nada no sistema dizendo por quê.
+    console.error(
+      `[${id}] abertura falhou, vídeo sai sem gancho: ` +
+        (e instanceof Error ? e.message : "motivo desconhecido")
+    );
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com";
