@@ -77,7 +77,7 @@ Devolva as caixas em FRAÇÃO do quadro, de 0 a 1, onde x e y são o canto super
 
 Regras das caixas:
 - "pessoa" é a janela da webcam no caso misto, ou a região do rosto e tronco no caso pessoa.
-- "tela" é a área ÚTIL do conteúdo, sem barra do navegador, sem barra de tarefas e sem margem vazia. Apertar a caixa no conteúdo é o que faz o texto ficar legível no celular.
+- "tela" é a área do conteúdo, sem barra do navegador e sem barra de tarefas. Aperte para tirar moldura vazia, MAS NUNCA CORTE TEXTO: se houver dúvida entre apertar mais e incluir a borda inteira do conteúdo, inclua. Texto cortado na lateral é pior que uma margem sobrando, porque quem assiste não consegue ler a primeira e a última palavra de cada linha.
 - Quando algo não existe na cena, use null.
 - Nunca devolva caixa com w ou h menor que 0,05.
 

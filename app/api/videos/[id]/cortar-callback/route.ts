@@ -23,7 +23,13 @@ type TrechoCortado = {
   vertical?: MidiaProduzida;
   horizontal?: MidiaProduzida;
   capa?: MidiaProduzida;
-  enquadramento?: { cena: string; vertical: string; motivo: string };
+  enquadramento?: {
+    cena: string;
+    vertical: string;
+    motivo: string;
+    pessoa?: { x: number; y: number; w: number; h: number } | null;
+    tela?: { x: number; y: number; w: number; h: number } | null;
+  };
   erro?: string;
 };
 

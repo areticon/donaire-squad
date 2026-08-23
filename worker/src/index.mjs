@@ -216,7 +216,17 @@ async function processar(trabalho) {
         titulo: t.titulo,
         duracaoSec: duracao,
         enquadramento: enq
-          ? { cena: enq.cena, vertical: enq.vertical, motivo: enq.motivo }
+          ? {
+              cena: enq.cena,
+              vertical: enq.vertical,
+              motivo: enq.motivo,
+              // As caixas vão junto de propósito. Sem elas, recorte errado vira
+              // "está cortando o slide" sem ninguém conseguir dizer se a culpa
+              // foi do agente que mediu ou do filtro que aplicou. Custam alguns
+              // bytes e economizam uma investigação inteira.
+              pessoa: enq.pessoa ?? null,
+              tela: enq.tela ?? null,
+            }
           : null,
       };
       try {

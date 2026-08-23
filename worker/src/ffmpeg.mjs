@@ -330,6 +330,26 @@ export async function cortarVertical(entrada, saida, inicio, duracao, enquadrame
   ]);
 }
 
+/**
+ * Abre um pouco a caixa, sem sair do quadro.
+ *
+ * O agente de visão aperta a caixa no conteúdo, e no teste de 23/08 apertou
+ * demais: o slide saiu com a primeira e a última palavra de cada linha cortadas.
+ * Ilegível é pior que ter margem sobrando, e o modelo erra sempre para o mesmo
+ * lado, então a folga entra em código em vez de virar mais uma súplica no
+ * prompt.
+ */
+function comFolga(c, folga = 0.03) {
+  const x = Math.max(0, c.x - folga);
+  const y = Math.max(0, c.y - folga);
+  return {
+    x,
+    y,
+    w: Math.min(1 - x, c.w + folga * 2),
+    h: Math.min(1 - y, c.h + folga * 2),
+  };
+}
+
 /** Recorte em fração do quadro vira expressão de crop do ffmpeg. */
 function cropDeCaixa(c) {
   // `iw` e `ih` são a largura e a altura da entrada. Usar fração em cima delas
@@ -368,7 +388,7 @@ function montarFiltroVertical(enq) {
   // margem vazia) e ocupa a largura inteira. É esse aperto que torna o texto
   // legível no celular.
   if (enq.vertical === "tela-grande") {
-    const recorte = enq.tela ? cropDeCaixa(enq.tela) + "," : "";
+    const recorte = enq.tela ? cropDeCaixa(comFolga(enq.tela)) + "," : "";
     return (
       FUNDO +
       `;[0:v]${recorte}scale=1080:-2[frente]` +
@@ -379,7 +399,10 @@ function montarFiltroVertical(enq) {
   // Misto: a tela grande em cima, a pessoa embaixo, as duas ocupando a largura
   // inteira. É o formato que Shorts de screencast usam, e é o único em que o
   // slide fica legível E o rosto aparece.
-  const tela = cropDeCaixa(enq.tela);
+  // A tela ganha folga porque texto cortado é ilegível. A pessoa não ganha: a
+  // caixa dela é a janela da webcam, que já tem borda de sobra, e alargar
+  // traria pedaço do slide para dentro do recorte do rosto.
+  const tela = cropDeCaixa(comFolga(enq.tela));
   const pessoa = cropDeCaixa(enq.pessoa);
   return (
     FUNDO +
