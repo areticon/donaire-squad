@@ -3963,4 +3963,30 @@ respondeu coisas diferentes nos dois lugares, que era exatamente o previsto:
 Se a opcao estivesse fixa no codigo, uma das duas quebraria, e como a de
 desenvolvimento e a mais nova, o bug so apareceria em producao.
 
+### Verificacao em PRODUCAO, 23/08 as 14:44
+
+O mesmo corte rodado contra o worker do Railway, com ffmpeg 5.1.9 e portanto
+`-filter_complex_script`. Chamadas de enquadramento e callback em demandou.com,
+ou seja o caminho real inteiro.
+
+| Medida | Esperado | Obtido |
+|---|---|---|
+| Status final | cut | **cut**, sem erro, 0 retentativas |
+| Cortes com vertical, horizontal e capa | 6 de 6 | **6 de 6**, nenhuma falta |
+| Duracao do completo | 1536,1s (1646 menos 130,9 de remocao, mais 21 de gancho) | **1537,15s** |
+| Bitrate | ~945 kbps | 943 kbps |
+| Tamanho | ~170 MB | 173 MB |
+| Formato | 1080p30 h264 mais aac | confere |
+
+A abertura decodifica sem um unico erro, que e o que importa: e ali que ficam as
+emendas dos ganchos com o corpo.
+
+**Com isto a correcao esta provada nas DUAS versoes do ffmpeg**, a 9 da maquina
+de desenvolvimento e a 5.1 do conteiner, com a opcao de filtro certa em cada
+uma.
+
+Nota de ambiente: a conexao desta maquina estava entre 265 e 560 kbps de subida
+neste dia, o que derrubou dois envios de arquivo e um download pela metade. Nada
+disso e do produto; o Railway sobe e desce de datacenter.
+
 *Atualizado em 23/08/2026 por Claude Code.*
