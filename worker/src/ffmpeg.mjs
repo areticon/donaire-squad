@@ -799,7 +799,15 @@ export async function cortarVertical(
     `H-${LAYOUT.EMOJI_Y}`
   );
 
-  await rodar([
+  // O GRAFO entra na mensagem de erro quando algo quebra.
+  //
+  // Em 24/08 o mesmo trecho falhou tres vezes com "Error while opening encoder
+  // for output stream, maybe incorrect parameters such as width or height", que
+  // nao diz qual filtro nem qual valor. Sem o grafo em maos, cada hipotese
+  // custava uma rodada de meia hora. Sao alguns milhares de caracteres num
+  // caminho que so roda quando ja deu errado.
+  try {
+    await rodar([
     "-ss", String(inicio),
     "-i", entrada,
     ...(comRecorte ? ["-i", matte.arquivo] : []),
@@ -826,7 +834,12 @@ export async function cortarVertical(
     // de filtro. Rodar dentro da pasta e passar só o nome resolve os dois, e é
     // o mesmo cuidado que a legenda e o filtro em arquivo já tomavam.
     cwd: dirname(saida),
-  });
+    });
+  } catch (e) {
+    e.message = `${e.message}
+  grafo: ${grafo}`;
+    throw e;
+  }
 }
 
 /** Onde cada peça mora no quadro de 1080x1920. Em pixels, para conferir a conta. */

@@ -502,14 +502,40 @@ async function processar(trabalho) {
         // gerado nao serve: sobrepor o retangulo inteiro da webcam em cima de
         // uma arte fica pior que a composicao antiga. Por isso o fundo so entra
         // quando o recorte deu certo.
-        await cortarVertical(
-          limpo, vertical, 0, duracaoLimpa, enq, matte,
-          matte && fundoLocal ? basename(fundoLocal) : null,
-          legendaV,
-          trabalho.estilo?.ritmo ?? null,
-          ajusteDeBrilho,
-          emojisDoTrecho
-        );
+        // O EMOJI E A PRIMEIRA COISA A CAIR se o corte falhar.
+        //
+        // Em 24/08 o mesmo trecho morreu TRES vezes no codificador, sempre com
+        // uma mensagem que nao menciona emoji nem overlay, enquanto os outros
+        // tres cortes do mesmo video passavam. Enquanto a causa nao aparece,
+        // um corte sem emoji e infinitamente melhor que um corte que nao
+        // existe: o emoji e acento, a legenda e o fundo e que sao o produto.
+        //
+        // Mesma regra que o fluxo ja aplica ao recorte, ao fundo e a abertura.
+        // A diferenca e que aqui a queda e uma SEGUNDA tentativa, e nao um
+        // caminho alternativo, porque so da para saber que o grafo com emoji
+        // nao serve depois de o ffmpeg recusar.
+        const comporVertical = (comEmoji) =>
+          cortarVertical(
+            limpo, vertical, 0, duracaoLimpa, enq, matte,
+            matte && fundoLocal ? basename(fundoLocal) : null,
+            legendaV,
+            trabalho.estilo?.ritmo ?? null,
+            ajusteDeBrilho,
+            comEmoji ? emojisDoTrecho : []
+          );
+
+        try {
+          await comporVertical(true);
+        } catch (e) {
+          if (!emojisDoTrecho.length) throw e;
+          console.error(
+            `[${trabalho.videoJobId}] trecho ${t.indice} falhou COM emoji, ` +
+              `tentando sem: ${e.message}`
+          );
+          await comporVertical(false);
+          saida.efeitos = 0;
+          saida.emojiCaiu = true;
+        }
         saida.vertical = await subir(
           vertical,
           `cortes/${trabalho.videoJobId}/vertical-${t.indice}.mp4`,
