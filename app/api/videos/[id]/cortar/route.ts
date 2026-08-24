@@ -57,7 +57,7 @@ export async function POST(
       // envio: canal com estilo diferente a cada vídeo não constrói
       // reconhecimento. O nicho, que alimenta o fundo gerado, é lido na rota
       // `/enquadrar`, que é onde o fundo passou a ser gerado.
-      project: { select: { videoStyle: true } },
+      project: { select: { videoStyle: true, videoMusicUrl: true } },
       transcript: true,
       durationSec: true,
       projectId: true,
@@ -113,6 +113,7 @@ export async function POST(
       trechos,
       palavras: transcript?.words ?? [],
       estilo: video.project?.videoStyle ?? null,
+      musicaUrl: video.project?.videoMusicUrl ?? null,
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );

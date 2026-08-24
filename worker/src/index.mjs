@@ -334,6 +334,19 @@ async function processar(trabalho) {
     await baixarFonte(trabalho.sourceUrl, fonte);
     const info = await ffprobe(fonte);
 
+    // A TRILHA do projeto, baixada uma vez para todos os cortes. Falhar nao
+    // derruba nada: os cortes saem sem musica, que e como sempre sairam.
+    let musicaLocal = null;
+    if (trabalho.musicaUrl) {
+      try {
+        musicaLocal = join(pasta, "trilha" + (trabalho.musicaUrl.match(/\.[a-z0-9]{2,4}(?=\?|$)/i)?.[0] ?? ".mp3"));
+        await baixarFonte(trabalho.musicaUrl, musicaLocal);
+      } catch (e) {
+        musicaLocal = null;
+        console.warn(`[${trabalho.videoJobId}] nao consegui baixar a trilha: ${e.message}`);
+      }
+    }
+
     const { enquadramentos, capa, fundoUrl, brilhoAlvo } = await pedirEnquadramento(
       trabalho,
       fonte,
@@ -547,6 +560,7 @@ async function processar(trabalho) {
           );
         }
         saida.legenda = Boolean(legendaV);
+        saida.musica = Boolean(musicaLocal);
 
         // OS EMOJI, copiados da paleta do repositorio para a pasta do trabalho.
         //
@@ -593,7 +607,9 @@ async function processar(trabalho) {
             legendaV,
             trabalho.estilo?.ritmo ?? null,
             ajusteDeBrilho,
-            comEmoji ? emojisDoTrecho : []
+            comEmoji ? emojisDoTrecho : [],
+            musicaLocal ? basename(musicaLocal) : null,
+            trabalho.estilo?.som ?? null
           );
 
         try {
@@ -615,7 +631,11 @@ async function processar(trabalho) {
         );
 
         const horizontal = join(pasta, `h-${t.indice}.mp4`);
-        await cortarHorizontal(limpo, horizontal, 0, duracaoLimpa, legendaH);
+        await cortarHorizontal(
+          limpo, horizontal, 0, duracaoLimpa, legendaH,
+          musicaLocal ? basename(musicaLocal) : null,
+          trabalho.estilo?.som ?? null
+        );
         saida.horizontal = await subir(
           horizontal,
           `cortes/${trabalho.videoJobId}/horizontal-${t.indice}.mp4`,

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { upload } from "@vercel/blob/client";
+import { Loader2, Music, X } from "lucide-react";
 import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
 
 /**
@@ -41,9 +43,12 @@ const APROXIMACAO: Record<NomeDoEstilo, string> = {
 export function EstiloDoProjeto({
   projectId,
   inicial,
+  musicaInicial,
 }: {
   projectId: string;
   inicial: string | null;
+  /** O nome do arquivo da trilha que o projeto já tem, se tiver. */
+  musicaInicial: string | null;
 }) {
   // Sem escolha, o padrão é o acelerado, que é o mesmo padrão do back-end. Se
   // os dois discordassem, a tela mostraria um estilo e o vídeo sairia com
@@ -52,6 +57,51 @@ export function EstiloDoProjeto({
     (inicial as NomeDoEstilo) ?? "acelerado"
   );
   const [salvando, setSalvando] = useState(false);
+  const [musica, setMusica] = useState<string | null>(musicaInicial);
+  const [subindoMusica, setSubindoMusica] = useState(false);
+  const inputDeMusica = useRef<HTMLInputElement>(null);
+
+  async function subirMusica(arquivo: File) {
+    if (arquivo.size > 40 * 1024 * 1024) {
+      toast.error("A trilha pode ter no máximo 40 MB.");
+      return;
+    }
+    setSubindoMusica(true);
+    try {
+      const blob = await upload(`musica/${projectId}/${arquivo.name}`, arquivo, {
+        access: "private",
+        handleUploadUrl: `/api/projects/${projectId}/musica`,
+      });
+      // O espelho do onUploadCompleted: em desenvolvimento o storage não
+      // alcança o localhost, então o navegador grava também. Os dois escrevem
+      // a mesma coisa.
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoMusicUrl: blob.url, videoMusicName: arquivo.name }),
+      });
+      setMusica(arquivo.name);
+      toast.success("Trilha salva. Entra nos próximos cortes, no volume do estilo.");
+    } catch {
+      toast.error("Não consegui subir a trilha. Tente de novo.");
+    } finally {
+      setSubindoMusica(false);
+    }
+  }
+
+  async function tirarMusica() {
+    setSubindoMusica(true);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/musica`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setMusica(null);
+      toast.success("Trilha removida. Os próximos cortes saem sem música.");
+    } catch {
+      toast.error("Não consegui remover a trilha.");
+    } finally {
+      setSubindoMusica(false);
+    }
+  }
 
   async function escolher(nome: NomeDoEstilo) {
     if (nome === escolhido || salvando) return;
@@ -144,6 +194,64 @@ export function EstiloDoProjeto({
         A fonte aqui é uma aproximação do que o navegador tem. A do vídeo é
         desenhada na edição.
       </p>
+
+      {/*
+        A trilha é do CLIENTE, e isso é decisão jurídica e não preguiça: quem
+        baixa o arquivo define se a plataforma é ferramenta ou distribuidora.
+        A dica das licenças fica na tela porque é onde a dúvida nasce.
+      */}
+      <div
+        className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border p-4"
+        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+      >
+        <Music className="h-5 w-5 shrink-0" style={{ color: "var(--text-muted)" }} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+            {musica ? musica : "Trilha dos cortes"}
+          </p>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {musica
+              ? "Toca por baixo da voz, no volume do estilo, e abaixa quando você fala."
+              : "Suba uma faixa que você tem direito de usar (da sua assinatura, própria, ou CC BY). Sem trilha, os cortes saem só com a voz."}
+          </p>
+        </div>
+        <input
+          ref={inputDeMusica}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void subirMusica(f);
+            e.target.value = "";
+          }}
+        />
+        {subindoMusica ? (
+          <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-muted)" }} />
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => inputDeMusica.current?.click()}
+              className="rounded-lg border px-3 py-1.5 text-sm font-bold"
+              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+            >
+              {musica ? "Trocar" : "Enviar trilha"}
+            </button>
+            {musica && (
+              <button
+                type="button"
+                onClick={() => void tirarMusica()}
+                aria-label="Remover trilha"
+                className="rounded-lg border p-1.5"
+                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

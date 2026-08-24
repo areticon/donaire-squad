@@ -125,6 +125,12 @@ model Project {
   /// Bruno em 24/08: canal com estilo diferente a cada video nao constroi
   /// reconhecimento. Nulo cai no acelerado, ver lib/media/estilos.ts.
   videoStyle     String?
+  /// A trilha dos cortes, que o CLIENTE traz. Decisao juridica de 23/08: a
+  /// Demandou nunca distribui musica, ela e ferramenta de edicao como o
+  /// CapCut. A engenharia e a mesma para biblioteca do YouTube (so CC-BY),
+  /// assinatura propria ou faixa autoral.
+  videoMusicUrl  String?  @db.Text
+  videoMusicName String?
   postFrequency  String?
   timezone       String   @default("America/Sao_Paulo")
   createdAt      DateTime @default(now())

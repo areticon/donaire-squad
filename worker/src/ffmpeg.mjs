@@ -773,6 +773,42 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
  * sem cor: medido em 24/08 com a fonte do sistema (COLR) e com a Noto Color
  * Emoji (CBDT), e nas duas o resultado foi monocromatico.
  */
+/**
+ * A cadeia de áudio de um corte, com ou sem trilha.
+ *
+ * ## Como a música entra, e por que assim
+ *
+ * A trilha toca por baixo da voz no volume do ESTILO (`som.volumeDaTrilha`) e
+ * ABAIXA quando a pessoa fala, pelo `sidechaincompress`: a voz comprime a
+ * trilha, que volta sozinha nas pausas. É a mixagem que todo editor faz, e o
+ * quanto abaixa vem de `som.abaixarSobAVoz`, também do estilo.
+ *
+ * A trilha entra com fade de 0,6s e sai com fade de 1s antes do fim do corte:
+ * música que corta seca no fim parece erro, e música que já está tocando no
+ * primeiro quadro engole a primeira palavra.
+ *
+ * O `loudnorm` fecha a cadeia DEPOIS da mixagem, porque nivelar antes deixaria
+ * a soma voz mais trilha acima do alvo.
+ *
+ * @param musica nome do arquivo da trilha na pasta de trabalho, ou null
+ * @param indiceDaMusica índice do input `-i` da trilha no comando
+ */
+function cadeiaDeAudio(musica, indiceDaMusica, duracao, som) {
+  if (!musica) return null;
+  const volume = Math.max(0.05, Math.min(0.6, som?.volumeDaTrilha ?? 0.25));
+  // O quanto a voz comprime a trilha: abaixar 0,5 vira razão ~6:1, abaixar
+  // 0,75 vira ~9:1. Mais que 12:1 soa como liga-desliga.
+  const razao = Math.max(3, Math.min(12, Math.round(2 + (som?.abaixarSobAVoz ?? 0.5) * 10)));
+  const fimDoFade = Math.max(0, duracao - 1).toFixed(3);
+  return (
+    `[${indiceDaMusica}:a]atrim=0:${duracao.toFixed(3)},asetpts=PTS-STARTPTS,` +
+      `volume=${volume.toFixed(2)},afade=t=in:st=0:d=0.6,afade=t=out:st=${fimDoFade}:d=1[trilha];` +
+    `[0:a]asplit=2[vozLado][vozMix];` +
+    `[trilha][vozLado]sidechaincompress=threshold=0.02:ratio=${razao}:attack=25:release=400[trilhaBaixa];` +
+    `[vozMix][trilhaBaixa]amix=inputs=2:duration=first:dropout_transition=0,${NIVELAR_VOZ}[aout]`
+  );
+}
+
 function comEmoji(grafo, emojis, largura, x, y) {
   const daPaleta = (emojis ?? []).filter((e) => e && e.arquivo);
   if (!daPaleta.length) return grafo;
@@ -833,12 +869,18 @@ export async function cortarVertical(
   legenda,
   ritmo,
   ajusteDeBrilho,
-  emojis
+  emojis,
+  musica,
+  som
 ) {
   const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
     ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo, ajusteDeBrilho)
-    : montarFiltroVertical(enquadramento);
+    : montarFiltroVertical(
+        enquadramento,
+        Math.max(0, Math.min(0.12, ritmo?.forcaDoZoom ?? 0.04)),
+        duracao
+      );
 
   // A legenda entra por ÚLTIMO, depois de tudo composto.
   //
@@ -862,6 +904,18 @@ export async function cortarVertical(
     `H-${LAYOUT.EMOJI_Y}`
   );
 
+  // O FADE DE VÍDEO nas pontas: um quarto de segundo entrando e um terço
+  // saindo. Corte que abre e fecha seco parece arquivo cortado; o fade curto é
+  // a transição que o Bruno pediu sem virar efeito de slide.
+  grafo = grafo.replace(
+    /\[v\]$/,
+    `[semFade];[semFade]fade=t=in:st=0:d=0.25,fade=t=out:st=${Math.max(0, duracao - 0.35).toFixed(3)}:d=0.35[v]`
+  );
+
+  // A TRILHA, quando o projeto tem uma.
+  const audio = cadeiaDeAudio(musica, comRecorte ? 2 : 1, duracao, som);
+  if (audio) grafo += ";" + audio;
+
   // O GRAFO entra na mensagem de erro quando algo quebra.
   //
   // Em 24/08 o mesmo trecho falhou tres vezes com "Error while opening encoder
@@ -874,8 +928,10 @@ export async function cortarVertical(
     "-ss", String(inicio),
     "-i", entrada,
     ...(comRecorte ? ["-i", matte.arquivo] : []),
+    // A trilha em loop: gravação mais longa que a faixa não fica muda no meio.
+    ...(musica ? ["-stream_loop", "-1", "-i", musica] : []),
     "-filter_complex", grafo,
-    "-map", "[v]", "-map", "0:a?",
+    "-map", "[v]", ...(audio ? ["-map", "[aout]"] : ["-map", "0:a?"]),
     // O `-t` fica DEPOIS de todos os inputs, senão ele vira opção de input do
     // último `-i` e limita o arquivo errado. Foi assim que o primeiro teste da
     // composição nova travou para sempre: o `-t` truncava a máscara em vez da
@@ -887,7 +943,9 @@ export async function cortarVertical(
     // aparelhos nao decodifica, e o sintoma e "o video nao abre no celular
     // dele", que e caro de diagnosticar.
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-    "-af", NIVELAR_VOZ,
+    // Com trilha, o loudnorm ja fechou a cadeia dentro do grafo; sem ela, entra
+    // como -af no caminho simples.
+    ...(audio ? [] : ["-af", NIVELAR_VOZ]),
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
@@ -1166,7 +1224,7 @@ function cropDeCaixa(c) {
  * falando, entregou um slide minúsculo e ilegível quando a gravação era
  * screencast. O enquadramento é a decisão que falta para o corte prestar.
  */
-function montarFiltroVertical(enq) {
+function montarFiltroVertical(enq, pushIn, duracaoDoPush) {
   const FUNDO =
     "[0:v]scale=1080:1920:force_original_aspect_ratio=increase," +
     "crop=1080:1920,gblur=sigma=28[fundo]";
@@ -1182,9 +1240,18 @@ function montarFiltroVertical(enq) {
     const foco = enq?.pessoa
       ? cropDeCaixa(aparadaNaBase(enq.pessoa, 0.12)) + ","
       : "";
+    // O PUSH-IN do estilo: um avanço contínuo e lento ao longo do corte
+    // inteiro, com a força vinda de `ritmo.forcaDoZoom` (2% no sério, 8% no
+    // acelerado). É o movimento que faz plano parado parecer filmado, e entra
+    // ANTES da legenda, para o texto ficar cravado enquanto a imagem avança.
+    // O `fps=30` fixa a cadência que o zoompan precisa para a conta do quadro.
+    const push = pushIn ?? 0;
+    const zoom = push > 0.005
+      ? `,fps=30,zoompan=z='min(${(1 + push).toFixed(3)},1+${push.toFixed(3)}*on/${Math.max(1, Math.round((duracaoDoPush ?? 30) * 30))})':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30`
+      : "";
     return (
       `[0:v]${foco}crop='min(iw,ih*9/16)':ih:'(iw-min(iw,ih*9/16))/2':0,` +
-      "scale=1080:1920,format=yuv420p[v]"
+      `scale=1080:1920${zoom},format=yuv420p[v]`
     );
   }
 
@@ -1224,7 +1291,7 @@ function montarFiltroVertical(enq) {
  * Existe separado do vertical porque no LinkedIn e no X o vídeo aparece dentro
  * do feed em caixa larga, e vídeo vertical entra minúsculo no meio da tela.
  */
-export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda) {
+export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda, musica, som) {
   // A legenda do horizontal é OUTRO arquivo, e não o mesmo do vertical.
   //
   // O ASS carrega a resolução para a qual foi escrito, e o libass escala o
@@ -1232,16 +1299,25 @@ export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda)
   // num quadro de 1920x1080 esticaria a letra e jogaria a linha para fora,
   // porque a margem de 800 px que faz sentido em cima da cabeça no vertical é
   // metade da altura aqui.
+  // Com trilha, video E audio moram no mesmo -filter_complex: misturar -vf com
+  // grafo complexo no mesmo comando foi exatamente o erro que derrubou o
+  // completo em 24/08. A entrada aqui e intermediario recodificado, entao
+  // filtros de video sao seguros.
+  const filtroDeVideo =
+    "scale=1920:1080:force_original_aspect_ratio=decrease," +
+    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" +
+    (legenda ? `,subtitles=${legenda}` : "");
+  const audio = cadeiaDeAudio(musica, 1, duracao, som);
+
   await rodar([
     "-ss", String(inicio),
     "-i", entrada,
+    ...(musica ? ["-stream_loop", "-1", "-i", musica] : []),
     "-t", String(duracao),
-    "-vf",
-      "scale=1920:1080:force_original_aspect_ratio=decrease," +
-      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" +
-      (legenda ? `,subtitles=${legenda}` : ""),
+    ...(audio
+      ? ["-filter_complex", `[0:v]${filtroDeVideo}[v];${audio}`, "-map", "[v]", "-map", "[aout]"]
+      : ["-vf", filtroDeVideo, "-af", NIVELAR_VOZ]),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-    "-af", NIVELAR_VOZ,
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,

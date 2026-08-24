@@ -71,6 +71,9 @@ export async function PATCH(
     // do Bruno em 24/08: canal com estilo diferente a cada vídeo não constrói
     // reconhecimento.
     "videoStyle",
+    // A trilha dos cortes: o espelho do onUploadCompleted, porque em
+    // desenvolvimento o storage nao alcanca o localhost.
+    "videoMusicUrl", "videoMusicName",
   ] as const;
   type AllowedField = (typeof ALLOWED_FIELDS)[number];
 

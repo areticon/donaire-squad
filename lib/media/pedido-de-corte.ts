@@ -72,6 +72,8 @@ export type VideoParaCortar = {
   palavras: Word[];
   /** O estilo de edição escolhido no projeto. Sem escolha, cai no acelerado. */
   estilo: string | null;
+  /** A trilha que o cliente subiu no projeto. Nula, os cortes saem sem música. */
+  musicaUrl?: string | null;
 };
 
 export type ResumoDoPedido = {
@@ -228,6 +230,11 @@ export async function montarPedidoDeCorte(
 
   const corpo = JSON.stringify({
     videoJobId: video.id,
+    // A trilha do projeto. O worker baixa uma vez e mixa em todos os cortes,
+    // com o volume e o ducking do estilo. O video COMPLETO fica sem trilha de
+    // proposito: video longo de fala no YouTube nao pede musica continua, e
+    // por a mesma faixa em 25 minutos cansaria antes do primeiro terco.
+    musicaUrl: video.musicaUrl ?? null,
     sourceUrl: video.blobUrl,
     duracaoSec: video.durationSec,
     // O estilo inteiro, e não só o nome: o worker precisa do ritmo para o zoom

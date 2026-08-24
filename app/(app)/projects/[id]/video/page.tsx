@@ -16,7 +16,7 @@ export default async function VideoPage({
   const { id } = await params;
   const project = await prisma.project.findFirst({
     where: { id, userId },
-    select: { id: true, name: true, videoStyle: true },
+    select: { id: true, name: true, videoStyle: true, videoMusicName: true },
   });
   if (!project) notFound();
 
@@ -60,7 +60,11 @@ export default async function VideoPage({
         {/* A margem vem daqui e não do componente: o painel de vídeo logo
             abaixo já tem a dele, e duas seções com padding próprio empilhadas
             dobram o espaço entre elas. */}
-        <EstiloDoProjeto projectId={project.id} inicial={project.videoStyle} />
+        <EstiloDoProjeto
+          projectId={project.id}
+          inicial={project.videoStyle}
+          musicaInicial={project.videoMusicName}
+        />
       </div>
       <VideoPanel
         projectId={project.id}

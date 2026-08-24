@@ -158,6 +158,16 @@ async function main() {
     const matte = { arquivo: matteArquivo, recorte: { x: 0, y: 0, w: 320, h: 240 }, centro: 0.42 };
     const emojis = [{ arquivo: "u1f525.png", segundo: 1.0 }];
     const ritmo = { intervaloDeMovimento: 1.6, forcaDoZoom: 0.08 };
+    const som = { volumeDaTrilha: 0.25, abaixarSobAVoz: 0.5 };
+
+    // A trilha de brinquedo: um acorde CURTO de proposito (2s para um corte de
+    // 5s), porque o caso que quebra e a musica mais curta que o corte, que
+    // exige o stream_loop.
+    const musica = "trilha.mp3";
+    ffmpeg([
+      "-f", "lavfi", "-i", "sine=frequency=220:duration=2",
+      "-c:a", "libmp3lame", "-q:a", "5", join(pasta, musica),
+    ]);
 
     // 1. O trecho limpo, com emendas, que e o que alimenta os cortes.
     //
@@ -174,24 +184,41 @@ async function main() {
     if (corte.removidos !== 1) throw new Error(`emendas ${corte.removidos}, esperado 1`);
 
     // 2. O corte vertical com TODAS as pecas ligadas ao mesmo tempo.
-    console.log("2. cortarVertical com fundo, mascara, legenda, emoji, zoom e gama");
+    console.log("2. cortarVertical com fundo, mascara, legenda, emoji, zoom, gama e TRILHA");
     const vertical = join(pasta, "v.mp4");
     await cortarVertical(limpo, vertical, 0, 5, enquadramento, matte, "fundo.jpg",
-      legendaV, ritmo, 1.4, emojis);
+      legendaV, ritmo, 1.4, emojis, musica, som);
     await conferir("corte vertical", vertical, { duracaoEsperada: 5 });
 
-    // 3. O mesmo sem fundo, que e a queda quando o gerador de imagem falha.
-    console.log("3. cortarVertical sem fundo, que e a rede de seguranca");
+    // 3. O caminho REAL de producao: sem fundo, corte central com push-in,
+    //    fade de video e trilha em loop.
+    console.log("3. cortarVertical do formato do mercado, com push-in e trilha");
     const semFundo = join(pasta, "v2.mp4");
-    await cortarVertical(limpo, semFundo, 0, 5, enquadramento, matte, null,
-      legendaV, ritmo, null, []);
-    await conferir("corte sem fundo", semFundo, { duracaoEsperada: 5 });
+    await cortarVertical(
+      limpo, semFundo, 0, 5,
+      { ...enquadramento, vertical: "corte-central" },
+      null, null, legendaV, ritmo, null, [], musica, som
+    );
+    await conferir("corte central com trilha", semFundo, { duracaoEsperada: 5 });
 
-    // 4. O horizontal.
-    console.log("4. cortarHorizontal com legenda");
+    // 3b. E sem trilha nenhuma, que e o projeto que nao subiu musica.
+    console.log("3b. cortarVertical sem trilha");
+    const semTrilha = join(pasta, "v3.mp4");
+    await cortarVertical(
+      limpo, semTrilha, 0, 5,
+      { ...enquadramento, vertical: "corte-central" },
+      null, null, legendaV, ritmo, null, [], null, null
+    );
+    await conferir("corte sem trilha", semTrilha, { duracaoEsperada: 5 });
+
+    // 4. O horizontal, com e sem trilha.
+    console.log("4. cortarHorizontal com legenda e trilha");
     const horizontal = join(pasta, "h.mp4");
-    await cortarHorizontal(limpo, horizontal, 0, 5, legendaH);
+    await cortarHorizontal(limpo, horizontal, 0, 5, legendaH, musica, som);
     await conferir("corte horizontal", horizontal, { duracaoEsperada: 5 });
+    const horizontalSem = join(pasta, "h2.mp4");
+    await cortarHorizontal(limpo, horizontalSem, 0, 5, legendaH, null, null);
+    await conferir("horizontal sem trilha", horizontalSem, { duracaoEsperada: 5 });
 
     // 5. A capa.
     console.log("5. extrairCapa");
