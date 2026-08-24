@@ -108,7 +108,17 @@ export async function POST(
       })
     );
 
-    const fundo = await gerarEGuardarFundo(id, video, brilho);
+    // O FUNDO GERADO ESTA DESLIGADO, por decisao do Bruno em 24/08 a noite,
+    // depois de tres iteracoes de arte reprovadas: "sera que nao esta usando
+    // as premissas erradas?". Estava. O formato que o mercado inteiro usa em
+    // corte de fala (OpusClip, CapCut, todo canal grande) e o video REAL da
+    // pessoa, com o fundo real dela, cortado em 9:16 no rosto, com legenda
+    // grande. Ninguem recorta a pessoa e cola numa arte gerada. Sem fundo
+    // gerado tambem morrem juntos: o halo, a mascara vazando, o gosto da arte
+    // e uma geracao de imagem por video.
+    const fundo = null as { url: string; brilhoAlvo: number } | null;
+    void gerarEGuardarFundo;
+    void brilho;
 
     console.log(
       `[${id}] enquadramento pronto. Brilho do fundo original: ` +

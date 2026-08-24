@@ -436,15 +436,30 @@ async function processar(trabalho) {
 
         // A partir daqui tudo trabalha sobre o trecho JÁ LIMPO, e os tempos
         // passam a ser relativos a ele, começando do zero.
-        const matte = enq?.pessoa
+        //
+        // A MASCARA SO EXISTE QUANDO HA FUNDO GERADO. Sem fundo (que e o
+        // padrao desde 24/08 a noite, por decisao do Bruno), o corte e o
+        // formato do mercado: o video real, cortado em 9:16 na regiao da
+        // pessoa, com o fundo real dela. Isso tambem poupa a segmentacao
+        // inteira, uns 13 segundos por corte.
+        const matte = enq?.pessoa && fundoLocal
           ? await gerarMatte(limpo, pasta, t.indice, 0, duracaoLimpa, enq.pessoa)
           : null;
-        if (enq?.pessoa && !matte) {
+        if (enq?.pessoa && fundoLocal && !matte) {
           console.warn(
             `[${trabalho.videoJobId}] trecho ${t.indice} sem recorte, ` +
               "sai na composição antiga"
           );
         }
+
+        // Sem mascara, o enquadramento vertical vira SEMPRE o corte central na
+        // pessoa: e o unico dos tratamentos antigos que mostra o fundo real
+        // sem slide no quadro, que e o que o Bruno pediu para os cortes.
+        const enqDoVertical = matte
+          ? enq
+          : enq?.pessoa
+            ? { ...enq, vertical: "corte-central" }
+            : enq;
 
         // A LEGENDA palavra a palavra, escrita pelo app com o estilo do projeto
         // e com os tempos já convertidos para este corte.
@@ -516,7 +531,7 @@ async function processar(trabalho) {
         // nao serve depois de o ffmpeg recusar.
         const comporVertical = (comEmoji) =>
           cortarVertical(
-            limpo, vertical, 0, duracaoLimpa, enq, matte,
+            limpo, vertical, 0, duracaoLimpa, enqDoVertical, matte,
             matte && fundoLocal ? basename(fundoLocal) : null,
             legendaV,
             trabalho.estilo?.ritmo ?? null,

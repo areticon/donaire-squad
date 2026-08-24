@@ -123,18 +123,14 @@ export async function montarPedidoDeCorte(
   // retém menos mas existe. O que NÃO pode é seguir calado, que foi o que
   // aconteceu por um tempo: a chamada estourava o teto de tokens em torno de
   // metade das vezes e o vídeo saía sem gancho, sem nada dizendo por quê.
-  let ganchos: ReturnType<typeof ganchosNoTempoEditado> = [];
-  try {
-    ganchos = ganchosNoTempoEditado(
-      await escolherGanchos(trechos, { projectId: video.projectId }),
-      remocoes
-    );
-  } catch (e) {
-    console.error(
-      `[${video.id}] abertura falhou, vídeo sai sem gancho: ` +
-        (e instanceof Error ? e.message : "motivo desconhecido")
-    );
-  }
+  // A ABERTURA DE GANCHOS ESTA DESLIGADA, por decisao do Bruno em 24/08 a
+  // noite: "olha o inicio do video, comeca comigo falando uma palavra sem
+  // contexto, solta, depois trazendo uma frase que nao me ajuda em nada". O
+  // corte a frio so funciona com frase que se sustenta sozinha, e a selecao
+  // atual nao garante isso. O video completo passa a comecar do comeco, limpo.
+  // O codigo de escolher ganchos fica, para religar quando a selecao merecer.
+  const ganchos: ReturnType<typeof ganchosNoTempoEditado> = [];
+  void escolherGanchos;
 
   // Cada trecho leva TRÊS coisas que dependem do tempo, e as três saem da mesma
   // lista de intervalos: o que o worker vai emendar, a legenda vertical e a
