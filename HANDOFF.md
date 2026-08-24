@@ -5566,3 +5566,32 @@ e o teste do fluxo inteiro com uma gravacao em tela cheia, que e o que muda o
 patamar de nitidez.
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026 (parte 59): aprovado, e o tira-estalo fecha a madrugada
+
+O Bruno assistiu e aprovou: "ficou bom, amanha se eu conseguir gravar o video eu
+testo de novo". Primeira aprovacao do dia, no formato pragmatico.
+
+O que ele apontou como resto: "ainda tem alguns cortes secos, da aquele ruido,
+da para perceber, mas quando colocar a musica os efeitos passa".
+
+O ruido tem conserto na causa, sem esperar a musica: e o clique classico de
+emenda de audio, quando um segmento termina num ponto qualquer da onda e o
+seguinte comeca em outro. Entrou o TIRA-ESTALO: 15 ms de fade em cada ponta de
+segmento, curto demais para o ouvido perceber como fade, levando a onda a zero
+antes de cada emenda. Vale para o completo e para os cortes. E filtro de AUDIO
+sobre a entrada crua, fora da zona de reinicializacao que derrubou os filtros
+de video.
+
+Deployado na madrugada; o teste dele com a gravacao nova ja pega.
+
+### A fila da proxima sessao, na ordem
+
+1. O teste do Bruno com a gravacao 4K em tela cheia (a ampliacao cai de 2,8x
+   para perto de 1x, e e o que muda o patamar de tudo)
+2. A musica que o usuario traz (engenharia decidida em 23/08: upload de arquivo,
+   mixagem com a voz abaixando a trilha conforme o estilo)
+3. A regua da selecao de trechos, ou o A/B do prompt no Codex que ele ofereceu
+4. O OBS da webcam 4K, quando ele for gravar
+
+*Atualizado em 25/08/2026 por Claude Code.*
