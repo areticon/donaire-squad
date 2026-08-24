@@ -35,6 +35,76 @@ export type Limpeza = {
   motivo: string;
 };
 
+
+/** Tira acento e pontuação, para comparar palavra com palavra. */
+function chaveDaPalavra(t: string): string {
+  return t
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+}
+
+/**
+ * As repetições imediatas de palavra, detectadas por CÓDIGO e não pelo agente.
+ *
+ * ## Por que isto existe além do agente
+ *
+ * A regra 3 do prompt já pede a remoção de repetição imediata, e o agente não
+ * dá conta: medido na gravação real em 24/08, ele deixou passar **93 palavras
+ * repetidas e 12 expressões repetidas, somando 40 segundos de cópias**. O
+ * "Eu, eu, eu sempre tive" e o "faz parte da, de de de mercado" que o Bruno
+ * ouviu nos cortes eram isso.
+ *
+ * E repetição imediata não é julgamento, é aritmética sobre a transcrição:
+ * mesma palavra, colada no tempo. A regra da casa manda tarefa mecânica para
+ * código e julgamento para o modelo, e esta sempre foi mecânica.
+ *
+ * ## O que remove, e as duas escolhas que importam
+ *
+ * "eu, eu, eu" remove as duas primeiras e FICA A ÚLTIMA: é a última que emenda
+ * na fala que continua, então a prosódia sobrevive. "que eu, que eu" (expressão
+ * de duas palavras repetida) remove a primeira dupla.
+ *
+ * O limite de tempo entre as cópias existe porque repetição com pausa grande
+ * no meio costuma ser retomada legítima ("sim. Sim, mas veja"), e não gagueira.
+ */
+export function detectarRepeticoes(palavras: Word[]): Remocao[] {
+  const remocoes: Remocao[] = [];
+  for (let i = 1; i < palavras.length; i++) {
+    const k = chaveDaPalavra(palavras[i].word);
+    if (!k) continue;
+
+    // A B A B: a expressão de duas palavras dita duas vezes seguidas.
+    if (
+      i >= 3 &&
+      chaveDaPalavra(palavras[i - 3].word) === chaveDaPalavra(palavras[i - 1].word) &&
+      chaveDaPalavra(palavras[i - 2].word) === k &&
+      palavras[i - 1].start - palavras[i - 3].end < 1.5
+    ) {
+      remocoes.push({
+        de: palavras[i - 3].start,
+        ate: palavras[i - 2].end,
+        motivo: `expressão repetida: "${palavras[i - 3].word} ${palavras[i - 2].word}"`,
+      });
+      continue;
+    }
+
+    // A A: a mesma palavra colada nela mesma.
+    if (
+      chaveDaPalavra(palavras[i - 1].word) === k &&
+      palavras[i].start - palavras[i - 1].end < 1.0
+    ) {
+      remocoes.push({
+        de: palavras[i - 1].start,
+        ate: palavras[i - 1].end,
+        motivo: `palavra repetida: "${palavras[i - 1].word}"`,
+      });
+    }
+  }
+  return remocoes;
+}
+
 const SISTEMA = `Você limpa a fala de uma gravação, marcando o que sai.
 
 Recebe as palavras numeradas, com o tempo de cada uma. Devolva os intervalos que devem ser REMOVIDOS para o vídeo ficar melhor de assistir, sem mudar o que a pessoa disse.

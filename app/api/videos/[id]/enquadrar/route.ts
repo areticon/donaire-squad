@@ -60,7 +60,10 @@ export async function POST(
       id: true,
       projectId: true,
       clips: true,
-      project: { select: { niche: true } },
+      // A paleta e o estilo alimentam a ARTE do fundo: as cores da marca e a
+      // direcao de arte do estilo de edicao. O nicho saiu do prompt quando o
+      // fundo deixou de ser um "ambiente" e virou design.
+      project: { select: { colorPalette: true, videoStyle: true } },
     },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -145,21 +148,20 @@ export async function POST(
  */
 async function gerarEGuardarFundo(
   id: string,
-  video: { clips: unknown; projectId: string; project: { niche: string | null } | null },
+  video: {
+    clips: unknown;
+    projectId: string;
+    project: { colorPalette: string | null; videoStyle: string | null } | null;
+  },
   brilho: number | null
 ): Promise<{ url: string; brilhoAlvo: number } | null> {
   try {
-    const clips = (video.clips as { titulo?: string }[] | null) ?? [];
-    const assunto = clips
-      .map((t) => t.titulo)
-      .filter(Boolean)
-      .slice(0, 3)
-      .join("; ");
-
     const fundo = await gerarFundoDoCorte(
-      video.project?.niche ?? null,
-      assunto,
-      brilho,
+      {
+        paleta: video.project?.colorPalette,
+        estilo: video.project?.videoStyle,
+        brilhoDoOriginal: brilho,
+      },
       { projectId: video.projectId }
     );
     if (!fundo) return null;

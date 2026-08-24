@@ -10,6 +10,7 @@ import {
 } from "@/lib/media/edicao";
 import {
   detectarHesitacao,
+  detectarRepeticoes,
   limpezaParaRemocoes,
   unirRemocoes,
 } from "@/lib/media/limpeza";
@@ -109,7 +110,13 @@ export async function montarPedidoDeCorte(
     );
   }
 
-  const remocoes = unirRemocoes(pausas, limpezaParaRemocoes(fala, palavras));
+  // As repetições imediatas entram por CÓDIGO, além do agente. Medido em
+  // 24/08: o agente deixou passar 93 palavras e 12 expressões repetidas, 40
+  // segundos de cópias, e era o "eu, eu, eu" que o Bruno ouviu nos cortes.
+  const remocoes = unirRemocoes(
+    pausas,
+    unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
+  );
 
   // Os ganchos da abertura, já convertidos para o tempo DEPOIS da edição.
   //

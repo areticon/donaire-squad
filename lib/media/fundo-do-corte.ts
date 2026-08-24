@@ -95,11 +95,7 @@ export type FundoDoCorte = {
   descricao: string;
   /**
    * O brilho que o fundo DEVERIA ter, de 0 a 255, medido na gravação original.
-   *
-   * Vai junto porque o modelo chega perto e não acerta: pedindo claro ele
-   * devolveu 194 e 207 em duas tentativas, contra um alvo de 241. Quem compõe
-   * corrige a diferença que sobrou, que é aritmética e não deve depender de o
-   * modelo ter um bom dia.
+   * Quem compõe corrige por gama a diferença que o modelo deixou.
    */
   brilhoAlvo: number;
 };
@@ -108,55 +104,102 @@ export type FundoDoCorte = {
 const CLARO = 150;
 
 /**
- * Gera um fundo alinhado ao nicho de quem gravou e ao brilho da gravação.
+ * A direção de arte de cada estilo de edição.
  *
- * Devolve `null` quando não dá. Mesma regra do resto do fluxo de vídeo: sem
- * fundo o corte sai com a composição antiga, que é pior mas existe. Entregar
- * corte mediano é melhor que não entregar corte porque o gerador de imagem teve
- * um dia ruim.
+ * O estilo já decide legenda, ritmo e som; passa a decidir também a CARA do
+ * fundo. Um canal acelerado e um canal sério não deveriam ter a mesma arte, e
+ * amarrar isso ao estilo dá identidade sem pedir mais uma escolha ao cliente.
+ */
+const DIRECAO_POR_ESTILO: Record<string, string> = {
+  dramatico:
+    "Luz cinematográfica e abstrata: véus e feixes de luz suaves atravessando em diagonal, " +
+    "névoa luminosa com profundidade real entre camadas, atmosfera de palco premium.",
+  acelerado:
+    "Grandes formas geométricas minimalistas e ousadas (círculos, arcos, faixas curvas) nas cores " +
+    "da paleta, algumas chapadas e outras com gradiente sutil, sobrepostas com transparências, " +
+    "composição assimétrica com energia.",
+  serio:
+    "Gradiente de estúdio minimalista e quase monocromático nas cores da paleta, com um brilho " +
+    "suave vindo de cima e cantos levemente mais densos. Sobriedade absoluta, nada chamativo.",
+  animado:
+    "Formas orgânicas arredondadas e leves nas cores da paleta, fluindo pelas bordas com " +
+    "transparências e um grão fino, alegres sem serem infantis.",
+};
+
+/**
+ * Gera a ARTE de fundo dos cortes verticais.
+ *
+ * ## Por que arte, e não fotografia de ambiente
+ *
+ * A primeira versão pedia "um ambiente real de trabalho" e o modelo entregava
+ * exatamente isso: uma sala. Sala fotorrealista atrás de pessoa recortada é
+ * fundo de reunião do Teams, e foi assim que o Bruno descreveu em 24/08. A
+ * visão dele, que é a certa: "a ideia do fundo com nano banana é ter uma arte
+ * incrível, irresistível, profissional, algo que mostre que é profissional, um
+ * design de verdade".
+ *
+ * Então o prompt pede uma peça de DESIGN: abstrata, nas cores da MARCA do
+ * projeto, com a direção de arte vindo do estilo de edição. Nenhum móvel,
+ * nenhum lugar, nada que dispute realidade com a pessoa.
+ *
+ * ## As regras que continuam valendo, e por quê
+ *
+ * O brilho segue casado ao da gravação original (a sacada do halo, medida em
+ * 24/08: a borda da máscara mistura a pessoa com a parede que estava atrás
+ * dela, e o contraste entre essa parede e o fundo novo é o que faz o halo
+ * aparecer). O centro fica calmo porque é onde a pessoa e a legenda moram. E o
+ * resultado é conferido pelo worker, que corrige por gama o que o modelo errar.
  */
 export async function gerarFundoDoCorte(
-  nicho: string | null | undefined,
-  assunto: string,
-  /**
-   * Brilho médio do fundo ATRÁS da pessoa na gravação, de 0 a 255. Sem medição,
-   * cai em 200: o caso comum é gravar em casa ou no escritório com luz, e errar
-   * para o lado claro custa menos, porque halo claro sobre fundo claro some e
-   * halo claro sobre fundo escuro grita.
-   */
-  brilhoDoOriginal: number | null | undefined,
+  contexto: {
+    /** As cores da marca do projeto, como "#10B981,#0D1F1A,#F0FDF4". */
+    paleta?: string | null;
+    /** O estilo de edição, que dá a direção de arte. */
+    estilo?: string | null;
+    /** Brilho médio do fundo atrás da pessoa na gravação, de 0 a 255. */
+    brilhoDoOriginal?: number | null;
+  },
   usageCtx?: { projectId?: string }
 ): Promise<FundoDoCorte | null> {
-  const area = (nicho ?? "").trim() || "negócios e tecnologia";
-  const alvo = Math.max(0, Math.min(255, Math.round(brilhoDoOriginal ?? 200)));
+  const alvo = Math.max(0, Math.min(255, Math.round(contexto.brilhoDoOriginal ?? 200)));
   const claro = alvo >= CLARO;
 
-  const prompt = `Fotografia de um ambiente vazio, para servir de fundo de um vídeo vertical.
+  const cores = (contexto.paleta ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter((c) => /^#[0-9a-f]{3,8}$/i.test(c));
+  const paleta = cores.length
+    ? `as cores da marca: ${cores.join(", ")}`
+    : "uma paleta sóbria de dois tons complementares, escolhida por você";
 
-A CENA
-- Um ambiente real de trabalho, coerente com ${area}, sugerido e nunca literal.
-- O assunto do vídeo é: ${assunto}
-- Fotografada de dentro do ambiente, à altura dos olhos, com a parede de fundo a três ou quatro metros da câmera.
-- Lente de 35mm em f/4, foco na parede do fundo: a parede e o que está encostado nela ficam NÍTIDOS, com textura visível e detalhe fino. Só o que está muito à frente ou muito atrás desse plano é que desfoca de leve.
-- ${
+  const direcao =
+    DIRECAO_POR_ESTILO[(contexto.estilo ?? "").trim().toLowerCase()] ??
+    DIRECAO_POR_ESTILO.acelerado;
+
+  const prompt = `Arte de fundo para vídeo vertical de rede social, criada por um designer gráfico sênior.
+
+É um DESIGN ABSTRATO, não é uma fotografia e não é um lugar: nenhum móvel, nenhuma sala, nenhum objeto reconhecível.
+
+A COMPOSIÇÃO
+- ${direcao}
+- Usa ${paleta}, ${
     claro
-      ? "Ambiente CLARO e arejado, paredes claras, luz natural difusa entrando de uma janela lateral fora do quadro. A imagem inteira é luminosa, em tons claros e neutros, sem sombra pesada em nenhum canto."
-      : "Ambiente ESCURO e discreto, paredes escuras, uma única luz lateral suave. Tons frios e dessaturados, sem preto chapado e sem sombra sem informação."
+      ? "dominada pelo tom mais CLARO da paleta: a imagem inteira é luminosa e arejada."
+      : "dominada pelo tom mais ESCURO da paleta: a imagem é densa e elegante, sem preto chapado."
   }
-- A metade de baixo do quadro é uma superfície contínua, como um tampo ou um piso visto de perto, sem nenhum objeto em cima dela.
+- Textura de grão fino de filme sobre tudo, para acabamento premium.
+- O terço central do quadro mais limpo e calmo que as bordas: é onde a pessoa e a legenda vão morar.
 
-O QUE NÃO PODE APARECER
-- Nenhuma pessoa, rosto, mão ou silhueta.
-- Nenhum texto, letra, número, logotipo ou marca.
-- Nenhuma linha horizontal dura atravessando o quadro, nenhuma faixa de cor sólida, nenhuma divisão em painéis.
-- Nenhuma moldura, borda ou vinheta.
+QUALIDADE
+Acabamento de identidade visual de agência, como um slide de marca de tecnologia premium. Nítido, intencional, sem ruído de compressão, sem banding.
 
-ENQUADRAMENTO
-Vertical 9 por 16, imagem cheia até as bordas, sem barras e sem margens.`;
+PROIBIDO: pessoa, rosto, texto, letra, número, logotipo, móvel, sala, janela, objeto reconhecível, paisagem, moldura, divisão em painéis.
+
+Vertical 9 por 16, imagem cheia até as bordas.`;
 
   try {
-    // `hd` aqui pede 2K ao modelo, que devolve 1536x2752. É o menor tamanho que
-    // dispensa ampliação para chegar em 1080x1920.
+    // `hd` pede 2K ao modelo (1536x2752), o menor tamanho que dispensa
+    // ampliação para chegar em 1080x1920.
     const imagem = await generateImage(prompt, "9:16", "hd", {
       operation: "video_fundo_corte",
       ...usageCtx,
@@ -165,8 +208,8 @@ Vertical 9 por 16, imagem cheia até as bordas, sem barras e sem margens.`;
     return {
       imagem,
       descricao:
-        `fundo ${claro ? "claro" : "escuro"} de ${area} para: ${assunto} ` +
-        `(brilho alvo ${alvo})`,
+        `arte ${contexto.estilo ?? "acelerado"} ${claro ? "clara" : "escura"} ` +
+        `com ${cores.length ? cores.join(" ") : "paleta livre"} (brilho alvo ${alvo})`,
       brilhoAlvo: alvo,
     };
   } catch (e) {
