@@ -5514,3 +5514,55 @@ A regra que fica para qualquer trabalho futuro neste worker:
   podem voltar nele.
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026, madrugada (parte 58): o agente sem caixa, e a defesa em camadas
+
+A rodada com as tres correcoes voltou mostrando o SLIDE nos cortes. O
+enquadramento guardado no banco contou o porque: o agente de visao DESCREVEU a
+webcam no motivo dos quatro trechos ("webcam pequena do apresentador no canto
+inferior direito") e devolveu pessoa null nos quatro. Os mesmos quadros deram
+caixa nas rodadas anteriores. Nao determinismo puro, derrubando a composicao
+que dependia da caixa.
+
+### A defesa em camadas que ficou
+
+1. **Prompt**: no caso misto, a caixa da pessoa e OBRIGATORIA sempre que houver
+   webcam visivel, por menor que seja. (Na rodada seguinte o agente devolveu a
+   caixa exata: x 0,775 contra 0,775 real.)
+
+2. **Deteccao deterministica**: se o agente nao devolver, o `recorte.py` ganha o
+   modo "caixa", que acha a pessoa pela regiao que SE MEXE entre quadros
+   distantes, sem modelo. Provado no video real: erro de 0,2% na posicao. Os
+   minimos de area viraram parametro, porque o piso de 15% calibrado para a
+   caixa apertada rejeitava uma webcam legitima de 6% do quadro inteiro.
+
+3. A caixa achada e a regiao do rosto (o que se mexe), e um 9:16 so dela seria
+   8x de ampliacao. Ela cresce para o tronco ANCORADA no fundo, porque crescer
+   para baixo incluiria a barra de botoes.
+
+So se as duas primeiras falharem o corte cai no tratamento antigo.
+
+### A verificacao que fecha a noite
+
+| Artefato | Resultado |
+|---|---|
+| cortes | 4 de 4, PESSOA no quadro, fundo real, sem barra de botoes |
+| legenda | 93% a 99% do tempo, linha mais larga 74% |
+| completo | 1494s (151,7s limpos, incluindo as 43 muletas arrastadas) |
+| punch-in | nos cortes, a cada emenda |
+| aviso de nitidez | no diagnostico: ampliacao de 2,8x, grave em tela cheia |
+| erros | nenhum |
+
+### O estado com que o dia termina
+
+O produto e o que o Bruno definiu de manha: edicao simples e honesta. Video
+real, corte na pessoa, legenda no estilo escolhido, fala limpa por tres camadas
+(pausas, agente, codigo), transicao sutil nas emendas, som nivelado, e a
+plataforma dizendo ao cliente quando a materia-prima limita o resultado.
+
+Aberto para as proximas sessoes: a musica que o usuario traz, a selecao de
+trechos (regua mais dura ou A/B no Codex, oferta dele), o OBS da gravacao 4K,
+e o teste do fluxo inteiro com uma gravacao em tela cheia, que e o que muda o
+patamar de nitidez.
+
+*Atualizado em 25/08/2026 por Claude Code.*
