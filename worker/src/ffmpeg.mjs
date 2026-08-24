@@ -13,6 +13,23 @@ import { writeFile } from "node:fs/promises";
  * por fala, já arredondada para fronteira de frase.
  */
 
+/**
+ * A normalizacao de volume, que e a "sacada de som" com numero.
+ *
+ * Medido no corte de producao de 24/08: ele saia a **-27,2 LUFS**, e o padrao
+ * que Instagram, TikTok e YouTube usam para nivelar o feed e **-14 LUFS**. Ou
+ * seja, o video da Demandou tocava treze decibeis mais baixo que tudo o que
+ * vem antes e depois dele na rolagem. Quem assiste sem fone nao ouve, e sobe.
+ *
+ * Isso nao e efeito sonoro nem trilha, e nao depende de licenca de ninguem: e
+ * corrigir um defeito que estava saindo em todo corte.
+ *
+ * `TP=-1.5` deixa margem de pico: as redes recomprimem o audio, e som que
+ * encosta em zero volta distorcido do outro lado. `LRA=11` e o padrao de
+ * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
+ */
+const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
+
 function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { cwd });
@@ -914,7 +931,16 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
     const brilho = ajusteDeBrilho ? `,eq=gamma=${ajusteDeBrilho.toFixed(3)}` : "";
 
     return [
-      `movie=${basename(fundo)},scale=1080:1920,setsar=1${brilho},loop=loop=-1:size=1:start=0,` +
+      // `out_range=tv` fixa a faixa de cor do fundo.
+      //
+      // JPEG pode vir em faixa CHEIA (0 a 255) e video de rede social e faixa
+      // de TV (16 a 235). Sem converter, o corte sai marcado como faixa cheia,
+      // e aparelho que assume a faixa de TV mostra a imagem com o contraste
+      // errado, lavada ou fechada demais. Pego pela prova de fumaca em 24/08,
+      // com um fundo de faixa cheia: o arquivo saiu `yuvj420p` em vez de
+      // `yuv420p`, valido e diferente do que o resto do fluxo produz.
+      `movie=${basename(fundo)},scale=1080:1920:out_range=tv,setsar=1${brilho},` +
+        `loop=loop=-1:size=1:start=0,` +
         // Zoom lento: fundo parado atrás de pessoa em movimento parece
         // fotografia, e custa zero perto de gerar vídeo. A força vem do estilo.
         `zoompan=z='min(${(1 + zoom).toFixed(3)},1+${zoom.toFixed(3)}*on/${Math.max(1, Math.round(duracao * 30))})':` +
