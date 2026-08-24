@@ -190,9 +190,9 @@ ${blocos}`,
   // os tempos.
   return sanear(trechos, duracaoSegundos)
     .map((t) => ajustarAbertura(t, palavras))
-    .map((t) => ({
+    .map(({ alinhado, ...t }) => ({
       ...t,
-      transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras),
+      transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras, alinhado),
     }));
 }
 
@@ -207,7 +207,7 @@ ${blocos}`,
 function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: string }>(
   t: T,
   palavras?: Word[]
-): T {
+): T & { alinhado?: boolean } {
   if (!palavras?.length) return t;
 
   const primeira = palavras.findIndex((w) => w.end > t.inicio);
@@ -250,14 +250,14 @@ function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: str
     );
   }
 
-  if (alvo === encaixado) return t;
-
   const segundos = palavras[alvo].start;
-  console.log(
-    `[selecao] trecho alinhado pela abertura do agente: ` +
-      `${t.inicio.toFixed(0)}s vira ${segundos.toFixed(0)}s`
-  );
-  return { ...t, inicio: segundos };
+  if (alvo !== encaixado) {
+    console.log(
+      `[selecao] trecho alinhado pela abertura do agente: ` +
+        `${t.inicio.toFixed(0)}s vira ${segundos.toFixed(0)}s`
+    );
+  }
+  return { ...t, inicio: segundos, alinhado: true };
 }
 
 /**
@@ -357,7 +357,18 @@ export function recortarFala(
   inicio: number,
   fim: number,
   paragrafos: Paragrafo[],
-  palavras?: Word[]
+  palavras?: Word[],
+  /**
+   * O começo já foi alinhado pela abertura que o agente escolheu, então não
+   * pode ser re-encaixado.
+   *
+   * Sem isto o texto e o vídeo divergem, e foi o que aconteceu em 23/08: o
+   * corte começava certo, na frase que o agente apontou, e a transcrição que ia
+   * para o redator começava DEPOIS, porque `encaixarNaFrase` empurrava para a
+   * próxima fronteira de frase. O redator escrevia sobre uma fala que não é a
+   * que abre o vídeo.
+   */
+  inicioJaAlinhado = false
 ): string {
   if (palavras?.length) {
     const primeira = palavras.findIndex((w) => w.end > inicio);
@@ -369,7 +380,8 @@ export function recortarFala(
       }
     }
     if (primeira >= 0 && ultima >= primeira) {
-      const [a, b] = encaixarNaFrase(palavras, primeira, ultima);
+      const [encaixe, b] = encaixarNaFrase(palavras, primeira, ultima);
+      const a = inicioJaAlinhado ? primeira : encaixe;
       return palavras
         .slice(a, b + 1)
         .map((w) => w.word)
