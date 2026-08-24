@@ -50,3 +50,4 @@ next-env.d.ts
 
 # Artefatos de teste local (audio gerado, scripts descartaveis)
 scripts/tmp/
+__pycache__/

@@ -49,6 +49,35 @@ LIMIAR = 0.60
 # 0,45 é o ponto em que o piscar some sem a silhueta ficar borrada no movimento.
 PESO_DO_NOVO = 0.45
 
+# Quanto da base da máscara vira transparência gradual, em fração da altura.
+#
+# ## Por que isto existe
+#
+# O Bruno olhou o corte de 24/08 e havia uma faixa clara atravessando a base da
+# pessoa. Investigado com o modelo real rodando sobre a gravação real: o maior
+# componente conectado NÃO é a pessoa, é a pessoa mais a mesa na frente dela e
+# mais um objeto ao lado, porque o ombro encosta nos dois e o segmentador liga
+# tudo. Medido em 8 quadros: num deles a base da máscara mede 408 px de largura
+# contra 209 do tronco, ou seja 1,95 vezes, e ela atravessa a caixa inteira.
+#
+# Duas coisas foram tentadas e MEDIDAS antes desta:
+#
+#   zerar tudo abaixo da linha ofensora  -> levava 44% da máscara junto,
+#                                           inclusive o peito da pessoa
+#   erodir para quebrar a ponte          -> não quebra, a ligação é larga e não
+#                                           fina; com raio 13 a pessoa some antes
+#
+# O que resta é atacar onde o defeito aparece. A base da pessoa JÁ é cortada
+# pela borda do quadro na composição, então uma transparência gradual ali não
+# perde conteúdo: ela troca uma linha dura, que o olho lê como recorte mal
+# feito, por uma passagem suave, e leva a faixa junto.
+#
+# Não resolve por completo, e isso está registrado: medido na composição, o
+# excesso de brilho da faixa sobre o fundo cai de +17 para +13 pontos. O que
+# resolveria de vez é trocar o modelo pelo `selfie_multiclass`, que separa
+# cabelo, pele e roupa do resto em vez de devolver um bloco só.
+BASE_ESMAECIDA = 0.14
+
 
 def caixa_da_webcam(video, caixa, inicio, duracao):
     """A sub-região que realmente é vídeo, dentro da caixa que veio do agente.
@@ -150,6 +179,14 @@ def main():
     nucleo = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
     acumulada = None
     quadros = 0
+    centros = []
+
+    # A rampa que esmaece a base, calculada UMA vez: ela não muda de quadro para
+    # quadro e multiplicar por um vetor pronto é de graça.
+    linhas_esmaecidas = max(1, int(ch * BASE_ESMAECIDA))
+    rampa = np.ones(ch, np.float32)
+    rampa[ch - linhas_esmaecidas:] = np.linspace(1, 0, linhas_esmaecidas, dtype=np.float32)
+    rampa = rampa[:, None]
 
     with vision.ImageSegmenter.create_from_options(opcoes) as segmentador:
         while True:
@@ -175,12 +212,31 @@ def main():
                 maior = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
                 binaria = (rotulos == maior).astype(np.uint8)
 
+            # Onde a pessoa está, na horizontal, dentro do recorte.
+            #
+            # A composição centraliza a CAIXA, e a pessoa não fica no meio da
+            # própria janela da webcam. Medido na gravação real: a cabeça fica
+            # em 46% da caixa, e o corte saía com ela 78 px à esquerda do centro
+            # da tela. Alinhando por aqui, o desvio cai para 24 px. Com o fundo
+            # escuro isso passava despercebido; com o fundo claro ficou
+            # evidente.
+            #
+            # Medido só na METADE DE CIMA, que é onde está a cabeça: a metade de
+            # baixo é justamente onde a mesa entra na máscara, e ela puxaria o
+            # centro para o lado errado.
+            colunas = binaria[: ch // 2].sum(axis=0)
+            if colunas.sum() > 0:
+                xs = np.nonzero(colunas > 0)[0]
+                centros.append((xs[0] + xs[-1]) / 2 / max(1, cw))
+
             atual = cv2.GaussianBlur(binaria.astype(np.float32), (0, 0), 2.0)
             acumulada = atual if acumulada is None else (
                 PESO_DO_NOVO * atual + (1 - PESO_DO_NOVO) * acumulada
             )
 
-            escrever.stdin.write((np.clip(acumulada, 0, 1) * 255).astype(np.uint8).tobytes())
+            escrever.stdin.write(
+                (np.clip(acumulada * rampa, 0, 1) * 255).astype(np.uint8).tobytes()
+            )
             quadros += 1
 
     escrever.stdin.close()
@@ -191,10 +247,17 @@ def main():
     # O Node precisa da caixa APERTADA para recortar a imagem colorida no mesmo
     # lugar. Em pixels, e não em fração, para não haver arredondamento diferente
     # dos dois lados.
+    # O centro é a MEDIANA do trecho, e não o valor de cada quadro. Alinhar
+    # quadro a quadro faria a pessoa deslizar de lado toda vez que ela se
+    # mexesse, e isso é pior que ficar deslocada: desalinhamento parado o olho
+    # aceita, movimento sem motivo ele não.
+    centro = float(np.median(centros)) if centros else 0.5
+
     print(json.dumps({
         "ok": quadros > 0,
         "quadros": quadros,
         "recorte": {"x": cx, "y": cy, "w": cw, "h": ch},
+        "centro": round(centro, 4),
     }))
 
 

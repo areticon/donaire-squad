@@ -5,7 +5,8 @@ import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { get, put } from "@vercel/blob";
 import {
   ffprobe,
@@ -25,6 +26,14 @@ import {
   diagnostico,
 } from "./ffmpeg.mjs";
 import { gerarMatte } from "./segmentacao.mjs";
+
+/**
+ * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
+ *
+ * Sao imagens e nao texto porque o libass deste ffmpeg desenha emoji so em
+ * contorno, sem cor, medido em 24/08 com duas fontes diferentes.
+ */
+const PASTA_DE_EMOJI = join(dirname(fileURLToPath(import.meta.url)), "..", "emoji");
 
 /**
  * Worker de vídeo da Demandou.
@@ -445,6 +454,27 @@ async function processar(trabalho) {
         }
         saida.legenda = Boolean(legendaV);
 
+        // OS EMOJI, copiados da paleta do repositorio para a pasta do trabalho.
+        //
+        // Copiados e nao referenciados no lugar de origem porque o filtro
+        // `movie=` resolve caminho relativo ao diretorio de trabalho, e caminho
+        // absoluto do Windows com dois-pontos quebra o parser. Rodar dentro da
+        // pasta e passar so o nome vale para os dois sistemas, e e o mesmo
+        // cuidado que o fundo e a legenda ja tomavam.
+        const emojisDoTrecho = [];
+        for (const e of t.emojis ?? []) {
+          try {
+            const origem = join(PASTA_DE_EMOJI, e.arquivo);
+            await copyFile(origem, join(pasta, e.arquivo));
+            emojisDoTrecho.push({ arquivo: e.arquivo, segundo: e.segundo });
+          } catch (erro) {
+            console.warn(
+              `[${trabalho.videoJobId}] emoji ${e.arquivo} nao copiou: ${erro.message}`
+            );
+          }
+        }
+        saida.efeitos = emojisDoTrecho.length;
+
         const vertical = join(pasta, `v-${t.indice}.mp4`);
         // Sem MASCARA nao ha como recortar a pessoa, e sem recorte o fundo
         // gerado nao serve: sobrepor o retangulo inteiro da webcam em cima de
@@ -455,7 +485,8 @@ async function processar(trabalho) {
           matte && fundoLocal ? basename(fundoLocal) : null,
           legendaV,
           trabalho.estilo?.ritmo ?? null,
-          ajusteDeBrilho
+          ajusteDeBrilho,
+          emojisDoTrecho
         );
         saida.vertical = await subir(
           vertical,
@@ -502,10 +533,26 @@ async function processar(trabalho) {
 
       // O CORPO primeiro: a gravação editada, do começo.
       const corpo = join(pasta, "corpo.mp4");
+      // Os REFORCOS do video completo. Mesma paleta e mesma copia para a
+      // pasta de trabalho que os cortes fazem, pelo mesmo motivo do caminho
+      // relativo no filtro `movie=`.
+      const emojisDoCompleto = [];
+      for (const e of trabalho.emojisDoCompleto ?? []) {
+        try {
+          await copyFile(join(PASTA_DE_EMOJI, e.arquivo), join(pasta, e.arquivo));
+          emojisDoCompleto.push({ arquivo: e.arquivo, segundo: e.segundo });
+        } catch (erro) {
+          console.warn(
+            `[${trabalho.videoJobId}] emoji ${e.arquivo} nao copiou: ${erro.message}`
+          );
+        }
+      }
+
       const como = await prepararCompleto(fonte, corpo, {
         remocoes: trabalho.remocoes,
         duracaoSec: info.duracaoSec,
         legendasArquivo,
+        emojis: emojisDoCompleto,
       });
 
       // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os

@@ -126,7 +126,20 @@ function limparTexto(t: string): string {
 export function montarLegendasDestaque(
   trechos: Trecho[],
   remocoes: Remocao[],
-  opcoes: { segundosNaTela?: number; corDeDestaque?: string; fonte?: string } = {}
+  opcoes: {
+    segundosNaTela?: number;
+    corDeDestaque?: string;
+    fonte?: string;
+    /**
+     * As frases que o agente de efeitos tirou da fala, em tempo do ORIGINAL.
+     *
+     * Entram no vídeo completo pelo pedido do Bruno em 24/08, de que os
+     * comentários dele valem para o completo também. Elas são PONTUAIS, então
+     * não brigam com a decisão dele de 23/08 de o completo não ter legenda
+     * contínua: legenda em tudo polui o vídeo longo e compete com quem fala.
+     */
+    frases?: { segundo: number; valor: string }[];
+  } = {}
 ): string {
   const naTela = opcoes.segundosNaTela ?? 4;
   // ASS usa BGR com &H prefixo, não RGB. O laranja da marca (#f36a22) vira
@@ -152,10 +165,30 @@ export function montarLegendasDestaque(
     // DejaVu Sans Bold, escolhida em silêncio pelo libass. A Liberation Sans
     // tem as mesmas métricas da Arial e está instalada de propósito.
     `Style: Destaque,${opcoes.fonte ?? "Liberation Sans"},64,&H00FFFFFF,${destaque},&HB0000000,-1,3,4,0,2,120,120,90,1`,
+    // A frase que sai da fala é MENOR e sem caixa, porque ela não é o título do
+    // momento, é um reforço do que acabou de ser dito. Alignment 8 põe ela no
+    // topo, longe do destaque de baixo: no vídeo deitado sobra tela em cima, e
+    // duas caixas empilhadas embaixo tapariam o slide.
+    `Style: Frase,${opcoes.fonte ?? "Liberation Sans"},48,${destaque},&H00000000,&H00000000,-1,1,4,0,8,120,120,60,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
+
+  const frases = (opcoes.frases ?? [])
+    .map((f) => {
+      const inicio = mapearTempo(f.segundo, remocoes);
+      const texto = limparTexto(f.valor).toUpperCase();
+      if (!texto) return null;
+      // Dois segundos e meio, o mesmo do corte: tempo de ler quatro palavras
+      // sem a frase virar parte do cenário. Camada 1 para nunca disputar
+      // posição com o destaque do momento, que é a informação principal.
+      return (
+        `Dialogue: 1,${carimboAss(inicio)},${carimboAss(inicio + 2.5)},Frase,,0,0,0,,` +
+        `{\\fscx70\\fscy70\\t(0,150,\\fscx100\\fscy100)}${texto}`
+      );
+    })
+    .filter((l): l is string => l !== null);
 
   const linhas = trechos
     .filter((t) => t.titulo?.trim())
@@ -172,7 +205,7 @@ export function montarLegendasDestaque(
     })
     .filter((l): l is string => l !== null);
 
-  return [...cabecalho, ...linhas].join("\n") + "\n";
+  return [...cabecalho, ...linhas, ...frases].join("\n") + "\n";
 }
 
 /**

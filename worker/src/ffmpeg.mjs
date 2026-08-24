@@ -13,6 +13,15 @@ import { writeFile } from "node:fs/promises";
  * por fala, já arredondada para fronteira de frase.
  */
 
+/**
+ * O emoji no video COMPLETO, em pixels de largura.
+ *
+ * Menor que o do corte (180) porque o quadro deitado tem quase o dobro da
+ * largura e a tela e assistida de longe, no televisor ou no monitor: o mesmo
+ * tamanho relativo daria um emoji gigante. 140 em 1920 e 7% da largura.
+ */
+const EMOJI_NO_COMPLETO = 140;
+
 function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { cwd });
@@ -169,7 +178,8 @@ export function ffprobe(caminho) {
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
   const editaTempo = remocoes.length > 0;
-  const editaImagem = Boolean(opcoes.legendasArquivo);
+  const emojis = (opcoes.emojis ?? []).filter((e) => e && e.arquivo);
+  const editaImagem = Boolean(opcoes.legendasArquivo) || emojis.length > 0;
 
   if (!editaTempo && !editaImagem) {
     await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida]);
@@ -213,11 +223,10 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
 
     // A legenda entra DEPOIS da concatenação, porque os tempos dela já foram
     // calculados para a linha do tempo editada.
-    if (editaImagem) {
-      grafo += `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`;
-    } else {
-      grafo += ";[vc]null[v]";
-    }
+    grafo += opcoes.legendasArquivo
+      ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
+      : ";[vc]null[v]";
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
 
     // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
     // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
@@ -229,6 +238,17 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     await writeFile(arquivoDeFiltro, grafo, "utf8");
 
     args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[ac]");
+  } else if (emojis.length) {
+    // Sem edição de tempo mas COM emoji: o caminho simples do `-vf` não serve,
+    // porque cada emoji é uma fonte a mais e `-vf` só aceita uma entrada.
+    cwdDoFiltro = dirname(opcoes.legendasArquivo ?? saida);
+    let grafo = opcoes.legendasArquivo
+      ? `[0:v]subtitles=${basename(opcoes.legendasArquivo)}[v]`
+      : "[0:v]null[v]";
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
+    arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
+    await writeFile(arquivoDeFiltro, grafo, "utf8");
+    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "0:a?");
   } else {
     // Só legenda: o caminho simples continua sendo o melhor.
     cwdDoFiltro = dirname(opcoes.legendasArquivo);
@@ -243,7 +263,16 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   // Áudio: copiado sempre que o tempo não é mexido. Quando há remoção, o áudio
   // precisa ser recortado junto e aí não tem como copiar; nesse caso vai em
   // 192k, acima do original, que é o mínimo dano possível.
-  args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
+  //
+  // A nivelacao entra junto com a recodificacao, e nao no caminho de copia: o
+  // remux existe para preservar o arquivo bit a bit quando nao ha nada a
+  // editar, e forcar recodificacao so para nivelar volume trocaria uma
+  // qualidade garantida por um ganho que o YouTube ja faz sozinho no lado dele.
+  args.push(
+    ...(editaTempo
+      ? ["-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k"]
+      : ["-c:a", "copy"])
+  );
 
   args.push("-movflags", "+faststart", saida);
 
@@ -259,7 +288,8 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
 
   const partesDoMotivo = [];
   if (editaTempo) partesDoMotivo.push(`${remocoes.length} trechos removidos`);
-  if (editaImagem) partesDoMotivo.push("legendas de destaque");
+  if (opcoes.legendasArquivo) partesDoMotivo.push("legendas de destaque");
+  if (emojis.length) partesDoMotivo.push(`${emojis.length} reforços da fala`);
   return { recodificado: true, motivo: partesDoMotivo.join(" e ") };
 }
 
@@ -646,6 +676,62 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
  * Cortar em vez de desfocar cortaria a cabeça ou o corpo de quem fala, porque
  * não temos detecção de rosto para saber onde centralizar.
  */
+/**
+ * A normalizacao de volume, que e a "sacada de som" com numero.
+ *
+ * Medido no corte de producao de 24/08: ele sai a **-27,2 LUFS**, e o padrao
+ * que Instagram, TikTok e YouTube usam para nivelar o feed e **-14 LUFS**. Ou
+ * seja, o video da Demandou tocava treze decibeis mais baixo que tudo o que
+ * vem antes e depois dele na rolagem. Quem assiste sem fone nao ouve, e sobe.
+ *
+ * Isso nao e efeito sonoro nem trilha, e nao depende de licenca de ninguem: e
+ * corrigir um defeito que estava saindo em todo corte.
+ *
+ * `TP=-1.5` deixa margem de pico: as redes recomprimem o audio, e som que
+ * encosta em zero volta distorcido do outro lado. `LRA=11` e o padrao de
+ * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
+ */
+const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
+
+/**
+ * Sobrepoe os emoji num grafo que termina em `[v]`.
+ *
+ * Existe fatorado porque o corte vertical e o video completo precisam da mesma
+ * coisa em quadros de tamanhos diferentes, e duas copias disto divergiriam na
+ * primeira vez que um dos dois mudasse.
+ *
+ * Imagem e nao texto porque o libass deste ffmpeg desenha emoji so em contorno,
+ * sem cor: medido em 24/08 com a fonte do sistema (COLR) e com a Noto Color
+ * Emoji (CBDT), e nas duas o resultado foi monocromatico.
+ */
+function comEmoji(grafo, emojis, largura, x, y) {
+  const daPaleta = (emojis ?? []).filter((e) => e && e.arquivo);
+  if (!daPaleta.length) return grafo;
+
+  const partes = [grafo.replace(/\[v\]$/, "[base0]")];
+  daPaleta.forEach((e, i) => {
+    const de = Math.max(0, e.segundo);
+    const ate = de + 1.6;
+    // O ultimo overlay escreve direto em [v], que e o que o `-map` espera.
+    // Montar assim evita corrigir o rotulo depois com expressao regular.
+    const destino = i === daPaleta.length - 1 ? "v" : `base${i + 1}`;
+    partes.push(
+      `movie=${e.arquivo},format=rgba,scale=${largura}:-1,` +
+        // O `trim` da duracao propria a imagem: sem ele o `loop` seria uma
+        // fonte SEM FIM, que e o mesmo erro que travou o gradiente do fundo em
+        // 23/08 e codificou ate o disco acabar. O `setpts` atrasa a imagem ate
+        // a hora certa, e os dois `fade` no alpha tiram o piscar.
+        `loop=loop=-1:size=1:start=0,trim=duration=1.6,` +
+        `setpts=PTS-STARTPTS+${de.toFixed(3)}/TB,` +
+        `fade=t=in:st=0:d=0.18:alpha=1,fade=t=out:st=1.35:d=0.25:alpha=1[e${i}]`,
+      `[base${i}][e${i}]overlay=${x}:${y}:` +
+        `enable='between(t,${de.toFixed(3)},${ate.toFixed(3)})':` +
+        `format=auto[${destino}]`
+    );
+  });
+  return partes.join(";");
+}
+
 export async function cortarVertical(
   entrada,
   saida,
@@ -656,7 +742,8 @@ export async function cortarVertical(
   fundo,
   legenda,
   ritmo,
-  ajusteDeBrilho
+  ajusteDeBrilho,
+  emojis
 ) {
   const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
@@ -672,9 +759,18 @@ export async function cortarVertical(
   // Sem isto, a peça mais cara do corte não chegava na tela: 85% dos vídeos
   // curtos são assistidos sem som, e até 24/08 os cortes saíam sem legenda
   // nenhuma. O módulo existia e o fluxo não o chamava.
-  const grafo = legenda
+  let grafo = legenda
     ? filtro.replace(/\[v\]$/, `[semLegenda];[semLegenda]subtitles=${legenda}[v]`)
     : filtro;
+
+  // E o emoji por último de todos, porque ele é acento e acento fica por cima.
+  grafo = comEmoji(
+    grafo,
+    emojis,
+    LAYOUT.EMOJI,
+    `(W-w)/2+${LAYOUT.EMOJI_X}`,
+    `H-${LAYOUT.EMOJI_Y}`
+  );
 
   await rodar([
     "-ss", String(inicio),
@@ -689,6 +785,7 @@ export async function cortarVertical(
     // codificava até o disco acabar.
     "-t", String(duracao),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-af", NIVELAR_VOZ,
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
@@ -717,6 +814,19 @@ const LAYOUT = {
    * que sobram são fundo transparente, que não aparece.
    */
   PESSOA_SOZINHA: 1400,
+  /**
+   * O emoji sobreposto, em pixels de largura.
+   *
+   * 180 num quadro de 1080 e 17% da largura, que e grande o bastante para ser
+   * lido de relance num telefone e pequeno o bastante para nao virar o assunto.
+   * A imagem original tem 128 px, entao ha uma ampliacao de 1,4x; e desenho
+   * vetorial rasterizado, sem textura, e ampliar nao mostra defeito.
+   */
+  EMOJI: 180,
+  /** Deslocamento a direita do centro, para o emoji ficar ao lado do texto. */
+  EMOJI_X: 300,
+  /** Distancia do rodape ate a base do emoji. */
+  EMOJI_Y: 1180,
 };
 
 /**
@@ -742,6 +852,24 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
   // diferença entre um corte que empurra e um corte que deixa o argumento
   // mandar. Sem estilo cai em 4%, que era o valor fixo de antes.
   const zoom = Math.max(0.01, Math.min(0.2, ritmo?.forcaDoZoom ?? 0.04));
+
+  // Onde pousar a imagem da pessoa para que ELA fique no meio da tela.
+  //
+  // A imagem tem `PESSOA_SOZINHA` de largura e a pessoa está em `centro` dela,
+  // então o deslocamento que põe a pessoa no meio de 1080 é
+  // `540 - largura * centro`. Sem `centro`, 0,5 devolve exatamente o
+  // comportamento antigo, que é o que uma máscara velha em fila deve receber.
+  //
+  // O limite existe para o caso extremo: pessoa muito na beirada da própria
+  // janela empurraria a imagem tanto que sobraria fundo vazio de um lado. Meia
+  // largura de tela de folga cobre o caso real sem permitir o absurdo.
+  const centroDaPessoa = Math.max(0.15, Math.min(0.85, matte?.centro ?? 0.5));
+  const xDaPessoa = Math.round(
+    Math.max(
+      -LAYOUT.PESSOA_SOZINHA + 810,
+      Math.min(270, 540 - LAYOUT.PESSOA_SOZINHA * centroDaPessoa)
+    )
+  );
   const { x, y, w, h } = matte.recorte;
 
   // SÓ A PESSOA, sobre o fundo gerado. Sem slide.
@@ -783,9 +911,15 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
       `[0:v]crop=${w}:${h}:${x}:${y},scale=${LAYOUT.PESSOA_SOZINHA}:-2[pessoaRgb]`,
       `[1:v]format=gray,scale=${LAYOUT.PESSOA_SOZINHA}:-2[pessoaAlpha]`,
       "[pessoaRgb][pessoaAlpha]alphamerge[pessoa]",
-      // Encostada na base, e não centralizada: rosto no terço superior é onde o
-      // olho procura, e sobra espaço embaixo para a legenda.
-      `[fundo][pessoa]overlay=(W-w)/2:H-h-${LAYOUT.PESSOA_BASE}:format=auto,format=yuv420p[v]`,
+      // Encostada na base, e não centralizada na vertical: rosto no terço
+      // superior é onde o olho procura, e sobra espaço embaixo para a legenda.
+      //
+      // Na HORIZONTAL o alinhamento é pela PESSOA e não pela caixa. Medido na
+      // gravação real: ela fica em 33% da janela da webcam, e centralizar a
+      // caixa deixava a cabeça cerca de 100 px à esquerda do centro da tela,
+      // que é 10% da largura. Com o fundo escuro isso passava despercebido; com
+      // o fundo claro ficou evidente.
+      `[fundo][pessoa]overlay=${xDaPessoa}:H-h-${LAYOUT.PESSOA_BASE}:format=auto,format=yuv420p[v]`,
     ].join(";");
   }
 
@@ -983,6 +1117,7 @@ export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda)
       "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" +
       (legenda ? `,subtitles=${legenda}` : ""),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-af", NIVELAR_VOZ,
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,

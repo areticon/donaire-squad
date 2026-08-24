@@ -67,6 +67,10 @@ export async function PATCH(
   const ALLOWED_FIELDS = [
     "name", "description", "status", "niche", "voice",
     "targetAudience", "colorPalette", "postFrequency", "timezone", "setupStep", "config",
+    // O estilo de edição de vídeo. Fica no projeto e não no envio, por decisão
+    // do Bruno em 24/08: canal com estilo diferente a cada vídeo não constrói
+    // reconhecimento.
+    "videoStyle",
   ] as const;
   type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
