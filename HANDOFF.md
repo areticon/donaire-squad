@@ -5456,3 +5456,61 @@ o reset primeiro, porque a limitacao era de premissa e nao de modelo, e se a
 selecao continuar fraca, testar A/B o prompt de selecao la contra o daqui.
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 57): os tres pedidos do completo, e o vilao do dia ganha nome
+
+O Bruno assistiu o completo e trouxe tres pontos.
+
+### 1. "Peguei um 'e eeeee' no inicio. Voce eliminou a edicao?"
+
+Nao: a limpeza rodou (137,5s removidos naquela rodada). O que houve: o agente
+marca a maioria das hesitacoes e deixa escapar algumas, e a que escapou estava
+na abertura, onde mais doi.
+
+Fomos ao dado, e ele decide sozinho: o "e," muleta aos 5,6s dura **0,48s**; o
+"e" verbo de "essa e uma decisao" dura **0,10s**. A folga e enorme, entao virou
+codigo: som de hesitacao ("e", "eh", "ah", "hum") com 0,38s ou mais SAI, sempre.
+
+Provado na gravacao real antes de subir: **43 muletas arrastadas, 22,1s**,
+incluindo a exata que ele ouviu, e nenhum som curto pego por engano.
+
+### 2. "Toda vez que limpar, dar um efeito para a transicao ficar sutil"
+
+Punch-in alternado, o tratamento padrao de jump cut: a cada emenda o
+enquadramento alterna entre o plano normal e um 5,5% mais fechado, e o pulo
+vira corte de camera intencional. 5,5% porque acima de ~8% vira zoom nervoso e
+abaixo de ~4% o olho nao registra.
+
+**Entrou nos cortes e FALHOU no completo**, e a falha fechou o diagnostico que
+faltava o dia inteiro (abaixo).
+
+### 3. "Se a pessoa aparece numa janela pequena, o agente deve dizer"
+
+O worker mede a ampliacao que o corte vertical exige (1080 dividido pela
+largura real da regiao da pessoa). Acima de 2x, o aviso entra no DIAGNOSTICO
+do video, anexado ao do especialista: quantas vezes ampliou, por que perde
+nitidez, e que tela cheia resolve. Na gravacao do Bruno: 2,6x.
+
+### O vilao do dia, finalmente com nome
+
+O punch-in no completo morreu com o MESMO erro do emoji:
+
+    Failed to configure output pad on Parsed_scale_216
+    Error reinitializing filters!
+
+Isso fecha o diagnostico: **nunca foi o `movie=`**. A gravacao CRUA do cliente
+muda de propriedade no meio do arquivo; quando muda, o ffmpeg reinicializa o
+grafo; e qualquer grafo com nos de `scale`/`crop` sobre a entrada crua morre na
+reinicializacao. O emoji caiu tres vezes por isso. O punch-in do completo caiu
+pela mesma razao na primeira tentativa.
+
+A regra que fica para qualquer trabalho futuro neste worker:
+
+- **Entrada crua**: so `trim`/`concat` e filtros de audio. Nada de scale, crop,
+  overlay ou subtitles em grafo complexo sobre ela.
+- **Intermediario recodificado pelo proprio worker**: qualquer coisa, provado
+  com punch-in, legenda, mascara e overlay nos cortes.
+- Se o completo um dia ganhar um passe de normalizacao, punch-in e efeitos
+  podem voltar nele.
+
+*Atualizado em 24/08/2026 por Claude Code.*
