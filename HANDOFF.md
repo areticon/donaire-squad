@@ -4227,4 +4227,50 @@ E o gradiente tem duracao propria, que sao duas travas para o mesmo erro.
 - [ ] Julgar a composicao nova rodada sobre a FONTE ORIGINAL, e nao sobre o
       corte ja composto, que e entrada degradada
 
+### Musica: o cliente traz o arquivo, e a razao e juridica
+
+Decidido em 23/08 depois de pesquisa, e a decisao inverteu a minha primeira
+recomendacao.
+
+**O que quase deu errado.** Eu ia comprar assinatura de biblioteca "royalty
+free" e usar. Nao serve para a Demandou. Praticamente toda licensa desse tipo
+cobre voce usar a musica NO SEU conteudo. A Demandou faz outra coisa: poe a
+musica no video de um cliente pagante, que publica no canal DELE. Isso e
+sublicenciamento. A Artlist e explicita: a licenca padrao nao permite criar
+projetos destinados a canais de terceiros. Um Content ID no Instagram cairia no
+nome do cliente, por decisao nossa.
+
+**A linha que separa legal de problema nao e a musica, e QUEM BAIXA O ARQUIVO.**
+
+| Quem baixa | O que a Demandou vira | Precisa de sublicenca? |
+|---|---|---|
+| A Demandou hospeda ou serve catalogo | distribuidora | sim |
+| O CLIENTE baixa e sobe o arquivo | ferramenta de edicao, como CapCut | nao |
+
+Ideia do Bruno, e e a certa: um atalho que MANDA a pessoa ate a fonte, ela baixa,
+e sobe. A Demandou nunca entra na cadeia de distribuicao.
+
+**A armadilha que a pesquisa achou.** A biblioteca do YouTube tem DUAS licencas:
+
+| Licenca | Onde vale |
+|---|---|
+| padrao do YouTube | so dentro do YouTube; uso comercial fora e proibido |
+| Creative Commons CC-BY 4.0 | qualquer plataforma, com credito OBRIGATORIO |
+
+A Demandou publica em cinco redes. Faixa da licenca padrao num corte que vai
+para o Instagram esta fora da licenca, mesmo tendo sido baixada de boa fe. Entao
+o produto so pode aceitar CC-BY, e o credito precisa entrar sozinho na descricao
+do post.
+
+**O que isto significa para o codigo:** a engenharia e a mesma em qualquer
+cenario, que e o cliente subir um arquivo e a plataforma misturar com a voz por
+cima. Serve para a biblioteca do YouTube, para quem ja assina Epidemic ou
+Artlist, e para quem tem faixa propria. Nao trava o lancamento esperando
+negociacao com ninguem.
+
+Se um dia valer a pena embutir catalogo, os caminhos existem e sao acordo
+comercial: a Epidemic Sound tem API feita para plataformas embutirem o catalogo,
+e a Artlist tem plano Enterprise com licenca customizavel que cobre uso em
+software. Os dois so fazem sentido com receita para justificar.
+
 *Atualizado em 23/08/2026 por Claude Code.*
