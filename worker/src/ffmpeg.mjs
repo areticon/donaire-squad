@@ -263,6 +263,89 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   return { recodificado: true, motivo: partesDoMotivo.join(" e ") };
 }
 
+/**
+ * Recorta o trecho do arquivo cru JÁ SEM as pausas e as hesitações.
+ *
+ * ## O buraco que isto fecha
+ *
+ * A limpeza de fala entrou em 22/08 e foi ligada só em `prepararCompleto`, ou
+ * seja, só no vídeo completo do YouTube. Os CORTES, que são o que vai para
+ * Instagram, TikTok e LinkedIn, continuaram sendo recortados do arquivo cru,
+ * com todo gaguejo e toda muleta intactos. Ninguém notou por um dia inteiro.
+ *
+ * Medido nos seis cortes da gravação real em 23/08: 30 dos 332 segundos que
+ * iam ao ar eram pausa ou muleta, ou seja **9% do que o público assiste**, e
+ * isso é PISO, porque nem conta autocorreção como "software como serviço, é
+ * software as a service", que foi justamente o que o Bruno reclamou.
+ *
+ * ## Por que um passo separado, e não tudo num filtro só
+ *
+ * O recorte da pessoa gera a máscara a partir do vídeo, quadro a quadro. Se a
+ * remoção acontecesse DEPOIS, a máscara e a imagem ficariam em linhas do tempo
+ * diferentes e o recorte sairia deslocado da pessoa. Limpando primeiro, a
+ * máscara nasce já alinhada, por construção.
+ *
+ * O custo é uma recodificação a mais por corte. Em trecho de 30 a 75 segundos
+ * isso é rápido, e CRF 18 aqui é qualidade de intermediário: quem manda na
+ * qualidade final é o corte de saída.
+ */
+export async function prepararTrecho(entrada, saida, inicio, duracao, remocoes) {
+  const fim = inicio + duracao;
+  const dentro = (remocoes ?? [])
+    .filter((r) => r.ate > inicio && r.de < fim && r.ate > r.de)
+    .map((r) => ({
+      de: Math.max(0, Math.min(r.de, fim) - inicio),
+      ate: Math.max(0, Math.min(r.ate, fim) - inicio),
+    }))
+    .filter((r) => r.ate - r.de > 0.05);
+
+  if (!dentro.length) {
+    // Nada a tirar: recorta e pronto, sem recodificar à toa.
+    await rodar([
+      "-ss", String(inicio), "-i", entrada, "-t", String(duracao),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+      "-movflags", "+faststart", saida,
+    ]);
+    return { removidos: 0, segundos: 0 };
+  }
+
+  const manter = intervalosQueFicam(dentro, duracao);
+  const partes = [];
+  const mapa = [];
+  manter.forEach((m, i) => {
+    partes.push(
+      `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+    );
+    mapa.push(`[v${i}][a${i}]`);
+  });
+  const grafo =
+    partes.join(";") + ";" + mapa.join("") +
+    `concat=n=${manter.length}:v=1:a=1[v][a]`;
+
+  // Mesmo cuidado do vídeo completo: grafo em ARQUIVO, com a opção que a versão
+  // instalada do ffmpeg aceita.
+  const pasta = dirname(saida);
+  const arquivo = join(pasta, `filtro-trecho-${basename(saida)}.txt`);
+  await writeFile(arquivo, grafo, "utf8");
+
+  await rodar(
+    [
+      "-ss", String(inicio), "-i", entrada, "-t", String(duracao),
+      opcaoDeFiltro(), basename(arquivo),
+      "-map", "[v]", "-map", "[a]",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+      "-movflags", "+faststart", saida,
+    ],
+    { cwd: pasta }
+  );
+
+  const segundos = dentro.reduce((s, r) => s + (r.ate - r.de), 0);
+  return { removidos: dentro.length, segundos };
+}
+
 /** O complemento das remoções: os pedaços que sobrevivem, em ordem. */
 function intervalosQueFicam(remocoes, duracaoSec) {
   const ordenadas = [...remocoes].sort((a, b) => a.de - b.de);

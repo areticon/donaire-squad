@@ -10,6 +10,7 @@ import { get, put } from "@vercel/blob";
 import {
   ffprobe,
   prepararCompleto,
+  prepararTrecho,
   cortarVertical,
   cortarHorizontal,
   extrairCapa,
@@ -283,11 +284,30 @@ async function processar(trabalho) {
           : null,
       };
       try {
-        // O recorte da pessoa vem antes do corte, porque a composição precisa
-        // da máscara. Devolve null quando não dá, e aí o corte sai na
-        // composição antiga: pior, mas sai.
+        // PRIMEIRO a limpeza, e depois tudo o mais.
+        //
+        // Até 23/08 a limpeza de fala rodava só no vídeo completo, e os cortes
+        // saíam do arquivo cru com gaguejo e muleta intactos. Medido: 9% do que
+        // ia ao ar era pausa ou muleta. Limpar aqui, ANTES do recorte da
+        // pessoa, também garante que a máscara nasça alinhada com a imagem: se
+        // a remoção viesse depois, as duas ficariam em linhas do tempo
+        // diferentes e o recorte sairia deslocado.
+        const limpo = join(pasta, `t-${t.indice}.mp4`);
+        const corte = await prepararTrecho(
+          fonte, limpo, t.inicio, duracao, trabalho.remocoes
+        );
+        const duracaoLimpa = Math.max(1, duracao - corte.segundos);
+        if (corte.removidos) {
+          console.log(
+            `[${trabalho.videoJobId}] trecho ${t.indice}: ` +
+              `${corte.removidos} remoções, ${corte.segundos.toFixed(1)}s a menos`
+          );
+        }
+
+        // A partir daqui tudo trabalha sobre o trecho JÁ LIMPO, e os tempos
+        // passam a ser relativos a ele, começando do zero.
         const matte = enq?.pessoa
-          ? await gerarMatte(fonte, pasta, t.indice, t.inicio, duracao, enq.pessoa)
+          ? await gerarMatte(limpo, pasta, t.indice, 0, duracaoLimpa, enq.pessoa)
           : null;
         if (enq?.pessoa && !matte) {
           console.warn(
@@ -297,7 +317,7 @@ async function processar(trabalho) {
         }
 
         const vertical = join(pasta, `v-${t.indice}.mp4`);
-        await cortarVertical(fonte, vertical, t.inicio, duracao, enq, matte);
+        await cortarVertical(limpo, vertical, 0, duracaoLimpa, enq, matte);
         saida.vertical = await subir(
           vertical,
           `cortes/${trabalho.videoJobId}/vertical-${t.indice}.mp4`,
@@ -305,7 +325,7 @@ async function processar(trabalho) {
         );
 
         const horizontal = join(pasta, `h-${t.indice}.mp4`);
-        await cortarHorizontal(fonte, horizontal, t.inicio, duracao);
+        await cortarHorizontal(limpo, horizontal, 0, duracaoLimpa);
         saida.horizontal = await subir(
           horizontal,
           `cortes/${trabalho.videoJobId}/horizontal-${t.indice}.mp4`,
@@ -313,7 +333,7 @@ async function processar(trabalho) {
         );
 
         const capa = join(pasta, `c-${t.indice}.jpg`);
-        await extrairCapa(fonte, capa, t.inicio, duracao);
+        await extrairCapa(limpo, capa, 0, duracaoLimpa);
         saida.capa = await subir(
           capa,
           `cortes/${trabalho.videoJobId}/capa-${t.indice}.jpg`,

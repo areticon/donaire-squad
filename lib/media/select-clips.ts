@@ -29,6 +29,20 @@ export type Trecho = {
   /** A ideia central em uma frase, que é o que o redator do Passo 4 recebe. */
   ideia: string;
   /**
+   * As primeiras palavras do trecho, escolhidas pelo AGENTE.
+   *
+   * Existe porque os três primeiros segundos decidem se alguém fica, e julgar
+   * se uma abertura prende é julgamento, não regra. Em 23/08 eu tentei fazer
+   * isso em código, com lista de palavras-muleta, e o resultado foi o código
+   * BURLANDO a própria métrica: aparar "Então" de "Então por exemplo" fazia
+   * passar no crivo e produzia "por exemplo, ah voltei pro mercado", que não é
+   * melhor em nada.
+   *
+   * Então o agente escolhe e o código só confere que a escolha EXISTE na
+   * gravação, o que impede alinhar o corte por um texto inventado.
+   */
+  abertura?: string;
+  /**
    * O que a pessoa realmente falou ali, para o redator não inventar.
    *
    * **Preenchido em código, não pelo modelo.** Ver `recortarFala`: a
@@ -60,6 +74,27 @@ O que NÃO serve, mesmo que soe bem:
 - Conselho genérico que caberia na boca de qualquer um do setor.
 - Trecho que só existe para ligar dois assuntos.
 
+A ABERTURA DECIDE TUDO, e é a parte mais importante da sua tarefa.
+
+Quem abre um Reels decide em três segundos se fica. Um trecho com tese ótima que
+abre mal não funciona, e é pior que não existir, porque gastou o clique.
+
+Escolha o trecho de forma que a PRIMEIRA FRASE já seja forte sozinha. Uma
+abertura forte:
+- Fala direto com quem assiste, ou afirma algo com que dá para discordar.
+- Se entende sem nada antes dela.
+- Não começa com palavra de ligação: então, ah, aí, mas, mesmo, bom, cara, tipo,
+  enfim, por exemplo, olha, sabe, é.
+- Não começa apontando para fora: assim, isso, esse, aquele, ele, ela, lá, ali.
+  Quem chegou agora não viu o que "isso" quer dizer.
+- Não é a pessoa se corrigindo nem gaguejando. Se ela disse "software como
+  serviço, é software as a service", comece DEPOIS da correção.
+
+Devolva no campo "abertura" as PRIMEIRAS PALAVRAS do trecho, copiadas exatamente
+da transcrição, de cinco a doze palavras. Nós conferimos se elas existem ali e
+alinhamos o corte por elas. Se você não achar nenhuma abertura boa dentro do
+trecho, prefira outro trecho.
+
 Regras de recorte:
 - Comece e termine em fronteira de frase, nunca no meio.
 - Entre 20 e 120 segundos.
@@ -80,7 +115,7 @@ dentro de um campo de texto.** Se a fala tinha pausa, use ponto ou vírgula. JSO
 com quebra de linha crua dentro de string é inválido, e aí o trabalho inteiro
 falha.
 
-{"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"..."}]}`;
+{"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"...","abertura":"..."}]}`;
 
 type Paragrafo = { text: string; start: number; end: number };
 
@@ -146,10 +181,127 @@ ${blocos}`,
 
   // A fala entra aqui, recortada do que já está no banco. O modelo devolve só
   // os tempos.
-  return sanear(trechos, duracaoSegundos).map((t) => ({
-    ...t,
-    transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras),
-  }));
+  return sanear(trechos, duracaoSegundos)
+    .map((t) => ajustarAbertura(t, palavras))
+    .map((t) => ({
+      ...t,
+      transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras),
+    }));
+}
+
+/**
+ * Empurra o começo do trecho até uma frase que abra bem.
+ *
+ * O agente escolhe pela TESE, e faz isso bem. O que ele não faz é garantir que
+ * os três primeiros segundos prestem, e é isso que decide se alguém fica. Aqui
+ * o tempo de início é corrigido de verdade, e não só o texto: o worker corta o
+ * vídeo por este número.
+ */
+function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: string }>(
+  t: T,
+  palavras?: Word[]
+): T {
+  if (!palavras?.length) return t;
+
+  const primeira = palavras.findIndex((w) => w.end > t.inicio);
+  let ultima = -1;
+  for (let i = palavras.length - 1; i >= 0; i--) {
+    if (palavras[i].start < t.fim) {
+      ultima = i;
+      break;
+    }
+  }
+  if (primeira < 0 || ultima <= primeira) return t;
+
+  const [encaixado] = encaixarNaFrase(palavras, primeira, ultima);
+
+  // O agente escolheu a abertura. O código só confere que ela EXISTE ali.
+  const alvo = acharAbertura(palavras, t.abertura, encaixado, ultima);
+  if (alvo === null) {
+    if (t.abertura?.trim()) {
+      console.warn(
+        `[selecao] trecho de ${t.inicio.toFixed(0)}s: a abertura prometida ` +
+          `("${t.abertura.slice(0, 40)}") não existe no trecho, mantendo o corte original`
+      );
+    }
+    const defeito = defeitoDaAbertura(palavras, encaixado);
+    if (defeito) {
+      console.warn(
+        `[selecao] trecho de ${t.inicio.toFixed(0)}s abre mal: ${defeito}`
+      );
+    }
+    return t;
+  }
+
+  const defeito = defeitoDaAbertura(palavras, alvo);
+  if (defeito) {
+    // O agente escolheu, existe, mas ainda tropeça no crivo mecânico. Vai ao ar
+    // com a escolha dele, e o log diz o que ficou torto, porque a alternativa
+    // era eu inventar um recorte que ele não pediu.
+    console.warn(
+      `[selecao] abertura escolhida pelo agente ainda tem defeito: ${defeito}`
+    );
+  }
+
+  if (alvo === encaixado) return t;
+
+  const segundos = palavras[alvo].start;
+  console.log(
+    `[selecao] trecho alinhado pela abertura do agente: ` +
+      `${t.inicio.toFixed(0)}s vira ${segundos.toFixed(0)}s`
+  );
+  return { ...t, inicio: segundos };
+}
+
+/**
+ * Onde, dentro do trecho, começam as palavras que o agente prometeu como abertura.
+ *
+ * Devolve o índice da palavra, ou `null` quando a promessa não se cumpre. Isso
+ * NÃO é desconfiança gratuita do modelo: sem conferir, uma abertura inventada
+ * viraria um corte alinhado por um texto que não existe na gravação, e o
+ * sintoma seria um vídeo começando num ponto aleatório.
+ *
+ * A comparação ignora pontuação, caixa e acento, porque a Deepgram pontua de um
+ * jeito e o modelo copia de outro, e reprovar por causa de uma vírgula seria
+ * jogar fora uma escolha boa.
+ */
+function acharAbertura(
+  palavras: Word[],
+  abertura: string | undefined,
+  de: number,
+  ate: number
+): number | null {
+  const alvo = (abertura ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (alvo.length < 3) return null;
+
+  const limpa = (w: string) =>
+    w
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+  // Procura a sequência a partir do encaixe, e só para a frente: alinhar para
+  // trás importaria fala que o agente não escolheu, que é o mesmo motivo de
+  // `encaixarNaFrase` só andar para a frente.
+  const chave = alvo.slice(0, 4);
+  for (let i = de; i <= ate - chave.length; i++) {
+    let bate = true;
+    for (let k = 0; k < chave.length; k++) {
+      if (limpa(palavras[i + k].word) !== chave[k]) {
+        bate = false;
+        break;
+      }
+    }
+    if (bate) return i;
+  }
+  return null;
 }
 
 /**
@@ -280,6 +432,164 @@ function encaixarNaFrase(
   }
 
   return [achouInicio ? a : primeira, achouFim ? b : ultima];
+}
+
+/**
+ * Os três primeiros segundos decidem o corte, e ninguém estava conferindo.
+ *
+ * `encaixarNaFrase` garante que o trecho comece numa fronteira de frase. Isso
+ * NÃO é o mesmo que começar bem. Medido nos seis cortes da gravação real do
+ * Bruno em 23/08, cinco abriam com defeito:
+ *
+ *   "software como serviço, é software as a service"  autocorreção
+ *   "Diligência, todo AQUELE negócio falou..."          referência sem antecedente
+ *   "AH, mas eu sou CLT..."                             muleta
+ *   "MESMO, pra fazer trabalho social..."               fragmento de frase anterior
+ *   "ENTÃO por exemplo, AH voltei pro mercado..."       muleta dupla
+ *
+ * O Bruno assistiu e resumiu: "pega uma parte totalmente desinteressante, com
+ * erros na minha fala". O corte 0 chamava-se "Consultoria não escala" e abria
+ * com ele gaguejando sobre software: o título prometia uma coisa e os primeiros
+ * segundos entregavam outra.
+ *
+ * Isto é verificação em CÓDIGO, e não mais um pedido no prompt, pela mesma razão
+ * da limpeza de hesitação: reconhecer muleta no começo de uma frase é mecânico e
+ * conferível, e prompt não garante nada que dependa de o modelo lembrar.
+ */
+
+/** Palavra que só liga a frase ao que veio antes. Quem chega não viu o antes. */
+const MULETA_DE_ABERTURA = new Set([
+  "então", "entao", "ah", "aí", "ai", "e", "mas", "mesmo", "bom", "cara",
+  "tipo", "né", "ne", "pô", "po", "enfim", "daí", "dai", "olha", "sabe",
+  "é", "eh", "assim", "beleza", "certo", "agora", "aliás", "alias",
+]);
+
+/**
+ * Pronome ou demonstrativo que aponta para fora do trecho. "A maior parte das
+ * empresas não é ASSIM" exige ter visto o "assim", e quem abre o Reels não viu.
+ */
+const APONTA_PRA_FORA = new Set([
+  "assim", "isso", "esse", "essa", "esses", "essas", "aquele", "aquela",
+  "aquilo", "aqueles", "aquelas", "ele", "ela", "eles", "elas", "disso",
+  "nisso", "dele", "dela", "ali", "lá", "la", "daí", "dai",
+]);
+
+function semPontuacao(palavra: string): string {
+  return palavra
+    .toLowerCase()
+    .replace(/[.,!?;:"'()\[\]…]/g, "")
+    .trim();
+}
+
+/**
+ * Por que a abertura é ruim, ou `null` quando ela presta.
+ *
+ * Devolve o motivo em vez de um booleano porque este julgamento vai para o log
+ * e para o teste: saber QUE reprovou sem saber POR QUE só transfere o mistério
+ * de lugar.
+ */
+export function defeitoDaAbertura(
+  palavras: Word[],
+  inicio: number
+): string | null {
+  const janela = palavras.slice(inicio, inicio + 8).map((p) => semPontuacao(p.word));
+  if (janela.length < 3) return "trecho curto demais para julgar";
+
+  if (MULETA_DE_ABERTURA.has(janela[0])) {
+    return `abre com a muleta "${janela[0]}"`;
+  }
+
+  // Gaguejo: a mesma palavra duas vezes seguidas.
+  for (let i = 1; i < janela.length; i++) {
+    if (janela[i] && janela[i] === janela[i - 1]) {
+      return `repete "${janela[i]}" logo na abertura`;
+    }
+  }
+
+  // Autocorreção: palavra de conteúdo que volta em seis palavras. É a assinatura
+  // de "software como serviço, é software as a service".
+  const conteudo = janela
+    .slice(0, 6)
+    .filter((w) => w.length > 3 && !MULETA_DE_ABERTURA.has(w));
+  const repetida = conteudo.find((w, i) => conteudo.indexOf(w) !== i);
+  if (repetida) return `autocorreção em "${repetida}"`;
+
+  // Aponta para fora nas primeiras palavras, antes de nomear o assunto.
+  const aponta = janela.slice(0, 5).find((w) => APONTA_PRA_FORA.has(w));
+  if (aponta) return `abre apontando para fora com "${aponta}"`;
+
+  return null;
+}
+
+/** Quantas palavras-muleta dá para aparar da frente antes de virar outra frase. */
+const MAX_PALAVRAS_APARADAS = 3;
+
+/** Quantas frases o começo pode andar antes de a gente desistir e ficar com o que tem. */
+const MAX_FRASES_DE_BUSCA = 3;
+
+/** O corte não pode encolher abaixo disto só para achar uma abertura melhor. */
+const MIN_PALAVRAS_RESTANTES = 25;
+
+/**
+ * Teto de quanto do trecho pode ser jogado fora atrás de uma abertura melhor.
+ *
+ * Sem isto, a busca por abertura vira uma máquina de descaracterizar trecho.
+ * Medido na gravação real em 23/08: sem teto, um trecho de 63 segundos avançava
+ * 43, ou seja 68% do que o agente escolheu ia embora, junto com a tese que
+ * justificava o corte existir. Abertura boa num trecho que virou outro assunto
+ * não é conserto, é troca.
+ */
+const MAX_FRACAO_DESCARTADA = 0.25;
+
+/**
+ * Empurra o começo até uma frase que abra bem, sem destruir o trecho.
+ *
+ * Anda por FRASE e não por palavra: começar no meio de uma frase foi justamente
+ * um dos defeitos ("mesmo, pra fazer trabalho social"). E desiste em vez de
+ * andar sem limite, porque trecho que anda demais deixa de ser o trecho que o
+ * agente escolheu e vira outro assunto.
+ */
+export function abrirNaFraseBoa(
+  palavras: Word[],
+  primeira: number,
+  ultima: number
+): { inicio: number; motivo: string | null } {
+  let ultimoDefeito = defeitoDaAbertura(palavras, primeira);
+  if (!ultimoDefeito) return { inicio: primeira, motivo: null };
+
+  // ESTÁGIO 1: aparar a muleta da frente, e só ela.
+  //
+  // A maioria dos defeitos é a primeira palavra, não a primeira frase: "AH, mas
+  // eu sou CLT" vira "mas eu sou CLT" e depois "eu sou CLT", que abre bem e não
+  // perde conteúdo nenhum. Tentar isto antes de andar por frase é o que
+  // preserva o trecho que o agente escolheu.
+  for (let i = 1; i <= MAX_PALAVRAS_APARADAS; i++) {
+    const a = primeira + i;
+    if (ultima - a < MIN_PALAVRAS_RESTANTES) break;
+    const defeito = defeitoDaAbertura(palavras, a);
+    if (!defeito) return { inicio: a, motivo: null };
+    ultimoDefeito = defeito;
+  }
+
+  // ESTÁGIO 2: andar por frase, com teto de quanto pode ser descartado.
+  const limite = primeira + Math.floor((ultima - primeira) * MAX_FRACAO_DESCARTADA);
+  let a = primeira;
+  for (let frase = 0; frase < MAX_FRASES_DE_BUSCA; frase++) {
+    let b = a;
+    while (b < ultima && !fechaFrase(palavras[b].word)) b++;
+    b++;
+    if (b > limite || b >= ultima || ultima - b < MIN_PALAVRAS_RESTANTES) break;
+
+    a = b;
+    const defeito = defeitoDaAbertura(palavras, a);
+    if (!defeito) return { inicio: a, motivo: null };
+    ultimoDefeito = defeito;
+  }
+
+  // Nenhuma abertura próxima presta sem descaracterizar o trecho. Fica com a
+  // original e DIZ o motivo, porque trecho que abre mal em silêncio foi o que
+  // gerou esta função.
+  return { inicio: primeira, motivo: ultimoDefeito };
 }
 
 /**
