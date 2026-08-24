@@ -344,6 +344,15 @@ model VideoJob {
   /// gravação com slides, todos os trechos escolhidos caem em tela
   /// compartilhada, e a capa saía com texto branco em cima de um slide.
   capaFonteUrl   String?   @db.Text
+  /// O que o especialista achou da MATERIA-PRIMA, em uma frase, para o cliente
+  /// ler.
+  ///
+  /// Existe porque o Bruno pediu em 24/08 que a plataforma fosse honesta em vez
+  /// de encher cota: "olha, nosso especialista analisou e viu que seu video tem
+  /// 2 possiveis cortes". Sem este campo, a analise ficava so no log do
+  /// servidor, e o cliente via seis cortes viram dois sem nenhuma explicacao,
+  /// que parece defeito e nao criterio.
+  diagnostico    String?   @db.Text
   error          String?   @db.Text
   creditsCharged Int       @default(0)
   createdAt      DateTime  @default(now())

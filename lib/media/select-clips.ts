@@ -43,6 +43,29 @@ export type Trecho = {
    */
   abertura?: string;
   /**
+   * A nota de cada critério, de 0 a 10, dada pelo agente.
+   *
+   * Fica gravada e visível na tela: o Bruno pediu em 24/08 que a plataforma
+   * fosse honesta com o cliente sobre a matéria-prima, dizendo quantos cortes
+   * o vídeo REALMENTE tem e por qual critério os outros caíram.
+   */
+  notas?: {
+    gancho: number;
+    tese: number;
+    prova: number;
+    autonomia: number;
+    emocao: number;
+    fecho: number;
+  };
+  /**
+   * A nota final: a MENOR das seis, e não a média.
+   *
+   * O elo mais fraco decide, porque um trecho com tese ótima e gancho fraco não
+   * funciona: ninguém chega na tese. Média premiaria justamente o trecho
+   * desequilibrado, que é o que sai morno.
+   */
+  nota?: number;
+  /**
    * O que a pessoa realmente falou ali, para o redator não inventar.
    *
    * **Preenchido em código, não pelo modelo.** Ver `recortarFala`: a
@@ -56,23 +79,42 @@ export type Trecho = {
 /** O que o modelo devolve. A fala entra depois, recortada por nós. */
 type TrechoBruto = Omit<Trecho, "transcricao">;
 
-const SISTEMA = `Você escolhe os melhores momentos de uma gravação crua.
+const SISTEMA = `Você é editor de vídeo curto. Escolhe quais momentos de uma gravação crua viram Reels, Shorts e TikToks, e recusa os que não viram.
 
-Recebe a transcrição de alguém falando sem roteiro, em blocos com marcação de
-tempo. Sua tarefa é achar os momentos que sustentam um post sozinhos.
+Recebe a transcrição de alguém falando sem roteiro, em blocos com marcação de tempo.
 
-O que faz um momento ser bom, em ordem:
-1. Tem uma tese, ou seja, alguém poderia discordar. "Consistência é sistema, não
-   disciplina" é tese. "É importante ser consistente" não é nada.
-2. Tem prova concreta: um caso, um número, uma cena que a pessoa viveu.
-3. Se sustenta fora do contexto. Se o trecho depende de algo dito dez minutos
-   antes para fazer sentido, ele não serve.
-4. Tem tensão: contraria o senso comum, ou nomeia um erro que muita gente comete.
+## A regra que manda sobre todas: NÃO ENCHA COTA
 
-O que NÃO serve, mesmo que soe bem:
+Devolver um trecho fraco é pior que devolver menos trechos. O cliente publica o que você escolher, no nome dele, para o público dele. Um corte morno queima o alcance da conta e o crédito que ele tem com quem o segue.
+
+Se a gravação tem dois momentos que prestam, devolva DOIS. Se tem zero, devolva zero e explique. Ser honesto sobre a matéria-prima é o serviço, não a cota.
+
+## Como o público realmente assiste, e isso manda no que você escolhe
+
+- A pessoa decide se fica em **UM segundo**. Não três. O feed é de rolagem.
+- **85% assiste SEM SOM.** O que prende primeiro é o que se lê e o que se vê.
+- Vídeo abaixo de 90 segundos retém metade do público em média. Cada segundo paga o próximo.
+- O que mais viraliza não é informação boa: é **afirmação contrária**, **aviso de erro** e **chamada de identidade** ("se você é CLT, isso é pra você").
+
+## Os seis critérios, e você pontua cada um de 0 a 10
+
+1. **Gancho.** A PRIMEIRA frase para a rolagem sozinha? Ela afirma algo discutível, nomeia um erro, ou chama uma identidade? Frase que só apresenta assunto não é gancho.
+2. **Tese.** Dá para discordar? "Consistência é sistema, não disciplina" é tese. "É importante ser consistente" não é nada.
+3. **Prova.** Tem número, caso vivido, cena concreta? Ou é opinião no ar?
+4. **Autonomia.** Se entende sem nada antes? Se depende do que foi dito dez minutos atrás, não serve, por melhor que seja.
+5. **Emoção.** Provoca alguma coisa: surpresa, indignação, riso, reconhecimento, alívio? Trecho correto e morno não viraliza.
+6. **Fecho.** Termina numa aterrissagem, ou se dissolve? Corte que acaba no ar deixa a sensação de vídeo quebrado.
+
+**A nota final é a MENOR das seis, e não a média.** Um trecho com tese ótima e gancho fraco não funciona, porque ninguém chega na tese. O elo mais fraco decide.
+
+**Só devolva trechos com nota final 6 ou mais.** Abaixo disso, descarte, mesmo que sobrem poucos.
+
+## O que NUNCA serve, por melhor que soe
+
 - Abertura, encerramento, e qualquer "então é isso, pessoal".
 - Conselho genérico que caberia na boca de qualquer um do setor.
 - Trecho que só existe para ligar dois assuntos.
+- Trecho em que a pessoa está pensando alto, se corrigindo, ou procurando a palavra.
 
 A ABERTURA DECIDE TUDO, e é a parte mais importante da sua tarefa.
 
@@ -101,6 +143,8 @@ Regras de recorte:
 - Os trechos não podem se sobrepor.
 - Prefira menos trechos bons a completar a cota com trecho fraco. Se a gravação
   só tem três momentos que prestam, devolva três.
+- Entre 20 e 60 segundos é onde a retenção vive. Passe de 60 só se o trecho
+  realmente precisar, e nunca de 90.
 
 Regras de escrita:
 - Nunca use travessão. Use vírgula, dois-pontos, ponto e vírgula ou parênteses.
@@ -115,7 +159,9 @@ dentro de um campo de texto.** Se a fala tinha pausa, use ponto ou vírgula. JSO
 com quebra de linha crua dentro de string é inválido, e aí o trabalho inteiro
 falha.
 
-{"trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"...","abertura":"..."}]}`;
+Além dos trechos, devolva um "diagnostico": uma frase honesta sobre a matéria-prima, do jeito que um editor experiente diria ao cliente. Se você achou poucos trechos, diga por quê, e diga o que a próxima gravação precisaria ter. Sem consolo e sem grosseria.
+
+{"diagnostico":"...","trechos":[{"inicio":0,"fim":0,"titulo":"...","motivo":"...","ideia":"...","abertura":"...","notas":{"gancho":0,"tese":0,"prova":0,"autonomia":0,"emocao":0,"fecho":0},"nota":0}]}`;
 
 type Paragrafo = { text: string; start: number; end: number };
 
@@ -184,16 +230,68 @@ ${blocos}`,
   // inteiro por um caractere.
   const dados = parseTolerante(limpo);
   const trechos = dados.trechos ?? [];
-  if (!trechos.length) throw new Error("O agente não devolveu nenhum trecho.");
+  if (dados.diagnostico) {
+    console.log(`[selecao] diagnóstico do agente: ${dados.diagnostico}`);
+  }
+  if (!trechos.length) {
+    throw new Error(
+      dados.diagnostico
+        ? `Nenhum trecho aproveitável nesta gravação. ${dados.diagnostico}`
+        : "O agente não devolveu nenhum trecho."
+    );
+  }
 
   // A fala entra aqui, recortada do que já está no banco. O modelo devolve só
   // os tempos.
-  return sanear(trechos, duracaoSegundos)
+  return comNotaSuficiente(sanear(trechos, duracaoSegundos))
     .map((t) => ajustarAbertura(t, palavras))
     .map(({ alinhado, ...t }) => ({
       ...t,
       transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras, alinhado),
     }));
+}
+
+/** Abaixo disto o trecho sai morno e queima o alcance de quem publicar. */
+const NOTA_MINIMA = 6;
+
+/**
+ * Descarta o que não passa da nota, e recalcula a nota em código.
+ *
+ * Recalcular não é desconfiança gratuita: o prompt diz que a nota final é a
+ * MENOR das seis, e "pegue o menor de seis números" é aritmética, que é
+ * justamente onde modelo de linguagem erra. Medido nos dois dias anteriores: o
+ * agente acerta julgamento e erra conta. Então ele julga cada critério e o
+ * código faz a conta.
+ *
+ * Quem cai vai para o log com o critério que derrubou, porque o cliente vai
+ * perguntar por que o vídeo dele rendeu dois cortes e não seis, e "o agente
+ * decidiu" não é resposta.
+ */
+function comNotaSuficiente<T extends { titulo?: string; notas?: Record<string, number>; nota?: number }>(
+  trechos: T[]
+): T[] {
+  const criterios = ["gancho", "tese", "prova", "autonomia", "emocao", "fecho"] as const;
+
+  const comNota: Array<{ trecho: T; nota: number; pior: string }> = trechos.map((t) => {
+    if (!t.notas) return { trecho: t, nota: t.nota ?? NOTA_MINIMA, pior: "" };
+    const valores = criterios.map((c) => Number(t.notas?.[c] ?? 0));
+    const menor = Math.min(...valores);
+    return { trecho: t, nota: menor, pior: criterios[valores.indexOf(menor)] };
+  });
+
+  const passam = comNota.filter((x) => x.nota >= NOTA_MINIMA);
+  for (const x of comNota) {
+    if (x.nota < NOTA_MINIMA) {
+      console.log(
+        `[selecao] descartado "${x.trecho.titulo ?? "sem título"}": ` +
+          `nota ${x.nota}, pior critério ${x.pior || "?"}`
+      );
+    }
+  }
+  console.log(
+    `[selecao] ${passam.length} de ${trechos.length} trechos passaram da nota ${NOTA_MINIMA}`
+  );
+  return passam.map((x) => ({ ...x.trecho, nota: x.nota }));
 }
 
 /**
@@ -424,9 +522,9 @@ export function recortarFala(
 }
 
 /** Escapa quebra de linha crua dentro de string antes de parsear. */
-function parseTolerante(bruto: string): { trechos?: TrechoBruto[] } {
+function parseTolerante(bruto: string): { trechos?: TrechoBruto[]; diagnostico?: string } {
   try {
-    return JSON.parse(bruto) as { trechos?: TrechoBruto[] };
+    return JSON.parse(bruto) as { trechos?: TrechoBruto[]; diagnostico?: string };
   } catch {
     let dentro = false;
     let escapando = false;
