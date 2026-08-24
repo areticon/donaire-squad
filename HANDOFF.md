@@ -5102,4 +5102,54 @@ JA e cortada pela borda do quadro na composicao, entao a transparencia ali nao
 perde conteudo: troca uma linha dura, que o olho le como recorte mal feito, por
 uma passagem suave.
 
+### A primeira rodada quebrou em dois lugares, e os dois erram calados
+
+O corte de producao com tudo ligado falhou em dois pontos, e vale registrar
+porque nenhuma das duas mensagens de erro menciona a causa.
+
+**1. Um corte de quatro morreu no codificador.**
+
+    Error while opening encoder for output stream 0:0
+    maybe incorrect parameters such as bit_rate, rate, width or height
+
+Nada ali fala de emoji nem de overlay. A causa: o fluxo do emoji era CURTO e
+atrasado com `setpts`, ligado por `enable`. O `overlay` precisa de um quadro do
+fluxo secundario para se configurar, e um fluxo que so passa a existir la na
+frente e um convite a esse tipo de falha.
+
+O detalhe que fecha o diagnostico: **passou no ffmpeg 9 da maquina de
+desenvolvimento e quebrou no 5.1 do conteiner**, e so no unico corte cujo
+primeiro emoji entrava perto do comeco, a 1,94s. Os outros tres, com o primeiro
+emoji a 8s, 10s e 24s, passaram. Mesmo codigo, mesma paleta, quatro cortes, um
+morto.
+
+O conserto inverte o desenho: o fluxo do emoji cobre o video INTEIRO e quem faz
+ele aparecer e sumir e o alpha. O `overlay` sempre tem quadro, e a aparicao vira
+conta de alpha, que nao depende de sincronia.
+
+**2. O video completo morreu com um erro que dizia exatamente o motivo.**
+
+    -vf/-af/-filter e -filter_complex nao podem ser usados juntos
+    para o mesmo fluxo
+
+O audio do completo sai do `concat`, ou seja de dentro do grafo, e eu pedi
+`-af loudnorm` por fora. Duas donas para o mesmo fluxo. A nivelacao passou para
+dentro do grafo.
+
+**3. E uma cor trocada, que so o teste local pegou.**
+
+A composicao ja terminava em `format=yuv420p`, e o emoji passou a entrar DEPOIS
+disso, com um fluxo rgba. Sem devolver o formato no fim, o codificador escolhia
+outro, e o simbolo de aviso saia **verde e roxo** em vez de amarelo e preto.
+
+Este nao teria aparecido em nenhum log: o arquivo sai valido, com duracao certa
+e sem erro. So aparece olhando. Foi pego porque o teste local extrai o quadro e
+compara com o esperado, que e a mesma regra que este projeto ja aprendeu duas
+vezes.
+
+O codificador do corte passou a exigir `-pix_fmt yuv420p` tambem, para o dia em
+que alguem mexer no grafo e esquecer o formato no fim: sem isso o video sai num
+formato que metade dos aparelhos nao decodifica, e o sintoma vira "o video nao
+abre no celular dele".
+
 *Atualizado em 24/08/2026 por Claude Code.*

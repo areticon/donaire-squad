@@ -243,7 +243,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     grafo += opcoes.legendasArquivo
       ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
       : ";[vc]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100", opcoes.duracaoSec ?? 0);
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
     // A nivelacao de volume entra DENTRO do grafo, e nao em `-af`.
     //
     // Descoberto em producao em 24/08, e o erro do ffmpeg diz exatamente o
@@ -269,7 +269,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     let grafo = opcoes.legendasArquivo
       ? `[0:v]subtitles=${basename(opcoes.legendasArquivo)}[v]`
       : "[0:v]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100", opcoes.duracaoSec ?? 0);
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
     arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
     await writeFile(arquivoDeFiltro, grafo, "utf8");
     args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "0:a?");
@@ -707,49 +707,48 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
  * sem cor: medido em 24/08 com a fonte do sistema (COLR) e com a Noto Color
  * Emoji (CBDT), e nas duas o resultado foi monocromatico.
  */
-function comEmoji(grafo, emojis, largura, x, y, duracao) {
+function comEmoji(grafo, emojis, largura, x, y) {
   const daPaleta = (emojis ?? []).filter((e) => e && e.arquivo);
   if (!daPaleta.length) return grafo;
-
-  // Duracao desconhecida vira uma hora, e nao zero. `trim=duration=0` produz um
-  // fluxo VAZIO, e fluxo vazio no `overlay` e exatamente a falha que este
-  // arquivo acabou de aprender a evitar: o codificador nao se configura e o
-  // erro fala de largura e altura, sem mencionar emoji nenhum.
-  const dur = duracao > 0.5 ? duracao : 3600;
 
   const partes = [grafo.replace(/\[v\]$/, "[base0]")];
   daPaleta.forEach((e, i) => {
     const de = Math.max(0, e.segundo);
     const destino = i === daPaleta.length - 1 ? "v" : `base${i + 1}`;
     partes.push(
-      `movie=${e.arquivo},format=rgba,scale=${largura}:-1,` +
-        // O fluxo do emoji cobre o VIDEO INTEIRO, e quem faz ele aparecer e
-        // sumir e o alpha.
-        //
-        // A primeira versao fazia o contrario: um fluxo curto, atrasado com
-        // `setpts`, ligado por `enable`. Funcionou local no ffmpeg 9 e QUEBROU
-        // em producao no 5.1, num corte so, com "Error while opening encoder
-        // for output stream, maybe incorrect parameters such as width or
-        // height", que nao menciona nem emoji nem overlay. O `overlay` precisa
-        // de um quadro do fluxo secundario para se configurar, e um fluxo que
-        // so comeca a existir la na frente e um convite a esse tipo de falha.
-        //
-        // Cobrindo a duracao inteira, o `overlay` sempre tem quadro, e a
-        // aparicao vira uma conta de alpha, que nao depende de sincronia.
-        `loop=loop=-1:size=1:start=0,fps=30,trim=duration=${dur.toFixed(3)},` +
-        `setpts=PTS-STARTPTS,` +
-        // Entra em 180 ms, fica 1,6 s, sai em 250 ms. Antes disso e depois
-        // daquilo o alpha e zero, entao nao precisa de `enable`.
-        `fade=t=in:st=${de.toFixed(3)}:d=0.18:alpha=1,` +
-        `fade=t=out:st=${(de + 1.35).toFixed(3)}:d=0.25:alpha=1[e${i}]`,
-      `[base${i}][e${i}]overlay=${x}:${y}:format=auto` +
-        // O ULTIMO overlay devolve o formato para yuv420p.
-        //
-        // A composicao ja terminava em `format=yuv420p`, e o emoji passou a
-        // entrar DEPOIS disso, com um fluxo rgba: sem esta linha a saida do
-        // grafo deixa de ser yuv420p e o codificador escolhe outro formato,
-        // que aparece como cor trocada no video. Visto no teste local, com o
-        // simbolo de aviso saindo verde e roxo em vez de amarelo e preto.
+      // UM QUADRO SO, e o `enable` decide quando ele aparece.
+      //
+      // Esta e a terceira versao, e as duas anteriores quebraram em producao de
+      // formas diferentes. Vale registrar as tres, porque o caminho entre elas
+      // e a explicacao:
+      //
+      //   1. Fluxo curto, atrasado com `setpts`, ligado por `enable`.
+      //      QUEBROU num corte: o `overlay` precisa de um quadro do fluxo
+      //      secundario para se configurar, e antes de 1,94s nao havia nenhum.
+      //      O erro falava de largura e altura do codificador.
+      //
+      //   2. Fluxo cobrindo o video INTEIRO, com o alpha fazendo aparecer.
+      //      Resolveu o corte e QUEBROU o video completo: 14 emoji vezes 27
+      //      minutos a 30 quadros sao 690 mil quadros de imagem parada para o
+      //      grafo carregar. O erro foi "Failed to configure output pad" num
+      //      `scale`, que e o sintoma de um grafo pesado demais.
+      //
+      //   3. Esta: UM quadro, sem `fps`, sem `trim`, sem `setpts`. O `overlay`
+      //      repete o ultimo quadro do secundario por padrao, entao a imagem
+      //      existe do instante zero ao fim, e custa um quadro em vez de
+      //      cinquenta mil. O `enable` cuida do tempo.
+      //
+      // O preco e a entrada em corte seco, sem esmaecer. Para um acento de 1,6
+      // segundo isso le como pontuacao e nao como falta, e vale muito mais que
+      // uma animacao que derruba o video completo.
+      `movie=${e.arquivo},format=rgba,scale=${largura}:-1[e${i}]`,
+      `[base${i}][e${i}]overlay=${x}:${y}:` +
+        `enable='between(t,${de.toFixed(3)},${(de + 1.6).toFixed(3)})':format=auto` +
+        // O ULTIMO overlay devolve o formato para yuv420p. A composicao ja
+        // terminava em yuv420p e o emoji entra depois disso com um fluxo rgba:
+        // sem esta linha o codificador escolhe outro formato, e o simbolo de
+        // aviso sai verde e roxo em vez de amarelo e preto. Visto no teste
+        // local, e nao em log nenhum, porque o arquivo sai valido.
         (destino === "v" ? ",format=yuv420p" : "") +
         `[${destino}]`
     );
@@ -794,8 +793,7 @@ export async function cortarVertical(
     emojis,
     LAYOUT.EMOJI,
     `(W-w)/2+${LAYOUT.EMOJI_X}`,
-    `H-${LAYOUT.EMOJI_Y}`,
-    duracao
+    `H-${LAYOUT.EMOJI_Y}`
   );
 
   await rodar([
