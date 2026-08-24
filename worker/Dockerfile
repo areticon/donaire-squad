@@ -59,6 +59,48 @@ RUN chmod 644 /app/modelos/selfie_segmenter.tflite
 # aparece na construcao em vez de virar um corte pior sem explicacao.
 RUN python3 -c "from mediapipe.tasks.python import vision, BaseOptions; seg = vision.ImageSegmenter.create_from_options(vision.ImageSegmenterOptions(     base_options=BaseOptions(model_asset_path='/app/modelos/selfie_segmenter.tflite'),     output_category_mask=False, output_confidence_masks=True)); import numpy, cv2, mediapipe as mp; img = mp.Image(image_format=mp.ImageFormat.SRGB, data=numpy.zeros((64,64,3), numpy.uint8)); r = seg.segment(img); assert r.confidence_masks, 'segmentador nao devolveu mascara'; seg.close(); print('recorte provado na construcao:', mp.__version__)"
 
+# AS FONTES DOS ESTILOS DE EDICAO.
+#
+# O libass NAO falha quando a fonte pedida nao existe: ele escolhe outra em
+# silencio e desenha. O video sai valido, legivel, e ninguem percebe.
+#
+# Foi o que aconteceu ate 24/08. Verificado no quadro do video completo de
+# PRODUCAO: o estilo pedia Arial, e o que apareceu foi DejaVu Sans Bold, porque
+# este conteiner nao tem nenhuma fonte da Microsoft e so tinha a familia DejaVu,
+# que entrou de carona numa dependencia. Com quatro estilos de edicao isso
+# deixa de ser detalhe: os quatro sairiam com a MESMA tipografia e a escolha do
+# cliente nao mudaria nada na tela.
+#
+# As quatro fontes moram no REPOSITORIO, e nao vem do apt nem de download em
+# tempo de construcao. Duas razoes. Uma dependencia de rede a mais no build e
+# uma forma a mais de o deploy falhar por motivo que nao tem nada a ver com o
+# codigo. E, mais importante, o teste local passa a desenhar com os MESMOS
+# arquivos que o conteiner, entao um quadro conferido aqui vale para la; com a
+# fonte vindo do apt, o que eu olho na maquina de desenvolvimento nao e o que o
+# cliente recebe.
+#
+# A Liberation Sans tem as MESMAS metricas da Arial, entao ela e a substituta
+# certa e nao um remendo. Todas sao OFL, que permite embutir e distribuir.
+#
+#   PT Serif Bold  -> estilo dramatico   (serifada, para historia pessoal)
+#   Anton          -> estilo acelerado   (o peso de titulo que virou padrao de corte)
+#   Liberation Sans-> estilo serio       (neutra, metrica de Arial)
+#   Bangers        -> estilo animado     (desenhada, para bastidor e humor)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY fontes/*.ttf /usr/local/share/fonts/
+
+# PROVA EM TEMPO DE CONSTRUCAO, pela mesma razao da prova do MediaPipe acima:
+# a falha aqui e SILENCIOSA por natureza, entao a unica checagem honesta e
+# mandar o libass escolher de verdade e conferir o que ele escolheu. Se faltar
+# qualquer fonte, ou se o nome em lib/media/estilos.ts nao bater com o que esta
+# instalado, a IMAGEM NAO SOBE.
+COPY fontes/provar-fontes.py /tmp/provar-fontes.py
+RUN fc-cache -f > /dev/null && python3 /tmp/provar-fontes.py && rm /tmp/provar-fontes.py
+
 # As dependências primeiro, para a camada de npm ficar em cache quando só o
 # código mudar.
 COPY package.json ./

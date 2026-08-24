@@ -1,5 +1,6 @@
 import type { Word } from "@/lib/media/transcribe";
 import type { Estilo } from "@/lib/media/estilos";
+import { larguraEmCorpos } from "@/lib/media/metricas-de-fonte";
 
 /**
  * A legenda palavra a palavra, queimada no corte.
@@ -19,34 +20,59 @@ import type { Estilo } from "@/lib/media/estilos";
  *
  * SRT só liga texto a um intervalo de tempo. Para destacar a palavra que está
  * sendo dita AGORA é preciso mudar a cor dentro da linha, e isso o SRT não faz.
- * O ASS tem a marca `\\k`, feita exatamente para karaokê, e o ffmpeg desenha
+ * O ASS tem a marca `\k`, feita exatamente para karaokê, e o ffmpeg desenha
  * nativamente, sem biblioteca extra.
  *
- * ## O tempo aqui é o do corte, não o da gravação
+ * ## O tempo aqui é o do corte, e ele vem de UMA lista
  *
  * As palavras chegam com o tempo do arquivo original. O corte começa em outro
  * instante e teve trechos removidos no meio. Converter é obrigatório: sem isso a
  * legenda vai andando para trás ao longo do vídeo, e no fim está meio minuto
  * fora.
+ *
+ * A conversão usa exatamente os mesmos intervalos que o worker vai emendar,
+ * calculados uma vez em `intervalosDoTrecho`. Antes cada lado calculava por
+ * conta, com limiares diferentes, e a diferença ACUMULA. Legenda fora de
+ * sincronia é pior que legenda nenhuma, porque parece defeito de plataforma.
  */
 
-export type Remocao = { de: number; ate: number };
+/** Um pedaço que FICA, em segundos relativos ao início do trecho. */
+export type Intervalo = { de: number; ate: number };
 
-/** Converte um instante da gravação para o instante dentro do corte já limpo. */
+/** O quadro em que a legenda vai ser desenhada. */
+export type Quadro = { largura: number; altura: number; margemDeBaixo: number };
+
+/** O corte vertical de rede social, que é o caso principal. */
+export const QUADRO_VERTICAL: Quadro = { largura: 1080, altura: 1920, margemDeBaixo: 800 };
+
+/**
+ * O corte horizontal.
+ *
+ * Aqui a margem é a da pesquisa, e não a exceção do vertical: no quadro
+ * deitado a pessoa não ocupa o terço inferior, então a regra original (terço
+ * inferior central) volta a cumprir a própria intenção.
+ */
+export const QUADRO_HORIZONTAL: Quadro = { largura: 1920, altura: 1080, margemDeBaixo: 90 };
+
+/**
+ * Onde um instante da GRAVAÇÃO cai dentro do corte já limpo.
+ *
+ * Devolve `null` quando o instante caiu num pedaço removido: palavra que não
+ * está no áudio não pode aparecer escrita.
+ */
 function noTempoDoCorte(
   segundo: number,
   inicioDoCorte: number,
-  remocoes: Remocao[]
-): number {
-  let descontado = 0;
-  for (const r of remocoes) {
-    if (r.ate <= inicioDoCorte) continue;
-    if (r.de >= segundo) break;
-    const de = Math.max(r.de, inicioDoCorte);
-    const ate = Math.min(r.ate, segundo);
-    if (ate > de) descontado += ate - de;
+  intervalos: Intervalo[]
+): number | null {
+  const t = segundo - inicioDoCorte;
+  let acumulado = 0;
+  for (const i of intervalos) {
+    if (t < i.de) return null;
+    if (t <= i.ate) return acumulado + (t - i.de);
+    acumulado += i.ate - i.de;
   }
-  return Math.max(0, segundo - inicioDoCorte - descontado);
+  return null;
 }
 
 function carimbo(segundos: number): string {
@@ -74,32 +100,67 @@ function limpar(texto: string): string {
 export function legendaDoCorte(
   palavras: Word[],
   inicioDoCorte: number,
-  fimDoCorte: number,
-  remocoes: Remocao[],
-  estilo: Estilo
+  intervalos: Intervalo[],
+  estilo: Estilo,
+  quadro: Quadro = QUADRO_VERTICAL
 ): string {
-  const dentro = palavras.filter(
-    (p) =>
-      p.end > inicioDoCorte &&
-      p.start < fimDoCorte &&
-      // Palavra que caiu numa remoção não aparece: ela não está no áudio.
-      !remocoes.some((r) => p.start >= r.de - 0.02 && p.end <= r.ate + 0.02)
-  );
-  if (!dentro.length) return "";
+  if (!intervalos.length) return "";
+  const fimDoCorte = inicioDoCorte + intervalos[intervalos.length - 1].ate;
+  // Quanto o corte dura DEPOIS da limpeza. A última linha não pode passar
+  // disto: medido em 24/08, ela sobrava 0,77 s além do fim do arquivo, o que o
+  // ffmpeg simplesmente descarta, mas deixa o arquivo de legenda dizendo uma
+  // coisa que o vídeo não faz, e é assim que se depura o lugar errado depois.
+  const duracaoDoCorte = intervalos.reduce((s, i) => s + (i.ate - i.de), 0);
+
+  // Cada palavra vira o par (início, fim) JÁ no tempo do corte. Palavra que
+  // caiu dentro de uma remoção some aqui, porque `noTempoDoCorte` devolve null.
+  const marcadas: { inicio: number; fim: number; texto: string }[] = [];
+  for (const p of palavras) {
+    if (p.end <= inicioDoCorte || p.start >= fimDoCorte) continue;
+    const inicio = noTempoDoCorte(p.start, inicioDoCorte, intervalos);
+    const fim = noTempoDoCorte(p.end, inicioDoCorte, intervalos);
+    if (inicio === null || fim === null || fim <= inicio) continue;
+    const texto = limpar(p.word);
+    if (texto) marcadas.push({ inicio, fim, texto });
+  }
+  if (!marcadas.length) return "";
 
   const L = estilo.legenda;
 
   // Agrupa em blocos do tamanho que o estilo pede. Um bloco vira uma linha na
   // tela, e dentro dele o karaokê acende palavra por palavra.
-  const blocos: Word[][] = [];
-  for (let i = 0; i < dentro.length; i += L.palavrasPorVez) {
-    blocos.push(dentro.slice(i, i + L.palavrasPorVez));
+  const blocos: (typeof marcadas)[] = [];
+  for (let i = 0; i < marcadas.length; i += L.palavrasPorVez) {
+    blocos.push(marcadas.slice(i, i + L.palavrasPorVez));
   }
 
+  // A margem lateral acompanha a largura do quadro: 80 num quadro de 1080 é
+  // 7,4%, e o mesmo 80 num quadro de 1920 seria 4,2%, encostando na borda.
+  const margemLateral = Math.round(quadro.largura * 0.074);
+  const larguraUtil = quadro.largura - 2 * margemLateral;
+
   const linhas: string[] = [];
-  for (const bloco of blocos) {
-    const inicio = noTempoDoCorte(bloco[0].start, inicioDoCorte, remocoes);
-    const fim = noTempoDoCorte(bloco[bloco.length - 1].end, inicioDoCorte, remocoes);
+  for (const [b, bloco] of blocos.entries()) {
+    const inicio = bloco[0].inicio;
+    const fimDaFala = bloco[bloco.length - 1].fim;
+    if (fimDaFala <= inicio) continue;
+
+    // Cada bloco fica na tela ATÉ o próximo aparecer, e nunca depois disso.
+    //
+    // As duas metades desta regra vieram do primeiro quadro renderizado, em
+    // 24/08, que mostrou dois blocos ao mesmo tempo, empilhados em alturas
+    // diferentes. O segundo entrava antes de o primeiro sair, e o libass, ao
+    // ver duas linhas ocupando o mesmo lugar, empurra uma para cima. Legenda
+    // que pula de altura parece defeito.
+    //
+    // O outro lado é o buraco: com uma palavra por vez, terminar no fim da
+    // palavra deixa a tela vazia entre uma e outra, e o olho lê isso como
+    // piscar. Ficar até o próximo entrar resolve os dois.
+    //
+    // O teto de 0,8 s existe para a pausa longa: sem ele a última palavra antes
+    // de um silêncio ficaria parada na tela até a fala voltar.
+    const proximo = blocos[b + 1]?.[0].inicio ?? Infinity;
+    const fim = Math.min(proximo - 0.02, fimDaFala + 0.8, duracaoDoCorte);
     if (fim <= inicio) continue;
 
     // `\k` conta em CENTÉSIMOS de segundo, e não em segundos. Errar a unidade
@@ -107,28 +168,61 @@ export function legendaDoCorte(
     // é uma legenda que pisca inteira no primeiro quadro.
     const texto = bloco
       .map((p, i) => {
-        const anterior = i === 0 ? bloco[0].start : bloco[i - 1].end;
-        const duracao = Math.max(1, Math.round((p.end - anterior) * 100));
-        const palavra = L.caixaAlta ? p.word.toUpperCase() : p.word;
-        return `{\\k${duracao}}${limpar(palavra)} `;
+        const anterior = i === 0 ? bloco[0].inicio : bloco[i - 1].fim;
+        const duracao = Math.max(1, Math.round((p.fim - anterior) * 100));
+        const palavra = L.caixaAlta ? p.texto.toUpperCase() : p.texto;
+        return `{\\k${duracao}}${palavra} `;
       })
       .join("")
       .trimEnd();
 
+    // CADA LINHA ENTRA NO MAIOR CORPO QUE AINDA CABE.
+    //
+    // Um corpo fixo para o estilo inteiro erra dos dois lados, e os dois lados
+    // foram medidos em 24/08 no corte real. Com corpo grande, a palavra mais
+    // longa da gravação passa da tela, e no modo de uma palavra por vez a
+    // quebra automática não salva, porque não há espaço onde quebrar. Com corpo
+    // pequeno o suficiente para a pior palavra caber, a palavra MEDIANA ocupa
+    // 13% da largura, que é invisível num telefone.
+    //
+    // O `corpo` do estilo vira portanto um TETO, e não um valor. Palavra curta
+    // sobe até ele; frase longa desce até caber. É o que as ferramentas do
+    // mercado fazem, e é a razão de a legenda delas parecer grande sem nunca
+    // vazar.
+    //
+    // A conta é exata porque a largura de cada caractere vem da tabela hmtx da
+    // própria fonte. O único erro que sobra é o kerning, que em fonte de
+    // legenda é desprezível e sempre para menos.
+    const emCorpos = larguraEmCorpos(
+      bloco.map((p) => (L.caixaAlta ? p.texto.toUpperCase() : p.texto)).join(" "),
+      L.fonte
+    );
+    const corpo = Math.max(
+      24,
+      Math.min(L.corpo, Math.floor(larguraUtil / Math.max(0.1, emCorpos)))
+    );
+    // `s` só entra quando muda alguma coisa, para o arquivo não ficar cheio
+    // de marca que não faz nada.
+    const ajuste = corpo < L.corpo ? `{\\fs${corpo}}` : "";
+
     linhas.push(
-      `Dialogue: 0,${carimbo(inicio)},${carimbo(fim + 0.12)},Fala,,0,0,0,,${texto}`
+      `Dialogue: 0,${carimbo(inicio)},${carimbo(fim)},Fala,,0,0,0,,${ajuste}${texto}`
     );
   }
   if (!linhas.length) return "";
 
+
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
-    "PlayResX: 1080",
-    "PlayResY: 1920",
-    // WrapStyle 2 desliga a quebra automática: com poucas palavras por linha ela
-    // só atrapalha, quebrando no lugar errado.
-    "WrapStyle: 2",
+    `PlayResX: ${quadro.largura}`,
+    `PlayResY: ${quadro.altura}`,
+    // WrapStyle 0 mantém a quebra automática ligada, e ela é uma REDE DE
+    // SEGURANÇA e não um recurso. Com poucas palavras por vez a quebra quase
+    // nunca dispara; quando dispara, é porque a linha ia passar da largura da
+    // tela, e nesse caso quebrar é o único desfecho aceitável. O WrapStyle 2,
+    // que estava aqui antes, deixaria a frase correr para fora do quadro.
+    "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "",
     "[V4+ Styles]",
@@ -136,7 +230,12 @@ export function legendaDoCorte(
     // PrimaryColour é a cor de quem JÁ foi falado; SecondaryColour é a de quem
     // ainda vem. O karaokê do ASS anda da secundária para a primária, então o
     // destaque entra em PrimaryColour, o que é o contrário do que o nome sugere.
-    `Style: Fala,${L.fonte.split(",")[0]},${L.corpo},${L.corDoDestaque},${L.cor},&H00000000,&HA0000000,-1,0,1,${L.contorno},2,2,80,80,${L.margemDeBaixo},1`,
+    //
+    // O nome da fonte vai INTEIRO, e não só a primeira parte antes da vírgula.
+    // Fonte é escolhida pelo fontconfig do contêiner, e lá dentro só existe o
+    // que o Dockerfile instalou; pilha de alternativas ao estilo do navegador
+    // não significa nada para o libass, que trata a string toda como um nome.
+    `Style: Fala,${L.fonte},${L.corpo},${L.corDoDestaque},${L.cor},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

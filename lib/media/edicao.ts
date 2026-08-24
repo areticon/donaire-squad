@@ -126,7 +126,7 @@ function limparTexto(t: string): string {
 export function montarLegendasDestaque(
   trechos: Trecho[],
   remocoes: Remocao[],
-  opcoes: { segundosNaTela?: number; corDeDestaque?: string } = {}
+  opcoes: { segundosNaTela?: number; corDeDestaque?: string; fonte?: string } = {}
 ): string {
   const naTela = opcoes.segundosNaTela ?? 4;
   // ASS usa BGR com &H prefixo, não RGB. O laranja da marca (#f36a22) vira
@@ -145,7 +145,13 @@ export function montarLegendasDestaque(
     // BorderStyle 3 desenha uma caixa atrás do texto, que é o que garante
     // leitura sobre slide claro E sobre cena escura. Alignment 2 é embaixo ao
     // centro, MarginV afasta da borda.
-    `Style: Destaque,Arial,64,&H00FFFFFF,${destaque},&HB0000000,-1,3,4,0,2,120,120,90,1`,
+    // A fonte é a do ESTILO do projeto, e o padrão é Liberation Sans e não
+    // Arial. Não é troca de gosto: o contêiner do worker é Debian e não tem
+    // nenhuma fonte da Microsoft. Verificado no quadro do vídeo completo de
+    // produção em 24/08: este estilo pedia Arial e o que apareceu na tela foi
+    // DejaVu Sans Bold, escolhida em silêncio pelo libass. A Liberation Sans
+    // tem as mesmas métricas da Arial e está instalada de propósito.
+    `Style: Destaque,${opcoes.fonte ?? "Liberation Sans"},64,&H00FFFFFF,${destaque},&HB0000000,-1,3,4,0,2,120,120,90,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -167,4 +173,59 @@ export function montarLegendasDestaque(
     .filter((l): l is string => l !== null);
 
   return [...cabecalho, ...linhas].join("\n") + "\n";
+}
+
+/**
+ * Os pedaços de um trecho que SOBREVIVEM à limpeza, já relativos ao início dele.
+ *
+ * ## Por que isto existe, e por que ele é a fonte única
+ *
+ * Três lugares precisam saber exatamente onde cada segundo do trecho vai parar
+ * depois da limpeza: o worker, que emenda os pedaços; a legenda, que precisa
+ * acender a palavra no instante certo; e a duração, que a composição usa para o
+ * zoom e para o `-t`.
+ *
+ * Até 24/08 cada um calculava por conta. O worker filtrava remoção menor que
+ * 0,05 s e descartava pedaço mantido menor que 0,05 s; a legenda descontava
+ * TODAS as remoções. A diferença é pequena por trecho e ela ACUMULA, e legenda
+ * fora de sincronia é pior que legenda nenhuma, porque parece defeito.
+ *
+ * Agora existe uma lista só. O app calcula, manda pronta, e o worker apenas
+ * emenda o que recebeu. Se a regra mudar, ela muda num lugar e os dois lados
+ * andam juntos por construção, e não por disciplina.
+ *
+ * Os limiares de 0,05 s vieram do worker e ficam aqui pelo mesmo motivo de
+ * sempre: pedaço menor que um quadro e meio não vira vídeo, vira um nó a mais
+ * no grafo de filtro e um risco de `trim` vazio.
+ */
+export function intervalosDoTrecho(
+  remocoes: { de: number; ate: number }[],
+  inicio: number,
+  fim: number
+): { de: number; ate: number }[] {
+  const duracao = fim - inicio;
+  const dentro = remocoes
+    .filter((r) => r.ate > inicio && r.de < fim && r.ate > r.de)
+    .map((r) => ({
+      de: Math.max(0, Math.min(r.de, fim) - inicio),
+      ate: Math.max(0, Math.min(r.ate, fim) - inicio),
+    }))
+    .filter((r) => r.ate - r.de > 0.05)
+    .sort((a, b) => a.de - b.de);
+
+  const fica: { de: number; ate: number }[] = [];
+  let cursor = 0;
+  for (const r of dentro) {
+    if (r.de > cursor) fica.push({ de: cursor, ate: r.de });
+    cursor = Math.max(cursor, r.ate);
+  }
+  if (duracao > cursor) fica.push({ de: cursor, ate: duracao });
+  return fica.filter((f) => f.ate - f.de > 0.05);
+}
+
+/** Quanto o trecho passa a durar depois da limpeza. */
+export function duracaoDosIntervalos(
+  intervalos: { de: number; ate: number }[]
+): number {
+  return intervalos.reduce((s, i) => s + (i.ate - i.de), 0);
 }

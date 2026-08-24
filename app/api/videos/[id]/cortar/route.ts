@@ -11,21 +11,8 @@ import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
-import {
-  detectarPausas,
-  montarLegendasDestaque,
-  segundosRemovidos,
-} from "@/lib/media/edicao";
-import {
-  detectarHesitacao,
-  limpezaParaRemocoes,
-  unirRemocoes,
-} from "@/lib/media/limpeza";
-import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
+import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
 import type { Word } from "@/lib/media/transcribe";
-import { gerarFundoDoCorte } from "@/lib/media/fundo-do-corte";
-import { dataUrlToBuffer } from "@/lib/media/nano-banana";
-import { put } from "@vercel/blob";
 
 /**
  * Manda o worker cortar a gravação.
@@ -35,8 +22,11 @@ import { put } from "@vercel/blob";
  * segundos. Quem trabalha é o worker no Railway, onde ffmpeg tem disco de
  * verdade e não existe teto de tempo.
  *
- * É o conserto de raiz que a seleção de trechos ainda não tem. Aqui já nasce
- * certo.
+ * O CONTEÚDO do pedido (pausas, limpeza, ganchos, fundo, legendas, estilo) sai
+ * de `montarPedidoDeCorte`, e não daqui. A razão é que o script de teste manda
+ * o mesmo pedido, e enquanto essa montagem morou dentro da rota as duas cópias
+ * divergiram mais de uma vez, sempre do mesmo jeito: o produto era consertado,
+ * o teste continuava com o desenho velho, e dizia que funcionava.
  */
 export async function POST(
   _req: NextRequest,
@@ -63,9 +53,10 @@ export async function POST(
       attempts: true,
       blobUrl: true,
       clips: true,
-      // O nicho alimenta o fundo gerado dos cortes: fundo generico serve para
-      // qualquer canal e por isso nao serve para nenhum.
-      project: { select: { niche: true } },
+      // O nicho alimenta o fundo gerado dos cortes, e o estilo decide legenda,
+      // ritmo e som. Os dois moram no PROJETO, e não no envio: canal com estilo
+      // diferente a cada vídeo não constrói reconhecimento.
+      project: { select: { niche: true, videoStyle: true } },
       transcript: true,
       durationSec: true,
       projectId: true,
@@ -110,115 +101,21 @@ export async function POST(
     );
   }
 
-  // A edição do vídeo completo é decidida AQUI, e não no worker, pelo mesmo
-  // motivo do enquadramento: a matemática do deslocamento de tempo precisa
-  // existir num lugar só. As legendas já saem com os tempos convertidos para
-  // depois das remoções, senão o destaque do fim do vídeo apareceria quase
-  // meio minuto atrasado.
   const transcript = video.transcript as { words?: Word[] } | null;
-  const palavras = transcript?.words ?? [];
 
-  const pausas = detectarPausas(palavras, video.durationSec ?? 0);
-
-  // A limpeza de fala vem DEPOIS das pausas e junto com elas, porque as duas
-  // atacam problemas diferentes: pausa é silêncio, hesitação tem áudio.
-  //
-  // Medido na gravação real: as pausas devolvem 49,6s no vídeo inteiro, e a
-  // limpeza devolve cerca de 30s só no primeiro bloco de 800 palavras. É onde
-  // o tempo realmente está.
-  //
-  // Falhar aqui não derruba o corte: o vídeo sai com as pausas removidas e a
-  // fala como estava, que é pior mas existe.
-  let fala: Awaited<ReturnType<typeof detectarHesitacao>> = [];
-  try {
-    fala = await detectarHesitacao(palavras, { projectId: video.projectId });
-  } catch {
-    /* segue sem limpeza de fala */
-  }
-
-  const remocoes = unirRemocoes(pausas, limpezaParaRemocoes(fala, palavras));
-  const legendasAss = montarLegendasDestaque(trechos, remocoes);
-
-  // Os ganchos da abertura, já convertidos para o tempo DEPOIS da edição.
-  // Converter aqui e não no worker é a mesma regra do resto: a matemática do
-  // deslocamento mora num lugar só.
-  //
-  // Falhar aqui não derruba o corte: o vídeo sai começando do começo, que
-  // retém menos mas existe.
-  let ganchos: ReturnType<typeof ganchosNoTempoEditado> = [];
-  try {
-    ganchos = ganchosNoTempoEditado(
-      await escolherGanchos(trechos, { projectId: video.projectId }),
-      remocoes
-    );
-  } catch (e) {
-    // Seguir sem abertura é o certo: vídeo que começa do começo retém menos,
-    // mas existe. O que NÃO pode é seguir calado, que foi o que aconteceu por
-    // um tempo: a chamada estourava o teto de tokens em torno de metade das
-    // vezes e o vídeo saía sem gancho, sem nada no sistema dizendo por quê.
-    console.error(
-      `[${id}] abertura falhou, vídeo sai sem gancho: ` +
-        (e instanceof Error ? e.message : "motivo desconhecido")
-    );
-  }
-
-  // O FUNDO dos cortes verticais, gerado uma vez e usado nos sete.
-  //
-  // Uma vez, e nao um por corte, por duas razoes. Custo: sao sete cortes, e
-  // sete imagens e sete vezes o preco para um elemento que fica desfocado
-  // atras da pessoa. E identidade: fundos diferentes em cortes do mesmo video
-  // fazem a serie parecer de canais diferentes.
-  //
-  // Gerado AQUI e nao no worker pela mesma regra do enquadramento: a conta de
-  // IA do projeto vive num lugar so, e prompt e produto, que se edita num lugar
-  // so.
-  //
-  // Falhar nao derruba o corte: sem fundo o video sai na composicao com o
-  // slide, que e pior mas existe.
-  let fundoUrl: string | null = null;
-  try {
-    const assunto = trechos
-      .map((t) => t.titulo)
-      .filter(Boolean)
-      .slice(0, 3)
-      .join("; ");
-    const fundo = await gerarFundoDoCorte(video.project?.niche, assunto, {
+  const { corpo, resumo } = await montarPedidoDeCorte(
+    {
+      id,
+      blobUrl: video.blobUrl,
+      durationSec: video.durationSec ?? 0,
       projectId: video.projectId,
-    });
-    if (fundo) {
-      const { url } = await put(
-        `cortes/${id}/fundo.jpg`,
-        dataUrlToBuffer(fundo.imagem),
-        { access: "private", contentType: "image/jpeg", addRandomSuffix: true }
-      );
-      fundoUrl = url;
-      console.log(`[${id}] fundo dos cortes gerado: ${fundo.descricao}`);
-    }
-  } catch (e) {
-    console.error(
-      `[${id}] fundo dos cortes falhou, cortes saem com o slide: ` +
-        (e instanceof Error ? e.message : "motivo desconhecido")
-    );
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com";
-  const corpo = JSON.stringify({
-    fundoUrl,
-    videoJobId: id,
-    sourceUrl: video.blobUrl,
-    duracaoSec: video.durationSec ?? 0,
-    trechos: trechos.map((t, i) => ({
-      indice: i,
-      inicio: Math.floor(t.inicio),
-      fim: Math.ceil(t.fim),
-      titulo: t.titulo,
-    })),
-    remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
-    ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
-    legendasAss,
-    enquadramentoUrl: `${appUrl}/api/videos/${id}/enquadrar`,
-    callbackUrl: `${appUrl}/api/videos/${id}/cortar-callback`,
-  });
+      trechos,
+      palavras: transcript?.words ?? [],
+      nicho: video.project?.niche ?? null,
+      estilo: video.project?.videoStyle ?? null,
+    },
+    { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
+  );
 
   try {
     const r = await fetch(`${base.replace(/\/$/, "")}/cortar`, {
@@ -246,13 +143,5 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  return NextResponse.json({
-    ok: true,
-    trechos: trechos.length,
-    remocoes: remocoes.length,
-    pausas: pausas.length,
-    hesitacoes: fala.length,
-    ganchos: ganchos.length,
-    segundosRemovidos: Math.round(segundosRemovidos(remocoes)),
-  });
+  return NextResponse.json({ ok: true, ...resumo });
 }
