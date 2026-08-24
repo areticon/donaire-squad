@@ -163,7 +163,14 @@ ${blocos}`,
     // (22/08). O que encolheu de verdade foi a resposta: sem o campo da fala
     // copiada, a saída real caiu de uns 4.500 tokens para menos de 1.000, que
     // é o que tira esta chamada da beirada do maxDuration da Vercel.
-    { maxTokens: 16000, usage: { operation: "video_selecao", ...usageCtx } }
+    // 32000, e nao 16000. Pedir a FRASE DE ABERTURA (23/08) fez o agente pensar
+    // bem mais, porque escolher onde o trecho comeca deixou de ser consequencia
+    // do intervalo e virou uma decisao propria. Com 16000 ele gastava o teto
+    // inteiro pensando e voltava sem texto, exatamente como em 22/08.
+    //
+    // Teto alto nao custa por si: o cobrado e o que o modelo GERA, e o teto so
+    // decide se ele consegue terminar.
+    { maxTokens: 32000, usage: { operation: "video_selecao", ...usageCtx } }
   );
 
   const limpo = resposta
@@ -287,22 +294,51 @@ function acharAbertura(
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
-  // Procura a sequência a partir do encaixe, e só para a frente: alinhar para
-  // trás importaria fala que o agente não escolheu, que é o mesmo motivo de
-  // `encaixarNaFrase` só andar para a frente.
+  // Procura para os DOIS lados, e a razão inverteu depois da medição de 23/08.
+  //
+  // A primeira versão só andava para a frente, pelo mesmo motivo de
+  // `encaixarNaFrase`: não importar fala que o agente não escolheu. Medido nos
+  // sete trechos da gravação real, isso falhou em SEIS: o agente escolhia uma
+  // abertura boa e devolvia um tempo de início que não batia com ela, quase
+  // sempre depois da frase que ele mesmo tinha escolhido.
+  //
+  // As aberturas escolhidas eram boas: "Em dois mil e vinte e quatro eu estava
+  // num emprego", "O problema é que eu vendi muita consultoria". O que estava
+  // errado era a ARITMÉTICA DE TEMPO, que é fraqueza conhecida de modelo de
+  // linguagem, e não o julgamento, que é a parte que ele faz bem.
+  //
+  // Então o texto vira a fonte da verdade e o tempo vira palpite. Andar para
+  // trás aqui não importa fala não escolhida: importa exatamente as palavras
+  // que o agente APONTOU como começo.
   const chave = alvo.slice(0, 4);
-  for (let i = de; i <= ate - chave.length; i++) {
-    let bate = true;
+  const bateEm = (i: number) => {
+    if (i < 0 || i + chave.length > palavras.length) return false;
     for (let k = 0; k < chave.length; k++) {
-      if (limpa(palavras[i + k].word) !== chave[k]) {
-        bate = false;
-        break;
-      }
+      if (limpa(palavras[i + k].word) !== chave[k]) return false;
     }
-    if (bate) return i;
+    return true;
+  };
+
+  // Em anéis a partir do encaixe, para ficar com a ocorrência MAIS PRÓXIMA:
+  // uma frase comum pode aparecer duas vezes na gravação, e a mais perto do
+  // que o agente indicou é a que ele quis dizer.
+  for (let raio = 0; raio <= JANELA_DE_BUSCA_EM_PALAVRAS; raio++) {
+    if (de + raio <= ate && bateEm(de + raio)) return de + raio;
+    if (de - raio >= 0 && bateEm(de - raio)) return de - raio;
   }
   return null;
 }
+
+/**
+ * Quanto a busca pela abertura pode se afastar do tempo que o agente devolveu.
+ *
+ * 220 palavras é perto de um minuto e meio de fala. Parece muito, e é de
+ * propósito: o erro medido de aritmética do agente chegou a mais de um minuto,
+ * e limitar a busca a poucos segundos faria a verificação reprovar escolhas
+ * boas. O risco de ir longe demais é pegar outra ocorrência da mesma frase, e
+ * contra isso a busca é em anéis, ficando com a mais próxima.
+ */
+const JANELA_DE_BUSCA_EM_PALAVRAS = 220;
 
 /**
  * Recorta o que foi falado entre dois instantes, a partir da transcrição que já

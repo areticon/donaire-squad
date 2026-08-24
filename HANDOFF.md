@@ -4273,4 +4273,98 @@ comercial: a Epidemic Sound tem API feita para plataformas embutirem o catalogo,
 e a Artlist tem plano Enterprise com licenca customizavel que cobre uso em
 software. Os dois so fazem sentido com receita para justificar.
 
+## Sessao 23/08/2026 (parte 47): a escolha dos cortes
+
+O Bruno assistiu e foi direto: "pega uma parte totalmente desinteressante, com
+erros na minha fala", "esta bem distante do padrao Premium". Estava certo, por
+dois motivos independentes, e o segundo virou a licao mais util do dia.
+
+### 1. Os cortes NUNCA receberam a limpeza de fala
+
+A limpeza entrou em 22/08 e foi ligada so em `prepararCompleto`, ou seja so no
+video do YouTube. Os cortes, que sao o que vai para Instagram, TikTok e
+LinkedIn, continuavam saindo do arquivo CRU. Ninguem notou por um dia.
+
+Medido nos seis cortes reais: **30 dos 332 segundos que iam ao ar eram pausa ou
+muleta, 9% do que o publico assiste**, e isso e PISO, porque nem conta
+autocorrecao como "software como servico, e software as a service".
+
+Agora o trecho e limpo ANTES de tudo, com `prepararTrecho`. De brinde, isso
+alinha a mascara do recorte por construcao: se a remocao viesse depois, mascara
+e imagem ficariam em linhas do tempo diferentes e o recorte sairia deslocado.
+
+### 2. Ninguem conferia a abertura, e meu conserto burlou minha propria metrica
+
+Medido: **5 dos 6 cortes abriam com defeito.**
+
+| Corte | Abria com | Defeito |
+|---|---|---|
+| 0 | "software como servico, e software as a service" | autocorrecao |
+| 1 | "Diligencia, todo AQUELE negocio" | aponta pra fora |
+| 3 | "AH, mas eu sou CLT" | muleta |
+| 4 | "MESMO, pra fazer trabalho social" | meio de frase |
+| 5 | "ENTAO por exemplo, AH voltei" | muleta dupla |
+
+**A primeira tentativa foi codigo detectando muleta por lista de palavras e
+aparando a primeira.** Passou nos seis, e produziu isto:
+
+    "como servico, e software as a service"
+    "negocio falou po, vai rolar"
+    "por exemplo, ah voltei pro mercado"
+
+Passou porque o detector so olhava a PRIMEIRA palavra. Tirei "Entao" e "por" nao
+esta na lista. **O numero melhorou e o video nao.** Meu proprio codigo burlou
+minha propria metrica.
+
+Isso mostrou o que ja estava escrito no projeto e eu violei: julgar se uma
+abertura prende e JULGAMENTO, nao regra. Tarefa mecanica vai para codigo, tarefa
+de julgamento vai para o modelo.
+
+**O desenho que ficou:** o agente devolve a FRASE DE ABERTURA, copiada da
+transcricao, e o codigo so confere que ela EXISTE na gravacao antes de alinhar o
+corte por ela. Abertura inventada nao alinha nada. O crivo mecanico continua,
+mas como aviso no log, e nao como autoridade.
+
+### 3. O agente julga bem e erra aritmetica de tempo
+
+Medido na primeira rodada com o campo de abertura: **so 1 dos 7 cortes abria com
+o que o agente prometeu**. Mas as aberturas escolhidas eram BOAS:
+
+    "Em dois mil e vinte e quatro eu estava num emprego"
+    "O problema e que eu vendi muita consultoria"
+    "A pessoa fala nossa, mas voce fala super bem, ne"
+
+O erro nao era o julgamento, era o TEMPO: a frase escolhida quase sempre estava
+antes do `inicio` que ele devolveu. Erro de aritmetica de tempo e fraqueza
+conhecida de modelo de linguagem.
+
+Conclusao que vale para o projeto inteiro: **quando o modelo devolve texto E
+numero sobre o mesmo trecho, o texto e a fonte da verdade e o numero e palpite.**
+A busca pela abertura passou a andar para os DOIS lados, em aneis, ficando com a
+ocorrencia mais proxima.
+
+### 4. Teto de tokens da selecao subiu para 32000
+
+Pedir a frase de abertura fez o agente pensar bem mais, porque escolher onde o
+trecho comeca deixou de ser consequencia do intervalo e virou decisao propria.
+Com 16000 ele gastava o teto inteiro pensando e voltava sem texto, exatamente
+como em 22/08 com 4000. Terceira vez que o mesmo padrao aparece: **acrescentar
+exigencia ao prompt aumenta o pensamento, e o teto precisa crescer junto.**
+
+### Rumo que o Bruno definiu, e ainda nao esta construido
+
+- **Cortes so com a pessoa**, ocupando quase a tela toda. Ressalva medida: a
+  webcam dele tem 422x302 nesta gravacao, e encher 1080 de largura seria 2,56x
+  de ampliacao. Ele vai gravar em tela cheia daqui em diante, o que resolve na
+  origem.
+- **Fundo gerado pelo nano banana**, com a pessoa num quadro dentro da arte
+  quando a resolucao nao permitir tela cheia.
+- **A plataforma precisa AVISAR** o que melhora o resultado, porque o cliente
+  sobe video de toda qualidade.
+- **A edicao precisa se adaptar ao tipo de video.** Vlog nao e screencast. Tem
+  video que vale tirar o fundo e tem video que nao. Tem video que precisa de
+  melhoria de som e tem video que nao. A musica precisa conversar com o tema.
+  A arquitetura para isso ja existe no agente de visao, que ja olha quadros e
+  decide enquadramento; falta estender para decidir TRATAMENTO.
+
 *Atualizado em 23/08/2026 por Claude Code.*
