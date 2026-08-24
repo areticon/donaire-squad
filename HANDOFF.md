@@ -4809,3 +4809,171 @@ no maior componente conectado junto com a pessoa.
 - [ ] Configurar a webcam 4K no OBS quando o Bruno avisar
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 51): o brilho do fundo, e o prompt que cavava um buraco
+
+Itens 2 e 3 da lista do Bruno, feitos juntos porque compartilham o mesmo arquivo
+e o mesmo ciclo de verificacao: cada rodada em producao leva meia hora e custa
+geracao de imagem.
+
+### 1. A sacada dele valia mais do que parecia
+
+Ele disse em 24/08: "o recorte do fundo fica com um borrado branco, porque o
+fundo original era branco. O agente deve saber disso: se o fundo original e
+branco, entao o fundo do reels deve ser cinematografico, mas branco".
+
+**Medido no arquivo original: a parede da gravacao tem brilho 241 de 255. O
+fundo gerado tinha 49.**
+
+A borda da mascara e semitransparente por construcao, entao cada pixel dela
+mistura a pessoa com o que estava atras dela. Com quase 200 pontos de diferenca
+entre a parede e o fundo novo, essa mistura vira um anel gritante. Medido no
+corte de producao de hoje: anel em 136 contra 91 do fundo ao redor.
+
+Casar o brilho nao melhora o recorte. Ele tira do halo o contraste que o faz
+aparecer, que e atacar a causa em vez do sintoma.
+
+### 2. Onde medir, e por que o fundo mudou de lugar no fluxo
+
+Para medir a parede e preciso saber ONDE a pessoa esta, e quem diz isso e o
+agente de visao. Ate hoje o fundo era gerado antes de despachar o trabalho, e
+naquele momento essa informacao ainda nao existe.
+
+O fundo passou para a rota `/enquadrar`. **E o unico ponto do fluxo em que a
+caixa da pessoa e os pixels do quadro existem ao mesmo tempo.** Qualquer outro
+lugar exigiria uma ida e volta a mais entre o app e o worker.
+
+**Como o numero atravessa a fronteira.** Os pixels estao no worker; o fundo e
+gerado no app, porque a conta de IA do projeto vive num lugar so. O app nao tem
+como decodificar JPEG: nao ha biblioteca de imagem nas dependencias, e
+acrescentar uma por causa de um numero seria caro. Entao o worker manda o quadro
+ja decodificado e reduzido a 128x72 em tons de cinza, 9 KB por trecho, nenhuma
+dependencia nova dos dois lados. A grade nao chega no modelo de visao: ele so le
+`quadros`, entao nao ha custo de token.
+
+**Mede o ANEL, e nao a caixa.** A caixa que o agente devolve e a janela da
+webcam, e a pessoa ocupa cerca de 60% dela.
+
+| O que se mede | Brilho |
+|---|---|
+| caixa inteira | 198 |
+| **anel externo, sem a faixa de baixo** | **241** |
+
+E o 241 que a borda da mascara mistura. A faixa de baixo fica de fora porque ali
+esta a mesa, o teclado ou o peito.
+
+**Conferido antes de confiar**, com o codigo real dos dois lados: o anel medido
+na grade de 128x72 da **243** contra **241** no pixel cheio. Dois pontos de erro
+em 255. Caixa pequena demais devolve `null` em vez de inventar numero.
+
+### 3. O que sobra e corrigido em ffmpeg, com limite
+
+O modelo chega perto e nao acerta. Medido, pedindo fundo claro para um alvo de
+241: ele devolveu **194** numa tentativa e **207** na outra.
+
+O worker mede o que veio e empurra o resto com `eq=brightness`, no maximo **25
+pontos**. O limite existe porque a alternativa e pior que o problema: empurrar um
+fundo de 150 ate 241 lavaria a imagem inteira e destruiria a profundidade, que e
+o motivo de gerar fundo em vez de usar cor solida.
+
+Quando o limite morde, o log diz quanto sobrou. Isso importa: residuo grande quer
+dizer que o PROMPT errou o alvo, e o conserto e la e nao na correcao.
+
+### 4. O "amador demais" era culpa do nosso prompt
+
+O Bruno viu o primeiro fundo e disse "amador demais, uma imagem distorcida, sem
+qualidade". Diagnosticado com numero: 768x1376, maior salto de brilho na linha
+727, que e 53% da altura, e abaixo dela variacao media de 0,22 por linha.
+**Quase metade da imagem era area chapada com borda dura atravessando o quadro.**
+
+Nao era o modelo. O prompt mandava "o terco central inferior fica reservado para
+a pessoa, entao mantenha essa area calma e sem detalhe", e ele obedeceu ao pe da
+letra desenhando um retangulo vazio.
+
+**A troca que resolveu: dizer o que a fotografia E, em vocabulario de fotografia,
+em vez de proibir conteudo numa regiao.** Lente de 85mm em f/1.8, parede de fundo
+a tres ou quatro metros, e a metade de baixo como superficie continua fora de
+foco. "Superficie continua fora de foco" produz um piso desfocado; "mantenha essa
+area sem detalhe" produz um buraco.
+
+Medido, mesmo assunto, quatro geracoes:
+
+| Prompt | Tamanho | Brilho | Linhas chapadas | Maior salto |
+|---|---|---|---|---|
+| antigo, padrao | 768x1376 | 49 | 13% | 13 |
+| antigo, 2K | 1536x2752 | 61 | 5% | 17 |
+| **novo, 2K** | **1536x2752** | **194** | **0%** | 12 |
+| **novo, 2K (2a)** | **1536x2752** | **207** | **0%** | 11 |
+
+### 5. A resolucao: o codigo nunca pediu tamanho nenhum
+
+`tryGeminiFlashImage` mandava `generationConfig` sem `imageConfig`, entao o
+modelo devolvia o padrao de 768x1376. Para um corte de 1080x1920 isso e ampliar
+1,4 vezes, e ampliacao amolece, que e a outra metade do "sem qualidade".
+
+Medido em 24/08, mesmo prompt e mesmo modelo:
+
+| imageConfig | Saida | Bytes | Tempo |
+|---|---|---|---|
+| nenhum | 768x1376 | 608 KB | 10,5s |
+| **2K** | **1536x2752** | **2,4 MB** | **13,6s** |
+| 4K | 3072x5504 | 7,6 MB | 22,8s |
+
+Depois de reduzir para 1080 de largura, 2K e 4K ficam iguais aos olhos, entao 4K
+seria pagar tres vezes a transferencia por nada. **2K e o menor tamanho que
+dispensa ampliacao**, e entrou como `quality: "hd"`.
+
+*Atualizado em 24/08/2026 por Claude Code.*
+
+### Verificacao em PRODUCAO, 24/08, com quadro olhado
+
+Rodado de ponta a ponta com o codigo real, app na Vercel e worker no Railway.
+
+**A cadeia inteira funcionou, e o log conta a historia:**
+
+    [cmt4p8cdc...] fundo com brilho 205, alvo 218, corrigindo 13 ponto(s)
+
+O app mediu a parede em 218 (mediana dos quatro trechos), o modelo devolveu 205,
+e o worker fechou os 13 que faltavam, dentro do limite de 25.
+
+**O halo, que era o alvo:**
+
+| | Anel em volta da silhueta contra o fundo ao redor |
+|---|---|
+| antes (fundo escuro) | **+45 pontos**, o anel saltava |
+| agora (fundo casado) | **+6 e +7 pontos** de mediana nos dois cortes medidos |
+
+Isso e 85% do halo removido, e o que sobra esta abaixo do que o olho separa numa
+tela de telefone. A pior linha de um dos cortes ainda da +72, que e um reflexo
+pontual e nao um anel.
+
+**Os quatro cortes:**
+
+| Corte | Duracao | Tamanho | Legenda na tela | Linha mais larga |
+|---|---|---|---|---|
+| 0 | 62,9s | 9,5 MB | **100% do tempo** | 59% |
+| 1 | 57,9s | 9,1 MB | **100%** | 60% |
+| 2 | 71,3s | 10,3 MB | **100%** | 62% |
+| 3 | 38,9s | 6,1 MB | **100%** | 59% |
+
+**O medidor teve que ser consertado junto, e a licao vale registrar.** Ele
+procurava a legenda por BRILHO, o que funcionava enquanto o fundo era escuro.
+Com o fundo claro, a faixa inteira passou do limiar e ele respondeu "legenda em
+100% do tempo ocupando 100% da largura", que e o sintoma classico de metrica
+medindo o cenario em vez do produto. Passou a procurar a COR: o fundo e neutro e
+a legenda do estilo acelerado e amarela. Conferido depois da troca: o quadro com
+MENOS amarelo tem 61 pixels contra mediana de 1.735, entao a legenda esta la em
+todos, e nao e a madeira do fundo enganando a conta.
+
+### O que o quadro novo cobrou
+
+**A pessoa nao esta centralizada.** A composicao centraliza a CAIXA da webcam, e
+a pessoa nao fica no meio da propria janela: no quadro medido a cabeca dele
+aparece cerca de 100 px a esquerda do centro, que e 10% da largura. O conserto e
+o `recorte.py` devolver o centro horizontal da MASCARA junto da caixa apertada,
+e a composicao alinhar por ele. Virou card.
+
+**A mascara continua vazando na base**, com uma faixa clara e um objeto do lado
+esquerdo. Card ja aberto.
+
+*Atualizado em 24/08/2026 por Claude Code.*
