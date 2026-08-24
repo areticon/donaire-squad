@@ -5391,3 +5391,68 @@ dizem se o video presta. Ler a transcricao do corte antes de declarar pronto
 passa a ser parte da verificacao, tao obrigatoria quanto extrair o quadro.
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 56): o reset pragmatico no ar, e o que ele ensinou
+
+O Bruno cortou o no de vez: "vamos precisar ser mais pragmaticos aqui, se nao
+nunca vamos sair disso". E perguntou a pergunta que desmontou tres dias de
+premissa: "qual a referencia que voce esta usando? parece que nunca assistiu um
+reels na vida".
+
+A resposta honesta: a referencia era prompt inventado a partir de pesquisa em
+texto. O formato que o mercado inteiro usa em corte de fala (OpusClip, CapCut,
+todo canal grande) nunca foi recortar a pessoa e colar numa arte gerada. E o
+video REAL da pessoa, fundo real, cortado em 9:16 no rosto, legenda grande.
+
+### O que saiu do fluxo em uma noite
+
+| Peca | Por que saiu | O que morreu junto |
+|---|---|---|
+| fundo gerado por IA | tres artes reprovadas; premissa errada | halo, gosto de arte, uma geracao de imagem por video |
+| recorte da pessoa (mascara) | so existia por causa do fundo | mascara vazando, descentralizacao, 13s por corte |
+| emoji sobreposto | derrubou o mesmo corte tres vezes | a caca ao bug do encoder |
+| ganchos de abertura do completo | video abria com palavra solta sem contexto | |
+
+Todo o codigo fica no repositorio, desligado e documentado, para religar quando
+valer (recorte como recurso premium, ganchos quando a selecao garantir frase
+que se sustenta sozinha).
+
+### O que ficou, que e o produto que o Bruno descreveu
+
+Video real cortado na regiao da pessoa, legenda palavra a palavra no estilo do
+projeto, limpeza de fala completa (pausas, agente, repeticoes por codigo),
+frases de destaque, volume nivelado, e musica o usuario traz.
+
+### Os dois ajustes que o primeiro quadro do formato novo cobrou
+
+1. **A barra do app aparecia no corte** (VOLTAR/RECOMECAR): a caixa da pessoa
+   que o agente de visao devolve inclui a interface abaixo da webcam. O corte
+   central passou a aparar 12% da base da caixa.
+2. **A legenda caia no rosto**: a margem 800 (acima da cabeca) valia para a
+   composicao antiga com a pessoa pequena embaixo. Voltou ao terco inferior
+   classico (380), que e onde o mercado poe.
+
+E o medidor de legenda envelheceu pela TERCEIRA vez no dia: varria a faixa da
+margem antiga e reportou 17% de cobertura onde havia 90%. Corrigido o medidor,
+os quatro cortes dao 90 a 96% de cobertura com linha mais larga em 48%.
+
+### Verificado no quadro final
+
+Sem barra de botoes, sem halo, fundo real, pessoa grande, legenda no terco
+inferior. Duas limitacoes honestas que ficam: a imagem e macia porque a webcam
+da gravacao tem 422px e vira 1080 (2,56x de ampliacao, resolve com a gravacao
+4K em tela cheia que o Bruno planeja), e a legenda ocasionalmente mostra uma
+muleta sozinha ("E,") que o agente de limpeza nao marcou.
+
+### As perguntas do Bruno que merecem registro
+
+**"Nao tem biblioteca pronta?"** Para o visual, a biblioteca e o formato do
+mercado, que agora e copiado. Para renderizacao existem (Remotion), mas
+renderizar nunca foi o que falhou: o ffmpeg entregou tudo que foi pedido. O que
+falhou foi O QUE era pedido.
+
+**"Quer que eu rode no Codex?"** Sem objecao; a sugestao registrada foi validar
+o reset primeiro, porque a limitacao era de premissa e nao de modelo, e se a
+selecao continuar fraca, testar A/B o prompt de selecao la contra o daqui.
+
+*Atualizado em 24/08/2026 por Claude Code.*
