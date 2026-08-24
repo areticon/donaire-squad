@@ -5315,3 +5315,79 @@ com transparencia na base, prova de fumaca do worker (8 caminhos de ffmpeg em
 segundos), e prova de fontes na construcao da imagem.
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 55): o Bruno assistiu, e as tres criticas viraram medida
+
+Ele perguntou: "voce leu a transcricao ou viu o inicio do video?" A resposta
+honesta era nao. Eu tinha medido cobertura de legenda, halo, nitidez e formato
+de pixel, e nao tinha LIDO o que os cortes falam. E o mesmo erro do dia 23
+("medi o encanamento em vez de assistir"), repetido com instrumentos mais
+sofisticados.
+
+### 1. "Eu, eu, eu": o agente de limpeza nao pega repeticao, e codigo pega
+
+Lendo os cortes apareceu o que ele ouviu: "Eu, eu, eu sempre tive algo que eu,
+que eu gostaria", "faz parte da, de de de mercado", "ele ele ele tem a
+necessidade". A regra 3 do prompt de limpeza JA pedia isso ao agente.
+
+Medido na gravacao real: o agente deixou passar **93 palavras repetidas e 12
+expressoes repetidas, 40 segundos de copias**.
+
+Repeticao imediata e aritmetica sobre a transcricao, nao julgamento.
+`detectarRepeticoes` acha A-A e A-B-A-B pelos tempos, fica com a ULTIMA
+ocorrencia (e ela que emenda na fala que continua) e respeita pausa grande
+entre as copias, que costuma ser retomada legitima.
+
+Verificado no que vai ao ar depois da rodada: cortes 0, 2 e 3 com ZERO
+repeticoes, corte 1 com uma ("ele ele" com pausa acima do limiar). A remocao
+total subiu de 126s para 146s.
+
+### 2. "Por que uma casa de fundo?": porque o prompt pedia uma casa
+
+A visao dele: "a ideia do fundo com nano banana e ter uma arte incrivel,
+irresistivel, profissional, um design de verdade, esta parecendo fundo de
+reuniao do teams".
+
+Ele descreveu exatamente o que o prompt pedia: "um ambiente real de trabalho".
+Sala fotorrealista atras de pessoa recortada E fundo de Teams.
+
+O prompt virou uma peca de DESIGN: abstrata, nas cores da MARCA do projeto
+(Project.colorPalette, no caso o verde esmeralda, o escuro e o menta do Fluxo
+Criativo), com a direcao de arte vindo do ESTILO de edicao:
+
+| Estilo | Direcao de arte |
+|---|---|
+| acelerado | formas geometricas grandes e ousadas, assimetricas |
+| dramatico | luz cinematografica, veus e feixes em diagonal |
+| serio | gradiente de estudio minimalista, quase monocromatico |
+| animado | formas organicas leves com transparencias |
+
+Tres direcoes foram geradas e OLHADAS antes de escolher. O brilho segue casado
+ao da gravacao (a regra do halo) e o centro fica calmo para a pessoa e a
+legenda. O nicho saiu do prompt: arte de marca nao precisa "sugerir
+empreendedorismo", precisa ter as cores do canal.
+
+Verificado no quadro da rodada nova: arte de marca entrou, halo invisivel
+contra o fundo claro, composicao limpa.
+
+### 3. "As escolhas": a parte que NAO mudou, dita com todas as letras
+
+A selecao dos trechos e a mesma. O corte 0 continua abrindo com "hoje eu nao
+tenho salario fixo" e terminando em "e software as a service", porque a selecao
+nao foi refeita. Os trechos estao mais limpos, mas sao os mesmos trechos, com
+as notas 6 e 7 que o especialista deu.
+
+O diagnostico do especialista sobre a materia-prima continua valendo: a
+gravacao nao fecha ideias. As opcoes registradas para o Bruno decidir depois de
+assistir: regua mais dura na selecao (so nota 7 para cima, o que provavelmente
+devolve 2 cortes em vez de 4), ou a gravacao nova em tela cheia, que ataca a
+causa.
+
+### O padrao de método que esta sessao cobrou duas vezes
+
+A verificacao tem que chegar ate o CONTEUDO, nao so ate o artefato. Duracao,
+formato, cobertura de legenda e nitidez dizem se o encanamento funciona; nao
+dizem se o video presta. Ler a transcricao do corte antes de declarar pronto
+passa a ser parte da verificacao, tao obrigatoria quanto extrair o quadro.
+
+*Atualizado em 24/08/2026 por Claude Code.*
