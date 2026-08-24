@@ -101,6 +101,19 @@ COPY fontes/*.ttf /usr/local/share/fonts/
 COPY fontes/provar-fontes.py /tmp/provar-fontes.py
 RUN fc-cache -f > /dev/null && python3 /tmp/provar-fontes.py && rm /tmp/provar-fontes.py
 
+# A PALETA DE EMOJI.
+#
+# Sao imagens e nao texto porque o libass deste ffmpeg desenha emoji so em
+# contorno, sem cor. Medido em 24/08 com as duas fontes que poderiam servir: a
+# do sistema, em formato COLR, saiu monocromatica, e a Noto Color Emoji, em
+# formato CBDT, o libass nem chega a escolher, cai para a Arial.
+#
+# Sao 24 arquivos de 128 px, 144 KB no total, do projeto Noto Emoji do Google
+# sob Apache 2.0, com o arquivo de licenca ao lado. A lista e fechada de
+# proposito: ela da ao canal do cliente um vocabulario visual constante em vez
+# do que o modelo lembrar naquele dia.
+COPY emoji ./emoji
+
 # As dependências primeiro, para a camada de npm ficar em cache quando só o
 # código mudar.
 COPY package.json ./

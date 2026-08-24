@@ -60,7 +60,7 @@ export const QUADRO_HORIZONTAL: Quadro = { largura: 1920, altura: 1080, margemDe
  * Devolve `null` quando o instante caiu num pedaço removido: palavra que não
  * está no áudio não pode aparecer escrita.
  */
-function noTempoDoCorte(
+export function noTempoDoCorte(
   segundo: number,
   inicioDoCorte: number,
   intervalos: Intervalo[]
@@ -102,7 +102,14 @@ export function legendaDoCorte(
   inicioDoCorte: number,
   intervalos: Intervalo[],
   estilo: Estilo,
-  quadro: Quadro = QUADRO_VERTICAL
+  quadro: Quadro = QUADRO_VERTICAL,
+  /**
+   * As frases de destaque escolhidas pelo agente a partir da fala, já no tempo
+   * da gravação. Entram no mesmo arquivo da legenda, num estilo próprio: dois
+   * arquivos ASS sobre o mesmo vídeo significariam dois passes de `subtitles`
+   * no filtro, e o segundo redesenharia por cima sem saber do primeiro.
+   */
+  destaques: { segundo: number; valor: string }[] = []
 ): string {
   if (!intervalos.length) return "";
   const fimDoCorte = inicioDoCorte + intervalos[intervalos.length - 1].ate;
@@ -211,6 +218,30 @@ export function legendaDoCorte(
   }
   if (!linhas.length) return "";
 
+  // As frases de destaque, convertidas para o tempo do corte pela MESMA lista de
+  // intervalos que a legenda usa. Nada de segunda conta em outro lugar.
+  //
+  // Camada 1 e não 0: se por acaso uma frase e uma linha de legenda ocuparem o
+  // mesmo espaço, a legenda é quem tem que ficar por baixo, porque ela é
+  // contínua e a frase é pontual.
+  const linhasDeDestaque: string[] = [];
+  for (const d of destaques) {
+    const inicio = noTempoDoCorte(d.segundo, inicioDoCorte, intervalos);
+    if (inicio === null) continue;
+    const texto = limpar(d.valor).toUpperCase();
+    if (!texto) continue;
+    // Dois segundos e meio: tempo de ler quatro palavras sem a frase virar
+    // parte do cenário.
+    const fim = Math.min(inicio + 2.5, duracaoDoCorte);
+    if (fim <= inicio) continue;
+    // Entra crescendo, em 150 ms. É o mínimo que o olho registra como algo
+    // NOVO aparecendo, em vez de algo que já estava lá.
+    linhasDeDestaque.push(
+      `Dialogue: 1,${carimbo(inicio)},${carimbo(fim)},Destaque,,0,0,0,,` +
+        `{\\fscx70\\fscy70\\t(0,150,\\fscx100\\fscy100)}${texto}`
+    );
+  }
+
 
   return [
     "[Script Info]",
@@ -236,9 +267,15 @@ export function legendaDoCorte(
     // que o Dockerfile instalou; pilha de alternativas ao estilo do navegador
     // não significa nada para o libass, que trata a string toda como um nome.
     `Style: Fala,${L.fonte},${L.corpo},${L.corDoDestaque},${L.cor},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo},1`,
+    // A frase de destaque mora ACIMA da legenda, com o corpo pela metade e na
+    // cor de destaque do estilo. Menor de propósito: ela reforça a legenda e
+    // não compete com ela, e duas linhas do mesmo tamanho na tela fazem o olho
+    // ter que escolher qual ler.
+    `Style: Destaque,${L.fonte},${Math.round(L.corpo * 0.5)},${L.corDoDestaque},${L.corDoDestaque},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo + Math.round(quadro.altura * 0.13)},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ...linhas,
+    ...linhasDeDestaque,
   ].join("\n");
 }

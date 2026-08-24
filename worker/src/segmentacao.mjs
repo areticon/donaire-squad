@@ -106,7 +106,15 @@ export async function gerarMatte(entrada, pasta, indice, inicio, duracao, caixa)
 
     const r = JSON.parse(linha);
     if (!r.ok || !r.recorte || r.quadros < 1) return null;
-    return { arquivo: saida, recorte: r.recorte, quadros: r.quadros };
+    return {
+      arquivo: saida,
+      recorte: r.recorte,
+      quadros: r.quadros,
+      // Onde a pessoa esta na horizontal, em fracao da largura do recorte. Sem
+      // isso a composicao centraliza a CAIXA e nao a pessoa, e ela sai
+      // deslocada: medido na gravacao real, ela fica em 33% da caixa.
+      centro: typeof r.centro === "number" ? r.centro : 0.5,
+    };
   } catch {
     return null;
   }

@@ -4,6 +4,7 @@ import {
   detectarPausas,
   duracaoDosIntervalos,
   intervalosDoTrecho,
+  mapearTempo,
   montarLegendasDestaque,
   segundosRemovidos,
 } from "@/lib/media/edicao";
@@ -15,7 +16,14 @@ import {
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import { estiloDoProjeto } from "@/lib/media/estilos";
 import {
+  arquivoDoEmoji,
+  escolherEfeitos,
+  efeitosNoTempo,
+  type EfeitoNoTempo,
+} from "@/lib/media/efeitos";
+import {
   legendaDoCorte,
+  noTempoDoCorte,
   QUADRO_HORIZONTAL,
   QUADRO_VERTICAL,
 } from "@/lib/media/legenda-falada";
@@ -76,6 +84,7 @@ export type ResumoDoPedido = {
   segundosRemovidos: number;
   estilo: string;
   comLegenda: number;
+  efeitos: number;
 };
 
 export async function montarPedidoDeCorte(
@@ -103,9 +112,6 @@ export async function montarPedidoDeCorte(
   }
 
   const remocoes = unirRemocoes(pausas, limpezaParaRemocoes(fala, palavras));
-  const legendasAss = montarLegendasDestaque(trechos, remocoes, {
-    fonte: estilo.legenda.fonte,
-  });
 
   // Os ganchos da abertura, já convertidos para o tempo DEPOIS da edição.
   //
@@ -134,21 +140,101 @@ export async function montarPedidoDeCorte(
   // O início vai arredondado para baixo e o fim para cima porque é assim que o
   // worker recorta, e a legenda precisa nascer dos MESMOS números, e não dos
   // fracionários que o agente devolveu.
+  //
+  // Os EFEITOS saem de uma chamada por trecho, e em paralelo. Um trecho de 60
+  // segundos rende no máximo sete momentos, então a chamada é curta; o que
+  // custaria caro seria fazer as quatro em fila.
+  //
+  // Falhar aqui não derruba nada: o corte sai com legenda e sem reforço, que é
+  // menos vivo mas existe.
+  const efeitosPorTrecho = await Promise.all(
+    trechos.map(async (t) => {
+      try {
+        const escolhidos = await escolherEfeitos(
+          t.transcricao ?? "",
+          Math.ceil(t.fim) - Math.floor(t.inicio),
+          { projectId: video.projectId }
+        );
+        return efeitosNoTempo(escolhidos, palavras, Math.floor(t.inicio), Math.ceil(t.fim));
+      } catch (e) {
+        console.error(
+          `[${video.id}] efeitos falharam num trecho, ele sai sem reforço: ` +
+            (e instanceof Error ? e.message : "motivo desconhecido")
+        );
+        return [] as EfeitoNoTempo[];
+      }
+    })
+  );
+
   const paraOWorker = trechos.map((t, i) => {
     const inicio = Math.floor(t.inicio);
     const fim = Math.ceil(t.fim);
     const manter = intervalosDoTrecho(remocoes, inicio, fim);
+    const efeitos = efeitosPorTrecho[i] ?? [];
+
+    // A frase de destaque vai para o arquivo de legenda, porque é texto e o
+    // libass desenha texto. O emoji vai separado, porque o libass deste ffmpeg
+    // desenha emoji sem cor, então ele entra como imagem sobreposta no worker.
+    const destaques = efeitos
+      .filter((e) => e.tipo === "frase")
+      .map((e) => ({ segundo: e.segundo, valor: e.valor }));
+
+    const emojis = efeitos
+      .filter((e) => e.tipo === "emoji")
+      .map((e) => ({
+        arquivo: arquivoDoEmoji(e.valor),
+        // O tempo do emoji sai da MESMA lista de intervalos que a legenda usa.
+        segundo: noTempoDoCorte(e.segundo, inicio, manter),
+      }))
+      .filter(
+        (e): e is { arquivo: string; segundo: number } =>
+          e.arquivo !== null && e.segundo !== null
+      );
+
     return {
       indice: i,
       inicio,
       fim,
       titulo: t.titulo,
       manter,
-      legendaVertical: legendaDoCorte(palavras, inicio, manter, estilo, QUADRO_VERTICAL),
-      legendaHorizontal: legendaDoCorte(palavras, inicio, manter, estilo, QUADRO_HORIZONTAL),
+      emojis,
+      legendaVertical: legendaDoCorte(
+        palavras, inicio, manter, estilo, QUADRO_VERTICAL, destaques
+      ),
+      legendaHorizontal: legendaDoCorte(
+        palavras, inicio, manter, estilo, QUADRO_HORIZONTAL, destaques
+      ),
       duracaoLimpaSec: Math.round(duracaoDosIntervalos(manter)),
     };
   });
+
+  // O VIDEO COMPLETO leva os mesmos reforços, pelo pedido do Bruno em 24/08 de
+  // que os comentários dele valem para o completo também.
+  //
+  // As FRASES entram no arquivo de legenda de destaque, que já existe, e os
+  // EMOJI vão sobrepostos, como no corte. Os dois em tempo do ORIGINAL: quem
+  // converte para a linha do tempo editada é `mapearTempo`, do lado do worker
+  // não há conta nenhuma.
+  //
+  // O que NÃO entra é a legenda palavra a palavra, e isso é decisão dele de
+  // 23/08, não esquecimento: "legenda em tudo polui o vídeo longo e compete com
+  // quem fala". Os reforços aqui são pontuais e não brigam com essa regra.
+  const todosOsEfeitos = efeitosPorTrecho.flat();
+
+  const legendasAss = montarLegendasDestaque(trechos, remocoes, {
+    fonte: estilo.legenda.fonte,
+    frases: todosOsEfeitos
+      .filter((e) => e.tipo === "frase")
+      .map((e) => ({ segundo: e.segundo, valor: e.valor })),
+  });
+
+  const emojisDoCompleto = todosOsEfeitos
+    .filter((e) => e.tipo === "emoji")
+    .map((e) => ({
+      arquivo: arquivoDoEmoji(e.valor),
+      segundo: mapearTempo(e.segundo, remocoes),
+    }))
+    .filter((e): e is { arquivo: string; segundo: number } => e.arquivo !== null);
 
   const corpo = JSON.stringify({
     videoJobId: video.id,
@@ -163,6 +249,7 @@ export async function montarPedidoDeCorte(
     },
     trechos: paraOWorker,
     remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
+    emojisDoCompleto,
     ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
     legendasAss,
     enquadramentoUrl: `${opcoes.appUrl}/api/videos/${video.id}/enquadrar`,
@@ -180,6 +267,7 @@ export async function montarPedidoDeCorte(
       segundosRemovidos: Math.round(segundosRemovidos(remocoes)),
       estilo: estilo.nome,
       comLegenda: paraOWorker.filter((t) => t.legendaVertical).length,
+      efeitos: efeitosPorTrecho.reduce((n, e) => n + e.length, 0),
     },
   };
 }

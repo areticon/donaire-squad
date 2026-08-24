@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth/server";
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { VideoPanel } from "@/components/video/video-panel";
+import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
 import { varrerExpirados } from "@/lib/media/video-sweep";
 
 export default async function VideoPage({
@@ -15,7 +16,7 @@ export default async function VideoPage({
   const { id } = await params;
   const project = await prisma.project.findFirst({
     where: { id, userId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, videoStyle: true },
   });
   if (!project) notFound();
 
@@ -49,8 +50,20 @@ export default async function VideoPage({
   });
 
   return (
-    <VideoPanel
-      projectId={project.id}
+    <div>
+      {/*
+        A escolha do estilo vem ANTES do envio, e não em configurações, porque
+        é ela que decide legenda, ritmo e mixagem. Pôr depois seria pedir para
+        o cliente escolher como editar um vídeo que já foi editado.
+      */}
+      <div className="px-6 pt-6 lg:px-8 lg:pt-8">
+        {/* A margem vem daqui e não do componente: o painel de vídeo logo
+            abaixo já tem a dele, e duas seções com padding próprio empilhadas
+            dobram o espaço entre elas. */}
+        <EstiloDoProjeto projectId={project.id} inicial={project.videoStyle} />
+      </div>
+      <VideoPanel
+        projectId={project.id}
       videos={videos.map((v) => ({
         id: v.id,
         status: v.status,
@@ -82,6 +95,7 @@ export default async function VideoPage({
         rodandoHaSegundos: null,
         clips: (v.clips as never) ?? null,
       }))}
-    />
+      />
+    </div>
   );
 }
