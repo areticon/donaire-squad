@@ -17,6 +17,8 @@ import {
   extrairQuadros,
   extrairCandidatosDeCapa,
   extrairCapaFinal,
+  gradeDeLuz,
+  brilhoMedio,
   montarAbertura,
   emendar,
   medirFidelidade,
@@ -150,7 +152,9 @@ async function subir(caminho, chave, contentType) {
  * melhor que não entregar corte porque o agente de visão teve um dia ruim.
  */
 async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
-  if (!trabalho.enquadramentoUrl) return { enquadramentos: new Map(), capa: null };
+  if (!trabalho.enquadramentoUrl) {
+    return { enquadramentos: new Map(), capa: null, fundoUrl: null, brilhoAlvo: null };
+  }
 
   try {
     const paraOlhar = [];
@@ -167,7 +171,16 @@ async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
       for (const c of caminhos) {
         quadros.push((await readFile(c)).toString("base64"));
       }
-      paraOlhar.push({ indice: t.indice, quadros, mediaType: "image/jpeg" });
+      // A grade de luminancia vai junto: e com ela que o app mede o brilho da
+      // parede atras da pessoa, que decide se o fundo gerado sai claro ou
+      // escuro. Sem isso o halo do recorte continua gritando, que foi o que o
+      // Bruno apontou em 24/08. Sao 9 KB por trecho.
+      paraOlhar.push({
+        indice: t.indice,
+        quadros,
+        mediaType: "image/jpeg",
+        luz: caminhos.length ? gradeDeLuz(caminhos[0]) : null,
+      });
     }
 
     // Candidatos a capa, do vídeo inteiro. Vão na mesma chamada que o
@@ -210,11 +223,66 @@ async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
     return {
       enquadramentos: new Map((corpo.enquadramentos ?? []).map((e) => [e.indice, e])),
       capa,
+      // O FUNDO vem daqui e nao do pedido inicial. Ele depende do brilho da
+      // parede atras da pessoa, e so agora, com a caixa da pessoa em maos, o
+      // app conseguiu medir isso.
+      fundoUrl: corpo.fundoUrl ?? null,
+      brilhoAlvo: typeof corpo.brilhoAlvo === "number" ? corpo.brilhoAlvo : null,
     };
   } catch (e) {
     console.error(`[${trabalho.videoJobId}] enquadramento falhou: ${e.message}`);
-    return { enquadramentos: new Map(), capa: null };
+    return { enquadramentos: new Map(), capa: null, fundoUrl: null, brilhoAlvo: null };
   }
+}
+
+/**
+ * Quanto empurrar o brilho do fundo gerado para casar com a gravacao.
+ *
+ * ## Por que existe
+ *
+ * Sacada do Bruno em 24/08: o halo em volta do recorte e o branco da parede
+ * vazando pela borda semitransparente da mascara, e ele so APARECE porque o
+ * fundo gerado e escuro. Casando os brilhos, o halo perde o contraste que o faz
+ * aparecer.
+ *
+ * O prompt ja faz quase todo o trabalho, e a diferenca e enorme: medido, o
+ * fundo saiu de brilho 49 para 207 num alvo de 241. O que sobra e o que esta
+ * funcao fecha.
+ *
+ * ## Por que o empurrao e limitado
+ *
+ * Porque a alternativa e pior que o problema. Empurrar um fundo de 150 ate 241
+ * lava a imagem inteira, estoura os claros e destroi a profundidade, que e o
+ * motivo de gerar fundo em vez de usar cor solida. Vinte e cinco pontos fecham
+ * o caso comum (o modelo erra por volta de trinta) sem chegar perto de lavar
+ * nada.
+ *
+ * Quando o limite morde, o log diz quanto sobrou. Isso importa: fundo com
+ * residuo grande quer dizer que o PROMPT errou o alvo, e o conserto e la, nao
+ * aqui.
+ */
+const MAXIMO_DE_AJUSTE = 25;
+
+function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
+  if (typeof alvo !== "number") return 0;
+  const medido = brilhoMedio(arquivo);
+  if (medido === null) return 0;
+
+  const bruto = alvo - medido;
+  const limitado = Math.max(-MAXIMO_DE_AJUSTE, Math.min(MAXIMO_DE_AJUSTE, bruto));
+  const residuo = bruto - limitado;
+
+  console.log(
+    `[${videoJobId}] fundo com brilho ${medido.toFixed(0)}, alvo ${alvo}` +
+      `, corrigindo ${limitado.toFixed(0)} ponto(s)` +
+      (Math.abs(residuo) > 1
+        ? `, sobram ${residuo.toFixed(0)} (o prompt errou o alvo, o conserto e no prompt)`
+        : "")
+  );
+
+  // O filtro `eq` conta brilho de -1 a 1 sobre a faixa inteira, entao ponto de
+  // 0 a 255 vira fracao dividindo por 255.
+  return limitado / 255;
 }
 
 /**
@@ -235,14 +303,29 @@ async function processar(trabalho) {
     await baixarFonte(trabalho.sourceUrl, fonte);
     const info = await ffprobe(fonte);
 
+    const { enquadramentos, capa, fundoUrl, brilhoAlvo } = await pedirEnquadramento(
+      trabalho,
+      fonte,
+      pasta,
+      info.duracaoSec
+    );
+
     // O FUNDO dos cortes, gerado pelo app e guardado no storage. Baixa uma vez
-    // e serve os sete cortes. Falhar aqui nao derruba nada: sem fundo os cortes
-    // saem na composicao com o slide.
+    // e serve todos os cortes. Falhar aqui nao derruba nada: sem fundo os
+    // cortes saem na composicao com o slide.
+    //
+    // Vem DEPOIS do enquadramento, e nao do pedido inicial, porque ele depende
+    // do brilho da parede atras da pessoa, e so o agente de visao sabe onde a
+    // pessoa esta. `trabalho.fundoUrl` fica de reserva para um pedido antigo,
+    // montado antes desta mudanca, que ainda esteja na fila.
     let fundoLocal = null;
-    if (trabalho.fundoUrl) {
+    let ajusteDeBrilho = 0;
+    const urlDoFundo = fundoUrl ?? trabalho.fundoUrl ?? null;
+    if (urlDoFundo) {
       try {
         fundoLocal = join(pasta, "fundo.jpg");
-        await baixarFonte(trabalho.fundoUrl, fundoLocal);
+        await baixarFonte(urlDoFundo, fundoLocal);
+        ajusteDeBrilho = calcularAjusteDeBrilho(fundoLocal, brilhoAlvo, trabalho.videoJobId);
       } catch (e) {
         fundoLocal = null;
         console.warn(
@@ -250,13 +333,6 @@ async function processar(trabalho) {
         );
       }
     }
-
-    const { enquadramentos, capa } = await pedirEnquadramento(
-      trabalho,
-      fonte,
-      pasta,
-      info.duracaoSec
-    );
 
     // A capa da gravação sai antes dos cortes: é barata (um quadro) e é o que a
     // tela mostra primeiro.
@@ -378,7 +454,8 @@ async function processar(trabalho) {
           limpo, vertical, 0, duracaoLimpa, enq, matte,
           matte && fundoLocal ? basename(fundoLocal) : null,
           legendaV,
-          trabalho.estilo?.ritmo ?? null
+          trabalho.estilo?.ritmo ?? null,
+          ajusteDeBrilho
         );
         saida.vertical = await subir(
           vertical,
