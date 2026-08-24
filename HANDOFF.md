@@ -5595,3 +5595,56 @@ Deployado na madrugada; o teste dele com a gravacao nova ja pega.
 4. O OBS da webcam 4K, quando ele for gravar
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026 (parte 60): a musica, os efeitos e as transicoes, verificados
+
+O Bruno pediu para nao fechar o dia sem avancar musica, efeitos e transicoes.
+Construido e verificado em producao na mesma madrugada.
+
+### A musica, no desenho juridico de 23/08
+
+O cliente traz o arquivo, e a plataforma e ferramenta e nao distribuidora.
+
+- **Upload na tela do video**, no cartao do estilo, direto do navegador para o
+  storage (rota propria com token, DELETE que apaga o blob, espelho via PATCH
+  para desenvolvimento local, 40 MB de teto). A dica de licenca fica na tela:
+  assinatura propria, faixa autoral ou CC BY.
+- **No projeto** (Project.videoMusicUrl), como o estilo: canal com trilha
+  diferente a cada video nao constroi identidade sonora.
+- **Mixagem do estilo**: volume por `som.volumeDaTrilha`, ducking por
+  `sidechaincompress` com razao vinda de `som.abaixarSobAVoz` (a trilha abaixa
+  quando a pessoa fala e volta nas pausas), fade de entrada 0,6s e de saida 1s,
+  `-stream_loop` para gravacao mais longa que a faixa, e o `loudnorm` fechando
+  a cadeia DEPOIS da mixagem.
+- **O completo fica sem trilha de proposito**: video longo de fala no YouTube
+  nao pede musica continua.
+
+### Os efeitos e as transicoes
+
+- Fade de video nas pontas de cada corte (0,25s entrando, 0,35s saindo).
+- Push-in continuo no corte central com a forca do estilo (2% serio, 8%
+  acelerado), ANTES da legenda, para o texto ficar cravado.
+- Ja estavam: punch-in alternado nas emendas e o tira-estalo de audio.
+
+### Verificado em producao
+
+Rodada com um pad sintetico de teste anexado ao projeto (o Bruno troca pela
+faixa dele na tela nova):
+
+| Medida | Resultado |
+|---|---|
+| cortes | 4 de 4, sem erro |
+| trilha no audio | presente nos 4, banda do pad em -17 dB |
+| legenda | 94% a 97% do tempo |
+| quadro | pessoa no quadro, fundo real, legenda no lugar |
+
+A prova de fumaca ganhou os casos da trilha (inclusive faixa mais curta que o
+corte, que exige o loop) e do push-in: oito caminhos, todos passando.
+
+### O que o proximo teste do Bruno decide
+
+Ele grava o video 4K em tela cheia, sobe a faixa real dele na tela, e o fluxo
+inteiro roda no cenario bom pela primeira vez: ampliacao perto de 1x, trilha
+de verdade, estilo escolhido. E o teste que valida o produto para lancamento.
+
+*Atualizado em 25/08/2026 por Claude Code.*
