@@ -5,7 +5,7 @@ import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { get, put } from "@vercel/blob";
 import {
   ffprobe,
@@ -235,6 +235,22 @@ async function processar(trabalho) {
     await baixarFonte(trabalho.sourceUrl, fonte);
     const info = await ffprobe(fonte);
 
+    // O FUNDO dos cortes, gerado pelo app e guardado no storage. Baixa uma vez
+    // e serve os sete cortes. Falhar aqui nao derruba nada: sem fundo os cortes
+    // saem na composicao com o slide.
+    let fundoLocal = null;
+    if (trabalho.fundoUrl) {
+      try {
+        fundoLocal = join(pasta, "fundo.jpg");
+        await baixarFonte(trabalho.fundoUrl, fundoLocal);
+      } catch (e) {
+        fundoLocal = null;
+        console.warn(
+          `[${trabalho.videoJobId}] nao consegui baixar o fundo: ${e.message}`
+        );
+      }
+    }
+
     const { enquadramentos, capa } = await pedirEnquadramento(
       trabalho,
       fonte,
@@ -317,7 +333,14 @@ async function processar(trabalho) {
         }
 
         const vertical = join(pasta, `v-${t.indice}.mp4`);
-        await cortarVertical(limpo, vertical, 0, duracaoLimpa, enq, matte);
+        // Sem MASCARA nao ha como recortar a pessoa, e sem recorte o fundo
+        // gerado nao serve: sobrepor o retangulo inteiro da webcam em cima de
+        // uma arte fica pior que a composicao antiga. Por isso o fundo so entra
+        // quando o recorte deu certo.
+        await cortarVertical(
+          limpo, vertical, 0, duracaoLimpa, enq, matte,
+          matte && fundoLocal ? basename(fundoLocal) : null
+        );
         saida.vertical = await subir(
           vertical,
           `cortes/${trabalho.videoJobId}/vertical-${t.indice}.mp4`,

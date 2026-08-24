@@ -145,9 +145,26 @@ export function sanearGanchos(ganchos: Gancho[], trechos: Trecho[]): Gancho[] {
     .slice(0, 2);
 
   // Dois ganchos do mesmo instante seriam o mesmo conteúdo duas vezes.
-  const distintos = validos.filter(
-    (g, i) => i === 0 || Math.abs(g.inicio - validos[0].inicio) > 5
-  );
+  // Nenhum gancho pode ENCOSTAR no outro.
+  //
+  // A versão anterior comparava só o INSTANTE DE INÍCIO, contra o primeiro
+  // gancho, e exigia cinco segundos de diferença. Isso deixa passar
+  // sobreposição de verdade: um gancho de 480s a 492s e outro de 486s a 498s
+  // têm início a seis segundos de distância, passam no crivo, e se sobrepõem em
+  // seis segundos. Na abertura isso vira a MESMA FRASE DUAS VEZES SEGUIDAS, que
+  // foi exatamente o que o Bruno relatou em 24/08 ao assistir o vídeo completo.
+  //
+  // Agora compara intervalo com intervalo, contra todos os já aceitos, e ainda
+  // exige um respiro de dois segundos entre eles: gancho que termina onde o
+  // outro começa soa como corte falhado, mesmo sem sobrepor.
+  const RESPIRO = 2;
+  const distintos: Gancho[] = [];
+  for (const g of validos) {
+    const encosta = distintos.some(
+      (j) => g.inicio < j.fim + RESPIRO && g.fim + RESPIRO > j.inicio
+    );
+    if (!encosta) distintos.push(g);
+  }
 
   let total = 0;
   return distintos.filter((g) => {

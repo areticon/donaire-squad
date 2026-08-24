@@ -23,6 +23,9 @@ import {
 } from "@/lib/media/limpeza";
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import type { Word } from "@/lib/media/transcribe";
+import { gerarFundoDoCorte } from "@/lib/media/fundo-do-corte";
+import { dataUrlToBuffer } from "@/lib/media/nano-banana";
+import { put } from "@vercel/blob";
 
 /**
  * Manda o worker cortar a gravação.
@@ -60,6 +63,9 @@ export async function POST(
       attempts: true,
       blobUrl: true,
       clips: true,
+      // O nicho alimenta o fundo gerado dos cortes: fundo generico serve para
+      // qualquer canal e por isso nao serve para nenhum.
+      project: { select: { niche: true } },
       transcript: true,
       durationSec: true,
       projectId: true,
@@ -156,8 +162,48 @@ export async function POST(
     );
   }
 
+  // O FUNDO dos cortes verticais, gerado uma vez e usado nos sete.
+  //
+  // Uma vez, e nao um por corte, por duas razoes. Custo: sao sete cortes, e
+  // sete imagens e sete vezes o preco para um elemento que fica desfocado
+  // atras da pessoa. E identidade: fundos diferentes em cortes do mesmo video
+  // fazem a serie parecer de canais diferentes.
+  //
+  // Gerado AQUI e nao no worker pela mesma regra do enquadramento: a conta de
+  // IA do projeto vive num lugar so, e prompt e produto, que se edita num lugar
+  // so.
+  //
+  // Falhar nao derruba o corte: sem fundo o video sai na composicao com o
+  // slide, que e pior mas existe.
+  let fundoUrl: string | null = null;
+  try {
+    const assunto = trechos
+      .map((t) => t.titulo)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join("; ");
+    const fundo = await gerarFundoDoCorte(video.project?.niche, assunto, {
+      projectId: video.projectId,
+    });
+    if (fundo) {
+      const { url } = await put(
+        `cortes/${id}/fundo.jpg`,
+        dataUrlToBuffer(fundo.imagem),
+        { access: "private", contentType: "image/jpeg", addRandomSuffix: true }
+      );
+      fundoUrl = url;
+      console.log(`[${id}] fundo dos cortes gerado: ${fundo.descricao}`);
+    }
+  } catch (e) {
+    console.error(
+      `[${id}] fundo dos cortes falhou, cortes saem com o slide: ` +
+        (e instanceof Error ? e.message : "motivo desconhecido")
+    );
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com";
   const corpo = JSON.stringify({
+    fundoUrl,
     videoJobId: id,
     sourceUrl: video.blobUrl,
     duracaoSec: video.durationSec ?? 0,

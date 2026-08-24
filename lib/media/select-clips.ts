@@ -220,7 +220,24 @@ function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: str
   }
   if (primeira < 0 || ultima <= primeira) return t;
 
-  const [encaixado] = encaixarNaFrase(palavras, primeira, ultima);
+  const [encaixado, fimEncaixado] = encaixarNaFrase(palavras, primeira, ultima);
+
+  // O FIM também vem do texto, e não do número que o modelo chutou.
+  //
+  // `encaixarNaFrase` sempre calculou onde a frase fecha, e esse número era
+  // usado só para recortar a TRANSCRIÇÃO. O vídeo continuava terminando no
+  // segundo que o modelo devolveu, que quase nunca é fronteira de frase.
+  // Medido em 24/08 nos sete cortes: QUATRO terminavam no meio, em "antes era o
+  // meu emprego, o CLT," e "quer ver, né? E aí eu vou". O Bruno assistiu e
+  // descreveu como "corta do nada no final".
+  //
+  // É o mesmo defeito da abertura, do outro lado: modelo de linguagem erra
+  // aritmética de tempo e acerta julgamento de conteúdo. Onde houver texto e
+  // número sobre a mesma coisa, o texto manda.
+  const fim =
+    fimEncaixado > ultima && fimEncaixado < palavras.length
+      ? palavras[fimEncaixado].end
+      : t.fim;
 
   // O agente escolheu a abertura. O código só confere que ela EXISTE ali.
   const alvo = acharAbertura(palavras, t.abertura, encaixado, ultima);
@@ -237,7 +254,9 @@ function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: str
         `[selecao] trecho de ${t.inicio.toFixed(0)}s abre mal: ${defeito}`
       );
     }
-    return t;
+    // Mesmo sem alinhar a abertura, o fim fecha a frase: cortar no meio da
+    // frase é defeito independente de onde o trecho começa.
+    return fim !== t.fim ? { ...t, fim } : t;
   }
 
   const defeito = defeitoDaAbertura(palavras, alvo);
@@ -257,7 +276,13 @@ function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: str
         `${t.inicio.toFixed(0)}s vira ${segundos.toFixed(0)}s`
     );
   }
-  return { ...t, inicio: segundos, alinhado: true };
+  if (fim !== t.fim) {
+    console.log(
+      `[selecao] fim do trecho estendido de ${t.fim.toFixed(0)}s para ` +
+        `${fim.toFixed(0)}s, para fechar a frase`
+    );
+  }
+  return { ...t, inicio: segundos, fim, alinhado: true };
 }
 
 /**

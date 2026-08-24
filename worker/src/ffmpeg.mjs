@@ -592,11 +592,12 @@ export async function cortarVertical(
   inicio,
   duracao,
   enquadramento,
-  matte
+  matte,
+  fundo
 ) {
-  const comRecorte = matte && enquadramento?.tela;
+  const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
-    ? montarFiltroRecortado(enquadramento, matte, duracao)
+    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo)
     : montarFiltroVertical(enquadramento);
 
   await rodar([
@@ -615,7 +616,13 @@ export async function cortarVertical(
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
-  ]);
+  ], {
+    // O filtro `movie=` resolve caminho relativo a partir do diretório de
+    // trabalho, e caminho absoluto do Windows com dois-pontos quebra o parser
+    // de filtro. Rodar dentro da pasta e passar só o nome resolve os dois, e é
+    // o mesmo cuidado que a legenda e o filtro em arquivo já tomavam.
+    cwd: dirname(saida),
+  });
 }
 
 /** Onde cada peça mora no quadro de 1080x1920. Em pixels, para conferir a conta. */
@@ -624,6 +631,16 @@ const LAYOUT = {
   CARTAO_TOPO: 150,
   PESSOA_LARGURA: 900,
   PESSOA_BASE: 70, // distância do rodapé até o pé do recorte
+  /**
+   * A largura da pessoa quando ela é o único assunto do quadro.
+   *
+   * 1400 num quadro de 1080 é DE PROPÓSITO: a silhueta recortada ocupa cerca de
+   * 60% da caixa da webcam, então escalar a caixa para 1080 deixava a pessoa com
+   * 541 px, metade da tela, e foi o que o Bruno viu e reprovou. Escalando a
+   * caixa para 1400, a pessoa fica perto de 850 px de largura real, e as bordas
+   * que sobram são fundo transparente, que não aparece.
+   */
+  PESSOA_SOZINHA: 1400,
 };
 
 /**
@@ -644,8 +661,40 @@ const LAYOUT = {
  * defeito de compressão numa tela pequena, e ainda repete o conteúdo que já está
  * legível logo acima.
  */
-function montarFiltroRecortado(enq, matte, duracao) {
+function montarFiltroRecortado(enq, matte, duracao, fundo) {
   const { x, y, w, h } = matte.recorte;
+
+  // SÓ A PESSOA, sobre o fundo gerado. Sem slide.
+  //
+  // Decisão do Bruno em 24/08, depois de assistir: "tira os slides dos cortes,
+  // deixa apenas eu, e o fundo feito por IA". Ele tem razão pelo formato: corte
+  // vertical de rede social é rosto falando, e slide legível num telefone
+  // ocupa quadro que o rosto deveria ter.
+  //
+  // Isso resolve de graça dois defeitos que eu vinha tentando consertar por
+  // geometria: o slide cortado, que voltou de lado quando passei a escolher o
+  // recorte por área, e os 45% de quadro vazio, porque a pessoa passa a ocupar
+  // o espaço que era do cartão.
+  //
+  // O slide continua no vídeo COMPLETO do YouTube, onde a tela é grande e o
+  // conteúdo escrito ajuda em vez de atrapalhar.
+  if (fundo) {
+    return [
+      `movie=${basename(fundo)},scale=1080:1920,setsar=1,loop=loop=-1:size=1:start=0,` +
+        // Zoom lento de 4%: fundo parado atrás de pessoa em movimento parece
+        // fotografia, e custa zero perto de gerar vídeo.
+        `zoompan=z='min(1.04,1+0.04*on/${Math.max(1, Math.round(duracao * 30))})':` +
+        `d=1:s=1080x1920:fps=30,trim=duration=${duracao.toFixed(3)},` +
+        `setpts=PTS-STARTPTS[fundo]`,
+      `[0:v]crop=${w}:${h}:${x}:${y},scale=${LAYOUT.PESSOA_SOZINHA}:-2[pessoaRgb]`,
+      `[1:v]format=gray,scale=${LAYOUT.PESSOA_SOZINHA}:-2[pessoaAlpha]`,
+      "[pessoaRgb][pessoaAlpha]alphamerge[pessoa]",
+      // Encostada na base, e não centralizada: rosto no terço superior é onde o
+      // olho procura, e sobra espaço embaixo para a legenda.
+      `[fundo][pessoa]overlay=(W-w)/2:H-h-${LAYOUT.PESSOA_BASE}:format=auto,format=yuv420p[v]`,
+    ].join(";");
+  }
+
   const tela = cropDeCaixa(semAPessoa(comFolga(enq.tela), enq.pessoa));
 
   return [
