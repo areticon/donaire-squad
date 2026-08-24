@@ -4,7 +4,6 @@ import {
   detectarPausas,
   duracaoDosIntervalos,
   intervalosDoTrecho,
-  mapearTempo,
   montarLegendasDestaque,
   segundosRemovidos,
 } from "@/lib/media/edicao";
