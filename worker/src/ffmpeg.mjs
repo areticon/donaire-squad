@@ -20,6 +20,23 @@ import { writeFile } from "node:fs/promises";
  * largura e a tela e assistida de longe, no televisor ou no monitor: o mesmo
  * tamanho relativo daria um emoji gigante. 140 em 1920 e 7% da largura.
  */
+/**
+ * A normalizacao de volume, que e a "sacada de som" com numero.
+ *
+ * Medido no corte de producao de 24/08: ele sai a **-27,2 LUFS**, e o padrao
+ * que Instagram, TikTok e YouTube usam para nivelar o feed e **-14 LUFS**. Ou
+ * seja, o video da Demandou tocava treze decibeis mais baixo que tudo o que
+ * vem antes e depois dele na rolagem. Quem assiste sem fone nao ouve, e sobe.
+ *
+ * Isso nao e efeito sonoro nem trilha, e nao depende de licenca de ninguem: e
+ * corrigir um defeito que estava saindo em todo corte.
+ *
+ * `TP=-1.5` deixa margem de pico: as redes recomprimem o audio, e som que
+ * encosta em zero volta distorcido do outro lado. `LRA=11` e o padrao de
+ * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
+ */
+const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
+
 const EMOJI_NO_COMPLETO = 140;
 
 function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
@@ -226,7 +243,14 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     grafo += opcoes.legendasArquivo
       ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
       : ";[vc]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100", opcoes.duracaoSec ?? 0);
+    // A nivelacao de volume entra DENTRO do grafo, e nao em `-af`.
+    //
+    // Descoberto em producao em 24/08, e o erro do ffmpeg diz exatamente o
+    // motivo: "-vf/-af/-filter e -filter_complex nao podem ser usados juntos
+    // para o mesmo fluxo". Aqui o audio sai do `concat`, ou seja de dentro do
+    // grafo, entao pedir `-af` por fora e pedir duas donas para o mesmo fluxo.
+    grafo += `;[ac]${NIVELAR_VOZ}[a]`;
 
     // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
     // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
@@ -237,7 +261,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
     await writeFile(arquivoDeFiltro, grafo, "utf8");
 
-    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[ac]");
+    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[a]");
   } else if (emojis.length) {
     // Sem edição de tempo mas COM emoji: o caminho simples do `-vf` não serve,
     // porque cada emoji é uma fonte a mais e `-vf` só aceita uma entrada.
@@ -245,7 +269,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     let grafo = opcoes.legendasArquivo
       ? `[0:v]subtitles=${basename(opcoes.legendasArquivo)}[v]`
       : "[0:v]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
+    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100", opcoes.duracaoSec ?? 0);
     arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
     await writeFile(arquivoDeFiltro, grafo, "utf8");
     args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "0:a?");
@@ -268,11 +292,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   // remux existe para preservar o arquivo bit a bit quando nao ha nada a
   // editar, e forcar recodificacao so para nivelar volume trocaria uma
   // qualidade garantida por um ganho que o YouTube ja faz sozinho no lado dele.
-  args.push(
-    ...(editaTempo
-      ? ["-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k"]
-      : ["-c:a", "copy"])
-  );
+  args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
 
   args.push("-movflags", "+faststart", saida);
 
@@ -677,23 +697,6 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
  * não temos detecção de rosto para saber onde centralizar.
  */
 /**
- * A normalizacao de volume, que e a "sacada de som" com numero.
- *
- * Medido no corte de producao de 24/08: ele sai a **-27,2 LUFS**, e o padrao
- * que Instagram, TikTok e YouTube usam para nivelar o feed e **-14 LUFS**. Ou
- * seja, o video da Demandou tocava treze decibeis mais baixo que tudo o que
- * vem antes e depois dele na rolagem. Quem assiste sem fone nao ouve, e sobe.
- *
- * Isso nao e efeito sonoro nem trilha, e nao depende de licenca de ninguem: e
- * corrigir um defeito que estava saindo em todo corte.
- *
- * `TP=-1.5` deixa margem de pico: as redes recomprimem o audio, e som que
- * encosta em zero volta distorcido do outro lado. `LRA=11` e o padrao de
- * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
- */
-const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
-
-/**
  * Sobrepoe os emoji num grafo que termina em `[v]`.
  *
  * Existe fatorado porque o corte vertical e o video completo precisam da mesma
@@ -704,29 +707,51 @@ const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
  * sem cor: medido em 24/08 com a fonte do sistema (COLR) e com a Noto Color
  * Emoji (CBDT), e nas duas o resultado foi monocromatico.
  */
-function comEmoji(grafo, emojis, largura, x, y) {
+function comEmoji(grafo, emojis, largura, x, y, duracao) {
   const daPaleta = (emojis ?? []).filter((e) => e && e.arquivo);
   if (!daPaleta.length) return grafo;
+
+  // Duracao desconhecida vira uma hora, e nao zero. `trim=duration=0` produz um
+  // fluxo VAZIO, e fluxo vazio no `overlay` e exatamente a falha que este
+  // arquivo acabou de aprender a evitar: o codificador nao se configura e o
+  // erro fala de largura e altura, sem mencionar emoji nenhum.
+  const dur = duracao > 0.5 ? duracao : 3600;
 
   const partes = [grafo.replace(/\[v\]$/, "[base0]")];
   daPaleta.forEach((e, i) => {
     const de = Math.max(0, e.segundo);
-    const ate = de + 1.6;
-    // O ultimo overlay escreve direto em [v], que e o que o `-map` espera.
-    // Montar assim evita corrigir o rotulo depois com expressao regular.
     const destino = i === daPaleta.length - 1 ? "v" : `base${i + 1}`;
     partes.push(
       `movie=${e.arquivo},format=rgba,scale=${largura}:-1,` +
-        // O `trim` da duracao propria a imagem: sem ele o `loop` seria uma
-        // fonte SEM FIM, que e o mesmo erro que travou o gradiente do fundo em
-        // 23/08 e codificou ate o disco acabar. O `setpts` atrasa a imagem ate
-        // a hora certa, e os dois `fade` no alpha tiram o piscar.
-        `loop=loop=-1:size=1:start=0,trim=duration=1.6,` +
-        `setpts=PTS-STARTPTS+${de.toFixed(3)}/TB,` +
-        `fade=t=in:st=0:d=0.18:alpha=1,fade=t=out:st=1.35:d=0.25:alpha=1[e${i}]`,
-      `[base${i}][e${i}]overlay=${x}:${y}:` +
-        `enable='between(t,${de.toFixed(3)},${ate.toFixed(3)})':` +
-        `format=auto[${destino}]`
+        // O fluxo do emoji cobre o VIDEO INTEIRO, e quem faz ele aparecer e
+        // sumir e o alpha.
+        //
+        // A primeira versao fazia o contrario: um fluxo curto, atrasado com
+        // `setpts`, ligado por `enable`. Funcionou local no ffmpeg 9 e QUEBROU
+        // em producao no 5.1, num corte so, com "Error while opening encoder
+        // for output stream, maybe incorrect parameters such as width or
+        // height", que nao menciona nem emoji nem overlay. O `overlay` precisa
+        // de um quadro do fluxo secundario para se configurar, e um fluxo que
+        // so comeca a existir la na frente e um convite a esse tipo de falha.
+        //
+        // Cobrindo a duracao inteira, o `overlay` sempre tem quadro, e a
+        // aparicao vira uma conta de alpha, que nao depende de sincronia.
+        `loop=loop=-1:size=1:start=0,fps=30,trim=duration=${dur.toFixed(3)},` +
+        `setpts=PTS-STARTPTS,` +
+        // Entra em 180 ms, fica 1,6 s, sai em 250 ms. Antes disso e depois
+        // daquilo o alpha e zero, entao nao precisa de `enable`.
+        `fade=t=in:st=${de.toFixed(3)}:d=0.18:alpha=1,` +
+        `fade=t=out:st=${(de + 1.35).toFixed(3)}:d=0.25:alpha=1[e${i}]`,
+      `[base${i}][e${i}]overlay=${x}:${y}:format=auto` +
+        // O ULTIMO overlay devolve o formato para yuv420p.
+        //
+        // A composicao ja terminava em `format=yuv420p`, e o emoji passou a
+        // entrar DEPOIS disso, com um fluxo rgba: sem esta linha a saida do
+        // grafo deixa de ser yuv420p e o codificador escolhe outro formato,
+        // que aparece como cor trocada no video. Visto no teste local, com o
+        // simbolo de aviso saindo verde e roxo em vez de amarelo e preto.
+        (destino === "v" ? ",format=yuv420p" : "") +
+        `[${destino}]`
     );
   });
   return partes.join(";");
@@ -769,7 +794,8 @@ export async function cortarVertical(
     emojis,
     LAYOUT.EMOJI,
     `(W-w)/2+${LAYOUT.EMOJI_X}`,
-    `H-${LAYOUT.EMOJI_Y}`
+    `H-${LAYOUT.EMOJI_Y}`,
+    duracao
   );
 
   await rodar([
@@ -784,7 +810,11 @@ export async function cortarVertical(
     // saída, e o gradiente do fundo é uma fonte SEM FIM, então o ffmpeg
     // codificava até o disco acabar.
     "-t", String(duracao),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    // `-pix_fmt` explicito alem do `format` no grafo: se um dia o grafo mudar e
+    // alguem esquecer o formato no fim, o video sai num formato que metade dos
+    // aparelhos nao decodifica, e o sintoma e "o video nao abre no celular
+    // dele", que e caro de diagnosticar.
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
     "-af", NIVELAR_VOZ,
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",

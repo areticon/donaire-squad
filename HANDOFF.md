@@ -4977,3 +4977,129 @@ e a composicao alinhar por ele. Virou card.
 esquerdo. Card ja aberto.
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 52): a lista fechada
+
+Itens 4, 5 e 6 do Bruno, mais os dois defeitos que o quadro de producao cobrou.
+
+### 1. Os efeitos saem da fala, e o teto e baixo de proposito
+
+Um agente le a transcricao do corte e devolve poucos momentos, cada um com um
+emoji OU uma frase de destaque de ate quatro palavras.
+
+**Ele devolve a PALAVRA e nao o segundo.** E a regra que resolveu a abertura e o
+fim do corte: onde ha texto e numero sobre a mesma coisa, o texto manda. Ancora
+que nao existe na fala vira efeito NENHUM, e nao efeito no lugar errado.
+
+**Um efeito a cada 8 segundos, no maximo.** A pesquisa aponta mudanca visual a
+cada 1,5 a 2 segundos, e e tentador ler isso como "poe um efeito a cada dois
+segundos". Seria o caminho mais rapido para um video cansativo. A legenda
+palavra a palavra JA cumpre esse alvo sozinha, trocando de duas a tres vezes por
+segundo; o que falta e mudanca de ATENCAO, e ela nao se faz em cadencia de
+metronomo.
+
+### 2. O emoji entra como imagem, e isso foi medido
+
+| Fonte tentada | Formato | Resultado |
+|---|---|---|
+| a do sistema (Segoe UI Emoji) | COLR | desenha, **sem cor**, so contorno |
+| Noto Color Emoji | CBDT | o libass **nem escolhe**, cai para a Arial |
+
+Entao o emoji e sobreposto como PNG. A paleta e fechada: 24 arquivos de 128 px
+do projeto Noto Emoji sob Apache 2.0, 144 KB no total.
+
+Fechada de proposito e nao por limitacao: da ao canal do cliente um vocabulario
+visual constante em vez do que o modelo lembrar naquele dia, e tira do caminho o
+emoji de rosto, que competiria com o rosto que ja esta na tela. Emoji fora da
+paleta e DESCARTADO e nao substituido, porque reforco errado e pior que reforco
+nenhum.
+
+### 3. O som: o video tocava 13 dB abaixo do feed
+
+Medido no corte de producao de 24/08:
+
+| | |
+|---|---|
+| o que a Demandou entregava | **-27,2 LUFS** |
+| o padrao que Instagram, TikTok e YouTube usam para nivelar | **-14 LUFS** |
+
+Treze decibeis abaixo de tudo o que vem antes e depois na rolagem. Quem assiste
+sem fone nao ouve, e sobe.
+
+Isso nao e trilha nem efeito sonoro, nao depende de licenca de ninguem, e nao e
+acabamento: e um defeito que saia em todo corte. `loudnorm=I=-14:TP=-1.5:LRA=11`
+entra no vertical, no horizontal e no completo quando ja ha recodificacao. O
+`TP=-1.5` deixa margem de pico porque as redes recomprimem o audio, e som que
+encosta em zero volta distorcido do outro lado.
+
+### 4. O video completo leva os reforcos, e NAO leva a legenda continua
+
+As frases de destaque e os emoji entram no completo, com a fonte do estilo.
+
+**A legenda palavra a palavra nao entra, e isso e decisao do Bruno de 23/08 e
+nao esquecimento:** "legenda em tudo polui o video longo e compete com quem
+fala". Os reforcos aqui sao pontuais e nao brigam com essa regra. Registrado
+como decisao para ninguem "consertar" depois; se ele quiser inverter, e um
+parametro.
+
+### 5. A tela de estilo
+
+Na tela de video e acima do envio, porque o estilo decide como editar e po-lo
+depois seria pedir para o cliente escolher como editar um video ja editado.
+
+Cada opcao mostra o proprio nome NA FONTE do estilo, porque a diferenca entre os
+quatro e sobretudo tipografica e uma lista de nomes pediria adivinhacao. A tela
+diz que a fonte ali e aproximacao, porque as de verdade vivem no conteiner do
+worker e nao no navegador. Prometer o pixel exato numa previa que nao e o video
+seria a mesma familia de erro que medir o encanamento e chamar de produto
+pronto.
+
+### 6. O MediaPipe passou a rodar na maquina de desenvolvimento
+
+Foi o que permitiu diagnosticar os dois defeitos abaixo por medicao em vez de
+adivinhacao. `pip install mediapipe` mais o modelo baixado para a pasta
+temporaria, e o `recorte.py` roda local sobre a gravacao real.
+
+Isso muda o custo de investigar recorte: antes cada hipotese custava um deploy e
+meia hora de corte em producao.
+
+### 7. A pessoa nao ficava centralizada
+
+A composicao centralizava a CAIXA da webcam, e a pessoa nao fica no meio da
+propria janela. Com o fundo escuro isso passava despercebido; com o fundo claro
+ficou evidente.
+
+O `recorte.py` passa a devolver o centro horizontal da mascara, medido **so na
+metade de cima**, que e onde esta a cabeca: a metade de baixo e justamente onde
+a mesa entra na mascara e puxaria o centro para o lado errado. E a MEDIANA do
+trecho, e nao o valor de cada quadro, porque alinhar quadro a quadro faria a
+pessoa deslizar de lado toda vez que ela se mexesse.
+
+| | Desvio da cabeca em relacao ao centro da tela |
+|---|---|
+| antes | **-78 px** |
+| depois | **-24 px** |
+
+### 8. A faixa clara na base: tres tentativas, duas descartadas por medicao
+
+Causa, medida com o modelo real: **o maior componente conectado nao e a pessoa**,
+e a pessoa mais a mesa na frente dela e mais um objeto ao lado, porque o ombro
+encosta nos dois e o segmentador liga tudo. Num quadro de oito amostrados, a
+base da mascara mede 408 px contra 209 do tronco, ou seja 1,95 vezes, e
+atravessa a caixa inteira. Nos outros sete ela se comporta, e a media entre
+quadros do `recorte.py` espalha o defeito do quadro ruim para todos.
+
+| Tentativa | Resultado medido |
+|---|---|
+| zerar tudo abaixo da linha ofensora | levava **44% da mascara** junto, inclusive o peito |
+| erodir para quebrar a ponte | nao quebra: a ligacao e larga, nao fina. Com raio 13 a pessoa some antes |
+| **transparencia gradual na base** | excesso cai de **+17 para +13** pontos sobre o fundo |
+
+Ficou a terceira. Ela nao resolve por completo, e isso esta escrito no codigo em
+vez de escondido: o que resolveria e trocar o modelo pelo `selfie_multiclass`,
+que separa cabelo, pele e roupa em vez de devolver um bloco so. A base da pessoa
+JA e cortada pela borda do quadro na composicao, entao a transparencia ali nao
+perde conteudo: troca uma linha dura, que o olho le como recorte mal feito, por
+uma passagem suave.
+
+*Atualizado em 24/08/2026 por Claude Code.*
