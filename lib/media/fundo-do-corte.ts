@@ -61,6 +61,31 @@ import { generateImage } from "@/lib/media/nano-banana";
  *
  *   prompt antigo   brilho  49, 13% das linhas chapadas, maior salto 13
  *   prompt novo     brilho 207,  0% das linhas chapadas, maior salto 11
+ *
+ * ## Por que o fundo pede f/4 e não f/1.8
+ *
+ * A primeira versão do prompt novo pedia "85mm em f/1.8, o fundo inteiro
+ * suavemente desfocado". É o vocabulário certo para retrato e o errado para
+ * isto: uma foto em que NADA está nítido não parece profundidade de campo, ela
+ * parece resolução baixa. Foi o que o Bruno viu em 24/08, e ele perguntou se o
+ * problema era o modelo.
+ *
+ * Não era. Medido com o mesmo prompt nos dois modelos de imagem, olhando o
+ * bloco mais nítido de cada imagem, que é o que diz se existe algum plano em
+ * foco:
+ *
+ *   flash  bloco mais nítido 8,15     pro  bloco mais nítido 4,56
+ *
+ * O Pro custa 3,4 vezes mais e não é mais nítido. Trocar de modelo teria
+ * gastado mais para não resolver nada.
+ *
+ * O que resolveu foi pedir um PLANO EM FOCO, medido com o mesmo modelo:
+ *
+ *   f/1.8, fundo inteiro desfocado    bloco mais nítido  2,23
+ *   f/4 com a parede em foco          bloco mais nítido 14,98
+ *
+ * Seis vezes e meia mais detalhe, sem mudar de modelo e sem custar um centavo
+ * a mais.
  */
 
 export type FundoDoCorte = {
@@ -112,13 +137,13 @@ A CENA
 - Um ambiente real de trabalho, coerente com ${area}, sugerido e nunca literal.
 - O assunto do vídeo é: ${assunto}
 - Fotografada de dentro do ambiente, à altura dos olhos, com a parede de fundo a três ou quatro metros da câmera.
-- Lente de 85mm em f/1.8: o fundo inteiro fica suavemente desfocado, com bokeh limpo e sem duplicar contornos.
+- Lente de 35mm em f/4, foco na parede do fundo: a parede e o que está encostado nela ficam NÍTIDOS, com textura visível e detalhe fino. Só o que está muito à frente ou muito atrás desse plano é que desfoca de leve.
 - ${
     claro
       ? "Ambiente CLARO e arejado, paredes claras, luz natural difusa entrando de uma janela lateral fora do quadro. A imagem inteira é luminosa, em tons claros e neutros, sem sombra pesada em nenhum canto."
       : "Ambiente ESCURO e discreto, paredes escuras, uma única luz lateral suave. Tons frios e dessaturados, sem preto chapado e sem sombra sem informação."
   }
-- A metade de baixo do quadro é uma superfície contínua e fora de foco, como um tampo ou um piso visto de perto, sem nenhum objeto em cima dela.
+- A metade de baixo do quadro é uma superfície contínua, como um tampo ou um piso visto de perto, sem nenhum objeto em cima dela.
 
 O QUE NÃO PODE APARECER
 - Nenhuma pessoa, rosto, mão ou silhueta.

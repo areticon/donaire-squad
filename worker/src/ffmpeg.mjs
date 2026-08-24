@@ -915,19 +915,17 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
   // O slide continua no vídeo COMPLETO do YouTube, onde a tela é grande e o
   // conteúdo escrito ajuda em vez de atrapalhar.
   if (fundo) {
-    // A CORRECAO DE BRILHO DO FUNDO, que fecha o que o gerador de imagem nao
-    // fechou.
+    // A CORRECAO DE BRILHO DO FUNDO, por GAMA e nao por soma.
     //
-    // O prompt ja pede o fundo claro ou escuro conforme a gravacao, e isso
-    // resolve quase tudo: medido em 24/08, o fundo saiu de 49 para 207 num alvo
-    // de 241. Mas o modelo chega perto e nao acerta, e o que sobra ainda e o
-    // contraste que faz o halo aparecer.
+    // Somar brilho estourava a imagem: medido em 24/08, um empurrao de 23
+    // pontos levou a area sem textura nenhuma de 0,4% para 16% do quadro, e foi
+    // isso que o Bruno chamou de "imagem pessima". A curva de gama leva 0 em 0
+    // e 255 em 255, entao clareia o meio-tom sem nunca estourar.
     //
-    // A correcao e LIMITADA de proposito. Empurrar um fundo de 150 ate 241
-    // lavaria a imagem inteira e destruiria a profundidade que e o motivo de
-    // gerar fundo. Fechar os ultimos pontos vale; forcar a barra nao. Quem
-    // calcula o limite e quem mede, no `index.mjs`.
-    const brilho = ajusteDeBrilho ? `,eq=brightness=${ajusteDeBrilho.toFixed(3)}` : "";
+    // Quem decide se vale mexer e quanto e o `index.mjs`, que mede o arquivo.
+    // Nulo quer dizer que a diferenca era pequena demais para justificar tocar
+    // na imagem.
+    const brilho = ajusteDeBrilho ? `,eq=gamma=${ajusteDeBrilho.toFixed(3)}` : "";
 
     return [
       `movie=${basename(fundo)},scale=1080:1920,setsar=1${brilho},loop=loop=-1:size=1:start=0,` +

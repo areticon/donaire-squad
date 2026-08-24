@@ -245,7 +245,7 @@ async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
 }
 
 /**
- * Quanto empurrar o brilho do fundo gerado para casar com a gravacao.
+ * Quanto corrigir o brilho do fundo gerado para casar com a gravacao.
  *
  * ## Por que existe
  *
@@ -254,44 +254,66 @@ async function pedirEnquadramento(trabalho, fonte, pasta, duracaoSec) {
  * fundo gerado e escuro. Casando os brilhos, o halo perde o contraste que o faz
  * aparecer.
  *
- * O prompt ja faz quase todo o trabalho, e a diferenca e enorme: medido, o
- * fundo saiu de brilho 49 para 207 num alvo de 241. O que sobra e o que esta
- * funcao fecha.
+ * ## Por que a correcao QUASE FOI REMOVIDA
  *
- * ## Por que o empurrao e limitado
+ * A primeira versao somava brilho, com `eq=brightness`. Medido na imagem que
+ * foi ao ar: um empurrao de 23 pontos levou a area ESTOURADA de **0,4% para
+ * 16%** da imagem. Dezesseis por cento do quadro virou branco puro, sem
+ * textura nenhuma, e foi isso que o Bruno viu e chamou de "imagem pessima".
  *
- * Porque a alternativa e pior que o problema. Empurrar um fundo de 150 ate 241
- * lava a imagem inteira, estoura os claros e destroi a profundidade, que e o
- * motivo de gerar fundo em vez de usar cor solida. Vinte e cinco pontos fecham
- * o caso comum (o modelo erra por volta de trinta) sem chegar perto de lavar
- * nada.
+ * Somar brilho e a ferramenta errada para clarear uma imagem que ja e clara:
+ * ela empurra o que ja estava perto do teto para fora dele.
  *
- * Quando o limite morde, o log diz quanto sobrou. Isso importa: fundo com
- * residuo grande quer dizer que o PROMPT errou o alvo, e o conserto e la, nao
- * aqui.
+ * ## O que ficou, e por que ele quase nunca vai agir
+ *
+ * Gama em vez de soma. A curva de gama leva 0 em 0 e 255 em 255, entao ela
+ * clareia o meio-tom sem NUNCA estourar. Medido na mesma imagem: gama 1,7 leva
+ * o brilho de 205 para 224, praticamente o mesmo que a soma levava, com 0,9%
+ * de area estourada em vez de 16%.
+ *
+ * E o limiar. Medido no corte de producao: com 23 pontos de diferenca entre o
+ * fundo e a parede, o halo ficou em +6, que ja e menos do que o olho separa
+ * numa tela de telefone. Abaixo de 20 pontos a correcao nao tem o que
+ * consertar, e mexer na imagem sem ganho e so risco.
+ *
+ * O teto de gama existe pela mesma razao do teto anterior: empurrar um fundo
+ * muito escuro ate uma parede branca lavaria a imagem e destruiria a
+ * profundidade, que e o motivo de gerar fundo em vez de usar cor solida.
  */
-const MAXIMO_DE_AJUSTE = 25;
+const DIFERENCA_QUE_IMPORTA = 20;
+const GAMA_MAXIMA = 1.8;
+const GAMA_MINIMA = 0.6;
 
 function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
-  if (typeof alvo !== "number") return 0;
+  if (typeof alvo !== "number") return null;
   const medido = brilhoMedio(arquivo);
-  if (medido === null) return 0;
+  if (medido === null) return null;
 
-  const bruto = alvo - medido;
-  const limitado = Math.max(-MAXIMO_DE_AJUSTE, Math.min(MAXIMO_DE_AJUSTE, bruto));
-  const residuo = bruto - limitado;
+  const diferenca = alvo - medido;
+  if (Math.abs(diferenca) < DIFERENCA_QUE_IMPORTA) {
+    console.log(
+      `[${videoJobId}] fundo com brilho ${medido.toFixed(0)}, alvo ${alvo}` +
+        `, diferenca de ${diferenca.toFixed(0)} nao vale mexer`
+    );
+    return null;
+  }
+
+  // A gama que leva a media de `medido` ate `alvo`, na curva `saida =
+  // entrada^(1/gama)` que o filtro `eq` aplica sobre o valor normalizado.
+  const m = Math.min(0.999, Math.max(0.001, medido / 255));
+  const t = Math.min(0.999, Math.max(0.001, alvo / 255));
+  const bruta = Math.log(m) / Math.log(t);
+  const gama = Math.max(GAMA_MINIMA, Math.min(GAMA_MAXIMA, bruta));
+  const previsto = Math.pow(m, 1 / gama) * 255;
 
   console.log(
     `[${videoJobId}] fundo com brilho ${medido.toFixed(0)}, alvo ${alvo}` +
-      `, corrigindo ${limitado.toFixed(0)} ponto(s)` +
-      (Math.abs(residuo) > 1
-        ? `, sobram ${residuo.toFixed(0)} (o prompt errou o alvo, o conserto e no prompt)`
+      `, gama ${gama.toFixed(2)} leva para ${previsto.toFixed(0)}` +
+      (gama !== bruta
+        ? ` (a gama que fecharia seria ${bruta.toFixed(2)}, limitada para nao lavar a imagem)`
         : "")
   );
-
-  // O filtro `eq` conta brilho de -1 a 1 sobre a faixa inteira, entao ponto de
-  // 0 a 255 vira fracao dividindo por 255.
-  return limitado / 255;
+  return gama;
 }
 
 /**
@@ -328,7 +350,7 @@ async function processar(trabalho) {
     // pessoa esta. `trabalho.fundoUrl` fica de reserva para um pedido antigo,
     // montado antes desta mudanca, que ainda esteja na fila.
     let fundoLocal = null;
-    let ajusteDeBrilho = 0;
+    let ajusteDeBrilho = null;
     const urlDoFundo = fundoUrl ?? trabalho.fundoUrl ?? null;
     if (urlDoFundo) {
       try {
