@@ -4367,4 +4367,117 @@ exigencia ao prompt aumenta o pensamento, e o teto precisa crescer junto.**
   A arquitetura para isso ja existe no agente de visao, que ja olha quadros e
   decide enquadramento; falta estender para decidir TRATAMENTO.
 
-*Atualizado em 23/08/2026 por Claude Code.*
+## Sessao 24/08/2026 (parte 48): a frase repetida, o fim cortado, e o Seedance
+
+O Bruno assistiu de novo e trouxe quatro pontos. Tres viraram correcao, um virou
+uma conta que mudou a decisao dele.
+
+### 1. O video completo repetia uma frase, e nao era a gravacao
+
+Ele relatou que a frase sobre a Areticon aparece duas vezes seguidas, sem saber
+se tinha falado duas vezes.
+
+Verificado: **"areticon" aparece UMA vez na transcricao**, e nao existe nenhuma
+sequencia de 8 palavras repetida na gravacao inteira. Ele falou uma vez so.
+
+O `trim`/`concat` esta limpo: zero sobreposicoes entre os intervalos mantidos, e
+a soma bate com a duracao. Sobrou a abertura, e o bug estava la:
+
+    const distintos = validos.filter(
+      (g, i) => i === 0 || Math.abs(g.inicio - validos[0].inicio) > 5
+    );
+
+Comparava so o INSTANTE DE INICIO, contra o primeiro gancho, exigindo 5 segundos
+de diferenca. Ganchos de 480 a 492 e de 486 a 498 tem inicio a seis segundos de
+distancia, passam nesse crivo, e **se sobrepoem em seis segundos**. Na abertura
+isso e a mesma frase duas vezes seguidas.
+
+Agora compara intervalo com intervalo, contra todos os aceitos, com dois
+segundos de respiro.
+
+### 2. Quatro dos sete cortes terminavam no meio da frase
+
+Medido: "antes era o meu emprego, o CLT,", "a empresa ficou estagnada, nao no
+produto,", "e esse e dos motivos, ta? Resumindo", "quer ver, ne? E ai eu vou".
+O Bruno descreveu como "corta do nada no final".
+
+`encaixarNaFrase` SEMPRE calculou onde a frase fecha. Eu usava esse numero so
+para recortar a TRANSCRICAO, e deixava o video terminar no segundo que o modelo
+chutou. E o mesmo defeito da abertura, do outro lado da mesma moeda.
+
+**A regra ja estava escrita e eu so tinha aplicado metade:** onde houver texto e
+numero sobre a mesma coisa, o texto manda.
+
+### 3. Cortes so com a pessoa, sobre fundo gerado
+
+Pedido dele: "tira os slides dos cortes, deixa apenas eu, e o fundo feito por
+IA". Resolve de graca dois defeitos que eu vinha tentando consertar por
+geometria: o slide cortado, que voltou de lado quando passei a escolher o
+recorte por AREA (cortar largura trunca todas as linhas de texto, cortar altura
+so perde as ultimas), e os 45% de quadro vazio.
+
+A pessoa passa a ser escalada por **1400** e nao 1080. A silhueta recortada ocupa
+cerca de 60% da caixa da webcam, entao escalar a caixa para 1080 deixava a pessoa
+com 541 px, metade da tela, que foi o que ele reprovou.
+
+O slide continua no video COMPLETO do YouTube, onde a tela e grande.
+
+### 4. Seedance 2.5: a conta que mudou a decisao
+
+Ele pediu para instalar a API do Seedance 2.5, descrevendo que ela "pega o modelo
+do video e pode gerar os cortes com mais precisao". Duas coisas:
+
+**O que ele e:** modelo de GERACAO de video (texto para video, imagem para video,
+edicao, extensao), ate 30 segundos por geracao. **Ele nao escolhe cortes.** A
+selecao de trecho continua sendo o agente de texto.
+
+**O preco, medido em 24/08:**
+
+| Resolucao | Por segundo | 30 segundos |
+|---|---|---|
+| 480p | US$ 0,138 | R$ 22 |
+| 720p | US$ 0,296 | R$ 48 |
+| 1080p | US$ 0,532 | R$ 86 |
+
+Os cortes saem em 1080x1920. Sete cortes com fundo de 30 segundos em 720p custam
+**R$ 336**. O trabalho de video rende **R$ 4,48**. Ate um laco de 5 segundos
+repetido da R$ 56, doze vezes a receita.
+
+**E a mesma conta que matou o Veo em 18/08**: R$ 18,05 de custo contra R$ 10,00
+de receita. Apresentada assim, o Bruno escolheu nano banana.
+
+Fundo com imagem custa centavos, sai em alta resolucao, e **fundo de corte nao
+precisa se mexer**: o que se mexe e a pessoa. O movimento entra em ffmpeg com
+zoom lento de 4%, que custa zero. O Seedance fica para quando existir plano com
+preco que sustente.
+
+### 5. O script de teste passou a importar producao em vez de imita-la
+
+`scripts/tmp/rodar-corte.mjs` replicava a logica da rota `/cortar`. Isso custou
+caro varias vezes: eu consertava o produto, o script continuava com a logica
+velha, e o teste dizia uma coisa enquanto a producao fazia outra. Mesma familia
+do erro de 22/08, quando testei a API da Anthropic em vez do caminho do
+aplicativo.
+
+Virou `rodar-corte.mts`, rodado com `tsx`, importando os modulos reais. So a
+parte que a rota faz por sessao (achar o video, assinar o pedido) e propria.
+**Se a rota mudar o desenho, o script quebra em vez de mentir.**
+
+Comando:
+
+```bash
+npx tsx@4 --tsconfig tsconfig.json scripts/tmp/rodar-corte.mts   https://demandou.com https://video-worker-production-2eb6.up.railway.app
+```
+
+### Aberto nesta frente
+
+- [ ] Musica, transicoes e efeitos: o Bruno cobrou os tres e nenhum existe
+- [ ] Legenda queimada palavra a palavra
+- [ ] O nicho do projeto esta como "Produtividade e organizacao para freelancers
+      e autonomos" e o conteudo dele e empreendedorismo, SaaS e energia. O fundo
+      sai alinhado ao nicho CADASTRADO, nao ao que ele fala.
+- [ ] A edicao adaptada ao tipo de video (vlog nao e screencast)
+- [ ] Ajudar o Bruno a configurar a webcam 4K no OBS, que resolve na origem o
+      problema de ampliacao
+
+*Atualizado em 24/08/2026 por Claude Code.*
