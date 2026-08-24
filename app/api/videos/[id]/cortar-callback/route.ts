@@ -61,6 +61,7 @@ export async function POST(
     ok?: boolean;
     erro?: string;
     trechos?: TrechoCortado[];
+    avisoDeQualidade?: string;
     completo?: MidiaProduzida | null;
     capaFonte?: (MidiaProduzida & { instante?: number; motivo?: string }) | null;
     erros?: string[];
@@ -121,9 +122,22 @@ export async function POST(
     (t) => (t as { midia?: { vertical?: unknown } }).midia?.vertical
   ).length;
 
+  // O aviso de qualidade do worker (janela da pessoa pequena demais para corte
+  // nitido) entra no DIAGNOSTICO, que e o campo que o cliente le. Anexado ao
+  // que o especialista ja escreveu, e nao por cima: os dois falam de coisas
+  // diferentes e o cliente merece as duas.
+  const aviso = corpo.avisoDeQualidade?.trim();
+  const diagnosticoAtual = (
+    await prisma.videoJob.findUnique({ where: { id }, select: { diagnostico: true } })
+  )?.diagnostico;
+  const diagnostico = aviso
+    ? [diagnosticoAtual, aviso].filter(Boolean).join("\n\n")
+    : undefined;
+
   await prisma.videoJob.update({
     where: { id },
     data: {
+      ...(diagnostico ? { diagnostico } : {}),
       status: comMidia > 0 ? "cut" : "failed",
       startedAt: null,
       attempts: comMidia > 0 ? 0 : undefined,

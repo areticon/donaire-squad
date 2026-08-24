@@ -365,6 +365,34 @@ async function processar(trabalho) {
       }
     }
 
+    // A HONESTIDADE SOBRE A JANELA PEQUENA, pedida pelo Bruno em 24/08: "se o
+    // usuario gravar um video igual o meu, com a imagem la no canto da tela, o
+    // agente deve dizer" que os cortes vao sair ruins e por que.
+    //
+    // A conta e direta: o corte vertical precisa de 1080 px de largura, e a
+    // regiao da pessoa tem `pessoa.w * largura da fonte` pixels. A razao entre
+    // os dois e a ampliacao. Na gravacao do Bruno, a webcam de 422 px vira
+    // 2,6x, e foi isso que ele viu como "imagem macia". Acima de 2x o aviso
+    // entra no diagnostico do video, que e o campo que o cliente le.
+    {
+      const ampliacoes = [...enquadramentos.values()]
+        .filter((e) => e?.pessoa?.w)
+        .map((e) => 1080 / Math.max(1, e.pessoa.w * info.largura));
+      if (ampliacoes.length) {
+        const pior = Math.max(...ampliacoes);
+        if (pior > 2) {
+          resultados.avisoDeQualidade =
+            `Você aparece numa janela pequena da gravação, e os cortes verticais ` +
+            `precisam ampliar essa área ${pior.toFixed(1)} vezes, o que reduz a nitidez. ` +
+            `Para cortes nítidos, grave com a câmera em tela cheia; a tela ` +
+            `compartilhada continua valendo para o vídeo completo.`;
+          console.log(
+            `[${trabalho.videoJobId}] aviso de qualidade: ampliacao de ${pior.toFixed(1)}x`
+          );
+        }
+      }
+    }
+
     // A capa da gravação sai antes dos cortes: é barata (um quadro) e é o que a
     // tela mostra primeiro.
     if (capa) {

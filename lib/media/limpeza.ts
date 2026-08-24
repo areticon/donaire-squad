@@ -105,6 +105,41 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
   return remocoes;
 }
 
+/**
+ * As muletas ARRASTADAS, detectadas por código.
+ *
+ * O Bruno pegou um "é eeeee" logo no início do vídeo completo de 24/08, DEPOIS
+ * de o agente de limpeza ter rodado (137,5s removidos naquela rodada). Fomos ao
+ * dado: a palavra era "é," aos 5,6s, com 0,48s de duração, solta entre duas
+ * frases. O agente marca muitas e deixa outras, e não há prompt que garanta.
+ *
+ * O que É garantível por código: um som de hesitação ("é", "eh", "ah", "hum")
+ * que dura muito mais do que a palavra falada normalmente dura. Medido na
+ * própria gravação: o "é" verbo de "essa é uma decisão" dura 0,10s; o "é"
+ * muleta arrastado dura 0,48s. A folga entre os dois é enorme.
+ *
+ * O limiar de 0,38s fica no meio dessa folga, e a lista é curta de propósito:
+ * só sons que nunca são conteúdo quando arrastados.
+ */
+const SONS_DE_HESITACAO = new Set(["e", "eh", "ah", "ahn", "hum", "uhm", "mmm"]);
+
+export function detectarMuletasArrastadas(palavras: Word[]): Remocao[] {
+  const remocoes: Remocao[] = [];
+  for (const p of palavras) {
+    const chave = chaveDaPalavra(p.word);
+    if (!SONS_DE_HESITACAO.has(chave)) continue;
+    const duracao = p.end - p.start;
+    if (duracao >= 0.38) {
+      remocoes.push({
+        de: p.start,
+        ate: p.end,
+        motivo: `hesitação arrastada: "${p.word}" (${duracao.toFixed(2)}s)`,
+      });
+    }
+  }
+  return remocoes;
+}
+
 const SISTEMA = `Você limpa a fala de uma gravação, marcando o que sai.
 
 Recebe as palavras numeradas, com o tempo de cada uma. Devolva os intervalos que devem ser REMOVIDOS para o vídeo ficar melhor de assistir, sem mudar o que a pessoa disse.

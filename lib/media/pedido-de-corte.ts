@@ -9,6 +9,7 @@ import {
 } from "@/lib/media/edicao";
 import {
   detectarHesitacao,
+  detectarMuletasArrastadas,
   detectarRepeticoes,
   limpezaParaRemocoes,
   unirRemocoes,
@@ -112,8 +113,11 @@ export async function montarPedidoDeCorte(
   // As repetições imediatas entram por CÓDIGO, além do agente. Medido em
   // 24/08: o agente deixou passar 93 palavras e 12 expressões repetidas, 40
   // segundos de cópias, e era o "eu, eu, eu" que o Bruno ouviu nos cortes.
+  // O que é garantível por código entra por código: repetições imediatas e
+  // hesitações arrastadas. O agente continua cuidando do que é julgamento
+  // (recomeço de frase, muleta que às vezes é conteúdo).
   const remocoes = unirRemocoes(
-    pausas,
+    unirRemocoes(pausas, detectarMuletasArrastadas(palavras)),
     unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
   );
 

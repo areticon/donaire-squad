@@ -238,11 +238,13 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     // A diferença é estrutural: cada pedaço vira um NÓ de filtro em vez de um
     // termo numa única expressão, e o ffmpeg lida bem com centenas de nós.
     const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
+    const dim = await ffprobe(entrada);
     const partes = [];
     const mapa = [];
     manter.forEach((m, i) => {
       partes.push(
-        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
+          `${segmentoComPunchIn(i, dim.largura, dim.altura)}[v${i}]`,
         `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
       );
       mapa.push(`[v${i}][a${i}]`);
@@ -374,11 +376,13 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
     return { removidos: 0, segundos: 0 };
   }
 
+  const dim = await ffprobe(entrada);
   const partes = [];
   const mapa = [];
   manter.forEach((m, i) => {
     partes.push(
-      `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+      `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
+        `${segmentoComPunchIn(i, dim.largura, dim.altura)}[v${i}]`,
       `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
     );
     mapa.push(`[v${i}][a${i}]`);
@@ -407,6 +411,30 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
 
   const mantidos = manter.reduce((s, m) => s + (m.ate - m.de), 0);
   return { removidos: manter.length - 1, segundos: duracao - mantidos };
+}
+
+/**
+ * O filtro de vídeo de um segmento mantido, com o PUNCH-IN alternado.
+ *
+ * Pedido do Bruno em 24/08: "toda vez que limpar, dar um efeito para a
+ * transição do corte ficar sutil". É o tratamento padrão de jump cut do
+ * mercado inteiro: a cada emenda, o enquadramento alterna entre o plano normal
+ * e um plano 5,5% mais fechado. O pulo da pessoa entre dois pedaços deixa de
+ * parecer defeito e passa a parecer um corte de câmera intencional.
+ *
+ * 5,5% e não mais: acima de ~8% o vaivém vira zoom nervoso; abaixo de ~4% o
+ * olho não registra a mudança de plano e o pulo volta a aparecer.
+ *
+ * O `scale` de volta para o tamanho EXATO da fonte não é enfeite: o `concat`
+ * exige todos os segmentos com a mesma dimensão, e um crop de conta quebrada
+ * derrubaria a emenda inteira.
+ */
+function segmentoComPunchIn(i, largura, altura) {
+  if (i % 2 === 0 || !largura || !altura) return "";
+  const z = 1.055;
+  const w = Math.round(largura / z / 2) * 2;
+  const h = Math.round(altura / z / 2) * 2;
+  return `,crop=${w}:${h}:${Math.round((largura - w) / 2)}:${Math.round((altura - h) / 2)},scale=${largura}:${altura},setsar=1`;
 }
 
 /** O complemento das remoções: os pedaços que sobrevivem, em ordem. */
