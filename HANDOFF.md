@@ -4480,4 +4480,156 @@ npx tsx@4 --tsconfig tsconfig.json scripts/tmp/rodar-corte.mts   https://demando
 - [ ] Ajudar o Bruno a configurar a webcam 4K no OBS, que resolve na origem o
       problema de ampliacao
 
+## Sessao 24/08/2026 (parte 49): o especialista, a legenda e os estilos
+
+A sessao mudou de patamar quando o Bruno reenquadrou o problema:
+
+> "meu video e otimo para o nome codigo, porque meu video e ruim, e os usuarios
+> vao subir videos ruins. Claro que nao tem milagre, mas tem tecnologia. E o que
+> fazemos: pegamos algo ruim e transformamos em algo incrivel. Isso e o conceito
+> dos filtros do Instagram. Se conseguirmos deixar esse meu video bom, entao
+> vamos conseguir deixar a plataforma pronta. Nao vou mandar outro video por
+> esse motivo."
+
+**Isso vira o padrao de teste do projeto.** A gravacao dele, com webcam de
+422x302 num canto, fundo branco, fala sem roteiro e sem fecho de ideia, e o caso
+de teste oficial. Nao pedir gravacao melhor.
+
+### A pesquisa que passou a mandar no desenho
+
+Feita em 24/08 a pedido dele, sobre o que faz conteudo curto funcionar:
+
+| Achado | Fonte |
+|---|---|
+| A decisao acontece em **1 segundo**, nao 3. Feed de rolagem nao da 3 | vidIQ, Cut.Pro |
+| **85% dos shorts sao assistidos SEM SOM** | Miraflow |
+| Mudanca visual a cada **1,5 a 2 segundos** e o alvo de 2026 | Aibrify, OpusClip |
+| Video abaixo de 90s retem so **metade** do publico | Aibrify |
+| Formulas que mais viralizam: **afirmacao contraria, aviso de erro, chamada de identidade** | Socialync, vidIQ |
+| Legenda **palavra a palavra** e o padrao, alto contraste, terco inferior | Blitzcut, Voice Creator |
+| OpusClip pontua por gancho, fluxo e ritmo. Nota 80+ rende 2,3x mais views | OpusClip |
+| Mas a nota e **direcional, nao previsao**: corte nota 40 as vezes bate nota 85 | ScaleReach |
+
+**O achado mais caro: 85% assiste sem som, e os cortes nao tinham legenda
+nenhuma.** Isso nao era acabamento faltando, era a maioria do publico nao
+entendendo o video.
+
+A ressalva do OpusClip importa: a nota serve para ORDENAR e para ser honesto, e
+nao para prometer viralizacao.
+
+### 1. O especialista parou de encher cota
+
+Pedido do Bruno: "nao tem 6 cortes para tirar dali. Se nao tiver, nao gere, nao
+podemos forcar. Temos que ser sinceros: olha, nosso especialista analisou e viu
+que seu video tem 2 possiveis cortes, liste os criterios".
+
+O prompt virou o de um editor de video curto, com **seis criterios pontuados de
+0 a 10**: gancho, tese, prova, autonomia, emocao e fecho.
+
+**A nota final e a MENOR das seis, e nao a media.** Um trecho com tese otima e
+gancho fraco nao funciona, porque ninguem chega na tese. Media premiaria
+justamente o desequilibrado, que e o que sai morno.
+
+A nota e **recalculada em codigo**, porque "pegue o menor de seis numeros" e
+aritmetica, e estes dois dias mostraram que o agente acerta julgamento e erra
+conta.
+
+Resultado no video real: **4 trechos em vez de 7**, e o diagnostico do agente:
+
+> "A gravacao e um raio-x de 27 minutos sem nenhum corte pensado para quem
+> assiste: conversa solta que emenda historia pessoal, pitch de tres produtos,
+> tutorial e bencao final, tudo sem pausa para fechar ideia. Para a proxima
+> gravacao, ele precisa terminar cada ideia com um ponto final antes de ja puxar
+> a proxima, e abrir cada bloco com a virada, nao com o contexto."
+
+O campo `diagnostico` entrou no `VideoJob` (migration
+`20260824121028_diagnostico_do_video`) para o cliente ler.
+
+### 2. Relatorio de valor
+
+Pedido dele: "trazer o relatorio para o usuario mostra valor". Numeros reais:
+
+    Sua gravacao tinha 27 min 26s e o video editado ficou com 25 min 18s.
+    Removemos 140 trechos, somando 128 segundos: 67 eram pausa e silencio (50s)
+    e o resto era hesitacao e recomeco de frase.
+    Entre os vicios de linguagem cortados: 32 "e", 19 "ne", 3 "bom", 2 "entao".
+    Do material aproveitavel sairam 4 cortes prontos para publicar.
+    Um editor faria esse mesmo trabalho em cerca de 1h 22min.
+
+**Duas decisoes que protegem a credibilidade do numero:**
+
+- So conta o que a plataforma REMOVEU, e nao o que ela viu. O video tem 147 "e"
+  e o relatorio diz 32, porque foram esses que cairam dentro de uma remocao.
+  Prometer corte que nao aconteceu e o jeito mais rapido de o cliente parar de
+  acreditar no resto.
+- Usa **3 minutos de edicao por minuto de video**, que e o PISO da faixa de 3 a
+  5 praticada. Da 1h22 em vez de 2h17. Prometer o piso e melhor que decepcionar
+  na conferencia.
+
+### 3. Estilos de edicao, escolhidos uma vez por projeto
+
+Ideia dele, e a ORDEM que ele propos esta certa: o estilo precisa ser conhecido
+ANTES da edicao, porque decide legenda, ritmo e som.
+
+Quatro estilos em `lib/media/estilos.ts`: **dramatico, acelerado, serio e
+animado**. Cada um define fonte, corpo, cor de destaque, palavras por vez,
+intervalo de movimento, forca do zoom, mixagem e **respiro do corte**, que e o
+que ele chamou de "precisao dos cortes".
+
+No PROJETO e nao no upload, porque canal com estilo diferente a cada video nao
+constroi reconhecimento.
+
+O que NAO varia por estilo, porque a pesquisa fixou: legibilidade, alto
+contraste e palavra a palavra.
+
+### 4. Legenda palavra a palavra, em ASS com karaoke
+
+`lib/media/legenda-falada.ts`. ASS e nao SRT porque destacar a palavra falada
+AGORA exige mudar a cor DENTRO da linha, e SRT nao faz isso. A marca de karaoke
+do ASS existe para exatamente isso e o ffmpeg desenha nativo.
+
+Duas armadilhas resolvidas:
+
+- **A marca de karaoke conta em CENTESIMOS de segundo**, nao em segundos. Errar
+  a unidade faz a legenda inteira piscar no primeiro quadro.
+- **`PrimaryColour` e a cor de quem JA foi falado**, e `SecondaryColour` a de
+  quem ainda vem. O karaoke anda da secundaria para a primaria, entao o destaque
+  entra em `PrimaryColour`, ao contrario do que o nome sugere.
+
+**E uma decisao contra a pesquisa, de proposito.** Ela manda pôr legenda no
+terco inferior central. Medido no corte real: a silhueta ocupa de y=1183 a
+y=1870, e a legenda ali caia EM CIMA DA BOCA. A regra existe para desviar do
+rosto e da interface do aplicativo; aqui obedecer ao numero violava a intencao.
+A legenda foi para acima da cabeca (margem 800), que cumpre os dois objetivos.
+
+### A sacada do Bruno sobre o fundo branco, ainda NAO implementada
+
+> "o recorte do fundo fica com um borrado branco, porque o fundo original era
+> branco. O agente deve saber disso: se o fundo original e branco, entao o fundo
+> do reels deve ser cinematografico, mas branco, para diminuir o efeito ruim do
+> borrado."
+
+**Medido, e ele esta certo:** o anel em volta da silhueta tem brilho 85 e o fundo
+ao redor tem 57. O halo e **28 pontos mais claro**, e e o branco da parede
+vazando. Casando o brilho do fundo gerado com o do fundo original, o halo perde
+contraste e some.
+
+Como fazer: amostrar o brilho do fundo ORIGINAL (a regiao fora da mascara, que o
+`recorte.py` ja calcula) e passar essa faixa ao prompt do nano banana.
+
+### O que o Bruno reprovou e ainda esta aberto
+
+- [ ] **Fundo com brilho casado ao original** (a sacada acima)
+- [ ] **Qualidade do fundo**: ele chamou de "amador demais, imagem distorcida,
+      sem qualidade". O prompt precisa melhorar e o resultado precisa ser
+      conferido antes de subir
+- [ ] **Efeitos, textos, emoji, sacadas de som** explorando as falas
+- [ ] **Tudo isto vale para o VIDEO COMPLETO tambem**, e nao so para os cortes
+- [ ] Tela para o cliente escolher o estilo do projeto
+- [ ] Ligar a legenda e o estilo no worker: os modulos existem, o fluxo ainda
+      nao os usa
+- [ ] Musica: decidido que o CLIENTE traz o arquivo (ver parte 47)
+- [ ] Ajudar o Bruno a configurar a webcam 4K no OBS
+
 *Atualizado em 24/08/2026 por Claude Code.*
+
