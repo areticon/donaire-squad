@@ -309,14 +309,21 @@ async function processar(trabalho) {
         // a remoção viesse depois, as duas ficariam em linhas do tempo
         // diferentes e o recorte sairia deslocado.
         const limpo = join(pasta, `t-${t.indice}.mp4`);
+        // Os pedaços que ficam vêm PRONTOS do app, e não são deduzidos aqui.
+        // É a mesma lista que gerou a legenda deste corte, então as duas não
+        // têm como divergir. Sem `manter` no pedido, cai no comportamento
+        // antigo de não remover nada, que é pior mas não quebra.
         const corte = await prepararTrecho(
-          fonte, limpo, t.inicio, duracao, trabalho.remocoes
+          fonte, limpo, t.inicio, duracao, t.manter ?? [{ de: 0, ate: duracao }]
         );
         const duracaoLimpa = Math.max(1, duracao - corte.segundos);
-        if (corte.removidos) {
+        // O gatilho é o TEMPO removido, e não a contagem de emendas. Um trecho
+        // com uma remoção só na ponta tem uma emenda apenas, e a contagem dá
+        // zero, o que esconderia do log um corte que tirou vários segundos.
+        if (corte.segundos > 0.05) {
           console.log(
             `[${trabalho.videoJobId}] trecho ${t.indice}: ` +
-              `${corte.removidos} remoções, ${corte.segundos.toFixed(1)}s a menos`
+              `${corte.removidos} emendas, ${corte.segundos.toFixed(1)}s a menos`
           );
         }
 
@@ -332,6 +339,36 @@ async function processar(trabalho) {
           );
         }
 
+        // A LEGENDA palavra a palavra, escrita pelo app com o estilo do projeto
+        // e com os tempos já convertidos para este corte.
+        //
+        // Vem pronta pelo mesmo motivo do enquadramento e da abertura: a
+        // matemática do deslocamento de tempo mora num lugar só. E são dois
+        // arquivos, porque o ASS carrega a resolução para a qual foi escrito e
+        // o quadro deitado não é o mesmo que o em pé.
+        //
+        // Falhar em escrever a legenda não derruba o corte: sai sem ela, que é
+        // muito pior de reter mas existe.
+        let legendaV = null;
+        let legendaH = null;
+        try {
+          if (t.legendaVertical) {
+            legendaV = `legenda-v-${t.indice}.ass`;
+            await writeFile(join(pasta, legendaV), t.legendaVertical, "utf8");
+          }
+          if (t.legendaHorizontal) {
+            legendaH = `legenda-h-${t.indice}.ass`;
+            await writeFile(join(pasta, legendaH), t.legendaHorizontal, "utf8");
+          }
+        } catch (e) {
+          legendaV = null;
+          legendaH = null;
+          console.warn(
+            `[${trabalho.videoJobId}] trecho ${t.indice} sem legenda: ${e.message}`
+          );
+        }
+        saida.legenda = Boolean(legendaV);
+
         const vertical = join(pasta, `v-${t.indice}.mp4`);
         // Sem MASCARA nao ha como recortar a pessoa, e sem recorte o fundo
         // gerado nao serve: sobrepor o retangulo inteiro da webcam em cima de
@@ -339,7 +376,9 @@ async function processar(trabalho) {
         // quando o recorte deu certo.
         await cortarVertical(
           limpo, vertical, 0, duracaoLimpa, enq, matte,
-          matte && fundoLocal ? basename(fundoLocal) : null
+          matte && fundoLocal ? basename(fundoLocal) : null,
+          legendaV,
+          trabalho.estilo?.ritmo ?? null
         );
         saida.vertical = await subir(
           vertical,
@@ -348,7 +387,7 @@ async function processar(trabalho) {
         );
 
         const horizontal = join(pasta, `h-${t.indice}.mp4`);
-        await cortarHorizontal(limpo, horizontal, 0, duracaoLimpa);
+        await cortarHorizontal(limpo, horizontal, 0, duracaoLimpa, legendaH);
         saida.horizontal = await subir(
           horizontal,
           `cortes/${trabalho.videoJobId}/horizontal-${t.indice}.mp4`,

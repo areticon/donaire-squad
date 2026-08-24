@@ -4633,3 +4633,179 @@ Como fazer: amostrar o brilho do fundo ORIGINAL (a regiao fora da mascara, que o
 
 *Atualizado em 24/08/2026 por Claude Code.*
 
+
+## Sessao 24/08/2026 (parte 50): a legenda ligada, e a fonte que nunca existiu
+
+Pedido do Bruno, item 1 da lista dele: ligar a legenda e o estilo no worker, que
+existiam em modulo e nao eram chamados por ninguem.
+
+Ficou ligado, e no caminho apareceu um defeito que anulava os quatro estilos.
+
+### 1. A fonte que o codigo pedia nao existe no conteiner
+
+Antes de escrever qualquer linha, fui olhar o artefato. Baixei o `completo.mp4`
+de PRODUCAO (174 MB, 17 MB/s de descida) e varri a faixa de baixo procurando a
+caixa laranja do destaque. Achei nove blocos de quatro segundos, exatamente o
+que `montarLegendasDestaque` promete. Extrai o quadro e ampliei.
+
+**A legenda estava la, e desenhada em DejaVu Sans Bold. O codigo pedia Arial.**
+
+O `libass` NAO falha quando a fonte pedida nao existe: ele escolhe outra em
+silencio. O conteiner e `node:22-bookworm-slim` com ffmpeg do apt, nao tem
+nenhuma fonte da Microsoft, e tinha a familia DejaVu de carona numa dependencia.
+
+Isso era detalhe enquanto havia um estilo so. Com quatro estilos vira outra
+coisa: eles pediam Georgia, Impact, Arial e Verdana, **nenhuma existe no
+Debian**, os quatro sairiam com a MESMA tipografia, e a escolha do cliente nao
+mudaria nada na tela.
+
+| Estilo | Pedia antes | Passa a usar | Por que |
+|---|---|---|---|
+| dramatico | Georgia | **PT Serif Bold** | serifada, para historia pessoal |
+| acelerado | Impact | **Anton** | o peso de titulo que virou padrao de corte |
+| serio | Arial | **Liberation Sans** | metrica identica a da Arial, e nao remendo |
+| animado | Verdana | **Bangers** | desenhada, para bastidor e humor |
+
+As quatro sao OFL e moram em `worker/fontes`, e nao vem do apt. Duas razoes:
+uma dependencia de rede a menos no build, e o teste local passa a desenhar com
+os MESMOS arquivos que producao, entao quadro conferido aqui vale para la.
+
+Cobertura de acento conferida lendo a tabela `cmap` de cada arquivo: as tres
+fontes novas cobrem os 27 caracteres do portugues sem faltar nenhum.
+
+**A prova ficou no Dockerfile, e nao na disciplina.** Mesma ideia da prova do
+MediaPipe: `provar-fontes.py` manda o libass escolher de verdade, le a linha
+`fontselect:` do log e compara o que foi entregue com o que foi pedido. Se
+houver substituicao, **a imagem nao sobe**. Testado contra o caso real antes de
+entrar: pedindo Anton nesta maquina ele acusou `ArialMT`, e pedindo Arial ele
+aceitou (o libass devolve o nome PostScript, entao a comparacao e por prefixo
+sem espacos, senao `PT Serif` contra `PTSerif-Bold` viraria falso positivo).
+
+O `montarLegendasDestaque` do video COMPLETO tambem parou de pedir Arial.
+
+### 2. O corpo fixo errava dos dois lados, medido
+
+Primeiro quadro renderizado: duas linhas empilhadas em alturas diferentes (uma
+entrava antes de a outra sair, e o libass empurra a de cima), e letra pequena
+demais para telefone.
+
+Medido nas 4.529 palavras da gravacao real:
+
+| Estilo | Antes: mediana da linha | Maior linha | Depois: mediana |
+|---|---|---|---|
+| dramatico | 42% da largura | 79% | **63%** |
+| acelerado | 13% | 47% | **31%** |
+| serio | 53% | 85% (vazava) | **75%** |
+| animado | 19% | 41% | **37%** |
+
+Corpo fixo grande faz a palavra mais longa vazar, e no modo de uma palavra por
+vez a quebra automatica nao salva, porque nao ha espaco onde quebrar. Corpo
+pequeno o bastante para a pior palavra caber deixa a MEDIANA em 13%.
+
+**O `corpo` do estilo virou um TETO.** Cada linha entra no maior corpo que ainda
+cabe na largura util. A largura sai da tabela `hmtx` das proprias fontes, gerada
+para `lib/media/metricas-de-fonte.ts` por `scripts/gerar-metricas-de-fonte.py`.
+
+Media por caractere nao servia: medido, a pior palavra da PT Serif e **42% mais
+larga que a media**, e dimensionar pela media estouraria a tela exatamente no
+caso que a conta existe para evitar. Depois do ajuste, nenhuma linha passa de
+76% em nenhum estilo.
+
+Duas correcoes menores no mesmo caminho: cada bloco fica na tela ate o proximo
+entrar (mata o empilhamento e o piscar entre palavras, com teto de 0,8 s para a
+pausa longa), e `WrapStyle` passou de 2 para 0, que deixa a quebra automatica
+como rede de seguranca em vez de deixar a frase correr para fora do quadro.
+
+### 3. A conta de tempo virou uma so, e isso e o que impede a legenda de andar
+
+O worker deduzia sozinho o que fica no trecho, descartando remocao menor que
+0,05 s e pedaco mantido menor que 0,05 s. A legenda descontava TODAS as
+remocoes. Diferenca pequena por trecho, e ela ACUMULA.
+
+Agora `intervalosDoTrecho` calcula UMA lista, no app, e ela alimenta as tres
+coisas que dependem do tempo: o que o worker emenda, a legenda vertical e a
+legenda horizontal. O worker so executa o que recebeu.
+
+**Provado contra o arquivo original**, baixando so o trecho por requisicao de
+faixa (`scripts/tmp/provar-sincronia.mts`):
+
+| Medida | Valor |
+|---|---|
+| duracao que a legenda assumiu | 69,37s |
+| duracao medida no arquivo | 69,40s |
+| diferenca | **32 ms**, que e um quadro a 30 fps |
+
+### 4. O corpo do pedido saiu da rota, e o script de teste nao pode mais mentir
+
+`scripts/tmp/rodar-corte.mts` ja importava os modulos reais desde 24/08, mas
+continuava REESCREVENDO o corpo do pedido. Isso e a mesma familia de erro que
+custou caro nos dias 23 e 24.
+
+Virou `lib/media/pedido-de-corte.ts`, chamado pela rota E pelo script. A rota
+ficou so com o que e dela: autenticar, tomar o estado no banco e despachar. O
+script ficou so com achar o video e assinar.
+
+### 5. O que o estilo muda hoje, e o que ainda nao muda
+
+| Do estilo | Chega no video? |
+|---|---|
+| fonte, corpo, cor, destaque, palavras por vez, caixa alta | sim |
+| `forcaDoZoom` do fundo | sim, substituiu o 4% fixo |
+| `respiroDoCorte` | nao, mexe na etapa de SELECAO do trecho |
+| `som` | nao, depende da musica, que o cliente traz |
+| `intervaloDeMovimento` | nao, so faz sentido com os efeitos |
+
+O estilo mora em `Project.videoStyle` (migration
+`20260824153000_estilo_de_edicao_do_projeto`, coluna nula que cai no acelerado).
+A TELA de escolha ainda nao existe.
+
+### Verificacao em PRODUCAO, 24/08
+
+Worker publicado com `railway up`, e o build passou, o que ja prova as quatro
+fontes dentro do conteiner. Corte rodado contra ele com o codigo real.
+
+| Corte | Duracao | Tamanho | Legenda na tela | Linha mais larga |
+|---|---|---|---|---|
+| 0 | 62,5s | 10,6 MB | **94% do tempo** | 48% |
+| 1 | 57,4s | 9,6 MB | **94%** | 48% |
+| 2 | 67,8s | 10,5 MB | **95%** | 48% |
+| 3 | 38,9s | 6,4 MB | **88%** | 48% |
+
+Quadro extraido e OLHADO: a legenda sai em Anton, amarela com contorno, acima da
+cabeca, sem cobrir o rosto, com o acento desenhado certo.
+
+### O que o quadro mostrou de ERRADO, e nao e a legenda
+
+**O fundo gerado tem uma emenda dentro da propria imagem.** Medido: 768x1376, e
+o maior salto de brilho esta na linha **727, que e 53% da altura**. Abaixo dela
+a variacao media e de 0,22 por linha, ou seja **47% da imagem e uma area
+chapada**. Nao e defeito de composicao, e o modelo obedecendo ao proprio prompt,
+que manda "o terco central inferior fica reservado para a pessoa, entao mantenha
+essa area calma e sem detalhe". Ele desenhou um retangulo vazio com borda dura.
+Some-se a isso que 768x1376 vira 1080x1920 com ampliacao de 1,4x, e esta ai o
+"amador demais, imagem distorcida" que o Bruno descreveu. **Diagnostico do item
+3 da lista dele, com numero.**
+
+**O halo branco piorou, e isso confirma a sacada dele.** Medido no corte novo: o
+anel em volta da silhueta tem brilho 136 e o fundo ao redor 91, ou seja **45
+pontos de diferenca**, contra 28 na medicao de ontem. Piorou porque o fundo novo
+e mais escuro, que e exatamente o mecanismo que ele descreveu: o halo e o branco
+da parede vazando, e quanto mais escuro o fundo gerado, mais ele aparece.
+**Casar o brilho e o item 2 da lista dele, e o numero agora e maior.**
+
+**A mascara vaza na base.** No quadro do corte 3 aparecem, embaixo, uma faixa
+clara e um objeto do lado esquerdo: a borda inferior da janela da webcam entra
+no maior componente conectado junto com a pessoa.
+
+### Aberto nesta frente, na ordem que o Bruno pediu
+
+- [ ] Fundo com brilho casado ao original (item 2, e a medicao subiu para 45)
+- [ ] Qualidade do fundo (item 3): tirar do prompt a instrucao que produz a area
+      chapada, e pedir resolucao maior que 768x1376
+- [ ] Efeitos, emoji e som saindo da fala (item 4)
+- [ ] Tudo isso no VIDEO COMPLETO tambem (item 5)
+- [ ] Tela para escolher o estilo do projeto (item 6)
+- [ ] Mascara vazando na base do recorte (achado hoje)
+- [ ] Configurar a webcam 4K no OBS quando o Bruno avisar
+
+*Atualizado em 24/08/2026 por Claude Code.*

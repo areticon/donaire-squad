@@ -278,6 +278,19 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
  * isso é PISO, porque nem conta autocorreção como "software como serviço, é
  * software as a service", que foi justamente o que o Bruno reclamou.
  *
+ * ## Por que os intervalos chegam prontos, e não são calculados aqui
+ *
+ * Até 24/08 esta função recebia as remoções e deduzia sozinha o que fica: ela
+ * descartava remoção menor que 0,05 s e pedaço mantido menor que 0,05 s. A
+ * legenda, do outro lado, descontava TODAS as remoções. A diferença é pequena
+ * por trecho e ela ACUMULA ao longo do corte, e legenda fora de sincronia é
+ * pior que legenda nenhuma, porque parece defeito da plataforma.
+ *
+ * Agora a lista vem pronta do app, de `intervalosDoTrecho`, e é a MESMA que
+ * gerou a legenda. Aqui só se emenda o que chegou. É a regra que o projeto já
+ * segue para o deslocamento de tempo da abertura e do destaque: a matemática
+ * mora num lugar só.
+ *
  * ## Por que um passo separado, e não tudo num filtro só
  *
  * O recorte da pessoa gera a máscara a partir do vídeo, quadro a quadro. Se a
@@ -289,17 +302,15 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
  * isso é rápido, e CRF 18 aqui é qualidade de intermediário: quem manda na
  * qualidade final é o corte de saída.
  */
-export async function prepararTrecho(entrada, saida, inicio, duracao, remocoes) {
-  const fim = inicio + duracao;
-  const dentro = (remocoes ?? [])
-    .filter((r) => r.ate > inicio && r.de < fim && r.ate > r.de)
-    .map((r) => ({
-      de: Math.max(0, Math.min(r.de, fim) - inicio),
-      ate: Math.max(0, Math.min(r.ate, fim) - inicio),
-    }))
-    .filter((r) => r.ate - r.de > 0.05);
+export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos) {
+  const manter = (intervalos ?? []).filter((m) => m.ate - m.de > 0.05);
+  // Um único pedaço que cobre o trecho inteiro quer dizer que não havia nada a
+  // remover ali. Nesse caso não vale montar grafo de filtro nenhum.
+  const inteiro =
+    manter.length <= 1 &&
+    (!manter.length || (manter[0].de <= 0.001 && manter[0].ate >= duracao - 0.001));
 
-  if (!dentro.length) {
+  if (inteiro) {
     // Nada a tirar: recorta e pronto, sem recodificar à toa.
     await rodar([
       "-ss", String(inicio), "-i", entrada, "-t", String(duracao),
@@ -310,7 +321,6 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, remocoes) 
     return { removidos: 0, segundos: 0 };
   }
 
-  const manter = intervalosQueFicam(dentro, duracao);
   const partes = [];
   const mapa = [];
   manter.forEach((m, i) => {
@@ -342,8 +352,8 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, remocoes) 
     { cwd: pasta }
   );
 
-  const segundos = dentro.reduce((s, r) => s + (r.ate - r.de), 0);
-  return { removidos: dentro.length, segundos };
+  const mantidos = manter.reduce((s, m) => s + (m.ate - m.de), 0);
+  return { removidos: manter.length - 1, segundos: duracao - mantidos };
 }
 
 /** O complemento das remoções: os pedaços que sobrevivem, em ordem. */
@@ -593,18 +603,33 @@ export async function cortarVertical(
   duracao,
   enquadramento,
   matte,
-  fundo
+  fundo,
+  legenda,
+  ritmo
 ) {
   const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
-    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo)
+    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo)
     : montarFiltroVertical(enquadramento);
+
+  // A legenda entra por ÚLTIMO, depois de tudo composto.
+  //
+  // Ordem não é detalhe aqui: o `subtitles` desenha em cima do que recebe, e a
+  // sobreposição da pessoa vem depois de tudo o mais. Queimar antes deixaria a
+  // silhueta passando por cima da própria legenda.
+  //
+  // Sem isto, a peça mais cara do corte não chegava na tela: 85% dos vídeos
+  // curtos são assistidos sem som, e até 24/08 os cortes saíam sem legenda
+  // nenhuma. O módulo existia e o fluxo não o chamava.
+  const grafo = legenda
+    ? filtro.replace(/\[v\]$/, `[semLegenda];[semLegenda]subtitles=${legenda}[v]`)
+    : filtro;
 
   await rodar([
     "-ss", String(inicio),
     "-i", entrada,
     ...(comRecorte ? ["-i", matte.arquivo] : []),
-    "-filter_complex", filtro,
+    "-filter_complex", grafo,
     "-map", "[v]", "-map", "0:a?",
     // O `-t` fica DEPOIS de todos os inputs, senão ele vira opção de input do
     // último `-i` e limita o arquivo errado. Foi assim que o primeiro teste da
@@ -661,7 +686,11 @@ const LAYOUT = {
  * defeito de compressão numa tela pequena, e ainda repete o conteúdo que já está
  * legível logo acima.
  */
-function montarFiltroRecortado(enq, matte, duracao, fundo) {
+function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo) {
+  // O zoom do fundo vem do ESTILO: o acelerado avança 8% e o sério 2%, que é a
+  // diferença entre um corte que empurra e um corte que deixa o argumento
+  // mandar. Sem estilo cai em 4%, que era o valor fixo de antes.
+  const zoom = Math.max(0.01, Math.min(0.2, ritmo?.forcaDoZoom ?? 0.04));
   const { x, y, w, h } = matte.recorte;
 
   // SÓ A PESSOA, sobre o fundo gerado. Sem slide.
@@ -681,9 +710,9 @@ function montarFiltroRecortado(enq, matte, duracao, fundo) {
   if (fundo) {
     return [
       `movie=${basename(fundo)},scale=1080:1920,setsar=1,loop=loop=-1:size=1:start=0,` +
-        // Zoom lento de 4%: fundo parado atrás de pessoa em movimento parece
-        // fotografia, e custa zero perto de gerar vídeo.
-        `zoompan=z='min(1.04,1+0.04*on/${Math.max(1, Math.round(duracao * 30))})':` +
+        // Zoom lento: fundo parado atrás de pessoa em movimento parece
+        // fotografia, e custa zero perto de gerar vídeo. A força vem do estilo.
+        `zoompan=z='min(${(1 + zoom).toFixed(3)},1+${zoom.toFixed(3)}*on/${Math.max(1, Math.round(duracao * 30))})':` +
         `d=1:s=1080x1920:fps=30,trim=duration=${duracao.toFixed(3)},` +
         `setpts=PTS-STARTPTS[fundo]`,
       `[0:v]crop=${w}:${h}:${x}:${y},scale=${LAYOUT.PESSOA_SOZINHA}:-2[pessoaRgb]`,
@@ -872,19 +901,32 @@ function montarFiltroVertical(enq) {
  * Existe separado do vertical porque no LinkedIn e no X o vídeo aparece dentro
  * do feed em caixa larga, e vídeo vertical entra minúsculo no meio da tela.
  */
-export async function cortarHorizontal(entrada, saida, inicio, duracao) {
+export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda) {
+  // A legenda do horizontal é OUTRO arquivo, e não o mesmo do vertical.
+  //
+  // O ASS carrega a resolução para a qual foi escrito, e o libass escala o
+  // desenho dessa referência para o quadro real. Reusar o arquivo de 1080x1920
+  // num quadro de 1920x1080 esticaria a letra e jogaria a linha para fora,
+  // porque a margem de 800 px que faz sentido em cima da cabeça no vertical é
+  // metade da altura aqui.
   await rodar([
     "-ss", String(inicio),
     "-i", entrada,
     "-t", String(duracao),
     "-vf",
       "scale=1920:1080:force_original_aspect_ratio=decrease," +
-      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" +
+      (legenda ? `,subtitles=${legenda}` : ""),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
-  ]);
+  ], {
+    // Mesmo cuidado do vertical: o filtro `subtitles` resolve caminho relativo
+    // ao diretório de trabalho, e caminho absoluto do Windows com dois-pontos
+    // quebra o parser de filtro.
+    cwd: dirname(saida),
+  });
 }
 
 /**

@@ -36,9 +36,40 @@ export type Estilo = {
   paraQue: string;
 
   legenda: {
-    /** Fonte, com alternativa: contêiner sem a fonte instalada cai na segunda. */
+    /**
+     * O nome da fonte, exatamente como o fontconfig do contêiner a conhece.
+     *
+     * Não é pilha de alternativas ao estilo do navegador: o libass trata a
+     * string inteira como um nome só, então "Impact,Arial Black,sans-serif"
+     * não cai para a segunda, ele simplesmente não acha nada e substitui em
+     * silêncio.
+     *
+     * Foi o que aconteceu até 24/08. Verificado no vídeo completo de produção:
+     * o estilo pedia Arial e o quadro mostra DejaVu Sans Bold, porque o
+     * contêiner Debian não tem nenhuma fonte da Microsoft e tinha só a família
+     * DejaVu, que entrou de carona numa dependência. Os quatro estilos sairiam
+     * com a MESMA tipografia, e a escolha do cliente não mudaria nada na tela.
+     *
+     * Agora cada nome aqui existe no contêiner porque o Dockerfile o instala, e
+     * a construção da imagem FALHA se o libass precisar substituir qualquer um.
+     */
     fonte: string;
-    /** Corpo em pixels, num quadro de 1080x1920. */
+    /**
+     * O MAIOR corpo que uma linha pode ter, em pixels de um quadro de 1080x1920.
+     *
+     * É um teto e não um valor fixo: a legenda mede cada linha antes de
+     * desenhar e entra no maior corpo que ainda cabe na largura útil. Palavra
+     * curta sobe até este número, frase longa desce até caber.
+     *
+     * Os dois lados foram medidos em 24/08 no corte real. Corpo fixo grande faz
+     * a palavra mais longa da gravação vazar a tela, e no modo de uma palavra
+     * por vez a quebra automática não salva, porque não há espaço onde quebrar.
+     * Corpo fixo pequeno o bastante para a pior palavra caber deixa a palavra
+     * MEDIANA ocupando 13% da largura, que some num telefone.
+     *
+     * Por isso o teto sobe conforme o estilo mostra MENOS palavras por vez: uma
+     * palavra sozinha pode ser enorme, quatro palavras não.
+     */
     corpo: number;
     /** Cor do texto normal, em BGR do ASS (que é invertido em relação ao web). */
     cor: string;
@@ -52,6 +83,16 @@ export type Estilo = {
     margemDeBaixo: number;
     /** Caixa alta muda muito o peso percebido. */
     caixaAlta: boolean;
+    /**
+     * Se a fonte deve ser pedida em negrito.
+     *
+     * Existe porque metade das fontes instaladas tem UM peso so. Pedir negrito
+     * a uma fonte que nao tem versao negrito faz o libass ENGROSSAR o desenho
+     * por conta, e o resultado e a letra borrada, com o contorno comendo o
+     * miolo. Anton e Bangers ja nascem pesadas e pedem `false`; PT Serif e
+     * Liberation Sans tem a versao negrito de verdade e pedem `true`.
+     */
+    negrito: boolean;
   };
 
   ritmo: {
@@ -104,14 +145,15 @@ export const ESTILOS: Record<NomeDoEstilo, Estilo> = {
     paraQue: "História pessoal, virada, confissão. Ritmo lento, deixa a frase pousar.",
     legenda: {
       ...BASE_LEGENDA,
-      fonte: "Georgia,Times New Roman,serif",
-      corpo: 62,
+      fonte: "PT Serif",
+      corpo: 132,
       cor: "&H00FFFFFF",
       corDoDestaque: "&H0060C0FF", // âmbar quente
       // Três palavras por vez, e não uma: no ritmo lento, palavra solta piscando
       // briga com a fala em vez de acompanhar.
       palavrasPorVez: 3,
       caixaAlta: false,
+      negrito: true,
     },
     ritmo: { intervaloDeMovimento: 4, forcaDoZoom: 0.03 },
     som: { volumeDaTrilha: 0.18, abaixarSobAVoz: 0.6 },
@@ -126,12 +168,13 @@ export const ESTILOS: Record<NomeDoEstilo, Estilo> = {
     paraQue: "Dica, lista, opinião forte. Corte curto, palavra a palavra, sem sobra.",
     legenda: {
       ...BASE_LEGENDA,
-      fonte: "Impact,Arial Black,sans-serif",
-      corpo: 76,
+      fonte: "Anton",
+      corpo: 260,
       cor: "&H00FFFFFF",
       corDoDestaque: "&H0000E5FF", // amarelo, o par de maior contraste da pesquisa
       palavrasPorVez: 1,
       caixaAlta: true,
+      negrito: false,
     },
     // 1,6s está dentro da faixa de 1,5 a 2 que a pesquisa aponta como alvo.
     ritmo: { intervaloDeMovimento: 1.6, forcaDoZoom: 0.08 },
@@ -145,12 +188,13 @@ export const ESTILOS: Record<NomeDoEstilo, Estilo> = {
     paraQue: "Autoridade, dado, análise. Quase sem efeito, para o argumento mandar.",
     legenda: {
       ...BASE_LEGENDA,
-      fonte: "Arial,Helvetica,sans-serif",
-      corpo: 58,
+      fonte: "Liberation Sans",
+      corpo: 92,
       cor: "&H00FFFFFF",
       corDoDestaque: "&H00F0F0F0", // quase sem destaque: aqui ele distrairia
       palavrasPorVez: 4,
       caixaAlta: false,
+      negrito: true,
       contorno: 3,
     },
     ritmo: { intervaloDeMovimento: 6, forcaDoZoom: 0.02 },
@@ -164,12 +208,13 @@ export const ESTILOS: Record<NomeDoEstilo, Estilo> = {
     paraQue: "Bastidor, humor, conteúdo descontraído. Cor forte e movimento solto.",
     legenda: {
       ...BASE_LEGENDA,
-      fonte: "Verdana,Trebuchet MS,sans-serif",
-      corpo: 70,
+      fonte: "Bangers",
+      corpo: 190,
       cor: "&H00FFFFFF",
       corDoDestaque: "&H00FF66CC", // rosa
       palavrasPorVez: 2,
       caixaAlta: true,
+      negrito: false,
       contorno: 5,
     },
     ritmo: { intervaloDeMovimento: 2.2, forcaDoZoom: 0.06 },

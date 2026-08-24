@@ -20,6 +20,7 @@ type MidiaProduzida = { url: string; bytes: number };
 type TrechoCortado = {
   indice: number;
   duracaoSec?: number;
+  legenda?: boolean;
   vertical?: MidiaProduzida;
   horizontal?: MidiaProduzida;
   capa?: MidiaProduzida;
@@ -101,6 +102,11 @@ export async function POST(
         horizontal: corte.horizontal ?? null,
         capa: corte.capa ?? null,
         enquadramento: corte.enquadramento ?? null,
+        // Se a legenda palavra a palavra chegou no arquivo. Vale registrar
+        // porque ela pode falhar sozinha sem derrubar o corte, e sem este campo
+        // a diferença entre "corte legendado" e "corte mudo" só apareceria
+        // assistindo, que é tarde demais.
+        legenda: corte.legenda ?? false,
         erro: corte.erro ?? null,
       },
       // Nasce marcado para publicar, porque o padrão útil é "quero tudo" e o
