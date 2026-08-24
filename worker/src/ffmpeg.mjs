@@ -1013,6 +1013,11 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
  * cada linha. 6% cobre com folga, e o custo é o texto sair cerca de 7% menor,
  * que é invisível perto de perder a primeira palavra.
  */
+/** A mesma caixa com a base aparada, em fração da altura DELA. */
+function aparadaNaBase(c, fracao) {
+  return { ...c, h: Math.max(0.05, c.h * (1 - fracao)) };
+}
+
 function comFolga(c, folga = 0.06) {
   const x = Math.max(0, c.x - folga);
   const y = Math.max(0, c.y - folga);
@@ -1106,8 +1111,13 @@ function montarFiltroVertical(enq) {
   // Pessoa falando: recorta o meio em 9:16 e ela preenche a tela. Sem fundo
   // desfocado, porque não sobra borda nenhuma.
   if (enq?.vertical === "corte-central" || !enq) {
+    // A base da caixa é aparada em 12% porque é ali que mora a interface do
+    // aplicativo de quem grava com tela: no vídeo real do Bruno, a caixa da
+    // pessoa incluía a barra VOLTAR/RECOMEÇAR logo abaixo da webcam, e ela
+    // apareceu no corte de 24/08. Em gravação de pessoa em tela cheia o custo
+    // é perder uma tira do peito, que o enquadramento de rosto nem mostraria.
     const foco = enq?.pessoa
-      ? cropDeCaixa(enq.pessoa) + ","
+      ? cropDeCaixa(aparadaNaBase(enq.pessoa, 0.12)) + ","
       : "";
     return (
       `[0:v]${foco}crop='min(iw,ih*9/16)':ih:'(iw-min(iw,ih*9/16))/2':0,` +

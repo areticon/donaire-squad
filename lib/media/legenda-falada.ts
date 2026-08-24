@@ -42,8 +42,17 @@ export type Intervalo = { de: number; ate: number };
 /** O quadro em que a legenda vai ser desenhada. */
 export type Quadro = { largura: number; altura: number; margemDeBaixo: number };
 
-/** O corte vertical de rede social, que é o caso principal. */
-export const QUADRO_VERTICAL: Quadro = { largura: 1080, altura: 1920, margemDeBaixo: 800 };
+/**
+ * O corte vertical de rede social, que é o caso principal.
+ *
+ * A margem de 800 (legenda acima da cabeça) valia para a composição com a
+ * pessoa recortada encostada na base. Desde o reset de 24/08 o corte é o vídeo
+ * real com a pessoa preenchendo o quadro, e ali a margem de 800 caía NO ROSTO,
+ * visto no quadro de produção. A legenda volta ao terço inferior clássico, que
+ * é onde a pesquisa e o mercado inteiro a põem: abaixo do rosto, acima da
+ * interface do aplicativo.
+ */
+export const QUADRO_VERTICAL: Quadro = { largura: 1080, altura: 1920, margemDeBaixo: 380 };
 
 /**
  * O corte horizontal.
