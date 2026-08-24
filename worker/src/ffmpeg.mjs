@@ -238,13 +238,24 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     // A diferença é estrutural: cada pedaço vira um NÓ de filtro em vez de um
     // termo numa única expressão, e o ffmpeg lida bem com centenas de nós.
     const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
-    const dim = await ffprobe(entrada);
+    // SEM punch-in no completo, e a razao e a causa raiz de tres bugs do dia.
+    //
+    // A entrada aqui e a GRAVACAO CRUA do cliente, e ela pode mudar de
+    // propriedade no meio do arquivo. Quando muda, o ffmpeg reinicializa o
+    // grafo, e um grafo com nos de `scale`/`crop` sobre [0:v] morre com
+    // "Failed to configure output pad ... Error reinitializing filters!".
+    // Provado em producao em 24/08: o punch-in por segmento derrubou o
+    // completo com exatamente esse erro, o MESMO que o overlay de emoji deu
+    // tres vezes. Nos CORTES o punch-in funciona porque a entrada deles e o
+    // intermediario que este worker recodificou, uniforme por construcao.
+    //
+    // Se um dia o completo ganhar um passe de normalizacao, o punch-in pode
+    // voltar; ate la, `trim` puro, que sobrevive a reinicializacao.
     const partes = [];
     const mapa = [];
     manter.forEach((m, i) => {
       partes.push(
-        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
-          `${segmentoComPunchIn(i, dim.largura, dim.altura)}[v${i}]`,
+        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
         `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
       );
       mapa.push(`[v${i}][a${i}]`);
