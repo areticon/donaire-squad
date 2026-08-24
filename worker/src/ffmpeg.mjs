@@ -256,7 +256,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     manter.forEach((m, i) => {
       partes.push(
         `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
-        `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+        `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
       );
       mapa.push(`[v${i}][a${i}]`);
     });
@@ -394,7 +394,7 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
     partes.push(
       `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
         `${segmentoComPunchIn(i, dim.largura, dim.altura)}[v${i}]`,
-      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
     );
     mapa.push(`[v${i}][a${i}]`);
   });
@@ -446,6 +446,30 @@ function segmentoComPunchIn(i, largura, altura) {
   const w = Math.round(largura / z / 2) * 2;
   const h = Math.round(altura / z / 2) * 2;
   return `,crop=${w}:${h}:${Math.round((largura - w) / 2)}:${Math.round((altura - h) / 2)},scale=${largura}:${altura},setsar=1`;
+}
+
+/**
+ * O filtro de áudio de um segmento mantido, com o TIRA-ESTALO.
+ *
+ * O Bruno ouviu em 25/08: "ainda tem alguns cortes secos, dá aquele ruído".
+ * É o clique clássico de emenda: o áudio de um segmento termina num ponto
+ * qualquer da onda e o seguinte começa em outro, e o salto vira um estalo.
+ *
+ * Quinze milissegundos de fade em cada ponta são curtos demais para o ouvido
+ * perceber como fade, e levam a onda a zero antes de cada emenda, matando o
+ * estalo na causa. É o mesmo tratamento que qualquer editor aplica por padrão.
+ *
+ * O fade de saída só entra quando o fim do segmento é conhecido: o último
+ * pedaço do vídeo completo corre até o fim do arquivo, sem duração declarada.
+ */
+function audioDoSegmento(m) {
+  const dur = m.ate - m.de;
+  if (dur < 0.1) return "";
+  let filtro = ",afade=t=in:st=0:d=0.015";
+  if (m.ate < 999998) {
+    filtro += `,afade=t=out:st=${Math.max(0, dur - 0.015).toFixed(3)}:d=0.015`;
+  }
+  return filtro;
 }
 
 /** O complemento das remoções: os pedaços que sobrevivem, em ordem. */
