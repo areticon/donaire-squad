@@ -25,7 +25,7 @@ import {
   medirFidelidade,
   diagnostico,
 } from "./ffmpeg.mjs";
-import { gerarMatte } from "./segmentacao.mjs";
+import { gerarMatte, acharCaixaDaPessoa } from "./segmentacao.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -480,13 +480,42 @@ async function processar(trabalho) {
           );
         }
 
-        // Sem mascara, o enquadramento vertical vira SEMPRE o corte central na
-        // pessoa: e o unico dos tratamentos antigos que mostra o fundo real
-        // sem slide no quadro, que e o que o Bruno pediu para os cortes.
+        // Sem mascara, o corte vertical e SEMPRE o corte central na pessoa: e
+        // o que o Bruno pediu para os cortes ("deixa apenas eu"), e e o formato
+        // do mercado.
+        //
+        // Quando o agente de visao nao devolve a caixa da pessoa (aconteceu em
+        // 24/08, com ele DESCREVENDO a webcam no motivo e devolvendo null), a
+        // caixa vem da deteccao de movimento, que e deterministica. So se as
+        // duas falharem o corte cai no tratamento antigo do enquadramento.
+        let caixaDaPessoa = enq?.pessoa ?? null;
+        if (!caixaDaPessoa) {
+          const achada = await acharCaixaDaPessoa(limpo, pasta, t.indice, 0, duracaoLimpa);
+          if (achada) {
+            // A deteccao devolve a regiao que SE MEXE, que e o rosto: no video
+            // real ela achou h=0,21 onde a janela inteira tem 0,28. Um corte
+            // 9:16 so do rosto seria ampliacao de 8x. A caixa cresce para
+            // pegar o tronco, ANCORADA no fundo dela: crescer para baixo
+            // incluiria a barra de botoes do aplicativo, que vive logo abaixo
+            // da webcam, e foi o defeito ja visto neste mesmo dia.
+            const h = Math.min(0.42, achada.h * 1.7);
+            const w = Math.min(0.36, achada.w * 1.5);
+            caixaDaPessoa = {
+              x: Math.max(0, Math.min(1 - w, achada.x + achada.w / 2 - w / 2)),
+              y: Math.max(0, achada.y + achada.h - h),
+              w,
+              h,
+            };
+            console.log(
+              `[${trabalho.videoJobId}] trecho ${t.indice}: caixa da pessoa ` +
+                `veio da deteccao de movimento (agente devolveu null)`
+            );
+          }
+        }
         const enqDoVertical = matte
           ? enq
-          : enq?.pessoa
-            ? { ...enq, vertical: "corte-central" }
+          : caixaDaPessoa
+            ? { ...(enq ?? {}), pessoa: caixaDaPessoa, vertical: "corte-central" }
             : enq;
 
         // A LEGENDA palavra a palavra, escrita pelo app com o estilo do projeto

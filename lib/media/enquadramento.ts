@@ -77,6 +77,7 @@ Devolva as caixas em FRAÇÃO do quadro, de 0 a 1, onde x e y são o canto super
 
 Regras das caixas:
 - "pessoa" é a janela da webcam no caso misto, ou a região do rosto e tronco no caso pessoa.
+- No caso misto, a caixa da pessoa é OBRIGATÓRIA sempre que a janela da webcam estiver visível no quadro, por menor que ela seja. Devolver pessoa null num quadro que tem webcam é errado: é essa caixa que permite o corte vertical mostrar a pessoa em vez do slide.
 - "tela" é a área do conteúdo, sem barra do navegador e sem barra de tarefas. Aperte para tirar moldura vazia, MAS NUNCA CORTE TEXTO: se houver dúvida entre apertar mais e incluir a borda inteira do conteúdo, inclua. Texto cortado na lateral é pior que uma margem sobrando, porque quem assiste não consegue ler a primeira e a última palavra de cada linha.
 - Quando algo não existe na cena, use null.
 - Nunca devolva caixa com w ou h menor que 0,05.

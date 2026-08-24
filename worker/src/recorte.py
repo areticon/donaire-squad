@@ -79,7 +79,7 @@ PESO_DO_NOVO = 0.45
 BASE_ESMAECIDA = 0.14
 
 
-def caixa_da_webcam(video, caixa, inicio, duracao):
+def caixa_da_webcam(video, caixa, inicio, duracao, area_minima=0.15, lado_minimo=0.2):
     """A sub-região que realmente é vídeo, dentro da caixa que veio do agente.
 
     Amostra quatro quadros espalhados pelo trecho e fica com o maior bloco onde
@@ -126,7 +126,11 @@ def caixa_da_webcam(video, caixa, inicio, duracao):
 
     # Achado pequeno demais é ruído, não janela de webcam. Melhor ficar com a
     # caixa original do que recortar em cima de um reflexo.
-    if area < 0.15 * ah * aw or w < 0.2 * aw or h < 0.2 * ah:
+    # Os minimos sao parametros porque a mesma rotina roda em dois contextos:
+    # dentro da caixa ja apertada do agente (onde a webcam domina e 15% filtra
+    # ruido) e no QUADRO INTEIRO, onde uma webcam legitima ocupa uns 6% da area
+    # e o piso de 15% a rejeitaria, que foi o que aconteceu no teste de 24/08.
+    if area < area_minima * ah * aw or w < lado_minimo * aw or h < lado_minimo * ah:
         return caixa
 
     return {
@@ -139,6 +143,26 @@ def caixa_da_webcam(video, caixa, inicio, duracao):
 
 def main():
     cfg = json.loads(sys.argv[1])
+
+    # Modo "caixa": SO acha onde a pessoa esta, sem segmentar.
+    #
+    # Existe porque o agente de visao e nao deterministico: em 24/08 ele olhou
+    # os mesmos quadros de sempre, DESCREVEU a webcam no motivo e devolveu
+    # pessoa null, e o corte vertical saiu mostrando o slide. A janela da
+    # webcam e a regiao que MUDA entre quadros distantes, entao o codigo acha
+    # sem modelo nenhum, e isso nao depende do humor de ninguem.
+    if cfg.get("modo") == "caixa":
+        caixa = caixa_da_webcam(
+            cfg["video"], {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},
+            float(cfg["inicio"]), float(cfg["duracao"]),
+            area_minima=0.02, lado_minimo=0.08,
+        )
+        # `bool()` de verdade, e nao numpy.bool_, que o json recusa.
+        achou = bool(caixa["w"] < 0.999 or caixa["h"] < 0.999)
+        caixa = {k: float(v) for k, v in caixa.items()}
+        print(json.dumps({"ok": achou, "caixa": caixa if achou else None}))
+        return
+
     video, saida = cfg["video"], cfg["saida"]
     inicio, duracao = float(cfg["inicio"]), float(cfg["duracao"])
     fps = float(cfg.get("fps", 30))

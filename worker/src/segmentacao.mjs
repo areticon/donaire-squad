@@ -119,3 +119,54 @@ export async function gerarMatte(entrada, pasta, indice, inicio, duracao, caixa)
     return null;
   }
 }
+
+/**
+ * Acha ONDE a pessoa esta, sem segmentar, pela regiao que se move.
+ *
+ * A rede de seguranca para quando o agente de visao nao devolve a caixa da
+ * pessoa, o que aconteceu em 24/08 com ele DESCREVENDO a webcam no motivo. A
+ * deteccao e deterministica (diferenca entre quadros distantes) e ja provou
+ * precisao de poucos pixels contra medicao a olho.
+ *
+ * Devolve null quando nao ha regiao clara de movimento, e quem chama segue
+ * sem caixa, como antes.
+ */
+export async function acharCaixaDaPessoa(entrada, pasta, indice, inicio, duracao) {
+  const config = JSON.stringify({
+    modo: "caixa",
+    video: entrada,
+    inicio,
+    duracao,
+  });
+  const texto = await new Promise((resolve) => {
+    const p = spawn("python3", [join(AQUI, "recorte.py"), config], { cwd: pasta });
+    let saidaPadrao = "";
+    p.stdout.on("data", (d) => (saidaPadrao += d));
+    p.stderr.on("data", () => {});
+    const relogio = setTimeout(() => {
+      p.kill("SIGKILL");
+      resolve(null);
+    }, 60_000);
+    p.on("close", (codigo) => {
+      clearTimeout(relogio);
+      resolve(codigo === 0 ? saidaPadrao : null);
+    });
+    p.on("error", () => {
+      clearTimeout(relogio);
+      resolve(null);
+    });
+  });
+  if (!texto) return null;
+  try {
+    const linha = texto
+      .trim()
+      .split(String.fromCharCode(10))
+      .reverse()
+      .find((l) => l.trim().startsWith("{"));
+    if (!linha) return null;
+    const r = JSON.parse(linha);
+    return r.ok && r.caixa ? r.caixa : null;
+  } catch {
+    return null;
+  }
+}
