@@ -13,32 +13,6 @@ import { writeFile } from "node:fs/promises";
  * por fala, já arredondada para fronteira de frase.
  */
 
-/**
- * O emoji no video COMPLETO, em pixels de largura.
- *
- * Menor que o do corte (180) porque o quadro deitado tem quase o dobro da
- * largura e a tela e assistida de longe, no televisor ou no monitor: o mesmo
- * tamanho relativo daria um emoji gigante. 140 em 1920 e 7% da largura.
- */
-/**
- * A normalizacao de volume, que e a "sacada de som" com numero.
- *
- * Medido no corte de producao de 24/08: ele sai a **-27,2 LUFS**, e o padrao
- * que Instagram, TikTok e YouTube usam para nivelar o feed e **-14 LUFS**. Ou
- * seja, o video da Demandou tocava treze decibeis mais baixo que tudo o que
- * vem antes e depois dele na rolagem. Quem assiste sem fone nao ouve, e sobe.
- *
- * Isso nao e efeito sonoro nem trilha, e nao depende de licenca de ninguem: e
- * corrigir um defeito que estava saindo em todo corte.
- *
- * `TP=-1.5` deixa margem de pico: as redes recomprimem o audio, e som que
- * encosta em zero volta distorcido do outro lado. `LRA=11` e o padrao de
- * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
- */
-const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
-
-const EMOJI_NO_COMPLETO = 140;
-
 function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { cwd });
@@ -192,11 +166,36 @@ export function ffprobe(caminho) {
  * Nunca se mexe em resolução nem em quadros por segundo. O que entra em 1080p30
  * sai em 1080p30.
  */
+/**
+ * ## Por que o EMOJI nao entra aqui, e entra nos cortes
+ *
+ * Foi tentado, e derrubou o video completo DUAS vezes seguidas em 24/08, com
+ * duas construcoes diferentes do overlay. As duas falharam no mesmo ponto:
+ *
+ *     Failed to configure output pad on Parsed_scale_NNN
+ *     Error reinitializing filters!
+ *
+ * A causa provavel: `movie=` e uma fonte DENTRO do grafo, e um grafo com fonte
+ * interna nao sobrevive a uma reinicializacao. O ffmpeg reinicializa o grafo
+ * quando as propriedades do quadro decodificado mudam, e a entrada do completo
+ * e a GRAVACAO CRUA do cliente, que pode mudar de propriedade no meio; a
+ * entrada dos cortes e um intermediario que este proprio codigo recodificou,
+ * uniforme por construcao. Por isso os cortes aguentam e o completo nao.
+ *
+ * Poderia ser resolvido passando cada emoji como `-i` de verdade, com
+ * `-loop 1 -framerate 1 -t`, que sobrevive a reinicializacao porque a entrada e
+ * decodificada fora do grafo. Nao foi feito por uma razao de prioridade: o
+ * completo e o artefato mais caro do fluxo, sao vinte e cinco minutos de
+ * codificacao, e o ganho de por emoji num video longo de YouTube e pequeno
+ * perto do risco de perder o video inteiro.
+ *
+ * O que o completo LEVA dos reforcos e a frase de destaque, que e texto e entra
+ * pelo arquivo de legenda, sem fonte nenhuma dentro do grafo.
+ */
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
   const editaTempo = remocoes.length > 0;
-  const emojis = (opcoes.emojis ?? []).filter((e) => e && e.arquivo);
-  const editaImagem = Boolean(opcoes.legendasArquivo) || emojis.length > 0;
+  const editaImagem = Boolean(opcoes.legendasArquivo);
 
   if (!editaTempo && !editaImagem) {
     await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida]);
@@ -243,7 +242,6 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     grafo += opcoes.legendasArquivo
       ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
       : ";[vc]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
     // A nivelacao de volume entra DENTRO do grafo, e nao em `-af`.
     //
     // Descoberto em producao em 24/08, e o erro do ffmpeg diz exatamente o
@@ -262,17 +260,6 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     await writeFile(arquivoDeFiltro, grafo, "utf8");
 
     args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[a]");
-  } else if (emojis.length) {
-    // Sem edição de tempo mas COM emoji: o caminho simples do `-vf` não serve,
-    // porque cada emoji é uma fonte a mais e `-vf` só aceita uma entrada.
-    cwdDoFiltro = dirname(opcoes.legendasArquivo ?? saida);
-    let grafo = opcoes.legendasArquivo
-      ? `[0:v]subtitles=${basename(opcoes.legendasArquivo)}[v]`
-      : "[0:v]null[v]";
-    grafo = comEmoji(grafo, emojis, EMOJI_NO_COMPLETO, "W-w-120", "100");
-    arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
-    await writeFile(arquivoDeFiltro, grafo, "utf8");
-    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "0:a?");
   } else {
     // Só legenda: o caminho simples continua sendo o melhor.
     cwdDoFiltro = dirname(opcoes.legendasArquivo);
@@ -309,7 +296,6 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const partesDoMotivo = [];
   if (editaTempo) partesDoMotivo.push(`${remocoes.length} trechos removidos`);
   if (opcoes.legendasArquivo) partesDoMotivo.push("legendas de destaque");
-  if (emojis.length) partesDoMotivo.push(`${emojis.length} reforços da fala`);
   return { recodificado: true, motivo: partesDoMotivo.join(" e ") };
 }
 

@@ -5153,3 +5153,92 @@ formato que metade dos aparelhos nao decodifica, e o sintoma vira "o video nao
 abre no celular dele".
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 53): o fundo estava sem foco por prompt, e estourado por minha conta
+
+O Bruno olhou os cortes e disse que a imagem do fundo estava pessima, e fez a
+pergunta certa: "quando eu peco para ele gerar a imagem no chat do Gemini o
+resultado e bem melhor, o que sera que esta pegando aqui?"
+
+Nao era o modelo. Eram duas coisas nossas, e as duas viraram numero.
+
+### 1. O prompt pedia uma imagem SEM FOCO
+
+Ele dizia "85mm em f/1.8, o fundo inteiro suavemente desfocado". E o vocabulario
+certo para retrato e o errado para isto: **uma foto em que NADA esta nitido nao
+parece profundidade de campo, parece resolucao baixa.**
+
+A medida que expoe isso nao e a nitidez media, e o BLOCO MAIS NITIDO da imagem:
+ele diz se existe algum plano em foco. Medido com o mesmo modelo e o mesmo
+assunto:
+
+| Prompt | Bloco mais nitido |
+|---|---|
+| f/1.8, fundo inteiro desfocado | **2,23** |
+| f/4 com a parede em foco | **14,98** |
+| nitida de ponta a ponta | 12,23 |
+
+Seis vezes e meia mais detalhe, sem trocar de modelo e sem custar um centavo a
+mais. Ficou o f/4 e nao o "nitido de ponta a ponta": um pouco de desfoque no que
+esta muito a frente e muito atras ainda da profundidade, e a diferenca de
+nitidez entre os dois e pequena.
+
+### 2. O MODELO nao era a causa, e isso valia medir antes de trocar
+
+A tentacao era ir direto para o Nano Banana Pro, que e o que ele usa no chat.
+Medido, mesmo prompt:
+
+| Modelo | Bloco mais nitido | Custo por imagem |
+|---|---|---|
+| gemini-3.1-flash-image-preview | **8,15** | US$ 0,039 |
+| gemini-3-pro-image-preview | 4,56 | US$ 0,134 |
+
+**O Pro custa 3,4 vezes mais e nao e mais nitido.** Trocar teria gastado mais
+para nao resolver nada, e teria escondido a causa real por tras de uma melhora
+que nao existiria.
+
+A diferenca que o Bruno sente no chat do Gemini nao vem do modelo, vem do
+pedido: conversando com ele, ninguem manda desfocar tudo.
+
+### 3. A minha correcao de brilho estava estourando a imagem
+
+Somar brilho com `eq=brightness` e a ferramenta errada para clarear uma imagem
+que JA e clara: ela empurra o que estava perto do teto para fora dele.
+
+Medido na imagem que foi ao ar:
+
+| | Brilho | Area estourada |
+|---|---|---|
+| a imagem gerada | 205 | **0,4%** |
+| depois do `eq=brightness=+23` | 226 | **16,0%** |
+
+Dezesseis por cento do quadro virou branco puro, sem textura nenhuma. Isso e
+metade do "imagem pessima" que ele viu.
+
+**Trocado por GAMA.** A curva de gama leva 0 em 0 e 255 em 255, entao ela
+clareia o meio-tom sem NUNCA estourar:
+
+| | Brilho | Area estourada |
+|---|---|---|
+| `eq=brightness=+23` | 226 | 16,0% |
+| `eq=gamma=1.7` | 224 | **0,9%** |
+
+Praticamente o mesmo ganho de brilho, com dezoito vezes menos estouro.
+
+**E ganhou um limiar.** Medido no corte de producao: com 23 pontos de diferenca
+entre o fundo e a parede, o halo ficou em +6, que ja e menos do que o olho
+separa numa tela de telefone. Abaixo de 20 pontos a correcao nao tem o que
+consertar, e mexer na imagem sem ganho e so risco.
+
+### A licao, que vale alem deste caso
+
+Duas vezes seguidas nesta sessao a causa de um defeito visual estava numa
+instrucao NOSSA que o modelo obedeceu ao pe da letra:
+
+- "mantenha essa area calma e sem detalhe" virou um retangulo vazio
+- "o fundo inteiro suavemente desfocado" virou uma imagem sem foco nenhum
+
+Nos dois casos a suspeita natural era o modelo, e nos dois a medicao apontou
+para o prompt. **Antes de trocar de fornecedor, vale ler o que a gente pediu.**
+
+*Atualizado em 24/08/2026 por Claude Code.*

@@ -555,26 +555,10 @@ async function processar(trabalho) {
 
       // O CORPO primeiro: a gravação editada, do começo.
       const corpo = join(pasta, "corpo.mp4");
-      // Os REFORCOS do video completo. Mesma paleta e mesma copia para a
-      // pasta de trabalho que os cortes fazem, pelo mesmo motivo do caminho
-      // relativo no filtro `movie=`.
-      const emojisDoCompleto = [];
-      for (const e of trabalho.emojisDoCompleto ?? []) {
-        try {
-          await copyFile(join(PASTA_DE_EMOJI, e.arquivo), join(pasta, e.arquivo));
-          emojisDoCompleto.push({ arquivo: e.arquivo, segundo: e.segundo });
-        } catch (erro) {
-          console.warn(
-            `[${trabalho.videoJobId}] emoji ${e.arquivo} nao copiou: ${erro.message}`
-          );
-        }
-      }
-
       const como = await prepararCompleto(fonte, corpo, {
         remocoes: trabalho.remocoes,
         duracaoSec: info.duracaoSec,
         legendasArquivo,
-        emojis: emojisDoCompleto,
       });
 
       // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os
