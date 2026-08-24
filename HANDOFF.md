@@ -5242,3 +5242,76 @@ Nos dois casos a suspeita natural era o modelo, e nos dois a medicao apontou
 para o prompt. **Antes de trocar de fornecedor, vale ler o que a gente pediu.**
 
 *Atualizado em 24/08/2026 por Claude Code.*
+
+## Sessao 24/08/2026 (parte 54): o Bruno simplificou o produto, e ele estava certo
+
+No meio da caca ao bug do emoji, o Bruno cortou o no:
+
+> "que loucura, acho que estamos complicando demais, era para ser uma edicao
+> simples, com legenda que o usuario escolhe e com musica que o usuario escolhe,
+> se tudo isso e por causa dos emoctions, remova. pense que preciso entregar
+> isso hoje ainda"
+
+Ele estava certo, e a conta e simples: o emoji derrubou o MESMO corte tres vezes
+em producao, com tres construcoes diferentes do overlay, sempre com um erro que
+nao o menciona. O que ele custou em rodadas de meia hora ja tinha passado do que
+ele vale como acento.
+
+### O que saiu e o que ficou
+
+SAIU: o emoji sobreposto, nos cortes e no completo. O codigo do overlay fica no
+worker, inerte, com a rede de seguranca que refaz o corte sem emoji se alguem
+religar um dia.
+
+FICOU, e e o produto que ele descreveu:
+- legenda palavra a palavra, no estilo que o usuario escolhe na tela
+- a frase de destaque que sai da fala (viaja dentro da legenda, nunca falhou)
+- fundo gerado casado ao brilho da gravacao, nitido depois do prompt f/4
+- volume nivelado a -14 LUFS
+- musica: o usuario traz o arquivo, como decidido em 23/08
+
+A mudanca foi so no app: o worker trata lista vazia como "nada a sobrepor".
+
+### A rede de seguranca pagou o proprio custo na primeira rodada
+
+A rodada que estava no ar quando ele decidiu ja levava a rede: se o corte
+falhar com emoji, refaz sem. O log mostrou ela agindo:
+
+    trecho 0 falhou COM emoji, tentando sem: ffmpeg saiu com 1: Error
+    initializing output stream...
+
+E o resultado da rodada, a primeira PERFEITA do dia:
+
+| Artefato | Resultado |
+|---|---|
+| corte 0 | 62,2s, legenda 100% do tempo, linha mais larga 74% |
+| corte 1 | 59,1s, 100%, 74% |
+| corte 2 | 69,2s, 100%, 79% |
+| corte 3 | 38,5s, 100%, 73% |
+| video completo | 172 MB, presente |
+| erros | nenhum |
+
+Quadro extraido e olhado: fundo claro e nitido, halo invisivel, legenda grande
+em Anton, pessoa perto do centro.
+
+### O bug do emoji, para quem retomar
+
+Nunca foi diagnosticado ate o fim, e nao precisa mais ser. O que se sabe, para
+o caso de alguem religar: mesmo trecho, tres construcoes de overlay diferentes,
+sempre "Error while opening encoder... width or height", so no ffmpeg 5.1 do
+conteiner, nunca no 9 local, e so no trecho cujo primeiro emoji entra perto do
+comeco. O grafo agora entra na mensagem de erro quando um corte falha, entao a
+proxima investigacao comeca com o dado que faltou nestas tres.
+
+### O placar do dia inteiro
+
+A lista de seis itens do Bruno, fechada: legenda e estilo no worker (com a
+descoberta da fonte que o libass substituia em silencio), fundo com brilho
+casado (halo de +45 para +6), qualidade do fundo (duas causas nossas: prompt
+pedindo desfoque total e correcao de brilho estourando 16% da imagem), efeitos
+da fala (frases ficaram, emoji saiu por decisao dele), tudo no video completo,
+e a tela de estilo. Mais: centralizacao pela mascara (78 para 24 px), a mascara
+com transparencia na base, prova de fumaca do worker (8 caminhos de ffmpeg em
+segundos), e prova de fontes na construcao da imagem.
+
+*Atualizado em 24/08/2026 por Claude Code.*
