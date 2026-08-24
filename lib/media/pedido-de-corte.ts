@@ -16,14 +16,12 @@ import {
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import { estiloDoProjeto } from "@/lib/media/estilos";
 import {
-  arquivoDoEmoji,
   escolherEfeitos,
   efeitosNoTempo,
   type EfeitoNoTempo,
 } from "@/lib/media/efeitos";
 import {
   legendaDoCorte,
-  noTempoDoCorte,
   QUADRO_HORIZONTAL,
   QUADRO_VERTICAL,
 } from "@/lib/media/legenda-falada";
@@ -179,25 +177,19 @@ export async function montarPedidoDeCorte(
       .filter((e) => e.tipo === "frase")
       .map((e) => ({ segundo: e.segundo, valor: e.valor }));
 
-    const emojis = efeitos
-      .filter((e) => e.tipo === "emoji")
-      .map((e) => ({
-        arquivo: arquivoDoEmoji(e.valor),
-        // O tempo do emoji sai da MESMA lista de intervalos que a legenda usa.
-        segundo: noTempoDoCorte(e.segundo, inicio, manter),
-      }))
-      .filter(
-        (e): e is { arquivo: string; segundo: number } =>
-          e.arquivo !== null && e.segundo !== null
-      );
-
     return {
       indice: i,
       inicio,
       fim,
       titulo: t.titulo,
       manter,
-      emojis,
+      // O EMOJI SAIU, por decisao do Bruno em 24/08: "era para ser uma edicao
+      // simples". Ele derrubou o mesmo corte tres vezes em producao, com tres
+      // construcoes diferentes do overlay, sempre com um erro que nao o
+      // menciona. A FRASE de destaque fica, porque viaja dentro do arquivo de
+      // legenda e nunca falhou. O worker trata lista vazia como "nada a
+      // sobrepor", entao isto desativa o recurso sem deploy do worker.
+      emojis: [],
       legendaVertical: legendaDoCorte(
         palavras, inicio, manter, estilo, QUADRO_VERTICAL, destaques
       ),
@@ -228,14 +220,6 @@ export async function montarPedidoDeCorte(
       .map((e) => ({ segundo: e.segundo, valor: e.valor })),
   });
 
-  const emojisDoCompleto = todosOsEfeitos
-    .filter((e) => e.tipo === "emoji")
-    .map((e) => ({
-      arquivo: arquivoDoEmoji(e.valor),
-      segundo: mapearTempo(e.segundo, remocoes),
-    }))
-    .filter((e): e is { arquivo: string; segundo: number } => e.arquivo !== null);
-
   const corpo = JSON.stringify({
     videoJobId: video.id,
     sourceUrl: video.blobUrl,
@@ -249,7 +233,7 @@ export async function montarPedidoDeCorte(
     },
     trechos: paraOWorker,
     remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
-    emojisDoCompleto,
+    emojisDoCompleto: [],
     ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
     legendasAss,
     enquadramentoUrl: `${opcoes.appUrl}/api/videos/${video.id}/enquadrar`,
