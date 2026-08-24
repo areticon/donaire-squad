@@ -114,7 +114,13 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
  * Gemini Nano Banana — geração de imagem via generateContent com modality IMAGE.
  * Usa os modelos mais recentes: Nano Banana 2 → Nano Banana → Nano Banana Pro.
  */
-async function tryGeminiFlashImage(prompt: string, apiKey: string, ctx?: ContextoMidia): Promise<string | null> {
+async function tryGeminiFlashImage(
+  prompt: string,
+  apiKey: string,
+  ctx?: ContextoMidia,
+  aspectRatio?: AspectRatio,
+  quality: ImageQuality = "standard"
+): Promise<string | null> {
   const models = [
     "gemini-3.1-flash-image-preview",   // Nano Banana 2 — rápido, 4K
     "gemini-2.5-flash-image",           // Nano Banana — estável
@@ -130,7 +136,27 @@ async function tryGeminiFlashImage(prompt: string, apiKey: string, ctx?: Context
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+            generationConfig: {
+              responseModalities: ["IMAGE", "TEXT"],
+              // Sem `imageConfig` o modelo devolve o tamanho padrao, que medido
+              // em 24/08 e 768x1376. Para um corte de 1080x1920 isso e ampliar
+              // 1,4 vezes, e ampliacao amolece a imagem: foi parte do "amador
+              // demais, sem qualidade" que o Bruno reprovou.
+              //
+              // Medido no mesmo dia, mesmo prompt: 2K devolve 1536x2752 em
+              // 13,6s com 2,4 MB, e 4K devolve 3072x5504 em 22,8s com 7,6 MB.
+              // Depois de reduzir para 1080 de largura os dois ficam iguais aos
+              // olhos, entao 4K seria pagar tres vezes a transferencia por
+              // nada. 2K e o menor tamanho que dispensa ampliacao.
+              ...(aspectRatio || quality === "hd"
+                ? {
+                    imageConfig: {
+                      ...(aspectRatio ? { aspectRatio } : {}),
+                      ...(quality === "hd" ? { imageSize: "2K" } : {}),
+                    },
+                  }
+                : {}),
+            },
           }),
           signal: AbortSignal.timeout(25_000),
         }
@@ -290,7 +316,7 @@ export async function generateImage(
 
   // ── 2. Gemini 2.0 Flash image generation (também via API key) ────────────────
   if (apiKey) {
-    const flashResult = await tryGeminiFlashImage(prompt, apiKey, ctx);
+    const flashResult = await tryGeminiFlashImage(prompt, apiKey, ctx, aspectRatio, quality);
     if (flashResult) return flashResult;
   }
 

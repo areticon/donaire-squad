@@ -53,10 +53,11 @@ export async function POST(
       attempts: true,
       blobUrl: true,
       clips: true,
-      // O nicho alimenta o fundo gerado dos cortes, e o estilo decide legenda,
-      // ritmo e som. Os dois moram no PROJETO, e não no envio: canal com estilo
-      // diferente a cada vídeo não constrói reconhecimento.
-      project: { select: { niche: true, videoStyle: true } },
+      // O estilo decide legenda, ritmo e som, e mora no PROJETO e não no
+      // envio: canal com estilo diferente a cada vídeo não constrói
+      // reconhecimento. O nicho, que alimenta o fundo gerado, é lido na rota
+      // `/enquadrar`, que é onde o fundo passou a ser gerado.
+      project: { select: { videoStyle: true } },
       transcript: true,
       durationSec: true,
       projectId: true,
@@ -111,7 +112,6 @@ export async function POST(
       projectId: video.projectId,
       trechos,
       palavras: transcript?.words ?? [],
-      nicho: video.project?.niche ?? null,
       estilo: video.project?.videoStyle ?? null,
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }

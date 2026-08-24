@@ -1,4 +1,3 @@
-import { put } from "@vercel/blob";
 import type { Trecho } from "@/lib/media/select-clips";
 import type { Word } from "@/lib/media/transcribe";
 import {
@@ -14,8 +13,6 @@ import {
   unirRemocoes,
 } from "@/lib/media/limpeza";
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
-import { gerarFundoDoCorte } from "@/lib/media/fundo-do-corte";
-import { dataUrlToBuffer } from "@/lib/media/nano-banana";
 import { estiloDoProjeto } from "@/lib/media/estilos";
 import {
   legendaDoCorte,
@@ -49,6 +46,14 @@ import {
  * num lugar só.
  *
  * O worker recebe listas prontas e só executa.
+ *
+ * ## O que NÃO está aqui, e por quê
+ *
+ * O fundo gerado dos cortes morava neste arquivo até 24/08 e mudou para a rota
+ * `/enquadrar`. A razão é a sacada do Bruno sobre o halo: o fundo precisa ter o
+ * brilho da parede da gravação, e para medir esse brilho é preciso saber onde a
+ * pessoa está no quadro, o que só o agente de visão diz. Aqui, na hora de
+ * despachar, essa informação ainda não existe.
  */
 
 export type VideoParaCortar = {
@@ -58,8 +63,6 @@ export type VideoParaCortar = {
   projectId: string;
   trechos: Trecho[];
   palavras: Word[];
-  /** Alimenta o fundo gerado: fundo genérico serve para qualquer canal, e por isso não serve para nenhum. */
-  nicho: string | null;
   /** O estilo de edição escolhido no projeto. Sem escolha, cai no acelerado. */
   estilo: string | null;
 };
@@ -73,7 +76,6 @@ export type ResumoDoPedido = {
   segundosRemovidos: number;
   estilo: string;
   comLegenda: number;
-  comFundo: boolean;
 };
 
 export async function montarPedidoDeCorte(
@@ -124,41 +126,6 @@ export async function montarPedidoDeCorte(
     );
   }
 
-  // O FUNDO dos cortes verticais, gerado uma vez e usado em todos.
-  //
-  // Uma vez, e não um por corte, por duas razões. Custo: seriam sete imagens e
-  // sete vezes o preço para um elemento que fica desfocado atrás da pessoa. E
-  // identidade: fundos diferentes em cortes do mesmo vídeo fazem a série
-  // parecer de canais diferentes.
-  //
-  // Falhar não derruba o corte: sem fundo o vídeo sai na composição com o
-  // slide, que é pior mas existe.
-  let fundoUrl: string | null = null;
-  try {
-    const assunto = trechos
-      .map((t) => t.titulo)
-      .filter(Boolean)
-      .slice(0, 3)
-      .join("; ");
-    const fundo = await gerarFundoDoCorte(video.nicho, assunto, {
-      projectId: video.projectId,
-    });
-    if (fundo) {
-      const { url } = await put(
-        `cortes/${video.id}/fundo.jpg`,
-        dataUrlToBuffer(fundo.imagem),
-        { access: "private", contentType: "image/jpeg", addRandomSuffix: true }
-      );
-      fundoUrl = url;
-      console.log(`[${video.id}] fundo dos cortes gerado: ${fundo.descricao}`);
-    }
-  } catch (e) {
-    console.error(
-      `[${video.id}] fundo dos cortes falhou, cortes saem com o slide: ` +
-        (e instanceof Error ? e.message : "motivo desconhecido")
-    );
-  }
-
   // Cada trecho leva TRÊS coisas que dependem do tempo, e as três saem da mesma
   // lista de intervalos: o que o worker vai emendar, a legenda vertical e a
   // legenda horizontal. Uma lista só é o que garante que a legenda não ande
@@ -184,7 +151,6 @@ export async function montarPedidoDeCorte(
   });
 
   const corpo = JSON.stringify({
-    fundoUrl,
     videoJobId: video.id,
     sourceUrl: video.blobUrl,
     duracaoSec: video.durationSec,
@@ -214,7 +180,6 @@ export async function montarPedidoDeCorte(
       segundosRemovidos: Math.round(segundosRemovidos(remocoes)),
       estilo: estilo.nome,
       comLegenda: paraOWorker.filter((t) => t.legendaVertical).length,
-      comFundo: Boolean(fundoUrl),
     },
   };
 }

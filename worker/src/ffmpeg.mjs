@@ -532,6 +532,56 @@ export async function extrairQuadros(entrada, saidaPrefixo, inicio, duracao, qua
  * candidato tem 768 de largura, que serve para o agente olhar e é pouco para
  * virar thumbnail.
  */
+/**
+ * O quadro reduzido a tons de cinza, para o app medir o brilho do fundo.
+ *
+ * ## Por que o worker manda um numero e nao o app calcula do JPEG
+ *
+ * O halo do recorte e o branco da parede vazando pela borda semitransparente da
+ * mascara, e ele so aparece porque o fundo gerado e escuro. Casar os dois exige
+ * medir a parede, e medir exige pixels.
+ *
+ * Os pixels estao AQUI; o fundo e gerado no app, porque a conta de IA do
+ * projeto vive num lugar so. O app nao tem como decodificar JPEG: nao ha
+ * biblioteca de imagem nas dependencias dele, e acrescentar uma por causa de um
+ * numero seria caro. Entao vai a imagem ja decodificada e reduzida.
+ *
+ * 128x72 sao 9 KB por trecho. Conferido no quadro real: o anel em volta da
+ * pessoa mede 241 no pixel cheio e 237 nesta grade, quatro pontos de erro em
+ * 255. Serve de sobra para alimentar um prompt e uma correcao de exposicao.
+ */
+export function gradeDeLuz(arquivo, largura = 128, altura = 72) {
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-loglevel", "error", "-i", arquivo,
+     "-vf", `scale=${largura}:${altura}`, "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+    { maxBuffer: 1 << 24 }
+  );
+  if (r.status !== 0 || !r.stdout || r.stdout.length < largura * altura) return null;
+  return {
+    largura,
+    altura,
+    luz: r.stdout.subarray(0, largura * altura).toString("base64"),
+  };
+}
+
+/**
+ * O brilho medio de uma imagem, de 0 a 255.
+ *
+ * Existe para conferir o que o gerador de imagem DEVOLVEU contra o que foi
+ * pedido. Medido em 24/08: pedindo um fundo claro para casar com uma parede de
+ * 241, o modelo entregou 194 numa tentativa e 207 na outra. Ele chega perto e
+ * nao acerta, entao quem compoe corrige a diferenca em vez de torcer.
+ */
+export function brilhoMedio(arquivo) {
+  const g = gradeDeLuz(arquivo, 32, 32);
+  if (!g) return null;
+  const bytes = Buffer.from(g.luz, "base64");
+  let soma = 0;
+  for (const b of bytes) soma += b;
+  return soma / bytes.length;
+}
+
 export async function extrairCandidatosDeCapa(entrada, saidaPrefixo, duracaoSec, quantos = 10) {
   const candidatos = [];
   for (let i = 0; i < quantos; i++) {
@@ -605,11 +655,12 @@ export async function cortarVertical(
   matte,
   fundo,
   legenda,
-  ritmo
+  ritmo,
+  ajusteDeBrilho
 ) {
   const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
-    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo)
+    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo, ajusteDeBrilho)
     : montarFiltroVertical(enquadramento);
 
   // A legenda entra por ÚLTIMO, depois de tudo composto.
@@ -686,7 +737,7 @@ const LAYOUT = {
  * defeito de compressão numa tela pequena, e ainda repete o conteúdo que já está
  * legível logo acima.
  */
-function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo) {
+function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho) {
   // O zoom do fundo vem do ESTILO: o acelerado avança 8% e o sério 2%, que é a
   // diferença entre um corte que empurra e um corte que deixa o argumento
   // mandar. Sem estilo cai em 4%, que era o valor fixo de antes.
@@ -708,8 +759,22 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo) {
   // O slide continua no vídeo COMPLETO do YouTube, onde a tela é grande e o
   // conteúdo escrito ajuda em vez de atrapalhar.
   if (fundo) {
+    // A CORRECAO DE BRILHO DO FUNDO, que fecha o que o gerador de imagem nao
+    // fechou.
+    //
+    // O prompt ja pede o fundo claro ou escuro conforme a gravacao, e isso
+    // resolve quase tudo: medido em 24/08, o fundo saiu de 49 para 207 num alvo
+    // de 241. Mas o modelo chega perto e nao acerta, e o que sobra ainda e o
+    // contraste que faz o halo aparecer.
+    //
+    // A correcao e LIMITADA de proposito. Empurrar um fundo de 150 ate 241
+    // lavaria a imagem inteira e destruiria a profundidade que e o motivo de
+    // gerar fundo. Fechar os ultimos pontos vale; forcar a barra nao. Quem
+    // calcula o limite e quem mede, no `index.mjs`.
+    const brilho = ajusteDeBrilho ? `,eq=brightness=${ajusteDeBrilho.toFixed(3)}` : "";
+
     return [
-      `movie=${basename(fundo)},scale=1080:1920,setsar=1,loop=loop=-1:size=1:start=0,` +
+      `movie=${basename(fundo)},scale=1080:1920,setsar=1${brilho},loop=loop=-1:size=1:start=0,` +
         // Zoom lento: fundo parado atrás de pessoa em movimento parece
         // fotografia, e custa zero perto de gerar vídeo. A força vem do estilo.
         `zoompan=z='min(${(1 + zoom).toFixed(3)},1+${zoom.toFixed(3)}*on/${Math.max(1, Math.round(duracao * 30))})':` +
