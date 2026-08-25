@@ -330,23 +330,16 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Revisado em 23/08/2026. O que estava aqui antes era de abril e já tinha sido
-> feito (Vercel Pro, cron por minuto, Previews por branch). Lista de abril
-> mantida como histórico nas seções de sessão mais abaixo.
+> Atualizado em 25/08/2026. O detalhe vive nas partes 50 a 61 no fim deste
+> arquivo e nos cards "Esta semana" do planner.
 
-### Fora do código, só o Bruno faz
-- [ ] Verificação de negócio na Meta (trava o app de produção)
-- [ ] Submissão do OAuth do Google para revisão
-- [ ] Busca de anterioridade no INPI para a marca
-- [ ] Fechar os primeiros clientes pagantes
-- [ ] Teste de tráfego de R$ 2.000
-
-### Produto, ainda aberto
-- [ ] Gravar o vídeo de demonstração para Meta e Google (o passo a passo está na
-      seção de sessão de 22/08)
-- [ ] Checkout Stripe de ponta a ponta com cartão real de teste
-- [ ] Revisar copy e CTA da landing page com o produto já pronto
-- [ ] Twitter: decidir se vale US$ 100/mês pelo upload de imagem
+- [ ] O TESTE QUE VALIDA PARA LANÇAMENTO: o Bruno grava o vídeo novo (webcam
+      4K em tela cheia, OBS configurado em chat próprio), sobe com a faixa
+      real escolhida no popup, e dá o veredito no fluxo inteiro
+- [ ] Seleção de trechos: régua mais dura (nota 7+) ou A/B do prompt no Codex
+- [ ] Crédito automático do CC BY na descrição dos posts
+- [ ] Tela do cliente: mostrar diagnóstico e relatório de valor com destaque
+- [ ] Meta/Google/INPI/pagantes/tráfego: só o Bruno (ver seção 8)
 
 ## 10. Comandos Úteis
 
