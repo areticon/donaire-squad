@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import toast from "react-hot-toast";
 import { upload } from "@vercel/blob/client";
 import { Loader2, Music, X } from "lucide-react";
 import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
+import { EscolherMusica } from "@/components/video/escolher-musica";
 
 /**
  * A escolha do estilo de edição do projeto.
@@ -59,7 +60,7 @@ export function EstiloDoProjeto({
   const [salvando, setSalvando] = useState(false);
   const [musica, setMusica] = useState<string | null>(musicaInicial);
   const [subindoMusica, setSubindoMusica] = useState(false);
-  const inputDeMusica = useRef<HTMLInputElement>(null);
+  const [popupAberto, setPopupAberto] = useState(false);
 
   async function subirMusica(arquivo: File) {
     if (arquivo.size > 40 * 1024 * 1024) {
@@ -81,6 +82,7 @@ export function EstiloDoProjeto({
         body: JSON.stringify({ videoMusicUrl: blob.url, videoMusicName: arquivo.name }),
       });
       setMusica(arquivo.name);
+      setPopupAberto(false);
       toast.success("Trilha salva. Entra nos próximos cortes, no volume do estilo.");
     } catch {
       toast.error("Não consegui subir a trilha. Tente de novo.");
@@ -215,28 +217,17 @@ export function EstiloDoProjeto({
               : "Suba uma faixa que você tem direito de usar (da sua assinatura, própria, ou CC BY). Sem trilha, os cortes saem só com a voz."}
           </p>
         </div>
-        <input
-          ref={inputDeMusica}
-          type="file"
-          accept="audio/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void subirMusica(f);
-            e.target.value = "";
-          }}
-        />
         {subindoMusica ? (
           <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-muted)" }} />
         ) : (
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => inputDeMusica.current?.click()}
+              onClick={() => setPopupAberto(true)}
               className="rounded-lg border px-3 py-1.5 text-sm font-bold"
               style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
             >
-              {musica ? "Trocar" : "Enviar trilha"}
+              {musica ? "Trocar" : "Escolher música"}
             </button>
             {musica && (
               <button
@@ -252,6 +243,14 @@ export function EstiloDoProjeto({
           </div>
         )}
       </div>
+
+      <EscolherMusica
+        aberto={popupAberto}
+        estilo={escolhido}
+        subindo={subindoMusica}
+        onFechar={() => setPopupAberto(false)}
+        onEnviar={(arquivo) => void subirMusica(arquivo)}
+      />
     </section>
   );
 }
