@@ -5648,3 +5648,45 @@ inteiro roda no cenario bom pela primeira vez: ampliacao perto de 1x, trilha
 de verdade, estilo escolhido. E o teste que valida o produto para lancamento.
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026 (parte 61): o popup da biblioteca, a metade que faltava
+
+O Bruno corrigiu o rumo da musica: "o que tinhamos decidido e abrir um popup
+para o usuario escolher a musica de uma biblioteca publica, imagina o usuario
+ter que ter varias musicas salvas, nao faz sentido".
+
+Ele esta certo, e o registro do dia 23 confirma: a decisao era "um atalho que
+MANDA a pessoa ate a fonte, ela baixa, e sobe". O upload cru entregue de
+madrugada era so a metade do "sobe", com o atalho engolido.
+
+### O que o popup e, e o que ele nunca pode virar
+
+Um ATALHO ATE A FONTE, com o envio ali mesmo. Tres bibliotecas publicas
+(Pixabay Music sem credito obrigatorio, YouTube Audio Library so CC BY, Free
+Music Archive), cada uma com a licenca resumida na linguagem de quem publica.
+
+A linha juridica nao mudou: quem baixa o arquivo e o CLIENTE, na fonte. O
+popup e catalogo de METADADOS, sem nenhum arquivo de audio e sem link direto
+de download. Se um dia alguem quiser "melhorar" hospedando as faixas ou
+baixando pelo servidor, esse alguem estara transformando a Demandou em
+distribuidora sem sublicenca.
+
+### As duas escolhas de desenho que valem registrar
+
+**A busca ja abre filtrada pelo clima do ESTILO.** O estilo decide legenda,
+ritmo, mixagem e arte; agora decide tambem o que procurar: acelerado abre
+"upbeat energetic", serio abre "corporate background". Uma escolha do cliente
+alimentando cinco decisoes.
+
+**Portas de entrada por BUSCA, e nao links de faixa individual.** Link de
+faixa em site alheio morre sem aviso, e popup com link quebrado e pior que
+nenhum popup. Busca da fonte e estavel.
+
+### Pendencia real desta frente
+
+O credito automatico do CC BY na descricao do post ainda nao existe: hoje a
+tela AVISA que o credito e obrigatorio, mas quem escreve e o cliente. Quando
+entrar, deve ser um campo "autor da faixa" no projeto que os textos das redes
+incluem sozinhos.
+
+*Atualizado em 25/08/2026 por Claude Code.*
