@@ -5839,3 +5839,49 @@ Nada disso bloqueia o teste 4K do lancamento, que continua sendo o proximo
 evento.
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026 (parte 63): a identidade nova do site, do painel do Bruno
+
+O Bruno entregou o painel de identidade novo (dois JPEG no Downloads) e pediu
+o ajuste do site. O que o painel muda: monograma dp em DEGRADE laranja com
+contorno branco estilo adesivo e SEM disco de fundo, lockup "demandou." com
+"postou." embaixo, e o grafite azulado como cor de fundo da marca.
+
+Cores MEDIDAS no pixel do painel (o hex escrito em imagem gerada mente: o
+cartao dizia #FF6020 e o laranja renderizado e outro): degrade #F1742E a
+#BE4720, grafite #2A2A32 a #3A3A46, swatch cinza #585B6E.
+
+### O que mudou no codigo
+
+- `public/brand-mark.svg` (e favicons): mesma geometria vetorizada de 22/08
+  (que ja era o desenho do Bruno), sem disco, com degrade. A geometria NAO
+  foi recriada, so o acabamento.
+- `BrandMarkAnimated`: degrade e sem disco; id de gradiente por instancia
+  (`useId`), senao duas marcas na mesma pagina brigam pelo mesmo id.
+- `BrandMarkImg`: os dois temas servem o MESMO svg (o contorno adesivo da
+  contraste em qualquer fundo); parametro `variant` ficou por compatibilidade.
+- Lockup "demandou. / postou." na navbar, rodape, sign-in, sign-up e planos.
+- `app/icon.png` e `public/icon.png` regenerados por codigo (PIL desenha a
+  mesma geometria em alta resolucao, degrade e fundo grafite #3A3A46).
+- Paleta do tema escuro tingida com o grafite da marca MANTENDO a escada de
+  luminosidade de 18/08 (1e1e25 / 2a2a33 / 31313c), acento #ef6122.
+- Escala laranja do Tailwind alinhada num ponto so via `@theme` no
+  globals.css (orange-400/500/600), porque os botoes usam bg-orange-500
+  espalhado e cacar classe por classe seria fragil.
+
+### Verificado
+
+`npm run build` passou; app rodado local e OLHADO por captura: landing, hero,
+navbar e sign-in com a marca nova, lockup e paleta. Capturas enviadas ao Bruno.
+
+### Pendente
+
+- O push para master (deploy) foi bloqueado pelo classificador de permissao
+  da sessao; os DOIS commits estao prontos na master local (9e3feef docs da
+  biblia, 19ff816 identidade). Falta `git push origin master`.
+- ESTRATEGIA.md e PROJETO.md estao modificados por outra sessao e ficaram
+  fora dos commits de proposito.
+- Os arquivos antigos nao referenciados (logo-*.svg, logo*.png) ficaram no
+  repo; limpar quando der.
+
+*Atualizado em 25/08/2026 por Claude Code.*
