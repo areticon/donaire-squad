@@ -4,20 +4,18 @@
     O d e o p são a mesma forma girada 180 graus e compartilham a bola central,
     então a marca tem simetria rotacional exata.
 
-    Versão de 22/08/2026, a partir do desenho novo do Bruno: disco escuro de
-    fundo e contorno branco em volta do laranja, que dão peso à marca em
-    qualquer fundo. Vetorizada, não recortada do PNG: escala sem perda, pesa
-    poucos bytes e continua permitindo animar as duas metades.
-
-    Cores medidas do arquivo original do Bruno, não estimadas: laranja
-    #f36a22, disco #373643.
-
-    Cor fixa aqui de propósito: este arquivo é servido como favicon e imagem
-    solta, contextos onde `currentColor` não tem de quem herdar.
+    Versão de 25/08/2026, a partir do painel de identidade novo do Bruno:
+    o disco de fundo saiu, o laranja virou degradê (medido do painel:
+    #F1742E claro no alto, #BE4720 profundo embaixo) e o contorno branco
+    estilo adesivo ficou, que é o que dá contraste em qualquer fundo.
+    A geometria é a mesma vetorizada em 22/08, do desenho dele.
   -->
-
-  <!-- Disco de fundo -->
-  <circle cx="32" cy="52" r="60" fill="#373643" />
+  <defs>
+    <linearGradient id="marca-laranja" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F1742E" />
+      <stop offset="1" stop-color="#BE4720" />
+    </linearGradient>
+  </defs>
 
   <!-- Contorno branco: as mesmas formas, mais largas, por baixo do laranja -->
   <circle cx="32" cy="52" r="26" stroke="#ffffff" stroke-width="17" />
@@ -25,7 +23,7 @@
   <rect x="-2.5" y="41.5" width="17" height="61" rx="8.5" fill="#ffffff" />
 
   <!-- A marca -->
-  <circle cx="32" cy="52" r="26" stroke="#f36a22" stroke-width="12" />
-  <rect x="52" y="4" width="12" height="56" rx="6" fill="#f36a22" />
-  <rect x="0" y="44" width="12" height="56" rx="6" fill="#f36a22" />
+  <circle cx="32" cy="52" r="26" stroke="url(#marca-laranja)" stroke-width="12" />
+  <rect x="52" y="4" width="12" height="56" rx="6" fill="url(#marca-laranja)" />
+  <rect x="0" y="44" width="12" height="56" rx="6" fill="url(#marca-laranja)" />
 </svg>

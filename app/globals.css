@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Escala laranja do Tailwind alinhada à marca nova (25/08/2026): os botões e
+   acentos usam bg-orange-500/600 espalhados pelo app, então o alinhamento é
+   feito aqui, uma vez, em vez de caçar classe por classe. Tons medidos do
+   painel de marca do Bruno (degradê #F1742E a #BE4720). */
+@theme {
+  --color-orange-400: #f6803d;
+  --color-orange-500: #ef6122;
+  --color-orange-600: #d14e15;
+}
+
 .font-mont {
   font-family: var(--font-mont), "Montserrat", sans-serif;
 }
@@ -7,22 +17,26 @@
 /* ── Dark theme (default) ── */
 :root,
 [data-theme="dark"] {
-  /* Paleta cinza-escuro no padrão do Discord, adotada em 18/08/2026.
-     O tema anterior era quase preto (#0d0d0d), o que cansa a vista em uso
-     longo e achata a hierarquia: sem luz suficiente entre os níveis, card e
-     fundo viram a mesma coisa. Aqui cada nível sobe de luminosidade, então
-     elevação se lê sozinha, sem depender de borda. */
-  --bg-primary: #1e1f22;   /* moldura, o nível mais fundo */
-  --bg-surface: #2b2d31;   /* barra lateral e superfícies */
-  --bg-elevated: #313338;  /* área principal e cards elevados */
-  --bg-card: #2b2d31;
-  --bg-input: #1e1f22;     /* campo afunda em relação ao container */
-  --accent-orange: #f36a22; /* laranja da marca, medido do logo */
+  /* Paleta cinza-escuro no padrão do Discord, adotada em 18/08/2026, com a
+     escada de luminosidade preservada: cada nível sobe de luz e a elevação se
+     lê sozinha, sem depender de borda.
+     Em 25/08/2026 a paleta ganhou o tom da marca nova do Bruno: o grafite
+     azulado do painel de identidade (#2A2A32 a #3A3A46 medidos) entrou no
+     lugar do cinza neutro, mesma luminosidade, matiz da marca. */
+  --bg-primary: #1e1e25;   /* moldura, o nível mais fundo */
+  --bg-surface: #2a2a33;   /* barra lateral e superfícies */
+  --bg-elevated: #31313c;  /* área principal e cards elevados */
+  --bg-card: #2a2a33;
+  --bg-input: #1e1e25;     /* campo afunda em relação ao container */
+  --accent-orange: #ef6122; /* laranja da marca nova, medido do painel */
   --accent-amber: #d97706;
-  --text-primary: #dbdee1;
-  --text-muted: #949ba4;
-  --border: #3f4147;
-  --border-accent: #f36a22;
+  --text-primary: #dcdde2;
+  --text-muted: #9599a6;
+  --border: #3f3f4b;
+  --border-accent: #ef6122;
+  /* Degradê do monograma, medido do painel de marca */
+  --brand-grad-from: #f1742e;
+  --brand-grad-to: #be4720;
   --shadow: 0 1px 3px rgba(0,0,0,.32);
 
   /* Status badge colors */
@@ -44,12 +58,14 @@
   --bg-elevated: #f9f9f9;
   --bg-card: #ffffff;
   --bg-input: #f1f1f1;
-  --accent-orange: #e05f18; /* mesma familia, um tom abaixo para o tema claro */
+  --accent-orange: #d5511a; /* mesma familia, um tom abaixo para o tema claro */
   --accent-amber: #b45309;
   --text-primary: #111111;
   --text-muted: #6b7280;
   --border: #e5e7eb;
-  --border-accent: #ea6c0a;
+  --border-accent: #d5511a;
+  --brand-grad-from: #f1742e;
+  --brand-grad-to: #be4720;
   --shadow: 0 1px 3px rgba(0,0,0,.12);
 
   /* Status badge colors */

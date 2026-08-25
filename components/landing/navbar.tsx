@@ -26,8 +26,11 @@ export function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <BrandMarkAnimated size={28} className="text-orange-500" />
-          <span className="font-bold text-[var(--text-primary)] text-lg lowercase">demandou</span>
+          <BrandMarkAnimated size={30} />
+          <span className="flex flex-col justify-center">
+            <span className="font-mont font-bold text-[var(--text-primary)] text-lg lowercase leading-none">demandou.</span>
+            <span className="text-[11px] text-[var(--text-muted)] lowercase tracking-wide leading-none mt-1">postou.</span>
+          </span>
         </Link>
 
         <div className="hidden md:flex items-center gap-8">

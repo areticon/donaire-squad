@@ -2,9 +2,14 @@ import { cn } from "@/lib/utils";
 
 type Variant = "dark" | "light";
 
-/** Logo da marca em PNG (`demandou marca/`). `dark` = fundo escuro da página; `light` = fundo claro. */
+/**
+ * Logo da marca. Desde o painel de identidade de 25/08 a marca é uma só para
+ * qualquer fundo: monograma em degradê laranja com contorno branco estilo
+ * adesivo, sem disco. O parâmetro `variant` ficou pela compatibilidade das
+ * chamadas existentes, mas os dois casos servem o mesmo SVG.
+ */
 export function BrandMarkImg({
-  variant = "dark",
+  variant: _variant = "dark",
   className,
   size = 32,
 }: {
@@ -12,11 +17,10 @@ export function BrandMarkImg({
   className?: string;
   size?: number;
 }) {
-  const src = variant === "dark" ? "/brand-mark-on-dark.png" : "/brand-mark-on-light.png";
   return (
     // eslint-disable-next-line @next/next/no-img-element -- asset estático pequeno
     <img
-      src={src}
+      src="/brand-mark.svg"
       alt="demandou"
       width={size}
       height={size}

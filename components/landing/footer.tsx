@@ -9,8 +9,11 @@ export function Footer() {
         <div className="grid md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <BrandMarkImg variant="dark" className="h-7 w-7 rounded-md" size={28} />
-              <span className="font-bold text-[var(--text-primary)] lowercase">demandou</span>
+              <BrandMarkImg variant="dark" className="h-7 w-7" size={28} />
+              <span className="flex flex-col justify-center">
+                <span className="font-mont font-bold text-[var(--text-primary)] lowercase leading-none">demandou.</span>
+                <span className="text-[10px] text-[var(--text-muted)] lowercase tracking-wide leading-none mt-0.5">postou.</span>
+              </span>
             </div>
             <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-4">
               Seus agentes de IA trabalhando para construir sua autoridade nas redes sociais.

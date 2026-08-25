@@ -93,8 +93,11 @@ function PlanosConteudo() {
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
       <header className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <BrandMarkAnimated size={28} className="text-orange-500" />
-          <span className="font-bold text-[var(--text-primary)] text-lg lowercase">demandou</span>
+          <BrandMarkAnimated size={30} />
+          <span className="flex flex-col justify-center">
+            <span className="font-mont font-bold text-[var(--text-primary)] text-lg lowercase leading-none">demandou.</span>
+            <span className="text-[11px] text-[var(--text-muted)] lowercase tracking-wide leading-none mt-1">postou.</span>
+          </span>
         </Link>
         <Link href="/sign-in" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
           Já tenho conta
