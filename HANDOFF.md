@@ -5683,3 +5683,159 @@ entrar, deve ser um campo "autor da faixa" no projeto que os textos das redes
 incluem sozinhos.
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 25/08/2026 (parte 52): ICP corrigido, personas e o preco mantido
+
+Sessao inteira de estrategia, sem uma linha de codigo. O que mudou nos documentos:
+`ESTRATEGIA.md` ganhou a secao "Decisoes de 25/08/2026" (que manda sobre as secoes
+de ICP e canais de 13/08), e `PROJETO.md` teve os itens 3 (ICP) e 4 (precos)
+atualizados. A nota completa vive no Notion, em `10-profissional/demandou`, com o
+titulo "ICP, personas e a conta do trafego pago".
+
+**O ICP estava desatualizado desde 22/08 e ninguem tinha percebido.** Ele foi escrito
+quando o produto gerava post a partir de um tema. Com video como produto, a
+materia-prima virou fala gravada, e o filtro mudou de desejo ("quem quer postar")
+para comportamento: **quem ja produz fala gravada por outro motivo** (aula, reuniao,
+webinar, palestra, treinamento). Quem nao grava precisaria criar um habito novo so
+para usar a plataforma, e habito e exatamente o que faltou a ele quando parou de
+postar.
+
+**Correcao do Bruno que vale mais que o resto:** os conhecidos que tem a dor
+resolveram contratando um social media, a R$ 1.200 a R$ 3.500 por mes. O melhor
+comprador nao e quem tem a dor nao resolvida, e quem tem a dor **resolvida cara**,
+porque tem orcamento provado e fatura recorrente. E o buraco que a Demandou tapa e
+a reclamacao universal de todo social media, que e o cliente nunca mandar material.
+
+**Jogada escolhida: substituir a PRODUCAO do especialista, nao o social media
+inteiro.** A plataforma nao responde DM, nao faz stories nem community management.
+Vender "demite seu social media" gera churn no mes 2. Vender para agencia e para o
+freelancer (o Studio ja e isso, com projetos ilimitados) ficou parado com gatilho.
+
+### Tres personas, com TAM e CPC medidos
+
+| Persona | TAM medido | CPC | CAC |
+|---|---|---|---|
+| Consultor de gestao industrial | 113.705 consultorias CNAE 7020-4/00 | R$ 6 | R$ 620 |
+| Contador consultivo | 101.228 organizacoes contabeis (CFC) | R$ 12 | R$ 1.240 |
+| Advogado empresarial | 1,3 mi de advogados, ~15% socios | R$ 15 | R$ 1.550 |
+
+**Regra de bolso: CAC = CPC x 103.** Com trial de cartao exigido, visita vira pagante
+em 0,97% (2,2% de visita para cadastro x 44% de cadastro para pagante, os dois em
+benchmark medido de 2026).
+
+### O preco foi revisado e MANTIDO
+
+Pro R$ 149 / R$ 1.490 anual, Business R$ 249 / R$ 2.490, Studio R$ 449 / R$ 4.490.
+A analise comparou com R$ 397, R$ 697 e R$ 997 e recomendava R$ 397; o Bruno decidiu
+manter, com os numeros na mesa. O que a decisao obriga a ser verdade:
+
+| Persona | LTV/CAC no mensal | LTV/CAC no anual |
+|---|---|---|
+| Consultor | 1,44, nao fecha | 3,44, fecha no limite |
+| Contador | 0,72, nao fecha | 1,72, nao fecha |
+| Advogado | 0,58, nao fecha | 1,37, nao fecha |
+
+1. **Trafego pago existe para o consultor apenas, e so vendendo o anual.**
+2. **A conversao da landing virou parede mestra.** No benchmark de 2,2% nem o
+   consultor tem folga; a conta so ganha ar em 3,5%, que e 60% acima do benchmark.
+   Isso promove os Refs 148 (capturar e-mail na demo) e 149 (instrumentar o funil)
+   de melhoria para pre-requisito de viabilidade.
+3. **Teto de CPC no preco atual: R$ 6,89 no anual, R$ 2,89 no mensal.**
+4. **A oferta de fundador nao tem desconto**, porque R$ 1.490 e o proprio preco de
+   lista. A escassez vem da trava vitalicia e do atendimento pessoal, nunca de preco.
+5. **Volante de caixa perto do equilibrio:** uma venda anual poe ~R$ 1.330 de caixa
+   no dia 1 e R$ 812 de margem no ano, contra CAC de R$ 620, ou seja financia 1,3
+   aquisicoes. Os dez primeiros precisam vir de rede, a CAC zero.
+
+### O teste de trafego pago mudou de escopo e de criterio (Ref 97)
+
+Roda numa persona so (consultor), vende so o anual, e aprova com **CPC abaixo de
+R$ 6,89 E conversao de visita para cadastro acima de 3,5%**. E a descoberta que
+muda o plano: **R$ 2.000 medem CPC e NAO medem conversao.** A R$ 6 de CPC sao 333
+cliques e ~7 cadastros, que e anedota. Medir 2,2% com confianca pede ~1.000 cliques,
+ou seja R$ 6.000 numa persona so. Virou card proprio para decidir antes de rodar.
+
+### Uma premissa do Bruno confirmada contra o codigo, a favor dele
+
+Sobre conselho de classe (OAB, CFP, CFM), ele afirmou que nao e problema da
+Demandou, porque a plataforma e ferramenta de automacao e quem responde pelo
+conteudo e o usuario, que aprova cada publicacao. Conferido em `app/terms/page.tsx`:
+as clausulas ja existem em duas passagens (o usuario e o unico responsavel por
+revisar, editar e aprovar antes de publicar; e responde integralmente pelo publicado,
+inclusive por violacoes legais e de politicas de terceiros). Ressalva sem alarme:
+clausula em contrato de adesao tem limite no CDC, e o Ref 119 (revisao dos termos por
+advogado) segue no backlog sem prazo.
+
+### Cards do planner
+
+Atualizados: 97 (escopo e criterio do teste), 46 (coluna de gravacao existente e de
+quem ja paga social media), 147 (oferta de fundador sem desconto), 148 (promovido a
+pre-requisito), 153 (insumo passa a ser gravacao que a pessoa ja tem; custo da demo
+corrigido de R$ 0,45 para R$ 0,04 medido), 165 (rastro de gravacao como segundo sinal).
+Criados: elevar a conversao a 3,5%; decidir o orcamento do teste pago; reescrever
+landing e abordagem com o filtro de gravacao; Jogada B parada com gatilho.
+
+## Sessao 25/08/2026 (parte 62): a biblia de estilo dos overlays, e a primeira prova
+
+O Bruno definiu o rumo da proxima camada do video: o usuario sobe video cru e a
+plataforma devolve video editado com DESIGN por cima do video real (cartelas,
+lousas, graficos, artes), copiando dois modelos de mercado que ele escolheu:
+Dan Martell e Vox. Cadeia: Deepgram transcreve, Claude entende estilo e nicho e
+marca os momentos por ANCORA TEXTUAL, Nano Banana Pro gera as artes, worker
+cola no intermediario recodificado. Nao briga com o reset pragmatico: o reset
+matou o fundo falso ATRAS da pessoa; isto e a camada POR CIMA, que os canais
+premium usam.
+
+### O "treinamento" que existe de verdade
+
+Nano Banana nao aceita fine-tuning. O que funciona: prompt rigoroso mais
+imagens de referencia anexadas na chamada (o Pro aceita ate 14). Entao o
+treinamento virou artefato versionado: `docs/overlays/BIBLIA-DE-ESTILO.md`
+mais 32 quadros de referencia em `docs/overlays/referencias/` (18 Vox, 14
+Dan Martell), extraidos dos 5 videos que o Bruno indicou e curados a olho.
+
+### O que foi medido, nao estimado
+
+- Paleta Vox: fundo de estudio #D9DED7, rosa #CD145C, verde #33C886, amarelo
+  #F4FA15, grifo #EBE927, papel #F7F7F7/#F9F3D9, verde de mapa #42883B.
+- Paleta Dan Martell: lousa #050505 a #141414 com textura topografica #1C1C1C,
+  ciano #12D4EA, glow #87DBE4, teal #087F7F, verde #1FE461, vermelho #EA0002.
+- Cadencia: Vox mete um elemento novo a cada 8 a 15s; Dan Martell usa lousa
+  cheia nos momentos de estrutura e 20 a 60s de fala limpa entre lousas.
+- 25 arquetipos nomeados (12 Vox, 13 DM), cada um com quadro de referencia.
+
+### As regras que a biblia carrega (das cicatrizes de 24-25/08)
+
+1. Overlay so no intermediario recodificado, nunca na entrada crua.
+2. Ancora textual, nunca segundo.
+3. Grafico com numero real e CODIGO em template da marca; o modelo de imagem
+   faz cartela, lousa, conceito e arte, onde nao ha numero que errar.
+4. Movimento e do ffmpeg; a arte chega parada.
+5. Texto na arte: ate 6 palavras, e LER o texto renderizado antes de colar
+   (typo do modelo descarta e refaz).
+6. A API nao devolve alpha: arte de quadro inteiro primeiro; elemento
+   flutuante via chroma #00FF00 + colorkey e prova pendente.
+
+### A primeira prova, aprovavel a olho
+
+`scripts/tmp/provar-overlay.mjs` gerou no gemini-3-pro-image-preview (2K,
+16:9, 4 referencias anexadas por pedido, ~25s cada): um cartao de pergunta
+Vox ("COMO ESCALAR SEM VIRAR REFEM DO PROPRIO NEGOCIO?", acentos certos,
+condensada verde sobre cinza) e uma lousa Dan Martell ("Os 3 Sistemas do
+Negocio" com Sistemas em ciano, tiles 1-2-3, textura topografica). Texto em
+portugues saiu correto nas duas. Enviadas ao Bruno para veredito.
+
+### Aberto nesta frente
+
+- [ ] Veredito do Bruno sobre as duas provas
+- [ ] Prova do chroma para elemento flutuante (franja de glow e o risco)
+- [ ] Decisao: paleta fiel a referencia ou paleta da MARCA do projeto (como
+      o estilo ja faz no fundo dos posts)
+- [ ] Agente marcador de momentos (prompt + schema de ancora textual)
+- [ ] Motor no worker: colar a arte no intermediario com fade/slide
+- [ ] Templates de grafico por codigo na paleta dos dois sistemas
+
+Nada disso bloqueia o teste 4K do lancamento, que continua sendo o proximo
+evento.
+
+*Atualizado em 25/08/2026 por Claude Code.*
