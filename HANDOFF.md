@@ -5885,3 +5885,104 @@ navbar e sign-in com a marca nova, lockup e paleta. Capturas enviadas ao Bruno.
   repo; limpar quando der.
 
 *Atualizado em 25/08/2026 por Claude Code.*
+
+## Sessao 30/08/2026 (parte 64): o teste de ponta a ponta do Bruno, medido antes de consertado
+
+O Bruno gravou (2560x1440, 30 fps constante, 20 min, 1,16 GB, tela com webcam
+na borda esquerda) e testou o fluxo inteiro gravando a tela. Trouxe quatro
+achados. Regra da casa: ler o dado ANTES de propor conserto.
+
+### 1. Popup de musica transparente
+
+`escolher-musica.tsx` pintava o fundo com `var(--surface)`, que NAO EXISTE no
+globals.css (a variavel e `--bg-surface`). O cartao do estilo tinha o mesmo
+erro em dois lugares. Trocado. Licao barata: variavel CSS inexistente nao da
+erro, da transparencia.
+
+### 2. "Video esta em cut. A redacao roda depois da selecao"
+
+O corte passou a rodar ANTES da redacao em 25/08 (estado `cut`), e o portao
+da rota `write` continuava aceitando so `selected`. O botao "Escrever os
+posts", que a tela oferece em `cut`, batia no 409. Aceita `cut` agora, e a
+devolucao por falta de saldo volta ao estado de ORIGEM (`cut` quando ha
+cortes), senao ofereceria "Cortar os videos" de novo e refaria meia hora de
+worker.
+
+### 3. A espera do corte demorava a aparecer
+
+A tela consultava o estado UMA vez, 400 ms depois do clique. A rota `cortar`
+com a funcao fria leva mais que isso para marcar `cutting`, e o ritmo de
+consulta so liga quando algum video esta trabalhando. Resultado: ninguem
+perguntava de novo ate a rota inteira responder, que no corte e depois da
+limpeza de fala (minutos). Consultas escalonadas (0,4 s a 25 s).
+
+### 4. "A imagem esta descasada do audio": nao estava, e o dado diz o que era
+
+Medido no corte real (`vertical-0`, 49,4 s), casando o corte com o original
+por correlacao de audio e por casamento de quadro na janela da webcam
+(achada por template: x=129 y=459 300x417, ampliacao real de 3,6x):
+
+| trecho do corte | video menos audio |
+|---|---|
+| 0 a 12 s (sem punch-in) | 0,00 a +0,07 s |
+| 12 a 25 s (com punch-in, casado com o mesmo recorte) | -0,01 a +0,06 s |
+| 25 a 33 s | -0,14 a +0,13 s |
+| 36 a 39 s (com punch-in) | -0,02 a +0,09 s |
+
+**Sincronia dentro de 2 quadros o corte inteiro.** O que pulava: o punch-in
+recortava 5,5% ao redor do centro da TELA, e a webcam fica na borda esquerda,
+entao a cada emenda a pessoa deslocava ~60 px na fonte (200 px no corte de
+1080) e mudava de tamanho. E a limpeza tirou tres muletas em tres segundos
+(segmentos de 0,72 s e 0,88 s), virando estrobo. Corrigido no worker:
+
+- o punch-in centra na CAIXA DA PESSOA (`enq.pessoa`), com o centro da tela
+  so como reserva;
+- o plano so alterna em segmento de 1,2 s ou mais; segmento curto herda o
+  plano do anterior.
+
+Scripts de medicao ficaram no scratchpad da sessao; o metodo (correlacao de
+audio por FFT + NCC de quadro na regiao da pessoa, com e sem o recorte do
+punch-in) vale repetir quando alguem disser "descasado".
+
+### 5. Legenda escrevendo "Aretcon": o glossario do cliente
+
+Pedido do Bruno: um lugar para editar termos e o sistema aprender. Entrou a
+FASE 1, sem editor de transcricao:
+
+- `Project.videoTerms` (texto separado por virgula, coluna nula, migration
+  `20260830200000_termos_do_projeto`, aplicada em producao).
+- Campo "Termos do seu negocio" no cartao do estilo, na tela de video; salva
+  ao sair do campo via PATCH do projeto.
+- Na transcricao nova, os termos do cliente entram PRIMEIRO no `keyterm` da
+  Deepgram (o orcamento continua 5, medido em 18/08).
+- `lib/media/termos.ts`: correcao DETERMINISTICA das palavras (Levenshtein
+  normalizado, janelas de 1 a N+1 palavras, limiar por tamanho, letra inicial
+  obrigatoria em termo curto, lookahead que preserva artigo). Roda no
+  callback da transcricao E em `montarPedidoDeCorte`, entao gravacao ja
+  transcrita sai com legenda certa no proximo corte, sem transcrever de novo.
+- Provado (`scripts/tmp/provar-termos.mts`): "Aretcon", "arete com", "sas"
+  viram Areticon e SaaS; "casa", "caso", "sal", "saiu" ficam em paz; o artigo
+  antes do termo e preservado. Limite honesto: "dois reais" nao vira "dor
+  real" (e frase, nao nome; o keyterm e quem ajuda ali).
+
+FASE 2, ainda aberta: editar a legenda de um corte pronto e refazer so a
+queima, e o RAG aprender do que o cliente editou.
+
+### Verificado e publicado
+
+`npm run build` ok, `worker/fumaca.mjs` com os 8 caminhos ok, corretor
+provado, migration aplicada. App em `0b5c96b` (master, Vercel) e worker via
+`railway up`.
+
+### Para o Bruno fechar o teste
+
+- Recarregar a tela do video: o botao "Escrever os posts" passa a funcionar
+  no video que esta em `cut`.
+- Cadastrar "Areticon, SaaS" nos termos.
+- Para ver o punch-in novo e a legenda corrigida NESTE video, o corte precisa
+  rodar de novo (estado `selected`); e uma troca de status no banco, a
+  pedido.
+- O video foi gravado com tela + webcam pequena (ampliacao real de 3,6x); a
+  gravacao em tela cheia continua sendo o que muda a nitidez.
+
+*Atualizado em 30/08/2026 por Claude Code.*
