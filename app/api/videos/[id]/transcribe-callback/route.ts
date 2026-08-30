@@ -4,6 +4,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { aplicarTermos, parseTermos } from "@/lib/media/termos";
 import { interpretarResposta } from "@/lib/media/transcribe";
 import { assinaturaValida } from "@/lib/media/callback-token";
 import { recordTranscricao } from "@/lib/media/usage";
@@ -34,7 +35,7 @@ export async function POST(
 
   const video = await prisma.videoJob.findUnique({
     where: { id },
-    select: { id: true, status: true, projectId: true },
+    select: { id: true, status: true, projectId: true, project: { select: { videoTerms: true } } },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -64,7 +65,10 @@ export async function POST(
         transcript: {
           text: resultado.text,
           language: resultado.language,
-          words: resultado.words,
+          // Rede determinística por baixo do keyterm: o que a Deepgram ainda
+          // errar nos termos do cliente é corrigido aqui, uma vez, e vale para
+          // seleção, legenda e posts.
+          words: aplicarTermos(resultado.words, parseTermos(video.project?.videoTerms)),
           paragraphs: resultado.paragraphs,
           meanConfidence: resultado.meanConfidence,
           wordsPerMinute: resultado.wordsPerMinute,

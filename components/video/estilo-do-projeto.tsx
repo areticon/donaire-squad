@@ -45,11 +45,14 @@ export function EstiloDoProjeto({
   projectId,
   inicial,
   musicaInicial,
+  termosIniciais = null,
 }: {
   projectId: string;
   inicial: string | null;
   /** O nome do arquivo da trilha que o projeto já tem, se tiver. */
   musicaInicial: string | null;
+  /** Os termos do negócio já cadastrados (Project.videoTerms). */
+  termosIniciais?: string | null;
 }) {
   // Sem escolha, o padrão é o acelerado, que é o mesmo padrão do back-end. Se
   // os dois discordassem, a tela mostraria um estilo e o vídeo sairia com
@@ -61,6 +64,32 @@ export function EstiloDoProjeto({
   const [musica, setMusica] = useState<string | null>(musicaInicial);
   const [subindoMusica, setSubindoMusica] = useState(false);
   const [popupAberto, setPopupAberto] = useState(false);
+  const [termos, setTermos] = useState(termosIniciais ?? "");
+  const [termosSalvos, setTermosSalvos] = useState(termosIniciais ?? "");
+
+  /**
+   * Os termos do negócio que a legenda precisa acertar. Pedido do Bruno em
+   * 30/08, depois de a legenda escrever o nome da empresa dele errado: o
+   * cliente cadastra uma vez, a transcrição nova recebe os termos como
+   * reforço, e a correção determinística conserta o que ainda escapar, valendo
+   * também para gravação já transcrita. Salva ao sair do campo, sem botão.
+   */
+  async function salvarTermos() {
+    const limpo = termos.trim();
+    if (limpo === termosSalvos.trim()) return;
+    try {
+      const r = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoTerms: limpo || null }),
+      });
+      if (!r.ok) throw new Error();
+      setTermosSalvos(limpo);
+      toast.success("Termos salvos. Valem para a próxima transcrição e para o próximo corte.");
+    } catch {
+      toast.error("Não consegui salvar os termos. Tente de novo.");
+    }
+  }
 
   async function subirMusica(arquivo: File) {
     if (arquivo.size > 40 * 1024 * 1024) {
@@ -154,7 +183,7 @@ export function EstiloDoProjeto({
               style={{
                 borderColor: ativo ? "var(--brand)" : "var(--border)",
                 borderWidth: ativo ? 2 : 1,
-                background: ativo ? "var(--surface-2)" : "var(--surface)",
+                background: ativo ? "var(--bg-elevated)" : "var(--bg-surface)",
               }}
             >
               <span
@@ -204,7 +233,7 @@ export function EstiloDoProjeto({
       */}
       <div
         className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border p-4"
-        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}
       >
         <Music className="h-5 w-5 shrink-0" style={{ color: "var(--text-muted)" }} />
         <div className="min-w-0 flex-1">
@@ -242,6 +271,43 @@ export function EstiloDoProjeto({
             )}
           </div>
         )}
+      </div>
+
+      {/*
+        O glossário do cliente. Fica no mesmo cartão do estilo porque é decisão
+        de PROJETO, como o estilo e a trilha: os nomes do negócio não mudam de
+        um vídeo para outro.
+      */}
+      <div
+        className="mt-4 rounded-xl border p-4"
+        style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}
+      >
+        <label
+          htmlFor={`termos-${projectId}`}
+          className="text-sm font-bold"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Termos do seu negócio
+        </label>
+        <p className="mb-2 text-xs" style={{ color: "var(--text-muted)" }}>
+          Nomes e siglas que a legenda costuma escrever errado: o nome da sua
+          empresa, produtos, termos técnicos. Separe por vírgula. A transcrição
+          passa a reconhecê-los e a legenda os escreve como você escreveu aqui.
+        </p>
+        <textarea
+          id={`termos-${projectId}`}
+          value={termos}
+          onChange={(e) => setTermos(e.target.value)}
+          onBlur={() => void salvarTermos()}
+          rows={2}
+          placeholder="Ex.: Areticon, SaaS, Bem Natura, curtailment"
+          className="w-full resize-y rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--bg-input)",
+            color: "var(--text-primary)",
+          }}
+        />
       </div>
 
       <EscolherMusica

@@ -462,7 +462,9 @@ async function processar(trabalho) {
         // têm como divergir. Sem `manter` no pedido, cai no comportamento
         // antigo de não remover nada, que é pior mas não quebra.
         const corte = await prepararTrecho(
-          fonte, limpo, t.inicio, duracao, t.manter ?? [{ de: 0, ate: duracao }]
+          fonte, limpo, t.inicio, duracao, t.manter ?? [{ de: 0, ate: duracao }],
+          // O punch-in fecha o plano em volta da pessoa, nao do centro da tela.
+          enq?.pessoa ?? null
         );
         const duracaoLimpa = Math.max(1, duracao - corte.segundos);
         // O gatilho é o TEMPO removido, e não a contagem de emendas. Um trecho

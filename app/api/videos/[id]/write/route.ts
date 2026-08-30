@@ -57,12 +57,21 @@ export async function POST(
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
-  if (video.status !== "selected" && video.status !== "failed") {
+  // "cut" entrou em 25/08, quando o corte passou a rodar ANTES da redação. O
+  // portão continuava aceitando só "selected", e o botão "Escrever os posts"
+  // que a tela oferece em "cut" batia aqui e voltava com 409. Foi o que travou
+  // o teste do Bruno em 30/08: "Vídeo está em cut. A redação roda depois da
+  // seleção", com os cortes prontos na tela.
+  if (video.status !== "cut" && video.status !== "selected" && video.status !== "failed") {
     return NextResponse.json(
-      { error: `Vídeo está em "${video.status}". A redação roda depois da seleção.` },
+      { error: `Vídeo está em "${video.status}". A redação roda depois dos cortes.` },
       { status: 409 }
     );
   }
+
+  const temCortes = ((video.clips as unknown as Array<{ midia?: { vertical?: unknown } }> | null) ?? [])
+    .some((t) => t.midia?.vertical);
+  const estadoDeOrigem = temCortes ? "cut" : "selected";
 
   if (video.attempts >= MAX_TENTATIVAS) {
     return NextResponse.json(
@@ -137,9 +146,12 @@ export async function POST(
       // Devolve o trabalho antes de sair. Sem isto, quem não tem saldo ficaria
       // preso em "writing" até o prazo estourar, vendo a plataforma "escrevendo"
       // um post que ninguém está escrevendo.
+      // Devolve ao estado de onde veio: com cortes prontos, voltar para
+      // "selected" ofereceria "Cortar os vídeos" de novo e refaria meia hora
+      // de trabalho do worker por falta de saldo na redação.
       await prisma.videoJob.update({
         where: { id },
-        data: { status: "selected", startedAt: null, attempts: 0 },
+        data: { status: estadoDeOrigem, startedAt: null, attempts: 0 },
       });
       if (err instanceof SaldoInsuficiente) {
         return NextResponse.json({ error: err.message }, { status: 402 });

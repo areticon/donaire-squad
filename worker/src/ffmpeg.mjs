@@ -368,7 +368,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
  * isso é rápido, e CRF 18 aqui é qualidade de intermediário: quem manda na
  * qualidade final é o corte de saída.
  */
-export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos) {
+export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos, pessoa = null) {
   const manter = (intervalos ?? []).filter((m) => m.ate - m.de > 0.05);
   // Um único pedaço que cobre o trecho inteiro quer dizer que não havia nada a
   // remover ali. Nesse caso não vale montar grafo de filtro nenhum.
@@ -390,10 +390,17 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
   const dim = await ffprobe(entrada);
   const partes = [];
   const mapa = [];
+  // O plano alterna a cada emenda, mas so quando o segmento tem tempo de ser
+  // visto. Medido no corte do Bruno de 30/08: a limpeza tirou tres muletas em
+  // tres segundos, e o vaivem de 5,5% a cada 0,7s virou estrobo. Segmento
+  // curto herda o plano do anterior; a alternancia so acontece em segmento de
+  // 1,2s ou mais.
+  let fechado = false;
   manter.forEach((m, i) => {
+    if (i > 0 && m.ate - m.de >= 1.2) fechado = !fechado;
     partes.push(
       `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
-        `${segmentoComPunchIn(i, dim.largura, dim.altura)}[v${i}]`,
+        `${segmentoComPunchIn(fechado, dim.largura, dim.altura, pessoa)}[v${i}]`,
       `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
     );
     mapa.push(`[v${i}][a${i}]`);
@@ -440,12 +447,24 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
  * exige todos os segmentos com a mesma dimensão, e um crop de conta quebrada
  * derrubaria a emenda inteira.
  */
-function segmentoComPunchIn(i, largura, altura) {
-  if (i % 2 === 0 || !largura || !altura) return "";
+function segmentoComPunchIn(fechado, largura, altura, pessoa = null) {
+  if (!fechado || !largura || !altura) return "";
   const z = 1.055;
   const w = Math.round(largura / z / 2) * 2;
   const h = Math.round(altura / z / 2) * 2;
-  return `,crop=${w}:${h}:${Math.round((largura - w) / 2)}:${Math.round((altura - h) / 2)},scale=${largura}:${altura},setsar=1`;
+  // O zoom e centrado na PESSOA, e nao no centro do quadro.
+  //
+  // Medido em 30/08, na gravacao de tela do Bruno com a webcam na borda
+  // esquerda: o punch-in centrado na tela deslocava a janela dela uns 60 px na
+  // fonte, que viram 200 px no corte vertical de 1080, entao a cada emenda a
+  // pessoa pulava de lugar e mudava de tamanho. O audio estava em sincronia
+  // (conferido quadro a quadro), mas o pulo le como "imagem descasada".
+  // Com o centro na caixa da pessoa, ela fica parada e so o plano fecha.
+  const cx = pessoa ? (pessoa.x + pessoa.w / 2) * largura : largura / 2;
+  const cy = pessoa ? (pessoa.y + pessoa.h / 2) * altura : altura / 2;
+  const x = Math.round(Math.max(0, Math.min(largura - w, cx - w / 2)));
+  const y = Math.round(Math.max(0, Math.min(altura - h, cy - h / 2)));
+  return `,crop=${w}:${h}:${x}:${y},scale=${largura}:${altura},setsar=1`;
 }
 
 /**

@@ -9,7 +9,8 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { transcribeBlob, transcribeBlobAsync, suportaCallback } from "@/lib/media/transcribe";
 import { assinarVideo } from "@/lib/media/callback-token";
-import { buildKeyterms } from "@/lib/media/keyterms";
+import { buildKeyterms, MAX_KEYTERMS } from "@/lib/media/keyterms";
+import { parseTermos } from "@/lib/media/termos";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 
 export async function POST(
@@ -32,6 +33,7 @@ export async function POST(
       project: {
         select: {
           name: true,
+          videoTerms: true,
           // O contexto de marca é onde vivem os nomes próprios do cliente, que
           // são o que o keyterm consegue proteger.
           contexts: {
@@ -78,10 +80,16 @@ export async function POST(
   }
 
   try {
-    const keyterms = buildKeyterms(
-      video.project.name,
-      video.project.contexts[0]?.compiled
-    );
+    // Os termos que o CLIENTE cadastrou vêm primeiro: são o que ele sabe que
+    // a transcrição erra. O que sobrar do orçamento de cinco vai para os nomes
+    // deduzidos do contexto de marca.
+    const doCliente = parseTermos(video.project.videoTerms);
+    const keyterms = [
+      ...doCliente,
+      ...buildKeyterms(video.project.name, video.project.contexts[0]?.compiled).filter(
+        (t) => !doCliente.some((d) => d.toLowerCase() === t.toLowerCase())
+      ),
+    ].slice(0, MAX_KEYTERMS);
     // Assíncrono quando dá, direto quando não dá.
     //
     // No modo direto a função segura a requisição enquanto o áudio inteiro

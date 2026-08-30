@@ -131,6 +131,12 @@ model Project {
   /// assinatura propria ou faixa autoral.
   videoMusicUrl  String?  @db.Text
   videoMusicName String?
+  /// Termos do negocio do cliente que a transcricao costuma errar (nomes
+  /// proprios, siglas: "Areticon", "SaaS"). Texto separado por virgula, que o
+  /// cliente edita na tela de video. Pedido do Bruno em 30/08, depois de a
+  /// legenda escrever o nome da empresa dele errado. Alimenta o keyterm da
+  /// Deepgram na transcricao nova e a correcao deterministica das palavras.
+  videoTerms     String?  @db.Text
   postFrequency  String?
   timezone       String   @default("America/Sao_Paulo")
   createdAt      DateTime @default(now())

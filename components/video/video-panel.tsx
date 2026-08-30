@@ -172,7 +172,15 @@ export function VideoPanel({
     // levar minutos, e antes o botão ficava girando o tempo todo sem contar
     // nada. A resposta do POST ainda é lida, mas só para mostrar erro imediato.
     const disparo = fetch(`/api/videos/${videoId}/${rota}`, { method: "POST" });
-    setTimeout(consultar, 400);
+    // Consultas escalonadas, e não uma só: a rota leva mais de 400 ms para
+    // marcar o estado quando a função está fria (autenticação, banco), e a
+    // consulta única a 400 ms chegava antes. Como o ritmo de consulta só liga
+    // quando algum vídeo está trabalhando, ninguém perguntava de novo até a
+    // rota inteira responder, que no corte é depois da limpeza de fala, minutos
+    // depois. Foi o "demorou, mas depois apareceu" do teste de 30/08.
+    for (const ms of [400, 1500, 3000, 6000, 10000, 15000, 25000]) {
+      setTimeout(consultar, ms);
+    }
 
     try {
       const r = await disparo;

@@ -54,7 +54,7 @@ export function EscolherMusica({
       />
       <div
         className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-5"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
       >
         <div className="mb-1 flex items-start justify-between gap-3">
           <h3 className="text-lg font-black" style={{ color: "var(--text-primary)" }}>

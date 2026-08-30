@@ -1,3 +1,4 @@
+import { aplicarTermos, parseTermos } from "@/lib/media/termos";
 import type { Trecho } from "@/lib/media/select-clips";
 import type { Word } from "@/lib/media/transcribe";
 import {
@@ -74,6 +75,8 @@ export type VideoParaCortar = {
   estilo: string | null;
   /** A trilha que o cliente subiu no projeto. Nula, os cortes saem sem música. */
   musicaUrl?: string | null;
+  /** Os termos do negócio (Project.videoTerms), para a legenda escrever certo. */
+  termos?: string | null;
 };
 
 export type ResumoDoPedido = {
@@ -92,7 +95,11 @@ export async function montarPedidoDeCorte(
   video: VideoParaCortar,
   opcoes: { appUrl: string }
 ): Promise<{ corpo: string; resumo: ResumoDoPedido }> {
-  const { palavras, trechos } = video;
+  const { trechos } = video;
+  // Os termos do cliente entram aqui também, e não só na transcrição nova:
+  // assim uma gravação já transcrita sai com a legenda certa no próximo corte,
+  // sem pagar transcrição de novo.
+  const palavras = aplicarTermos(video.palavras, parseTermos(video.termos));
   const estilo = estiloDoProjeto(video.estilo);
 
   const pausas = detectarPausas(palavras, video.durationSec);

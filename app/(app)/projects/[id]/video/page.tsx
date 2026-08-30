@@ -16,7 +16,7 @@ export default async function VideoPage({
   const { id } = await params;
   const project = await prisma.project.findFirst({
     where: { id, userId },
-    select: { id: true, name: true, videoStyle: true, videoMusicName: true },
+    select: { id: true, name: true, videoStyle: true, videoMusicName: true, videoTerms: true },
   });
   if (!project) notFound();
 
@@ -64,6 +64,7 @@ export default async function VideoPage({
           projectId={project.id}
           inicial={project.videoStyle}
           musicaInicial={project.videoMusicName}
+          termosIniciais={project.videoTerms}
         />
       </div>
       <VideoPanel

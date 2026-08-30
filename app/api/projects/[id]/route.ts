@@ -74,6 +74,8 @@ export async function PATCH(
     // A trilha dos cortes: o espelho do onUploadCompleted, porque em
     // desenvolvimento o storage nao alcanca o localhost.
     "videoMusicUrl", "videoMusicName",
+    // Os termos do negocio que a transcricao precisa acertar (30/08).
+    "videoTerms",
   ] as const;
   type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
