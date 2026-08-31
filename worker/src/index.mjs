@@ -669,6 +669,28 @@ async function processar(trabalho) {
       marca(`trecho ${t.indice} entregue`);
     }
 
+    // OS CORTES VAO PARA O CLIENTE AGORA, sem esperar o completo.
+    //
+    // Medido em 01/09 no video real: cortes prontos aos 211s, completo aos
+    // 1047s. O cliente esperava 14 minutos por um arquivo que nao bloqueia
+    // nada do que ele quer fazer (revisar e publicar cortes). O aviso parcial
+    // destrava o fluxo no app; o aviso final, com o completo, chega quando
+    // chegar e se anexa sozinho ao quadro.
+    try {
+      await avisar(trabalho, {
+        ok: true,
+        parcial: true,
+        trechos: resultados.trechos,
+        capaFonte: resultados.capaFonte,
+        avisoDeQualidade: resultados.avisoDeQualidade,
+        erros: resultados.erros,
+        duracaoSec: Math.round(info.duracaoSec),
+      });
+      marca("cortes entregues ao app");
+    } catch (e) {
+      console.warn(`[${trabalho.videoJobId}] aviso parcial falhou: ${e?.message ?? e}`);
+    }
+
     try {
       const completo = join(pasta, "completo.mp4");
 

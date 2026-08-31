@@ -297,7 +297,12 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   }
 
   args.push(
-    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    // "faster", e nao "medium": medido em 01/09 no video real de 16 min em
+    // 1440p, o medium levou 836 SEGUNDOS, que era 80% do tempo total do
+    // worker e a espera que o Bruno reprovou. O faster corta isso em 2 a 3
+    // vezes; em crf 18 a diferenca visual e desprezivel, e nao e promessa:
+    // a fidelidade SSIM ja e medida logo abaixo e vai no resultado.
+    "-c:v", "libx264", "-preset", "faster", "-crf", "18",
     "-pix_fmt", "yuv420p"
   );
 

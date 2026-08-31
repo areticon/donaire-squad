@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
+import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
 
 /**
  * O worker avisa que terminou de cortar.
@@ -47,13 +48,34 @@ export async function POST(
 
   const video = await prisma.videoJob.findUnique({
     where: { id },
-    select: { id: true, status: true, clips: true },
+    select: { id: true, status: true, clips: true, completoUrl: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
-  // Idempotência: o worker repete o aviso se não receber resposta. Sem isto, a
-  // repetição sobrescreveria cortes que o cliente já pode ter aprovado.
+  // O COMPLETO ATRASADO: desde 01/09 o worker avisa em duas fases (os cortes
+  // na hora, o completo quando terminar de codificar). Se o vídeo já saiu de
+  // "cutting" pelo aviso parcial, este segundo aviso só anexa o completo e o
+  // põe no quadro; nada mais é tocado, então corte aprovado não é sobrescrito.
   if (video.status !== "cutting") {
+    let atrasado: { completo?: { url: string; bytes: number } | null } = {};
+    try {
+      atrasado = JSON.parse(corpoCru);
+    } catch {
+      return NextResponse.json({ ok: false, error: "Corpo não é JSON" });
+    }
+    if (atrasado.completo?.url && !video.completoUrl) {
+      await prisma.videoJob.update({
+        where: { id },
+        data: {
+          completoUrl: atrasado.completo.url,
+          completoBytes: atrasado.completo.bytes ? BigInt(atrasado.completo.bytes) : null,
+        },
+      });
+      await anexarCompletoAoQuadro(id).catch((e) =>
+        console.error(`[cortar-callback][${id}] completo no quadro falhou:`, e)
+      );
+      return NextResponse.json({ ok: true, completoAnexado: true });
+    }
     return NextResponse.json({ ok: true, ignorado: `status ${video.status}` });
   }
 

@@ -6256,3 +6256,41 @@ destrava o selecting mudo do video atual; com a pagina aberta ela vira
 failed e o piloto tenta de novo ja no deploy novo.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 72): a primeira medicao por fase, e os cortes que chegam na hora
+
+A instrumentacao da parte 71 pagou na primeira rodada. O video real de 16 min
+(1440p), medido no worker:
+
+| fase | tempo acumulado |
+|---|---|
+| fonte baixada | 20s |
+| enquadramento pronto | 46s |
+| trecho 0 entregue | 159s |
+| trecho 1 entregue | 211s |
+| completo recodificado | 1047s |
+
+**O completo era 80% do tempo** (836s de codificacao no preset medium), e o
+cliente esperava 14 minutos por um arquivo que nao bloqueia nada do que ele
+quer fazer (revisar e publicar cortes). Dois consertos, publicados:
+
+1. **Aviso em DUAS FASES**: o worker manda os cortes assim que ficam prontos
+   (aviso parcial; o app poe o video em "cut" e o piloto segue para capas,
+   redacao e quadro), e o completo vai num segundo aviso quando terminar. O
+   callback aceita o completo atrasado: anexa completoUrl e poe o card no
+   quadro via `lib/media/completo-no-quadro.ts` (lib nova, usada tambem pelo
+   agendamento, que perdeu o bloco inline). Corte aprovado nunca e tocado
+   pelo segundo aviso.
+2. **Preset do completo: medium para faster** (2 a 3x mais rapido em crf 18;
+   a fidelidade nao e promessa, o worker JA mede SSIM e manda no resultado).
+
+Expectativa nova, com os numeros de hoje: cortes na tela em ~4 min, quadro
+completo em ~6-7 min, completo do YouTube chegando sozinho ~5 min depois.
+
+Verificado tambem nesta rodada: legenda com corpo uniforme (quadros
+extraidos), enquadramento estavel, limpeza com os "ne" (147 remocoes, 107s), e
+o corte redespachado por mim depois que o deploy do worker matou o trabalho
+em andamento (licao: deploy de worker espera fila vazia; o redespacho usou o
+scripts/tmp/rodar-corte.mts, que monta o pedido com o codigo de producao).
+
+*Atualizado em 01/09/2026 por Claude Code.*
