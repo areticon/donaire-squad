@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
-import { get } from "@vercel/blob";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 
@@ -73,27 +72,60 @@ export async function GET(
 
   if (!url) return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
 
-  const blob = await get(url, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
+  const extensao = tipo === "capa" || tipo === "capa-arte" || tipo === "capa-fonte" ? "jpg" : "mp4";
+
+  // Mídia PÚBLICA (padrão para o material produzido desde 01/09): o player
+  // fala direto com o CDN do storage, que entrega Range, cache e buffering de
+  // verdade. Proxiar cada byte por uma função serverless foi o que fez os
+  // players "começar e travar" (veredito do Bruno em 01/09).
+  if (url.includes(".public.blob.vercel-storage.com")) {
+    if (baixar) {
+      // O download nomeado continua passando por aqui, porque o CDN não sabe
+      // o nome amigável do arquivo.
+      const res = await fetch(url);
+      if (!res.ok) return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
+      return new NextResponse(res.body, {
+        headers: {
+          "Content-Type": res.headers.get("content-type") ?? "application/octet-stream",
+          ...(res.headers.get("content-length")
+            ? { "Content-Length": res.headers.get("content-length")! }
+            : {}),
+          "Content-Disposition": `attachment; filename="${nome}.${extensao}"`,
+        },
+      });
+    }
+    return NextResponse.redirect(url, 302);
+  }
+
+  // Acervo antigo, privado: proxy com suporte REAL a Range. A versão anterior
+  // anunciava Accept-Ranges e IGNORAVA o header: toda busca do player voltava
+  // ao byte zero, que é exatamente o "começa e trava".
+  const range = req.headers.get("range");
+  const resposta = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`,
+      ...(range ? { range } : {}),
+    },
   });
-  if (!blob || blob.statusCode !== 200) {
+  if (resposta.status !== 200 && resposta.status !== 206) {
     return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
   }
 
-  const extensao = tipo === "capa" || tipo === "capa-arte" || tipo === "capa-fonte" ? "jpg" : "mp4";
+  const cabecalhos = new Headers();
+  for (const h of ["content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"]) {
+    const v = resposta.headers.get(h);
+    if (v) cabecalhos.set(h, v);
+  }
+  if (!cabecalhos.has("accept-ranges")) cabecalhos.set("accept-ranges", "bytes");
+  // O arquivo é imutável (cada versão ganha sufixo novo), então cache privado
+  // longo é seguro; o no-store anterior obrigava a rebaixar tudo a cada play.
+  cabecalhos.set("cache-control", "private, max-age=3600");
+  if (baixar) {
+    cabecalhos.set("content-disposition", `attachment; filename="${nome}.${extensao}"`);
+  }
 
-  return new NextResponse(blob.stream, {
-    headers: {
-      "Content-Type": blob.blob.contentType,
-      "Content-Length": String(blob.blob.size),
-      "Cache-Control": "private, no-store",
-      // Sem isto o player não deixa arrastar a barra sem baixar tudo, o que num
-      // arquivo de centenas de megabytes torna a prévia inútil.
-      "Accept-Ranges": "bytes",
-      ...(baixar
-        ? { "Content-Disposition": `attachment; filename="${nome}.${extensao}"` }
-        : {}),
-    },
+  return new NextResponse(resposta.body, {
+    status: resposta.status,
+    headers: cabecalhos,
   });
 }

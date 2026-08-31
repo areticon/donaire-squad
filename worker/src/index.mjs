@@ -122,7 +122,12 @@ async function subir(caminho, chave, contentType) {
   const limite = setTimeout(() => controle.abort(), prazoDeEnvio(size));
   try {
     const { url } = await put(chave, createReadStream(caminho), {
-      access: "private",
+      // Publico de proposito desde 01/09: o player fala direto com o CDN
+      // (Range, cache, buffering). A protecao e a URL nao adivinhavel, o
+      // padrao do mercado para midia de cliente. O ARQUIVO ORIGINAL do
+      // cliente continua privado; isto aqui e o material produzido para
+      // publicar.
+      access: "public",
       token: BLOB_TOKEN,
       contentType,
       addRandomSuffix: true,
@@ -140,7 +145,6 @@ async function subir(caminho, chave, contentType) {
       );
     }
     throw e;
-    marca("tudo pronto");
   } finally {
     clearTimeout(limite);
   }
@@ -763,6 +767,7 @@ async function processar(trabalho) {
     }
 
     resultados.duracaoSec = Math.round(info.duracaoSec);
+    marca("tudo pronto");
     return resultados;
   } finally {
     // O disco do contêiner é compartilhado entre trabalhos. Sem esta limpeza,

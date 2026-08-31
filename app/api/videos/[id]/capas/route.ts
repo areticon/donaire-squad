@@ -129,7 +129,7 @@ export async function POST(
                 `cortes/${video.id}/capa-arte-${i}.jpg`,
                 dataUrlToBuffer(arte),
                 {
-                  access: "private",
+                  access: "public",
                   token: process.env.BLOB_READ_WRITE_TOKEN,
                   contentType: "image/jpeg",
                   addRandomSuffix: true,

@@ -157,7 +157,7 @@ export async function refazerCapa(
     `cortes/${video.id}/capa-arte-${indice}.jpg`,
     dataUrlToBuffer(arte),
     {
-      access: "private",
+      access: "public",
       token: process.env.BLOB_READ_WRITE_TOKEN,
       contentType: "image/jpeg",
       addRandomSuffix: true,
