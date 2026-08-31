@@ -137,7 +137,11 @@ export function VideoPanel({
       // do serviço (aconteceu em 31/08 com um arquivo que tinha passado uma
       // hora antes), e obrigar o cliente a achar o botão é empurrar para ele
       // um problema nosso. O teto de tentativas continua valendo.
-      if (v.status === "failed" && v.attempts < MAX_TENTATIVAS) {
+      // So a PRIMEIRA falha ganha retry automatico: erro sistemico novo
+      // queimava as tres tentativas em minutos e aposentava o botao
+      // (aconteceu em 01/09 com o store recusando upload). A segunda falha
+      // fica para o clique humano, com o erro na tela.
+      if (v.status === "failed" && v.attempts < 2) {
         const chaveRetry = `${v.id}:failed:${v.attempts}`;
         if (!disparados.current.has(chaveRetry)) {
           disparados.current.add(chaveRetry);

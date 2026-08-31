@@ -6356,3 +6356,31 @@ no PROXIMO video processado, porque os arquivos existentes continuam
 privados e seguem pelo proxy com Range. O juiz e o proximo play do Bruno.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 75): o publico que o store nao aceita, e o retry que queimou o botao
+
+A leva do streaming quebrou os uploads do worker: o STORE de blob e
+configurado como privado-only, e `access: "public"` derruba o put com
+"Cannot use public access on a private store". Pior: o retry automatico
+re-despachou o corte em cima do mesmo erro sistemico e queimou as 3
+tentativas em minutos, aposentando o botao ("Fale com o suporte") no video
+do Bruno. Ele resumiu: "parece que estamos piorando".
+
+Consertos:
+- **Revertido o access public** (worker, capas, refazer): upload volta a
+  funcionar. O ganho de player FICA com o proxy de Range + cache da rota de
+  midia, que esta correto para blob privado.
+- **Retry automatico so na PRIMEIRA falha** (attempts < 2): a segunda espera
+  o clique humano, com o erro na tela. Tres tiros automaticos no mesmo alvo
+  sistemico nao e resiliencia, e fuzilamento do proprio limite.
+- O video preso (cmthufrkz) foi curado por fora: attempts zerado e corte
+  redespachado com o codigo de producao apos o deploy do worker revertido.
+- **Card de infra**: migrar a midia PRODUZIDA para um store publico separado
+  (URL nao adivinhavel) e o caminho para CDN de verdade; exige criar o store
+  no painel da Vercel e um segundo token, decisao com o Bruno.
+
+Licao dupla: mudanca de infra de storage se prova com UM upload antes do
+deploy; e retry automatico precisa distinguir falha transitoria de
+sistemica, ou vira acelerador de estrago.
+
+*Atualizado em 01/09/2026 por Claude Code.*

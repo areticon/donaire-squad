@@ -122,12 +122,13 @@ async function subir(caminho, chave, contentType) {
   const limite = setTimeout(() => controle.abort(), prazoDeEnvio(size));
   try {
     const { url } = await put(chave, createReadStream(caminho), {
-      // Publico de proposito desde 01/09: o player fala direto com o CDN
-      // (Range, cache, buffering). A protecao e a URL nao adivinhavel, o
-      // padrao do mercado para midia de cliente. O ARQUIVO ORIGINAL do
-      // cliente continua privado; isto aqui e o material produzido para
-      // publicar.
-      access: "public",
+      // PRIVADO, e não por escolha de produto: o STORE é configurado como
+      // privado-only, e access "public" derruba o upload com "Cannot use
+      // public access on a private store" (aconteceu em produção em 01/09,
+      // 3 tentativas queimadas). O streaming decente vem do proxy com Range
+      // da rota de mídia; migrar para um store público de URL não adivinhável
+      // é decisão de infra registrada em card.
+      access: "private",
       token: BLOB_TOKEN,
       contentType,
       addRandomSuffix: true,
