@@ -290,9 +290,10 @@ export function EstiloDoProjeto({
           Termos do seu negócio
         </label>
         <p className="mb-2 text-xs" style={{ color: "var(--text-muted)" }}>
-          Nomes e siglas que a legenda costuma escrever errado: o nome da sua
-          empresa, produtos, termos técnicos. Separe por vírgula. A transcrição
-          passa a reconhecê-los e a legenda os escreve como você escreveu aqui.
+          Escreva alguns termos da sua área que a transcrição costuma errar: o
+          nome da sua empresa, dos seus produtos, siglas e jargões. Separe por
+          vírgula. A legenda passa a escrevê-los exatamente como você escreveu
+          aqui.
         </p>
         <textarea
           id={`termos-${projectId}`}
@@ -300,7 +301,7 @@ export function EstiloDoProjeto({
           onChange={(e) => setTermos(e.target.value)}
           onBlur={() => void salvarTermos()}
           rows={2}
-          placeholder="Ex.: Areticon, SaaS, Bem Natura, curtailment"
+          placeholder="Ex.: o nome da sua empresa, sua sigla do setor, seu produto"
           className="w-full resize-y rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
           style={{
             borderColor: "var(--border)",

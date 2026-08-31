@@ -52,8 +52,16 @@ que o dobro do custo fixo atual de R$ 116.
    intermediário substituível.
 2. **Micro-SaaS lucrativo.** Solo, sem investimento, lucro desde cedo. Meta: 30
    pagantes em 90 dias.
-3. **ICP: quem vende conhecimento.** Canal dos primeiros clientes: rede Recrie,
-   filtrada. O Recrie é canal, não nicho.
+3. **ICP (revisto em 25/08): quem JÁ GRAVA fala por outro motivo.** O filtro
+   deixou de ser desejo ("quem quer postar") e virou comportamento, porque a
+   matéria-prima do produto passou a ser fala gravada. Quem não grava precisaria
+   criar um hábito novo, e hábito é o que faltou a ele quando parou de postar.
+   Ordem dos filtros: matéria-prima existente, depois dor visível (postou e
+   sumiu), depois valor de um cliente dele. E o melhor comprador é quem tem a
+   dor **resolvida cara**, ou seja já paga R$ 1.200 a R$ 3.500 por mês a um
+   social media: orçamento provado em vez de orçamento a criar. Três personas
+   com TAM e CPC medidos em `ESTRATEGIA.md`. Canal dos primeiros clientes: rede
+   Recrie, filtrada. O Recrie é canal, não nicho.
 4. **Preços:** Pro R$ 149 (entrada e herói, 7 dias grátis com cartão),
    Business R$ 249, Studio R$ 449. Os três têm **plano anual a 10
    mensalidades** (R$ 1.490, R$ 2.490 e R$ 4.490), e o card mostra o mensal
@@ -61,6 +69,13 @@ que o dobro do custo fixo atual de R$ 116.
    pelo desconto: põe a margem no caixa antes de a fatura do anúncio fechar.
    Anual à vista não tem multa de fidelidade, e não deve ter: o caixa já
    entrou, e cobrar sobre valor pago é cobrança dupla (art. 51 do CDC).
+   **Revisado e MANTIDO em 25/08**, contra as alternativas de R$ 397, R$ 697 e
+   R$ 997. A decisão obriga três coisas: tráfego pago só na persona do consultor
+   e só vendendo o anual (teto de CPC R$ 6,89); a conversão da landing sai de
+   melhoria e vira parede mestra, porque a conta só fecha em 3,5% de visita para
+   cadastro, que é 60% acima do benchmark; e a oferta de fundador não tem
+   desconto (R$ 1.490 é o preço de lista), então a escassez vem da trava
+   vitalícia e do atendimento pessoal, nunca de preço.
 5. **O vídeo é o produto, não um formato entre outros** (decisão de 22/08, que
    promove a decisão anterior). O cliente grava um vídeo e o squad edita e
    transforma em conteúdo para todas as redes. Consequências práticas: a

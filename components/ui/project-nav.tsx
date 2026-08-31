@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Settings, Radio, Bot, PencilLine, BarChart2, BrainCircuit, Video } from "lucide-react";
+import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ProjectNav({ projectId, isActive }: { projectId: string; isActive: boolean }) {
@@ -26,12 +26,6 @@ export function ProjectNav({ projectId, isActive }: { projectId: string; isActiv
       label: "Gestor de Conteúdo",
       icon: Radio,
       show: isActive,
-    },
-    {
-      href: `/projects/${projectId}/agents`,
-      label: "Agentes",
-      icon: Bot,
-      show: true,
     },
     {
       href: `/projects/${projectId}/settings`,

@@ -5986,3 +5986,40 @@ provado, migration aplicada. App em `0b5c96b` (master, Vercel) e worker via
   gravacao em tela cheia continua sendo o que muda a nitidez.
 
 *Atualizado em 30/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 65): o segundo teste redesenha o fluxo, e a tela de agentes sai
+
+O Bruno rodou o segundo teste de ponta a ponta e trouxe rumo de produto, nao
+so defeito. O que ja virou codigo nesta sessao:
+
+- **A etapa "Time de Agentes" saiu do assistente de setup** (decisao dele: o
+  time e sempre completo e igual para todo projeto, a tela era uma escolha que
+  nao escolhia nada e ainda listava agentes desatualizados, sem o Vitor
+  Video). A pagina `/projects/[id]/agents` e o `AgentsConfig` foram removidos,
+  junto do item "Agentes" na navegacao. Os agentes continuam criados sozinhos
+  na ativacao (DEFAULT_AGENTS no PATCH do projeto). O assistente caiu de 7
+  para 6 etapas, com o texto derivando de STEPS.length.
+- **O campo "Termos do seu negocio" ficou generico**: o placeholder trazia os
+  termos do PROPRIO Bruno (Areticon, Bem Natura) como exemplo para qualquer
+  cliente. Reprovado por ele; agora explica "termos da sua area" sem citar
+  ninguem.
+
+### O rumo que ele definiu (registrado, ainda nao construido)
+
+1. **Inverter a logica quando o conteudo nasce de video**: depois de conectar
+   as redes, a PRIMEIRA etapa e subir o video; a IA deriva tema, voz e nicho
+   DO CONTEUDO, e o cliente confirma. Hoje o assistente pede nicho e voz antes,
+   e foi isso que produziu a colisao de 31/08 (gravacao pastoral num perfil
+   compilado para negocio, selecao rejeitando tudo).
+2. **Talvez so campanhas, sem projeto**: cliente com dois assuntos (o caso
+   dele) cria uma campanha por tema na mesma semana e escolhe por campanha
+   quais perfis conectados publicam. Em avaliacao de engenharia: a conexao
+   OAuth nao pode viver na campanha (reconectar rede a cada campanha e
+   inviavel); o desenho que sustenta isso e conexao no nivel da CONTA e
+   campanha escolhendo destinos. Mexe em migracao do banco compartilhado e no
+   roteiro do App Review da Meta, entao o conselho registrado e depois da
+   validacao de lancamento.
+3. Zero trecho aproveitavel nunca pode ser beco sem saida (parte da mesma
+   frente: tema declarado no upload, "cortar mesmo assim" na tela).
+
+*Atualizado em 31/08/2026 por Claude Code.*

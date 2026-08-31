@@ -10,7 +10,6 @@ import toast from "react-hot-toast";
 import {
   Lightbulb,
   Mic2,
-  Users,
   Palette,
   Share2,
   Calendar,
@@ -54,7 +53,10 @@ const STEPS = [
   // que não conecta com o universo de quem vai publicar.
   { id: 1, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
   { id: 2, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
-  { id: 3, icon: Users, label: "Time de Agentes", color: "text-blue-400" },
+  // A etapa "Time de Agentes" saiu em 31/08, por decisão do Bruno: o time é
+  // sempre completo e igual para todo projeto, então a tela era uma escolha
+  // que não escolhia nada, e ainda mostrava uma lista desatualizada (sem o
+  // Vitor Vídeo). Os agentes continuam criados sozinhos na ativação.
   { id: 4, icon: Palette, label: "Design", color: "text-pink-400" },
   { id: 5, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
   { id: 6, icon: Rocket, label: "Ativação", color: "text-orange-400" },
@@ -285,7 +287,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         <h1 className="text-3xl font-black text-[var(--text-primary)] mb-1">
           {project.name}
         </h1>
-        <p className="text-[var(--text-muted)]">Configure seu projeto em 7 etapas</p>
+        <p className="text-[var(--text-muted)]">{`Configure seu projeto em ${STEPS.length} etapas`}</p>
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between text-sm">
@@ -340,10 +342,9 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           {currentStep === 0 && <StepNetworks projectId={project.id} />}
           {currentStep === 1 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
           {currentStep === 2 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
-          {currentStep === 3 && <StepAgents form={form} set={set} askAI={askAI} />}
-          {currentStep === 4 && <StepDesign form={form} set={set} askAI={askAI} />}
-          {currentStep === 5 && <StepSchedule form={form} set={set} askAI={askAI} />}
-          {currentStep === 6 && <StepActivation project={project} form={form} />}
+          {currentStep === 3 && <StepDesign form={form} set={set} askAI={askAI} />}
+          {currentStep === 4 && <StepSchedule form={form} set={set} askAI={askAI} />}
+          {currentStep === 5 && <StepActivation project={project} form={form} />}
 
           {/* AI Assistant reply */}
           {(aiLoading || aiReply) && (
@@ -598,74 +599,6 @@ function StepVoice({
         projectId={projectId}
         pronto={Boolean(form.voice && form.voice.trim().length > 20 && form.niche)}
       />
-    </div>
-  );
-}
-
-function StepAgents({
-  form,
-  set: _set,
-  askAI,
-}: {
-  form: Record<string, string>;
-  set: (f: string, v: string) => void;
-  askAI: (msg: string) => void;
-}) {
-  const DEFAULT_AGENTS = [
-    { name: "Roberto Radar", role: "Pesquisador", desc: "Pesquisa tendências e dados relevantes para o nicho", active: true },
-    { name: "Lucas LinkedIn", role: "Redator LinkedIn", desc: "Escreve posts virais para LinkedIn com seu tom de voz", active: true },
-    { name: "Tiago Twitter", role: "Redator X", desc: "Cria threads e posts para X/Twitter", active: true },
-    { name: "Daniela Design", role: "Visual Designer", desc: "Gera infográficos com Gemini AI", active: true },
-    { name: "Paulo Publicador", role: "Publicador", desc: "Distribui conteúdo em todas as redes", active: true },
-    { name: "Vera Veredito", role: "Revisora", desc: "Revisa e aprova o conteúdo antes da publicação", active: true },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Time de Agentes — Sua equipe de IA
-        </h2>
-        <p className="text-sm text-[var(--text-muted)]">
-          Ative os agentes que vão trabalhar neste projeto. Você pode configurar cada um em detalhes depois.
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        {DEFAULT_AGENTS.map((agent) => (
-          <div
-            key={agent.name}
-            className="flex items-center gap-4 p-4 rounded-xl border"
-            style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
-          >
-            <div className="w-10 h-10 bg-orange-500/10 rounded-full flex items-center justify-center border border-orange-500/20 shrink-0">
-              <span className="text-orange-400 text-xs font-bold">
-                {agent.name.split(" ").map((n) => n[0]).join("")}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--text-primary)]">{agent.name}</p>
-              <p className="text-xs text-[var(--text-muted)]">
-                {agent.role} · {agent.desc}
-              </p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-          </div>
-        ))}
-      </div>
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() =>
-          askAI(
-            `Para um projeto no nicho "${form.niche}", qual seria a configuração ideal de agentes de IA para redes sociais? Quais personas, habilidades e fluxo de trabalho recomenda?`
-          )
-        }
-      >
-        <Bot className="w-3.5 h-3.5" />
-        Recomendar configuração ideal
-      </Button>
     </div>
   );
 }

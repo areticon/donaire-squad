@@ -155,3 +155,100 @@ Prompt caching no pipeline é pré-requisito dessa margem.
 3. Rodar 1 campanha completa de teste e medir COGS real.
 4. Recalibrar tabela de créditos com os números medidos.
 5. Revisar planos/preços com a margem real na mão.
+
+---
+
+## Decisões de 25/08/2026: ICP corrigido, personas e preço confirmado
+
+> Esta seção manda sobre as seções de ICP e de canais acima, que foram escritas
+> em 13/08, antes de o vídeo virar o produto. A nota completa vive no Notion:
+> "ICP, personas e a conta do tráfego pago", em `10-profissional/demandou`.
+
+### O ICP mudou de desejo para comportamento
+
+O ICP antigo ("especialistas B2B construindo marca pessoal no LinkedIn", depois
+"quem vende conhecimento e já tenta postar e sofre") foi desenhado quando o
+produto escrevia post a partir de um tema. Desde 22/08 a matéria-prima é fala
+gravada, e o filtro mudou de lugar.
+
+Os três filtros, em ordem de peso:
+
+1. **Matéria-prima**: já produz fala gravada por outro motivo (aula, reunião,
+   webinar, palestra, treinamento, sermão). Quem não grava precisaria criar um
+   hábito novo para usar a plataforma, e hábito é exatamente o que faltou a ele
+   quando parou de postar. Este filtro é novo e virou o mais importante.
+2. **Dor**: já tentou publicar e parou. Observável no LinkedIn.
+3. **Valor de um cliente dele**: define o teto de preço.
+
+### A dor resolvida cara vale mais que a dor não resolvida
+
+Correção do Bruno em 25/08: os conhecidos que têm a dor resolveram contratando
+um social media, a R$ 1.200 a R$ 3.500 por mês. Esse comprador tem orçamento
+provado, fatura recorrente e a decisão de que o problema vale dinheiro já
+tomada. A venda deixa de precisar vencer inércia e passa a precisar vencer um
+fornecedor, que é muito mais barato.
+
+**A Demandou substitui a produção, não o social media inteiro.** Não responde
+DM, não faz stories de bastidor, não faz community management e não senta na
+reunião mensal. Vender "demite seu social media" gera churn no mês 2.
+
+### As três personas (com CPC medido por cluster de palavra)
+
+| Persona | TAM medido | CPC | CAC |
+|---|---|---|---|
+| Consultor de gestão industrial | 113.705 consultorias CNAE 7020-4/00 | R$ 6 | R$ 620 |
+| Contador consultivo | 101.228 organizações contábeis (CFC) | R$ 12 | R$ 1.240 |
+| Advogado empresarial | 1,3 mi de advogados, ~15% sócios | R$ 15 | R$ 1.550 |
+
+**Regra de bolso: CAC = CPC × 103.** Com trial de cartão exigido, visita vira
+pagante em 0,97% (2,2% de visita para cadastro × 44% de cadastro para pagante,
+os dois medidos em benchmark 2026).
+
+Conselho de classe (OAB, CFP, CFM) não é problema da Demandou: a plataforma é
+ferramenta de automação e quem responde pelo conteúdo é o usuário, que aprova
+cada publicação. As cláusulas já existem em `/terms`, em duas passagens.
+
+### Preço: revisado e MANTIDO em 25/08
+
+Pro R$ 149 / R$ 1.490 anual. Business R$ 249 / R$ 2.490. Studio R$ 449 /
+R$ 4.490. A análise comparou com R$ 397, R$ 697 e R$ 997 e recomendava R$ 397;
+o Bruno decidiu manter, com os números na mesa.
+
+O que a decisão obriga a ser verdade, e vira trabalho:
+
+| Persona | LTV/CAC no mensal | LTV/CAC no anual |
+|---|---|---|
+| Consultor | 1,44, não fecha | 3,44, fecha no limite |
+| Contador | 0,72, não fecha | 1,72, não fecha |
+| Advogado | 0,58, não fecha | 1,37, não fecha |
+
+1. **Tráfego pago existe para o consultor apenas, e só vendendo o anual.**
+   Contador e advogado vão para orgânico, rede e indicação, onde o CAC é zero.
+2. **A conversão da landing virou parede mestra, não melhoria.** No benchmark
+   de 2,2% de visita para cadastro nem o consultor tem folga; a conta só ganha
+   ar em 3,5%, que é 60% acima do benchmark. Isso promove capturar e-mail na
+   demo e instrumentar o funil de backlog para pré-requisito de viabilidade.
+3. **Teto de CPC no preço atual: R$ 6,89 no anual, R$ 2,89 no mensal**, na
+   conversão de benchmark. Em 3,5% o teto anual sobe para R$ 10,93.
+4. **A oferta de fundador não tem desconto**, porque R$ 1.490 é o próprio preço
+   de lista. A escassez precisa vir da trava vitalícia e do atendimento pessoal
+   do Bruno enquanto forem dez, nunca de preço.
+5. **O volante de caixa gira perto do equilíbrio:** uma venda anual põe ~R$ 1.330
+   de caixa no dia 1 e R$ 812 de margem no ano, contra CAC de R$ 620, ou seja
+   financia 1,3 aquisições. Os dez primeiros precisam vir de rede, a CAC zero.
+
+### O teste de tráfego pago mudou de escopo e de critério
+
+- Roda **numa persona só**, a do consultor, e vende **só o anual**.
+- Aprova com **CPC abaixo de R$ 6,89 E conversão de visita para cadastro acima
+  de 3,5%**.
+- **R$ 2.000 medem CPC e NÃO medem conversão.** A R$ 6 de CPC são 333 cliques e
+  ~7 cadastros, que é anedota. Medir 2,2% com confiança pede ~1.000 cliques, ou
+  seja R$ 6.000 numa persona só. Ou o orçamento sobe, ou a conversão é medida
+  com orgânico e abordagem direta, que custam zero.
+
+### Jogada parada com gatilho
+
+Vender para o social media e para a agência (o Studio já é isso, com projetos
+ilimitados): traz várias marcas por venda e divide o CAC. Reabrir no primeiro
+pedido espontâneo de agência, ou depois dos 10 pagantes da jogada principal.
