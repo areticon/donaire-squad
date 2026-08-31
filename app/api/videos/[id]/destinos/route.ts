@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { destinoPorId } from "@/lib/media/destinos";
+import { sincronizarQuadroDoVideo } from "@/lib/media/sincronizar-quadro";
 
 /**
  * Guarda o que o cliente marcou: quais cortes vão, e para onde.
@@ -58,6 +59,12 @@ export async function POST(
     where: { id },
     data: { clips: trechos as never },
   });
+
+  // As telas SE CONVERSAM: se o vídeo já foi ao quadro, cada marcação aqui
+  // cria ou remove o card correspondente lá (só pendentes; aprovado fica).
+  await sincronizarQuadroDoVideo(id).catch((e) =>
+    console.error(`[destinos][${id}] sincronizar quadro falhou:`, e)
+  );
 
   return NextResponse.json({ ok: true });
 }

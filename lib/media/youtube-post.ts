@@ -93,5 +93,21 @@ export function montarPostDeVideo(
     partes.push("", "Nesta conversa:", ...ideias.map((i) => `- ${i}`));
   }
 
+  // Hashtags determinísticas a partir dos títulos: as 5 palavras fortes mais
+  // frequentes. Pedido do Bruno em 01/09 (o card do YouTube sem tags).
+  const contagem = new Map<string, number>();
+  for (const t of trechos) {
+    for (const p of (t.titulo ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\W+/)) {
+      const w = p.toLowerCase();
+      if (w.length < 5) continue;
+      contagem.set(w, (contagem.get(w) ?? 0) + 1);
+    }
+  }
+  const tags = [...contagem.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([w]) => `#${w}`);
+  if (tags.length >= 3) partes.push("", tags.join(" "));
+
   return partes.join("\n");
 }

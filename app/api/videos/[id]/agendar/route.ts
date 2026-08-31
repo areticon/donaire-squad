@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId, DESTINO_COMPLETO } from "@/lib/media/destinos";
 import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
+import { sincronizarQuadroDoVideo } from "@/lib/media/sincronizar-quadro";
 
 /**
  * Leva os cortes aprovados para o quadro do Gestor de Conteúdo.
@@ -317,6 +318,12 @@ export async function POST(
       });
     }
   }
+
+  // A esteira (Vera e Paulo) e a reconciliação final saem da mesma lib que o
+  // salvar de destinos usa, então quadro e seleção nascem já espelhados.
+  await sincronizarQuadroDoVideo(video.id).catch((e) =>
+    console.error(`[agendar][${video.id}] sincronizar falhou:`, e)
+  );
 
   return NextResponse.json({
     runId: run.id,

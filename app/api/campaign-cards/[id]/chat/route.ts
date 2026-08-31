@@ -248,10 +248,28 @@ No explanations, no prefixes — just the prompt text.`;
     metaVideo?.videoJobId &&
     typeof metaVideo.trechoIndice === "number"
   ) {
+    // O classificador precisa saber quanto o corte DURA: "encerrar no segundo
+    // 37" é um fim absoluto, e sem a duração o modelo devolvia delta zero e o
+    // Vitor "refazia" o corte igualzinho (aconteceu no teste de 01/09).
+    let duracaoDoCorte = 0;
+    try {
+      const vj = await prisma.videoJob.findUnique({
+        where: { id: metaVideo.videoJobId },
+        select: { clips: true },
+      });
+      const clip = ((vj?.clips as Array<{ inicio: number; fim: number }> | null) ?? [])[
+        metaVideo.trechoIndice
+      ];
+      if (clip) duracaoDoCorte = Math.round(clip.fim - clip.inicio);
+    } catch {}
     const bruto = await askClaude(
       `Você classifica o pedido de um cliente sobre um CORTE DE VÍDEO.
+O corte atual dura ${duracaoDoCorte} segundos.
 Responda APENAS um JSON: {"acao":"tempo"|"capa"|"texto","inicioDelta":number,"fimDelta":number,"instrucao":string}
-- "tempo": mudar onde o corte começa ou termina. inicioDelta/fimDelta em SEGUNDOS (positivo adia, negativo antecipa; ex.: "corta os 3 primeiros segundos" vira inicioDelta 3; "termina 2s antes" vira fimDelta -2). Sem número explícito, use 2.
+- "tempo": mudar onde o corte começa ou termina. inicioDelta/fimDelta em SEGUNDOS (positivo adia, negativo antecipa).
+  Exemplos: "corta os 3 primeiros segundos" vira inicioDelta 3. "termina 2s antes" vira fimDelta -2.
+  "encerrar/terminar no segundo X" é ABSOLUTO: fimDelta = X - ${duracaoDoCorte}. "começar no segundo X": inicioDelta = X.
+  Sem número explícito, use 2. Se o pedido misturar outra coisa (legenda, capa), ainda assim trate o tempo e ignore o resto.
 - "capa": mudar a imagem de capa. Ponha o pedido resumido em "instrucao".
 - "texto": qualquer outra coisa (legenda do post, título, tom).`,
       message,
@@ -274,8 +292,12 @@ Responda APENAS um JSON: {"acao":"tempo"|"capa"|"texto","inicioDelta":number,"fi
           });
           resposta =
             `Feito: estou refazendo o corte começando em ${Math.floor(novo.inicio / 60)}:${String(Math.floor(novo.inicio % 60)).padStart(2, "0")} ` +
-            `e terminando em ${Math.floor(novo.fim / 60)}:${String(Math.floor(novo.fim % 60)).padStart(2, "0")} da gravação. ` +
-            `Fica pronto em uns 2 minutos; recarregue o card para assistir.`;
+            `e terminando em ${Math.floor(novo.fim / 60)}:${String(Math.floor(novo.fim % 60)).padStart(2, "0")} da gravação ` +
+            `(${Math.round(novo.fim - novo.inicio)}s de corte). Fica pronto em uns 2 minutos, e o card avisa quando terminar.`;
+          if (/legend|caption/i.test(message) || /legenda/i.test(message)) {
+            resposta +=
+              " Sobre a legenda: o tamanho agora é uniforme por corte; este refeito já sai assim.";
+          }
         } else {
           await refazerCapa(metaVideo.videoJobId, userId, metaVideo.trechoIndice, plano.instrucao ?? message);
           resposta = "Capa refeita com o seu ajuste. Recarregue o card para ver como ficou.";

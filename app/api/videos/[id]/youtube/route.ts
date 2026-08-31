@@ -63,7 +63,10 @@ export async function POST(
     where: {
       projectId: video.projectId,
       platform: "youtube",
-      metadata: { path: ["videoJobId"], equals: video.id },
+      AND: [
+        { metadata: { path: ["videoJobId"], equals: video.id } },
+        { metadata: { path: ["gravacaoCompleta"], equals: true } },
+      ],
     },
     select: { id: true, status: true },
   });

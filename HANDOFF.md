@@ -6400,3 +6400,37 @@ fidelidade SSIM segue medida por corte. O completo atrasado se anexou pelo
 callback novo (conferido no banco).
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 76): as telas passam a se conversar, e a esteira fecha
+
+Cinco achados do teste noturno do Bruno, todos com causa encontrada nos dados
+antes do conserto:
+
+1. **Quadro nao espelhava a selecao** (cards de corte desmarcado e de destino
+   desmarcado continuavam la): o piloto agenda com o padrao tudo-marcado e
+   mudanca posterior nao reconciliava. Entrou
+   `lib/media/sincronizar-quadro.ts`: cada clique em publicar/destino cria ou
+   remove o card e o post correspondentes (SO pendente com rascunho; aprovado
+   e publicado nunca sao tocados), chamado pelo salvar de destinos e pelo fim
+   do agendamento.
+2. **"Pedi ajuste e nada"**: o re-corte RODOU, mas com delta zero, porque o
+   classificador nao sabia a duracao do corte e "encerrar no segundo 37" e
+   fim ABSOLUTO. O prompt agora recebe a duracao e a formula; e o card ganhou
+   banner "Vitor esta refazendo" com poll de status
+   (rota `corte-status`) e recarga automatica do video ao terminar.
+3. **Completo sem thumb/descricao/tags**: o filtro de idempotencia achava
+   QUALQUER post de youtube do video, e o card do completo saiu ligado ao
+   post do Shorts do corte 0. Filtro agora exige `gravacaoCompleta`; o card
+   mostra o conteudo do post (titulo, capitulos) e a descricao ganhou
+   hashtags deterministicas dos titulos.
+4. **Icones oficiais no Gestor**: o card de corte na grade mostra o icone da
+   rede de destino, e o selo "Destino" do modal tambem.
+5. **Esteira Vera/Paulo**: todo dia com conteudo do video ganha o card da
+   Vera (previa) e do Paulo (publicacao); e o modal do Paulo ganhou a grade
+   "Publicar video agora" com YouTube, Instagram e Facebook alem de
+   LinkedIn/X, ligada a rota real de publicacao.
+
+O quadro atual do Bruno foi curado por script (cards espelhados a selecao,
+completo religado ao post proprio, Vera e Paulo criados).
+
+*Atualizado em 01/09/2026 por Claude Code.*

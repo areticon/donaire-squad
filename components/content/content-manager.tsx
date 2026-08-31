@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { RedeIcone } from "@/components/social/rede-icone";
 import toast from "react-hot-toast";
 import { PipelineLive } from "@/components/posts/pipeline-live";
 import { CampaignSetupModal, type CampaignConfig } from "@/components/posts/campaign-setup-modal";
@@ -410,6 +411,25 @@ function KanbanCard({
                 <ImageIcon className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
                 <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Clique para gerar imagem</span>
               </div>
+            ) : card.cardType === "video_clip" ? (
+              (() => {
+                const m = card.metadata as { destino?: string; destinoRotulo?: string } | null;
+                const plat = m?.destino === "youtube_shorts" || m?.destino === "youtube"
+                  ? "youtube"
+                  : m?.destino === "instagram_reels"
+                    ? "instagram"
+                    : m?.destino === "x"
+                      ? "twitter"
+                      : m?.destino ?? null;
+                return (
+                  <div className="flex items-center gap-1.5 py-1 min-w-0">
+                    {plat && <RedeIcone plataforma={plat} className="w-3.5 h-3.5 shrink-0" />}
+                    <span className="text-[10px] line-clamp-2" style={{ color: "var(--text-primary)" }}>
+                      {card.content?.slice(0, 60) ?? "Corte de vídeo"}
+                    </span>
+                  </div>
+                );
+              })()
             ) : card.mediaType === "infographic" ? (
               <div className="flex items-center gap-1 py-2">
                 <PieChart className="w-3 h-3 text-teal-400" />
@@ -866,6 +886,35 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const [postContent, setPostContent] = useState<string | null>(null);
   const [postImageUrl, setPostImageUrl] = useState<string | null>(null);
   // All platform posts for the same day (linkedin + twitter)
+  /**
+   * O re-corte em andamento, com poll. Sem isto o Vitor dizia "estou
+   * refazendo" e a tela ficava parada, que foi lido como travado (01/09).
+   */
+  const [refazendoCorte, setRefazendoCorte] = useState(false);
+  const [versaoDoCorte, setVersaoDoCorte] = useState(0);
+  const vigiarRecorte = useCallback(() => {
+    const meta = card.metadata as { videoJobId?: string; trechoIndice?: number } | null;
+    if (!meta?.videoJobId || typeof meta.trechoIndice !== "number") return;
+    setRefazendoCorte(true);
+    let vivo = true;
+    const olhar = async () => {
+      try {
+        const r = await fetch(`/api/videos/${meta.videoJobId}/corte-status?trecho=${meta.trechoIndice}`);
+        const d = await r.json();
+        if (!vivo) return;
+        if (!d.refazendo) {
+          setRefazendoCorte(false);
+          setVersaoDoCorte((v) => v + 1);
+          toast.success("Corte refeito. O vídeo do card já é o novo.");
+          return;
+        }
+      } catch {}
+      if (vivo) setTimeout(olhar, 8000);
+    };
+    setTimeout(olhar, 8000);
+    return () => { vivo = false; };
+  }, [card.metadata]);
+
   const [dayPosts, setDayPosts] = useState<Array<{
     id: string;
     platform: string;
@@ -926,6 +975,10 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         .finally(() => setLoadingPost(false));
     }
   }, [isPublish, localCard.postId, projectId]);
+
+  const chatDisparaVigia = (respostaDoAgente: string) => {
+    if (/refazendo o corte/i.test(respostaDoAgente)) vigiarRecorte();
+  };
 
   async function sendChat() {
     if (!chatMsg.trim()) return;
@@ -1453,19 +1506,40 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     na tela. */}
                 {localCard.cardType === "video_clip" && localCard.mediaUrl && (
                   <div className="mb-4 space-y-3">
+                    {refazendoCorte && (
+                      <div
+                        className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                        style={{ borderColor: "var(--accent-orange)", color: "var(--accent-orange)" }}
+                      >
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Vitor Vídeo está refazendo este corte. O vídeo atualiza aqui sozinho.
+                      </div>
+                    )}
                     {(() => {
                       const meta = localCard.metadata as { destinoRotulo?: string } | null;
+                      const metaDest = localCard.metadata as { destino?: string } | null;
+                      const plat = metaDest?.destino
+                        ? (metaDest.destino === "youtube_shorts" || metaDest.destino === "youtube"
+                            ? "youtube"
+                            : metaDest.destino === "instagram_reels"
+                              ? "instagram"
+                              : metaDest.destino === "x"
+                                ? "twitter"
+                                : metaDest.destino)
+                        : null;
                       return meta?.destinoRotulo ? (
                         <span
-                          className="inline-block text-xs px-2 py-1 rounded-full border"
+                          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border"
                           style={{ borderColor: "var(--accent-orange)", color: "var(--accent-orange)" }}
                         >
+                          {plat && <RedeIcone plataforma={plat} className="w-3.5 h-3.5" />}
                           Destino: {meta.destinoRotulo}
                         </span>
                       ) : null;
                     })()}
                     <video
-                      src={localCard.mediaUrl}
+                      key={`v-${versaoDoCorte}`}
+                      src={`${localCard.mediaUrl}${localCard.mediaUrl.includes("?") ? "&" : "?"}v=${versaoDoCorte}`}
                       controls
                       preload="metadata"
                       className="w-full max-h-[50vh] rounded-xl bg-black object-contain"
@@ -1486,7 +1560,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           });
                           const d = await r.json();
                           if (!r.ok) throw new Error(d.error);
-                          toast.success("Refazendo o corte com o ajuste. Fica pronto em uns 2 minutos.");
+                          toast.success("Refazendo o corte com o ajuste. O card avisa quando terminar.");
+                          vigiarRecorte();
                         } catch (e) {
                           toast.error(e instanceof Error ? e.message : "Não consegui ajustar agora.");
                         }
@@ -1782,6 +1857,63 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         </button>
                       </div>
                     </div>}
+
+                    {/* As redes de VÍDEO (YouTube, Instagram, Facebook) entram
+                        conforme os posts do dia. Antes o Paulo só sabia
+                        publicar LinkedIn e X, e o dia de vídeo terminava num
+                        beco (achado de 01/09). */}
+                    {localCard.status !== "rejected" && dayPosts.some((p) => ["youtube", "instagram", "facebook"].includes(p.platform)) && (
+                      <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+                        <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
+                          <Zap className="w-3.5 h-3.5 text-orange-400" />
+                          <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                            Publicar vídeo agora
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3">
+                          {["youtube", "instagram", "facebook"].map((plat) => {
+                            const post = dayPosts.find((p) => p.platform === plat);
+                            const conta = post ? accountFor(plat, post.socialAccountId) : undefined;
+                            return (
+                              <button
+                                key={plat}
+                                type="button"
+                                disabled={approving || !post || !conta}
+                                title={!post ? "Sem post desta rede neste dia" : !conta ? "Conecte a rede em Configurações" : undefined}
+                                onClick={async () => {
+                                  if (!post || !conta) return;
+                                  setApproving(true);
+                                  try {
+                                    const res = await fetch(`/api/posts/${post.id}/publish`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ accountId: conta.id }),
+                                    });
+                                    const d = await res.json();
+                                    if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
+                                    toast.success(d.url ? `Publicado! ${d.url}` : "Publicado!");
+                                    const updated = { ...localCard, status: "approved" as const };
+                                    setLocalCard(updated);
+                                    onCardUpdate(updated);
+                                  } catch (err) {
+                                    toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
+                                  } finally {
+                                    setApproving(false);
+                                  }
+                                }}
+                                className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
+                                style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
+                              >
+                                <RedeIcone plataforma={plat} className="w-5 h-5" />
+                                <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                                  {plat === "youtube" ? "YouTube" : plat === "instagram" ? "Instagram" : "Facebook"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* ── Publicar agora — só se não estiver rejeitado ── */}
                     {localCard.status !== "rejected" && <div

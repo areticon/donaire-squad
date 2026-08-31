@@ -57,12 +57,19 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
   const data = new Date(segunda.getTime());
   data.setUTCHours(9, 0, 0, 0);
 
+  const conteudo = montarPostDeVideo(trechos, video.durationSec ?? 0, video.project?.name ?? nome);
   let postId: string | null = null;
+  // O filtro exige gravacaoCompleta: só videoJobId casava com os posts dos
+  // CORTES de YouTube Shorts, e o card do completo saiu ligado ao post do
+  // corte 0 no teste de 01/09 (sem capítulos, sem descrição, sem prévia).
   const rascunho = await prisma.post.findFirst({
     where: {
       projectId: video.projectId,
       platform: "youtube",
-      metadata: { path: ["videoJobId"], equals: video.id },
+      AND: [
+        { metadata: { path: ["videoJobId"], equals: video.id } },
+        { metadata: { path: ["gravacaoCompleta"], equals: true } },
+      ],
     },
     select: { id: true },
   });
@@ -73,7 +80,7 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       data: {
         projectId: video.projectId,
         platform: "youtube",
-        content: montarPostDeVideo(trechos, video.durationSec ?? 0, video.project?.name ?? nome),
+        content: conteudo,
         mediaType: "video",
         imageUrl: video.blobUrl,
         status: "draft",
