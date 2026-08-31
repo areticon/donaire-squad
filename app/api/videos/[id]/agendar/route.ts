@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId, DESTINO_COMPLETO } from "@/lib/media/destinos";
+import { montarPostDeVideo } from "@/lib/media/youtube-post";
 
 /**
  * Leva os cortes aprovados para o quadro do Gestor de Conteúdo.
@@ -67,6 +68,10 @@ export async function POST(
       projectId: true,
       originalName: true,
       completoUrl: true,
+      blobUrl: true,
+      durationSec: true,
+      capaFonteUrl: true,
+      project: { select: { name: true } },
     },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -180,6 +185,8 @@ export async function POST(
             titulo: t.texto?.titulo ?? t.titulo,
             videoJobId: video.id,
             trechoIndice: indice,
+            // A capa do corte, servida pela nossa rota (o store é privado).
+            thumb: `/api/videos/${video.id}/midia?trecho=${indice}&tipo=capa-arte`,
           },
         },
         select: { id: true },
@@ -202,8 +209,52 @@ export async function POST(
   }
 
   // O vídeo completo, quando existe, entra como card próprio no primeiro dia:
-  // ele é o item principal da semana, e não um corte a mais.
+  // ele é o item principal da semana, e não um corte a mais. O card nasce
+  // LIGADO ao rascunho de YouTube (título, descrição com capítulos), então a
+  // prévia e o "Publicar agora" funcionam nele como em qualquer outro; antes o
+  // rascunho só existia se o cliente achasse o botão "Preparar para o YouTube"
+  // na aba de vídeo, e o card do completo era um beco.
   if (video.completoUrl) {
+    let postCompletoId: string | null = null;
+    const rascunhoExistente = await prisma.post.findFirst({
+      where: {
+        projectId: video.projectId,
+        platform: "youtube",
+        metadata: { path: ["videoJobId"], equals: video.id },
+      },
+      select: { id: true },
+    });
+    if (rascunhoExistente) {
+      postCompletoId = rascunhoExistente.id;
+    } else {
+      const conteudo = montarPostDeVideo(
+        trechos as unknown as Trecho[],
+        video.durationSec ?? 0,
+        video.project?.name ?? nome
+      );
+      const criado = await prisma.post.create({
+        data: {
+          projectId: video.projectId,
+          platform: "youtube",
+          content: conteudo,
+          mediaType: "video",
+          imageUrl: video.blobUrl,
+          status: "draft",
+          runId: run.id,
+          dayOfWeek: 1,
+          scheduledAt: new Date(segunda.getTime() + 9 * 3600000),
+          metadata: {
+            origem: "video",
+            videoJobId: video.id,
+            gravacaoCompleta: true,
+            capitulos: trechos.length,
+          },
+        },
+        select: { id: true },
+      });
+      postCompletoId = criado.id;
+    }
+
     const data = new Date(segunda.getTime());
     data.setUTCHours(9, 0, 0, 0);
     await prisma.campaignCard.create({
@@ -219,14 +270,117 @@ export async function POST(
         content: `${nome}, gravação completa editada`,
         mediaUrl: `/api/videos/${video.id}/midia?tipo=completo`,
         status: "pending",
+        postId: postCompletoId,
         metadata: {
           destino: DESTINO_COMPLETO.id,
           destinoRotulo: DESTINO_COMPLETO.rotulo,
           completo: true,
           videoJobId: video.id,
+          thumb: video.capaFonteUrl ? `/api/videos/${video.id}/midia?tipo=capa-fonte` : null,
         },
       },
     });
+  }
+
+  // ── Os conteúdos DERIVADOS do vídeo, sem custo de IA novo ──────────────────
+  //
+  // A redação já escreveu texto POR REDE para cada corte; o melhor corte também
+  // rende um post de texto no LinkedIn e no X, em dias diferentes dos cortes,
+  // porque presença é ocupar a semana e não empilhar tudo na segunda. E a Diana
+  // ganha um card de carrossel com as frases fortes do vídeo, que o cliente
+  // gera pelo chat do card quando quiser (gerar imagem custa crédito, então
+  // não roda sozinho).
+  const melhor = [...aprovados].sort(
+    (a, b) => ((b.t as { nota?: number }).nota ?? 0) - ((a.t as { nota?: number }).nota ?? 0)
+  )[0]?.t;
+  if (melhor) {
+    const derivados: Array<{
+      plataforma: string;
+      cardType: string;
+      agentId: string;
+      agentName: string;
+      dia: number;
+      texto: string | undefined;
+    }> = [
+      {
+        plataforma: "linkedin",
+        cardType: "post_linkedin",
+        agentId: "lucas-linkedin",
+        agentName: "Lucas LinkedIn",
+        dia: 3,
+        texto: melhor.posts?.linkedin,
+      },
+      {
+        plataforma: "twitter",
+        cardType: "post_twitter",
+        agentId: "tiago-twitter",
+        agentName: "Tiago Twitter",
+        dia: 4,
+        texto: melhor.posts?.x,
+      },
+    ];
+    for (const d of derivados) {
+      if (!d.texto?.trim()) continue;
+      const data = new Date(segunda.getTime() + (d.dia - 1) * 86400000);
+      data.setUTCHours(12, 0, 0, 0);
+      const post = await prisma.post.create({
+        data: {
+          projectId: video.projectId,
+          platform: d.plataforma,
+          content: d.texto.trim(),
+          mediaType: "text",
+          status: "draft",
+          dayOfWeek: d.dia,
+          scheduledAt: data,
+          runId: run.id,
+          metadata: { origem: "video", videoJobId: video.id, derivado: true },
+        },
+        select: { id: true },
+      });
+      await prisma.campaignCard.create({
+        data: {
+          runId: run.id,
+          projectId: video.projectId,
+          agentId: d.agentId,
+          agentName: d.agentName,
+          dayOfWeek: d.dia,
+          scheduledDate: data,
+          cardType: d.cardType,
+          mediaType: "text",
+          content: d.texto.trim(),
+          status: "pending",
+          postId: post.id,
+          metadata: { origem: "video", videoJobId: video.id, derivado: true },
+        },
+      });
+    }
+
+    const frases = trechos
+      .map((t) => t.texto?.fraseDaCapa?.trim())
+      .filter((f): f is string => Boolean(f))
+      .slice(0, 5);
+    if (frases.length >= 3) {
+      const dataDiana = new Date(segunda.getTime() + 5 * 86400000);
+      dataDiana.setUTCHours(12, 0, 0, 0);
+      await prisma.campaignCard.create({
+        data: {
+          runId: run.id,
+          projectId: video.projectId,
+          agentId: "diana-design",
+          agentName: "Diana Design",
+          dayOfWeek: 6,
+          scheduledDate: dataDiana,
+          cardType: "media",
+          mediaType: "image",
+          content:
+            `Carrossel com as frases fortes do vídeo "${nome}", um slide por frase, ` +
+            `tipografia grande e nas cores da marca do projeto: ` +
+            frases.map((f, i) => `${i + 1}. "${f}"`).join(" "),
+          status: "pending",
+          metadata: { origem: "video", videoJobId: video.id, derivado: true },
+        },
+      });
+    }
   }
 
   return NextResponse.json({

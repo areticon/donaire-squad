@@ -41,7 +41,7 @@ export async function GET(
 
   const video = await prisma.videoJob.findFirst({
     where: { id, project: { userId } },
-    select: { clips: true, completoUrl: true, originalName: true },
+    select: { clips: true, completoUrl: true, originalName: true, capaFonteUrl: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -51,6 +51,11 @@ export async function GET(
   if (tipo === "completo") {
     url = video.completoUrl;
     nome = (video.originalName ?? "gravacao").replace(/\.[^.]+$/, "") + "-editado";
+  } else if (tipo === "capa-fonte") {
+    // O quadro que o squad escolheu como melhor rosto do vídeo: é a thumb do
+    // card do vídeo completo no Gestor.
+    url = video.capaFonteUrl;
+    nome = "capa-fonte";
   } else {
     const trechos = (video.clips as unknown as Array<{ midia?: MidiaDoTrecho }>) ?? [];
     const trecho = trechos[Number(trechoParam)];
@@ -76,7 +81,7 @@ export async function GET(
     return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
   }
 
-  const extensao = tipo === "capa" || tipo === "capa-arte" ? "jpg" : "mp4";
+  const extensao = tipo === "capa" || tipo === "capa-arte" || tipo === "capa-fonte" ? "jpg" : "mp4";
 
   return new NextResponse(blob.stream, {
     headers: {

@@ -10,6 +10,7 @@ import {
   DESTINO_COMPLETO,
   cabeNoDestino,
 } from "@/lib/media/destinos";
+import { RedeIcone } from "@/components/social/rede-icone";
 
 /**
  * A entrega do vídeo: a gravação inteira editada, e os cortes.
@@ -319,6 +320,11 @@ export function CortesPanel({
                                 color: marcado ? "#fff" : "var(--text-muted)",
                               }}
                             >
+                              <RedeIcone
+                                plataforma={d.plataforma}
+                                monocromatico={marcado}
+                                className="w-3.5 h-3.5 inline mr-1 align-[-2px]"
+                              />
                               {marcado && <Check className="w-3 h-3 inline mr-0.5" />}
                               {d.rotulo}
                               {!d.publicaVideo && " (em breve)"}

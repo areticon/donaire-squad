@@ -271,7 +271,7 @@ export function VideoPanel({
               return (
                 <div key={v.id} className="space-y-3">
                 <div
-                  className="rounded-xl border p-4 flex items-center justify-between gap-4"
+                  className="rounded-xl border p-4 flex flex-wrap items-center justify-between gap-4"
                   style={{
                     background: "var(--bg-surface)",
                     borderColor: "var(--border)",

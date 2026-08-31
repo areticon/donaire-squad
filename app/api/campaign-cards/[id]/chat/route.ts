@@ -261,7 +261,7 @@ REGRA DE OURO: Nunca invente dados, estatísticas ou referências. Use apenas fa
     data: { content: updatedContent, chatHistory: newHistory },
   });
 
-  if (card.postId && (card.cardType === "post_linkedin" || card.cardType === "post_twitter")) {
+  if (card.postId && (card.cardType === "post_linkedin" || card.cardType === "post_twitter" || card.cardType === "video_clip")) {
     await prisma.post.update({
       where: { id: card.postId },
       data: { content: updatedContent },

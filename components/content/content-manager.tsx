@@ -564,13 +564,15 @@ function SocialPostPreview({
         {/* Avatar + name mock */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-            style={{ background: isLinkedIn ? "#0A66C2" : isTwitter ? "#1D9BF0" : "var(--accent)" }}>
+            style={{ background: marca.cor === "var(--accent-orange)" ? "var(--bg-elevated)" : marca.cor }}>
             P
           </div>
           <div>
-            <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>Seu perfil</p>
+            <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
+              {isYouTube ? "Seu canal" : "Seu perfil"}
+            </p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {isLinkedIn ? "Profissional · 1ª" : isTwitter ? "@suaconta" : ""}
+              {isLinkedIn ? "Profissional · 1ª" : isTwitter || isInstagram ? "@suaconta" : ""}
             </p>
           </div>
         </div>
@@ -582,6 +584,26 @@ function SocialPostPreview({
         >
           {content}
         </div>
+
+        {/* As hashtags em destaque, extraídas do próprio texto: o cliente
+            enxerga de relance com o que o post vai marcar. */}
+        {(() => {
+          const tags = [...new Set(content.match(/#[\p{L}\p{N}_]+/gu) ?? [])].slice(0, 12);
+          if (!tags.length) return null;
+          return (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ background: "var(--bg-elevated)", color: marca.cor === "var(--accent-orange)" ? "var(--text-muted)" : marca.cor }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Media preview (image or video) */}
         {imageUrl && imageUrl.length > 50 && (() => {
@@ -1461,7 +1483,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           <SocialPostPreview
                             platform={proprio.platform}
                             content={proprio.content}
-                            imageUrl={null}
+                            imageUrl={(localCard.metadata as { thumb?: string | null } | null)?.thumb ?? null}
                             scheduledAt={proprio.scheduledAt ?? null}
                           />
                           <Button
@@ -1946,7 +1968,22 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
             <div className="space-y-2">
               <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                 <MessageCircle className="w-3.5 h-3.5 inline mr-1" />
-                {isMedia ? "Regenerar mídia via IA" : "Ajustar via IA"}
+                {localCard.cardType === "video_clip" && (
+                  <span className="flex flex-wrap gap-1.5 mr-2">
+                    {["Encurtar o texto", "Mais direto e provocativo", "Trocar o título", "Adicionar hashtags"].map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        onClick={() => setChatMsg(a)}
+                        className="text-[11px] px-2 py-1 rounded-full border transition-colors hover:border-orange-500/50"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </span>
+                )}
+                                {isMedia ? "Regenerar mídia via IA" : "Ajustar via IA"}
               </p>
               {isMedia && !localCard.mediaUrl && (
                 <div className="text-xs rounded-xl px-3 py-2 flex items-start gap-2 border border-blue-500/20 bg-blue-500/5">

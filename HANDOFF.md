@@ -6113,3 +6113,38 @@ responsividade completa (feita so nos pontos dos prints); e a fusao maior
 sendo o norte; esta leva tirou o beco e o ruido.
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 68): a central de aprovacao, leva dois
+
+"Vamos trabalhar nos itens abertos, implementar tudo." O que entrou:
+
+- **O card do video completo virou um post de verdade.** O agendamento cria
+  (ou reaproveita) o rascunho de YouTube com titulo e descricao com capitulos
+  (montarPostDeVideo) e LIGA ao card. No modal: previa fiel de YouTube com a
+  THUMB (o quadro-fonte da capa, servido por `tipo=capa-fonte` novo na rota
+  de midia), descricao com capitulos, e Publicar agora funcionando (a rota de
+  publish ja sobe video ao YouTube com maxDuration 800).
+- **Thumb nos cards de corte** (`metadata.thumb` com a capa-arte) e na previa.
+- **Hashtags visiveis**: a previa extrai as hashtags do texto e mostra como
+  chips na cor da rede.
+- **Derivados automaticos, sem custo novo de IA**: o melhor corte (maior
+  nota) rende post de TEXTO no LinkedIn (Lucas, quarta) e no X (Tiago,
+  quinta), usando os textos que a redacao ja escreveu; e a Diana ganha card
+  de carrossel com as frases de capa do video (so o prompt: gerar imagem
+  custa credito, o cliente dispara pelo chat do card). A semana deixa de ser
+  so Vitor.
+- **Ajustes rapidos no card de video**: chips que preenchem o chat de IA
+  (encurtar, mais provocativo, trocar titulo, hashtags); a edicao via chat
+  passou a sincronizar o post tambem para video_clip.
+- **Icones oficiais nos chips de destino da aba Video** (componente novo
+  `components/social/rede-icone.tsx`, uso nominativo das marcas), e avatar da
+  previa na cor da rede (o var(--accent) usado antes nem existia).
+- Responsividade: linha do video enviado quebra em telas estreitas.
+
+### Aberto ainda (registrado no card da central)
+
+Correcao estruturada FUNDA (refazer capa de um corte, melhorar a edicao do
+video: exigem rotas novas no worker); a decisao da esteira (Vera/Paulo para
+conteudo de video); auditoria de responsividade completa com tela logada.
+
+*Atualizado em 31/08/2026 por Claude Code.*
