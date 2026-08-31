@@ -329,6 +329,9 @@ function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
   const resultados = { trechos: [], completo: null, capaFonte: null, erros: [] };
+  // O re-corte de um trecho só (pedido do cliente na tela) volta marcado, para
+  // o callback fundir em vez de reprocessar o vídeo inteiro.
+  if (trabalho.reCorte) resultados.reCorte = true;
   // O relogio das fases: o tempo total do worker e o gargalo reclamado em
   // 31/08, e sem numero por fase todo plano de corte de tempo e chute.
   const t0 = Date.now();
@@ -676,7 +679,7 @@ async function processar(trabalho) {
     // nada do que ele quer fazer (revisar e publicar cortes). O aviso parcial
     // destrava o fluxo no app; o aviso final, com o completo, chega quando
     // chegar e se anexa sozinho ao quadro.
-    try {
+    if (!trabalho.soTrechos) try {
       await avisar(trabalho, {
         ok: true,
         parcial: true,
@@ -691,7 +694,7 @@ async function processar(trabalho) {
       console.warn(`[${trabalho.videoJobId}] aviso parcial falhou: ${e?.message ?? e}`);
     }
 
-    try {
+    if (!trabalho.soTrechos) try {
       const completo = join(pasta, "completo.mp4");
 
       // As legendas de destaque chegam prontas do app, já com os tempos

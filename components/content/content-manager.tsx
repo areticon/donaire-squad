@@ -1475,6 +1475,46 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         não mostrava a rede e não tinha caminho de publicar
                         (achado do teste do Bruno em 31/08). */}
                     {(() => {
+                      const metaAjuste = localCard.metadata as { videoJobId?: string; trechoIndice?: number } | null;
+                      if (!metaAjuste?.videoJobId || typeof metaAjuste.trechoIndice !== "number") return null;
+                      const ajustar = async (inicioDelta: number, fimDelta: number) => {
+                        try {
+                          const r = await fetch(`/api/videos/${metaAjuste.videoJobId}/ajustar-corte`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ trecho: metaAjuste.trechoIndice, inicioDelta, fimDelta }),
+                          });
+                          const d = await r.json();
+                          if (!r.ok) throw new Error(d.error);
+                          toast.success("Refazendo o corte com o ajuste. Fica pronto em uns 2 minutos.");
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Não consegui ajustar agora.");
+                        }
+                      };
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                          <span className="mr-1">Ajuste fino:</span>
+                          {[
+                            { r: "início +2s", i: 2, f: 0 },
+                            { r: "início -2s", i: -2, f: 0 },
+                            { r: "fim -2s", i: 0, f: -2 },
+                            { r: "fim +2s", i: 0, f: 2 },
+                          ].map((b) => (
+                            <button
+                              key={b.r}
+                              type="button"
+                              onClick={() => void ajustar(b.i, b.f)}
+                              className="px-2 py-1 rounded-full border transition-colors hover:border-orange-500/50"
+                              style={{ borderColor: "var(--border)" }}
+                            >
+                              {b.r}
+                            </button>
+                          ))}
+                          <span className="ml-1">ou peça ao Vitor no chat abaixo.</span>
+                        </div>
+                      );
+                    })()}
+                    {(() => {
                       const proprio = dayPosts.find((dp) => dp.id === localCard.postId);
                       if (!proprio) return null;
                       const conta = accountFor(proprio.platform, proprio.socialAccountId);

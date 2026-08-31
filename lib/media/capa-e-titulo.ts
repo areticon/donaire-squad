@@ -181,6 +181,8 @@ export async function comporCapa(
     usageCtx?: { projectId?: string };
     /** "9:16" para capa de corte vertical; "16:9" para thumb de YouTube. */
     formato?: "9:16" | "16:9";
+    /** Instrução de ajuste vinda do CLIENTE, com prioridade sobre o padrão. */
+    ajuste?: string;
   } = {}
 ): Promise<string | null> {
   // A palavra destacada é a mais longa da frase, que quase sempre é a que
@@ -227,7 +229,8 @@ NÃO FAÇA
 - Nada de texto além da frase pedida.
 - Nada de mãos ou dedos deformados: se a mão original ficar estranha no recorte, corte o enquadramento acima dela.
 
-Formato final: ${opcoes.formato === "9:16" ? "9 por 16, VERTICAL como um Reels" : "16 por 9"}, cheio, sem barras.`;
+${opcoes.ajuste ? `AJUSTE PEDIDO PELO CLIENTE, com prioridade sobre qualquer regra acima que conflite (exceto a identidade da pessoa, que é intocável): ${opcoes.ajuste}
+` : ""}Formato final: ${opcoes.formato === "9:16" ? "9 por 16, VERTICAL como um Reels" : "16 por 9"}, cheio, sem barras.`;
 
   return comporSobreImagem(
     prompt,

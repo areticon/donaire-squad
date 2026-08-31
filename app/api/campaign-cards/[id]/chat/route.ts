@@ -1,9 +1,13 @@
+// A capa refeita pelo nano banana leva até 90s; o chat precisa da folga.
+export const maxDuration = 300;
+
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { generateInfographic } from "@/lib/media/infographic";
+import { refazerCorte, refazerCapa } from "@/lib/media/refazer";
 
 /** Detect if a media URL represents a video (GCS URL, external .mp4, or base64 video) */
 function detectIsVideo(mediaUrl?: string | null): boolean {
@@ -230,6 +234,67 @@ No explanations, no prefixes — just the prompt text.`;
       mediaError,
       chatHistory: newHistory,
     });
+  }
+
+  // ── Card de VÍDEO: o agente entende o pedido e EXECUTA ────────────────────
+  //
+  // Pedido do Bruno em 01/09: "quero que o usuário interaja com os agentes
+  // pedindo ajustes". Aqui o Vitor decide se o pedido é de TEMPO (recomeçar
+  // depois, terminar antes: re-corte no worker), de CAPA (refeita com a
+  // instrução) ou de TEXTO (segue o caminho de edição que já existia).
+  const metaVideo = card.metadata as { videoJobId?: string; trechoIndice?: number } | null;
+  if (
+    card.cardType === "video_clip" &&
+    metaVideo?.videoJobId &&
+    typeof metaVideo.trechoIndice === "number"
+  ) {
+    const bruto = await askClaude(
+      `Você classifica o pedido de um cliente sobre um CORTE DE VÍDEO.
+Responda APENAS um JSON: {"acao":"tempo"|"capa"|"texto","inicioDelta":number,"fimDelta":number,"instrucao":string}
+- "tempo": mudar onde o corte começa ou termina. inicioDelta/fimDelta em SEGUNDOS (positivo adia, negativo antecipa; ex.: "corta os 3 primeiros segundos" vira inicioDelta 3; "termina 2s antes" vira fimDelta -2). Sem número explícito, use 2.
+- "capa": mudar a imagem de capa. Ponha o pedido resumido em "instrucao".
+- "texto": qualquer outra coisa (legenda do post, título, tom).`,
+      message,
+      { maxTokens: 4000, effort: "low", usage: { operation: "video_ajuste", projectId: card.projectId } }
+    );
+    let plano: { acao?: string; inicioDelta?: number; fimDelta?: number; instrucao?: string } = {};
+    try {
+      plano = JSON.parse(bruto.replace(/^[^{]*/, "").replace(/[^}]*$/, ""));
+    } catch {
+      plano = {};
+    }
+
+    if (plano.acao === "tempo" || plano.acao === "capa") {
+      let resposta: string;
+      try {
+        if (plano.acao === "tempo") {
+          const novo = await refazerCorte(metaVideo.videoJobId, userId, metaVideo.trechoIndice, {
+            inicioDelta: plano.inicioDelta ?? 0,
+            fimDelta: plano.fimDelta ?? 0,
+          });
+          resposta =
+            `Feito: estou refazendo o corte começando em ${Math.floor(novo.inicio / 60)}:${String(Math.floor(novo.inicio % 60)).padStart(2, "0")} ` +
+            `e terminando em ${Math.floor(novo.fim / 60)}:${String(Math.floor(novo.fim % 60)).padStart(2, "0")} da gravação. ` +
+            `Fica pronto em uns 2 minutos; recarregue o card para assistir.`;
+        } else {
+          await refazerCapa(metaVideo.videoJobId, userId, metaVideo.trechoIndice, plano.instrucao ?? message);
+          resposta = "Capa refeita com o seu ajuste. Recarregue o card para ver como ficou.";
+        }
+      } catch (e) {
+        resposta = e instanceof Error ? e.message : "Não consegui fazer esse ajuste agora.";
+      }
+      const historicoNovo = [
+        ...chatHistory,
+        { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+        { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+      ];
+      await prisma.campaignCard.update({
+        where: { id },
+        data: { chatHistory: historicoNovo },
+      });
+      return NextResponse.json({ updatedContent: card.content, chatHistory: historicoNovo });
+    }
+    // "texto" cai no caminho de edição logo abaixo.
   }
 
   // ── Text/post card: edit content ──────────────────────────────────────────

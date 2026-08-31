@@ -6294,3 +6294,33 @@ em andamento (licao: deploy de worker espera fila vazia; o redespacho usou o
 scripts/tmp/rodar-corte.mts, que monta o pedido com o codigo de producao).
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 73): o cliente conversa com o Vitor, e o Vitor executa
+
+Pedido do Bruno depois de assistir os cortes da rodada nova: "o meu segundo
+corte comecou um pouquinho fora; se tivesse um controle igual tem no CapCut eu
+cortaria o inicio... quero que o usuario interaja com os agentes pedindo
+ajustes". Construido e publicado:
+
+- **`lib/media/refazer.ts`**: `refazerCorte` (ajusta inicio/fim do trecho,
+  minimo de 10s, e re-despacha ao worker um pedido SO daquele trecho, montado
+  pelo MESMO montarPedidoDeCorte de producao: limpeza, legenda e estilo
+  identicos; o completo nao e refeito) e `refazerCapa` (recompoe a capa 9:16
+  com a instrucao do cliente somada ao prompt, identidade da pessoa
+  intocavel).
+- **Worker**: pedido com `soTrechos` pula o completo e o aviso parcial;
+  `reCorte` volta ecoado no callback.
+- **Callback**: em `cut`/`ready`, corpo com `reCorte` funde SO a midia do
+  indice refeito. Aprovacao, destinos e posts nao sao tocados: o cliente
+  ajustou o video, nao a decisao dele sobre o video.
+- **Chat do card do Vitor**: classifica o pedido (tempo, capa ou texto) com
+  esforco baixo e EXECUTA: re-corte, capa nova, ou cai na edicao de texto que
+  ja existia. Resposta do Vitor entra no historico do card.
+- **Botoes de precisao no modal** (o "CapCut" do pedido): inicio +/-2s e fim
+  +/-2s, chamando a rota nova `/ajustar-corte` (deltas limitados a 30s).
+
+Limite honesto registrado: o re-corte demora ~2 min (o trecho passa pelo
+pipeline inteiro de novo) e a tela avisa; scrub de timeline quadro a quadro
+estilo CapCut de verdade seria player proprio, e nao entrou.
+
+*Atualizado em 01/09/2026 por Claude Code.*

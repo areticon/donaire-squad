@@ -57,11 +57,42 @@ export async function POST(
   // "cutting" pelo aviso parcial, este segundo aviso só anexa o completo e o
   // põe no quadro; nada mais é tocado, então corte aprovado não é sobrescrito.
   if (video.status !== "cutting") {
-    let atrasado: { completo?: { url: string; bytes: number } | null } = {};
+    let atrasado: {
+      ok?: boolean;
+      reCorte?: boolean;
+      trechos?: TrechoCortado[];
+      completo?: { url: string; bytes: number } | null;
+    } = {};
     try {
       atrasado = JSON.parse(corpoCru);
     } catch {
       return NextResponse.json({ ok: false, error: "Corpo não é JSON" });
+    }
+    // O RE-CORTE de um trecho (ajuste pedido pelo cliente): funde SÓ a mídia
+    // daquele índice. Aprovação, destinos e posts ficam como estavam, porque o
+    // cliente ajustou o vídeo, não a decisão dele sobre o vídeo.
+    if (atrasado.reCorte && atrasado.ok && Array.isArray(atrasado.trechos)) {
+      const atuais = (video.clips as unknown as Array<Trecho & { midia?: Record<string, unknown> | null }>) ?? [];
+      const porIndice = new Map(atrasado.trechos.map((t) => [t.indice, t]));
+      const fundidos = atuais.map((t, i) => {
+        const c = porIndice.get(i);
+        if (!c) return t;
+        return {
+          ...t,
+          midia: {
+            ...(t.midia ?? {}),
+            vertical: c.vertical ?? null,
+            horizontal: c.horizontal ?? null,
+            capa: c.capa ?? (t.midia?.capa as unknown) ?? null,
+            enquadramento: c.enquadramento ?? (t.midia?.enquadramento as unknown) ?? null,
+            legenda: c.legenda ?? false,
+            erro: c.erro ?? null,
+            refazendo: false,
+          },
+        };
+      });
+      await prisma.videoJob.update({ where: { id }, data: { clips: fundidos as never } });
+      return NextResponse.json({ ok: true, reCorte: true });
     }
     if (atrasado.completo?.url && !video.completoUrl) {
       await prisma.videoJob.update({
