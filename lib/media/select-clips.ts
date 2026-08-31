@@ -216,7 +216,23 @@ ${blocos}`,
     //
     // Teto alto nao custa por si: o cobrado e o que o modelo GERA, e o teto so
     // decide se ele consegue terminar.
-    { maxTokens: 32000, usage: { operation: "video_selecao", ...usageCtx } }
+    {
+      maxTokens: 32000,
+      // "medium", por ordem do Bruno em 31/08 ("precisa ser muito mais
+      // rapido, revise suas premissas"). A premissa revisada: a selecao era
+      // tratada como julgamento puro e ficava no esforco padrao, mas 90% da
+      // saida e pensamento (10.916 tokens, 121s medidos em 22/08), e a
+      // medicao de 23/08 na limpeza mostrou o medio com resultado
+      // equivalente na metade do tempo. O que protege a qualidade aqui nao e
+      // o pensamento longo, e a verificacao em codigo que ja existe: ancora
+      // textual conferida, nota minima, fala recortada por nos.
+      effort: "medium",
+      // 240s: aborta DENTRO da vida da funcao (maxDuration 800), entao a
+      // falha vira status failed com retry, e nao um selecting mudo ate o
+      // prazo da varredura (o travamento que o Bruno viu em 31/08).
+      timeoutMs: 240_000,
+      usage: { operation: "video_selecao", ...usageCtx },
+    }
   );
 
   const limpo = resposta

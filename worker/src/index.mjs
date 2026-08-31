@@ -140,6 +140,7 @@ async function subir(caminho, chave, contentType) {
       );
     }
     throw e;
+    marca("tudo pronto");
   } finally {
     clearTimeout(limite);
   }
@@ -328,10 +329,16 @@ function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
   const resultados = { trechos: [], completo: null, capaFonte: null, erros: [] };
+  // O relogio das fases: o tempo total do worker e o gargalo reclamado em
+  // 31/08, e sem numero por fase todo plano de corte de tempo e chute.
+  const t0 = Date.now();
+  const marca = (fase) =>
+    console.log(`[${trabalho.videoJobId}] tempo: ${fase} aos ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 
   try {
     const fonte = join(pasta, "fonte.mp4");
     await baixarFonte(trabalho.sourceUrl, fonte);
+    marca("fonte baixada");
     const info = await ffprobe(fonte);
 
     // A TRILHA do projeto, baixada uma vez para todos os cortes. Falhar nao
@@ -353,6 +360,7 @@ async function processar(trabalho) {
       pasta,
       info.duracaoSec
     );
+    marca("enquadramento pronto");
 
     // O FUNDO dos cortes, gerado pelo app e guardado no storage. Baixa uma vez
     // e serve todos os cortes. Falhar aqui nao derruba nada: sem fundo os
@@ -658,6 +666,7 @@ async function processar(trabalho) {
         resultados.erros.push(`trecho ${t.indice}: ${saida.erro}`);
       }
       resultados.trechos.push(saida);
+      marca(`trecho ${t.indice} entregue`);
     }
 
     try {
@@ -680,6 +689,7 @@ async function processar(trabalho) {
         duracaoSec: info.duracaoSec,
         legendasArquivo,
       });
+      marca("completo recodificado");
 
       // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os
       // tempos dela já chegam convertidos para depois da edição, senão

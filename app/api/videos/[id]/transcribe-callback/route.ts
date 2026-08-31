@@ -5,8 +5,9 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { aplicarTermos, parseTermos } from "@/lib/media/termos";
-import { interpretarResposta } from "@/lib/media/transcribe";
-import { assinaturaValida } from "@/lib/media/callback-token";
+import { interpretarResposta, transcribeBlobAsync } from "@/lib/media/transcribe";
+import { MAX_TENTATIVAS } from "@/lib/media/video-state";
+import { assinaturaValida, assinarVideo } from "@/lib/media/callback-token";
 import { recordTranscricao } from "@/lib/media/usage";
 
 /**
@@ -35,7 +36,7 @@ export async function POST(
 
   const video = await prisma.videoJob.findUnique({
     where: { id },
-    select: { id: true, status: true, projectId: true, project: { select: { videoTerms: true } } },
+    select: { id: true, status: true, projectId: true, attempts: true, blobUrl: true, project: { select: { videoTerms: true } } },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -87,6 +88,31 @@ export async function POST(
       `[transcricao][${id}] falhou: ${err instanceof Error ? err.message : err}. ` +
         `corpo bruto: ${JSON.stringify(corpo ?? {}).slice(0, 2000)}`
     );
+    // A nova tentativa sai DAQUI, do servidor, e não da tela: a versão
+    // anterior dependia de alguém abrir a aba para o piloto disparar o retry,
+    // e o vídeo do Bruno ficou 22 minutos parado em "failed" esperando isso
+    // (31/08). Falha de transcrição costuma ser transitória do serviço;
+    // re-despachar na hora custa nada e o teto de tentativas continua valendo.
+    if (video.attempts < MAX_TENTATIVAS && video.blobUrl) {
+      try {
+        const callback = `${process.env.NEXT_PUBLIC_APP_URL}/api/videos/${id}/transcribe-callback?sig=${assinarVideo(id)}`;
+        await transcribeBlobAsync(video.blobUrl, callback, {
+          keyterms: parseTermos(video.project?.videoTerms),
+        });
+        await prisma.videoJob.update({
+          where: { id },
+          data: {
+            status: "transcribing",
+            startedAt: new Date(),
+            attempts: { increment: 1 },
+            error: null,
+          },
+        });
+        return NextResponse.json({ ok: true, retentando: true });
+      } catch (reErr) {
+        console.error(`[transcricao][${id}] re-despacho também falhou:`, reErr);
+      }
+    }
     const message =
       "A transcrição falhou desta vez. Nada se perdeu: vamos tentar de novo sozinhos.";
     await prisma.videoJob.update({
