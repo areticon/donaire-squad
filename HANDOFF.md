@@ -6324,3 +6324,35 @@ pipeline inteiro de novo) e a tela avisa; scrub de timeline quadro a quadro
 estilo CapCut de verdade seria player proprio, e nao entrou.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 74): o player que comecava e travava
+
+Veredito do Bruno: "os players da plataforma sao ruins, comeca e trava, nao
+tem um sistema de buffering igual YouTube". O diagnostico estava no codigo da
+rota de midia: ela ANUNCIAVA Accept-Ranges e IGNORAVA o header Range (toda
+busca do player voltava ao byte zero), proibia cache com no-store, e fazia
+cada byte passar por uma funcao serverless em vez de um CDN.
+
+### O conserto, em 1828b87
+
+1. **Midia produzida vai para blob PUBLICO** (worker `subir`, capas do app,
+   capa refeita): o player fala direto com o CDN do storage, que entrega
+   Range, cache e buffering nativos. A protecao e a URL nao adivinhavel
+   (sufixo aleatorio), padrao do mercado para midia de cliente. **O arquivo
+   ORIGINAL do cliente continua privado**; publico e so o material produzido
+   para publicar.
+2. **A rota de midia redireciona (302) para o CDN** quando a URL e publica;
+   o download nomeado continua passando por ela.
+3. **O acervo antigo, privado, ganhou proxy com Range DE VERDADE** (o header
+   e repassado ao storage, 206 e Content-Range voltam ao player) e cache
+   privado de 1h (arquivo imutavel: cada versao tem sufixo novo).
+4. De quebra: o `marca("tudo pronto")` da instrumentacao tinha caido dentro
+   do `subir` (inalcancavel, apos um throw); foi para o lugar certo no
+   `processar`.
+
+Verificacao honesta: o mecanismo de Range no storage privado foi provado por
+fora (curl com token e Range devolve parcial); o caminho publico so aparece
+no PROXIMO video processado, porque os arquivos existentes continuam
+privados e seguem pelo proxy com Range. O juiz e o proximo play do Bruno.
+
+*Atualizado em 01/09/2026 por Claude Code.*
