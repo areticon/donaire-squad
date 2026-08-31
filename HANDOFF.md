@@ -6226,3 +6226,33 @@ o corpo bruto logado (defeito 1) nao dava para saber por que. Na proxima
 ocorrencia o log conta.
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08-01/09/2026 (parte 71): "revise suas premissas", e as premissas revisadas
+
+O Bruno viu 10 minutos de espera e mandou revisar as premissas. A linha do
+tempo real do video dele: transcricao falhou 23:50, ficou em failed ate a
+PAGINA disparar o retry as 00:12 (retry morava na tela), transcreveu em 90s,
+e a selecao iniciada as 00:13:53 TRAVOU em selecting sem erro (a funcao
+morreu sem conseguir gravar o proprio estado; o teto de tempo interno da
+chamada era maior que a paciencia de qualquer um).
+
+Premissas revisadas, publicadas em a81ab0e:
+
+1. **Selecao em esforco MEDIO com teto de 240s.** 90% da saida era
+   pensamento (10.916 tokens, 121s). A medicao de 23/08 ja mostrava o medio
+   equivalente na metade do tempo; o que protege a qualidade e a verificacao
+   em codigo (ancora textual, nota minima, fala recortada por nos), nao o
+   pensamento longo. O teto de 240s faz a falha virar failed com retry em
+   vez de selecting mudo.
+2. **Retry de transcricao no SERVIDOR**: o proprio callback re-despacha
+   (attempts < 3), sem depender de aba aberta. Os 22 minutos de buraco do
+   teste vieram dai.
+3. **Worker instrumentado**: tempo por fase no log (fonte baixada,
+   enquadramento, cada trecho, completo, total). O worker e o gargalo grande
+   e o proximo corte de tempo sera com numero, nao chute.
+
+A varredura de prazo (video-sweep, acionada pela consulta de status) e quem
+destrava o selecting mudo do video atual; com a pagina aberta ela vira
+failed e o piloto tenta de novo ja no deploy novo.
+
+*Atualizado em 01/09/2026 por Claude Code.*
