@@ -130,6 +130,20 @@ export function VideoPanel({
       if (v.status === "ready") {
         disparados.current.add(chave);
         void fetch(`/api/videos/${v.id}/agendar`, { method: "POST" }).then(() => consultar());
+        continue;
+      }
+      // Falha com tentativas sobrando: o piloto tenta de novo sozinho, UMA vez
+      // por contagem de tentativa. Falha de transcrição costuma ser transitória
+      // do serviço (aconteceu em 31/08 com um arquivo que tinha passado uma
+      // hora antes), e obrigar o cliente a achar o botão é empurrar para ele
+      // um problema nosso. O teto de tentativas continua valendo.
+      if (v.status === "failed" && v.attempts < MAX_TENTATIVAS) {
+        const chaveRetry = `${v.id}:failed:${v.attempts}`;
+        if (!disparados.current.has(chaveRetry)) {
+          disparados.current.add(chaveRetry);
+          const acao = proximaAcao(v);
+          if (acao) void executar(v.id, acao.rota);
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

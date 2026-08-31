@@ -45,9 +45,10 @@ export async function POST(
     return NextResponse.json({ ok: true, ignorado: `status ${video.status}` });
   }
 
+  let corpo: unknown = null;
   try {
-    const corpo = await req.json();
-    const resultado = interpretarResposta(corpo);
+    corpo = await req.json();
+    const resultado = interpretarResposta(corpo as never);
 
     recordTranscricao("nova-3-multi", resultado.durationSec, {
       projectId: video.projectId,
@@ -78,7 +79,16 @@ export async function POST(
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Falha ao processar";
+    // O motivo tecnico vai para o LOG, onde a gente investiga; a tela recebe
+    // uma frase que o cliente entende e que nao vaza fornecedor. Achado do
+    // teste de 31/08: "Deepgram nao devolveu transcricao" na cara do usuario,
+    // que nao tem que saber que a Deepgram existe.
+    console.error(
+      `[transcricao][${id}] falhou: ${err instanceof Error ? err.message : err}. ` +
+        `corpo bruto: ${JSON.stringify(corpo ?? {}).slice(0, 2000)}`
+    );
+    const message =
+      "A transcrição falhou desta vez. Nada se perdeu: vamos tentar de novo sozinhos.";
     await prisma.videoJob.update({
       where: { id },
       data: { status: "failed", startedAt: null, error: message },

@@ -149,7 +149,9 @@ export async function POST(
       preview: result.text.slice(0, 300),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Falha na transcrição";
+    console.error(`[transcricao][despacho] ${err instanceof Error ? err.message : err}`);
+    const message =
+      "A transcrição falhou desta vez. Nada se perdeu: vamos tentar de novo sozinhos.";
     await prisma.videoJob.update({
       where: { id },
       data: { status: "failed", startedAt: null, error: message },

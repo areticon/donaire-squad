@@ -6200,3 +6200,29 @@ Trabalho", cmthlvgzl, 16 min):
   glossario; o tamanho agora e uniforme e o estilo ja e escolha do projeto.
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 70): a falha da transcricao com nome de fornecedor na tela
+
+O Bruno recomecou num projeto novo e a transcricao falhou com "Deepgram nao
+devolveu transcricao" NA TELA. Dois defeitos num so:
+
+1. **Vazamento de fornecedor**: o cliente nao tem que saber que a Deepgram
+   existe. O erro tecnico agora vai para o LOG do servidor (com o corpo bruto
+   do callback, ate 2000 chars, que era o dado que faltava para investigar) e
+   a tela recebe "A transcricao falhou desta vez. Nada se perdeu: vamos
+   tentar de novo sozinhos." Mesmo tratamento no despacho e no callback.
+2. **Falha transitoria exigia clique**: o mesmo arquivo tinha transcrito as
+   22:02 e falhou as 23:50, tipico de falha do servico. O piloto automatico
+   agora TENTA DE NOVO sozinho quando status=failed e attempts <
+   MAX_TENTATIVAS, uma vez por contagem de tentativa; o teto de 3 continua.
+   Isso destrava o video atual do Bruno na proxima visita a aba.
+
+Pendencia registrada: varrer os OUTROS erros com nome de fornecedor (Gemini
+em web-search/infographic aparecem em logs de campanha) com a mesma regra:
+tecnico no log, humano na tela.
+
+Causa raiz da falha em si: o callback da Deepgram veio sem alternatives; sem
+o corpo bruto logado (defeito 1) nao dava para saber por que. Na proxima
+ocorrencia o log conta.
+
+*Atualizado em 31/08/2026 por Claude Code.*
