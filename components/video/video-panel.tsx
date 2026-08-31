@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { VideoUpload } from "@/components/video/video-upload";
 import { VideoEspera } from "@/components/video/video-espera";
 import { Badge } from "@/components/ui/badge";
@@ -431,7 +432,18 @@ export function VideoPanel({
                         videoId={v.id}
                         index={(v.clips ?? []).indexOf(c)}
                         trecho={c}
-                        onAprovado={() => router.refresh()}
+                        onAprovado={() => {
+                          // O aprovado vira post de verdade, mas o post mora em
+                          // OUTRA aba, e sem este aviso o clique parecia não
+                          // fazer nada (teste do Bruno em 31/08: "cliquei e
+                          // nada aconteceu"). O destino do clique tem que
+                          // aparecer na tela.
+                          toast.success(
+                            "Posts criados. Eles estão na aba Posts, prontos para revisar e publicar.",
+                            { duration: 6000 }
+                          );
+                          router.refresh();
+                        }}
                       />
                     ))}
                   </div>

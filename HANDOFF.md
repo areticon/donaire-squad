@@ -6023,3 +6023,46 @@ so defeito. O que ja virou codigo nesta sessao:
    frente: tema declarado no upload, "cortar mesmo assim" na tela).
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 66): o e2e rodado por mim, e o fim do fluxo que era mudo
+
+O Bruno pediu o teste de ponta a ponta comigo no volante. O video dele
+("Proposito & Negocios", projeto novo misturando os dois assuntos) tinha
+rodado ate "ready" com 4 cortes. O que os DADOS contaram:
+
+- As 17:06, "Preparar os N cortes e levar para o quadro" agendou os cortes
+  0, 2 e 3 (2 destinos cada) mais o completo: 7 cards no quadro. As 17:16, a
+  aprovacao do corte 1 criou 4 posts SEM agenda, SEM card e SEM aviso.
+- Ou seja: ele desmarcou o corte que queria (tudo nasce marcado; o clique
+  dele "selecionando" na verdade DESmarcou) e o botao de aprovar funcionou
+  gravando em lugar que nenhuma tela mostra. "Cliquei e nada aconteceu" era
+  verdade na experiencia e mentira no banco.
+- O corte 1 em si esta BOM: pessoa centrada, legenda certa, enquadramento
+  estavel nas emendas (o punch-in novo do worker em acao, verificado no
+  quadro extraido).
+- A "capa cortada": capa 1280x720 e capa-arte 1376x768, paisagem, exibidas
+  num quadro 9:16 com object-cover, que joga fora dois tercos da arte.
+- O modal do card do Vitor no quadro nao tinha ramo para video_clip: caia no
+  texto generico, sem player e sem destino.
+
+### O que virou codigo agora
+
+- Aprovar ganhou retorno visivel: toast dizendo que os posts estao na aba
+  Posts (o minimo honesto ate o redesenho).
+- O modal do card video_clip mostra O VIDEO (player) e o destino
+  (metadata.destinoRotulo), antes do texto.
+- O poster do corte passou a object-contain: arte paisagem aparece inteira
+  com barras, em vez de cortada.
+
+### O que virou card (o redesenho que o Bruno descreveu)
+
+Depois da edicao, UMA central de aprovacao: ideias de conteudo geradas a
+partir do video; o cliente escolhe o que vai para onde, com icone oficial de
+cada rede; card do video completo para o YouTube com TUDO (thumb, descricao,
+tags, player); cada corte como Short e como Reels com tudo; e conteudos
+derivados (X, carrossel) sugeridos automaticamente. Os dois caminhos de hoje
+(cortes->quadro e aprovacao->posts soltos) fundem nessa central. Capa
+vertical 9:16 propria para corte tambem virou card (a arte de hoje e pensada
+para o YouTube).
+
+*Atualizado em 31/08/2026 por Claude Code.*

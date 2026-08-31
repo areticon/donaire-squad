@@ -252,7 +252,12 @@ export function CortesPanel({
                     poster={`/api/videos/${videoId}/midia?trecho=${i}&tipo=${c.midia?.capaArte ? "capa-arte" : "capa"}`}
                     controls
                     preload="none"
-                    className="w-full aspect-[9/16] object-cover bg-black"
+                    // `contain`, e não `cover`: a capa-arte é paisagem (1376x768,
+                    // pensada para o YouTube) e o `cover` num quadro 9:16 cortava
+                    // dois terços dela, que foi a "capa cortada" que o Bruno viu
+                    // em 31/08. O vídeo em si é 9:16 exato, então para ele os
+                    // dois se comportam igual. Capa vertical própria virou card.
+                    className="w-full aspect-[9/16] object-contain bg-black"
                   />
                 )}
 

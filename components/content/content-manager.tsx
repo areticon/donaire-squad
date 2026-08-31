@@ -1401,6 +1401,32 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               </div>
             ) : (
               <div>
+                {/* O corte de vídeo mostra O VÍDEO, antes do texto. Sem isto o
+                    modal do card do Vitor era só texto e um campo de IA, e o
+                    Bruno abriu, não viu o corte nem o destino, e travou
+                    (teste de 31/08). O que o card representa tem que estar
+                    na tela. */}
+                {localCard.cardType === "video_clip" && localCard.mediaUrl && (
+                  <div className="mb-4 space-y-2">
+                    {(() => {
+                      const meta = localCard.metadata as { destinoRotulo?: string } | null;
+                      return meta?.destinoRotulo ? (
+                        <span
+                          className="inline-block text-xs px-2 py-1 rounded-full border"
+                          style={{ borderColor: "var(--accent-orange)", color: "var(--accent-orange)" }}
+                        >
+                          Destino: {meta.destinoRotulo}
+                        </span>
+                      ) : null;
+                    })()}
+                    <video
+                      src={localCard.mediaUrl}
+                      controls
+                      preload="metadata"
+                      className="w-full max-h-[50vh] rounded-xl bg-black object-contain"
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Conteúdo</p>
                   {!editing && localCard.cardType !== "preview" && localCard.cardType !== "publish" && (
