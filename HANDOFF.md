@@ -6384,3 +6384,19 @@ deploy; e retry automatico precisa distinguir falha transitoria de
 sistemica, ou vira acelerador de estrago.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Adendo da parte 75: os numeros validados da esteira nova (01/09)
+
+Rodada de cura do video cmthufrkz, medida no worker revertido:
+
+| fase | antes (31/08) | agora |
+|---|---|---|
+| cortes entregues ao app | 18 min (esperavam o completo) | **130s** |
+| completo recodificado | 836s (preset medium) | **361s** (faster) |
+| total do worker | ~1047s | **372s** |
+
+O aviso em duas fases e o preset faster estao provados em producao. A
+fidelidade SSIM segue medida por corte. O completo atrasado se anexou pelo
+callback novo (conferido no banco).
+
+*Atualizado em 01/09/2026 por Claude Code.*
