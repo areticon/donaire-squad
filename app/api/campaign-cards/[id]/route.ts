@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   // Sync content to linked Post if applicable
-  if (card.postId && (card.cardType === "post_linkedin" || card.cardType === "post_twitter")) {
+  if (card.postId && (card.cardType === "post_linkedin" || card.cardType === "post_twitter" || card.cardType === "video_clip")) {
     await prisma.post.update({
       where: { id: card.postId },
       data: { content },

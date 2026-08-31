@@ -24,8 +24,22 @@ type TrechoPronto = Trecho & {
   publicar?: boolean;
   destinos?: string[];
   texto?: { titulo: string; descricao: string; fraseDaCapa: string };
+  posts?: { linkedin?: string; x?: string; instagram?: string };
   midia?: { vertical?: { url: string } | null } | null;
 };
+
+/**
+ * O texto certo para cada rede. A redação já escreveu um texto POR REDE
+ * (posts.linkedin, posts.x, posts.instagram); usar o título genérico em tudo
+ * jogava esse trabalho fora, e era o que o card do quadro mostrava até 31/08.
+ */
+function legendaDoDestino(t: TrechoPronto, plataforma: string): string {
+  const generica = [t.texto?.titulo, t.texto?.descricao].filter(Boolean).join("\n\n") || t.titulo || "";
+  if (plataforma === "twitter") return t.posts?.x || generica;
+  if (plataforma === "linkedin") return t.posts?.linkedin || generica;
+  if (plataforma === "instagram" || plataforma === "facebook") return t.posts?.instagram || generica;
+  return generica;
+}
 
 function segundaDaSemana(d = new Date()): Date {
   const dia = d.getUTCDay();
@@ -121,11 +135,8 @@ export async function POST(
 
     if (!destinos.length) continue;
 
-    const legenda = [t.texto?.titulo, t.texto?.descricao].filter(Boolean).join("\n\n")
-      || t.titulo
-      || "";
-
     for (const destino of destinos) {
+      const legenda = legendaDoDestino(t, destino.plataforma);
       const post = await prisma.post.create({
         data: {
           projectId: video.projectId,

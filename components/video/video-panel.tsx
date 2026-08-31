@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import toast from "react-hot-toast";
 import { VideoUpload } from "@/components/video/video-upload";
 import { VideoEspera } from "@/components/video/video-espera";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { ClipApproval, type TrechoComPosts } from "@/components/video/clip-approval";
+import type { TrechoComPosts } from "@/components/video/clip-approval";
 import { CortesPanel, type Corte } from "@/components/video/cortes-panel";
 import {
   estaTrabalhando,
@@ -367,8 +366,8 @@ export function VideoPanel({
                       className="text-sm"
                       style={{ color: "var(--text-muted)" }}
                     >
-                      {paraAprovar.filter((c) => c.posts).length} trechos viraram
-                      post. Edite o que quiser antes de aprovar.
+                      Os cortes e os textos estão no Gestor de Conteúdo, para
+                      revisar, ajustar com a IA e publicar.
                     </p>
 
                     {/* A gravação inteira, para o canal do cliente. Os trechos
@@ -377,7 +376,7 @@ export function VideoPanel({
                         trechos porque é UM envio por gravação, não um por
                         trecho: o arquivo tem centenas de megabytes. */}
                     <div
-                      className="rounded-xl border p-4 flex items-center justify-between gap-4"
+                      className="rounded-xl border p-4 flex flex-wrap items-center justify-between gap-4"
                       style={{
                         background: "var(--bg-surface)",
                         borderColor: "var(--border)",
@@ -399,7 +398,7 @@ export function VideoPanel({
                           você revisar e publicar no quadro de posts.
                         </p>
                       </div>
-                      <div className="shrink-0 text-right space-y-1">
+                      <div className="shrink-0 space-y-1 text-left sm:text-right">
                         <Button
                           size="sm"
                           variant="outline"
@@ -426,26 +425,6 @@ export function VideoPanel({
                         )}
                       </div>
                     </div>
-                    {paraAprovar.map((c, i) => (
-                      <ClipApproval
-                        key={`${v.id}-${i}`}
-                        videoId={v.id}
-                        index={(v.clips ?? []).indexOf(c)}
-                        trecho={c}
-                        onAprovado={() => {
-                          // O aprovado vira post de verdade, mas o post mora em
-                          // OUTRA aba, e sem este aviso o clique parecia não
-                          // fazer nada (teste do Bruno em 31/08: "cliquei e
-                          // nada aconteceu"). O destino do clique tem que
-                          // aparecer na tela.
-                          toast.success(
-                            "Posts criados. Eles estão na aba Posts, prontos para revisar e publicar.",
-                            { duration: 6000 }
-                          );
-                          router.refresh();
-                        }}
-                      />
-                    ))}
                   </div>
                 )}
                 </div>

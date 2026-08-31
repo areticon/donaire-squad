@@ -6066,3 +6066,50 @@ vertical 9:16 propria para corte tambem virou card (a arte de hoje e pensada
 para o YouTube).
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 67): a simplificacao com autonomia, primeiro corte
+
+O Bruno, testando pelo celular, deu o veredito ("a plataforma esta confusa,
+muitas etapas, muitas informacoes") e autonomia para simplificar pensando na
+jornada. O que mudou nesta primeira leva, tudo buildado e publicado:
+
+### Um caminho so, do corte a publicacao
+
+- **A aba Video parou de duplicar aprovacao.** O bloco ClipApproval (textos
+  por rede com botao "Aprovar e mandar para Posts", que criava posts sem
+  agenda e sem card, invisiveis) SAIU da tela. O caminho e um: preparar os
+  cortes, revisar e publicar no Gestor de Conteudo. A rota `approve` ficou
+  sem uso pela interface (mantida por ora).
+- **O agendamento passou a usar o texto DA REDE**: `legendaDoDestino` escolhe
+  posts.x para o X, posts.linkedin para o LinkedIn, posts.instagram para
+  Instagram e Facebook; o titulo+descricao ficou para YouTube e como reserva.
+  Antes o card de todas as redes carregava o mesmo texto generico e a redacao
+  por rede era jogada fora.
+- **O card do Vitor no quadro virou o lugar de publicar**: alem do player e
+  do destino (parte 66), agora mostra a PREVIA FIEL do post (SocialPostPreview
+  com icone e cor oficiais: YouTube, Instagram e Facebook entraram no
+  componente) e o botao "Publicar agora", que chama a rota de publicacao real
+  com a conta conectada; sem conta, o botao explica. `by-day` devolvia so
+  linkedin/twitter e escondia os posts de video: liberado para as cinco redes.
+- **Editar o conteudo do card de video sincroniza o post** (o PATCH so
+  sincronizava linkedin/twitter).
+
+### Menos ruido
+
+- **Linha de agente sem card na semana virou uma linha fina** ("Fulano: nada
+  nesta semana") em vez de sete celulas "Vazio". No celular as linhas vazias
+  dominavam a tela e o conteudo real sumia.
+- Responsividade dos prints: o cartao "Publicar a gravacao no YouTube"
+  quebrava uma palavra por linha (flex sem wrap: corrigido), e o rodape dos
+  cortes ganhou wrap.
+
+### O que continua aberto no card da central de aprovacao
+
+Thumb, tags e hashtags visiveis no card do YouTube; pedir correcao
+estruturada (refazer imagem, melhorar edicao, ajustar capa) alem do chat de
+IA; icones oficiais tambem nos chips de destino da aba Video; auditoria de
+responsividade completa (feita so nos pontos dos prints); e a fusao maior
+(ideias de conteudo derivadas do video: X, carrossel). O redesenho segue
+sendo o norte; esta leva tirou o beco e o ruido.
+
+*Atualizado em 31/08/2026 por Claude Code.*

@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       where: {
         projectId,
         scheduledAt: { gte: dayStart, lte: dayEnd },
-        platform: { in: ["linkedin", "twitter"] },
+        platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
       },
       select: {
         id: true,
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
         where: {
           projectId,
           scheduledAt: { gte: dayStart, lte: dayEnd },
-          platform: { in: ["linkedin", "twitter"] },
+          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
           ...(ref.runId ? { runId: ref.runId } : {}),
         },
         select: {
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
         where: {
           projectId,
           dayOfWeek: ref.dayOfWeek,
-          platform: { in: ["linkedin", "twitter"] },
+          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
           ...(ref.runId ? { runId: ref.runId } : {}),
         },
         orderBy: { createdAt: "desc" },

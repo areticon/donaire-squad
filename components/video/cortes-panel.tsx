@@ -335,7 +335,7 @@ export function CortesPanel({
         </div>
       </section>
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         {erro && <p className="text-sm text-orange-400">{erro}</p>}
         <Button disabled={marcados === 0 || escrevendo} onClick={escrever}>
           {escrevendo ? (
