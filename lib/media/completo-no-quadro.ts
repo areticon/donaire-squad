@@ -109,7 +109,9 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       scheduledDate: data,
       cardType: "video_clip",
       mediaType: "video",
-      content: `${nome}, gravação completa editada`,
+      // O card mostra o que o POST é (título, capítulos, tags), e não o nome
+      // do arquivo (a queixa de 01/09: completo sem descrição nenhuma).
+      content: conteudo,
       mediaUrl: `/api/videos/${video.id}/midia?tipo=completo`,
       status: "pending",
       postId,
