@@ -179,6 +179,8 @@ export async function comporCapa(
     cenario?: string;
     nicho?: string | null;
     usageCtx?: { projectId?: string };
+    /** "9:16" para capa de corte vertical; "16:9" para thumb de YouTube. */
+    formato?: "9:16" | "16:9";
   } = {}
 ): Promise<string | null> {
   // A palavra destacada é a mais longa da frase, que quase sempre é a que
@@ -225,10 +227,15 @@ NÃO FAÇA
 - Nada de texto além da frase pedida.
 - Nada de mãos ou dedos deformados: se a mão original ficar estranha no recorte, corte o enquadramento acima dela.
 
-Formato final: 16 por 9, cheio, sem barras.`;
+Formato final: ${opcoes.formato === "9:16" ? "9 por 16, VERTICAL como um Reels" : "16 por 9"}, cheio, sem barras.`;
 
-  return comporSobreImagem(prompt, quadroBase64, "image/jpeg", {
-    operation: "video_capa",
-    ...opcoes.usageCtx,
-  });
+  return comporSobreImagem(
+    prompt,
+    quadroBase64,
+    "image/jpeg",
+    { operation: "video_capa", ...opcoes.usageCtx },
+    // A capa do corte acompanha o formato do corte. A paisagem num quadro
+    // 9:16 foi a "capa errada" que o Bruno viu duas vezes (31/08).
+    opcoes.formato ?? "9:16"
+  );
 }

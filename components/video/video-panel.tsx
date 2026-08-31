@@ -35,6 +35,7 @@ type Video = {
   temTranscricao: boolean;
   temTrechos: boolean;
   temCortes: boolean;
+  temTrechosComPosts: boolean;
   completoUrl: string | null;
   completoBytes: number | null;
   rodandoHaSegundos: number | null;
@@ -75,15 +76,6 @@ export function VideoPanel({
   const router = useRouter();
   const [rodando, setRodando] = useState<string | null>(null);
   const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
-  /**
-   * Resultado do preparo do YouTube, por vídeo.
-   *
-   * Fica separado do aviso geral porque o aviso geral mora no TOPO da página, e
-   * o botão fica lá embaixo: o Bruno clicou, a mensagem apareceu fora do campo
-   * de visão dele, e a conclusão foi "não aconteceu nada". Retorno de ação
-   * precisa nascer ao lado do que foi clicado.
-   */
-  const [avisoYouTube, setAvisoYouTube] = useState<Record<string, string>>({});
 
   /**
    * O estado fresco vindo da consulta periódica, por vídeo.
@@ -99,6 +91,72 @@ export function VideoPanel({
     const fresco = aoVivo[v.id];
     return fresco ? { ...v, ...fresco } : v;
   });
+
+  /**
+   * O PILOTO AUTOMÁTICO. Decisão de 31/08, depois do veredito do Bruno
+   * ("muitas etapas, a experiência está horrível"): a promessa do produto é
+   * "você grava, o squad publica", então cada etapa dispara a seguinte
+   * sozinha. Transcrever, escolher e cortar não custam crédito; a redação
+   * custa, e é o preço do vídeo que o cliente já aceitou ao subir. Os botões
+   * manuais continuam existindo para repetir etapa que falhou.
+   *
+   * O agendamento é idempotente no servidor, então disparar em "ready" também
+   * CURA fluxo interrompido: se o navegador morreu entre a redação e o
+   * quadro (aconteceu no teste de 31/08), a próxima visita termina o serviço.
+   */
+  const disparados = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const v of combinados) {
+      const chave = `${v.id}:${v.status}`;
+      if (disparados.current.has(chave)) continue;
+      const passo =
+        v.status === "uploaded"
+          ? "transcribe"
+          : v.status === "transcribed"
+            ? "select"
+            : v.status === "selected"
+              ? "cortar"
+              : null;
+      if (passo) {
+        disparados.current.add(chave);
+        void executar(v.id, passo);
+        continue;
+      }
+      if (v.status === "cut" && v.temCortes && !v.temTrechosComPosts) {
+        disparados.current.add(chave);
+        void prepararTudo(v.id);
+        continue;
+      }
+      if (v.status === "ready") {
+        disparados.current.add(chave);
+        void fetch(`/api/videos/${v.id}/agendar`, { method: "POST" }).then(() => consultar());
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combinados.map((v) => `${v.id}:${v.status}`).join("|")]);
+
+  /** Capas, redação e quadro em sequência, com o estado visível na tela. */
+  const [autoEtapa, setAutoEtapa] = useState<Record<string, string>>({});
+  async function prepararTudo(videoId: string) {
+    try {
+      setAutoEtapa((a) => ({ ...a, [videoId]: "Escrevendo títulos e montando as capas" }));
+      const capas = await fetch(`/api/videos/${videoId}/capas`, { method: "POST" });
+      if (!capas.ok) throw new Error((await capas.json().catch(() => ({}))).error);
+      setAutoEtapa((a) => ({ ...a, [videoId]: "Escrevendo os textos de cada rede" }));
+      const w = await fetch(`/api/videos/${videoId}/write`, { method: "POST" });
+      if (!w.ok) throw new Error((await w.json().catch(() => ({}))).error);
+      setAutoEtapa((a) => ({ ...a, [videoId]: "Levando tudo para o Gestor de Conteúdo" }));
+      const ag = await fetch(`/api/videos/${videoId}/agendar`, { method: "POST" });
+      if (!ag.ok) throw new Error((await ag.json().catch(() => ({}))).error);
+      setAutoEtapa((a) => ({ ...a, [videoId]: "" }));
+    } catch (e) {
+      setAutoEtapa((a) => ({ ...a, [videoId]: "" }));
+      setErroDaAcao(e instanceof Error && e.message ? e.message : "Uma etapa falhou. Os botões abaixo repetem o que faltou.");
+    } finally {
+      consultar();
+      router.refresh();
+    }
+  }
 
   const algumTrabalhando = combinados.some((v) => estaTrabalhando(v.status));
 
@@ -200,28 +258,6 @@ export function VideoPanel({
     }
   }
 
-  async function prepararYouTube(videoId: string) {
-    setRodando(`yt-${videoId}`);
-    setAvisoYouTube((a) => ({ ...a, [videoId]: "" }));
-    try {
-      const r = await fetch(`/api/videos/${videoId}/youtube`, { method: "POST" });
-      const corpo = await r.json().catch(() => ({}));
-      const mensagem = !r.ok
-        ? (corpo.error ?? `A plataforma recusou com código ${r.status}.`)
-        : corpo.criado
-          ? "Rascunho criado. Abra o quadro de Posts para revisar e publicar."
-          : "Esta gravação já tinha um rascunho, e ele está no quadro de Posts.";
-      setAvisoYouTube((a) => ({ ...a, [videoId]: mensagem }));
-      if (r.ok) router.refresh();
-    } catch {
-      setAvisoYouTube((a) => ({
-        ...a,
-        [videoId]: "A requisição não completou. Recarregue e veja se o rascunho apareceu.",
-      }));
-    } finally {
-      setRodando(null);
-    }
-  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -347,6 +383,15 @@ export function VideoPanel({
                   </div>
                 )}
 
+                {autoEtapa[v.id] && (
+                  <div
+                    className="pl-4 flex items-center gap-2 text-sm"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    {autoEtapa[v.id]}
+                  </div>
+                )}
                 {trabalhando && (
                   <div className="pl-4">
                     <VideoEspera
@@ -360,71 +405,23 @@ export function VideoPanel({
                     uma tela separada, porque o cliente precisa lembrar de qual
                     momento da gravação cada texto saiu para julgar se ficou
                     fiel ao que ele quis dizer. */}
-                {v.status === "ready" && paraAprovar.length > 0 && (
-                  <div className="pl-4 space-y-3">
-                    <p
-                      className="text-sm"
-                      style={{ color: "var(--text-muted)" }}
+                {v.status === "ready" && (
+                  <div
+                    className="pl-4 flex flex-wrap items-center gap-3 text-sm"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    <span>
+                      Tudo pronto: os cortes, o vídeo completo com capítulos e
+                      os posts estão no Gestor de Conteúdo para revisar e
+                      publicar.
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => router.push(`/projects/${projectId}/live`)}
                     >
-                      Os cortes e os textos estão no Gestor de Conteúdo, para
-                      revisar, ajustar com a IA e publicar.
-                    </p>
-
-                    {/* A gravação inteira, para o canal do cliente. Os trechos
-                        escolhidos viram capítulos, que é o mesmo trabalho de
-                        seleção aproveitado de outra forma. Fica separado dos
-                        trechos porque é UM envio por gravação, não um por
-                        trecho: o arquivo tem centenas de megabytes. */}
-                    <div
-                      className="rounded-xl border p-4 flex flex-wrap items-center justify-between gap-4"
-                      style={{
-                        background: "var(--bg-surface)",
-                        borderColor: "var(--border)",
-                      }}
-                    >
-                      <div className="min-w-0">
-                        <p
-                          className="text-sm font-medium"
-                          style={{ color: "var(--text-primary)" }}
-                        >
-                          Publicar a gravação no seu canal do YouTube
-                        </p>
-                        <p
-                          className="text-xs mt-0.5"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          Vai inteira, com os {paraAprovar.length} momentos
-                          escolhidos virando capítulos. Cria um rascunho para
-                          você revisar e publicar no quadro de posts.
-                        </p>
-                      </div>
-                      <div className="shrink-0 space-y-1 text-left sm:text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={rodando === `yt-${v.id}`}
-                          onClick={() => prepararYouTube(v.id)}
-                        >
-                          {rodando === `yt-${v.id}` ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              Preparando
-                            </>
-                          ) : (
-                            "Preparar para o YouTube"
-                          )}
-                        </Button>
-                        {avisoYouTube[v.id] && (
-                          <p
-                            className="text-xs max-w-[16rem]"
-                            style={{ color: "var(--text-muted)" }}
-                            role="status"
-                          >
-                            {avisoYouTube[v.id]}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                      Abrir o Gestor de Conteúdo
+                    </Button>
                   </div>
                 )}
                 </div>

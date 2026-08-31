@@ -123,13 +123,21 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
  */
 const SONS_DE_HESITACAO = new Set(["e", "eh", "ah", "ahn", "hum", "uhm", "mmm"]);
 
+/**
+ * Vícios que saem SEMPRE, sem exigir duração. O "né" de vírgula é o caso que o
+ * Bruno ouviu atravessar a edição em 31/08: dura pouco (não é arrastado), não é
+ * silêncio (não é pausa) e o agente deixa passar. É marcador de discurso, não
+ * conteúdo: em fala corrida, removê-lo nunca muda o sentido.
+ */
+const VICIOS_SEMPRE = new Set(["ne"]);
+
 export function detectarMuletasArrastadas(palavras: Word[]): Remocao[] {
   const remocoes: Remocao[] = [];
   for (const p of palavras) {
     const chave = chaveDaPalavra(p.word);
-    if (!SONS_DE_HESITACAO.has(chave)) continue;
+    if (!SONS_DE_HESITACAO.has(chave) && !VICIOS_SEMPRE.has(chave)) continue;
     const duracao = p.end - p.start;
-    if (duracao >= 0.38) {
+    if (VICIOS_SEMPRE.has(chave) || duracao >= 0.38) {
       remocoes.push({
         de: p.start,
         ate: p.end,

@@ -87,6 +87,11 @@ export default async function VideoPage({
           v.clips.some(
             (c) => (c as { midia?: { vertical?: unknown } })?.midia?.vertical
           ),
+        // A redação já rodou? É o que diz ao piloto automático se a etapa
+        // paga ainda precisa ser disparada.
+        temTrechosComPosts:
+          Array.isArray(v.clips) &&
+          v.clips.some((c) => (c as { posts?: unknown })?.posts),
         completoUrl: v.completoUrl,
         // BigInt não atravessa a fronteira de servidor para cliente: o React
         // não sabe serializar. Vira número aqui, que é seguro porque nenhum

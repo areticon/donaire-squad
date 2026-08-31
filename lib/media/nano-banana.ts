@@ -355,7 +355,9 @@ export async function comporSobreImagem(
   prompt: string,
   imagemBase64: string,
   mimeType: string,
-  ctx?: ContextoMidia
+  ctx?: ContextoMidia,
+  /** Proporção da imagem de saída (ex.: "9:16" para capa de corte vertical). */
+  aspectRatio?: string
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -385,7 +387,10 @@ export async function comporSobreImagem(
                 ],
               },
             ],
-            generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+            generationConfig: {
+              responseModalities: ["IMAGE", "TEXT"],
+              ...(aspectRatio ? { imageConfig: { aspectRatio } } : {}),
+            },
           }),
           // Composição em cima de imagem demora mais que geração pura, e o Pro
           // é o mais lento dos três.

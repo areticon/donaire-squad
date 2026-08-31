@@ -390,14 +390,15 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
   const dim = await ffprobe(entrada);
   const partes = [];
   const mapa = [];
-  // O plano alterna a cada emenda, mas so quando o segmento tem tempo de ser
-  // visto. Medido no corte do Bruno de 30/08: a limpeza tirou tres muletas em
-  // tres segundos, e o vaivem de 5,5% a cada 0,7s virou estrobo. Segmento
-  // curto herda o plano do anterior; a alternancia so acontece em segmento de
-  // 1,2s ou mais.
-  let fechado = false;
+  // O plano alterna em TODA emenda. A regra de 30/08 (segmento curto herda o
+  // plano) foi revertida em 31/08 pelo proprio Bruno: sem mudanca de plano, a
+  // emenda vira pulo seco ("cortes bruscos entre falas"). O estrobo de 30/08
+  // nao era a alternancia, era o zoom centrado na TELA deslocando a pessoa;
+  // com o centro na caixa dela (abaixo), alternar sempre le como corte de
+  // camera, que e o efeito que ele pediu ("mudar a cena, dando um pouco de
+  // zoom").
   manter.forEach((m, i) => {
-    if (i > 0 && m.ate - m.de >= 1.2) fechado = !fechado;
+    const fechado = i % 2 === 1;
     partes.push(
       `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
         `${segmentoComPunchIn(fechado, dim.largura, dim.altura, pessoa)}[v${i}]`,
@@ -449,7 +450,11 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
  */
 function segmentoComPunchIn(fechado, largura, altura, pessoa = null) {
   if (!fechado || !largura || !altura) return "";
-  const z = 1.055;
+  // 8%: o topo da faixa que nao vira zoom nervoso (medido em 24/08: acima de
+  // ~8% cansa, abaixo de ~4% o olho nao registra). O 5,5% de 24/08 era para
+  // emenda frequente; com o pedido do Bruno de "mudar a cena" (31/08), o
+  // plano fechado precisa ser percebido como plano NOVO.
+  const z = 1.08;
   const w = Math.round(largura / z / 2) * 2;
   const h = Math.round(altura / z / 2) * 2;
   // O zoom e centrado na PESSOA, e nao no centro do quadro.

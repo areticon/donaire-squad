@@ -120,6 +120,9 @@ export async function POST(
               cenario: texto.cenario,
               nicho: video.project.niche,
               usageCtx: { projectId: video.projectId },
+              // O corte é vertical, a capa dele também. A thumb 16:9 do vídeo
+              // completo vem do quadro-fonte, não daqui.
+              formato: "9:16",
             });
             if (arte) {
               const { url } = await put(

@@ -6148,3 +6148,55 @@ video: exigem rotas novas no worker); a decisao da esteira (Vera/Paulo para
 conteudo de video); auditoria de responsividade completa com tela logada.
 
 *Atualizado em 31/08/2026 por Claude Code.*
+
+## Sessao 31/08/2026 (parte 69): o veredito duro, a forense, e o piloto automatico
+
+O Bruno rodou tudo de novo e o veredito foi "a plataforma sequer funcionou".
+A forense ANTES do conserto, nos dados do video real (projeto novo "Jesus e o
+Trabalho", cmthlvgzl, 16 min):
+
+- **74 minutos do upload ao pronto**, com cada etapa esperando clique.
+- **O Gestor vazio tinha causa mecanica**: a cadeia capas->redacao->quadro
+  vivia no NAVEGADOR; ele atualizou a pagina no meio, a redacao cobrou os 50
+  creditos e o agendamento nunca rodou (runs e cards zerados no banco).
+- **A limpeza RODOU** (69,975s de uma janela de 75,44s, zero silencios >=0,5s
+  no silencedetect). O que sobrou e vicio FALADO: "ne" (curto, nao arrastado,
+  nao e pausa) e "eeee" transcrito como palavra curta.
+- **Os cortes bruscos eram efeito da minha regra de 30/08**: segmento curto
+  herdava o plano, entao emenda rapida ficou SEM mudanca de cena.
+- **Legenda pulsando de tamanho**: o corpo por linha de 24/08 ajusta cada
+  bloco, e bloco curto sobe ao teto enquanto bloco longo desce.
+- **Capa horizontal em video vertical**: comporCapa pedia "16 por 9" fixo.
+
+### O que mudou (app 
+ worker publicados)
+
+1. **Piloto automatico**: uploaded->transcreve->escolhe->corta->capas->
+   redacao->quadro, tudo encadeado na tela com estado visivel, sem clique. O
+   disparo em "ready" chama o agendamento IDEMPOTENTE, o que tambem CURA
+   fluxos interrompidos: o video atual do Bruno termina o caminho sozinho na
+   proxima visita a aba. Botoes manuais viraram retry de etapa que falhou.
+2. **O botao "Preparar para o YouTube" morreu**: o agendamento ja cria o
+   rascunho com capitulos e o card; a duplicata era confusao pura. O bloco de
+   ready virou atalho para o Gestor.
+3. **"ne" sai sempre** (VICIOS_SEMPRE na limpeza deterministica; nao depende
+   de duracao nem do agente).
+4. **Legenda com corpo UNIFORME por corte**: o menor corpo que faz todas as
+   linhas caberem, com piso de 62% do teto (bloco patologico desce sozinho).
+5. **Capa dos cortes em 9:16** (comporSobreImagem ganhou aspectRatio; a thumb
+   16:9 do completo continua vindo do quadro-fonte).
+6. **Punch-in em TODA emenda, 8%, centrado na pessoa** (worker): a regra de
+   herdar plano em segmento curto foi revertida; o estrobo de 30/08 era o
+   deslocamento lateral do zoom centrado na tela, ja resolvido pelo centro na
+   caixa da pessoa. Fumaca dos 8 caminhos ok.
+
+### O que segue aberto, com honestidade
+
+- O tempo do WORKER continua o gargalo (corte de video de 16 min leva dezenas
+  de minutos): profiling e paralelizacao viraram a proxima frente de perf.
+- "eeee" que a Deepgram nao transcreve como palavra segue invisivel para as
+  redes deterministicas; medir no proximo video se o caso sobrevive.
+- Editor de legenda por corte (escolher e editar) e o card da fase 2 do
+  glossario; o tamanho agora e uniforme e o estilo ja e escolha do projeto.
+
+*Atualizado em 31/08/2026 por Claude Code.*

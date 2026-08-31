@@ -156,6 +156,23 @@ export function legendaDoCorte(
   const larguraUtil = quadro.largura - 2 * margemLateral;
 
   const linhas: string[] = [];
+  // O corpo é UM para o corte inteiro: o menor que faz TODAS as linhas
+  // caberem, respeitando o teto do estilo. Corpo por linha (24/08) resolvia o
+  // vazamento mas fazia a legenda pulsar de tamanho a cada bloco, que foi o
+  // "às vezes grande, às vezes pequena" que o Bruno reprovou em 31/08. O piso
+  // de 62% do teto protege do bloco patológico: se um bloco exigir menos que
+  // isso, só ELE desce, e o resto fica uniforme.
+  const corposAjustados = blocos.map((b) => {
+    const em = larguraEmCorpos(
+      b.map((p) => (L.caixaAlta ? p.texto.toUpperCase() : p.texto)).join(" "),
+      L.fonte
+    );
+    return Math.max(24, Math.min(L.corpo, Math.floor(larguraUtil / Math.max(0.1, em))));
+  });
+  const corpoUniforme = Math.max(
+    Math.min(...(corposAjustados.length ? corposAjustados : [L.corpo])),
+    Math.floor(L.corpo * 0.62)
+  );
   for (const [b, bloco] of blocos.entries()) {
     const inicio = bloco[0].inicio;
     const fimDaFala = bloco[bloco.length - 1].fim;
@@ -213,10 +230,11 @@ export function legendaDoCorte(
       bloco.map((p) => (L.caixaAlta ? p.texto.toUpperCase() : p.texto)).join(" "),
       L.fonte
     );
-    const corpo = Math.max(
+    const ajustadoDoBloco = Math.max(
       24,
       Math.min(L.corpo, Math.floor(larguraUtil / Math.max(0.1, emCorpos)))
     );
+    const corpo = Math.min(corpoUniforme, ajustadoDoBloco);
     // `s` só entra quando muda alguma coisa, para o arquivo não ficar cheio
     // de marca que não faz nada.
     const ajuste = corpo < L.corpo ? `{\\fs${corpo}}` : "";
