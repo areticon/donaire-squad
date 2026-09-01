@@ -6660,3 +6660,45 @@ visual primeiro, veredito dele, so entao implementacao. Vale para a landing e
 vale para a camada de overlay do video, que e a mesma natureza de trabalho.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Adendo 2 da parte 78: o metodo novo, e o store publico criado (01/09)
+
+Depois da reversao, o Bruno perguntou direto: "voce acha que consegue fazer um
+design profissional? ou e melhor voltar? pesquise repositorios do git que te
+deem as skills certas, use o Claude Design, design motion". A resposta virou
+metodo, e o metodo e o que estava escrito na memoria dele desde o comeco:
+**design visual se decide em canvas, e codigo so depois do veredito**.
+
+Foi ao ar um canvas do Claude Design com TRES direcoes para a landing, cada
+uma um eixo diferente e com o tradeoff declarado, usando o corte e a capa
+REAIS que a plataforma entregou (nada de imagem de banco):
+
+- **A. Colagem editorial**: papel com grao, Archivo Black em 104px, o corte
+  colado torto com sombra, marcador amarelo sangrando para fora do recorte,
+  fios atravessando a pagina. Memoravel, e caro de manter em toda secao nova.
+- **B. Escuro cinematografico**: mantem o grafite e o degrade laranja da marca,
+  com Instrument Serif em italico no contraponto e o corte flutuando com
+  profundidade. E a identidade dele, e e o territorio mais concorrido.
+- **C. Tipografico severo**: grade suica visivel, manchete de 148px, reguas
+  pretas grossas, mono nos rotulos e um unico bloco laranja. Autoridade
+  imediata, e nao perdoa texto fraco.
+
+Os arquivos de trabalho ficam em `docs/design/landing/` (um `.dc.html` por
+direcao mais `canvas.json`), entao a proxima rodada re-semeia dali em vez de
+comecar do zero.
+
+### O store publico do CDN
+
+Criado por CLI com a autorizacao dele: `demandou-publico`, publico, iad1. A
+tentativa de ligar ao projeto FALHOU de proposito bom: o nome
+`BLOB_READ_WRITE_TOKEN` ja existia em producao e a Vercel recusou sobrescrever,
+entao **o token de producao nao foi tocado** (conferido, continua com 9 dias).
+
+Falta o token do store novo, e ele nao sai por CLI: `delete-store` exige
+confirmacao interativa e nao existe comando para conectar um store existente
+com outro nome de variavel. O caminho e o painel, uma vez so: conectar
+`demandou-publico` ao projeto escolhendo o prefixo, para a variavel nascer como
+`BLOB_PUBLIC_READ_WRITE_TOKEN`, e repetir o valor no Railway. Depois disso a
+troca no codigo e minha, provada com UM upload antes de subir.
+
+*Atualizado em 01/09/2026 por Claude Code.*

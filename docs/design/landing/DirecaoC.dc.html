@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700&family=Archivo+Black&family=JetBrains+Mono:wght@400;700&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #ef6122; } a:hover { color: #be4720; }
+    @keyframes sobe { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #ffffff; color: #0a0a0a; font-family: Archivo, 'Helvetica Neue', Arial, sans-serif;">
+
+  <!-- grade suíça visível: quatro colunas e as réguas -->
+  <div style="position: absolute; left: 80px; top: 0; bottom: 0; width: 1px; background: #e6e6e6;"></div>
+  <div style="position: absolute; left: 420px; top: 0; bottom: 0; width: 1px; background: #e6e6e6;"></div>
+  <div style="position: absolute; left: 760px; top: 0; bottom: 0; width: 1px; background: #e6e6e6;"></div>
+  <div style="position: absolute; left: 1100px; top: 0; bottom: 0; width: 1px; background: #e6e6e6;"></div>
+  <div style="position: absolute; right: 80px; top: 0; bottom: 0; width: 1px; background: #e6e6e6;"></div>
+
+  <!-- topo -->
+  <div style="position: absolute; left: 80px; right: 80px; top: 46px; display: flex; align-items: baseline; justify-content: space-between; border-bottom: 3px solid #0a0a0a; padding-bottom: 16px;">
+    <span style="font-family: 'Archivo Black', Archivo, sans-serif; font-size: 20px; letter-spacing: -0.02em;">demandou.</span>
+    <div style="display: flex; gap: 32px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">
+      <span>Como funciona</span><span>Preços</span><span>Entrar</span>
+    </div>
+  </div>
+
+  <!-- manchete gigante, corrida na largura -->
+  <div style="position: absolute; left: 80px; right: 80px; top: 128px; animation: sobe .6s both;">
+    <h1 style="font-family: 'Archivo Black', Archivo, sans-serif; font-size: 148px; line-height: .82; letter-spacing: -0.055em; margin: 0;">
+      VOCÊ FALOU.<br>ELE POSTOU.
+    </h1>
+  </div>
+
+  <!-- bloco laranja chapado, o único acento -->
+  <div style="position: absolute; left: 1100px; top: 128px; width: 260px; height: 122px; background: #ef6122;"></div>
+  <div style="position: absolute; left: 1120px; top: 152px; width: 220px; color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; letter-spacing: .02em;">
+    1 gravação<br>6 cortes<br>5 redes<br>0 clique
+  </div>
+
+  <!-- régua e corpo em três colunas -->
+  <div style="position: absolute; left: 80px; right: 80px; top: 408px; height: 3px; background: #0a0a0a;"></div>
+
+  <div style="position: absolute; left: 80px; top: 436px; width: 320px; animation: sobe .6s .1s both;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8a8a8a;">01 / o problema</div>
+    <p style="font-size: 16px; line-height: 1.55; margin: 14px 0 0;">
+      Quem não publica não existe para o mercado. Autoridade vem de
+      consistência, e consistência é exatamente o que falta quando o dia
+      acaba.
+    </p>
+  </div>
+
+  <div style="position: absolute; left: 420px; top: 436px; width: 320px; animation: sobe .6s .16s both;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8a8a8a;">02 / o que você faz</div>
+    <p style="font-size: 16px; line-height: 1.55; margin: 14px 0 0;">
+      Grava um vídeo falando do jeito que você fala. Só isso. Sem roteiro,
+      sem edição, sem calendário, sem abrir uma rede sequer.
+    </p>
+  </div>
+
+  <div style="position: absolute; left: 760px; top: 436px; width: 320px; animation: sobe .6s .22s both;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8a8a8a;">03 / o que sai</div>
+    <p style="font-size: 16px; line-height: 1.55; margin: 14px 0 0;">
+      Cortes verticais legendados, capa, texto por rede e o vídeo completo
+      com capítulos. Você revisa e aprova. Ele publica.
+    </p>
+  </div>
+
+  <!-- prova: o corte real, em moldura dura -->
+  <div style="position: absolute; left: 1100px; top: 436px; width: 260px; animation: sobe .6s .28s both;">
+    <img src="corte.jpg" alt="Corte vertical entregue pela plataforma" style="display: block; width: 260px; height: 300px; object-fit: cover; border: 3px solid #0a0a0a;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; margin-top: 8px; color: #8a8a8a;">
+      saída real da plataforma
+    </div>
+  </div>
+
+  <!-- ação -->
+  <div style="position: absolute; left: 80px; top: 700px; display: flex; align-items: stretch; border: 3px solid #0a0a0a;">
+    <span style="background: #0a0a0a; color: #fff; padding: 20px 30px; font-size: 16px; font-weight: 700;">Começar os 7 dias grátis</span>
+    <span style="padding: 20px 26px; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .06em; display: flex; align-items: center;">CANCELE QUANDO QUISER</span>
+  </div>
+
+  <div style="position: absolute; left: 80px; right: 80px; top: 812px; border-top: 1px solid #0a0a0a; padding-top: 14px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .06em; color: #8a8a8a;">
+    <span>LINKEDIN</span><span>INSTAGRAM</span><span>X</span><span>FACEBOOK</span><span>YOUTUBE</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

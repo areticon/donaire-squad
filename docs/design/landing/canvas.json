@@ -1,0 +1,38 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial" },
+    { "file": "DirecaoB.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico" },
+    { "file": "DirecaoC.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo" }
+  ],
+  "annotations": [
+    {
+      "id": "briefing",
+      "x": 0,
+      "y": -230,
+      "w": 620,
+      "text": "Três direções para a landing da Demandou, com o corte e a capa REAIS que a plataforma entregou.\nEscolha uma (ou peça mistura: \"o tipo do C com o papel do A\") e só então eu levo para o código."
+    },
+    {
+      "id": "nota-a",
+      "x": 0,
+      "y": 960,
+      "w": 420,
+      "text": "A. COLAGEM EDITORIAL\nA sua referência levada a sério: papel com grão, tipo condensada gigante, o corte real colado torto com sombra, marcador amarelo sangrando para fora e fios atravessando a página.\nForça: memorável, não parece SaaS nenhum.\nRisco: exige capricho em toda seção nova, senão desmonta."
+    },
+    {
+      "id": "nota-b",
+      "x": 1560,
+      "y": 960,
+      "w": 420,
+      "text": "B. ESCURO CINEMATOGRÁFICO\nMantém o grafite e o degradê laranja da sua marca, com serifa em itálico no contraponto e o corte flutuando com profundidade.\nForça: continua sendo a sua identidade, e vende premium.\nRisco: é o território mais concorrido, todo SaaS bom mora aqui."
+    },
+    {
+      "id": "nota-c",
+      "x": 3120,
+      "y": 960,
+      "w": 420,
+      "text": "C. TIPOGRÁFICO SEVERO\nGrade suíça visível, manchete de 148px, réguas pretas grossas, mono nos rótulos e um único bloco laranja.\nForça: autoridade imediata, e envelhece bem.\nRisco: frio, e exige texto muito bom porque não tem onde se esconder."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

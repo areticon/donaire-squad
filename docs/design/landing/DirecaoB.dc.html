@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Serif:ital@0;1&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #f6803d; } a:hover { color: #ffa06b; }
+    @keyframes entra { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+    @keyframes brilho { from { opacity: .25; transform: scale(.94); } to { opacity: .6; transform: scale(1); } }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #0b0b0e; color: #ecebf0; font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;">
+
+  <!-- luz laranja da marca, difusa -->
+  <div style="position: absolute; left: 560px; top: -260px; width: 900px; height: 900px; border-radius: 50%; background: radial-gradient(closest-side, rgba(241,116,46,.34), rgba(190,71,32,.10) 55%, transparent 72%); filter: blur(12px); animation: brilho 1.6s ease-out both;"></div>
+
+  <!-- grade fina -->
+  <div style="position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(to right, #3a3a46 1px, transparent 1px), linear-gradient(to bottom, #3a3a46 1px, transparent 1px); background-size: 96px 96px;"></div>
+
+  <!-- topo -->
+  <div style="position: absolute; left: 88px; top: 52px; right: 88px; display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-size: 21px; font-weight: 700; letter-spacing: -0.02em;">demandou.</span>
+      <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #8e8e9c;">postou.</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 30px; font-size: 13px; color: #b6b6c2;">
+      <span>Como funciona</span>
+      <span>Preços</span>
+      <span style="background: linear-gradient(135deg, #f1742e, #be4720); color: #fff; padding: 9px 18px; font-weight: 700;">Começar grátis</span>
+    </div>
+  </div>
+
+  <!-- manchete -->
+  <div style="position: absolute; left: 88px; top: 214px; width: 700px; animation: entra .8s both;">
+    <div style="font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #f6803d;">Conteúdo com agentes de IA</div>
+
+    <h1 style="font-size: 88px; line-height: .95; letter-spacing: -0.035em; font-weight: 700; margin: 26px 0 0;">
+      Você grava<br>uma vez.
+      <span style="display: block; font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em; background: linear-gradient(100deg, #f1742e, #be4720); -webkit-background-clip: text; background-clip: text; color: transparent;">Ele posta a semana inteira.</span>
+    </h1>
+
+    <p style="font-size: 18px; line-height: 1.62; color: #a9a9b6; margin: 34px 0 0; max-width: 520px;">
+      Autoridade vem de publicar com consistência, e é isso que 99% não
+      conseguem manter. Você fala do jeito que fala, e o squad transcreve,
+      corta, escreve, desenha e publica em todas as suas redes.
+    </p>
+
+    <div style="display: flex; align-items: center; gap: 26px; margin-top: 40px;">
+      <span style="display: inline-flex; align-items: center; gap: 12px; background: linear-gradient(135deg, #f1742e, #be4720); color: #fff; padding: 18px 28px; font-size: 15px; font-weight: 700;">
+        Começar os 7 dias grátis
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+      </span>
+      <span style="font-size: 14px; color: #b6b6c2; border-bottom: 1px solid #4a4a58; padding-bottom: 4px;">Ver um vídeo virando semana</span>
+    </div>
+
+    <div style="display: flex; gap: 46px; margin-top: 58px; padding-top: 26px; border-top: 1px solid #26262f;">
+      <div>
+        <div style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">2 min</div>
+        <div style="font-size: 12px; color: #7d7d8c; margin-top: 4px;">do upload aos cortes prontos</div>
+      </div>
+      <div>
+        <div style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">5 redes</div>
+        <div style="font-size: 12px; color: #7d7d8c; margin-top: 4px;">publicadas sem você abrir nenhuma</div>
+      </div>
+      <div>
+        <div style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">0 clique</div>
+        <div style="font-size: 12px; color: #7d7d8c; margin-top: 4px;">entre gravar e revisar</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- o corte real, flutuando com profundidade -->
+  <div style="position: absolute; left: 906px; top: 172px; animation: entra .9s .15s both;">
+    <div style="position: absolute; left: 26px; top: 26px; width: 300px; height: 534px; background: linear-gradient(135deg, rgba(241,116,46,.22), transparent 60%); filter: blur(26px);"></div>
+    <div style="position: relative; width: 300px; height: 534px; border: 1px solid #2e2e3a; background: #141419; box-shadow: 0 40px 90px rgba(0,0,0,.6);">
+      <img src="corte.jpg" alt="Corte vertical entregue" style="display: block; width: 100%; height: 100%; object-fit: cover;">
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 16px; background: linear-gradient(transparent, rgba(11,11,14,.92)); display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #cfcfda;">Corte 01 · pronto</span>
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: #f1742e;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 1236px; top: 596px; width: 132px; animation: entra .9s .3s both;">
+    <div style="border: 1px solid #2e2e3a; background: #141419; padding: 8px;">
+      <img src="capa.jpg" alt="Capa gerada" style="display: block; width: 100%; height: 74px; object-fit: cover;">
+      <div style="font-size: 10px; color: #7d7d8c; margin-top: 7px; letter-spacing: .1em; text-transform: uppercase;">Capa gerada</div>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 88px; top: 836px; font-size: 12px; color: #6f6f7d;">
+    7 dias grátis. Cancele quando quiser.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
