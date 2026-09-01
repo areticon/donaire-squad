@@ -6783,3 +6783,64 @@ nenhum link quebra, e a partir do proximo video processado o player fala com o
 CDN.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 80): a rodada nova no ar, e o motion na pagina que ja existe
+
+### O corte redespachado, com o CDN provado em producao
+
+O Bruno liberou o redespacho. O pedido saiu com **145 remocoes e 90s
+removidos**, contra os 103,4s da rodada reprovada: sao **13 segundos de
+respiro devolvidos** a fala dele, que e o conserto de `respiroDaPausa`
+aparecendo antes mesmo de o worker rodar.
+
+Os dois cortes voltaram em minutos e, pela primeira vez, **no store publico**.
+Provado no arquivo real que acabou de sair:
+
+| medida | resultado |
+|---|---|
+| leitura sem token nenhum | 200, video/mp4, 24 MB |
+| cache | `public, max-age=2592000` |
+| Range | 206, `bytes 0-65535/25161099` |
+
+O player passa a buscar por faixa direto no CDN. O completo entra depois, com
+os dois passes.
+
+### A direcao de design, corrigida pelo Bruno
+
+Ele manteve o rumo mas mudou o alvo, e a correcao e boa: **a pagina preta e
+laranja com os agentes fica como esta**, e o que entra e MOVIMENTO, mais
+algumas artes de colagem como camada. "Gosto do papel, as tarjas, a mistura de
+arte desenho com realidade, infograficos." E o fluxo agora e regra: design
+primeiro, aprovacao dele, so entao producao.
+
+O artboard novo reproduz o hero de hoje com os valores lidos do codigo, um a
+um (fundo #1e1e25, grade de 48px, brilho laranja, cartao #2a2a33, borda
+#3f3f4b, texto #dcdde2 e #9599a6, laranja #ef6122 e #f6803d, botao de 56px de
+altura), e por cima entra a coreografia: a grade desliza, o brilho respira, os
+blocos sobem em sequencia, o traco laranja e DESENHADO sob "demandou" e
+"postou", o cartao monta agente por agente, o aviso de post publicado chega
+por ultimo como resultado, os pontos de ativo piscam fora de fase e o botao
+tem o anel que o app ja usa.
+
+### As duas artes, e a regra que elas seguem
+
+Geradas no Nano Banana Pro com as referencias da biblia de estilo: uma tarja
+de papel rasgado com setas de mao e uma passada de marcador laranja, e um
+diagrama desenhado de uma gravacao virando seis cortes, com dois dos seis
+preenchidos de laranja.
+
+**Nenhuma das duas carrega texto**, de proposito: o modelo erra acento e
+palavra em portugues, e a biblia ja mandava ler o texto renderizado antes de
+colar. O texto vai por cima, em HTML, onde ele e certo por construcao. A arte
+entrega o que so ela faz: papel, traco de mao e textura.
+
+Duas armadilhas anotadas no caminho:
+
+1. `mix-blend-mode: screen` sobre fundo escuro APAGA a tinta preta do desenho,
+   que e justamente o que a arte tem de bom. Papel sobre mesa escura se
+   resolve com sombra, nao com mistura.
+2. O `vercel env pull` reescreve o `.env.local` com ASPAS no valor, e o script
+   antigo lia a chave com as aspas dentro. A Gemini devolve `API_KEY_INVALID`,
+   que nao diz nada sobre o motivo real.
+
+*Atualizado em 01/09/2026 por Claude Code.*

@@ -7,209 +7,257 @@
 <body>
 <x-dc>
 <helmet>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;600;700&family=Archivo+Narrow:wght@700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Montserrat:wght@700;800&display=swap">
   <style>
     body { margin: 0; }
-    a { color: #17171a; } a:hover { color: #000000; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
 
-    /* O CICLO
-       Tudo abaixo roda no MESMO tempo total e se posiciona por porcentagem,
-       e nao por atraso: atraso so vale na primeira volta de uma animacao em
-       laco, entao um reel montado com delay desmonta a partir da segunda
-       repeticao. Percentagem mantem a coreografia igual em toda volta. */
+    /* A COREOGRAFIA
+       Um tempo total só, e cada gesto posicionado por PORCENTAGEM. Atraso não
+       serve: em animação em laço ele só vale na primeira volta, e o reel
+       desmonta a partir da segunda. No site esta mesma coreografia roda UMA
+       vez na chegada e para; o laço existe aqui para poder assistir de novo
+       sem recarregar. */
     .palco { animation: ciclo var(--ciclo) linear infinite; }
-    @keyframes ciclo { 0% { opacity: 0 } 3%, 92% { opacity: 1 } 98%, 100% { opacity: 0 } }
+    @keyframes ciclo { 0% { opacity: 0 } 3%, 93% { opacity: 1 } 99%, 100% { opacity: 0 } }
 
-    /* o fio que risca a pagina */
-    .fio { transform-origin: left; animation: risca var(--ciclo) linear infinite; }
-    @keyframes risca { 0%, 2% { transform: scaleX(0) } 13%, 100% { transform: scaleX(1) } }
-    .fio-curto { transform-origin: left; animation: risca-curto var(--ciclo) linear infinite; }
-    @keyframes risca-curto { 0%, 5% { transform: scaleX(0) } 16%, 100% { transform: scaleX(1) } }
+    /* a grade respira e desliza devagar, que é o único movimento contínuo */
+    .grade { animation: deriva 26s linear infinite; }
+    @keyframes deriva { to { background-position: 48px 48px, 48px 48px } }
+    .brilho { animation: pulsa-luz 9s ease-in-out infinite; }
+    @keyframes pulsa-luz { 0%, 100% { opacity: .5; transform: scale(1) } 50% { opacity: 1; transform: scale(1.06) } }
 
-    /* a manchete sobe linha a linha, cada uma com a sua janela */
-    .l1, .l2, .l3 { display: block; }
-    .l1 { animation: sobe1 var(--ciclo) linear infinite; }
-    .l2 { animation: sobe2 var(--ciclo) linear infinite; }
-    .l3 { animation: sobe3 var(--ciclo) linear infinite; }
-    @keyframes sobe1 { 0%, 3% { opacity: 0; transform: translateY(26px) } 11%, 100% { opacity: 1; transform: none } }
-    @keyframes sobe2 { 0%, 6% { opacity: 0; transform: translateY(26px) } 14%, 100% { opacity: 1; transform: none } }
-    @keyframes sobe3 { 0%, 9% { opacity: 0; transform: translateY(26px) } 17%, 100% { opacity: 1; transform: none } }
+    .g1 { animation: g1 var(--ciclo) linear infinite; }
+    .g2 { animation: g2 var(--ciclo) linear infinite; }
+    .g3 { animation: g3 var(--ciclo) linear infinite; }
+    .g4 { animation: g4 var(--ciclo) linear infinite; }
+    .g5 { animation: g5 var(--ciclo) linear infinite; }
+    @keyframes g1 { 0%, 2% { opacity: 0; transform: translateY(14px) } 8%, 100% { opacity: 1; transform: none } }
+    @keyframes g2 { 0%, 5% { opacity: 0; transform: translateY(20px) } 12%, 100% { opacity: 1; transform: none } }
+    @keyframes g3 { 0%, 9% { opacity: 0; transform: translateY(20px) } 16%, 100% { opacity: 1; transform: none } }
+    @keyframes g4 { 0%, 13% { opacity: 0; transform: translateY(18px) } 20%, 100% { opacity: 1; transform: none } }
+    @keyframes g5 { 0%, 17% { opacity: 0; transform: translateY(16px) } 24%, 100% { opacity: 1; transform: none } }
 
-    /* o marca-texto e PINTADO da esquerda para a direita, como caneta */
-    .marca { background-image: linear-gradient(#f2f70f, #f2f70f); background-repeat: no-repeat;
-             background-position: -1.5% .17em; padding: 0 .04em;
-             animation: pinta var(--ciclo) linear infinite; }
-    @keyframes pinta {
-      0%, 17% { background-size: 0% 0.74em }
-      25%, 100% { background-size: 103% 0.74em }
+    /* o traço laranja é DESENHADO sob as duas palavras da marca */
+    .sublinha { position: relative; }
+    .sublinha::after {
+      content: ""; position: absolute; left: -2px; right: -2px; bottom: 2px; height: 5px;
+      background: #ef6122; transform-origin: left; border-radius: 2px;
+    }
+    .sub1::after { animation: risca var(--ciclo) cubic-bezier(.3,.8,.3,1) infinite; }
+    .sub2::after { animation: risca2 var(--ciclo) cubic-bezier(.3,.8,.3,1) infinite; }
+    @keyframes risca { 0%, 12% { transform: scaleX(0) } 19%, 100% { transform: scaleX(1) } }
+    @keyframes risca2 { 0%, 16% { transform: scaleX(0) } 23%, 100% { transform: scaleX(1) } }
+
+    /* o cartão dos agentes monta linha a linha */
+    .cartao { animation: cartao var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
+    @keyframes cartao { 0%, 4% { opacity: 0; transform: translateY(22px) } 13%, 100% { opacity: 1; transform: none } }
+    .ag1 { animation: ag1 var(--ciclo) linear infinite; }
+    .ag2 { animation: ag2 var(--ciclo) linear infinite; }
+    .ag3 { animation: ag3 var(--ciclo) linear infinite; }
+    .ag4 { animation: ag4 var(--ciclo) linear infinite; }
+    .ag5 { animation: ag5 var(--ciclo) linear infinite; }
+    @keyframes ag1 { 0%, 11% { opacity: 0; transform: translateX(-14px) } 17%, 100% { opacity: 1; transform: none } }
+    @keyframes ag2 { 0%, 14% { opacity: 0; transform: translateX(-14px) } 20%, 100% { opacity: 1; transform: none } }
+    @keyframes ag3 { 0%, 17% { opacity: 0; transform: translateX(-14px) } 23%, 100% { opacity: 1; transform: none } }
+    @keyframes ag4 { 0%, 20% { opacity: 0; transform: translateX(-14px) } 26%, 100% { opacity: 1; transform: none } }
+    @keyframes ag5 { 0%, 23% { opacity: 0; transform: translateX(-14px) } 29%, 100% { opacity: 1; transform: none } }
+
+    /* o aviso de publicado chega por último, como resultado */
+    .publicado { animation: publicado var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
+    @keyframes publicado {
+      0%, 30% { opacity: 0; transform: translateY(10px) }
+      35% { opacity: 1; transform: translateY(-2px) }
+      38%, 100% { opacity: 1; transform: none }
     }
 
-    .sobe-a { animation: sobeA var(--ciclo) linear infinite; }
-    .sobe-b { animation: sobeB var(--ciclo) linear infinite; }
-    .sobe-c { animation: sobeC var(--ciclo) linear infinite; }
-    @keyframes sobeA { 0%, 2% { opacity: 0; transform: translateY(10px) } 9%, 100% { opacity: 1; transform: none } }
-    @keyframes sobeB { 0%, 20% { opacity: 0; transform: translateY(14px) } 28%, 100% { opacity: 1; transform: none } }
-    @keyframes sobeC { 0%, 26% { opacity: 0; transform: translateY(14px) } 34%, 100% { opacity: 1; transform: none } }
+    /* os pontos de "ativo" piscam fora de fase, como coisa viva */
+    .vivo { animation: vivo 2s ease-in-out infinite; }
+    @keyframes vivo { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
 
-    /* o recorte CAI e assenta, com uma sobra de rotacao no fim */
-    .recorte { animation: cai var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
-    @keyframes cai {
-      0%, 9% { opacity: 0; transform: translateY(-46px) rotate(-5deg) }
-      16% { opacity: 1; transform: translateY(6px) rotate(2.6deg) }
-      19%, 100% { opacity: 1; transform: translateY(0) rotate(1.4deg) }
+    /* a COLAGEM entra por cima da interface */
+    .tarja { animation: tarja var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
+    @keyframes tarja {
+      0%, 33% { opacity: 0; transform: translateX(-70px) rotate(-4deg) }
+      41%, 100% { opacity: 1; transform: translateX(0) rotate(-2.5deg) }
     }
-
-    /* o bloco de marcador desliza de tras do recorte */
-    .bloco { transform-origin: right center; animation: desliza var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
-    @keyframes desliza {
-      0%, 15% { opacity: 0; transform: translateX(64px) rotate(-1.2deg) }
-      22%, 100% { opacity: 1; transform: translateX(0) rotate(-1.2deg) }
+    .papel { animation: papel var(--ciclo) cubic-bezier(.18,1.05,.3,1) infinite; }
+    @keyframes papel {
+      0%, 42% { opacity: 0; transform: translateY(-26px) rotate(8deg) }
+      50% { opacity: 1; transform: translateY(4px) rotate(1.6deg) }
+      54%, 100% { opacity: 1; transform: translateY(0) rotate(3deg) }
     }
+    .rotulo { animation: rotulo var(--ciclo) linear infinite; }
+    @keyframes rotulo { 0%, 52% { opacity: 0 } 58%, 100% { opacity: 1 } }
 
-    .capa { animation: capaEntra var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
-    @keyframes capaEntra {
-      0%, 21% { opacity: 0; transform: translateY(18px) rotate(-6deg) }
-      27% { opacity: 1; transform: translateY(-3px) rotate(-1.4deg) }
-      30%, 100% { opacity: 1; transform: translateY(0) rotate(-2.4deg) }
+    /* o anel do botão, que é o gesto que já existe no app */
+    .anel { animation: anel 2.6s ease-out infinite; }
+    @keyframes anel {
+      0% { box-shadow: 0 0 0 0 rgba(239, 97, 34, .45) }
+      70%, 100% { box-shadow: 0 0 0 14px rgba(239, 97, 34, 0) }
     }
-
-    /* o carimbo bate torto e volta */
-    .carimbo { animation: bate var(--ciclo) cubic-bezier(.18,1.1,.3,1) infinite; }
-    @keyframes bate {
-      0%, 26% { opacity: 0; transform: scale(1.35) rotate(-9deg) }
-      31% { opacity: 1; transform: scale(.97) rotate(-1deg) }
-      34%, 100% { opacity: 1; transform: scale(1) rotate(-2deg) }
-    }
-
-    /* a esteira aparece por LIMPEZA lateral, um gesto so para as seis colunas */
-    .esteira { animation: limpa var(--ciclo) linear infinite; }
-    @keyframes limpa {
-      0%, 30% { clip-path: inset(0 100% 0 0) }
-      42%, 100% { clip-path: inset(0 0 0 0) }
-    }
-
-    /* o unico movimento que continua depois que tudo assenta */
-    .pulso { animation: pulsa 2.4s ease-in-out infinite; }
-    @keyframes pulsa { 0%, 100% { opacity: 1 } 50% { opacity: .28 } }
   </style>
 </helmet>
 
-<div class="palco" style="--ciclo: {{ciclo}}; width: 1440px; height: 900px; position: relative; overflow: hidden; background: #f0ece1; font-family: Archivo, 'Helvetica Neue', Arial, sans-serif; color: #17171a;">
+<div class="palco" style="--ciclo: {{ciclo}}; width: 1440px; height: 900px; position: relative; overflow: hidden; background: #1e1e25; color: #dcdde2; font-family: Inter, system-ui, sans-serif;">
 
-  <div style="position: absolute; inset: 0; opacity: 0.55; mix-blend-mode: multiply; pointer-events: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E&quot;);"></div>
+  <div class="grade" style="position: absolute; inset: 0; opacity: .4; background-image: linear-gradient(to right, #31313c 1px, transparent 1px), linear-gradient(to bottom, #31313c 1px, transparent 1px); background-size: 48px 48px, 48px 48px;"></div>
 
-  <div class="bloco" style="position: absolute; left: 792px; top: 236px; width: 300px; height: 132px; background: #f2f70f;"></div>
+  <div class="brilho" style="position: absolute; left: 50%; top: 22%; margin-left: -300px; width: 600px; height: 600px; border-radius: 50%; background: rgba(239, 97, 34, .05); filter: blur(64px);"></div>
 
-  <div class="fio" style="position: absolute; left: 0; top: 604px; width: 1440px; height: 1px; background: #17171a; opacity: .5;"></div>
-  <div class="fio-curto" style="position: absolute; left: 0; top: 607px; width: 470px; height: 1px; background: #17171a; opacity: .5;"></div>
-
-  <div style="position: absolute; left: 88px; top: 54px; right: 88px; display: flex; align-items: baseline; justify-content: space-between;">
-    <div style="display: flex; align-items: baseline; gap: 10px;">
-      <span style="font-family: 'Archivo Black', Archivo, sans-serif; font-size: 22px; letter-spacing: -0.02em;">demandou.</span>
-      <span style="font-size: 12px; letter-spacing: .16em; text-transform: uppercase; opacity: .55;">postou.</span>
-    </div>
-    <div style="display: flex; align-items: baseline; gap: 34px; font-size: 13px; letter-spacing: .04em;">
-      <span>Como funciona</span>
-      <span>Preços</span>
-      <span style="border-bottom: 2px solid #17171a; padding-bottom: 2px; font-weight: 700;">Entrar</span>
-    </div>
-  </div>
-
-  <div style="position: absolute; left: 88px; top: 176px; width: 620px;">
-    <div class="sobe-a" style="display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;">
-      <span style="width: 44px; height: 2px; background: #17171a;"></span>
-      <span>Para quem já fala e não posta</span>
-    </div>
-
-    <h1 style="font-family: 'Archivo Black', Archivo, sans-serif; font-size: 104px; line-height: .86; letter-spacing: -0.045em; margin: 30px 0 0;">
-      <span class="l1">VOCÊ</span>
-      <span class="l2">FALOU.</span>
-      <span class="l3"><span class="marca">ELE POSTOU.</span></span>
-    </h1>
-
-    <p class="sobe-b" style="font-family: 'Archivo Narrow', Archivo, sans-serif; font-size: 21px; line-height: 1.45; margin: 40px 0 0; max-width: 460px; font-weight: 700;">
-      Grave um vídeo falando do jeito que você fala.
-    </p>
-    <p class="sobe-b" style="font-size: 17px; line-height: 1.6; margin: 10px 0 0; max-width: 470px; opacity: .78;">
-      Seu squad de agentes transcreve, corta, escreve, desenha e publica em
-      todas as suas redes. E soa como você, porque estuda o seu tom, os seus
-      temas e as suas referências.
-    </p>
-
-    <div class="sobe-c" style="display: flex; align-items: center; gap: 22px; margin-top: 42px;">
-      <span style="display: inline-flex; align-items: center; gap: 12px; background: #17171a; color: #f0ece1; padding: 17px 26px; font-size: 15px; font-weight: 700;">
-        Começar os 7 dias grátis
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f0ece1" stroke-width="2.2"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
-      </span>
-      <span style="font-size: 14px; border-bottom: 1px solid #17171a; padding-bottom: 3px;">Ver como funciona</span>
-    </div>
-  </div>
-
-  <div class="recorte" style="position: absolute; left: 856px; top: 150px; width: 288px;">
-    <div style="background: #fbfaf6; padding: 14px 14px 30px; box-shadow: 0 14px 34px rgba(23,23,26,.22);">
-      <img src="corte.jpg" alt="Corte vertical entregue pela plataforma" style="display: block; width: 260px; height: 462px; object-fit: cover;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .6;">
-        <span>Corte 01</span>
-        <span style="display: inline-flex; align-items: center; gap: 6px;">
-          <span class="pulso" style="width: 6px; height: 6px; background: #17171a; display: inline-block;"></span>
-          9:16
-        </span>
+  <!-- barra -->
+  <div style="position: absolute; left: 88px; right: 88px; top: 40px; display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #f1742e, #be4720); display: flex; align-items: center; justify-content: center; font-family: Montserrat, Inter, sans-serif; font-weight: 800; font-size: 15px; color: #fff;">d</div>
+      <div style="display: flex; flex-direction: column;">
+        <span style="font-family: Montserrat, Inter, sans-serif; font-weight: 700; font-size: 18px; line-height: 1;">demandou.</span>
+        <span style="font-size: 11px; color: #9599a6; letter-spacing: .02em; margin-top: 3px; line-height: 1;">postou.</span>
       </div>
     </div>
-  </div>
-
-  <div class="capa" style="position: absolute; left: 1152px; top: 470px; width: 210px;">
-    <div style="background: #fbfaf6; padding: 10px; box-shadow: 0 10px 26px rgba(23,23,26,.18);">
-      <img src="capa.jpg" alt="Capa gerada para o corte" style="display: block; width: 190px; height: 118px; object-fit: cover; filter: grayscale(1) contrast(1.1);">
+    <div style="display: flex; align-items: center; gap: 32px; font-size: 14px; color: #9599a6;">
+      <span>Funcionalidades</span><span>Preços</span><span>Como funciona</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 14px; color: #dcdde2;">Entrar</span>
+      <span style="background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: 8px;">Começar grátis</span>
     </div>
   </div>
 
-  <div class="carimbo" style="position: absolute; left: 782px; top: 556px; background: #f2f70f; padding: 9px 15px; box-shadow: 0 6px 16px rgba(23,23,26,.16);">
-    <span style="font-family: 'Archivo Black', Archivo, sans-serif; font-size: 13px; letter-spacing: .02em;">1 GRAVAÇÃO → 6 CORTES → A SEMANA INTEIRA</span>
+  <!-- coluna de texto -->
+  <div style="position: absolute; left: 88px; top: 168px; width: 600px;">
+    <div class="g1" style="display: inline-flex; align-items: center; gap: 8px; background: rgba(239, 97, 34, .1); border: 1px solid rgba(239, 97, 34, .2); border-radius: 999px; padding: 6px 16px; font-size: 14px; color: #f6803d;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+      <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
+    </div>
+
+    <h1 class="g2" style="font-size: 60px; font-weight: 900; line-height: 1.05; letter-spacing: -0.025em; margin: 24px 0 0;">
+      Você falou.
+      <span class="sublinha sub1" style="color: #ef6122;">demandou</span>.
+      <span class="sublinha sub2" style="color: #ef6122;">postou</span>.
+    </h1>
+
+    <p class="g3" style="font-size: 20px; line-height: 1.625; color: #9599a6; margin: 24px 0 0; max-width: 512px;">
+      Quem não publica não existe para o mercado. E autoridade é o que faz você
+      cobrar mais caro, ser lembrado na hora da indicação e receber a proposta
+      sem disputar preço.
+    </p>
+
+    <p class="g4" style="font-size: 20px; line-height: 1.625; color: #dcdde2; margin: 24px 0 0; max-width: 512px;">
+      Grave um vídeo falando do jeito que você fala. Seu squad de agentes
+      transcreve, corta, escreve, desenha e publica em todas as suas redes.
+      <span style="color: #f6803d;">E soa como você</span>.
+    </p>
+
+    <div class="g5" style="display: flex; gap: 16px; margin-top: 34px;">
+      <span class="anel" style="display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 32px; background: #ef6122; color: #fff; font-size: 18px; font-weight: 600; border-radius: 10px;">
+        Começar os 7 dias grátis
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+      </span>
+      <span style="display: inline-flex; align-items: center; height: 56px; padding: 0 32px; border: 1px solid #3f3f4b; color: #dcdde2; font-size: 18px; font-weight: 500; border-radius: 10px;">
+        Ver como funciona
+      </span>
+    </div>
+
+    <div class="g5" style="display: flex; align-items: center; gap: 24px; margin-top: 30px; font-size: 14px; color: #9599a6;">
+      <span style="display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 11.2a3 3 0 0 0 0-6"/><path d="M18.5 20a6.4 6.4 0 0 0-3-5.4"/></svg>
+        7 dias grátis
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        Cancele quando quiser
+      </span>
+    </div>
   </div>
 
-  <div class="esteira" style="position: absolute; left: 88px; right: 88px; top: 660px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0;">
-    <div style="border-top: 2px solid #17171a; padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">01</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Vitor Vídeo</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">acha o melhor momento e corta</div>
+  <!-- o cartão dos agentes, como está hoje -->
+  <div class="cartao" style="position: absolute; left: 830px; top: 176px; width: 522px; background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 16px; padding: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #ef4444;"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #eab308;"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #22c55e;"></span>
+      <span style="margin-left: 8px; font-size: 12px; color: #9599a6; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">demandou, ao vivo</span>
     </div>
-    <div style="border-top: 1px solid rgba(23,23,26,.35); padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">02</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Daniela Design</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">capa, cartela e carrossel</div>
+
+    <div class="ag1" style="display: flex; align-items: center; gap: 12px; background: #31313c; border: 1px solid #3f3f4b; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">RR</span>
+      <span style="flex: 1;">
+        <span style="display: block; font-size: 14px; font-weight: 500; color: #dcdde2;">Roberto Radar</span>
+        <span style="display: block; font-size: 12px; color: #9599a6;">Pesquisa</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4ade80;">
+        <span class="vivo" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block;"></span>ativo
+      </span>
     </div>
-    <div style="border-top: 1px solid rgba(23,23,26,.35); padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">03</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Lucas LinkedIn</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">escreve no seu tom</div>
+
+    <div class="ag2" style="display: flex; align-items: center; gap: 12px; background: #31313c; border: 1px solid #3f3f4b; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #a855f7; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">VV</span>
+      <span style="flex: 1;">
+        <span style="display: block; font-size: 14px; font-weight: 500; color: #dcdde2;">Vitor Vídeo</span>
+        <span style="display: block; font-size: 12px; color: #9599a6;">Cortes e capas</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4ade80;">
+        <span class="vivo" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block; animation-delay: .4s;"></span>ativo
+      </span>
     </div>
-    <div style="border-top: 1px solid rgba(23,23,26,.35); padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">04</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Tiago Twitter</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">corta a ideia em fio</div>
+
+    <div class="ag3" style="display: flex; align-items: center; gap: 12px; background: #31313c; border: 1px solid #3f3f4b; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">LL</span>
+      <span style="flex: 1;">
+        <span style="display: block; font-size: 14px; font-weight: 500; color: #dcdde2;">Lucas LinkedIn</span>
+        <span style="display: block; font-size: 12px; color: #9599a6;">LinkedIn</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4ade80;">
+        <span class="vivo" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block; animation-delay: .8s;"></span>ativo
+      </span>
     </div>
-    <div style="border-top: 1px solid rgba(23,23,26,.35); padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">05</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Vera Revisora</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">revisa antes de você ver</div>
+
+    <div class="ag4" style="display: flex; align-items: center; gap: 12px; background: #31313c; border: 1px solid #3f3f4b; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #0ea5e9; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">TT</span>
+      <span style="flex: 1;">
+        <span style="display: block; font-size: 14px; font-weight: 500; color: #dcdde2;">Tiago Twitter</span>
+        <span style="display: block; font-size: 12px; color: #9599a6;">X/Twitter</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4ade80;">
+        <span class="vivo" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block; animation-delay: 1.2s;"></span>ativo
+      </span>
     </div>
-    <div style="border-top: 1px solid rgba(23,23,26,.35); padding: 14px 18px 0 0;">
-      <div style="font-size: 10px; letter-spacing: .16em; opacity: .5;">06</div>
-      <div style="font-weight: 700; font-size: 14px; margin-top: 6px;">Paulo Publicador</div>
-      <div style="font-size: 12px; opacity: .62; margin-top: 3px;">publica nas cinco redes</div>
+
+    <div class="ag5" style="display: flex; align-items: center; gap: 12px; background: #31313c; border: 1px solid #3f3f4b; border-radius: 8px; padding: 12px;">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #22c55e; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">PP</span>
+      <span style="flex: 1;">
+        <span style="display: block; font-size: 14px; font-weight: 500; color: #dcdde2;">Paulo Publicador</span>
+        <span style="display: block; font-size: 12px; color: #9599a6;">Publicação</span>
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4ade80;">
+        <span class="vivo" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block; animation-delay: 1.6s;"></span>ativo
+      </span>
+    </div>
+
+    <div class="publicado" style="margin-top: 16px; background: rgba(239, 97, 34, .1); border: 1px solid rgba(239, 97, 34, .2); border-radius: 8px; padding: 12px;">
+      <span style="font-size: 12px; color: #f6803d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">✓ Post no LinkedIn publicado com 4 fontes verificadas</span>
     </div>
   </div>
 
-  <div class="sobe-c" style="position: absolute; left: 88px; top: 828px; font-size: 12px; letter-spacing: .04em; opacity: .55;">
-    7 dias grátis. Cancele quando quiser.
+  <!-- A COLAGEM: papel de verdade por cima da interface.
+       As duas artes saíram do Nano Banana com as referências da bíblia de
+       estilo, e nenhuma delas carrega texto: o texto é HTML por cima, onde
+       ele é certo por construção. -->
+  <img class="tarja" src="tarja.jpg" alt="Tarja de papel com setas desenhadas à mão"
+       style="position: absolute; left: 44px; top: 778px; width: 470px; box-shadow: 0 14px 34px rgba(0,0,0,.5);">
+
+  <div class="papel" style="position: absolute; left: 1104px; top: 646px; width: 292px;">
+    <img src="diagrama.jpg" alt="Diagrama desenhado à mão: uma gravação vira seis cortes"
+         style="display: block; width: 292px; box-shadow: 0 18px 40px rgba(0,0,0,.55);">
+    <span class="rotulo" style="position: absolute; left: 26px; top: 118px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #17171a; text-transform: uppercase;">1 gravação</span>
+    <span class="rotulo" style="position: absolute; right: 22px; top: 46px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #17171a; text-transform: uppercase;">6 cortes</span>
   </div>
 </div>
 </x-dc>
-<script data-dc-script data-props='{"ciclo":{"editor":"enum","options":["9s","11s","14s","20s"],"default":"11s"},"$preview":{"width":1440,"height":900}}'>
+<script data-dc-script data-props='{"ciclo":{"editor":"enum","options":["10s","12s","16s","22s"],"default":"12s"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
-    return { ciclo: this.props.ciclo ?? '11s' };
+    return { ciclo: this.props.ciclo ?? '12s' };
   }
 }
 </script>

@@ -1,35 +1,43 @@
 {
   "pages": [
-    { "id": "page-1", "name": "A. Colagem com movimento" },
-    { "id": "page-2", "name": "Direções descartadas" }
+    { "id": "page-1", "name": "A landing de hoje, com movimento" },
+    { "id": "page-2", "name": "Estudos anteriores" }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial, em movimento", "page": "page-1" },
-    { "file": "DirecaoB.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico (descartada)", "page": "page-2" },
-    { "file": "DirecaoC.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo (descartada)", "page": "page-2" }
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Hero atual + motion + colagem", "page": "page-1" },
+    { "file": "ColagemA.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial (estudo)", "page": "page-2" },
+    { "file": "DirecaoB.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico (estudo)", "page": "page-2" },
+    { "file": "DirecaoC.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo (estudo)", "page": "page-2" }
   ],
   "annotations": [
     {
       "id": "briefing",
       "x": 0,
-      "y": -300,
-      "w": 700,
-      "text": "DIREÇÃO A, ESCOLHIDA, agora com motion graphics.\nA peça roda em ciclo de 11s para você julgar o MOVIMENTO, e não o quadro parado. O ritmo é regulável na barra de ajustes acima do artboard (9s, 11s, 14s, 20s).\n\nA coreografia: o fio risca a página, a manchete sobe linha a linha, o marca-texto é PINTADO da esquerda para a direita como caneta de verdade, o corte real cai e assenta com sobra de rotação, o bloco amarelo desliza de trás dele, a capa e o carimbo batem tortos, e a esteira aparece por limpeza lateral. Depois tudo para, e só o ponto do corte continua pulsando."
+      "y": -330,
+      "w": 760,
+      "text": "A PÁGINA DE HOJE, INTACTA, COM MOVIMENTO E DUAS ARTES.\nMesmo fundo #1e1e25, mesmo laranja, mesmo cartão de agentes, mesmos textos. Nada de identidade mudou: os valores saíram do código de produção, um a um.\n\nO QUE ENTROU DE MOVIMENTO: a grade desliza devagar e o brilho laranja respira (contínuos); o selo, a manchete e os parágrafos sobem em sequência; o traço laranja é DESENHADO sob \"demandou\" e sob \"postou\"; o cartão monta agente por agente; o aviso de post publicado chega por último, como resultado; os pontos de \"ativo\" piscam fora de fase; e o botão principal tem o anel que o app já usa.\n\nO QUE ENTROU DE ARTE: uma tarja de papel rasgado com setas de mão e uma passada de marcador, e um diagrama desenhado de uma gravação virando seis cortes. As duas nasceram no Nano Banana com as referências da bíblia de estilo, e nenhuma tem texto dentro: o texto é HTML por cima, onde ele é certo por construção."
     },
     {
       "id": "nota-loop",
       "x": 0,
       "y": 960,
-      "w": 520,
-      "text": "No site, o ciclo NÃO fica em laço: a coreografia roda uma vez quando a pessoa chega, e para. O laço aqui existe só para você conseguir ver a animação inteira quantas vezes quiser sem recarregar.\n\nO que eu ainda preciso de você: se o ritmo está certo, se falta ou sobra gesto, e se a manchete deve ser essa mesma."
+      "w": 560,
+      "text": "O ciclo é de 12s e roda em laço SÓ AQUI, para você assistir de novo sem recarregar. No site a coreografia roda uma vez quando a pessoa chega e para, e só a grade, o brilho, os pontos de ativo e o anel do botão seguem vivos.\n\nO ritmo é regulável na barra de ajustes acima do artboard (10s, 12s, 16s, 22s)."
     },
     {
-      "id": "nota-descartadas",
+      "id": "nota-artes",
+      "x": 620,
+      "y": 960,
+      "w": 520,
+      "text": "Sobre as artes: dá para pedir mais no mesmo padrão (tarja de outra forma, ícones de mão, gráfico de barras desenhado, moldura rasgada para foto). Diz quantas e onde, que eu gero e coloco.\n\nSe alguma das duas não te agradar, ela sai e a página continua de pé: elas são camada, não estrutura."
+    },
+    {
+      "id": "nota-estudos",
       "x": 0,
       "y": -180,
       "w": 520,
       "page": "page-2",
-      "text": "Guardadas para consulta. Se algum pedaço daqui interessar (o dado grande do B, a régua e o mono do C), dá para trazer para a A sem mudar a direção."
+      "text": "Guardados. A colagem A é de onde saiu a linguagem de papel que agora entra só como camada, do jeito que você pediu."
     }
   ],
   "launch": { "view": "canvas", "page": "page-1" }
