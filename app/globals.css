@@ -80,6 +80,177 @@
   --badge-danger-border: #fca5a5;
 }
 
+/* ── Tema PAPEL: a linguagem editorial da vitrine ──────────────────────────
+ *
+ * Direção dada pelo Bruno em 01/09, com uma referência de colagem: folha de
+ * papel sobre mesa escura, imagem em preto e branco, UM acento fluorescente,
+ * recortes com borda rasgada e fios finos atravessando a página.
+ *
+ * As variáveis reaproveitam os MESMOS nomes do tema escuro de propósito: a
+ * landing inteira já lê `var(--bg-*)` e `var(--text-*)`, então trocar o
+ * atributo no `<main>` converte a página toda sem caçar classe por classe. O
+ * que a colagem acrescenta por cima são os tokens novos daqui para baixo.
+ *
+ * A divisão de cor tem regra, e ela vem da própria referência: o AMARELO é
+ * marcador, não é marca (na foto ele é um traço de marca-texto sobre o
+ * preto e branco); o LARANJA continua sendo a marca do Bruno, e manda em
+ * botão, link e qualquer coisa clicável. Trocar de cliente troca o laranja e
+ * mantém o resto, que é a decisão dele: paleta do cliente, Vox como padrão.
+ */
+[data-theme="papel"] {
+  --bg-primary: #f2f0e8;   /* a folha */
+  --bg-surface: #fbfaf6;   /* recorte claro sobre a folha */
+  --bg-elevated: #ffffff;
+  --bg-card: #fbfaf6;
+  --bg-input: #ffffff;
+  --accent-orange: #d5511a;
+  --accent-amber: #b45309;
+  --text-primary: #17171a; /* tinta */
+  --text-muted: #5f5f63;
+  --border: #dbd8cc;
+  --border-accent: #d5511a;
+  --brand-grad-from: #f1742e;
+  --brand-grad-to: #be4720;
+  --shadow: 0 1px 2px rgba(23,23,26,.10);
+
+  --badge-success-bg: #dcfce7;
+  --badge-success-text: #15803d;
+  --badge-success-border: #86efac;
+  --badge-warning-bg: #fef9c3;
+  --badge-warning-text: #a16207;
+  --badge-warning-border: #fde047;
+  --badge-danger-bg: #fee2e2;
+  --badge-danger-text: #b91c1c;
+  --badge-danger-border: #fca5a5;
+
+  /* Tokens da colagem */
+  --mesa: #232326;         /* a mesa escura em volta da folha */
+  --marcador: #f4fa15;     /* amarelo Vox, medido dos quadros de referência */
+  --fio: #17171a;          /* o fio fino que atravessa a página */
+  --papel-sombra: rgba(23, 23, 26, 0.18);
+}
+
+/*
+ * A textura do papel, e por que é gerada e não é arquivo.
+ *
+ * Um JPEG de papel pesaria centenas de KB e apareceria repetido em ladrilho.
+ * O ruído do próprio SVG não repete padrão reconhecível, pesa menos de 1 KB
+ * dentro do CSS e escala em qualquer tela. A opacidade é baixa de propósito:
+ * papel se percebe, não se olha.
+ */
+.textura-papel {
+  position: relative;
+}
+.textura-papel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23r)' opacity='0.055'/%3E%3C/svg%3E");
+}
+
+/*
+ * O marcador: o traço de marca-texto da referência.
+ *
+ * É um fundo que NÃO cobre a linha inteira e nem sobe até o topo da caixa,
+ * porque marca-texto de verdade sobra de um lado e falta do outro. A leve
+ * rotação e o corte irregular vêm daí; simetria perfeita lê como retângulo de
+ * software, e a referência é de mão.
+ */
+.marcador {
+  background-image: linear-gradient(
+    var(--marcador) 0%,
+    var(--marcador) 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 0.62em;
+  background-position: 0 0.52em;
+  padding: 0 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.marcador-cheio {
+  background-size: 104% 1.05em;
+  background-position: -2% 0.06em;
+}
+
+/*
+ * O fio: a linha fina que atravessa a composição inteira, inclusive por cima
+ * do que estiver no caminho. Na referência ela é o que costura os recortes.
+ */
+.fio {
+  height: 1px;
+  background: var(--fio);
+  opacity: 0.55;
+}
+
+/*
+ * A borda rasgada do recorte, feita por máscara.
+ *
+ * O `mask` com um SVG de linha irregular corta o próprio elemento, então
+ * funciona sobre imagem, sobre cor e sobre um bloco de conteúdo, sem precisar
+ * de PNG com transparência por cima.
+ */
+/*
+ * A máscara vem em DUAS camadas, e não em uma.
+ *
+ * A primeira versão usava só o SVG rasgado com `mask-size: 100% 100%`, e o
+ * desenho de 40px de altura esticou pela altura inteira do cartão: o rasgo
+ * virou uma onda gigante que comeu metade do conteúdo (visto no primeiro
+ * screenshot). Agora o corpo é um retângulo sólido e o rasgo ocupa só a faixa
+ * final, com altura fixa, do jeito que papel rasga.
+ */
+.rasgo-baixo {
+  --rasgo-altura: 26px;
+  -webkit-mask-image: linear-gradient(#000, #000),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 1200 40'%3E%3Cpath d='M0 0h1200v22c-28 6-44-3-72 1s-40 9-68 5-46-9-74-5-38 11-66 9-48-10-76-7-42 10-70 8-46-9-74-6-40 9-68 6-48-9-76-5-42 9-70 6-46-8-74-5-40 8-68 5-46-8-74-4V0z' fill='%23000'/%3E%3C/svg%3E");
+  mask-image: linear-gradient(#000, #000),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 1200 40'%3E%3Cpath d='M0 0h1200v22c-28 6-44-3-72 1s-40 9-68 5-46-9-74-5-38 11-66 9-48-10-76-7-42 10-70 8-46-9-74-6-40 9-68 6-48-9-76-5-42 9-70 6-46-8-74-5-40 8-68 5-46-8-74-4V0z' fill='%23000'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% calc(100% - var(--rasgo-altura)), 100% var(--rasgo-altura);
+  mask-size: 100% calc(100% - var(--rasgo-altura)), 100% var(--rasgo-altura);
+  -webkit-mask-position: top left, bottom left;
+  mask-position: top left, bottom left;
+  -webkit-mask-repeat: no-repeat, no-repeat;
+  mask-repeat: no-repeat, no-repeat;
+}
+
+/*
+ * O acento das manchetes vira MARCADOR, e não texto colorido.
+ *
+ * As seções da vitrine destacam uma palavra por título com `text-orange-500`,
+ * que é o gesto de SaaS. Na linguagem de colagem quem destaca é o marca-texto,
+ * e a palavra continua em tinta. A regra vive aqui, escopada no tema papel,
+ * em vez de trocar a classe em oito arquivos: o acento continua sendo uma
+ * decisão de identidade num lugar só, e o tema escuro do app não muda.
+ *
+ * O `!important` é a exceção consciente: a classe utilitária do Tailwind tem a
+ * mesma especificidade e venceria pela ordem de declaração.
+ */
+[data-theme="papel"] h1 .text-orange-500,
+[data-theme="papel"] h2 .text-orange-500,
+[data-theme="papel"] h1 .text-orange-400,
+[data-theme="papel"] h2 .text-orange-400 {
+  color: var(--text-primary) !important;
+  background-image: linear-gradient(var(--marcador) 0%, var(--marcador) 100%);
+  background-repeat: no-repeat;
+  background-size: 104% 1.02em;
+  background-position: -2% 0.1em;
+  padding: 0 0.1em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/*
+ * Imagem de colagem: preto e branco com contraste alto, como na referência.
+ * A cor da foto do cliente nunca briga com o acento; quem tem cor na página é
+ * o marcador e a marca.
+ */
+.recorte-pb {
+  filter: grayscale(1) contrast(1.12) brightness(1.02);
+}
+
 * {
   box-sizing: border-box;
 }

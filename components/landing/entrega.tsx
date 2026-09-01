@@ -122,7 +122,7 @@ export function Entrega() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
             A entrega
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
@@ -183,12 +183,17 @@ export function Entrega() {
                         // O corte vertical tem 9:16 e o quadro original 16:9. Sem
                         // teto de altura, a linha inteira cresce para caber o
                         // vertical e o horizontal fica perdido num mar de vazio.
-                        className={`w-full rounded-xl border object-contain ${
+                        className={`w-full rounded-none border object-contain ${
                           entrega.vertical && idx === 1 ? "max-h-[420px] w-auto mx-auto" : ""
                         } ${
+                          // A logica da referencia de colagem aplicada a prova:
+                          // o ANTES e a gravacao crua, e vai em preto e branco;
+                          // o DEPOIS e o que a plataforma entrega, e e o unico
+                          // que tem cor. A comparacao passa a se explicar
+                          // sozinha, sem legenda dizendo qual e qual.
                           idx === 1
-                            ? "border-orange-500/40 shadow-lg shadow-orange-500/10"
-                            : "border-[var(--border)] opacity-70"
+                            ? "border-[var(--fio)] shadow-[0_8px_24px_rgba(23,23,26,0.16)]"
+                            : "border-[var(--border)] recorte-pb opacity-80"
                         }`}
                       />
                       <figcaption
@@ -203,7 +208,7 @@ export function Entrega() {
                 </div>
               ) : entrega.capitulos ? (
                 <div
-                  className="rounded-xl border p-6"
+                  className="rounded-none border p-6"
                   style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
                 >
                   <p className="text-xs uppercase tracking-wide text-[var(--text-muted)] mb-4">
@@ -225,7 +230,7 @@ export function Entrega() {
                   {entrega.textos.map((t) => (
                     <div
                       key={t.rede}
-                      className="rounded-xl border p-4"
+                      className="rounded-none border p-4"
                       style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
                     >
                       <p className="text-xs font-semibold text-orange-400 mb-1.5">{t.rede}</p>

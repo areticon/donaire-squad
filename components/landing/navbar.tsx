@@ -18,9 +18,12 @@ export function Navbar() {
   return (
     <nav
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        "sticky top-0 z-50 transition-all duration-300",
+        // Na vitrine de papel a barra some quando esta no topo e vira uma
+        // faixa da propria folha ao rolar, com o fio fino embaixo em vez de
+        // borda de caixa.
         scrolled
-          ? "bg-[var(--bg-primary)]/95 backdrop-blur-md border-b border-[var(--bg-elevated)]"
+          ? "bg-[var(--bg-primary)]/94 backdrop-blur-sm border-b border-[var(--fio)]/40"
           : "bg-transparent"
       )}
     >

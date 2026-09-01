@@ -6560,3 +6560,76 @@ exata, sem custo de modelo de imagem e sem risco de texto errado. So manchete,
 documento grifado e mapa antigo precisam de modelo generativo.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 78): a vitrine de papel, e a paleta que virou regra
+
+O Bruno decidiu a pendencia da camada de design em uma frase: **paleta do
+cliente, com a da Vox como padrao**. E mandou a direcao visual junto, com uma
+referencia de colagem: folha de papel sobre mesa escura, imagem em preto e
+branco, UM acento fluorescente de marca-texto, recortes com borda rasgada e
+fios finos costurando a pagina. Pedido: "ajuste o site e a landing page, tudo
+com essa proposta".
+
+### A regra de cor que saiu disso, e vale para o produto inteiro
+
+Na referencia o amarelo NAO e a marca, e marca-texto: ele risca o que importa
+sobre uma foto em preto e branco. Entao a divisao ficou assim, e ela resolve a
+tensao entre "paleta da Vox" e "marca do Bruno" sem escolher uma contra a
+outra:
+
+- **amarelo (#F4FA15, medido dos quadros da Vox): marcador.** Destaca, nunca
+  identifica.
+- **laranja da marca: acao.** Botao, link, qualquer coisa clicavel.
+- **tudo o mais: tinta sobre papel.** Imagem em preto e branco por padrao.
+
+Trocar de cliente troca o laranja e mantem o resto. E o mesmo contrato que a
+camada de overlay do video vai usar.
+
+### O que virou codigo na vitrine
+
+- **Tema `papel`** em `globals.css`, reaproveitando os MESMOS nomes de
+  variavel do tema escuro. A landing inteira ja lia `var(--bg-*)`, entao
+  trocar o atributo no `<main>` converteu a pagina toda sem cacar classe por
+  classe. O app continua no tema escuro, intocado.
+- **A folha dentro da mesa**: a vitrine e uma folha de no maximo 1400px com
+  sombra, sobre o cinza escuro da marca. No celular a margem some, senao a
+  mesa come a largura util.
+- **Peças da colagem** em `components/landing/papel.tsx`: `Folha`, `Fio`,
+  `Marcador`, `Recorte`, `BlocoMarcador`, `Rotulo`. Existem num arquivo so
+  porque a linguagem se repete em oito secoes; ajuste de gosto do Bruno se faz
+  aqui e vale para a pagina inteira.
+- **Textura de papel gerada em SVG** (ruido fractal) em vez de JPEG: menos de
+  1 KB dentro do CSS, sem ladrilho visivel, escala em qualquer tela.
+- **Hero refeito**: o cartao que imitava janela de programa (com bolinha
+  vermelha, amarela e verde) saiu. No lugar, a esteira como indice de revista,
+  recorte de papel com base rasgada sobre um bloco de marcador, e o carimbo
+  "cortes prontos em 2 minutos" colado torto.
+- **As outras secoes**: pilula de SaaS virou rotulo editorial com fio embaixo;
+  canto arredondado virou reto (papel recortado nao tem raio); os chips
+  coloridos dos icones viraram tinta sobre marcador; a linha do tempo do "como
+  funciona" virou fio fino e os numeros viraram quadrados de marcador.
+- **O acento das manchetes virou marca-texto** por uma regra de CSS escopada
+  no tema papel, em vez de trocar classe em oito arquivos: `text-orange-500`
+  dentro de h1 e h2 vira tinta com marcador por baixo.
+- **A prova do antes e depois usa a propria logica da referencia**: a gravacao
+  crua aparece em PRETO E BRANCO e o corte entregue e o unico com cor. A
+  comparacao passou a se explicar sozinha.
+
+### Dois defeitos achados no proprio screenshot, e o que ensinaram
+
+1. A mascara do rasgo estava com `mask-size: 100% 100%`, e o desenho de 40px
+   esticou pela altura inteira do cartao: o rasgo virou uma onda gigante que
+   comeu metade do conteudo. Agora a mascara vem em duas camadas, corpo solido
+   mais faixa rasgada de altura fixa.
+2. O bloco de marcador aparecia POR CIMA do recorte por falta de `z-index`
+   explicito, escondendo metade da lista.
+
+Licao que vale repetir: em mudanca visual, o screenshot e o teste. Os dois
+defeitos eram invisiveis no codigo e obvios na imagem.
+
+### Verificado
+
+`npm run build` ok, `tsc --noEmit` limpo, e a pagina conferida em 1440px e em
+390px (celular), no hero, no como funciona, na entrega, no preco e no rodape.
+
+*Atualizado em 01/09/2026 por Claude Code.*

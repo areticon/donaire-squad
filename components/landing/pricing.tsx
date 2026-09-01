@@ -77,7 +77,7 @@ export function Pricing() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
             <Zap className="w-3.5 h-3.5" />
             Preços simples e transparentes
           </div>
@@ -99,7 +99,7 @@ export function Pricing() {
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
               className={cn(
-                "relative rounded-2xl p-8 border",
+                "relative rounded-none p-8 border",
                 plan.popular
                   ? "bg-[var(--bg-card)] border-orange-500 shadow-[0_0_40px_rgba(249,115,22,0.15)]"
                   : "bg-[var(--bg-card)] border-[var(--border)]"

@@ -2,77 +2,81 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import {
-  ArrowRight,
-  Zap,
-  Users,
-  BarChart3,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
-const AGENT_NAMES = [
-  { name: "Roberto Radar", role: "Pesquisa", color: "bg-blue-500" },
-  { name: "Lucas LinkedIn", role: "LinkedIn", color: "bg-blue-600" },
-  { name: "Tiago Twitter", role: "X/Twitter", color: "bg-sky-500" },
-  { name: "Daniela Design", role: "Visual", color: "bg-purple-500" },
-  { name: "Paulo Publicador", role: "Publicação", color: "bg-green-500" },
+import { Button } from "@/components/ui/button";
+import { BlocoMarcador, Fio, Marcador, Recorte, Rotulo } from "@/components/landing/papel";
+
+/**
+ * A esteira que o cliente compra, escrita como índice de revista.
+ *
+ * Era um cartão de "agentes ao vivo" imitando janela de programa, com bolinha
+ * vermelha, amarela e verde. Saiu em 01/09 com a direção de colagem do Bruno:
+ * a promessa não é "temos um software rodando", é "o trabalho sai feito", e
+ * lista numerada com fio embaixo conta isso sem fingir uma tela.
+ */
+const ESTEIRA = [
+  { n: "01", agente: "Vitor Vídeo", faz: "acha os melhores momentos e corta" },
+  { n: "02", agente: "Daniela Design", faz: "monta capa, cartela e carrossel" },
+  { n: "03", agente: "Lucas LinkedIn", faz: "escreve no seu tom" },
+  { n: "04", agente: "Tiago Twitter", faz: "corta a ideia em fio" },
+  { n: "05", agente: "Vera Revisora", faz: "revisa antes de você ver" },
+  { n: "06", agente: "Paulo Publicador", faz: "publica em todas as redes" },
 ];
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center overflow-hidden">
-      {/* Background grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--bg-elevated)_1px,transparent_1px),linear-gradient(to_bottom,var(--bg-elevated)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
+    <section className="relative overflow-hidden pt-28 pb-20 sm:pt-32">
+      <div className="relative mx-auto max-w-6xl px-5 sm:px-8">
+        {/* Os fios que costuram a composição, como na referência: começam fora
+            do conteúdo e terminam por cima dele. */}
+        {/* O fio passa por ESPACO VAZIO, nunca por cima de texto corrido: no
+            primeiro screenshot ele cortou uma linha do paragrafo e leu como
+            texto riscado. Aqui ele costura a base da composicao. */}
+        <Fio className="bottom-2 hidden sm:block" />
+        <Fio className="bottom-[3px] hidden sm:block" alcance="-left-[8%] w-[38%]" />
 
-      {/* Orange glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-500/5 rounded-full blur-3xl" />
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Left */}
+        <div className="grid items-start gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.5 }}
+            className="relative z-10"
           >
-            <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
-              <Zap className="w-3.5 h-3.5" />
-              <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
-            </div>
+            <Rotulo>Conteúdo com agentes de IA</Rotulo>
 
             {/*
               O trocadilho é o nome do produto e a promessa inteira: você
               demandou (falou o que precisa), ele postou (o conteúdo saiu
-              pronto). Recolocado no hero em 22/08 a pedido do Bruno, e o
-              subtítulo passou a contar a história do vídeo, que virou o
-              produto.
+              pronto). O marcador cai em "postou", que é a parte que o cliente
+              não faz hoje.
             */}
-            <h1 className="text-5xl lg:text-6xl font-black text-[var(--text-primary)] leading-[1.05] mb-6">
-              Você falou.{" "}
-              <span className="text-orange-500">demandou</span>.{" "}
-              <span className="text-orange-500">postou</span>.
+            <h1 className="mt-7 font-mont text-[2.7rem] font-black leading-[0.98] tracking-[-0.02em] text-[var(--text-primary)] sm:text-6xl">
+              Você falou.
+              <br />
+              demandou.{" "}
+              <Marcador cheio>postou.</Marcador>
             </h1>
 
-            <p className="text-xl text-[var(--text-muted)] leading-relaxed mb-6 max-w-lg">
-              Quem não publica não existe para o mercado. E autoridade é o que
-              faz você cobrar mais caro, ser lembrado na hora da indicação e
-              receber a proposta sem disputar preço. Ela vem de publicar com
-              consistência, que é exatamente o que 99% não conseguem manter.
+            <p className="mt-8 max-w-md text-lg leading-relaxed text-[var(--text-muted)]">
+              Quem não publica não existe para o mercado. Autoridade é o que faz
+              você cobrar mais caro, ser lembrado na indicação e receber a
+              proposta sem disputar preço, e ela vem de publicar com
+              consistência, que é o que 99% não conseguem manter.
             </p>
 
-            <p className="text-xl text-[var(--text-primary)] leading-relaxed mb-8 max-w-lg">
-              Grave um vídeo falando do jeito que você fala. Seu squad de
-              agentes transcreve, corta, escreve, desenha e publica em todas as
-              suas redes.{" "}
-              <span className="text-orange-400">E soa como você</span>, porque
-              eles estudam o seu tom, os seus temas e as suas referências.
+            <p className="mt-6 max-w-md text-lg leading-relaxed text-[var(--text-primary)]">
+              Grave um vídeo falando do jeito que você fala. Seu squad
+              transcreve, corta, escreve, desenha e publica em todas as suas
+              redes. <Marcador>E soa como você</Marcador>, porque estuda o seu
+              tom, os seus temas e as suas referências.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 mb-12">
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Button size="xl" asChild>
                 <Link href="/planos">
                   Começar os 7 dias grátis
-                  <ArrowRight className="w-5 h-5" />
+                  <ArrowRight className="h-5 w-5" />
                 </Link>
               </Button>
               <Button size="xl" variant="outline" asChild>
@@ -80,60 +84,54 @@ export function Hero() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-6 text-sm text-[var(--text-muted)]">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-orange-400" />
-                <span>7 dias grátis</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-orange-400" />
-                <span>Cancele quando quiser</span>
-              </div>
-            </div>
+            <p className="mt-6 text-sm text-[var(--text-muted)]">
+              7 dias grátis, cancele quando quiser.
+            </p>
           </motion.div>
 
-          {/* Right — Agent visualization */}
+          {/* A colagem: um recorte de papel por cima do bloco de marcador, com
+              o fio passando por baixo. */}
           <motion.div
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.12 }}
             className="relative"
           >
-            <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 space-y-3">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-2 text-xs text-[var(--text-muted)] font-mono">demandou — ao vivo</span>
+            <BlocoMarcador className="-left-10 top-24 h-44 w-[72%] sm:h-52" />
+
+            <Recorte className="relative z-10 ml-auto w-full max-w-md p-7" rasgado>
+              <div className="flex items-baseline justify-between border-b border-[var(--fio)] pb-3">
+                <span className="font-mont text-sm font-bold uppercase tracking-[0.16em]">
+                  A esteira
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">um vídeo, uma semana</span>
               </div>
 
-              {AGENT_NAMES.map((agent, i) => (
-                <motion.div
-                  key={agent.name}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + i * 0.15 }}
-                  className="flex items-center gap-3 bg-[var(--bg-elevated)] rounded-lg p-3 border border-[var(--border)]"
-                >
-                  <div className={`w-8 h-8 ${agent.color} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                    {agent.name.split(" ").map(n => n[0]).join("")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-[var(--text-primary)]">{agent.name}</div>
-                    <div className="text-xs text-[var(--text-muted)]">{agent.role}</div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                    <span className="text-xs text-green-400">ativo</span>
-                  </div>
-                </motion.div>
-              ))}
+              <ul className="mt-1">
+                {ESTEIRA.map((e) => (
+                  <li
+                    key={e.n}
+                    className="flex items-baseline gap-4 border-b border-[var(--border)] py-3.5 last:border-b-0"
+                  >
+                    <span className="font-mono text-xs text-[var(--text-muted)]">{e.n}</span>
+                    <span className="flex-1">
+                      <span className="block font-semibold text-[var(--text-primary)]">
+                        {e.agente}
+                      </span>
+                      <span className="block text-sm text-[var(--text-muted)]">{e.faz}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
 
-              <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                <div className="text-xs text-orange-400 font-mono">
-                  ✓ Post LinkedIn publicado com 4 fontes verificadas
-                </div>
-              </div>
+              <div className="pb-6" />
+            </Recorte>
+
+            {/* O carimbo de resultado, colado torto por cima do recorte. */}
+            <div className="relative z-20 -mt-6 ml-4 inline-block rotate-[-1.6deg] bg-[var(--marcador)] px-4 py-2 shadow-[0_4px_14px_rgba(23,23,26,0.14)]">
+              <span className="font-mont text-sm font-black uppercase tracking-wide text-[#17171a]">
+                Cortes prontos em 2 minutos
+              </span>
             </div>
           </motion.div>
         </div>
