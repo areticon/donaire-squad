@@ -330,16 +330,45 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 25/08/2026. O detalhe vive nas partes 50 a 61 no fim deste
-> arquivo e nos cards "Esta semana" do planner.
+> Atualizado em 01/09/2026, depois de nove levas de simplificação do fluxo de
+> vídeo. O detalhe vive nas partes 62 a 76 no fim deste arquivo e nos cards
+> "Esta semana" do planner. **O resumo apodrece primeiro: se divergir do
+> código, o código manda.**
 
-- [ ] O TESTE QUE VALIDA PARA LANÇAMENTO: o Bruno grava o vídeo novo (webcam
-      4K em tela cheia, OBS configurado em chat próprio), sobe com a faixa
-      real escolhida no popup, e dá o veredito no fluxo inteiro
-- [ ] Seleção de trechos: régua mais dura (nota 7+) ou A/B do prompt no Codex
+**Bloqueia lançamento:**
+- [ ] Veredito do Bruno na rodada de ponta a ponta com tudo novo: piloto
+      automático, quadro espelhando a seleção, ajuste conversacional com o
+      Vitor, esteira Vera/Paulo, publicação real
+- [ ] Store PÚBLICO separado para mídia produzida (CDN de verdade nos
+      players). Precisa do Bruno no painel da Vercel; passos no card do
+      planner. O store atual é privado-only e recusa `access: "public"`
+
+**Fila de produto:**
+- [ ] Editor de legenda por corte, e o RAG aprendendo dos termos que o cliente
+      edita (fase 2 do glossário; a fase 1 está no ar)
+- [ ] "eeee" que a transcrição não devolve como palavra segue invisível para
+      as redes determinísticas: medir no próximo vídeo
+- [ ] Varrer nome de fornecedor nos erros restantes (Gemini em pesquisa e
+      infográfico): técnico no log, humano na tela
+- [ ] Régua da seleção (nota 7+) ou A/B do prompt no Codex
 - [ ] Crédito automático do CC BY na descrição dos posts
-- [ ] Tela do cliente: mostrar diagnóstico e relatório de valor com destaque
-- [ ] Meta/Google/INPI/pagantes/tráfego: só o Bruno (ver seção 8)
+- [ ] Tela do cliente: diagnóstico e relatório de valor com destaque
+- [ ] Timeline com scrub quadro a quadro (exige player próprio; adiado por
+      decisão, o ajuste conversacional cobre o caso)
+- [ ] Decidir "só campanhas, sem projeto" (conexões na conta): depois da
+      validação de lançamento
+
+**Só o Bruno:** Meta, Google, INPI, pagantes e tráfego (ver seção 8).
+
+### Regras operacionais aprendidas em 31/08 e 01/09
+
+1. Deploy do worker só com a fila vazia (deploy no meio de um corte mata o
+   trabalho em andamento).
+2. Mudança de infra de storage se prova com UM upload antes do deploy.
+3. Retry automático precisa distinguir falha transitória de sistêmica: só a
+   primeira falha ganha retry sozinho.
+4. Erro técnico vai para o log, frase humana vai para a tela, nome de
+   fornecedor nunca chega ao cliente.
 
 ## 10. Comandos Úteis
 
