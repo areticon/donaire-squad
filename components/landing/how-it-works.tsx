@@ -76,7 +76,7 @@ export function HowItWorks() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
+          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Como funciona
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
@@ -90,7 +90,7 @@ export function HowItWorks() {
         </motion.div>
 
         <div className="relative">
-          <div className="absolute left-[28px] top-8 bottom-8 w-px bg-[var(--fio)] opacity-40 hidden md:block" />
+          <div className="absolute left-[28px] top-8 bottom-8 w-px bg-gradient-to-b from-orange-500/50 via-orange-500/20 to-transparent hidden md:block" />
 
           <div className="space-y-8">
             {ETAPAS.map((etapa, i) => (
@@ -102,11 +102,11 @@ export function HowItWorks() {
                 transition={{ delay: i * 0.12 }}
                 className="flex gap-6 sm:gap-8 items-start"
               >
-                <div className="flex-shrink-0 w-14 h-14 bg-[var(--marcador)] flex items-center justify-center font-black text-[#17171a] text-lg z-10">
+                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-lg z-10">
                   {etapa.numero}
                 </div>
                 <div
-                  className="flex-1 bg-[var(--bg-card)] border rounded-none p-6"
+                  className="flex-1 bg-[var(--bg-card)] border rounded-xl p-6"
                   style={{
                     borderColor: etapa.destaque
                       ? "rgba(243,106,34,0.35)"

@@ -17,17 +17,13 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    // data-theme="papel" trava a vitrine na linguagem editorial, seja qual
-    // for o tema salvo na plataforma. As variáveis CSS herdam do ancestral
-    // mais próximo, então este atributo vence o do <html> para tudo aqui
-    // dentro. Tema é preferência de quem usa a plataforma; a landing é a
-    // vitrine, e vitrine tem uma cara só.
-    //
-    // A folha fica DENTRO da mesa escura, que é a moldura da referência de
-    // colagem que o Bruno passou em 01/09. No celular a margem encolhe, senão
-    // a mesa come a largura útil.
-    <div data-theme="papel" className="min-h-screen bg-[var(--mesa)] px-0 py-0 sm:px-6 sm:py-8">
-    <main className="textura-papel mx-auto max-w-[1400px] bg-[var(--bg-primary)] shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
+    // data-theme="dark" trava a landing no escuro, seja qual for o tema salvo
+    // na plataforma. As variáveis CSS herdam do ancestral mais próximo, então
+    // este atributo vence o do <html> para tudo aqui dentro. Sem isso, quem
+    // escolhia o claro no app via a landing misturar texto claro de variável
+    // com fundo escuro fixo, ilegível. Tema é preferência de quem usa a
+    // plataforma; a landing é a vitrine, e vitrine tem uma cara só.
+    <main data-theme="dark" className="bg-[var(--bg-primary)] min-h-screen">
       <Navbar />
       <Hero />
       <Demo />
@@ -41,6 +37,5 @@ export default function HomePage() {
       <Pricing />
       <Footer />
     </main>
-    </div>
   );
 }

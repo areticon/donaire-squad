@@ -76,7 +76,7 @@ export function Demo() {
           transition={{ duration: 0.5 }}
           className="text-center mb-12"
         >
-          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
+          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Sem cadastro. Agora.</span>
           </div>
@@ -89,7 +89,7 @@ export function Demo() {
           </p>
         </motion.div>
 
-        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-none p-6 lg:p-8">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 lg:p-8">
           <label className="block text-sm font-medium text-[var(--text-muted)] mb-2">
             O que você diria para um cliente hoje?
           </label>
@@ -99,7 +99,7 @@ export function Demo() {
             rows={5}
             maxLength={1200}
             placeholder={EXEMPLO}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-none p-4 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500 resize-none"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-4 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500 resize-none"
           />
 
           <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -108,7 +108,7 @@ export function Demo() {
               onChange={(e) => setProfissao(e.target.value)}
               maxLength={120}
               placeholder="O que você faz? (consultor industrial, advogado, nutricionista...)"
-              className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-none px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500"
+              className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-orange-500"
             />
             <Button
               size="lg"
@@ -136,7 +136,7 @@ export function Demo() {
           )}
 
           {erro && (
-            <p className="text-sm text-orange-400 mt-4 bg-orange-500/10 border border-orange-500/20 rounded-none p-3">
+            <p className="text-sm text-orange-400 mt-4 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
               {erro}
             </p>
           )}
@@ -153,7 +153,7 @@ export function Demo() {
                     <button
                       key={r.chave}
                       onClick={() => setAba(r.chave)}
-                      className={`px-4 py-2 rounded-none text-sm font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         aba === r.chave
                           ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
                           : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -164,7 +164,7 @@ export function Demo() {
                   ))}
                 </div>
 
-                <div className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-none p-5 whitespace-pre-wrap text-[var(--text-primary)] leading-relaxed">
+                <div className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-5 whitespace-pre-wrap text-[var(--text-primary)] leading-relaxed">
                   {posts[aba]}
                 </div>
 
@@ -174,7 +174,7 @@ export function Demo() {
                   </p>
                 )}
 
-                <div className="mt-6 bg-orange-500/10 border border-orange-500/20 rounded-none p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="mt-6 bg-orange-500/10 border border-orange-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <p className="text-[var(--text-primary)]">
                     Isso foi um post, sem saber nada sobre você.{" "}
                     <strong>

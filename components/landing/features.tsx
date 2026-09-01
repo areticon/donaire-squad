@@ -18,40 +18,40 @@ const FEATURES = [
     title: "Time de agentes autônomos",
     description:
       "Cada agente tem persona, estilo e especialidade. Roberto pesquisa, Lucas escreve para LinkedIn, Daniela cria infográficos.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
   },
   {
     icon: Sparkles,
     title: "Infográficos com IA",
     description:
       "Gemini gera imagens e infográficos profissionais baseados nos dados do post. Visual de agência, sem agência.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-purple-400",
+    bg: "bg-purple-400/10",
   },
   {
     icon: Share2,
     title: "Publicação automática",
     description:
       "LinkedIn (texto, imagem e carrossel) e X/Twitter (texto). Conecte uma vez e publique automaticamente.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-green-400",
+    bg: "bg-green-400/10",
   },
   {
     icon: Eye,
     title: "Visualização em tempo real",
     description:
       "Veja seus agentes trabalhando ao vivo. Cada pensamento, cada rascunho, cada decisão visível no painel.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-orange-400",
+    bg: "bg-orange-400/10",
   },
   {
     icon: Calendar,
     title: "Agenda inteligente",
     description:
       "Defina frequência e horários. Os agentes criam e publicam automaticamente, mantendo consistência sem esforço.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
   },
   {
     icon: BarChart3,
@@ -66,8 +66,8 @@ const FEATURES = [
     title: "Você aprova antes de publicar",
     description:
       "Checkpoint de aprovação antes de cada publicação. Autonomia total dos agentes, controle total seu.",
-    color: "text-[#17171a]",
-    bg: "bg-[var(--marcador)]",
+    color: "text-red-400",
+    bg: "bg-red-400/10",
   },
   {
     icon: Zap,
@@ -89,7 +89,7 @@ export function Features() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
+          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             Funcionalidades
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
@@ -112,9 +112,9 @@ export function Features() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07 }}
-                className="bg-[var(--bg-card)] border border-[var(--border)] rounded-none p-6 hover:border-orange-500/30 transition-all duration-300 group"
+                className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 hover:border-orange-500/30 transition-all duration-300 group"
               >
-                <div className={`${feature.bg} w-10 h-10 rounded-none flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                <div className={`${feature.bg} w-10 h-10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <Icon className={`w-5 h-5 ${feature.color}`} />
                 </div>
                 <h3 className="font-semibold text-[var(--text-primary)] mb-2 leading-snug">

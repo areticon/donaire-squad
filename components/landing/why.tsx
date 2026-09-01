@@ -50,7 +50,7 @@ export function Why() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 border-b border-[var(--fio)] pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-primary)] mb-6">
+          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
             <span>A regra 7-11-4</span>
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
@@ -70,7 +70,7 @@ export function Why() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-none p-8"
+              className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-8"
             >
               <div className="flex items-baseline gap-3 mb-4">
                 <span className="text-5xl font-black text-orange-500">

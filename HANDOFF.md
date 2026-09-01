@@ -6633,3 +6633,30 @@ defeitos eram invisiveis no codigo e obvios na imagem.
 390px (celular), no hero, no como funciona, na entrega, no preco e no rodape.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Adendo da parte 78: a vitrine de papel foi REPROVADA e revertida (01/09)
+
+O Bruno viu a landing no ar e reprovou sem meio termo: "ficou pessimo, achei
+que voce criaria artes incriveis, um design impressionante, estava bem melhor
+antes". Revertido na hora, no commit seguinte: `app/globals.css`,
+`app/page.tsx` e `components/landing/` voltaram byte a byte ao estado de
+`bac8a1d`, e `components/landing/papel.tsx` foi apagado. A landing escura de
+antes esta de volta no ar.
+
+O que a parte 78 descreve continua valendo como REGISTRO do que foi tentado, e
+nao como estado do produto. A regra de cor (amarelo marca, laranja age, resto
+e tinta) tambem nao esta provada: ela nasceu junto com a execucao reprovada.
+
+### O erro de metodo, que e a licao de verdade
+
+A referencia que ele mandou era de ARTE: colagem montada, foto tratada,
+composicao com peso. O que eu entreguei foi um tema de CSS com marca-texto
+amarelo, sem uma unica arte. Traduzi uma direcao visual em tokens e classes,
+publiquei direto no site, e mostrei o resultado depois de estar no ar.
+
+O caminho certo, que e o proprio jeito dele de trabalhar e estava na memoria:
+design visual se decide em canvas antes de encostar no codigo. Proposta
+visual primeiro, veredito dele, so entao implementacao. Vale para a landing e
+vale para a camada de overlay do video, que e a mesma natureza de trabalho.
+
+*Atualizado em 01/09/2026 por Claude Code.*
