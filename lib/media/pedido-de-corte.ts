@@ -4,6 +4,7 @@ import type { Word } from "@/lib/media/transcribe";
 import {
   detectarPausas,
   duracaoDosIntervalos,
+  folgaParaEmenda,
   intervalosDoTrecho,
   montarLegendasDestaque,
   segundosRemovidos,
@@ -125,9 +126,13 @@ export async function montarPedidoDeCorte(
   // O que é garantível por código entra por código: repetições imediatas e
   // hesitações arrastadas. O agente continua cuidando do que é julgamento
   // (recomeço de frase, muleta que às vezes é conteúdo).
-  const remocoes = unirRemocoes(
-    unirRemocoes(pausas, detectarMuletasArrastadas(palavras)),
-    unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
+  // A folga do fade entra por ÚLTIMO, depois de tudo unido: se entrasse antes,
+  // a união poderia colar duas remoções vizinhas e a folga do meio sumiria.
+  const remocoes = folgaParaEmenda(
+    unirRemocoes(
+      unirRemocoes(pausas, detectarMuletasArrastadas(palavras)),
+      unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
+    )
   );
 
   // Os ganchos da abertura, já convertidos para o tempo DEPOIS da edição.

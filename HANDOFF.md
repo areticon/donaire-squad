@@ -336,9 +336,14 @@ npx vercel deploy --prod --force
 > código, o código manda.**
 
 **Bloqueia lançamento:**
-- [ ] Veredito do Bruno na rodada de ponta a ponta com tudo novo: piloto
-      automático, quadro espelhando a seleção, ajuste conversacional com o
-      Vitor, esteira Vera/Paulo, publicação real
+- [ ] **Camada de design no vídeo completo** (a queixa 3 de 01/09: "a edição não
+      tem efeito gráfico nenhum, igual as referências do Vox"). A bíblia de
+      estilo e as referências existem desde 25/08; o motor é que falta, e o
+      passe 2 do completo é o lugar dele. `@vercel/og` renderiza por código a
+      maioria dos arquétipos, sem custo de modelo. Ver parte 77
+- [ ] Veredito do Bruno na edição refeita de 01/09 (respiro proporcional,
+      folga do fade, punch-in nas emendas do completo). As outras duas queixas
+      dele da mesma rodada já estão medidas e no ar
 - [ ] Store PÚBLICO separado para mídia produzida (CDN de verdade nos
       players). Precisa do Bruno no painel da Vercel; passos no card do
       planner. O store atual é privado-only e recusa `access: "public"`
@@ -6461,5 +6466,97 @@ antes do conserto:
 
 O quadro atual do Bruno foi curado por script (cards espelhados a selecao,
 completo religado ao post proprio, Vera e Paulo criados).
+
+*Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 77): a edicao do completo, medida antes e depois
+
+O Bruno assistiu o video principal (o que vai para o YouTube) e reprovou a
+EDICAO, com tres queixas: cortes bruscos com estalo e sem fade, cortes em
+momento ruim deixando frase sem sentido e virada de assunto sem nexo, e
+nenhum efeito grafico. A forense veio antes de qualquer conserto, no video
+real `cmthufrkz000004l1kh2gbfrq` (982s, 2.388 palavras, 1440p).
+
+### O que os dados disseram
+
+| medida | valor no arquivo entregue |
+|---|---|
+| duracao original | 982,1s |
+| duracao entregue | 878,7s (103,4s removidos, 10,5%) |
+| emendas | ~160, ou **uma a cada 6,5 segundos** |
+| pausas do original acima de 1,2s | 15 |
+| **pausas acima de 0,8s no entregue** | **ZERO, em 14 minutos e meio** |
+| descontinuidade de amostra no audio | 18 pontos |
+| tamanho | 1134 MB, MAIOR que a fonte de 941 MB |
+
+As tres queixas tinham tres mecanismos distintos:
+
+1. **Estalo**: o tira-estalo era um fade de 15ms que caia SOBRE A FALA. O
+   segmento seguinte comecava exatamente na primeira palavra e subia de zero,
+   comendo o ataque da consoante.
+2. **Frase sem sentido e assunto trocado**: `detectarPausas` esmagava TODA
+   pausa acima de 0,6s para 0,25s fixos, fosse ela de 0,7s ou de 3,1s. Pausa
+   longa nao e desperdicio, e PONTUACAO. O caso exato esta aos 815,5s do
+   original: 2,6s de pausa retorica antes de "e se voce tem uma palavra"
+   viravam um quarto de segundo, e a conclusao colava na pergunta seguinte.
+   Junto disso, nada impedia um corte de atravessar um ponto final.
+3. **Sem efeito nenhum**: o completo nunca teve tratamento de imagem na
+   emenda. Os cortes verticais tem punch-in desde 24/08; o completo ficou de
+   fora por impedimento tecnico (grafo com `scale`/`crop` sobre a entrada crua
+   morre com "Error reinitializing filters"), nao por decisao de produto.
+
+### O que mudou
+
+**App:**
+- `respiroDaPausa`: o respiro acompanha a pausa (um terco dela, piso 0,30s,
+  teto 0,90s). Medido na janela real de 150s: uma pausa de 2,6s guardava 0,21s
+  e passa a guardar 0,90s; uma de 1,4s ia de 0,21s para 0,50s.
+- `folgaParaEmenda`: cada remocao devolve 30ms de cada ponta, e o fade do
+  worker acontece EM CIMA dessa folga, que e silencio ou rabo de muleta. A
+  fala entra e sai em volume cheio. Mora no app, e nao no worker, porque a
+  legenda e calculada da mesma lista: folga inventada no worker empurraria o
+  audio 30ms por emenda e a legenda sairia 5 segundos fora da fala.
+- `fechaFrase`: nenhum corte atravessa ponto final. Vale para as repeticoes
+  detectadas por codigo ("sim. Sim, mas veja" deixou de ser gagueira) e para
+  os cortes do agente (o prompt ja pedia; agora tem quem garanta).
+
+**Worker:**
+- Fade da emenda de 15ms para 30ms, casando com a folga do app.
+- **O completo passou a ter DOIS PASSES**: o passe 1 uniformiza (trim, concat,
+  tira-estalo, nivelacao de voz) e o passe 2 da acabamento (punch-in de 6% em
+  toda emenda, legendas) sobre um arquivo que este proprio codigo escreveu. O
+  audio e recodificado uma vez so e COPIADO no passe 2, porque os segmentos do
+  passe 2 sao contiguos e nao mudam a duracao.
+- O punch-in do completo e centrado na TELA, e nao na pessoa como nos cortes:
+  o quadro do completo e o original, que pode ter slide ou tela ao lado de
+  quem fala.
+
+### Medido na janela real de 150s da gravacao dele (700s a 850s)
+
+| | antes | agora |
+|---|---|---|
+| removido da janela | 19,7s | 15,6s |
+| descontinuidade maxima na emenda | 0,109 | 0,009 (duas de 0,06) |
+| respiro numa pausa de 2,6s | 0,21s | 0,90s |
+| emendas com mudanca de plano | 0 | 24 |
+| tempo de codificacao | 1 passe | passe 1 em 47s, passe 2 em 70s |
+
+O custo esta declarado: o completo passa de cerca de 361s para cerca de 765s
+de worker no video de 16 minutos. Ele nao bloqueia nada (os cortes continuam
+chegando em 130s e o completo se anexa sozinho ao quadro), e a alavanca de
+tempo existe se incomodar: o passe 1 em `ultrafast` cai de 65s para 38s na
+janela, ao custo de um intermediario 5 vezes maior no disco (130 MB para 639
+MB), o que nao vale o risco de encher o conteiner.
+
+### A camada de design, que e a queixa 3 e vira a proxima leva
+
+A biblia de estilo com a paleta medida da Vox e os 25 arquetipos ja existe em
+`docs/overlays/BIBLIA-DE-ESTILO.md` desde 25/08, com 32 quadros de
+referencia. O que faltava era motor, e o passe 2 e exatamente o lugar onde ele
+cabe. A descoberta que barateia tudo: `@vercel/og` ja e dependencia do
+projeto, entao cartela, palavra-cartao, stat, grafico, cartela amarela,
+icones em fila, lower-third e rotulo saem RENDERIZADOS POR CODIGO na paleta
+exata, sem custo de modelo de imagem e sem risco de texto errado. So manchete,
+documento grifado e mapa antigo precisam de modelo generativo.
 
 *Atualizado em 01/09/2026 por Claude Code.*

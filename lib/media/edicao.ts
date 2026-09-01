@@ -22,12 +22,43 @@ export type OpcoesDePausa = {
   /** Acima disto, o silêncio é considerado pausa. */
   limiarSegundos?: number;
   /**
-   * Quanto de silêncio fica. Cortar a pausa inteira cola as frases e o
+   * O PISO do silêncio que fica. Cortar a pausa inteira cola as frases e o
    * resultado soa apressado e artificial, o famoso corte de vídeo de internet.
    * Uma respiração curta é o que faz a edição parecer boa em vez de aparecer.
+   *
+   * É piso, e não valor fixo, desde 01/09: ver `respiroDaPausa`.
    */
   respiroSegundos?: number;
 };
+
+/**
+ * Quanto silêncio uma pausa merece guardar, em função do tamanho dela.
+ *
+ * ## O defeito que isto conserta, medido antes de consertado
+ *
+ * Até 01/09 toda pausa acima do limiar virava 0,25s de respiro, fosse ela de
+ * 0,7s ou de 3,1s. Medido no vídeo real que o Bruno reprovou (982s, 2.388
+ * palavras): das 53 pausas removidas, **15 tinham mais de 1,2s**, e o arquivo
+ * entregue saiu com **ZERO pausa acima de 0,8s em 14 minutos e meio de fala**.
+ *
+ * Pausa longa não é desperdício, é PONTUAÇÃO. É ela que diz "terminei este
+ * assunto". Esmagar todas para 0,25s foi o que produziu a queixa dele: "terminou
+ * em um tema e voltou em outro nada a ver". O dado mostra o caso exato, aos
+ * 815,5s: uma pausa retórica de 2,6s antes de "é se você tem uma palavra"
+ * virava um quarto de segundo, e a conclusão colava na pergunta.
+ *
+ * ## A regra
+ *
+ * O respiro acompanha a pausa: um terço dela, com piso de 0,30s (o suficiente
+ * para não soar emendado) e teto de 0,90s (acima disso vira tempo morto).
+ * Continua devolvendo tempo ao espectador, sem apagar a pontuação da fala.
+ *
+ * É a mesma ideia do `--margin` do auto-editor, a ferramenta de referência
+ * desta categoria: o corte automático que não deixa margem soa mecânico.
+ */
+export function respiroDaPausa(buraco: number, piso = 0.3): number {
+  return Math.min(0.9, Math.max(piso, buraco / 3));
+}
 
 /**
  * As pausas longas da gravação, deduzidas dos tempos por palavra.
@@ -43,7 +74,7 @@ export function detectarPausas(
   opcoes: OpcoesDePausa = {}
 ): Remocao[] {
   const limiar = opcoes.limiarSegundos ?? 0.6;
-  const respiro = opcoes.respiroSegundos ?? 0.25;
+  const respiro = opcoes.respiroSegundos ?? 0.3;
   if (!palavras.length) return [];
 
   const remocoes: Remocao[] = [];
@@ -63,14 +94,51 @@ export function detectarPausas(
   for (let i = 1; i < palavras.length; i++) {
     const buraco = palavras[i].start - palavras[i - 1].end;
     if (buraco <= limiar) continue;
-    const de = palavras[i - 1].end + respiro / 2;
-    const ate = palavras[i].start - respiro / 2;
+    const fica = respiroDaPausa(buraco, respiro);
+    const de = palavras[i - 1].end + fica / 2;
+    const ate = palavras[i].start - fica / 2;
     if (ate - de > 0.1) {
       remocoes.push({ de, ate, motivo: `pausa de ${buraco.toFixed(1)}s` });
     }
   }
 
   return remocoes.sort((a, b) => a.de - b.de);
+}
+
+/**
+ * Devolve à emenda o material que o fade vai consumir.
+ *
+ * ## O estalo, e por que ele existia
+ *
+ * O worker emenda cada pedaço mantido com um fade de milissegundos no áudio,
+ * para não estalar. Só que esse fade caía SOBRE A FALA: o pedaço seguinte
+ * começava exatamente na primeira palavra e subia de zero, comendo o ataque da
+ * consoante. O ouvido registra isso como estalo ou palavra engolida, e foi o
+ * que o Bruno ouviu. Medido no arquivo entregue do vídeo reprovado: **18 pontos
+ * com descontinuidade de amostra**, com o fade de 15ms em vigor.
+ *
+ * ## O conserto
+ *
+ * Cada remoção encolhe uma folga de cada lado. O material dessa folga é
+ * silêncio ou rabo de muleta, ou seja, coisa que ia para o lixo, e é sobre ELE
+ * que o fade acontece agora. A fala entra e sai em volume cheio.
+ *
+ * A folga mora aqui, e não no worker, por uma razão que já custou desencontro:
+ * a legenda é calculada a partir desta mesma lista de remoções. Se o worker
+ * inventasse folga por conta própria, o áudio andaria para a frente 30ms por
+ * emenda e, com 160 emendas, a legenda sairia 5 segundos fora da fala.
+ *
+ * Remoção curta ganha folga proporcional: não faz sentido devolver 60ms a uma
+ * remoção de 120ms, que é o "né" de meio segundo do gravador.
+ */
+export function folgaParaEmenda(remocoes: Remocao[], folga = 0.03): Remocao[] {
+  return remocoes
+    .map((r) => {
+      const dur = r.ate - r.de;
+      const f = Math.min(folga, Math.max(0, (dur - 0.12) / 2));
+      return { ...r, de: r.de + f, ate: r.ate - f };
+    })
+    .filter((r) => r.ate - r.de > 0.05);
 }
 
 /** Quanto tempo a edição devolve, para a tela poder dizer ao cliente. */

@@ -36,6 +36,18 @@ export type Limpeza = {
 };
 
 
+/**
+ * Esta palavra FECHA uma frase?
+ *
+ * A transcrição vem pontuada, e a pontuação é o único sinal barato de onde uma
+ * ideia termina e outra começa. Vale ouro para a limpeza: um corte que atravessa
+ * um ponto final não remove muleta, ele COLA DOIS ASSUNTOS. Foi a queixa do
+ * Bruno em 01/09 ("terminou em um tema e voltou em outro nada a ver").
+ */
+function fechaFrase(palavra: string): boolean {
+  return /[.!?…]["'”’)\]]?\s*$/.test(palavra);
+}
+
 /** Tira acento e pontuação, para comparar palavra com palavra. */
 function chaveDaPalavra(t: string): string {
   return t
@@ -80,7 +92,10 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
       i >= 3 &&
       chaveDaPalavra(palavras[i - 3].word) === chaveDaPalavra(palavras[i - 1].word) &&
       chaveDaPalavra(palavras[i - 2].word) === k &&
-      palavras[i - 1].start - palavras[i - 3].end < 1.5
+      palavras[i - 1].start - palavras[i - 3].end < 1.5 &&
+      // "Isso é o ponto. O ponto é outro": a repetição atravessa o fim da
+      // frase, então é retomada de propósito, e não gagueira.
+      !fechaFrase(palavras[i - 2].word)
     ) {
       remocoes.push({
         de: palavras[i - 3].start,
@@ -93,7 +108,10 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
     // A A: a mesma palavra colada nela mesma.
     if (
       chaveDaPalavra(palavras[i - 1].word) === k &&
-      palavras[i].start - palavras[i - 1].end < 1.0
+      palavras[i].start - palavras[i - 1].end < 1.0 &&
+      // "sim. Sim, mas veja": a primeira fecha a frase, a segunda abre outra.
+      // O tempo sozinho não separava esse caso da gagueira.
+      !fechaFrase(palavras[i - 1].word)
     ) {
       remocoes.push({
         de: palavras[i - 1].start,
@@ -356,6 +374,11 @@ export function sanearLimpeza(
 
   const plausiveis = unidos
     .filter((c) => c.ate - c.de + 1 <= PALAVRAS_MAXIMAS_POR_CORTE)
+    // Corte que engole um fim de frase está colando dois assuntos, não
+    // limpando muleta. O prompt já pede isso ("não corte a última palavra de
+    // uma frase nem a primeira da seguinte"), e pedir nunca garantiu nada:
+    // quem garante é esta linha.
+    .filter((c) => !palavras.slice(c.de, c.ate).some((p) => fechaFrase(p.word)))
     .filter((c) => cortePlausivel(c, palavras));
 
   // Teto duro. Se o agente marcou meio vídeo, alguma coisa saiu muito errada, e

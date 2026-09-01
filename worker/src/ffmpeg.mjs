@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { basename, dirname, join } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 
 /**
  * As receitas de ffmpeg do produto, num lugar só.
@@ -29,6 +29,23 @@ import { writeFile } from "node:fs/promises";
  * transmissao e preserva a variacao natural da fala em vez de achatar tudo.
  */
 const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
+
+/**
+ * O quanto o plano fecha na emenda do vídeo COMPLETO.
+ *
+ * 6% e não os 8% dos cortes, por duas diferenças reais entre os dois formatos:
+ * o completo mantém a composição 16:9 original (nada foi reenquadrado, então
+ * qualquer zoom aparece mais), e ele é longo, com uma emenda a cada 6,5s
+ * medidos no vídeo real de 01/09. Alternância forte a cada seis segundos por
+ * catorze minutos cansa; 6% lê como troca de câmera e não como zoom.
+ *
+ * E o centro é o da TELA, nunca o da pessoa. Nos cortes o centro vai na caixa
+ * dela porque o quadro 9:16 já foi reenquadrado nela; aqui o quadro é o
+ * original, que pode ter slide, lousa ou tela compartilhada ao lado de quem
+ * fala. Puxar o zoom para a webcam jogaria fora justamente o que o vídeo
+ * mostra.
+ */
+const ZOOM_DO_COMPLETO = 1.06;
 
 function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
   return new Promise((resolve, reject) => {
@@ -219,105 +236,6 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     return { recodificado: false, motivo: "nada a editar, arquivo preservado" };
   }
 
-  const args = ["-i", entrada];
-  let cwdDoFiltro;
-  let arquivoDeFiltro;
-
-  if (editaTempo) {
-    // TRIM e CONCAT, e não uma expressão `select` gigante.
-    //
-    // A versão anterior montava `select='between(t,a,b)+between(t,c,d)+...'`
-    // com um termo por pedaço mantido. Funcionava com 67 remoções e MORRIA com
-    // 155, que foi o que apareceu quando a limpeza de fala entrou: o parser de
-    // expressão do ffmpeg quebra entre 80 e 120 termos, e o erro é "Cannot
-    // allocate memory", que não diz nada sobre o motivo real.
-    //
-    // Medido em 23/08, expressão `select`:  80 termos OK, 120 falha.
-    // Medido em 23/08, `trim` mais `concat`: 700 segmentos em 157s.
-    //
-    // A diferença é estrutural: cada pedaço vira um NÓ de filtro em vez de um
-    // termo numa única expressão, e o ffmpeg lida bem com centenas de nós.
-    const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
-    // SEM punch-in no completo, e a razao e a causa raiz de tres bugs do dia.
-    //
-    // A entrada aqui e a GRAVACAO CRUA do cliente, e ela pode mudar de
-    // propriedade no meio do arquivo. Quando muda, o ffmpeg reinicializa o
-    // grafo, e um grafo com nos de `scale`/`crop` sobre [0:v] morre com
-    // "Failed to configure output pad ... Error reinitializing filters!".
-    // Provado em producao em 24/08: o punch-in por segmento derrubou o
-    // completo com exatamente esse erro, o MESMO que o overlay de emoji deu
-    // tres vezes. Nos CORTES o punch-in funciona porque a entrada deles e o
-    // intermediario que este worker recodificou, uniforme por construcao.
-    //
-    // Se um dia o completo ganhar um passe de normalizacao, o punch-in pode
-    // voltar; ate la, `trim` puro, que sobrevive a reinicializacao.
-    const partes = [];
-    const mapa = [];
-    manter.forEach((m, i) => {
-      partes.push(
-        `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
-        `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
-      );
-      mapa.push(`[v${i}][a${i}]`);
-    });
-
-    let grafo =
-      partes.join(";") +
-      ";" +
-      mapa.join("") +
-      `concat=n=${manter.length}:v=1:a=1[vc][ac]`;
-
-    // A legenda entra DEPOIS da concatenação, porque os tempos dela já foram
-    // calculados para a linha do tempo editada.
-    grafo += opcoes.legendasArquivo
-      ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
-      : ";[vc]null[v]";
-    // A nivelacao de volume entra DENTRO do grafo, e nao em `-af`.
-    //
-    // Descoberto em producao em 24/08, e o erro do ffmpeg diz exatamente o
-    // motivo: "-vf/-af/-filter e -filter_complex nao podem ser usados juntos
-    // para o mesmo fluxo". Aqui o audio sai do `concat`, ou seja de dentro do
-    // grafo, entao pedir `-af` por fora e pedir duas donas para o mesmo fluxo.
-    grafo += `;[ac]${NIVELAR_VOZ}[a]`;
-
-    // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
-    // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
-    // de 50 mil. O teto de linha de comando do Windows é 32.767, então lá quem
-    // recusa é o shell, antes de o ffmpeg ver. No Linux o teto é bem maior, mas
-    // o arquivo funciona nos dois e tira essa diferença da conta.
-    cwdDoFiltro = dirname(opcoes.legendasArquivo ?? saida);
-    arquivoDeFiltro = join(cwdDoFiltro, "filtro.txt");
-    await writeFile(arquivoDeFiltro, grafo, "utf8");
-
-    args.push(opcaoDeFiltro(), basename(arquivoDeFiltro), "-map", "[v]", "-map", "[a]");
-  } else {
-    // Só legenda: o caminho simples continua sendo o melhor.
-    cwdDoFiltro = dirname(opcoes.legendasArquivo);
-    args.push("-vf", "subtitles=" + basename(opcoes.legendasArquivo));
-  }
-
-  args.push(
-    // "faster", e nao "medium": medido em 01/09 no video real de 16 min em
-    // 1440p, o medium levou 836 SEGUNDOS, que era 80% do tempo total do
-    // worker e a espera que o Bruno reprovou. O faster corta isso em 2 a 3
-    // vezes; em crf 18 a diferenca visual e desprezivel, e nao e promessa:
-    // a fidelidade SSIM ja e medida logo abaixo e vai no resultado.
-    "-c:v", "libx264", "-preset", "faster", "-crf", "18",
-    "-pix_fmt", "yuv420p"
-  );
-
-  // Áudio: copiado sempre que o tempo não é mexido. Quando há remoção, o áudio
-  // precisa ser recortado junto e aí não tem como copiar; nesse caso vai em
-  // 192k, acima do original, que é o mínimo dano possível.
-  //
-  // A nivelacao entra junto com a recodificacao, e nao no caminho de copia: o
-  // remux existe para preservar o arquivo bit a bit quando nao ha nada a
-  // editar, e forcar recodificacao so para nivelar volume trocaria uma
-  // qualidade garantida por um ganho que o YouTube ja faz sozinho no lado dele.
-  args.push(...(editaTempo ? ["-c:a", "aac", "-b:a", "192k"] : ["-c:a", "copy"]));
-
-  args.push("-movflags", "+faststart", saida);
-
   // O teto de tempo acompanha a duração, e não é fixo.
   //
   // Medido em 23/08 na gravação real: com o grafo de trim e concat mais a
@@ -326,12 +244,172 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   // corte que "some" sem erro que explique. Um segundo de teto por segundo de
   // vídeo dá quatro vezes a folga medida, e nunca menos que os 30 minutos.
   const teto = Math.max(30 * 60 * 1000, Math.round((opcoes.duracaoSec ?? 0) * 1000));
-  await rodar(args, { cwd: cwdDoFiltro, timeoutMs: teto });
 
-  const partesDoMotivo = [];
-  if (editaTempo) partesDoMotivo.push(`${remocoes.length} trechos removidos`);
+  // Só legenda para queimar: não há emenda, então não há o que mascarar, e um
+  // passe resolve. O áudio é COPIADO, que é a qualidade máxima possível.
+  if (!editaTempo) {
+    const cwd = dirname(opcoes.legendasArquivo);
+    await rodar(
+      [
+        "-i", entrada,
+        "-vf", "subtitles=" + basename(opcoes.legendasArquivo),
+        "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
+        "-movflags", "+faststart", saida,
+      ],
+      { cwd, timeoutMs: teto }
+    );
+    return { recodificado: true, motivo: "legendas de destaque" };
+  }
+
+  const manter = intervalosQueFicam(remocoes, opcoes.duracaoSec);
+  const pasta = dirname(opcoes.legendasArquivo ?? saida);
+
+  // ===================== PASSE 1: UNIFORMIZAR =====================
+  //
+  // TRIM e CONCAT, e não uma expressão `select` gigante.
+  //
+  // A versão anterior montava `select='between(t,a,b)+between(t,c,d)+...'`
+  // com um termo por pedaço mantido. Funcionava com 67 remoções e MORRIA com
+  // 155, que foi o que apareceu quando a limpeza de fala entrou: o parser de
+  // expressão do ffmpeg quebra entre 80 e 120 termos, e o erro é "Cannot
+  // allocate memory", que não diz nada sobre o motivo real.
+  //
+  // Medido em 23/08, expressão `select`:  80 termos OK, 120 falha.
+  // Medido em 23/08, `trim` mais `concat`: 700 segmentos em 157s.
+  //
+  // Aqui NÃO entra scale, crop nem overlay, e a razão é a causa raiz de três
+  // bugs de 24/08: a entrada é a GRAVAÇÃO CRUA do cliente, que pode mudar de
+  // propriedade no meio do arquivo. Quando muda, o ffmpeg reinicializa o grafo,
+  // e um grafo com nó de imagem sobre [0:v] morre com "Failed to configure
+  // output pad ... Error reinitializing filters!". `trim` puro sobrevive.
+  //
+  // O que sai daqui é justamente o arquivo UNIFORME que o passe 2 precisa.
+  const partes = [];
+  const mapa = [];
+  manter.forEach((m, i) => {
+    partes.push(
+      `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
+    );
+    mapa.push(`[v${i}][a${i}]`);
+  });
+
+  // A nivelação de volume entra DENTRO do grafo, e não em `-af`.
+  //
+  // Descoberto em produção em 24/08, e o erro do ffmpeg diz exatamente o
+  // motivo: "-vf/-af/-filter e -filter_complex nao podem ser usados juntos
+  // para o mesmo fluxo". Aqui o áudio sai do `concat`, ou seja de dentro do
+  // grafo, então pedir `-af` por fora é pedir duas donas para o mesmo fluxo.
+  const grafo =
+    partes.join(";") + ";" + mapa.join("") +
+    `concat=n=${manter.length}:v=1:a=1[vc][ac];[ac]${NIVELAR_VOZ}[a]`;
+
+  // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
+  // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
+  // de 50 mil. O teto de linha de comando do Windows é 32.767, então lá quem
+  // recusa é o shell, antes de o ffmpeg ver. No Linux o teto é bem maior, mas
+  // o arquivo funciona nos dois e tira essa diferença da conta.
+  const arquivoDeFiltro = join(pasta, "filtro.txt");
+  await writeFile(arquivoDeFiltro, grafo, "utf8");
+
+  const uniforme = join(pasta, "uniforme.mp4");
+  const t1 = Date.now();
+  await rodar(
+    [
+      "-i", entrada,
+      opcaoDeFiltro(), basename(arquivoDeFiltro),
+      "-map", "[vc]", "-map", "[a]",
+      // Intermediário: crf 16 e veryfast. O crf mais fino que o do arquivo
+      // final existe para a segunda geração não somar perda visível, e o preset
+      // rápido porque este arquivo não é entregue a ninguém, é insumo.
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+      // Áudio: esta é a ÚNICA recodificação de som do caminho. O passe 2 copia,
+      // então a fala nunca passa por duas gerações de AAC.
+      "-c:a", "aac", "-b:a", "192k",
+      "-movflags", "+faststart", uniforme,
+    ],
+    { cwd: pasta, timeoutMs: teto }
+  );
+
+  console.log(`completo: passe 1 (uniformizar) em ${((Date.now() - t1) / 1000).toFixed(0)}s`);
+
+  // ===================== PASSE 2: ACABAMENTO =====================
+  //
+  // ## Por que existe, e o que ele conserta
+  //
+  // O vídeo que o Bruno reprovou em 01/09 tinha 160 emendas em 14 minutos, uma
+  // a cada 6,5 segundos, TODAS em corte seco: nenhum tratamento de imagem na
+  // virada. Nos cortes verticais o mesmo problema estava resolvido desde 24/08
+  // com o punch-in alternado, e o completo ficava de fora por um impedimento
+  // técnico (o grafo morria sobre a entrada crua), não por decisão de produto.
+  //
+  // Com o passe 1 entregando um arquivo uniforme, o impedimento acabou: a
+  // entrada daqui é um intermediário que este próprio código escreveu, do mesmo
+  // jeito que a dos cortes. É também o passe onde a camada de design (cartelas,
+  // gráficos, artes) vai entrar, pela mesma razão.
+  //
+  // ## Por que o áudio é COPIADO aqui
+  //
+  // Os segmentos deste passe são CONTÍGUOS: cobrem a linha do tempo inteira sem
+  // tirar nada. Frame nenhum é removido, então a duração não muda e o som segue
+  // casado com a imagem sem precisar ser recortado junto. Copiar evita uma
+  // segunda geração de AAC e ainda economiza tempo.
+  const dim = await ffprobe(uniforme).catch(() => null);
+  const emendas = [];
+  let acumulado = 0;
+  for (const m of manter) {
+    const ate = Math.min(m.ate, opcoes.duracaoSec ?? m.ate);
+    if (ate - m.de <= 0) continue;
+    acumulado += ate - m.de;
+    emendas.push(acumulado);
+  }
+  const fim = dim?.duracaoSec ?? acumulado;
+  const cortes = [0, ...emendas.filter((t) => t > 0.5 && t < fim - 0.5), fim];
+
+  const partes2 = [];
+  const mapa2 = [];
+  for (let i = 0; i < cortes.length - 1; i++) {
+    partes2.push(
+      `[0:v]trim=start=${cortes[i].toFixed(3)}:end=${cortes[i + 1].toFixed(3)},setpts=PTS-STARTPTS` +
+        `${segmentoComPunchIn(i % 2 === 1, dim?.largura, dim?.altura, null, ZOOM_DO_COMPLETO)}[w${i}]`
+    );
+    mapa2.push(`[w${i}]`);
+  }
+  let grafo2 =
+    partes2.join(";") + ";" + mapa2.join("") + `concat=n=${partes2.length}:v=1:a=0[vc]`;
+  // A legenda entra DEPOIS da concatenação, porque os tempos dela já foram
+  // calculados para a linha do tempo editada.
+  grafo2 += opcoes.legendasArquivo
+    ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
+    : ";[vc]null[v]";
+
+  const arquivoDeFiltro2 = join(pasta, "filtro2.txt");
+  await writeFile(arquivoDeFiltro2, grafo2, "utf8");
+
+  const t2 = Date.now();
+  await rodar(
+    [
+      "-i", uniforme,
+      opcaoDeFiltro(), basename(arquivoDeFiltro2),
+      "-map", "[v]", "-map", "0:a",
+      "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p",
+      "-c:a", "copy",
+      "-movflags", "+faststart", saida,
+    ],
+    { cwd: pasta, timeoutMs: teto }
+  );
+
+  console.log(`completo: passe 2 (acabamento) em ${((Date.now() - t2) / 1000).toFixed(0)}s`);
+
+  // O intermediário sai do disco na hora: ele tem o tamanho do arquivo
+  // entregue, e dois vídeos grandes seguidos enchem o contêiner.
+  await rm(uniforme, { force: true }).catch(() => {});
+
+  const partesDoMotivo = [`${remocoes.length} trechos removidos`];
+  partesDoMotivo.push(`${Math.max(0, partes2.length - 1)} emendas com mudança de plano`);
   if (opcoes.legendasArquivo) partesDoMotivo.push("legendas de destaque");
-  return { recodificado: true, motivo: partesDoMotivo.join(" e ") };
+  return { recodificado: true, motivo: partesDoMotivo.join(", ") };
 }
 
 /**
@@ -453,13 +531,13 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
  * exige todos os segmentos com a mesma dimensão, e um crop de conta quebrada
  * derrubaria a emenda inteira.
  */
-function segmentoComPunchIn(fechado, largura, altura, pessoa = null) {
+function segmentoComPunchIn(fechado, largura, altura, pessoa = null, zoom = 1.08) {
   if (!fechado || !largura || !altura) return "";
   // 8%: o topo da faixa que nao vira zoom nervoso (medido em 24/08: acima de
   // ~8% cansa, abaixo de ~4% o olho nao registra). O 5,5% de 24/08 era para
   // emenda frequente; com o pedido do Bruno de "mudar a cena" (31/08), o
   // plano fechado precisa ser percebido como plano NOVO.
-  const z = 1.08;
+  const z = zoom;
   const w = Math.round(largura / z / 2) * 2;
   const h = Math.round(altura / z / 2) * 2;
   // O zoom e centrado na PESSOA, e nao no centro do quadro.
@@ -484,19 +562,32 @@ function segmentoComPunchIn(fechado, largura, altura, pessoa = null) {
  * É o clique clássico de emenda: o áudio de um segmento termina num ponto
  * qualquer da onda e o seguinte começa em outro, e o salto vira um estalo.
  *
- * Quinze milissegundos de fade em cada ponta são curtos demais para o ouvido
- * perceber como fade, e levam a onda a zero antes de cada emenda, matando o
- * estalo na causa. É o mesmo tratamento que qualquer editor aplica por padrão.
+ * ## 30ms, e não 15ms, e a razão não é o número
+ *
+ * Até 01/09 o fade era de 15ms e caía SOBRE A FALA: o segmento começava na
+ * primeira palavra e subia de zero, comendo o ataque da consoante. Medido no
+ * arquivo entregue que o Bruno reprovou: 18 pontos ainda com descontinuidade de
+ * amostra, ou seja, o tira-estalo não estava dando conta.
+ *
+ * Agora o app devolve 30ms de folga em cada ponta da remoção
+ * (`folgaParaEmenda`), e essa folga é silêncio ou rabo de muleta. O fade
+ * acontece em cima DELA, e a fala entra e sai em volume cheio. Por isso o fade
+ * daqui tem que casar com a folga de lá: 30ms dos dois lados.
  *
  * O fade de saída só entra quando o fim do segmento é conhecido: o último
  * pedaço do vídeo completo corre até o fim do arquivo, sem duração declarada.
  */
+const FADE_DA_EMENDA = 0.03;
+
 function audioDoSegmento(m) {
   const dur = m.ate - m.de;
   if (dur < 0.1) return "";
-  let filtro = ",afade=t=in:st=0:d=0.015";
+  // Em segmento curtíssimo o fade não pode passar de um terço dele, senão o
+  // pedaço inteiro vira rampa e o volume oscila de forma audível.
+  const d = Math.min(FADE_DA_EMENDA, dur / 3).toFixed(3);
+  let filtro = `,afade=t=in:st=0:d=${d}`;
   if (m.ate < 999998) {
-    filtro += `,afade=t=out:st=${Math.max(0, dur - 0.015).toFixed(3)}:d=0.015`;
+    filtro += `,afade=t=out:st=${Math.max(0, dur - Number(d)).toFixed(3)}:d=${d}`;
   }
   return filtro;
 }
