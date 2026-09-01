@@ -37,7 +37,7 @@ import {
   publishFacebookVideo,
   publishFacebookText,
 } from "@/lib/oauth/facebook";
-import { get } from "@vercel/blob";
+import { abrirMidia } from "@/lib/media/storage";
 import { publishYouTubeVideo, refreshYouTubeToken } from "@/lib/oauth/youtube";
 
 /**
@@ -144,16 +144,15 @@ async function lerVideoDoPost(
       mimeType: head.slice(5, head.indexOf(";")) || "video/mp4",
     };
   }
-  const blob = await get(imageUrl, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-  if (!blob || blob.statusCode !== 200) {
+  // Dos DOIS stores: a mídia produzida nasce pública desde 01/09, e o acervo
+  // anterior continua privado. Ler com o token do store errado devolve 403.
+  const midia = await abrirMidia(imageUrl);
+  if (!midia) {
     throw new Error("Não consegui ler o vídeo no storage.");
   }
   return {
-    buffer: Buffer.from(await new Response(blob.stream).arrayBuffer()),
-    mimeType: blob.blob.contentType || "video/mp4",
+    buffer: Buffer.from(await new Response(midia.stream).arrayBuffer()),
+    mimeType: midia.mimeType,
   };
 }
 
@@ -443,16 +442,13 @@ export async function executeOAuthPostPublish(
       // O corpo é repassado como FLUXO. A gravação do Bruno tem 850 MB, e
       // materializar isso na memória da função derruba a execução antes de o
       // primeiro byte chegar ao Google.
-      const blob = await get(post.imageUrl, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-      if (!blob || blob.statusCode !== 200) {
+      const midia = await abrirMidia(post.imageUrl);
+      if (!midia) {
         throw new Error("Não consegui ler o vídeo no storage.");
       }
-      mime = blob.blob.contentType || "video/mp4";
-      corpo = blob.stream;
-      tamanho = blob.blob.size;
+      mime = midia.mimeType;
+      corpo = midia.stream;
+      tamanho = midia.size;
     } else {
       throw new Error("Vídeo do post em formato não reconhecido");
     }

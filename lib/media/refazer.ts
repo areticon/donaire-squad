@@ -1,4 +1,5 @@
-import { get, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
+import { lerMidia, midiaProduzida } from "@/lib/media/storage";
 import { prisma } from "@/lib/db/prisma";
 import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
@@ -136,12 +137,8 @@ export async function refazerCapa(
     video.capaFonteUrl ?? (alvo.midia?.capa as { url?: string } | undefined)?.url;
   if (!quadro) throw new Error("Não encontrei o quadro base da capa.");
 
-  const blob = await get(quadro, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-  if (!blob || blob.statusCode !== 200) throw new Error("Não consegui ler o quadro base.");
-  const bytes = Buffer.from(await new Response(blob.stream).arrayBuffer());
+  const bytes = await lerMidia(quadro);
+  if (!bytes) throw new Error("Não consegui ler o quadro base.");
 
   const arte = await comporCapa(bytes.toString("base64"), alvo.texto.fraseDaCapa, {
     expressao: alvo.texto.expressao as Expressao | undefined,
@@ -157,8 +154,8 @@ export async function refazerCapa(
     `cortes/${video.id}/capa-arte-${indice}.jpg`,
     dataUrlToBuffer(arte),
     {
-      access: "private",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      // A capa refeita é mídia produzida, mesmo destino da original.
+      ...midiaProduzida(),
       contentType: "image/jpeg",
       addRandomSuffix: true,
     }

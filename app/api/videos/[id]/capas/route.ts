@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
-import { put, get } from "@vercel/blob";
+import { lerMidia, midiaProduzida } from "@/lib/media/storage";
+import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
@@ -109,12 +110,12 @@ export async function POST(
         if (quadro) {
           // O quadro vive no storage privado, então precisa do SDK. `fetch`
           // devolveria 403, armadilha que este projeto já pagou três vezes.
-          const blob = await get(quadro, {
-            access: "private",
-            token: process.env.BLOB_READ_WRITE_TOKEN,
-          });
-          if (blob && blob.statusCode === 200) {
-            const bytes = Buffer.from(await new Response(blob.stream).arrayBuffer());
+          // O quadro pode estar no store privado (acervo antigo) ou no
+          // público (produzido a partir de 01/09), então quem lê precisa
+          // saber dos dois. `fetch` puro numa URL privada devolve 403,
+          // armadilha que este projeto já pagou três vezes.
+          const bytes = await lerMidia(quadro);
+          if (bytes) {
             const arte = await comporCapa(bytes.toString("base64"), texto.fraseDaCapa, {
               expressao: texto.expressao,
               cenario: texto.cenario,
@@ -129,8 +130,9 @@ export async function POST(
                 `cortes/${video.id}/capa-arte-${i}.jpg`,
                 dataUrlToBuffer(arte),
                 {
-                  access: "private",
-                  token: process.env.BLOB_READ_WRITE_TOKEN,
+                  // Capa é mídia PRODUZIDA: vai para o store público, que é
+                  // quem entrega cache e Range ao navegador do cliente.
+                  ...midiaProduzida(),
                   contentType: "image/jpeg",
                   addRandomSuffix: true,
                 }

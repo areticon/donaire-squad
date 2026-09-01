@@ -53,6 +53,8 @@ const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 if (!SEGREDO) throw new Error("WORKER_SECRET não configurado");
 if (!BLOB_TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN não configurado");
+/** O store público da mídia produzida. Ausente, tudo cai no privado. */
+const DESTINO_PUBLICO = process.env.BLOB_PUBLIC_READ_WRITE_TOKEN || null;
 
 /**
  * Assinatura HMAC sobre o corpo cru.
@@ -122,14 +124,21 @@ async function subir(caminho, chave, contentType) {
   const limite = setTimeout(() => controle.abort(), prazoDeEnvio(size));
   try {
     const { url } = await put(chave, createReadStream(caminho), {
-      // PRIVADO, e não por escolha de produto: o STORE é configurado como
-      // privado-only, e access "public" derruba o upload com "Cannot use
-      // public access on a private store" (aconteceu em produção em 01/09,
-      // 3 tentativas queimadas). O streaming decente vem do proxy com Range
-      // da rota de mídia; migrar para um store público de URL não adivinhável
-      // é decisão de infra registrada em card.
-      access: "private",
-      token: BLOB_TOKEN,
+      // Tudo que sai daqui e MIDIA PRODUZIDA (corte, completo, capa), ou seja,
+      // exatamente o que o navegador do cliente toca. Vai para o store
+      // PUBLICO, cuja URL nao e adivinhavel, porque e o CDN dele que entrega
+      // Range, cache e buffering nativos. A gravacao ORIGINAL do cliente
+      // continua no store privado, e nao passa por aqui.
+      //
+      // A tentativa anterior (01/09) pediu access public no store ERRADO, que
+      // e privado-only, e derrubou os cortes com "Cannot use public access on
+      // a private store". Por isso o destino agora vem de uma variavel
+      // separada, e a troca so subiu depois de um upload de prova.
+      //
+      // Sem a variavel, cai no store privado: pior de performance, identico
+      // de comportamento, e nunca quebrado.
+      access: DESTINO_PUBLICO ? "public" : "private",
+      token: DESTINO_PUBLICO ?? BLOB_TOKEN,
       contentType,
       addRandomSuffix: true,
       multipart: size > 50 * 1024 * 1024,

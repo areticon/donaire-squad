@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
-import { get } from "@vercel/blob";
+import { abrirMidia, ehPublica } from "@/lib/media/storage";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 
@@ -65,18 +65,22 @@ export async function GET(
   // URL, mesmo do servidor, devolve 403, ao contrário do que o comentário
   // antigo do código afirmava. Foi essa suposição errada que fez a publicação
   // no YouTube falhar com "Não consegui baixar o vídeo (403)".
-  const blob = await get(post.imageUrl, {
-    access: "private",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-  if (!blob || blob.statusCode !== 200) {
+  // Mídia pública vai direto para o CDN, que entrega Range e cache de verdade;
+  // proxiar cada byte por uma função serverless foi o que fez o player
+  // "começar e travar" (veredito de 01/09).
+  if (ehPublica(post.imageUrl) && !baixar) {
+    return NextResponse.redirect(post.imageUrl, 302);
+  }
+
+  const midia = await abrirMidia(post.imageUrl);
+  if (!midia) {
     return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
   }
 
-  return new NextResponse(blob.stream, {
+  return new NextResponse(midia.stream, {
     headers: {
-      "Content-Type": blob.blob.contentType,
-      "Content-Length": String(blob.blob.size),
+      "Content-Type": midia.mimeType,
+      "Content-Length": String(midia.size),
       "Cache-Control": "private, no-store",
       // Permite arrastar a barra do player sem baixar o arquivo inteiro.
       "Accept-Ranges": "bytes",

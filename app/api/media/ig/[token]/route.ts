@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 import { NextRequest, NextResponse } from "next/server";
-import { get } from "@vercel/blob";
+import { abrirMidia } from "@/lib/media/storage";
 import { prisma } from "@/lib/db/prisma";
 import { verifyIgMediaToken } from "@/lib/oauth/instagram";
 
@@ -55,20 +55,19 @@ export async function GET(
     // para fetch comum, inclusive do servidor. Enquanto só imagens passavam por
     // aqui isso nunca apareceu, porque elas viviam como data URL no banco. Com
     // vídeo, que vive no storage, a rota quebraria na primeira publicação.
-    const blob = await get(image, {
-      access: "private",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
-    if (!blob || blob.statusCode !== 200) {
+    // Dos DOIS stores: a mídia produzida nasce no store público desde 01/09,
+    // e ler uma URL pública com o token do store privado devolve 403.
+    const midia = await abrirMidia(image);
+    if (!midia) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     // Em FLUXO. Um Reels de um minuto passa de 10 MB, e a Meta busca o arquivo
     // inteiro: materializar isso na memória da função é desnecessário e, com
     // vídeo mais longo, fatal.
-    return new NextResponse(blob.stream, {
+    return new NextResponse(midia.stream, {
       headers: {
-        "Content-Type": blob.blob.contentType,
-        "Content-Length": String(blob.blob.size),
+        "Content-Type": midia.mimeType,
+        "Content-Length": String(midia.size),
         "Cache-Control": "no-store",
         // A Meta pede faixas de bytes ao buscar vídeo. Sem isto ela desiste.
         "Accept-Ranges": "bytes",

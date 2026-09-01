@@ -6727,3 +6727,59 @@ No site o ciclo nao fica em laco: roda uma vez na chegada e para. O laco
 existe so no canvas, para julgar a animacao sem recarregar.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 01/09/2026 (parte 79): o CDN de verdade, com dois stores
+
+O store publico saiu do card e entrou em producao. O caminho ate ele tem duas
+licoes que valem mais que o resultado.
+
+### Como o token apareceu sem o Bruno abrir o painel
+
+`vercel blob create-store` recusa ligar um store novo ao projeto quando o nome
+da variavel colide (`BLOB_READ_WRITE_TOKEN` ja existia em producao), e nao ha
+comando para conectar um store existente com outro nome. A saida foi criar o
+store ligando so ao ambiente de DESENVOLVIMENTO, onde a variavel nao existia:
+a Vercel gera o token la, e `env pull` traz o valor.
+
+**A armadilha**: esse `create-store --environment development` faz um pull e
+SOBRESCREVE o `.env.local` da maquina. O token do store privado foi por cima,
+e sem perceber isso os scripts locais passariam a falar com o store errado. Foi
+restaurado na hora e o token publico ficou com nome proprio.
+
+### A prova antes do deploy, que agora e regra escrita
+
+`scripts/tmp/provar-store-publico.mts` subiu UM arquivo e mediu o que
+interessa, antes de qualquer codigo mudar:
+
+| prova | resultado |
+|---|---|
+| upload com `access: "public"` | OK |
+| leitura anonima, sem token | 200 |
+| cache | `public, max-age=2592000` |
+| Range | 206 com `content-range` |
+
+### A divisao, que e o desenho
+
+`lib/media/storage.ts` e o unico lugar que decide onde cada arquivo mora:
+midia PRODUZIDA (corte, completo, capa) vai para o store publico de URL nao
+adivinhavel, e a gravacao ORIGINAL do cliente mais os insumos internos (fundo,
+quadro-fonte) continuam privados. Sem a variavel do store publico, tudo cai no
+privado: pior de performance, identico de comportamento.
+
+### O que quase quebrou calado, e por isso foi procurado
+
+Trocar o destino do upload nao basta: **cinco lugares LEIAM com o token do
+store privado**, e `get` privado numa URL publica devolve 403. Todos passaram a
+usar `lerMidia`/`abrirMidia`, que atendem os dois stores:
+
+- a publicacao no YouTube (fluxo, porque a gravacao passa de 800 MB)
+- a publicacao das outras redes (buffer)
+- a rota que a Meta busca para o Reels
+- a rota de midia do post no navegador (que agora tambem redireciona para o CDN)
+- a composicao de capa e o refazer do Vitor, que leem o quadro base
+
+O acervo antigo continua privado e segue pelo proxy com Range. Nada migra,
+nenhum link quebra, e a partir do proximo video processado o player fala com o
+CDN.
+
+*Atualizado em 01/09/2026 por Claude Code.*
