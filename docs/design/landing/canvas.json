@@ -1,38 +1,36 @@
 {
+  "pages": [
+    { "id": "page-1", "name": "A. Colagem com movimento" },
+    { "id": "page-2", "name": "Direções descartadas" }
+  ],
   "artboards": [
-    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial" },
-    { "file": "DirecaoB.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico" },
-    { "file": "DirecaoC.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo" }
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial, em movimento", "page": "page-1" },
+    { "file": "DirecaoB.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico (descartada)", "page": "page-2" },
+    { "file": "DirecaoC.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo (descartada)", "page": "page-2" }
   ],
   "annotations": [
     {
       "id": "briefing",
       "x": 0,
-      "y": -230,
-      "w": 620,
-      "text": "Três direções para a landing da Demandou, com o corte e a capa REAIS que a plataforma entregou.\nEscolha uma (ou peça mistura: \"o tipo do C com o papel do A\") e só então eu levo para o código."
+      "y": -300,
+      "w": 700,
+      "text": "DIREÇÃO A, ESCOLHIDA, agora com motion graphics.\nA peça roda em ciclo de 11s para você julgar o MOVIMENTO, e não o quadro parado. O ritmo é regulável na barra de ajustes acima do artboard (9s, 11s, 14s, 20s).\n\nA coreografia: o fio risca a página, a manchete sobe linha a linha, o marca-texto é PINTADO da esquerda para a direita como caneta de verdade, o corte real cai e assenta com sobra de rotação, o bloco amarelo desliza de trás dele, a capa e o carimbo batem tortos, e a esteira aparece por limpeza lateral. Depois tudo para, e só o ponto do corte continua pulsando."
     },
     {
-      "id": "nota-a",
+      "id": "nota-loop",
       "x": 0,
       "y": 960,
-      "w": 420,
-      "text": "A. COLAGEM EDITORIAL\nA sua referência levada a sério: papel com grão, tipo condensada gigante, o corte real colado torto com sombra, marcador amarelo sangrando para fora e fios atravessando a página.\nForça: memorável, não parece SaaS nenhum.\nRisco: exige capricho em toda seção nova, senão desmonta."
+      "w": 520,
+      "text": "No site, o ciclo NÃO fica em laço: a coreografia roda uma vez quando a pessoa chega, e para. O laço aqui existe só para você conseguir ver a animação inteira quantas vezes quiser sem recarregar.\n\nO que eu ainda preciso de você: se o ritmo está certo, se falta ou sobra gesto, e se a manchete deve ser essa mesma."
     },
     {
-      "id": "nota-b",
-      "x": 1560,
-      "y": 960,
-      "w": 420,
-      "text": "B. ESCURO CINEMATOGRÁFICO\nMantém o grafite e o degradê laranja da sua marca, com serifa em itálico no contraponto e o corte flutuando com profundidade.\nForça: continua sendo a sua identidade, e vende premium.\nRisco: é o território mais concorrido, todo SaaS bom mora aqui."
-    },
-    {
-      "id": "nota-c",
-      "x": 3120,
-      "y": 960,
-      "w": 420,
-      "text": "C. TIPOGRÁFICO SEVERO\nGrade suíça visível, manchete de 148px, réguas pretas grossas, mono nos rótulos e um único bloco laranja.\nForça: autoridade imediata, e envelhece bem.\nRisco: frio, e exige texto muito bom porque não tem onde se esconder."
+      "id": "nota-descartadas",
+      "x": 0,
+      "y": -180,
+      "w": 520,
+      "page": "page-2",
+      "text": "Guardadas para consulta. Se algum pedaço daqui interessar (o dado grande do B, a régua e o mono do C), dá para trazer para a A sem mudar a direção."
     }
   ],
-  "launch": { "view": "canvas" }
+  "launch": { "view": "canvas", "page": "page-1" }
 }

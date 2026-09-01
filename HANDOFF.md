@@ -6702,3 +6702,28 @@ com outro nome de variavel. O caminho e o painel, uma vez so: conectar
 troca no codigo e minha, provada com UM upload antes de subir.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Adendo 3 da parte 78: direcao A escolhida, e a peca ganhou movimento (01/09)
+
+O Bruno escolheu a **direcao A (colagem editorial)** e mandou seguir as
+instrucoes de um video sobre motion graphics no Claude Design, que ali sao
+HTML e CSS animados dentro do proprio artboard.
+
+`Main.dc.html` virou a peca final da direcao A com coreografia de verdade,
+em ciclo de 11s (regulavel na barra de ajustes: 9s, 11s, 14s, 20s): o fio
+risca a pagina, a manchete sobe linha a linha, o marca-texto e PINTADO da
+esquerda para a direita como caneta, o corte real cai e assenta com sobra de
+rotacao, o bloco amarelo desliza de tras dele, capa e carimbo batem tortos, a
+esteira aparece por limpeza lateral, e no fim so o ponto do corte segue
+pulsando. As direcoes B e C foram para uma segunda pagina do canvas.
+
+**A regra tecnica que isso ensinou, e que quebra reel montado errado**: em
+animacao em laco, `animation-delay` so vale na PRIMEIRA volta. Coreografia
+com atraso desmonta a partir da segunda repeticao. Toda a peca usa um unico
+tempo total com as acoes posicionadas por PORCENTAGEM de keyframe, que e o
+que mantem o gesto igual em toda volta.
+
+No site o ciclo nao fica em laco: roda uma vez na chegada e para. O laco
+existe so no canvas, para julgar a animacao sem recarregar.
+
+*Atualizado em 01/09/2026 por Claude Code.*
