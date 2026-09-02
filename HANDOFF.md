@@ -6914,3 +6914,71 @@ numero da etapa 3 acende no laranja quando ela chega (e a etapa do video), e o
 diagrama desenhado aparece no fim resumindo o que os passos disseram.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 82): o completo caiu por MEMORIA, e a mensagem mentiu
+
+Com o log ligado (parte 81), o completo falhou de novo e desta vez disse por
+que:
+
+```
+ffmpeg saiu com 1: [Parsed_scale_138] Failed to configure output pad
+```
+
+Essa mensagem e a MESMA do erro de reinicializacao de grafo que ja matou o
+overlay de emoji e o punch-in sobre a entrada crua em 24/08. Ela levou a
+investigacao para o lado errado por uns bons minutos, porque aqui a entrada
+NAO e crua, e um intermediario que este proprio codigo escreveu.
+
+### O que os dados disseram, um chute de cada vez derrubado
+
+1. **"Fatia curta demais"**: a menor fatia do passe 2 tinha 0,110s, tres
+   quadros. Parecia culpado. Mas o numero do no (138) traduz para a fatia ~38,
+   que tem 4,45s, e um caso sintetico com fatia de 0,1s passou na fumaca.
+   Hipotese descartada por medicao.
+2. **"Grafo invalido"**: o MESMO grafo, 149 fatias e 74 escaladores em 1440p,
+   roda em 10 segundos numa maquina de mesa. Descartada.
+3. **Memoria**: medido o pico do processo no arquivo real de 1440p:
+
+| o que roda | pico |
+|---|---|
+| so codificar em `faster`, sem filtro nenhum | 868 MB |
+| o grafo unico de 149 fatias e 74 escaladores | 496 MB |
+| um lote de 12 fatias em `faster`, 2 fios | 740 MB |
+| um lote em `veryfast`, 2 fios | 643 MB |
+| um lote em `veryfast`, 2 fios, lookahead curto | 599 MB |
+
+O desenho antigo pedia grafo MAIS codificador, mais de 1,3 GB, num conteiner
+onde o passe 1 em `veryfast` cabe ha dias. A falha aparecia no no de escala
+porque foi ali que a alocacao estourou, e nao porque a escala estivesse
+errada. **Quem come memoria e o codificador, nao o grafo.**
+
+### O conserto
+
+- **O passe 2 roda em LOTES de 12 fatias**, cada lote um processo, entao a
+  memoria fica plana mesmo num video de duas horas.
+- Os lotes saem SEM audio e sao emendados por copia; o som do intermediario
+  entra inteiro no fim, sem recodificar. Recortar audio por lote arriscaria
+  alguns milissegundos de deriva em cada emenda, e treze lotes depois isso
+  vira um quarto de segundo fora da imagem.
+- A **paridade do plano e global**: a emenda que cai na fronteira de dois
+  lotes continua alternando, senao ela reapareceria como corte seco.
+- O codificador do passe 2 passa a usar o teto ja provado naquele conteiner:
+  `veryfast`, 2 fios, lookahead curto. Em CRF a qualidade e a mesma; o preset
+  mexe no tamanho do arquivo, e trocar tamanho por um video que EXISTE e troca
+  facil.
+- A legenda mudou para o passe 1: em lotes, cada lote comeca num instante
+  diferente e a legenda sairia deslocada em doze pedacos.
+- Fatia minima de 0,6s: emenda mais curta que isso nao vira troca de plano (18
+  quadros e o piso para o filtro ter material, e uma troca a cada 0,6s e o que
+  separa corte de camera de estrobo).
+- A prova de fumaca ganhou DOIS casos novos: fatia curtissima entre remocoes, e
+  o completo em varios lotes com cobranca de audio no fim.
+
+### A licao de metodo
+
+Mensagem de erro repetida nao quer dizer causa repetida. O projeto ja tinha
+visto "Failed to configure output pad" duas vezes, sempre por propriedade de
+quadro mudando, e a terceira vez foi memoria. O que separou as duas foi
+MEDIR o pico do processo, e nao reler o codigo procurando o erro conhecido.
+
+*Atualizado em 02/09/2026 por Claude Code.*
