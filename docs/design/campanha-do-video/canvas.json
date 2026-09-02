@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1240, "h": 940, "title": "1. Envio: como você quer a semana" },
+    { "file": "Radar.dc.html", "x": 1340, "y": 0, "w": 860, "h": 940, "title": "2. Card do Roberto aberto" },
+    { "file": "Semana.dc.html", "x": 0, "y": 1080, "w": 1240, "h": 980, "title": "3. Quadro depois do fluxo" }
+  ],
+  "annotations": [
+    { "id": "escolha", "x": 0, "y": -150, "w": 420, "text": "1. Antes de enviar, o cliente decide a semana. Segunda é sempre o vídeo (completo e cortes, não dá para trocar). Nos outros dias ele liga ou desliga o dia e escolhe o formato num menu: Texto, Imagem, Carrossel, Infográfico, Thread, Enquete ou Livre. O squad já vem com uma sugestão marcada. Créditos estimados aparecem antes do clique." },
+    { "id": "roberto", "x": 1340, "y": -150, "w": 420, "text": "2. O Roberto entra antes de qualquer redator. Ele lê a transcrição, tira as teses (com minuto), pesquisa o que estão falando agora (com fonte e data), traz dados com fonte e sugere o ângulo de cada dia respeitando o formato escolhido. Os colchetes são o lugar do que a pesquisa real vai trazer. Lucas, Tiago e Diana recebem esta página inteira junto com a transcrição." },
+    { "id": "semana", "x": 0, "y": 930, "w": 520, "text": "3. Resultado no quadro: a faixa ganha a fase Pesquisando (azul do Roberto) logo depois de Ouvindo; o cabeçalho de cada dia mostra o formato escolhido; o Roberto tem card de verdade na segunda; cada redator aparece só no dia e no formato que o cliente pediu; Vera e Paulo em todo dia com conteúdo. Sexta e domingo ficam vazios porque foram desligados, não porque travou." },
+    { "id": "fora", "x": 1340, "y": 1080, "w": 420, "text": "O que NÃO muda: o painel de envio da parte 87 (estilo, trilha, termos), a esteira do Vitor, o modal de cada card, a Vera revisando por dia e o Paulo publicando. Depois de enviado, o botão Mudar a semana reabre o mesmo planejador para trocar formato de um dia que ainda não foi escrito." }
+  ],
+  "launch": { "view": "canvas" }
+}

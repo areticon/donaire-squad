@@ -7433,3 +7433,55 @@ botao de publicar. Vitor: previa mais o texto apontando para o Paulo, sem
 botao. Build limpo, deploy `2f1c037` no master, sessao de teste apagada.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 89): Vera revisa, Diana entrega o carrossel, YouTube publico, canvas da campanha a partir do video
+
+Bruno testou a jornada do video (projeto "Empreendedorismo Cristao",
+cmtkd7ui2000004l8ox74g9qf, videoJob cmtkdf3ow000004lavcl9tnc7) e trouxe
+quatro pontos. Tres eram codigo e foram para producao no commit `532ef6d`
+(deploy Ready). O quarto e produto e virou canvas para aprovacao.
+
+1. YouTube "nao apareceu": `lib/oauth/youtube.ts` subia tudo como
+   `unlisted` por padrao. Agora `privacyStatus` padrao e `public`. Os dois
+   videos ja publicados (Short f6A3i5pe3Wg e completo -SdAuw92uPY) ficam
+   nao listados ate o Bruno trocar no YouTube Studio; o escopo da API que
+   temos nao muda visibilidade de video existente.
+2. "Vera nao faz o trabalho dela": a Vera nunca rodava na esteira do
+   video (so na campanha de texto) e a miniatura do card mostrava
+   "Aguardando revisao" para sempre. Novo `lib/media/vera-do-video.ts`
+   (`revisarDiasDoVideo`): le os posts do dia com nicho, publico e voz do
+   projeto, devolve "Veredito: Aprovado | Aprovado com ressalvas |
+   Reprovado" mais a revisao completa, e sabe que slides de carrossel sao
+   imagens prontas (na primeira rodada ela pediu para "dividir a legenda em
+   slides"). A miniatura em `content-manager.tsx` le a linha "Veredito:" e
+   colore (verde, ambar, vermelho).
+3. "Diana travou no sabado": o card de sabado era so texto, ninguem gerava
+   o carrossel. Novo `lib/media/carrossel-do-video.ts`
+   (`gerarCarrosselDoVideo`): uma imagem 1:1 por `fraseDaCapa` dos cortes,
+   legenda escrita pela Diana via Claude (`escreverLegendaDoCarrossel`,
+   a versao template foi reprovada pela Vera com razao), Post `carousel`
+   com `imageUrl` unido por "|" (convencao da casa), status draft.
+   `lib/media/esteira-do-video.ts` (`completarEsteiraDoVideo`) encadeia
+   carrossel, sincronizar quadro e Vera; roda em `after()` no fim do
+   `/agendar` e sob demanda em `POST /api/videos/[id]/revisar`
+   (idempotente). Verificado na tela logada: sabado com carrossel de 3
+   slides, Vera e Paulo em seg/qua/qui/sab.
+4. "Mesmo com video, o cliente escolhe a semana; o Roberto pesquisa a
+   partir da transcricao": canvas em `docs/design/campanha-do-video/`
+   (Main, Radar, Semana + canvas.json), salvo em
+   https://claude.ai/code/artifact/1b217124-0ddf-4344-8c78-a9575fa62467.
+   Proposta: planejador de 7 dias no painel de envio (segunda fixa em
+   video, os outros com toggle e formato Texto/Imagem/Carrossel/
+   Infografico/Thread/Enquete/Livre, sugestao pre-marcada, creditos
+   estimados); fase "Pesquisando" na faixa; card do Roberto na segunda com
+   teses da transcricao (com minuto), achados com fonte, dados com fonte e
+   angulo por dia; redatores recebem transcricao + pesquisa. Aguarda
+   aprovacao do Bruno antes de codar. Pontos de codigo ja mapeados:
+   `CampaignConfig.weeklySchedule` (campaign-setup-modal), `researchTopic`
+   (lib/research/web-search.ts), `/agendar` cria os cards derivados.
+
+Scripts de diagnostico da sessao em `scripts/tmp/` (leitura-vera-0209,
+reescrever-legenda-carrossel, zerar-veredito-sabado). Lembrete: scripts/tmp
+e checado pelo `npm run build`; script quebrado derruba o build.
+
+*Atualizado em 02/09/2026 por Claude Code.*

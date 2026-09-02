@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@700;800&amp;display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    .tela { width: 1240px; height: 980px; background: #1e1e25; color: #dcdde2; display: flex; flex-direction: column; overflow: hidden; }
+    .abas { display: flex; align-items: center; gap: 4px; padding: 0 28px; border-bottom: 1px solid #3f3f4b; background: #2a2a33; }
+    .aba { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-size: 14px; font-weight: 500; color: #9599a6; border-bottom: 2px solid transparent; }
+    .aba-ativa { color: #ef6122; border-bottom-color: #ef6122; }
+    .grade { display: grid; grid-template-columns: 180px repeat(7, minmax(0, 1fr)); }
+    .celula { padding: 6px; border-left: 1px solid #3f3f4b; min-height: 64px; }
+    .hoje { background: rgba(239,97,34,0.05); }
+    .cabdia { padding: 8px; text-align: center; border-left: 1px solid #3f3f4b; }
+    .cabdia p:first-child { font-size: 12px; font-weight: 700; margin: 0; color: #dcdde2; }
+    .cabdia p:last-child { font-size: 10px; margin: 2px 0 0; color: #9599a6; }
+    .cabfmt { font-size: 9px; font-weight: 600; margin: 3px auto 0 !important; padding: 1px 6px; border-radius: 999px; background: rgba(239,97,34,0.12); color: #f6803d !important; display: inline-block; }
+    .agente { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-right: 1px solid #3f3f4b; }
+    .bolinha { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .b28 { width: 28px; height: 28px; font-size: 10px; }
+    .b20 { width: 20px; height: 20px; font-size: 8px; }
+    .nome-agente { font-size: 12px; font-weight: 600; margin: 0; color: #dcdde2; }
+    .sub-agente { font-size: 10px; margin: 1px 0 0; color: #9599a6; }
+    .card { border: 1px solid #3f3f4b; border-radius: 8px; background: #2a2a33; padding: 6px 7px; box-shadow: 0 1px 3px rgba(0,0,0,0.32); display: flex; gap: 6px; align-items: flex-start; }
+    .card + .card { margin-top: 5px; }
+    .card p { font-size: 10px; line-height: 1.4; margin: 0; color: #dcdde2; }
+    .card .rot { font-size: 9px; color: #9599a6; }
+    .vazio { font-size: 10px; color: #9599a6; opacity: 0.5; margin: 0; padding: 4px 2px; }
+    .fase { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+    .fase p { margin: 0; }
+    .fase-nome { font-size: 12px; font-weight: 500; color: #9599a6; }
+    .fase-det { font-size: 10px; color: #9599a6; margin-top: -2px; }
+    .marco-feito { width: 20px; height: 20px; border-radius: 50%; background: #ef6122; display: flex; align-items: center; justify-content: center; color: #fff; }
+    .btn { height: 40px; padding: 0 16px; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+    .ver { font-weight: 600; }
+  </style>
+</helmet>
+
+<div class="tela">
+
+  <div class="abas">
+    <div class="aba">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      Posts
+    </div>
+    <div class="aba aba-ativa">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path><circle cx="12" cy="12" r="2"></circle><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path></svg>
+      Gestor de Conteúdo
+    </div>
+    <div class="aba">Configurações</div>
+    <div class="aba">Analytics</div>
+    <div class="aba">Editar setup</div>
+    <div class="aba">Treinamento</div>
+  </div>
+
+  <div style="flex: 1; padding: 16px 28px 20px; display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div>
+        <h2 style="font-family: Montserrat, Inter, sans-serif; font-size: 24px; font-weight: 800; margin: 0; color: #dcdde2;">Gestor de Conteúdo</h2>
+        <p style="font-size: 14px; margin: 4px 0 0; color: #9599a6;">Empreendedorismo Cristão</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="text-align: center; min-width: 150px;">
+          <p style="font-size: 14px; font-weight: 600; margin: 0; color: #dcdde2;">31 ago, 6 set</p>
+          <p style="font-size: 10px; margin: 2px 0 0; color: #9599a6;">Semana atual</p>
+        </div>
+        <div class="btn" style="border: 1px solid #3f3f4b; color: #9599a6;">Arquivo</div>
+        <div class="btn" style="border: 1px solid #3f3f4b; color: #9599a6;">Nova campanha</div>
+      </div>
+    </div>
+
+    <div style="border: 1px solid #3f3f4b; border-radius: 16px; background: #2a2a33; padding: 14px 20px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.35); display: flex; align-items: center; justify-content: center; color: #22c55e; flex-shrink: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          <div style="min-width: 0;">
+            <p style="font-size: 14px; font-weight: 600; margin: 0; color: #dcdde2;">2026-08-31 08-22-04.mp4</p>
+            <p style="font-size: 12px; margin: 2px 0 0; color: #9599a6;">Semana montada: vídeo na segunda, texto, imagem, thread e carrossel nos dias que você escolheu.</p>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <div style="height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #3f3f4b; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: #9599a6;">Mudar a semana</div>
+          <div style="height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #3f3f4b; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: #9599a6;">Nova gravação</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); position: relative;">
+        <div style="position: absolute; top: 9px; left: 7%; right: 7%; height: 2px; background: #ef6122;"></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Ouvindo</p><p class="fase-det">2.388 palavras</p></div>
+        <div class="fase"><div class="marco-feito" style="background: #3b82f6;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Pesquisando</p><p class="fase-det" style="color: #3b82f6;">3 teses, 3 achados, 3 dados</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Escolhendo</p><p class="fase-det">3 momentos</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Cortando</p><p class="fase-det">3 de 3</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Capas</p><p class="fase-det">3 capas</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Escrevendo</p><p class="fase-det">4 dias, do vídeo e da pesquisa</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Vídeo completo</p><p class="fase-det">no YouTube</p></div>
+      </div>
+    </div>
+
+    <div style="border: 1px solid #3f3f4b; border-radius: 16px; background: #2a2a33; overflow: hidden; flex: 1; min-height: 0;">
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b;">
+        <div style="padding: 8px 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: #9599a6;">Agente</span>
+        </div>
+        <div class="cabdia"><p>Seg</p><p>31/08</p><p class="cabfmt">Vídeo</p></div>
+        <div class="cabdia"><p>Ter</p><p>01/09</p><p class="cabfmt">Texto</p></div>
+        <div class="cabdia hoje"><p style="color: #ef6122;">Qua</p><p>02/09</p><p class="cabfmt">Imagem</p></div>
+        <div class="cabdia"><p>Qui</p><p>03/09</p><p class="cabfmt">Thread</p></div>
+        <div class="cabdia"><p>Sex</p><p>04/09</p></div>
+        <div class="cabdia"><p>Sáb</p><p>05/09</p><p class="cabfmt">Carrossel</p></div>
+        <div class="cabdia"><p>Dom</p><p>06/09</p></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #3b82f6;">RR</div><div><p class="nome-agente">Roberto Radar</p><p class="sub-agente">pesquisa</p></div></div>
+        <div class="celula">
+          <div class="card" style="border-color: rgba(59,130,246,0.6);"><div class="bolinha b20" style="background: #3b82f6;">RR</div><div><p class="rot">Pesquisa da semana</p><p>3 teses do vídeo, 3 achados com fonte, 3 dados, ângulo por dia</p></div></div>
+        </div>
+        <div class="celula"></div><div class="celula hoje"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #f43f5e;">VV</div><div><p class="nome-agente">Vitor Vídeo</p><p class="sub-agente">cortes e completo</p></div></div>
+        <div class="celula">
+          <div class="card"><div class="bolinha b20" style="background: #f43f5e;">VV</div><div><p class="rot">Shorts, 3 cortes</p><p>Por que você faz o que faz</p></div></div>
+          <div class="card"><div class="bolinha b20" style="background: #f43f5e;">VV</div><div><p class="rot">YouTube, completo</p><p>Propósito antes do modelo de negócio</p></div></div>
+        </div>
+        <div class="celula"></div><div class="celula hoje"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #1d4ed8;">LL</div><div><p class="nome-agente">Lucas LinkedIn</p><p class="sub-agente">texto</p></div></div>
+        <div class="celula"></div>
+        <div class="celula">
+          <div class="card"><div class="bolinha b20" style="background: #1d4ed8;">LL</div><div><p class="rot">LinkedIn, texto</p><p>Tese das 02:14 respondendo ao contraponto, com o dado 1</p></div></div>
+        </div>
+        <div class="celula hoje"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div><div class="celula"></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #0ea5e9;">TT</div><div><p class="nome-agente">Tiago Twitter</p><p class="sub-agente">thread</p></div></div>
+        <div class="celula"></div><div class="celula"></div><div class="celula hoje"></div>
+        <div class="celula">
+          <div class="card"><div class="bolinha b20" style="background: #0ea5e9;">TT</div><div><p class="rot">X, thread de 6</p><p>Teimosia versus persistência, abrindo com o achado 2</p></div></div>
+        </div>
+        <div class="celula"></div><div class="celula"></div><div class="celula"></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #a855f7;">DD</div><div><p class="nome-agente">Diana Design</p><p class="sub-agente">imagem e carrossel</p></div></div>
+        <div class="celula"></div><div class="celula"></div>
+        <div class="celula hoje">
+          <div class="card"><div class="bolinha b20" style="background: #a855f7;">DD</div><div><p class="rot">Instagram, imagem</p><p>Frase de Habacuque (07:40) como peça visual</p></div></div>
+        </div>
+        <div class="celula"></div><div class="celula"></div>
+        <div class="celula">
+          <div class="card"><div class="bolinha b20" style="background: #a855f7;">DD</div><div><p class="rot">Instagram, carrossel de 3</p><p>As três teses, uma por slide, dado 3 no fechamento</p></div></div>
+        </div>
+        <div class="celula"></div>
+      </div>
+
+      <div class="grade" style="border-bottom: 1px solid #3f3f4b; align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #eab308;">VE</div><div><p class="nome-agente">Vera Veredito</p><p class="sub-agente">revisão por dia</p></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #eab308;">VE</div><div><p class="rot">Veredito</p><p class="ver" style="color: #4ade80;">Aprovado</p></div></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #eab308;">VE</div><div><p class="rot">Veredito</p><p class="ver" style="color: #fbbf24;">Aprovado com ressalvas</p></div></div></div>
+        <div class="celula hoje"><div class="card"><div class="bolinha b20" style="background: #eab308;">VE</div><div><p class="rot">Veredito</p><p class="ver" style="color: #4ade80;">Aprovado</p></div></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #eab308;">VE</div><div><p class="rot">Veredito</p><p class="ver" style="color: #f87171;">Reprovado</p></div></div></div>
+        <div class="celula"></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #eab308;">VE</div><div><p class="rot">Veredito</p><p class="ver" style="color: #4ade80;">Aprovado</p></div></div></div>
+        <div class="celula"></div>
+      </div>
+
+      <div class="grade" style="align-items: stretch;">
+        <div class="agente"><div class="bolinha b28" style="background: #22c55e;">PP</div><div><p class="nome-agente">Paulo Publicador</p><p class="sub-agente">publica no dia</p></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #22c55e;">PP</div><div><p class="rot">Publicado</p><p>YouTube e Shorts</p></div></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #22c55e;">PP</div><div><p class="rot">Publicado</p><p>LinkedIn</p></div></div></div>
+        <div class="celula hoje"><div class="card" style="border-color: rgba(239,97,34,0.6);"><div class="bolinha b20" style="background: #22c55e;">PP</div><div><p class="rot">Hoje</p><p>Publicar agora</p></div></div></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #22c55e;">PP</div><div><p class="rot">Aguarda</p><p>a Vera reprovou, Tiago reescreve</p></div></div></div>
+        <div class="celula"></div>
+        <div class="celula"><div class="card"><div class="bolinha b20" style="background: #22c55e;">PP</div><div><p class="rot">Agendado</p><p>sábado, 9h</p></div></div></div>
+        <div class="celula"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@700;800&amp;display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    .tela { width: 860px; height: 940px; background: #1e1e25; color: #dcdde2; display: flex; flex-direction: column; overflow: hidden; }
+    .secao { display: flex; flex-direction: column; gap: 8px; }
+    .secao-tit { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #9599a6; }
+    .item { border: 1px solid #3f3f4b; border-radius: 10px; background: #2a2a33; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start; }
+    .item p { margin: 0; }
+    .item-tx { font-size: 13px; line-height: 1.45; color: #dcdde2; }
+    .item-sub { font-size: 11px; line-height: 1.4; color: #9599a6; margin-top: 3px; }
+    .tag { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 999px; flex-shrink: 0; white-space: nowrap; }
+    .fonte { color: #f6803d; }
+    .num { font-family: Montserrat, Inter, sans-serif; font-size: 22px; font-weight: 800; color: #dcdde2; line-height: 1; }
+    .ang { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid #3f3f4b; }
+    .ang:last-child { border-bottom: 0; }
+    .ang p { margin: 0; }
+    .ang-dia { font-size: 12px; font-weight: 700; color: #dcdde2; }
+    .ang-tx { font-size: 12px; line-height: 1.45; color: #dcdde2; }
+    .ang-fmt { color: #9599a6; font-weight: 500; }
+  </style>
+</helmet>
+
+<div class="tela">
+
+  <div style="display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 1px solid #3f3f4b; background: #2a2a33;">
+    <div style="width: 40px; height: 40px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;">RR</div>
+    <div style="flex: 1; min-width: 0;">
+      <p style="font-size: 16px; font-weight: 700; margin: 0; color: #dcdde2;">Roberto Radar</p>
+      <p style="font-size: 12px; margin: 2px 0 0; color: #9599a6;">Pesquisa da semana, segunda 31/08, a partir do vídeo de 16 min</p>
+    </div>
+    <span style="font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.35);">Pesquisa pronta</span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px;">
+
+    <div class="secao">
+      <p class="secao-tit"><span style="width: 8px; height: 8px; border-radius: 50%; background: #f43f5e; display: inline-block;"></span>O que você disse no vídeo</p>
+      <div class="item">
+        <span class="tag" style="background: rgba(244,63,94,0.12); color: #f43f5e;">02:14</span>
+        <div><p class="item-tx">Empreender sem saber por que você faz o que faz é construir sobre areia. O propósito vem antes do modelo de negócio.</p></div>
+      </div>
+      <div class="item">
+        <span class="tag" style="background: rgba(244,63,94,0.12); color: #f43f5e;">07:40</span>
+        <div><p class="item-tx">Habacuque esperou a resposta na torre de vigia. Esperar não é parar: é ficar de pé no posto até a resposta vir.</p></div>
+      </div>
+      <div class="item">
+        <span class="tag" style="background: rgba(244,63,94,0.12); color: #f43f5e;">12:05</span>
+        <div><p class="item-tx">Teimosia insiste no método. Persistência insiste no propósito e troca o método quando precisa.</p></div>
+      </div>
+    </div>
+
+    <div class="secao">
+      <p class="secao-tit"><span style="width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; display: inline-block;"></span>O que estão falando sobre isso agora</p>
+      <div class="item">
+        <div style="flex: 1;">
+          <p class="item-tx">[Manchete ou tese encontrada na pesquisa, em uma frase]</p>
+          <p class="item-sub"><span class="fonte">[veículo ou perfil]</span>, [data]. Conversa com a sua tese das 02:14: o que eles dizem e onde você discorda.</p>
+        </div>
+      </div>
+      <div class="item">
+        <div style="flex: 1;">
+          <p class="item-tx">[Segundo achado: uma discussão, um post viral, uma pergunta recorrente do público]</p>
+          <p class="item-sub"><span class="fonte">[fonte]</span>, [data]. Gancho para a thread de quinta.</p>
+        </div>
+      </div>
+      <div class="item">
+        <div style="flex: 1;">
+          <p class="item-tx">[Terceiro achado, o contraponto: quem defende o oposto e por quê]</p>
+          <p class="item-sub"><span class="fonte">[fonte]</span>, [data]. Serve para o texto de terça responder sem citar nome.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="secao">
+      <p class="secao-tit"><span style="width: 8px; height: 8px; border-radius: 50%; background: #eab308; display: inline-block;"></span>Dados para sustentar, com fonte</p>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+        <div class="item" style="flex-direction: column; gap: 6px;">
+          <p class="num">[n%]</p>
+          <p class="item-sub">[o que o número mede]<br><span class="fonte">[instituição, ano]</span></p>
+        </div>
+        <div class="item" style="flex-direction: column; gap: 6px;">
+          <p class="num">[n]</p>
+          <p class="item-sub">[o que o número mede]<br><span class="fonte">[instituição, ano]</span></p>
+        </div>
+        <div class="item" style="flex-direction: column; gap: 6px;">
+          <p class="num">[n em n]</p>
+          <p class="item-sub">[o que o número mede]<br><span class="fonte">[instituição, ano]</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="secao">
+      <p class="secao-tit"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef6122; display: inline-block;"></span>Ângulo de cada dia, na ordem que você escolheu</p>
+      <div style="border: 1px solid #3f3f4b; border-radius: 10px; background: #2a2a33; overflow: hidden;">
+        <div class="ang"><p class="ang-dia">Ter</p><p class="ang-tx"><span class="ang-fmt">Texto.</span> A tese das 02:14 respondendo ao contraponto encontrado, com o dado 1.</p></div>
+        <div class="ang"><p class="ang-dia">Qua</p><p class="ang-tx"><span class="ang-fmt">Imagem.</span> Uma frase de Habacuque (07:40) como peça visual, legenda curta.</p></div>
+        <div class="ang"><p class="ang-dia">Qui</p><p class="ang-tx"><span class="ang-fmt">Thread.</span> Teimosia versus persistência em 6 tweets, abrindo com o achado 2.</p></div>
+        <div class="ang"><p class="ang-dia">Sáb</p><p class="ang-tx"><span class="ang-fmt">Carrossel.</span> As três teses, uma por slide, com o dado 3 no fechamento.</p></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-top: 1px solid #3f3f4b; background: #2a2a33;">
+    <p style="font-size: 12px; line-height: 1.4; margin: 0; color: #9599a6;">Lucas, Tiago e Diana recebem esta página inteira junto com a transcrição. Nada além disto entra nos textos.</p>
+    <div style="display: flex; gap: 8px; flex-shrink: 0;">
+      <div style="height: 34px; padding: 0 14px; border-radius: 4px; border: 1px solid #3f3f4b; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: #9599a6;">Pesquisar de novo</div>
+      <div style="height: 34px; padding: 0 14px; border-radius: 4px; background: #ef6122; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: #fff;">Ver a semana</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
