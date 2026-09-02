@@ -76,6 +76,8 @@ export async function PATCH(
     "videoMusicUrl", "videoMusicName",
     // Os termos do negocio que a transcricao precisa acertar (30/08).
     "videoTerms",
+    // A semana a partir do video: formato por dia, escolhido no envio (02/09).
+    "videoSemana",
   ] as const;
   type AllowedField = (typeof ALLOWED_FIELDS)[number];
 

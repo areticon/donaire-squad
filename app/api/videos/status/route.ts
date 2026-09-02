@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       createdAt: true,
       originalName: true,
       completoUrl: true,
+      radar: true,
       // Os trechos entram na CONSULTA mas não na resposta: o que a faixa do
       // Gestor precisa é contagem, não conteúdo. Mandar os textos das três
       // redes de cada trecho a cada quatro segundos seriam dezenas de KB por
@@ -103,6 +104,21 @@ export async function GET(req: NextRequest) {
       temCortes: comMidia.length > 0,
       temTrechosComPosts: trechos.some((t) => t.posts),
       temCompleto: Boolean(v.completoUrl),
+      /**
+       * A pesquisa do Roberto, em contagem: a faixa mostra "Pesquisando"
+       * enquanto não existe e "3 teses, 4 fontes" quando existe. O briefing
+       * inteiro vive no card do quadro, não aqui.
+       */
+      radar: (() => {
+        const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
+        if (!r) return null;
+        return {
+          teses: r.teses?.length ?? 0,
+          achados: r.achados?.length ?? 0,
+          dados: r.dados?.length ?? 0,
+          fontes: r.fontes?.length ?? 0,
+        };
+      })(),
       /**
        * Os cortes que o cliente DESLIGOU, com o mínimo para caberem no quadro.
        *

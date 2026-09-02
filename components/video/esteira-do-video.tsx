@@ -42,6 +42,12 @@ export type VideoAoVivo = {
   temTrechosComPosts: boolean;
   temCompleto: boolean;
   rodandoHaSegundos: number | null;
+  /**
+   * A pesquisa do Roberto, em contagem. Nula enquanto ele não terminou (ou
+   * enquanto a página do servidor ainda não a trouxe: a primeira consulta
+   * completa).
+   */
+  radar?: { teses: number; achados: number; dados: number; fontes: number } | null;
   /** Os cortes prontos que o cliente desligou: existem, mas não vão ao ar. */
   cortesGuardados?: CorteGuardado[];
 };
@@ -61,20 +67,28 @@ export type CorteGuardado = {
 const INTERVALO_MS = 4000;
 
 /**
- * As seis fases que o dono da gravação enxerga.
+ * As sete fases que o dono da gravação enxerga.
  *
  * Não são os estados do banco: `cut` cobre corte, capa e redação, e nenhum
  * deles tem nome que signifique algo para quem está esperando. O mapeamento
  * mora em `faseDe`.
+ *
+ * "Pesquisando" é a exceção da linha: o Roberto roda em PARALELO com a
+ * escolha dos momentos, a partir da mesma transcrição, então o marco dele não
+ * segue o índice e sim o `radar` do vídeo (feito quando existe, pulsando
+ * enquanto há transcrição e não há pesquisa).
  */
 const FASES = [
   { chave: "ouvindo", rotulo: "Ouvindo", detalhe: "Palavra por palavra, com marcação de tempo" },
+  { chave: "pesquisando", rotulo: "Pesquisando", detalhe: "O que você disse, o que estão falando, dados com fonte" },
   { chave: "escolhendo", rotulo: "Escolhendo", detalhe: "Procurando as falas que sustentam um post sozinhas" },
   { chave: "cortando", rotulo: "Cortando", detalhe: "Enquadrando cada corte para o formato de cada rede" },
   { chave: "capas", rotulo: "Capas", detalhe: "Escrevendo os títulos e montando as capas" },
   { chave: "escrevendo", rotulo: "Escrevendo", detalhe: "Um texto por rede, na sua voz" },
   { chave: "completo", rotulo: "Vídeo completo", detalhe: "A gravação inteira editada, com capítulos" },
 ] as const;
+const PESQUISANDO = 1;
+const ULTIMA = FASES.length - 1;
 
 /** Em que fase da faixa este vídeo está, e se ele terminou. */
 function faseDe(v: VideoAoVivo, etapaLocal: string | null): number {
@@ -84,19 +98,19 @@ function faseDe(v: VideoAoVivo, etapaLocal: string | null): number {
       return 0;
     case "transcribed":
     case "selecting":
-      return 1;
+      return 2;
     case "selected":
     case "cutting":
-      return 2;
+      return 3;
     case "cut":
       // O status do banco não separa capa de redação: as duas rodam com o vídeo
       // parado em `cut`. Quem sabe a diferença é quem disparou, aqui do lado do
       // cliente.
-      return etapaLocal === "escrevendo" ? 4 : 3;
+      return etapaLocal === "escrevendo" ? 5 : 4;
     case "writing":
-      return 4;
-    default:
       return 5;
+    default:
+      return ULTIMA;
   }
 }
 
@@ -294,6 +308,16 @@ export function EsteiraDoVideo({
         void executar(v.id, passo);
         continue;
       }
+      // O Roberto parte da transcrição e não depende dos cortes, então roda
+      // em paralelo com a escolha dos momentos. Uma vez por vídeo: a rota é
+      // idempotente, e o `after` do agendar completa se esta chamada morrer.
+      if (v.temTranscricao && !v.radar && v.status !== "failed") {
+        const chavePesquisa = `${v.id}:pesquisar`;
+        if (!disparados.current.has(chavePesquisa)) {
+          disparados.current.add(chavePesquisa);
+          void fetch(`/api/videos/${v.id}/pesquisar`, { method: "POST" }).then(() => void consultar());
+        }
+      }
       if (v.status === "cut" && v.temCortes && !v.temTrechosComPosts) {
         disparados.current.add(chave);
         void prepararTudo(v.id);
@@ -475,14 +499,14 @@ function FaixaDeUmVideo({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-              {fase === 5 && v.temTrechosComPosts
+              {fase === ULTIMA && v.temTrechosComPosts
                 ? cortesNoQuadro === 1
                   ? "O corte e os textos já estão no quadro abaixo"
                   : `Os ${cortesNoQuadro} cortes e os textos já estão no quadro abaixo`
                 : nome}
             </p>
             <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {fase === 5
+              {fase === ULTIMA
                 ? "Falta o vídeo completo, que é o mais demorado. Você já pode revisar e publicar o resto."
                 : FASES[fase].detalhe + "."}
             </p>
@@ -503,15 +527,16 @@ function FaixaDeUmVideo({
         </div>
       </div>
 
-      <div className="relative grid grid-cols-6">
+      <div className="relative grid grid-cols-7">
         <div className="absolute top-[9px] left-[8%] right-[8%] h-0.5" style={{ background: "var(--border)" }} />
         <div
           className="absolute top-[9px] left-[8%] h-0.5 bg-orange-500 transition-all duration-500"
           style={{ width: `${(fase / (FASES.length - 1)) * 84}%` }}
         />
         {FASES.map((f, i) => {
-          const feita = i < fase;
-          const atual = i === fase;
+          const pesquisa = i === PESQUISANDO;
+          const feita = pesquisa ? Boolean(v.radar) : i < fase;
+          const atual = pesquisa ? !feita && v.temTranscricao : i === fase;
           return (
             <div key={f.chave} className="relative flex flex-col items-center gap-2">
               {feita ? (
@@ -571,13 +596,15 @@ function FaixaDeUmVideo({
 /** O número embaixo do marco, quando existe algo verdadeiro para contar. */
 function Detalhe({ indice, video: v, fase }: { indice: number; video: VideoAoVivo; fase: number }) {
   let texto: string | null = null;
-  if (indice === 1 && v.trechosEscolhidos > 0)
+  if (indice === PESQUISANDO && v.radar)
+    texto = `${v.radar.teses} ${v.radar.teses === 1 ? "tese" : "teses"}, ${v.radar.fontes} ${v.radar.fontes === 1 ? "fonte" : "fontes"}`;
+  if (indice === 2 && v.trechosEscolhidos > 0)
     texto = `${v.trechosEscolhidos} ${v.trechosEscolhidos === 1 ? "momento" : "momentos"}`;
-  if (indice === 2 && v.cortesProntos > 0 && fase === 2)
+  if (indice === 3 && v.cortesProntos > 0 && fase === 3)
     texto = `${v.cortesProntos} de ${v.trechosEscolhidos} pronto${v.cortesProntos === 1 ? "" : "s"}`;
-  if (indice === 2 && v.cortesProntos > 0 && fase > 2)
+  if (indice === 3 && v.cortesProntos > 0 && fase > 3)
     texto = `${v.cortesProntos} ${v.cortesProntos === 1 ? "corte" : "cortes"}`;
-  if (indice === 5 && fase === 5) texto = "montando";
+  if (indice === ULTIMA && fase === ULTIMA) texto = "montando";
   if (!texto) return null;
   return (
     <p className="text-[10px] -mt-1 text-center" style={{ color: "var(--text-muted)" }}>

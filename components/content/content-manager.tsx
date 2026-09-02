@@ -77,6 +77,8 @@ interface ContentManagerProps {
   videoEstilo: string | null;
   videoMusica: string | null;
   videoTermos: string | null;
+  /** Project.videoSemana: o formato de cada dia a partir do vídeo. */
+  videoSemana: unknown;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2496,7 +2498,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [loadingCards, setLoadingCards] = useState(false);
@@ -3001,6 +3003,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         estilo={videoEstilo}
         musica={videoMusica}
         termos={videoTermos}
+        semana={videoSemana}
         onFechar={() => setEnviarAberto(false)}
         onEnviado={() => {
           setEnviarAberto(false);
@@ -3135,11 +3138,28 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               {activeDays.map((day) => {
                 const dayDate = addDays(selectedMonday, day.dayOfWeek - 1);
                 const isToday = toIsoDate(dayDate) === todayIso;
-                const hasCards = weekCards.some((c) => c.scheduledDate && toIsoDate(new Date(c.scheduledDate)) === toIsoDate(dayDate));
+                const cardsDoDia = weekCards.filter((c) => c.scheduledDate && toIsoDate(new Date(c.scheduledDate)) === toIsoDate(dayDate));
+                const hasCards = cardsDoDia.length > 0;
+                // O formato que o cliente escolheu para o dia, quando a semana
+                // veio de um vídeo: mora no metadata dos cards de espera que o
+                // agendar cria (parte 90). O corte do Vitor vale como "Vídeo".
+                const formatoDoDia =
+                  cardsDoDia
+                    .map((c) => (c.metadata as { origem?: string; formatoRotulo?: string } | null)?.formatoRotulo)
+                    .find((r): r is string => typeof r === "string" && r.length > 0) ??
+                  (cardsDoDia.some((c) => c.cardType === "video_clip" || c.cardType === "video_completo") ? "Vídeo" : null);
                 return (
                   <div key={day.dayOfWeek} className={cn("p-3 text-center border-l", isToday ? "bg-orange-500/5" : "")} style={{ borderColor: "var(--border)" }}>
                     <p className={cn("text-xs font-bold", isToday ? "text-orange-400" : "")} style={!isToday ? { color: "var(--text-primary)" } : undefined}>{day.short}</p>
                     <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{formatDayDate(selectedMonday, day.dayOfWeek)}</p>
+                    {formatoDoDia && (
+                      <span
+                        className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--bg-primary)" }}
+                      >
+                        {formatoDoDia}
+                      </span>
+                    )}
                     {isToday && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mx-auto mt-1" />}
                     {hasCards && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mx-auto mt-1" />}
                   </div>

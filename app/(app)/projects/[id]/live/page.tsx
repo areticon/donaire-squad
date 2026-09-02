@@ -56,6 +56,7 @@ export default async function LivePage({
       originalName: true,
       completoUrl: true,
       clips: true,
+      radar: true,
     },
   });
 
@@ -129,6 +130,16 @@ export default async function LivePage({
           temCortes: comMidia.length > 0,
           temTrechosComPosts: trechos.some((t) => t.posts),
           temCompleto: Boolean(v.completoUrl),
+          radar: (() => {
+            const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
+            if (!r) return null;
+            return {
+              teses: r.teses?.length ?? 0,
+              achados: r.achados?.length ?? 0,
+              dados: r.dados?.length ?? 0,
+              fontes: r.fontes?.length ?? 0,
+            };
+          })(),
           // Nulo aqui de propósito: o cronômetro da faixa conta do envio, e a
           // primeira consulta traz o resto. Ler o relógio na renderização do
           // servidor a tornaria impura.
@@ -141,6 +152,7 @@ export default async function LivePage({
       videoEstilo={project.videoStyle}
       videoMusica={project.videoMusicName}
       videoTermos={project.videoTerms}
+      videoSemana={project.videoSemana ?? null}
     />
   );
 }

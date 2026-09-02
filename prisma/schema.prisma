@@ -137,6 +137,13 @@ model Project {
   /// legenda escrever o nome da empresa dele errado. Alimenta o keyterm da
   /// Deepgram na transcricao nova e a correcao deterministica das palavras.
   videoTerms     String?  @db.Text
+  /// Como o cliente quer a semana a partir de cada gravacao: formato por dia
+  /// (terca a domingo; segunda e sempre o video). Chaves "2".."7", valor
+  /// "text" | "image" | "carousel" | "infographic" | "thread" | "poll" | "free"
+  /// ou nulo para dia sem post. Nulo inteiro cai na sugestao do squad, ver
+  /// lib/media/semana-do-video.ts. Pedido do Bruno em 02/09: mesmo com o video
+  /// como fonte, quem escolhe o formato de cada dia e o cliente, nao o squad.
+  videoSemana    Json?
   postFrequency  String?
   timezone       String   @default("America/Sao_Paulo")
   createdAt      DateTime @default(now())
@@ -345,6 +352,11 @@ model VideoJob {
   durationSec    Int?
   /// Transcrição com marcação de tempo por palavra, vinda do Whisper.
   transcript     Json?
+  /// A pesquisa do Roberto Radar feita a partir da transcricao (teses com
+  /// minuto, o que estao falando, dados com fonte, angulo por dia). E o
+  /// briefing que todo redator recebe junto com a transcricao, e mora aqui
+  /// porque nasce antes de existir run ou card. Ver lib/media/radar-do-video.ts.
+  radar          Json?
   /// Trechos escolhidos pela IA: início, fim, motivo, título e os textos de
   /// cada rede gerados a partir dele. Depois do corte, cada trecho ganha
   /// também a mídia produzida (vertical, horizontal, capa), o enquadramento

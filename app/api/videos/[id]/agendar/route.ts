@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
-// A parte lenta (carrossel da Diana e veredito da Vera) roda em `after`, depois
-// da resposta, e precisa deste teto para não morrer no meio.
+// A parte lenta (pesquisa do Roberto, redação da semana, peças da Diana e
+// veredito da Vera) roda em `after`, depois da resposta, e precisa deste teto
+// para não morrer no meio.
 export const maxDuration = 300;
 
 import { NextRequest, NextResponse, after } from "next/server";
@@ -11,6 +12,8 @@ import { destinoPorId, DESTINO_COMPLETO } from "@/lib/media/destinos";
 import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
 import { sincronizarQuadroDoVideo } from "@/lib/media/sincronizar-quadro";
 import { completarEsteiraDoVideo } from "@/lib/media/esteira-do-video";
+import { diasDaSemana, normalizarSemana, ROTULO_DO_FORMATO } from "@/lib/media/semana-do-video";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Leva os cortes aprovados para o quadro do Gestor de Conteúdo.
@@ -76,7 +79,8 @@ export async function POST(
       blobUrl: true,
       durationSec: true,
       capaFonteUrl: true,
-      project: { select: { name: true } },
+      radar: true,
+      project: { select: { name: true, videoSemana: true } },
     },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -110,6 +114,11 @@ export async function POST(
   const segunda = segundaDaSemana();
   const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
 
+  // A semana que o cliente escolheu no envio (formato por dia, terça a
+  // domingo), congelada no run: se ele mudar a escolha no projeto depois, vale
+  // para a PRÓXIMA gravação, e esta semana continua como foi pedida.
+  const semana = normalizarSemana(video.project.videoSemana);
+
   const run = await prisma.pipelineRun.create({
     data: {
       projectId: video.projectId,
@@ -119,7 +128,7 @@ export async function POST(
       weekStart: segunda,
       // O vínculo com o vídeo mora aqui, e é o que torna esta rota idempotente
       // sem precisar de coluna nova.
-      config: { videoJobId: video.id, origem: "video" },
+      config: { videoJobId: video.id, origem: "video", semana } as Prisma.InputJsonValue,
     },
     select: { id: true },
   });
@@ -222,103 +231,82 @@ export async function POST(
     );
   }
 
-  // ── Os conteúdos DERIVADOS do vídeo, sem custo de IA novo ──────────────────
+  // ── A semana a partir do vídeo, como o cliente escolheu ────────────────
   //
-  // A redação já escreveu texto POR REDE para cada corte; o melhor corte também
-  // rende um post de texto no LinkedIn e no X, em dias diferentes dos cortes,
-  // porque presença é ocupar a semana e não empilhar tudo na segunda. E a Diana
-  // ganha um card de carrossel com as frases fortes do vídeo. Até 02/09 o card
-  // nascia só com o briefing e as imagens ficavam para "quando o cliente
-  // pedir pelo chat", sem a tela dizer isso: o Bruno viu o sábado vazio e
-  // chamou de travado. Agora as imagens são geradas em `after`, logo abaixo.
-  const melhor = [...aprovados].sort(
-    (a, b) => ((b.t as { nota?: number }).nota ?? 0) - ((a.t as { nota?: number }).nota ?? 0)
-  )[0]?.t;
-  if (melhor) {
-    const derivados: Array<{
-      plataforma: string;
-      cardType: string;
-      agentId: string;
-      agentName: string;
-      dia: number;
-      texto: string | undefined;
-    }> = [
-      {
-        plataforma: "linkedin",
-        cardType: "post_linkedin",
-        agentId: "lucas-linkedin",
-        agentName: "Lucas LinkedIn",
-        dia: 3,
-        texto: melhor.posts?.linkedin,
+  // Até 02/09 esta parte era fixa: o texto do melhor corte copiado para o
+  // LinkedIn na quarta e para o X na quinta, e um carrossel no sábado, sem
+  // perguntar nada a ninguém. O Bruno reprovou: quem escolhe o formato de cada
+  // dia é o cliente, e o Roberto pesquisa antes de qualquer redator escrever.
+  //
+  // Aqui nascem só os cards de ESPERA, um por agente e por dia escolhido, com
+  // o formato no metadata (é o que o cabeçalho do quadro mostra). Quem escreve
+  // de verdade é `completarEsteiraDoVideo`, em `after`, na ordem Roberto,
+  // redatores, Vera. O card de espera é o mesmo que recebe o texto depois.
+  const roberto = video.radar
+    ? null
+    : {
+        content:
+          "Roberto está pesquisando a partir da transcrição: o que você disse, o que estão falando sobre isso agora e dados com fonte. O briefing aparece aqui em instantes.",
+      };
+  if (roberto) {
+    const dataRoberto = new Date(segunda);
+    dataRoberto.setUTCHours(9, 0, 0, 0);
+    await prisma.campaignCard.create({
+      data: {
+        runId: run.id,
+        projectId: video.projectId,
+        agentId: "roberto-radar",
+        agentName: "Roberto Radar",
+        dayOfWeek: 1,
+        scheduledDate: dataRoberto,
+        cardType: "research",
+        mediaType: "text",
+        content: roberto.content,
+        status: "pending",
+        metadata: { origem: "video", videoJobId: video.id, aguardando: true },
       },
-      {
-        plataforma: "twitter",
-        cardType: "post_twitter",
-        agentId: "tiago-twitter",
-        agentName: "Tiago Twitter",
-        dia: 4,
-        texto: melhor.posts?.x,
-      },
-    ];
-    for (const d of derivados) {
-      if (!d.texto?.trim()) continue;
-      const data = new Date(segunda.getTime() + (d.dia - 1) * 86400000);
-      data.setUTCHours(12, 0, 0, 0);
-      const post = await prisma.post.create({
-        data: {
-          projectId: video.projectId,
-          platform: d.plataforma,
-          content: d.texto.trim(),
-          mediaType: "text",
-          status: "draft",
-          dayOfWeek: d.dia,
-          scheduledAt: data,
-          runId: run.id,
-          metadata: { origem: "video", videoJobId: video.id, derivado: true },
-        },
-        select: { id: true },
-      });
-      await prisma.campaignCard.create({
-        data: {
-          runId: run.id,
-          projectId: video.projectId,
-          agentId: d.agentId,
-          agentName: d.agentName,
-          dayOfWeek: d.dia,
-          scheduledDate: data,
-          cardType: d.cardType,
-          mediaType: "text",
-          content: d.texto.trim(),
-          status: "pending",
-          postId: post.id,
-          metadata: { origem: "video", videoJobId: video.id, derivado: true },
-        },
-      });
-    }
+    });
+  }
 
-    const frases = trechos
-      .map((t) => t.texto?.fraseDaCapa?.trim())
-      .filter((f): f is string => Boolean(f))
-      .slice(0, 5);
-    if (frases.length >= 3) {
-      const dataDiana = new Date(segunda.getTime() + 5 * 86400000);
-      dataDiana.setUTCHours(12, 0, 0, 0);
+  const ESPERA: Record<string, Array<{ agentId: string; agentName: string; cardType: string; texto: string }>> = {
+    text: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo o post de texto deste dia a partir do vídeo e do briefing do Roberto." }],
+    poll: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a enquete deste dia a partir do vídeo e do briefing do Roberto." }],
+    thread: [{ agentId: "tiago-twitter", agentName: "Tiago Twitter", cardType: "post_twitter", texto: "Tiago está escrevendo a thread deste dia a partir do vídeo e do briefing do Roberto." }],
+    image: [
+      { agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a legenda da imagem deste dia." },
+      { agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está criando a imagem deste dia com uma frase do vídeo, nas cores da marca." },
+    ],
+    carousel: [{ agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está montando o carrossel deste dia: três slides, uma ideia do vídeo por slide, nas cores da marca." }],
+    infographic: [
+      { agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a legenda do infográfico deste dia." },
+      { agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está montando o infográfico deste dia com os dados do briefing do Roberto." },
+    ],
+  };
+  for (const { dia, formato, escolhido } of diasDaSemana(semana)) {
+    const data = new Date(segunda.getTime() + (dia - 1) * 86400000);
+    data.setUTCHours(12, 0, 0, 0);
+    for (const e of ESPERA[formato] ?? []) {
       await prisma.campaignCard.create({
         data: {
           runId: run.id,
           projectId: video.projectId,
-          agentId: "diana-design",
-          agentName: "Diana Design",
-          dayOfWeek: 6,
-          scheduledDate: dataDiana,
-          cardType: "media",
-          mediaType: "image",
-          content:
-            `Diana está montando o carrossel com as frases fortes do vídeo "${nome}", ` +
-            `um slide por frase, nas cores da marca: ` +
-            frases.map((f, i) => `${i + 1}. "${f}"`).join(" "),
+          agentId: e.agentId,
+          agentName: e.agentName,
+          dayOfWeek: dia,
+          scheduledDate: data,
+          cardType: e.cardType,
+          mediaType: "text",
+          content: e.texto,
           status: "pending",
-          metadata: { origem: "video", videoJobId: video.id, derivado: true },
+          metadata: {
+            origem: "video",
+            videoJobId: video.id,
+            derivado: true,
+            formato: escolhido,
+            formatoRotulo: ROTULO_DO_FORMATO[escolhido],
+            dia,
+            aguardando: true,
+          },
         },
       });
     }
@@ -330,8 +318,9 @@ export async function POST(
     console.error(`[agendar][${video.id}] sincronizar falhou:`, e)
   );
 
-  // O quadro já responde com os cards; o carrossel e os vereditos chegam pelo
-  // polling de 4 em 4 segundos, que é o "tempo real" do Gestor desde a parte 87.
+  // O quadro já responde com os cards de espera; a pesquisa, os textos, as
+  // peças da Diana e os vereditos chegam pelo polling de 4 em 4 segundos, que
+  // é o "tempo real" do Gestor desde a parte 87.
   after(() => completarEsteiraDoVideo(video.id));
 
   return NextResponse.json({

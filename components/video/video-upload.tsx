@@ -275,7 +275,7 @@ export function VideoUpload({
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  Enviar para o squad
+                  Enviar e montar a semana
                 </>
               )}
             </Button>

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
+import { SemanaDoVideoPlanejador } from "@/components/video/semana-do-video";
 import { VideoUpload } from "@/components/video/video-upload";
 
 /**
@@ -19,6 +20,7 @@ export function EnviarGravacao({
   estilo,
   musica,
   termos,
+  semana,
   onFechar,
   onEnviado,
 }: {
@@ -27,6 +29,8 @@ export function EnviarGravacao({
   estilo: string | null;
   musica: string | null;
   termos: string | null;
+  /** Project.videoSemana, o formato de cada dia a partir do vídeo. */
+  semana: unknown;
   onFechar: () => void;
   onEnviado: () => void;
 }) {
@@ -47,9 +51,9 @@ export function EnviarGravacao({
                 Envie a gravação da semana
               </h3>
               <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-                Você grava uma vez. O squad ouve, escolhe os melhores momentos, corta, escreve o
-                texto de cada rede e enche este quadro. Os primeiros cortes aparecem em cerca de 5
-                minutos, e o vídeo completo em cerca de 18.
+                Você grava uma vez. O squad ouve, o Roberto pesquisa, o Vitor corta, e Lucas, Tiago e
+                Diana montam a semana do jeito que você escolher abaixo. Os primeiros cortes aparecem
+                em cerca de 5 minutos, e o vídeo completo em cerca de 18.
               </p>
             </div>
             <button
@@ -68,6 +72,12 @@ export function EnviarGravacao({
             musicaInicial={musica}
             termosIniciais={termos}
           />
+
+          {/* A semana vem ANTES do envio pelo mesmo motivo do estilo: é uma
+              decisão sobre o que o squad vai fazer com a gravação, e pedi-la
+              depois seria pedir para escolher o formato de um texto que já
+              foi escrito. */}
+          <SemanaDoVideoPlanejador projectId={projectId} inicial={semana} />
 
           <VideoUpload projectId={projectId} onEnviado={onEnviado} />
         </motion.div>
