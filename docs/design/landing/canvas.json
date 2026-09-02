@@ -4,32 +4,40 @@
     { "id": "page-2", "name": "Estudos anteriores" }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Hero atual + motion + colagem", "page": "page-1" },
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Hero, com movimento e o gesto desenhado", "page": "page-1" },
+    { "file": "ComoFunciona.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "Como funciona, com a esteira se desenhando", "page": "page-1" },
     { "file": "ColagemA.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A. Colagem editorial (estudo)", "page": "page-2" },
     { "file": "DirecaoB.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "B. Escuro cinematográfico (estudo)", "page": "page-2" },
     { "file": "DirecaoC.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "C. Tipográfico severo (estudo)", "page": "page-2" }
   ],
   "annotations": [
     {
-      "id": "briefing",
+      "id": "correcao",
       "x": 0,
-      "y": -330,
-      "w": 760,
-      "text": "A PÁGINA DE HOJE, INTACTA, COM MOVIMENTO E DUAS ARTES.\nMesmo fundo #1e1e25, mesmo laranja, mesmo cartão de agentes, mesmos textos. Nada de identidade mudou: os valores saíram do código de produção, um a um.\n\nO QUE ENTROU DE MOVIMENTO: a grade desliza devagar e o brilho laranja respira (contínuos); o selo, a manchete e os parágrafos sobem em sequência; o traço laranja é DESENHADO sob \"demandou\" e sob \"postou\"; o cartão monta agente por agente; o aviso de post publicado chega por último, como resultado; os pontos de \"ativo\" piscam fora de fase; e o botão principal tem o anel que o app já usa.\n\nO QUE ENTROU DE ARTE: uma tarja de papel rasgado com setas de mão e uma passada de marcador, e um diagrama desenhado de uma gravação virando seis cortes. As duas nasceram no Nano Banana com as referências da bíblia de estilo, e nenhuma tem texto dentro: o texto é HTML por cima, onde ele é certo por construção."
+      "y": -360,
+      "w": 780,
+      "text": "O QUE MUDOU DEPOIS DO SEU RECADO\n\n1. O FUNDO DAS ARTES SUMIU. Elas vinham com papel creme próprio e ficavam como adesivo colado na tela. Agora nascem sobre croma e saem recortadas de verdade, com transparência, então o fundo que aparece atrás delas é o da página. Junto disso o traço mudou de cor: tinta preta some no #1e1e25, então o desenho vai em branco quente com o acento no laranja da marca, que é a mesma divisão que a página já usa.\n\n2. O VITOR VÍDEO ENTROU, e entrou PRIMEIRO na lista, com o avatar laranja: é por ele que o produto começa hoje. A Daniela assumiu o lugar dele mais abaixo."
     },
     {
-      "id": "nota-loop",
+      "id": "nota-hero",
       "x": 0,
       "y": 960,
-      "w": 560,
-      "text": "O ciclo é de 12s e roda em laço SÓ AQUI, para você assistir de novo sem recarregar. No site a coreografia roda uma vez quando a pessoa chega e para, e só a grade, o brilho, os pontos de ativo e o anel do botão seguem vivos.\n\nO ritmo é regulável na barra de ajustes acima do artboard (10s, 12s, 16s, 22s)."
+      "w": 520,
+      "text": "HERO. Um gesto desenhado só, embaixo, apontando para a direita. Tentei também o diagrama aqui e não cabia sem espremer o texto, então ele foi para a seção que explica o fluxo, que é onde ele significa alguma coisa."
+    },
+    {
+      "id": "nota-como",
+      "x": 1560,
+      "y": 960,
+      "w": 520,
+      "text": "COMO FUNCIONA. A linha da esteira se desenha de cima para baixo, os cinco passos entram nela em sequência, o número da etapa 3 acende no laranja quando ela chega (é a etapa do vídeo, o coração do produto), e o diagrama desenhado aparece por último, resumindo o que os passos disseram."
     },
     {
       "id": "nota-artes",
       "x": 620,
       "y": 960,
       "w": 520,
-      "text": "Sobre as artes: dá para pedir mais no mesmo padrão (tarja de outra forma, ícones de mão, gráfico de barras desenhado, moldura rasgada para foto). Diz quantas e onde, que eu gero e coloco.\n\nSe alguma das duas não te agradar, ela sai e a página continua de pé: elas são camada, não estrutura."
+      "text": "As duas artes saíram do Nano Banana com as referências da bíblia de estilo, e nenhuma carrega texto: o texto é HTML por cima, onde é certo por construção.\n\nSe quiser mais no mesmo padrão (moldura rasgada para foto, ícones de mão, gráfico de barras desenhado, marcação circulando um número), diz quantas e onde."
     },
     {
       "id": "nota-estudos",
@@ -37,7 +45,7 @@
       "y": -180,
       "w": 520,
       "page": "page-2",
-      "text": "Guardados. A colagem A é de onde saiu a linguagem de papel que agora entra só como camada, do jeito que você pediu."
+      "text": "Guardados. A colagem A é de onde saiu a linguagem de desenho que agora entra só como camada, do jeito que você pediu."
     }
   ],
   "launch": { "view": "canvas", "page": "page-1" }

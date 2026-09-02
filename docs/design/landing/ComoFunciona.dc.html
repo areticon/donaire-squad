@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+
+    .palco { animation: ciclo var(--ciclo) linear infinite; }
+    @keyframes ciclo { 0% { opacity: 0 } 3%, 93% { opacity: 1 } 99%, 100% { opacity: 0 } }
+
+    .t1 { animation: t1 var(--ciclo) linear infinite; }
+    .t2 { animation: t2 var(--ciclo) linear infinite; }
+    @keyframes t1 { 0%, 2% { opacity: 0; transform: translateY(12px) } 9%, 100% { opacity: 1; transform: none } }
+    @keyframes t2 { 0%, 5% { opacity: 0; transform: translateY(16px) } 12%, 100% { opacity: 1; transform: none } }
+
+    /* a linha da esteira e DESENHADA de cima para baixo, e os passos entram nela */
+    .linha { transform-origin: top; animation: desce var(--ciclo) linear infinite; }
+    @keyframes desce { 0%, 10% { transform: scaleY(0) } 34%, 100% { transform: scaleY(1) } }
+
+    .p1 { animation: p1 var(--ciclo) linear infinite; }
+    .p2 { animation: p2 var(--ciclo) linear infinite; }
+    .p3 { animation: p3 var(--ciclo) linear infinite; }
+    .p4 { animation: p4 var(--ciclo) linear infinite; }
+    .p5 { animation: p5 var(--ciclo) linear infinite; }
+    @keyframes p1 { 0%, 12% { opacity: 0; transform: translateX(-18px) } 19%, 100% { opacity: 1; transform: none } }
+    @keyframes p2 { 0%, 17% { opacity: 0; transform: translateX(-18px) } 24%, 100% { opacity: 1; transform: none } }
+    @keyframes p3 { 0%, 22% { opacity: 0; transform: translateX(-18px) } 29%, 100% { opacity: 1; transform: none } }
+    @keyframes p4 { 0%, 27% { opacity: 0; transform: translateX(-18px) } 34%, 100% { opacity: 1; transform: none } }
+    @keyframes p5 { 0%, 32% { opacity: 0; transform: translateX(-18px) } 39%, 100% { opacity: 1; transform: none } }
+
+    /* o numero do passo acende no laranja quando o passo chega */
+    .n3 { animation: acende var(--ciclo) linear infinite; }
+    @keyframes acende {
+      0%, 22% { background: #31313c; color: #9599a6 }
+      29%, 100% { background: #ef6122; color: #ffffff }
+    }
+
+    /* a arte entra depois de todos os passos, resumindo o que eles disseram */
+    .arte { animation: arte var(--ciclo) cubic-bezier(.2,.9,.25,1) infinite; }
+    @keyframes arte {
+      0%, 42% { opacity: 0; transform: translateY(20px) scale(.96) }
+      52%, 100% { opacity: 1; transform: none }
+    }
+    .rot { animation: rot var(--ciclo) linear infinite; }
+    @keyframes rot { 0%, 52% { opacity: 0 } 60%, 100% { opacity: 1 } }
+  </style>
+</helmet>
+
+<div class="palco" style="--ciclo: {{ciclo}}; width: 1440px; height: 900px; position: relative; overflow: hidden; background: #1e1e25; color: #dcdde2; font-family: Inter, system-ui, sans-serif;">
+
+  <div style="position: absolute; inset: 0; opacity: .4; background-image: linear-gradient(to right, #31313c 1px, transparent 1px), linear-gradient(to bottom, #31313c 1px, transparent 1px); background-size: 48px 48px;"></div>
+
+  <div style="position: absolute; left: 0; right: 0; top: 92px; text-align: center;">
+    <div class="t1" style="display: inline-flex; align-items: center; gap: 8px; background: rgba(239, 97, 34, .1); border: 1px solid rgba(239, 97, 34, .2); border-radius: 999px; padding: 6px 16px; font-size: 14px; color: #f6803d;">
+      Como funciona
+    </div>
+    <h2 class="t2" style="font-size: 48px; font-weight: 900; letter-spacing: -0.025em; margin: 22px 0 0;">
+      Você <span style="color: #ef6122;">demandou</span>. Ele <span style="color: #ef6122;">postou</span>.
+    </h2>
+    <p class="t2" style="font-size: 18px; color: #9599a6; margin: 14px auto 0; max-width: 640px; line-height: 1.6;">
+      Cinco etapas, uma vez só. Depois disso é você falar e o conteúdo aparecer
+      nas suas redes.
+    </p>
+  </div>
+
+  <!-- a esteira, com a linha que se desenha -->
+  <div style="position: absolute; left: 96px; top: 300px; width: 760px;">
+    <div class="linha" style="position: absolute; left: 27px; top: 26px; bottom: 26px; width: 2px; background: #3f3f4b;"></div>
+
+    <div class="p1" style="display: flex; gap: 22px; align-items: flex-start; margin-bottom: 18px;">
+      <span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px; background: #31313c; border: 1px solid #3f3f4b; color: #9599a6; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2;">01</span>
+      <span style="flex: 1; background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 16px 20px;">
+        <span style="display: block; font-size: 17px; font-weight: 600; color: #dcdde2;">Conecte suas redes</span>
+        <span style="display: block; font-size: 14px; color: #9599a6; line-height: 1.55; margin-top: 5px;">Uma autorização por rede, sem senha e sem copiar e colar.</span>
+      </span>
+    </div>
+
+    <div class="p2" style="display: flex; gap: 22px; align-items: flex-start; margin-bottom: 18px;">
+      <span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px; background: #31313c; border: 1px solid #3f3f4b; color: #9599a6; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2;">02</span>
+      <span style="flex: 1; background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 16px 20px;">
+        <span style="display: block; font-size: 17px; font-weight: 600; color: #dcdde2;">Ensine sua voz</span>
+        <span style="display: block; font-size: 14px; color: #9599a6; line-height: 1.55; margin-top: 5px;">Seu tom, seus temas, os perfis que você admira. É o que separa conteúdo que soa como você de conteúdo que soa como robô.</span>
+      </span>
+    </div>
+
+    <div class="p3" style="display: flex; gap: 22px; align-items: flex-start; margin-bottom: 18px;">
+      <span class="n3" style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px; border: 1px solid #3f3f4b; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2;">03</span>
+      <span style="flex: 1; background: #2a2a33; border: 1px solid rgba(239, 97, 34, .35); border-radius: 12px; padding: 16px 20px;">
+        <span style="display: block; font-size: 17px; font-weight: 600; color: #dcdde2;">Grave um vídeo. Ou dê um tema.</span>
+        <span style="display: block; font-size: 14px; color: #9599a6; line-height: 1.55; margin-top: 5px;">O squad transcreve, escolhe os melhores trechos e transforma em cortes, reels e shorts.</span>
+      </span>
+    </div>
+
+    <div class="p4" style="display: flex; gap: 22px; align-items: flex-start; margin-bottom: 18px;">
+      <span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px; background: #31313c; border: 1px solid #3f3f4b; color: #9599a6; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2;">04</span>
+      <span style="flex: 1; background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 16px 20px;">
+        <span style="display: block; font-size: 17px; font-weight: 600; color: #dcdde2;">Aprove o que vai sair</span>
+        <span style="display: block; font-size: 14px; color: #9599a6; line-height: 1.55; margin-top: 5px;">Nada é publicado sem você ver. Aprove, peça ajuste ou descarte.</span>
+      </span>
+    </div>
+
+    <div class="p5" style="display: flex; gap: 22px; align-items: flex-start;">
+      <span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px; background: #31313c; border: 1px solid #3f3f4b; color: #9599a6; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2;">05</span>
+      <span style="flex: 1; background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 16px 20px;">
+        <span style="display: block; font-size: 17px; font-weight: 600; color: #dcdde2;">Publicado, com você no controle</span>
+        <span style="display: block; font-size: 14px; color: #9599a6; line-height: 1.55; margin-top: 5px;">Na hora marcada o conteúdo sai nas redes conectadas.</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- a arte resume a etapa 3, que e o coracao do produto -->
+  <div class="arte" style="position: absolute; left: 916px; top: 360px; width: 440px;">
+    <img src="fluxo.png" alt="Diagrama desenhado: uma gravação vira seis peças de conteúdo"
+         style="display: block; width: 440px;">
+    <div class="rot" style="display: flex; justify-content: space-between; margin-top: 18px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #9599a6;">
+      <span>1 gravação</span>
+      <span style="color: #f6803d;">a semana inteira</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"ciclo":{"editor":"enum","options":["10s","12s","16s","22s"],"default":"12s"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { ciclo: this.props.ciclo ?? '12s' };
+  }
+}
+</script>
+</body>
+</html>

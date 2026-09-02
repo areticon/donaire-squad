@@ -62,6 +62,7 @@ export async function POST(
       reCorte?: boolean;
       trechos?: TrechoCortado[];
       completo?: { url: string; bytes: number } | null;
+      erros?: string[];
     } = {};
     try {
       atrasado = JSON.parse(corpoCru);
@@ -94,6 +95,24 @@ export async function POST(
       await prisma.videoJob.update({ where: { id }, data: { clips: fundidos as never } });
       return NextResponse.json({ ok: true, reCorte: true });
     }
+    // O COMPLETO QUE FALHOU tem que deixar rastro.
+    //
+    // Em 02/09 o passe 2 morreu, o worker mandou o aviso final com
+    // `completo: null` e uma lista de erros, e este ramo devolvia
+    // `{ ok: true, ignorado }`: a falha sumiu do log, do banco e da tela, e
+    // ninguem soube de 800 segundos de trabalho perdido. Erro tecnico vai para
+    // o log, e o banco guarda o suficiente para a tela avisar.
+    if (!atrasado.completo?.url && atrasado.erros?.length) {
+      console.error(
+        `[cortar-callback][${id}] o completo nao veio: ${atrasado.erros.join("; ")}`
+      );
+      await prisma.videoJob.update({
+        where: { id },
+        data: { error: atrasado.erros.join("; ").slice(0, 900) },
+      });
+      return NextResponse.json({ ok: true, completoFalhou: true });
+    }
+
     if (atrasado.completo?.url && !video.completoUrl) {
       await prisma.videoJob.update({
         where: { id },

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { execSync } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { mkdtemp, rm, stat, readFile, writeFile, copyFile } from "node:fs/promises";
 import { createWriteStream, createReadStream } from "node:fs";
@@ -371,12 +372,11 @@ async function processar(trabalho) {
       }
     }
 
-    const { enquadramentos, capa, fundoUrl, brilhoAlvo } = await pedirEnquadramento(
-      trabalho,
-      fonte,
-      pasta,
-      info.duracaoSec
-    );
+    // No `soCompleto` o enquadramento nem e pedido: ele serve aos cortes, custa
+    // uma chamada de visao e os cortes ja estao prontos.
+    const { enquadramentos, capa, fundoUrl, brilhoAlvo } = trabalho.soCompleto
+      ? { enquadramentos: new Map(), capa: null, fundoUrl: null, brilhoAlvo: null }
+      : await pedirEnquadramento(trabalho, fonte, pasta, info.duracaoSec);
     marca("enquadramento pronto");
 
     // O FUNDO dos cortes, gerado pelo app e guardado no storage. Baixa uma vez
@@ -451,7 +451,12 @@ async function processar(trabalho) {
       }
     }
 
-    for (const t of trabalho.trechos) {
+    // `soCompleto` refaz APENAS o video completo, sem recortar tudo de novo.
+    //
+    // Existe desde 02/09, quando o completo falhou e a unica saida era pagar
+    // 800 segundos de worker refazendo tambem os cortes, que estavam prontos e
+    // corretos. Falha de uma etapa nao pode custar o trabalho das outras.
+    for (const t of trabalho.soCompleto ? [] : trabalho.trechos) {
       const duracao = Math.max(1, t.fim - t.inicio);
       const enq = enquadramentos.get(t.indice) ?? null;
       const saida = {
@@ -693,7 +698,7 @@ async function processar(trabalho) {
     // nada do que ele quer fazer (revisar e publicar cortes). O aviso parcial
     // destrava o fluxo no app; o aviso final, com o completo, chega quando
     // chegar e se anexa sozinho ao quadro.
-    if (!trabalho.soTrechos) try {
+    if (!trabalho.soTrechos && !trabalho.soCompleto) try {
       await avisar(trabalho, {
         ok: true,
         parcial: true,
@@ -771,9 +776,22 @@ async function processar(trabalho) {
         ? await medirFidelidade(fonte, corpo, info.duracaoSec)
         : 1;
     } catch (e) {
-      resultados.erros.push(
-        `completo: ${e instanceof Error ? e.message : "falhou"}`
-      );
+      const mensagem = e instanceof Error ? e.message : "falhou";
+      // O LOG, e nao so a lista de erros. Em 01/09 o completo falhou e ninguem
+      // soube: o catch guardava a mensagem num campo que o callback tardio
+      // ignorava, entao a plataforma inteira ficou cega para uma falha de 800
+      // segundos de trabalho. Erro tecnico pertence ao log.
+      //
+      // O espaco em disco vai junto porque ele e o suspeito numero um quando o
+      // passe 2 morre logo depois de o passe 1 escrever um intermediario
+      // grande, e essa e a informacao que nao da para recuperar depois.
+      let disco = "";
+      try {
+        disco = execSync("df -h /tmp . 2>/dev/null | tail -2").toString().trim().replace(/\s+/g, " ");
+      } catch {}
+      console.error(`[${trabalho.videoJobId}] COMPLETO FALHOU: ${mensagem}`);
+      if (disco) console.error(`[${trabalho.videoJobId}] disco: ${disco}`);
+      resultados.erros.push(`completo: ${mensagem}`);
     }
 
     resultados.duracaoSec = Math.round(info.duracaoSec);
