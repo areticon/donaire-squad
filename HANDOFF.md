@@ -7375,3 +7375,61 @@ o Bruno tinha deixado** (corte 1 de volta em `publicar: false`, com os destinos
 preservados, o que tambem provou o conserto 1 acima).
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 88): Vera e Paulo destravados, Vitor nao publica mais
+
+Reprovacao do Bruno logo depois da parte 87: "o card da Vera e do Paulo estao
+travados, e apareceu opcao de publicar no card do Vitor, esta confuso o fluxo".
+Regra de ouro aplicada: dados primeiro, tela logada depois. Eram TRES
+mecanismos diferentes, e nenhum conserto generico pegaria os tres.
+
+### Os tres mecanismos
+
+1. **Vera e Paulo dos dias de video nascem SEM `postId`.** A esteira em
+   `lib/media/sincronizar-quadro.ts` cria os dois so com a data (o Paulo da
+   campanha de texto recebe `postId` em `pipeline/run`). O modal
+   (`CardDetailModal`) so buscava posts por `postId`: o Paulo abria com "Posts
+   nao encontrados, execute uma nova campanha" e nenhum botao. Agora, sem
+   `postId`, ele busca por `scheduledDate` na rota `/api/posts/by-day`, que ja
+   aceitava isso (`consultaDoDia`).
+2. **A Vera prometia "confira como cada post vai aparecer" e mostrava so esse
+   texto.** O bloco de previa era exclusivo do Paulo. Agora vale para
+   `cardType === "preview"` tambem, sem nenhum botao de publicar.
+3. **O botao "Publicar agora" no card do Vitor** (destravado na parte 86) virou
+   um segundo lugar de publicar. Saiu; o card mostra a previa e um texto
+   apontando para o Paulo do dia. O fluxo agora e um so: **Vitor revisa, Vera
+   mostra, Paulo publica.**
+
+### O Paulo mudou de forma no caminho
+
+A grade antiga era **por rede** e pegava o primeiro post de cada uma. Na
+segunda-feira ha DOIS posts de YouTube (o Short e a gravacao completa): o
+segundo nunca teria botao. Agora e **um botao por post**, com a capa da rede e
+a primeira linha do texto, e publicar um nao esconde os outros: o card so
+fecha quando todos os posts do dia sairam. As grades de LinkedIn/X ("aprovar
+no horario" e "publicar agora") so aparecem quando o dia tem post de texto.
+
+### Dois bugs silenciosos achados nos DADOS
+
+1. **O post do completo apontava para a GRAVACAO BRUTA.**
+   `lib/media/completo-no-quadro.ts` gravava `imageUrl: video.blobUrl` (o
+   upload original, store privado) em vez de `video.completoUrl` (o editado,
+   store publico). Consequencias: "Publicar no YouTube agora" subiria o
+   arquivo sem edicao, e a previa dava 403 no navegador (o player preto do
+   Paulo). Corrigido no codigo e **o post existente do Bruno
+   (`cmtkecmjk000004jp8boohvbe`) foi apontado para o `completoUrl` no banco**
+   via `scripts/tmp/corrigir-post-do-completo.mts` (lista sem argumento,
+   `aplicar` corrige; util se aparecer outro video com o mesmo defeito).
+2. **Os players das previas (`SocialPostPreview`) nao tinham poster.** Agora
+   recebem `poster` derivado do `metadata` do post: `trechoIndice` vira
+   `midia?trecho=N&tipo=capa-arte`, `gravacaoCompleta` vira `tipo=capa-fonte`.
+
+### Verificado na TELA logada, com os dados reais
+
+Paulo de segunda: dois botoes de YouTube (Short e completo), os dois players
+com poster 200 e `readyState 4`, sem 403, sem grade de LinkedIn/X. Paulo de
+quarta: grades de LinkedIn/X presentes. Vera: duas previas com poster, zero
+botao de publicar. Vitor: previa mais o texto apontando para o Paulo, sem
+botao. Build limpo, deploy `2f1c037` no master, sessao de teste apagada.
+
+*Atualizado em 02/09/2026 por Claude Code.*
