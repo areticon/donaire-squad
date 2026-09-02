@@ -154,11 +154,19 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
   // ── A esteira: Vera e Paulo em todo dia que tem conteúdo do vídeo ──
   const cardsAtuais = await prisma.campaignCard.findMany({
     where: { runId: run.id },
-    select: { id: true, agentId: true, dayOfWeek: true, status: true, cardType: true },
+    select: { id: true, agentId: true, dayOfWeek: true, status: true, cardType: true, postId: true },
   });
+  // O carrossel da Diana só conta quando virou post (mídia gerada); antes
+  // disso é só um briefing e não há nada para a Vera revisar nem o Paulo publicar.
   const diasComConteudo = new Set(
     cardsAtuais
-      .filter((c) => c.agentId === "vitor-video" || c.cardType === "post_linkedin" || c.cardType === "post_twitter")
+      .filter(
+        (c) =>
+          c.agentId === "vitor-video" ||
+          c.cardType === "post_linkedin" ||
+          c.cardType === "post_twitter" ||
+          (c.cardType === "media" && c.postId)
+      )
       .map((c) => c.dayOfWeek)
   );
   const esteira = [
@@ -167,8 +175,9 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
       agentName: "Vera Veredito",
       cardType: "preview",
       hora: 13,
+      // Texto de espera: `revisarDiasDoVideo` troca pelo veredito de verdade.
       content:
-        "Prévia do dia: confira como cada post vai aparecer na rede antes de publicar. Abra o card do Paulo para ver tudo montado e publicar.",
+        "Vera está revisando os posts deste dia. O veredito, com o que está bom e o que precisa mudar, aparece aqui em instantes.",
     },
     {
       agentId: "paulo-publicador",

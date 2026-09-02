@@ -132,9 +132,11 @@ export async function getYouTubeChannel(accessToken: string): Promise<{
  * metadados, envia os bytes na URL que ela devolve. É o caminho que a doc
  * recomenda e o único que sobrevive a vídeo grande.
  *
- * `privacyStatus` nasce "unlisted" por decisão: em app não verificado pelo
- * Google, vídeos enviados pela API ficam privados à força até a verificação
- * passar; "unlisted" documenta a intenção e vira efetivo depois dela.
+ * `privacyStatus` nasce "public". Até 02/09 nascia "unlisted", com a premissa
+ * de que o Google forçaria "private" em app não verificado e o valor seria só
+ * intenção. Os dois primeiros vídeos publicados pelo Bruno derrubaram isso:
+ * saíram exatamente como mandamos, não listados, e ele procurou o vídeo no
+ * canal e não achou. O botão diz "Publicar"; publicar é público.
  *
  * O corpo aceita FLUXO, e não só bytes na memória, porque a gravação de um
  * cliente é grande de verdade: a do Bruno tem 850 MB, e carregar isso num
@@ -168,7 +170,7 @@ export async function publishYouTubeVideo(
         title: meta.title.replace(/[<>]/g, "").slice(0, 100),
         description: meta.description.slice(0, 5000),
       },
-      status: { privacyStatus: meta.privacyStatus ?? "unlisted" },
+      status: { privacyStatus: meta.privacyStatus ?? "public" },
     }),
   });
   if (!start.ok) throw new Error(`YouTube upload start failed: ${await start.text()}`);

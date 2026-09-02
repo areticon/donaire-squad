@@ -535,19 +535,39 @@ function KanbanCard({
                 </span>
               </div>
             ) : card.cardType === "preview" ? (
-              <div className="flex items-center gap-1 py-1">
-                <Eye className="w-3 h-3 text-yellow-400" />
-                <span className="text-[10px] text-yellow-400 font-medium">Preview</span>
-                <span className="text-[10px] line-clamp-1 ml-1" style={{ color: "var(--text-muted)" }}>
-                  {card.status === "approved"
+              (() => {
+                // A primeira linha do card da Vera é "Veredito: <rótulo>"
+                // quando ela já revisou (`revisarDiasDoVideo` e a campanha de
+                // texto). Até 02/09 a miniatura ignorava o conteúdo e mostrava
+                // "Aguardando revisão" para sempre, e o Bruno concluiu que a
+                // Vera "não está fazendo o trabalho dela".
+                const veredito = card.content?.match(/^Veredito:\s*(.+)$/m)?.[1]?.trim();
+                const cor = !veredito
+                  ? "var(--text-muted)"
+                  : /reprovad/i.test(veredito)
+                    ? "#f87171"
+                    : /ressalva/i.test(veredito)
+                      ? "#fbbf24"
+                      : "#4ade80";
+                const rotulo = veredito
+                  ? veredito
+                  : card.status === "approved"
                     ? "✓ Aprovado"
                     : card.status === "rejected"
-                    ? "✗ Reprovado"
-                    : card.status === "needs_revision"
-                    ? "⚠ Revisão"
-                    : "Aguardando revisão"}
-                </span>
-              </div>
+                      ? "✗ Reprovado"
+                      : card.status === "needs_revision"
+                        ? "⚠ Revisão"
+                        : "Aguardando revisão";
+                return (
+                  <div className="flex items-center gap-1 py-1">
+                    <Eye className="w-3 h-3 text-yellow-400" />
+                    <span className="text-[10px] text-yellow-400 font-medium">Veredito</span>
+                    <span className="text-[10px] line-clamp-1 ml-1 font-medium" style={{ color: cor }}>
+                      {rotulo}
+                    </span>
+                  </div>
+                );
+              })()
             ) : (
               <p className="line-clamp-2 leading-relaxed text-[10px]" style={{ color: "var(--text-primary)" }}>
                 {card.content ?? "..."}

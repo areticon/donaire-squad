@@ -1,12 +1,16 @@
 export const dynamic = "force-dynamic";
+// A parte lenta (carrossel da Diana e veredito da Vera) roda em `after`, depois
+// da resposta, e precisa deste teto para não morrer no meio.
+export const maxDuration = 300;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId, DESTINO_COMPLETO } from "@/lib/media/destinos";
 import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
 import { sincronizarQuadroDoVideo } from "@/lib/media/sincronizar-quadro";
+import { completarEsteiraDoVideo } from "@/lib/media/esteira-do-video";
 
 /**
  * Leva os cortes aprovados para o quadro do Gestor de Conteúdo.
@@ -223,9 +227,10 @@ export async function POST(
   // A redação já escreveu texto POR REDE para cada corte; o melhor corte também
   // rende um post de texto no LinkedIn e no X, em dias diferentes dos cortes,
   // porque presença é ocupar a semana e não empilhar tudo na segunda. E a Diana
-  // ganha um card de carrossel com as frases fortes do vídeo, que o cliente
-  // gera pelo chat do card quando quiser (gerar imagem custa crédito, então
-  // não roda sozinho).
+  // ganha um card de carrossel com as frases fortes do vídeo. Até 02/09 o card
+  // nascia só com o briefing e as imagens ficavam para "quando o cliente
+  // pedir pelo chat", sem a tela dizer isso: o Bruno viu o sábado vazio e
+  // chamou de travado. Agora as imagens são geradas em `after`, logo abaixo.
   const melhor = [...aprovados].sort(
     (a, b) => ((b.t as { nota?: number }).nota ?? 0) - ((a.t as { nota?: number }).nota ?? 0)
   )[0]?.t;
@@ -309,8 +314,8 @@ export async function POST(
           cardType: "media",
           mediaType: "image",
           content:
-            `Carrossel com as frases fortes do vídeo "${nome}", um slide por frase, ` +
-            `tipografia grande e nas cores da marca do projeto: ` +
+            `Diana está montando o carrossel com as frases fortes do vídeo "${nome}", ` +
+            `um slide por frase, nas cores da marca: ` +
             frases.map((f, i) => `${i + 1}. "${f}"`).join(" "),
           status: "pending",
           metadata: { origem: "video", videoJobId: video.id, derivado: true },
@@ -324,6 +329,10 @@ export async function POST(
   await sincronizarQuadroDoVideo(video.id).catch((e) =>
     console.error(`[agendar][${video.id}] sincronizar falhou:`, e)
   );
+
+  // O quadro já responde com os cards; o carrossel e os vereditos chegam pelo
+  // polling de 4 em 4 segundos, que é o "tempo real" do Gestor desde a parte 87.
+  after(() => completarEsteiraDoVideo(video.id));
 
   return NextResponse.json({
     runId: run.id,
