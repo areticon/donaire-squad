@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@700;800&amp;display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f6803d; text-decoration: none; }
+    a:hover { color: #ef6122; }
+    * { box-sizing: border-box; }
+    .folha { width: 1240px; height: 760px; background: #1e1e25; color: #dcdde2; padding: 26px 28px; display: flex; flex-direction: column; gap: 18px; }
+    .rotulo { font-size: 11px; font-weight: 600; margin: 0 0 8px; color: #9599a6; text-transform: uppercase; letter-spacing: 0.06em; }
+    .faixa { border-radius: 16px; background: #2a2a33; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .fase { display: flex; flex-direction: column; align-items: center; gap: 7px; position: relative; }
+    .fase p { margin: 0; }
+    .fase-nome { font-size: 12px; font-weight: 500; color: #9599a6; }
+    .fase-det { font-size: 10px; color: #9599a6; margin-top: -3px; }
+    .marco { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #3f3f4b; background: #2a2a33; }
+    .marco-feito { width: 18px; height: 18px; border-radius: 50%; background: #ef6122; display: flex; align-items: center; justify-content: center; color: #fff; }
+    .trilho { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); position: relative; }
+    .linha-base { position: absolute; top: 8px; left: 8%; right: 8%; height: 2px; background: #3f3f4b; }
+    .titulo-arq { font-size: 14px; font-weight: 600; margin: 0; color: #dcdde2; }
+    .sub-arq { font-size: 12px; margin: 2px 0 0; color: #9599a6; }
+    .cronometro { font-size: 19px; font-weight: 700; margin: 0; color: #dcdde2; font-variant-numeric: tabular-nums; }
+    .icone-cx { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .btn-peq { height: 30px; padding: 0 11px; border-radius: 4px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  </style>
+</helmet>
+
+<div class="folha">
+
+  <div>
+    <p class="rotulo">A. Rodando, minuto 3</p>
+    <div class="faixa" style="border: 1px solid #ef6122;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <div class="icone-cx" style="background: rgba(239,97,34,0.12); border: 1px solid rgba(239,97,34,0.35); color: #ef6122;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"></rect><path d="m22 8-6 4 6 4V8Z"></path></svg>
+          </div>
+          <div style="min-width: 0;">
+            <p class="titulo-arq">2026-08-31 08-22-04.mp4</p>
+            <p class="sub-arq">Enquadrando cada corte para o formato de cada rede.</p>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex-shrink: 0;">
+          <div style="text-align: right;">
+            <p class="cronometro">3:12</p>
+            <p style="font-size: 10px; margin: 1px 0 0; color: #9599a6;">rodando</p>
+          </div>
+          <div class="btn-peq" style="border: 1px solid #3f3f4b; color: #9599a6;">Cancelar</div>
+        </div>
+      </div>
+      <div class="trilho">
+        <div class="linha-base"></div>
+        <div style="position: absolute; top: 8px; left: 8%; width: 34%; height: 2px; background: #ef6122;"></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Ouvindo</p><p class="fase-det">2.388 palavras</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2; font-weight: 600;">Escolhendo</p><p class="fase-det">3 momentos</p></div>
+        <div class="fase"><div class="marco" style="border-color: #ef6122; display: flex; align-items: center; justify-content: center;"><div style="width: 7px; height: 7px; border-radius: 50%; background: #ef6122;"></div></div><p class="fase-nome" style="color: #ef6122; font-weight: 700;">Cortando</p><p class="fase-det" style="color: #ef6122;">1 de 3 pronto</p></div>
+        <div class="fase"><div class="marco"></div><p class="fase-nome">Capas</p></div>
+        <div class="fase"><div class="marco"></div><p class="fase-nome">Escrevendo</p></div>
+        <div class="fase"><div class="marco"></div><p class="fase-nome">Vídeo completo</p><p class="fase-det">chega por último</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="rotulo">B. Minuto 6: os cortes já estão no quadro, o completo ainda vem</p>
+    <div class="faixa" style="border: 1px solid #ef6122;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <div class="icone-cx" style="background: rgba(239,97,34,0.12); border: 1px solid rgba(239,97,34,0.35); color: #ef6122;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"></rect><path d="m22 8-6 4 6 4V8Z"></path></svg>
+          </div>
+          <div style="min-width: 0;">
+            <p class="titulo-arq">Os 3 cortes e os textos já estão no quadro abaixo</p>
+            <p class="sub-arq">Falta o vídeo completo de 16 minutos, que é o mais demorado. Você já pode revisar e publicar o resto.</p>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex-shrink: 0;">
+          <div style="text-align: right;">
+            <p class="cronometro">6:04</p>
+            <p style="font-size: 10px; margin: 1px 0 0; color: #9599a6;">faltam ~12 min</p>
+          </div>
+        </div>
+      </div>
+      <div class="trilho">
+        <div class="linha-base"></div>
+        <div style="position: absolute; top: 8px; left: 8%; width: 68%; height: 2px; background: #ef6122;"></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2;">Ouvindo</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2;">Escolhendo</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2;">Cortando</p><p class="fase-det">3 cortes</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2;">Capas</p></div>
+        <div class="fase"><div class="marco-feito"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><p class="fase-nome" style="color: #dcdde2;">Escrevendo</p><p class="fase-det">3 textos</p></div>
+        <div class="fase"><div class="marco" style="border-color: #ef6122; display: flex; align-items: center; justify-content: center;"><div style="width: 7px; height: 7px; border-radius: 50%; background: #ef6122;"></div></div><p class="fase-nome" style="color: #ef6122; font-weight: 700;">Vídeo completo</p><p class="fase-det" style="color: #ef6122;">montando, passe 2 de 2</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="rotulo">C. Uma etapa falhou</p>
+    <div class="faixa" style="border: 1px solid rgba(248,113,113,0.35); background: rgba(185,28,28,0.08); flex-direction: row; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+        <div class="icone-cx" style="background: rgba(185,28,28,0.2); border: 1px solid rgba(248,113,113,0.3); color: #f87171;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <div style="min-width: 0;">
+          <p class="titulo-arq">A montagem do vídeo completo parou na metade</p>
+          <p class="sub-arq">Os 3 cortes e os textos ficaram prontos e estão no quadro. Só o vídeo completo precisa ser refeito.</p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+        <div class="btn-peq" style="border: 1px solid #3f3f4b; color: #9599a6;">Dispensar</div>
+        <div class="btn-peq" style="background: #ef6122; color: #ffffff;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 3 3 9 9 9"></polyline></svg>
+          Refazer só o vídeo completo
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="rotulo">D. Terminou: a faixa encolhe e some no próximo carregamento</p>
+    <div class="faixa" style="border: 1px solid rgba(74,222,128,0.25); background: rgba(21,128,61,0.12); flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 20px;">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        <p style="font-size: 13px; margin: 0; color: #dcdde2;"><span style="font-weight: 600;">Pronto em 18 minutos.</span> 3 cortes, 3 textos, 1 carrossel e o vídeo completo de 15:01, tudo no quadro abaixo.</p>
+      </div>
+      <p style="font-size: 12px; margin: 0; color: #9599a6; flex-shrink: 0;">2026-08-31 08-22-04.mp4 &nbsp;·&nbsp; ver o que foi feito</p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

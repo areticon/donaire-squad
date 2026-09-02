@@ -15,6 +15,9 @@ import { RedeIcone } from "@/components/social/rede-icone";
 import toast from "react-hot-toast";
 import { PipelineLive } from "@/components/posts/pipeline-live";
 import { CampaignSetupModal, type CampaignConfig } from "@/components/posts/campaign-setup-modal";
+import { EsteiraDoVideo, type VideoAoVivo, type CorteGuardado } from "@/components/video/esteira-do-video";
+import { EnviarGravacao } from "@/components/video/enviar-gravacao";
+import { CorteGuardadoModal } from "@/components/video/corte-guardado";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,16 @@ interface ContentManagerProps {
   activeRun: PipelineRun | null;
   lastFailedRun: PipelineRun | null;
   socialAccounts: SocialAccount[];
+  /**
+   * O estado das gravações do projeto, para a faixa do piloto abrir já
+   * preenchida. Desde 02/09 o processo de vídeo acontece nesta tela, e não numa
+   * tela própria: ver `EsteiraDoVideo`.
+   */
+  videos: VideoAoVivo[];
+  /** As três escolhas que decidem como o corte é editado, para o painel de envio. */
+  videoEstilo: string | null;
+  videoMusica: string | null;
+  videoTermos: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -393,6 +406,58 @@ function KanbanCard({
 
   const isMedia = card.cardType === "media";
   const hasError = card.content?.startsWith("AVISO:");
+  const virtual = (card.metadata as { virtual?: string; rotulo?: string } | null)?.virtual;
+
+  // O lugar guardado do vídeo completo: traço pontilhado, porque é uma reserva
+  // e não uma entrega. Sem clique, porque ainda não há nada para abrir.
+  if (virtual === "completo") {
+    const rotulo = (card.metadata as { rotulo?: string } | null)?.rotulo ?? "A caminho";
+    return (
+      <div
+        className="rounded-lg border border-dashed p-2 flex flex-col gap-1.5"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
+          <span className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
+            {rotulo}
+          </span>
+        </div>
+        <p className="text-[10px] leading-relaxed line-clamp-2" style={{ color: "var(--text-muted)" }}>
+          {card.content}
+        </p>
+      </div>
+    );
+  }
+
+  // Um corte que existe e não vai ao ar. Apagado, mas presente e clicável: some
+  // do quadro era o que fazia parecer que o corte tinha se perdido.
+  if (virtual === "guardado") {
+    return (
+      <motion.div
+        whileHover={{ scale: 1.01 }}
+        className="rounded-lg border border-dashed cursor-pointer transition-all p-2 flex gap-1.5 opacity-60 hover:opacity-100"
+        style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}
+        onClick={() => onOpenModal(card, agentRow)}
+      >
+        <AgentAvatar agentId={card.agentId} color={agentRow.color} />
+        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+          {/* Uma palavra só: numa célula de 140px, "Guardado, não vai ao ar"
+              quebrava em três linhas e empurrava o card para o dobro da altura
+              (visto na tela em 02/09). O resto é explicado ao abrir. */}
+          <span
+            className="text-[9px] font-semibold uppercase tracking-wide truncate"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Guardado
+          </span>
+          <p className="text-[10px] leading-relaxed line-clamp-2" style={{ color: "var(--text-muted)" }}>
+            {card.content}
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -1559,6 +1624,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     <video
                       key={`v-${versaoDoCorte}`}
                       src={`${localCard.mediaUrl}${localCard.mediaUrl.includes("?") ? "&" : "?"}v=${versaoDoCorte}`}
+                      // A capa do corte é o quadro de abertura. Sem ela o
+                      // player abre um retângulo preto de meia tela mesmo com o
+                      // vídeo carregado: o conserto de 02/09 pegou o player da
+                      // Diana e este ficou de fora.
+                      poster={
+                        (localCard.metadata as { thumb?: string | null } | null)?.thumb ?? undefined
+                      }
                       controls
                       preload="metadata"
                       className="w-full max-h-[50vh] rounded-xl bg-black object-contain"
@@ -1606,6 +1678,40 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           ))}
                           <span className="ml-1">ou peça ao Vitor no chat abaixo.</span>
                         </div>
+                      );
+                    })()}
+                    {/* Tirar do ar sem sair da tela.
+                        Até 02/09 essa decisão só existia na tela do vídeo, que
+                        era outra tela: o cliente desmarcava lá, o corte sumia
+                        do quadro aqui, e a leitura era de trabalho perdido. Ele
+                        continua existindo, apagado, na mesma célula. */}
+                    {(() => {
+                      const metaGuardar = localCard.metadata as { videoJobId?: string; trechoIndice?: number } | null;
+                      if (!metaGuardar?.videoJobId || typeof metaGuardar.trechoIndice !== "number") return null;
+                      return (
+                        <button
+                          type="button"
+                          className="text-xs underline-offset-2 hover:underline"
+                          style={{ color: "var(--text-muted)" }}
+                          onClick={async () => {
+                            if (!window.confirm("Guardar este corte? Ele sai da fila de publicação e continua no quadro, apagado, para você ligar de novo quando quiser.")) return;
+                            try {
+                              const r = await fetch(`/api/videos/${metaGuardar.videoJobId}/destinos`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ trecho: metaGuardar.trechoIndice, publicar: false }),
+                              });
+                              if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
+                              toast.success("Corte guardado. Ele continua no quadro, apagado.");
+                              onWeekRefresh?.();
+                              onClose();
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Não deu para guardar o corte.");
+                            }
+                          }}
+                        >
+                          Guardar este corte, sem publicar
+                        </button>
                       );
                     })()}
                     {(() => {
@@ -2319,13 +2425,25 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [loadingCards, setLoadingCards] = useState(false);
   const [runningPipelineId, setRunningPipelineId] = useState<string | null>(activeRun?.status === "running" ? activeRun.id : null);
   const [generating, setGenerating] = useState(activeRun?.status === "running");
   const [showSetupModal, setShowSetupModal] = useState(false);
+  /**
+   * O painel de envio nasce aberto para quem nunca subiu gravação neste
+   * projeto: sem isto, quem chega num quadro vazio não tem por onde começar, e
+   * a tela que ensinava isso saiu de cena em 02/09. Quem já subiu uma vez sabe
+   * o caminho, e o botão "Nova gravação" fica no cabeçalho.
+   */
+  const [enviarAberto, setEnviarAberto] = useState(videos.length === 0);
+  const [gravacoesEnviadas, setGravacoesEnviadas] = useState(0);
+  const [videosAoVivo, setVideosAoVivo] = useState<VideoAoVivo[]>(videos);
+  const [corteGuardadoAberto, setCorteGuardadoAberto] = useState<
+    { videoId: string; corte: CorteGuardado } | null
+  >(null);
 
   // Quem acabou de ativar o projeto chega aqui com ?novaCampanha=1 e a escolha
   // de origem (vídeo ou tema) abre sozinha. Sem isto a pessoa termina o
@@ -2595,6 +2713,15 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   }
 
   function handleOpenModal(card: CampaignCard, agentRow: typeof AGENT_ROWS[0]) {
+    // Card virtual não existe no banco: mandá-lo para o modal normal faria a
+    // tela buscar um id que ninguém tem. O corte guardado abre a sua própria
+    // janela, que é curta porque a única decisão dele é ir ao ar ou não.
+    const meta = card.metadata as { virtual?: string; videoId?: string; corte?: CorteGuardado } | null;
+    if (meta?.virtual === "guardado" && meta.videoId && meta.corte) {
+      setCorteGuardadoAberto({ videoId: meta.videoId, corte: meta.corte });
+      return;
+    }
+    if (meta?.virtual) return;
     setModalCard(card);
     setModalAgentRow(agentRow);
   }
@@ -2615,6 +2742,83 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     const end = toIsoDate(addDays(selectedMonday, 6));
     return dIso >= start && dIso <= end;
   });
+
+  /**
+   * Os dois cards que o quadro precisa mostrar e o banco não tem.
+   *
+   * 1. O LUGAR DO VÍDEO COMPLETO, desde o minuto zero. Ele chega uns quinze
+   *    minutos depois dos cortes, e em 02/09 o Bruno disse que ele "sumiu": não
+   *    tinha sumido, ainda estava sendo montado, mas não havia nada no quadro
+   *    dizendo isso. Um lugar guardado, com o tempo que falta, é o conserto.
+   * 2. OS CORTES DESLIGADOS. Eles foram cortados, existem no storage e não têm
+   *    card porque o quadro só mostra o que vai ao ar. Ficam aqui apagados,
+   *    com um clique para mudar de ideia, em vez de virarem trabalho invisível.
+   *
+   * São virtuais de propósito: nascem do estado da gravação, não de linha no
+   * banco. Card de verdade para algo que ainda não existe seria lixo para
+   * limpar depois, e daria a impressão de peça pronta que não está pronta.
+   */
+  const cardsVirtuais: CampaignCard[] = isCurrentWeek
+    ? videosAoVivo.flatMap((v) => {
+        const doDia = (dia: number) => {
+          const d = addDays(selectedMonday, dia - 1);
+          d.setUTCHours(9, 0, 0, 0);
+          return d.toISOString();
+        };
+        const lista: CampaignCard[] = [];
+
+        if (!v.temCompleto && v.status !== "failed") {
+          const decorrido = Math.max(0, (Date.now() - new Date(v.criadoEm).getTime()) / 1000);
+          const total = Math.max(6 * 60, Math.round((v.durationSec ?? 900) * 1.15));
+          const faltam = Math.max(0, Math.round((total - decorrido) / 60));
+          lista.push({
+            id: `virtual-completo-${v.id}`,
+            runId: "",
+            agentId: "vitor-video",
+            agentName: "Vitor Vídeo",
+            dayOfWeek: 1,
+            scheduledDate: doDia(1),
+            cardType: "video_clip",
+            mediaType: "video",
+            content:
+              v.durationSec != null
+                ? `A gravação de ${Math.round(v.durationSec / 60)} min editada, com capítulos, para o YouTube.`
+                : "A gravação inteira editada, com capítulos, para o YouTube.",
+            mediaUrl: null,
+            status: "pending",
+            postId: null,
+            chatHistory: [],
+            metadata: {
+              virtual: "completo",
+              videoId: v.id,
+              rotulo: faltam > 0 ? `Chega em ~${faltam} min` : "Terminando agora",
+            },
+          });
+        }
+
+        for (const c of v.cortesGuardados ?? []) {
+          lista.push({
+            id: `virtual-guardado-${v.id}-${c.indice}`,
+            runId: "",
+            agentId: "vitor-video",
+            agentName: "Vitor Vídeo",
+            // O mesmo dia que ele ocuparia se fosse ligado, que é a conta de
+            // reserva usada em `sincronizarQuadroDoVideo`.
+            dayOfWeek: ((c.indice * 3) % 7) + 1,
+            scheduledDate: doDia(((c.indice * 3) % 7) + 1),
+            cardType: "video_clip",
+            mediaType: "video",
+            content: c.titulo,
+            mediaUrl: null,
+            status: "pending",
+            postId: null,
+            chatHistory: [],
+            metadata: { virtual: "guardado", videoId: v.id, corte: c },
+          });
+        }
+        return lista;
+      })
+    : [];
 
   const activeDays = DAYS;
 
@@ -2648,6 +2852,17 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               Hoje
             </button>
           )}
+          {/* O envio da gravação mora aqui desde 02/09, ao lado de "Nova
+              campanha": as duas são a mesma pergunta, de onde vem o conteúdo
+              da semana, e antes uma delas ficava numa aba separada. */}
+          <Button
+            variant="outline"
+            onClick={() => setEnviarAberto((a) => !a)}
+            title="Envia uma gravação e o squad transforma em conteúdo"
+          >
+            <Video className="w-4 h-4" />
+            <span className="hidden sm:inline ml-1">Nova gravação</span>
+          </Button>
           <Button variant="outline" onClick={() => void fillLastTopic()} disabled={generating} title="Reutiliza o tema da última campanha">
             <RotateCcw className="w-4 h-4" />
             <span className="hidden sm:inline ml-1">Último tema</span>
@@ -2697,6 +2912,30 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           )}
         </div>
       </div>
+
+      {/* O processo do vídeo, em tempo real, acima do quadro que ele preenche. */}
+      <EsteiraDoVideo
+        projectId={projectId}
+        videosIniciais={videos}
+        aoMudar={(frescos, statusMudou) => {
+          setVideosAoVivo(frescos);
+          if (statusMudou) void loadCardsForWeek(weekStartIso);
+        }}
+        sinalDeRecarga={gravacoesEnviadas}
+      />
+
+      <EnviarGravacao
+        projectId={projectId}
+        aberto={enviarAberto}
+        estilo={videoEstilo}
+        musica={videoMusica}
+        termos={videoTermos}
+        onFechar={() => setEnviarAberto(false)}
+        onEnviado={() => {
+          setEnviarAberto(false);
+          setGravacoesEnviadas((n) => n + 1);
+        }}
+      />
 
       {/* Failed / cancelled run banner */}
       <AnimatePresence>
@@ -2845,7 +3084,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               </div>
             ) : (
               AGENT_ROWS.map((agentRow, rowIdx) => {
-                const rowCards = weekCards.filter((c) => c.agentId === agentRow.agentId);
+                const rowCards = [...weekCards, ...cardsVirtuais].filter((c) => c.agentId === agentRow.agentId);
                 const hasAnyCard = rowCards.length > 0;
 
                 // Linha sem nenhum card na semana vira uma linha FINA, em vez
@@ -2971,6 +3210,18 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           }}
         />
       )}
+
+      {/* Um corte guardado, aberto para decidir se vai ao ar */}
+      <AnimatePresence>
+        {corteGuardadoAberto && (
+          <CorteGuardadoModal
+            videoId={corteGuardadoAberto.videoId}
+            corte={corteGuardadoAberto.corte}
+            onFechar={() => setCorteGuardadoAberto(null)}
+            onLigado={() => { void loadCardsForWeek(weekStartIso); }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Setup modal */}
       <AnimatePresence>

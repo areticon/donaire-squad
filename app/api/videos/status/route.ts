@@ -49,19 +49,81 @@ export async function GET(req: NextRequest) {
       attempts: true,
       durationSec: true,
       updatedAt: true,
+      createdAt: true,
+      originalName: true,
+      completoUrl: true,
+      // Os trechos entram na CONSULTA mas não na resposta: o que a faixa do
+      // Gestor precisa é contagem, não conteúdo. Mandar os textos das três
+      // redes de cada trecho a cada quatro segundos seriam dezenas de KB por
+      // consulta, e foi por isso que esta rota nasceu separada de `/api/videos`.
+      clips: true,
     },
   });
 
   const agora = Date.now();
 
   return NextResponse.json({
-    videos: videos.map((v) => ({
+    videos: videos.map((v) => {
+      const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
+        publicar?: boolean;
+        posts?: unknown;
+        titulo?: string;
+        destinos?: string[];
+        texto?: { titulo?: string };
+        inicio?: number;
+        fim?: number;
+        midia?: { vertical?: unknown };
+      }>;
+      const comMidia = trechos.filter((t) => t.midia?.vertical);
+      return {
       id: v.id,
       status: v.status,
       error: v.error,
       attempts: v.attempts,
       durationSec: v.durationSec,
       updatedAt: v.updatedAt.toISOString(),
+      /**
+       * O relógio da faixa conta desde o ENVIO, e não desde a etapa atual.
+       * É o número que o dono da gravação tem na cabeça ("subi faz quanto
+       * tempo"), e é o único que permite dizer quanto falta para o vídeo
+       * completo, que só chega no fim de tudo.
+       */
+      criadoEm: v.createdAt.toISOString(),
+      originalName: v.originalName,
+      /**
+       * O que a faixa do piloto mostra em cada fase, e o que o piloto usa para
+       * decidir a próxima etapa. São contagens derivadas dos trechos, não os
+       * trechos: quem quer o conteúdo chama `/api/videos`.
+       */
+      trechosEscolhidos: trechos.length,
+      cortesProntos: comMidia.length,
+      cortesQueVaoAoAr: comMidia.filter((t) => t.publicar !== false).length,
+      temTranscricao: v.durationSec !== null,
+      temTrechos: trechos.length > 0,
+      temCortes: comMidia.length > 0,
+      temTrechosComPosts: trechos.some((t) => t.posts),
+      temCompleto: Boolean(v.completoUrl),
+      /**
+       * Os cortes que o cliente DESLIGOU, com o mínimo para caberem no quadro.
+       *
+       * Eles existem, foram pagos e estão no storage, mas não têm card nem
+       * post: o quadro só mostra o que vai ao ar. No teste de 02/09 dois dos
+       * três cortes estavam desligados e simplesmente não apareciam em lugar
+       * nenhum, o que se lê como trabalho perdido. Aqui eles voltam a ser
+       * visíveis, apagados, e com um interruptor para mudar de ideia.
+       */
+      cortesGuardados: trechos
+        .map((t, indice) => ({ t, indice }))
+        .filter(({ t }) => t.midia?.vertical && t.publicar === false)
+        .map(({ t, indice }) => ({
+          indice,
+          titulo: t.texto?.titulo ?? t.titulo ?? "Corte sem título",
+          destinos: t.destinos ?? [],
+          inicio: typeof t.inicio === "number" ? t.inicio : null,
+          fim: typeof t.fim === "number" ? t.fim : null,
+          capa: `/api/videos/${v.id}/midia?trecho=${indice}&tipo=capa-arte`,
+          video: `/api/videos/${v.id}/midia?trecho=${indice}&tipo=vertical`,
+        })),
       /**
        * Há quantos segundos esta etapa está rodando, e quanto ela tem de prazo.
        *
@@ -75,6 +137,7 @@ export async function GET(req: NextRequest) {
           ? Math.max(0, Math.round((agora - v.startedAt.getTime()) / 1000))
           : null,
       prazoSegundos: estaTrabalhando(v.status) ? PRAZO_SEGUNDOS[v.status] : null,
-    })),
+      };
+    }),
   });
 }

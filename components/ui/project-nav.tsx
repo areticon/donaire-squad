@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit, Video } from "lucide-react";
+import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ProjectNav({ projectId, isActive }: { projectId: string; isActive: boolean }) {
@@ -15,12 +15,12 @@ export function ProjectNav({ projectId, isActive }: { projectId: string; isActiv
       icon: FileText,
       show: isActive,
     },
-    {
-      href: `/projects/${projectId}/video`,
-      label: "Vídeo",
-      icon: Video,
-      show: isActive,
-    },
+    // A aba "Vídeo" saiu daqui em 02/09. O processo inteiro (envio, estilo,
+    // trilha, termos e o piloto automático) passou a acontecer no Gestor de
+    // Conteúdo, que é onde o resultado sempre esteve: o pedido do Bruno foi
+    // exatamente esse, e a queixa de "sumiu o vídeo completo" vinha de o
+    // processo morar numa tela e a entrega em outra. A rota /video continua
+    // existindo por enquanto, redirecionando para cá.
     {
       href: `/projects/${projectId}/live`,
       label: "Gestor de Conteúdo",

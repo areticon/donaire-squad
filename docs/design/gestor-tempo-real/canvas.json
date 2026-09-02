@@ -1,0 +1,17 @@
+{
+  "artboards": [
+    { "file": "Vazio.dc.html", "x": 0, "y": 0, "w": 1240, "h": 880, "title": "1. A semana vazia, e o envio" },
+    { "file": "Main.dc.html", "x": 1340, "y": 0, "w": 1240, "h": 880, "title": "2. O processo acontecendo" },
+    { "file": "Pronto.dc.html", "x": 2680, "y": 0, "w": 1240, "h": 920, "title": "3. A semana entregue" },
+    { "file": "CardCorte.dc.html", "x": 0, "y": 1080, "w": 940, "h": 820, "title": "O card do corte, aberto" },
+    { "file": "Esteira.dc.html", "x": 1080, "y": 1080, "w": 1240, "h": 760, "title": "A faixa do piloto, os quatro estados" }
+  ],
+  "annotations": [
+    { "id": "nota-entrada", "x": 0, "y": -150, "w": 380, "text": "O ponto de entrada muda de lugar.\nA gravação sobe aqui dentro, com estilo, trilha e termos ao lado. A aba Vídeo deixa de existir." },
+    { "id": "nota-processo", "x": 1340, "y": -150, "w": 380, "text": "O processo passa a acontecer na tela do resultado.\nA faixa mostra em que fase o squad está, e cada peça cai no quadro assim que fica pronta." },
+    { "id": "nota-completo", "x": 2680, "y": -150, "w": 380, "text": "O vídeo completo tem lugar reservado desde o minuto zero, com o tempo que falta.\nEle não some mais: o lugar dele já está no quadro esperando." },
+    { "id": "nota-card", "x": 0, "y": 1930, "w": 380, "text": "Tudo o que hoje é decisão da tela do vídeo passa para dentro do card: onde o corte vai, o ajuste de tempo e o interruptor de publicar." },
+    { "id": "nota-guardado", "x": 1080, "y": 1930, "w": 460, "text": "No teste de 02/09, dois dos três cortes estavam com publicar desligado e sumiram do quadro. Aqui eles continuam visíveis, esmaecidos e marcados como guardados." }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -47,7 +47,18 @@ export async function POST(
     return NextResponse.json({ error: "Trecho não encontrado." }, { status: 404 });
   }
 
-  const limpos = (destinos ?? []).filter((d) => destinoPorId(d));
+  /**
+   * Destino OMITIDO é diferente de destino VAZIO.
+   *
+   * A tela antiga mandava sempre a lista inteira, então tratar ausência como
+   * lista vazia nunca doeu. O card do Gestor manda só `publicar`, e com a regra
+   * antiga ligar o interruptor apagava os destinos do corte no mesmo movimento:
+   * o corte voltava a valer, sem nenhuma rede para onde ir, e a sincronização
+   * do quadro não criava card nenhum. Falha silenciosa, com a tela dizendo que
+   * o corte vai ao ar.
+   */
+  const atuais = (trechos[trecho].destinos as string[] | undefined) ?? [];
+  const limpos = destinos === undefined ? atuais : destinos.filter((d) => destinoPorId(d));
 
   trechos[trecho] = {
     ...trechos[trecho],
