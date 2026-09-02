@@ -6844,3 +6844,69 @@ Duas armadilhas anotadas no caminho:
    que nao diz nada sobre o motivo real.
 
 *Atualizado em 01/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 81): o completo falhou EM SILENCIO, e o silencio era o defeito
+
+O Bruno apontou dois ajustes no design, e a checagem da rodada de vídeo achou
+um problema maior que os dois: **o video completo nunca chegou**, e ninguem
+ficou sabendo por 21 horas.
+
+### A forense
+
+O log do worker contava metade da historia:
+
+```
+tempo: cortes entregues ao app aos 303s
+completo: passe 1 (uniformizar) em 492s
+tempo: tudo pronto aos 797s
+```
+
+Nao ha linha do passe 2. Ele morreu DOIS segundos depois do passe 1, o que
+descarta lentidao e aponta erro de arranque. E o motivo existia: o `rodar`
+carrega os ultimos 600 caracteres do stderr do ffmpeg na mensagem de erro.
+So que essa mensagem morreu duas vezes:
+
+1. O `catch` do completo no worker so empurrava a mensagem para
+   `resultados.erros`, sem NUNCA logar.
+2. O callback tardio, ao ver um aviso final com `completo: null`, devolvia
+   `{ ok: true, ignorado: "status cut" }` e descartava a lista de erros.
+
+Resultado: 800 segundos de trabalho perdidos, o ffmpeg tendo dito o motivo, e
+a falha invisivel no log, no banco e na tela. E a mesma familia de defeito que
+o projeto ja tinha atacado duas vezes (o clique que funcionava em silencio, o
+`selecting` mudo), agora na etapa mais cara do fluxo.
+
+### O que mudou
+
+- **O erro do completo vai para o LOG**, com o espaco em disco junto: disco
+  cheio e o suspeito numero um quando o passe 2 morre logo depois de o passe 1
+  escrever um intermediario grande, e essa informacao nao da para recuperar
+  depois.
+- **O callback tardio grava a falha no banco** em vez de ignorar.
+- **`soCompleto`**: o worker refaz APENAS o video completo, pulando o
+  enquadramento (que custa chamada de visao) e o recorte dos trechos. Falha de
+  uma etapa deixa de custar o trabalho das outras, que estavam prontas e
+  corretas. Sem isso, a unica saida era pagar o pipeline inteiro de novo.
+
+A rodada de retry ja foi despachada com `soCompleto`. Se falhar de novo, o
+motivo aparece no log desta vez, e ai o conserto e dirigido por dado.
+
+### O design, corrigido pelos dois recados do Bruno
+
+1. **"O fundo esta distoando do resto"**: as artes vinham com papel creme
+   proprio e ficavam como adesivo colado numa pagina escura. Agora elas nascem
+   sobre CROMA VERDE e saem recortadas com alfa, entao o fundo que aparece
+   atras delas e o da propria pagina. Junto, o traco mudou de cor: tinta preta
+   some no #1e1e25, entao o desenho vai em branco quente com o acento no
+   laranja da marca. O despill do croma foi feito por canal
+   (`min(verde, media(vermelho, azul))`), senao sobra franja verde na borda de
+   cada traco.
+2. **"Falta o Vitor Video nos agentes"**: entrou, e entrou PRIMEIRO, com o
+   avatar laranja. E por ele que o produto comeca hoje.
+
+Entrou tambem um segundo artboard, a secao "Como funciona": a linha da esteira
+se desenha de cima para baixo, os cinco passos entram nela em sequencia, o
+numero da etapa 3 acende no laranja quando ela chega (e a etapa do video), e o
+diagrama desenhado aparece no fim resumindo o que os passos disseram.
+
+*Atualizado em 02/09/2026 por Claude Code.*
