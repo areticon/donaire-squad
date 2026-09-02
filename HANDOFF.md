@@ -7485,3 +7485,68 @@ reescrever-legenda-carrossel, zerar-veredito-sabado). Lembrete: scripts/tmp
 e checado pelo `npm run build`; script quebrado derruba o build.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 90): campanha a partir do video, o cliente escolhe a semana e o Roberto pesquisa antes
+
+Bruno aprovou o canvas da parte 89 ("ficou otimo") e o item 4 foi para
+producao no commit `c2aaa0a`. O que mudou:
+
+1. **Planejador da semana** (`components/video/semana-do-video.tsx`,
+   dentro de `enviar-gravacao.tsx`, entre o estilo e o upload): segunda
+   travada em "Video completo + cortes"; terca a domingo com toggle e
+   formato Texto, Imagem (8 cr), Carrossel (24 cr), Infografico (5 cr),
+   Thread, Enquete ou Livre (o squad decide). Sugestao: Ter Texto, Qua
+   Imagem, Qui Thread, Sab Carrossel, Sex e Dom sem post. Salva sozinho em
+   `Project.videoSemana` (PATCH `/api/projects/[id]`, campo liberado no
+   allowlist) e o `/agendar` congela uma copia em `run.config.semana`.
+   Botao do upload virou "Enviar e montar a semana". Regras puras em
+   `lib/media/semana-do-video.ts` (normalizar, creditos, rotacao do Livre).
+2. **Roberto Radar** (`lib/media/radar-do-video.ts`, `pesquisarDoVideo`):
+   le a transcricao com minuto, extrai tema, resumo e 3 a 5 teses, pesquisa
+   na web (`researchTopic`, Gemini grounding), e so aceita achados e dados
+   que estejam no resultado da pesquisa. Grava `VideoJob.radar` e o card de
+   segunda (cardType `research`). Rota `POST /api/videos/[id]/pesquisar`
+   (`?refazer=1` para refazer); o piloto da faixa dispara em paralelo com a
+   escolha dos momentos, e o `after` do agendar completa se faltar. Faixa
+   ganhou a fase "Pesquisando" logo depois de "Ouvindo" (marco segue o
+   `radar`, nao o indice), com "N teses, M fontes" embaixo.
+3. **Redatores** (`lib/media/pecas-da-semana.ts`, `escreverSemanaDoVideo`):
+   por dia escolhido, Lucas (texto, enquete, legendas), Tiago (thread) e
+   Diana (imagem, carrossel de 3 slides, infografico) escrevem a partir do
+   briefing do Roberto mais a transcricao (prefixo cacheavel). O agendar
+   cria cards de ESPERA por agente e dia com `metadata.formatoRotulo`, que
+   e o chip que o cabecalho do quadro mostra; a peca pronta substitui o card
+   de espera. Idempotente por "card derivado do dia ja tem post". Falha vira
+   AVISO no card do dono, sem derrubar os outros dias.
+4. **Esteira** (`lib/media/esteira-do-video.ts`): Roberto, redatores,
+   sincronizar quadro, Vera. `carrossel-do-video.ts` ficou so com a legenda.
+
+Dois consertos vindos do teste na tela logada (regra de ouro: ler os dados
+antes de mexer):
+- O Roberto devolveu "sexta (Thread)" e "domingo (Carrossel)" para uma
+  semana Ter/Qua/Qui/Sab: a lista de dias ia so com nome e o modelo tinha
+  que devolver numero. Agora a lista vai numerada e os angulos casam por
+  POSICAO com os dias escolhidos (`angulosPorDia`). Briefing tambem passou
+  a falar com o dono como "voce", nao "a pessoa".
+- A Vera REPROVOU o texto de terca por citar "Congresso Negocio com
+  Proposito (2026)" como "data futura": ela nao sabia que dia era hoje.
+  `vera-do-video.ts` agora recebe a data e a lista de dados e achados do
+  Roberto com fonte. Revisado de novo: Aprovado.
+
+Estado do projeto do Bruno (cmtkd7ui2000004l8ox74g9qf): a semana atual
+continua como estava (Qua Lucas, Qui Tiago, Sab Diana, do fluxo antigo),
+mais o card do Roberto na segunda e um post de texto NOVO na terca (Lucas,
+a partir do radar), com Vera e Paulo. Nada foi reescrito. O fluxo completo
+com cards de espera e chips por dia so aparece na PROXIMA gravacao; nao foi
+possivel exercitar imagem, carrossel, infografico, thread e enquete pela
+esteira nova sem um video novo (a semana antiga ja tinha post nesses dias).
+
+Fora do v1: "Mudar a semana" de uma semana ja montada. A escolha no painel
+de envio vale para a proxima gravacao. Lembrete que continua: os dois
+videos no YouTube (f6A3i5pe3Wg e -SdAuw92uPY) ficam nao listados ate o
+Bruno trocar para publico no YouTube Studio.
+
+Ruido de dev que nao e desta sessao: hydration mismatch do avatar da
+sidebar (img do LinkedIn no cliente, iniciais no servidor).
+
+*Atualizado em 02/09/2026 por Claude Code.*
