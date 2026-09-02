@@ -139,7 +139,36 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
  * O limiar de 0,38s fica no meio dessa folga, e a lista é curta de propósito:
  * só sons que nunca são conteúdo quando arrastados.
  */
-const SONS_DE_HESITACAO = new Set(["e", "eh", "ah", "ahn", "hum", "uhm", "mmm"]);
+/*
+ * O "e" SAIU desta lista em 02/09, e a medição é o motivo.
+ *
+ * A comparação por palavra tira o acento, então uma única entrada "e" pegava
+ * três coisas diferentes: o "é" VERBO, o "e" CONJUNÇÃO e o "é" muleta. Medido
+ * na gravação real do Bruno: das 52 remoções determinísticas de muleta, **24
+ * eram da família "e/é"**, e as que eu li uma a uma eram quase todas conteúdo:
+ *
+ *   "O ponto é, não [é] a mudança em si"
+ *   "pra ele não [é] necessário tentar dar sentido"
+ *   "[É] preciso imaginar Sísifo feliz"
+ *   "a grandeza de Cícero [é] durante a descida"
+ *   "Se lembrar do que [é] o seu propósito"
+ *   "[E] a grandeza de..."   "[e] não falhará"   "[E] eu aponto..."
+ *
+ * O corte entregue saiu com "se lembrar do que o seu propósito", que é frase
+ * quebrada, e o Bruno ouviu.
+ *
+ * A premissa de 24/08 era que "é" arrastado nunca é conteúdo, medida numa
+ * gravação onde o verbo durava 0,10s e a muleta 0,48s. Nesta gravação ele fala
+ * mais devagar e o VERBO dura 0,64s. A folga sumiu, e com ela a regra.
+ *
+ * Tentei salvar por acústica (silêncio dos dois lados) e o dado não deixa: há
+ * muleta colada na fala seguinte e verbo com pausa antes. Separar "é" verbo de
+ * "é" muleta é LEITURA, não aritmética, e a regra da casa manda leitura para o
+ * agente, que tem contexto e ainda passa pela verificação de plausibilidade.
+ *
+ * Ficam aqui só os sons que não são palavra nenhuma em português.
+ */
+const SONS_DE_HESITACAO = new Set(["eh", "ah", "ahn", "hum", "uhm", "mmm"]);
 
 /**
  * Vícios que saem SEMPRE, sem exigir duração. O "né" de vírgula é o caso que o
@@ -174,6 +203,7 @@ O que SAI:
 
 1. Hesitação: "é", "eh", "hum", "ahn", "ééé", arrastados ou soltos no meio da frase. Só quando NÃO forem parte do sentido.
 2. Recomeço de frase: a pessoa começa, se interrompe e recomeça. Sai a primeira tentativa, fica a segunda. Exemplo: "eu saí do, bom, então, eu quero falar como eu saí do CLT" vira "eu quero falar como eu saí do CLT".
+   O recomeço também acontece com um aparte no meio, e aí sai a primeira tentativa MAIS o aparte. Caso real: "Deus pede pra ele escrever. Eu vou até fazer aqui com você. Deus pede pra Habacuque escrever." vira "Deus pede pra Habacuque escrever." Repare que a primeira tentativa termina em ponto final: isso é normal no recomeço e não impede o corte.
 3. Repetição imediata da mesma palavra ou expressão: "o, o ponto é", "eu eu acho". Fica uma.
 4. Abertura vazia de gravador: "bom, vamos lá gente", "então, vamos lá", quando não diz nada e só existe para a pessoa se ajeitar.
 5. Muleta que não liga nada: "né" no fim de frase, "tipo" no meio, "aí" como enfeite.
@@ -266,6 +296,45 @@ export function cortePlausivel(
   ].map((p) => normalizar(p.word));
 
   return conteudo.some((p) => vizinhas.includes(p));
+}
+
+/**
+ * Este corte é uma RELEITURA, ou seja, a pessoa disse, se interrompeu e disse
+ * de novo?
+ *
+ * A assinatura é objetiva e não depende de julgamento: as palavras de conteúdo
+ * do trecho cortado REAPARECEM logo depois dele, na mesma ordem. Duas ou mais,
+ * porque uma só é coincidência num assunto que se repete.
+ *
+ * Serve para uma coisa só: liberar a guarda de fim de frase, que de outro modo
+ * reprovaria todo recomeço (a transcrição fecha a tentativa abortada com
+ * ponto). Não afrouxa a verificação de plausibilidade, que continua valendo
+ * depois desta.
+ */
+function ehReleitura(corte: Limpeza, palavras: Array<{ word: string }>): boolean {
+  const doCorte = palavras
+    .slice(corte.de, corte.ate + 1)
+    .map((p) => normalizar(p.word))
+    .filter((p) => p.length > 2 && !MULETAS.has(p));
+  if (doCorte.length < 2) return false;
+
+  const depois = palavras
+    .slice(corte.ate + 1, corte.ate + 15)
+    .map((p) => normalizar(p.word));
+
+  // As DUAS PRIMEIRAS palavras de conteúdo do corte, e elas precisam reaparecer
+  // QUASE COLADAS logo depois. Releitura repete uma frase; palavra solta se
+  // repetindo é assunto voltando, que é outra coisa.
+  //
+  // Provado com contraprova em 02/09: a versão frouxa (duas palavras quaisquer
+  // reaparecendo em qualquer posição) aceitava "ela fala do fim e não falhará"
+  // como releitura, porque "ela" e "não" reaparecem adiante. Aceita agora só o
+  // caso real: "Deus pede pra ele escrever [...] Deus pede pra Habacuque
+  // escrever".
+  const primeira = depois.indexOf(doCorte[0]);
+  if (primeira < 0) return false;
+  const segunda = depois.indexOf(doCorte[1], primeira + 1);
+  return segunda > 0 && segunda - primeira <= 3;
 }
 
 /**
@@ -374,11 +443,21 @@ export function sanearLimpeza(
 
   const plausiveis = unidos
     .filter((c) => c.ate - c.de + 1 <= PALAVRAS_MAXIMAS_POR_CORTE)
-    // Corte que engole um fim de frase está colando dois assuntos, não
-    // limpando muleta. O prompt já pede isso ("não corte a última palavra de
-    // uma frase nem a primeira da seguinte"), e pedir nunca garantiu nada:
-    // quem garante é esta linha.
-    .filter((c) => !palavras.slice(c.de, c.ate).some((p) => fechaFrase(p.word)))
+    // Corte que engole um fim de frase costuma estar colando dois assuntos, e
+    // não limpando muleta. O prompt já pede isso ("não corte a última palavra
+    // de uma frase nem a primeira da seguinte"), e pedir nunca garantiu nada.
+    //
+    // COM UMA EXCEÇÃO, medida em 02/09: o RECOMEÇO de fala quase sempre
+    // atravessa um ponto final, porque a transcrição fecha a tentativa
+    // abortada com ponto. O caso real que o Bruno ouviu:
+    //
+    //   "Deus pede pra ele escrever. Eu vou até fazer aqui com você.
+    //    Deus pede pra Habacuque escrever."
+    //
+    // A guarda de 01/09, sem exceção, bloqueava exatamente o corte que o
+    // agente existe para fazer. Agora o fim de frase só reprova quando NÃO há
+    // prova de releitura logo depois.
+    .filter((c) => ehReleitura(c, palavras) || !palavras.slice(c.de, c.ate).some((p) => fechaFrase(p.word)))
     .filter((c) => cortePlausivel(c, palavras));
 
   // Teto duro. Se o agente marcou meio vídeo, alguma coisa saiu muito errada, e

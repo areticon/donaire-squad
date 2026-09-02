@@ -7140,3 +7140,94 @@ so a grade, o brilho, os pontos de ativo e o anel do botao seguem vivos, todos
 lentos.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 85): o "é" que era verbo, e o recomeco que a minha guarda bloqueava
+
+O Bruno rodou tudo num projeto novo e trouxe tres coisas. As duas do CORTE
+tinham mecanismo e viraram conserto no mesmo dia.
+
+### 1. A regra do "é" estava destruindo a fala dele
+
+A verificacao chegou ao conteudo: transcrevi o CORTE ENTREGUE (nao a simulacao
+das remocoes, que nao inclui a camada de agente) e li o que foi ao ar. Achei
+"se lembrar do que o seu propósito", frase quebrada.
+
+A causa e uma so linha. `chaveDaPalavra` tira o acento para comparar, entao a
+entrada `"e"` na lista de sons de hesitacao pegava TRES coisas diferentes: o
+**"é" verbo**, o **"e" conjuncao** e o "é" muleta. Medido na gravacao dele:
+
+| | antes | agora |
+|---|---|---|
+| remocoes deterministicas de muleta | 52 | 28 |
+| da familia "e/é" | **24** | 0 |
+| o resto (né, ah) | 28 | 28 |
+
+Os nove "é" removidos, lidos um a um, eram TODOS verbo:
+
+```
+"O ponto é, não [é] a mudança em si"
+"[É] preciso imaginar Sísifo feliz"
+"a grandeza de Cícero [é] durante a descida"
+"Se lembrar do que [é] o seu propósito"
+```
+
+E os "E" removidos eram conjuncao ligando oracoes.
+
+A premissa de 24/08 era que "é" arrastado nunca e conteudo, medida numa
+gravacao em que o verbo durava 0,10s e a muleta 0,48s. Nesta gravacao ele fala
+mais devagar e o VERBO dura 0,64s: a folga sumiu e a regra virou estrago.
+Tentei salvar por acustica (silencio dos dois lados) e o dado nao deixa, porque
+ha muleta colada na fala seguinte e verbo com pausa antes.
+
+**O "e" saiu da lista deterministica.** Separar verbo de muleta e LEITURA, e a
+regra da casa manda leitura para o agente, que tem contexto e ainda passa pela
+verificacao de plausibilidade. Ficam so os sons que nao sao palavra nenhuma em
+portugues (eh, ah, ahn, hum, uhm, mmm) e o "né", que e marcador de discurso.
+
+### 2. A guarda que eu criei em 01/09 bloqueava o recomeco de fala
+
+O que o Bruno ouviu, confirmado na transcricao do corte entregue:
+
+```
+[20.9s] Olha que legal. Deus pede pra ele escrever.
+[26.2s] Eu vou até fazer aqui com você.
+[29.4s] Deus pede pra Habacuque
+[31.8s] escrever, escreva a visão.
+```
+
+Ele disse, se interrompeu e disse de novo. E o corte manteve os dois.
+
+A causa: a guarda de fim de frase que eu adicionei em 01/09 (nenhum corte pode
+atravessar ponto final) reprova TODO recomeco, porque a transcricao fecha a
+tentativa abortada com ponto. Eu tinha fechado a porta exata que o agente
+existe para atravessar.
+
+Agora ha uma excecao com assinatura objetiva, `ehReleitura`: as duas primeiras
+palavras de conteudo do corte reaparecem quase coladas logo depois. Provado nos
+dois sentidos com o transcript real:
+
+- o recomeco do Habacuque passou a ser **ACEITO**
+- a contraprova ("ela fala do fim e não falhará. Ainda que", que colaria dois
+  assuntos) continua **RECUSADA**
+
+A primeira versao da regra era frouxa (duas palavras quaisquer reaparecendo em
+qualquer posicao) e aceitava a contraprova. O aperto foi exigir as duas
+primeiras palavras de conteudo, em ordem e a no maximo tres palavras de
+distancia: releitura repete FRASE, palavra solta se repetindo e assunto
+voltando.
+
+O caso real tambem entrou no prompt do agente como exemplo.
+
+### 3. "Sumiu o video completo": nao sumiu, mudou de lugar
+
+O completo esta no banco e no Gestor, como card de YouTube com capitulos e
+thumb. O que sumiu foi a presenca dele na TELA DO VIDEO, que desde 31/08 e so
+um atalho. Some com o fato de o completo chegar uns 15 minutos depois dos
+cortes, e a impressao de sumico e inevitavel.
+
+E a queixa maior do Bruno e de produto, nao de bug: **"a tela do video e ruim,
+todo o processo deve acontecer na tela de gestor de conteudo, em tempo real"**.
+Registrado como frente propria, e o desenho vai para o canvas ANTES do codigo,
+que e o fluxo que passou a valer em 02/09.
+
+*Atualizado em 02/09/2026 por Claude Code.*
