@@ -144,6 +144,12 @@ model Project {
   /// lib/media/semana-do-video.ts. Pedido do Bruno em 02/09: mesmo com o video
   /// como fonte, quem escolhe o formato de cada dia e o cliente, nao o squad.
   videoSemana    Json?
+  /// O estilo da capa (thumbnail) do video completo no YouTube: "impacto",
+  /// "limpo" ou "manchete", ver lib/media/capas-do-completo.ts. Fica no
+  /// projeto pelo mesmo motivo do videoStyle: capa igual em todo video e o
+  /// que faz o canal ser reconhecido na listagem. Pedido do Bruno em 02/09,
+  /// junto com "pelo menos 2 opcoes" por video.
+  capaEstilo     String?
   postFrequency  String?
   timezone       String   @default("America/Sao_Paulo")
   createdAt      DateTime @default(now())
@@ -373,6 +379,11 @@ model VideoJob {
   /// gravação com slides, todos os trechos escolhidos caem em tela
   /// compartilhada, e a capa saía com texto branco em cima de um slide.
   capaFonteUrl   String?   @db.Text
+  /// As opcoes de capa do video completo, compostas sobre o quadro-fonte:
+  /// { estilo, opcoes: [{ url, frase, expressao }], escolhida, geradaEm }.
+  /// Ate 02/09 o completo subia ao YouTube SEM capa: o quadro-fonte existia
+  /// so como poster do player. Ver lib/media/capas-do-completo.ts.
+  capas          Json?
   /// O que o especialista achou da MATERIA-PRIMA, em uma frase, para o cliente
   /// ler.
   ///

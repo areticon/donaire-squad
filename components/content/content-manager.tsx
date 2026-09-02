@@ -18,6 +18,7 @@ import { CampaignSetupModal, type CampaignConfig } from "@/components/posts/camp
 import { EsteiraDoVideo, type VideoAoVivo, type CorteGuardado } from "@/components/video/esteira-do-video";
 import { EnviarGravacao } from "@/components/video/enviar-gravacao";
 import { CorteGuardadoModal } from "@/components/video/corte-guardado";
+import { CapaDoCompleto } from "@/components/video/capa-do-completo";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1690,6 +1691,24 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       preload="metadata"
                       className="w-full max-h-[50vh] rounded-xl bg-black object-contain"
                     />
+                    {/* A capa do completo no YouTube: duas opções e o estilo,
+                        pedido do Bruno em 02/09 depois de o vídeo subir sem
+                        capa. Só no card do completo; o corte tem a capa dele
+                        no ajuste de arte. */}
+                    {(() => {
+                      const metaCapa = localCard.metadata as { videoJobId?: string; completo?: boolean } | null;
+                      if (!metaCapa?.videoJobId || metaCapa.completo !== true) return null;
+                      return (
+                        <CapaDoCompleto
+                          videoJobId={metaCapa.videoJobId}
+                          onEscolhida={(url) => {
+                            const updated = { ...localCard, metadata: { ...(localCard.metadata ?? {}), thumb: url, capaUrl: url } };
+                            setLocalCard(updated);
+                            onCardUpdate(updated);
+                          }}
+                        />
+                      );
+                    })()}
                     {/* A prévia fiel e a publicação, aqui mesmo. Antes deste
                         bloco o card do Vitor era um beco: mostrava texto,
                         não mostrava a rede e não tinha caminho de publicar
@@ -1875,12 +1894,14 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       // A capa do player vem da esteira do vídeo: arte do
                       // corte para o trecho, capa da fonte para o completo.
                       // Sem isso os players do Paulo e da Vera abriam pretos.
-                      const mv = p.metadata as { videoJobId?: string; trechoIndice?: number; gravacaoCompleta?: boolean } | null;
+                      const mv = p.metadata as { videoJobId?: string; trechoIndice?: number; gravacaoCompleta?: boolean; capaUrl?: string } | null;
                       const poster = mv?.videoJobId
                         ? typeof mv.trechoIndice === "number"
                           ? `/api/videos/${mv.videoJobId}/midia?trecho=${mv.trechoIndice}&tipo=capa-arte`
                           : mv.gravacaoCompleta
-                            ? `/api/videos/${mv.videoJobId}/midia?tipo=capa-fonte`
+                            // A capa escolhida pelo cliente, quando existe;
+                            // o quadro-fonte enquanto não.
+                            ? mv.capaUrl ?? `/api/videos/${mv.videoJobId}/midia?tipo=capa-fonte`
                             : null
                         : null;
                       return (
@@ -2082,6 +2103,11 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                     const d = await res.json();
                                     if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
                                     toast.success(d.url ? `Publicado! ${d.url}` : "Publicado!");
+                                    // O que deu certo mas o cliente precisa
+                                    // saber: o YouTube mostra SD nos primeiros
+                                    // minutos (o Bruno achou que o arquivo
+                                    // tinha perdido qualidade, 02/09).
+                                    if (typeof d.aviso === "string" && d.aviso) toast(d.aviso, { duration: 12_000, icon: "ℹ️" });
                                     await refreshDayPosts();
                                     const restantes = dayPosts.filter((o) => o.id !== post.id && o.status !== "published" && o.status !== "scheduled");
                                     if (restantes.length === 0) {

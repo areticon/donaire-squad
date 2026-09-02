@@ -99,8 +99,8 @@ export async function POST(
     }
 
     try {
-      const { url } = await executeOAuthPostPublish(post, account);
-      return NextResponse.json({ success: true, url });
+      const { url, aviso } = await executeOAuthPostPublish(post, account);
+      return NextResponse.json({ success: true, url, aviso });
     } catch (err) {
       console.error("[publish]", err);
       const msg =

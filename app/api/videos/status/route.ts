@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       createdAt: true,
       originalName: true,
       completoUrl: true,
+      capas: true,
       radar: true,
       // Os trechos entram na CONSULTA mas não na resposta: o que a faixa do
       // Gestor precisa é contagem, não conteúdo. Mandar os textos das três
@@ -104,6 +105,8 @@ export async function GET(req: NextRequest) {
       temCortes: comMidia.length > 0,
       temTrechosComPosts: trechos.some((t) => t.posts),
       temCompleto: Boolean(v.completoUrl),
+      // A capa do completo já tem opções? O piloto gera uma vez quando não.
+      capas: Boolean(v.capas),
       /**
        * A pesquisa do Roberto, em contagem: a faixa mostra "Pesquisando"
        * enquanto não existe e "3 teses, 4 fontes" quando existe. O briefing

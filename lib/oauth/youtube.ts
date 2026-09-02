@@ -198,3 +198,47 @@ export async function publishYouTubeVideo(
   if (!json.id) throw new Error(`YouTube upload: resposta sem id (${text.slice(0, 300)})`);
   return { videoId: json.id, url: `https://www.youtube.com/watch?v=${json.id}` };
 }
+
+/**
+ * Define a capa (thumbnail) de um vídeo já enviado.
+ *
+ * Existe desde 02/09: até então o completo subia SEM capa, e o YouTube
+ * escolhia um quadro qualquer. Vale para vídeo recém-enviado e para vídeo
+ * já publicado, então serve tanto na publicação quanto quando o cliente troca
+ * a capa depois.
+ *
+ * O YouTube só aceita capa personalizada em canal VERIFICADO por telefone.
+ * Canal sem verificação responde 403 com "forbidden", e isso não é falha da
+ * publicação: o vídeo está no ar, só ficou sem a capa escolhida. Quem chama
+ * trata como aviso, nunca como erro.
+ *
+ * Limites da API: JPEG ou PNG, até 2 MB, 16:9 com 1280x720 recomendado.
+ */
+export async function setYouTubeThumbnail(
+  accessToken: string,
+  videoId: string,
+  imagem: { bytes: Buffer; mimeType: string }
+): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": imagem.mimeType,
+        "Content-Length": String(imagem.bytes.byteLength),
+      },
+      body: new Uint8Array(imagem.bytes),
+      signal: AbortSignal.timeout(60_000),
+    }
+  );
+  if (!res.ok) {
+    const texto = await res.text();
+    if (res.status === 403) {
+      throw new Error(
+        "O YouTube só aceita capa personalizada em canal verificado por telefone (youtube.com/verify). O vídeo está no ar sem a capa escolhida."
+      );
+    }
+    throw new Error(`YouTube thumbnail failed (${res.status}): ${texto.slice(0, 300)}`);
+  }
+}

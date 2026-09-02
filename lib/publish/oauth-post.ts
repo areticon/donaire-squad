@@ -38,7 +38,9 @@ import {
   publishFacebookText,
 } from "@/lib/oauth/facebook";
 import { abrirMidia } from "@/lib/media/storage";
-import { publishYouTubeVideo, refreshYouTubeToken } from "@/lib/oauth/youtube";
+import { publishYouTubeVideo, refreshYouTubeToken, setYouTubeThumbnail } from "@/lib/oauth/youtube";
+import { lerMidia } from "@/lib/media/storage";
+import { normalizarCapaParaYouTube } from "@/lib/media/capa-youtube";
 
 /**
  * Garante access token válido (Twitter refresh quando necessário).
@@ -162,11 +164,14 @@ async function lerVideoDoPost(
 export async function executeOAuthPostPublish(
   post: Post,
   account: SocialAccount
-): Promise<{ url: string | null; externalId: string | null }> {
+): Promise<{ url: string | null; externalId: string | null; aviso?: string }> {
   const { accessToken } = await resolveSocialAccountAccessToken(account);
 
   let externalUrl: string | null = null;
   let externalId: string | null = null;
+  // O que deu certo mas merece uma frase na tela (a capa que o YouTube
+  // recusou, a espera pelo HD). Nunca derruba a publicação.
+  let aviso: string | undefined;
 
   const bodyText = post.content ?? "";
   const mediaType = post.mediaType ?? "text";
@@ -465,6 +470,30 @@ export async function executeOAuthPostPublish(
     );
     externalUrl = result.url;
     externalId = result.videoId;
+
+    // A capa escolhida pelo cliente (lib/media/capas-do-completo.ts). Até
+    // 02/09 o vídeo subia sem capa e o YouTube escolhia um quadro qualquer.
+    // Falha aqui vira aviso, não erro: o vídeo já está no ar.
+    const capaUrl = metadata?.capaUrl;
+    if (typeof capaUrl === "string" && capaUrl.startsWith("https://")) {
+      try {
+        const bytes = await lerMidia(capaUrl);
+        if (!bytes) throw new Error("Não consegui ler a capa escolhida.");
+        await setYouTubeThumbnail(accessToken, result.videoId, {
+          bytes: await normalizarCapaParaYouTube(bytes),
+          mimeType: "image/jpeg",
+        });
+      } catch (e) {
+        console.warn("[publish] capa do YouTube falhou (não fatal):", e);
+        aviso = e instanceof Error ? e.message : "O YouTube não aceitou a capa.";
+      }
+    } else {
+      aviso = "O vídeo subiu sem capa escolhida; escolha uma no card do vídeo e ela vai para o YouTube na hora.";
+    }
+    // O YouTube só serve SD nos primeiros minutos e libera o HD depois de
+    // reprocessar. O Bruno assistiu 12 min depois de subir e achou que o
+    // arquivo tinha perdido qualidade (02/09); o arquivo era 1440p.
+    aviso = `${aviso ? aviso + " " : ""}O YouTube mostra o vídeo em baixa qualidade nos primeiros minutos e libera o HD depois de processar (pode levar até algumas horas).`;
   } else {
     throw new Error(`Plataforma "${account.platform}" ainda não suportada`);
   }
@@ -509,5 +538,5 @@ export async function executeOAuthPostPublish(
     }
   }
 
-  return { url: externalUrl, externalId };
+  return { url: externalUrl, externalId, aviso };
 }

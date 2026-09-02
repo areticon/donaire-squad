@@ -32,6 +32,19 @@ export type Expressao =
   | "surpreso"
   | "preocupado";
 
+/**
+ * O estilo visual da capa (ver lib/media/estilos-de-capa.ts):
+ *
+ * - "impacto": a pessoa recortada sobre fundo novo, frase enorme com uma
+ *   palavra destacada em bloco de cor. É o que sempre foi.
+ * - "limpo": a foto real, fundo original levemente escurecido, frase curta em
+ *   tipografia fina. Para quem acha thumbnail de YouTuber espalhafatosa.
+ * - "manchete": fundo chapado na cor da marca, pessoa de um lado, título em
+ *   duas linhas do outro, como capa de programa.
+ */
+export type { EstiloDeCapa } from "@/lib/media/estilos-de-capa";
+import type { EstiloDeCapa } from "@/lib/media/estilos-de-capa";
+
 export type TextoDoCorte = {
   /** Até 100 caracteres, que é o teto do YouTube. */
   titulo: string;
@@ -147,6 +160,61 @@ const COMO_MOSTRAR: Record<Expressao, string> = {
 };
 
 /**
+ * As seções RECORTE E FUNDO e TEXTO do prompt, que são o que muda entre um
+ * estilo e outro. IDENTIDADE e EXPRESSÃO ficam iguais para todos.
+ */
+function secoesDoEstilo(
+  estilo: EstiloDeCapa,
+  v: { frase: string; destaque: string; cenario: string; corDaMarca?: string | null }
+): string {
+  if (estilo === "limpo") {
+    return `RECORTE E FUNDO
+- MANTENHA a pessoa no cenário original: nada de recorte nem de fundo novo. É uma foto real, não uma montagem.
+- Escureça o fundo original de leve e desfoque um pouco, só o bastante para a pessoa e o texto ganharem contraste. Nada de texto, logotipo ou outras pessoas no fundo.
+- Se a pessoa estiver centralizada, reenquadre para deixá-la num terço da imagem e o outro lado livre para o texto.
+
+TEXTO
+- Escreva exatamente: "${v.frase}"
+- Tipografia FINA e elegante, sem serifa, peso leve ou regular, em caixa alta com espaçamento largo entre letras, branca.
+- Corpo médio: ocupa cerca de um terço da largura da imagem, em uma ou duas linhas, alinhado à esquerda no espaço livre.
+- Sem bloco de cor, sem contorno, sem sombra forte: o contraste vem do fundo escurecido.
+- O texto NUNCA pode cobrir o rosto.
+`;
+  }
+  if (estilo === "manchete") {
+    const cor = v.corDaMarca?.trim() || "#0f1b3d (azul-marinho escuro)";
+    return `RECORTE E FUNDO
+- Recorte a pessoa do fundo original com borda limpa, inclusive no cabelo.
+- Descarte o cenário original por completo.
+- Fundo novo: CHAPADO, cor sólida ${cor}, sem textura, sem gradiente, sem cenário. Nada de texto, logotipo ou outras pessoas no fundo.
+- Ponha a pessoa inteira em UM dos lados da imagem (esquerdo ou direito), ocupando cerca de 40% da largura, com uma leve luz de contorno separando ela do fundo.
+
+TEXTO
+- Escreva exatamente: "${v.frase}"
+- No lado OPOSTO ao da pessoa, em DUAS linhas, alinhado à esquerda, como manchete de jornal ou título de programa.
+- Sem serifa, peso pesado, caixa alta, branca. Corpo grande: as duas linhas juntas ocupam cerca de metade da altura da imagem.
+- Sublinhe ou destaque a palavra "${v.destaque}" numa cor clara e contrastante (amarelo ou branco quente), sem bloco atrás.
+- O texto NUNCA pode cobrir o rosto.
+`;
+  }
+  return `RECORTE E FUNDO
+- Recorte a pessoa do fundo original com borda limpa, inclusive no cabelo.
+- Descarte o cenário original por completo.
+- Fundo novo: ${v.cenario}
+- O fundo entra desfocado e mais escuro que a pessoa, para ela saltar. Nada de texto, logotipo ou outras pessoas no fundo.
+- Ilumine a pessoa de forma coerente com o fundo novo, com uma leve luz de contorno separando ela do cenário.
+
+TEXTO
+- Escreva exatamente: "${v.frase}"
+- Corpo ENORME, ocupando de um terço a metade da largura da imagem. Se em dúvida, aumente.
+- Sem serifa, muito pesada, condensada, em caixa alta.
+- Destaque a palavra "${v.destaque}" com um bloco de cor sólida atrás dela, em contraste com o resto.
+- Uma palavra por linha, ou duas no máximo, alinhadas à esquerda. As linhas NUNCA se sobrepõem: cada letra de cada palavra tem que aparecer inteira (na primeira capa de 02/09 a linha de cima cobriu a primeira letra da linha de baixo).
+- O texto NUNCA pode cobrir o rosto. Ponha no espaço vazio ao lado ou acima.
+`;
+}
+
+/**
  * A capa: a pessoa recortada, com expressão ajustada, sobre um fundo novo.
  *
  * Evoluiu em três passos, cada um por uma crítica do Bruno com o resultado na
@@ -183,6 +251,13 @@ export async function comporCapa(
     formato?: "9:16" | "16:9";
     /** Instrução de ajuste vinda do CLIENTE, com prioridade sobre o padrão. */
     ajuste?: string;
+    /** O estilo visual; "impacto" quando ausente, que é o histórico. */
+    estilo?: EstiloDeCapa;
+    /**
+     * A cor principal da marca do cliente (hex), usada pelo estilo "manchete"
+     * como fundo. Sem ela o fundo é azul-marinho escuro.
+     */
+    corDaMarca?: string | null;
   } = {}
 ): Promise<string | null> {
   // A palavra destacada é a mais longa da frase, que quase sempre é a que
@@ -210,19 +285,7 @@ EXPRESSÃO
 - Corrija defeitos de quadro parado de vídeo: se a boca estiver aberta no meio de uma palavra, feche; se os olhos estiverem fechados ou semicerrados, abra; se o olhar estiver perdido, traga para a câmera.
 - O resultado tem que parecer uma FOTO, não um quadro pausado.
 
-RECORTE E FUNDO
-- Recorte a pessoa do fundo original com borda limpa, inclusive no cabelo.
-- Descarte o cenário original por completo.
-- Fundo novo: ${cenario}
-- O fundo entra desfocado e mais escuro que a pessoa, para ela saltar. Nada de texto, logotipo ou outras pessoas no fundo.
-- Ilumine a pessoa de forma coerente com o fundo novo, com uma leve luz de contorno separando ela do cenário.
-
-TEXTO
-- Escreva exatamente: "${frase}"
-- Corpo ENORME, ocupando de um terço a metade da largura da imagem. Se em dúvida, aumente.
-- Sem serifa, muito pesada, condensada, em caixa alta.
-- Destaque a palavra "${destaque}" com um bloco de cor sólida atrás dela, em contraste com o resto.
-- O texto NUNCA pode cobrir o rosto. Ponha no espaço vazio ao lado ou acima.
+${secoesDoEstilo(opcoes.estilo ?? "impacto", { frase, destaque, cenario, corDaMarca: opcoes.corDaMarca })}
 
 NÃO FAÇA
 - Nada de marca d'água, moldura, setas, círculos vermelhos ou emoji.

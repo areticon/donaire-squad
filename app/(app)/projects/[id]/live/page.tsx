@@ -55,6 +55,7 @@ export default async function LivePage({
       startedAt: true,
       originalName: true,
       completoUrl: true,
+      capas: true,
       clips: true,
       radar: true,
     },
@@ -130,6 +131,7 @@ export default async function LivePage({
           temCortes: comMidia.length > 0,
           temTrechosComPosts: trechos.some((t) => t.posts),
           temCompleto: Boolean(v.completoUrl),
+          capas: Boolean(v.capas),
           radar: (() => {
             const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
             if (!r) return null;

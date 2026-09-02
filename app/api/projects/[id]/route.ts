@@ -78,6 +78,9 @@ export async function PATCH(
     "videoTerms",
     // A semana a partir do video: formato por dia, escolhido no envio (02/09).
     "videoSemana",
+    // O estilo da capa do video completo no YouTube (02/09). Do projeto, como
+    // o estilo de edicao: capa diferente a cada video nao constroi canal.
+    "capaEstilo",
   ] as const;
   type AllowedField = (typeof ALLOWED_FIELDS)[number];
 

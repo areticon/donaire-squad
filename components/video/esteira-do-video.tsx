@@ -41,6 +41,8 @@ export type VideoAoVivo = {
   temCortes: boolean;
   temTrechosComPosts: boolean;
   temCompleto: boolean;
+  /** As opções de capa do completo já existem (lib/media/capas-do-completo.ts). */
+  capas?: boolean;
   rodandoHaSegundos: number | null;
   /**
    * A pesquisa do Roberto, em contagem. Nula enquanto ele não terminou (ou
@@ -318,6 +320,18 @@ export function EsteiraDoVideo({
           void fetch(`/api/videos/${v.id}/pesquisar`, { method: "POST" }).then(() => void consultar());
         }
       }
+      // As duas opções de capa do completo, uma vez, assim que o completo
+      // existe. Até 02/09 o completo subia ao YouTube sem capa nenhuma.
+      if (v.temCompleto && !v.capas && v.status !== "failed") {
+        const chaveCapas = `${v.id}:capas`;
+        if (!disparados.current.has(chaveCapas)) {
+          disparados.current.add(chaveCapas);
+          void fetch(`/api/videos/${v.id}/capas-do-completo`, { method: "POST" }).then(() => {
+            void consultar();
+            forcarRecarga();
+          });
+        }
+      }
       if (v.status === "cut" && v.temCortes && !v.temTrechosComPosts) {
         disparados.current.add(chave);
         void prepararTudo(v.id);
@@ -344,7 +358,7 @@ export function EsteiraDoVideo({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videos.map((v) => `${v.id}:${v.status}`).join("|")]);
+  }, [videos.map((v) => `${v.id}:${v.status}:${v.temCompleto ? 1 : 0}:${v.capas ? 1 : 0}`).join("|")]);
 
   const algumAndando = videos.some(emAndamento);
 

@@ -7550,3 +7550,66 @@ Ruido de dev que nao e desta sessao: hydration mismatch do avatar da
 sidebar (img do LinkedIn no cliente, iniciais no servidor).
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 91): capa do YouTube com 2 opcoes e estilo por canal; aviso do HD
+
+Bruno rodou o video completo no YouTube e reprovou: "subiu sem capa, e
+perdeu a qualidade, ficou horrivel. Sobre a capa, precisa dar pelo menos 2
+opcoes para o usuario. E o usuario precisa ter a opcao de escolher o
+estilo da capa".
+
+**Qualidade: nao era do arquivo.** Lido nos dados (Data API, fileDetails):
+o completo subiu com 2560x1440, ~10 Mbps, 850 MB. O que o Bruno viu foi a
+janela em que o YouTube serve SD enquanto processa o HD (minutos a horas).
+Nada a consertar no encoder. O produto agora AVISA isso na publicacao.
+
+**Capa: nao existia.** Ate hoje o completo subia sem thumbnail e o YouTube
+escolhia um quadro. O que entrou:
+
+1. **Banco**: `Project.capaEstilo` (estilo do canal) e `VideoJob.capas`
+   (JSON `{estilo, opcoes:[{url, frase, expressao}], escolhida, geradaEm}`).
+   Migration `20260902230000_capas_do_completo`.
+2. **Estilos** (`lib/media/estilos-de-capa.ts`, sem dependencia, para o
+   cliente importar): `impacto` (recorte sobre cenario novo, frase enorme
+   com destaque), `limpo` (foto real, tipografia fina) e `manchete` (fundo
+   chapado na cor da marca, manchete em duas linhas). `comporCapa` em
+   `capa-e-titulo.ts` ganhou `estilo` e `corDaMarca`, com as secoes de
+   prompt por estilo em `secoesDoEstilo`. O impacto ganhou a regra "uma
+   palavra por linha, linhas nunca se sobrepoem": a primeira capa gerada
+   hoje escondeu o C de CANSA atras da linha de cima.
+3. **Geracao** (`lib/media/capas-do-completo.ts`): Claude escreve 2 frases
+   (ate 6 palavras, com expressao), Nano Banana compoe as 2 em paralelo em
+   16:9 a partir da capa-fonte, `sharp` normaliza para JPEG 1280x720 q88
+   (`lib/media/capa-youtube.ts`, modulo separado para nao criar import
+   circular com o oauth-post) e sobe para o Blob em
+   `cortes/{id}/capa-completo-{i}.jpg`. A escolhida vai para
+   `post.metadata.capaUrl` e para o `thumb` do card do Vitor. ~30 s por
+   rodada. `sharp` virou dependencia direta.
+4. **Rota** `GET/POST/PUT /api/videos/[id]/capas-do-completo`: POST gera
+   (body `{estilo}` grava o estilo no projeto), PUT `{escolhida}` troca; se
+   o post ja esta no ar, troca a thumbnail no YouTube na hora
+   (`setYouTubeThumbnail` em `lib/oauth/youtube.ts`). Canal sem verificacao
+   por telefone recebe 403: vira AVISO, nunca erro.
+5. **Piloto**: `esteira-do-video.tsx` dispara o POST uma vez quando o
+   completo chega e ainda nao ha capas.
+6. **Tela** (`components/video/capa-do-completo.tsx`, dentro do card do
+   Vitor completo no `content-manager.tsx`): chips de estilo (trocar gera 2
+   novas), duas capas 16:9 com a escolhida marcada, "Gerar outras 2". O
+   poster do player e a previa do Paulo usam a capa escolhida.
+7. **Publicacao** (`oauth-post.ts`): depois do upload, envia a capa
+   escolhida; sem capa avisa. Sempre acrescenta o aviso do HD. O
+   `/publish` devolve `aviso` e a tela mostra como toast de 12 s.
+
+Testado na tela logada (Playwright): card abre com chips, duas opcoes e a
+marcada; clicar na outra trocou o poster e a thumbnail do YouTube em 13 s
+(conferido em i.ytimg.com/vi/-SdAuw92uPY/maxresdefault.jpg); voltei para a
+primeira. Os tres estilos foram gerados de verdade no video do Bruno.
+
+Estado do projeto do Bruno: `capaEstilo` = impacto; o video -SdAuw92uPY ja
+esta com a capa "Resistir ou COLABORAR com a mudanca". Os dois videos
+continuam NAO LISTADOS ate o Bruno trocar no YouTube Studio.
+
+Fora do v1: capa para os Shorts (o YouTube ignora thumbnail de Short no
+feed), editar a frase a mao, mais de 2 opcoes por rodada.
+
+*Atualizado em 02/09/2026 por Claude Code.*
