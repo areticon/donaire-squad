@@ -7020,3 +7020,49 @@ a memoria" sem nunca ter perguntado quanta memoria a maquina tem. A pergunta
 custava um endpoint.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 83): o completo ficou de pe, e o que a caçada custou
+
+A rodada com as fatias normalizadas passou. Numeros do worker:
+
+| fase | tempo |
+|---|---|
+| fonte baixada | 23s |
+| enquadramento (pulado, `soCompleto`) | 23s |
+| passe 1, uniformizar | 279s |
+| passe 2, acabamento | 770s, em 12 lotes e 134 fatias |
+| completo pronto | 1072s |
+
+O arquivo entregue: 894,5s, 2560x1440 a 30 fps, 1044 MB, com audio, servido
+pelo CDN publico (leitura anonima 200, cache de 30 dias, Range 206). Os
+quadros extraidos em volta de uma emenda mostram a troca de plano acontecendo:
+um mais fechado, o seguinte aberto.
+
+### O custo, declarado
+
+O completo passou de 361s (passe unico, sem tratamento nenhum na emenda) para
+1072s (dois passes, 134 emendas com troca de plano). Quase o triplo. Ele nao
+bloqueia nada: os cortes chegam em ~300s e o completo se anexa sozinho ao
+quadro depois. Se o Bruno olhar e disser que a troca de plano nao valeu, o
+passe 2 sai e o tempo volta para 361s no mesmo dia.
+
+### O que essa cacada ensinou, em ordem de valor
+
+1. **Medida sem referencia nao decide nada.** Medi 1,3 GB de consumo e conclui
+   "estourou a memoria" sem nunca perguntar quanta memoria a maquina tem. Eram
+   7629 MB, com 48 MB em uso. A pergunta custava um endpoint.
+2. **Mensagem de erro repetida nao quer dizer causa repetida.** "Failed to
+   configure output pad" ja tinha aparecido duas vezes em agosto por
+   propriedade de quadro mudando na entrada crua. Aqui a entrada era nossa, e a
+   causa era outra: metade das fatias passava por `scale`, que normaliza
+   formato e proporcao de pixel, e a outra metade ia crua.
+3. **Erro truncado atrasa o diagnostico.** O `rodar` guardava os ultimos 600
+   caracteres do stderr, e as PRIMEIRAS linhas sao as que nomeiam quem falhou
+   primeiro. Passou para 1800.
+4. **Checagem de fila que olha o lugar errado mente.** "Deploy so com fila
+   vazia" era conferido no banco, o banco nao ve o `soCompleto`, e um deploy
+   meu matou a rodada que eu estava esperando. Agora quem responde e o worker.
+5. **Falha em silencio custa dias.** O primeiro completo falhou em 01/09 e so
+   soubemos em 02/09 porque ninguem logava o erro.
+
+*Atualizado em 02/09/2026 por Claude Code.*
