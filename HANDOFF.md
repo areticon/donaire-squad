@@ -7066,3 +7066,31 @@ passe 2 sai e o tempo volta para 361s no mesmo dia.
    soubemos em 02/09 porque ninguem logava o erro.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+### Adendo da parte 83: a medicao do audio, com o que ela prova e o que nao prova
+
+Mesmo detector rodado nos dois arquivos, o reprovado de 01/09 e o de agora:
+
+| medida | reprovado | agora |
+|---|---|---|
+| duracao | 878,7s | 894,5s |
+| pausas >= 0,3s | 77 | 86 |
+| pausas >= 0,5s | 12 | 19 |
+| maior pausa | 0,68s | 0,76s |
+| estalos de amostra | 18 | 19 |
+
+**O respiro melhorou, e da para ver:** 15,8 segundos a mais de video, e as
+pausas de meio segundo para cima quase dobraram (12 para 19). O teto de 0,90s
+do `respiroDaPausa` aparece como 0,76s medidos porque o detector conta silencio
+abaixo de -45 dBFS, e o ruido de sala nivelado pelo loudnorm come as pontas.
+
+**O estalo NAO mudou nesse numero: 18 contra 19.** E honesto dizer que esse
+detector nao decide a questao: ele conta descontinuidade de amostra em
+qualquer lugar, inclusive nos estalos de boca e plosivas da propria fala, que
+sao a maioria num arquivo de 15 minutos. A medicao que era dirigida as
+EMENDAS, feita na janela de 150s em 01/09, mostrou o salto maximo caindo de
+0,109 para 0,009. As duas coisas podem ser verdade ao mesmo tempo.
+
+Quem decide agora e o ouvido do Bruno. Se ele ainda ouvir estalo, o proximo
+passo tem dono: achar as emendas por deteccao no proprio arquivo entregue, em
+vez de calcular por lista de remocoes, e medir uma a uma.
