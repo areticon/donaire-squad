@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { basename, dirname, join } from "node:path";
-import { rm, writeFile } from "node:fs/promises";
+import { copyFile, rm, writeFile } from "node:fs/promises";
 
 /**
  * As receitas de ffmpeg do produto, num lugar só.
@@ -169,6 +169,10 @@ export function ffprobe(caminho) {
           largura: Number(video?.width ?? 0),
           altura: Number(video?.height ?? 0),
           bytes: Number(json.format?.size ?? 0),
+          // Existe para a prova de fumaça poder cobrar o áudio: o passe 2 em
+          // lotes sai sem som e o som é colado depois, então "tem áudio" virou
+          // uma afirmação que precisa de verificação.
+          temAudio: (json.streams ?? []).some((x) => x.codec_type === "audio"),
         });
       } catch (e) {
         reject(e);
@@ -303,7 +307,14 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   // grafo, então pedir `-af` por fora é pedir duas donas para o mesmo fluxo.
   const grafo =
     partes.join(";") + ";" + mapa.join("") +
-    `concat=n=${manter.length}:v=1:a=1[vc][ac];[ac]${NIVELAR_VOZ}[a]`;
+    `concat=n=${manter.length}:v=1:a=1[vc][ac];[ac]${NIVELAR_VOZ}[a];` +
+    // A legenda entra AQUI, e não no passe 2, por dois motivos. Os tempos dela
+    // já foram calculados para a linha do tempo editada, que é exatamente esta;
+    // e o passe 2 roda em lotes, onde cada lote começaria num instante
+    // diferente e a legenda sairia deslocada em doze pedaços.
+    (opcoes.legendasArquivo
+      ? `[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
+      : `[vc]null[v]`);
 
   // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
   // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
@@ -319,7 +330,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     [
       "-i", entrada,
       opcaoDeFiltro(), basename(arquivoDeFiltro),
-      "-map", "[vc]", "-map", "[a]",
+      "-map", "[v]", "-map", "[a]",
       // Intermediário: crf 16 e veryfast. O crf mais fino que o do arquivo
       // final existe para a segunda geração não somar perda visível, e o preset
       // rápido porque este arquivo não é entregue a ninguém, é insumo.
@@ -346,15 +357,34 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   //
   // Com o passe 1 entregando um arquivo uniforme, o impedimento acabou: a
   // entrada daqui é um intermediário que este próprio código escreveu, do mesmo
-  // jeito que a dos cortes. É também o passe onde a camada de design (cartelas,
-  // gráficos, artes) vai entrar, pela mesma razão.
+  // jeito que a dos cortes.
   //
-  // ## Por que o áudio é COPIADO aqui
+  // ## Por que ele roda em LOTES, e não num grafo só
   //
-  // Os segmentos deste passe são CONTÍGUOS: cobrem a linha do tempo inteira sem
-  // tirar nada. Frame nenhum é removido, então a duração não muda e o som segue
-  // casado com a imagem sem precisar ser recortado junto. Copiar evita uma
-  // segunda geração de AAC e ainda economiza tempo.
+  // A primeira versão montava um grafo único com uma fatia por emenda. Em
+  // produção, com 149 fatias e 74 pares de `crop`/`scale` em 1440p, o ffmpeg
+  // morreu ao configurar o nó 138:
+  //
+  //     Failed to configure output pad on Parsed_scale_138
+  //
+  // A mensagem é a MESMA do erro de reinicialização de grafo que já matou o
+  // overlay de emoji, e por isso levou a investigação para o lado errado. O
+  // grafo aqui está correto: medido em 02/09, ele roda em 10 segundos numa
+  // máquina de mesa. O que falta é MEMÓRIA, e agora tem número: **496 MB só
+  // para montar esse grafo**, medido no pico do processo, antes de codificar
+  // um único quadro. Um contêiner pequeno não tem isso sobrando, e a falha
+  // aparece exatamente onde a alocação estourou, num nó de escala qualquer.
+  //
+  // Em lotes, cada rodada monta poucos escaladores e a memória fica plana, não
+  // importa se o vídeo tem 15 minutos ou duas horas. O custo é um processo por
+  // lote, que é ruído perto de uma codificação de 1440p.
+  //
+  // ## Por que o áudio não entra nos lotes
+  //
+  // Recortar áudio com `-ss` por lote arrisca deslocar alguns milissegundos em
+  // cada emenda, e treze lotes depois isso vira um quarto de segundo fora da
+  // imagem. Os lotes saem SEM áudio, e o som do intermediário é colado inteiro
+  // no fim, copiado, sem recodificar e sem chance de deriva.
   const dim = await ffprobe(uniforme).catch(() => null);
   const emendas = [];
   let acumulado = 0;
@@ -365,49 +395,130 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     emendas.push(acumulado);
   }
   const fim = dim?.duracaoSec ?? acumulado;
-  const cortes = [0, ...emendas.filter((t) => t > 0.5 && t < fim - 0.5), fim];
 
-  const partes2 = [];
-  const mapa2 = [];
-  for (let i = 0; i < cortes.length - 1; i++) {
-    partes2.push(
-      `[0:v]trim=start=${cortes[i].toFixed(3)}:end=${cortes[i + 1].toFixed(3)},setpts=PTS-STARTPTS` +
-        `${segmentoComPunchIn(i % 2 === 1, dim?.largura, dim?.altura, null, ZOOM_DO_COMPLETO)}[w${i}]`
-    );
-    mapa2.push(`[w${i}]`);
+  // ## A fatia mínima
+  //
+  // Medido no vídeo real: as 149 emendas produziam uma fatia de 0,110s, três
+  // quadros a 30 fps. Fatia assim não dá material para o filtro trabalhar e
+  // não vira efeito nenhum aos olhos. O piso de 0,6s garante 18 quadros e, de
+  // quebra, limita a troca de plano a uma a cada 0,6s, que é o que separa
+  // "corte de câmera" de estrobo (a lição de 30/08, agora com número).
+  //
+  // A emenda que não vira troca de plano continua no vídeo: ela só deixa de
+  // ganhar tratamento de imagem, e o pedaço herda o plano do vizinho.
+  const MINIMO_DA_FATIA = 0.6;
+  const cortes = [0];
+  for (const t of emendas) {
+    if (t < MINIMO_DA_FATIA) continue;
+    if (t > fim - MINIMO_DA_FATIA) continue;
+    if (t - cortes[cortes.length - 1] < MINIMO_DA_FATIA) continue;
+    cortes.push(t);
   }
-  let grafo2 =
-    partes2.join(";") + ";" + mapa2.join("") + `concat=n=${partes2.length}:v=1:a=0[vc]`;
-  // A legenda entra DEPOIS da concatenação, porque os tempos dela já foram
-  // calculados para a linha do tempo editada.
-  grafo2 += opcoes.legendasArquivo
-    ? `;[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
-    : ";[vc]null[v]";
+  cortes.push(fim);
 
-  const arquivoDeFiltro2 = join(pasta, "filtro2.txt");
-  await writeFile(arquivoDeFiltro2, grafo2, "utf8");
-
+  const porLote = Math.max(2, opcoes.fatiasPorLote ?? 12);
   const t2 = Date.now();
+  const partesDoVideo = [];
+
+  for (let inicio = 0; inicio < cortes.length - 1; inicio += porLote) {
+    const doLote = cortes.slice(inicio, Math.min(inicio + porLote + 1, cortes.length));
+    if (doLote.length < 2) break;
+    const t0 = doLote[0];
+    const duracaoDoLote = doLote[doLote.length - 1] - t0;
+
+    const nos = [];
+    const rotulos = [];
+    for (let k = 0; k < doLote.length - 1; k++) {
+      // A paridade é GLOBAL, e não do lote: o plano tem que continuar
+      // alternando na virada de um lote para o outro, senão a emenda que cai
+      // na fronteira fica sem tratamento e reaparece o corte seco.
+      const fechado = (inicio + k) % 2 === 1;
+      const de = doLote[k] - t0;
+      const ate = doLote[k + 1] - t0;
+      nos.push(
+        `[0:v]trim=start=${de.toFixed(3)}:end=${ate.toFixed(3)},setpts=PTS-STARTPTS` +
+          `${segmentoComPunchIn(fechado, dim?.largura, dim?.altura, null, ZOOM_DO_COMPLETO, ate - de)}[w${k}]`
+      );
+      rotulos.push(`[w${k}]`);
+    }
+    const grafoDoLote =
+      nos.join(";") + ";" + rotulos.join("") + `concat=n=${rotulos.length}:v=1:a=0[v]`;
+    const arquivoDoLote = join(pasta, `filtro-lote-${partesDoVideo.length}.txt`);
+    await writeFile(arquivoDoLote, grafoDoLote, "utf8");
+
+    const parte = join(pasta, `parte-${String(partesDoVideo.length).padStart(3, "0")}.mp4`);
+    await rodar(
+      [
+        // `-ss` ANTES do `-i` para não decodificar o vídeo inteiro em cada
+        // lote: com recodificação, o ffmpeg busca o quadro-chave anterior e
+        // descarta até o instante exato, então o lote começa onde deve.
+        "-ss", t0.toFixed(3),
+        "-i", uniforme,
+        "-t", duracaoDoLote.toFixed(3),
+        opcaoDeFiltro(), basename(arquivoDoLote),
+        "-map", "[v]", "-an",
+        // ## As contas de MEMÓRIA deste comando, medidas em 02/09
+        //
+        // Quem estoura o contêiner não é o grafo, é o CODIFICADOR. Medido no
+        // arquivo real de 1440p, pico do processo:
+        //
+        //   só codificar em `faster`, sem filtro nenhum ....... 868 MB
+        //   um lote em `faster`, 2 fios ....................... 740 MB
+        //   um lote em `veryfast`, 2 fios ..................... 643 MB
+        //   um lote em `veryfast`, 2 fios, lookahead curto .... 599 MB
+        //
+        // O passe 1 já roda em `veryfast` e cabe nesse contêiner há dias, então
+        // é ele o teto conhecido, e não um chute. O `faster` do primeiro
+        // desenho, somado ao grafo inteiro, pedia mais de 1,3 GB e foi o que
+        // matou o completo do cliente.
+        //
+        // Em CRF a qualidade é a mesma; o preset mexe no TAMANHO do arquivo.
+        // Trocar qualidade por um vídeo que existe é troca fácil.
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-threads", "2", "-x264-params", "rc-lookahead=10:sync-lookahead=0",
+        // Cada lote precisa abrir com quadro-chave e fechar o GOP no fim, senão
+        // a emenda por cópia entre os lotes trava na virada.
+        "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+        "-movflags", "+faststart", parte,
+      ],
+      { cwd: pasta, timeoutMs: teto }
+    );
+    partesDoVideo.push(parte);
+  }
+
+  // Os lotes viram um vídeo só por CÓPIA, sem recodificar nada.
+  const soVideo = join(pasta, "so-video.mp4");
+  if (partesDoVideo.length === 1) {
+    await copyFile(partesDoVideo[0], soVideo);
+  } else {
+    await emendar(partesDoVideo, soVideo, pasta);
+  }
+
+  // E o som do intermediário entra inteiro, copiado.
   await rodar(
     [
+      "-i", soVideo,
       "-i", uniforme,
-      opcaoDeFiltro(), basename(arquivoDeFiltro2),
-      "-map", "[v]", "-map", "0:a",
-      "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p",
-      "-c:a", "copy",
+      "-map", "0:v", "-map", "1:a",
+      "-c", "copy", "-shortest",
       "-movflags", "+faststart", saida,
     ],
     { cwd: pasta, timeoutMs: teto }
   );
+  console.log(
+    `completo: passe 2 (acabamento) em ${((Date.now() - t2) / 1000).toFixed(0)}s, ` +
+      `${partesDoVideo.length} lotes, ${cortes.length - 1} fatias`
+  );
 
-  console.log(`completo: passe 2 (acabamento) em ${((Date.now() - t2) / 1000).toFixed(0)}s`);
-
-  // O intermediário sai do disco na hora: ele tem o tamanho do arquivo
-  // entregue, e dois vídeos grandes seguidos enchem o contêiner.
+  // O intermediário e os lotes saem do disco na hora: juntos eles passam do
+  // tamanho do arquivo entregue, e dois vídeos grandes seguidos enchem o
+  // contêiner.
   await rm(uniforme, { force: true }).catch(() => {});
+  await rm(soVideo, { force: true }).catch(() => {});
+  for (const p of partesDoVideo) await rm(p, { force: true }).catch(() => {});
 
   const partesDoMotivo = [`${remocoes.length} trechos removidos`];
-  partesDoMotivo.push(`${Math.max(0, partes2.length - 1)} emendas com mudança de plano`);
+  partesDoMotivo.push(`${Math.max(0, cortes.length - 2)} emendas com mudança de plano`);
   if (opcoes.legendasArquivo) partesDoMotivo.push("legendas de destaque");
   return { recodificado: true, motivo: partesDoMotivo.join(", ") };
 }
@@ -484,7 +595,7 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
     const fechado = i % 2 === 1;
     partes.push(
       `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
-        `${segmentoComPunchIn(fechado, dim.largura, dim.altura, pessoa)}[v${i}]`,
+        `${segmentoComPunchIn(fechado, dim.largura, dim.altura, pessoa, 1.08, m.ate - m.de)}[v${i}]`,
       `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
     );
     mapa.push(`[v${i}][a${i}]`);
@@ -531,8 +642,13 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
  * exige todos os segmentos com a mesma dimensão, e um crop de conta quebrada
  * derrubaria a emenda inteira.
  */
-function segmentoComPunchIn(fechado, largura, altura, pessoa = null, zoom = 1.08) {
+function segmentoComPunchIn(fechado, largura, altura, pessoa = null, zoom = 1.08, duracao = null) {
   if (!fechado || !largura || !altura) return "";
+  // Pedaço curto demais não ganha tratamento de imagem, e a razão é mecânica
+  // antes de ser estética: `scale` sobre uma fatia de poucos quadros derruba o
+  // ffmpeg com "Failed to configure output pad" (visto em produção em 02/09 no
+  // vídeo completo). Quatro quadros a 30 fps é o piso.
+  if (duracao !== null && duracao < 0.14) return "";
   // 8%: o topo da faixa que nao vira zoom nervoso (medido em 24/08: acima de
   // ~8% cansa, abaixo de ~4% o olho nao registra). O 5,5% de 24/08 era para
   // emenda frequente; com o pedido do Bruno de "mudar a cena" (31/08), o

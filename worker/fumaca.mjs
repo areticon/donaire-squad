@@ -242,6 +242,50 @@ async function main() {
     await conferir("video completo", completo, { duracaoEsperada: DURACAO - 1 });
     if (!como.recodificado) throw new Error("o completo deveria ter sido recodificado");
 
+    // 6b. O completo com uma FATIA CURTISSIMA entre duas remocoes.
+    //
+    // E a regressao de 02/09: as emendas do video real produziam um pedaco de
+    // 0,110s (3,3 quadros), e pedir crop e scale disso derrubou o ffmpeg com
+    // "Failed to configure output pad on Parsed_scale_138". O completo do
+    // cliente ficou 21 horas sem chegar por causa de tres quadros.
+    console.log("6b. prepararCompleto com fatia curtissima entre duas remocoes");
+    const espremido = join(pasta, "espremido.mp4");
+    await prepararCompleto(fonte, espremido, {
+      // sobra 0,1s de video entre as duas remocoes, e mais um pedaco curto no fim
+      remocoes: [
+        { de: 1.0, ate: 2.0 },
+        { de: 2.1, ate: 3.0 },
+        { de: 3.15, ate: 3.9 },
+      ],
+      duracaoSec: DURACAO,
+    });
+    await conferir("completo com fatia curtissima", espremido, {
+      duracaoEsperada: DURACAO - 2.65,
+    });
+
+    // 6c. O completo em VARIOS LOTES, que e o caminho que produção usa.
+    //
+    // Em 02/09 o passe 2 num grafo so morreu com 149 fatias e 74 escaladores em
+    // 1440p: medido, o grafo pedia 496 MB antes de codificar o primeiro quadro.
+    // Agora ele roda em lotes, e o que precisa de prova e o que a divisao criou:
+    // a emenda dos lotes por copia, a paridade do plano atravessando a fronteira
+    // e o audio colado inteiro no fim.
+    console.log("6c. prepararCompleto em varios lotes");
+    const emLotes = join(pasta, "lotes.mp4");
+    await prepararCompleto(fonte, emLotes, {
+      remocoes: [
+        { de: 1.0, ate: 1.2 },
+        { de: 2.0, ate: 2.2 },
+        { de: 3.0, ate: 3.2 },
+        { de: 4.0, ate: 4.2 },
+      ],
+      duracaoSec: DURACAO,
+      fatiasPorLote: 2,
+    });
+    await conferir("completo em lotes", emLotes, { duracaoEsperada: DURACAO - 0.8 });
+    const comSom = await ffprobe(emLotes);
+    if (!comSom.temAudio) throw new Error("o completo em lotes saiu SEM audio");
+
     // 7. O completo SEM nada a editar, que e o caminho de copia.
     console.log("7. prepararCompleto sem nada a editar, que preserva o arquivo");
     const copiado = join(pasta, "copia.mp4");
