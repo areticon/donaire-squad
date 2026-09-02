@@ -577,11 +577,14 @@ function SocialPostPreview({
   content,
   imageUrl,
   scheduledAt,
+  poster,
 }: {
   platform: string | null;
   content: string;
   imageUrl: string | null;
   scheduledAt: string | null;
+  /** Capa do player quando a mídia é vídeo; sem ela o player abre preto. */
+  poster?: string | null;
 }) {
   const isLinkedIn = platform === "linkedin";
   const isTwitter = platform === "twitter";
@@ -709,6 +712,8 @@ function SocialPostPreview({
                 <video
                   key={imageUrl}
                   src={imageUrl}
+                  poster={poster ?? undefined}
+                  preload="metadata"
                   controls
                   muted
                   playsInline
@@ -1022,7 +1027,26 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const isMedia = localCard.cardType === "media";
   const isInfographic = isMedia && localCard.mediaType === "infographic";
   const isPublish = localCard.cardType === "publish";
+  const isPreview = localCard.cardType === "preview";
   const hasError = localCard.content?.startsWith("AVISO:");
+  const temPostDeTexto = dayPosts.some((p) => p.platform === "linkedin" || p.platform === "twitter");
+
+  /**
+   * De onde vêm os posts do dia para este card.
+   *
+   * Card com post ligado (Lucas, Tiago, Vitor, Paulo da campanha de texto)
+   * busca pelos irmãos do próprio post. Vera e Paulo dos dias de VÍDEO nascem
+   * sem post ligado (`sincronizarQuadroDoVideo` cria os dois só com a data), e
+   * até 02/09 o modal só sabia buscar por `postId`: o Paulo abria com "Posts
+   * não encontrados, execute uma nova campanha" e nenhum botão, e a Vera com
+   * um texto mandando abrir o Paulo. Os dois cards travados foi o veredito do
+   * Bruno. Para eles a busca é pela DATA do card, que a rota já aceitava.
+   */
+  const consultaDoDia = localCard.postId
+    ? `postId=${localCard.postId}`
+    : (isPublish || isPreview) && localCard.scheduledDate
+      ? `scheduledDate=${encodeURIComponent(localCard.scheduledDate)}`
+      : null;
 
   useEffect(() => {
     // QUALQUER card com post ligado carrega o post, e não só o do Paulo.
@@ -1034,8 +1058,6 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     // prévia e publicação devolvia null. O corte abria com player e chat, e sem
     // nenhum jeito de aprovar ou publicar: o fim da linha era um beco.
     if (localCard.postId) {
-      setLoadingPost(true);
-
       // Fetch the primary post (for scheduling info)
       fetch(`/api/posts/${localCard.postId}`)
         .then((r) => r.json())
@@ -1046,17 +1068,27 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
           setPostImageUrl(data.post?.imageUrl ?? null);
         })
         .catch(() => {});
+    }
 
+    if (consultaDoDia) {
+      setLoadingPost(true);
       // Fetch all posts for the same day (linkedin + twitter)
-      fetch(`/api/posts/by-day?projectId=${projectId}&postId=${localCard.postId}`)
+      fetch(`/api/posts/by-day?projectId=${projectId}&${consultaDoDia}`)
         .then((r) => r.json())
         .then((data) => {
-          if (Array.isArray(data.posts)) setDayPosts(data.posts);
+          if (Array.isArray(data.posts)) {
+            setDayPosts(data.posts);
+            // Sem post ligado, o horário do dia é o do primeiro post que existe.
+            if (!localCard.postId) {
+              const primeiro = data.posts.find((p: { scheduledAt: string | null }) => p.scheduledAt);
+              setPostScheduledAt(primeiro?.scheduledAt ?? null);
+            }
+          }
         })
         .catch(() => {})
         .finally(() => setLoadingPost(false));
     }
-  }, [localCard.postId, projectId]);
+  }, [localCard.postId, consultaDoDia, projectId]);
 
   const chatDisparaVigia = (respostaDoAgente: string) => {
     if (/refazendo o corte/i.test(respostaDoAgente)) vigiarRecorte();
@@ -1127,10 +1159,11 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   }
 
   async function refreshDayPosts() {
-    if (!localCard.postId) return;
-    const r = await fetch(`/api/posts/by-day?projectId=${projectId}&postId=${localCard.postId}`);
+    if (!consultaDoDia) return;
+    const r = await fetch(`/api/posts/by-day?projectId=${projectId}&${consultaDoDia}`);
     const data = await r.json();
     if (Array.isArray(data.posts)) setDayPosts(data.posts);
+    if (!localCard.postId) return;
     const r2 = await fetch(`/api/posts/${localCard.postId}`);
     const d2 = await r2.json();
     setPostScheduledAt(d2.post?.scheduledAt ?? null);
@@ -1726,33 +1759,19 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             imageUrl={(localCard.metadata as { thumb?: string | null } | null)?.thumb ?? null}
                             scheduledAt={proprio.scheduledAt ?? null}
                           />
-                          <Button
-                            className="w-full"
-                            disabled={approving || !conta}
-                            title={!conta ? "Conecte esta rede em Configurações para publicar" : undefined}
-                            onClick={async () => {
-                              setApproving(true);
-                              try {
-                                const res = await fetch(`/api/posts/${proprio.id}/publish`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ accountId: conta!.id }),
-                                });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.error ?? "Erro ao publicar");
-                                const updated = { ...localCard, status: "approved" as const };
-                                setLocalCard(updated);
-                                onCardUpdate(updated);
-                                toast.success(data.url ? `Publicado! ${data.url}` : "Publicado!");
-                              } catch (err) {
-                                toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
-                              } finally {
-                                setApproving(false);
-                              }
-                            }}
-                          >
-                            {approving ? "Publicando..." : conta ? "Publicar agora" : "Conecte a rede para publicar"}
-                          </Button>
+                          {/* Publicar NÃO é aqui. O botão "Publicar agora"
+                              viveu neste card de 31/08 a 02/09 e virou um
+                              segundo lugar de publicar, ao lado do Paulo: o
+                              Bruno chamou de fluxo confuso. O card do Vitor é
+                              onde se revisa o corte e o texto; quem publica o
+                              dia é o Paulo, que lista cada post com o botão. */}
+                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                            {proprio.status === "published"
+                              ? "Este post já foi publicado."
+                              : conta
+                                ? "Para publicar, abra o card do Paulo deste dia: ele lista todos os posts prontos."
+                                : "Conecte esta rede em Configurações; a publicação é pelo card do Paulo deste dia."}
+                          </p>
                         </div>
                       );
                     })()}
@@ -1806,12 +1825,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               </div>
             )}
 
-            {/* Full post preview for Paulo's publish card */}
-            {isPublish && (
+            {/* A prévia fiel de cada post do dia. No Paulo, porque é dali que
+                se publica; na Vera, porque o card dela PROMETE "confira como
+                cada post vai aparecer na rede" e até 02/09 só mostrava esse
+                texto, sem prévia nenhuma. */}
+            {(isPublish || isPreview) && (
               <div className="space-y-3">
                 <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
                   <Globe className="w-3.5 h-3.5" />
-                  Preview completo do post
+                  {isPreview ? "Como cada post vai aparecer" : "Preview completo do post"}
                 </p>
                 {loadingPost ? (
                   <div className="rounded-xl p-6 flex items-center justify-center" style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}>
@@ -1828,6 +1850,17 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       if (mt === "poll") return <PollPreview key={p.id} content={p.content} platform={p.platform} />;
                       if (isTwitterThread) return <ThreadPreview key={p.id} content={p.content} />;
                       if (mt === "article") return <ArticlePreview key={p.id} content={p.content} />;
+                      // A capa do player vem da esteira do vídeo: arte do
+                      // corte para o trecho, capa da fonte para o completo.
+                      // Sem isso os players do Paulo e da Vera abriam pretos.
+                      const mv = p.metadata as { videoJobId?: string; trechoIndice?: number; gravacaoCompleta?: boolean } | null;
+                      const poster = mv?.videoJobId
+                        ? typeof mv.trechoIndice === "number"
+                          ? `/api/videos/${mv.videoJobId}/midia?trecho=${mv.trechoIndice}&tipo=capa-arte`
+                          : mv.gravacaoCompleta
+                            ? `/api/videos/${mv.videoJobId}/midia?tipo=capa-fonte`
+                            : null
+                        : null;
                       return (
                         <SocialPostPreview
                           key={p.id}
@@ -1835,6 +1868,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           content={p.content}
                           imageUrl={p.imageUrl}
                           scheduledAt={p.scheduledAt ?? postScheduledAt}
+                          poster={poster}
                         />
                       );
                     })}
@@ -1866,7 +1900,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   />
                 ) : (
                   <div className="rounded-xl p-4 text-sm text-center" style={{ background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-                    Posts não encontrados — execute uma nova campanha
+                    Nenhum post neste dia ainda.
                   </div>
                 )}
               </div>
@@ -1910,7 +1944,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   </button>
                 </div>
 
-                {localCard.status !== "approved" && localCard.postId && (
+                {localCard.status !== "approved" && dayPosts.length > 0 && (
                   <div className="space-y-2">
                     {/* ── Banner: campanha rejeitada ── */}
                     {localCard.status === "rejected" && (
@@ -1924,7 +1958,10 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     )}
 
                     {/* ── Aprovar (agendar) — só se não estiver rejeitado ── */}
-                    {localCard.status !== "rejected" && <div
+                    {/* As grades de LinkedIn/X só aparecem em dia que TEM post
+                        de texto. Num dia só de vídeo elas apareciam inteiras e
+                        apagadas, três botões mortos acima do que importa. */}
+                    {localCard.status !== "rejected" && temPostDeTexto && <div
                       className="rounded-xl overflow-hidden border"
                       style={{ borderColor: "var(--border)" }}
                     >
@@ -1983,10 +2020,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       </div>
                     </div>}
 
-                    {/* As redes de VÍDEO (YouTube, Instagram, Facebook) entram
-                        conforme os posts do dia. Antes o Paulo só sabia
-                        publicar LinkedIn e X, e o dia de vídeo terminava num
-                        beco (achado de 01/09). */}
+                    {/* Os posts de VÍDEO do dia (YouTube, Instagram, Facebook),
+                        UM BOTÃO POR POST e não por rede. A grade antiga era
+                        por rede e pegava o primeiro post de cada uma: na
+                        segunda-feira há dois de YouTube (a gravação completa
+                        e o Short), e o segundo nunca teria botão. Publicar um
+                        não esconde os outros: o card só fecha quando todos os
+                        posts do dia saíram. */}
                     {localCard.status !== "rejected" && dayPosts.some((p) => ["youtube", "instagram", "facebook"].includes(p.platform)) && (
                       <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
                         <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
@@ -1995,18 +2035,21 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             Publicar vídeo agora
                           </p>
                         </div>
-                        <div className="grid grid-cols-3">
-                          {["youtube", "instagram", "facebook"].map((plat) => {
-                            const post = dayPosts.find((p) => p.platform === plat);
-                            const conta = post ? accountFor(plat, post.socialAccountId) : undefined;
+                        <div className="flex flex-col">
+                          {dayPosts.filter((p) => ["youtube", "instagram", "facebook"].includes(p.platform)).map((post) => {
+                            const plat = post.platform;
+                            const conta = accountFor(plat, post.socialAccountId);
+                            const publicado = post.status === "published";
+                            const rede = plat === "youtube" ? "YouTube" : plat === "instagram" ? "Instagram" : "Facebook";
+                            const titulo = (post.content ?? "").split("\n")[0].trim().slice(0, 70) || rede;
                             return (
                               <button
-                                key={plat}
+                                key={post.id}
                                 type="button"
-                                disabled={approving || !post || !conta}
-                                title={!post ? "Sem post desta rede neste dia" : !conta ? "Conecte a rede em Configurações" : undefined}
+                                disabled={approving || !conta || publicado}
+                                title={publicado ? "Já publicado" : !conta ? "Conecte a rede em Configurações" : undefined}
                                 onClick={async () => {
-                                  if (!post || !conta) return;
+                                  if (!conta) return;
                                   setApproving(true);
                                   try {
                                     const res = await fetch(`/api/posts/${post.id}/publish`, {
@@ -2017,22 +2060,30 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                     const d = await res.json();
                                     if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
                                     toast.success(d.url ? `Publicado! ${d.url}` : "Publicado!");
-                                    const updated = { ...localCard, status: "approved" as const };
-                                    setLocalCard(updated);
-                                    onCardUpdate(updated);
+                                    await refreshDayPosts();
+                                    const restantes = dayPosts.filter((o) => o.id !== post.id && o.status !== "published" && o.status !== "scheduled");
+                                    if (restantes.length === 0) {
+                                      const updated = { ...localCard, status: "approved" as const };
+                                      setLocalCard(updated);
+                                      onCardUpdate(updated);
+                                    }
                                   } catch (err) {
                                     toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
                                   } finally {
                                     setApproving(false);
                                   }
                                 }}
-                                className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
-                                style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
+                                className="flex items-center gap-3 py-3 px-4 text-left transition-all disabled:opacity-40 hover:bg-white/5"
+                                style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border)" }}
                               >
-                                <RedeIcone plataforma={plat} className="w-5 h-5" />
-                                <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                                  {plat === "youtube" ? "YouTube" : plat === "instagram" ? "Instagram" : "Facebook"}
+                                <RedeIcone plataforma={plat} className="w-5 h-5 shrink-0" />
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{titulo}</span>
+                                  <span className="block text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                    {publicado ? `Publicado no ${rede}` : conta ? `Publicar no ${rede} agora` : `Conecte o ${rede} para publicar`}
+                                  </span>
                                 </span>
+                                {!publicado && conta && <Send className="w-3.5 h-3.5 shrink-0 text-orange-400" />}
                               </button>
                             );
                           })}
@@ -2041,7 +2092,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     )}
 
                     {/* ── Publicar agora — só se não estiver rejeitado ── */}
-                    {localCard.status !== "rejected" && <div
+                    {localCard.status !== "rejected" && temPostDeTexto && <div
                       className="rounded-xl overflow-hidden border"
                       style={{ borderColor: "var(--border)" }}
                     >

@@ -82,7 +82,12 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
         platform: "youtube",
         content: conteudo,
         mediaType: "video",
-        imageUrl: video.blobUrl,
+        // O COMPLETO EDITADO, e não `blobUrl`, que é a gravação bruta. Até
+        // 02/09 o post apontava para o upload original: "Publicar no YouTube"
+        // subiria o arquivo sem edição, e a prévia no Gestor abria um player
+        // preto, porque o store da gravação bruta é privado e o navegador
+        // recebe 403. Achado lendo os posts do projeto de teste do Bruno.
+        imageUrl: video.completoUrl,
         status: "draft",
         runId: run.id,
         dayOfWeek: 1,
