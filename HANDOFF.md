@@ -6974,11 +6974,49 @@ errada. **Quem come memoria e o codificador, nao o grafo.**
 - A prova de fumaca ganhou DOIS casos novos: fatia curtissima entre remocoes, e
   o completo em varios lotes com cobranca de audio no fim.
 
+### CORRECAO DA PARTE 82, no mesmo dia: memoria NAO era o problema
+
+O worker passou a responder o teto do conteiner no `/saude`, lido do cgroup, e
+o numero derrubou a conclusao acima:
+
+    {"limite": "7629 MB", "emUso": "48 MB"}
+
+Sete gigabytes e meio. O 1,3 GB que o desenho antigo pedia cabia com folga, e
+a hipotese de memoria estava errada apesar de bem medida do lado do ffmpeg.
+Faltava medir o OUTRO lado, e essa e a licao de verdade: **medir o consumo sem
+medir o teto nao decide nada**.
+
+O que a mensagem completa do ffmpeg diz, quando nao vem cortada em 600
+caracteres:
+
+```
+Failed to configure output pad on Parsed_scale_138
+Error reinitializing filters!
+Failed to inject frame into filter network: Resource temporarily unavailable
+Error while processing the decoded data for stream #0:0
+```
+
+"Error reinitializing filters" e reconfiguracao de grafo NO MEIO do fluxo, que
+e o defeito que este projeto ja conhece: alguma coisa chega ao `concat` com
+parametro diferente do que ele configurou. Metade das fatias passava por
+`scale`, que normaliza formato e proporcao de pixel, e a outra metade ia crua.
+Agora TODA fatia sai com `format=yuv420p,setsar=1`, tenha punch-in ou nao, e o
+`concat` recebe entradas identicas por construcao.
+
+O trabalho em lotes CONTINUA, e nao por memoria: ele mantem o grafo pequeno,
+deixa a falha de um lote nao custar o video inteiro e escala para gravacao de
+duas horas. Mas o motivo dele mudou de "cabe na memoria" para "grafo menor,
+falha menor".
+
+Duas ferramentas ficaram do episodio: o `/saude` diz o teto e o uso de
+memoria, e o erro do ffmpeg deixou de vir cortado (600 para 1800 caracteres,
+porque as PRIMEIRAS linhas sao as que nomeiam quem falhou primeiro).
+
 ### A licao de metodo
 
-Mensagem de erro repetida nao quer dizer causa repetida. O projeto ja tinha
-visto "Failed to configure output pad" duas vezes, sempre por propriedade de
-quadro mudando, e a terceira vez foi memoria. O que separou as duas foi
-MEDIR o pico do processo, e nao reler o codigo procurando o erro conhecido.
+Mensagem de erro repetida nao quer dizer causa repetida, e medida sem
+referencia nao quer dizer nada. Eu medi 1,3 GB de consumo e conclui "estourou
+a memoria" sem nunca ter perguntado quanta memoria a maquina tem. A pergunta
+custava um endpoint.
 
 *Atualizado em 02/09/2026 por Claude Code.*

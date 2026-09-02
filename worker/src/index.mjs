@@ -865,6 +865,16 @@ async function avisar(trabalho, corpo) {
   }
 }
 
+/**
+ * Quantos trabalhos estao rodando agora.
+ *
+ * Existe porque a regra "deploy so com a fila vazia" era conferida no BANCO, e
+ * o banco nao ve o `soCompleto`: o video fica em "cut" a rodada inteira. Em
+ * 02/09 a checagem disse "fila vazia" e o deploy matou a rodada que eu mesmo
+ * estava esperando. Quem sabe se ha trabalho em andamento e o worker.
+ */
+let emAndamento = 0;
+
 const servidor = createServer((req, res) => {
   const responder = (status, corpo) => {
     res.writeHead(status, { "Content-Type": "application/json" });
@@ -878,7 +888,7 @@ const servidor = createServer((req, res) => {
   // que passa o filtro por arquivo MUDOU DE NOME entre as duas. Sem isso a
   // diferença só apareceria como uma falha em produção que não reproduz local.
   if (req.method === "GET" && req.url === "/saude") {
-    return responder(200, { ok: true, ...diagnostico(), memoria: memoriaDoConteiner() });
+    return responder(200, { ok: true, trabalhando: emAndamento > 0, ...diagnostico(), memoria: memoriaDoConteiner() });
   }
 
   if (req.method !== "POST" || !req.url?.startsWith("/cortar")) {
@@ -908,6 +918,7 @@ const servidor = createServer((req, res) => {
     // por vários minutos: é a mesma armadilha que derrubou a seleção de trechos.
     responder(202, { aceito: true, videoJobId: trabalho.videoJobId });
 
+    emAndamento += 1;
     try {
       const resultados = await processar(trabalho);
       await avisar(trabalho, { ok: true, ...resultados });
@@ -915,6 +926,8 @@ const servidor = createServer((req, res) => {
       const mensagem = e instanceof Error ? e.message : "Falha no processamento";
       console.error(`[${trabalho.videoJobId}] ${mensagem}`);
       await avisar(trabalho, { ok: false, erro: mensagem }).catch(() => {});
+    } finally {
+      emAndamento -= 1;
     }
   });
 });

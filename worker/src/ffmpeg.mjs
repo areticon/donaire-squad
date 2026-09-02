@@ -68,7 +68,7 @@ function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
     p.on("close", (code) => {
       clearTimeout(t);
       if (code === 0) resolve();
-      else reject(new Error(`ffmpeg saiu com ${code}: ${erro.slice(-600)}`));
+      else reject(new Error(`ffmpeg saiu com ${code}: ${erro.slice(-1800)}`));
     });
   });
 }
