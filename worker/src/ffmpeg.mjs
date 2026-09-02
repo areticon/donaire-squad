@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { copyFile, rm, writeFile } from "node:fs/promises";
 
@@ -99,6 +100,31 @@ let _diagnostico = null;
  * um processo só para perguntar uma versão que não muda enquanto o contêiner
  * vive.
  */
+/**
+ * O teto de memória do contêiner, lido do cgroup.
+ *
+ * Existe porque em 02/09 o vídeo completo morreu duas vezes e a suspeita
+ * principal era memória, sem NINGUÉM saber quanta memória a máquina tem. O
+ * ffmpeg desta etapa pede entre 600 MB e 1,3 GB, medido; sem o teto do
+ * contêiner ao lado, esse número não decide nada.
+ *
+ * cgroup v2 primeiro (`memory.max`), v1 como reserva. Fora de contêiner os
+ * arquivos não existem e a resposta é honesta sobre isso.
+ */
+export function memoriaDoConteiner() {
+  const ler = (caminho) => {
+    try {
+      return readFileSync(caminho, "utf8").trim();
+    } catch {
+      return null;
+    }
+  };
+  const max = ler("/sys/fs/cgroup/memory.max") ?? ler("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+  const uso = ler("/sys/fs/cgroup/memory.current") ?? ler("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+  const mb = (v) => (v && v !== "max" && Number(v) < 1e15 ? Math.round(Number(v) / 1048576) + " MB" : v ?? "desconhecido");
+  return { limite: mb(max), emUso: mb(uso) };
+}
+
 export function diagnostico() {
   if (_diagnostico) return _diagnostico;
   const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
@@ -643,12 +669,24 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
  * derrubaria a emenda inteira.
  */
 function segmentoComPunchIn(fechado, largura, altura, pessoa = null, zoom = 1.08, duracao = null) {
-  if (!fechado || !largura || !altura) return "";
-  // Pedaço curto demais não ganha tratamento de imagem, e a razão é mecânica
-  // antes de ser estética: `scale` sobre uma fatia de poucos quadros derruba o
-  // ffmpeg com "Failed to configure output pad" (visto em produção em 02/09 no
-  // vídeo completo). Quatro quadros a 30 fps é o piso.
-  if (duracao !== null && duracao < 0.14) return "";
+  // TODA fatia sai com os MESMOS parâmetros, tenha ela punch-in ou não.
+  //
+  // O `concat` exige que suas entradas casem em formato e proporção de pixel.
+  // Quando metade das fatias passa por `scale` (que normaliza os dois) e a
+  // outra metade vai crua, as entradas podem divergir, e o ffmpeg tenta
+  // reconfigurar o grafo no meio do fluxo:
+  //
+  //     Failed to configure output pad on Parsed_scale_138
+  //     Error reinitializing filters!
+  //     Failed to inject frame into filter network
+  //
+  // Foi o erro que segurou o vídeo completo do cliente em 02/09. Normalizar as
+  // duas pontas custa nada e fecha a porta inteira.
+  const normalizado = ",format=yuv420p,setsar=1";
+  if (!fechado || !largura || !altura) return normalizado;
+  // Pedaço curto demais não ganha tratamento de imagem: poucos quadros não dão
+  // material para o filtro e o olho não registra a troca de plano.
+  if (duracao !== null && duracao < 0.14) return normalizado;
   // 8%: o topo da faixa que nao vira zoom nervoso (medido em 24/08: acima de
   // ~8% cansa, abaixo de ~4% o olho nao registra). O 5,5% de 24/08 era para
   // emenda frequente; com o pedido do Bruno de "mudar a cena" (31/08), o
@@ -668,7 +706,7 @@ function segmentoComPunchIn(fechado, largura, altura, pessoa = null, zoom = 1.08
   const cy = pessoa ? (pessoa.y + pessoa.h / 2) * altura : altura / 2;
   const x = Math.round(Math.max(0, Math.min(largura - w, cx - w / 2)));
   const y = Math.round(Math.max(0, Math.min(altura - h, cy - h / 2)));
-  return `,crop=${w}:${h}:${x}:${y},scale=${largura}:${altura},setsar=1`;
+  return `,crop=${w}:${h}:${x}:${y},scale=${largura}:${altura}${normalizado}`;
 }
 
 /**

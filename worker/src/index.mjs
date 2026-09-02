@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { get, put } from "@vercel/blob";
 import {
   ffprobe,
+  memoriaDoConteiner,
   prepararCompleto,
   prepararTrecho,
   cortarVertical,
@@ -877,7 +878,7 @@ const servidor = createServer((req, res) => {
   // que passa o filtro por arquivo MUDOU DE NOME entre as duas. Sem isso a
   // diferença só apareceria como uma falha em produção que não reproduz local.
   if (req.method === "GET" && req.url === "/saude") {
-    return responder(200, { ok: true, ...diagnostico() });
+    return responder(200, { ok: true, ...diagnostico(), memoria: memoriaDoConteiner() });
   }
 
   if (req.method !== "POST" || !req.url?.startsWith("/cortar")) {
