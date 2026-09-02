@@ -336,9 +336,10 @@ npx vercel deploy --prod --force
 > código, o código manda.**
 
 **Bloqueia lançamento:**
-- [ ] **O processo inteiro no Gestor de Conteúdo, em tempo real**, e a tela do
-      vídeo sai de cena (pedido do Bruno em 02/09). O app já tem Pusher.
-      Desenhe no canvas antes do código
+- [x] **O processo inteiro no Gestor de Conteúdo, em tempo real**, e a tela do
+      vídeo sai de cena (pedido do Bruno em 02/09). NO AR em 02/09, ver parte
+      87. Atenção à premissa corrigida: o app NÃO tem Pusher em uso nem chave
+      no ambiente; o tempo real é a consulta de 4 em 4 segundos
 - [ ] **Camada de design no vídeo completo** (a queixa 3 de 01/09: "a edição não
       tem efeito gráfico nenhum, igual as referências do Vox"). A bíblia de
       estilo e as referências existem desde 25/08; o motor é que falta, e o
@@ -7295,5 +7296,82 @@ dele no lugar do preto.
   ha editor de legenda, que segue sendo a fase 2 do glossario, aberta.
 - **"Tudo deve acontecer no Gestor, em tempo real"**: e a frente propria, com
   card no planner. O desenho vai para o canvas ANTES do codigo.
+
+*Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 87): o processo saiu da tela do video e virou o Gestor
+
+O pedido do Bruno em 02/09 foi literal: "a tela do video e ruim, todo o
+processo deve acontecer na tela de gestor de conteudo, em tempo real".
+Desenhado no canvas do Claude Design, aprovado, e so entao virou codigo. O
+canvas e os arquivos de trabalho vivem em `docs/design/gestor-tempo-real/`.
+
+### Duas premissas que os DADOS derrubaram antes do desenho
+
+1. **"O app ja tem Pusher, entao tempo real nao pede infra nova" e FALSO.**
+   `pusher` e `pusher-js` estao no `package.json` e existe
+   `lib/pusher/index.ts`, mas **nenhum arquivo do app importa isso** e nao ha
+   uma unica chave `PUSHER_*` no `.env.local`. Seria conta nova, nao economia.
+   O tempo real desta leva e a consulta de 4 em 4 segundos, que ja existia e ja
+   sustentava a tela de espera desde 22/08.
+2. **Os dois cortes que "sumiram" nao eram bug.** No video do teste
+   (`cmtkdf3ow000004lavcl9tnc7`), o corte 0 estava `publicar: true` com destino
+   `youtube_shorts`, e os cortes 1 e 2 estavam `publicar: false`. Eles nascem
+   `true` no `cortar-callback`, entao foram desmarcados a mao. O sintoma e de
+   produto e nao de defeito: a decisao morava na tela do video e o resultado no
+   Gestor.
+
+### O que mudou
+
+- **A aba Video saiu da navegacao.** A rota `/projects/[id]/video` continua e
+  REDIRECIONA para `/live`: ha links guardados por ai, e 404 seria a mesma
+  sensacao de sumico que este trabalho existe para acabar. Dois motivos para
+  nao voltar atras: o piloto automatico mora agora na esteira, e duas telas
+  rodando o piloto ao mesmo tempo disparariam cada etapa duas vezes.
+- **`components/video/esteira-do-video.tsx`** carrega DUAS coisas que viviam na
+  tela do video: a faixa que se ve e **o piloto automatico**. Se so a faixa
+  tivesse mudado de lugar, a tela sairia de cena levando junto quem empurra o
+  fluxo. Seis fases visiveis (ouvindo, escolhendo, cortando, capas, escrevendo,
+  video completo), cronometro contado do ENVIO, e quatro estados: rodando, "os
+  cortes ja estao no quadro e falta o completo", falhou e terminou.
+- **O envio da gravacao vive no Gestor**, com estilo, trilha e termos ao lado
+  (`enviar-gravacao.tsx`). Nasce aberto para quem nunca subiu gravacao no
+  projeto, porque a tela que ensinava isso saiu de cena.
+- **O video completo ganha lugar reservado no quadro desde o minuto zero**, com
+  o tempo que falta. Era a queixa "sumiu o video completo": ele nao tinha
+  sumido, estava sendo montado, e nada no quadro dizia isso.
+- **Os cortes desligados continuam visiveis**, apagados, com "GUARDADO" e uma
+  janela (`corte-guardado.tsx`) para ligar. Ligar usa o caminho que ja existia
+  (`/destinos` chama `sincronizarQuadroDoVideo`), entao nenhuma regra de
+  publicacao foi duplicada.
+- **O card do corte ganhou "Guardar este corte, sem publicar"**, que fecha o
+  ciclo: a decisao de ir ao ar deixa de morar em outra tela.
+
+Os dois cards novos do quadro (o lugar do completo e os cortes guardados) sao
+VIRTUAIS: nascem do estado da gravacao, nao de linha no banco. Card de verdade
+para algo que ainda nao existe seria lixo para limpar depois, e daria a
+impressao de peca pronta que nao esta pronta.
+
+### Dois defeitos achados no caminho, os dois de silencio
+
+1. **`/api/videos/[id]/destinos` tratava destino OMITIDO como destino VAZIO.**
+   A tela antiga sempre mandava a lista inteira, entao nunca doeu. O card novo
+   manda so `publicar`, e com a regra antiga ligar o interruptor APAGAVA as
+   redes do corte no mesmo movimento: o corte voltava a valer, sem rede nenhuma
+   para onde ir, e a sincronizacao do quadro nao criava card. Falha silenciosa
+   com a tela dizendo que o corte ia ao ar.
+2. **O player do corte no modal abria preto.** O conserto de poster da parte 86
+   pegou o `MediaPreview` (o player da Diana) e o `<video>` do corte ficou de
+   fora. Agora usa a mesma `metadata.thumb`.
+
+### Verificado na TELA logada, com os dados reais
+
+`scripts/tmp/sessao-e2e.mts` + `npm run dev` no projeto "Empreendedorismo
+Cristao". Os quatro estados da faixa foram vistos um a um. O caminho de ligar
+um corte guardado foi rodado de verdade: `publicar` virou `true`, a
+sincronizacao criou **2 cards e 2 posts** (um por destino) na quinta, que era
+exatamente o dia que o card guardado ocupava, e **o estado foi revertido ao que
+o Bruno tinha deixado** (corte 1 de volta em `publicar: false`, com os destinos
+preservados, o que tambem provou o conserto 1 acima).
 
 *Atualizado em 02/09/2026 por Claude Code.*
