@@ -374,6 +374,10 @@ npx vercel deploy --prod --force
    primeira falha ganha retry sozinho.
 4. Erro técnico vai para o log, frase humana vai para a tela, nome de
    fornecedor nunca chega ao cliente.
+5. Depois de `railway up`, o `/saude` respondendo NÃO prova que o contêiner
+   novo está servindo: o pedido pode cair no antigo, que morre em seguida e
+   leva o trabalho junto, sem log e sem erro. Custou uma rodada inteira em
+   02/09. Espere o deploy assentar e confirme no log que o trabalho começou.
 
 ## 10. Comandos Úteis
 
