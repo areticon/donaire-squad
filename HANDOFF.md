@@ -7094,3 +7094,49 @@ EMENDAS, feita na janela de 150s em 01/09, mostrou o salto maximo caindo de
 Quem decide agora e o ouvido do Bruno. Se ele ainda ouvir estalo, o proximo
 passo tem dono: achar as emendas por deteccao no proprio arquivo entregue, em
 vez de calcular por lista de remocoes, e medir uma a uma.
+
+## Sessao 02/09/2026 (parte 84): a landing com movimento, aprovada antes de virar codigo
+
+O Bruno aprovou a proposta no canvas ("gostei da landing page, pode subir para
+producao"), e so entao ela virou codigo. E o fluxo que ficou combinado depois
+da reprovacao de 01/09, e ele funcionou: **desenho no canvas, veredito dele,
+producao**.
+
+### O que entrou
+
+- **`components/landing/hero.tsx`**: a coreografia de chegada (selo, manchete,
+  paragrafos e botoes subindo em sequencia), o traco laranja DESENHADO sob
+  "demandou" e sob "postou", o squad montando um agente por vez, o aviso de
+  post publicado chegando por ultimo, os pontos de "ativo" piscando fora de
+  fase e o anel no botao principal.
+- **O Vitor Video entrou na lista, e entrou PRIMEIRO**, com o avatar no laranja
+  da marca. A lista antiga nao tinha o agente que hoje comeca tudo.
+- **`components/landing/how-it-works.tsx`**: a linha da esteira se desenhando
+  de cima para baixo, os passos entrando nela, e o numero da etapa 3 (a do
+  video) sendo o UNICO que acende no laranja. Quando todos acendem, nenhum
+  acende.
+- **As duas artes** viraram assets em `public/artes/`, recortadas com
+  transparencia e no traco da propria pagina.
+- **`.lp-*` no globals.css**: as classes da coreografia, com
+  `prefers-reduced-motion` respeitado. Para parte das pessoas animacao em laco
+  da enjoo de verdade, e o sistema ja diz isso.
+
+### Duas armadilhas de empilhamento, achadas no screenshot
+
+1. A arte ficou POR CIMA do cartao e comeu o texto do aviso de publicado, que
+   e justamente a frase que fecha a historia do squad.
+2. Mandada para tras com `-z-10`, ela sumiu de vez: sem contexto de
+   empilhamento no pai, o z negativo cai atras do FUNDO da secao. O conserto e
+   `isolate` no cartao, e ai o -z-10 vale so ali dentro.
+
+As duas eram invisiveis lendo o codigo e obvias na imagem. Terceira vez na
+semana que o screenshot e o teste.
+
+### Diferenca proposital entre o canvas e o site
+
+No canvas a coreografia roda em LACO, e ali isso e ferramenta: e para poder
+assistir de novo sem recarregar. No site ela roda UMA vez na chegada e para;
+so a grade, o brilho, os pontos de ativo e o anel do botao seguem vivos, todos
+lentos.
+
+*Atualizado em 02/09/2026 por Claude Code.*

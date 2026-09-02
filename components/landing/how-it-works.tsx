@@ -89,8 +89,10 @@ export function HowItWorks() {
           </p>
         </motion.div>
 
-        <div className="relative">
-          <div className="absolute left-[28px] top-8 bottom-8 w-px bg-gradient-to-b from-orange-500/50 via-orange-500/20 to-transparent hidden md:block" />
+        <div className="relative lg:grid lg:grid-cols-[1fr_320px] lg:gap-14 lg:items-start">
+          {/* A linha se DESENHA de cima para baixo quando a seção chega, e os
+              passos entram nela em seguida. Aprovado no canvas em 02/09. */}
+          <div className="lp-linha absolute left-[28px] top-8 bottom-8 w-px bg-gradient-to-b from-orange-500/50 via-orange-500/20 to-transparent hidden md:block" />
 
           <div className="space-y-8">
             {ETAPAS.map((etapa, i) => (
@@ -102,7 +104,16 @@ export function HowItWorks() {
                 transition={{ delay: i * 0.12 }}
                 className="flex gap-6 sm:gap-8 items-start"
               >
-                <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-lg z-10">
+                {/* O número acende só na etapa em destaque, que é a do vídeo.
+                    Quando TODOS acendem, nenhum acende: destaque que vale para
+                    tudo não destaca nada. */}
+                <div
+                  className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center font-black text-lg z-10 border transition-colors duration-500 ${
+                    etapa.destaque
+                      ? "bg-orange-500 border-orange-500 text-white"
+                      : "bg-[var(--bg-elevated)] border-[var(--border)] text-[var(--text-muted)]"
+                  }`}
+                >
                   {etapa.numero}
                 </div>
                 <div
@@ -136,6 +147,24 @@ export function HowItWorks() {
               </motion.div>
             ))}
           </div>
+
+          {/* A arte fecha a seção resumindo o que os cinco passos disseram: uma
+              gravação virando várias peças. É camada, não estrutura: se sair, a
+              seção continua inteira. */}
+          <motion.figure
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.7, duration: 0.6 }}
+            className="hidden lg:block m-0 sticky top-32"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/artes/fluxo.png" alt="Uma gravação virando seis peças de conteúdo" className="w-full" />
+            <figcaption className="flex justify-between mt-5 text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <span>1 gravação</span>
+              <span className="text-orange-400">a semana inteira</span>
+            </figcaption>
+          </motion.figure>
         </div>
       </div>
     </section>
