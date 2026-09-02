@@ -243,11 +243,19 @@ function MediaPreview({
   cardType,
   large = false,
   onSlideChange,
+  poster,
 }: {
   mediaUrl: string | null;
   cardType: string;
   large?: boolean;
   onSlideChange?: (index: number) => void;
+  /**
+   * O quadro que aparece ANTES de tocar. Sem ele o player abre um retângulo
+   * preto, e um retângulo preto de 520px de altura lê como coisa quebrada,
+   * mesmo com o vídeo carregado (o Bruno reclamou disso em 02/09). A capa do
+   * corte já existe, então o poster sai de graça.
+   */
+  poster?: string | null;
 }) {
   const [videoError, setVideoError] = useState(false);
 
@@ -300,6 +308,7 @@ function MediaPreview({
           <video
             key={mediaUrl}
             src={mediaUrl}
+            poster={poster ?? undefined}
             controls
             playsInline
             muted
@@ -951,7 +960,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const hasError = localCard.content?.startsWith("AVISO:");
 
   useEffect(() => {
-    if (isPublish && localCard.postId) {
+    // QUALQUER card com post ligado carrega o post, e não só o do Paulo.
+    //
+    // O `isPublish` aqui era o defeito que o Bruno chamou de "não publica, não
+    // revisa, não avança" em 02/09: o card do Vitor tem `postId` correto no
+    // banco, mas a busca só rodava para o card de publicação, então `dayPosts`
+    // ficava vazio, o `find` por `postId` não achava nada e o bloco inteiro de
+    // prévia e publicação devolvia null. O corte abria com player e chat, e sem
+    // nenhum jeito de aprovar ou publicar: o fim da linha era um beco.
+    if (localCard.postId) {
       setLoadingPost(true);
 
       // Fetch the primary post (for scheduling info)
@@ -974,7 +991,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         .catch(() => {})
         .finally(() => setLoadingPost(false));
     }
-  }, [isPublish, localCard.postId, projectId]);
+  }, [localCard.postId, projectId]);
 
   const chatDisparaVigia = (respostaDoAgente: string) => {
     if (/refazendo o corte/i.test(respostaDoAgente)) vigiarRecorte();
@@ -1418,6 +1435,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   mediaUrl={localCard.mediaUrl}
                   cardType="media"
                   large
+                  // A capa do corte vira o quadro de abertura do player.
+                  poster={(localCard.metadata as { thumb?: string | null } | null)?.thumb ?? null}
                   onSlideChange={setCurrentSlide}
                 />
                 {isInfographic && !hasError && localCard.mediaUrl ? (

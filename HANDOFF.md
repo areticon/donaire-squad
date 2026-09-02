@@ -336,6 +336,9 @@ npx vercel deploy --prod --force
 > código, o código manda.**
 
 **Bloqueia lançamento:**
+- [ ] **O processo inteiro no Gestor de Conteúdo, em tempo real**, e a tela do
+      vídeo sai de cena (pedido do Bruno em 02/09). O app já tem Pusher.
+      Desenhe no canvas antes do código
 - [ ] **Camada de design no vídeo completo** (a queixa 3 de 01/09: "a edição não
       tem efeito gráfico nenhum, igual as referências do Vox"). A bíblia de
       estilo e as referências existem desde 25/08; o motor é que falta, e o
@@ -7229,5 +7232,68 @@ E a queixa maior do Bruno e de produto, nao de bug: **"a tela do video e ruim,
 todo o processo deve acontecer na tela de gestor de conteudo, em tempo real"**.
 Registrado como frente propria, e o desenho vai para o canvas ANTES do codigo,
 que e o fluxo que passou a valer em 02/09.
+
+*Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02/09/2026 (parte 86): o e2e com a TELA, e o beco do card de video
+
+Veredito do Bruno: "esta pessimo... a tela de gestor de conteudo esta bugada,
+nao publica, nao revisa, nao avanca, tudo quebrado". Ele pediu o teste de ponta
+a ponta feito por mim, e desta vez foi na TELA, logado, e nao so no banco.
+
+### Como o e2e logado passou a ser possivel
+
+Ate hoje o "e2e rodado por mim" era leitura de banco. O que faltava era sessao.
+`scripts/tmp/sessao-e2e.mts` cria uma sessao TEMPORARIA e imprime o cookie
+assinado (o better-auth assina com HMAC-SHA256 do segredo, no formato
+`token.assinatura`), e apaga tudo no fim (`sessao-e2e.mts apagar`).
+
+Detalhe que custou tempo: contra PRODUCAO o cookie e recusado, porque o segredo
+de la nao e o mesmo do `.env.local`. Como o banco e compartilhado, o teste roda
+contra o `npm run dev` local com os MESMOS dados de producao.
+
+### O defeito, achado clicando
+
+O card do Vitor no Gestor abria com player, ajuste fino e chat, e **acabava
+ali**: sem previa, sem aprovar, sem publicar. O fim da linha era um beco.
+
+A causa e uma linha:
+
+```js
+useEffect(() => {
+  if (isPublish && localCard.postId) {   // isPublish == cardType "publish"
+    ...busca o post e os posts do dia...
+```
+
+O card do Vitor tem `postId` correto no banco (conferido: aponta para o post de
+YouTube do mesmo dia), mas a busca so rodava para o card do Paulo. Sem ela,
+`dayPosts` ficava vazio, o `find` por `postId` nao achava nada, e o bloco
+inteiro de previa e publicacao devolvia `null`.
+
+Conserto: qualquer card com `postId` carrega o post. Verificado na tela, no
+mesmo dado que o Bruno usou:
+
+- corte: previa do YouTube, "Agendado: 31 de ago., 09:00", contagem de
+  caracteres e **Publicar agora**
+- completo: player de 15:01, previa com capitulos e hashtags, e **Publicar
+  agora**
+
+### O player que abria preto
+
+O `<video>` do modal nao tinha `poster`, entao ele abria um retangulo preto de
+520px mesmo com o video carregado. A capa do corte ja existe em
+`metadata.thumb`: virou o quadro de abertura. O completo agora abre com o rosto
+dele no lugar do preto.
+
+### O que continua verdade das outras queixas
+
+- **"A tela de video nao mostra o video completo editado"**: nao mostra mesmo.
+  O bloco do completo saiu da tela do video em 31/08 e o completo so vive no
+  Gestor. Ele esta la, com player e capitulos.
+- **"Depois que escolhe o corte nao da para editar capa, legenda, nada"**: no
+  card ha ajuste fino de tempo e o chat do Vitor (que refaz corte e capa). NAO
+  ha editor de legenda, que segue sendo a fase 2 do glossario, aberta.
+- **"Tudo deve acontecer no Gestor, em tempo real"**: e a frente propria, com
+  card no planner. O desenho vai para o canvas ANTES do codigo.
 
 *Atualizado em 02/09/2026 por Claude Code.*
