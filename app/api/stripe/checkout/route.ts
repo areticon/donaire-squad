@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { auth, currentUser } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
-import { createCheckoutSession, PLANS } from "@/lib/stripe";
+import { createCheckoutSession, PLANS, vagasDeFundador } from "@/lib/stripe";
 import { prisma } from "@/lib/db/prisma";
 
 export async function POST(req: NextRequest) {
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    // Ciclo anual: só o Pro tem, por enquanto. Se o price não estiver
-    // configurado no ambiente, recusar é melhor que cair no mensal em
-    // silêncio e cobrar diferente do que a tela prometeu.
+    // Ciclo anual: se o price não estiver configurado no ambiente, recusar é
+    // melhor que cair no mensal em silêncio e cobrar diferente do que a tela
+    // prometeu.
     let priceId = plan.priceId;
     if (ciclo === "anual") {
       const anual = "annualPriceId" in plan ? plan.annualPriceId : undefined;
@@ -42,11 +42,19 @@ export async function POST(req: NextRequest) {
     // (pedido do Bruno no teste de jornada de 21/08). O cancelado continua
     // voltando para /billing, onde estão os planos.
     const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
+
+    // Fundador: só no Autoridade mensal, e só enquanto o Stripe disser que
+    // ainda há vaga. A decisão é daqui, não da tela, para ninguém montar um
+    // pedido com desconto que já acabou.
+    const fundador =
+      planId === "business" && ciclo !== "anual" && (await vagasDeFundador()) > 0;
+
     const checkoutUrl = await createCheckoutSession(
       userId,
       email,
       priceId,
-      returnUrl
+      returnUrl,
+      { fundador }
     );
 
     return NextResponse.json({ url: checkoutUrl });

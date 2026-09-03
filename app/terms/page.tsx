@@ -37,7 +37,7 @@ export default function TermsPage() {
             Termos de Uso e Condições de Serviço
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 18/08/2026
+            Última atualização: 03/09/2026
           </p>
         </div>
 
@@ -198,9 +198,25 @@ export default function TermsPage() {
                 </p>
               </div>
               <div>
-                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.6 Política de reembolso após o prazo de arrependimento</h3>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.6 Garantia de 30 dias</h3>
+                <p className="mb-2">
+                  Além do direito de arrependimento do item 5.5, a demandou oferece uma garantia própria: se, nos{" "}
+                  <strong className="text-[var(--text-primary)]">30 (trinta) dias corridos a contar da primeira cobrança</strong>{" "}
+                  de uma nova assinatura, o Usuário não tiver publicado por meio da plataforma nenhuma peça que ele mesmo tenha aprovado, poderá solicitar o cancelamento com{" "}
+                  <strong className="text-[var(--text-primary)]">reembolso integral</strong> do valor pago naquela contratação, pelo mesmo meio de pagamento, bastando pedir pelo portal de assinatura ou pelo e-mail{" "}
+                  <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
+                    contato@demandou.com
+                  </a>
+                  .
+                </p>
                 <p>
-                  Decorrido o prazo do item 5.5,{" "}
+                  A garantia vale uma vez por Usuário, na primeira contratação, e não se aplica a renovações nem a assinaturas em que o Usuário já tenha publicado conteúdo aprovado por ele. A publicação de conteúdo aprovado é o sinal de que o serviço foi prestado e aceito; a partir dela vale o item 5.7.
+                </p>
+              </div>
+              <div>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.7 Política de reembolso após os prazos de arrependimento e garantia</h3>
+                <p>
+                  Decorridos os prazos dos itens 5.5 e 5.6,{" "}
                   <strong className="text-[var(--text-primary)]">não há reembolso proporcional</strong> por período não utilizado do ciclo já pago; o cancelamento vale para a renovação seguinte, conforme item 5.4. Cobranças indevidas ou em duplicidade serão estornadas integralmente. Situações excepcionais serão analisadas individualmente pelo e-mail de contato.
                 </p>
               </div>

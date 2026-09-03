@@ -2,59 +2,22 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Zap, ExternalLink } from "lucide-react";
+import { Check, Zap, ExternalLink, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CreditBalance } from "@/components/billing/credit-balance";
 import { cn } from "@/lib/utils";
+import { FUNDADOR, GARANTIA_DIAS, PLANOS_PUBLICOS, mensalDoAnual, reais } from "@/lib/planos";
+import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
 import toast from "react-hot-toast";
 
-const PLANS = [
-  {
-    id: "pro",
-    name: "Pro",
-    price: 149,
-    features: [
-      "7 dias grátis para testar",
-      "1.800 créditos/mês",
-      "Campanha semanal completa: LinkedIn, X e Instagram",
-      "Imagens e carrosséis com IA",
-      "Comentário de fontes automático",
-      "Créditos extras por R$0,12",
-      "Dashboard de métricas",
-    ],
-    cta: "Assinar Pro",
-    popular: true,
-  },
-  {
-    id: "business",
-    name: "Business",
-    price: 249,
-    features: [
-      "3.500 créditos/mês",
-      "Tudo do Pro + vídeo com IA",
-      "Múltiplos projetos simultâneos",
-      "Créditos extras por R$0,10",
-      "Suporte prioritário",
-    ],
-    cta: "Assinar Business",
-  },
-  {
-    id: "studio",
-    name: "Studio",
-    price: 449,
-    features: [
-      "7.000 créditos/mês",
-      "Tudo do Business",
-      "Projetos ilimitados",
-      "Créditos extras por R$0,08",
-      "Onboarding dedicado",
-    ],
-    cta: "Assinar Studio",
-  },
-];
+// A tabela vem de lib/planos, a mesma da landing e de /planos. A oferta de
+// fundador (Autoridade por R$ 397 para sempre, 10 vagas) aparece enquanto o
+// Stripe disser que há vaga; o checkout confere de novo e aplica o cupom.
+const PLANS = PLANOS_PUBLICOS;
 
 export default function BillingPage() {
   const [loading, setLoading] = useState<string | null>(null);
+  const vagasDeFundador = useVagasDeFundador();
 
   async function subscribe(planId: string, ciclo?: "anual") {
     setLoading(ciclo ? `${planId}-anual` : planId);
@@ -120,16 +83,18 @@ export default function BillingPage() {
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-        {PLANS.map((plan, i) => (
+        {PLANS.map((plan, i) => {
+          const fundador = plan.id === FUNDADOR.plano && vagasDeFundador > 0;
+          return (
           <motion.div
             key={plan.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className={cn("relative p-6 rounded-2xl border", plan.popular ? "border-orange-500" : "")}
-            style={plan.popular ? { background: "var(--bg-card)" } : { background: "var(--bg-card)", borderColor: "var(--border)" }}
+            className={cn("relative p-6 rounded-2xl border", plan.destaque ? "border-orange-500" : "")}
+            style={plan.destaque ? { background: "var(--bg-card)" } : { background: "var(--bg-card)", borderColor: "var(--border)" }}
           >
-            {plan.popular && (
+            {plan.destaque && (
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                 <span className="bg-orange-500 text-white text-xs font-bold px-3 py-0.5 rounded-full">
                   RECOMENDADO
@@ -138,18 +103,23 @@ export default function BillingPage() {
             )}
 
             <div className="mb-4">
-              <h3 className="font-bold mb-1" style={{ color: "var(--text-primary)" }}>{plan.name}</h3>
+              <h3 className="font-bold mb-1" style={{ color: "var(--text-primary)" }}>{plan.nome}</h3>
+              <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>{plan.descricao}</p>
               <div className="flex items-baseline gap-1">
-                {plan.price === 0 ? (
-                  <span className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>Grátis</span>
-                ) : (
-                  <>
-                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>R$</span>
-                    <span className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>{plan.price}</span>
-                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>/mês</span>
-                  </>
+                {fundador && (
+                  <span className="text-sm line-through mr-1" style={{ color: "var(--text-muted)" }}>R$ {reais(plan.mensal)}</span>
                 )}
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>R$</span>
+                <span className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>
+                  {reais(fundador ? FUNDADOR.mensal : plan.mensal)}
+                </span>
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>/mês</span>
               </div>
+              {fundador && (
+                <p className="mt-1 text-xs font-semibold text-orange-400">
+                  Fundador: {vagasDeFundador} de {FUNDADOR.vagas} vagas. Esse preço fica para sempre.
+                </p>
+              )}
             </div>
 
             <ul className="space-y-2 mb-6">
@@ -163,12 +133,12 @@ export default function BillingPage() {
 
             <Button
               className="w-full"
-              variant={plan.popular ? "default" : "outline"}
+              variant={plan.destaque ? "default" : "outline"}
               disabled={loading === plan.id}
               loading={loading === plan.id}
               onClick={() => subscribe(plan.id)}
             >
-              {plan.cta}
+              {fundador ? "Garantir vaga de fundador" : `Assinar ${plan.nome}`}
             </Button>
 
             <div className="mt-3 text-center">
@@ -179,11 +149,20 @@ export default function BillingPage() {
               >
                 {loading === `${plan.id}-anual`
                   ? "Abrindo checkout..."
-                  : `ou R$ ${Math.round((plan.price * 10) / 12)}/mês no anual (2 meses grátis)`}
+                  : `ou R$ ${reais(mensalDoAnual(plan))}/mês no anual (2 meses grátis)`}
               </button>
             </div>
           </motion.div>
-        ))}
+          );
+        })}
+      </div>
+
+      <div className="mt-8 flex items-start gap-3 rounded-xl border p-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+        <ShieldCheck className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          <span className="font-semibold" style={{ color: "var(--text-primary)" }}>Garantia de {GARANTIA_DIAS} dias.</span>{" "}
+          Se nos primeiros {GARANTIA_DIAS} dias você não publicar nada que aprovou, devolvemos tudo.
+        </p>
       </div>
     </div>
   );

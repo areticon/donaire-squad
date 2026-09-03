@@ -7613,3 +7613,134 @@ Fora do v1: capa para os Shorts (o YouTube ignora thumbnail de Short no
 feed), editar a frase a mao, mais de 2 opcoes por rodada.
 
 *Atualizado em 02/09/2026 por Claude Code.*
+
+## Sessao 02-03/09/2026 (parte 92): gagueira no poema, clima da capa, tabela de preco 397/697/1.997
+
+Bruno assistiu o completo inteiro e reprovou tres coisas: a edicao deixou
+gagueira no poema ("isso para um cliente seria motivo de briga judicial"),
+toda capa saia com ele serio e bravo, e o preco nao acompanhou o produto
+(conversa "Demandou estrategia" no Claude). Ele vai apagar os videos do
+YouTube e o projeto de teste e regravar filmando a tela.
+
+### 1. Gagueira: dois mecanismos, os dois achados nos DADOS
+
+Ouvido e medido no audio da gravacao (Deepgram nova-3 + ffmpeg), aos 311s:
+"...do mesmo jeito? [2,3s] Eu, [0,4s] o, [0,6s] por que existem uns
+felizes" e, antes, "ele, ele, ele, ele questiona".
+
+- **Falso comeco** ("Eu, o, por que..."): nenhuma camada pegava. A pausa
+  de 2,3 s era cortada, mas 0,4 s e 0,6 s ficam abaixo do limiar de pausa;
+  "eu" e "o" nao sao som de hesitacao; a repeticao exige a MESMA palavra; e
+  o agente nao marcou. Entrou `detectarFalsosComecos` em
+  `lib/media/limpeza.ts`: palavra curta da lista `ABERTURAS_SOLTAS`
+  (pronome, artigo, conjuncao de abertura; preposicao fica de fora de
+  proposito), ISOLADA por silencio >= 0,3 s dos dois lados e arrastada
+  (>= 1,8x a duracao tipica dela na propria gravacao). Na gravacao inteira
+  (2.388 palavras) so "Eu," e "o," batiam. Remove "silencio + soltas +
+  silencio" como UMA pausa, com `respiroDaPausa`. Ligado em
+  `pedido-de-corte.ts`.
+- **Repeticao arrastada** ("ele ele ele ele"): a Deepgram junta gagueira em
+  menos palavras (tempo quantizado de 80 em 80 ms), a transcricao tinha 3
+  "ele", o codigo removia 2 e sobrava o terceiro com 0,56 s (dois "ele"
+  dentro). `detectarRepeticoes` agora trata a sequencia INTEIRA (nao par a
+  par), aceita som de hesitacao no meio, familias "do/da/dos" e "no/na", e
+  corta o rabo da ultima copia alem da duracao tipica da palavra.
+
+Limite documentado: os tempos da Deepgram tem +-0,2 s de deriva entre
+trechos gaguejados. Nao entrou ajuste acustico no worker: as legendas com
+`\k` ja sao pre-computadas no app pelo mesmo `manter`, e mexer no worker
+dessincronizaria a legenda (alem do deploy do worker ser manual).
+
+Achado lateral, NAO corrigido: o completo entregue tem 1,1 GB (9,8 Mbps)
+contra ~140 MB esperados. Vale olhar o encoder do completo no worker.
+
+### 2. Capa: por que sempre serio, e o clima que o cliente escolhe
+
+Lido nos dados: as capas guardadas tinham expressao "confiante" e
+"curioso", e o quadro-fonte era no meio da fala. O criterio era do agente
+das frases, que escolhia entre 5 emocoes pelo CONTEUDO (video sobre dor e
+mudanca rendia sempre serio/preocupado/curioso), e as 5 descricoes em
+`COMO_MOSTRAR` mandavam "boca FECHADA" e "olhar firme": ate "confiante"
+saia sisudo.
+
+O que entrou:
+- `ClimaDaCapa` em `estilos-de-capa.ts`: automatico, alegre, confiante,
+  serio, curioso, surpreso, misterioso, dramatico, divertido, provocativo
+  (pesquisa dos climas que dominam thumbnail de YouTube), com rotulo e
+  descricao para a tela. `CapasDoCompleto.clima` guarda o pedido.
+- `COMO_MOSTRAR` reescrito: so serio, preocupado, misterioso e dramatico
+  fecham a boca; confiante e alegre SORRIEM; divertido ri. `ATMOSFERA`
+  por clima (misterioso = meia-luz, fundo quase preto) entra no prompt
+  acima da luz do estilo.
+- `gerarCapasDoCompleto(id, {estilo, clima})`: clima fixo forca a
+  expressao nas duas frases; automatico deixa o agente escolher entre todas,
+  com a regra "as duas opcoes nao podem ter a mesma expressao, serio so
+  quando o conteudo e pesado". Sem pedido, repete o clima das capas
+  anteriores do video.
+- Rota POST aceita `{estilo, clima}` (400 em clima invalido). Tela
+  `capa-do-completo.tsx`: linha de chips "Clima da capa" (so deste video)
+  acima dos estilos.
+
+Testado na API logada com o video do Bruno: "alegre" saiu sorriso aberto
+com luz quente, "misterioso" saiu meia-luz com fundo escuro, identidade
+preservada. Efeito colateral: as capas do video de teste ficaram em
+misterioso (o projeto vai ser apagado).
+
+### 3. Preco: tabela de 02/09, a conta de horas e a oferta de fundador
+
+Decisoes da conversa "Demandou estrategia" (Claude, 02/09), agora em codigo:
+
+| Chave no banco | Nome | Mensal | Anual (10x) | Promessa |
+|---|---|---|---|---|
+| pro | Essencial | R$ 397 | R$ 3.970 | 2 gravacoes/mes, ~22 pecas, 1 marca |
+| business | Autoridade | R$ 697 | R$ 6.970 | 4 gravacoes/mes, ~44 pecas, relatorio mensal (heroi) |
+| studio | Estudio | R$ 1.997 | R$ 19.970 | 16 gravacoes/mes, 5 marcas |
+
+- **`lib/planos.ts`** e a tabela publica (sem Stripe), fonte unica da
+  landing, de `/planos` e de `/billing`, que ate hoje tinham tres copias
+  divergentes. `lib/stripe/index.ts` deriva `PLANS` dela e mantem o que e
+  do Stripe: priceIds, `credits`, `limits`. As chaves pro/business/studio
+  ficam porque sao o `User.plan`.
+- **Credito saiu da cara do cliente** nas telas de preco e no how-it-works.
+  "Gravacoes por mes" e unidade de venda, NAO limite aplicado por codigo: o
+  teto real segue `limits.credits` (1800/3500/7000, inalterados; uma
+  gravacao de 30 min com a semana dela consome ~250 creditos, cabe com
+  folga). `limits.projects` passou a 1/1/5 para bater com "marcas", mas
+  nenhum codigo aplica esse limite hoje. Credito AINDA aparece dentro do
+  produto (`credit-balance.tsx`, `video-upload.tsx`, `semana-do-video.tsx`,
+  `campaign-setup-modal.tsx`): proximo passo, tirar dali tambem.
+- **Secao "A conta do mes"** (`components/landing/valor.tsx`, entre a
+  prova e o preco): 4 completos, ~20 cortes, ~20 pecas, 4 briefings, 44
+  publicacoes; 26 a 36 h/mes devolvidas; R$ 3.050 a R$ 6.070 para comprar
+  de gente; comparacao com ferramenta de corte, ferramenta de LinkedIn,
+  social media e gestao completa; Edelman/LinkedIn 45% e 60%; "um cliente
+  novo a cada cinco anos paga a conta".
+- **Garantia de 30 dias** ("se nao publicar nada que aprovou, devolvemos
+  tudo") na landing, em /planos, em /billing e como item 5.6 dos Termos
+  (o 5.6 antigo virou 5.7; data dos Termos 03/09/2026). Vale uma vez por
+  usuario, na primeira contratacao.
+- **Fundador**: cupom Stripe de R$ 300 vitalicio, 10 resgates, restrito ao
+  produto Autoridade, codigo FUNDADOR. `vagasDeFundador()` pergunta ao
+  Stripe quantas sobram (`STRIPE_FUNDADOR_COUPON_ID`); a landing (ISR de
+  60 s), `/planos` e `/billing` (via `GET /api/planos/fundador`) mostram
+  "R$ 397 para sempre, N de 10 vagas" so enquanto ha vaga, e o checkout do
+  Autoridade mensal aplica o cupom sozinho (`discounts`, que o Stripe nao
+  aceita junto de `allow_promotion_codes`; nos outros casos o campo de
+  codigo continua). Sem cupom configurado, tudo cai no preco de lista.
+- O trial de 7 dias fica.
+
+**O que NAO rodou, e o Bruno precisa rodar** (o classificador do Claude
+Code bloqueou a mutacao no Stripe): `scripts/tmp/stripe-precos-0209.mts`
+renomeia os produtos, cria os 6 precos novos, arquiva os antigos (a
+assinatura de dogfood `sub_1U73XkJIhzTmSVmMRqDICdJe` continua no preco
+antigo), cria cupom + codigo FUNDADOR, grava os 7 ids no Vercel (producao,
+`vercel env add --force`) e no `.env.local`. Comando:
+`npx tsx --env-file=.env.local scripts/tmp/stripe-precos-0209.mts`, e
+depois `git push` do commit de preco, que ficou LOCAL de proposito: a
+landing nova com os price ids antigos venderia R$ 397 e cobraria R$ 149.
+
+Sem passagem pelo canvas do Claude Design desta vez: a mudanca e de copy e
+de tabela sobre componentes que ja existiam; a secao nova reaproveita o
+padrao de `why.tsx`.
+
+*Atualizado em 03/09/2026 por Claude Code.*

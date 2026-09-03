@@ -6,7 +6,9 @@ import { Why } from "@/components/landing/why";
 import { Features } from "@/components/landing/features";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { Entrega } from "@/components/landing/entrega";
+import { Valor } from "@/components/landing/valor";
 import { Pricing } from "@/components/landing/pricing";
+import { vagasDeFundador } from "@/lib/stripe";
 import { Footer } from "@/components/landing/footer";
 
 export const metadata: Metadata = {
@@ -15,7 +17,14 @@ export const metadata: Metadata = {
     "Apenas 1% publica toda semana, e esse 1% leva os clientes. Um time de agentes de IA pesquisa, escreve, desenha e publica nas suas redes. E soa como você.",
 };
 
-export default function HomePage() {
+// A landing é regenerada a cada minuto, não a cada visita: a contagem de
+// vagas de fundador vem do Stripe, e uma chamada por visita seria pagar API
+// para mostrar o mesmo número. Um minuto de atraso depois da décima venda é
+// aceitável; o checkout confere de novo e nunca aplica desconto sem vaga.
+export const revalidate = 60;
+
+export default async function HomePage() {
+  const vagas = await vagasDeFundador();
   return (
     // data-theme="dark" trava a landing no escuro, seja qual for o tema salvo
     // na plataforma. As variáveis CSS herdam do ancestral mais próximo, então
@@ -34,7 +43,11 @@ export default function HomePage() {
           até aqui já entendeu o que a plataforma faz, e o que decide a compra é
           ver o resultado. Preço antes da prova é pedir decisão sem argumento. */}
       <Entrega />
-      <Pricing />
+      {/* A conta de horas e de reais vem entre a prova e o preço: o número de
+          R$ 697 só parece barato para quem acabou de ver que está comprando
+          30 horas de trabalho por mês. */}
+      <Valor />
+      <Pricing vagasDeFundador={vagas} />
       <Footer />
     </main>
   );

@@ -52,7 +52,7 @@ const ETAPAS = [
     numero: "05",
     titulo: "Publicado, com você no controle",
     descricao:
-      "Na hora marcada, seu conteúdo sai nas redes conectadas. Você acompanha o que foi publicado, quanto custou em créditos e o que rendeu.",
+      "Na hora marcada, seu conteúdo sai nas redes conectadas. Você acompanha o que foi publicado, o que rendeu e onde vale insistir.",
   },
 ];
 

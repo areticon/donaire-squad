@@ -5,10 +5,12 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import Link from "next/link";
-import { Check, Zap } from "lucide-react";
+import { Check, ShieldCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { cn } from "@/lib/utils";
+import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
+import { FUNDADOR, GARANTIA_DIAS, PLANOS_PUBLICOS, TRIAL_DAYS, mensalDoAnual, reais } from "@/lib/planos";
 
 /**
  * Escolha de plano antes do cadastro. É o destino dos CTAs genéricos
@@ -16,70 +18,16 @@ import { cn } from "@/lib/utils";
  * ?ciclo=anual) para o cadastro, que desagua direto no checkout via
  * /billing/start. Página pública, travada no tema escuro como a landing.
  *
- * Os valores são espelho manual dos PLANS de lib/stripe, que não pode ser
- * importado aqui: aquele módulo puxa o SDK do Stripe, e import de servidor em
- * página cliente arrasta o driver para o bundle do navegador (armadilha já
- * paga, ver PROJETO.md).
+ * Os valores vêm de lib/planos, módulo sem Stripe: lib/stripe não pode ser
+ * importado aqui porque puxa o SDK do Stripe, e import de servidor em página
+ * cliente arrasta o driver para o bundle do navegador (armadilha já paga, ver
+ * PROJETO.md).
  */
 
-/**
- * O anual é sempre 10 mensalidades: dois meses de desconto, mesma conta nos
- * três planos. O card mostra o **mensal equivalente** em destaque e o total do
- * ano em letra pequena: número grande de quatro dígitos assusta e derruba a
- * conversão, e o que vende o anual é a economia, não o valor cheio.
- */
-const PLANOS = [
-  {
-    id: "pro",
-    nome: "Pro",
-    mensal: 149,
-    creditos: "1.800 créditos/mês",
-    destaque: true,
-    cta: "Começar os 7 dias grátis",
-    features: [
-      "7 dias grátis para testar",
-      "Campanha semanal completa: LinkedIn, X e Instagram",
-      "Imagens e carrosséis com IA",
-      "Comentário de fontes automático",
-      "Todos os agentes de IA",
-      "Créditos extras por R$0,12",
-      "Dashboard de métricas",
-    ],
-  },
-  {
-    id: "business",
-    nome: "Business",
-    mensal: 249,
-    creditos: "3.500 créditos/mês",
-    destaque: false,
-    cta: "Assinar Business",
-    features: [
-      "Tudo do Pro + vídeo com IA",
-      "Múltiplos projetos simultâneos",
-      "Créditos extras por R$0,10",
-      "Suporte prioritário",
-    ],
-  },
-  {
-    id: "studio",
-    nome: "Studio",
-    mensal: 449,
-    creditos: "7.000 créditos/mês",
-    destaque: false,
-    cta: "Assinar Studio",
-    features: [
-      "Tudo do Business",
-      "Projetos ilimitados",
-      "Créditos extras por R$0,08",
-      "Onboarding dedicado",
-      "Suporte prioritário",
-    ],
-  },
-].map((p) => ({
+const PLANOS = PLANOS_PUBLICOS.map((p) => ({
   ...p,
-  anual: p.mensal * 10,
-  mensalNoAnual: Math.round((p.mensal * 10) / 12),
-  economiaAno: p.mensal * 12 - p.mensal * 10,
+  mensalNoAnual: mensalDoAnual(p),
+  economiaAno: p.mensal * 12 - p.anual,
 }));
 
 function PlanosConteudo() {
@@ -88,6 +36,7 @@ function PlanosConteudo() {
   // do app (lib/onboarding/portao.ts). Sem explicar por que, a pessoa acha
   // que o login falhou.
   const veioDoPortao = useSearchParams().get("assinar") === "1";
+  const vagasDeFundador = useVagasDeFundador();
 
   return (
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
@@ -117,8 +66,9 @@ function PlanosConteudo() {
             Escolha o plano <span className="text-orange-500">certo para você</span>
           </h1>
           <p className="text-lg text-[var(--text-muted)] max-w-xl mx-auto">
-            Cancele quando quiser, sem multa. E o arrependimento em até 7 dias
-            devolve tudo, como manda a lei.
+            Você paga por gravação, não por crédito. Cancele quando quiser, sem
+            multa. E nos primeiros {GARANTIA_DIAS} dias, se não publicar nada que
+            aprovou, devolvemos tudo.
           </p>
 
           <div className="inline-flex items-center gap-1 mt-6 p-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface)]">
@@ -147,6 +97,9 @@ function PlanosConteudo() {
           {PLANOS.map((plano) => {
             const mostrandoAnual = ciclo === "anual";
             const href = `/sign-up?plan=${plano.id}${mostrandoAnual ? "&ciclo=anual" : ""}`;
+            // Fundador só no mensal: o cupom é de R$ 300 por mês para sempre, e
+            // no anual a conta ficaria confusa contra os dois meses grátis.
+            const fundador = plano.id === FUNDADOR.plano && vagasDeFundador > 0 && !mostrandoAnual;
             return (
               <div
                 key={plano.id}
@@ -158,37 +111,45 @@ function PlanosConteudo() {
                 {plano.destaque && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                     <span className="bg-orange-500 text-white text-xs font-bold px-4 py-1 rounded-full whitespace-nowrap">
-                      MAIS POPULAR
+                      MAIS ESCOLHIDO
                     </span>
                   </div>
                 )}
 
                 <div className="mb-6">
                   <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">{plano.nome}</h2>
-                  <p className="text-sm text-[var(--text-muted)]">{plano.creditos}</p>
+                  <p className="text-sm text-[var(--text-muted)]">{plano.descricao}</p>
                 </div>
 
                 <div className="mb-8">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-[var(--text-muted)] text-lg">R$</span>
+                    {fundador ? (
+                      <span className="text-[var(--text-muted)] text-lg line-through mr-1">R$ {reais(plano.mensal)}</span>
+                    ) : (
+                      <span className="text-[var(--text-muted)] text-lg">R$</span>
+                    )}
                     <span className="text-5xl font-black text-[var(--text-primary)]">
-                      {mostrandoAnual ? plano.mensalNoAnual : plano.mensal}
+                      {fundador ? reais(FUNDADOR.mensal) : reais(mostrandoAnual ? plano.mensalNoAnual : plano.mensal)}
                     </span>
                     <span className="text-[var(--text-muted)] text-sm">/mês</span>
                   </div>
-                  {mostrandoAnual ? (
+                  {fundador ? (
+                    <p className="mt-2 text-sm font-semibold text-orange-400">
+                      Fundador: {vagasDeFundador} de {FUNDADOR.vagas} vagas. Esse preço fica para sempre.
+                    </p>
+                  ) : mostrandoAnual ? (
                     <div className="mt-2 space-y-1">
                       <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-400">
                         <Zap className="w-3.5 h-3.5" />
-                        Economize R$ {plano.economiaAno} por ano
+                        Economize R$ {reais(plano.economiaAno)} por ano
                       </p>
                       <p className="text-xs text-[var(--text-muted)]">
-                        R$ {plano.anual.toLocaleString("pt-BR")} cobrados uma vez, equivalentes a 10 mensalidades
+                        R$ {reais(plano.anual)} cobrados uma vez, equivalentes a 10 mensalidades
                       </p>
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-[var(--text-muted)]">
-                      No anual sai por R$ {plano.mensalNoAnual}/mês
+                      No anual sai por R$ {reais(plano.mensalNoAnual)}/mês
                     </p>
                   )}
                 </div>
@@ -196,7 +157,7 @@ function PlanosConteudo() {
                 <Button className="w-full mb-8" variant={plano.destaque ? "default" : "outline"} asChild>
                   <Link href={href}>
                     {plano.destaque && <Zap className="w-4 h-4" />}
-                    {plano.cta}
+                    {fundador ? "Garantir vaga de fundador" : `Começar os ${TRIAL_DAYS} dias grátis`}
                   </Link>
                 </Button>
 
@@ -213,8 +174,17 @@ function PlanosConteudo() {
           })}
         </div>
 
-        <p className="text-center text-sm text-[var(--text-muted)] mt-10 max-w-2xl mx-auto">
-          O teste grátis pede cartão e não cobra nada se você cancelar dentro dos 7 dias.
+        <div className="mt-10 max-w-2xl mx-auto flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+          <ShieldCheck className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-[var(--text-muted)]">
+            <span className="font-semibold text-[var(--text-primary)]">Garantia de {GARANTIA_DIAS} dias.</span>{" "}
+            Se nos primeiros {GARANTIA_DIAS} dias você não publicar nada que aprovou, devolvemos
+            tudo. Além dela vale o arrependimento de 7 dias, como manda a lei.
+          </p>
+        </div>
+
+        <p className="text-center text-sm text-[var(--text-muted)] mt-6 max-w-2xl mx-auto">
+          O teste grátis pede cartão e não cobra nada se você cancelar dentro dos {TRIAL_DAYS} dias.
           {ciclo === "anual" && (
             <>
               {" "}No plano anual você contrata 12 meses de uma vez e é por isso que
