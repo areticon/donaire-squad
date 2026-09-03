@@ -4,9 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Check, Loader2, RefreshCw } from "lucide-react";
 import {
+  CLIMAS_DE_CAPA,
+  CLIMAS_DE_CAPA_ROTULO,
   ESTILOS_DE_CAPA,
   ESTILOS_DE_CAPA_ROTULO,
   type CapasDoCompleto,
+  type ClimaDaCapa,
   type EstiloDeCapa,
 } from "@/lib/media/estilos-de-capa";
 
@@ -17,12 +20,15 @@ import {
  * sem capa. A regra dele: "pelo menos 2 opções para o usuário, e o usuário
  * precisa ter a opção de escolher o estilo da capa".
  *
- * Três decisões de tela:
+ * Quatro decisões de tela:
  * - O estilo vem primeiro, como chips. Trocar o estilo já gera 2 opções
  *   novas (e grava o estilo no projeto, para os próximos vídeos).
+ * - O clima (a cara e a luz) vem logo abaixo, também como chips, e vale só
+ *   para este vídeo. Trocar o clima também gera 2 opções novas. Nasceu em
+ *   02/09 da queixa do Bruno de sair sempre sério em toda capa.
  * - As duas opções são 16:9 lado a lado, com a escolhida marcada. Clicar em
  *   uma escolhe, sem botão de confirmar: a escolha é reversível.
- * - "Gerar outras 2" no mesmo estilo, para quem não gostou de nenhuma.
+ * - "Gerar outras 2" no mesmo estilo e clima, para quem não gostou de nenhuma.
  *
  * Quando o vídeo já está no ar, escolher troca a capa no YouTube na hora, e
  * a tela diz se o YouTube recusou (canal sem verificação por telefone).
@@ -37,6 +43,7 @@ export function CapaDoCompleto({
 }) {
   const [capas, setCapas] = useState<CapasDoCompleto | null>(null);
   const [estilo, setEstilo] = useState<EstiloDeCapa>("impacto");
+  const [clima, setClima] = useState<ClimaDaCapa>("automatico");
   const [carregando, setCarregando] = useState(true);
   const [gerando, setGerando] = useState(false);
   const [escolhendo, setEscolhendo] = useState<number | null>(null);
@@ -48,6 +55,7 @@ export function CapaDoCompleto({
       const d = (await r.json()) as { capas: CapasDoCompleto | null; estilo: EstiloDeCapa };
       setCapas(d.capas);
       setEstilo(d.capas?.estilo ?? d.estilo);
+      setClima(d.capas?.clima ?? "automatico");
     } finally {
       setCarregando(false);
     }
@@ -65,14 +73,17 @@ export function CapaDoCompleto({
     return () => clearInterval(t);
   }, [carregando, capas, gerando, carregar]);
 
-  const gerar = async (novoEstilo?: EstiloDeCapa) => {
+  const gerar = async (pedido: { estilo?: EstiloDeCapa; clima?: ClimaDaCapa } = {}) => {
     setGerando(true);
-    if (novoEstilo) setEstilo(novoEstilo);
+    if (pedido.estilo) setEstilo(pedido.estilo);
+    if (pedido.clima) setClima(pedido.clima);
     try {
       const r = await fetch(`/api/videos/${videoJobId}/capas-do-completo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(novoEstilo ? { estilo: novoEstilo } : {}),
+        // O clima vai sempre: sem ele o servidor repetiria o das capas
+        // anteriores, e o chip na tela é o que o cliente está vendo.
+        body: JSON.stringify({ ...pedido, clima: pedido.clima ?? clima }),
       });
       const d = (await r.json().catch(() => ({}))) as { capas?: CapasDoCompleto; error?: string };
       if (!r.ok || !d.capas) throw new Error(d.error ?? "Não consegui gerar as capas.");
@@ -139,7 +150,7 @@ export function CapaDoCompleto({
               type="button"
               disabled={ocupado}
               title={ESTILOS_DE_CAPA_ROTULO[e].descricao}
-              onClick={() => void gerar(e)}
+              onClick={() => void gerar({ estilo: e })}
               className="text-xs px-2.5 py-1 rounded-full border transition-all disabled:opacity-50"
               style={{
                 borderColor: ativo ? "var(--accent-orange)" : "var(--border)",
@@ -154,6 +165,35 @@ export function CapaDoCompleto({
       </div>
       <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
         {ESTILOS_DE_CAPA_ROTULO[estilo].descricao} O estilo vale para o canal inteiro.
+      </p>
+
+      <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+        Clima da capa
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {CLIMAS_DE_CAPA.map((c) => {
+          const ativo = c === clima;
+          return (
+            <button
+              key={c}
+              type="button"
+              disabled={ocupado}
+              title={CLIMAS_DE_CAPA_ROTULO[c].descricao}
+              onClick={() => void gerar({ clima: c })}
+              className="text-xs px-2.5 py-1 rounded-full border transition-all disabled:opacity-50"
+              style={{
+                borderColor: ativo ? "var(--accent-orange)" : "var(--border)",
+                color: ativo ? "var(--accent-orange)" : "var(--text-muted)",
+                background: ativo ? "rgba(249,115,22,0.08)" : "transparent",
+              }}
+            >
+              {CLIMAS_DE_CAPA_ROTULO[c].rotulo}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        {CLIMAS_DE_CAPA_ROTULO[clima].descricao} O clima é só deste vídeo.
       </p>
 
       {ocupado || !capas ? (

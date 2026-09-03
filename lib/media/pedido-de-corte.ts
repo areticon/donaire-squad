@@ -11,6 +11,7 @@ import {
 } from "@/lib/media/edicao";
 import {
   detectarHesitacao,
+  detectarFalsosComecos,
   detectarMuletasArrastadas,
   detectarRepeticoes,
   limpezaParaRemocoes,
@@ -124,13 +125,18 @@ export async function montarPedidoDeCorte(
   // 24/08: o agente deixou passar 93 palavras e 12 expressões repetidas, 40
   // segundos de cópias, e era o "eu, eu, eu" que o Bruno ouviu nos cortes.
   // O que é garantível por código entra por código: repetições imediatas e
-  // hesitações arrastadas. O agente continua cuidando do que é julgamento
-  // (recomeço de frase, muleta que às vezes é conteúdo).
+  // hesitações arrastadas e, desde 02/09, o falso começo ("Eu, o, por que
+  // existem", o tropeço do poema que o Bruno ouviu no vídeo entregue). O
+  // agente continua cuidando do que é julgamento (recomeço de frase, muleta
+  // que às vezes é conteúdo).
   // A folga do fade entra por ÚLTIMO, depois de tudo unido: se entrasse antes,
   // a união poderia colar duas remoções vizinhas e a folga do meio sumiria.
   const remocoes = folgaParaEmenda(
     unirRemocoes(
-      unirRemocoes(pausas, detectarMuletasArrastadas(palavras)),
+      unirRemocoes(
+        unirRemocoes(pausas, detectarFalsosComecos(palavras)),
+        detectarMuletasArrastadas(palavras)
+      ),
       unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
     )
   );

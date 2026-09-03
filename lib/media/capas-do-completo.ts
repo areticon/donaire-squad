@@ -4,8 +4,10 @@ import { askClaude } from "@/lib/claude";
 import { lerMidia, midiaProduzida } from "@/lib/media/storage";
 import { comporCapa, type Expressao } from "@/lib/media/capa-e-titulo";
 import {
+  CLIMAS_DE_CAPA_ROTULO,
   estiloDeCapaValido,
   type CapasDoCompleto,
+  type ClimaDaCapa,
   type EstiloDeCapa,
   type OpcaoDeCapa,
 } from "@/lib/media/estilos-de-capa";
@@ -40,8 +42,8 @@ import type { Radar } from "@/lib/media/radar-do-video";
  * acima de 2 MB, e o modelo de imagem devolve PNG de tamanho variável.
  */
 
-export { estiloDeCapaValido } from "@/lib/media/estilos-de-capa";
-export type { CapasDoCompleto, OpcaoDeCapa } from "@/lib/media/estilos-de-capa";
+export { climaDeCapaValido, estiloDeCapaValido } from "@/lib/media/estilos-de-capa";
+export type { CapasDoCompleto, ClimaDaCapa, OpcaoDeCapa } from "@/lib/media/estilos-de-capa";
 
 const SISTEMA_DAS_FRASES = `Você escreve a frase que vai ESCRITA na capa (thumbnail) de um vídeo completo de YouTube.
 
@@ -49,7 +51,7 @@ Recebe o título do vídeo, o que a pessoa defende nele e o nicho. Devolva DUAS 
 
 Cada opção tem:
 - "frase": no máximo 6 PALAVRAS, para ler de relance num celular pequeno. Frase de impacto, não resumo. Prefira contraste ("Consultoria não escala") a descrição ("Sobre modelos de negócio"). Não repita o título ao pé da letra.
-- "expressao": a emoção do rosto na capa, um destes valores exatos: "confiante" (afirma o que sabe), "serio" (nomeia erro, perda ou verdade dura), "curioso" (levanta pergunta), "surpreso" (algo contraintuitivo), "preocupado" (alerta de risco).
+- "expressao": a emoção do rosto na capa, um destes valores exatos: "confiante" (afirma o que sabe, sorrindo), "alegre" (boa notícia, convite, conteúdo leve), "curioso" (levanta pergunta), "surpreso" (algo contraintuitivo), "provocativo" (opinião que desafia o senso comum), "serio" (nomeia erro, perda ou verdade dura), "preocupado" (alerta de risco). Varie: as duas opções NÃO podem ter a mesma expressão, e "serio" e "preocupado" só entram quando o conteúdo é de fato pesado. Capa com sorriso rende mais em canal pessoal; na dúvida, "confiante" ou "alegre".
 
 Regras:
 - Português do Brasil. Nunca use travessão.
@@ -59,17 +61,51 @@ Regras:
 Responda SOMENTE com JSON válido, sem cercas de código, sem quebra de linha dentro de string:
 {"opcoes":[{"frase":"...","expressao":"confiante"},{"frase":"...","expressao":"curioso"}]}`;
 
-const EXPRESSOES: Expressao[] = ["confiante", "serio", "curioso", "surpreso", "preocupado"];
+const EXPRESSOES: Expressao[] = [
+  "confiante",
+  "serio",
+  "curioso",
+  "surpreso",
+  "preocupado",
+  "alegre",
+  "misterioso",
+  "dramatico",
+  "divertido",
+  "provocativo",
+];
+
+/**
+ * Quando o cliente escolhe o clima, a expressão do rosto é a do clima, e o
+ * agente só escreve as frases. "automatico" deixa o agente escolher pelo
+ * conteúdo, como sempre foi.
+ */
+const EXPRESSAO_DO_CLIMA: Record<Exclude<ClimaDaCapa, "automatico">, Expressao> = {
+  alegre: "alegre",
+  confiante: "confiante",
+  serio: "serio",
+  curioso: "curioso",
+  surpreso: "surpreso",
+  misterioso: "misterioso",
+  dramatico: "dramatico",
+  divertido: "divertido",
+  provocativo: "provocativo",
+};
 
 type Frase = { frase: string; expressao: Expressao };
 
 async function escreverFrasesDaCapa(
   material: { titulo: string; resumo: string; teses: string[]; nicho?: string | null },
-  projectId: string
+  projectId: string,
+  clima: ClimaDaCapa
 ): Promise<Frase[]> {
+  const fixa = clima === "automatico" ? null : EXPRESSAO_DO_CLIMA[clima];
   const resposta = await askClaude(
     SISTEMA_DAS_FRASES,
-    `${material.nicho ? `Nicho: ${material.nicho}\n\n` : ""}Título do vídeo: ${material.titulo}
+    `${material.nicho ? `Nicho: ${material.nicho}\n\n` : ""}${
+      fixa
+        ? `Clima escolhido pelo dono do vídeo: ${CLIMAS_DE_CAPA_ROTULO[clima].rotulo} (${CLIMAS_DE_CAPA_ROTULO[clima].descricao}). As duas frases precisam combinar com esse clima. Ignore o campo "expressao": preencha com "${fixa}" nas duas.\n\n`
+        : ""
+    }Título do vídeo: ${material.titulo}
 ${material.resumo ? `\nO que a pessoa defende: ${material.resumo}\n` : ""}
 Teses ditas no vídeo:
 ${material.teses.map((t) => `- ${t}`).join("\n") || "(sem teses registradas)"}`,
@@ -81,7 +117,8 @@ ${material.teses.map((t) => `- ${t}`).join("\n") || "(sem teses registradas)"}`,
     .filter((o) => typeof o.frase === "string" && o.frase.trim())
     .map((o) => ({
       frase: o.frase!.trim().replace(/["“”]/g, "").slice(0, 60),
-      expressao: EXPRESSOES.includes(o.expressao as Expressao) ? (o.expressao as Expressao) : "confiante",
+      expressao:
+        fixa ?? (EXPRESSOES.includes(o.expressao as Expressao) ? (o.expressao as Expressao) : "confiante"),
     }))
     .slice(0, 2);
   // Duas opções é a promessa ao cliente. Se o modelo devolveu uma só, a
@@ -89,7 +126,7 @@ ${material.teses.map((t) => `- ${t}`).join("\n") || "(sem teses registradas)"}`,
   while (frases.length < 2) {
     frases.push({
       frase: material.titulo.split(/\s+/).slice(0, 6).join(" "),
-      expressao: frases.length === 0 ? "confiante" : "curioso",
+      expressao: fixa ?? (frases.length === 0 ? "confiante" : "curioso"),
     });
   }
   return frases;
@@ -112,7 +149,7 @@ function corPrincipal(paleta: string | null | undefined): string | null {
  */
 export async function gerarCapasDoCompleto(
   videoJobId: string,
-  opcoes: { estilo?: EstiloDeCapa; userId?: string } = {}
+  opcoes: { estilo?: EstiloDeCapa; clima?: ClimaDaCapa; userId?: string } = {}
 ): Promise<CapasDoCompleto> {
   const video = await prisma.videoJob.findFirst({
     where: { id: videoJobId, ...(opcoes.userId ? { project: { userId: opcoes.userId } } : {}) },
@@ -121,6 +158,7 @@ export async function gerarCapasDoCompleto(
       projectId: true,
       capaFonteUrl: true,
       completoUrl: true,
+      capas: true,
       radar: true,
       originalName: true,
       project: { select: { niche: true, colorPalette: true, capaEstilo: true, name: true } },
@@ -134,6 +172,11 @@ export async function gerarCapasDoCompleto(
     // O estilo é do projeto: escolher aqui vale para os próximos vídeos.
     await prisma.project.update({ where: { id: video.projectId }, data: { capaEstilo: opcoes.estilo } });
   }
+
+  // O clima é do vídeo, não do projeto: depende do que foi dito. Sem pedido,
+  // repete o das capas anteriores deste vídeo ("Gerar outras 2" mantém).
+  const clima: ClimaDaCapa =
+    opcoes.clima ?? ((video.capas as CapasDoCompleto | null)?.clima ?? "automatico");
 
   const post = await prisma.post.findFirst({
     where: {
@@ -160,7 +203,8 @@ export async function gerarCapasDoCompleto(
         teses: (radar?.teses ?? []).map((t) => t.frase).slice(0, 6),
         nicho: video.project.niche,
       },
-      video.projectId
+      video.projectId,
+      clima
     ),
     lerMidia(video.capaFonteUrl),
   ]);
@@ -175,6 +219,7 @@ export async function gerarCapasDoCompleto(
         nicho: video.project.niche,
         formato: "16:9",
         estilo,
+        clima: clima === "automatico" ? undefined : clima,
         corDaMarca: corPrincipal(video.project.colorPalette),
         usageCtx: { projectId: video.projectId },
       })
@@ -199,6 +244,7 @@ export async function gerarCapasDoCompleto(
 
   const capas: CapasDoCompleto = {
     estilo,
+    clima,
     opcoes: prontas,
     escolhida: 0,
     geradaEm: new Date().toISOString(),

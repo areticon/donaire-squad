@@ -25,12 +25,7 @@ import type { Trecho } from "@/lib/media/select-clips";
  * ao lado a postura já mudou, então escolher melhor ajuda mas não resolve: em
  * vídeo de fala contínua, a maioria dos quadros é ruim como foto.
  */
-export type Expressao =
-  | "confiante"
-  | "serio"
-  | "curioso"
-  | "surpreso"
-  | "preocupado";
+export type Expressao = ExpressaoDaCapa;
 
 /**
  * O estilo visual da capa (ver lib/media/estilos-de-capa.ts):
@@ -43,7 +38,7 @@ export type Expressao =
  *   duas linhas do outro, como capa de programa.
  */
 export type { EstiloDeCapa } from "@/lib/media/estilos-de-capa";
-import type { EstiloDeCapa } from "@/lib/media/estilos-de-capa";
+import type { ClimaDaCapa, EstiloDeCapa, ExpressaoDaCapa } from "@/lib/media/estilos-de-capa";
 
 export type TextoDoCorte = {
   /** Até 100 caracteres, que é o teto do YouTube. */
@@ -143,20 +138,61 @@ const EXPRESSOES: Expressao[] = [
   "curioso",
   "surpreso",
   "preocupado",
+  "alegre",
+  "misterioso",
+  "dramatico",
+  "divertido",
+  "provocativo",
 ];
 
-/** Como pedir cada expressão ao modelo de imagem, sem ambiguidade. */
+/**
+ * Como pedir cada expressão ao modelo de imagem, sem ambiguidade.
+ *
+ * Até 02/09 as cinco descrições diziam "boca FECHADA" e "olhar firme na
+ * câmera", e o Bruno viu o efeito: toda capa saía com ele sério, quase bravo,
+ * fosse qual fosse a emoção pedida. A instrução em caixa alta pesava mais
+ * que "sorriso leve". Agora só "sério", "preocupado", "misterioso" e
+ * "dramático" fecham a boca de propósito; as outras descrevem o sorriso ou a
+ * boca que a emoção pede.
+ */
 const COMO_MOSTRAR: Record<Expressao, string> = {
   confiante:
-    "confiante e tranquila: boca FECHADA com um sorriso leve, olhos abertos e focados na câmera, queixo levemente erguido",
+    "confiante e simpática: SORRISO visível e natural, de leve a médio, olhos abertos e focados na câmera, queixo levemente erguido, ombros relaxados",
   serio:
-    "séria e direta: boca FECHADA sem sorrir, sobrancelhas levemente baixas, olhar firme na câmera",
+    "séria e direta: boca fechada sem sorrir, sobrancelhas levemente baixas, olhar firme na câmera",
   curioso:
-    "intrigada: boca FECHADA, uma sobrancelha levemente erguida, cabeça um pouco inclinada, olhar na câmera",
+    "intrigada: um meio sorriso contido, uma sobrancelha levemente erguida, cabeça um pouco inclinada, olhar na câmera",
   surpreso:
-    "surpresa de verdade: olhos bem abertos, sobrancelhas erguidas, boca levemente entreaberta como quem acabou de descobrir algo (nunca escancarada)",
+    "surpresa de verdade: olhos bem abertos, sobrancelhas erguidas, boca entreaberta como quem acabou de descobrir algo (nunca escancarada)",
   preocupado:
-    "preocupada: boca FECHADA, testa levemente franzida, olhar atento na câmera",
+    "preocupada: boca fechada, testa levemente franzida, olhar atento na câmera",
+  alegre:
+    "alegre e calorosa: SORRISO ABERTO mostrando os dentes, olhos levemente apertados pelo sorriso (sorriso verdadeiro), cabeça um pouco para o lado, como quem recebe um amigo",
+  misterioso:
+    "misteriosa: boca fechada, sem sorrir, olhos levemente semicerrados fixos na câmera, cabeça um pouco baixa com o olhar por baixo das sobrancelhas, como quem guarda um segredo",
+  dramatico:
+    "tensa e intensa: boca fechada com os lábios apertados, testa franzida, olhar duro e fixo na câmera, como quem encara uma crise",
+  divertido:
+    "divertida: RINDO de verdade, boca aberta no riso, olhos apertados, cabeça levemente jogada para trás ou para o lado, como quem acabou de ouvir uma piada",
+  provocativo:
+    "provocadora: meio sorriso de canto de boca, uma sobrancelha erguida, queixo erguido, olhar desafiador direto na câmera, como quem pergunta se você duvida",
+};
+
+/**
+ * A atmosfera da luz e do fundo para cada clima, quando o cliente escolheu um.
+ * Vai junto com a expressão porque "misterioso" de rosto com fundo de
+ * escritório bem iluminado não é misterioso.
+ */
+const ATMOSFERA: Partial<Record<ClimaDaCapa, string>> = {
+  alegre: "luz quente e clara sobre a pessoa, fundo com cores vivas e acolhedoras, sem sombras pesadas",
+  confiante: "luz limpa e uniforme sobre a pessoa, fundo sóbrio e organizado",
+  serio: "luz lateral com contraste alto, fundo escurecido e sem distração",
+  curioso: "luz suave sobre a pessoa, fundo um pouco mais escuro que ela, com um ponto de luz ao fundo",
+  surpreso: "luz frontal clara, fundo vibrante que amplifica a surpresa",
+  misterioso: "MEIA-LUZ: um lado do rosto iluminado e o outro em sombra, fundo muito escuro, quase preto, com um brilho discreto ao longe",
+  dramatico: "luz fria e dura, sombras marcadas, fundo escuro com tons azulados ou dessaturados",
+  divertido: "luz clara e alegre, fundo com cores vivas e saturadas",
+  provocativo: "luz de contorno forte destacando a pessoa, fundo escuro com uma cor de destaque intensa",
 };
 
 /**
@@ -253,6 +289,8 @@ export async function comporCapa(
     ajuste?: string;
     /** O estilo visual; "impacto" quando ausente, que é o histórico. */
     estilo?: EstiloDeCapa;
+    /** O clima escolhido pelo cliente, que também dita a luz e o fundo. */
+    clima?: ClimaDaCapa;
     /**
      * A cor principal da marca do cliente (hex), usada pelo estilo "manchete"
      * como fundo. Sem ela o fundo é azul-marinho escuro.
@@ -267,6 +305,7 @@ export async function comporCapa(
   const destaque = palavras.reduce((a, b) => (b.length > a.length ? b : a), palavras[0] ?? "");
 
   const expressao = COMO_MOSTRAR[opcoes.expressao ?? "confiante"];
+  const atmosfera = opcoes.clima ? ATMOSFERA[opcoes.clima] : undefined;
   const cenario =
     opcoes.cenario?.trim() ||
     `ambiente de trabalho moderno e limpo, coerente com ${opcoes.nicho ?? "negócios"}, desfocado`;
@@ -284,7 +323,7 @@ EXPRESSÃO
 - Ajuste o rosto para ficar ${expressao}.
 - Corrija defeitos de quadro parado de vídeo: se a boca estiver aberta no meio de uma palavra, feche; se os olhos estiverem fechados ou semicerrados, abra; se o olhar estiver perdido, traga para a câmera.
 - O resultado tem que parecer uma FOTO, não um quadro pausado.
-
+${atmosfera ? `\nATMOSFERA\n- Luz e fundo: ${atmosfera}. Esta atmosfera vale por cima das instruções de luz do estilo abaixo.\n` : ""}
 ${secoesDoEstilo(opcoes.estilo ?? "impacto", { frase, destaque, cenario, corDaMarca: opcoes.corDaMarca })}
 
 NÃO FAÇA

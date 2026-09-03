@@ -1,6 +1,6 @@
 import { askClaude } from "@/lib/claude";
 import type { Word } from "@/lib/media/transcribe";
-import type { Remocao } from "@/lib/media/edicao";
+import { respiroDaPausa, type Remocao } from "@/lib/media/edicao";
 
 /**
  * A limpeza da fala: hesitação, muleta e recomeço de frase.
@@ -81,17 +81,62 @@ function chaveDaPalavra(t: string): string {
  * O limite de tempo entre as cópias existe porque repetição com pausa grande
  * no meio costuma ser retomada legítima ("sim. Sim, mas veja"), e não gagueira.
  */
+/**
+ * Palavras que gaguejam como se fossem a mesma: "dos do de Camus", "no na
+ * nossa". A chave de repetição junta a família, e a família é curta de
+ * propósito: só contrações de preposição com artigo, que nunca aparecem em
+ * sequência numa frase inteira.
+ */
+const FAMILIAS = new Map<string, string>(
+  Object.entries({
+    de: "de", do: "de", da: "de", dos: "de", das: "de",
+    no: "no", na: "no", nos: "no", nas: "no",
+    pro: "pra", pra: "pra", pros: "pra", pras: "pra",
+  })
+);
+
+/** Só letras, minúsculas, acento preservado: separa "e" de "é". */
+function comAcento(t: string): string {
+  return t.toLowerCase().replace(/[^\p{L}]/gu, "");
+}
+
+function chaveDeRepeticao(t: string): string {
+  const k = chaveDaPalavra(t);
+  return FAMILIAS.get(k) ?? k;
+}
+
+/**
+ * Quanto dura esta palavra quando a pessoa a diz de uma vez, medido na própria
+ * gravação. É a mediana das ocorrências, com piso para palavra rara.
+ */
+function duracaoTipica(palavras: Word[]): (chave: string) => number {
+  const porChave = new Map<string, number[]>();
+  for (const p of palavras) {
+    const k = chaveDaPalavra(p.word);
+    if (!k) continue;
+    const lista = porChave.get(k) ?? [];
+    lista.push(p.end - p.start);
+    porChave.set(k, lista);
+  }
+  return (chave) => {
+    const lista = (porChave.get(chave) ?? []).sort((a, b) => a - b);
+    if (lista.length < 3) return 0.24;
+    return Math.max(0.16, lista[Math.floor(lista.length / 2)]);
+  };
+}
+
 export function detectarRepeticoes(palavras: Word[]): Remocao[] {
   const remocoes: Remocao[] = [];
-  for (let i = 1; i < palavras.length; i++) {
-    const k = chaveDaPalavra(palavras[i].word);
+  const tipica = duracaoTipica(palavras);
+
+  for (let i = 3; i < palavras.length; i++) {
+    const k = chaveDeRepeticao(palavras[i].word);
     if (!k) continue;
 
     // A B A B: a expressão de duas palavras dita duas vezes seguidas.
     if (
-      i >= 3 &&
-      chaveDaPalavra(palavras[i - 3].word) === chaveDaPalavra(palavras[i - 1].word) &&
-      chaveDaPalavra(palavras[i - 2].word) === k &&
+      chaveDeRepeticao(palavras[i - 3].word) === chaveDeRepeticao(palavras[i - 1].word) &&
+      chaveDeRepeticao(palavras[i - 2].word) === k &&
       palavras[i - 1].start - palavras[i - 3].end < 1.5 &&
       // "Isso é o ponto. O ponto é outro": a repetição atravessa o fim da
       // frase, então é retomada de propósito, e não gagueira.
@@ -102,23 +147,131 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
         ate: palavras[i - 2].end,
         motivo: `expressão repetida: "${palavras[i - 3].word} ${palavras[i - 2].word}"`,
       });
+    }
+  }
+
+  // A A A: a mesma palavra colada nela mesma, em sequência de qualquer tamanho,
+  // com ou sem som de hesitação no meio ("que, ah, que").
+  //
+  // A sequência é tratada INTEIRA, e não par a par, por causa do que o Bruno
+  // ouviu em 02/09 no poema: "ele, ele, ele, ele questiona" saiu do vídeo
+  // entregue como "ele, ele, ele questiona". A transcrição tinha só três "ele"
+  // (a Deepgram junta gagueira em menos palavras, com tempo de 80 em 80ms), o
+  // código removeu dois e ficou o terceiro, que na verdade tinha dois dentro:
+  // durava 0,56s, contra 0,24s de um "ele" dito de uma vez.
+  //
+  // Daí a regra do rabo: fica só a duração típica da palavra, colada na fala
+  // que continua. O que a última cópia tem a mais é gagueira que a transcrição
+  // não separou.
+  let i = 0;
+  while (i < palavras.length) {
+    const k = chaveDeRepeticao(palavras[i].word);
+    if (!k) {
+      i++;
       continue;
     }
-
-    // A A: a mesma palavra colada nela mesma.
-    if (
-      chaveDaPalavra(palavras[i - 1].word) === k &&
-      palavras[i].start - palavras[i - 1].end < 1.0 &&
+    let fim = i;
+    let j = i + 1;
+    while (j < palavras.length) {
+      const kj = chaveDeRepeticao(palavras[j].word);
+      const somNoMeio =
+        SONS_DE_HESITACAO.has(kj) &&
+        j + 1 < palavras.length &&
+        chaveDeRepeticao(palavras[j + 1].word) === k;
+      if (kj !== k && !somNoMeio) break;
+      // "E é ali que..." e "E é muito legal": conjunção seguida de verbo. A
+      // chave tira o acento e via as duas como a mesma palavra; o vídeo saía
+      // sem o "E". Para esta família, o acento decide.
+      if (k === "e" && kj === k && comAcento(palavras[j].word) !== comAcento(palavras[fim].word)) break;
       // "sim. Sim, mas veja": a primeira fecha a frase, a segunda abre outra.
       // O tempo sozinho não separava esse caso da gagueira.
-      !fechaFrase(palavras[i - 1].word)
-    ) {
+      if (fechaFrase(palavras[fim].word)) break;
+      if (palavras[j].start - palavras[fim].end >= 1.0) break;
+      if (kj === k) fim = j;
+      j++;
+    }
+    if (fim > i) {
+      const ultima = palavras[fim];
+      const normal = tipica(chaveDaPalavra(ultima.word));
+      const arrastada = ultima.end - ultima.start >= normal * 1.8 + 0.08;
       remocoes.push({
-        de: palavras[i - 1].start,
-        ate: palavras[i - 1].end,
-        motivo: `palavra repetida: "${palavras[i - 1].word}"`,
+        de: palavras[i].start,
+        ate: arrastada ? ultima.end - normal : ultima.start,
+        motivo: `palavra repetida: "${ultima.word}"${arrastada ? " (rabo gaguejado)" : ""}`,
       });
     }
+    i = fim + 1;
+  }
+  return remocoes.sort((a, b) => a.de - b.de);
+}
+
+/**
+ * O falso começo: a pessoa solta uma ou duas palavras, para, respira, e só
+ * então diz a frase. Detectado por código porque nenhuma camada pegava.
+ *
+ * O caso é o do poema que o Bruno ouviu em 02/09, aos 311s da gravação:
+ * "...do mesmo jeito? [2,3s] Eu, [0,4s] o, [0,6s] por que existem uns felizes".
+ * O vídeo entregue saiu com "[respira] Eu, ou, [respira] Por que existem", e
+ * a queixa dele foi que "travo, erro, gaguejo e a edição não limpou". Cada
+ * camada tinha um motivo para deixar passar: a pausa de 2,3s foi cortada, mas
+ * as de 0,4s e 0,6s ficam abaixo do limiar de pausa; "eu" e "o" não são som de
+ * hesitação; a repetição exige a mesma palavra; e o agente não marcou.
+ *
+ * A assinatura, medida na gravação inteira (2.388 palavras): palavra curta,
+ * ISOLADA por silêncio dos dois lados, e arrastada. Só duas palavras da
+ * gravação inteira batiam nisso, e eram exatamente "Eu," e "o,". Uma palavra
+ * de conteúdo não fica sozinha entre dois silêncios; quem fica é o começo de
+ * frase que não foi adiante.
+ *
+ * A lista é restrita a palavras que a frase seguinte não precisa: pronome,
+ * artigo, conjunção de abertura. Preposição fica de fora de propósito: "acho
+ * que [pausa] a gente" é pausa para pensar, e sem o "que" a frase quebra.
+ *
+ * A remoção trata "silêncio + palavras soltas + silêncio" como UMA pausa, com o
+ * mesmo respiro que a pausa longa recebe, para a frase que continua não colar
+ * na anterior.
+ */
+const ABERTURAS_SOLTAS = new Set([
+  "eu", "o", "a", "os", "as", "e", "um", "uma", "ou", "mas",
+  "ai", "entao", "ne", "bom", "olha", "tipo", "assim",
+]);
+
+export function detectarFalsosComecos(palavras: Word[]): Remocao[] {
+  const remocoes: Remocao[] = [];
+  const tipica = duracaoTipica(palavras);
+  const silencio = 0.3;
+
+  const solta = (i: number): boolean => {
+    if (i < 1 || i >= palavras.length - 1) return false;
+    const p = palavras[i];
+    const k = chaveDaPalavra(p.word);
+    if (!ABERTURAS_SOLTAS.has(k) && !SONS_DE_HESITACAO.has(k)) return false;
+    if (fechaFrase(p.word)) return false;
+    const antes = p.start - palavras[i - 1].end;
+    const depois = palavras[i + 1].start - p.end;
+    if (antes < silencio || depois < silencio) return false;
+    const duracao = p.end - p.start;
+    return duracao >= Math.max(0.4, tipica(k) * 1.8) || SONS_DE_HESITACAO.has(k);
+  };
+
+  let i = 1;
+  while (i < palavras.length - 1) {
+    if (!solta(i)) {
+      i++;
+      continue;
+    }
+    let fim = i;
+    while (fim + 1 < palavras.length - 1 && solta(fim + 1)) fim++;
+    const anterior = palavras[i - 1];
+    const seguinte = palavras[fim + 1];
+    const buraco = seguinte.start - anterior.end;
+    const fica = respiroDaPausa(buraco);
+    remocoes.push({
+      de: anterior.end + fica / 2,
+      ate: seguinte.start - fica / 2,
+      motivo: `falso começo: "${palavras.slice(i, fim + 1).map((p) => p.word).join(" ")}"`,
+    });
+    i = fim + 1;
   }
   return remocoes;
 }
@@ -204,6 +357,7 @@ O que SAI:
 1. Hesitação: "é", "eh", "hum", "ahn", "ééé", arrastados ou soltos no meio da frase. Só quando NÃO forem parte do sentido.
 2. Recomeço de frase: a pessoa começa, se interrompe e recomeça. Sai a primeira tentativa, fica a segunda. Exemplo: "eu saí do, bom, então, eu quero falar como eu saí do CLT" vira "eu quero falar como eu saí do CLT".
    O recomeço também acontece com um aparte no meio, e aí sai a primeira tentativa MAIS o aparte. Caso real: "Deus pede pra ele escrever. Eu vou até fazer aqui com você. Deus pede pra Habacuque escrever." vira "Deus pede pra Habacuque escrever." Repare que a primeira tentativa termina em ponto final: isso é normal no recomeço e não impede o corte.
+   Vale também para o começo que não foi adiante, uma ou duas palavras soltas antes de a frase sair: "do mesmo jeito? Eu, o, por que existem uns felizes" vira "do mesmo jeito? Por que existem uns felizes".
 3. Repetição imediata da mesma palavra ou expressão: "o, o ponto é", "eu eu acho". Fica uma.
 4. Abertura vazia de gravador: "bom, vamos lá gente", "então, vamos lá", quando não diz nada e só existe para a pessoa se ajeitar.
 5. Muleta que não liga nada: "né" no fim de frase, "tipo" no meio, "aí" como enfeite.
