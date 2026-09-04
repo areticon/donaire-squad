@@ -7745,6 +7745,91 @@ padrao de `why.tsx`.
 
 *Atualizado em 03/09/2026 por Claude Code.*
 
+## Sessao 04/09/2026 (parte 93): piloto do servidor, worker em paralelo, card do Paulo por rede, dois videos de anuncio
+
+Bruno rodou o teste do zero gravando a tela (OBS) e reprovou tres coisas:
+30 minutos do upload ate o quadro pronto; os cards dos agentes demorando a
+aparecer e chegando vazios (Roberto com pesquisa vazia, Diana sem arte); e o
+card do Paulo confuso no fim, sem botao por rede. Alem disso pediu dois
+videos de anuncio (Google e Meta) cortados a partir da gravacao.
+
+### O que mudou no codigo (tudo LOCAL, sem push, ver "Antes de qualquer coisa")
+
+**Piloto do servidor** (`167d4b6`, `lib/media/piloto-do-servidor.ts`,
+`app/api/videos/[id]/piloto/route.ts`). Medido na gravacao: os cortes
+ficaram prontos aos 6,9 min e a etapa seguinte so saiu aos 12,5 min, porque
+quem encadeava era a aba do cliente, e o navegador segura o relogio de aba
+em segundo plano. Agora cada callback de fora (Deepgram, worker) despacha o
+passo seguinte para `/piloto?passo=&sig=` (HMAC `piloto:${videoId}`), que
+responde 202 e trabalha em `after` com `maxDuration = 800`. Passos:
+selecionar, cortar, semana, preparar, capas-do-completo. O piloto da tela
+virou cura: so age quando algo esta parado ha mais de 1,5 min.
+
+**Squad a partir da transcricao** (`lib/media/esteira-do-video.ts`). O
+passo `semana` abre o quadro e roda Roberto, redatores e Vera assim que a
+transcricao chega, sem esperar corte nenhum: e tudo o que eles precisam. O
+`agendar` roda a esteira de novo para a Vera revisar os dias que ganharam
+corte. Tranco por video em `config.esteiraDesde` (10 min) para duas esteiras
+nao duplicarem posts.
+
+**Worker em paralelo** (`46f821a`, `worker/src/index.mjs`,
+`worker/src/ffmpeg.mjs`). Trechos em pool de ate 3, completo rodando junto
+com `nice`, passe 2 em dois lotes. `/saude` devolve `cpus` e `paralelismo`.
+Em producao: 8 CPUs, `{trechos: 3, lotes: 2}`, deploy `5a5f40de` SUCCESS.
+Licao cara: `railway up --service video-worker --detach` tem de rodar DE
+DENTRO de `worker/`; da raiz ele sobe o app Next e o build morre em
+"Connection url is empty" (deploy `63faa090` FAILED por isso).
+
+**Card do Paulo por rede** (`ad1dd80`, `components/content/content-manager.tsx`,
+`app/api/posts/[id]/route.ts`). Um card por dia, uma linha por post
+(checkbox, icone da rede, "Rede · o que e", status, Ver, arquivar), com
+"Marcar/Desmarcar tudo" e dois botoes no rodape: "Publicar agora (N)" e
+"Deixar agendado (N)". O PATCH do post aceita `socialAccountId` (403 se a
+conta nao e do projeto). Sumiram `publishNowPlatform/Both`, `queue*` e a
+linha "Arquivar LinkedIn/X". Sem canvas do Claude Design desta vez: e
+rearranjo de controles existentes com os mesmos tokens. NAO foi verificado
+na tela logada ainda (depende do push): rodar `scripts/tmp/sessao-e2e.mts`
+depois.
+
+### Os dois videos de anuncio
+
+Fonte: `C:\Users\devan\Videos\2026-09-04 10-01-26.mp4` (812 s, 2560x1440).
+Saida em `C:\Users\devan\Videos\demandou-anuncios\`:
+`demandou-google-16x9.mp4` (1920x1080, 311 s, 30 MB) e
+`demandou-meta-4x5.mp4` (1080x1350, 311 s, 12 MB).
+
+Como foi feito (scratchpad `editar.py`, ffmpeg + PIL): deteccao de tempo
+morto por diferenca de pixels a 2 fps (trecho estatico >= 3 s fica com 1,0 s
+no inicio e 0,4 s no fim), plano de cortes manual, upload acelerado 10x,
+espera da esteira 25x, recorte da janela do navegador (`crop=2560:1336:0:54`,
+tira a madeira da mesa), fundo `#1e1e25` (o `--bg-primary` do app) nas
+faixas. O que saiu: logins OAuth (8 a 85 s, mostravam e-mail), espera na
+tela de Posts vazia, o toast "Nao e possivel agendar no passado", tela preta
+e area de trabalho, Google/menu do Chrome/home do YouTube, Instagram
+carregando, cauda preta.
+
+**A gravacao NAO tem audio nenhum** (faixa a -91 dB o tempo todo: o OBS nao
+capturou o microfone). Os dois videos estao mudos; a narracao precisa ser
+regravada por cima ou trocada por locucao/musica. Na Meta 4:5 a interface
+fica pequena num celular; uma versao legivel pediria recortes com zoom
+seguindo a acao.
+
+### Antes de qualquer coisa (o Bruno precisa rodar, nesta ordem)
+
+1. `npx tsx --env-file=.env.local scripts/tmp/stripe-precos-0209.mts`
+2. `git push` (commits locais: 91df077, df4ce7a, ba35d4e, 167d4b6, 46f821a,
+   ad1dd80). Sem o passo 1 a landing vende R$ 397 com price ids de R$ 149.
+
+### Aberto
+
+- Completo em 1080p em vez de 1440p cortaria o tempo do worker pela metade;
+  decisao do Bruno.
+- Validar o tempo real de ponta a ponta com um upload novo depois do push
+  (meta: quadro com cards de espera em 1 minuto, semana escrita antes dos
+  cortes).
+
+*Atualizado em 04/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
