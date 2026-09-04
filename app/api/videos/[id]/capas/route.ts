@@ -6,7 +6,7 @@ export const maxDuration = 800;
 import { NextRequest, NextResponse } from "next/server";
 import { lerMidia, midiaProduzida } from "@/lib/media/storage";
 import { put } from "@vercel/blob";
-import { auth } from "@/lib/auth/server";
+import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { escreverTextoDoCorte, comporCapa } from "@/lib/media/capa-e-titulo";
@@ -41,16 +41,17 @@ type TrechoComTudo = Trecho & {
 };
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  // Sessão do dono OU assinatura do piloto do servidor (ver piloto-do-servidor.ts).
+  const acesso = await acessoAoVideo(req, id);
+  if (!acesso) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
+    where: acesso.where,
     select: {
       id: true,
       status: true,

@@ -90,9 +90,11 @@ export async function revisarDiasDoVideo(videoJobId: string): Promise<number> {
   });
 
   let revisados = 0;
-  for (const card of cards) {
+  // Um dia não depende do outro: as revisões saem juntas. Em série, a Vera
+  // levou 1,2 min na semana de 02/09; em paralelo é o tempo de um dia.
+  await Promise.all(cards.map(async (card) => {
     const meta = (card.metadata as Record<string, unknown> | null) ?? {};
-    if (meta.veredito || !card.scheduledDate) continue;
+    if (!card.scheduledDate) return;
 
     // Os posts do MESMO dia do card (dia UTC, como a rota by-day faz).
     const inicio = new Date(card.scheduledDate);
@@ -104,10 +106,18 @@ export async function revisarDiasDoVideo(videoJobId: string): Promise<number> {
         scheduledAt: { gte: inicio, lt: fim },
         status: { notIn: ["failed"] },
       },
-      select: { platform: true, content: true, mediaType: true, imageUrl: true, metadata: true },
+      select: { platform: true, content: true, mediaType: true, imageUrl: true, metadata: true, createdAt: true },
       orderBy: { scheduledAt: "asc" },
     });
-    if (posts.length === 0) continue;
+    if (posts.length === 0) return;
+
+    // Já revisado E nada novo desde então: pula. Mas se chegou post depois do
+    // veredito (a semana de texto agora termina ANTES dos cortes do Vitor, e
+    // o dia ganha o corte depois), a Vera revisa o dia de novo, com tudo.
+    if (meta.veredito) {
+      const revisadoEm = typeof meta.revisadoEm === "string" ? new Date(meta.revisadoEm).getTime() : 0;
+      if (!posts.some((p) => p.createdAt.getTime() > revisadoEm)) return;
+    }
 
     const dia = DIAS[card.dayOfWeek] ?? "o dia";
     const lista = posts
@@ -202,7 +212,7 @@ Sem travessão no texto: use vírgula, dois-pontos ou parênteses.`;
       });
     } catch (e) {
       console.error(`[vera][${videoJobId}] revisão de ${dia} falhou:`, e);
-      continue;
+      return;
     }
 
     const veredito = extrairVeredito(saida);
@@ -215,6 +225,6 @@ Sem travessão no texto: use vírgula, dois-pontos ou parênteses.`;
       },
     });
     revisados++;
-  }
+  }));
   return revisados;
 }

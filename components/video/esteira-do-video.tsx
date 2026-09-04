@@ -44,6 +44,8 @@ export type VideoAoVivo = {
   /** As opções de capa do completo já existem (lib/media/capas-do-completo.ts). */
   capas?: boolean;
   rodandoHaSegundos: number | null;
+  /** Há quanto tempo o registro não muda (ver a rota de status). */
+  paradoHaSegundos?: number;
   /**
    * A pesquisa do Roberto, em contagem. Nula enquanto ele não terminou (ou
    * enquanto a página do servidor ainda não a trouxe: a primeira consulta
@@ -229,7 +231,7 @@ export function EsteiraDoVideo({
   }, [projectId, aoMudar]);
 
   const executar = useCallback(
-    async (videoId: string, rota: string) => {
+    async (videoId: string, rota: string, opts?: { silencioso?: boolean }) => {
       setErroDaAcao(null);
       const disparo = fetch(`/api/videos/${videoId}/${rota}`, { method: "POST" });
       // Consultas escalonadas, e não uma só: a rota leva mais de 400 ms para
@@ -240,7 +242,10 @@ export function EsteiraDoVideo({
       }
       try {
         const r = await disparo;
-        if (!r.ok) {
+        // 409 numa chamada do piloto quer dizer que o servidor já tomou a
+        // etapa: não é erro, é a cura chegando atrasada. Só o clique humano
+        // vê o 409.
+        if (!r.ok && !(opts?.silencioso && r.status === 409)) {
           const corpo = await r.json().catch(() => ({}));
           setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
         }
@@ -285,44 +290,54 @@ export function EsteiraDoVideo({
   );
 
   /**
-   * O PILOTO AUTOMÁTICO, que veio junto da tela do vídeo.
+   * O PILOTO DA TELA, desde 04/09 só como CURA.
    *
-   * Cada etapa dispara a seguinte sozinha, porque a promessa do produto é "você
-   * grava, o squad publica". O agendamento é idempotente no servidor, então
-   * disparar em "ready" também CURA fluxo interrompido: se o navegador morreu
-   * entre a redação e o quadro, a próxima visita termina o serviço.
+   * Quem encadeia as etapas é o servidor (`lib/media/piloto-do-servidor.ts`):
+   * a transcrição dispara seleção e semana de texto, a seleção dispara o
+   * corte, o corte dispara capas, redação e quadro. Medido no teste de 04/09,
+   * quando a aba era quem empurrava: os cortes ficaram prontos aos 6,9 min e a
+   * etapa seguinte só saiu aos 12,5 min, porque a aba estava em segundo plano
+   * e o navegador segura o relógio de aba escondida.
+   *
+   * O que sobra para a tela: a transcrição (o envio não tem callback), e
+   * repetir qualquer etapa que ficou PARADA mais tempo do que o servidor
+   * levaria para tomá-la. Como toda rota é idempotente e atômica
+   * (`updateMany` por status), a cura que chega junto com o servidor leva 409
+   * e some em silêncio.
    */
+  const PARADO_S = 90;
   const disparados = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const v of videos) {
       const chave = `${v.id}:${v.status}`;
       if (disparados.current.has(chave)) continue;
-      const passo =
-        v.status === "uploaded"
-          ? "transcribe"
-          : v.status === "transcribed"
-            ? "select"
-            : v.status === "selected"
-              ? "cortar"
-              : null;
-      if (passo) {
+      const parado = v.paradoHaSegundos ?? 0;
+
+      if (v.status === "uploaded") {
         disparados.current.add(chave);
-        void executar(v.id, passo);
+        void executar(v.id, "transcribe");
         continue;
       }
-      // O Roberto parte da transcrição e não depende dos cortes, então roda
-      // em paralelo com a escolha dos momentos. Uma vez por vídeo: a rota é
-      // idempotente, e o `after` do agendar completa se esta chamada morrer.
-      if (v.temTranscricao && !v.radar && v.status !== "failed") {
+      const cura =
+        v.status === "transcribed" ? "select" : v.status === "selected" ? "cortar" : null;
+      if (cura && parado > PARADO_S) {
+        disparados.current.add(chave);
+        void executar(v.id, cura, { silencioso: true });
+        continue;
+      }
+      // A pesquisa do Roberto sai do passo "semana" do servidor, um minuto
+      // depois do envio. Cinco minutos sem briefing é corrente quebrada.
+      const idadeS = (agora - new Date(v.criadoEm).getTime()) / 1000;
+      if (v.temTranscricao && !v.radar && v.status !== "failed" && idadeS > 300) {
         const chavePesquisa = `${v.id}:pesquisar`;
         if (!disparados.current.has(chavePesquisa)) {
           disparados.current.add(chavePesquisa);
           void fetch(`/api/videos/${v.id}/pesquisar`, { method: "POST" }).then(() => void consultar());
         }
       }
-      // As duas opções de capa do completo, uma vez, assim que o completo
-      // existe. Até 02/09 o completo subia ao YouTube sem capa nenhuma.
-      if (v.temCompleto && !v.capas && v.status !== "failed") {
+      // As capas do completo saem do callback do worker; parado dois minutos
+      // com o completo e sem capa, a tela pede.
+      if (v.temCompleto && !v.capas && v.status !== "failed" && parado > 120) {
         const chaveCapas = `${v.id}:capas`;
         if (!disparados.current.has(chaveCapas)) {
           disparados.current.add(chaveCapas);
@@ -332,12 +347,16 @@ export function EsteiraDoVideo({
           });
         }
       }
-      if (v.status === "cut" && v.temCortes && !v.temTrechosComPosts) {
+      // "cut" dura o tempo das capas (a redação já troca para "writing"), por
+      // isso a folga maior antes de considerar parado.
+      if (v.status === "cut" && v.temCortes && !v.temTrechosComPosts && parado > 150) {
         disparados.current.add(chave);
         void prepararTudo(v.id);
         continue;
       }
-      if (v.status === "ready") {
+      // O agendar é idempotente e barato: em "ready" parado ele só completa o
+      // quadro com o que faltou (Vitor, Vera nos dias dos cortes).
+      if (v.status === "ready" && parado > PARADO_S) {
         disparados.current.add(chave);
         void fetch(`/api/videos/${v.id}/agendar`, { method: "POST" }).then(() => {
           void consultar();
@@ -357,8 +376,11 @@ export function EsteiraDoVideo({
         }
       }
     }
+    // A dependência inclui o "parado" arredondado ao meio minuto: é o que faz
+    // o efeito acordar de novo quando um estado de espera envelhece, sem rodar
+    // a cada consulta.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videos.map((v) => `${v.id}:${v.status}:${v.temCompleto ? 1 : 0}:${v.capas ? 1 : 0}`).join("|")]);
+  }, [videos.map((v) => `${v.id}:${v.status}:${v.temCompleto ? 1 : 0}:${v.capas ? 1 : 0}:${v.radar ? 1 : 0}:${Math.floor((v.paradoHaSegundos ?? 0) / 30)}`).join("|")]);
 
   const algumAndando = videos.some(emAndamento);
 

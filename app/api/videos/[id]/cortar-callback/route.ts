@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
+import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 
 /**
  * O worker avisa que terminou de cortar.
@@ -124,6 +125,9 @@ export async function POST(
       await anexarCompletoAoQuadro(id).catch((e) =>
         console.error(`[cortar-callback][${id}] completo no quadro falhou:`, e)
       );
+      // A capa do vídeo inteiro nasce do mesmo quadro-fonte dos cortes; gerar
+      // agora, e não quando a aba acordar, é o que tira os últimos minutos.
+      after(() => despacharPasso(id, "capas-do-completo"));
       return NextResponse.json({ ok: true, completoAnexado: true });
     }
     return NextResponse.json({ ok: true, ignorado: `status ${video.status}` });
@@ -227,6 +231,12 @@ export async function POST(
           : "Nenhum corte foi produzido.",
     },
   });
+
+  // Cortes no ar: capas, posts e cards do Vitor saem do servidor, agora. No
+  // teste de 04/09 este intervalo (cortes prontos aos 6,9 min, próximo passo
+  // aos 12,5 min) era o maior buraco da esteira, e era a aba escondida do
+  // cliente segurando o relógio.
+  if (comMidia > 0) after(() => despacharPasso(id, "preparar"));
 
   return NextResponse.json({ ok: true, trechos: comMidia });
 }

@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
+import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import {
   climaDeCapaValido,
@@ -38,10 +39,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Sessão do dono OU assinatura do piloto do servidor: o callback do completo
+  // manda gerar as capas assim que o vídeo inteiro fica pronto.
+  const acesso = await acessoAoVideo(req, id);
+  if (!acesso) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const corpo = (await req.json().catch(() => ({}))) as { estilo?: unknown; clima?: unknown };
   if (corpo.estilo !== undefined && !estiloDeCapaValido(corpo.estilo)) {
     return NextResponse.json({ error: "Estilo de capa inválido" }, { status: 400 });
@@ -53,7 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const capas = await gerarCapasDoCompleto(id, {
       estilo: estiloDeCapaValido(corpo.estilo) ? corpo.estilo : undefined,
       clima: climaDeCapaValido(corpo.clima) ? corpo.clima : undefined,
-      userId: userId,
+      userId: acesso.where.project?.userId,
     });
     return NextResponse.json({ capas });
   } catch (e) {

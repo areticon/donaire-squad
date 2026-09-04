@@ -169,12 +169,17 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   let escritos = 0;
   let falhas = 0;
 
-  for (const { dia, formato, escolhido } of dias) {
+  // Os dias saem EM PARALELO: cada um é um redator diferente (ou o mesmo com
+  // outro pedido), e nenhum depende do outro. Em série, a semana de 02/09
+  // levou 1,8 min só de redação (14,9 aos 16,7); em paralelo é o tempo do dia
+  // mais lento, e o prefixo cacheado (perfil, briefing, transcrição) é o
+  // mesmo em todas as chamadas, então o custo não muda.
+  await Promise.all(dias.map(async ({ dia, formato, escolhido }) => {
     const derivadosDoDia = cardsDoVideo.filter(
       (c) => c.dayOfWeek === dia && (c.metadata as { derivado?: boolean } | null)?.derivado
     );
     // Dia já escrito: algum card derivado do dia aponta para um post.
-    if (derivadosDoDia.some((c) => c.postId)) continue;
+    if (derivadosDoDia.some((c) => c.postId)) return;
 
     const data = new Date(segunda.getTime() + (dia - 1) * 86400000);
     data.setUTCHours(12, 0, 0, 0);
@@ -299,16 +304,16 @@ ${REGRAS_DE_TEXTO}`,
       } else if (formato === "carousel") {
         const rede = redeDaImagem(video.project.socialAccounts);
         const frases = await frasesDosSlides(diana, prefixo, contexto, usage(AGENTES.diana.agentId));
-        const urls: string[] = [];
-        for (let i = 0; i < frases.length; i++) {
-          urls.push(
-            await generateImage(`${promptDaImagem(video, frases[i])} Slide ${i + 1} of ${frases.length}.`, "1:1", "standard", {
+        // Os slides não dependem um do outro: três chamadas ao mesmo tempo.
+        const urls = await Promise.all(
+          frases.map((frase, i) =>
+            generateImage(`${promptDaImagem(video, frase)} Slide ${i + 1} of ${frases.length}.`, "1:1", "standard", {
               projectId: video.projectId,
               runId: run.id,
               operation: "campanha_imagem",
             })
-          );
-        }
+          )
+        );
         const contextoDaLegenda = [
           radar ? `Tema: ${radar.tema}. ${radar.resumo}` : "",
           ...(radar?.teses.map((t) => `[${t.minuto}] ${t.frase}`) ?? []),
@@ -351,7 +356,7 @@ ${REGRAS_DE_TEXTO}`,
         extra: { falha: msg.slice(0, 300) },
       }).catch(() => {});
     }
-  }
+  }));
 
   return { escritos, falhas };
 }

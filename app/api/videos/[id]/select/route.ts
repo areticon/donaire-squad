@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 // plataforma não consegue gravar erro nenhum, e sem prazo ninguém percebe.
 export const maxDuration = 800;
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { acessoAoVideo, despacharPasso } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import { selecionarTrechos } from "@/lib/media/select-clips";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
@@ -23,16 +23,17 @@ import { MAX_TENTATIVAS } from "@/lib/media/video-state";
  * novo, que é útil quando o cliente não gostou da seleção.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  // Sessão do dono OU assinatura do piloto do servidor (ver piloto-do-servidor.ts).
+  const acesso = await acessoAoVideo(req, id);
+  if (!acesso) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
+    where: acesso.where,
     select: {
       id: true,
       status: true,
@@ -117,6 +118,11 @@ export async function POST(
         error: null,
       },
     });
+
+    // Trechos escolhidos, o corte sai daqui, seja quem for que pediu a
+    // seleção (o servidor ou a tela): a aba do cliente não precisa estar
+    // aberta para o worker começar.
+    after(() => despacharPasso(id, "cortar"));
 
     return NextResponse.json({
       ok: true,

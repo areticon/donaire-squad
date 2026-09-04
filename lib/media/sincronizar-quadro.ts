@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId } from "@/lib/media/destinos";
+import { diaDoTrecho } from "@/lib/media/quadro-do-video";
 
 /**
  * Faz o Gestor de Conteúdo ESPELHAR a seleção da aba Vídeo.
@@ -101,7 +102,12 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
       const m = c.metadata as { trechoIndice?: number } | null;
       return m?.trechoIndice === alvo.indice;
     });
-    const dayOfWeek = irmao?.dayOfWeek ?? ((alvo.indice * 3) % 7) + 1;
+    // O mesmo dia do irmão (outro destino do mesmo corte), ou o dia que o
+    // espalhamento uniforme dá a este corte. Desde 04/09 os cards do Vitor
+    // nascem AQUI (o agendar só abre o quadro e chama a sincronização), então
+    // esta conta é a que decide a semana inteira, e não só o corte marcado
+    // depois.
+    const dayOfWeek = irmao?.dayOfWeek ?? diaDoTrecho(trechos, alvo.indice);
     const data = new Date(segunda.getTime() + (dayOfWeek - 1) * 86400000);
     data.setUTCHours(12, 0, 0, 0);
     const legenda = legendaDoDestino(alvo.t, destino.plataforma);

@@ -156,6 +156,13 @@ export async function GET(req: NextRequest) {
           ? Math.max(0, Math.round((agora - v.startedAt.getTime()) / 1000))
           : null,
       prazoSegundos: estaTrabalhando(v.status) ? PRAZO_SEGUNDOS[v.status] : null,
+      /**
+       * Há quanto tempo o registro não muda. É o que o piloto da tela usa,
+       * desde 04/09, para decidir se CURA: o servidor encadeia as etapas
+       * sozinho, e um estado de espera parado há mais de um minuto e meio
+       * significa que essa corrente quebrou.
+       */
+      paradoHaSegundos: Math.max(0, Math.round((agora - v.updatedAt.getTime()) / 1000)),
       };
     }),
   });

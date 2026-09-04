@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/server";
+import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import { pesquisarDoVideo } from "@/lib/media/radar-do-video";
 
@@ -20,12 +20,12 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const acesso = await acessoAoVideo(req, id);
+  if (!acesso) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
+    where: acesso.where,
     select: { id: true, transcript: true, radar: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });

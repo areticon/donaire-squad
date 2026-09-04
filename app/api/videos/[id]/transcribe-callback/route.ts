@@ -2,13 +2,14 @@ export const dynamic = "force-dynamic";
 // O corpo já vem pronto: só interpretar e gravar. Não precisa dos 300s.
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { aplicarTermos, parseTermos } from "@/lib/media/termos";
 import { interpretarResposta, transcribeBlobAsync } from "@/lib/media/transcribe";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 import { assinaturaValida, assinarVideo } from "@/lib/media/callback-token";
 import { recordTranscricao } from "@/lib/media/usage";
+import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 
 /**
  * Recebe o resultado da transcrição assíncrona da Deepgram.
@@ -77,6 +78,13 @@ export async function POST(
         },
       },
     });
+
+    // A transcrição é tudo o que o squad precisa para começar. Dois trilhos em
+    // paralelo a partir daqui: o do vídeo (seleção, cortes, capas, posts) e o
+    // da semana de texto (quadro aberto, Roberto, redatores, Vera). Até 04/09
+    // os dois eram disparados pela aba do cliente, um depois do outro, e o
+    // quadro só aparecia aos 13 minutos.
+    after(() => Promise.all([despacharPasso(id, "selecionar"), despacharPasso(id, "semana")]));
 
     return NextResponse.json({ ok: true });
   } catch (err) {
