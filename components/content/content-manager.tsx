@@ -1052,7 +1052,6 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const isPublish = localCard.cardType === "publish";
   const isPreview = localCard.cardType === "preview";
   const hasError = localCard.content?.startsWith("AVISO:");
-  const temPostDeTexto = dayPosts.some((p) => p.platform === "linkedin" || p.platform === "twitter");
 
   /**
    * De onde vêm os posts do dia para este card.
@@ -1203,147 +1202,131 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     return personal ?? candidates[0];
   }
 
-  async function publishNowPlatform(platform: "linkedin" | "twitter") {
-    const p = dayPosts.find((x) => x.platform === platform);
-    if (!p) {
-      toast.error(`Não há post para ${platform === "linkedin" ? "LinkedIn" : "X"} neste dia.`);
-      return;
-    }
-    const acc = accountFor(platform, p.socialAccountId);
-    if (!acc) {
-      toast.error(
-        `Não há conta ${platform === "linkedin" ? "LinkedIn" : "X"} com token válido. Reconecte em Configurações do projeto.`
-      );
-      return;
-    }
-    setApproving(true);
-    try {
-      const res = await fetch(`/api/posts/${p.id}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: acc.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro ao publicar");
-      await refreshDayPosts();
+  /**
+   * ## O Paulo por REDE, e não por LinkedIn e X
+   *
+   * O card nasceu quando só havia duas redes, com grades fixas "LinkedIn, X,
+   * Ambas" para agendar e para publicar. Quando entraram YouTube, Instagram e
+   * Facebook (esteira do vídeo), os vídeos ganharam uma lista própria só com
+   * "publicar agora", e o resto ficou como estava: três blocos com regras
+   * diferentes, e o cliente sem saber o que já saiu, o que está na fila e o
+   * que ainda é rascunho. Foi o "card do Paulo confuso" do Bruno em 04/09.
+   *
+   * Agora é UMA lista: cada post do dia é uma linha com a rede, o que é, o
+   * estado e uma marcação. Embaixo, duas ações sobre o que está marcado:
+   * publicar agora, ou deixar agendado no horário do dia. O cron publica o
+   * agendado pela conta gravada no post, por isso "deixar agendado" grava a
+   * conta junto.
+   */
+  const [escolhidos, setEscolhidos] = useState<Set<string>>(new Set());
+  const publicavel = (p: { status: string }) => p.status !== "published" && p.status !== "cancelled";
+  const chaveDosPosts = dayPosts.map((p) => `${p.id}:${p.status}`).join(",");
+  useEffect(() => {
+    // Ao carregar o dia, tudo o que ainda não saiu vem marcado: o caso comum
+    // é publicar o dia inteiro, e desmarcar é um clique.
+    setEscolhidos(new Set(dayPosts.filter((p) => publicavel(p) && accountFor(p.platform, p.socialAccountId)).map((p) => p.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveDosPosts]);
+
+  const NOME_DA_REDE: Record<string, string> = { linkedin: "LinkedIn", twitter: "X", youtube: "YouTube", instagram: "Instagram", facebook: "Facebook" };
+  const ORDEM_DA_REDE = ["youtube", "linkedin", "instagram", "facebook", "twitter"];
+  const nomeDaRede = (plat: string) => NOME_DA_REDE[plat] ?? plat;
+  const oQueE = (p: { platform: string; mediaType: string | null; content: string; metadata: Record<string, unknown> | null }) => {
+    const mv = p.metadata as { trechoIndice?: number; gravacaoCompleta?: boolean } | null;
+    if (p.mediaType === "video") return mv?.gravacaoCompleta ? "Gravação completa" : typeof mv?.trechoIndice === "number" ? `Corte ${mv.trechoIndice + 1}` : "Vídeo";
+    const rotulo: Record<string, string> = { poll: "Enquete", thread: "Thread", article: "Artigo", image: "Imagem com legenda", carousel: "Carrossel", infographic: "Infográfico", text: "Post de texto" };
+    return rotulo[p.mediaType ?? "text"] ?? "Post";
+  };
+  const postsDoDia = [...dayPosts].sort((a, b) => ORDEM_DA_REDE.indexOf(a.platform) - ORDEM_DA_REDE.indexOf(b.platform));
+  const marcados = postsDoDia.filter((p) => escolhidos.has(p.id));
+
+  /** O card fecha (aprovado) quando nada do dia ficou por decidir. */
+  async function fecharSeTerminou() {
+    if (!consultaDoDia) return;
+    const r = await fetch(`/api/posts/by-day?projectId=${projectId}&${consultaDoDia}`);
+    const data = await r.json();
+    const posts: Array<{ status: string }> = Array.isArray(data.posts) ? data.posts : [];
+    if (posts.length > 0 && posts.every((p) => ["published", "scheduled", "cancelled"].includes(p.status))) {
       const updated = { ...localCard, status: "approved" as const };
       setLocalCard(updated);
       onCardUpdate(updated);
-      setPublishResult([
-        {
-          platform,
-          accountName: acc.displayName ?? platform,
-          publishedAt: new Date().toISOString(),
-          url: data.url ?? null,
-        },
-      ]);
-      toast.success(platform === "linkedin" ? "Publicado no LinkedIn!" : "Publicado no X!");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
-    } finally {
-      setApproving(false);
     }
   }
 
-  async function publishNowBoth() {
-    const li = dayPosts.find((x) => x.platform === "linkedin");
-    const tw = dayPosts.find((x) => x.platform === "twitter");
+  async function publicarAgoraMarcados() {
+    if (marcados.length === 0) return;
+    setApproving(true);
     const results: { platform: string; accountName: string; publishedAt: string; url: string | null }[] = [];
-    setApproving(true);
+    const falhas: string[] = [];
     try {
-      if (li) {
-        const acc = accountFor("linkedin", li.socialAccountId);
-        if (!acc) throw new Error("Não há LinkedIn com token válido. Reconecte em Configurações.");
-        const res = await fetch(`/api/posts/${li.id}/publish`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId: acc.id }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro LinkedIn");
-        results.push({
-          platform: "linkedin",
-          accountName: acc.displayName ?? "LinkedIn",
-          publishedAt: new Date().toISOString(),
-          url: data.url ?? null,
-        });
-      }
-      if (tw) {
-        const acc = accountFor("twitter", tw.socialAccountId);
-        if (!acc) throw new Error("Não há X com token válido. Reconecte em Configurações.");
-        const res = await fetch(`/api/posts/${tw.id}/publish`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId: acc.id }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro X");
-        results.push({
-          platform: "twitter",
-          accountName: acc.displayName ?? "X",
-          publishedAt: new Date().toISOString(),
-          url: data.url ?? null,
-        });
+      for (const p of marcados) {
+        const acc = accountFor(p.platform, p.socialAccountId);
+        if (!acc) { falhas.push(`${nomeDaRede(p.platform)}: conta não conectada`); continue; }
+        try {
+          const res = await fetch(`/api/posts/${p.id}/publish`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId: acc.id }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
+          // O que deu certo mas o cliente precisa saber: o YouTube mostra SD
+          // nos primeiros minutos (o Bruno achou que o arquivo tinha perdido
+          // qualidade, 02/09).
+          if (typeof d.aviso === "string" && d.aviso) toast(d.aviso, { duration: 12_000, icon: "ℹ️" });
+          results.push({ platform: p.platform, accountName: acc.displayName ?? nomeDaRede(p.platform), publishedAt: new Date().toISOString(), url: d.url ?? null });
+        } catch (err) {
+          falhas.push(`${nomeDaRede(p.platform)}: ${err instanceof Error ? err.message : "erro"}`);
+        }
       }
       await refreshDayPosts();
-      const updated = { ...localCard, status: "approved" as const };
-      setLocalCard(updated);
-      onCardUpdate(updated);
-      setPublishResult(results);
-      toast.success("Publicado nas redes!");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
+      await fecharSeTerminou();
+      for (const f of falhas) toast.error(f, { duration: 8000 });
+      if (results.length > 0) setPublishResult(results);
     } finally {
       setApproving(false);
     }
   }
 
-  async function queuePlatform(platform: "linkedin" | "twitter") {
-    const p = dayPosts.find((x) => x.platform === platform);
-    if (!p) {
-      toast.error("Post não encontrado para esta plataforma.");
-      return;
+  async function deixarAgendadoMarcados() {
+    if (marcados.length === 0) return;
+    setApproving(true);
+    let agendados = 0;
+    try {
+      for (const p of marcados) {
+        const acc = accountFor(p.platform, p.socialAccountId);
+        if (!acc) { toast.error(`${nomeDaRede(p.platform)}: conecte a rede para agendar.`); continue; }
+        const res = await fetch(`/api/posts/${p.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "scheduled", socialAccountId: acc.id, ...(p.scheduledAt ? {} : postScheduledAt ? { scheduledAt: postScheduledAt } : {}) }),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast.error(`${nomeDaRede(p.platform)}: ${data.error ?? "erro ao agendar"}`, { duration: 8000 }); continue; }
+        agendados += 1;
+      }
+      await refreshDayPosts();
+      await fecharSeTerminou();
+      if (agendados > 0) toast.success(agendados === 1 ? "1 post na fila: sai sozinho no horário." : `${agendados} posts na fila: saem sozinhos no horário.`);
+    } finally {
+      setApproving(false);
     }
+  }
+
+  async function arquivarPost(p: { id: string; platform: string }) {
+    if (!window.confirm(`Arquivar o post de ${nomeDaRede(p.platform)} deste dia? Ele sai da fila; o resto do dia continua.`)) return;
     setApproving(true);
     try {
       const res = await fetch(`/api/posts/${p.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "scheduled" }),
+        body: JSON.stringify({ status: "cancelled" }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro ao agendar");
+      if (!res.ok) throw new Error();
+      toast.success(`Post de ${nomeDaRede(p.platform)} arquivado.`);
       await refreshDayPosts();
-      toast.success(
-        platform === "linkedin"
-          ? "LinkedIn aprovado — publicação automática no horário agendado."
-          : "X aprovado — publicação automática no horário agendado."
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro.");
-    } finally {
-      setApproving(false);
-    }
-  }
-
-  async function queueBoth() {
-    setApproving(true);
-    try {
-      for (const platform of ["linkedin", "twitter"] as const) {
-        const p = dayPosts.find((x) => x.platform === platform);
-        if (!p) continue;
-        const res = await fetch(`/api/posts/${p.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "scheduled" }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro ao agendar");
-      }
-      await refreshDayPosts();
-      toast.success("LinkedIn e X na fila para o horário agendado.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro.");
+    } catch {
+      toast.error("Não foi possível arquivar o post.");
     } finally {
       setApproving(false);
     }
@@ -1385,31 +1368,6 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
       onClose();
     } catch {
       toast.error("Não foi possível arquivar.");
-    } finally {
-      setApproving(false);
-    }
-  }
-
-  async function handleArchivePost(platform: "linkedin" | "twitter") {
-    const post = dayPosts.find((p) => p.platform === platform);
-    if (!post) {
-      toast.error(`Nenhum post de ${platform === "linkedin" ? "LinkedIn" : "X"} encontrado para este dia.`);
-      return;
-    }
-    const label = platform === "linkedin" ? "LinkedIn" : "X (Twitter)";
-    if (!window.confirm(`Arquivar o post de ${label} deste dia? Ele será cancelado mas a campanha continua.`)) return;
-    setApproving(true);
-    try {
-      const res = await fetch(`/api/posts/${post.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled" }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success(`Post de ${label} arquivado.`);
-      await refreshDayPosts();
-    } catch {
-      toast.error("Não foi possível arquivar o post.");
     } finally {
       setApproving(false);
     }
@@ -2000,208 +1958,122 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       </div>
                     )}
 
-                    {/* ── Aprovar (agendar) — só se não estiver rejeitado ── */}
-                    {/* As grades de LinkedIn/X só aparecem em dia que TEM post
-                        de texto. Num dia só de vídeo elas apareciam inteiras e
-                        apagadas, três botões mortos acima do que importa. */}
-                    {localCard.status !== "rejected" && temPostDeTexto && <div
-                      className="rounded-xl overflow-hidden border"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <div
-                        className="flex items-center gap-2 px-4 py-2.5"
-                        style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}
-                      >
-                        <AlarmClock className="w-3.5 h-3.5 text-orange-400" />
-                        <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                          Aprovar — publicar no horário agendado
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-3" style={{ borderTop: "none" }}>
-                        {/* LinkedIn */}
-                        <button
-                          type="button"
-                          disabled={approving || !dayPosts.some((p) => p.platform === "linkedin")}
-                          onClick={() => void queuePlatform("linkedin")}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all group disabled:opacity-40"
-                          style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(10,102,194,0.08)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
-                        >
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                          <span className="text-[10px] font-semibold" style={{ color: "#0A66C2" }}>LinkedIn</span>
-                        </button>
-                        {/* X */}
-                        <button
-                          type="button"
-                          disabled={approving || !dayPosts.some((p) => p.platform === "twitter")}
-                          onClick={() => void queuePlatform("twitter")}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all group disabled:opacity-40"
-                          style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(29,155,240,0.08)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
-                        >
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                          <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>X (Twitter)</span>
-                        </button>
-                        {/* Ambos */}
-                        <button
-                          type="button"
-                          disabled={approving || dayPosts.length === 0}
-                          onClick={() => void queueBoth()}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all group disabled:opacity-40"
-                          style={{ background: "var(--bg-primary)" }}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(249,115,22,0.08)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
-                        >
-                          <div className="flex -space-x-1.5">
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--text-primary)" }}><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                          </div>
-                          <span className="text-[10px] font-semibold text-orange-400">Ambas</span>
-                        </button>
-                      </div>
-                    </div>}
-
-                    {/* Os posts de VÍDEO do dia (YouTube, Instagram, Facebook),
-                        UM BOTÃO POR POST e não por rede. A grade antiga era
-                        por rede e pegava o primeiro post de cada uma: na
-                        segunda-feira há dois de YouTube (a gravação completa
-                        e o Short), e o segundo nunca teria botão. Publicar um
-                        não esconde os outros: o card só fecha quando todos os
-                        posts do dia saíram. */}
-                    {localCard.status !== "rejected" && dayPosts.some((p) => ["youtube", "instagram", "facebook"].includes(p.platform)) && (
+                    {/* A lista do dia: uma linha por post, com a rede, o que
+                        é, o estado e a marcação. As ações embaixo valem para o
+                        que está marcado. */}
+                    {localCard.status !== "rejected" && (
                       <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-                        <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
-                          <Zap className="w-3.5 h-3.5 text-orange-400" />
-                          <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                            Publicar vídeo agora
+                        <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
+                          <p className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+                            <Send className="w-3.5 h-3.5 text-orange-400" />
+                            O que sai neste dia, por rede
                           </p>
+                          <button
+                            type="button"
+                            className="text-[10px] font-medium hover:underline"
+                            style={{ color: "var(--text-muted)" }}
+                            onClick={() => {
+                              const todos = postsDoDia.filter((p) => publicavel(p) && accountFor(p.platform, p.socialAccountId)).map((p) => p.id);
+                              setEscolhidos(marcados.length > 0 ? new Set() : new Set(todos));
+                            }}
+                          >
+                            {marcados.length > 0 ? "Desmarcar tudo" : "Marcar tudo"}
+                          </button>
                         </div>
                         <div className="flex flex-col">
-                          {dayPosts.filter((p) => ["youtube", "instagram", "facebook"].includes(p.platform)).map((post) => {
-                            const plat = post.platform;
-                            const conta = accountFor(plat, post.socialAccountId);
-                            const publicado = post.status === "published";
-                            const rede = plat === "youtube" ? "YouTube" : plat === "instagram" ? "Instagram" : "Facebook";
-                            const titulo = (post.content ?? "").split("\n")[0].trim().slice(0, 70) || rede;
+                          {postsDoDia.map((p) => {
+                            const conta = accountFor(p.platform, p.socialAccountId);
+                            const publicado = p.status === "published";
+                            const naFila = p.status === "scheduled";
+                            const arquivado = p.status === "cancelled";
+                            const podeMarcar = publicavel(p) && Boolean(conta);
+                            const marcado = escolhidos.has(p.id);
+                            const horario = p.scheduledAt ?? postScheduledAt;
+                            const url = (p.metadata as { url?: string } | null)?.url;
+                            const estado = publicado
+                              ? "Publicado"
+                              : arquivado
+                                ? "Arquivado"
+                                : !conta
+                                  ? `Conecte o ${nomeDaRede(p.platform)} em Configurações para publicar`
+                                  : naFila
+                                    ? `Na fila: sai sozinho ${horario ? formatScheduledAt(horario) : "no horário"}`
+                                    : horario
+                                      ? `Rascunho: ${formatScheduledAt(horario)} se você deixar agendado`
+                                      : "Rascunho, sem horário definido";
                             return (
-                              <button
-                                key={post.id}
-                                type="button"
-                                disabled={approving || !conta || publicado}
-                                title={publicado ? "Já publicado" : !conta ? "Conecte a rede em Configurações" : undefined}
-                                onClick={async () => {
-                                  if (!conta) return;
-                                  setApproving(true);
-                                  try {
-                                    const res = await fetch(`/api/posts/${post.id}/publish`, {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ accountId: conta.id }),
-                                    });
-                                    const d = await res.json();
-                                    if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
-                                    toast.success(d.url ? `Publicado! ${d.url}` : "Publicado!");
-                                    // O que deu certo mas o cliente precisa
-                                    // saber: o YouTube mostra SD nos primeiros
-                                    // minutos (o Bruno achou que o arquivo
-                                    // tinha perdido qualidade, 02/09).
-                                    if (typeof d.aviso === "string" && d.aviso) toast(d.aviso, { duration: 12_000, icon: "ℹ️" });
-                                    await refreshDayPosts();
-                                    const restantes = dayPosts.filter((o) => o.id !== post.id && o.status !== "published" && o.status !== "scheduled");
-                                    if (restantes.length === 0) {
-                                      const updated = { ...localCard, status: "approved" as const };
-                                      setLocalCard(updated);
-                                      onCardUpdate(updated);
-                                    }
-                                  } catch (err) {
-                                    toast.error(err instanceof Error ? err.message : "Erro ao publicar.");
-                                  } finally {
-                                    setApproving(false);
-                                  }
-                                }}
-                                className="flex items-center gap-3 py-3 px-4 text-left transition-all disabled:opacity-40 hover:bg-white/5"
+                              <label
+                                key={p.id}
+                                className={cn("flex items-center gap-3 py-3 px-4 transition-all", podeMarcar ? "cursor-pointer hover:bg-white/5" : "opacity-60")}
                                 style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border)" }}
                               >
-                                <RedeIcone plataforma={plat} className="w-5 h-5 shrink-0" />
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 accent-orange-500 shrink-0"
+                                  checked={marcado}
+                                  disabled={!podeMarcar || approving}
+                                  onChange={(e) => {
+                                    const prox = new Set(escolhidos);
+                                    if (e.target.checked) prox.add(p.id); else prox.delete(p.id);
+                                    setEscolhidos(prox);
+                                  }}
+                                />
+                                <RedeIcone plataforma={p.platform} className="w-5 h-5 shrink-0" monocromatico={!podeMarcar} />
                                 <span className="flex-1 min-w-0">
-                                  <span className="block text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{titulo}</span>
-                                  <span className="block text-[10px]" style={{ color: "var(--text-muted)" }}>
-                                    {publicado ? `Publicado no ${rede}` : conta ? `Publicar no ${rede} agora` : `Conecte o ${rede} para publicar`}
+                                  <span className="block text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+                                    {nomeDaRede(p.platform)}
+                                    <span className="font-normal" style={{ color: "var(--text-muted)" }}> · {oQueE(p)}</span>
+                                  </span>
+                                  <span className="block text-[10px] truncate" style={{ color: publicado ? "rgb(74,222,128)" : naFila ? "rgb(251,146,60)" : "var(--text-muted)" }}>
+                                    {estado}
                                   </span>
                                 </span>
-                                {!publicado && conta && <Send className="w-3.5 h-3.5 shrink-0 text-orange-400" />}
-                              </button>
+                                {publicado && url && (
+                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium shrink-0 hover:underline" style={{ color: "var(--text-muted)" }} onClick={(e) => e.stopPropagation()}>
+                                    Ver
+                                  </a>
+                                )}
+                                {publicado && <CheckCircle2 className="w-4 h-4 shrink-0 text-green-400" />}
+                                {!publicado && !arquivado && (
+                                  <button
+                                    type="button"
+                                    disabled={approving}
+                                    title={`Arquivar o post de ${nomeDaRede(p.platform)}`}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void arquivarPost(p); }}
+                                    className="p-1 rounded-md shrink-0 transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    <Archive className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </label>
                             );
                           })}
                         </div>
+                        <div className="grid grid-cols-2 gap-2 p-3" style={{ background: "var(--bg-elevated)" }}>
+                          <Button
+                            size="sm"
+                            className="text-xs"
+                            disabled={marcados.length === 0}
+                            loading={approving}
+                            onClick={() => void publicarAgoraMarcados()}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            Publicar agora{marcados.length > 0 ? ` (${marcados.length})` : ""}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            disabled={marcados.length === 0 || approving}
+                            onClick={() => void deixarAgendadoMarcados()}
+                          >
+                            <AlarmClock className="w-3.5 h-3.5" />
+                            Deixar agendado{marcados.length > 0 ? ` (${marcados.length})` : ""}
+                          </Button>
+                        </div>
                       </div>
                     )}
-
-                    {/* ── Publicar agora — só se não estiver rejeitado ── */}
-                    {localCard.status !== "rejected" && temPostDeTexto && <div
-                      className="rounded-xl overflow-hidden border"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <div
-                        className="flex items-center gap-2 px-4 py-2.5"
-                        style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}
-                      >
-                        <Zap className="w-3.5 h-3.5 text-orange-400" />
-                        <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                          Publicar agora — link ao concluir
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-3" style={{ borderColor: "var(--border)" }}>
-                        {/* LinkedIn now */}
-                        <button
-                          type="button"
-                          disabled={approving || !dayPosts.some((p) => p.platform === "linkedin") || !accountFor("linkedin")}
-                          onClick={() => void publishNowPlatform("linkedin")}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
-                          style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(10,102,194,0.12)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
-                        >
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                          <span className="text-[10px] font-semibold" style={{ color: "#0A66C2" }}>LinkedIn</span>
-                        </button>
-                        {/* X now */}
-                        <button
-                          type="button"
-                          disabled={approving || !dayPosts.some((p) => p.platform === "twitter") || !accountFor("twitter")}
-                          onClick={() => void publishNowPlatform("twitter")}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
-                          style={{ background: "var(--bg-primary)", borderRight: "1px solid var(--border)" }}
-                          title={!accountFor("twitter") ? "Conecte sua conta do X em Configurações para publicar" : undefined}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(29,155,240,0.12)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-primary)"; }}
-                        >
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                          <span className="text-[10px] font-semibold" style={{ color: "var(--text-primary)" }}>X (Twitter)</span>
-                          {!accountFor("twitter") && (
-                            <span className="text-[9px] text-center leading-tight" style={{ color: "var(--text-muted)" }}>Conecte a conta</span>
-                          )}
-                        </button>
-                        {/* Ambas now */}
-                        <button
-                          type="button"
-                          disabled={approving || dayPosts.length === 0}
-                          onClick={() => void publishNowBoth()}
-                          className="flex flex-col items-center gap-2 py-4 px-3 transition-all disabled:opacity-40"
-                          style={{ background: "rgba(249,115,22,0.06)" }}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "rgba(249,115,22,0.14)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(249,115,22,0.06)"; }}
-                        >
-                          <div className="flex -space-x-1.5">
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--text-primary)" }}><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                          </div>
-                          <span className="text-[10px] font-semibold text-orange-400">Ambas</span>
-                        </button>
-                      </div>
-                    </div>}
 
                     {/* ── Ações secundárias — visíveis mesmo quando rejeitado ── */}
                     <div className="space-y-2">
@@ -2218,30 +2090,6 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           Recomeçar com tema
                         </button>
                       )}
-
-                      {/* Linha 2: Arquivar post LinkedIn / Arquivar post X */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          disabled={approving}
-                          onClick={() => void handleArchivePost("linkedin")}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-medium transition-all hover:border-blue-500/30 hover:bg-blue-500/5 disabled:opacity-50"
-                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                        >
-                          <Archive className="w-3 h-3 text-blue-400" />
-                          Arquivar LinkedIn
-                        </button>
-                        <button
-                          type="button"
-                          disabled={approving}
-                          onClick={() => void handleArchivePost("twitter")}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-medium transition-all hover:border-sky-500/30 hover:bg-sky-500/5 disabled:opacity-50"
-                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                        >
-                          <Archive className="w-3 h-3 text-sky-400" />
-                          Arquivar X
-                        </button>
-                      </div>
 
                       {/* Linha 3: Arquivar campanha + Cancelar agendamento */}
                       <div className="grid grid-cols-2 gap-2">
@@ -2470,16 +2318,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       <div key={i} className="rounded-xl p-4 space-y-2"
                         style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
                         <div className="flex items-center gap-2">
-                          {r.platform === "linkedin" && (
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="#0A66C2">
-                              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                            </svg>
-                          )}
-                          {r.platform === "twitter" && (
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="#1D9BF0">
-                              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                            </svg>
-                          )}
+                          <RedeIcone plataforma={r.platform} className="w-4 h-4 shrink-0" />
                           <span className="font-semibold text-white text-sm">{r.accountName}</span>
                         </div>
                         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -2495,7 +2334,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
-                            style={{ background: r.platform === "linkedin" ? "#0A66C2" : "#1D9BF0", color: "white" }}
+                            style={{ background: "var(--accent-orange)", color: "white" }}
                           >
                             <Globe className="w-3 h-3" /> Ver post publicado
                           </a>

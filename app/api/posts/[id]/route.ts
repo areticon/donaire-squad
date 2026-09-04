@@ -52,6 +52,18 @@ export async function PATCH(
 
   if (body.content !== undefined) updateData.content = body.content;
 
+  // A conta pela qual o post sai. O card do Paulo manda junto com "deixar
+  // agendado" porque o cron publica pela conta gravada no post, e um post de
+  // vídeo nasce sem conta quando a rede foi conectada depois da esteira: sem
+  // isto ele entrava na fila e falhava na hora com "No account".
+  if (typeof body.socialAccountId === "string" && body.socialAccountId) {
+    const conta = await prisma.socialAccount.findUnique({ where: { id: body.socialAccountId } });
+    if (!conta || conta.projectId !== post.projectId) {
+      return NextResponse.json({ error: "Esta conta não pertence a este projeto." }, { status: 403 });
+    }
+    updateData.socialAccountId = conta.id;
+  }
+
   if (body.cancelSchedule) {
     updateData.status = "draft";
     updateData.scheduledAt = null;
