@@ -7744,3 +7744,22 @@ de tabela sobre componentes que ja existiam; a secao nova reaproveita o
 padrao de `why.tsx`.
 
 *Atualizado em 03/09/2026 por Claude Code.*
+
+## Backlog registrado em 04/09/2026 (nao implantar agora)
+
+Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
+e mandou dois itens para o backlog. Os dois viraram cards no planner do
+Notion; aqui fica so o resumo tecnico.
+
+1. **Escritorio 3D gamificado na tela /live.** Cada agente com avatar 3D na
+   propria mesa; o material fica na mesa de quem esta trabalhando e, ao
+   terminar, o agente leva para o proximo. Clique no agente mostra o que ele
+   esta fazendo em linguagem natural (o log do pipeline traduzido para o
+   cliente). Depende de um feed de eventos por agente em linguagem natural,
+   alem da cena (three.js / react-three-fiber). Entra depois do lancamento.
+2. **Lancamento pago, R$ 1.500 em Meta Ads + Google Ads, pela Formula de
+   Lancamento do Jeff Walker.** Conectar as duas plataformas (pixel,
+   conversoes), estudar o livro inteiro, montar a campanha completa e
+   adaptar a landing para a sequencia de lancamento (captura antes da
+   venda). Tudo discutido em detalhe antes de gastar. Pre-requisitos: o
+   teste do zero passar limpo e os precos novos no Stripe.
