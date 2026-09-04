@@ -48,9 +48,19 @@ const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
  */
 const ZOOM_DO_COMPLETO = 1.06;
 
-function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd } = {}) {
+/**
+ * Roda um ffmpeg até o fim. `nice` (0 a 19) abaixa a prioridade de CPU do
+ * processo: o escalonador dá o processador a quem não tem nice quando os dois
+ * disputam, e a quem tem nice quando sobra. É como o completo roda junto com
+ * os trechos sem atrasá-los.
+ */
+function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { cwd });
+    const linha = ["-hide_banner", "-loglevel", "error", "-y", ...args];
+    // No Windows do desenvolvimento não há `nice`; a prioridade só importa no contêiner.
+    const p = nice > 0 && process.platform !== "win32"
+      ? spawn("nice", ["-n", String(nice), "ffmpeg", ...linha], { cwd })
+      : spawn("ffmpeg", linha, { cwd });
     let erro = "";
     p.stderr.on("data", (d) => {
       erro += d.toString();
@@ -258,11 +268,12 @@ export function ffprobe(caminho) {
  */
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
+  const nice = opcoes.nice ?? 0;
   const editaTempo = remocoes.length > 0;
   const editaImagem = Boolean(opcoes.legendasArquivo);
 
   if (!editaTempo && !editaImagem) {
-    await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida]);
+    await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida], { nice });
     return { recodificado: false, motivo: "nada a editar, arquivo preservado" };
   }
 
@@ -287,7 +298,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
         "-c:a", "copy",
         "-movflags", "+faststart", saida,
       ],
-      { cwd, timeoutMs: teto }
+      { cwd, timeoutMs: teto, nice }
     );
     return { recodificado: true, motivo: "legendas de destaque" };
   }
@@ -366,7 +377,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
       "-c:a", "aac", "-b:a", "192k",
       "-movflags", "+faststart", uniforme,
     ],
-    { cwd: pasta, timeoutMs: teto }
+    { cwd: pasta, timeoutMs: teto, nice }
   );
 
   console.log(`completo: passe 1 (uniformizar) em ${((Date.now() - t1) / 1000).toFixed(0)}s`);
@@ -444,8 +455,12 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
 
   const porLote = Math.max(2, opcoes.fatiasPorLote ?? 12);
   const t2 = Date.now();
-  const partesDoVideo = [];
 
+  // Os lotes são montados todos antes e codificados em piscina (dois por vez
+  // no contêiner de 7,6 GB). A paridade do plano é GLOBAL, calculada aqui na
+  // montagem, então a ordem em que os lotes terminam não importa: cada um sabe
+  // o próprio lugar (`ordem`) e o próprio arquivo.
+  const lotes = [];
   for (let inicio = 0; inicio < cortes.length - 1; inicio += porLote) {
     const doLote = cortes.slice(inicio, Math.min(inicio + porLote + 1, cortes.length));
     if (doLote.length < 2) break;
@@ -467,13 +482,22 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
       );
       rotulos.push(`[w${k}]`);
     }
+    const ordem = lotes.length;
     const grafoDoLote =
       nos.join(";") + ";" + rotulos.join("") + `concat=n=${rotulos.length}:v=1:a=0[v]`;
-    const arquivoDoLote = join(pasta, `filtro-lote-${partesDoVideo.length}.txt`);
+    const arquivoDoLote = join(pasta, `filtro-lote-${ordem}.txt`);
     await writeFile(arquivoDoLote, grafoDoLote, "utf8");
+    lotes.push({
+      ordem,
+      t0,
+      duracaoDoLote,
+      arquivoDoLote,
+      parte: join(pasta, `parte-${String(ordem).padStart(3, "0")}.mp4`),
+    });
+  }
 
-    const parte = join(pasta, `parte-${String(partesDoVideo.length).padStart(3, "0")}.mp4`);
-    await rodar(
+  const codificarLote = ({ t0, duracaoDoLote, arquivoDoLote, parte }) =>
+    rodar(
       [
         // `-ss` ANTES do `-i` para não decodificar o vídeo inteiro em cada
         // lote: com recodificação, o ffmpeg busca o quadro-chave anterior e
@@ -483,34 +507,34 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
         "-t", duracaoDoLote.toFixed(3),
         opcaoDeFiltro(), basename(arquivoDoLote),
         "-map", "[v]", "-an",
-        // ## As contas de MEMÓRIA deste comando, medidas em 02/09
+        // ## MEMÓRIA, medida em 02/09 e relida em 04/09
         //
-        // Quem estoura o contêiner não é o grafo, é o CODIFICADOR. Medido no
-        // arquivo real de 1440p, pico do processo:
-        //
-        //   só codificar em `faster`, sem filtro nenhum ....... 868 MB
-        //   um lote em `faster`, 2 fios ....................... 740 MB
-        //   um lote em `veryfast`, 2 fios ..................... 643 MB
-        //   um lote em `veryfast`, 2 fios, lookahead curto .... 599 MB
-        //
-        // O passe 1 já roda em `veryfast` e cabe nesse contêiner há dias, então
-        // é ele o teto conhecido, e não um chute. O `faster` do primeiro
-        // desenho, somado ao grafo inteiro, pedia mais de 1,3 GB e foi o que
-        // matou o completo do cliente.
+        // Quem pesa não é o grafo, é o CODIFICADOR. No arquivo real de 1440p,
+        // pico do processo: um lote em `veryfast` com 2 fios, 643 MB; com os
+        // fios automáticos (8 vCPU) perto de 1,2 GB. Até 04/09 este comando
+        // rodava com `-threads 2` e lookahead curto porque se acreditava num
+        // contêiner pequeno; o /saude mostrou 7629 MB de limite, e o passe 2
+        // levava 13 minutos num núcleo e meio. Dois lotes ao mesmo tempo, cada
+        // um com os fios que quiser, cabem com folga ao lado dos trechos.
         //
         // Em CRF a qualidade é a mesma; o preset mexe no TAMANHO do arquivo.
-        // Trocar qualidade por um vídeo que existe é troca fácil.
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-        "-threads", "2", "-x264-params", "rc-lookahead=10:sync-lookahead=0",
         // Cada lote precisa abrir com quadro-chave e fechar o GOP no fim, senão
         // a emenda por cópia entre os lotes trava na virada.
         "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
         "-movflags", "+faststart", parte,
       ],
-      { cwd: pasta, timeoutMs: teto }
+      { cwd: pasta, timeoutMs: teto, nice }
     );
-    partesDoVideo.push(parte);
-  }
+
+  const emParalelo = Math.max(1, opcoes.lotesEmParalelo ?? 1);
+  const fila = [...lotes];
+  await Promise.all(
+    Array.from({ length: Math.min(emParalelo, lotes.length) }, async () => {
+      while (fila.length) await codificarLote(fila.shift());
+    })
+  );
+  const partesDoVideo = lotes.map((l) => l.parte);
 
   // Os lotes viram um vídeo só por CÓPIA, sem recodificar nada.
   const soVideo = join(pasta, "so-video.mp4");

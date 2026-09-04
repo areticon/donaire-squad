@@ -2,10 +2,10 @@ import { createServer } from "node:http";
 import { execSync } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { mkdtemp, rm, stat, readFile, writeFile, copyFile } from "node:fs/promises";
-import { createWriteStream, createReadStream } from "node:fs";
+import { createWriteStream, createReadStream, constants as fsConstants } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import { tmpdir } from "node:os";
+import { tmpdir, availableParallelism } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { get, put } from "@vercel/blob";
@@ -333,14 +333,138 @@ function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
   return gama;
 }
 
+
+/**
+ * Quantas coisas rodar ao mesmo tempo, a partir do contêiner de verdade.
+ *
+ * Lido na subida, uma vez. O limite de memória é o do cgroup (7,6 GB no
+ * Railway Hobby, medido em 04/09 pelo /saude); fora de contêiner cai no
+ * conservador.
+ */
+const PARALELISMO = (() => {
+  const limite = memoriaDoConteiner().limite;
+  const mb = typeof limite === "string" && /MB$/.test(limite) ? Number(limite.replace(/\D/g, "")) : 0;
+  const cpus = availableParallelism();
+  // Um trecho no pior caso: ffmpeg em 1440p mais o Python da segmentação,
+  // perto de 1,5 GB. Um lote do completo com fios automáticos, perto de 1,2 GB.
+  const trechos = Math.max(1, Math.min(3, Math.floor((mb || 3000) / 1800), cpus));
+  const lotes = mb >= 6000 && cpus >= 4 ? 2 : 1;
+  console.log(`paralelismo: ${trechos} trechos, ${lotes} lotes do completo (${cpus} cpus, ${limite})`);
+  return { trechos, lotes };
+})();
+
+/** Roda `fn` sobre `itens`, no máximo `n` de cada vez. Nenhuma rejeição escapa: cada `fn` trata a própria. */
+async function emPiscina(itens, n, fn) {
+  const fila = [...itens];
+  const operarios = Array.from({ length: Math.max(1, n) }, async () => {
+    while (fila.length) {
+      const item = fila.shift();
+      await fn(item);
+    }
+  });
+  await Promise.all(operarios);
+}
+
+async function produzirCompleto(trabalho, fonte, pasta, info, resultados, marca) {
+  const completo = join(pasta, "completo.mp4");
+
+  // As legendas de destaque chegam prontas do app, já com os tempos
+  // convertidos para o vídeo DEPOIS das remoções. Convertê-las aqui
+  // exigiria repetir a mesma matemática de deslocamento nos dois lados, e
+  // duas contas iguais em lugares diferentes divergem com o tempo.
+  let legendasArquivo = null;
+  if (trabalho.legendasAss) {
+    legendasArquivo = join(pasta, "destaques.ass");
+    await writeFile(legendasArquivo, trabalho.legendasAss, "utf8");
+  }
+
+  // O CORPO primeiro: a gravação editada, do começo.
+  const corpo = join(pasta, "corpo.mp4");
+  const como = await prepararCompleto(fonte, corpo, {
+    remocoes: trabalho.remocoes,
+    duracaoSec: info.duracaoSec,
+    legendasArquivo,
+    // Prioridade baixa enquanto os trechos rodam; sozinho (`soCompleto`) o
+    // nice não tira nada, porque não há com quem disputar.
+    nice: 10,
+    lotesEmParalelo: PARALELISMO.lotes,
+  });
+  marca("completo recodificado");
+
+  // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os
+  // tempos dela já chegam convertidos para depois da edição, senão
+  // apontariam para o instante errado do arquivo original.
+  //
+  // Se a abertura falhar, o vídeo sai sem ela: um vídeo que começa do
+  // começo é pior de reter, mas é um vídeo. Sem corpo não há entrega.
+  let temAbertura = false;
+  try {
+    const abertura = join(pasta, "abertura.mp4");
+    temAbertura = await montarAbertura(corpo, abertura, trabalho.ganchos);
+    if (temAbertura) {
+      await emendar([abertura, corpo], completo, pasta);
+    }
+  } catch (e) {
+    temAbertura = false;
+    resultados.erros.push(
+      `abertura: ${e instanceof Error ? e.message : "falhou"}`
+    );
+  }
+  if (!temAbertura) {
+    await copyFile(corpo, completo);
+  }
+
+  resultados.completo = await subir(
+    completo,
+    `cortes/${trabalho.videoJobId}/completo.mp4`,
+    "video/mp4"
+  );
+  resultados.completo.abertura = temAbertura ? trabalho.ganchos.length : 0;
+  resultados.completo.recodificado = como.recodificado;
+  resultados.completo.motivo = como.motivo;
+  // A promessa de qualidade tem que ser verificável, não prometida. Só faz
+  // sentido medir quando houve recodificação: remux é idêntico por
+  // definição, e comparar um arquivo com ele mesmo custa CPU à toa.
+  // A fidelidade compara o CORPO com a fonte, e não o arquivo final: o
+  // final tem a abertura na frente, então os dois estariam desalinhados no
+  // tempo e o SSIM mediria desencontro, não perda de qualidade.
+  resultados.completo.fidelidade = como.recodificado
+    ? await medirFidelidade(fonte, corpo, info.duracaoSec)
+    : 1;
+}
+
+/**
+ * A falha do completo, registrada como o `catch` de antes fazia: no LOG e na
+ * lista de erros. Virou função porque o completo agora roda em paralelo com os
+ * trechos, e a promessa dele é colhida depois do aviso parcial.
+ */
+function registrarFalhaDoCompleto(trabalho, resultados, e) {
+  const mensagem = e instanceof Error ? e.message : "falhou";
+  // O LOG, e nao so a lista de erros. Em 01/09 o completo falhou e ninguem
+  // soube: o catch guardava a mensagem num campo que o callback tardio
+  // ignorava, entao a plataforma inteira ficou cega para uma falha de 800
+  // segundos de trabalho. Erro tecnico pertence ao log.
+  //
+  // O espaco em disco vai junto porque ele e o suspeito numero um quando o
+  // passe 2 morre logo depois de o passe 1 escrever um intermediario
+  // grande, e essa e a informacao que nao da para recuperar depois.
+  let disco = "";
+  try {
+    disco = execSync("df -h /tmp . 2>/dev/null | tail -2").toString().trim().replace(/\s+/g, " ");
+  } catch {}
+  console.error(`[${trabalho.videoJobId}] COMPLETO FALHOU: ${mensagem}`);
+  if (disco) console.error(`[${trabalho.videoJobId}] disco: ${disco}`);
+  resultados.erros.push(`completo: ${mensagem}`);
+}
+
 /**
  * O trabalho de verdade.
  *
- * Ordem deliberada: os TRECHOS saem primeiro, e o vídeo completo por último. O
- * completo é o item mais caro (recodifica a gravação inteira) e o menos urgente
- * (o cliente publica no canal com calma), enquanto os trechos são o que ele
- * quer ver para decidir. Se algo estourar no meio, o que sobrou entregue é a
- * parte que importa.
+ * Prioridade deliberada: os TRECHOS têm o processador, e o vídeo completo roda
+ * junto com `nice`, no que sobra. O completo é o item mais caro (recodifica a
+ * gravação inteira) e o menos urgente (o cliente publica no canal com calma),
+ * enquanto os trechos são o que ele quer ver para decidir. Os cortes vão para
+ * o app assim que terminam (aviso parcial); o completo chega quando chegar.
  */
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
@@ -457,7 +581,19 @@ async function processar(trabalho) {
     // Existe desde 02/09, quando o completo falhou e a unica saida era pagar
     // 800 segundos de worker refazendo tambem os cortes, que estavam prontos e
     // corretos. Falha de uma etapa nao pode custar o trabalho das outras.
-    for (const t of trabalho.soCompleto ? [] : trabalho.trechos) {
+    // ## Os trechos saem EM PARALELO, e o completo começa junto
+    //
+    // Até 04/09 tudo era em série: cada trecho levava perto de 55 s e o
+    // completo só começava depois do último, num contêiner de 8 vCPU e 7,6 GB
+    // que passava a maior parte do tempo com um núcleo ocupado. Medido no
+    // teste do Bruno: cortes aos 6,9 min, completo aos 25 min.
+    //
+    // Agora os trechos rodam em piscina (três por vez: cada um é um ffmpeg
+    // mais um Python de segmentação, perto de 1,5 GB juntos no pior caso), e o
+    // completo começa AO MESMO TEMPO, com `nice`, para só usar o processador
+    // que os trechos deixarem. Os cortes continuam sendo a prioridade: são o
+    // que o cliente quer ver para decidir.
+    const produzirTrecho = async (t) => {
       const duracao = Math.max(1, t.fim - t.inicio);
       const enq = enquadramentos.get(t.indice) ?? null;
       const saida = {
@@ -606,7 +742,12 @@ async function processar(trabalho) {
         for (const e of t.emojis ?? []) {
           try {
             const origem = join(PASTA_DE_EMOJI, e.arquivo);
-            await copyFile(origem, join(pasta, e.arquivo));
+            // `COPYFILE_EXCL`: com os trechos em paralelo, dois deles podem
+            // querer o mesmo emoji; o segundo não pode truncar o arquivo que
+            // o ffmpeg do primeiro já está lendo. Já existe, serve.
+            await copyFile(origem, join(pasta, e.arquivo), fsConstants.COPYFILE_EXCL).catch((erro) => {
+              if (erro?.code !== "EEXIST") throw erro;
+            });
             emojisDoTrecho.push({ arquivo: e.arquivo, segundo: e.segundo });
           } catch (erro) {
             console.warn(
@@ -690,7 +831,17 @@ async function processar(trabalho) {
       }
       resultados.trechos.push(saida);
       marca(`trecho ${t.indice} entregue`);
-    }
+    };
+
+    // O completo parte agora, em segundo plano e com prioridade baixa. A
+    // promessa é esperada depois do aviso parcial; a falha dela é tratada lá.
+    const completoEmAndamento = trabalho.soTrechos
+      ? null
+      : produzirCompleto(trabalho, fonte, pasta, info, resultados, marca).catch((e) => ({ falhou: e }));
+
+    await emPiscina(trabalho.soCompleto ? [] : trabalho.trechos, PARALELISMO.trechos, produzirTrecho);
+    // A piscina entrega fora de ordem; o app e a tela contam com a ordem dos índices.
+    resultados.trechos.sort((a, b) => a.indice - b.indice);
 
     // OS CORTES VAO PARA O CLIENTE AGORA, sem esperar o completo.
     //
@@ -714,85 +865,9 @@ async function processar(trabalho) {
       console.warn(`[${trabalho.videoJobId}] aviso parcial falhou: ${e?.message ?? e}`);
     }
 
-    if (!trabalho.soTrechos) try {
-      const completo = join(pasta, "completo.mp4");
-
-      // As legendas de destaque chegam prontas do app, já com os tempos
-      // convertidos para o vídeo DEPOIS das remoções. Convertê-las aqui
-      // exigiria repetir a mesma matemática de deslocamento nos dois lados, e
-      // duas contas iguais em lugares diferentes divergem com o tempo.
-      let legendasArquivo = null;
-      if (trabalho.legendasAss) {
-        legendasArquivo = join(pasta, "destaques.ass");
-        await writeFile(legendasArquivo, trabalho.legendasAss, "utf8");
-      }
-
-      // O CORPO primeiro: a gravação editada, do começo.
-      const corpo = join(pasta, "corpo.mp4");
-      const como = await prepararCompleto(fonte, corpo, {
-        remocoes: trabalho.remocoes,
-        duracaoSec: info.duracaoSec,
-        legendasArquivo,
-      });
-      marca("completo recodificado");
-
-      // A abertura vai NA FRENTE, com os ganchos que o squad escolheu. Os
-      // tempos dela já chegam convertidos para depois da edição, senão
-      // apontariam para o instante errado do arquivo original.
-      //
-      // Se a abertura falhar, o vídeo sai sem ela: um vídeo que começa do
-      // começo é pior de reter, mas é um vídeo. Sem corpo não há entrega.
-      let temAbertura = false;
-      try {
-        const abertura = join(pasta, "abertura.mp4");
-        temAbertura = await montarAbertura(corpo, abertura, trabalho.ganchos);
-        if (temAbertura) {
-          await emendar([abertura, corpo], completo, pasta);
-        }
-      } catch (e) {
-        temAbertura = false;
-        resultados.erros.push(
-          `abertura: ${e instanceof Error ? e.message : "falhou"}`
-        );
-      }
-      if (!temAbertura) {
-        await copyFile(corpo, completo);
-      }
-
-      resultados.completo = await subir(
-        completo,
-        `cortes/${trabalho.videoJobId}/completo.mp4`,
-        "video/mp4"
-      );
-      resultados.completo.abertura = temAbertura ? trabalho.ganchos.length : 0;
-      resultados.completo.recodificado = como.recodificado;
-      resultados.completo.motivo = como.motivo;
-      // A promessa de qualidade tem que ser verificável, não prometida. Só faz
-      // sentido medir quando houve recodificação: remux é idêntico por
-      // definição, e comparar um arquivo com ele mesmo custa CPU à toa.
-      // A fidelidade compara o CORPO com a fonte, e não o arquivo final: o
-      // final tem a abertura na frente, então os dois estariam desalinhados no
-      // tempo e o SSIM mediria desencontro, não perda de qualidade.
-      resultados.completo.fidelidade = como.recodificado
-        ? await medirFidelidade(fonte, corpo, info.duracaoSec)
-        : 1;
-    } catch (e) {
-      const mensagem = e instanceof Error ? e.message : "falhou";
-      // O LOG, e nao so a lista de erros. Em 01/09 o completo falhou e ninguem
-      // soube: o catch guardava a mensagem num campo que o callback tardio
-      // ignorava, entao a plataforma inteira ficou cega para uma falha de 800
-      // segundos de trabalho. Erro tecnico pertence ao log.
-      //
-      // O espaco em disco vai junto porque ele e o suspeito numero um quando o
-      // passe 2 morre logo depois de o passe 1 escrever um intermediario
-      // grande, e essa e a informacao que nao da para recuperar depois.
-      let disco = "";
-      try {
-        disco = execSync("df -h /tmp . 2>/dev/null | tail -2").toString().trim().replace(/\s+/g, " ");
-      } catch {}
-      console.error(`[${trabalho.videoJobId}] COMPLETO FALHOU: ${mensagem}`);
-      if (disco) console.error(`[${trabalho.videoJobId}] disco: ${disco}`);
-      resultados.erros.push(`completo: ${mensagem}`);
+    if (completoEmAndamento) {
+      const r = await completoEmAndamento;
+      if (r?.falhou) registrarFalhaDoCompleto(trabalho, resultados, r.falhou);
     }
 
     resultados.duracaoSec = Math.round(info.duracaoSec);
@@ -888,7 +963,14 @@ const servidor = createServer((req, res) => {
   // que passa o filtro por arquivo MUDOU DE NOME entre as duas. Sem isso a
   // diferença só apareceria como uma falha em produção que não reproduz local.
   if (req.method === "GET" && req.url === "/saude") {
-    return responder(200, { ok: true, trabalhando: emAndamento > 0, ...diagnostico(), memoria: memoriaDoConteiner() });
+    return responder(200, {
+      ok: true,
+      trabalhando: emAndamento > 0,
+      ...diagnostico(),
+      memoria: memoriaDoConteiner(),
+      cpus: availableParallelism(),
+      paralelismo: PARALELISMO,
+    });
   }
 
   if (req.method !== "POST" || !req.url?.startsWith("/cortar")) {
