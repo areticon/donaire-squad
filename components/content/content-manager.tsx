@@ -148,6 +148,24 @@ function formatDayDate(monday: Date, dayOfWeek: number): string {
   return d.toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
+/**
+ * O horário em que um post entra na fila. Quando o horário do dia já passou
+ * (o cliente escolheu a semana atual e abriu o card depois da hora, ou dias
+ * depois), a fila NÃO pode receber o horário original: a API recusa com
+ * "Não é possível agendar no passado", que foi o toast do teste do Bruno de
+ * 04/09. Aqui a fila anda para o mesmo horário do próximo dia que ainda não
+ * chegou, e a tela avisa antes de o cliente clicar.
+ */
+function horarioParaFila(isoDate: string | null | undefined): { iso: string; andou: boolean } | null {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return null;
+  const limite = Date.now() + 2 * 60 * 1000;
+  if (d.getTime() > limite) return { iso: d.toISOString(), andou: false };
+  while (d.getTime() <= limite) d.setDate(d.getDate() + 1);
+  return { iso: d.toISOString(), andou: true };
+}
+
 function formatScheduledAt(isoDate: string | null | undefined): string {
   if (!isoDate) return "";
   const d = new Date(isoDate);
@@ -762,7 +780,7 @@ function SocialPostPreview({
         {!imageUrl && (
           <div className="rounded-lg p-3 flex items-center gap-2 text-xs" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
             <ImageIcon className="w-3.5 h-3.5 shrink-0" />
-            <span>Sem mídia — este post será publicado apenas com texto.</span>
+            <span>Sem mídia: este post será publicado apenas com texto.</span>
           </div>
         )}
 
@@ -1296,10 +1314,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
       for (const p of marcados) {
         const acc = accountFor(p.platform, p.socialAccountId);
         if (!acc) { toast.error(`${nomeDaRede(p.platform)}: conecte a rede para agendar.`); continue; }
+        const fila = horarioParaFila(p.scheduledAt ?? postScheduledAt);
         const res = await fetch(`/api/posts/${p.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "scheduled", socialAccountId: acc.id, ...(p.scheduledAt ? {} : postScheduledAt ? { scheduledAt: postScheduledAt } : {}) }),
+          body: JSON.stringify({
+            status: "scheduled",
+            socialAccountId: acc.id,
+            ...(fila && (fila.andou || !p.scheduledAt) ? { scheduledAt: fila.iso } : {}),
+          }),
         });
         const data = await res.json();
         if (!res.ok) { toast.error(`${nomeDaRede(p.platform)}: ${data.error ?? "erro ao agendar"}`, { duration: 8000 }); continue; }
@@ -1989,6 +2012,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             const podeMarcar = publicavel(p) && Boolean(conta);
                             const marcado = escolhidos.has(p.id);
                             const horario = p.scheduledAt ?? postScheduledAt;
+                            const fila = horarioParaFila(horario);
                             const url = (p.metadata as { url?: string } | null)?.url;
                             const estado = publicado
                               ? "Publicado"
@@ -1998,9 +2022,11 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                   ? `Conecte o ${nomeDaRede(p.platform)} em Configurações para publicar`
                                   : naFila
                                     ? `Na fila: sai sozinho ${horario ? formatScheduledAt(horario) : "no horário"}`
-                                    : horario
-                                      ? `Rascunho: ${formatScheduledAt(horario)} se você deixar agendado`
-                                      : "Rascunho, sem horário definido";
+                                    : fila?.andou
+                                      ? `Rascunho: o horário do dia já passou; se você deixar agendado, sai ${formatScheduledAt(fila.iso)}`
+                                      : fila
+                                        ? `Rascunho: ${formatScheduledAt(fila.iso)} se você deixar agendado`
+                                        : "Rascunho, sem horário definido";
                             return (
                               <label
                                 key={p.id}
