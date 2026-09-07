@@ -7830,6 +7830,55 @@ seguindo a acao.
 
 *Atualizado em 04/09/2026 por Claude Code.*
 
+## Sessao 07/09/2026 (parte 94): Stripe rodado, push feito, card do Paulo visto na tela
+
+Bruno autorizou rodar o que estava pendente dele.
+
+**Stripe.** `scripts/tmp/stripe-precos-0209.mts` morreu duas vezes no cupom
+(o Stripe limita o nome a 40 caracteres) DEPOIS de criar os precos, entao a
+segunda rodada tinha criado um par a mais por produto. O script ficou
+idempotente (reaproveita preco ativo com o mesmo valor e intervalo, cupom e
+codigo por nome) e o cupom se chama "Fundador: R$ 397 para sempre". Estado
+final conferido: Essencial `price_1UBzj8...x3prmfXi` (mensal) e `...dsPNZqWz`
+(anual), Autoridade `price_1UBzjA...LBeDjPSK` / `...LHLMUrH6`, Estudio
+`price_1UBzjC...tGh68Nym` / `...KJPEkixt`; um par ativo por produto, os
+outros arquivados; promo `promo_1UBzjdJIhzTmSVmMq8wwkBvD` FUNDADOR ativo com
+10 usos. Ids gravados na Vercel (producao) e no `.env.local`.
+
+**Push e deploy.** Os 7 commits locais subiram; deploy `qaf3jf9oo` Ready; a
+landing mostra 397 / 697 / 1.997 e nenhum 149.
+
+**Card do Paulo na tela logada** (`scripts/tmp/sessao-e2e.mts` contra o
+`npm run dev` local, projeto `cmtmym5bo000004l80wwvpdd7`, semana 31/08 a
+06/09). O quadro abre cheio (Roberto com pesquisa, Lucas, Tiago, Diana com as
+tres artes, Vitor com os cortes) e o card do Paulo da segunda mostra a lista
+por rede: YouTube Corte 1, YouTube Gravacao completa (Publicado, desmarcado),
+Instagram Corte 1, com "Publicar agora (2)" e "Deixar agendado (2)".
+
+O que apareceu clicando: "Deixar agendado" devolvia 400 nos dois posts, com o
+MESMO toast da gravacao do Bruno ("Nao e possivel agendar no passado"). O
+mecanismo: o horario do dia (31/08 09:00) ja passou e a API recusa a fila no
+passado. Conserto (`eebbb67`): `horarioParaFila()` anda o horario para o mesmo
+horario do proximo dia que ainda nao chegou, e a linha do post avisa antes do
+clique ("o horario do dia ja passou; se voce deixar agendado, sai 08 de set.,
+09:00"). Testado: os dois PATCH voltaram 200. Os dois posts foram devolvidos
+ao estado anterior (rascunho, 31/08 12:00Z) por `scripts/tmp/reverter-teste-paulo.mts`,
+para nao sairem de verdade nas redes do Bruno no dia seguinte. A sessao de
+teste foi apagada. De quebra, o unico travessao que restava na copy do card
+("Sem midia — ...") virou dois-pontos.
+
+Detalhe de ambiente: havia um `next dev` de 5 dias atras na porta 3000 com o
+pool do banco morto ("Connection terminated due to connection timeout" no
+better-auth); matar e subir de novo resolveu.
+
+### Aberto
+
+- Anuncios: Google e Meta nao exigem audio. O que falta e explicacao: cards
+  de texto por etapa + trilha, e uma versao de 60 s. Aguardando o Bruno.
+- Upload novo para medir o tempo de ponta a ponta com o piloto do servidor.
+
+*Atualizado em 07/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
