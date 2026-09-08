@@ -7944,7 +7944,11 @@ O que decidiu o desenho:
 - **A trilha e sintetizada aqui** (`scripts/anuncios/trilha.py`): pad em quatro
   acordes, baixo e um pulso discreto, 100 BPM, sem direito de terceiro
   envolvido. E cama, nao musica de primeiro plano, e trocar por uma licenciada e
-  so trocar o arquivo.
+  so trocar o arquivo. Medida antes de entregar: saia a -21,7 LUFS, oito
+  decibeis abaixo do que as redes usam para nivelar o feed, e o anuncio tocaria
+  mudo perto do que vem antes na rolagem. Agora sai a -16,1 LUFS, que e alto o
+  bastante para existir e baixo o bastante para nao incomodar, ja que aqui nao
+  ha fala.
 - **A identidade sai do codigo**: `#1e1e25` de fundo, `#ef6122` da marca,
   Montserrat no titulo e Inter no resto, monograma de `public/brand-mark-on-dark.png`
   (arquivo oficial, nunca redesenhado).

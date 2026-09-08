@@ -142,7 +142,12 @@ def montar(plano, formato, pasta, saida, trilha):
     mudo = f"{pasta}/mudo-{formato}.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lista,
                     "-c", "copy", mudo], check=True)
+    # `loudnorm` a -16 LUFS: sem isto a trilha sai a -21,7 LUFS (medido em
+    # 08/09), oito decibeis abaixo do que as redes usam para nivelar o feed, e
+    # o anuncio tocaria mudo perto do que vem antes dele na rolagem. Nao vai a
+    # -14 de proposito: aqui nao ha fala, e musica no nivel de fala incomoda.
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", mudo, "-i", trilha,
+                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", saida], check=True)
     dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                           "-of", "default=nw=1:nk=1", saida], capture_output=True, text=True).stdout.strip()
