@@ -83,11 +83,25 @@ export async function POST(req: NextRequest) {
     "demandou. postou.",
   ].join("\n");
 
-  await enviarEmail({
+  // O resultado do envio IMPORTA. `enviarEmail` nunca lanca, de proposito, e
+  // ignorar o retorno era construir de novo a falha em silencio que este
+  // projeto ja pagou tres vezes: a pessoa deixa o e-mail, a tela agradece, e
+  // nada chega. Provado no caminho real em 08/09 (chegou na caixa de entrada,
+  // vindo de contato@demandou.com); esta guarda existe para o dia em que
+  // parar de chegar.
+  const saiu = await enviarEmail({
     para: email,
     assunto: "Seus três textos, prontos para publicar",
     texto,
   });
+
+  if (!saiu) {
+    console.error(`[demo/contato] o e-mail para ${email} NAO saiu (rodada ${rodada.id})`);
+    return NextResponse.json(
+      { error: "Guardei seu contato, mas o e-mail não saiu agora. Vou mandar assim que voltar." },
+      { status: 502 }
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }
