@@ -4,6 +4,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 
 /**
  * Upload de vídeo direto do navegador para o object storage.
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // `upsert` porque o navegador também registra, pela rota /api/videos, e
         // os dois chegam quase juntos. Quem garante um registro só é a restrição
         // única do banco, não a ordem de chegada.
-        await prisma.videoJob.upsert({
+        const video = await prisma.videoJob.upsert({
           where: { projectId_blobUrl: { projectId, blobUrl: blob.url } },
           update: {},
           create: {
@@ -70,7 +71,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             blobUrl: blob.url,
             originalName: blob.pathname.split("/").pop() ?? null,
           },
+          select: { id: true, status: true },
         });
+
+        // E AQUI que a esteira comeca, e nao na aba do cliente. Falha nao sobe:
+        // o storage precisa do 200, e a tela continua curando o que ficar
+        // parado. So despacha quando o video ainda esta em "uploaded", senao um
+        // aviso repetido do storage pediria transcricao de novo.
+        if (video.status === "uploaded") await despacharPasso(video.id, "transcrever");
       },
     });
 

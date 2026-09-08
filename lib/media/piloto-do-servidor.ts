@@ -26,7 +26,13 @@ import { auth } from "@/lib/auth/server";
  * cortar, escrever ou agendar nada.
  */
 
-export type PassoDoPiloto = "selecionar" | "cortar" | "semana" | "preparar" | "capas-do-completo";
+export type PassoDoPiloto =
+  | "transcrever"
+  | "selecionar"
+  | "cortar"
+  | "semana"
+  | "preparar"
+  | "capas-do-completo";
 
 /**
  * O segredo que assina o despacho interno.

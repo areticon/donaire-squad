@@ -25,6 +25,13 @@ import { completarEsteiraDoVideo } from "@/lib/media/esteira-do-video";
  */
 
 const PASSOS: Record<PassoDoPiloto, (videoId: string) => Promise<void>> = {
+  // O comeco de tudo. Quem despacha e o aviso de upload concluido do storage,
+  // que chega sem sessao: e o que faz a esteira andar mesmo se o cliente
+  // fechar a aba logo depois de enviar.
+  async transcrever(videoId) {
+    await chamarRota(videoId, "transcribe");
+  },
+
   // Escolhe os trechos. O `cortar` sai de dentro da rota de seleção, quando
   // ela termina bem, seja quem for que a chamou (servidor ou tela).
   async selecionar(videoId) {
