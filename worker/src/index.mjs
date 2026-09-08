@@ -469,6 +469,10 @@ function registrarFalhaDoCompleto(trabalho, resultados, e) {
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
   const resultados = { trechos: [], completo: null, capaFonte: null, erros: [] };
+  // Vai junto no aviso: um pedido `soTrechos` refaz um corte e NAO produz
+  // completo, e sem esta marca o app gravaria `completoUrl: null` por cima de
+  // um video completo que existe e esta no ar.
+  if (trabalho.soTrechos) resultados.soTrechos = true;
   // O re-corte de um trecho só (pedido do cliente na tela) volta marcado, para
   // o callback fundir em vez de reprocessar o vídeo inteiro.
   if (trabalho.reCorte) resultados.reCorte = true;
@@ -840,6 +844,55 @@ async function processar(trabalho) {
       : produzirCompleto(trabalho, fonte, pasta, info, resultados, marca).catch((e) => ({ falhou: e }));
 
     await emPiscina(trabalho.soCompleto ? [] : trabalho.trechos, PARALELISMO.trechos, produzirTrecho);
+
+    // ## SEGUNDA CHANCE, SOZINHO, para o trecho que falhou
+    //
+    // Medido em 08/09, na primeira medicao de ponta a ponta com o piloto: dos
+    // tres cortes, o do MEIO falhou com
+    //
+    //     Failed to configure output pad on Parsed_scale_101
+    //     Error reinitializing filters!
+    //     Failed to inject frame into filter network: Resource temporarily unavailable
+    //
+    // O arquivo nao muda de propriedade ali (conferido quadro a quadro nos 100 s
+    // do trecho: 2560x1440 yuv420p do comeco ao fim), e o MESMO pedido, com os
+    // mesmos 13 pedacos, passou em 32 s rodando sozinho na maquina de
+    // desenvolvimento. O que separa esse trecho dos outros dois e tamanho: 13
+    // pedacos contra 4 e 8, ou seja o maior grafo, disputando o conteiner com
+    // outros dois trechos e com o passe 1 do completo. "Resource temporarily
+    // unavailable" e falta de recurso na hora de montar o filtro, nao defeito
+    // do video.
+    //
+    // Nao da para afirmar de qual dos dois e a culpa (tamanho do grafo ou
+    // disputa), e a resposta util e a mesma nos dois casos: repetir o que
+    // falhou SOZINHO, com a piscina ja vazia e o completo com prioridade baixa.
+    // Se a segunda chance passar, era disputa, e o log diz isso na proxima vez.
+    const falhados = trabalho.soCompleto
+      ? []
+      : trabalho.trechos.filter((t) => resultados.trechos.find((r) => r.indice === t.indice)?.erro);
+    if (falhados.length) {
+      console.warn(
+        `[${trabalho.videoJobId}] ${falhados.length} trecho(s) falharam na piscina, ` +
+          `repetindo um de cada vez: ${falhados.map((t) => t.indice).join(", ")}`
+      );
+      // Sai do resultado antes de repetir: `produzirTrecho` empilha um item
+      // novo, e dois itens com o mesmo indice fariam o app escolher por sorte.
+      resultados.trechos = resultados.trechos.filter(
+        (r) => !falhados.some((t) => t.indice === r.indice)
+      );
+      resultados.erros = resultados.erros.filter(
+        (e) => !falhados.some((t) => e.startsWith(`trecho ${t.indice}:`))
+      );
+      await emPiscina(falhados, 1, produzirTrecho);
+      for (const t of falhados) {
+        const r = resultados.trechos.find((x) => x.indice === t.indice);
+        console.log(
+          `[${trabalho.videoJobId}] trecho ${t.indice} na segunda chance: ` +
+            (r?.erro ? `falhou de novo (${r.erro.slice(0, 120)})` : "passou")
+        );
+      }
+    }
+
     // A piscina entrega fora de ordem; o app e a tela contam com a ordem dos índices.
     resultados.trechos.sort((a, b) => a.indice - b.indice);
 

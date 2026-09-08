@@ -139,6 +139,7 @@ export async function POST(
     trechos?: TrechoCortado[];
     avisoDeQualidade?: string;
     completo?: MidiaProduzida | null;
+    soTrechos?: boolean;
     capaFonte?: (MidiaProduzida & { instante?: number; motivo?: string }) | null;
     erros?: string[];
   };
@@ -218,13 +219,21 @@ export async function POST(
       startedAt: null,
       attempts: comMidia > 0 ? 0 : undefined,
       clips: atualizados as never,
-      completoUrl: corpo.completo?.url ?? null,
-      completoBytes: corpo.completo?.bytes ? BigInt(corpo.completo.bytes) : null,
+      // Num recorte PARCIAL (`soTrechos`, que refaz um corte so) o worker nao
+      // produz completo, e escrever `null` aqui apagaria a URL de um video
+      // completo que existe e ja esta no quadro. Lido no codigo em 08/09,
+      // antes de acontecer com o vídeo de alguém.
+      ...(corpo.soTrechos
+        ? {}
+        : {
+            completoUrl: corpo.completo?.url ?? null,
+            completoBytes: corpo.completo?.bytes ? BigInt(corpo.completo.bytes) : null,
+          }),
       // O quadro que o squad escolheu como melhor rosto do vídeo inteiro. É a
       // base de TODAS as capas: as dos cortes e a do vídeo completo. Guardar por
       // vídeo, e não por trecho, é o que resolve o caso do Bruno, em que os
       // trechos bons caíam todos em tela compartilhada.
-      capaFonteUrl: corpo.capaFonte?.url ?? null,
+      ...(corpo.soTrechos ? {} : { capaFonteUrl: corpo.capaFonte?.url ?? null }),
       error:
         comMidia > 0
           ? (corpo.erros?.length ? corpo.erros.join("; ") : null)
