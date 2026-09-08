@@ -28,8 +28,19 @@ import { auth } from "@/lib/auth/server";
 
 export type PassoDoPiloto = "selecionar" | "cortar" | "semana" | "preparar" | "capas-do-completo";
 
+/**
+ * O segredo que assina o despacho interno.
+ *
+ * `PILOTO_SECRET` primeiro, e `BETTER_AUTH_SECRET` so como queda: assinar
+ * sessao de gente e assinar chamada de maquina sao finalidades diferentes, e
+ * juntar as duas custou caro em 08/09. O segredo de auth em producao esta
+ * marcado como sensivel na Vercel, entao ele nao sai de la nem para o dono da
+ * conta, e sem ele nenhum teste de ponta a ponta consegue disparar a esteira
+ * pela linha de comando. Com segredo proprio o piloto e testavel de fora sem
+ * que ninguem precise ler o que protege o login de todo mundo.
+ */
 export function assinarPiloto(videoId: string): string {
-  const segredo = process.env.BETTER_AUTH_SECRET ?? "demandou";
+  const segredo = process.env.PILOTO_SECRET ?? process.env.BETTER_AUTH_SECRET ?? "demandou";
   return createHmac("sha256", segredo).update(`piloto:${videoId}`).digest("hex");
 }
 
