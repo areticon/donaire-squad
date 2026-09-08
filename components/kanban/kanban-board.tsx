@@ -429,7 +429,7 @@ function StepIdeation({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Ideação — O que é seu projeto?
+          Ideação: o que é seu projeto?
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Conte suas referências e deixe a IA propor o resto; tudo fica
@@ -523,7 +523,7 @@ function StepVoice({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Voz & Estilo — Como você quer soar?
+          Voz & Estilo: como você quer soar?
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Defina o tom de voz dos seus conteúdos. O assistente gera o guia automaticamente.
@@ -616,7 +616,7 @@ function StepDesign({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Design — Identidade visual
+          Design: identidade visual
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Defina a paleta de cores e estilo visual dos infográficos gerados.
@@ -787,7 +787,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Redes Sociais — Conecte suas contas
+          Redes Sociais: conecte suas contas
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Configure as redes onde seus agentes vão publicar. Você pode pular e conectar depois.
@@ -871,7 +871,7 @@ function StepSchedule({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Agenda — Frequência de publicação
+          Agenda: frequência de publicação
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Defina com que frequência seus agentes vão criar e publicar conteúdo.
@@ -942,7 +942,7 @@ function StepActivation({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1">
-          Ativação — Tudo pronto!
+          Ativação: tudo pronto!
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           Revise as configurações e ative seu projeto.

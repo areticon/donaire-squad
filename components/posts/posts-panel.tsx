@@ -295,7 +295,7 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
 
             {suggestedTopics.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sugestões da IA — clique para usar:</p>
+                <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sugestões da IA, clique para usar:</p>
                 {suggestedTopics.map((t, i) => (
                   <button
                     key={i}

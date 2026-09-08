@@ -348,7 +348,7 @@ export function PipelineLive({ runId, onComplete, onError }: PipelineLiveProps) 
                   <div className="flex items-center gap-2">
                     <span className="text-base">{agent.emoji}</span>
                     <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{agent.name}</span>
-                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>— {agent.role}</span>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>· {agent.role}</span>
                   </div>
                   <button
                     onClick={() => setExpandedAgent(null)}
@@ -375,7 +375,7 @@ export function PipelineLive({ runId, onComplete, onError }: PipelineLiveProps) 
             <div key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0 mt-0.5" />
               <span>
-                <span className="text-green-400">{log.agent}</span> — concluído
+                <span className="text-green-400">{log.agent}</span> concluído
                 {log.output && (
                   <button
                     onClick={() => {

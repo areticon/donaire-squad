@@ -106,7 +106,7 @@ ${recentTopics ? `\nÚltimos posts criados (para evitar repetição):\n${recentT
 ${trendingBlock}
 Baseado nos dados em tempo real acima, sugira exatamente 5 temas de conteúdo para essa semana. Os temas devem:
 - Ser baseados no que está em alta AGORA (use os dados reais fornecidos acima)
-- Ser específicos e acionáveis — citar dados, nomes, números reais
+- Ser específicos e acionáveis: citar dados, nomes, números reais
 - Variar em formato: dados/estatística, opinião provocativa, dica prática, case/história, tendência
 - Ser diferentes dos posts recentes acima
 

@@ -244,7 +244,7 @@ export function Sidebar({
           )}
           <Link
             href="/projects"
-            title="Projetos — configurações e redes por projeto"
+            title="Projetos: configurações e redes por projeto"
             className={cn("p-1 rounded-lg hover:bg-white/5", collapsed ? "lg:flex lg:items-center lg:justify-center lg:w-full" : "")}
           >
             <Settings

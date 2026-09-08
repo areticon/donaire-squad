@@ -151,7 +151,7 @@ const CONTENT_TYPES = [
   { id: "carousel" as ContentType,    label: "Carrossel",    icon: LayoutGrid, description: "3 imagens com slides navegáveis", credits: 24,   time: "~90s",  activeColor: "border-purple-500 bg-purple-500/10" },
   { id: "infographic" as ContentType, label: "Infográfico",  icon: PieChart,   description: "Visual com dados, texto e gráficos perfeitos", credits: 5, time: "~45s", activeColor: "border-teal-500 bg-teal-500/10" },
   { id: "poll" as ContentType,    label: "Enquete",  icon: BarChart2, description: "LinkedIn poll / X poll",         credits: 0,    time: null,    activeColor: "border-cyan-500 bg-cyan-500/10" },
-  { id: "article" as ContentType, label: "Artigo",   icon: FileText,  description: "Post longo — LinkedIn Article",  credits: 0,    time: null,    activeColor: "border-emerald-500 bg-emerald-500/10" },
+  { id: "article" as ContentType, label: "Artigo",   icon: FileText,  description: "Post longo (LinkedIn Article)",  credits: 0,    time: null,    activeColor: "border-emerald-500 bg-emerald-500/10" },
   { id: "thread" as ContentType,  label: "Thread",   icon: List,      description: "Série de tweets encadeados (X)", credits: 0,    time: null,    activeColor: "border-sky-500 bg-sky-500/10" },
   { id: "free" as ContentType,    label: "Livre",    icon: Shuffle,   description: "IA escolhe o melhor formato",    credits: null, time: null,    activeColor: "border-[var(--border-accent)] bg-[var(--bg-elevated)]" },
 ];
@@ -431,7 +431,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
           <div>
             <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Configurar campanha</h2>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{currentLabel} — Passo {step + 1} de {totalSteps + 1}</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{currentLabel}, passo {step + 1} de {totalSteps + 1}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex gap-1.5">
@@ -569,7 +569,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     <div>
                       <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Estilo visual da mídia</p>
                       <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                        A campanha recorrente inclui posts com imagem — escolha o estilo (também vale para vídeos se adicionar depois).
+                        A campanha recorrente inclui posts com imagem: escolha o estilo (também vale para vídeos se adicionar depois).
                       </p>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -604,7 +604,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                   </h3>
                   <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                     {campaignMode === "biweekly"
-                      ? "Ative os dias desejados — o planejamento será repetido nas 2 semanas."
+                      ? "Ative os dias desejados: o planejamento será repetido nas 2 semanas."
                       : "Ative os dias que deseja postar e escolha o tipo de conteúdo."}
                   </p>
                 </div>
@@ -829,7 +829,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                         <p className="text-xs font-semibold" style={{ color: "#f97316" }}>Consumo de créditos</p>
                         <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                           Vídeos consomem mais créditos que outros formatos.
-                          Gerados com <strong style={{ color: "var(--text-primary)" }}>Veo 3 Fast</strong> — o modelo mais econômico disponível.
+                          Gerados com <strong style={{ color: "var(--text-primary)" }}>Veo 3 Fast</strong>, o modelo mais econômico disponível.
                         </p>
                       </div>
                     </div>
@@ -881,7 +881,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     </button>
 
                     <p className="text-[10px] leading-relaxed px-1" style={{ color: "var(--text-muted)" }}>
-                      <strong style={{ color: "var(--text-primary)" }}>Mensagem completa:</strong> a IA planeja o roteiro para caber na duração escolhida — ideia com início, meio e fim, sem cortar no meio da fala ou da cena.
+                      <strong style={{ color: "var(--text-primary)" }}>Mensagem completa:</strong> a IA planeja o roteiro para caber na duração escolhida: ideia com início, meio e fim, sem cortar no meio da fala ou da cena.
                       {videoAudio ? " Com narração, o texto fica curto o suficiente para terminar antes do fim do clipe." : null}
                     </p>
                   </div>
@@ -1096,7 +1096,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     <div className="space-y-2">
                       {skippedCount > 0 && (
                         <p className="text-[11px] px-1" style={{ color: "var(--text-muted)" }}>
-                          ⚠ {skippedCount} {skippedCount === 1 ? "dia anterior foi omitido" : "dias anteriores foram omitidos"} — apenas os dias abaixo serão gerados.
+                          ⚠ {skippedCount} {skippedCount === 1 ? "dia anterior foi omitido" : "dias anteriores foram omitidos"}, e apenas os dias abaixo serão gerados.
                         </p>
                       )}
                       {futureDays.map((day, idx) => {

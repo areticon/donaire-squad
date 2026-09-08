@@ -232,7 +232,7 @@ function NewContextForm({ projectId, onCreated }: { projectId: string; onCreated
         <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>
           Conteudo / descricao
           <span className="ml-2 font-normal" style={{ color: "var(--text-muted)" }}>
-            — cole textos, descreva referencias, liste regras, etc.
+            cole textos, descreva referencias, liste regras, etc.
           </span>
         </label>
         <textarea
@@ -247,7 +247,7 @@ function NewContextForm({ projectId, onCreated }: { projectId: string; onCreated
               : type === "regulations"
               ? "Ex: Somos do setor eletrico. Seguimos as normas ANEEL. Nao podemos fazer promessas de ROI sem dados verificados..."
               : type === "references"
-              ? "Ex: Queremos um estilo parecido com @karpathy e @sama no Twitter — tecnico mas acessivel. Imagens clean, sem muito texto..."
+              ? "Ex: Queremos um estilo parecido com @karpathy e @sama no Twitter, tecnico mas acessivel. Imagens clean, sem muito texto..."
               : "Cole exemplos de posts que funcionaram bem, ou descreva o formato ideal..."
           }
           value={rawInput}
@@ -288,7 +288,7 @@ export function TrainingPanel({ project, initialContexts }: TrainingPanelProps) 
         <div>
           <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Como funciona</p>
           <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            Voce fornece textos descritivos — manuais de marca, regras, posts de referencia, tom de voz. A IA (Claude) compila em um documento estruturado.
+            Voce fornece textos descritivos: manuais de marca, regras, posts de referencia, tom de voz. A IA (Claude) compila em um documento estruturado.
             Nas proximas campanhas, esse contexto e injetado automaticamente no prompt de todos os agentes (Roberto, Lucas, Tiago, Diana, Vera, Paulo).
           </p>
         </div>

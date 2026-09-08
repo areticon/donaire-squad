@@ -113,7 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // CRITICAL: always anchor to the post content.
           // The user instruction is a STYLE hint only — never replaces the post content.
           const contextualContent = message
-            ? `${postThemeContent}\n\n[INSTRUÇÃO DE ESTILO DO USUÁRIO — aplique ao design mas mantenha o conteúdo do post acima: ${message}]`
+            ? `${postThemeContent}\n\n[INSTRUÇÃO DE ESTILO DO USUÁRIO, aplique ao design mas mantenha o conteúdo do post acima: ${message}]`
             : postThemeContent;
 
           // Derive platform from run config for correct aspect ratio
@@ -145,7 +145,7 @@ Your job: Take the current visual prompt and improve/modify it based on the user
 IMPORTANT: The visual must always stay thematically aligned with the post content above.
 Output ONLY the improved prompt in English, detailed and descriptive.
 Include: subject, composition, lighting, colors, mood, style.
-No explanations, no prefixes — just the prompt text.`;
+No explanations, no prefixes, just the prompt text.`;
 
       const currentPrompt = card.content?.replace(/^AVISO:[\s\S]*?\n\nPrompt: /, "") ?? "";
       const slideContext = targetSlide !== null

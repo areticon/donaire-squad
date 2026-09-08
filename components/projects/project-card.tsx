@@ -98,7 +98,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
   async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
     setMenuOpen(false);
-    if (!window.confirm(`Deletar "${project.name}"? Esta ação remove todos os posts, agentes e campanhas — não pode ser desfeita.`)) return;
+    if (!window.confirm(`Deletar "${project.name}"? Esta ação remove todos os posts, agentes e campanhas, e não pode ser desfeita.`)) return;
     try {
       const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();

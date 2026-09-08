@@ -451,9 +451,9 @@ export function SocialConnectPanel({
       {/* ── How it works ─────────────────────────────────────────────────── */}
       <div className="p-4 rounded-xl border text-xs space-y-2" style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-muted)" }}>
         <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Como funciona:</p>
-        <p>• Você autoriza via OAuth — nunca pedimos sua senha.</p>
+        <p>• Você autoriza via OAuth: nunca pedimos sua senha.</p>
         <p>• Ao conectar o LinkedIn, seu perfil pessoal <strong>e</strong> todas as páginas que você administra são importados.</p>
-        <p>• Pages de empresa iniciam <strong>inativas</strong> — ative apenas as que quer usar neste projeto.</p>
+        <p>• Pages de empresa iniciam <strong>inativas</strong>: ative apenas as que quer usar neste projeto.</p>
         <p>• Cada projeto pode publicar em uma entidade diferente (ex: projeto Areticon → página Areticon).</p>
         <p>• Nenhum post é publicado sem sua aprovação explícita.</p>
       </div>

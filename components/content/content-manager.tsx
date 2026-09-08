@@ -265,7 +265,7 @@ function CarouselSlider({
       {/* Slide label for chat context */}
       {large && (
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          Slide {current + 1} selecionado — use o chat abaixo para pedir ajustes neste slide específico
+          Slide {current + 1} selecionado: use o chat abaixo para pedir ajustes neste slide específico
         </p>
       )}
     </div>
@@ -373,7 +373,7 @@ function MediaPreview({
     return (
       <div className={cn("rounded-lg flex flex-col items-center justify-center text-xs gap-1", large ? "h-32" : "h-16")} style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
         <Video className="w-4 h-4" />
-        <span>Vídeo expirado — regenere via chat</span>
+        <span>Vídeo expirado: regenere via chat</span>
       </div>
     );
   }
@@ -802,7 +802,7 @@ function SocialPostPreview({
         {/* Char count */}
         <div className="flex justify-end">
           <span className={`text-xs ${overLimit ? "text-red-400" : ""}`} style={overLimit ? {} : { color: "var(--text-muted)" }}>
-            {charCount}/{maxChars} caracteres{overLimit ? " — EXCEDE O LIMITE" : ""}
+            {charCount}/{maxChars} caracteres{overLimit ? ", EXCEDE O LIMITE" : ""}
           </span>
         </div>
 
@@ -950,7 +950,7 @@ function ThreadPreview({ content }: { content: string }) {
                 {tweet.slice(0, 280)}
               </p>
               {tweet.length > 280 && (
-                <span className="text-[10px] text-red-400">Excede 280 chars — será truncado</span>
+                <span className="text-[10px] text-red-400">Excede 280 chars, será truncado</span>
               )}
               <div className="flex items-center gap-3 mt-1.5">
                 <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>🔁 💬 ❤️</span>
@@ -1578,7 +1578,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
                           {isInfographic
                             ? "Use o chat abaixo para pedir à Diana para regenerar o infográfico com mais detalhes sobre o conteúdo."
-                            : "Use o campo de chat abaixo para descrever como você quer a imagem — a Diana vai gerá-la agora mesmo."}
+                            : "Use o campo de chat abaixo para descrever como você quer a imagem: a Diana vai gerá-la agora mesmo."}
                         </p>
                       </div>
                     </div>
@@ -1906,7 +1906,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
                           <div className="px-4 py-2 flex items-center gap-2 text-xs" style={{ background: "rgba(10,102,194,0.10)", borderBottom: "1px solid var(--border)" }}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                            <span className="font-semibold" style={{ color: "#0A66C2" }}>Primeiro comentário — LinkedIn</span>
+                            <span className="font-semibold" style={{ color: "#0A66C2" }}>Primeiro comentário no LinkedIn</span>
                           </div>
                           <div className="p-4">
                             <p className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: "var(--text-primary)" }}>{firstComment}</p>
@@ -2259,7 +2259,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 <div className="text-xs rounded-xl px-3 py-2 flex items-start gap-2 border border-blue-500/20 bg-blue-500/5">
                   <ImageIcon className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
                   <span style={{ color: "var(--text-muted)" }}>
-                    Digite abaixo como quer a imagem (estilo, cores, composição) e pressione Enter — a Diana vai gerar a imagem agora.
+                    Digite abaixo como quer a imagem (estilo, cores, composição) e pressione Enter: a Diana vai gerar a imagem agora.
                   </span>
                 </div>
               )}
@@ -2365,7 +2365,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             <Globe className="w-3 h-3" /> Ver post publicado
                           </a>
                         ) : (
-                          <p className="text-xs text-amber-400">Link não disponível — verifique diretamente na plataforma.</p>
+                          <p className="text-xs text-amber-400">Link não disponível: verifique diretamente na plataforma.</p>
                         )}
                       </div>
                     ))}
@@ -2539,7 +2539,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         setTopic(run.topic);
         setShowTopicInput(true);
         setSuggestedTopics([]);
-        toast.success("Tema carregado — ajuste se quiser e configure a campanha.");
+        toast.success("Tema carregado: ajuste se quiser e configure a campanha.");
       } else {
         toast.error("Nenhuma campanha com tema encontrada.");
       }
@@ -2993,7 +2993,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
 
             {suggestedTopics.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sugestões da IA — clique para usar:</p>
+                <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sugestões da IA, clique para usar:</p>
                 {suggestedTopics.map((t, i) => (
                   <button
                     key={i}
