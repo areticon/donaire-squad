@@ -352,6 +352,15 @@ model VideoJob {
   /// Quantas vezes a etapa atual foi tentada. Existe para a fila não repetir
   /// para sempre um trabalho que falha sozinho.
   attempts       Int       @default(0)
+  /// Quando a esteira terminou de verdade: cortes, textos e vídeo completo no
+  /// quadro.
+  ///
+  /// Existe porque a faixa verde dizia "Pronto em N minutos" contando de
+  /// `createdAt` até AGORA, e agora nunca para de andar: em 08/09 o mesmo vídeo
+  /// dizia 32 minutos e, três minutos depois, 35, para um trabalho que levou
+  /// 11. O número que o cliente lê sobre a promessa central do produto não pode
+  /// ser um cronômetro que continua correndo depois da entrega.
+  finishedAt     DateTime?
   originalName   String?
   blobUrl        String    @db.Text
   sizeBytes      BigInt?

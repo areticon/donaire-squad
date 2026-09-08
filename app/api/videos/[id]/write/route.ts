@@ -42,6 +42,9 @@ export async function POST(
       userId: true,
       durationSec: true,
       creditsCharged: true,
+      // Para saber se o completo ja chegou: se chegou, e aqui que a esteira
+      // termina e o relogio da faixa para.
+      completoUrl: true,
       project: {
         select: {
           niche: true,
@@ -202,6 +205,9 @@ export async function POST(
       // aprovação já tem o que mostrar, e o cliente pode mandar rodar de novo
       // só os que falharam.
       status: comPosts > 0 ? "ready" : "failed",
+      // O relogio da promessa para AQUI quando o completo ja chegou. Se ele
+      // ainda estiver sendo montado, quem marca e o callback que o anexa.
+      ...(comPosts > 0 && video.completoUrl ? { finishedAt: new Date() } : {}),
       startedAt: null,
       attempts: comPosts > 0 ? 0 : video.attempts + 1,
       error: falhas > 0 ? `${falhas} de ${resultados.length} trechos falharam.` : null,

@@ -120,6 +120,9 @@ export async function POST(
         data: {
           completoUrl: atrasado.completo.url,
           completoBytes: atrasado.completo.bytes ? BigInt(atrasado.completo.bytes) : null,
+          // O completo e a ultima peca a chegar no caso normal, entao e aqui
+          // que a esteira termina de verdade.
+          finishedAt: new Date(),
         },
       });
       await anexarCompletoAoQuadro(id).catch((e) =>

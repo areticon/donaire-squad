@@ -32,6 +32,9 @@ export type VideoAoVivo = {
   attempts: number;
   durationSec: number | null;
   criadoEm: string;
+  /** Quando ficou pronto de verdade. Null enquanto trabalha, e nos videos
+   *  anteriores a 08/09. */
+  terminadoEm?: string | null;
   originalName: string | null;
   trechosEscolhidos: number;
   cortesProntos: number;
@@ -458,7 +461,14 @@ function FaixaDeUmVideo({
 
   // ── Terminou ──────────────────────────────────────────────────────────────
   if (v.status === "ready" && v.temCompleto) {
-    const minutos = Math.max(1, Math.round(decorrido / 60));
+    // O relogio PARA quando a esteira termina. Antes de 08/09 este numero
+    // contava ate agora, entao a mesma entrega dizia 32 minutos e, tres minutos
+    // depois, 35, para um trabalho de 11. Sem `terminadoEm` (videos antigos)
+    // fica o tempo decorrido, que ao menos nao mente sobre a ordem de grandeza.
+    const ateOFim = v.terminadoEm
+      ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - new Date(v.criadoEm).getTime()) / 1000))
+      : decorrido;
+    const minutos = Math.max(1, Math.round(ateOFim / 60));
     return (
       <div className="flex items-center justify-between gap-4 rounded-xl border border-green-500/25 bg-green-500/10 px-5 py-3">
         <div className="flex items-center gap-3 min-w-0">

@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
       durationSec: true,
       updatedAt: true,
       createdAt: true,
+      finishedAt: true,
       originalName: true,
       completoUrl: true,
       capas: true,
@@ -91,6 +92,9 @@ export async function GET(req: NextRequest) {
        * completo, que só chega no fim de tudo.
        */
       criadoEm: v.createdAt.toISOString(),
+      /** Quando a esteira terminou. Null enquanto ela nao terminou, e null nos
+       *  videos anteriores a 08/09, que nao tem o instante gravado. */
+      terminadoEm: v.finishedAt?.toISOString() ?? null,
       originalName: v.originalName,
       /**
        * O que a faixa do piloto mostra em cada fase, e o que o piloto usa para
