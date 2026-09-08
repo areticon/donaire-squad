@@ -189,6 +189,9 @@ export function diagnostico() {
             (py.stderr ?? "").trim().split(String.fromCharCode(10)).pop() ||
             "motivo desconhecido"
           }`,
+    // Sai no /saude para dar para saber, de fora, qual build esta rodando:
+    // sem isto a unica prova de que a reducao subiu e esperar um video sair.
+    alturaDoCompleto: ALTURA_DO_COMPLETO || "original",
   };
   return _diagnostico;
 }
