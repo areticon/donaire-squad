@@ -49,6 +49,29 @@ const NIVELAR_VOZ = "loudnorm=I=-14:TP=-1.5:LRA=11";
 const ZOOM_DO_COMPLETO = 1.06;
 
 /**
+ * A ALTURA de saída do vídeo completo.
+ *
+ * Medido em 08/09 na gravação real do Bruno (2560x1440 a 7,5 Mbps), 60 s numa
+ * máquina de 8 núcleos igual à do Railway:
+ *
+ *   decodificar só                      4,8 s
+ *   decodificar e reduzir para 1080     8,2 s
+ *   passe completo em 1440p            25,7 s, 55,2 MB (7,4 Mbps)
+ *   passe completo em 1080p            19,6 s, 31,5 MB (4,2 Mbps)
+ *
+ * Ou seja: o CODIFICADOR cai 45% (20,9 s para 11,4 s), a redução come 3,4 s de
+ * volta, e como o completo faz DOIS passes o ganho de ponta a ponta fica perto
+ * de um terço do tempo. O arquivo cai quase pela metade, que é o que explica o
+ * completo de 1,1 GB visto em 02/09.
+ *
+ * A perda visual é desprezível numa gravação de câmera falando: 1080p a 4,2
+ * Mbps está acima do que o YouTube entrega ao espectador de qualquer jeito.
+ * Para voltar ao original, basta pôr 0 aqui: nada mais no caminho depende
+ * disto, porque o passe 2 lê a dimensão do arquivo do passe 1.
+ */
+const ALTURA_DO_COMPLETO = 1080;
+
+/**
  * Roda um ffmpeg até o fim. `nice` (0 a 19) abaixa a prioridade de CPU do
  * processo: o escalonador dá o processador a quem não tem nice quando os dois
  * disputam, e a quem tem nice quando sobra. É como o completo roda junto com
@@ -266,6 +289,15 @@ export function ffprobe(caminho) {
  * O que o completo LEVA dos reforcos e a frase de destaque, que e texto e entra
  * pelo arquivo de legenda, sem fonte nenhuma dentro do grafo.
  */
+/**
+ * O trecho de filtro que reduz a altura do completo, ou vazio quando não há o
+ * que reduzir. Largura `-2` porque o libx264 exige dimensão par.
+ */
+function reducaoDoCompleto(dim) {
+  if (!ALTURA_DO_COMPLETO || !dim?.altura || dim.altura <= ALTURA_DO_COMPLETO) return "";
+  return `,scale=-2:${ALTURA_DO_COMPLETO}:flags=bicubic`;
+}
+
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
   const nice = opcoes.nice ?? 0;
@@ -293,7 +325,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     await rodar(
       [
         "-i", entrada,
-        "-vf", "subtitles=" + basename(opcoes.legendasArquivo),
+        "-vf", "subtitles=" + basename(opcoes.legendasArquivo) + reducaoDoCompleto(await ffprobe(entrada).catch(() => null)),
         "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         "-movflags", "+faststart", saida,
@@ -326,6 +358,11 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
   // output pad ... Error reinitializing filters!". `trim` puro sobrevive.
   //
   // O que sai daqui é justamente o arquivo UNIFORME que o passe 2 precisa.
+  // A dimensão da entrada decide se há o que reduzir: gravação que já chega em
+  // 1080p ou menos passa reta, porque aumentar vídeo é gastar tempo para
+  // entregar a mesma imagem com mais bytes.
+  const reducao = reducaoDoCompleto(await ffprobe(entrada).catch(() => null));
+
   const partes = [];
   const mapa = [];
   manter.forEach((m, i) => {
@@ -349,9 +386,15 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
     // já foram calculados para a linha do tempo editada, que é exatamente esta;
     // e o passe 2 roda em lotes, onde cada lote começaria num instante
     // diferente e a legenda sairia deslocada em doze pedaços.
+    // A redução de altura entra AQUI, depois do `concat` e depois da legenda.
+    // Depois do concat porque o fluxo já é uniforme neste ponto (é o mesmo
+    // lugar onde `subtitles` roda em produção desde 23/08, e é por isso que
+    // ela sobrevive à reinicialização que mata nó de imagem sobre `[0:v]`).
+    // Depois da legenda porque assim ela é desenhada no tamanho para o qual foi
+    // calculada, e só então a imagem inteira encolhe junto.
     (opcoes.legendasArquivo
-      ? `[vc]subtitles=${basename(opcoes.legendasArquivo)}[v]`
-      : `[vc]null[v]`);
+      ? `[vc]subtitles=${basename(opcoes.legendasArquivo)}${reducao}[v]`
+      : reducao ? `[vc]${reducao.slice(1)}[v]` : `[vc]null[v]`);
 
   // O grafo vai em ARQUIVO, e não na linha de comando. O corte real de 23/08,
   // com 161 remoções, gerou 322 nós e 22.007 caracteres; 700 segmentos passam
@@ -883,7 +926,13 @@ export async function medirFidelidade(original, entregue, duracaoSec) {
       "-hide_banner",
       "-ss", String(inicio), "-t", "60", "-i", entregue,
       "-ss", String(inicio), "-t", "60", "-i", original,
-      "-lavfi", "ssim", "-f", "null", "-",
+      // `scale2ref` porque desde 08/09 o completo sai em 1080p e o original
+      // pode ser 1440p, e o `ssim` recusa entradas de tamanhos diferentes: sem
+      // isto a medida sumiria em silêncio, virando null em toda entrega. O que
+      // se mede aqui é a perda de COMPRESSÃO no tamanho entregue; a redução de
+      // altura é decisão declarada, não defeito a medir.
+      "-lavfi", "[1:v][0:v]scale2ref=flags=bicubic[orig][ent];[ent][orig]ssim",
+      "-f", "null", "-",
     ]);
     let saida = "";
     p.stderr.on("data", (d) => (saida += d.toString()));
