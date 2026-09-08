@@ -29,16 +29,23 @@ PLANO60 = [
     {"tipo": "cartao", "dur": 2.4, "titulo": "Você grava uma vez por semana.", "sub": "O resto acontece sem você."},
     {"tipo": "video", "a": 238.0, "b": 251.5, "dur": 5.5, "etapa": "Manda a gravação e vai fazer outra coisa"},
     {"tipo": "cartao", "dur": 2.2, "titulo": "Sete agentes assumem a semana.", "sub": "Cada um com uma função."},
-    {"tipo": "video", "a": 296.0, "b": 336.0, "dur": 6.0, "etapa": "Ouvindo, pesquisando, escolhendo, cortando"},
-    {"tipo": "video", "a": 483.0, "b": 489.0, "dur": 4.5, "etapa": "Roberto pesquisa antes de qualquer um escrever"},
-    {"tipo": "video", "a": 496.0, "b": 508.0, "dur": 5.0, "etapa": "A semana inteira montada, dia por dia"},
+    {"tipo": "video", "a": 296.0, "b": 336.0, "dur": 4.5, "etapa": "Ouvindo, pesquisando, escolhendo, cortando"},
+    {"tipo": "video", "a": 483.0, "b": 489.0, "dur": 3.5, "etapa": "Roberto pesquisa antes de qualquer um escrever"},
+    {"tipo": "video", "a": 496.0, "b": 508.0, "dur": 4.0, "etapa": "A semana inteira montada, dia por dia"},
     {"tipo": "cartao", "dur": 2.2, "titulo": "Corte legendado, capa e texto por rede.", "sub": "Prontos no dia certo."},
-    {"tipo": "video", "a": 513.0, "b": 520.0, "dur": 5.0, "etapa": "Cortes legendados, com capa"},
+    {"tipo": "video", "a": 513.0, "b": 520.0, "dur": 4.0, "etapa": "Cortes legendados, com capa"},
+    {"tipo": "cartao", "dur": 2.2, "titulo": "Nem toda semana tem gravação.", "sub": "Nesses dias você só dá o tema."},
+    {"tipo": "imagem", "dur": 4.2, "arquivo": "C:/Users/devan/opensquad-app/scripts/anuncios/sem-video-escolha.png",
+     "etapa": "Do seu vídeo, ou só do seu tema", "recorte45": [640, 400, 650, 340],
+     "recorte169": [520, 230, 880, 495]},
+    {"tipo": "imagem", "dur": 4.5, "arquivo": "C:/Users/devan/opensquad-app/scripts/anuncios/sem-video-temas.png",
+     "etapa": "Você escreve o assunto, o squad pesquisa e escreve", "recorte45": [648, 240, 620, 325],
+     "recorte169": [560, 100, 1000, 563]},
     {"tipo": "cartao", "dur": 2.2, "titulo": "Você aprova. Ele publica.", "sub": "YouTube, Instagram, LinkedIn e X."},
-    {"tipo": "video", "a": 585.0, "b": 596.0, "dur": 5.0, "etapa": "Publicar agora ou deixar agendado"},
-    {"tipo": "video", "a": 597.0, "b": 601.5, "dur": 3.5, "etapa": "Publicado"},
-    {"tipo": "video", "a": 726.0, "b": 736.0, "dur": 4.5, "etapa": "No ar no YouTube"},
-    {"tipo": "video", "a": 770.0, "b": 780.0, "dur": 4.5, "etapa": "No ar no Instagram"},
+    {"tipo": "video", "a": 585.0, "b": 596.0, "dur": 4.0, "etapa": "Publicar agora ou deixar agendado"},
+    {"tipo": "video", "a": 597.0, "b": 601.5, "dur": 3.0, "etapa": "Publicado"},
+    {"tipo": "video", "a": 726.0, "b": 736.0, "dur": 4.0, "etapa": "No ar no YouTube"},
+    {"tipo": "video", "a": 770.0, "b": 780.0, "dur": 4.0, "etapa": "No ar no Instagram"},
     {"tipo": "final", "dur": 4.7},
 ]
 
@@ -62,6 +69,16 @@ PLANO_LONGO = [
     {"tipo": "video", "a": 496.0, "b": 508.0, "dur": 6.0, "etapa": "Lucas, Tiago e Diana escrevem. Vera revisa."},
     {"tipo": "cartao", "dur": 2.3, "titulo": "Corte legendado, com capa pronta.", "sub": "Do vídeo que você já gravou."},
     {"tipo": "video", "a": 512.0, "b": 522.0, "dur": 7.0, "etapa": "Vitor corta, legenda e faz a capa"},
+    {"tipo": "cartao", "dur": 2.3, "titulo": "Nem toda semana tem gravação.", "sub": "Nesses dias você só dá o tema."},
+    {"tipo": "imagem", "dur": 5.0, "arquivo": "C:/Users/devan/opensquad-app/scripts/anuncios/sem-video-escolha.png",
+     "etapa": "Do seu vídeo, ou só do seu tema", "recorte45": [640, 400, 650, 340],
+     "recorte169": [520, 230, 880, 495]},
+    {"tipo": "imagem", "dur": 5.5, "arquivo": "C:/Users/devan/opensquad-app/scripts/anuncios/sem-video-temas.png",
+     "etapa": "Você escreve o assunto, o squad pesquisa e escreve", "recorte45": [648, 240, 620, 325],
+     "recorte169": [560, 100, 1000, 563]},
+    {"tipo": "imagem", "dur": 5.0, "arquivo": "C:/Users/devan/opensquad-app/scripts/anuncios/quadro-pronto.png",
+     "etapa": "Texto, imagem, carrossel e enquete, sem gravar nada", "recorte45": [272, 255, 1300, 680],
+     "recorte169": [250, 240, 1420, 799]},
     {"tipo": "cartao", "dur": 2.3, "titulo": "Você aprova. Ele publica.", "sub": "Agora ou no horário que você marcou."},
     {"tipo": "video", "a": 585.0, "b": 596.0, "dur": 7.0, "etapa": "Publicar agora ou deixar agendado"},
     {"tipo": "video", "a": 597.0, "b": 601.5, "dur": 3.5, "etapa": "Publicado"},
@@ -101,10 +118,52 @@ def moldura_45(etapa, saida):
     return saida
 
 
+def imagem(idx, item, formato, pasta):
+    """
+    Uma TELA PARADA com aproximacao lenta.
+
+    Existe porque a jornada sem gravacao (o cliente da o tema e o squad escreve)
+    nao aparece na gravacao de 04/09: ela foi capturada agora, em print de
+    1920x1080 na tela logada. Print com `zoompan` em cima de uma ampliacao de 2x
+    nao treme; `zoompan` direto na resolucao final treme a cada quadro.
+    """
+    f = FORMATOS[formato]
+    saida = f"{pasta}/{formato}-{idx:02d}.mp4"
+    quadros = max(2, int(item["dur"] * 30))
+    zoom = f"zoompan=z='min(1+0.00045*on,1.09)':d={quadros}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=30"
+    if formato == "16x9":
+        # Recorte tambem aqui: o print e a tela inteira do app, e o que interessa
+        # (o modal) ocupa um terco dela. Sem recorte o texto sai pequeno demais
+        # para quem assiste no meio do feed.
+        corte = ""
+        if item.get("recorte169"):
+            x, y, w, h = item["recorte169"]
+            corte = f"crop={w}:{h}:{x}:{y},"
+        vf = f"{corte}scale=3840:-2:flags=lanczos,{zoom}:s=1920x1080"
+        cmd = ["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", item["arquivo"],
+               "-vf", vf, "-t", f"{item['dur']}", *CODEC, saida]
+    else:
+        # No 4:5 a faixa e larga (1080x564) e a tela inteira ficaria ilegivel no
+        # celular: entra so o pedaco que importa, ampliado.
+        x, y, w, h = item["recorte45"]
+        png = moldura_45(item["etapa"], f"{pasta}/{formato}-{idx:02d}.png")
+        fc = (f"[0:v]crop={w}:{h}:{x}:{y},scale=2160:-2:flags=lanczos,{zoom}:s=1080x564[v];"
+              f"[1:v][v]overlay=0:560:shortest=0[o]")
+        cmd = ["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", item["arquivo"],
+               "-loop", "1", "-i", png, "-filter_complex", fc, "-map", "[o]",
+               "-t", f"{item['dur']}", *CODEC, saida]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode:
+        print(idx, formato, "FALHOU", r.stderr[-400:])
+    return saida
+
+
 def render(idx, item, formato, pasta):
     f = FORMATOS[formato]
     saida = f"{pasta}/{formato}-{idx:02d}.mp4"
     dur = item["dur"]
+    if item["tipo"] == "imagem":
+        return imagem(idx, item, formato, pasta)
     if item["tipo"] in ("cartao", "final"):
         png = f"{pasta}/{formato}-{idx:02d}.png"
         if item["tipo"] == "final":

@@ -8016,9 +8016,102 @@ O que NAO foi tocado, de proposito: os travessoes dentro dos prompts dos agentes
 no banco (13 posts e 30 cards, zero travessao); e o "—" que marca campo vazio no
 resumo do setup, que e sinal de "sem valor" e nao texto.
 
+### 5. A medicao rodou, e o numero e 11 minutos contra 30
+
+Com o `PILOTO_SECRET` gravado em producao (o Bruno autorizou rodar), o upload de
+medicao foi feito daqui, pela linha de comando, com o MESMO arquivo e o MESMO
+projeto de 04/09 (`2026-08-31 08-22-04.mp4`, 982 s, 898 MB, projeto
+`cmtmym5bo000004l80wwvpdd7`). `scripts/tmp/medir-e2e-0809.mts` sobe o arquivo,
+registra o video, pede a transcricao assinada e le o banco de 12 em 12 segundos.
+
+| minuto | o que aconteceu |
+|---|---|
+| 0,5 | upload dos 898 MB terminou |
+| 0,9 | transcricao pedida (200) |
+| 1,6 | transcricao pronta, QUADRO ABERTO com 9 cards, semana escrita |
+| 2,3 | Roberto entregou a pesquisa; primeiros posts |
+| 3,2 | selecao pronta, 3 trechos, cortando |
+| 6,3 | cortes prontos |
+| 7,0 | video em "ready", 10 posts |
+| 10,0 | video completo pronto, **604 MB** |
+| 11,0 | capas do completo prontas |
+
+As duas metas do Bruno bateram: cards de espera no quadro em pouco mais de um
+minuto, e a semana escrita ANTES dos cortes (1,6 min contra 6,3). O total caiu
+de 30 minutos (04/09) para 11. O completo de 604 MB, contra 1,1 GB antes, e a
+reducao para 1080p funcionando em producao.
+
+Um buraco apareceu antes de comecar: a transcricao era a UNICA etapa que exigia
+sessao, ou seja, a esteira so comecava se alguem estivesse com a tela aberta. O
+`onUploadCompleted` do storage nao tem sessao nenhuma. Agora ele despacha o
+passo `transcrever` pelo piloto (commit `b9f5687`): o cliente pode fechar a aba
+no segundo seguinte ao envio que a esteira anda sozinha.
+
+### 6. Um corte de tres falhou, e o que os dados disseram
+
+O trecho 1 (720 s a 807 s) voltou com
+
+    Failed to configure output pad on Parsed_scale_101
+    Error reinitializing filters!
+    Failed to inject frame into filter network: Resource temporarily unavailable
+
+Antes de propor conserto, tres leituras:
+
+1. **O arquivo nao muda de propriedade ali.** Os 3.000 quadros do trecho sao
+   2560x1440 yuv420p progressivo, do primeiro ao ultimo. A explicacao classica
+   deste erro (grafo que morre quando a entrada muda no meio) esta descartada.
+2. **O mesmo pedido passa sozinho.** Reproduzido aqui com os MESMOS 13 pedacos
+   (`scripts/tmp/reproduzir-trecho1-0809.mts`, que reconstroi o pedido real pelo
+   `montarPedidoDeCorte`): passou em 32 s.
+3. **O que separa esse trecho dos outros e tamanho.** 13 pedacos mantidos,
+   contra 4 e 8 dos que passaram. Maior grafo, disputando 8 vCPU e 7,6 GB com
+   outros dois trechos e com o passe 1 do completo. "Resource temporarily
+   unavailable" e falta de recurso ao montar o filtro.
+
+Tamanho do grafo e disputa por recurso estao confundidos (o maior grafo tambem
+e o que mais consome), e a resposta util e a mesma nos dois casos: **o worker
+repete sozinho, uma de cada vez, o trecho que falhou na piscina** (`f243b9b`).
+Se a segunda chance passar, era disputa, e o log diz isso.
+
+De carona, lido no codigo antes de acontecer com alguem: um recorte PARCIAL
+(`soTrechos`, que refaz um corte so) chegava no callback com `completo: null`, e
+o callback gravava `completoUrl: null` por cima de um video completo que existe e
+ja esta no quadro. O worker passou a marcar `soTrechos` no aviso e o app
+preserva o completo nesse caso.
+
+### 7. "Pronto em 35 minutos" para um trabalho de 11
+
+A faixa verde do Gestor contava de `createdAt` ate AGORA, e agora nunca para de
+andar: na tela, o mesmo video dizia 32 minutos e, tres minutos depois, 35, para
+uma entrega que levou 11. O numero que o cliente le sobre a promessa central do
+produto era um cronometro que continuava correndo depois da entrega.
+
+Entrou `finishedAt` no `video_jobs` (migration `20260908150000_fim_da_esteira`),
+gravado quando o completo e anexado ou quando o video fica pronto com o completo
+ja no lugar. A faixa usa esse instante; video antigo, sem o campo, mantem o
+comportamento anterior.
+
+### 8. Os anuncios ganharam a jornada SEM gravacao
+
+Pedido do Bruno: o anuncio falava so do caminho do video, e faltava o conteudo
+que nasce sem gravacao nenhuma, a partir de tema, nicho, voz e pesquisa. Essa
+tela nao existe na gravacao de 04/09, entao foi capturada agora, na tela logada
+(Playwright contra o `npm run dev`, sessao de teste, 1920x1080), e virou tela
+parada com aproximacao lenta:
+
+- `sem-video-escolha.png`: "De onde vem o conteudo desta campanha? De um video
+  que voce gravou, ou de um tema, criado por IA."
+- `sem-video-temas.png`: os temas por dia, escritos pelo cliente, com o resumo
+  da campanha.
+- `quadro-pronto.png`: o quadro da semana cheio, para a versao longa.
+
+No 4:5 e no 16:9 a tela entra RECORTADA no que importa (o modal ocupa um terco
+do print), senao o texto sai pequeno demais para o feed. Os quatro arquivos
+foram refeitos: 61 s para Google e Meta, 2:07 na versao longa.
+
 ### Aberto
 
-- O upload de medicao, assim que o `PILOTO_SECRET` estiver em producao.
+- Conferir na proxima gravacao se a segunda chance do trecho passa sozinha.
 - Trilha licenciada no lugar da sintetizada, se o Bruno quiser.
 - Os travessoes dos prompts, se algum dia um post sair com um.
 
