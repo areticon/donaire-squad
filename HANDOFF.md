@@ -8117,6 +8117,94 @@ foram refeitos: 61 s para Google e Meta, 2:07 na versao longa.
 
 *Atualizado em 08/09/2026 por Claude Code.*
 
+## Sessao 08/09/2026 (parte 96): o funil existe, a demo pede contato, e a conta da API secou no meio
+
+Com o produto medido e consertado de manha, a tarde foi para o que trava a
+VENDA. Tres coisas entraram, uma apareceu sozinha e nao era pequena.
+
+### 1. O funil, medido no proprio banco (`132f630`)
+
+Ate hoje o projeto nao tinha analytics NENHUM, e a decisao central do negocio
+(gastar em trafego pago) depende de duas medidas que ninguem conseguia medir:
+custo por clique e conversao da landing. Sem isso o teste de R$ 2.000 gasta o
+dinheiro e nao responde a pergunta que ele existe para responder.
+
+Cinco passos, e nada alem deles: **visita, demo, cadastro, checkout,
+assinatura** (`lib/funil/eventos.ts`, tabela `funnel_events`). A tentacao de
+instrumentar tudo e o que faz painel virar enfeite.
+
+- **A origem e de PRIMEIRA visita**, guardada num cookie proprio de 90 dias
+  (`dmd_origem`, sem rastreador de terceiro). Quem chega pelo anuncio, sai e
+  volta pelo Google continua sendo do anuncio, que e o que a conta de custo por
+  cliente exige. No cadastro ela e carimbada no proprio usuario (`users.origem`),
+  onde sobrevive a limpeza dos eventos.
+- **O que o navegador manda e so `visita` e `cadastro`** (`POST /api/eventos`,
+  responde 204 sempre, teto de 60 por IP por hora). `checkout` e `assinatura`
+  sao gravados no servidor, onde o dinheiro acontece: aceitar esses do navegador
+  deixaria qualquer um inflar a conversao com um `curl`.
+- **Relatorio por linha de comando**, do jeito que o Bruno prefere:
+  `npx tsx --env-file=.env.local scripts/funil.mts [dias] [gasto em reais]`.
+  Com o gasto ele devolve custo por cadastro e por assinatura, contra o teto de
+  R$ 710 por cliente do plano anual.
+
+Provado em producao: uma visita com `utm_source=teste-claude` entrou com a
+origem certa, o cookie foi gravado e o relatorio mostrou a linha.
+
+Por que no Postgres e nao numa ferramenta de fora: o custo fixo do produto
+inteiro e R$ 116 por mes, o dado do funil precisa casar com o de cliente que ja
+mora aqui, e ferramenta de terceiro nao ve o que acontece no servidor, que e
+justamente onde a assinatura acontece.
+
+### 2. A demo publica passou a pedir contato (`132f630`)
+
+Era o unico lugar do produto que entregava valor de verdade a um desconhecido e
+o deixava ir embora sem deixar nada. Agora, depois que os tres textos aparecem,
+ela oferece manda-los por e-mail (`POST /api/demo/contato`, campo `email` no
+`demo_runs`). A troca e honesta: o e-mail nao e pedagio para ver o que ja viu, e
+o jeito de levar o texto para onde ele vai ser usado.
+
+A rodada e procurada pelo id E pelo hash de IP: sem o segundo filtro, alguem com
+um id alheio receberia por e-mail o texto que outra pessoa escreveu.
+
+### 3. A conta da Anthropic secou, e o produto mentia sobre isso (`eebcaf7`)
+
+Ao testar a demo em producao veio 500. Nao era o codigo novo: o `demo_runs`
+guardava o motivo real, `"Your credit balance is too low to access the
+Anthropic API"`. **A conta da API esta sem saldo, e com ela todo agente, corte,
+capa e demo param.**
+
+Gasto medido (`ai_usage`, dez dias): 30/08 US$ 1,05 | 31/08 US$ 6,29 | 01/09
+US$ 0,15 | 02/09 US$ 3,96 | 03/09 US$ 0,63 | 04/09 US$ 1,96 | 08/09 US$ 3,13.
+Total de dez dias: **US$ 17,17**, sendo US$ 3,13 hoje, das duas esteiras
+completas que rodei para medir.
+
+O que entrou de codigo: erro de saldo agora e traduzido (`SemSaldoNaApi` em
+`lib/claude/index.ts`), grita no log do servidor e a demo para de dizer "tente
+de novo em alguns segundos", que e exatamente a frase que faz a pessoa tentar
+para sempre num problema que so o dono da conta resolve.
+
+### 4. A conta que a Meta usa para revisar existe (card BN-214)
+
+`reviewer@demandou.com`, plano Autoridade, com projeto e post de imagem prontos
+(`scripts/tmp/criar-revisor.mts`). Entrou de verdade em producao e caiu na etapa
+1 do setup, que e a tela de conectar redes, exatamente o que o revisor precisa
+ver.
+
+Uma pedra no caminho, que vale registrada: o cadastro por senha exige e-mail
+confirmado para entrar (decisao de 21/08, e certa), e `reviewer@demandou.com`
+nao tem caixa de entrada, entao o link de confirmacao nunca chegaria. A conta de
+revisao foi confirmada no banco, uma vez (`scripts/tmp/verificar-revisor.mts`).
+
+### Aberto
+
+- **Recarregar a conta da Anthropic.** Nada funciona sem isso.
+- Fila de verdade para transcricao e selecao (card 197), que e o que quebra
+  quando dois clientes subirem video ao mesmo tempo.
+- App Review da Meta e verificacao da empresa: dependem do Bruno.
+- Trilha licenciada no lugar da sintetizada, se ele quiser.
+
+*Atualizado em 08/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
