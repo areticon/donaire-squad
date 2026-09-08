@@ -3,7 +3,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { askClaude } from "@/lib/claude";
+import { askClaude, ehErroDeSaldo } from "@/lib/claude";
 import { verificarLimite } from "@/lib/demo/rate-limit";
 import { registrarPasso } from "@/lib/funil/eventos";
 
@@ -82,8 +82,14 @@ export async function POST(req: NextRequest) {
     void prisma.demoRun
       .create({ data: { ipHash: veredito.ipHash, input: texto, error: message } })
       .catch(() => {});
+    // Saldo acabado nao melhora tentando de novo, e mandar a pessoa insistir e
+    // gastar a paciencia dela num problema que so o dono da conta resolve.
     return NextResponse.json(
-      { error: "Não consegui gerar agora. Tente de novo em alguns segundos." },
+      {
+        error: ehErroDeSaldo(err)
+          ? "A demonstração está fora do ar por um problema nosso, e já sabemos dele. Tente de novo mais tarde."
+          : "Não consegui gerar agora. Tente de novo em alguns segundos.",
+      },
       { status: 500 }
     );
   }

@@ -151,11 +151,56 @@ export async function askClaude(
     },
     { timeout: timeoutMs }
   );
-  const message = await stream.finalMessage();
+  let message;
+  try {
+    message = await stream.finalMessage();
+  } catch (e) {
+    throw traduzirErroDaApi(e);
+  }
 
   void recordUsage(model, message.usage, options?.usage);
 
   return extrairTexto(message.content, message.stop_reason, maxTokens);
+}
+
+/**
+ * Traduz o erro da API para uma frase que diz o que fazer.
+ *
+ * Existe por causa de 08/09: a conta da Anthropic ficou sem saldo e o produto
+ * inteiro passou a falhar com "Nao consegui gerar agora, tente de novo em
+ * alguns segundos", que e exatamente a mensagem que faz a pessoa tentar de novo
+ * para sempre. O saldo acabado nao melhora sozinho, e quem precisa saber e o
+ * dono da conta, nao o visitante.
+ *
+ * Um erro de saldo tambem grita no log do servidor: e a unica forma de a
+ * plataforma inteira parar sem ninguem perceber.
+ */
+export class SemSaldoNaApi extends Error {
+  readonly semSaldo = true;
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = "SemSaldoNaApi";
+  }
+}
+
+export function ehErroDeSaldo(e: unknown): boolean {
+  return e instanceof SemSaldoNaApi || /credit balance is too low|insufficient.*credit/i.test(
+    e instanceof Error ? e.message : String(e)
+  );
+}
+
+function traduzirErroDaApi(e: unknown): Error {
+  const mensagem = e instanceof Error ? e.message : String(e);
+  if (/credit balance is too low|insufficient.*credit/i.test(mensagem)) {
+    console.error(
+      "[claude] A CONTA DA ANTHROPIC ESTA SEM SALDO. Todo agente, corte e demo " +
+        "vao falhar ate a recarga. console.anthropic.com, Billing."
+    );
+    return new SemSaldoNaApi(
+      "A plataforma esta sem saldo de API. Avise o suporte: nada vai funcionar ate a recarga."
+    );
+  }
+  return e instanceof Error ? e : new Error(mensagem);
 }
 
 /**
