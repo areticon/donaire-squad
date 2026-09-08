@@ -10,6 +10,7 @@ import { Valor } from "@/components/landing/valor";
 import { Pricing } from "@/components/landing/pricing";
 import { vagasDeFundador } from "@/lib/stripe";
 import { Footer } from "@/components/landing/footer";
+import { Rastro } from "@/components/landing/rastro";
 
 export const metadata: Metadata = {
   title: "demandou. postou. Você grava um vídeo, seu squad de IA publica.",
@@ -33,6 +34,9 @@ export default async function HomePage() {
     // com fundo escuro fixo, ilegível. Tema é preferência de quem usa a
     // plataforma; a landing é a vitrine, e vitrine tem uma cara só.
     <main data-theme="dark" className="bg-[var(--bg-primary)] min-h-screen">
+      {/* Sem nada na tela: guarda a origem da primeira visita e conta que
+          alguem chegou. Ver components/landing/rastro.tsx. */}
+      <Rastro />
       <Navbar />
       <Hero />
       <Demo />

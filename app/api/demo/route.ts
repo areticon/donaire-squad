@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { verificarLimite } from "@/lib/demo/rate-limit";
+import { registrarPasso } from "@/lib/funil/eventos";
 
 const MAX_ENTRADA = 1200; // caracteres
 
@@ -67,11 +68,15 @@ export async function POST(req: NextRequest) {
       linkedin: string; x: string; instagram: string; observacao?: string;
     };
 
-    void prisma.demoRun
+    const rodada = await prisma.demoRun
       .create({ data: { ipHash: veredito.ipHash, input: texto, output: posts } })
-      .catch(() => {}); // registro nunca derruba a resposta
+      .catch(() => null); // registro nunca derruba a resposta
 
-    return NextResponse.json({ posts });
+    // O segundo passo do funil. Sem ele, a demo era o unico lugar do produto
+    // que gerava valor para um desconhecido e nao deixava rastro nenhum.
+    await registrarPasso("demo", { ipHash: veredito.ipHash, caminho: "/", meta: { profissao } });
+
+    return NextResponse.json({ posts, rodadaId: rodada?.id ?? null });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Falha ao gerar";
     void prisma.demoRun

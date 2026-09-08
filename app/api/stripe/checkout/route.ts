@@ -4,6 +4,7 @@ import { auth, currentUser } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckoutSession, PLANS, vagasDeFundador } from "@/lib/stripe";
 import { prisma } from "@/lib/db/prisma";
+import { registrarPasso } from "@/lib/funil/eventos";
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,6 +57,16 @@ export async function POST(req: NextRequest) {
       returnUrl,
       { fundador }
     );
+
+    // O passo do funil sai DAQUI, e nao do navegador: e o unico lugar que sabe
+    // o plano, o ciclo e o valor de verdade, e nao da para inflar de fora.
+    // Sem valor aqui de proposito: `createCheckoutSession` devolve so a URL, e
+    // o valor de verdade (com cupom e imposto) chega no webhook, que e quem
+    // grava o passo `assinatura`.
+    await registrarPasso("checkout", {
+      userId,
+      meta: { planId, ciclo: ciclo ?? "mensal", fundador },
+    });
 
     return NextResponse.json({ url: checkoutUrl });
   } catch (err) {

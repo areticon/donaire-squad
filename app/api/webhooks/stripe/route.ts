@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db/prisma";
 import { reporCiclo } from "@/lib/credits";
 import { PLANS } from "@/lib/stripe";
+import { registrarPasso } from "@/lib/funil/eventos";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -51,6 +52,16 @@ export async function POST(req: NextRequest) {
             session.subscription as string
           );
           await aplicarPlanoDaAssinatura(sub);
+        }
+
+        // O fim do funil. Vale o que o Stripe cobrou, e nao o que a tela
+        // prometeu: cupom, imposto e proporcional entram aqui.
+        if (userId) {
+          await registrarPasso("assinatura", {
+            userId,
+            valorCents: session.amount_total ?? null,
+            meta: { moeda: session.currency ?? "brl", assinatura: String(session.subscription ?? "") },
+          });
         }
         break;
       }

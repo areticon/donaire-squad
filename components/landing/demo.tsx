@@ -43,6 +43,11 @@ export function Demo() {
   const [posts, setPosts] = useState<Posts | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<"linkedin" | "x" | "instagram">("linkedin");
+  const [rodadaId, setRodadaId] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [enviandoEmail, setEnviandoEmail] = useState(false);
+  const [emailEnviado, setEmailEnviado] = useState(false);
+  const [erroEmail, setErroEmail] = useState<string | null>(null);
 
   async function gerar() {
     setCarregando(true);
@@ -55,12 +60,39 @@ export function Demo() {
         body: JSON.stringify({ texto, profissao }),
       });
       const data = await res.json();
-      if (!res.ok) setErro(data.error ?? "Não consegui gerar agora.");
-      else setPosts(data.posts);
+      if (!res.ok) {
+        setErro(data.error ?? "Não consegui gerar agora.");
+      } else {
+        setPosts(data.posts);
+        // O id da rodada e o que liga o e-mail ao texto certo depois.
+        setRodadaId(data.rodadaId ?? null);
+        setEmailEnviado(false);
+        setErroEmail(null);
+      }
     } catch {
       setErro("Não consegui gerar agora. Tente de novo em alguns segundos.");
     } finally {
       setCarregando(false);
+    }
+  }
+
+  async function mandarPorEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setEnviandoEmail(true);
+    setErroEmail(null);
+    try {
+      const res = await fetch("/api/demo/contato", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rodadaId, email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setErroEmail(data.error ?? "Não consegui enviar agora.");
+      else setEmailEnviado(true);
+    } catch {
+      setErroEmail("Não consegui enviar agora.");
+    } finally {
+      setEnviandoEmail(false);
     }
   }
 
@@ -174,7 +206,49 @@ export function Demo() {
                   </p>
                 )}
 
-                <div className="mt-6 bg-orange-500/10 border border-orange-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                {/* O e-mail vem ANTES do botao de plano e depois do texto
+                    pronto: a pessoa acabou de ver o resultado, e a troca
+                    oferecida e levar o texto embora, nao ver o que ja viu. */}
+                {emailEnviado ? (
+                  <div className="mt-6 rounded-xl border border-green-500/25 bg-green-500/10 p-4 text-sm text-[var(--text-primary)]">
+                    Pronto, os três textos estão indo para {email}.
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={mandarPorEmail}
+                    className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5"
+                  >
+                    <p className="text-sm text-[var(--text-primary)] mb-3">
+                      Quer os três textos no seu e-mail, prontos para copiar e publicar?
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(ev) => setEmail(ev.target.value)}
+                        placeholder="seu@email.com"
+                        className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none"
+                        style={{
+                          background: "var(--bg-surface)",
+                          borderColor: "var(--border)",
+                          color: "var(--text-primary)",
+                        }}
+                      />
+                      <Button type="submit" variant="secondary" disabled={enviandoEmail}>
+                        {enviandoEmail ? "Enviando..." : "Mandar para mim"}
+                      </Button>
+                    </div>
+                    {erroEmail && (
+                      <p className="text-xs text-red-400 mt-2">{erroEmail}</p>
+                    )}
+                    <p className="text-xs text-[var(--text-muted)] mt-2">
+                      Só os textos e o convite do teste. Nada de lista de disparo.
+                    </p>
+                  </form>
+                )}
+
+                <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <p className="text-[var(--text-primary)]">
                     Isso foi um post, sem saber nada sobre você.{" "}
                     <strong>

@@ -63,6 +63,18 @@ export function AuthForm({ mode }: { mode: Mode }) {
       return;
     }
 
+    // O passo `cadastro` do funil, e o momento em que a origem da primeira
+    // visita (cookie de 90 dias) e carimbada no usuario. So no cadastro: quem
+    // entra de novo ja foi contado uma vez.
+    if (mode === "sign-up") {
+      void fetch("/api/eventos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evento: "cadastro", caminho: "/sign-up" }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
     router.push(redirect);
     router.refresh();
   }

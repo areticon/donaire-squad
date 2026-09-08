@@ -29,6 +29,12 @@ model User {
   creditTx CreditTransaction[]
 
   @@map("users")
+  /// De onde esta pessoa veio na PRIMEIRA visita (utm_source), gravado no
+  /// cadastro a partir do cookie de primeira visita. Guardado aqui, e nao so
+  /// no evento, porque e isto que permite responder "quanto custou este
+  /// cliente" um ano depois, quando os eventos ja tiverem sido limpos.
+  origem         String?
+  campanha       String?
 }
 
 /// Extrato de créditos, uma linha por movimento.
@@ -422,6 +428,46 @@ model VideoJob {
 /// Consumo real de cada chamada de IA. Existe para responder duas perguntas
 /// que o modelo de negócio depende: quanto custa de verdade cada operação, e
 /// o prompt caching está pegando (cacheReadInputTokens maior que zero).
+/// Um passo do funil, do primeiro clique ate a assinatura.
+///
+/// Existe porque ate 08/09 o projeto nao tinha analytics NENHUM: a decisao
+/// central do negocio (gastar em trafego pago) dependia de duas medidas, custo
+/// por clique e conversao da landing, e nenhuma das duas podia ser medida. Sem
+/// isto o teste de R$ 2.000 gasta o dinheiro e nao responde a pergunta que ele
+/// existe para responder.
+///
+/// Mora no proprio Postgres, e nao numa ferramenta de terceiro, por tres
+/// motivos: o custo fixo do produto inteiro e R$ 116 por mes, o dado do funil
+/// tem que casar com o dado de cliente que ja esta aqui (usuario, assinatura,
+/// credito), e ferramenta de fora nao ve o que acontece no servidor, que e
+/// justamente onde a assinatura acontece.
+model FunnelEvent {
+  id        String   @id @default(cuid())
+  /// visita, demo, cadastro, checkout, assinatura. Ver lib/funil/eventos.ts.
+  evento    String
+  /// De onde a pessoa veio, na PRIMEIRA visita dela. E o que permite dizer
+  /// quanto custou cada cliente, e nao so quantos clientes existem.
+  origem    String?
+  campanha  String?
+  midia     String?
+  termo     String?
+  /// O caminho onde o evento aconteceu, para separar landing de /planos.
+  caminho   String?
+  /// IP com sal, nunca em texto puro (mesma regra da demo publica).
+  ipHash    String?
+  /// Preenchido quando ja existe sessao, que e o que liga a visita anonima ao
+  /// cliente que assinou.
+  userId    String?
+  valorCents Int?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([evento, createdAt])
+  @@index([origem, createdAt])
+  @@index([ipHash, createdAt])
+  @@map("funnel_events")
+}
+
 model AiUsage {
   id                       String   @id @default(cuid())
   projectId                String?
@@ -474,6 +520,14 @@ model DemoRun {
   costUsd         Float    @default(0)
   /// Preenchido se a pessoa criar conta depois, para medir a conversão da demo.
   convertedUserId String?
+  /// O contato que a pessoa deixou para receber os textos.
+  ///
+  /// Existe desde 08/09 porque a demo era o único lugar do produto que
+  /// entregava valor de verdade a um desconhecido e o deixava ir embora sem
+  /// deixar nada: o funil terminava ali, e a única forma de voltar a falar com
+  /// essa pessoa era ela lembrar do site sozinha.
+  email           String?
+  nome            String?
   createdAt       DateTime @default(now())
 
   @@index([ipHash, createdAt])

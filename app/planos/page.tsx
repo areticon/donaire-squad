@@ -11,6 +11,7 @@ import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { cn } from "@/lib/utils";
 import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
 import { FUNDADOR, GARANTIA_DIAS, PLANOS_PUBLICOS, TRIAL_DAYS, mensalDoAnual, reais } from "@/lib/planos";
+import { Rastro } from "@/components/landing/rastro";
 
 /**
  * Escolha de plano antes do cadastro. É o destino dos CTAs genéricos
@@ -40,6 +41,7 @@ function PlanosConteudo() {
 
   return (
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
+      <Rastro />
       <header className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <BrandMarkAnimated size={30} />
