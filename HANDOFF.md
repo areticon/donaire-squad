@@ -7906,9 +7906,12 @@ mutacao foi bloqueada aqui:
 
 ```powershell
 cd C:\Users\devan\opensquad-app
-Get-Content "C:\Users\devan\AppData\Local\Temp\claude\c--\6155b77c-6ddd-4a03-bf63-b5b0a08e9b10\scratchpad\piloto.secret" | npx vercel env add PILOTO_SECRET production
+((Get-Content .env.local | Where-Object { $_ -like 'PILOTO_SECRET=*' }) -replace '^PILOTO_SECRET=','') | npx vercel env add PILOTO_SECRET production
 npx vercel --prod
 ```
+
+O valor sai do `.env.local`, que nao vai para o git (`.gitignore`, linha 34) e
+dura mais que a pasta temporaria da sessao.
 
 Feito isso, a medicao roda inteira daqui: sobe o arquivo para o blob, registra o
 video, dispara a transcricao assinada e le a linha do tempo no banco mais os
