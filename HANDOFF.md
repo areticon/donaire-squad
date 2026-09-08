@@ -7879,6 +7879,144 @@ better-auth); matar e subir de novo resolveu.
 
 *Atualizado em 07/09/2026 por Claude Code.*
 
+## Sessao 08/09/2026 (parte 95): o segredo que a Vercel nao entrega, anuncios com texto e trilha, completo em 1080p
+
+Tres pendencias na mesa: medir o tempo de ponta a ponta com um upload novo,
+resolver os anuncios mudos e decidir 1080p. Duas sairam inteiras; a primeira
+esbarrou numa parede que vale registrar.
+
+### 1. Por que o e2e de producao NAO rodou daqui, e o que ficou pronto
+
+O piloto do servidor autentica cada passo com HMAC do `BETTER_AUTH_SECRET`
+(`lib/media/piloto-do-servidor.ts`). Provado, nao suposto: assinando com o
+segredo do `.env.local` e batendo em `demandou.com/api/videos/<id>/piloto`, a
+resposta foi **401 Assinatura invalida**, ou seja o segredo de producao e outro.
+E `vercel env pull` trouxe `BETTER_AUTH_SECRET=[SENSITIVE]`: na Vercel esse
+valor esta marcado como sensivel, e valor sensivel nao sai de la nem para o dono
+da conta. Sem ele nao ha como disparar transcricao, corte ou semana pela linha
+de comando, e o cookie de sessao tem a mesma trava (e o que o teste de 02/09 ja
+tinha descoberto por outro caminho).
+
+Conserto que abre a porta sem tocar em sessao (`a128d20`): o piloto passou a
+assinar com **`PILOTO_SECRET`**, e o `BETTER_AUTH_SECRET` fica so como queda.
+Assinar login de gente e assinar chamada de maquina sao finalidades diferentes,
+e agora tem cada uma o seu segredo. O valor ja esta no `.env.local`; o que falta
+e o mesmo valor em producao, e a Vercel so aceita isso do Bruno, porque a
+mutacao foi bloqueada aqui:
+
+```powershell
+cd C:\Users\devan\opensquad-app
+Get-Content "C:\Users\devan\AppData\Local\Temp\claude\c--\6155b77c-6ddd-4a03-bf63-b5b0a08e9b10\scratchpad\piloto.secret" | npx vercel env add PILOTO_SECRET production
+npx vercel --prod
+```
+
+Feito isso, a medicao roda inteira daqui: sobe o arquivo para o blob, registra o
+video, dispara a transcricao assinada e le a linha do tempo no banco mais os
+logs. O plano e repetir o teste de 04/09 com o MESMO arquivo
+(`2026-08-31 08-22-04.mp4`, 982 s, 898 MB) no MESMO projeto
+(`cmtmym5bo000004l80wwvpdd7`), para a comparacao com os 30 minutos ser minuto a
+minuto e nao impressao.
+
+### 2. Anuncios: cartao por etapa, trilha, e quatro arquivos
+
+Os dois videos de 04/09 estavam mudos porque o OBS nao gravou o microfone.
+Decisao tomada: anuncio de feed roda mudo de qualquer jeito, entao quem explica
+e o TEXTO na tela. Em `C:\Users\devan\Videos\demandou-anuncios\`:
+
+| arquivo | formato | duracao |
+|---|---|---|
+| `demandou-60s-google-16x9.mp4` | 1920x1080 | 57 s |
+| `demandou-60s-meta-4x5.mp4` | 1080x1350 | 57 s |
+| `demandou-completo-google-16x9.mp4` | 1920x1080 | 1:49 |
+| `demandou-completo-meta-4x5.mp4` | 1080x1350 | 1:49 |
+
+O que decidiu o desenho:
+
+- **O 4:5 nao deixa a interface sozinha.** Em 04/09 ficou registrado que no
+  celular a tela do app fica pequena demais para ler. Agora o texto da etapa vem
+  GRANDE em cima, a gravacao entra como faixa de 1080x564 no meio e a marca fica
+  embaixo. Mesmo corte e mesma duracao do 16:9, leitura diferente.
+- **Os logins ficam de fora**, como no corte de 04/09: as telas do Google, do
+  LinkedIn e do Instagram mostram o e-mail do Bruno.
+- **A trilha e sintetizada aqui** (`scripts/anuncios/trilha.py`): pad em quatro
+  acordes, baixo e um pulso discreto, 100 BPM, sem direito de terceiro
+  envolvido. E cama, nao musica de primeiro plano, e trocar por uma licenciada e
+  so trocar o arquivo.
+- **A identidade sai do codigo**: `#1e1e25` de fundo, `#ef6122` da marca,
+  Montserrat no titulo e Inter no resto, monograma de `public/brand-mark-on-dark.png`
+  (arquivo oficial, nunca redesenhado).
+
+Cada trecho foi conferido quadro a quadro contra a gravacao, e tres estavam no
+lugar errado antes disso: o player do corte legendado nao esta aos 8:00 e sim
+aos 8:33, o quadro cheio de cards e as 8:16, e o "Publicado com sucesso" vive
+numa janela de quatro segundos (9:57 a 10:01) que o corte anterior perdia.
+
+Os scripts ficaram no repo, em `scripts/anuncios/` (o texto de cada etapa esta
+em `PLANO60` e `PLANO_LONGO`, dentro de `montar.py`), e o desenho dos cartoes
+mais o roteiro tempo a tempo foram para o canvas do Claude Design:
+https://claude.ai/code/artifact/0b868157-f3e3-403b-8331-7c0e4efe9f6c
+
+Os dois arquivos mudos de 04/09 continuam la, intactos.
+
+### 3. Completo em 1080p, com a medicao que decidiu (`58162ef`)
+
+A ideia era "1080p corta o tempo do worker pela metade". Medido na gravacao real
+(2560x1440 a 7,5 Mbps), 60 s, numa maquina de 8 nucleos igual a do Railway:
+
+| o que | tempo | tamanho |
+|---|---|---|
+| so decodificar | 4,8 s | |
+| decodificar e reduzir para 1080 | 8,2 s | |
+| passe inteiro em 1440p | 25,7 s | 55,2 MB (7,4 Mbps) |
+| passe inteiro em 1080p | 19,6 s | 31,5 MB (4,2 Mbps) |
+
+Ou seja: **o codificador cai 45%** (20,9 s para 11,4 s), mas a reducao come 3,4 s
+de volta. Como o completo faz dois passes sobre o arquivo, o ganho de ponta a
+ponta fica perto de **um terco**, nao de metade. O arquivo cai quase pela
+metade, que e o que explica o completo de 1,1 GB visto em 02/09.
+
+Decisao: **sai em 1080p**. A reducao entra no PASSE 1, depois do `concat` e
+depois da legenda: depois do concat porque ali o fluxo ja e uniforme (e o mesmo
+lugar onde o `subtitles` roda desde 23/08, que e a prova de que sobrevive a
+reinicializacao que mata no da imagem sobre `[0:v]`), e depois da legenda para
+ela ser desenhada no tamanho para o qual foi calculada. O passe 2 nao precisou de
+nada: ele le a dimensao do arquivo do passe 1. Para voltar atras, e por
+`ALTURA_DO_COMPLETO = 0` em `worker/src/ffmpeg.mjs`.
+
+Dois efeitos colaterais tratados:
+
+- `medirFidelidade` comparava entregue e original com `ssim`, que RECUSA
+  entradas de tamanhos diferentes. Sem conserto a medida sumiria em silencio,
+  virando null em toda entrega. Entrou `scale2ref`, e o controle (arquivo contra
+  ele mesmo) devolve 1,0.
+- `/saude` passou a dizer `alturaDoCompleto`, para dar para conferir de fora
+  qual build esta rodando. Em producao agora: `alturaDoCompleto: 1080`.
+
+Testado antes de subir, com o codigo do worker rodando aqui sobre uma amostra de
+40 s: com legenda e sem legenda, os dois saem 1920x1080 com a legenda no lugar.
+Deploy pelo `railway up --service video-worker --detach` de dentro de `worker/`.
+
+### 4. Travessao fora da tela do cliente (`677f7c2`)
+
+Achado olhando a gravacao para montar o anuncio: a regra de nunca usar travessao
+valia para o que eu escrevo, e a tela do produto tinha 33 deles. Trocados por
+dois-pontos ou virgula em `content-manager`, no setup do kanban, no modal de
+campanha, no `pipeline-live`, no painel de posts, no cartao de projeto, nas
+redes, no treinamento e na barra lateral.
+
+O que NAO foi tocado, de proposito: os travessoes dentro dos prompts dos agentes
+(116 deles, em `app/api` e `lib`), porque o que sai deles ja esta limpo, medido
+no banco (13 posts e 30 cards, zero travessao); e o "—" que marca campo vazio no
+resumo do setup, que e sinal de "sem valor" e nao texto.
+
+### Aberto
+
+- O upload de medicao, assim que o `PILOTO_SECRET` estiver em producao.
+- Trilha licenciada no lugar da sintetizada, se o Bruno quiser.
+- Os travessoes dos prompts, se algum dia um post sair com um.
+
+*Atualizado em 08/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
