@@ -8195,9 +8195,25 @@ confirmado para entrar (decisao de 21/08, e certa), e `reviewer@demandou.com`
 nao tem caixa de entrada, entao o link de confirmacao nunca chegaria. A conta de
 revisao foi confirmada no banco, uma vez (`scripts/tmp/verificar-revisor.mts`).
 
+### Prova de ponta a ponta, depois da recarga (mesmo dia)
+
+O Bruno recarregou a conta e o caminho inteiro foi provado em producao: a demo
+gerou os tres textos (200), o contato foi aceito e **o e-mail chegou na caixa de
+entrada**, nao em spam, vindo de `contato@demandou.com`, com os tres posts e o
+convite dos sete dias. E-mail invalido volta 400 com a frase certa.
+
+Um detalhe conferido de fora: os primeiros testes foram para o Gmail pessoal,
+que nao e a caixa ligada aqui; repetindo para `bruno@areticon.com` deu para ler
+a mensagem inteira e conferir a formatacao.
+
+De carona, um defeito que eu mesmo tinha acabado de criar: a rota respondia
+`{ok:true}` mesmo quando o envio falhava, que e a mesma falha em silencio que
+este projeto ja pagou tres vezes. Agora envio que nao sai volta 502 e grita no
+log (`d55f0c2`).
+
 ### Aberto
 
-- **Recarregar a conta da Anthropic.** Nada funciona sem isso.
+- **Recarregar a conta da Anthropic.** FEITO em 08/09 pelo Bruno.
 - Fila de verdade para transcricao e selecao (card 197), que e o que quebra
   quando dois clientes subirem video ao mesmo tempo.
 - App Review da Meta e verificacao da empresa: dependem do Bruno.
