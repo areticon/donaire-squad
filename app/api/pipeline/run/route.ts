@@ -296,18 +296,44 @@ function afirmacoesSemLastro(texto: string, lastro: string): string[] {
   // decimal em ponto (6,5 vira 6.5), dos dois lados da comparacao.
   const normalizar = (t: string) => t.replace(/[.,](?=\d{3}(?!\d))/g, "").replace(/(\d),(\d)/g, "$1.$2");
   const lastroNorm = normalizar(lastro);
+  const lastroBaixo = lastroNorm.toLowerCase();
   const frases = texto
     .split(/(?<=[.!?])\s+|\n+/)
     .map((f) => f.trim())
     .filter((f) => f.length > 0);
+
+  // Palavras de conteudo da frase: 5 letras ou mais, sem as que aparecem em
+  // qualquer texto. E o que liga o numero ao assunto.
+  const VAZIAS = new Set(["entre", "sobre", "quando", "porque", "ainda", "sendo", "mesmo", "desde", "todos", "todas", "outro", "outra", "muito", "menos", "apenas", "nesta", "neste", "dessa", "desse", "cada", "como", "para", "pelo", "pela", "essa", "esse", "isso", "aqui", "hoje", "agora", "assim", "depois", "antes", "segundo", "primeiro", "milhoes", "milhao", "bilhoes", "bilhao", "reais", "vezes", "anos", "meses", "dias"]);
+  const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const palavrasDeConteudo = (frase: string) =>
+    [...new Set(semAcento(frase.toLowerCase()).match(/[a-z]{5,}/g) ?? [])].filter((w) => !VAZIAS.has(w));
+
+  // Um numero so conta como lastreado se aparece na pesquisa PERTO de uma
+  // palavra de conteudo da frase. Sem isto, "entre 5 e 15 ferramentas" passava
+  // porque "5" batia com "5 de agosto" e "15" com "15 ideias" em outro lugar da
+  // pesquisa (visto na prova de 09/09). Numero solto nao e fonte; numero com
+  // contexto e.
+  const temLastro = (n: string, palavras: string[]): boolean => {
+    const re = new RegExp(`(?<![\d\.])${n.replace(".", "\\.")}(?![\d\.])`, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lastroNorm)) !== null) {
+      const janela = semAcento(lastroBaixo.slice(Math.max(0, m.index - 160), m.index + n.length + 160));
+      if (palavras.length === 0) return true; // frase so com numero e sem assunto: nao da para cobrar contexto
+      if (palavras.some((w) => janela.includes(w))) return true;
+    }
+    return false;
+  };
+
   const semLastro: string[] = [];
   for (const frase of frases) {
     const corpo = frase.replace(/^\d+[\/\)]\s*/, ""); // tira a numeracao de tweet
     const numeros = [...normalizar(corpo).matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]);
+    const palavras = palavrasDeConteudo(corpo);
     const suspeitos = numeros.filter((n) => {
       if (/^(19|20)\d{2}$/.test(n)) return false; // ano sozinho
       if (new RegExp(`${n}\\s*h(?:\\b|\\d)`).test(corpo)) return false; // hora (10h)
-      return !lastroNorm.includes(n);
+      return !temLastro(n, palavras);
     });
     if (suspeitos.length) semLastro.push(frase);
   }

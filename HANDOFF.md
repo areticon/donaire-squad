@@ -8453,6 +8453,14 @@ arquivo): com uma pesquisa que diz "mais de 30% do portfolio", "R$ 6.5 bilhoes",
 financiamentos, 15% e 25%") e mantem "R$ 6,5 bilhoes" (virgula contra ponto),
 "45%", "40 GW entre 2027 e 2030", a numeracao da thread e "10h".
 
+A primeira versao comparava so o numero, e a prova em producao mostrou o furo:
+"entre 5 e 15 ferramentas de SaaS" passou porque "5" batia com "5 de agosto" e
+"15" com "15 Ideias" em outro canto da pesquisa. Numero solto nao e fonte. A
+regua agora exige CONTEXTO: o numero so conta como lastreado se aparece na
+pesquisa a menos de 160 caracteres de uma palavra de conteudo da frase (5 letras
+ou mais, fora uma lista de palavras vazias). Provado: "5 e 15 ferramentas" cai,
+"40% a 60% mais rapido" (que a pesquisa traz com "automacao" ao lado) fica.
+
 Custo assumido: uma frase com numero real que a busca nao trouxe tambem cai.
 Preferimos um post com menos numeros a um numero inventado em nome do cliente.
 
