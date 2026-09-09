@@ -17,7 +17,12 @@ import {
   type MediaStyleId,
 } from "@/lib/media/media-style";
 
-export const maxDuration = 300; // Vercel Hobby plan limit — Pro allows up to 800s
+// 800, o mesmo teto das rotas de video, e nao 300. Medido na prova de 09/09:
+// cada dia com imagem, revisao da Vera e correcao leva perto de 2,3 minutos,
+// entao 275 s de folga cabiam dois dias e a sexta ficava para tras com o log
+// dizendo "concluido parcialmente". Com 800 s cabem cinco dias; sete ainda
+// estouram, e a resposta para isso e fila de verdade (card 197), nao teto.
+export const maxDuration = 800;
 
 type FunnelStage = "tofu" | "mofu" | "bofu";
 type ContentType = "text" | "image" | "video" | "carousel" | "infographic" | "poll" | "article" | "thread" | "free";
@@ -469,7 +474,7 @@ export async function POST(req: NextRequest) {
   after(async () => {
     // Safety timeout: if pipeline takes more than 275s, emit a warning and mark as completed
     // (Vercel kills the function at maxDuration=300 — this ensures Pusher gets a final event)
-    const SAFETY_TIMEOUT_MS = 275_000;
+    const SAFETY_TIMEOUT_MS = 775_000; // 25 s antes do teto de 800 s, para o log sair antes de a funcao morrer
     let safetyFired = false;
 
     const safetyTimer = setTimeout(async () => {
