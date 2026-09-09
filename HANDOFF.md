@@ -8390,8 +8390,41 @@ Dois defeitos por tras, os dois corrigidos (`0f3a2cd`):
 
 Fica para a tela: mostrar `firstCommentError` no card do Paulo quando existir.
 
+### 10. "A Fitch atribuiu perspectiva negativa a 11 financiamentos": de onde veio
+
+O Bruno perguntou a fonte. Rastreado: a frase esta no brief do Roberto
+("A Fitch atribuiu perspectiva negativa a 11 financiamentos de projetos
+renovaveis no Brasil em maio de 2026, citando taxas de curtailment entre 15% e
+25% no segundo trimestre"), o Lucas copiou para o post, o Tiago para a thread,
+e a Vera aprovou dizendo que "bate com o brief". Nenhuma das cinco fontes do
+comentario fala de Fitch.
+
+Na web existe um fato parecido, e diferente: a Fitch publicou que **mais de 30%
+do seu portfolio de project finance de energia no Brasil esta com perspectiva
+negativa, em grande parte por curtailment** (NeoFeed, "Os tres riscos no mapa
+da Fitch para a energia eletrica no Pais"), e a S&P Global registra curtailment
+perto de 20% nos quatro primeiros meses de 2026. O "11 financiamentos", o "maio
+de 2026" e o "15% a 25% no segundo trimestre" nao aparecem em fonte nenhuma:
+sao o modelo dando forma de numero exato a um dado que era percentual de
+portfolio. Vera "bate com o brief" nao e verificacao: e checar a copia contra a
+copia.
+
+Dois consertos:
+- **Proveniencia** (`73d1e63`): o card do Roberto passa a guardar a
+  pesquisa bruta (o que a busca devolveu) e as fontes em `metadata`. Ate hoje
+  nada disso era gravado, e a unica forma de saber onde a distorcao entrou era
+  perguntar na web depois de publicado.
+- **Para o Bruno**: editar o post no LinkedIn trocando a frase por "a Fitch
+  informa que mais de 30% do seu portfolio de project finance de energia esta
+  com perspectiva negativa, em grande parte por curtailment", com o link da
+  NeoFeed.
+
+Fica para o produto: a Vera conferir cada numero contra a PESQUISA BRUTA (agora
+guardada), e nao contra o brief que o proprio modelo escreveu.
+
 ### Aberto
 
+- Vera conferindo cada numero contra a pesquisa bruta, nao contra o brief.
 - Fila de verdade para a campanha (card 197): sete dias com imagem passam de
   800 s.
 - Simplificar o wizard (seis telas) passa pelo canvas antes de codigo.
