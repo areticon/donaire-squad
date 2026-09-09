@@ -219,7 +219,7 @@ export function SocialConnectPanel({
               <Badge variant="success" className="text-[10px] shrink-0">conectado</Badge>
             ) : (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
-                <a target="_blank" rel="noopener" href={`/api/social/linkedin/connect?projectId=${project.id}`}>Conectar</a>
+                <a href={`/api/social/linkedin/connect?projectId=${project.id}`}>Conectar</a>
               </Button>
             )}
           </div>
@@ -240,7 +240,7 @@ export function SocialConnectPanel({
               <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
             ) : hasPagesApp ? (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
-                <a target="_blank" rel="noopener" href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
+                <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
               </Button>
             ) : (
               <span className="text-[10px] shrink-0" style={{ color: "var(--text-muted)" }}>Em breve</span>
@@ -306,7 +306,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasTwitter && (
             <Button size="sm" variant="outline" asChild>
-              <a target="_blank" rel="noopener" href={`/api/social/twitter/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/twitter/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
@@ -343,7 +343,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasInstagram && (
             <Button size="sm" variant="outline" asChild>
-              <a target="_blank" rel="noopener" href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
@@ -381,7 +381,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasFacebook && (
             <Button size="sm" variant="outline" asChild>
-              <a target="_blank" rel="noopener" href={`/api/social/facebook/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/facebook/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
@@ -419,7 +419,7 @@ export function SocialConnectPanel({
           </h2>
           {!hasYouTube && (
             <Button size="sm" variant="outline" asChild>
-              <a target="_blank" rel="noopener" href={`/api/social/youtube/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/youtube/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
