@@ -685,6 +685,20 @@ async function runPipeline(
   }) + contextDocs;
 
   // ── Step 1: Research (Roberto) ────────────────────────────────────────────
+  // Projeto sem squad nao gera nada, e ate 09/09 isso saia como "campanha
+  // concluida, 0 posts" em 130 ms, sem aviso. Um projeto criado fora do fluxo
+  // normal (script, migracao, importacao) chega aqui sem `ProjectAgent`, e a
+  // resposta certa e dizer isso, nao fingir que a semana foi feita.
+  if (!project.agents.length) {
+    await appendLog(runId, {
+      agent: "Sistema",
+      message: "Este projeto está sem squad (nenhum agente cadastrado), então nada pôde ser escrito. Refaça o setup do projeto ou fale com o suporte.",
+      status: "failed",
+    });
+    await prisma.pipelineRun.update({ where: { id: runId }, data: { status: "failed", endedAt: new Date() } });
+    return;
+  }
+
   await appendLog(runId, { agent: "Sistema", message: "Iniciando pesquisa...", status: "running" });
   const researcher = makeAgent("roberto-radar");
   let researchBrief = "";
