@@ -42,12 +42,13 @@ export async function GET(req: NextRequest) {
     if (forPages) {
       // ── Pages app (Community Management API) ────────────────────────────────
       const tokens = await exchangeLinkedInCodeForPages(code, redirectUri);
-      const profile = await getLinkedInProfile(tokens.access_token);
       const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-      // Fetch and save all administered org pages
+      // Sem `userinfo` aqui: o app de paginas nao tem o escopo `openid` (o
+      // LinkedIn nao deixa a Community Management API conviver com o Sign In
+      // no mesmo app), e o perfil de quem conectou so servia para o log.
       const orgPages = await getLinkedInAdminPages(tokens.access_token);
-      console.log(`[linkedin/callback] pages app: ${orgPages.length} page(s) for ${profile.name}`);
+      console.log(`[linkedin/callback] pages app: ${orgPages.length} page(s) for project ${projectId}`);
 
       for (const page of orgPages) {
         await prisma.socialAccount.upsert({
