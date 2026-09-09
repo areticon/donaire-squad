@@ -8422,9 +8422,48 @@ Dois consertos:
 Fica para o produto: a Vera conferir cada numero contra a PESQUISA BRUTA (agora
 guardada), e nao contra o brief que o proprio modelo escreveu.
 
+### 11. A regua de lastro: nenhum numero sem fonte vai ao ar (`d1f8a15`)
+
+O Bruno: "inaceitavel, a plataforma nunca pode inventar dados". Ate aqui a
+protecao era so de prompt ("NAO inventar nada"), e prompt nao segura numero. A
+regua agora e de codigo, em quatro pontos do pipeline:
+
+1. **`afirmacoesSemLastro(texto, lastro)`**: quebra o texto em frases, extrai os
+   numeros de cada uma (com separador de milhar tirado e virgula decimal
+   unificada em ponto, dos dois lados) e devolve as frases cujo numero nao
+   aparece, com os mesmos digitos, no LASTRO. O lastro e a PESQUISA BRUTA (o
+   texto que a busca devolveu) mais as fontes com URL mais o tema. Ficam de
+   fora da conta a numeracao de tweet ("1/"), ano sozinho e hora ("10h").
+2. **Brief do Roberto**: passa pela regua contra a pesquisa bruta; se sobrar
+   frase sem lastro, ele recebe a lista e reescreve SEM ELAS ("nao substitua
+   por outro numero, nao arredonde, nao estime"); o que voltar sem lastro sai na
+   tesoura (`removerFrases`), com aviso no log.
+3. **Vera**: criterio 8, "LASTRO DOS NUMEROS", com as frases medidas de LinkedIn
+   e X contra a pesquisa bruta (nunca contra o brief: "bate com o brief" e
+   conferir a copia contra a copia). Qualquer frase listada e REPROVADO_TEXTO, e
+   a correcao e remover a frase. As reescritas do Lucas e do Tiago carregam a
+   mesma regra.
+4. **Tesoura antes de gravar**: se depois da Vera e da reescrita ainda sobrar
+   numero sem fonte, a frase sai do post antes do `prisma.post.create`, com
+   aviso no log da execucao.
+
+Provado no caso real (`scripts/tmp/provar-lastro.mts`, com a funcao extraida do
+arquivo): com uma pesquisa que diz "mais de 30% do portfolio", "R$ 6.5 bilhoes",
+"40 GW", "45%", o post do Bruno perde EXATAMENTE a frase do Fitch ("11
+financiamentos, 15% e 25%") e mantem "R$ 6,5 bilhoes" (virgula contra ponto),
+"45%", "40 GW entre 2027 e 2030", a numeracao da thread e "10h".
+
+Custo assumido: uma frase com numero real que a busca nao trouxe tambem cai.
+Preferimos um post com menos numeros a um numero inventado em nome do cliente.
+
+Pedra no caminho, registrada para quem editar por script: dentro de template
+literal do TS a barra precisa ser dobrada (`\s`), senao `\s` vira "s"; e o
+terminal desta sessao come uma barra dupla antes de o Python ver, entao o escape
+foi montado com `chr(92)`.
+
 ### Aberto
 
-- Vera conferindo cada numero contra a pesquisa bruta, nao contra o brief.
+- Conferir na proxima semana real quantas frases a regua derruba, e se derruba coisa certa.
 - Fila de verdade para a campanha (card 197): sete dias com imagem passam de
   800 s.
 - Simplificar o wizard (seis telas) passa pelo canvas antes de codigo.
