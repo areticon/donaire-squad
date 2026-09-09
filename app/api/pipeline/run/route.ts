@@ -352,7 +352,15 @@ Estilo: ${agent.style}
 Diretriz de funil: ${funnelInstruction}`;
 
   const result = await askClaude(system, `${task}\n\nContexto:\n${context}`, {
-    maxTokens: agentOptions?.maxTokens ?? 2048,
+    // 8192, e nao 2048. A REGRA DA CASA desde 22/08 e que nenhuma chamada que
+    // faz trabalho de verdade fica abaixo de 4000, porque o teto inclui os
+    // tokens de PENSAMENTO: teto apertado nao gera resposta curta, gera
+    // resposta VAZIA. A campanha de tema ficou fora dessa regra e cobrou o
+    // preco em 09/09: o Tiago morreu com "gastou o limite de 2048 tokens
+    // pensando e nao chegou a responder", e a Vera derrubou a semana inteira
+    // pelo mesmo motivo, com cinco dias por gerar. Subir o teto nao encarece
+    // por si: o cobrado e o que o modelo escreve.
+    maxTokens: agentOptions?.maxTokens ?? 8192,
     cachedPrefix,
     usage: { operation: "agent", runId, agentId: agent.agentId, projectId },
   });
@@ -853,6 +861,14 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
   const robertoCardSavedForDays = new Set<string>();
 
   for (const { dayOfWeek, contentType, weekOffset } of daysList) {
+   // O DIA E A UNIDADE DE FALHA, e nao a campanha.
+   //
+   // Em 09/09 a Vera falhou na terca e levou junto quarta, quinta, sexta,
+   // sabado e domingo: o erro subiu ate o `catch` de fora, que marca a
+   // execucao inteira como falha. O cliente pediu seis dias, pagou a espera de
+   // seis, e recebeu um. Entregar cinco de seis e ruim; entregar um de seis
+   // porque o sexto tropecou e outra coisa.
+   try {
     // ── Cancellation check ────────────────────────────────────────────────────
     const runCheck = await prisma.pipelineRun.findUnique({ where: { id: runId }, select: { status: true } });
     if (runCheck?.status === "cancelled") {
@@ -1525,6 +1541,17 @@ ${twPost.content}`,
         });
       }
     }
+   } catch (erroDoDia) {
+     // Segue para o proximo dia. O que falhou fica escrito no log da execucao,
+     // que e onde o cliente ve o que aconteceu com a semana dele.
+     const motivo = erroDoDia instanceof Error ? erroDoDia.message : String(erroDoDia);
+     console.error(`[pipeline] run ${runId} dia ${dayOfWeek} falhou:`, erroDoDia);
+     await appendLog(runId, {
+       agent: "Sistema",
+       message: `O dia ${dayOfWeek} não pôde ser gerado (${motivo.slice(0, 160)}). Sigo para o próximo.`,
+       status: "warning",
+     });
+   }
   }
 
   // ── Cobrança ──────────────────────────────────────────────────────────────
