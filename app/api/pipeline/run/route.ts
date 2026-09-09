@@ -1607,7 +1607,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         runId,
         funnelInstruction,
         cachedPrefix,
-        project.id,,
+        project.id,
         // 16000 para a Vera, e nao os 8192 do padrao: o checklist dela cresceu com
         // as duas reguas medidas (limites da rede e lastro dos numeros), e em
         // 09/09 ela gastou o teto inteiro pensando na quarta e derrubou o dia.
