@@ -751,6 +751,7 @@ async function runPipeline(
   const researcher = makeAgent("roberto-radar");
   let researchBrief = "";
   let webSourcesGlobal: Array<{ title: string; url: string }> = [];
+  let webSearchDataGlobal = "";
 
   if (researcher) {
     // 1a. Busca web em tempo real — Grok (xAI) com live X/news/web, fallback Gemini
@@ -769,6 +770,7 @@ async function runPipeline(
       webSearchData = searchResult.summary;
       webSources = searchResult.sources;
       webSourcesGlobal = searchResult.sources;
+      webSearchDataGlobal = searchResult.summary;
       await appendLog(runId, {
         agent: "Roberto Radar",
         message: `Pesquisa concluída — ${webSources.length} fontes encontradas.`,
@@ -1000,6 +1002,13 @@ Antes do veredito, liste os problemas encontrados de forma objetiva.`;
         scheduledDate,
         cardType: "research",
         content: researchBrief,
+        // PROVENIENCIA. Em 09/09 um post saiu com "a Fitch atribuiu perspectiva
+        // negativa a 11 financiamentos", numero que nao existe em fonte nenhuma:
+        // a Fitch publicou "mais de 30% do portfolio", e o modelo inventou o 11
+        // ao estruturar. Sem a pesquisa bruta guardada nao havia como saber onde
+        // a distorcao entrou. O card do Roberto leva o que a busca devolveu e as
+        // fontes, para auditar.
+        metadata: { pesquisaBruta: webSearchDataGlobal.slice(0, 20_000), fontes: webSourcesGlobal },
       });
     }
 
