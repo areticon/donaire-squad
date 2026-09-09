@@ -76,13 +76,27 @@ export default async function LivePage({
   });
 
   // Check for active running pipeline or recent failed/cancelled run
+  const ultimaConcluida = await prisma.pipelineRun.findFirst({
+    where: { projectId: id, status: "completed" },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  });
   const [activeRun, lastFailedRun] = await Promise.all([
     prisma.pipelineRun.findFirst({
       where: { projectId: id, status: "running" },
       orderBy: { startedAt: "desc" },
     }),
     prisma.pipelineRun.findFirst({
-      where: { projectId: id, status: { in: ["failed", "cancelled"] }, archived: false },
+      // Só a falha que ainda é a ÚLTIMA execução. Em 09/09 o Bruno gerou a
+      // semana de novo, ela concluiu, e a faixa "Geração interrompida" da
+      // execução da manhã continuou em cima do quadro novo, porque a busca
+      // pegava a falha mais recente sem olhar se algo veio depois dela.
+      where: {
+        projectId: id,
+        status: { in: ["failed", "cancelled"] },
+        archived: false,
+        startedAt: { gte: ultimaConcluida?.startedAt ?? new Date(0) },
+      },
       orderBy: { startedAt: "desc" },
     }),
   ]);

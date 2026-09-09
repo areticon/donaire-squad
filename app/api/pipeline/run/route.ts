@@ -228,6 +228,49 @@ function twitterRules(type: "thread" | "poll" | "single"): string {
  * Validate and auto-fix Twitter thread tweets exceeding the char limit.
  * Returns { content, fixedCount } where fixedCount > 0 means some tweets needed trimming.
  */
+/**
+ * Tira o texto de bastidor de uma thread reescrita e apara o que ainda passar
+ * do limite.
+ *
+ * Medido em 09/09 nos posts do X da semana do Bruno: os quatro comecavam com
+ * "Segue a thread corrigida, com as quatro falhas apontadas pela Vera..." e
+ * tinham tweets de 317 a 606 caracteres. O modelo, ao corrigir, conversa
+ * antes de entregar, e a resposta inteira era gravada como post. No X isso
+ * vira um primeiro tweet de bastidor e os demais truncados pelo publicador.
+ *
+ * Aparar aqui e o ultimo recurso, e fica no log: o caminho certo e o
+ * reescritor caber no limite, e a Vera reprovar quando nao couber.
+ */
+function limparThreadReescrita(content: string): { content: string; aparados: number } {
+  const linhas = content.split("\n");
+  // Tudo antes do primeiro "1/" (ou "1)") e conversa, nao tweet.
+  const inicio = linhas.findIndex((l) => /^\s*1[\/\)]\s/.test(l));
+  const corpo = inicio > 0 ? linhas.slice(inicio) : linhas;
+  const tweets: string[] = [];
+  let atual = "";
+  for (const l of corpo) {
+    if (/^\s*\d+[\/\)]\s/.test(l) && atual) {
+      tweets.push(atual.trimEnd());
+      atual = l;
+    } else {
+      atual = atual ? `${atual}\n${l}` : l;
+    }
+  }
+  if (atual.trim()) tweets.push(atual.trimEnd());
+  let aparados = 0;
+  const limite = PLATFORM_LIMITS.twitter.tweet;
+  const prontos = tweets.map((t) => {
+    if (t.length <= limite) return t;
+    aparados++;
+    // Corta na ultima fronteira de palavra antes do limite, sem reticencias:
+    // reticencia e o sinal visivel de que a maquina cortou.
+    const fatia = t.slice(0, limite);
+    const ultimoEspaco = fatia.lastIndexOf(" ");
+    return (ultimoEspaco > limite * 0.6 ? fatia.slice(0, ultimoEspaco) : fatia).trimEnd();
+  });
+  return { content: prontos.join("\n"), aparados };
+}
+
 function validateTwitterThread(content: string): { content: string; violations: string[] } {
   const lines = content.split("\n");
   const tweets: string[] = [];
@@ -833,6 +876,21 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
     mediaSt: string,
     isRetryRound: boolean
   ): string {
+    // O que da para medir, mede-se ANTES de pedir opiniao. Em 09/09 a Vera
+    // aprovou threads com tweets de 317 a 606 caracteres e com "Segue a thread
+    // corrigida" como primeiro tweet: ela nao tinha o limite no checklist e nao
+    // conta caractere. O numero vai pronto para ela, e a regra de reprovar
+    // fica escrita.
+    const violacoesMedidas: string[] = [];
+    if (twC) {
+      violacoesMedidas.push(...validateTwitterThread(twC).violations);
+      if (/^\s*(segue|aqui est[aá]|abaixo|a thread foi)/i.test(twC)) {
+        violacoesMedidas.push("A thread do X começa com texto de bastidor, e não com o tweet 1/");
+      }
+    }
+    if (liC && liC.length > PLATFORM_LIMITS.linkedin.post) {
+      violacoesMedidas.push(`Post do LinkedIn tem ${liC.length} chars (limite: ${PLATFORM_LIMITS.linkedin.post})`);
+    }
     return `${isRetryRound ? "⟳ SEGUNDA REVISÃO (após correção solicitada)\n\n" : ""}Faça uma revisão de qualidade COMPLETA e CRÍTICA do conteúdo para ${DAY_NAMES[dow]}.
 
 CONTEÚDO PARA REVISAR:
@@ -849,6 +907,9 @@ CRITÉRIOS DE ACEITE OBRIGATÓRIOS — reprove se qualquer um falhar:
 4. ADERÊNCIA AO FUNIL: segue a diretriz "${funnelInstruction}"?
 5. MÍDIA OBRIGATÓRIA: se o tipo de conteúdo requer imagem/vídeo e o STATUS DA MÍDIA for "FALHOU", REPROVE — não aceite post sem mídia quando ela foi solicitada
 6. COMPLETUDE: o post está finalizado e pronto para publicação sem edições manuais?
+7. LIMITES DA REDE, medidos por código antes desta revisão (não são opinião):
+${violacoesMedidas.length ? violacoesMedidas.map((v) => `   • ${v}`).join("\n") : "   • nenhuma violação medida"}
+   Se houver qualquer violação acima, o veredito é REPROVADO_TEXTO: tweet acima de ${PLATFORM_LIMITS.twitter.tweet} caracteres sai TRUNCADO no X, e texto de bastidor ("segue a thread corrigida", "aqui está") vai ao ar como primeiro tweet.
 
 FORMATO DO VEREDITO (escreva exatamente uma das opções abaixo na última linha):
 VEREDITO: APROVADO
@@ -1471,8 +1532,20 @@ ${twPost.content}`,
               cachedPrefix,
               project.id,
             );
-            await prisma.campaignCard.update({ where: { id: twPost.cardId }, data: { content: fixed } });
-            return fixed;
+            // A reescrita passa pela MESMA regua do primeiro rascunho. Ate 09/09
+            // ela era gravada crua, e foi assim que "Segue a thread corrigida"
+            // virou o primeiro tweet de quatro posts.
+            const limpa = limparThreadReescrita(fixed);
+            const { violations: sobras } = validateTwitterThread(limpa.content);
+            if (limpa.aparados > 0 || sobras.length > 0) {
+              await appendLog(runId, {
+                agent: "Tiago Twitter",
+                message: `Thread corrigida veio fora do limite (${limpa.aparados} tweet(s) aparados${sobras.length ? `; ainda: ${sobras.join("; ")}` : ""}).`,
+                status: "warning",
+              });
+            }
+            await prisma.campaignCard.update({ where: { id: twPost.cardId }, data: { content: limpa.content } });
+            return limpa.content;
           })(),
         ]);
 
