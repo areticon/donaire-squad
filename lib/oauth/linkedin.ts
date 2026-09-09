@@ -42,8 +42,14 @@ export function getLinkedInAuthUrl(
     ? (process.env.LINKEDIN_PAGES_CLIENT_ID ?? process.env.LINKEDIN_CLIENT_ID!)
     : process.env.LINKEDIN_CLIENT_ID!;
 
+  // O app de paginas NAO pede `openid profile email`. O LinkedIn nao deixa a
+  // Community Management API conviver com o "Sign In with OpenID Connect" no
+  // mesmo app (achado de 09/09, no formulario do Bruno: o botao de pedir a API
+  // fica desabilitado enquanto houver outro produto), entao esse app so tem os
+  // escopos de organizacao. O nome de quem conectou nao faz falta: o que se
+  // grava e a PAGINA, e a pagina vem do organizationAcls.
   const scope = forPages
-    ? "openid profile email w_organization_social r_organization_admin"
+    ? "r_organization_social w_organization_social r_organization_admin"
     : "openid profile email w_member_social";
 
   const params = new URLSearchParams({
