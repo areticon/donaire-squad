@@ -417,7 +417,7 @@ async function postToLinkedInLegacy(
   }
 
   const postId = res.headers.get("x-restli-id") ?? null;
-  const url = postId ? `https://www.linkedin.com/feed/update/urn:li:ugcPost:${postId}` : null;
+  const url = postId ? `https://www.linkedin.com/feed/update/${comPrefixoDeUrn(postId, "urn:li:ugcPost:")}` : null;
   console.log(`[LinkedIn] ✓ Published via legacy ugcPosts, postId=${postId}`);
   return { postId, url };
 }
@@ -463,7 +463,7 @@ async function tryLinkedInRestPost(
     }
 
     const postId = res.headers.get("x-linkedin-id") ?? res.headers.get("x-restli-id") ?? null;
-    const url = postId ? `https://www.linkedin.com/feed/update/urn:li:share:${postId}` : null;
+    const url = postId ? `https://www.linkedin.com/feed/update/${comPrefixoDeUrn(postId, "urn:li:share:")}` : null;
     console.log(`[LinkedIn] ✓ Published with version ${version}, postId=${postId}`);
     return { postId, url };
   }
@@ -570,6 +570,16 @@ export async function publishLinkedInArticleLinkPost(
 /**
  * Publish a plain text post (no media).
  */
+/**
+ * O cabecalho `x-restli-id` (ou `x-linkedin-id`) as vezes vem com o URN
+ * inteiro ("urn:li:share:750...") e as vezes so com o numero. Visto em 09/09
+ * no post publicado do Bruno: a URL saiu "feed/update/urn:li:share:urn:li:share:750...",
+ * porque o prefixo era colado sem olhar se ja estava la.
+ */
+function comPrefixoDeUrn(id: string, prefixo: string): string {
+  return id.startsWith("urn:li:") ? id : `${prefixo}${id}`;
+}
+
 export async function publishToLinkedIn(
   accessToken: string,
   platformUserId: string,
