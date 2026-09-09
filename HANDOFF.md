@@ -8221,6 +8221,99 @@ log (`d55f0c2`).
 
 *Atualizado em 08/09/2026 por Claude Code.*
 
+## Sessao 09/09/2026 (parte 97): a campanha por tema tinha quatro defeitos, cada um com seu mecanismo
+
+Bruno gerou a semana por TEMA (sem video) e trouxe quatro queixas: nao consegue
+publicar numa pagina do LinkedIn (vai tudo para o perfil dele); o wizard repete
+perguntas; ao terminar cai na tela de subir video; e pediu seis dias, saiu um.
+Lidos os dados antes de mexer, cada uma era uma coisa diferente.
+
+### 1. "Gerou so um dia e parou": dois defeitos, o teto de tokens e a queda em cadeia
+
+O `pipeline_runs` de hoje (`cmttzdngu000004juc2mgre66`) guardava o motivo:
+
+    O modelo gastou o limite de 2048 tokens pensando e nao chegou a responder.
+
+O Tiago morreu com isso na terca (virou aviso) e a Vera morreu com o mesmo erro
+logo depois, e o dela subiu ate o `catch` de fora, que marca a execucao INTEIRA
+como falha. Cinco dias ficaram por gerar.
+
+- `runAgent` em `app/api/pipeline/run/route.ts` usava `maxTokens ?? 2048`. A
+  regra da casa desde 22/08 e nenhuma chamada de trabalho abaixo de 4000 (o
+  teto inclui os tokens de pensamento; teto apertado nao gera resposta curta,
+  gera resposta VAZIA). A esteira do video respeitava; a campanha por tema
+  tinha ficado para tras. Agora 8192 (`28196d0`).
+- **O dia virou a unidade de falha.** O laco por dia ganhou `try/catch`: o dia
+  que falha vai para o log como aviso e o proximo segue (`28196d0`).
+
+### 2. "Terca caiu na coluna de quarta": duas regras para a mesma pergunta
+
+Os cards da "terca" tinham `scheduledDate` = 11:04 de QUARTA. A tela omite todo
+dia anterior a hoje no fuso da pessoa (e avisa: "1 dia omitido"); o servidor
+cortava em "ontem, meia-noite UTC", que deixa passar o dia anterior inteiro,
+gera a terca numa quarta e empurra o horario para "agora". Agora o wizard manda
+`hojeLocal` (AAAA-MM-DD do navegador) e o servidor usa a MESMA regra; sem o
+campo, cai em UTC-3 (`ad04875`).
+
+### 3. "Cai na tela de subir video": o painel abria em todo projeto sem gravacao
+
+`enviarAberto` nascia `videos.length === 0`. Projeto que gera a semana por tema
+continua sem video, entao o painel "Envie a gravacao" ficava aberto por cima do
+squad trabalhando. Agora abre sozinho SO em projeto vazio (sem video E sem card)
+e fecha quando uma campanha por tema comeca (`ca64000`).
+
+### 4. "Muitas redundancias": a frequencia do setup nao valia para nada
+
+O setup pergunta "quantas vezes por semana" (1x, 2x, 3x, 5x, 1x por dia) e o
+wizard perguntava os dias de novo, com cinco marcados por padrao fossem quais
+fossem a resposta: `postFrequency` era gravado e nunca lido. Agora ele vira os
+dias pre-marcados do wizard (`diasDaFrequencia` em
+`campaign-setup-modal.tsx`), passando por `live/page.tsx` e pelo Gestor
+(`ca64000`). O wizard vira confirmacao. O que NAO mudou, e e decisao de produto
+para o canvas: tirar passos do wizard (fonte, formato, funil, dias, horarios,
+temas por dia sao seis telas).
+
+### 5. Dois achados da prova, que nao estavam na lista
+
+A prova rodou em producao na conta de revisao (`reviewer@demandou.com`), pela
+tela, com 3 dias por tema.
+
+- **Projeto sem squad "concluia" com zero posts em 130 ms.** O projeto do
+  revisor foi criado por script, sem os `ProjectAgent` que a ativacao semeia,
+  e a campanha terminou "concluida, 0 posts" sem aviso. Guarda nova: projeto sem
+  agente falha dizendo isso (`ddf0399`). O projeto do revisor foi ativado pelo
+  caminho real (PATCH `status: active`), que semeou os seis agentes.
+- **O teto de tempo da campanha era 300 s** (comentario antigo do plano Hobby),
+  com `SAFETY_TIMEOUT_MS` de 275 s. Medido na prova: cada dia com imagem, Vera e
+  correcao leva perto de 2,3 min, entao cabiam dois dias e a sexta ficou de fora
+  ("concluido parcialmente"). Agora 800 s, o mesmo das rotas de video
+  (`bcf72e2`): cabem cinco dias; sete ainda estouram, e a resposta e a fila de
+  verdade (card 197).
+
+Resultado da prova, ja com o teto de tokens novo: quarta e quinta completas
+(Roberto, Lucas, Tiago, Diana, Vera), nenhum erro de 2048, painel de gravacao
+fechado. A sexta faltou pelo teto de tempo, corrigido em seguida.
+
+### 6. Pagina do LinkedIn: o codigo existe, falta o segundo app
+
+Publicar numa PAGINA exige a Community Management API do LinkedIn, que e um
+produto separado, com aprovacao deles, num app separado. O codigo ja trata
+(`lib/oauth/linkedin.ts`: `forPages`, `organizationAcls`, `authorUrn` de
+organizacao; `social-connect-panel.tsx` mostra "Disponivel em breve" enquanto
+nao ha credencial). Em producao existem so `LINKEDIN_CLIENT_ID` e
+`LINKEDIN_CLIENT_SECRET`; faltam `LINKEDIN_PAGES_CLIENT_ID` e
+`LINKEDIN_PAGES_CLIENT_SECRET`. Parte do Bruno: criar o app, pedir o produto,
+gravar as duas variaveis. Nada de codigo.
+
+### Aberto
+
+- Fila de verdade para a campanha (card 197): sete dias com imagem passam de
+  800 s.
+- Simplificar o wizard (seis telas) passa pelo canvas antes de codigo.
+- Segundo app do LinkedIn para paginas: Bruno.
+
+*Atualizado em 09/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
