@@ -691,7 +691,7 @@ export async function publishLinkedInComment(
   postUrn: string,
   text: string,
   accountType: "personal" | "organization" = "personal"
-): Promise<void> {
+): Promise<boolean> {
   const actor = authorUrn(platformUserId, accountType);
   const encodedUrn = encodeURIComponent(postUrn);
 
@@ -714,16 +714,17 @@ export async function publishLinkedInComment(
       }
     );
   } catch (e) {
-    console.warn("[LinkedIn] First comment: network error —", e);
-    return;
+    console.warn("[LinkedIn] First comment: network error:", e);
+    return false;
   }
 
   if (!res.ok) {
     const err = await res.text();
     console.warn(`[LinkedIn] comment failed (v2 / ${res.status}): ${err.slice(0, 300)}`);
-    return; // não fatal — post já foi publicado
+    return false; // nao fatal: o post ja foi publicado
   }
-  console.log("[LinkedIn] ✓ First comment published (v2)");
+  console.log("[LinkedIn] First comment published (v2)");
+  return true;
 }
 
 /**

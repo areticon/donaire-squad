@@ -161,6 +161,27 @@ async function lerVideoDoPost(
 /**
  * Publica um post via OAuth (LinkedIn / X). Atualiza o registro no banco.
  */
+/**
+ * Troca link de redirecionamento do Google (grounding do Gemini) pela URL
+ * real. Cada um e um GET sem seguir o redirect; o destino vem no Location.
+ * Link que nao resolve fica como esta: pior mostrar nada do que mostrar o
+ * redirecionamento.
+ */
+export async function resolverLinksDeFonte(texto: string): Promise<string> {
+  const links = [...texto.matchAll(/https?:\/\/vertexaisearch\.cloud\.google\.com\/\S+/g)].map((m) => m[0]);
+  let saida = texto;
+  for (const link of links) {
+    try {
+      const r = await fetch(link, { redirect: "manual", signal: AbortSignal.timeout(8_000) });
+      const real = r.headers.get("location");
+      if (real) saida = saida.replace(link, real);
+    } catch {
+      // fica o link original
+    }
+  }
+  return saida;
+}
+
 export async function executeOAuthPostPublish(
   post: Post,
   account: SocialAccount
@@ -515,26 +536,45 @@ export async function executeOAuthPostPublish(
   if (account.platform === "linkedin" && externalId) {
     const firstComment = (metadata as Record<string, unknown> | null)?.firstComment;
     if (typeof firstComment === "string" && firstComment.trim().length > 0) {
-      // Aguarda 3s para o LinkedIn indexar o post antes de postar o comentário
-      // (sem delay, o endpoint socialActions pode retornar 404 e silenciosamente falhar)
-      await new Promise((r) => setTimeout(r, 3_000));
       // externalId pode ser URN completo (urn:li:share:XXXX) ou só o ID numérico
       const rawId = externalId.startsWith("urn:li:")
         ? externalId
         : externalUrl?.includes("ugcPost")
           ? `urn:li:ugcPost:${externalId}`
           : `urn:li:share:${externalId}`;
-      try {
-        await publishLinkedInComment(
-          accessToken,
-          platformUserId,
-          rawId,
-          firstComment.trim(),
-          accountType
-        );
-      } catch (e) {
-        console.warn("[publish] primeiro comentário falhou (não fatal):", e);
+      // Os links das fontes chegam como redirecionamento do Google (grounding
+      // do Gemini), uma URL de 200 caracteres que nao diz de onde e. Resolvidos
+      // aqui, na hora de ir ao ar, para o comentario mostrar o site de verdade.
+      const textoDoComentario = await resolverLinksDeFonte(firstComment.trim());
+      // TRES tentativas, com espera crescente. Em 09/09 o post do Bruno saiu
+      // SEM o comentario: uma tentativa unica, 3 s depois de criar o post,
+      // falhou em silencio (o LinkedIn ainda nao tinha indexado o post) e a
+      // mesma chamada, feita 40 minutos depois, voltou 201. O resultado vai
+      // para o `metadata` do post, para a tela dizer se o comentario saiu.
+      let saiu = false;
+      let ultimoErro = "";
+      for (const espera of [3_000, 10_000, 30_000]) {
+        await new Promise((r) => setTimeout(r, espera));
+        try {
+          saiu = await publishLinkedInComment(accessToken, platformUserId, rawId, textoDoComentario, accountType);
+        } catch (e) {
+          ultimoErro = e instanceof Error ? e.message : String(e);
+        }
+        if (saiu) break;
       }
+      await prisma.post.update({
+        where: { id: post.id },
+        data: {
+          metadata: {
+            ...((metadata as Record<string, unknown> | null) ?? {}),
+            firstComment: textoDoComentario,
+            ...(saiu
+              ? { firstCommentPublishedAt: new Date().toISOString() }
+              : { firstCommentError: ultimoErro || "o LinkedIn recusou o comentário nas três tentativas" }),
+          } as never,
+        },
+      }).catch(() => {});
+      if (!saiu) console.warn(`[publish] primeiro comentário NÃO saiu no post ${post.id}: ${ultimoErro}`);
     }
   }
 
