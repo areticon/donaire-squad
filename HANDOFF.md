@@ -8368,6 +8368,28 @@ OAuth voltava para a Demandou DENTRO da aba nova; conectar cinco redes deixava
 cinco abas. Todos os callbacks ja voltam para a tela de configuracoes, entao a
 conexao passou a acontecer na mesma aba (`70d75d3`).
 
+### 9. O post saiu sem o comentario das fontes
+
+Lido no banco: as fontes estavam em `metadata.firstComment` do post, cinco
+links, e o publicador (`lib/publish/oauth-post.ts`) tenta o comentario UMA vez,
+3 s depois de criar o post, e engole a falha com um `console.warn`. A mesma
+chamada, feita 40 minutos depois com o mesmo token e o mesmo URN, voltou 201:
+o LinkedIn ainda nao tinha indexado o post quando o comentario foi pedido. O
+comentario foi publicado a mao nesse post (`urn:li:comment:...7503505553768210432`).
+
+Dois defeitos por tras, os dois corrigidos (`0f3a2cd`):
+- **Uma tentativa e silencio.** Agora sao tres tentativas (3 s, 10 s, 30 s), e
+  o resultado vai para o `metadata` do post (`firstCommentPublishedAt` ou
+  `firstCommentError`), para a tela poder dizer se o comentario saiu.
+  `publishLinkedInComment` passou a devolver se saiu.
+- **Os links eram redirecionamentos do Google.** O grounding do Gemini entrega
+  `vertexaisearch.cloud.google.com/grounding-api-redirect/...`, 200 caracteres
+  que nao dizem de onde e. `resolverLinksDeFonte` segue o 302 e grava a URL
+  real (gov.br, novacana, jornalpp, demarest, canalsolar, no caso dele) antes
+  de publicar.
+
+Fica para a tela: mostrar `firstCommentError` no card do Paulo quando existir.
+
 ### Aberto
 
 - Fila de verdade para a campanha (card 197): sete dias com imagem passam de
