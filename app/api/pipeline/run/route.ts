@@ -32,6 +32,8 @@ interface WeeklySchedule {
 }
 
 interface CampaignConfig {
+  /** O "hoje" de quem esta na tela (AAAA-MM-DD, fuso do navegador). Ver o wizard. */
+  hojeLocal?: string;
   campaignMode: CampaignMode;
   funnelStage: FunnelStage;
   weeklySchedule: WeeklySchedule;
@@ -600,9 +602,19 @@ async function runPipeline(
     // Cutoff: yesterday midnight UTC.
     // Using "yesterday" instead of "today" gives a 24h buffer so that a user in UTC-3
     // who is generating at 9pm local time (= midnight UTC next day) doesn't lose "today".
-    const nowUtc = new Date();
-    nowUtc.setUTCHours(0, 0, 0, 0);
-    const cutoffUtc = new Date(nowUtc.getTime() - 24 * 60 * 60 * 1000); // yesterday midnight UTC
+    // A MESMA regra da tela, e nao uma parecida. A tela omite todo dia anterior
+    // a "hoje" no fuso da pessoa, e diz isso a ela ("1 dia omitido"). Aqui o
+    // corte era "ontem, meia-noite UTC", que deixa passar o dia anterior
+    // inteiro: em 09/09 a terca foi gerada numa quarta, empurrada para "agora"
+    // e apareceu na coluna de quarta com rotulo de terca. Duas regras para a
+    // mesma pergunta e o que produz esse tipo de defeito.
+    //
+    // O "hoje" vem do navegador (`hojeLocal`). Sem ele (pedido antigo), cai no
+    // Brasil, UTC-3, que e onde o produto vende.
+    const hojeLocal = /^\d{4}-\d{2}-\d{2}$/.test(config.hojeLocal ?? "")
+      ? config.hojeLocal!
+      : new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const cutoffUtc = new Date(hojeLocal + "T00:00:00.000Z");
 
     for (const weekOffset of weeksToGenerate) {
       for (const [dayKey, contentType] of Object.entries(config.weeklySchedule)) {

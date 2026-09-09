@@ -49,6 +49,17 @@ export interface CampaignConfig {
   videoAudio?: boolean; // generate audio/narration in Portuguese
   mediaStyle?: MediaStyleId; // visual style for image / video / carousel
   topicsPerDay: Record<string, string>; // dayOfWeek (1-7) -> topic string
+  /**
+   * O "hoje" de quem esta na tela (AAAA-MM-DD, no fuso do navegador).
+   *
+   * Existe porque a tela e o servidor discordavam sobre qual dia ja passou: a
+   * tela olha a meia-noite LOCAL, o servidor olhava a meia-noite UTC de ontem.
+   * Em 09/09 (quarta) a tela avisou "1 dia omitido" e o servidor gerou a terca
+   * mesmo assim, empurrou o horario para "agora" e a terca apareceu na coluna
+   * de quarta, com o rotulo de terca. Quem sabe que dia e hoje para a pessoa e
+   * o navegador dela.
+   */
+  hojeLocal?: string;
 }
 
 interface Props {
@@ -372,6 +383,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
       videoAudio: (isSingle ? singleContentType : Object.values(weeklySchedule).find(v => v === "video") ? "video" : undefined) === "video" ? videoAudio : undefined,
       mediaStyle: campaignUsesMediaStyle(isSingle, singleContentType, weeklySchedule, isRecurring) ? mediaStyle : undefined,
       topicsPerDay,
+      hojeLocal: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })(),
     });
   }
 
