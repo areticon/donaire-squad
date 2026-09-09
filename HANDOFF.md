@@ -8461,6 +8461,13 @@ pesquisa a menos de 160 caracteres de uma palavra de conteudo da frase (5 letras
 ou mais, fora uma lista de palavras vazias). Provado: "5 e 15 ferramentas" cai,
 "40% a 60% mais rapido" (que a pesquisa traz com "automacao" ao lado) fica.
 
+Prova em producao (projeto de revisao, 3 dias por tema, execucao
+`cmtufy99g000004kz7dl7c63u`): a regua ficou quieta, e a auditoria mostrou por
+que: todo numero dos posts finais ("11 ratings", "9%, 12% e 17% do EBITDA",
+"18% dos portfolios", "40 GW por ano", "41% menor em 2035") esta na pesquisa
+bruta guardada, com o contexto ao lado. Regua quieta em semana limpa e regua
+gritando no caso do Fitch e o comportamento esperado.
+
 Custo assumido: uma frase com numero real que a busca nao trouxe tambem cai.
 Preferimos um post com menos numeros a um numero inventado em nome do cliente.
 
