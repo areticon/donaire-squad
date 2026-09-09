@@ -8468,6 +8468,11 @@ que: todo numero dos posts finais ("11 ratings", "9%, 12% e 17% do EBITDA",
 bruta guardada, com o contexto ao lado. Regua quieta em semana limpa e regua
 gritando no caso do Fitch e o comportamento esperado.
 
+Na mesma prova, a quarta caiu na Vera com "gastou o limite de 8192 tokens
+pensando": o checklist dela cresceu com as duas reguas medidas e o modelo
+gastou o teto pensando. A Vera passou a 16.000 tokens. O dia como unidade de
+falha fez o resto: quinta e sexta sairam inteiras.
+
 Custo assumido: uma frase com numero real que a busca nao trouxe tambem cai.
 Preferimos um post com menos numeros a um numero inventado em nome do cliente.
 
