@@ -8315,6 +8315,41 @@ so tem `r_organization_social w_organization_social r_organization_admin`, e o
 nome de quem conectou, que so ia para o log, saiu. Fonte:
 https://learn.microsoft.com/en-us/answers/questions/5815518/cannot-enabled-community-management-api-on-a-verif
 
+### 7. Tarde: a segunda semana do Bruno, o X truncado e a faixa velha
+
+Ele gerou de novo (5 dias, `cmtu29jw8000004ledj9p7y6z`) e trouxe dois pontos.
+
+**"Geração interrompida" em cima de uma semana que concluiu.** A execução nova
+terminou "parcialmente" aos 775 s (cinco dias com imagem, Vera e correção levam
+perto de 2,5 min cada; o domingo ficou sem posts), mas a faixa vermelha era da
+execução FALHA da manhã: `lastFailedRun` pegava a falha mais recente sem olhar
+se algo concluiu depois. Agora só mostra falha posterior à última concluída
+(`1d44f63`). O teto de 800 s continua sendo o limite real: cinco dias cabem no
+fio; a fila (card 197) é a resposta.
+
+**Threads do X acima do limite, indo truncadas.** Lido no banco: os quatro
+posts do X tinham de 1.638 a 2.193 caracteres, tweets de 317 a 606, e TODOS
+começavam com "Segue a thread corrigida, com as quatro falhas apontadas pela
+Vera...". Mecanismo: o primeiro rascunho do Tiago passa por
+`validateTwitterThread`, mas a REESCRITA depois da reprovação da Vera era
+gravada crua, com a conversa do modelo na frente. E a Vera não tinha o limite
+no checklist: ela não conta caractere. Consertos (`1d44f63`):
+- `limparThreadReescrita`: tira tudo antes do "1/" e apara tweet por tweet no
+  último espaço antes de 280, sem reticência. Provado nos quatro posts reais:
+  7, 6, 7 e 7 tweets, maior 279, começando em "1/".
+- A reescrita passa pela mesma régua do rascunho, com aviso no log quando
+  precisou aparar.
+- A Vera recebe as violações MEDIDAS (tweets acima de 280, post de LinkedIn
+  acima de 3.000, thread começando com bastidor) como critério 7, com a regra
+  de reprovar escrita. O que dá para medir, mede-se antes de pedir opinião.
+- Os quatro posts do X da semana dele foram corrigidos no banco com a mesma
+  função, a pedido dele.
+
+Nota de ferramenta: a edição do arquivo travou meia hora porque o terminal
+desta sessão come uma barra invertida dupla antes de o Python ver o comando,
+então `"\n"` virava quebra de linha crua dentro da aspa. O escape foi montado
+com `chr(92)`. Fica o aviso para quem editar por script aqui.
+
 ### Aberto
 
 - Fila de verdade para a campanha (card 197): sete dias com imagem passam de
