@@ -271,6 +271,56 @@ function limparThreadReescrita(content: string): { content: string; aparados: nu
   return { content: prontos.join("\n"), aparados };
 }
 
+/**
+ * LASTRO: toda frase com numero precisa de fonte.
+ *
+ * Em 09/09 um post saiu com "a Fitch atribuiu perspectiva negativa a 11
+ * financiamentos, citando taxas entre 15% e 25% no segundo trimestre". A Fitch
+ * publicou "mais de 30% do portfolio"; o 11, o 15 e o 25 nao existem em fonte
+ * nenhuma. O Roberto deu forma de numero exato a um dado vago, o Lucas copiou,
+ * e a Vera aprovou porque conferiu o post contra o brief que o proprio modelo
+ * escreveu. O Bruno chamou isso de inaceitavel, e e.
+ *
+ * A regua e de codigo, nao de prompt: cada numero do texto precisa aparecer,
+ * com os mesmos digitos, na PESQUISA BRUTA (o que a busca devolveu) ou nas
+ * fontes. Frase com numero sem lastro e devolvida a quem escreveu e, se
+ * voltar, e removida antes de gravar. Preferimos um post com menos numeros a
+ * um post com numero inventado em nome do cliente.
+ *
+ * O que fica de fora da conta: numeracao de tweet ("1/"), anos sozinhos
+ * (1900 a 2100) e horas ("10h"), que aparecem em qualquer texto e nao sao
+ * "dado".
+ */
+function afirmacoesSemLastro(texto: string, lastro: string): string[] {
+  // Tira separador de milhar (1.234 e 1,234 viram 1234) e unifica a virgula
+  // decimal em ponto (6,5 vira 6.5), dos dois lados da comparacao.
+  const normalizar = (t: string) => t.replace(/[.,](?=\d{3}(?!\d))/g, "").replace(/(\d),(\d)/g, "$1.$2");
+  const lastroNorm = normalizar(lastro);
+  const frases = texto
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0);
+  const semLastro: string[] = [];
+  for (const frase of frases) {
+    const corpo = frase.replace(/^\d+[\/\)]\s*/, ""); // tira a numeracao de tweet
+    const numeros = [...normalizar(corpo).matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]);
+    const suspeitos = numeros.filter((n) => {
+      if (/^(19|20)\d{2}$/.test(n)) return false; // ano sozinho
+      if (new RegExp(`${n}\\s*h(?:\\b|\\d)`).test(corpo)) return false; // hora (10h)
+      return !lastroNorm.includes(n);
+    });
+    if (suspeitos.length) semLastro.push(frase);
+  }
+  return semLastro;
+}
+
+/** Tira do texto as frases listadas, preservando o resto. Ultimo recurso. */
+function removerFrases(texto: string, frases: string[]): string {
+  let saida = texto;
+  for (const f of frases) saida = saida.replace(f, "");
+  return saida.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function validateTwitterThread(content: string): { content: string; violations: string[] } {
   const lines = content.split("\n");
   const tweets: string[] = [];
@@ -823,6 +873,43 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
         // 4096 levava 60-70s e causava timeout: 2048 é suficiente para um brief
         { maxTokens: 6000 },
       );
+
+      // O brief passa pela regua do lastro contra a pesquisa BRUTA. Uma chance
+      // de o Roberto tirar o que inventou; o que sobrar sai na tesoura.
+      const lastroDoBrief = `${webSearchData}\n${sourcesSection}\n${topic}`;
+      let semLastro = afirmacoesSemLastro(researchBrief, lastroDoBrief);
+      if (semLastro.length) {
+        await appendLog(runId, {
+          agent: "Roberto Radar",
+          message: `${semLastro.length} afirmação(ões) com número sem fonte na pesquisa. Devolvendo para tirar: ${semLastro.map((f) => f.slice(0, 90)).join(" | ")}`,
+          status: "warning",
+        });
+        researchBrief = await runAgent(
+          researcher,
+          `Seu brief tem afirmações com números que NÃO aparecem nos dados da pesquisa. Isso não pode ir para o cliente.
+
+AFIRMAÇÕES SEM LASTRO (remova cada uma; NÃO substitua por outro número, NÃO arredonde, NÃO estime):
+${semLastro.map((f) => `- ${f}`).join("\n")}
+
+Reescreva o brief inteiro sem elas. Todo número que ficar precisa estar, com os mesmos dígitos, nos dados abaixo.
+
+DADOS DA PESQUISA (a única fonte permitida):
+${webSearchData.slice(0, 12_000)}
+
+BRIEF ATUAL:
+${researchBrief}`,
+          baseContext, runId, funnelInstruction, cachedPrefix, project.id, { maxTokens: 6000 },
+        );
+        semLastro = afirmacoesSemLastro(researchBrief, lastroDoBrief);
+        if (semLastro.length) {
+          researchBrief = removerFrases(researchBrief, semLastro);
+          await appendLog(runId, {
+            agent: "Roberto Radar",
+            message: `${semLastro.length} afirmação(ões) removida(s) do brief por não ter fonte: ${semLastro.map((f) => f.slice(0, 90)).join(" | ")}`,
+            status: "warning",
+          });
+        }
+      }
     }
 
     // Research card is saved inside the day loop (one per day, at the start of each day)
@@ -893,6 +980,15 @@ ${sourcesSection ? `\nFONTES REAIS ENCONTRADAS (inclua ao final):\n${sourcesSect
     if (liC && liC.length > PLATFORM_LIMITS.linkedin.post) {
       violacoesMedidas.push(`Post do LinkedIn tem ${liC.length} chars (limite: ${PLATFORM_LIMITS.linkedin.post})`);
     }
+    // LASTRO: frase com numero que nao esta na pesquisa bruta nem nas fontes.
+    // Contra a pesquisa BRUTA, e nao contra o brief: o brief e escrito pelo
+    // mesmo tipo de modelo que escreve o post, e "bate com o brief" e conferir a
+    // copia contra a copia (foi assim que o "11 financiamentos" passou).
+    const lastroDaVera = `${webSearchDataGlobal}\n${webSourcesGlobal.map((f) => `${f.title} ${f.url}`).join("\n")}\n${topic}`;
+    const semLastroVera = [
+      ...(liC ? afirmacoesSemLastro(liC, lastroDaVera).map((f) => `LinkedIn: ${f}`) : []),
+      ...(twC ? afirmacoesSemLastro(twC, lastroDaVera).map((f) => `X: ${f}`) : []),
+    ];
     return `${isRetryRound ? "⟳ SEGUNDA REVISÃO (após correção solicitada)\n\n" : ""}Faça uma revisão de qualidade COMPLETA e CRÍTICA do conteúdo para ${DAY_NAMES[dow]}.
 
 CONTEÚDO PARA REVISAR:
@@ -912,6 +1008,9 @@ CRITÉRIOS DE ACEITE OBRIGATÓRIOS — reprove se qualquer um falhar:
 7. LIMITES DA REDE, medidos por código antes desta revisão (não são opinião):
 ${violacoesMedidas.length ? violacoesMedidas.map((v) => `   • ${v}`).join("\n") : "   • nenhuma violação medida"}
    Se houver qualquer violação acima, o veredito é REPROVADO_TEXTO: tweet acima de ${PLATFORM_LIMITS.twitter.tweet} caracteres sai TRUNCADO no X, e texto de bastidor ("segue a thread corrigida", "aqui está") vai ao ar como primeiro tweet.
+8. LASTRO DOS NÚMEROS, medido por código contra a PESQUISA BRUTA (não contra o brief):
+${semLastroVera.length ? semLastroVera.map((f) => `   • ${f.slice(0, 220)}`).join("\n") : "   • todos os números do texto aparecem na pesquisa"}
+   Se houver qualquer frase acima, o veredito é REPROVADO_TEXTO e a correção é REMOVER a frase, nunca trocar o número por outro. A plataforma não publica número que não tem fonte, em hipótese nenhuma.
 
 FORMATO DO VEREDITO (escreva exatamente uma das opções abaixo na última linha):
 VEREDITO: APROVADO
@@ -1509,6 +1608,8 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
               linkedinWriter,
               `A Vera reprovou o post do LinkedIn. Corrija os problemas identificados e reescreva.
 
+REGRA QUE NÃO SE NEGOCIA: toda frase que a Vera listou em "LASTRO DOS NÚMEROS" sai do texto. Não troque o número por outro, não arredonde, não estime. Um post com menos números é aceitável; um número sem fonte, não.
+
 FEEDBACK DA VERA:
 ${firstOutput.slice(0, 2000)}
 
@@ -1529,6 +1630,8 @@ ${liPost.content}`,
             const fixed = await runAgent(
               twitterWriter,
               `A Vera reprovou a thread do Twitter. Corrija os problemas identificados e reescreva.
+
+REGRA QUE NÃO SE NEGOCIA: toda frase que a Vera listou em "LASTRO DOS NÚMEROS" sai do texto. Não troque o número por outro, não arredonde, não estime. Um post com menos números é aceitável; um número sem fonte, não.
 
 FEEDBACK DA VERA:
 ${firstOutput.slice(0, 2000)}
@@ -1614,6 +1717,18 @@ ${twPost.content}`,
       const imageUrl = dayMedia?.imageUrl || dayMedia?.videoUrl || undefined;
 
       for (const dp of postsForDay) {
+        // Ultima regua antes do banco: se depois da Vera e da reescrita ainda
+        // sobrou numero sem fonte, a frase sai. O cliente ve o aviso no card.
+        const lastroFinal = `${webSearchDataGlobal}\n${webSourcesGlobal.map((f) => `${f.title} ${f.url}`).join("\n")}\n${topic}`;
+        const semLastroFinal = afirmacoesSemLastro(dp.content, lastroFinal);
+        if (semLastroFinal.length) {
+          dp.content = removerFrases(dp.content, semLastroFinal);
+          await appendLog(runId, {
+            agent: "Vera Veredito",
+            message: `${dp.platform}: ${semLastroFinal.length} frase(s) removida(s) antes de gravar por número sem fonte: ${semLastroFinal.map((f) => f.slice(0, 90)).join(" | ")}`,
+            status: "warning",
+          });
+        }
         const account = dp.platform === "linkedin" ? liAccount : twAccount;
         const post = await prisma.post.create({
           data: {
