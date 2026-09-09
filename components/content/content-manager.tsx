@@ -74,6 +74,9 @@ interface ContentManagerProps {
    * tela própria: ver `EsteiraDoVideo`.
    */
   videos: VideoAoVivo[];
+  /** A frequencia escolhida no setup ("3x por semana"): e o que o wizard usa
+   *  como dias pre-marcados, em vez de perguntar de novo do zero. */
+  postFrequency?: string | null;
   /** As três escolhas que decidem como o corte é editado, para o painel de envio. */
   videoEstilo: string | null;
   videoMusica: string | null;
@@ -2389,7 +2392,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [loadingCards, setLoadingCards] = useState(false);
@@ -2402,7 +2405,11 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
    * a tela que ensinava isso saiu de cena em 02/09. Quem já subiu uma vez sabe
    * o caminho, e o botão "Nova gravação" fica no cabeçalho.
    */
-  const [enviarAberto, setEnviarAberto] = useState(videos.length === 0);
+  // Aberto sozinho SO num projeto vazio de verdade: sem gravacao E sem card.
+  // Ate 09/09 bastava nao ter video, entao quem gerava a semana por TEMA
+  // terminava com o squad trabalhando e um painel de "envie a gravacao" aberto
+  // por cima, como se a campanha nao tivesse acontecido.
+  const [enviarAberto, setEnviarAberto] = useState(videos.length === 0 && initialCards.length === 0);
   const [gravacoesEnviadas, setGravacoesEnviadas] = useState(0);
   const [videosAoVivo, setVideosAoVivo] = useState<VideoAoVivo[]>(videos);
   const [corteGuardadoAberto, setCorteGuardadoAberto] = useState<
@@ -2664,6 +2671,8 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       setRunningPipelineId(data.run.id);
       setGenerating(true);
       setPendingConfig(null);
+      // A semana vai nascer de tema: o painel de gravacao sai da frente.
+      setEnviarAberto(false);
       toast.success("Campanha iniciada!");
     } catch (e) {
       toast.error(`Erro: ${e instanceof Error ? e.message : "tente novamente"}`);
@@ -3209,6 +3218,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       <AnimatePresence>
         {showSetupModal && (
           <CampaignSetupModal
+          postFrequency={postFrequency}
             onConfirm={handleSetupConfirm}
             onClose={() => setShowSetupModal(false)}
             defaultWeekStart={weekStartIso}

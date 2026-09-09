@@ -99,6 +99,7 @@ export default async function LivePage({
     <ContentManager
       projectId={id}
       projectName={project.name}
+      postFrequency={project.postFrequency}
       socialAccounts={project.socialAccounts}
       initialCards={cards.map((c) => ({
         ...c,

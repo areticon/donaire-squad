@@ -55,6 +55,8 @@ interface Props {
   onConfirm: (config: CampaignConfig) => void;
   onClose: () => void;
   defaultWeekStart?: string; // passed by ContentManager
+  /** Frequencia escolhida no setup ("3x por semana"); vira os dias pre-marcados. */
+  postFrequency?: string | null;
   /**
    * Obrigatório desde 22/08. Era opcional, e o posts-panel abria o modal sem
    * passar: a escolha "de um vídeo" montava /projects/undefined/video e caía
@@ -240,7 +242,29 @@ function campaignUsesMediaStyle(
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, projectId }: Props) {
+/**
+ * Os dias pre-marcados saem da frequencia que a pessoa ja escolheu no setup.
+ *
+ * Ate 09/09 o setup perguntava "quantas vezes por semana" e o wizard perguntava
+ * de novo, do zero, com cinco dias marcados por padrao fossem quais fossem a
+ * resposta. O Bruno chamou isso de redundancia, e era: a primeira resposta nao
+ * valia para nada. Agora ela vale como ponto de partida, e o wizard vira
+ * confirmacao ("e nesses dias mesmo?") em vez de pergunta repetida.
+ */
+function diasDaFrequencia(freq: string | null | undefined): WeeklySchedule {
+  const padrao: WeeklySchedule = { "1": "text", "2": "image", "3": "text", "4": "image", "5": "free" };
+  const f = (freq ?? "").toLowerCase();
+  const ritmo = (dias: string[]): WeeklySchedule =>
+    Object.fromEntries(dias.map((d, i) => [d, i % 2 === 0 ? "text" : "image"])) as WeeklySchedule;
+  if (f.startsWith("1x por dia")) return ritmo(["1", "2", "3", "4", "5", "6", "7"]);
+  if (f.startsWith("5x")) return ritmo(["1", "2", "3", "4", "5"]);
+  if (f.startsWith("3x")) return ritmo(["1", "3", "5"]);
+  if (f.startsWith("2x")) return ritmo(["2", "4"]);
+  if (f.startsWith("1x")) return ritmo(["3"]);
+  return padrao;
+}
+
+export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, projectId, postFrequency }: Props) {
   const router = useRouter();
 
   /**
@@ -262,9 +286,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [campaignMode, setCampaignMode] = useState<CampaignMode>("weekly");
   const [funnelStage, setFunnelStage] = useState<FunnelStage>("tofu");
   // Default: Mon–Fri active, Sat–Sun off (key absent = não postar naquele dia)
-  const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>({
-    "1": "text", "2": "image", "3": "text", "4": "image", "5": "free",
-  });
+  const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>(() => diasDaFrequencia(postFrequency));
   const [singleDay, setSingleDay] = useState<number>(1);
   const [singleDate, setSingleDate] = useState<string>(""); // YYYY-MM-DD
   const [singleTime, setSingleTime] = useState<string>("09:00");
