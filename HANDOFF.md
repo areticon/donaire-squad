@@ -8350,6 +8350,24 @@ desta sessão come uma barra invertida dupla antes de o Python ver o comando,
 então `"\n"` virava quebra de linha crua dentro da aspa. O escape foi montado
 com `chr(92)`. Fica o aviso para quem editar por script aqui.
 
+### 8. O post das 10h que nao saiu, e as abas que sobravam
+
+**"Agendado para as 10h, nao publicou, continua agendado."** Lido no banco: dois
+posts (LinkedIn e X) com `scheduledAt` 13:00 UTC, status `scheduled`, conta e
+token no lugar. O unico publicador do produto e `/api/cron/pipeline`, e ele
+rodava UMA vez por dia, as 12:00 UTC (9h de Brasilia), heranca do plano Hobby,
+que so permite cron diario. Um post das 10h ficava para o dia seguinte, as 9h.
+Agora o cron roda a cada 5 minutos (`vercel.json`, plano Pro), com reserva
+atomica do post (`scheduled` para `publishing` num `updateMany` com o status no
+filtro) para duas execucoes sobrepostas nao publicarem o mesmo post duas vezes
+(`70d75d3`). Os dois posts atrasados foram publicados na hora, chamando o cron
+em producao: o do X ja com a thread limpa do item 7.
+
+**Abas.** Os seis botoes "Conectar" abriam `target="_blank"`, e o callback do
+OAuth voltava para a Demandou DENTRO da aba nova; conectar cinco redes deixava
+cinco abas. Todos os callbacks ja voltam para a tela de configuracoes, entao a
+conexao passou a acontecer na mesma aba (`70d75d3`).
+
 ### Aberto
 
 - Fila de verdade para a campanha (card 197): sete dias com imagem passam de
