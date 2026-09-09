@@ -8303,7 +8303,17 @@ organizacao; `social-connect-panel.tsx` mostra "Disponivel em breve" enquanto
 nao ha credencial). Em producao existem so `LINKEDIN_CLIENT_ID` e
 `LINKEDIN_CLIENT_SECRET`; faltam `LINKEDIN_PAGES_CLIENT_ID` e
 `LINKEDIN_PAGES_CLIENT_SECRET`. Parte do Bruno: criar o app, pedir o produto,
-gravar as duas variaveis. Nada de codigo.
+gravar as duas variaveis.
+
+Visto no formulario dele, mais tarde no mesmo dia: o botao "Request access" da
+Community Management API fica DESABILITADO ate o super admin da pagina
+verificar o app (Settings, Verify) e enquanto o app tiver qualquer outro
+produto. A API exige ser o unico produto do app e nao convive com o "Sign In
+with OpenID Connect". Por isso o fluxo de paginas deixou de pedir `openid
+profile email` e de chamar `userinfo` (`d005320`, `e076b68`): o app de paginas
+so tem `r_organization_social w_organization_social r_organization_admin`, e o
+nome de quem conectou, que so ia para o log, saiu. Fonte:
+https://learn.microsoft.com/en-us/answers/questions/5815518/cannot-enabled-community-management-api-on-a-verif
 
 ### Aberto
 
