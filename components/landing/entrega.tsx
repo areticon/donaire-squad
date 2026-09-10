@@ -72,12 +72,12 @@ const ENTREGAS = [
     ],
     antes: {
       src: "/exemplo/capa-antes.jpg",
-      alt: "Quadro cru da gravação, com a pessoa falando e o fundo da sala",
+      alt: "Quadro cru de uma gravação, com a pessoa falando e o fundo da sala dela",
       rotulo: "Um quadro qualquer",
     },
     depois: {
       src: "/exemplo/capa-depois.jpg",
-      alt: "Capa de vídeo com a pessoa recortada, fundo de escritório e o texto Consultoria não escala",
+      alt: "Capa de vídeo com a pessoa recortada, fundo de escritório e o texto Sua hora tem teto duro",
       rotulo: "A capa entregue",
     },
   },

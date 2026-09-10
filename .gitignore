@@ -51,3 +51,7 @@ next-env.d.ts
 # Artefatos de teste local (audio gerado, scripts descartaveis)
 scripts/tmp/
 __pycache__/
+
+# Material intermediario das imagens da landing: regeravel pelos scripts em
+# scripts/tmp, e video nao precisa morar no repositorio.
+public/exemplo/novos/*.mp4
