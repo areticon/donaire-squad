@@ -116,7 +116,7 @@ export default async function SchedulePage() {
     const subtitulo = proximo
       ? `${proximos.length} ${proximos.length === 1 ? "sai" : "saem"} às ${horaCurta(proximo)}${eHoje ? `, ${faltaQuanto(proximo, agora)}` : ""}`
       : rascunhos
-        ? `${rascunhos} rascunho${rascunhos > 1 ? "s" : ""}, sem horário. Não ${rascunhos > 1 ? "saem" : "sai"} enquanto você não agendar.`
+        ? `${rascunhos} rascunho${rascunhos > 1 ? "s" : ""}: não ${rascunhos > 1 ? "saem" : "sai"} enquanto você não agendar ou publicar.`
         : lista.every((p) => p.status === "published")
           ? "publicado"
           : "";

@@ -63,12 +63,16 @@ const data = (v: string | Date | null | undefined): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// Sempre no fuso do Brasil, inclusive no servidor (que esta em UTC): sem isto a
+// Agenda mostrava "12:00" para um post das 9h, visto na tela em 10/09.
+const FUSO = "America/Sao_Paulo";
+
 export function horaCurta(d: Date): string {
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: FUSO });
 }
 
 export function diaCurto(d: Date): string {
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: FUSO });
 }
 
 /** "em 2 h 14 min", "em 40 min", ou vazio quando ja passou. */
