@@ -341,8 +341,8 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 10/09/2026 (fim do dia). O detalhe vive nas partes 92 a 98 no
-> fim deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
+> Atualizado em 10/09/2026 (noite). O detalhe vive nas partes 92 a 100 no fim
+> deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
 > se divergir do código, o código manda.**
 
 **Estado em 10/09, em uma linha por frente:**
@@ -357,8 +357,11 @@ npx vercel deploy --prod --force
   defeitos: toda imagem de campanha voltava HTTP 400 e caía no Pollinations,
   cinco de sete posts do LinkedIn abriam com o modelo falando sozinho, e o
   teto de tokens matou o Tiago de novo. Os três corrigidos.
-- Venda: funil medido no banco (visita, demo, cadastro, checkout, assinatura,
-  com origem de primeira visita); demo pública captura e-mail; preços
+- Venda: funil medido no banco (visita, demo, contato, cadastro, checkout,
+  assinatura, com origem de primeira visita); a demo pública captura e-mail,
+  NOME e telefone opcional com consentimento para WhatsApp desde 10/09 (parte
+  100), e `scripts/leads.mts` joga os contatos com o texto cru na base
+  Prospects do Notion; preços
   397/697/1.997 no ar com cupom FUNDADOR; anúncios prontos (61 s e 2:07, 16:9 e
   4:5) em `C:\Users\devan\Videos\demandou-anuncios\`.
 - Infra: conta da Anthropic recarregada em 08/09 (ligar auto-reload); worker no
@@ -382,6 +385,10 @@ npx vercel deploy --prod --force
 - [ ] Ações direto na Agenda (reagendar, publicar agora) e Gestor por semana na URL
 - [ ] Simplificar o wizard de campanha (seis telas): canvas antes de código
 - [ ] Sequência de retorno do e-mail da demo (segundo e terceiro contato)
+- [ ] Medir, na primeira semana com tráfego, quantos deixam telefone contra
+      quantos deixam só e-mail: é o que decide se o campo fica
+- [ ] Decidir o empilhado (adendo da parte 98): destravado no worker em 10/09,
+      falta trocar o par do corte na landing por uma saída de verdade
 - [ ] Trilha licenciada nos anúncios, se o Bruno quiser
 - [ ] Travessões nos prompts dos agentes (116), só se algum post sair com um
 
@@ -8815,6 +8822,285 @@ video.
 
 *Atualizado em 10/09/2026 por Claude Code.*
 
+## Adendo da parte 98 (10/09): as imagens da landing, e o empilhado que o produto nao faz
+
+Bruno, depois do deploy: "a landing continua igual, so a tabela de preco foi
+atualizada". Estava certo. Eu tinha gerado a materia-prima ficticia e nao
+tinha trocado nada na pagina, entao para quem olha nao mudou nada.
+
+### O par da CAPA: trocado, e o "depois" saiu da esteira
+
+- **antes**: um quadro cru de uma pessoa que nao existe, gerada no Nano Banana
+  Pro a 2K.
+- **depois**: `gerarCapasDoCompleto`, a MESMA funcao que roda para cliente
+  pagante, com um VideoJob de andaime apontando o quadro-fonte para a foto.
+  Voltou em 24 s com duas opcoes ("Sua hora tem teto duro" e "Por que vender
+  hora te limita?"), escritas pela propria esteira a partir de um radar de
+  consultoria. Script: `scripts/tmp/capa-da-landing.mts`.
+
+No ar e conferido em producao: `/exemplo/capa-antes.jpg` (78 KB) e
+`/exemplo/capa-depois.jpg` (110 KB).
+
+### O par do CORTE: nao trocado, e o motivo virou o achado do dia
+
+A gravacao ficticia foi montada (`scripts/tmp/gravacao-ficticia.mts`: slide
+desenhado por codigo, com texto de gente, mais a janela da webcam da mesma
+pessoa) e passou pela esteira REAL, pela rota `/api/videos/[id]/cortar`, com o
+worker do Railway fazendo o trabalho.
+
+O agente de visao acertou tudo: `cena: "misto"`, caixa da tela, caixa da
+pessoa, e `vertical: "empilhado"`. **E o worker ignorou.** O que voltou foi um
+crop ampliado 2,8x da janelinha da webcam, sem o slide, mole. O proprio log do
+worker mediu e avisou, para ele mesmo: `aviso de qualidade: ampliacao de 2.8x`.
+
+A cadeia, lida no codigo:
+
+    empilhado  exige  mascara da pessoa
+    mascara    exige  fundo gerado          (worker/src/index.mjs:658)
+    fundo gerado = null, fixo               (enquadrar/route.ts:119)
+
+O fundo gerado foi desligado em 24/08 por decisao sua, depois de tres artes
+reprovadas, e a decisao continua certa para corte de FALA: o mercado inteiro
+usa a pessoa com o fundo real dela. So que o empilhado foi junto no mesmo
+desligamento, sem ninguem decidir isso, e o empilhado nao depende de arte
+gerada: ele e slide em cima, pessoa embaixo, os dois do video real.
+
+Consequencias, e sao duas:
+
+1. **O campo `vertical: "empilhado"` esta morto.** O app calcula, grava e manda
+   para o worker, que nunca le.
+2. **A landing promete o que o produto nao faz.** A secao diz "Gravou
+   compartilhando a tela? O conteudo vai grande em cima e voce embaixo, em vez
+   de virar um slide ilegivel no meio do video". Hoje o slide nao vai em cima:
+   ele some, e sobra a webcam ampliada. A imagem que ilustrava isso era uma
+   montagem feita a mao, nunca uma saida do produto, e por isso ninguem tinha
+   percebido.
+
+Isso vale para todo cliente que grava compartilhando tela, que e metade do ICP
+("ja grava aula, webinar, treinamento").
+
+Decisao pendente com o Bruno, e sao dois caminhos honestos:
+
+- **Destravar o empilhado** para cena mista, desacoplando a mascara do fundo
+  gerado. O ffmpeg do empilhado ja existe e ja e chamado; muda a condicao e o
+  custo da segmentacao (uns 13 s por corte) volta so nos cortes mistos.
+- **Mudar a promessa** da pagina para o que o produto faz hoje.
+
+Enquanto nao decidir, o par do corte fica com a imagem antiga: trocar so o
+"antes" deixaria os dois lados contando historias diferentes.
+
+## Sessao 10/09/2026 (parte 99): o funil saiu do papel, e o telefone que a demo nunca pediu
+
+Sessao de venda, nao de codigo. Fica no HANDOFF porque ela define o que o
+codigo precisa entregar, e porque o levantamento do telefone encontrou tres
+defeitos que ninguem tinha visto.
+
+### O que mudou fora do repo
+
+O funil de venda virou peca operavel no Notion, em "Funil de Vendas da
+Demandou", dentro de `10-profissional/demandou`: uma base **Prospects da
+Demandou** com cinco visoes (Fila de toques, Funil em quadro, A lista dos 30,
+O que eles falaram e Clientes) e um **Roteiro de mensagens do funil** com os
+scripts dos dois perfis. A esteira inteira, comparada com a maquina de
+pre-vendas do video do Rafael Milagre, esta no artefato "Esteira Comercial da
+Demandou".
+
+Duas decisoes de produto saem dali e valem para o codigo:
+
+1. **O ICP tem dois perfis, nao um.** Perfil A ja grava por outro motivo e
+   quer matar a edicao. Perfil B nao grava nada e quer conteudo automatico
+   pela squad, que e o que a campanha por tema ja entrega. A landing fala
+   hoje so com o A (card 290 atualizado).
+2. **A metrica de ativacao e "dias ate o primeiro post publicado".** Acima de
+   sete dias, churn no mes 2 com qualquer preco. Ela nao existe em lugar
+   nenhum do produto e precisaria sair do banco, cruzando a data de assinatura
+   com o primeiro `post` em estado publicado do usuario.
+
+### O telefone na demo publica: o estado real, lido no codigo
+
+O objetivo e simples de dizer e mexe em quatro lugares: a demo captura e-mail
+desde 08/09 e nao captura telefone, entao nenhuma regua de contato existe
+depois, nem a manual que o Bruno vai operar agora nem a automatica que vem
+quando houver dez conversas medidas. Conferido em 10/09:
+
+- **`prisma/schema.prisma`, model `DemoRun`:** tem `email` e `nome`, nao tem
+  telefone. A rodada ja guarda o texto cru, a saida e o custo, e o contato
+  mora ali de proposito, para nao precisar casar duas tabelas para responder
+  "o que essa pessoa escreveu".
+- **`app/api/demo/contato/route.ts`:** aceita `{rodadaId, email, nome}`,
+  valida so o e-mail, casa a rodada por id **e** por `ipHash` (sem o segundo
+  filtro alguem receberia por e-mail o texto que outra pessoa escreveu), e
+  trata o retorno do envio, porque `enviarEmail` nunca lanca.
+- **`components/landing/demo.tsx`:** o formulario tem UM campo, o de e-mail
+  (perto da linha 226), e o `fetch` da linha 84 envia apenas
+  `{rodadaId, email}`.
+
+Tres achados desse levantamento, e dois sao defeitos que ja estao no ar:
+
+**O `nome` que a API aceita nunca e enviado.** A rota grava `nome` e o e-mail
+comeca com "Oi, {nome}." quando ele existe. Como a tela nunca manda, todo lead
+da demo nasce anonimo e todo e-mail sai com "Oi." seco. E uma linha de
+correcao num caminho que ja funciona.
+
+**A politica de privacidade descreve errado o que o produto faz.**
+`app/privacy/page.tsx`, na linha 115, diz que na demonstracao gratuita o texto
+e a profissao ficam registrados "sem vinculo com nome ou e-mail do visitante".
+Isso era verdade ate 07/09 e deixou de ser em 08/09, quando a captura entrou.
+Pedir telefone sem corrigir isso piora um problema que ja existe.
+
+**Pedir dado novo e mexer em quatro lugares**, e o quarto e o que ninguem
+lembra: schema, rota, tela e politica de privacidade.
+
+### O que falta, nesta ordem
+
+1. **Prisma:** `telefone String?` em `DemoRun`, mais a migration. Guardar em
+   E.164 (`5511987654321`), que e o formato que a API do WhatsApp pede depois;
+   converter na leitura e retrabalho.
+2. **Normalizacao no servidor:** so digitos, aceitar 10 ou 11 (com DDD),
+   prefixar `55`, recusar o resto com frase humana. Nunca confiar na mascara
+   da tela, que e conveniencia e nao validacao.
+3. **`route.ts`:** telefone **opcional**, e-mail continua obrigatorio, porque
+   o e-mail e o canal de entrega dos textos e a troca honesta da tela. Campo
+   obrigatorio a mais derruba a conversao da unica etapa que hoje converte.
+4. **`demo.tsx`:** o campo novo e o envio do `nome`, que ja e aceito.
+5. **Consentimento e privacidade:** caixa de consentimento para contato no
+   WhatsApp, desmarcada por padrao, e a privacidade corrigida em duas frentes,
+   a linha 115 que hoje mente e a declaracao do telefone com finalidade
+   (contato comercial) e base legal (consentimento do art. 7, I).
+6. **Evento de funil na captura**, com `meta` dizendo se o telefone veio. Sem
+   isso nao da para medir o custo de pedir, que e a unica pergunta que decide
+   se o campo fica.
+7. **`scripts/leads.mts`:** listar `demo_runs` com contato dos ultimos N dias
+   em formato colavel na base do Notion, no mesmo espirito de
+   `scripts/funil.mts`. E a ponte entre o banco e o funil enquanto nao existir
+   integracao, e evita consulta a mao no Supabase.
+
+### Aberto
+
+- Nada foi implantado nesta sessao. Os sete itens acima viraram cards no
+  planner, na Frente Demandou.
+- A tabela de precos esta sendo refeita pelo Bruno, e o cupom `FUNDADOR` de
+  valor fixo (R$ 300) so funciona no mensal: no anual vira desconto
+  irrelevante, e a tese de caixa no dia 1 depende dele. Decisao junto com o
+  preco novo.
+- "Dias ate o primeiro post publicado" nao existe como medida em lugar nenhum.
+
+*Atualizado em 10/09/2026 por Claude Code.*
+## Sessao 10/09/2026 (parte 100): o telefone da demo, e a politica que estava mentindo
+
+Os quatro itens levantados na parte 99 sairam, nesta ordem, e a ordem era a
+parte que importava.
+
+### 1. A politica de privacidade estava mentindo, e foi corrigida ANTES
+
+`app/privacy/page.tsx`, secao 2.6, dizia que na demonstracao gratuita o texto e
+a profissao ficavam registrados "sem vinculo com nome ou e-mail do visitante".
+Era verdade ate 07/09 e deixou de ser em 08/09, quando a captura de contato
+entrou. Pedir telefone em cima dessa frase pioraria um problema que ja existia.
+
+Reescrita para descrever o produto de hoje: e-mail e nome gravados na MESMA
+rodada do texto, telefone opcional so com consentimento explicito para
+WhatsApp, finalidade, base legal (consentimento, art. 7, I) e revogacao.
+
+Mais dois pontos que faltavam e ninguem tinha pedido:
+
+- A base legal do consentimento so falava em "marketing". Base generica nao
+  cobre canal, entao ela passou a nomear o WhatsApp e a entrega dos textos.
+- A retencao tinha tres prazos (conta, fiscal, logs) e nenhum deles cobria o
+  contato da demo, que nao e conta nem dado fiscal. Ganhou o proprio: 24 meses
+  do ultimo contato, ou ate a revogacao.
+
+Politica e consentimento entraram no MESMO deploy, de proposito: declarar
+finalidade de contato comercial sem a caixa, ou por a caixa com a frase velha
+no ar, deixa a pagina errada de um jeito diferente.
+
+### 2. O nome que a rota sempre aceitou e a tela nunca enviava
+
+Desde 08/09 `app/api/demo/contato/route.ts` aceita `{rodadaId, email, nome}`,
+grava o nome e comeca o e-mail com "Oi, {nome}.". A tela mandava so
+`{rodadaId, email}`. Resultado: todo lead da demo nascia anonimo e todo e-mail
+saia com "Oi." seco. Uma linha de conserto num caminho que ja funcionava.
+
+### 3. O telefone, em seis partes
+
+- **Banco**: `telefone String?` em E.164 (`5511987654321`), que e o formato que
+  a API do WhatsApp pede depois, mais `consentimentoEm DateTime?`. A DATA, e
+  nao um sim ou nao: consentimento sem registro de quando foi dado nao se prova
+  depois (LGPD, art. 8). Migration `20260910200000_telefone_na_demo`, aplicada.
+- **Normalizacao no SERVIDOR** (`lib/demo/telefone.ts`), porque mascara de
+  campo e conveniencia para quem digita, nao validacao: quem manda o corpo
+  direto na rota nao passa por mascara nenhuma. Provada em 17 casos
+  (`scripts/tmp/provar-telefone.mts`), e tres deles sao os que mordem: o numero
+  que JA vem com 55 e nao pode virar `5555...`, o celular de nove digitos que
+  nao comeca com 9, e o DDD que nao existe.
+- **Telefone opcional, e-mail obrigatorio.** O e-mail e o canal de entrega dos
+  textos, ou seja, a troca honesta da tela; o telefone e interesse nosso.
+- **Telefone sem consentimento nao e guardado**: a pessoa pode ter digitado e
+  mudado de ideia sobre a caixa, e guardar assim mesmo seria coletar dado para
+  uma finalidade que ela recusou.
+- **A tela**, na opcao A do canvas, aprovada pelo Bruno antes do codigo
+  (https://claude.ai/code/artifact/01a1dce2-2363-4658-8611-f3c6f6b31505). Tres
+  opcoes foram desenhadas, e elas mudavam UMA coisa: quando o telefone e
+  pedido. Na A a etapa que hoje converte continua uma linha, ganha o nome, e o
+  telefone e pedido DEPOIS de os textos irem embora. Quem so queria o texto vai
+  embora com ele sem nunca ver pedido de telefone.
+- **A caixa nasce desmarcada e o botao so liga com ela marcada.**
+  Consentimento pre-marcado nao e consentimento, e caixa que ninguem leu.
+
+Detalhe que a segunda etapa obrigou: as duas etapas batem na MESMA rota, na
+mesma rodada, entao a rota pergunta ao BANCO se aquela rodada ja tem e-mail e
+nao reenvia os textos. A resposta vem do banco e nao de um campo do corpo,
+porque campo que o cliente manda, o cliente escolhe.
+
+### 4. Medida e relatorio
+
+O funil ganhou o passo **"contato"**, entre demo e cadastro, com `meta` dizendo
+se o telefone veio, se houve consentimento e de qual ETAPA o evento saiu. Sem
+o passo proprio ele viraria um "demo" contado duas vezes; sem a etapa no meta,
+a segunda chamada contaria como contato novo e a conversao apareceria dobrada.
+
+De carona, um defeito latente: `scripts/funil.mts` mantinha a PROPRIA copia da
+lista de passos. O passo novo apareceria no banco e nao no relatorio. Agora o
+relatorio importa a lista de `lib/funil/eventos.ts`.
+
+`scripts/leads.mts` lista quem deixou contato nos ultimos N dias com o texto
+cru INTEIRO, e no fim imprime uma tabela separada por tabulacao, colavel na
+base Prospects da Demandou. O texto cru vem inteiro de proposito: e o que a
+pessoa escreveu antes de saber que alguem ia ler, entao e ele que diz se ela ja
+grava video. A primeira frase da abordagem sai dai, e nao do e-mail dela.
+
+### A prova, na tela e no banco
+
+Build de producao local contra o banco real, pelo caminho do cliente: escreveu
+na demo, gerou os tres textos, deixou nome e e-mail, recebeu, e so entao viu o
+pedido de telefone.
+
+- `nome` gravado ("Joana"), que e o item 2 fechado.
+- `telefone` gravado como `5511987654321`, e nao como a mascara digitada
+  ("11 98765 4321"), que e o item que so apareceria no dia de disparar.
+- `consentimentoEm` com data.
+- Dois eventos de funil, `etapa: "email"` e `etapa: "telefone"`.
+- O DDD 00 recusado com frase de gente na tela, antes de chegar ao banco.
+- O botao da segunda etapa nasce desabilitado, com a caixa desmarcada.
+
+A rodada de teste foi REMOVIDA do banco depois, com os dois eventos: o teste
+rodou contra producao, e deixar a "Joana" la sujaria a base de prospects que o
+Bruno vai operar a mao e inflaria o passo novo logo no comeco da medida.
+
+Nao verificado por mim: a caixa de entrada de `reviewer@demandou.com`. O envio
+foi confirmado pelo provedor (a rota so responde ok quando `enviarEmail`
+devolve verdadeiro), e a entrega ja tinha sido provada em 08/09.
+
+### Aberto
+
+- Sequencia de retorno do e-mail da demo (segundo e terceiro contato), que e
+  decisao de copy do Bruno.
+- Medir, na primeira semana com trafego, quantos deixam telefone contra quantos
+  deixam so e-mail. E a unica pergunta que decide se o campo fica.
+- "Dias ate o primeiro post publicado" continua sem existir como medida.
+
+*Atualizado em 10/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
@@ -8833,3 +9119,4 @@ Notion; aqui fica so o resumo tecnico.
    adaptar a landing para a sequencia de lancamento (captura antes da
    venda). Tudo discutido em detalhe antes de gastar. Pre-requisitos: o
    teste do zero passar limpo e os precos novos no Stripe.
+
