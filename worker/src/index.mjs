@@ -651,17 +651,37 @@ async function processar(trabalho) {
         // A partir daqui tudo trabalha sobre o trecho JÁ LIMPO, e os tempos
         // passam a ser relativos a ele, começando do zero.
         //
-        // A MASCARA SO EXISTE QUANDO HA FUNDO GERADO. Sem fundo (que e o
-        // padrao desde 24/08 a noite, por decisao do Bruno), o corte e o
-        // formato do mercado: o video real, cortado em 9:16 na regiao da
-        // pessoa, com o fundo real dela. Isso tambem poupa a segmentacao
-        // inteira, uns 13 segundos por corte.
-        const matte = enq?.pessoa && fundoLocal
+        // A MASCARA EXISTE EM DOIS CASOS, e o segundo entrou em 10/09.
+        //
+        // 1. Fundo gerado. Desligado desde 24/08 a noite, por decisao do Bruno:
+        //    em corte de FALA o formato do mercado e o video real da pessoa,
+        //    com o fundo real dela, e ninguem recorta a pessoa para colar numa
+        //    arte gerada.
+        // 2. EMPILHADO, que o agente de visao pede quando a cena e mista
+        //    (slide ou tela compartilhada mais a janela da webcam).
+        //
+        // O empilhado tinha ido junto no desligamento do fundo sem ninguem
+        // decidir isso, e ele nao depende de arte gerada: e o slide real em
+        // cima e a pessoa real embaixo. O efeito, medido em 10/09 com uma
+        // gravacao de tela passada pela esteira: o agente devolvia
+        // `vertical: "empilhado"`, o worker nunca lia esse campo, e o cliente
+        // recebia um crop ampliado 2,8x da janelinha da webcam, sem o slide. O
+        // proprio log media a ampliacao e avisava, para ele mesmo.
+        //
+        // A conta do custo: a segmentacao volta a rodar, uns 13 segundos por
+        // corte, e SO nos trechos mistos. Corte de fala continua sem ela.
+        const querEmpilhado = enq?.vertical === "empilhado" && Boolean(enq?.tela);
+        const precisaDeMascara = Boolean(enq?.pessoa) && (Boolean(fundoLocal) || querEmpilhado);
+        const matte = precisaDeMascara
           ? await gerarMatte(limpo, pasta, t.indice, 0, duracaoLimpa, enq.pessoa)
           : null;
-        if (enq?.pessoa && fundoLocal && !matte) {
+        if (precisaDeMascara && !matte) {
+          // Aviso, e nao erro: sem mascara o corte ainda sai, na composicao
+          // antiga. Mas ele SAI PIOR, e sem esta linha o sintoma vira "o
+          // empilhado simplesmente nao aparece", que e a pior forma de defeito.
           console.warn(
-            `[${trabalho.videoJobId}] trecho ${t.indice} sem recorte, ` +
+            `[${trabalho.videoJobId}] trecho ${t.indice} sem recorte` +
+              `${querEmpilhado ? " (o agente pediu empilhado)" : ""}, ` +
               "sai na composição antiga"
           );
         }
