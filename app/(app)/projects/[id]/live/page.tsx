@@ -75,6 +75,23 @@ export default async function LivePage({
     orderBy: [{ dayOfWeek: "asc" }, { createdAt: "asc" }],
   });
 
+  // Os posts da semana: e deles que o quadro deriva o estado do card do Paulo.
+  const postsDaSemana = await prisma.post.findMany({
+    where: {
+      projectId: id,
+      status: { not: "cancelled" },
+      OR: [
+        { scheduledAt: { gte: monday, lte: sunday } },
+        { publishedAt: { gte: monday, lte: sunday } },
+        { scheduledAt: null, run: { weekStart: { gte: monday, lte: sunday } } },
+      ],
+    },
+    select: {
+      id: true, platform: true, mediaType: true, status: true, scheduledAt: true,
+      publishedAt: true, externalUrl: true, socialAccountId: true, metadata: true, dayOfWeek: true, runId: true,
+    },
+  });
+
   // Check for active running pipeline or recent failed/cancelled run
   const ultimaConcluida = await prisma.pipelineRun.findFirst({
     where: { projectId: id, status: "completed" },
@@ -114,6 +131,11 @@ export default async function LivePage({
       projectId={id}
       projectName={project.name}
       postFrequency={project.postFrequency}
+      postsDaSemana={postsDaSemana.map((p) => ({
+        ...p,
+        scheduledAt: p.scheduledAt?.toISOString() ?? null,
+        publishedAt: p.publishedAt?.toISOString() ?? null,
+      }))}
       socialAccounts={project.socialAccounts}
       initialCards={cards.map((c) => ({
         ...c,

@@ -65,7 +65,25 @@ export async function GET(req: NextRequest) {
       orderBy: { startedAt: "desc" },
     });
 
-    return NextResponse.json({ cards, run: weekRun });
+    // Os posts da semana vao junto: e deles que o quadro deriva o estado do
+    // card do Paulo (publicado, agendado, rascunho, falhou). Ate 10/09 o card
+    // mostrava um texto gravado na geracao, que nao mudava nunca.
+    const posts = await prisma.post.findMany({
+      where: {
+        projectId,
+        status: { not: "cancelled" },
+        OR: [
+          { scheduledAt: { gte: weekStartDate, lte: weekEndDate } },
+          { publishedAt: { gte: weekStartDate, lte: weekEndDate } },
+          { scheduledAt: null, run: { weekStart: { gte: weekStartDate, lte: weekEndDate } } },
+        ],
+      },
+      select: {
+        id: true, platform: true, mediaType: true, status: true, scheduledAt: true,
+        publishedAt: true, externalUrl: true, socialAccountId: true, metadata: true, dayOfWeek: true, runId: true,
+      },
+    });
+    return NextResponse.json({ cards, run: weekRun, posts });
   }
 
   const latestRun = await prisma.pipelineRun.findFirst({

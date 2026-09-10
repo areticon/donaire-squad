@@ -17,6 +17,7 @@ import { PipelineLive } from "@/components/posts/pipeline-live";
 import { CampaignSetupModal, type CampaignConfig } from "@/components/posts/campaign-setup-modal";
 import { EsteiraDoVideo, type VideoAoVivo, type CorteGuardado } from "@/components/video/esteira-do-video";
 import { EnviarGravacao } from "@/components/video/enviar-gravacao";
+import { estadoDoPost, resumoDoDia, CORES, type PostParaEstado, type ResumoDoDia } from "@/lib/posts/estado";
 import { CorteGuardadoModal } from "@/components/video/corte-guardado";
 import { CapaDoCompleto } from "@/components/video/capa-do-completo";
 
@@ -77,6 +78,9 @@ interface ContentManagerProps {
   /** A frequencia escolhida no setup ("3x por semana"): e o que o wizard usa
    *  como dias pre-marcados, em vez de perguntar de novo do zero. */
   postFrequency?: string | null;
+  /** Os posts da semana aberta: e deles que o card do Paulo no quadro deriva o
+   *  estado (publicado, agendado, rascunho, falhou). Ver lib/posts/estado.ts. */
+  postsDaSemana?: PostParaEstado[];
   /** As três escolhas que decidem como o corte é editado, para o painel de envio. */
   videoEstilo: string | null;
   videoMusica: string | null;
@@ -414,11 +418,14 @@ function KanbanCard({
   agentRow,
   onOpenModal,
   compact,
+  resumo,
 }: {
   card: CampaignCard | undefined;
   agentRow: typeof AGENT_ROWS[0];
   onOpenModal: (card: CampaignCard, agentRow: typeof AGENT_ROWS[0]) => void;
   compact?: boolean;
+  /** So no card do Paulo: o estado do dia, derivado dos posts. */
+  resumo?: ResumoDoDia | null;
 }) {
   if (!card) {
     return (
@@ -593,9 +600,23 @@ function KanbanCard({
                 );
               })()
             ) : (
+              card.cardType === "publish" && resumo && resumo.total > 0 ? (
+                // O card do Paulo mostra o ESTADO do dia, derivado dos posts,
+                // e nao o texto gravado na geracao ("2 posts prontos"), que nao
+                // mudava quando o post era agendado, publicado ou falhava.
+                <div className="flex flex-col gap-0.5 py-0.5">
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: resumo.cor }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: resumo.cor }} />
+                    {resumo.titulo}
+                  </span>
+                  <span className="text-[10px] line-clamp-1" style={{ color: "var(--text-primary)" }}>{resumo.linha}</span>
+                  <span className="text-[10px] line-clamp-1" style={{ color: resumo.dominante === "rascunho" || resumo.dominante === "falhou" ? "var(--accent-orange)" : "var(--text-muted)" }}>{resumo.rodape}</span>
+                </div>
+              ) : (
               <p className="line-clamp-2 leading-relaxed text-[10px]" style={{ color: "var(--text-primary)" }}>
                 {card.content ?? "..."}
               </p>
+              )
             )}
           </div>
           <div className="shrink-0 flex flex-col items-end gap-0.5">
@@ -1987,6 +2008,33 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     {/* A lista do dia: uma linha por post, com a rede, o que
                         é, o estado e a marcação. As ações embaixo valem para o
                         que está marcado. */}
+                    {localCard.status !== "rejected" && postsDoDia.length > 0 && (() => {
+                      // O resumo do dia em uma frase, antes da lista: e a
+                      // resposta a "o que vai sair e quando" sem ler linha a linha.
+                      const r = resumoDoDia(postsDoDia);
+                      const publicados = r.porEstado.publicado;
+                      const frase =
+                        r.dominante === "falhou" ? `Um post falhou: ${r.linha}.`
+                        : r.dominante === "rascunho" ? `${r.porEstado.rascunho} em rascunho: não ${r.porEstado.rascunho > 1 ? "saem" : "sai"} enquanto você não agendar ou publicar.`
+                        : r.dominante === "agendado" ? `${r.porEstado.agendado + r.porEstado.publicando} agendado${r.porEstado.agendado + r.porEstado.publicando > 1 ? "s" : ""} ${r.proximo ? `para ${formatScheduledAt(r.proximo.toISOString())}` : ""}. ${r.porEstado.agendado + r.porEstado.publicando > 1 ? "Saem" : "Sai"} sozinho${r.porEstado.agendado + r.porEstado.publicando > 1 ? "s" : ""}.`
+                        : `${publicados} publicado${publicados > 1 ? "s" : ""}. Nada mais a fazer neste dia.`;
+                      const complemento =
+                        r.dominante === "agendado" && publicados > 0 ? `${publicados} já publicado${publicados > 1 ? "s" : ""}.`
+                        : r.dominante === "agendado" ? "Você não precisa fazer nada."
+                        : r.dominante === "rascunho" && (r.porEstado.agendado > 0 || publicados > 0) ? `${r.porEstado.agendado} agendado${r.porEstado.agendado > 1 ? "s" : ""}, ${publicados} publicado${publicados > 1 ? "s" : ""}.`
+                        : r.dominante === "falhou" ? (r.rodape === "reconectar e tentar" ? "Reconecte a rede em Configurações e publique de novo." : "Marque o post e publique de novo.")
+                        : "";
+                      return (
+                        <div className="rounded-xl px-4 py-3 flex items-center gap-3 border" style={{ borderColor: `${r.cor}55`, background: `${r.cor}0f` }}>
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.cor }} />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>{frase}</p>
+                            {complemento && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{complemento}</p>}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {localCard.status !== "rejected" && (
                       <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
                         <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
@@ -2024,7 +2072,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                 : !conta
                                   ? `Conecte o ${nomeDaRede(p.platform)} em Configurações para publicar`
                                   : naFila
-                                    ? `Na fila: sai sozinho ${horario ? formatScheduledAt(horario) : "no horário"}`
+                                    ? `Agendado: ${estadoDoPost(p).detalhe}`
                                     : fila?.andou
                                       ? `Rascunho: o horário do dia já passou; se você deixar agendado, sai ${formatScheduledAt(fila.iso)}`
                                       : fila
@@ -2392,9 +2440,10 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
+  const [postsSemana, setPostsSemana] = useState<PostParaEstado[]>(postsDaSemana ?? []);
   const [loadingCards, setLoadingCards] = useState(false);
   const [runningPipelineId, setRunningPipelineId] = useState<string | null>(activeRun?.status === "running" ? activeRun.id : null);
   const [generating, setGenerating] = useState(activeRun?.status === "running");
@@ -2469,6 +2518,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       const res = await fetch(`/api/pipeline/status?projectId=${projectId}&weekStart=${mondayIso}`);
       const data = await res.json();
       setCards(data.cards ?? []);
+      setPostsSemana(data.posts ?? []);
     } catch {
       // silent
     } finally {
@@ -3142,7 +3192,14 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                           ) : (
                             <div className="space-y-1.5">
                               {dayRowCards.map((c) => (
-                                <KanbanCard key={c.id} card={c} agentRow={agentRow} onOpenModal={handleOpenModal} compact={dayRowCards.length > 1} />
+                                <KanbanCard
+                                  key={c.id}
+                                  card={c}
+                                  agentRow={agentRow}
+                                  onOpenModal={handleOpenModal}
+                                  compact={dayRowCards.length > 1}
+                                  resumo={c.cardType === "publish" ? resumoDoDia(postsSemana.filter((p) => (p as PostParaEstado & { dayOfWeek?: number }).dayOfWeek === day.dayOfWeek)) : null}
+                                />
                               ))}
                             </div>
                           )}
@@ -3180,6 +3237,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-400" /> Aprovado</span>
         <span className="flex items-center gap-1"><X className="w-3 h-3 text-red-400" /> Rejeitado</span>
         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> Com conteúdo</span>
+        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.publicado }} /> Publicado</span>
+        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.agendado }} /> Agendado, sai sozinho</span>
+        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.rascunho }} /> Rascunho, não sai</span>
+        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.falhou }} /> Falhou</span>
         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-400" /> Hoje</span>
         <span className="ml-auto">Clique em qualquer card para abrir e interagir com a IA</span>
       </div>
