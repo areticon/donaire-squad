@@ -89,6 +89,31 @@ que o dobro do custo fixo atual de R$ 116.
    opção de ajuste. A análise automática do perfil é a fase seguinte.
 6. **Tráfego pago é a decisão em aberto.** O cenário que fecha existe, mas
    depende de duas variáveis não medidas. Ver a nota do CAC no Notion.
+8. **Nenhum número sem fonte vai ao ar** (09/09). A régua é de código, não
+   de prompt: cada frase com número precisa aparecer na pesquisa bruta, perto
+   de uma palavra de conteúdo da própria frase. O brief é devolvido ao
+   Roberto, a Vera recebe as violações medidas, e a tesoura corta antes de
+   gravar. Custo assumido: número verdadeiro que a busca não trouxe também
+   cai. Preferimos post com menos números a número inventado em nome de
+   cliente. Ver `afirmacoesSemLastro` em `app/api/pipeline/run/route.ts`.
+9. **Proveniência guardada** (09/09). O card do Roberto leva a pesquisa
+   bruta e as fontes em `metadata`. "Bate com o brief" não é verificação: é
+   conferir a cópia contra a cópia.
+10. **Um post tem sempre um de quatro estados, com a mesma palavra e cor em
+    toda tela** (10/09): Publicado, Agendado (sai sozinho), Rascunho (não
+    sai), Falhou (motivo e o que fazer). Estado é derivado do dado na hora de
+    mostrar, nunca texto gravado. `lib/posts/estado.ts`. A Agenda é de
+    leitura; agir continua no card do Paulo (um lugar só para a mesma ação).
+11. **O que dá para medir, mede-se antes de pedir opinião** (09/09). Limites
+    de rede, tamanho de tweet, lastro de número: vão prontos para a Vera, com
+    a regra de reprovar escrita. Modelo não conta caractere.
+12. **Limite de plano vira comportamento de produto sem ninguém decidir**
+    (09/09). O cron diário do plano gratuito sobreviveu à migração para o pago
+    e virou "seu post sai amanhã". Hoje o cron roda a cada 5 minutos; toda
+    restrição herdada de plano é revisada quando o plano muda.
+13. **Páginas do LinkedIn exigem um segundo app** com a Community Management
+    API, que não convive com o Sign In no mesmo app (09/09). O app pessoal
+    fica como está; o de páginas só tem escopos de organização.
 
 ## Armadilhas já pagas, não repetir
 

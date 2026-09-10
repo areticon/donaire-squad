@@ -44,11 +44,11 @@ O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes p
 | Agente | Função | Tech |
 |--------|--------|------|
 | **Roberto** | Pesquisa web em tempo real | Gemini 2.5 Flash com Google Search Grounding (50s timeout) |
-| **Lucas** | Redação LinkedIn (texto/carrossel/artigo/poll) | Claude (Anthropic SDK, 90s timeout, maxTokens 2048) |
+| **Lucas** | Redação LinkedIn (texto/carrossel/artigo/poll) | Claude (Anthropic SDK, timeout proporcional, maxTokens 8192; a Vera usa 16.000) |
 | **Tiago** | Redação X/Twitter (thread/poll/default) | Claude (Anthropic SDK, 90s timeout) |
 | **Diana** | Geração de imagem/infográfico | Gemini (família Nano Banana), com cascata `gemini-3-pro-image-preview` → `gemini-3.1-flash-image-preview` → `gemini-2.5-flash-image`. Chave: `GEMINI_API_KEY` |
 | **Vera** | Revisão de qualidade (APROVADO/REPROVADO_TEXTO) | Claude — auto-corrige REPROVADO_TEXTO sem intervenção humana |
-| **Paulo** | Agendamento dos posts nos horários configurados | Interno (getScheduledAt) |
+| **Paulo** | Agendamento e publicação. O cron `/api/cron/pipeline` roda a cada 5 min desde 09/09 e publica o que venceu; o estado de cada post (publicado, agendado, rascunho, falhou) vem de `lib/posts/estado.ts` | Interno (getScheduledAt, cron) |
 
 **Geração de vídeo por IA saiu em 18/08/2026** (commit `6148d94`). A cascata de fallback
 do Veo tentava o modelo rápido a US$ 0,10 por segundo e caía para o padrão a US$ 0,40,
@@ -163,18 +163,26 @@ quem tenha comprado o Starter antes da remoção não fique sem plano.
 - **Solução real:** Vercel Pro (maxDuration=800) + reabilitar `generateVideo` em `app/api/pipeline/run/route.ts`
 - **Arquivo:** bloco `if (isVideoType)` em route.ts (~linha 1240)
 
-### Cron diário — posts agendados depois das 9h BRT atrasam
-- **Causa:** Vercel Hobby só permite cron 1x/dia. Schedule: `"0 12 * * *"` = 9h BRT
-- **Impacto:** post agendado para 14h ou 21h só publica no dia seguinte às 9h
-- **Soluções:**
-  1. Vercel Pro ($20/mês) → permite cron por minuto
-  2. Cron externo grátis (cron-job.org) → chama `https://demandou.com/api/cron/pipeline` com header `Authorization: Bearer $CRON_SECRET` a cada 5-15 min
-- **Arquivo:** `vercel.json` e `app/api/cron/pipeline/route.ts`
+### Cron de publicação: RESOLVIDO em 09/09 (parte 97, item 8)
+- Roda a cada 5 minutos (`vercel.json`, `*/5 * * * *`), com reserva atômica do
+  post (`scheduled` para `publishing`) para duas execuções não publicarem o
+  mesmo post. Até então rodava uma vez por dia às 9h, herança do Hobby.
 
-### LinkedIn primeiro comentário — pode falhar
-- **Status:** endpoint trocado para v2 (PR #25), precisa testar em produção
-- **Escopo OAuth:** `w_member_social` já está ativado no LinkedIn Developer Portal
-- **Se falhar novamente:** verificar se o post URN está no formato correto (share vs ugcPost)
+### LinkedIn primeiro comentário: RESOLVIDO em 09/09 (parte 97, item 9)
+- Três tentativas (3 s, 10 s, 30 s), porque o LinkedIn demora a indexar o post;
+  links de fonte resolvidos para a URL real (o Gemini entrega redirecionamento);
+  resultado gravado em `post.metadata` (`firstCommentPublishedAt` ou
+  `firstCommentError`). Falta mostrar `firstCommentError` no card do Paulo.
+
+### Páginas do LinkedIn: depende do LinkedIn aprovar o segundo app
+- O código publica em página (`urn:li:organization`), mas exige um app SEPARADO
+  com a Community Management API. Pedido enviado em 09/09 (app "Areticon",
+  Client ID `779klxj5uvdi5b`). Quando aprovar: `LINKEDIN_PAGES_CLIENT_ID` e
+  `LINKEDIN_PAGES_CLIENT_SECRET` na Vercel e `npx vercel --prod`.
+
+### Campanha por tema: sete dias com imagem estouram os 800 s
+- Cada dia com imagem, Vera e correção leva perto de 2,5 min. Cinco cabem;
+  sete não. A resposta é a fila de verdade (card 197), não teto.
 
 ---
 
@@ -330,10 +338,41 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 01/09/2026, depois de nove levas de simplificação do fluxo de
-> vídeo. O detalhe vive nas partes 62 a 76 no fim deste arquivo e nos cards
-> "Esta semana" do planner. **O resumo apodrece primeiro: se divergir do
-> código, o código manda.**
+> Atualizado em 10/09/2026. O detalhe vive nas partes 92 a 97 no fim deste
+> arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
+> se divergir do código, o código manda.**
+
+**Estado em 10/09, em uma linha por frente:**
+- Produto: vídeo de ponta a ponta em 11 min (era 30); campanha por tema
+  consertada em seis mecanismos; régua de lastro (nenhum número sem fonte vai
+  ao ar); quatro estados por post em toda tela e Agenda nova; cron a cada 5 min;
+  primeiros posts publicados pela plataforma nas redes do Bruno em 09/09.
+- Venda: funil medido no banco (visita, demo, cadastro, checkout, assinatura,
+  com origem de primeira visita); demo pública captura e-mail; preços
+  397/697/1.997 no ar com cupom FUNDADOR; anúncios prontos (61 s e 2:07, 16:9 e
+  4:5) em `C:\Users\devan\Videos\demandou-anuncios\`.
+- Infra: conta da Anthropic recarregada em 08/09 (ligar auto-reload); worker no
+  Railway com completo em 1080p; `PILOTO_SECRET` em produção permite disparar a
+  esteira pela CLI; conta `reviewer@demandou.com` pronta para o App Review.
+
+**Bloqueia venda (só o Bruno):**
+- [ ] Publicar uma semana de verdade e virar caso zero (cards 183, 158)
+- [ ] App Review da Meta com a conta reviewer (card 45); verificação da empresa
+- [ ] Verificação do OAuth no Google (card 180)
+- [ ] LinkedIn aprovar o app de páginas; depois duas variáveis e deploy
+- [ ] Editar o post de 09/09 no LinkedIn (frase da Fitch) com o link da NeoFeed
+- [ ] Tráfego pago só depois disso, com UTM e `scripts/funil.mts`
+
+**Fila de código:**
+- [ ] Fila de verdade para transcrição, seleção e campanha (card 197, bloqueante)
+- [ ] `firstCommentError` visível no card do Paulo
+- [ ] Ações direto na Agenda (reagendar, publicar agora) e Gestor por semana na URL
+- [ ] Simplificar o wizard de campanha (seis telas): canvas antes de código
+- [ ] Sequência de retorno do e-mail da demo (segundo e terceiro contato)
+- [ ] Trilha licenciada nos anúncios, se o Bruno quiser
+- [ ] Travessões nos prompts dos agentes (116), só se algum post sair com um
+
+**Lista anterior (01/09), ainda válida:**
 
 **Bloqueia lançamento:**
 - [x] **O processo inteiro no Gestor de Conteúdo, em tempo real**, e a tela do
