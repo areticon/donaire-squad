@@ -90,9 +90,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // A pessoa JA recebeu os textos desta rodada?
+  //
+  // O formulario tem duas etapas (nome e e-mail primeiro, telefone depois de
+  // enviar), e as duas batem nesta rota, na MESMA rodada. Sem esta pergunta, a
+  // segunda etapa mandaria o mesmo e-mail de novo, e o unico sinal seria a
+  // pessoa recebendo duas vezes. A resposta vem do banco e nao de um campo do
+  // corpo: campo que o cliente manda, o cliente escolhe.
+  const jaRecebeu = Boolean(rodada.email);
+
   await prisma.demoRun.update({
     where: { id: rodada.id },
-    data: { email, nome, telefone, consentimentoEm },
+    data: {
+      email,
+      nome,
+      // A segunda etapa nao pode APAGAR o que a primeira gravou: ela manda o
+      // telefone e nao repete o resto.
+      ...(telefone ? { telefone, consentimentoEm } : {}),
+    },
   });
 
   // O passo do funil, com o que decide se o campo de telefone fica: quantos
@@ -101,7 +116,14 @@ export async function POST(req: NextRequest) {
   await registrarPasso("contato", {
     ipHash,
     caminho: "/",
-    meta: { telefone: Boolean(telefone), consentimento: Boolean(consentimentoEm), nome: Boolean(nome) },
+    meta: {
+      telefone: Boolean(telefone),
+      consentimento: Boolean(consentimentoEm),
+      nome: Boolean(nome),
+      // Qual etapa gerou este evento. Sem isto, a segunda etapa contaria como
+      // um contato novo e a conversao da demo apareceria dobrada.
+      etapa: jaRecebeu ? "telefone" : "email",
+    },
   });
 
   const posts = rodada.output as { linkedin?: string; x?: string; instagram?: string };
@@ -133,6 +155,11 @@ export async function POST(req: NextRequest) {
   // nada chega. Provado no caminho real em 08/09 (chegou na caixa de entrada,
   // vindo de contato@demandou.com); esta guarda existe para o dia em que
   // parar de chegar.
+  if (jaRecebeu) {
+    // Segunda etapa: o telefone entrou, os textos ja foram. Nada a enviar.
+    return NextResponse.json({ ok: true, telefone: Boolean(telefone) });
+  }
+
   const saiu = await enviarEmail({
     para: email,
     assunto: "Seus três textos, prontos para publicar",

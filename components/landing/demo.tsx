@@ -45,9 +45,23 @@ export function Demo() {
   const [aba, setAba] = useState<"linkedin" | "x" | "instagram">("linkedin");
   const [rodadaId, setRodadaId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  // O nome sempre foi aceito pela rota e nunca era enviado, entao todo lead
+  // nascia anonimo e todo e-mail saia com "Oi." seco.
+  const [nome, setNome] = useState("");
   const [enviandoEmail, setEnviandoEmail] = useState(false);
   const [emailEnviado, setEmailEnviado] = useState(false);
   const [erroEmail, setErroEmail] = useState<string | null>(null);
+  // A SEGUNDA ETAPA, que so aparece depois de os textos irem embora.
+  //
+  // O telefone e para a venda, que e interesse nosso, e o e-mail e a troca
+  // honesta da tela. Pedir os dois no mesmo instante poria o campo a mais em
+  // cima da unica etapa que hoje converte; pedindo depois, quem so queria o
+  // texto vai embora com ele sem nunca ver pedido de telefone.
+  const [telefone, setTelefone] = useState("");
+  const [autorizaWhats, setAutorizaWhats] = useState(false);
+  const [enviandoTelefone, setEnviandoTelefone] = useState(false);
+  const [telefoneEnviado, setTelefoneEnviado] = useState(false);
+  const [erroTelefone, setErroTelefone] = useState<string | null>(null);
 
   async function gerar() {
     setCarregando(true);
@@ -84,7 +98,7 @@ export function Demo() {
       const res = await fetch("/api/demo/contato", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rodadaId, email }),
+        body: JSON.stringify({ rodadaId, email, nome: nome.trim() || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) setErroEmail(data.error ?? "Não consegui enviar agora.");
@@ -93,6 +107,39 @@ export function Demo() {
       setErroEmail("Não consegui enviar agora.");
     } finally {
       setEnviandoEmail(false);
+    }
+  }
+
+  /**
+   * A segunda etapa: o telefone, na mesma rodada.
+   *
+   * Cai na mesma rota de proposito. Ela reconhece pelo banco que esta rodada ja
+   * recebeu os textos e nao manda o e-mail de novo, entao a tela nao precisa
+   * avisar em que etapa esta, o que seria mais um campo que o cliente escolhe.
+   */
+  async function mandarTelefone(e: React.FormEvent) {
+    e.preventDefault();
+    setEnviandoTelefone(true);
+    setErroTelefone(null);
+    try {
+      const res = await fetch("/api/demo/contato", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rodadaId,
+          email,
+          nome: nome.trim() || undefined,
+          telefone: telefone.trim(),
+          consentimento: autorizaWhats,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setErroTelefone(data.error ?? "Não consegui guardar agora.");
+      else setTelefoneEnviado(true);
+    } catch {
+      setErroTelefone("Não consegui guardar agora.");
+    } finally {
+      setEnviandoTelefone(false);
     }
   }
 
@@ -210,9 +257,74 @@ export function Demo() {
                     pronto: a pessoa acabou de ver o resultado, e a troca
                     oferecida e levar o texto embora, nao ver o que ja viu. */}
                 {emailEnviado ? (
-                  <div className="mt-6 rounded-xl border border-green-500/25 bg-green-500/10 p-4 text-sm text-[var(--text-primary)]">
-                    Pronto, os três textos estão indo para {email}.
-                  </div>
+                  <>
+                    <div className="mt-6 rounded-xl border border-green-500/25 bg-green-500/10 p-4 text-sm text-[var(--text-primary)]">
+                      Pronto, os três textos estão indo para {email}.
+                    </div>
+
+                    {/* A SEGUNDA ETAPA. Ela aparece depois de a pessoa receber o
+                        que veio buscar, e não junto: o e-mail é a troca honesta
+                        da tela, o telefone é interesse nosso. Quem só queria o
+                        texto vai embora com ele sem ver pedido de telefone. */}
+                    {telefoneEnviado ? (
+                      <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 text-sm text-[var(--text-primary)]">
+                        Combinado. O Bruno te chama no WhatsApp.
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={mandarTelefone}
+                        className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5"
+                      >
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">
+                          Quer que o Bruno te chame no WhatsApp?
+                        </p>
+                        <p className="text-sm text-[var(--text-muted)] mt-1 mb-3">
+                          Ele atende pessoalmente os dez primeiros, para entender o que você grava
+                          e montar a primeira semana com você.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input
+                            type="tel"
+                            required
+                            value={telefone}
+                            onChange={(ev) => setTelefone(ev.target.value)}
+                            placeholder="(11) 98765 4321"
+                            className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none"
+                            style={{
+                              background: "var(--bg-surface)",
+                              borderColor: "var(--border)",
+                              color: "var(--text-primary)",
+                            }}
+                          />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            disabled={enviandoTelefone || !autorizaWhats}
+                          >
+                            {enviandoTelefone ? "Guardando..." : "Pode me chamar"}
+                          </Button>
+                        </div>
+                        {/* Desmarcada por padrão, e o botão só liga com ela
+                            marcada: consentimento pré-marcado não é
+                            consentimento, é caixa que ninguém leu. */}
+                        <label className="flex items-start gap-2.5 mt-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={autorizaWhats}
+                            onChange={(ev) => setAutorizaWhats(ev.target.checked)}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-orange-500 cursor-pointer"
+                          />
+                          <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                            Autorizo o contato por WhatsApp sobre a Demandou. Posso pedir para parar
+                            a qualquer momento.
+                          </span>
+                        </label>
+                        {erroTelefone && (
+                          <p className="text-xs text-red-400 mt-2">{erroTelefone}</p>
+                        )}
+                      </form>
+                    )}
+                  </>
                 ) : (
                   <form
                     onSubmit={mandarPorEmail}
@@ -222,6 +334,18 @@ export function Demo() {
                       Quer os três textos no seu e-mail, prontos para copiar e publicar?
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        value={nome}
+                        onChange={(ev) => setNome(ev.target.value)}
+                        placeholder="Seu nome"
+                        className="sm:w-52 rounded-xl border px-4 py-2.5 text-sm outline-none"
+                        style={{
+                          background: "var(--bg-surface)",
+                          borderColor: "var(--border)",
+                          color: "var(--text-primary)",
+                        }}
+                      />
                       <input
                         type="email"
                         required
