@@ -51,12 +51,12 @@ const ENTREGAS = [
     ],
     antes: {
       src: "/exemplo/corte-antes.jpg",
-      alt: "Quadro original da gravação, em formato horizontal, com o slide pequeno e a webcam no canto",
+      alt: "Gravação de tela em formato horizontal, com o slide ocupando quase tudo e a webcam pequena no canto",
       rotulo: "Sua gravação",
     },
     depois: {
       src: "/exemplo/corte-depois.jpg",
-      alt: "O mesmo momento em formato vertical, com o slide grande em cima e a pessoa embaixo",
+      alt: "O mesmo momento em vertical, com o slide grande em cima, a pessoa recortada embaixo e a legenda queimada",
       rotulo: "O corte pronto",
     },
     vertical: true,

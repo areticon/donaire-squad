@@ -807,7 +807,11 @@ async function processar(trabalho) {
             ajusteDeBrilho,
             comEmoji ? emojisDoTrecho : [],
             musicaLocal ? basename(musicaLocal) : null,
-            trabalho.estilo?.som ?? null
+            trabalho.estilo?.som ?? null,
+            // As dimensoes da gravacao: o empilhado precisa delas para saber a
+            // altura do cartao antes de compor, e sem isso o layout cai nas
+            // larguras fixas, que deixavam um vazio no meio do quadro.
+            { largura: info.largura, altura: info.altura }
           );
 
         try {

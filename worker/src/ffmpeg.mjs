@@ -1221,11 +1221,14 @@ export async function cortarVertical(
   ajusteDeBrilho,
   emojis,
   musica,
-  som
+  som,
+  // As dimensoes da gravacao, para o empilhado saber a ALTURA de cada bloco
+  // antes de compor. Sem elas o layout cai nas larguras fixas de antes.
+  dimensoes
 ) {
   const comRecorte = matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
-    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo, ajusteDeBrilho)
+    ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo, ajusteDeBrilho, dimensoes)
     : montarFiltroVertical(
         enquadramento,
         Math.max(0, Math.min(0.12, ritmo?.forcaDoZoom ?? 0.04)),
@@ -1362,7 +1365,7 @@ const LAYOUT = {
  * defeito de compressão numa tela pequena, e ainda repete o conteúdo que já está
  * legível logo acima.
  */
-function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho) {
+function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho, dimensoes) {
   // O zoom do fundo vem do ESTILO: o acelerado avança 8% e o sério 2%, que é a
   // diferença entre um corte que empurra e um corte que deixa o argumento
   // mandar. Sem estilo cai em 4%, que era o valor fixo de antes.
@@ -1445,7 +1448,50 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
     ].join(";");
   }
 
-  const tela = cropDeCaixa(semAPessoa(comFolga(enq.tela), enq.pessoa));
+  const caixaDaTela = semAPessoa(comFolga(enq.tela), enq.pessoa);
+  const tela = cropDeCaixa(caixaDaTela);
+
+  // O EMPILHADO SEM O BURACO NO MEIO.
+  //
+  // Ate 10/09 o cartao era preso no topo com largura fixa de 1000 e a pessoa
+  // presa no rodape com largura fixa de 900. Slide largo vira cartao baixo, e
+  // o que sobrava entre os dois era um vazio de uns 560 px, quase um terco do
+  // quadro. Ninguem tinha visto porque o empilhado estava inalcancavel desde
+  // 24/08 (a mascara so era gerada com fundo gerado, que esta desligado), e a
+  // imagem que ilustrava isso na landing era montagem feita a mao.
+  //
+  // Agora as larguras sao TETO e nao medida: a pessoa cresce ate o espaco que
+  // sobra depois do cartao, e o cartao e centrado no espaco acima dela. Sem as
+  // dimensoes da gravacao nao da para saber a altura de cada bloco antes de
+  // compor, entao o caminho antigo fica como queda.
+  const larguraFonte = Number(dimensoes?.largura) || 0;
+  const alturaFonte = Number(dimensoes?.altura) || 0;
+  const podeMedir = larguraFonte > 0 && alturaFonte > 0 && caixaDaTela.h > 0 && h > 0;
+
+  // O respiro entre o cartao e a pessoa. Encostar um no outro faria o slide
+  // parecer parte da pessoa.
+  const RESPIRO = 60;
+
+  let cartaoLargura = LAYOUT.CARTAO_LARGURA;
+  let pessoaLargura = LAYOUT.PESSOA_LARGURA;
+  let cartaoY = LAYOUT.CARTAO_TOPO;
+
+  if (podeMedir) {
+    const par = (n) => Math.max(2, Math.floor(n / 2) * 2);
+    const cartaoAltura = Math.round(
+      cartaoLargura * ((caixaDaTela.h * alturaFonte) / (caixaDaTela.w * larguraFonte))
+    );
+    const aspectoDaPessoa = w / h;
+    const sobra = 1920 - LAYOUT.PESSOA_BASE - LAYOUT.CARTAO_TOPO - cartaoAltura - RESPIRO;
+    // 1080 e o teto de largura: passar disso corta a pessoa nas laterais, e o
+    // que se ganha em tamanho se perde em ombro cortado.
+    pessoaLargura = par(Math.min(1080, Math.max(LAYOUT.PESSOA_LARGURA, sobra * aspectoDaPessoa)));
+    const pessoaAltura = Math.round(pessoaLargura / aspectoDaPessoa);
+    const pessoaTopo = 1920 - LAYOUT.PESSOA_BASE - pessoaAltura;
+    // O cartao fica centrado no espaco acima da pessoa, e nunca colado no topo:
+    // o que sobra vira margem em cima e embaixo dele, em vez de um buraco so.
+    cartaoY = Math.max(60, Math.round((pessoaTopo - RESPIRO - cartaoAltura) / 2));
+  }
 
   return [
     // Fundo: gradiente escuro, de cima para baixo. Escuro porque o slide é
@@ -1454,16 +1500,17 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
     // um erro de ordem de argumento vira um ffmpeg que nunca termina.
     `gradients=s=1080x1920:c0=0x101728:c1=0x1d2942:x0=0:y0=0:x1=1080:y1=1920:n=2:d=${duracao.toFixed(3)}[fundo]`,
 
-    // O slide vira cartão: largura fixa com margem dos dois lados, e uma borda
+    // O slide vira cartão: largura com margem dos dois lados, e uma borda
     // clara de 4 px que separa o cartão do fundo sem precisar de sombra.
-    `[0:v]${tela},scale=${LAYOUT.CARTAO_LARGURA}:-2[cartao]`,
+    `[0:v]${tela},scale=${cartaoLargura}:-2[cartao]`,
     `[cartao]pad=iw+8:ih+8:4:4:color=0x2f3d5c[cartaoBorda]`,
-    `[fundo][cartaoBorda]overlay=(W-w)/2:${LAYOUT.CARTAO_TOPO}[comCartao]`,
+    `[fundo][cartaoBorda]overlay=(W-w)/2:${cartaoY}[comCartao]`,
 
     // A pessoa: recorta a janela da webcam, junta com a máscara, e o alpha faz
-    // o fundo do quarto sumir.
-    `[0:v]crop=${w}:${h}:${x}:${y},scale=${LAYOUT.PESSOA_LARGURA}:-2[pessoaRgb]`,
-    `[1:v]format=gray,scale=${LAYOUT.PESSOA_LARGURA}:-2[pessoaAlpha]`,
+    // o fundo do quarto sumir. As duas escalas precisam ser IGUAIS, senao o
+    // alpha nao casa com a imagem e a silhueta sai deslocada.
+    `[0:v]crop=${w}:${h}:${x}:${y},scale=${pessoaLargura}:-2[pessoaRgb]`,
+    `[1:v]format=gray,scale=${pessoaLargura}:-2[pessoaAlpha]`,
     "[pessoaRgb][pessoaAlpha]alphamerge[pessoa]",
     `[comCartao][pessoa]overlay=(W-w)/2:H-h-${LAYOUT.PESSOA_BASE}:format=auto,format=yuv420p[v]`,
   ].join(";");
