@@ -1483,9 +1483,14 @@ function montarFiltroRecortado(enq, matte, duracao, fundo, ritmo, ajusteDeBrilho
     );
     const aspectoDaPessoa = w / h;
     const sobra = 1920 - LAYOUT.PESSOA_BASE - LAYOUT.CARTAO_TOPO - cartaoAltura - RESPIRO;
-    // 1080 e o teto de largura: passar disso corta a pessoa nas laterais, e o
-    // que se ganha em tamanho se perde em ombro cortado.
-    pessoaLargura = par(Math.min(1080, Math.max(LAYOUT.PESSOA_LARGURA, sobra * aspectoDaPessoa)));
+    // O teto e o mesmo do corte de rosto (PESSOA_SOZINHA, 1400 num quadro de
+    // 1080), e nao a largura do quadro. O motivo ja estava escrito ali desde
+    // 24/08: a silhueta recortada ocupa cerca de 60% da caixa da webcam, entao
+    // o que passa de 1080 e margem TRANSPARENTE, que nao aparece. Com o teto em
+    // 1080 a pessoa parava em 850 px de altura, sobrava um vazio de 355 px
+    // entre ela e o cartao, e a legenda (que mora no terco inferior) caia no
+    // rosto dela em vez de cair abaixo dele.
+    pessoaLargura = par(Math.min(LAYOUT.PESSOA_SOZINHA, Math.max(LAYOUT.PESSOA_LARGURA, sobra * aspectoDaPessoa)));
     const pessoaAltura = Math.round(pessoaLargura / aspectoDaPessoa);
     const pessoaTopo = 1920 - LAYOUT.PESSOA_BASE - pessoaAltura;
     // O cartao fica centrado no espaco acima da pessoa, e nunca colado no topo:
