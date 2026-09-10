@@ -8481,6 +8481,49 @@ literal do TS a barra precisa ser dobrada (`\s`), senao `\s` vira "s"; e o
 terminal desta sessao come uma barra dupla antes de o Python ver, entao o escape
 foi montado com `chr(92)`.
 
+### 12. Agendamentos que se leem: quatro estados, um vocabulario (`12a677b`)
+
+Bruno: "nao da para saber o que esta programado e o que vai postar". Lido no
+banco antes de desenhar: os dados dele estavam certos (2 publicados, 6
+agendados para as 10h, todos com conta). A confusao era da tela, em tres
+mecanismos:
+
+1. O link "Agenda" do menu ia para `/schedule`, uma rota reservada que
+   redirecionava para a lista de projetos. O unico lugar chamado Agenda mostrava
+   nada.
+2. O mini-card do Paulo no quadro era `card.content`, texto gravado na geracao
+   ("2 post(s) prontos para publicacao na Quarta-feira"), que nao mudava quando
+   o post era agendado, publicado ou falhava.
+3. O estado real de cada post so aparecia abrindo o card, com palavra diferente
+   em cada lugar ("na fila", "pendente", "pronto").
+
+Desenhado no canvas e aprovado pelo Bruno antes do codigo:
+https://claude.ai/code/artifact/16ab5878-9679-456d-8271-2b0acdd52104
+
+O que entrou:
+- **`lib/posts/estado.ts`**, o vocabulario unico. `estadoDoPost` devolve um de
+  quatro estados com rotulo, detalhe e cor: Publicado (verde, com o link),
+  Agendado ("sai sozinho 10 de set. as 10:00, em 2 h 14 min", azul), Rascunho
+  ("nao sai enquanto voce nao agendar ou publicar", cinza), Falhou (motivo e o
+  que fazer, vermelho). `resumoDoDia` condensa os posts de um dia numa frase
+  para o mini-card: falha ganha de tudo, depois rascunho, depois agendado.
+  Estado e DERIVADO do dado na hora de mostrar, nunca texto guardado.
+- **Quadro**: `/api/pipeline/status?weekStart=` e a pagina do Gestor passaram a
+  trazer os posts da semana; o card do Paulo mostra o resumo do dia
+  (`KanbanCard` com `resumo`), e a legenda ganhou os quatro estados.
+- **Card do Paulo aberto**: uma faixa no topo com a frase do dia ("2 agendados
+  para 10 de set., 10:00. Saem sozinhos. Voce nao precisa fazer nada."), e a
+  linha por rede usa o mesmo vocabulario.
+- **Agenda** (`app/(app)/schedule/page.tsx`): lista cronologica de TODOS os
+  projetos da pessoa, agrupada por dia, hoje em destaque, "em X h Y min" para o
+  que ainda sai, semana passada embaixo. E tela de LEITURA de proposito:
+  publicar, agendar e reagendar continuam no card do Paulo (regra de 02/09, um
+  lugar so para a mesma acao); cada linha leva ao Gestor, e publicado abre na
+  rede. O dia e calculado em UTC-3.
+
+Fora do v1, anotado: acoes direto na Agenda (reagendar, publicar agora) e o
+Gestor abrir numa semana especifica por URL.
+
 ### Aberto
 
 - Conferir na proxima semana real quantas frases a regua derruba, e se derruba coisa certa.
