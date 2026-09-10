@@ -350,7 +350,8 @@ npx vercel deploy --prod --force
   consertada em seis mecanismos; régua de lastro (nenhum número sem fonte vai
   ao ar); quatro estados por post em toda tela e Agenda nova; cron a cada 5 min;
   primeiros posts publicados pela plataforma nas redes do Bruno em 09/09.
-  Em 10/09 (parte 98, ainda NÃO no ar): a campanha virou fila de verdade, um
+  Em 10/09 (parte 98, no ar às 12h07 de Brasília): a campanha virou fila de
+  verdade, um
   trabalho por dia, e sete dias com imagem passaram a caber (provado, 1.507 s
   no total contra o teto de 800 s do desenho antigo). A mesma prova achou três
   defeitos: toda imagem de campanha voltava HTTP 400 e caía no Pollinations,
@@ -375,8 +376,6 @@ npx vercel deploy --prod --force
 - [ ] Tráfego pago só depois disso, com UTM e `scripts/funil.mts`
 
 **Fila de código:**
-- [ ] Deploy da parte 98 para produção (`npx vercel --prod`): a fila, os três
-      consertos e o preço novo estão só no repositório
 - [ ] Fila de verdade para TRANSCRIÇÃO e SELEÇÃO (card 197, bloqueante). A
       campanha já virou em 10/09; o card só fecha com as três
 - [ ] `firstCommentError` visível no card do Paulo
@@ -8803,7 +8802,9 @@ video.
 
 ### Aberto
 
-- Deploy para producao: nada disto esta no ar ainda.
+- No ar desde as 12h07 de 10/09 (commit `4c815b4`). Fumaca em producao: a
+  rota da fila recusa quem nao assina (401) e responde a quem assina; a landing
+  mostra dois cartoes de preco.
 - Transcricao e selecao ainda NAO viraram trabalhos da fila. A campanha virou,
   que era o caso medido; o card 197 so fecha com as tres.
 - O "depois" das imagens da landing, pela esteira.
