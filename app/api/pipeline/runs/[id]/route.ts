@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { cancelarGrupo } from "@/lib/fila/trabalhos";
 
 function addDaysUtc(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 86400000);
@@ -65,7 +66,13 @@ export async function PATCH(
       where: { id },
       data: { status: "cancelled", endedAt: new Date() },
     });
-    return NextResponse.json({ ok: true });
+    // Os dias que ainda nao comecaram saem da fila junto. Sem isto, cancelar
+    // pararia a campanha na tela e a fila continuaria gerando os dias
+    // seguintes, gastando API de um trabalho que o cliente ja desistiu de ter.
+    // O dia que ja esta rodando termina: matar funcao no meio deixa post pela
+    // metade, e o motor confere o cancelamento antes de gravar.
+    const dispensados = await cancelarGrupo(id);
+    return NextResponse.json({ ok: true, diasDispensados: dispensados });
   }
 
   if (body.archived === true) {

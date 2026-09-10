@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { cn } from "@/lib/utils";
 import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
-import { FUNDADOR, GARANTIA_DIAS, PLANOS_PUBLICOS, TRIAL_DAYS, mensalDoAnual, reais } from "@/lib/planos";
+import { FUNDADOR, GARANTIA_DIAS, PLANOS_PUBLICOS, TRIAL_DAYS, itensDoPlano, mensalDoAnual, reais } from "@/lib/planos";
 import { Rastro } from "@/components/landing/rastro";
 
 /**
@@ -38,6 +38,15 @@ function PlanosConteudo() {
   // que o login falhou.
   const veioDoPortao = useSearchParams().get("assinar") === "1";
   const vagasDeFundador = useVagasDeFundador();
+
+  // ENQUANTO HOUVER VAGA DE FUNDADOR, O ESSENCIAL SAI DAQUI TAMBEM.
+  //
+  // O cupom leva o Autoridade a R$ 397, que e o preco de lista do Essencial:
+  // dois cartoes com o mesmo numero, e o de baixo entregando menos. A landing
+  // ja resolve assim, e as duas telas contarem historias diferentes sobre a
+  // mesma oferta seria pior que qualquer uma das duas. Quando as dez vagas
+  // fecharem, o Essencial volta sozinho nas duas.
+  const planos = vagasDeFundador > 0 ? PLANOS.filter((p) => p.id !== "pro") : PLANOS;
 
   return (
     <main data-theme="dark" className="min-h-screen bg-[var(--bg-primary)]">
@@ -95,8 +104,8 @@ function PlanosConteudo() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-          {PLANOS.map((plano) => {
+        <div className={cn("grid gap-6 items-start", planos.length === 2 ? "md:grid-cols-2 max-w-4xl mx-auto" : "md:grid-cols-2 lg:grid-cols-3")}>
+          {planos.map((plano) => {
             const mostrandoAnual = ciclo === "anual";
             const href = `/sign-up?plan=${plano.id}${mostrandoAnual ? "&ciclo=anual" : ""}`;
             // Fundador só no mensal: o cupom é de R$ 300 por mês para sempre, e
@@ -164,7 +173,7 @@ function PlanosConteudo() {
                 </Button>
 
                 <ul className="space-y-3">
-                  {plano.features.map((f) => (
+                  {itensDoPlano(plano, vagasDeFundador === 0).map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm">
                       <Check className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                       <span className="text-[var(--text-primary)]">{f}</span>

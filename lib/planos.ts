@@ -112,3 +112,41 @@ export function reais(valor: number): string {
 export function mensalDoAnual(plano: PlanoPublico): number {
   return Math.round(plano.anual / 12);
 }
+
+/**
+ * Os itens que o cartao mostra, com "Tudo do Essencial" ja resolvido.
+ *
+ * Existe porque, enquanto ha vaga de fundador, o Essencial sai das duas telas
+ * (o cupom leva o Autoridade ao preco de lista dele, e dois cartoes com o mesmo
+ * numero fazem a pagina argumentar contra o proprio plano de entrada). Com o
+ * Essencial fora, "Tudo do Essencial" vira referencia a um cartao que ninguem
+ * ve, e o plano MAIS caro aparece com a lista MAIS curta, que e o contrario do
+ * que a lista existe para mostrar.
+ *
+ * Mora aqui, e nao em cada tela, pela regra da casa: a landing e /planos ja
+ * dividem a mesma tabela justamente porque, quando cada uma tinha a sua copia,
+ * as duas divergiram.
+ */
+export function itensDoPlano(plano: PlanoPublico, essencialVisivel: boolean): string[] {
+  if (essencialVisivel || plano.id !== FUNDADOR.plano) return plano.features;
+  const essencial = PLANOS_PUBLICOS.find((p) => p.id === "pro");
+  if (!essencial) return plano.features;
+
+  const saida: string[] = [];
+  for (const item of plano.features) {
+    if (item !== "Tudo do Essencial") {
+      saida.push(item);
+      continue;
+    }
+    for (const herdado of essencial.features) {
+      // VOLUME NAO SE HERDA. Cada plano declara o proprio, e herdar produzia
+      // um cartao dizendo "4 gravacoes por mes viram cerca de 44 pecas" e,
+      // duas linhas abaixo, "2 gravacoes por mes viram cerca de 22 pecas".
+      // Duas promessas diferentes sobre a mesma coisa no mesmo cartao valem
+      // menos que nenhuma: quem le escolhe a menor e desconfia do resto.
+      if (/gravaç(ão|ões) por mês/i.test(herdado)) continue;
+      if (!saida.includes(herdado) && !plano.features.includes(herdado)) saida.push(herdado);
+    }
+  }
+  return saida;
+}

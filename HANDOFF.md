@@ -180,9 +180,12 @@ quem tenha comprado o Starter antes da remoção não fique sem plano.
   Client ID `779klxj5uvdi5b`). Quando aprovar: `LINKEDIN_PAGES_CLIENT_ID` e
   `LINKEDIN_PAGES_CLIENT_SECRET` na Vercel e `npx vercel --prod`.
 
-### Campanha por tema: sete dias com imagem estouram os 800 s
-- Cada dia com imagem, Vera e correção leva perto de 2,5 min. Cinco cabem;
-  sete não. A resposta é a fila de verdade (card 197), não teto.
+### Campanha por tema: RESOLVIDO em 10/09 (parte 98)
+- Cada dia virou um trabalho da fila, com os proprios 800 s. Provado com sete
+  dias, todos com imagem: 7 de 7 sairam, 1.507 s no total, dia mais lento
+  261 s. O teto da plataforma nao decide mais quantos dias o produto entrega.
+- O que AINDA nao virou fila: transcricao e selecao do video. O card 197 so
+  fecha com as tres.
 
 ---
 
@@ -338,8 +341,8 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 10/09/2026. O detalhe vive nas partes 92 a 97 no fim deste
-> arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
+> Atualizado em 10/09/2026 (fim do dia). O detalhe vive nas partes 92 a 98 no
+> fim deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
 > se divergir do código, o código manda.**
 
 **Estado em 10/09, em uma linha por frente:**
@@ -347,6 +350,12 @@ npx vercel deploy --prod --force
   consertada em seis mecanismos; régua de lastro (nenhum número sem fonte vai
   ao ar); quatro estados por post em toda tela e Agenda nova; cron a cada 5 min;
   primeiros posts publicados pela plataforma nas redes do Bruno em 09/09.
+  Em 10/09 (parte 98, ainda NÃO no ar): a campanha virou fila de verdade, um
+  trabalho por dia, e sete dias com imagem passaram a caber (provado, 1.507 s
+  no total contra o teto de 800 s do desenho antigo). A mesma prova achou três
+  defeitos: toda imagem de campanha voltava HTTP 400 e caía no Pollinations,
+  cinco de sete posts do LinkedIn abriam com o modelo falando sozinho, e o
+  teto de tokens matou o Tiago de novo. Os três corrigidos.
 - Venda: funil medido no banco (visita, demo, cadastro, checkout, assinatura,
   com origem de primeira visita); demo pública captura e-mail; preços
   397/697/1.997 no ar com cupom FUNDADOR; anúncios prontos (61 s e 2:07, 16:9 e
@@ -356,6 +365,8 @@ npx vercel deploy --prod --force
   esteira pela CLI; conta `reviewer@demandou.com` pronta para o App Review.
 
 **Bloqueia venda (só o Bruno):**
+- [ ] Aprovar as fotos fictícias da landing (`public/exemplo/novos/`) e decidir
+      o par do corte vertical, que hoje nasce do worker a partir de vídeo
 - [ ] Publicar uma semana de verdade e virar caso zero (cards 183, 158)
 - [ ] App Review da Meta com a conta reviewer (card 45); verificação da empresa
 - [ ] Verificação do OAuth no Google (card 180)
@@ -364,7 +375,10 @@ npx vercel deploy --prod --force
 - [ ] Tráfego pago só depois disso, com UTM e `scripts/funil.mts`
 
 **Fila de código:**
-- [ ] Fila de verdade para transcrição, seleção e campanha (card 197, bloqueante)
+- [ ] Deploy da parte 98 para produção (`npx vercel --prod`): a fila, os três
+      consertos e o preço novo estão só no repositório
+- [ ] Fila de verdade para TRANSCRIÇÃO e SELEÇÃO (card 197, bloqueante). A
+      campanha já virou em 10/09; o card só fecha com as três
 - [ ] `firstCommentError` visível no card do Paulo
 - [ ] Ações direto na Agenda (reagendar, publicar agora) e Gestor por semana na URL
 - [ ] Simplificar o wizard de campanha (seis telas): canvas antes de código
@@ -8580,6 +8594,225 @@ Gestor abrir numa semana especifica por URL.
 - Segundo app do LinkedIn para paginas: Bruno.
 
 *Atualizado em 09/09/2026 por Claude Code.*
+
+## Sessao 10/09/2026 (parte 98): a fila de verdade, e o que ela mostrou embaixo
+
+Bruno escolheu a fila (card 197) antes da semana real dele, com a condicao de
+ela ser provada na conta de revisao primeiro. Foi o que aconteceu, e a prova
+achou tres defeitos que nao estavam na lista de ninguem.
+
+### 1. A fila: o dia virou trabalho, e o teto virou por dia (`lib/fila/`)
+
+O teto da plataforma estava decidindo quantos dias o produto entrega, que e
+uma decisao de produto tomada por ninguem. Medido em 09/09: cada dia com
+imagem, Vera e correcao leva perto de 2,5 min, entao 800 s cabiam cinco dias e
+o sexto ficava de fora com o log dizendo "concluido parcialmente".
+
+O desenho novo, em tres regras:
+
+- **A unidade e o dia.** O dia ja era a unidade de FALHA desde 09/09; agora e
+  tambem a unidade de TEMPO. Cada dia tem os seus 800 s.
+- **Dentro de um grupo, um de cada vez e em ordem.** A pesquisa do Roberto e a
+  ordem 0 e os dias vem depois, entao nenhum dia comeca antes de a pesquisa
+  existir e dois dias da mesma semana nunca escrevem ao mesmo tempo. Grupos
+  DIFERENTES rodam em paralelo, que e o que faltava quando dois clientes
+  geravam juntos.
+- **Todo trabalho tem prazo.** Quem le declara morto o que passou dele, mesma
+  licao da maquina de estados do video: funcao derrubada no teto de tempo nao
+  consegue gravar o proprio erro.
+
+O que entrou:
+
+- `prisma/schema.prisma`: tabela `trabalhos` e a coluna `pipeline_runs.pesquisa`
+  (migracao `20260910180000_fila_de_trabalhos`, ja aplicada).
+- `lib/fila/trabalhos.ts`: enfileirar, reserva ATOMICA (`updateMany` com o
+  status no filtro, o mesmo padrao do cron de publicacao), concluir, falhar com
+  teto de 3 tentativas, ressuscitar morto, cancelar grupo, e o `cutucar` que
+  acorda a fila sem esperar o cron.
+- `lib/fila/passada.ts`: uma passada. Mora fora da rota de proposito, porque a
+  rota e a prova de ponta a ponta chamam a MESMA copia.
+- `app/api/cron/fila/route.ts`: teto de 800 s, cron a cada minuto no
+  `vercel.json`. O cron e a rede de seguranca, nao o relogio do produto.
+- `lib/pipeline/executar.ts`: o motor saiu de dentro de
+  `app/api/pipeline/run/route.ts` (1.880 linhas) porque agora duas rotas
+  precisam dele. `agendarCampanha` valida, abre a execucao e enfileira, e
+  responde em segundos; `rodarTrabalhoDaCampanha` gera UM pedaco;
+  `fecharCampanha` cobra e conclui quando o ultimo trabalho do grupo termina.
+- A rota `/api/pipeline/run` ficou com 30 linhas e a mesma resposta de sempre:
+  a tela nao precisou mudar nada.
+
+Duas coisas que a separacao obrigou a mudar, e as duas sao melhores assim:
+
+- **A pesquisa do Roberto agora e guardada** (`pipeline_runs.pesquisa`: brief,
+  bruta e fontes). Antes ela vivia numa variavel e os dias a herdavam de graca;
+  com um dia por funcao, ou fica guardada ou cada dia pesquisaria de novo, com
+  a regua de lastro medindo cada dia contra uma pesquisa diferente da do dia
+  anterior.
+- **A memoria de nao repetir e relida do banco** (os posts ja criados da mesma
+  execucao). Sobrevive a retentativa, coisa que a lista em memoria nao fazia.
+- **O erro do dia agora SOBE.** Engolir o erro era a unica forma de o dia
+  seguinte acontecer quando tudo rodava numa funcao so; agora quem garante
+  isso e a fila, e engolir faria o trabalho terminar dizendo que deu certo.
+
+Cancelar a campanha tira da fila os dias que ainda nao comecaram
+(`/api/pipeline/runs/[id]`, `cancelarGrupo`). O dia que ja roda termina.
+
+### 2. A prova: sete dias com imagem, que era o caso que estourava
+
+`scripts/tmp/provar-fila.mts` prova a mecanica sem gastar API (ordem, um por
+grupo, grupos em paralelo, duas reservas simultaneas com um vencedor so, morto
+que volta, tentativas esgotadas, grupo que se declara acabado): 10 de 10.
+
+`scripts/tmp/prova-sete-dias.mts --rodar`, na conta de revisao, semana de
+15 a 21/09, sete dias TODOS com imagem, execucao `cmtvmntw70000v0tts185cpxe`:
+
+- **7 de 7 dias com post.** Antes, cinco.
+- **Tempo total 1.507 s**, ou seja quase o dobro do teto de 800 s do desenho
+  antigo. E essa a medida de que a campanha nao cabia mais numa funcao.
+- **Dia mais lento 261 s**, nenhum perto de 800.
+- Pesquisa guardada: 12.090 caracteres, 8 fontes, uma vez so.
+- As passadas se dividiram sozinhas: 4 trabalhos, 3, 1. O orcamento de
+  parar de PEGAR trabalho novo faltando menos de 300 s funcionou sem ninguem
+  ajustar nada.
+
+Pedra no caminho, para quem repetir: a primeira tentativa pediu sete dias e
+recebeu quatro. Hoje e quinta, e a regra da casa descarta o dia anterior a
+hoje. A regra estava certa; a prova e que pedia o impossivel. A semana da prova
+passou a ser a seguinte.
+
+### 3. O primeiro defeito que a prova mostrou: TODA imagem de campanha estava quebrada
+
+No log dos dias, tres linhas seguidas em toda execucao:
+
+    [Gemini Flash Image][gemini-3.1-flash-image-preview] HTTP 400
+    [Gemini Flash Image][gemini-2.5-flash-image] HTTP 400
+    [Gemini Flash Image][gemini-3-pro-image-preview] HTTP 400
+
+Nao e cota (429), e pedido malformado. `getPlatformAspectRatio("linkedin")`
+devolve `"linkedin-landscape"`, um nome INTERNO, e ele ia cru para a API do
+Google, que so aceita "16:9", "4:3" e afins. O mapa de traducao existia desde
+sempre e so o caminho do Imagen usava. Como esse formato tambem e o PADRAO,
+valia para quase toda imagem de campanha: a cascata caia no Pollinations e o
+cliente recebia uma imagem sofrivel, ou nenhuma.
+
+Conserto (`lib/media/nano-banana.ts`): o mapa passou a se chamar
+`ASPECTO_ACEITO` e vale nos dois caminhos, com `linkedin-landscape` traduzido
+para 16:9 (1200x628 e 1,91:1, muito mais perto de 16:9 do que de 4:3).
+Provado em `scripts/tmp/provar-imagem-linkedin.mts`: antes, 400 nos tres e
+queda no Pollinations; agora volta do Nano Banana 2 em 16 s.
+
+O fallback escondia o defeito entregando alguma coisa. Achado no log de uma
+prova, e nao por alguem reclamar.
+
+### 4. O segundo defeito: metade dos posts do LinkedIn ia ao ar com o modelo falando sozinho
+
+Lidos os sete posts do LinkedIn da semana gerada, CINCO comecavam com bastidor:
+
+    d2  "Segue o post do LinkedIn corrigido. O unico problema identificado..."
+    d3  "Preciso alertar sobre uma inconsistencia antes de reescrever..."
+    d4  "Segue o post do LinkedIn corrigido, com atribuicao de fonte..."
+    d5  "Aqui esta a correcao do post do LinkedIn, resolvendo os dois..."
+    d6  "LINKEDIN"
+
+A primeira linha e a unica que o LinkedIn mostra antes do "ver mais". O X ganhou
+esse conserto em 09/09 (`limparThreadReescrita`, que joga fora tudo antes do
+"1/"); o LinkedIn nao tinha equivalente porque nao tem marca de inicio.
+
+Duas camadas, e a ordem importa:
+
+- **`limparBastidorDoTexto`**, por padrao de bloco, com duas travas ao mesmo
+  tempo: o bloco COMECA como quem entrega trabalho E FALA DO PROPRIO TEXTO.
+  "Segue o post do LinkedIn corrigido" sai; "Segue uma verdade dura sobre o seu
+  mercado", que e abertura legitima, fica. Provada nos sete posts reais: os
+  cinco sujos limpos, os dois certos INTACTOS.
+- **A marca `<POST>`**, que e a raiz. A limpeza por padrao tirou os cinco
+  blocos de abertura e ainda sobrou bastidor de outro sabor logo abaixo ("De
+  acordo com o feedback da Vera...", "Problema 1 corrigido: o texto agora..."),
+  porque essas frases nao comecam como quem entrega trabalho. Perseguir padrao
+  a padrao e enxugar gelo. Ninguem tinha dito ao modelo ONDE o post comeca: o
+  prompt da reescrita agora pede o post entre `<POST>` e `</POST>` e a extracao
+  vira determinismo, com a limpeza por padrao de queda.
+  Provado com chamada real (`scripts/tmp/provar-marca-post.mts`): o Lucas
+  escreveu 454 caracteres de conversa antes da marca, e o post entregue comeca
+  na primeira palavra do post.
+
+A limpeza vale no rascunho, na reescrita por tamanho e na reescrita da Vera.
+
+### 5. O terceiro defeito: o teto de tokens de novo, com numero novo
+
+O sabado saiu sem post do X. No log: "O modelo gastou o limite de 8192 tokens
+pensando e nao chegou a responder". E a MESMA falha de 09/09, quando o numero
+era 2048 e derrubou cinco dias. O padrao de `runAgent` subiu para 16.000, o
+mesmo teto que a Vera ganhou em 09/09, e a excecao dela virou o padrao de
+todos. Subir o teto nao encarece por si: o cobrado e o que o modelo escreve, e
+o teto so decide quando ele morre no meio do proprio raciocinio.
+
+### 6. Preco: dois cartoes com o mesmo numero
+
+Bruno viu na landing dois banners com R$ 397. Nao era bug de renderizacao: o
+cupom de fundador tira R$ 300 do Autoridade e o leva a 397, que e exatamente o
+preco de lista do Essencial. O efeito e o Essencial ficar dominado, mesmo preco
+com menos produto, e a pagina argumentar contra o proprio plano de entrada; o
+697 riscado tambem deixa de ser lido como preco real.
+
+Decisao dele, entre tres opcoes: **enquanto houver vaga de fundador, o Essencial
+sai da pagina.** A oferta fica dizivel numa frase verdadeira, o plano do meio
+pelo preco do de entrada, travado para sempre. Quando as dez vagas fecharem, o
+Essencial volta sozinho, porque a condicao e a vaga.
+
+Vale na landing e em `/planos`, pela mesma razao de sempre: duas telas contando
+historias diferentes sobre a mesma oferta e pior que qualquer uma das duas.
+E `itensDoPlano` (em `lib/planos.ts`, uma copia so) resolve o "Tudo do
+Essencial" quando o Essencial nao esta na tela, sem herdar VOLUME: a primeira
+versao produziu um cartao dizendo "4 gravacoes por mes viram cerca de 44 pecas"
+e, duas linhas abaixo, "2 gravacoes por mes viram cerca de 22 pecas". Duas
+promessas sobre a mesma coisa no mesmo cartao valem menos que nenhuma.
+
+Conferido na tela, em build de producao local: dois cartoes, lista coerente.
+
+### 7. A tabela de preco na landing: esta no lugar certo
+
+Pergunta do Bruno. A ordem hoje e Hero, Demo, Por que, Como funciona, Entrega,
+Valor, Preco: o preco vem depois da prova e depois da ancoragem no social media
+de R$ 1.200 a R$ 3.500. Para produto self-service com teste de 7 dias, esconder
+preco nao aumenta conversao, filtra quem tem orcamento e ainda faz parecer
+venda enterprise. Com o funil medido desde 08/09, isso agora e testavel.
+
+### 8. Imagens da landing: a materia-prima e ficticia, o "depois" tem que ser real
+
+Bruno pediu para trocar os prints por imagens de IA com pessoas ficticias e
+realistas. Ressalva registrada: aquela secao e "antes e depois" do que a
+plataforma PRODUZ, entao gerar o "depois" com IA seria mostrar uma saida de
+produto que o produto nunca produziu. O caminho e gerar so a materia-prima e
+passar ela pela esteira de verdade.
+
+Feito: tres fotos em `public/exemplo/novos/` no `gemini-3-pro-image-preview`
+(Nano Banana Pro) a 2K, via `scripts/tmp/gerar-materia-prima.mts`.
+
+Regra aprendida na primeira rodada, e ela esta no prompt: **nenhuma superficie
+com texto.** Pedir "sem logo, sem marca d'agua" nao bastou, e o modelo encheu a
+parede de cartaz com letra inventada ("A VOCA / POZE O GUNTAR") e o quadro
+branco com frase sem sentido. Texto falso e o dedo-duro mais rapido de imagem
+de IA. Com paredes nuas, as fotos passam por documental: pele com textura,
+enquadramento torto, sala vivida.
+
+Falta o "depois": passar o quadro pela esteira de capa de verdade
+(`gerarCapasDoCompleto` precisa de um VideoJob com `capaFonteUrl`), e decidir o
+que fazer com o par do corte vertical, que hoje nasce do worker a partir de
+video.
+
+### Aberto
+
+- Deploy para producao: nada disto esta no ar ainda.
+- Transcricao e selecao ainda NAO viraram trabalhos da fila. A campanha virou,
+  que era o caso medido; o card 197 so fecha com as tres.
+- O "depois" das imagens da landing, pela esteira.
+- Imagen 3 responde 404 nos dois modelos em toda chamada, entao a cascata
+  gasta duas idas antes de chegar ao Nano Banana. Tirar quando conveniente.
+- `firstCommentError` no card do Paulo, acoes na Agenda, Gestor por semana na
+  URL, wizard mais curto pelo canvas, sequencia de retorno do e-mail da demo.
+
+*Atualizado em 10/09/2026 por Claude Code.*
 
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 

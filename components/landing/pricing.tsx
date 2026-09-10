@@ -9,6 +9,7 @@ import {
   FUNDADOR,
   GARANTIA_DIAS,
   PLANOS_PUBLICOS,
+  itensDoPlano,
   mensalDoAnual,
   reais,
 } from "@/lib/planos";
@@ -25,6 +26,24 @@ import {
  *   sustenta preço alto para quem ainda não viu caso nenhum.
  */
 export function Pricing({ vagasDeFundador = 0 }: { vagasDeFundador?: number }) {
+  const temFundador = vagasDeFundador > 0;
+
+  // ENQUANTO HOUVER VAGA DE FUNDADOR, O ESSENCIAL SAI DA PÁGINA.
+  //
+  // Motivo, visto por quem olha a página: o fundador tira R$ 300 do Autoridade
+  // e o leva a R$ 397, que é exatamente o preço de lista do Essencial. Dois
+  // cartões com o mesmo número, e o de baixo entregando menos, fazem a página
+  // argumentar contra o próprio plano de entrada, e o R$ 697 riscado deixa de
+  // ser lido como preço de verdade.
+  //
+  // Com um cartão a menos a oferta fica dizível numa frase verdadeira: o plano
+  // do meio pelo preço do de entrada, travado para sempre. Quando as dez vagas
+  // fecharem, o Essencial volta sozinho, porque a condição é a vaga.
+  const planos = temFundador
+    ? PLANOS_PUBLICOS.filter((p) => p.id !== "pro")
+    : PLANOS_PUBLICOS;
+
+
   return (
     <section id="pricing" className="py-24 lg:py-32 relative">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
@@ -50,8 +69,8 @@ export function Pricing({ vagasDeFundador = 0 }: { vagasDeFundador?: number }) {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-          {PLANOS_PUBLICOS.map((plan, i) => {
+        <div className={cn("grid gap-6 items-start", planos.length === 2 ? "md:grid-cols-2 max-w-4xl mx-auto" : "md:grid-cols-2 lg:grid-cols-3")}>
+          {planos.map((plan, i) => {
             const fundador = plan.id === FUNDADOR.plano && vagasDeFundador > 0;
             return (
               <motion.div
@@ -128,7 +147,7 @@ export function Pricing({ vagasDeFundador = 0 }: { vagasDeFundador?: number }) {
                 </Button>
 
                 <ul className="space-y-3">
-                  {plan.features.map((feature) => (
+                  {itensDoPlano(plan, !temFundador).map((feature) => (
                     <li key={feature} className="flex items-start gap-2.5 text-sm">
                       <Check className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                       <span className="text-[var(--text-primary)]">{feature}</span>

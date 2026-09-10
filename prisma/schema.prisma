@@ -257,6 +257,15 @@ model PipelineRun {
   campaignMode String    @default("weekly") // "single" | "weekly" | "biweekly" | "recurring"
   weekStart    DateTime? // Monday of the target week (ISO)
   config       Json? // { funnelStage, weeklySchedule, singleDay?, singlePlatform? }
+  /// A pesquisa do Roberto desta execução: { brief, bruta, fontes }.
+  ///
+  /// Existe desde 10/09, quando cada dia da semana virou um trabalho da fila.
+  /// Antes, a pesquisa vivia numa variável dentro da função que gerava a
+  /// semana inteira, e por isso os dias a compartilhavam de graça. Com os dias
+  /// separados, ou a pesquisa fica guardada ou cada dia pesquisaria de novo:
+  /// custo multiplicado por dia, semana sem fio condutor, e a régua de lastro
+  /// medindo cada dia contra uma pesquisa diferente da do dia anterior.
+  pesquisa     Json?
   output       Json?
   logs         Json      @default("[]")
   startedAt    DateTime  @default(now())
@@ -533,4 +542,54 @@ model DemoRun {
   @@index([ipHash, createdAt])
   @@index([createdAt])
   @@map("demo_runs")
+}
+
+/// Um trabalho da fila: uma unidade que roda fora do ciclo da requisição.
+///
+/// Existe porque, até 10/09, campanha e vídeo rodavam DENTRO da requisição que
+/// o cliente disparou, e o teto de tempo da plataforma virava regra de produto
+/// sem ninguém decidir: cada dia com imagem, Vera e correção leva perto de 2,5
+/// minutos, então 800 s cabiam cinco dias e o sexto ficava de fora com o log
+/// dizendo "concluído parcialmente". Somava-se a isso o fato de dois clientes
+/// gerando ao mesmo tempo não terem fila nenhuma: eram duas funções disputando
+/// os mesmos limites de API, sem ordem e sem ninguém sabendo quem esperava.
+///
+/// A unidade é o DIA, e não a campanha, pela mesma razão que o dia já era a
+/// unidade de falha desde 09/09: o que falha sozinho tem que poder ser
+/// retomado sozinho.
+model Trabalho {
+  id         String    @id @default(cuid())
+  /// campanha-pesquisa, campanha-dia. Ver lib/fila/trabalhos.ts.
+  tipo       String
+  /// O que juntou estes trabalhos no mesmo pedido: o id da execução, no caso da
+  /// campanha. Dentro de um grupo os trabalhos rodam em ORDEM e um de cada vez,
+  /// que é o que garante que a pesquisa do Roberto termine antes do primeiro
+  /// dia e que dois dias da mesma semana não escrevam ao mesmo tempo.
+  grupo      String
+  /// Posição dentro do grupo. A pesquisa é 0, os dias vêm na ordem da semana.
+  ordem      Int       @default(0)
+  /// O que este trabalho precisa saber para rodar sozinho. Tudo o mais é
+  /// relido do banco na hora, de propósito: payload que carrega estado vira
+  /// cópia que envelhece.
+  payload    Json?
+  /// pendente, rodando, concluido, falhou, cancelado.
+  status     String    @default("pendente")
+  /// Quando esta tentativa começou. É o que permite declarar morto o trabalho
+  /// que passou do prazo, e é a única forma de perceber uma função derrubada
+  /// pela plataforma: ela não consegue gravar o próprio erro. Mesma lição da
+  /// máquina de estados do vídeo (lib/media/video-state.ts).
+  startedAt  DateTime?
+  finishedAt DateTime?
+  attempts   Int       @default(0)
+  error      String?   @db.Text
+  userId     String
+  projectId  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  /// A varredura pergunta sempre a mesma coisa: o que está pendente, e o que
+  /// está rodando há tempo demais.
+  @@index([status, ordem, createdAt])
+  @@index([grupo, status])
+  @@map("trabalhos")
 }

@@ -42,14 +42,31 @@ const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> 
   "twitter-landscape":  { width: 1600, height: 900  },
 };
 
-/** Aspect ratios supported by Imagen 3 (:predict endpoint) */
-const IMAGEN_ASPECT_MAP: Record<AspectRatio, string> = {
+/**
+ * O nome INTERNO do formato traduzido para o que a API do Google aceita.
+ *
+ * Vale para os DOIS caminhos, e isso mudou em 10/09. O Imagen já traduzia; o
+ * Gemini mandava o nome interno cru, e "linkedin-landscape" não é um valor
+ * válido para ninguém: a API devolvia **HTTP 400 nos três modelos**, a cascata
+ * caía no Pollinations e o cliente recebia uma imagem sofrível, ou nenhuma.
+ * Como `getPlatformAspectRatio` devolve "linkedin-landscape" para o LinkedIn e
+ * também como padrão, isso valia para quase toda imagem de campanha.
+ *
+ * Achado no log da prova da fila, e não por alguém reclamar: os três 400
+ * seguidos estavam ali em toda execução, e o fallback os escondia entregando
+ * alguma coisa.
+ *
+ * `linkedin-landscape` é 1200x628, ou seja 1,91:1, que fica muito mais perto de
+ * 16:9 (1,78) do que de 4:3 (1,33). O corte final para 1200x628 tira pouco de
+ * uma imagem 16:9 e tirava um terço de uma 4:3.
+ */
+const ASPECTO_ACEITO: Record<AspectRatio, string> = {
   "16:9":               "16:9",
   "9:16":               "9:16",
   "4:3":                "4:3",
   "3:4":                "3:4",
   "1:1":                "1:1",
-  "linkedin-landscape": "4:3",   // closest supported
+  "linkedin-landscape": "16:9",
   "twitter-landscape":  "16:9",
 };
 
@@ -60,7 +77,7 @@ const IMAGEN_ASPECT_MAP: Record<AspectRatio, string> = {
  */
 async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, apiKey: string, ctx?: ContextoMidia): Promise<string | null> {
   const models = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"];
-  const aspectParam = IMAGEN_ASPECT_MAP[aspectRatio] ?? "4:3";
+  const aspectParam = ASPECTO_ACEITO[aspectRatio] ?? "4:3";
 
   for (const model of models) {
     try {
@@ -151,7 +168,9 @@ async function tryGeminiFlashImage(
               ...(aspectRatio || quality === "hd"
                 ? {
                     imageConfig: {
-                      ...(aspectRatio ? { aspectRatio } : {}),
+                      // Traduzido, nunca cru: o nome interno derrubava a
+                      // chamada com 400 nos tres modelos.
+                      ...(aspectRatio ? { aspectRatio: ASPECTO_ACEITO[aspectRatio] ?? "16:9" } : {}),
                       ...(quality === "hd" ? { imageSize: "2K" } : {}),
                     },
                   }
@@ -211,7 +230,7 @@ async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: 
             instances: [{ prompt }],
             parameters: {
               sampleCount: 1,
-              aspectRatio: IMAGEN_ASPECT_MAP[aspectRatio] ?? "4:3",
+              aspectRatio: ASPECTO_ACEITO[aspectRatio] ?? "4:3",
               outputMimeType: "image/jpeg",
               addWatermark: false,
             },
