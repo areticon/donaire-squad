@@ -8521,6 +8521,14 @@ O que entrou:
   lugar so para a mesma acao); cada linha leva ao Gestor, e publicado abre na
   rede. O dia e calculado em UTC-3.
 
+Conferido na tela logada em producao (conta de revisao): a Agenda lista por
+dia com hoje em destaque e "Rascunho, nao sai / Agendar no Gestor"; o quadro
+diz "Rascunho · nao sai / 3 posts esperando voce / agendar ou publicar" onde
+antes dizia "3 post(s) prontos"; a legenda tem os quatro estados. Pego olhando
+a tela: o servidor esta em UTC e a Agenda mostrava "12:00" para um post das
+9h. `horaCurta` e `diaCurto` passaram a usar sempre `America/Sao_Paulo`
+(`07c3c16`).
+
 Fora do v1, anotado: acoes direto na Agenda (reagendar, publicar agora) e o
 Gestor abrir numa semana especifica por URL.
 
