@@ -537,6 +537,20 @@ model DemoRun {
   /// essa pessoa era ela lembrar do site sozinha.
   email           String?
   nome            String?
+  /// O telefone em E.164, sem sinal de mais e sem pontuacao: 5511987654321.
+  ///
+  /// Guardado ja normalizado porque e assim que a API do WhatsApp pede depois.
+  /// Guardar como a pessoa digitou e converter na leitura seria retrabalho em
+  /// todo lugar que le, e cada lugar erraria de um jeito diferente.
+  ///
+  /// Opcional de proposito, e o e-mail nao: o e-mail e o canal de entrega dos
+  /// textos, ou seja, a troca honesta da tela. Campo obrigatorio a mais derruba
+  /// a conversao da unica etapa que hoje converte.
+  telefone        String?
+  /// Quando a pessoa autorizou o contato por WhatsApp, na caixa que vem
+  /// desmarcada. Guardar a DATA, e nao um sim ou nao, porque consentimento sem
+  /// registro de quando foi dado nao se prova depois (LGPD, art. 8).
+  consentimentoEm DateTime?
   createdAt       DateTime @default(now())
 
   @@index([ipHash, createdAt])

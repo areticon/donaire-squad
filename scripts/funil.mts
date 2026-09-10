@@ -13,6 +13,7 @@
  * conversao, que e o suficiente para o dia a dia.
  */
 import { prisma } from "../lib/db/prisma";
+import { PASSOS } from "../lib/funil/eventos";
 
 const dias = Number(process.argv[2] ?? 7);
 const gasto = process.argv[3] ? Number(process.argv[3]) : null;
@@ -23,7 +24,8 @@ const eventos = await prisma.funnelEvent.findMany({
   select: { evento: true, origem: true, campanha: true, userId: true, valorCents: true, createdAt: true },
 });
 
-const PASSOS = ["visita", "demo", "cadastro", "checkout", "assinatura"] as const;
+// A lista vem do modulo, e nao de uma copia aqui: com duas listas, um passo
+// novo apareceria no banco e nao no relatorio.
 const conta = (e: string, filtro?: (x: (typeof eventos)[number]) => boolean) =>
   eventos.filter((x) => x.evento === e && (!filtro || filtro(x))).length;
 

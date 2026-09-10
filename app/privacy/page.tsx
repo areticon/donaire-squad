@@ -112,7 +112,13 @@ export default function PrivacyPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.6 Dados da demonstração pública</h3>
                 <p className="text-sm">
-                  Na demonstração gratuita da página inicial, o texto e a profissão informados são enviados ao provedor de IA para gerar o exemplo e ficam registrados junto com o resultado, para operação e melhoria do serviço, sem vínculo com nome ou e-mail do visitante.
+                  Na demonstração gratuita da página inicial, o texto e a profissão informados são enviados ao provedor de IA para gerar o exemplo e ficam registrados junto com o resultado, para operação e melhoria do serviço.
+                </p>
+                <p className="mt-2 text-sm">
+                  Se você pedir para receber os textos por e-mail, o e-mail e o nome que você informar ficam gravados na mesma rodada, ou seja, vinculados ao texto que você escreveu. O telefone é opcional: ele só é gravado se você preencher o campo e marcar a caixa de consentimento para contato por WhatsApp, que vem desmarcada.
+                </p>
+                <p className="mt-2 text-sm">
+                  Finalidades: entregar a você os textos gerados e, havendo consentimento, falar com você sobre a plataforma. Base legal: consentimento (art. 7º, I, da LGPD), manifestado quando você preenche o formulário, e registrado separadamente para o contato por WhatsApp. Você pode revogar o consentimento e pedir a exclusão a qualquer momento pelo contato da seção 12.
                 </p>
               </div>
               <div>
@@ -176,7 +182,7 @@ export default function PrivacyPage() {
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Consentimento (art. 7º, I)</p>
-                <p>Para finalidades específicas não cobertas pelas bases acima, como envio de comunicações de marketing. O consentimento pode ser revogado a qualquer momento.</p>
+                <p>Para finalidades específicas não cobertas pelas bases acima, como o envio de comunicações de marketing, a entrega dos textos gerados na demonstração pública e o contato comercial por WhatsApp, quando você marca a caixa correspondente. O consentimento pode ser revogado a qualquer momento.</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Cumprimento de obrigação legal (art. 7º, II)</p>
@@ -260,6 +266,12 @@ export default function PrivacyPage() {
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
                   <strong className="text-[var(--text-primary)]">Logs de acesso:</strong> por 6 (seis) meses, conforme exigido pelo Marco Civil da Internet (Lei nº 12.965/2014).
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
+                  <strong className="text-[var(--text-primary)]">Contato deixado na demonstração pública:</strong> por 24 (vinte e quatro) meses contados do último contato entre nós, ou até você revogar o consentimento ou pedir a exclusão, o que vier primeiro.
                 </span>
               </li>
             </ul>

@@ -16,7 +16,16 @@ import { extrairIp, hashIp } from "@/lib/demo/rate-limit";
  * continua ou pivota.
  */
 
-export const PASSOS = ["visita", "demo", "cadastro", "checkout", "assinatura"] as const;
+/**
+ * Os passos, na ordem em que a pessoa anda.
+ *
+ * "contato" entrou em 10/09 e fica ENTRE demo e cadastro: e o instante em que
+ * um desconhecido deixa e-mail (e, desde hoje, telefone) para receber os
+ * textos. Sem passo proprio, ele viraria um "demo" contado duas vezes, e a
+ * pergunta que decide se o campo de telefone fica (quantos deixam contato, e
+ * quantos deixam telefone junto) nao teria onde ser respondida.
+ */
+export const PASSOS = ["visita", "demo", "contato", "cadastro", "checkout", "assinatura"] as const;
 export type Passo = (typeof PASSOS)[number];
 
 /** O cookie de primeira visita. 90 dias porque ciclo de decisão B2B é longo. */
