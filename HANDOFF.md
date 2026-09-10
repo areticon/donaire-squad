@@ -387,8 +387,9 @@ npx vercel deploy --prod --force
 - [ ] Sequência de retorno do e-mail da demo (segundo e terceiro contato)
 - [ ] Medir, na primeira semana com tráfego, quantos deixam telefone contra
       quantos deixam só e-mail: é o que decide se o campo fica
-- [ ] Decidir o empilhado (adendo da parte 98): destravado no worker em 10/09,
-      falta trocar o par do corte na landing por uma saída de verdade
+- [ ] A legenda cai sobre o rosto quando o corte é empilhado (adendo 2 da parte
+      98): a margem é escolhida pelo app e o layout só é decidido depois, no
+      worker, então o conserto exige subir a decisão de enquadramento
 - [ ] Trilha licenciada nos anúncios, se o Bruno quiser
 - [ ] Travessões nos prompts dos agentes (116), só se algum post sair com um
 
@@ -8888,6 +8889,59 @@ Decisao pendente com o Bruno, e sao dois caminhos honestos:
 
 Enquanto nao decidir, o par do corte fica com a imagem antiga: trocar so o
 "antes" deixaria os dois lados contando historias diferentes.
+
+## Adendo 2 da parte 98 (10/09, noite): o par do corte, em tres voltas
+
+Bruno reprovou duas vezes ("ainda esta esses prints meus", depois "isso ta
+muito ruim, crie uma arte do zero"). As duas reprovacoes estavam certas, e a
+segunda apontava para a causa: o que sai da esteira e tao bom quanto o que
+entra nela, e quem tinha desenhado a materia-prima feia era eu.
+
+### O que estava errado, na ordem em que apareceu
+
+1. **O empilhado saia com um buraco no meio.** Cartao preso no topo com
+   largura fixa de 1000, pessoa presa no rodape com largura fixa de 900: slide
+   largo vira cartao baixo, e sobravam uns 560 px de vazio. Agora as larguras
+   sao TETO e nao medida, e o cartao e centrado no espaco acima da pessoa. Para
+   isso o compositor passou a receber as dimensoes da gravacao, sem as quais
+   nao da para saber a altura de cada bloco antes de compor.
+2. **A pessoa ficava pequena.** O teto de largura dela era 1080, a largura do
+   quadro. Passou a ser `PESSOA_SOZINHA` (1400), o mesmo do corte de rosto, com
+   o motivo que ja estava escrito no codigo desde 24/08: a silhueta ocupa cerca
+   de 60% da caixa da webcam, entao o que passa de 1080 e margem TRANSPARENTE.
+   Ela foi de 850 px de altura para perto de 1100, e o vazio fechou.
+3. **O slide era feio.** Cinco topicos de duas linhas em corpo 34, que no
+   cartao de 1000 px viravam borrao cinza. Refeito com tres linhas em corpo
+   grande, titulo pesado e um acento de cor.
+4. **O titulo chegava decepado.** Ele passava da faixa onde fica a janela da
+   webcam, e o recorte da tela TIRA essa faixa (`semAPessoa`).
+5. **Uma barra clara no rodape do corte.** Era a tira do slide que sobrava
+   ABAIXO da janela da webcam, e que entrava no recorte da pessoa. A janela foi
+   colada no canto.
+6. **O terceiro topico sumiu.** Consequencia do item 5: com a webcam no canto
+   de baixo, `semAPessoa` passou a aparar a faixa INFERIOR inteira. O conteudo
+   do slide subiu para o terco superior, e o rodape do slide saiu, porque ele
+   so existia para ser cortado.
+
+### O que ficou por fazer, e por que
+
+A legenda cai sobre o rosto no empilhado. Ela mora no terco inferior
+(`margemDeBaixo` 380), decisao de 24/08 que esta certa para o corte de ROSTO,
+onde a pessoa preenche o quadro. No empilhado ela ocupa a metade de baixo, e o
+mesmo terco inferior alcanca o rosto.
+
+Nao da para consertar mudando a constante: a margem e escolhida pelo APP, ao
+montar o pedido de corte, e o LAYOUT so e decidido depois, pelo agente de
+visao, ja dentro do worker. O app nao sabe qual sera o enquadramento quando
+monta a legenda. Virou card no planner, com os dois caminhos possiveis.
+
+### A licao que fica
+
+A imagem que ilustra um recurso na landing tem que SAIR do produto. Foi tentar
+produzir essa imagem de verdade que revelou, em sequencia, um recurso morto
+(o empilhado inalcancavel), um layout com buraco, um teto errado e uma legenda
+fora de lugar. Enquanto a prova da promessa era um desenho, a pagina era o
+unico lugar onde o recurso existia.
 
 ## Sessao 10/09/2026 (parte 99): o funil saiu do papel, e o telefone que a demo nunca pediu
 
