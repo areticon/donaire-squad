@@ -41,27 +41,6 @@ const ENTREGAS = [
     ],
   },
   {
-    titulo: "Os cortes, enquadrados para cada rede",
-    descricao:
-      "O squad olha a sua gravação quadro a quadro e decide o enquadramento. Gravou compartilhando a tela? O conteúdo vai grande em cima e você embaixo, em vez de virar um slide ilegível no meio do vídeo.",
-    itens: [
-      "Vertical para Shorts e Reels",
-      "Enquadramento decidido por quem olhou",
-      "Um corte por momento que presta",
-    ],
-    antes: {
-      src: "/exemplo/corte-antes.jpg",
-      alt: "Gravação de tela em formato horizontal, com o slide ocupando quase tudo e a webcam pequena no canto",
-      rotulo: "Sua gravação",
-    },
-    depois: {
-      src: "/exemplo/corte-depois.jpg",
-      alt: "O mesmo momento em vertical, com o slide grande em cima, a pessoa recortada embaixo e a legenda queimada",
-      rotulo: "O corte pronto",
-    },
-    vertical: true,
-  },
-  {
     titulo: "A capa, feita para dar vontade de clicar",
     descricao:
       "O squad procura no vídeo inteiro um quadro com o seu rosto, corrige a expressão, recorta você do fundo da sua sala e monta uma capa com fundo alinhado ao seu nicho.",
@@ -167,12 +146,12 @@ export function Entrega() {
                 </ul>
               </div>
 
+              {/* Duas colunas iguais: o unico par que sobrou aqui e o da capa,
+                  e os dois lados dele sao 16:9. A coluna desigual existia para
+                  o par do corte, que saiu em 10/09 e virou a secao de
+                  exemplos. */}
               {entrega.antes && entrega.depois ? (
-                <div
-                  className={`grid gap-4 items-center ${
-                    entrega.vertical ? "grid-cols-[1.5fr_1fr]" : "grid-cols-2"
-                  }`}
-                >
+                <div className="grid grid-cols-2 gap-4 items-center">
                   {[entrega.antes, entrega.depois].map((img, idx) => (
                     <figure key={img.src} className="space-y-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -180,12 +159,7 @@ export function Entrega() {
                         src={img.src}
                         alt={img.alt}
                         loading="lazy"
-                        // O corte vertical tem 9:16 e o quadro original 16:9. Sem
-                        // teto de altura, a linha inteira cresce para caber o
-                        // vertical e o horizontal fica perdido num mar de vazio.
                         className={`w-full rounded-xl border object-contain ${
-                          entrega.vertical && idx === 1 ? "max-h-[420px] w-auto mx-auto" : ""
-                        } ${
                           idx === 1
                             ? "border-orange-500/40 shadow-lg shadow-orange-500/10"
                             : "border-[var(--border)] opacity-70"

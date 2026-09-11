@@ -55,3 +55,6 @@ __pycache__/
 # Material intermediario das imagens da landing: regeravel pelos scripts em
 # scripts/tmp, e video nao precisa morar no repositorio.
 public/exemplo/novos/*.mp4
+# As fotos cruas do carrossel, antes da legenda: regeraveis pelo script e
+# pesadas demais para o repositorio. Vao para o site so as prontas.
+public/exemplo/carrossel/*-cru.jpg

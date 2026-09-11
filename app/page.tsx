@@ -5,6 +5,7 @@ import { Demo } from "@/components/landing/demo";
 import { Why } from "@/components/landing/why";
 import { Features } from "@/components/landing/features";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { Exemplos } from "@/components/landing/exemplos";
 import { Entrega } from "@/components/landing/entrega";
 import { Valor } from "@/components/landing/valor";
 import { Pricing } from "@/components/landing/pricing";
@@ -46,6 +47,7 @@ export default async function HomePage() {
       {/* A prova vem DEPOIS de explicar o fluxo e ANTES do preço: quem chegou
           até aqui já entendeu o que a plataforma faz, e o que decide a compra é
           ver o resultado. Preço antes da prova é pedir decisão sem argumento. */}
+      <Exemplos />
       <Entrega />
       {/* A conta de horas e de reais vem entre a prova e o preço: o número de
           R$ 697 só parece barato para quem acabou de ver que está comprando
