@@ -341,7 +341,7 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 10/09/2026 (noite). O detalhe vive nas partes 92 a 100 no fim
+> Atualizado em 11/09/2026. O detalhe vive nas partes 92 a 101 no fim
 > deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
 > se divergir do código, o código manda.**
 
@@ -369,8 +369,6 @@ npx vercel deploy --prod --force
   esteira pela CLI; conta `reviewer@demandou.com` pronta para o App Review.
 
 **Bloqueia venda (só o Bruno):**
-- [ ] Aprovar as fotos fictícias da landing (`public/exemplo/novos/`) e decidir
-      o par do corte vertical, que hoje nasce do worker a partir de vídeo
 - [ ] Publicar uma semana de verdade e virar caso zero (cards 183, 158)
 - [ ] App Review da Meta com a conta reviewer (card 45); verificação da empresa
 - [ ] Verificação do OAuth no Google (card 180)
@@ -9154,6 +9152,61 @@ devolve verdadeiro), e a entrega ja tinha sido provada em 08/09.
 - "Dias ate o primeiro post publicado" continua sem existir como medida.
 
 *Atualizado em 10/09/2026 por Claude Code.*
+
+## Sessao 11/09/2026 (parte 101): o carrossel de exemplos, e tres vezes errando a mesma coisa
+
+O Bruno reprovou as imagens da landing tres vezes seguidas, e nas tres eu errei
+do mesmo jeito. Ele escreveu "esquece esse slide do meu video" e eu entendi
+TROCAR o slide, quando o pedido era TIRAR o slide. Na terceira ele foi
+explicito: "crie uma imagem, nao reaproveite minha imagem, faca um carrossel de
+exemplos, uma aplicacao para um consultor, uma de um dentista, advogado,
+empresarios, quem trabalha com marketing digital".
+
+O erro de leitura custou tres rodadas de trabalho e a paciencia dele. Fica
+escrito porque o padrao e generalizavel: quando o cliente reprova a MESMA coisa
+duas vezes, o defeito nao esta no acabamento, esta na premissa. Na segunda
+reprovacao eu deveria ter perguntado o que ele queria ver ali, em vez de
+melhorar mais uma vez o que ele ja tinha recusado duas.
+
+### O que foi ao ar
+
+`components/landing/exemplos.tsx`, secao nova antes da entrega: cinco cortes
+verticais, um por oficio (consultoria, odontologia, advocacia, industria,
+marketing digital), em carrossel com rolagem por encaixe e setas no desktop.
+A legenda de cada cartao diz o que a pessoa JA GRAVAVA antes da plataforma
+(aula, consulta explicada, parecer, reuniao, analise de campanha), que e o
+filtro do ICP fechado em 25/08.
+
+O par "antes e depois" do corte saiu da secao de entrega, porque a prova dele
+era uma gravacao com slide. O argumento daquele bloco passou para o carrossel.
+
+### A regra que fica, e ela vale para toda imagem daqui em diante
+
+**A IA gera a FOTOGRAFIA, o TEXTO entra por codigo.**
+
+Modelo de imagem escreve letra inventada em qualquer superficie que pareca
+texto: em 10/09 ele encheu parede de cartaz com "A VOCA / POZE O GUNTAR" e um
+quadro branco com frase sem sentido. Texto falso e o dedo-duro mais rapido de
+imagem de IA. Entao o prompt PROIBE texto no quadro, e a legenda e queimada
+depois pelo ffmpeg com a mesma fonte, cor e contorno que o produto usa no
+estilo acelerado (Anton, amarelo, caixa alta).
+
+Script: `scripts/tmp/exemplos-da-landing.mts`, cerca de 25 s por oficio.
+Acrescentar nutricionista, contador ou arquiteto custa um comando.
+
+Pedra no caminho: no `drawtext` do ffmpeg o caminho da fonte tem que ser
+RELATIVO. Com o caminho absoluto do Windows, o `C:` do inicio e lido como
+separador de opcao dentro do filtro, e o erro que volta nao diz isso.
+
+### Honestidade da pagina
+
+O carrossel fica ANTES da entrega de proposito. A secao da entrega afirma, no
+proprio texto, que as imagens dela sao saidas reais da plataforma, e ela cumpre
+isso (a capa sai de `gerarCapasDoCompleto`). O carrossel e ILUSTRACAO: as
+pessoas nao existem e a legenda foi queimada por codigo. Separados, cada
+afirmacao cobre so o que ela cumpre, e nenhuma frase da pagina cobre a outra.
+
+*Atualizado em 11/09/2026 por Claude Code.*
 
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
