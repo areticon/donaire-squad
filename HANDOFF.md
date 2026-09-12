@@ -341,7 +341,7 @@ npx vercel deploy --prod --force
 
 ## 9. Próximos Passos / TODO
 
-> Atualizado em 11/09/2026. O detalhe vive nas partes 92 a 101 no fim
+> Atualizado em 12/09/2026. O detalhe vive nas partes 92 a 102 no fim
 > deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
 > se divergir do código, o código manda.**
 
@@ -377,6 +377,10 @@ npx vercel deploy --prod --force
 - [ ] Tráfego pago só depois disso, com UTM e `scripts/funil.mts`
 
 **Fila de código:**
+- [ ] A tela de planos não diz em que plano o cliente está, e mostra as três
+      ofertas com "Assinar" para quem já assina (ler do Stripe, não de user.plan)
+- [ ] A tela de configuração do projeto só tem redes sociais: voz, nicho,
+      paleta, estilo de vídeo e termos não têm onde ser mudados depois do setup
 - [ ] Fila de verdade para TRANSCRIÇÃO e SELEÇÃO (card 197, bloqueante). A
       campanha já virou em 10/09; o card só fecha com as três
 - [ ] `firstCommentError` visível no card do Paulo
@@ -9207,6 +9211,96 @@ pessoas nao existem e a legenda foi queimada por codigo. Separados, cada
 afirmacao cobre so o que ela cumpre, e nenhuma frase da pagina cobre a outra.
 
 *Atualizado em 11/09/2026 por Claude Code.*
+
+## Sessao 12/09/2026 (parte 102): o dia do lancamento, medido antes de decidido
+
+Sessao de levantamento e de conta, nao de conserto. O Bruno vai lancar hoje e
+pediu tres coisas: o que esta quebrado nas telas de conta, um simulador de
+preco com controles, e um passo a passo de quanto conteudo ele precisa ter
+publicado. Nada de codigo de produto foi alterado.
+
+### 1. Em que plano ele ficou, lido no banco E no Stripe
+
+`scripts/tmp/meu-plano.mts` le os dois lado a lado, que e a unica forma de ver
+se divergiram. Divergiram:
+
+- **bruno@areticon.com**: `user.plan = "pro"`, 1.400 creditos, e uma assinatura
+  ATIVA no Stripe de **R$ 149 por mes**, no `price_1U5y0jJIhzTmSVmM`. Esse e o
+  preco do Pro de ANTES da tabela de 02/09. Hoje a chave "pro" se chama
+  Essencial e custa R$ 397, entao a tela mostra o rotulo de R$ 397 para quem
+  paga R$ 149.
+- **bruno.donaire88@gmail.com**, que e o e-mail que ele usa no dia a dia:
+  `free`, zero creditos, nenhum cliente no Stripe.
+
+Duas contas, e so uma com assinatura. A decisao do que fazer com os R$ 149 e
+dele e virou card.
+
+### 2. As duas telas que ele reclamou, lidas no codigo
+
+**Planos.** Em `app/(app)/billing/page.tsx` a caixa "Plano atual" NAO mostra
+plano nenhum: o texto embaixo dela e "Gerencie sua assinatura pelo portal
+Stripe". E as tres ofertas aparecem sempre embaixo, com botao "Assinar",
+inclusive para quem ja assina. Foi isso que ele leu como "mostra os planos
+antigos ainda". O conserto certo le do STRIPE e nao de `user.plan`, pelo motivo
+do item 1: quem manda e a assinatura.
+
+**Configuracao.** `app/(app)/projects/[id]/settings/page.tsx` tem 31 linhas e
+renderiza APENAS o painel de redes sociais. Tudo o que define o projeto (voz,
+nicho, publico, paleta, estilo de video, trilha, termos, semana padrao) e
+escrito no wizard de setup e depois nao tem onde ser mudado. E
+`app/(app)/settings/page.tsx` e so um redirect para `/projects`.
+
+Nao consertei nenhuma das duas: "nao funciona" cabe em tres coisas diferentes
+na tela de configuracao, e a regra da casa e perguntar e testar na tela logada
+antes de propor conserto.
+
+### 3. Quanto custa operar um cliente, medido
+
+`scripts/tmp/custo-real.mts` soma `ai_usage` por operacao. Nos ultimos 30 dias:
+**R$ 220,55** no total, **R$ 12,25 por entrega** (video ou campanha), ou seja
+perto de **R$ 49 por mes** para um cliente que grava quatro vezes. As maiores
+linhas sao `agent` (R$ 68), `video_capa` (R$ 54) e `video_limpeza` (R$ 31).
+
+Achado de carona: **o cache de prompt esta em 2,1%** (64 mil tokens lidos do
+cache contra 3 milhoes de entrada nova). O prefixo cacheavel existe desde 22/08
+e foi escrito para ser reaproveitado por mais de vinte chamadas numa semana. Ou
+nao esta pegando, ou o periodo e dominado por chamadas de video, que nao usam
+prefixo. Virou card, e importa para o preco: entrada nova e a maior parte da
+conta.
+
+Pedra no caminho do proprio script: a primeira versao dizia "o cache esta
+pegando" porque olhava `cache > 0`. Com 2% isso e mentir para si mesmo. Regua
+de proporcao, nunca de existencia.
+
+### 4. O simulador de preco
+
+https://claude.ai/code/artifact/069edb87-8652-4cbf-afa6-5bea4a320fea
+
+Controles para preco, custo de IA, custo fixo, CPC, as duas conversoes, verba
+de anuncio, cancelamento e fundadores ja fechados. Sai margem, custo de
+aquisicao, valor do cliente, retorno em meses, a curva de caixa de doze meses e
+um veredito que olha DUAS reguas ao mesmo tempo (razao de 3 e retorno em 12
+meses), porque uma sozinha engana: razao boa com retorno em vinte meses quebra
+por caixa antes de dar certo.
+
+Os valores que ja vem preenchidos sao medidos, nao estimados: o custo de IA
+saiu do `ai_usage` e as conversoes do card 288.
+
+### 5. O plano de lancamento
+
+Pagina nova na wiki, em `10-profissional/demandou`, "Plano de lancamento,
+12/09". A tese: a pergunta nao e quantos posts, e a DATA DO ULTIMO e o ritmo
+dos ultimos 30 dias. Tres posts desta semana vendem mais que quarenta de marco,
+e perfil parado ha quarenta dias mata a venda em silencio, porque e exatamente
+a dor que ele vende.
+
+### Aberto
+
+- As duas telas (planos e configuracao) viraram card e nao foram tocadas.
+- A decisao sobre os R$ 149 e do Bruno.
+- Trafego pago so depois de duas semanas de cadencia visivel nos perfis.
+
+*Atualizado em 12/09/2026 por Claude Code.*
 
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
