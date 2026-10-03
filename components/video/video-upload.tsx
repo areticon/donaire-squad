@@ -73,6 +73,17 @@ export function VideoUpload({
   // Dados móveis, quando o navegador sabe dizer (só Chrome e derivados).
   const [movel, setMovel] = useState<boolean | null>(null);
   useEffect(() => setMovel(emDadosMoveis()), []);
+
+  // Fechar a aba no meio do envio perde o arquivo: o navegador pergunta antes.
+  useEffect(() => {
+    if (!enviando) return;
+    const segurar = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault();
+      ev.returnValue = "";
+    };
+    window.addEventListener("beforeunload", segurar);
+    return () => window.removeEventListener("beforeunload", segurar);
+  }, [enviando]);
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState(false);
 
@@ -181,7 +192,15 @@ export function VideoUpload({
       setArquivo(null);
       onEnviado?.();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao enviar o vídeo.");
+      // Internet que caiu no meio do envio: dizer o que houve e o que fazer,
+      // em vez do texto técnico do navegador ("Failed to fetch").
+      const semRede = typeof navigator !== "undefined" && navigator.onLine === false;
+      const msg = e instanceof Error ? e.message : "";
+      setErro(
+        semRede || /fetch|network|rede|conex/i.test(msg)
+          ? "A sua internet caiu durante o envio e o vídeo não chegou inteiro. Nada foi cobrado. Quando a conexão voltar, toque em \"Enviar e montar a semana\" de novo."
+          : msg || "Falha ao enviar o vídeo."
+      );
     } finally {
       setEnviando(false);
     }
@@ -395,6 +414,14 @@ export function VideoUpload({
                 Enviando, {progresso}%
               </p>
               <MedidorDeEnvio enviados={enviados} total={arquivo.file.size} />
+              {/* O ÚNICO MOMENTO QUE PEDE A PÁGINA ABERTA (03/10): o arquivo sai
+                  do aparelho do cliente. Depois do envio, tudo roda nos nossos
+                  servidores e o e-mail chama de volta. */}
+              <p className="text-sm mt-3 rounded-lg px-3 py-2" style={{ background: "var(--bg-primary)" }}>
+                <span className="font-semibold">Mantenha esta página aberta só até o envio chegar a 100%.</span> Depois
+                disso pode fechar, desligar ou ficar sem internet: a edição continua nos nossos servidores e avisamos
+                aqui e por e-mail quando precisarmos de você ou quando estiver pronto.
+              </p>
             </div>
           )}
 
