@@ -88,7 +88,7 @@ export function FraseImpacto(c: Ctx) {
   const tam = Number(p.tamanho) || (vertical ? 88 : 116);
   return (
     <div style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", ...entradaDoBloco(c, c.entra, 34) }}>
-      <div style={{ ...estiloDoPainel(c), padding: `${32 * u}px ${54 * u}px`, maxWidth: vertical ? c.W - 110 * u : 1500 * u, textAlign: "center", marginTop: vertical ? -260 * u : -60 * u }}>
+      <div style={{ ...estiloDoPainel(c), padding: `${32 * u}px ${54 * u}px`, maxWidth: vertical ? c.W - 110 * u : Math.min(c.W - 200, 1500 * u), textAlign: "center", marginTop: vertical ? -260 * u : -60 * u }}>
         <div style={{ ...estiloDoTitulo(c, tam), color: corDoTexto(c) }}>
           <ComDestaque c={c} texto={texto(p.texto)} />
         </div>
@@ -138,7 +138,7 @@ export function Citacao(c: Ctx) {
   const tam = vertical ? 58 : 68;
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", ...entradaDoBloco(c, c.entra, 30) }}>
-      <div style={{ ...estiloDoPainel(c), padding: `${46 * u}px ${60 * u}px ${40 * u}px`, maxWidth: vertical ? c.W - 110 * u : 1440 * u, marginTop: vertical ? -280 * u : -40 * u, position: "relative" }}>
+      <div style={{ ...estiloDoPainel(c), padding: `${46 * u}px ${60 * u}px ${40 * u}px`, maxWidth: vertical ? c.W - 110 * u : Math.min(c.W - 240, 1440 * u), marginTop: vertical ? -280 * u : -40 * u, position: "relative" }}>
         <div style={{ position: "absolute", left: 34 * u, top: -70 * u, fontFamily: "Playfair Display", fontWeight: 900, fontSize: 220 * u, lineHeight: 1, color: tema.acento }}>“</div>
         <div style={{ ...estiloDoTitulo(c, tam), fontFamily: tema.visual === "impacto" ? tema.fonteTitulo : "Playfair Display", fontWeight: tema.visual === "impacto" ? tema.pesoTitulo : 600, textTransform: "none", color: corDoTexto(c), marginTop: 30 * u }}>
           <ComDestaque c={c} texto={texto(p.texto)} />

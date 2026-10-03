@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { carregarFontesDoTema, escuroDoTema, limitar, misturar, rgba, saiSuave } from "./base";
+import { carregarFontesDoTema, escuroDoTema, limitar, misturar, rgba, saiSuave, vivo } from "./base";
 import { Capitulo, Citacao, Fecho, FraseImpacto, PainelLateral, PalavraChave, Pergaminho, PerguntaResposta, RotuloInferior, Titulo } from "./pecas/texto";
 import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo } from "./pecas/estrutura";
 import { Barras, Cifrao, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
@@ -80,16 +80,22 @@ export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas)
   };
 }
 
-export const Camadas: React.FC<PropsDasCamadas> = (props) => {
+/** As peças de tela cheia: no 16:9 a tela é só delas, e elas crescem para ocupá-la. */
+const DE_TELA = new Set(["cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "frase-impacto", "citacao"]);
+
+export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   carregarFontesDoTema();
+  // No vidro escuro, o acento é o VIVO (o mesmo matiz da marca, legível).
+  const props = bruto.tema.visual === "vidro" ? { ...bruto, tema: { ...bruto.tema, acento: vivo(bruto.tema.acento) } } : bruto;
   const frame = useCurrentFrame();
   const t = tempoDoQuadro(props.trechos, frame, props.fps);
   return (
     <AbsoluteFill style={{ backgroundColor: "transparent" }}>
       {props.camadas.map((c) => {
-        const ctx = contexto(c, t, props);
+        const ctx0 = contexto(c, t, props);
         const Peca = PECAS[c.peca];
-        if (!ctx || !Peca) return null;
+        if (!ctx0 || !Peca) return null;
+        const ctx = !ctx0.vertical && DE_TELA.has(c.peca) ? { ...ctx0, u: ctx0.u * 1.28 } : ctx0;
         return (
           <AbsoluteFill key={c.id} style={{ fontFamily: props.tema.fonteTexto }}>
             <Peca {...ctx} />
@@ -105,7 +111,8 @@ export const Camadas: React.FC<PropsDasCamadas> = (props) => {
  * grade fina e o brilho do acento, como o pitch; no documental, papel claro
  * quente. Renderizado uma vez como imagem parada.
  */
-export const FundoDaMarca: React.FC<PropsDoFundo> = ({ largura, altura, tema, cartao }) => {
+export const FundoDaMarca: React.FC<PropsDoFundo> = ({ largura, altura, tema: tema0, cartao }) => {
+  const tema = tema0.visual === "vidro" ? { ...tema0, acento: vivo(tema0.acento) } : tema0;
   const u = Math.min(largura, altura) / 1080;
   const doc = tema.visual === "documental";
   const escuro = escuroDoTema(tema);

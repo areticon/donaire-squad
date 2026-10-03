@@ -10,7 +10,7 @@ import { bundleDoRemotion } from "../src/montagem.mjs";
 const [pasta, q169, q916, visual = "vidro"] = process.argv.slice(2);
 mkdirSync(pasta, { recursive: true });
 const fontes = { vidro: ["Geist", 600, false], impacto: ["Archivo Black", 400, true], documental: ["Playfair Display", 700, false] }[visual];
-const tema = { acento: "#F97316", escuro: "#1e1f22", claro: "#dbdee1", fonteTitulo: fontes[0], pesoTitulo: fontes[1], fonteTexto: "Geist", fonteMono: "Geist Mono", visual, caixaAlta: fontes[2] };
+const tema = { acento: process.env.ACENTO ?? "#F97316", escuro: "#1e1f22", claro: "#dbdee1", fonteTitulo: fontes[0], pesoTitulo: fontes[1], fonteTexto: "Geist", fonteMono: "Geist Mono", visual, caixaAlta: fontes[2] };
 const svgCruz = '<rect x="88" y="20" width="24" height="160" rx="6" fill="ACENTO"/><rect x="45" y="60" width="110" height="24" rx="6" fill="ACENTO"/><circle cx="100" cy="72" r="60" fill="none" stroke="CLARO" stroke-width="3" stroke-dasharray="6 8"/>';
 const PECAS = [
   ["titulo", { rotulo: "Capítulo 1", titulo: "Onde Deus está, **existe prosperidade**", apoio: "Não é sobre ter mais. É sobre servir melhor." }],
@@ -63,5 +63,5 @@ async function folha(W, H, quadro, nome) {
   spawnSync("ffmpeg", ["-v", "error", "-y", ...ins, "-filter_complex", fc, "-frames:v", "1", join(pasta, `${nome}-folha.jpg`)]);
 }
 if (!process.env.SO_VERTICAL) await folha(1920, 1080, q169, `h-${visual}`);
-await folha(1080, 1920, q916, `v-${visual}`);
+if (!process.env.SO_HORIZONTAL) await folha(1080, 1920, q916, `v-${visual}`);
 console.log("ok");

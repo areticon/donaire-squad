@@ -67,6 +67,30 @@ export function misturar(a: string, b: string, k: number): string {
   const m = x.map((v, i) => Math.round(v + (y[i] - v) * k));
   return `#${m.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
+/**
+ * O acento VIVO (03/10): o mesmo matiz da marca, com saturação e luz que leem
+ * sobre o escuro. Marca de cor apagada (#6b94b3) sumia no vidro; o matiz fica,
+ * só a vivacidade sobe.
+ */
+export function vivo(hex: string): string {
+  const [r, g, b] = rgb(hex).map((v) => v / 255);
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  let h = 0;
+  const d = mx - mn;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  const l0 = (mx + mn) / 2;
+  const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
+  if (s0 < 0.08) return hex; // cinza é cinza: não inventa cor
+  const s = Math.min(1, Math.max(s0, 0.72));
+  const l = Math.min(0.66, Math.max(l0, 0.56));
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return `#${[r1, g1, b1].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("")}`;
+}
 export const luz = (hex: string) => {
   const [r, g, b] = rgb(hex);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
