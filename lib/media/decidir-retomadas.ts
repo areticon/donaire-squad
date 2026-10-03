@@ -1,7 +1,7 @@
 import { askClaude } from "@/lib/claude";
 import { jevLigado, perguntarAoJev, probabilidadeDeSim, usoVazio, type PerguntaDoJev, type UsoDoJev } from "@/lib/jev/cliente";
 import type { Remocao } from "@/lib/media/edicao";
-import { candidatosDeRetomada, chave, provaDeRetomada, textoDe, type CandidatoDeRetomada } from "@/lib/media/retomadas";
+import { candidatosDeRetomada, chave, provaDeRetomada, tentativaIncompletaRefeita, textoDe, type CandidatoDeRetomada } from "@/lib/media/retomadas";
 import type { Word } from "@/lib/media/transcribe";
 
 /**
@@ -43,7 +43,7 @@ export type DecisaoDeRetomada = CandidatoDeRetomada & {
   /** "Refez?" do JEV (0 a 1) e a escolha dele, para o relatório. */
   r: number | null;
   escolha: string | null;
-  quem: "jev" | "claude" | "nenhum" | "jev+veto" | "claude+veto";
+  quem: "codigo" | "jev" | "claude" | "nenhum" | "codigo+veto" | "jev+veto" | "claude+veto";
   corta: boolean;
 };
 
@@ -113,10 +113,20 @@ Responda SOMENTE com JSON válido, sem cercas de código: {"r":{"<id>":true,"<id
 /** O modelo que desempata a dúvida do JEV (RETOMADAS_MODELO troca). */
 const MODELO_DO_DESEMPATE = "claude-opus-5";
 
-async function decidirNoClaude(p: Word[], cands: CandidatoDeRetomada[], projectId?: string | null): Promise<Map<string, boolean>> {
+/**
+ * Na GUARDA DA SAÍDA (03/10), a regra da dúvida vira para o outro lado, pelo
+ * critério do Bruno: "na dúvida entre deixar uma frase repetida e cortar,
+ * corte a tentativa incompleta (a repetição é o erro que o cliente vê)". Ali a
+ * fala já passou por toda a limpeza; o que sobra repetido é defeito.
+ */
+const DUVIDA_NA_SAIDA = `
+
+ATENÇÃO, esta é a conferência do vídeo PRONTO: a fala já foi limpa uma vez. Aqui a regra da dúvida muda: se a parte marcada é uma frase que ficou pela metade e a pessoa recomeçou a MESMA frase logo depois, responda true mesmo na dúvida. Lista, ênfase e informação que não volta continuam false.`;
+
+async function decidirNoClaude(p: Word[], cands: CandidatoDeRetomada[], projectId?: string | null, naDuvidaCorta = false): Promise<Map<string, boolean>> {
   const saida = new Map<string, boolean>();
   if (!cands.length) return saida;
-  const bruto = await askClaude(SISTEMA_CLAUDE, JSON.stringify({ trechos: cands.map((c) => ({ id: c.id, fala: falaMarcada(p, c) })) }), {
+  const bruto = await askClaude(naDuvidaCorta ? SISTEMA_CLAUDE + DUVIDA_NA_SAIDA : SISTEMA_CLAUDE, JSON.stringify({ trechos: cands.map((c) => ({ id: c.id, fala: falaMarcada(p, c) })) }), {
     maxTokens: 4000,
     model: process.env.RETOMADAS_MODELO || MODELO_DO_DESEMPATE,
     effort: (process.env.RETOMADAS_ESFORCO as "low" | "medium" | undefined) || "low",
@@ -133,7 +143,14 @@ async function decidirNoClaude(p: Word[], cands: CandidatoDeRetomada[], projectI
  * Acha, decide e devolve as remoções das tentativas erradas. Nunca lança:
  * falhou tudo, devolve lista vazia (o vídeo sai como sairia em 02/10).
  */
-export async function decidirRetomadas(p: Word[], ctx: { projectId?: string | null } = {}): Promise<ResultadoDasRetomadas> {
+export async function decidirRetomadas(
+  p: Word[],
+  ctx: {
+    projectId?: string | null;
+    /** A guarda da saída (lib/media/guarda-da-fala.ts): a dúvida corta a tentativa incompleta. */
+    naDuvidaCorta?: boolean;
+  } = {}
+): Promise<ResultadoDasRetomadas> {
   const t0 = Date.now();
   const uso = usoVazio();
   const vazio: ResultadoDasRetomadas = { remocoes: [], decisoes: [], uso, claudeChamadas: 0, ms: 0 };
@@ -153,14 +170,28 @@ export async function decidirRetomadas(p: Word[], ctx: { projectId?: string | nu
     corta: false,
   }));
 
+  // 0. A CERTEZA POR CÓDIGO (03/10, o vídeo que o Bruno recebeu): frase
+  // interrompida seguida da MESMA frase recomeçada sai sem perguntar a
+  // ninguém. "E eu evitei usar a palavra, e eu evitei usar a palavra
+  // produtividade": a primeira é prefixo exato da segunda, não fecha a frase,
+  // e a segunda continua. Lista não passa (o item muda), ênfase não passa (a
+  // segunda não continua), e a prova de baixo ainda confere.
+  const paraDecidir: DecisaoDeRetomada[] = [];
+  for (const c of decisoes) {
+    if (tentativaIncompletaRefeita(p, c)) {
+      c.quem = "codigo";
+      c.corta = true;
+    } else paraDecidir.push(c);
+  }
+
   // 1. O JEV, em lote: corta o que é certo, descarta o que é certo.
   const duvida: DecisaoDeRetomada[] = [];
   const peloJev = jevLigado() && process.env.RETOMADAS_PELO_JEV !== "0";
-  if (peloJev) {
+  if (peloJev && paraDecidir.length) {
     try {
       await emPoucos(
-        Array.from({ length: Math.ceil(decisoes.length / CANDIDATOS_POR_ESTADO) }, (_, n) => async () => {
-          const lote = decisoes.slice(n * CANDIDATOS_POR_ESTADO, (n + 1) * CANDIDATOS_POR_ESTADO);
+        Array.from({ length: Math.ceil(paraDecidir.length / CANDIDATOS_POR_ESTADO) }, (_, n) => async () => {
+          const lote = paraDecidir.slice(n * CANDIDATOS_POR_ESTADO, (n + 1) * CANDIDATOS_POR_ESTADO);
           const state = {
             contexto:
               "Fala transcrita de um vídeo gravado de uma vez, sem roteiro, em português. Em cada item de `trechos`, a parte entre [[ ]] é candidata a sair da edição.",
@@ -197,14 +228,14 @@ export async function decidirRetomadas(p: Word[], ctx: { projectId?: string | nu
     } catch (e) {
       console.error("[retomadas] JEV falhou, tudo vai ao Claude:", e instanceof Error ? e.message : e);
       duvida.length = 0;
-      for (const c of decisoes) {
+      for (const c of paraDecidir) {
         c.quem = "nenhum";
         c.corta = false;
         duvida.push(c);
       }
     }
-  } else {
-    duvida.push(...decisoes);
+  } else if (!peloJev) {
+    duvida.push(...paraDecidir);
   }
 
   // 2. O Claude, só para a dúvida (ou tudo, com o JEV desligado).
@@ -214,7 +245,7 @@ export async function decidirRetomadas(p: Word[], ctx: { projectId?: string | nu
     const lote = duvida.slice(i, i + 40);
     try {
       claudeChamadas++;
-      const r = await decidirNoClaude(p, lote, ctx.projectId);
+      const r = await decidirNoClaude(p, lote, ctx.projectId, ctx.naDuvidaCorta);
       for (const c of lote) {
         c.quem = "claude";
         c.corta = r.get(c.id) === true;

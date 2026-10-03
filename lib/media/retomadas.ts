@@ -309,6 +309,54 @@ export function provaDeRetomada(palavras: Array<{ word: string }>, de: number, a
   return faltam / doCorte.length <= 0.25;
 }
 
+/**
+ * FRASE INTERROMPIDA SEGUIDA DA MESMA FRASE RECOMEÇADA (03/10), a certeza que
+ * dispensa modelo. O caso que chegou ao Bruno no vídeo pronto, aos 100 s:
+ *
+ *   "E eu evitei usar a palavra, e eu evitei usar a palavra produtividade"
+ *
+ * A assinatura, toda medível:
+ * - a tentativa NÃO fecha frase (termina em vírgula, hífen ou nada);
+ * - ela é PREFIXO da tomada seguinte, na ordem (uma palavra trocada passa a
+ *   partir de 5 palavras: "pagou em março" refeito como "pagou em abril");
+ * - a tomada seguinte CONTINUA depois do prefixo (senão é ênfase: "você
+ *   precisa orar, você precisa orar.");
+ * - a prova de que nada de conteúdo some (`provaDeRetomada`).
+ *
+ * Lista não passa: o item muda logo na primeira palavra forte e, sem a
+ * troca tolerada (menos de 5 palavras), deixa de ser prefixo.
+ */
+export function tentativaIncompletaRefeita(p: Array<{ word: string }>, c: Pick<CandidatoDeRetomada, "tipo" | "de" | "ate" | "boa">): boolean {
+  if (c.tipo !== "retomada" && c.tipo !== "recomeco") return false;
+  if (c.boa !== c.ate + 1 || fechaFrase(p[c.ate].word)) return false;
+  const ka0 = p.slice(c.de, c.ate + 1).map((w) => chave(w.word));
+  if (ka0.filter(Boolean).length < 3 || ka0.length > 25) return false;
+  // A tentativa pode abrir com gagueira ("E e eu evitei...") e a tomada boa
+  // com um conectivo ("então, eu evitei..."): o alinhamento pula até duas
+  // palavras no começo da tentativa e uma no começo da tomada boa. O que é
+  // pulado na tentativa sai junto com ela.
+  for (let sa = 0; sa <= 2; sa++) {
+    for (let sb = 0; sb <= 1; sb++) {
+      const ka = ka0.slice(sa);
+      if (ka.length < 3 || !ka[0]) continue;
+      const i0 = c.boa + sb;
+      const kb = p.slice(i0, i0 + ka.length + 1).map((w) => chave(w.word));
+      if (kb.length <= ka.length) continue;
+      let iguais = 0;
+      for (let i = 0; i < ka.length; i++) if (ka[i] === kb[i]) iguais++;
+      const tolera = ka.length >= 5 ? 1 : 0;
+      if (ka[0] !== kb[0] || iguais < ka.length - tolera) continue;
+      if (!ka.some((k, i) => forte(k) && kb[i] === k)) continue;
+      // A tomada boa continua: a palavra do fim do prefixo não fecha frase e
+      // há fala depois dela.
+      const fimDoPrefixo = i0 + ka.length - 1;
+      if (!p[fimDoPrefixo + 1] || fechaFrase(p[fimDoPrefixo].word)) continue;
+      return provaDeRetomada(p, c.de, c.ate);
+    }
+  }
+  return false;
+}
+
 /** O texto de [de..ate], para o relatório e para o JEV. */
 export function textoDe(p: Array<{ word: string }>, de: number, ate: number): string {
   return p.slice(Math.max(0, de), Math.max(0, ate + 1)).map((w) => w.word).join(" ");
