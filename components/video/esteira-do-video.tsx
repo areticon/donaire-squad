@@ -217,6 +217,28 @@ export function EsteiraDoVideo({
   const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
   const [dispensados, setDispensados] = useState<string[]>([]);
   /**
+   * O AVISO DO VIGIA, FIXO POR ETAPA (02/10, incidente das 21h): o texto do
+   * "passou do tempo normal" ou da retomada fica o mesmo enquanto a etapa for
+   * a mesma, mesmo que uma consulta venha sem ele (o vigia acabou de retomar
+   * e `passouDoPrazo` voltou a falso). Sem isto a tarja piscava a cada 4 s.
+   * Só troca quando chega um aviso NOVO (retomada) ou a etapa muda.
+   */
+  const avisosFixos = useRef<Record<string, { etapa: string; texto: string }>>({});
+  const avisoDaEtapa = (v: VideoAoVivo): string | null => {
+    const etapa = v.status;
+    const novo = v.retomada
+      ? v.retomada.motivo === "reiniciado"
+        ? `Nossos servidores de vídeo foram atualizados no meio desta etapa, e ela foi retomada de onde parou (tentativa ${v.retomada.n} de ${v.retomada.max}).`
+        : `Ela demorou mais que o normal e foi retomada sozinha (tentativa ${v.retomada.n} de ${v.retomada.max}).`
+      : v.passouDoPrazo
+        ? "Ela passou do tempo normal; o servidor confere e retoma sozinho, do ponto onde parou."
+        : null;
+    const guardado = avisosFixos.current[v.id];
+    if (guardado && guardado.etapa !== etapa) delete avisosFixos.current[v.id];
+    if (novo && (!guardado || guardado.etapa !== etapa || v.retomada)) avisosFixos.current[v.id] = { etapa, texto: novo };
+    return avisosFixos.current[v.id]?.texto ?? null;
+  };
+  /**
    * "APROVEITAR O ROTEIRO" aberto para qual vídeo (02/10). Abre pelo botão da
    * faixa pronta ou pelo link do aviso e do e-mail (?aproveitar=<id>), lido
    * depois de montar para não divergir do desenho do servidor.
@@ -577,6 +599,7 @@ export function EsteiraDoVideo({
           aoRepetir={(rota) => void executar(v.id, rota)}
           aoDispensar={() => setDispensados((d) => [...d, v.id])}
           aoAproveitar={() => setAproveitar(v.id)}
+          avisoFixo={avisoDaEtapa(v)}
         />
       ))}
 
@@ -611,6 +634,7 @@ function FaixaDeUmVideo({
   aoRepetir,
   aoDispensar,
   aoAproveitar,
+  avisoFixo,
 }: {
   projectId: string;
   video: VideoAoVivo;
@@ -621,6 +645,8 @@ function FaixaDeUmVideo({
   aoDispensar: () => void;
   /** Abre o "Aproveitar o roteiro" deste vídeo (02/10). */
   aoAproveitar: () => void;
+  /** O aviso do vigia desta etapa, fixo até a etapa mudar (sem piscar). */
+  avisoFixo: string | null;
 }) {
   // Conta da RODADA atual, e não do envio (30/09): o vídeo refeito contava do
   // envio original e mostrou 196 minutos.
@@ -788,12 +814,17 @@ function FaixaDeUmVideo({
   // do previsto, número que só cresce (a troca de etapa não o faz voltar), e o
   // que está acontecendo agora.
   // O relógio do gêmeo conta do pedido (`inicioDaRodada` dele); os outros, da rodada.
+  // NUNCA PARADO (incidente das 21h de 02/10): o número só desce (a promessa
+  // menos o decorrido) e, passada a promessa, só sobe ("passou do previsto
+  // em N min"). O piso da etapa não segura mais o relógio, porque segurar era
+  // o "faltam 1 min" congelado; quando a etapa atrasa, quem diz é a frase do
+  // "Agora:", sem número.
   const desdeOInicio = decorrido;
   const total = linha.totalSegundos;
   const piso = linha.restaDepoisDoAtualSegundos;
   const atraso = desdeOInicio - total;
-  const atrasou = atraso > 60;
-  const restante = Math.max(total - desdeOInicio, piso, 0);
+  const atrasou = atraso > 0;
+  const restante = Math.max(total - desdeOInicio, 0);
   const atrasandoNaEtapa = !atrasou && total - desdeOInicio < piso;
   const minutosDaEdicao = Math.ceil(
     segundosDaEdicao(v.durationSec, { efeitos: Boolean(v.linha?.efeitosLigados), revisao: Boolean(v.linha?.revisaoLigada) }) / 60
@@ -802,15 +833,12 @@ function FaixaDeUmVideo({
   // O QUE O SERVIDOR ESTÁ FAZENDO COM A ETAPA LENTA (01/10). Sem conexão, o
   // estado mostrado é o último que chegou, então a frase de retomada fica de
   // fora para não afirmar o velho.
-  const avisoDoVigia = semConexao
-    ? null
-    : v.retomada
-      ? v.retomada.motivo === "reiniciado"
-        ? `Nossos servidores de vídeo foram atualizados no meio desta etapa, e ela foi retomada automaticamente de onde parou (tentativa ${v.retomada.n} de ${v.retomada.max}).`
-        : `Esta etapa demorou mais que o normal e foi retomada automaticamente (tentativa ${v.retomada.n} de ${v.retomada.max}).`
-      : v.passouDoPrazo
-        ? "Esta etapa passou do tempo normal. O servidor confere e retoma sozinho em até um minuto, do ponto onde parou."
-        : null;
+  // SEM PISCAR (incidente das 21h de 02/10): a tarja laranja aparecia e sumia
+  // a cada consulta, porque `passouDoPrazo` vira falso no segundo em que o
+  // vigia retoma e verdadeiro de novo depois. Agora o aviso é FIXO por etapa
+  // (o pai guarda o último até a etapa mudar) e mora na frase do "Agora:",
+  // uma linha de texto, sem tarja.
+  const avisoDoVigia = semConexao ? null : avisoFixo;
 
   const titulo =
     esperando === "roteiro"
@@ -911,17 +939,6 @@ function FaixaDeUmVideo({
         </div>
       </div>
 
-      {avisoDoVigia && (
-        <p
-          className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs"
-          style={{ color: "var(--text-primary)" }}
-          data-faixa="retomada"
-        >
-          <RotateCcw className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-          {avisoDoVigia}
-        </p>
-      )}
-
       <div className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
         <div className="absolute top-[9px] h-0.5" style={{ left: `${metadeDaColuna}%`, right: `${metadeDaColuna}%`, background: "var(--border)" }} />
         <div
@@ -947,7 +964,9 @@ function FaixaDeUmVideo({
       {!esperando && (
         <p className="text-xs" style={{ color: "var(--text-primary)" }} data-agora>
           <span className="font-semibold">Agora:</span> {linha.agora}
-          {(atrasou || atrasandoNaEtapa) && !semConexao ? (
+          {avisoDoVigia ? (
+            <span style={{ color: "var(--text-muted)" }} data-retomada> {avisoDoVigia}</span>
+          ) : (atrasou || atrasandoNaEtapa) && !semConexao ? (
             <span style={{ color: "var(--text-muted)" }}> Esta etapa está levando mais que o previsto, e segue andando.</span>
           ) : null}
         </p>

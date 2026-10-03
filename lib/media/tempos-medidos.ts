@@ -41,8 +41,16 @@ const FOLGA = 1.15;
 const com = (pontos: Array<[number, number]>): Curva => pontos.map(([m, t]) => [m, +(t * FOLGA).toFixed(2)] as const);
 
 export const CURVAS = {
-  /** Do envio ao roteiro pronto: ouvir, pesquisar, escolher e planejar. */
-  roteiro: com([[0, 3.5], [0.8, 3.9], [4.7, 8.2], [22, 15.6]]),
+  /**
+   * Do envio ao roteiro pronto: ouvir, pesquisar, escolher e planejar.
+   * Medido com o diretor antigo: 3,1 a 3,9 min (0,8 min de vídeo), 5,8 a 8,2
+   * (4,7 min), 15,6 (22 min). Desde a noite de 02/10 o plano sai do diretor
+   * limpo (lib/media/diretor-limpo.ts), em segundos e bloco a bloco: a parte
+   * do diretor (perto de 1/4 do roteiro nas medidas) sai da conta. Ainda sem
+   * amostra do diretor novo, então o corte é conservador; medir de novo com
+   * `scripts/tmp/tempos-medidos-0210.mts` depois dos primeiros vídeos.
+   */
+  roteiro: com([[0, 2.6], [0.8, 3.0], [4.7, 6.2], [22, 12]]),
   /** Da aprovação aos cortes, capas, textos e à edição da fala do vídeo inteiro. */
   base: com([[0, 2], [0.8, 2.2], [4.7, 9.2], [22, 28]]),
   /** Os efeitos: plano do diretor, imagens e cenas (antes do render). */
