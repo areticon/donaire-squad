@@ -18,6 +18,7 @@ import {
   unirRemocoes,
   vetarRemocoesLongasDeFala,
 } from "@/lib/media/limpeza";
+import { decidirRetomadas } from "@/lib/media/decidir-retomadas";
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import { edicaoDaLinguagem } from "@/lib/media/linguagem-da-edicao";
 import {
@@ -315,8 +316,21 @@ export async function remocoesDaGravacao(
   palavras: Word[],
   duracaoSec: number,
   ctx: { id: string; projectId: string; semIA?: boolean }
-): Promise<{ remocoes: Array<{ de: number; ate: number; motivo: string }>; pausas: number; hesitacoes: number }> {
+): Promise<{ remocoes: Array<{ de: number; ate: number; motivo: string }>; pausas: number; hesitacoes: number; retomadas: number }> {
   const pausas = detectarPausas(palavras, duracaoSec);
+
+  // A FRASE ERRADA E O RETAKE (03/10): "eu erro a sentença, gaguejo no meio
+  // e começo de novo, e a IA deixou as duas lá". O código acha os candidatos,
+  // o JEV decide em lote (a dúvida vai ao Claude) e cada corte passa pela
+  // prova de que só sai o que é dito de novo. Entra DEPOIS do veto de fala
+  // longa de propósito: a tomada errada tem 2 a 5 s de fala, e o veto existe
+  // para a muleta, não para ela. Falhar aqui não derruba nada.
+  const retomadas = ctx.semIA
+    ? { remocoes: [] as Array<{ de: number; ate: number; motivo: string }> }
+    : await decidirRetomadas(palavras, { projectId: ctx.projectId }).catch((e) => {
+        console.error(`[${ctx.id}] retomadas falharam, segue sem:`, e instanceof Error ? e.message : e);
+        return { remocoes: [] as Array<{ de: number; ate: number; motivo: string }> };
+      });
 
   // A limpeza de fala vem DEPOIS das pausas e junto com elas, porque as duas
   // atacam problemas diferentes: pausa é silêncio, hesitação tem áudio.
@@ -352,19 +366,22 @@ export async function remocoesDaGravacao(
   // de 2,1 s de fala ("você, é delegar, né") que colou duas ideias no corte
   // de Moisés.
   const remocoes = emendarNoSilencio(
-    vetarRemocoesLongasDeFala(
-      unirRemocoes(
+    unirRemocoes(
+      vetarRemocoesLongasDeFala(
         unirRemocoes(
-          unirRemocoes(pausas, detectarFalsosComecos(palavras)),
-          detectarMuletasArrastadas(palavras)
+          unirRemocoes(
+            unirRemocoes(pausas, detectarFalsosComecos(palavras)),
+            detectarMuletasArrastadas(palavras)
+          ),
+          unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
         ),
-        unirRemocoes(detectarRepeticoes(palavras), limpezaParaRemocoes(fala, palavras))
+        palavras,
+        pausas
       ),
-      palavras,
-      pausas
+      retomadas.remocoes
     ),
     palavras
   );
 
-  return { remocoes, pausas: pausas.length, hesitacoes: fala.length };
+  return { remocoes, pausas: pausas.length, hesitacoes: fala.length, retomadas: retomadas.remocoes.length };
 }

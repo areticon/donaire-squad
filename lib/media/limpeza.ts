@@ -2,6 +2,7 @@ import { askClaude } from "@/lib/claude";
 import type { Word } from "@/lib/media/transcribe";
 import { margemNoSilencio, respiroDaPausa, type Remocao } from "@/lib/media/edicao";
 import { falaCoberta, FALA_MAXIMA_POR_REMOCAO_SEC } from "@/lib/media/texto-final-do-corte";
+import { muletasPeloJev } from "@/lib/media/decidir-retomadas";
 
 /**
  * A limpeza da fala: hesitação, muleta e recomeço de frase.
@@ -673,6 +674,13 @@ export async function detectarHesitacao(
   usageCtx?: { projectId?: string }
 ): Promise<Limpeza[]> {
   if (palavras.length < 50) return [];
+
+  // A MULETA PELO JEV (03/10, "tudo que é decisão vai para o JEV"): cada "é",
+  // "então", "aí", "assim" vira uma pergunta de sim ou não ao JEV, em lote.
+  // O recomeço de frase saiu deste caminho e tem o dele (`decidirRetomadas`).
+  // JEV fora do ar ou LIMPEZA_PELO_JEV=0: segue o Claude de antes.
+  const peloJev = await muletasPeloJev(palavras, { projectId: usageCtx?.projectId });
+  if (peloJev) return sanearLimpeza(peloJev, palavras);
 
   const blocos: Array<{ inicio: number; palavras: Word[] }> = [];
   for (let i = 0; i < palavras.length; i += PALAVRAS_POR_BLOCO) {

@@ -1,4 +1,5 @@
 import type { Word } from "@/lib/media/transcribe";
+import { ehTomadaRefeita, provaDeRetomada } from "@/lib/media/retomadas";
 
 /**
  * O TEXTO FINAL de um corte: o que o espectador ouve depois da edição, e não a
@@ -151,10 +152,13 @@ export function defeitosDoTextoFinal(
     const tiradas = palavras.slice(a + 1, b);
     const fala = tiradas.reduce((s, w) => s + (w.end - w.start), 0);
     const texto = tiradas.map((w) => w.word).join(" ");
-    if (fala > FALA_MAXIMA_POR_REMOCAO_SEC) {
+    // A tomada refeita (03/10) tira de 2 a 5 s de fala de propósito, e o que
+    // ela tira é dito de novo logo depois: não é defeito.
+    const refeita = provaDeRetomada(palavras, a + 1, b - 1) && ehTomadaRefeita(palavras, a + 1, b - 1);
+    if (fala > FALA_MAXIMA_POR_REMOCAO_SEC && !refeita) {
       defeitos.push(`emenda tira ${fala.toFixed(1)}s de fala: "${texto}"`);
     }
-    if ([palavras[a], ...tiradas.slice(0, -1)].some((w) => fechaFrase(w.word)) && tiradas.length > 3) {
+    if (!refeita && [palavras[a], ...tiradas.slice(0, -1)].some((w) => fechaFrase(w.word)) && tiradas.length > 3) {
       defeitos.push(`emenda atravessa fim de frase e junta ideias: "...${palavras[a].word} / ${palavras[b].word}..."`);
     }
   }
