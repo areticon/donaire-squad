@@ -91,6 +91,8 @@ export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   const t = tempoDoQuadro(props.trechos, frame, props.fps);
   return (
     <AbsoluteFill style={{ backgroundColor: "transparent" }}>
+      {/* A largura das peças inclui o respiro: sem isto o cartão do número vazava no 9:16 (prova de 03/10). */}
+      <style>{"*{box-sizing:border-box}"}</style>
       {props.camadas.map((c) => {
         const ctx0 = contexto(c, t, props);
         const Peca = PECAS[c.peca];
