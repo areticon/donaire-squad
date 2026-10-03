@@ -91,30 +91,47 @@ export async function perguntarAGuarda(guarda, url, protegido, assinar) {
 }
 
 /**
- * A guarda inteira: pergunta, apara se for o caso e sobe o aparado.
- * Devolve o `montado` que vai ao app (o novo, ou o mesmo) e o relatório.
+ * A guarda inteira: pergunta, apara se for o caso e sobe o aparado, até
+ * `guarda.rodadas` vezes (padrão 2). A segunda rodada existe porque a fala do
+ * arquivo aparado é transcrita de novo e o que estava colado no que saiu
+ * aparece (medido em 03/10 na base de 17 min: a primeira rodada tirou 11
+ * trechos e a segunda achou mais 4, entre eles "está trazendo uma promessa
+ * pra uma cidade," refeita como "pra uma nação"). Devolve o `montado` que vai
+ * ao app (o último, ou o mesmo) e o relatório.
  */
 export async function guardarFala({ arquivo, montado, guarda, protegido = [], pasta, chave, subir, assinar }) {
   if (!guarda?.url) return { montado, relatorio: null };
   const t0 = Date.now();
+  const rodadas = Math.max(1, Math.min(3, Number(guarda.rodadas) || 2));
+  const feitas = [];
+  let atual = { arquivo, montado };
   try {
-    const resposta = await perguntarAGuarda(guarda, montado.url, protegido, assinar);
-    const remover = (resposta.remover ?? []).filter((r) => Number.isFinite(r.de) && Number.isFinite(r.ate) && r.ate > r.de);
-    if (!remover.length) {
-      return { montado, relatorio: { conferido: true, tirados: 0, sobras: [], segundos: Math.round((Date.now() - t0) / 1000) } };
+    for (let n = 0; n < rodadas; n++) {
+      const resposta = await perguntarAGuarda(guarda, atual.montado.url, protegido, assinar);
+      const remover = (resposta.remover ?? []).filter((r) => Number.isFinite(r.de) && Number.isFinite(r.ate) && r.ate > r.de);
+      if (!remover.length) break;
+      const aparado = join(pasta, `guarda-aparado-${n}.mp4`);
+      const medida = await apararArquivo(atual.arquivo, aparado, remover, pasta);
+      const novo = await subir(aparado, chave, "video/mp4");
+      console.log(`[guarda-da-fala ${chave}] rodada ${n + 1}: ${remover.length} trecho(s) tirado(s), ${medida.segundosTirados}s`);
+      feitas.push({ tirados: remover.length, ...medida, sobras: resposta.sobras ?? [], antesUrl: atual.montado.url });
+      atual = { arquivo: aparado, montado: novo };
     }
-    const aparado = join(pasta, "guarda-aparado.mp4");
-    const medida = await apararArquivo(arquivo, aparado, remover, pasta);
-    const novo = await subir(aparado, chave, "video/mp4");
-    console.log(`[guarda-da-fala ${chave}] ${remover.length} trecho(s) tirado(s), ${medida.segundosTirados}s`);
     return {
-      montado: novo,
-      arquivo: aparado,
-      relatorio: { conferido: true, tirados: remover.length, ...medida, sobras: resposta.sobras ?? [], antesUrl: montado.url, segundos: Math.round((Date.now() - t0) / 1000) },
+      montado: atual.montado,
+      arquivo: atual.arquivo,
+      relatorio: {
+        conferido: true,
+        tirados: feitas.reduce((s, f) => s + f.tirados, 0),
+        sobras: feitas.flatMap((f) => f.sobras),
+        rodadas: feitas,
+        segundos: Math.round((Date.now() - t0) / 1000),
+      },
     };
   } catch (e) {
     const motivo = e instanceof Error ? e.message : String(e);
     console.error(`[guarda-da-fala ${chave}] falhou, o arquivo vai como está: ${motivo}`);
-    return { montado, relatorio: { conferido: false, motivo: motivo.slice(0, 300) } };
+    // O que já foi aparado numa rodada anterior vale (já está publicado).
+    return { montado: atual.montado, relatorio: { conferido: false, motivo: motivo.slice(0, 300), rodadas: feitas } };
   }
 }
