@@ -83,7 +83,7 @@ const BASE = "https://api.higgsfield.ai";
 
 export type TipoDeImagem = "colagem" | "arte" | "fundo" | "elemento" | "cenario";
 
-export type IdDaHiggsfield = "higgsfield-gpt-image-2.5-low" | "higgsfield-recraft-v4.1" | "higgsfield-grok-imagine-2.0";
+export type IdDaHiggsfield = "higgsfield-gpt-image-2.5-low" | "higgsfield-gpt-image-2.5-medium" | "higgsfield-recraft-v4.1" | "higgsfield-grok-imagine-2.0";
 /** A OpenAI direta (lib/media/gpt-image.ts): o medium era o caminho da arte até 01/10. */
 export type IdDaOpenAI = "openai-gpt-image-2-low" | "openai-gpt-image-2-medium";
 export type GeradorDeImagem = IdDaHiggsfield | IdDaOpenAI | "google";
@@ -130,6 +130,30 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
       ...(p.imagemUrl ? { image_urls: [p.imagemUrl] } : {}),
     }),
   },
+  /**
+   * MEDIUM (02/10, prova A/B em scripts/tmp/ab-0210): a imagem da montagem
+   * sai como fotografia em "medium" (23 a 24 de 25 no juiz por visão), e o
+   * "high", padrão da ferramenta, acrescentou 1 ponto por 2,8x o preço. O
+   * preço do medium NÃO está na API nem no HTML da página de preços (carrega
+   * por script): US$ 0,06 é estimativa pela razão do GPT Image 2 da OpenAI
+   * (low 0,0096 medido, medium 0,045 medido), A CONFERIR no painel da conta.
+   */
+  "higgsfield-gpt-image-2.5-medium": {
+    endpoint: "marketing-studio/image/sunburst",
+    precoUsd: 0.06,
+    edita: true,
+    limiteDoPrompt: 5000,
+    proporcoes: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    prazoMs: 150_000,
+    corpo: (p) => ({
+      prompt: p.prompt,
+      resolution: "2k",
+      quality: "medium",
+      aspect_ratio: p.proporcaoAceita,
+      enhance_prompt: false,
+      ...(p.imagemUrl ? { image_urls: [p.imagemUrl] } : {}),
+    }),
+  },
   // Utility em 1K: o adesivo ocupa um terço do quadro e o recorte reduz para
   // 1024 de qualquer forma (recortarPorCor). O verde vai como parâmetro: na
   // prova, só com o texto, um modelo devolveu fundo cáqui (30/09).
@@ -166,10 +190,17 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
   },
 };
 
-/** Os aprovados na prova de 30/09. */
+/**
+ * Os aprovados na prova de 30/09, revistos na prova A/B de 02/10: a colagem
+ * da montagem sobe para medium e a arte de campanha vai ao GPT Image 2 da
+ * OpenAI em medium (US$ 0,045 medido por arte, contra 0,0096 do low; o juiz
+ * deu 23 a 24 de 25 contra 17 a 22). O fundo do corte fica no low: não
+ * passou por prova. IMAGEM_ARTE na Vercel precisa acompanhar (ou sair) para
+ * o padrão valer lá.
+ */
 const PADRAO: Record<TipoDeImagem, GeradorDeImagem> = {
-  colagem: "higgsfield-gpt-image-2.5-low",
-  arte: "higgsfield-gpt-image-2.5-low",
+  colagem: "higgsfield-gpt-image-2.5-medium",
+  arte: "openai-gpt-image-2-medium",
   fundo: "higgsfield-gpt-image-2.5-low",
   elemento: "higgsfield-recraft-v4.1",
   cenario: "higgsfield-grok-imagine-2.0",
