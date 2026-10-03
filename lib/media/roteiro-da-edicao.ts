@@ -7,7 +7,7 @@ import { intervalosDoTrecho } from "@/lib/media/edicao";
 import { textoFinalDoCorte } from "@/lib/media/texto-final-do-corte";
 import { bordasDoCorte } from "@/lib/media/bordas-do-corte";
 import { remocoesDaGravacao } from "@/lib/media/pedido-de-corte";
-import { dirigirMontagem, novaIdeiaDaCena } from "@/lib/media/diretor-de-montagem";
+import { dirigirMontagem, novaIdeiaDaCena, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
 import { falaDoCorte, montagemNaEdicaoLigada } from "@/lib/media/montagem-nos-cortes";
 import {
   blocosDaFala,
@@ -252,6 +252,34 @@ async function gravarRoteiroDoVideo(id: string, r: RoteiroDoVideo): Promise<void
     WHERE id = ${id}`;
 }
 
+/**
+ * UM BLOCO do completo por vez, direto no caminho do jsonb (03/10). Até aqui
+ * cada bloco pronto regravava o roteiro INTEIRO da memória deste processo:
+ * quando o vigia relançava o roteiro com o anterior ainda vivo (um diretor de
+ * 2 min por bloco passava dos 6 min sem renovar o prazo), o segundo processo
+ * gravava por cima dos blocos que o primeiro já tinha planejado, e os dois
+ * pagavam o diretor de novo (43 chamadas no vídeo de 19 min cmurn3adj).
+ * Escrever só a posição do bloco nunca apaga bloco pronto de outro processo.
+ * Só grava se o esqueleto do completo já existe no banco.
+ */
+async function gravarBlocoDoCompleto(id: string, k: number, bloco: RoteiroDoCompleto["blocos"][number]): Promise<void> {
+  const json = JSON.stringify(bloco);
+  await prisma.$executeRaw`
+    UPDATE video_jobs
+    SET "completoMontagem" = jsonb_set("completoMontagem", ARRAY['roteiro', 'completo', 'blocos', ${String(k)}]::text[], ${json}::jsonb, false)
+    WHERE id = ${id} AND jsonb_typeof("completoMontagem" #> '{roteiro,completo,blocos}') = 'array'`;
+}
+
+/** Os blocos do completo que JÁ estão prontos no banco (outro processo pode ter planejado). */
+async function blocosProntosNoBanco(id: string): Promise<Map<number, RoteiroDoCompleto["blocos"][number]>> {
+  const r = await lerRoteiroDoVideo(id);
+  const saida = new Map<number, RoteiroDoCompleto["blocos"][number]>();
+  (r?.completo?.blocos ?? []).forEach((b, k) => {
+    if (b && b.plano !== undefined) saida.set(k, b);
+  });
+  return saida;
+}
+
 /** Um trecho por vez, direto no jsonb (mesmo cuidado de `gravarEdicaoDosTrechos`). */
 async function gravarRoteiroDoCorte(id: string, indice: number, r: RoteiroDoCorte): Promise<void> {
   const json = JSON.stringify(r);
@@ -457,7 +485,11 @@ export async function prepararRoteiro(
   // passados ao diretor e ao revisor de todos os cortes e blocos.
   const estiloAtual = normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle).estiloId;
   const perfil = opcoes.semDiretor ? null : await perfilDoProjeto(v.projectId);
-  const revisar = revisorLigado() && !opcoes.semDiretor;
+  // O revisor (Sonnet) confere o plano cena a cena contra a bíblia e pede
+  // cenas novas ao diretor cena a cena: não tem o que fazer sobre o corte
+  // limpo (03/10), que não tem imagem nem cena gerada e já sai validado.
+  const limpo = usarDiretorLimpo(v.project.videoEstiloEscolha, v.project.videoStyle);
+  const revisar = revisorLigado() && !opcoes.semDiretor && !limpo;
   const pessoa = { x: 0.2, y: 0, w: 0.6, h: 1 };
   const rosto = { x: pessoa.x + pessoa.w * 0.3, y: pessoa.y + 0.1, w: pessoa.w * 0.4, h: 0.3 };
 
@@ -588,7 +620,14 @@ export async function prepararRoteiro(
       await gravarRoteiroDoVideo(videoId, r);
     } else {
       const completo: RoteiroDoCompleto = r.completo ?? { fala, blocos: blocosDaFala(fala.palavras, fala.duracao), plano: null, insercoes, estiloId: estiloAtual };
-      r.completo = completo;
+      // O esqueleto vai ao banco ANTES dos blocos (03/10): cada bloco pronto é
+      // gravado na posição dele, e a retomada continua do bloco seguinte.
+      if (!r.completo) {
+        r.completo = completo;
+        await gravarRoteiroDoVideo(videoId, r);
+      }
+      // Bloco que outro processo (um relance anterior) já planejou fica.
+      for (const [k, pronto] of await blocosProntosNoBanco(videoId)) completo.blocos[k] = pronto;
       const { rosto: rostoDoVideo, pessoa: pessoaDoVideo } = geometriaDaPessoa(v.clips);
       const total = completo.blocos.length;
       const cotas = cotasDoCompleto(fala.duracao, formato);
@@ -641,7 +680,7 @@ export async function prepararRoteiro(
             b.plano = null;
             b.erro = e instanceof Error ? e.message.slice(0, 140) : "falhou";
           }
-          await gravar(() => gravarRoteiroDoVideo(videoId, r));
+          await gravar(() => gravarBlocoDoCompleto(videoId, k, b));
         });
       }
     }
@@ -675,6 +714,12 @@ export async function prepararRoteiro(
 
   // 4. O diretor, em paralelo, até o orçamento de tempo. Tarefa começada
   // termina (o teto da rota cobre duas rodadas do diretor).
+  // O PRAZO RENOVADO ENQUANTO SE TRABALHA (03/10): o vigia relança o roteiro
+  // parado há 6 min; uma onda de diretores cena a cena passava disso sem
+  // ninguém renovar o `startedAt`, e o relance refazia os blocos em paralelo.
+  const vivo = setInterval(() => {
+    void prisma.videoJob.updateMany({ where: { id: videoId, status: "roteirizando" }, data: { startedAt: new Date() } }).catch(() => {});
+  }, 60_000);
   let proxima = 0;
   const trabalhador = async () => {
     while (proxima < tarefas.length && Date.now() - inicioMs < orcamento) {
@@ -682,13 +727,18 @@ export async function prepararRoteiro(
       await t();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(DIRETORES_EM_PARALELO, tarefas.length) }, trabalhador));
-  await fila;
+  try {
+    await Promise.all(Array.from({ length: Math.min(DIRETORES_EM_PARALELO, tarefas.length) }, trabalhador));
+    await fila;
+  } finally {
+    clearInterval(vivo);
+  }
 
   if (proxima < tarefas.length) return { estado: "continuar", planejados: proxima, blocos: r.completo?.blocos.length ?? 0 };
 
   // 5. Com todos os blocos, o plano do completo inteiro.
   const c = r.completo;
+  if (c && !c.plano && c.blocos.length) for (const [k, pronto] of await blocosProntosNoBanco(videoId)) c.blocos[k] = pronto;
   if (c && !c.plano && c.blocos.length && c.blocos.every((b) => b.plano !== undefined)) {
     if (c.blocos.every((b) => !b.plano)) {
       c.erro = c.blocos.find((b) => b.erro)?.erro ?? "o diretor não planejou nenhum bloco";
