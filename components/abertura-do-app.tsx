@@ -40,8 +40,6 @@ function particulas(qtd: number, semente: number): string {
   return lista.join(",");
 }
 
-const SCRIPT_DA_SAIDA = `(function(){var h=document.documentElement;if(!h.classList.contains("abertura"))return;var el=document.getElementById("abertura-app");var feito=false;function fim(){if(feito)return;feito=true;h.classList.add("abertura-saindo");setTimeout(function(){h.classList.remove("abertura","abertura-saindo")},450)}var calma=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;setTimeout(fim,calma?700:1650);if(el)el.addEventListener("click",fim)})();`;
-
 export function AberturaDoApp() {
   const n = AGENTES.length;
   // A gerente no alto, o resto em volta na ordem da equipe.
@@ -104,13 +102,14 @@ export function AberturaDoApp() {
           </div>
         </div>
       </div>
-      <script dangerouslySetInnerHTML={{ __html: SCRIPT_DA_SAIDA }} />
     </>
   );
 }
 
 /**
  * O script do <head>: liga a abertura antes da primeira pintura, só no app
- * instalado e uma vez por sessão (ou com ?abertura=ver, para conferir).
+ * instalado e uma vez por sessão (ou com ?abertura=ver, para conferir). O
+ * mesmo script tira a abertura depois de 1,65 s (0,7 s com menos movimento) ou
+ * no primeiro toque nela: um script só, no <head>, e nenhum dentro do <body>.
  */
-export const SCRIPT_DA_ABERTURA = `(function(){try{var ver=location.search.indexOf("abertura=ver")>-1;var app=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;if(ver||(app&&!sessionStorage.getItem("demandou-abertura"))){document.documentElement.classList.add("abertura");sessionStorage.setItem("demandou-abertura","1")}}catch(e){}})();`;
+export const SCRIPT_DA_ABERTURA = `(function(){try{var ver=location.search.indexOf("abertura=ver")>-1;var app=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;if(ver||(app&&!sessionStorage.getItem("demandou-abertura"))){document.documentElement.classList.add("abertura");sessionStorage.setItem("demandou-abertura","1");var h=document.documentElement,feito=false;var fim=function(){if(feito)return;feito=true;h.classList.add("abertura-saindo");setTimeout(function(){h.classList.remove("abertura","abertura-saindo")},450)};var calma=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;setTimeout(fim,calma?700:1650);document.addEventListener("click",function(e){var t=e.target;if(t&&t.closest&&t.closest("#abertura-app"))fim()},true)}}catch(e){}})();`;
