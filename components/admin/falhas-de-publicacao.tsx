@@ -53,7 +53,7 @@ export async function FalhasDePublicacao({
         </>
       )}
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: "var(--border)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[56rem] text-sm">
           <thead>
             <tr style={{ background: "var(--surface)" }}>
               {["Quando", "Cliente e projeto", "Rede", "Código", "O que o cliente leu", "O que é, de verdade"].map((h) => (

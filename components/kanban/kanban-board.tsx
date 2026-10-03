@@ -513,9 +513,9 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     <div className="p-4 sm:p-8 max-w-4xl mx-auto overflow-x-hidden">
       {/* Edit mode warning */}
       {editMode && !warningDismissed && (
-        <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/40 rounded-xl flex items-start gap-3">
+        <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/40 rounded-xl flex flex-wrap items-start gap-3">
           <span className="text-yellow-400 text-lg shrink-0">⚠️</span>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-yellow-400 mb-1">Você está editando um projeto ativo</p>
             <p className="text-xs text-[var(--text-muted)]">
               Alterações no nicho, tom de voz ou público-alvo podem afetar a consistência editorial dos próximos posts gerados. Edite com cuidado e salve apenas o que for realmente necessário.

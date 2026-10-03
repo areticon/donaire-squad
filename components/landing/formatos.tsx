@@ -113,7 +113,7 @@ export function Formatos() {
           ))}
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
             <LogoX className="!w-10 !h-10 !rounded-lg" />
             <p className="text-sm text-[var(--text-muted)]">

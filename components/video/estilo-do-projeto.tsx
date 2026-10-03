@@ -183,7 +183,7 @@ export function EstiloDoProjeto({
             <button
               type="button"
               onClick={() => setPopupAberto(true)}
-              className="flex-1 rounded-lg border px-3 py-2 text-center text-sm font-bold sm:flex-none sm:py-1.5"
+              className="flex-1 whitespace-nowrap rounded-lg border px-2 sm:px-3 py-2 text-center text-sm font-bold sm:flex-none sm:py-1.5"
               style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
             >
               {musica ? "Buscar outra" : "Buscar música"}
@@ -193,7 +193,7 @@ export function EstiloDoProjeto({
                 no Chrome dele, e o envio de vídeo, que tem o seletor na própria
                 tela, funcionava. Quem já baixou a faixa sobe por aqui. */}
             <label
-              className="flex-1 cursor-pointer rounded-lg bg-orange-500 px-3 py-2 text-center text-sm font-bold text-white sm:flex-none sm:py-1.5"
+              className="flex-1 cursor-pointer whitespace-nowrap rounded-lg bg-orange-500 px-2 sm:px-3 py-2 text-center text-sm font-bold text-white sm:flex-none sm:py-1.5"
               aria-disabled={subindoMusica}
             >
               <input

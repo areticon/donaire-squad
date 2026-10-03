@@ -102,7 +102,7 @@ export function Features() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {FEATURES.map((feature, i) => {
             const Icon = feature.icon;
             return (

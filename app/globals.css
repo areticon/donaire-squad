@@ -904,3 +904,16 @@ html.abertura-saindo #abertura-app {
     transition-duration: 0.2s !important;
   }
 }
+
+/*
+ * TEXTO ESPREMIDO NO CELULAR (03/10). O padrão "flex flex-wrap" com o bloco
+ * de texto em "min-w-0 flex-1" nunca quebra a linha: com min-w-0 a base do
+ * texto é zero, então os botões e selos ao lado ficam na mesma linha e o
+ * texto vira uma coluna de uma palavra (os prints do Bruno no Android). Com
+ * um piso de 12rem, quando não cabe, o que está ao lado desce para a linha de
+ * baixo, que é o que o flex-wrap queria desde o começo. min(100%, ...) para
+ * nunca passar da largura do pai.
+ */
+.flex-wrap > .min-w-0.flex-1 {
+  min-width: min(100%, 12rem);
+}

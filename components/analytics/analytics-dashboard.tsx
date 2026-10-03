@@ -342,7 +342,7 @@ export function AnalyticsDashboard({ project, resultados, recentRuns }: Props) {
         <BarraDeEstados r={r} />
       </Cartao>
 
-      <div className="grid lg:grid-cols-5 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
         <Cartao titulo="Publicados por semana" sub="Últimas 8 semanas, por rede, arquivados inclusos. Passe o mouse numa barra para ver o número." className="lg:col-span-3">
           <BarrasPorSemana semanas={resultados.semanas} />
         </Cartao>

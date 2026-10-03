@@ -53,7 +53,7 @@ export function Pricing(_: { vagasDeFundador?: number }) {
           </p>
         </motion.div>
 
-        <div className="grid gap-6 items-start md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2 lg:grid-cols-3">
           {PLANOS_PUBLICOS.map((plan, i) => (
             <motion.div
               key={plan.id}

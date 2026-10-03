@@ -188,7 +188,7 @@ export default async function AdminPage({
           </Link>
         }
       >
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div>
             {demonstracoes.length > 0 ? (
               <>
@@ -405,7 +405,7 @@ export default async function AdminPage({
           subtitulo="Por código e por rede. O cliente lê só o título e o código; a explicação técnica está na tabela abaixo e no e-mail do chamado."
         >
           {graficos.falhas.total > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="rotulo mb-2">Por código</p>
                 <BarrasHorizontais
@@ -457,7 +457,7 @@ export default async function AdminPage({
         subtitulo="O formulário guarda o perfil; a demo guarda o tema que a pessoa pediu, que é a melhor pista de assunto que existe. As duas portas na mesma lista."
       >
         <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border)" }}>
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr style={{ background: "var(--bg-input)" }}>
                 {["Contato", "O que faz, ou o que pediu", "Publica", "Quer", "Veio de", "Virou conta"].map((h) => (
@@ -513,7 +513,7 @@ export default async function AdminPage({
         subtitulo="Em cada conta, a barra de cima é o custo de IA do período (laranja) e a de baixo é a mensalidade: laranja mais comprida que a de baixo é cliente dando prejuízo."
       >
         <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border)" }}>
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[56rem] text-sm">
             <thead>
               <tr style={{ background: "var(--bg-input)" }}>
                 {["Conta", "Plano", "Créditos", "Uso", "Custo e mensalidade", "Margem", "Última campanha"].map((h) => (

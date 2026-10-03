@@ -203,7 +203,7 @@ export function FichaDoAgente({
           )}
 
           {ficha && (ficha.agente.persona || ficha.agente.estilo) && (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {ficha.agente.persona && (
                 <div>
                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-[.06em]" style={{ color: "var(--text-muted)" }}>

@@ -237,7 +237,7 @@ export function LinhaEditorial({ projectId }: { projectId: string }) {
   const totalSegundos = rascunho?.cenas.reduce((s, c) => s + segundosDaFala(c.fala), 0) ?? 0;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
       {/* ── As ideias ─────────────────────────────────────────────────────── */}
       <aside id="linha-editorial-lista" className="space-y-3">
         <button
@@ -276,7 +276,7 @@ export function LinhaEditorial({ projectId }: { projectId: string }) {
                 style={aberto === r.id ? undefined : { borderColor: "var(--border)", background: "var(--bg-card)" }}
               >
                 <div className="flex items-start gap-2">
-                  <button type="button" onClick={() => setAberto(r.id)} className="flex-1 text-left">
+                  <button type="button" onClick={() => setAberto(r.id)} className="min-w-0 flex-1 text-left">
                     <span className="mb-1 flex flex-wrap items-center gap-1">
                       <span
                         className={cn(
@@ -304,7 +304,7 @@ export function LinhaEditorial({ projectId }: { projectId: string }) {
                     type="button"
                     onClick={() => void descartar(r.id)}
                     title="Descartar (não volta nas próximas ideias)"
-                    className="rounded p-1 opacity-0 transition-opacity group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                     style={{ color: "var(--text-muted)" }}
                   >
                     <X className="h-4 w-4" />

@@ -155,7 +155,7 @@ export function Entrega() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-80px" }}
               transition={{ duration: 0.5 }}
-              className={`grid lg:grid-cols-2 gap-10 items-center ${
+              className={`grid grid-cols-1 lg:grid-cols-2 gap-10 items-center ${
                 // Alterna o lado da imagem para a página não virar uma coluna
                 // só de texto seguida de uma coluna só de imagem.
                 i % 2 === 1 ? "lg:[&>*:first-child]:order-2" : ""

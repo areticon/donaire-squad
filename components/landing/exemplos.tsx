@@ -119,7 +119,7 @@ export function Exemplos() {
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-6">
           <p className="rotulo mb-3">E a legenda, em 5 estilos</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {ESTILOS_DE_LEGENDA.map((l) => (
               <div key={l.id}>
                 <p className="font-semibold text-[var(--text-primary)]">{l.nome}</p>

@@ -31,7 +31,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="p-6 lg:p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Projetos</h1>
           <p className="mt-1" style={{ color: "var(--text-muted)" }}>
@@ -71,7 +71,7 @@ export default async function ProjectsPage() {
           )}
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((project) => (
             <ProjectCard key={project.id} project={project} souMembro={Boolean(membro)} />
           ))}

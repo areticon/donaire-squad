@@ -160,7 +160,7 @@ export function ContaForm({
           </div>
         </div>
 
-        <div className="grid flex-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 flex-1 gap-4 sm:grid-cols-2">
           <Input
             label="Nome"
             value={nome}

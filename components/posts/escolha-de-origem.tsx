@@ -95,7 +95,7 @@ export function EscolhaDeOrigem({
         </div>
       )}
 
-      <div className={cn("grid gap-4 md:grid-cols-3", cheia && "w-full max-w-[1080px]")}>
+      <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-3", cheia && "w-full max-w-[1080px]")}>
         {/* Porta 1: o vídeo do cliente. Destacada e recomendada: vídeo é o produto
             (22/08), e é o caminho que mais engaja e menos custa (29/09). */}
         <Porta

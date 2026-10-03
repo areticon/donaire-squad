@@ -74,7 +74,7 @@ export function Dor() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
           {DORES.map((d) => (
             <div key={d.titulo} className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-7 flex flex-col">
               <p className="flex items-center gap-2 text-sm font-semibold text-orange-400 mb-4">

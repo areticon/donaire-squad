@@ -6,7 +6,7 @@ export function Footer() {
   return (
     <footer className="border-t border-[var(--border)] py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid md:grid-cols-4 gap-8 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <BrandMarkImg variant="dark" className="h-7 w-7" size={28} />

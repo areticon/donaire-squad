@@ -142,9 +142,9 @@ export default async function DashboardPage() {
 
       {/* O squad: cada agente com o que fez no mês. */}
       <div className="rounded-2xl border p-4 mb-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--shadow)" }}>
-        <div className="flex items-baseline justify-between mb-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
           <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>O seu squad nos últimos 30 dias</h2>
-          <Link href={projects[0] ? `/projects/${projects[0].id}/live` : "/projects"} className="text-xs text-orange-500 hover:underline">ver o escritório</Link>
+          <Link href={projects[0] ? `/projects/${projects[0].id}/live` : "/projects"} className="whitespace-nowrap text-xs text-orange-500 hover:underline">ver o escritório</Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {numeros.agentes.map((a) => (
@@ -159,7 +159,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-5 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
         <div className="lg:col-span-3 rounded-2xl border p-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--shadow)" }}>
           <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Posts publicados por semana</h2>
           <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>Últimas 8 semanas, por rede. Passe o mouse numa barra para ver o número.</p>
@@ -185,7 +185,8 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      {/* grid-cols-1 (03/10): a coluna automática crescia até a largura da tabela e a página ganhava rolagem lateral no celular. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="rounded-xl border p-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Projetos</h2>
@@ -196,7 +197,7 @@ export default async function DashboardPage() {
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs tabular-nums">
+            <table className="w-full min-w-[22rem] text-xs tabular-nums">
               <thead>
                 <tr style={{ color: "var(--text-muted)" }}>
                   <th className="text-left font-medium pb-2">Projeto</th>

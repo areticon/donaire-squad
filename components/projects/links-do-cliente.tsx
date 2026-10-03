@@ -81,7 +81,7 @@ export function LinksDoCliente({ projetoId, config }: { projetoId: string; confi
         const valida = !l.url.trim() || Boolean(normalizarUrl(l.url, l.tipo));
         return (
           <div key={l.id} className="flex flex-col gap-2.5 rounded-lg border p-3.5" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }} data-link={i}>
-            <div className="grid gap-2.5 sm:grid-cols-[150px_1fr_150px]">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[150px_1fr_150px]">
               <select
                 aria-label="Tipo do link"
                 value={l.tipo}
@@ -112,7 +112,7 @@ export function LinksDoCliente({ projetoId, config }: { projetoId: string; confi
                 <option value={3}>De vez em quando</option>
               </select>
             </div>
-            <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto]">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_1fr_auto]">
               <Input aria-label="Rótulo" value={l.rotulo} onChange={(e) => mudar(l.id, { rotulo: e.target.value })} placeholder="Rótulo (ex.: Curso de vendas)" />
               <Input aria-label="Chamada" value={l.cta} onChange={(e) => mudar(l.id, { cta: e.target.value })} placeholder="Chamada, opcional (ex.: Agende uma conversa)" />
               <div className="flex items-center gap-1 justify-end">

@@ -414,7 +414,7 @@ export function StepMarca({
       </section>
 
       {/* Logo e manual */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <section className="rounded-xl border p-6 space-y-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
           <div>
             <p className="text-base font-bold text-[var(--text-primary)]">Logo</p>
@@ -600,7 +600,7 @@ export function StepMarca({
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
           <select
             value={novoTipo}
             onChange={(e) => setNovoTipo(e.target.value)}

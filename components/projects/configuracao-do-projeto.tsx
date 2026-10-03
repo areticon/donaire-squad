@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
+import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import {
   creditosDaSemana,
   diaComFormato,
@@ -51,6 +52,7 @@ type Projeto = {
 const ABAS = [
   { id: "redes", rotulo: "Redes sociais" },
   { id: "marca", rotulo: "Marca e voz" },
+  { id: "modelos", rotulo: "Modelos de arte" },
   { id: "video", rotulo: "Vídeo e semana" },
   { id: "links", rotulo: "Seus links" },
 ] as const;
@@ -257,7 +259,9 @@ export function ConfiguracaoDoProjeto({
   return (
     <div className="flex flex-col gap-6">
       {somenteLeitura && <AvisoSoODono dono={somenteLeitura.dono} oQue="as configurações deste projeto" />}
-      <div className="flex gap-1 overflow-x-auto border-b" style={{ borderColor: "var(--border)" }}>
+      {/* Em grade 2x2 no celular (03/10): em fila, a quarta aba ficava fora da
+          tela e a terceira cortada no meio da palavra ("Vídeo e s"). */}
+      <div className="grid grid-cols-2 gap-1 border-b sm:flex sm:overflow-x-auto" style={{ borderColor: "var(--border)" }}>
         {ABAS.map((a) => {
           const atual = a.id === aba;
           return (
@@ -291,6 +295,13 @@ export function ConfiguracaoDoProjeto({
       >
       {aba === "redes" && (
         <SocialConnectPanel project={projeto} initialAccounts={contasSociais} />
+      )}
+
+      {/* O BOOK DE MODELOS (03/10): mudar de modelo depois mora aqui. */}
+      {aba === "modelos" && (
+        <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+          <GaleriaDeModelos projectId={projeto.id} />
+        </section>
       )}
 
       {aba === "links" && (
@@ -380,7 +391,7 @@ export function ConfiguracaoDoProjeto({
               placeholder="Ex: Direto, sem rodeio, de igual para igual com quem decide. Número sempre com fonte..."
               className="min-h-[150px]"
             />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {TONS.map((tom) => (
                 <button
                   key={tom}
@@ -458,7 +469,7 @@ export function ConfiguracaoDoProjeto({
             titulo="Como seus cortes são editados"
             descricao="Vale para todo vídeo deste projeto. Canal que muda de estilo a cada vídeo não constrói reconhecimento."
           >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {ESTILOS_DE_VIDEO.map((e) => (
                 <Opcao
                   key={e.id}
@@ -483,7 +494,7 @@ export function ConfiguracaoDoProjeto({
             titulo="A capa do vídeo completo"
             descricao="Capa igual em todo vídeo é o que faz seu canal ser reconhecido na listagem do YouTube."
           >
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {ESTILOS_DE_CAPA.map((e) => (
                 <Opcao
                   key={e.id}
@@ -561,7 +572,7 @@ export function ConfiguracaoDoProjeto({
           >
             {/* Desde 30/09 a segunda também é um dia de escolha: a campanha
                 começa no dia da gravação, e não mais na segunda do vídeo. */}
-            <div className="grid gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
               {DIAS_DA_SEMANA.map(({ dia, nome }) => {
                 const chave = String(dia) as ChaveDoDia;
                 const doDia = semana.dias[chave] ?? null;

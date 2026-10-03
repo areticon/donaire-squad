@@ -720,7 +720,7 @@ function ListaDeVideos({ projectId, videos, onMudou }: { projectId: string; vide
       <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>
         Vídeos do gêmeo
       </h2>
-      <ul className="flex flex-col divide-y" style={{ borderColor: "var(--border)" }}>
+      <ul className="flex flex-col divide-y divide-[var(--border)]">
         {videos.map((v) => {
           const andando = videoEmAndamento(v);
           return (

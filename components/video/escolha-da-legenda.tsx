@@ -188,7 +188,7 @@ export function EscolhaDaLegenda({
           {estado}
         </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Legenda">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Legenda">
         {modos.map(({ id, titulo, texto, Icone }) => {
           const ativo = ativoNoModo(id);
           return (

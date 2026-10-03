@@ -466,7 +466,7 @@ export default function PrivacyPage() {
             <p className="mb-4">
               Nos termos da LGPD, você possui os seguintes direitos em relação aos seus dados pessoais:
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
                 { right: "Acesso", desc: "Confirmar a existência de tratamento e obter cópia dos seus dados." },
                 { right: "Correção", desc: "Solicitar a atualização de dados incompletos, inexatos ou desatualizados." },

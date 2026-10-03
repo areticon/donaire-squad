@@ -59,7 +59,7 @@ export function Equipe({ inicial }: { inicial: EquipeNaTela }) {
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           O que você gera sai da cota da conta da equipe. Plano, cobrança e convites ficam com quem administra a conta.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Uso rotulo="Seus créditos neste mês" usado={m.consumo.creditos} teto={m.tetoCreditos} />
           <Uso rotulo="Suas gravações neste mês" usado={m.consumo.gravacoes} teto={m.tetoGravacoes} />
         </div>
@@ -117,7 +117,7 @@ function CamposDoMembro({ f, setF, projetos }: { f: Form; setF: (f: Form) => voi
           </div>
         )}
       </fieldset>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
           <span>Teto de gravações por mês (opcional)</span>
           <input inputMode="numeric" value={f.tetoGravacoes} onChange={(e) => setF({ ...f, tetoGravacoes: e.target.value.replace(/\D/g, "") })} placeholder="Sem teto" className={campo} style={entrada} />
@@ -184,7 +184,7 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
           </div>
           <Users className="h-6 w-6 shrink-0" style={{ color: "var(--azul-500)" }} aria-hidden />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border p-3 space-y-1.5" style={{ borderColor: "var(--border)" }}>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>Créditos da conta</p>
             <p className="text-lg font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
@@ -221,7 +221,7 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
           </p>
         ) : (
           <form onSubmit={convidar} className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
                 <span>E-mail</span>
                 <input id="convite-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vendedor@empresa.com.br" className={campo} style={entrada} />
@@ -255,7 +255,7 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
       <section className="rounded-xl border p-6 space-y-3" style={cartao}>
         <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Consumo neste mês</h3>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm tabular-nums">
+          <table className="w-full min-w-[26rem] text-sm tabular-nums">
             <thead>
               <tr className="text-left text-xs" style={{ color: "var(--text-muted)" }}>
                 <th className="pb-2 pr-3 font-medium">Pessoa</th>

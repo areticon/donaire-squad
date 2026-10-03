@@ -91,7 +91,8 @@ export default async function SettingsPage({
         </p>
       </div>
 
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b" style={{ borderColor: "var(--border)" }}>
+      {/* Em grade 2x2 no celular (03/10): em fila, "Projetos" ficava fora da tela. */}
+      <div className="mb-6 grid grid-cols-2 gap-1 border-b sm:flex sm:overflow-x-auto" style={{ borderColor: "var(--border)" }}>
         {abas.map((a) => {
           const atual = a.id === ativa;
           return (

@@ -14,7 +14,7 @@ export function DemandaDay() {
   return (
     <section id="demanda-day" aria-label="Demanda Day" className="relative py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-orange-500/40 bg-[var(--bg-surface)] p-6 sm:p-10 grid lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
+        <div className="rounded-2xl border border-orange-500/40 bg-[var(--bg-surface)] p-6 sm:p-10 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-orange-400 mb-3">
               <Users className="w-4 h-4" /> Comunidade e evento

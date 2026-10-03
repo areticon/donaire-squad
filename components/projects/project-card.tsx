@@ -191,12 +191,12 @@ export function ProjectCard({ project, souMembro = false }: ProjectCardProps) {
               </p>
             )}
             {project.niche && (
-              <p className="text-[10px] mb-3 font-medium px-2 py-0.5 rounded-full w-fit" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+              <p className="text-[10px] mb-3 font-medium px-2 py-0.5 rounded-lg w-fit line-clamp-3" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
                 {project.niche}
               </p>
             )}
 
-            <div className="flex items-center gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap text-xs" style={{ color: "var(--text-muted)" }}>
               <div className="flex items-center gap-1">
                 <Users className="w-3.5 h-3.5" />
                 {project._count.agents} agentes

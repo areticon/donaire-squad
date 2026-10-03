@@ -276,7 +276,7 @@ export function AnalisesDasReferencias({ projectId, modo = "painel" }: { project
   const descartadas = tendencias.filter((t) => !t.combina);
   const etapaAtual = estado ? estado.etapas.indexOf(estado.etapa) + 1 : 0;
   const titulo = (icone: ReactNode, texto: string, extra?: string) => (
-    <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+    <p className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
       {icone}
       {texto}
       {extra && <span className="font-normal normal-case tracking-normal">{extra}</span>}

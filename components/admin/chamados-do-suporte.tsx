@@ -107,7 +107,7 @@ export function ChamadosDoSuporte({ chamados, status, abrir }: { chamados: Chama
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <ul className="space-y-1.5 lg:max-h-[640px] lg:overflow-y-auto pr-1">
             {chamados.map((x) => {
               const ativo = x.id === aberto;

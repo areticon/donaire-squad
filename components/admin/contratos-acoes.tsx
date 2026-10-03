@@ -72,7 +72,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
     );
   }
   return (
-    <form onSubmit={criar} className="grid gap-3 sm:grid-cols-2" data-novo-contrato>
+    <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-novo-contrato>
       <label className="sm:col-span-2 text-xs font-medium" style={{ color: "var(--text-muted)" }}>
         Conta do cliente
         <select required value={userId} onChange={(e) => setUserId(e.target.value)} className={`${campo} mt-1`} style={estiloCampo}>

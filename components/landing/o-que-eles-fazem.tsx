@@ -209,7 +209,7 @@ export function OQueElesFazem() {
         {/* A FAIXA DOS TRÊS PASSOS, logo abaixo do quadro.
             É a resposta para "e o que sobra para mim?": a equipe trabalha, e a
             decisão continua sua. */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
           {PASSOS.map((p, i) => (
             <motion.div
               key={p.titulo}

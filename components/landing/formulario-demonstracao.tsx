@@ -88,7 +88,7 @@ export function FormularioDemonstracao({
             : "Leva 20 segundos. Depois, o calendário com os horários livres do time."}
         </p>
       </div>
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {pede("faturamento") && (
           <Escolha id="demo-faturamento" rotulo="Faturamento mensal da empresa" valor={form.faturamento}
             opcoes={FAIXAS_FATURAMENTO.map(([v, t]) => [v, t])} mudar={(v) => setForm({ ...form, faturamento: v })} />

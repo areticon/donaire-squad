@@ -154,7 +154,7 @@ export function Calculadora() {
           </p>
         </motion.div>
 
-        <div className="grid lg:grid-cols-5 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
           {/* ── Controles ── */}
           <div className="lg:col-span-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-5 sm:p-7">
             <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">Comece por um ritmo</p>
@@ -269,7 +269,7 @@ export function Calculadora() {
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Escolha id="calc-faturamento" rotulo="Faturamento mensal da empresa" valor={form.faturamento}
                     opcoes={FAIXAS_FATURAMENTO.map(([v, t]) => [v, t])} mudar={(v) => setForm({ ...form, faturamento: v })} />
                   <Escolha id="calc-time" rotulo="Tamanho do time" valor={form.tamanhoTime}
@@ -333,7 +333,7 @@ export function Calculadora() {
               2,5 dias) é premissa nossa, generosa com o time humano. O que a agência cobra além do pacote e por
               rede a mais também é estimativa nossa, porque nenhuma fonte publica.
             </p>
-            <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
               {FONTES.map((f) => (
                 <li key={f.item}>
                   {f.item}:{" "}

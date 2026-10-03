@@ -56,7 +56,7 @@ export function CartaoDaRegra({
   };
   const valendo = r.status === "aprovada";
   return (
-    <div className={cn("grid gap-3 rounded-lg border p-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]", valendo && "border-emerald-500/40")} style={valendo ? undefined : { borderColor: "var(--border)" }}>
+    <div className={cn("grid grid-cols-1 gap-3 rounded-lg border p-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]", valendo && "border-emerald-500/40")} style={valendo ? undefined : { borderColor: "var(--border)" }}>
       <div className="min-w-0">
         <div className="mb-1 flex flex-wrap items-center gap-1.5">
           {valendo && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Valendo</span>}

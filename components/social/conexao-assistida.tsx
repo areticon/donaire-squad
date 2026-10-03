@@ -76,7 +76,7 @@ export function ConexaoAssistida({
       style={{ background: "var(--bg-card)", borderColor: "color-mix(in srgb, var(--acento) 35%, transparent)" }}
       data-conexao-assistida={rede}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="w-8 h-8 rounded-full bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0">
           {pedido ? <CheckCircle2 className="w-4 h-4" /> : <Headset className="w-4 h-4" />}
         </div>
@@ -100,7 +100,7 @@ export function ConexaoAssistida({
           )}
         </div>
         {!pedido && !aberta && (
-          <Button size="sm" variant="outline" className="text-xs shrink-0" onClick={() => setAberta(true)}>
+          <Button size="sm" variant="outline" className="ml-11 text-xs shrink-0 sm:ml-0" onClick={() => setAberta(true)}>
             {temConta ? "Pedir outra" : "Conexão assistida"}
           </Button>
         )}

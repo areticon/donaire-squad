@@ -152,7 +152,7 @@ export function LiveView({ project, agents, latestRun }: LiveViewProps) {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4 flex-1 overflow-hidden min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 overflow-hidden min-h-0">
         {/* Left: agents */}
         <div className="flex flex-col gap-3 overflow-y-auto">
           <h2 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>

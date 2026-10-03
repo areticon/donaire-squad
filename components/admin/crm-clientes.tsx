@@ -198,7 +198,7 @@ export function CrmClientes({ clientes, leuStripe }: { clientes: ClienteDoCrm[];
       {convidando && <Convite onFechar={() => setConvidando(false)} />}
 
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: "var(--border)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[48rem] text-sm">
           <thead>
             <tr style={{ background: "var(--surface)" }}>
               {["Pessoa", "Situação", "Plano e cobrança", "Créditos", "Uso", "Desde"].map((h) => (
@@ -270,7 +270,7 @@ function Convite({ onFechar }: { onFechar: () => void }) {
   }
 
   return (
-    <form onSubmit={enviar} className="mb-4 rounded-2xl border p-4 grid gap-3 md:grid-cols-[1fr_1fr_auto_auto_auto] items-end" style={caixa}>
+    <form onSubmit={enviar} className="mb-4 rounded-2xl border p-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto_auto_auto] items-end" style={caixa}>
       <label className="text-xs" style={fraco}>
         E-mail
         <input id="convite-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={`${campo} mt-1`} style={{ borderColor: "var(--border)", color: "var(--text-primary)" }} />

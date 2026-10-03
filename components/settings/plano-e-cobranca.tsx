@@ -101,11 +101,11 @@ export function PlanoECobranca({ assinatura }: { assinatura: Assinatura }) {
             <ShieldCheck className="h-5 w-5 text-orange-400" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <h2 className="text-xl font-extrabold" style={{ color: "var(--text-primary)" }}>
                 Acesso interno
               </h2>
-              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-orange-400">
+              <span className="whitespace-nowrap rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-orange-400">
                 Admin da plataforma
               </span>
             </div>
@@ -210,7 +210,7 @@ export function PlanoECobranca({ assinatura }: { assinatura: Assinatura }) {
           {assina ? "Mudar de plano" : "Escolher um plano"}
         </h3>
 
-        <div className="grid items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
           {PLANOS_PUBLICOS.map((plan) => {
             const atual = assina && plan.id === assinatura.planoId;
             // A oferta de fundador acabou com a tabela de 27/09; a variável

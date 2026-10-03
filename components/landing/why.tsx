@@ -65,7 +65,7 @@ export function Why() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           {REGRA.map((item, i) => (
             <motion.div
               key={item.numero}

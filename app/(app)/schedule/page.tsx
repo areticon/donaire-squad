@@ -123,7 +123,7 @@ export default async function SchedulePage() {
           : "";
     return (
       <div>
-        <div className="flex items-baseline gap-2.5 mb-2">
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 mb-2">
           <span className="text-[13px] font-semibold" style={{ color: eHoje ? "var(--accent-orange)" : chave < hojeChave ? "var(--text-muted)" : "var(--text-primary)" }}>
             {nomeDoDia(dia, agora)}
           </span>
@@ -138,22 +138,24 @@ export default async function SchedulePage() {
             return (
               <div
                 key={p.id}
-                className="grid items-center gap-3 px-4 py-3"
-                style={{ gridTemplateColumns: "56px 170px minmax(0,1fr) 240px 150px", borderBottom: i < lista.length - 1 ? "1px solid var(--border)" : undefined }}
+                // No celular (03/10) a linha vira hora + bloco empilhado: as cinco
+                // colunas fixas somavam 616 px e cortavam o estado na borda.
+                className="grid items-center gap-x-3 gap-y-1 px-4 py-3 grid-cols-[48px_minmax(0,1fr)] lg:grid-cols-[56px_170px_minmax(0,1fr)_240px_150px]"
+                style={{ borderBottom: i < lista.length - 1 ? "1px solid var(--border)" : undefined }}
               >
-                <div className="text-[13px] font-semibold" style={{ color: quando ? "var(--text-primary)" : "var(--text-muted)" }}>{hora}</div>
+                <div className="row-span-3 self-start lg:row-span-1 lg:self-center text-[13px] font-semibold" style={{ color: quando ? "var(--text-primary)" : "var(--text-muted)" }}>{hora}</div>
                 <div className="text-xs truncate" style={{ color: "var(--text-primary)" }}>
                   {nomeDaRede(p.platform)} · {ROTULO_DO_TIPO[p.mediaType ?? "text"] ?? p.mediaType ?? "Texto"}
                   <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{p.project.name}</div>
                 </div>
-                <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{p.content.split("\n")[0].slice(0, 120)}</div>
+                <div className="hidden lg:block text-xs truncate" style={{ color: "var(--text-muted)" }}>{p.content.split("\n")[0].slice(0, 120)}</div>
                 <div className="flex items-center gap-1.5 min-w-0">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ background: e.cor }} />
                   <span className="text-[11px] font-medium truncate" style={{ color: e.cor }} title={e.detalhe}>
                     {e.rotulo}{e.chave === "agendado" ? ", sai sozinho" : e.chave === "rascunho" ? ", não sai" : ""}
                   </span>
                 </div>
-                <div className="flex justify-end gap-3 text-[11px]">
+                <div className="flex lg:justify-end gap-3 text-[11px]">
                   {e.chave === "publicado" && p.externalUrl ? (
                     <a href={p.externalUrl} target="_blank" rel="noopener" className="hover:underline" style={{ color: "var(--accent-orange)" }}>
                       Abrir no {nomeDaRede(p.platform)}
@@ -179,7 +181,7 @@ export default async function SchedulePage() {
           <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Agenda</h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>O que sai, quando, e onde. Próximos 14 dias, e a semana que passou.</p>
         </div>
-        <div className="flex gap-4 text-[11px]" style={{ color: "var(--text-muted)" }}>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.agendado }} />{contagem.agendado + contagem.publicando} agendados</span>
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.rascunho }} />{contagem.rascunho} rascunhos</span>
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.publicado }} />{contagem.publicado} publicados</span>

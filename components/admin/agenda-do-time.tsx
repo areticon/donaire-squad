@@ -110,7 +110,7 @@ export function AgendaDoTime({ pessoas, reunioes, google, aviso, whatsappLigado 
         {(aba === "proximas" ? proximas : passadas).length === 0 ? (
           <p className="text-sm text-[var(--text-muted)]">{aba === "proximas" ? "Nenhuma demonstração marcada." : "Nada nos últimos 14 dias."}</p>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {(aba === "proximas" ? proximas : passadas).map((r) => <CartaoReuniao key={r.id} r={r} />)}
           </div>
         )}
@@ -136,7 +136,7 @@ export function AgendaDoTime({ pessoas, reunioes, google, aviso, whatsappLigado 
             </span>
           )}
         </p>
-        <div className="grid gap-4 xl:grid-cols-2 mt-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 mt-4">
           {pessoas.map((p) => <EditorDePessoa key={p.id} p={p} googleConfigurado={google.configurado} />)}
           <NovaPessoa ordem={pessoas.length} />
         </div>
@@ -351,7 +351,7 @@ function EditorDePessoa({ p, googleConfigurado }: { p: PessoaNoAdmin; googleConf
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-orange-400 shrink-0" /> {p.observacao}
         </p>
       )}
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className={rotulo}>Nome<input className={`${campo} mt-1`} value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></label>
         <label className={rotulo}>Fonte
           <select className={`${campo} mt-1`} value={f.fonte} onChange={(e) => setF({ ...f, fonte: e.target.value as "manual" | "google" })}>

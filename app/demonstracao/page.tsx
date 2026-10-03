@@ -76,7 +76,7 @@ export default async function DemonstracaoPage({ searchParams }: { searchParams:
 
       {/* No celular a ordem é título, calendário e só depois os detalhes: quem
           chega do botão "Agendar" quer o horário, não rolar a página. */}
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-8 lg:py-16 grid lg:grid-cols-2 gap-x-12 gap-y-8 items-start">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-8 lg:py-16 grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8 items-start">
         <div className="lg:col-start-1 lg:row-start-1">
           <p className="selo mb-6">
             Para empresas que faturam acima de R$ 100 mil por mês

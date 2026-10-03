@@ -235,7 +235,7 @@ function PedidoDeUpgradeDoDono({ estouro }: { estouro: Estouro }) {
 
       {sugestao && (
         <div
-          className="grid items-center gap-3.5 rounded-xl border px-4 py-3.5 sm:grid-cols-[1fr_auto_1fr]"
+          className="grid grid-cols-1 items-center gap-3.5 rounded-xl border px-4 py-3.5 sm:grid-cols-[1fr_auto_1fr]"
           style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}
         >
           {estouro.plano && (

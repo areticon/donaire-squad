@@ -108,7 +108,7 @@ export function Valor() {
           </div>
         </motion.div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
           {ENTREGAS.map((item, i) => (
             <motion.div
               key={item.titulo}
@@ -140,7 +140,7 @@ export function Valor() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="grid lg:grid-cols-3 gap-6"
+          className="grid grid-cols-1 lg:grid-cols-3 gap-6"
         >
           <div className="lg:col-span-1 bg-[var(--bg-surface)] border border-orange-500/40 rounded-xl p-8">
             <p className="text-sm text-orange-400 font-semibold mb-2">Somando</p>

@@ -185,7 +185,7 @@ export function RedesDosClientes({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[48rem] text-sm">
               <thead>
                 <tr className="text-left text-xs" style={{ color: "var(--text-muted)" }}>
                   <th className="py-1 pr-3">Quando</th>
@@ -255,7 +255,7 @@ export function RedesDosClientes({
           </p>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="text-xs grid gap-1" style={{ color: "var(--text-muted)" }}>
             Projeto do cliente
             <input
@@ -393,7 +393,7 @@ export function RedesDosClientes({
                 {lista[0].projeto} <span className="font-normal text-xs" style={{ color: "var(--text-muted)" }}>· {lista[0].dono} · {pid}</span>
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm mt-1">
+                <table className="w-full min-w-[52rem] text-sm mt-1">
                   <tbody>
                     {lista.map((c) => (
                       <tr key={c.id} className="border-t" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>

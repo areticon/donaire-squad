@@ -234,7 +234,7 @@ export function CortesPanel({
           cada um vai.
         </p>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cortes.map((c, i) => {
             const estado = local[i] ?? { publicar: false, destinos: [] };
             const dur = c.fim - c.inicio;
