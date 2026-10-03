@@ -1,3 +1,5 @@
+import { decidirRetomadas } from "@/lib/media/decidir-retomadas";
+import { pedidoDaGuarda } from "@/lib/media/guarda-da-fala";
 import { ganchoEmFraseInteira, limparSoco } from "@/lib/media/abertura-do-roteiro";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -258,10 +260,15 @@ export async function falaDoCorte(p: {
   } else {
     const janela = todas.filter((w) => w.end > p.inicio - 2 && w.start < p.fim + 2);
     const hes = await detectarHesitacao(janela, { projectId: p.projectId }).catch(() => []);
+    // A tomada refeita (03/10) também no corte antigo sem edição gravada.
+    const tomadas = (await decidirRetomadas(janela, { projectId: p.projectId }).catch(() => ({ remocoes: [] }))).remocoes;
     const remocoes = emendarNoSilencio(
       unirRemocoes(
-        unirRemocoes(unirRemocoes(detectarPausas(todas, p.duracaoDaGravacao), detectarFalsosComecos(todas)), detectarMuletasArrastadas(todas)),
-        unirRemocoes(detectarRepeticoes(todas), limpezaParaRemocoes(hes, janela))
+        unirRemocoes(
+          unirRemocoes(unirRemocoes(detectarPausas(todas, p.duracaoDaGravacao), detectarFalsosComecos(todas)), detectarMuletasArrastadas(todas)),
+          unirRemocoes(detectarRepeticoes(todas), limpezaParaRemocoes(hes, janela))
+        ),
+        tomadas
       ),
       todas
     );
@@ -557,6 +564,8 @@ export async function pedidoDoCorte(video: VideoDoPasso, indice: number, t: Trec
     // A TERCEIRA tentativa vai leve (01/10, parte 240): duas abas do Chrome
     // em vez de quatro. Worker antigo ignora o campo.
     leve: (tomado.tentativas ?? 1) >= MAX_TENTATIVAS,
+    // A GUARDA NA SAÍDA (03/10): o worker confere a fala do corte pronto.
+    guardaDaFala: pedidoDaGuarda(video.id, `corte ${indice}`, base),
     callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,
     // Volta no corpo do callback (assinado): o callback só troca o vídeo se
     // o corte ainda estiver neste mesmo "montando".
@@ -788,6 +797,8 @@ export function pedidoDoCorteSobMedida(video: VideoDoPasso, indice: number, t: T
     escala: final ? 1 : 0.5,
     gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
     trilha: final && video.project.videoMusicUrl ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
+    // A GUARDA NA SAÍDA (03/10): só o final; a prévia não vai ao cliente.
+    guardaDaFala: final ? pedidoDaGuarda(video.id, `corte ${indice} sob medida`, base) : null,
     callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,
     retorno: { indice, desde: estado.desde },
   });

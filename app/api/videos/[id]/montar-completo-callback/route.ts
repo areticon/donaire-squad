@@ -24,6 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     /** O worker reiniciou no meio (deploy): reenviar sem gastar tentativa. */
     reiniciado?: boolean;
     montado?: { url: string; bytes: number };
+    /** A guarda na saída (03/10): o que o worker tirou do arquivo pronto. */
+    guardaDaFala?: { conferido?: boolean; tirados?: number; sobras?: Array<{ de: number; texto: string }>; motivo?: string } | null;
     tempos?: Record<string, number>;
     retorno?: { desde?: string } | null;
     /** A conferência depois do render (02/10): trechos vazios achados e consertados. */
@@ -39,6 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const desde = corpo.retorno?.desde;
   if (typeof desde !== "string") return NextResponse.json({ error: "Sem o estado de retorno" }, { status: 400 });
   const r = await concluirMontagemDoCompleto(id, desde, corpo);
+  const g = corpo.guardaDaFala;
+  if (g?.tirados) console.log(`[montar-completo-callback][${id}] guarda da fala tirou ${g.tirados}: ${(g.sobras ?? []).map((x) => `${x.de.toFixed(1)}s "${x.texto}"`).join("; ").slice(0, 400)}`);
+  else if (g && !g.conferido) console.error(`[montar-completo-callback][${id}] guarda da fala não conferiu: ${g.motivo ?? "sem motivo"}`);
   if (!corpo.ok) console.error(`[montar-completo-callback][${id}]: ${corpo.erro ?? "falhou"}`);
   // 200 também no "ignorado": repetir o aviso não muda um estado que já saiu de "montando".
   return NextResponse.json({ ok: true, resultado: r });

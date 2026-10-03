@@ -1,3 +1,4 @@
+import { pedidoDaGuarda } from "@/lib/media/guarda-da-fala";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { avisarVideoPronto } from "@/lib/notificacoes/avisos";
@@ -1683,6 +1684,8 @@ export function corpoDaMontagem(v: VideoDoCompleto, m: MontagemDoCompleto): { te
     // Worker antigo ignora o campo e recusa a proporção, como antes.
     enquadramento: analise.enquadramento ?? null,
     leve: tentativaLeve(m.tentativas),
+    // A GUARDA NA SAÍDA (03/10): o worker confere a fala do arquivo pronto.
+    guardaDaFala: pedidoDaGuarda(v.id, "completo editado", app),
     callbackUrl: `${app}/api/videos/${v.id}/montar-completo-callback`,
     // Volta no corpo assinado: o callback só troca o completo se o estado
     // ainda for este mesmo "montando".
@@ -1881,6 +1884,8 @@ async function enviarSobMedida(v: VideoDoCompleto, estado: MontagemDoCompleto, l
       edicao: sm.edicao,
       escala: final ? 1 : 0.5,
       abertura: final && estado.abertura?.length ? { momentos: estado.abertura, familia: "sobrio", acento: marca.acento, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
+      // A GUARDA NA SAÍDA (03/10): só o final; a prévia não vai ao cliente.
+      guardaDaFala: final ? pedidoDaGuarda(v.id, "completo sob medida", app) : null,
       callbackUrl: `${app}/api/videos/${v.id}/montar-completo-callback`,
       retorno: { desde: tomado.desde },
     });

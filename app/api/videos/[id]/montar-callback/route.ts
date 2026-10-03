@@ -26,6 +26,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     /** O worker reiniciou no meio (deploy): reenviar sem gastar tentativa. */
     reiniciado?: boolean;
     montado?: { url: string; bytes: number };
+    /** A guarda na saída (03/10): o que o worker tirou do arquivo pronto. */
+    guardaDaFala?: { conferido?: boolean; tirados?: number; sobras?: Array<{ de: number; texto: string }>; motivo?: string } | null;
     tempos?: Record<string, number>;
     retorno?: { indice?: number; desde?: string } | null;
   };
@@ -40,6 +42,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Sem o corte de retorno" }, { status: 400 });
   }
   const r = await concluirMontagem(id, indice, desde, corpo);
+  const g = corpo.guardaDaFala;
+  if (g?.tirados) console.log(`[montar-callback][${id}] guarda da fala tirou ${g.tirados}: ${(g.sobras ?? []).map((x) => `${x.de.toFixed(1)}s "${x.texto}"`).join("; ").slice(0, 400)}`);
+  else if (g && !g.conferido) console.error(`[montar-callback][${id}] guarda da fala não conferiu: ${g.motivo ?? "sem motivo"}`);
   if (!corpo.ok) console.error(`[montar-callback][${id}] corte ${indice}: ${corpo.erro ?? "falhou"}`);
   // 200 também no "ignorado": repetir o aviso não muda um corte que já saiu
   // de "montando" (refeito, trocado ou desistido).
