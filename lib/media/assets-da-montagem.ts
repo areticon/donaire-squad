@@ -53,44 +53,56 @@ import {
  * referência tem 5 a 9 recortes por quadro, e isso só cabe no custo se eles
  * forem reaproveitados).
  *
- * ## As três proibições, em todo prompt
+ * ## A guarda, em UMA frase no fim de todo prompt (02/10, prova A/B)
  *
- * Sem texto legível (letra falsa em português é o defeito mais visível de
- * imagem gerada; texto é código), sem pessoa e sem rosto (o único rosto na
- * tela é o do cliente, pixel da gravação), sem logotipo.
+ * Até 02/10 cada pedido levava um muro de negativas (duas frases de 90
+ * palavras proibindo letra, rótulo, número, pessoa, mão, silhueta, biquíni),
+ * mais paleta "mandatory" e, no MrBeast, "extremely saturated, no dark
+ * background, no moody lighting". A prova A/B de 02/10 (scripts/tmp/ab-0210,
+ * 9 pares julgados por visão com critérios fixos) mostrou o efeito: o pedido
+ * com o muro saiu como ilustração saturada de banco de IA (13 a 20 de 25),
+ * e o MESMO assunto escrito como um diretor de arte escreve direto na
+ * Higgsfield (descrição positiva, luz, lente, atmosfera, cor da marca como
+ * sugestão) saiu como fotografia (23 a 24 de 25). A praia com biquíni de
+ * 02/10 nasceu COM a proibição de pessoas no prompt: o muro não barra nada;
+ * quem barra é a conferência por visão (lib/media/conferencia-da-imagem.ts)
+ * e a checagem de texto legível (`textoLegivel`), que continuam.
+ *
+ * O que sobrou no prompt é o que é de lei ou de marca: sem palavra legível
+ * (texto é código; letra falsa em português é o defeito mais visível), sem
+ * logotipo, sem pessoa real identificável, roupa discreta. Em uma frase.
  */
 
-// "no newspaper print" apagava a textura de jornal que a referência tem em
-// todo quadro; o que não pode é PALAVRA legível, não papel impresso.
-// "Morning / Noon / Afternoon" (30/09, colagem do completo): pedir uma
-// sequência de tempo fez o modelo ESCREVER o rótulo de cada período. Por isso
-// a proibição nomeia rótulo, legenda e língua, e diz como mostrar tempo sem
-// palavra (sol, relógio sem números, sombra).
-const PROIBIDO_TEXTO =
-  "Absolutely no written words anywhere, in any language (not English, not Portuguese): no letters, no labels, no captions, no titles, no names of times of day or days of the week, no numbers or numerals, no signage, no logos, no watermark; any printed matter must be blurred and illegible. Show time or sequence only visually (the position of the sun, clock faces with plain tick marks and no numerals, a growing shadow); calendars are grids of empty squares.";
-const PESSOAS_PROIBIDAS =
-  " Absolutely no people: no faces, no heads, no hands, no bodies, no silhouettes, no photos of people. If any human figure still appears (a crowd far away, a figure on a shore), everyone is fully and modestly dressed in everyday clothes: never swimwear, bikinis, underwear, bare torsos, tight or revealing clothing, nothing sensual or suggestive; prefer places and objects without people.";
+/**
+ * Sem gente: a cena é lugar e objeto; o único rosto na tela é o pixel da
+ * gravação. A roupa vem como frase POSITIVA: na prova de 02/10 a "praia
+ * cheia" pedida pelo diretor saiu de biquíni com "no people" (muro ou frase),
+ * e saiu vestida quando o prompt descreveu a roupa.
+ */
+const GUARDA_SEM_PESSOAS =
+  "Keep it clean for a brand video: a place without people (if a crowd is part of the scene, everyone is fully and modestly dressed in everyday clothes, seen from behind), no readable words or logos anywhere.";
 /**
  * GENTE PEDIDA PELO CLIENTE (02/10): "um vídeo de Jesus falando com a
- * multidão, com roupas da época" sumia porque toda imagem proibia pessoas. Com
- * o pedido explícito (asset `comPessoas`), pessoas entram, com as mesmas
- * guardas de roupa e de respeito, e a figura bíblica com reverência.
+ * multidão, com roupas da época". Com o pedido explícito (asset `comPessoas`),
+ * pessoas entram: anônimas ou bíblicas, roupa discreta, reverência.
  */
-const PESSOAS_PEDIDAS =
-  " People are allowed here because the client explicitly asked for them: historical or biblical figures in accurate period clothing, an anonymous crowd, fictional people. Everyone is fully and modestly dressed, nothing sensual or suggestive, no caricature. A sacred figure such as Jesus is shown with reverence: in a wide shot among the crowd or from behind or in soft profile, natural light, no glowing halo, no kitsch. Never depict, resemble or evoke a real contemporary person, celebrity or politician.";
-const PROIBIDO = PROIBIDO_TEXTO + PESSOAS_PROIBIDAS;
-/** O que nunca entra na imagem; com gente pedida pelo cliente, a regra das pessoas troca pela de respeito. */
-export const proibidoDaImagem = (comPessoas?: boolean) => (comPessoas ? PROIBIDO_TEXTO + PESSOAS_PEDIDAS : PROIBIDO);
+const GUARDA_COM_PESSOAS =
+  "People are welcome here as the client asked: anonymous or biblical figures in modest period clothing, a sacred figure shown with reverence (wide shot, from behind or in soft profile), never a real public figure; no readable words or logos anywhere.";
+/** A guarda da imagem; com gente pedida pelo cliente, a de respeito. */
+export const proibidoDaImagem = (comPessoas?: boolean) => (comPessoas ? GUARDA_COM_PESSOAS : GUARDA_SEM_PESSOAS);
 
 
 /** Fallback quando a linguagem não tem ficha em ARTE_DA_LINGUAGEM. */
+// Direção, não ordem: luz, lente e material, escritos como um diretor de
+// arte escreve. Sem "no paper, no collage": o que a família NÃO é não ajuda o
+// modelo a desenhar o que ela é.
 const DIRECAO_DA_FAMILIA: Record<FamiliaDaCapa, string> = {
   colagem:
     "Editorial cut-paper collage in the language of a premium explainer video, flat lay seen from straight above: torn paper shapes, cut-out objects with thick white paper borders casting soft drop shadows, halftone-printed paper textures, craft paper and cardboard, paper-strip arrows",
   impacto:
-    "Bold high-contrast photographic scene for a high-retention social video: one clear hero object, dramatic light, punchy saturated color, crisp and modern, no paper, no collage, no vintage texture",
+    "Bold, high-contrast photograph for a high-retention social video: one clear hero object, hard directional light, deep clean shadows, rich colour, crisp and modern, 50mm lens",
   sobrio:
-    "Cinematic realistic documentary photograph: natural light, shallow depth of field, calm breathing composition, credible and restrained, no paper, no collage, no graphic overlays",
+    "Cinematic documentary photograph: natural light, 35mm lens, shallow depth of field, calm breathing composition, credible and restrained, natural muted colour",
 };
 
 /**
@@ -102,7 +114,7 @@ const DIRECAO_DA_FAMILIA: Record<FamiliaDaCapa, string> = {
  */
 const IMAGEM_DA_LINGUAGEM: Record<string, string> = {
   hormozi: "one hero object, hard contrasty light on a plain dark background, bold and direct",
-  mrbeast: "extremely saturated bright colors, one clear hero object, exaggerated contrast, playful energy",
+  mrbeast: "vivid clean bright colours, one clear hero object, strong contrast, playful energy",
   consorcio: "real credible business photography, the concrete good (house keys, car keys, a signed contract), clean bright daylight, trustworthy, never flashy",
   "ali-abdaal": "bright clean desk-setup aesthetic, soft pastel light, friendly and modern",
   ugc: "authentic smartphone-photo look, natural daylight, casual real-life setting",
@@ -135,16 +147,18 @@ const IMAGEM_DA_LINGUAGEM: Record<string, string> = {
  * isolado em fundo puro e de uma lousa vazia.
  */
 const DIRECAO_PROPRIA: Record<string, string> = {
+  // "Extremely saturated" (até 02/10) virava ilustração plástica; o vivo do
+  // MrBeast é luz cheia e cor limpa numa foto real, e isso se descreve.
   mrbeast:
-    "Bright, extremely saturated high-retention photograph: one huge hero object filling the frame, bright even studio light, clean solid colored or white background, playful energy, crisp and instantly readable at phone size, no dark background, no moody lighting, no paper, no collage",
+    "Bright, vivid high-retention photograph of a real place or object: one big hero subject filling the frame, bright daylight or clean studio light, punchy but true-to-life colour, playful energy, crisp and instantly readable at phone size",
   keynote:
-    "Minimal premium product-launch photograph: one single isolated object on a pure black or pure white seamless background, soft studio light with a subtle reflection, enormous negative space, calm and precise, no clutter, no paper, no collage",
-  // O consórcio (02/10): a base do impacto pede luz dramática e fundo escuro;
-  // o nicho rende com prova real e luz de dia, nunca com ostentação.
+    "Minimal premium product-launch photograph: one single isolated object on a pure black or pure white seamless background, soft studio light with a subtle reflection, enormous negative space, calm and precise",
+  // O consórcio (02/10): setor regulado, a bíblia pede prova real e luz de
+  // dia; a modéstia fica como direção curta, nunca como lista.
   consorcio:
-    "Credible real-life business photograph: one concrete object of the deal (new house keys, car keys, a signed contract with a pen, a house model on a desk), bright natural daylight, clean modern office or home setting, warm and trustworthy, instantly readable at phone size, no piles of cash, no money flying, no gold, no luxury sports car, no mansion, no paper, no collage",
+    "Credible real-life business photograph: one concrete object of the deal (new house keys, car keys, a signed contract with a pen, a house model on a desk), bright natural daylight, clean modern office or home setting, warm and trustworthy, modest and credible rather than flashy, instantly readable at phone size",
   lousa:
-    "Minimal dark elegant photograph: one object in soft side light on a near-black matte background, lots of empty space, calm and premium, no chalk drawings, no paper, no collage",
+    "Minimal dark elegant photograph: one object in soft side light on a near-black matte background, lots of empty space, calm and premium",
 };
 
 function direcao(familia: FamiliaDaCapa, estiloId?: string | null): string {
@@ -154,36 +168,48 @@ function direcao(familia: FamiliaDaCapa, estiloId?: string | null): string {
   return olhar ? `${DIRECAO_DA_FAMILIA[familia]}; ${olhar}` : DIRECAO_DA_FAMILIA[familia];
 }
 
+/**
+ * A cor da marca como SUGESTÃO (02/10). "Mandatory" e "graded toward the
+ * accent" tingiam a cena inteira de laranja (a estante, a mesa e o café de
+ * 02/10 saíram monocromáticos); a prova mostrou que a cor natural da cena com
+ * o acento num detalhe é o que parece foto.
+ */
 function cores(marca: CoresDaMarca, familia: FamiliaDaCapa = "colagem"): string {
-  // "Tinta e recortes P&B" é vocabulário de colagem; fora dela a cor da marca
-  // entra como luz e detalhe da cena.
   if (familia !== "colagem") {
-    return `Color palette: natural scene colors graded toward the brand accent ${nomeDaCor(marca.acento)} (in light, a few details or the background) with ${nomeDaCor(marca.escuro)} shadows. Never draw color swatches.`;
+    return `Colour: natural to the scene, with the brand accent ${nomeDaCor(marca.acento)} welcome in one or two details or in the light, and ${nomeDaCor(marca.escuro)} in the shadows.`;
   }
-  return `Color palette, mandatory: the brand accent ${nomeDaCor(marca.acento)} used for a few key shapes only, the dark tone ${nomeDaCor(marca.escuro)} only in ink, black-and-white photo cutouts and shadows, and ${nomeDaCor(marca.claro)} neutrals. Never draw color swatches.`;
+  // "Tinta e recortes P&B" é vocabulário de colagem.
+  return `Colour: the brand accent ${nomeDaCor(marca.acento)} on a few key shapes, ${nomeDaCor(marca.escuro)} in the ink, black-and-white photo cutouts and shadows, ${nomeDaCor(marca.claro)} neutrals.`;
+}
+
+/** O enquadramento, como um diretor pede: "vertical 9:16", não "Composition 9:16". */
+function enquadramento(proporcao: AspectRatio): string {
+  return proporcao === "9:16" ? "vertical 9:16 frame" : proporcao === "16:9" ? "wide 16:9 frame" : proporcao === "1:1" ? "square frame" : `${proporcao} frame`;
 }
 
 /**
- * A colagem inteira. O SUJEITO vem primeiro e é o substantivo dito, literal
- * (gap 2: "fala mapa, aparece um mapa"); a base de papel claro vem DEPOIS,
- * porque na ordem antiga a descrição do diretor ("near-black background")
- * ganhava da base e três de quatro colagens saíram pretas.
+ * A colagem inteira (02/10, forma nova): o SUJEITO vem primeiro e é o
+ * substantivo dito, literal (gap 2: "fala mapa, aparece um mapa"); depois a
+ * direção da família ou do estilo (luz, lente, material), a cor da marca como
+ * sugestão, o enquadramento, e a guarda em uma frase. Na colagem a base de
+ * papel claro vem logo depois do estilo, porque na ordem antiga a descrição
+ * do diretor ("near-black background") ganhava da base.
  */
 export function promptDaColagem(descricao: string, familia: FamiliaDaCapa, marca: CoresDaMarca, proporcao: AspectRatio, estiloId?: string | null, comPessoas?: boolean): string {
-  const papel =
-    familia === "colagem"
-      ? " Background: warm kraft paper or off-white paper only, with torn paper sheets and blurred newsprint strips; never a dark background, never black."
-      : "";
-  // "Sem foto de produto e sem 3D" é regra da colagem (a gravura é o
-  // oposto); no sóbrio a foto realista É a linguagem.
-  const semFoto = familia === "colagem" ? " No photorealistic product shot, no 3D render." : familia === "impacto" ? " No 3D render." : "";
-  return `Subject, shown literally and recognizably: ${descricao}. Style: ${direcao(familia, estiloId)}${papel} ${cores(marca, familia)} Composition ${proporcao}, generous negative space, no border.${semFoto} ${proibidoDaImagem(comPessoas)}`;
+  const papel = familia === "colagem" ? " Background: warm kraft paper or off-white paper, with torn paper sheets and blurred newsprint strips." : "";
+  // A ÂNCORA DE FOTO REAL (02/10): foi o que separou a prova B da A. A
+  // descrição do diretor chega como lista de adjetivos ("vivid, saturated"),
+  // e sem lente e material o modelo devolve ilustração plástica. Vale nas
+  // famílias fotográficas; a colagem é papel e gravura por definição.
+  const foto = familia === "colagem" ? "" : " Shot like a real photograph: 35mm or 50mm lens, real materials and textures, true-to-life colour, natural shadows.";
+  return `${descricao}.${foto} ${direcao(familia, estiloId)}.${papel} ${cores(marca, familia)} ${enquadramento(proporcao)}, generous negative space, full bleed. ${proibidoDaImagem(comPessoas)}`;
 }
 
 /**
  * Um objeto só, para recortar. Na colagem é GRAVURA de enciclopédia com leve
  * aquarela (a tesoura, o olho, a câmera antiga da referência), não foto de
- * produto: o "microchip fotográfico" de 29/09 era o oposto da linguagem.
+ * produto: o "microchip fotográfico" de 29/09 era o oposto da linguagem. O
+ * verde chapado e a borda são especificação técnica do recorte, não negativa.
  */
 export function promptDoElemento(descricao: string, familia: FamiliaDaCapa, marca: CoresDaMarca): string {
   const acabamento =
@@ -192,14 +218,14 @@ export function promptDoElemento(descricao: string, familia: FamiliaDaCapa, marc
       : familia === "impacto"
         ? // Ícone pop de retenção (Hormozi, MrBeast): cartum brilhante de contorno
           // escuro, sem a borda branca de adesivo de papel da colagem.
-          `${descricao}, as a bold glossy vibrant cartoon icon with clean simple shapes and a thick dark outline, no white border`
-        : `${descricao}, as a clean realistic cutout photograph, no border`;
-  return `A single isolated object: ${acabamento}. Centered, fully visible with margin on every side, flat even lighting, no cast shadow on the background. The background is a perfectly uniform flat pure chroma green (#00FF00) with nothing else on it. The object itself must not contain any green. Accent details may use ${nomeDaCor(marca.acento)}. ${PROIBIDO}`;
+          `${descricao}, as a bold glossy vibrant cartoon icon with clean simple shapes and a thick dark outline, without a white border`
+        : `${descricao}, as a clean realistic cutout photograph, without a border`;
+  return `A single isolated object: ${acabamento}. Centered, fully visible with margin on every side, flat even lighting, nothing cast on the background. The background is a perfectly uniform flat pure chroma green (#00FF00) with nothing else on it; the object itself contains no green. Accent details may use ${nomeDaCor(marca.acento)}. ${GUARDA_SEM_PESSOAS}`;
 }
 
 export const PROMPT_DO_PAPEL =
-  "Seamless texture of blank off-white recycled paper seen straight on, fine paper fibers, very subtle grain and soft uneven tone, evenly lit, no folds, no objects, no shadows, no border. " +
-  PROIBIDO;
+  "Seamless texture of blank off-white recycled paper seen straight on, fine paper fibers, very subtle grain and soft uneven tone, evenly lit, flat and empty, edge to edge. " +
+  GUARDA_SEM_PESSOAS;
 
 /** O acabamento de cor da cena de cinema, por família; o papel fica por conta do Remotion. */
 const ACABAMENTO_DA_CENA: Record<FamiliaDaCapa, string> = {
@@ -210,10 +236,10 @@ const ACABAMENTO_DA_CENA: Record<FamiliaDaCapa, string> = {
 
 /** O acabamento da cena de cinema de um estilo com bíblia (01/10), no lugar do da família. */
 const ACABAMENTO_PROPRIO: Record<string, string> = {
-  mrbeast: "bright, vivid and extremely saturated colors, bright even light, energetic fast action, never dark",
+  mrbeast: "bright, vivid clean colour, bright even light, energetic fast action",
   keynote: "soft studio light on a pure black or white seamless background, minimal, slow elegant movement",
   lousa: "dark elegant low-key light, soft side light, minimal",
-  consorcio: "clean bright natural daylight, real and trustworthy, steady confident movement, never flashy",
+  consorcio: "clean bright natural daylight, real and trustworthy, steady confident movement",
 };
 
 /**
@@ -222,6 +248,11 @@ const ACABAMENTO_PROPRIO: Record<string, string> = {
  * fala "mapa", aparece um mapa com cara de filme. Base única para toda
  * família (live-action, 35 mm, profundidade de campo), a família só muda a
  * cor, e câmera e efeito vêm do catálogo, escolhidos pelo diretor por cena.
+ *
+ * Desde 02/10 a cena vem PRIMEIRO (é o que o Kling pesa mais), o acabamento e
+ * a câmera depois, a cor da marca como sugestão, e a guarda em uma frase. O
+ * modelo e o preset são os que um usuário direto usa: Kling 3.0 Pro, 1080p,
+ * sem parâmetro de qualidade abaixo do padrão deles (lib/media/higgsfield.ts).
  */
 export function promptDaCenaEmMovimento(
   descricao: string,
@@ -234,11 +265,10 @@ export function promptDaCenaEmMovimento(
   estiloId?: string | null,
   comPessoas?: boolean
 ): string {
-  const acabamento = (estiloId && ACABAMENTO_PROPRIO[estiloId]) || `dramatic natural light, ${ACABAMENTO_DA_CENA[familia]}`;
+  const acabamento = (estiloId && ACABAMENTO_PROPRIO[estiloId]) || `natural light, ${ACABAMENTO_DA_CENA[familia]}`;
   const partes = [
-    `${Math.round(segundos)} second ${formato === "9:16" ? "vertical" : "horizontal 16:9"} cinematic live-action b-roll shot, 35mm film look, shallow depth of field, soft film grain, ${acabamento}.`,
-    `What we see: ${descricao}.`,
-    `Color accents: ${nomeDaCor(marca.acento)}.`,
+    `Cinematic ${formato === "9:16" ? "vertical" : "widescreen 16:9"} live-action b-roll, ${Math.round(segundos)} seconds, shot on 35mm film: ${descricao}.`,
+    `${acabamento}, shallow depth of field, soft film grain, with the brand accent ${nomeDaCor(marca.acento)} welcome in a detail.`,
   ];
   partes.push(`Camera: ${camera && CAMERA_NO_PROMPT[camera] ? CAMERA_NO_PROMPT[camera] : "slow cinematic camera move"}.`);
   if (efeito && EFEITO_NO_PROMPT[efeito] && !EFEITO_NO_PROMPT[efeito].noFfmpeg) partes.push(`Effect: ${EFEITO_NO_PROMPT[efeito].prompt.replace(/the subject/g, "the main object")}.`);
@@ -261,7 +291,7 @@ export function promptDoCenarioDoNarrador(descricao: string, camera: string | nu
   partes.push(`Camera: ${camera && CAMERA_NO_PROMPT[camera] ? CAMERA_NO_PROMPT[camera] : "slow dolly in"}.`);
   const e = efeito && EFEITO_NO_PROMPT[efeito] && !EFEITO_NO_PROMPT[efeito].noFfmpeg ? EFEITO_NO_PROMPT[efeito].prompt : EFEITO_NO_PROMPT.sumir.prompt;
   partes.push(`Effect: ${e.replace(/the subject/g, "the shelves and objects of the room")}.`);
-  partes.push("The room stays empty the whole time: no person enters, no people, no faces, no hands. No text, no letters, no logos, no watermark.");
+  partes.push("The room stays empty the whole time, with nobody entering; no readable words or logos.");
   return partes.join(" ");
 }
 

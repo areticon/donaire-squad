@@ -379,11 +379,13 @@ export type OpcoesDaImagem = {
  */
 // Figura histórica ou bíblica pedida pelo cliente (02/10: "Jesus falando com
 // a multidão, com roupas da época") é permitida, com respeito; o que continua
-// proibido é a pessoa REAL CONTEMPORÂNEA identificável.
-const PESSOA_ANONIMA =
-  " Any person shown must be a fictional, anonymous individual or a historical or biblical figure depicted respectfully in period clothing: never depict, resemble or evoke a real contemporary person, celebrity, politician or living public figure.";
+// proibido é a pessoa REAL CONTEMPORÂNEA identificável. Uma frase curta
+// (02/10, prova A/B): o muro de negativas não barrava nada e tirava a cara de
+// foto; quem barra é a conferência por visão. Prompt que já traz a guarda
+// (montagem, arte sem texto) não ganha outra.
+const PESSOA_ANONIMA = " Any person shown is fictional or historical, modestly dressed, never a real public figure.";
 function comPessoaAnonima(prompt: string): string {
-  return prompt.includes("real contemporary person") ? prompt : prompt.trimEnd() + PESSOA_ANONIMA;
+  return /real (contemporary person|public figure)|no people in frame/i.test(prompt) ? prompt : prompt.trimEnd() + PESSOA_ANONIMA;
 }
 
 /**
