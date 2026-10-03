@@ -84,6 +84,12 @@ export type RoteiroDoVideo = {
   remocoes: Array<{ de: number; ate: number; motivo?: string }>;
   /** A limpeza já rodou (a lista pode ser vazia de verdade, numa fala limpa). */
   limpezaFeita?: boolean;
+  /**
+   * As retomadas (tomada errada seguida da refeita, 03/10) já estão nas
+   * `remocoes`. Roteiro sem a marca é de antes da correção: quem o usa aplica
+   * as retomadas por cima (`garantirRetomadasNoRoteiro`).
+   */
+  retomadasFeitas?: boolean;
   completo: RoteiroDoCompleto | null;
   /** Índices (em `clips`) dos cortes que o diretor planejou. */
   cortesPlanejados: number[];

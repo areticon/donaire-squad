@@ -11,6 +11,7 @@ import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
 import { estimativaDaRodadaSegundos } from "@/lib/media/video-state";
 import type { Word } from "@/lib/media/transcribe";
+import { garantirRetomadasNoRoteiro } from "@/lib/media/roteiro-da-edicao";
 
 /**
  * Refaz SÓ o vídeo completo, sem recortar tudo de novo (30/09).
@@ -65,6 +66,11 @@ export async function POST(
 
   const trechos = (video.clips as unknown as Trecho[]) ?? [];
   const transcript = video.transcript as { words?: Word[] } | null;
+  // O texto que o cliente aprovou (como no /cortar), com as retomadas por cima
+  // quando o roteiro é de antes de 03/10. Sem roteiro aprovado, a limpeza
+  // roda inteira de novo, como antes.
+  const roteiro = await garantirRetomadasNoRoteiro(id);
+  const aprovado = roteiro?.aprovadoEm ? roteiro : null;
   const { corpo } = await montarPedidoDeCorte(
     {
       id,
@@ -78,6 +84,8 @@ export async function POST(
       termos: video.project?.videoTerms ?? null,
       escolha: video.project?.videoEstiloEscolha ?? null,
       colorPalette: video.project?.colorPalette ?? null,
+      remocoesProntas: aprovado ? aprovado.remocoes : null,
+      retomadasNasProntas: Boolean(aprovado?.retomadasFeitas),
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );

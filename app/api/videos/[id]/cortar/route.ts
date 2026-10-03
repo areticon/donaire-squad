@@ -14,7 +14,7 @@ import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
 import { gravarEdicaoDoPedido } from "@/lib/media/edicao-gravada";
 import type { Word } from "@/lib/media/transcribe";
-import { lerRoteiroDoVideo, roteiroLigado } from "@/lib/media/roteiro-da-edicao";
+import { garantirRetomadasNoRoteiro, lerRoteiroDoVideo, roteiroLigado } from "@/lib/media/roteiro-da-edicao";
 
 /**
  * Manda o worker cortar a gravação.
@@ -132,6 +132,9 @@ export async function POST(
   }
 
   const transcript = video.transcript as { words?: Word[] } | null;
+  // Roteiro aprovado de antes das retomadas (03/10): a tomada refeita entra
+  // na lista guardada antes do corte, uma vez (ver garantirRetomadasNoRoteiro).
+  const aprovado = roteiro?.aprovadoEm ? ((await garantirRetomadasNoRoteiro(id)) ?? roteiro) : null;
 
   const { corpo, resumo } = await montarPedidoDeCorte(
     {
@@ -147,7 +150,8 @@ export async function POST(
       escolha: video.project?.videoEstiloEscolha ?? null,
       colorPalette: video.project?.colorPalette ?? null,
       // O texto que o cliente leu e aprovou: sem limpeza por IA de novo.
-      remocoesProntas: roteiro?.aprovadoEm ? roteiro.remocoes : null,
+      remocoesProntas: aprovado ? aprovado.remocoes : null,
+      retomadasNasProntas: Boolean(aprovado?.retomadasFeitas),
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );

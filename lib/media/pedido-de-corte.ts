@@ -19,6 +19,7 @@ import {
   vetarRemocoesLongasDeFala,
 } from "@/lib/media/limpeza";
 import { decidirRetomadas } from "@/lib/media/decidir-retomadas";
+import { pedidoDaGuarda } from "@/lib/media/guarda-da-fala";
 import { escolherGanchos, ganchosNoTempoEditado } from "@/lib/media/abertura";
 import { edicaoDaLinguagem } from "@/lib/media/linguagem-da-edicao";
 import {
@@ -93,6 +94,14 @@ export type VideoParaCortar = {
    * diferente do aprovado (e pagaria duas vezes).
    */
   remocoesProntas?: Array<{ de: number; ate: number; motivo?: string }> | null;
+  /**
+   * As remoções prontas já passaram pelas retomadas (03/10)? Roteiro feito
+   * antes da correção guarda uma lista SEM a tomada refeita, e era essa lista
+   * que o corte reaproveitava para sempre (o completo de cmurtv2zg saiu com
+   * "E eu evitei usar a palavra," duas vezes por isso). Falso ou ausente, as
+   * retomadas entram aqui, por cima das prontas.
+   */
+  retomadasNasProntas?: boolean;
 };
 
 export type ResumoDoPedido = {
@@ -135,6 +144,10 @@ export async function montarPedidoDeCorte(
   const limpeza = video.remocoesProntas?.length
     ? { remocoes: video.remocoesProntas.map((r) => ({ de: r.de, ate: r.ate, motivo: r.motivo ?? "roteiro" })), pausas: 0, hesitacoes: 0 }
     : await remocoesDaGravacao(palavras, video.durationSec, { id: video.id, projectId: video.projectId });
+  // As prontas de antes das retomadas (ver `retomadasNasProntas`).
+  if (video.remocoesProntas?.length && !video.retomadasNasProntas) {
+    limpeza.remocoes = (await retomadasSobre(limpeza.remocoes, palavras, { id: video.id, projectId: video.projectId })).remocoes;
+  }
   const { remocoes } = limpeza;
   const pausas = { length: limpeza.pausas };
   const fala = { length: limpeza.hesitacoes };
@@ -196,8 +209,11 @@ export async function montarPedidoDeCorte(
     const aprovado = (t as { roteiro?: { inicio: number; fim: number; manter: Array<{ de: number; ate: number }> } | null }).roteiro;
     // Com as palavras, a primeira e a última parte perdem o rabo de palavra de
     // fora do corte ("produtividade." abrindo o corte 1 do teste de 29/09).
+    // A tomada refeita que entrou DEPOIS da aprovação (roteiro de antes de
+    // 03/10) derruba o intervalo aprovado: a repetição é o defeito que o
+    // cliente vê, e o texto aprovado com ela é o texto errado.
     const manter =
-      aprovado?.manter?.length && Math.abs(aprovado.inicio - inicio) < 0.01 && Math.abs(aprovado.fim - fim) < 0.01
+      aprovado?.manter?.length && Math.abs(aprovado.inicio - inicio) < 0.01 && Math.abs(aprovado.fim - fim) < 0.01 && manterSemTomadaRefeita(aprovado.manter, remocoes)
         ? aprovado.manter
         : intervalosDoTrecho(remocoes, inicio, fim, palavras);
     const efeitos = efeitosPorTrecho[i] ?? [];
@@ -285,6 +301,9 @@ export async function montarPedidoDeCorte(
     emojisDoCompleto: [],
     ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
     legendasAss,
+    // A GUARDA NA SAÍDA (03/10): o worker confere a fala da base limpa do
+    // completo no próprio arquivo e apara o que sobrar de tomada refeita.
+    guardaDaFala: pedidoDaGuarda(video.id, "base do completo", opcoes.appUrl),
     enquadramentoUrl: `${opcoes.appUrl}/api/videos/${video.id}/enquadrar`,
     callbackUrl: `${opcoes.appUrl}/api/videos/${video.id}/cortar-callback`,
   });
@@ -384,4 +403,33 @@ export async function remocoesDaGravacao(
   );
 
   return { remocoes, pausas: pausas.length, hesitacoes: fala.length, retomadas: retomadas.remocoes.length };
+}
+
+/**
+ * As retomadas por cima de uma lista de remoções que já existe (03/10): o
+ * roteiro guardado antes da correção, ou a fala de um corte antigo. As novas
+ * caem no silêncio sozinhas (as antigas já estão emendadas) e a união não
+ * mexe nas bordas das antigas.
+ */
+export async function retomadasSobre(
+  remocoes: Array<{ de: number; ate: number; motivo: string }>,
+  palavras: Word[],
+  ctx: { id: string; projectId: string }
+): Promise<{ remocoes: Array<{ de: number; ate: number; motivo: string }>; novas: number }> {
+  const r = await decidirRetomadas(palavras, { projectId: ctx.projectId }).catch((e) => {
+    console.error(`[${ctx.id}] retomadas sobre as prontas falharam, segue sem:`, e instanceof Error ? e.message : e);
+    return { remocoes: [] as Array<{ de: number; ate: number; motivo: string }> };
+  });
+  if (!r.remocoes.length) return { remocoes, novas: 0 };
+  return { remocoes: unirRemocoes(remocoes, emendarNoSilencio(r.remocoes, palavras)), novas: r.remocoes.length };
+}
+
+/**
+ * Os intervalos mantidos (aprovados ou gravados) ainda valem? Não, se alguma
+ * tomada refeita das `remocoes` cai dentro do que eles mantêm: foram feitos
+ * antes de a tomada ser achada.
+ */
+export function manterSemTomadaRefeita(manter: Array<{ de: number; ate: number }>, remocoes: Array<{ de: number; ate: number; motivo?: string }>): boolean {
+  const tomadas = remocoes.filter((r) => /tomada refeita/.test(r.motivo ?? ""));
+  return !tomadas.some((r) => manter.some((m) => Math.min(m.ate, r.ate) - Math.max(m.de, r.de) > 0.1));
 }

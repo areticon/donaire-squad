@@ -6,7 +6,8 @@ import { aplicarTermos, comTroca, lerTroca, parseTermos } from "@/lib/media/term
 import { intervalosDoTrecho } from "@/lib/media/edicao";
 import { textoFinalDoCorte } from "@/lib/media/texto-final-do-corte";
 import { bordasDoCorte } from "@/lib/media/bordas-do-corte";
-import { remocoesDaGravacao } from "@/lib/media/pedido-de-corte";
+import { manterSemTomadaRefeita, remocoesDaGravacao, retomadasSobre } from "@/lib/media/pedido-de-corte";
+import { retomadasLigadas } from "@/lib/media/decidir-retomadas";
 import { dirigirMontagem, novaIdeiaDaCena, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
 import { aberturaPeloJev } from "@/lib/media/diretor-limpo";
 import { falaDoCorte, montagemNaEdicaoLigada } from "@/lib/media/montagem-nos-cortes";
@@ -245,6 +246,37 @@ async function montagemDoCompletoAnterior(id: string): Promise<{ plano: PlanoDeM
   return l?.plano?.cenas?.length && l.fala?.palavras?.length ? { plano: l.plano, fala: l.fala } : null;
 }
 
+/**
+ * AS RETOMADAS NUM ROTEIRO DE ANTES DE 03/10. A limpeza do roteiro roda uma
+ * vez e fica guardada (`limpezaFeita`), e o corte e o completo reaproveitam a
+ * lista para sempre. O vídeo cmurtv2zg teve a limpeza às 00h27 de 03/10, três
+ * horas antes de a detecção de retomadas existir, e o completo que o Bruno
+ * recebeu saiu com "E eu evitei usar a palavra," e a tomada refeita. Aqui as
+ * retomadas entram por cima da lista guardada, uma vez, e a marca
+ * `retomadasFeitas` impede pagar de novo. Só os dois campos são gravados
+ * (caminho do jsonb), para não sobrescrever um bloco que outro processo gravou.
+ */
+export async function garantirRetomadasNoRoteiro(videoId: string): Promise<RoteiroDoVideo | null> {
+  const r = await lerRoteiroDoVideo(videoId);
+  if (!r?.limpezaFeita || r.retomadasFeitas || !retomadasLigadas()) return r;
+  const v = await lerVideo(videoId);
+  if (!v) return r;
+  const palavras = aplicarTermos(palavrasDoVideo(v), parseTermos(v.project.videoTerms));
+  const { remocoes, novas } = await retomadasSobre(
+    r.remocoes.map((x) => ({ de: x.de, ate: x.ate, motivo: x.motivo ?? "roteiro" })),
+    palavras,
+    { id: v.id, projectId: v.projectId }
+  );
+  const lista = remocoes.map((x) => ({ de: +x.de.toFixed(3), ate: +x.ate.toFixed(3), motivo: x.motivo }));
+  const json = JSON.stringify(lista);
+  await prisma.$executeRaw`
+    UPDATE video_jobs
+    SET "completoMontagem" = jsonb_set(jsonb_set("completoMontagem", '{roteiro,remocoes}', ${json}::jsonb, true), '{roteiro,retomadasFeitas}', 'true'::jsonb, true)
+    WHERE id = ${videoId} AND jsonb_typeof("completoMontagem" -> 'roteiro') = 'object'`;
+  console.log(`[roteiro][${videoId}] retomadas sobre o roteiro guardado: ${novas} tomada(s) refeita(s)`);
+  return { ...r, remocoes: lista, retomadasFeitas: true };
+}
+
 async function gravarRoteiroDoVideo(id: string, r: RoteiroDoVideo): Promise<void> {
   const json = JSON.stringify(r);
   await prisma.$executeRaw`
@@ -356,7 +388,7 @@ async function falaDoTrecho(
   const { inicio, fim } = bordasDoCorte(t, palavras);
   const e = t.edicao;
   const manter =
-    e && Math.abs(e.inicio - inicio) < 0.01 && Math.abs(e.fim - fim) < 0.01 && e.manter?.length
+    e && Math.abs(e.inicio - inicio) < 0.01 && Math.abs(e.fim - fim) < 0.01 && e.manter?.length && manterSemTomadaRefeita(e.manter, remocoes)
       ? e.manter
       : intervalosDoTrecho(remocoes, inicio, fim, palavras);
   const texto = textoFinalDoCorte(palavras, inicio, manter).texto;
@@ -438,8 +470,11 @@ export async function prepararRoteiro(
   if (!r.limpezaFeita) {
     const palavras = aplicarTermos(palavrasDoVideo(v), parseTermos(termos));
     const { remocoes } = await remocoesDaGravacao(palavras, duracao, { id: v.id, projectId: v.projectId, semIA: opcoes.semIA });
-    r = { ...r, remocoes: remocoes.map((x) => ({ de: +x.de.toFixed(3), ate: +x.ate.toFixed(3), motivo: x.motivo })), limpezaFeita: true };
+    r = { ...r, remocoes: remocoes.map((x) => ({ de: +x.de.toFixed(3), ate: +x.ate.toFixed(3), motivo: x.motivo })), limpezaFeita: true, retomadasFeitas: !opcoes.semIA && retomadasLigadas() };
     await gravarRoteiroDoVideo(videoId, r);
+  } else if (!opcoes.semIA) {
+    // Roteiro de antes das retomadas (03/10), continuado agora.
+    r = (await garantirRetomadasNoRoteiro(videoId)) ?? r;
   }
 
   // 1b. AS TELAS COMPARTILHADAS, antes do diretor (01/10). Até 30/09 o
