@@ -20,7 +20,7 @@ export const ROTULO_DA_REDE: Record<RedeDeReferencia, string> = {
 };
 
 /** Teto de perfis confirmados por conta (do dono), somando os projetos. */
-export const MAX_REFERENCIAS_POR_CONTA = 10;
+export const MAX_REFERENCIAS_POR_CONTA = 15; // era 10; subiu para 15 em 03/10 (Bruno): 5 projetos com 3 referências cada
 
 export type StatusDaReferencia = "sugerido" | "confirmado" | "recusado";
 
