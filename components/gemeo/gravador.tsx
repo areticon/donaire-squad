@@ -179,15 +179,27 @@ export function Gravador({
       )}
       {roteiro && fase !== "revendo" && (
         <div className="flex w-full max-w-[520px] flex-col gap-1">
+          {/* ANTES DE GRAVAR, O TEXTO INTEIRO (03/10, print do Bruno no celular):
+              a caixa de 3 linhas que rola só faz sentido durante a gravação.
+              Parado, a pessoa precisa ler tudo o que vai autorizar. */}
+          {fase === "parado" && (
+            <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+              Leia antes o texto inteiro. Ao gravar, ele rola sozinho na caixa escura.
+            </p>
+          )}
           <div
             ref={prompter}
-            className="h-36 overflow-hidden rounded-lg px-4 py-3 text-lg font-medium leading-relaxed"
+            className={
+              fase === "parado"
+                ? "rounded-lg px-4 py-3 text-base font-medium leading-relaxed whitespace-pre-line"
+                : "h-44 overflow-hidden rounded-lg px-4 py-3 text-lg font-medium leading-relaxed"
+            }
             style={{ background: "rgb(0 0 0 / 0.85)", color: "#fff", scrollBehavior: "auto" }}
           >
             {/* Folga em cima e embaixo: a primeira e a última linha passam pelo meio da caixa. */}
-            <div className="h-10" />
+            {fase !== "parado" && <div className="h-10" />}
             {roteiro}
-            <div className="h-28" />
+            {fase !== "parado" && <div className="h-32" />}
           </div>
           {fase === "gravando" && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
