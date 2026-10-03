@@ -71,6 +71,7 @@ import {
 } from "@/lib/media/editor-sob-medida";
 import { blocosDoEditor, escreverBloco, juntarPartes, type BlocoDoEditor, type EntradaDoEditor, type ParteDaEdicao } from "@/lib/media/editor-sob-medida/editor";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
+import { DEFEITOS_GRAVES } from "@/lib/media/editor-sob-medida/corte";
 import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import {
   demonstracaoNaFala,
@@ -1953,7 +1954,11 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
       return;
     }
     // SÓ VAI AO AR O QUE PASSOU: a peça que ainda tem defeito sai.
-    const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
+    // No fim só sai a peça com defeito GRAVE (ilegível, cobrindo, incoerente,
+    // imagem ruim). A nota baixa do juiz ("qualidade") e o "feio" foram ao
+    // conserto enquanto havia rodada; tirar a peça no fim deixava a cabeça
+    // falando sozinha e a nota caía mais (prova Vox de 03/10: 5,8 para 5,1).
+    const reprovadas = new Set(rev.defeitos.filter((d) => DEFEITOS_GRAVES.has(d.tipo)).map((d) => d.momento).filter((x): x is string => Boolean(x)));
     if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
     // Os vídeos da Higgsfield que já ficaram prontos trocam as fotos no final.
     const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(sm.insercoes ?? {}, sm.videos, { projectId: v.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? sm.insercoes ?? {} : sm.insercoes ?? {};

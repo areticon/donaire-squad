@@ -247,6 +247,11 @@ export function paginasDaLegenda(palavras: PalavraNoCorte[]): Array<{ inicio: nu
 
 // ─────────────────────────────── a resolução ───────────────────────────────
 
+/** A palavra da fala como vai à tela: a primeira letra maiúscula, o resto como foi dito. */
+function limparLetras(w: string): string {
+  return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+}
+
 export type ContextoDaResolucao = {
   palavras: PalavraNoCorte[];
   duracao: number;
@@ -458,6 +463,42 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     }
     planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "insercao", midia: id });
     planos.sort((x, y) => x.de - y.de);
+  }
+
+  // 4c. NENHUM ROSTO SOZINHO NO CORTE (03/10, terceira volta): o juiz contra a
+  // referência derrubou os trechos de "só cabeça falando". Buraco de 3,5 s ou
+  // mais sem peça nem imagem ganha um SUBLINHADO (o marca-texto) com a palavra
+  // de ênfase que o próprio editor marcou ali; nunca texto inventado.
+  if (ctx.ritmo === "corte" && FICHAS["sublinhado"]) {
+    const ficha = FICHAS["sublinhado"];
+    const ocupados = [...camadas.filter((c) => c.peca !== "moldura-do-cartao"), ...planos].map((x) => [x.de, x.ate] as [number, number]).sort((x, y) => x[0] - y[0]);
+    const buracos: Array<[number, number]> = [];
+    let cursor = 2;
+    for (const [x, y] of ocupados) {
+      if (x - cursor >= 3.5) buracos.push([cursor, x]);
+      cursor = Math.max(cursor, y);
+    }
+    if (D - 0.3 - cursor >= 3.5) buracos.push([cursor, D - 0.3]);
+    const limpar = (w: string) => String(w ?? "").replace(/[.,:;!?"“”()]/g, "").trim();
+    let n = 0;
+    for (const [x, y] of buracos) {
+      const alvo = (e.enfases ?? [])
+        .map((an) => ({ an, t: t(an) }))
+        .filter((q): q is { an: string; t: number } => q.t !== null && q.t > x + 0.3 && q.t < y - 1.4)
+        .sort((q1, q2) => Math.abs(q1.t - (x + y) / 2) - Math.abs(q2.t - (x + y) / 2))[0];
+      const palavra = alvo ? ctx.palavras.find((w) => Math.abs(w.inicio - alvo.t) < 0.01) : null;
+      const texto = palavra ? limparLetras(limpar(palavra.texto)) : "";
+      if (!alvo || texto.length < 3) continue;
+      const de = Math.max(x + 0.15, alvo.t - 0.12);
+      // Sai no fim da frase da palavra: a palavra não pode ficar na tela sobre a frase seguinte.
+      const fimDaFrase = frases.find((f) => f.inicio <= alvo.t + 0.01 && f.fim >= alvo.t)?.fim ?? alvo.t + 1.5;
+      const ate = Math.min(y - 0.15, de + 2.6, fimDaFrase + 0.3);
+      if (ate - de < ficha.duracao[0]) continue;
+      n++;
+      // O id leva o instante: a revisão de uma rodada não confunde com a peça da outra.
+      camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { texto, lado: "centro" }, passes: passesDaPeca(ficha) });
+      avisos.push(`auto-${Math.round(de * 10)}: sublinhado "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
+    }
   }
 
   // 5. A câmera: o ritmo e, por cima, o que o editor pediu.

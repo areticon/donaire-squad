@@ -17,6 +17,14 @@ import type { EdicaoResolvida, PlanoResolvido } from "@/lib/media/editor-sob-med
  * Módulo puro.
  */
 
+/**
+ * Os defeitos que TIRAM a peça do final (03/10, terceira volta): ilegível,
+ * cobrindo, incoerente, imagem ruim. A nota baixa do juiz ("qualidade") e o
+ * "feio" vão ao conserto enquanto há rodada; tirar a peça no fim deixava a
+ * cabeça falando sozinha e a nota caía mais (prova Vox: 5,8 para 5,1).
+ */
+export const DEFEITOS_GRAVES = new Set(["ilegivel", "cobre", "incoerente", "imagem"]);
+
 /** Fração mínima do corte com peça na tela (o pedido do dono: corte é curto). */
 export const DENSIDADE_DO_CORTE = 0.7;
 

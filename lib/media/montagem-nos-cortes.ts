@@ -66,8 +66,9 @@ import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import { escreverBloco, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
 import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
-import { adensarCorte, arejarCorte, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
+import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
+import { levarEdicaoParaFalaNova, tempoNaFalaNova } from "@/lib/media/edicao-na-fala-nova";
 
 /**
  * O EDITOR COMPLETO NA ESTEIRA (30/09/2026), com a trava MONTAGEM_NA_EDICAO=1.
@@ -572,7 +573,8 @@ export async function pedidoDoCorte(video: VideoDoPasso, indice: number, t: Trec
     // em vez de quatro. Worker antigo ignora o campo.
     leve: (tomado.tentativas ?? 1) >= MAX_TENTATIVAS,
     // A GUARDA NA SAÍDA (03/10): o worker confere a fala do corte pronto.
-    guardaDaFala: pedidoDaGuarda(video.id, `corte ${indice}`, base),
+    // `indice` vai junto (03/10): a guarda não tira o que o cliente devolveu no controle do corte.
+    guardaDaFala: pedidoDaGuarda(video.id, `corte ${indice}`, base, indice),
     callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,
     // Volta no corpo do callback (assinado): o callback só troca o vídeo se
     // o corte ainda estiver neste mesmo "montando".
@@ -737,6 +739,12 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     return;
   }
   const ctx = contexto(video, t);
+  // O CONTROLE DO CORTE (03/10): o cliente ajustou o corte e a edição que já
+  // estava paga volta encaixada na fala nova, sem editor, imagem nem vídeo novos.
+  const reuso = (t as TrechoComMontagem & { reaproveitarMontagem?: ReaproveitarMontagem | null }).reaproveitarMontagem;
+  if (reuso?.sobMedida?.editor && reuso.sobMedida.estiloId === ctx.escolha.estiloId) {
+    if (await reaproveitarSobMedida(video, indice, t, lido, reuso)) return;
+  }
   const sm0: SobMedidaDoCorte = { fase: "editar", estiloId: ctx.escolha.estiloId, rodada: 0, historico: [] };
   const tomado: MontagemDoCorte = { ...lido, estado: "dirigindo", desde: agora(), trabalhando: true, motivo: null, sobMedida: sm0 };
   if (!(await trocarEstado(video.id, indice, lido, tomado))) return;
@@ -795,6 +803,87 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
   }
 }
 
+/** A edição sob medida que estava no ar quando o cliente ajustou o corte (lib/media/controle-do-corte-servidor.ts). */
+export type ReaproveitarMontagem = {
+  /** As bordas em que a fala dessa edição foi feita. */
+  inicio: number;
+  fim: number;
+  sobMedida: Pick<SobMedidaDoCorte, "estiloId" | "fala" | "quadro" | "rosto" | "gancho" | "editor" | "insercoes" | "videos" | "rodada" | "historico" | "creditos" | "custoImagensUsd">;
+};
+
+/** Tira a marca do trecho (usada uma vez só). */
+async function limparReaproveitamento(videoJobId: string, indice: number): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE video_jobs
+    SET clips = jsonb_set(clips, ARRAY[${String(indice)}]::text[], (clips -> ${indice}::int) - 'reaproveitarMontagem')
+    WHERE id = ${videoJobId} AND jsonb_typeof(clips -> ${indice}::int) = 'object'`;
+}
+
+/**
+ * na-fila -> montando (final), SEM editor: a edição guardada vai para a fala
+ * nova (lib/media/edicao-na-fala-nova.ts) e o final vai direto ao worker. A
+ * revisão da prévia não roda de novo: as peças são as mesmas que já passaram
+ * por ela, só o tempo mudou. Devolve falso quando não dá para reaproveitar
+ * (fala que não bate com a transcrição): o caminho de sempre segue.
+ */
+async function reaproveitarSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, lido: MontagemDoCorte, reuso: ReaproveitarMontagem): Promise<boolean> {
+  const novo = await sobMedidaReaproveitada(video, indice, t, reuso);
+  if (!novo) {
+    console.warn(`[montagem][${video.id}] corte ${indice}: a edição guardada não bate com a fala; segue o editor`);
+    await limparReaproveitamento(video.id, indice);
+    return false;
+  }
+  const tomado: MontagemDoCorte = { ...lido, estado: "dirigindo", desde: agora(), trabalhando: true, motivo: null };
+  if (!(await trocarEstado(video.id, indice, lido, tomado))) return true;
+  await limparReaproveitamento(video.id, indice);
+  console.log(`[montagem][${video.id}] corte ${indice}: edição reaproveitada na fala nova (${novo.editor?.momentos.length ?? 0} peças), direto ao final`);
+  await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, tentativas: 0, custoUsd: 0, sobMedida: novo }, tomado);
+  return true;
+}
+
+/**
+ * A edição sob medida guardada, levada para a fala nova do corte refeito,
+ * pronta para o final (sem gravar nada: a prova local usa a mesma função).
+ * Null quando a fala guardada não bate com a transcrição.
+ */
+export async function sobMedidaReaproveitada(video: VideoDoPasso, indice: number, t: TrechoComMontagem, reuso: ReaproveitarMontagem): Promise<SobMedidaDoCorte | null> {
+  const antes = reuso.sobMedida;
+  const P = aplicarTermos(((video.transcript as { words?: Word[] } | null)?.words ?? []) as Word[], parseTermos(video.project.videoTerms));
+  const { inicio, fim } = bordas(t, video);
+  const aprovado = planoAprovadoDoCorte(t, inicio, fim);
+  const fala = aprovado
+    ? { manter: aprovado.manter, palavras: aprovado.fala.palavras, duracao: aprovado.fala.duracao }
+    : t.edicao && Math.abs(t.edicao.inicio - inicio) < 0.01 && Math.abs(t.edicao.fim - fim) < 0.01 && t.edicao.manter?.length
+      ? await falaDoCorte({ palavras: P, termos: null, inicio, fim, duracaoDaGravacao: video.durationSec ?? fim, edicao: t.edicao, projectId: video.projectId })
+      : null;
+  const indicesDe = (a: number, b: number, manter: { de: number; ate: number }[]) =>
+    P.map((w, i) => ({ w, i })).filter(({ w }) => w.start >= a && w.start <= b && noTempoDoCorte(w.start, a, manter) !== null).map(({ i }) => i);
+  const velhos = antes.fala ? indicesDe(reuso.inicio, reuso.fim, antes.fala.manter) : [];
+  if (!fala || !antes.fala || !antes.editor || velhos.length !== antes.fala.palavras.length) return null;
+  const novos = indicesDe(inicio, fim, fala.manter);
+  const pos = new Map(novos.map((g, k) => [g, k]));
+  const mapa = velhos.map((g) => pos.get(g) ?? null);
+  const levada = levarEdicaoParaFalaNova(antes.editor, antes.fala.palavras, fala.palavras, mapa);
+  const gancho = antes.gancho ? tempoNaFalaNova(antes.gancho, antes.fala.palavras, fala.palavras, mapa) : null;
+  const sm: SobMedidaDoCorte = {
+    ...antes,
+    estiloId: antes.estiloId,
+    fala,
+    gancho: gancho && antes.gancho ? { ...gancho, soco: antes.gancho.soco } : null,
+    editor: levada.editor,
+    insercoes: antes.insercoes ?? {},
+    fase: "final",
+    rodada: antes.rodada ?? 0,
+    historico: antes.historico ?? [],
+    soIds: null,
+    custoImagensUsd: 0,
+    avisos: [`reaproveitada do corte anterior (controle do corte): ${levada.perdidos} peça(s) saíram com a fala`],
+  };
+  const r = resolverCorteSobMedida(video, t, sm, levada.editor, sm.insercoes ?? {});
+  void indice;
+  return { ...sm, edicao: r.edicao, medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) }, avisos: [...(sm.avisos ?? []), ...r.avisos].slice(0, 30) };
+}
+
 /**
  * O PEDIDO AO WORKER de um corte sob medida (separado para a prova local
  * refazer o mesmo pedido): a porta do completo (`/montar-completo`) com
@@ -819,7 +908,7 @@ export function pedidoDoCorteSobMedida(video: VideoDoPasso, indice: number, t: T
     gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: sm.edicao?.tema?.acento ?? ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
     trilha: final && video.project.videoMusicUrl ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
     // A GUARDA NA SAÍDA (03/10): só o final; a prévia não vai ao cliente.
-    guardaDaFala: final ? pedidoDaGuarda(video.id, `corte ${indice} sob medida`, base) : null,
+    guardaDaFala: final ? pedidoDaGuarda(video.id, `corte ${indice} sob medida`, base, indice) : null,
     callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,
     retorno: { indice, desde: estado.desde },
   });
@@ -893,7 +982,11 @@ async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: Tre
       await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
       return;
     }
-    const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
+    // No fim só sai a peça com defeito GRAVE (ilegível, cobrindo, incoerente,
+    // imagem ruim). A nota baixa do juiz ("qualidade") e o "feio" foram ao
+    // conserto enquanto havia rodada; tirar a peça no fim deixava a cabeça
+    // falando sozinha e a nota caía mais (prova Vox de 03/10: 5,8 para 5,1).
+    const reprovadas = new Set(rev.defeitos.filter((d) => DEFEITOS_GRAVES.has(d.tipo)).map((d) => d.momento).filter((x): x is string => Boolean(x)));
     if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
     // Os vídeos da Higgsfield que já ficaram prontos trocam as fotos no final.
     const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(sm.insercoes ?? {}, sm.videos, { projectId: video.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? sm.insercoes ?? {} : sm.insercoes ?? {};
