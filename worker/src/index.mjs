@@ -1663,13 +1663,17 @@ const servidor = createServer((req, res) => {
   // O GÊMEO DIGITAL (01/10), ver src/gemeo.mjs:
   //   /rosto-do-gemeo  síncrona: a melhor foto, recortada no rosto (segundos);
   //   /voz-do-gemeo    síncrona: a amostra de voz em MP3 e a duração real;
-  //   /juntar-gemeo    202 e callback: os pedaços do gerador num vídeo só.
+  //   /juntar-gemeo    202 e callback: os pedaços do gerador num vídeo só;
+  //   /treino-do-gemeo síncrona (03/10): o vídeo de treino vira vídeo
+  //                    normalizado, voz, foto, quadro inteiro e as medidas
+  //                    da checagem automática (rosto e áudio).
   // Tudo do gêmeo vai para o store PRIVADO: rosto, voz e o vídeo final são
   // matéria-prima do cliente até ele aprovar, como a gravação enviada.
   const ehRostoDoGemeo = req.method === "POST" && req.url?.startsWith("/rosto-do-gemeo");
   const ehVozDoGemeo = req.method === "POST" && req.url?.startsWith("/voz-do-gemeo");
   const ehJuntarGemeo = req.method === "POST" && req.url?.startsWith("/juntar-gemeo");
-  if (ehRostoDoGemeo || ehVozDoGemeo || ehJuntarGemeo) {
+  const ehTreinoDoGemeo = req.method === "POST" && req.url?.startsWith("/treino-do-gemeo");
+  if (ehRostoDoGemeo || ehVozDoGemeo || ehJuntarGemeo || ehTreinoDoGemeo) {
     res.on("error", () => {});
     req.socket.on("error", () => {});
     const pedacos = [];
@@ -1687,6 +1691,20 @@ const servidor = createServer((req, res) => {
       }
       if (!pedido.chave) return responder(400, { error: "Falta chave" });
       const gemeo = await import("./gemeo.mjs");
+      if (ehTreinoDoGemeo) {
+        if (!pedido.videoUrl || !pedido.prefixo) return responder(400, { error: "Faltam videoUrl ou prefixo" });
+        const pasta = await mkdtemp(join(tmpdir(), "gemeo-treino-"));
+        emAndamento += 1;
+        try {
+          responder(200, await gemeo.treinoDoGemeo(pedido, pasta, { baixar: baixarQualquer, subir }));
+        } catch (e) {
+          responder(500, { error: e instanceof Error ? e.message : "falhou" });
+        } finally {
+          emAndamento -= 1;
+          rm(pasta, { recursive: true, force: true }).catch(() => {});
+        }
+        return;
+      }
       if (ehJuntarGemeo) {
         if (!Array.isArray(pedido.pedacos) || !pedido.pedacos.length || !pedido.callbackUrl) {
           return responder(400, { error: "Faltam pedacos ou callbackUrl" });

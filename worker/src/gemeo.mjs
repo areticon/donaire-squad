@@ -1,20 +1,22 @@
 import { spawn, spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { rodar, ffprobe } from "./ffmpeg.mjs";
 
 /**
  * O GÊMEO DIGITAL NO WORKER (01/10/2026).
  *
- * Três trabalhos, todos sem IA paga (quem gera é o fal.ai, chamado pelo app):
+ * Quatro trabalhos, todos sem IA paga (quem gera é o fal.ai, chamado pelo app):
  *
  *   fotoDoGerador  a melhor entre as fotos do cliente, recortada num quadrado
  *                  em volta do rosto (gemeo-rosto.py, MediaPipe em CPU);
  *   vozDoGemeo     a amostra de voz gravada no navegador (webm/opus) vira MP3
  *                  limpo, e a duração REAL é medida aqui, não confiada à tela;
  *   juntarPedacos  os pedaços do OmniHuman (cada um abaixo de 30 s, que é o
- *                  teto da alta definição) viram um vídeo só.
+ *                  teto da alta definição) viram um vídeo só;
+ *   treinoDoGemeo  (03/10) o vídeo único de treino vira vídeo normalizado,
+ *                  voz, foto, quadro inteiro e as medidas da checagem.
  *
  * Mora fora do index.mjs pelo mesmo motivo da montagem: o index é o roteador,
  * e cada trabalho novo ali dentro deixava o arquivo mais difícil de ler.
@@ -110,6 +112,176 @@ export async function vozDoGemeo(pedido, pasta, { baixar, subir }) {
   const info = await ffprobe(saida);
   const voz = await subir(saida, pedido.chave, "audio/mpeg", { privado: true });
   return { voz, duracaoSec: Math.round(info.duracaoSec * 10) / 10 };
+}
+
+/**
+ * O ÁUDIO MEDIDO (03/10), para a checagem automática do vídeo de treino. Tudo
+ * pelo ffmpeg, sem IA, em janelas de 50 ms:
+ *
+ *   falaDb     o volume das janelas de fala (percentil 90 do RMS);
+ *   ruidoDb    o volume das janelas mais quietas (percentil 5): o fundo,
+ *              medido nos respiros entre as palavras;
+ *   picoDb     o maior pico (perto de 0 dB é voz estourada);
+ *   falaPct    quanto do tempo tem som acima de -40 dB.
+ *
+ * Por janelas curtas, e não o "Noise floor" do astats inteiro: na prova de
+ * 03/10, com a gravação de verdade do Bruno, o piso inteiro deu -inf, o que
+ * aprovaria qualquer sala; e janelas de meio segundo nunca caem num silêncio
+ * de quem fala sem parar (percentil 10 em -28 dB, com fala dentro). Em 50 ms
+ * o percentil 5 cai nos respiros: -71 dB na gravação limpa do Bruno, -49 dB
+ * com ruído rosa somado, que é o fundo que a clonagem vai ouvir. O app aplica os limites
+ * (lib/media/gemeo.ts, conferirTreino); o worker só mede.
+ */
+export async function medirAudio(arquivo, pasta) {
+  // Nome relativo e `cwd` na pasta: o caminho absoluto do Windows tem ":",
+  // que no filtro do ffmpeg separa opções.
+  await rodar(
+    [
+      "-i", arquivo, "-vn",
+      "-af",
+      "asetnsamples=n=2205:p=0,astats=metadata=1:reset=1:measure_perchannel=none:measure_overall=RMS_level+Peak_level,ametadata=print:file=janelas.txt",
+      "-f", "null", "-",
+    ],
+    { timeoutMs: 2 * 60_000, cwd: pasta }
+  );
+  const linhas = (await readFile(join(pasta, "janelas.txt"), "utf8")).split(/\r?\n/);
+  const ler = (chave) =>
+    linhas
+      .filter((l) => l.startsWith(`${chave}=`))
+      .map((l) => {
+        const v = Number(l.slice(chave.length + 1));
+        return Number.isFinite(v) ? Math.max(-120, v) : -120;
+      });
+  const rms = ler("lavfi.astats.Overall.RMS_level");
+  const picos = ler("lavfi.astats.Overall.Peak_level");
+  if (!rms.length) return { falaDb: null, ruidoDb: null, picoDb: null, falaPct: 0 };
+  const ordenados = [...rms].sort((x, y) => x - y);
+  const pct = (p) => ordenados[Math.min(ordenados.length - 1, Math.floor((p / 100) * ordenados.length))];
+  const um = (v) => Math.round(v * 10) / 10;
+  return {
+    falaDb: um(pct(90)),
+    ruidoDb: um(pct(5)),
+    picoDb: picos.length ? um(Math.max(...picos)) : null,
+    falaPct: Math.round((rms.filter((v) => v > -40).length / rms.length) * 100),
+  };
+}
+
+/**
+ * O VÍDEO DE TREINO DO GÊMEO (03/10/2026): UM vídeo de cerca de 1 minuto, a
+ * pessoa lendo o texto da tela (que inclui a autorização), vira as três coisas
+ * que antes eram pedidas separadas:
+ *
+ *   treino.mp4      o vídeo normalizado (H.264, até 1080p, AAC), que é o que
+ *                   vai ao fornecedor que treina avatar a partir de vídeo;
+ *   referencia.mp4  20 s sem som, 16:9, do meio da gravação: a referência de
+ *                   gesto e postura dos geradores que aceitam vídeo de
+ *                   referência em vez de foto;
+ *   voz.mp3         a amostra de voz (o mesmo tratamento de `vozDoGemeo`);
+ *   foto            o melhor quadro, recortado no rosto (o mesmo critério das
+ *                   fotos, gemeo-rosto.py), e o quadro INTEIRO, que é a
+ *                   referência para compor a pessoa nos cenários.
+ *
+ * E mede o que a checagem automática precisa: duração real, em quantos dos
+ * quadros amostrados aparece um rosto (e se aparece mais de um), e o áudio
+ * (`medirAudio`). Quem decide se passou é o app; o worker só mede.
+ *
+ * Tudo no store PRIVADO: é rosto e voz de uma pessoa.
+ */
+export async function treinoDoGemeo(pedido, pasta, { baixar, subir }) {
+  const entrada = join(pasta, "treino-original");
+  await baixar(pedido.videoUrl, entrada);
+  const prefixo = String(pedido.prefixo ?? "").replace(/\/$/, "");
+  if (!prefixo) throw new Error("Falta o prefixo das chaves");
+
+  // 1. O vídeo normalizado. O webm do MediaRecorder costuma vir sem duração
+  // no cabeçalho; depois de reencodar, o ffprobe mede certo.
+  const treino = join(pasta, "treino.mp4");
+  await rodar(
+    [
+      "-i", entrada, "-t", "300",
+      "-vf", "scale='min(1920,iw)':-2,fps=30,format=yuv420p",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      "-c:a", "aac", "-b:a", "160k", "-ac", "1", "-ar", "48000",
+      "-movflags", "+faststart", treino,
+    ],
+    { timeoutMs: 10 * 60_000 }
+  );
+  const info = await ffprobe(treino);
+  if (!info.temAudio) throw new Error("O vídeo de treino veio sem som");
+  const duracao = info.duracaoSec;
+
+  // 2. A amostra de voz e a medida do áudio (a medida no áudio cru, antes de
+  // nivelar: o loudnorm esconderia justamente o volume baixo e o ruído).
+  const cru = join(pasta, "audio.wav");
+  await rodar(["-i", treino, "-vn", "-ac", "1", "-ar", "44100", cru], { timeoutMs: 3 * 60_000 });
+  const audio = await medirAudio(cru, pasta);
+  const vozMp3 = join(pasta, "voz.mp3");
+  await rodar(
+    ["-i", cru, "-af", "loudnorm=I=-18:TP=-2:LRA=11", "-c:a", "libmp3lame", "-b:a", "128k", vozMp3],
+    { timeoutMs: 3 * 60_000 }
+  );
+
+  // 3. Os quadros: 8, espalhados entre 8% e 92% (o começo e o fim costumam
+  // ter a mão indo ao botão de gravar).
+  const quadros = [];
+  const N = 8;
+  for (let i = 0; i < N; i++) {
+    const instante = duracao * (0.08 + (0.84 * i) / (N - 1));
+    const q = join(pasta, `quadro-${i}.jpg`);
+    // yuvj420p: o ffmpeg 9 recusa gravar JPEG a partir do yuv420p de faixa
+    // limitada (achado na prova de 03/10); o do contêiner aceita os dois.
+    await rodar(["-ss", instante.toFixed(2), "-i", treino, "-frames:v", "1", "-vf", "format=yuvj420p", "-q:v", "2", q], { timeoutMs: 60_000 });
+    quadros.push(q);
+  }
+  const fotoRecortada = join(pasta, "foto-do-gerador.jpg");
+  const quadroInteiro = join(pasta, "quadro-inteiro.jpg");
+  const r = await rodarPython(
+    "gemeo-rosto.py",
+    { fotos: quadros, saida: fotoRecortada, saida_inteira: quadroInteiro, modelo_rosto: MODELO_ROSTO, lado_maximo: 1440 },
+    120_000
+  );
+  const avaliacoes = r.avaliacoes ?? [];
+  const comRosto = avaliacoes.filter((a) => a.rosto && !a.varios).length;
+  const comVarios = avaliacoes.filter((a) => a.varios).length;
+  const virados = avaliacoes.filter((a) => a.rosto && !a.varios && Math.abs(a.giro ?? 0) > 30).length;
+
+  // 4. A referência de gesto: 20 s do meio, sem som, em 16:9 (o formato que
+  // os geradores por referência aceitam), com o rosto centrado pelo pad.
+  const referencia = join(pasta, "referencia.mp4");
+  const inicioRef = Math.max(0, Math.min(duracao - 20, duracao * 0.25));
+  await rodar(
+    [
+      "-ss", inicioRef.toFixed(2), "-i", treino, "-t", "20", "-an",
+      "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", referencia,
+    ],
+    { timeoutMs: 5 * 60_000 }
+  );
+
+  const [videoSubido, vozSubida, refSubida] = [
+    await subir(treino, `${prefixo}/treino.mp4`, "video/mp4", { privado: true }),
+    await subir(vozMp3, `${prefixo}/voz.mp3`, "audio/mpeg", { privado: true }),
+    await subir(referencia, `${prefixo}/referencia.mp4`, "video/mp4", { privado: true }),
+  ];
+  let foto = null;
+  let quadro = null;
+  if (r.escolhida !== null && r.escolhida !== undefined) {
+    foto = await subir(fotoRecortada, `${prefixo}/foto-do-gerador.jpg`, "image/jpeg", { privado: true });
+    quadro = await subir(quadroInteiro, `${prefixo}/quadro-inteiro.jpg`, "image/jpeg", { privado: true });
+  }
+  return {
+    duracaoSec: Math.round(duracao * 10) / 10,
+    largura: info.largura,
+    altura: info.altura,
+    video: videoSubido,
+    voz: vozSubida,
+    referencia: refSubida,
+    foto,
+    quadro,
+    escolhida: r.escolhida ?? null,
+    rosto: { quadros: N, comRosto, comVarios, virados },
+    audio,
+  };
 }
 
 /**

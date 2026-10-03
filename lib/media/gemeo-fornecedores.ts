@@ -30,7 +30,7 @@ const PASTA_DO_DUBLE = () => process.env.GEMEO_DUBLE_PASTA ?? "C:/Users/devan/Do
 /** Erro de fornecedor com o tipo que o passo precisa para decidir o que fazer. */
 export class ErroDoFornecedor extends Error {
   constructor(
-    readonly fornecedor: "elevenlabs" | "fal",
+    readonly fornecedor: "elevenlabs" | "fal" | "heygen",
     readonly tipo: "sem-permissao" | "sem-saldo" | "recusado" | "rede",
     readonly status: number,
     mensagem: string
@@ -265,8 +265,12 @@ export async function subirNoFal(dados: Buffer, contentType: string, nome: strin
 
 export type PedidoNoFal = { requestId: string; statusUrl: string; responseUrl: string };
 
-/** Pede um pedaço ao OmniHuman 1.5, em alta definição (fala abaixo de 30 s). */
-export async function pedirOmniHuman(args: { imagemUrl: string; audioUrl: string }): Promise<PedidoNoFal> {
+/**
+ * Pede um pedaço ao OmniHuman 1.5, em alta definição (fala abaixo de 30 s).
+ * `prompt` (03/10): o movimento do cenário ("sentada à mesa, gestos sobre a
+ * mesa"); sem ele, a instrução neutra de sempre.
+ */
+export async function pedirOmniHuman(args: { imagemUrl: string; audioUrl: string; prompt?: string }): Promise<PedidoNoFal> {
   if (dubleLigado()) {
     const id = `${registroDoDuble().request_id}-${Math.random().toString(36).slice(2, 8)}`;
     return { requestId: id, statusUrl: `duble://status/${id}?em=${Date.now()}`, responseUrl: `duble://resposta/${id}` };
@@ -274,7 +278,7 @@ export async function pedirOmniHuman(args: { imagemUrl: string; audioUrl: string
   const r = await fetch(`https://queue.fal.run/${MODELO_DO_GERADOR}`, {
     method: "POST",
     headers: { Authorization: `Key ${chaveFal()}`, "content-type": "application/json" },
-    body: JSON.stringify({ image_url: args.imagemUrl, audio_url: args.audioUrl, prompt: INSTRUCAO_DO_GERADOR, resolution: "1080p" }),
+    body: JSON.stringify({ image_url: args.imagemUrl, audio_url: args.audioUrl, prompt: args.prompt ?? INSTRUCAO_DO_GERADOR, resolution: "1080p" }),
     signal: AbortSignal.timeout(60_000),
   });
   if (!r.ok) throw await erroFal(r, "pedir o vídeo");

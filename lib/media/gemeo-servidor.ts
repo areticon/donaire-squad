@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { debitar, creditar } from "@/lib/credits";
 import { apagarMidias } from "@/lib/media/faxina";
 import { apagarVoz } from "@/lib/media/gemeo-fornecedores";
+import { apagarGemeoNaHeygen, geradorPreferido } from "@/lib/media/gemeo-geradores";
 import {
+  CENARIOS,
   MAX_FOTOS,
   SEGUNDOS_MAXIMOS_DO_ROTEIRO,
   SEGUNDOS_MINIMOS_DO_ROTEIRO,
@@ -13,9 +15,14 @@ import {
   gemeoAtivo,
   limparTexto,
   oQueFalta,
+  pedacosDasCenas,
   precoDoRoteiro,
+  textoDoTreino,
   videoEmAndamento,
   type CadastroDoGemeo,
+  type CenaDoGemeo,
+  type IdDoCenario,
+  type IdDoGerador,
   type VideoDoGemeo,
 } from "@/lib/media/gemeo";
 
@@ -57,8 +64,11 @@ export const OPERACAO_DO_ESTORNO = "gemeo_video_estorno";
 
 export const agora = () => new Date().toISOString();
 
-/** O cadastro guardado, mais a lista de vozes que ainda precisam ser apagadas na ElevenLabs. */
-export type CadastroGuardado = CadastroDoGemeo & { vozesParaApagar?: string[] };
+/**
+ * O cadastro guardado, mais a lista de vozes que ainda precisam ser apagadas
+ * na ElevenLabs e de gêmeos treinados a apagar na HeyGen (03/10).
+ */
+export type CadastroGuardado = CadastroDoGemeo & { vozesParaApagar?: string[]; avataresParaApagar?: string[] };
 
 // ─────────────────────────────── memória com trava ───────────────────────────────
 
@@ -265,6 +275,55 @@ export async function registrarAutorizacao(
   return c!;
 }
 
+/**
+ * O VÍDEO DE TREINO (03/10): um vídeo só, que vira foto, voz e autorização
+ * depois das checagens (passo do cron, `cuidarDoTreino`). Como na
+ * autorização, o texto que vale como prova é montado AQUI, nunca aceito da
+ * tela. Treino novo substitui o anterior: o gêmeo treinado antigo entra na
+ * fila de apagar, e os arquivos do treino e dos cenários anteriores saem.
+ * A voz antiga sai quando a nova for registrada (`aplicarTreino`).
+ */
+export async function registrarTreino(
+  projectId: string,
+  args: { url: string; nome: string; userId: string; segundos?: number | null; contentType?: string | null; userAgent?: string | null }
+): Promise<CadastroGuardado> {
+  if (!urlDoProjeto(args.url, projectId)) throw new ErroDoCadastro("Arquivo fora do projeto.");
+  const nome = limparTexto(args.nome).slice(0, 120);
+  if (nome.length < 3) throw new ErroDoCadastro("Escreva o seu nome completo antes de gravar.");
+  const projeto = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+  const texto = textoDoTreino(nome, projeto?.name);
+  const antigos: unknown[] = [];
+  const c = await mudarCadastro(projectId, (atual) => {
+    const c = atual ?? cadastroVazio();
+    if (c.treino?.videoUrl === args.url) return undefined;
+    if (c.treino) antigos.push(c.treino.videoUrl, ...Object.values(c.treino.arquivos ?? {}));
+    for (const cen of Object.values(c.cenarios ?? {})) antigos.push(cen.url);
+    const avataresParaApagar = [...(c.avataresParaApagar ?? [])];
+    if (c.avatar?.grupoId) avataresParaApagar.push(c.avatar.grupoId);
+    return {
+      ...c,
+      avataresParaApagar,
+      avatar: null,
+      cenarios: null,
+      treino: {
+        estado: "preparando",
+        desde: agora(),
+        videoUrl: args.url,
+        contentType: args.contentType ?? null,
+        nome,
+        texto,
+        gravadoEm: agora(),
+        userId: args.userId,
+        userAgent: args.userAgent?.slice(0, 300) ?? null,
+        segundosNaTela: args.segundos ?? null,
+        tentativas: 0,
+      },
+    };
+  });
+  if (antigos.length) await apagarMidias(antigos, `gemeo-treino/${projectId}`);
+  return c!;
+}
+
 // ─────────────────────────────── créditos ───────────────────────────────
 
 /** Quanto este vídeo de fato tirou do saldo (zero para acesso interno e cortesia). */
@@ -304,6 +363,17 @@ export class ErroDoPedido extends Error {
 }
 
 /**
+ * O gerador deste cadastro (03/10): o gêmeo treinado (HeyGen) só quando o
+ * ambiente pede, a chave existe e o avatar do projeto está pronto; senão a
+ * reserva (OmniHuman). A tela recebe o id pelo GET e mostra o preço dele.
+ */
+export function geradorDoCadastro(c: CadastroGuardado | null): IdDoGerador {
+  return geradorPreferido() === "heygen" && c?.avatar?.gerador === "heygen" && c.avatar.estado === "pronto" && c.avatar.avatarId
+    ? "heygen"
+    : "omnihuman";
+}
+
+/**
  * Pede um vídeo do gêmeo: confere o cadastro, RESERVA os créditos e põe na
  * fila. Nada pago a fornecedor acontece aqui; quem fala e gera é o passo do
  * cron (`gemeo-passo.ts`), que roda a cada minuto e é cutucado logo depois.
@@ -317,13 +387,29 @@ export async function pedirVideoDoGemeo(args: {
   texto: string;
   titulo?: string | null;
   roteiroId?: string | null;
+  /**
+   * 03/10: as cenas com o cenário de cada uma (roteiro da linha editorial).
+   * Sem cenas, o texto inteiro vai no `cenario` (padrão: de frente para a
+   * câmera, como antes).
+   */
+  cenas?: CenaDoGemeo[] | null;
+  cenario?: IdDoCenario | null;
 }): Promise<VideoDoGemeo> {
   const cadastro = await lerCadastro(args.projectId);
   if (!gemeoAtivo(cadastro)) {
     throw new ErroDoPedido(`O seu gêmeo ainda não está pronto. Falta: ${oQueFalta(cadastro).join(", ")}.`, 409);
   }
-  const texto = limparTexto(args.texto);
-  const preco = precoDoRoteiro(texto);
+  const ids = new Set<string>(CENARIOS.map((c) => c.id));
+  const cenas: CenaDoGemeo[] = (args.cenas ?? [])
+    .map((c) => ({ texto: limparTexto(String(c?.texto ?? "")), cenario: (ids.has(String(c?.cenario)) ? c.cenario : "camera") as IdDoCenario }))
+    .filter((c) => c.texto);
+  const texto = cenas.length ? limparTexto(cenas.map((c) => c.texto).join(" ")) : limparTexto(args.texto);
+  const cenarioUnico: IdDoCenario = args.cenario && ids.has(args.cenario) ? args.cenario : "camera";
+  // QUEM GERA (03/10): o gêmeo treinado quando ele está pronto para este
+  // projeto; senão a reserva. O preço é o do gerador, e a tela faz a mesma
+  // conta com o id que o GET manda.
+  const gerador = geradorDoCadastro(cadastro);
+  const preco = precoDoRoteiro(texto, gerador);
   if (preco.segundos < SEGUNDOS_MINIMOS_DO_ROTEIRO) throw new ErroDoPedido("O roteiro está curto demais para um vídeo.");
   if (preco.segundos > SEGUNDOS_MAXIMOS_DO_ROTEIRO) {
     throw new ErroDoPedido(
@@ -364,7 +450,12 @@ export async function pedirVideoDoGemeo(args: {
     creditosReservados: preco.creditosReservados,
     fotoUrl: cadastro!.foto!.url!,
     voiceId: cadastro!.voz!.voiceId!,
-    pedacos: dividirEmPedacos(texto).map((t) => ({ texto: t, tentativas: 0 })),
+    gerador,
+    avatarId: gerador === "heygen" ? cadastro!.avatar!.avatarId! : null,
+    pedacos: (cenas.length ? pedacosDasCenas(cenas) : dividirEmPedacos(texto).map((t) => ({ texto: t, cenario: cenarioUnico }))).map((p) => ({
+      ...p,
+      tentativas: 0,
+    })),
   };
   try {
     await mudarVideo(args.projectId, id, () => video);
@@ -431,13 +522,29 @@ export async function revogarGemeo(projectId: string, motivo: string): Promise<{
     }
   }
 
+  // O gêmeo treinado na HeyGen (03/10) sai junto; o que não sair agora fica
+  // no registro da revogação, como a voz, e o passo tenta de novo.
+  const avatares = [...(cadastro?.avataresParaApagar ?? []), ...(cadastro?.avatar?.grupoId ? [cadastro.avatar.grupoId] : [])];
+  const avataresPendentes: string[] = [];
+  for (const grupo of avatares) {
+    try {
+      await apagarGemeoNaHeygen(grupo);
+    } catch (e) {
+      console.error(`[gemeo][${projectId}] não apaguei o gêmeo treinado agora, fica para o passo:`, e instanceof Error ? e.message : e);
+      avataresPendentes.push(grupo);
+    }
+  }
+
   if (cadastro) {
     urls.push(
       ...cadastro.fotos.map((f) => f.url),
       cadastro.foto?.url,
       cadastro.voz?.amostraUrl,
       cadastro.voz?.mp3Url,
-      cadastro.autorizacao?.videoUrl
+      cadastro.autorizacao?.videoUrl,
+      cadastro.treino?.videoUrl,
+      ...Object.values(cadastro.treino?.arquivos ?? {}),
+      ...Object.values(cadastro.cenarios ?? {}).map((c) => c.url)
     );
   }
   // A VARREDURA DA PASTA (01/10): além do que o cadastro aponta, tudo o que
@@ -463,22 +570,23 @@ export async function revogarGemeo(projectId: string, motivo: string): Promise<{
   await prisma.projectMemory.deleteMany({ where: { projectId, type: TIPO_CADASTRO } });
   // Os vídeos terminais saem da lista; o registro deles é o VideoJob e o extrato.
   await prisma.projectMemory.deleteMany({ where: { projectId, type: TIPO_VIDEO } });
-  if (cadastro || pendentes.length) {
+  if (cadastro || pendentes.length || avataresPendentes.length) {
     await prisma.projectMemory.create({
       data: {
         projectId,
         type: TIPO_REVOGACAO,
         key: agora(),
         value: {
-          nome: cadastro?.autorizacao?.nome ?? null,
-          autorizadaEm: cadastro?.autorizacao?.gravadaEm ?? null,
+          nome: cadastro?.autorizacao?.nome ?? cadastro?.treino?.nome ?? null,
+          autorizadaEm: cadastro?.autorizacao?.gravadaEm ?? cadastro?.treino?.gravadoEm ?? null,
           textoAutorizado: cadastro?.autorizacao?.texto ?? null,
           revogadaEm: agora(),
           motivo,
           vozesParaApagar: pendentes,
+          avataresParaApagar: avataresPendentes,
         },
       },
     });
   }
-  return { apagados, vozApagada: pendentes.length === 0 };
+  return { apagados, vozApagada: pendentes.length === 0 && avataresPendentes.length === 0 };
 }

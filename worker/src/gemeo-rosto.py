@@ -149,6 +149,11 @@ def main():
     melhor = max(validas, key=lambda a: a["nota"])
     quadrado, lado = recortar(imagens[melhor["indice"]], melhor["caixa"], int(cfg.get("lado_maximo", 1440)))
     cv2.imwrite(cfg["saida"], quadrado, [cv2.IMWRITE_JPEG_QUALITY, 93])
+    # O QUADRO INTEIRO (03/10, vídeo de treino): além do recorte no rosto, a
+    # imagem completa do melhor quadro, que é a referência de corpo, roupa e
+    # luz para compor a pessoa num cenário (mesa, palco, escritório).
+    if cfg.get("saida_inteira"):
+        cv2.imwrite(cfg["saida_inteira"], imagens[melhor["indice"]], [cv2.IMWRITE_JPEG_QUALITY, 93])
     print(json.dumps({"escolhida": melhor["indice"], "avaliacoes": avaliacoes, "lado": lado}))
 
 

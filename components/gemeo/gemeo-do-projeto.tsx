@@ -7,12 +7,10 @@ import toast from "react-hot-toast";
 import { segundosDaEtapa } from "@/lib/media/tempos-medidos";
 import { upload } from "@vercel/blob/client";
 import {
-  Camera,
-  Mic,
+  Video,
+  Sparkles,
   ShieldCheck,
   Clapperboard,
-  Plus,
-  X,
   Loader2,
   CheckCircle2,
   AlertTriangle,
@@ -23,21 +21,26 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  CREDITOS_POR_SEGUNDO_DE_GEMEO,
-  MAX_FOTOS,
-  SEGUNDOS_MAXIMOS_DA_VOZ,
+  CENARIOS,
   SEGUNDOS_MAXIMOS_DO_ROTEIRO,
-  SEGUNDOS_MINIMOS_DA_VOZ,
+  SEGUNDOS_MAXIMOS_DO_TREINO,
   SEGUNDOS_MINIMOS_DO_ROTEIRO,
-  TEXTO_PARA_LER_DA_VOZ,
+  SEGUNDOS_MINIMOS_DO_TREINO,
+  cenarioPorId,
+  cenariosDasCenas,
+  creditosPorSegundo,
   duracaoFalada,
-  fraseDaAutorizacao,
   gemeoAtivo,
+  limparTexto,
   oQueFalta,
   precoDoRoteiro,
   textoDasCenas,
+  textoDoTreino,
   videoEmAndamento,
   type CadastroDoGemeo,
+  type CenaDoGemeo,
+  type EscolhaDeCenario,
+  type IdDoGerador,
   type VideoNaTela,
 } from "@/lib/media/gemeo";
 import { creditosDoRoteiro } from "@/lib/media/limits";
@@ -47,16 +50,17 @@ import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
 /**
  * A TELA DO GÊMEO DIGITAL (01/10/2026): o cadastro e os vídeos, numa página.
  *
- * Melhora a porta "em teste" de 29/09 mantendo o desenho aprovado dos três
- * passos (fotos, voz, autorização gravada pela própria pessoa) e acrescenta o
- * quarto, que é o motivo de tudo: gerar um vídeo a partir de um roteiro. O
- * preço aparece ANTES do clique, na mesma conta que o servidor cobra
- * (`lib/media/gemeo.ts`).
+ * 03/10: o cadastro virou UM VÍDEO SÓ (a pessoa lê o texto que rola, que
+ * começa com a autorização), no lugar dos três passos de fotos, voz e
+ * autorização; o cadastro antigo continua valendo para quem já tinha. E o
+ * vídeo gerado pode pôr a pessoa em cenários (mesa, palco, escritório),
+ * escolhidos pelo roteiro. O preço aparece ANTES do clique, na mesma conta
+ * que o servidor cobra (`lib/media/gemeo.ts`), com o gerador que o servidor
+ * diz valer para o projeto.
  *
  * Esta tela nunca chama fornecedor pago: ela envia arquivos ao storage e
- * grava pedidos. Quem recorta, converte, confere, clona e gera é o passo do
- * cron, e a tela pergunta o estado a cada poucos segundos enquanto há algo
- * andando.
+ * grava pedidos. Quem confere, clona, treina e gera é o passo do cron, e a
+ * tela pergunta o estado a cada poucos segundos enquanto há algo andando.
  */
 
 type Estado = {
@@ -66,6 +70,8 @@ type Estado = {
   acessoInterno: boolean;
   nome: string;
   projeto: string;
+  /** Quem gera os vídeos deste projeto (03/10): muda o preço por segundo. */
+  gerador?: IdDoGerador;
   /**
    * MEMBRO DA EQUIPE (01/10, acabamento): o cadastro (rosto, voz e a
    * autorização) é de quem administra a conta, e a revogação também. O membro
@@ -74,7 +80,7 @@ type Estado = {
   equipe?: { dono: string } | null;
 };
 
-type RoteiroDaLinha = { id: string; titulo: string; status: string; cenas: Array<{ fala?: string }> };
+type RoteiroDaLinha = { id: string; titulo: string; status: string; cenas: Array<{ fala?: string; naTela?: string; papel?: string }> };
 
 const fmt = (n: number) => Math.round(n).toLocaleString("pt-BR");
 
@@ -88,9 +94,10 @@ function extensao(tipo: string): string {
 export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { projectId: string; inicial: Estado; roteiroInicial?: string | null }) {
   const [estado, setEstado] = useState<Estado>(inicial);
   const [enviando, setEnviando] = useState<string | null>(null);
-  const [nomeDaAutorizacao, setNomeDaAutorizacao] = useState(inicial.cadastro?.autorizacao?.nome ?? inicial.nome ?? "");
-  const entradaDeFoto = useRef<HTMLInputElement | null>(null);
-  const entradaDeVoz = useRef<HTMLInputElement | null>(null);
+  const [nomeDaAutorizacao, setNomeDaAutorizacao] = useState(
+    inicial.cadastro?.treino?.nome ?? inicial.cadastro?.autorizacao?.nome ?? inicial.nome ?? ""
+  );
+  const entradaDeTreino = useRef<HTMLInputElement | null>(null);
   const c = estado.cadastro;
   const arquivo = (u?: string | null) => (u ? `/api/projects/${projectId}/gemeo/arquivo?u=${encodeURIComponent(u)}` : "");
 
@@ -107,6 +114,8 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         cad?.foto?.estado === "falhou" ||
         ["convertendo", "clonando", "esperando", "sem-permissao", "falhou"].includes(cad?.voz?.estado ?? "") ||
         cad?.autorizacao?.estado === "conferindo" ||
+        ["preparando", "conferindo"].includes(cad?.treino?.estado ?? "") ||
+        ["enviando", "treinando", "consentimento"].includes(cad?.avatar?.estado ?? "") ||
         estado.videos.some(videoEmAndamento)
     );
   }, [estado]);
@@ -116,7 +125,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     return () => clearInterval(t);
   }, [andando, recarregar]);
 
-  async function enviar(tipo: "foto" | "voz" | "autorizacao", blob: Blob, corpo: Record<string, unknown>) {
+  async function enviar(tipo: "treino", blob: Blob, corpo: Record<string, unknown>) {
     const contentType = (blob.type || "application/octet-stream").split(";")[0];
     const enviado = await upload(`gemeo/${projectId}/${tipo}-${Date.now()}.${extensao(contentType)}`, blob, {
       access: "private",
@@ -137,75 +146,28 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     await recarregar();
   }
 
-  async function mandarFotos(lista: FileList | null) {
-    if (!lista?.length) return;
-    const livres = MAX_FOTOS - (c?.fotos.length ?? 0);
-    const fotos = Array.from(lista).slice(0, Math.max(0, livres));
-    if (!fotos.length) return toast.error(`São no máximo ${MAX_FOTOS} fotos.`);
-    setEnviando("foto");
+  /** O vídeo de treino, gravado aqui ou enviado do celular (03/10). */
+  async function mandarTreino(blob: Blob, segundos: number | null) {
+    if (blob.size > 500 * 1024 * 1024) return toast.error("O vídeo passa de 500 MB. Grave em resolução menor ou corte o excesso.");
+    setEnviando("treino");
     try {
-      for (const f of fotos) {
-        if (f.size > 15 * 1024 * 1024) {
-          toast.error(`${f.name} passa de 15 MB.`);
-          continue;
-        }
-        await enviar("foto", f, { nome: f.name });
-      }
-      toast.success("Fotos recebidas. Escolhendo a melhor para o gêmeo.");
+      await enviar("treino", blob, { nome: nomeDaAutorizacao, segundos });
+      toast.success("Vídeo recebido. Conferindo duração, rosto, áudio e a leitura.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não consegui enviar a foto.");
+      toast.error(e instanceof Error ? e.message : "Não consegui enviar o vídeo.");
     } finally {
       setEnviando(null);
-      if (entradaDeFoto.current) entradaDeFoto.current.value = "";
-    }
-  }
-
-  async function tirarFoto(url: string) {
-    setEnviando("foto");
-    try {
-      await fetch(`/api/projects/${projectId}/gemeo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "remover-foto", url }),
-      });
-      await recarregar();
-    } finally {
-      setEnviando(null);
-    }
-  }
-
-  async function mandarVoz(blob: Blob, origem: "gravada" | "arquivo") {
-    setEnviando("voz");
-    try {
-      await enviar("voz", blob, { origem });
-      toast.success("Voz recebida. Conferindo a duração e a qualidade.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não consegui enviar a voz.");
-    } finally {
-      setEnviando(null);
-      if (entradaDeVoz.current) entradaDeVoz.current.value = "";
-    }
-  }
-
-  async function mandarAutorizacao(blob: Blob, segundos: number) {
-    setEnviando("autorizacao");
-    try {
-      await enviar("autorizacao", blob, { nome: nomeDaAutorizacao, segundos });
-      toast.success("Autorização recebida. Conferindo se a frase foi dita.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não consegui enviar a autorização.");
-    } finally {
-      setEnviando(null);
+      if (entradaDeTreino.current) entradaDeTreino.current.value = "";
     }
   }
 
   async function revogar() {
-    if (!window.confirm("Revogar o seu gêmeo digital? As fotos, a voz clonada e a autorização serão apagadas. Os vídeos que já estão no Gestor continuam lá.")) return;
+    if (!window.confirm("Revogar o seu gêmeo digital? O vídeo de treino, a voz clonada, o gêmeo treinado e a autorização serão apagados. Os vídeos que já estão no Gestor continuam lá.")) return;
     setEnviando("revogar");
     try {
       const r = await fetch(`/api/projects/${projectId}/gemeo`, { method: "DELETE" });
       if (!r.ok) throw new Error();
-      toast.success("Gêmeo revogado. Apagamos as fotos, a voz e a autorização.");
+      toast.success("Gêmeo revogado. Apagamos o vídeo de treino, a voz e a autorização.");
       await recarregar();
     } catch {
       toast.error("Não consegui revogar agora. Tente de novo.");
@@ -216,7 +178,8 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
 
   const ativo = gemeoAtivo(c);
   const falta = oQueFalta(c);
-  const frase = fraseDaAutorizacao(nomeDaAutorizacao, estado.projeto);
+  /** Cadastro de antes de 03/10 (fotos, voz e autorização separadas), sem vídeo de treino. */
+  const legado = Boolean(c && !c.treino && c.fotos?.length);
   const doMembro = estado.equipe ?? null;
 
   // MEMBRO DA EQUIPE: sem os três passos do cadastro e sem revogar. Ele vê se
@@ -236,8 +199,8 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               </>
             ) : (
               <>
-                <strong style={{ color: "var(--text-primary)" }}>O gêmeo deste projeto ainda não está pronto.</strong> As fotos, a voz e a
-                autorização são cadastradas por {doMembro.dono}, que administra a conta.
+                <strong style={{ color: "var(--text-primary)" }}>O gêmeo deste projeto ainda não está pronto.</strong> O vídeo de treino, com a
+                autorização, é gravado por {doMembro.dono}, que administra a conta.
               </>
             )}{" "}
             O cadastro e a revogação do gêmeo ficam com {doMembro.dono}.
@@ -252,6 +215,8 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
           roteiroInicial={roteiroInicial}
           onPedido={recarregar}
           donoDaEquipe={doMembro.dono}
+          gerador={estado.gerador ?? "omnihuman"}
+          numero={1}
         />
         {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={recarregar} />}
       </div>
@@ -269,161 +234,34 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
           {ativo ? (
             <>
-              <strong style={{ color: "var(--text-primary)" }}>O seu gêmeo está pronto.</strong> Escolha um roteiro no passo 4 e ele grava por você.
+              <strong style={{ color: "var(--text-primary)" }}>O seu gêmeo está pronto.</strong> Escolha um roteiro abaixo e ele grava por você.
             </>
           ) : (
             <>
-              <strong style={{ color: "var(--text-primary)" }}>Para o gêmeo ficar pronto, falta:</strong> {falta.join(", ")}. Os passos podem ser feitos em
-              qualquer ordem; a voz só é clonada depois que a autorização valer.
+              <strong style={{ color: "var(--text-primary)" }}>Para o gêmeo ficar pronto, falta:</strong> {falta.join(", ")}.
             </>
           )}
         </p>
       </div>
 
-      {/* PASSO 1: AS FOTOS */}
-      <Passo numero={1} Icone={Camera} titulo="Fotos suas" pronto={c?.foto?.estado === "pronta"}>
+      {/* PASSO 1: O VÍDEO DE TREINO (03/10). Um vídeo só, lendo o texto que
+          rola: é a autorização, a amostra de voz e a amostra de imagem. As
+          checagens (duração, rosto, áudio e a fala batendo com o texto)
+          aparecem aqui assim que o servidor termina. */}
+      <Passo numero={1} Icone={Video} titulo="Um vídeo de 1 minuto lendo o texto" pronto={c?.treino?.estado === "valido"}>
         <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          De 1 a {MAX_FOTOS} fotos de frente, com boa luz, só você na imagem, do jeito que você aparece para os seus clientes. A
-          plataforma escolhe a melhor e recorta em volta do rosto.
+          Grave um vídeo só, de frente para a câmera, lendo em voz alta o texto que rola abaixo da imagem. Ele começa com a sua
+          autorização e serve para tudo: é a prova de que é você (a lei só permite usar a imagem e a voz de alguém com a autorização
+          dela, Código Civil, art. 20), é a amostra da sua voz e é a amostra do seu rosto e dos seus gestos. Num lugar silencioso, com
+          luz no rosto, só você no quadro, olhando para perto da lente. Leve de {SEGUNDOS_MINIMOS_DO_TREINO} s a{" "}
+          {SEGUNDOS_MAXIMOS_DO_TREINO / 60} min. Você pode revogar quando quiser, e tudo é apagado.
         </p>
-        <div className="flex flex-wrap gap-3">
-          {(c?.fotos ?? []).map((f, i) => {
-            const aval = c?.foto?.avaliacoes?.find((a) => a.indice === i);
-            const escolhida = c?.foto?.estado === "pronta" && c.foto.escolhida === i;
-            return (
-              <div key={f.url} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={arquivo(f.url)}
-                  alt={`Foto ${i + 1}`}
-                  className={cn("h-28 w-28 rounded-lg border object-cover", escolhida && "ring-2 ring-orange-500")}
-                  style={{ borderColor: "var(--border)" }}
-                />
-                <button
-                  type="button"
-                  aria-label="Tirar foto"
-                  disabled={Boolean(enviando)}
-                  onClick={() => void tirarFoto(f.url)}
-                  className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                {escolhida && <span className="absolute bottom-1 left-1 rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">escolhida</span>}
-                {aval?.motivo && <p className="mt-1 w-28 text-[11px] leading-tight text-orange-400">{aval.motivo}</p>}
-              </div>
-            );
-          })}
-          {(c?.fotos.length ?? 0) < MAX_FOTOS && (
-            <button
-              type="button"
-              disabled={Boolean(enviando)}
-              onClick={() => entradaDeFoto.current?.click()}
-              className="flex h-28 w-28 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-xs disabled:opacity-50"
-              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-            >
-              {enviando === "foto" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-              {enviando === "foto" ? "Enviando..." : "Adicionar"}
-            </button>
-          )}
-          <input ref={entradaDeFoto} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => void mandarFotos(e.target.files)} />
-        </div>
-        {c?.foto && (
-          <div className="flex items-center gap-3">
-            {c.foto.estado === "pronta" && c.foto.url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={arquivo(c.foto.url)} alt="Foto do gerador" className="h-20 w-20 rounded-lg object-cover" />
-            )}
-            <Situacao
-              tom={c.foto.estado === "pronta" ? "ok" : c.foto.estado === "recusada" ? "erro" : "andando"}
-              texto={
-                c.foto.estado === "pronta"
-                  ? "Esta é a foto que o gêmeo vai animar: recortada no rosto, em quadrado."
-                  : c.foto.estado === "recusada"
-                    ? c.foto.motivo ?? "Nenhuma foto serviu."
-                    : c.foto.estado === "falhou"
-                      ? c.foto.motivo ?? "Tentando de novo."
-                      : "Escolhendo a melhor foto e recortando no rosto..."
-              }
-            />
-          </div>
+        {legado && (
+          <p className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+            O seu gêmeo foi cadastrado com fotos e áudio separados e continua funcionando. Gravar o vídeo de treino substitui esse
+            cadastro: o gêmeo passa a ter os seus gestos e pode aparecer em cenários.
+          </p>
         )}
-      </Passo>
-
-      {/* PASSO 2: A VOZ */}
-      <Passo numero={2} Icone={Mic} titulo="De 2 a 4 minutos da sua voz" pronto={c?.voz?.estado === "pronta"}>
-        <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          A voz mais natural sai de você falando de verdade, não lendo. O melhor é enviar um áudio ou trecho de vídeo seu de 2 a 4 minutos,
-          só com a sua voz, sem música e sem outra pessoa (uma aula, uma live, uma reunião gravada). Se não tiver, grave pelo navegador lendo o
-          texto abaixo em voz alta, sem pressa, num lugar silencioso, por pelo menos 1 minuto.
-        </p>
-        <blockquote className="rounded-lg border px-4 py-3 text-[15px] leading-relaxed" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-          {TEXTO_PARA_LER_DA_VOZ}
-        </blockquote>
-        <div className="flex flex-wrap items-start gap-4">
-          <Gravador
-            // Remonta depois do envio: o gravador volta ao começo em vez de
-            // continuar oferecendo "Usar esta gravação" para o que já foi.
-            key={c?.voz?.amostraUrl ?? "sem-voz"}
-            video={false}
-            rotulo={c?.voz ? "Gravar de novo" : "Gravar pelo navegador"}
-            minSegundos={SEGUNDOS_MINIMOS_DA_VOZ}
-            maxSegundos={SEGUNDOS_MAXIMOS_DA_VOZ}
-            enviando={enviando === "voz"}
-            onPronto={(blob) => void mandarVoz(blob, "gravada")}
-          />
-          <button
-            type="button"
-            disabled={Boolean(enviando)}
-            onClick={() => entradaDeVoz.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"
-            style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
-          >
-            <Upload className="h-4 w-4" /> Enviar um arquivo
-          </button>
-          <input
-            ref={entradaDeVoz}
-            type="file"
-            accept="audio/*,video/mp4,video/quicktime,video/webm"
-            hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void mandarVoz(f, "arquivo");
-            }}
-          />
-        </div>
-        {c?.voz && (
-          <div className="flex flex-col gap-2">
-            {c.voz.mp3Url && <audio src={arquivo(c.voz.mp3Url)} controls className="w-full max-w-[520px]" />}
-            <Situacao
-              tom={c.voz.estado === "pronta" ? "ok" : ["curta", "falhou"].includes(c.voz.estado) ? "erro" : c.voz.estado === "sem-permissao" ? "espera" : "andando"}
-              texto={
-                {
-                  convertendo: "Conferindo a gravação...",
-                  curta: c.voz.motivo ?? "A gravação ficou curta.",
-                  esperando: `Amostra de ${duracaoFalada(c.voz.segundos ?? 0)} recebida. A voz é clonada assim que a sua autorização valer (passo 3).`,
-                  clonando: "Clonando a sua voz...",
-                  "sem-permissao": c.voz.motivo ?? "Esperando o fornecedor de voz liberar a clonagem.",
-                  pronta: `Voz clonada a partir de ${duracaoFalada(c.voz.segundos ?? 0)} de gravação.`,
-                  falhou: c.voz.motivo ?? "Não consegui clonar a voz.",
-                }[c.voz.estado]
-              }
-            />
-          </div>
-        )}
-      </Passo>
-
-      {/* PASSO 3: A AUTORIZAÇÃO */}
-      <Passo numero={3} Icone={ShieldCheck} titulo="A sua autorização, gravada por você" pronto={c?.autorizacao?.estado === "valida"}>
-        <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          Com a câmera aberta, leia a frase com o seu nome. É isso que garante que ninguém crie um gêmeo com o rosto ou a voz de outra
-          pessoa: a lei só permite usar a imagem e a voz de alguém com a autorização dela (Código Civil, art. 20). Guardamos o vídeo, a
-          data e o texto lido. Você pode revogar quando quiser, e tudo é apagado.
-        </p>
-        {/* O ACEITE DAS REGRAS DO GÊMEO (01/10/2026). Uma frase, sem caixa de
-            marcar: gravar a autorização já é o ato de aceite, e o fluxo dos
-            três passos não muda. O link leva direto à seção do gêmeo nos
-            Termos, onde estão a proibição de clonar outra pessoa, figura
-            pública ou menor, e as consequências. */}
         <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
           Ao gravar, você declara que o rosto e a voz são seus e aceita as{" "}
           <Link href="/terms#gemeo" target="_blank" className="font-semibold text-orange-400 underline-offset-2 hover:underline">
@@ -432,7 +270,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
           : é proibido clonar outra pessoa, figura pública ou menor, e você responde pelo que gerar e publicar.
         </p>
         <label className="flex max-w-[520px] flex-col gap-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          O seu nome completo
+          O seu nome completo (entra na autorização)
           <input
             value={nomeDaAutorizacao}
             onChange={(e) => setNomeDaAutorizacao(e.target.value)}
@@ -440,48 +278,147 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
             style={{ borderColor: "var(--border)", background: "var(--bg-card)", color: "var(--text-primary)" }}
           />
         </label>
-        <blockquote className="max-w-[640px] rounded-lg border-l-4 border-orange-500 px-4 py-3 text-base font-medium leading-relaxed" style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-          &ldquo;{frase}&rdquo;
-        </blockquote>
         {nomeDaAutorizacao.trim().length >= 3 ? (
-          <Gravador
-            key={c?.autorizacao?.videoUrl ?? "sem-autorizacao"}
-            video
-            rotulo={c?.autorizacao ? "Gravar a autorização de novo" : "Abrir a câmera e gravar"}
-            minSegundos={5}
-            maxSegundos={60}
-            enviando={enviando === "autorizacao"}
-            onPronto={(blob, s) => void mandarAutorizacao(blob, s)}
-          />
+          <div className="flex flex-wrap items-start gap-4">
+            <Gravador
+              key={c?.treino?.videoUrl ?? "sem-treino"}
+              video
+              roteiro={textoDoTreino(nomeDaAutorizacao, estado.projeto)}
+              rotulo={c?.treino ? "Gravar o vídeo de novo" : "Abrir a câmera e gravar"}
+              minSegundos={SEGUNDOS_MINIMOS_DO_TREINO}
+              maxSegundos={SEGUNDOS_MAXIMOS_DO_TREINO}
+              enviando={enviando === "treino"}
+              onPronto={(blob, s) => void mandarTreino(blob, s)}
+            />
+            <button
+              type="button"
+              disabled={Boolean(enviando)}
+              onClick={() => entradaDeTreino.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+            >
+              <Upload className="h-4 w-4" /> Enviar um vídeo gravado no celular
+            </button>
+            <input
+              ref={entradaDeTreino}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void mandarTreino(f, null);
+              }}
+            />
+          </div>
         ) : (
           <p className="text-sm text-orange-400">Escreva o seu nome completo para liberar a gravação.</p>
         )}
-        {c?.autorizacao && (
+        {c?.treino && (
           <div className="flex flex-col gap-2">
-            <video src={arquivo(c.autorizacao.videoUrl)} controls playsInline className="aspect-video w-full max-w-[360px] rounded-lg bg-black" />
-            <Situacao
-              tom={c.autorizacao.estado === "valida" ? "ok" : c.autorizacao.estado === "recusada" ? "erro" : "andando"}
-              texto={
-                c.autorizacao.estado === "valida"
-                  ? `Autorização de ${c.autorizacao.nome}, gravada em ${new Date(c.autorizacao.gravadaEm).toLocaleString("pt-BR")}.`
-                  : c.autorizacao.estado === "recusada"
-                    ? c.autorizacao.motivo ?? "A gravação não valeu. Grave de novo."
-                    : "Conferindo se a frase foi dita..."
-              }
-            />
+            <video src={arquivo(c.treino.videoUrl)} controls playsInline className="aspect-video w-full max-w-[360px] rounded-lg bg-black" />
+            {["preparando", "conferindo"].includes(c.treino.estado) && (
+              <Situacao
+                tom="andando"
+                texto={
+                  c.treino.estado === "preparando"
+                    ? "Conferindo o vídeo: duração, rosto e áudio..."
+                    : "Conferindo se a fala bate com o texto e se a autorização foi dita..."
+                }
+              />
+            )}
+            {(c.treino.checagens ?? []).map((k) => (
+              <Situacao key={k.id} tom={k.resultado === "ok" ? "ok" : k.resultado === "aviso" ? "espera" : "erro"} texto={k.texto} />
+            ))}
+            {c.treino.estado === "falhou" && <Situacao tom="erro" texto={c.treino.motivo ?? "Não consegui conferir o vídeo. Grave de novo."} />}
+            {c.treino.estado === "recusado" && (
+              <p className="text-sm text-orange-400">O vídeo não valeu. Corrija o que está marcado acima e grave de novo.</p>
+            )}
+            {c.treino.estado === "valido" && (
+              <Situacao tom="ok" texto={`Autorização de ${c.treino.nome}, gravada em ${new Date(c.treino.gravadoEm).toLocaleString("pt-BR")}.`} />
+            )}
           </div>
         )}
       </Passo>
 
-      {/* PASSO 4: GERAR */}
-      <GerarVideo projectId={projectId} ativo={ativo} falta={falta} saldo={estado.saldo} acessoInterno={estado.acessoInterno} roteiroInicial={roteiroInicial} onPedido={recarregar} />
+      {/* PASSO 2: O GÊMEO. O que sai do vídeo de treino: a imagem, a voz
+          clonada e (com o gerador treinado ligado) o gêmeo treinado. */}
+      {(c?.treino?.estado === "valido" || legado) && (
+        <Passo numero={2} Icone={Sparkles} titulo="O seu gêmeo" pronto={ativo && (!c?.avatar || c.avatar.estado === "pronto")}>
+          <div className="flex flex-wrap items-start gap-4">
+            {c?.foto?.estado === "pronta" && c.foto.url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={arquivo(c.foto.url)} alt="A imagem do gêmeo" className="h-24 w-24 rounded-lg object-cover" />
+            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              {c?.voz && (
+                <Situacao
+                  tom={c.voz.estado === "pronta" ? "ok" : ["curta", "falhou"].includes(c.voz.estado) ? "erro" : c.voz.estado === "sem-permissao" ? "espera" : "andando"}
+                  texto={
+                    {
+                      convertendo: "Conferindo a gravação da voz...",
+                      curta: c.voz.motivo ?? "A gravação ficou curta.",
+                      esperando: "A voz é clonada assim que a autorização valer.",
+                      clonando: "Clonando a sua voz...",
+                      "sem-permissao": c.voz.motivo ?? "Esperando o fornecedor de voz liberar a clonagem.",
+                      pronta: `Voz clonada a partir de ${duracaoFalada(c.voz.segundos ?? 0)} de gravação.`,
+                      falhou: c.voz.motivo ?? "Não consegui clonar a voz.",
+                    }[c.voz.estado]
+                  }
+                />
+              )}
+              {c?.avatar && (
+                <Situacao
+                  tom={c.avatar.estado === "pronto" ? "ok" : c.avatar.estado === "falhou" ? "erro" : c.avatar.estado === "consentimento" ? "espera" : "andando"}
+                  texto={
+                    {
+                      enviando: "Enviando o vídeo para treinar o seu gêmeo...",
+                      treinando: "Treinando o seu gêmeo com o vídeo: rosto, gestos e boca. Leva alguns minutos.",
+                      consentimento: "Falta um passo: o gerador de vídeo pede que você confirme, pela câmera, que autoriza o seu gêmeo. Leva 30 segundos.",
+                      pronto: "Gêmeo treinado com os seus gestos. Os vídeos saem por ele.",
+                      falhou: `${c.avatar.motivo ?? "O gerador não treinou o gêmeo."} Os vídeos continuam saindo pela imagem do vídeo de treino.`,
+                    }[c.avatar.estado]
+                  }
+                />
+              )}
+              {c?.avatar?.estado === "consentimento" && c.avatar.consentimentoUrl && (
+                <a
+                  href={c.avatar.consentimentoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Confirmar no gerador de vídeo
+                </a>
+              )}
+              {c?.avatar && c.avatar.estado !== "pronto" && c.avatar.estado !== "falhou" && ativo && (
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Enquanto isso, você já pode gerar vídeos: eles saem pela imagem do vídeo de treino.
+                </p>
+              )}
+            </div>
+          </div>
+        </Passo>
+      )}
+
+      {/* PASSO 3: GERAR */}
+      <GerarVideo
+        projectId={projectId}
+        ativo={ativo}
+        falta={falta}
+        saldo={estado.saldo}
+        acessoInterno={estado.acessoInterno}
+        roteiroInicial={roteiroInicial}
+        onPedido={recarregar}
+        gerador={estado.gerador ?? "omnihuman"}
+        numero={legado || c?.treino?.estado === "valido" ? 3 : 2}
+      />
 
       {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={recarregar} />}
 
       {c && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)" }}>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Revogar apaga as fotos, a voz clonada no fornecedor e a gravação da autorização. Fica só o registro de que você autorizou e
+            Revogar apaga o vídeo de treino, a voz clonada, o gêmeo treinado no fornecedor e a gravação da autorização. Fica só o registro de que você autorizou e
             revogou, com as datas.
           </p>
           <button
@@ -506,7 +443,7 @@ function Passo({
   children,
 }: {
   numero: number;
-  Icone: typeof Camera;
+  Icone: typeof Video;
   titulo: string;
   pronto?: boolean;
   children: React.ReactNode;
@@ -551,6 +488,8 @@ function GerarVideo({
   roteiroInicial,
   onPedido,
   donoDaEquipe = null,
+  gerador = "omnihuman",
+  numero = 3,
 }: {
   projectId: string;
   ativo: boolean;
@@ -561,12 +500,16 @@ function GerarVideo({
   onPedido: () => Promise<void>;
   /** Nome do dono, quando quem vê é membro da equipe (01/10): muda a frase do saldo. */
   donoDaEquipe?: string | null;
+  gerador?: IdDoGerador;
+  numero?: number;
 }) {
   const [roteiros, setRoteiros] = useState<RoteiroDaLinha[]>([]);
   const [escolhido, setEscolhido] = useState<string>(roteiroInicial ?? "");
   const [texto, setTexto] = useState("");
   const [titulo, setTitulo] = useState("");
   const [pedindo, setPedindo] = useState(false);
+  /** 03/10: "auto" escolhe o cenário de cada cena pelo roteiro; um id fixa o vídeo inteiro. */
+  const [cenario, setCenario] = useState<EscolhaDeCenario>("auto");
   const router = useRouter();
 
   useEffect(() => {
@@ -583,7 +526,22 @@ function GerarVideo({
     })();
   }, [projectId, roteiroInicial]);
 
-  const preco = useMemo(() => precoDoRoteiro(texto), [texto]);
+  const preco = useMemo(() => precoDoRoteiro(texto, gerador), [texto, gerador]);
+
+  /**
+   * AS CENAS COM O SEU CENÁRIO. Roteiro da linha editorial com o texto
+   * intocado: uma cena por cena do roteiro (com o papel e o que aparece na
+   * tela, que é o que a escolha automática lê). Texto escrito ou mexido: um
+   * parágrafo por cena.
+   */
+  const roteiro = roteiros.find((r) => r.id === escolhido) ?? null;
+  const cenas: CenaDoGemeo[] = useMemo(() => {
+    const doRoteiro = roteiro && limparTexto(textoDasCenas(roteiro.cenas)) === limparTexto(texto) ? roteiro.cenas.filter((x) => x.fala?.trim()) : null;
+    const base = doRoteiro ?? texto.split(/\n\s*\n/).map((t) => ({ fala: t }));
+    const lista = base.filter((x) => x.fala?.trim());
+    const ids = cenariosDasCenas(lista, cenario);
+    return lista.map((x, i) => ({ texto: limparTexto(x.fala ?? ""), cenario: ids[i] }));
+  }, [roteiro, texto, cenario]);
   const edicao = preco.segundos ? creditosDoRoteiro(preco.segundos) : 0;
   const longo = preco.segundos > SEGUNDOS_MAXIMOS_DO_ROTEIRO;
   const curto = preco.segundos < SEGUNDOS_MINIMOS_DO_ROTEIRO;
@@ -595,7 +553,7 @@ function GerarVideo({
       const r = await fetch(`/api/projects/${projectId}/gemeo/videos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto, titulo, roteiroId: escolhido || null }),
+        body: JSON.stringify({ texto, titulo, roteiroId: escolhido || null, cenas }),
       });
       const d = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) throw new Error(d.error ?? "Não consegui pedir o vídeo.");
@@ -616,7 +574,7 @@ function GerarVideo({
   }
 
   return (
-    <Passo numero={4} Icone={Clapperboard} titulo="Gerar um vídeo do gêmeo">
+    <Passo numero={numero} Icone={Clapperboard} titulo="Gerar um vídeo do gêmeo">
       <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
         Escolha um roteiro da sua linha editorial ou escreva o seu. O gêmeo fala o texto com a sua voz e o seu rosto, e o vídeo entra no
         Gestor como uma gravação sua: transcrição, roteiro para aprovar, cortes e edição, com a sua aprovação em cada passo.
@@ -654,10 +612,39 @@ function GerarVideo({
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           rows={7}
-          placeholder="O que o seu gêmeo vai falar. Escreva como você fala: frases curtas, uma ideia por frase."
+          placeholder="O que o seu gêmeo vai falar. Escreva como você fala: frases curtas, uma ideia por frase. Deixe uma linha em branco entre as cenas."
           className="rounded-lg border px-3 py-2 text-[15px] leading-relaxed"
           style={{ borderColor: "var(--border)", background: "var(--bg-card)", color: "var(--text-primary)" }}
         />
+        {/* O CENÁRIO (03/10): onde o gêmeo aparece em cada cena. */}
+        <label className="flex max-w-[640px] flex-col gap-1 text-sm" style={{ color: "var(--text-muted)" }}>
+          Onde o seu gêmeo aparece
+          <select
+            value={cenario}
+            onChange={(e) => setCenario(e.target.value as EscolhaDeCenario)}
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", color: "var(--text-primary)" }}
+          >
+            <option value="auto">Pelo roteiro: close no gancho e no fechamento, outros planos no meio</option>
+            {CENARIOS.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.nome} (plano {x.plano}) no vídeo inteiro
+              </option>
+            ))}
+          </select>
+        </label>
+        {cenas.length > 1 && (
+          <ol className="flex max-w-[640px] flex-col gap-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            {cenas.map((x, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="shrink-0 font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Cena {i + 1}: {cenarioPorId(x.cenario).nome}
+                </span>
+                <span className="truncate">{x.texto}</span>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
 
       {texto.trim() && (
@@ -666,7 +653,7 @@ function GerarVideo({
             <strong style={{ color: "var(--text-primary)" }}>
               Este roteiro de cerca de {duracaoFalada(preco.segundos)} custa {fmt(preco.creditosEstimados)} créditos
             </strong>{" "}
-            ({CREDITOS_POR_SEGUNDO_DE_GEMEO} por segundo de vídeo, em {preco.pedacos} {preco.pedacos === 1 ? "pedaço" : "pedaços"}).
+            ({creditosPorSegundo(gerador)} por segundo de vídeo, em {preco.pedacos} {preco.pedacos === 1 ? "pedaço" : "pedaços"}).
           </p>
           <p>
             Reservamos até {fmt(preco.creditosReservados)} e cobramos o tempo real da fala; o que sobrar volta na hora. Depois, a edição segue o

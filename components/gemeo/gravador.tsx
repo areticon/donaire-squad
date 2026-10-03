@@ -5,7 +5,8 @@ import { Circle, Square, RotateCcw, Check, Loader2 } from "lucide-react";
 
 /**
  * GRAVADOR PELO NAVEGADOR (01/10/2026), para a voz e para a autorização do
- * gêmeo digital. MediaRecorder puro, sem biblioteca: o Chrome grava em webm e
+ * gêmeo digital, e desde 03/10 para o vídeo único de treino (com o texto
+ * rolando, ver `roteiro`). MediaRecorder puro, sem biblioteca: o Chrome grava em webm e
  * o Safari em mp4, e o worker converte a voz para MP3 do lado de lá.
  *
  * Mostra a câmera ao vivo quando grava vídeo (a pessoa precisa se ver para
@@ -29,6 +30,7 @@ export function Gravador({
   onPronto,
   enviando = false,
   rotulo,
+  roteiro,
 }: {
   video: boolean;
   maxSegundos: number;
@@ -36,6 +38,13 @@ export function Gravador({
   onPronto: (arquivo: Blob, segundos: number) => void;
   enviando?: boolean;
   rotulo: string;
+  /**
+   * O TEXTO QUE ROLA (03/10, vídeo de treino): um teleprompter logo abaixo da
+   * câmera, para a pessoa ler sem tirar o olho de perto da lente. Rola no
+   * ritmo de leitura em voz alta (2,3 palavras por segundo), começa 2 s
+   * depois de gravar e tem "mais devagar" e "mais rápido".
+   */
+  roteiro?: string;
 }) {
   const [fase, setFase] = useState<"parado" | "pedindo" | "gravando" | "revendo">("parado");
   const [segundos, setSegundos] = useState(0);
@@ -45,6 +54,13 @@ export function Gravador({
   const fluxo = useRef<MediaStream | null>(null);
   const gravador = useRef<MediaRecorder | null>(null);
   const inicio = useRef(0);
+  const prompter = useRef<HTMLDivElement | null>(null);
+  const [ritmo, setRitmo] = useState(2.3);
+  const rolado = useRef(0);
+  const ritmoAtual = useRef(ritmo);
+  useEffect(() => {
+    ritmoAtual.current = ritmo;
+  }, [ritmo]);
 
   function soltarCamera() {
     fluxo.current?.getTracks().forEach((t) => t.stop());
@@ -52,6 +68,23 @@ export function Gravador({
   }
 
   useEffect(() => () => soltarCamera(), []);
+
+  // O teleprompter: a cada 100 ms anda o equivalente às palavras lidas nesse
+  // tempo, no ritmo atual (trocar o ritmo no meio não pula o texto).
+  useEffect(() => {
+    if (fase !== "gravando" || !roteiro) return;
+    rolado.current = 0;
+    if (prompter.current) prompter.current.scrollTop = 0;
+    const palavras = roteiro.split(/\s+/).filter(Boolean).length;
+    const t = setInterval(() => {
+      const el = prompter.current;
+      if (!el || Date.now() - inicio.current < 2000) return;
+      const curso = el.scrollHeight - el.clientHeight;
+      rolado.current = Math.min(curso, rolado.current + (curso * ritmoAtual.current * 0.1) / Math.max(1, palavras));
+      el.scrollTop = rolado.current;
+    }, 100);
+    return () => clearInterval(t);
+  }, [fase, roteiro]);
 
   useEffect(() => {
     if (fase !== "gravando") return;
@@ -143,6 +176,31 @@ export function Gravador({
     <div className="flex flex-col gap-3">
       {video && (fase === "gravando" || fase === "pedindo") && (
         <video ref={aoVivo} muted playsInline className="aspect-video w-full max-w-[520px] rounded-lg bg-black object-cover" style={{ transform: "scaleX(-1)" }} />
+      )}
+      {roteiro && fase !== "revendo" && (
+        <div className="flex w-full max-w-[520px] flex-col gap-1">
+          <div
+            ref={prompter}
+            className="h-36 overflow-hidden rounded-lg px-4 py-3 text-lg font-medium leading-relaxed"
+            style={{ background: "rgb(0 0 0 / 0.85)", color: "#fff", scrollBehavior: "auto" }}
+          >
+            {/* Folga em cima e embaixo: a primeira e a última linha passam pelo meio da caixa. */}
+            <div className="h-10" />
+            {roteiro}
+            <div className="h-28" />
+          </div>
+          {fase === "gravando" && (
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              <button type="button" onClick={() => setRitmo((r) => Math.max(1.2, r * 0.85))} className="rounded border px-2 py-0.5" style={{ borderColor: "var(--border)" }}>
+                Mais devagar
+              </button>
+              <button type="button" onClick={() => setRitmo((r) => Math.min(4, r * 1.15))} className="rounded border px-2 py-0.5" style={{ borderColor: "var(--border)" }}>
+                Mais rápido
+              </button>
+              <span>O texto rola sozinho. Leia em voz alta, olhando para perto da câmera.</span>
+            </div>
+          )}
+        </div>
       )}
       {fase === "revendo" && gravado && (
         video ? (

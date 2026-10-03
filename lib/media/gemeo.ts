@@ -97,6 +97,70 @@ export const CREDITOS_POR_SEGUNDO_DE_GEMEO = Math.ceil(
     REAIS_DE_CUSTO_POR_CREDITO
 );
 
+// ─────────────────────────────── os geradores (03/10) ───────────────────────────────
+
+/**
+ * O GERADOR É PLUGÁVEL (03/10/2026). Dois hoje:
+ *
+ *   omnihuman  OmniHuman 1.5 no fal.ai, o de 01/10: anima UMA imagem (o melhor
+ *              quadro do vídeo de treino, ou a pessoa composta num cenário)
+ *              com a fala. Não treina nada; é a RESERVA, e funciona com a
+ *              chave que já temos;
+ *   heygen     o gêmeo TREINADO a partir do vídeo de treino (API v3 da HeyGen,
+ *              "digital twin"): gesto, postura e boca aprendidos da própria
+ *              pessoa, e os cenários como "looks" gerados por prompt sobre o
+ *              gêmeo. É o recomendado, e liga com HEYGEN_API_KEY e
+ *              GEMEO_GERADOR=heygen (ver gemeo-geradores.ts).
+ *
+ * A tabela mora aqui porque a tela mostra o preço ANTES do clique com a mesma
+ * conta que o servidor cobra; quem decide qual gerador vale para o projeto é
+ * o servidor, que manda o id para a tela.
+ */
+export type IdDoGerador = "omnihuman" | "heygen";
+
+export type FichaDoGerador = {
+  id: IdDoGerador;
+  nome: string;
+  /** US$ por segundo de VÍDEO entregue. */
+  dolarPorSegundo: number;
+  /** Quanto o vídeo sai mais longo que a fala. */
+  folga: number;
+  /** O maior pedaço de fala por pedido, em segundos. */
+  tetoDoPedaco: number;
+};
+
+export const GERADORES: Record<IdDoGerador, FichaDoGerador> = {
+  omnihuman: {
+    id: "omnihuman",
+    nome: "OmniHuman 1.5 (fal.ai)",
+    dolarPorSegundo: DOLAR_POR_SEGUNDO_DO_GERADOR,
+    folga: FOLGA_DO_VIDEO_SOBRE_A_FALA,
+    tetoDoPedaco: SEGUNDOS_MAXIMOS_DO_PEDACO,
+  },
+  /**
+   * HeyGen, gêmeo treinado (Avatar IV ou V): 0,1 crédito de API por segundo,
+   * US$ 0,05/s na tabela oficial; o pré-pago avulso aparece a US$ 0,0667/s em
+   * fontes de 2026 (o modal de preço oficial não abre sem conta). Contamos o
+   * MAIOR, para a régua nunca ficar abaixo do custo real. O áudio que a HeyGen
+   * anima é a mesma voz ElevenLabs aprovada (enviada pronta), então a voz
+   * entra na conta como no OmniHuman. Pedido de até 10 min de áudio: o teto
+   * aqui é o do texto que dividimos (22 s), e sobe sem mexer em nada.
+   */
+  heygen: {
+    id: "heygen",
+    nome: "HeyGen (gêmeo treinado)",
+    dolarPorSegundo: 0.0667,
+    folga: 1,
+    tetoDoPedaco: 120,
+  },
+};
+
+/** Créditos por segundo de um gerador, pela régua da casa (R$ 0,027 de custo por crédito). */
+export function creditosPorSegundo(gerador: IdDoGerador = "omnihuman"): number {
+  const g = GERADORES[gerador] ?? GERADORES.omnihuman;
+  return Math.ceil(((g.dolarPorSegundo * g.folga + DOLAR_POR_SEGUNDO_DA_VOZ) * REAIS_POR_DOLAR) / REAIS_DE_CUSTO_POR_CREDITO);
+}
+
 /**
  * A RESERVA: a fala só existe depois da voz gerada, e a voz pode sair mais
  * lenta que a régua. Reservamos 15% acima da estimativa, cobramos o tempo
@@ -105,8 +169,8 @@ export const CREDITOS_POR_SEGUNDO_DE_GEMEO = Math.ceil(
  */
 export const FOLGA_DA_RESERVA = 1.15;
 
-export function creditosDoGemeo(segundos: number): number {
-  return Math.ceil(Math.max(0, segundos)) * CREDITOS_POR_SEGUNDO_DE_GEMEO;
+export function creditosDoGemeo(segundos: number, gerador: IdDoGerador = "omnihuman"): number {
+  return Math.ceil(Math.max(0, segundos)) * creditosPorSegundo(gerador);
 }
 
 export function estimarSegundos(texto: string): number {
@@ -124,12 +188,12 @@ export type PrecoDoRoteiro = {
   pedacos: number;
 };
 
-export function precoDoRoteiro(texto: string): PrecoDoRoteiro {
+export function precoDoRoteiro(texto: string, gerador: IdDoGerador = "omnihuman"): PrecoDoRoteiro {
   const segundos = estimarSegundos(texto);
   return {
     segundos,
-    creditosEstimados: creditosDoGemeo(segundos),
-    creditosReservados: creditosDoGemeo(segundos * FOLGA_DA_RESERVA),
+    creditosEstimados: creditosDoGemeo(segundos, gerador),
+    creditosReservados: creditosDoGemeo(segundos * FOLGA_DA_RESERVA, gerador),
     pedacos: dividirEmPedacos(texto).length,
   };
 }
@@ -309,6 +373,280 @@ export function conferirFalaDaAutorizacao(transcricao: string, nome: string): { 
   return { ok: faltou.length === 0, faltou };
 }
 
+// ─────────────────────────────── o vídeo de treino (03/10) ───────────────────────────────
+
+/**
+ * UM VÍDEO SÓ (03/10/2026, pedido do Bruno, como os concorrentes): a pessoa
+ * grava cerca de 1 minuto lendo o texto que rola na tela, e esse vídeo é ao
+ * mesmo tempo a PROVA (a autorização dita por ela, com o rosto na câmera), a
+ * AMOSTRA DE VOZ e a AMOSTRA DE IMAGEM. Antes eram três passos (fotos, voz,
+ * autorização); o cadastro antigo continua valendo para quem já fez.
+ *
+ * 40 s é o mínimo porque a autorização sozinha leva uns 12 s e a clonagem
+ * precisa de fala de verdade depois dela; 120 s é o teto porque o arquivo
+ * normalizado precisa caber em 32 MB (limite de envio da HeyGen) e porque
+ * mais que isso não melhora o gêmeo de quem LÊ um texto.
+ */
+export const SEGUNDOS_MINIMOS_DO_TREINO = 40;
+export const SEGUNDOS_MAXIMOS_DO_TREINO = 120;
+
+/**
+ * O que a pessoa lê depois da autorização: cerca de 120 palavras, uns 50 s
+ * lidos com calma. Mesmo critério do texto da voz (nasais, "lh", "nh", "rr",
+ * pergunta e exclamação) e com DEIXAS de gesto e olhar, porque agora a câmera
+ * também está aprendendo: quem lê parado vira um gêmeo parado.
+ */
+export const LEITURA_DO_TREINO =
+  "Agora eu falo do meu jeito, olhando para a câmera, como se fosse com um cliente. " +
+  "Toda semana eu tenho alguma coisa para contar: o que aprendi numa conversa, um erro que não quero repetir, " +
+  "uma ideia que nasceu no caminho de casa. Você já reparou como a gente fala diferente quando está animado? " +
+  "A voz sobe, as mãos acompanham, e depois tudo desce de novo, com calma. " +
+  "É essa vida que eu quero no meu gêmeo: a pergunta com cara de pergunta, a pausa antes da conclusão, " +
+  "o sorriso que aparece na voz. Nem sempre dá tempo de arrumar a luz e gravar de novo quando a frase sai torta. " +
+  "Por isso eu gravo agora, sem pressa, do começo ao fim. Obrigado por ouvir até aqui. " +
+  "Vamos juntos, que o melhor ainda está por vir!";
+
+/** O texto inteiro do vídeo de treino: a autorização, depois a leitura. */
+export function textoDoTreino(nome: string, projeto?: string | null): string {
+  return `${fraseDaAutorizacao(nome, projeto)} ${LEITURA_DO_TREINO}`;
+}
+
+/** O que o worker mediu no vídeo de treino (worker/src/gemeo.mjs, treinoDoGemeo). */
+export type MedidasDoTreino = {
+  duracaoSec: number;
+  largura?: number | null;
+  altura?: number | null;
+  rosto: { quadros: number; comRosto: number; comVarios: number; virados: number };
+  audio: { falaDb: number | null; ruidoDb: number | null; picoDb: number | null; falaPct: number };
+};
+
+export type ChecagemDoTreino = {
+  id: "duracao" | "rosto" | "audio" | "leitura";
+  /** ok: passou; aviso: passou, mas a tela recomenda gravar de novo; erro: recusado. */
+  resultado: "ok" | "aviso" | "erro";
+  texto: string;
+};
+
+/**
+ * Quanto do texto esperado aparece na transcrição: a fração das palavras de
+ * 4 letras ou mais do texto que a pessoa disse (uma letra de tolerância a
+ * partir de 6 letras, porque a transcrição erra acento e nome). A ordem não
+ * importa: quem tropeça e repete uma frase continua lendo o texto.
+ */
+export function coberturaDaLeitura(transcricao: string, texto: string): number {
+  const ditas = new Set(semAcento(transcricao).split(/[^a-z0-9]+/).filter((p) => p.length >= 4));
+  const esperadas = [...new Set(semAcento(texto).split(/[^a-z0-9]+/).filter((p) => p.length >= 4))];
+  if (!esperadas.length) return 0;
+  const lista = [...ditas];
+  const achou = esperadas.filter(
+    (e) => ditas.has(e) || (e.length >= 6 && lista.some((d) => Math.abs(d.length - e.length) <= 1 && distancia(d, e) <= 1))
+  );
+  return achou.length / esperadas.length;
+}
+
+/**
+ * OS LIMITES DA CHECAGEM AUTOMÁTICA, medidos na prova de 03/10 com uma
+ * gravação real do Bruno (sala comum, câmera e microfone do dia a dia):
+ *
+ *  - áudio: fala (percentil 90 das janelas de 50 ms) em -20 dB e fundo
+ *    (percentil 5, os respiros entre palavras) em -71 dB. Com ruído rosa
+ *    somado, o fundo subiu para -49 dB. Recusa acima de -42 dB (o fundo vira
+ *    "ar" metálico na voz clonada), avisa entre -50 e -42; fala abaixo de
+ *    -38 dB é longe do microfone; pico em 0 dB é voz estourada;
+ *  - rosto: um rosto só em pelo menos 6 dos 8 quadros, e nenhum quadro com
+ *    duas pessoas (o gêmeo é só de quem autorizou);
+ *  - leitura: pelo menos 70% das palavras do texto e a autorização inteira
+ *    ("autorizo", o nome, "gêmeo digital").
+ */
+export function conferirTreino(
+  m: MedidasDoTreino,
+  transcricao: string,
+  nome: string,
+  texto: string
+): { ok: boolean; checagens: ChecagemDoTreino[]; cobertura: number } {
+  const c: ChecagemDoTreino[] = [];
+  const d = m.duracaoSec;
+  c.push(
+    d < SEGUNDOS_MINIMOS_DO_TREINO
+      ? { id: "duracao", resultado: "erro", texto: `O vídeo tem ${duracaoFalada(d)}. Precisamos de pelo menos ${SEGUNDOS_MINIMOS_DO_TREINO} s: leia o texto inteiro, até o fim.` }
+      : { id: "duracao", resultado: "ok", texto: `Duração: ${duracaoFalada(d)}.` }
+  );
+
+  const r = m.rosto;
+  if (r.comVarios > 0) c.push({ id: "rosto", resultado: "erro", texto: "Aparece mais de uma pessoa no vídeo. Grave sozinho no quadro." });
+  else if (r.comRosto < Math.ceil(r.quadros * 0.75))
+    c.push({
+      id: "rosto",
+      resultado: "erro",
+      texto: `O seu rosto apareceu em ${r.comRosto} de ${r.quadros} momentos. Fique de frente para a câmera o tempo todo, com luz no rosto.`,
+    });
+  else if (r.virados > 1) c.push({ id: "rosto", resultado: "aviso", texto: "Em alguns momentos o rosto ficou virado. Olhe para a lente enquanto lê." });
+  else c.push({ id: "rosto", resultado: "ok", texto: "Rosto visível, de frente, só você no quadro." });
+
+  const a = m.audio;
+  const ruido = a.ruidoDb ?? -120;
+  const pico = a.picoDb ?? -99;
+  if (a.falaDb === null || a.falaDb < -38 || a.falaPct < 40)
+    c.push({ id: "audio", resultado: "erro", texto: "Quase não ouvimos a sua voz. Fale mais perto do microfone, em voz alta." });
+  else if (ruido > -42)
+    c.push({ id: "audio", resultado: "erro", texto: "Tem barulho de fundo alto (ventilador, rua, música). Grave num lugar mais silencioso." });
+  else if (ruido > -50 || pico >= -0.1)
+    c.push({
+      id: "audio",
+      resultado: "aviso",
+      texto:
+        pico >= -0.1
+          ? "A voz estourou em alguns trechos. Fale um pouco mais longe do microfone."
+          : "Dá para ouvir um pouco de ruído de fundo. Se puder, grave num lugar mais quieto.",
+    });
+  else c.push({ id: "audio", resultado: "ok", texto: "Áudio limpo." });
+
+  const cobertura = coberturaDaLeitura(transcricao, texto);
+  const aut = conferirFalaDaAutorizacao(transcricao, nome);
+  if (!aut.ok)
+    c.push({ id: "leitura", resultado: "erro", texto: `Não ouvimos ${aut.faltou.join(" e ")}. A autorização no começo do texto precisa ser lida inteira.` });
+  else if (cobertura < 0.7)
+    c.push({
+      id: "leitura",
+      resultado: "erro",
+      texto: `A fala bateu com ${Math.round(cobertura * 100)}% do texto. Leia o texto inteiro, do jeito que ele rola na tela.`,
+    });
+  else c.push({ id: "leitura", resultado: "ok", texto: `A fala bateu com ${Math.round(cobertura * 100)}% do texto, com a autorização inteira.` });
+
+  return { ok: c.every((x) => x.resultado !== "erro"), checagens: c, cobertura };
+}
+
+// ─────────────────────────────── os cenários (03/10) ───────────────────────────────
+
+/**
+ * O GÊMEO EM CENÁRIOS (03/10/2026): a pessoa não fala só de frente para a
+ * câmera; o roteiro pode pô-la sentada à mesa, em pé num palco, no escritório.
+ * Cada cenário é uma IMAGEM da pessoa naquele lugar, composta uma vez por
+ * cadastro a partir do quadro do vídeo de treino (na HeyGen, um "look" gerado
+ * por prompt sobre o gêmeo treinado), e guardada para os próximos vídeos.
+ *
+ * `prompt` vai em inglês porque os modelos de edição de imagem seguem melhor
+ * a instrução em inglês; `movimento` acompanha o pedido do vídeo.
+ */
+export type IdDoCenario = "camera" | "mesa" | "palco" | "escritorio" | "estudio" | "sala";
+
+export type Cenario = {
+  id: IdDoCenario;
+  nome: string;
+  plano: "close" | "médio" | "aberto";
+  /** Palavras que, no roteiro, pedem este cenário. */
+  sinais: string[];
+  prompt: string;
+  movimento: string;
+};
+
+const MESMA_PESSOA =
+  "Keep the exact same person: same face, same identity, same hair, same skin tone, same clothes. Photorealistic photo, natural light, shot on a full-frame camera, no text, no captions, no logos.";
+
+export const CENARIOS: Cenario[] = [
+  {
+    id: "camera",
+    nome: "Falando para a câmera",
+    plano: "close",
+    sinais: [],
+    prompt: "",
+    movimento: INSTRUCAO_DO_GERADOR,
+  },
+  {
+    id: "mesa",
+    nome: "Sentado à mesa",
+    plano: "médio",
+    sinais: ["mesa", "sentado", "sentada", "reunião", "notebook"],
+    prompt: `Medium shot of this person sitting at a wooden desk with a laptop, facing the camera and talking, hands resting on the desk, softly blurred bookshelf behind. ${MESMA_PESSOA}`,
+    movimento: "A pessoa, sentada à mesa, fala para a câmera com gestos naturais das mãos sobre a mesa. Câmera parada. Sem texto na imagem.",
+  },
+  {
+    id: "palco",
+    nome: "Em pé num palco",
+    plano: "aberto",
+    sinais: ["palco", "palestra", "plateia", "evento", "auditório"],
+    prompt: `Wide shot of this person standing on a conference stage, visible from the knees up, warm stage lights, blurred audience silhouettes in the foreground, dark background with a soft glow. ${MESMA_PESSOA}`,
+    movimento: "A pessoa, em pé no palco, fala para a plateia e para a câmera, com gestos amplos e confiantes. Câmera parada. Sem texto na imagem.",
+  },
+  {
+    id: "escritorio",
+    nome: "No escritório",
+    plano: "médio",
+    sinais: ["escritório", "empresa", "time", "equipe"],
+    prompt: `Medium shot of this person standing in a bright modern office, glass walls and plants softly blurred behind, facing the camera and talking. ${MESMA_PESSOA}`,
+    movimento: "A pessoa, em pé no escritório, fala para a câmera com gestos naturais. Câmera parada. Sem texto na imagem.",
+  },
+  {
+    id: "estudio",
+    nome: "Estúdio de podcast",
+    plano: "médio",
+    sinais: ["podcast", "microfone", "estúdio", "entrevista"],
+    prompt: `Medium shot of this person sitting in a podcast studio in front of a professional microphone on a boom arm, acoustic panels and warm practical lights softly blurred behind. ${MESMA_PESSOA}`,
+    movimento: "A pessoa, sentada no estúdio, fala perto do microfone olhando para a câmera, com gestos discretos. Câmera parada. Sem texto na imagem.",
+  },
+  {
+    id: "sala",
+    nome: "Na sala de casa",
+    plano: "médio",
+    sinais: ["casa", "sofá", "família"],
+    prompt: `Medium shot of this person sitting on a sofa in a cozy living room, plants and a lamp softly blurred behind, relaxed posture, facing the camera and talking. ${MESMA_PESSOA}`,
+    movimento: "A pessoa, sentada no sofá, conversa com a câmera de um jeito descontraído. Câmera parada. Sem texto na imagem.",
+  },
+];
+
+export const cenarioPorId = (id?: string | null): Cenario => CENARIOS.find((c) => c.id === id) ?? CENARIOS[0];
+
+/** "auto" escolhe pelo roteiro; um id fixa o mesmo cenário no vídeo inteiro. */
+export type EscolhaDeCenario = "auto" | IdDoCenario;
+
+/**
+ * O CENÁRIO DE CADA CENA, pelo roteiro. O que a cena diz manda: "No palco,
+ * ..." na fala, ou "pessoa sentada à mesa" no que aparece na tela, escolhe o
+ * cenário. Sem sinal, a ordem de um vídeo de quem sabe gravar: o gancho de
+ * frente, em close (é o que segura o scroll), o desenvolvimento num plano
+ * médio, e o fechamento de volta ao close, olho no olho. Cenas de
+ * desenvolvimento seguidas alternam o plano, para o corte de uma para a
+ * outra não parecer pulo.
+ */
+export function cenariosDasCenas(
+  cenas: Array<{ fala?: string | null; naTela?: string | null; papel?: string | null }>,
+  escolha: EscolhaDeCenario = "auto",
+  base: IdDoCenario = "mesa"
+): IdDoCenario[] {
+  if (escolha !== "auto") return cenas.map(() => escolha);
+  const alternado: IdDoCenario[] = [base, "camera"];
+  let meio = 0;
+  return cenas.map((c, i) => {
+    const t = ` ${semAcento(`${c.naTela ?? ""} ${c.fala ?? ""}`).replace(/[^a-z0-9]+/g, " ")} `;
+    const pedido = CENARIOS.find((x) => x.sinais.some((s) => t.includes(` ${semAcento(s)} `)));
+    if (pedido) return pedido.id;
+    const papel = c.papel ?? (i === 0 ? "gancho" : i === cenas.length - 1 ? "fechamento" : "desenvolvimento");
+    if (papel === "gancho" || papel === "fechamento" || cenas.length === 1) return "camera";
+    return alternado[meio++ % 2];
+  });
+}
+
+/** Uma cena com o seu cenário, como o pedido do vídeo chega ao servidor. */
+export type CenaDoGemeo = { texto: string; cenario: IdDoCenario };
+
+/**
+ * As cenas em pedaços: cada cena é dividida como o texto inteiro era
+ * (fim de frase, abaixo do teto), e cada pedaço leva o cenário da sua cena.
+ * Cenas seguidas no MESMO cenário se juntam antes de dividir, para não
+ * criar pedaço curto à toa.
+ */
+export function pedacosDasCenas(cenas: CenaDoGemeo[]): Array<{ texto: string; cenario: IdDoCenario }> {
+  const juntas: CenaDoGemeo[] = [];
+  for (const c of cenas) {
+    const texto = limparTexto(c.texto);
+    if (!texto) continue;
+    const ultima = juntas[juntas.length - 1];
+    if (ultima && ultima.cenario === c.cenario) ultima.texto = `${ultima.texto} ${texto}`;
+    else juntas.push({ texto, cenario: c.cenario });
+  }
+  return juntas.flatMap((c) => dividirEmPedacos(c.texto).map((texto) => ({ texto, cenario: c.cenario })));
+}
+
 // ─────────────────────────────── os tipos ───────────────────────────────
 
 /** Uma foto enviada pelo cliente. */
@@ -357,7 +695,7 @@ export type FotoDoGerador = {
 export type VozDoGemeo = {
   estado: "convertendo" | "curta" | "esperando" | "clonando" | "sem-permissao" | "pronta" | "falhou";
   desde: string;
-  origem: "gravada" | "arquivo";
+  origem: "gravada" | "arquivo" | "treino";
   amostraUrl: string;
   contentType?: string | null;
   mp3Url?: string | null;
@@ -391,6 +729,73 @@ export type AutorizacaoDoGemeo = {
   tentativas?: number;
 };
 
+/**
+ * O vídeo de treino (03/10):
+ *   preparando  o worker normaliza, tira voz, quadros e mede rosto e áudio;
+ *   conferindo  medido; falta a transcrição bater com o texto;
+ *   valido      passou nas quatro checagens: virou foto, voz e autorização;
+ *   recusado    alguma checagem reprovou (as checagens dizem qual e por quê);
+ *   falhou      o worker ou a transcrição não responderam 3 vezes.
+ */
+export type TreinoDoGemeo = {
+  estado: "preparando" | "conferindo" | "valido" | "recusado" | "falhou";
+  desde: string;
+  /** A gravação original, como veio do navegador (é a prova da autorização). */
+  videoUrl: string;
+  contentType?: string | null;
+  nome: string;
+  /** O texto que estava na tela, montado pelo servidor (vale como prova). */
+  texto: string;
+  gravadoEm: string;
+  userId: string;
+  userAgent?: string | null;
+  segundosNaTela?: number | null;
+  /** O que o worker produziu (store privado). */
+  arquivos?: { video: string; voz: string; referencia: string; foto: string | null; quadro: string | null } | null;
+  medidas?: MedidasDoTreino | null;
+  transcricao?: string | null;
+  checagens?: ChecagemDoTreino[] | null;
+  motivo?: string | null;
+  tentativas?: number;
+};
+
+/**
+ * O gêmeo TREINADO no fornecedor (03/10, HeyGen):
+ *   enviando        o vídeo de treino está subindo;
+ *   treinando       o fornecedor aprende rosto, gesto e voz (minutos);
+ *   consentimento   falta a pessoa confirmar no link do fornecedor (a conta
+ *                   avulsa da HeyGen exige a confirmação gravada na página
+ *                   deles; Enterprise aceita o nosso vídeo);
+ *   pronto          pode gerar;
+ *   falhou          o fornecedor recusou (motivo); o gêmeo segue pela reserva.
+ */
+export type AvatarDoGemeo = {
+  gerador: IdDoGerador;
+  estado: "enviando" | "treinando" | "consentimento" | "pronto" | "falhou";
+  desde: string;
+  /** O vídeo de treino que gerou este avatar: treino novo recomeça. */
+  origem: string;
+  avatarId?: string | null;
+  grupoId?: string | null;
+  consentimentoUrl?: string | null;
+  consentimentoAte?: string | null;
+  motivo?: string | null;
+  tentativas?: number;
+  ultimaTentativa?: string | null;
+};
+
+/** Um cenário pronto para um gerador: a imagem composta (OmniHuman) ou o look (HeyGen). */
+export type CenarioPronto = {
+  estado: "compondo" | "pronto" | "falhou";
+  desde: string;
+  /** O quadro (ou avatar) de onde saiu: treino novo recomeça. */
+  origem: string;
+  url?: string | null;
+  lookId?: string | null;
+  motivo?: string | null;
+  tentativas?: number;
+};
+
 export type CadastroDoGemeo = {
   versao: 1;
   criadoEm: string;
@@ -398,13 +803,27 @@ export type CadastroDoGemeo = {
   foto?: FotoDoGerador | null;
   voz?: VozDoGemeo | null;
   autorizacao?: AutorizacaoDoGemeo | null;
+  /** 03/10: o vídeo único de treino, que preenche foto, voz e autorização. */
+  treino?: TreinoDoGemeo | null;
+  /** 03/10: o gêmeo treinado no fornecedor recomendado. */
+  avatar?: AvatarDoGemeo | null;
+  /** 03/10: os cenários já compostos, por "gerador:cenário". */
+  cenarios?: Record<string, CenarioPronto> | null;
 };
 
 /** O que falta para o gêmeo poder gerar vídeo, em frases para a tela. */
 export function oQueFalta(c: CadastroDoGemeo | null | undefined): string[] {
   const falta: string[] = [];
-  if (!c?.fotos?.length) falta.push("as suas fotos");
-  else if (c.foto?.estado !== "pronta") falta.push("a foto do gerador");
+  // O CAMINHO NOVO (03/10): um vídeo só. Enquanto ele não vale, é a única
+  // coisa que falta; depois, a clonagem da voz (que sai dele).
+  if (c?.treino || !c?.fotos?.length) {
+    if (!c?.treino) return ["o seu vídeo de treino"];
+    if (c.treino.estado !== "valido") return ["a conferência do vídeo de treino"];
+    if (c.voz?.estado !== "pronta") falta.push("a clonagem da sua voz");
+    if (c.foto?.estado !== "pronta") falta.push("a imagem do gêmeo");
+    return falta;
+  }
+  if (c.foto?.estado !== "pronta") falta.push("a foto do gerador");
   if (!c?.voz) falta.push("a amostra da sua voz");
   else if (c.voz.estado !== "pronta") falta.push("a clonagem da sua voz");
   if (!c?.autorizacao) falta.push("a sua autorização gravada");
@@ -419,6 +838,8 @@ export function gemeoAtivo(c: CadastroDoGemeo | null | undefined): boolean {
 /** Um pedaço do vídeo: o texto, a fala e o pedido ao gerador. */
 export type PedacoDoGemeo = {
   texto: string;
+  /** 03/10: o cenário deste pedaço (ausente nos pedidos antigos: "camera"). */
+  cenario?: IdDoCenario | null;
   /** A fala deste pedaço, no store privado. */
   audioUrl?: string | null;
   segundos?: number | null;
@@ -473,6 +894,15 @@ export type VideoDoGemeo = {
   /** A foto do gerador no momento do pedido (o cadastro pode mudar depois). */
   fotoUrl: string;
   falFotoUrl?: string | null;
+  /** 03/10: quem gera (ausente nos pedidos antigos: "omnihuman"). */
+  gerador?: IdDoGerador | null;
+  /** 03/10: o avatar treinado usado (HeyGen). */
+  avatarId?: string | null;
+  /**
+   * 03/10: a imagem (OmniHuman) ou o look (HeyGen) de cada cenário deste
+   * vídeo, já do lado do fornecedor, para não subir duas vezes.
+   */
+  imagensDoGerador?: Partial<Record<IdDoCenario, string>> | null;
   voiceId: string;
   pedacos: PedacoDoGemeo[];
   segundosDaFala?: number | null;
@@ -508,6 +938,8 @@ export type VideoNaTela = {
   pedacosProntos: number;
   videoJobId: string | null;
   motivo: string | null;
+  gerador: IdDoGerador;
+  cenarios: IdDoCenario[];
 };
 
 export function videoParaTela(v: VideoDoGemeo): VideoNaTela {
@@ -526,13 +958,24 @@ export function videoParaTela(v: VideoDoGemeo): VideoNaTela {
     pedacosProntos: v.pedacos.filter((p) => p.videoUrl).length,
     videoJobId: v.videoJobId ?? null,
     motivo: v.motivo ?? null,
+    gerador: v.gerador ?? "omnihuman",
+    cenarios: [...new Set(v.pedacos.map((p) => p.cenario ?? "camera"))],
   };
 }
 
-/** O cadastro como a tela vê: sem o id da voz e sem a fila de vozes a apagar. */
-export function cadastroParaTela(c: (CadastroDoGemeo & { vozesParaApagar?: string[] }) | null): CadastroDoGemeo | null {
+/** O cadastro como a tela vê: sem o id da voz, sem ids do fornecedor e sem a fila de vozes a apagar. */
+export function cadastroParaTela(
+  c: (CadastroDoGemeo & { vozesParaApagar?: string[]; avataresParaApagar?: unknown[] }) | null
+): CadastroDoGemeo | null {
   if (!c) return null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { vozesParaApagar, ...resto } = c;
-  return { ...resto, voz: resto.voz ? { ...resto.voz, voiceId: resto.voz.voiceId ? "pronta" : null } : null };
+  const { vozesParaApagar, avataresParaApagar, ...resto } = c;
+  return {
+    ...resto,
+    voz: resto.voz ? { ...resto.voz, voiceId: resto.voz.voiceId ? "pronta" : null } : null,
+    avatar: resto.avatar ? { ...resto.avatar, avatarId: resto.avatar.avatarId ? "pronto" : null, grupoId: null } : null,
+    cenarios: resto.cenarios
+      ? Object.fromEntries(Object.entries(resto.cenarios).map(([k, v]) => [k, { ...v, lookId: null }]))
+      : null,
+  };
 }

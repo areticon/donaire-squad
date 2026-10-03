@@ -33,6 +33,9 @@ const REGRAS = {
     maxBytes: 300 * 1024 * 1024,
   },
   autorizacao: { tipos: ["video/webm", "video/mp4", "video/quicktime"], maxBytes: 120 * 1024 * 1024 },
+  // O vídeo único de treino (03/10): até 2 min de câmera, gravado no navegador
+  // ou enviado do celular (um minuto em 4K de celular passa de 300 MB).
+  treino: { tipos: ["video/webm", "video/mp4", "video/quicktime"], maxBytes: 500 * 1024 * 1024 },
 } as const;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {

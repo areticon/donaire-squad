@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { SaldoInsuficiente } from "@/lib/credits";
 import { cutucar } from "@/lib/fila/trabalhos";
-import { videoParaTela } from "@/lib/media/gemeo";
+import { videoParaTela, type CenaDoGemeo, type IdDoCenario } from "@/lib/media/gemeo";
 import { ErroDoPedido, cancelarVideoDoGemeo, listarVideos, pedirVideoDoGemeo } from "@/lib/media/gemeo-servidor";
 import { projetoVisivel } from "@/lib/equipe/conta";
 
@@ -37,7 +37,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const userId = await dono(id);
   if (!userId) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const corpo = (await req.json().catch(() => ({}))) as { texto?: string; titulo?: string; roteiroId?: string };
+  const corpo = (await req.json().catch(() => ({}))) as {
+    texto?: string;
+    titulo?: string;
+    roteiroId?: string;
+    cenas?: CenaDoGemeo[];
+    cenario?: IdDoCenario;
+  };
   try {
     const video = await pedirVideoDoGemeo({
       projectId: id,
@@ -45,6 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       texto: String(corpo.texto ?? ""),
       titulo: corpo.titulo ?? null,
       roteiroId: corpo.roteiroId ?? null,
+      cenas: Array.isArray(corpo.cenas) ? corpo.cenas.slice(0, 40) : null,
+      cenario: corpo.cenario ?? null,
     });
     cutucar();
     return NextResponse.json({ video: videoParaTela(video) });

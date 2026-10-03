@@ -11,7 +11,9 @@ import {
   adicionarFoto,
   lerCadastro,
   listarVideos,
+  geradorDoCadastro,
   registrarAutorizacao,
+  registrarTreino,
   registrarVoz,
   removerFoto,
   revogarGemeo,
@@ -67,6 +69,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     acessoInterno: conta?.role === "admin",
     nome: usuario?.name ?? "",
     projeto: d.project.name,
+    // Quem gera os vídeos deste projeto (03/10): a tela mostra o preço dele.
+    gerador: geradorDoCadastro(cadastro),
     // Para a tela esconder o cadastro e a revogação de quem é membro.
     equipe: d.project.userId === d.userId ? null : { dono: (await nomeDoDono(d.project.userId)) ?? "quem administra a conta" },
   });
@@ -97,6 +101,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         break;
       case "autorizacao":
         cadastro = await registrarAutorizacao(id, {
+          url: String(corpo.url ?? ""),
+          nome: String(corpo.nome ?? ""),
+          userId: d.userId,
+          segundos: typeof corpo.segundos === "number" ? Math.round(corpo.segundos) : null,
+          contentType: typeof corpo.contentType === "string" ? corpo.contentType : null,
+          userAgent: req.headers.get("user-agent"),
+        });
+        break;
+      case "treino":
+        cadastro = await registrarTreino(id, {
           url: String(corpo.url ?? ""),
           nome: String(corpo.nome ?? ""),
           userId: d.userId,

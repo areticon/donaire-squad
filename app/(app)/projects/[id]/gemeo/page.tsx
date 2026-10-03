@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { contaDoPlano } from "@/lib/equipe/conta";
 import { prisma } from "@/lib/db/prisma";
 import { cadastroParaTela, videoParaTela } from "@/lib/media/gemeo";
-import { lerCadastro, listarVideos } from "@/lib/media/gemeo-servidor";
+import { geradorDoCadastro, lerCadastro, listarVideos } from "@/lib/media/gemeo-servidor";
 import { GemeoDoProjeto } from "@/components/gemeo/gemeo-do-projeto";
 import { ComoOSquadEdita } from "@/components/video/como-o-squad-edita";
 import { resumoDaEdicao } from "@/lib/media/edicao-escolhida";
@@ -94,6 +94,7 @@ export default async function GemeoPage({
           acessoInterno: conta?.role === "admin",
           nome: usuario?.name ?? "",
           projeto: project.name,
+          gerador: geradorDoCadastro(cadastro),
           // Membro da equipe (01/10): cadastro e revogação ficam com o dono.
           equipe: donoDaEquipe ? { dono: donoDaEquipe } : null,
         }}

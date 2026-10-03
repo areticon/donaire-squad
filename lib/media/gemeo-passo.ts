@@ -7,32 +7,38 @@ import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 import { transcribeBlob } from "@/lib/media/transcribe";
 import { cutucar } from "@/lib/fila/trabalhos";
+import { comporSobreImagemComCusto, dataUrlToBuffer } from "@/lib/media/nano-banana";
 import {
-  DOLAR_POR_SEGUNDO_DO_GERADOR,
   FOLGA_DO_VIDEO_SOBRE_A_FALA,
-  MODELO_DO_GERADOR,
-  SEGUNDOS_MAXIMOS_DO_PEDACO,
+  GERADORES,
   SEGUNDOS_MINIMOS_DA_VOZ,
+  cenarioPorId,
   conferirFalaDaAutorizacao,
+  conferirTreino,
   creditosDoGemeo,
   duracaoFalada,
   partirAoMeio,
   type AvaliacaoDaFoto,
+  type CenarioPronto,
+  type IdDoCenario,
+  type IdDoGerador,
+  type MedidasDoTreino,
   type PedacoDoGemeo,
+  type TreinoDoGemeo,
   type VideoDoGemeo,
 } from "@/lib/media/gemeo";
+import { ErroDoFornecedor, apagarVoz, clonarVoz, dubleLigado, duracaoDoMp3, falar } from "@/lib/media/gemeo-fornecedores";
 import {
-  ErroDoFornecedor,
-  apagarVoz,
-  clonarVoz,
-  dubleLigado,
-  duracaoDoMp3,
-  estadoNoFal,
-  falar,
-  pedirOmniHuman,
-  resultadoNoFal,
-  subirNoFal,
-} from "@/lib/media/gemeo-fornecedores";
+  apagarGemeoNaHeygen,
+  criarGemeoNaHeygen,
+  criarLookNaHeygen,
+  estadoDoConsentimento,
+  estadoDoLook,
+  geradorDoPedido,
+  geradorPreferido,
+  pedidoDoPedaco,
+  pedirConsentimento,
+} from "@/lib/media/gemeo-geradores";
 import {
   TIPO_REVOGACAO,
   agora,
@@ -303,7 +309,8 @@ async function terminarRevogacoes(): Promise<number> {
   const linhas = await prisma.$queryRaw<Array<{ projectId: string; key: string }>>`
     SELECT "projectId", key FROM project_memories
     WHERE type = ${TIPO_REVOGACAO}
-      AND jsonb_array_length(COALESCE(value -> 'vozesParaApagar', '[]'::jsonb)) > 0
+      AND (jsonb_array_length(COALESCE(value -> 'vozesParaApagar', '[]'::jsonb)) > 0
+        OR jsonb_array_length(COALESCE(value -> 'avataresParaApagar', '[]'::jsonb)) > 0)
       AND "updatedAt" < now() - interval '30 minutes'
     LIMIT 10`;
   let feitas = 0;
@@ -312,9 +319,9 @@ async function terminarRevogacoes(): Promise<number> {
       where: { projectId_type_key: { projectId: l.projectId, type: TIPO_REVOGACAO, key: l.key } },
       select: { value: true },
     });
-    const pendentes = ((r?.value as { vozesParaApagar?: string[] } | null)?.vozesParaApagar ?? []).slice();
+    const valor = (r?.value ?? null) as { vozesParaApagar?: string[]; avataresParaApagar?: string[] } | null;
     const restam: string[] = [];
-    for (const id of pendentes) {
+    for (const id of valor?.vozesParaApagar ?? []) {
       try {
         await apagarVoz(id);
         feitas++;
@@ -322,15 +329,319 @@ async function terminarRevogacoes(): Promise<number> {
         restam.push(id);
       }
     }
+    const avataresRestam: string[] = [];
+    for (const id of valor?.avataresParaApagar ?? []) {
+      try {
+        await apagarGemeoNaHeygen(id);
+        feitas++;
+      } catch {
+        avataresRestam.push(id);
+      }
+    }
     // Grava sempre (mesmo sem mudança), para o `updatedAt` empurrar a próxima tentativa 30 min.
     await mudarMemoria<Record<string, unknown>>(l.projectId, TIPO_REVOGACAO, l.key, (atual) =>
-      atual ? { ...atual, vozesParaApagar: restam, ultimaTentativa: agora() } : undefined
+      atual ? { ...atual, vozesParaApagar: restam, avataresParaApagar: avataresRestam, ultimaTentativa: agora() } : undefined
     );
   }
   return feitas;
 }
 
+// ─────────────────────────────── 1b. o vídeo de treino (03/10) ───────────────────────────────
+
+/**
+ * O VÍDEO DE TREINO em dois tempos, cada um numa passada:
+ *
+ *   preparando  o worker normaliza o vídeo e devolve voz, foto, quadro
+ *               inteiro, referência e as medidas de rosto e áudio;
+ *   conferindo  a Deepgram transcreve a voz e `conferirTreino` decide.
+ *
+ * Valendo, o treino PREENCHE o cadastro antigo: foto (o melhor quadro,
+ * recortado), voz (a amostra, já na fila de clonar, porque a autorização é o
+ * próprio vídeo) e autorização. O resto do gêmeo (clonagem, pedido, junção)
+ * segue igual, e o gerador de reserva funciona sem nada novo.
+ */
+async function cuidarDoTreino(projectId: string, c: CadastroGuardado): Promise<void> {
+  const t = c.treino;
+  if (!t || !["preparando", "conferindo"].includes(t.estado)) return;
+  if ((t.tentativas ?? 0) > 0 && idade(t.desde) < 2 * 60_000) return;
+  const video = t.videoUrl;
+  const falhou = (x: TreinoDoGemeo, motivo: string): TreinoDoGemeo => {
+    const tentativas = (x.tentativas ?? 0) + 1;
+    return tentativas >= 3 ? { ...x, estado: "falhou", desde: agora(), tentativas, motivo } : { ...x, desde: agora(), tentativas };
+  };
+
+  if (t.estado === "preparando") {
+    type Feito = MedidasDoTreino & {
+      video: { url: string };
+      voz: { url: string };
+      referencia: { url: string };
+      foto: { url: string } | null;
+      quadro: { url: string } | null;
+    };
+    let feito: Feito | null = null;
+    let erro: string | null = null;
+    try {
+      feito = await chamarWorker<Feito>(
+        "treino-do-gemeo",
+        { videoUrl: video, prefixo: `gemeo/${projectId}/treino-${Date.now().toString(36)}`, chave: `gemeo/${projectId}/treino` },
+        280_000
+      );
+    } catch (e) {
+      erro = mensagem(e);
+    }
+    let orfaos: unknown[] = [];
+    await mudarCadastro(projectId, (atual) => {
+      const x = atual?.treino;
+      if (!x || x.videoUrl !== video || x.estado !== "preparando") {
+        // Treino trocado enquanto o worker trabalhava: o que ele subiu é lixo.
+        if (feito) orfaos = [feito.video.url, feito.voz.url, feito.referencia.url, feito.foto?.url, feito.quadro?.url];
+        return undefined;
+      }
+      if (erro || !feito) return { ...atual!, treino: falhou(x, "Não consegui ler o vídeo de treino. Grave de novo ou envie outro arquivo.") };
+      return {
+        ...atual!,
+        treino: {
+          ...x,
+          estado: "conferindo",
+          desde: agora(),
+          tentativas: 0,
+          arquivos: { video: feito.video.url, voz: feito.voz.url, referencia: feito.referencia.url, foto: feito.foto?.url ?? null, quadro: feito.quadro?.url ?? null },
+          medidas: { duracaoSec: feito.duracaoSec, largura: feito.largura ?? null, altura: feito.altura ?? null, rosto: feito.rosto, audio: feito.audio },
+        },
+      };
+    });
+    if (erro) console.error(`[gemeo][${projectId}] treino (worker):`, erro);
+    if (orfaos.length) await apagarMidias(orfaos, `gemeo-treino-orfao/${projectId}`);
+    return;
+  }
+
+  // conferindo: a fala bate com o texto?
+  let transcricao: string | null = null;
+  let erro: string | null = null;
+  try {
+    transcricao = dubleLigado()
+      ? t.texto
+      : (
+          await transcribeBlob(t.arquivos!.voz, {
+            language: "pt",
+            contentType: "audio/mpeg",
+            keyterms: t.nome.split(" ").filter((p) => p.length >= 3),
+            usage: { projectId, operation: "gemeo_treino" },
+          })
+        ).text;
+  } catch (e) {
+    erro = mensagem(e);
+  }
+  let paraApagar: unknown[] = [];
+  await mudarCadastro(projectId, (atual) => {
+    const x = atual?.treino;
+    if (!x || x.videoUrl !== video || x.estado !== "conferindo" || !x.medidas || !x.arquivos) return undefined;
+    if (erro || transcricao === null) return { ...atual!, treino: falhou(x, "Não consegui ouvir o vídeo de treino. Grave de novo, num lugar com menos barulho.") };
+    const r = conferirTreino(x.medidas, transcricao, x.nome, x.texto);
+    const treino: TreinoDoGemeo = {
+      ...x,
+      estado: r.ok ? "valido" : "recusado",
+      desde: agora(),
+      transcricao: transcricao.slice(0, 4000),
+      checagens: r.checagens,
+      motivo: r.ok ? null : r.checagens.filter((k) => k.resultado === "erro").map((k) => k.texto).join(" "),
+    };
+    if (!r.ok) return { ...atual!, treino };
+    // VALEU: o treino vira foto, voz e autorização. O que era do cadastro
+    // antigo (fotos, amostra, gravação da autorização) sai; a voz clonada
+    // antiga vai para a fila de apagar.
+    const a = atual!;
+    const doTreino = new Set(Object.values(x.arquivos).filter(Boolean));
+    paraApagar = [
+      ...a.fotos.map((f) => f.url),
+      a.foto?.url,
+      a.voz?.amostraUrl,
+      a.voz?.mp3Url,
+      a.autorizacao?.videoUrl !== x.videoUrl ? a.autorizacao?.videoUrl : null,
+    ].filter((u) => u && !doTreino.has(u as string));
+    const vozesParaApagar = [...(a.vozesParaApagar ?? []), ...(a.voz?.voiceId ? [a.voz.voiceId] : [])];
+    return {
+      ...a,
+      treino,
+      vozesParaApagar,
+      fotos: [],
+      foto: { estado: "pronta", desde: agora(), origem: `treino:${x.gravadoEm}`, url: x.arquivos.foto, escolhida: null, avaliacoes: [], motivo: null },
+      voz: {
+        estado: "clonando",
+        desde: agora(),
+        origem: "treino",
+        amostraUrl: x.arquivos.voz,
+        contentType: "audio/mpeg",
+        mp3Url: x.arquivos.voz,
+        segundos: x.medidas.duracaoSec,
+        tentativas: 0,
+      },
+      autorizacao: {
+        estado: "valida",
+        desde: agora(),
+        videoUrl: x.videoUrl,
+        contentType: x.contentType ?? null,
+        nome: x.nome,
+        texto: x.texto,
+        gravadaEm: x.gravadoEm,
+        segundos: x.medidas.duracaoSec,
+        userId: x.userId,
+        userAgent: x.userAgent ?? null,
+        transcricao: transcricao.slice(0, 2000),
+        tentativas: 0,
+      },
+    };
+  });
+  if (erro) console.error(`[gemeo][${projectId}] treino (transcrição):`, erro);
+  if (paraApagar.length) await apagarMidias(paraApagar, `gemeo-cadastro-antigo/${projectId}`);
+}
+
+/**
+ * O GÊMEO TREINADO NA HEYGEN (03/10), só quando o ambiente pede
+ * (GEMEO_GERADOR=heygen com HEYGEN_API_KEY). Depois do treino valer:
+ * sobe o vídeo normalizado, espera o treino (minutos), pede o consentimento
+ * deles e espera a pessoa confirmar. Até ficar pronto, os vídeos saem pela
+ * reserva; se a HeyGen recusar, o projeto fica na reserva, com o motivo.
+ *
+ * GEMEO_HEYGEN_CONSENTIMENTO=dispensado pula o link (Enterprise com acordo
+ * de indenização, o nível 3 da HeyGen).
+ */
+async function cuidarDoAvatar(projectId: string, c: CadastroGuardado): Promise<void> {
+  if (geradorPreferido() !== "heygen") return;
+  const t = c.treino;
+  if (t?.estado !== "valido" || !t.arquivos) return;
+  const origem = t.videoUrl;
+  const a = c.avatar;
+
+  if (!a || a.origem !== origem || (a.estado === "enviando" && idade(a.ultimaTentativa) > ESPERA_DE_FALHA_MS)) {
+    if (a?.estado === "falhou") return;
+    if (a && a.origem === origem && (a.tentativas ?? 0) >= 3) {
+      await mudarCadastro(projectId, (x) =>
+        x?.avatar?.origem === origem ? { ...x, avatar: { ...x.avatar, estado: "falhou", desde: agora(), motivo: "O gerador não aceitou o vídeo de treino." } } : undefined
+      );
+      return;
+    }
+    // A marca é a trava: duas passadas do cron ao mesmo tempo não criam dois gêmeos.
+    const marca = agora();
+    const tomado = await mudarCadastro(projectId, (x) => {
+      if (!x || x.treino?.videoUrl !== origem) return undefined;
+      if (x.avatar?.origem === origem && x.avatar.estado !== "enviando") return undefined;
+      if (x.avatar?.origem === origem && idade(x.avatar.ultimaTentativa) < ESPERA_DE_FALHA_MS) return undefined;
+      return {
+        ...x,
+        avatar: {
+          gerador: "heygen",
+          estado: "enviando",
+          desde: x.avatar?.desde ?? agora(),
+          origem,
+          tentativas: (x.avatar?.origem === origem ? x.avatar.tentativas ?? 0 : 0) + 1,
+          ultimaTentativa: marca,
+        },
+      };
+    });
+    if (tomado?.avatar?.ultimaTentativa !== marca) return;
+    try {
+      const video = await lerMidia(t.arquivos.video);
+      if (!video) throw new Error("o vídeo de treino sumiu do storage");
+      const criado = await criarGemeoNaHeygen({ nome: `${t.nome} (Demandou)`, video });
+      gravarCustoDeVideo("heygen/digital-twin-criacao", 1, { projectId, operation: "gemeo_treino" });
+      let orfao: string | null = null;
+      await mudarCadastro(projectId, (x) => {
+        if (x?.avatar?.origem !== origem) {
+          orfao = criado.grupoId;
+          return x ? { ...x, avataresParaApagar: [...(x.avataresParaApagar ?? []), criado.grupoId] } : undefined;
+        }
+        return { ...x, avatar: { ...x.avatar, estado: "treinando", desde: agora(), avatarId: criado.avatarId, grupoId: criado.grupoId, motivo: null } };
+      });
+      if (orfao) console.warn(`[gemeo][${projectId}] gêmeo treinado órfão ${orfao} na fila de apagar`);
+    } catch (e) {
+      console.warn(`[gemeo][${projectId}] criar o gêmeo na HeyGen:`, mensagem(e));
+      const recusado = e instanceof ErroDoFornecedor && e.tipo === "recusado";
+      await mudarCadastro(projectId, (x) =>
+        x?.avatar?.origem === origem && x.avatar.estado === "enviando"
+          ? {
+              ...x,
+              avatar: {
+                ...x.avatar,
+                estado: recusado ? "falhou" : "enviando",
+                motivo: recusado ? `O gerador recusou o vídeo de treino (${mensagem(e).slice(0, 160)}).` : "O gerador não respondeu; tentamos de novo em alguns minutos.",
+              },
+            }
+          : undefined
+      );
+    }
+    return;
+  }
+
+  if (a.estado === "treinando" && a.avatarId) {
+    const r = await estadoDoLook(a.avatarId).catch((e) => ({ estado: "erro", motivo: mensagem(e) }));
+    if (r.estado === "completed" || r.estado === "pending_consent") {
+      if (process.env.GEMEO_HEYGEN_CONSENTIMENTO === "dispensado") {
+        await mudarCadastro(projectId, (x) => (x?.avatar?.origem === origem ? { ...x, avatar: { ...x.avatar, estado: "pronto", desde: agora() } } : undefined));
+      } else {
+        await renovarConsentimento(projectId, origem, a.grupoId!);
+      }
+    } else if (r.estado === "failed") {
+      await mudarCadastro(projectId, (x) =>
+        x?.avatar?.origem === origem ? { ...x, avatar: { ...x.avatar, estado: "falhou", desde: agora(), motivo: `O gerador não conseguiu treinar o gêmeo (${r.motivo ?? "sem detalhe"}).` } } : undefined
+      );
+    }
+    return;
+  }
+
+  if (a.estado === "consentimento" && a.grupoId) {
+    const s = await estadoDoConsentimento(a.grupoId).catch(() => null);
+    if (s === "accepted") {
+      await mudarCadastro(projectId, (x) => (x?.avatar?.origem === origem ? { ...x, avatar: { ...x.avatar, estado: "pronto", desde: agora(), motivo: null } } : undefined));
+    } else if (s === "rejected" || (a.consentimentoAte && new Date(a.consentimentoAte).getTime() < Date.now())) {
+      await renovarConsentimento(projectId, origem, a.grupoId, s === "rejected" ? "A confirmação não foi aceita. Grave de novo pelo link." : null);
+    }
+  }
+}
+
+async function renovarConsentimento(projectId: string, origem: string, grupoId: string, motivo: string | null = null): Promise<void> {
+  try {
+    const { url } = await pedirConsentimento(grupoId, `${baseDoApp()}/projects/${projectId}/gemeo`);
+    await mudarCadastro(projectId, (x) =>
+      x?.avatar?.origem === origem
+        ? {
+            ...x,
+            avatar: {
+              ...x.avatar,
+              estado: "consentimento",
+              desde: agora(),
+              consentimentoUrl: url,
+              // 23 h, e não 24: o link é renovado antes de a pessoa abrir um vencido.
+              consentimentoAte: new Date(Date.now() + 23 * 3600_000).toISOString(),
+              motivo,
+            },
+          }
+        : undefined
+    );
+  } catch (e) {
+    console.warn(`[gemeo][${projectId}] consentimento da HeyGen:`, mensagem(e));
+  }
+}
+
+async function apagarAvataresPendentes(projectId: string, c: CadastroGuardado): Promise<void> {
+  const lista = c.avataresParaApagar ?? [];
+  if (!lista.length) return;
+  const apagados: string[] = [];
+  for (const id of lista) {
+    try {
+      await apagarGemeoNaHeygen(id);
+      apagados.push(id);
+    } catch (e) {
+      console.warn(`[gemeo][${projectId}] gêmeo treinado ${id} ainda não apagado:`, mensagem(e));
+    }
+  }
+  if (apagados.length) {
+    await mudarCadastro(projectId, (x) => (x ? { ...x, avataresParaApagar: (x.avataresParaApagar ?? []).filter((v) => !apagados.includes(v)) } : undefined));
+  }
+}
+
 async function cuidarDosCadastros(prazo: number): Promise<number> {
+  const heygen = geradorPreferido() === "heygen";
   const linhas = await prisma.$queryRaw<Array<{ projectId: string }>>`
     SELECT "projectId" FROM project_memories
     WHERE type = 'gemeo' AND key = 'cadastro' AND (
@@ -338,6 +649,10 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       OR value -> 'voz' ->> 'estado' IN ('convertendo', 'esperando', 'clonando', 'sem-permissao', 'falhou')
       OR value -> 'autorizacao' ->> 'estado' = 'conferindo'
       OR jsonb_array_length(COALESCE(value -> 'vozesParaApagar', '[]'::jsonb)) > 0
+      OR value -> 'treino' ->> 'estado' IN ('preparando', 'conferindo')
+      OR value -> 'avatar' ->> 'estado' IN ('enviando', 'treinando', 'consentimento')
+      OR jsonb_array_length(COALESCE(value -> 'avataresParaApagar', '[]'::jsonb)) > 0
+      OR (${heygen} AND value -> 'treino' ->> 'estado' = 'valido' AND jsonb_typeof(value -> 'avatar') IS DISTINCT FROM 'object')
     )
     ORDER BY "updatedAt" ASC
     LIMIT 20`;
@@ -349,6 +664,8 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       // Ordem que importa: a autorização antes da voz, para a clonagem já
       // poder acontecer na mesma passada em que a autorização valeu.
       let c = await lerCadastro(projectId);
+      if (c) await cuidarDoTreino(projectId, c);
+      c = await lerCadastro(projectId);
       if (c) await cuidarDaFoto(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await conferirAutorizacao(projectId, c);
@@ -356,6 +673,10 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       if (c) await cuidarDaVoz(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await apagarVozesPendentes(projectId, c);
+      c = await lerCadastro(projectId);
+      if (c) await cuidarDoAvatar(projectId, c);
+      c = await lerCadastro(projectId);
+      if (c) await apagarAvataresPendentes(projectId, c);
     } catch (e) {
       console.error(`[gemeo][${projectId}] cadastro:`, e);
     }
@@ -381,6 +702,95 @@ type Trava = { estado: VideoDoGemeo["estado"]; desde: string };
 /** Grava só se o vídeo ainda está no estado e no `desde` que esta passada tomou. */
 function gravarComTrava(projectId: string, id: string, trava: Trava, mudar: (v: VideoDoGemeo) => VideoDoGemeo) {
   return mudarVideo(projectId, id, (atual) => (atual && atual.estado === trava.estado && atual.desde === trava.desde ? mudar(atual) : undefined));
+}
+
+/**
+ * A IMAGEM (OU O LOOK) DE UM CENÁRIO para um vídeo, já do lado do gerador.
+ * Devolve "esperar" quando o look da HeyGen ainda está sendo gerado (o vídeo
+ * pausa um minuto e volta).
+ *
+ * OmniHuman: "camera" é a foto recortada; os outros são a pessoa COMPOSTA no
+ * cenário a partir do quadro inteiro do vídeo de treino (edição de imagem,
+ * `comporSobreImagemComCusto`), guardada no cadastro para os próximos vídeos.
+ * Quadrada, como a foto, para a junção receber sempre o mesmo formato.
+ *
+ * HeyGen: "camera" é o próprio gêmeo treinado; os outros, um look por prompt
+ * sobre ele (`criarLookNaHeygen`), também guardado.
+ *
+ * Se a composição falhar, o pedaço sai no close: o cliente recebe o vídeo, e
+ * o log diz qual cenário caiu.
+ */
+async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDoGerador, cen: IdDoCenario): Promise<string | "esperar"> {
+  const g = geradorDoPedido(gerador);
+  const close = async (): Promise<string> => {
+    if (gerador === "heygen") return v.avatarId!;
+    const foto = await lerMidia(v.fotoUrl);
+    if (!foto) throw new Error("a foto do gêmeo sumiu do storage");
+    return g.subirImagem!(foto, "foto.jpg");
+  };
+  if (cen === "camera") return close();
+
+  const chave = `${gerador}:${cen}`;
+  const c = await lerCadastro(projectId);
+  const origem = gerador === "heygen" ? v.avatarId ?? "" : c?.treino?.arquivos?.quadro ?? v.fotoUrl;
+  const pronto = c?.cenarios?.[chave];
+  const guardar = (novo: CenarioPronto) =>
+    mudarCadastro(projectId, (x) => (x ? { ...x, cenarios: { ...(x.cenarios ?? {}), [chave]: novo } } : undefined));
+
+  if (pronto?.estado === "falhou" && pronto.origem === origem) return close();
+
+  if (gerador === "heygen") {
+    if (pronto?.origem === origem && pronto.lookId) {
+      if (pronto.estado === "pronto") return pronto.lookId;
+      const r = await estadoDoLook(pronto.lookId);
+      if (r.estado === "completed") {
+        await guardar({ ...pronto, estado: "pronto", desde: agora() });
+        return pronto.lookId;
+      }
+      if (r.estado === "failed") {
+        await guardar({ ...pronto, estado: "falhou", desde: agora(), motivo: r.motivo });
+        console.warn(`[gemeo][${projectId}] cenário ${cen} recusado pela HeyGen; vai no close:`, r.motivo);
+        return close();
+      }
+      return "esperar";
+    }
+    const { lookId } = await criarLookNaHeygen(v.avatarId!, cen, v.titulo);
+    gravarCustoDeVideo("heygen/look-por-prompt", 1, { projectId, operation: "gemeo_cenario" });
+    await guardar({ estado: "compondo", desde: agora(), origem, lookId });
+    return "esperar";
+  }
+
+  // OmniHuman: compõe (ou reaproveita) a imagem do cenário.
+  let url = pronto?.estado === "pronto" && pronto.origem === origem ? pronto.url ?? null : null;
+  if (!url) {
+    const quadro = await lerMidia(origem);
+    if (!quadro) return close();
+    const feita = await comporSobreImagemComCusto(
+      cenarioPorId(cen).prompt,
+      quadro.toString("base64"),
+      "image/jpeg",
+      { projectId, operation: "gemeo_cenario" },
+      "1:1"
+    ).catch((e) => {
+      console.warn(`[gemeo][${projectId}] compor o cenário ${cen}:`, mensagem(e));
+      return null;
+    });
+    if (!feita) {
+      await guardar({ estado: "falhou", desde: agora(), origem, motivo: "a edição de imagem não respondeu", tentativas: (pronto?.tentativas ?? 0) + 1 });
+      return close();
+    }
+    const tipo = feita.dataUrl.slice(5, feita.dataUrl.indexOf(";")) || "image/png";
+    const blob = await put(`gemeo/${projectId}/cenario-${cen}.${tipo.includes("png") ? "png" : "jpg"}`, dataUrlToBuffer(feita.dataUrl), {
+      ...midiaPrivada(),
+      contentType: tipo,
+      addRandomSuffix: true,
+    });
+    url = blob.url;
+    await guardar({ estado: "pronto", desde: agora(), origem, url });
+  }
+  const imagem = await lerMidia(url);
+  if (!imagem) return close();
+  return g.subirImagem!(imagem, `cenario-${cen}.jpg`);
 }
 
 /**
@@ -413,6 +823,8 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
     }));
   };
   const ctx = { projectId, operation: "gemeo_video" };
+  const gerador = geradorDoPedido(v.gerador);
+  const teto = GERADORES[gerador.id].tetoDoPedaco;
 
   try {
     // 1. A VOZ de cada pedaço.
@@ -423,11 +835,14 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
       const fala = await falar({ voiceId: v.voiceId, texto: p.texto, anterior: v.pedacos[i - 1]?.texto, seguinte: v.pedacos[i + 1]?.texto });
       gravarCustoDeVideo(`elevenlabs/${fala.modelo}`, fala.caracteres * DOLAR_POR_CARACTERE, ctx);
       const segundos = duracaoDoMp3(fala.mp3);
-      if (segundos > SEGUNDOS_MAXIMOS_DO_PEDACO) {
+      if (segundos > teto) {
         // A voz saiu mais lenta que a régua: parte o pedaço e fala de novo.
         const [a, b] = partirAoMeio(p.texto);
         if (!b) throw new Error("um trecho do roteiro não cabe em 30 s nem dividido");
-        await salvar((x) => ({ ...x, pedacos: [...x.pedacos.slice(0, i), { texto: a, tentativas: 0 }, { texto: b, tentativas: 0 }, ...x.pedacos.slice(i + 1)] }));
+        await salvar((x) => ({
+          ...x,
+          pedacos: [...x.pedacos.slice(0, i), { texto: a, cenario: p.cenario, tentativas: 0 }, { texto: b, cenario: p.cenario, tentativas: 0 }, ...x.pedacos.slice(i + 1)],
+        }));
         i--;
         continue;
       }
@@ -438,7 +853,7 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
     // 2. O ACERTO DA RESERVA: cobra o tempo real da fala, devolve o resto.
     if (v.creditosCobrados == null) {
       const segundosDaFala = Math.round(v.pedacos.reduce((s, p) => s + (p.segundos ?? 0), 0) * 10) / 10;
-      const devido = Math.min(v.creditosReservados, creditosDoGemeo(segundosDaFala));
+      const devido = Math.min(v.creditosReservados, creditosDoGemeo(segundosDaFala, gerador.id));
       const voltou = await estornarVideo(
         v,
         v.creditosReservados - devido,
@@ -448,15 +863,23 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
       await salvar((x) => ({ ...x, segundosDaFala, creditosCobrados: devido, creditosDevolvidos: (x.creditosDevolvidos ?? 0) + voltou }));
     }
 
-    // 3. A FOTO no armazenamento do fal (uma vez por vídeo).
-    if (!v.falFotoUrl) {
-      const foto = await lerMidia(v.fotoUrl);
-      if (!foto) throw new Error("a foto do gêmeo sumiu do storage");
-      const url = await subirNoFal(foto, "image/jpeg", "foto.jpg");
-      await salvar((x) => ({ ...x, falFotoUrl: url }));
+    // 3. A IMAGEM DE CADA CENÁRIO do lado do gerador (03/10): a foto, ou a
+    // pessoa composta no cenário (OmniHuman); o gêmeo ou o look do cenário
+    // (HeyGen). Uma vez por cenário por vídeo, e a composição uma vez por
+    // cadastro. Um cenário que não saiu cai no close, sem travar o vídeo.
+    for (const cen of [...new Set(v.pedacos.map((p) => p.cenario ?? "camera"))]) {
+      if (v.imagensDoGerador?.[cen]) continue;
+      if (cen === "camera" && v.falFotoUrl && gerador.id === "omnihuman") {
+        const legado = v.falFotoUrl;
+        await salvar((x) => ({ ...x, imagensDoGerador: { ...(x.imagensDoGerador ?? {}), camera: legado } }));
+        continue;
+      }
+      const imagem = await imagemDoCenario(projectId, v, gerador.id, cen);
+      if (imagem === "esperar") return pausar(null, 60_000);
+      await salvar((x) => ({ ...x, imagensDoGerador: { ...(x.imagensDoGerador ?? {}), [cen]: imagem } }));
     }
 
-    // 4. CADA PEDAÇO ao OmniHuman.
+    // 4. CADA PEDAÇO ao gerador.
     for (let i = 0; i < v.pedacos.length; i++) {
       if (Date.now() > prazo) return pausar(null, 0);
       const p = v.pedacos[i];
@@ -465,11 +888,12 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
       if (!falAudioUrl) {
         const audio = await lerMidia(p.audioUrl!);
         if (!audio) throw new Error(`a fala do pedaço ${i + 1} sumiu do storage`);
-        falAudioUrl = await subirNoFal(audio, "audio/mpeg", `fala-${i}.mp3`);
+        falAudioUrl = await gerador.subirFala(audio, `fala-${i}.mp3`);
         const guardada = falAudioUrl;
         await salvar((x) => ({ ...x, pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, falAudioUrl: guardada } : q)) }));
       }
-      const pedido = await pedirOmniHuman({ imagemUrl: v.falFotoUrl!, audioUrl: falAudioUrl });
+      const cen = p.cenario ?? "camera";
+      const pedido = await gerador.pedir({ imagem: v.imagensDoGerador![cen]!, fala: falAudioUrl, cenario: cen });
       await salvar((x) => ({
         ...x,
         pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, ...pedido, status: "IN_QUEUE", enviadoEm: agora(), erro: null } : q)),
@@ -504,16 +928,20 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
       continue;
     }
     try {
-      const status = await estadoNoFal(p.statusUrl!);
-      if (status !== "COMPLETED") {
+      const gerador = geradorDoPedido(lido.gerador);
+      const status = await gerador.estado(pedidoDoPedaco(p));
+      if (status !== "COMPLETED" && status !== "FAILED") {
         if (status !== p.status) mudou = true;
         pedacos.push({ ...p, status });
         continue;
       }
       try {
-        const r = await resultadoNoFal(p.responseUrl!);
+        const r = await gerador.resultado(pedidoDoPedaco(p));
         const duracao = r.duracao ?? (p.segundos ?? 0) * FOLGA_DO_VIDEO_SOBRE_A_FALA;
-        gravarCustoDeVideo(dubleLigado() ? `duble/${MODELO_DO_GERADOR}` : MODELO_DO_GERADOR, duracao * DOLAR_POR_SEGUNDO_DO_GERADOR, { projectId, operation: "gemeo_video" });
+        gravarCustoDeVideo(dubleLigado() ? `duble/${gerador.modelo}` : gerador.modelo, duracao * GERADORES[gerador.id].dolarPorSegundo, {
+          projectId,
+          operation: "gemeo_video",
+        });
         pedacos.push({ ...p, status, videoUrl: r.videoUrl, duracaoDoVideo: duracao });
         mudou = true;
       } catch (e) {
@@ -525,7 +953,8 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
           recusado = `O gerador recusou o pedaço ${i + 1} duas vezes (${e.message.slice(0, 120)}).`;
           pedacos.push({ ...p, tentativas, erro: e.message });
         } else {
-          const novo = await pedirOmniHuman({ imagemUrl: lido.falFotoUrl!, audioUrl: p.falAudioUrl! });
+          const cen = p.cenario ?? "camera";
+          const novo = await gerador.pedir({ imagem: lido.imagensDoGerador?.[cen] ?? lido.falFotoUrl!, fala: p.falAudioUrl!, cenario: cen });
           pedacos.push({ ...p, ...novo, status: "IN_QUEUE", enviadoEm: agora(), tentativas, erro: e.message });
         }
         mudou = true;
