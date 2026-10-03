@@ -51,12 +51,12 @@ export function StepReferencias({ projectId }: { projectId: string }) {
       <div>
         <h2 className="mb-1 flex items-center gap-2 text-xl font-bold text-[var(--text-primary)]">
           <Search className="h-5 w-5 text-pink-500" />
-          O que funciona no seu nicho
+          As regras do seu time
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
-          O Roberto acha os perfis de referência do seu nicho, estuda os posts deles e mostra o que rende mais, com o número e o post de onde ele saiu.
-          Depois propõe regras para o squad: só a que você aprovar passa a valer. Leva alguns minutos e não trava nada: pode seguir para a ativação e
-          aprovar depois, em Linha editorial.
+          Do estudo das suas referências saem regras para o squad (como abrir, como fechar, que formato usar), cada uma com o número e o post de onde
+          ela saiu. Só a que você aprovar passa a valer, e vale até você desligar. As tendências da semana que combinam com você aparecem aqui também.
+          Não trava nada: pode seguir e aprovar depois, em Linha editorial.
         </p>
       </div>
       {estado === "verificando" && (

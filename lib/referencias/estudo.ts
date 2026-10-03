@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
-import { coletarReferencia } from "@/lib/referencias/coletar";
+import { coletarReferencia, dadosDoInstagram } from "@/lib/referencias/coletar";
+import { ATORES } from "@/lib/referencias/apify";
 import { Caixa, RETENCAO_DIAS, maxItensPorPerfil, redesLigadas } from "@/lib/referencias/config";
 import { atualizarPadroes, etiquetarPosts } from "@/lib/referencias/padroes";
-import type { CartaoDePadrao, RedeDeReferencia } from "@/lib/referencias/tipos";
+import type { CartaoDePadrao, PostDeReferencia, RedeDeReferencia } from "@/lib/referencias/tipos";
 import { medirVideosDoProjeto } from "@/lib/referencias/medidas";
 import { atualizarPadraoVisual } from "@/lib/referencias/padrao-visual";
 
@@ -99,16 +100,76 @@ const ULTIMO_PERFIL_MS = 420_000;
 /** Até quando ainda começa a medir um vídeo (9 min): cada medida leva até 4 min. */
 const ULTIMA_MEDIDA_MS = 540_000;
 
+/**
+ * Grava os posts de uma coleta no formato único (upsert por perfil e id
+ * externo). Usado pelo estudo das referências e pelo estudo do perfil do
+ * próprio cliente (03/10, lib/referencias/perfil-proprio.ts). Devolve quantos.
+ */
+export async function gravarPostsDaColeta(
+  projectId: string,
+  perfilId: string,
+  rede: RedeDeReferencia,
+  lista: PostDeReferencia[],
+  midias?: Map<string, string>
+): Promise<number> {
+  const apagarEm = new Date(Date.now() + RETENCAO_DIAS * 24 * 3600_000);
+  let n = 0;
+  for (const post of lista) {
+    const dados = {
+      url: post.url,
+      formato: post.formato,
+      legenda: post.legenda,
+      duracaoSeg: post.duracaoSeg,
+      publicadoEm: post.publicadoEm ? new Date(post.publicadoEm) : null,
+      curtidas: post.curtidas,
+      comentarios: post.comentarios,
+      visualizacoes: post.visualizacoes,
+      compartilhamentos: post.compartilhamentos,
+      seguidoresDoAutor: post.seguidoresDoAutor !== null ? Math.round(post.seguidoresDoAutor) : null,
+      // Áudio, hashtags, salvamentos e capa (02/10, lib/referencias/extras-da-coleta.ts).
+      ...(post.extras ? { extras: post.extras as never } : {}),
+    };
+    await prisma.referenciaPost.upsert({
+      where: { perfilId_externoId: { perfilId, externoId: post.externoId } },
+      // Os números mudam a cada leitura; a etiqueta e o prazo de apagar, não.
+      update: dados,
+      create: { ...dados, perfilId, projectId, rede, externoId: post.externoId, apagarEm },
+    });
+    if (post.midiaUrl && midias) midias.set(`${perfilId}:${post.externoId}`, post.midiaUrl);
+    n++;
+  }
+  return n;
+}
+
 export async function estudarReferencias(
   projectId: string,
-  opcoes?: { maxItens?: number; caixa?: Caixa; medir?: boolean; limiteDeMedidas?: number; aoAvancar?: (passo: PassoDoEstudo) => Promise<void> | void }
+  opcoes?: {
+    maxItens?: number;
+    caixa?: Caixa;
+    medir?: boolean;
+    limiteDeMedidas?: number;
+    aoAvancar?: (passo: PassoDoEstudo) => Promise<void> | void;
+    /**
+     * Só os perfis sem coleta desde esta data (03/10): a jornada de entrada
+     * troca as referências e estuda só as novas, sem pagar de novo as que
+     * acabaram de ser lidas.
+     */
+    soSemColetaDesde?: Date;
+  }
 ): Promise<ResultadoDoEstudo> {
   const inicioDoEstudo = Date.now();
   const ligadas = redesLigadas();
   const avisos: string[] = [];
   const apagados = await limparReferenciasVelhas();
   const projeto = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { niche: true, targetAudience: true } });
-  const perfis = await prisma.referenciaPerfil.findMany({ where: { projectId, status: "confirmado" }, orderBy: { updatedAt: "asc" } });
+  const perfis = await prisma.referenciaPerfil.findMany({
+    where: {
+      projectId,
+      status: "confirmado",
+      ...(opcoes?.soSemColetaDesde ? { OR: [{ ultimaColeta: null }, { ultimaColeta: { lt: opcoes.soSemColetaDesde } }] } : {}),
+    },
+    orderBy: { updatedAt: "asc" },
+  });
   const caixa = opcoes?.caixa ?? new Caixa();
   const maxItens = opcoes?.maxItens ?? maxItensPorPerfil();
   let posts = 0;
@@ -151,30 +212,23 @@ export async function estudarReferencias(
         ...(r.posts[0]?.seguidoresDoAutor ? { seguidores: Math.round(r.posts[0].seguidoresDoAutor) } : {}),
       },
     });
-    const apagarEm = new Date(Date.now() + RETENCAO_DIAS * 24 * 3600_000);
-    for (const post of r.posts) {
-      const dados = {
-        url: post.url,
-        formato: post.formato,
-        legenda: post.legenda,
-        duracaoSeg: post.duracaoSeg,
-        publicadoEm: post.publicadoEm ? new Date(post.publicadoEm) : null,
-        curtidas: post.curtidas,
-        comentarios: post.comentarios,
-        visualizacoes: post.visualizacoes,
-        compartilhamentos: post.compartilhamentos,
-        seguidoresDoAutor: post.seguidoresDoAutor !== null ? Math.round(post.seguidoresDoAutor) : null,
-        // Áudio, hashtags, salvamentos e capa (02/10, lib/referencias/extras-da-coleta.ts).
-        ...(post.extras ? { extras: post.extras as never } : {}),
-      };
-      await prisma.referenciaPost.upsert({
-        where: { perfilId_externoId: { perfilId: p.id, externoId: post.externoId } },
-        // Os números mudam a cada leitura; a etiqueta e o prazo de apagar, não.
-        update: dados,
-        create: { ...dados, perfilId: p.id, projectId, rede, externoId: post.externoId, apagarEm },
+    posts += await gravarPostsDaColeta(projectId, p.id, rede, r.posts, midias);
+  }
+
+  // OS SEGUIDORES DO INSTAGRAM (03/10): o ator de posts não traz, e o de-para
+  // da jornada de entrada precisa da taxa de engajamento para comparar uma
+  // conta pequena com uma grande. Uma execução para todos, só quem ainda não tem.
+  const semSeguidores = perfis.filter((p) => p.rede === "instagram" && !p.seguidores && ligadas.includes("instagram"));
+  if (semSeguidores.length) {
+    const d = await dadosDoInstagram(semSeguidores.map((p) => p.perfil), caixa);
+    if (d.custoUsd > 0 || d.erro) {
+      await prisma.referenciaColeta.create({
+        data: { projectId, rede: "instagram", fonte: `apify:${ATORES.instagramPerfil}`, itens: d.dados.length, custoUsd: d.custoUsd, status: d.dados.length ? "ok" : d.erro === "sem_orcamento" ? "sem_orcamento" : "erro", erro: d.erro?.slice(0, 300) },
       });
-      if (post.midiaUrl) midias.set(`${p.id}:${post.externoId}`, post.midiaUrl);
-      posts++;
+    }
+    for (const x of d.dados) {
+      const alvo = semSeguidores.find((p) => p.perfil === x.perfil);
+      if (alvo && x.seguidores) await prisma.referenciaPerfil.update({ where: { id: alvo.id }, data: { seguidores: Math.round(x.seguidores), ...(x.nome ? { nome: x.nome } : {}) } });
     }
   }
 

@@ -52,6 +52,7 @@ import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-ver
 import { veraConfereNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 
 // O teto de tempo vive nas ROTAS (`/api/cron/fila`), e nao mais aqui: desde
@@ -1828,10 +1829,15 @@ async function runPipeline(
   // As regras aprovadas pelo cliente (roteiro e textos) leem do banco a cada
   // fatia, como a restrição: aprovou hoje, vale no próximo dia da campanha.
   const regrasDoProjeto = await blocoDasRegrasDoProjeto(project.id, ["roteiro", "redacao"]);
+  // O ESTUDO DOS PERFIS (03/10, lib/referencias/estudo-na-campanha.ts): o que
+  // rende no perfil do cliente e nas referências, o de-para, a linha editorial
+  // e as tendências que combinam. Entra no prefixo junto das regras: é estável
+  // durante a campanha e vale para todo agente. Vazio sem estudo.
+  const estudoDosPerfis = await blocoDoEstudoDosPerfis(project.id);
   // OS LINKS DO CLIENTE (03/10, lib/projeto/links-do-cliente.ts): como DADO,
   // com a regra de cada rede. Estáveis na campanha, por isso no prefixo.
   const linksDoCliente = blocoDosLinks(lerLinks(project.config));
-  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto + linksDoCliente);
+  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto + estudoDosPerfis + linksDoCliente);
 
   // As lições da Vera (29/09): o erro de cada agente volta para ele antes de
   // escrever. Lidas uma vez por fatia; falha aqui só tira as lições.

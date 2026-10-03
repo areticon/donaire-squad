@@ -48,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // A consulta curta da tela enquanto o estudo roda: só o andamento.
   if (req.nextUrl.searchParams.get("estudo") === "1") return NextResponse.json({ estudo: await lerEstudo(id) });
   const [perfis, padroes, gasto, confirmadosNaConta, estudo] = await Promise.all([
-    prisma.referenciaPerfil.findMany({ where: { projectId: id, status: { not: "recusado" } }, orderBy: [{ status: "asc" }, { seguidores: "desc" }] }),
+    prisma.referenciaPerfil.findMany({ where: { projectId: id, status: { in: ["sugerido", "confirmado"] } }, orderBy: [{ status: "asc" }, { seguidores: "desc" }] }),
     padroesDoProjeto(id),
     gastoDoMes(id),
     prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: a.projeto.userId } } }),

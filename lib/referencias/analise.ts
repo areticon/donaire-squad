@@ -3,13 +3,14 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { Caixa, redesLigadas } from "@/lib/referencias/config";
 import { sugerirPerfis } from "@/lib/referencias/descobrir";
-import { comecarEstudo, lerEstudo, rodarEstudo } from "@/lib/referencias/andamento";
+import { comecarEstudo, rodarEstudo } from "@/lib/referencias/andamento";
 import { etiquetarExtras } from "@/lib/referencias/etiquetas-extras";
 import { achadosDoProjeto } from "@/lib/referencias/achados";
 import { proporRegras, CUSTO_DAS_PROPOSTAS_USD } from "@/lib/referencias/regras";
 import { buscarTendencias, estimativaDasTendencias, lerTendencias, liberadaEm } from "@/lib/referencias/tendencias";
 import { cabeNoMes, tetoPorExecucaoUsd } from "@/lib/referencias/tetos";
 import { MAX_REFERENCIAS_POR_CONTA } from "@/lib/referencias/tipos";
+import { MAX_REFERENCIAS_POR_PROJETO } from "@/lib/referencias/tipos-do-perfil-proprio";
 import type { EstadoDaAnalise, EtapaDaAnalise } from "@/lib/referencias/tipos-das-analises";
 
 /**
@@ -44,13 +45,18 @@ const CHAVE = "estado";
 const PRAZO_MS = 830_000;
 /** Etapas que pedem uma execução só para elas (o estudo). */
 const PESADAS: EtapaDaAnalise[] = ["estudar"];
-/** Quantos perfis a criação confirma sozinha (o cliente tira qualquer um depois). */
-const CONFIRMAR_NA_CRIACAO = 4;
+/** Quantos perfis a criação confirma sozinha (o cliente tira qualquer um depois). Era 4; 3 desde 03/10 (decisão do Bruno). */
+const CONFIRMAR_NA_CRIACAO = MAX_REFERENCIAS_POR_PROJETO;
 
 const onde = (projectId: string) => ({ projectId_type_key: { projectId, type: TIPO, key: CHAVE } });
 
-export const PEDIDOS: Record<"criacao" | "analisar" | "tendencias", EtapaDaAnalise[]> = {
+export const PEDIDOS: Record<"criacao" | "cliente" | "analisar" | "tendencias", EtapaDaAnalise[]> = {
   criacao: ["descobrir", "confirmar", "estudar", "etiquetar", "regras", "tendencias"],
+  // A JORNADA DE ENTRADA (03/10): o cliente diz as referências, então não há
+  // descoberta nem confirmação automática. O estudo vem sem a medida dos
+  // vídeos (a pessoa está esperando na tela; a medida entra no próximo
+  // "Estudar agora" da linha editorial).
+  cliente: ["estudar", "etiquetar", "regras", "tendencias"],
   analisar: ["etiquetar", "regras"],
   tendencias: ["tendencias"],
 };
@@ -168,7 +174,7 @@ async function rodarEtapa(projectId: string, etapa: EtapaDaAnalise, estado: Esta
     }
     case "confirmar": {
       const confirmados = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado" } });
-      if (confirmados >= 3) return { avisos: [] };
+      if (confirmados >= MAX_REFERENCIAS_POR_PROJETO) return { avisos: [] };
       const projeto = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { userId: true } });
       const naConta = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: projeto.userId } } });
       const vagas = Math.min(CONFIRMAR_NA_CRIACAO - confirmados, MAX_REFERENCIAS_POR_CONTA - naConta);
@@ -190,14 +196,17 @@ async function rodarEtapa(projectId: string, etapa: EtapaDaAnalise, estado: Esta
     case "estudar": {
       const perfis = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado" } });
       if (!perfis) return { avisos: ["nenhum perfil confirmado para estudar ainda"] };
-      // Estudo recente (menos de 6 h) não paga de novo.
-      const ultimo = await lerEstudo(projectId);
-      if (ultimo?.estado === "pronto" && ultimo.terminadoEm && Date.now() - new Date(ultimo.terminadoEm).getTime() < 6 * 3600_000) return { avisos: [] };
+      // Perfil lido há menos de 6 h não paga de novo (03/10: por PERFIL, e não
+      // pelo último estudo; a jornada troca as referências e só as novas são lidas).
+      const desde = new Date(Date.now() - 6 * 3600_000);
+      const pendentes = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado", OR: [{ ultimaColeta: null }, { ultimaColeta: { lt: desde } }] } });
+      if (!pendentes) return { avisos: [] };
       const mes = await cabeNoMes(0.25);
       if (!mes.cabe) return { avisos: ["o estudo ficou para depois: o limite de leitura do mês acabou (código REF-MES)"] };
-      const andamento = await comecarEstudo(projectId, perfis);
+      const andamento = await comecarEstudo(projectId, pendentes);
       if (!andamento) return { avisos: ["já havia um estudo rodando; as análises usam o que ele trouxer"] };
-      const r = await rodarEstudo(projectId, andamento, { caixa: new Caixa(tetoPorExecucaoUsd()), limiteDeMedidas: 16 });
+      const daJornada = estado.etapas[0] === "estudar";
+      const r = await rodarEstudo(projectId, andamento, { caixa: new Caixa(tetoPorExecucaoUsd()), limiteDeMedidas: 16, soSemColetaDesde: desde, ...(daJornada ? { medir: false } : {}) });
       return { avisos: (r?.falhas ?? []).slice(0, 3), apifyUsd: r?.custoUsd ?? 0 };
     }
     case "etiquetar": {

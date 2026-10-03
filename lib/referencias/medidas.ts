@@ -133,7 +133,8 @@ export async function medirVideosDoProjeto(
 ): Promise<{ medidos: number; falhas: number; custoUsd: number; avisos: string[] }> {
   const fim = Date.now() + (opcoes.prazoMs ?? 600_000);
   const pendentes = await prisma.referenciaPost.findMany({
-    where: { projectId, rede: { in: REDES_MEDIDAS }, formato: { in: FORMATOS_DE_VIDEO }, medidas: { equals: Prisma.DbNull } },
+    // Só referência (03/10): o perfil do próprio cliente (status "proprio") não é medido aqui.
+    where: { projectId, rede: { in: REDES_MEDIDAS }, formato: { in: FORMATOS_DE_VIDEO }, medidas: { equals: Prisma.DbNull }, perfil: { status: { not: "proprio" } } },
     select: { id: true, rede: true, externoId: true, perfilId: true, url: true },
     orderBy: { publicadoEm: "desc" },
     take: 200,

@@ -281,7 +281,7 @@ export async function gravarCartoes(projectId: string, achados: PadraoBruto[], c
 export async function atualizarPadroes(projectId: string, contexto: { nicho: string; publico: string }): Promise<CartaoDePadrao[]> {
   const posts = await prisma.referenciaPost.findMany({
     where: { projectId },
-    select: { id: true, perfilId: true, rede: true, formato: true, duracaoSeg: true, publicadoEm: true, curtidas: true, comentarios: true, visualizacoes: true, compartilhamentos: true, etiquetas: true },
+    select: { id: true, perfilId: true, rede: true, formato: true, duracaoSeg: true, publicadoEm: true, curtidas: true, comentarios: true, visualizacoes: true, compartilhamentos: true, etiquetas: true, perfil: { select: { status: true } } },
   });
   const ganhos = calcularGanhos(posts);
   for (const p of posts) {
@@ -289,7 +289,10 @@ export async function atualizarPadroes(projectId: string, contexto: { nicho: str
     await prisma.referenciaPost.update({ where: { id: p.id }, data: { ganho: g } });
   }
   const etiquetados: PostComEtiqueta[] = posts
-    .filter((p) => ganhos.has(p.id) && p.etiquetas)
+    .filter((p) => ganhos.has(p.id) && p.etiquetas && p.perfil.status !== "proprio")
     .map((p) => ({ id: p.id, perfilId: p.perfilId, rede: p.rede as RedeDeReferencia, formato: p.formato, duracaoSeg: p.duracaoSeg, ganho: ganhos.get(p.id)!, etiquetas: p.etiquetas as Etiquetas }));
   return gravarCartoes(projectId, acharPadroes(etiquetados), contexto);
 }
+  // O ganho vale para todo post (é contra o próprio perfil, inclusive o do
+  // cliente, 03/10); o CARTÃO DE PADRÃO só sai das referências: o perfil do
+  // cliente (status "proprio") nunca vira molde do nicho de si mesmo.

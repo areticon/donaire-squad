@@ -27,6 +27,7 @@ import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { radarDaSemana, temasJaUsados, blocosDeNovidade, REGRAS_DE_NOVIDADE, repeteAlgum } from "@/lib/research/radar-da-semana";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 
 interface DayInput {
   dayOfWeek: string; // "1"-"7"
@@ -110,6 +111,14 @@ export async function POST(req: NextRequest) {
   ]);
   const trendingBlock = `\n${blocosDeNovidade(radar, usados)}\n`;
 
+  /**
+   * O ESTUDO DOS PERFIS (03/10): o que rende no perfil do cliente e nas
+   * referências, o de-para, a linha editorial, as tendências que combinam e
+   * as regras aprovadas de roteiro e texto. Antes os temas da campanha "tudo
+   * com IA" não liam nada disso. Ver lib/referencias/estudo-na-campanha.ts.
+   */
+  const blocoDoEstudo = await blocoDoEstudoDosPerfis(projectId, { comRegras: true });
+
   const daysBlock = days
     .map((d) => `- ${d.dayName} (${d.contentType === "image" ? "post com imagem" : d.contentType === "poll" ? "enquete" : d.contentType === "infographic" ? "infográfico" : d.contentType === "video" ? "vídeo" : "post de texto"})`)
     .join("\n");
@@ -166,7 +175,7 @@ export async function POST(req: NextRequest) {
 Projeto: ${project.name} | Nicho: ${project.niche} | Público: ${project.targetAudience}
 ${recentTopics ? `Temas recentes (evite repetir): ${recentTopics}` : ""}
 ${evitarBloco}${blocoRejeitado}
-${blocoDaMarca}${trendingBlock}
+${blocoDaMarca}${trendingBlock}${blocoDoEstudo}
 ${porFunil}
 
 Dias para gerar tema:
@@ -176,6 +185,7 @@ REGRAS:
 - O tema é sobre o PROBLEMA DO PÚBLICO e o que ele ganha resolvendo, não sobre a categoria do produto nem sobre a tecnologia que o resolve. Um tema que só existe porque a ferramenta existe é tema ruim.
 - Os documentos acima dão a dor, a tese e o território; a pauta da semana vem do radar (ver REGRAS DE NOVIDADE).
 - Cada tema deve ser diferente dos outros (ângulos distintos)
+- Se houver ESTUDO DOS PERFIS acima, os temas seguem os pilares da linha editorial e o que rende (formato, gancho, fechamento); o número do estudo nunca vira tema nem fato do post
 
 ${REGRAS_DE_NOVIDADE}
 - Temas devem ser específicos, não genéricos

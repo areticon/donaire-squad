@@ -22,10 +22,16 @@ import {
   Building2,
   UserRound,
   Search,
+  ScanSearch,
+  GitCompareArrows,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepMarca } from "@/components/kanban/step-marca";
 import { StepReferencias } from "@/components/kanban/step-referencias";
+import { StepPerfilProprio } from "@/components/kanban/step-perfil-proprio";
+import { StepReferenciasDoCliente } from "@/components/kanban/step-referencias-do-cliente";
+import { PorqueDoSetup } from "@/components/kanban/porque-do-setup";
+import type { CampoDoSetup, RespostaDoPerfilProprio, SetupSugerido } from "@/lib/referencias/tipos-do-perfil-proprio";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -56,35 +62,44 @@ interface Project {
 // pré-preencher o resto do assistente, e mesmo antes dessa análise existir,
 // pedir a conexão de cara aumenta quantos terminam com rede conectada, sem a
 // qual nada publica sozinho.
+/**
+ * A JORNADA DE ENTRADA (03/10/2026), pedido do Bruno para os vendedores de
+ * segunda: o "momento uau" vem PRIMEIRO. A pessoa escreve as redes dela e
+ * recebe o relatório do próprio perfil; depois diz até 3 referências e vê o
+ * de-para; só então as etapas de sempre, que chegam PREENCHIDAS pelos dois
+ * estudos, cada campo com o porquê (components/kanban/porque-do-setup.tsx).
+ *
+ * As etapas antigas continuam, na ordem que já tinham entre si: Marca antes
+ * de Voz (17/09), Voz antes de Ideação (22/08), as regras do Roberto depois
+ * da Agenda (02/10). A conexão das contas (OAuth) desceu para perto da
+ * ativação: ela serve para PUBLICAR, e ler o perfil não precisa dela.
+ *
+ * A tela é escolhida pela CHAVE, não pelo número: até aqui os índices eram a
+ * única coisa que amarrava a tela à etapa, e mexer em STEPS trocava as telas
+ * de lugar em silêncio (o aviso de 17/09).
+ */
 const STEPS = [
-  { id: 0, icon: Share2, label: "Redes Sociais", color: "text-green-400" },
-  // Marca SUBIU para a segunda posição em 17/09, por observação do Bruno ao
-  // criar um projeto de verdade: a plataforma pedia voz, nicho e público ANTES
-  // de deixar ele subir o documento que responde as três coisas. Quem tem um
-  // manual de marca na mão preenchia tudo na unha e só depois descobria que
-  // podia ter subido o arquivo.
-  //
-  // Com ela aqui, as etapas seguintes deixam de ser preenchimento e viram
-  // REVISÃO: chegam escritas a partir do documento, e a pessoa corrige.
-  { id: 1, icon: Palette, label: "Marca", color: "text-pink-400" },
-  // Voz ANTES de Ideação, por correção do Bruno em 22/08: pedir ideia antes
-  // de conhecer voz, referências e temas de domínio produz ideia genérica,
-  // que não conecta com o universo de quem vai publicar. A reordenação de
-  // 17/09 preservou isso de propósito.
-  { id: 2, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
-  { id: 3, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
-  // A etapa "Time de Agentes" saiu em 31/08, por decisão do Bruno: o time é
-  // sempre completo e igual para todo projeto, então a tela era uma escolha
-  // que não escolhia nada, e ainda mostrava uma lista desatualizada (sem o
-  // Vitor Vídeo). Os agentes continuam criados sozinhos na ativação.
-  { id: 4, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
-  // Referências (02/10, pedido do Bruno): o que funciona no nicho, com número
-  // e fonte, e as regras propostas pelo Roberto. Não trava: o estudo roda no
-  // servidor e a pessoa aprova depois. Vem depois da Agenda para ter nicho,
-  // público e voz salvos, e o pedido já sai ao deixar a etapa de Voz.
-  { id: 5, icon: Search, label: "Referências", color: "text-pink-400" },
-  { id: 6, icon: Rocket, label: "Ativação", color: "text-orange-400" },
-];
+  { id: 0, chave: "perfil", icon: ScanSearch, label: "Seu perfil", color: "text-pink-400" },
+  { id: 1, chave: "referencias", icon: GitCompareArrows, label: "Referências", color: "text-pink-400" },
+  { id: 2, chave: "marca", icon: Palette, label: "Marca", color: "text-pink-400" },
+  { id: 3, chave: "voz", icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  { id: 4, chave: "ideacao", icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
+  { id: 5, chave: "agenda", icon: Calendar, label: "Agenda", color: "text-cyan-400" },
+  { id: 6, chave: "regras", icon: Search, label: "Regras", color: "text-pink-400" },
+  { id: 7, chave: "redes", icon: Share2, label: "Conectar redes", color: "text-green-400" },
+  { id: 8, chave: "ativacao", icon: Rocket, label: "Ativação", color: "text-orange-400" },
+] as const;
+
+type ChaveDaEtapa = (typeof STEPS)[number]["chave"];
+const indiceDa = (chave: ChaveDaEtapa) => STEPS.findIndex((s) => s.chave === chave);
+
+/** Os campos do setup que cada etapa mostra com o porquê. */
+const PORQUE_DA_ETAPA: Partial<Record<ChaveDaEtapa, CampoDoSetup[]>> = {
+  marca: ["colorPalette"],
+  voz: ["voice"],
+  ideacao: ["niche", "targetAudience", "description", "references", "linhaEditorial"],
+  agenda: ["postFrequency"],
+};
 
 /**
  * Os fusos que a tela oferece, com São Paulo PRIMEIRO e como padrão.
@@ -168,10 +183,78 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         ? (project.config as Record<string, unknown>).references
         : "") ?? ""
     ),
+    // A linha editorial do setup (03/10): os pilares, um por linha. Mora no
+    // config, como as referências, e entra na campanha "tudo com IA"
+    // (lib/referencias/estudo-na-campanha.ts).
+    linhaEditorial: String(
+      (typeof project.config === "object" && project.config !== null
+        ? (project.config as Record<string, unknown>).linhaEditorial
+        : "") ?? ""
+    ),
   });
 
   const set = (field: string, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
+
+  /**
+   * O SETUP SUGERIDO PELOS DOIS ESTUDOS (03/10, lib/referencias/setup-sugerido.ts).
+   *
+   * Sai ao deixar a etapa Referências e chega nas etapas seguintes. Aplica só
+   * em campo VAZIO (ou ainda no valor de fábrica, como a paleta e a
+   * frequência padrão): o que a pessoa escreveu manda mais que a sugestão.
+   */
+  const [setupSugerido, setSetupSugerido] = useState<SetupSugerido | null>(null);
+  const [montandoSetup, setMontandoSetup] = useState(false);
+  const jaBuscouSetup = useRef(false);
+  const DE_FABRICA: Record<string, string> = {
+    colorPalette: project.colorPalette ? "" : "#F97316,#1e1f22,#dbdee1",
+    postFrequency: project.postFrequency ? "" : "3x por semana",
+  };
+  const aplicarSetup = useCallback((sug: SetupSugerido) => {
+    setSetupSugerido(sug);
+    setForm((prev) => {
+      const prox = { ...prev } as Record<string, string>;
+      for (const [campo, valor] of Object.entries(sug.campos)) {
+        if (!valor || !(campo in prox)) continue;
+        const atual = String(prox[campo] ?? "").trim();
+        if (!atual || atual === DE_FABRICA[campo]) prox[campo] = valor;
+      }
+      return prox as typeof prev;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const montarSetup = useCallback(
+    async (forcar = false) => {
+      setMontandoSetup(true);
+      try {
+        const g = await fetch(`/api/projects/${project.id}/perfil-proprio`).catch(() => null);
+        const d = g?.ok ? ((await g.json()) as RespostaDoPerfilProprio) : null;
+        if (!d || (!d.relatorio && !d.dePara)) return;
+        // Regera só quando há estudo mais novo que a sugestão (cada geração é uma chamada paga).
+        const ultimaColeta = Math.max(
+          d.relatorio ? new Date(d.relatorio.geradoEm).getTime() : 0,
+          ...d.referencias.map((r) => (r.ultimaColeta ? new Date(r.ultimaColeta).getTime() : 0))
+        );
+        const velho = !d.setup || new Date(d.setup.geradoEm).getTime() < ultimaColeta;
+        if (!forcar && d.setup && !velho) {
+          aplicarSetup(d.setup);
+          return;
+        }
+        if (!d.podeEditar) return;
+        const r = await fetch(`/api/projects/${project.id}/perfil-proprio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ acao: "setup" }),
+        }).catch(() => null);
+        const j = r?.ok ? ((await r.json()) as { setup?: SetupSugerido }) : null;
+        if (j?.setup) aplicarSetup(j.setup);
+        else if (d.setup) aplicarSetup(d.setup);
+      } finally {
+        setMontandoSetup(false);
+      }
+    },
+    [project.id, aplicarSetup]
+  );
 
   /**
    * Os campos preenchidos a partir dos DOCUMENTOS que a pessoa subiu na etapa
@@ -234,13 +317,28 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     // Ao SAIR da etapa Marca, os documentos viram campos. Aqui e nao na
     // entrada da etapa seguinte porque a leitura leva segundos: disparada
     // agora, ela corre enquanto o PATCH salva e a tela troca.
-    if (currentStep === 1) void preencherComDocumentos();
+    const chaveAtual = STEPS[currentStep]?.chave;
+    if (chaveAtual === "marca") void preencherComDocumentos();
+    // Ao SAIR das Referências, o setup é montado a partir dos dois estudos
+    // (03/10) e chega preenchido na Marca, na Voz, na Ideação e na Agenda.
+    if (chaveAtual === "referencias" && !jaBuscouSetup.current) {
+      jaBuscouSetup.current = true;
+      void montarSetup();
+    }
     // Ao SAIR da Voz, com nicho, público e voz já escritos, o estudo do nicho
     // começa em segundo plano (02/10): leva alguns minutos e assim chega
     // pronto, ou quase, na etapa Referências. Só na criação, não na edição do
     // setup, e só DEPOIS de salvar (a descoberta lê o nicho do banco); se já
     // houver um pedido vivo, a rota recusa sem gastar nada.
-    const pedirEstudoDoNicho = currentStep === 2 && !editMode;
+    //
+    // 03/10: na jornada nova, as referências vêm do CLIENTE (etapa 2). O
+    // Roberto só procura sozinho se a pessoa deixar as Referências sem
+    // indicar nenhuma, e só na criação.
+    let pedirEstudoDoNicho = false;
+    if (chaveAtual === "referencias" && !editMode) {
+      const g = await fetch(`/api/projects/${project.id}/perfil-proprio`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      pedirEstudoDoNicho = Boolean(g && g.ligado && !(g.referencias ?? []).length);
+    }
     try {
       const res = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
@@ -254,6 +352,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               ? (project.config as Record<string, unknown>)
               : {}),
             references: form.references,
+            linhaEditorial: form.linhaEditorial,
           },
           setupStep: nextStep,
           status: nextStep >= STEPS.length ? "active" : "setup",
@@ -283,7 +382,11 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           // Bruno viu exatamente isso: "o primeiro ponto é escolher o tema,
           // mas está errado, porque depois vai ter um tema por dia". Quem
           // trata o parâmetro é o ContentManager, que mora em /live.
-          router.push(`/projects/${project.id}/live?novaCampanha=1`);
+          //
+          // 03/10 (jornada de entrada): para a aba Criar, que é a escolha
+          // das três portas (subir vídeo, gêmeo ou tudo com IA) já com o
+          // projeto treinado pelos dois estudos.
+          router.push(`/projects/${project.id}/criar`);
         }
       } else {
         setCurrentStep(nextStep);
@@ -293,7 +396,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     } finally {
       setSaving(false);
     }
-  }, [currentStep, form, project.id, router, editMode, preencherComDocumentos]);
+  }, [currentStep, form, project.id, router, editMode, preencherComDocumentos, montarSetup]);
 
   const askAI = useCallback(
     async (message: string) => {
@@ -370,6 +473,15 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     [form]
   );
 
+  useEffect(() => {
+    if (jaBuscouSetup.current || currentStep <= indiceDa("referencias")) return;
+    jaBuscouSetup.current = true;
+    void montarSetup();
+  }, [currentStep, montarSetup]);
+
+  const chave = STEPS[currentStep]?.chave;
+  const camposDoPorque = chave ? PORQUE_DA_ETAPA[chave] : undefined;
+
   const progress = Math.round(((currentStep + 1) / STEPS.length) * 100);
 
   return (
@@ -398,7 +510,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           </Link>
         </div>
       )}
-    <div className="p-8 max-w-4xl mx-auto overflow-x-hidden">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto overflow-x-hidden">
       {/* Edit mode warning */}
       {editMode && !warningDismissed && (
         <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/40 rounded-xl flex items-start gap-3">
@@ -469,7 +581,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -16 }}
           transition={{ duration: 0.2 }}
-          className="border rounded-2xl p-8"
+          className="border rounded-2xl p-4 sm:p-8"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
         >
           {/*
@@ -477,7 +589,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
             texto que ela nao escreveu e nao sabe se pode confiar: dizer que
             saiu do documento DELA e o que transforma preenchimento em revisao.
           */}
-          {lendoDocumentos && currentStep >= 2 && (
+          {lendoDocumentos && currentStep >= indiceDa("voz") && (
             <div
               className="mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
               style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
@@ -486,7 +598,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               Lendo os seus documentos para preencher esta etapa...
             </div>
           )}
-          {!lendoDocumentos && veioDoDocumento.length > 0 && currentStep >= 2 && (
+          {!lendoDocumentos && veioDoDocumento.length > 0 && currentStep >= indiceDa("voz") && (
             <div
               className="mb-4 rounded-lg border px-3 py-2 text-[13px]"
               style={{ borderColor: "color-mix(in srgb, var(--acento) 35%, transparent)", color: "var(--text-muted)" }}
@@ -494,14 +606,19 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               Preenchemos a partir dos seus documentos. Leia e corrija o que não estiver do seu jeito.
             </div>
           )}
-          {currentStep === 0 && <StepNetworks projectId={project.id} />}
-          {/*
-            A ordem mudou em 17/09: Marca subiu para 1, e Voz e Ideação
-            desceram. Os índices aqui sao a unica coisa que amarra a tela ao
-            numero da etapa, entao mexer em STEPS sem mexer aqui troca as telas
-            de lugar em silencio, sem erro de tipo nenhum.
-          */}
-          {currentStep === 1 && (
+          {camposDoPorque && (
+            <PorqueDoSetup
+              setup={setupSugerido}
+              campos={camposDoPorque}
+              form={form}
+              set={set}
+              montando={montandoSetup}
+              onRefazer={setupSugerido ? () => void montarSetup(true) : undefined}
+            />
+          )}
+          {chave === "perfil" && <StepPerfilProprio projectId={project.id} />}
+          {chave === "referencias" && <StepReferenciasDoCliente projectId={project.id} />}
+          {chave === "marca" && (
             <StepMarca
               projectId={project.id}
               form={form}
@@ -511,11 +628,12 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               documentosIniciais={project.contexts ?? []}
             />
           )}
-          {currentStep === 2 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
-          {currentStep === 3 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
-          {currentStep === 4 && <StepSchedule form={form} set={set} askAI={askAI} />}
-          {currentStep === 5 && <StepReferencias projectId={project.id} />}
-          {currentStep === 6 && <StepActivation project={project} form={form} />}
+          {chave === "voz" && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
+          {chave === "ideacao" && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
+          {chave === "agenda" && <StepSchedule form={form} set={set} askAI={askAI} />}
+          {chave === "regras" && <StepReferencias projectId={project.id} />}
+          {chave === "redes" && <StepNetworks projectId={project.id} />}
+          {chave === "ativacao" && <StepActivation project={project} form={form} />}
 
           {/* AI Assistant reply */}
           {(aiLoading || aiReply) && (
@@ -671,6 +789,14 @@ function StepIdeation({
         onChange={(e) => set("targetAudience", e.target.value)}
         placeholder="Quem você quer atingir? Cargo, setor, dores..."
         className="min-h-[80px]"
+      />
+
+      <Textarea
+        label="Linha editorial (os pilares, um por linha)"
+        value={form.linhaEditorial}
+        onChange={(e) => set("linhaEditorial", e.target.value)}
+        placeholder="Pilar: o que é; formato que rende; quantos por semana"
+        className="min-h-[120px]"
       />
     </div>
   );
@@ -913,7 +1039,8 @@ function StepNetworks({ projectId }: { projectId: string }) {
   const connected = [...new Set(contas.filter((c) => c.isActive).map((c) => c.platform))];
 
   // returnTo points back to this wizard so the user returns here after OAuth
-  const returnTo = `/projects/${projectId}?step=0`;
+  // A etapa das contas mudou de lugar em 03/10: o número sai da chave.
+  const returnTo = `/projects/${projectId}?step=${indiceDa("redes")}`;
 
   const refresh = () => {
     fetch(`/api/social/connect?projectId=${projectId}`)

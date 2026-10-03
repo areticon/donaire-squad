@@ -55,7 +55,7 @@ export type ResultadoDoPadraoVisual = { ritmo: PadraoDeRitmoDoNicho | null; olha
 /** Recalcula os dois cartões do projeto a partir das medidas gravadas. */
 export async function atualizarPadraoVisual(projectId: string): Promise<ResultadoDoPadraoVisual> {
   const posts = await prisma.referenciaPost.findMany({
-    where: { projectId, NOT: { medidas: { equals: Prisma.DbNull } } },
+    where: { projectId, NOT: { medidas: { equals: Prisma.DbNull } }, perfil: { status: { not: "proprio" } } },
     select: { perfilId: true, ganho: true, medidas: true },
   });
   const medidos = posts

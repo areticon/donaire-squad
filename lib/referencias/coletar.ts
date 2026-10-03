@@ -275,3 +275,43 @@ export async function coletarReferencia(
       return youtube(perfil, opcoes.maxItens);
   }
 }
+
+export type DadosDoPerfilDoInstagram = {
+  perfil: string;
+  nome: string | null;
+  bio: string | null;
+  seguidores: number | null;
+  posts: number | null;
+  categoria: string | null;
+  site: string | null;
+};
+
+/**
+ * Os dados do PERFIL no Instagram (03/10): seguidores, total de posts, nome e
+ * bio. O ator de posts não traz seguidores, e sem eles não existe taxa de
+ * engajamento nem comparação justa entre uma conta de 2 mil e uma de 200 mil.
+ * Um item por perfil, US$ 0,0026 cada (tabela de 01/10), numa execução só.
+ */
+export async function dadosDoInstagram(perfis: string[], caixa: Caixa): Promise<{ dados: DadosDoPerfilDoInstagram[]; custoUsd: number; erro?: string }> {
+  const lista = [...new Set(perfis.map((p) => perfilCanonico("instagram", p)).filter(Boolean))];
+  if (!lista.length) return { dados: [], custoUsd: 0 };
+  if (!caixa.cabe(estimativaDoAtor(ATORES.instagramPerfil, lista.length))) return { dados: [], custoUsd: 0, erro: "sem_orcamento" };
+  const r = await rodarAtor<{ username?: string; fullName?: string; biography?: string; followersCount?: number; postsCount?: number; businessCategoryName?: string; externalUrl?: string }>(
+    ATORES.instagramPerfil,
+    { usernames: lista },
+    { maxItens: lista.length, maxUsd: caixa.teto - caixa.gasto }
+  );
+  caixa.anotar(r.custoUsd);
+  const dados = r.itens
+    .filter((i) => i.username)
+    .map((i) => ({
+      perfil: String(i.username).toLowerCase(),
+      nome: i.fullName?.trim() || null,
+      bio: i.biography?.trim() || null,
+      seguidores: num(i.followersCount),
+      posts: num(i.postsCount),
+      categoria: i.businessCategoryName?.trim() || null,
+      site: i.externalUrl?.trim() || null,
+    }));
+  return { dados, custoUsd: r.custoUsd, erro: r.erro };
+}

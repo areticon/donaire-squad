@@ -103,8 +103,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (corpo.acao === "comecar") {
-    const tipo = (["criacao", "analisar", "tendencias"] as const).find((t) => t === corpo.tipo) ?? "analisar";
-    const origem: EstadoDaAnalise["origem"] = corpo.origem === "criacao" || tipo === "criacao" ? "criacao" : "painel";
+    const tipo = (["criacao", "cliente", "analisar", "tendencias"] as const).find((t) => t === corpo.tipo) ?? "analisar";
+    const origem: EstadoDaAnalise["origem"] = corpo.origem === "criacao" || tipo === "criacao" || tipo === "cliente" ? "criacao" : "painel";
     if (tipo === "tendencias") {
       const t = await lerTendencias(id);
       const quando = liberadaEm(t);

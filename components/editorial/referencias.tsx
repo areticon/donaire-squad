@@ -14,12 +14,13 @@ import {
   type PerfilDeReferenciaNaTela,
   type RedeDeReferencia,
 } from "@/lib/referencias/tipos";
+import { MAX_REFERENCIAS_POR_PROJETO } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
  * OS PERFIS DE REFERÊNCIA, DENTRO DA LINHA EDITORIAL (01/10).
  *
  * O Roberto sugere perfis famosos e relevantes do nicho; o dono confirma até
- * 10 por conta; "Estudar agora" coleta os posts deles e acha os MOLDES que
+ * 3 por projeto (03/10) e 10 por conta; "Estudar agora" coleta os posts deles e acha os MOLDES que
  * rendem (formato, gancho, estrutura, duração). Os cartões de padrão viram
  * uma das fontes das ideias ("padrão de referência"). Molde sim, conteúdo não:
  * o squad nunca recebe o texto de quem fez.
@@ -152,7 +153,7 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
             Perfis de referência do seu nicho
           </span>
           <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
-            {confirmados.length} confirmados neste projeto ({dados.confirmadosNaConta} de {MAX_REFERENCIAS_POR_CONTA} na conta)
+            {confirmados.length} de {MAX_REFERENCIAS_POR_PROJETO} confirmados neste projeto ({dados.confirmadosNaConta} de {MAX_REFERENCIAS_POR_CONTA} na conta)
             {sugeridos.length ? `, ${sugeridos.length} sugestões do Roberto` : ""}
             {dados.padroes.length ? `, ${dados.padroes.length} padrões medidos` : ""}
             {estudando ? ", estudando agora" : ""}
@@ -308,7 +309,7 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
                         </div>
                         {dados.podeEditar && (
                           <div className="flex shrink-0 gap-1">
-                            {p.status === "sugerido" && (
+                            {p.status === "sugerido" && confirmados.length < MAX_REFERENCIAS_POR_PROJETO && (
                               <button type="button" title="Confirmar" onClick={() => void mudar(p.id, "confirmado")} className="rounded p-1 text-green-600 hover:bg-green-500/10">
                                 <Check className="h-4 w-4" />
                               </button>
