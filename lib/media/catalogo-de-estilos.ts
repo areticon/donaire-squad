@@ -44,6 +44,11 @@ export type EstiloDoCatalogo = {
   kit: "colagem" | "impacto" | "sobrio";
   /** A arte de exemplo, quando não é /estilos/<id>.webp. */
   arte?: string;
+  /**
+   * NOSSOS MELHORES MODELOS (03/10): só os que já saem em nível profissional
+   * ficam em destaque no alto da tela; todo o resto vai para o grupo beta.
+   */
+  destaque?: boolean;
 };
 
 /**
@@ -54,6 +59,11 @@ export type EstiloDoCatalogo = {
 // Reels do nicho, para a Gaberlini Consórcios.
 export const ESTILOS_COM_BIBLIA = ["hormozi", "mrbeast", "consorcio", "vox", "bbc", "keynote", "lousa"] as const;
 
+/** Em destaque na tela (03/10): a lousa (Dan Martell), a autoridade high ticket e o Vox; ver `destaque`. */
+export function estiloEmDestaque(id: string): boolean {
+  return Boolean(estiloDoCatalogo(id)?.destaque);
+}
+
 export function estiloEmBeta(id: string): boolean {
   return !(ESTILOS_COM_BIBLIA as readonly string[]).includes(id);
 }
@@ -63,7 +73,7 @@ export type GrupoDeEstilo = "Jornalismo e explicação" | "Educação" | "Negóc
 export const GRUPOS: GrupoDeEstilo[] = ["Jornalismo e explicação", "Educação", "Negócios e marca", "Redes e retenção", "Estética"];
 
 export const CATALOGO_DE_ESTILOS: EstiloDoCatalogo[] = [
-  { id: "vox", nome: "Explicativo editorial", referencia: "estilo Vox", grupo: "Jornalismo e explicação", resumo: "Colagem de recortes, marca-texto nas frases-chave e gráficos simples. Para explicar um tema do mercado.", base: "serio", kit: "colagem" },
+  { id: "vox", nome: "Explicativo editorial", referencia: "estilo Vox", grupo: "Jornalismo e explicação", resumo: "Colagem de recortes, marca-texto nas frases-chave e gráficos simples. Para explicar um tema do mercado.", base: "serio", kit: "colagem", destaque: true },
   { id: "bbc", nome: "Telejornal e reportagem", referencia: "estilo BBC", grupo: "Jornalismo e explicação", resumo: "Sóbrio, com tarja de nome e cargo, número grande com fonte. Notícia da empresa com credibilidade.", base: "serio", kit: "sobrio" },
   { id: "natgeo", nome: "Documentário cinematográfico", referencia: "estilo National Geographic", grupo: "Jornalismo e explicação", resumo: "Ritmo calmo de documentário, cenas de cinema geradas e tarjas limpas. História da empresa, obra, campo.", base: "dramatico", kit: "sobrio" },
   { id: "johnny-harris", nome: "Jornalismo de mapa", referencia: "estilo Johnny Harris", grupo: "Jornalismo e explicação", resumo: "Colagem com setas e círculos desenhados à mão sobre as imagens de apoio. Mercado por região, logística, expansão.", base: "serio", kit: "colagem" },
@@ -74,7 +84,7 @@ export const CATALOGO_DE_ESTILOS: EstiloDoCatalogo[] = [
   { id: "ali-abdaal", nome: "Professor com imagens de apoio", referencia: "estilo Ali Abdaal", grupo: "Educação", resumo: "Você falando, palavras-chave grandes e imagem de apoio nos pontos concretos. Aula, dicas, método.", base: "acelerado", kit: "impacto" },
   // A lousa de negócios (01/10): a bíblia do Dan Martell medida em 25/08
   // (docs/overlays/BIBLIA-DE-ESTILO.md), desenhada hoje pelo kit sóbrio.
-  { id: "lousa", nome: "Lousa de negócios", referencia: "estilo Dan Martell", grupo: "Educação", resumo: "Lousa preta, título com a palavra-chave na cor da marca, passos revelados um a um, você no canto. Método, framework, aula de negócios.", base: "serio", kit: "sobrio" },
+  { id: "lousa", nome: "Lousa de negócios", referencia: "estilo Dan Martell", grupo: "Educação", resumo: "Lousa preta, título com a palavra-chave na cor da marca, passos revelados um a um, você no canto. Método, framework, aula de negócios.", base: "serio", kit: "sobrio", destaque: true },
   { id: "ted", nome: "Palestra de palco", referencia: "estilo TED", grupo: "Educação", resumo: "Fundo escuro, você em destaque, títulos e citações limpas quando a ideia muda. Palestra e evento.", base: "serio", kit: "sobrio" },
   { id: "keynote", nome: "Lançamento de produto", referencia: "estilo keynote da Apple", grupo: "Negócios e marca", resumo: "Uma frase por tela, muito espaço vazio, cor só no produto. Produto ou serviço novo.", base: "serio", kit: "sobrio" },
   { id: "institucional", nome: "Institucional cinematográfico", grupo: "Negócios e marca", resumo: "Cenas de cinema do seu setor, ritmo calmo e frases de valor em destaque. Quem somos, recrutamento.", base: "dramatico", kit: "sobrio" },
@@ -85,7 +95,7 @@ export const CATALOGO_DE_ESTILOS: EstiloDoCatalogo[] = [
   { id: "hormozi", nome: "Corte com legenda dinâmica", referencia: "estilo Hormozi", grupo: "Redes e retenção", resumo: "Legenda grande no centro, palavra-chave na cor da marca, zoom alternado. Reels, Shorts, TikTok.", base: "acelerado", kit: "impacto" },
   // O do vendedor de consórcio (02/10): bíblia completa (lib/media/biblias/consorcio.ts),
   // medida em seis perfis do nicho. A arte de exemplo é um quadro da prova real.
-  { id: "consorcio", nome: "Autoridade high ticket", referencia: "Consultores, advogados, vendedores e mentores", grupo: "Negócios e marca", resumo: "Social, sério e premium: o número em faixa de destaque, selo com o seu nome, legenda grande e comentário respondido na tela. Cores fortes da sua marca. Sem promessa que o seu setor proíbe.", base: "acelerado", kit: "impacto", arte: "/estilos/autoridade-0310.webp" },
+  { id: "consorcio", nome: "Autoridade high ticket", referencia: "Consultores, advogados, vendedores e mentores", grupo: "Negócios e marca", resumo: "Social, sério e premium: o número em faixa de destaque, selo com o seu nome, legenda grande e comentário respondido na tela. Cores fortes da sua marca. Sem promessa que o seu setor proíbe.", base: "acelerado", kit: "impacto", arte: "/estilos/autoridade-0310.webp", destaque: true },
   { id: "ugc", nome: "Nativo do TikTok", grupo: "Redes e retenção", resumo: "Gravação de celular em ambiente real, legenda grande e poucos enfeites. Humaniza a marca.", base: "animado", kit: "impacto" },
   { id: "tipografia", nome: "Tipografia animada", grupo: "Redes e retenção", resumo: "Palavras grandes entram no ritmo da voz, com cartelas de texto entre as falas. Frase de impacto, manifesto.", base: "animado", kit: "impacto" },
   { id: "carrossel-animado", nome: "Carrossel animado", grupo: "Redes e retenção", resumo: "Cartelas de texto na cor da marca, uma ideia por vez, com deslize entre elas. Dicas em lista.", base: "animado", kit: "impacto" },

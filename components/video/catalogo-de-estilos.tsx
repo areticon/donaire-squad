@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import {
   CATALOGO_DE_ESTILOS,
   CUSTO_DAS_INSERCOES_IA,
-  ESTILOS_COM_BIBLIA,
   GRUPOS,
   MOVIMENTOS_DE_CAMERA,
   EFEITOS,
@@ -14,7 +13,7 @@ import {
   arteDoEstilo,
   camadasCompativeis,
   estiloDoCatalogo,
-  estiloEmBeta,
+  estiloEmDestaque,
   normalizarEscolha,
   type EscolhaDeEstilo,
   type EstiloDoCatalogo,
@@ -42,6 +41,11 @@ import { EscolhaDaLegenda as EscolhaDaLegendaNaTela } from "@/components/video/e
  * regras, revisão); embaixo "Modelos em fase BETA", com um aviso honesto de
  * uma linha, porque eles seguem a base de um dos melhores com o ritmo
  * próprio, e a arte de exemplo pode prometer mais do que o vídeo entrega.
+ *
+ * FOCO EM TRÊS (03/10, pedido do dono): no alto ficam só os que já saem em
+ * nível profissional, a lousa (Dan Martell), a autoridade high ticket e o Vox
+ * (`destaque` no catálogo), nesta ordem. Todos os outros continuam escolhíveis no grupo
+ * beta, com o selo, inclusive os que já têm bíblia.
  */
 // "legenda" (30/09): com ou sem legenda, e em qual estilo. Aba própria porque
 // é uma camada como as outras, e a escolha grava por um caminho só dela (ver
@@ -147,13 +151,15 @@ export function CatalogoDeEstilos({
     lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id].slice(-max);
   const nomes = (ids: string[], de: OpcaoDeCamada[]) => ids.map((i) => de.find((o) => o.id === i)?.nome).filter(Boolean).join(", ");
 
-  // Os dois grupos (02/10): os de bíblia completa no alto, os em teste embaixo.
-  const melhores = ESTILOS_COM_BIBLIA.map((id) => estiloDoCatalogo(id)).filter((e): e is EstiloDoCatalogo => Boolean(e));
-  const emBeta = CATALOGO_DE_ESTILOS.filter((e) => estiloEmBeta(e.id));
+  // Os dois grupos (03/10): os três em destaque no alto (na ordem do dono), todo o resto em beta embaixo.
+  const ORDEM = ["lousa", "consorcio", "vox"];
+  const melhores = CATALOGO_DE_ESTILOS.filter((e) => estiloEmDestaque(e.id)).sort((a, b) => (ORDEM.indexOf(a.id) >>> 0) - (ORDEM.indexOf(b.id) >>> 0));
+  const emBeta = CATALOGO_DE_ESTILOS.filter((e) => !estiloEmDestaque(e.id));
 
   /** O cartão de uma linguagem: a arte de exemplo, o nome, a referência e o resumo. */
   const cartao = (e: EstiloDoCatalogo) => {
     const ativo = e.id === escolha.estiloId;
+    const beta = !estiloEmDestaque(e.id);
     return (
       <button
         key={e.id}
@@ -173,11 +179,13 @@ export function CatalogoDeEstilos({
               <Check className="h-4 w-4" />
             </span>
           )}
-          {/* Selo "beta" (01/10): a linguagem ainda usa a bíblia do kit, sem a própria. */}
-          {estiloEmBeta(e.id) && (
-            <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white" title="Em teste: segue a base de um dos nossos modelos com o ritmo próprio; o visual pode não sair igual à imagem.">
+          {/* Selo (03/10): "beta" em todo estilo fora do destaque; os três do alto levam "recomendado". */}
+          {beta ? (
+            <span className="absolute left-2 top-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white" title="Em teste: ainda não chega no nível dos nossos melhores modelos; o visual pode não sair igual à imagem.">
               beta
             </span>
+          ) : (
+            <span className="absolute left-2 top-2 rounded-md bg-orange-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">recomendado</span>
           )}
         </div>
         <div className="p-2.5">
@@ -324,10 +332,10 @@ export function CatalogoDeEstilos({
                 Nossos melhores modelos
               </p>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Cada um tem manual completo: ritmo medido, regras e revisão do vídeo pronto.
+                Os três que já saem em nível profissional: manual completo, referência real e revisão de cada quadro do vídeo pronto.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{melhores.map((e) => cartao(e))}</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{melhores.map((e) => cartao(e))}</div>
           </section>
 
           {/* MODELOS EM FASE BETA: os derivados, com o aviso honesto e os grupos de antes. */}
@@ -338,7 +346,7 @@ export function CatalogoDeEstilos({
                 <span className="rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">beta</span>
               </p>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Em teste: seguem a base de um dos nossos modelos com o ritmo próprio; o visual pode não sair igual à imagem.
+                Continuam disponíveis, mas em teste: ainda não chegam no nível dos três de cima, e o visual pode não sair igual à imagem.
               </p>
             </div>
             <div className="space-y-4">
