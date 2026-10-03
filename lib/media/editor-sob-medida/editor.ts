@@ -94,6 +94,11 @@ export type EntradaDoEditor = {
   projectId?: string | null;
   referenciaDeUso: string;
   modelo?: string;
+  /** Regras a mais para a tarefa (o corte curto vertical, lib/media/editor-sob-medida/corte.ts). */
+  instrucoes?: string | null;
+  /** Prazo de cada chamada (padrão 300 s) e tentativas do bloco (padrão 2): o corte cabe na passada do cron. */
+  timeoutMs?: number;
+  tentativas?: number;
 };
 
 function falaNumerada(frases: Frase[], de = 0, ate = Infinity): string {
@@ -144,7 +149,7 @@ async function chamar(sistemaExtra: string, mensagem: string, quadros: Array<{ t
       model: e.modelo ?? MODELO_DO_EDITOR,
       maxTokens: 32000,
       effort: "medium",
-      timeoutMs: 300_000,
+      timeoutMs: e.timeoutMs ?? 300_000,
       cachedPrefix: undefined,
       usage: { projectId: e.projectId ?? undefined, operation: operacao },
     }
@@ -165,13 +170,13 @@ export async function escreverBloco(e: EntradaDoEditor, b: BlocoDoEditor, k: num
       ? `Edite o vídeo inteiro (F0 a F${e.frases.length - 1}).`
       : `O vídeo foi dividido em ${total} partes, editadas em paralelo. VOCÊ EDITA SÓ A PARTE ${k + 1}: de F${b.f0} a F${b.f1} (${b.de.toFixed(0)} s a ${b.ate.toFixed(0)} s). Todas as âncoras dentro desse intervalo. ${k === 0 ? "É o começo: abra forte (título ou rótulo de quem fala nos primeiros segundos)." : ""}${k === total - 1 ? "É o fim: feche com a peça fecho na chamada final, se houver chamada." : ""}`;
   let ultimoErro = "";
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
+  for (let tentativa = 0; tentativa < (e.tentativas ?? 2); tentativa++) {
     try {
       const j = (await chamar(ctx, `# A FALA, NUMERADA
 ${fala}
 
 # A TAREFA
-${tarefa}`, quadros, e, "editor-sob-medida")) as EdicaoDoEditor;
+${tarefa}${e.instrucoes ? `\n\n${e.instrucoes}` : ""}`, quadros, e, e.instrucoes ? "editor-sob-medida-corte" : "editor-sob-medida")) as EdicaoDoEditor;
       if (!Array.isArray(j?.momentos)) throw new Error("resposta sem momentos");
       const dentro = (a: string) => {
         const n = Number(String(a).match(/\d+/)?.[0] ?? -1);

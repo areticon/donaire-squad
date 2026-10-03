@@ -72,8 +72,10 @@ export async function revisarPrevia(p: {
   soIds?: string[] | null;
   projectId?: string | null;
   modelo?: string;
+  /** Amostra dos trechos sem peça, em segundos (20 no completo; o corte curto olha mais de perto). */
+  passo?: number;
 }): Promise<ResultadoDaRevisao & { olhados: Array<{ t: number; momento: string | null; base64: string }> }> {
-  const alvo = instantesDaRevisaoSobMedida(p.edicao, 20, p.soIds);
+  const alvo = instantesDaRevisaoSobMedida(p.edicao, p.passo ?? 20, p.soIds);
   const desloc = p.deslocamento ?? 0;
   const defeitos: DefeitoDaRevisao[] = [];
   const notas: number[] = [];

@@ -42,6 +42,23 @@ function somDaTrilha(video: { project: { videoEstiloEscolha: unknown; videoStyle
 }
 import { avisarAdminsDaMontagem } from "@/lib/media/aviso-da-montagem";
 import type { RoteiroDoCorte } from "@/lib/media/roteiro-em-texto";
+import {
+  consertarEdicao,
+  editorSobMedidaLigado,
+  frasesNumeradas,
+  gerarInsercoes,
+  medidasDaEdicao,
+  referenciaParaOEditor,
+  resolverEdicao,
+  revisarPrevia,
+  temaDoEstilo,
+  type EdicaoDoEditor,
+  type EdicaoResolvida,
+} from "@/lib/media/editor-sob-medida";
+import { escreverBloco, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
+import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
+import { adensarCorte, arejarCorte, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
+import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 
 /**
  * O EDITOR COMPLETO NA ESTEIRA (30/09/2026), com a trava MONTAGEM_NA_EDICAO=1.
@@ -413,7 +430,7 @@ async function dirigir(video: VideoDoPasso, indice: number, t: TrechoComMontagem
  * (30/09). Quem manda é o worker: `ajustarAFonteReal` (worker/src/montagem.mjs)
  * mede o narrador que ele mesmo gerou e corrige o recorte antes do render.
  */
-async function dimensoesDaGravacao(capaUrl: string | undefined): Promise<{ largura: number; altura: number }> {
+export async function dimensoesDaGravacao(capaUrl: string | undefined): Promise<{ largura: number; altura: number }> {
   if (capaUrl) {
     try {
       const r = await fetch(capaUrl, { signal: AbortSignal.timeout(20_000) });
@@ -548,12 +565,333 @@ export async function pedidoDoCorte(video: VideoDoPasso, indice: number, t: Trec
   return { corpo, chave };
 }
 
+// ─────────────────────────────── 2b. o editor sob medida no corte ───────────────────────────────
+
+/**
+ * O EDITOR SOB MEDIDA NO CORTE (03/10), com EDITOR_SOB_MEDIDA ligado e o
+ * estilo com referência: o mesmo caminho do completo
+ * (lib/media/montagem-do-completo.ts), para o vídeo curto vertical. O editor
+ * lê só a fala do trecho (a da edição gravada, já sem a frase errada e o
+ * retake), escreve a edição em 9:16 com gancho nos primeiros 2 s e densidade
+ * alta (lib/media/editor-sob-medida/corte.ts); a prévia vai ao worker pela
+ * porta do completo (`trecho` no pedido), o revisor com visão olha, o editor
+ * conserta até 2 vezes, e só vai ao ar o que passou.
+ *
+ * Mesmos estados de sempre, para a tela e a linha do tempo não mudarem:
+ *   na-fila -> dirigindo (editor e inserções) -> montando (prévia; revisão;
+ *   conserto e nova prévia; final) -> pronto.
+ * QUALQUER FALHA volta o corte para "na-fila" com `sobMedida.desistiu`, e a
+ * próxima passada monta pelo caminho de sempre (a reserva), sem travar.
+ */
+export type SobMedidaDoCorte = {
+  fase: "editar" | "previa" | "revisar" | "final";
+  estiloId: string;
+  fala?: { manter: { de: number; ate: number }[]; palavras: PalavraNoCorte[]; duracao: number } | null;
+  /** O quadro 9:16 dentro da gravação (fração) e o rosto já nele. */
+  quadro?: Retangulo | null;
+  rosto?: Retangulo | null;
+  gancho?: { inicio: number; fim: number; soco: string } | null;
+  editor?: EdicaoDoEditor | null;
+  insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  edicao?: EdicaoResolvida | null;
+  rodada: number;
+  historico: Array<{ rodada: number; quadros: number; nota: number | null; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
+  soIds?: string[] | null;
+  previaUrl?: string | null;
+  custoImagensUsd?: number;
+  medidas?: Record<string, number>;
+  avisos?: string[];
+  /** O worker reiniciou com o pedido na fila: a próxima passada reenvia a mesma fase. */
+  reenviar?: boolean;
+  desistiu?: string | null;
+};
+
+/** Passos pesados (editor, revisão) rodando juntos numa passada do cron. */
+const CORTES_EM_PARALELO = Math.max(1, Number(process.env.MONTAGEM_CORTES_EM_PARALELO ?? 3));
+/** Prazo de cada chamada do editor no corte: uma tentativa só, a reserva cobre a falha. */
+const PRAZO_DO_EDITOR_NO_CORTE_MS = 240_000;
+/** Os quadros do corte para o editor não podem segurar a passada. */
+const PRAZO_DOS_QUADROS_MS = 60_000;
+const DURACAO_MAXIMA_DA_PECA: Record<string, number> = Object.fromEntries(PECAS.map((p) => [p.nome, p.duracao[1]]));
+const DURACAO_MINIMA_DA_PECA: Record<string, number> = Object.fromEntries(PECAS.map((p) => [p.nome, p.duracao[0]]));
+
+function comPrazo<T>(p: Promise<T>, ms: number, reserva: T): Promise<T> {
+  return Promise.race([p.catch(() => reserva), new Promise<T>((ok) => setTimeout(() => ok(reserva), ms))]);
+}
+
+function sobMedidaDe(m: MontagemDoCorte | null | undefined): SobMedidaDoCorte | null {
+  return (m?.sobMedida as SobMedidaDoCorte | null | undefined) ?? null;
+}
+
+/** O corte vai pelo editor sob medida? Ligado, estilo com referência, e o caminho novo não desistiu neste corte. */
+export function corteVaiSobMedida(video: Pick<VideoDoPasso, "project">, m: MontagemDoCorte | null | undefined): boolean {
+  const escolha = normalizarEscolha(video.project.videoEstiloEscolha, video.project.videoStyle);
+  return editorSobMedidaLigado(escolha.estiloId) && !sobMedidaDe(m)?.desistiu;
+}
+
+/** O caminho novo desiste e o corte volta à fila, para a montagem de sempre (a reserva). */
+async function desistirDoCorteSobMedida(id: string, indice: number, lido: MontagemDoCorte, motivo: string): Promise<void> {
+  console.warn(`[montagem][${id}] corte ${indice}: editor sob medida desistiu: ${motivo}`);
+  const sm = sobMedidaDe(lido) ?? { fase: "editar", estiloId: "", rodada: 0, historico: [] };
+  await trocarEstado(id, indice, lido, {
+    ...lido,
+    estado: "na-fila",
+    desde: agora(),
+    trabalhando: false,
+    candidato: null,
+    tentativas: 0,
+    esperarAte: null,
+    motivo: null,
+    sobMedida: { ...sm, reenviar: false, desistiu: motivo.slice(0, 300) },
+  });
+}
+
+/** A edição resolvida do corte: 1080x1920, o rosto no quadro do corte, a legenda só se o cliente quer, e os buracos curtos fechados. */
+export function resolverCorteSobMedida(
+  video: Pick<VideoDoPasso, "project">,
+  t: TrechoComMontagem,
+  sm: SobMedidaDoCorte,
+  editor: EdicaoDoEditor,
+  insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>
+): { edicao: EdicaoResolvida; avisos: string[] } {
+  const ctx = contexto(video as VideoDoPasso, t);
+  const r = resolverEdicao(editor, {
+    palavras: sm.fala!.palavras,
+    duracao: sm.fala!.duracao,
+    largura: 1080,
+    altura: 1920,
+    tema: { ...temaDoEstilo(sm.estiloId, ctx.marca), escuroLegenda: "#06111F" },
+    rosto: sm.rosto ?? { x: 0.3, y: 0.2, w: 0.4, h: 0.25 },
+    estiloId: sm.estiloId,
+    // A escolha "sem legenda" do cliente vale aqui também (lida AGORA, na hora de montar).
+    comLegenda: ctx.legenda.mostrar,
+    logoUrl: video.project.logoUrl ?? null,
+    insercoes,
+  });
+  const ar = arejarCorte(r.edicao, DURACAO_MINIMA_DA_PECA);
+  const a = adensarCorte(ar.edicao, DURACAO_MAXIMA_DA_PECA);
+  return { edicao: a.edicao, avisos: [...r.avisos, ...ar.mudancas, ...(a.esticadas ? [`adensar: ${a.esticadas} peça(s) esticada(s) até a próxima`] : [])] };
+}
+
+/** O que o editor recebe para um corte. */
+export async function entradaDoCorte(
+  video: VideoDoPasso,
+  indice: number,
+  t: TrechoComMontagem,
+  sm: SobMedidaDoCorte,
+  quadros: Array<{ t: number; base64: string }>
+): Promise<EntradaDoEditor> {
+  const ctx = contexto(video, t);
+  const perfil = await perfilDoProjeto(video.projectId).catch(() => null);
+  const tema = temaDoEstilo(sm.estiloId, ctx.marca);
+  const fala = sm.fala!;
+  return {
+    palavras: fala.palavras,
+    frases: frasesNumeradas(fala.palavras),
+    duracao: fala.duracao,
+    formato: "9:16",
+    referencia: referenciaParaOEditor(sm.estiloId).texto,
+    perfil: [perfilNoPrompt(perfil), `MARCA: cores ${ctx.marca.acento} (acento) e ${ctx.marca.escuro} (escuro); acabamento ${tema.visual}, letra de título ${tema.fonteTitulo}. Logo: ${video.project.logoUrl ? "sim" : "não"}.`].join("\n"),
+    roteiro: null,
+    quadros,
+    projectId: video.projectId,
+    referenciaDeUso: `${video.id}/${indice}`,
+    instrucoes: instrucoesDoCorte({ duracao: fala.duracao, titulo: t.titulo }),
+    timeoutMs: PRAZO_DO_EDITOR_NO_CORTE_MS,
+    tentativas: 1,
+  };
+}
+
+/** O vertical cru do corte (sem a montagem): é dele que o editor vê os quadros. */
+function verticalCru(t: TrechoComMontagem, lido: MontagemDoCorte): string | null {
+  return t.midia?.verticalOriginal?.url && lido.montadoUrl && t.midia?.vertical?.url === lido.montadoUrl ? t.midia.verticalOriginal.url : t.midia?.vertical?.url ?? null;
+}
+
+/** na-fila -> dirigindo: a fala, o editor, as inserções e a resolução; depois a prévia vai ao worker. */
+async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, lido: MontagemDoCorte): Promise<void> {
+  // "dirigindo" parado (a função morreu no meio do editor): não paga o editor
+  // de novo, vai para a reserva.
+  if (lido.estado === "dirigindo") {
+    await desistirDoCorteSobMedida(video.id, indice, lido, "o editor parou no meio");
+    return;
+  }
+  const ctx = contexto(video, t);
+  const sm0: SobMedidaDoCorte = { fase: "editar", estiloId: ctx.escolha.estiloId, rodada: 0, historico: [] };
+  const tomado: MontagemDoCorte = { ...lido, estado: "dirigindo", desde: agora(), trabalhando: true, motivo: null, sobMedida: sm0 };
+  if (!(await trocarEstado(video.id, indice, lido, tomado))) return;
+  try {
+    const { inicio, fim } = bordas(t, video);
+    // A fala LIMPA do trecho: a aprovada no roteiro, ou a da edição gravada
+    // (lib/media/pedido-de-corte.ts já tirou a frase errada e o retake).
+    const aprovado = planoAprovadoDoCorte(t, inicio, fim);
+    const fala = aprovado
+      ? { manter: aprovado.manter, palavras: aprovado.fala.palavras, duracao: aprovado.fala.duracao }
+      : await falaDoCorte({
+          palavras: ((video.transcript as { words?: Word[] } | null)?.words ?? []) as Word[],
+          termos: video.project.videoTerms,
+          inicio,
+          fim,
+          duracaoDaGravacao: video.durationSec ?? fim,
+          edicao: t.edicao,
+          projectId: video.projectId,
+        });
+    if (fala.palavras.length < 5 || fala.duracao < 5) throw new Error("fala curta demais para o editor");
+    const fonte = await dimensoesDaGravacao(t.midia?.capa?.url);
+    const quadro = quadroDoCorte(fonte, ctx.pessoa);
+    const gancho = aprovado?.gancho && !aprovado.gancho.desligado ? ganchoEmFraseInteira(fala.palavras, { inicio: aprovado.gancho.inicio, fim: aprovado.gancho.fim, soco: limparSoco(aprovado.gancho.soco) ?? "" }) : null;
+    const sm: SobMedidaDoCorte = { ...sm0, fala, quadro, rosto: noQuadroDoCorte(ctx.rosto, quadro), gancho };
+    const cru = verticalCru(t, lido);
+    const quadros = cru ? await comPrazo(quadrosPeloWorker(cru, 384)(instantesDoCorte(fala.duracao)), PRAZO_DOS_QUADROS_MS, []) : [];
+    const entrada = await entradaDoCorte(video, indice, t, sm, quadros);
+    const parte = await escreverBloco(entrada, { de: 0, ate: fala.duracao, f0: 0, f1: entrada.frases.length - 1 }, 0, 1);
+    if (!parte.momentos.length) throw new Error(`o editor não devolveu edição (${parte.erro ?? "sem momentos"})`);
+    const { erro: _erro, ...editor } = parte;
+    void _erro;
+    const ins = await gerarInsercoes(editor, { formato: "9:16", projectId: video.projectId, teto: 2 });
+    const r = resolverCorteSobMedida(video, t, sm, editor, ins.insercoes);
+    const novo: SobMedidaDoCorte = {
+      ...sm,
+      editor,
+      insercoes: ins.insercoes,
+      edicao: r.edicao,
+      fase: "previa",
+      custoImagensUsd: ins.custoUsd,
+      medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) },
+      avisos: r.avisos.slice(0, 30),
+    };
+    await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, custoUsd: ins.custoUsd, sobMedida: novo }, tomado);
+  } catch (e) {
+    await desistirDoCorteSobMedida(video.id, indice, tomado, `o editor falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
+  }
+}
+
+/**
+ * O PEDIDO AO WORKER de um corte sob medida (separado para a prova local
+ * refazer o mesmo pedido): a porta do completo (`/montar-completo`) com
+ * `trecho`, que emenda a fala limpa da gravação e recorta o quadro 9:16. A
+ * trilha do projeto e o gancho aprovado entram só no final.
+ */
+export function pedidoDoCorteSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, estado: MontagemDoCorte): { corpo: string; chave: string } {
+  const sm = sobMedidaDe(estado)!;
+  const final = sm.fase === "final";
+  const ctx = contexto(video, t);
+  const { inicio, fim } = bordas(t, video);
+  const chave = final ? `cortes/${video.id}/montado-${indice}-sob-medida.mp4` : `cortes/${video.id}/previa-sob-medida-${indice}-${sm.rodada}.mp4`;
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
+  const corpo = JSON.stringify({
+    chave,
+    videoJobId: video.id,
+    // A porta do completo pede `completoUrl`; com `trecho`, o worker usa a gravação.
+    completoUrl: video.blobUrl,
+    trecho: { sourceUrl: video.blobUrl, inicio, duracao: fim - inicio, manter: sm.fala!.manter, pessoa: ctx.pessoa, quadro: sm.quadro },
+    edicao: sm.edicao,
+    escala: final ? 1 : 0.5,
+    gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
+    trilha: final && video.project.videoMusicUrl ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
+    callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,
+    retorno: { indice, desde: estado.desde },
+  });
+  return { corpo, chave };
+}
+
+/** Manda a prévia (metade da resolução) ou o final ao worker. */
+async function enviarCorteSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, estado: MontagemDoCorte, lido: MontagemDoCorte): Promise<void> {
+  const sm = sobMedidaDe(estado)!;
+  const tomado: MontagemDoCorte = { ...estado, estado: "montando", desde: agora(), tentativas: (estado.tentativas ?? 0) + 1, candidato: null, trabalhando: false, sobMedida: { ...sm, reenviar: false } };
+  if ((tomado.tentativas ?? 0) > MAX_TENTATIVAS + 2) {
+    await desistirDoCorteSobMedida(video.id, indice, lido, "envios demais ao worker");
+    return;
+  }
+  if (!(await trocarEstado(video.id, indice, lido, tomado))) return;
+  try {
+    const worker = (process.env.VIDEO_WORKER_URL ?? "").replace(/\/$/, "");
+    if (!worker) throw new Error("VIDEO_WORKER_URL não configurado");
+    const { corpo, chave } = pedidoDoCorteSobMedida(video, indice, t, tomado);
+    const r = await fetch(`${worker}/montar-completo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [CABECALHO_ASSINATURA]: assinarCorpo(corpo) },
+      body: corpo,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (r.status !== 202) throw new Error(`worker recusou a edição sob medida do corte (HTTP ${r.status})`);
+    await trocarEstado(video.id, indice, tomado, { ...tomado, chave });
+  } catch (e) {
+    await desistirDoCorteSobMedida(video.id, indice, tomado, e instanceof Error ? e.message : "envio falhou");
+  }
+}
+
+/** A prévia voltou: o revisor olha; com defeito, o editor conserta (até 2 rodadas); o que ainda tem defeito sai; vai o final. */
+async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, lido: MontagemDoCorte): Promise<void> {
+  // Revisão parada no meio (a função morreu): reserva, sem pagar de novo.
+  if (lido.trabalhando) {
+    await desistirDoCorteSobMedida(video.id, indice, lido, "a revisão da prévia parou no meio");
+    return;
+  }
+  const tomado: MontagemDoCorte = { ...lido, trabalhando: true, desde: agora() };
+  if (!(await trocarEstado(video.id, indice, lido, tomado))) return;
+  const sm = sobMedidaDe(lido)!;
+  try {
+    const frases = frasesNumeradas(sm.fala!.palavras);
+    const ref = referenciaParaOEditor(sm.estiloId);
+    const rev = await revisarPrevia({
+      edicao: sm.edicao!,
+      frases,
+      obterQuadros: quadrosPeloWorker(sm.previaUrl!, 360),
+      referencia: `${ref.texto.slice(0, 1800)}\nQuadros típicos: ${ref.quadros.join(" | ")}\nÉ um CORTE VERTICAL 9:16 para Reels, Shorts e TikTok: texto encostado na borda, ou na faixa da direita e no rodapé (a interface da rede), é defeito "ilegivel".`,
+      soIds: sm.soIds ?? null,
+      projectId: video.projectId,
+      passo: 6,
+    });
+    // SÓ VAI AO AR O QUE PASSOU: sem olhar nenhum quadro, nada passou.
+    if (rev.erro && !rev.quadros) throw new Error(`o revisor não olhou a prévia (${rev.erro})`);
+    const historico = [
+      ...sm.historico,
+      { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, defeitos: rev.defeitos.map((d) => ({ momento: d.momento, t: d.t, tipo: d.tipo, descricao: d.descricao })), falta: rev.falta, erro: rev.erro ?? null },
+    ].slice(-6);
+    let editor = sm.editor!;
+    if (rev.defeitos.length && sm.rodada < 2) {
+      const entrada = await entradaDoCorte(video, indice, t, sm, []);
+      const quadrosDoDefeito = rev.olhados.filter((q) => rev.defeitos.some((d) => Math.abs(d.t - q.t) < 0.05));
+      editor = (await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito)).edicao;
+      const soIds = [...new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)))];
+      const r = resolverCorteSobMedida(video, t, sm, editor, sm.insercoes ?? {});
+      const novo: SobMedidaDoCorte = { ...sm, editor, edicao: r.edicao, fase: "previa", rodada: sm.rodada + 1, soIds, historico, medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) } };
+      await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
+      return;
+    }
+    const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
+    if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
+    const r = resolverCorteSobMedida(video, t, sm, editor, sm.insercoes ?? {});
+    const novo: SobMedidaDoCorte = { ...sm, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) } };
+    await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
+  } catch (e) {
+    await desistirDoCorteSobMedida(video.id, indice, tomado, `a revisão da prévia falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
+  }
+}
+
+/** Roda os passos pesados com teto de paralelismo, começando só enquanto cabe na passada. */
+async function emPiscina(tarefas: Array<() => Promise<void>>, teto: number, podeComecar: () => boolean): Promise<void> {
+  const fila = [...tarefas];
+  await Promise.all(
+    Array.from({ length: Math.min(teto, fila.length) }, async () => {
+      while (fila.length && podeComecar()) {
+        const tarefa = fila.shift()!;
+        await tarefa().catch((e) => console.error("[montagem] passo pesado:", e));
+      }
+    })
+  );
+}
+
 /** O passo do cron. Orçamento próprio; devolve contagens para o log. */
 export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): Promise<{ olhados: number; dirigidos: number; enviados: number } | null> {
   if (!montagemNaEdicaoLigada()) return null;
   const inicio = Date.now();
   const orcamento = opcoes.orcamentoMs ?? 240_000;
   const r = { olhados: 0, dirigidos: 0, enviados: 0 };
+  // Os passos pesados (diretor, editor sob medida, revisões) vão para uma
+  // piscina com teto (03/10): cortes em paralelo, e nenhum começa depois dos
+  // primeiros 90 s da passada, para caber no teto de 800 s do cron.
+  const pesados: Array<() => Promise<void>> = [];
   const ids = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM video_jobs
     WHERE "createdAt" > now() - interval '7 days'
@@ -583,10 +921,26 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
       const idade = Date.now() - new Date(m.desde).getTime();
       try {
         const esperando = Boolean(m.esperarAte && Date.now() < new Date(m.esperarAte).getTime());
+        const sm = sobMedidaDe(m);
+        const sobMedidaVivo = Boolean(sm && !sm.desistiu);
         if ((m.estado === "na-fila" && !esperando) || (m.estado === "dirigindo" && idade > PASSO_MORTO_MS)) {
           r.olhados++;
-          await dirigir(video, i, t, m);
           r.dirigidos++;
+          // O EDITOR SOB MEDIDA (03/10); a montagem de sempre é a reserva.
+          // No "dirigindo" morto, só volta ao editor quem estava nele.
+          const novo = m.estado === "na-fila" ? corteVaiSobMedida(video, m) : sobMedidaVivo;
+          pesados.push(() => (novo ? editarCorteSobMedida(video, i, t, m) : dirigir(video, i, t, m)));
+        } else if (m.estado === "montando" && sobMedidaVivo && sm!.reenviar && !esperando) {
+          // O worker reiniciou com a prévia ou o final na fila: reenvia a mesma fase.
+          r.olhados++;
+          await enviarCorteSobMedida(video, i, t, m, m);
+          r.enviados++;
+        } else if (m.estado === "montando" && sobMedidaVivo && sm!.fase === "revisar" && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
+          r.olhados++;
+          pesados.push(() => revisarCorteSobMedida(video, i, t, m));
+        } else if (m.estado === "montando" && sobMedidaVivo && idade > PRAZO_DO_RENDER_MS) {
+          r.olhados++;
+          await desistirDoCorteSobMedida(video.id, i, m, "o render da edição sob medida não terminou no prazo");
         } else if (m.estado === "gerando") {
           r.olhados++;
           await montar(video, i, t, m);
@@ -594,7 +948,9 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
         } else if (m.estado === "montando" && m.revisaoVisual?.pendente && m.candidato && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
           // A revisão visual do corte pronto (02/10).
           r.olhados++;
-          await revisarCorte(video, i, m);
+          pesados.push(() => revisarCorte(video, i, m));
+        } else if (m.estado === "montando" && sobMedidaVivo) {
+          // A edição sob medida está no worker: espera o callback.
         } else if (m.estado === "montando" && idade > PRAZO_DO_RENDER_MS) {
           r.olhados++;
           // Sem callback no prazo: volta para "gerando" (reenvia) ou desiste.
@@ -612,6 +968,7 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
       }
     }
   }
+  await emPiscina(pesados, CORTES_EM_PARALELO, () => Date.now() - inicio < orcamento - 150_000);
   return r;
 }
 
@@ -632,6 +989,33 @@ export async function concluirMontagem(
   const t = ((video?.clips as unknown as TrechoComMontagem[] | null) ?? [])[indice];
   const lido = t?.montagem;
   if (!t || !lido || lido.estado !== "montando" || lido.desde !== desde) return "ignorado";
+
+  // O EDITOR SOB MEDIDA (03/10): a prévia volta para o revisor; o final já
+  // passou pela revisão da prévia e vai ao ar. Reinício do worker reenvia a
+  // mesma fase; falha de render volta à montagem de sempre (a reserva).
+  const sm = sobMedidaDe(lido);
+  if (sm && !sm.desistiu) {
+    if (resultado.reiniciado) {
+      await trocarEstado(videoJobId, indice, lido, { ...lido, desde: agora(), tentativas: Math.max(0, (lido.tentativas ?? 1) - 1), sobMedida: { ...sm, reenviar: true } });
+      return "falhou";
+    }
+    if (!resultado.ok || !resultado.montado?.url) {
+      await desistirDoCorteSobMedida(videoJobId, indice, lido, `o render da edição sob medida falhou (${resumoDoErro(resultado.erro ?? "sem detalhe")})`);
+      return "falhou";
+    }
+    if (sm.fase === "previa") {
+      const ok = await trocarEstado(videoJobId, indice, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...sm, fase: "revisar", previaUrl: resultado.montado.url } });
+      return ok ? "trocado" : "ignorado";
+    }
+    return entregarCorte(
+      videoJobId,
+      indice,
+      t,
+      { ...lido, revisaoVisual: { rodadas: sm.rodada, historico: [], pendente: false, final: true, motivo: "editor sob medida: revisado na prévia" } },
+      resultado.montado,
+      resultado.tempos
+    );
+  }
 
   // O WORKER REINICIOU (deploy, 01/10): o render não falhou, foi cortado no
   // meio. Volta para "gerando" sem espera e sem gastar tentativa, e a próxima

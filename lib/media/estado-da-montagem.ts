@@ -73,6 +73,14 @@ export type MontagemDoCorte = {
   trabalhando?: boolean;
   /** O plano com as inserções, guardado quando a versão segura foi ao ar (o "pedir de novo" volta a ele). */
   planoAntesDaSegura?: unknown;
+  /**
+   * O EDITOR SOB MEDIDA no corte (03/10, lib/media/montagem-nos-cortes.ts):
+   * usa os estados de sempre ("dirigindo" enquanto o editor escreve,
+   * "montando" na prévia, na revisão e no final). `desistiu`: o caminho novo
+   * falhou e o corte voltou à montagem de sempre (a reserva). Tipo aberto
+   * aqui: este módulo é lido pela tela.
+   */
+  sobMedida?: { fase: "editar" | "previa" | "revisar" | "final"; desistiu?: string | null; rodada?: number; [k: string]: unknown } | null;
 };
 
 /** O que a tela diz quando a montagem de efeitos desistiu por erro técnico. */
