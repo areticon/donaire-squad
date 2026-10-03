@@ -176,7 +176,24 @@ export type EscolhaDeEstilo = {
    * Ver lib/media/legenda-escolhida.ts.
    */
   legenda: EscolhaDaLegenda;
+  /**
+   * INSERÇÕES DE IA ligadas de propósito (03/10). O padrão de todo estilo é
+   * o corte limpo profissional (cartelas, punch-in, legenda; nenhuma imagem
+   * nem cena gerada): decisão do Bruno depois do custo e da demora do plano
+   * cena a cena. Com isto ligado, o diretor cena a cena volta a planejar
+   * imagem e cena de cinema para a linguagem escolhida, e a tela mostra o
+   * custo. Mesmo Json, sem migração; ausente é falso.
+   */
+  insercoesIA?: boolean;
 };
+
+/**
+ * O custo estimado por minuto das inserções de IA, para a tela (03/10):
+ * ~2 imagens por minuto a US$ 0,07 a 0,10 cada, mais o diretor cena a cena
+ * (~US$ 0,25 por bloco de 2,5 min), mais até 4 cenas de cinema por vídeo. Em
+ * reais, com a conta de 02/10 (US$ 46,75 em 190 chamadas só do diretor).
+ */
+export const CUSTO_DAS_INSERCOES_IA = { porMinutoUsd: 0.3, texto: "cerca de US$ 0,30 por minuto de vídeo, mais as cenas de cinema" };
 
 export function estiloDoCatalogo(id: string | null | undefined): EstiloDoCatalogo | undefined {
   return CATALOGO_DE_ESTILOS.find((e) => e.id === id);
@@ -235,5 +252,6 @@ export function normalizarEscolha(bruta: unknown, baseAtual?: string | null): Es
     texto: typeof b.texto === "string" ? b.texto.slice(0, 600) : undefined,
     interpretacao: typeof b.interpretacao === "string" ? b.interpretacao.slice(0, 1200) : undefined,
     legenda: normalizarLegenda(b.legenda),
+    ...(b.insercoesIA === true ? { insercoesIA: true } : {}),
   };
 }

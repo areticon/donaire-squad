@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Captions, Music, Sparkles, Volume2, Wand2 } from "lucide-react";
+import { Captions, Music, Scissors, Sparkles, Volume2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
 import type { ResumoDaEdicao } from "@/lib/media/edicao-escolhida";
@@ -36,6 +36,9 @@ export function ComoOSquadEdita({
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const linhas = [
+    // Como o diretor edita (03/10): corte limpo por padrão; inserções de IA só
+    // quando ligadas no passo do estilo, com o custo dito ali.
+    { Icone: Scissors, texto: resumo.edicao },
     { Icone: Captions, texto: `Legenda: ${resumo.legenda}` },
     { Icone: Music, texto: resumo.trilha },
     { Icone: Volume2, texto: resumo.efeitos },

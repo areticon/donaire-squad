@@ -1,4 +1,4 @@
-import { estiloDoCatalogo, normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
+import { CUSTO_DAS_INSERCOES_IA, estiloDoCatalogo, normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { resumoDaLegenda } from "@/lib/media/legenda-escolhida";
 
 /**
@@ -30,6 +30,12 @@ export type ResumoDaEdicao = {
   efeitos: string;
   /** O roteiro foi planejado em outro estilo (o nome dele), quando difere do de agora. */
   planejadoEm?: string | null;
+  /**
+   * Como o diretor edita (03/10): o corte limpo profissional (padrão de todo
+   * estilo) ou as inserções de IA ligadas na tela de estilos, com o custo.
+   */
+  edicao: string;
+  insercoesIA: boolean;
 };
 
 const nomeDoArquivo = (url: string) => {
@@ -62,5 +68,9 @@ export function resumoDaEdicao(p: {
     trilha: p.videoMusicUrl ? `Trilha nos cortes: ${p.videoMusicName || nomeDoArquivo(p.videoMusicUrl)} (o vídeo completo sai sem trilha)` : "Sem trilha de fundo: os cortes saem só com a voz",
     efeitos: "Efeitos sonoros do estilo (whoosh, pop, impacto)",
     planejadoEm: planejado,
+    insercoesIA: Boolean(escolha.insercoesIA),
+    edicao: escolha.insercoesIA
+      ? `Inserções de IA ligadas: imagens e cenas geradas na linguagem do estilo (${CUSTO_DAS_INSERCOES_IA.texto})`
+      : "Corte limpo profissional: você na tela, cortes nas pausas, punch-in nas ênfases, poucas cartelas de texto e legenda; sem imagem gerada",
   };
 }

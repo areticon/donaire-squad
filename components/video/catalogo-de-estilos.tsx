@@ -5,6 +5,7 @@ import { Check, Loader2, PenLine, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CATALOGO_DE_ESTILOS,
+  CUSTO_DAS_INSERCOES_IA,
   ESTILOS_COM_BIBLIA,
   GRUPOS,
   MOVIMENTOS_DE_CAMERA,
@@ -288,6 +289,34 @@ export function CatalogoDeEstilos({
             )}
           </div>
 
+          {/* COMO O DIRETOR EDITA (03/10): o corte limpo profissional é o padrão de
+              toda linguagem; as inserções de IA (imagem e cena geradas) só com
+              a chave ligada aqui, com o custo dito na própria tela. */}
+          <section className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }} aria-labelledby="insercoes-ia">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p id="insercoes-ia" className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Inserções de IA (imagens e cenas geradas)
+                </p>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  {escolha.insercoesIA
+                    ? `Ligadas: o diretor planeja imagens e cenas de cinema na linguagem escolhida. Custa ${CUSTO_DAS_INSERCOES_IA.texto}, e o planejamento leva alguns minutos a mais.`
+                    : "Desligadas (padrão): corte limpo profissional, com você na tela, cortes nas pausas, punch-in nas ênfases, poucas cartelas de texto e legenda. A linguagem escolhida define a legenda, as cartelas e o som. Dentro do roteiro, dá para pedir uma imagem numa cena específica."}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(escolha.insercoesIA)}
+                onClick={() => setEscolha({ ...escolha, insercoesIA: !escolha.insercoesIA })}
+                className={cn("relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors", escolha.insercoesIA ? "bg-orange-500" : "bg-neutral-500/40")}
+                title={escolha.insercoesIA ? "Desligar as inserções de IA" : "Ligar as inserções de IA"}
+              >
+                <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", escolha.insercoesIA ? "translate-x-5" : "translate-x-0.5")} />
+              </button>
+            </div>
+          </section>
+
           {/* NOSSOS MELHORES MODELOS: os de bíblia completa, na ordem da lista. */}
           <section aria-labelledby="estilos-melhores">
             <div className="mb-2">
@@ -393,6 +422,7 @@ export function CatalogoDeEstilos({
         {escolha.camera.length ? ` · Câmera: ${nomes(escolha.camera, MOVIMENTOS_DE_CAMERA)}` : ""}
         {escolha.efeitos.length ? ` · Efeitos: ${nomes(escolha.efeitos, EFEITOS)}` : ""}
         {escolha.look ? ` · Look: ${LOOKS.find((l) => l.id === escolha.look)?.nome}` : ""}
+        {escolha.insercoesIA ? " · Inserções de IA ligadas" : " · Corte limpo, sem imagem gerada"}
         {estilo ? `. Nos cortes verticais, o ritmo é "${ESTILOS[estilo.base].rotulo}"` : ""}
         {legenda
           ? legenda.escolha.modo === "sem"
