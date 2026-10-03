@@ -52,7 +52,7 @@ import {
   frasesNumeradas,
   gerarInsercoes,
   pedirVideosDasInsercoes,
-  TETO_DE_VIDEOS,
+  tetoDeVideos,
   type PedidoDeVideo,
   medidasDaEdicao,
   referenciaParaOEditor,
@@ -62,8 +62,10 @@ import {
   type EdicaoDoEditor,
   type EdicaoResolvida,
 } from "@/lib/media/editor-sob-medida";
+import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import { escreverBloco, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
 import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
+import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
 import { adensarCorte, arejarCorte, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 
@@ -606,7 +608,7 @@ export type SobMedidaDoCorte = {
   rosto?: Retangulo | null;
   gancho?: { inicio: number; fim: number; soco: string } | null;
   editor?: EdicaoDoEditor | null;
-  insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  insercoes?: Record<string, MidiaDaInsercao>;
   /** Os vídeos das inserções pedidos à Higgsfield (03/10, segunda volta): entram no final. */
   videos?: PedidoDeVideo[];
   edicao?: EdicaoResolvida | null;
@@ -617,6 +619,8 @@ export type SobMedidaDoCorte = {
   custoImagensUsd?: number;
   medidas?: Record<string, number>;
   avisos?: string[];
+  /** O crédito dos B-rolls de banco (a API do Pexels pede o link de volta onde o app mostra o resultado). */
+  creditos?: string[];
   /** O worker reiniciou com o pedido na fila: a próxima passada reenvia a mesma fase. */
   reenviar?: boolean;
   desistiu?: string | null;
@@ -668,7 +672,7 @@ export function resolverCorteSobMedida(
   t: TrechoComMontagem,
   sm: SobMedidaDoCorte,
   editor: EdicaoDoEditor,
-  insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>
+  insercoes: Record<string, MidiaDaInsercao>
 ): { edicao: EdicaoResolvida; avisos: string[] } {
   const ctx = contexto(video as VideoDoPasso, t);
   const r = resolverEdicao(editor, {
@@ -683,6 +687,7 @@ export function resolverCorteSobMedida(
     comLegenda: ctx.legenda.mostrar,
     logoUrl: video.project.logoUrl ?? null,
     insercoes,
+    ritmo: "corte",
   });
   const ar = arejarCorte(r.edicao, DURACAO_MINIMA_DA_PECA);
   const a = adensarCorte(ar.edicao, DURACAO_MAXIMA_DA_PECA);
@@ -712,7 +717,7 @@ export async function entradaDoCorte(
     quadros,
     projectId: video.projectId,
     referenciaDeUso: `${video.id}/${indice}`,
-    instrucoes: instrucoesDoCorte({ duracao: fala.duracao, titulo: t.titulo }),
+    instrucoes: instrucoesDoCorte({ duracao: fala.duracao, titulo: t.titulo, videos: tetoDeVideos("corte") }),
     timeoutMs: PRAZO_DO_EDITOR_NO_CORTE_MS,
     tentativas: 1,
   };
@@ -763,11 +768,15 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     if (!parte.momentos.length) throw new Error(`o editor não devolveu edição (${parte.erro ?? "sem momentos"})`);
     const { erro: _erro, ...editor } = parte;
     void _erro;
-    const ins = await gerarInsercoes(editor, { formato: "9:16", projectId: video.projectId, teto: 2 });
+    const ins = await gerarInsercoes(editor, { formato: "9:16", projectId: video.projectId, teto: tetoDeVideos("corte") });
+    // O B-ROLL de banco (03/10, terceira volta): sem PEXELS_API_KEY, o corte segue sem ele.
+    const so = brollsQueCabem(editor, ins.insercoes, (x) => resolverCorteSobMedida(video, t, sm, editor, x).edicao);
+    const broll = await gerarBrolls(editor, { formato: "9:16", projectId: video.projectId, referencia: `${video.id}-corte-${indice}`, teto: 8, prazoMs: 60_000, so }).catch((e) => ({ insercoes: {}, custoUsd: 0, erros: [`B-roll falhou: ${e instanceof Error ? e.message.slice(0, 120) : e}`], fonte: null, creditos: [] as string[] }));
+    ins.insercoes = { ...ins.insercoes, ...broll.insercoes };
     const r = resolverCorteSobMedida(video, t, sm, editor, ins.insercoes);
     // A HIGGSFIELD DE VERDADE (03/10, segunda volta): as inserções viram vídeo
     // de cinema; o pedido sai agora e o vídeo entra no final (a prévia usa a foto).
-    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato: "9:16", referencia: `${video.id}-corte-${indice}`, teto: TETO_DE_VIDEOS.corte, duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
+    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato: "9:16", referencia: `${video.id}-corte-${indice}`, teto: tetoDeVideos("corte"), duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
     const novo: SobMedidaDoCorte = {
       ...sm,
       editor,
@@ -777,7 +786,8 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
       fase: "previa",
       custoImagensUsd: ins.custoUsd,
       medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) },
-      avisos: r.avisos.slice(0, 30),
+      avisos: [...r.avisos, ...broll.erros].slice(0, 30),
+      creditos: broll.creditos,
     };
     await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, custoUsd: ins.custoUsd, sobMedida: novo }, tomado);
   } catch (e) {
@@ -806,7 +816,7 @@ export function pedidoDoCorteSobMedida(video: VideoDoPasso, indice: number, t: T
     trecho: { sourceUrl: video.blobUrl, inicio, duracao: fim - inicio, manter: sm.fala!.manter, pessoa: ctx.pessoa, quadro: sm.quadro },
     edicao: sm.edicao,
     escala: final ? 1 : 0.5,
-    gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
+    gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: sm.edicao?.tema?.acento ?? ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
     trilha: final && video.project.videoMusicUrl ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
     // A GUARDA NA SAÍDA (03/10): só o final; a prévia não vai ao cliente.
     guardaDaFala: final ? pedidoDaGuarda(video.id, `corte ${indice} sob medida`, base) : null,

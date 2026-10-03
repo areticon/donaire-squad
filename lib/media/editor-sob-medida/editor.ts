@@ -42,7 +42,10 @@ const SISTEMA = `Você é o editor de vídeo e motion designer sênior da Demand
 3. Para cada um, escolha a peça do catálogo que melhor DESENHA aquilo e escreva o texto dela com as palavras do próprio falante, curtas. Nada de inventar número, nome, dado ou promessa que não foi dito.
 4. Use os QUADROS: eles mostram o que a câmera vê. Se a pessoa mostra um objeto ou lugar, NUNCA cubra a demonstração com peça de tela, de lado ou inserção. Seta, círculo e câmera com foco só com a CÂMERA PARADA (tripé: o mesmo fundo nos quadros vizinhos) e o objeto visível no mesmo lugar nos quadros daquele trecho; em gravação de mão (tour, selfie andando, o quadro muda a cada segundo) o objeto foge do alvo: nomeie o que se vê com rótulo inferior ou palavra-chave, sem apontar.
 5. Câmera: o código já alterna aberto, médio e fechado no ritmo das frases. Você só pede câmera quando ela deve ir a um lugar (o objeto mostrado, um detalhe), com zoom de 1,3 a 1,8 e o foco certo.
-6. INSERÇÃO CINEMATOGRÁFICA (vídeo gerado na Higgsfield, 3 a 5 s, entra com zoom através e luz): onde a fala pede IMAGEM que a gravação não tem: uma metáfora visual ("a tenda que se alarga", "a semente no chão seco"), um lugar, uma época, uma cena bíblica, um objeto. Escreva o pedido como briefing de diretor de fotografia, em inglês: assunto, lugar, luz, lente, enquadramento, movimento de câmera (slow dolly in, aerial pull back, macro rack focus), clima, cor. NUNCA pessoa real ou rosto reconhecível: gente só de costas, em silhueta, mãos, ou plano aberto em que ninguém é identificável; figura bíblica só se a fala é sobre ela, de costas ou em plano aberto, com roupa da época. Sem texto, sem marca. FREQUÊNCIA: no vídeo longo, 1 a cada 30 a 60 s de fala (nos trechos de história, metáfora e virada, não em lista ou número); "de" na palavra que pede a imagem, 3 a 5 s de duração.
+6. INSERÇÃO CINEMATOGRÁFICA (vídeo gerado na Higgsfield, 3 a 5 s, entra com zoom através e luz): onde a fala pede IMAGEM que a gravação não tem: uma metáfora visual ("a tenda que se alarga", "a semente no chão seco"), um lugar, uma época, uma cena bíblica, um objeto. Escreva o pedido como briefing de diretor de fotografia, em inglês: assunto, lugar, luz, lente, enquadramento, movimento de câmera (slow dolly in, aerial pull back, macro rack focus), clima, cor. NUNCA pessoa real ou rosto reconhecível: gente só de costas, em silhueta, mãos, ou plano aberto em que ninguém é identificável; figura bíblica só se a fala é sobre ela, de costas ou em plano aberto, com roupa da época. Sem texto, sem marca. FREQUÊNCIA: no vídeo longo, 1 a cada 45 a 60 s de fala (nos trechos de história, metáfora, lugar e virada, não em lista ou número), sempre onde a fala PEDE imagem; "de" na palavra que pede a imagem, 3 a 5 s de duração.
+
+7. B-ROLL REAL (vídeo de banco, imagem DE VERDADE): vídeo profissional corta para imagem real várias vezes por minuto. Sempre que a fala cita um OBJETO, um LUGAR, uma AÇÃO ou uma METÁFORA VISUAL que existe no mundo (pão, estrada, cidade à noite, mãos trabalhando, relógio, escada, mar, obra, escritório, colheita, teto de igreja), peça um B-roll em "broll": "consulta" em INGLÊS, CURTA e CONCRETA, de 2 a 4 palavras, do jeito que se busca num banco de vídeo ("hands kneading dough", "church ceiling fresco", "busy office desk", "sunrise over field"). Nada abstrato ("success", "faith", "productivity" não acham imagem boa): traduza a ideia numa cena filmável. A imagem mostra o que a frase DIZ (o objeto, o lugar, a ação ditos ou a cena narrada), nunca uma associação solta: quem vê precisa ligar a imagem à palavra na hora. Duração de 1,5 a 3 s ("de" na palavra que pede a imagem, "ate" 2 a 3 s depois). FREQUÊNCIA: 1 a cada 15 a 25 s de fala no vídeo longo. Nunca sobre uma demonstração da pessoa, nem colado em tela cheia ou cartão (a pessoa volta entre eles). O que NÃO existe em banco (cena bíblica, figura histórica, conceito, época) vai em "insercoes" (gerado na Higgsfield), não em "broll".
+8. ZOOM DE SOCO: em "enfases", as palavras-chave da fala que merecem um soco de câmera (o número, o nome, a palavra da tese, a virada), uma a cada 4 a 8 s, como âncoras de palavra ("F3:melhor"). O código fecha a câmera de uma vez nessa palavra.
 
 # DENSIDADE (o pitch tem forma na tela quase o tempo todo; não economize)
 - Peças cobrindo de 65% a 85% do tempo; uma peça nova a cada 4 a 8 s. Um vídeo de 4 min pede 30 a 45 momentos; um bloco de 5 min, 35 a 55.
@@ -79,7 +82,9 @@ Só um JSON, sem texto antes ou depois:
     { "id": "m1", "peca": "linha-do-tempo", "de": "F12:três", "ate": "F15/fim", "eventos": ["F13:primeiro", "F14:segundo", "F15:terceiro"], "props": { ... }, "porque": "curto" }
   ],
   "camera": [ { "de": "F20:mesa", "ate": "F21/fim", "zoom": 1.5, "foco": { "x": 0.62, "y": 0.7 }, "porque": "ele mostra a mesa" } ],
-  "insercoes": [ { "id": "i1", "de": "F30:barco", "ate": "F31/fim", "briefing": "...", "porque": "..." } ]
+  "insercoes": [ { "id": "i1", "de": "F30:barco", "ate": "F31/fim", "briefing": "...", "porque": "..." } ],
+  "broll": [ { "id": "b1", "de": "F8:pão", "ate": "F8/fim", "consulta": "hands kneading dough", "porque": "ele fala do pão" } ],
+  "enfases": ["F3:melhor", "F9:excelência"]
 }
 
 # O CATÁLOGO DE PEÇAS
@@ -194,12 +199,14 @@ ${tarefa}${e.instrucoes ? `\n\n${e.instrucoes}` : ""}`, quadros, e, e.instrucoes
         momentos: j.momentos.filter((m) => dentro(m.de)).map((m, i) => ({ ...m, id: `p${k + 1}-${String(m.id ?? i + 1).replace(/^p\d+-/, "")}` })),
         camera: (j.camera ?? []).filter((c) => dentro(c.de)),
         insercoes: (j.insercoes ?? []).filter((x) => dentro(x.de)).map((x, i) => ({ ...x, id: `p${k + 1}-${String(x.id ?? `i${i + 1}`).replace(/^p\d+-/, "")}` })),
+        broll: (Array.isArray(j.broll) ? j.broll : []).filter((x) => x && x.consulta && dentro(x.de)).map((x, i) => ({ ...x, id: `p${k + 1}-${String(x.id ?? `b${i + 1}`).replace(/^p\d+-/, "")}` })),
+        enfases: (Array.isArray(j.enfases) ? j.enfases : []).map(String).filter(dentro),
       };
     } catch (err) {
       ultimoErro = err instanceof Error ? err.message.slice(0, 160) : String(err);
     }
   }
-  return { leitura: "", momentos: [], camera: [], insercoes: [], erro: ultimoErro || "falhou" };
+  return { leitura: "", momentos: [], camera: [], insercoes: [], broll: [], enfases: [], erro: ultimoErro || "falhou" };
 }
 
 /** Junta as partes na edição do vídeo inteiro. */
@@ -209,6 +216,8 @@ export function juntarPartes(partes: ParteDaEdicao[]): EdicaoDoEditor {
     momentos: partes.flatMap((p) => p.momentos),
     camera: partes.flatMap((p) => p.camera ?? []),
     insercoes: partes.flatMap((p) => p.insercoes ?? []),
+    broll: partes.flatMap((p) => p.broll ?? []),
+    enfases: partes.flatMap((p) => p.enfases ?? []),
   };
 }
 

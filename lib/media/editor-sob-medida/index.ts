@@ -101,13 +101,26 @@ const GUARDA_DO_VIDEO =
   " Cinematic footage, shallow depth of field, rich natural light, subtle film grain. The camera is ALWAYS moving: a continuous, clearly visible dolly, crane, orbit or push-in from the first to the last frame, with parallax; never a static shot. No recognizable person and no face close-up: people only from behind, in silhouette, as hands or far away. Never a real public figure. No text, no letters, no captions, no logos, no watermark.";
 
 /**
- * Quantas inserções viram VÍDEO (Kling 3.0 Pro na Higgsfield, ~US$ 0,45 por
- * 4 s). As outras ficam como foto com movimento. O teto existe pela régua de
- * R$ 0,027 por crédito (lib/media/limits.ts): o completo paga 4 cenas de
- * cinema no fixo e o corte paga 1 a 2 no preço dele. EDITOR_SOB_MEDIDA_VIDEOS
- * troca o teto do completo.
+ * Quantas inserções viram VÍDEO (Kling 3.0 Pro na Higgsfield, ~US$ 0,11 por
+ * segundo, 3 a 5 s cada). As outras ficam como foto com movimento.
+ *
+ * Decisão do dono em 03/10 (terceira volta): MAIS cinema por vídeo. No
+ * completo, 1 a cada ~50 s de fala (um vídeo de 20 min tem ~24, eram 4); no
+ * corte, 4. O B-roll de banco cobre o resto da imagem real. Isso passa da
+ * régua de R$ 0,027 por crédito com o preço de hoje (a conta está no relatório
+ * de 03/10); as variáveis ajustam sem deploy:
+ *   EDITOR_SOB_MEDIDA_VIDEOS        teto FIXO do completo (sem ela, pela duração)
+ *   EDITOR_SOB_MEDIDA_VIDEOS_POR_MIN quantos por minuto no completo (padrão 1,2)
+ *   EDITOR_SOB_MEDIDA_VIDEOS_CORTE  teto do corte (padrão 4)
  */
-export const TETO_DE_VIDEOS = { completo: Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS ?? 4), corte: 2 };
+export function tetoDeVideos(alvo: "completo" | "corte", minutos = 0): number {
+  if (alvo === "corte") return Math.max(0, Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS_CORTE ?? 4));
+  if (process.env.EDITOR_SOB_MEDIDA_VIDEOS) return Math.max(0, Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS));
+  const porMin = Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS_POR_MIN ?? 1.2);
+  return Math.max(4, Math.round(minutos * porMin));
+}
+/** Compatível com as provas antigas: o teto do corte e o do completo sem duração. */
+export const TETO_DE_VIDEOS = { completo: tetoDeVideos("completo"), corte: tetoDeVideos("corte") };
 
 export type PedidoDeVideo = { id: string; referencia: string; chave: string; custoEstimadoUsd: number };
 

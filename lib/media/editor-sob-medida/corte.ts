@@ -64,7 +64,7 @@ export function noQuadroDoCorte(r: Retangulo, q: Retangulo): Retangulo {
  * O que o editor recebe a mais no corte. Vale sobre as regras gerais de
  * densidade do prompt (as do vídeo longo).
  */
-export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null }): string {
+export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; videos?: number }): string {
   const s = Math.round(p.duracao);
   return [
     `# ESTE É UM CORTE CURTO VERTICAL (${s} s, 9:16, Reels, Shorts e TikTok). As regras abaixo valem sobre as de densidade do vídeo longo.`,
@@ -78,7 +78,9 @@ export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null }
     `- PROFUNDIDADE: 1 "titulo-atras" no corte (a palavra-tese gigante atrás da pessoa recortada), de preferência na virada ou na frase mais forte.`,
     `- TELAS QUE IMPRESSIONAM: pelo menos 2 peças de tela cheia com palco (câmera em movimento) no corte, escolhidas entre as de DADOS e ESTRUTURA quando a fala permite: "passos-foco" (N passos, um aceso), "numero" (contador), "grafico-linha", "linha-do-tempo", "escada", "cartoes", "comparacao"; senão "frase-impacto" ou "citacao". O corte que é só título sobre a pessoa é a edição que o dono reprovou.`,
     `- "titulo" no máximo 2 vezes no corte (no 9:16 ele sai como letra grande sem tarja); entre eles, use "sublinhado", "palavra-chave", "icone" e "pergunta-resposta".`,
-    `- INSERÇÃO CINEMATOGRÁFICA (vídeo da Higgsfield): 1 a 2 no corte, de 3,5 a 4,5 s cada (de "de" a "ate" pelo menos 3,5 s de fala), na metáfora, no lugar ou na cena que a fala pede; o briefing SEMPRE com movimento de câmera forte (dolly in, crane up, orbit); nunca no gancho dos primeiros 2 s (ali é o rosto e o título).`,
+    `- INSERÇÃO CINEMATOGRÁFICA (vídeo gerado na Higgsfield): ${p.videos ?? 4} no corte (${Math.max(2, (p.videos ?? 4) - 1)} a ${p.videos ?? 4}), de 2,5 a 3,5 s cada, onde a fala PEDE imagem: a metáfora, o lugar, a época, a cena bíblica ou histórica (de costas, em plano aberto). O briefing SEMPRE com movimento de câmera forte (dolly in, crane up, orbit); nunca no gancho dos primeiros 2 s (ali é o rosto e o título), e o rosto volta por pelo menos 2 s entre duas imagens.`,
+    `- B-ROLL REAL ("broll", vídeo de banco): cobre o resto da imagem real, 1 a cada 10 a 15 s (num corte de ${s} s, ${Math.max(1, Math.round(s / 15))} a ${Math.max(2, Math.round(s / 10))}), de 1,5 a 3 s cada, na palavra que cita um objeto, um lugar ou uma ação do mundo real; consulta em inglês de 2 a 4 palavras concretas. Nunca nos primeiros 2 s.`,
+    `- RITMO DE CORTE: a imagem muda a cada 2 a 4 s (peça nova, B-roll, tela, ou a câmera que fecha e abre; o código troca o enquadramento entre elas). Marque em "enfases" ${Math.max(4, Math.round(s / 6))} a ${Math.max(6, Math.round(s / 4))} palavras-chave para o ZOOM DE SOCO.`,
     `- Sem "fecho" com marca no fim, a menos que a pessoa faça uma chamada para ação no próprio trecho.`,
   ]
     .filter(Boolean)
@@ -123,7 +125,10 @@ export function arejarCorte(ed: EdicaoResolvida, minimo: Record<string, number>)
   const mudancas: string[] = [];
   let camadas = ed.camadas.map((c) => ({ ...c, props: { ...c.props } }));
   let planos = [...(ed.planos ?? [])].sort((a, b) => a.de - b.de);
-  const sobPlano = (c: { de: number; ate: number }) => planos.some((p) => p.de < c.ate && p.ate > c.de);
+  // Só a TELA CHEIA segura o título no lugar dele; sobre inserção ou B-roll ele desce
+  // igual (prova de 03/10, terceira volta: o título do gancho cruzava a inserção, ficou
+  // no meio e cobriu o rosto).
+  const sobPlano = (c: { de: number; ate: number }) => planos.some((p) => p.tipo !== "insercao" && p.de < c.ate && p.ate > c.de);
   for (const c of camadas) {
     if ((c.peca === "titulo" || c.peca === "pergunta-resposta") && !sobPlano(c) && c.props.posicao !== "baixo") {
       c.props.posicao = "baixo";
@@ -160,4 +165,22 @@ export function densidadeDoCorte(ed: EdicaoResolvida): number {
   const D = Math.max(1, ed.duracao);
   const soma = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao").reduce((s, c) => s + (c.ate - c.de), 0);
   return +(soma / D).toFixed(3);
+}
+
+/**
+ * O RITMO MEDIDO (03/10, terceira volta): o maior trecho sem nenhuma troca
+ * visual (peça que entra ou sai, plano que muda, câmera que corta) e quantas
+ * trocas por minuto. O pedido do dono: troca a cada 2 a 4 s no corte, nunca
+ * mais de 4 s de rosto parado.
+ */
+export function ritmoDoCorte(ed: EdicaoResolvida): { maiorParado: number; trocasPorMinuto: number } {
+  const D = Math.max(1, ed.duracao);
+  const ts = new Set<number>([0, D]);
+  for (const c of ed.camadas) if (c.peca !== "moldura-do-cartao") [c.de, c.ate].forEach((x) => ts.add(+x.toFixed(2)));
+  for (const p of ed.planos ?? []) [p.de, p.ate].forEach((x) => ts.add(+x.toFixed(2)));
+  for (const c of ed.camera ?? []) ts.add(+c.de.toFixed(2));
+  const lista = [...ts].filter((x) => x >= 0 && x <= D).sort((a, b) => a - b);
+  let maior = 0;
+  for (let i = 1; i < lista.length; i++) maior = Math.max(maior, lista[i] - lista[i - 1]);
+  return { maiorParado: +maior.toFixed(2), trocasPorMinuto: +((lista.length - 2) / (D / 60)).toFixed(1) };
 }

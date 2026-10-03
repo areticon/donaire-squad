@@ -57,7 +57,7 @@ import {
   concluirVideosDasInsercoes,
   duracoesDasInsercoes,
   pedirVideosDasInsercoes,
-  TETO_DE_VIDEOS,
+  tetoDeVideos,
   type PedidoDeVideo,
   instantesParaOEditor,
   medidasDaEdicao,
@@ -70,6 +70,8 @@ import {
   type EdicaoResolvida,
 } from "@/lib/media/editor-sob-medida";
 import { blocosDoEditor, escreverBloco, juntarPartes, type BlocoDoEditor, type EntradaDoEditor, type ParteDaEdicao } from "@/lib/media/editor-sob-medida/editor";
+import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
+import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import {
   demonstracaoNaFala,
   insercoesDoPlano,
@@ -276,7 +278,7 @@ export type EstadoDoSobMedida = {
   estiloId: string;
   blocos: Array<BlocoDoEditor & { parte?: ParteDaEdicao | null }>;
   editor?: EdicaoDoEditor | null;
-  insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  insercoes?: Record<string, MidiaDaInsercao>;
   /** Os vídeos das inserções pedidos à Higgsfield (03/10, segunda volta): entram no final. */
   videos?: PedidoDeVideo[];
   edicao?: EdicaoResolvida | null;
@@ -287,6 +289,8 @@ export type EstadoDoSobMedida = {
   custoImagensUsd?: number;
   medidas?: Record<string, number>;
   avisos?: string[];
+  /** O crédito dos B-rolls de banco (a API do Pexels pede o link de volta onde o app mostra o resultado). */
+  creditos?: string[];
   desistiu?: string | null;
 };
 
@@ -1822,7 +1826,7 @@ async function entradaDoEditor(v: VideoDoCompleto, m: MontagemDoCompleto, quadro
   };
 }
 
-function resolverSobMedida(v: VideoDoCompleto, m: MontagemDoCompleto, editor: EdicaoDoEditor, insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>) {
+function resolverSobMedida(v: VideoDoCompleto, m: MontagemDoCompleto, editor: EdicaoDoEditor, insercoes: Record<string, MidiaDaInsercao>) {
   const sm = m.sobMedida!;
   const analise = m.analise!;
   const { marca, legenda } = contextoVisual(v);
@@ -1866,10 +1870,14 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
     }
     const formato = lido.analise!.altura > lido.analise!.largura ? "9:16" : "16:9";
     const ins = await gerarInsercoes(editor, { formato, projectId: v.projectId });
+    // O B-ROLL de banco (03/10, terceira volta): 1 a cada 15 a 25 s; sem PEXELS_API_KEY, segue sem ele.
+    const so = brollsQueCabem(editor, ins.insercoes, (x) => resolverSobMedida(v, lido, editor, x).edicao);
+    const broll = await gerarBrolls(editor, { formato, projectId: v.projectId, referencia: `${v.id}-completo`, teto: 80, prazoMs: 120_000, so }).catch((e) => ({ insercoes: {}, custoUsd: 0, erros: [`B-roll falhou: ${e instanceof Error ? e.message.slice(0, 120) : e}`], fonte: null, creditos: [] as string[] }));
+    ins.insercoes = { ...ins.insercoes, ...broll.insercoes };
     const r = resolverSobMedida(v, lido, editor, ins.insercoes);
     // A HIGGSFIELD DE VERDADE (03/10, segunda volta): as primeiras inserções viram vídeo de cinema (teto pela régua de preço); entram no final.
-    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato, referencia: `${v.id}-completo`, teto: TETO_DE_VIDEOS.completo, duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
-    const novo: EstadoDoSobMedida = { ...sm, blocos, editor, insercoes: ins.insercoes, videos: videos.pedidos, edicao: r.edicao, fase: "previa", custoImagensUsd: ins.custoUsd, medidas: medidasDaEdicao(r.edicao), avisos: r.avisos.slice(0, 30) };
+    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato, referencia: `${v.id}-completo`, teto: tetoDeVideos("completo", lido.fala!.duracao / 60), duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
+    const novo: EstadoDoSobMedida = { ...sm, blocos, editor, insercoes: ins.insercoes, videos: videos.pedidos, edicao: r.edicao, fase: "previa", custoImagensUsd: ins.custoUsd, medidas: medidasDaEdicao(r.edicao), avisos: [...r.avisos, ...broll.erros].slice(0, 30), creditos: broll.creditos };
     await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
   } catch (e) {
     await desistirDoSobMedida(v.id, tomado, `o editor falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);

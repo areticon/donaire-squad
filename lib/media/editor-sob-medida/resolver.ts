@@ -1,5 +1,6 @@
 import { frasesDaFala } from "@/lib/media/diretor-limpo";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
+import { acentoApagado, acentoVivo } from "@/lib/media/editor-sob-medida/cor";
 import { FICHAS, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type {
   Ancora,
@@ -8,6 +9,7 @@ import type {
   EdicaoDoEditor,
   EdicaoResolvida,
   Enquadramento,
+  MidiaDaInsercao,
   PlanoResolvido,
   Tema,
   Visual,
@@ -73,7 +75,9 @@ export function resolverAncora(a: Ancora, frases: Frase[], palavras: PalavraNoCo
 /** O acabamento e a letra de cada estilo (as cores são sempre as da marca). */
 export function temaDoEstilo(estiloId: string | null | undefined, cores: { acento: string; escuro: string; claro: string }): Tema {
   const id = estiloId ?? "lousa";
-  const base = { ...cores, fonteTexto: "Geist", fonteMono: "Geist Mono" };
+  // A COR VIVA (03/10, terceira volta): acento apagado brilha no matiz dele; o original fica para a identidade.
+  const acento = acentoApagado(cores.acento) ? acentoVivo(cores.acento) : cores.acento;
+  const base = { ...cores, acento, acentoMarca: cores.acento, fonteTexto: "Geist", fonteMono: "Geist Mono" };
   const t = (visual: Visual, fonteTitulo: string, pesoTitulo: number, caixaAlta: boolean): Tema => ({ ...base, visual, fonteTitulo, pesoTitulo, caixaAlta });
   if (["hormozi", "mrbeast", "tipografia", "ugc", "vlog"].includes(id)) return t("impacto", "Archivo Black", 400, true);
   if (id === "consorcio") return t("impacto", "Oswald", 700, true);
@@ -132,7 +136,8 @@ const ZOOMS = { aberto: 1, medio: 1.12, fechado: 1.24 } as const;
  * do Dan Martell e do Hormozi), com o foco no rosto. Nos estilos de aula e
  * documentário cada plano ainda empurra devagar (100% a 107%).
  */
-export function cameraDeRitmo(frases: Frase[], duracao: number, rosto: Retangulo, estiloId: string | null | undefined): Enquadramento[] {
+export function cameraDeRitmo(frases: Frase[], duracao: number, rosto: Retangulo, estiloId: string | null | undefined, palavras?: PalavraNoCorte[], suave = false): Enquadramento[] {
+  if (palavras?.length) return cameraDeCorte(palavras, duracao, rosto, suave);
   const empurra = ["lousa", "documentario", "johnny-harris", "keynote", "vox", "bbc"].includes(estiloId ?? "");
   const ciclo: Array<keyof typeof ZOOMS> = ["medio", "fechado", "aberto", "fechado", "medio", "aberto"];
   const x = Math.min(0.85, Math.max(0.15, rosto.x + rosto.w / 2));
@@ -157,6 +162,48 @@ export function cameraDeRitmo(frases: Frase[], duracao: number, rosto: Retangulo
   }
   if (duracao - de > 0.05) saida.push({ de, ate: duracao, zoom: 1, x, y, movimento: "fixo" });
   return saida;
+}
+
+/**
+ * O RITMO DO CORTE (03/10, terceira volta): no vertical curto a câmera muda a
+ * cada 2 a 3,6 s, sempre na fronteira entre duas palavras (nunca no meio
+ * de uma), alternando aberto, médio e fechado; cada plano ainda empurra 4%
+ * devagar, então o rosto nunca fica parado. É o corte de câmera dos shorts.
+ */
+export function cameraDeCorte(palavras: PalavraNoCorte[], duracao: number, rosto: Retangulo, suave = false): Enquadramento[] {
+  // O documental (Vox, BBC, documentário) corta menos e mais perto: planos de 2,8 a 4 s, zoom até 1,12.
+  const ciclo = suave ? [1.04, 1.12, 1, 1.08] : [1.1, 1.22, 1, 1.16, 1.06, 1.26];
+  const [minimo, base, maximo] = suave ? [2.8, 3.2, 4] : [2, 2.4, 3.6];
+  const x = Math.min(0.85, Math.max(0.15, rosto.x + rosto.w / 2));
+  const y = Math.min(0.75, Math.max(0.2, rosto.y + rosto.h * 0.55));
+  const saida: Enquadramento[] = [];
+  let de = 0;
+  let k = 0;
+  while (duracao - de > 0.05) {
+    const alvo = de + base + (k % 3) * 0.4;
+    // A fronteira de palavra mais perto do alvo, entre 2 e 3,6 s depois do começo.
+    let corte = Math.min(duracao, alvo);
+    let melhor = Infinity;
+    for (const p of palavras) {
+      if (p.inicio < de + minimo || p.inicio > de + maximo) continue;
+      const d = Math.abs(p.inicio - alvo);
+      if (d < melhor) {
+        melhor = d;
+        corte = p.inicio - 0.02;
+      }
+    }
+    if (duracao - corte < 1.6) corte = duracao;
+    const zoom = ciclo[k % ciclo.length];
+    saida.push({ de: +de.toFixed(3), ate: +corte.toFixed(3), zoom, x, y, movimento: "empurrao", zoomFinal: +(zoom * 1.04).toFixed(3) });
+    de = corte;
+    k++;
+  }
+  return saida;
+}
+
+/** O zoom da câmera num instante (1 fora de todo enquadramento). */
+function zoomEm(camera: Enquadramento[], t: number): number {
+  return camera.find((c) => c.de <= t && c.ate > t)?.zoom ?? 1;
 }
 
 /** Junta a câmera pedida pelo editor (zoom no que se mostra) por cima do ritmo. */
@@ -211,7 +258,9 @@ export type ContextoDaResolucao = {
   comLegenda: boolean;
   logoUrl: string | null;
   /** As inserções já geradas (id -> url). As que faltam caem. */
-  insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  insercoes: Record<string, MidiaDaInsercao>;
+  /** "corte": o vídeo curto vertical (câmera a cada 2 a 3,6 s, B-roll depois dos 2 s do gancho). */
+  ritmo?: "corte" | "longo";
 };
 
 export type MomentoResolvido = CamadaResolvida & { ficha: FichaDaPeca; plano: "cheio" | "grafico" | "cartao" };
@@ -321,15 +370,62 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const a = t(ins.de);
     const b = t(ins.ate);
     if (a === null || b === null) continue;
-    const de = Math.max(0, a - 0.05);
-    const ate = Math.min(D, Math.min(de + 5, Math.max(b + 0.2, de + 3.2)));
-    if (planos.some((p) => p.de < ate && p.ate > de)) {
-      avisos.push(`${id}: inserção caiu (cruza uma peça de tela ou de lado)`);
+    // No corte, os 2 primeiros segundos são do rosto e do título (o gancho).
+    const de = Math.max(ctx.ritmo === "corte" ? 2 : 0, a - 0.05);
+    // No corte a cena de cinema é curta (2,6 a 3,6 s: são 3 a 4 por corte e o rosto volta entre elas); no longo, 3,2 a 5 s.
+    const [minIns, maxIns] = ctx.ritmo === "corte" ? [2.6, 3.6] : [3.2, 5];
+    const ate = Math.min(D, Math.min(de + maxIns, Math.max(b + 0.2, de + minIns)));
+    const gap = ctx.ritmo === "corte" ? 1.5 : 0;
+    if (planos.some((p) => p.de < ate + gap && p.ate > de - gap)) {
+      avisos.push(`${id}: inserção caiu (cruza ou encosta numa peça de tela, de lado ou outra inserção)`);
       continue;
     }
     planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "insercao", midia: id });
   }
   planos.sort((a, b) => a.de - b.de);
+
+  // 4b. O B-ROLL de banco (03/10, terceira volta): 1,5 a 3 s de imagem real na
+  // palavra que a pede. Não cobre demonstração (câmera pedida, seta, círculo),
+  // nem o título de trás (a pessoa recortada é da gravação), e nunca encosta
+  // em tela cheia, cartão ou outra inserção: o rosto volta entre eles.
+  const camerasPedidas = (e.camera ?? []).map((c) => [t(c.de), t(c.ate)]).filter((x): x is [number, number] => x[0] !== null && x[1] !== null);
+  const naoCobre = new Set(["titulo-atras", "seta", "circulo", "fecho"]);
+  const inicioMinimo = ctx.ritmo === "corte" ? 2 : 1;
+  for (const [k, b] of (e.broll ?? []).entries()) {
+    const id = String(b.id ?? `b${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `b${k + 1}`;
+    const midia = ctx.insercoes[id];
+    if (!midia || midia.origem !== "banco") continue;
+    const a = t(b.de);
+    const z = t(b.ate);
+    if (a === null || z === null) continue;
+    let de = Math.max(inicioMinimo, a - 0.05);
+    const dur = Math.min(3, Math.max(1.5, z + 0.1 - de));
+    // O rosto volta por pelo menos 0,8 s entre duas imagens. Se encosta, o
+    // B-roll DESLIZA para depois do que atrapalha, enquanto a fala ainda é
+    // dele (até 1,5 s depois do "ate"); só cai se não couber.
+    const folga = 0.8;
+    const bate = (x: number, y: number) => planos.find((p) => p.de < y + folga && p.ate > x - folga);
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const b0 = bate(de, de + dur);
+      if (!b0) break;
+      de = b0.ate + folga;
+    }
+    const ate = Math.min(D - 0.4, de + dur);
+    if (ate - de < 1.4 || de > z + 1.5) {
+      avisos.push(`${id}: B-roll caiu (sem espaço perto da palavra)`);
+      continue;
+    }
+    if (bate(de, ate)) {
+      avisos.push(`${id}: B-roll caiu (encosta numa tela, cartão ou inserção)`);
+      continue;
+    }
+    if (momentos.some((m) => naoCobre.has(m.peca) && m.de < ate && m.ate > de) || camerasPedidas.some(([x, y]) => x < ate && y > de)) {
+      avisos.push(`${id}: B-roll caiu (cobriria uma demonstração ou o título de trás)`);
+      continue;
+    }
+    planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "insercao", midia: id });
+    planos.sort((x, y) => x.de - y.de);
+  }
 
   // 5. A câmera: o ritmo e, por cima, o que o editor pediu.
   const pedidos: Enquadramento[] = [];
@@ -340,11 +436,36 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const zoom = Math.min(2, Math.max(1, Number(c.zoom) || 1));
     pedidos.push({ de: Math.max(0, a - 0.05), ate: Math.min(D, b + 0.2), zoom, x: Math.min(0.95, Math.max(0.05, c.foco?.x ?? x0)), y: Math.min(0.95, Math.max(0.05, c.foco?.y ?? y0)), movimento: c.movimento === "empurrao" ? "empurrao" : "fixo", zoomFinal: c.movimento === "empurrao" ? zoom * 1.08 : undefined });
   }
-  const camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, ctx.estiloId), pedidos);
+  const corte = ctx.ritmo === "corte";
+  let camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, ctx.estiloId, corte ? ctx.palavras : undefined, ctx.tema.visual === "documental"), pedidos);
   // Peça "sobre" com texto no topo: a câmera não fecha demais (o rosto não sobe para baixo do título).
-  for (const m of momentos.filter((x) => x.plano === "cheio" && ["titulo", "capitulo", "pergunta-resposta", "titulo-atras"].includes(x.peca))) {
-    for (const c of camera) if (c.de < m.ate && c.ate > m.de && c.zoom > 1.15 && !pedidos.includes(c)) c.zoom = 1.12;
+  // No corte o título e a pergunta já descem para o peito (arejarCorte): só o título de trás segura a câmera.
+  const seguram = corte ? ["titulo-atras"] : ["titulo", "capitulo", "pergunta-resposta", "titulo-atras"];
+  for (const m of momentos.filter((x) => x.plano === "cheio" && seguram.includes(x.peca))) {
+    for (const c of camera)
+      if (c.de < m.ate && c.ate > m.de && c.zoom > 1.15 && !pedidos.includes(c)) {
+        c.zoom = 1.12;
+        if (c.zoomFinal) c.zoomFinal = +(1.12 * 1.04).toFixed(3);
+      }
   }
+  // 5b. O ZOOM DE SOCO (03/10, terceira volta): na palavra de ênfase a câmera
+  // fecha de uma vez (+18% sobre o plano do momento, até 1,32: a gravação deitada recortada em 9:16 não aguenta mais sem amolecer) por ~1 s e volta.
+  // Sem ênfase do editor, as palavras-chave e os sublinhados dão o instante.
+  const socos = (e.enfases ?? []).map((a) => t(a)).filter((x): x is number => x !== null);
+  if (!socos.length) for (const m of momentos) if (m.peca === "palavra-chave" || m.peca === "sublinhado") socos.push(m.de + 0.12);
+  const ocupado = (de: number, ate: number) =>
+    planos.some((p) => p.de < ate && p.ate > de) || momentos.some((m) => m.peca === "titulo-atras" && m.de < ate && m.ate > de) || pedidos.some((p) => p.de < ate && p.ate > de);
+  let ultimoSoco = -10;
+  const socosFeitos: Enquadramento[] = [];
+  for (const s0 of socos.sort((a, b) => a - b)) {
+    const de = Math.max(0, s0 - 0.03);
+    const ate = Math.min(D, de + 1.1);
+    if (de - ultimoSoco < 2.5 || ate - de < 0.6 || ocupado(de, ate)) continue;
+    const z = Math.min(1.32, +(zoomEm(camera, de) * (ctx.tema.visual === "documental" ? 1.1 : 1.18)).toFixed(3));
+    socosFeitos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: x0, y: y0, movimento: "fixo" });
+    ultimoSoco = de;
+  }
+  if (socosFeitos.length) camera = sobreporCamera(camera, socosFeitos);
 
   const edicao: EdicaoResolvida = {
     versao: 1,
@@ -365,7 +486,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
 }
 
 /** Números para o relatório: quanto da duração tem peça, quanto o rosto some. */
-export function medidasDaEdicao(ed: EdicaoResolvida): { pecas: number; porMinuto: number; comPeca: number; semRosto: number; insercoes: number; tiposDePeca: number } {
+export function medidasDaEdicao(ed: EdicaoResolvida): { pecas: number; porMinuto: number; comPeca: number; semRosto: number; insercoes: number; broll: number; tiposDePeca: number } {
   const D = Math.max(1, ed.duracao);
   const reais = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao");
   const soma = (xs: Array<{ de: number; ate: number }>) => xs.reduce((s, x) => s + (x.ate - x.de), 0);
@@ -374,7 +495,8 @@ export function medidasDaEdicao(ed: EdicaoResolvida): { pecas: number; porMinuto
     porMinuto: +(reais.length / (D / 60)).toFixed(1),
     comPeca: +(soma(reais) / D).toFixed(3),
     semRosto: +(soma(ed.planos.filter((p) => p.tipo === "grafico" || p.tipo === "insercao")) / D).toFixed(3),
-    insercoes: ed.planos.filter((p) => p.tipo === "insercao").length,
+    insercoes: ed.planos.filter((p) => p.tipo === "insercao" && ed.insercoes[p.midia]?.origem !== "banco").length,
+    broll: ed.planos.filter((p) => p.tipo === "insercao" && ed.insercoes[p.midia]?.origem === "banco").length,
     tiposDePeca: new Set(reais.map((c) => c.peca)).size,
   };
 }
