@@ -68,7 +68,7 @@ export const HORMOZI: BibliaDoEstilo = {
   imagens: {
     apoio: "UM objeto herói do substantivo dito, luz dura e contrastada, fundo simples escuro ou na cor da marca, visual moderno e limpo",
     elemento: "UM objeto em ilustração chapada e limpa, contorno escuro (ex.: \"light bulb\", \"stack of coins\", \"calendar\")",
-    cinema: "UMA ação simples e enérgica, luz de contraste, cor viva (ex.: \"coins pouring onto a dark table in slow motion under a hard spotlight\")",
+    cinema: "UMA ação simples e enérgica, luz de contraste, cor natural (ex.: \"coins pouring onto a dark wooden table in slow motion under a hard top spotlight, 50mm close-up, tense, natural colors\")",
     exemplos: [
       ["chat", "a single smartphone with blank glowing chat bubbles, hard rim light on a dark background"],
       ["dinheiro", "a neat stack of banknotes under a hard spotlight on a dark background"],

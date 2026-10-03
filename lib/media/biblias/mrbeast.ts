@@ -68,13 +68,15 @@ export const MRBEAST: BibliaDoEstilo = {
     maxPorCena: 3,
   },
   imagens: {
-    apoio: "UM objeto herói do substantivo dito, ENORME no quadro, cores saturadas e luz clara de estúdio, fundo limpo e luminoso na cor da marca ou branco, sombra curta; leitura instantânea num celular",
-    elemento: "UM objeto em ilustração chapada e brilhante estilo adesivo, contorno escuro grosso, cores saturadas (ex.: \"trophy\", \"stack of cash\", \"alarm clock\", \"rocket\")",
-    cinema: "UMA ação rápida e exagerada, luz clara e cor saturada, câmera rápida (ex.: \"a mountain of gold coins pouring onto a bright table in slow motion, vivid saturated colors, bright studio light\")",
+    // Briefing de foto (03/10): luz clara e fundo limpo fazem a leitura
+    // instantânea; "saturated colors" virava cor de desenho animado.
+    apoio: "UM objeto herói do substantivo dito, ENORME no quadro, luz clara e uniforme de estúdio, fundo limpo e luminoso, sombra curta, cor natural do objeto; leitura instantânea num celular",
+    elemento: "UM objeto em ilustração chapada estilo adesivo, contorno escuro grosso, cores próprias do objeto (ex.: \"trophy\", \"stack of cash\", \"alarm clock\", \"rocket\")",
+    cinema: "UMA ação rápida e exagerada, luz clara, câmera rápida (ex.: \"a mountain of gold coins pouring onto a white table in slow motion, bright even studio light, 50mm, playful energy, natural colors\")",
     exemplos: [
-      ["dinheiro", "a huge neat stack of banknotes on a bright solid colored background, bright even studio light, saturated colors"],
-      ["tempo", "a giant red alarm clock ringing, bright white background, saturated colors, playful energy"],
-      ["barco", "a small wooden boat on vivid turquoise water seen from above, bright sunny light, saturated colors"],
+      ["dinheiro", "a huge neat stack of banknotes on a plain white tabletop, bright even studio light from above, 50mm close-up, clean and playful, natural colors"],
+      ["tempo", "a giant classic alarm clock ringing on a white studio floor, bright soft light, 35mm low angle, playful energy, natural colors"],
+      ["barco", "a small wooden fishing boat on a calm lake seen from above, clear morning light, aerial wide shot, quiet, natural colors"],
     ],
     nunca: ["fundo preto ou escuro", "clima dramático sombrio", "papel, colagem ou gravura"],
   },

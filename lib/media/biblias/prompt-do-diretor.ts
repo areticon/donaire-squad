@@ -20,10 +20,21 @@ import { ELEMENTOS_DO_PROMPT, ZONAS_NO_PROMPT } from "@/lib/media/biblias/elemen
 
 export const NARRADOR_E_TEXTO = `O NARRADOR é o cliente, gravado. O rosto dele é sempre o pixel da gravação: você nunca pede imagem com pessoa, rosto, mão ou corpo. Imagem gerada NUNCA tem texto, letra, número, logotipo ou marca d'água; todo texto na tela é código (os elementos abaixo).`;
 
+export const BRIEFING_DE_FOTO = `CADA "descricao" É UM BRIEFING DE FOTO (03/10), em inglês, numa frase corrida, nesta ordem:
+1. o ASSUNTO, concreto e literal (o substantivo dito);
+2. o LUGAR coerente com o TEMA e a ÉPOCA da fala (passagem bíblica: a Galileia do século I, o mar da Galileia, barcos de pesca de madeira na margem de pedra, vilas de pedra; nunca praia de turismo, nunca cenário moderno; negócio: o escritório, a loja ou a obra reais do setor);
+3. a LUZ (hora do dia e direção: "soft morning light from the left", "overcast daylight");
+4. a LENTE e o enquadramento ("35mm, eye level", "close-up, shallow depth of field", "wide shot");
+5. a ATMOSFERA em poucas palavras ("quiet", "busy", "early morning calm");
+6. "natural colors".
+PROIBIDO na descrição: lista de adjetivos de cor ("vivid", "saturated", "orange and off-white tones", "warm orange glow"), paleta como ordem, nome das cores da marca (elas ficam nos fundos e nos textos, que são código), "hyper-realistic", "8k", "cinematic masterpiece". Com GENTE (só quando o cliente pediu), descreva a roupa pelo que ela É, positivamente e no contexto ("first-century Galilean linen tunics and wool cloaks, head coverings"), nunca pelo que não é.
+Exemplo ruim: "a crowded sunny beach shoreline, many people near the water, bright saturated light, warm tones". Exemplo bom: "a crowd gathered on the rocky shore of the Sea of Galilee in the first century, simple linen tunics and wool cloaks, wooden fishing boats pulled up on the stones, soft early morning light from the east, 35mm wide shot, calm atmosphere, natural colors".`;
+
 export const PASSOS_DOS_ASSETS = `ASSETS (o que gerar; reaproveite o mesmo asset em mais de uma cena).
 PASSO 1, antes de escrever qualquer asset: liste para si os SUBSTANTIVOS CONCRETOS e as ferramentas da fala (lugar, objeto, mapa, tela, documento, calendário, empresa, chat...). PASSO 2: cada asset ilustra UM deles, LITERAL, e leva "ancora" = índice da palavra que o motivou; o asset entra na cena que contém essa palavra. Metáfora só quando a frase não tem substantivo concreto.
 NENHUMA PALAVRA ESCRITA NA IMAGEM, em nenhuma língua: nada de rótulo, legenda, título, nome de período, dia da semana ou número. Sequência de tempo se mostra por posição do sol, relógio sem números, sombra que cresce. O texto da tela é sempre código (elementos).
-NUNCA peça colagem de papel, recorte com borda branca, kraft, papel rasgado, fita adesiva, gravura antiga, textura de jornal ou meio-tom: isso é a linguagem da Vox, e o cliente escolheu OUTRA.`;
+NUNCA peça colagem de papel, recorte com borda branca, kraft, papel rasgado, fita adesiva, gravura antiga, textura de jornal ou meio-tom: isso é a linguagem da Vox, e o cliente escolheu OUTRA.
+${BRIEFING_DE_FOTO}`;
 
 export const ASSET_CINEMA = (acao: string) =>
   `- {"id":"v1","tipo":"cena-em-movimento","ancora":i,"camera":"<id>","efeito":"<id ou vazio>","descricao":"<em inglês>"}: CENA DE CINEMA gerada em vídeo (live-action, profundidade de campo), o momento "fala mapa, aparece um mapa". A mensagem diz quantas este trecho pede: num CORTE há piso obrigatório (2 a 3 por minuto); num bloco do VÍDEO COMPLETO é só um teto baixo, então guarde para os 1 ou 2 momentos mais concretos do bloco. Cada uma na palavra mais CONCRETA da fala. ${acao} Nunca pessoa, nunca rosto, nunca texto legível.

@@ -6,7 +6,7 @@ import { marcasNaFala } from "@/lib/media/marcas-na-fala";
 import type { PedidoDoCliente } from "@/lib/media/plano-de-montagem";
 import { garantirRitmo, JANELA_DO_CURTO_SEG } from "@/lib/media/ritmo-da-edicao";
 import { bibliaDoEstilo, type BibliaDoEstilo } from "@/lib/media/biblias";
-import { sistemaDaBiblia } from "@/lib/media/biblias/prompt-do-diretor";
+import { BRIEFING_DE_FOTO, sistemaDaBiblia } from "@/lib/media/biblias/prompt-do-diretor";
 import { ajustarAoEstilo } from "@/lib/media/biblias/ajuste";
 import { metasDoProjeto, metasNoPrompt } from "@/lib/media/metas-do-estilo";
 import { diretorLimpoLigado, planejarLimpo, type MedidaDoLimpo } from "@/lib/media/diretor-limpo";
@@ -177,7 +177,15 @@ function fichaDaLinguagem(
   linhas.push(`Ids de "camera" para as cenas geradas (os primeiros são os do cliente): ${ids(MOVIMENTOS_DE_CAMERA, escolha.camera).join(", ")}.`);
   linhas.push(`Ids de "efeito" para as cenas geradas (opcional; "sumir" é a desintegração em partículas): ${ids(EFEITOS, escolha.efeitos).join(", ")}.`);
   linhas.push(
-    `Cores da marca (use SÓ estas, por nome, nas descrições de imagem): destaque ${nomeDaCor(cores.acento)}, escuro ${nomeDaCor(cores.escuro)}${familia === "colagem" ? " (só em tinta, fotos P&B e sombras, NUNCA como fundo)" : ""}, claro ${nomeDaCor(cores.claro)}.`
+    // AS CORES DA MARCA FICAM NO CÓDIGO (03/10, prova A/B das imagens): até
+    // aqui a linha pedia "use SÓ estas, por nome, nas descrições de imagem", e
+    // toda descrição saía com "vivid orange and off-white tones, saturated
+    // colors". A foto gerada tem a cor natural da cena; a marca está nos
+    // fundos, textos e elementos. Na colagem, uma tinta de destaque continua
+    // sendo da linguagem.
+    familia === "colagem"
+      ? `Cores da marca: destaque ${nomeDaCor(cores.acento)}, escuro ${nomeDaCor(cores.escuro)}, claro ${nomeDaCor(cores.claro)}. Nas colagens, a cor de destaque pode aparecer como UMA tinta (só em tinta, fotos P&B e sombras, NUNCA como fundo); nunca como lista de tons.`
+      : `Cores da marca: destaque ${nomeDaCor(cores.acento)}, escuro ${nomeDaCor(cores.escuro)}, claro ${nomeDaCor(cores.claro)}. Elas vão nos FUNDOS, TEXTOS e ELEMENTOS (código), NUNCA na descrição de imagem: a foto gerada tem a cor natural da cena.`
   );
   return { texto: linhas.join("\n"), familia, escolha, biblia, metas };
 }
@@ -247,6 +255,8 @@ REGRAS DO DONO:
 9. Cenas cobrem a fala inteira, em ordem: "de" é o índice da primeira palavra e "ate" o da última (inclusivo); a próxima começa em ate+1.
 10. CINEMA: cada cena-em-movimento abre em broll-cheio de 2 a 4 s começando na palavra âncora dela; a cena seguinte pode trazer o narrador de volta no canto com a MESMA cena. Num CORTE, abaixo do mínimo de cenas de cinema da mensagem o plano é recusado; no COMPLETO não há mínimo.
 11. MARCA CITADA VIRA ÍCONE: toda marca da lista MARCAS CITADAS entra como elemento "icone" na cena que contém a palavra em que ela é dita, naquela palavra. Em narrador-cheio o ícone é o único elemento, na zona "base".
+
+${BRIEFING_DE_FOTO.replace("\n6. \"natural colors\".", "\n6. \"natural colors\" (na colagem, as gravuras P&B com UMA tinta de destaque continuam sendo a linguagem).")}
 
 Cada asset leva também "resumo": o que o cliente vai ver, em português simples e em até 12 palavras (ex.: "cena de cinema: um mapa antigo se abrindo na mesa"). Ele lê isso na tela de aprovação ANTES de gerarmos, então descreva a imagem, não a técnica.
 
@@ -662,8 +672,9 @@ export async function novaIdeiaDaCena(p: {
 const PEDIDO_DO_CLIENTE = (pedido: string) => `O QUE O CLIENTE PEDIU, COM AS PALAVRAS DELE (é LEI: vale sobre as regras do estilo e da linguagem): "${pedido}"
 COMO ATENDER:
 - Faça exatamente o que ele pediu sempre que for possível e seguro.
-- PESSOAS: se o pedido traz gente (figura histórica ou bíblica como Jesus ou Moisés, multidão com roupa da época, gente fictícia), o asset PODE mostrar pessoas: marque nele "comPessoas": true e descreva (em inglês) roupa da época e modesta, sem nada sensual. Figura sagrada com reverência: plano aberto com a multidão ou de costas, luz natural, sem auréola brilhante e sem caricatura. Nunca uma pessoa REAL CONTEMPORÂNEA identificável (político, celebridade).
+- PESSOAS: se o pedido traz gente (figura histórica ou bíblica como Jesus ou Moisés, multidão com roupa da época, gente fictícia), o asset PODE mostrar pessoas: marque nele "comPessoas": true e descreva (em inglês) a roupa pelo que ela É, positivamente e na época ("first-century Galilean linen tunics and wool cloaks, head coverings"), e o lugar coerente com a passagem (o mar da Galileia com barcos de pesca de madeira, nunca praia de turismo). Figura sagrada com reverência: plano aberto com a multidão ou de costas, luz natural, sem auréola brilhante e sem caricatura. Nunca uma pessoa REAL CONTEMPORÂNEA identificável (político, celebridade).
 - "Vídeo", "cena", "mostrando ... falando", movimento: use um asset "cena-em-movimento" (no máximo 1) em broll-cheio cobrindo a fala da cena; "imagem" ou "foto": "colagem".
 - Texto escrito DENTRO da imagem continua proibido; texto na tela continua só com palavra dita.
 - Se não der para fazer inteiro (pessoa real contemporânea, algo vulgar, mais de uma cena de cinema, texto não dito), faça o mais perto possível e diga o motivo.
+A descrição de cada asset segue o BRIEFING DE FOTO do sistema: assunto, lugar coerente, luz, lente, atmosfera, cor natural; nada de "saturated" nem lista de tons.
 Na RESPOSTA, além de "assets" e "cenas", inclua "atendimento": {"atendido":"sim"|"parcial"|"nao","motivo":"uma linha em português, só quando não for sim"}.`;
