@@ -40,6 +40,8 @@ const PAR = (v) => Math.max(2, Math.round(v / 2) * 2);
 
 /** Os intervalos em que a camada se mexe (entrada, cada passo, saída). */
 export function movimentosDaCamada(c) {
+  // O palco (câmera virtual) e o título que deriva se mexem o tempo todo.
+  if (c.continua) return [[c.de, c.ate]];
   const m = [[c.de, Math.min(c.ate, c.de + c.entrada)]];
   for (const e of c.eventos ?? []) if (e < c.ate) m.push([Math.max(c.de, e), Math.min(c.ate, e + c.evento)]);
   m.push([Math.max(c.de, c.ate - c.saida), c.ate]);
@@ -99,41 +101,85 @@ export function linhaCondensada(camadas, duracao, fps) {
 
 // ─────────────────────────────── 2. o render das camadas ───────────────────────────────
 
+/**
+ * AS TRANSIÇÕES ENTRE PLANOS (03/10, segunda volta): em cada troca de plano
+ * da gravação (câmera cheia, cartão, inserção) entra uma camada "transicao"
+ * de ~0,5 s centrada no corte, que o esconde com luz. O palco das telas
+ * cheias tem a própria entrada (íris, cortina de luz, zoom) e não leva.
+ */
+export function transicoesDaEdicao(ed) {
+  const saida = [];
+  const bordas = [];
+  for (const p of ed.planos ?? []) {
+    if (p.tipo === "grafico" && ed.palco) continue;
+    for (const t of [p.de, p.ate]) if (t > 0.3 && t < ed.duracao - 0.3) bordas.push({ t, tipo: p.tipo });
+  }
+  bordas.sort((a, b) => a.t - b.t);
+  let ultimo = -10;
+  bordas.forEach((b, k) => {
+    if (b.t - ultimo < 0.5) return;
+    ultimo = b.t;
+    const tipo = b.tipo === "insercao" ? "flash" : k % 2 ? "whip" : "luz";
+    const meia = tipo === "flash" ? 0.18 : 0.26;
+    saida.push({ id: `tr${k}`, peca: "transicao", de: +(b.t - meia).toFixed(3), ate: +(b.t + meia).toFixed(3), entrada: 2 * meia, saida: 0.05, evento: 0.5, eventos: [], props: { tipo }, passes: ["frente"], continua: true });
+  });
+  return saida;
+}
+
+const passesDa = (c) => (Array.isArray(c.passes) && c.passes.length ? c.passes : ["frente"]);
+
+/**
+ * As camadas, desenhadas em até três PASSADAS (worker/remotion/src/sob-medida/
+ * Camadas.tsx): "frente" (tudo), "atras" (o que vai por baixo da pessoa
+ * recortada) e "vidro" (a máscara do desfoque). Cada passada tem a sua linha
+ * condensada: só as camadas dela vão ao Chrome.
+ */
 async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
   const { renderFrames, renderStill, selectComposition } = await import("@remotion/renderer");
   const serveUrl = await bundleDoRemotion();
   const fps = edicao.fps;
-  const { trechos, exibir, quadros } = linhaCondensada(edicao.camadas, edicao.duracao, fps);
-  const dirQ = join(pasta, "camadas");
-  await rm(dirQ, { recursive: true, force: true });
-  await mkdir(dirQ, { recursive: true });
   const opcoes = opcoesDoRender();
   const base = { largura: edicao.largura, altura: edicao.altura, fps, tema: edicao.tema, logoUrl: edicao.logoUrl ?? null };
-  let arquivos = [];
-  if (quadros > 0) {
-    const inputProps = { ...base, camadas: edicao.camadas, trechos };
-    const composition = await selectComposition({ serveUrl, id: "SobMedidaCamadas", inputProps, chromiumOptions: opcoes.chromiumOptions });
-    await renderFrames({
-      composition,
-      serveUrl,
-      inputProps,
-      outputDir: dirQ,
-      imageFormat: "png",
-      imageSequencePattern: "q-[frame].[ext]",
-      concurrency: opcoes.concurrency,
-      scale: escala,
-      chromiumOptions: opcoes.chromiumOptions,
-      timeoutInMilliseconds: 120_000,
-      onStart: () => {},
-      onFrameUpdate: (n) => aoProgresso?.(n / quadros),
-    });
-    arquivos = (await readdir(dirQ)).filter((a) => /^q-\d+\.png$/.test(a)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
-    if (arquivos.length !== quadros) throw new Error(`o Remotion devolveu ${arquivos.length} quadros de ${quadros}`);
-  }
-  // O quadro vazio (transparente) do tamanho certo.
   const W = PAR(edicao.largura * escala);
   const H = PAR(edicao.altura * escala);
-  await rodar(["-f", "lavfi", "-i", `color=c=black@0:s=${W}x${H},format=rgba`, "-frames:v", "1", join(dirQ, "vazio.png")]);
+  const todas = [...edicao.camadas, ...transicoesDaEdicao(edicao)];
+  const pedidos = ["frente", "atras", "vidro"].map((passe) => [passe, todas.filter((c) => passesDa(c).includes(passe))]).filter(([passe, cs]) => passe === "frente" || cs.length);
+  const linhas = pedidos.map(([passe, cs]) => [passe, cs, linhaCondensada(cs, edicao.duracao, fps)]);
+  const totalQuadros = linhas.reduce((s, [, , l]) => s + l.quadros, 0);
+  let feitos = 0;
+  const passadas = {};
+  for (const [passe, cs, { trechos, exibir, quadros }] of linhas) {
+    const nomeDir = passe === "frente" ? "camadas" : `camadas-${passe}`;
+    const dirQ = join(pasta, nomeDir);
+    await rm(dirQ, { recursive: true, force: true });
+    await mkdir(dirQ, { recursive: true });
+    let arquivos = [];
+    if (quadros > 0) {
+      const inputProps = { ...base, camadas: cs, trechos, passe };
+      const composition = await selectComposition({ serveUrl, id: "SobMedidaCamadas", inputProps, chromiumOptions: opcoes.chromiumOptions });
+      const antes = feitos;
+      await renderFrames({
+        composition,
+        serveUrl,
+        inputProps,
+        outputDir: dirQ,
+        imageFormat: "png",
+        imageSequencePattern: "q-[frame].[ext]",
+        concurrency: opcoes.concurrency,
+        scale: escala,
+        chromiumOptions: opcoes.chromiumOptions,
+        timeoutInMilliseconds: 120_000,
+        onStart: () => {},
+        onFrameUpdate: (n) => aoProgresso?.((antes + n) / Math.max(1, totalQuadros)),
+      });
+      feitos += quadros;
+      arquivos = (await readdir(dirQ)).filter((a) => /^q-\d+\.png$/.test(a)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+      if (arquivos.length !== quadros) throw new Error(`o Remotion devolveu ${arquivos.length} quadros de ${quadros} (passada ${passe})`);
+    }
+    // O quadro vazio (transparente) do tamanho certo.
+    await rodar(["-f", "lavfi", "-i", `color=c=black@0:s=${W}x${H},format=rgba`, "-frames:v", "1", join(dirQ, "vazio.png")]);
+    passadas[passe] = { exibir, arquivos, dirQ, nomeDir, quadros, intervalos: cs.map((c) => [c.de, c.ate]) };
+  }
   // Os fundos da marca: o liso e um por caixa de cartão.
   const fundos = {};
   const caixas = new Map();
@@ -146,7 +192,79 @@ async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
     await renderStill({ composition, serveUrl, inputProps, output: out, frame: 0, imageFormat: "png", scale: escala, chromiumOptions: opcoes.chromiumOptions });
     fundos[chave ?? "liso"] = out;
   }
-  return { exibir, arquivos, dirQ, fundos, quadros };
+  return { passadas, fundos, quadros: totalQuadros, todas };
+}
+
+/**
+ * A PESSOA RECORTADA (03/10, segunda volta): a máscara da linha inteira,
+ * segmentada só onde há camada na passada de trás (com folga), pelo
+ * MediaPipe do recorte.py. Falhar aqui não derruba nada: sem máscara, o
+ * título de trás fica por baixo da gravação inteira e a peça cai para a frente.
+ */
+async function matteDaPessoa(base, pasta, duracao, fps, intervalos) {
+  if (!intervalos?.length) return null;
+  const juntos = [];
+  for (const [a, b] of intervalos.map(([a, b]) => [Math.max(0, a - 0.3), Math.min(duracao, b + 0.3)]).sort((x, y) => x[0] - y[0])) {
+    const ult = juntos[juntos.length - 1];
+    if (ult && a <= ult[1]) ult[1] = Math.max(ult[1], b);
+    else juntos.push([a, b]);
+  }
+  const saida = join(pasta, "matte-pessoa.mp4");
+  const PYTHON = process.env.PYTHON_DO_RECORTE ?? "python3";
+  const modelo = process.env.MODELO_SEGMENTACAO ?? "/app/modelos/selfie_segmenter.tflite";
+  const config = JSON.stringify({ modo: "linha", video: base, saida, fps, duracao, largura: 512, intervalos: juntos, modelo });
+  const texto = await new Promise((resolver) => {
+    const p = spawn(PYTHON, [join(AQUI, "recorte.py"), config], { cwd: pasta });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (err += d));
+    const relogio = setTimeout(() => p.kill("SIGKILL"), Math.max(180_000, duracao * 4000));
+    p.on("close", (codigo) => {
+      clearTimeout(relogio);
+      if (codigo !== 0) console.warn(`[sob-medida] recorte da pessoa saiu com ${codigo}: ${err.slice(-300)}`);
+      resolver(codigo === 0 ? out : null);
+    });
+    p.on("error", (e) => {
+      clearTimeout(relogio);
+      console.warn(`[sob-medida] recorte da pessoa não rodou: ${e.message}`);
+      resolver(null);
+    });
+  });
+  const linha = String(texto ?? "").trim().split("\n").reverse().find((l) => l.trim().startsWith("{"));
+  try {
+    return linha && JSON.parse(linha).ok && existsSync(saida) ? saida : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O SOM DAS PEÇAS (03/10, segunda volta): whoosh na entrada das telas e das
+ * transições, impacto no título de trás, riser antes do número que conta,
+ * tique nos itens que acendem. Sintetizados em src/sons.mjs, mixados abaixo
+ * da voz; no máximo um efeito a cada 0,35 s.
+ */
+export function efeitosDaEdicao(camadas) {
+  const ev = [];
+  const TELA = new Set(["frase-impacto", "citacao", "pergaminho", "cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "numero", "cifrao", "mapa", "fecho", "passos-foco", "grafico-linha"]);
+  const CONTA = new Set(["numero", "progresso", "barras", "grafico-linha", "cifrao"]);
+  for (const c of camadas) {
+    if (c.peca === "moldura-do-cartao") continue;
+    if (c.peca === "transicao") ev.push({ t: c.de + 0.05, som: "whoosh", volume: c.props?.tipo === "flash" ? 0.3 : 0.22 });
+    else if (c.peca === "titulo-atras") {
+      ev.push({ t: Math.max(0, c.de - 0.45), som: "riser", volume: 0.14 });
+      ev.push({ t: c.de + 0.12, som: "impacto", volume: 0.28 });
+    } else if (TELA.has(c.peca)) ev.push({ t: Math.max(0, c.de - 0.05), som: "whoosh", volume: 0.24 });
+    else if (c.peca === "palavra-chave" || c.peca === "capitulo") ev.push({ t: c.de + 0.02, som: "impacto", volume: 0.18 });
+    else ev.push({ t: c.de + 0.05, som: "pop", volume: 0.12 });
+    if (CONTA.has(c.peca)) ev.push({ t: c.de + 0.4, som: "riser", volume: 0.1 });
+    for (const e of c.eventos ?? []) ev.push({ t: e, som: "tique", volume: 0.16 });
+  }
+  ev.sort((a, b) => a.t - b.t);
+  const saida = [];
+  for (const e of ev) if (!saida.length || e.t - saida[saida.length - 1].t >= 0.35 || e.som === "impacto") saida.push(e);
+  return saida;
 }
 
 // ─────────────────────────────── 3. a legenda ───────────────────────────────
@@ -228,7 +346,10 @@ export function segmentosDoLote(edicao, a, b) {
     const ate = Math.min(b, p.ate);
     if (de > t + 1e-3) cheio(t, de);
     if (ate - de > 1e-3) {
-      if (p.tipo === "cheio") cheio(de, ate);
+      // Com o PALCO (03/10, segunda volta), a tela cheia é desenhada opaca
+      // pelo Remotion: por baixo dela a gravação segue, e a entrada do palco
+      // (íris, cortina de luz, zoom) revela a pessoa de verdade, não um fundo.
+      if (p.tipo === "cheio" || (p.tipo === "grafico" && edicao.palco)) cheio(de, ate);
       else saida.push({ ...p, de, ate, k0: de - p.de });
     }
     t = Math.max(t, ate);
@@ -244,11 +365,27 @@ function grafoDoLote(edicao, lote, ctx) {
   const segs = segmentosDoLote(edicao, lote.de, lote.ate);
   const entradas = [
     ["-ss", lote.de.toFixed(4), "-t", dur.toFixed(4), "-i", ctx.base],
-    ["-f", "concat", "-safe", "0", "-i", lote.lista],
+    // -reinit_filter 0 (03/10, segunda volta): o Remotion grava o quadro
+    // OPACO do palco em rgb24 e o transparente em rgba; a troca no meio da
+    // lista reiniciava o grafo inteiro e travava o ffmpeg.
+    ["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.lista],
   ];
   const nos = [];
   const usosDaBase = segs.filter((s) => s.tipo === "cheio" || s.tipo === "cartao").length;
-  nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p,setpts=PTS-STARTPTS${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
+  // As passadas a mais (03/10, segunda volta): atrás da pessoa, a máscara do vidro e a pessoa recortada.
+  const iAtras = lote.listaAtras ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaAtras]) - 1 : -1;
+  const iVidro = lote.listaVidro ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaVidro]) - 1 : -1;
+  const iMatte = iAtras >= 0 && ctx.matte ? entradas.push(["-ss", lote.de.toFixed(4), "-t", dur.toFixed(4), "-i", ctx.matte]) - 1 : -1;
+  // A PESSOA RECORTADA viaja como o ALFA da própria base: a câmera de cada
+  // plano (zoom, empurrão) mexe na imagem e na máscara de uma vez só, e o
+  // grafo não ganha uma segunda cadeia (a primeira versão, com a máscara em
+  // paralelo, travou o ffmpeg na prova de 03/10).
+  const comAlfa = iMatte >= 0;
+  const FMT = comAlfa ? "yuva420p" : "yuv420p";
+  if (comAlfa) {
+    nos.push(`[${iMatte}:v]fps=${fps},scale=${W}:${H}:flags=bicubic,format=gray,lut=y='clip((val-16)*255/219,0,255)',setpts=PTS-STARTPTS[mm]`);
+    nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuva420p,setpts=PTS-STARTPTS[b0a];[b0a][mm]alphamerge${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
+  } else nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p,setpts=PTS-STARTPTS${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
   let ib = 0;
   const imagemExtra = (arquivo, segDur, loop = true) => {
     const i = entradas.length;
@@ -272,7 +409,7 @@ function grafoDoLote(edicao, lote, ctx) {
         const z = `${z0}+(${(z1 - z0).toFixed(4)})*${pt}`;
         const W2 = PAR(W * 1.5);
         const H2 = PAR(H * 1.5);
-        nos.push(`${ent},scale=${W2}:${H2}:flags=bicubic,zoompan=z='${z}':d=1:s=${W}x${H}:fps=${fps}:x='max(0,min(iw-iw/zoom,${(s.x ?? 0.5).toFixed(4)}*iw-iw/zoom/2))':y='max(0,min(ih-ih/zoom,${(s.y ?? 0.4).toFixed(4)}*ih-ih/zoom/2))',setsar=1,format=yuv420p[${r}]`);
+        nos.push(`${ent},scale=${W2}:${H2}:flags=bicubic,zoompan=z='${z}':d=1:s=${W}x${H}:fps=${fps}:x='max(0,min(iw-iw/zoom,${(s.x ?? 0.5).toFixed(4)}*iw-iw/zoom/2))':y='max(0,min(ih-ih/zoom,${(s.y ?? 0.4).toFixed(4)}*ih-ih/zoom/2))',setsar=1,format=${FMT}[${r}]`);
       } else if ((s.zoom ?? 1) > 1.01) {
         const c = recorte(W, H, s.zoom, s.x, s.y);
         nos.push(`${ent},crop=${c.w}:${c.h}:${c.x}:${c.y},scale=${W}:${H}:flags=bicubic,setsar=1[${r}]`);
@@ -308,7 +445,9 @@ function grafoDoLote(edicao, lote, ctx) {
       if (m.tipo === "video") {
         const i = entradas.length;
         entradas.push(["-stream_loop", "-1", "-t", d.toFixed(4), "-i", m.arquivo]);
-        nos.push(`[${i}:v]fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W}:${H},setsar=1,format=yuv420p,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS[${r}]`);
+        // O empurrão por cima do vídeo (03/10, segunda volta): mesmo que o
+        // Kling devolva a câmera quase parada, a inserção nunca fica imóvel.
+        nos.push(`[${i}:v]fps=${fps},scale=${PAR(W * 1.12)}:${PAR(H * 1.12)}:force_original_aspect_ratio=increase:flags=bicubic,crop=${PAR(W * 1.12)}:${PAR(H * 1.12)},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS,zoompan=z='1+0.1*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else {
         const i = imagemExtra(m.arquivo, d);
         const W2 = PAR(W * 1.4);
@@ -321,16 +460,52 @@ function grafoDoLote(edicao, lote, ctx) {
       const i = imagemExtra(fundos.liso, d);
       nos.push(`[${i}:v]fps=${fps},scale=${W}:${H},format=yuv420p,setsar=1,trim=end_frame=${n}[${r}]`);
     }
-    rotulos.push(`[${r}]`);
+    // Com o alfa, todo plano entra no mesmo formato (o que não é câmera cheia fica opaco).
+    if (comAlfa) {
+      nos.push(`[${r}]format=yuva420p[${r}a]`);
+      rotulos.push(`[${r}a]`);
+    } else rotulos.push(`[${r}]`);
   });
-  nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,fps=${fps},setpts=PTS-STARTPTS[base]`);
-  nos.push(`[1:v]fps=${fps},format=rgba,scale=${W}:${H},setpts=PTS-STARTPTS[ov]`);
-  nos.push(`[base][ov]overlay=0:0:eof_action=pass:format=auto${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=duration=${dur.toFixed(4)}[v]`);
+  // ZOOM ATRAVÉS nas inserções (03/10, segunda volta): a câmera mergulha no
+  // fim do plano anterior e sai de dentro da inserção (o flash da transição
+  // esconde o corte). Uma expressão só, no tempo do lote.
+  const bordasDeInsercao = segs.filter((s) => s.tipo === "insercao").flatMap((s) => [s.de - lote.de, s.ate - lote.de]).filter((t) => t > 0.2 && t < dur - 0.2);
+  const zoomAtraves = bordasDeInsercao.length
+    ? `,zoompan=z='1+${bordasDeInsercao.map((b) => `0.55*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
+    : "";
+  nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,fps=${fps},setpts=PTS-STARTPTS${zoomAtraves},format=${FMT}[base0]`);
+  const lista = (i, rot) => nos.push(`[${i}:v]fps=${fps},format=rgba,scale=${W}:${H},setpts=PTS-STARTPTS[${rot}]`);
+  lista(1, "ov");
+  let atual = "base0";
+  if (iAtras >= 0) {
+    lista(iAtras, "atr");
+    if (comAlfa) {
+      // A pessoa recortada (a base com o alfa) vai POR CIMA do título de trás.
+      nos.push(`[${atual}]split=2[bA][pess]`);
+      nos.push(`[bA]format=yuv420p[bO];[bO][atr]overlay=0:0:eof_action=pass[x1]`);
+      nos.push(`[x1][pess]overlay=0:0:shortest=1,format=yuv420p[x2]`);
+      atual = "x2";
+    } else {
+      nos.push(`[${atual}][atr]overlay=0:0:eof_action=pass[x2]`);
+      atual = "x2";
+    }
+  }
+  if (iVidro >= 0) {
+    // VIDRO DE VERDADE: a gravação desfocada (em 1/4, barato) entra só onde há caixa de vidro.
+    lista(iVidro, "vid");
+    nos.push(`[${atual}]split=2[v1][v2]`);
+    nos.push(`[v2]scale=${PAR(W / 4)}:${PAR(H / 4)}:flags=bilinear,gblur=sigma=${(5 * Math.max(0.5, escala)).toFixed(1)},scale=${W}:${H}:flags=bicubic,eq=brightness=-0.035:saturation=1.12,format=yuva420p[bl]`);
+    nos.push(`[vid]format=rgba,alphaextract,format=gray[vm];[bl][vm]alphamerge[bm]`);
+    nos.push(`[v1][bm]overlay=0:0:shortest=1[x3]`);
+    atual = "x3";
+  }
+  // GRÃO E VINHETA leves no fim (a textura de filme que tira o "digital chapado").
+  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=duration=${dur.toFixed(4)}[v]`);
   return { entradas: entradas.flat(), grafo: nos.join(";\n") };
 }
 
 /** A lista de exibição das camadas recortada no lote, no formato do demuxer de concatenação. */
-function listaDoLote(exibir, arquivos, a, b) {
+function listaDoLote(exibir, arquivos, a, b, dir = "camadas") {
   const linhas = ["ffconcat version 1.0"];
   let ultimo = null;
   for (const e of exibir) {
@@ -338,7 +513,7 @@ function listaDoLote(exibir, arquivos, a, b) {
     if (fim <= a + 1e-6 || e.de >= b - 1e-6) continue;
     const seg = Math.min(fim, b) - Math.max(e.de, a);
     if (seg <= 1e-6) continue;
-    const arq = e.tipo === "vazio" ? "camadas/vazio.png" : `camadas/${arquivos[e.c]}`;
+    const arq = e.tipo === "vazio" ? `${dir}/vazio.png` : `${dir}/${arquivos[e.c]}`;
     linhas.push(`file '${arq}'`, `duration ${seg.toFixed(5)}`);
     ultimo = arq;
   }
@@ -421,7 +596,12 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   const camadas = await renderizarCamadas({ ...ed, duracao }, pasta, escala, (p) => aoProgresso?.(0.6 * p));
   tempos.quadrosDeCamada = camadas.quadros;
   tempos.quadrosDoVideo = Math.round(duracao * ed.fps);
+  tempos.passadas = Object.fromEntries(Object.entries(camadas.passadas).map(([k, v]) => [k, v.quadros]));
   marcar("camadas");
+  // A pessoa recortada, só se há peça atrás dela.
+  const matte = camadas.passadas.atras ? await matteDaPessoa(base, pasta, duracao, fps, camadas.passadas.atras.intervalos).catch(() => null) : null;
+  tempos.recorte = Boolean(matte);
+  if (camadas.passadas.atras) marcar("recorte");
 
   await cp(PASTA_DAS_FONTES, join(pasta, "fontes"), { recursive: true });
   const mascaras = new Map();
@@ -458,13 +638,25 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   const opcaoDoGrafo = ffmpegVersao >= 7 ? "-/filter_complex" : "-filter_complex_script";
   const fazerLote = async (lote, i) => {
     lote.lista = `lista-${i}.txt`;
-    await writeFile(join(pasta, lote.lista), listaDoLote(camadas.exibir, camadas.arquivos, lote.de, lote.ate), "utf8");
+    const { frente, atras, vidro } = camadas.passadas;
+    await writeFile(join(pasta, lote.lista), listaDoLote(frente.exibir, frente.arquivos, lote.de, lote.ate, frente.nomeDir), "utf8");
+    // As passadas a mais entram no lote só se têm camada dentro dele.
+    const temNoLote = (ps) => ps && ps.intervalos.some(([a, b]) => b > lote.de && a < lote.ate);
+    if (temNoLote(atras)) {
+      lote.listaAtras = `lista-atras-${i}.txt`;
+      await writeFile(join(pasta, lote.listaAtras), listaDoLote(atras.exibir, atras.arquivos, lote.de, lote.ate, atras.nomeDir), "utf8");
+    }
+    if (temNoLote(vidro)) {
+      lote.listaVidro = `lista-vidro-${i}.txt`;
+      await writeFile(join(pasta, lote.listaVidro), listaDoLote(vidro.exibir, vidro.arquivos, lote.de, lote.ate, vidro.nomeDir), "utf8");
+    }
     if (comLegenda) {
       lote.legenda = `legenda-${i}.ass`;
       await writeFile(join(pasta, lote.legenda), legendaSobMedida(ed, W, H, lote.de, lote.ate - lote.de), "utf8");
     }
-    const { entradas, grafo } = grafoDoLote(ed, lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes, base, mascara });
+    const { entradas, grafo } = grafoDoLote(ed, lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes, base, mascara, matte });
     await writeFile(join(pasta, `grafo-${i}.txt`), grafo, "utf8");
+    await writeFile(join(pasta, `entradas-${i}.json`), JSON.stringify(entradas), "utf8");
     const saida = join(pasta, `lote-${String(i).padStart(3, "0")}.mp4`);
     await rodar(
       [
@@ -505,15 +697,23 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // A TRILHA do projeto no corte (03/10), só no final: o mesmo `misturarAudio`
   // do /montar (src/sons.mjs), no volume do estilo e abaixando sob a voz.
   // Falhar aqui não derruba nada: o corte sai com a voz só.
-  if (escala >= 1 && pedido.trilha?.url) {
+  // O SOM DAS PEÇAS (03/10, segunda volta) vai junto, com ou sem trilha:
+  // whoosh, impacto, riser e tique no instante de cada entrada, abaixo da voz.
+  const eventos = escala >= 1 && pedido.efeitos !== false ? efeitosDaEdicao(camadas.todas) : [];
+  tempos.efeitos = eventos.length;
+  if (escala >= 1 && (pedido.trilha?.url || eventos.length)) {
     try {
-      const arquivoDaTrilha = join(pasta, "trilha" + (String(pedido.trilha.url).match(/\.[a-z0-9]{2,4}(?=\?|$)/i)?.[0] ?? ".mp3"));
-      await baixar(pedido.trilha.url, arquivoDaTrilha);
+      let trilha = null;
+      if (pedido.trilha?.url) {
+        const arquivoDaTrilha = join(pasta, "trilha" + (String(pedido.trilha.url).match(/\.[a-z0-9]{2,4}(?=\?|$)/i)?.[0] ?? ".mp3"));
+        await baixar(pedido.trilha.url, arquivoDaTrilha);
+        trilha = { arquivo: arquivoDaTrilha, volume: pedido.trilha.volume, abaixar: pedido.trilha.abaixar };
+      }
       const { misturarAudio } = await import("./sons.mjs");
-      saida = await misturarAudio(saida, { eventos: [], trilha: { arquivo: arquivoDaTrilha, volume: pedido.trilha.volume, abaixar: pedido.trilha.abaixar } }, duracao, pasta, join(pasta, "sob-medida-com-trilha.mp4"));
-      tempos.trilha = true;
+      saida = await misturarAudio(saida, { eventos, trilha }, duracao, pasta, join(pasta, "sob-medida-com-trilha.mp4"));
+      tempos.trilha = Boolean(trilha);
     } catch (e) {
-      console.warn(`[sob-medida] trilha falhou, segue sem: ${e?.message ?? e}`);
+      console.warn(`[sob-medida] trilha e efeitos falharam, segue sem: ${e?.message ?? e}`);
     }
     marcar("trilha");
   }
@@ -570,7 +770,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   }
   // Limpeza do que pesa (os quadros das camadas e os lotes).
   if (!process.env.SOB_MEDIDA_GUARDAR) {
-    await rm(camadas.dirQ, { recursive: true, force: true }).catch(() => {});
+    for (const ps of Object.values(camadas.passadas)) await rm(ps.dirQ, { recursive: true, force: true }).catch(() => {});
     for (const p of partes) await rm(p, { force: true }).catch(() => {});
   }
   tempos.total = +((Date.now() - t0) / 1000).toFixed(1);

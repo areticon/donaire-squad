@@ -141,8 +141,96 @@ def caixa_da_webcam(video, caixa, inicio, duracao, area_minima=0.15, lado_minimo
     }
 
 
+def matte_da_linha(cfg):
+    """A MÁSCARA DA PESSOA NA LINHA DO VÍDEO INTEIRO (03/10, editor sob medida).
+
+    O título gigante atrás da pessoa precisa da pessoa recortada do quadro
+    INTEIRO (não da janela de webcam), alinhada quadro a quadro com a base. Sai
+    um vídeo em tons de cinza com a duração da base, em resolução baixa
+    (`largura`, o ffmpeg amplia e a borda suaviza), segmentado SÓ dentro dos
+    `intervalos` (onde há peça atrás da pessoa); fora deles, preto, que custa
+    só a codificação. Sem a rampa da base: aqui a pessoa é cortada pela borda
+    do quadro, e esmaecer o peito deixaria o título aparecer através dele.
+    """
+    video, saida = cfg["video"], cfg["saida"]
+    fps = float(cfg.get("fps", 30))
+    duracao = float(cfg["duracao"])
+    largura = int(cfg.get("largura", 512)) // 2 * 2
+    intervalos = sorted((float(a), float(b)) for a, b in cfg["intervalos"])
+    sonda = json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", video],
+        capture_output=True, text=True,
+    ).stdout or "{}")
+    fluxo = (sonda.get("streams") or [{}])[0]
+    W, H = int(fluxo.get("width", 16)), int(fluxo.get("height", 9))
+    altura = max(2, int(round(largura * H / W / 2)) * 2)
+    total = int(round(duracao * fps))
+    escrever = subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{largura}x{altura}", "-r", str(fps), "-i", "-",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", saida],
+        stdin=subprocess.PIPE,
+    )
+    preto = bytes(largura * altura)
+    opcoes = vision.ImageSegmenterOptions(
+        base_options=BaseOptions(model_asset_path=cfg["modelo"]),
+        output_category_mask=False,
+        output_confidence_masks=True,
+    )
+    nucleo = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    feitos = 0
+    segmentados = 0
+    with vision.ImageSegmenter.create_from_options(opcoes) as segmentador:
+        for a, b in intervalos:
+            f0 = max(feitos, int(round(a * fps)))
+            f1 = min(total, int(round(b * fps)))
+            while feitos < f0:
+                escrever.stdin.write(preto)
+                feitos += 1
+            if f1 <= f0:
+                continue
+            ler = subprocess.Popen(
+                ["ffmpeg", "-v", "error", "-ss", f"{f0 / fps:.4f}", "-i", video, "-frames:v", str(f1 - f0),
+                 "-vf", f"fps={fps},scale={largura}:{altura}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                stdout=subprocess.PIPE,
+            )
+            acumulada = None
+            n = 0
+            while n < f1 - f0:
+                cru = ler.stdout.read(largura * altura * 3)
+                if len(cru) < largura * altura * 3:
+                    break
+                rgb = np.frombuffer(cru, np.uint8).reshape(altura, largura, 3)
+                bruta = segmentador.segment(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))).confidence_masks[0].numpy_view()
+                binaria = (bruta > LIMIAR).astype(np.uint8)
+                binaria = cv2.morphologyEx(binaria, cv2.MORPH_OPEN, nucleo)
+                k, rot, stats, _ = cv2.connectedComponentsWithStats(binaria, 8)
+                if k > 1:
+                    binaria = (rot == 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))).astype(np.uint8)
+                atual = cv2.GaussianBlur(binaria.astype(np.float32), (0, 0), 1.2)
+                acumulada = atual if acumulada is None else (PESO_DO_NOVO * atual + (1 - PESO_DO_NOVO) * acumulada)
+                escrever.stdin.write((np.clip(acumulada, 0, 1) * 255).astype(np.uint8).tobytes())
+                n += 1
+                feitos += 1
+                segmentados += 1
+            ler.stdout.close()
+            ler.wait()
+            while feitos < f1:
+                escrever.stdin.write(preto)
+                feitos += 1
+    while feitos < total:
+        escrever.stdin.write(preto)
+        feitos += 1
+    escrever.stdin.close()
+    escrever.wait()
+    print(json.dumps({"ok": segmentados > 0, "quadros": feitos, "segmentados": segmentados, "largura": largura, "altura": altura}))
+
+
 def main():
     cfg = json.loads(sys.argv[1])
+
+    if cfg.get("modo") == "linha":
+        matte_da_linha(cfg)
+        return
 
     # Modo "caixa": SO acha onde a pessoa esta, sem segmentar.
     #
