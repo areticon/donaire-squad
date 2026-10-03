@@ -14,7 +14,10 @@
 export type Visual = "vidro" | "impacto" | "documental";
 
 export type Tema = {
+  /** O acento que brilha (avivado quando a cor da marca é apagada). */
   acento: string;
+  /** A cor original da marca, só para o que é identidade. */
+  acentoMarca?: string;
   escuro: string;
   claro: string;
   /** Família do título e do texto, já carregadas (ver carregarFontesDoTema). */

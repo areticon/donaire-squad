@@ -112,15 +112,17 @@ export function transicoesDaEdicao(ed) {
   const bordas = [];
   for (const p of ed.planos ?? []) {
     if (p.tipo === "grafico" && ed.palco) continue;
-    for (const t of [p.de, p.ate]) if (t > 0.3 && t < ed.duracao - 0.3) bordas.push({ t, tipo: p.tipo });
+    // O B-ROLL de banco (03/10, terceira volta) entra e sai no chicote ou na luz, curto.
+    const tipo = p.tipo === "insercao" && ed.insercoes?.[p.midia]?.origem === "banco" ? "broll" : p.tipo;
+    for (const t of [p.de, p.ate]) if (t > 0.3 && t < ed.duracao - 0.3) bordas.push({ t, tipo });
   }
   bordas.sort((a, b) => a.t - b.t);
   let ultimo = -10;
   bordas.forEach((b, k) => {
     if (b.t - ultimo < 0.5) return;
     ultimo = b.t;
-    const tipo = b.tipo === "insercao" ? "flash" : k % 2 ? "whip" : "luz";
-    const meia = tipo === "flash" ? 0.18 : 0.26;
+    const tipo = b.tipo === "insercao" ? "flash" : b.tipo === "broll" ? (k % 3 === 2 ? "luz" : "whip") : k % 2 ? "whip" : "luz";
+    const meia = tipo === "flash" ? 0.18 : b.tipo === "broll" ? 0.2 : 0.26;
     saida.push({ id: `tr${k}`, peca: "transicao", de: +(b.t - meia).toFixed(3), ate: +(b.t + meia).toFixed(3), entrada: 2 * meia, saida: 0.05, evento: 0.5, eventos: [], props: { tipo }, passes: ["frente"], continua: true });
   });
   return saida;
@@ -442,7 +444,16 @@ function grafoDoLote(edicao, lote, ctx) {
       nos.push(`[cf${k}][ca${k}]overlay=${bx}:${by}:shortest=1,format=yuv420p,setsar=1[${r}]`);
     } else if (s.tipo === "insercao" && insercoes[s.midia]) {
       const m = insercoes[s.midia];
-      if (m.tipo === "video") {
+      if (m.tipo === "video" && m.origem === "banco") {
+        // O B-ROLL (03/10, terceira volta): o trecho limpo do arquivo (`inicio`),
+        // reenquadrado para o formato (preenche e corta no centro), um empurrão
+        // de 8% que nunca para, e a COR CASADA com a gravação (grade).
+        const i = entradas.length;
+        entradas.push(["-ss", Number(m.inicio ?? 0).toFixed(3), "-stream_loop", "-1", "-t", (d + 0.2).toFixed(4), "-i", m.arquivo]);
+        const W2 = PAR(W * 1.1);
+        const H2 = PAR(H * 1.1);
+        nos.push(`[${i}:v]fps=${fps},scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS${m.grade ? `,${m.grade}` : ""},zoompan=z='1+0.08*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
+      } else if (m.tipo === "video") {
         const i = entradas.length;
         entradas.push(["-stream_loop", "-1", "-t", d.toFixed(4), "-i", m.arquivo]);
         // O empurrão por cima do vídeo (03/10, segunda volta): mesmo que o
@@ -469,9 +480,15 @@ function grafoDoLote(edicao, lote, ctx) {
   // ZOOM ATRAVÉS nas inserções (03/10, segunda volta): a câmera mergulha no
   // fim do plano anterior e sai de dentro da inserção (o flash da transição
   // esconde o corte). Uma expressão só, no tempo do lote.
-  const bordasDeInsercao = segs.filter((s) => s.tipo === "insercao").flatMap((s) => [s.de - lote.de, s.ate - lote.de]).filter((t) => t > 0.2 && t < dur - 0.2);
+  const bordasDeInsercao = segs
+    .filter((s) => s.tipo === "insercao")
+    .flatMap((s) => {
+      const forca = insercoes[s.midia]?.origem === "banco" ? 0.18 : 0.55;
+      return [s.de - lote.de, s.ate - lote.de].map((b) => ({ b, forca }));
+    })
+    .filter(({ b }) => b > 0.2 && b < dur - 0.2);
   const zoomAtraves = bordasDeInsercao.length
-    ? `,zoompan=z='1+${bordasDeInsercao.map((b) => `0.55*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
+    ? `,zoompan=z='1+${bordasDeInsercao.map(({ b, forca }) => `${forca}*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
     : "";
   nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,fps=${fps},setpts=PTS-STARTPTS${zoomAtraves},format=${FMT}[base0]`);
   const lista = (i, rot) => nos.push(`[${i}:v]fps=${fps},format=rgba,scale=${W}:${H},setpts=PTS-STARTPTS[${rot}]`);
@@ -519,6 +536,48 @@ function listaDoLote(exibir, arquivos, a, b, dir = "camadas") {
   }
   if (ultimo) linhas.push(`file '${ultimo}'`);
   return linhas.join("\n") + "\n";
+}
+
+// ─────────────────────────────── 4b. a cor casada do B-roll ───────────────────────────────
+
+/** A cor média (RGB 0 a 255) de um vídeo nos instantes pedidos, pelo ffmpeg reduzindo o quadro a 1 pixel. */
+export async function corMedia(arquivo, instantes) {
+  const somas = [0, 0, 0];
+  let n = 0;
+  for (const t of instantes) {
+    const buf = await new Promise((ok, falha) => {
+      const p = spawn("ffmpeg", ["-v", "error", "-ss", Math.max(0, t).toFixed(3), "-i", arquivo, "-frames:v", "1", "-vf", "scale=1:1:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      const pedacos = [];
+      p.stdout.on("data", (d) => pedacos.push(d));
+      p.on("close", (c) => (c === 0 ? ok(Buffer.concat(pedacos)) : falha(new Error(`ffmpeg ${c}`))));
+      p.on("error", falha);
+    });
+    if (buf.length >= 3) {
+      somas[0] += buf[0];
+      somas[1] += buf[1];
+      somas[2] += buf[2];
+      n++;
+    }
+  }
+  return n ? somas.map((x) => x / n) : null;
+}
+
+/**
+ * O filtro que leva a cor do B-roll metade do caminho até a da gravação
+ * (ganho por canal entre 0,85 e 1,18), com contraste 1,04 e saturação 0,9.
+ * Sem medida, só o contraste e a saturação.
+ */
+export function gradeParaCasar(cor, alvo) {
+  const eq = "eq=contrast=1.04:saturation=0.9:gamma=0.98";
+  if (!cor || !alvo) return eq;
+  const lum = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+  // Só a TINTA: a luz do B-roll fica (uma cena clara não vira escura).
+  const k = lum(cor) / Math.max(1, lum(alvo));
+  const ganho = [0, 1, 2].map((i) => {
+    const g = (alvo[i] * k) / Math.max(8, cor[i]);
+    return Math.min(1.18, Math.max(0.85, 1 + 0.5 * (g - 1)));
+  });
+  return `colorchannelmixer=rr=${ganho[0].toFixed(3)}:gg=${ganho[1].toFixed(3)}:bb=${ganho[2].toFixed(3)},${eq}`;
 }
 
 // ─────────────────────────────── 5. a montagem ───────────────────────────────
@@ -586,9 +645,20 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
         if (/^https?:/i.test(m.url)) await baixar(m.url, arq);
         else await copyFile(m.url, arq);
       }
-      insercoes[id] = { tipo: m.tipo, arquivo: arq };
+      insercoes[id] = { tipo: m.tipo, arquivo: arq, origem: m.origem ?? null, inicio: Number(m.inicio) || 0 };
     } catch (e) {
       console.warn(`[sob-medida] inserção ${id} não baixou: ${e?.message ?? e}`);
+    }
+  }
+  // A COR CASADA (03/10, terceira volta): o B-roll de banco vem com a cor do
+  // autor; aqui ele anda metade do caminho até a cor média da gravação, com o
+  // contraste e a saturação um pouco abaixo (o "look" do resto do vídeo).
+  const brolls = Object.values(insercoes).filter((m) => m.origem === "banco" && m.tipo === "video");
+  if (brolls.length) {
+    const corDaBase = await corMedia(base, [0.2, 0.5, 0.8].map((f) => f * Math.min(ed.duracao, dim.duracaoSec))).catch(() => null);
+    for (const m of brolls) {
+      const cor = await corMedia(m.arquivo, [m.inicio + 0.3, m.inicio + 1.2]).catch(() => null);
+      m.grade = gradeParaCasar(cor, corDaBase);
     }
   }
   marcar("insercoes");

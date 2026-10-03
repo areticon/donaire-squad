@@ -68,9 +68,11 @@ export function misturar(a: string, b: string, k: number): string {
   return `#${m.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 /**
- * O acento VIVO (03/10): o mesmo matiz da marca, com saturação e luz que leem
- * sobre o escuro. Marca de cor apagada (#6b94b3) sumia no vidro; o matiz fica,
- * só a vivacidade sobe.
+ * O acento VIVO (03/10; terceira volta no mesmo dia): o mesmo matiz da marca,
+ * com saturação de pelo menos 0,85 e luz entre 0,58 e 0,64, quando a cor da
+ * marca está apagada (#6b94b3 vira #39a1ef). Vale para todo acabamento. O app
+ * já manda o acento avivado (lib/media/editor-sob-medida/cor.ts, o ESPELHO
+ * desta conta); aplicar de novo não muda nada.
  */
 export function vivo(hex: string): string {
   const [r, g, b] = rgb(hex).map((v) => v / 255);
@@ -83,8 +85,9 @@ export function vivo(hex: string): string {
   const l0 = (mx + mn) / 2;
   const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
   if (s0 < 0.08) return hex; // cinza é cinza: não inventa cor
-  const s = Math.min(1, Math.max(s0, 0.72));
-  const l = Math.min(0.66, Math.max(l0, 0.56));
+  if (s0 >= 0.7 && l0 >= 0.5 && l0 <= 0.7) return hex; // já vivo
+  const s = Math.min(1, Math.max(s0, 0.85));
+  const l = Math.min(0.64, Math.max(l0, 0.58));
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = l - c / 2;

@@ -107,8 +107,8 @@ const CSS_DAS_PASSADAS: Record<string, string> = {
 
 export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   carregarFontesDoTema();
-  // No vidro escuro, o acento é o VIVO (o mesmo matiz da marca, legível).
-  const props = bruto.tema.visual === "vidro" ? { ...bruto, tema: { ...bruto.tema, acento: vivo(bruto.tema.acento) } } : bruto;
+  // O acento é o VIVO em todo acabamento (o mesmo matiz da marca, que brilha); a cor original segue em `acentoMarca`.
+  const props = { ...bruto, tema: { ...bruto.tema, acentoMarca: bruto.tema.acentoMarca ?? bruto.tema.acento, acento: vivo(bruto.tema.acento) } };
   const frame = useCurrentFrame();
   const t = tempoDoQuadro(props.trechos, frame, props.fps);
   const passe = props.passe ?? "frente";
@@ -139,7 +139,7 @@ export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
  * quente. Renderizado uma vez como imagem parada.
  */
 export const FundoDaMarca: React.FC<PropsDoFundo> = ({ largura, altura, tema: tema0, cartao }) => {
-  const tema = tema0.visual === "vidro" ? { ...tema0, acento: vivo(tema0.acento) } : tema0;
+  const tema = { ...tema0, acento: vivo(tema0.acento) };
   const u = Math.min(largura, altura) / 1080;
   const doc = tema.visual === "documental";
   const escuro = escuroDoTema(tema);
