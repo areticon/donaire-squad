@@ -62,6 +62,6 @@ async function folha(W, H, quadro, nome) {
   fc += ";" + pngs.map((_, i) => `[s${i}]`).join("") + `xstack=inputs=${n}:layout=${Array.from({ length: n }, (_, i) => { const [w, h] = esc.split(":"); return `${(i % cols) * w}_${Math.floor(i / cols) * h}`; }).join("|")}:fill=black,format=yuvj420p`;
   spawnSync("ffmpeg", ["-v", "error", "-y", ...ins, "-filter_complex", fc, "-frames:v", "1", join(pasta, `${nome}-folha.jpg`)]);
 }
-await folha(1920, 1080, q169, `h-${visual}`);
+if (!process.env.SO_VERTICAL) await folha(1920, 1080, q169, `h-${visual}`);
 await folha(1080, 1920, q916, `v-${visual}`);
 console.log("ok");

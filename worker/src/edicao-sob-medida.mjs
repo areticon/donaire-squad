@@ -167,7 +167,7 @@ export function legendaSobMedida(edicao, W, H, desloc, duracao) {
   const vertical = H > W;
   const ey = H / (vertical ? 1920 : 1080);
   const tam = Math.round((vertical ? 54 : 50) * ey);
-  const margemV = Math.round(vertical ? H * 0.235 : 40 * ey);
+  const margemV = Math.round(vertical ? H * 0.2 : 40 * ey);
   const linhas = [
     "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
     "[V4+ Styles]",
@@ -369,7 +369,15 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   await mkdir(pasta, { recursive: true });
   let base = join(pasta, "base.mp4");
   if (pedido.baseArquivo) base = pedido.baseArquivo;
-  else await baixar(pedido.completoUrl, base);
+  else if (pedido.trecho?.sourceUrl) {
+    // O CORTE (9:16): a base é o trecho limpo e enquadrado, como o narrador do
+    // /montar (prepararTrecho), sem legenda nem efeito.
+    const { prepararTrecho } = await import("./ffmpeg.mjs");
+    const original = join(pasta, "original.mp4");
+    await baixar(pedido.trecho.sourceUrl, original);
+    await prepararTrecho(original, base, pedido.trecho.inicio, pedido.trecho.duracao, pedido.trecho.manter, pedido.trecho.pessoa ?? null);
+    await rm(original, { force: true }).catch(() => {});
+  } else await baixar(pedido.completoUrl, base);
   const dim = await ffprobe(base);
   const fps = fpsDe(base);
   const W = PAR(ed.largura * escala);

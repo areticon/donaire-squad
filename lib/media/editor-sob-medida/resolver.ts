@@ -89,7 +89,8 @@ export function temaDoEstilo(estiloId: string | null | undefined, cores: { acent
 export function caixaDoCartao(W: number, H: number, ladoDaPeca: "esquerda" | "direita"): Caixa {
   if (H > W) {
     const u = W / 1080;
-    return { x: Math.round(140 * u), y: Math.round(960 * u), w: Math.round(800 * u), h: Math.round(450 * u) };
+    // Em pé: a peça ocupa o alto; o cartão fica embaixo dela, acima da legenda.
+    return { x: Math.round(90 * u), y: Math.round(1000 * u), w: Math.round(900 * u), h: Math.round(500 * u) };
   }
   const u = H / 1080;
   const w = Math.round(840 * u);

@@ -160,8 +160,8 @@ export function Citacao(c: Ctx) {
  */
 export function Pergaminho(c: Ctx) {
   const { props: p, u, tema, vertical } = c;
-  const larg = vertical ? c.W - 150 * u : 1100 * u;
-  const altAberto = vertical ? 640 * u : 560 * u;
+  const larg = vertical ? c.W - 150 : 1100 * u;
+  const altAberto = vertical ? 600 * u : 560 * u;
   const abre = saiSuave((c.t - 0.15) / 0.9);
   const alt = 30 * u + (altAberto - 30 * u) * abre;
   const tinta = "#3a2a17";
@@ -193,8 +193,8 @@ export function Pergaminho(c: Ctx) {
         >
           <div style={{ position: "absolute", inset: 0, opacity: 0.18, background: "repeating-linear-gradient(0deg, rgba(90,60,20,.25) 0 1px, transparent 1px 7px)" }} />
           <div style={{ position: "absolute", left: 70 * u, right: 70 * u, top: 0, bottom: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", opacity: limitar((abre - 0.55) / 0.45) }}>
-            <div style={{ fontFamily: "Playfair Display", fontStyle: "italic", fontWeight: 500, fontSize: (vertical ? 52 : 54) * u, lineHeight: 1.28, color: tinta }}>
-              {texto(p.texto)}
+            <div style={{ fontFamily: "Playfair Display", fontStyle: "italic", fontWeight: 500, fontSize: (vertical ? 46 : 54) * u, lineHeight: 1.28, color: tinta }}>
+              {texto(p.texto).split(/\*\*(.+?)\*\*/g).map((t, i) => (i % 2 ? <b key={i} style={{ fontWeight: 800, color: misturar(tema.acento, tinta, 0.35) }}>{t}</b> : <React.Fragment key={i}>{t}</React.Fragment>))}
             </div>
             {p.referencia ? (
               <div style={{ marginTop: 28 * u, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 30 * u, letterSpacing: "0.14em", textTransform: "uppercase", color: misturar(tema.acento, tinta, 0.45) }}>
@@ -295,7 +295,7 @@ export function Fecho(c: Ctx) {
         {logoUrl ? (
           <Img src={logoUrl} style={{ maxHeight: (vertical ? 170 : 150) * u, maxWidth: (vertical ? 760 : 620) * u, objectFit: "contain" }} />
         ) : (
-          <div style={{ ...estiloDoTitulo(c, vertical ? 92 : 100), color: "#ffffff" }}>{texto(p.marca)}</div>
+          <div style={{ ...estiloDoTitulo(c, Math.min(vertical ? 92 : 100, (c.W * 0.86) / u / Math.max(6, texto(p.marca).length * 0.66))), color: "#ffffff", whiteSpace: "nowrap" }}>{texto(p.marca)}</div>
         )}
       </div>
       {p.rotulo ? <div style={{ opacity: e }}><Selo c={c} texto={texto(p.rotulo)} /></div> : null}

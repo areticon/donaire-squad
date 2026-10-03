@@ -278,7 +278,7 @@ export function progressoDoItem(c: Ctx, k: number, atraso = 0.12): number {
 export function margens(c: Ctx) {
   const { W, H, vertical, u } = c;
   return vertical
-    ? { x: 64 * u, topo: 150 * u, base: H - 560 * u, largura: W - 128 * u }
+    ? { x: 56, topo: 0.13 * H, base: 0.76 * H, largura: W - 112 }
     : { x: 80 * u, topo: 70 * u, base: H - 150 * u, largura: W - 160 * u };
 }
 

@@ -61,7 +61,9 @@ export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas)
   if (t < camada.de || t >= camada.ate) return null;
   const local = t - camada.de;
   const dur = camada.ate - camada.de;
-  const u = Math.min(p.largura, p.altura) / 1080;
+  // No 9:16 o quadro é alto: a peça precisa de letra maior para ler no celular
+  // (prova de 03/10: o painel e a comparação saíram pequenos demais em pé).
+  const u = (Math.min(p.largura, p.altura) / 1080) * (p.altura > p.largura ? 1.3 : 1);
   return {
     t: local,
     dur,
