@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Info, Music, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
+import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import {
   creditosDaSemana,
   diaComFormato,
@@ -43,12 +44,15 @@ type Projeto = {
   videoMusicName: string | null;
   videoTerms: string | null;
   videoSemana: unknown;
+  /** Onde moram os links do cliente (03/10): `config.linksDoCliente`. */
+  config?: unknown;
 };
 
 const ABAS = [
   { id: "redes", rotulo: "Redes sociais" },
   { id: "marca", rotulo: "Marca e voz" },
   { id: "video", rotulo: "Vídeo e semana" },
+  { id: "links", rotulo: "Seus links" },
 ] as const;
 
 const TONS = [
@@ -158,6 +162,12 @@ export function ConfiguracaoDoProjeto({
   somenteLeitura?: { dono: string } | null;
 }) {
   const [aba, setAba] = useState<string>("redes");
+  // A aba pelo endereço (?aba=links), para o link "cadastre seus links" cair
+  // direto nela (03/10).
+  useEffect(() => {
+    const pedida = new URLSearchParams(window.location.search).get("aba");
+    if (pedida && ABAS.some((a) => a.id === pedida)) setAba(pedida);
+  }, []);
   const [salvando, setSalvando] = useState<string | null>(null);
   const [preenchendo, setPreenchendo] = useState<string | null>(null);
 
@@ -281,6 +291,15 @@ export function ConfiguracaoDoProjeto({
       >
       {aba === "redes" && (
         <SocialConnectPanel project={projeto} initialAccounts={contasSociais} />
+      )}
+
+      {aba === "links" && (
+        <Secao
+          titulo="Seus links"
+          descricao="Site, loja, produtos, afiliados, WhatsApp e agenda. O squad coloca o link certo onde a rede aceita link, com uma chamada para a ação."
+        >
+          <LinksDoCliente projetoId={projeto.id} config={projeto.config} />
+        </Secao>
       )}
 
       {aba === "marca" && (

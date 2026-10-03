@@ -61,13 +61,58 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       socialAccountId: conta,
       status: { notIn: ["cancelled", "rejected"] },
     },
-    select: { id: true, metadata: true },
+    select: { id: true, metadata: true, scheduledAt: true, imageUrl: true, status: true },
   });
   const jaTem = irmaos.find((p) => formatoValido(original.platform, (p.metadata as { formato?: unknown } | null)?.formato) === alvo);
-  if (jaTem) return NextResponse.json({ error: "Este lugar já está marcado.", postId: jaTem.id }, { status: 409 });
 
   const { error: _erroDoOriginal, ...metaLimpo } = (original.metadata as Record<string, unknown> | null) ?? {};
   void _erroDoOriginal;
+
+  /**
+   * O LUGAR NOVO A PARTIR DE UM POST JÁ PUBLICADO (03/10, o Instagram que
+   * "falhou" para o Bruno no carrossel de sexta). Dois defeitos juntos:
+   *   1. a mídia: o post publicado tem `imageUrl` limpo depois da publicação,
+   *      e o irmão nascia sem as lâminas;
+   *   2. a data: nascia com `scheduledAt` nulo, e post sem data não cai em dia
+   *      nenhum do quadro nem na lista do card. O clique parecia não marcar, e
+   *      cada clique novo criava mais um rascunho invisível.
+   * Agora a mídia vem de um irmão do mesmo dia ou do card da Diana, e a data é
+   * a do dia: o rascunho aparece no card, e aprovar leva para o próximo horário
+   * livre, como qualquer rascunho vencido.
+   */
+  let imagem = original.imageUrl;
+  if (!imagem) {
+    const irmaoComMidia = await prisma.post.findFirst({
+      where: { projectId: original.projectId, runId: original.runId, dayOfWeek: original.dayOfWeek, mediaType: original.mediaType, imageUrl: { not: null }, NOT: { imageUrl: "" } },
+      orderBy: { createdAt: "desc" },
+      select: { imageUrl: true },
+    });
+    imagem = irmaoComMidia?.imageUrl ?? null;
+  }
+  if (!imagem && original.runId && original.dayOfWeek != null) {
+    const cardDaMidia = await prisma.campaignCard.findFirst({
+      where: { runId: original.runId, dayOfWeek: original.dayOfWeek, cardType: "media", mediaUrl: { not: null }, NOT: { status: "archived" } },
+      orderBy: { createdAt: "desc" },
+      select: { mediaUrl: true },
+    });
+    imagem = cardDaMidia?.mediaUrl ?? null;
+  }
+  if (jaTem) {
+    // O RASCUNHO INVISÍVEL de um clique anterior (sem data, sem mídia): é ele
+    // que o cliente está pedindo de novo, então ganha a data e a mídia e
+    // aparece, em vez de responder "já está marcado" sobre algo que a tela
+    // não mostra.
+    if (!jaTem.scheduledAt && original.scheduledAt && jaTem.status === "draft") {
+      const consertado = await prisma.post.update({
+        where: { id: jaTem.id },
+        data: { scheduledAt: original.scheduledAt, ...(jaTem.imageUrl ? {} : { imageUrl: imagem }) },
+        select: { id: true, platform: true },
+      });
+      return NextResponse.json({ post: consertado });
+    }
+    return NextResponse.json({ error: "Este lugar já está marcado.", postId: jaTem.id }, { status: 409 });
+  }
+
   const novo = await prisma.post.create({
     data: {
       projectId: original.projectId,
@@ -77,11 +122,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       socialAccountId: conta,
       content: original.content,
       mediaType: original.mediaType,
-      imageUrl: original.imageUrl,
+      imageUrl: imagem,
       imagePrompt: original.imagePrompt,
       // Nasce rascunho no mesmo horário: quem aprova o dia aprova este junto,
       // e o erro do irmão (se houver) não é erro deste.
-      scheduledAt: original.status === "published" ? null : original.scheduledAt,
+      scheduledAt: original.scheduledAt,
       status: "draft",
       metadata: { ...metaLimpo, formato: alvo } as never,
     },

@@ -10,6 +10,7 @@ import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { escreverPosts, montarPrefixoCacheavel } from "@/lib/media/write-posts";
+import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 import { debitar, jaCobrado, SaldoInsuficiente } from "@/lib/credits";
 import { creditosEstimados } from "@/lib/media/limits";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
@@ -51,6 +52,8 @@ export async function POST(
           niche: true,
           targetAudience: true,
           voice: true,
+          // Os links do cliente (03/10), que os redatores distribuem por rede.
+          config: true,
           // Só o manual que a IA conseguiu ler: um documento em "lendo" ou
           // "falhou" tem `compiled` vazio e viraria uma marca em branco no
           // prefixo cacheável, sem ninguém perceber. Regra de 18/09.
@@ -176,6 +179,7 @@ export async function POST(
     publico: video.project.targetAudience,
     voz: video.project.voice,
     marca: video.project.contexts[0]?.compiled,
+    links: blocoDosLinks(lerLinks(video.project.config)),
   });
 
   const resultados = await Promise.all(

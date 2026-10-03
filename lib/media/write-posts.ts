@@ -75,6 +75,8 @@ export function montarPrefixoCacheavel(
     publico?: string | null;
     voz?: string | null;
     marca?: string | null;
+    /** O bloco dos links do cliente (lib/projeto/links-do-cliente.ts), 03/10. */
+    links?: string | null;
   },
   opcoes: { tresRedes?: boolean } = {}
 ): string {
@@ -86,6 +88,7 @@ export function montarPrefixoCacheavel(
     contexto.publico ? `Público: ${contexto.publico}` : "",
     contexto.voz ? `Tom de voz: ${contexto.voz}` : "",
     contexto.marca ? `\nContexto da marca:\n${contexto.marca}` : "",
+    contexto.links ? contexto.links : "",
   ]
     .filter(Boolean)
     .join("\n");

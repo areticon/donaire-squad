@@ -51,6 +51,7 @@ import { normalizarCapaParaYouTube } from "@/lib/media/capa-youtube";
 import { lerInfoDoCriador, opcoesDoTikTokNoPost, publicarVideoNoTikTok, refreshTikTokToken } from "@/lib/oauth/tiktok";
 import { caminhoDaConta } from "@/lib/publish/roteador";
 import { naoFazPelaPonte, publicarPeloBlotato } from "@/lib/publish/via-blotato";
+import { lerLinks, primeiroComentarioComLink } from "@/lib/projeto/links-do-cliente";
 
 /**
  * Garante access token válido (Twitter refresh quando necessário).
@@ -866,7 +867,15 @@ export async function executeOAuthPostPublish(
 
   // Primeiro comentário com referências (LinkedIn apenas)
   if (account.platform === "linkedin" && externalId) {
-    const firstComment = (metadata as Record<string, unknown> | null)?.firstComment;
+    // O LINK DO CLIENTE (03/10): o texto chama para o primeiro comentário, e é
+    // aqui, na hora de ir ao ar, que o link cadastrado em Configurações entra
+    // nele. Ver lib/projeto/links-do-cliente.ts.
+    const configDoProjeto = await prisma.project.findUnique({ where: { id: post.projectId }, select: { config: true } }).catch(() => null);
+    const firstComment = primeiroComentarioComLink(
+      (metadata as Record<string, unknown> | null)?.firstComment as string | undefined,
+      post.content,
+      lerLinks(configDoProjeto?.config)
+    );
     if (typeof firstComment === "string" && firstComment.trim().length > 0) {
       // externalId pode ser URN completo (urn:li:share:XXXX) ou só o ID numérico
       const rawId = externalId.startsWith("urn:li:")

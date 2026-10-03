@@ -111,3 +111,43 @@ export function montarPostDeVideo(
 
   return partes.join("\n");
 }
+
+/**
+ * O POST DO VÍDEO SEM CORTES (03/10). O vídeo do gêmeo de 49 s de sexta 02/10
+ * foi aprovado com zero cortes (lib/media/so-completo.ts), e o texto acima é
+ * montado SÓ dos cortes: sem trecho, o título caía no nome do projeto
+ * ("Demandou") e a descrição saía vazia. O card abriu sem legenda nem
+ * descrição, que foi o que o Bruno viu.
+ *
+ * Sem cortes, o vídeo ainda tem o que dizer: o título da gravação (o do gêmeo
+ * é o título do roteiro) e a leitura do radar (resumo e teses, que vêm da fala
+ * dele). As hashtags saem do tema, pela mesma regra das de cima.
+ */
+export function montarPostSemCortes(args: {
+  titulo: string;
+  resumo?: string | null;
+  teses?: string[];
+  tema?: string | null;
+}): string {
+  const titulo = args.titulo.trim().slice(0, 100);
+  const partes = [titulo];
+  const resumo = args.resumo?.trim();
+  if (resumo) partes.push("", resumo);
+  const teses = [...new Set((args.teses ?? []).map((t) => t.trim()).filter(Boolean))].slice(0, 4);
+  if (teses.length) partes.push("", "Nesta conversa:", ...teses.map((t) => `- ${t}`));
+  const palavras = `${args.tema ?? ""} ${titulo}`
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .split(/\W+/)
+    .map((w) => w.toLowerCase())
+    .filter((w) => w.length >= 5);
+  const tags = [...new Set(palavras)].slice(0, 5).map((w) => `#${w}`);
+  if (tags.length >= 3) partes.push("", tags.join(" "));
+  return partes.join("\n");
+}
+
+/** O título de uma gravação a partir do nome do arquivo ("Gêmeo digital - <título>.mp4"). */
+export function tituloDaGravacao(nomeDoArquivo: string | null | undefined): string | null {
+  const nome = (nomeDoArquivo ?? "").replace(/\.[^.]+$/, "").replace(/^G[eê]meo digital\s*-\s*/i, "").trim();
+  return nome.length > 0 ? nome : null;
+}

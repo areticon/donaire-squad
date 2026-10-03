@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { DESTINO_COMPLETO } from "@/lib/media/destinos";
-import { montarPostDeVideo } from "@/lib/media/youtube-post";
+import { montarPostDeVideo, montarPostSemCortes, tituloDaGravacao } from "@/lib/media/youtube-post";
+import type { Radar } from "@/lib/media/radar-do-video";
+import { lerLinks, secaoDeLinksDoYouTube } from "@/lib/projeto/links-do-cliente";
 import { dataDoDia, diaDaSemanaDe, planoDoRun } from "@/lib/media/semana-do-video";
 
 /**
@@ -27,7 +29,8 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       capaFonteUrl: true,
       clips: true,
       originalName: true,
-      project: { select: { name: true } },
+      radar: true,
+      project: { select: { name: true, config: true } },
     },
   });
   if (!video?.completoUrl) return false;
@@ -53,7 +56,6 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
   if (jaTemCard) return false;
 
   const trechos = (video.clips as unknown as Trecho[]) ?? [];
-  const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
   // O completo sai no PRIMEIRO dia do plano (30/09), que é hoje ou a data
   // escolhida no passo 4, e não na segunda da semana, que pode já ter
   // passado. Run de antes de 30/09 (sem início) segue na segunda.
@@ -61,7 +63,9 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
   const diaDoCompleto = inicio ? diaDaSemanaDe(inicio) : 1;
   const data = dataDoDia({ inicio, weekStart: run.weekStart }, diaDoCompleto, 9);
 
-  const conteudo = montarPostDeVideo(trechos, video.durationSec ?? 0, video.project?.name ?? nome);
+  // Os links do cliente no fim da descrição (03/10): o YouTube é a rede que
+  // mais aceita link, e a lista sai sem IA, na ordem de prioridade.
+  const conteudo = [textoDoCompleto(trechos, video), secaoDeLinksDoYouTube(lerLinks(video.project?.config))].filter(Boolean).join("\n\n");
   let postId: string | null = null;
   // O filtro exige gravacaoCompleta: só videoJobId casava com os posts dos
   // CORTES de YouTube Shorts, e o card do completo saiu ligado ao post do
@@ -136,4 +140,25 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
     },
   });
   return true;
+}
+
+/**
+ * O texto do post do completo: com cortes, título e capítulos a partir deles;
+ * sem cortes (o vídeo curto do gêmeo, 03/10), o título da gravação e a leitura
+ * do radar. Exportado para a recuperação de quem nasceu com "Demandou".
+ */
+export function textoDoCompleto(
+  trechos: Trecho[],
+  video: { durationSec: number | null; originalName: string | null; radar?: unknown; project?: { name: string } | null }
+): string {
+  const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
+  if (trechos.some((t) => t.titulo?.trim())) return montarPostDeVideo(trechos, video.durationSec ?? 0, video.project?.name ?? nome);
+  const radar = video.radar as Partial<Radar> | null | undefined;
+  return montarPostSemCortes({
+    titulo: tituloDaGravacao(video.originalName) ?? radar?.tema ?? video.project?.name ?? nome,
+    // O resumo do radar fica de fora: ele é a leitura do squad sobre quem
+    // fala ("Você defende que..."), não texto para o público do canal.
+    teses: (radar?.teses ?? []).map((t) => t.frase),
+    tema: radar?.tema ?? null,
+  });
 }

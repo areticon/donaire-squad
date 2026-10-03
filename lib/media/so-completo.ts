@@ -41,11 +41,27 @@ export async function concluirSoCompleto(
       finishedAt: new Date(),
       completoUrl: corpo.completo.url,
       completoBytes: corpo.completo.bytes ? BigInt(corpo.completo.bytes) : null,
-      capaFonteUrl: corpo.capaFonte?.url ?? null,
+      // Sem cortes o worker pode não mandar o quadro da capa (o gêmeo de
+      // 02/10 chegou sem): o rosto do gêmeo serve de fonte, e o card ganha
+      // miniatura e capas em vez de imagem quebrada.
+      capaFonteUrl: corpo.capaFonte?.url ?? (await fotoDoGemeoDoVideo(id)),
     },
   });
   if (video.completoUrl && video.completoUrl !== corpo.completo.url) await apagarMidias([video.completoUrl], `completo/${id}`);
   await abrirQuadroDoVideo(id).catch((e) => console.error(`[so-completo][${id}] quadro falhou:`, e));
   await anexarCompletoAoQuadro(id).catch((e) => console.error(`[so-completo][${id}] completo no quadro falhou:`, e));
   return { resultado: "pronto", disparar: true };
+}
+
+/**
+ * A foto do gêmeo que gerou este vídeo, quando o vídeo veio do gêmeo
+ * (`project_memories` tipo "gemeo-video" com o `videoJobId`). Nulo nos outros.
+ */
+export async function fotoDoGemeoDoVideo(videoJobId: string): Promise<string | null> {
+  const doc = await prisma.projectMemory.findFirst({
+    where: { type: "gemeo-video", value: { path: ["videoJobId"], equals: videoJobId } },
+    select: { value: true },
+  });
+  const foto = (doc?.value as { fotoUrl?: unknown } | null)?.fotoUrl;
+  return typeof foto === "string" && foto.length > 0 ? foto : null;
 }

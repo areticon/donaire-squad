@@ -82,8 +82,10 @@ export async function PATCH(
   }
 
   if (body.cancelSchedule) {
+    // Volta a rascunho NO MESMO DIA (03/10): com a data apagada, o post saía
+    // de todos os dias do quadro e o card ficava vazio. Aprovar de novo leva
+    // ao próximo horário livre quando este já passou.
     updateData.status = "draft";
-    updateData.scheduledAt = null;
   } else if (body.scheduledAt !== undefined) {
     const d = body.scheduledAt ? new Date(body.scheduledAt) : null;
     if (d && isPastDate(d)) {
@@ -139,6 +141,15 @@ export async function PATCH(
   // esta é a tradução entre eles. Arquivar o último post vivo do dia esconde o
   // dia da agenda; um post que volta de arquivado reabre o dia. Ver
   // lib/posts/espelhar-no-gestor.ts.
+  // O TEXTO EDITADO É O MESMO NO CARD (03/10): o quadro titula a peça pelo
+  // card do redator, e editar só o post deixava o título antigo no quadro.
+  if (typeof body.content === "string" && body.content !== post.content) {
+    await prisma.campaignCard.updateMany({
+      where: { postId: id, cardType: { notIn: ["media", "publish", "preview", "research"] } },
+      data: { content: body.content },
+    });
+  }
+
   const virouArquivado = updated.status === "cancelled" && post.status !== "cancelled";
   const saiuDoArquivo = post.status === "cancelled" && updated.status !== "cancelled";
   if (virouArquivado) await esconderDiaSemPosts(updated.runId, updated.dayOfWeek);

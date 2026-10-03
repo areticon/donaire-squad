@@ -239,6 +239,12 @@ function SeloDaRede({ plataforma, contas }: { plataforma: string; contas: Destin
 function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar }: { p: PecaDoDia; onAbrir: () => void; onVerMidia?: () => void; onArquivar?: () => void }) {
   const e = ESTADO[p.estado];
   const temVisor = Boolean(p.midia && onVerMidia);
+  // A CAPA QUE NÃO CARREGA (03/10): o vídeo do gêmeo sem capa ainda devolvia
+  // 404 e o cartão mostrava o ícone de imagem quebrada. Com vídeo, o primeiro
+  // quadro do próprio mp4 entra no lugar; sem vídeo, a capa some.
+  const [capaFalhou, setCapaFalhou] = useState(false);
+  const videoDaPeca = p.midia?.tipo === "video" ? p.midia.urls[0] : null;
+  const capa = capaFalhou ? videoDaPeca : p.capa;
   return (
     // Um `div` com DOIS botões, e não um botão só: a capa abre o visor da
     // mídia e o corpo abre o card. Botão dentro de botão não existe em HTML.
@@ -260,7 +266,7 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar }: { p: PecaDoDia; on
           {p.origem}
         </span>
       )}
-      {p.capa && (
+      {capa && (
         <button
           type="button"
           data-capa
@@ -275,13 +281,13 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar }: { p: PecaDoDia; on
               publicações" cortada aqui em 19/09 e achou que a Diana tinha
               gerado a arte cortada; a arte estava inteira, quem cortava era
               esta linha. */}
-          {ehVideoNaCapa(p.capa) ? (
+          {ehVideoNaCapa(capa) || (capaFalhou && videoDaPeca) ? (
             // Peça de vídeo sem quadro guardado: o próprio mp4, mudo e parado
             // no primeiro frame. Um `<img src="...mp4">` seria imagem quebrada.
-            <video src={p.capa} muted playsInline preload="metadata" className="h-14 w-full object-cover object-top" />
+            <video src={capa} muted playsInline preload="metadata" className="h-14 w-full object-cover object-top" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.capa} alt="" className="h-14 w-full object-cover object-top" loading="lazy" />
+            <img src={capa} alt="" className="h-14 w-full object-cover object-top" loading="lazy" onError={() => setCapaFalhou(true)} />
           )}
           {temVisor && (
             <span

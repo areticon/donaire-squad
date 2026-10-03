@@ -52,6 +52,7 @@ import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-ver
 import { veraConfereNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 
 // O teto de tempo vive nas ROTAS (`/api/cron/fila`), e nao mais aqui: desde
 // 10/09 o motor gera UM dia por chamada, e cada dia tem os seus 800 s. Antes,
@@ -1827,7 +1828,10 @@ async function runPipeline(
   // As regras aprovadas pelo cliente (roteiro e textos) leem do banco a cada
   // fatia, como a restrição: aprovou hoje, vale no próximo dia da campanha.
   const regrasDoProjeto = await blocoDasRegrasDoProjeto(project.id, ["roteiro", "redacao"]);
-  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto);
+  // OS LINKS DO CLIENTE (03/10, lib/projeto/links-do-cliente.ts): como DADO,
+  // com a regra de cada rede. Estáveis na campanha, por isso no prefixo.
+  const linksDoCliente = blocoDosLinks(lerLinks(project.config));
+  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto + linksDoCliente);
 
   // As lições da Vera (29/09): o erro de cada agente volta para ele antes de
   // escrever. Lidas uma vez por fatia; falha aqui só tira as lições.

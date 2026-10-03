@@ -13,6 +13,7 @@ import { mencoesDeOutraRede, NOME_DA_REDE } from "@/lib/pipeline/redes";
 import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
 import { ajustarParaFormato } from "@/lib/media/margem-de-seguranca";
 import { limparMarcadores, montarPrefixoCacheavel, textoDaRede } from "@/lib/media/write-posts";
+import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 import { AberturasDaSemana, aberturaDe } from "@/lib/media/aberturas-da-semana";
 import { escreverLegendaDoCarrossel } from "@/lib/media/carrossel-do-video";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
@@ -81,6 +82,8 @@ async function carregarVideo(videoJobId: string) {
           targetAudience: true,
           voice: true,
           colorPalette: true,
+          // Os links do cliente (03/10), que os redatores distribuem por rede.
+          config: true,
           videoSemana: true,
           socialAccounts: { where: { isActive: true }, select: { platform: true, id: true } },
           agents: {
@@ -145,7 +148,7 @@ function prefixoDoVideo(video: VideoParaEscrever): string {
   const transcript = video.transcript as { text?: string } | null;
   const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
   return (
-    montarPrefixoCacheavel({ nicho: video.project.niche, publico: video.project.targetAudience, voz: video.project.voice }, { tresRedes: false }) +
+    montarPrefixoCacheavel({ nicho: video.project.niche, publico: video.project.targetAudience, voz: video.project.voice, links: blocoDosLinks(lerLinks(video.project.config)) }, { tresRedes: false }) +
     `\n\nBRIEFING DO ROBERTO RADAR (pesquisa feita a partir deste vídeo):\n${radar ? textoDoRadar(radar) : "(o Roberto ainda não pesquisou; escreva só com a transcrição, sem nenhum dado externo)"}` +
     `\n\nTRANSCRIÇÃO DO VÍDEO "${nome}":\n${(transcript?.text ?? "").slice(0, 40000)}`
   );

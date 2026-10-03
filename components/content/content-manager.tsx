@@ -42,9 +42,11 @@ import { AvisoDaMontagem, type FalhaDaMontagem } from "@/components/video/aviso-
 import { alcanceDaReprovacao, rotuloDaReprovacao, avisoDaReprovacao, ESTADOS_MORTOS } from "@/lib/content/reprovacao";
 import { etiquetaDaPeca } from "@/lib/posts/etiqueta-da-peca";
 import { cardsDaPeca, chaveDaPeca, familiaDaChave } from "@/lib/posts/cards-da-peca";
+import { chaveDaPecaDoVideo, postsDaMesmaPeca } from "@/lib/posts/peca-do-video";
 import { custoDeRefazerPeca } from "@/lib/credits/estimativa";
 import { formatoDoPost } from "@/lib/publish/formato-de-destino";
 import { DestinosDoDia } from "@/components/posts/destinos-do-dia";
+import { EditorDeTextos } from "@/components/content/editor-de-textos";
 import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
 import { TRADUCAO_DOS_CODIGOS, chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFrase } from "@/lib/publish/codigos";
 import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
@@ -1396,7 +1398,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data.posts)) {
-            setDayPosts(data.posts);
+            // UM CARD POR PEÇA (03/10): o card do corte lista as redes DO
+            // CORTE, e não o dia inteiro da campanha (o completo junto).
+            setDayPosts(postsDaMesmaPeca(data.posts, localCard.postId));
             // Sem post ligado, o horário do dia é o do primeiro post que existe.
             if (!localCard.postId) {
               const primeiro = data.posts.find((p: { scheduledAt: string | null }) => p.scheduledAt);
@@ -1532,7 +1536,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     if (!consultaDoDia) return;
     const r = await fetch(`/api/posts/by-day?projectId=${projectId}&${consultaDoDia}`);
     const data = await r.json();
-    if (Array.isArray(data.posts)) setDayPosts(data.posts);
+    if (Array.isArray(data.posts)) setDayPosts(postsDaMesmaPeca(data.posts, localCard.postId));
     if (!localCard.postId) return;
     const r2 = await fetch(`/api/posts/${localCard.postId}`);
     const d2 = await r2.json();
@@ -2345,7 +2349,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-bold text-base" style={{ color: "var(--text-primary)" }}>{localCard.agentName}</h3>
                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
-                  {CARD_TYPE_LABELS[localCard.cardType] ?? localCard.cardType}
+                  {(localCard.metadata as { completo?: boolean } | null)?.completo === true
+                    ? "Vídeo completo"
+                    : CARD_TYPE_LABELS[localCard.cardType] ?? localCard.cardType}
                 </span>
                 {/* A hora do POST, e não a do card (29/09): ver horaDoCabecalho. */}
                 {horaDoCabecalho && (
@@ -3298,6 +3304,22 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   aoEscolher={setEscolhidos}
                   ocupado={approving}
                   aoMudar={async () => { await refreshDayPosts(); onWeekRefresh?.(); }}
+                />
+
+                {/* OS TEXTOS DA PEÇA, EDITÁVEIS (03/10): título, descrição,
+                    legenda e hashtags de cada rede, à mão ou pela IA. */}
+                <EditorDeTextos
+                  posts={postsDoDia}
+                  aoSalvar={(id, conteudo) => {
+                    setDayPosts((lista) => lista.map((x) => (x.id === id ? { ...x, content: conteudo } : x)));
+                    if (id === localCard.postId) {
+                      const updated = { ...localCard, content: conteudo };
+                      setLocalCard(updated);
+                      setEditedContent(conteudo);
+                      onCardUpdate(updated);
+                    }
+                    onWeekRefresh?.();
+                  }}
                 />
 
                 {/* AS FALHAS NO DIA APROVADO (01/10, pedido do Bruno: "os posts
@@ -4612,6 +4634,12 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     p.socialAccountId ? socialAccounts.find((a) => a.id === p.socialAccountId) : undefined;
   const DO_REDATOR = ["post_linkedin", "post_twitter", "video_clip", "video_completo"];
   const familiaDoPost = (p: PostParaEstado, card?: CampaignCard): { chave: string; tipo: string } => {
+    // UM CARD POR PEÇA (03/10): o corte é UM conteúdo com um post por rede, e
+    // a chave é o corte (vídeo + trecho), não o card de cada rede. Até aqui o
+    // mesmo corte virava quatro cards no mesmo dia. Ver lib/posts/peca-do-video.ts.
+    const doVideo = chaveDaPecaDoVideo(p.metadata) ?? chaveDaPecaDoVideo(card?.metadata);
+    if (doVideo?.startsWith("completo:")) return { chave: doVideo, tipo: "Vídeo completo" };
+    if (doVideo) return { chave: doVideo, tipo: "Corte de vídeo" };
     if (card?.cardType === "video_completo") return { chave: `video:${card.id}`, tipo: "Vídeo completo" };
     if (card?.cardType === "video_clip" || p.platform === "youtube") return { chave: `corte:${card?.id ?? p.id}`, tipo: "Corte de vídeo" };
     return { chave: "post", tipo: "Post" };
@@ -4684,13 +4712,18 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     // O formato que o cliente escolheu para o dia, quando a semana veio de um
     // vídeo: mora no metadata dos cards de espera que o agendar cria (parte
     // 90). O corte do Vitor vale como "Vídeo".
-    const formato =
-      [...cardsDoDia, ...virtuaisDoDia]
-        .map((c) => (c.metadata as { formatoRotulo?: string } | null)?.formatoRotulo)
-        .find((r): r is string => typeof r === "string" && r.length > 0) ??
-      ([...cardsDoDia, ...virtuaisDoDia].some((c) => c.cardType === "video_clip" || c.cardType === "video_completo")
-        ? "Vídeo"
-        : null);
+    // TODOS os formatos do dia (03/10): a sexta do gêmeo tinha o vídeo e o
+    // carrossel, e o rótulo dizia só "Carrossel", que o Bruno leu como a
+    // etiqueta do vídeo.
+    const formatosDoDia = [
+      ...new Set([
+        ...([...cardsDoDia, ...virtuaisDoDia].some((c) => c.cardType === "video_clip" || c.cardType === "video_completo") ? ["Vídeo"] : []),
+        ...[...cardsDoDia, ...virtuaisDoDia]
+          .map((c) => (c.metadata as { formatoRotulo?: string } | null)?.formatoRotulo)
+          .filter((r): r is string => typeof r === "string" && r.length > 0),
+      ]),
+    ];
+    const formato = formatosDoDia.length ? formatosDoDia.join(" · ") : null;
 
     const postsDoDia = postsSemana.filter((p) =>
       p.scheduledAt
@@ -4712,7 +4745,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       // semana, publicando no mesmo horário, viravam UMA peça com nove
       // destinos, e os rascunhos novos sumiam dentro da peça agendada da
       // anterior. Ver chaveDaPeca em lib/posts/cards-da-peca.ts.
-      const chave = chaveDaPeca(familia, p.runId, p.scheduledAt ? new Date(p.scheduledAt).toISOString() : "");
+      // A peça de vídeo não leva a hora na chave: a rede aprovada antes anda
+      // para o próximo horário livre, e o corte se partia em dois cards.
+      const ehPecaDeVideo = familia.startsWith("corte:") || familia.startsWith("completo:");
+      const chave = chaveDaPeca(familia, p.runId, ehPecaDeVideo || !p.scheduledAt ? "" : new Date(p.scheduledAt).toISOString());
       const g = grupos.get(chave) ?? { tipo, posts: [], cards: [] };
       g.posts.push(p);
       if (card) g.cards.push(card);
@@ -4762,14 +4798,22 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
 
       // O texto que titula a peça vem do redator do LinkedIn, que é o mais
       // longo; a thread do X do mesmo dia diz a mesma coisa em outro formato.
+      // A peça de vídeo só fala pelos cards dela: o texto do carrossel do
+      // mesmo dia não é o título do vídeo (03/10).
+      const ehVideoNaChave = chave.startsWith("corte:") || chave.startsWith("completo:");
       const redator =
         g.cards.find((c) => c.cardType === "post_linkedin") ??
         g.cards.find((c) => DO_REDATOR.includes(c.cardType)) ??
-        candidatos.find((c) => c.cardType === "post_linkedin");
+        (ehVideoNaChave ? undefined : candidatos.find((c) => c.cardType === "post_linkedin"));
       // O card que abre a peça: a publicação lista todos os destinos e as
       // ações de aprovar e publicar, então ela é a porta da peça de texto.
       const principal =
-        (chave === "post" ? candidatos.find((c) => c.cardType === "publish") : undefined) ?? redator ?? g.cards[0];
+        (chave === "post" ? candidatos.find((c) => c.cardType === "publish") : undefined) ??
+        redator ??
+        g.cards[0] ??
+        // O post de vídeo sem card próprio (o Shorts marcado depois) abre pelo
+        // card do mesmo vídeo, que lista as redes dele (03/10).
+        (ehVideoNaChave ? weekCards.find((c) => chaveDaPecaDoVideo(c.metadata) === chave) : undefined);
       const id = `${iso}:${chaveComHora}`;
       if (principal) cardDaPeca.set(id, principal);
       postsDaPeca.set(id, g.posts);
@@ -4782,15 +4826,26 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       // src de mp4 e uma imagem quebrada, entao a capa vira o QUADRO que o
       // trabalho guardou em `metadata.thumb`; sem quadro, o calendario recebe
       // o proprio mp4 e desenha um `<video>`.
-      const cardDaMidia = candidatos.find((c) => c.cardType === "media" && c.mediaUrl);
-      const midiaDaCapa = redator?.mediaUrl ?? cardDaMidia?.mediaUrl ?? null;
+      // A PEÇA DE VÍDEO NÃO PEGA A ARTE DO DIA (03/10): o Shorts do completo
+      // sem card próprio recebia a capa e as "3 lâminas" do carrossel da
+      // mesma campanha. Sem card, a mídia e a capa vêm do próprio vídeo.
+      const pecaDeVideo = chave.startsWith("corte:") || chave.startsWith("completo:");
+      const cardDaMidia = pecaDeVideo ? undefined : candidatos.find((c) => c.cardType === "media" && c.mediaUrl);
+      const [, jobDaPeca, trechoDaPeca] = chave.split(":");
+      const midiaDoVideo = pecaDeVideo && jobDaPeca
+        ? chave.startsWith("completo:")
+          ? `/api/videos/${jobDaPeca}/midia?tipo=completo`
+          : `/api/videos/${jobDaPeca}/midia?trecho=${trechoDaPeca}&tipo=vertical`
+        : null;
+      const midiaDaCapa = (pecaDeVideo ? (redator?.cardType === "video_clip" ? redator.mediaUrl : null) ?? midiaDoVideo : redator?.mediaUrl) ?? cardDaMidia?.mediaUrl ?? null;
       const bruta = midiaDaCapa ? midiaDaCapa.split("|")[0] : null;
       // O quadro vem do card do próprio corte (metadata.thumb, a capa do
       // Vitor) e, sem ele, do card da Diana.
       const quadroGuardado =
         (redator?.metadata as { thumb?: string | null } | null)?.thumb ??
         (cardDaMidia?.metadata as { thumb?: string | null } | null)?.thumb ??
-        null;
+        (pecaDeVideo ? (primeiro.metadata as { capaUrl?: string | null } | null)?.capaUrl ?? null : null) ??
+        (pecaDeVideo && chave.startsWith("completo:") && jobDaPeca ? `/api/videos/${jobDaPeca}/midia?tipo=capa-completo` : null);
       const capa = bruta && ehVideo(bruta) ? quadroGuardado ?? bruta : bruta;
       // O que o visor do calendário mostra ao clicar na capa (21/09): o vídeo
       // com controles, as lâminas do carrossel, ou a arte ampliada.
@@ -4820,9 +4875,14 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         formato: formatoDoPost(primeiro.metadata, primeiro.platform),
       });
 
+      // O título do corte é o do corte (metadata.titulo), igual em todas as
+      // redes; o texto de cada rede começa diferente.
+      const tituloDoCorte = g.cards
+        .map((c) => (c.metadata as { titulo?: unknown } | null)?.titulo)
+        .find((t): t is string => typeof t === "string" && t.trim().length > 0);
       pecas.push({
         id,
-        titulo: tituloDoCard(redator) ?? tituloDaArte(cardDaMidia ?? g.cards.find((c) => c.cardType === "media"), primeiro) ?? g.tipo,
+        titulo: (chave.startsWith("corte:") && tituloDoCorte ? tituloDoCorte : null) ?? tituloDoCard(redator) ?? (ehVideoNaChave ? tituloDoCard(principal) : null) ?? tituloDaArte(cardDaMidia ?? g.cards.find((c) => c.cardType === "media"), primeiro) ?? g.tipo,
         tipo: g.tipo,
         etiqueta,
         hora: primeiro.scheduledAt ? horaCurta(new Date(primeiro.scheduledAt)) : null,
