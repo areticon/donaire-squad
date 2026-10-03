@@ -106,8 +106,9 @@ export const MAX_X = 280;
 // Até 30/09: export const CREDITOS_FIXOS_DA_EDICAO = 260;
 // Até 30/09: export const CREDITOS_POR_MINUTO = 17;
 // Até 02/10: 2140 (550 + 390 + 3 x 400).
-export const CREDITOS_FIXOS_DA_EDICAO = 2200; // 550 + 390 + 3 x 420 (02/10)
-export const CREDITOS_POR_MINUTO = 53; // 25 + 28 (01/10, era 25 + 22)
+// Até 03/10: 2200. Imagens em qualidade média (aprovado pelo Bruno em 03/10).
+export const CREDITOS_FIXOS_DA_EDICAO = 2300; // 590 + 390 + 3 x 440 (03/10)
+export const CREDITOS_POR_MINUTO = 61; // 25 + 36 (03/10, era 25 + 28)
 
 /**
  * OS CRÉDITOS EM DUAS PARTES (30/09, tela de roteiro). O Bruno: "essa etapa
@@ -154,17 +155,20 @@ export const CREDITOS_POR_MINUTO = 53; // 25 + 28 (01/10, era 25 + 22)
 // export const CREDITOS_DO_COMPLETO_FIXOS = 75;
 // export const CREDITOS_DO_COMPLETO_POR_MINUTO = 3;
 // export const CREDITOS_POR_CORTE_APROVADO = 80;
-export const CREDITOS_DO_ROTEIRO_FIXOS = 550;
+// 550 até 03/10; a semana de artes subiu para o GPT Image 2 medium (prova A/B de 02/10).
+export const CREDITOS_DO_ROTEIRO_FIXOS = 590;
 export const CREDITOS_DO_ROTEIRO_POR_MINUTO = 25;
 export const CREDITOS_DO_COMPLETO_FIXOS = 390;
 // 22 até 01/10 à tarde. Subiu para 28 por decisão do Bruno: o diretor do
 // completo passou a cobrir o vídeo inteiro (cotas por minuto, o dobro de
 // inserções) e custou cerca de US$ 2,5 num vídeo de 22 min, o que deixava a
 // soma de roteiro e completo encostada no teto de R$ 0,027 por crédito.
-export const CREDITOS_DO_COMPLETO_POR_MINUTO = 28;
+// 28 até 03/10; imagens do completo em medium (+US$ 0,07 por minuto).
+export const CREDITOS_DO_COMPLETO_POR_MINUTO = 36;
 // 400 até 02/10. Subiu para 420 com a aprovação do Bruno: a revisão visual
 // (~US$ 0,08 por corte) deixava o corte 3% acima da régua de R$ 0,027 por crédito.
-export const CREDITOS_POR_CORTE_APROVADO = 420;
+// 420 até 03/10; 2 a 3 imagens por corte em medium.
+export const CREDITOS_POR_CORTE_APROVADO = 440;
 /**
  * A DEVOLUÇÃO DA EDIÇÃO NÃO ENTREGUE (02/10, prometida ao Bruno): quando a
  * montagem de efeitos falha por erro nosso ou a revisão visual entrega a
