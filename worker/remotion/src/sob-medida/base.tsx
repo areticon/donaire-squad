@@ -177,7 +177,8 @@ export function ComDestaque({ c, texto }: { c: Ctx; texto: string }) {
         }
         if (c.tema.visual === "documental") {
           return (
-            <span key={i} style={{ color: misturar(c.tema.acento, "#000000", 0.25), fontStyle: c.tema.fonteTitulo === "Playfair Display" ? "italic" : "normal", borderBottom: `${4 * c.u}px solid ${rgba(c.tema.acento, 0.55)}` }}>
+            // MARCA-TEXTO da Vox (03/10, terceira volta): tinta sobre a faixa clara da marca, não mais o sublinhado fino.
+            <span key={i} style={{ color: "#15130f", textShadow: "none", fontStyle: c.tema.fonteTitulo === "Playfair Display" ? "italic" : "normal", background: `linear-gradient(178deg, transparent 14%, ${rgba(misturar(c.tema.acento, "#ffffff", 0.3), 0.95)} 14%, ${rgba(misturar(c.tema.acento, "#ffffff", 0.18), 0.92)} 94%, transparent 94%)`, padding: `0 ${0.12}em`, borderRadius: 4 * c.u, boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}>
               {p}
             </span>
           );

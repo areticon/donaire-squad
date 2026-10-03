@@ -182,7 +182,8 @@ export function TextoCinetico({
       ? imp
         ? { color: sobreOAcento(tema) }
         : doc
-        ? { color: acento, fontStyle: tema.fonteTitulo === "Playfair Display" ? "italic" : "normal" }
+        ? // MARCA-TEXTO da Vox (03/10, terceira volta): tinta quase preta sobre a faixa clara da marca, em fundo claro ou escuro.
+          { color: "#15130f", fontStyle: tema.fonteTitulo === "Playfair Display" ? "italic" : "normal", textShadow: "none" }
         : { background: `linear-gradient(100deg, ${claro}, ${acento})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: `drop-shadow(0 0 ${10 * u}px ${rgba(acento, 0.55)})` }
       : {};
     const transf = modo === "estourar" ? `scale(${0.4 + 0.6 * s}) translateY(${(1 - s) * 30}%)` : `translateY(${(1 - s) * 105}%) rotate(${(1 - s) * 5}deg)`;
@@ -250,21 +251,39 @@ export function TextoCinetico({
               />
             ) : null}
             {nodos}
-            {!imp && !semTraco ? (
+            {doc ? (
+              // A faixa do marca-texto: 78% do corpo, um pouco abaixo do meio, borda irregular de marcador,
+              // corre da esquerda para a direita junto com as palavras (400 a 600 ms).
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: "-0.08em",
+                  right: "0.18em",
+                  top: "0.16em",
+                  bottom: "0.04em",
+                  borderRadius: `${3 * u}px ${9 * u}px ${4 * u}px ${10 * u}px`,
+                  background: `linear-gradient(178deg, ${rgba(misturar(tema.acento, "#ffffff", 0.32), 0.95)}, ${rgba(misturar(tema.acento, "#ffffff", 0.18), 0.92)})`,
+                  transform: `scaleX(${saiSuave((c.t - inicio - (kFim - lista.length + 1) * atraso) / 0.5)}) skewX(-4deg)`,
+                  transformOrigin: "left",
+                  zIndex: -1,
+                }}
+              />
+            ) : !imp && !semTraco ? (
               <span
                 aria-hidden
                 style={{
                   position: "absolute",
                   left: 0,
                   right: "0.28em",
-                  bottom: doc ? "0.02em" : "-0.04em",
-                  height: doc ? "0.32em" : Math.max(3, 5 * u),
+                  bottom: "-0.04em",
+                  height: Math.max(3, 5 * u),
                   borderRadius: 4 * u,
-                  background: doc ? rgba(tema.acento, 0.32) : `linear-gradient(90deg, ${rgba(acento, 0.1)}, ${acento})`,
-                  boxShadow: doc ? "none" : brilho(acento, u, 0.6),
+                  background: `linear-gradient(90deg, ${rgba(acento, 0.1)}, ${acento})`,
+                  boxShadow: brilho(acento, u, 0.6),
                   transform: `scaleX(${traco})`,
                   transformOrigin: "left",
-                  zIndex: doc ? -1 : 0,
+                  zIndex: 0,
                 }}
               />
             ) : null}
