@@ -41,6 +41,14 @@ export type CamadaResolvida = {
   /** Duração da animação de cada evento (s). */
   evento: number;
   props: Record<string, unknown>;
+  /**
+   * As passadas em que a camada é desenhada (03/10, segunda volta): "frente"
+   * (sempre), "atras" (o que vai por baixo da pessoa recortada) e "vidro" (a
+   * máscara do desfoque da gravação). Sem o campo, só "frente".
+   */
+  passes?: Array<"frente" | "atras" | "vidro">;
+  /** A camada se mexe o tempo todo (palco com câmera, título que deriva): todo quadro vai ao Chrome. */
+  continua?: boolean;
 };
 
 /** Um trecho da linha condensada: quadros c0..c0+n-1 mostram o tempo t0 + k/fps (n=1: um quadro parado). */
@@ -54,6 +62,8 @@ export type PropsDasCamadas = {
   camadas: CamadaResolvida[];
   trechos: Trecho[];
   logoUrl?: string | null;
+  /** A passada desta renderização (ver Camadas.tsx). */
+  passe?: "frente" | "atras" | "vidro";
 };
 
 export type PropsDoFundo = {

@@ -18,6 +18,7 @@ import {
   texto,
   type Ctx,
 } from "../base";
+import { brilho, molaFisica, TextoCinetico, Vidro } from "../kit";
 
 const ponto = (v: unknown, padrao: number) => limitar(typeof v === "number" ? v : padrao, 0.02, 0.98);
 
@@ -44,7 +45,7 @@ export function Seta(c: Ctx) {
   const cabeca = limitar((desenho - 0.85) / 0.15);
   return (
     <div style={{ position: "absolute", inset: 0, opacity: c.fica }}>
-      <svg width={W} height={H} style={{ position: "absolute", inset: 0, overflow: "visible", filter: `drop-shadow(0 ${4 * u}px ${8 * u}px rgba(0,0,0,.55))` }}>
+      <svg width={W} height={H} style={{ position: "absolute", inset: 0, overflow: "visible", filter: `drop-shadow(0 0 ${8 * u}px ${tema.acento}) drop-shadow(0 ${4 * u}px ${8 * u}px rgba(0,0,0,.55))` }}>
         <path d={`M${ax} ${ay} Q${mx} ${my} ${bx} ${by}`} fill="none" stroke={tema.acento} strokeWidth={9 * u} strokeLinecap="round" strokeDasharray={comp} strokeDashoffset={comp * (1 - desenho)} />
         <path d={`M${p1[0]} ${p1[1]} L${bx} ${by} L${p2[0]} ${p2[1]}`} fill="none" stroke={tema.acento} strokeWidth={9 * u} strokeLinecap="round" strokeLinejoin="round" opacity={cabeca} />
       </svg>
@@ -77,7 +78,7 @@ export function Circulo(c: Ctx) {
   const d = saiSuave((c.t - 0.05) / 0.55);
   return (
     <div style={{ position: "absolute", inset: 0, opacity: c.fica }}>
-      <svg width={W} height={H} style={{ position: "absolute", inset: 0, filter: `drop-shadow(0 ${3 * u}px ${6 * u}px rgba(0,0,0,.5))` }}>
+      <svg width={W} height={H} style={{ position: "absolute", inset: 0, filter: `drop-shadow(0 0 ${8 * u}px ${tema.acento}) drop-shadow(0 ${3 * u}px ${6 * u}px rgba(0,0,0,.5))` }}>
         <polyline points={pts.join(" ")} fill="none" stroke={tema.acento} strokeWidth={8 * u} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={comp} strokeDashoffset={comp * (1 - d)} />
       </svg>
       {p.rotulo ? (
@@ -91,27 +92,33 @@ export function Circulo(c: Ctx) {
   );
 }
 
-/** ÍCONE COM RÓTULO: o objeto do que é dito (relógio, alvo, igreja), grande e limpo. */
+/** ÍCONE COM RÓTULO: o objeto numa esfera de vidro com o anel de luz girando, e o rótulo palavra a palavra. */
 export function IconeComRotulo(c: Ctx) {
   const { props: p, u, tema, vertical } = c;
   const tam = (vertical ? 200 : 180) * u;
-  const pop = c.tema.visual === "impacto" ? mola(c.entra) : saiSuave(c.entra);
+  const s = molaFisica(c.t, 200, 13);
   const pos = texto(p.posicao, vertical ? "topo" : "direita");
+  const giro = c.t * 40;
   return (
-    <div style={{ ...posicionar(c, pos), opacity: limitar(c.entra * 3) * c.fica }}>
-      <div style={{ ...estiloDoPainel(c), padding: `${34 * u}px ${40 * u}px`, display: "flex", alignItems: "center", gap: 30 * u, maxWidth: vertical ? margens(c).largura : 980 * u, transform: `scale(${0.85 + 0.15 * pop})` }}>
-        <div style={{ width: tam, height: tam, flex: "0 0 auto", borderRadius: 36 * u, display: "flex", alignItems: "center", justifyContent: "center", background: `radial-gradient(circle at 35% 30%, ${rgba(tema.acento, 0.4)}, ${rgba(tema.acento, 0.1)})`, border: `${2 * u}px solid ${rgba(tema.acento, 0.6)}` }}>
-          <Icone nome={texto(p.nome, "estrela")} tam={tam * 0.56} cor={tema.visual === "documental" ? misturar(tema.acento, "#000000", 0.2) : misturar(tema.acento, "#ffffff", 0.35)} traco={1.8} />
+    <div style={{ ...posicionar(c, pos), opacity: limitar(c.t / 0.12) * c.fica }}>
+      <Vidro c={c} estilo={{ padding: `${30 * u}px ${38 * u}px`, display: "flex", alignItems: "center", gap: 30 * u, maxWidth: vertical ? margens(c).largura : 980 * u, transform: `perspective(${1200 * u}px) translateY(${(1 - s) * 30 * u}px) rotateX(${(1 - s) * 18}deg)` }}>
+        <div style={{ position: "relative", width: tam, height: tam, flex: "0 0 auto", transform: `scale(${0.4 + 0.6 * s})` }}>
+          <svg width={tam} height={tam} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+            <circle cx={tam / 2} cy={tam / 2} r={tam * 0.5} fill="none" stroke={rgba(tema.acento, 0.8)} strokeWidth={3 * u} strokeDasharray={`${tam * 0.9} ${tam * 0.5}`} transform={`rotate(${giro} ${tam / 2} ${tam / 2})`} style={{ filter: `drop-shadow(0 0 ${6 * u}px ${tema.acento})` }} />
+          </svg>
+          <div style={{ position: "absolute", inset: 10 * u, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: `radial-gradient(circle at 35% 28%, ${rgba("#ffffff", 0.35)}, ${rgba(tema.acento, 0.45)} 45%, ${rgba(misturar(tema.acento, "#000000", 0.6), 0.9)})`, boxShadow: `${brilho(tema.acento, u, 0.7)}, inset 0 ${-10 * u}px ${30 * u}px rgba(0,0,0,.35)` }}>
+            <Icone nome={texto(p.nome, "estrela")} tam={tam * 0.5} cor="#ffffff" traco={1.9} />
+          </div>
         </div>
         {p.rotulo ? (
           <div>
             <div style={{ ...estiloDoTitulo(c, vertical ? 54 : 58), color: corDoTexto(c) }}>
-              <ComDestaque c={c} texto={texto(p.rotulo)} />
+              <TextoCinetico c={c} texto={texto(p.rotulo)} estilo={{}} inicio={0.25} />
             </div>
-            {p.apoio ? <div style={{ ...estiloDoApoio(c, 28), marginTop: 10 * u }}>{texto(p.apoio)}</div> : null}
+            {p.apoio ? <div style={{ ...estiloDoApoio(c, 28), marginTop: 10 * u, opacity: saiSuave((c.t - 0.6) / 0.4) }}>{texto(p.apoio)}</div> : null}
           </div>
         ) : null}
-      </div>
+      </Vidro>
     </div>
   );
 }
@@ -145,7 +152,7 @@ export function Desenho(c: Ctx) {
       : { position: "absolute", left: (c.W - tam) / 2, top: vertical ? c.H * 0.12 : (c.H - tam) / 2 - 60 * u };
   return (
     <div style={{ ...lugar, width: tam, opacity: c.fica, display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ width: tam, height: tam, clipPath: `circle(${revela * 75}% at 50% 50%)`, transform: `scale(${0.9 + 0.1 * revela})`, filter: `drop-shadow(0 ${12 * u}px ${30 * u}px rgba(0,0,0,.55))` }}>
+      <div style={{ width: tam, height: tam, clipPath: `circle(${revela * 75}% at 50% 50%)`, transform: `scale(${0.9 + 0.1 * revela})`, filter: `drop-shadow(0 0 ${10 * u}px ${rgba(tema.acento, 0.8)}) drop-shadow(0 ${12 * u}px ${30 * u}px rgba(0,0,0,.55))` }}>
         <svg width={tam} height={tam} viewBox="0 0 200 200" dangerouslySetInnerHTML={{ __html: svg }} />
       </div>
       {p.rotulo ? (
@@ -159,15 +166,21 @@ export function Desenho(c: Ctx) {
   );
 }
 
-/** A MOLDURA DO CARTÃO (automática): o contorno fino do vídeo em cartão, por cima da gravação. */
+/** A MOLDURA DO CARTÃO (automática): a borda de luz do vídeo em cartão, que se acende em volta dele. */
 export function MolduraDoCartao(c: Ctx) {
   const { props: p, u, tema } = c;
   const x = Number(p.x) || 0;
   const y = Number(p.y) || 0;
   const w = Number(p.w) || 100;
   const h = Number(p.h) || 100;
+  const e = saiSuave(c.t / 0.5);
+  const per = 2 * (w + h);
   return (
-    <div style={{ position: "absolute", left: x, top: y, width: w, height: h, borderRadius: 28 * u, border: `${2 * u}px solid ${tema.visual === "documental" ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.22)"}`, boxShadow: `inset 0 0 0 ${1 * u}px rgba(0,0,0,.25)`, opacity: c.fica }}>
+    <div style={{ position: "absolute", left: x, top: y, width: w, height: h, opacity: c.fica }}>
+      <svg width={w} height={h} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+        <rect x={1} y={1} width={w - 2} height={h - 2} rx={28 * u} fill="none" stroke={tema.visual === "documental" ? "rgba(255,255,255,.9)" : rgba(misturar(tema.acento, "#ffffff", 0.4), 0.9)} strokeWidth={2.5 * u} strokeDasharray={per} strokeDashoffset={per * (1 - e)} style={{ filter: `drop-shadow(0 0 ${10 * u}px ${tema.acento})` }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, borderRadius: 28 * u, boxShadow: `inset 0 0 ${60 * u}px rgba(0,0,0,.35)` }} />
       {p.rotulo ? (
         <div style={{ position: "absolute", left: 22 * u, bottom: 22 * u, padding: `${8 * u}px ${18 * u}px`, borderRadius: 999, background: rgba(tema.acento, 0.95), color: sobreOAcento(tema), fontFamily: tema.fonteMono, fontSize: 20 * u, letterSpacing: "0.12em", textTransform: "uppercase" }}>{texto(p.rotulo)}</div>
       ) : null}
@@ -175,16 +188,17 @@ export function MolduraDoCartao(c: Ctx) {
   );
 }
 
-/** Uma faixa de destaque que corre embaixo da palavra dita (ênfase leve sobre a pessoa). */
+/** SUBLINHADO: a expressão em letra grande sobre o peito, palavra a palavra, e a faixa de luz da marca que corre por baixo. */
 export function Sublinhado(c: Ctx) {
   const { props: p, u, tema, vertical } = c;
   const m = margens(c);
-  const e = saiSuave(c.t / 0.35);
+  const e = saiSuave((c.t - 0.25) / 0.35);
+  const tam = Math.min(vertical ? 130 : 96, (c.W - 2 * m.x) / u / Math.max(4, texto(p.texto).length * (tema.caixaAlta ? 0.84 : 0.66)));
   return (
     <div style={{ position: "absolute", left: 0, right: 0, top: vertical ? m.base - 360 * u : c.H * 0.62, display: "flex", justifyContent: texto(p.lado) === "direita" ? "flex-end" : texto(p.lado) === "esquerda" ? "flex-start" : "center", padding: `0 ${m.x}px`, opacity: c.fica }}>
-      <div style={{ position: "relative", ...estiloDoTitulo(c, Math.min(vertical ? 84 : 92, (c.W - 2 * m.x) / u / Math.max(4, texto(p.texto).length * (tema.caixaAlta ? 0.84 : 0.66)))), whiteSpace: "nowrap", color: "#ffffff", textShadow: `0 ${4 * u}px ${24 * u}px rgba(0,0,0,.7)`, clipPath: `inset(0 ${(1 - e) * 100}% 0 0)` }}>
-        <span style={{ position: "absolute", left: -10 * u, right: -10 * u, bottom: 4 * u, height: "34%", background: rgba(tema.acento, 0.9), zIndex: -1, transform: `scaleX(${e})`, transformOrigin: "left" }} />
-        {texto(p.texto)}
+      <div style={{ position: "relative", ...estiloDoTitulo(c, tam), whiteSpace: "nowrap", color: "#ffffff", textShadow: `0 ${4 * u}px ${24 * u}px rgba(0,0,0,.75), 0 0 ${2 * u}px rgba(0,0,0,.6)` }}>
+        <span style={{ position: "absolute", left: -12 * u, right: -12 * u, bottom: 2 * u, height: "30%", borderRadius: 6 * u, background: `linear-gradient(90deg, ${rgba(tema.acento, 0.7)}, ${tema.acento})`, boxShadow: brilho(tema.acento, u, 0.8), zIndex: -1, transform: `scaleX(${e})`, transformOrigin: "left" }} />
+        <TextoCinetico c={c} texto={texto(p.texto)} estilo={{}} inicio={0} atraso={0.08} semTraco />
       </div>
     </div>
   );

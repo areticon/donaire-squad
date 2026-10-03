@@ -1,9 +1,9 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { carregarFontesDoTema, escuroDoTema, limitar, misturar, rgba, saiSuave, vivo } from "./base";
-import { Capitulo, Citacao, Fecho, FraseImpacto, PainelLateral, PalavraChave, Pergaminho, PerguntaResposta, RotuloInferior, Titulo } from "./pecas/texto";
-import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo } from "./pecas/estrutura";
-import { Barras, Cifrao, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
+import { Capitulo, Citacao, Fecho, FraseImpacto, PainelLateral, PalavraChave, Pergaminho, PerguntaResposta, RotuloInferior, Titulo, TituloAtras, Transicao } from "./pecas/texto";
+import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo, PassosFoco } from "./pecas/estrutura";
+import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
 import { Circulo, Desenho, IconeComRotulo, MolduraDoCartao, Seta, Sublinhado } from "./pecas/apontar";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -40,6 +40,11 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   desenho: Desenho,
   sublinhado: Sublinhado,
   "moldura-do-cartao": MolduraDoCartao,
+  // A segunda volta do acabamento (03/10): profundidade, foco e dados.
+  "titulo-atras": TituloAtras,
+  "passos-foco": PassosFoco,
+  "grafico-linha": GraficoLinha,
+  transicao: Transicao,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
@@ -81,7 +86,24 @@ export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas)
 }
 
 /** As peças de tela cheia: no 16:9 a tela é só delas, e elas crescem para ocupá-la. */
-const DE_TELA = new Set(["cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "frase-impacto", "citacao"]);
+const DE_TELA = new Set(["cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "frase-impacto", "citacao", "passos-foco", "grafico-linha"]);
+
+/**
+ * AS PASSADAS (03/10, segunda volta): a mesma árvore de peças é desenhada até
+ * três vezes, e o CSS decide o que aparece em cada uma (o layout é idêntico,
+ * então tudo casa no ffmpeg):
+ *   - "frente": tudo, menos o que vai atrás da pessoa;
+ *   - "atras": só o que leva `data-atras` (o título gigante), que o ffmpeg
+ *     põe POR BAIXO da pessoa recortada;
+ *   - "vidro": só as caixas de vidro, em branco chapado: a máscara com que o
+ *     ffmpeg desfoca a gravação atrás delas.
+ */
+const CSS_DAS_PASSADAS: Record<string, string> = {
+  frente: ".passe [data-atras]{visibility:hidden!important}",
+  atras: ".passe *{visibility:hidden}.passe [data-atras],.passe [data-atras] *{visibility:visible}",
+  vidro:
+    ".passe *{color:transparent!important;text-shadow:none!important;background:none!important;box-shadow:none!important;border-color:transparent!important;filter:none!important;backdrop-filter:none!important;-webkit-text-fill-color:transparent!important}.passe svg,.passe img{visibility:hidden!important}.passe [data-atras]{visibility:hidden!important}.passe [data-vidro]{background:#fff!important}",
+};
 
 export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   carregarFontesDoTema();
@@ -89,15 +111,18 @@ export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   const props = bruto.tema.visual === "vidro" ? { ...bruto, tema: { ...bruto.tema, acento: vivo(bruto.tema.acento) } } : bruto;
   const frame = useCurrentFrame();
   const t = tempoDoQuadro(props.trechos, frame, props.fps);
+  const passe = props.passe ?? "frente";
   return (
-    <AbsoluteFill style={{ backgroundColor: "transparent" }}>
+    <AbsoluteFill className="passe" style={{ backgroundColor: "transparent" }}>
       {/* A largura das peças inclui o respiro: sem isto o cartão do número vazava no 9:16 (prova de 03/10). */}
-      <style>{"*{box-sizing:border-box}"}</style>
+      <style>{"*{box-sizing:border-box}" + (CSS_DAS_PASSADAS[passe] ?? "")}</style>
       {props.camadas.map((c) => {
         const ctx0 = contexto(c, t, props);
         const Peca = PECAS[c.peca];
         if (!ctx0 || !Peca) return null;
-        const ctx = !ctx0.vertical && DE_TELA.has(c.peca) ? { ...ctx0, u: ctx0.u * 1.28 } : ctx0;
+        // As de tela crescem para ocupar a tela; no 9:16 também (prova de 03/10,
+        // segunda volta: a comparação e a citação ocupavam só o terço de cima).
+        const ctx = DE_TELA.has(c.peca) ? { ...ctx0, u: ctx0.u * (ctx0.vertical ? 1.2 : 1.28) } : ctx0;
         return (
           <AbsoluteFill key={c.id} style={{ fontFamily: props.tema.fonteTexto }}>
             <Peca {...ctx} />
@@ -138,6 +163,22 @@ export const FundoDaMarca: React.FC<PropsDoFundo> = ({ largura, altura, tema: te
       />
       <AbsoluteFill style={{ background: `radial-gradient(ellipse at 30% 0%, ${rgba(misturar(escuro, "#2a5a9a", 0.5), 0.75)}, ${rgba(escuro, 0)} 60%)` }} />
       <div style={{ position: "absolute", right: -200 * u, top: -260 * u, width: 900 * u, height: 900 * u, borderRadius: "50%", background: `radial-gradient(circle, ${rgba(tema.acento, 0.2)}, ${rgba(tema.acento, 0)} 65%)` }} />
+      {/* As linhas topográficas e a vinheta (03/10, segunda volta): o fundo do cartão deixa de ser chapado. */}
+      <svg width={largura} height={altura} style={{ position: "absolute", inset: 0, opacity: doc ? 0.12 : 0.2 }}>
+        {Array.from({ length: 16 }, (_, i) => {
+          const cx = largura * 0.66;
+          const cy = altura * 0.52;
+          const r0 = (60 + i * 58) * u;
+          const pts: string[] = [];
+          for (let a = 0; a <= 72; a++) {
+            const ang = (a / 72) * Math.PI * 2;
+            const w = 1 + 0.16 * Math.sin(ang * 3 + i * 0.6) + 0.08 * Math.sin(ang * 7 - i * 0.3);
+            pts.push(`${(cx + Math.cos(ang) * r0 * w * 1.25).toFixed(1)},${(cy + Math.sin(ang) * r0 * w * 0.85).toFixed(1)}`);
+          }
+          return <polygon key={i} points={pts.join(" ")} fill="none" stroke={i % 4 === 0 ? rgba(tema.acento, 0.9) : "rgba(255,255,255,.7)"} strokeWidth={(i % 4 === 0 ? 1.4 : 0.9) * u} />;
+        })}
+      </svg>
+      <AbsoluteFill style={{ background: "radial-gradient(ellipse 75% 70% at 50% 45%, transparent 55%, rgba(0,0,0,.5) 100%)" }} />
       {cartao ? <div style={{ position: "absolute", left: cartao.x, top: cartao.y, width: cartao.w, height: cartao.h, borderRadius: 28 * u, boxShadow: `0 ${30 * u}px ${80 * u}px rgba(0,0,0,.6)`, background: "#000" }} /> : null}
     </AbsoluteFill>
   );
