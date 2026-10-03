@@ -19486,3 +19486,70 @@ sozinho", Claude como diretor + Remotion + Higgsfield). Tudo abaixo publicado
   - O Instagram @demandou não está no Blotato e segue pela API própria.
   - LinkedIn e X seguem pela API própria, que funciona.
   - ZapSign: app.zapsign.com.br e sandbox fora do ar daqui também (timeout); o site institucional responde. O problema é deles.
+- 02/10, 21h55: BACKUP feito. Commit 5ccd684 na branch backup-0210, enviado ao repositório privado https://github.com/areticon/demandou-backup (main). O repositório antigo areticon/donaire-squad é PÚBLICO e está parado em 12/09; não enviar nada para ele.
+- Travamento das 21h: o vídeo 2026-10-02 10-23-56.mp4 (cmurn3adj, 19,3 min) falhou na etapa do roteiro, "parou três vezes nos nossos servidores". É NOSSO: o planejamento do diretor para um vídeo longo não cabe no tempo da função da Vercel, o vigia relança a cada minuto (a tarja laranja piscando) e cada relance refaz os blocos já feitos. Resultado: 43 chamadas do diretor em 24 min, US$ 10,44 queimados num vídeo que não saiu. Não clicar em "Tentar de novo" antes do conserto: queima de novo.
+- Diagnóstico de fundo (o Bruno comparou com o pitch da landing): o pitch ficou bom porque um diretor que ASSISTIU ao material escreveu um plano único, enxuto, com material real (telas, cortes reais) e 3 ou 4 cenas geradas; e o resultado foi conferido e refeito. A esteira faz o oposto: planeja cena a cena em texto (33 cenas num vídeo de 4 min), inventa B-roll de IA para cobrir um vídeo de pessoa falando, e isso é caro, lento e feio. As referências de consórcio medidas hoje dizem o mesmo: rosto na tela 72% do tempo, texto grande só em 3 de 18 Reels, inserções raras.
+- Decisão proposta ao Bruno (ver resposta de 21h55): padrão "corte limpo profissional" para segunda (jump cut, punch-in, legenda grande, 3 a 5 cartelas de texto, zero B-roll de IA sem pedido), diretor num plano único e compacto por vídeo (uma chamada, não 43), e retomada que nunca refaz bloco pronto. JSON2Video (chave guardada local como JSON2VIDEO_API_KEY): é só renderizador (JSON vira MP4), substitui Remotion e ffmpeg do worker, não substitui o diretor nem gera imagem ou vídeo por IA; ~US$ 0,38 por minuto renderizado no pré-pago. Avaliar nos cortes na semana que vem, não antes de segunda.
+- O agente de notificações parou no limite de uso com trabalho pela metade em components/video (esteira-do-video, sino, aproveitar-roteiro). tsc estava limpo às 19h35; conferir antes de qualquer deploy.
+- 02/10, 22h10: CORREÇÃO: a chave que o Bruno mandou é do JEV (TypeSafe, modelo System One), não da JSON2Video. Guardada em .env.local como TYPESAFE_API_KEY. Teste em scripts/tmp/jev-teste-0210.mts: 200 em 500 ms, 475 tokens de entrada, custo ~US$ 0,00002 (US$ 42 por bilhão de tokens de entrada). Acertou "pessoa mostrando algo" com 91%.
+  - O que o JEV faz: decisões estruturadas (noul, choice, score) com probabilidade e confiança, em lote, sem gerar texto, só texto de entrada (sem imagem).
+  - O que NÃO faz: escrever posts, roteiros, cartelas, legendas; ver quadros; gerar imagem ou vídeo.
+  - Gasto de IA dos últimos 30 dias, ~US$ 300: posts (agent) US$ 92 e geração de mídia (vídeo IA, gêmeo, cenas, imagens) ~US$ 120 ficam como estão; o JEV substitui a camada de decisão: diretor da montagem (US$ 47, refeito como decisões por candidato), seleção de cortes (US$ 5), revisor e correção (US$ 4), demonstração (US$ 1), etiquetas das referências, enquadramento. É ~20% do custo, mas ~80% da demora e dos estouros de tempo da esteira.
+  - Decisão do Bruno: "tudo que precisa de tomada de decisão vai para o JEV". Agente rodando no diretor novo "corte limpo profissional" (JEV decide, Sonnet só escreve cartelas, zero B-roll de IA por padrão, retomada sem refazer bloco), com prova no vídeo de 4 min e medida no de 19 min, branch backup-0210.
+  - JSON2Video: fora por enquanto (card de backlog pode ser apagado).
+- 02/10, 22h40: CONFIRMADO no código o que o Bruno suspeitava sobre as imagens: assets-da-montagem.ts e nano-banana.ts embrulham todo pedido com negativas ("no people, no faces, no hands...", "no dark background", "no photorealistic", "kraft paper only") e paleta forçada ("extremely saturated"), e as artes saem em qualidade baixa (gpt-image-2-low). Agente rodando a prova A/B (prompt da plataforma contra pedido direto como um diretor de arte escreve), teto US$ 6, e o conserto: descrição positiva, estilo como direção, uma guarda curta no fim, qualidade média ou alta nas artes. Em paralelo, o diretor por decisões com JEV. Prioridade do Bruno: vídeo e artes no nível de pedir direto nas plataformas, hoje.
+- 02/10, 23h20: diretor "corte limpo profissional" pronto e commitado na backup-0210 (lib/jev/cliente.ts, lib/media/diretor-limpo.ts, roteiro-da-edicao.ts com gravação bloco a bloco e prazo renovado). Medido: o vídeo de 19 min (cmurn3adj) planeja em 6 s por ~US$ 0,012 (antes: 43 chamadas, US$ 11,98, falhou); o de 4 min em 3,3 s por US$ 0,002. Prova local com revisão visual de 0 defeitos.
+  - TYPESAFE_API_KEY cadastrada na Vercel (produção).
+  - Avaliação honesta da folha: correta e limpa, mas ainda simples para a régua do pitch. As cartelas trocam a pessoa por tela cheia.
+  - O mesmo agente segue na composição do pitch: texto sobre a gravação, recorte de pessoa, punch-in visível, alternância de enquadramento, gancho na abertura e legenda ligada por padrão em projeto novo.
+  - Publicação da Vercel espera o agente das imagens (A/B) e esta rodada, e sai tudo junto, incluindo termos e privacidade (a ElevenLabs foi desligada pelo Bruno).
+- 02/10, 23h40: custo de IA dos últimos 30 dias por ferramenta:
+  | Ferramenta | Custo |
+  |---|---|
+  | Claude | US$ 171,61 (o agente de posts no Opus foi US$ 62,72, e o diretor da montagem US$ 46,75) |
+  | Google | US$ 57,31 (Veo US$ 36) |
+  | Higgsfield | US$ 32,61 |
+  | fal.ai (gêmeo) | US$ 31,64 |
+  | OpenAI | US$ 21,13 |
+  | Deepgram | US$ 1,22 |
+  | ElevenLabs | US$ 0,65 |
+  | JEV | US$ 0,01 |
+- Em andamento com agentes:
+  - o artefato de custos por cliente e plano, com o exercício de margem (comissão, tráfego, impostos, Stripe, Day e Cast, fixos);
+  - as notificações e a linha do tempo, retomadas;
+  - a composição no nível do pitch;
+  - o A/B das imagens.
+- Achado para cortar custo: o agente de posts ("agent") ainda roda no Opus em parte das chamadas (623 chamadas, US$ 62,72). Ver se a troca para o Sonnet já vale em produção.
+- 03/10, 00h10: prova A/B das imagens concluída (US$ 2,91; folha em https://claude.ai/artifact/6eNqBsK5foXPNjEuiZB41X).
+  - O pedido escrito como diretor de arte venceu em 8 de 9 pares.
+  - O muro de negativas NÃO barrava nada: a multidão de biquíni nasceu com "never bikinis" no prompt. Quem barra é a conferência por visão.
+  - Prompts reescritos e colagem e arte em medium, em 3 commits na backup-0210.
+  - Pendências:
+    - IMAGEM_ARTE na Vercel (hoje low; o novo padrão é openai-gpt-image-2-medium);
+    - proposta de créditos que espera o Bruno: corte de 420 para 440, completo de 28 para 36 por minuto, roteiro fixo de 550 para 590;
+    - o diretor descrever cada asset como briefing de foto (passado ao agente da composição).
+- Artefato de custos e margem republicado em https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5 (versão 23), com custo medido por cliente, ferramenta e plano e o exercício de margem editável.
+  - Uso típico: Starter R$ 252, Pro R$ 550, Enterprise R$ 1.178 por mês.
+  - Uso máximo: R$ 510, R$ 1.019 e R$ 1.651.
+  - Uma gravação de 22 min cai de US$ 12,20 para US$ 6,86 com o JEV.
+  - A maior conta agora são as cenas da Kling (~US$ 3 por gravação).
+- PUBLICADO (03/10, ~01h): worker (deploy 6fede554) e Vercel com tudo:
+  - diretor "corte limpo profissional" com JEV (faixa sobre a gravação, enquadramento alternado, punch 1,18, abertura pelo JEV);
+  - imagens reescritas como briefing de foto;
+  - notificações, sino e linha do tempo completa (migrações 100000 e 140000 registradas);
+  - estilo de consórcio e tela de estilos em dois grupos;
+  - análises em gráfico;
+  - suporte e contratos;
+  - aprovar só o completo;
+  - termos e privacidade novos.
+- Créditos aprovados pelo Bruno: corte 440, completo 36 por minuto, roteiro fixo 590 (CREDITOS_FIXOS_DA_EDICAO 2300, POR_MINUTO 61). IMAGEM_ARTE=openai-gpt-image-2-medium na Vercel. Commit f301ed8.
+- Backup privado atualizado (areticon/demandou-backup, main).
+- Honesto: a edição agora é limpa, correta e barata, mas contida (1 faixa a cada ~90 s neste vídeo). Próximo salto: título de capítulo persistente, pessoa recortada com texto atrás, fecho com marca e legenda pequena padrão, como no pitch.
+
+## Parte 245 (03/10, madrugada): virada radical da edição, 27 referências de estilo e gêmeo por vídeo (não publicado)
+
+- DECISÃO DO BRUNO: jogar fora as premissas da edição por regras e fazer como o pitch da landing (programa de edição sob medida por vídeo, render de prévia, olho nos quadros, conserto). Agente "editor sob medida" em andamento (EDITOR_SOB_MEDIDA=1), prova obrigatória lado a lado com scratchpad/pitch/v4.
+- lib/media/referencias-de-estilo: os 27 estilos do catálogo mais "documentario", cada um com elementos desenháveis em código, momentos exemplo e 3 quadros para o revisor com visão. textoDaReferencia(id) monta o texto do prompt. Commits ba974d4 e ca0314f. UGC sem comentário com nome inventado.
+- Gêmeo (commit 2dc40b8): um vídeo de treino de 40 s a 2 min lendo o texto que rola (começa com a autorização) vira foto, voz e consentimento; checagem automática de duração, rosto, ruído e leitura (Deepgram, 70% do texto). Cenários câmera, mesa, palco, escritório, estúdio e sala pelo roteiro. Gerador plugável em lib/media/gemeo-geradores.ts: HeyGen recomendada (US$ 4,24/min, 15 créditos/s) esperando HEYGEN_API_KEY e GEMEO_GERADOR=heygen; OmniHuman como reserva. Prova em Documents\Demandou\gemeo-teste\cenarios (US$ 2,53). Falta: Bruno criar a conta HeyGen, aprovar 15 créditos/s, publicar worker (rota /treino-do-gemeo).
+- Publicado antes, na mesma madrugada: dispensar vídeo que falhou apaga de verdade (app/api/videos/[id]/dispensar); PUBLICAR_VIA_BLOTATO=tiktok (Instagram e Facebook direto pela Meta, app aprovado); card do estilo "Autoridade high ticket".
+- Em andamento: JEV na limpeza de frase errada, cortes e Vera; quadro com um card por peça, links do cliente, textos editáveis, créditos simulados do admin, linha do tempo monotônica; jornada de entrada com diagnóstico do próprio perfil e até 3 referências.
