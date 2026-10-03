@@ -35,6 +35,7 @@ import {
 } from "./ffmpeg.mjs";
 import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
 import { guardarFala } from "./guarda-da-fala.mjs";
+import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -1394,7 +1395,14 @@ async function andarFilaDaMontagem() {
       // teto de 15 min (02/10): um trabalho preso não pode segurar a fila para sempre.
       const esperaAte = Date.now() + 15 * 60_000;
       while (emAndamento > 0 && Date.now() < esperaAte) await new Promise((r) => setTimeout(r, 10_000));
-      if (emAndamento > 0) console.error(`[montar] fila esperou 15 min por ${emAndamento} trabalho(s) em andamento; segue mesmo assim`);
+      // NUNCA DOIS RENDERS PESADOS JUNTOS (03/10, terceira volta): o completo
+      // morreu por falta de memória com os cortes renderizando ao lado. Passados
+      // os 15 min, só segue se houver memória para um render (3 GB); senão
+      // espera mais 30 min por ela, e só então segue (com a guarda dos lotes).
+      if (emAndamento > 0) {
+        const ok = await esperarMemoria(3000, { ateMs: 30 * 60_000, rotulo: "fila de montagem" });
+        console.error(`[montar] fila esperou por ${emAndamento} trabalho(s) em andamento; segue ${ok ? "com memória" : `com ${memoriaLivreMb()} MB livres`}`);
+      }
       const trabalho = filaDaMontagem.shift();
       await trabalho.executar().catch((e) => console.error(`[montar] ${e?.message ?? e}`));
       // Respiro entre renders: o Chrome e o compositor do anterior terminam de

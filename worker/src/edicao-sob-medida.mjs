@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { emendar, ffprobe, fpsDe, rodar } from "./ffmpeg.mjs";
 import { bundleDoRemotion, opcoesDoRender } from "./montagem.mjs";
+import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
 
 /**
  * O EDITOR SOB MEDIDA NO WORKER (03/10/2026).
@@ -33,7 +34,15 @@ import { bundleDoRemotion, opcoesDoRender } from "./montagem.mjs";
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const PASTA_DAS_FONTES = resolve(AQUI, "..", "fontes");
-const LOTE_SEG = 60;
+/**
+ * O tamanho do lote (03/10, terceira volta): a memória do ffmpeg cresce com o
+ * lote (as filas do grafo guardam quadros até a vez de cada plano). Medido no
+ * completo de cmurtv2zg: lote de 60 s em 1080p chegou a 7,4 GB (o OOM do
+ * worker); com as listas e as imagens consertadas, 2,4 GB; o de 30 s, 0,8 a
+ * 1,2 GB. O final vai em 30 s; a prévia (metade da resolução) segue em 60 s.
+ */
+const LOTE_SEG_FINAL = Math.max(10, Number(process.env.SOB_MEDIDA_LOTE_SEG ?? 30));
+const LOTE_SEG_PREVIA = 60;
 const PAR = (v) => Math.max(2, Math.round(v / 2) * 2);
 
 // ─────────────────────────────── 1. a linha condensada ───────────────────────────────
@@ -361,7 +370,7 @@ export function segmentosDoLote(edicao, a, b) {
 }
 
 /** O grafo de um lote. Devolve { entradas, grafo }. */
-function grafoDoLote(edicao, lote, ctx) {
+export function grafoDoLote(edicao, lote, ctx) {
   const { W, H, fps, escala, fundos, insercoes } = ctx;
   const dur = lote.ate - lote.de;
   const segs = segmentosDoLote(edicao, lote.de, lote.ate);
@@ -373,7 +382,11 @@ function grafoDoLote(edicao, lote, ctx) {
     ["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.lista],
   ];
   const nos = [];
-  const usosDaBase = segs.filter((s) => s.tipo === "cheio" || s.tipo === "cartao").length;
+  // O cartão usa a base DUAS vezes (03/10, terceira volta): uma marca o tempo do
+  // fundo da marca, a outra é a pessoa no cartão (ver o plano "cartao" abaixo).
+  // A foto da inserção e o fundo do gráfico também marcam o tempo pela base (uma vez);
+  // só a inserção em VÍDEO tem relógio próprio.
+  const usosDaBase = segs.reduce((n, s) => n + (s.tipo === "cheio" ? 1 : s.tipo === "cartao" ? 2 : s.tipo === "insercao" && insercoes[s.midia]?.tipo === "video" ? 0 : 1), 0);
   // As passadas a mais (03/10, segunda volta): atrás da pessoa, a máscara do vidro e a pessoa recortada.
   const iAtras = lote.listaAtras ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaAtras]) - 1 : -1;
   const iVidro = lote.listaVidro ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaVidro]) - 1 : -1;
@@ -389,9 +402,13 @@ function grafoDoLote(edicao, lote, ctx) {
     nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuva420p,setpts=PTS-STARTPTS[b0a];[b0a][mm]alphamerge${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
   } else nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p,setpts=PTS-STARTPTS${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
   let ib = 0;
-  const imagemExtra = (arquivo, segDur, loop = true) => {
+  // A IMAGEM PARADA (fundo, máscara, foto) entra como UM quadro só e é repetida
+  // pelo overlay ou pelo alphamerge, com o tempo dado por um trecho da base
+  // (03/10, terceira volta). Com `-loop 1` (ou o filtro `loop`) o ffmpeg gerava
+  // os n quadros no começo do lote e eles esperavam a vez do plano na fila.
+  const imagemExtra = (arquivo) => {
     const i = entradas.length;
-    entradas.push(loop ? ["-loop", "1", "-framerate", String(fps), "-t", segDur.toFixed(4), "-i", arquivo] : ["-t", segDur.toFixed(4), "-i", arquivo]);
+    entradas.push(["-i", arquivo]);
     return i;
   };
   const rotulos = [];
@@ -435,13 +452,20 @@ function grafoDoLote(edicao, lote, ctx) {
       ch = PAR(ch);
       const x = Math.round(Math.max(0, Math.min(W - cw, (s.x ?? 0.5) * W - cw / 2)));
       const y = Math.round(Math.max(0, Math.min(H - ch, (s.y ?? 0.4) * H - ch / 2)));
-      const iF = imagemExtra(fundos[JSON.stringify(s.caixa)] ?? fundos.liso, d);
-      const iM = imagemExtra(ctx.mascara(bw, bh), d);
+      const iF = imagemExtra(fundos[JSON.stringify(s.caixa)] ?? fundos.liso);
+      const iM = imagemExtra(ctx.mascara(bw, bh));
+      // O FUNDO E A MÁSCARA entram como UM quadro cada, repetidos pelo próprio
+      // overlay e pelo alphamerge, e o TEMPO vem da gravação (um segundo trecho
+      // da base, coberto pelo fundo). A versão com o fundo em laço gerava os
+      // quadros todos no começo do lote e eles esperavam a vez do cartão na
+      // fila do overlay: foi o que levou o lote a 2,8 a 7,4 GB (03/10, terceira volta).
+      nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,format=yuv420p[ct${k}]`);
+      nos.push(`[${iF}:v]scale=${W}:${H},format=yuv420p,setsar=1[cf${k}]`);
+      nos.push(`[ct${k}][cf${k}]overlay=0:0,setsar=1[cb${k}]`);
       nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,crop=${cw}:${ch}:${x}:${y},scale=${bw}:${bh}:flags=bicubic,format=yuva420p[cv${k}]`);
       nos.push(`[${iM}:v]format=gray,scale=${bw}:${bh}[cm${k}]`);
       nos.push(`[cv${k}][cm${k}]alphamerge[ca${k}]`);
-      nos.push(`[${iF}:v]fps=${fps},scale=${W}:${H},format=yuv420p,setsar=1[cf${k}]`);
-      nos.push(`[cf${k}][ca${k}]overlay=${bx}:${by}:shortest=1,format=yuv420p,setsar=1[${r}]`);
+      nos.push(`[cb${k}][ca${k}]overlay=${bx}:${by}:shortest=1,format=yuv420p,setsar=1[${r}]`);
     } else if (s.tipo === "insercao" && insercoes[s.midia]) {
       const m = insercoes[s.midia];
       if (m.tipo === "video" && m.origem === "banco") {
@@ -460,16 +484,22 @@ function grafoDoLote(edicao, lote, ctx) {
         // Kling devolva a câmera quase parada, a inserção nunca fica imóvel.
         nos.push(`[${i}:v]fps=${fps},scale=${PAR(W * 1.12)}:${PAR(H * 1.12)}:force_original_aspect_ratio=increase:flags=bicubic,crop=${PAR(W * 1.12)}:${PAR(H * 1.12)},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS,zoompan=z='1+0.1*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else {
-        const i = imagemExtra(m.arquivo, d);
+        const i = imagemExtra(m.arquivo);
         const W2 = PAR(W * 1.4);
         const H2 = PAR(H * 1.4);
-        // Ken Burns lento (6%), do centro: a foto nunca fica parada.
-        nos.push(`[${i}:v]scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},zoompan=z='1+0.06*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
+        // Ken Burns lento (6%), do centro: a foto nunca fica parada. A foto é UM
+        // quadro, repetido pelo overlay sobre o trecho da base (que dá o tempo);
+        // o zoompan anda quadro a quadro com ela, sem gerar nada adiantado.
+        nos.push(`[${i}:v]scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},format=yuv420p,setsar=1[fi${k}]`);
+        nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,scale=${W2}:${H2}:flags=fast_bilinear,format=yuv420p,setsar=1[ft${k}]`);
+        nos.push(`[ft${k}][fi${k}]overlay=0:0,zoompan=z='1+0.06*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       }
     } else {
       // "grafico" (e inserção que falhou): o fundo da marca; as camadas desenham o resto.
-      const i = imagemExtra(fundos.liso, d);
-      nos.push(`[${i}:v]fps=${fps},scale=${W}:${H},format=yuv420p,setsar=1,trim=end_frame=${n}[${r}]`);
+      const i = imagemExtra(fundos.liso);
+      nos.push(`[${i}:v]scale=${W}:${H},format=yuv420p,setsar=1[fg${k}]`);
+      nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,format=yuv420p[gt${k}]`);
+      nos.push(`[gt${k}][fg${k}]overlay=0:0,setsar=1,trim=end_frame=${n}[${r}]`);
     }
     // Com o alfa, todo plano entra no mesmo formato (o que não é câmera cheia fica opaco).
     if (comAlfa) {
@@ -491,7 +521,12 @@ function grafoDoLote(edicao, lote, ctx) {
     ? `,zoompan=z='1+${bordasDeInsercao.map(({ b, forca }) => `${forca}*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
     : "";
   nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,fps=${fps},setpts=PTS-STARTPTS${zoomAtraves},format=${FMT}[base0]`);
-  const lista = (i, rot) => nos.push(`[${i}:v]fps=${fps},format=rgba,scale=${W}:${H},setpts=PTS-STARTPTS[${rot}]`);
+  // SEM `fps` nas listas das camadas (03/10, terceira volta): a camada parada é
+  // um PNG com a duração do trecho, e o `fps` o expandia de uma vez em centenas
+  // de quadros RGBA de 8 MB na fila do overlay; foi o que levou um lote de 60 s
+  // a 7,4 GB e matou o completo de cmurtv2zg no worker. O overlay repete o
+  // último quadro sozinho; a saída é a mesma (1800 quadros, conferido).
+  const lista = (i, rot) => nos.push(`[${i}:v]format=rgba,scale=${W}:${H},setpts=PTS-STARTPTS[${rot}]`);
   lista(1, "ov");
   let atual = "base0";
   if (iAtras >= 0) {
@@ -693,7 +728,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
 
   // Lotes cortados em quadro inteiro.
   const lotes = [];
-  const passo = Math.round(LOTE_SEG * fps) / fps;
+  const passo = Math.round((escala < 1 ? LOTE_SEG_PREVIA : LOTE_SEG_FINAL) * fps) / fps;
   for (let a = 0; a < duracao - 1e-3; a += passo) lotes.push({ de: +a.toFixed(5), ate: +Math.min(duracao, a + passo).toFixed(5) });
   const partes = [];
   const comLegenda = Boolean(ed.legenda?.paginas?.length);
@@ -706,7 +741,10 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     p.on("error", () => r(0));
   });
   const opcaoDoGrafo = ffmpegVersao >= 7 ? "-/filter_complex" : "-filter_complex_script";
-  const fazerLote = async (lote, i) => {
+  // A MEMÓRIA (03/10, terceira volta): o lote de 30 s em 1080p segurou até 1,2 GB
+  // de ffmpeg na medida local; conta 1,5 GB por lote (proporcional aos pixels e à duração).
+  const MB_POR_LOTE = Math.max(400, Math.round(1500 * ((W * H) / (1920 * 1080)) * (passo / 30)));
+  const renderLote = async (lote, i) => {
     lote.lista = `lista-${i}.txt`;
     const { frente, atras, vidro } = camadas.passadas;
     await writeFile(join(pasta, lote.lista), listaDoLote(frente.exibir, frente.arquivos, lote.de, lote.ate, frente.nomeDir), "utf8");
@@ -739,11 +777,41 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       ],
       { cwd: pasta, timeoutMs: 40 * 60_000 }
     );
-    feitos++;
-    aoProgresso?.(0.6 + 0.35 * (feitos / lotes.length));
     return saida;
   };
-  const juntos = Math.max(1, Number(process.env.SOB_MEDIDA_LOTES ?? 2));
+  /**
+   * Um lote com a guarda de memória: só começa com memória para ele; se o
+   * ffmpeg morrer por SINAL (o OOM do contêiner), registra o sinal, espera a
+   * memória voltar e refaz o lote em DUAS METADES, uma depois da outra (até
+   * dois níveis, lotes de 15 s), emendadas no mesmo arquivo. Outro erro sobe.
+   */
+  const fazerLote = async (lote, i, nivel = 0) => {
+    const nome = String(i);
+    if (!(await esperarMemoria(MB_POR_LOTE, { ateMs: 10 * 60_000, rotulo: `lote ${nome}` }))) console.warn(`[sob-medida] lote ${nome} começa com ${memoriaLivreMb()} MB livres (pedia ${MB_POR_LOTE})`);
+    try {
+      return await renderLote(lote, nome);
+    } catch (e) {
+      const dur = lote.ate - lote.de;
+      if (!e?.sinal || nivel >= 2 || dur < 8) throw e;
+      sinais.push(`lote ${nome} (${dur.toFixed(0)} s) morto por ${e.sinal} com ${memoriaLivreMb()} MB livres`);
+      console.warn(`[sob-medida] ${sinais.at(-1)}; refaz em duas metades`);
+      await esperarMemoria(Math.round(MB_POR_LOTE * 1.2), { ateMs: 10 * 60_000, rotulo: `lote ${nome} de novo` });
+      const meio = +(Math.round(((lote.de + lote.ate) / 2) * fps) / fps).toFixed(5);
+      const a = await fazerLote({ de: lote.de, ate: meio }, `${nome}a`, nivel + 1);
+      const b = await fazerLote({ de: meio, ate: lote.ate }, `${nome}b`, nivel + 1);
+      const saida = join(pasta, `lote-${nome.padStart(3, "0")}-junto.mp4`);
+      await emendar([a, b], saida, pasta);
+      await rm(a, { force: true }).catch(() => {});
+      await rm(b, { force: true }).catch(() => {});
+      return saida;
+    }
+  };
+  const sinais = [];
+  // Lotes em paralelo só com memória para eles (o padrão continua 2).
+  const pedidosJuntos = Math.max(1, Number(process.env.SOB_MEDIDA_LOTES ?? 2));
+  const livreNoInicio = memoriaLivreMb();
+  const juntos = Math.max(1, Math.min(pedidosJuntos, Math.floor((livreNoInicio - 600) / MB_POR_LOTE)));
+  tempos.memoria = { livreNoInicioMb: livreNoInicio, mbPorLote: MB_POR_LOTE, lotesJuntos: juntos };
   const fila = lotes.map((l, i) => [l, i]);
   const res = new Array(lotes.length);
   await Promise.all(
@@ -751,10 +819,13 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       while (fila.length) {
         const [l, i] = fila.shift();
         res[i] = await fazerLote(l, i);
+        feitos++;
+        aoProgresso?.(0.6 + 0.35 * (feitos / lotes.length));
       }
     })
   );
   partes.push(...res);
+  if (sinais.length) tempos.sinais = sinais;
   marcar("lotes");
 
   const soVideo = join(pasta, "so-video.mp4");

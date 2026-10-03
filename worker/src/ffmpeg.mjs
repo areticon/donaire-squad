@@ -141,10 +141,15 @@ export function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) 
       clearTimeout(t);
       reject(e);
     });
-    p.on("close", (code) => {
+    p.on("close", (code, sinal) => {
       clearTimeout(t);
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg saiu com ${code}: ${erro.slice(-1800)}`));
+      if (code === 0) return resolve();
+      // Morto por SINAL (03/10, terceira volta): código null e stderr vazio é o
+      // OOM do contêiner (SIGKILL de fora). O sinal vai na mensagem e no erro,
+      // para quem chamou tentar de novo com menos memória.
+      const e = new Error(code === null ? `ffmpeg morto por ${sinal ?? "sinal"} (provável falta de memória)${erro ? `: ${erro.slice(-1500)}` : ""}` : `ffmpeg saiu com ${code}: ${erro.slice(-1800)}`);
+      if (code === null) e.sinal = sinal ?? "desconhecido";
+      reject(e);
     });
   });
 }
