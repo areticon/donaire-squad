@@ -691,7 +691,7 @@ function FaixaDeUmVideo({
             estão no quadro abaixo, com os textos de cada rede.
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
           <p className="text-xs truncate max-w-[220px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
             {nome}
           </p>
@@ -752,7 +752,7 @@ function FaixaDeUmVideo({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={aoDispensar}>
             Dispensar
           </Button>
@@ -797,7 +797,7 @@ function FaixaDeUmVideo({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={aoDispensar}>
             Dispensar
           </Button>
@@ -883,7 +883,9 @@ function FaixaDeUmVideo({
       data-etapa={passoAtual.chave}
     >
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
+        {/* min-w de 14rem (03/10): com min-w-0 o relógio ao lado espremia o
+            título numa coluna de uma palavra no celular; assim o relógio desce. */}
+        <div className="flex items-start gap-3 min-w-[min(100%,14rem)] flex-1">
           <div className="w-[34px] h-[34px] rounded-lg border border-orange-500/35 bg-orange-500/10 flex items-center justify-center shrink-0">
             {esperando ? <ClipboardCheck className="w-[17px] h-[17px] text-orange-500" /> : <Video className="w-[17px] h-[17px] text-orange-500" />}
           </div>
@@ -954,7 +956,7 @@ function FaixaDeUmVideo({
         </div>
       </div>
 
-      <div className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+      <div className="relative hidden sm:grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
         <div className="absolute top-[9px] h-0.5" style={{ left: `${metadeDaColuna}%`, right: `${metadeDaColuna}%`, background: "var(--border)" }} />
         <div
           className="absolute top-[9px] h-0.5 bg-orange-500 transition-all duration-500"
@@ -965,14 +967,10 @@ function FaixaDeUmVideo({
         ))}
       </div>
 
-      {/* No celular os rótulos não cabem embaixo de 13 marcos: a etapa atual
-          vem escrita por inteiro aqui. */}
-      <p className="sm:hidden text-xs" style={{ color: "var(--text-primary)" }} data-etapa-celular>
-        <span className="font-semibold">
-          Etapa {linha.atual + 1} de {n}: {passoAtual.rotulo}
-        </span>
-        {passoAtual.nota ? <span style={{ color: "var(--text-muted)" }}> · {passoAtual.nota}</span> : null}
-      </p>
+      {/* NO CELULAR, UMA LISTA EM PÉ (03/10): 13 a 17 marcos lado a lado em 360 px
+          ficavam achatados e ilegíveis. A lista lê a MESMA leitura que só
+          avança (linhaQueSoAvanca), então a regra vale igual aqui. */}
+      <EtapasNoCelular passos={linha.passos} atual={linha.atual} />
 
       {/* O QUE ESTÁ ACONTECENDO AGORA, numa frase (02/10): é o que o cliente lê
           quando o relógio passou do previsto, em vez de um número parado. */}
@@ -1114,5 +1112,116 @@ function Marco({ passo: p, atual }: { passo: Passo; atual: boolean }) {
         </p>
       ) : null}
     </div>
+  );
+}
+
+const ESTADO_NA_LISTA: Record<Passo["estado"], string> = {
+  feito: "feito",
+  agora: "em andamento",
+  voce: "esperando você",
+  falta: "a seguir",
+  falhou: "parou",
+  pulado: "não se aplica",
+};
+
+/** Minutos pelo alto de um passo ("até 3 min"), ou nada se o passo não pesa no relógio. */
+function previstoDoPasso(p: Passo): string | null {
+  if (!p.previstoSegundos || p.estado === "feito" || p.estado === "pulado" || p.estado === "falhou") return null;
+  return `até ${Math.max(1, Math.ceil(p.previstoSegundos / 60))} min`;
+}
+
+/**
+ * A linha do tempo no celular (03/10): uma lista em pé, etapa por linha, com o
+ * estado e o tempo previsto. As etapas feitas ficam recolhidas numa linha só
+ * (abre com um toque) para a etapa atual aparecer sem rolar.
+ */
+function EtapasNoCelular({ passos, atual }: { passos: Passo[]; atual: number }) {
+  const [abertas, setAbertas] = useState(false);
+  const feitas = passos.filter((p, i) => i < atual && (p.estado === "feito" || p.estado === "pulado"));
+  const recolher = !abertas && feitas.length > 1;
+  const visiveis = recolher ? passos.filter((p) => !feitas.includes(p)) : passos;
+  return (
+    <div className="sm:hidden" data-etapa-celular>
+      <p className="text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+        Etapa {atual + 1} de {passos.length}: {passos[atual]?.rotulo}
+      </p>
+      <ol className="relative flex flex-col">
+        <span className="absolute left-[9px] top-3 bottom-3 w-0.5" style={{ background: "var(--border)" }} aria-hidden />
+        {recolher && (
+          <li>
+            <button type="button" onClick={() => setAbertas(true)} className="relative flex w-full items-center gap-3 py-1.5 text-left">
+              <span className="w-5 h-5 shrink-0 rounded-full bg-orange-500 flex items-center justify-center">
+                <Check className="w-3 h-3 text-white" strokeWidth={3} />
+              </span>
+              <span className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>
+                {feitas.length} etapas feitas
+              </span>
+              <span className="ml-auto text-xs font-semibold text-orange-400">ver todas</span>
+            </button>
+          </li>
+        )}
+        {visiveis.map((p) => {
+          const i = passos.indexOf(p);
+          const eAtual = i === atual;
+          const previsto = previstoDoPasso(p);
+          const corDoEstado =
+            p.estado === "falhou" ? "#ef4444" : p.estado === "voce" ? "#d97706" : eAtual || p.estado === "agora" ? "var(--accent-orange)" : "var(--text-muted)";
+          return (
+            <li key={p.chave} className="relative flex items-start gap-3 py-1.5" data-passo={p.chave} data-estado={p.estado}>
+              <MarcadorDoPasso passo={p} />
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-[13px] leading-snug break-words"
+                  style={{ color: p.estado === "falta" || p.estado === "pulado" ? "var(--text-muted)" : "var(--text-primary)", fontWeight: eAtual ? 700 : 500 }}
+                >
+                  {p.rotulo}
+                </p>
+                <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                  <span style={{ color: corDoEstado, fontWeight: eAtual || p.estado === "voce" ? 600 : 400 }}>{ESTADO_NA_LISTA[p.estado]}</span>
+                  {p.nota ? ` · ${p.nota}` : ""}
+                </p>
+              </div>
+              {previsto && (
+                <span className="shrink-0 pt-0.5 text-[11px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+                  {previsto}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** O círculo de um passo na lista do celular (o mesmo desenho do marco da linha). */
+function MarcadorDoPasso({ passo: p }: { passo: Passo }) {
+  if (p.estado === "feito")
+    return (
+      <span className={`relative w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${p.chave === "pronto" ? "bg-green-500" : "bg-orange-500"}`}>
+        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+      </span>
+    );
+  if (p.estado === "falhou")
+    return (
+      <span className="relative w-5 h-5 shrink-0 rounded-full bg-red-500 flex items-center justify-center">
+        <X className="w-3 h-3 text-white" strokeWidth={3} />
+      </span>
+    );
+  if (p.estado === "pulado")
+    return (
+      <span className="relative w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
+        <Minus className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+      </span>
+    );
+  const voce = p.estado === "voce";
+  return (
+    <span
+      className="relative w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center"
+      style={{ borderColor: voce ? "#f59e0b" : p.estado === "agora" ? "var(--accent-orange)" : "var(--border)", background: voce ? "#f59e0b" : "var(--bg-card)" }}
+    >
+      {p.estado === "agora" && <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />}
+      {voce && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+    </span>
   );
 }

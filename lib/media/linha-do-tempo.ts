@@ -121,6 +121,8 @@ export type Passo = {
   nota: string | null;
   /** Corre ao lado da linha principal (não decide qual é a etapa atual). */
   paralelo?: boolean;
+  /** O peso do passo no relógio, em segundos medidos e pelo alto (a lista do celular mostra "até N min"). */
+  previstoSegundos?: number;
 };
 
 export type LeituraDaLinha = {
@@ -410,7 +412,7 @@ export function lerLinhaDoTempo(v: EntradaDaLinha, etapaLocal: string | null = n
   const restaDepoisDoAtualSegundos = Math.round(depois.reduce((t, p) => t + (pesos[p.chave] ?? 0), 0));
 
   return {
-    passos,
+    passos: passos.map((p) => (pesos[p.chave] !== undefined ? { ...p, previstoSegundos: Math.round(pesos[p.chave]!) } : p)),
     atual,
     fim: trabalhoAcabou,
     esperandoVoce,
