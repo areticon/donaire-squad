@@ -597,7 +597,12 @@ export function EsteiraDoVideo({
           agora={agora}
           semConexao={semConexao}
           aoRepetir={(rota) => void executar(v.id, rota)}
-          aoDispensar={() => setDispensados((d) => [...d, v.id])}
+          aoDispensar={() => {
+            // Some da tela na hora; o vídeo que parou é apagado de vez no servidor
+            // (03/10), para não voltar ao recarregar.
+            setDispensados((d) => [...d, v.id]);
+            if (v.status === "failed") void fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" }).catch(() => {});
+          }}
           aoAproveitar={() => setAproveitar(v.id)}
           avisoFixo={avisoDaEtapa(v)}
         />
