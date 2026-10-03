@@ -57,7 +57,7 @@ export function roteiroParaOEditor(roteiro: unknown): string | null {
 }
 
 const GUARDA_DA_INSERCAO =
-  " Photographic, natural light, no text, no letters, no logos, no watermark. Any person shown is fictional or historical, modestly dressed, never a real public figure, nothing sensual.";
+  " Photographic, natural light, no text, no letters, no logos, no watermark. No recognizable person and no face close-up: people only from behind, in silhouette, as hands or far away; never a real public figure, nothing sensual.";
 
 /**
  * As INSERÇÕES que o editor pediu, geradas como foto (o briefing dele) e
@@ -89,6 +89,106 @@ export async function gerarInsercoes(
     })
   );
   return { insercoes, custoUsd: +custo.toFixed(4), erros };
+}
+
+// ─────────────────────────────── as inserções em vídeo (Higgsfield) ───────────────────────────────
+
+/**
+ * A GUARDA DO VÍDEO GERADO: cinema, nunca pessoa real reconhecível (o dono só
+ * aparece pela própria gravação), sem texto e sem marca.
+ */
+const GUARDA_DO_VIDEO =
+  " Cinematic footage, shallow depth of field, rich natural light, subtle film grain. The camera is ALWAYS moving: a continuous, clearly visible dolly, crane, orbit or push-in from the first to the last frame, with parallax; never a static shot. No recognizable person and no face close-up: people only from behind, in silhouette, as hands or far away. Never a real public figure. No text, no letters, no captions, no logos, no watermark.";
+
+/**
+ * Quantas inserções viram VÍDEO (Kling 3.0 Pro na Higgsfield, ~US$ 0,45 por
+ * 4 s). As outras ficam como foto com movimento. O teto existe pela régua de
+ * R$ 0,027 por crédito (lib/media/limits.ts): o completo paga 4 cenas de
+ * cinema no fixo e o corte paga 1 a 2 no preço dele. EDITOR_SOB_MEDIDA_VIDEOS
+ * troca o teto do completo.
+ */
+export const TETO_DE_VIDEOS = { completo: Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS ?? 4), corte: 2 };
+
+export type PedidoDeVideo = { id: string; referencia: string; chave: string; custoEstimadoUsd: number };
+
+/**
+ * PEDE os vídeos das inserções (não espera): o POST da Higgsfield devolve o
+ * id na hora e o checkpoint fica no Blob (lib/media/higgsfield.ts, um pedido
+ * pago nunca se repete). Quem conclui é `concluirVideosDasInsercoes`, depois
+ * da prévia, quando o vídeo já ficou pronto. `duracoes` (s) vem da edição
+ * resolvida; sem ela, 4 s. Sem HIGGSFIELD_NA_EDICAO=1, nada é pedido e as
+ * inserções seguem como foto.
+ */
+export async function pedirVideosDasInsercoes(
+  e: EdicaoDoEditor,
+  insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>,
+  o: { formato: "16:9" | "9:16"; referencia: string; teto: number; duracoes?: Record<string, number> }
+): Promise<{ pedidos: PedidoDeVideo[]; erros: string[] }> {
+  const { pedirGeracao, higgsfieldNaEdicaoLigada } = await import("@/lib/media/higgsfield");
+  if (!higgsfieldNaEdicaoLigada()) return { pedidos: [], erros: ["HIGGSFIELD_NA_EDICAO desligada: inserções ficam em foto"] };
+  const pedidos: PedidoDeVideo[] = [];
+  const erros: string[] = [];
+  const lista = (e.insercoes ?? [])
+    .map((ins, k) => ({ ins, id: String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}` }))
+    .filter(({ id }) => insercoes[id])
+    .slice(0, Math.max(0, o.teto));
+  await Promise.all(
+    lista.map(async ({ ins, id }) => {
+      const prompt = `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DO_VIDEO}`;
+      const segundos = Math.min(5, Math.max(3, Math.ceil(o.duracoes?.[id] ?? 4)));
+      const chave = `sob-medida-${id}-${createHash("sha1").update(`${prompt}|${segundos}|${o.formato}`).digest("hex").slice(0, 10)}`;
+      try {
+        const g = await pedirGeracao({ modelo: "kling-pro", prompt, segundos, proporcao: o.formato, referencia: o.referencia, chave });
+        pedidos.push({ id, referencia: o.referencia, chave, custoEstimadoUsd: g.custoEstimadoUsd });
+      } catch (err) {
+        erros.push(`${id}: ${err instanceof Error ? err.message.slice(0, 160) : err}`);
+      }
+    })
+  );
+  return { pedidos, erros };
+}
+
+/**
+ * CONCLUI os vídeos pedidos: o que ficou pronto troca a foto pelo vídeo (a
+ * cópia no nosso Blob, com o custo gravado uma vez); o que não ficou segue em
+ * foto. `esperarMs` > 0 consulta de novo até o prazo (a prova local espera; a
+ * esteira passa a cada cron).
+ */
+export async function concluirVideosDasInsercoes(
+  insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>,
+  pedidos: PedidoDeVideo[],
+  o: { projectId?: string | null; esperarMs?: number }
+): Promise<{ insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>; prontos: number; falhos: string[] }> {
+  const { concluirSePronto } = await import("@/lib/media/higgsfield");
+  const saida = { ...insercoes };
+  const falhos: string[] = [];
+  const faltam = new Set(pedidos.map((p) => p.id));
+  const limite = Date.now() + Math.max(0, o.esperarMs ?? 0);
+  for (;;) {
+    for (const p of pedidos.filter((x) => faltam.has(x.id))) {
+      try {
+        const g = await concluirSePronto(p.referencia, p.chave, { projectId: o.projectId ?? undefined, operation: "editor-sob-medida-video" });
+        if (g?.blobUrl) {
+          saida[p.id] = { url: g.blobUrl, tipo: "video" };
+          faltam.delete(p.id);
+        } else if (g && ["failed", "nsfw", "canceled", "cancelled"].includes(g.status ?? "")) {
+          falhos.push(`${p.id}: ${g.status}`);
+          faltam.delete(p.id);
+        }
+      } catch (err) {
+        falhos.push(`${p.id}: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+        faltam.delete(p.id);
+      }
+    }
+    if (!faltam.size || Date.now() > limite) break;
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
+  return { insercoes: saida, prontos: pedidos.length - faltam.size - falhos.length, falhos };
+}
+
+/** A duração de cada inserção na edição resolvida (o vídeo pedido tem o tamanho dela). */
+export function duracoesDasInsercoes(ed: { planos?: Array<{ tipo: string; de: number; ate: number; midia?: string }> }): Record<string, number> {
+  return Object.fromEntries((ed.planos ?? []).filter((p) => p.tipo === "insercao" && p.midia).map((p) => [String(p.midia), +(p.ate - p.de).toFixed(2)]));
 }
 
 /** Quantos minutos de fala: a régua do custo. */

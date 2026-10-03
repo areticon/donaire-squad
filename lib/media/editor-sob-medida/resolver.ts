@@ -1,6 +1,6 @@
 import { frasesDaFala } from "@/lib/media/diretor-limpo";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
-import { FICHAS, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
+import { FICHAS, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type {
   Ancora,
   Caixa,
@@ -263,6 +263,10 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     if (m.plano === "grafico" && ficha.plano !== "tela") plano = "grafico";
     if (m.plano === "cartao" && ficha.plano === "sobre" && ["titulo", "icone"].includes(ficha.nome)) plano = "cartao";
     if (plano === "grafico" && ate - de > 8.5) ate = de + 8.5;
+    // O título atrás da pessoa precisa saber onde a cabeça está: as letras
+    // ficam acima dela e a pessoa corta só a base (prova de 03/10: com o
+    // título no meio, a cabeça escondia a palavra inteira no 9:16).
+    if (ficha.nome === "titulo-atras") props.cabeca = +Math.max(0.05, ctx.rosto.y).toFixed(3);
     // O lado do painel (a pessoa vai para o outro).
     if (plano === "cartao") {
       const lado = props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
@@ -270,7 +274,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
       if (ficha.nome === "desenho" || ficha.nome === "icone") props.posicao = lado === "direita" ? "direita" : ficha.nome === "icone" ? "topo-esquerda" : "esquerda";
       if (ficha.nome === "titulo") props.posicao = "esquerda-meio";
     }
-    brutos.push({ id, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos, props, ficha, plano });
+    brutos.push({ id, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos, props, ficha, plano, passes: passesDaPeca(ficha), ...(pecaContinua(ficha) ? { continua: true } : {}) });
   });
 
   // 2. Nada por cima de nada: o anterior manda; o seguinte começa depois ou cai.
@@ -305,7 +309,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     if (plano === "cartao") {
       const caixa = caixaDoCartao(W, H, m.props.lado === "direita" ? "direita" : "esquerda");
       planos.push({ de: m.de, ate: m.ate, tipo: "cartao", caixa, zoom: 1.15, x: x0, y: y0 });
-      camadas.push({ id: `${m.id}-moldura`, peca: "moldura-do-cartao", de: m.de, ate: m.ate, entrada: 0.3, saida: 0.2, evento: 0.5, eventos: [], props: { ...caixa } });
+      camadas.push({ id: `${m.id}-moldura`, peca: "moldura-do-cartao", de: m.de, ate: m.ate, entrada: 0.55, saida: 0.2, evento: 0.5, eventos: [], props: { ...caixa }, passes: ["frente"] });
     }
   }
 
@@ -318,7 +322,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const b = t(ins.ate);
     if (a === null || b === null) continue;
     const de = Math.max(0, a - 0.05);
-    const ate = Math.min(D, Math.min(de + 6, Math.max(b + 0.2, de + 2)));
+    const ate = Math.min(D, Math.min(de + 5, Math.max(b + 0.2, de + 3.2)));
     if (planos.some((p) => p.de < ate && p.ate > de)) {
       avisos.push(`${id}: inserção caiu (cruza uma peça de tela ou de lado)`);
       continue;
@@ -338,7 +342,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   }
   const camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, ctx.estiloId), pedidos);
   // Peça "sobre" com texto no topo: a câmera não fecha demais (o rosto não sobe para baixo do título).
-  for (const m of momentos.filter((x) => x.plano === "cheio" && ["titulo", "capitulo", "pergunta-resposta"].includes(x.peca))) {
+  for (const m of momentos.filter((x) => x.plano === "cheio" && ["titulo", "capitulo", "pergunta-resposta", "titulo-atras"].includes(x.peca))) {
     for (const c of camera) if (c.de < m.ate && c.ate > m.de && c.zoom > 1.15 && !pedidos.includes(c)) c.zoom = 1.12;
   }
 
@@ -355,6 +359,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     camera,
     legenda: ctx.comLegenda ? { paginas: paginasDaLegenda(ctx.palavras) } : null,
     insercoes: ctx.insercoes,
+    palco: true,
   };
   return { edicao, avisos, momentos };
 }

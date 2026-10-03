@@ -45,10 +45,15 @@ function somDaTrilha(video: { project: { videoEstiloEscolha: unknown; videoStyle
 import { avisarAdminsDaMontagem } from "@/lib/media/aviso-da-montagem";
 import type { RoteiroDoCorte } from "@/lib/media/roteiro-em-texto";
 import {
+  concluirVideosDasInsercoes,
   consertarEdicao,
+  duracoesDasInsercoes,
   editorSobMedidaLigado,
   frasesNumeradas,
   gerarInsercoes,
+  pedirVideosDasInsercoes,
+  TETO_DE_VIDEOS,
+  type PedidoDeVideo,
   medidasDaEdicao,
   referenciaParaOEditor,
   resolverEdicao,
@@ -602,6 +607,8 @@ export type SobMedidaDoCorte = {
   gancho?: { inicio: number; fim: number; soco: string } | null;
   editor?: EdicaoDoEditor | null;
   insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  /** Os vídeos das inserções pedidos à Higgsfield (03/10, segunda volta): entram no final. */
+  videos?: PedidoDeVideo[];
   edicao?: EdicaoResolvida | null;
   rodada: number;
   historico: Array<{ rodada: number; quadros: number; nota: number | null; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
@@ -758,10 +765,14 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     void _erro;
     const ins = await gerarInsercoes(editor, { formato: "9:16", projectId: video.projectId, teto: 2 });
     const r = resolverCorteSobMedida(video, t, sm, editor, ins.insercoes);
+    // A HIGGSFIELD DE VERDADE (03/10, segunda volta): as inserções viram vídeo
+    // de cinema; o pedido sai agora e o vídeo entra no final (a prévia usa a foto).
+    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato: "9:16", referencia: `${video.id}-corte-${indice}`, teto: TETO_DE_VIDEOS.corte, duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
     const novo: SobMedidaDoCorte = {
       ...sm,
       editor,
       insercoes: ins.insercoes,
+      videos: videos.pedidos,
       edicao: r.edicao,
       fase: "previa",
       custoImagensUsd: ins.custoUsd,
@@ -872,7 +883,10 @@ async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: Tre
     }
     const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
     if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
-    const r = resolverCorteSobMedida(video, t, sm, editor, sm.insercoes ?? {});
+    // Os vídeos da Higgsfield que já ficaram prontos trocam as fotos no final.
+    const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(sm.insercoes ?? {}, sm.videos, { projectId: video.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? sm.insercoes ?? {} : sm.insercoes ?? {};
+    sm.insercoes = comVideos;
+    const r = resolverCorteSobMedida(video, t, sm, editor, comVideos);
     const novo: SobMedidaDoCorte = { ...sm, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) } };
     await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
   } catch (e) {

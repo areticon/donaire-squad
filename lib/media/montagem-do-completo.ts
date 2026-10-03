@@ -54,6 +54,11 @@ import {
   editorSobMedidaLigado,
   frasesNumeradas,
   gerarInsercoes,
+  concluirVideosDasInsercoes,
+  duracoesDasInsercoes,
+  pedirVideosDasInsercoes,
+  TETO_DE_VIDEOS,
+  type PedidoDeVideo,
   instantesParaOEditor,
   medidasDaEdicao,
   referenciaParaOEditor,
@@ -272,6 +277,8 @@ export type EstadoDoSobMedida = {
   blocos: Array<BlocoDoEditor & { parte?: ParteDaEdicao | null }>;
   editor?: EdicaoDoEditor | null;
   insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  /** Os vídeos das inserções pedidos à Higgsfield (03/10, segunda volta): entram no final. */
+  videos?: PedidoDeVideo[];
   edicao?: EdicaoResolvida | null;
   rodada: number;
   historico: Array<{ rodada: number; quadros: number; nota: number | null; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
@@ -1860,7 +1867,9 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
     const formato = lido.analise!.altura > lido.analise!.largura ? "9:16" : "16:9";
     const ins = await gerarInsercoes(editor, { formato, projectId: v.projectId });
     const r = resolverSobMedida(v, lido, editor, ins.insercoes);
-    const novo: EstadoDoSobMedida = { ...sm, blocos, editor, insercoes: ins.insercoes, edicao: r.edicao, fase: "previa", custoImagensUsd: ins.custoUsd, medidas: medidasDaEdicao(r.edicao), avisos: r.avisos.slice(0, 30) };
+    // A HIGGSFIELD DE VERDADE (03/10, segunda volta): as primeiras inserções viram vídeo de cinema (teto pela régua de preço); entram no final.
+    const videos = await pedirVideosDasInsercoes(editor, ins.insercoes, { formato, referencia: `${v.id}-completo`, teto: TETO_DE_VIDEOS.completo, duracoes: duracoesDasInsercoes(r.edicao) }).catch(() => ({ pedidos: [], erros: [] }));
+    const novo: EstadoDoSobMedida = { ...sm, blocos, editor, insercoes: ins.insercoes, videos: videos.pedidos, edicao: r.edicao, fase: "previa", custoImagensUsd: ins.custoUsd, medidas: medidasDaEdicao(r.edicao), avisos: r.avisos.slice(0, 30) };
     await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
   } catch (e) {
     await desistirDoSobMedida(v.id, tomado, `o editor falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
@@ -1936,8 +1945,10 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
     // SÓ VAI AO AR O QUE PASSOU: a peça que ainda tem defeito sai.
     const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
     if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
-    const r = resolverSobMedida(v, lido, editor, sm.insercoes ?? {});
-    const novo: EstadoDoSobMedida = { ...sm, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: medidasDaEdicao(r.edicao) };
+    // Os vídeos da Higgsfield que já ficaram prontos trocam as fotos no final.
+    const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(sm.insercoes ?? {}, sm.videos, { projectId: v.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? sm.insercoes ?? {} : sm.insercoes ?? {};
+    const r = resolverSobMedida(v, lido, editor, comVideos);
+    const novo: EstadoDoSobMedida = { ...sm, insercoes: comVideos, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: medidasDaEdicao(r.edicao) };
     await enviarSobMedida(v, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
   } catch (e) {
     await desistirDoSobMedida(v.id, tomado, `a revisão da prévia falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);

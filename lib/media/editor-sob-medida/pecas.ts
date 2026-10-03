@@ -31,66 +31,80 @@ export type FichaDaPeca = {
   maxItens?: number;
   quando: string;
   props: string;
+  /** As passadas do Remotion em que a peça é desenhada (padrão pelo plano: tela só "frente"; sobre e lado com o "vidro"). */
+  passes?: Array<"frente" | "atras" | "vidro">;
 };
+
+/**
+ * AS PASSADAS E O MOVIMENTO CONTÍNUO (03/10, segunda volta): a peça de tela
+ * tem palco com câmera virtual (se mexe o tempo todo e cobre a gravação); a
+ * peça sobre a pessoa ou ao lado tem caixa de VIDRO, que desfoca a gravação
+ * atrás (a passada "vidro"); o título gigante vai ATRÁS da pessoa recortada.
+ */
+export function passesDaPeca(f: FichaDaPeca): Array<"frente" | "atras" | "vidro"> {
+  if (f.passes) return f.passes;
+  return f.plano === "tela" ? ["frente"] : ["vidro", "frente"];
+}
+export const pecaContinua = (f: FichaDaPeca) => f.plano === "tela" || f.nome === "titulo-atras";
 
 export const PECAS: FichaDaPeca[] = [
   {
-    nome: "titulo", plano: "sobre", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2, 6],
+    nome: "titulo", plano: "sobre", entrada: 1.5, saida: 0.3, evento: 0.6, duracao: [2, 6],
     quando: "A ideia central de um trecho, a promessa, a tese dita em outras palavras. A peça mais usada.",
     props: 'rotulo? (2 a 4 palavras, caixa alta no selo), titulo (até 8 palavras; **destaque** em 1 a 3 palavras), apoio? (até 12 palavras), posicao? ("topo-esquerda" | "topo" | "centro")',
   },
   {
-    nome: "capitulo", plano: "sobre", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 7],
+    nome: "capitulo", plano: "sobre", entrada: 1.4, saida: 0.3, evento: 0.6, duracao: [2.5, 7],
     quando: "Começo de uma parte nova do vídeo (passo 1, passo 2; o próximo tópico). Numera a estrutura.",
     props: 'numero ("1", "2"...), titulo (até 6 palavras, **destaque**)',
   },
   {
-    nome: "rotulo-inferior", plano: "sobre", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
+    nome: "rotulo-inferior", plano: "sobre", entrada: 1.3, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
     quando: "Quem fala (no começo), ou o nome de um lugar, pessoa citada ou ferramenta mostrada.",
     props: "nome (até 4 palavras, **destaque**), descricao? (até 8 palavras)",
   },
   {
-    nome: "palavra-chave", plano: "sobre", entrada: 0.45, saida: 0.25, evento: 0.6, duracao: [1, 2.5],
+    nome: "palavra-chave", plano: "sobre", passes: ["frente"], entrada: 0.8, saida: 0.25, evento: 0.6, duracao: [1, 2.5],
     quando: "Uma palavra forte dita com ênfase (ritmo entre peças maiores). Com moderação.",
     props: 'texto (1 ou 2 palavras), lado? ("esquerda" | "direita")',
   },
   {
-    nome: "sublinhado", plano: "sobre", entrada: 0.4, saida: 0.25, evento: 0.6, duracao: [1.2, 3],
+    nome: "sublinhado", plano: "sobre", passes: ["frente"], entrada: 1.0, saida: 0.25, evento: 0.6, duracao: [1.2, 3],
     quando: "Uma palavra ou expressão curta escrita sobre o peito da pessoa, com a faixa da marca correndo por baixo.",
     props: 'texto (1 a 3 palavras), lado? ("esquerda" | "centro" | "direita")',
   },
   {
-    nome: "pergunta-resposta", plano: "sobre", entrada: 0.6, saida: 0.3, evento: 0.5, duracao: [2.5, 6], umEvento: true,
+    nome: "pergunta-resposta", plano: "sobre", entrada: 1.1, saida: 0.3, evento: 0.8, duracao: [2.5, 6], umEvento: true,
     quando: "Uma objeção ou pergunta que a fala responde. O evento é quando a resposta é dita.",
     props: "pergunta (até 6 palavras), resposta (até 7 palavras)",
   },
   {
-    nome: "seta", plano: "sobre", entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [1.5, 4],
+    nome: "seta", plano: "sobre", passes: ["frente"], entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [1.5, 4],
     quando: "A pessoa mostra ou aponta algo NA GRAVAÇÃO (um objeto, um lugar): a seta liga o rótulo ao que se vê. Use os quadros para saber onde.",
     props: "de {x,y} (onde fica o rótulo, fração do quadro 0 a 1), para {x,y} (o que é mostrado), rotulo? (até 4 palavras)",
   },
   {
-    nome: "circulo", plano: "sobre", entrada: 0.65, saida: 0.3, evento: 0.6, duracao: [1.5, 4],
+    nome: "circulo", plano: "sobre", passes: ["frente"], entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [1.5, 4],
     quando: "Destacar um ponto da imagem que a fala nomeia (um objeto na mesa, um detalhe).",
     props: "x, y (centro, fração do quadro), raio (0,05 a 0,3), rotulo? (até 4 palavras)",
   },
   {
-    nome: "icone", plano: "sobre", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2, 5],
+    nome: "icone", plano: "sobre", entrada: 1.3, saida: 0.3, evento: 0.6, duracao: [2, 5],
     quando: "Um objeto concreto da fala vira ícone grande com rótulo (tempo, dinheiro, igreja, família, alvo).",
     props: 'nome (um destes: dinheiro, cifrao, carteira, cofre, relogio, ampulheta, pessoas, pessoa, foguete, alvo, sobe, cai, grafico, cruz, livro, biblia, coracao, raio, cadeado, casa, mundo, check, x, lampada, megafone, calendario, escudo, coroa, chave, aperto, estrela, igreja, mensagem, telefone, carrinho, ferramenta, mapa, bussola, montanha, semente, fogo, trofeu, maleta, loja, predio, computador, video, camera, microfone, olho, cerebro, balanca, presente, pao, peixe, barco, oracao, luz, agua, caminho, alerta, pergunta, ideia, tempo, documento, contrato, email, compartilhar), rotulo (até 6 palavras, **destaque**), apoio? (até 8 palavras), posicao? ("direita" | "topo-esquerda" | "topo")',
   },
   {
-    nome: "painel-lateral", plano: "lado", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 10], eventosDe: "itens", maxItens: 5,
+    nome: "painel-lateral", plano: "lado", entrada: 1.3, saida: 0.3, evento: 0.7, duracao: [3, 10], eventosDe: "itens", maxItens: 5,
     quando: "Uma sublista curta ou definição enquanto a pessoa explica: o painel de um lado, a pessoa em cartão do outro. Cada item acende quando é dito.",
     props: 'lado ("esquerda" | "direita"), rotulo? (selo), titulo (até 6 palavras, **destaque**), itens? [{texto (até 6 palavras)}], apoio?',
   },
   {
-    nome: "checklist", plano: "lado", entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 10], eventosDe: "itens", maxItens: 6,
+    nome: "checklist", plano: "lado", entrada: 1.3, saida: 0.3, evento: 0.7, duracao: [3, 10], eventosDe: "itens", maxItens: 6,
     quando: "Uma lista de coisas a fazer ou critérios, marcados um a um quando ditos.",
     props: 'titulo? (até 6 palavras), itens [{texto (até 6 palavras)}], lado? ("esquerda" | "direita")',
   },
   {
-    nome: "progresso", plano: "lado", entrada: 1.1, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
+    nome: "progresso", plano: "lado", entrada: 1.8, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
     quando: "Uma porcentagem DITA (70% das pessoas...). O anel enche até o número.",
     props: 'valor (0 a 100, o número dito), sufixo? ("%"), rotulo (até 8 palavras), lado? ("esquerda" | "direita")',
   },
@@ -140,7 +154,7 @@ export const PECAS: FichaDaPeca[] = [
     props: 'valor (número), prefixo? ("R$ "), sufixo? ("%", " mil", " anos"), rotulo? (selo), antes? (frase curta antes do número), apoio? (frase depois, **destaque**), fonte? (só se dita), decimais?',
   },
   {
-    nome: "barras", plano: "lado", entrada: 1.2, saida: 0.3, evento: 0.6, duracao: [3, 8],
+    nome: "barras", plano: "lado", entrada: 2.0, saida: 0.3, evento: 0.6, duracao: [3, 8],
     quando: "Números ditos que se comparam (antes e depois, este ano e o passado). Nunca invente valor: só os ditos.",
     props: 'titulo?, unidade? (" mil", "%"), barras [{rotulo (até 2 palavras), valor (número dito), destaque? (true na barra que importa)}], fonte?, lado? ("esquerda" | "direita")',
   },
@@ -155,9 +169,24 @@ export const PECAS: FichaDaPeca[] = [
     props: "titulo?, pontos [{rotulo (nome do lugar), x, y (posição aproximada 0 a 1 num mapa estilizado; oeste à esquerda, norte em cima)}], rota? (true liga os pontos em ordem)",
   },
   {
-    nome: "desenho", plano: "lado", entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
+    nome: "desenho", plano: "lado", passes: ["frente"], entrada: 0.9, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
     quando: "Algo que nenhuma peça mostra e que um desenho simples mostra (uma cruz, uma balança, uma mesa, uma semente brotando, um gráfico próprio). Você desenha o SVG.",
     props: 'svg (só o miolo, viewBox 0 0 200 200, formas simples: path, rect, circle, ellipse, line, polyline, polygon, g, text; cores ACENTO, CLARO, ESCURO e BRANCO; traço de 4 a 8; sem script, sem imagem, sem link), rotulo? (até 5 palavras, **destaque**), posicao? ("esquerda" | "direita" | "centro")',
+  },
+  {
+    nome: "titulo-atras", plano: "sobre", passes: ["atras", "vidro", "frente"], entrada: 1.2, saida: 0.3, evento: 0.6, duracao: [2, 5],
+    quando: "PROFUNDIDADE: a palavra-tese gigante ATRÁS da pessoa (a pessoa é recortada da gravação e fica na frente do título). Para a ideia central dita com ênfase, quando a pessoa está no meio do quadro e a câmera não mostra objeto. É a peça mais cinematográfica: 1 a cada 1 a 2 min no vídeo longo, 1 no corte (de preferência no gancho ou na virada).",
+    props: 'texto (1 ou 2 palavras FORTES do falante, até 12 letras, sem destaque), rotulo? (selo de 1 a 3 palavras), apoio? (até 7 palavras, a frase que completa; **destaque** em 1 ou 2)',
+  },
+  {
+    nome: "passos-foco", plano: "tela", entrada: 0.8, saida: 0.3, evento: 0.7, duracao: [3.5, 9], eventosDe: "itens", maxItens: 8,
+    quando: "A fala percorre N passos, fases ou princípios numerados (os 7 passos, as 5 fases): os blocos numerados em luz, o passo dito acende com o nome e os outros ficam desfocados (o estilo Dan Martell). Prefira a cartoes quando são 4 ou mais.",
+    props: "titulo? (até 7 palavras, **destaque**), rotulo?, itens [{rotulo (até 3 palavras), texto? (até 5 palavras)}]",
+  },
+  {
+    nome: "grafico-linha", plano: "tela", entrada: 0.8, saida: 0.3, evento: 0.7, duracao: [3, 8], eventosDe: "pontos", maxItens: 8,
+    quando: "Uma EVOLUÇÃO no tempo com números DITOS (o faturamento foi de 12 para 41 mil, a igreja passou de 30 para 300 pessoas): a linha se desenha passando pelos valores, com eixos e marcações. Nunca invente valor; com 2 valores ditos já vale.",
+    props: 'titulo? (até 7 palavras, **destaque**), rotulo?, unidade? (" mil", "%", " pessoas"), pontos [{rotulo (quando: "2019", "Jan", "Antes"), valor (número dito)}]',
   },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],

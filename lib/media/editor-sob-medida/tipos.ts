@@ -37,6 +37,10 @@ export type CamadaResolvida = {
   eventos: number[];
   evento: number;
   props: Record<string, unknown>;
+  /** As passadas do Remotion (03/10, segunda volta): "frente", "atras" (por baixo da pessoa recortada), "vidro" (a máscara do desfoque). Sem o campo, só "frente". */
+  passes?: Array<"frente" | "atras" | "vidro">;
+  /** A camada se mexe o tempo todo (palco com câmera virtual): todo quadro vai ao Chrome. */
+  continua?: boolean;
 };
 
 export type Caixa = { x: number; y: number; w: number; h: number };
@@ -64,6 +68,8 @@ export type EdicaoResolvida = {
   camera: Enquadramento[];
   legenda: { paginas: Array<{ inicio: number; fim: number; texto: string }> } | null;
   insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  /** As telas cheias têm PALCO próprio (opaco, com câmera): o worker deixa a gravação por baixo em vez do fundo parado. */
+  palco?: boolean;
 };
 
 // ─────────────────────────────── o que o editor escreve ───────────────────────────────

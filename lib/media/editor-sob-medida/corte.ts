@@ -75,7 +75,10 @@ export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null }
     `- Tela cheia no máximo 30% do tempo, nenhuma acima de 6 s, e NUNCA duas seguidas: entre duas peças de tela cheia o rosto volta por pelo menos 2 s (uma peça sobre a pessoa ou ao lado). O rosto é o que segura o corte.`,
     `- No 9:16 a cabeça ocupa o terço de cima: o título sobre a pessoa vai no peito (o código posiciona), então título de no máximo 6 palavras e 2 linhas.`,
     `- ÁREA SEGURA do 9:16: nada encostado nas bordas; a faixa da direita e o rodapé são da interface da rede (curtir, comentar, a legenda do post). O código posiciona as peças; você mantém os textos CURTOS (título até 6 palavras).`,
-    `- Inserção gerada: no máximo 1 no corte inteiro, e só se agregar de verdade.`,
+    `- PROFUNDIDADE: 1 "titulo-atras" no corte (a palavra-tese gigante atrás da pessoa recortada), de preferência na virada ou na frase mais forte.`,
+    `- TELAS QUE IMPRESSIONAM: pelo menos 2 peças de tela cheia com palco (câmera em movimento) no corte, escolhidas entre as de DADOS e ESTRUTURA quando a fala permite: "passos-foco" (N passos, um aceso), "numero" (contador), "grafico-linha", "linha-do-tempo", "escada", "cartoes", "comparacao"; senão "frase-impacto" ou "citacao". O corte que é só título sobre a pessoa é a edição que o dono reprovou.`,
+    `- "titulo" no máximo 2 vezes no corte (no 9:16 ele sai como letra grande sem tarja); entre eles, use "sublinhado", "palavra-chave", "icone" e "pergunta-resposta".`,
+    `- INSERÇÃO CINEMATOGRÁFICA (vídeo da Higgsfield): 1 a 2 no corte, de 3,5 a 4,5 s cada (de "de" a "ate" pelo menos 3,5 s de fala), na metáfora, no lugar ou na cena que a fala pede; o briefing SEMPRE com movimento de câmera forte (dolly in, crane up, orbit); nunca no gancho dos primeiros 2 s (ali é o rosto e o título).`,
     `- Sem "fecho" com marca no fim, a menos que a pessoa faça uma chamada para ação no próprio trecho.`,
   ]
     .filter(Boolean)

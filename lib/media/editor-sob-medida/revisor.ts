@@ -19,6 +19,7 @@ const SISTEMA = `Você é o diretor de arte que aprova a edição de vídeo ante
 Cada quadro vem com o instante, a peça que está na tela (ou nenhuma) e a frase que está sendo dita. Para cada quadro, procure DEFEITOS reais:
 - "ilegivel": texto pequeno demais para o celular, cortado na borda, sobreposto a outro texto, baixo contraste;
 - "cobre": a peça cobre o rosto ou algo que a pessoa está mostrando (objeto, tela) quando não devia;
+  (o TÍTULO GIGANTE ATRÁS DA PESSOA é proposital: a pessoa recortada passa na frente dele e esconde parte das letras; só é defeito se a palavra ficar impossível de ler)
 - "incoerente": a peça não tem a ver com a frase dita, ou mostra dado/número/nome que a fala não diz;
 - "feio": desalinhado, vazio demais, apertado, amador, fora do estilo de referência;
 - "vazio": tela sem pessoa e sem conteúdo;
