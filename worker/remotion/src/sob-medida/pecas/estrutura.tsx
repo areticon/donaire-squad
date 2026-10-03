@@ -27,7 +27,7 @@ function Cabeca({ c, titulo, rotulo }: { c: Ctx; titulo?: unknown; rotulo?: unkn
 function area(c: Ctx, comTitulo: boolean) {
   const m = margens(c);
   // No 9:16 o conteúdo desce para o meio da tela (o alto fica do título).
-  const topo = c.vertical ? c.H * (comTitulo ? 0.3 : 0.24) : comTitulo ? m.topo + 210 * c.u : m.topo;
+  const topo = c.vertical ? c.H * (comTitulo ? 0.36 : 0.24) : comTitulo ? m.topo + 210 * c.u : m.topo;
   return { x: m.x, topo, largura: m.largura, altura: m.base - topo };
 }
 
@@ -55,6 +55,8 @@ export function Cartoes(c: Ctx) {
   const gap = 34 * u;
   const largCartao = vertical ? a.largura : Math.min(600 * u, (a.largura - gap * (n - 1)) / n);
   const topo = vertical ? a.topo + 10 * u : Math.max(a.topo + 40 * u, c.H * 0.4);
+  // No 9:16 os cartões dividem a altura toda (prova de 03/10: dois cartões finos e dois terços de tela vazia).
+  const altV = vertical ? Math.min(340 * u, (c.H * 0.86 - topo - 22 * u * (n - 1)) / n) : 0;
   const prog = itens.map((_, k) => progressoDoItem(c, k, 0.25));
   const atual = atualDe(prog);
   return (
@@ -70,14 +72,14 @@ export function Cartoes(c: Ctx) {
             marca === "x" ? "x" : marca === "check" ? "check" : marca === "numero" ? null : it.icone ?? null;
           return (
             <div key={k} style={{ width: largCartao, transform: `translateZ(${(1 - s) * -500 * u + (ativo ? 40 * u : 0)}px) translateY(${(1 - s) * 60 * u}px) rotateY(${giro}deg)`, opacity: limitar(q * 3), transition: "none" }}>
-              <Vidro c={c} forte={false} estilo={{ padding: `${(vertical ? 24 : 34) * u}px ${34 * u}px`, border: `${1.5 * u}px solid ${ativo ? rgba(tema.acento, 0.85) : "rgba(255,255,255,.14)"}`, boxShadow: ativo ? `${brilho(tema.acento, u, 0.6)}, 0 ${30 * u}px ${70 * u}px rgba(0,0,0,.5)` : `0 ${20 * u}px ${50 * u}px rgba(0,0,0,.45)`, ...(atual > k ? { filter: `saturate(.55) brightness(.75)` } : {}) }}>
+              <Vidro c={c} forte={false} estilo={{ ...(vertical ? { minHeight: altV, display: "flex", flexDirection: "column", justifyContent: "center" } : {}), padding: `${(vertical ? 24 : 34) * u}px ${34 * u}px`, border: `${1.5 * u}px solid ${ativo ? rgba(tema.acento, 0.85) : "rgba(255,255,255,.14)"}`, boxShadow: ativo ? `${brilho(tema.acento, u, 0.6)}, 0 ${30 * u}px ${70 * u}px rgba(0,0,0,.5)` : `0 ${20 * u}px ${50 * u}px rgba(0,0,0,.45)`, ...(atual > k ? { filter: `saturate(.55) brightness(.75)` } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 * u, marginBottom: it.texto ? 12 * u : 0 }}>
                   <span style={{ width: 56 * u, height: 56 * u, flex: "0 0 auto", borderRadius: 14 * u, display: "flex", alignItems: "center", justifyContent: "center", background: ativo ? tema.acento : rgba(tema.acento, 0.16), boxShadow: ativo ? brilho(tema.acento, u, 0.6) : "none", fontFamily: "Geist", fontWeight: 700, fontSize: 28 * u, color: ativo ? sobreOAcento(tema) : tema.acento }}>
                     {sinal ? <Icone nome={sinal} tam={30 * u} cor={ativo ? sobreOAcento(tema) : tema.acento} traco={2.6} /> : k + 1}
                   </span>
-                  <span style={{ ...estiloDoTitulo(c, vertical ? 42 : n > 3 ? 38 : 46), color: corDoTexto(c) }}>{texto(it.titulo)}</span>
+                  <span style={{ ...estiloDoTitulo(c, vertical ? 58 : n > 3 ? 38 : 46), color: corDoTexto(c) }}>{texto(it.titulo)}</span>
                 </div>
-                {it.texto ? <div style={{ ...estiloDoApoio(c, vertical ? 28 : n > 3 ? 26 : 30) }}>{texto(it.texto)}</div> : null}
+                {it.texto ? <div style={{ ...estiloDoApoio(c, vertical ? 36 : n > 3 ? 26 : 30) }}>{texto(it.texto)}</div> : null}
               </Vidro>
             </div>
           );
@@ -416,11 +418,12 @@ export function PassosFoco(c: Ctx) {
   const a = area(c, Boolean(p.titulo));
   const prog = itens.map((_, k) => (c.passos.length > k ? c.passos[k] : 0));
   const atual = atualDe(prog);
-  const porLinha = vertical ? 2 : n <= 4 ? n : Math.ceil(n / 2);
+  // No 9:16, uma coluna até 4 passos: os blocos ocupam a altura (prova de 03/10: meia tela vazia).
+  const porLinha = vertical ? (n <= 4 ? 1 : 2) : n <= 4 ? n : Math.ceil(n / 2);
   const linhas = Math.ceil(n / porLinha);
   const gap = 28 * u;
   const bw = (a.largura - gap * (porLinha - 1)) / porLinha;
-  const bh = Math.min(vertical ? 220 * u : 230 * u, (a.altura - gap * (linhas - 1)) / linhas);
+  const bh = Math.min(vertical ? 300 * u : 230 * u, (a.altura - gap * (linhas - 1)) / linhas);
   const entra = molaFisica(c.t - 0.2, 140, 16);
   return (
     <Palco c={c} semente={semente(c)}>

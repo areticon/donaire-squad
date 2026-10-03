@@ -130,7 +130,8 @@ export async function pedirVideosDasInsercoes(
   const erros: string[] = [];
   const lista = (e.insercoes ?? [])
     .map((ins, k) => ({ ins, id: String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}` }))
-    .filter(({ id }) => insercoes[id])
+    // Só as que ficaram na edição resolvida (a que cruza uma tela cheia cai lá e não paga vídeo).
+    .filter(({ id }) => insercoes[id] && (!o.duracoes || id in o.duracoes))
     .slice(0, Math.max(0, o.teto));
   await Promise.all(
     lista.map(async ({ ins, id }) => {
