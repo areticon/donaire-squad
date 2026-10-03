@@ -218,7 +218,7 @@ export function PerguntaResposta(c: Ctx) {
   return (
     <div style={{ position: "absolute", left: m.x, top: m.topo, maxWidth: vertical ? m.largura : 1300 * u, ...entradaDoBloco(c, c.entra, 20) }}>
       <div style={{ ...estiloDoPainel(c), display: "inline-block", padding: `${20 * u}px ${32 * u}px`, marginBottom: 16 * u }}>
-        <div style={{ ...estiloDoTitulo(c, vertical ? 58 : 64), color: corDoTexto(c) }}>{texto(p.pergunta)}</div>
+        <div style={{ ...estiloDoTitulo(c, vertical ? 58 : 64), color: corDoTexto(c) }}><ComDestaque c={c} texto={texto(p.pergunta)} /></div>
       </div>
       <br />
       <div
@@ -232,7 +232,7 @@ export function PerguntaResposta(c: Ctx) {
           transform: `translateY(${(1 - r) * 24 * u}px)`,
         }}
       >
-        <div style={{ ...estiloDoTitulo(c, vertical ? 46 : 50), color: sobreOAcento(tema) }}>{texto(p.resposta)}</div>
+        <div style={{ ...estiloDoTitulo(c, vertical ? 46 : 50), color: sobreOAcento(tema) }}>{texto(p.resposta).replace(/\*\*/g, "")}</div>
       </div>
     </div>
   );

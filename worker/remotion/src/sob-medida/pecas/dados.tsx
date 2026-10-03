@@ -61,7 +61,7 @@ export function NumeroDestaque(c: Ctx) {
           padding: `${60 * u}px ${70 * u}px`,
           borderRadius: (tema.visual === "documental" ? 8 : 36) * u,
           overflow: "hidden",
-          background: tema.visual === "documental" ? "#f7f2e6" : `linear-gradient(135deg, ${misturar(escuroDoTema(tema), "#2b4f86", 0.35)}, ${escuroDoTema(tema)})`,
+          background: tema.visual === "documental" ? "#f7f2e6" : tema.visual === "impacto" ? "#ffffff" : `linear-gradient(135deg, ${misturar(escuroDoTema(tema), "#2b4f86", 0.35)}, ${escuroDoTema(tema)})`,
           border: `${1 * u}px solid ${tema.visual === "documental" ? "rgba(0,0,0,.12)" : "rgba(255,255,255,.10)"}`,
           boxShadow: `0 ${30 * u}px ${80 * u}px rgba(0,0,0,.5)`,
         }}
@@ -124,7 +124,7 @@ export function Barras(c: Ctx) {
                   width: "100%",
                   height: h,
                   borderRadius: `${12 * u}px ${12 * u}px ${4 * u}px ${4 * u}px`,
-                  background: dest ? `linear-gradient(180deg, ${misturar(tema.acento, "#ffffff", 0.15)}, ${misturar(tema.acento, "#000000", 0.3)})` : tema.visual === "documental" ? "rgba(27,26,23,.25)" : "linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.10))",
+                  background: dest ? `linear-gradient(180deg, ${misturar(tema.acento, "#ffffff", 0.15)}, ${misturar(tema.acento, "#000000", 0.3)})` : tema.visual === "documental" || tema.visual === "impacto" ? "rgba(27,26,23,.22)" : "linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.10))",
                   boxShadow: dest ? `0 0 ${36 * u}px ${rgba(tema.acento, 0.45)}` : "none",
                 }}
               />
@@ -293,7 +293,7 @@ export function Mapa(c: Ctx) {
       <div style={{ position: "relative", width: w, height: h, ...estiloDoPainel(c), overflow: "hidden" }}>
         <svg width={w} height={h} style={{ position: "absolute", inset: 0 }}>
           {terra.map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r={3.4 * u} fill={tema.visual === "documental" ? "rgba(60,50,40,.28)" : "rgba(160,185,215,.30)"} />
+            <circle key={i} cx={x} cy={y} r={3.4 * u} fill={tema.visual === "vidro" ? "rgba(160,185,215,.30)" : "rgba(60,50,40,.28)"} />
           ))}
           {pontos.map((q, k) => {
             if (k === 0 || p.rota === false) return null;

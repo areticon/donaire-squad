@@ -110,6 +110,15 @@ export const FundoDaMarca: React.FC<PropsDoFundo> = ({ largura, altura, tema, ca
   const doc = tema.visual === "documental";
   const escuro = escuroDoTema(tema);
   const fundo = doc ? misturar(tema.escuro, "#1a1712", 0.65) : escuro;
+  if (tema.visual === "impacto") {
+    // Alta retenção: o fundo é a cor da marca, viva, com a grade clara.
+    return (
+      <AbsoluteFill style={{ background: `radial-gradient(ellipse at 30% 20%, ${misturar(tema.acento, "#ffffff", 0.12)}, ${misturar(tema.acento, "#000000", 0.28)} 75%)` }}>
+        <AbsoluteFill style={{ backgroundImage: `linear-gradient(to right, rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.12) 1px, transparent 1px)`, backgroundSize: `${56 * u}px ${56 * u}px` }} />
+        {cartao ? <div style={{ position: "absolute", left: cartao.x, top: cartao.y, width: cartao.w, height: cartao.h, borderRadius: 28 * u, boxShadow: `0 ${30 * u}px ${80 * u}px rgba(0,0,0,.45)`, background: "#000" }} /> : null}
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ background: fundo }}>
       <AbsoluteFill

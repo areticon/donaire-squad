@@ -132,11 +132,13 @@ export function Desenho(c: Ctx) {
     .replace(/ESCURO/g, tema.escuro)
     .replace(/CLARO/g, misturar(tema.acento, "#ffffff", 0.6))
     .replace(/BRANCO/g, "#ffffff");
-  const tam = (Number(p.tamanho) || (vertical ? 560 : 520)) * u;
+  const tam = Math.min((Number(p.tamanho) || (vertical ? 480 : 520)) * u, vertical ? c.H * 0.36 : c.H * 0.62);
   const revela = saiSuave((c.t - 0.05) / 0.7);
   const pos = texto(p.posicao, "centro");
   const lugar: React.CSSProperties =
-    pos === "direita"
+    vertical
+      ? { position: "absolute", left: (c.W - tam) / 2, top: c.H * 0.12 }
+      : pos === "direita"
       ? { position: "absolute", right: margens(c).x, top: (c.H - tam) / 2 - 40 * u }
       : pos === "esquerda"
       ? { position: "absolute", left: margens(c).x, top: (c.H - tam) / 2 - 40 * u }

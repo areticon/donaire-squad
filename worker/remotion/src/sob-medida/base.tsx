@@ -92,11 +92,13 @@ export function estiloDoPainel(c: Ctx, forte = false): React.CSSProperties {
     };
   }
   if (tema.visual === "impacto") {
+    // Alta retenção (MrBeast, Hormozi): cartão BRANCO, letra preta, o acento
+    // em bloco; a referência pede cor viva, e o vidro escuro fugia dela (03/10).
     return {
-      background: forte ? tema.acento : escuroDoTema(tema),
-      color: forte ? sobreOAcento(tema) : "#ffffff",
-      borderRadius: 10 * u,
-      boxShadow: `0 ${16 * u}px ${40 * u}px rgba(0,0,0,.5)`,
+      background: forte ? tema.acento : "#ffffff",
+      color: forte ? sobreOAcento(tema) : "#111318",
+      borderRadius: 12 * u,
+      boxShadow: `0 ${16 * u}px ${40 * u}px rgba(0,0,0,.45)`,
     };
   }
   return {
@@ -108,8 +110,8 @@ export function estiloDoPainel(c: Ctx, forte = false): React.CSSProperties {
   };
 }
 
-export const corDoTexto = (c: Ctx) => (c.tema.visual === "documental" ? "#1b1a17" : "#eef2f7");
-export const corFraca = (c: Ctx) => (c.tema.visual === "documental" ? "#5b5650" : "#9fb0c6");
+export const corDoTexto = (c: Ctx) => (c.tema.visual === "documental" ? "#1b1a17" : c.tema.visual === "impacto" ? "#111318" : "#eef2f7");
+export const corFraca = (c: Ctx) => (c.tema.visual === "documental" ? "#5b5650" : c.tema.visual === "impacto" ? "#4a4f57" : "#9fb0c6");
 
 export function estiloDoTitulo(c: Ctx, tamanho: number): React.CSSProperties {
   const { tema, u } = c;
