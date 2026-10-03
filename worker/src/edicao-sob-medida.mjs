@@ -375,8 +375,22 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     const { prepararTrecho } = await import("./ffmpeg.mjs");
     const original = join(pasta, "original.mp4");
     await baixar(pedido.trecho.sourceUrl, original);
-    await prepararTrecho(original, base, pedido.trecho.inicio, pedido.trecho.duracao, pedido.trecho.manter, pedido.trecho.pessoa ?? null);
+    const q = pedido.trecho.quadro;
+    const emendado = q ? join(pasta, "trecho.mp4") : base;
+    await prepararTrecho(original, emendado, pedido.trecho.inicio, pedido.trecho.duracao, pedido.trecho.manter, pedido.trecho.pessoa ?? null);
     await rm(original, { force: true }).catch(() => {});
+    // O QUADRO 9:16 do corte (fração da gravação, o app decide em
+    // lib/media/editor-sob-medida/corte.ts): a gravação deitada vira a faixa em
+    // pé em volta da pessoa. O rosto que a edição segue já vem nesse quadro.
+    if (q) {
+      const par = (n) => `floor(${n}/2)*2`;
+      await rodar([
+        "-i", emendado,
+        "-vf", `crop=${par(`iw*${Number(q.w).toFixed(5)}`)}:${par(`ih*${Number(q.h).toFixed(5)}`)}:${par(`iw*${Number(q.x).toFixed(5)}`)}:${par(`ih*${Number(q.y).toFixed(5)}`)},setsar=1`,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", "-c:a", "copy", base,
+      ]);
+      await rm(emendado, { force: true }).catch(() => {});
+    }
   } else await baixar(pedido.completoUrl, base);
   const dim = await ffprobe(base);
   const fps = fpsDe(base);
@@ -487,6 +501,46 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   let saida = join(pasta, escala < 1 ? "previa.mp4" : "sob-medida.mp4");
   await rodar(["-i", soVideo, "-i", base, "-map", "0:v", "-map", "1:a?", "-t", duracao.toFixed(4), "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", saida], { cwd: pasta });
   marcar("emenda");
+
+  // A TRILHA do projeto no corte (03/10), só no final: o mesmo `misturarAudio`
+  // do /montar (src/sons.mjs), no volume do estilo e abaixando sob a voz.
+  // Falhar aqui não derruba nada: o corte sai com a voz só.
+  if (escala >= 1 && pedido.trilha?.url) {
+    try {
+      const arquivoDaTrilha = join(pasta, "trilha" + (String(pedido.trilha.url).match(/\.[a-z0-9]{2,4}(?=\?|$)/i)?.[0] ?? ".mp3"));
+      await baixar(pedido.trilha.url, arquivoDaTrilha);
+      const { misturarAudio } = await import("./sons.mjs");
+      saida = await misturarAudio(saida, { eventos: [], trilha: { arquivo: arquivoDaTrilha, volume: pedido.trilha.volume, abaixar: pedido.trilha.abaixar } }, duracao, pasta, join(pasta, "sob-medida-com-trilha.mp4"));
+      tempos.trilha = true;
+    } catch (e) {
+      console.warn(`[sob-medida] trilha falhou, segue sem: ${e?.message ?? e}`);
+    }
+    marcar("trilha");
+  }
+
+  // O GANCHO do corte curto (03/10, o mesmo do /montar): a frase forte que o
+  // cliente aprovou, tirada do corte já editado, toca antes do começo com
+  // zoom, flash e o texto de soco. Falhar aqui não derruba a edição.
+  const g = pedido.gancho;
+  if (escala >= 1 && g && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
+    try {
+      const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
+      const abertura = await montarAberturaDeImpacto(saida, [{ inicio: g.inicio, fim: g.fim, soco: g.soco }], pasta, {
+        familia: g.familia ?? "sobrio",
+        acento: g.acento ?? ed.tema?.acento,
+        foco: { x: 0.5, y: 0.4 },
+        passagem: g.passagem ?? null,
+      });
+      if (abertura) {
+        const comGancho = join(pasta, "sob-medida-com-gancho.mp4");
+        await prefixarAbertura(abertura, saida, comGancho, pasta, { copiar: false });
+        saida = comGancho;
+      }
+    } catch (e) {
+      console.warn(`[sob-medida] gancho falhou, segue sem: ${e?.message ?? e}`);
+    }
+    marcar("gancho");
+  }
 
   // A abertura com os melhores momentos (o gancho do JEV), só no final.
   let aberturaSeg = 0;

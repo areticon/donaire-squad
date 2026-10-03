@@ -182,7 +182,7 @@ export function Sublinhado(c: Ctx) {
   const e = saiSuave(c.t / 0.35);
   return (
     <div style={{ position: "absolute", left: 0, right: 0, top: vertical ? m.base - 360 * u : c.H * 0.62, display: "flex", justifyContent: texto(p.lado) === "direita" ? "flex-end" : texto(p.lado) === "esquerda" ? "flex-start" : "center", padding: `0 ${m.x}px`, opacity: c.fica }}>
-      <div style={{ position: "relative", ...estiloDoTitulo(c, Math.min(vertical ? 84 : 92, (c.W - 2 * m.x) / u / Math.max(4, texto(p.texto).length * 0.62))), whiteSpace: "nowrap", color: "#ffffff", textShadow: `0 ${4 * u}px ${24 * u}px rgba(0,0,0,.7)`, clipPath: `inset(0 ${(1 - e) * 100}% 0 0)` }}>
+      <div style={{ position: "relative", ...estiloDoTitulo(c, Math.min(vertical ? 84 : 92, (c.W - 2 * m.x) / u / Math.max(4, texto(p.texto).length * (tema.caixaAlta ? 0.84 : 0.66)))), whiteSpace: "nowrap", color: "#ffffff", textShadow: `0 ${4 * u}px ${24 * u}px rgba(0,0,0,.7)`, clipPath: `inset(0 ${(1 - e) * 100}% 0 0)` }}>
         <span style={{ position: "absolute", left: -10 * u, right: -10 * u, bottom: 4 * u, height: "34%", background: rgba(tema.acento, 0.9), zIndex: -1, transform: `scaleX(${e})`, transformOrigin: "left" }} />
         {texto(p.texto)}
       </div>

@@ -215,8 +215,10 @@ export function PerguntaResposta(c: Ctx) {
   const { props: p, u, tema, vertical } = c;
   const m = margens(c);
   const r = c.passos.length ? c.passos[0] : saiSuave((c.t - 0.5) / 0.4);
+  // No corte 9:16 (03/10) a pergunta desce para o peito ("baixo"): no topo ela cobria os olhos.
+  const topo = vertical && texto(p.posicao) === "baixo" ? m.base - 300 * u : m.topo;
   return (
-    <div style={{ position: "absolute", left: m.x, top: m.topo, maxWidth: vertical ? m.largura : 1300 * u, ...entradaDoBloco(c, c.entra, 20) }}>
+    <div style={{ position: "absolute", left: m.x, top: topo, maxWidth: vertical ? m.largura : 1300 * u, ...entradaDoBloco(c, c.entra, 20) }}>
       <div style={{ ...estiloDoPainel(c), display: "inline-block", padding: `${20 * u}px ${32 * u}px`, marginBottom: 16 * u }}>
         <div style={{ ...estiloDoTitulo(c, vertical ? 58 : 64), color: corDoTexto(c) }}><ComDestaque c={c} texto={texto(p.pergunta)} /></div>
       </div>
