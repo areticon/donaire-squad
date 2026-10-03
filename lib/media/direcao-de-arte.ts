@@ -120,7 +120,7 @@ export const ESTILOS: EstiloVisual[] = [
     id: "vox-recorte",
     nome: "Recorte editorial (Vox)",
     prompt:
-      "Editorial cut-paper collage in the style of Vox and The Atlantic explainer art: black-and-white halftone photo cutouts with visible torn paper edges, arranged over flat solid shapes, ONE bold accent color only, generous negative space, deadpan visual irony and gentle satire (think the Statue of Liberty laughing), hand-cut imperfection, printed-zine texture, absolutely no glossy stock photography and no realistic 3D render.",
+      "Editorial cut-paper collage in the style of Vox and The Atlantic explainer art: black-and-white halftone photo cutouts with visible torn paper edges, arranged over flat solid shapes, ONE bold accent color only, generous negative space, deadpan visual irony and gentle satire (think the Statue of Liberty laughing), hand-cut imperfection, printed-zine texture, printed and hand-cut rather than glossy.",
     serveParaInfografico: true,
   },
 ];
@@ -168,7 +168,10 @@ export function paletaDoProjeto(colorPalette: string | null | undefined): string
   const partes = [`brand accent color ${nomeDaCor(acento)}`];
   if (fundo) partes.push(`primary dark tone ${nomeDaCor(fundo)}`);
   if (claro) partes.push(`light neutral ${nomeDaCor(claro)}`);
-  return `Brand colors, mandatory: ${partes.join(", ")}. The accent is for emphasis only (numbers, one headline word, key shapes); the base of the composition follows the chosen style, not the accent. Never draw color swatches or a palette strip, and never write color names or codes on the art.`;
+  // "Mandatory" (até 02/10) tingia a cena inteira; a cor é direção, e a
+  // prova A/B de 02/10 mostrou que a cena com cor natural e o acento num
+  // detalhe é o que parece foto. A frase das amostras fica: veio de defeito real.
+  return `Brand colours to lean toward: ${partes.join(", ")}; the accent for emphasis (a key object, one detail, the light), the rest natural to the scene. Colour is an instruction, never drawn as swatches or written on the art.`;
 }
 
 /** Um hex vira um nome de cor em inglês que o modelo de imagem entende. */
@@ -223,19 +226,19 @@ export const ARTE_DA_LINGUAGEM: Record<string, { pt: string; en: string }> = {
   // prova e confiança, nunca ostentação.
   consorcio: {
     pt: "Reels de vendedor de consórcio: o valor numa faixa rasgada na cor da marca, selo branco com o nome e letra condensada grande",
-    en: "Consortium-sales social cover: one real, credible scene of the deal (house keys, car keys, a signed contract on a desk, a bright sales office), ONE big value in heavy condensed uppercase type on a torn paper strip in the brand accent color, a small white rounded badge with a check mark, high contrast, trustworthy and direct, no piles of cash, no money flying, no luxury cars, no get-rich-quick look.",
+    en: "Consortium-sales social cover: one real, credible scene of the deal (house keys, car keys, a signed contract on a desk, a bright sales office), ONE big value in heavy condensed uppercase type on a torn paper strip in the brand accent color, a small white rounded badge with a check mark, high contrast, trustworthy and direct, modest and credible rather than flashy.",
   },
   vox: {
     pt: "colagem editorial de recortes de papel, fotos em preto e branco e marca-texto na cor da marca nas palavras-chave",
-    en: "Editorial cut-paper collage in the language of an explainer video: black-and-white halftone photo cutouts with torn paper edges over a neutral off-white paper background, ONE accent color only (the brand accent) used as highlighter-marker strokes over the key words and as flat cut shapes, hand-drawn circles and arrows, zoomed fragments of documents whose small print is blurred and illegible (no fake readable words), printed-zine texture, generous negative space, deadpan editorial irony, no glossy stock photography, no 3D render.",
+    en: "Editorial cut-paper collage in the language of an explainer video: black-and-white halftone photo cutouts with torn paper edges over a neutral off-white paper background, ONE accent color only (the brand accent) used as highlighter-marker strokes over the key words and as flat cut shapes, hand-drawn circles and arrows, zoomed fragments of documents whose small print is blurred and illegible (no fake readable words), printed-zine texture, generous negative space, deadpan editorial irony, printed and hand-cut rather than glossy.",
   },
   bbc: {
     pt: "sóbrio de telejornal: foto natural, tarja de título e um número grande com a fonte",
-    en: "Sober broadcast-news graphic: a clean realistic photograph with natural color and moderate contrast, a lower-third style title bar, one big number with its source line, disciplined sans-serif typography on a strict grid, restrained use of the accent color, credible and calm, no hype, no emojis.",
+    en: "Sober broadcast-news graphic: a clean realistic photograph with natural color and moderate contrast, a lower-third style title bar, one big number with its source line, disciplined sans-serif typography on a strict grid, restrained use of the accent color, credible and calm.",
   },
   natgeo: {
     pt: "fotografia documental de grande reportagem, plano aberto que respira, cor rica e quente",
-    en: "Documentary photography cover: one wide, breathing cinematic shot of a real place or activity related to the topic, rich warm earthy color, golden natural light, cinematic contrast, a thin frame border or one elegant serif title, lots of air, no clutter.",
+    en: "Documentary photography cover: one wide, breathing cinematic shot of a real place or activity related to the topic, rich warm earthy color, golden natural light, cinematic contrast, a thin frame border or one elegant serif title, lots of air, uncluttered.",
   },
   "johnny-harris": {
     pt: "mapa e foto com anotações à mão, setas e círculos na cor da marca",
@@ -251,11 +254,11 @@ export const ARTE_DA_LINGUAGEM: Record<string, { pt: string; en: string }> = {
   },
   kurzgesagt: {
     pt: "ilustração vetorial explicativa, formas geométricas e números grandes",
-    en: "Flat vector explainer illustration: bold geometric shapes, a vibrant palette built from the brand colors on a dark or saturated background, big friendly numbers, clean rounded sans-serif, simple iconic characters and objects, no photography.",
+    en: "Flat vector explainer illustration: bold geometric shapes, a vibrant palette built from the brand colors on a dark or saturated background, big friendly numbers, clean rounded sans-serif, simple iconic characters and objects, fully illustrated.",
   },
   "quadro-branco": {
     pt: "desenho de quadro branco, traço preto e uma cor da marca",
-    en: "Whiteboard drawing: black marker line art on a clean white board, the idea drawn step by step with arrows, boxes and simple figures, ONE accent color (the brand accent) for emphasis, handwritten labels, no photography.",
+    en: "Whiteboard drawing: black marker line art on a clean white board, the idea drawn step by step with arrows, boxes and simple figures, ONE accent color (the brand accent) for emphasis, handwritten labels, fully drawn.",
   },
   "ali-abdaal": {
     pt: "claro e acolhedor, tópicos numerados com imagem de apoio",
@@ -275,7 +278,7 @@ export const ARTE_DA_LINGUAGEM: Record<string, { pt: string; en: string }> = {
   },
   depoimento: {
     pt: "cartão de depoimento: foto natural, citação e o resultado em destaque",
-    en: "Customer-testimonial card: a natural photo of a real customer in their own business setting, a short quote in large quotation marks, the result as a big number in the accent color, honest and warm, no stock-photo gloss.",
+    en: "Customer-testimonial card: a natural photo of a real customer in their own business setting, a short quote in large quotation marks, the result as a big number in the accent color, honest and warm, candid rather than glossy.",
   },
   vlog: {
     pt: "bastidor com cara de câmera na mão, cor vibrante e rótulos à mão",
@@ -291,15 +294,15 @@ export const ARTE_DA_LINGUAGEM: Record<string, { pt: string; en: string }> = {
   },
   hormozi: {
     pt: "impacto: tipografia pesada no centro e a palavra-chave na cor da marca",
-    en: "High-impact typographic look: heavy condensed uppercase type as the hero, huge centered words on a dark background, ONE keyword in the brand accent color, thick contrast, no decoration, punchy and direct, bold-caption energy.",
+    en: "High-impact typographic look: heavy condensed uppercase type as the hero, huge centered words on a dark background, ONE keyword in the brand accent color, thick contrast, undecorated, punchy and direct, bold-caption energy.",
   },
   ugc: {
     pt: "cara de celular e ambiente real, com a caixa de texto simples da rede",
-    en: "Native social-feed look: a real smartphone photo in a real environment, natural color, the platform's own simple text-box style (white rounded label with black text), authentic and unpolished, no studio gloss.",
+    en: "Native social-feed look: a real smartphone photo in a real environment, natural color, the platform's own simple text-box style (white rounded label with black text), authentic and unpolished.",
   },
   tipografia: {
     pt: "o texto é a imagem: palavras em tamanhos e pesos diferentes",
-    en: "Kinetic-typography poster: the text IS the image, words of different sizes and weights stacked and rotated in rhythm, two or three brand colors, high contrast, bold grid, no photography.",
+    en: "Kinetic-typography poster: the text IS the image, words of different sizes and weights stacked and rotated in rhythm, two or three brand colors, high contrast, bold grid, pure typography.",
   },
   "carrossel-animado": {
     pt: "lâmina de carrossel limpa, uma ideia por tela",
@@ -361,7 +364,7 @@ const EFEITO_NA_ARTE: Record<string, string> = {
  * proíbe o marcador e não fala em reservar.
  */
 const MARCA_NA_ARTE =
-  "Brand consistency: one typeface family across the whole piece, the same in every post of the brand; never invent a logo, wordmark, monogram or mascot, never write the words LOGO or BRAND or any placeholder, and leave the top-left corner empty (the real logo is applied later). Never use the logo, name, bug or vignette of the reference channel.";
+  "Brand consistency: one typeface family across the piece, the top-left corner left empty for the real logo (applied later, so the image carries no invented logo or placeholder), and nothing borrowed from the reference channel's own branding.";
 
 /** A linguagem que o cliente escolheu para o vídeo, quando escolheu uma. */
 export function linguagemDoProjeto(videoEstiloEscolha: unknown): { escolha: EscolhaDeEstilo; estilo: EstiloDoCatalogo } | null {

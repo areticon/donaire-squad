@@ -163,11 +163,15 @@ const SETOR_EM_INGLES: Record<string, string> = {
 const FUNDO_INTEIRO = "Background: FULL-BLEED, the scene continues to every edge of the frame; keep one calmer, less detailed area where a headline can sit.";
 
 /**
- * O prompt da arte SEM TEXTO. A cena vem em inglês (de quem escreve a
- * manchete ou de `cenaDaFrase`), e as proibições fecham o prompt porque é o
- * fim que o modelo pesa mais. Desde 01/10 ele carrega a identidade do
- * projeto: o ramo do cliente, o mundo dele, a luz, o enquadramento variado e
- * o que evitar.
+ * O prompt da arte SEM TEXTO, na forma de 02/10 (prova A/B em
+ * scripts/tmp/ab-0210): a cena vem primeiro e inteira, o mundo do cliente
+ * entra como sugestão (até aqui era "draw from it so it is obvious", e a
+ * arte da Demandou virava um estúdio entulhado de ring light, microfone,
+ * megafone, post-its e aviõezinhos de papel), o estilo e a cor da marca como
+ * direção, e a guarda em uma frase no fim. O muro de "ABSOLUTE RULES" (três
+ * listas de negativas) saiu: o juiz por visão deu 17 a 22 de 25 para a arte
+ * com o muro e 24 para a mesma frase pedida como um diretor de arte pede.
+ * Quem barra texto e gente continua sendo a conferência (`conferirArte`).
  */
 export function promptDaArteSemTexto(o: { visual: string; estilo?: string; marca: MarcaDaArte; frase?: string }): string {
   const look = o.estilo ? lookSemTexto(o.estilo) : "";
@@ -176,37 +180,30 @@ export function promptDaArteSemTexto(o: { visual: string; estilo?: string; marca
   const setor = id?.setor;
   const arteInteira = o.frase !== undefined ? layoutDaPeca(o.marca, o.frase).arteInteira : o.marca.familia === "sobrio";
   return [
-    `Artwork for a social media post${setor ? ` of a ${SETOR_EM_INGLES[setor.id] ?? "business"} brand` : ""}. One single scene with one clear focal subject.`,
-    `Scene (express the idea only with objects, places, materials, light and symbols): ${o.visual}`,
-    // O MUNDO DO CLIENTE (01/10): sem esta linha, curtailment e evangelho
-    // viravam a mesma mesa de madeira com luminária. Quem olha a arte precisa
-    // saber de que tipo de negócio ela é antes de ler a frase.
-    ...(setor
-      ? [
-          `The client's world (draw from it so it is obvious what kind of business this is): ${setor.mundo}.`,
-          `Light and mood of this brand: ${setor.luz}.`,
-        ]
-      : []),
+    `Artwork for a social media post${setor ? ` of a ${SETOR_EM_INGLES[setor.id] ?? "business"} brand` : ""}: one scene, one clear focal subject, told with objects, places, materials, light and symbols.`,
+    `Scene: ${o.visual}`,
+    // O MUNDO DO CLIENTE (01/10) entra ANTES, em quem escreve a cena
+    // (`cenaDaFrase` e o redator da manchete recebem `setor.mundo`): a cena
+    // já chega no ramo certo. Repetir a lista aqui (até 02/10) devolvia o
+    // estúdio inteiro em cima de uma cena que pedia um objeto só. Fica a luz.
+    ...(setor ? [`Light and mood: ${setor.luz}.`] : []),
     `Framing: ${enquadramentoDaPeca(o.frase ?? o.visual)}.`,
+    `Look: ${BASE_DA_FAMILIA[o.marca.familia]}.${look ? ` Mood from the brand's visual language: ${look}.` : ""}`,
+    `Colour: natural to the scene, leaning toward ${nomeDaCor(acento)} as the accent, ${nomeDaCor(escuro)} as the dark tone and ${nomeDaCor(claro)} as the light tone.`,
+    fundoDaArte(o.marca, arteInteira),
     // O padrão visual medido no nicho (trilho de referências), quando existir.
     // Traço abstrato, nunca a peça de outra marca.
     ...(id?.padroesVisuais?.length
-      ? [`What performs visually in this niche, measured (Portuguese notes, apply only the abstract composition traits, never copy a specific post, brand, logo or face): ${id.padroesVisuais.join(" | ")}`]
+      ? [`What performs visually in this niche, measured (Portuguese notes, apply only the abstract composition traits, never a specific post, brand, logo or face): ${id.padroesVisuais.join(" | ")}`]
       : []),
     // As regras que o cliente aprovou para a arte (02/10, lib/referencias/regras.ts).
     ...(id?.regrasDaArte?.length
-      ? [`Rules the client approved for this project's art (Portuguese; follow them unless they conflict with the other rules here, such as no people and no text inside the image): ${id.regrasDaArte.join(" | ")}`]
+      ? [`Rules the client approved for this project's art (Portuguese; the guard below still wins): ${id.regrasDaArte.join(" | ")}`]
       : []),
-    `If the scene mentions people, replace them with objects that suggest their presence (an empty chair, a coat on a hook, footprints, a door left open).`,
-    `Look: ${BASE_DA_FAMILIA[o.marca.familia]}.${look ? ` Mood from the brand's visual language: ${look}.` : ""}`,
-    `Colors: ${nomeDaCor(acento)} as the accent, ${nomeDaCor(escuro)} as the dark tone, ${nomeDaCor(claro)} as the light tone.`,
-    fundoDaArte(o.marca, arteInteira),
-    `Avoid${setor ? `: ${setor.evitar}; and` : ":"} the generic still life of a wooden desk with a desk lamp, an open notebook, a lantern or a coffee mug, unless the scene above explicitly asks for it.`,
-    `A designer adds the headline later, outside this image, so this image carries no words at all.`,
-    `ABSOLUTE RULES, the image is rejected if any is broken:`,
-    `- NO text of any kind: no letters, no words, no numbers, no digits, no percent signs, nothing that looks like writing, no labels, no captions, no signs, no book covers with titles, no screens with content, no logos, no watermarks.`,
-    `- NO numbered steps, no cards, no panels, no grid, no list, no chart, no diagram, no user interface, no speech bubbles.`,
-    `- NO people: no humans, no faces, no hands, no bodies, no silhouettes, no illustrated characters, no mannequins, no statues.`,
+    // O que é do setor (para não parecer outro ramo) e o clichê da mesa com
+    // luminária ficam como direção curta, em uma linha.
+    `Steer clear of${setor ? ` ${setor.evitar}, and of` : ""} the generic desk with a lamp, open notebook, lantern or coffee mug unless the scene asks for it.`,
+    `The headline is added later in code, so the image carries no words, numbers or interface panels; no people (suggest them with objects: an empty chair, a coat on a hook, a door left open); no logos.`,
   ].join("\n");
 }
 
@@ -226,20 +223,25 @@ export async function cenaDaFrase(
    */
   identidade?: IdentidadeVisual
 ): Promise<string> {
+  // O mundo do cliente é CENÁRIO, não lista de compras (02/10, prova A/B): com
+  // "pick places and objects from here", a Demandou saía sempre como o estúdio
+  // de criador entulhado (ring light, microfone, megafone, post-its, aviões
+  // de papel), fosse qual fosse a frase. Um diretor de arte acha UMA metáfora
+  // para a frase (um objeto, uma situação) e só então decide o cenário.
   const contexto = identidade
     ? [
         `Sector: ${identidade.setor.nome} (Portuguese label).`,
-        `The client's world, pick places and objects from here or close to it: ${identidade.setor.mundo}.`,
+        `The client's world, as setting cues only (use at most one or two of these, and only if they serve the metaphor): ${identidade.setor.mundo}.`,
         identidade.publico ? `Who will see this post (Portuguese): ${identidade.publico.slice(0, 400)}` : "",
         identidade.tom ? `Brand tone of voice (Portuguese): ${identidade.tom.slice(0, 200)}` : "",
         `Framing to use: ${enquadramentoDaPeca(frase)}.`,
         identidade.padroesVisuais?.length ? `Measured visual traits that perform in this niche (Portuguese, abstract only): ${identidade.padroesVisuais.join(" | ")}` : "",
         identidade.regrasDaArte?.length ? `Rules the client approved for this project's art (Portuguese; never against the rules above): ${identidade.regrasDaArte.join(" | ")}` : "",
-        `Never: ${identidade.setor.evitar}; never the generic desk with a lamp, open notebook, lantern or coffee mug.`,
+        `Steer clear of ${identidade.setor.evitar}, and of the generic desk with a lamp, open notebook, lantern or coffee mug.`,
       ].filter(Boolean).join("\n")
     : "";
   const bruto = await askClaude(
-    "You are an art director. You describe ONE still scene for an image model, in English, in at most 45 words. Only objects, places, materials, light and mood: never people, hands or faces, never text, letters, numbers, screens, signs, charts or documents. The scene must clearly belong to the client's own world and speak to that audience. Return only the description.",
+    "You are an advertising art director briefing a photographer. Find ONE visual metaphor for the sentence: one object or one simple situation that carries the idea on its own (the way a great print ad does), and describe it as a photo brief in English, at most 45 words: subject, setting, light, lens and mood. One clear focal subject, nothing cluttered, no list of props. Tell the idea with objects, places, materials and light only, so the scene works without people in it and without any writing. Return only the description.",
     `Niche: ${nicho ?? "business"}\n${contexto ? `${contexto}\n` : ""}The Portuguese sentence the scene must evoke (do NOT write it in the scene): "${frase}"`,
     { maxTokens: 4000, effort: "low", usage: { operation: "cena_da_frase", ...usage } }
   );
