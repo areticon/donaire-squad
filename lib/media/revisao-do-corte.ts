@@ -10,6 +10,7 @@ import {
 } from "@/lib/media/estado-da-revisao-do-corte";
 import { textoFinalParaRevisao, type EdicaoDoTrecho } from "@/lib/media/edicao-gravada";
 import { fechaCorte } from "@/lib/media/texto-final-do-corte";
+import { corteAprovadoPeloJev } from "@/lib/squad/vera-pelo-jev";
 
 /**
  * A Vera revisa cada CORTE, e o que ela reprova volta ao Vitor.
@@ -224,6 +225,23 @@ export async function veraRevisaCorte(entrada: {
   const antesDe = palavras.findIndex((w) => w.start >= inicio - CONTEXTO_DA_VERA_SEC);
   let depoisAte = ultima;
   while (depoisAte + 1 < palavras.length && palavras[depoisAte + 1].start <= fim + CONTEXTO_DA_VERA_SEC) depoisAte++;
+
+  // A VERA DECIDE PELO JEV (03/10, lib/squad/vera-pelo-jev.ts): as quatro
+  // perguntas abaixo vão ao JEV; tudo sim com folga, o corte está aprovado e
+  // não há motivo a escrever. Dúvida ou falha: o Claude revisa como antes.
+  try {
+    const jev = await corteAprovadoPeloJev({
+      projectId: entrada.projectId,
+      titulo: entrada.titulo,
+      ideia: entrada.ideia,
+      antes: texto(palavras, antesDe, primeira - 1),
+      fala: entrada.final?.texto ?? texto(palavras, primeira, ultima),
+      depois: texto(palavras, ultima + 1, depoisAte),
+    });
+    if (jev.aprova) return { veredito: "APROVADO", motivo: "Corte fechado.", problema: null };
+  } catch (e) {
+    console.error("[revisao-do-corte] JEV falhou, segue o Claude:", e instanceof Error ? e.message : e);
+  }
 
   const tarefa = `Revise este CORTE de vídeo curto (Reels, Shorts). Ele foi recortado de uma gravação longa, e quem assiste o corte NÃO viu o resto da gravação.
 

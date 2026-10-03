@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { vereditoPedeCorrecao, VALIDADE_DA_CORRECAO_MIN, type CorrecaoDaVera } from "@/lib/squad/estado-da-correcao";
+import { parecerDaAprovacao, parecerDaConferencia, veraAprovaPeloJev, veraConfereCorrecaoPeloJev, veraPeloJevLigada, veraPrimeiraPeloJevLigada } from "@/lib/squad/vera-pelo-jev";
 
 /**
  * A Vera revisa os dias de vídeo.
@@ -177,6 +178,34 @@ async function revisarUmDia(
       ...(radar?.dados ?? []).map((d) => `- ${d.valor}: ${d.oQueMede} (${d.fonte})`),
       ...(radar?.achados ?? []).map((a) => `- ${a.titulo} (${a.fonte}${a.data ? `, ${a.data}` : ""})`),
     ].join("\n") || "(o Roberto não pesquisou este vídeo)";
+
+  // A VERA DECIDE PELO JEV (03/10, lib/squad/vera-pelo-jev.ts). Na segunda
+  // revisão ela só confere o que pediu: o JEV responde pedido a pedido e, tudo
+  // atendido com folga, ela aprova sem o Claude (não há motivo a escrever). A
+  // primeira revisão pelo JEV existe e fica desligada por padrão (a medição
+  // está no arquivo). Qualquer dúvida ou falha segue para o Claude, como antes.
+  const pecasDaVera = posts.map((p, i) => ({ id: `post${i + 1}`, rede: p.platform, tipo: p.mediaType ?? "texto", texto: p.content ?? "" }));
+  try {
+    const jev = opcoes.parecerAnterior
+      ? veraPeloJevLigada()
+        ? await veraConfereCorrecaoPeloJev({ projectId: video.projectId, parecerAnterior: opcoes.parecerAnterior, pecas: pecasDaVera })
+        : null
+      : veraPrimeiraPeloJevLigada()
+        ? await veraAprovaPeloJev({
+            projectId: video.projectId,
+            projeto: { nome: video.project.name, nicho: video.project.niche, publico: video.project.targetAudience, voz: video.project.voice },
+            pecas: pecasDaVera,
+            dadosPesquisados: dadosDoRoberto,
+          })
+        : null;
+    if (jev?.decisao === "aprova") {
+      const saidaDoJev =
+        "itens" in jev && Array.isArray(jev.itens) ? parecerDaConferencia(jev.itens as string[]) : parecerDaAprovacao(pecasDaVera);
+      return { veredito: "APROVADO", saida: saidaDoJev, corpo: saidaDoJev.replace(/\n?VEREDITO:.*$/i, "").trim(), postIds: posts.map((p) => p.id) };
+    }
+  } catch (e) {
+    console.error(`[vera][${video.id}] JEV falhou, segue o Claude:`, e instanceof Error ? e.message : e);
+  }
 
   const system = vera
     ? `Você é ${vera.name}, ${vera.role}.\nPersona: ${vera.persona ?? ""}\nEstilo: ${vera.style ?? ""}`

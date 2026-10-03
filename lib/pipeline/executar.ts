@@ -49,6 +49,7 @@ import { formatoValido, destinosDaRede, proporcaoDoDia } from "@/lib/publish/for
 import type { CenaDoVideo } from "@/lib/media/video-por-ia";
 import { MAX_TENTATIVAS_DA_VERA, vereditoPedeCorrecao, type CorrecaoDaVera, type TentativaDaCorrecao } from "@/lib/squad/estado-da-correcao";
 import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-vera";
+import { veraConfereNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
 
@@ -3948,16 +3949,36 @@ ${d.content}
           }
         }
 
-        // A Vera olha de novo, com as peças já corrigidas.
-        parecerDaVez = await runAgent(
-          reviewer,
-          buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), true, derivadasDoDia),
-          `${contextWithResearch}\n\nTema da campanha: ${topic}`,
-          runId,
-          funnelInstruction,
-          prefixoDaCampanha,
-          project.id,
-        );
+        // A Vera olha de novo, com as peças já corrigidas. Desde 03/10 a
+        // conferência é do JEV (lib/squad/vera-pelo-jev.ts): pedido a pedido,
+        // com as réguas medidas limpas; tudo atendido, aprova sem o Claude.
+        // Dúvida ou falha: o Claude revisa como antes. VERA_PELO_JEV=0 desliga.
+        const tarefaDaVolta = buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), true, derivadasDoDia);
+        const conferida = await veraConfereNaCampanha({
+          projectId: project.id,
+          parecerAnterior: parecerDaVez,
+          tarefa: tarefaDaVolta,
+          midia: getMediaStatus(),
+          pecas: [
+            ...(liPost?.content ? [{ id: "linkedin", rede: "linkedin", tipo: "post", texto: liPost.content }] : []),
+            ...(twPost?.content ? [{ id: "x", rede: "twitter", tipo: "thread", texto: twPost.content }] : []),
+            ...derivadasDoDia.map((d) => ({ id: d.platform, rede: d.platform, tipo: "adaptação", texto: d.content })),
+          ],
+        });
+        if (conferida.parecer) {
+          await appendLog(runId, { agent: "Vera Veredito", message: `${dayName}: conferi os pedidos da correção um a um, todos atendidos.`, status: "running" });
+        }
+        parecerDaVez =
+          conferida.parecer ??
+          (await runAgent(
+            reviewer,
+            tarefaDaVolta,
+            `${contextWithResearch}\n\nTema da campanha: ${topic}`,
+            runId,
+            funnelInstruction,
+            prefixoDaCampanha,
+            project.id,
+          ));
         rodada = parseVeraVerdict(parecerDaVez);
         historico.push({ tentativa: tentativas, quem, veredito: rodada.verdict, queixa: motivoDoParecer(parecerDaVez) });
       }
