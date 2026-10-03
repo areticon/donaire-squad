@@ -42,6 +42,14 @@ export function cameraDaCena(cena: CenaResolvida, quadro: number, fps: number, f
   const p = Math.min(1, Math.max(0, quadro / dur));
   const k = quadro - Math.round(((cena.movimentoEm ?? cena.inicio) - cena.inicio) * fps);
   const empurrao = (forca: number) => (k >= 0 ? forca * spring({ frame: k, fps, config: { damping: 20, stiffness: 140 } }) : 0);
+  // O ENQUADRAMENTO DO CORTE LIMPO (03/10): plano médio ou fechado parado, e
+  // o punch com corte seco no zoom pedido na palavra forte. Mesma conta do
+  // ffmpeg da base (worker/src/montagem-do-completo.mjs, filtroDoMovimento),
+  // sem deriva: o corte de câmera é seco.
+  const enquadramento = typeof cena.zoom === "number" && cena.zoom > 1.01 ? Math.min(1.3, cena.zoom) : 1;
+  if (enquadramento > 1 && (cena.movimento === "punch" || cena.movimento === "estatico")) {
+    return { escala: cena.movimento === "estatico" || k >= 0 ? enquadramento : 1, dx: 0, dy: 0, giro: 0 };
+  }
   let escala = 1;
   const m: Movimento = cena.movimento;
   const s = quadro / fps + cena.inicio * 0.37;

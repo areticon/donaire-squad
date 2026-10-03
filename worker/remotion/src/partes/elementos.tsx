@@ -740,6 +740,55 @@ const DestaqueImpacto: React.FC<P> = ({ el, montagem, q, fps, t, fundo, layout }
   );
 };
 
+/**
+ * A FAIXA SOBRE A GRAVAÇÃO (03/10, régua do vídeo de pitch da landing): a
+ * frase-chave dita entra numa faixa escura semitransparente de cantos
+ * arredondados no terço de baixo, por cima da gravação, e a pessoa continua
+ * falando por trás. Letra limpa em caixa normal (não grita), as duas últimas
+ * palavras na cor da marca, um filete da marca à esquerda; entra subindo em
+ * 8 quadros. Igual em toda família: é o texto do corte limpo.
+ */
+const FaixaSobreVideo: React.FC<P> = ({ el, montagem, q, fps }) => {
+  const bruto = (el.texto ?? "").trim();
+  const texto = bruto ? bruto[0].toUpperCase() + bruto.slice(1) : "";
+  const palavras = texto.split(/\s+/).filter(Boolean);
+  const { linhas, tamanho: cabe } = melhorQuebra(texto, el.caixa.w * 0.86, el.caixa.h * 0.78, 0.5, 2);
+  const tamanho = Math.min(cabe, montagem.largura * (montagem.altura > montagem.largura ? 0.088 : 0.042));
+  const s = spring({ frame: q, fps, config: { damping: 20, stiffness: 240 }, durationInFrames: 8 });
+  const destaque = Math.min(2, Math.max(1, palavras.length - 2));
+  const escuro = montagem.marca.escuro || "#111111";
+  let k = 0;
+  return (
+    <div style={{ position: "absolute", left: el.caixa.x, top: el.caixa.y, width: el.caixa.w, height: el.caixa.h, display: "flex", alignItems: "center", justifyContent: "center", transform: `translateY(${(1 - s) * 28}px)`, opacity: Math.min(1, s * 1.5) }}>
+      <div
+        style={{
+          position: "relative",
+          padding: `${tamanho * 0.42}px ${tamanho * 0.7}px ${tamanho * 0.42}px ${tamanho * 0.85}px`,
+          borderRadius: tamanho * 0.42,
+          background: rgba(escuro, 0.82),
+          boxShadow: `0 ${tamanho * 0.18}px ${tamanho * 0.6}px rgba(0,0,0,0.35)`,
+          maxWidth: el.caixa.w,
+        }}
+      >
+        <div style={{ position: "absolute", left: tamanho * 0.32, top: tamanho * 0.42, bottom: tamanho * 0.42, width: Math.max(4, tamanho * 0.1), borderRadius: tamanho, background: montagem.marca.acento }} />
+        {linhas.map((l, i) => (
+          <div key={i} style={{ whiteSpace: "nowrap", lineHeight: 1.18 }}>
+            {l.split(" ").map((palavra, j) => {
+              const indice = k++;
+              const realce = indice >= palavras.length - destaque;
+              return (
+                <span key={j} style={{ fontFamily: FONTES.texto, fontWeight: 700, fontSize: tamanho, color: realce ? montagem.marca.acento : "#ffffff", marginRight: tamanho * 0.26 }}>
+                  {palavra}
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /** Número enorme que sobe até o valor, na cor da marca, com rótulo branco contornado. */
 const NumeroImpacto: React.FC<P> = ({ el, montagem, q, fps, fundo, layout }) => {
   const cor = fundo === "papel-marca" && layout !== "narrador-cheio" && layout !== "broll-cheio" ? "#ffffff" : montagem.marca.acento;
@@ -1328,7 +1377,9 @@ export const Elemento: React.FC<{ el: ElementoResolvido; montagem: MontagemResol
   // tem desenho próprio aqui cai no da colagem, abaixo.
   const familia = montagem.familia;
   // Os do consórcio (02/10) têm desenho próprio em qualquer família.
-  if (el.tipo === "faixa") corpo = <FaixaDeValor {...p} />;
+  // A faixa sobre a gravação do corte limpo (03/10) vale em qualquer família.
+  if (el.tipo === "marca-texto" && el.visual === "faixa") corpo = <FaixaSobreVideo {...p} />;
+  else if (el.tipo === "faixa") corpo = <FaixaDeValor {...p} />;
   else if (el.tipo === "selo") corpo = <Selo {...p} />;
   else if (el.tipo === "comentario") corpo = <CardDeComentario {...p} />;
   else if (familia === "impacto") {

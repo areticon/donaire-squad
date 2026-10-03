@@ -610,8 +610,12 @@ export function filtroDoMovimento(cena, W, H, fps, k0, n, m) {
   const focoY = cena.foco ? cena.foco.y / m.altura : cena.narrador?.origemDoZoom?.y;
   const fx = Math.min(0.85, Math.max(0.15, focoX ?? 0.5));
   const fy = Math.min(0.8, Math.max(0.2, focoY ?? 0.4));
-  if (cena.movimento === "punch") {
-    const z = 1.12;
+  // O ENQUADRAMENTO (03/10, corte limpo): `cena.zoom` é o plano da cena (1,1
+  // médio, 1,2 fechado) e, no punch, o zoom de chegada na palavra forte.
+  // Pedido antigo, sem o campo: o punch de 1,12 de sempre.
+  const enquadramento = typeof cena.zoom === "number" && cena.zoom > 1.01 ? Math.min(1.3, cena.zoom) : 1;
+  if (cena.movimento === "punch" || (cena.movimento === "estatico" && enquadramento > 1)) {
+    const z = cena.movimento === "punch" ? (enquadramento > 1 ? enquadramento : 1.12) : enquadramento;
     const w = Math.round(W / z / 2) * 2;
     const h = Math.round(H / z / 2) * 2;
     const x = Math.round(Math.max(0, Math.min(W - w, fx * W - w / 2)));
@@ -622,7 +626,8 @@ export function filtroDoMovimento(cena, W, H, fps, k0, n, m) {
   // Mesma curva do Remotion (cena.tsx): entra e sai suave no zoom lento,
   // desacelera no afastamento.
   const p = `min(1,(on+${k0})/${Math.max(1, n - 1)})`;
-  const z = cena.movimento === "zoom-in-lento" ? `1+0.1*(if(lt(${p},0.5),2*${p}*${p},1-pow(-2*${p}+2,2)/2))` : `1.1-0.1*(1-pow(1-${p},2))`;
+  const zb = enquadramento.toFixed(3);
+  const z = cena.movimento === "zoom-in-lento" ? `${zb}*(1+0.1*(if(lt(${p},0.5),2*${p}*${p},1-pow(-2*${p}+2,2)/2)))` : `${zb}*(1.1-0.1*(1-pow(1-${p},2)))`;
   const W2 = Math.round((W * 1.5) / 2) * 2;
   const H2 = Math.round((H * 1.5) / 2) * 2;
   return (
@@ -816,12 +821,15 @@ export async function montarCompleto(pedido, pasta, { baixar, aoProgresso } = {}
   // Cena cheia inteira fora das janelas, com movimento: o zoom vai na base.
   // O movimento começa na PALAVRA FORTE (movimentoEm), não no começo da cena:
   // o trecho antes dela fica na base pura.
+  // O enquadramento parado (03/10, corte limpo: plano médio ou fechado) vale
+  // desde o primeiro quadro da cena, e não da palavra forte.
+  const enquadrada = (c) => c.movimento === "estatico" && typeof c.zoom === "number" && c.zoom > 1.01;
   const comMovimento = m.cenas
-    .filter((c) => c.layout === "narrador-cheio" && c.movimento !== "estatico")
+    .filter((c) => c.layout === "narrador-cheio" && (c.movimento !== "estatico" || enquadrada(c)))
     .map((c) => {
       const f0 = Math.round(c.inicio * fps);
       const f1 = Math.min(total, Math.round(c.fim * fps));
-      const forte = typeof c.movimentoEm === "number" ? Math.round(c.movimentoEm * fps) : f0;
+      const forte = typeof c.movimentoEm === "number" && !enquadrada(c) ? Math.round(c.movimentoEm * fps) : f0;
       return { c, cena0: f0, f0: Math.min(f1, Math.max(f0, forte)), f1 };
     })
     .filter((x) => x.f1 - x.f0 >= 6);

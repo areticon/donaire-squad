@@ -80,6 +80,8 @@ export type ElementoResolvido = {
   check?: boolean;
   /** Comentário respondido: o @ de quem comentou, só quando foi dito. */
   autor?: string;
+  /** "faixa" (03/10): a frase sobre a gravação, numa faixa semitransparente no terço de baixo. */
+  visual?: "faixa";
 };
 
 export type CenaResolvida = {
@@ -89,6 +91,8 @@ export type CenaResolvida = {
   movimento: Movimento;
   /** Segundo da palavra forte (punch e zoom). Opcional pelo mesmo motivo de `fim`. */
   movimentoEm?: number;
+  /** O enquadramento da cena (03/10): 1,1 médio, 1,2 fechado; no punch, o zoom de chegada. */
+  zoom?: number;
   /** Ponto para onde a câmera da cena aponta, em pixels do quadro. */
   foco?: { x: number; y: number };
   transicao: Transicao;
