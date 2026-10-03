@@ -80,8 +80,55 @@ export async function conferirFala(
  * O campo `guardaDaFala` dos pedidos de render FINAL ao worker. Nulo com a
  * guarda desligada (GUARDA_DA_FALA=0); worker antigo ignora o campo.
  */
-export function pedidoDaGuarda(videoId: string, rotulo: string, appUrl?: string): { url: string; rotulo: string } | null {
+export function pedidoDaGuarda(videoId: string, rotulo: string, appUrl?: string, corte?: number): { url: string; rotulo: string } | null {
   if (!guardaDaFalaLigada()) return null;
   const app = (appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
-  return { url: `${app}/api/videos/${videoId}/guarda-da-fala`, rotulo };
+  // O índice do corte vai na URL (03/10), e não no corpo: o corpo quem monta é
+  // o worker, e assim a regra vale sem publicar o worker.
+  return { url: `${app}/api/videos/${videoId}/guarda-da-fala${typeof corte === "number" ? `?corte=${corte}` : ""}`, rotulo };
+}
+
+/** O que o cliente devolveu no controle do corte (`clips[i].mantidosPeloUsuario`). */
+export type MantidoPeloUsuario = { texto: string; antes?: string; depois?: string };
+
+const normal = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9%]/g, "");
+const fichas = (t: string | undefined) => (t ?? "").split(/\s+/).map(normal).filter(Boolean);
+
+/**
+ * O AJUSTE DO CLIENTE É SOBERANO (03/10): as janelas, no tempo do ARQUIVO
+ * pronto, do que ele devolveu de propósito no controle do corte. A guarda não
+ * tira nada que encoste nelas, nem a "frase repetida" que ele quis repetida.
+ *
+ * O arquivo é transcrito de novo, então o trecho é achado pelo TEXTO: primeiro
+ * com as palavras vizinhas que ficaram no ar (acha o lugar exato); sem elas,
+ * pelo texto sozinho quando ele tem 3 palavras ou mais (texto curto, como um
+ * "e", casaria com o vídeo inteiro).
+ */
+export function janelasMantidasPeloUsuario(palavras: Word[], mantidos: MantidoPeloUsuario[]): Array<{ de: number; ate: number }> {
+  const P = palavras.map((w) => normal(w.word));
+  const janelas: Array<{ de: number; ate: number }> = [];
+  const achar = (seq: string[]): number[] => {
+    const saida: number[] = [];
+    if (!seq.length) return saida;
+    for (let i = 0; i + seq.length <= P.length; i++) if (seq.every((s, k) => P[i + k] === s)) saida.push(i);
+    return saida;
+  };
+  for (const m of mantidos) {
+    const meio = fichas(m.texto);
+    if (!meio.length) continue;
+    const antes = fichas(m.antes);
+    const depois = fichas(m.depois);
+    const comVizinhas = [...antes, ...meio, ...depois];
+    let inicios = achar(comVizinhas).map((i) => i + antes.length);
+    if (!inicios.length && antes.length) inicios = achar([...antes, ...meio]).map((i) => i + antes.length);
+    if (!inicios.length && depois.length) inicios = achar([...meio, ...depois]);
+    if (!inicios.length && meio.length >= 3) inicios = achar(meio);
+    for (const i of inicios) janelas.push({ de: palavras[i].start - 0.05, ate: palavras[i + meio.length - 1].end + 0.05 });
+  }
+  return janelas;
 }

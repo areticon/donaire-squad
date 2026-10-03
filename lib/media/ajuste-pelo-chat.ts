@@ -1155,7 +1155,7 @@ export async function pedirOutraIdeia(ctx: Contexto, k: number, pedido: string |
  * novo). Vídeo sem roteiro: as emendas que o corte de hoje já tem, mais a
  * limpeza sem IA (pausas, repetições, falso começo) no que o corte ganhar.
  */
-async function remocoesDeBase(ctx: ContextoDoCorte): Promise<Remocao[]> {
+export async function remocoesDeBase(ctx: ContextoDoCorte): Promise<Remocao[]> {
   if (ctx.remocoesDoVideo) return ctx.remocoesDoVideo;
   const { bordas, manter } = ctx;
   const emendas: Remocao[] = [];
@@ -1189,9 +1189,22 @@ export type NovoCorte = {
  */
 export async function calcularNovoCorte(
   ctx: ContextoDoCorte,
-  pedido: { comecar?: number | null; terminar?: number | null; tirar?: Array<{ de: number; ate: number }>; ops?: OpDeCena[] }
+  pedido: {
+    comecar?: number | null;
+    terminar?: number | null;
+    tirar?: Array<{ de: number; ate: number }>;
+    ops?: OpDeCena[];
+    /**
+     * O corte JÁ calculado pelo controle do corte (lib/media/controle-do-corte.ts,
+     * 03/10): bordas exatas, todas as remoções, as do cliente e os intervalos.
+     * Com ele, nada de borda nem de remoção é recalculado aqui; só a fala, o
+     * texto e o plano levado para a fala nova.
+     */
+    pronto?: { trecho: { inicio: number; fim: number; emPausa: boolean }; remocoes: Remocao[]; doCliente: Remocao[]; manter: Intervalo[] };
+  }
 ): Promise<NovoCorte | { erro: string }> {
   const P = ctx.palavras;
+  if (pedido.pronto) return completarNovoCorte(ctx, { ...ctx.t, ...pedido.pronto.trecho }, pedido.pronto.trecho, pedido.pronto.doCliente, pedido.pronto.remocoes, pedido.pronto.manter, []);
   const valido = (i: unknown): i is number => typeof i === "number" && Number.isInteger(i) && i >= 0 && i < P.length;
   const { comecar, terminar } = pedido;
   if ((comecar != null && !valido(comecar)) || (terminar != null && !valido(terminar))) {
@@ -1223,6 +1236,20 @@ export async function calcularNovoCorte(
   const base = await remocoesDeBase(ctx);
   const todas = [...base, ...doCliente];
   const manter = intervalosDoTrecho(todas, b.inicio, b.fim, P);
+  return completarNovoCorte(ctx, tNovo, b, doCliente, todas, manter, pedido.ops ?? []);
+}
+
+/** A segunda metade do corte novo: a fala, o texto que vai ao ar e o plano levado para ela. */
+async function completarNovoCorte(
+  ctx: ContextoDoCorte,
+  tNovo: TrechoLido,
+  b: { inicio: number; fim: number },
+  doCliente: Remocao[],
+  todas: Remocao[],
+  manter: Intervalo[],
+  ops: OpDeCena[]
+): Promise<NovoCorte | { erro: string }> {
+  const P = ctx.palavras;
   const f = await falaDoCorte({
     palavras: ctx.brutas,
     termos: ctx.video.project.videoTerms,
@@ -1243,7 +1270,6 @@ export async function calcularNovoCorte(
   let planoOriginal: PlanoDeMontagem | null = null;
   let gera = { imagens: 0, cenas: 0, cenarios: 0, descricoes: [] as string[] };
   if (ctx.plano && ctx.fala) {
-    const ops = pedido.ops ?? [];
     const comOps = ops.length ? aplicarOps(ctx.plano, ctx.fala, ops, ctx.planoOriginal) : ctx.plano;
     const mapa = mapaDaFala(ctx, b, manter, f.palavras.length);
     plano = mapa ? levarPlanoParaFalaNova(comOps, mapa, f.palavras.length) : remapearPlano(comOps, ctx.fala.palavras, f.palavras);
@@ -1270,7 +1296,12 @@ export async function calcularNovoCorte(
  * o worker recusar, o corte no banco continua o que está no ar. Devolve se a
  * edição com efeitos vem em seguida (montagem ligada e plano reaproveitado).
  */
-export async function enviarNovoCorte(ctx: ContextoDoCorte, n: NovoCorte, enviar: typeof enviarRecorteDoTrecho = enviarRecorteDoTrecho): Promise<boolean> {
+export async function enviarNovoCorte(
+  ctx: ContextoDoCorte,
+  n: NovoCorte,
+  enviar: typeof enviarRecorteDoTrecho = enviarRecorteDoTrecho,
+  opcoes: { retomadasNasProntas?: boolean } = {}
+): Promise<boolean> {
   const v = ctx.video;
   const trecho = { ...n.trecho, roteiro: n.roteiro, remocoesDoCliente: n.remocoesDoCliente, transcricao: n.corrido };
   const paraOWorker: Omit<VideoParaCortar, "trechos"> = {
@@ -1286,6 +1317,9 @@ export async function enviarNovoCorte(ctx: ContextoDoCorte, n: NovoCorte, enviar
     colorPalette: v.project.colorPalette,
     // As remoções prontas: o pedido não roda a limpeza por IA de novo.
     remocoesProntas: n.remocoes,
+    // O controle do corte (03/10) manda a lista FINAL do cliente: as retomadas
+    // por cima tirariam de novo o que ele devolveu de propósito.
+    retomadasNasProntas: Boolean(opcoes.retomadasNasProntas),
   };
   await enviar(paraOWorker, trecho as unknown as Parameters<typeof enviarRecorteDoTrecho>[1], ctx.indice);
   await fundirNoTrecho(v.id, ctx.indice, {

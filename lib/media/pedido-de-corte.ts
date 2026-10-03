@@ -212,8 +212,11 @@ export async function montarPedidoDeCorte(
     // A tomada refeita que entrou DEPOIS da aprovação (roteiro de antes de
     // 03/10) derruba o intervalo aprovado: a repetição é o defeito que o
     // cliente vê, e o texto aprovado com ela é o texto errado.
+    // O CONTROLE DO CORTE (03/10): o que o cliente escolheu palavra por
+    // palavra é soberano, inclusive a tomada que ele devolveu de propósito.
+    const doCliente = Boolean((t as { controleDoCorte?: unknown }).controleDoCorte);
     const manter =
-      aprovado?.manter?.length && Math.abs(aprovado.inicio - inicio) < 0.01 && Math.abs(aprovado.fim - fim) < 0.01 && manterSemTomadaRefeita(aprovado.manter, remocoes)
+      aprovado?.manter?.length && Math.abs(aprovado.inicio - inicio) < 0.01 && Math.abs(aprovado.fim - fim) < 0.01 && (doCliente || manterSemTomadaRefeita(aprovado.manter, remocoes))
         ? aprovado.manter
         : intervalosDoTrecho(remocoes, inicio, fim, palavras);
     const efeitos = efeitosPorTrecho[i] ?? [];

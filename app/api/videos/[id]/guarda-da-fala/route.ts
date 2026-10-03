@@ -6,7 +6,7 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
-import { conferirFala, guardaDaFalaLigada } from "@/lib/media/guarda-da-fala";
+import { conferirFala, guardaDaFalaLigada, janelasMantidasPeloUsuario, type MantidoPeloUsuario } from "@/lib/media/guarda-da-fala";
 import { transcreverCompleto } from "@/lib/media/montagem-do-completo";
 
 /**
@@ -35,13 +35,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!corpo.url) return NextResponse.json({ error: "Falta url" }, { status: 400 });
   const video = await prisma.videoJob.findUnique({
     where: { id },
-    select: { projectId: true, project: { select: { videoTerms: true } } },
+    select: { projectId: true, clips: true, project: { select: { videoTerms: true } } },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
   try {
     const fala = await transcreverCompleto(corpo.url, video.project?.videoTerms ?? null, { projectId: video.projectId, operation: "guarda-da-fala" });
     const palavras = fala.palavras.map((w) => ({ word: w.texto, start: w.inicio, end: w.fim, confidence: 1 }));
-    const r = await conferirFala(palavras, { projectId: video.projectId, protegido: corpo.protegido ?? [] });
+    // O CONTROLE DO CORTE (03/10): o que o cliente devolveu de propósito
+    // neste corte (`?corte=` na URL) entra como janela protegida.
+    const corte = Number(req.nextUrl.searchParams.get("corte"));
+    const mantidos = Number.isInteger(corte) && corte >= 0
+      ? ((((video.clips as unknown as Array<{ mantidosPeloUsuario?: MantidoPeloUsuario[] | null }> | null) ?? [])[corte]?.mantidosPeloUsuario) ?? [])
+      : [];
+    const doCliente = mantidos.length ? janelasMantidasPeloUsuario(palavras, mantidos) : [];
+    if (mantidos.length) console.log(`[guarda-da-fala][${id}] corte ${corte}: ${mantidos.length} trecho(s) mantidos pelo usuário, ${doCliente.length} achado(s) no arquivo`);
+    const r = await conferirFala(palavras, { projectId: video.projectId, protegido: [...(corpo.protegido ?? []), ...doCliente] });
     console.log(
       `[guarda-da-fala][${id}] ${corpo.rotulo ?? ""} ${palavras.length} palavras, ${r.remover.length} a tirar` +
         (r.sobras.length ? `: ${r.sobras.map((s) => `${s.de.toFixed(1)}s "${s.texto}"`).join("; ")}` : "")

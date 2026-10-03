@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EscolhaDaLegenda } from "@/components/video/escolha-da-legenda";
+import { ControleDoCorte } from "@/components/video/controle-do-corte";
 import { mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela } from "@/lib/media/roteiro-em-texto";
 import { creditosNaTela } from "@/lib/media/limits";
 
@@ -148,6 +149,16 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
       setRefazendo(false);
     }
   }
+
+  // O CONTROLE DO CORTE (03/10): antes da aprovação, o ajuste fica no roteiro
+  // e as artes saem em cima dele; com o vídeo pronto, refaz só aquele corte.
+  // Na reedição aberta fica de fora: ela tem o rascunho dela.
+  const podeControlar = tela.status === "roteiro" || (["cut", "writing", "ready"].includes(tela.status) && aprovado && !editando);
+  const [controlado, setControlado] = useState<string | null>(null);
+  const aoControlar = (r: { modo: "roteiro" | "no-ar"; mensagem: string }) => {
+    setControlado(r.modo === "no-ar" ? r.mensagem : null);
+    router.refresh();
+  };
 
   const naCena = (a: AlvoDaCena, acaoDaCena: "remover" | "editar" | "restaurar" | "nova-ideia", texto?: string) =>
     acao(`/api/videos/${tela.videoId}/roteiro/cena`, { ...a, acao: acaoDaCena, texto }, `${chaveDe(a)}:${acaoDaCena}`);
@@ -292,6 +303,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
         </div>
       )}
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
+      {controlado && <Aviso tipo="ok">{controlado}</Aviso>}
 
       {/* ── Linha editorial ── */}
       <Secao titulo="A linha editorial do vídeo">
@@ -355,6 +367,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
               naCena={(cena, a, texto) => naCena({ alvo: "corte", trecho: c.indice, cena }, a, texto)}
               maxCortes={tela.maxCortes}
               naAbertura={podeMexerNaAbertura ? (acaoDoGancho) => naAbertura({ alvo: "corte", trecho: c.indice, acao: acaoDoGancho }) : undefined}
+              controle={podeControlar ? { videoId: tela.videoId, aoAplicar: aoControlar } : undefined}
             />
           ))}
         </div>
@@ -633,6 +646,7 @@ function CartaoDoCorte({
   naBorda,
   maxCortes,
   naAbertura,
+  controle,
 }: {
   corte: CorteNaTela;
   escolhido: boolean;
@@ -647,7 +661,10 @@ function CartaoDoCorte({
   maxCortes: number;
   /** Trocar ou desligar o gancho do corte (antes da aprovação). */
   naAbertura?: (acao: "trocar" | "desligar" | "ligar") => Promise<boolean>;
+  /** O controle do corte (03/10): começo, fim e trechos do meio, palavra por palavra. */
+  controle?: { videoId: string; aoAplicar: (r: { modo: "roteiro" | "no-ar"; mensagem: string }) => void };
 }) {
+  const [controlando, setControlando] = useState(false);
   // Aberto por escolha do cliente, ou por estar escolhido (o corte que vai ao ar mostra as cenas).
   const [abertoAMao, setVerCenas] = useState<boolean | null>(null);
   const verCenas = abertoAMao ?? escolhido;
@@ -714,7 +731,17 @@ function CartaoDoCorte({
                 {ocupado === `borda:${c.indice}` && <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />}
               </div>
             )}
+            {controle && !controlando && (
+              <Button size="sm" variant="outline" className="mt-2 h-9" onClick={() => setControlando(true)}>
+                <Scissors className="w-4 h-4" /> Controlar o corte
+              </Button>
+            )}
           </div>
+          {controle && controlando && (
+            <div className="mt-3">
+              <ControleDoCorte videoId={controle.videoId} indice={c.indice} aoAplicar={controle.aoAplicar} aoFechar={() => setControlando(false)} />
+            </div>
+          )}
 
           {c.cenas ? (
             <div className="mt-3">

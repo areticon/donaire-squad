@@ -41,7 +41,7 @@ export async function GET(
 
   const video = await prisma.videoJob.findFirst({
     where: { id, project: projetoVisivel(userId) },
-    select: { clips: true, completoUrl: true, originalName: true, capaFonteUrl: true, capas: true },
+    select: { clips: true, completoUrl: true, originalName: true, capaFonteUrl: true, capas: true, blobUrl: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -51,6 +51,13 @@ export async function GET(
   if (tipo === "completo") {
     url = video.completoUrl;
     nome = (video.originalName ?? "gravacao").replace(/\.[^.]+$/, "") + "-editado";
+  } else if (tipo === "fonte") {
+    // A GRAVAÇÃO (03/10): o player do controle do corte toca a fala de antes
+    // do corte, pulando o que sai, sem render. Vai pelo proxy com Range
+    // abaixo (o store da gravação é privado), e o player pede só as faixas que
+    // toca, nunca o arquivo inteiro.
+    url = video.blobUrl;
+    nome = (video.originalName ?? "gravacao").replace(/\.[^.]+$/, "");
   } else if (tipo === "capa-fonte") {
     // O quadro que o squad escolheu como melhor rosto do vídeo: é a thumb do
     // card do vídeo completo no Gestor.
