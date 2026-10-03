@@ -32,7 +32,7 @@ import type { Word } from "@/lib/media/transcribe";
  * - RETOMADAS_LIGADAS=0: desliga a detecção inteira (volta ao 02/10).
  * - RETOMADAS_PELO_JEV=0: decide tudo no Claude.
  * - RETOMADAS_DUVIDA_NO_CLAUDE=0: a dúvida do JEV fica sem corte (JEV sozinho).
- * - LIMPEZA_PELO_JEV=0: a muleta volta ao Claude (`detectarHesitacao`).
+ * - LIMPEZA_PELO_JEV=1: a muleta vai ao JEV. Desligado por padrão (03/10): o JEV cortou 18 muletas contra 47 do Claude no vídeo de 19 min, e a diferença de custo é US$ 0,10 por vídeo.
  */
 
 export type DecisaoDeRetomada = CandidatoDeRetomada & {
@@ -279,7 +279,7 @@ export async function muletasPeloJev(
   palavras: Word[],
   ctx: { projectId?: string | null; uso?: UsoDoJev } = {}
 ): Promise<Array<{ de: number; ate: number; motivo: string }> | null> {
-  if (!jevLigado() || process.env.LIMPEZA_PELO_JEV === "0") return null;
+  if (!jevLigado() || process.env.LIMPEZA_PELO_JEV !== "1") return null;
   const itens: Array<{ de: number; ate: number; gaguejo?: boolean }> = [];
   palavras.forEach((w, i) => {
     const k = chave(w.word);
