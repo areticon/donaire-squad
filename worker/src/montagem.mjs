@@ -627,7 +627,10 @@ export async function montar(pedido, pasta, { baixar, aoProgresso, obterOriginal
           const comGancho = join(pasta, "montado-com-gancho.mp4");
           await prefixarAbertura(abertura, montado, comGancho, pasta, { copiar: false });
           marcar("gancho");
-          return { arquivo: comGancho, tempos };
+          // A duração do gancho volta para a guarda da fala não mexer nele
+          // (ele repete de propósito uma frase do corte).
+          const ganchoSeg = (await ffprobe(abertura).catch(() => null))?.duracaoSec ?? 0;
+          return { arquivo: comGancho, tempos, ganchoSeg };
         }
       } catch (e) {
         console.error(`[montagem] gancho falhou, o corte sai sem ele: ${e instanceof Error ? e.message : e}`);

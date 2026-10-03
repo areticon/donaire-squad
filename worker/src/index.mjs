@@ -34,6 +34,7 @@ import {
   quadroNaProporcao,
 } from "./ffmpeg.mjs";
 import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
+import { guardarFala } from "./guarda-da-fala.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -458,6 +459,25 @@ async function produzirCompleto(trabalho, fonte, pasta, info, resultados, marca)
     `cortes/${trabalho.videoJobId}/completo.mp4`,
     "video/mp4"
   );
+  // A GUARDA NA SAÍDA (03/10): a base limpa é o completo que o cliente recebe
+  // quando a edição falha, e é sobre ela que o editor trabalha. A fala dela é
+  // conferida no próprio arquivo (src/guarda-da-fala.mjs) antes do aviso.
+  if (trabalho.guardaDaFala) {
+    const aberturaSeg = temAbertura ? (await ffprobe(join(pasta, "abertura.mp4")).catch(() => null))?.duracaoSec ?? 0 : 0;
+    const guarda = await guardarFala({
+      arquivo: completo,
+      montado: resultados.completo,
+      guarda: trabalho.guardaDaFala,
+      protegido: aberturaSeg > 0 ? [{ de: 0, ate: aberturaSeg + 0.3 }] : [],
+      pasta,
+      chave: `cortes/${trabalho.videoJobId}/completo.mp4`,
+      subir,
+      assinar,
+    });
+    resultados.completo = guarda.montado;
+    resultados.completo.guardaDaFala = guarda.relatorio;
+    marca("guarda da fala");
+  }
   resultados.completo.abertura = temAbertura ? trabalho.ganchos.length : 0;
   resultados.completo.recodificado = como.recodificado;
   resultados.completo.motivo = como.motivo;
@@ -1822,10 +1842,26 @@ const servidor = createServer((req, res) => {
               const { montarCompleto } = await import("./montagem-do-completo.mjs");
               feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
             }
-            const montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
+            let montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
+            // A GUARDA NA SAÍDA (03/10, src/guarda-da-fala.mjs): só no render
+            // final (o app manda `guardaDaFala`). A abertura e o gancho repetem
+            // uma frase de propósito e ficam protegidos.
+            const inicioProtegido = (feito.aberturaSeg ?? 0) + (feito.ganchoSeg ?? 0);
+            const guarda = await guardarFala({
+              arquivo: feito.arquivo,
+              montado,
+              guarda: pedido.guardaDaFala,
+              protegido: inicioProtegido > 0 ? [{ de: 0, ate: inicioProtegido + 0.3 }] : [],
+              pasta,
+              chave: pedido.chave,
+              subir,
+              assinar,
+            });
+            montado = guarda.montado;
             await avisar(destino, {
               ok: true,
               montado,
+              guardaDaFala: guarda.relatorio,
               tempos: feito.tempos,
               janelas: feito.janelas,
               fracaoDeJanela: feito.fracaoDeJanela,
@@ -1899,11 +1935,24 @@ const servidor = createServer((req, res) => {
         : () => {};
       try {
         const { montar } = await import("./montagem.mjs");
-        const { arquivo, tempos } = await montar(pedido, pasta, { baixar: baixarQualquer, obterOriginal });
-        const montado = await subir(arquivo, pedido.chave, "video/mp4");
+        const { arquivo, tempos, ganchoSeg } = await montar(pedido, pasta, { baixar: baixarQualquer, obterOriginal });
+        let montado = await subir(arquivo, pedido.chave, "video/mp4");
+        // A GUARDA NA SAÍDA (03/10): o corte montado conferido pela fala do
+        // próprio arquivo antes de ir ao cliente (src/guarda-da-fala.mjs).
+        const guarda = await guardarFala({
+          arquivo,
+          montado,
+          guarda: pedido.guardaDaFala,
+          protegido: ganchoSeg ? [{ de: 0, ate: ganchoSeg + 0.3 }] : [],
+          pasta,
+          chave: pedido.chave,
+          subir,
+          assinar,
+        });
+        montado = guarda.montado;
         // `retorno` volta como veio: o app manda nele o corte e o estado que
         // pediu, e o callback (assinado no corpo) só age se ainda casar.
-        const resultado = { ok: true, montado, tempos, segundos: Math.round((Date.now() - inicio) / 1000), retorno: pedido.retorno ?? null };
+        const resultado = { ok: true, montado, tempos, guardaDaFala: guarda.relatorio, segundos: Math.round((Date.now() - inicio) / 1000), retorno: pedido.retorno ?? null };
         if (assincrono) await avisar(destino, resultado);
         else responder(200, resultado);
       } catch (e) {

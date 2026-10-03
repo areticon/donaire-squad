@@ -239,7 +239,7 @@ export function diagnostico() {
   return _diagnostico;
 }
 
-function opcaoDeFiltro() {
+export function opcaoDeFiltro() {
   if (_opcaoDeFiltro) return _opcaoDeFiltro;
   try {
     const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });

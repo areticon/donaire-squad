@@ -522,6 +522,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // cliente aprovou, tirada do corte já editado, toca antes do começo com
   // zoom, flash e o texto de soco. Falhar aqui não derruba a edição.
   const g = pedido.gancho;
+  let ganchoSeg = 0;
   if (escala >= 1 && g && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
     try {
       const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
@@ -535,6 +536,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
         const comGancho = join(pasta, "sob-medida-com-gancho.mp4");
         await prefixarAbertura(abertura, saida, comGancho, pasta, { copiar: false });
         saida = comGancho;
+        ganchoSeg = (await ffprobe(abertura).catch(() => null))?.duracaoSec ?? 0;
       }
     } catch (e) {
       console.warn(`[sob-medida] gancho falhou, segue sem: ${e?.message ?? e}`);
@@ -572,7 +574,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     for (const p of partes) await rm(p, { force: true }).catch(() => {});
   }
   tempos.total = +((Date.now() - t0) / 1000).toFixed(1);
-  return { arquivo: saida, tempos, aberturaSeg, largura: W, altura: H, fps };
+  return { arquivo: saida, tempos, aberturaSeg, ganchoSeg, largura: W, altura: H, fps };
 }
 
 export { basename };
