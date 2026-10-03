@@ -74,6 +74,17 @@ export async function etiquetarPosts(projectId: string): Promise<number> {
   let feitos = 0;
   for (let i = 0; i < pendentes.length; i += 12) {
     const lote = pendentes.slice(i, i + 12);
+    // 03/10: gancho, estrutura e chamada são escolha numa lista, e decisão vai
+    // ao JEV (etiquetas-pelo-jev.ts; ETIQUETAS_PELO_JEV=0 desliga). Import
+    // dinâmico porque aquele arquivo importa as listas daqui. Null: o lote
+    // segue o caminho antigo, no Haiku, logo abaixo.
+    const peloJev = await import("@/lib/referencias/etiquetas-pelo-jev")
+      .then((m) => m.gravarFormaPeloJev(projectId, lote))
+      .catch(() => null);
+    if (peloJev !== null) {
+      feitos += peloJev;
+      continue;
+    }
     const lista = lote
       .map((p, k) => `${k + 1}. [${p.formato}${p.duracaoSeg ? `, ${p.duracaoSeg}s` : ""}] ${(p.legenda ?? "").replace(/\s+/g, " ").slice(0, 600)}`)
       .join("\n");

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { askClaude, askClaudeComImagens } from "@/lib/claude";
+import { gravarExtrasPeloJev } from "@/lib/referencias/etiquetas-pelo-jev";
 import {
   ESTILOS_DE_ARTE,
   RECURSOS,
@@ -51,6 +52,21 @@ async function etiquetarTexto(projectId: string, pendentes: Etiquetado[]): Promi
   let feitos = 0;
   for (let i = 0; i < pendentes.length; i += LOTE_DE_TEXTO) {
     const lote = pendentes.slice(i, i + LOTE_DE_TEXTO);
+    // 03/10: tom e recurso são escolha numa lista, e decisão vai ao JEV
+    // (etiquetas-pelo-jev.ts; ETIQUETAS_PELO_JEV=0 desliga); o molde segue no
+    // Haiku. Null: o lote segue o caminho antigo logo abaixo.
+    const peloJev = await gravarExtrasPeloJev(
+      projectId,
+      lote.map((p) => {
+        const ex = (p.extras ?? {}) as ExtrasDoPost;
+        const audio = ex.audio ? (ex.audio.original ? "áudio: a própria voz" : `áudio: música "${ex.audio.nome}"`) : undefined;
+        return { ...p, audio };
+      })
+    ).catch(() => null);
+    if (peloJev !== null) {
+      feitos += peloJev;
+      continue;
+    }
     const lista = lote
       .map((p, k) => {
         const ex = (p.extras ?? {}) as ExtrasDoPost;
