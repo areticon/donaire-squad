@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
+import { creditosDaNota } from "@/lib/credits/nota-simulada";
 
 /**
  * Saldo e extrato de créditos.
@@ -28,6 +29,8 @@ type Dados = {
   extrato: Movimento[];
   /** Membro da equipe (01/10): o saldo é da conta do dono, e quem repõe é ele. */
   equipe?: { dono: string } | null;
+  /** Só admin (03/10): o que o ciclo teria cobrado, somado das linhas de valor zero. */
+  consumoSimulado?: { total: number; desde: string; porOperacao: Array<{ operacao: string; creditos: number }> } | null;
 };
 
 const NOMES: Record<string, string> = {
@@ -41,6 +44,14 @@ const NOMES: Record<string, string> = {
   // Linha de valor zero, uma por gravação aceita (30/09): é a contagem da cota
   // do plano, escrita onde o cliente já confere o consumo.
   gravacao_enviada: "Gravação do mês",
+  // As operações que aparecem no consumo simulado do admin (03/10).
+  video_aprovacao: "Aprovação do vídeo",
+  video_roteiro: "Roteiro do vídeo",
+  gemeo_video: "Vídeo do gêmeo",
+  video_ia: "Vídeo por IA",
+  levar_para_outra_rede: "Levar para outra rede",
+  reescrever_campo: "Reescrita de texto",
+  roteiro_nova_ideia: "Roteiro de nova ideia",
 };
 
 export function CreditBalance() {
@@ -116,6 +127,33 @@ export function CreditBalance() {
         </p>
       ) : null}
 
+      {/* O CONSUMO SIMULADO DO ADMIN (03/10): o saldo não se move, então o
+          total do ciclo e a divisão por operação são o que se calibra. */}
+      {dados.consumoSimulado && (
+        <div className="mt-4 rounded-lg border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }} data-consumo-simulado>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            Consumido no ciclo (simulado), desde{" "}
+            {new Date(dados.consumoSimulado.desde).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+          </p>
+          <p className="text-2xl font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
+            {dados.consumoSimulado.total.toLocaleString("pt-BR")} créditos
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+            Acesso interno não desconta do saldo. É a soma do que cada operação teria cobrado.
+          </p>
+          {dados.consumoSimulado.porOperacao.length > 0 && (
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
+              {dados.consumoSimulado.porOperacao.slice(0, 8).map((o) => (
+                <div key={o.operacao} className="flex justify-between gap-3">
+                  <span className="truncate" style={{ color: "var(--text-muted)" }}>{NOMES[o.operacao] ?? o.operacao}</span>
+                  <span className="tabular-nums" style={{ color: "var(--text-primary)" }}>{o.creditos.toLocaleString("pt-BR")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {dados.extrato.length > 0 && (
         <div className="mt-5">
           <p className="text-sm font-semibold mb-2" style={{ color: "var(--text-muted)" }}>
@@ -128,7 +166,7 @@ export function CreditBalance() {
                 className="flex items-center justify-between gap-3 py-1.5 text-sm"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  {m.amount < 0 ? (
+                  {m.amount < 0 || creditosDaNota(m.note) > 0 ? (
                     <TrendingDown className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                   ) : (
                     <TrendingUp className="w-3.5 h-3.5 text-green-400 shrink-0" />
@@ -144,8 +182,9 @@ export function CreditBalance() {
                   className="shrink-0 tabular-nums"
                   style={{ color: m.amount < 0 ? "var(--text-muted)" : "#22c55e" }}
                 >
-                  {m.amount > 0 ? "+" : ""}
-                  {m.amount}
+                  {m.amount === 0 && creditosDaNota(m.note) > 0
+                    ? `(−${creditosDaNota(m.note).toLocaleString("pt-BR")})`
+                    : `${m.amount > 0 ? "+" : ""}${m.amount}`}
                 </span>
               </div>
             ))}

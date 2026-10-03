@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db/prisma";
 import { PLANS } from "@/lib/stripe";
 import { membroAtivo, nomeDoDono, projetoVisivel } from "@/lib/equipe/conta";
 import { creditosDoCiclo } from "@/lib/equipe/regras";
+import { cicloAtual } from "@/lib/ciclo-de-credito";
+import { consumoSimulado } from "@/lib/credits/consumo-simulado";
 
 /**
  * Saldo e extrato de créditos.
@@ -84,6 +86,11 @@ export async function GET() {
     ? await prisma.aiUsage.aggregate({ where: { runId: ultimaCampanha.id }, _sum: { costUsd: true } })
     : null;
 
+  // O CONSUMO SIMULADO (03/10): para admin, o que as linhas de valor zero
+  // teriam cobrado no ciclo. Só leitura; o saldo continua sem se mover.
+  const simulado =
+    user?.role === "admin" && !membro ? await consumoSimulado(contaId, cicloAtual(user.creditsResetAt ?? null).inicio) : null;
+
   // Com os acessos extras da equipe somados (2.000 cada, 01/10).
   const doPlano = creditosDoCiclo(PLANS[user?.plan as keyof typeof PLANS]?.credits ?? 0, user?.acessosExtras ?? 0);
 
@@ -122,6 +129,8 @@ export async function GET() {
     // A tela precisa saber que é acesso interno para não desenhar barra de
     // consumo nem oferta de plano para quem não é cobrado.
     admin: user?.role === "admin",
+    /** Só admin: o que o ciclo teria cobrado, somado das notas "custaria N". */
+    consumoSimulado: simulado,
     /** Membro da equipe: de quem é o saldo. Null para o dono. */
     equipe: membro ? { dono: donoDaEquipe ?? "quem administra a conta" } : null,
     extrato: extrato.map((t) => ({

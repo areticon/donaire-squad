@@ -425,7 +425,7 @@ export function Sidebar({
  * roda, e a pessoa fica com o menu aberto o tempo inteiro.
  */
 function SaldoNoMenu({ collapsed }: { collapsed: boolean }) {
-  const [saldos, setSaldos] = useState<{ plano: number; video: number; admin: boolean; brl30d: number; brlCampanha: number; dono: string | null } | null>(null);
+  const [saldos, setSaldos] = useState<{ plano: number; video: number; admin: boolean; brl30d: number; brlCampanha: number; dono: string | null; simulado: number | null } | null>(null);
   useEffect(() => {
     let vivo = true;
     const ler = () =>
@@ -440,6 +440,7 @@ function SaldoNoMenu({ collapsed }: { collapsed: boolean }) {
               brl30d: Number(d.consumo?.brl30d ?? 0),
               brlCampanha: Number(d.consumo?.ultimaCampanha?.brl ?? 0),
               dono: typeof d.equipe?.dono === "string" ? d.equipe.dono : null,
+              simulado: typeof d.consumoSimulado?.total === "number" ? d.consumoSimulado.total : null,
             });
         })
         .catch(() => {});
@@ -500,6 +501,21 @@ function SaldoNoMenu({ collapsed }: { collapsed: boolean }) {
           comentário de `consumo` em app/api/credits/route.ts. */}
       {saldos.admin && (
         <div className={cn("mt-1 pt-1", collapsed ? "lg:text-center" : "")} style={{ borderTop: "1px solid var(--border)" }}>
+          {/* O CONSUMO SIMULADO (03/10, pedido do Bruno): o saldo do admin
+              não se move, e este é o número que ele teria gastado no ciclo. */}
+          {saldos.simulado !== null && (
+            <p
+              data-consumo-simulado
+              className={cn("mb-1 text-[10.5px] leading-snug", collapsed ? "lg:hidden" : "")}
+              style={{ color: "var(--text-muted)" }}
+              title="Admin não desconta do saldo. Esta é a soma do que o ciclo teria cobrado."
+            >
+              Consumido no ciclo (simulado):{" "}
+              <b className="tabular-nums" style={{ color: "var(--text-primary)" }}>
+                {saldos.simulado.toLocaleString("pt-BR")} créditos
+              </b>
+            </p>
+          )}
           <div className={cn("flex items-center justify-between gap-2", collapsed ? "lg:flex-col lg:gap-0.5" : "")}>
             <span className={cn("font-mono text-[10px] uppercase tracking-[0.14em]", collapsed ? "lg:hidden" : "")} style={{ color: "var(--text-muted)" }}>
               Custo 30d

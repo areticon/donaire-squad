@@ -126,15 +126,15 @@ export default async function SettingsPage({
           />
           {/* Os e-mails de aviso (02/10): desligar deixa só os de aprovação. */}
           <AvisosPorEmail inicial={user.emailsDeAviso} />
-          {/* O saldo mora na aba Conta porque é consumo da pessoa, não oferta. */}
-          {user.role !== "admin" && (
-            <section
-              className="rounded-xl border p-6"
-              style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
-            >
-              <CreditBalance />
-            </section>
-          )}
+          {/* O saldo mora na aba Conta porque é consumo da pessoa, não oferta.
+              Admin também vê desde 03/10: o extrato dele é onde mora o total
+              do consumo simulado do ciclo (o saldo não se move). */}
+          <section
+            className="rounded-xl border p-6"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+          >
+            <CreditBalance />
+          </section>
         </div>
       )}
 
