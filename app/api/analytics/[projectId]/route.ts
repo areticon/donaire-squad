@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic'
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { ONDE_SAIU } from "@/lib/analytics/fontes-da-leitura";
 
 export async function GET(
   _req: NextRequest,
@@ -14,12 +16,13 @@ export async function GET(
   const { projectId } = await params;
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const posts = await prisma.post.findMany({
-    where: { projectId, status: "published" },
+    // Arquivado conta (01/10): o que foi ao ar tem data de publicação.
+    where: { projectId, ...ONDE_SAIU },
     include: { metrics: true },
     orderBy: { publishedAt: "desc" },
   });

@@ -16,6 +16,12 @@
   "functions": {
     "app/api/videos/**/route.ts": {
       "maxDuration": 800
+    },
+    "app/api/ai/**/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/projects/**/route.ts": {
+      "maxDuration": 120
     }
   }
 }

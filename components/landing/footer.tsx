@@ -11,12 +11,14 @@ export function Footer() {
             <div className="flex items-center gap-2 mb-4">
               <BrandMarkImg variant="dark" className="h-7 w-7" size={28} />
               <span className="flex flex-col justify-center">
+                {/* Montserrat negrito, a letra do logotipo de antes (01/10). */}
                 <span className="font-mont font-bold text-[var(--text-primary)] lowercase leading-none">demandou.</span>
-                <span className="text-[10px] text-[var(--text-muted)] lowercase tracking-wide leading-none mt-0.5">postou.</span>
+                {/* O "postou." saiu do lockup no rebranding de 01/10: o slogan falava
+                    com quem quer postar, e o comprador agora é o dono da empresa. */}
               </span>
             </div>
             <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-4">
-              Seus agentes de IA trabalhando para construir sua autoridade nas redes sociais.
+              O marketing da sua empresa trabalhando todo dia, com a constância de uma agência e sem tomar a agenda do dono.
             </p>
             <IdentificacaoLegal />
           </div>
@@ -34,7 +36,7 @@ export function Footer() {
             <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Conta</h4>
             <ul className="space-y-2 text-sm text-[var(--text-muted)]">
               <li><Link href="/sign-in" className="hover:text-[var(--text-primary)] transition-colors">Entrar</Link></li>
-              <li><Link href="/sign-up" className="hover:text-[var(--text-primary)] transition-colors">Criar conta</Link></li>
+              <li><Link href="/demonstracao" className="hover:text-[var(--text-primary)] transition-colors">Agendar reunião</Link></li>
               <li><Link href="/dashboard" className="hover:text-[var(--text-primary)] transition-colors">Dashboard</Link></li>
             </ul>
           </div>

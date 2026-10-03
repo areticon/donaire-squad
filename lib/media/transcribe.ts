@@ -71,6 +71,10 @@ function montarParametros(options?: {
   keyterms?: string[];
 }): URLSearchParams {
   const params = new URLSearchParams({
+    // Fora do programa de melhoria de modelo da Deepgram (02/10): sem isto, o
+    // áudio do cliente entra no treino deles, e a nossa política de
+    // privacidade e o contrato dizem que não usamos os dados para treinar.
+    mip_opt_out: "true",
     model: "nova-3",
     // multi, e não pt-BR, decisão medida contra gravação humana em 18/08/2026.
     //

@@ -7,13 +7,29 @@ import { prisma } from "@/lib/db/prisma";
  */
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-5": { input: 3, output: 15 },
+  "claude-sonnet-4-6": { input: 3, output: 15 },
   // Preço de tabela. O Sonnet 5 está em intro de US$ 2 / US$ 10 até 31/08/2026,
   // mas manter o preço cheio aqui é deliberado: superestimar o custo é seguro,
   // subestimar é o que quebra projeção. Quando a intro acabar, este número já
   // está certo e ninguém precisa lembrar de mexer.
-  "claude-sonnet-5": { input: 3, output: 15 },
+  // Preço oficial pesquisado em 30/09/2026 (estudo de custos).
+  "claude-sonnet-5": { input: 2, output: 10 },
   "claude-haiku-4-5": { input: 1, output: 5 },
+  "claude-opus-4-6": { input: 5, output: 25 },
+  "claude-opus-4-7": { input: 5, output: 25 },
   "claude-opus-4-8": { input: 5, output: 25 },
+  /**
+   * OPUS 5, o modelo dos redatores desde 19/09.
+   *
+   * A LINHA QUE FALTAVA ERA UM BURACO DE 2,5 VEZES. Sem ela, o `??` abaixo
+   * caía no preço do Sonnet 5 e gravava US$ 3 / US$ 15 para uma chamada que
+   * custa US$ 5 / US$ 25. Toda a instrumentação de custo do produto passaria a
+   * subestimar o maior item da conta, que é exatamente a forma do defeito que
+   * escondeu 80% de prejuízo por operação no Veo em agosto.
+   */
+  "claude-opus-5": { input: 5, output: 25 },
+  "claude-fable-5": { input: 10, output: 50 },
+  "claude-fable-5-1": { input: 10, output: 50 },
 };
 
 const CACHE_WRITE_MULTIPLIER = 1.25;
@@ -35,7 +51,11 @@ type AnthropicUsage = {
 };
 
 export function computeCostUsd(model: string, usage: AnthropicUsage): number {
-  const price = PRICING[model] ?? PRICING["claude-sonnet-5"];
+  // O PADRÃO É O MAIS CARO DA FAMÍLIA, e não o do meio: modelo novo que
+  // ninguém cadastrou aqui tem que aparecer caro no relatório, não barato. Um
+  // custo subestimado não chama atenção de ninguém, e é assim que ele cresce.
+  const price = PRICING[model] ?? PRICING["claude-opus-5"];
+  if (!PRICING[model]) console.error(`[usage] modelo de texto sem preço na tabela: ${model}`);
   const cacheWrite = usage.cache_creation_input_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
 

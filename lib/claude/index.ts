@@ -3,7 +3,15 @@ import { recordUsage, type UsageContext } from "@/lib/claude/usage";
 
 let _client: Anthropic | null = null;
 
-function getClient(): Anthropic {
+/**
+ * O cliente compartilhado.
+ *
+ * Exportado desde 19/09 para lib/claude/ferramentas.ts, que roda o laco de
+ * ferramentas do escritorio. Um segundo `new Anthropic()` la dentro criaria
+ * um cliente com OUTRO teto de tempo e OUTRA politica de retentativa, que e
+ * exatamente a armadilha que o comentario abaixo descreve.
+ */
+export function getClient(): Anthropic {
   if (!_client) {
     _client = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -30,20 +38,51 @@ function getClient(): Anthropic {
 }
 
 /**
- * Migrado de claude-sonnet-4-5 para claude-sonnet-5 em 18/08/2026.
+ * Migrado de claude-sonnet-5 para claude-opus-5 em 19/09/2026.
  *
- * Motivo imediato: o Sonnet 5 está com preço promocional de US$ 2,00 na entrada
- * e US$ 10,00 na saída até 31/08/2026, contra US$ 3,00 e US$ 15,00 do 4.5. Um
- * terço a menos no custo de texto enquanto durar, e depois iguala, então não há
- * cenário em que a troca fique mais cara.
+ * (Histórico: sonnet-4-5 → sonnet-5 em 18/08/2026, pelo preço promocional.)
  *
- * Verificado antes de trocar: nenhuma chamada nossa ao Claude usa temperature,
- * top_p, top_k, budget_tokens nem prefill de assistente, que são os parâmetros
- * que o Sonnet 5 rejeita com 400. Os temperature que existem no projeto são de
- * chamadas ao Gemini e ao Grok.
+ * MOTIVO: a Demandou virou produto premium, e o texto é o produto. O que o
+ * cliente lê é a saída deste modelo; a arte acompanha.
+ *
+ * O CUSTO FOI MEDIDO, e não estimado em tabela. O volume REAL dos últimos 30
+ * dias (879 chamadas, 4,4 milhões de tokens de entrada e 1,6 de saída) foi
+ * reprecificado nos três modelos, que é a única comparação honesta:
+ *
+ *   Sonnet 5 (o que rodava)   R$ 130,02   1,00x
+ *   Opus 5                    R$ 325,04   1,57x
+ *   Haiku 4.5                 R$  65,01   0,31x
+ *
+ * No plano Autoridade de R$ 697 com quatro campanhas por mês, o texto passa a
+ * ser 18,1% do preço, e é o MAIOR item da conta de IA, acima do vídeo. Isso é
+ * contraintuitivo e vale saber: quem procurasse economia começaria pelo vídeo.
+ *
+ * O QUE O OPUS 5 RECUSA COM 400, conferido no código antes de trocar:
+ *   • `budget_tokens` (o pensamento agora é adaptativo e vem LIGADO por
+ *     padrão; não existe orçamento fixo). Nenhuma chamada nossa usa;
+ *   • prefill de assistente, ou seja mandar a última mensagem como
+ *     `assistant`. Nenhuma chamada nossa usa: `askClaude` monta sempre uma
+ *     mensagem `user` só. Os `role: "assistant"` que existem no projeto são
+ *     histórico de chat gravado no banco, e não vão para a API;
+ *   • `temperature`, `top_p` e `top_k`. Os que existem no projeto são de
+ *     chamadas ao Gemini e ao Grok.
+ *
+ * `output_config.effort` continua valendo e ganha importância: com o
+ * pensamento ligado por padrão, é o efforto que controla profundidade e custo.
+ * As tarefas mecânicas do projeto já rodam em "low" desde 23/08.
  *
  * Efeito colateral esperado: trocar de modelo invalida o cache de prompt, então
  * a primeira chamada de cada projeto reescreve o cache. É custo único.
+ */
+/*
+ * DE VOLTA PARA O SONNET 5 em 01/10/2026, decisão do Bruno: "bem mais barato
+ * e, para o que fazemos, entrega tão bem quanto". O estudo de custos de 30/09
+ * mostrou o Claude como MAIOR custo da operação (US$ 122 de US$ 239 em 30
+ * dias; 45% a 64% de uma gravação de 22 min, puxado pelo diretor de montagem).
+ * Sonnet 5 custa US$ 2 de entrada e US$ 10 de saída por milhão de tokens,
+ * contra US$ 5 e US$ 25 do Opus 5. Os parâmetros que usamos (effort, mensagem
+ * única de usuário, sem temperature) são os mesmos que rodavam antes de 19/09.
+ * Quem precisar do Opus numa chamada específica passa `model` explícito.
  */
 export const DEFAULT_MODEL = "claude-sonnet-5";
 
@@ -60,6 +99,14 @@ export type AskOptions = {
    * ignorados silenciosamente pela API, sem erro.
    */
   cachedPrefix?: string;
+  /**
+   * Quanto tempo o prefixo fica no cache. O padrão da API é 5 minutos, e a
+   * campanha leva 51: cada dia (7 min) reescrevia o prefixo e pagava 1,25x
+   * por ele. Com "1h" a gravação custa 2x, mas é UMA por campanha, e as 54
+   * chamadas seguintes leem a 0,1x. Medido em 20/09: o cache do Opus estava
+   * em 35% com o padrão. Só quem faz muitas chamadas seguidas deve pedir 1h.
+   */
+  cacheTtl?: "5m" | "1h";
   /** Metadados para registrar consumo e custo no banco. */
   usage?: UsageContext;
   /**
@@ -93,14 +140,15 @@ export type AskOptions = {
 
 function buildSystem(
   systemPrompt: string,
-  cachedPrefix?: string
+  cachedPrefix?: string,
+  cacheTtl?: "5m" | "1h"
 ): string | Anthropic.TextBlockParam[] {
   if (!cachedPrefix) return systemPrompt;
   return [
     {
       type: "text",
       text: cachedPrefix,
-      cache_control: { type: "ephemeral" },
+      cache_control: cacheTtl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" },
     },
     { type: "text", text: systemPrompt },
   ];
@@ -145,7 +193,7 @@ export async function askClaude(
     {
       model,
       max_tokens: maxTokens,
-      system: buildSystem(systemPrompt, options?.cachedPrefix),
+      system: buildSystem(systemPrompt, options?.cachedPrefix, options?.cacheTtl),
       messages: [{ role: "user", content: userMessage }],
       ...(options?.effort ? { output_config: { effort: options.effort } } : {}),
     },
@@ -264,7 +312,7 @@ export async function streamClaude(
   const stream = getClient().messages.stream({
     model,
     max_tokens: options?.maxTokens ?? 2048,
-    system: buildSystem(systemPrompt, options?.cachedPrefix),
+    system: buildSystem(systemPrompt, options?.cachedPrefix, options?.cacheTtl),
     messages: [{ role: "user", content: userMessage }],
   });
 
@@ -291,3 +339,144 @@ Dê sugestões concretas e práticas baseadas no contexto fornecido.
 Quando o usuário preencher informações, valide e sugira melhorias.
 
 Formato da resposta, obrigatório: texto puro, sem Markdown (nada de #, ##, **, tabelas ou blocos de código), porque a interface exibe exatamente o que você escrever. Parágrafos curtos; listas com o marcador • no início da linha. Seja direto: no máximo 200 palavras. Quando fizer sentido, termine com os valores prontos para o usuário copiar nos campos do formulário.`;
+
+/**
+ * A mesma chamada, com um PDF junto da pergunta.
+ *
+ * Existe para o manual de marca (14/09): a API le PDF como bloco de documento,
+ * entao nao precisamos de biblioteca de extracao nem de OCR proprio. O `npm
+ * install pdf-parse` caiu por rede no dia, e a verdade e que nao fazia falta.
+ *
+ * Sem streaming de proposito: a resposta aqui e um documento compilado de
+ * poucos milhares de tokens, e o timeout generoso cobre o PDF grande.
+ */
+export async function askClaudeComPdf(
+  systemPrompt: string,
+  userMessage: string,
+  pdfBase64: string,
+  options?: AskOptions
+): Promise<string> {
+  const model = options?.model ?? DEFAULT_MODEL;
+  const maxTokens = options?.maxTokens ?? 8192;
+  const timeoutMs = options?.timeoutMs ?? 300_000;
+
+  const stream = getClient().messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      system: buildSystem(systemPrompt, options?.cachedPrefix, options?.cacheTtl),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+            },
+            { type: "text", text: userMessage },
+          ],
+        },
+      ],
+    },
+    { timeout: timeoutMs }
+  );
+  let message;
+  try {
+    message = await stream.finalMessage();
+  } catch (e) {
+    throw traduzirErroDaApi(e);
+  }
+  void recordUsage(model, message.usage, options?.usage);
+  return extrairTexto(message.content, message.stop_reason, maxTokens);
+}
+
+/**
+ * A mesma chamada, com uma IMAGEM junto da pergunta.
+ *
+ * Existe para a conferencia de arte de 19/09: ate entao a Vera aprovava a peca
+ * visual lendo um texto que dizia "GERADA com sucesso", sem nunca ver a arte.
+ * Foi assim que uma imagem com o numero "61%" cortado no topo passou pela
+ * revisao e foi publicada em quatro redes.
+ *
+ * Sem streaming de proposito: a resposta e um parecer curto, e o teto de tempo
+ * aqui e apertado porque isto roda dentro do orcamento da Diana.
+ */
+export async function askClaudeComImagem(
+  systemPrompt: string,
+  userMessage: string,
+  imagemBase64: string,
+  mediaType: "image/jpeg" | "image/png" | "image/webp" = "image/jpeg",
+  options?: AskOptions
+): Promise<string> {
+  const model = options?.model ?? DEFAULT_MODEL;
+  const maxTokens = options?.maxTokens ?? 4096;
+  const timeoutMs = options?.timeoutMs ?? 60_000;
+
+  const stream = getClient().messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      system: buildSystem(systemPrompt, options?.cachedPrefix, options?.cacheTtl),
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: imagemBase64 } },
+            { type: "text", text: userMessage },
+          ],
+        },
+      ],
+      ...(options?.effort ? { output_config: { effort: options.effort } } : {}),
+    },
+    { timeout: timeoutMs }
+  );
+  let message;
+  try {
+    message = await stream.finalMessage();
+  } catch (e) {
+    throw traduzirErroDaApi(e);
+  }
+  void recordUsage(model, message.usage, options?.usage);
+  return extrairTexto(message.content, message.stop_reason, maxTokens);
+}
+
+/**
+ * VÁRIAS imagens numa mensagem só (01/10/2026), cada uma com um rótulo de
+ * texto logo antes dela. Existe para a detecção de tela compartilhada
+ * (lib/media/telas-da-gravacao.ts): classificar 16 prints numa chamada custa
+ * o mesmo por imagem e paga o prompt uma vez só, em vez de 16.
+ */
+export async function askClaudeComImagens(
+  systemPrompt: string,
+  userMessage: string,
+  imagens: Array<{ base64: string; rotulo: string; mediaType?: "image/jpeg" | "image/png" | "image/webp" }>,
+  options?: AskOptions
+): Promise<string> {
+  const model = options?.model ?? DEFAULT_MODEL;
+  const maxTokens = options?.maxTokens ?? 8192;
+  const timeoutMs = options?.timeoutMs ?? 120_000;
+  const conteudo: Anthropic.ContentBlockParam[] = [];
+  for (const im of imagens) {
+    conteudo.push({ type: "text", text: im.rotulo });
+    conteudo.push({ type: "image", source: { type: "base64", media_type: im.mediaType ?? "image/jpeg", data: im.base64 } });
+  }
+  conteudo.push({ type: "text", text: userMessage });
+  const stream = getClient().messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      system: buildSystem(systemPrompt, options?.cachedPrefix, options?.cacheTtl),
+      messages: [{ role: "user", content: conteudo }],
+      ...(options?.effort ? { output_config: { effort: options.effort } } : {}),
+    },
+    { timeout: timeoutMs }
+  );
+  let message;
+  try {
+    message = await stream.finalMessage();
+  } catch (e) {
+    throw traduzirErroDaApi(e);
+  }
+  void recordUsage(model, message.usage, options?.usage);
+  return extrairTexto(message.content, message.stop_reason, maxTokens);
+}

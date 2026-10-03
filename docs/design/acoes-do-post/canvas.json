@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 620, "h": 1180, "title": "Ações por estado do post" },
+    { "file": "Conexao.dc.html", "x": 720, "y": 0, "w": 620, "h": 720, "title": "A conexão que se assume morta" }
+  ],
+  "annotations": [
+    {
+      "id": "o-achado",
+      "x": 720,
+      "y": 780,
+      "w": 620,
+      "text": "O que a investigação achou, antes do desenho:\n\n1. A linha de ações da tela de posts só renderiza para status draft. Post que falhou ou foi rejeitado não tem botão nenhum.\n\n2. Existe um DELETE /api/posts/[id] completo, com autorização, que nenhuma tela do produto chama.\n\n3. O LinkedIn não expirou, foi revogado: code 65601, REVOKED_ACCESS_TOKEN. Seis das oito contas de LinkedIn do banco estão mortas e as oito aparecem verdes na tela."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

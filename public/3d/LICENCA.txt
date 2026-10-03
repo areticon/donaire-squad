@@ -1,0 +1,7 @@
+robo.glb: "Robot Expressive", modelo de Tomás Laulhé (Quaternius), CC0 1.0.
+Modificações de Don McCurdy (expressões faciais, conversão FBX para glTF).
+Origem: repositório do three.js, examples/models/gltf/RobotExpressive.
+
+Por que este e não um avatar humano por agente: é UM arquivo de 464 KB
+recolorido sete vezes, em vez de sete arquivos de 1 a 5 MB. O peso do
+escritório inteiro fica abaixo do peso de uma foto de capa.

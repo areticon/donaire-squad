@@ -1,47 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import {
-  Eye,
-  Heart,
-  MessageCircle,
-  Share2,
-  MousePointer,
-  TrendingUp,
   RefreshCw,
-  Loader2,
-  Trophy,
-  BarChart2,
   Zap,
+  ExternalLink,
   Image,
   Video,
   LayoutGrid,
   Type,
+  TrendingUp,
+  Archive,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { BarrasPorSemana, BarrasPorRede, COR_DA_REDE } from "@/components/painel/graficos";
+import { NOMES_DAS_REDES } from "@/lib/posts/estado";
+import { interacoes, rotuloDaFonte, type NumerosLidos } from "@/lib/analytics/fontes-da-leitura";
+import {
+  ORDEM_DOS_ESTADOS,
+  ROTULO_DO_ESTADO,
+  type EstadoNaConta,
+  type PostNosResultados,
+  type ResultadosDoProjeto,
+  type ResumoDoPeriodo,
+} from "@/lib/analytics/tipos-dos-resultados";
 
-interface PostMetric {
-  impressions: number;
-  likes: number;
-  comments: number;
-  shares: number;
-  clicks: number;
-  videoViews: number;
-  syncedAt: Date;
-}
-
-interface Post {
-  id: string;
-  platform: string;
-  mediaType: string | null;
-  dayOfWeek: number | null;
-  content: string;
-  publishedAt: Date | null;
-  metrics: PostMetric | null;
-}
+/**
+ * A ABA RESULTADOS (reescrita em 01/10 sobre a tela de "Analytics").
+ *
+ * Relato do Bruno: "arquivei tudo de dois projetos e sumiram as métricas. O
+ * que foi publicado, aprovado, cancelado, tudo tem que aparecer". A tela
+ * antiga recebia só posts com status "published" e só desenhava post com
+ * número; arquivar zerava tudo, e post sem leitura não aparecia.
+ *
+ * Agora: um resumo por período (semana, mês, tudo) com TODOS os estados, os
+ * arquivados contando; dois gráficos no padrão do painel inicial
+ * (components/painel/graficos.tsx, SVG sem biblioteca); e a lista dos
+ * publicados com os números de cada rede, a fonte ("medido pelo Blotato",
+ * "pela API do LinkedIn", "lido do perfil público") e a data da leitura.
+ * Sem número ainda é "pendente", com o motivo, e nunca zero.
+ */
 
 interface PipelineRun {
   id: string;
@@ -55,110 +55,203 @@ interface PipelineRun {
 
 interface Props {
   project: { id: string; name: string };
-  posts: Post[];
+  resultados: ResultadosDoProjeto;
   recentRuns: PipelineRun[];
 }
 
 const MEDIA_TYPE_CONFIG = {
-  text: { label: "Texto", icon: Type, color: "text-[var(--text-muted)]", bg: "bg-[#222]" },
-  image: { label: "Imagem", icon: Image, color: "text-blue-400", bg: "bg-blue-500/10" },
-  video: { label: "Vídeo", icon: Video, color: "text-red-400", bg: "bg-red-500/10" },
-  carousel: { label: "Carrossel", icon: LayoutGrid, color: "text-purple-400", bg: "bg-purple-500/10" },
-  free: { label: "Livre", icon: Zap, color: "text-orange-400", bg: "bg-orange-500/10" },
+  text: { label: "Texto", icon: Type },
+  image: { label: "Imagem", icon: Image },
+  video: { label: "Vídeo", icon: Video },
+  carousel: { label: "Carrossel", icon: LayoutGrid },
+  free: { label: "Livre", icon: Zap },
+  article: { label: "Artigo", icon: Type },
+  thread: { label: "Fio", icon: Type },
+  poll: { label: "Enquete", icon: Type },
 };
 
-const PLATFORM_COLORS: Record<string, string> = {
-  linkedin: "text-blue-400",
-  twitter: "text-cyan-400",
+/** A cor de cada estado, na família da paleta do painel. */
+const COR_DO_ESTADO: Record<EstadoNaConta, string> = {
+  publicado: "var(--grafico-1)",
+  publicando: "var(--grafico-4)",
+  agendado: "var(--grafico-2)",
+  rascunho: "var(--grafico-5)",
+  arquivado: "var(--grafico-6)",
+  falhou: "#f87171",
+  reprovado: "var(--grafico-3)",
 };
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  sub?: string;
-}) {
+const nomeDaRede = (r: string) => NOMES_DAS_REDES[r] ?? r;
+const num = (n: number) => n.toLocaleString("pt-BR");
+const FUSO = "America/Sao_Paulo";
+const quando = (iso: string) =>
+  new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: FUSO });
+const dia = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: FUSO });
+
+function Cartao({ titulo, sub, children, className = "" }: { titulo: string; sub?: string; children: React.ReactNode; className?: string }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-4 h-4 text-orange-400" />
-        <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      </div>
-      <p className="text-2xl font-black text-[var(--text-primary)]">{value.toLocaleString("pt-BR")}</p>
-      {sub && <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{sub}</p>}
-    </motion.div>
+    <div className={`rounded-2xl border p-4 ${className}`} style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+      <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{titulo}</h2>
+      {sub && <p className="text-[11px] mt-0.5 mb-3" style={{ color: "var(--text-muted)" }}>{sub}</p>}
+      {!sub && <div className="mb-3" />}
+      {children}
+    </div>
   );
 }
 
-export function AnalyticsDashboard({ project, posts, recentRuns }: Props) {
+function Numero({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?: string }) {
+  return (
+    <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{rotulo}</p>
+      <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: "var(--text-primary)" }}>{valor}</p>
+      {nota && <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{nota}</p>}
+    </div>
+  );
+}
+
+/** Uma barra horizontal com todos os estados do período, e a legenda com os números. */
+function BarraDeEstados({ r }: { r: ResumoDoPeriodo }) {
+  const total = ORDEM_DOS_ESTADOS.reduce((s, e) => s + r.porEstado[e], 0);
+  return (
+    <div>
+      <div className="flex h-3 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-input)" }} role="img" aria-label="Peças do período por estado">
+        {total > 0 &&
+          ORDEM_DOS_ESTADOS.filter((e) => r.porEstado[e] > 0).map((e) => (
+            <div key={e} style={{ width: `${(r.porEstado[e] / total) * 100}%`, background: COR_DO_ESTADO[e] }} title={`${ROTULO_DO_ESTADO[e]}: ${r.porEstado[e]}`} />
+          ))}
+      </div>
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+        {ORDEM_DOS_ESTADOS.filter((e) => e !== "publicando" || r.porEstado.publicando > 0).map((e) => (
+          <div key={e} className="flex items-center gap-2 text-xs min-w-0">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: COR_DO_ESTADO[e] }} />
+            <span className="truncate" style={{ color: "var(--text-muted)" }}>{ROTULO_DO_ESTADO[e]}</span>
+            <strong className="ml-auto tabular-nums" style={{ color: "var(--text-primary)" }}>{r.porEstado[e]}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+        <strong style={{ color: "var(--text-primary)" }}>{r.aprovados}</strong> aprovadas (publicadas, saindo ou agendadas) de {total} peças
+        {r.publicadosArquivados > 0 && (
+          <>; {r.publicadosArquivados} dos publicados estão arquivados na tela e continuam contando aqui</>
+        )}
+        .
+      </p>
+    </div>
+  );
+}
+
+/** A curva de interações de um post ao longo das leituras (só com 2 pontos ou mais). */
+function Curva({ pontos }: { pontos: PostNosResultados["historico"] }) {
+  const v = pontos.map((p) => p.interacoes).filter((x): x is number => x !== null);
+  if (v.length < 2) return null;
+  const L = 64, A = 18, max = Math.max(1, ...v);
+  const d = v.map((y, i) => `${i ? "L" : "M"}${((i / (v.length - 1)) * (L - 2) + 1).toFixed(1)},${(A - 2 - (y / max) * (A - 4)).toFixed(1)}`).join(" ");
+  return (
+    <svg width={L} height={A} viewBox={`0 0 ${L} ${A}`} aria-label={`Interações nas ${v.length} leituras: ${v.join(", ")}`}>
+      <title>{`Interações nas leituras: ${v.join(" → ")}`}</title>
+      <path d={d} fill="none" stroke="var(--grafico-2)" strokeWidth={1.6} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Os números de um post, só os que a fonte mede (nulo não aparece como zero). */
+function NumerosDoPost({ n }: { n: NumerosLidos }) {
+  const itens: Array<[string, number | null | undefined]> = [
+    ["visualizações", n.visualizacoes],
+    ["impressões", n.impressoes],
+    ["alcance", n.alcance],
+    ["curtidas", n.curtidas],
+    ["comentários", n.comentarios],
+    ["compartilh.", n.compartilhamentos],
+    ["salvos", n.salvamentos],
+    ["cliques", n.cliques],
+  ];
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      {itens
+        .filter(([, v]) => typeof v === "number")
+        .map(([r, v]) => (
+          <span key={r} className="text-xs tabular-nums" style={{ color: "var(--text-muted)" }}>
+            <strong style={{ color: "var(--text-primary)" }}>{num(v as number)}</strong> {r}
+          </span>
+        ))}
+    </div>
+  );
+}
+
+function LinhaDoPost({ p }: { p: PostNosResultados }) {
+  return (
+    <div className="py-3 border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+      <div className="flex items-start gap-3">
+        <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: COR_DA_REDE[p.rede] ?? "var(--grafico-3)" }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{nomeDaRede(p.rede)}</span>
+            {p.conta && <span>{p.conta}</span>}
+            <span>· {dia(p.publicadoEm)}</span>
+            {p.arquivado && (
+              <span className="inline-flex items-center gap-1 rounded-full border px-1.5" style={{ borderColor: "var(--border)" }}>
+                <Archive className="w-3 h-3" /> arquivado
+              </span>
+            )}
+            {p.link && (
+              <a href={p.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+                ver na rede <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          <p className="text-sm mt-0.5 line-clamp-2 break-words" style={{ color: "var(--text-primary)" }}>{p.titulo || "(sem texto)"}</p>
+          <div className="mt-1.5">
+            {p.numeros ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <NumerosDoPost n={p.numeros} />
+                <Curva pontos={p.historico} />
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {rotuloDaFonte(p.fonte ?? "")}
+                  {p.lidoEm ? `, lido em ${quando(p.lidoEm)}` : ""}
+                  {p.historico.length > 1 ? ` (${p.historico.length} leituras)` : ""}
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs flex items-start gap-1.5" style={{ color: "var(--text-muted)" }}>
+                <Clock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  <strong style={{ color: "var(--text-primary)" }}>Pendente.</strong> {p.pendente}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AnalyticsDashboard({ project, resultados, recentRuns }: Props) {
   const [syncing, setSyncing] = useState(false);
-  const [localPosts, setLocalPosts] = useState(posts);
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [loadingInsight, setLoadingInsight] = useState(false);
+  const [periodo, setPeriodo] = useState<"semana" | "mes" | "tudo">("mes");
+  const [rede, setRede] = useState<string>("todas");
+  const [quantos, setQuantos] = useState(30);
 
-  const publishedWithMetrics = localPosts.filter((p) => p.metrics);
-  const hasData = publishedWithMetrics.length > 0;
+  const r = resultados[periodo];
+  const redes = useMemo(() => [...new Set(resultados.posts.map((p) => p.rede))], [resultados.posts]);
+  const lista = resultados.posts.filter((p) => rede === "todas" || p.rede === rede);
+  const medidos = resultados.posts.filter((p) => p.numeros);
 
-  const totals = publishedWithMetrics.reduce(
-    (acc, p) => {
-      const m = p.metrics!;
-      return {
-        impressions: acc.impressions + m.impressions,
-        likes: acc.likes + m.likes,
-        comments: acc.comments + m.comments,
-        shares: acc.shares + m.shares,
-        clicks: acc.clicks + m.clicks,
-        videoViews: acc.videoViews + m.videoViews,
-      };
-    },
-    { impressions: 0, likes: 0, comments: 0, shares: 0, clicks: 0, videoViews: 0 }
-  );
-
-  // Performance by media type
-  const byMediaType = Object.entries(
-    publishedWithMetrics.reduce<Record<string, { impressions: number; likes: number; comments: number; count: number }>>(
-      (acc, p) => {
-        const type = p.mediaType ?? "text";
-        if (!acc[type]) acc[type] = { impressions: 0, likes: 0, comments: 0, count: 0 };
-        acc[type].impressions += p.metrics!.impressions;
-        acc[type].likes += p.metrics!.likes;
-        acc[type].comments += p.metrics!.comments;
-        acc[type].count++;
-        return acc;
-      },
-      {}
-    )
-  ).sort((a, b) => b[1].impressions - a[1].impressions);
-
-  // Performance by platform
-  const byPlatform = Object.entries(
-    publishedWithMetrics.reduce<Record<string, { impressions: number; likes: number; count: number }>>(
-      (acc, p) => {
-        if (!acc[p.platform]) acc[p.platform] = { impressions: 0, likes: 0, count: 0 };
-        acc[p.platform].impressions += p.metrics!.impressions;
-        acc[p.platform].likes += p.metrics!.likes;
-        acc[p.platform].count++;
-        return acc;
-      },
-      {}
-    )
-  );
-
-  // Best post (score = likes*3 + comments*5 + impressions)
-  const bestPost = publishedWithMetrics.sort((a, b) => {
-    const sa = a.metrics!.likes * 3 + a.metrics!.comments * 5 + a.metrics!.impressions;
-    const sb = b.metrics!.likes * 3 + b.metrics!.comments * 5 + b.metrics!.impressions;
-    return sb - sa;
-  })[0];
+  // Desempenho por tipo de conteúdo (a seção que já existia), só com medidos.
+  const porTipo = useMemo(() => {
+    const m = new Map<string, { posts: number; interacoes: number }>();
+    for (const p of medidos) {
+      const t = p.mediaType ?? "text";
+      const x = m.get(t) ?? { posts: 0, interacoes: 0 };
+      x.posts++;
+      x.interacoes += interacoes(p.numeros) ?? 0;
+      m.set(t, x);
+    }
+    return [...m.entries()].map(([t, x]) => ({ t, ...x, media: x.interacoes / x.posts })).sort((a, b) => b.media - a.media);
+  }, [medidos]);
 
   async function syncMetrics() {
     setSyncing(true);
@@ -170,11 +263,17 @@ export function AnalyticsDashboard({ project, posts, recentRuns }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success(`${data.synced} post${data.synced !== 1 ? "s" : ""} sincronizado${data.synced !== 1 ? "s" : ""}!`);
-      // Reload to get fresh data
-      window.location.reload();
+      // POR REDE, e com o motivo do que não veio (28/09).
+      const porRede = (data.porRede ?? {}) as Record<string, { ok: number; falhou: number; motivo: string | null }>;
+      const vieram = Object.entries(porRede).filter(([, x]) => x.ok > 0).map(([k, x]) => `${nomeDaRede(k)}: ${x.ok}`);
+      if (vieram.length) toast.success(`Números atualizados. ${vieram.join(", ")}.`);
+      else toast(data.message ?? "Nenhum número novo veio das redes.");
+      for (const [k, x] of Object.entries(porRede)) {
+        if (x.falhou > 0 && x.motivo) toast(`${nomeDaRede(k)}: ${x.falhou} pendente${x.falhou > 1 ? "s" : ""}. ${x.motivo}`, { duration: 9000 });
+      }
+      setTimeout(() => window.location.reload(), vieram.length ? 2500 : 9000);
     } catch {
-      toast.error("Erro ao sincronizar métricas");
+      toast.error("Erro ao sincronizar os números");
     } finally {
       setSyncing(false);
     }
@@ -198,211 +297,177 @@ export function AnalyticsDashboard({ project, posts, recentRuns }: Props) {
     }
   }
 
-  void setLocalPosts;
+  const BOTOES_DE_PERIODO: Array<["semana" | "mes" | "tudo", string]> = [["semana", "Semana"], ["mes", "Mês"], ["tudo", "Tudo"]];
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-[var(--text-primary)]">Analytics</h1>
-          <p className="text-[var(--text-muted)] mt-1">{project.name}</p>
+    <div className="p-4 sm:p-8 max-w-5xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Resultados</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            {project.name}
+            {resultados.ultimaLeitura ? ` · última leitura ${quando(resultados.ultimaLeitura)}` : " · ainda sem leitura"}
+          </p>
         </div>
         <Button onClick={syncMetrics} variant="outline" loading={syncing} disabled={syncing}>
           <RefreshCw className="w-4 h-4" />
-            Sincronizar métricas
+          Sincronizar números
         </Button>
       </div>
 
-      {!hasData ? (
-        <div className="text-center py-20">
-          <BarChart2 className="w-12 h-12 mx-auto text-[#3f4147] mb-4" />
-          <h2 className="text-lg font-semibold text-[var(--text-muted)] mb-2">Nenhum dado ainda</h2>
-          <p className="text-sm text-[#666] max-w-md mx-auto mb-6">
-            Publique posts e clique em &quot;Sincronizar métricas&quot; para ver o desempenho por tipo de conteúdo, plataforma e mais.
-          </p>
-          <div className="flex items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
-            <Eye className="w-3.5 h-3.5" />
-            <span>{localPosts.filter((p) => p.publishedAt).length} posts publicados aguardando métricas</span>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {/* Metric cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <MetricCard icon={Eye} label="Impressões" value={totals.impressions} />
-            <MetricCard icon={Heart} label="Likes" value={totals.likes} />
-            <MetricCard icon={MessageCircle} label="Comentários" value={totals.comments} sub="15x peso no algoritmo" />
-            <MetricCard icon={Share2} label="Shares" value={totals.shares} />
-            <MetricCard icon={MousePointer} label="Cliques" value={totals.clicks} />
-            <MetricCard icon={Video} label="Video Views" value={totals.videoViews} />
-          </div>
+      {/* Período */}
+      <div className="inline-flex rounded-xl border p-0.5 mb-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }} role="tablist" aria-label="Período do resumo">
+        {BOTOES_DE_PERIODO.map(([k, rotulo]) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={periodo === k}
+            onClick={() => setPeriodo(k)}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
+            style={periodo === k ? { background: "var(--grafico-1)", color: "var(--bg-card)" } : { color: "var(--text-muted)" }}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
 
-          {/* By media type */}
-          {byMediaType.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-orange-400" />
-                Performance por tipo de conteúdo
-              </h2>
-              <div className="grid gap-2">
-                {byMediaType.map(([type, stats]) => {
-                  const cfg = MEDIA_TYPE_CONFIG[type as keyof typeof MEDIA_TYPE_CONFIG] ?? MEDIA_TYPE_CONFIG.text;
-                  const Icon = cfg.icon;
-                  const maxImpressions = Math.max(...byMediaType.map((b) => b[1].impressions), 1);
-                  const pct = Math.round((stats.impressions / maxImpressions) * 100);
-                  return (
-                    <div key={type} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                      <div className={cn("p-1.5 rounded-lg", cfg.bg)}>
-                        <Icon className={cn("w-4 h-4", cfg.color)} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-[var(--text-primary)]">{cfg.label}</span>
-                          <span className="text-xs text-[var(--text-muted)]">{stats.count} post{stats.count !== 1 ? "s" : ""}</span>
-                        </div>
-                        <div className="w-full bg-[var(--bg-elevated)] rounded-full h-1.5">
-                          <div
-                            className="bg-orange-500 h-1.5 rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs font-semibold text-[var(--text-primary)]">{stats.impressions.toLocaleString("pt-BR")}</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">impressões</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs font-semibold text-green-400">{stats.likes + stats.comments}</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">engaj.</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Numero rotulo="Publicados" valor={num(r.porEstado.publicado)} nota={r.publicadosArquivados ? `${r.publicadosArquivados} arquivados na tela` : r.rotulo.toLowerCase()} />
+        <Numero rotulo="Interações" valor={num(r.interacoes)} nota={`curtidas, comentários e compartilhamentos em ${r.medidos} post${r.medidos === 1 ? "" : "s"} medidos`} />
+        <Numero rotulo="Visualizações e impressões" valor={num(r.vistos)} nota="onde a rede mostra" />
+        <Numero rotulo="Pendentes" valor={num(r.pendentes)} nota="publicados ainda sem número (não é zero)" />
+      </div>
+
+      <Cartao titulo={`Todas as peças, ${r.rotulo.toLowerCase()}`} sub="Publicadas, aprovadas, agendadas, canceladas ou arquivadas, com falha e reprovadas. Arquivar tira da tela, não da conta." className="mb-6">
+        <BarraDeEstados r={r} />
+      </Cartao>
+
+      <div className="grid lg:grid-cols-5 gap-6 mb-6">
+        <Cartao titulo="Publicados por semana" sub="Últimas 8 semanas, por rede, arquivados inclusos. Passe o mouse numa barra para ver o número." className="lg:col-span-3">
+          <BarrasPorSemana semanas={resultados.semanas} />
+        </Cartao>
+        <Cartao titulo="Interações por rede" sub={`${r.rotulo}. Soma dos posts medidos.`} className="lg:col-span-2">
+          {r.porRede.length ? (
+            <BarrasPorRede
+              linhas={r.porRede.map((x) => ({
+                rede: x.rede,
+                valor: x.interacoes,
+                nota: `em ${x.medidos} de ${x.publicados} post${x.publicados === 1 ? "" : "s"}${x.vistos ? ` · ${num(x.vistos)} vistos` : ""}`,
+              }))}
+            />
+          ) : (
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Nada publicado neste período.</p>
           )}
+        </Cartao>
+      </div>
 
-          {/* Platform + Best post */}
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* By platform */}
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Performance por plataforma</h2>
-              <div className="space-y-2">
-                {byPlatform.map(([platform, stats]) => (
-                  <div key={platform} className="flex items-center justify-between p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                    <div>
-                      <p className={cn("text-sm font-semibold capitalize", PLATFORM_COLORS[platform] ?? "text-[var(--text-primary)]")}>
-                        {platform === "twitter" ? "X (Twitter)" : platform.charAt(0).toUpperCase() + platform.slice(1)}
-                      </p>
-                      <p className="text-xs text-[var(--text-muted)]">{stats.count} posts</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-[var(--text-primary)]">{stats.impressions.toLocaleString("pt-BR")}</p>
-                      <p className="text-xs text-[var(--text-muted)]">{stats.likes} likes Â· {((stats.likes / Math.max(stats.impressions, 1)) * 100).toFixed(1)}% taxa</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+      {resultados.fontes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <span>De onde vêm os números:</span>
+          {resultados.fontes.map((f) => (
+            <span key={f.fonte} className="rounded-full border px-2 py-0.5" style={{ borderColor: "var(--border)" }}>
+              {f.rotulo}: <strong style={{ color: "var(--text-primary)" }}>{f.posts}</strong>
+            </span>
+          ))}
+        </div>
+      )}
 
-            {/* Best post */}
-            {bestPost && (
-              <div>
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-yellow-400" />
-                  Melhor post
-                </h2>
-                <div className="p-4 rounded-xl border border-yellow-800/30 bg-yellow-900/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={cn("text-xs font-semibold capitalize", PLATFORM_COLORS[bestPost.platform] ?? "text-[var(--text-primary)]")}>
-                      {bestPost.platform === "twitter" ? "X" : "LinkedIn"}
+      <Cartao titulo="Post a post" sub={`${resultados.posts.length} publicados, ${medidos.length} com número. Cada número diz a fonte e quando foi lido.`} className="mb-6">
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {["todas", ...redes].map((x) => (
+            <button
+              key={x}
+              onClick={() => { setRede(x); setQuantos(30); }}
+              className="rounded-full border px-2.5 py-0.5 text-xs"
+              style={rede === x ? { background: "var(--grafico-1)", color: "var(--bg-card)", borderColor: "var(--grafico-1)" } : { borderColor: "var(--border)", color: "var(--text-muted)" }}
+            >
+              {x === "todas" ? "Todas" : nomeDaRede(x)} ({x === "todas" ? resultados.posts.length : resultados.posts.filter((p) => p.rede === x).length})
+            </button>
+          ))}
+        </div>
+        {lista.length === 0 ? (
+          <p className="text-xs py-6 text-center" style={{ color: "var(--text-muted)" }}>Nenhum post publicado ainda. Quando sair o primeiro, os números aparecem aqui 2 horas depois.</p>
+        ) : (
+          <>
+            {lista.slice(0, quantos).map((p) => <LinhaDoPost key={p.id} p={p} />)}
+            {lista.length > quantos && (
+              <button onClick={() => setQuantos((q) => q + 30)} className="mt-3 text-xs font-semibold underline-offset-2 hover:underline" style={{ color: "var(--text-primary)" }}>
+                Mostrar mais {Math.min(30, lista.length - quantos)} de {lista.length - quantos}
+              </button>
+            )}
+          </>
+        )}
+      </Cartao>
+
+      {porTipo.length > 0 && (
+        <Cartao titulo="Interações por tipo de conteúdo" sub="Média por post medido, desde o início." className="mb-6">
+          <div className="space-y-2.5">
+            {porTipo.map((x) => {
+              // Tipo sem rótulo aparece pelo próprio nome, para não virar um segundo "Texto".
+              const cfg = MEDIA_TYPE_CONFIG[x.t as keyof typeof MEDIA_TYPE_CONFIG] ?? { label: x.t, icon: Type };
+              const Icone = cfg.icon;
+              const max = Math.max(1, ...porTipo.map((y) => y.media));
+              return (
+                <div key={x.t}>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="flex items-center gap-1.5 font-semibold" style={{ color: "var(--text-primary)" }}>
+                      <Icone className="w-3.5 h-3.5" /> {cfg.label}
                     </span>
-                    {bestPost.mediaType && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-full text-[var(--text-muted)]">
-                        {MEDIA_TYPE_CONFIG[bestPost.mediaType as keyof typeof MEDIA_TYPE_CONFIG]?.label ?? bestPost.mediaType}
-                      </span>
-                    )}
+                    <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>
+                      <strong style={{ color: "var(--text-primary)" }}>{x.media.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</strong> por post · {x.posts} post{x.posts === 1 ? "" : "s"}
+                    </span>
                   </div>
-                  <p className="text-xs text-[#d1d5db] leading-relaxed line-clamp-4 mb-3">{bestPost.content}</p>
-                  <div className="flex gap-4">
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-[var(--text-primary)]">{bestPost.metrics!.impressions.toLocaleString("pt-BR")}</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">impressões</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-[var(--text-primary)]">{bestPost.metrics!.likes}</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">likes</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-[var(--text-primary)]">{bestPost.metrics!.comments}</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">comentários</p>
-                    </div>
+                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-input)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${(x.media / max) * 100}%`, background: "var(--grafico-2)" }} />
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
+        </Cartao>
+      )}
 
-          {/* AI Insight */}
-          <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <Zap className="w-4 h-4 text-orange-400" />
-                Insight da IA
-              </h2>
-              <Button variant="outline" onClick={getAiInsight} loading={loadingInsight} disabled={loadingInsight}>
-                {aiInsight ? "Atualizar" : "Gerar insight"}
-              </Button>
-            </div>
-            {aiInsight ? (
-              <p className="text-sm text-[#d1d5db] leading-relaxed">{aiInsight}</p>
-            ) : (
-              <p className="text-xs text-[var(--text-muted)]">
-                A IA analisa seus dados de performance e sugere qual tipo de conteúdo priorizar na próxima campanha.
-                Os insights são salvos na memória do projeto para melhorar campanhas futuras.
-              </p>
-            )}
-          </div>
-
-          {/* Recent campaigns */}
-          {recentRuns.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Campanhas recentes</h2>
-              <div className="space-y-2">
-                {recentRuns.map((run) => {
-                  const cfg = run.config as { funnelStage?: string } | null;
-                  const funnelLabels: Record<string, string> = { tofu: "ToFu", mofu: "MoFu", bofu: "BoFu" };
-                  return (
-                    <div key={run.id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[var(--text-primary)] truncate">{run.topic ?? "Sem tema"}</p>
-                        <p className="text-xs text-[var(--text-muted)]">
-                          {new Date(run.startedAt).toLocaleDateString("pt-BR")} Â· {run._count.posts} posts
-                          {cfg?.funnelStage && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-orange-500/10 text-orange-300 rounded text-[10px]">
-                              {funnelLabels[cfg.funnelStage] ?? cfg.funnelStage}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <span className={cn(
-                        "text-xs px-2 py-0.5 rounded-full",
-                        run.status === "completed" ? "bg-green-900/30 text-green-400" :
-                        run.status === "failed" ? "bg-red-900/30 text-red-400" :
-                        "bg-orange-900/30 text-orange-400"
-                      )}>
-                        {run.status === "completed" ? "concluída" : run.status === "failed" ? "falhou" : "rodando"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+      <Cartao titulo="Insight da IA" className="mb-6">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          {aiInsight ? (
+            <p className="text-sm leading-relaxed flex-1 min-w-0" style={{ color: "var(--text-primary)" }}>{aiInsight}</p>
+          ) : (
+            <p className="text-xs flex-1 min-w-0" style={{ color: "var(--text-muted)" }}>
+              A IA lê os números dos posts publicados (arquivados inclusos) e sugere o que priorizar na próxima campanha. O insight fica na memória do projeto.
+            </p>
           )}
+          <Button variant="outline" onClick={getAiInsight} loading={loadingInsight} disabled={loadingInsight || medidos.length === 0}>
+            <TrendingUp className="w-4 h-4" />
+            {aiInsight ? "Atualizar" : "Gerar insight"}
+          </Button>
         </div>
+      </Cartao>
+
+      {recentRuns.length > 0 && (
+        <Cartao titulo="Campanhas recentes">
+          <div className="space-y-2">
+            {recentRuns.map((run) => {
+              const cfg = run.config as { funnelStage?: string } | null;
+              const funnelLabels: Record<string, string> = { tofu: "Topo do funil", mofu: "Meio do funil", bofu: "Fundo do funil" };
+              const status: Record<string, string> = { completed: "concluída", failed: "falhou", cancelled: "cancelada", running: "rodando" };
+              return (
+                <div key={run.id} className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate" style={{ color: "var(--text-primary)" }}>{run.topic ?? "Sem tema"}</p>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {new Date(run.startedAt).toLocaleDateString("pt-BR")} · {run._count.posts} posts
+                      {cfg?.funnelStage ? ` · ${funnelLabels[cfg.funnelStage] ?? cfg.funnelStage}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+                    {status[run.status] ?? run.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Cartao>
       )}
     </div>
   );
 }
-

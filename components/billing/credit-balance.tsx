@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
+import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
 
 /**
  * Saldo e extrato de créditos.
@@ -25,6 +26,8 @@ type Dados = {
   resetadoEm: string | null;
   plano: string;
   extrato: Movimento[];
+  /** Membro da equipe (01/10): o saldo é da conta do dono, e quem repõe é ele. */
+  equipe?: { dono: string } | null;
 };
 
 const NOMES: Record<string, string> = {
@@ -33,6 +36,11 @@ const NOMES: Record<string, string> = {
   renovacao: "Renovação do plano",
   recarga: "Créditos extras",
   estorno: "Estorno",
+  // A primeira parte devolvida quando a gravação não rende trecho (01/10).
+  estorno_roteiro: "Estorno da gravação",
+  // Linha de valor zero, uma por gravação aceita (30/09): é a contagem da cota
+  // do plano, escrita onde o cliente já confere o consumo.
+  gravacao_enviada: "Gravação do mês",
 };
 
 export function CreditBalance() {
@@ -69,7 +77,7 @@ export function CreditBalance() {
       <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
         <div>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Créditos disponíveis
+            {dados.equipe ? `Créditos da equipe, na conta de ${dados.equipe.dono}` : "Créditos disponíveis"}
           </p>
           <p className="text-4xl font-black" style={{ color: "var(--text-primary)" }}>
             {dados.saldo.toLocaleString("pt-BR")}
@@ -91,18 +99,22 @@ export function CreditBalance() {
             className="h-full transition-all"
             style={{
               width: `${Math.min(100, proporcao)}%`,
-              background: acabando ? "#f97316" : "#22c55e",
+              background: acabando ? "var(--marca-laranja)" : "#22c55e",
             }}
           />
         </div>
       )}
 
-      {acabando && (
+      {/* Membro da equipe (01/10, acabamento): sem saldo, a frase diz a quem
+          pedir; acabando, avisa sem mandar comprar. */}
+      {dados.equipe && dados.saldo <= 0 ? (
+        <p className="text-sm text-orange-400 mb-2">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
+      ) : acabando ? (
         <p className="text-sm text-orange-400 mb-2">
-          Seus créditos estão acabando. Uma campanha semanal completa consome
+          {dados.equipe ? "Os créditos da equipe estão acabando." : "Seus créditos estão acabando."} Uma campanha semanal completa consome
           cerca de 450.
         </p>
-      )}
+      ) : null}
 
       {dados.extrato.length > 0 && (
         <div className="mt-5">

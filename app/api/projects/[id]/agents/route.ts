@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { soODono } from "@/lib/equipe/permissoes";
 
 export async function GET(
   req: NextRequest,
@@ -11,7 +13,7 @@ export async function GET(
 
   const { id } = await params;
   const project = await prisma.project.findUnique({ where: { id } });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -32,9 +34,12 @@ export async function POST(
 
   const { id } = await params;
   const project = await prisma.project.findUnique({ where: { id } });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  // O squad é configuração do projeto: só o dono muda (01/10, acabamento).
+  const recusa = await soODono(userId, project, "mudar o squad deste projeto");
+  if (recusa) return recusa;
 
   const body = await req.json();
   const agent = await prisma.projectAgent.create({

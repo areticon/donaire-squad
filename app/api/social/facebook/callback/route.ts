@@ -1,7 +1,10 @@
 import { auth } from "@/lib/auth/server";
+import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
+import { fotoPermanente } from "@/lib/social/foto-permanente";
 import { prisma } from "@/lib/db/prisma";
+import { readotarPostsOrfaos } from "@/lib/publish/contas-orfas";
 import { exchangeFacebookCode, listFacebookPages } from "@/lib/oauth/facebook";
 
 export async function GET(req: NextRequest) {
@@ -34,6 +37,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(errorUrl);
   }
 
+  // QUEM VOLTA DO LOGIN DA REDE precisa poder conectar redes NESTE projeto
+  // (01/10, acabamento do acesso de equipe). O projeto vem de um cookie, e o
+  // cookie sozinho nÃ£o prova nada: conferimos com a sessÃ£o de quem voltou que
+  // ela Ã© dona do projeto (membro da equipe nÃ£o conecta rede; ver
+  // lib/equipe/permissoes.ts). Sem sessÃ£o, nÃ£o grava conta nenhuma.
+  const quemVolta = (await auth()).userId;
+  if (!quemVolta) return NextResponse.redirect(new URL("/sign-in", req.url));
+  const barrado = await soQuemConectaRedes(quemVolta, projectId);
+  if (barrado) return barrado;
+
   try {
     const redirectUri = `${appUrl}/api/social/facebook/callback`;
     const { userToken } = await exchangeFacebookCode(code, redirectUri);
@@ -58,12 +71,16 @@ export async function GET(req: NextRequest) {
         },
         update: {
           accessToken: page.pageToken,
+          // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+          // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+          needsReconnectAt: null,
+          needsReconnectReason: null,
           refreshToken: null,
           // Token de página derivado de token longo não expira por tempo.
           tokenExpiresAt: null,
           displayName: page.name,
           username: page.name,
-          avatarUrl: page.avatarUrl,
+          avatarUrl: await fotoPermanente(page.avatarUrl, "facebook", page.pageId),
           accountType: "organization",
           organizationId: page.pageId,
           isActive: true,
@@ -73,16 +90,21 @@ export async function GET(req: NextRequest) {
           platform: "facebook",
           platformUserId: page.pageId,
           accessToken: page.pageToken,
+          // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+          // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+          needsReconnectAt: null,
+          needsReconnectReason: null,
           refreshToken: null,
           tokenExpiresAt: null,
           displayName: page.name,
           username: page.name,
-          avatarUrl: page.avatarUrl,
+          avatarUrl: await fotoPermanente(page.avatarUrl, "facebook", page.pageId),
           accountType: "organization",
           organizationId: page.pageId,
           isActive: true,
         },
       });
+      await readotarPostsOrfaos(projectId, "facebook", page.pageId);
     }
 
     const res = NextResponse.redirect(successUrl);

@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
 import toast from "react-hot-toast";
 
 interface CampaignCard {
@@ -59,19 +60,15 @@ const DAYS = [
 const AGENT_ROWS = [
   { agentId: "roberto-radar", label: "Roberto Radar", subtitle: "Pesquisa", color: "bg-blue-500", cardType: "research" },
   { agentId: "lucas-linkedin", label: "Lucas LinkedIn", subtitle: "Post LinkedIn", color: "bg-blue-700", cardType: "post_linkedin" },
-  { agentId: "tiago-twitter", label: "Tiago Twitter", subtitle: "Thread X", color: "bg-sky-500", cardType: "post_twitter" },
+  { agentId: "xavier-x", label: "Xavier X", subtitle: "Thread X", color: "bg-sky-500", cardType: "post_twitter" },
   { agentId: "diana-design", label: "Diana Design", subtitle: "Mídia", color: "bg-purple-500", cardType: "media" },
   { agentId: "vera-veredito", label: "Vera Veredito", subtitle: "Preview", color: "bg-yellow-500", cardType: "preview" },
   { agentId: "paulo-publicador", label: "Paulo Publicador", subtitle: "Publicação", color: "bg-green-500", cardType: "publish" },
 ];
 
-function AgentAvatar({ agentId, color, size = "sm" }: { agentId: string; color: string; size?: "sm" | "md" }) {
-  const initials = agentId.split("-").map((w) => w[0].toUpperCase()).slice(0, 2).join("");
-  return (
-    <div className={cn("rounded-full flex items-center justify-center text-white font-bold shrink-0", color, size === "sm" ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-xs")}>
-      {initials}
-    </div>
-  );
+// O rosto do agente (arte de massinha, 28/09), o mesmo do Gestor.
+function AgentAvatar({ agentId, size = "sm" }: { agentId: string; color?: string; size?: "sm" | "md" }) {
+  return <AvatarDoAgente agenteId={agentId} tamanho={size === "sm" ? 28 : 36} />;
 }
 
 function MediaPreview({ mediaUrl, cardType }: { mediaUrl: string | null; cardType: string }) {

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (!projectId) return NextResponse.json({ error: "runId or projectId required" }, { status: 400 });
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

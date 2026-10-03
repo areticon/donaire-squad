@@ -1,0 +1,4 @@
+# O node_modules local é do Windows (o compositor do Remotion é binário por
+# plataforma) e o bundle é refeito na construção.
+node_modules
+remotion/build

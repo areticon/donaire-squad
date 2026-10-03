@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { CORES, estadoDoPost, faltaQuanto, horaCurta, nomeDaRede, type ChaveDeEstado } from "@/lib/posts/estado";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function SchedulePage() {
 
   const posts = await prisma.post.findMany({
     where: {
-      project: { userId },
+      project: projetoVisivel(userId),
       status: { not: "cancelled" },
       OR: [
         { scheduledAt: { gte: desde, lt: ate } },
@@ -103,7 +104,7 @@ export default async function SchedulePage() {
   const futuros = dias.filter((d) => d >= hojeChave);
   const passados = dias.filter((d) => d < hojeChave).reverse();
 
-  const contagem: Record<ChaveDeEstado, number> = { publicado: 0, agendado: 0, publicando: 0, rascunho: 0, falhou: 0 };
+  const contagem: Record<ChaveDeEstado, number> = { publicado: 0, agendado: 0, publicando: 0, rascunho: 0, falhou: 0, fora: 0 };
   for (const p of posts) contagem[estadoDoPost(p, agora).chave]++;
 
   const Bloco = ({ chave }: { chave: string }) => {
@@ -175,7 +176,7 @@ export default async function SchedulePage() {
     <div className="p-6 lg:p-8">
       <div className="flex items-end justify-between mb-5 gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>Agenda</h1>
+          <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Agenda</h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>O que sai, quando, e onde. Próximos 14 dias, e a semana que passou.</p>
         </div>
         <div className="flex gap-4 text-[11px]" style={{ color: "var(--text-muted)" }}>
@@ -184,6 +185,12 @@ export default async function SchedulePage() {
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.publicado }} />{contagem.publicado} publicados</span>
           {contagem.falhou > 0 && (
             <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.falhou }} />{contagem.falhou} falharam</span>
+          )}
+          {/* Reprovado e arquivado aparecem contados à parte, e não somados aos
+              rascunhos: até 21/09 eles engrossavam "N rascunhos", que é a fila
+              de coisas esperando decisão do cliente. Já foram decididos. */}
+          {contagem.fora > 0 && (
+            <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: CORES.fora }} />{contagem.fora} fora</span>
           )}
         </div>
       </div>

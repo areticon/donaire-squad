@@ -4,7 +4,8 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { upload } from "@vercel/blob/client";
 import { Loader2, Music, X } from "lucide-react";
-import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
+import type { NomeDoEstilo } from "@/lib/media/estilos";
+import { CatalogoDeEstilos } from "@/components/video/catalogo-de-estilos";
 import { EscolherMusica } from "@/components/video/escolher-musica";
 
 /**
@@ -33,19 +34,12 @@ import { EscolherMusica } from "@/components/video/escolher-musica";
  * produto pronto.
  */
 
-/** A fonte de tela mais parecida com a que o worker usa em cada estilo. */
-const APROXIMACAO: Record<NomeDoEstilo, string> = {
-  dramatico: "Georgia, 'Times New Roman', serif",
-  acelerado: "Impact, 'Arial Narrow', sans-serif",
-  serio: "Arial, Helvetica, sans-serif",
-  animado: "'Comic Sans MS', 'Trebuchet MS', sans-serif",
-};
-
 export function EstiloDoProjeto({
   projectId,
   inicial,
   musicaInicial,
   termosIniciais = null,
+  mostrar = "tudo",
 }: {
   projectId: string;
   inicial: string | null;
@@ -53,14 +47,27 @@ export function EstiloDoProjeto({
   musicaInicial: string | null;
   /** Os termos do negócio já cadastrados (Project.videoTerms). */
   termosIniciais?: string | null;
+  /**
+   * Qual pedaço aparece. Existe desde 18/09, quando a configuração do vídeo
+   * virou uma jornada em passos: o estilo ganha um passo só dele, e a trilha e
+   * os termos dividem o seguinte.
+   *
+   * Uma PROP e não três componentes porque os três blocos dividem o mesmo
+   * estado e as mesmas funções de salvar. Quebrar em componentes exigiria
+   * levantar esse estado para fora, que é trabalho de encanamento para entregar
+   * exatamente a mesma coisa. A tela de Configurações continua pedindo "tudo",
+   * e nada muda para ela.
+   */
+  mostrar?: "tudo" | "estilo" | "trilha-e-termos";
 }) {
+  const verEstilo = mostrar === "tudo" || mostrar === "estilo";
+  const verResto = mostrar === "tudo" || mostrar === "trilha-e-termos";
   // Sem escolha, o padrão é o acelerado, que é o mesmo padrão do back-end. Se
   // os dois discordassem, a tela mostraria um estilo e o vídeo sairia com
   // outro.
   const [escolhido, setEscolhido] = useState<NomeDoEstilo>(
     (inicial as NomeDoEstilo) ?? "acelerado"
   );
-  const [salvando, setSalvando] = useState(false);
   const [musica, setMusica] = useState<string | null>(musicaInicial);
   const [subindoMusica, setSubindoMusica] = useState(false);
   const [popupAberto, setPopupAberto] = useState(false);
@@ -101,6 +108,10 @@ export function EstiloDoProjeto({
       const blob = await upload(`musica/${projectId}/${arquivo.name}`, arquivo, {
         access: "private",
         handleUploadUrl: `/api/projects/${projectId}/musica`,
+        // Em partes, como o vídeo (29/09). O envio de uma peça só (o padrão)
+        // ficava pendurado para sempre no store privado, sem resposta nem erro:
+        // reproduzido com um MP3 de 100 KB, preso em "Enviando a faixa...".
+        multipart: true,
       });
       // O espelho do onUploadCompleted: em desenvolvimento o storage não
       // alcança o localhost, então o navegador grava também. Os dois escrevem
@@ -134,98 +145,15 @@ export function EstiloDoProjeto({
     }
   }
 
-  async function escolher(nome: NomeDoEstilo) {
-    if (nome === escolhido || salvando) return;
-    const anterior = escolhido;
-    // Muda na tela primeiro: a escolha é reversível e barata, e esperar a rede
-    // para pintar o botão faz a interface parecer travada.
-    setEscolhido(nome);
-    setSalvando(true);
-    try {
-      const r = await fetch(`/api/projects/${projectId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoStyle: nome }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      toast.success("Estilo salvo. Vale para os próximos vídeos deste projeto.");
-    } catch {
-      setEscolhido(anterior);
-      toast.error("Não consegui salvar o estilo. Tente de novo.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
   return (
     <section className="mb-6">
-      <div className="mb-3">
-        <h2 className="text-lg font-black" style={{ color: "var(--text-primary)" }}>
-          Estilo de edição
-        </h2>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Vale para todos os vídeos deste projeto. Decide a legenda, o ritmo do
-          corte e a mixagem, então escolha antes de enviar.
-        </p>
-      </div>
+      {/* O catálogo em camadas (29/09) no lugar dos quatro cartões. A linguagem
+          escolhida decide o perfil de legenda dos cortes, que volta por
+          `aoMudarBase` para a trilha sugerir o clima certo. */}
+      {verEstilo && <CatalogoDeEstilos projectId={projectId} aoMudarBase={setEscolhido} />}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {LISTA_DE_ESTILOS.map((e) => {
-          const ativo = e.nome === escolhido;
-          return (
-            <button
-              key={e.nome}
-              type="button"
-              onClick={() => escolher(e.nome)}
-              disabled={salvando}
-              aria-pressed={ativo}
-              className="rounded-xl border p-4 text-left transition disabled:opacity-60"
-              style={{
-                borderColor: ativo ? "var(--brand)" : "var(--border)",
-                borderWidth: ativo ? 2 : 1,
-                background: ativo ? "var(--bg-elevated)" : "var(--bg-surface)",
-              }}
-            >
-              <span
-                className="block text-2xl leading-tight"
-                style={{
-                  fontFamily: APROXIMACAO[e.nome],
-                  color: "var(--text-primary)",
-                  textTransform: e.legenda.caixaAlta ? "uppercase" : "none",
-                }}
-              >
-                {e.rotulo}
-              </span>
-              <span
-                className="mt-2 block text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {e.paraQue}
-              </span>
-              <span
-                className="mt-3 block text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {e.legenda.palavrasPorVez === 1
-                  ? "Uma palavra por vez"
-                  : `${e.legenda.palavrasPorVez} palavras por vez`}
-                {" · "}
-                {e.respiroDoCorte <= 0.15
-                  ? "corte rente"
-                  : e.respiroDoCorte >= 0.4
-                    ? "corte com respiro"
-                    : "corte equilibrado"}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-        A fonte aqui é uma aproximação do que o navegador tem. A do vídeo é
-        desenhada na edição.
-      </p>
-
+      {verResto && (
+      <>
       {/*
         A trilha é do CLIENTE, e isso é decisão jurídica e não preguiça: quem
         baixa o arquivo define se a plataforma é ferramenta ou distribuidora.
@@ -256,8 +184,29 @@ export function EstiloDoProjeto({
               className="rounded-lg border px-3 py-1.5 text-sm font-bold"
               style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
             >
-              {musica ? "Trocar" : "Escolher música"}
+              {musica ? "Buscar outra" : "Buscar música"}
             </button>
+            {/* SUBIR DIRETO, sem passar pela janela das bibliotecas (29/09): o
+                Bruno clicava no botão de dentro da janela e o seletor não abria
+                no Chrome dele, e o envio de vídeo, que tem o seletor na própria
+                tela, funcionava. Quem já baixou a faixa sobe por aqui. */}
+            <label
+              className="cursor-pointer rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-bold text-white"
+              aria-disabled={subindoMusica}
+            >
+              <input
+                type="file"
+                accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac"
+                className="sr-only"
+                disabled={subindoMusica}
+                onChange={(e) => {
+                  const arquivo = e.target.files?.[0];
+                  if (arquivo) void subirMusica(arquivo);
+                  e.target.value = "";
+                }}
+              />
+              {subindoMusica ? "Enviando..." : musica ? "Trocar arquivo" : "Subir arquivo"}
+            </label>
             {musica && (
               <button
                 type="button"
@@ -310,6 +259,9 @@ export function EstiloDoProjeto({
           }}
         />
       </div>
+
+      </>
+      )}
 
       <EscolherMusica
         aberto={popupAberto}

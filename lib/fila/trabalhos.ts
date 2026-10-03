@@ -31,12 +31,20 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * Este módulo é do SERVIDOR (puxa o Prisma). A tela não importa daqui.
  */
 
-export type TipoDeTrabalho = "campanha-pesquisa" | "campanha-dia";
+export type TipoDeTrabalho = "campanha-pesquisa" | "campanha-dia" | "video-ia" | "video-ia-extensao";
 
-/** pendente e o único estado que a fila pega; rodando é o único que expira. */
+/**
+ * pendente e o único estado que a fila pega; rodando é o único que expira.
+ *
+ * `pausado` entrou em 19/09: a plataforma ficou sem saldo de API e a fila
+ * insistiu sete vezes contra um saldo que não volta sozinho. Pausado não é
+ * pendente (a fila não pega) nem falhou (a campanha não acabou): é "esperando
+ * a recarga". Ver lib/fila/saldo-zerado.ts.
+ */
 export type StatusDoTrabalho =
   | "pendente"
   | "rodando"
+  | "pausado"
   | "concluido"
   | "falhou"
   | "cancelado";
@@ -49,8 +57,19 @@ export type StatusDoTrabalho =
  * duas vezes; prazo longo demais deixa o cliente esperando um morto.
  */
 export const PRAZO_SEGUNDOS: Record<TipoDeTrabalho, number> = {
-  "campanha-pesquisa": 830,
-  "campanha-dia": 830,
+  // 810 e nao 830: a funcao morre aos 800 (maxDuration), e cada segundo acima
+  // disso e tempo em que o grupo fica travado num trabalho que ja nao existe.
+  // Com o cron de minuto em minuto, 810 recupera na passada seguinte a morte.
+  "campanha-pesquisa": 810,
+  "campanha-dia": 810,
+  // O VIDEO POR IA E O TRABALHO MAIS LONGO DA FILA, e por isso ele tem prazo
+  // proprio: o Veo leva de 60 a 300 segundos para gerar, e depois ainda vem o
+  // download do arquivo. 900 s e o teto de espera (9 min) mais folga para
+  // baixar e subir para o nosso storage.
+  "video-ia": 1000,
+  // Cada extensão de 7 s é um trabalho próprio (21/09): uma geração do Veo
+  // não cabe em nove numa função de 800 s. Mesmo prazo da geração inicial.
+  "video-ia-extensao": 1000,
 };
 
 /**
@@ -61,6 +80,42 @@ export const PRAZO_SEGUNDOS: Record<TipoDeTrabalho, number> = {
  * tentativa, só queima crédito da API.
  */
 export const MAX_TENTATIVAS = 3;
+
+/**
+ * AS DUAS TRILHAS DE UM GRUPO, e por que elas existem.
+ *
+ * Medido em 21/09, com o Bruno olhando uma campanha de sete dias parada havia
+ * meia hora: o trabalho de VIDEO do dia 1 estava pausado esperando a cota do
+ * Veo voltar, e os seis dias seguintes nao andavam. A causa e a regra de
+ * ordem, que e certa dentro de uma trilha e errada entre trilhas: "ninguem
+ * comeca se existe alguem de ordem menor esperando" garante que a pesquisa
+ * termine antes do dia 1 e que dois dias nao escrevam ao mesmo tempo, e nao
+ * tem nada a dizer sobre um clipe que nasce depois do dia dele.
+ *
+ * Entao o grupo passa a ter duas filas dentro dele:
+ *
+ *   • `campanha`: a pesquisa e os dias, em ordem, um de cada vez. Eles
+ *     dependem uns dos outros (a mesma pesquisa, a mesma memoria de nao
+ *     repetir angulo), e essa serializacao e o produto;
+ *   • `video`: a geracao e as extensoes, em ordem, uma de cada vez. Elas
+ *     dependem umas das outras (cada extensao estende a anterior) e nao
+ *     dependem de dia nenhum.
+ *
+ * As duas rodam em paralelo e nao se bloqueiam. O grupo continua sendo um so
+ * para quem fecha a campanha: `estadoDoGrupo` conta tudo, entao a campanha so
+ * fecha quando o video tambem terminou, que e o que evita "concluida" com um
+ * clipe ainda nascendo.
+ */
+export type Trilha = "campanha" | "video";
+
+const TIPOS_DA_TRILHA: Record<Trilha, TipoDeTrabalho[]> = {
+  campanha: ["campanha-pesquisa", "campanha-dia"],
+  video: ["video-ia", "video-ia-extensao"],
+};
+
+export function trilhaDoTipo(tipo: string): Trilha {
+  return tipo.startsWith("video-ia") ? "video" : "campanha";
+}
 
 export type PedidoDeTrabalho = {
   tipo: TipoDeTrabalho;
@@ -131,17 +186,23 @@ export async function reservarProximo(): Promise<TrabalhoReservado | null> {
   });
 
   for (const c of candidatos) {
-    // Um de cada vez por grupo. A pergunta é feita agora, e não no filtro de
+    // A trilha deste candidato: as duas perguntas abaixo valem DENTRO dela, e
+    // não no grupo inteiro. Ver o comentário de `TIPOS_DA_TRILHA`.
+    const daTrilha = TIPOS_DA_TRILHA[trilhaDoTipo(c.tipo)];
+
+    // Um de cada vez por trilha. A pergunta é feita agora, e não no filtro de
     // cima, porque ela depende de OUTRA linha do mesmo grupo.
     const ocupado = await prisma.trabalho.count({
-      where: { grupo: c.grupo, status: "rodando" },
+      where: { grupo: c.grupo, tipo: { in: daTrilha }, status: "rodando" },
     });
     if (ocupado > 0) continue;
 
-    // Nenhum trabalho de ordem menor pode estar pendente à frente deste: a
-    // pesquisa do Roberto (ordem 0) tem que terminar antes do primeiro dia.
+    // Nenhum trabalho de ordem menor DA MESMA TRILHA pode estar esperando à
+    // frente deste: a pesquisa do Roberto (ordem 0) tem que terminar antes do
+    // primeiro dia. Um vídeo pausado esperando cota não segura dia nenhum, e
+    // foi exatamente isso que travou a campanha do Bruno em 21/09.
     const anteriorPendente = await prisma.trabalho.count({
-      where: { grupo: c.grupo, status: "pendente", ordem: { lt: c.ordem } },
+      where: { grupo: c.grupo, tipo: { in: daTrilha }, status: { in: ["pendente", "pausado"] }, ordem: { lt: c.ordem } },
     });
     if (anteriorPendente > 0) continue;
 
@@ -244,7 +305,7 @@ export async function ressuscitarMortos(agora = new Date()): Promise<number> {
 /** Cancela o que ainda não rodou de um grupo. O que já está rodando termina. */
 export async function cancelarGrupo(grupo: string): Promise<number> {
   const { count } = await prisma.trabalho.updateMany({
-    where: { grupo, status: "pendente" },
+    where: { grupo, status: { in: ["pendente", "pausado"] } },
     data: { status: "cancelado", finishedAt: new Date() },
   });
   return count;
@@ -254,6 +315,7 @@ export async function cancelarGrupo(grupo: string): Promise<number> {
 export async function estadoDoGrupo(grupo: string): Promise<{
   pendentes: number;
   rodando: number;
+  pausados: number;
   concluidos: number;
   falhados: number;
   acabou: boolean;
@@ -267,12 +329,16 @@ export async function estadoDoGrupo(grupo: string): Promise<{
     linhas.find((l) => l.status === s)?._count._all ?? 0;
   const pendentes = de("pendente");
   const rodando = de("rodando");
+  const pausados = de("pausado");
   return {
     pendentes,
     rodando,
+    pausados,
     concluidos: de("concluido"),
     falhados: de("falhou"),
-    acabou: pendentes === 0 && rodando === 0,
+    // Pausado NÃO é acabado. Sem esta linha, a campanha pausada por saldo
+    // seria fechada como concluída na passada seguinte.
+    acabou: pendentes === 0 && rodando === 0 && pausados === 0,
   };
 }
 

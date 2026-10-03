@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Check, CheckCircle2, RotateCcw, Video, X } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { AlertCircle, BellRing, Check, CheckCircle2, ClipboardCheck, Minus, RotateCcw, Sparkles, Video, WifiOff, X } from "lucide-react";
+import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { Button } from "@/components/ui/button";
-import { proximaAcao } from "@/lib/media/video-state";
+import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
+import { abrirChamado } from "@/lib/suporte/abrir-chamado";
+import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
+import { lerLinhaDoTempo, type ExtrasDaLinha, type GemeoNaLinha, type Passo } from "@/lib/media/linha-do-tempo";
+import { CODIGO_DA_ETAPA, pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
 
 /**
  * A faixa do piloto automático, dentro do Gestor de Conteúdo.
@@ -32,6 +39,17 @@ export type VideoAoVivo = {
   attempts: number;
   durationSec: number | null;
   criadoEm: string;
+  /**
+   * De onde a contagem parte: a rodada atual (30/09). Igual a `criadoEm` no
+   * vídeo que roda uma vez só. Opcional porque a página do servidor pode não
+   * trazer; aí vale `criadoEm`.
+   */
+  inicioDaRodada?: string;
+  /**
+   * O vídeo completo não veio: o worker avisou a falha, ou a rodada passou do
+   * prazo dele. Vira estado explícito com ação, nunca contagem infinita.
+   */
+  completoFalhou?: boolean;
   /** Quando ficou pronto de verdade. Null enquanto trabalha, e nos videos
    *  anteriores a 08/09. */
   terminadoEm?: string | null;
@@ -39,6 +57,10 @@ export type VideoAoVivo = {
   trechosEscolhidos: number;
   cortesProntos: number;
   cortesQueVaoAoAr: number;
+  /** Cortes e completo com a edição (montagem) ainda rodando. */
+  edicoesEmAndamento?: number;
+  /** Estado da montagem do completo (na-fila, dirigindo, ilustrando, gerando, montando, pronto). */
+  etapaDoCompleto?: string | null;
   temTranscricao: boolean;
   temTrechos: boolean;
   temCortes: boolean;
@@ -57,6 +79,37 @@ export type VideoAoVivo = {
   radar?: { teses: number; achados: number; dados: number; fontes: number } | null;
   /** Os cortes prontos que o cliente desligou: existem, mas não vão ao ar. */
   cortesGuardados?: CorteGuardado[];
+  /**
+   * A tela de roteiro (30/09): existe um roteiro, e ele foi aprovado? Com o
+   * roteiro pronto a faixa leva o cliente à tela; antes da aprovação nada é
+   * gerado nem cortado.
+   */
+  roteiro?: { existe: boolean; aprovado: boolean } | null;
+  /** O próximo passo é montar (ou terminar) o roteiro, e não cortar. */
+  roteiroPendente?: boolean;
+  /**
+   * A etapa passou do prazo do vigia do servidor (01/10): ele vai retomá-la
+   * sozinho na próxima passada, em até um minuto.
+   */
+  passouDoPrazo?: boolean;
+  /**
+   * O vigia já retomou a etapa atual nesta rodada: quantas vezes, de quantas,
+   * e por quê ("prazo" sem aviso, ou "reiniciado" quando o servidor de vídeo
+   * reiniciou no meio).
+   */
+  retomada?: { n: number; max: number; motivo: string; em: string } | null;
+  /**
+   * A LINHA DO TEMPO INTEIRA (02/10): a montagem com efeitos, a revisão final
+   * e as peças esperando aprovação. Vem da página e da consulta; ver
+   * lib/media/linha-do-tempo.ts.
+   */
+  linha?: ExtrasDaLinha | null;
+  /**
+   * O VÍDEO DO GÊMEO (02/10): enquanto grava, a linha é dele (status
+   * "gemeo", id "gemeo-<id>"); depois de entrar na esteira, as três etapas
+   * dele aparecem feitas antes do "Ouvindo".
+   */
+  gemeo?: GemeoNaLinha | null;
 };
 
 export type CorteGuardado = {
@@ -74,66 +127,24 @@ export type CorteGuardado = {
 const INTERVALO_MS = 4000;
 
 /**
- * As sete fases que o dono da gravação enxerga.
- *
- * Não são os estados do banco: `cut` cobre corte, capa e redação, e nenhum
- * deles tem nome que signifique algo para quem está esperando. O mapeamento
- * mora em `faseDe`.
- *
- * "Pesquisando" é a exceção da linha: o Roberto roda em PARALELO com a
- * escolha dos momentos, a partir da mesma transcrição, então o marco dele não
- * segue o índice e sim o `radar` do vídeo (feito quando existe, pulsando
- * enquanto há transcrição e não há pesquisa).
+ * Quantas consultas seguidas sem resposta antes de dizer "sem conexão" (01/10).
+ * Duas, e não uma: uma consulta perdida é oscilação comum e piscar a faixa a
+ * cada uma assustaria mais do que ajudaria. Duas são oito segundos sem ouvir o
+ * servidor, o que já é queda de verdade.
  */
-const FASES = [
-  { chave: "ouvindo", rotulo: "Ouvindo", detalhe: "Palavra por palavra, com marcação de tempo" },
-  { chave: "pesquisando", rotulo: "Pesquisando", detalhe: "O que você disse, o que estão falando, dados com fonte" },
-  { chave: "escolhendo", rotulo: "Escolhendo", detalhe: "Procurando as falas que sustentam um post sozinhas" },
-  { chave: "cortando", rotulo: "Cortando", detalhe: "Enquadrando cada corte para o formato de cada rede" },
-  { chave: "capas", rotulo: "Capas", detalhe: "Escrevendo os títulos e montando as capas" },
-  { chave: "escrevendo", rotulo: "Escrevendo", detalhe: "Um texto por rede, na sua voz" },
-  { chave: "completo", rotulo: "Vídeo completo", detalhe: "A gravação inteira editada, com capítulos" },
-] as const;
-const PESQUISANDO = 1;
-const ULTIMA = FASES.length - 1;
-
-/** Em que fase da faixa este vídeo está, e se ele terminou. */
-function faseDe(v: VideoAoVivo, etapaLocal: string | null): number {
-  switch (v.status) {
-    case "uploaded":
-    case "transcribing":
-      return 0;
-    case "transcribed":
-    case "selecting":
-      return 2;
-    case "selected":
-    case "cutting":
-      return 3;
-    case "cut":
-      // O status do banco não separa capa de redação: as duas rodam com o vídeo
-      // parado em `cut`. Quem sabe a diferença é quem disparou, aqui do lado do
-      // cliente.
-      return etapaLocal === "escrevendo" ? 5 : 4;
-    case "writing":
-      return 5;
-    default:
-      return ULTIMA;
-  }
-}
+const FALHAS_PARA_SEM_CONEXAO = 2;
 
 /**
- * Quanto tempo o processo inteiro leva, estimado da duração da gravação.
+ * AS ETAPAS DA LINHA moram em `lib/media/linha-do-tempo.ts` desde 02/10: eram
+ * oito, acabavam no "Vídeo completo" e deixavam de fora a aprovação do
+ * roteiro, a montagem com efeitos e a revisão final (a "tarja roxa" depois do
+ * fim, no relato do Bruno). Agora são todas, e a faixa só desenha.
  *
- * Medido em 01 e 02/09 na gravação de 16 minutos: os cortes chegam em torno de
- * 5 minutos e o completo, que ganhou dois passes, em torno de 18. A conta é
- * proporcional porque as duas pontas são recodificação, e o piso existe porque
- * gravação curta ainda paga o custo fixo de subir, transcrever e escrever.
+ * A PROMESSA DE TEMPO também mudou (02/10): era o alvo de 1,5 min por minuto
+ * de gravação (`MINUTOS_POR_MINUTO`), sem a montagem com efeitos nem a
+ * revisão final. Agora é o MEDIDO por etapa, pelo alto
+ * (lib/media/tempos-medidos.ts): "melhor prometer mais e entregar em menos".
  */
-function estimativaSegundos(duracaoSec: number | null): number {
-  const base = duracaoSec ?? 900;
-  return Math.max(6 * 60, Math.round(base * 1.15));
-}
-
 function mmss(segundos: number): string {
   const m = Math.floor(segundos / 60);
   const s = segundos % 60;
@@ -151,8 +162,30 @@ function mmss(segundos: number): string {
  */
 function emAndamento(v: VideoAoVivo): boolean {
   if (v.status === "failed") return false;
-  if (v.status === "ready") return !v.temCompleto;
+  // Roteiro pronto espera o cliente: nada muda sozinho até ele aprovar.
+  if (v.status === "roteiro") return false;
+  // O completo que falhou para de pedir consulta: nada vai mudar sozinho até
+  // alguém pedir de novo, e o pedido já consulta por conta própria.
+  // A EDIÇÃO COM EFEITOS E A REVISÃO FINAL (02/10) rodam com o vídeo em
+  // "ready" e o completo já presente: antes a consulta parava ali, e a faixa
+  // ficava no "montando" até alguém recarregar a página.
+  if (v.status === "ready") return (!v.temCompleto && !v.completoFalhou) || (v.temCompleto && !lerLinhaDoTempo(v).fim);
   return true;
+}
+
+/** Instante (ms) em que a rodada atual começou. */
+function inicioDe(v: VideoAoVivo): number {
+  return new Date(v.inicioDaRodada ?? v.criadoEm).getTime();
+}
+
+/**
+ * O que conta como "o estado mudou" (02/10): o status do banco e, com o vídeo
+ * em "ready", o passo da edição com efeitos e da revisão. Sem isto, o fim da
+ * montagem do completo não recarregava o quadro.
+ */
+function assinaturaDoEstado(v: VideoAoVivo): string {
+  const l = lerLinhaDoTempo(v);
+  return `${v.status}|${v.temCompleto ? 1 : 0}|${l.passos[l.atual]?.chave ?? ""}|${l.fim ? 1 : 0}`;
 }
 
 export function EsteiraDoVideo({
@@ -183,7 +216,27 @@ export function EsteiraDoVideo({
   const [etapaLocal, setEtapaLocal] = useState<Record<string, string | null>>({});
   const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
   const [dispensados, setDispensados] = useState<string[]>([]);
+  /**
+   * "APROVEITAR O ROTEIRO" aberto para qual vídeo (02/10). Abre pelo botão da
+   * faixa pronta ou pelo link do aviso e do e-mail (?aproveitar=<id>), lido
+   * depois de montar para não divergir do desenho do servidor.
+   */
+  const [aproveitar, setAproveitar] = useState<string | null>(null);
+  // Reativo: o clique no sino estando já no Gestor muda só a busca da URL.
+  const aproveitarDoLink = useSearchParams().get("aproveitar");
+  useEffect(() => {
+    if (aproveitarDoLink) setAproveitar(aproveitarDoLink);
+  }, [aproveitarDoLink]);
   const [agora, setAgora] = useState(() => Date.now());
+  /**
+   * SEM CONEXÃO (01/10, pedido do Bruno depois do incidente): a internet dele
+   * caiu no meio de um corte, e a tela continuou dizendo "passou do previsto"
+   * como se fosse o vídeo que travou. A edição nunca dependeu da aba, e a faixa
+   * precisa dizer isso. Liga pelo evento `offline` do navegador ou por consultas
+   * seguidas sem resposta; desliga no `online` ou na primeira consulta que volta.
+   */
+  const [semConexao, setSemConexao] = useState(false);
+  const falhasSeguidas = useRef(0);
 
   // O relógio da faixa anda por conta própria entre uma consulta e outra, senão
   // o número ficaria parado quatro segundos e voltaria a andar, que é
@@ -196,7 +249,7 @@ export function EsteiraDoVideo({
   const statusConhecidos = useRef<Record<string, string>>({});
   const videosAgora = useRef<VideoAoVivo[]>(videos);
   useEffect(() => {
-    statusConhecidos.current = Object.fromEntries(videos.map((v) => [v.id, v.status]));
+    statusConhecidos.current = Object.fromEntries(videos.map((v) => [v.id, assinaturaDoEstado(v)]));
     videosAgora.current = videos;
   });
 
@@ -215,23 +268,59 @@ export function EsteiraDoVideo({
   const consultar = useCallback(async () => {
     try {
       const r = await fetch(`/api/videos/status?projectId=${projectId}`, { cache: "no-store" });
+      // Resposta do servidor, mesmo com erro, prova que a conexão existe.
+      falhasSeguidas.current = 0;
+      setSemConexao(false);
       if (!r.ok) return;
       const { videos: frescos } = (await r.json()) as { videos: VideoAoVivo[] };
       // Só avisa o quadro quando um status realmente mudou. Sem esta guarda
       // seria uma recarga da semana a cada quatro segundos, para sempre.
+      // Desde 02/10 a "assinatura" inclui a edição com efeitos: ela anda com o
+      // vídeo parado em "ready", e o card do completo precisa ver o fim dela.
       const mudou = frescos.some(
         (v) =>
           statusConhecidos.current[v.id] !== undefined &&
-          statusConhecidos.current[v.id] !== v.status
+          statusConhecidos.current[v.id] !== assinaturaDoEstado(v)
       );
       setVideos(frescos);
       aoMudar(frescos, mudou);
+      if (mudou) {
+        // ERRO GRAVADO QUE NINGUÉM APAGA VIRA MENTIRA NA TELA (02/10): o aviso
+        // de uma ação que falhou some quando o vídeo anda, em vez de ficar em
+        // cima da faixa dizendo o contrário do que ela mostra.
+        setErroDaAcao(null);
+        // O sino olha de novo: a mudança costuma ser um aviso novo.
+        pedirLeituraDoSino();
+      }
     } catch {
-      // Consulta que falha não vira erro na tela: a próxima tenta em quatro
-      // segundos, e piscar "falha de rede" a cada oscilação assustaria mais do
-      // que ajudaria.
+      // Uma consulta que falha não vira aviso: a próxima tenta em quatro
+      // segundos. Só a sequência (ou o navegador dizendo que está offline)
+      // acende a faixa de sem conexão.
+      falhasSeguidas.current += 1;
+      if (falhasSeguidas.current >= FALHAS_PARA_SEM_CONEXAO) setSemConexao(true);
     }
   }, [projectId, aoMudar]);
+
+  // O navegador avisa quando a rede cai e quando volta. Na volta, consulta NA
+  // HORA (sem esperar o próximo ciclo de quatro segundos): quem estava olhando
+  // a faixa parada quer ver o estado real assim que a internet voltar.
+  useEffect(() => {
+    const caiu = () => setSemConexao(true);
+    const voltou = () => {
+      falhasSeguidas.current = 0;
+      setSemConexao(false);
+      void consultar();
+    };
+    // Depois de montar, e não no estado inicial: o servidor não sabe se o
+    // navegador está online, e ler `navigator` no desenho quebraria a hidratação.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) caiu();
+    window.addEventListener("offline", caiu);
+    window.addEventListener("online", voltou);
+    return () => {
+      window.removeEventListener("offline", caiu);
+      window.removeEventListener("online", voltou);
+    };
+  }, [consultar]);
 
   const executar = useCallback(
     async (videoId: string, rota: string, opts?: { silencioso?: boolean }) => {
@@ -249,8 +338,12 @@ export function EsteiraDoVideo({
         // etapa: não é erro, é a cura chegando atrasada. Só o clique humano
         // vê o 409.
         if (!r.ok && !(opts?.silencioso && r.status === 409)) {
-          const corpo = await r.json().catch(() => ({}));
-          setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
+          const corpo = (await r.json().catch(() => ({}))) as { error?: string; jaEmAndamento?: boolean };
+          // "A ETAPA JÁ COMEÇOU" NÃO É ERRO (02/10). Era o "Outra aba já
+          // começou a transcrever este vídeo." que o Bruno leu com uma aba só:
+          // quem tinha começado era o servidor, no aviso de upload concluído.
+          // Quem chega depois só consulta o estado, que já mostra a etapa.
+          if (!corpo.jaEmAndamento) setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
         }
       } catch {
         // A requisição pode cair antes de a etapa longa terminar (rede, aba
@@ -316,13 +409,29 @@ export function EsteiraDoVideo({
       if (disparados.current.has(chave)) continue;
       const parado = v.paradoHaSegundos ?? 0;
 
+      // A TRANSCRIÇÃO É DO SERVIDOR (02/10): o aviso de upload concluído já a
+      // começa (upload/route.ts). A tela pedia a mesma coisa no mesmo segundo,
+      // perdia a corrida e mostrava "Outra aba já começou a transcrever este
+      // vídeo." com uma aba só. Agora a tela só cura, como nas outras etapas:
+      // depois de 20 s parado em "uploaded", e em silêncio. Os 20 s cobrem o
+      // dev local, onde o aviso do storage não chega e a tela é quem começa.
       if (v.status === "uploaded") {
-        disparados.current.add(chave);
-        void executar(v.id, "transcribe");
+        if (parado > 20) {
+          disparados.current.add(chave);
+          void executar(v.id, "transcribe", { silencioso: true });
+        }
         continue;
       }
+      // "selected" sem roteiro aprovado cura pelo ROTEIRO (30/09): a rota de
+      // corte recusa cortar o que o cliente não aprovou.
       const cura =
-        v.status === "transcribed" ? "select" : v.status === "selected" ? "cortar" : null;
+        v.status === "transcribed"
+          ? "select"
+          : v.status === "selected"
+            ? v.roteiroPendente
+              ? "roteiro"
+              : "cortar"
+            : null;
       if (cura && parado > PARADO_S) {
         disparados.current.add(chave);
         void executar(v.id, cura, { silencioso: true });
@@ -410,16 +519,44 @@ export function EsteiraDoVideo({
     if (dispensados.includes(v.id)) return false;
     if (v.status === "failed") return true;
     if (v.status === "ready" && v.temCompleto) {
-      const desde = (Date.now() - new Date(v.criadoEm).getTime()) / 1000;
+      // A edição ainda rodando mantém a faixa, por mais que demore: efeitos,
+      // revisão final e consertos (02/10) contam como edição.
+      const linha = lerLinhaDoTempo(v);
+      if (!linha.fim) return true;
+      const desde = (Date.now() - inicioDe(v)) / 1000;
+      // As peças esperando aprovação mantêm a linha por um dia: é o último
+      // passo dela, e é do cliente.
+      if (linha.esperandoVoce === "pecas") return desde < 24 * 60 * 60;
       return desde < 60 * 60;
     }
+    // O completo que não veio aparece enquanto a rodada é recente: vídeo de
+    // semanas atrás sem completo não ressurge na faixa de hoje.
+    if (v.completoFalhou) return (Date.now() - inicioDe(v)) / 1000 < 24 * 60 * 60;
     return v.status !== "ready" || !v.temCompleto;
   });
 
-  if (emFaixa.length === 0 && !erroDaAcao) return null;
+  if (emFaixa.length === 0 && !erroDaAcao && !aproveitar) return null;
+
+  // A faixa de sem conexão só faz sentido com algo andando: é ela que diz ao
+  // cliente que o trabalho continua do lado de cá.
+  const mostrarSemConexao = semConexao && emFaixa.some(emAndamento);
 
   return (
     <div className="space-y-3">
+      {mostrarSemConexao && (
+        <div
+          className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-3"
+          role="status"
+          aria-live="polite"
+          data-faixa="sem-conexao"
+        >
+          <WifiOff className="w-[18px] h-[18px] text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+            <span className="font-semibold">Sem conexão com a internet.</span>{" "}
+            A edição continua nos nossos servidores; quando a conexão voltar, a tela atualiza sozinha.
+          </p>
+        </div>
+      )}
       {erroDaAcao && (
         <p
           className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3 text-sm text-orange-300"
@@ -432,45 +569,79 @@ export function EsteiraDoVideo({
       {emFaixa.map((v) => (
         <FaixaDeUmVideo
           key={v.id}
+          projectId={projectId}
           video={v}
           etapaLocal={etapaLocal[v.id] ?? null}
           agora={agora}
+          semConexao={semConexao}
           aoRepetir={(rota) => void executar(v.id, rota)}
           aoDispensar={() => setDispensados((d) => [...d, v.id])}
+          aoAproveitar={() => setAproveitar(v.id)}
         />
       ))}
+
+      {aproveitar && (
+        <AproveitarRoteiro
+          key={aproveitar}
+          projectId={projectId}
+          videoId={aproveitar}
+          nome={videos.find((x) => x.id === aproveitar)?.originalName ?? null}
+          aoFechar={() => {
+            setAproveitar(null);
+            // Tira o ?aproveitar= da barra, para recarregar não abrir de novo
+            // (o history do Next acompanha a troca e o parâmetro some).
+            const u = new URL(window.location.href);
+            if (u.searchParams.has("aproveitar")) {
+              u.searchParams.delete("aproveitar");
+              window.history.replaceState(window.history.state, "", u.toString());
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function FaixaDeUmVideo({
+  projectId,
   video: v,
   etapaLocal,
   agora,
+  semConexao,
   aoRepetir,
   aoDispensar,
+  aoAproveitar,
 }: {
+  projectId: string;
   video: VideoAoVivo;
   etapaLocal: string | null;
   agora: number;
+  semConexao: boolean;
   aoRepetir: (rota: string) => void;
   aoDispensar: () => void;
+  /** Abre o "Aproveitar o roteiro" deste vídeo (02/10). */
+  aoAproveitar: () => void;
 }) {
-  const decorrido = Math.max(0, Math.round((agora - new Date(v.criadoEm).getTime()) / 1000));
+  // Conta da RODADA atual, e não do envio (30/09): o vídeo refeito contava do
+  // envio original e mostrou 196 minutos.
+  const decorrido = Math.max(0, Math.round((agora - inicioDe(v)) / 1000));
   const nome = v.originalName ?? "Gravação";
+  const linha = lerLinhaDoTempo(v, etapaLocal);
 
-  // ── Terminou ──────────────────────────────────────────────────────────────
-  if (v.status === "ready" && v.temCompleto) {
+  // ── Terminou, e nada espera o cliente ─────────────────────────────────────
+  // Só quando a linha inteira acabou (02/10): antes, "Pronto em N minutos"
+  // aparecia com a montagem de efeitos ainda rodando numa tarja à parte.
+  if (linha.fim && !linha.esperandoVoce) {
     // O relogio PARA quando a esteira termina. Antes de 08/09 este numero
     // contava ate agora, entao a mesma entrega dizia 32 minutos e, tres minutos
     // depois, 35, para um trabalho de 11. Sem `terminadoEm` (videos antigos)
     // fica o tempo decorrido, que ao menos nao mente sobre a ordem de grandeza.
     const ateOFim = v.terminadoEm
-      ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - new Date(v.criadoEm).getTime()) / 1000))
+      ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - inicioDe(v)) / 1000))
       : decorrido;
     const minutos = Math.max(1, Math.round(ateOFim / 60));
     return (
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-green-500/25 bg-green-500/10 px-5 py-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-green-500/25 bg-green-500/10 px-5 py-3" data-faixa="pronto">
         <div className="flex items-center gap-3 min-w-0">
           <CheckCircle2 className="w-[18px] h-[18px] text-green-400 shrink-0" />
           <p className="text-sm" style={{ color: "var(--text-primary)" }}>
@@ -480,13 +651,35 @@ function FaixaDeUmVideo({
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <p className="text-xs truncate max-w-[220px]" style={{ color: "var(--text-muted)" }}>
+          <p className="text-xs truncate max-w-[220px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
             {nome}
           </p>
+          {/* "Voltar à edição" (30/09, pedido do Bruno): reabre o roteiro do
+              vídeo aprovado para corrigir palavra, bordas e cenas, e refazer
+              só o que mudou. */}
+          <Link
+            href={`/projects/${projectId}/video/${v.id}/roteiro?editar=1`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:border-orange-500/60 transition-colors"
+            style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+          >
+            <ClipboardCheck className="w-3.5 h-3.5 text-orange-400" />
+            Voltar à edição
+          </Link>
+          {/* APROVEITAR O ROTEIRO (02/10): o vídeo terminou, a pergunta de
+              gerar mais peças a partir dele. */}
+          <button
+            type="button"
+            onClick={aoAproveitar}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 transition-colors"
+            data-botao-aproveitar
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Aproveitar o roteiro
+          </button>
           <button
             onClick={aoDispensar}
             title="Fechar"
-            className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
             style={{ color: "var(--text-muted)" }}
           >
             <X className="w-4 h-4" />
@@ -496,11 +689,47 @@ function FaixaDeUmVideo({
     );
   }
 
+  // ── O completo não veio ───────────────────────────────────────────────────
+  // Estado próprio desde 30/09. Antes o vídeo ficava em "montando o vídeo
+  // completo" com o relógio andando para sempre; agora a faixa diz o que
+  // aconteceu, garante que o resto está salvo e oferece refazer só o completo.
+  if (v.completoFalhou && !v.temCompleto) {
+    return (
+      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-orange-500/40 bg-orange-500/5 px-5 py-4" data-faixa="completo-falhou">
+        <div className="flex items-start gap-3 min-w-0">
+          <AlertCircle className="w-[18px] h-[18px] text-orange-400 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+              O vídeo completo de {nome} não ficou pronto
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              {v.error?.includes("completo:")
+                ? "A montagem da gravação inteira falhou no meio do caminho."
+                : "A montagem da gravação inteira passou muito do tempo previsto."}{" "}
+              Os cortes e os textos já estão no quadro e não se perdem. Dá para refazer só o
+              vídeo completo, sem mexer no resto.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={aoDispensar}>
+            Dispensar
+          </Button>
+          <Button size="sm" onClick={() => aoRepetir("refazer-completo")}>
+            <RotateCcw className="w-3.5 h-3.5" />
+            Refazer o vídeo completo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Falhou ────────────────────────────────────────────────────────────────
   if (v.status === "failed") {
     const acao = proximaAcao(v);
+    const codigoDaFalha = CODIGO_DA_ETAPA[etapaDeRetomada(v)];
     return (
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-red-500/30 bg-red-500/5 px-5 py-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-red-500/30 bg-red-500/5 px-5 py-4" data-faixa="falhou">
         <div className="flex items-start gap-3 min-w-0">
           <AlertCircle className="w-[18px] h-[18px] text-red-400 shrink-0 mt-0.5" />
           <div className="min-w-0">
@@ -510,6 +739,20 @@ function FaixaDeUmVideo({
             <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
               {v.error ??
                 "A etapa não terminou. O que já ficou pronto continua no quadro e não se perde."}
+            </p>
+            {/* O CÓDIGO E O CHAMADO (02/10): o mesmo código do aviso no sino,
+                para a pessoa informar sem descrever o erro. */}
+            <p className="text-xs mt-1.5 flex flex-wrap items-center gap-2" style={{ color: "var(--text-muted)" }}>
+              <span className="font-mono rounded px-1.5 py-0.5 border" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
+                Código {codigoDaFalha}
+              </span>
+              <button
+                type="button"
+                onClick={() => abrirChamado({ categoria: "problema", codigo: codigoDaFalha, texto: `O processamento de ${nome} parou.` })}
+                className="font-semibold text-orange-400 hover:underline"
+              >
+                Abrir chamado
+              </button>
             </p>
           </div>
         </div>
@@ -528,133 +771,314 @@ function FaixaDeUmVideo({
     );
   }
 
-  // ── Rodando ───────────────────────────────────────────────────────────────
-  const fase = faseDe(v, etapaLocal);
-  const restante = Math.max(0, estimativaSegundos(v.durationSec) - decorrido);
-  const cortesNoQuadro = v.cortesQueVaoAoAr;
+  // ── A LINHA DO TEMPO INTEIRA (02/10) ──────────────────────────────────────
+  // Uma faixa só, do envio até a aprovação das peças: a aprovação do roteiro
+  // e a das peças aparecem como "esperando você", e a montagem com efeitos e
+  // a revisão final são etapas da linha, e não mais uma tarja roxa depois do
+  // "Vídeo completo".
+  const passoAtual = linha.passos[linha.atual];
+  const esperando = linha.esperandoVoce;
+
+  // CONTAGEM REGRESSIVA (pedido do Bruno em 30/09), agora honesta até o fim.
+  // O total é a promessa MEDIDA pelo alto (o gêmeo gravando, o roteiro antes
+  // da aprovação, a edição inteira depois, com efeitos e revisão); o que falta
+  // nunca cai abaixo do que as etapas seguintes ainda pesam. Passou da
+  // promessa inteira: a faixa NÃO mostra "faltam cerca de 1 min" parado (o que
+  // o Bruno viu com a montagem de efeitos rodando), diz há quanto tempo passou
+  // do previsto, número que só cresce (a troca de etapa não o faz voltar), e o
+  // que está acontecendo agora.
+  // O relógio do gêmeo conta do pedido (`inicioDaRodada` dele); os outros, da rodada.
+  const desdeOInicio = decorrido;
+  const total = linha.totalSegundos;
+  const piso = linha.restaDepoisDoAtualSegundos;
+  const atraso = desdeOInicio - total;
+  const atrasou = atraso > 60;
+  const restante = Math.max(total - desdeOInicio, piso, 0);
+  const atrasandoNaEtapa = !atrasou && total - desdeOInicio < piso;
+  const minutosDaEdicao = Math.ceil(
+    segundosDaEdicao(v.durationSec, { efeitos: Boolean(v.linha?.efeitosLigados), revisao: Boolean(v.linha?.revisaoLigada) }) / 60
+  );
+
+  // O QUE O SERVIDOR ESTÁ FAZENDO COM A ETAPA LENTA (01/10). Sem conexão, o
+  // estado mostrado é o último que chegou, então a frase de retomada fica de
+  // fora para não afirmar o velho.
+  const avisoDoVigia = semConexao
+    ? null
+    : v.retomada
+      ? v.retomada.motivo === "reiniciado"
+        ? `Nossos servidores de vídeo foram atualizados no meio desta etapa, e ela foi retomada automaticamente de onde parou (tentativa ${v.retomada.n} de ${v.retomada.max}).`
+        : `Esta etapa demorou mais que o normal e foi retomada automaticamente (tentativa ${v.retomada.n} de ${v.retomada.max}).`
+      : v.passouDoPrazo
+        ? "Esta etapa passou do tempo normal. O servidor confere e retoma sozinho em até um minuto, do ponto onde parou."
+        : null;
+
+  const titulo =
+    esperando === "roteiro"
+      ? "Roteiro pronto: revise e aprove"
+      : esperando === "pecas"
+        ? "Tudo pronto. Falta você aprovar as peças"
+        : nome;
+  const subtitulo =
+    esperando === "roteiro"
+      ? `Separei ${v.trechosEscolhidos} ${v.trechosEscolhidos === 1 ? "corte possível" : "cortes possíveis"} de ${nome}, com a fala exata e as cenas planejadas. Escolha os que vão ao ar (até 8) e aprove: só depois disso eu gero imagens, cenas e cortes, e uso o restante dos créditos.`
+      : esperando === "pecas"
+        ? `${linha.agora} Assista, ajuste o que quiser e aprove para agendar.`
+        : `${passoAtual.detalhe}.`;
+
+  // Os marcos que faltam ficam do tamanho da linha: com 13 etapas o grid é
+  // dinâmico (classe fixa do Tailwind não serve para número que varia).
+  const n = linha.passos.length;
+  const ultimoFeito = linha.passos.reduce((u, p, i) => (p.estado === "feito" || p.estado === "pulado" ? i : u), -1);
+  const ate = Math.max(linha.atual, ultimoFeito, 0);
+  const metadeDaColuna = 50 / n;
 
   return (
     <div
       className="rounded-2xl border p-5 space-y-4"
-      style={{ background: "var(--bg-card)", borderColor: "var(--accent-orange)" }}
+      style={{ background: "var(--bg-card)", borderColor: esperando ? "#f59e0b" : "var(--accent-orange)" }}
+      data-faixa="linha-do-tempo"
+      data-etapa={passoAtual.chave}
     >
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="w-[34px] h-[34px] rounded-lg border border-orange-500/35 bg-orange-500/10 flex items-center justify-center shrink-0">
-            <Video className="w-[17px] h-[17px] text-orange-500" />
+            {esperando ? <ClipboardCheck className="w-[17px] h-[17px] text-orange-500" /> : <Video className="w-[17px] h-[17px] text-orange-500" />}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-              {fase === ULTIMA && v.temTrechosComPosts
-                ? cortesNoQuadro === 1
-                  ? "O corte e os textos já estão no quadro abaixo"
-                  : `Os ${cortesNoQuadro} cortes e os textos já estão no quadro abaixo`
-                : nome}
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              {titulo}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {fase === ULTIMA
-                ? "Falta o vídeo completo, que é o mais demorado. Você já pode revisar e publicar o resto."
-                : FASES[fase].detalhe + "."}
+            <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              {subtitulo}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <div className="text-right">
-            <p
-              className="text-xl font-bold tabular-nums leading-none"
-              style={{ color: "var(--text-primary)" }}
+          {esperando === "roteiro" ? (
+            <Link
+              href={`/projects/${projectId}/video/${v.id}/roteiro`}
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
             >
-              {mmss(decorrido)}
-            </p>
-            <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-              {restante > 30 ? `faltam ~${Math.ceil(restante / 60)} min` : "quase lá"}
-            </p>
-          </div>
+              <ClipboardCheck className="w-4 h-4" />
+              Revisar e aprovar
+            </Link>
+          ) : esperando === "pecas" ? (
+            <>
+              <button
+                type="button"
+                onClick={aoAproveitar}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 transition-colors"
+                data-botao-aproveitar
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Aproveitar o roteiro
+              </button>
+              <button
+                onClick={aoDispensar}
+                title="Fechar"
+                className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <div className="text-right">
+              <p className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
+                {/* Sem conexão o número é o da última notícia do servidor:
+                    "passou do previsto" ali diria que o vídeo atrasou, quando
+                    quem parou de ouvir foi a tela (o caso do Bruno em 01/10). */}
+                {semConexao
+                  ? "sem conexão, última previsão"
+                  : atrasou
+                    ? "passou do previsto em"
+                    : v.retomada
+                      ? "retomada automática, faltam até"
+                      : linha.relogio === "gemeo"
+                        ? "vídeo do gêmeo em até"
+                        : linha.relogio === "roteiro"
+                          ? "roteiro pronto em até"
+                          : "tudo pronto em até"}
+              </p>
+              {/* O relógio é desenhado no servidor e de novo no navegador, com
+                  um ou dois segundos de diferença: o aviso de hidratação aqui
+                  seria falso alarme (visto na prova de 01/10). */}
+              <p className="text-xl font-bold tabular-nums leading-none" style={{ color: "var(--text-primary)" }} suppressHydrationWarning>
+                {atrasou && !semConexao ? `${Math.max(1, Math.ceil(atraso / 60))} min` : mmss(restante)}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="relative grid grid-cols-7">
-        <div className="absolute top-[9px] left-[8%] right-[8%] h-0.5" style={{ background: "var(--border)" }} />
+      {avisoDoVigia && (
+        <p
+          className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs"
+          style={{ color: "var(--text-primary)" }}
+          data-faixa="retomada"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+          {avisoDoVigia}
+        </p>
+      )}
+
+      <div className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+        <div className="absolute top-[9px] h-0.5" style={{ left: `${metadeDaColuna}%`, right: `${metadeDaColuna}%`, background: "var(--border)" }} />
         <div
-          className="absolute top-[9px] left-[8%] h-0.5 bg-orange-500 transition-all duration-500"
-          style={{ width: `${(fase / (FASES.length - 1)) * 84}%` }}
+          className="absolute top-[9px] h-0.5 bg-orange-500 transition-all duration-500"
+          style={{ left: `${metadeDaColuna}%`, width: `${(ate / Math.max(1, n - 1)) * (100 - 2 * metadeDaColuna)}%` }}
         />
-        {FASES.map((f, i) => {
-          const pesquisa = i === PESQUISANDO;
-          const feita = pesquisa ? Boolean(v.radar) : i < fase;
-          const atual = pesquisa ? !feita && v.temTranscricao : i === fase;
-          return (
-            <div key={f.chave} className="relative flex flex-col items-center gap-2">
-              {feita ? (
-                // `Check` puro, e não `CheckCircle2`: o ícone com círculo
-                // próprio dentro do marco redondo virava círculo dentro de
-                // círculo (visto na tela em 02/09).
-                <div className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                </div>
-              ) : (
-                <div
-                  className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
-                  style={{
-                    borderColor: atual ? "var(--accent-orange)" : "var(--border)",
-                    background: "var(--bg-card)",
-                  }}
-                >
-                  {atual && <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />}
-                </div>
-              )}
-              <p
-                className="text-xs text-center"
-                style={{
-                  color: atual
-                    ? "var(--accent-orange)"
-                    : feita
-                      ? "var(--text-primary)"
-                      : "var(--text-muted)",
-                  fontWeight: atual ? 700 : feita ? 600 : 500,
-                }}
-              >
-                {f.rotulo}
-              </p>
-              <Detalhe indice={i} video={v} fase={fase} />
-            </div>
-          );
-        })}
+        {linha.passos.map((p, i) => (
+          <Marco key={p.chave} passo={p} atual={i === linha.atual} />
+        ))}
       </div>
+
+      {/* No celular os rótulos não cabem embaixo de 13 marcos: a etapa atual
+          vem escrita por inteiro aqui. */}
+      <p className="sm:hidden text-xs" style={{ color: "var(--text-primary)" }} data-etapa-celular>
+        <span className="font-semibold">
+          Etapa {linha.atual + 1} de {n}: {passoAtual.rotulo}
+        </span>
+        {passoAtual.nota ? <span style={{ color: "var(--text-muted)" }}> · {passoAtual.nota}</span> : null}
+      </p>
+
+      {/* O QUE ESTÁ ACONTECENDO AGORA, numa frase (02/10): é o que o cliente lê
+          quando o relógio passou do previsto, em vez de um número parado. */}
+      {!esperando && (
+        <p className="text-xs" style={{ color: "var(--text-primary)" }} data-agora>
+          <span className="font-semibold">Agora:</span> {linha.agora}
+          {(atrasou || atrasandoNaEtapa) && !semConexao ? (
+            <span style={{ color: "var(--text-muted)" }}> Esta etapa está levando mais que o previsto, e segue andando.</span>
+          ) : null}
+        </p>
+      )}
+
+      {/* PODE SAIR (02/10, pedido do Bruno): quando a parte do cliente acabou
+          (enviou o vídeo, ou aprovou o roteiro), a faixa diz com todas as
+          letras que ele pode fechar a tela. O sino e o e-mail chamam de volta. */}
+      {linha.podeSair && (
+        <div
+          className="flex items-start gap-3 rounded-xl border px-4 py-3"
+          style={{ borderColor: "var(--accent-orange)", background: "color-mix(in srgb, var(--accent-orange) 8%, transparent)" }}
+          data-pode-sair
+        >
+          <BellRing className="w-[18px] h-[18px] text-orange-500 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Pode fechar esta tela.
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              Vamos te avisar aqui e por e-mail quando precisarmos de você ou quando estiver pronto.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div
         className="flex items-center justify-between gap-4 flex-wrap pt-3 border-t"
         style={{ borderColor: "var(--border)" }}
       >
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          Nada aqui precisa de clique. Cada peça cai no quadro abaixo assim que fica pronta.
+          {/* A PROMESSA DITA NO INÍCIO, com o número deste vídeo (pedido do
+              Bruno em 30/09), e desde 02/10 o número é o medido pelo alto,
+              com todas as etapas dentro: nada de "uma parte depois". */}
+          {linha.relogio === "gemeo" && !esperando ? (
+            <>
+              Primeiro o seu gêmeo grava o vídeo (até {Math.ceil(total / 60)} min). Depois ele entra na edição como uma gravação sua, com o
+              roteiro para você aprovar.
+            </>
+          ) : linha.relogio === "roteiro" && !esperando ? (
+            <>
+              Primeiro eu preparo o roteiro da edição para você aprovar (até {Math.ceil(total / 60)} min).
+              {v.durationSec
+                ? ` Depois da sua aprovação, a edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até ${minutosDaEdicao} min.`
+                : " Depois da sua aprovação vem a edição inteira, com efeitos, abertura e revisão final."}
+            </>
+          ) : esperando === "roteiro" ? (
+            <>
+              Nada é gerado nem cobrado além do roteiro antes da sua aprovação. Depois dela, a edição inteira leva até {minutosDaEdicao} min.
+            </>
+          ) : esperando === "pecas" ? (
+            "Nada sai nas redes sem o seu ok."
+          ) : (
+            <>
+              A edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até {Math.ceil(total / 60)} min. Cada peça cai no quadro
+              abaixo assim que fica pronta.
+            </>
+          )}
         </p>
-        {v.temCompleto ? null : (
+        {!v.temCompleto && !esperando ? (
           <p className="text-xs font-medium text-orange-400">
             O vídeo completo chega por último, e o lugar dele já está guardado no quadro.
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
-/** O número embaixo do marco, quando existe algo verdadeiro para contar. */
-function Detalhe({ indice, video: v, fase }: { indice: number; video: VideoAoVivo; fase: number }) {
-  let texto: string | null = null;
-  if (indice === PESQUISANDO && v.radar)
-    texto = `${v.radar.teses} ${v.radar.teses === 1 ? "tese" : "teses"}, ${v.radar.fontes} ${v.radar.fontes === 1 ? "fonte" : "fontes"}`;
-  if (indice === 2 && v.trechosEscolhidos > 0)
-    texto = `${v.trechosEscolhidos} ${v.trechosEscolhidos === 1 ? "momento" : "momentos"}`;
-  if (indice === 3 && v.cortesProntos > 0 && fase === 3)
-    texto = `${v.cortesProntos} de ${v.trechosEscolhidos} pronto${v.cortesProntos === 1 ? "" : "s"}`;
-  if (indice === 3 && v.cortesProntos > 0 && fase > 3)
-    texto = `${v.cortesProntos} ${v.cortesProntos === 1 ? "corte" : "cortes"}`;
-  if (indice === ULTIMA && fase === ULTIMA) texto = "montando";
-  if (!texto) return null;
+/** Um marco da linha: o círculo, o rótulo e o número curto embaixo. */
+function Marco({ passo: p, atual }: { passo: Passo; atual: boolean }) {
+  const voce = p.estado === "voce";
+  const cor =
+    p.estado === "falhou"
+      ? "#ef4444"
+      : voce
+        ? "#f59e0b"
+        : atual || p.estado === "agora"
+          ? "var(--accent-orange)"
+          : p.estado === "feito"
+            ? "var(--text-primary)"
+            : "var(--text-muted)";
   return (
-    <p className="text-[10px] -mt-1 text-center" style={{ color: "var(--text-muted)" }}>
-      {texto}
-    </p>
+    <div className="relative flex flex-col items-center gap-2 min-w-0" data-passo={p.chave} data-estado={p.estado}>
+      {p.estado === "feito" ? (
+        // `Check` puro, e não `CheckCircle2`: o ícone com círculo próprio
+        // dentro do marco redondo virava círculo dentro de círculo (02/09).
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${p.chave === "pronto" ? "bg-green-500" : "bg-orange-500"}`}>
+          <Check className="w-3 h-3 text-white" strokeWidth={3} />
+        </div>
+      ) : p.estado === "falhou" ? (
+        <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+          <X className="w-3 h-3 text-white" strokeWidth={3} />
+        </div>
+      ) : p.estado === "pulado" ? (
+        <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }} title="Não se aplica a este vídeo">
+          <Minus className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+        </div>
+      ) : (
+        <div
+          className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
+          style={{
+            borderColor: voce ? "#f59e0b" : p.estado === "agora" ? "var(--accent-orange)" : "var(--border)",
+            background: voce ? "#f59e0b" : "var(--bg-card)",
+          }}
+        >
+          {p.estado === "agora" && <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />}
+          {voce && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+        </div>
+      )}
+      {/* Rótulos só do celular para cima: no celular a etapa atual vem
+          escrita por inteiro embaixo da linha. */}
+      <p
+        className="hidden sm:block text-[11px] leading-tight text-center px-0.5 max-w-full"
+        // Com 17 marcos (o vídeo do gêmeo) a coluna fica estreita: a palavra
+        // longa quebra com hífen em vez de encostar na vizinha
+        // ("PesquisandoEscolhendo", visto na prova de 02/10).
+        lang="pt-BR"
+        style={{ color: cor, fontWeight: atual || voce ? 700 : p.estado === "feito" ? 600 : 500, hyphens: "auto", overflowWrap: "anywhere" }}
+      >
+        {p.rotulo}
+      </p>
+      {voce ? (
+        <p className="hidden sm:block text-[10px] -mt-1 text-center font-semibold" style={{ color: "#d97706" }}>
+          esperando você
+        </p>
+      ) : p.nota ? (
+        <p className="hidden sm:block text-[10px] -mt-1 text-center leading-tight" style={{ color: "var(--text-muted)" }}>
+          {p.nota}
+        </p>
+      ) : null}
+    </div>
   );
 }

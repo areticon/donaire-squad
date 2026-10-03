@@ -30,8 +30,10 @@ export async function escreverLegendaDoCarrossel(args: {
   projeto: { name: string; niche: string | null; targetAudience: string | null; voice: string | null };
   rede: string;
   usage: { runId: string | null; projectId: string };
+  /** Aberturas já usadas nos outros dias da semana, que esta legenda não pode repetir (pecas-da-semana.ts). */
+  proibicoes?: string;
 }): Promise<string> {
-  const { frases, contexto, projeto, rede, usage } = args;
+  const { frases, contexto, projeto, rede, usage, proibicoes } = args;
   const tarefa = `Escreva a legenda de um carrossel de ${frases.length} slides para ${NOME_DA_REDE[rede] ?? rede}.
 
 PROJETO: ${projeto.name}
@@ -52,7 +54,7 @@ REGRAS:
 - Português brasileiro natural, sem clichê motivacional, no máximo 2 emojis, sem hashtag no corpo.
 - Nenhum dado, estatística ou citação que não esteja no contexto acima.
 - Sem travessão: use vírgula, dois-pontos ou parênteses.
-- Entre 600 e 1100 caracteres. Devolva SÓ a legenda, sem título, sem comentário.`;
+- Entre 600 e 1100 caracteres. Devolva SÓ a legenda, sem título, sem comentário.${proibicoes ?? ""}`;
 
   const saida = await askClaude(
     "Você é Diana Design, redatora visual de conteúdo para redes sociais. Escreve legendas que conversam, não que anunciam.",

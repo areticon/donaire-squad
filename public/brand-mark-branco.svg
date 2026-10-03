@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-28 -8 120 120" fill="none">
+  <!-- Versão branca da marca de 25/08, para fundo escuro ou laranja (01/10). Mesma geometria do brand-mark.svg oficial: só a cor muda e o contorno de adesivo sai. Não redesenhar. -->
+  <defs>
+    <linearGradient id="marca-laranja" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#FFFFFF" />
+    </linearGradient>
+  </defs>
+  <!-- A marca -->
+  <circle cx="32" cy="52" r="26" stroke="url(#marca-laranja)" stroke-width="12" />
+  <rect x="52" y="4" width="12" height="56" rx="6" fill="url(#marca-laranja)" />
+  <rect x="0" y="44" width="12" height="56" rx="6" fill="url(#marca-laranja)" />
+</svg>

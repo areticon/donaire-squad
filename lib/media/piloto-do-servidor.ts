@@ -1,6 +1,8 @@
+import type { Prisma } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/server";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * O PILOTO DO SERVIDOR: quem encadeia as etapas do vídeo é a plataforma, e
@@ -32,7 +34,14 @@ export type PassoDoPiloto =
   | "cortar"
   | "semana"
   | "preparar"
-  | "capas-do-completo";
+  | "capas-do-completo"
+  | "revisar-cortes"
+  // A tela de roteiro (30/09): limpeza e diretor em texto, e a esteira PARA
+  // esperando o cliente aprovar. Ver lib/media/roteiro-da-edicao.ts.
+  | "roteiro"
+  // Pede só o vídeo completo de novo (01/10): o worker reiniciou depois de
+  // entregar os cortes e antes do completo. Ver o cortar-callback.
+  | "refazer-completo";
 
 /**
  * O segredo que assina o despacho interno.
@@ -69,14 +78,15 @@ export function assinaturaDoPilotoValida(videoId: string, assinatura: string | n
 export async function acessoAoVideo(
   req: NextRequest,
   videoId: string
-): Promise<{ where: { id: string; project?: { userId: string } }; interno: boolean } | null> {
+): Promise<{ where: { id: string; project?: Prisma.ProjectWhereInput }; interno: boolean; userId?: string } | null> {
   const sig = req.nextUrl.searchParams.get("sig");
   if (sig && assinaturaDoPilotoValida(videoId, sig)) {
     return { where: { id: videoId }, interno: true };
   }
   const { userId } = await auth();
   if (!userId) return null;
-  return { where: { id: videoId, project: { userId } }, interno: false };
+  // Dono ou membro da equipe com o projeto liberado (01/10).
+  return { where: { id: videoId, project: projetoVisivel(userId) }, interno: false, userId };
 }
 
 function baseDoApp(): string {

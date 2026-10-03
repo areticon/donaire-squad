@@ -1,0 +1,24 @@
+-- Acesso interno: o papel que separa quem OPERA a plataforma de quem PAGA.
+--
+-- Nasceu em 12/09/2026, no dia do lancamento. O Bruno pagava R$ 149 por mes
+-- num preco que nao existe mais (a chave "pro" hoje se chama Essencial e custa
+-- R$ 397) e decidiu cancelar a propria assinatura. So que cancelar dispara o
+-- webhook customer.subscription.deleted, que grava plan = "free", e o portao
+-- de entrada manda todo mundo "free" para /planos: sem este campo, cancelar a
+-- assinatura expulsaria o dono da propria plataforma.
+--
+-- Por que papel separado e nao um plano novo, tipo "interno":
+--
+-- 1. Plano governa cobranca e cota, e quem manda em cobranca e a assinatura no
+--    Stripe, nao o banco (foi exatamente essa divergencia que originou o card).
+--    Enfiar acesso interno em `plan` faria o campo significar duas coisas.
+-- 2. Toda leitura de PLANS[plan] continua funcionando sem caso especial: o
+--    admin simplesmente nao passa pelo portao nem pelo debito.
+-- 3. O extrato continua registrando o que o admin consumiu, com valor zero e a
+--    nota do que teria sido cobrado (lib/credits). Custo de verdade continua
+--    saindo de ai_usage, que e de onde a conta de preco sai.
+--
+-- Padrao "user" de proposito: a coluna nasce inofensiva em todas as linhas que
+-- ja existem, e promover alguem e um UPDATE deliberado, nunca um efeito
+-- colateral de cadastro.
+ALTER TABLE "users" ADD COLUMN "role" TEXT NOT NULL DEFAULT 'user';

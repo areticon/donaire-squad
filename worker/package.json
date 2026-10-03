@@ -9,7 +9,14 @@
     "start": "node src/index.mjs"
   },
   "dependencies": {
-    "@vercel/blob": "^2.3.2"
+    "@remotion/bundler": "4.0.530",
+    "@remotion/cli": "4.0.530",
+    "@remotion/fonts": "4.0.530",
+    "@remotion/renderer": "4.0.530",
+    "@vercel/blob": "^2.3.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.530"
   },
   "engines": {
     "node": ">=22"

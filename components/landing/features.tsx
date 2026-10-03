@@ -6,7 +6,7 @@ import {
   Sparkles,
   Share2,
   BarChart3,
-  Calendar,
+  Upload,
   Shield,
   Eye,
   Zap,
@@ -15,17 +15,17 @@ import {
 const FEATURES = [
   {
     icon: Bot,
-    title: "Time de agentes autônomos",
+    title: "Um especialista por rede, e uma gerente",
     description:
-      "Cada agente tem persona, estilo e especialidade. Roberto pesquisa, Lucas escreve para LinkedIn, Daniela cria infográficos.",
+      "Roberto pesquisa. Lucas cuida do LinkedIn, Xavier do X, Igor do Instagram, Fernanda do Facebook, Tiago do TikTok e Yan do YouTube. Diana cria artes e carrosséis, Vitor edita os seus vídeos e Paulo publica. A Vera, gerente do time, confere cada peça final e retreina quem erra. Você acompanha tudo no escritório 3D, com o seu próprio avatar.",
     color: "text-blue-400",
     bg: "bg-blue-400/10",
   },
   {
     icon: Sparkles,
-    title: "Infográficos com IA",
+    title: "Pauta nova toda semana",
     description:
-      "Gemini gera imagens e infográficos profissionais baseados nos dados do post. Visual de agência, sem agência.",
+      "Antes de escrever, a equipe olha o que aconteceu nos últimos dias no seu mercado: notícias, números novos, quem ganhou atenção e o que está pegando no X. E não repete o que você já publicou.",
     color: "text-purple-400",
     bg: "bg-purple-400/10",
   },
@@ -33,39 +33,39 @@ const FEATURES = [
     icon: Share2,
     title: "Publicação automática",
     description:
-      "LinkedIn (texto, imagem e carrossel) e X/Twitter (texto). Conecte uma vez e publique automaticamente.",
+      "LinkedIn, Instagram, Facebook, X, YouTube e TikTok. Texto, imagem, carrossel e vídeo no formato de cada rede, e no Instagram e no Facebook você escolhe feed, reels e stories, até os três juntos.",
     color: "text-green-400",
     bg: "bg-green-400/10",
   },
   {
     icon: Eye,
-    title: "Visualização em tempo real",
+    title: "Você vê cada passo",
     description:
-      "Veja seus agentes trabalhando ao vivo. Cada pensamento, cada rascunho, cada decisão visível no painel.",
+      "O calendário mostra o que está sendo feito em cada dia enquanto acontece: na fila, criando a arte, lâmina 3 de 5, vídeo no trecho 2 de 4. Nada de ficar olhando uma tela parada sem saber se travou.",
     color: "text-orange-400",
     bg: "bg-orange-400/10",
   },
   {
-    icon: Calendar,
-    title: "Agenda inteligente",
+    icon: Upload,
+    title: "O seu material ou o da IA",
     description:
-      "Defina frequência e horários. Os agentes criam e publicam automaticamente, mantendo consistência sem esforço.",
+      "Em cada dia da semana você escolhe: gerar por IA ou subir a sua imagem, as suas lâminas, o seu vídeo ou o seu texto. A equipe escreve em volta do seu material e adapta para cada rede.",
     color: "text-yellow-400",
     bg: "bg-yellow-400/10",
   },
   {
     icon: BarChart3,
-    title: "Dashboard com métricas",
+    title: "Os números de verdade",
     description:
-      "Acompanhe posts publicados, alcance e performance. Tudo em um painel centralizado e intuitivo.",
+      "O painel traz o que as redes medem: posts por semana, qual rede rende mais, os posts que mais engajaram e o que cada agente fez no mês, comparado com o mês anterior.",
     color: "text-cyan-400",
     bg: "bg-cyan-400/10",
   },
   {
     icon: Shield,
-    title: "Você aprova antes de publicar",
+    title: "Você aprova e edita antes de sair",
     description:
-      "Checkpoint de aprovação antes de cada publicação. Autonomia total dos agentes, controle total seu.",
+      "Nada é publicado sem você ver. Mude uma palavra direto no texto, peça ajuste no chat do agente ou refaça a peça inteira.",
     color: "text-red-400",
     bg: "bg-red-400/10",
   },
@@ -73,7 +73,7 @@ const FEATURES = [
     icon: Zap,
     title: "Memória persistente",
     description:
-      "Os agentes aprendem com cada run. Tom de voz, preferências, feedback: tudo guardado e evoluído.",
+      "Os agentes aprendem com cada campanha: o seu tom de voz, o que você corrige, o que você recusa. Tudo guardado, e a semana seguinte sai melhor.",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
   },
@@ -89,7 +89,7 @@ export function Features() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="selo mb-6">
             Funcionalidades
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">

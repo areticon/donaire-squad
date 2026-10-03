@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { researchTopic } from "@/lib/research/web-search";
 import { montarPrefixoCacheavel } from "@/lib/media/write-posts";
-import { diasDaSemana, normalizarSemana, ROTULO_DO_FORMATO, type FormatoDoDia } from "@/lib/media/semana-do-video";
+import { dataDoDia, diaDaSemanaDe, diasDaSemana, normalizarSemana, planoDoRun, ROTULO_DO_FORMATO, type FormatoDoDia } from "@/lib/media/semana-do-video";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -229,7 +229,7 @@ ${comTempo.slice(0, 60000)}`,
   // ── 3. Achados, dados e o ângulo por dia ────────────────────────────────
   const listaDias = dias.length
     ? dias.map((d) => `dia ${d.dia} = ${DIAS[d.dia]} (${ROTULO_DO_FORMATO[d.formato]})`).join(", ")
-    : "nenhum dia além do vídeo de segunda";
+    : "nenhum dia de texto além do vídeo e dos cortes";
   const brutoRadar = await askClaude(
     SISTEMA_ROBERTO,
     `TEMA: ${tema}
@@ -291,7 +291,7 @@ export async function gravarCardDoRadar(videoJobId: string): Promise<boolean> {
   if (!video) return false;
   const run = await prisma.pipelineRun.findFirst({
     where: { projectId: video.projectId, archived: false, config: { path: ["videoJobId"], equals: video.id } },
-    select: { id: true, weekStart: true },
+    select: { id: true, weekStart: true, config: true },
   });
   if (!run) return false;
 
@@ -326,16 +326,18 @@ export async function gravarCardDoRadar(videoJobId: string): Promise<boolean> {
     });
     return true;
   }
-  const segunda = run.weekStart ?? new Date();
-  const data = new Date(segunda);
-  data.setUTCHours(9, 0, 0, 0);
+  // No primeiro dia do plano (30/09), como em abrirQuadroDoVideo: a pesquisa
+  // acontece hoje, e a segunda da semana pode já ter passado.
+  const inicio = planoDoRun(run.config).inicio;
+  const diaDoRoberto = inicio ? diaDaSemanaDe(inicio) : 1;
+  const data = dataDoDia({ inicio, weekStart: run.weekStart }, diaDoRoberto, 9);
   await prisma.campaignCard.create({
     data: {
       runId: run.id,
       projectId: video.projectId,
       agentId: "roberto-radar",
       agentName: "Roberto Radar",
-      dayOfWeek: 1,
+      dayOfWeek: diaDoRoberto,
       scheduledDate: data,
       cardType: "research",
       mediaType: "text",

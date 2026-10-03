@@ -1,6 +1,7 @@
 import { askClaude } from "@/lib/claude";
-import { clipesEstimados } from "@/lib/media/limits";
 import type { Word } from "@/lib/media/transcribe";
+import { fechaCorte } from "@/lib/media/texto-final-do-corte";
+import type { RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
 
 /**
  * Passo 3: escolher os melhores trechos da gravação.
@@ -74,6 +75,19 @@ export type Trecho = {
    * temos, e ainda por cima sem garantia de fidelidade.
    */
   transcricao: string;
+  /**
+   * As bordas já caem numa pausa medida entre palavras, então o pedido ao
+   * worker usa o segundo exato em vez de arredondar (ver pedido-de-corte.ts).
+   * Quem marca é a refação do Vitor (`lib/media/revisao-do-corte.ts`).
+   */
+  emPausa?: boolean;
+  /**
+   * Quantas vezes o Vitor refez este corte sozinho porque a Vera reprovou.
+   * Teto em `MAX_REFACOES_DO_CORTE`; passou dele, o corte vai ao cliente.
+   */
+  refacoes?: number;
+  /** O estado da revisão do corte pela Vera, para a tela. */
+  revisaoDoCorte?: RevisaoDoCorte;
 };
 
 /** O que o modelo devolve. A fala entra depois, recortada por nós. */
@@ -83,11 +97,11 @@ const SISTEMA = `Você é editor de vídeo curto. Escolhe quais momentos de uma 
 
 Recebe a transcrição de alguém falando sem roteiro, em blocos com marcação de tempo.
 
-## A regra que manda sobre todas: NÃO ENCHA COTA
+## A regra que manda sobre todas: NOTA HONESTA, e o cliente escolhe
 
-Devolver um trecho fraco é pior que devolver menos trechos. O cliente publica o que você escolher, no nome dele, para o público dele. Um corte morno queima o alcance da conta e o crédito que ele tem com quem o segue.
+O cliente pediu um número de cortes para a semana dele e vai ESCOLHER entre os candidatos que você devolver, numa tela que mostra a nota e o motivo de cada um. Por isso devolva a quantidade de candidatos pedida, do mais forte para o mais fraco, sempre momentos diferentes da gravação.
 
-Se a gravação tem dois momentos que prestam, devolva DOIS. Se tem zero, devolva zero e explique. Ser honesto sobre a matéria-prima é o serviço, não a cota.
+A honestidade mora na NOTA, e não na quantidade: nunca suba nota para um trecho parecer melhor. Se a gravação só tem dois momentos fortes, os outros candidatos vêm com a nota que merecem e o "motivo" diz o que falta neles. Só deixe de completar a quantidade se não existir mais nenhum trecho que se sustente sozinho (aí explique no diagnóstico).
 
 ## Como o público realmente assiste, e isso manda no que você escolhe
 
@@ -107,7 +121,7 @@ Se a gravação tem dois momentos que prestam, devolva DOIS. Se tem zero, devolv
 
 **A nota final é a MENOR das seis, e não a média.** Um trecho com tese ótima e gancho fraco não funciona, porque ninguém chega na tese. O elo mais fraco decide.
 
-**Só devolva trechos com nota final 6 ou mais.** Abaixo disso, descarte, mesmo que sobrem poucos.
+**Nota final 6 ou mais é corte recomendado.** Abaixo de 6 o trecho só entra como candidato para completar a quantidade pedida, nunca na frente de um mais forte, e nunca abaixo de 4.
 
 ## O que NUNCA serve, por melhor que soe
 
@@ -139,12 +153,13 @@ trecho, prefira outro trecho.
 
 Regras de recorte:
 - Comece e termine em fronteira de frase, nunca no meio.
-- Entre 20 e 120 segundos.
-- Os trechos não podem se sobrepor.
-- Prefira menos trechos bons a completar a cota com trecho fraco. Se a gravação
-  só tem três momentos que prestam, devolva três.
-- Entre 20 e 60 segundos é onde a retenção vive. Passe de 60 só se o trecho
-  realmente precisar, e nunca de 90.
+- O trecho é UM intervalo contínuo da gravação: o que vai ao ar é tudo o que foi dito entre o início e o fim, na ordem. Não conte com juntar pedaços distantes.
+- A ÚLTIMA frase do trecho precisa estar COMPLETA e terminar em ponto final, seguida de pausa. Nunca termine em "então", "e", "mas", "porque", em vírgula, nem em frase que anuncia outra ("então a forma mais inteligente que tem é..."): se a conclusão vem depois, o trecho vai até ela.
+- O trecho termina ANTES de qualquer despedida ou encerramento do vídeo ("Deus abençoe, até mais", "se inscreve no canal").
+- O trecho termina onde o RACIOCÍNIO termina, e não só a frase. Uma cena forte no meio de uma história ("o barco começou a afundar") NÃO é fecho se a história continua e o ponto que ela ilustra vem depois: o trecho vai até a frase em que o ponto aterrissa (a lição, a virada, a pergunta final). Quem assiste só o corte precisa sair entendendo o que você quis dizer.
+- Entre 20 e 90 segundos. Entre 30 e 60 é onde a retenção vive; passe de 60 só se o raciocínio precisar. Se o raciocínio só fecha depois de 90, vá até a frase do fecho, mas nunca passe de 120.
+- Os trechos não podem se sobrepor, e cada um é um momento diferente: dois recortes do mesmo raciocínio contam como um só.
+- Prefira vários trechos curtos e completos a um trecho longo que junta dois assuntos: o cliente precisa de opções para escolher.
 
 Regras de escrita:
 - Nunca use travessão. Use vírgula, dois-pontos, ponto e vírgula ou parênteses.
@@ -172,19 +187,206 @@ type Paragrafo = { text: string; start: number; end: number };
  */
 export type FonteDaFala = { paragrafos: Paragrafo[]; palavras?: Word[] };
 
+/**
+ * QUANTOS CANDIDATOS A SELEÇÃO TRAZ (01/10).
+ *
+ * Até 30/09 o número saía só da duração (`clipesEstimados`) e o prompt dizia
+ * "até N, menos se não houver N que prestem", com "NÃO ENCHA COTA" em
+ * destaque e corte duro na nota 6. Medido em 01/10 nas duas gravações do
+ * teste do Bruno: o modelo devolvia UM trecho (22 min e 4,7 min), e o número
+ * de cortes que o cliente marcou no passo 4 (os dias de "Vídeo curto") nem
+ * chegava aqui. Resultado: o cliente pedia três e escolhia entre um.
+ *
+ * Agora a conta parte do pedido: pelo menos o pedido, e de preferência
+ * `MARGEM_DE_ESCOLHA` a mais para a tela de roteiro ter opção. Tudo limitado ao
+ * que a gravação comporta: cortes sem sobreposição de uns 45 s em média.
+ */
+const MARGEM_DE_ESCOLHA = 2;
+/** Duração média de um corte para dizer quantos cabem na gravação sem sobrepor. */
+const SEGUNDOS_POR_CORTE_QUE_CABE = 45;
+/** Teto de candidatos: acima disso o roteiro fica caro e a tela vira lista. */
+const TETO_DE_CANDIDATOS = 8;
+/**
+ * Até quando ainda vale pedir o complemento: 300 s de primeira chamada e fecho,
+ * mais até 180 s (com uma retentativa, 360) do complemento e o fecho dele,
+ * ainda cabem nos 800 s da rota com folga para gravar o resultado.
+ */
+const ORCAMENTO_PARA_COMPLEMENTO_MS = 300_000;
+/** Candidatos a mais na primeira chamada, para o descarte do fecho não deixar buraco. */
+const FOLGA_CONTRA_DESCARTE = 1;
+
+export type MetaDaSelecao = { pedido: number; minimo: number; alvo: number; capacidade: number };
+
+export function metaDaSelecao(duracaoSegundos: number, pedido?: number | null): MetaDaSelecao {
+  // Sem pedido (plano sem dia de vídeo curto, ou chamada antiga), conta como
+  // um: a esteira sempre corta, e um corte com margem de escolha é o mínimo
+  // que a tela de roteiro precisa para não ser um "aprove isto".
+  const p = pedido && pedido > 0 ? Math.floor(pedido) : 1;
+  const capacidade = Math.max(1, Math.min(TETO_DE_CANDIDATOS, Math.floor(duracaoSegundos / SEGUNDOS_POR_CORTE_QUE_CABE)));
+  return {
+    pedido: p,
+    minimo: Math.min(p, capacidade),
+    alvo: Math.min(p + MARGEM_DE_ESCOLHA, capacidade),
+    capacidade,
+  };
+}
+
+/**
+ * A gravação não rendeu NENHUM trecho (01/10). Separada do erro técnico porque
+ * a consequência é outra: aqui a rota /select devolve os créditos da primeira
+ * parte (decisão do Bruno), e numa falha técnica o vídeo é tentado de novo.
+ */
+export class SemTrechoAproveitavel extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SemTrechoAproveitavel";
+  }
+}
+
 export async function selecionarTrechos(
   fonte: FonteDaFala,
   duracaoSegundos: number,
   contexto?: { nicho?: string | null; publico?: string | null; voz?: string | null },
-  usageCtx?: { projectId?: string; runId?: string }
+  usageCtx?: { projectId?: string; runId?: string },
+  /** Quantos cortes o cliente marcou no passo 4 (dias de "Vídeo curto"). */
+  pedido?: number | null
 ): Promise<Trecho[]> {
   const { paragrafos, palavras } = fonte;
   if (!paragrafos.length) {
     throw new Error("Transcrição sem parágrafos: nada para escolher.");
   }
 
-  const alvo = clipesEstimados(duracaoSegundos);
+  const comeco = Date.now();
+  const meta = metaDaSelecao(duracaoSegundos, pedido);
+  console.log(`[selecao] pedido ${meta.pedido}, alvo ${meta.alvo} candidatos (cabem ${meta.capacidade})`);
 
+  // Pede um a mais que o alvo: a conferência do fecho descarta o trecho que
+  // não conclui (medido em 01/10, um ou dois por rodada), e um candidato de
+  // folga na mesma chamada sai mais barato e mais rápido que o complemento.
+  const pedidos = Math.min(meta.alvo + FOLGA_CONTRA_DESCARTE, meta.capacidade + FOLGA_CONTRA_DESCARTE);
+  const primeira = await pedirTrechos(paragrafos, duracaoSegundos, contexto, meta, pedidos, [], usageCtx);
+  if (primeira.diagnostico) {
+    console.log(`[selecao] diagnóstico do agente: ${primeira.diagnostico}`);
+  }
+  let escolhidos = await prepararTrechos(primeira.trechos, [], meta.alvo, duracaoSegundos, palavras, usageCtx, pedidos);
+
+  // COMPLEMENTO (01/10): se, depois da nota, da abertura, do fecho e da
+  // sobreposição, sobrou menos que o alvo, uma segunda chamada pede SÓ o que
+  // falta, fora dos intervalos já escolhidos. É o que garante o pedido mesmo
+  // quando o modelo é conservador ou dois trechos colapsam no mesmo momento.
+  // Falha aqui não derruba a seleção: fica com o que já tinha.
+  //
+  // Só com tempo: a rota vive 800 s e a primeira chamada pode levar até 240
+  // (o cliente da API ainda tenta de novo uma vez). Passado o orçamento, fica
+  // com o que tem em vez de arriscar morrer em "selecting".
+  const decorrido = Date.now() - comeco;
+  if (escolhidos.length < meta.alvo && decorrido > ORCAMENTO_PARA_COMPLEMENTO_MS) {
+    console.warn(`[selecao] sem tempo para o complemento (${Math.round(decorrido / 1000)} s): ficam ${escolhidos.length}`);
+  } else if (escolhidos.length < meta.alvo) {
+    const falta = meta.alvo - escolhidos.length;
+    try {
+      // Os trechos da primeira chamada que caíram (nota, fecho, sobreposição)
+      // vão junto como recusados: sem isso o modelo propõe o mesmo de novo e
+      // ele cai de novo (medido em 01/10, o "5%" voltou nas duas rodadas).
+      const recusados = primeira.trechos.filter((b) => !sobrepoe(b, escolhidos));
+      const extra = await pedirTrechos(paragrafos, duracaoSegundos, contexto, meta, falta, escolhidos, usageCtx, 180_000, recusados);
+      const novos = await prepararTrechos(extra.trechos, escolhidos, falta, duracaoSegundos, palavras, usageCtx);
+      console.log(`[selecao] complemento: pedidos ${falta}, vieram ${novos.length}`);
+      escolhidos = [...escolhidos, ...novos].sort((a, b) => a.inicio - b.inicio);
+    } catch (e) {
+      console.error("[selecao] complemento falhou:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  if (!escolhidos.length) {
+    // Classe própria (01/10): a rota /select estorna a primeira parte só neste caso.
+    throw new SemTrechoAproveitavel(
+      primeira.diagnostico
+        ? `Nenhum trecho aproveitável nesta gravação. ${primeira.diagnostico}`
+        : "O agente não devolveu nenhum trecho."
+    );
+  }
+  if (escolhidos.length < meta.minimo) {
+    console.warn(`[selecao] só ${escolhidos.length} de ${meta.minimo} cortes pedidos: a gravação não rendeu mais`);
+  }
+
+  return escolhidos.map(({ alinhado, ...t }) => ({
+    ...t,
+    transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras, alinhado),
+  }));
+}
+
+type TrechoPreparado = TrechoBruto & { alinhado?: boolean };
+
+/**
+ * Do que o modelo devolveu ao que pode ir para a tela: tempos saneados, nota
+ * conferida, abertura e fim alinhados ao texto, fecho do raciocínio conferido e
+ * nenhuma sobreposição, nem entre eles nem com os `jaEscolhidos`.
+ *
+ * A sobreposição é conferida DE NOVO no fim porque `ajustarAbertura` pode
+ * recuar o começo (a abertura escolhida estava antes do tempo devolvido) e
+ * estender o fim até fechar a frase: dois trechos separados na saída do modelo
+ * podiam terminar encostados um no outro depois disso.
+ */
+async function prepararTrechos(
+  brutos: TrechoBruto[],
+  jaEscolhidos: TrechoPreparado[],
+  vagas: number,
+  duracaoSegundos: number,
+  palavras: Word[] | undefined,
+  usageCtx?: { projectId?: string; runId?: string },
+  /** Quantos podem passar da nota antes do fecho (as vagas mais a folga). */
+  comFolga = vagas
+): Promise<TrechoPreparado[]> {
+  const saneados = sanear(brutos, duracaoSegundos);
+  const foraDosEscolhidos = saneados.filter((t) => !sobrepoe(t, jaEscolhidos));
+  console.log(`[selecao] ${brutos.length} trechos do modelo, ${saneados.length} depois do saneamento, ${foraDosEscolhidos.length} fora dos já escolhidos`);
+  const ajustados = comNotaSuficiente(foraDosEscolhidos, comFolga).map((t) => ajustarAbertura(t, palavras));
+  const conferidos = palavras?.length ? await conferirFecho(ajustados, palavras, usageCtx, jaEscolhidos) : ajustados;
+  // Sobrando mais que as vagas, ficam os mais fortes (e não os primeiros da gravação).
+  return semSobreposicao(conferidos, jaEscolhidos)
+    .sort((a, b) => (b.nota ?? 0) - (a.nota ?? 0))
+    .slice(0, vagas)
+    .sort((a, b) => a.inicio - b.inicio);
+}
+
+function sobrepoe(t: { inicio: number; fim: number }, outros: Array<{ inicio: number; fim: number }>): boolean {
+  return outros.some((o) => t.inicio < o.fim && o.inicio < t.fim);
+}
+
+/**
+ * Fica com os mais fortes que não se encostam: em ordem de nota (empate, o
+ * mais longo, que costuma ter a ideia inteira), aceita quem não sobrepõe nada
+ * já aceito. Devolve na ordem da gravação.
+ */
+function semSobreposicao<T extends { inicio: number; fim: number; nota?: number; titulo?: string }>(
+  trechos: T[],
+  jaEscolhidos: Array<{ inicio: number; fim: number }>
+): T[] {
+  const porForca = [...trechos].sort((a, b) => (b.nota ?? 0) - (a.nota ?? 0) || b.fim - b.inicio - (a.fim - a.inicio));
+  const aceitos: T[] = [];
+  for (const t of porForca) {
+    if (sobrepoe(t, [...jaEscolhidos, ...aceitos])) {
+      console.log(`[selecao] descartado "${t.titulo ?? ""}": encosta num corte mais forte depois do ajuste das bordas`);
+      continue;
+    }
+    aceitos.push(t);
+  }
+  return aceitos.sort((a, b) => a.inicio - b.inicio);
+}
+
+/** Uma chamada ao seletor, pedindo `quantos` trechos fora dos `jaEscolhidos`. */
+async function pedirTrechos(
+  paragrafos: Paragrafo[],
+  duracaoSegundos: number,
+  contexto: { nicho?: string | null; publico?: string | null; voz?: string | null } | undefined,
+  meta: MetaDaSelecao,
+  quantos: number,
+  jaEscolhidos: Array<{ inicio: number; fim: number; titulo?: string }>,
+  usageCtx?: { projectId?: string; runId?: string },
+  timeoutMs = 240_000,
+  recusados: Array<{ inicio: number; fim: number; titulo?: string }> = []
+): Promise<{ trechos: TrechoBruto[]; diagnostico?: string }> {
   const blocos = paragrafos
     .map((p, i) => `[${i}] ${p.start.toFixed(0)}s a ${p.end.toFixed(0)}s: ${p.text}`)
     .join("\n\n");
@@ -197,10 +399,22 @@ export async function selecionarTrechos(
     .filter(Boolean)
     .join("\n");
 
+  // O pedido vai com o número e o porquê: sem isso o modelo lê "até N" como
+  // licença para devolver um só (medido em 01/10).
+  const pedidoDoCliente = jaEscolhidos.length
+    ? `Já foram escolhidos estes trechos, que NÃO podem ser repetidos nem tocados (nenhum segundo em comum):
+${jaEscolhidos.map((t) => `- ${t.inicio.toFixed(0)}s a ${t.fim.toFixed(0)}s${t.titulo ? `: ${t.titulo}` : ""}`).join("\n")}
+${recusados.length ? `
+Estes já foram propostos e RECUSADOS (nota baixa, ou o raciocínio não fecha sem invadir outro corte): não proponha de novo o mesmo momento.
+${recusados.map((t) => `- ${t.inicio.toFixed(0)}s a ${t.fim.toFixed(0)}s${t.titulo ? `: ${t.titulo}` : ""}`).join("\n")}
+` : ""}
+Faltam candidatos para o cliente escolher. Devolva mais ${quantos} trecho${quantos > 1 ? "s" : ""}, em outros momentos da gravação, do mais forte para o mais fraco, com nota honesta.`
+    : `O cliente pediu ${meta.pedido} corte${meta.pedido > 1 ? "s" : ""} para a semana e vai escolher na tela de roteiro. Devolva ${quantos} trechos candidatos, do mais forte para o mais fraco, com nota honesta.`;
+
   const resposta = await askClaude(
     SISTEMA,
     `${perfil ? perfil + "\n\n" : ""}Gravação de ${Math.round(duracaoSegundos / 60)} minutos.
-Escolha até ${alvo} trechos, menos se não houver ${alvo} que prestem.
+${pedidoDoCliente}
 
 ${blocos}`,
     // 16000 é teto, não meta, e teto não custa: o cobrado é o que o modelo
@@ -229,8 +443,9 @@ ${blocos}`,
       effort: "medium",
       // 240s: aborta DENTRO da vida da funcao (maxDuration 800), entao a
       // falha vira status failed com retry, e nao um selecting mudo ate o
-      // prazo da varredura (o travamento que o Bruno viu em 31/08).
-      timeoutMs: 240_000,
+      // prazo da varredura (o travamento que o Bruno viu em 31/08). O
+      // complemento (01/10) recebe menos, porque roda depois da primeira.
+      timeoutMs,
       usage: { operation: "video_selecao", ...usageCtx },
     }
   );
@@ -245,30 +460,139 @@ ${blocos}`,
   // JSON. Escapar antes de parsear salva a chamada em vez de perder o trabalho
   // inteiro por um caractere.
   const dados = parseTolerante(limpo);
-  const trechos = dados.trechos ?? [];
-  if (dados.diagnostico) {
-    console.log(`[selecao] diagnóstico do agente: ${dados.diagnostico}`);
-  }
-  if (!trechos.length) {
-    throw new Error(
-      dados.diagnostico
-        ? `Nenhum trecho aproveitável nesta gravação. ${dados.diagnostico}`
-        : "O agente não devolveu nenhum trecho."
-    );
-  }
-
-  // A fala entra aqui, recortada do que já está no banco. O modelo devolve só
-  // os tempos.
-  return comNotaSuficiente(sanear(trechos, duracaoSegundos))
-    .map((t) => ajustarAbertura(t, palavras))
-    .map(({ alinhado, ...t }) => ({
-      ...t,
-      transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras, alinhado),
-    }));
+  // A fala entra depois, recortada do que já está no banco: o modelo devolve
+  // só os tempos.
+  return { trechos: dados.trechos ?? [], diagnostico: dados.diagnostico };
 }
+
+/**
+ * A CONFERÊNCIA DO FECHO (30/09).
+ *
+ * O código já garante que o corte termina em frase completa, mas frase
+ * completa não é raciocínio completo. No vídeo do celular do Bruno o corte
+ * "Jesus entrou na empresa, não no templo" terminava em "o barco começou a
+ * afundar.", com a história e o ponto dela ainda por vir; o seletor chamou de
+ * "fecha numa cena forte". O Bruno: "como a plataforma pode finalizar um vídeo
+ * antes de concluir o raciocínio?".
+ *
+ * Aqui um segundo olhar, barato e focado, lê o fim do corte e o minuto de fala
+ * seguinte, numerado por frase, e responde só: o raciocínio fechou? Se não, em
+ * que frase ele fecha. O fim é estendido até lá quando cabe (até 120 s de
+ * corte e sem invadir o trecho seguinte). Falha da conferência nunca derruba a
+ * seleção: o trecho segue como estava.
+ *
+ * Desde 01/10, quando o fecho NÃO cabe (o próximo corte está logo ali, o teto
+ * de 120 s chegou ou a gravação acabou), o conferente também vê as últimas
+ * frases de dentro do corte e pode RECUAR o fim para a frase em que um ponto
+ * completo já aterrissou. Sem recuo possível, o trecho sai da lista: antes ele
+ * ia para a tela terminando no ar ("os próximos etapas da nossa casa, tá?").
+ */
+const JANELA_DO_FECHO_SEG = 75;
+const MAX_CORTE_SEG = 120;
+
+export async function conferirFecho<T extends { inicio: number; fim: number; titulo?: string; ideia?: string }>(
+  trechos: T[],
+  palavras: Word[],
+  usageCtx?: { projectId?: string; runId?: string },
+  /**
+   * Cortes já escolhidos fora desta lista (o complemento da seleção, 01/10):
+   * o fecho também não pode avançar sobre eles.
+   */
+  vizinhos: Array<{ inicio: number; fim: number }> = []
+): Promise<T[]> {
+  const ordenados: Array<{ inicio: number }> = [...trechos, ...vizinhos].sort((a, b) => a.inicio - b.inicio);
+  const conferidos = await Promise.all(
+    trechos.map(async (t): Promise<T | null> => {
+      try {
+        const dentro = palavras.filter((w) => w.start >= t.inicio - 0.05 && w.end <= t.fim + 0.05);
+        if (!dentro.length) return t;
+        const fimDoCorte = dentro[dentro.length - 1].end;
+        const proximo = ordenados.find((o) => o.inicio > t.inicio);
+        const limite = Math.min(t.inicio + MAX_CORTE_SEG, proximo ? proximo.inicio - 0.3 : Infinity, fimDoCorte + JANELA_DO_FECHO_SEG);
+        // As frases depois do corte, numeradas, com o segundo em que acabam.
+        const frases: Array<{ n: number; texto: string; fim: number }> = [];
+        let atual: string[] = [];
+        for (const w of palavras) {
+          if (w.start < fimDoCorte - 0.01 || w.start > limite) continue;
+          atual.push(w.word);
+          if (fechaCorte(w.word)) {
+            frases.push({ n: frases.length + 1, texto: atual.join(" "), fim: w.end });
+            atual = [];
+          }
+        }
+        // As últimas frases DE DENTRO do corte, numeradas também (01/10): são
+        // o recuo quando o fecho não cabe. Só valem as que deixam o corte com
+        // pelo menos `MIN_CORTE_SEG`; a última é o fim atual e não é recuo.
+        const internas: Array<{ n: number; texto: string; fim: number }> = [];
+        atual = [];
+        for (const w of dentro) {
+          atual.push(w.word);
+          if (fechaCorte(w.word)) {
+            internas.push({ n: 0, texto: atual.join(" "), fim: w.end });
+            atual = [];
+          }
+        }
+        if (atual.length) internas.push({ n: 0, texto: atual.join(" "), fim: fimDoCorte });
+        const finais = internas.slice(-FRASES_FINAIS_MOSTRADAS).map((f, i) => ({ ...f, n: i + 1 }));
+        const atualFim = finais.length;
+        const bruto = await askClaude(
+          `Você confere se um CORTE de vídeo curto termina com o raciocínio concluído. Quem assiste só o corte precisa sair entendendo o ponto. Uma cena forte no meio de uma história não é conclusão se o ponto que ela ilustra vem depois. Frase que anuncia o que vem ("vamos ver", "o próximo passo é"), muda de assunto ou só pede confirmação ("né?", "tá?") também não é conclusão. Despedida ou encerramento do vídeo ("Deus abençoe, até mais", "se inscreve", "espero que tenha ajudado") NUNCA fica no corte: se o corte termina nela, concluido é false e recuarAte aponta a última frase antes da despedida.
+Responda APENAS JSON: {"concluido": true|false, "fraseDoFecho": número da frase DEPOIS do corte em que o raciocínio conclui, ou null, "recuarAte": número da frase FINAL DO CORTE em que um raciocínio completo já terminou, ou null, "motivo": "curto"}.
+Se já concluiu, os dois são null. Se não concluiu e a conclusão aparece nas frases depois, use fraseDoFecho. Se não concluiu e a conclusão NÃO aparece depois, use recuarAte (só se cortar ali deixa um ponto completo e entendível); se nem isso, os dois são null.`,
+          `TÍTULO DO CORTE: ${t.titulo ?? ""}
+IDEIA: ${t.ideia ?? ""}
+
+FRASES FINAIS DO CORTE (a ${atualFim} é a última que vai ao ar hoje):
+${finais.map((f) => `[${f.n}] ${f.texto}`).join("\n")}
+
+O QUE VEM DEPOIS NA GRAVAÇÃO:
+${frases.length ? frases.map((f) => `[${f.n}] ${f.texto}`).join("\n") : "(nada: o corte não pode avançar, por acabar a gravação, encostar no próximo corte ou bater o teto de duração)"}`,
+          // Esforço médio (01/10): no baixo, o conferente aceitava fins fracos
+          // como "Então essa é a ideia aqui.", e o Bruno pediu corte preciso.
+          // Custa centavos a mais por vídeo.
+          { maxTokens: 1500, effort: "medium", usage: { operation: "video_fecho", ...usageCtx } }
+        );
+        const r = JSON.parse(bruto.replace(/^[^{]*/, "").replace(/[^}]*$/, "")) as { concluido?: boolean; fraseDoFecho?: number | null; recuarAte?: number | null; motivo?: string };
+        if (r.concluido !== false) return t;
+        const alvo = r.fraseDoFecho ? frases.find((f) => f.n === r.fraseDoFecho) : undefined;
+        if (alvo && alvo.fim > t.fim) {
+          console.log(`[selecao] fecho: "${t.titulo ?? ""}" estendido de ${t.fim.toFixed(0)}s para ${alvo.fim.toFixed(0)}s (${r.motivo ?? ""})`);
+          return { ...t, fim: alvo.fim };
+        }
+        // O fecho não cabe (próximo corte, teto de 120 s ou fim da gravação).
+        // Antes o corte seguia assim mesmo, terminando no ar; agora recua para
+        // a frase em que um ponto completo já aterrissou, ou sai da lista: um
+        // candidato que termina no meio do raciocínio não vai para a tela, e
+        // o complemento da seleção pede outro no lugar.
+        const recuo = r.recuarAte ? finais.find((f) => f.n === r.recuarAte && f.n < atualFim) : undefined;
+        if (recuo && recuo.fim - t.inicio >= MIN_CORTE_SEG) {
+          console.log(`[selecao] fecho: "${t.titulo ?? ""}" recuado de ${t.fim.toFixed(0)}s para ${recuo.fim.toFixed(0)}s (${r.motivo ?? ""})`);
+          return { ...t, fim: recuo.fim };
+        }
+        console.log(`[selecao] fecho: "${t.titulo ?? ""}" descartado, termina sem concluir e não há onde fechar (${r.motivo ?? ""})`);
+        return null;
+      } catch (e) {
+        console.error("[selecao] conferência do fecho falhou:", e instanceof Error ? e.message : e);
+        return t;
+      }
+    })
+  );
+  return conferidos.filter((t): t is Awaited<T> => t !== null) as T[];
+}
+
+/** Quantas frases do fim do corte o conferente vê para poder recuar. */
+const FRASES_FINAIS_MOSTRADAS = 8;
+/** Recuar o fim nunca deixa o corte mais curto que isto. */
+const MIN_CORTE_SEG = 20;
 
 /** Abaixo disto o trecho sai morno e queima o alcance de quem publicar. */
 const NOTA_MINIMA = 6;
+/**
+ * Abaixo disto nem como candidato: nota 3 quer dizer que algum critério
+ * quebrou de vez (não se entende sozinho, não tem tese), e mostrar isso como
+ * opção seria empurrar ao cliente um corte que a gente sabe que não funciona.
+ */
+const NOTA_PISO = 4;
 
 /**
  * Descarta o que não passa da nota, e recalcula a nota em código.
@@ -284,7 +608,9 @@ const NOTA_MINIMA = 6;
  * decidiu" não é resposta.
  */
 function comNotaSuficiente<T extends { titulo?: string; notas?: Record<string, number>; nota?: number }>(
-  trechos: T[]
+  trechos: T[],
+  /** Quantos candidatos o cliente precisa ver (pedido mais a margem). */
+  vagas: number
 ): T[] {
   const criterios = ["gancho", "tese", "prova", "autonomia", "emocao", "fecho"] as const;
 
@@ -295,19 +621,31 @@ function comNotaSuficiente<T extends { titulo?: string; notas?: Record<string, n
     return { trecho: t, nota: menor, pior: criterios[valores.indexOf(menor)] };
   });
 
+  // Os recomendados (6 ou mais) entram sempre. Abaixo disso, desde 01/10, o
+  // trecho pode entrar como CANDIDATO para completar o que o cliente pediu,
+  // do mais forte para o mais fraco e nunca abaixo do piso: a nota fica
+  // gravada e visível, então a honestidade sobre a matéria-prima continua; o
+  // que mudou é que o cliente escolhe em vez de o código decidir por ele.
   const passam = comNota.filter((x) => x.nota >= NOTA_MINIMA);
+  const reserva = comNota
+    .filter((x) => x.nota < NOTA_MINIMA && x.nota >= NOTA_PISO)
+    .sort((a, b) => b.nota - a.nota)
+    .slice(0, Math.max(0, vagas - passam.length));
   for (const x of comNota) {
-    if (x.nota < NOTA_MINIMA) {
+    if (x.nota < NOTA_MINIMA && !reserva.includes(x)) {
       console.log(
         `[selecao] descartado "${x.trecho.titulo ?? "sem título"}": ` +
           `nota ${x.nota}, pior critério ${x.pior || "?"}`
       );
     }
   }
+  for (const x of reserva) {
+    console.log(`[selecao] candidato abaixo da nota ${NOTA_MINIMA} para completar o pedido: "${x.trecho.titulo ?? ""}", nota ${x.nota}, pior critério ${x.pior || "?"}`);
+  }
   console.log(
-    `[selecao] ${passam.length} de ${trechos.length} trechos passaram da nota ${NOTA_MINIMA}`
+    `[selecao] ${passam.length} de ${trechos.length} trechos passaram da nota ${NOTA_MINIMA}, ${reserva.length} entram como candidatos`
   );
-  return passam.map((x) => ({ ...x.trecho, nota: x.nota }));
+  return [...passam, ...reserva].map((x) => ({ ...x.trecho, nota: x.nota }));
 }
 
 /**
@@ -348,10 +686,18 @@ function ajustarAbertura<T extends { inicio: number; fim: number; abertura?: str
   // É o mesmo defeito da abertura, do outro lado: modelo de linguagem erra
   // aritmética de tempo e acerta julgamento de conteúdo. Onde houver texto e
   // número sobre a mesma coisa, o texto manda.
-  const fim =
-    fimEncaixado > ultima && fimEncaixado < palavras.length
-      ? palavras[fimEncaixado].end
-      : t.fim;
+  //
+  // `>=` e não `>` (29/09): quando a última palavra já fechava a frase, o fim
+  // ficava no número do modelo, que pode cair antes do fim dessa palavra.
+  const fechou = fimEncaixado < palavras.length && fechaCorte(palavras[fimEncaixado].word);
+  const fim = fechou && fimEncaixado >= ultima ? palavras[fimEncaixado].end : t.fim;
+  if (!fechou) {
+    // Checagem em código da regra do prompt: nenhum trecho termina sem frase
+    // completa sem que o log diga. A Vera lê o texto final e reprova depois.
+    console.warn(
+      `[selecao] trecho de ${t.inicio.toFixed(0)}s termina sem frase completa, em "${palavras[fimEncaixado]?.word ?? "?"}"`
+    );
+  }
 
   // O agente escolheu a abertura. O código só confere que ela EXISTE ali.
   const alvo = acharAbertura(palavras, t.abertura, encaixado, ultima);
@@ -610,12 +956,15 @@ function encaixarNaFrase(
     achouInicio = fechaFrase(palavras[a - 1].word);
   }
 
-  // Fim: avança até a primeira palavra que fecha frase.
+  // Fim: avança até a primeira palavra que fecha frase E pode fechar corte.
+  // `fechaCorte` e não só `fechaFrase` (29/09): a transcrição às vezes põe
+  // ponto depois de "então" ou "e", que puxam a frase seguinte, e o corte
+  // que termina ali fica pendurado. Mesma regra da Vera e do Vitor.
   let b = ultima;
-  let achouFim = fechaFrase(palavras[b].word);
+  let achouFim = fechaCorte(palavras[b].word);
   while (!achouFim && b < palavras.length - 1 && b - ultima < MAX_PALAVRAS_DE_ENCAIXE) {
     b++;
-    achouFim = fechaFrase(palavras[b].word);
+    achouFim = fechaCorte(palavras[b].word);
   }
 
   return [achouInicio ? a : primeira, achouFim ? b : ultima];

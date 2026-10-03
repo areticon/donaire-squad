@@ -51,6 +51,35 @@ export function getInstagramAuthUrl(redirectUri: string, state: string): string 
     enable_fb_login: "0",
     force_authentication: "1",
   });
+
+  /**
+   * A TELA DE CONSENTIMENTO DO INSTAGRAM, e por que ela NAO e forcada aqui.
+   *
+   * O screencast do App Review reprovado em 22/09 mostrava, no lugar do
+   * consentimento, a frase "voce conectou anteriormente o app Demandou a sua
+   * conta do Instagram" com um botao de permitir. Isso e reautorizacao, e a
+   * Meta pediu o contrario: o fluxo completo, com o usuario concedendo cada
+   * permissao.
+   *
+   * A tentacao era mandar `force_reauth=true`, como o Facebook faz com
+   * `auth_type=rerequest`. Nao foi feito: `force_authentication=1` acima ja
+   * forca o LOGIN, e o parametro extra nao esta documentado para este
+   * endpoint (o Login com Instagram e outro fluxo que o do Facebook).
+   * Mandar parametro que talvez nao exista, num caminho de producao que
+   * funciona, para resolver uma gravacao que acontece uma vez, e trocar risco
+   * permanente por conveniencia de um dia.
+   *
+   * O jeito seguro de conseguir a tela limpa esta do lado de fora do codigo:
+   * remover a Demandou em Instagram, Configuracoes, Apps e sites, antes de
+   * gravar. Sem concessao antiga, a tela de consentimento aparece inteira.
+   */
+
+  // O idioma do dialogo. MEDIDO em 22/09: a Meta IGNORA este parametro e usa
+  // o idioma da conta de quem esta logado. Fica porque nao custa, mas nao
+  // resolve. Ver o comentario em lib/oauth/facebook.ts.
+  const locale = process.env.OAUTH_LOCALE;
+  if (locale) params.set("locale", locale);
+
   return `${AUTH_URL}?${params.toString()}`;
 }
 
@@ -242,6 +271,44 @@ export async function publishInstagramReels(
   const mediaId = await igPost(`${igUserId}/media_publish`, accessToken, {
     creation_id: containerId,
   });
+  return { mediaId, url: await fetchPermalink(mediaId, accessToken) };
+}
+
+/**
+ * Publica um STORY, de imagem ou de vídeo (21/09, pedido do formato por rede).
+ *
+ * É o mesmo endpoint de container do feed, com `media_type: STORIES`, e por
+ * isso entrou junto com o reel: nenhum caminho novo de autenticação, nenhuma
+ * permissão nova além das que a publicação já usa.
+ *
+ * DUAS DIFERENÇAS QUE NÃO SÃO DETALHE, e as duas vieram da doc:
+ *
+ *   1. story NÃO tem legenda. A API aceita o campo e o ignora, o que é pior do
+ *      que recusar: o texto que o redator escreveu sumiria sem ninguém avisar.
+ *      Por isso `caption` nem é enviado, e quem chama decide o que dizer ao
+ *      cliente sobre o texto da peça;
+ *   2. story dura 24 horas. Isso não é regra de código, é o que a tela precisa
+ *      ter dito antes (`avisoDoFormato` em lib/publish/formato-de-destino.ts).
+ *
+ * O tempo de espera do vídeo é o mesmo do Reels: é o mesmo transcode do lado
+ * deles, e 90 segundos derrubaria story legítimo que estava só demorando.
+ */
+export async function publishInstagramStory(
+  accessToken: string,
+  igUserId: string,
+  mediaUrl: string,
+  ehVideo: boolean
+): Promise<{ mediaId: string; url: string | null }> {
+  const containerId = await igPost(`${igUserId}/media`, accessToken, {
+    media_type: "STORIES",
+    ...(ehVideo ? { video_url: mediaUrl } : { image_url: mediaUrl }),
+  });
+  await waitForContainer(containerId, accessToken, ehVideo ? 5 * 60_000 : 90_000);
+  const mediaId = await igPost(`${igUserId}/media_publish`, accessToken, {
+    creation_id: containerId,
+  });
+  // Story publicado devolve permalink em parte das contas e null em outras; o
+  // null aqui não é falha, e a tela já trata post sem endereço.
   return { mediaId, url: await fetchPermalink(mediaId, accessToken) };
 }
 

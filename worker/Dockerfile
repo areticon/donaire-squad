@@ -35,6 +35,17 @@ RUN pip3 install --no-cache-dir --break-system-packages \
         opencv-python-headless==4.11.0.86 \
         numpy==2.2.6
 
+# O yt-dlp (01/10) mede os vídeos de referência do YouTube (src/medir-referencia.mjs):
+# baixa só o começo, mede e apaga. Sem versão fixa de propósito: o YouTube
+# muda e o yt-dlp acompanha; se faltar ou falhar, só a medida do YouTube cai.
+#
+# `yt-dlp[default]` e não só `yt-dlp` (02/10): o YouTube passou a exigir um
+# interpretador de JavaScript, e o extra traz o yt-dlp-ejs (os scripts que o
+# interpretador roda). O interpretador é o Node desta imagem (--js-runtimes
+# node na chamada); sem isto todo vídeo falhava com "YouTube extraction
+# without a JS runtime has been deprecated".
+RUN pip3 install --no-cache-dir --break-system-packages "yt-dlp[default]"
+
 WORKDIR /app
 
 # O modelo de segmentação vai na imagem, e não é baixado em tempo de execução.
@@ -42,6 +53,15 @@ WORKDIR /app
 # caminho que já tem download de vídeo para dar errado.
 ADD https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite /app/modelos/selfie_segmenter.tflite
 RUN chmod 644 /app/modelos/selfie_segmenter.tflite
+
+# Os dois modelos da CAPA (30/09): o Face Landmarker escolhe o quadro pelo rosto
+# (olho aberto, boca fechada, de frente) e o segmentador multiclasse recorta a
+# pessoa com o cabelo melhor que o de selfie. A capa deixou de pedir ao modelo
+# de imagem para mexer no rosto, que foi o que distorceu o Bruno no teste de
+# 29/09. Ver src/quadro-da-capa.py.
+ADD https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task /app/modelos/face_landmarker.task
+ADD https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite /app/modelos/selfie_multiclass.tflite
+RUN chmod 644 /app/modelos/face_landmarker.task /app/modelos/selfie_multiclass.tflite
 
 # PROVA EM TEMPO DE CONSTRUCAO, e nao verificacao em producao.
 #
@@ -121,9 +141,35 @@ RUN npm install --omit=dev --no-audit --no-fund
 
 COPY src ./src
 
+# O EDITOR COMPLETO (30/09): o Remotion renderiza a montagem num Chrome
+# headless. As bibliotecas são as da documentação oficial de Docker do
+# Remotion (remotion.dev/docs/docker), e o Chrome Headless Shell é baixado na
+# CONSTRUÇÃO (`browser ensure`), nunca na primeira montagem de um cliente.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 \
+        libxkbcommon-dev libxfixes3 libxcomposite1 libxdamage1 \
+        libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2 \
+    && rm -rf /var/lib/apt/lists/*
+RUN npx remotion browser ensure
+
+# As fontes também como pasta pública do bundle: o Remotion desenha com os
+# MESMOS arquivos que o libass das legendas.
+COPY fontes ./fontes
+COPY remotion ./remotion
+# O bundle sai pronto da construção (15 a 30 s que não caem no tempo do
+# cliente). src/montagem.mjs usa remotion/build quando ele existe.
+RUN node remotion/empacotar.mjs
+
+# Prova em construção da capa: cria os dois modelos de verdade, como a prova do
+# recorte lá em cima. Se faltar biblioteca ou modelo, a imagem não sobe.
+RUN python3 -c "from mediapipe.tasks.python import vision, BaseOptions; vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(base_options=BaseOptions(model_asset_path='/app/modelos/face_landmarker.task'), output_face_blendshapes=True)).close(); vision.ImageSegmenter.create_from_options(vision.ImageSegmenterOptions(base_options=BaseOptions(model_asset_path='/app/modelos/selfie_multiclass.tflite'), output_confidence_masks=True)).close(); print('capa provada na construcao')"
+
 # O Railway injeta PORT. O servidor lê dela e cai em 8080 fora do Railway.
 ENV NODE_ENV=production
 ENV MODELO_SEGMENTACAO=/app/modelos/selfie_segmenter.tflite
+ENV MODELO_ROSTO=/app/modelos/face_landmarker.task
+ENV MODELO_MULTICLASSE=/app/modelos/selfie_multiclass.tflite
 EXPOSE 8080
 
 CMD ["node", "src/index.mjs"]

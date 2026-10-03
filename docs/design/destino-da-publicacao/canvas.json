@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 640, "h": 620, "title": "Janela: por onde sai" },
+    { "file": "Paulo.dc.html", "x": 740, "y": 0, "w": 640, "h": 560, "title": "Card do Paulo: a conta em cada linha" }
+  ],
+  "annotations": [
+    {
+      "id": "achado",
+      "x": 0,
+      "y": 680,
+      "w": 640,
+      "text": "O que os dados mostraram em 14/09:\n\nO post da gravação saiu pelo perfil pessoal com a página demandou ativa no mesmo projeto. Três lugares escolhem a conta pela REDE e caem no perfil: a esteira (mapa por plataforma), o card do Paulo (accountFor prefere personal) e a aba de posts (pickSocialAccount, idem). Não existe seletor de conta em lugar nenhum: a plataforma nunca perguntou.\n\nA decisão de desenho: a unidade de escolha passa a ser a CONTA, na janela (padrão do projeto) e no card (exceção por post)."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

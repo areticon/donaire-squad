@@ -7,6 +7,7 @@ import {
   LogoX,
   LogoFacebook,
   LogoYouTube,
+  LogoTikTok,
 } from "@/components/social/logos-redes";
 
 /**
@@ -26,7 +27,7 @@ const ETAPAS = [
     numero: "01",
     titulo: "Conecte suas redes",
     descricao:
-      "Uma autorização por rede, sem senha, sem copiar e colar. É o que permite o squad publicar por você em vez de te devolver texto para postar na mão.",
+      "Uma autorização por rede, sem senha, sem copiar e colar. É o que permite a equipe publicar por você em vez de te devolver texto para postar na mão.",
     redes: true,
   },
   {
@@ -39,20 +40,20 @@ const ETAPAS = [
     numero: "03",
     titulo: "Grave um vídeo. Ou dê um tema.",
     descricao:
-      "Fale um vídeo do jeito que você falaria numa conversa: o squad transcreve, escolhe os melhores trechos e transforma em cortes, reels e shorts. Sem vídeo para gravar hoje? Dê um tema e ele cria imagem, carrossel, artigo e texto.",
+      "Fale um vídeo do jeito que você falaria numa conversa: a equipe transcreve, escolhe os melhores trechos e transforma em cortes, reels e shorts. Sem vídeo para gravar hoje? Ela busca o que é novidade no seu mercado e cria imagem, carrossel, artigo e texto. E em qualquer dia você pode subir o seu material no lugar da IA.",
     destaque: true,
   },
   {
     numero: "04",
     titulo: "Aprove o que vai sair",
     descricao:
-      "Nada é publicado sem você ver. Aprove, peça ajuste ou descarte. O squad aprende com o que você corrige e erra menos na semana seguinte.",
+      "Nada é publicado sem você ver. Aprove, edite o texto direto no card, peça ajuste ou descarte. A equipe aprende com o que você corrige e erra menos na semana seguinte.",
   },
   {
     numero: "05",
     titulo: "Publicado, com você no controle",
     descricao:
-      "Na hora marcada, seu conteúdo sai nas redes conectadas. Você acompanha o que foi publicado, o que rendeu e onde vale insistir.",
+      "Na hora marcada, seu conteúdo sai nas redes conectadas, no feed, nos reels ou nos stories. No painel você vê os números de cada rede: o que rendeu e onde vale insistir.",
   },
 ];
 
@@ -62,6 +63,7 @@ const REDES = [
   { Logo: LogoX, nome: "X" },
   { Logo: LogoFacebook, nome: "Facebook" },
   { Logo: LogoYouTube, nome: "YouTube" },
+  { Logo: LogoTikTok, nome: "TikTok" },
 ];
 
 export function HowItWorks() {
@@ -76,16 +78,16 @@ export function HowItWorks() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
-            Como funciona
-          </div>
-          <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
-            Você <span className="text-orange-500">demandou</span>. Ele{" "}
-            <span className="text-orange-500">postou</span>.
+          <p className="rotulo mb-4">Como funciona</p>
+          {/* Sem o "postou" desde 01/10: a promessa para o dono é o tempo
+              dele, não o ato de postar. */}
+          <h2 className="text-4xl lg:text-5xl font-semibold tracking-tight text-[var(--text-primary)] mb-4">
+            Você fala uma vez.{" "}
+            <span className="destaque">A semana inteira sai pronta.</span>
           </h2>
           <p className="text-xl text-[var(--text-muted)] max-w-2xl mx-auto">
-            Cinco etapas, uma vez só. Depois disso é você falar e o conteúdo
-            aparecer nas suas redes.
+            Cinco etapas, configuradas uma vez só. Depois disso você grava,
+            aprova e volta para o negócio.
           </p>
         </motion.div>
 

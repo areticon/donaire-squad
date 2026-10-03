@@ -21,6 +21,7 @@ export function EnviarGravacao({
   musica,
   termos,
   semana,
+  redesConectadas,
   onFechar,
   onEnviado,
 }: {
@@ -31,6 +32,8 @@ export function EnviarGravacao({
   termos: string | null;
   /** Project.videoSemana, o formato de cada dia a partir do vídeo. */
   semana: unknown;
+  /** As redes com conta ativa, para o planejador só marcar rede conectada (30/09). */
+  redesConectadas?: string[];
   onFechar: () => void;
   onEnviado: () => void;
 }) {
@@ -59,7 +62,7 @@ export function EnviarGravacao({
             <button
               onClick={onFechar}
               title="Fechar"
-              className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0"
+              className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors shrink-0"
               style={{ color: "var(--text-muted)" }}
             >
               <X className="w-5 h-5" />
@@ -77,7 +80,7 @@ export function EnviarGravacao({
               decisão sobre o que o squad vai fazer com a gravação, e pedi-la
               depois seria pedir para escolher o formato de um texto que já
               foi escrito. */}
-          <SemanaDoVideoPlanejador projectId={projectId} inicial={semana} />
+          <SemanaDoVideoPlanejador projectId={projectId} inicial={semana} redesConectadas={redesConectadas} />
 
           <VideoUpload projectId={projectId} onEnviado={onEnviado} />
         </motion.div>

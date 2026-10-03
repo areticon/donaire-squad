@@ -48,7 +48,7 @@ export async function verificarLimite(headers: Headers): Promise<Veredito> {
     return {
       ok: false,
       status: 429,
-      motivo: `Você já usou a demonstração ${LIMITE_POR_IP_DIA} vezes hoje. Crie uma conta para continuar, são 7 dias grátis.`,
+      motivo: `Você já usou a demonstração ${LIMITE_POR_IP_DIA} vezes hoje. Agende uma demonstração com a gente para ver o resto.`,
     };
   }
   if (global >= LIMITE_GLOBAL_DIA) {

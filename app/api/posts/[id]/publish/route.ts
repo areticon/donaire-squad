@@ -12,14 +12,83 @@ import { prisma } from "@/lib/db/prisma";
 import { executeOAuthPostPublish } from "@/lib/publish/oauth-post";
 import { LINKEDIN_MAX_COMMENTARY_CHARS } from "@/lib/oauth/linkedin";
 import { parseTwitterThread } from "@/lib/oauth/twitter";
+import { vaiPeloBlotato } from "@/lib/publish/roteador";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 const TWITTER_TWEET_MAX = 280;
 
-async function safeMarkPostFailed(postId: string) {
+/**
+ * Marca a falha E GRAVA O MOTIVO no post.
+ *
+ * Até 21/09 só o status mudava. A tela lê `metadata.error` para dizer o que
+ * aconteceu e decidir a ação ("reconectar" quando é token), e sem o motivo
+ * ela dizia "a rede recusou o post, marque e publique de novo" enquanto a
+ * linha de baixo dizia "conecte o LinkedIn": o LinkedIn tinha REVOGADO o
+ * acesso e publicar de novo não ia adiantar. O motivo que o servidor já
+ * sabia agora chega em quem precisa dele.
+ */
+async function safeMarkPostFailed(postId: string, motivo?: string) {
   try {
-    await prisma.post.update({ where: { id: postId }, data: { status: "failed" } });
+    const atual = await prisma.post.findUnique({ where: { id: postId }, select: { metadata: true } });
+    const metadata = { ...((atual?.metadata as Record<string, unknown> | null) ?? {}), ...(motivo ? { error: motivo.slice(0, 300) } : {}) };
+    await prisma.post.update({ where: { id: postId }, data: { status: "failed", metadata: metadata as never } });
   } catch (e) {
     console.error("[publish] não foi possível marcar post como failed", e);
+  }
+}
+
+/**
+ * O código que a rede devolveu, extraído da mensagem do erro.
+ *
+ * Vale a pena pescar isto em vez de gravar "401": em 14/09 a tela dizia
+ * "expirado" e o LinkedIn tinha dito `REVOKED_ACCESS_TOKEN`, revogado pelo
+ * usuário. As duas causas pedem a mesma ação (reconectar) mas contam histórias
+ * diferentes, e a diferença importava: quem revogou foi o próprio dono,
+ * preparando a gravação do App Review.
+ */
+const CODIGOS_DE_RECUSA = [
+  // O refresh do X falhou: o refresh token é de uso único e o novo não
+  // ficou gravado, ou a autorização caiu. É reconectar, e a conta precisa
+  // saber (visto em 21/09, com o motivo ficando em branco na conta).
+  "Failed to refresh Twitter token",
+  "REVOKED_ACCESS_TOKEN",
+  "EXPIRED_ACCESS_TOKEN",
+  "INVALID_ACCESS_TOKEN",
+  "invalid_token",
+  "invalid_grant",
+  "OAuthException",
+  // TikTok: token de acesso recusado, permissão retirada, ou a renovação
+  // voltou sem token (o de renovação vence em 365 dias ou foi revogado).
+  "access_token_invalid",
+  "scope_not_authorized",
+  "TikTok renovação do token falhou",
+];
+
+function motivoDaRecusa(msg: string): string | null {
+  const achado = CODIGOS_DE_RECUSA.find((c) => msg.toLowerCase().includes(c.toLowerCase()));
+  return achado ?? null;
+}
+
+/**
+ * Grava na CONTA que a rede recusou o token.
+ *
+ * Existe porque até 14/09 esta descoberta morria aqui: o post virava `failed`,
+ * a conta continuava verde e "ativa" na tela, e a mensagem mandava o cliente
+ * reconectar numa tela onde nada indicava problema. Informação descoberta e não
+ * gravada é informação que vai ser descoberta de novo pelo caminho mais caro,
+ * que aqui é o cliente tentando publicar.
+ *
+ * Nunca derruba a publicação: se esta gravação falhar, o erro original é o que
+ * importa e ele segue para a tela.
+ */
+async function safeMarcarContaParaReconectar(accountId: string, msg: string) {
+  try {
+    await prisma.socialAccount.update({
+      where: { id: accountId },
+      data: { needsReconnectAt: new Date(), needsReconnectReason: motivoDaRecusa(msg) },
+    });
+  } catch (e) {
+    console.error("[publish] não foi possível marcar a conta para reconexão", e);
   }
 }
 
@@ -49,13 +118,16 @@ export async function POST(
       include: { project: { select: { userId: true } } },
     });
 
-    if (!post || post.project.userId !== userId) {
+    if (!post || !(await podeUsarProjeto(userId, { id: post.projectId, userId: post.project.userId }))) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const account = await prisma.socialAccount.findUnique({ where: { id: accountId } });
 
-    if (!account?.accessToken) {
+    // A conta ligada só pelo Blotato não tem token próprio e publica por lá
+    // (30/09, lib/publish/roteador.ts).
+    const pelaPonte = account ? vaiPeloBlotato(account) : false;
+    if (!account || (!account.accessToken && !pelaPonte)) {
       return NextResponse.json(
         { error: "Conta não conectada. Reconecte em Configurações." },
         { status: 400 }
@@ -110,17 +182,37 @@ export async function POST(
             ? String((err as { message: unknown }).message)
             : JSON.stringify(err).slice(0, 400);
       const lower = msg.toLowerCase();
+      // Pelo Blotato, "reconectar" na Demandou não resolve nada: a conexão
+      // vive no painel deles. A falha vai inteira para o post, com o código, e
+      // a conta NÃO é marcada para reconectar (sumiria das campanhas à toa).
+      if (pelaPonte) {
+        await safeMarkPostFailed(id, msg);
+        return NextResponse.json({ error: msg.slice(0, 800), code: "PUBLISH_FAILED" }, { status: 500 });
+      }
       if (
         msg.includes("Token") ||
         msg.includes("expirado") ||
         lower.includes("401") ||
         lower.includes("unauthorized") ||
         lower.includes("invalid_token") ||
-        lower.includes("failed to refresh twitter")
+        lower.includes("failed to refresh twitter") ||
+        lower.includes("access_token_invalid") ||
+        lower.includes("scope_not_authorized") ||
+        lower.includes("tiktok renovação do token falhou")
       ) {
-        await safeMarkPostFailed(id);
+        await safeMarkPostFailed(id, msg);
+        await safeMarcarContaParaReconectar(account.id, msg);
+        const revogado = motivoDaRecusa(msg) === "REVOKED_ACCESS_TOKEN";
         return NextResponse.json(
-          { error: "Token expirado ou inválido. Reconecte a rede em Configurações do projeto." },
+          {
+            // A frase muda com o motivo, porque as duas causas pedem a mesma
+            // ação e contam histórias diferentes. "Expirou" num acesso que o
+            // próprio dono retirou faz a pessoa procurar defeito onde não tem.
+            error: revogado
+              ? "O acesso desta rede foi retirado nas permissões da sua conta. Reconecte em Configurações do projeto e publique de novo."
+              : "A rede recusou o acesso. Reconecte em Configurações do projeto e publique de novo.",
+            code: "PRECISA_RECONECTAR",
+          },
           { status: 401 }
         );
       }
@@ -133,7 +225,7 @@ export async function POST(
           { status: 422 }
         );
       }
-      await safeMarkPostFailed(id);
+      await safeMarkPostFailed(id, msg);
       return NextResponse.json(
         {
           error: msg.slice(0, 800),

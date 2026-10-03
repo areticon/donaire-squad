@@ -12,6 +12,8 @@
  * Estado e DERIVADO do dado no momento de mostrar, nunca texto guardado.
  */
 
+import { traduzirFalha, type CodigoDePublicacao } from "@/lib/publish/codigos";
+
 export type PostParaEstado = {
   id: string;
   platform: string;
@@ -22,9 +24,36 @@ export type PostParaEstado = {
   externalUrl?: string | null;
   socialAccountId?: string | null;
   metadata?: unknown;
+  /**
+   * O dia da semana a que o post PERTENCE (1=Seg … 7=Dom), que nem sempre é o
+   * dia em que ele cai: quando o horário já passou, a esteira agenda para
+   * daqui a dez minutos e a peça vai parar no dia seguinte. O calendário usa
+   * isto para dizer "era de quinta" em vez de deixar dois cards sem
+   * explicação. Opcional porque nem toda tela que monta este tipo o seleciona.
+   */
+  dayOfWeek?: number | null;
+  /**
+   * A campanha de que o post veio. A API da semana já o mandava; o tipo não
+   * o declarava, e por isso o calendário nunca pôde usá-lo para separar os
+   * cards de duas campanhas no mesmo dia (21/09, ver lib/posts/cards-da-peca).
+   */
+  runId?: string | null;
 };
 
-export type ChaveDeEstado = "publicado" | "agendado" | "rascunho" | "falhou" | "publicando";
+/**
+ * "fora" entrou em 21/09, e é o estado que faltava.
+ *
+ * Post reprovado e post arquivado caíam no ramo final e viravam RASCUNHO:
+ * a tela dizia "1 post esperando você" sobre uma peça que o cliente já tinha
+ * recusado. Passava despercebido enquanto reprovar derrubava o dia inteiro e a
+ * lista sumia; quando a reprovação passou a alcançar uma peça só, a peça
+ * recusada ficou na lista, ao lado das vivas, pedindo uma decisão que já foi
+ * tomada.
+ *
+ * Uma chave só para os dois porque a pergunta que a tela responde é a mesma
+ * ("isto ainda vai sair?"), e o rótulo continua dizendo qual dos dois é.
+ */
+export type ChaveDeEstado = "publicado" | "agendado" | "rascunho" | "falhou" | "publicando" | "fora";
 
 export type Estado = {
   chave: ChaveDeEstado;
@@ -35,6 +64,8 @@ export type Estado = {
   cor: string;
   /** O que ele pode fazer, quando ha o que fazer. */
   acao?: "agendar" | "reconectar" | "tentar";
+  /** O código da falha de publicação (PUB-*), quando a falha tem um. */
+  codigo?: CodigoDePublicacao;
 };
 
 export const CORES: Record<ChaveDeEstado, string> = {
@@ -43,6 +74,9 @@ export const CORES: Record<ChaveDeEstado, string> = {
   publicando: "#60a5fa",
   rascunho: "#9599a6",
   falhou: "#f87171",
+  // Mais apagado que o rascunho de propósito: o que saiu da mesa não disputa
+  // atenção com o que ainda espera decisão.
+  fora: "#6b7280",
 };
 
 export const NOMES_DAS_REDES: Record<string, string> = {
@@ -50,6 +84,7 @@ export const NOMES_DAS_REDES: Record<string, string> = {
   twitter: "X",
   instagram: "Instagram",
   youtube: "YouTube",
+  tiktok: "TikTok",
   facebook: "Facebook",
 };
 
@@ -101,8 +136,38 @@ export function estadoDoPost(p: PostParaEstado, agora: Date = new Date()): Estad
       cor: CORES.publicado,
     };
   }
+  if (p.status === "rejected" || p.status === "cancelled") {
+    const reprovado = p.status === "rejected";
+    return {
+      chave: "fora",
+      rotulo: reprovado ? "Reprovado" : "Arquivado",
+      // Arquivado DEPOIS de ir ao ar (01/10): "não sai" era mentira; ela saiu,
+      // e só deixou a tela. Os números continuam contando nos Resultados.
+      detalhe: reprovado
+        ? "você recusou esta peça; ela não sai"
+        : publicadoEm
+          ? `publicado ${diaCurto(publicadoEm)}; arquivado só da tela, os números continuam contando`
+          : "fora da fila; não sai",
+      cor: CORES.fora,
+    };
+  }
   if (p.status === "failed") {
     const motivo = meta?.error ?? meta?.erro;
+    // FALHA COM CÓDIGO PUB-* (01/10): a frase gravada tem o código no FIM, e o
+    // corte em 90 caracteres comia justamente o código, que é o que o cliente
+    // informa no chamado. Com código conhecido, o detalhe vira o título curto do
+    // dicionário mais o código; a explicação inteira fica no cartão da falha.
+    const traduzida = traduzirFalha(p.metadata);
+    if (traduzida) {
+      return {
+        chave: "falhou",
+        rotulo: "Falhou",
+        detalhe: `${traduzida.titulo} (código ${traduzida.codigo})`,
+        cor: CORES.falhou,
+        acao: "tentar",
+        codigo: traduzida.codigo,
+      };
+    }
     return {
       chave: "falhou",
       rotulo: "Falhou",
@@ -159,7 +224,7 @@ export type ResumoDoDia = {
 };
 
 export function resumoDoDia(posts: PostParaEstado[], agora: Date = new Date()): ResumoDoDia {
-  const porEstado: Record<ChaveDeEstado, number> = { publicado: 0, agendado: 0, publicando: 0, rascunho: 0, falhou: 0 };
+  const porEstado: Record<ChaveDeEstado, number> = { publicado: 0, agendado: 0, publicando: 0, rascunho: 0, falhou: 0, fora: 0 };
   const redes = new Set<string>();
   let proximo: Date | null = null;
   for (const p of posts) {
@@ -187,6 +252,34 @@ export function resumoDoDia(posts: PostParaEstado[], agora: Date = new Date()): 
     const falta = proximo ? faltaQuanto(proximo, agora) : "";
     return { ...vazio, total: posts.length, dominante: "agendado", proximo, cor: CORES.agendado, titulo: quando ? `Agendado · sai ${quando}` : "Agendado", linha: `${redesTexto}, sozinho`, rodape: falta || (proximo ? diaCurto(proximo) : "") };
   }
+  /**
+   * O DIA QUE SÓ TEM PEÇA FORA DA MESA, e o que ele dizia antes.
+   *
+   * Sem este ramo, um dia inteiro reprovado caía no "publicado" lá embaixo e a
+   * tela anunciava "Instagram e LinkedIn no ar" sobre posts que ninguém
+   * publicou. É a mesma família do erro de publicação que sobrevivia ao
+   * sucesso seguinte: estado derivado que não olha o fato.
+   */
+  if (porEstado.fora === posts.length) {
+    const reprovados = posts.filter((p) => p.status === "rejected").length;
+    return {
+      ...vazio,
+      total: posts.length,
+      dominante: "fora",
+      cor: CORES.fora,
+      titulo: reprovados ? "Reprovado · não sai" : "Arquivado · não sai",
+      linha: reprovados === posts.length
+        ? `${posts.length} post${posts.length > 1 ? "s" : ""} que você recusou`
+        : `${posts.length} post${posts.length > 1 ? "s" : ""} fora da fila`,
+      rodape: "recomeçar ou arquivar",
+    };
+  }
+
+  // A partir daqui sobrou publicado, e as redes da frase são as que SAÍRAM: a
+  // peça reprovada do mesmo dia não vai no "no ar".
+  const noAr = posts.filter((p) => p.status === "published");
+  const redesNoAr = [...new Set(noAr.map((p) => nomeDaRede(p.platform)))];
+  const textoNoAr = redesNoAr.length <= 1 ? redesNoAr.join("") : `${redesNoAr.slice(0, -1).join(", ")} e ${redesNoAr[redesNoAr.length - 1]}`;
   const primeiro = posts.map((p) => data(p.publishedAt)).filter(Boolean).sort((a, b) => a!.getTime() - b!.getTime())[0] ?? null;
-  return { ...vazio, total: posts.length, dominante: "publicado", cor: CORES.publicado, titulo: primeiro ? `Publicado ${horaCurta(primeiro)}` : "Publicado", linha: `${redesTexto} no ar`, rodape: "ver posts" };
+  return { ...vazio, total: posts.length, dominante: "publicado", cor: CORES.publicado, titulo: primeiro ? `Publicado ${horaCurta(primeiro)}` : "Publicado", linha: `${textoNoAr || redesTexto} no ar`, rodape: "ver posts" };
 }

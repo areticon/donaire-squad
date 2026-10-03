@@ -1,0 +1,32 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "1. Ao terminar o setup: duas portas" },
+    { "file": "Perguntas.dc.html", "x": 1560, "y": 0, "w": 900, "h": 1180, "title": "2. As perguntas, uma vez só (porta IA)" },
+    { "file": "DeVideo.dc.html", "x": 2580, "y": 0, "w": 900, "h": 1240, "title": "2b. As mesmas perguntas, pela porta do vídeo" },
+    { "file": "Marca.dc.html", "x": 0, "y": 1360, "w": 1100, "h": 1320, "title": "Setup, etapa Marca (era Design)" }
+  ],
+  "annotations": [
+    {
+      "id": "nota-jornada",
+      "x": 0,
+      "y": -170,
+      "w": 820,
+      "text": "Hoje são duas jornadas que se atropelam: /posts pede o tema antes de perguntar a origem, a porta do vídeo sai da tela e volta, e o painel do vídeo pergunta de novo dia e formato. Aqui é uma jornada: uma escolha de porta, as mesmas três perguntas (quanto, onde, o que por dia), e o tema é a única coisa que muda: perguntado na porta da IA, herdado da gravação na porta do vídeo."
+    },
+    {
+      "id": "nota-redes",
+      "x": 1560,
+      "y": -170,
+      "w": 820,
+      "text": "As cinco redes aparecem aqui porque é o desenho. Mas a esteira da campanha por tema só escreve para LinkedIn e X hoje (executar.ts). Ligar Instagram, Facebook e YouTube nessa porta é trabalho de esteira, registrado como card bloqueante, e a tela só pode oferecer o que a esteira entrega."
+    },
+    {
+      "id": "nota-marca",
+      "x": 0,
+      "y": 1230,
+      "w": 1000,
+      "text": "A aba Treinamento já guarda contexto em cinco tipos e a IA já lê tudo isso. O que falta é aceitar arquivo em vez de só texto colado, guardar o logo, e estar DENTRO do setup, onde a pessoa ainda está com a marca na cabeça. Treinamento continua como o lugar de editar depois."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

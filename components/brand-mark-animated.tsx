@@ -2,20 +2,20 @@
 
 import { cn } from "@/lib/utils";
 import { useId } from "react";
+import { coresDaMarca, type CorDaMarca } from "@/components/brand-mark";
 
 /**
  * A marca animada: o "d" e o "p" entram de lados opostos e se encaixam na
- * mesma bola, virando o monograma. É o nome do produto contado em um segundo,
- * "demandou, postou".
+ * mesma bola, virando o monograma. É o nome do produto contado em um segundo.
  *
  * Feita em SVG com animação CSS, e não em vídeo ou GIF: pesa poucos bytes,
  * escala sem perda e não custa JavaScript nenhum.
  *
- * Desde 25/08 segue o painel de identidade novo do Bruno: sem disco de fundo,
- * laranja em degradê (medido do painel: #F1742E a #BE4720) e contorno branco
- * estilo adesivo, que dá contraste em qualquer fundo. As cores são fixas:
- * logo com cor herdada mudaria de cara conforme o contexto, que é justamente
- * o que uma marca não pode fazer.
+ * Desde 01/10 é de novo o logo de 25/08 (o Bruno voltou a ele depois do logo
+ * B): degradê laranja (#F1742E a #BE4720) com contorno branco de adesivo, e
+ * branco inteiro quando o fundo é escuro ou laranja. A geometria é a do
+ * arquivo oficial public/brand-mark.svg, sem redesenho; a cor vem de
+ * coresDaMarca (tokens do tema ou versão fixa).
  *
  * As duas metades carregam cada uma a sua cópia da bola central; quando a
  * animação termina, elas coincidem pixel a pixel e o resultado é a marca.
@@ -24,14 +24,17 @@ import { useId } from "react";
 export function BrandMarkAnimated({
   className,
   size = 32,
+  cor = "auto",
 }: {
   className?: string;
   size?: number;
+  cor?: CorDaMarca;
 }) {
   // O id do gradiente precisa ser único por instância: a marca aparece mais
   // de uma vez na mesma página (navbar e rodapé) e ids repetidos fazem um
   // SVG apontar para o gradiente do outro.
-  const gradId = useId();
+  const gradId = `marca${useId()}`;
+  const c = coresDaMarca(cor);
 
   return (
     <svg
@@ -65,26 +68,28 @@ export function BrandMarkAnimated({
 
       <defs>
         <linearGradient id={gradId} x1="1" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#F1742E" />
-          <stop offset="1" stopColor="#BE4720" />
+          <stop offset="0" style={{ stopColor: c.de }} />
+          <stop offset="1" style={{ stopColor: c.ate }} />
         </linearGradient>
       </defs>
 
-      {/* metade "d": bola + haste que sobe à direita, com contorno branco */}
-      <g className="marca-d">
-        <circle cx="32" cy="52" r="26" stroke="#ffffff" strokeWidth="17" />
-        <rect x="49.5" y="1.5" width="17" height="61" rx="8.5" fill="#ffffff" />
-        <circle cx="32" cy="52" r="26" stroke={`url(#${gradId})`} strokeWidth="12" />
-        <rect x="52" y="4" width="12" height="56" rx="6" fill={`url(#${gradId})`} />
-      </g>
+      {/* Os dois contornos primeiro e as duas cores depois, como no arquivo
+          oficial. Com cada metade inteira num grupo, o contorno branco do "p"
+          era pintado por cima da haste laranja do "d" e deixava uma lasca
+          branca nela quando as metades se encaixavam. A classe da metade vai
+          em cada peça, então as peças da mesma metade andam juntas. */}
+      <circle className="marca-d" cx="32" cy="52" r="26" strokeWidth="17" style={{ stroke: c.contorno }} />
+      <rect className="marca-d" x="49.5" y="1.5" width="17" height="61" rx="8.5" style={{ fill: c.contorno }} />
+      <circle className="marca-p" cx="32" cy="52" r="26" strokeWidth="17" style={{ stroke: c.contorno }} />
+      <rect className="marca-p" x="-2.5" y="41.5" width="17" height="61" rx="8.5" style={{ fill: c.contorno }} />
+
+      {/* metade "d": bola + haste que sobe à direita */}
+      <circle className="marca-d" cx="32" cy="52" r="26" stroke={`url(#${gradId})`} strokeWidth="12" />
+      <rect className="marca-d" x="52" y="4" width="12" height="56" rx="6" fill={`url(#${gradId})`} />
 
       {/* metade "p": mesma bola + haste que desce à esquerda */}
-      <g className="marca-p">
-        <circle cx="32" cy="52" r="26" stroke="#ffffff" strokeWidth="17" />
-        <rect x="-2.5" y="41.5" width="17" height="61" rx="8.5" fill="#ffffff" />
-        <circle cx="32" cy="52" r="26" stroke={`url(#${gradId})`} strokeWidth="12" />
-        <rect x="0" y="44" width="12" height="56" rx="6" fill={`url(#${gradId})`} />
-      </g>
+      <circle className="marca-p" cx="32" cy="52" r="26" stroke={`url(#${gradId})`} strokeWidth="12" />
+      <rect className="marca-p" x="0" y="44" width="12" height="56" rx="6" fill={`url(#${gradId})`} />
     </svg>
   );
 }

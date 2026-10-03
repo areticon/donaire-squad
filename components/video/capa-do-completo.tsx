@@ -155,7 +155,7 @@ export function CapaDoCompleto({
               style={{
                 borderColor: ativo ? "var(--accent-orange)" : "var(--border)",
                 color: ativo ? "var(--accent-orange)" : "var(--text-muted)",
-                background: ativo ? "rgba(249,115,22,0.08)" : "transparent",
+                background: ativo ? "color-mix(in srgb, var(--acento) 8%, transparent)" : "transparent",
               }}
             >
               {ESTILOS_DE_CAPA_ROTULO[e].rotulo}
@@ -184,7 +184,7 @@ export function CapaDoCompleto({
               style={{
                 borderColor: ativo ? "var(--accent-orange)" : "var(--border)",
                 color: ativo ? "var(--accent-orange)" : "var(--text-muted)",
-                background: ativo ? "rgba(249,115,22,0.08)" : "transparent",
+                background: ativo ? "color-mix(in srgb, var(--acento) 8%, transparent)" : "transparent",
               }}
             >
               {CLIMAS_DE_CAPA_ROTULO[c].rotulo}

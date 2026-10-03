@@ -20,12 +20,16 @@ import {
  * erro visível vira erro no console do visitante e ruído no suporte, e não há
  * nada que o navegador possa fazer a respeito.
  *
- * Só aceita os passos que o navegador tem como saber (`visita` e `cadastro`).
- * `checkout` e `assinatura` são gravados no servidor, onde o dinheiro
- * realmente acontece: aceitar esses aqui deixaria qualquer um inflar a
- * conversão com um `curl`.
+ * Só aceita o passo que o navegador tem como saber (`visita`). `checkout` e
+ * `assinatura` são gravados no servidor, onde o dinheiro realmente acontece:
+ * aceitar esses aqui deixaria qualquer um inflar a conversão com um `curl`.
+ *
+ * `cadastro` SAIU DAQUI em 01/10, pela mesma razão: o robô roda o código da
+ * tela e mandava o "cadastro" antes de confirmar qualquer coisa (97 em 30
+ * dias, 86 contas de robô). Agora o servidor registra o cadastro quando o
+ * e-mail é confirmado (lib/auth/index.ts).
  */
-const DO_NAVEGADOR: Passo[] = ["visita", "cadastro"];
+const DO_NAVEGADOR: Passo[] = ["visita"];
 
 /** Teto por IP e por hora, para o beacon não virar porta de escrita infinita. */
 const TETO_POR_HORA = 60;

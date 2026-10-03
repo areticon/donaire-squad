@@ -62,7 +62,16 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     id: "linkedin",
     rotulo: "LinkedIn",
     plataforma: "linkedin",
+    // VERTICAL NO LINKEDIN TAMBÉM (pesquisa de 30/09). O LinkedIn tem um feed
+    // de vídeo em pé no celular e dá mais distribuição ao 9:16; o 4:5 só
+    // valeria para quem tem público meio a meio no computador, e gerar mais
+    // uma proporção no worker seria mais uma renderização por corte para um
+    // ganho que o vertical já entrega. Por isso vai o MESMO corte do Shorts.
+    // A legenda vai queimada no vídeo: a API aceita arquivo de legenda à
+    // parte, mas só em inglês, e o cliente fala português.
     formato: "vertical",
+    // 10 minutos é o teto do LinkedIn para vídeo orgânico (página e perfil).
+    // É teto, não meta: o que rende no feed de vídeo fica entre 30 e 90 s.
     limiteSegundos: 600,
     publicaVideo: true,
   },
@@ -84,6 +93,17 @@ export const DESTINOS_DE_CORTE: Destino[] = [
     // A página aceita vídeo bem mais longo, mas 90s é o que rende: acima disso
     // o alcance cai porque deixa de competir como conteúdo curto.
     limiteSegundos: 90,
+    publicaVideo: true,
+  },
+  {
+    id: "tiktok",
+    rotulo: "TikTok",
+    plataforma: "tiktok",
+    formato: "vertical",
+    // 600 s é o teto mais alto que o TikTok libera. Cada conta tem o seu
+    // (conta nova costuma ter menos), e esse valor real vem da consulta do
+    // criador, conferida na janela de publicar antes de o vídeo subir.
+    limiteSegundos: 600,
     publicaVideo: true,
   },
 ];

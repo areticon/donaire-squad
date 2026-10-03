@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { completarEsteiraDoVideo } from "@/lib/media/esteira-do-video";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 /**
  * Roda de novo o que falta na esteira do vídeo: carrossel da Diana, veredito
@@ -21,9 +22,9 @@ export async function POST(
   const { id } = await params;
   const video = await prisma.videoJob.findUnique({
     where: { id },
-    select: { id: true, project: { select: { userId: true } } },
+    select: { id: true, projectId: true, project: { select: { userId: true } } },
   });
-  if (!video || video.project.userId !== userId) {
+  if (!video || !(await podeUsarProjeto(userId, { id: video.projectId, userId: video.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const resultado = await completarEsteiraDoVideo(id);

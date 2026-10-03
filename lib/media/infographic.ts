@@ -5,27 +5,54 @@
  * for complex layouts with accurate text rendering — this is the same engine
  * used by NotebookLM to generate infographics with perfect typography.
  *
- * Approach:
+ * Approach (desde 30/09/2026):
  * 1. Gemini (text) extracts structured content from the post (PT-BR, with data)
- * 2. Gemini (image) generates the visual infographic using the structured content
- *    with the "Nano Banana" prompt formula
+ * 2. O infografico e MONTADO EM CODIGO a partir desse conteudo
+ *    (lib/media/infografico-em-codigo.tsx). O modelo de imagem nao escreve mais.
  *
  * Output: 9:16 portrait PNG — optimal LinkedIn format
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import type { ProporcaoPedida } from "./formatos-das-redes";
+import { coresDaMarca } from "@/lib/media/capa-composta";
+import type { MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { montarInfograficoEmCodigo } from "@/lib/media/infografico-em-codigo";
 
-export type InfographicTheme =
-  | "linkedin_blue"
-  | "energy_orange"
-  | "growth_green"
-  | "tech_dark"
-  | "executive_navy";
+/**
+ * A direção de arte desta peça, decidida FORA daqui (lib/media/direcao-de-arte):
+ * qual estilo e quais cores. Até 14/09 este arquivo escolhia sozinho, com cinco
+ * paletas fixas mapeadas pelo NICHO do projeto e uma única frase de estilo, e
+ * por isso todo infográfico de um mesmo cliente saía igual, fosse qual fosse o
+ * tema. O nicho diz o assunto; a marca diz a cor; o estilo alterna.
+ */
+export interface DirecaoDeArte {
+  /** Fragmento em inglês descrevendo composição, tipografia e acabamento. */
+  estilo: string;
+  /** Fragmento em inglês com as cores da marca do projeto. */
+  paleta: string;
+  /** Família da linguagem e cores da marca: é o que o infográfico em código usa (30/09). */
+  marca?: MarcaDaArte;
+}
 
-interface StructuredContent {
+/**
+ * O que o infográfico precisa saber além do texto do post.
+ *
+ * Até 18/09 ele recebia só o post e o nicho, e era o único agente da esteira
+ * cego para o funil e para os documentos do projeto. O Bruno cobrou os dois
+ * de uma vez: "tudo o que preenchemos no projeto, na campanha, o RAG do
+ * cliente completo com histórico, deve alimentar todos os agentes".
+ */
+export interface RegrasDoInfografico {
+  /** O estágio da campanha. Decide se a peça pode falar de produto. */
+  funil?: "tofu" | "mofu" | "bofu";
+  /** Os documentos do projeto, para acertar nomes e termos da marca. */
+  marca?: string;
+}
+
+export interface ConteudoDoInfografico {
   title: string;
   subtitle: string;
-  theme: InfographicTheme;
   sections: Array<{
     heading: string;
     body: string;
@@ -35,73 +62,56 @@ interface StructuredContent {
   keyNumbers?: Array<{ value: string; label: string }>;
 }
 
-const THEME_STYLES: Record<InfographicTheme, string> = {
-  linkedin_blue:   "deep navy blue and white, LinkedIn brand color scheme, electric blue accents",
-  energy_orange:   "dark background with vibrant orange and amber accents, energetic style",
-  growth_green:    "dark background with emerald green and mint accents, growth and nature feel",
-  tech_dark:       "ultra dark background with purple and violet neon accents, futuristic tech look",
-  executive_navy:  "deep midnight navy, gold and silver accents, premium executive look",
-};
-
-const NICHE_THEMES: Record<string, InfographicTheme> = {
-  energy:          "energy_orange",
-  "energia":       "energy_orange",
-  startup:         "energy_orange",
-  sustainability:  "growth_green",
-  sustentabilidade:"growth_green",
-  agro:            "growth_green",
-  saúde:           "growth_green",
-  health:          "growth_green",
-  tech:            "tech_dark",
-  tecnologia:      "linkedin_blue",
-  saas:            "tech_dark",
-  ia:              "executive_navy",
-  ai:              "executive_navy",
-  finance:         "executive_navy",
-  finanças:        "executive_navy",
-  consultoria:     "executive_navy",
-  juridico:        "executive_navy",
-};
-
-function detectTheme(niche: string): InfographicTheme {
-  const lower = niche.toLowerCase();
-  for (const [key, theme] of Object.entries(NICHE_THEMES)) {
-    if (lower.includes(key)) return theme;
-  }
-  return "linkedin_blue";
-}
-
 /** Step 1: Extract structured content from post in Portuguese */
 async function extractContent(
   postContent: string,
   niche: string,
-  apiKey: string
-): Promise<StructuredContent> {
+  apiKey: string,
+  regras?: RegrasDoInfografico
+): Promise<ConteudoDoInfografico> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-  const prompt = `Extraia os dados do post abaixo para montar um infográfico profissional para LinkedIn.
+  // A REGRA DA OFERTA, escrita em 18/09.
+  //
+  // O Bruno leu um infográfico gerado daqui com o rodapé "7 Dias para teste
+  // grátis (Demandou)". Esse prazo não está no post, não está no projeto e não
+  // existe: o modelo montou um infográfico de VENDA porque o post citava a
+  // plataforma, e "extraia os dados do post" não proíbe inventar uma oferta.
+  //
+  // Prometer condição comercial que ninguém autorizou é o pior defeito que uma
+  // peça pode ter, porque ela vai ao ar no nome do cliente.
+  const semOferta = `6. PROIBIDO inventar oferta comercial: teste grátis, prazo, preço, desconto, bônus, garantia ou qualquer chamada para ação que não esteja ESCRITA no post acima. Se o post não traz oferta, o infográfico não traz.
+7. O infográfico EXPLICA o conteúdo do post. Ele não é anúncio: não transforme o post numa peça de venda do produto citado nele.`;
 
+  const porFunil =
+    regras?.funil === "tofu"
+      ? "\n8. Este é conteúdo de TOPO DE FUNIL: nenhuma menção de produto em destaque, nenhum rodapé de conversão, nenhum logotipo de oferta. O leitor está aprendendo, não comprando."
+      : regras?.funil === "mofu"
+        ? "\n8. Conteúdo de MEIO DE FUNIL: o produto pode aparecer como exemplo, nunca como oferta."
+        : "";
+
+  const prompt = `Extraia os dados do post abaixo para montar um infográfico profissional para LinkedIn.
+${regras?.marca ? `\nContexto da marca (para acertar nomes e termos, NÃO para virar propaganda):\n${regras.marca.slice(0, 1200)}\n` : ""}
 ⚠️ REGRAS ABSOLUTAS:
 1. TODO texto deve estar em PORTUGUÊS BRASILEIRO.
 2. NUNCA use lorem ipsum, placeholders ou inventar dados.
 3. Use apenas informações reais do post.
 4. Se faltar dado para algum campo, resuma a ideia principal do post.
 5. O título NÃO pode começar com rótulos de categoria como "IA:", "AI:", "Tech:", "Digital:", "Inovação:" ou similares. Escreva direto a manchete.
+${semOferta}${porFunil}
+9. NUNCA abrevie palavra ("exper.", "qtd.", "info."): o texto vai inteiro para a peça. Se não couber no limite, reescreva mais curto com palavras inteiras.
 
 Retorne APENAS JSON válido sem markdown:
 {
   "title": "manchete impactante em português (máx 60 chars — NÃO inicie com 'IA:', 'AI:' ou qualquer prefixo de categoria)",
   "subtitle": "frase complementar em português (máx 100 chars)",
-  "theme": "${detectTheme(niche)}",
   "sections": [
     {"heading": "título da seção em português (máx 40 chars)", "body": "descrição em português (máx 90 chars)", "stat": "número destaque opcional como '50 GW' ou 'R$ 7,6bi'"}
   ],
   "highlight": {"value": "número ou dado mais impactante (máx 15 chars)", "label": "o que significa em português (máx 35 chars)"},
   "keyNumbers": [{"value": "número", "label": "descrição em português (máx 30 chars)"}]
 }
-
-O campo "theme" já está definido como "${detectTheme(niche)}" — mantenha esse valor exatamente.
 
 CONTEÚDO DO POST:
 ${postContent.slice(0, 3000)}`;
@@ -111,10 +121,7 @@ ${postContent.slice(0, 3000)}`;
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Gemini não retornou JSON estruturado");
 
-  const data = JSON.parse(jsonMatch[0]) as StructuredContent;
-
-  // Use niche-based theme if Gemini didn't set one
-  if (!data.theme) data.theme = detectTheme(niche);
+  const data = JSON.parse(jsonMatch[0]) as ConteudoDoInfografico;
 
   data.sections = (data.sections ?? []).slice(0, 4);
   data.keyNumbers = (data.keyNumbers ?? []).slice(0, 3);
@@ -122,158 +129,72 @@ ${postContent.slice(0, 3000)}`;
   return data;
 }
 
-/** Step 2: Generate the infographic image using Gemini Flash ("Nano Banana") */
-async function generateWithGeminiFlash(
-  content: StructuredContent,
-  apiKey: string,
-  platform: "linkedin" | "twitter" | "both" = "linkedin"
+/**
+ * Desenha o infografico numa PROPORCAO pedida, EM CODIGO desde 30/09/2026.
+ *
+ * Ate 30/09 o modelo de imagem (Nano Banana Pro) desenhava o infografico
+ * inteiro, texto incluido. O titulo e os numeros costumavam sair certos, mas
+ * o modelo acrescentava por conta propria: na sexta do teste de 30/09 um
+ * balao de fala com "Usar chocoers maxsto fbite" e personagens ilustrados.
+ * A regra da casa passou a ser a da capa: texto em arte e sempre codigo. Os
+ * dados ja saem estruturados da extracao, e lib/media/infografico-em-codigo
+ * monta a peca com as fontes do repositorio, as cores da marca e o layout da
+ * familia da linguagem do projeto. Ver o comentario de la para a escolha
+ * entre montar em codigo e conferir por visao.
+ *
+ * A assinatura continua a mesma (apiKey e direcao.estilo nao desenham mais)
+ * para as chamadas da esteira, do chat e da semana do video nao mudarem de
+ * forma; `direcao.marca` e o que manda agora.
+ */
+export async function desenharInfografico(
+  content: ConteudoDoInfografico,
+  _apiKey: string,
+  proporcao: ProporcaoPedida,
+  direcao: DirecaoDeArte
 ): Promise<string | null> {
-  const themeStyle = THEME_STYLES[content.theme ?? "linkedin_blue"];
-
-  // Format structured content — NO label prefixes to avoid Gemini copying them into the image
-  const sectionsText = (content.sections ?? [])
-    .map((s, i) => {
-      const stat = s.stat ? ` (${s.stat})` : "";
-      return `${i + 1}. ${s.heading}${stat} — ${s.body}`;
-    })
-    .join("\n");
-
-  const numbersText = (content.keyNumbers ?? [])
-    .map((n) => `${n.value} — ${n.label}`)
-    .join(" | ");
-
-  const highlightLine = content.highlight
-    ? `Big callout box: "${content.highlight.value}" with label "${content.highlight.label}"`
-    : "";
-
-  // Aspect ratio: 1:1 square works on both LinkedIn and X; 9:16 portrait is LinkedIn-only best
-  const aspectLabel = platform === "twitter"
-    ? "1:1 square format (optimized for X/Twitter feed)"
-    : platform === "both"
-    ? "1:1 square format (compatible with both LinkedIn and X/Twitter feeds)"
-    : "9:16 vertical portrait format (maximum LinkedIn feed presence)";
-
-  // CRITICAL: instruct Gemini NOT to render the structural labels (TÍTULO, SUBTÍTULO, etc.)
-  const imagePrompt = `Create a professional infographic for LinkedIn/social media.
-
-LAYOUT STRUCTURE:
-- Top header: bold large title text reads exactly: "${content.title}"
-- Below title: smaller subtitle text reads exactly: "${content.subtitle}"
-${highlightLine ? `- ${highlightLine}` : ""}
-- Content sections:
-${sectionsText}
-- Bottom bar with key metrics: ${numbersText || "—"}
-
-⚠️ CRITICAL RENDERING RULES — strictly follow:
-1. DO NOT write the words "TÍTULO", "SUBTÍTULO", "SEÇÕES", "INDICADORES", "DESTAQUES" or any structural labels anywhere in the image. These are instructions only — NEVER render them as text.
-2. The title "${content.title}" must appear as a styled headline, NOT preceded by any label.
-3. ALL text must be in Brazilian Portuguese exactly as specified above.
-4. The image must be ${aspectLabel}.
-5. No lorem ipsum, no placeholder text, no English words.
-
-DESIGN:
-Color scheme: ${themeStyle}.
-Style: modern corporate infographic, bold typography, clean sections, professional icons for each topic.
-Typography: large bold title, clear section headings with numbers, readable body text, standout statistics in large accent numbers.
-Quality: high-resolution, pixel-perfect text, suitable for professional social media posting.`;
-
-  // Priority: Nano Banana Pro (best text rendering) → Nano Banana 2 → Nano Banana
-  const models = [
-    "gemini-3-pro-image-preview",       // Nano Banana Pro — studio-quality text rendering
-    "gemini-3.1-flash-image-preview",   // Nano Banana 2 — fast, 4K quality
-    "gemini-2.5-flash-image",           // Nano Banana — stable, fast
-  ];
-
-  for (const modelName of models) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: imagePrompt }] }],
-            generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
-          }),
-          signal: AbortSignal.timeout(30_000),
-        }
-      );
-
-      if (!res.ok) {
-        const err = await res.text();
-        console.warn(`[Infographic][${modelName}] HTTP ${res.status}: ${err.slice(0, 150)}`);
-        continue;
-      }
-
-      const data = await res.json() as {
-        candidates?: Array<{
-          content?: { parts?: Array<{ inlineData?: { data: string; mimeType: string } }> };
-        }>;
-      };
-
-      const imgPart = (data.candidates?.[0]?.content?.parts ?? []).find(
-        (p) => p.inlineData?.data
-      );
-
-      if (imgPart?.inlineData) {
-        const { data: b64, mimeType } = imgPart.inlineData;
-        console.log(`[Infographic] ✓ Gerado com ${modelName}`);
-        return `data:${mimeType ?? "image/png"};base64,${b64}`;
-      }
-
-      console.warn(`[Infographic][${modelName}] Resposta sem dados de imagem`);
-    } catch (e) {
-      console.warn(`[Infographic][${modelName}] Erro:`, e);
-    }
-  }
-
-  return null;
+  const marca = direcao.marca ?? { familia: "impacto" as const, cores: coresDaMarca(null) };
+  const jpeg = await montarInfograficoEmCodigo(content, marca, proporcao);
+  return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
 }
 
-/** Generates a professional infographic from post content.
- *  @param platform  "linkedin" (9:16 portrait) | "twitter" (1:1 square) | "both" (1:1 square — safe for both)
+/** A extracao do conteudo, exposta para quem precisa desenhar MAIS DE UMA
+ *  proporcao do mesmo infografico. Extrair custa uma chamada de texto; desenhar
+ *  custa uma de imagem. Um dia que publica em Instagram e LinkedIn precisa de
+ *  duas artes e de uma extracao so. */
+export async function extrairConteudoDoInfografico(
+  postContent: string,
+  niche: string,
+  apiKey: string,
+  regras?: RegrasDoInfografico
+): Promise<ConteudoDoInfografico> {
+  return extractContent(postContent, niche, apiKey, regras);
+}
+
+/**
+ * Gera um infografico completo (extrai e desenha) numa proporcao.
+ *
+ * A assinatura mudou em 19/09: era `platform` e virou `proporcao`. O motivo e
+ * o mesmo que trouxe a tabela de formatos: com `platform`, a decisao de formato
+ * tinha dois donos (esta funcao e a esteira) e os dois discordavam. Com
+ * proporcao, quem decide e a tabela, e aqui so se desenha o que foi pedido.
  */
 export async function generateInfographic(
   postContent: string,
   niche: string,
   apiKey: string,
-  platform: "linkedin" | "twitter" | "both" = "linkedin"
+  proporcao: ProporcaoPedida = "4:5",
+  direcao: DirecaoDeArte = {
+    estilo: "Clean, modern infographic with clear sections.",
+    paleta: "Use a coherent, professional color palette that fits the topic.",
+  },
+  regras?: RegrasDoInfografico
 ): Promise<string> {
-  // Step 1: Extract structured content in Portuguese
-  const content = await extractContent(postContent, niche, apiKey);
-  console.log(`[Infographic] Conteúdo extraído — tema: ${content.theme}, seções: ${content.sections.length}, plataforma: ${platform}`);
+  const content = await extractContent(postContent, niche, apiKey, regras);
+  console.log(`[Infographic] Conteudo extraido - secoes: ${content.sections.length}, proporcao: ${proporcao}`);
 
-  // Step 2: Generate the visual with Gemini Flash ("Nano Banana")
-  const imageUrl = await generateWithGeminiFlash(content, apiKey, platform);
-  if (imageUrl) return imageUrl;
-
-  // Step 3: Fallback — Imagen 3 via API key with descriptive prompt
-  console.warn("[Infographic] Gemini Flash falhou, tentando Imagen 3 como fallback...");
-  const themeStyle = THEME_STYLES[content.theme ?? "linkedin_blue"];
-  const fallbackAspect = platform === "linkedin" ? "portrait 9:16" : "square 1:1";
-  const fallbackPrompt = `Professional social media infographic, ${fallbackAspect}, ${themeStyle}, headline text "${content.title}", modern corporate design, clear typography, data visualization, no lorem ipsum, all text in Brazilian Portuguese, do not include the word TÍTULO or SUBTÍTULO`;
-
-  const imagenRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt: fallbackPrompt }],
-        parameters: { sampleCount: 1, aspectRatio: platform === "linkedin" ? "9:16" : "1:1", outputMimeType: "image/jpeg" },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    }
-  );
-
-  if (imagenRes.ok) {
-    const imagenData = await imagenRes.json() as { predictions?: Array<{ bytesBase64Encoded?: string }> };
-    const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
-    if (b64) {
-      console.log("[Infographic] ✓ Fallback com Imagen 3");
-      return `data:image/jpeg;base64,${b64}`;
-    }
-  }
-
-  throw new Error("Não foi possível gerar o infográfico. Verifique se a GEMINI_API_KEY tem acesso ao Nano Banana Pro (gemini-3-pro-image-preview).");
+  // Montado em codigo (ver desenharInfografico): nao ha modelo de imagem para
+  // falhar, entao a queda antiga para o Imagen 3 saiu junto.
+  const imageUrl = await desenharInfografico(content, apiKey, proporcao, direcao);
+  if (!imageUrl) throw new Error("Nao foi possivel montar o infografico.");
+  return imageUrl;
 }

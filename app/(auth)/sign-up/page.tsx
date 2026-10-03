@@ -2,26 +2,40 @@ import { Suspense } from "react";
 import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import { AuthForm } from "@/components/auth/auth-form";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
+import { quemJaEntrou } from "@/lib/auth/quem-ja-entrou";
+import { JaConectado } from "@/components/auth/ja-conectado";
 
-export default function SignUpPage() {
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Com plano na URL, quem já tem sessão vai direto ao checkout; sem plano,
+  // vê em qual conta está e pode trocar. Ver lib/auth/quem-ja-entrou.
+  const jaConectado = await quemJaEntrou(searchParams);
   return (
-    <div className="min-h-screen bg-[#1e1e25] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2.5 mb-4">
             <BrandMarkAnimated size={32} />
             <span className="flex flex-col justify-center text-left">
-              <span className="font-mont font-bold text-[#dbdee1] text-xl lowercase leading-none">demandou.</span>
-              <span className="text-[11px] text-[#9599a6] lowercase tracking-wide leading-none mt-1">postou.</span>
+              <span className="font-mont font-bold text-[var(--text-primary)] text-xl lowercase leading-none">demandou.</span>
+              {/* O "postou." saiu do lockup no rebranding de 01/10: o slogan falava
+                  com quem quer postar, e o comprador agora é o dono da empresa. */}
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-[#dbdee1]">Crie sua conta</h1>
-          <p className="text-[#949ba4] mt-1">
-            Seu squad de agentes está a um passo de começar
+          {/* Rótulo mono e itálico de destaque, o desenho da referência (01/10). */}
+          <p className="rotulo mb-2">Nova conta</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">
+            Crie a conta da <span className="destaque">sua empresa</span>.
+          </h1>
+          <p className="text-[var(--text-muted)] mt-2">
+            Falta um passo para o squad assumir o conteúdo, e você, o negócio.
           </p>
         </div>
         <Suspense>
-          <AuthForm mode="sign-up" />
+          {jaConectado ? <JaConectado {...jaConectado} /> : <AuthForm mode="sign-up" />}
         </Suspense>
         <IdentificacaoCurta className="mt-8" />
       </div>

@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
+import { contaPagante, consumoDoMembro, nomeDoDono } from "@/lib/equipe/conta";
+import { cicloAtual } from "@/lib/ciclo-de-credito";
+import { fraseDoTetoDeCreditos, fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
 
 /**
  * Débito e crédito de saldo, sempre com extrato.
@@ -17,6 +20,14 @@ import { prisma } from "@/lib/db/prisma";
  */
 
 export class SaldoInsuficiente extends Error {
+  /**
+   * PREENCHIDO QUANDO QUEM PEDIU É MEMBRO DA EQUIPE (01/10, acabamento). A
+   * mensagem já vem com a frase do membro ("Peça a Fulano para adicionar
+   * mais"), e quem monta resposta olha este campo para NÃO emendar o convite
+   * de compra que faz sentido só para o dono. Membro não vê cobrança.
+   */
+  equipe: { dono: string } | null = null;
+
   constructor(
     readonly necessario: number,
     readonly disponivel: number
@@ -28,13 +39,45 @@ export class SaldoInsuficiente extends Error {
   }
 }
 
-/** Quanto o usuário tem agora. */
+/**
+ * O TETO DO MEMBRO DA EQUIPE (01/10): a conta tem saldo, mas o dono limitou o
+ * quanto este membro gasta por mês. É filha de `SaldoInsuficiente` de
+ * propósito: toda rota que já recusa por saldo (402, trabalho que não começa,
+ * nada cobrado) recusa por teto do mesmo jeito, sem ninguém lembrar de mudar.
+ */
+export class TetoDoMembro extends SaldoInsuficiente {
+  constructor(necessario: number, readonly usados: number, readonly teto: number) {
+    super(necessario, Math.max(0, teto - usados));
+    this.message = fraseDoTetoDeCreditos(usados, teto, necessario);
+    this.name = "TetoDoMembro";
+  }
+}
+
+/**
+ * Quanto o usuário tem agora. Para membro da equipe, é o saldo da CONTA do
+ * dono (01/10): é dele que o próximo trabalho vai sair.
+ */
 export async function saldo(userId: string): Promise<number> {
+  const { contaId } = await contaPagante(userId);
   const u = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: contaId },
     select: { creditsBalance: true },
   });
   return u?.creditsBalance ?? 0;
+}
+
+/**
+ * QUANTO O TETO DESTE MEMBRO AINDA DEIXA GASTAR no ciclo (01/10). Null quando
+ * a pessoa não é membro ou não tem teto de créditos. Serve para recusar ANTES
+ * um trabalho que é cobrado só depois de entregue (a campanha), em vez de
+ * entregar e descobrir o teto na hora de cobrar.
+ */
+export async function restanteDoTeto(userId: string): Promise<{ restante: number; usados: number; teto: number } | null> {
+  const { contaId, autorId, membro } = await contaPagante(userId);
+  if (!membro || !autorId || membro.tetoCreditos === null) return null;
+  const conta = await prisma.user.findUnique({ where: { id: contaId }, select: { creditsResetAt: true } });
+  const { creditos: usados } = await consumoDoMembro(contaId, autorId, cicloAtual(conta?.creditsResetAt ?? null).inicio);
+  return { restante: Math.max(0, membro.tetoCreditos - usados), usados, teto: membro.tetoCreditos };
 }
 
 /**
@@ -48,11 +91,83 @@ export async function debitar(args: {
   projectId?: string;
   refId?: string;
   note?: string;
+  /**
+   * CORTESIA: o trabalho acontece e o extrato registra, mas o saldo nao se
+   * move. Mesmo tratamento do acesso interno, e pelo mesmo motivo: sumir do
+   * extrato e o mesmo que nao ter acontecido, e quando o cliente perguntar
+   * "por que refiz e nao cobrou" a resposta precisa estar escrita.
+   *
+   * Quem decide se e cortesia nao e este modulo: e `lib/credits/cortesia.ts`,
+   * que conhece a POLITICA. Aqui so se obedece.
+   */
+  cortesia?: { motivo: string };
 }): Promise<{ balance: number; txId: string }> {
-  const { userId, quantidade, operation, projectId, refId, note } = args;
+  const { quantidade, operation, projectId, refId, note, cortesia } = args;
   if (quantidade <= 0) throw new Error("Quantidade a debitar precisa ser positiva.");
 
   return prisma.$transaction(async (tx) => {
+    // QUEM PAGA (01/10): `args.userId` é quem fez; o saldo debitado é o da
+    // conta (o dono, quando quem fez é membro da equipe). Ver lib/equipe/conta.ts.
+    const { contaId: userId, autorId, membro } = await contaPagante(args.userId, tx);
+    if (cortesia) {
+      const u = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { creditsBalance: true } });
+      const t = await tx.creditTransaction.create({
+        data: {
+          userId,
+          autorId,
+          projectId,
+          amount: 0,
+          operation,
+          refId,
+          balance: u.creditsBalance,
+          note: `${note ? `${note}. ` : ""}Sem cobrança (${cortesia.motivo}): custaria ${quantidade} créditos`,
+        },
+        select: { id: true },
+      });
+      return { balance: u.creditsBalance, txId: t.id };
+    }
+
+    // Admin é acesso interno: o trabalho acontece e o extrato registra, mas o
+    // saldo não se move. Lança linha de valor ZERO em vez de pular a gravação,
+    // porque some do extrato é o mesmo que não ter acontecido, e o que a
+    // operação custou de verdade continua medido em `ai_usage`, que é de onde
+    // a conta de custo sai. O valor que teria sido cobrado fica na nota.
+    const dono = await tx.user.findUnique({ where: { id: userId }, select: { role: true, creditsBalance: true } });
+    if (dono?.role === "admin") {
+      const t = await tx.creditTransaction.create({
+        data: {
+          userId,
+          autorId,
+          projectId,
+          amount: 0,
+          operation,
+          refId,
+          balance: dono.creditsBalance,
+          note: `${note ? `${note}. ` : ""}Acesso interno: custaria ${quantidade} créditos`,
+        },
+        select: { id: true },
+      });
+      return { balance: dono.creditsBalance, txId: t.id };
+    }
+
+    /**
+     * O TETO DO MEMBRO (01/10), conferido antes de mexer no saldo. A trava de
+     * conselho, só deste membro e só durante a transação, faz dois pedidos
+     * simultâneos dele serem conferidos um depois do outro; sem ela os dois
+     * leriam o mesmo consumo e passariam juntos do teto.
+     */
+    if (membro && autorId && membro.tetoCreditos !== null && membro.tetoCreditos !== undefined) {
+      await tx.$queryRaw`select 1 as ok from (select pg_advisory_xact_lock(hashtext(${`teto:${autorId}`}))) as trava`;
+      const conta = await tx.user.findUnique({ where: { id: userId }, select: { creditsResetAt: true } });
+      const ciclo = cicloAtual(conta?.creditsResetAt ?? null);
+      const { creditos: usados } = await consumoDoMembro(userId, autorId, ciclo.inicio, tx);
+      if (usados + quantidade > membro.tetoCreditos) {
+        const teto = new TetoDoMembro(quantidade, usados, membro.tetoCreditos);
+        teto.equipe = { dono: (await nomeDoDono(userId, tx)) ?? "quem administra a conta" };
+        throw teto;
+      }
+    }
+
     // A condição de saldo vive no where: se outra requisição debitou no meio,
     // esta simplesmente não encontra a linha e nada é cobrado duas vezes.
     const atualizados = await tx.user.updateMany({
@@ -61,8 +176,16 @@ export async function debitar(args: {
     });
 
     if (atualizados.count === 0) {
-      const disponivel = await saldo(userId);
-      throw new SaldoInsuficiente(quantidade, disponivel);
+      const disponivel = (await tx.user.findUnique({ where: { id: userId }, select: { creditsBalance: true } }))?.creditsBalance ?? 0;
+      const falta = new SaldoInsuficiente(quantidade, disponivel);
+      // Membro da equipe não compra crédito (01/10): a frase diz de quem é o
+      // saldo e A QUEM pedir, pelo nome, em vez de mandar comprar.
+      if (membro) {
+        const dono = (await nomeDoDono(userId, tx)) ?? "quem administra a conta";
+        falta.message = fraseDosCreditosDaEquipe(dono, { necessario: quantidade, disponivel });
+        falta.equipe = { dono };
+      }
+      throw falta;
     }
 
     const u = await tx.user.findUniqueOrThrow({
@@ -73,6 +196,7 @@ export async function debitar(args: {
     const t = await tx.creditTransaction.create({
       data: {
         userId,
+        autorId,
         projectId,
         amount: -quantidade,
         operation,
@@ -101,10 +225,13 @@ export async function creditar(args: {
   refId?: string;
   note?: string;
 }): Promise<{ balance: number }> {
-  const { userId, quantidade, operation, refId, note } = args;
+  const { quantidade, operation, refId, note } = args;
   if (quantidade <= 0) throw new Error("Quantidade a creditar precisa ser positiva.");
 
   return prisma.$transaction(async (tx) => {
+    // O estorno volta para a conta que pagou, com o membro que fez marcado:
+    // é o que faz o consumo dele no mês descontar o que foi devolvido (01/10).
+    const { contaId: userId, autorId } = await contaPagante(args.userId, tx);
     const u = await tx.user.update({
       where: { id: userId },
       data: { creditsBalance: { increment: quantidade } },
@@ -114,6 +241,7 @@ export async function creditar(args: {
     await tx.creditTransaction.create({
       data: {
         userId,
+        autorId,
         amount: quantidade,
         operation,
         refId,

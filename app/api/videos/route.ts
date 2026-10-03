@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { descartarGravacaoRecusada, fraseDoEstouro, registrarGravacao } from "@/lib/limites-do-plano";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /** Lista os vídeos de um projeto. */
 export async function GET(req: NextRequest) {
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   const project = await prisma.project.findFirst({
-    where: { id: projectId, userId },
+    where: { id: projectId, ...projetoVisivel(userId) },
     select: { id: true },
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
@@ -59,29 +61,25 @@ export async function POST(req: NextRequest) {
   }
 
   const project = await prisma.project.findFirst({
-    where: { id: projectId, userId },
+    where: { id: projectId, ...projetoVisivel(userId) },
     select: { id: true },
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
   // `upsert` e não "procura, e se não achar cria": as duas rotas que registram
   // um vídeo (esta e o aviso do storage) leem antes de qualquer uma escrever,
-  // então a checagem na aplicação não decide nada e as duas criavam. Quem
-  // resolve corrida é a restrição no banco, e o `update` vazio significa
-  // exatamente "já existe, deixa como está".
-  const video = await prisma.videoJob.upsert({
-    where: { projectId_blobUrl: { projectId, blobUrl } },
-    update: {},
-    create: {
-      projectId,
-      userId,
-      status: "uploaded",
-      blobUrl,
-      originalName: originalName ?? null,
-      sizeBytes: sizeBytes ? BigInt(sizeBytes) : null,
-    },
-    select: { id: true, status: true },
-  });
+  // então a checagem na aplicação não decidia nada e as duas criavam. Desde
+  // 30/09 quem resolve a corrida é a trava de `registrarGravacao`, que também
+  // confere a COTA DE GRAVAÇÕES: até aqui esta rota registrava qualquer arquivo
+  // sem cota, e era a porta aberta do limite de 4 gravações do Starter.
+  const registro = await registrarGravacao({ userId, projectId, blobUrl, originalName, sizeBytes });
+  if (!registro.ok) {
+    await descartarGravacaoRecusada(blobUrl, projectId);
+    return NextResponse.json(
+      { error: fraseDoEstouro(registro.estouro), limite: registro.estouro },
+      { status: 403 }
+    );
+  }
 
-  return NextResponse.json({ video });
+  return NextResponse.json({ video: registro.video });
 }

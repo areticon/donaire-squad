@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdtemp, rm, stat, readFile, writeFile, copyFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, statfs, readFile, writeFile, copyFile } from "node:fs/promises";
 import { createWriteStream, createReadStream, constants as fsConstants } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -20,14 +20,20 @@ import {
   extrairQuadros,
   extrairCandidatosDeCapa,
   extrairCapaFinal,
+  extrairQuadroInteiro,
+  ehVertical,
   gradeDeLuz,
   brilhoMedio,
   montarAbertura,
   emendar,
   medirFidelidade,
   diagnostico,
+  rodar,
+  emendarAberturaNoCorte,
+  inserirCenaDeApoio,
+  quadroNaProporcao,
 } from "./ffmpeg.mjs";
-import { gerarMatte, acharCaixaDaPessoa } from "./segmentacao.mjs";
+import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -77,6 +83,17 @@ function assinar(texto) {
   return createHmac("sha256", SEGREDO).update(texto).digest("hex");
 }
 
+/**
+ * Baixa do store privado (pelo SDK, com token) ou de uma URL pública (o store
+ * público e a URL temporária da Higgsfield), sempre em fluxo para o disco.
+ */
+async function baixarQualquer(url, destino) {
+  if (url.includes(".private.blob.")) return baixarFonte(url, destino);
+  const r = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+  if (!r.ok || !r.body) throw new Error(`download respondeu ${r.status}`);
+  await pipeline(Readable.fromWeb(r.body), createWriteStream(destino));
+}
+
 async function baixarFonte(sourceUrl, destino) {
   const blob = await get(sourceUrl, { access: "private", token: BLOB_TOKEN });
   if (!blob || blob.statusCode !== 200) {
@@ -119,7 +136,7 @@ function prazoDeEnvio(bytes) {
   return Math.round(Math.min(45 * 60_000, 10 * 60_000 + (mb / 3) * 60_000));
 }
 
-async function subir(caminho, chave, contentType) {
+async function subir(caminho, chave, contentType, { privado = false } = {}) {
   const { size } = await stat(caminho);
 
   const controle = new AbortController();
@@ -139,8 +156,11 @@ async function subir(caminho, chave, contentType) {
       //
       // Sem a variavel, cai no store privado: pior de performance, identico
       // de comportamento, e nunca quebrado.
-      access: DESTINO_PUBLICO ? "public" : "private",
-      token: DESTINO_PUBLICO ?? BLOB_TOKEN,
+      //
+      // `privado` e a excecao: o audio extraido da gravacao (29/09) e materia
+      // prima do cliente, nao midia publicada, e fica no store privado.
+      access: DESTINO_PUBLICO && !privado ? "public" : "private",
+      token: privado ? BLOB_TOKEN : DESTINO_PUBLICO ?? BLOB_TOKEN,
       contentType,
       addRandomSuffix: true,
       multipart: size > 50 * 1024 * 1024,
@@ -365,6 +385,25 @@ async function emPiscina(itens, n, fn) {
   await Promise.all(operarios);
 }
 
+/**
+ * A legenda de destaque do completo no quadro EM PÉ (30/09).
+ *
+ * O app escreve o ASS para 1920x1080 (lib/media/edicao.ts), porque o completo
+ * sempre foi deitado. Num completo de celular em pé o libass esticaria esse
+ * sistema de coordenadas num quadro 1080x1920: letra deformada e a linha, que
+ * não quebra (WrapStyle 2), passando da largura. Aqui a referência vira
+ * 1080x1920, o que mantém o tamanho da letra em pixels (64 px, legível num
+ * quadro de 1080 de largura), e a quebra passa a ser automática (WrapStyle 0).
+ * Gravação deitada passa intocada.
+ */
+function legendaNoQuadroDoCompleto(ass, info) {
+  if (!ehVertical(info)) return ass;
+  return ass
+    .replace(/^PlayResX:.*$/m, "PlayResX: 1080")
+    .replace(/^PlayResY:.*$/m, "PlayResY: 1920")
+    .replace(/^WrapStyle:.*$/m, "WrapStyle: 0");
+}
+
 async function produzirCompleto(trabalho, fonte, pasta, info, resultados, marca) {
   const completo = join(pasta, "completo.mp4");
 
@@ -375,7 +414,7 @@ async function produzirCompleto(trabalho, fonte, pasta, info, resultados, marca)
   let legendasArquivo = null;
   if (trabalho.legendasAss) {
     legendasArquivo = join(pasta, "destaques.ass");
-    await writeFile(legendasArquivo, trabalho.legendasAss, "utf8");
+    await writeFile(legendasArquivo, legendaNoQuadroDoCompleto(trabalho.legendasAss, info), "utf8");
   }
 
   // O CORPO primeiro: a gravação editada, do começo.
@@ -468,7 +507,7 @@ function registrarFalhaDoCompleto(trabalho, resultados, e) {
  */
 async function processar(trabalho) {
   const pasta = await mkdtemp(join(tmpdir(), "demandou-"));
-  const resultados = { trechos: [], completo: null, capaFonte: null, erros: [] };
+  const resultados = { trechos: [], completo: null, capaFonte: null, capaFonteRecorte: null, erros: [] };
   // Vai junto no aviso: um pedido `soTrechos` refaz um corte e NAO produz
   // completo, e sem esta marca o app gravaria `completoUrl: null` por cima de
   // um video completo que existe e esta no ar.
@@ -541,7 +580,9 @@ async function processar(trabalho) {
     // os dois e a ampliacao. Na gravacao do Bruno, a webcam de 422 px vira
     // 2,6x, e foi isso que ele viu como "imagem macia". Acima de 2x o aviso
     // entra no diagnostico do video, que e o campo que o cliente le.
-    {
+    // Gravação em pé não amplia nada: o vertical é o quadro inteiro (ver
+    // `cortarVertical`), então a conta abaixo não vale para ela.
+    if (!ehVertical(info)) {
       const ampliacoes = [...enquadramentos.values()]
         .filter((e) => e?.pessoa?.w)
         .map((e) => 1080 / Math.max(1, e.pessoa.w * info.largura));
@@ -565,13 +606,46 @@ async function processar(trabalho) {
     if (capa) {
       try {
         const arquivo = join(pasta, "capa-fonte.jpg");
-        await extrairCapaFinal(fonte, arquivo, capa.instante, capa.recorte);
+        // O agente de visão acha a REGIÃO (a webcam numa gravação de tela) e um
+        // instante bom; o rosto decide o quadro exato, em volta desse instante,
+        // com olho aberto e boca fechada (teste de 29/09: capa-fonte de olhos
+        // semicerrados e boca aberta).
+        let instante = capa.instante;
+        const perto = await quadroDaCapa(
+          {
+            video: fonte,
+            instantes: instantesEspalhados(Math.max(0, capa.instante - 6), 12, 12).concat(
+              instantesEspalhados(0, info.duracaoSec, 12)
+            ),
+          },
+          pasta,
+          "qc-fonte"
+        );
+        if (perto?.instante != null) instante = perto.instante;
+        await extrairCapaFinal(fonte, arquivo, instante, capa.recorte);
+        // Em pé, a capa deitada tem as laterais desfocadas: o recorte da
+        // pessoa sai de um quadro inteiro em pé, sem borrão para confundir o
+        // segmentador (30/09).
+        let imagemDoRecorte = arquivo;
+        if (ehVertical(info)) {
+          imagemDoRecorte = join(pasta, "capa-fonte-em-pe.jpg");
+          await extrairQuadroInteiro(fonte, imagemDoRecorte, instante);
+        }
+        const recorteDaFonte = await quadroDaCapa({ imagem: imagemDoRecorte }, pasta, "qc-fonte-final");
+        if (recorteDaFonte) {
+          resultados.capaFonteRecorte = await subir(
+            recorteDaFonte.recorte,
+            `cortes/${trabalho.videoJobId}/recorte-fonte.png`,
+            "image/png"
+          );
+          resultados.capaFonteRecorte.rosto = recorteDaFonte.rosto;
+        }
         resultados.capaFonte = await subir(
           arquivo,
           `cortes/${trabalho.videoJobId}/capa-fonte.jpg`,
           "image/jpeg"
         );
-        resultados.capaFonte.instante = Math.round(capa.instante);
+        resultados.capaFonte.instante = Math.round(instante);
         resultados.capaFonte.motivo = capa.motivo;
       } catch (e) {
         resultados.erros.push(
@@ -671,7 +745,11 @@ async function processar(trabalho) {
         // A conta do custo: a segmentacao volta a rodar, uns 13 segundos por
         // corte, e SO nos trechos mistos. Corte de fala continua sem ela.
         const querEmpilhado = enq?.vertical === "empilhado" && Boolean(enq?.tela);
-        const precisaDeMascara = Boolean(enq?.pessoa) && (Boolean(fundoLocal) || querEmpilhado);
+        // Gravação em pé nunca precisa de máscara: o vertical é o quadro
+        // inteiro, sem empilhado nem fundo (ver `cortarVertical`). Rodar a
+        // segmentação aqui seria gastar uns 13 s por corte à toa (30/09).
+        const precisaDeMascara =
+          !ehVertical(info) && Boolean(enq?.pessoa) && (Boolean(fundoLocal) || querEmpilhado);
         const matte = precisaDeMascara
           ? await gerarMatte(limpo, pasta, t.indice, 0, duracaoLimpa, enq.pessoa)
           : null;
@@ -695,7 +773,9 @@ async function processar(trabalho) {
         // caixa vem da deteccao de movimento, que e deterministica. So se as
         // duas falharem o corte cai no tratamento antigo do enquadramento.
         let caixaDaPessoa = enq?.pessoa ?? null;
-        if (!caixaDaPessoa) {
+        // Em pé a caixa não é usada (o vertical é o quadro inteiro): não vale
+        // procurar movimento para achá-la.
+        if (!caixaDaPessoa && !ehVertical(info)) {
           const achada = await acharCaixaDaPessoa(limpo, pasta, t.indice, 0, duracaoLimpa);
           if (achada) {
             // A deteccao devolve a regiao que SE MEXE, que e o rosto: no video
@@ -798,7 +878,7 @@ async function processar(trabalho) {
         // A diferenca e que aqui a queda e uma SEGUNDA tentativa, e nao um
         // caminho alternativo, porque so da para saber que o grafo com emoji
         // nao serve depois de o ffmpeg recusar.
-        const comporVertical = (comEmoji) =>
+        const comporVertical = (comEmoji, comTratamento = true) =>
           cortarVertical(
             limpo, vertical, 0, duracaoLimpa, enqDoVertical, matte,
             matte && fundoLocal ? basename(fundoLocal) : null,
@@ -811,13 +891,24 @@ async function processar(trabalho) {
             // As dimensoes da gravacao: o empilhado precisa delas para saber a
             // altura do cartao antes de compor, e sem isso o layout cai nas
             // larguras fixas, que deixavam um vazio no meio do quadro.
-            { largura: info.largura, altura: info.altura }
+            { largura: info.largura, altura: info.altura },
+            // A linguagem escolhida (30/09); a segunda tentativa vai sem ela,
+            // porque corte cru é melhor que corte nenhum.
+            comTratamento && trabalho.tratamento ? { ...trabalho.tratamento, momentos: t.momentos ?? [] } : null
           );
 
         try {
           await comporVertical(true);
         } catch (e) {
-          if (!emojisDoTrecho.length) throw e;
+          // O tratamento da linguagem é o filtro mais novo do grafo: se o
+          // ffmpeg recusar, o corte sai sem ele e o motivo fica no log e no
+          // trecho, em vez de o corte não existir (30/09).
+          if (trabalho.tratamento) {
+            console.error(`[${trabalho.videoJobId}] trecho ${t.indice} falhou COM tratamento, tentando sem: ${e.message.slice(0, 300)}`);
+            saida.tratamentoCaiu = true;
+            await comporVertical(false, false);
+          } else if (!emojisDoTrecho.length) throw e;
+          else {
           console.error(
             `[${trabalho.videoJobId}] trecho ${t.indice} falhou COM emoji, ` +
               `tentando sem: ${e.message}`
@@ -825,6 +916,7 @@ async function processar(trabalho) {
           await comporVertical(false);
           saida.efeitos = 0;
           saida.emojiCaiu = true;
+          }
         }
         saida.vertical = await subir(
           vertical,
@@ -836,7 +928,8 @@ async function processar(trabalho) {
         await cortarHorizontal(
           limpo, horizontal, 0, duracaoLimpa, legendaH,
           musicaLocal ? basename(musicaLocal) : null,
-          trabalho.estilo?.som ?? null
+          trabalho.estilo?.som ?? null,
+          trabalho.tratamento ? { ...trabalho.tratamento, momentos: t.momentos ?? [] } : null
         );
         saida.horizontal = await subir(
           horizontal,
@@ -844,13 +937,37 @@ async function processar(trabalho) {
           "video/mp4"
         );
 
-        const capa = join(pasta, `c-${t.indice}.jpg`);
-        await extrairCapa(limpo, capa, 0, duracaoLimpa);
-        saida.capa = await subir(
-          capa,
-          `cortes/${trabalho.videoJobId}/capa-${t.indice}.jpg`,
-          "image/jpeg"
+        // A capa do corte: o melhor quadro do trecho como FOTO (olho aberto,
+        // boca fechada, rosto de frente) e a pessoa recortada dele, para a capa
+        // ser composta em código sem o modelo de imagem tocar no rosto (teste de
+        // 29/09). Sem rosto achado, cai no quadro fixo de antes.
+        const escolhido = await quadroDaCapa(
+          { video: limpo, instantes: instantesEspalhados(0, duracaoLimpa, 16) },
+          pasta,
+          `qc-${t.indice}`
         );
+        if (escolhido) {
+          saida.capa = await subir(
+            escolhido.quadro,
+            `cortes/${trabalho.videoJobId}/capa-${t.indice}.jpg`,
+            "image/jpeg"
+          );
+          saida.recorte = await subir(
+            escolhido.recorte,
+            `cortes/${trabalho.videoJobId}/recorte-${t.indice}.png`,
+            "image/png"
+          );
+          saida.recorte.rosto = escolhido.rosto;
+          saida.recorte.notas = escolhido.notas;
+        } else {
+          const capa = join(pasta, `c-${t.indice}.jpg`);
+          await extrairCapa(limpo, capa, 0, duracaoLimpa);
+          saida.capa = await subir(
+            capa,
+            `cortes/${trabalho.videoJobId}/capa-${t.indice}.jpg`,
+            "image/jpeg"
+          );
+        }
       } catch (e) {
         // Um trecho que falha não derruba os outros. Entregar quatro de cinco é
         // melhor que entregar zero, e a tela mostra qual faltou.
@@ -933,11 +1050,15 @@ async function processar(trabalho) {
         parcial: true,
         trechos: resultados.trechos,
         capaFonte: resultados.capaFonte,
+        capaFonteRecorte: resultados.capaFonteRecorte,
         avisoDeQualidade: resultados.avisoDeQualidade,
         erros: resultados.erros,
         duracaoSec: Math.round(info.duracaoSec),
       });
       marca("cortes entregues ao app");
+      // Se o worker reiniciar daqui em diante, falta só o completo: o aviso de
+      // reinício leva esta marca e o app pede só o completo de novo.
+      trabalho.__parcialEnviado = true;
     } catch (e) {
       console.warn(`[${trabalho.videoJobId}] aviso parcial falhou: ${e?.message ?? e}`);
     }
@@ -954,6 +1075,58 @@ async function processar(trabalho) {
     // O disco do contêiner é compartilhado entre trabalhos. Sem esta limpeza,
     // dois vídeos grandes seguidos enchem o disco e o terceiro falha por um
     // motivo que não tem nada a ver com ele.
+    await rm(pasta, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Quanto disco sobra na pasta temporaria, em GB.
+ *
+ * Existe desde 29/09 por causa do teto de 5 horas do Enterprise: um podcast de
+ * 5 h com 3 cameras pesa perto de 27 GB, e o trabalho precisa baixar tudo antes
+ * de montar. Sem este numero no /saude, a primeira pessoa a descobrir que o
+ * disco nao cabe seria o cliente.
+ */
+async function discoLivre() {
+  try {
+    const s = await statfs(tmpdir());
+    return {
+      livreGb: Number(((s.bavail * s.bsize) / 1073741824).toFixed(1)),
+      totalGb: Number(((s.blocks * s.bsize) / 1073741824).toFixed(1)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tira SO O AUDIO da gravacao, para a transcricao (29/09).
+ *
+ * A Deepgram aceita no maximo 2 GB por arquivo, e ate 29/09 esse era o teto do
+ * upload. Com as gravacoes de ate 5 horas, o arquivo chega a 20 GB. O audio de
+ * fala em AAC mono a 64 kbps pesa cerca de 29 MB por hora, e a Deepgram
+ * transcreve igual: ela so ouve.
+ *
+ * Mono e 16 kHz nao, 44,1: a transcricao nao ganha nada acima de 16 kHz, mas o
+ * mesmo arquivo pode servir depois para a sincronia de cameras, que ganha.
+ */
+async function extrairAudio(trabalho) {
+  const pasta = await mkdtemp(join(tmpdir(), "demandou-audio-"));
+  const t0 = Date.now();
+  try {
+    const fonte = join(pasta, "fonte");
+    await baixarFonte(trabalho.sourceUrl, fonte);
+    console.log(`[${trabalho.videoJobId}] audio: fonte baixada em ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    const saida = join(pasta, "audio.m4a");
+    // Assincrono, e nao execSync: 20 GB levam minutos para atravessar, e o
+    // processo travado nao responderia nem ao /saude do Railway.
+    await rodar(["-i", fonte, "-vn", "-ac", "1", "-ar", "44100", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", saida], {
+      timeoutMs: 60 * 60 * 1000,
+    });
+    const { url, bytes } = await subir(saida, `audio/${trabalho.videoJobId}.m4a`, "audio/mp4", { privado: true });
+    console.log(`[${trabalho.videoJobId}] audio: ${(bytes / 1048576).toFixed(0)} MB em ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    return { audio: { url, bytes } };
+  } finally {
     await rm(pasta, { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -978,6 +1151,10 @@ async function processar(trabalho) {
  * "cutting"), então repetir não estraga nada.
  */
 async function avisar(trabalho, corpo) {
+  // O trabalho já foi dado como interrompido no desligamento (o app recebeu
+  // "reiniciado" e relançou). Um aviso de pronto atrasado deste mesmo trabalho
+  // cairia em cima da nova rodada; melhor calar.
+  if (trabalho?.__abandonado) return;
   const texto = JSON.stringify(corpo);
   const esperas = [5_000, 15_000, 45_000, 135_000];
 
@@ -1026,6 +1203,190 @@ async function avisar(trabalho, corpo) {
  * estava esperando. Quem sabe se ha trabalho em andamento e o worker.
  */
 let emAndamento = 0;
+// Os prints da gravação (amostras-de-tela) contam à parte (02/10): são leves e
+// não podem segurar a fila de montagem, que espera o emAndamento zerar.
+let amostrasEmAndamento = 0;
+
+/**
+ * OS TRABALHOS COM AVISO PENDENTE (01/10), por vídeo.
+ *
+ * Nasceu do incidente de 01/10: um deploy do worker reiniciou o contêiner no
+ * meio de um corte, o pedido morreu sem aviso, e o vídeo do Bruno ficou mais
+ * de uma hora em "cortando". O contador acima diz QUANTOS trabalhos rodam; este
+ * registro diz QUAIS, e guarda como avisar cada um. Serve a duas coisas:
+ *
+ * - `/vivo`: o vigia do app pergunta se o corte de um vídeo ainda está aqui
+ *   antes de relançar, para não cortar duas vezes;
+ * - o desligamento: o que não terminar a tempo recebe o aviso "reiniciado", e
+ *   o app relança na hora em vez de esperar o prazo inteiro.
+ *
+ * Cada entrada: { videoJobId, tipo, desde, destino, reinicio() }, onde
+ * `destino` é o objeto que `avisar` recebe (marcado `__abandonado` depois do
+ * aviso de reinício) e `reinicio()` monta o corpo desse aviso.
+ */
+const trabalhosVivos = new Map();
+let proximoTrabalho = 0;
+function registrarTrabalho(entrada) {
+  const chave = ++proximoTrabalho;
+  trabalhosVivos.set(chave, { ...entrada, desde: Date.now() });
+  return () => trabalhosVivos.delete(chave);
+}
+
+/** Recebeu SIGTERM: não aceita pedido novo, espera o que está rodando. */
+let desligando = false;
+
+/**
+ * Quanto esperar os trabalhos em andamento antes de avisar "reiniciado".
+ *
+ * O Railway manda SIGTERM e, depois de `drainingSeconds` (worker/railway.json,
+ * também exposto como RAILWAY_DEPLOYMENT_DRAINING_SECONDS), SIGKILL. Sem
+ * configuração o padrão é zero: o processo morre na hora e nada daqui roda, e
+ * foi exatamente isso no incidente. Ficam 30 s de margem para os avisos
+ * saírem antes do SIGKILL.
+ */
+function esperaNoDesligamentoMs() {
+  const explicita = Number(process.env.WORKER_ESPERA_NO_DESLIGAMENTO_S);
+  if (explicita > 0) return explicita * 1000;
+  const drenagem = Number(process.env.RAILWAY_DEPLOYMENT_DRAINING_SECONDS);
+  if (drenagem > 0) return Math.max(5, drenagem - 30) * 1000;
+  return 870 * 1000;
+}
+
+/**
+ * O aviso de reinício, com pressa: duas tentativas de 10 s. O `avisar` normal
+ * insiste por até 3 minutos, o que estouraria a janela antes do SIGKILL.
+ */
+async function avisarReinicio(destino, corpo) {
+  const texto = JSON.stringify(corpo);
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      const res = await fetch(destino.callbackUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-demandou-assinatura": assinar(texto) },
+        body: texto,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok || res.status < 500) return res.ok;
+    } catch (e) {
+      console.warn(`[${destino.videoJobId}] aviso de reinício falhou (${e?.message ?? e})`);
+    }
+  }
+  return false;
+}
+
+async function desligar(sinal) {
+  if (desligando) return;
+  desligando = true;
+  const limite = Date.now() + esperaNoDesligamentoMs();
+  console.log(`[desligamento] ${sinal}: sem pedidos novos; ${trabalhosVivos.size} trabalho(s) com aviso pendente, ${emAndamento} em andamento`);
+  // Para de aceitar conexões novas; as abertas ainda respondem (o /saude e o
+  // 503 dos pedidos novos).
+  servidor.close();
+
+  // As montagens que nem começaram não vão começar: avisa já, para o app
+  // reenviar ao contêiner novo sem esperar a drenagem inteira.
+  const naFila = filaDaMontagem.splice(0);
+  await Promise.all(
+    naFila
+      .filter((t) => t.pedido.callbackUrl)
+      .map((t) =>
+        avisarReinicio(
+          { callbackUrl: t.pedido.callbackUrl, videoJobId: t.pedido.videoJobId ?? t.pedido.chave },
+          { ok: false, reiniciado: true, erro: "reiniciado", retorno: t.pedido.retorno ?? null }
+        )
+      )
+  );
+
+  while ((trabalhosVivos.size > 0 || emAndamento > 0) && Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+
+  const restantes = [...trabalhosVivos.values()];
+  if (restantes.length) {
+    console.warn(`[desligamento] ${restantes.length} trabalho(s) não terminaram a tempo; avisando o app para relançar`);
+    await Promise.all(
+      restantes.map(async (t) => {
+        t.destino.__abandonado = true;
+        const ok = await avisarReinicio(t.destino, t.reinicio());
+        console.log(`[desligamento] ${t.tipo} ${t.videoJobId}: aviso de reinício ${ok ? "entregue" : "não entregue"}`);
+      })
+    );
+  } else {
+    console.log("[desligamento] tudo terminou dentro da janela");
+  }
+  process.exit(0);
+}
+process.on("SIGTERM", () => void desligar("SIGTERM"));
+process.on("SIGINT", () => void desligar("SIGINT"));
+
+/**
+ * A FILA DA MONTAGEM (30/09, primeira rodada em produção). Quatro montagens
+ * chegaram juntas (uma por corte), cada uma com um Chrome de várias abas e
+ * vários ffmpeg, às vezes junto do completo: o compositor do Remotion morreu
+ * por memória (SIGKILL num contêiner de 7,6 GB) e dois ffmpeg morreram com
+ * "Resource temporarily unavailable" (processos e threads demais).
+ *
+ * Agora: UMA montagem por vez, e ela só começa com o resto do worker parado
+ * (cortes e completo têm prioridade, porque o cliente espera por eles). As
+ * outras esperam aqui; o app já recebeu 202 e o resultado vai por callback.
+ * Pedido repetido da mesma chave (o app reenvia depois do prazo) substitui o
+ * que estava esperando, em vez de renderizar duas vezes.
+ */
+const filaDaMontagem = [];
+let montagemRodando = false;
+
+/**
+ * A gravação original, baixada UMA vez para todos os cortes do mesmo vídeo
+ * que estão na fila (antes cada montagem baixava 1,3 GB de novo). Apagada
+ * quando a fila esvazia.
+ */
+const PASTA_DOS_ORIGINAIS = join(tmpdir(), "montagem-originais");
+const originais = new Map();
+function obterOriginal(url) {
+  if (!originais.has(url)) {
+    const arquivo = join(PASTA_DOS_ORIGINAIS, `${createHmac("sha256", "original").update(url).digest("hex").slice(0, 16)}.mp4`);
+    const pronto = mkdir(PASTA_DOS_ORIGINAIS, { recursive: true })
+      .then(() => baixarQualquer(url, arquivo))
+      .then(() => arquivo);
+    // Download que falhou não fica no cache: a próxima montagem tenta de novo.
+    pronto.catch(() => originais.delete(url));
+    originais.set(url, pronto);
+  }
+  return originais.get(url);
+}
+
+function enfileirarMontagem(trabalho) {
+  // Só pedido com callback é substituído: o síncrono tem alguém esperando a resposta.
+  const repetido = trabalho.pedido.callbackUrl
+    ? filaDaMontagem.findIndex((t) => t.pedido.callbackUrl && t.pedido.chave === trabalho.pedido.chave)
+    : -1;
+  if (repetido >= 0) filaDaMontagem.splice(repetido, 1, trabalho);
+  else filaDaMontagem.push(trabalho);
+  void andarFilaDaMontagem();
+}
+
+async function andarFilaDaMontagem() {
+  if (montagemRodando) return;
+  montagemRodando = true;
+  try {
+    while (filaDaMontagem.length) {
+      // Espera o worker esvaziar: corte ou completo rodando tem prioridade. Com
+      // teto de 15 min (02/10): um trabalho preso não pode segurar a fila para sempre.
+      const esperaAte = Date.now() + 15 * 60_000;
+      while (emAndamento > 0 && Date.now() < esperaAte) await new Promise((r) => setTimeout(r, 10_000));
+      if (emAndamento > 0) console.error(`[montar] fila esperou 15 min por ${emAndamento} trabalho(s) em andamento; segue mesmo assim`);
+      const trabalho = filaDaMontagem.shift();
+      await trabalho.executar().catch((e) => console.error(`[montar] ${e?.message ?? e}`));
+      // Respiro entre renders: o Chrome e o compositor do anterior terminam de
+      // sair e devolvem a memória antes do próximo abrir.
+      await new Promise((r) => setTimeout(r, 3_000));
+    }
+  } finally {
+    montagemRodando = false;
+    originais.clear();
+    await rm(PASTA_DOS_ORIGINAIS, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 const servidor = createServer((req, res) => {
   const responder = (status, corpo) => {
@@ -1040,17 +1401,497 @@ const servidor = createServer((req, res) => {
   // que passa o filtro por arquivo MUDOU DE NOME entre as duas. Sem isso a
   // diferença só apareceria como uma falha em produção que não reproduz local.
   if (req.method === "GET" && req.url === "/saude") {
-    return responder(200, {
+    return discoLivre().then((disco) => responder(200, {
+      disco,
       ok: true,
-      trabalhando: emAndamento > 0,
+      trabalhando: emAndamento > 0 || amostrasEmAndamento > 0 || montagemRodando || filaDaMontagem.length > 0,
+      // Para quem vai publicar (01/10): espere `emAndamento` e `trabalhos`
+      // chegarem a zero. `desligando` diz que este contêiner já recebeu
+      // SIGTERM e só termina o que tem.
+      emAndamento,
+      amostrasEmAndamento,
+      trabalhos: trabalhosVivos.size,
+      desligando,
+      montagensNaFila: filaDaMontagem.length,
       ...diagnostico(),
       memoria: memoriaDoConteiner(),
       cpus: availableParallelism(),
       paralelismo: PARALELISMO,
-    });
+    }));
   }
 
-  if (req.method !== "POST" || !req.url?.startsWith("/cortar")) {
+  // /vivo (01/10): o vigia do app pergunta se o corte de um vídeo ainda roda
+  // aqui antes de relançar. Assinada como o resto: a lista do que está
+  // rodando é dado de cliente.
+  if (req.method === "POST" && req.url?.startsWith("/vivo")) {
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      const achado = [...trabalhosVivos.values()].find(
+        (t) => t.videoJobId === pedido.videoJobId && (!pedido.tipo || t.tipo === pedido.tipo)
+      );
+      responder(200, {
+        vivo: Boolean(achado),
+        tipo: achado?.tipo ?? null,
+        desdeSegundos: achado ? Math.round((Date.now() - achado.desde) / 1000) : null,
+        desligando,
+      });
+    });
+    return;
+  }
+
+  // NO DESLIGAMENTO não entra trabalho novo: ele morreria no meio. O 503 faz
+  // quem pediu tratar como "worker indisponível"; o contêiner novo já está no
+  // ar e recebe o próximo pedido.
+  if (desligando && req.method === "POST") {
+    return responder(503, { error: "Worker reiniciando; tente de novo em instantes." });
+  }
+
+  const ehAudio = req.method === "POST" && req.url?.startsWith("/audio");
+  // /recortar (30/09): recorta a pessoa de um quadro JÁ guardado e responde na
+  // hora (poucos segundos). Serve às capas compostas em código dos vídeos que
+  // foram cortados antes do quadro-da-capa existir.
+  const ehRecorte = req.method === "POST" && req.url?.startsWith("/recortar");
+  if (ehRecorte) {
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.imagemUrl || !pedido.chave) return responder(400, { error: "Faltam imagemUrl ou chave" });
+      const pasta = await mkdtemp(join(tmpdir(), "recorte-"));
+      try {
+        const arquivo = join(pasta, "quadro.jpg");
+        if (pedido.imagemUrl.includes(".private.blob.")) {
+          await baixarFonte(pedido.imagemUrl, arquivo);
+        } else {
+          const r = await fetch(pedido.imagemUrl);
+          if (!r.ok) throw new Error(`imagem respondeu ${r.status}`);
+          await writeFile(arquivo, Buffer.from(await r.arrayBuffer()));
+        }
+        const feito = await quadroDaCapa({ imagem: arquivo }, pasta, "qc");
+        if (!feito) return responder(422, { error: "Não achei a pessoa no quadro" });
+        const recorte = await subir(feito.recorte, pedido.chave, "image/png");
+        responder(200, { recorte: { ...recorte, rosto: feito.rosto }, largura: feito.largura, altura: feito.altura });
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "falhou" });
+      } finally {
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+    return;
+  }
+  // /amostras-de-tela (01/10): os prints da gravação para a detecção de tela
+  // compartilhada ANTES do roteiro (lib/media/telas-da-gravacao.ts). Síncrona:
+  // baixa a gravação uma vez (o mesmo cache dos cortes, `obterOriginal`), tira
+  // os prints pedidos e devolve em base64, junto da medida câmera/tela por
+  // quadro-chave (a reserva do app quando a visão falha). Vem ANTES do
+  // /quadro: o teste dele é por prefixo.
+  const ehAmostrasDeTela = req.method === "POST" && req.url?.startsWith("/amostras-de-tela");
+  if (ehAmostrasDeTela) {
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.sourceUrl || !Array.isArray(pedido.instantes)) return responder(400, { error: "Faltam sourceUrl ou instantes" });
+      const pasta = await mkdtemp(join(tmpdir(), "amostras-"));
+      amostrasEmAndamento += 1;
+      try {
+        const original = await obterOriginal(pedido.sourceUrl);
+        const { amostrarQuadros } = await import("./amostras-de-tela.mjs");
+        const quadros = await amostrarQuadros(original, pedido.instantes, pasta, { largura: pedido.largura ?? 640 });
+        let medida = null;
+        try {
+          // A revisão visual e a demonstração (02/10) só querem os quadros.
+          const { analisarCompleto } = await import("./montagem-do-completo.mjs");
+          if (!pedido.semMedida) medida = await analisarCompleto(original);
+        } catch (e) {
+          console.error(`[amostras-de-tela] medida falhou: ${e instanceof Error ? e.message : e}`);
+        }
+        responder(200, { quadros, medida });
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "amostras falharam" });
+      } finally {
+        amostrasEmAndamento -= 1;
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+        // A gravação baixada só fica no cache se uma montagem vai usá-la já;
+        // sem fila, 1,3 GB parados no disco até o cliente aprovar o roteiro
+        // (pode levar dias) não valem o download que economizariam.
+        if (!montagemRodando && !filaDaMontagem.length) {
+          const guardado = originais.get(pedido.sourceUrl);
+          originais.delete(pedido.sourceUrl);
+          guardado?.then((arquivo) => rm(arquivo, { force: true })).catch(() => {});
+        }
+      }
+    });
+    return;
+  }
+  // /medir-referencia (01/10): mede um vídeo de referência do nicho (cortes,
+  // cena, fala, andamento e uma folha de contato para a visão) e APAGA o
+  // vídeo na hora (src/medir-referencia.mjs). Síncrona, como o /recortar.
+  // Vem antes do /quadro, cujo teste é por prefixo.
+  if (req.method === "POST" && req.url?.startsWith("/medir-referencia")) {
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.url) return responder(400, { error: "Falta url" });
+      emAndamento += 1;
+      try {
+        const { medirReferencia } = await import("./medir-referencia.mjs");
+        const medida = await medirReferencia({ url: pedido.url, origem: pedido.origem ?? "instagram", maxSeg: Math.min(180, Math.max(10, Number(pedido.maxSeg) || 90)) });
+        responder(200, { medida });
+      } catch (e) {
+        responder(e?.codigo === "sem-baixador" ? 501 : 500, { error: e instanceof Error ? e.message : "medida falhou", codigo: e?.codigo ?? null });
+      } finally {
+        emAndamento -= 1;
+      }
+    });
+    return;
+  }
+  // /quadro e /emendar (29/09, item 9): a ponta do worker na abertura por IA
+  // da Higgsfield. Síncronas como o /recortar: o app chama de dentro de um
+  // passo da fila e espera a resposta (um quadro leva 1 s; a emenda de um
+  // corte de 40 s levou 40 s no teste local). Quem gera o clipe é a
+  // Higgsfield, chamada pelo app; aqui só se prepara o quadro e se emenda.
+  const ehQuadro = req.method === "POST" && req.url?.startsWith("/quadro");
+  const ehEmenda = req.method === "POST" && req.url?.startsWith("/emendar");
+  if (ehQuadro || ehEmenda) {
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.chave) return responder(400, { error: "Falta chave" });
+      if (ehQuadro && !pedido.imagemUrl) return responder(400, { error: "Falta imagemUrl" });
+      if (ehEmenda && (!pedido.corteUrl || (!pedido.aberturaUrl && !pedido.apoio?.url))) {
+        return responder(400, { error: "Faltam corteUrl e ao menos aberturaUrl ou apoio.url" });
+      }
+      const pasta = await mkdtemp(join(tmpdir(), ehQuadro ? "quadro-" : "emenda-"));
+      // Conta como trabalho em andamento: a regra de deploy só com a fila
+      // vazia olha este contador, e uma emenda morta no meio desperdiça o
+      // clipe que já foi pago.
+      emAndamento += 1;
+      try {
+        if (ehQuadro) {
+          const entrada = join(pasta, "entrada.jpg");
+          await baixarQualquer(pedido.imagemUrl, entrada);
+          const saida = join(pasta, "quadro.jpg");
+          await quadroNaProporcao(entrada, saida, { proporcao: pedido.proporcao ?? "9:16", centroX: pedido.centroX });
+          const quadro = await subir(saida, pedido.chave, "image/jpeg");
+          return responder(200, { quadro });
+        }
+        let atual = join(pasta, "corte.mp4");
+        await baixarQualquer(pedido.corteUrl, atual);
+        let apoio = null;
+        // A cena de apoio entra PRIMEIRO, no tempo do corte original; a
+        // abertura vem depois e empurra tudo junto.
+        if (pedido.apoio?.url) {
+          const clipe = join(pasta, "apoio.mp4");
+          await baixarQualquer(pedido.apoio.url, clipe);
+          const comApoio = join(pasta, "com-apoio.mp4");
+          apoio = await inserirCenaDeApoio(clipe, atual, comApoio, { instante: pedido.apoio.instante ?? null });
+          if (apoio) atual = comApoio;
+        }
+        let abertura = null;
+        if (pedido.aberturaUrl) {
+          const clipe = join(pasta, "abertura.mp4");
+          await baixarQualquer(pedido.aberturaUrl, clipe);
+          const comAbertura = join(pasta, "com-abertura.mp4");
+          abertura = await emendarAberturaNoCorte(clipe, atual, comAbertura, { crossfade: pedido.crossfade ?? 0.3 });
+          atual = comAbertura;
+        }
+        const vertical = await subir(atual, pedido.chave, "video/mp4");
+        responder(200, { vertical, abertura, apoio });
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "falhou" });
+      } finally {
+        emAndamento -= 1;
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+    return;
+  }
+  // O GÊMEO DIGITAL (01/10), ver src/gemeo.mjs:
+  //   /rosto-do-gemeo  síncrona: a melhor foto, recortada no rosto (segundos);
+  //   /voz-do-gemeo    síncrona: a amostra de voz em MP3 e a duração real;
+  //   /juntar-gemeo    202 e callback: os pedaços do gerador num vídeo só.
+  // Tudo do gêmeo vai para o store PRIVADO: rosto, voz e o vídeo final são
+  // matéria-prima do cliente até ele aprovar, como a gravação enviada.
+  const ehRostoDoGemeo = req.method === "POST" && req.url?.startsWith("/rosto-do-gemeo");
+  const ehVozDoGemeo = req.method === "POST" && req.url?.startsWith("/voz-do-gemeo");
+  const ehJuntarGemeo = req.method === "POST" && req.url?.startsWith("/juntar-gemeo");
+  if (ehRostoDoGemeo || ehVozDoGemeo || ehJuntarGemeo) {
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.chave) return responder(400, { error: "Falta chave" });
+      const gemeo = await import("./gemeo.mjs");
+      if (ehJuntarGemeo) {
+        if (!Array.isArray(pedido.pedacos) || !pedido.pedacos.length || !pedido.callbackUrl) {
+          return responder(400, { error: "Faltam pedacos ou callbackUrl" });
+        }
+        responder(202, { aceito: true, chave: pedido.chave });
+        const pasta = await mkdtemp(join(tmpdir(), "gemeo-juntar-"));
+        emAndamento += 1;
+        const destino = { callbackUrl: pedido.callbackUrl, videoJobId: pedido.chave };
+        const soltar = registrarTrabalho({
+          videoJobId: pedido.chave,
+          tipo: "juntar-gemeo",
+          destino,
+          reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
+        });
+        try {
+          const feito = await gemeo.juntarPedacos(pedido, pasta, { baixar: baixarQualquer });
+          const video = await subir(feito.arquivo, pedido.chave, "video/mp4", { privado: true });
+          await avisar(destino, { ok: true, video, duracaoSec: feito.duracaoSec, largura: feito.largura, altura: feito.altura, retorno: pedido.retorno ?? null });
+        } catch (e) {
+          const mensagem = e instanceof Error ? e.message : "junção do gêmeo falhou";
+          console.error(`[juntar-gemeo ${pedido.chave}] ${mensagem}`);
+          await avisar(destino, { ok: false, erro: mensagem, retorno: pedido.retorno ?? null }).catch(() => {});
+        } finally {
+          soltar();
+          emAndamento -= 1;
+          rm(pasta, { recursive: true, force: true }).catch(() => {});
+        }
+        return;
+      }
+      if (ehRostoDoGemeo && !(Array.isArray(pedido.fotos) && pedido.fotos.length)) return responder(400, { error: "Faltam fotos" });
+      if (ehVozDoGemeo && !pedido.audioUrl) return responder(400, { error: "Falta audioUrl" });
+      const pasta = await mkdtemp(join(tmpdir(), ehRostoDoGemeo ? "gemeo-rosto-" : "gemeo-voz-"));
+      emAndamento += 1;
+      try {
+        const feito = ehRostoDoGemeo
+          ? await gemeo.fotoDoGerador(pedido, pasta, { baixar: baixarQualquer, subir })
+          : await gemeo.vozDoGemeo(pedido, pasta, { baixar: baixarQualquer, subir });
+        responder(200, feito);
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "falhou" });
+      } finally {
+        emAndamento -= 1;
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+    return;
+  }
+  // /analisar-completo e /montar-completo (30/09): o VÍDEO COMPLETO EDITADO
+  // (src/montagem-do-completo.mjs). Vêm ANTES do /montar porque o teste dele é
+  // por prefixo e "/montar-completo" também começa com "/montar".
+  //   /analisar-completo  síncrona: baixa o completo, separa câmera de tela
+  //                       pelos quadros-chave e responde (~1 min);
+  //   /montar-completo    202 e callback, na MESMA fila de uma montagem por
+  //                       vez dos cortes (o Chrome não cabe duas vezes).
+  const ehAnaliseDoCompleto = req.method === "POST" && req.url?.startsWith("/analisar-completo");
+  const ehMontagemDoCompleto = req.method === "POST" && req.url?.startsWith("/montar-completo");
+  if (ehAnaliseDoCompleto || ehMontagemDoCompleto) {
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.completoUrl) return responder(400, { error: "Falta completoUrl" });
+      if (ehAnaliseDoCompleto) {
+        const pasta = await mkdtemp(join(tmpdir(), "analise-"));
+        emAndamento += 1;
+        try {
+          const arquivo = join(pasta, "completo.mp4");
+          await baixarQualquer(pedido.completoUrl, arquivo);
+          const { analisarCompleto } = await import("./montagem-do-completo.mjs");
+          responder(200, await analisarCompleto(arquivo));
+        } catch (e) {
+          responder(500, { error: e instanceof Error ? e.message : "análise falhou" });
+        } finally {
+          emAndamento -= 1;
+          rm(pasta, { recursive: true, force: true }).catch(() => {});
+        }
+        return;
+      }
+      if (!pedido.chave || !pedido.montagem || !pedido.callbackUrl) {
+        return responder(400, { error: "Faltam chave, montagem ou callbackUrl" });
+      }
+      responder(202, { aceito: true, chave: pedido.chave, naFila: filaDaMontagem.length + (montagemRodando ? 1 : 0) });
+      enfileirarMontagem({
+        pedido,
+        executar: async () => {
+          const pasta = await mkdtemp(join(tmpdir(), "completo-editado-"));
+          emAndamento += 1;
+          const inicio = Date.now();
+          const destino = { callbackUrl: pedido.callbackUrl, videoJobId: pedido.videoJobId ?? pedido.chave };
+          const soltar = registrarTrabalho({
+            videoJobId: destino.videoJobId,
+            tipo: "montar-completo",
+            destino,
+            reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
+          });
+          try {
+            const { montarCompleto } = await import("./montagem-do-completo.mjs");
+            const feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
+            const montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
+            await avisar(destino, {
+              ok: true,
+              montado,
+              tempos: feito.tempos,
+              janelas: feito.janelas,
+              fracaoDeJanela: feito.fracaoDeJanela,
+              // A conferência depois do render (02/10): o que foi achado vazio e consertado.
+              conferencia: feito.conferencia ?? null,
+              aberturaSeg: feito.aberturaSeg ?? 0,
+              segundos: Math.round((Date.now() - inicio) / 1000),
+              retorno: pedido.retorno ?? null,
+            });
+          } catch (e) {
+            const mensagem = e instanceof Error ? e.message : "montagem do completo falhou";
+            console.error(`[montar-completo ${pedido.chave}] ${mensagem}`);
+            await avisar(destino, { ok: false, erro: mensagem, retorno: pedido.retorno ?? null }).catch(() => {});
+          } finally {
+            soltar();
+            emAndamento -= 1;
+            await rm(pasta, { recursive: true, force: true }).catch(() => {});
+          }
+        },
+      });
+    });
+    return;
+  }
+  // /montar (30/09): o EDITOR COMPLETO. Recebe o plano de montagem já
+  // resolvido pelo app (lib/media/plano-de-montagem.ts) e renderiza com o
+  // Remotion (src/montagem.mjs). Assinada como as outras. Com `callbackUrl`
+  // responde 202 e avisa no fim, como o /cortar (a montagem de um corte de
+  // 40 s passa de 2 min); sem ela, responde quando acabar (prova e refação).
+  const ehMontagem = req.method === "POST" && req.url?.startsWith("/montar");
+  if (ehMontagem) {
+    // Resposta síncrona de minutos: se quem chamou desistiu, responder num
+    // socket fechado não pode derrubar o worker (EPIPE visto no teste local).
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.chave || !pedido.montagem || (!pedido.narradorUrl && !pedido.sourceUrl)) {
+        return responder(400, { error: "Faltam chave, montagem e narradorUrl ou sourceUrl" });
+      }
+      const assincrono = Boolean(pedido.callbackUrl);
+      if (assincrono) responder(202, { aceito: true, chave: pedido.chave, naFila: filaDaMontagem.length + (montagemRodando ? 1 : 0) });
+      enfileirarMontagem({ pedido, executar: () => executarMontagem(pedido, assincrono) });
+    });
+    return;
+  }
+  async function executarMontagem(pedido, assincrono) {
+      const pasta = await mkdtemp(join(tmpdir(), "montagem-"));
+      emAndamento += 1;
+      const inicio = Date.now();
+      // Só a montagem com aviso entra no registro: a síncrona tem alguém
+      // esperando a resposta, e quem espera vê a conexão cair.
+      const destino = { callbackUrl: pedido.callbackUrl, videoJobId: pedido.videoJobId ?? pedido.chave };
+      const soltar = assincrono
+        ? registrarTrabalho({
+            videoJobId: destino.videoJobId,
+            tipo: "montar",
+            destino,
+            reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
+          })
+        : () => {};
+      try {
+        const { montar } = await import("./montagem.mjs");
+        const { arquivo, tempos } = await montar(pedido, pasta, { baixar: baixarQualquer, obterOriginal });
+        const montado = await subir(arquivo, pedido.chave, "video/mp4");
+        // `retorno` volta como veio: o app manda nele o corte e o estado que
+        // pediu, e o callback (assinado no corpo) só age se ainda casar.
+        const resultado = { ok: true, montado, tempos, segundos: Math.round((Date.now() - inicio) / 1000), retorno: pedido.retorno ?? null };
+        if (assincrono) await avisar(destino, resultado);
+        else responder(200, resultado);
+      } catch (e) {
+        const mensagem = e instanceof Error ? e.message : "montagem falhou";
+        console.error(`[montar ${pedido.chave}] ${mensagem}`);
+        if (assincrono) await avisar(destino, { ok: false, erro: mensagem, retorno: pedido.retorno ?? null }).catch(() => {});
+        else responder(500, { error: mensagem });
+      } finally {
+        soltar();
+        emAndamento -= 1;
+        await rm(pasta, { recursive: true, force: true }).catch(() => {});
+      }
+  }
+  if (!ehAudio && (req.method !== "POST" || !req.url?.startsWith("/cortar"))) {
     return responder(404, { error: "Not found" });
   }
 
@@ -1078,14 +1919,45 @@ const servidor = createServer((req, res) => {
     responder(202, { aceito: true, videoJobId: trabalho.videoJobId });
 
     emAndamento += 1;
+    // O aviso de reinício leva o que o app precisa para retomar do ponto
+    // certo: o corte inteiro, só o completo (os cortes já foram), ou o
+    // recorte de um trecho.
+    const soltar = registrarTrabalho({
+      videoJobId: trabalho.videoJobId,
+      tipo: ehAudio ? "audio" : "cortar",
+      destino: trabalho,
+      reinicio: () => ({
+        ok: false,
+        reiniciado: true,
+        erro: "reiniciado",
+        soCompleto: Boolean(trabalho.soCompleto),
+        soTrechos: Boolean(trabalho.soTrechos),
+        reCorte: Boolean(trabalho.reCorte),
+        parcialEnviado: Boolean(trabalho.__parcialEnviado),
+        indices: (trabalho.trechos ?? []).map((t) => t.indice),
+        retorno: trabalho.retorno ?? null,
+      }),
+    });
     try {
-      const resultados = await processar(trabalho);
+      // TRABALHO FALSO, só para a prova local do desligamento (01/10): com
+      // WORKER_TRABALHO_FALSO=1 (nunca ligado em produção) o pedido com
+      // `falsoSegundos` só espera, sem baixar nem cortar nada.
+      const falso = process.env.WORKER_TRABALHO_FALSO === "1" && Number(trabalho.falsoSegundos) > 0;
+      const resultados = falso
+        ? await new Promise((ok) => setTimeout(() => ok({ trechos: [], falso: true }), Number(trabalho.falsoSegundos) * 1000))
+        : ehAudio
+          ? await extrairAudio(trabalho)
+          : await processar(trabalho);
       await avisar(trabalho, { ok: true, ...resultados });
     } catch (e) {
       const mensagem = e instanceof Error ? e.message : "Falha no processamento";
       console.error(`[${trabalho.videoJobId}] ${mensagem}`);
-      await avisar(trabalho, { ok: false, erro: mensagem }).catch(() => {});
+      // `trabalho`, e não `pedido`: neste escopo não existe `pedido`, e a
+      // ReferenceError aqui dentro do catch derrubava o processo inteiro
+      // (rejeição sem tratamento) justo quando um corte falhava.
+      await avisar(trabalho, { ok: false, erro: mensagem, retorno: trabalho.retorno ?? null }).catch(() => {});
     } finally {
+      soltar();
       emAndamento -= 1;
     }
   });

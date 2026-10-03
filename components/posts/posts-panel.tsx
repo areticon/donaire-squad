@@ -19,6 +19,9 @@ import {
   Bot,
   Download,
   AlertCircle,
+  Trash2,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +29,9 @@ import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { PipelineLive } from "./pipeline-live";
 import { CampaignSetupModal, type CampaignConfig } from "./campaign-setup-modal";
+import { JanelaDoTikTok } from "@/components/social/janela-do-tiktok";
+import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
+import type { CodigoDePublicacao } from "@/lib/publish/codigos";
 
 interface Post {
   id: string;
@@ -42,6 +48,8 @@ interface Post {
   createdAt: Date;
   socialAccountId: string | null;
   socialAccount: { displayName: string | null; platform: string } | null;
+  /** O código PUB-* da falha, já lido no servidor (só em post que falhou). */
+  falhaDaPublicacao?: { codigo: CodigoDePublicacao; protocolo: string | null; motivoDaRede: string | null } | null;
 }
 
 interface SocialAccount {
@@ -49,6 +57,12 @@ interface SocialAccount {
   platform: string;
   displayName: string | null;
   accountType: string;
+}
+
+/** Uma rede que a propria rede recusou, para o post que falhou poder explicar. */
+interface RedeParaReconectar {
+  platform: string;
+  needsReconnectReason: string | null;
 }
 
 function pickSocialAccount(post: Post, accounts: SocialAccount[]): SocialAccount | undefined {
@@ -65,12 +79,44 @@ function pickSocialAccount(post: Post, accounts: SocialAccount[]): SocialAccount
 interface Project {
   id: string;
   name: string;
+  /**
+   * A frequência escolhida no setup ("3x por semana").
+   *
+   * Estava no objeto que esta tela recebe (a página passa o projeto inteiro do
+   * Prisma) e NÃO estava neste tipo, então nunca era passada adiante. Efeito,
+   * medido em 18/09: o mesmo assistente montava planos diferentes conforme de
+   * onde foi aberto. Pelo Gestor, sete dias alternados; por aqui, cinco dias
+   * com "livre" na sexta. Quem confere de um lado e roda do outro vê duas
+   * verdades sobre a própria campanha.
+   */
+  postFrequency?: string | null;
 }
 
 interface PostsPanelProps {
   project: Project;
   posts: Post[];
   socialAccounts: SocialAccount[];
+  redesParaReconectar?: RedeParaReconectar[];
+}
+
+/**
+ * A frase do motivo, quando a rede disse o motivo. Gêmea da de
+ * social-connect-panel: as duas telas contam a mesma história sobre o mesmo
+ * fato, e é o cliente que passa por elas em sequência.
+ */
+function motivoEmPortugues(codigo: string | null): string {
+  switch (codigo) {
+    case "REVOKED_ACCESS_TOKEN":
+      return "O acesso a esta rede foi retirado nas permissões da sua conta.";
+    case "EXPIRED_ACCESS_TOKEN":
+      return "O acesso a esta rede expirou.";
+    case "invalid_grant":
+    case "INVALID_ACCESS_TOKEN":
+    case "invalid_token":
+      return "A rede não aceita mais este acesso.";
+    default:
+      return "A rede recusou o acesso.";
+  }
 }
 
 const STATUS_CONFIG = {
@@ -79,20 +125,67 @@ const STATUS_CONFIG = {
   published: { label: "Publicado", variant: "success" as const, icon: CheckCircle2 },
   failed: { label: "Falhou", variant: "destructive" as const, icon: XCircle },
   rejected: { label: "Rejeitado", variant: "secondary" as const, icon: XCircle },
+  cancelled: { label: "Arquivado", variant: "secondary" as const, icon: XCircle },
 };
 
 const PLATFORM_LABELS: Record<string, string> = {
   linkedin: "LinkedIn",
   twitter: "X (Twitter)",
   instagram: "Instagram",
+  facebook: "Facebook",
+  youtube: "YouTube",
   tiktok: "TikTok",
 };
 
-export function PostsPanel({ project, posts: initialPosts, socialAccounts }: PostsPanelProps) {
+/**
+ * A caixinha de marcar, com o estado "parcial" para o selecionar todos.
+ *
+ * É um `<button>` e não um `<input type=checkbox>` porque o visual precisa dos
+ * três estados e da cor da marca; o papel de caixa de marcar vai por
+ * `role="checkbox"` e `aria-checked`, que é o que o leitor de tela lê.
+ */
+function Marcador({
+  marcado,
+  parcial = false,
+  onMudar,
+  rotulo,
+}: {
+  marcado: boolean;
+  parcial?: boolean;
+  onMudar: () => void;
+  rotulo: string;
+}) {
+  const aceso = marcado || parcial;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={parcial ? "mixed" : marcado}
+      aria-label={rotulo}
+      title={rotulo}
+      onClick={onMudar}
+      className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500"
+      style={{
+        background: aceso ? "var(--accent-orange)" : "var(--bg-input)",
+        borderColor: aceso ? "var(--accent-orange)" : "var(--border)",
+      }}
+    >
+      {parcial ? (
+        <span className="h-[2px] w-[9px] rounded-full bg-white" />
+      ) : marcado ? (
+        <CheckCircle2 className="h-3 w-3 text-white" strokeWidth={3} />
+      ) : null}
+    </button>
+  );
+}
+
+export function PostsPanel({ project, posts: initialPosts, socialAccounts, redesParaReconectar = [] }: PostsPanelProps) {
   const router = useRouter();
   const [posts, setPosts] = useState(initialPosts);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<string | null>(null);
+  // O post do TikTok esperando as escolhas da pessoa (ver janela-do-tiktok).
+  const [janelaTikTok, setJanelaTikTok] = useState<Post | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [generating, setGenerating] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -115,6 +208,14 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
   const [showTopicInput, setShowTopicInput] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [suggestedTopics, setSuggestedTopics] = useState<Array<{ title: string; description: string; format: string }>>([]);
+  /**
+   * Os posts marcados. Pedido do Bruno em 18/09: "deve dar para selecionar
+   * tudo ou todos de uma vez com flags, vou deletar tudo e gerar de novo".
+   * Vinte posts, vinte confirmações e vinte cliques é o tipo de trabalho que
+   * a tela devia fazer por ele.
+   */
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [emMassa, setEmMassa] = useState(false);
 
   async function suggestTopics() {
     setLoadingTopics(true);
@@ -167,7 +268,13 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
     }
   }
 
-  async function publishPost(post: Post) {
+  async function publishPost(post: Post, escolhasFeitas = false) {
+    // TikTok passa pela janela toda vez: as regras de publicação dele pedem
+    // que a pessoa escolha privacidade e interações na hora de publicar.
+    if (post.platform === "tiktok" && !escolhasFeitas) {
+      setJanelaTikTok(post);
+      return;
+    }
     const account = pickSocialAccount(post, socialAccounts);
     if (!account) {
       toast.error(
@@ -225,13 +332,68 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
       setPosts((prev) =>
         prev.map((p) => (p.id === post.id ? { ...p, status: "rejected" } : p))
       );
-      toast.success("Post rejeitado e movido para Cancelados");
+      toast.success("Post rejeitado e movido para Arquivados");
     } catch {
       toast.error("Erro ao rejeitar post");
     }
   }
 
-  const isCanceled = (status: string) => status === "rejected" || status === "failed";
+  // "cancelled" entrou em 14/09, e é o mesmo valor que o Gestor já grava ao
+  // arquivar. Sem ele aqui, um post arquivado nesta tela sumiria de todas as
+  // abas: nem em "todos" (que esconde os cancelados) nem em "cancelados".
+  // A FALHA SAIU DAQUI (01/10, pedido do Bruno: "os posts que falham, eu não
+  // consigo arquivar"). O post que falhou ficava escondido na aba Cancelados,
+  // misturado aos arquivados, e "Todos" não mostrava: quem procurava a falha
+  // para arquivar não achava. Agora ela aparece em Todos e na aba "Com falha",
+  // e Arquivados é só o que saiu da fila por decisão (arquivado ou recusado).
+  const isCanceled = (status: string) => status === "rejected" || status === "cancelled";
+
+  /** Arquivar: sai da fila e tem volta. É o caminho do dia a dia. */
+  async function arquivarPost(post: Post) {
+    await mudarStatus(post, "cancelled", "Post arquivado.");
+  }
+
+  /** Devolve um post recusado para a fila de revisão. */
+  async function voltarParaRascunho(post: Post) {
+    await mudarStatus(post, "draft", "Post de volta em rascunho.");
+  }
+
+  async function mudarStatus(post: Post, status: string, sucesso: string) {
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status } : p)));
+      toast.success(sucesso);
+    } catch {
+      toast.error("Não consegui mudar o post. Tente de novo.");
+    }
+  }
+
+  /**
+   * Apagar de verdade, e é o único caminho sem volta da tela.
+   *
+   * A confirmação mostra o começo do texto em vez de perguntar "tem certeza?":
+   * numa lista de posts parecidos, o que evita o clique errado é ver QUAL post
+   * vai sumir, não um aviso genérico.
+   */
+  async function apagarPost(post: Post) {
+    const trecho = post.content.slice(0, 80).replace(/\s+/g, " ");
+    if (!window.confirm(`Apagar este post para sempre?\n\n"${trecho}..."\n\nIsso não tem volta.`)) return;
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      // 409: o post já foi ao ar e o servidor recusa apagar (01/10); a frase
+      // dele diz o que fazer (arquivar), melhor que "tente de novo".
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "");
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
+      toast.success("Post apagado.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Não consegui apagar o post. Tente de novo.");
+    }
+  }
 
   const filtered =
     filter === "all"
@@ -240,20 +402,135 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
       ? posts.filter((p) => isCanceled(p.status))
       : posts.filter((p) => p.status === filter);
 
+  // ── A seleção ──────────────────────────────────────────────────────────────
+
+  /** Só conta o que está À VISTA: marcar "todos" numa aba não pode pegar o que
+   *  a outra aba esconde. A pessoa responde pelo que ela vê. */
+  const idsVisiveis = filtered.map((p) => p.id);
+  const marcadosVisiveis = idsVisiveis.filter((id) => selecionados.has(id));
+  const todosMarcados = idsVisiveis.length > 0 && marcadosVisiveis.length === idsVisiveis.length;
+
+  function alternarPost(id: string) {
+    setSelecionados((antes) => {
+      const novo = new Set(antes);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  function alternarTodos() {
+    setSelecionados(todosMarcados ? new Set() : new Set(idsVisiveis));
+  }
+
+  function trocarFiltro(novo: string) {
+    // A seleção morre ao trocar de aba, de propósito: manter marcado o que
+    // saiu da tela é como a pessoa apaga sem querer o que não estava vendo.
+    setFilter(novo);
+    setSelecionados(new Set());
+  }
+
+  /**
+   * A ação em massa, numa chamada só (`/api/posts/em-massa`).
+   *
+   * Apagar pergunta antes, e a pergunta diz o NÚMERO e as redes, porque é o
+   * único caminho sem volta da tela. Arquivar não pergunta: tem volta na aba
+   * Cancelados, e confirmação para o que se desfaz só ensina a clicar em "sim"
+   * sem ler.
+   */
+  async function acaoEmMassa(acao: "apagar" | "arquivar" | "rascunho") {
+    const ids = marcadosVisiveis;
+    if (ids.length === 0) return;
+
+    const alvos = filtered.filter((p) => ids.includes(p.id));
+    const publicados = alvos.filter((p) => p.status === "published").length;
+
+    if (acao === "apagar") {
+      const vaiApagar = ids.length - publicados;
+      if (vaiApagar === 0) {
+        toast.error("Só há posts publicados na seleção, e publicado não se apaga.");
+        return;
+      }
+      const redes = [...new Set(alvos.map((p) => PLATFORM_LABELS[p.platform] ?? p.platform))].join(", ");
+      const aviso = publicados > 0 ? `\n\n${publicados} já publicado(s) não serão apagados.` : "";
+      if (
+        !window.confirm(
+          `Apagar ${vaiApagar} post(s) para sempre?\n\nRedes: ${redes}${aviso}\n\nIsso não tem volta.`
+        )
+      )
+        return;
+    }
+
+    setEmMassa(true);
+    try {
+      const res = await fetch("/api/posts/em-massa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, acao }),
+      });
+      const dados = (await res.json()) as { feitos?: number; publicadosIgnorados?: number; error?: string };
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+
+      const feitos = dados.feitos ?? 0;
+      if (acao === "apagar") {
+        const apagados = new Set(alvos.filter((p) => p.status !== "published").map((p) => p.id));
+        setPosts((prev) => prev.filter((p) => !apagados.has(p.id)));
+        toast.success(
+          feitos === 1 ? "1 post apagado." : `${feitos} posts apagados.`
+        );
+      } else {
+        const status = acao === "arquivar" ? "cancelled" : "draft";
+        const alvo = new Set(ids);
+        setPosts((prev) => prev.map((p) => (alvo.has(p.id) ? { ...p, status } : p)));
+        toast.success(
+          acao === "arquivar"
+            ? `${feitos} post(s) arquivados. Eles ficam na aba Arquivados.`
+            : `${feitos} post(s) de volta em rascunho.`
+        );
+      }
+      if (dados.publicadosIgnorados) {
+        toast(`${dados.publicadosIgnorados} post(s) já publicados ficaram como estavam.`);
+      }
+      setSelecionados(new Set());
+    } catch (err) {
+      // Falha silenciosa aqui seria pior que em qualquer outro lugar: a pessoa
+      // acha que apagou, gera de novo, e fica com o dobro.
+      toast.error(
+        `Não consegui ${acao === "apagar" ? "apagar" : "mudar"} os posts. ${err instanceof Error ? err.message : ""}`.trim()
+      );
+    } finally {
+      setEmMassa(false);
+    }
+  }
+
   const counts = {
     all: posts.filter((p) => !isCanceled(p.status)).length,
     draft: posts.filter((p) => p.status === "draft").length,
     published: posts.filter((p) => p.status === "published").length,
     scheduled: posts.filter((p) => p.status === "scheduled").length,
     rejected: posts.filter((p) => isCanceled(p.status)).length,
+    failed: posts.filter((p) => p.status === "failed").length,
   };
 
   return (
     <div className="p-6 lg:p-8 w-full">
+      {janelaTikTok && (
+        <JanelaDoTikTok
+          projectId={project.id}
+          posts={[{ id: janelaTikTok.id, content: janelaTikTok.content, imageUrl: janelaTikTok.imageUrl }]}
+          acao="publicar"
+          onConcluir={() => {
+            const p = janelaTikTok;
+            setJanelaTikTok(null);
+            void publishPost(p, true);
+          }}
+          onCancelar={() => setJanelaTikTok(null)}
+        />
+      )}
       <div className="mb-8">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
-            <h1 className="text-3xl font-black" style={{ color: "var(--text-primary)" }}>Posts</h1>
+            <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Posts</h1>
             <p className="mt-1" style={{ color: "var(--text-muted)" }}>{project.name}</p>
           </div>
           <Button onClick={openCampaignModal} loading={generating} disabled={generating}>
@@ -370,11 +647,12 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
           { id: "draft", label: "Rascunhos" },
           { id: "scheduled", label: "Agendados" },
           { id: "published", label: "Publicados" },
-          { id: "rejected", label: "Cancelados" },
+          { id: "failed", label: "Com falha" },
+          { id: "rejected", label: "Arquivados" },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setFilter(tab.id)}
+            onClick={() => trocarFiltro(tab.id)}
             className={cn(
               "px-3 py-1.5 rounded-lg text-sm font-medium transition-all border",
               filter === tab.id
@@ -391,6 +669,58 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
         ))}
       </div>
 
+      {/* A BARRA DE SELECAO.
+
+          Ela ocupa o lugar fixo acima da lista, marcada ou nao, porque uma
+          barra que aparece do nada empurra a lista para baixo no exato momento
+          em que a pessoa esta clicando nela. */}
+      {filtered.length > 0 && (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
+          style={{
+            background: marcadosVisiveis.length > 0 ? "var(--bg-elevated)" : "var(--bg-card)",
+            borderColor: marcadosVisiveis.length > 0 ? "color-mix(in srgb, var(--acento) 45%, transparent)" : "var(--border)",
+          }}
+        >
+          <Marcador
+            marcado={todosMarcados}
+            parcial={marcadosVisiveis.length > 0 && !todosMarcados}
+            onMudar={alternarTodos}
+            rotulo={todosMarcados ? "Desmarcar todos" : "Selecionar todos"}
+          />
+          <button
+            type="button"
+            onClick={alternarTodos}
+            className="text-sm font-medium"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {marcadosVisiveis.length === 0
+              ? `Selecionar todos (${filtered.length})`
+              : `${marcadosVisiveis.length} de ${filtered.length} selecionados`}
+          </button>
+
+          {marcadosVisiveis.length > 0 && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {filter === "rejected" || filter === "scheduled" ? (
+                <Button size="sm" variant="outline" onClick={() => acaoEmMassa("rascunho")} disabled={emMassa}>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {filter === "scheduled" ? "Tirar da fila" : "Voltar para rascunho"}
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => acaoEmMassa("arquivar")} disabled={emMassa}>
+                  <Archive className="h-3.5 w-3.5" />
+                  Arquivar
+                </Button>
+              )}
+              <Button size="sm" variant="destructive" onClick={() => acaoEmMassa("apagar")} disabled={emMassa}>
+                {emMassa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Apagar
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {filtered.length === 0 && posts.length > 0 ? (
         <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>
           <Clock className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--border)" }} />
@@ -400,6 +730,9 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
         <div className="space-y-3">
           {filtered.map((post) => {
             const statusConfig = STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.draft;
+            // A rede deste post foi recusada pela propria rede? E o que permite
+            // o post que falhou explicar o motivo em vez de so dizer "falhou".
+            const precisaReconectar = redesParaReconectar.find((r) => r.platform === post.platform);
             const StatusIcon = statusConfig.icon;
             const isExpanded = expanded === post.id;
 
@@ -411,9 +744,16 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
               >
                 {/* Post header */}
                 <div
-                  className="flex items-start gap-4 p-4 cursor-pointer"
+                  className="flex items-start gap-3 p-4 cursor-pointer"
                   onClick={() => setExpanded(isExpanded ? null : post.id)}
                 >
+                  <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                    <Marcador
+                      marcado={selecionados.has(post.id)}
+                      onMudar={() => alternarPost(post.id)}
+                      rotulo={`Selecionar este post de ${PLATFORM_LABELS[post.platform] ?? post.platform}`}
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <Badge variant="secondary" className="text-xs">
@@ -432,6 +772,17 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
                           Com imagem
                         </Badge>
                       )}
+                      {/* Por onde sai. A rede sozinha nao diz, com perfil e pagina no mesmo projeto. */}
+                      {(() => {
+                        const conta = pickSocialAccount(post, socialAccounts);
+                        const nome = post.socialAccount?.displayName ?? conta?.displayName;
+                        const tipo = conta?.accountType === "organization" ? "página" : conta ? "perfil" : null;
+                        return nome ? (
+                          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                            · {nome}{tipo ? ` (${tipo})` : ""}
+                          </span>
+                        ) : null;
+                      })()}
                       <span className="text-xs ml-auto" style={{ color: "var(--text-muted)" }}>
                         {formatDate(post.createdAt)}
                       </span>
@@ -556,7 +907,55 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
                           </a>
                         )}
 
-                        {/* Actions */}
+                        {/* ── Por que este post falhou ─────────────────────
+                            Vem ANTES dos botões de propósito: tentar de novo
+                            sem reconectar falha igual, e o cliente ficaria
+                            clicando sem entender. A causa é da CONTA, e o
+                            banner só aparece quando a rede realmente recusou
+                            aquela rede (gravado em needsReconnectAt). */}
+                        {post.status === "failed" && precisaReconectar && (
+                          <div
+                            className="flex items-start gap-2.5 rounded-xl px-4 py-3 border"
+                            style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
+                          >
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-red-400">
+                                {motivoEmPortugues(precisaReconectar.needsReconnectReason)}
+                              </p>
+                              <p className="text-[11px] mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                                O post continua aqui, inteiro. Reconecte a rede e publique de novo.
+                              </p>
+                              <a
+                                href={`/projects/${project.id}/settings`}
+                                className="inline-block mt-2 text-[11px] font-semibold text-orange-400 hover:text-orange-300"
+                              >
+                                Reconectar {PLATFORM_LABELS[post.platform] ?? post.platform}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* A FALHA COM CÓDIGO (01/10): o que aconteceu, o que
+                            fazer e o código, em vez da frase crua. Quando a
+                            causa é a conta (banner de cima), ela já explica. */}
+                        {post.status === "failed" && !precisaReconectar && post.falhaDaPublicacao && (
+                          <FalhaDaPublicacao
+                            postId={post.id}
+                            codigo={post.falhaDaPublicacao.codigo}
+                            protocolo={post.falhaDaPublicacao.protocolo}
+                            motivoDaRede={post.falhaDaPublicacao.motivoDaRede}
+                          />
+                        )}
+
+                        {/* ── Ações, por estado ──────────────────────────────
+                            Até 14/09 esta linha só existia para "draft", e um
+                            post que falhava virava beco sem saída: sem tentar
+                            de novo, sem arquivar e sem apagar. Cada estado
+                            ganha o que faz sentido nele, e nada mais.
+                            Publicado não ganha nada além do link: apagar ali
+                            apagaria o registro de algo que está no ar, e o
+                            relatório mensal sai daqui. */}
                         {post.status === "draft" && (
                           <div className="flex gap-2">
                             <Button
@@ -577,6 +976,72 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
                               <XCircle className="w-3.5 h-3.5" />
                               Rejeitar
                             </Button>
+                            <Button size="sm" variant="ghost" onClick={() => apagarPost(post)} title="Apagar para sempre">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {post.status === "failed" && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => publishPost(post)}
+                              loading={publishing === post.id}
+                              className="flex-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Tentar publicar de novo
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => arquivarPost(post)}>
+                              <Archive className="w-3.5 h-3.5" />
+                              Arquivar
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => apagarPost(post)} title="Apagar para sempre">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {(post.status === "rejected" || post.status === "cancelled") && (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => voltarParaRascunho(post)} className="flex-1">
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Voltar para rascunho
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => apagarPost(post)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Apagar
+                            </Button>
+                          </div>
+                        )}
+
+                        {post.status === "scheduled" && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => publishPost(post)}
+                              loading={publishing === post.id}
+                              className="flex-1"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              Publicar agora
+                            </Button>
+                            {/* TIRAR DA FILA é o caminho de quem só quer adiar.
+                                Até 18/09 o único jeito de desfazer um
+                                agendamento aqui era arquivar, que some com a
+                                peça: para não sair amanhã, a pessoa perdia o
+                                post. */}
+                            <Button size="sm" variant="outline" onClick={() => voltarParaRascunho(post)}>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Tirar da fila
+                            </Button>
+                            {/* Sem apagar aqui: post agendado sumir sem aviso é
+                                o tipo de coisa que a pessoa descobre tarde. */}
+                            <Button size="sm" variant="outline" onClick={() => arquivarPost(post)}>
+                              <Archive className="w-3.5 h-3.5" />
+                              Arquivar
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -596,6 +1061,15 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts }: Pos
             onConfirm={generateCampaign}
             onClose={() => setShowCampaignModal(false)}
             projectId={project.id}
+            // As duas telas passam as MESMAS props desde 19/09. Sem esta linha,
+            // o plano sugerido mudava conforme de onde a janela foi aberta.
+            postFrequency={project.postFrequency}
+            // Sem isto a janela caía num par fixo de LinkedIn e X e oferecia as
+            // duas como se estivessem conectadas. A página já entrega só contas
+            // que podem publicar (whereSocialAccountCanPublish), então esta
+            // lista é a verdade e não uma suposição.
+            redesConectadas={socialAccounts.map((a) => a.platform)}
+            contasConectadas={socialAccounts}
           />
         )}
       </AnimatePresence>

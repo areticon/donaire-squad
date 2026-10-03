@@ -12,7 +12,8 @@ import type { NextConfig } from "next";
  * Verificado antes de travar: o projeto não usa getUserMedia nem MediaRecorder
  * (o vídeo é enviado por upload, não gravado no navegador) e não existe um
  * único iframe no código, então negar enquadramento, câmera e microfone não
- * quebra nada.
+ * quebra nada. Exceção desde 01/10: a página do gêmeo digital, que grava voz e
+ * autorização no navegador (ver `headers()` abaixo).
  *
  * CSP completa ficou de fora de propósito: o Next injeta script inline e a
  * política precisa de nonce para não quebrar a aplicação inteira. Aqui vai só
@@ -23,15 +24,28 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Câmera e microfone liberados para a PRÓPRIA origem em todo o site (01/10).
+  // A política vale para o documento inteiro, não por rota: quem entrava no
+  // painel (que negava) e ia ao gêmeo por link interno continuava com a regra
+  // do painel, e o botão do microfone e da câmera não abria. Com (self) nenhum
+  // iframe de terceiro ganha acesso, e o navegador ainda pergunta ao usuário.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value: "camera=(self), microphone=(self), geolocation=(), interest-cohort=()",
   },
 ];
 
 const nextConfig: NextConfig = {
+  // As fontes da capa composta em código (lib/media/capa-composta.tsx) são lidas
+  // do disco em tempo de execução; sem isto a função da Vercel sobe sem elas.
+  outputFileTracingIncludes: {
+    // O modelo do contrato (02/10) também é lido do disco: lib/contratos/modelo.ts.
+    "/api/**/*": ["./lib/media/fontes-da-capa/**/*", "./lib/contratos/modelos/**/*"],
+  },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+    ];
   },
   /**
    * www redireciona para o apex, permanente. Descoberto em 21/08 da pior

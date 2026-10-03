@@ -1,6 +1,9 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { esconderDiaSemPosts, reabrirDia } from "@/lib/posts/espelhar-no-gestor";
+import { formatoValido } from "@/lib/publish/formato-de-destino";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 const PAST_TOLERANCE_MS = 60_000;
 
@@ -21,7 +24,7 @@ export async function GET(
     include: { project: { select: { userId: true } } },
   });
 
-  if (!post || post.project.userId !== userId) {
+  if (!post || !(await podeUsarProjeto(userId, { id: post.projectId, userId: post.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -43,7 +46,7 @@ export async function PATCH(
     include: { project: { select: { userId: true } } },
   });
 
-  if (!post || post.project.userId !== userId) {
+  if (!post || !(await podeUsarProjeto(userId, { id: post.projectId, userId: post.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -62,6 +65,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Esta conta não pertence a este projeto." }, { status: 403 });
     }
     updateData.socialAccountId = conta.id;
+  }
+
+  // ONDE A PEÇA CAI NA REDE (item 13, 29/09): o card do dia troca o lugar
+  // de um post que ainda não saiu. Mora em `metadata.formato`, que é o que o
+  // publicador lê (`formatoDoPost`); o valor passa por `formatoValido`, então
+  // pedido de lugar que a rede não tem vira feed em vez de gravar lixo.
+  if (typeof body.formato === "string") {
+    if (post.status === "published" || post.status === "publishing") {
+      return NextResponse.json({ error: "Este post já saiu: o lugar dele não muda mais." }, { status: 409 });
+    }
+    updateData.metadata = {
+      ...((post.metadata as Record<string, unknown> | null) ?? {}),
+      formato: formatoValido(post.platform, body.formato),
+    };
   }
 
   if (body.cancelSchedule) {
@@ -105,10 +122,27 @@ export async function PATCH(
     }
   }
 
+  // Um post que FOI AO AR e está arquivado só sai do arquivo como publicado
+  // (01/10): virar rascunho ou agendado faria a mesma peça sair duas vezes na
+  // rede, e o publishedAt continua dizendo que ela já saiu.
+  if (post.status === "cancelled" && post.publishedAt && typeof updateData.status === "string" && updateData.status !== "cancelled") {
+    updateData.status = "published";
+    delete updateData.scheduledAt;
+  }
+
   const updated = await prisma.post.update({
     where: { id },
     data: updateData,
   });
+
+  // A aba de posts e o Gestor falam de objetos diferentes (posts e cards), e
+  // esta é a tradução entre eles. Arquivar o último post vivo do dia esconde o
+  // dia da agenda; um post que volta de arquivado reabre o dia. Ver
+  // lib/posts/espelhar-no-gestor.ts.
+  const virouArquivado = updated.status === "cancelled" && post.status !== "cancelled";
+  const saiuDoArquivo = post.status === "cancelled" && updated.status !== "cancelled";
+  if (virouArquivado) await esconderDiaSemPosts(updated.runId, updated.dayOfWeek);
+  if (saiuDoArquivo) await reabrirDia(updated.runId, updated.dayOfWeek);
 
   return NextResponse.json({ post: updated });
 }
@@ -127,10 +161,24 @@ export async function DELETE(
     include: { project: { select: { userId: true } } },
   });
 
-  if (!post || post.project.userId !== userId) {
+  if (!post || !(await podeUsarProjeto(userId, { id: post.projectId, userId: post.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Post que foi ao ar não se apaga (01/10), mesmo arquivado: apagar o
+  // registro não tira a publicação da rede, só faz a plataforma esquecer que
+  // ela existe e leva junto o histórico dos números. Arquivar é o caminho.
+  if (post.publishedAt || post.status === "published") {
+    return NextResponse.json(
+      { error: "Este post já foi publicado na rede e não pode ser apagado daqui. Arquive para tirá-lo da tela; os números continuam contando." },
+      { status: 409 }
+    );
+  }
+
   await prisma.post.delete({ where: { id } });
+  // O Gestor desenha cards, não posts, e a relação card -> post não tem
+  // cascade. Sem isto o post some da aba de posts e continua na agenda da
+  // semana (aconteceu em 14/09). O porquê inteiro está em espelhar-no-gestor.
+  await esconderDiaSemPosts(post.runId, post.dayOfWeek);
   return NextResponse.json({ ok: true });
 }

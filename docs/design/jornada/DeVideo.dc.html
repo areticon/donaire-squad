@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f6803d; text-decoration: none; }
+    a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<!-- A mesma janela, pela porta do video. A unica diferenca: o tema nao e
+     perguntado, ja veio da gravacao. A IA propoe os cortes e as pecas, e a
+     pessoa aprova ou pede de novo. Hoje esta parte acontece noutra tela, com
+     outra cara, e pergunta de novo dia e formato. -->
+<div style="width: 900px; min-height: 1240px; background: #1e1e25; padding: 40px; box-sizing: border-box; display: flex; justify-content: center;">
+
+  <div style="width: 672px; border-radius: 16px; background: #2a2a33; border: 1px solid #3f3f4b; display: flex; flex-direction: column; overflow: hidden;">
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 24px 16px; border-bottom: 1px solid #3f3f4b;">
+      <div>
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Configurar campanha</h2>
+        <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">De um vídeo, passo 2 de 3</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="display: flex; gap: 4px;">
+          <div style="width: 12px; height: 6px; border-radius: 9999px; background: #ef6122;"></div>
+          <div style="width: 24px; height: 6px; border-radius: 9999px; background: #ef6122;"></div>
+          <div style="width: 12px; height: 6px; border-radius: 9999px; background: #3f3f4b;"></div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 24px;">
+
+      <!-- O tema ja definido, sem pergunta -->
+      <div style="display: flex; align-items: flex-start; gap: 14px; padding: 16px; border-radius: 12px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10);">
+        <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(239,97,34,0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: #f6803d;">TEMA DEFINIDO PELA GRAVAÇÃO</span>
+          <span style="font-size: 16px; font-weight: 700; color: #dcdde2;">Por que consultoria não escala, e o que fazer com as horas que sobram</span>
+          <span style="font-size: 12px; color: #9599a6;">gravacao-14-set.mp4, 27 min, transcrita. Você não precisa escrever tema nenhum: ele saiu do que você falou.</span>
+        </div>
+      </div>
+
+      <!-- O que a IA sugere: cortes -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">Cortes que o squad escolheu</p>
+          <span style="font-size: 12px; color: #9599a6;">4 de 6 trechos, os mais fortes</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+          <div style="display: flex; gap: 12px; padding: 12px; border-radius: 12px; border: 1px solid #3f3f4b; background: #1e1e25;">
+            <div style="width: 54px; height: 96px; border-radius: 6px; background: #31313c; flex-shrink: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;"><span style="font-size: 10px; color: #9599a6;">0:48</span></div>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+              <span style="font-size: 12px; font-weight: 600; color: #dcdde2; line-height: 1.35;">"Consultoria não escala. E não é problema seu, é o modelo."</span>
+              <span style="font-size: 11px; color: #9599a6;">Abertura forte, frase de tese. Para reels e shorts.</span>
+              <div style="display: flex; gap: 6px; margin-top: auto;">
+                <span style="font-size: 12px; font-weight: 600; height: 32px; padding: 0 12px; border-radius: 4px; background: #ef6122; color: #fff; display: flex; align-items: center;">Aprovar</span>
+                <span style="font-size: 12px; font-weight: 600; height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #3f3f4b; color: #dcdde2; display: flex; align-items: center;">Outro trecho</span>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; padding: 12px; border-radius: 12px; border: 1px solid #3f3f4b; background: #1e1e25;">
+            <div style="width: 54px; height: 96px; border-radius: 6px; background: #31313c; flex-shrink: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;"><span style="font-size: 10px; color: #9599a6;">0:41</span></div>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+              <span style="font-size: 12px; font-weight: 600; color: #dcdde2; line-height: 1.35;">"Você vende hora. Hora acaba. Produto não acaba."</span>
+              <span style="font-size: 11px; color: #9599a6;">Contraste em três frases. Funciona mudo.</span>
+              <div style="display: flex; gap: 6px; margin-top: auto;">
+                <span style="font-size: 12px; font-weight: 600; height: 32px; padding: 0 12px; border-radius: 4px; background: #ef6122; color: #fff; display: flex; align-items: center;">Aprovar</span>
+                <span style="font-size: 12px; font-weight: 600; height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #3f3f4b; color: #dcdde2; display: flex; align-items: center;">Outro trecho</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span style="font-size: 12px; color: #9599a6;">Mais 2 cortes abaixo. O vídeo completo, editado, sai junto na segunda.</span>
+      </div>
+
+      <!-- A semana, com as MESMAS perguntas da outra porta -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">A semana a partir da gravação</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Segunda é sempre o vídeo. O resto sai do que você falou, no formato que você escolher. Mesma pergunta da outra porta, feita uma vez.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #9599a6;">Seg</span><div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; background: #1e1e25; color: #9599a6; font-size: 12px; display: flex; align-items: center; justify-content: center;">Vídeo</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Ter</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Texto</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Qua</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Imagem</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Qui</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Thread</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #9599a6;">Sex</span><div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; color: #9599a6; font-size: 12px; display: flex; align-items: center; justify-content: center;">Sem post</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Sáb</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Carrossel</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #9599a6;">Dom</span><div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; color: #9599a6; font-size: 12px; display: flex; align-items: center; justify-content: center;">Sem post</div></div>
+        </div>
+      </div>
+
+      <!-- Redes: a MESMA lista da outra porta, mesmo usuario e mesmo projeto -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">Em quais redes?</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Só as que você conectou. As outras ficam a um clique.</p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            LinkedIn, perfil
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            LinkedIn, página demandou
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Instagram
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #3f3f4b; font-size: 12px; font-weight: 500; color: #9599a6;">
+            <div style="width: 14px; height: 14px; border-radius: 4px; border: 1px solid #3f3f4b;"></div>
+            Facebook
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px dashed #3f3f4b; font-size: 12px; font-weight: 500; color: #9599a6;">
+            YouTube
+            <span style="font-size: 11px; color: #f6803d; font-weight: 600;">conectar</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            X
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-top: 1px solid #3f3f4b;">
+      <span style="font-size: 14px; color: #9599a6;">Voltar</span>
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Gerar a semana</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

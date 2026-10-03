@@ -1,0 +1,172 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f6803d; text-decoration: none; }
+    a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="width: 1160px; min-height: 1320px; background: #1e1e25; color: #dcdde2; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <div>
+    <h1 style="margin: 0; font-size: 30px; font-weight: 900; color: #dcdde2; letter-spacing: -0.01em;">Configurações</h1>
+    <p style="margin: 4px 0 0; font-size: 14px; color: #9599a6;">Areticon</p>
+  </div>
+
+  <div style="display: flex; gap: 4px; border-bottom: 1px solid #3f3f4b;">
+    <div style="padding: 10px 14px; font-size: 14px; font-weight: 500; color: #9599a6;">Redes sociais</div>
+    <div style="padding: 10px 14px; font-size: 14px; font-weight: 500; color: #9599a6;">Marca e voz</div>
+    <div style="padding: 10px 14px; font-size: 14px; font-weight: 600; color: #ef6122; border-bottom: 2px solid #ef6122; margin-bottom: -1px;">Vídeo e semana</div>
+  </div>
+
+  <!-- Estilo de edicao: fica no projeto, nao no envio de cada video -->
+  <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div>
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Como seus cortes são editados</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">Vale para todo vídeo deste projeto. Canal que muda de estilo a cada vídeo não constrói reconhecimento.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #3f3f4b; background: #1e1e25; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 14px; font-weight: 700; color: #dcdde2;">Dramático</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Deixa a pausa respirar. Para história pessoal, onde o silêncio é conteúdo.</span>
+      </div>
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #ef6122; background: #1e1e25; display: flex; flex-direction: column; gap: 6px; position: relative;">
+        <div style="position: absolute; top: 12px; right: 12px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef6122" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <span style="font-size: 14px; font-weight: 700; color: #f6803d;">Acelerado</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Corta rente, sem respiro. É o padrão, e o que mais segura atenção em Shorts.</span>
+      </div>
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #3f3f4b; background: #1e1e25; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 14px; font-weight: 700; color: #dcdde2;">Sério e técnico</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Legenda sem destaque colorido, que aqui só distrairia.</span>
+      </div>
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #3f3f4b; background: #1e1e25; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 14px; font-weight: 700; color: #dcdde2;">Animado e leve</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Ritmo alto e cor forte na legenda. Para conteúdo leve.</span>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center;">Salvar</div>
+    </div>
+  </section>
+
+  <!-- Capa do completo -->
+  <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div>
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">A capa do vídeo completo</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">Capa igual em todo vídeo é o que faz seu canal ser reconhecido na listagem do YouTube.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #ef6122; background: #1e1e25; display: flex; flex-direction: column; gap: 6px; position: relative;">
+        <div style="position: absolute; top: 12px; right: 12px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef6122" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <span style="font-size: 14px; font-weight: 700; color: #f6803d;">Impacto</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Seu rosto grande, frase curta em cima, contraste alto.</span>
+      </div>
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #3f3f4b; background: #1e1e25; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 14px; font-weight: 700; color: #dcdde2;">Limpo</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">Pouco texto, respiro, cara de canal editorial.</span>
+      </div>
+      <div style="padding: 16px; border-radius: 8px; border: 1px solid #3f3f4b; background: #1e1e25; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 14px; font-weight: 700; color: #dcdde2;">Manchete</span>
+        <span style="font-size: 12px; color: #9599a6; line-height: 1.45;">A frase manda, o rosto entra menor. Para conteúdo de dado e notícia.</span>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center;">Salvar</div>
+    </div>
+  </section>
+
+  <!-- Trilha e termos -->
+  <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div>
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Trilha e palavras da sua área</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">A trilha é sua: a Demandou é ferramenta de edição, como o CapCut, e nunca distribui música.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label style="font-size: 14px; font-weight: 500; color: #dcdde2;">Trilha dos cortes</label>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; padding: 0 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <span style="font-size: 14px; color: #dcdde2;">bastidor-lofi.mp3</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <span style="font-size: 13px; color: #9599a6;">Trocar</span>
+          <span style="font-size: 13px; color: #f87171;">Remover</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label style="font-size: 14px; font-weight: 500; color: #dcdde2;">Termos do seu negócio</label>
+      <div style="min-height: 72px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 14px; padding: 8px 12px; line-height: 1.5;">Areticon, curtailment, ONS, REN 1.030</div>
+      <span style="font-size: 12px; color: #9599a6;">Nomes da sua empresa, dos seus produtos e as siglas da sua área, separados por vírgula. É o que impede a legenda de sair com o nome errado.</span>
+    </div>
+
+    <div style="display: flex;">
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center;">Salvar</div>
+    </div>
+  </section>
+
+  <!-- Semana padrao -->
+  <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div>
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Sua semana padrão</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">O que sai em cada dia a partir de uma gravação. Segunda é sempre o vídeo. Quem escolhe o formato é você, não o squad.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px;">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #9599a6;">Segunda</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; background: #1e1e25; color: #9599a6; font-size: 13px; display: flex; align-items: center; justify-content: center;">Vídeo</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Terça</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Texto</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Quarta</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Imagem</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Quinta</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Thread</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Sexta</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #9599a6; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Sem post</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Sábado</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Carrossel</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: #dcdde2;">Domingo</span>
+        <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #9599a6; font-size: 13px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px;"><span>Sem post</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #31313c; border-radius: 10px; padding: 14px 16px;">
+      <span style="font-size: 13px; color: #9599a6;">Esta semana custa <span style="color: #dcdde2; font-weight: 700;">32 créditos</span> além do texto: imagem 8 e carrossel 24.</span>
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; flex-shrink: 0;">Salvar</div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>

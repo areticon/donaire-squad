@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { membroAtivo } from "@/lib/equipe/conta";
 
 /**
  * Portão de entrada da plataforma.
@@ -33,6 +34,8 @@ export function isentaDoPortao(pathname: string): boolean {
 export type Destino =
   | { tipo: "segue" }
   | { tipo: "planos" }
+  /** Membro da equipe cujo dono ficou sem assinatura (01/10, acabamento). */
+  | { tipo: "equipe-pausada" }
   | { tipo: "setup"; projectId: string };
 
 /**
@@ -45,14 +48,26 @@ export async function destinoDeEntrada(
 ): Promise<Destino> {
   if (isentaDoPortao(pathname)) return { tipo: "segue" };
 
+  // MEMBRO DA EQUIPE (01/10): não tem plano próprio, e não precisa. Quem paga
+  // é o dono, e mandar o vendedor para a página de planos seria pedir a ele um
+  // cartão que não é dele. Entra pelo plano da conta do dono.
+  const membro = await membroAtivo(userId);
   const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { plan: true },
+    where: { id: membro?.donoId ?? userId },
+    select: { plan: true, role: true },
   });
+
+  // Admin é acesso interno e não passa pelo portão: mandar quem opera a
+  // plataforma para a página de planos é o produto pedindo dinheiro ao dono.
+  if (user?.role === "admin") return { tipo: "segue" };
 
   // "free" é ausência de plano, não um plano gratuito. Ver o comentário do
   // topo: com 0 créditos a plataforma não entrega nada.
-  if (!user || user.plan === "free") return { tipo: "planos" };
+  //
+  // MEMBRO com a assinatura do dono caída (01/10, acabamento): /planos pediria
+  // ao vendedor um cartão que não é dele (e assinar criaria uma conta paga fora
+  // da equipe). Ele vai para a tela que diz com quem falar, sem preço.
+  if (!user || !user.plan || user.plan === "free") return membro ? { tipo: "equipe-pausada" } : { tipo: "planos" };
 
   return { tipo: "segue" };
 }
@@ -66,6 +81,10 @@ export async function destinoDeEntrada(
 export async function garantirPrimeiroProjeto(
   userId: string
 ): Promise<string | null> {
+  // Membro da equipe não cria projeto: usa os que o dono liberou (01/10). A
+  // invariante "membro ativo não tem projeto próprio" (lib/equipe/conta.ts)
+  // depende de esta porta também ficar fechada.
+  if (await membroAtivo(userId)) return null;
   const existente = await prisma.project.findFirst({
     where: { userId },
     orderBy: { createdAt: "asc" },

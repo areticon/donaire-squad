@@ -1,30 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BotaoDeCaptura } from "@/components/landing/botao-de-captura";
+import { SquadNaHero } from "@/components/landing/squad-na-hero";
+import { VIDEO_PITCH_PRONTO } from "@/components/landing/video-pitch";
 import {
   ArrowRight,
   Zap,
-  Users,
-  BarChart3,
+  PlayCircle,
 } from "lucide-react";
 
-/**
- * O squad, na ordem em que ele trabalha.
- *
- * O Vitor Vídeo entrou em 02/09 e entrou PRIMEIRO, a pedido do Bruno: a lista
- * antiga não tinha o agente que hoje começa tudo. O produto é gravar e o resto
- * sair feito, então quem corta a gravação abre a fila, e o avatar dele é o
- * único no laranja da marca.
- */
-const AGENT_NAMES = [
-  { name: "Vitor Vídeo", role: "Corta a gravação", color: "bg-orange-500" },
-  { name: "Daniela Design", role: "Capa e carrossel", color: "bg-purple-500" },
-  { name: "Lucas LinkedIn", role: "LinkedIn", color: "bg-blue-600" },
-  { name: "Tiago Twitter", role: "X/Twitter", color: "bg-sky-500" },
-  { name: "Paulo Publicador", role: "Publicação", color: "bg-green-500" },
-];
 
 export function Hero() {
   return (
@@ -37,158 +24,127 @@ export function Hero() {
 
       <div className="lp-brilho absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-500/5 rounded-full blur-3xl" />
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
+      {/* pt-36 desde 02/10: as frases novas alongaram a coluna, e com pt-24 o
+          selo do topo passava por baixo da barra fixa numa tela de 900 px. */}
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-36 pb-16">
+        {/* minmax(0,1fr) no celular (01/10): a coluna implícita do grid crescia
+            até o conteúdo mais largo (475px numa tela de 390) e cortava o
+            título pela borda. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-2 gap-16 items-center">
           {/* Left */}
           <div>
+            {/* RODADA DO MATHEUS (02/10, noite): linguagem de empresário,
+                frase curta, uma por vez. "Squad" virou "equipe"; o título é a
+                frase dele; o selo diz que a equipe é de IA, para ninguém achar
+                que os retratos são funcionários. */}
             <div
-              className="lp-sobe inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6"
+              className="lp-sobe selo mb-6"
               style={{ animationDelay: "0.05s" }}
             >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Apenas 1% publica toda semana. Esse 1% leva os clientes.</span>
+              <Zap className="w-3.5 h-3.5 shrink-0" />
+              {/* A frase de plataforma no selo (02/10, noite): "IA" no topo
+                  assustava, e o empresário lia "conteúdo genérico". */}
+              <span>A plataforma que gera 30 dias de conteúdo em 3 horas</span>
             </div>
 
-            {/*
-              O trocadilho é o nome do produto e a promessa inteira: você
-              demandou (falou o que precisa), ele postou (o conteúdo saiu
-              pronto). O traço laranja é DESENHADO sob as duas palavras, uma
-              depois da outra, e é o gesto que o Bruno aprovou no canvas antes
-              de isto virar código.
-            */}
             <h1
-              className="lp-sobe text-5xl lg:text-6xl font-black text-[var(--text-primary)] leading-[1.05] mb-6"
+              className="lp-sobe text-5xl lg:text-6xl font-semibold tracking-tight text-[var(--text-primary)] leading-[1.04] mb-6"
               style={{ animationDelay: "0.16s" }}
             >
-              Você falou.{" "}
-              <span className="lp-risca text-orange-500" style={{ animationDelay: "0.95s" }}>
-                demandou
-              </span>
-              .{" "}
-              <span className="lp-risca text-orange-500" style={{ animationDelay: "1.3s" }}>
-                postou
-              </span>
-              .
+              {/* "marketing", e não "equipe" (02/10, noite, pedido do Matheus):
+                  quem compra é o empresário, e ele compra marketing. */}
+              Já pensou o seu marketing trabalhando{" "}
+              {/* nowrap: o traço é um ::after do span inteiro, e quebrado em duas
+                  linhas ele riscava só o pedaço final. */}
+              <span className="lp-risca whitespace-nowrap" style={{ animationDelay: "0.95s" }}>
+                24 horas
+              </span>{" "}
+              por dia?{" "}
+              <span className="destaque-prata">Sem férias.</span>
             </h1>
 
-            <p
-              className="lp-sobe text-xl text-[var(--text-muted)] leading-relaxed mb-6 max-w-lg"
-              style={{ animationDelay: "0.3s" }}
-            >
-              Quem não publica não existe para o mercado. E autoridade é o que
-              faz você cobrar mais caro, ser lembrado na hora da indicação e
-              receber a proposta sem disputar preço. Ela vem de publicar com
-              consistência, que é exatamente o que 99% não conseguem manter.
-            </p>
+            {/* A frase das 3 horas mora no selo, acima do título (02/10, noite);
+                a linha que ficava aqui saiu para não repetir. A conta: 4
+                gravações de até 30 minutos no Starter mais a aprovação. */}
+            <div className="lp-sobe space-y-1.5 mb-6 max-w-lg" style={{ animationDelay: "0.32s" }}>
+              <p className="text-xl font-semibold text-[var(--text-primary)]">O mais visto sempre vence o melhor.</p>
+              <p className="text-xl text-[var(--text-muted)]">Quantas vezes o seu cliente te viu nos últimos 7 dias?</p>
+            </div>
 
             <p
-              className="lp-sobe text-xl text-[var(--text-primary)] leading-relaxed mb-8 max-w-lg"
+              className="lp-sobe text-lg text-[var(--text-primary)] leading-relaxed mb-8 max-w-lg"
               style={{ animationDelay: "0.42s" }}
             >
-              Grave um vídeo falando do jeito que você fala. Seu squad de
-              agentes transcreve, corta, escreve, desenha e publica em todas as
-              suas redes.{" "}
-              <span className="text-orange-400">E soa como você</span>, porque
-              eles estudam o seu tom, os seus temas e as suas referências.
+              <strong className="font-semibold">Você fala e aprova.</strong> A equipe edita, corta, escreve,
+              desenha, agenda e publica nas 6 redes.
             </p>
 
             <div
-              className="lp-sobe flex flex-col sm:flex-row gap-4 mb-12"
+              className="lp-sobe flex flex-col sm:flex-row gap-4 mb-4"
               style={{ animationDelay: "0.54s" }}
             >
-              <Button size="xl" className="lp-anel" asChild>
-                <Link href="/planos">
-                  Começar os 7 dias grátis
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
-              </Button>
+              {/* O laranja cheio da hero é este botão e só ele (01/10). */}
+              <BotaoDeCaptura origem="hero" size="xl" variant="conversao" className="lp-anel">
+                Agendar reunião
+                <ArrowRight className="w-5 h-5" />
+              </BotaoDeCaptura>
+              {/* "Contratar" (02/10, pedido do Matheus): leva a /planos, onde
+                  existe o caminho de contratação (cadastro com o plano e o
+                  checkout anual no Stripe). */}
               <Button size="xl" variant="outline" asChild>
-                <a href="#how">Ver como funciona</a>
+                <Link href="/planos">Contratar</Link>
               </Button>
+            </div>
+            {VIDEO_PITCH_PRONTO && (
+              <a href="#video" className="lp-sobe inline-flex items-center gap-1.5 text-sm font-semibold text-orange-400 hover:text-orange-300 mb-8" style={{ animationDelay: "0.58s" }}>
+                <PlayCircle className="w-4 h-4" /> Assistir ao vídeo de 90 segundos
+              </a>
+            )}
+
+            {/* A ESTATÍSTICA (02/10): saiu "73% dos decisores confiam mais no
+                conteúdo que no folder", difícil de ler. Entrou a fatia da
+                compra decidida antes do vendedor, com fonte: 6sense, B2B Buyer
+                Experience Report 2024 ("nearly 70% through their purchasing
+                process before engaging with sellers"; 81% já têm um fornecedor
+                preferido no primeiro contato). */}
+            <div className="lp-sobe mb-8 max-w-lg rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]/60 px-4 py-3" style={{ animationDelay: "0.6s" }}>
+              <p className="text-base text-[var(--text-primary)]">
+                <strong className="text-orange-400">70% da decisão de compra</strong> acontece antes de o cliente falar com você.
+              </p>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">Fonte: 6sense, B2B Buyer Experience Report, 2024.</p>
             </div>
 
-            <div
-              className="lp-sobe flex items-center gap-6 text-sm text-[var(--text-muted)]"
-              style={{ animationDelay: "0.64s" }}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-orange-400" />
-                <span>7 dias grátis</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-orange-400" />
-                <span>Cancele quando quiser</span>
-              </div>
-            </div>
+            {/* Saíram daqui (02/10, noite, pedido do Matheus) "Para empresas
+                acima de R$ 100 mil por mês", que assustava quem nem clicava, e
+                "Contrato anual". O contrato anual segue escrito nos cartões de
+                preço, que é onde se decide pagar. */}
           </div>
 
-          {/* Right — o squad montando, um agente por vez */}
+          {/* Right — O CARTÃO DO SQUAD.
+
+              Ele saiu daqui em 19/09 para o clipe da plataforma entrar, e
+              voltou no mesmo dia. O motivo da troca continuava certo (uma
+              ilustração do produto não prova nada) e o custo estava errado: a
+              hero passou a mostrar O PRODUTO e deixou de apresentar QUEM
+              trabalha, que é o que separa a Demandou de um gerador de post.
+
+              As duas coisas convivem agora: aqui ficam as pessoas, e o clipe
+              desce para uma seção própria, em largura quase total, onde ele
+              tem espaço para ser visto em vez de disputar atenção com o
+              título. Ver components/landing/o-que-eles-fazem.tsx. */}
           <motion.div
             initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            // `isolate` cria o contexto de empilhamento do cartão. Sem ele o
-            // -z-10 da arte cai atrás do FUNDO da seção e ela some; com ele o
-            // -z-10 vale só aqui dentro, e a arte fica atrás do cartão e na
-            // frente do fundo, que é onde a colagem quer que ela esteja.
             className="relative isolate"
           >
-            <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 space-y-3">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-2 text-xs text-[var(--text-muted)] font-mono">demandou, ao vivo</span>
-              </div>
-
-              {AGENT_NAMES.map((agent, i) => (
-                <motion.div
-                  key={agent.name}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.55 + i * 0.14 }}
-                  className="flex items-center gap-3 bg-[var(--bg-elevated)] rounded-lg p-3 border border-[var(--border)]"
-                >
-                  <div className={`w-8 h-8 ${agent.color} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                    {agent.name.split(" ").map(n => n[0]).join("")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-[var(--text-primary)]">{agent.name}</div>
-                    <div className="text-xs text-[var(--text-muted)]">{agent.role}</div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {/* Fora de fase de propósito: cinco pontos piscando no
-                        mesmo compasso leem como enfeite, e não como coisa
-                        viva. */}
-                    <div
-                      className="lp-vivo w-1.5 h-1.5 rounded-full bg-green-400"
-                      style={{ animationDelay: `${i * 0.4}s` }}
-                    />
-                    <span className="text-xs text-green-400">ativo</span>
-                  </div>
-                </motion.div>
-              ))}
-
-              {/* O resultado chega por ÚLTIMO, depois de todo o squad: é a
-                  ordem que conta a história certa. */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.35 }}
-                className="mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg"
-              >
-                <div className="text-xs text-orange-400 font-mono">
-                  ✓ Post no LinkedIn publicado com 4 fontes verificadas
-                </div>
-              </motion.div>
-            </div>
+            <SquadNaHero />
 
             {/* A arte entra como CAMADA, nunca como estrutura: se ela sumir, a
-                página continua de pé. Nasceu no Nano Banana com as referências
-                da bíblia de estilo, recortada com transparência e no traço da
-                própria página (branco quente e o laranja da marca), que foi
-                exatamente a correção que o Bruno pediu em 02/09. Some no
-                celular, onde não sobra espaço para camada nenhuma. */}
+                página continua de pé. Some abaixo de 1280 px, onde não sobra
+                espaço. Desde 01/10 ela sai menos para a esquerda (era -left-28):
+                avançava 112 px sobre o vão entre as colunas e encostava no
+                botão "Assistir ao vídeo". */}
             <motion.img
               src="/artes/setas.png"
               alt=""
@@ -196,11 +152,7 @@ export function Hero() {
               initial={{ opacity: 0, x: -40, rotate: -5 }}
               animate={{ opacity: 1, x: 0, rotate: -3 }}
               transition={{ delay: 1.7, duration: 0.7, ease: [0.2, 0.9, 0.25, 1] }}
-              // -z-10 e não z acima: a arte passa POR TRÁS do cartão, e só o
-              // que sobra dele aparece. Na primeira tentativa ela ficou por
-              // cima e comeu o texto do aviso de publicado, que é justamente a
-              // frase que fecha a história do squad.
-              className="hidden lg:block pointer-events-none absolute -z-10 -left-28 -bottom-24 w-[430px]"
+              className="hidden xl:block pointer-events-none absolute -z-10 -left-8 -bottom-24 w-[400px]"
             />
           </motion.div>
         </div>

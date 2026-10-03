@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
 import toast from "react-hot-toast";
 
 interface Agent {
@@ -52,15 +53,6 @@ interface LiveViewProps {
   agents: Agent[];
   latestRun: Run | null;
 }
-
-const AGENT_COLORS: Record<string, string> = {
-  "roberto-radar": "bg-blue-500",
-  "lucas-linkedin": "bg-blue-600",
-  "tiago-twitter": "bg-sky-500",
-  "daniela-design": "bg-purple-500",
-  "vera-veredito": "bg-yellow-500",
-  "paulo-publicador": "bg-green-500",
-};
 
 type LogEntry = {
   agent?: string;
@@ -132,7 +124,7 @@ export function LiveView({ project, agents, latestRun }: LiveViewProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 shrink-0">
         <div>
-          <h1 className="text-2xl font-black flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
             <div className={cn("w-2.5 h-2.5 rounded-full", isRunning ? "bg-green-400 animate-pulse" : "")}
               style={!isRunning ? { background: "var(--border)" } : undefined}
             />
@@ -178,9 +170,7 @@ export function LiveView({ project, agents, latestRun }: LiveViewProps) {
                 transition={{ duration: 0.5, repeat: isActive ? Infinity : 0 }}
               >
                 <div className="flex items-center gap-3">
-                  <div className={cn("w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0", AGENT_COLORS[agent.id] ?? "bg-gray-500")}>
-                    {agent.name.split(" ").map((n) => n[0]).join("")}
-                  </div>
+                  <AvatarDoAgente agenteId={agent.id} tamanho={36} anel={isActive} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold leading-none" style={{ color: "var(--text-primary)" }}>
                       {agent.name}
@@ -310,9 +300,20 @@ export function LiveView({ project, agents, latestRun }: LiveViewProps) {
                         {post.status}
                       </Badge>
                     </div>
-                    {post.imageUrl && (
-                      <img src={post.imageUrl} alt="Post image" className="w-full rounded-lg mb-2 object-cover max-h-24" />
-                    )}
+                    {post.imageUrl && (() => {
+                      // A primeira lâmina quando é carrossel: as lâminas vêm
+                      // coladas com "|" e a string inteira quebra o <img>.
+                      //
+                      // E o post de vídeo carrega um mp4 aqui desde 19/09:
+                      // dentro de um `<img>` ele é uma imagem quebrada.
+                      const midia = post.imageUrl.split("|")[0];
+                      const video = /\.(mp4|webm)(\?|$)/i.test(midia) || midia.startsWith("data:video/");
+                      return video ? (
+                        <video src={midia} muted playsInline preload="metadata" className="w-full rounded-lg mb-2 object-cover object-top max-h-24" />
+                      ) : (
+                        <img src={midia} alt="Post image" className="w-full rounded-lg mb-2 object-cover object-top max-h-24" />
+                      );
+                    })()}
                     <p className="text-xs line-clamp-3" style={{ color: "var(--text-primary)" }}>
                       {post.content}
                     </p>

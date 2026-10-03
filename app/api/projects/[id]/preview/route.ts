@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
+import { projetoVisivel } from "@/lib/equipe/conta";
+import { soODono } from "@/lib/equipe/permissoes";
 
 /**
  * Prévia do primeiro post, dentro do setup.
@@ -50,12 +52,15 @@ export async function POST(
 
   const { id } = await params;
   const project = await prisma.project.findFirst({
-    where: { id, userId },
-    select: { name: true, niche: true, targetAudience: true, voice: true },
+    where: { id, ...projetoVisivel(userId) },
+    select: { name: true, niche: true, targetAudience: true, voice: true, userId: true },
   });
   if (!project) {
     return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
   }
+  // A prévia é ferramenta do setup, que é do dono (01/10, acabamento).
+  const recusa = await soODono(userId, project, "usar o setup deste projeto");
+  if (recusa) return recusa;
 
   if (!project.niche || !project.voice) {
     return NextResponse.json(

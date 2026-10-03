@@ -25,6 +25,13 @@ const AQUI = dirname(fileURLToPath(import.meta.url));
  * porque o modelo de segmentação teve um dia ruim.
  */
 
+/**
+ * O interpretador do recorte. No contêiner é o python3 do Debian; no Windows
+ * de desenvolvimento o "python3" é o atalho da loja, e o Python com MediaPipe
+ * é outro. A variável existe só para a prova local rodar o MESMO código.
+ */
+const PYTHON = process.env.PYTHON_DO_RECORTE ?? "python3";
+
 const MODELO =
   process.env.MODELO_SEGMENTACAO ?? "/app/modelos/selfie_segmenter.tflite";
 
@@ -60,7 +67,7 @@ export async function gerarMatte(entrada, pasta, indice, inicio, duracao, caixa)
   });
 
   const texto = await new Promise((resolve) => {
-    const p = spawn("python3", [join(AQUI, "recorte.py"), config], {
+    const p = spawn(PYTHON, [join(AQUI, "recorte.py"), config], {
       cwd: pasta,
     });
     let saidaPadrao = "";
@@ -139,7 +146,7 @@ export async function acharCaixaDaPessoa(entrada, pasta, indice, inicio, duracao
     duracao,
   });
   const texto = await new Promise((resolve) => {
-    const p = spawn("python3", [join(AQUI, "recorte.py"), config], { cwd: pasta });
+    const p = spawn(PYTHON, [join(AQUI, "recorte.py"), config], { cwd: pasta });
     let saidaPadrao = "";
     p.stdout.on("data", (d) => (saidaPadrao += d));
     p.stderr.on("data", () => {});
@@ -169,4 +176,68 @@ export async function acharCaixaDaPessoa(entrada, pasta, indice, inicio, duracao
   } catch {
     return null;
   }
+}
+
+const MODELO_ROSTO = process.env.MODELO_ROSTO ?? "/app/modelos/face_landmarker.task";
+const MODELO_MULTICLASSE = process.env.MODELO_MULTICLASSE ?? "/app/modelos/selfie_multiclass.tflite";
+
+/**
+ * O QUADRO DA CAPA (30/09): o melhor quadro real como foto, e a pessoa
+ * recortada dele. Ver quadro-da-capa.py para o porquê (o teste de 29/09 teve
+ * capa de olho fechado e rosto redesenhado pela IA).
+ *
+ * `fonte` é { video, instantes } para escolher entre quadros, ou { imagem }
+ * para só recortar um quadro já escolhido. Devolve null quando não acha rosto:
+ * quem chama segue com a capa antiga, que é pior mas existe.
+ */
+export async function quadroDaCapa(fonte, pasta, nome) {
+  const config = JSON.stringify({
+    ...fonte,
+    saida: join(pasta, nome),
+    modelo_rosto: MODELO_ROSTO,
+    modelo_segmentacao: MODELO_MULTICLASSE,
+  });
+  const texto = await new Promise((resolve) => {
+    const p = spawn(PYTHON, [join(AQUI, "quadro-da-capa.py"), config], { cwd: pasta });
+    let saidaPadrao = "";
+    let erro = "";
+    p.stdout.on("data", (d) => (saidaPadrao += d));
+    p.stderr.on("data", (d) => (erro += d));
+    // Cada quadro custa uma busca do ffmpeg e duas inferências (perto de 1 s
+    // medido na máquina de desenvolvimento); 24 quadros cabem com folga em 3 min.
+    const relogio = setTimeout(() => {
+      p.kill("SIGKILL");
+      resolve(null);
+    }, 180_000);
+    p.on("close", (codigo) => {
+      clearTimeout(relogio);
+      if (codigo !== 0) console.error(`[capa ${nome}] python saiu com ${codigo}: ${erro.slice(-400)}`);
+      resolve(codigo === 0 ? saidaPadrao : null);
+    });
+    p.on("error", (e) => {
+      clearTimeout(relogio);
+      console.error(`[capa ${nome}] não consegui rodar o python: ${e.message}`);
+      resolve(null);
+    });
+  });
+  if (!texto) return null;
+  try {
+    const linha = texto
+      .trim()
+      .split(String.fromCharCode(10))
+      .reverse()
+      .find((l) => l.trim().startsWith("{"));
+    if (!linha) return null;
+    const r = JSON.parse(linha);
+    return r.erro ? null : r;
+  } catch {
+    return null;
+  }
+}
+
+/** Instantes espalhados num intervalo, fugindo das bordas (entrada e saída de fala). */
+export function instantesEspalhados(inicio, duracao, quantos) {
+  return Array.from({ length: quantos }, (_, i) =>
+    Math.round((inicio + duracao * (0.04 + (0.92 * i) / Math.max(1, quantos - 1))) * 100) / 100
+  );
 }

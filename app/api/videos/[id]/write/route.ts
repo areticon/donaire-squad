@@ -13,6 +13,7 @@ import { escreverPosts, montarPrefixoCacheavel } from "@/lib/media/write-posts";
 import { debitar, jaCobrado, SaldoInsuficiente } from "@/lib/credits";
 import { creditosEstimados } from "@/lib/media/limits";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
+import { aprovacaoCobrada } from "@/lib/media/roteiro-da-edicao";
 
 /**
  * Passo 4 do fluxo de vídeo: escrever os posts de cada trecho.
@@ -50,8 +51,11 @@ export async function POST(
           niche: true,
           targetAudience: true,
           voice: true,
+          // Só o manual que a IA conseguiu ler: um documento em "lendo" ou
+          // "falhou" tem `compiled` vazio e viraria uma marca em branco no
+          // prefixo cacheável, sem ninguém perceber. Regra de 18/09.
           contexts: {
-            where: { type: "brand" },
+            where: { type: "brand", status: "pronto" },
             select: { compiled: true },
             take: 1,
           },
@@ -120,7 +124,7 @@ export async function POST(
   });
   if (tomado.count === 0) {
     return NextResponse.json(
-      { error: "Outra aba já começou a escrever os posts deste vídeo." },
+      { error: "A redação dos posts deste vídeo já começou.", jaEmAndamento: true },
       { status: 409 }
     );
   }
@@ -130,7 +134,9 @@ export async function POST(
   // o número de trechos. Cobrar antes de escrever, e não depois, é deliberado:
   // se o cliente não tem saldo, ele descobre antes de a gente gastar com a API.
   const custo = creditosEstimados(video.durationSec ?? 0);
-  const cobrado = await jaCobrado("video_job", video.id);
+  // Com a tela de roteiro (30/09) o vídeo já pagou em duas partes (envio e
+  // aprovação): cobrar o preço antigo aqui seria cobrar duas vezes.
+  const cobrado = (await jaCobrado("video_job", video.id)) || (await aprovacaoCobrada(video.id));
 
   if (!cobrado) {
     try {

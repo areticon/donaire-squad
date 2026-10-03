@@ -54,6 +54,26 @@ export function getFacebookAuthUrl(redirectUri: string, state: string): string {
   // vazio, e a conexão morre em silêncio. Pago em 21/08 no teste do Bruno.
   params.set("auth_type", "rerequest");
 
+  /**
+   * O IDIOMA DO DIALOGO DA META, quando a gravacao do App Review exige.
+   *
+   * A analise de 22/09 reprovou as cinco permissoes com o mesmo motivo (o
+   * screencast nao mostra o caso de uso completo) e pediu, entre as boas
+   * praticas, "usar ingles como idioma de interface do app".
+   *
+   * MEDIDO EM 22/09, e o resultado foi NAO: a mesma URL com `locale=en_US` e
+   * com `locale=pt_BR` devolve `<html lang="pt">` nos dois casos, com os
+   * mesmos rotulos em portugues. **O Facebook ignora este parametro aqui** e
+   * decide o idioma pela conta de quem esta logado. Quem precisa do dialogo
+   * em ingles troca o idioma da CONTA do Facebook antes de gravar.
+   *
+   * O parametro fica porque nao custa nada e pode valer em outro dialogo da
+   * Meta, mas quem contar com ele para a gravacao vai gravar em portugues de
+   * novo. O comentario existe para ninguem repetir o meu erro.
+   */
+  const locale = process.env.OAUTH_LOCALE;
+  if (locale) params.set("locale", locale);
+
   return `${FB}/dialog/oauth?${params.toString()}`;
 }
 
@@ -309,4 +329,131 @@ export async function publishFacebookImagePost(
   const postId = String(json.id ?? "");
   if (!postId) throw new Error("Facebook feed: resposta sem id");
   return { postId, url: `https://www.facebook.com/${postId}` };
+}
+
+/* ── Reels e stories de página (21/09, o formato por rede) ────────────────
+ *
+ * O feed da página publica por um POST só. Reels e stories de VÍDEO não: eles
+ * usam o protocolo de upload em fases da Meta, que são três chamadas em dois
+ * domínios diferentes (`graph.facebook.com` abre e fecha, `rupload.facebook.com`
+ * recebe o arquivo). Pular uma fase devolve sucesso e não publica nada, que é
+ * o mesmo defeito que o vídeo do LinkedIn teve em 21/09: "publicado" sem post.
+ *
+ * O arquivo vai por URL HOSPEDADA (cabeçalho `file_url`), e não por bytes:
+ * a nossa mídia já é servida pela rota assinada que o Instagram usa, e mandar
+ * o binário por aqui significaria carregar um vídeo de 19 MB na memória da
+ * função para reenviá-lo.
+ *
+ * MEDIDO CONTRA A DOC, NÃO CONTRA A API: as contas de página do Bruno
+ * dependem do App Review da Meta (card 520), então estes três caminhos estão
+ * escritos a partir da documentação de 21/09 e provados na forma das chamadas,
+ * não contra a rede. A diferença está dita aqui e no card, porque foi
+ * exatamente essa distinção ("medido" contra "calculado") que salvou o preço
+ * do vídeo longo.
+ */
+
+/**
+ * Manda o arquivo pela URL onde ele já está, e devolve quando a Meta aceitou.
+ *
+ * `file_url` é cabeçalho, e não corpo: o corpo vai vazio. A Meta busca o
+ * arquivo, então a URL precisa ser alcançável de fora (rota assinada, nunca
+ * blob privado).
+ */
+async function fbUploadPorUrl(uploadUrl: string, pageToken: string, fileUrl: string): Promise<void> {
+  const res = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${pageToken}`,
+      file_url: fileUrl,
+    },
+    signal: AbortSignal.timeout(5 * 60_000),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Facebook upload falhou (${res.status}): ${text.slice(0, 400)}`);
+  // A Meta responde `{"success":true}`. Resposta 200 com success ausente é o
+  // caso em que o finish seguinte falharia sem dizer por quê, então é aqui que
+  // a gente para: medir o que voltou, e não confiar no código de status.
+  const json = JSON.parse(text) as { success?: boolean };
+  if (json.success === false) throw new Error(`Facebook upload recusado: ${text.slice(0, 300)}`);
+}
+
+/**
+ * Reels da página. `video_state: PUBLISHED` é o que faz o reel ir ao ar; sem
+ * ele o vídeo fica como rascunho na página, invisível e sem erro nenhum.
+ */
+export async function publishFacebookReel(
+  pageToken: string,
+  pageId: string,
+  message: string,
+  videoUrl: string
+): Promise<{ postId: string; url: string }> {
+  const inicio = await fbPost(`${pageId}/video_reels`, pageToken, { upload_phase: "start" });
+  const videoId = String(inicio.video_id ?? "");
+  const uploadUrl = String(inicio.upload_url ?? "");
+  if (!videoId || !uploadUrl) {
+    throw new Error(`Facebook video_reels: start sem video_id ou upload_url (${JSON.stringify(inicio).slice(0, 300)})`);
+  }
+
+  await fbUploadPorUrl(uploadUrl, pageToken, videoUrl);
+
+  const fim = await fbPost(`${pageId}/video_reels`, pageToken, {
+    video_id: videoId,
+    upload_phase: "finish",
+    video_state: "PUBLISHED",
+    description: message,
+  });
+  if (fim.success === false) {
+    throw new Error(`Facebook video_reels: finish recusado (${JSON.stringify(fim).slice(0, 300)})`);
+  }
+  return { postId: videoId, url: `https://www.facebook.com/reel/${videoId}` };
+}
+
+/**
+ * Story de FOTO. Duas chamadas: a foto sobe não publicada (o mesmo truque do
+ * post com várias imagens) e o story a referencia pelo id.
+ *
+ * Story não tem legenda em rede nenhuma, então o texto do post não entra aqui.
+ * Quem chama é que decide o que dizer ao cliente sobre isso.
+ */
+export async function publishFacebookPhotoStory(
+  pageToken: string,
+  pageId: string,
+  imageUrl: string
+): Promise<{ postId: string; url: string }> {
+  const foto = await fbPost(`${pageId}/photos`, pageToken, { url: imageUrl, published: "false" });
+  const photoId = String(foto.id ?? "");
+  if (!photoId) throw new Error("Facebook photos: resposta sem id para o story");
+
+  const story = await fbPost(`${pageId}/photo_stories`, pageToken, { photo_id: photoId });
+  if (story.success === false) {
+    throw new Error(`Facebook photo_stories recusado (${JSON.stringify(story).slice(0, 300)})`);
+  }
+  const postId = String(story.post_id ?? photoId);
+  return { postId, url: `https://www.facebook.com/stories/${pageId}` };
+}
+
+/** Story de VÍDEO: mesmas três fases do reel, sem `video_state`. */
+export async function publishFacebookVideoStory(
+  pageToken: string,
+  pageId: string,
+  videoUrl: string
+): Promise<{ postId: string; url: string }> {
+  const inicio = await fbPost(`${pageId}/video_stories`, pageToken, { upload_phase: "start" });
+  const videoId = String(inicio.video_id ?? "");
+  const uploadUrl = String(inicio.upload_url ?? "");
+  if (!videoId || !uploadUrl) {
+    throw new Error(`Facebook video_stories: start sem video_id ou upload_url (${JSON.stringify(inicio).slice(0, 300)})`);
+  }
+
+  await fbUploadPorUrl(uploadUrl, pageToken, videoUrl);
+
+  const fim = await fbPost(`${pageId}/video_stories`, pageToken, {
+    video_id: videoId,
+    upload_phase: "finish",
+  });
+  if (fim.success === false) {
+    throw new Error(`Facebook video_stories: finish recusado (${JSON.stringify(fim).slice(0, 300)})`);
+  }
+  const postId = String(fim.post_id ?? videoId);
+  return { postId, url: `https://www.facebook.com/stories/${pageId}` };
 }

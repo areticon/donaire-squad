@@ -1,0 +1,32 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "No ar" },
+    { "id": "page-2", "name": "As opções" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 440, "h": 900, "page": "page-1", "title": "Opção C, escolhida e implantada" },
+    { "file": "Toggle.dc.html", "x": 540, "y": 0, "w": 660, "h": 720, "page": "page-1", "title": "A chave Mensal e Anual" },
+    { "file": "Hoje.dc.html", "x": 0, "y": 0, "w": 440, "h": 880, "page": "page-2", "title": "Como era, mensal" },
+    { "file": "OpcaoA.dc.html", "x": 540, "y": 0, "w": 440, "h": 900, "page": "page-2", "title": "Opção A, não escolhida" },
+    { "file": "OpcaoB.dc.html", "x": 1080, "y": 0, "w": 440, "h": 900, "page": "page-2", "title": "Opção B, não escolhida" }
+  ],
+  "annotations": [
+    {
+      "id": "decidido",
+      "x": 0,
+      "y": 960,
+      "w": 660,
+      "page": "page-1",
+      "text": "Decidido em 14/09: opção C, e está no ar.\n\nO número que vende continua sendo 397. O número que se paga, R$ 4.764, vive dentro do botão, onde não dá para clicar sem ter lido.\n\nA chave inverteu junto: a vaga existia só no Mensal e passou a existir só no Anual. No Mensal o cartão aponta para ela em vez de escondê-la, e o Essencial voltou a aparecer lá, porque sem cartão de fundador não há colisão de número."
+    },
+    {
+      "id": "a-decisao",
+      "x": 0,
+      "y": 960,
+      "w": 440,
+      "page": "page-2",
+      "text": "A decisão era uma só: onde mora o número grande.\n\nA opção A escondia a cobrança na menor linha do bloco. A B punha os quatro dígitos na vitrine, contra o que o próprio lib/planos.ts já dizia sobre número grande assustar."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

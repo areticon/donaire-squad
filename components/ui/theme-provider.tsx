@@ -7,10 +7,10 @@ type Theme = "dark" | "light";
 const ThemeContext = createContext<{
   theme: Theme;
   toggle: () => void;
-}>({ theme: "dark", toggle: () => {} });
+}>({ theme: "light", toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
     // O script inline no layout já aplicou o tema no <html> antes da primeira
@@ -24,7 +24,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   function toggle() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    localStorage.setItem("theme", next);
+    // Mesma chave que o script do layout lê (ver app/layout.tsx para o porquê
+    // de não ser mais "theme"). O try cobre modo privado e armazenamento cheio.
+    try {
+      localStorage.setItem("tema", next);
+    } catch {
+      /* segue sem lembrar */
+    }
     document.documentElement.setAttribute("data-theme", next);
   }
 

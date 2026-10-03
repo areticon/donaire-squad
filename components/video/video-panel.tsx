@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import type { TrechoComPosts } from "@/components/video/clip-approval";
 import { CortesPanel, type Corte } from "@/components/video/cortes-panel";
 import {
@@ -51,6 +52,10 @@ const ESTADOS: Record<string, { rotulo: string; cor: string }> = {
   transcribed: { rotulo: "Pronto para escolher os trechos", cor: "secondary" },
   selecting: { rotulo: "Escolhendo os trechos", cor: "warning" },
   selected: { rotulo: "Pronto para escrever", cor: "secondary" },
+  // A tela de roteiro (30/09): a esteira para para o cliente aprovar.
+  roteirizando: { rotulo: "Montando o roteiro", cor: "warning" },
+  roteiro: { rotulo: "Roteiro esperando aprovação", cor: "secondary" },
+  aprovando: { rotulo: "Aprovando o roteiro", cor: "warning" },
   writing: { rotulo: "Escrevendo os posts", cor: "warning" },
   ready: { rotulo: "Pronto para aprovar", cor: "success" },
   failed: { rotulo: "Falhou", cor: "destructive" },
@@ -357,7 +362,21 @@ export function VideoPanel({
                       <p className="text-sm text-orange-400 mt-1">
                         Esta etapa já falhou {v.attempts} vezes. Repetir de novo
                         provavelmente falharia igual, então o botão saiu do ar de
-                        propósito. Fale com o suporte.
+                        propósito. Fale com o suporte.{" "}
+                        {/* O chamado já com o vídeo no contexto (02/10). */}
+                        <button
+                          type="button"
+                          className="underline font-medium"
+                          onClick={() =>
+                            abrirChamado({
+                              categoria: "problema",
+                              videoId: v.id,
+                              texto: `O vídeo "${v.originalName ?? "sem nome"}" parou e já falhou ${v.attempts} vezes. `,
+                            })
+                          }
+                        >
+                          Abrir chamado
+                        </button>
                       </p>
                     )}
                   </div>

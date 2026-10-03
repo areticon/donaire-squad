@@ -73,7 +73,8 @@ export function CorteGuardadoModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      // Sem desfoque atrás do player (30/09): o backdrop-filter derrubava quadros.
+      style={{ background: "rgba(0,0,0,0.78)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onFechar(); }}
     >
       <motion.div
@@ -98,7 +99,7 @@ export function CorteGuardadoModal({
           </div>
           <button
             onClick={onFechar}
-            className="p-1 rounded-lg hover:bg-white/10 shrink-0"
+            className="p-1 rounded-lg hover:bg-[var(--realce-2)] shrink-0"
             style={{ color: "var(--text-muted)" }}
           >
             <X className="w-5 h-5" />
@@ -147,7 +148,7 @@ export function CorteGuardadoModal({
                       className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{
                         borderColor: marcado ? "var(--accent-orange)" : "var(--border)",
-                        background: marcado ? "rgba(239,97,34,0.08)" : "transparent",
+                        background: marcado ? "color-mix(in srgb, var(--acento) 8%, transparent)" : "transparent",
                         color: marcado ? "var(--text-primary)" : "var(--text-muted)",
                       }}
                     >

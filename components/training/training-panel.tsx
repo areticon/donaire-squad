@@ -241,20 +241,20 @@ function NewContextForm({ projectId, onCreated }: { projectId: string; onCreated
           rows={8}
           placeholder={
             type === "brand"
-              ? "Ex: Nossa marca usa as cores laranja (#FF6B00) e preto. O tom de voz e direto, sem corporativismo. Nosso logo e minimalista..."
+              ? "Ex: Nossa marca usa as cores laranja (#FF6B00) e preto. O tom de voz é direto, sem corporativismo. Nosso logo é minimalista..."
               : type === "editorial"
-              ? "Ex: Pilares: Educacao (40%), Cases (30%), Opiniao (30%). Sempre comecar com dado ou pergunta provocadora..."
+              ? "Ex: Pilares: Educação (40%), Cases (30%), Opinião (30%). Sempre começar com dado ou pergunta provocadora..."
               : type === "regulations"
-              ? "Ex: Somos do setor eletrico. Seguimos as normas ANEEL. Nao podemos fazer promessas de ROI sem dados verificados..."
+              ? "Ex: Somos do setor elétrico. Seguimos as normas ANEEL. Não podemos fazer promessas de ROI sem dados verificados..."
               : type === "references"
-              ? "Ex: Queremos um estilo parecido com @karpathy e @sama no Twitter, tecnico mas acessivel. Imagens clean, sem muito texto..."
+              ? "Ex: Queremos um estilo parecido com @karpathy e @sama no Twitter, técnico mas acessível. Imagens clean, sem muito texto..."
               : "Cole exemplos de posts que funcionaram bem, ou descreva o formato ideal..."
           }
           value={rawInput}
           onChange={(e) => setRawInput(e.target.value)}
         />
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          A IA vai transformar esse texto em um documento estruturado que sera injetado no contexto de todos os agentes.
+          A IA vai transformar esse texto em um documento estruturado que será injetado no contexto de todos os agentes.
         </p>
       </div>
 
@@ -278,7 +278,7 @@ export function TrainingPanel({ project, initialContexts }: TrainingPanelProps) 
       <div>
         <h2 className="text-2xl font-black" style={{ color: "var(--text-primary)" }}>Treinamento da IA</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          Adicione contexto de marca, linha editorial, regulamentacoes e referencias. A IA usa essas informacoes em todas as campanhas deste projeto.
+          Adicione contexto de marca, linha editorial, regulamentações e referências. A IA usa essas informações em todas as campanhas deste projeto.
         </p>
       </div>
 
@@ -288,8 +288,8 @@ export function TrainingPanel({ project, initialContexts }: TrainingPanelProps) 
         <div>
           <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Como funciona</p>
           <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            Voce fornece textos descritivos: manuais de marca, regras, posts de referencia, tom de voz. A IA (Claude) compila em um documento estruturado.
-            Nas proximas campanhas, esse contexto e injetado automaticamente no prompt de todos os agentes (Roberto, Lucas, Tiago, Diana, Vera, Paulo).
+            Você fornece textos descritivos: manuais de marca, regras, posts de referência, tom de voz. A IA (Claude) compila em um documento estruturado.
+            Nas próximas campanhas, esse contexto é injetado automaticamente no prompt de todos os agentes do squad, do Roberto ao Paulo, com a Vera conferindo.
           </p>
         </div>
       </div>

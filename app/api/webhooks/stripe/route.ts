@@ -5,8 +5,13 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db/prisma";
 import { reporCiclo } from "@/lib/credits";
+import { creditarVideo, jaCreditado } from "@/lib/credits/video";
 import { PLANS } from "@/lib/stripe";
 import { registrarPasso } from "@/lib/funil/eventos";
+// O plano que cada preco compra mora num modulo so, compartilhado com a volta
+// do checkout. A copia que vivia aqui esqueceu o anual do Autoridade, o anual
+// do Estudio e o FUNDADOR. Ver lib/stripe/aplicar-plano.ts.
+import { aplicarPlanoDaAssinatura } from "@/lib/stripe/aplicar-plano";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -31,6 +36,38 @@ export async function POST(req: NextRequest) {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.userId;
         const customerId = session.customer as string;
+
+        /**
+         * COMPRA DE CREDITO DE VIDEO, que e pagamento avulso e nao assinatura.
+         *
+         * Vem primeiro e sai cedo de proposito: uma compra de credito nao tem
+         * `subscription`, entao tudo o que vem depois neste bloco (aplicar
+         * plano, registrar o passo "assinatura" do funil) nao se aplica a ela.
+         * Deixar cair no caminho de assinatura registraria uma venda de plano
+         * que nao aconteceu, e o funil e o numero que decide o orcamento de
+         * anuncio.
+         *
+         * A QUANTIDADE VEM DO METADATA, e nao do valor pago: se um dia houver
+         * cupom, o cliente continua recebendo o que o pacote prometeu.
+         */
+        if (session.metadata?.tipo === "creditos_de_video" && userId) {
+          const creditos = Number(session.metadata.creditos ?? 0);
+          if (creditos > 0 && !(await jaCreditado("compra_video", session.id))) {
+            await creditarVideo({
+              userId,
+              quantidade: creditos,
+              operation: "compra_video",
+              // O id da sessao e o que torna o lancamento idempotente: o Stripe
+              // reenvia webhook, e creditar duas vezes e dinheiro dado.
+              refId: session.id,
+              note: `Pacote ${session.metadata.pacoteId ?? "?"}, R$ ${((session.amount_total ?? 0) / 100).toFixed(2)}`,
+            });
+          }
+          if (customerId) {
+            await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId: customerId } }).catch(() => {});
+          }
+          break;
+        }
 
         if (userId && customerId) {
           await prisma.user.update({
@@ -73,6 +110,32 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      /**
+       * O AVISO DE RENOVAÇÃO, que os termos prometem (item 5.3, desde 27/09):
+       * contrato anual pago à vista renova sozinho, e ninguém deve descobrir
+       * uma cobrança de R$ 36 mil pela fatura do cartão. O Stripe manda este
+       * evento antes de cada renovação; a antecedência é configurada no painel
+       * do Stripe (Faturamento, "eventos de renovação"), e precisa estar em 30
+       * dias para bater com o texto dos termos.
+       */
+      case "invoice.upcoming": {
+        const fatura = event.data.object as Stripe.Invoice;
+        const email = fatura.customer_email;
+        if (email && (fatura.amount_due ?? 0) > 0) {
+          const { avisoDeRenovacao } = await import("@/lib/email/renovacao");
+          const { enviarEmail } = await import("@/lib/email");
+          const quando = fatura.next_payment_attempt ?? fatura.period_end;
+          await enviarEmail({
+            ...avisoDeRenovacao({
+              valorCentavos: fatura.amount_due,
+              data: quando ? new Date(quando * 1000) : null,
+            }),
+            para: email,
+          });
+        }
+        break;
+      }
+
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = sub.customer as string;
@@ -89,75 +152,4 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ received: true });
-}
-
-/**
- * Aplica plano e créditos a partir de uma assinatura do Stripe. Chamada pelos
- * eventos de assinatura E pelo checkout.session.completed, porque a ordem de
- * chegada dos dois não é garantida (ver o comentário no case do checkout).
- * Idempotente: repõe para o teto do plano com guarda de início de ciclo.
- */
-async function aplicarPlanoDaAssinatura(sub: Stripe.Subscription) {
-  {
-    const customerId = sub.customer as string;
-    const priceId = sub.items.data[0]?.price?.id;
-
-        let plan = "free";
-        // Starter foi descontinuado em 18/08/2026. A linha continua aqui só
-        // para não deixar órfã uma assinatura antiga: ela vira pro, que é o
-        // plano de entrada atual.
-        if (priceId === process.env.STRIPE_STARTER_PRICE_ID) plan = "pro";
-        if (priceId === process.env.STRIPE_PRO_PRICE_ID) plan = "pro";
-        // Anual e mensal são o mesmo plano; o que muda é o ciclo de cobrança.
-        // A reposição mensal de créditos do anual vive em /api/cron/annual-credits,
-        // porque este webhook só dispara na renovação, que no anual é 1x por ano.
-        if (priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID) plan = "pro";
-        if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) plan = "business";
-        if (priceId === process.env.STRIPE_STUDIO_PRICE_ID) plan = "studio";
-        // Assinaturas antigas do plano Agency (pré Opção B) mapeiam para studio
-        if (priceId === process.env.STRIPE_AGENCY_PRICE_ID) plan = "studio";
-
-        const status = sub.status;
-        if (status === "active" || status === "trialing") {
-          await prisma.user.updateMany({
-            where: { stripeCustomerId: customerId },
-            data: { plan },
-          });
-
-          // Repõe o saldo do ciclo. Repõe em vez de somar de propósito:
-          // crédito de plano não acumula, senão quem usa pouco vira um passivo
-          // crescente e a projeção de custo deixa de valer.
-          //
-          // O guarda de data existe porque o Stripe dispara
-          // customer.subscription.updated por vários motivos que não são
-          // renovação (troca de cartão, mudança de metadados). Sem ele, cada
-          // um desses eventos daria um mês de créditos de graça.
-          const creditos = PLANS[plan as keyof typeof PLANS]?.credits;
-          if (creditos) {
-            const usuarios = await prisma.user.findMany({
-              where: { stripeCustomerId: customerId },
-              select: { id: true, creditsResetAt: true },
-            });
-            const inicioDoCiclo = sub.items.data[0]?.current_period_start;
-            for (const u of usuarios) {
-              const jaReposNesteCiclo =
-                u.creditsResetAt &&
-                inicioDoCiclo &&
-                u.creditsResetAt.getTime() >= inicioDoCiclo * 1000;
-              if (!jaReposNesteCiclo) {
-                await reporCiclo({
-                  userId: u.id,
-                  creditos,
-                  note: `Plano ${plan}`,
-                });
-              }
-            }
-          }
-        } else {
-          await prisma.user.updateMany({
-            where: { stripeCustomerId: customerId },
-            data: { plan: "free" },
-          });
-        }
-  }
 }

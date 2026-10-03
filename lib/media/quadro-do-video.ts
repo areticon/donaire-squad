@@ -1,5 +1,15 @@
 import { prisma } from "@/lib/db/prisma";
-import { diasDaSemana, normalizarSemana, ROTULO_DO_FORMATO } from "@/lib/media/semana-do-video";
+import {
+  dataDoDia,
+  datasDoPlano,
+  diaDaSemanaDe,
+  diasDaSemana,
+  inicioEfetivo,
+  normalizarSemana,
+  planoDoRun,
+  planoParaGravar,
+  ROTULO_DO_FORMATO,
+} from "@/lib/media/semana-do-video";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -23,6 +33,29 @@ export function segundaDaSemana(d = new Date()): Date {
   return new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + desloca * 86400000
   );
+}
+
+/**
+ * O dia de um corte DENTRO DO PLANO (30/09): espalhado com espaçamento
+ * uniforme entre a data de início e o último dia do plano, e devolvido como
+ * dia da semana (a chave de card e post). Com início na quarta e três cortes,
+ * cai em quarta, sábado e terça. É a conta de quando o plano não tem dia de
+ * vídeo curto; com dia de vídeo curto, quem manda é o plano
+ * (sincronizar-quadro.ts).
+ */
+export function diaDoTrechoNoPlano(
+  trechos: Array<{ publicar?: boolean; midia?: { vertical?: unknown } | null }>,
+  indice: number,
+  inicio: string
+): number {
+  const datas = datasDoPlano(inicio);
+  const aprovados = trechos
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => t.publicar !== false && t.midia?.vertical)
+    .map(({ i }) => i);
+  const posicao = aprovados.indexOf(indice);
+  if (posicao < 0 || aprovados.length === 1) return datas[0].dia;
+  return datas[Math.round((posicao * (datas.length - 1)) / (aprovados.length - 1))].dia;
 }
 
 /**
@@ -58,7 +91,7 @@ async function runDoVideo(projectId: string, videoJobId: string) {
 const ESPERA: Record<string, Array<{ agentId: string; agentName: string; cardType: string; texto: string }>> = {
   text: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo o post de texto deste dia a partir do vídeo e do briefing do Roberto." }],
   poll: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a enquete deste dia a partir do vídeo e do briefing do Roberto." }],
-  thread: [{ agentId: "tiago-twitter", agentName: "Tiago Twitter", cardType: "post_twitter", texto: "Tiago está escrevendo a thread deste dia a partir do vídeo e do briefing do Roberto." }],
+  thread: [{ agentId: "xavier-x", agentName: "Xavier X", cardType: "post_twitter", texto: "Xavier está escrevendo a thread deste dia a partir do vídeo e do briefing do Roberto." }],
   image: [
     { agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a legenda da imagem deste dia." },
     { agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está criando a imagem deste dia com uma frase do vídeo, nas cores da marca." },
@@ -87,7 +120,12 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
       originalName: true,
       radar: true,
       durationSec: true,
-      project: { select: { videoSemana: true } },
+      project: {
+        select: {
+          videoSemana: true,
+          socialAccounts: { where: { isActive: true }, select: { platform: true } },
+        },
+      },
     },
   });
   if (!video) return null;
@@ -95,44 +133,65 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
   let run = await runDoVideo(video.projectId, video.id);
   let criado = false;
   if (!run) {
+    // CAMPANHA CANCELADA NÃO RENASCE (30/09). O Bruno arquivou a campanha de um
+    // vídeo para rodar outro do zero, e a esteira, sem achar run ativo, abriu
+    // um novo para o vídeo antigo: 31 cards e 13 rascunhos misturados com a
+    // semana nova. Run arquivado do mesmo vídeo quer dizer "cancelado".
+    const cancelado = await prisma.pipelineRun.findFirst({
+      where: { projectId: video.projectId, archived: true, config: { path: ["videoJobId"], equals: video.id } },
+      select: { id: true },
+    });
+    if (cancelado) return null;
     const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
     // A semana que o cliente escolheu no envio, congelada no run: se ele
     // mudar a escolha no projeto depois, vale para a PRÓXIMA gravação.
-    const semana = normalizarSemana(video.project.videoSemana);
+    // Desde 30/09 vai junto a DATA DE INÍCIO efetiva (hoje em São Paulo, ou a
+    // data futura escolhida no passo 4) e as redes que estão conectadas agora:
+    // é dela que sai a data de cada card e de cada post, e não mais da segunda.
+    const conectadas = video.project.socialAccounts.map((a) => a.platform);
+    const escolhida = normalizarSemana(video.project.videoSemana, conectadas, false);
+    const semana = { ...escolhida, inicio: inicioEfetivo(escolhida) };
     run = await prisma.pipelineRun.create({
       data: {
         projectId: video.projectId,
         status: "completed",
         topic: nome,
         campaignMode: "weekly",
-        weekStart: segundaDaSemana(),
+        // A segunda da semana em que o plano COMEÇA: é por ela que o Gestor
+        // acha o run da semana aberta (andamento). Os dias que caem na semana
+        // seguinte aparecem lá pela data dos cards, não pelo run.
+        weekStart: segundaDaSemana(new Date(`${semana.inicio}T12:00:00.000Z`)),
         // O vínculo com o vídeo mora aqui, e é o que torna tudo idempotente
         // sem precisar de coluna nova.
-        config: { videoJobId: video.id, origem: "video", semana } as Prisma.InputJsonValue,
+        config: { videoJobId: video.id, origem: "video", semana: planoParaGravar(semana) } as Prisma.InputJsonValue,
       },
       select: { id: true, weekStart: true, config: true },
     });
     criado = true;
   }
 
-  const segunda = run.weekStart ?? segundaDaSemana();
+  const plano = planoDoRun(run.config, video.project.videoSemana);
+  const alvo = { inicio: plano.inicio, weekStart: run.weekStart ?? segundaDaSemana() };
   const existentes = await prisma.campaignCard.findMany({
     where: { runId: run.id },
     select: { agentId: true, dayOfWeek: true },
   });
   const tem = (agentId: string, dia: number) => existentes.some((c) => c.agentId === agentId && c.dayOfWeek === dia);
 
-  if (!tem("roberto-radar", 1)) {
+  // O Roberto pesquisa no PRIMEIRO dia do plano (hoje), e não na segunda:
+  // com a campanha começando na quarta, o card dele na segunda ficava no
+  // passado. Run de antes de 30/09 (sem início) segue na segunda.
+  const diaDoRoberto = plano.inicio ? diaDaSemanaDe(plano.inicio) : 1;
+  if (!existentes.some((c) => c.agentId === "roberto-radar")) {
     const minutos = video.durationSec ? Math.max(1, Math.round(video.durationSec / 60)) : null;
-    const dataRoberto = new Date(segunda);
-    dataRoberto.setUTCHours(9, 0, 0, 0);
+    const dataRoberto = dataDoDia(alvo, diaDoRoberto, 9);
     await prisma.campaignCard.create({
       data: {
         runId: run.id,
         projectId: video.projectId,
         agentId: "roberto-radar",
         agentName: "Roberto Radar",
-        dayOfWeek: 1,
+        dayOfWeek: diaDoRoberto,
         scheduledDate: dataRoberto,
         cardType: "research",
         mediaType: "text",
@@ -143,10 +202,10 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
     });
   }
 
-  const semana = normalizarSemana((run.config as { semana?: unknown } | null)?.semana ?? video.project.videoSemana);
-  for (const { dia, formato, escolhido } of diasDaSemana(semana)) {
-    const data = new Date(segunda.getTime() + (dia - 1) * 86400000);
-    data.setUTCHours(12, 0, 0, 0);
+  for (const { dia, formato, escolhido, redes } of diasDaSemana(plano)) {
+    // A DATA do dia dentro do plano (30/09): com início na quarta, a terça é
+    // a da semana seguinte, e não a de ontem.
+    const data = dataDoDia(alvo, dia);
     for (const e of ESPERA[formato] ?? []) {
       if (tem(e.agentId, dia)) continue;
       await prisma.campaignCard.create({
@@ -168,6 +227,7 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
             formato: escolhido,
             formatoRotulo: ROTULO_DO_FORMATO[escolhido],
             dia,
+            redes,
             aguardando: true,
           },
         },

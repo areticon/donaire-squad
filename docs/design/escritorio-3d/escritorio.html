@@ -1,0 +1,1024 @@
+<meta charset="utf-8">
+<title>Escritório do Squad</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@800&display=swap">
+<style>
+  :root {
+    --fundo: #f4f4f5; --superficie: #ffffff; --elevado: #f9f9f9; --borda: #e5e7eb;
+    --laranja: #d5511a; --texto: #111111; --apagado: #6b7280; --malha: rgba(0,0,0,.05);
+    --verde: #16a34a; --vermelho: #dc2626; --azul: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fundo: #1e1e25; --superficie: #2a2a33; --elevado: #31313c; --borda: #3f3f4b;
+      --laranja: #ef6122; --texto: #dcdde2; --apagado: #9599a6; --malha: rgba(255,255,255,.045);
+      --verde: #4ade80; --vermelho: #f87171; --azul: #60a5fa;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fundo: #1e1e25; --superficie: #2a2a33; --elevado: #31313c; --borda: #3f3f4b;
+    --laranja: #ef6122; --texto: #dcdde2; --apagado: #9599a6; --malha: rgba(255,255,255,.045);
+    --verde: #4ade80; --vermelho: #f87171; --azul: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fundo); color: var(--texto); font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .pagina { max-width: 1240px; margin: 0 auto; padding-block: 24px 40px; padding-inline: 16px; display: flex; flex-direction: column; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-family: Montserrat, Inter, sans-serif; font-weight: 800; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.01em; text-wrap: balance; }
+  h2 { margin: 18px 0 8px; font-size: 15px; font-weight: 700; }
+  header p, .intro { margin: 4px 0 0; color: var(--apagado); font-size: 13px; max-width: 66ch; line-height: 1.5; }
+  .controles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .controles button { font: inherit; font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--borda); background: var(--superficie); color: var(--texto); cursor: pointer; }
+  .controles button[aria-pressed="true"] { border-color: var(--laranja); color: var(--laranja); background: color-mix(in srgb, var(--laranja) 10%, transparent); }
+  .controles button:focus-visible { outline: 2px solid var(--laranja); outline-offset: 2px; }
+  .palco { position: relative; width: 100%; aspect-ratio: 16 / 7; min-height: 280px; max-height: 520px; border-radius: 14px; border: 1px solid var(--borda); overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 0%, var(--elevado), var(--fundo)); }
+  .palco canvas { display: block; width: 100%; height: 100%; }
+  .palco .dica { position: absolute; right: 12px; bottom: 8px; font-size: 10px; color: var(--apagado); pointer-events: none; }
+  .fala { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--apagado); max-width: 70%; }
+  .fala b { color: var(--laranja); font-weight: 600; }
+  .plaqueta { display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 9px; border: 1px solid var(--borda);
+    background: color-mix(in srgb, var(--fundo) 90%, transparent); backdrop-filter: blur(6px); color: var(--texto); font-size: 11.5px; line-height: 1.2; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); font-family: inherit; }
+  .plaqueta.ativa { border-color: var(--laranja); }
+  .plaqueta .ponto { width: 7px; height: 7px; border-radius: 999px; background: var(--apagado); }
+  .plaqueta.ativa .ponto { background: var(--laranja); animation: pulso 1.2s ease-in-out infinite; box-shadow: 0 0 0 4px color-mix(in srgb, var(--laranja) 30%, transparent); }
+  .plaqueta.pronta .ponto { background: var(--verde); }
+  .plaqueta.aviso .ponto { background: var(--vermelho); }
+  .plaqueta span { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+  .plaqueta b em { font-style: normal; font-weight: 500; color: var(--apagado); }
+  .plaqueta small { font-size: 10.5px; color: var(--apagado); }
+  .balao { position: relative; transform: translate(-50%, -100%); cursor: pointer; pointer-events: auto; max-width: 210px; width: max-content; text-align: left; padding: 7px 10px; border-radius: 12px; border-bottom-left-radius: 3px; background: var(--texto); color: var(--fundo); font-size: 11.5px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .balao::after { content: ""; position: absolute; left: 6px; bottom: -6px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid var(--texto); }
+  .balao.vazio { display: none; }
+  .nossa { padding: 5px 10px; border-radius: 9px; border: 1px solid var(--laranja); background: color-mix(in srgb, var(--fundo) 90%, transparent); color: var(--texto); font-size: 11.5px; white-space: nowrap; }
+  .nossa em { font-style: normal; color: var(--apagado); }
+
+  /* O MENU DE PROXIMIDADE: abre quando você para ao lado de um agente.
+
+     Ele nasce ancorado no agente e não no canto da tela, porque o que se está
+     fazendo é falar COM ALGUÉM, e um painel solto no canto perde de quem é.
+     A borda leva a cor do agente pelo mesmo motivo. */
+  .menu { pointer-events: auto; transform: translate(-50%, -100%); width: 216px; border-radius: 12px; border: 1px solid var(--cor, var(--laranja)); background: color-mix(in srgb, var(--fundo) 94%, transparent); backdrop-filter: blur(8px); box-shadow: 0 10px 30px rgba(0,0,0,.45); overflow: hidden; font-size: 11.5px; }
+  .menu header { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+  .menu header i { width: 8px; height: 8px; border-radius: 999px; background: var(--cor, var(--laranja)); flex: none; }
+  .menu header b { font-size: 11.5px; font-weight: 700; }
+  .menu header em { font-style: normal; font-weight: 500; color: var(--apagado); }
+  .menu .opcoes { display: flex; flex-direction: column; }
+  .menu .opcoes button { font: inherit; font-size: 11.5px; text-align: left; padding: 8px 10px; border: none; border-top: 1px solid var(--borda); background: none; color: var(--texto); cursor: pointer; display: flex; align-items: center; gap: 7px; }
+  .menu .opcoes button:first-child { border-top: none; }
+  .menu .opcoes button:hover, .menu .opcoes button:focus-visible { background: color-mix(in srgb, var(--cor, var(--laranja)) 14%, transparent); outline: none; }
+  .menu .opcoes button small { margin-left: auto; color: var(--apagado); font-size: 10px; }
+  .menu .volta { border-top: 1px solid var(--borda); padding: 7px 10px; }
+  .menu .volta button { font: inherit; font-size: 10.5px; color: var(--apagado); background: none; border: none; padding: 0; cursor: pointer; }
+  .menu form { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--borda); }
+  .menu input { flex: 1; min-width: 0; font: inherit; font-size: 11.5px; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--borda); background: var(--superficie); color: var(--texto); }
+  .menu input:focus-visible { outline: 1px solid var(--cor, var(--laranja)); }
+  .menu form button { font: inherit; font-size: 11.5px; font-weight: 600; padding: 6px 9px; border-radius: 7px; border: none; background: var(--cor, var(--laranja)); color: #fff; cursor: pointer; }
+  .menu .lista { max-height: 148px; overflow: auto; }
+  /* A conversa: turnos curtos, o mais recente embaixo, rolagem quando cresce.
+     O painel tem 216px e mora dentro da cena; um histórico longo aqui viraria
+     uma janela de chat cobrindo o escritório, e o escritório é o assunto. */
+  .menu .conversa { max-height: 156px; overflow: auto; border-top: 1px solid var(--borda); padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
+  .menu .turno { font-size: 11px; line-height: 1.4; color: var(--texto); }
+  .menu .turno b { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--apagado); margin-bottom: 1px; }
+  .menu .turno.dele b { color: var(--cor, var(--laranja)); }
+  /* O AVISO DE ALCANCE: a dica de que dá para falar, antes de o menu abrir.
+     Sem ela, quem não sabe que o menu existe passa direto pelo agente. */
+  .alcance { pointer-events: none; transform: translate(-50%, -100%); padding: 3px 7px; border-radius: 999px; border: 1px solid var(--laranja); background: color-mix(in srgb, var(--fundo) 88%, transparent); color: var(--laranja); font-size: 10px; font-weight: 600; white-space: nowrap; }
+  .ajuda { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 11.5px; color: var(--apagado); }
+  .ajuda kbd { font: inherit; font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--borda); background: var(--superficie); color: var(--texto); }
+  @keyframes pulso { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.35); opacity: .7 } }
+  .legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--apagado); }
+  .legenda span { display: flex; align-items: center; gap: 6px; }
+  .legenda i { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
+
+  /* o calendário, embaixo: só peças finais, cards como no Trello */
+  .semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 900px) { .semana { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .semana { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .dia { position: relative; min-height: 200px; border-radius: 12px; border: 1px solid var(--borda); background: var(--superficie); padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .dia.hoje { border-color: color-mix(in srgb, var(--laranja) 60%, transparent); }
+  .dia .cab { display: flex; align-items: baseline; justify-content: space-between; }
+  .dia .cab b { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--apagado); }
+  .dia.hoje .cab b, .dia.hoje .cab strong { color: var(--laranja); }
+  .dia .cab strong { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .peca { position: relative; display: flex; flex-direction: column; gap: 5px; padding: 7px 9px 8px 11px; border-radius: 8px; border: 1px solid var(--borda); background: var(--elevado); text-align: left; font: inherit; color: inherit; cursor: pointer; overflow: hidden; }
+  .peca::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--cor); }
+  .peca .linha { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10.5px; color: var(--apagado); }
+  .peca .titulo { font-size: 11.5px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .peca .estado { font-weight: 600; color: var(--cor); }
+  .selos { display: flex; gap: 6px; }
+  .selo { position: relative; width: 15px; height: 15px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 9px; font-weight: 800; }
+  .selo i { position: absolute; right: -4px; bottom: -4px; width: 9px; height: 9px; border-radius: 999px; background: var(--superficie); border: 1px solid var(--borda); font-size: 6px; font-style: normal; color: var(--apagado); display: flex; align-items: center; justify-content: center; }
+  .vazio { margin-top: auto; border: 1px dashed var(--borda); border-radius: 8px; padding: 8px; text-align: center; font-size: 11px; color: var(--apagado); }
+  .notas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .nota { border: 1px solid var(--borda); border-radius: 12px; padding: 14px 16px; background: var(--superficie); }
+  .nota h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+  .nota p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--apagado); }
+  .nota b { color: var(--texto); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { .plaqueta.ativa .ponto { animation: none; } }
+</style>
+
+<div class="pagina">
+  <header>
+    <div>
+      <h1>Você anda pelo escritório</h1>
+      <p><b>Ande até um agente e fale com ele.</b> Clique no chão para caminhar, ou use as setas e o WASD. Ao chegar ao lado de alguém, ele vira para você e abre um menu com três coisas: perguntar algo, ver os trabalhos dele, e comentar sobre outro agente do squad. O resto do escritório continua acontecendo: quem tem o bastão trabalha, quem termina leva a peça para o próximo, a Vera atravessa a sala quando reprova, e quem está livre vai ao café.</p>
+    </div>
+    <div class="controles" role="group" aria-label="Cenário">
+      <button id="btn-esteira" type="button" aria-pressed="true">Esteira rodando</button>
+      <button id="btn-pronta" type="button" aria-pressed="false">Semana pronta, esperando você</button>
+      <button id="btn-bronca" type="button">A Vera reprova e vai cobrar</button>
+      <button id="btn-sentar" type="button">Voltar para a minha mesa</button>
+      <button id="btn-tema" type="button" aria-pressed="false">Tema claro</button>
+    </div>
+  </header>
+
+  <div class="palco" id="palco">
+    <div class="fala" id="fala"></div>
+    <div class="dica">clique no chão para andar · arraste para olhar · role para aproximar</div>
+  </div>
+
+  <p class="ajuda">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> andam</span>
+    <span><kbd>E</kbd> fala com quem está ao lado</span>
+    <span><kbd>Esc</kbd> fecha o menu</span>
+    <span>clicar no chão ou num agente também caminha até lá</span>
+  </p>
+
+  <div class="legenda">
+    <span><i style="background:var(--laranja)"></i> com o bastão</span>
+    <span><i style="background:var(--verde)"></i> entregou</span>
+    <span><i style="background:var(--apagado)"></i> esperando a vez</span>
+    <span><i style="background:var(--vermelho)"></i> aviso</span>
+  </div>
+
+  <h2>O calendário: só as peças finais, como cards do Trello</h2>
+  <p class="intro">Cada card é uma peça pronta: a hora prevista, o estado (esperando você, aprovado, agendado, publicado, rejeitado) e os selos de cada destino, com o glifo de perfil ou página. O processo (pesquisa, revisão, publicação) saiu daqui e mora no escritório. Clicar no card abre a peça completa. Os dados são os da semana real de 14/09 do projeto "Demandou, Postou!".</p>
+  <div class="semana" id="semana"></div>
+
+  <div class="notas">
+    <div class="nota">
+      <h3>A ficha do agente</h3>
+      <p>Clicar no robô, na mesa ou na plaqueta abre a ficha: <b>quem é</b> (a persona do setup), <b>como trabalha</b> (o estilo) e <b>os trabalhos recentes</b>, do mais novo para o mais antigo, cada um abrindo o card completo.</p>
+    </div>
+    <div class="nota">
+      <h3>O balão de fala</h3>
+      <p>É o log da esteira nas palavras do agente: "Buscando dados em tempo real no X e web...", "Escrevendo o post de quinta...". Quem entrega diz para quem está levando. A nossa mesa recebe o último: <b>"Chegou. A semana está no calendário, esperando você."</b></p>
+    </div>
+    <div class="nota">
+      <h3>O que não muda</h3>
+      <p>Sem WebGL, a mesma informação aparece em linha. <b>O 3D é a forma, a lista é o conteúdo.</b> Um modelo CC0 de 464 KB recolorido sete vezes; as bibliotecas só entram na aba do Gestor.</p>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as clonarComEsqueleto } from "three/addons/utils/SkeletonUtils.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+
+const AGENTES = [
+  { id: "roberto-radar", artigo: "O", nome: "Roberto Radar", papel: "Pesquisa", cor: "#3b82f6", fala: "Buscando dados em tempo real no X e web..." },
+  { id: "lucas-linkedin", artigo: "O", nome: "Lucas LinkedIn", papel: "Post LinkedIn", cor: "#1d4ed8", fala: "Escrevendo o post de quinta..." },
+  { id: "tiago-twitter", artigo: "O", nome: "Tiago Twitter", papel: "Thread X", cor: "#0ea5e9", fala: "Montando a thread de sexta..." },
+  { id: "diana-design", artigo: "A", nome: "Diana Design", papel: "Mídia", cor: "#a855f7", fala: "Gerando a imagem de sábado..." },
+  { id: "vitor-video", artigo: "O", nome: "Vitor Vídeo", papel: "Cortes", cor: "#f43f5e", fala: "Cortando os melhores trechos..." },
+  { id: "vera-veredito", artigo: "A", nome: "Vera Veredito", papel: "Revisão", cor: "#eab308", fala: "Revisando tom e ortografia..." },
+  { id: "paulo-publicador", artigo: "O", nome: "Paulo Publicador", papel: "Publicação", cor: "#22c55e", fala: "Agendando nas redes ligadas..." },
+];
+
+// A planta: duas fileiras viradas para a câmera, corredor no meio, a nossa mesa na frente.
+const MESAS = [
+  { x: -5.4, z: -4.8 }, { x: -1.8, z: -4.8 }, { x: 1.8, z: -4.8 }, { x: 5.4, z: -4.8 },
+  { x: -4.6, z: -1.2 }, { x: -1.5, z: -1.2 }, { x: 1.5, z: -1.2 },
+];
+const NOSSA = { x: 0, z: 2.1 };
+const CAFE = { x: -5.4, z: 1.4 };
+const LUGARES_NO_CAFE = [[-0.85, 0.2], [0.85, 0.2], [0, -0.85]];
+const ESCALA = 0.19, ASSENTO = 0.4, VELOCIDADE = 2.6;
+/** Onde VOCÊ senta: atrás da nossa mesa, de costas para a câmera. */
+const MEU_LUGAR = new THREE.Vector3(NOSSA.x, ASSENTO, NOSSA.z + 0.72);
+/**
+ * A que distância de um agente o menu abre.
+ *
+ * 1,9 é pouco mais que a largura de uma mesa (1,8): perto o bastante para
+ * dizer "estou falando COM ELE" e não com a fileira, e longe o bastante para
+ * a pessoa não ter que encostar no robô. Sair de 2,4 fecha o menu, e a folga
+ * entre os dois evita o menu piscando quando o avatar para na borda exata.
+ */
+const ALCANCE = 1.9, ALCANCE_SAIDA = 2.4;
+const MINHA_VELOCIDADE = 3.2;
+const MORPH = { neutro: null, irritado: "Angry", triste: "Sad", surpreso: "Surprised" };
+const assento = (i) => new THREE.Vector3(MESAS[i].x, ASSENTO, MESAS[i].z - 0.62);
+const pontoDeEntrega = (de, para) => {
+  if (para === "voce") return new THREE.Vector3(NOSSA.x, 0, NOSSA.z - 1.3);
+  const m = MESAS[para]; const lado = MESAS[de].x <= m.x ? -1.35 : 1.35;
+  return new THREE.Vector3(m.x + lado, 0, m.z + 0.35);
+};
+const anguloCurto = (de, para) => { let d = (para - de) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+const tema = () => { const s = getComputedStyle(document.documentElement); const v = (n) => s.getPropertyValue(n).trim(); return { fundo: v("--fundo"), superficie: v("--superficie"), elevado: v("--elevado"), borda: v("--borda"), laranja: v("--laranja") }; };
+
+const palco = document.getElementById("palco");
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+palco.prepend(renderer.domElement);
+const rotulos = new CSS2DRenderer();
+Object.assign(rotulos.domElement.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+palco.appendChild(rotulos.domElement);
+
+const cena = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 70);
+camera.position.set(0, 8, 13);
+const controles = new OrbitControls(camera, renderer.domElement);
+Object.assign(controles, { enablePan: false, enableZoom: true, zoomSpeed: 0.7, minDistance: 4.5, maxDistance: 16, enableDamping: true, dampingFactor: 0.08, minPolarAngle: 0.35, maxPolarAngle: 1.35, minAzimuthAngle: -0.75, maxAzimuthAngle: 0.75 });
+controles.target.set(0, 0.5, -1.7);
+
+cena.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sol = new THREE.DirectionalLight(0xffffff, 1.5); sol.position.set(4, 9, 6); cena.add(sol);
+const luzLaranja = new THREE.PointLight(0xef6122, 26, 18, 2); luzLaranja.position.set(0, 4.5, -3); cena.add(luzLaranja);
+const chao = new THREE.Mesh(new THREE.PlaneGeometry(34, 24), new THREE.MeshStandardMaterial({ roughness: 0.95 })); chao.rotation.x = -Math.PI / 2; cena.add(chao);
+const malha = new THREE.GridHelper(34, 34); malha.position.y = 0.003; malha.material.transparent = true; malha.material.opacity = 0.35; cena.add(malha);
+const corredor = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 11), new THREE.MeshStandardMaterial({ roughness: 0.95, transparent: true, opacity: 0.5 })); corredor.rotation.x = -Math.PI / 2; corredor.position.set(0, 0.002, -1.5); cena.add(corredor);
+
+const materiais = { elevado: new THREE.MeshStandardMaterial({ roughness: 0.7 }), superficie: new THREE.MeshStandardMaterial({ roughness: 0.8 }), preto: new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.4 }) };
+const tapete = new THREE.MeshStandardMaterial({ emissiveIntensity: 0.35 });
+function aplicarTema() {
+  const t = tema();
+  cena.background = new THREE.Color(t.fundo); cena.fog = new THREE.Fog(t.fundo, 16, 30);
+  chao.material.color.set(t.superficie); malha.material.color.set(t.borda); corredor.material.color.set(t.elevado);
+  materiais.elevado.color.set(t.elevado); materiais.superficie.color.set(t.superficie);
+  luzLaranja.color.set(t.laranja); tapete.color.set(t.laranja); tapete.emissive.set(t.laranja);
+}
+
+const add = (pai, geo, mat, x, y, z, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; pai.add(m); return m; };
+
+// a nossa mesa, virada para o escritório
+const nossa = new THREE.Group(); nossa.position.set(NOSSA.x, 0, NOSSA.z); nossa.rotation.y = Math.PI; cena.add(nossa);
+add(nossa, new THREE.BoxGeometry(2.6, 0.08, 0.9), materiais.elevado, 0, 0.74, 0);
+add(nossa, new THREE.BoxGeometry(0.08, 0.72, 0.8), materiais.superficie, -1.2, 0.36, 0);
+add(nossa, new THREE.BoxGeometry(0.08, 0.72, 0.8), materiais.superficie, 1.2, 0.36, 0);
+add(nossa, new THREE.BoxGeometry(0.6, 0.08, 0.6), materiais.superficie, 0, 0.42, -0.7);
+add(nossa, new THREE.BoxGeometry(0.6, 0.72, 0.08), materiais.superficie, 0, 0.78, -0.96);
+const semanaNaMesa = add(nossa, new THREE.PlaneGeometry(0.9, 0.6), tapete, 0, 0.79, 0.05); semanaNaMesa.rotation.x = -Math.PI / 2;
+const nossaPlaca = document.createElement("div"); nossaPlaca.className = "nossa"; nossaPlaca.innerHTML = "<b>Você</b> <em>· O squad está trabalhando</em>";
+const nossaObj = new CSS2DObject(nossaPlaca); nossaObj.position.set(0, 1.05, 0.55); nossa.add(nossaObj);
+const nossoBalao = document.createElement("div"); nossoBalao.className = "balao vazio";
+const nossoBalaoObj = new CSS2DObject(nossoBalao); nossoBalaoObj.position.set(0, 1.75, -0.2); nossa.add(nossoBalaoObj);
+
+// A PLANTA no canto. Eram cinco cones verdes, e o Bruno perguntou "o que que
+// é esses negócios verdes aqui?": cone lê como pinheiro de papel, não como
+// planta de escritório. Agora são três massas arredondadas em verdes
+// diferentes sobre um vaso de barro com terra. Mesma geometria primitiva,
+// mesmo custo, e agora se reconhece o que é.
+const planta = new THREE.Group(); planta.position.set(4.6, 0, -1.2); cena.add(planta);
+add(planta, new THREE.CylinderGeometry(0.3, 0.22, 0.46, 16), new THREE.MeshStandardMaterial({ color: 0xa2603f, roughness: 0.95 }), 0, 0.23, 0);
+add(planta, new THREE.CylinderGeometry(0.27, 0.27, 0.05, 16), new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 1 }), 0, 0.46, 0);
+[[0, 0.78, 0, 0.34, 0x3f8a4f], [-0.2, 0.66, 0.14, 0.24, 0x4fa361], [0.18, 0.62, -0.12, 0.2, 0x357a46]].forEach(([x, y, z, r, cor]) => {
+  const m = add(planta, new THREE.IcosahedronGeometry(r, 0), new THREE.MeshStandardMaterial({ color: cor, roughness: 0.9, flatShading: true }), x, y, z);
+  m.scale.y = 0.72;
+});
+
+// A MESA DE CAFÉ, para onde vai quem está sem trabalho. Fica fora do corredor
+// central, para quem atravessa a sala levando peça não passar por dentro da
+// roda de conversa, e dentro do enquadramento, porque agente que some da tela
+// lê como defeito e não como pausa.
+const cafe = new THREE.Group(); cafe.position.set(CAFE.x, 0, CAFE.z); cena.add(cafe);
+add(cafe, new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8), materiais.preto, 0, 0.35, 0);
+add(cafe, new THREE.CylinderGeometry(0.62, 0.62, 0.06, 24), materiais.elevado, 0, 0.72, 0);
+add(cafe, new THREE.CylinderGeometry(0.09, 0.11, 0.26, 12), new THREE.MeshStandardMaterial({ color: 0x2f2a2a, roughness: 0.5 }), 0.16, 0.88, -0.1);
+[[-0.2, 0.06], [0.05, 0.22], [-0.05, -0.2]].forEach(([x, z]) => add(cafe, new THREE.CylinderGeometry(0.055, 0.045, 0.07, 10), materiais.superficie, x, 0.79, z));
+
+// as mesas
+const mesas = AGENTES.map((a, i) => {
+  const m = MESAS[i];
+  const g = new THREE.Group(); g.position.set(m.x, 0, m.z); cena.add(g);
+  add(g, new THREE.BoxGeometry(1.8, 0.07, 0.8), materiais.elevado, 0, 0.74, 0);
+  add(g, new THREE.BoxGeometry(0.06, 0.72, 0.7), materiais.superficie, -0.85, 0.36, 0);
+  add(g, new THREE.BoxGeometry(0.06, 0.72, 0.7), materiais.superficie, 0.85, 0.36, 0);
+  add(g, new THREE.BoxGeometry(0.08, 0.2, 0.08), materiais.preto, 0.5, 0.86, 0.05);
+  add(g, new THREE.BoxGeometry(0.72, 0.44, 0.04), materiais.preto, 0.5, 1.12, 0.05, -0.35);
+  const telaMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0d, emissive: new THREE.Color(a.cor), emissiveIntensity: 0.12, roughness: 0.25, side: THREE.DoubleSide });
+  add(g, new THREE.PlaneGeometry(0.64, 0.36), telaMat, 0.5, 1.12, 0.05, -0.35);
+  add(g, new THREE.CylinderGeometry(0.04, 0.04, 0.4, 8), materiais.preto, 0, 0.2, -0.62);
+  add(g, new THREE.BoxGeometry(0.5, 0.06, 0.5), materiais.superficie, 0, 0.4, -0.62);
+  add(g, new THREE.BoxGeometry(0.5, 0.5, 0.06), materiais.superficie, 0, 0.66, -0.85);
+  const anel = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.025, 10, 40), new THREE.MeshStandardMaterial({ color: a.cor, emissive: a.cor, emissiveIntensity: 1.6 }));
+  anel.position.set(0.5, 1.6, 0.05); anel.visible = false; g.add(anel);
+  const plaqueta = document.createElement("button"); plaqueta.type = "button"; plaqueta.className = "plaqueta";
+  plaqueta.innerHTML = `<i class="ponto"></i><span><b>${a.nome} <em>· ${a.papel}</em></b><small></small></span>`;
+  plaqueta.style.pointerEvents = "auto";
+  plaqueta.addEventListener("click", () => { fala.innerHTML = `<b>${a.nome}:</b> no produto, este clique abre a ficha: quem é, o que faz, trabalhos recentes.`; });
+  const plaqObj = new CSS2DObject(plaqueta); plaqObj.position.set(0, 0.98, 0.55); g.add(plaqObj);
+  // O BALÃO é criado aqui, mas NÃO entra na mesa: ele é pendurado no robô,
+  // lá embaixo. Era filho do grupo da mesa, que é fixo no chão, e a fala
+  // ficava pairando sobre a cadeira vazia quando o dono levantava para
+  // entregar, para cobrar ou para tomar café. A fala pertence a quem fala.
+  const balao = document.createElement("div"); balao.className = "balao vazio";
+  return { telaMat, anel, plaqueta, balao };
+});
+
+// ── O MENU DE PROXIMIDADE ───────────────────────────────────────────────────
+//
+// Três opções, e as três vêm do pedido do Bruno: perguntar algo, ver os
+// trabalhos dele, e comentar sobre outro agente. A quarta opção que NÃO existe
+// é "mandar refazer": pedir ajuste é no card da peça, onde existe o texto e o
+// histórico. Um agente que aceita ordem no meio da sala e não tem como cumprir
+// é exatamente o defeito da parte 135, o Paulo dizendo ter trocado a imagem.
+const menuEl = document.createElement("div"); menuEl.className = "menu";
+const alcanceEl = document.createElement("div"); alcanceEl.className = "alcance"; alcanceEl.textContent = "E para falar";
+let menuObj = null, alcanceObj = null;
+let pertoDe = null;      // o agente ao alcance, ou null
+let conversaCom = null;  // com quem o menu está aberto
+let telaDoMenu = "opcoes";
+/** O que já foi conversado com cada agente, por índice. Some ao recarregar. */
+const historico = {};
+
+/**
+ * O que cada um responde.
+ *
+ * No produto isto vem de uma rota que dá ao agente a PERSONA dele e os
+ * TRABALHOS DELE (os cards, o veredito da Vera, os logs do run), e nada mais.
+ * Aqui são respostas de exemplo, escolhidas para mostrar a regra:
+ *
+ * - o agente fala do que ele fez, com a peça na mão ("o post de quinta");
+ * - quando não sabe, diz que não sabe, e manda para quem sabe;
+ * - **nunca promete ação que ele não pode executar.** Ele não refaz peça no
+ *   meio da sala: ele diz onde se pede isso.
+ */
+const RESPOSTAS = [
+  "Puxei 6 fontes hoje. Duas eram a mesma notícia em portais diferentes, então contei uma. O que está no post de quinta tem link.",
+  "O post de quinta abre com a objeção, não com a tese. A Vera reprovou a versão de Facebook porque ela citava o LinkedIn, e eu reescrevi só aquelas frases.",
+  "A thread de sexta tem 7 tweets. Cortei o oitavo: ele repetia o terceiro com outras palavras.",
+  "A arte de sábado saiu no estilo que você marcou na campanha. Se quiser outro, o lugar é o chat da peça, e eu refaço lá com o texto na mão.",
+  "Nesta semana não veio vídeo, então não tenho corte. Quando você subir a gravação, eu apareço.",
+  "Reprovei os quatro dias e mandei corrigir. Três voltaram bons; o de sábado eu li duas vezes antes de liberar.",
+  "Agendei o que estava aprovado para 09:00 no seu horário. O que está esperando você eu não toco.",
+];
+
+/** O que um agente diz sobre OUTRO. Fala do ofício do colega, nunca de dado. */
+const SOBRE = [
+  "puxa fonte antes de todo mundo. Quando ele demora, é porque a fonte não presta.",
+  "reescreve o começo umas quatro vezes. O texto que sai daí é outro.",
+  "corta sem dó. Já vi thread dele perder metade e ficar melhor.",
+  "tira elemento até a arte respirar. Reclama de texto comprido em imagem, com razão.",
+  "só aparece quando tem gravação, e aí acha trecho que ninguém viu.",
+  "reprova mais do que aprova, e isso é bom. Ninguém aqui gosta dela no dia, e todo mundo gosta na semana.",
+  "confere a conta antes de agendar. Já pegou post indo para a página errada.",
+];
+
+function fecharMenu() {
+  conversaCom = null; telaDoMenu = "opcoes";
+  if (menuObj) menuObj.visible = false;
+}
+
+function abrirMenu(i) {
+  conversaCom = i; telaDoMenu = "opcoes";
+  desenharMenu();
+  if (menuObj) menuObj.visible = true;
+  if (alcanceObj) alcanceObj.visible = false;
+}
+
+function desenharMenu(extra) {
+  if (conversaCom === null) return;
+  const a = AGENTES[conversaCom];
+  menuEl.style.setProperty("--cor", a.cor);
+  const cabecalho = `<header><i></i><b>${a.nome}</b><em>· ${a.papel}</em></header>`;
+  if (telaDoMenu === "opcoes") {
+    menuEl.innerHTML = `${cabecalho}
+      <div class="opcoes">
+        <button type="button" data-acao="perguntar">Perguntar algo <small>fala</small></button>
+        <button type="button" data-acao="trabalhos">Ver os trabalhos ${a.artigo === "A" ? "dela" : "dele"} <small>ficha</small></button>
+        <button type="button" data-acao="sobre">Comentar sobre outro agente</button>
+      </div>
+      ${extra ? `<div class="volta" style="color:var(--apagado)">${extra}</div>` : ""}`;
+  } else if (telaDoMenu === "perguntar") {
+    // A RESPOSTA FICA AQUI DENTRO, e não no balão do agente.
+    //
+    // A primeira volta na tela punha a resposta no balão, e o menu, que nasce
+    // acima de você, cobria exatamente esse balão: você perguntava e o painel
+    // tapava a resposta. Os dois canais agora têm assunto próprio: **o balão é
+    // o que ele está fazendo, o menu é o que ele está te respondendo.**
+    const conversa = historico[conversaCom] ?? [];
+    const linhas = conversa.map((c) => `
+      <div class="turno"><b>Você</b>${c.pergunta}</div>
+      <div class="turno dele" style="--cor:${a.cor}"><b>${a.nome.split(" ")[0]}</b>${c.resposta}</div>`).join("");
+    menuEl.innerHTML = `${cabecalho}
+      ${linhas ? `<div class="conversa">${linhas}</div>` : ""}
+      <form><input type="text" placeholder="Pergunte ${a.artigo === "A" ? "à" : "ao"} ${a.nome.split(" ")[0]}…" aria-label="Pergunta"><button type="submit">Ir</button></form>
+      <div class="volta"><button type="button" data-acao="voltar">← voltar</button></div>`;
+    const caixa = menuEl.querySelector(".conversa");
+    if (caixa) caixa.scrollTop = caixa.scrollHeight;
+    setTimeout(() => menuEl.querySelector("input")?.focus(), 30);
+  } else {
+    const outros = AGENTES.map((o, k) => (k === conversaCom ? null : `<button type="button" data-sobre="${k}">${o.nome}</button>`)).filter(Boolean).join("");
+    menuEl.innerHTML = `${cabecalho}
+      ${extra ? `<div class="volta" style="color:var(--apagado);border-top:none">${extra}</div>` : ""}
+      <div class="opcoes lista">${outros}</div>
+      <div class="volta"><button type="button" data-acao="voltar">← voltar</button></div>`;
+  }
+}
+
+// O menu é DOM de verdade (CSS2DObject), então o clique é clique normal.
+menuEl.addEventListener("click", (ev) => {
+  const alvo = ev.target.closest("button"); if (!alvo || conversaCom === null) return;
+  const a = AGENTES[conversaCom];
+  const acao = alvo.dataset.acao;
+  if (acao === "perguntar") { telaDoMenu = "perguntar"; desenharMenu(); }
+  else if (acao === "voltar") { telaDoMenu = "opcoes"; desenharMenu(); }
+  else if (acao === "sobre") { telaDoMenu = "sobre"; desenharMenu(); }
+  else if (acao === "trabalhos") {
+    // No produto, esta é a ficha que já existe: quem é, como trabalha, os
+    // trabalhos recentes com a nota da Vera, cada um abrindo o card completo.
+    fala.innerHTML = `<b>${a.nome}:</b> no produto, abre a ficha ${a.artigo === "A" ? "dela" : "dele"}: quem é, como trabalha, e os trabalhos recentes com a nota da Vera.`;
+    desenharMenu("Abriu a ficha.");
+  } else if (alvo.dataset.sobre) {
+    const outro = AGENTES[Number(alvo.dataset.sobre)];
+    // "O Vera" foi o que apareceu na primeira volta na tela: o artigo estava
+    // fixo no masculino. Quem fala de um colega diz o nome dele com o artigo
+    // certo, e isso não é firula: é a diferença entre um squad e sete campos.
+    dizer(conversaCom, `${outro.artigo} ${outro.nome.split(" ")[0]} ${SOBRE[Number(alvo.dataset.sobre)]}`);
+    telaDoMenu = "opcoes"; desenharMenu();
+  }
+});
+menuEl.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  if (conversaCom === null) return;
+  const campo = menuEl.querySelector("input");
+  const pergunta = (campo?.value ?? "").trim();
+  if (!pergunta) return;
+  const resposta = RESPOSTAS[conversaCom];
+  (historico[conversaCom] ??= []).push({ pergunta, resposta });
+  fala.innerHTML = `<b>${AGENTES[conversaCom].nome}:</b> ${resposta}`;
+  // Continua na tela da conversa: perguntar uma coisa e ser jogado de volta ao
+  // menu principal obriga a pessoa a entrar de novo para a segunda pergunta,
+  // e conversa que custa dois cliques por frase ninguém tem.
+  desenharMenu();
+});
+
+/** O agente fala no balão dele, vira para você, e a fala some sozinha. */
+function dizer(i, texto) {
+  falas[i] = texto;
+  mesas[i].balao.textContent = texto;
+  mesas[i].balao.className = "balao";
+  fala.innerHTML = `<b>${AGENTES[i].nome}:</b> ${texto}`;
+  clearTimeout(mesas[i].sumir);
+  mesas[i].sumir = setTimeout(() => {
+    falas[i] = null; mesas[i].balao.className = "balao vazio";
+  }, 12000);
+}
+
+// os robôs, todos sentados
+const robos = [];
+const loader = new GLTFLoader();
+loader.load("robo.glb", (gltf) => {
+  AGENTES.forEach((a, i) => {
+    const modelo = clonarComEsqueleto(gltf.scene);
+    const rostos = [];
+    modelo.traverse((o) => {
+      if (o.isMesh && o.material && o.material.name === "Main") { o.material = o.material.clone(); o.material.color.set(a.cor); }
+      if (o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences) rostos.push(o);
+    });
+    const g = new THREE.Group(); g.scale.setScalar(ESCALA); g.add(modelo); cena.add(g);
+    // O balão vive DENTRO do robô, com a escala desfeita (senão sairia com 19%
+    // do tamanho) e na altura 6,6, medida no modelo, que cai logo acima da
+    // cabeça em qualquer pose.
+    const suporte = new THREE.Group(); suporte.position.set(0, 6.6, 0); suporte.scale.setScalar(1 / ESCALA); g.add(suporte);
+    suporte.add(new CSS2DObject(mesas[i].balao));
+    const mixer = new THREE.AnimationMixer(modelo);
+    const acoes = Object.fromEntries(gltf.animations.map((c) => [c.name, mixer.clipAction(c)]));
+    const r = { g, mixer, acoes, atual: null, lugar: assento(i), yaw: 0, fase: null, indice: i, estado: "esperando", rostos, humor: "neutro" };
+    g.position.copy(r.lugar);
+    r.tocar = (nome, umaVez = false) => {
+      const ac = acoes[nome]; if (!ac) return;
+      if (r.atual && r.atual !== ac) r.atual.fadeOut(0.25);
+      ac.reset().fadeIn(0.25);
+      if (umaVez) { ac.setLoop(THREE.LoopOnce, 1); ac.clampWhenFinished = true; } else ac.setLoop(THREE.LoopRepeat, Infinity);
+      ac.play(); r.atual = ac;
+    };
+    mixer.addEventListener("finished", () => { if (!r.fase) r.tocar("Sitting"); });
+    r.tocar("Sitting");
+    robos.push(r);
+  });
+  criarVoce(gltf);
+  aplicarEstados();
+});
+
+/**
+ * VOCÊ.
+ *
+ * Até agora o nosso avatar era presença: sentava de costas na nossa mesa e
+ * ficava lá. Ele continua diferente dos agentes nas quatro coisas que dizem
+ * "este não é um funcionário" (laranja da marca, 12% maior, senta de costas
+ * olhando o escritório, fora da esteira), e ganha a quinta, que é a que muda
+ * tudo: **ele é o único que você move.**
+ *
+ * Ele não recebe bastão, não leva peça e não vai ao café. Andar pela sala é
+ * coisa de quem manda no escritório, não de quem trabalha nele.
+ */
+let eu = null;
+function criarVoce(gltf) {
+  const modelo = clonarComEsqueleto(gltf.scene);
+  const rostos = [];
+  modelo.traverse((o) => {
+    if (o.isMesh && o.material && o.material.name === "Main") { o.material = o.material.clone(); o.material.color.set(tema().laranja); }
+    if (o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences) rostos.push(o);
+  });
+  const g = new THREE.Group(); g.scale.setScalar(ESCALA * 1.12); g.add(modelo); cena.add(g);
+  g.position.copy(MEU_LUGAR);
+  const mixer = new THREE.AnimationMixer(modelo);
+  const acoes = Object.fromEntries(gltf.animations.map((c) => [c.name, mixer.clipAction(c)]));
+  eu = {
+    g, mixer, acoes, atual: null, rostos, modelo,
+    // "sentado" na nossa mesa, "andando" atrás de um destino ou de uma tecla,
+    // "parado" de pé no meio da sala. Sentado e parado são estados diferentes
+    // de propósito: sentado tem lugar, parado é onde a pessoa deixou.
+    modo: "sentado",
+    destino: null,
+    yaw: Math.PI,
+  };
+  eu.tocar = (nome, umaVez = false) => {
+    const ac = acoes[nome]; if (!ac) return;
+    if (eu.atual && eu.atual !== ac) eu.atual.fadeOut(0.2);
+    ac.reset().fadeIn(0.2);
+    if (umaVez) { ac.setLoop(THREE.LoopOnce, 1); ac.clampWhenFinished = true; } else ac.setLoop(THREE.LoopRepeat, Infinity);
+    ac.play(); eu.atual = ac;
+  };
+  mixer.addEventListener("finished", () => { if (eu.modo === "parado") eu.tocar("Idle"); });
+  eu.tocar("Sitting");
+
+  // O MENU e o aviso de alcance andam com VOCÊ, e não com o agente.
+  //
+  // Isto é a lição da parte 136, aplicada antes de doer: o balão de fala
+  // ficava pendurado na mesa e sobrava sobre a cadeira vazia quando o dono
+  // levantava. Um menu preso ao agente teria o mesmo problema ao vivo, porque
+  // o agente pode levantar no meio da conversa. Ancorado em você, o menu
+  // acompanha a conversa; quem sai é quem sai.
+  menuObj = new CSS2DObject(menuEl); menuObj.position.set(0, 8.4, 0); menuObj.visible = false; g.add(menuObj);
+  alcanceObj = new CSS2DObject(alcanceEl); alcanceObj.position.set(0, 7.2, 0); alcanceObj.visible = false; g.add(alcanceObj);
+}
+
+let cenario = "esteira";
+let estados = AGENTES.map(() => "esperando");
+let detalhes = AGENTES.map(() => "esperando a vez");
+let falas = AGENTES.map(() => null);
+let anterior = null;
+const fala = document.getElementById("fala");
+
+function aplicarEstados() {
+  AGENTES.forEach((a, i) => {
+    const e = estados[i], p = mesas[i].plaqueta;
+    p.className = "plaqueta" + (e === "trabalhando" ? " ativa" : e === "pronto" ? " pronta" : e === "aviso" ? " aviso" : "");
+    p.querySelector("small").textContent = detalhes[i];
+    mesas[i].anel.visible = e === "trabalhando";
+    mesas[i].balao.textContent = falas[i] ?? "";
+    mesas[i].balao.className = "balao" + (falas[i] ? "" : " vazio");
+    const r = robos[i]; if (!r) return;
+    const antes = r.estado; r.estado = e;
+    if (r.fase) return;
+    if (antes !== "pronto" && e === "pronto") r.tocar("ThumbsUp", true);
+    else if (e === "aviso" && antes !== "aviso") r.tocar("No", true);
+  });
+}
+
+function levar(de, para, bronca = false, motivo = null) {
+  const r = robos[de]; if (!r) return;
+  r.fase = { etapa: "indo", alvo: pontoDeEntrega(de, para), ate: 0, bronca };
+  falas[de] = motivo ?? (para === "voce" ? "Pronto. Levando a semana para você." : `Terminei. Levando para ${AGENTES[para].nome.split(" ")[0]}.`);
+  if (bronca) { r.humor = "irritado"; if (robos[para]) robos[para].humor = "triste"; }
+  r.tocar(bronca ? "Running" : "Walking");
+}
+
+let passo = 0, relogioCenario = 0;
+const ORDEM = [0, 1, 2, 3, 5, 6];
+function avancarEsteira() {
+  if (passo < ORDEM.length) {
+    const i = ORDEM[passo];
+    estados = estados.map((e, k) => (ORDEM.slice(0, passo).includes(k) ? "pronto" : k === i ? "trabalhando" : k === 4 ? "ocioso" : "esperando"));
+    detalhes = AGENTES.map((a, k) => (estados[k] === "pronto" ? "entregou a parte dele" : estados[k] === "trabalhando" ? "com o bastão" : estados[k] === "ocioso" ? "sem vídeo nesta semana" : "esperando a vez"));
+    falas = AGENTES.map((a, k) => (k === i ? a.fala : null));
+    nossaPlaca.innerHTML = "<b>Você</b> <em>· O squad está trabalhando</em>";
+    nossoBalao.className = "balao vazio";
+    fala.innerHTML = `<b>${AGENTES[i].nome}:</b> ${AGENTES[i].fala}`;
+    if (anterior !== null) levar(anterior, i);
+    anterior = i;
+  } else if (passo === ORDEM.length) {
+    // O Paulo leva a semana até a nossa mesa.
+    estados = AGENTES.map((a, k) => (k === 4 ? "ocioso" : "pronto"));
+    detalhes = AGENTES.map((a, k) => (k === 4 ? "sem vídeo nesta semana" : "entregou a parte dele"));
+    falas = AGENTES.map(() => null);
+    levar(6, "voce");
+    fala.innerHTML = `<b>Paulo Publicador:</b> levando a semana para você.`;
+    setTimeout(() => { nossoBalao.textContent = "Chegou. A semana está no calendário, esperando você."; nossoBalao.className = "balao"; }, 3200);
+    anterior = null;
+  } else {
+    semanaPronta();
+  }
+  passo = (passo + 1) % (ORDEM.length + 2);
+}
+function semanaPronta() {
+  estados = AGENTES.map((a, k) => (k === 4 ? "ocioso" : "pronto"));
+  detalhes = AGENTES.map((a, k) => (k === 4 ? "sem peça nesta semana" : k === 1 ? "12 peças esperando você" : "4 peças esperando você"));
+  falas = AGENTES.map(() => null);
+  nossaPlaca.innerHTML = "<b>Você</b> <em>· Semana de 14/09</em>";
+  nossoBalao.className = "balao vazio";
+  fala.innerHTML = `<b>Semana pronta.</b> As peças esperam sua aprovação no calendário, logo abaixo.`;
+}
+
+const btnEsteira = document.getElementById("btn-esteira"), btnPronta = document.getElementById("btn-pronta"), btnTema = document.getElementById("btn-tema");
+btnEsteira.addEventListener("click", () => { cenario = "esteira"; passo = 0; anterior = null; relogioCenario = 0; btnEsteira.setAttribute("aria-pressed", "true"); btnPronta.setAttribute("aria-pressed", "false"); avancarEsteira(); aplicarEstados(); });
+btnPronta.addEventListener("click", () => { cenario = "pronta"; btnPronta.setAttribute("aria-pressed", "true"); btnEsteira.setAttribute("aria-pressed", "false"); robos.forEach((r) => { r.fase = null; r.g.position.copy(r.lugar); r.tocar("Sitting"); }); semanaPronta(); aplicarEstados(); });
+btnTema.addEventListener("click", () => {
+  const atual = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const novo = atual === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", novo);
+  btnTema.textContent = novo === "dark" ? "Tema claro" : "Tema escuro";
+  btnTema.setAttribute("aria-pressed", String(novo === "light"));
+  aplicarTema();
+});
+
+document.getElementById("btn-bronca").addEventListener("click", () => {
+  // A Vera (indice 5) volta na mesa do Lucas (indice 1).
+  estados = estados.map((e, k) => (k === 5 ? "trabalhando" : k === 1 ? "aviso" : e));
+  detalhes[5] = "reprovou quinta"; detalhes[1] = "vai reescrever";
+  levar(5, 1, true, "Reprovei quinta: a versão do Facebook abre falando do LinkedIn.");
+  fala.innerHTML = `<b>Vera Veredito:</b> reprovou e foi cobrar o Lucas.`;
+  aplicarEstados();
+});
+
+// ── ANDAR PELA SALA ─────────────────────────────────────────────────────────
+//
+// Dois caminhos para o mesmo lugar, porque o Bruno pediu os dois e eles servem
+// a mãos diferentes: o clique funciona no celular e não precisa ser descoberto,
+// o teclado é o controle fino de quem já está dentro da cena.
+
+/** Os móveis, como retângulos no chão. O avatar não atravessa mesa. */
+const OBSTACULOS = [
+  ...MESAS.map((m) => ({ x: m.x, z: m.z - 0.25, larg: 1.9, prof: 1.5 })), // mesa + cadeira
+  { x: NOSSA.x, z: NOSSA.z, larg: 2.7, prof: 1.0 },
+  { x: CAFE.x, z: CAFE.z, larg: 1.3, prof: 1.3 },
+  { x: 4.6, z: -1.2, larg: 0.7, prof: 0.7 }, // a planta
+];
+const CORPO = 0.3;
+const dentro = (p, o) => Math.abs(p.x - o.x) < o.larg / 2 + CORPO && Math.abs(p.z - o.z) < o.prof / 2 + CORPO;
+
+/**
+ * Empurra para fora do móvel mais raso, e não do mais fundo.
+ *
+ * Empurrar pelo eixo de menor penetração é o que faz o avatar DESLIZAR pela
+ * borda da mesa em vez de travar de frente nela. Quem anda encostado num móvel
+ * e para de se mover lê isso como o controle ter falhado.
+ *
+ * `de` é onde você JÁ ESTAVA, e existe por causa de um defeito visto na tela:
+ * você senta colado na sua mesa, ou seja, dentro da caixa dela. Ao levantar, a
+ * caixa empurrava de volta e o avatar ficava preso atrás da própria mesa, sem
+ * conseguir entrar no escritório. **Um móvel em que você já está dentro não
+ * empurra**, senão o único jeito de sair seria não ter colisão nenhuma.
+ */
+function semAtravessar(p, de) {
+  for (const o of OBSTACULOS) {
+    if (de && dentro(de, o)) continue;
+    const dx = p.x - o.x, dz = p.z - o.z;
+    const fx = o.larg / 2 + CORPO - Math.abs(dx);
+    const fz = o.prof / 2 + CORPO - Math.abs(dz);
+    if (fx > 0 && fz > 0) {
+      if (fx < fz) p.x += Math.sign(dx || 1) * fx;
+      else p.z += Math.sign(dz || 1) * fz;
+    }
+  }
+  p.x = Math.max(-8.4, Math.min(8.4, p.x));
+  p.z = Math.max(-7.4, Math.min(5.2, p.z));
+  return p;
+}
+
+const teclas = new Set();
+addEventListener("keydown", (ev) => {
+  // Digitar no campo de pergunta não pode andar com o avatar: "a" e "d" estão
+  // em quase toda frase em português.
+  if (ev.target instanceof HTMLInputElement) {
+    if (ev.key === "Escape") { ev.target.blur(); fecharMenu(); }
+    return;
+  }
+  const k = ev.key.toLowerCase();
+  if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) { teclas.add(k); ev.preventDefault(); }
+  if (k === "e" && pertoDe !== null && conversaCom === null) abrirMenu(pertoDe);
+  if (k === "escape") fecharMenu();
+});
+addEventListener("keyup", (ev) => teclas.delete(ev.key.toLowerCase()));
+addEventListener("blur", () => teclas.clear());
+
+// CLIQUE NO CHÃO, separado do ARRASTO da câmera. Sem esta distinção, girar a
+// câmera mandaria o avatar andar para onde o dedo soltou, toda vez.
+const raio = new THREE.Raycaster();
+let apertou = null;
+renderer.domElement.addEventListener("pointerdown", (ev) => { apertou = { x: ev.clientX, y: ev.clientY, t: performance.now() }; });
+renderer.domElement.addEventListener("pointerup", (ev) => {
+  if (!apertou || !eu) return;
+  const arrastou = Math.hypot(ev.clientX - apertou.x, ev.clientY - apertou.y) > 6;
+  const demorou = performance.now() - apertou.t > 600;
+  apertou = null;
+  if (arrastou || demorou) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  raio.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
+  const ponto = new THREE.Vector3();
+  if (!raio.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), ponto)) return;
+  // Clicar EM CIMA de um agente é pedir para ir falar com ele: o destino é o
+  // lado da mesa dele, e não o lugar onde ele está sentado.
+  let alvo = ponto;
+  let maisPerto = -1, menor = 2.2;
+  MESAS.forEach((m, i) => { const d = Math.hypot(ponto.x - m.x, ponto.z - m.z); if (d < menor) { menor = d; maisPerto = i; } });
+  if (maisPerto >= 0) alvo = new THREE.Vector3(MESAS[maisPerto].x + (eu.g.position.x <= MESAS[maisPerto].x ? -1.5 : 1.5), 0, MESAS[maisPerto].z + 0.5);
+  eu.destino = semAtravessar(alvo.clone());
+  // Clicar no chão no meio da volta para a mesa cancela a volta. Sem esta
+  // linha, `voltandoParaAMesa` continuava ligado, e ao chegar no ponto NOVO o
+  // avatar sentava ali: de pé no corredor, com pose de quem está numa cadeira.
+  // Achado pelo script de conferência, não deduzido.
+  eu.voltandoParaAMesa = false;
+  levantar();
+});
+
+/** Sair da cadeira. Sentado, ele não tem para onde ir. */
+function levantar() {
+  if (!eu || eu.modo !== "sentado") return;
+  eu.modo = "parado";
+  eu.tocar("Idle");
+}
+function sentar() {
+  if (!eu) return;
+  eu.destino = MEU_LUGAR.clone();
+  eu.voltandoParaAMesa = true;
+  fecharMenu();
+}
+document.getElementById("btn-sentar").addEventListener("click", sentar);
+
+// vida de escritório: de vez em quando alguém parado acena ou concorda
+setInterval(() => {
+  const parados = robos.filter((r) => r.estado !== "trabalhando" && !r.fase);
+  if (!parados.length) return;
+  parados[Math.floor(Math.random() * parados.length)].tocar(Math.random() < 0.5 ? "Wave" : "Yes", true);
+}, 9000);
+
+/**
+ * O CAFÉ. Quem está sem trabalho vai conversar; quem recebe o bastão volta na
+ * hora, porque a missão some e o robô senta.
+ *
+ * As falas são de BASTIDOR de propósito: nenhuma afirma um fato sobre o
+ * trabalho, sobre números ou sobre o cliente. Um agente que "opina" sobre
+ * dados na tela vira mais uma fonte de coisa inventada, e o produto inteiro é
+ * construído contra isso. Eles falam do ofício, e só.
+ */
+const PAPO_DE_CAFE = [
+  "Achei três fontes boas hoje. Duas eram a mesma notícia.",
+  "Cortei metade do que escrevi. Ficou melhor.",
+  "280 caracteres educam qualquer um.",
+  "Tirei três elementos. Respirou.",
+  "O melhor trecho estava no minuto 34.",
+  "Número sem fonte eu tiro, não arredondo.",
+  "Horário errado estraga texto bom.",
+];
+setInterval(() => {
+  const ocupados = robos.filter((r) => r.noCafe).length;
+  if (ocupados >= LUGARES_NO_CAFE.length) return;
+  const livres = robos.filter((r) => r.estado !== "trabalhando" && !r.fase && !r.noCafe);
+  if (!livres.length) return;
+  const r = livres[Math.floor(Math.random() * livres.length)];
+  const usados = new Set(robos.filter((o) => o.noCafe).map((o) => o.lugarNoCafe));
+  const lugar = LUGARES_NO_CAFE.findIndex((_, i) => !usados.has(i));
+  if (lugar < 0) return;
+  r.noCafe = true; r.lugarNoCafe = lugar;
+  const [dx, dz] = LUGARES_NO_CAFE[lugar];
+  r.fase = { etapa: "indo", alvo: new THREE.Vector3(CAFE.x + dx, 0, CAFE.z + dz), ate: 0, bronca: false, dePe: true, demora: 14 };
+  r.tocar("Walking");
+  dizer(r.indice, PAPO_DE_CAFE[r.indice]);
+}, 8000);
+
+avancarEsteira();
+aplicarTema();
+
+function redimensionar() {
+  const w = palco.clientWidth, h = palco.clientHeight;
+  renderer.setSize(w, h, false); rotulos.setSize(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(redimensionar).observe(palco);
+redimensionar();
+
+const relogio = new THREE.Clock();
+let entrou = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const alvoCamera = new THREE.Vector3(0, 5.6, 8.4);
+if (entrou) camera.position.copy(alvoCamera);
+
+function quadro() {
+  requestAnimationFrame(quadro);
+  const dt = Math.min(relogio.getDelta(), 0.05);
+  const t = relogio.elapsedTime;
+  if (!entrou) { camera.position.lerp(alvoCamera, 1 - Math.exp(-dt * 2.2)); if (camera.position.distanceTo(alvoCamera) < 0.02) entrou = true; }
+  controles.update();
+  if (cenario === "esteira") { relogioCenario += dt; if (relogioCenario > 5.5) { relogioCenario = 0; avancarEsteira(); aplicarEstados(); } }
+
+  mesas.forEach((m, i) => {
+    const e = estados[i];
+    const alvo = e === "trabalhando" ? 1.3 + Math.sin(t * 5) * 0.45 : e === "pronto" ? 0.55 : 0.12;
+    m.telaMat.emissiveIntensity += (alvo - m.telaMat.emissiveIntensity) * 0.1;
+    m.anel.rotation.y = t * 2.2; m.anel.rotation.x = Math.sin(t * 1.3) * 0.5;
+  });
+
+  for (const r of robos) {
+    r.mixer.update(dt);
+    const g = r.g, f = r.fase;
+    if (f) {
+      const destino = f.etapa === "voltando" ? r.lugar : f.alvo;
+      if (f.etapa === "entregando") {
+        // Na bronca o "não" acaba antes da conversa, e no café o Idle de uma
+        // vez também: os dois voltam a tocar enquanto a cena dura.
+        if (f.bronca && r.atual && !r.atual.isRunning()) r.tocar("No", true);
+        else if (f.dePe && r.atual && !r.atual.isRunning()) r.tocar("Idle");
+        if (t > f.ate) { f.etapa = "voltando"; r.tocar("Walking"); }
+      }
+      else {
+        const dir = new THREE.Vector3().subVectors(destino, g.position); dir.y = 0;
+        const dist = dir.length();
+        if (dist < 0.06) {
+          g.position.x = destino.x; g.position.z = destino.z;
+          if (f.etapa === "indo") { f.etapa = "entregando"; f.ate = t + (f.demora ?? (f.bronca ? 3.4 : 1.8)); r.yaw = Math.atan2(-dir.x, -dir.z); r.tocar(f.bronca ? "No" : f.dePe ? "Idle" : "Wave", true); }
+          else { const eraBronca = f.bronca; r.fase = null; r.noCafe = false; r.yaw = 0; r.humor = "neutro"; if (eraBronca) robos.forEach((o) => { o.humor = "neutro"; }); r.tocar("Sitting"); falas[r.indice] = null; mesas[r.indice].balao.className = "balao vazio"; }
+        } else { dir.normalize(); g.position.addScaledVector(dir, Math.min(VELOCIDADE * dt, dist)); r.yaw = Math.atan2(dir.x, dir.z); }
+      }
+      const alturaAlvo = f.etapa === "voltando" && g.position.distanceTo(r.lugar) < 0.5 ? ASSENTO : 0;
+      g.position.y += (alturaAlvo - g.position.y) * (1 - Math.exp(-dt * 8));
+    } else {
+      g.position.lerp(r.lugar, 1 - Math.exp(-dt * 7));
+      // Parado ele olha para a câmera; com VOCÊ do lado, olha para você. Virar
+      // a cabeça é o que confirma que a sua chegada foi percebida, e faz isso
+      // sem uma linha de texto na tela.
+      const paraOndeOlha = r.olhandoParaVoce && eu ? Math.atan2(eu.g.position.x - g.position.x, eu.g.position.z - g.position.z) : 0;
+      r.yaw += anguloCurto(r.yaw, paraOndeOlha) * (1 - Math.exp(-dt * 7));
+    }
+    g.rotation.y += anguloCurto(g.rotation.y, r.yaw) * (1 - Math.exp(-dt * 12));
+    const alvoMorph = MORPH[r.humor];
+    for (const rosto of r.rostos) {
+      for (const [nome, idx] of Object.entries(rosto.morphTargetDictionary)) {
+        const desejado = nome === alvoMorph ? 1 : 0;
+        rosto.morphTargetInfluences[idx] += (desejado - rosto.morphTargetInfluences[idx]) * (1 - Math.exp(-dt * 6));
+      }
+    }
+  }
+  moverVoce(dt);
+  renderer.render(cena, camera);
+  rotulos.render(cena, camera);
+}
+quadro();
+
+/**
+ * Uma janela para o estado, só para conferir de fora.
+ *
+ * O protótipo é julgado por um script que dirige o navegador, e sem isto a
+ * única forma de saber se o avatar chegou perto de alguém é olhar um PNG e
+ * achar que sim. Existe para medir, não para o produto.
+ */
+window.__escritorio = {
+  get onde() { return eu ? { x: +eu.g.position.x.toFixed(2), z: +eu.g.position.z.toFixed(2), modo: eu.modo, destino: eu.destino ? [+eu.destino.x.toFixed(2), +eu.destino.z.toFixed(2)] : null } : null; },
+  get pertoDe() { return pertoDe === null ? null : AGENTES[pertoDe].nome; },
+  get conversaCom() { return conversaCom === null ? null : AGENTES[conversaCom].nome; },
+};
+
+/** Para onde "frente" aponta: para onde a CÂMERA olha, não para o eixo z.
+    W tem que ir para onde a pessoa está vendo, senão ela gira a câmera e o
+    controle inverte sem aviso. */
+const frente = new THREE.Vector3(), lado = new THREE.Vector3();
+function moverVoce(dt) {
+  if (!eu) return;
+  eu.mixer.update(dt);
+  const g = eu.g;
+
+  // 1. TECLADO. Mandar pelo teclado cancela o destino do clique: se os dois
+  // valessem juntos, o avatar puxaria para dois lugares ao mesmo tempo.
+  let vx = 0, vz = 0;
+  if (teclas.has("w") || teclas.has("arrowup")) vz += 1;
+  if (teclas.has("s") || teclas.has("arrowdown")) vz -= 1;
+  if (teclas.has("a") || teclas.has("arrowleft")) vx -= 1;
+  if (teclas.has("d") || teclas.has("arrowright")) vx += 1;
+  const noTeclado = vx !== 0 || vz !== 0;
+  if (noTeclado) { eu.destino = null; eu.voltandoParaAMesa = false; levantar(); }
+
+  let andando = false;
+  if (noTeclado) {
+    camera.getWorldDirection(frente); frente.y = 0; frente.normalize();
+    lado.crossVectors(frente, new THREE.Vector3(0, 1, 0)).normalize();
+    const passo = new THREE.Vector3().addScaledVector(frente, vz).addScaledVector(lado, vx).normalize().multiplyScalar(MINHA_VELOCIDADE * dt);
+    const alvo = semAtravessar(new THREE.Vector3(g.position.x + passo.x, 0, g.position.z + passo.z), g.position);
+    if (alvo.distanceTo(g.position) > 0.001) { eu.yaw = Math.atan2(alvo.x - g.position.x, alvo.z - g.position.z); }
+    g.position.x = alvo.x; g.position.z = alvo.z;
+    andando = true;
+  } else if (eu.destino) {
+    // 2. CLIQUE. Caminha até o ponto e para sozinho.
+    const dir = new THREE.Vector3().subVectors(eu.destino, g.position); dir.y = 0;
+    const dist = dir.length();
+    if (dist < 0.08) {
+      g.position.x = eu.destino.x; g.position.z = eu.destino.z;
+      eu.destino = null;
+      if (eu.voltandoParaAMesa) { eu.voltandoParaAMesa = false; eu.modo = "sentado"; eu.yaw = Math.PI; eu.tocar("Sitting"); }
+      else eu.tocar("Idle");
+    } else {
+      dir.normalize();
+      const passoAte = new THREE.Vector3().copy(g.position).addScaledVector(dir, Math.min(MINHA_VELOCIDADE * dt, dist));
+      // Voltar para a PRÓPRIA cadeira não passa pela colisão: o assento fica
+      // dentro da caixa da sua mesa, e com a colisão ligada o avatar parava na
+      // borda dela e nunca sentava (visto no script: modo "parado" em z=1,3,
+      // com a cadeira em z=2,8). Sair dali já era permitido pela regra do
+      // "móvel em que você está dentro"; faltava a volta.
+      const alvo = eu.voltandoParaAMesa ? passoAte : semAtravessar(passoAte, g.position);
+      // Travou contra um móvel e o destino é inalcançável: desiste em vez de
+      // ficar raspando na parede para sempre.
+      if (alvo.distanceTo(g.position) < 0.004) { eu.destino = null; eu.tocar("Idle"); }
+      else { eu.yaw = Math.atan2(alvo.x - g.position.x, alvo.z - g.position.z); g.position.x = alvo.x; g.position.z = alvo.z; andando = true; }
+    }
+  }
+
+  if (andando && eu.atual !== eu.acoes["Walking"]) eu.tocar("Walking");
+  if (!andando && eu.modo === "parado" && eu.atual === eu.acoes["Walking"]) eu.tocar("Idle");
+
+  // A altura: sentado sobe para o assento, de pé fica no chão.
+  const alturaAlvo = eu.modo === "sentado" ? ASSENTO : 0;
+  g.position.y += (alturaAlvo - g.position.y) * (1 - Math.exp(-dt * 8));
+  g.rotation.y += anguloCurto(g.rotation.y, eu.yaw) * (1 - Math.exp(-dt * 12));
+
+  // 3. PROXIMIDADE. Quem está ao alcance, e o menu que vem disso.
+  //
+  // Entrar custa 1,9 e sair custa 2,4 de propósito: com um limite só, parar na
+  // borda exata faz o menu abrir e fechar a cada quadro.
+  let achado = null, menor = Infinity;
+  if (eu.modo !== "sentado") {
+    robos.forEach((r, i) => {
+      const d = Math.hypot(g.position.x - r.g.position.x, g.position.z - r.g.position.z);
+      const limite = conversaCom === i ? ALCANCE_SAIDA : ALCANCE;
+      if (d < limite && d < menor) { menor = d; achado = i; }
+    });
+  }
+  pertoDe = achado;
+
+  // O agente VIRA PARA VOCÊ enquanto você está ao lado dele. É o que diz, sem
+  // texto nenhum, que ele percebeu a sua chegada.
+  robos.forEach((r, i) => {
+    if (r.fase) return; // quem está atravessando a sala tem o que fazer
+    r.olhandoParaVoce = i === pertoDe;
+  });
+
+  if (conversaCom !== null && conversaCom !== pertoDe) fecharMenu();
+  if (alcanceObj) alcanceObj.visible = pertoDe !== null && conversaCom === null;
+
+  // 4. A CÂMERA ACOMPANHA, mas só pela metade.
+  //
+  // Sentado, o enquadramento é o do escritório inteiro. De pé, o alvo do orbit
+  // desliza na sua direção: sem isso, andar até o fundo da sala põe você e o
+  // seu menu fora da tela, e o menu é justamente o que se foi ler. Acompanhar
+  // pela METADE e não inteiro é de propósito: quem é o assunto continua sendo
+  // o escritório, e a câmera colada nas costas perderia a sala.
+  const alvoDoOrbit = eu.modo === "sentado"
+    ? new THREE.Vector3(0, 0.5, -1.7)
+    : new THREE.Vector3(g.position.x * 0.5, 0.6, -1.7 + (g.position.z + 1.7) * 0.5);
+  controles.target.lerp(alvoDoOrbit, 1 - Math.exp(-dt * 2.4));
+}
+
+// ── O calendário, com a semana real de 14/09 ────────────────────────────────
+const COR_REDE = { linkedin: "#0a66c2", facebook: "#1877f2", instagram: "#e1306c", twitter: "#000", youtube: "#ff0000" };
+const GLIFO = { linkedin: "in", facebook: "f", instagram: "◎", twitter: "X", youtube: "▶" };
+const COR_ESTADO = { esperando: "var(--laranja)", aprovado: "var(--verde)", agendado: "var(--azul)", publicado: "var(--verde)", rejeitado: "var(--vermelho)", guardado: "var(--apagado)" };
+const ROTULO = { esperando: "esperando você", aprovado: "aprovado", agendado: "agendado", publicado: "publicado", rejeitado: "rejeitado", guardado: "guardado, não sai" };
+const destinosPadrao = [["linkedin", "pagina"], ["linkedin", "perfil"], ["facebook", "pagina"], ["instagram", null]];
+const DIAS = [
+  { curto: "Seg", n: "14" }, { curto: "Ter", n: "15" }, { curto: "Qua", n: "16" }, { curto: "Qui", n: "17", hoje: true },
+  { curto: "Sex", n: "18", pecas: [
+    { tipo: "Post", hora: "12:00", estado: "esperando", titulo: "O LinkedIn não penaliza inteligência artificial. Penaliza texto sem dono.", destinos: destinosPadrao },
+    { tipo: "Thread X", hora: "12:00", estado: "aprovado", titulo: "1/ Seu post no LinkedIn está competindo com 16 mil criadores.", destinos: [["twitter", "perfil"]] },
+    { tipo: "Post", hora: "18:00", estado: "agendado", titulo: "Não é sobre publicar todo dia. Consultor que aparece toda semana com o mesmo peso.", destinos: destinosPadrao },
+  ] },
+  { curto: "Sáb", n: "19", pecas: [
+    { tipo: "Post", hora: "12:00", estado: "publicado", titulo: "Uma hora de live. Um arquivo. Depois disso, oito peças.", destinos: destinosPadrao },
+    { tipo: "Thread X", hora: "12:00", estado: "rejeitado", titulo: "1/ Você grava uma live de 1 hora. Ela vira oito peças.", destinos: [["twitter", "perfil"]] },
+  ] },
+  { curto: "Dom", n: "20", pecas: [
+    { tipo: "Post", hora: "12:00", estado: "esperando", titulo: "Pastor sobe no púlpito e prega. Professor explica a mesma matéria.", destinos: destinosPadrao },
+    { tipo: "Corte de vídeo", hora: null, estado: "guardado", titulo: "O trecho do preço", destinos: [["youtube", null]] },
+  ] },
+];
+const selo = ([rede, tipo]) => `<span class="selo" style="background:${COR_REDE[rede]}">${GLIFO[rede]}${tipo ? `<i>${tipo === "pagina" ? "▣" : "●"}</i>` : ""}</span>`;
+document.getElementById("semana").innerHTML = DIAS.map((d) => `
+  <div class="dia${d.hoje ? " hoje" : ""}">
+    <div class="cab"><b>${d.curto}${d.hoje ? " · hoje" : ""}</b><strong>${d.n}</strong></div>
+    ${(d.pecas ?? []).map((p) => `
+      <button class="peca" type="button" style="--cor:${COR_ESTADO[p.estado]}">
+        <span class="linha"><span class="selos">${p.destinos.map(selo).join("")}</span>${p.hora ? `<b>${p.hora}</b>` : ""}</span>
+        <span class="titulo">${p.titulo}</span>
+        <span class="linha"><span>${p.tipo}</span><span class="estado">${ROTULO[p.estado]}</span></span>
+      </button>`).join("")}
+    ${(d.pecas ?? []).length ? "" : `<div class="vazio">+ pôr algo aqui</div>`}
+  </div>`).join("");
+</script>

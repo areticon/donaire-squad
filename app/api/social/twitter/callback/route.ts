@@ -1,8 +1,10 @@
 import { auth } from "@/lib/auth/server";
+import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeTwitterCode, getTwitterProfile } from "@/lib/oauth/twitter";
 import { prisma } from "@/lib/db/prisma";
+import { readotarPostsOrfaos } from "@/lib/publish/contas-orfas";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -36,6 +38,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(errorUrl);
   }
 
+  // QUEM VOLTA DO LOGIN DA REDE precisa poder conectar redes NESTE projeto
+  // (01/10, acabamento do acesso de equipe). O projeto vem de um cookie, e o
+  // cookie sozinho nÃ£o prova nada: conferimos com a sessÃ£o de quem voltou que
+  // ela Ã© dona do projeto (membro da equipe nÃ£o conecta rede; ver
+  // lib/equipe/permissoes.ts). Sem sessÃ£o, nÃ£o grava conta nenhuma.
+  const quemVolta = (await auth()).userId;
+  if (!quemVolta) return NextResponse.redirect(new URL("/sign-in", req.url));
+  const barrado = await soQuemConectaRedes(quemVolta, projectId);
+  if (barrado) return barrado;
+
   try {
     const redirectUri = `${appUrl}/api/social/twitter/callback`;
     const tokens = await exchangeTwitterCode(code, codeVerifier, redirectUri);
@@ -55,6 +67,10 @@ export async function GET(req: NextRequest) {
       },
       update: {
         accessToken: tokens.access_token,
+        // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+        // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+        needsReconnectAt: null,
+        needsReconnectReason: null,
         refreshToken: tokens.refresh_token ?? null,
         tokenExpiresAt,
         displayName: profile.name,
@@ -66,6 +82,10 @@ export async function GET(req: NextRequest) {
         platform: "twitter",
         platformUserId: profile.id,
         accessToken: tokens.access_token,
+        // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+        // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+        needsReconnectAt: null,
+        needsReconnectReason: null,
         refreshToken: tokens.refresh_token ?? null,
         tokenExpiresAt,
         displayName: profile.name,
@@ -73,6 +93,7 @@ export async function GET(req: NextRequest) {
         isActive: true,
       },
     });
+    await readotarPostsOrfaos(projectId, "twitter", profile.id);
 
     const res = NextResponse.redirect(settingsUrl);
     res.cookies.delete("oauth_state");
@@ -83,6 +104,15 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (err) {
     console.error("[twitter/callback]", err);
-    return NextResponse.redirect(errorUrl);
+    // O MOTIVO VAI PARA A TELA (28/09). O Bruno viu só "Erro ao conectar X" e o
+    // log dizia "unauthorized_client": o segredo do app tinha sido gerado de
+    // novo no portal do X e o ambiente continuava com o antigo.
+    const msg = err instanceof Error ? err.message : String(err);
+    const motivo = /unauthorized_client|authorization header/i.test(msg)
+      ? "as credenciais do app no X não batem com as da plataforma"
+      : /invalid_grant|code/i.test(msg)
+        ? "o código de autorização expirou, tente de novo"
+        : "o X recusou a conexão";
+    return NextResponse.redirect(`${errorUrl}&motivo=${encodeURIComponent(motivo)}`);
   }
 }

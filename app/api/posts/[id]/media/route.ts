@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { abrirMidia, ehPublica } from "@/lib/media/storage";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * Serve a mídia de um post para o DONO dela ver e baixar.
@@ -31,7 +32,7 @@ export async function GET(
 
   const { id } = await params;
   const post = await prisma.post.findFirst({
-    where: { id, project: { userId } },
+    where: { id, project: projetoVisivel(userId) },
     select: { imageUrl: true, mediaType: true },
   });
   if (!post?.imageUrl) {

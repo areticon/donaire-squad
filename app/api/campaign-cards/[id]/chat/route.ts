@@ -6,8 +6,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
-import { generateInfographic } from "@/lib/media/infographic";
-import { refazerCorte, refazerCapa } from "@/lib/media/refazer";
+import { escolherEstilo, paletaDoProjeto } from "@/lib/media/direcao-de-arte";
+import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/infographic";
+import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
+import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto } from "@/lib/media/arte-com-frase";
+import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
+import { ajustarVideoPeloChat } from "@/lib/media/ajuste-pelo-chat";
+import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
+import { extrairNaoCitar, salvarNaoCitar, aplicarNaoCitarNaExecucao } from "@/lib/pipeline/restricoes";
+import { marcarEmRevisao, encerrarRevisao } from "@/lib/pipeline/revisao-do-card";
+import { ehPedidoDeRefazerVideo, regerarVideoDoDia } from "@/lib/media/regerar-video";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 /** Detect if a media URL represents a video (GCS URL, external .mp4, or base64 video) */
 function detectIsVideo(mediaUrl?: string | null): boolean {
@@ -20,7 +29,34 @@ function detectIsVideo(mediaUrl?: string | null): boolean {
   return false;
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * O CARD FICA "EM REVISÃO" ENQUANTO O PEDIDO ESTÁ SENDO FEITO.
+ *
+ * Pedido do Bruno em 21/09: refazer uma arte leva até 90 s e reescrever os
+ * quatro posts do dia leva mais, e nesse tempo a tela ficava idêntica. Quem
+ * pediu não sabia se o comando tinha sido entendido. A marca vive no CARD
+ * (lib/pipeline/revisao-do-card.ts), porque o calendário inteiro lê do banco
+ * e porque quem faz o trabalho pode ser outro card: o pedido de imagem feito
+ * no card do Paulo é atendido no card da Diana.
+ *
+ * O `finally` aqui é o que garante que a marca sai mesmo quando o pedido
+ * falha. Se nem o `finally` rodar (a plataforma matou a função), a marca tem
+ * prazo e deixa de ser lida sozinha.
+ */
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const emRevisao: string[] = [];
+  try {
+    return await tratarChatDoCard(req, ctx, emRevisao);
+  } finally {
+    if (emRevisao.length > 0) await encerrarRevisao(emRevisao);
+  }
+}
+
+async function tratarChatDoCard(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  emRevisao: string[]
+) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -28,24 +64,151 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { message, slideIndex } = await req.json();
   if (!message?.trim()) return NextResponse.json({ error: "message required" }, { status: 400 });
 
-  const card = await prisma.campaignCard.findUnique({
-    where: { id },
-    include: {
-      project: { include: { memories: true } },
-      post: true,
-      run: { select: { config: true } },
-    },
-  });
+  const DADOS_DO_CARD = {
+    project: { include: { memories: true, contexts: true } },
+    post: true,
+    run: { select: { config: true } },
+  } as const;
 
-  if (!card || card.project.userId !== userId) {
+  let card = await prisma.campaignCard.findUnique({ where: { id }, include: DADOS_DO_CARD });
+
+  if (!card || !(await podeUsarProjeto(userId, { id: card.projectId, userId: card.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  /**
+   * ENCAMINHAR O PEDIDO PARA QUEM FAZ.
+   *
+   * Em 18/09 o Bruno pediu, no chat do card do PAULO, "ajuste imagem, eu pedi
+   * um chart não uma imagem realista, quero um design gráfico no estilo Vox".
+   * O card do Paulo não tem imagem: o pedido caiu no ramo de edição de TEXTO,
+   * e o modelo, mandado "editar o texto conforme a instrução", reescreveu o
+   * conteúdo do card para **dizer** que a imagem tinha sido trocada.
+   *
+   * > Nada foi trocado, e a mentira ficou gravada no card.
+   *
+   * Um agente que afirma ter feito o que não fez é pior que um que recusa.
+   * Num squad de verdade, o Paulo passaria o pedido para a Diana. É o que
+   * acontece aqui: o pedido de imagem é atendido no card de mídia do mesmo
+   * dia, e o card de onde ele saiu registra para onde foi.
+   */
+  /**
+   * "NUNCA CITE X" É REGRA DO PROJETO, NÃO EDIÇÃO DE UM CARD.
+   *
+   * Em 21/09 o Bruno pediu no card do Paulo "nunca cite a Volt Robotics, são
+   * nossos concorrentes", e o caminho de edição de texto reescreveu o card do
+   * Paulo ("2 posts prontos para publicação"): nada mudou nos dezenove posts
+   * que citavam a Volt. Uma restrição de concorrente vale para a campanha
+   * inteira e para as próximas: fica salva no projeto e é aplicada agora em
+   * todos os rascunhos da execução. Ver lib/pipeline/restricoes.ts.
+   */
+  const nomesProibidos = extrairNaoCitar(message);
+  if (nomesProibidos.length > 0) {
+    const todos = await salvarNaoCitar(card.projectId, nomesProibidos);
+    const aplicado = card.runId ? await aplicarNaoCitarNaExecucao(card.runId, todos) : { posts: 0, cards: 0 };
+    const resposta =
+      `Regra salva para este projeto: nunca citar ${todos.join(", ")}. ` +
+      (card.runId
+        ? `Apliquei agora nos rascunhos desta campanha: ${aplicado.posts} post(s) reescrito(s) sem a menção (o dado que só tinha essa fonte saiu junto). ` +
+          `Nas próximas campanhas a pesquisa já descarta essa fonte antes de escrever.`
+        : "Vale a partir da próxima campanha.");
+    const historico = [
+      ...(Array.isArray(card.chatHistory) ? (card.chatHistory as { role: string; content: string; timestamp: string }[]) : []),
+      { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+      { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+    ];
+    await prisma.campaignCard.update({ where: { id }, data: { chatHistory: historico } });
+    return NextResponse.json({ updatedContent: card.content, chatHistory: historico, regraSalva: todos, aplicado });
+  }
+
+  /**
+   * "GERE O VÍDEO DE NOVO" REFAZ O VÍDEO, em qualquer card do dia (28/09).
+   *
+   * O Bruno pediu no chat do Paulo "o vídeo falhou, gere novamente por favor".
+   * O pedido caiu na edição de TEXTO, os seis posts foram reescritos, a
+   * resposta foi "apliquei", e nenhum vídeo foi pedido. Agora o pedido volta
+   * para a fila de vídeo com cobrança nova, e a resposta diz o custo e o tempo.
+   */
+  // O card de um vídeo GRAVADO (corte ou completo) nunca cai aqui: "faça outra
+  // ideia para a cena do vídeo" casava com a regra e pedia um vídeo novo ao
+  // gerador (Veo), com cobrança. O ajuste dele é o Vitor, lá embaixo (30/09).
+  const doVideoGravado = Boolean((card.metadata as { videoJobId?: string } | null)?.videoJobId);
+  if (!doVideoGravado && ehPedidoDeRefazerVideo(message) && card.runId && card.dayOfWeek) {
+    const r = await regerarVideoDoDia({ runId: card.runId, dayOfWeek: card.dayOfWeek, userId });
+    const resposta = r.ok
+      ? `Pedi o vídeo de novo para a Diana: ${r.segundos}s na qualidade ${r.qualidade === "cheio" ? "Cheia" : "Rápida"}, ${r.custo} créditos de vídeo. ` +
+        (r.geracoes > 1
+          ? `São ${r.geracoes} trechos encadeados, cada um leva de 1 a 5 minutos. `
+          : "Leva de 1 a 5 minutos. ") +
+        "O card do dia mostra o andamento, e o vídeo entra nos posts sozinho quando ficar pronto. Se o gerador do Google falhar, eu tento de novo em 1, 2, 3 e 5 minutos e aviso aqui."
+      : r.motivo;
+    const historico = [
+      ...(Array.isArray(card.chatHistory) ? (card.chatHistory as { role: string; content: string; timestamp: string }[]) : []),
+      { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+      { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+    ];
+    await prisma.campaignCard.update({ where: { id }, data: { chatHistory: historico } });
+    return NextResponse.json({ updatedContent: card.content, chatHistory: historico, videoRefeito: r.ok });
+  }
+
+  const PEDIDO_DE_MIDIA =
+    /\b(imagem|foto|arte|gr[aá]fic|chart|infogr[aá]fic|capa|ilustra|visual|design|est[ií]lo|cor(es)?|layout|thumb)/i;
+  const cardDeOrigem = card;
+  let encaminhadoDe: string | null = null;
+
+  if (
+    PEDIDO_DE_MIDIA.test(message) &&
+    card.cardType !== "media" &&
+    card.cardType !== "video_clip" &&
+    !card.mediaUrl &&
+    card.runId &&
+    card.dayOfWeek
+  ) {
+    const daDiana = await prisma.campaignCard.findFirst({
+      where: {
+        runId: card.runId,
+        dayOfWeek: card.dayOfWeek,
+        cardType: "media",
+        NOT: { status: "archived" },
+      },
+      include: DADOS_DO_CARD,
+      orderBy: { createdAt: "desc" },
+    });
+    if (daDiana) {
+      encaminhadoDe = card.agentName;
+      card = daDiana;
+    }
+  }
+
+  // Daqui em diante existe trabalho de verdade: o card de onde veio o pedido e
+  // o de quem vai fazê-lo entram em revisão, com o avatar de quem pediu.
+  const quemPediu = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, image: true } });
+  emRevisao.push(cardDeOrigem.id, card.id);
+  await marcarEmRevisao({
+    cardIds: emRevisao,
+    pedido: message.trim(),
+    porNome: quemPediu?.name ?? null,
+    porImagem: quemPediu?.image ?? null,
+    agenteId: card.agentId,
+    agenteNome: card.agentName,
+  });
 
   const chatHistory = Array.isArray(card.chatHistory)
     ? (card.chatHistory as { role: string; content: string; timestamp: string }[])
     : [];
 
   // Build memory context (preferences learned over time)
+  /**
+   * Os documentos do projeto, a mesma regra da esteira: só o que foi LIDO de
+   * verdade entra. Até 18/09 o chat da peça só via as preferências aprendidas
+   * e nunca o material da marca, então uma peça refeita pelo chat saía sem o
+   * contexto que a peça original teve.
+   */
+  const contextoDoProjeto = card.project.contexts
+    .filter((c) => c.status === "pronto" && c.compiled.trim().length > 0)
+    .map((c) => `## ${c.title}\n${c.compiled}`)
+    .join("\n\n");
+
   const preferences = card.project.memories
     .filter((m) => m.type === "preference")
     .map((m) => `- ${m.key}: ${JSON.stringify(m.value)}`)
@@ -99,6 +262,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let newSlideUrl: string | null = null;
     let mediaError: string | null = null;
     let updatedPrompt = "";
+    /**
+     * A ARTE REFEITA, UMA POR REDE.
+     *
+     * Este caminho tinha o mesmo defeito da esteira e um agravante: no fim dele
+     * um `updateMany` gravava a MESMA url em todos os posts do dia. Ou seja,
+     * refazer a arte de um card desfazia o formato por rede que a esteira tinha
+     * acabado de acertar.
+     */
+    let arteRefeitaPorRede: Record<string, string> | null = null;
+
+    /** As redes que este dia publica, para saber quantos formatos refazer. */
+    const redesDoDia = card.runId && card.dayOfWeek
+      ? Array.from(
+          new Set(
+            (
+              await prisma.post.findMany({
+                where: { runId: card.runId, dayOfWeek: card.dayOfWeek },
+                select: { platform: true },
+              })
+            ).map((p) => p.platform)
+          )
+        )
+      : [];
 
     // ── Infographic: regenerate using post content (+ user style hint) ───────
     if (isInfographic) {
@@ -116,17 +302,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             ? `${postThemeContent}\n\n[INSTRUÇÃO DE ESTILO DO USUÁRIO, aplique ao design mas mantenha o conteúdo do post acima: ${message}]`
             : postThemeContent;
 
-          // Derive platform from run config for correct aspect ratio
-          const runConfig = card.run?.config as { singlePlatform?: string } | null;
-          const infoPlatform =
-            (runConfig?.singlePlatform as "linkedin" | "twitter" | "both" | undefined) ?? "both";
+          const runConfig = card.run?.config as { singlePlatform?: string; mediaStyle?: string } | null;
 
-          newSlideUrl = await generateInfographic(
+          // A mesma direcao de arte da esteira (estilo alternando, cores da
+          // marca), senao o "regenerar" devolveria o infografico generico que
+          // o Bruno reprovou em 14/09. E o estilo ESCOLHIDO na campanha manda,
+          // igual na esteira (18/09).
+          const estilo = await escolherEstilo({
+            projectId: card.projectId,
+            runId: card.runId,
+            dayOfWeek: card.dayOfWeek,
+            infografico: true,
+            preferido: runConfig?.mediaStyle,
+          });
+          const conteudo = await extrairConteudoDoInfografico(
             contextualContent,
             card.project.niche ?? "business",
             apiKey,
-            infoPlatform
+            {
+              funil: (card.run?.config as { funnelStage?: "tofu" | "mofu" | "bofu" } | null)?.funnelStage,
+              marca: contextoDoProjeto,
+            }
           );
+          const arte = await produzirArtePorRede({
+            redes: redesDoDia,
+            contentType: "infographic",
+            promptBase: "",
+            textoDoPost: postThemeContent ?? undefined,
+            projectId: card.projectId,
+            runId: card.runId ?? undefined,
+            desenhar: async (_p, proporcao) => {
+              const url = await desenharInfografico(conteudo, apiKey, proporcao, {
+                estilo: estilo.prompt,
+                paleta: paletaDoProjeto(card.project.colorPalette),
+                // Montado em código desde 30/09, com a família e as cores da marca.
+                marca: await marcaDaArte(card.projectId),
+              });
+              if (!url) throw new Error("o modelo não devolveu o infográfico");
+              return url;
+            },
+          });
+          newSlideUrl = arte.principal ?? null;
+          arteRefeitaPorRede = arte.porRede;
           updatedPrompt = "infographic";
         } catch (err) {
           mediaError = err instanceof Error ? err.message : "Erro ao gerar infográfico";
@@ -163,11 +380,41 @@ No explanations, no prefixes, just the prompt text.`;
           // Geração de vídeo por IA saiu em 18/08/2026. Vídeo agora vem da
           // gravação do próprio cliente, cortada e legendada pelo fluxo de
           // vídeo. Cards antigos marcados como vídeo caem para quadro estático.
+          // A frase antiga dizia "vídeo por IA foi descontinuado", e ficou
+          // velha quando o Veo voltou em 19/09. Refazer o vídeo é o desvio
+          // lá em cima (`regerarVideoDoDia`); aqui só chega pedido sem dia.
           mediaError =
-            "Vídeo gerado por IA foi descontinuado. O vídeo agora vem da sua " +
-            "própria gravação, com cortes automáticos.";
+            "Para refazer o vídeo, peça no chat de um card do dia, por exemplo: gere o vídeo de novo.";
         } else {
-          newSlideUrl = await generateImage(updatedPrompt, isCarousel ? "1:1" : "linkedin-landscape");
+          /**
+           * TEXTO EM ARTE É CÓDIGO também no refazer pelo chat (30/09). A
+           * frase é a que a peça já tinha (a da imagem do dia ou a da lâmina);
+           * sem ela gravada, uma manchete nova sai do texto do post. O modelo
+           * desenha só a cena pedida, sem letra e sem gente.
+           */
+          const meta = (card.metadata as { frase?: string; slides?: string[] } | null) ?? {};
+          const marca = await marcaDaArte(card.projectId);
+          const frase =
+            (targetSlide !== null ? meta.slides?.[targetSlide] : meta.frase) ??
+            (await mancheteDaPeca({
+              textoDoPost: postThemeContent ?? updatedPrompt,
+              estiloVisual: updatedPrompt,
+              nicho: card.project.niche,
+              projectId: card.projectId,
+              runId: card.runId ?? undefined,
+            })).manchete;
+          const arte = await produzirArtePorRede({
+            redes: redesDoDia,
+            contentType: isCarousel ? "carousel" : "image",
+            promptBase: promptDaArteSemTexto({ visual: updatedPrompt, marca }),
+            textoEsperado: [frase],
+            textoDoPost: postThemeContent ?? undefined,
+            projectId: card.projectId,
+            runId: card.runId ?? undefined,
+            desenhar: desenharComFraseEmCodigo(frase, marca, (prompt, proporcao) => generateImage(prompt, proporcao, "hd")),
+          });
+          newSlideUrl = arte.principal ?? null;
+          arteRefeitaPorRede = arte.porRede;
         }
       } catch (err) {
         mediaError = err instanceof Error ? err.message : "Erro desconhecido na geração de mídia";
@@ -220,12 +467,60 @@ No explanations, no prefixes, just the prompt text.`;
           data: { imageUrl: finalMediaUrl, imagePrompt: updatedPrompt },
         }).catch(() => {});
       } else if (card.runId && card.dayOfWeek) {
-        // No direct postId on Diana's card — update all posts of this run+day
-        await prisma.post.updateMany({
-          where: { runId: card.runId, dayOfWeek: card.dayOfWeek },
-          data: { imageUrl: finalMediaUrl, imagePrompt: updatedPrompt },
-        }).catch(() => {});
+        // No direct postId on Diana's card — update all posts of this run+day.
+        //
+        // UMA CHAMADA POR REDE quando a arte foi refeita em vários formatos:
+        // um `updateMany` só, com a mesma url, é exatamente o que fazia toda
+        // rede receber a mesma imagem (card 509).
+        if (arteRefeitaPorRede) {
+          for (const [platform, url] of Object.entries(arteRefeitaPorRede)) {
+            await prisma.post.updateMany({
+              where: { runId: card.runId, dayOfWeek: card.dayOfWeek, platform },
+              data: { imageUrl: url, imagePrompt: updatedPrompt },
+            }).catch(() => {});
+          }
+          // Rede que não estava no mapa (caso raro: post criado depois) fica
+          // com a arte principal, que é melhor que ficar com a antiga.
+          await prisma.post.updateMany({
+            where: {
+              runId: card.runId,
+              dayOfWeek: card.dayOfWeek,
+              platform: { notIn: Object.keys(arteRefeitaPorRede) },
+            },
+            data: { imageUrl: finalMediaUrl, imagePrompt: updatedPrompt },
+          }).catch(() => {});
+        } else {
+          await prisma.post.updateMany({
+            where: { runId: card.runId, dayOfWeek: card.dayOfWeek },
+            data: { imageUrl: finalMediaUrl, imagePrompt: updatedPrompt },
+          }).catch(() => {});
+        }
       }
+    }
+
+    // O card de onde o pedido saiu fica sabendo para onde ele foi. Sem esta
+    // linha, a pessoa pede no card do Paulo, a arte muda no card da Diana, e
+    // a tela onde ela pediu não conta nada.
+    if (encaminhadoDe) {
+      const naOrigem = Array.isArray(cardDeOrigem.chatHistory)
+        ? (cardDeOrigem.chatHistory as { role: string; content: string; timestamp: string }[])
+        : [];
+      await prisma.campaignCard.update({
+        where: { id: cardDeOrigem.id },
+        data: {
+          chatHistory: [
+            ...naOrigem,
+            { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+            {
+              role: "assistant" as const,
+              content: mediaError
+                ? `Imagem é com a Diana, passei o seu pedido para ela e não deu certo: ${mediaError}`
+                : "Imagem é com a Diana. Passei o seu pedido e a arte foi refeita: abra o card de Mídia deste dia para ver.",
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        },
+      }).catch(() => {});
     }
 
     return NextResponse.json({
@@ -233,90 +528,115 @@ No explanations, no prefixes, just the prompt text.`;
       updatedMediaUrl: finalMediaUrl,
       mediaError,
       chatHistory: newHistory,
+      encaminhadoPara: encaminhadoDe ? card.agentName : undefined,
     });
   }
 
-  // ── Card de VÍDEO: o agente entende o pedido e EXECUTA ────────────────────
+  // ── Card de VÍDEO: o Vitor entende o pedido e EXECUTA ────────────────────
   //
   // Pedido do Bruno em 01/09: "quero que o usuário interaja com os agentes
-  // pedindo ajustes". Aqui o Vitor decide se o pedido é de TEMPO (recomeçar
-  // depois, terminar antes: re-corte no worker), de CAPA (refeita com a
-  // instrução) ou de TEXTO (segue o caminho de edição que já existia).
-  const metaVideo = card.metadata as { videoJobId?: string; trechoIndice?: number } | null;
-  if (
-    card.cardType === "video_clip" &&
-    metaVideo?.videoJobId &&
-    typeof metaVideo.trechoIndice === "number"
-  ) {
-    // O classificador precisa saber quanto o corte DURA: "encerrar no segundo
-    // 37" é um fim absoluto, e sem a duração o modelo devolvia delta zero e o
-    // Vitor "refazia" o corte igualzinho (aconteceu no teste de 01/09).
-    let duracaoDoCorte = 0;
-    try {
-      const vj = await prisma.videoJob.findUnique({
-        where: { id: metaVideo.videoJobId },
-        select: { clips: true },
-      });
-      const clip = ((vj?.clips as Array<{ inicio: number; fim: number }> | null) ?? [])[
-        metaVideo.trechoIndice
-      ];
-      if (clip) duracaoDoCorte = Math.round(clip.fim - clip.inicio);
-    } catch {}
-    const bruto = await askClaude(
-      `Você classifica o pedido de um cliente sobre um CORTE DE VÍDEO.
-O corte atual dura ${duracaoDoCorte} segundos.
-Responda APENAS um JSON: {"acao":"tempo"|"capa"|"texto","inicioDelta":number,"fimDelta":number,"instrucao":string}
-- "tempo": mudar onde o corte começa ou termina. inicioDelta/fimDelta em SEGUNDOS (positivo adia, negativo antecipa).
-  Exemplos: "corta os 3 primeiros segundos" vira inicioDelta 3. "termina 2s antes" vira fimDelta -2.
-  "encerrar/terminar no segundo X" é ABSOLUTO: fimDelta = X - ${duracaoDoCorte}. "começar no segundo X": inicioDelta = X.
-  Sem número explícito, use 2. Se o pedido misturar outra coisa (legenda, capa), ainda assim trate o tempo e ignore o resto.
-- "capa": mudar a imagem de capa. Ponha o pedido resumido em "instrucao".
-- "texto": qualquer outra coisa (legenda do post, título, tom).`,
-      message,
-      { maxTokens: 4000, effort: "low", usage: { operation: "video_ajuste", projectId: card.projectId } }
-    );
-    let plano: { acao?: string; inicioDelta?: number; fimDelta?: number; instrucao?: string } = {};
-    try {
-      plano = JSON.parse(bruto.replace(/^[^{]*/, "").replace(/[^}]*$/, ""));
-    } catch {
-      plano = {};
-    }
-
-    if (plano.acao === "tempo" || plano.acao === "capa") {
-      let resposta: string;
-      try {
-        if (plano.acao === "tempo") {
-          const novo = await refazerCorte(metaVideo.videoJobId, userId, metaVideo.trechoIndice, {
-            inicioDelta: plano.inicioDelta ?? 0,
-            fimDelta: plano.fimDelta ?? 0,
-          });
-          resposta =
-            `Feito: estou refazendo o corte começando em ${Math.floor(novo.inicio / 60)}:${String(Math.floor(novo.inicio % 60)).padStart(2, "0")} ` +
-            `e terminando em ${Math.floor(novo.fim / 60)}:${String(Math.floor(novo.fim % 60)).padStart(2, "0")} da gravação ` +
-            `(${Math.round(novo.fim - novo.inicio)}s de corte). Fica pronto em uns 2 minutos, e o card avisa quando terminar.`;
-          if (/legend|caption/i.test(message) || /legenda/i.test(message)) {
-            resposta +=
-              " Sobre a legenda: o tamanho agora é uniforme por corte; este refeito já sai assim.";
-          }
-        } else {
-          await refazerCapa(metaVideo.videoJobId, userId, metaVideo.trechoIndice, plano.instrucao ?? message);
-          resposta = "Capa refeita com o seu ajuste. Recarregue o card para ver como ficou.";
-        }
-      } catch (e) {
-        resposta = e instanceof Error ? e.message : "Não consegui fazer esse ajuste agora.";
-      }
+  // pedindo ajustes"; e em 30/09: o cliente ajusta o vídeo PELO CHAT DO CARD,
+  // "porque é essa a forma que o usuário vai fazer". Corte e completo: início
+  // e fim por palavra ou segundo, trecho do meio, cenas e efeitos, capa. Quem
+  // entende e faz é lib/media/ajuste-pelo-chat.ts; pedido sobre o TEXTO do
+  // post segue o caminho de edição logo abaixo.
+  const metaVideo = card.metadata as { videoJobId?: string } | null;
+  if (card.cardType === "video_clip" && metaVideo?.videoJobId) {
+    const r = await ajustarVideoPeloChat({ card, userId, mensagem: message });
+    if (r.tratado) {
       const historicoNovo = [
         ...chatHistory,
         { role: "user" as const, content: message, timestamp: new Date().toISOString() },
-        { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+        { role: "assistant" as const, content: r.resposta, timestamp: new Date().toISOString() },
       ];
-      await prisma.campaignCard.update({
+      const salvo = await prisma.campaignCard.update({
         where: { id },
         data: { chatHistory: historicoNovo },
+        select: { metadata: true },
       });
-      return NextResponse.json({ updatedContent: card.content, chatHistory: historicoNovo });
+      // O metadata volta junto: o card passa a mostrar "o squad está fazendo"
+      // (ou o pedido esperando o sim) sem esperar a próxima leitura do quadro.
+      // Sem a marca de revisão deste pedido, que o `finally` tira em seguida.
+      const { revisao: _revisao, ...metadataNovo } = (salvo.metadata as Record<string, unknown> | null) ?? {};
+      return NextResponse.json({
+        updatedContent: card.content,
+        chatHistory: historicoNovo,
+        updatedMetadata: metadataNovo,
+        refazendoCorte: r.refazendoCorte ?? false,
+        aviso: r.aviso,
+      });
     }
-    // "texto" cai no caminho de edição logo abaixo.
+  }
+
+  /**
+   * PEDIDO DE IMAGEM NUM CARD QUE NÃO TEM IMAGEM, e sem ninguém para quem
+   * encaminhar (o dia não tem peça de mídia).
+   *
+   * Aqui a resposta é "não dá", e o conteúdo do card NÃO é tocado. O caminho
+   * de edição de texto abaixo reescreveria o card para dizer que a imagem
+   * mudou, que é exatamente o defeito de 18/09.
+   */
+  if (PEDIDO_DE_MIDIA.test(message) && !card.mediaUrl && card.cardType !== "media") {
+    const resposta =
+      "Este card não tem imagem, e não achei peça de mídia neste dia para ajustar. " +
+      "Se a campanha do dia é só texto, o jeito de mudar a arte é gerar uma peça com imagem. " +
+      "Se você queria ajustar o TEXTO, me diga o que mudar nele.";
+    const historico = [
+      ...chatHistory,
+      { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+      { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+    ];
+    await prisma.campaignCard.update({ where: { id: card.id }, data: { chatHistory: historico } });
+    return NextResponse.json({ updatedContent: card.content, chatHistory: historico });
+  }
+
+  /**
+   * O CARD DO PAULO NÃO TEM TEXTO PARA EDITAR: ele lista os posts do dia.
+   *
+   * Uma instrução de texto pedida ali vale para TODOS os posts do dia, cada
+   * um reescrito na sua rede, e o card do Paulo registra o que foi feito. Até
+   * 21/09 o caminho abaixo editava a frase "2 post(s) prontos para
+   * publicação" e devolvia isso como se fosse o ajuste.
+   */
+  if (card.cardType === "publish" && card.runId && card.dayOfWeek) {
+    const postsDoDia = await prisma.post.findMany({
+      where: { runId: card.runId, dayOfWeek: card.dayOfWeek, status: { notIn: ["published", "publishing"] } },
+      select: { id: true, platform: true, content: true },
+    });
+    const porTexto = new Map<string, string>();
+    let alterados = 0;
+    for (const p of postsDoDia) {
+      const chave = `${p.platform}\n${p.content}`;
+      let novo = porTexto.get(chave);
+      if (!novo) {
+        const bruto = await askClaude(
+          `Você edita um post de ${p.platform} do projeto "${card.project.name}". Tom: ${card.project.voice ?? "profissional"}.
+Devolva APENAS o texto final, sem comentários, sem prefixos, sem markdown. Mantenha o tamanho e as regras da rede.
+REGRA DE OURO: nunca invente dados, estatísticas ou referências.${preferences ? `\nPreferências do usuário:\n${preferences}` : ""}`,
+          `Texto atual:\n\n${p.content}\n\nInstrução: ${message}`,
+          { maxTokens: 6000, usage: { operation: "ajuste_do_dia", projectId: card.projectId, runId: card.runId } }
+        );
+        const peca = pecaPublicavel(bruto);
+        novo = "recusado" in peca ? p.content : peca.texto;
+        porTexto.set(chave, novo);
+      }
+      if (novo !== p.content) {
+        await prisma.post.update({ where: { id: p.id }, data: { content: novo } });
+        const plataformaDoCard = p.platform === "twitter" ? "post_twitter" : "post_linkedin";
+        await prisma.campaignCard.updateMany({ where: { runId: card.runId, dayOfWeek: card.dayOfWeek, cardType: plataformaDoCard, content: p.content }, data: { content: novo } }).catch(() => {});
+        alterados++;
+      }
+    }
+    const resposta = alterados
+      ? `Apliquei nos ${alterados} post(s) deste dia (${[...new Set(postsDoDia.map((p) => p.platform))].join(", ")}). Abra cada rede na prévia para conferir.`
+      : "Nenhum post deste dia mudou com essa instrução. Tente uma instrução mais direta, ou peça no card do redator.";
+    const historico = [
+      ...chatHistory,
+      { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+      { role: "assistant" as const, content: resposta, timestamp: new Date().toISOString() },
+    ];
+    await prisma.campaignCard.update({ where: { id }, data: { chatHistory: historico } });
+    return NextResponse.json({ updatedContent: card.content, chatHistory: historico, alterados });
   }
 
   // ── Text/post card: edit content ──────────────────────────────────────────
@@ -335,7 +655,27 @@ Responda em português com acentuação correta.
 REGRA DE OURO: Nunca invente dados, estatísticas ou referências. Use apenas fatos reais com fonte.`;
 
   const userPrompt = `Texto atual:\n\n${card.content ?? ""}\n\nInstrução: ${message}${historyContext}`;
-  const updatedContent = await askClaude(system, userPrompt, { maxTokens: 6000 });
+  const bruto = await askClaude(system, userPrompt, { maxTokens: 6000 });
+
+  /**
+   * A mesma guarda da esteira, aqui também.
+   *
+   * Este caminho grava direto no card e no post. Se o modelo devolver um
+   * parecer, um checklist ou o próprio pedido de volta (foi o que aconteceu
+   * em 18/09, por outro caminho), isso viraria a peça publicada.
+   */
+  const peca = pecaPublicavel(bruto);
+  if ("recusado" in peca) {
+    const recusa = `Não apliquei esse ajuste: a resposta veio como bastidor (${peca.recusado}) e eu não gravo isso na peça. Tente pedir de novo, com uma instrução mais direta.`;
+    const historico = [
+      ...chatHistory,
+      { role: "user" as const, content: message, timestamp: new Date().toISOString() },
+      { role: "assistant" as const, content: recusa, timestamp: new Date().toISOString() },
+    ];
+    await prisma.campaignCard.update({ where: { id: card.id }, data: { chatHistory: historico } });
+    return NextResponse.json({ updatedContent: card.content, chatHistory: historico });
+  }
+  const updatedContent = peca.texto;
 
   const newHistory = [
     ...chatHistory,

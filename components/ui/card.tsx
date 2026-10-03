@@ -7,11 +7,14 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("rounded-lg border", className)}
+    // Canto maior e sombra curta tingida de marinho (01/10): é o card branco
+    // de borda fina da referência do rebranding.
+    className={cn("rounded-2xl border", className)}
     style={{
       borderColor: "var(--border)",
       background: "var(--bg-card)",
       color: "var(--text-primary)",
+      boxShadow: "var(--shadow)",
     }}
     {...props}
   />

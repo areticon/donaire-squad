@@ -12,6 +12,9 @@ import { assinarVideo } from "@/lib/media/callback-token";
 import { buildKeyterms, MAX_KEYTERMS } from "@/lib/media/keyterms";
 import { parseTermos } from "@/lib/media/termos";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
+import { head } from "@vercel/blob";
+import { LIMITE_DA_TRANSCRICAO_DIRETA } from "@/lib/media/limits";
+import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 
 export async function POST(
   req: NextRequest,
@@ -32,6 +35,8 @@ export async function POST(
     select: {
       id: true,
       blobUrl: true,
+      audioUrl: true,
+      sizeBytes: true,
       status: true,
       attempts: true,
       projectId: true,
@@ -42,7 +47,7 @@ export async function POST(
           // O contexto de marca é onde vivem os nomes próprios do cliente, que
           // são o que o keyterm consegue proteger.
           contexts: {
-            where: { type: "brand" },
+            where: { type: "brand", status: "pronto" },
             select: { compiled: true },
             take: 1,
           },
@@ -56,7 +61,9 @@ export async function POST(
   // que custa dinheiro de verdade por repetição, então a guarda importa mais
   // aqui que nas outras.
   if (video.status !== "uploaded" && video.status !== "failed") {
-    return NextResponse.json({ error: `Vídeo já está em "${video.status}"` }, { status: 409 });
+    // `jaEmAndamento` (02/10): quem chamou chegou depois de a etapa começar.
+    // Não é erro para mostrar; a tela só consulta o estado.
+    return NextResponse.json({ error: `Vídeo já está em "${video.status}"`, jaEmAndamento: true }, { status: 409 });
   }
 
   if (video.attempts >= MAX_TENTATIVAS) {
@@ -78,13 +85,57 @@ export async function POST(
     },
   });
   if (tomado.count === 0) {
+    // A CORRIDA QUE VIRAVA "OUTRA ABA" (02/10). Quem ganha aqui quase nunca é
+    // outra aba: é o próprio servidor, que começa a transcrição no aviso de
+    // upload concluído (upload/route.ts, despacharPasso "transcrever") no mesmo
+    // segundo em que a faixa do Gestor pedia a mesma coisa. A frase culpava uma
+    // aba que não existia. Agora diz o que é, e vai marcada para a tela não
+    // mostrar como erro.
     return NextResponse.json(
-      { error: "Outra aba já começou a transcrever este vídeo." },
+      { error: "A transcrição deste vídeo já começou.", jaEmAndamento: true },
       { status: 409 }
     );
   }
 
   try {
+    /**
+     * GRAVAÇÃO ACIMA DE 1,9 GB: primeiro o áudio (29/09).
+     *
+     * A Deepgram recusa arquivo acima de 2 GB, e desde os tetos de 1, 2 e 5
+     * horas o arquivo chega a 20 GB. O worker baixa, extrai só o áudio (cerca
+     * de 29 MB por hora) e avisa em `audio-callback`, que devolve o vídeo para
+     * "uploaded" com `audioUrl` preenchido e chama esta rota de novo. Na segunda
+     * passada o `audioUrl` existe e a transcrição segue o caminho de sempre.
+     */
+    const fonteDaFala = video.audioUrl ?? video.blobUrl;
+    if (!video.audioUrl) {
+      const bytes =
+        video.sizeBytes != null
+          ? Number(video.sizeBytes)
+          : await head(video.blobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }).then((h) => h.size).catch(() => 0);
+      if (bytes > LIMITE_DA_TRANSCRICAO_DIRETA) {
+        const base = process.env.VIDEO_WORKER_URL;
+        if (!base) throw new Error("Gravação acima de 1,9 GB e o worker de vídeo não está configurado.");
+        const corpo = JSON.stringify({
+          videoJobId: id,
+          sourceUrl: video.blobUrl,
+          callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com"}/api/videos/${id}/audio-callback`,
+        });
+        const r = await fetch(`${base.replace(/\/$/, "")}/audio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", [CABECALHO_ASSINATURA]: assinarCorpo(corpo) },
+          body: corpo,
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (r.status !== 202) throw new Error(`O worker recusou a extração do áudio (${r.status}).`);
+        return NextResponse.json({
+          ok: true,
+          modo: "audio",
+          mensagem: "Gravação grande: separando o áudio antes de transcrever. O status muda sozinho.",
+        });
+      }
+    }
+
     // Os termos que o CLIENTE cadastrou vêm primeiro: são o que ele sabe que
     // a transcrição erra. O que sobrar do orçamento de cinco vai para os nomes
     // deduzidos do contexto de marca.
@@ -110,7 +161,7 @@ export async function POST(
     // para lugar nenhum.
     if (suportaCallback()) {
       const callback = `${process.env.NEXT_PUBLIC_APP_URL}/api/videos/${id}/transcribe-callback?sig=${assinarVideo(id)}`;
-      const { requestId } = await transcribeBlobAsync(video.blobUrl, callback, { keyterms });
+      const { requestId } = await transcribeBlobAsync(fonteDaFala, callback, { keyterms });
       return NextResponse.json({
         ok: true,
         modo: "assincrono",
@@ -119,7 +170,7 @@ export async function POST(
       });
     }
 
-    const result = await transcribeBlob(video.blobUrl, {
+    const result = await transcribeBlob(fonteDaFala, {
       keyterms,
       usage: { projectId: video.projectId, operation: "video_transcricao" },
     });

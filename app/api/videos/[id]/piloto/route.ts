@@ -13,6 +13,7 @@ import {
 } from "@/lib/media/piloto-do-servidor";
 import { abrirQuadroDoVideo } from "@/lib/media/quadro-do-video";
 import { completarEsteiraDoVideo } from "@/lib/media/esteira-do-video";
+import { revisarCortesDoVideo, espelharRevisaoNosCards } from "@/lib/media/revisao-do-corte";
 
 /**
  * A rota que EXECUTA um passo do piloto do servidor (ver
@@ -38,6 +39,12 @@ const PASSOS: Record<PassoDoPiloto, (videoId: string) => Promise<void>> = {
     await chamarRota(videoId, "select");
   },
 
+  // O roteiro para o cliente aprovar (30/09): a rota trabalha até o teto e,
+  // no vídeo longo, re-despacha a si mesma para continuar.
+  async roteiro(videoId) {
+    await chamarRota(videoId, "roteiro");
+  },
+
   // Manda o worker cortar. A rota responde assim que o worker aceita o pedido;
   // o resto chega pelo `cortar-callback`, que despacha o `preparar`.
   async cortar(videoId) {
@@ -60,10 +67,31 @@ const PASSOS: Record<PassoDoPiloto, (videoId: string) => Promise<void>> = {
     await chamarRota(videoId, "capas");
     await chamarRota(videoId, "write");
     await chamarRota(videoId, "agendar");
+    // A revisão da Vera corre em paralelo com este passo e pode ter terminado
+    // antes de o `agendar` criar os cards do Vitor: o estado de cada corte
+    // ("Vitor refazendo", "precisa de você") é copiado agora que os cards existem.
+    await espelharRevisaoNosCards(videoId);
+  },
+
+  // O completo interrompido por reinício do worker (01/10): a rota só
+  // despacha (o worker trabalha) e não cobra nada.
+  async "refazer-completo"(videoId) {
+    await chamarRota(videoId, "refazer-completo", { timeoutMs: 290_000 });
   },
 
   async "capas-do-completo"(videoId) {
     await chamarRota(videoId, "capas-do-completo");
+  },
+
+  // A Vera assiste cada corte; o que ela reprova volta ao Vitor, que escolhe
+  // novo início e fim e pede ao worker o recorte daquele trecho. Despachado
+  // pelo callback do worker, no corte original e a cada refação.
+  async "revisar-cortes"(videoId) {
+    const r = await revisarCortesDoVideo(videoId);
+    console.log(
+      `[piloto][${videoId}] revisar-cortes: revisados=${r.revisados} aprovados=${r.aprovados} ` +
+        `refazendo=${r.refazendo} paraOCliente=${r.paraOCliente}`
+    );
   },
 };
 

@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { ProjectNav } from "@/components/ui/project-nav";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 export default async function ProjectLayout({
   children,
@@ -20,7 +21,7 @@ export default async function ProjectLayout({
     select: { id: true, name: true, status: true, userId: true },
   });
 
-  if (!project || project.userId !== userId) notFound();
+  if (!project || !(await podeUsarProjeto(userId, project))) notFound();
 
   return (
     <div className="min-h-screen">
@@ -53,7 +54,7 @@ export default async function ProjectLayout({
               </span>
             </div>
           </div>
-          <ProjectNav projectId={id} isActive={project.status === "active"} />
+          <ProjectNav projectId={id} isActive={project.status === "active"} souMembro={project.userId !== userId} />
         </div>
       </div>
 

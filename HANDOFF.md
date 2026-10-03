@@ -9,6 +9,266 @@
 
 ---
 
+## 0. ESTADO ATUAL (22/09/2026), leia isto primeiro
+
+As secoes 1 a 6 abaixo sao de agosto e envelheceram; os registros de sessao
+(partes 1 a 166) sao o historico. O que vale HOJE, e o que deixou de valer:
+
+- **A CONTA DO GOOGLE ESTA BLOQUEADA POR COBRANCA (22/09, tarde), e derruba a
+  PESQUISA tambem.** Toda chamada ao projeto 867802944 volta 403 "Lightning
+  dunning decision is deny": `gemini-2.5-flash`, `veo-3.1-fast` e
+  `veo-3.1-lite`, os tres. Nao e cota e nao e so video: sem o Gemini, a
+  pesquisa do Roberto nao roda e a campanha nao nasce. Anthropic e OpenAI
+  respondem. E pendencia de faturamento do Bruno, ligada a migracao forcada
+  para prepay. Nada e cobrado nas tentativas: o 403 vem antes de gerar.
+- **O AVISO DE SALDO ZERADO NAO COBRE O GOOGLE**, e por isso este bloqueio foi
+  descoberto tentando gerar um video em vez de chegar por e-mail.
+- **O PAINEL `/admin` VIROU GESTAO** (parte 166): funil de seis passos contando
+  PESSOAS, origem com visitantes e cadastros e assinaturas, contatos das duas
+  portas (formulario e demo) numa lista so, e as assinaturas do Stripe. Churn
+  nao vira taxa de proposito enquanto a base for pequena.
+- **O ROBO NO CADASTRO E CONTADO** (`pareceRobo`): Gmail com tres pontos ou
+  mais, sem e-mail confirmado e sem projeto. Nao apaga e nao bloqueia, so
+  separa o numero. Hoje: 39 contas, 2 ativas, 15 com cara de robo.
+- **TAXA DE FUNIL ACIMA DE 100% NAO E ERRO DE CONTA**: os passos nao sao uma
+  fila, e quem se cadastra sem passar por demo ou contato aparece assim. A
+  tela diz "entraram sem passar pelo anterior".
+
+- **O APP REVIEW DA META VOLTOU REPROVADO (22/09)**, e a causa e o SCREENCAST,
+  nao o produto. Aprovada so `public_profile`; reprovadas as cinco de Facebook
+  e Instagram, todas com "screencast nao alinhado com o caso de uso". A Meta
+  escreve que o caso de uso E permitido. Falta gravar de novo: login da Meta
+  inteiro, tela de consentimento, e o caso de uso completo de cada permissao,
+  com interface em ingles e legendas. Sem elas, cliente de fora nao conecta
+  Instagram nem Facebook; LinkedIn e X nao dependem disso.
+- **O TESTE TEM TETO PROPRIO** (parte 165): 1 campanha, ate 7 dias, 1 video de
+  ate 30 s. `lib/teste-gratis.ts` (puro) e `trialEndsAt` no `User`, escrito
+  pelo webhook no `trialing` e apagado no `active`. A guarda roda em
+  `agendarCampanha` antes de qualquer custo; o video longo e ENCURTADO em vez
+  de derrubar a campanha. A janela apaga o botao de 60 s durante o teste.
+- **TODA TELA DE DENTRO TEM A FAIXA DO PLANO** (parte 165): nome do plano,
+  dias de teste restantes, saldo e o botao certo para o lugar (escolher plano,
+  assinar, fazer upgrade ou comprar credito). Componente de SERVIDOR montado
+  no layout de `(app)`. Acesso interno nao recebe convite de venda.
+- **O E-MAIL DE CONFIRMACAO VIROU BOAS-VINDAS COM VALIDACAO** (parte 165),
+  com logo, a regra do teste no corpo e a vaga de fundador contada no Stripe
+  na hora do envio. A casca reusavel esta em `lib/email/layout.ts`. A
+  verificacao de e-mail ja estava LIGADA em producao desde 23/08: e ela que
+  impede os cadastros de robo de entrarem.
+- **O CARTAO E EXIGIDO NO TESTE, e agora esta escrito**:
+  `payment_method_collection: "always"`. Era o padrao do Stripe, ou seja uma
+  regra de dinheiro dependendo de padrao de terceiro.
+
+- **EXISTE PAINEL DE ADMIN EM `/admin`** (parte 164, 22/09). Componente de
+  servidor, protegido por `role === "admin"` lido do banco, 404 para quem nao
+  e. Mostra conta, plano, creditos, uso, custo real de IA e **margem por
+  cliente**, que e a conta que nenhuma outra tela faz. Ativo quer dizer gerou
+  campanha em 30 dias, e nao entrou na conta.
+- **O VIDEO TEM TETO POR PLANO** (parte 164): Essencial 2 geracoes por dia
+  (ate 15 s), Autoridade 4 (ate 30 s), Estudio 9 (ate 60 s), em
+  `lib/planos.ts`. O teto do dia e o MENOR entre o que sobra na plataforma e o
+  que o plano permite, e a guarda roda em `rodarVideoDaIa` ANTES do debito: a
+  fila pausa como pausa por cota e retoma quando o dia vira.
+- **O ARMAZENAMENTO TEM TETO**: 12, 24 e 96 GB por plano, somados de
+  `VideoJob.sizeBytes` (medido: gravacao bruta e 0,8 a 1,8 GB e tudo o mais
+  junto nao passa de 8 MB). A guarda entra na emissao do token de upload e
+  **nunca apaga nada**.
+- **PECA REPROVADA NAO COBRA PARA SER REFEITA** (card 525, decidido em 22/09):
+  reprovacao da revisora ou do cliente da cortesia, "nao gostei" cobra, e o
+  teto e 3 cortesias por projeto por dia. Em `lib/credits/cortesia.ts`.
+- **COTA PRESA HA MAIS DE UMA HORA AVISA OS ADMINS** (card 558), um e-mail por
+  pausa, junto da retomada da fila.
+- **O CADASTRO ESTA RECEBENDO ROBO** (achado pelo painel, 22/09): 38 contas,
+  19 nas ultimas 24 h, nenhuma com projeto, 15 com padrao de bot. Nao vaza
+  dinheiro, mas polui a metrica de conversao e pede barreira antes do
+  lancamento publico.
+
+- **O TEXTO DO LINKEDIN PRECISA DE ESCAPE, e a falta dele comia o post**
+  (parte 163, 22/09). O campo `commentary` da Posts API e "little text", nao
+  texto puro: os reservados (barra invertida, pipe, chaves, arroba, colchetes,
+  PARENTESES, menor e maior, asterisco, sublinhado e til) precisam de barra
+  invertida, e sem ela o LinkedIn publica com HTTP 201 e **descarta o texto
+  daquele caractere em diante, em silencio**. Dez dos dezoito posts publicados
+  tinham reservado; tres perderam 55%, 85% e 93%. O parentese chegava sempre
+  pela CITACAO DA FONTE, que e o que a Vera exige em frase com numero.
+  `escaparLittleText` em `lib/oauth/linkedin.ts`, so no caminho da Posts API
+  (o legado ugcPosts e texto puro). O "#" fica sem escape de proposito, para a
+  hashtag continuar clicavel.
+- **PREVIA QUE LE A NOSSA COPIA NAO PROVA PUBLICACAO** (parte 163). O card do
+  calendario, a ficha e a Vera olham o nosso banco, onde o texto sempre esteve
+  inteiro. O corte so existia na rede, e a API do LinkedIn nao deixa ler o
+  post de volta (403, os escopos sao de escrita). O que a rede fez com o texto
+  so se descobre olhando a rede.
+
+- **O ROTEIRO DO VIDEO TEM DOUTRINA E TRES GUARDAS DE CODIGO** (parte 162,
+  22/09). `lib/media/roteiro-do-video.ts` e o caminho UNICO de todo video,
+  do clipe de 8 s a cadeia de 60 s: o prompt do clipe em texto corrido saiu.
+  O JSON ganhou a TESE antes das cenas; o gancho tem definicao (a tensao que
+  a pessoa vive, nao o resumo); cada cena so se liga a anterior por MAS ou
+  POR ISSO; e a regra de nao acrescentar fato, que existia so para os
+  redatores, esta escrita ali. **A Vera NAO revisa roteiro**, de proposito: o
+  que e medivel virou codigo. As tres guardas: numero que a narracao afirma e
+  o post nao tem (`fatosInventados`, com `lib/media/numeros-falados.ts`
+  lendo "mil e quinhentos" como 1500), narracao que nao cabe no tempo
+  (`narracoesLongas`, corte por frase inteira) e cena sem fala num video que
+  pediu voz (roteiro invalido). A segunda chance diz qual dos tres falhou.
+- **A REGUA DE FALA E 2,4 PALAVRAS POR SEGUNDO, medida** (parte 162). Era 2,0
+  e nunca tinha sido conferida contra um mp4 pronto. O video do dia 21,
+  transcrito com marcacao por palavra: o narrador articula a 2,56 p/s (ritmo
+  natural), mas 6,89 s do clipe eram pausas, quase todas na emenda entre uma
+  geracao e a outra. 8 s dao 19 palavras, 7 s dao 17.
+- **NAO DESCREVER OBJETO FEITO DE TEXTO** no visual (calendario com os dias
+  escritos, planilha, fatura, placa, tela de app): medido em 22/09, o Veo
+  escreve as palavras erradas e em ingles ("WEELKKY"), e texto errado na tela
+  reprova a peca. Forma, cor, quantidade e gesto dizem o mesmo.
+- **TODA GERACAO PAGA NA NOSSA CHAVE CONTA NA COTA** (parte 162). `veo.ts`
+  gravava o custo so quando havia contexto, entao geracao feita fora da
+  esteira (uma prova, um diagnostico) nao entrava no `ai_usage` e o aviso de
+  cota da janela dizia "cabe" para um video que nao cabe. Agora grava sempre.
+
+- **A COTA DE VIDEO DO GOOGLE E O TETO DO PRODUTO.** Medido no console em
+  21/09 (projeto `demandoupostou`), por modelo de video: **Tier 1 tem 2 RPM e
+  10 RPD; o Tier 2 tem 4 RPM e 50 RPD**. Como 8 s e uma geracao e 60 s sao
+  nove, o Tier 1 entrega 10 clipes curtos OU UM video de 60 s por dia, e o
+  Tier 2 entrega 50 curtos ou cinco de 60 s. No dia da medicao o `veo-3.1-fast`
+  estava em 9/10 no dia e 4/2 no pico de minuto. Nao e a conta: `lite` e `cheio` respondem na mesma chave. O teto de
+  10 e da PLATAFORMA INTEIRA, nao de um cliente, entao dois clientes pedindo
+  60 s no mesmo dia nao cabem. O RPD reseta a meia-noite do Pacifico.
+  Existe tambem o `veo-3.1-lite`, a US$ 0,05/s (metade do fast), que o codigo
+  nao conhece. A peca ja DIZ que esta esperando (parte 158).
+- **A conta do Gemini esta sendo forcada a PREPAY** (aviso no billing, e foi o
+  403 dunning da tarde). Trocar nao muda a cota, e o proprio dialogo do Google
+  avisa isso; e irreversivel. Com prepay, credito zerado para na hora: o aviso
+  de saldo zerado, que hoje cobre Anthropic e OpenAI, precisa cobrir o Google.
+
+- **O CALENDARIO AGRUPA POR CAMPANHA, e nao so por dia** (parte 157). Duas
+  campanhas na mesma semana e caso normal. `lib/posts/cards-da-peca.ts`:
+  card de uma campanha nao fala por peca de outra, e a chave da peca leva o
+  run. Sem isso a peca nova nascia "rejeitada" com a capa da antiga, e os
+  rascunhos novos sumiam dentro da peca agendada da anterior.
+
+- **O NICHO DO PROJETO MANDA NA PESQUISA** (parte 156). `project.niche` alimenta
+  a busca em tempo real do Roberto, o sugeridor de temas e os prompts da arte.
+  Nicho que descreve a TECNOLOGIA faz a campanha inteira falar de tecnologia:
+  medido, 100% dos assuntos que a busca trazia eram sobre IA, contra 17% depois
+  de o nicho passar a descrever o territorio. Ao diagnosticar "a campanha fala
+  do assunto errado", olhar nesta ordem: nicho, pesquisa, documentos.
+- **O sugeridor de temas le os documentos e o estagio do funil** desde a parte
+  156, e o treinamento de funil foi reescrito (topo e dor, meio e metodo com
+  passo a passo, fundo e convite com objecao tratada).
+
+- **A CONTA DO GOOGLE ESTA RECUSANDO POR COBRANCA (21/09, noite).** O Veo
+  responde 403 "Lightning dunning decision is deny" e NENHUM video por IA sai
+  ate isso ser regularizado. Foi a causa do dia 21 do Bruno sair sem video. E
+  pendencia dele, no faturamento do Google Cloud ou do AI Studio.
+- **Erro de fornecedor NAO e assunto do cliente** (parte 155): a tela mostra
+  uma mensagem neutra e um CODIGO (`VID-402`, `VID-429`, `VID-CRD`,
+  `VID-500`), com botao de abrir chamado; o diagnostico de verdade vai por
+  e-mail para os admins, montado no servidor. Ver `lib/media/falha-do-video.ts`.
+- **Reprovar GRAVA no banco** e o dia reprovado oferece "gerar as pecas de novo
+  com o mesmo tema", com o custo no rotulo.
+
+- **O FORMATO E POR REDE desde a parte 154**: feed, reel ou story, escolhido na
+  janela da campanha, um padrao por REDE que vale a semana. A matriz esta em
+  `lib/publish/formato-de-destino.ts` e nao e simetrica (Instagram e Facebook
+  tem os tres; LinkedIn e X so tem feed). O destino vive em `metadata.formato`
+  e quem le e `executeOAuthPostPublish`. Reel e story mudam a GERACAO: basta
+  uma rede do dia pedir vertical para o video nascer 9:16. Reel e story de
+  PAGINA do Facebook estao escritos da doc, e nao medidos contra a API (App
+  Review, card 520).
+- **Refazer UMA peca existe** (`lib/pipeline/refazer-peca.ts`): escreve de novo
+  do zero com a pesquisa da campanha, refaz a arte, cobra de novo (texto 15,
+  imagem 57, carrossel de cinco 225), substitui no MESMO post e devolve a peca
+  para rascunho. O botao esta na linha da peca e embaixo da previa de cada
+  rede. "Recomecar com tema" virou "Gerar campanha nova com este tema".
+- **O calendario diz o tipo da peca** (`lib/posts/etiqueta-da-peca.ts`) e
+  mostra UM selo por rede com `×N` quando ha mais de uma conta.
+- **Reprovar alcanca o que esta MARCADO** (`lib/content/reprovacao.ts`), e o
+  dia so cai quando nao sobra peca viva. Post reprovado nao e publicavel e nao
+  se chama mais rascunho: `estadoDoPost` ganhou a chave "fora" (Reprovado ou
+  Arquivado).
+
+- **Video por IA de 8, 15, 30 ou 60 s** (parte 151, 21/09). Provedor escolhido
+  pelo Bruno: **Veo 3.1 rapido**, a chave que ja temos, audio em portugues
+  nativo. Ate 8 s e uma geracao; acima disso e uma CADEIA (8 s mais extensoes
+  de 7 s, cada passo um trabalho `video-ia-extensao` na fila, com checkpoint
+  no Blob). **O credito e por GERACAO**: 195 no rapido, 520 no cheio, entao
+  60 s custam 1.755 creditos de video e entregam 64 s. A conta vive em
+  `lib/credits/video-tabela.ts` e e a MESMA na janela e no servidor. O mp4 so
+  vai para os posts quando a cadeia termina; o que nao saiu e estornado. O
+  texto continua proibido de prometer duracao (`promessasDeMidia`, parte 149).
+  **Custo medido em 21/09**: US$ 1,20 a geracao inicial de 8 s e US$ 1,05 cada
+  extensao de 7 s, ou seja R$ 51,84 por um video de 64 s (o Veo cobra pelos
+  segundos NOVOS). Um video de 50 s pesa 14,77 MB em 720p, entao um de 64 s
+  fica perto de 19 MB e cabe nas quatro redes. **Cota do Veo nao mata a
+  cadeia**: HTTP 429 pausa so o trabalho de video, sem gastar tentativa, e a
+  retomada de dez minutos continua de onde parou (`lib/fila/cota-do-video.ts`).
+- **Arte**: GPT Image 2 em qualidade media (R$ 0,23 a geracao, desde 20/09),
+  uma geracao por proporcao e recorte por rede, manchete em portugues escrita
+  antes da imagem (`lib/media/peca-de-feed.ts`), revisor visual com tres
+  tentativas. O Gemini so entra como alternativa quando a reprovacao e de
+  escrita. A tabela da secao 2 (cascata Nano Banana) nao vale mais.
+- **Texto**: todos os agentes em `claude-opus-5`; brief da pesquisa, regras e
+  criterios da Vera no prefixo cacheado com TTL de 1 h (cache em 75%). Uma
+  campanha de 7 dias em 4 redes custa R$ 31 de IA sem video (parte 148).
+- **A Vera** reprova so o que nao pode ir ao ar; tom e estilo sao ressalva
+  (parte 150). Os redatores leem os criterios dela antes de escrever.
+- **Redes**: LinkedIn (perfil e pagina), X (texto, thread E video, desde
+  19/09), Facebook (paginas) e Instagram (imagem e reel) pelas APIs diretas;
+  YouTube pela esteira de gravacao. Blotato saiu. A secao 5 ("X somente
+  texto", "Veo desabilitado") esta superada. O que bloqueia cliente de fora e
+  o App Review da Meta (card 520).
+- **Video no LinkedIn** (parte 151): o upload e em partes de 4 MB e o
+  `finalizeUpload` exige o ETag de cada uma; sem eles o video nunca fica
+  AVAILABLE e o post e criado sem aparecer no feed. A esteira agora manda os
+  ETags, confere o finalize e ESPERA o `AVAILABLE` antes de publicar.
+- **Conta reconectada nao perde os posts** (parte 151): desconectar apaga a
+  linha da conta, entao o post e marcado com a chave real (rede e id na rede)
+  e a reconexao o devolve. Sem isto o post da PAGINA saia no PERFIL.
+- **Planos (21/09)**: Essencial R$ 397 com 5.000 creditos, Autoridade R$ 697
+  com 9.500, Estudio R$ 1.997 com 19.000 (`lib/stripe/index.ts`, chaves
+  tecnicas pro/business/studio). Anual e dez mensalidades. Um post por dia
+  em quatro redes (30 pecas) custa R$ 126 de IA e 4.992 creditos: 3,15x.
+- **Fila** (`lib/fila`): um trabalho por dia com 800 s; video logo depois do
+  dia; erro de saldo de API pausa tudo e retoma sozinho a cada 10 min, com
+  e-mail aos admins; dia sem peca e dia falhado; campanha sem peca fecha
+  como failed (parte 148, adendos 1 e 2). **Duas TRILHAS por grupo desde
+  21/09** (parte 152): `campanha` (pesquisa e dias) e `video` (geracao e
+  extensoes) rodam em paralelo, e a ordem vale dentro de cada uma. Sem isso um
+  video pausado por cota segurava a campanha inteira.
+- **Credito**: a conta da campanha vive em `lib/credits/estimativa.ts`, sem
+  banco, e a JANELA e o SERVIDOR chamam a mesma funcao (parte 152). A tabela
+  de preco saiu de `lib/stripe` para `lib/credits/tabela.ts` pelo mesmo
+  motivo. Uma campanha de 7 dias em 4 redes custa 1.092 creditos; um mes de
+  quatro delas, 4.368, contra 5.000 do Essencial. Conta admin NAO debita, e a
+  tela diz isso.
+- **Nada de bastidor vai ao ar**: a limpeza tira o changelog do redator do fim
+  do post e da thread, e o PUBLICADOR recusa o que sobrar em vez de publicar
+  (parte 152). Duas threads do X foram ao ar cortadas no meio por causa disso.
+- **Estilo proprio do cliente** (`lib/media/estilo-do-cliente.ts`): a linha
+  editorial escrita por ele fica no projeto e manda nos estilos da lista. Um
+  botao pede a primeira versao a IA, que le nicho, cores e documentos.
+- **Regras do cliente**: "nunca cite X" pelo chat de qualquer card, salvo em
+  `ProjectMemory`, obedecido na pesquisa, no prefixo, na Vera e na tesoura
+  (parte 150).
+- **Tela**: linha do tempo do parecer na ficha e na peca; capa do calendario
+  abre o visor (imagem, video, carrossel); custo real de IA no menu para
+  admin; motivo real da falha de publicacao no post, que SOME quando a
+  publicacao seguinte da certo. Desde a parte 151: o card fica "em revisao"
+  com o avatar de quem pediu enquanto o ajuste do chat roda (prazo de 12 min);
+  o post publicado pode ser LEVADO para outra rede, adaptado, como rascunho
+  (15 creditos); e o Reagendar funciona em card aprovado, ao lado de um
+  Cancelar agendamento que tira o dia inteiro da fila sem perder o horario.
+- **Provas e ferramentas**: `scripts/tmp/*.mts` com `--env-file=.env.local`;
+  renderToString antes de subir componente cliente; `sessao-e2e.mts` para
+  a tela logada no dev local; artefato de preco na versao 11.
+- **Pendencias do Bruno**: App Review da Meta; politica de credito para peca
+  errada; auto-reload na conta da Anthropic. (O provedor do video longo foi
+  escolhido em 21/09, Veo; LinkedIn e X da Areticon foram reconectados e os
+  posts do dia republicados.)
+
+---
+
 ## 1. O que é o demandou
 
 SaaS de criação e publicação de conteúdo com agentes de IA. Publica em cinco redes:
@@ -18,14 +278,17 @@ LinkedIn, Instagram, X, Facebook e YouTube.
 Tailwind · Prisma 7.6 sobre **Supabase Postgres** · **better-auth 1.6** (auth própria,
 mais Google e LinkedIn) · Stripe 21 (pagamentos) · Vercel **Pro** (hosting, Blob e cron)
 
-**Fornecedores de IA e mídia:** Anthropic (texto) · Google Gemini (pesquisa e imagem) ·
-Deepgram (transcrição) · Resend (e-mail)
+**Fornecedores de IA e mídia (21/09):** Anthropic Opus 5 (texto) · OpenAI GPT Image 2
+(arte, qualidade média) · Google Gemini (pesquisa com Search Grounding; imagem só como
+alternativa) · Google Veo 3.1 (vídeo por IA, 8 s) · Deepgram (transcrição) · Resend
+(e-mail)
 
 **Custo fixo mensal:** R$ 116 (Vercel Pro R$ 110 + domínio R$ 6). Supabase e Resend
 ainda no plano gratuito. Break-even de infraestrutura: 2 clientes Pro.
 
-**Saíram do projeto:** Clerk (virou better-auth), Neon (virou Supabase), Blotato e
-Veo (removido em 18/08, cascata de fallback dava 80% de prejuízo por operação).
+**Saíram do projeto:** Clerk (virou better-auth), Neon (virou Supabase) e Blotato.
+O Veo saiu em 18/08 (cascata de fallback com 80% de prejuízo) e **voltou em 19/09**
+sem cascata, com um preço e um registro por chamada; ver a seção 0.
 
 > ⚠️ **Dívida técnica conhecida:** `lib/pusher/index.ts` e as dependências `pusher` e
 > `pusher-js` continuam no repositório, mas **nenhum arquivo importa esse módulo**.
@@ -46,16 +309,17 @@ O pipeline (`app/api/pipeline/run/route.ts`) executa uma sequência de agentes p
 | **Roberto** | Pesquisa web em tempo real | Gemini 2.5 Flash com Google Search Grounding (50s timeout) |
 | **Lucas** | Redação LinkedIn (texto/carrossel/artigo/poll) | Claude (Anthropic SDK, timeout proporcional, maxTokens 8192; a Vera usa 16.000) |
 | **Tiago** | Redação X/Twitter (thread/poll/default) | Claude (Anthropic SDK, 90s timeout) |
-| **Diana** | Geração de imagem/infográfico | Gemini (família Nano Banana), com cascata `gemini-3-pro-image-preview` → `gemini-3.1-flash-image-preview` → `gemini-2.5-flash-image`. Chave: `GEMINI_API_KEY` |
+| **Diana** | Arte de feed, carrossel, infográfico e quadro do vídeo | GPT Image 2 em qualidade média (`lib/media/gpt-image.ts`, chave `OPENAI_API_KEY`), uma geração por proporção, manchete escrita antes; Gemini só como alternativa em reprovação de escrita. Vídeo por IA: Veo 3.1 rápido pela fila (`lib/media/video-por-ia.ts`) |
 | **Vera** | Revisão de qualidade (APROVADO/REPROVADO_TEXTO) | Claude — auto-corrige REPROVADO_TEXTO sem intervenção humana |
 | **Paulo** | Agendamento e publicação. O cron `/api/cron/pipeline` roda a cada 5 min desde 09/09 e publica o que venceu; o estado de cada post (publicado, agendado, rascunho, falhou) vem de `lib/posts/estado.ts` | Interno (getScheduledAt, cron) |
 
-**Geração de vídeo por IA saiu em 18/08/2026** (commit `6148d94`). A cascata de fallback
-do Veo tentava o modelo rápido a US$ 0,10 por segundo e caía para o padrão a US$ 0,40,
-levando um vídeo de 8 segundos de R$ 4,85 para R$ 18,05 contra R$ 10,00 de receita, ou
-seja 80% de prejuízo por operação, invisível porque o Veo nunca gravava em `ai_usage`.
-Vídeo passou a vir da gravação do próprio cliente. Sobraram menções ao Veo em comentários
-e num construtor de prompt, mas a geração está desligada.
+**Geração de vídeo por IA: saiu em 18/08 e VOLTOU em 19/09.** Em agosto a cascata de
+fallback do Veo caía do rápido (US$ 0,10/s) para o padrão (US$ 0,40/s) sem gravar nada,
+80% de prejuízo por operação. Em 19/09 voltou de outro jeito: Veo 3.1 rápido, 8 s, sem
+cascata, custo lido da chamada e gravado em `ai_usage`, débito idempotente com estorno
+na falha, rodando na fila com prazo próprio, e vendido em carteira de crédito separada
+do plano. O clipe é abertura do post, não substitui a gravação do cliente (esteira do
+Vitor). Vídeo de até 1 minuto: card 535 e CONTINUAR.md.
 
 **Lucas + Tiago rodam em paralelo** (Promise.allSettled).
 
@@ -69,7 +333,16 @@ e num construtor de prompt, mas a geração está desligada.
 
 ### Planos atuais (conferidos em `lib/stripe/index.ts` em 23/08/2026)
 
-| Plano | Mensal | Anual | Créditos | Projetos |
+> **DESATUALIZADO, conferido em 17/09 contra `lib/planos.ts` e em 21/09 contra
+> `lib/stripe/index.ts`.** A tabela abaixo e de agosto. A tabela VIGENTE e:
+> **Essencial R$ 397 com 5.000 creditos**, **Autoridade R$ 697 com 9.500** (o
+> destaque), **Estudio R$ 1.997 com 19.000**; os creditos triplicaram em 21/09
+> para o plano de entrada dar um post por dia (parte 150). As chaves tecnicas
+> continuam `pro`, `business` e `studio` no banco e nas envs, mas esses nomes
+> nunca aparecem para o cliente. Video por IA tem carteira propria
+> (`users.videoCredits`), fora desses numeros.
+
+| Plano (nomes e precos ANTIGOS) | Mensal | Anual | Créditos | Projetos |
 |-------|--------|-------|----------|----------|
 | **Pro** | R$ 149 | R$ 1.490 | 1.800 | 3 |
 | Business | R$ 249 | R$ 2.490 | 3.500 | 10 |
@@ -151,13 +424,13 @@ quem tenha comprado o Starter antes da remoção não fique sem plano.
 
 ## 5. Limitações Conhecidas / NÃO Resolvidas
 
-### X/Twitter — somente texto (403 code 453)
+### X/Twitter — somente texto (403 code 453): SUPERADO em 19/09 (parte 148, o X publicou vídeo)
 - **Causa:** Twitter Free tier API não permite upload de mídia
-- **Solução:** Upgrade para Twitter Basic tier ($100/mês) no Developer Portal do Bruno (dono da plataforma, NÃO dos usuários)
+- **DESATUALIZADO, corrigido em 17/09 na fonte primária (docs.x.com/x-api/getting-started/pricing):** nao existe mais free tier nem plano Basic. O X passou a PAGAMENTO POR USO, sem contrato e sem minimo: $0,015 por post, $0,200 por post que carrega URL, $0,010 por "summoned post", $0,001 por leitura propria, teto de 3 milhoes de leituras por ciclo. Os planos Basic e Pro foram descontinuados e os assinantes migrados. A solucao antiga ("upgrade para Basic, $100/mes") nao existe mais como opcao.
 - **Código:** já faz fallback para texto-only quando upload falha
 - **Arquivo:** `lib/oauth/twitter.ts`
 
-### Veo vídeo — desabilitado no pipeline
+### Veo vídeo — desabilitado no pipeline: SUPERADO em 19/09 (parte 143, vídeo pela fila)
 - **Causa:** Veo leva 60-300s, incompatível com budget de 300s do Hobby
 - **Workaround atual:** Diana gera imagem cinematográfica estática; prompt visual salvo no card
 - **Solução real:** Vercel Pro (maxDuration=800) + reabilitar `generateVideo` em `app/api/pipeline/run/route.ts`
@@ -176,9 +449,14 @@ quem tenha comprado o Starter antes da remoção não fique sem plano.
 
 ### Páginas do LinkedIn: depende do LinkedIn aprovar o segundo app
 - O código publica em página (`urn:li:organization`), mas exige um app SEPARADO
-  com a Community Management API. Pedido enviado em 09/09 (app "Areticon",
-  Client ID `779klxj5uvdi5b`). Quando aprovar: `LINKEDIN_PAGES_CLIENT_ID` e
-  `LINKEDIN_PAGES_CLIENT_SECRET` na Vercel e `npx vercel --prod`.
+  com a Community Management API. O app de 09/09 ("Areticon",
+  `779klxj5uvdi5b`) NAO e mais o valido: em 12/09 o Bruno trouxe outro Client
+  ID, `77vmxreafp2lf4`, o que bate com a regra do LinkedIn de que app
+  reprovado nao repede, nasce app novo. As credenciais do app novo entraram no
+  .env.local e nos tres ambientes da Vercel em 12/09, e producao ja responde
+  `{"available":true}` em /api/social/linkedin/pages-available, ou seja o
+  botao de conectar pagina esta na tela. Falta o Bruno conectar a pagina pelo
+  OAuth, que so ele faz.
 
 ### Campanha por tema: RESOLVIDO em 10/09 (parte 98)
 - Cada dia virou um trabalho da fila, com os proprios 800 s. Provado com sete
@@ -339,97 +617,132 @@ npx vercel deploy --prod --force
 
 ---
 
-## 9. Próximos Passos / TODO
+## 9. Proximos Passos / TODO
 
-> Atualizado em 12/09/2026. O detalhe vive nas partes 92 a 102 no fim
-> deste arquivo e nos cards "Esta semana" do planner. **O resumo apodrece primeiro:
-> se divergir do código, o código manda.**
+> Reescrita em 14/09/2026 as 20h, no fim de um dia que mexeu em quase tudo. O
+> detalhe vive nas partes 107 a 113 no fim deste arquivo e nos cards do
+> planner. **O resumo apodrece primeiro: se divergir do codigo, o codigo
+> manda.** Em 14/09 esta regra cobrou tres vezes: o card 353 tinha nome errado
+> de permissao, o roteiro descrevia uma conta de revisao que nao existe mais
+> assim, e a higiene "trocar a senha do revisor" virou risco.
 
-**Estado em 10/09, em uma linha por frente:**
-- Produto: vídeo de ponta a ponta em 11 min (era 30); campanha por tema
-  consertada em seis mecanismos; régua de lastro (nenhum número sem fonte vai
-  ao ar); quatro estados por post em toda tela e Agenda nova; cron a cada 5 min;
-  primeiros posts publicados pela plataforma nas redes do Bruno em 09/09.
-  Em 10/09 (parte 98, no ar às 12h07 de Brasília): a campanha virou fila de
-  verdade, um
-  trabalho por dia, e sete dias com imagem passaram a caber (provado, 1.507 s
-  no total contra o teto de 800 s do desenho antigo). A mesma prova achou três
-  defeitos: toda imagem de campanha voltava HTTP 400 e caía no Pollinations,
-  cinco de sete posts do LinkedIn abriam com o modelo falando sozinho, e o
-  teto de tokens matou o Tiago de novo. Os três corrigidos.
-- Venda: funil medido no banco (visita, demo, contato, cadastro, checkout,
-  assinatura, com origem de primeira visita); a demo pública captura e-mail,
-  NOME e telefone opcional com consentimento para WhatsApp desde 10/09 (parte
-  100), e `scripts/leads.mts` joga os contatos com o texto cru na base
-  Prospects do Notion; preços
-  397/697/1.997 no ar com cupom FUNDADOR; anúncios prontos (61 s e 2:07, 16:9 e
-  4:5) em `C:\Users\devan\Videos\demandou-anuncios\`.
-- Infra: conta da Anthropic recarregada em 08/09 (ligar auto-reload); worker no
-  Railway com completo em 1080p; `PILOTO_SECRET` em produção permite disparar a
-  esteira pela CLI; conta `reviewer@demandou.com` pronta para o App Review.
+### O que falta para lancar
 
-**Bloqueia venda (só o Bruno):**
-- [ ] Publicar uma semana de verdade e virar caso zero (cards 183, 158)
-- [ ] App Review da Meta com a conta reviewer (card 45); verificação da empresa
-- [ ] Verificação do OAuth no Google (card 180)
-- [ ] LinkedIn aprovar o app de páginas; depois duas variáveis e deploy
-- [ ] Editar o post de 09/09 no LinkedIn (frase da Fitch) com o link da NeoFeed
-- [ ] Tráfego pago só depois disso, com UTM e `scripts/funil.mts`
+**1. LinkedIn, Community Management Standard Tier. ENVIADO em 14/09.**
+Formulario preenchido e enviado. O video (107 s, 9 clipes de uma tomada
+continua) esta em
+`https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/app-review/demandou-linkedin-app-review-KvCPfUlsDsxLdCDpIymBiXTyGPmAF5.mp4`.
+Falta: a resposta deles.
+Pendencia de higiene APOS aprovacao: trocar o Client Secret do app de paginas,
+que passou por conversa.
 
-**Fila de código:**
-- [ ] A tela de planos não diz em que plano o cliente está, e mostra as três
-      ofertas com "Assinar" para quem já assina (ler do Stripe, não de user.plan)
-- [ ] A tela de configuração do projeto só tem redes sociais: voz, nicho,
-      paleta, estilo de vídeo e termos não têm onde ser mudados depois do setup
-- [ ] Fila de verdade para TRANSCRIÇÃO e SELEÇÃO (card 197, bloqueante). A
-      campanha já virou em 10/09; o card só fecha com as três
-- [ ] `firstCommentError` visível no card do Paulo
-- [ ] Ações direto na Agenda (reagendar, publicar agora) e Gestor por semana na URL
-- [ ] Simplificar o wizard de campanha (seis telas): canvas antes de código
-- [ ] Sequência de retorno do e-mail da demo (segundo e terceiro contato)
-- [ ] Medir, na primeira semana com tráfego, quantos deixam telefone contra
-      quantos deixam só e-mail: é o que decide se o campo fica
-- [ ] A legenda cai sobre o rosto quando o corte é empilhado (adendo 2 da parte
-      98): a margem é escolhida pelo app e o layout só é decidido depois, no
-      worker, então o conserto exige subir a decisão de enquadramento
-- [ ] Trilha licenciada nos anúncios, se o Bruno quiser
-- [ ] Travessões nos prompts dos agentes (116), só se algum post sair com um
+**2. Meta, App Review (Instagram e Facebook). NA ULTIMA TELA em 14/09.**
+Video pronto (177 s, 12 clipes), submissao limpa com as CINCO permissoes que o
+produto usa mais `public_profile`, plataforma Site cadastrada, politica com a
+secao 5.1 nova no ar. O Bruno estava preenchendo "Instrucoes de teste para web"
+quando a sessao acabou.
+As cinco: `instagram_business_basic`, `instagram_business_content_publish`,
+`pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
+Falta: terminar a tela e enviar.
+**NAO trocar a senha de `reviewer@demandou.com`:** a Meta exige que as
+credenciais funcionem por UM ANO apos o envio.
 
-**Lista anterior (01/09), ainda válida:**
+**3. Google, verificacao do OAuth (YouTube). PROXIMO.**
+Estado: dominio verificado, pagina de exclusao no ar (corrigida em 15/09),
+legendas reescritas em 15/09.
+**SAO DOIS ESCOPOS, e nao um. Conferido no codigo em 15/09:**
+`lib/oauth/youtube.ts:24` declara `youtube.upload` E `youtube.readonly`, e os
+dois sao usados. O readonly le o nome do canal em `channels.list?mine=true`
+(linha 107), que e de onde sai o "canal conectado" da tela. Conferir no console
+que os dois estao na Tela de permissao OAuth, cada um com justificativa.
+Falta: gravar e enviar. Tres armadilhas proprias, e todas reprovam sozinhas:
+- O idioma da CONTA GOOGLE precisa estar em INGLES antes de gravar, senao a
+  tela de consentimento sai em portugues.
+- Desconectar o YouTube DENTRO da Demandou, e nao revogar no Google: o codigo
+  usa `prompt=consent`, entao a tela de consentimento aparece de qualquer
+  jeito; o que falta sem desconectar e o BOTAO de conectar na tela do produto.
+- O campo do formulario aceita SO LINK DO YOUTUBE, nao arquivo nem Drive. Subir
+  como nao listado.
+Gravar na conta `bruno@areticon.com`, projeto Empreendedorismo Cristao, que e a
+unica com video pronto (dois com status ready). O Google quer de 3 a 7 minutos,
+entao e o unico dos tres em que alongar ajuda.
 
-**Bloqueia lançamento:**
-- [x] **O processo inteiro no Gestor de Conteúdo, em tempo real**, e a tela do
-      vídeo sai de cena (pedido do Bruno em 02/09). NO AR em 02/09, ver parte
-      87. Atenção à premissa corrigida: o app NÃO tem Pusher em uso nem chave
-      no ambiente; o tempo real é a consulta de 4 em 4 segundos
-- [ ] **Camada de design no vídeo completo** (a queixa 3 de 01/09: "a edição não
-      tem efeito gráfico nenhum, igual as referências do Vox"). A bíblia de
-      estilo e as referências existem desde 25/08; o motor é que falta, e o
-      passe 2 do completo é o lugar dele. `@vercel/og` renderiza por código a
-      maioria dos arquétipos, sem custo de modelo. Ver parte 77
-- [ ] Veredito do Bruno na edição refeita de 01/09 (respiro proporcional,
-      folga do fade, punch-in nas emendas do completo). As outras duas queixas
-      dele da mesma rodada já estão medidas e no ar
-- [ ] Store PÚBLICO separado para mídia produzida (CDN de verdade nos
-      players). Precisa do Bruno no painel da Vercel; passos no card do
-      planner. O store atual é privado-only e recusa `access: "public"`
+**4. Uma semana publicada de verdade, virando caso zero.**
+Cards 183 e 158. O unico item que nao depende de terceiro. **Pre-requisito
+descoberto em 14/09:** o projeto Demandou ficou sem Instagram e sem Facebook
+conectados (desconectados para a gravacao da Meta), e o perfil pessoal do
+LinkedIn foi revogado (para a gravacao do LinkedIn). Reconectar tudo antes.
 
-**Fila de produto:**
-- [ ] Editor de legenda por corte, e o RAG aprendendo dos termos que o cliente
-      edita (fase 2 do glossário; a fase 1 está no ar)
-- [ ] "eeee" que a transcrição não devolve como palavra segue invisível para
-      as redes determinísticas: medir no próximo vídeo
-- [ ] Varrer nome de fornecedor nos erros restantes (Gemini em pesquisa e
-      infográfico): técnico no log, humano na tela
-- [ ] Régua da seleção (nota 7+) ou A/B do prompt no Codex
-- [ ] Crédito automático do CC BY na descrição dos posts
-- [ ] Tela do cliente: diagnóstico e relatório de valor com destaque
-- [ ] Timeline com scrub quadro a quadro (exige player próprio; adiado por
-      decisão, o ajuste conversacional cobre o caso)
-- [ ] Decidir "só campanhas, sem projeto" (conexões na conta): depois da
-      validação de lançamento
+### Como gravar, aprendido nas duas primeiras
 
-**Só o Bruno:** Meta, Google, INPI, pagantes e tráfego (ver seção 8).
+**UMA TOMADA CONTINUA, e nao clipes.** Foi o que funcionou no LinkedIn e na
+Meta. Quem grava, grava inteiro; quem corta, corta depois. Erro na gravacao
+custa uma tomada; erro no corte custa um numero num script.
+O Claude le a gravacao quadro a quadro, monta o script de corte por tempo
+(`cortar-tomada.sh`, `cortar-tomada-meta.sh` como molde) e roda
+`bash montar.sh <revisao> --sem-aparar`.
+**A apara automatica NAO serve para tomada continua:** ela procura corte de
+cena nas pontas e come a troca de pagina do OAuth.
+O OBS pode continuar gravando em `jornada/`: o Claude acha o arquivo pela data.
+Sai sempre um dialogo de PIN do Windows no meio do login, nas duas gravacoes.
+Ele e tela do sistema, nao do app, e precisa ser cortado.
+
+### Regras das tres gravacoes, verificadas na documentacao de cada um
+
+**Sem audio, com texto em ingles na tela.** A Meta PROIBE audio ("Disable
+audio, since our reviewers will not need access to this resource") e pede
+interface em ingles ou legendas; o Google aceita "voice or text narration" e
+exige a tela de consentimento em ingles; o LinkedIn recomenda narracao mas a
+regua real e "our reviewers should be able to readily understand". Legenda
+atende os tres.
+
+A ferramenta esta pronta em `C:\Users\devan\Videos\demandou-app-review\`:
+grave clipes, `bash montar.sh <revisao>` apara o OBS das pontas sozinho e
+queima a legenda em ingles de cada linha de `legendas.txt`.
+
+### Depois de lancar, nao antes
+
+- Trafego pago, com UTM e `scripts/funil.mts`. So depois de duas semanas de
+  cadencia visivel nos perfis, por decisao propria de 12/09.
+- Ids dos pixels (card 409). O codigo esta no ar e nao carrega nada sem id e
+  sem consentimento.
+- Busca INPI da marca (card 44).
+
+### Divida que cobra juros, em ordem de quanto custa
+
+- [x] **Cupom FUNDADOR: FECHADO em 14/09 (parte 107).** A oferta virou um
+      PRICE anual proprio (R$ 4.764, 12 x 397), o codigo digitavel foi
+      desligado no Stripe e `allow_promotion_codes` saiu do checkout. Nao ha
+      mais o que digitar. NO AR desde 14/09. Card 370.
+- [ ] `sourcesComment` nunca e escrita (card 426): a regua de lastro e
+      invisivel dentro do produto, o cliente aprova sem ver a fonte. E
+      `executar.ts:849` usa `temLink: Boolean(p.sourcesComment)`, sempre falso.
+      Cobrou em 14/09: o roteiro do video do LinkedIn mandava mostrar as fontes
+      no card, e elas nao estao la. A legenda teve que ser reescrita para falar
+      de texto e imagem, e as fontes so aparecem no clipe do comentario
+      publicado.
+- [ ] Fila de verdade para TRANSCRICAO e SELECAO (card 197). A campanha ja
+      virou em 10/09; o card so fecha com as tres.
+- [ ] A legenda cai sobre o rosto no corte empilhado (card 398). A margem e
+      escolhida pelo app e o enquadramento so e decidido depois, no worker.
+- [ ] Tirar a tela antiga `/posts` da navegacao. Ela ainda pede o tema antes da
+      origem; so nao e mais para onde o assistente manda.
+- [ ] `firstCommentError` visivel no card do Paulo.
+- [ ] Acoes direto na Agenda (reagendar, publicar agora).
+- [ ] O logo do projeto e guardado (14/09) mas ainda nao entra na capa do video
+      nem nas pecas visuais.
+- [ ] DOCX nao entra nos documentos da marca, so PDF e texto colado.
+- [ ] Sequencia de retorno do e-mail da demo (segundo e terceiro contato).
+
+### No ar e NAO provado em uso real
+
+Tres coisas subiram em 13 e 14/09 e ninguem passou por elas ainda. A primeira
+campanha do Bruno e o teste:
+
+- Instagram e Facebook derivados do post do LinkedIn na campanha por tema.
+- A leitura do PDF do manual de marca pela IA (`askClaudeComPdf`).
+- A tela das duas portas e a etapa Marca, na jornada completa de um projeto
+  novo.
 
 ### Regras operacionais aprendidas em 31/08 e 01/09
 
@@ -9302,6 +9615,590 @@ a dor que ele vende.
 
 *Atualizado em 12/09/2026 por Claude Code.*
 
+## Sessao 12/09/2026 (parte 103): as duas telas de conta, e o cupom que vaza
+
+Continuacao direta da parte 102, agora com as duas decisoes que faltavam
+tomadas pelo Bruno, e com um achado de receita que ninguem estava procurando.
+
+### 1. As duas decisoes dele
+
+**Configuracao.** A pergunta era qual das tres coisas ele tinha visto. Nenhuma
+das tres do jeito que o card 401 descrevia: o que ele viu foi a ENGRENAGEM da
+barra lateral caindo em /projects, e o pedido dele muda o escopo. A tela de
+plano deve VIRAR configuracoes da conta, com cancelar e ajustar dentro dela.
+Ou seja nao e consertar um redirect, e reorganizar duas telas.
+
+**Assinatura.** "Elimine o plano antigo e deixe minha conta como admin dentro
+da plataforma, com acesso full sem cobrancas." As tres saidas que o card 400
+oferecia caducaram; a resposta foi uma quarta.
+
+### 2. A correcao de premissa que o codigo entregou
+
+O card 401 e a parte 102 dizem que voz, nicho, paleta, estilo e termos "nao tem
+onde ser mudados". **Esta errado.** A aba "Editar setup" (`/projects/[id]/setup`)
+renderiza o KanbanBoard com `editMode = project.status === "active"`, e ele
+salva tudo. O defeito real e outro e e pior de descrever: `saveAndNext` so
+grava ao AVANCAR de etapa, e o "Configuracoes salvas!" so aparece na ultima.
+Para trocar uma palavra do tom de voz, percorre-se o assistente inteiro.
+
+Por isso o desenho novo nao cria campo nenhum. Cria um Salvar por secao, e
+deixa o assistente vivo para quem esta comecando.
+
+### 3. O cupom FUNDADOR, lido no Stripe e nao no codigo
+
+`scripts/tmp/cupom-fundador.mts` le o cupom, os precos ativos e as variaveis de
+ambiente lado a lado. O que voltou:
+
+- Cupom `U7D5Z5ig`: **R$ 300 FIXOS**, `duration: forever`, valido, **0 de 10
+  vagas usadas**, e `applies_to` vazio, ou seja **qualquer produto**.
+- Existe um CODIGO PROMOCIONAL `FUNDADOR`, ativo, sem valor minimo e sem
+  restricao de primeira compra.
+- `createCheckoutSession` liga `allow_promotion_codes: true` em todo checkout
+  que nao e de fundador (lib/stripe/index.ts, linhas 188 a 192).
+
+Somando os tres: **quem tiver o codigo digita FUNDADOR no checkout do Essencial
+de R$ 397 e paga R$ 97 por mes, para sempre.** E o mesmo formato do vazamento
+do Veo de 18/08: a peca isolada esta certa, a combinacao e que sangra. No anual
+de R$ 6.970 o mesmo cupom vira 4,3%, que nao e oferta nenhuma. As duas pontas
+do problema sao a mesma causa: valor fixo nao sabe em que preco esta caindo.
+
+Achado de carona: o price `price_1U5y0j...` de R$ 149 que o Bruno paga nao
+aparece na lista de precos ativos, e o STARTER de R$ 49 ainda aparece.
+
+### 4. O mecanismo de acesso interno
+
+Papel novo em `User`, e nao plano novo. O porque esta inteiro no comentario da
+migration `20260912150000_acesso_interno`, e o resumo e: plano governa cobranca,
+e quem manda em cobranca e a assinatura no Stripe. Enfiar acesso interno em
+`plan` faria o campo significar duas coisas, que e a doenca que o card 399 ja
+esta consertando.
+
+Onde o papel entra:
+- `lib/onboarding/portao.ts`: admin nao passa pelo portao. Sem isto, cancelar a
+  assinatura expulsaria o dono da propria plataforma, porque
+  `customer.subscription.deleted` grava `plan: "free"` e o portao manda todo
+  "free" para /planos.
+- `lib/credits/index.ts`: `debitar` grava linha de extrato de valor ZERO com a
+  nota do que teria sido cobrado, em vez de pular a gravacao. Sumir do extrato
+  e o mesmo que nao ter acontecido, e o custo de verdade continua em `ai_usage`.
+- `app/api/credits/route.ts`: devolve `admin: true`, para a tela nao desenhar
+  barra de consumo nem oferta para quem nao e cobrado.
+- `scripts/tmp/virar-admin.mts`: promove as DUAS contas do Bruno, e sem
+  `--aplicar` so mostra o antes.
+
+**A ORDEM IMPORTA: admin primeiro, cancelamento depois.** O contrario tranca
+ele para fora.
+
+### 5. O que foi para a tela, e o que ainda nao foi
+
+Canvas das quatro telas:
+https://claude.ai/code/artifact/7000a193-1b55-450d-b956-f9e9ff051d5f
+
+Simulador de preco, atualizado no mesmo endereco de ontem, agora com a mecanica
+da oferta de fundador (ciclo, valor fixo contra percentual contra price
+proprio, vagas) e com o vazamento calculado na tela:
+https://claude.ai/code/artifact/069edb87-8652-4cbf-afa6-5bea4a320fea
+
+A revisao dos artboards achou um erro que vale para todo desenho daqui em
+diante: **o laranja da marca nao e o laranja do Tailwind.** `app/globals.css`
+redefine a escala (`--color-orange-500: #ef6122`, `--color-orange-400: #f6803d`),
+e eu tinha usado #f97316 e #fb923c de fabrica nos quatro arquivos. Corrigido, e
+a marca passou a ser o `public/brand-mark.svg` de verdade em vez de um quadrado
+com um "d" dentro.
+
+### 6. No ar, e provado antes de cancelar
+
+O Bruno rodou os tres comandos (`prisma migrate deploy`, `virar-admin --aplicar`,
+`vercel --prod`). Antes de tocar na assinatura, duas provas contra o banco de
+producao:
+
+- `scripts/tmp/provar-portao-admin.mts`: as duas contas entram. A prova boa aqui
+  foi de graca: `bruno.donaire88@gmail.com` JA estava em `free` com papel admin,
+  ou seja ja era o estado pos-cancelamento. Se aquela entrava, a outra entraria.
+- `scripts/tmp/provar-debito-admin.mts`: cobra 1 credito de conta admin e
+  confere que o saldo nao se moveu e que o extrato ganhou linha de valor zero
+  com a nota do que teria sido cobrado. **Depois APAGA a linha do teste.** Isto
+  merecia teste de verdade e nao leitura de codigo porque a falha nao apareceria
+  no login: apareceria como SaldoInsuficiente no meio de um trabalho de video,
+  depois de a transcricao ja ter rodado.
+
+`scripts/tmp/cancelar-assinatura-antiga.mts --aplicar` cancelou
+`sub_1U73XkJIhzTmSVmMRqDICdJe` as 15h47 UTC de 12/09. O script se recusa a rodar
+se a conta nao for admin, que e a unica salvaguarda que importava. Cancelamento
+imediato e nao no fim do ciclo, porque o acesso passou a vir do papel.
+
+Depois: `bruno@areticon.com` esta `plan = "free"`, papel admin, e o portao
+devolve "segue". A cadeia inteira aconteceu como desenhada, incluindo o webhook.
+
+### Aberto
+
+- O canvas aguarda o veredito do Bruno antes de virar codigo de tela. Ate la a
+  tela de planos continua oferecendo "Assinar" para ele, que agora nao paga
+  nada: o produto ainda mente, so que mente ao contrario.
+- A tabela nova de preco e a saida do cupom continuam decisao dele, agora com o
+  vazamento medido na mesa.
+
+*Atualizado em 12/09/2026 por Claude Code.*
+
+## Sessao 12/09/2026 (parte 104): as telas de conta, a pagina do LinkedIn e os pixels
+
+Implantacao do que a parte 103 desenhou, mais tres frentes que o Bruno pediu
+junto. Tudo no ar em demandou.com no mesmo dia.
+
+### 1. Configuracoes da CONTA, e a divisao que passou a valer
+
+A engrenagem da barra lateral apontava para `/projects` desde sempre
+(`components/ui/sidebar.tsx`, era um `Link href="/projects"` com o titulo
+"Projetos: configuracoes e redes por projeto"). Agora aponta para `/settings`.
+
+A divisao: o que e da PESSOA (nome, plano, cobranca, creditos) mora em
+`/settings`; o que e da MARCA (redes, voz, nicho, paleta, estilo, semana) mora
+dentro do projeto, porque um cliente pode ter mais de uma marca.
+
+- `app/(app)/settings/page.tsx` deixou de ser redirect e virou server component
+  com tres abas (`?aba=conta|plano|projetos`).
+- `app/(app)/billing/page.tsx` virou o redirect, e nao o contrario: a rota esta
+  em link de e-mail, na volta do checkout e na isencao do portao, entao matar o
+  endereco quebraria quem ja pagou.
+- O item "Plano" saiu da barra lateral. Duas portas para o mesmo assunto era o
+  que havia antes.
+
+### 2. O plano lido do Stripe, e a armadilha que so aparece medindo
+
+`lib/stripe/assinatura.ts` e a resposta ao card 399. Le a assinatura viva
+(`active`, `trialing` ou `past_due`), devolve nome, valor, ciclo, cartao,
+proxima cobranca e se cancela no fim.
+
+**A armadilha, que ja estava medida na parte 102 e agora esta no codigo:**
+`current_period_end` vem VAZIO na raiz da assinatura nas versoes novas da API;
+o campo mora no ITEM. Ler a raiz devolve `undefined`, e `new Date(undefined *
+1000)` pinta "Invalid Date" na tela, que e pior que nao mostrar data.
+
+`precoTravado` compara o que a pessoa paga com o preco de lista de hoje no mesmo
+ciclo. Quando divergem, a tela diz "Este e o seu preco travado" em vez de fingir
+que sao iguais. E o caso do fundador e de quem entrou numa tabela antiga.
+
+Cancelamento novo em `app/api/stripe/cancelar/route.ts`, e ele cancela NO FIM DO
+PERIODO. O dia ja esta pago, e tirar acesso de quem pagou o mes transforma
+cancelamento em reclamacao publica. O mesmo endpoint desfaz.
+
+### 3. A tela do projeto, com um Salvar por secao
+
+`components/projects/configuracao-do-projeto.tsx`, tres abas: Redes sociais,
+Marca e voz, Video e semana. Cada secao salva sozinha pelo PATCH que ja existia.
+
+Vale repetir a correcao de premissa da parte 103, porque ela sobreviveu ao
+codigo: os campos nunca estiveram sem tela. O defeito era o assistente so gravar
+ao avancar de etapa. O "Refazer o setup guiado" continua linkado no fim da aba.
+
+### 4. Publicacao em PAGINA do LinkedIn, com teste de ponta a ponta
+
+`deleteLinkedInPost` entrou em `lib/oauth/linkedin.ts`, e o motivo e pratico: a
+pagina e publica e e a da empresa que esta vendendo. Sem poder limpar, cada
+prova custa um post de verdade no perfil do vendedor.
+
+`scripts/tmp/provar-pagina-linkedin.mts` faz a esteira inteira, do mais barato
+para o mais caro: credenciais, contas conectadas, token respondendo e listando
+paginas, publicacao, primeiro comentario com as fontes (tres tentativas, 3s, 10s
+e 30s), e limpeza. Com `--manter` o post fica de pe, que e o modo de gravar a
+tela do App Review.
+
+Rodado em 12/09: parou no passo 1. `LINKEDIN_PAGES_CLIENT_ID` e
+`LINKEDIN_PAGES_CLIENT_SECRET` continuam ausentes. Parte do Bruno.
+
+**Descoberta que muda a ordem do pedido ao LinkedIn**, lida na documentacao e
+nao na memoria: o formulario que ele esta preenchendo e o de STANDARD TIER, e
+ele so aparece depois do Development Tier aprovado. Ou seja o pedido de 09/09
+passou, e o Development Tier ja da acesso real a API para o admin da pagina
+associada. O screencast do Standard Tier EXIGE mostrar a coisa funcionando:
+OAuth completo, publicacao na pagina, e como um comentario de membro aparece no
+app. Os dois ultimos itens a Demandou nao faz, e a propria doc resolve: "If your
+application doesn't include certain functionality specified in the above test
+cases, please just note that in your recording."
+
+### 5. Politica de privacidade e termos, alinhados com o produto de hoje
+
+A politica citava LinkedIn e X/Twitter, e o produto publica em cinco redes desde
+agosto. O App Review da Meta le essa URL e exige que ela descreva os dados que
+vem de la, entao isto travava o envio.
+
+- 2.3 virou "Conexao das suas redes sociais", com o que vem de CADA rede e a
+  frase que mais importa para revisor: nao lemos, nao armazenamos e nao exibimos
+  comentarios, mensagens ou dados de perfil de terceiros.
+- Secao 5 ganhou Railway, Resend, as cinco redes como destinatarias do que o
+  cliente aprovou, e as plataformas de anuncio como destinatarias so mediante
+  consentimento.
+- Secao 8 ganhou "Cookies de anuncio, so com o seu sim".
+- **Secao 9 nova, `#exclusao`**, com ancora propria: a Meta exige uma "Data
+  Deletion Instructions URL" e o Google e o LinkedIn perguntam o mesmo em campo
+  separado. Os tres passam a apontar para
+  `https://demandou.com/privacy#exclusao`, em vez de tres paginas soltas que
+  envelhecem em ritmos diferentes.
+- Termos: as cinco redes no lugar de duas, e a linha de que desconectar apaga o
+  token e encerra na hora a capacidade de publicar.
+
+### 6. Pixels de anuncio, com consentimento
+
+`lib/pixels.ts` e `components/analytics/pixels-de-anuncio.tsx`. Meta, Google
+(GA4 ou Ads), LinkedIn Insight e TikTok, cada um por variavel de ambiente:
+
+```
+NEXT_PUBLIC_META_PIXEL_ID
+NEXT_PUBLIC_GOOGLE_TAG_ID
+NEXT_PUBLIC_LINKEDIN_PARTNER_ID
+NEXT_PUBLIC_TIKTOK_PIXEL_ID
+```
+
+Sem variavel, nada carrega e o aviso nem aparece. Com variavel, nada carrega
+antes do sim. O porque nao e juridico e sim de coerencia: a politica diz que a
+base legal do marketing e consentimento, e carregar o pixel da Meta no primeiro
+byte contradiz isso no lugar em que o revisor confere, a aba de rede do
+navegador. O funil da Demandou e medido no BANCO, entao recusar cookie nao cega
+o negocio, e por isso da para respeitar o "nao" sem discutir.
+
+Detalhe tecnico que virou padrao: o consentimento e lido por
+`useSyncExternalStore`, e nao por estado com efeito. O repo tem tres lugares com
+`setState` dentro de efeito (theme-provider, auth-form, live), todos apontados
+pelo lint. O novo nao repete o erro so porque ja existia.
+
+### 7. Adendo: o que a API do LinkedIn aceita, medido e nao lembrado
+
+Outra sessao registrou tres limites vindos de uma busca na web, e um deles
+estava errado. Conferido contra o codigo e contra o banco de producao:
+
+- **Newsletter: NAO tem API.** Newsletter e extensao de artigo, e nao existe
+  endpoint que crie edicao. Nenhuma tela pode prometer isso. O caminho honesto e
+  gerar a edicao pronta para colar, publicar como ARTIGO o que der, e mandar por
+  e-mail pelo Resend.
+- **Enquete: FUNCIONA, e ja saiu.** No banco existe um post `poll` com status
+  `published`, urn `urn:li:ugcPost:7503799533949288448` e URL real. Ou seja nao e
+  status otimista do nosso lado, a peca esta no ar. O codigo e
+  `publishLinkedInPoll`, que manda `content.poll` pela mesma Posts API. "Enquete"
+  e um dos formatos da semana padrao, com custo zero de creditos.
+- **Documento (carrossel de PDF): nao tem API. Carrossel de imagens: tem.**
+  `publishLinkedInCarousel` sobe as imagens e publica com `content.multiImage`,
+  que e mecanismo diferente do documento e e suportado. A frase correta e
+  "carrossel em PDF nao, carrossel de multiplas imagens sim". Ressalva: nao ha
+  nenhum carrossel de LinkedIn publicado no banco ainda, so rascunhos, entao o
+  mecanismo esta implementado e NAO esta provado em producao como a enquete esta.
+
+A regra que isso deixa: quando a pergunta e "o nosso produto consegue X", o
+banco de producao responde melhor que a documentacao de terceiro, porque ele
+registra o que ja aconteceu. A mesma busca acertou a newsletter e errou a
+enquete no mesmo paragrafo.
+
+### 8. A ferramenta dos tres screencasts, e o que NAO da para automatizar
+
+`C:\Users\devan\Videos\demandou-app-review\` tem `montar.sh` e um `legendas.txt` por revisao. O Bruno
+grava CLIPES CURTOS numerados (01, 02, ...) e `bash montar.sh meta` queima a
+legenda em ingles de cada linha no clipe correspondente e junta tudo em
+`final/demandou-meta.mp4`.
+
+Clipe curto e nao tomada unica porque errar o passo 7 de tres minutos custa
+tres minutos; aqui custa oito segundos. E cada corte anuncia ao revisor que
+comecou outro requisito.
+
+**Armadilha que custou uma rodada e vale para qualquer legenda queimada no
+Windows:** a legenda vai por `textfile=` e nao por `text=`. Com `text=`, o
+filtro obriga a escapar dois-pontos, aspas, virgula e porcentagem, e a
+primeira frase com "Source: organizationAcls" ja derruba o parser. Com
+arquivo, o conteudo passa cru. O caminho tambem e RELATIVO, porque o "C:" de
+um caminho absoluto tem o mesmo problema. E `drawtext` NAO quebra linha
+sozinho: sem `fold -s -w 84` antes, a frase longa sai cortada na borda e some
+justamente a parte que nomeia o requisito.
+
+**O que NAO foi automatizado, e por que nao e limitacao de ferramenta.** O
+Bruno pediu que os tres videos fossem gerados por aqui. Nao foram, por quatro
+motivos medidos: o OBS nao estava aberto (recusou a 4455); o fluxo de paginas
+do LinkedIn nao existe em producao, entao nao ha o que filmar; as tres
+gravacoes giram em torno de uma tela de consentimento de terceiro que exige a
+senha dele; e a Meta exige o login completo a partir de DESLOGADO, enquanto a
+unica sessao que da para criar daqui e cookie injetado no banco
+(`sessao-e2e.mts`), que pula exatamente o login. Acima disso: screencast de
+App Review e prova entregue a tres empresas sobre o que o produto faz,
+gravada de contas no nome dele.
+
+Estado da conta de revisao, conferido em 12/09: `reviewer@demandou.com`,
+plano business, 2.958 creditos, um projeto ativo com 77 posts em rascunho e
+NENHUMA rede conectada. Os 77 rascunhos sao bons: ha o que aprovar em camera.
+Nenhuma rede conectada tambem e o certo, porque conectar na frente do revisor
+E o requisito.
+
+### 9. O escopo que nao existe, e a mensagem que mente
+
+12/09, ligando as paginas do LinkedIn. Depois de cadastrar a redirect_uri
+correta no portal, o OAuth continuou falhando com "Bummer, something went
+wrong", agora SEM dizer o motivo e redirecionando para demandou.com.
+
+Medido batendo no endpoint de autorizacao um escopo por vez, com corpo isolado
+por requisicao:
+
+| escopo | resposta |
+|---|---|
+| `r_organization_social` | 303 para o login, limpo |
+| `w_organization_social` | 303, limpo |
+| **`r_organization_admin`** | **200 com a pagina "Bummer"** |
+| `rw_organization_admin` | 303, limpo |
+
+O codigo mandava `r_organization_admin`, que NAO EXISTE. O certo e
+`rw_organization_admin`. Corrigido em `lib/oauth/linkedin.ts` e no ar.
+
+**Duas licoes, e a segunda e de metodo.**
+
+A primeira: o LinkedIn devolve a MESMA tela generica para escopo invalido e
+para redirect_uri errada. Duas causas, uma mensagem. Quem le a tela nao
+consegue distinguir, e foi por isso que a primeira hipotese (a URL) pareceu
+certa e resolveu so metade.
+
+A segunda: a primeira rodada do teste apontou "Bummer" tambem no
+`rw_organization_admin`, e era resto do arquivo anterior. O `curl -o` de uma
+resposta 303 escreve corpo VAZIO, entao o arquivo mantinha o conteudo da
+iteracao passada e o grep achava o erro errado. Teste que reaproveita arquivo
+entre iteracoes mente na direcao do resultado anterior. Um arquivo por
+requisicao, e conferir o tamanho junto do conteudo.
+
+### 10. O 426, e por que publicar funcionava enquanto ler nao
+
+Depois do escopo corrigido, o consentimento passou e a tela disse "0 paginas de
+empresa importada". O log de producao deu o numero: `organizationAcls` devolveu
+**426, Upgrade Required**. O header `LinkedIn-Version` estava em `202504`, de
+abril de 2025, e o LinkedIn aposentou a linha de 2025 em 17/08/2026.
+
+**O achado que explica o tempo que isso ficou escondido:** publicar continuava
+funcionando. `tryLinkedInRestPost` percorre `LINKEDIN_VERSION_CANDIDATES` quando
+toma 426 e acaba achando uma versao viva. A leitura de paginas usava
+`ACTIVE_VERSION` fixo e desistia no primeiro erro. Mesmo defeito, dois
+comportamentos, porque so um dos caminhos tinha cascata. Toda chamada a API
+versionada precisa da mesma cascata, e nao so a que alguem lembrou de proteger.
+
+Tres consertos:
+
+1. Versoes de 2026 no topo da lista. Versao que ainda nao existe devolve 426 e a
+   cascata segue, entao por o futuro no topo e de graca. Provado na primeira
+   execucao: `202609` devolveu 426 e `202608` respondeu.
+2. `linkedinRestGet` percorre as versoes igual o publicador, e PARA na primeira
+   resposta que nao e 426, porque 403 e 401 nao se resolvem trocando de versao.
+3. O mesmo defeito estava um nivel abaixo e teria devolvido "0 paginas" de novo:
+   a busca do nome de cada organizacao tambem usava versao fixa e DESCARTAVA a
+   pagina em silencio (`if (!orgRes.ok) return`). Agora ela entra na lista com o
+   id no lugar do nome: pagina que a pessoa administra nao some da tela porque o
+   nome nao veio.
+
+E o log passou a gravar o CORPO junto do status. 403 e produto faltando no app,
+426 e versao morta, 401 e token, e os tres chegavam na tela como o mesmo "0
+paginas de empresa importada".
+
+**Estado em 12/09, 22h53:** duas paginas conectadas no projeto "Areticon" de
+bruno@areticon.com: `demandou` (org 112558515) e `Areticon` (org 106318968).
+Pagina importada nasce `isActive: false` por desenho, e quem escolhe qual
+publica e o cliente: importar duas nao pode significar publicar nas duas.
+
+### O que ficou aberto
+
+- `LINKEDIN_PAGES_CLIENT_ID` e `LINKEDIN_PAGES_CLIENT_SECRET`. Conferido em
+  12/09: NAO existem em lugar nenhum, nem no .env.local nem na Vercel (que so
+  tem as do app principal, de 159 dias atras). `scripts/tmp/configurar-paginas-linkedin.sh`
+  pede as duas, grava no .env.local, manda para os tres ambientes da Vercel,
+  implanta e roda o diagnostico. O segredo e digitado com `read -s` de
+  proposito: segredo que passa por conversa fica no historico de quem leu.
+  A URL de redirecionamento que precisa estar autorizada no portal, sem www e
+  sem barra no fim: `https://demandou.com/api/social/linkedin/callback`.
+- Os ids dos pixels, quando as contas de anuncio existirem.
+- Os tres screencasts (LinkedIn, Meta, Google). Regra que vale para os tres,
+  verificada na documentacao de cada um: **sem audio, com texto em ingles na
+  tela.** A Meta PROIBE audio ("Disable audio, since our reviewers will not need
+  access to this resource") e pede interface em ingles ou legendas; o Google
+  aceita "voice or text narration" e exige a tela de consentimento em ingles; o
+  LinkedIn recomenda narracao mas a regua real e "our reviewers should be able to
+  readily understand". Legenda atende os tres e o Bruno nao precisa falar ingles.
+
+*Atualizado em 12/09/2026 por Claude Code.*
+
+## Sessao 13/09/2026 (parte 105): a jornada gravada em camera, e os sete defeitos que ela expos
+
+O Bruno foi gravar a jornada completa para o App Review e parou na metade,
+com uma lista de sete queixas. Cada uma foi lida no codigo antes de qualquer
+conserto, e a lista se dividiu em tres grupos: mecanismo puro (corrigido e no
+ar), esteira (registrado, decisao dele) e desenho de jornada (canvas antes de
+codigo).
+
+### 1. Os quatro consertos de mecanismo, no ar
+
+**Duas janelas ao conectar rede.** `kanban-board.tsx:831` tinha `target="_blank"`
+no botao Conectar do assistente, posto em 21/08 para o vai e vem do OAuth nao
+destruir a aba. O `conectar()` ja mandava `returnTo` apontando para a etapa,
+entao a protecao era redundante e o custo era real: duas abas da Demandou e a
+pessoa seguindo na errada. Mesma aba agora.
+
+**"O primeiro ponto e escolher o tema, mas esta errado."** O assistente terminava
+em `/posts?novaCampanha=1`. Essa e a tela ANTIGA (`PostsPanel`), que ignora o
+parametro, e o botao dela faz `if (!topic.trim()) setShowTopicInput(true)`:
+pede o tema antes de perguntar se a campanha vem de video ou de tema. Quem
+trata o parametro e o `ContentManager`, em `/live`. O assistente agora manda
+para la, e a escolha de origem abre direto.
+
+**"Vai nessa tela de video e a squad fica trabalhando sozinha la embaixo."**
+`enviarAberto` nascia `videos.length === 0 && initialCards.length === 0`, e um
+projeto cuja campanha por tema acabou de comecar e exatamente isso: zero card
+ainda, zero video. O painel de envio abria por cima da esteira rodando, com o
+`SemanaDoVideoPlanejador` dentro perguntando de novo dia e formato que a janela
+da campanha ja tinha perguntado (a "pergunta duplicada" da queixa 4). Fechado
+enquanto `activeRun.status === "running"`.
+
+**Escolher "de um video" saia da tela.** O botao fazia `router.push(/video)`,
+rota que redireciona para `/live`: a pessoa saia do Gestor para voltar ao
+mesmo lugar, com outra cara. Prop nova `onEscolherVideo` no
+`CampaignSetupModal`; o `ContentManager` passa um callback que fecha a janela e
+abre o painel de envio no lugar. Quem nao passa (a tela antiga) continua
+navegando.
+
+### 2. O que parecia tela e e esteira: so LinkedIn e X na campanha por tema
+
+A janela de campanha oferece LinkedIn, X e Ambos. O Bruno pediu as cinco redes.
+Lido em `lib/pipeline/executar.ts`: a campanha por tema esta amarrada a duas
+redes em tres lugares (`shouldWriteLinkedin/Twitter` na 1280, `dayPosts.push`
+com `linkedin`/`twitter` na 1779 e 1786, e `liAccount ?? twAccount` na 2135).
+Lucas escreve LinkedIn, Tiago escreve X, e nao existe redator para Instagram,
+Facebook ou YouTube nesse caminho.
+
+A esteira do VIDEO ja e multi-rede: `pecas-da-semana.ts` escolhe a rede do
+texto entre linkedin, facebook e instagram, e a da imagem entre instagram,
+linkedin e facebook. O produto sabe escrever para cinco redes, so que apenas
+quando a origem e video.
+
+Por isso os botoes NAO foram adicionados: botao de Instagram numa esteira que
+nao escreve para o Instagram e promessa que o cliente descobre quebrada na
+aprovacao. A lista da tela espelha o que a esteira entrega. Virou card
+bloqueante, com o efeito colateral registrado: mais redes por dia e mais pecas
+por dia e mais creditos, entao a conta de custo muda junto.
+
+### 3. O que ja existe e ninguem acha: Treinamento
+
+O Bruno pediu lugar para subir logo, manual de marca e documentos para treinar
+a IA. A aba Treinamento (`/projects/[id]/training`, `ProjectContext`) ja faz o
+terco mais dificil disso: cinco tipos de contexto (marca, editorial,
+referencias, regulamentacoes, exemplos), cada um com texto cru e versao
+compilada que a IA le em toda campanha. O que falta: aceitar ARQUIVO (so aceita
+texto colado), guardar logo (nao existe `logoUrl` em lugar nenhum), e estar
+DENTRO do setup em vez de numa aba que o cliente so ve depois de gerar a
+primeira campanha sem contexto. Virou card, e e desenho antes de codigo.
+
+### 4. O que ficou para o canvas
+
+A jornada unica: ao terminar o setup, uma tela "vamos criar a sua primeira
+campanha" com duas portas, video ou automatico. As perguntas seguintes iguais
+nas duas (periodo, redes, formato por dia). Quando vem de video, o tema ja
+esta definido pela gravacao e a IA sugere cortes e pecas para o cliente
+aprovar ou pedir de novo. A pergunta do formato (1, 7, 14) aparece UMA vez. E a
+tela antiga de posts sai da navegacao, para sobrar uma porta.
+
+### 5. De carona: sourcesComment nunca e escrita
+
+Achado gravando o clipe 03 do LinkedIn: mandei o Bruno abrir um post para
+mostrar as fontes, e ele nao achou. A coluna `sourcesComment` esta no schema
+desde 18/08, e selecionada em tres lugares e renderizada em
+`posts-panel.tsx:535`, e NAO EXISTE codigo que grave nela: 0 de 111 posts a tem.
+As fontes existem em `metadata.firstComment` e so aparecem depois de
+publicado, no primeiro comentario. A regua de lastro e invisivel dentro do
+produto, e `executar.ts:849` usa `temLink: Boolean(p.sourcesComment)`, sempre
+falso. Card criado. A legenda do clipe foi reescrita para nao afirmar fonte
+visivel onde nao ha.
+
+### 6. Da gravacao: o que o metodo aprendeu
+
+- Clipes curtos numerados estavam custando mais erro que as tomadas. O Bruno
+  propos uma tomada continua com edicao depois, e estava certo: o LinkedIn pede
+  o "fluxo OAuth completo", e continuo sem corte prova melhor que quatro
+  pedacos. `montar.sh` ganhou apara automatica das pontas, porque quem grava
+  pelo botao do OBS aparece com o OBS no comeco e no fim. A deteccao de corte
+  seco so olha 4 s de cada ponta com limiar 0.2: a troca de janela pontuou
+  0.30 aos 1.6 s e a PAGINA CARREGANDO pontuou 0.30 aos 7.6 s. Janela de 8 s
+  teria comido o login inteiro.
+- Consentimento do LinkedIn so reaparece revogando o app em
+  `linkedin.com/mypreferences/d/permitted-services`. Nao e cache: o LinkedIn
+  lembra a autorizacao.
+- A conta de revisao foi renomeada de "Meta App Review" para "Demandou Review"
+  (o dashboard cumprimentava com "Ola, Meta" num video para o LinkedIn) e
+  esvaziada (77 rascunhos com `===LINKEDIN===` vazando, 2 redes, 14 runs), para
+  a jornada nascer limpa.
+- Senha da conta de revisao redefinida por `senha-do-revisor.mts`, com o hash
+  do proprio better-auth e conferencia de leitura antes de sair.
+
+*Atualizado em 13/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 106): a jornada unica no ar, e as cinco redes na campanha por tema
+
+O Bruno aprovou o canvas da jornada e mandou implantar tudo. As tres partes
+subiram nesta sessao.
+
+### 1. A tela das duas portas
+
+`components/posts/escolha-de-origem.tsx`: um componente so para a escolha
+"de um video" ou "automatico com IA", em duas variantes. A cheia aparece no
+Gestor ao terminar o setup (`?novaCampanha=1`), e a compacta substituiu o
+seletor que a janela de campanha tinha em duplicata. A porta da IA abre a
+janela ja dentro da porta (prop `origemInicial`), sem perguntar de novo; a
+porta do video abre o painel de envio no lugar, sem navegar.
+
+O que morreu junto: a "pergunta duplicada" (a janela perguntava a origem, e o
+painel do video perguntava dia e formato de novo), e a porta do video que saia
+da tela para voltar ao mesmo lugar.
+
+### 2. Todas as redes na campanha por tema
+
+Decisao do Bruno: "todas as redes, o usuario escolhe". A esteira so sabia
+LinkedIn e X. Agora:
+
+- A janela ganhou a secao "Em quais redes?", com as redes conectadas do
+  projeto (prop `redesConectadas`, que o Gestor passa). YouTube fica fora da
+  campanha por tema, porque nao ha video para subir. O padrao e tudo ligado, e
+  a pessoa desmarca.
+- `CampaignConfig.platforms` viaja ate a esteira. Sem ele (janela antiga, post
+  unico), cai no par de sempre.
+- Em `executar.ts`, Instagram e Facebook sao DERIVADOS do post do LinkedIn
+  pelo mesmo Lucas ("adapte para o Instagram"), com a mesma midia do dia. Metade
+  do custo de escrever do zero, e a tese do dia e a mesma nas redes, que e o
+  que uma campanha promete. Instagram so recebe os dias com peca visual
+  (imagem, carrossel, infografico), porque nao publica texto solto. Enquete e
+  thread ficam onde nasceram.
+- So escreve para rede pedida E conectada: pedir Instagram sem conta conectada
+  geraria um rascunho sem destino.
+- A gravacao do post escolhe a conta por rede (`contaDaRede`), em vez do par
+  fixo `liAccount`/`twAccount`.
+
+**O que muda na conta:** cada rede a mais e uma peca a mais por dia. Um dia
+com imagem em quatro redes sao quatro posts e uma imagem. A janela avisa.
+
+### 3. Vercel: o cache de build estava corrompido
+
+Tres deploys quebraram em `WasmHash._updateWithBuffer` com o build local
+passando, e os tres passaram com `--force`. `VERCEL_FORCE_NO_BUILD_CACHE=1`
+entrou em producao. Build fica mais lento e para de falhar por motivo que nao
+e nosso.
+
+### 4. A etapa Marca, no ar
+
+`components/kanban/step-marca.tsx` no lugar da antiga `StepDesign` (que ficou
+no arquivo, sem uso). Cores com seletor por amostra, logo, manual em PDF e a
+lista de documentos para a IA, nos cinco tipos do Treinamento. A rota
+`/api/projects/[id]/marca` gera o token do Blob e, no `onUploadCompleted`, le o
+PDF pela IA e grava um `ProjectContext` compilado. O `PATCH` do projeto aceita
+`logoUrl`, `brandManualUrl` e `brandManualName` como espelho.
+
+O que ainda nao acontece: o logo e so guardado, nao entra na capa nem nas
+pecas (proximo fio); DOCX nao entra; a aba "Marca e voz" das configuracoes nao
+mostra logo e manual, so o assistente. E a compilacao do PDF nao roda em
+desenvolvimento local, porque o storage nao alcanca o localhost.
+
+Schema e migration `20260914120000_marca_do_projeto` (aplicada): `logoUrl`,
+`brandManualUrl`, `brandManualName` em `Project`. O manual em PDF nao precisa
+de biblioteca: a API da Anthropic le PDF como bloco de documento, e o texto
+compilado vira um `ProjectContext` do tipo "brand", que as campanhas ja leem.
+O `npm install pdf-parse mammoth` caiu por rede e nao foi repetido: DOCX fica
+para depois, PDF e texto colado cobrem o manual e os documentos.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
 ## Backlog registrado em 04/09/2026 (nao implantar agora)
 
 Bruno esta rodando o teste do zero (projeto novo, `cmtmym5bo000004l80wwvpdd7`)
@@ -9321,3 +10218,9271 @@ Notion; aqui fica so o resumo tecnico.
    venda). Tudo discutido em detalhe antes de gastar. Pre-requisitos: o
    teste do zero passar limpo e os precos novos no Stripe.
 
+
+## Sessao 14/09/2026 (parte 107): o cupom que vazava virou price, e a oferta mudou de ciclo
+
+A unica divida que sangrava dinheiro fechou. O Bruno escolheu a saida (b) do
+card 370 e o valor da vaga: **R$ 4.764 por ano, que sao 12 x R$ 397**.
+
+### 1. A premissa que o codigo corrigiu antes de eu mexer
+
+O card 370 e a wiki diziam que o vazamento era "R$ 97 por mes no Essencial", o
+que esta certo, mas por tras disso eu tinha entendido que a OFERTA era no
+Essencial. Nao e. A oferta de fundador sempre foi no **Autoridade mensal**
+(R$ 697 menos R$ 300 = R$ 397), e enquanto ha vaga o Essencial some das telas
+justamente para os dois cartoes nao mostrarem o mesmo 397.
+
+Ou seja o vazamento era o **avesso** da oferta: o mesmo cupom que desenhava a
+oferta em um plano a destruia em outro. Isso muda o conserto, porque nao bastava
+mexer no tamanho do desconto.
+
+### 2. O vazamento tinha DUAS pernas, e so uma dependia de decisao
+
+Perna do codigo digitavel, fechada sem esperar nada:
+`allow_promotion_codes: true` saiu de `createCheckoutSession`, e o codigo
+promocional `FUNDADOR` (promo_1UBzjdJIhzTmSVmMq8wwkBvD) foi desligado no Stripe.
+O desconto do fundador NUNCA dependeu desse campo: ele entrava por `discounts`,
+e o Stripe nem aceita os dois juntos.
+
+Perna da oferta, que dependia do Bruno: o price anual proprio.
+
+Medido antes de tocar, e o risco era zero: **nenhuma assinatura viva na conta**,
+so a do Bruno cancelada em 12/09.
+
+### 3. Armadilha de versao da API, irma da do card 399
+
+Nesta conta o codigo promocional **nao tem campo `coupon`**, tem
+`promotion.coupon` com o ID em texto. Ler o lugar antigo devolve `undefined` e o
+script morre calado, sem dizer nada sobre o vazamento que ele existe para medir.
+Mesmo formato do `current_period_end` que mudou para dentro do ITEM em 12/09.
+
+### 4. O que a troca de cupom por price CUSTOU, e foi aceito de olho aberto
+
+`vagasDeFundador()` contava por `times_redeemed` contra `max_redemptions` do
+cupom, e isso dava um **teto atomico de graca**, imposto pelo proprio Stripe.
+Agora conta `subscriptions.list({ price })`, que e uma CONTAGEM: duas pessoas no
+checkout ao mesmo tempo com uma vaga restante podem virar onze fundadores.
+
+A janela e de segundos, a fila e de dez, e a alternativa era manter vivo um
+cupom digitavel de R$ 300 em qualquer plano. Se um dia doer, o lugar de resolver
+e uma reserva de vaga no NOSSO banco antes de abrir a sessao.
+
+Regra de contagem: cancelada devolve a vaga (a promessa e de dez fundadores, e
+guardar cadeira para quem saiu custa uma venda); `incomplete` SEGURA a vaga, que
+e exatamente como nasceria o decimo primeiro.
+
+### 5. A inversao, e o efeito colateral que ela quase deixou passar
+
+A vaga existia so no **Mensal** e passou a existir so no **Anual**. Duas coisas
+saem disso:
+
+- O cartao do Mensal ganhou uma linha que nao existia em lugar nenhum: "As 10
+  vagas de fundador existem no anual, por R$ 397 por mes travados para sempre."
+  Sem ela, quem chega pelo anuncio da vaga e cai na chave no padrao ve uma tela
+  que finge que a oferta nao existe.
+- O Essencial sumia da /planos sempre que havia vaga. A razao era colisao de
+  numero, e no Mensal **nao ha mais colisao**, entao esconder ali deixaria a
+  tela sem plano de entrada por um motivo que caducou. Agora a condicao e "o
+  cartao de fundador esta na tela", nao "existe vaga". No Anual esconder ficou
+  MAIS necessario que antes: o Essencial anual mostra R$ 331 por mes contra os
+  R$ 397 do fundador, ou seja o plano de entrada apareceria mais barato que a
+  oferta que a pagina tenta vender.
+
+### 6. O desenho, decidido no canvas antes do codigo
+
+Tres opcoes, e a pergunta era uma so: onde mora o numero grande. Escolhida a
+**opcao C**: vitrine em 397, porque e a promessa que vende, e o valor cobrado
+(R$ 4.764) dentro do BOTAO, onde nao da para clicar sem ter lido. Tira a
+sensacao de isca sem entregar a comparacao com os R$ 697 de lista.
+
+A opcao B (quatro digitos na vitrine) caiu por um argumento que ja estava
+escrito no proprio `lib/planos.ts`: numero grande de quatro digitos assusta.
+
+Canvas: https://claude.ai/code/artifact/c824a966-c759-4207-bb4a-6b2df90b6156
+
+### 7. ERRO MEU, e a licao vale mais que o erro
+
+O script de limpeza `fechar-vazamento-fundador.mts` arquiva "todo preco ativo
+que o codigo nao usa", e a lista de "o que preservar" foi escrita a mao com os
+seis precos de plano. Rodei ele DEPOIS de criar o price de fundador, e ele
+arquivou exatamente a oferta que este trabalho existe para montar. Desfeito no
+minuto seguinte.
+
+A licao nao e "faltou um item na lista". E que **lista de preservacao escrita a
+mao vira lista de destruicao** quando nasce algo novo e ninguem lembra dela. O
+conserto foi em duas camadas: o price entrou na lista, E todo price com
+`metadata.oferta = "fundador"` fica fora do arquivamento, porque a marca viaja
+junto com o objeto em vez de num arquivo que envelhece em paralelo.
+
+### 8. O STARTER de R$ 49, carona do card 370
+
+Nao dava para arquivar o PRECO: e o `default_price` do produto e o Stripe
+recusa. Arquivei o PRODUTO, que e mais honesto, porque o plano inteiro saiu em
+18/08 e nao so o preco. **Provado e nao suposto:** pedir checkout naquele price
+agora devolve "Price is not available to be purchased because its product is
+not active".
+
+### 9. O que foi provado na tela, e o que NAO foi
+
+Provado no navegador, com o Stripe de producao respondendo:
+
+- `/planos` no **Mensal**: tres cartoes (o Essencial voltou), Autoridade em
+  R$ 697 e a linha nova apontando para a vaga.
+- `/planos` no **Anual**: Essencial fora, cartao de fundador com R$ 697 riscado,
+  397 grande, as duas linhas de apoio e o botao "Garantir vaga, R$ 4.764 no ano".
+- A landing, com o mesmo cartao.
+- `/api/planos/fundador` devolvendo `{"vagas":10}` pelo caminho novo.
+- Sessao de checkout REAL contra o price de fundador: `cs_live` criada, status
+  open, **campo de cupom nao aparece**, price R$ 4.764/year. Mesmo
+  `trial_period_days: 7` da funcao de verdade.
+
+**NAO provado na tela:** a aba Plano de `/settings`. As duas contas do Bruno sao
+admin desde 12/09, e aquela aba curto-circuita para "Acesso interno" antes de
+desenhar cartao de oferta. O codigo esta escrito e passa no `tsc`, mas ninguem
+viu. Quem tiver uma conta nao admin na mao, olhe la primeiro.
+
+### 10. Arquivos
+
+- `lib/planos.ts`: `FUNDADOR` ganhou `anual: 4764`, mais `FUNDADOR_COBRANCA`,
+  `fundadorBotao()`, `fundadorVagas()` e `fundadorNoAnual()`. As frases moram
+  aqui porque TRES telas desenham este cartao (landing, /planos e a aba Plano
+  de /settings), e quando cada uma tinha a sua copia as tres divergiram.
+- `lib/stripe/index.ts`: `FUNDADOR_PRICE_ID`, `vagasDeFundador()` reescrita,
+  `createCheckoutSession` perdeu o parametro `opcoes` e o cupom.
+- `app/api/stripe/checkout/route.ts`: `ciclo === "anual"` e o price trocado na
+  ultima linha antes de abrir a sessao.
+- `components/landing/pricing.tsx`, `app/planos/page.tsx`,
+  `components/settings/plano-e-cobranca.tsx`: o cartao, com `&ciclo=anual` no
+  link e no clique.
+- `scripts/tmp/`: `vazamento-fundador.mts`, `fechar-vazamento-fundador.mts`,
+  `price-fundador-anual.mts`, `provar-checkout-fundador.mts`.
+- Ambiente: `STRIPE_FUNDADOR_ANNUAL_PRICE_ID=price_1UFXwAJIhzTmSVmMr4kllYNs` no
+  `.env.local` e nos tres ambientes da Vercel.
+  `STRIPE_FUNDADOR_COUPON_ID` continua no arquivo, sem nenhum leitor.
+
+### 11. Aberto
+
+- **Nao deployado.** O codigo esta na maquina; a Vercel ja tem a variavel.
+- O cupom `U7D5Z5ig` continua VALIDO no Stripe, agora inalcancavel (nenhum
+  codigo o aplica e o codigo promocional esta desligado). Apagar e decisao do
+  Bruno, porque deletar cupom no Stripe nao tem volta.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 108): tres reprovacoes antes do deploy, tres mecanismos diferentes
+
+O Bruno segurou o deploy do cupom e apontou tres coisas. Cada uma tinha um
+mecanismo proprio, e duas eu nao teria adivinhado sem olhar os dados.
+
+### 1. Post que falhou e beco sem saida
+
+`components/posts/posts-panel.tsx`: a linha de acoes so renderiza quando
+`status === "draft"`. Post em `failed`, `rejected`, `scheduled` ou `published`
+nao tem botao nenhum. O post de LinkedIn dele falhou e ele abriu numa tela sem
+nada para fazer, e foi por isso que a queixa saiu como "nao tem botao de
+arquivar nem apagar".
+
+Achado de carona, no formato exato do `sourcesComment` de 13/09: existe um
+`DELETE /api/posts/[id]` completo, com autorizacao por dono do projeto, e
+**nenhuma tela do produto o chama**.
+
+Decisao do Bruno: arquivar e apagar separados, dois pesos. Desenho no canvas,
+aguardando veredito:
+https://claude.ai/code/artifact/9cf3b2e6-cc51-4713-a5d3-6bec13742f83
+
+### 2. O LinkedIn nao expirou, foi REVOGADO
+
+A tela disse "Token expirado ou invalido". O token vale ate 13/11 no nosso
+banco. O LinkedIn disse outra coisa:
+
+```
+401  serviceErrorCode 65601  REVOKED_ACCESS_TOKEN
+"The token used in the request has been revoked by the user"
+```
+
+A causa e a armadilha do card 408 cobrando juros: revogar o app em
+`linkedin.com/mypreferences/d/permitted-services` para a tela de consentimento
+reaparecer e o passo obrigatorio da gravacao do App Review. **Preparar a
+gravacao quebra as conexoes vivas.**
+
+Medido conta por conta contra a API: das 8 contas de LinkedIn do banco, 6 estao
+revogadas e 2 estao VIVAS. As duas vivas sao as PAGINAS do projeto Demandou,
+reconectadas em 14/09 as 08:04. A gravacao do LinkedIn nao esta bloqueada.
+
+**O defeito de produto:** `isActive` e uma chave manual, nao um fato. A tela de
+Configuracoes mostra as 8 verdes e "ativa". A rota de publicacao descobre a
+verdade, marca o POST como failed e joga fora o que aprendeu sobre a CONTA. A
+mensagem manda reconectar numa tela que vai parecer que esta tudo certo.
+
+**Duas armadilhas de diagnostico pagas no caminho, e as duas quase viraram
+"conexao morta" num relatorio que decide se da para gravar hoje:**
+- `/v2/userinfo` com token do app de PAGINAS devolve 403 ACCESS_DENIED mesmo
+  com o token vivo, porque aquele app nao tem escopo de perfil. Cada app tem
+  seu endpoint.
+- Fixar `LinkedIn-Version` a mao devolve 426 NONEXISTENT_VERSION. O app
+  percorre uma cascata justamente por isso; o script tem que percorrer tambem.
+
+### 3. O X apareceu sem o X estar conectado, e o post e ACERVO
+
+Primeira leitura minha estava errada e os dados corrigiram. A execucao foi
+`campaignMode: "single"` com `singlePlatform: "both"`. As datas:
+
+```
+deploy anterior:  13/09 18:44 UTC
+run da campanha:  14/09 01:06 UTC
+post do X criado: 14/09 01:10 UTC
+deploy seguinte:  14/09 01:21 UTC   <- 11 min DEPOIS
+```
+
+O guard da esteira (`executar.ts:1296`, `redesPedidas` filtrado por
+`contaDaRede.has`) cobre o post unico e subiu 11 minutos depois do post. Hoje a
+esteira nao criaria aquele post.
+
+**O que AINDA estava quebrado e o inverso do defeito de 13/09:** a TELA
+continuava oferecendo o X. O seletor do post unico era fixo em LinkedIn, X e
+Ambos, com "Ambos" de padrao, e nunca olhava o que esta conectado. O usuario
+pediria X, a esteira recusaria calada, e ele receberia so LinkedIn sem
+explicacao. A tela promete e a esteira declina em silencio.
+
+Segundo lugar com a mesma doenca: `posts-panel.tsx` renderizava a
+`CampaignSetupModal` **sem passar `redesConectadas`**, entao ate a secao de
+campanha por tema caia no fallback `["linkedin","twitter"]`.
+
+**Consertado (falta deploy):** o fallback morreu, porque lista vazia e a
+resposta honesta; o seletor do post unico vem das redes conectadas cruzadas com
+as que aquele caminho sabe entregar (LinkedIn e X, e so isso, ver `redesPedidas`
+para `campaignMode === "single"`); "Ambos" so aparece quando existem dois; com
+zero a janela manda conectar. A tela de posts passou a entregar a lista real,
+que a pagina ja filtra por `whereSocialAccountCanPublish`.
+
+Nao provado na tela: o modal precisa de sessao logada. Passa no `tsc`.
+
+### Regra que fica
+
+Duas vezes em dois dias o mesmo par apareceu invertido: **a tela e a esteira
+precisam prometer a mesma coisa.** Em 13/09 a esteira sabia menos que a tela
+mostrava; em 14/09 a esteira sabe recusar e a tela continua oferecendo. Nos dois
+casos quem paga e o cliente, que pede uma coisa e recebe outra sem explicacao.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+### Parte 108, fechamento: implantado em producao as 09:01 de 14/09
+
+Deploy `donaire-squad-1aos-exmjgvh7y`, com `VERCEL_FORCE_NO_BUILD_CACHE=1`.
+Subiu tudo junto: a oferta de fundador anual (parte 107) e os tres consertos
+desta parte.
+
+**Migration `20260914160000_rede_precisa_reconectar`, aplicada.** Duas colunas
+em `social_accounts`:
+
+- `needsReconnectAt`: quando a rede RECUSOU o token numa publicacao.
+- `needsReconnectReason`: o codigo que ela devolveu.
+
+O porque esta no comentario da migration, e o resumo e: `isActive` e "o token
+funciona" sao coisas diferentes e estavam no mesmo campo. `isActive` e escolha
+do usuario; isto e fato da rede. `tokenExpiresAt` tampouco responde, porque
+guarda a validade PROMETIDA na conexao e revogacao nao mexe nela: os seis
+tokens revogados de 14/09 valiam ate novembro segundo aquele campo.
+
+**Onde a verdade passa a ser gravada:** `app/api/posts/[id]/publish/route.ts`,
+no mesmo ramo que ja mandava o cliente reconectar. Ele agora marca a CONTA
+alem do POST, guarda o codigo da rede, e a frase muda com o motivo: acesso
+retirado nas permissoes nao e a mesma historia que acesso expirado.
+
+**Onde ela e limpa:** os cinco callbacks de OAuth, 12 lugares (o LinkedIn tem
+4). Foi feito por script de proposito, porque esquecer UM deixaria aquela rede
+presa em "reconectar" para sempre, que e um defeito pior que o original: a tela
+passaria a mentir na outra direcao, e sem saida.
+
+**Consequencia no filtro:** `whereSocialAccountCanPublish` ganhou
+`needsReconnectAt: null`. Conta que a rede recusou nao e mais oferecida como
+destino de campanha nova, porque geraria posts que nascem para falhar. A tela
+de posts pede as recusadas numa consulta separada, so para o post que falhou
+poder explicar por que falhou.
+
+**A tela de posts, acoes por estado** (`posts-panel.tsx`), do canvas aprovado:
+
+- rascunho: aprovar e publicar, rejeitar, e apagar discreto no fim.
+- falhou: o motivo em portugues ANTES dos botoes (tentar de novo sem
+  reconectar falha igual), depois tentar de novo, arquivar e apagar.
+- rejeitado ou arquivado: voltar para rascunho, e apagar.
+- agendado: publicar agora e arquivar. Sem apagar: post agendado sumir sem
+  aviso e o tipo de coisa que a pessoa descobre tarde.
+- publicado: so o link, como antes. Apagar ali apagaria o registro de algo que
+  esta no ar, e o relatorio mensal sai dali.
+
+`"cancelled"` entrou em `STATUS_CONFIG` e em `isCanceled`, porque e o valor que
+o Gestor ja gravava ao arquivar: sem isso, post arquivado nesta tela sumiria de
+todas as abas.
+
+`DELETE /api/posts/[id]`, que existia desde sempre sem ninguem chamar, passou a
+ser chamado. A confirmacao mostra o comeco do texto em vez de perguntar "tem
+certeza": numa lista de posts parecidos, o que evita o clique errado e ver QUAL
+post vai sumir.
+
+**Provado em producao**, em demandou.com: /planos no Mensal (tres cartoes, o
+Essencial de volta, a linha apontando para a vaga) e no Anual (Essencial fora,
+cartao de fundador com 397 grande e "Garantir vaga, R$ 4.764 no ano"), e o link
+do botao levando `&ciclo=anual`.
+
+**O que NAO foi visto na tela, e vale dizer:** as telas logadas (a tela de
+posts com as acoes novas, e o cartao de rede em "reconectar"), porque elas
+pedem sessao. Passam no `tsc` e no `npm run build`. O primeiro clique do Bruno
+e o teste.
+
+**Estado que o Bruno vai encontrar:** o LinkedIn pessoal dele esta revogado e o
+app ainda NAO sabe, porque a descoberta acontece ao tentar publicar. A primeira
+tentativa vai falhar com a frase nova e marcar a conta. Isso e o desenho
+funcionando, nao um furo. As duas paginas seguem vivas.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+### Parte 108, adendo: o modal de campanha foi ao ar quebrado, e a licao e sobre prova
+
+Reprovado pelo Bruno 17 minutos depois do deploy das 09:01: "pedi ideias de
+tema, escolhi um, cliquei em seguir, deu erro". E ele tem razao no que disse
+em seguida: a gente estava quebrando o que ja funcionava.
+
+**O mecanismo, exato.** Em `campaign-setup-modal.tsx`, a constante
+`conectadas` nasceu vinte linhas ABAIXO do primeiro uso. O uso estava dentro do
+callback de um `filter`, e por isso o TypeScript nao acusou (TS2448 so pega uso
+direto, nao dentro de arrow function). Em runtime o `filter` roda na hora da
+renderizacao e morre em `Cannot access 'conectadas' before initialization`. O
+modal quebrava AO ABRIR, em toda tela, com qualquer projeto. `tsc` limpo,
+`next build` limpo, producao quebrada.
+
+**Provado, nao deduzido.** `scripts/tmp/renderizar-modal-de-campanha.mts`
+renderiza o componente de verdade com `renderToString`, dentro dos contextos do
+App Router (sem eles o `useRouter` morre em "expected app router to be
+mounted", que e outro erro e confunde). Com `--quebrado`, o script copia o
+componente com a declaracao devolvida ao lugar antigo e renderiza a copia: os
+quatro cenarios morrem com a frase exata. Sem a flag, os quatro passam.
+
+`scripts/tmp/renderizar-telas-de-14-09.mts` faz o mesmo com `PostsPanel` (os
+seis estados, o banner de rede revogada, chamador antigo, projeto vazio) e
+`SocialConnectPanel` (viva, revogada com motivo, recusada sem motivo, nenhuma).
+Oito cenarios, oito OK. As duas telas nao tinham o defeito, mas so agora isso
+e um fato e nao uma esperanca.
+
+Correcao no ar: deploy `donaire-squad-1aos-34lpt4vkz`, 12:39 de 14/09.
+
+**A regra que fica, e ela vale para todo componente cliente daqui em diante:**
+tipo limpo prova FORMA, nao EXECUCAO. Antes de subir componente cliente
+alterado, renderizar com `renderToString` nos cenarios de props que as telas
+passam. Custa vinte segundos e teria evitado este deploy. Os dois scripts acima
+sao o molde.
+
+**O que NAO esta explicado:** o print do Bruno mostra o Chrome em "This page
+couldn't load" na URL de /posts, com a Vercel registrando 200 para aquele GET.
+O crash do modal e certo e bate com "cliquei em seguir deu erro"; a pagina do
+Chrome veio depois e pode ser consequencia (aba em estado ruim) ou outra coisa.
+Se voltar a acontecer COM o modal ja corrigido, e defeito separado e merece
+investigacao propria, comecando por `vercel logs --json` no horario exato.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 109): o post apagado que nao saia do Gestor, e a campanha que "concluiu" com zero
+
+Reprovacao do Bruno: arquivou um post na aba de posts, ele continuou na
+agenda da semana do Gestor; apagou de vez em Cancelados, continuou. Nos dados:
+**zero posts, sete cards.** Deploy `donaire-squad-1aos-p8ku7cyui`.
+
+### 1. As duas telas falam de objetos diferentes, e ninguem traduzia
+
+A aba de posts mexe em `posts`. O Gestor desenha `campaign_cards`, filtrando
+so por `run.archived = false` e `status != "archived"`. A relacao card -> post
+nao tem cascade: apagar o post zera o `postId` do card e o card fica. Arquivar
+o post nao toca no card.
+
+`lib/posts/espelhar-no-gestor.ts` e a traducao. A regra e por DIA, nao por
+post: um dia e uma corrente de cards (pesquisa, redator, midia, revisao,
+publicacao) e o post e o fim dela. Quando o ultimo post vivo do dia some
+(`esconderDiaSemPosts`), os cards do dia viram `archived`; quando a execucao
+fica sem card vivo, ela vai para o arquivo do Gestor, pelo mesmo caminho que
+"arquivar campanha" ja usava. `reabrirDia` faz a volta quando um post
+arquivado retorna a rascunho. Chamado do DELETE e do PATCH de
+`app/api/posts/[id]/route.ts`.
+
+Acervo corrigido com a mesma funcao (`scripts/tmp/esconder-dia-orfao.mts`):
+o dia 7 da execucao de 13/09 e o dia 1 da execucao de hoje.
+
+### 2. A campanha de hoje "concluiu! 0 posts", em zero segundos, e nao disse por que
+
+Segundo defeito, achado nos dados sem o Bruno relatar. A execucao das 16:04
+rodou a pesquisa, o trabalho do dia comecou e terminou no mesmo segundo, e o
+log fechou com "Campanha single concluida! 0 posts criados". Causa: **o projeto
+estava com zero contas** (as tres do LinkedIn foram removidas na tela de
+Configuracoes, provavelmente na preparacao da gravacao). `redes` ficou vazio, os
+redatores foram pulados em silencio, e a esteira chamou isso de sucesso.
+
+O filtro "so escreve para rede conectada" continua certo. O que faltava era
+transformar "nada para escrever" em falha com frase de gente. Agora, em
+`executar.ts` logo depois de `redes`: log `failed` dizendo quais redes foram
+pedidas e mandando conectar, run marcado `failed`, retorno. E a janela de
+campanha (`handleConfirm`) nem deixa confirmar sem rede: toast e volta.
+
+### Provas
+
+`tsc` limpo, `next build` limpo, e o modal renderizado de verdade nos quatro
+cenarios (`renderizar-modal-de-campanha.mts`), que e a prova que faltou de
+manha. Nao visto na tela logada.
+
+### O que o Bruno vai encontrar
+
+O projeto Demandou esta SEM NENHUMA REDE. Antes de gerar qualquer coisa,
+reconectar o LinkedIn (perfil e pagina) em Configuracoes. A janela agora avisa
+se ele esquecer.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 109): a aba de posts e o Gestor falavam de objetos diferentes, e a esteira concluia com zero
+
+Reprovacao do Bruno: apagou um post na aba de posts, ele continuou na agenda
+da semana do Gestor; apagou de vez em Cancelados, continuou. Dois defeitos
+apareceram nos dados, o segundo ele ainda nao tinha visto.
+
+### 1. Apagar o post nao chegava ao Gestor
+
+A aba de posts mexe em `posts`. O Gestor desenha `campaign_cards`, filtrando
+so por `run.archived = false` e `status != "archived"`. A relacao card -> post
+nao tem cascade: apagar o post zera o `postId` e o card fica. Arquivar o post
+nao toca no card. Medido: zero posts, sete cards.
+
+Conserto em `lib/posts/espelhar-no-gestor.ts`, chamado pelo `DELETE` e pelo
+`PATCH` de `/api/posts/[id]`. A regra e por DIA, nao por post: um dia e uma
+corrente de cards (pesquisa, redator, midia, revisao, publicacao) e o post e
+so o fim dela. Ultimo post vivo do dia some, os cards do dia viram `archived`;
+execucao sem card vivo vai para o arquivo do Gestor, pelo mesmo caminho que
+"arquivar campanha" ja usava. Post que volta de arquivado reabre o dia.
+Tudo reversivel.
+
+Acervo corrigido com a mesma regra (`scripts/tmp/esconder-dia-orfao.mts`):
+o dia 7 da execucao de 13/09 e o dia 1 da execucao vazia de hoje.
+
+### 2. A campanha de hoje concluiu com zero posts em zero segundos
+
+`Campanha single concluida! 0 posts criados`, trabalho do dia com inicio e fim
+no mesmo segundo, so o card do Roberto criado. Causa: **o projeto Demandou
+estava com ZERO contas** (o Bruno removeu as tres do LinkedIn entre 12h e
+16h). `redes` ficou vazio, os redatores foram pulados e a esteira chamou isso
+de sucesso.
+
+O filtro "so escreve para rede pedida E conectada" continua certo. O que
+faltava era transformar "nada para escrever" em erro com frase de gente:
+`executar.ts` agora, com `redes.length === 0`, loga "Nenhuma rede conectada
+para escrever (pedidas: ...)" com status `failed`, marca a execucao como
+`failed` e retorna. E a janela (`campaign-setup-modal.tsx`, `handleConfirm`)
+nem deixa confirmar sem rede: toast e volta.
+
+### Provas
+
+`tsc`, `renderizar-modal-de-campanha.mts` (quatro cenarios OK depois da
+guarda), `npm run build`. Deploy `donaire-squad-1aos-p8ku7cyui`.
+
+Nao visto na tela logada (pede sessao): o Gestor sem os dias orfaos e o toast
+da janela sem rede. O primeiro clique do Bruno e o teste.
+
+### Estado que o Bruno vai encontrar
+
+O projeto Demandou nao tem rede nenhuma conectada. Para gerar qualquer coisa,
+primeiro conectar o LinkedIn em Configuracoes. A esteira e a janela agora
+dizem isso em vez de devolver sucesso vazio.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 110): a conta errada e os infograficos iguais
+
+Duas reprovacoes do Bruno depois da gravacao do LinkedIn.
+
+### 1. O post saiu pelo perfil, nao pela pagina (AGUARDA CANVAS)
+
+Post `cmu1h03n7` publicado pela conta pessoal com a pagina demandou ativa no
+mesmo projeto. Tres lugares escolhem a conta pela REDE e caem no perfil:
+`executar.ts` (`contaDaRede` e um Map por plataforma, reserva `liAccount` e
+"a primeira de LinkedIn"), `content-manager.tsx` (`accountFor` prefere
+`personal`) e `posts-panel.tsx` (`pickSocialAccount`, idem). E nao existe
+seletor de conta em tela nenhuma: a plataforma nunca perguntou.
+
+Desenho no canvas, aguardando veredito:
+https://claude.ai/code/artifact/47e61847-4783-431c-aace-f302c8261657
+A unidade de escolha passa a ser a CONTA (perfil ou pagina), na janela de
+campanha ("Por onde sai?") como padrao do projeto e no card do Paulo como
+excecao por post. Por baixo: a esteira grava um post por conta escolhida, com
+`socialAccountId` desde o nascimento.
+
+### 2. Infograficos todos iguais: era hardcoded (FEITO, no ar)
+
+`lib/media/infographic.ts` tinha cinco paletas fixas escolhidas pelo NICHO
+(`THEME_STYLES`, `NICHE_THEMES`, `detectTheme`) e uma unica frase de estilo,
+"modern corporate infographic". A imagem comum tinha "paleta alinhada ao
+nicho" e `mediaStyle` fixo por campanha, "cinematic" por padrao.
+
+Tudo isso saiu. Entrou `lib/media/direcao-de-arte.ts`:
+- `ESTILOS`: catalogo de dez direcoes de arte (consultoria clean, editorial com
+  grafico, poster tipografico, painel de indicadores, caderno desenhado,
+  futurista, colagem com foto, ilustracao flat, foto cinematografica,
+  monocromatico com acento), cada uma descrevendo composicao e acabamento e
+  deixando a COR para a marca.
+- `paletaDoProjeto(colorPalette)`: as cores do projeto viram frase de prompt.
+  O nicho diz o assunto; a marca diz a cor.
+- `escolherEstilo()`: deterministico em (runId, dayOfWeek) e desvia dos
+  estilos das ultimas tres pecas do projeto (`Post.metadata.visualStyle`).
+
+Ligado em: `executar.ts` (Diana, infografico e imagem comum; `visualStyle`
+gravado no post), `campaign-cards/[id]/chat` (regenerar) e
+`pecas-da-semana.ts` (semana do video). A janela passou a abrir em estilo
+"auto"; quem escolhe um estilo continua obedecido.
+
+Provado gerando de verdade: dois infograficos do mesmo texto, editorial com
+grafico e caderno desenhado, visivelmente diferentes, com o laranja da marca.
+Achado na prova: o estilo editorial desenhou um GRAFICO COM EIXOS INVENTADOS
+(meses e valores que nao existem no texto). Entrou a regra "grafico so com
+numero que esta no conteudo; sem serie, sem grafico". Nao provada ainda.
+
+Deploy `donaire-squad-1aos-bo0tuoy3y` (sem a regra do grafico; ela vai no
+proximo).
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 111): por onde sai, e a pesquisa que rodou duas vezes
+
+### 1. A conta de destino virou escolha (no ar, deploy `oeh0fwad2`)
+
+O Bruno reprovou pela segunda vez: "mesmo selecionando apenas a pagina, na
+hora de publicar nao mostra onde vai publicar". Nos dados, o rascunho de
+15/09 ja ia sair pela pagina demandou (era a unica conta ativa), mas a tela
+nao dizia. Construido o que o canvas desenhou:
+
+- `CampaignConfig.destinos`: ids de `SocialAccount`. A janela
+  (`campaign-setup-modal.tsx`) ganhou a prop `contasConectadas` e a secao
+  "Em quais redes?" virou "Por onde sai?", um chip por CONTA com o tipo
+  escrito (pagina ou perfil). Padrao: paginas ligadas, perfil desligado quando
+  existe pagina da mesma rede. O post unico segue a mesma regra. `platforms`
+  passou a ser derivado dos destinos.
+- `executar.ts`: `destinosPorRede`, e a gravacao faz UM POST POR CONTA
+  escolhida, com `socialAccountId` desde o nascimento. Sem `destinos` (janela
+  antiga), cai na conta da rede como antes.
+- Card do Paulo (`content-manager.tsx`): cada linha mostra a conta
+  ("demandou (pagina)"); com mais de uma conta na rede vira `<select>` que
+  grava por `PATCH socialAccountId`. Publicado nao troca.
+- Aba de posts: a conta no cabecalho do cartao.
+
+Provado por renderizacao (sete cenarios do modal, incluindo perfil e pagina
+juntos), `tsc` e build. Nao visto na tela logada.
+
+O que NAO entrou: guardar a ultima escolha no projeto. Hoje o padrao e
+recalculado a cada abertura da janela.
+
+### 2. "Demorou muito": a pesquisa rodou duas vezes e ninguem contou
+
+Execucao `cmu1inxfh`, 313 s para um post. A fila mostrou
+`campanha-pesquisa tent=2`: a primeira tentativa morreu por volta de 60 s
+(durante a reescrita do brief pelo lastro), voltou para a fila, e a segunda
+refez a busca inteira. O log da campanha mostrava duas pesquisas sem dizer que
+a primeira tinha falhado, porque o `error` do trabalho e sobrescrito quando a
+segunda da certo.
+
+Feito: `lib/fila/passada.ts` grava no log da execucao "Tentativa N da pesquisa
+falhou e vai repetir: <motivo>". A partir de agora a demora tem nome.
+
+Nao feito, e e o proximo se repetir: a busca bruta ja poderia ficar guardada
+antes da reescrita, para a segunda tentativa nao pagar a busca de novo.
+
+### 3. Animacao 3D dos agentes no Gestor
+
+Pedido de novo. Ja e card no planner desde 04/09 ("Escritorio 3D gamificado
+na tela /live"), classificado como depois do lancamento pela ordem de 14/09
+do proprio Bruno. Nao entrou.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 112): o LinkedIn foi enviado, e o levantamento da Meta
+
+### LinkedIn: formulario enviado
+
+O video saiu de UMA tomada continua de 2 min (`jornada/2026-09-14 14-57-30.mp4`),
+cortada por tempo em 9 pedacos por `cortar-tomada.sh` e legendada por
+`montar.sh linkedin --sem-aparar`. Fora: a janela do OBS nas pontas e os DOIS
+dialogos de PIN do Windows no meio do login (tela do sistema, nao do app).
+
+Link publico do video, no store `demandou-cdn` do Blob, sem login:
+`https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/app-review/demandou-linkedin-app-review-KvCPfUlsDsxLdCDpIymBiXTyGPmAF5.mp4`
+Subido por `scripts/tmp/publicar-video-de-revisao.mts`, com HEAD anonimo
+devolvendo 200. Nao precisou de YouTube.
+
+Dois defeitos achados quadro a quadro: os dialogos de PIN, e a legenda do OAuth
+com quatro linhas numa faixa de duas, cortando justamente "organizationAcls".
+`montar.sh` ganhou faixa de TRES linhas, e a legenda foi encurtada.
+
+**Regra que fica para as outras duas gravacoes: quem grava, grava inteiro; quem
+corta, corta depois.** Erro na gravacao custa uma tomada; erro no corte custa um
+numero num script.
+
+### Meta: o levantamento, antes de gravar
+
+**CORRECAO QUE VALE A SUBMISSAO: o card 353 tinha nome de permissao errado.**
+Conferido no codigo, nao no card:
+- `lib/oauth/instagram.ts` usa "Instagram API with Instagram Login"
+  (`graph.instagram.com`), escopos `instagram_business_basic` e
+  `instagram_business_content_publish`.
+- `lib/oauth/facebook.ts` usa Facebook Login for Business com `config_id`,
+  escopos `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
+`instagram_content_publish` e o nome ANTIGO, da configuracao por Facebook
+Login, que a Demandou nao usa. Sao CINCO permissoes, e nao tres.
+
+**Lido na Graph API em 14/09** (`scripts/tmp/estado-do-app-meta.mts`): app
+Demandou `1808987136949506`, categoria Business, privacy e terms apontando para
+demandou.com, dominio demandou.com. Tokens vivos
+(`scripts/tmp/tokens-da-meta.mts`): Instagram `@prdonaire` e a pagina Demandou.
+
+**O que muda o roteiro, medido no banco:** a conta `reviewer@demandou.com` NAO
+esta mais vazia. Ela e dona do projeto "Demandou", o mesmo da gravacao do
+LinkedIn, e tem **zero rascunho com imagem**: os dois posts foram publicados e
+`imageUrl` em base64 e limpa apos publicar, por desenho. Sem rascunho com
+imagem nao ha o que publicar no Instagram. A preparacao (conectar, gerar
+campanha com infografico, desconectar) virou obrigatoria antes de gravar.
+
+**Risco que NAO existe, conferido antes de virar problema na camera:** imagem
+em base64 publica no Instagram normalmente, pela rota assinada
+`/api/media/ig/[token]` (`lib/publish/oauth-post.ts`). A Meta busca a midia por
+URL publica e essa rota serve a imagem do banco.
+
+**Bloqueio duro a conferir:** a verificacao da empresa emperrou em 21/08 e nunca
+foi confirmada como concluida. Sem ela a Meta nao libera acesso avancado.
+
+`meta/legendas.txt` reescrito: 13 linhas, nomes certos das permissoes, formato
+de tomada continua.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 14/09/2026 (parte 113): a submissao da Meta, e as onze que viraram cinco
+
+### O video
+
+Tomada continua de 196 s (`jornada/2026-09-14 19-05-02.mp4`), cortada por tempo
+em 12 clipes por `cortar-tomada-meta.sh` e legendada por `montar.sh meta
+--sem-aparar`. Final: `final/demandou-meta.mp4`, 177 s. Fora: o OBS nas pontas e
+os DOIS dialogos de PIN do Windows no login, de novo (mesmo achado do LinkedIn).
+
+Mostra: deslogado, login, Configuracoes com Instagram e Facebook vazios,
+consentimento do Instagram com as permissoes legiveis, volta com a conta
+listada, consentimento do Facebook com as paginas do membro, card do Paulo com
+texto e infografico, aprovacao por peca, publicar agora, o post no
+instagram.com E na pagina do Facebook, e a desconexao das duas.
+
+**Nao gravado, e decidido nao regravar:** a pagina `/privacy#exclusao`. A
+exclusao foi submetida como URL DE RETORNO DE CHAMADA
+(`/api/social/instagram/data-deletion`), e nao como URL de instrucoes: o revisor
+testa revogando o app, nao visitando pagina. A 13a legenda saiu junto.
+
+### As onze permissoes que viraram cinco
+
+A solicitacao aberta no painel pedia ONZE. O produto usa CINCO, e as outras seis
+tinham ZERO ocorrencia no codigo. Cortadas na raiz, pelos CASOS DE USO (que sao
+a fonte da lista) e nao uma a uma:
+
+- **Page Mentions**: e para @mencionar OUTRAS paginas, nao para publicar na
+  propria. Publicar na propria e `pages_manage_posts`.
+- **threads_basic**: Threads e uma REDE NOVA no produto, nao uma permissao. Zero
+  codigo, e `threads_basic` sozinha nem publica.
+- **business_management**: nao gerenciamos portfolio de ninguem.
+- **instagram_manage_comments**: a mais perigosa, porque CONTRADIZ o que a
+  propria submissao e o video afirmam (nao lemos nem exibimos comentarios).
+- **instagram_business_manage_messages**: nao lemos mensagens.
+
+O Bruno perguntou se o primeiro comentario com as fontes nao exigiria a de
+comentarios. Nao: `oauth-post.ts:535` diz "Primeiro comentario com referencias
+(LinkedIn apenas)", com guarda `platform === "linkedin"`. Viraram dois cards de
+backlog: o primeiro comentario no Facebook (a permissao certa seria
+`pages_manage_engagement`, nao a do Instagram) e o Threads como rede.
+
+### A secao 5.1 da politica de privacidade, escrita hoje
+
+A tela de tratamento de dados pergunta quais processos a empresa aplica a
+pedidos de autoridade publica. A politica nao descrevia nenhum: dizia so
+"quando exigido". Marcar as caixas sem ter o processo seria declaracao sem
+lastro. O Bruno escolheu adotar os quatro compromissos, e eles viraram a secao
+**5.1. Pedidos de autoridades publicas** em `app/privacy/page.tsx`: analisar a
+legitimidade, contestar o ilegal, entregar o minimo, registrar cada pedido,
+mais avisar o titular quando a lei permitir. No ar, deploy `8j1h4qxxb`,
+conferido em producao.
+
+### ARMADILHA NOVA, e ela contradiz uma nota antiga nossa
+
+O formulario diz: **"os codigos deverao permanecer ativos por um ano apos o
+envio"**. Ou seja `reviewer@demandou.com` com a senha `DemandouReview2026!`
+precisa funcionar ate setembro de 2027. A pagina do roteiro tinha, na higiene
+pos aprovacao, "trocar a senha da conta de revisao". **Isso agora derruba a
+aprovacao em vez de proteger.** Corrigido no roteiro do Notion. A higiene que
+sobra e so o Client Secret do app de paginas do LinkedIn.
+
+### Para observar, sem mexer agora
+
+O app esta como **"Nao publicado"** no painel. Se a analise voltar dizendo que
+nao conseguiram testar, a causa mais provavel e essa, e o conserto e publicar.
+
+*Atualizado em 14/09/2026 por Claude Code.*
+
+## Sessao 15/09/2026 (parte 114): a conferencia antes de gravar, e o escopo que era dois
+
+Nada gravado ainda. O dia comecou pela ordem do Bruno (reconectar as redes,
+gravar o Google, publicar a semana) e a conferencia das legendas parou a
+gravacao antes dela comecar. Foi o pedido dele: conferir `google/legendas.txt`
+contra o produto atual, porque em 14/09 o card da Meta tinha nome errado de
+permissao.
+
+### O escopo unico eram dois
+
+`lib/oauth/youtube.ts:24` declara DOIS escopos, `youtube.upload` e
+`youtube.readonly`. O card 180, a secao 9 deste arquivo e a legenda de 13/09
+diziam "escopo unico". A legenda dizia, em ingles e por escrito na tela, "this
+is the only Google scope this application requests".
+
+Os dois sao usados de verdade, entao nao da para cortar como cortamos as seis
+da Meta: `getYouTubeChannel` (linha 107) chama `channels.list?mine=true`, que
+exige o readonly, e e de onde sai o nome do canal que a tela do produto mostra
+depois de conectar. Sem ele o cliente conecta as cegas.
+
+**Por que isso reprovaria sozinho:** a tela de consentimento do Google lista as
+duas permissoes, e a legenda queimada por cima diria que e uma so. E o mesmo
+defeito do `instagram_manage_comments` de 14/09, so que ao contrario: la a
+submissao pedia mais do que o produto usa, aqui ela declararia menos do que a
+tela mostra. Nos dois casos o revisor le a contradicao no proprio quadro.
+
+Detalhe que reforca: o login com Google e o YouTube tem client ids diferentes,
+mas o MESMO projeto do Google Cloud (`867802944`). O comentario do arquivo diz
+"projeto e credenciais separados"; credenciais sim, projeto nao. A verificacao
+e por projeto e por tela de consentimento, entao ela cobre os dois.
+
+### A promessa de exclusao que nao tinha lastro
+
+A secao 9 da politica dizia: "Voce tambem pode revogar o acesso pelo painel da
+propria rede, e o efeito e o mesmo". A legenda 10 repetia em ingles.
+
+Nao e o mesmo. Revogar tira o nosso acesso na hora, mas apagar o token guardado
+aqui depende de a rede AVISAR da revogacao. O Facebook e o Instagram avisam, e
+`app/api/social/instagram/data-deletion/route.ts` apaga. O Google nao tem
+callback equivalente, e o LinkedIn e o X tambem nao: o token fica guardado,
+morto, ate alguem desconectar na plataforma.
+
+**E a mesma regua da secao 5.1, escrita ontem, virada para a pagina de
+exclusao.** E e justamente a pagina que o revisor do Google pode abrir, porque
+e a URL de instrucoes que a submissao aponta.
+
+Duas saidas honestas, e o Bruno escolheu a primeira: corrigir o TEXTO, ou fazer
+virar verdade no codigo (apagar o token quando a rede recusa por revogacao).
+A segunda e funcionalidade nova na esteira de publicacao, e nada novo entra
+antes de lancar. Texto corrigido em `app/privacy/page.tsx`, `tsc` limpo, e o
+paragrafo conferido RENDERIZADO em `/privacy` no dev, nao lido no JSX.
+`renderToString` direto numa PAGINA (e nao num componente) morre no
+`next/link`, entao a conferencia foi pelo `next dev` com `curl`. O script que
+tentou o caminho do renderToString foi apagado em 15/09: ele derrubou o build
+da Vercel por usar `JSX.Element`, um tipo que o `tsc` do build nao tem nesse
+contexto. Script de rascunho que nao roda e divida: o `tsc` avulso passava, o
+build nao.
+
+**Ainda nao esta no ar.** O working tree carrega 13 e 14/09 inteiros sem
+commit, entao nao e deploy de um arquivo so. Precisa subir antes do ENVIO do
+formulario, nao antes da gravacao. Card novo no planner.
+
+### A armadilha 2 do card 180 dava o motivo errado
+
+"Desconectar o YouTube antes, senao a tela de consentimento nao aparece." O
+codigo usa `prompt=consent` (linha 40), entao a tela aparece em toda
+autorizacao, mesmo com a conta ja autorizada no Google. O que falta sem
+desconectar e o BOTAO de conectar na tela do produto, que so aparece para rede
+desconectada.
+
+Muda pouco o que o Bruno faz e muda o ONDE: desconectar dentro da Demandou, e
+nao revogar em `myaccount.google.com`, porque revogar la mataria o YouTube dos
+outros projetos a toa.
+
+### O estado das redes, medido e nao lembrado
+
+`scripts/tmp/estado-das-redes-1509.mts`, rodado com
+`npx tsx --env-file=.env.local`. **A flag nao e detalhe:** `lib/db/prisma.ts`
+cai num placeholder `postgres@localhost` quando `DATABASE_URL` nao esta no
+ambiente, e o erro que sai e "autenticacao falhou para o usuario postgres", que
+parece senha errada e e env ausente.
+
+Projeto **Demandou** (`reviewer@demandou.com`, `cmu0j4acd000004l5ne8g7cm5`):
+so as duas paginas do LinkedIn, "demandou" ativa e "Areticon" inativa. Sem
+Instagram, sem Facebook, sem perfil pessoal, sem X, sem YouTube. Confere com o
+card 445.
+
+Projeto **Empreendedorismo Cristao** de `bruno@areticon.com`
+(`cmtmym5bo000004l80wwvpdd7`), o da gravacao do Google: 2 videos `ready` de
+982 s (04/09 e 08/09), e o YouTube JA CONECTADO como "Bruno Donaire". Por isso
+a armadilha 2 vale aqui.
+
+**Armadilha da propria medicao, e ela vale para o card 183:** no banco TODAS as
+contas de LinkedIn aparecem com token e sem marca de reconectar, inclusive as
+que o LinkedIn revogou em 14/09. `needsReconnectAt` so nasce quando a
+publicacao tenta e leva recusa. "Ok" no banco nao prova token vivo: a prova e
+reconectar na tela, ou publicar.
+
+### As legendas novas
+
+`google/legendas.txt` reescrito: 14 linhas (eram 10), com os dois escopos
+nomeados um a um, "we store the channel id, the channel name and the access
+token" no lugar de "only the channel id and name", e a ultima falando de
+desconectar dentro do produto em vez de revogar no Google. Com 20 s por bloco
+da 4min40, dentro da faixa de 3 a 7 minutos que o Google pede. A versao de
+13/09 ficou em `google/legendas-13set.txt.bak`.
+
+### A licao, que e a de ontem pela terceira vez
+
+Em 14/09 o card da Meta tinha nome errado de permissao, e o roteiro descrevia
+uma conta de revisao que nao existia mais. Hoje o card do Google tinha numero
+errado de escopo e motivo errado de armadilha, e a politica tinha uma promessa
+sem lastro. **Tres dias seguidos, o mesmo mecanismo: a nota de planejamento
+envelhece mais rapido que o produto, e quem responde "o que o nosso produto
+pede" e o codigo.** O custo de conferir foi uma hora sem gravar; o custo de nao
+conferir seria uma reprovacao do Google com o video ja no ar.
+
+*Atualizado em 15/09/2026 por Claude Code.*
+
+## Sessao 15/09/2026 (parte 115): o console contou duas coisas que o roteiro nao sabia
+
+O Bruno abriu o console e o passo a passo mudou tres vezes em meia hora. Nada
+gravado ainda, e os tres achados vieram de LER a tela em vez de supor o que ela
+tinha.
+
+### Os projetos nao estavam onde a nota dizia
+
+O card mandava gravar "na conta bruno@areticon.com". Ela nao tem projeto nenhum
+no Google Cloud: o projeto e o `demandoupostou`, na conta PESSOAL
+`bruno.donaire88@gmail.com`, e o canal do YouTube tambem e dela
+(`UCm-V5EmFK0apa-p1QXqCkRw`, token conferido vivo em 15/09).
+
+Nao e contradicao, sao coisas diferentes: ele LOGA na Demandou como
+`bruno@areticon.com` e AUTORIZA o YouTube como `bruno.donaire88@gmail.com`. Mas
+a armadilha do idioma apontava para a conta errada, e trocar so a da areticon
+teria posto a tela de consentimento em portugues na camera, que reprova sozinho.
+
+### O formulario pediu duas coisas que ninguem tinha lido
+
+O campo do video fica em **Data Access**, junto dos escopos, e nao no
+Verification Center. Quem percebeu foi o Bruno, olhando a tela.
+
+E o texto ao lado do campo tinha duas exigencias:
+
+**"Your video must include ALL OAuth clients that you assigned to this
+project."** O projeto tem DOIS clients: o do login com Google
+(`867802944-rv8hq`) e o do YouTube (`867802944-je5ldo5`). O comentario de
+`lib/oauth/youtube.ts` diz "projeto e credenciais separados no Google Cloud":
+credenciais sim, projeto nao, os dois clients moram no mesmo numero de projeto.
+Entao o video precisa mostrar tambem o "Entrar com Google".
+
+**"The unverified app screen will appear... and must be shown in the video."**
+A tela de "Google hasn't verified this app" entra no roteiro em vez de ser
+pulada.
+
+### O beco que o banco desfez
+
+Mostrar o client do login exige entrar com Google. So que
+`bruno@areticon.com`, dona do projeto com os dois videos prontos, entra hoje
+pelo **LinkedIn**; e `bruno.donaire88@gmail.com`, que entra por Google, tem um
+projeto **sem video nenhum**. Os dois clients pareciam nao caber no mesmo video.
+
+Cabem: `accountLinking` esta ligado com `trustedProviders` google e linkedin
+(`lib/auth/index.ts:100`), `requireLocalEmailVerified` e `emailHabilitado()`, e
+a conta da areticon esta com `emailVerified: true`. Entao entrar com Google
+escolhendo `bruno@areticon.com` VINCULA e cai na mesma conta, a que tem os
+videos.
+
+**Pendura um cuidado de ordem:** o consentimento do login so aparece na
+primeira vez, porque o better-auth nao usa `prompt=consent` ali. Testar antes
+queima a tela. Se testar, revogar o app em `myaccount.google.com/permissions`
+NAQUELA conta, o que nao toca no YouTube por ser conta diferente.
+
+### O que sobe, medido antes e nao depois
+
+Os 6 rascunhos de YouTube do projeto foram medidos pelo cabecalho: o post do
+video completo sobe **604 MB** e deixaria a camera parada esperando; os shorts
+sobem de 14 a 29 MB. Escolhido o de 14,7 MB
+(`cmtsppcxs000104juzew6zlf5`). O video nasce **publico** no canal, por decisao
+de 02/09, e nao oculto.
+
+### Legendas
+
+`google/legendas.txt` foi de 10 linhas (13/09) para 14 e depois para **17**,
+com os blocos do login com Google e da tela de app nao verificado. Com 20 s por
+bloco da 5min40, dentro da faixa de 3 a 7 minutos. A justificativa dos escopos
+esta em `google/justificativa-escopos.txt`, 846 de 1000 caracteres, escrita
+contra `videos.insert`, `thumbnails.set` e `channels.list?mine=true`.
+
+### A licao
+
+Ontem o card mentia sobre a permissao. Hoje ele mentia sobre a conta, e o
+formulario tinha duas exigencias que nenhum dos nossos documentos registrava.
+**A diferenca entre os dois dias e quem olhou: ontem fui eu no codigo, hoje foi
+o Bruno na tela.** As duas fontes sao necessarias, e nenhuma das duas e o card.
+
+*Atualizado em 15/09/2026 por Claude Code.*
+
+## Sessao 15/09/2026 (parte 116): o video do Google, e a tela de consentimento que nao lista escopo
+
+`final/demandou-google.mp4`, 197,6 s, 20 clipes, sem audio, legendas em ingles.
+Cortado de DUAS tomadas por `cortar-tomada-google.sh`, que e o primeiro script
+de corte a costurar mais de uma.
+
+### Por que duas tomadas
+
+A tomada 1 (20:58, 222 s) tem o video inteiro, e o bloco central saiu errado: a
+tela de consentimento do YouTube apareceu na forma resumida, **"Demandou
+already has some access. See the 2 services that Demandou has some access
+to."**, com os escopos escondidos atras de um link.
+
+**O mecanismo, e ele contradiz o que eu tinha dito:** `prompt=consent` faz a
+tela APARECER, mas o Google so lista escopo por escopo quando ha concessao
+NOVA. A conta ja tinha concedido `youtube.upload` e `youtube.readonly` antes, e
+o token estava vivo (medido em 15/09). Sem revogar em
+`myaccount.google.com/permissions` nao existe lista, e a lista e o requisito
+central da verificacao. Eu tinha desaconselhado revogar, justamente pelo
+`prompt=consent`. Estava errado.
+
+Revogar custou nada: nenhuma conta de YouTube seguia conectada em projeto
+nenhum, porque a propria gravacao terminava removendo a do projeto.
+
+A tomada 2 (21:22, 42 s) tem a tela certa, listando "Manage your YouTube
+videos" e "View your YouTube account", com as caixas sendo marcadas.
+
+### O detalhe que a montagem resolveu sem regravar
+
+A tomada 2 foi gravada no projeto da CONTA PESSOAL, e nao no da areticon (o
+banco disse: o YouTube apareceu em `cmt281toz000004iidxy9ekba`). Dela se
+aproveita **so a tela do Google**, de 19,1 s a 30,8 s, que e identica em
+qualquer projeto. O "YouTube nao conectado", o aviso de app nao verificado e o
+canal conectado continuam vindo da tomada 1. **A troca de projeto nao aparece
+em quadro nenhum**, e nao houve terceira gravacao.
+
+### A regra nova de corte, que cobrou duas vezes na mesma montagem
+
+**Clipe cortado por tempo termina quando a TELA muda, nao quando o tempo
+redondo acaba.** Na primeira montagem a legenda da desconexao ficou 4 s sobre a
+landing, e a da exclusao ficou 8 s sobre a landing. Legenda que nao descreve o
+quadro e pior que legenda nenhuma: o revisor conclui que o video mostra outra
+coisa do que afirma. Os dois trechos foram reajustados e a landing virou clipe
+proprio, com legenda propria sobre a politica e os termos publicos no rodape.
+
+Isso so apareceu porque a montagem foi conferida quadro a quadro depois de
+pronta, como as duas anteriores. A conferencia da montagem nao e zelo: e onde o
+defeito aparece.
+
+### O que o video mostra, em 20 blocos
+
+Dominio e razao social no rodape, login com Google (o SEGUNDO OAuth client do
+projeto, exigido pelo formulario), consentimento do login, projeto,
+Configuracoes com YouTube desconectado, Conectar, aviso de app nao verificado,
+consentimento com os dois escopos, canal conectado, a gravacao no Gestor, os
+capitulos vindos dos trechos, as pecas em rascunho, a aprovacao peca a peca, o
+"Publicar agora (2)", o video no canal, o YouTube Studio com as duas pecas
+publicas, a desconexao com "Conta removida", o rodape legal e a secao 9 da
+politica.
+
+### Pendencia que nao bloqueia gravar, mas bloqueia enviar
+
+O video grava a politica em producao, que ainda tem a frase antiga ("revogar
+pelo painel da rede, e o efeito e o mesmo"). A correcao esta no working tree e
+nao subiu. Precisa subir antes do ENVIO.
+
+*Atualizado em 15/09/2026 por Claude Code.*
+
+## Sessao 15/09/2026 (parte 117): a politica no ar, e o rascunho que derrubou o build
+
+`app/privacy/page.tsx` com a secao 9 corrigida esta NO AR, conferido em
+producao buscando a pagina e lendo o paragrafo: a frase "revogar pelo painel da
+rede, e o efeito e o mesmo" saiu, e entrou a distincao real (Facebook e
+Instagram avisam da revogacao e a gente apaga; Google, LinkedIn e X nao avisam,
+e o token fica guardado ate desconectar na plataforma).
+
+**O primeiro deploy falhou, e a causa foi um script de rascunho meu.**
+`scripts/tmp/renderizar-privacidade.mts` usava `JSX.Element`, um tipo que o
+`tsc` do build da Vercel nao tem nesse contexto. O `npx tsc --noEmit` avulso
+passava; o build nao. O script ja nao funcionava (`renderToString` direto numa
+PAGINA morre no `next/link`), entao foi apagado em vez de remendado.
+
+**A licao e a de 14/09 com o modal, virada do avesso:** naquele dia o `tsc` e o
+`next build` passaram e o componente quebrou em runtime. Hoje o `tsc` passou e o
+BUILD quebrou, por um arquivo que nao era do produto. Nos dois casos a
+verificacao parcial deu confianca que o artefato final nao sustentou.
+**Rascunho que nao roda nao fica no repo:** ele nao custa nada enquanto
+ninguem builda, e custa um deploy quando alguem builda.
+
+**Permissao nova:** `.claude/settings.local.json` foi criado com as regras de
+Bash para `npx vercel --prod` e `next build`, e entrou no `.gitignore`. Ate
+15/09 o deploy de producao era barrado pelo classificador do modo automatico.
+
+*Atualizado em 15/09/2026 por Claude Code.*
+
+## Sessao 15/09/2026 (parte 118): o Google foi enviado, e sobrou o que nao depende de terceiro
+
+**"Your app's data access is under review."** A verificacao do OAuth do Google
+foi enviada em 15/09, e e a SEGUNDA das tres aprovacoes a sair da nossa mao.
+
+O que foi enviado, para o caso de voltar com pergunta: projeto
+`demandoupostou` na conta pessoal, dois escopos SENSIVEIS (`youtube.readonly` e
+`youtube.upload`, nenhum restrito, entao nao ha CASA), justificativa de 846
+caracteres escrita contra `videos.insert`, `thumbnails.set` e
+`channels.list?mine=true`, e o video de 197 s em
+`https://www.youtube.com/watch?v=aMQo7f57krk`.
+
+**O campo `Additional info` foi usado, e nao deixado vazio.** Ele pede
+literalmente "os Project IDs de outros projetos que usam OAuth", e o video
+mostra DOIS consentimentos diferentes por causa dos dois clients do mesmo
+projeto. Sem explicacao aquilo parece inconsistencia. Foram nove timestamps
+mais a identificacao de cada client. **Campo opcional de formulario de
+terceiro, quando existe, e o unico canal direto com quem decide.**
+
+Questionario final: quatro Naos (uso pessoal, interno, dev/teste, plugin Gmail
+SMTP do WordPress) e as duas caixas de acknowledge.
+
+### O que NAO mexer ate a resposta
+
+O proprio formulario avisa: trocar publish status, tipo de usuario, escopos,
+nome do app, politica de privacidade ou apagar o video atrasa ou reinicia a
+fila.
+
+### O estado das tres, no fim de 15/09
+
+- **LinkedIn: ENVIADO** em 14/09. Aguardando.
+- **Google: ENVIADO** em 15/09. Aguardando.
+- **Meta: NA ULTIMA TELA**, card 353. Falta terminar "Instrucoes de teste para
+  web" e enviar. Nao foi tocada hoje.
+
+### E o que sobra, que nao depende de ninguem
+
+A semana publicada de verdade (cards 183 e 158). O pre-requisito dela continua
+de pe: o projeto Demandou segue sem Instagram, sem Facebook e sem o perfil
+pessoal do LinkedIn (card 445), e a medicao de 15/09 avisou que "ok" no banco
+nao prova token vivo, porque `needsReconnectAt` so nasce quando a publicacao
+leva recusa.
+
+*Atualizado em 15/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 119): o Google aprovou, e a Meta ja estava enviada desde 14/09
+
+### As tres aprovacoes, com o estado real
+
+- **Google: APROVADO.** Chegou por e-mail em 17/09. A primeira das tres a sair
+  aprovada, e nao so enviada.
+- **Meta: ENVIADA em 14/09**, pendente de analise.
+- **LinkedIn: ENVIADO em 14/09**, aguardando.
+
+**A Meta ja estava enviada e ninguem sabia.** O card 353 dizia "na ultima
+tela", o cabecalho deste arquivo repetia, e eu repeti de novo em 17/09 ao
+montar um passo a passo de envio. Quem desmentiu foi o painel da Meta: um
+alerta datado de **14 de setembro** dizendo "O app Demandou foi enviado para a
+analise, que esta pendente".
+
+**A licao, pela quarta vez em quatro dias, agora contra mim mesmo:** card nao e
+fonte, e registro. Eu vinha dizendo isso sobre nome de permissao, sobre conta e
+sobre escopo, e mesmo assim montei um roteiro inteiro de envio em cima de um
+card de tres dias sem abrir o painel. **A regra so vale quando se aplica ao
+proprio trabalho.**
+
+### O que AINDA bloqueia do lado da Meta, e nao e a analise
+
+O painel de requisitos tem marca verde em "Gerenciar mensagens e conteudo no
+Instagram", "Gerenciar tudo na sua Pagina", "Login do Facebook para Empresas" e
+"Analise do app". **Nao tem em "Verificacao da empresa e do acesso"** nem em
+"Avaliar e concluir os requisitos de teste".
+
+A verificacao da empresa emperrou em 20/08 num sistema de risco da Meta e ficou
+parada desde entao. `docs/app-review-meta.md`, de 21/08, ja a chamava de unico
+bloqueio duro: sem ela a Meta nao libera acesso avancado, mesmo aprovando as
+permissoes. Card novo no planner, com o link da Central de Seguranca e os dados
+da empresa. O app tambem segue como "Nao publicado".
+
+### Uma armadilha que o painel ofereceu hoje
+
+Ao navegar pelos casos de uso, o painel abriu "Incorporar conteudo do Facebook,
+Instagram e Threads em outros sites", com **Meta oEmbed Read** e **Threads
+oEmbed Read** e um botao "Adicionar a analise do app". O produto nao usa
+nenhum dos dois. Adicionar seria repetir exatamente o erro das onze permissoes
+que viraram cinco em 14/09. **O painel da Meta oferece permissao o tempo todo:
+o padrao dele nao e a nossa verdade.**
+
+### O material que ficou pronto sem precisar ser usado
+
+`docs/app-review-meta-textos.md`: os textos das cinco permissoes e das
+instrucoes de teste, escritos em 17/09 contra o codigo (o dossie de 21/08
+descreve uma submissao de duas permissoes do Instagram e usa nomes de tela que
+nao existem mais). Serve se a analise voltar pedindo detalhe.
+
+### Medido em 17/09, e muda o que sobrou
+
+As redes do projeto Demandou **foram reconectadas**: Instagram "Bruno Donaire",
+Facebook "Demandou" e o LinkedIn pessoal, alem das duas paginas. O card 445
+pode fechar, e o caso zero (cards 183 e 158) esta destravado.
+
+**Mas a conta `reviewer@demandou.com` tem um unico rascunho com imagem, e ele e
+de LinkedIn.** Se a Meta testar hoje seguindo instrucoes que mandem publicar no
+Instagram, nao ha peca. Gerar uma campanha no projeto "Demandou" resolve isso e
+e o mesmo trabalho do caso zero.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 120): a verificacao da empresa ja estava feita, e a submissao esta limpa
+
+Correcao da parte 119, e o erro foi meu, pelo mesmo mecanismo do resto do dia.
+
+**A VERIFICACAO DA EMPRESA ESTA FEITA.** O painel mostra "Demandou,
+Identificacao 4461308494133875, Verificado", com marca verde. A parte 119 disse
+que estava pendente desde 20/08.
+
+**Como eu errei:** o painel de requisitos tem um item chamado "Verificacao da
+empresa E DO ACESSO", com circulo cinza. Sao DUAS coisas num item so. Vi o
+cinza, lembrei do dossie de 21/08 que chamava a verificacao da empresa de unico
+bloqueio duro, e juntei as duas pontas sem abrir a tela. **Registro velho mais
+sinal ambiguo produz uma conclusao confiante e errada**, e foi exatamente o que
+eu vinha apontando nos outros desde sexta.
+
+O que de fato falta e a **Verificacao do Acesso**, que e outra coisa:
+"verifique se a sua empresa e uma provedora de tecnologia", exigida para
+acessar ativos de negocios da Meta e informacoes de outras empresas.
+**Decidido nao fazer agora:** mexer em configuracao durante a analise e o que o
+proprio formulario desaconselha, e nao esta claro que ela se aplique a publicar
+em conta que o proprio cliente autoriza por OAuth. Se a analise voltar pedindo,
+faz. Se aprovar sem ela, nao era necessaria.
+
+### A submissao, conferida na tela de envio
+
+"Analise em andamento", ate 20 dias. Seis linhas, e sao exatamente as
+planejadas: `pages_read_engagement`, `pages_manage_posts`, `pages_show_list`,
+`instagram_business_content_publish`, `instagram_business_basic` e
+`public_profile`. **Nenhuma das seis removidas em 14/09 voltou.** O corte pela
+raiz, pelos casos de uso, segurou.
+
+### O placar das tres
+
+- **Google: APROVADO.**
+- **Meta: em analise**, empresa verificada, submissao limpa.
+- **LinkedIn: em analise** desde 14/09.
+
+Nada nas tres depende do Bruno agora. O que sobra e o unico item que nunca
+dependeu de terceiro: a semana publicada de verdade (cards 183 e 158), agora
+destravada porque as redes do projeto foram reconectadas.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 121): a aprovacao do Google por escrito, e a regra que ela cria
+
+O e-mail de aprovacao chegou em 16/09 as 11:08, da equipe Third Party Data
+Safety, para o projeto `867802944` (`demandoupostou`), aprovando os DOIS
+escopos: `youtube.readonly` e `youtube.upload`.
+
+### DUAS REGRAS PERMANENTES QUE O E-MAIL CRIA
+
+**1. Mexer na tela de consentimento invalida a verificacao.** O texto e
+literal: "You will need to submit a new verification request for access to new
+scopes, **or if you make any changes to your OAuth consent screen
+configuration**." Ou seja, trocar nome do app, logo, dominio autorizado ou os
+links de politica e termos manda tudo de volta para a fila. **A tela de
+consentimento do projeto demandoupostou esta congelada** ate haver motivo forte.
+
+**2. A verificacao nao se herda.** "This verification can not be inherited:
+your app cannot use unapproved sensitive/restricted scopes without additional
+verification." Se um dia o produto precisar de outro escopo do YouTube
+(analytics, comentarios, `force-ssl`), e submissao nova, com video novo.
+
+Vale manter atualizados os Project Owner e Project Editor no Cloud Console, que
+e por onde a comunicacao futura chega.
+
+### O placar, agora com a primeira aprovada de verdade
+
+- **Google: APROVADO** em 16/09, confirmado por e-mail.
+- **Meta: em analise**, empresa verificada, submissao limpa, ate 20 dias.
+- **LinkedIn: em analise** desde 14/09.
+
+### Correcao de fato na secao 5 deste arquivo
+
+O X nao tem mais free tier nem plano Basic. Conferido na fonte primaria em
+17/09 (`docs.x.com/x-api/getting-started/pricing`): pagamento por uso, sem
+contrato e sem minimo, a **$0,015 por post**, **$0,200 por post com URL**,
+`$0,010` por "summoned post" e `$0,001` por leitura propria, com teto de 3
+milhoes de leituras por ciclo. A secao 5 dizia "upgrade para Basic, $100/mes",
+uma solucao que nao existe mais.
+
+### Distribuicao multiplataforma do Livro ao Vivo: analisada e no backlog
+
+Pedido do Bruno: analisar os requisitos da pagina do Notion sobre publicar o
+livro em X, Substack e Instagram, sem implementar. Feito, e o resultado inteiro
+ficou no card novo do planner. O resumo que importa aqui:
+
+- **Ja existe mais do que a pagina supoe:** o encadeamento por resposta no X
+  (`twitter.ts:337`), o carrossel do Instagram completo (`instagram.ts:249`) e
+  a pagina publica de texto `app/a/[token]`, que permite tirar o Substack do
+  caminho critico.
+- **Duas dividas reais aparecem a luz desse caso:** o `slice(0, 280)` de
+  `twitter.ts:329` trunca texto em silencio, e a rota de publicacao manual nao
+  tem guarda de idempotencia (a reserva atomica so existe no cron).
+- **O item novo de verdade e a entrada de texto colado:** todo `post.create`
+  hoje vive na esteira. E a renderizacao do carrossel precisa ser
+  deterministica (SVG mais `sharp`), porque a imagem hoje sai de IA e IA
+  reescreve texto.
+- **O que decide o desenho e um teste de US$ 0,015:** a doc oficial do endpoint
+  nao declara limite no campo `text`, entao so publicando um texto de 4.000
+  caracteres se sabe se uma parte e um post ou uma thread de quinze.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 122): o andamento do LinkedIn, e o e-mail por onde eles cobram
+
+Painel do app de paginas, que nao estava registrado em lugar nenhum:
+**`https://www.linkedin.com/developers/apps/240062106/products`**
+App `demandou-pages`, Client ID `77vmxreafp2lf4`.
+
+Estado em 17/09: Community Management API em **Development Tier**, com "Review
+in progress". O tooltip conta o que a lista nao diz:
+
+- O processo tem **TRES ETAPAS**, e a solicitacao esta na **1 de 3, Access Form
+  Review**.
+- Prazo: **10 a 14 dias uteis** para eles voltarem, e so se precisarem de
+  documentacao adicional. Enviado em 14/09, isso cai no comeco de outubro.
+- **"We will reach out to you on your business email."**
+
+### O que isso cria de risco, e ele se cruza com outro assunto
+
+Se o LinkedIn pedir documento e o e-mail cair onde ninguem le, o pedido morre de
+silencio, e este app ja e o SEGUNDO: o primeiro ("Areticon", `779klxj5uvdi5b`)
+foi reprovado em 09/09 e app reprovado no LinkedIn nao repede, nasce app novo.
+Perder por caixa de entrada custaria um terceiro app.
+
+Cruza com o assunto do e-mail proprio: `contato@demandou.com` vive no **Titan**
+(MX `mx1.titan.email`, SPF `include:spf.titan.email`), e o acesso IMAP esta
+BLOQUEADO para a caixa. O servidor responde
+`[AUTHENTICATIONFAILED] Auth not allowed for mailbox`, que nao e senha errada e
+sim permissao negada: no Titan o acesso por cliente externo e recurso separado
+do webmail e vem desligado nos planos de entrada. Webmail abre, Outlook nao
+entra, e nenhuma configuracao no Outlook resolveria.
+
+Por enquanto o encaminhamento funciona (o e-mail de aprovacao do Google chegou
+para "me, contato"), entao a caixa e legivel pelo Gmail pessoal. **A conferir:
+qual e-mail esta cadastrado como contato no app do LinkedIn.**
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 123): a foto que expira, e a diferenca entre ausencia e falha
+
+**NO AR.** A foto de perfil agora tem reserva de iniciais e pode ser trocada
+pela pessoa, a qualquer momento.
+
+### O defeito, e ele nao era de layout
+
+A foto do Bruno sumiu da barra lateral e da tela de conta. A causa, medida e
+nao suposta: quem entra pelo LinkedIn tem a foto guardada como **URL assinada
+com prazo** do `media.licdn.com`. A do Bruno carregava `e=1788998400`, que e
+**10/09/2026**, e desde entao a URL responde **403**.
+
+**O codigo ja tinha reserva de inicial, e ela nao servia para nada aqui.** A
+condicao era `session?.user?.image ? <img> : <inicial>`, ou seja, ela cobria
+foto AUSENTE. Foto PRESENTE e quebrada passava direto e virava o icone de
+imagem partida do navegador.
+
+**Ausencia e falha sao estados diferentes, e o codigo so tratava o primeiro.**
+E a mesma familia de engano que apareceu em 15/09 com a conta revogada que o
+banco marcava como "ok": um sistema que so conhece o estado que ele mesmo
+escreveu nao ve o estado que o outro lado mudou.
+
+### O que foi feito
+
+- **`components/ui/avatar-do-usuario.tsx`** (novo): a reserva e acionada por
+  `onError`, nao so por `src` vazio, porque so o evento de erro conta que a
+  imagem nao carregou. O estado de falha e zerado quando o `src` muda, senao
+  trocar a foto mostraria as iniciais para sempre.
+- **Iniciais**: primeira letra do primeiro nome mais a do ultimo, ate duas. Cai
+  para o e-mail sem nome, e para "?" sem nada, porque avatar vazio parece
+  defeito e "?" parece decisao.
+- **`app/api/account/foto/route.ts`** (novo): POST sobe a foto, DELETE remove.
+  Ate 2 MB, PNG, JPG ou WEBP. O arquivo vai para o **store publico**
+  (`midiaProduzida()`), que e o mesmo lugar da midia produzida e pelo mesmo
+  motivo: e um arquivo que o navegador de quem ve precisa carregar. Upload pela
+  funcao, e nao pelo navegador como o do video, porque 2 MB cabem com folga no
+  limite de corpo e um fluxo de duas pernas seria complexidade sem ganho.
+- A foto anterior so e apagada do storage **se for nossa**. URL de provedor
+  social nao e nossa para apagar, e tentar removeria daria erro em toda troca.
+- **`components/settings/conta-form.tsx`**: escolher, trocar e remover foto.
+- **`components/ui/sidebar.tsx`**: passou a usar o componente, e a variavel
+  `userInitial` saiu.
+
+### Por que a foto nova e nossa, e nao do provedor
+
+Enquanto a foto vier de URL de terceiro, ela quebra de novo, em data que
+ninguem escolhe. A enviada pela pessoa vive no nosso store publico e nao vence.
+**Nao foi implementada a copia automatica da foto do provedor no login**: a
+reserva resolve o sintoma para todo mundo, e copiar no login mexe no fluxo do
+better-auth. Fica como opcao se um dia incomodar.
+
+### A conferencia, e um erro dela
+
+`scripts/tmp/renderizar-avatar.mts` renderiza o componente e o `ContaForm` nos
+seis estados reais, pela regra de 14/09 (componente cliente so sobe depois de
+renderizar). A primeira versao do script **acusou defeito onde nao havia**:
+detectava imagem com `html.startsWith("<img")`, e o React emite um
+`<link rel="preload" as="image">` ANTES da tag. **Ferramenta de conferencia
+tambem precisa ser conferida**, senao ela inventa defeito em codigo correto, o
+que e pior que nao conferir.
+
+O dado do Bruno NAO foi tocado: a URL expirada segue no banco e a reserva cobre
+sozinha.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 124): o recorte no navegador, que matou duas queixas com uma decisao
+
+**NO AR.** Escolher a foto agora abre um recorte circular, com arrasto e zoom.
+
+### As duas queixas eram a mesma
+
+O Bruno reprovou a parte 123 em dois pontos: "nao consigo subir a minha foto
+por causa do limite de 2 MB" e "precisa abrir um popup para cortar a imagem e
+posicionar no centro do circulo".
+
+Parecia pedido de duas coisas, e era de uma. **Recortando no navegador, o
+arquivo original nunca sai da maquina da pessoa:** o que sobe e o recorte de
+512 por 512, em torno de 100 KB. O teto de 2 MB do servidor **nao precisou ser
+afrouxado**, ele so deixou de ser alcancavel no uso normal, e continua valendo
+como protecao para quem chamar a rota por fora.
+
+A entrada aceita ate 25 MB e qualquer `image/*`, porque o recorte reescreve o
+formato de saida como JPEG de qualquer jeito.
+
+### A matematica ficou FORA do componente, e testada
+
+`lib/media/recorte-circular.ts`: escala de cobertura, limite de arrasto, trava
+de zoom e conversao do enquadramento para coordenadas da imagem original.
+
+**Recorte errado nao levanta excecao, nao quebra a tela e nao aparece em teste
+de tipo.** Ele so entrega um rosto cortado na borda, e quem descobre e o dono
+da foto. Por isso a conta virou funcao pura, com
+`scripts/tmp/testar-recorte.mts` cobrindo 13 casos: quadrada, retrato 1000x2000
+(foto de celular em pe), zoom 2, arrasto exagerado preso no limite e imagem de
+tamanho zero. Todos passam.
+
+O caso que mais importa: **arrastar a imagem para baixo mostra o TOPO dela**, que
+e onde fica o rosto num retrato. O sinal do deslocamento e invertido na
+conversao, e errar isso daria um recorte que anda para o lado contrario do
+dedo.
+
+### Detalhes que custam caro se esquecidos
+
+- **A imagem entra por `<img>`, e nao por `createImageBitmap`:** a tag aplica a
+  orientacao do EXIF sozinha. Foto de celular tirada em pe costuma trazer a
+  rotacao so no metadado, e desenhar o bitmap cru a mostraria deitada.
+- **O recorte salvo e QUADRADO**, nao circular. O circulo e decisao de quem
+  exibe; gravar ja recortado em circulo impediria mostrar quadrada depois.
+- **Sem dependencia nova.** Canvas puro, nada de biblioteca de crop.
+
+### Conferencia
+
+`scripts/tmp/renderizar-avatar.mts` ganhou o modal. Ele usa canvas e
+`new Image()`, que nao existem no servidor, e o teste prova que a MONTAGEM nao
+depende deles: a criacao da imagem vive dentro do efeito, que so roda no
+navegador. Se alguem mover isso para fora, o teste quebra na hora.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 125): a Marca subiu para a segunda etapa, e o documento passou a preencher o resto
+
+**NO AR.** A ordem do assistente mudou, e com ela o que a IA le antes de
+escrever.
+
+### O que o Bruno viu criando um projeto de verdade
+
+Ele conectou as redes, e a tela seguinte pediu **voz, nicho e publico**. O
+lugar de subir o documento que responde as tres coisas era a **quarta** etapa.
+Quem tem um manual de marca na mao preenchia tudo na unha e so depois descobria
+que podia ter subido o arquivo.
+
+**E tinha uma camada pior por baixo.** O botao "Preencher com IA", que ja
+existia, mandava para o modelo o proprio formulario (`context: form`), que
+naquele ponto esta vazio. Ele **adivinhava**. O unico material real, o PDF, nao
+tinha sido pedido ainda.
+
+**Adivinhar e ler sao coisas diferentes, e o produto so tinha a primeira.**
+
+### A ordem nova
+
+`Redes Sociais > Marca > Voz & Estilo > Ideacao > Agenda > Ativacao`
+
+**Voz continua ANTES de Ideacao**, preservando a correcao do Bruno de 22/08
+(pedir ideia antes de conhecer a voz produz ideia generica). A proposta que eu
+mostrei para ele invertia as duas por descuido meu, e a decisao antiga
+prevaleceu.
+
+### O documento virou campo
+
+`app/api/projects/[id]/sugerir-campos/route.ts` (novo): le os
+`ProjectContext.compiled` do projeto, que ja sao markdown estruturado dos PDFs,
+e devolve `name`, `description`, `niche`, `targetAudience`, `voice` e
+`references`.
+
+Duas regras que o prompt carrega, e elas sao de produto e nao de estilo:
+
+1. **Nao completar com conhecimento proprio.** Campo que o documento nao
+   responde volta vazio. **Campo vazio que a pessoa preenche e honesto; campo
+   inventado que parece vindo do documento dela e pior que vazio**, porque ela
+   confia e nao le.
+2. **So preenche campo VAZIO.** Quem ja digitou alguma coisa mandou mais que o
+   documento. Sobrescrever texto digitado por texto gerado e o jeito mais
+   rapido de fazer alguem desconfiar da ferramenta.
+
+A leitura dispara ao SAIR da etapa Marca, e nao ao entrar na seguinte, para
+correr enquanto o PATCH salva e a tela troca. A tela diz "lendo os seus
+documentos" enquanto isso, e depois diz de onde veio o texto: sem isso a pessoa
+chega numa tela cheia de coisa que ela nao escreveu e nao sabe se pode confiar.
+**Dizer que saiu do documento DELA e o que transforma preenchimento em
+revisao.**
+
+### A armadilha da reordenacao, medida antes
+
+`setupStep` e um NUMERO no banco: reordenar faria quem esta no meio do
+assistente acordar noutra etapa. Medido antes de mexer: **2 projetos em setup**
+(um do Bruno na etapa 1, um de teste na 0) e **nenhum projeto com documento**.
+Risco baixo, sem migracao.
+
+### Conferencia, e o detector errando pela segunda vez no dia
+
+`scripts/tmp/renderizar-setup.mts` renderiza as SEIS etapas e confere rotulo
+**e conteudo**, porque trocar a ordem em `STEPS` sem trocar os
+`currentStep === N` troca as telas de lugar em silencio, com tipo valido.
+
+O script acusou falha na etapa 2 e o componente estava certo: **o HTML escapa o
+texto, e "Voz & Estilo" sai como "Voz &amp; Estilo"**. E o segundo detector
+errado em um dia, depois do `startsWith("<img")` da parte 123. **Ferramenta de
+conferencia erra do jeito mais perigoso que existe: acusando defeito onde nao
+ha.**
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 17/09/2026 (parte 126): o logo que nunca apareceu, e o tipo de documento que faltava
+
+**NO AR.** Duas correcoes pedidas pelo Bruno ao usar a etapa Marca de verdade.
+
+### O logo estava no store errado desde sempre
+
+Sintoma identico ao da foto de perfil (imagem quebrada), **mecanismo
+diferente**, e por isso foi medido antes de consertar:
+
+| | foto de perfil | logo |
+|---|---|---|
+| onde estava | URL do LinkedIn | nosso store PRIVADO |
+| por que falhava | URL assinada EXPIRADA | 403 para quem nao manda token |
+| desde quando | 10/09 | **desde o primeiro upload** |
+
+O logo subia com `access: "private"` (`step-marca.tsx`), e a tag `<img>` nao
+manda credencial nenhuma. **Nao era regressao: era um caminho que nunca
+funcionou e que ninguem tinha exercido** ate o Bruno criar um projeto de
+verdade.
+
+**Conserto:** `app/api/projects/[id]/logo/route.ts` (novo), upload pela funcao
+para o store PUBLICO, mesmo criterio da foto de perfil e da midia produzida (e
+arquivo que o navegador de quem ve precisa carregar, e ainda vai para a capa do
+video e para as pecas). **O manual e os documentos continuam privados de
+proposito:** sao material interno do cliente, lidos pela IA e nunca exibidos.
+
+`subir()` do step-marca virou funcao so do manual, e o logo ganhou
+`subirLogo()`. A remocao tambem aponta para a rota nova, senao apagaria pelo
+caminho antigo e deixaria o arquivo orfao.
+
+**O logo que ja existia foi MIGRADO**, e nao deixado para o Bruno subir de
+novo: `scripts/tmp/migrar-logo-para-publico.mts` le pelo SDK, grava no publico,
+atualiza o banco e so entao apaga o privado. Conferido: a URL nova responde
+200 aberta. **Codigo novo conserta o proximo upload, nao o que ja esta la.**
+
+Armadilha do script: `head().downloadUrl` tambem devolve 403 no store privado.
+Quem sabe ler os dois stores e `lerMidia()`, que ja existia em
+`lib/media/storage.ts`.
+
+### Contexto do negocio virou tipo de documento
+
+Os tipos eram manual de marca, linha editorial, referencias, regulamentacoes e
+exemplos de posts. **Faltava o documento que responde o que a marca faz, para
+quem e como fala**, que e justamente de onde a etapa seguinte tira nicho,
+publico e voz.
+
+Sem essa opcao, quem tinha um documento de contexto precisava chama-lo de
+"linha editorial" ou de "referencias", e **o rotulo errado muda como a IA le o
+conteudo**: o rotulo entra no prompt de compilacao.
+
+Entrou como `business`, rotulo "Contexto do negocio", **primeiro da lista**, em
+`step-marca.tsx` e em `TIPOS_DE_CONTEXTO`/`ROTULO` da rota da marca. Os dois
+precisam concordar: a rota recusa tipo que nao esta no Set.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Fechamento de 17/09/2026: o dia em que usar o produto achou o que o codigo nao achava
+
+### O placar das tres aprovacoes
+
+- **Google: APROVADO** em 16/09, por e-mail. Dois escopos, `youtube.readonly` e
+  `youtube.upload`. **A tela de consentimento esta CONGELADA:** mexer em nome,
+  logo, dominio ou links exige verificacao nova. E a verificacao nao se herda:
+  escopo novo e submissao nova.
+- **Meta: EM ANALISE** desde 14/09 (enviada nesse dia, e nao "na ultima tela"
+  como o card dizia ate 17/09). Empresa verificada, seis linhas limpas, ate 20
+  dias. Sobra a Verificacao do ACESSO, que e outra coisa e ficou decidido nao
+  mexer durante a analise.
+- **LinkedIn: EM ANALISE** desde 14/09, etapa **1 de 3** (Access Form Review).
+  Eles cobram documento pelo **business email**, com 10 a 14 dias uteis, e este
+  ja e o SEGUNDO app: perder por caixa de entrada custaria um terceiro.
+
+### O que foi ao ar hoje
+
+1. **Foto de perfil** com reserva de iniciais e troca pela pessoa (parte 123).
+2. **Recorte circular no navegador** (parte 124), que matou o limite de 2 MB
+   sem afrouxar o servidor.
+3. **Marca subiu para a 2a etapa** e o documento passou a preencher o
+   assistente (parte 125).
+4. **Logo no store publico** e **"Contexto do negocio"** como tipo de documento
+   (parte 126).
+
+### O fio que liga os quatro
+
+Todos vieram do Bruno **usando a plataforma de verdade**, pela primeira vez,
+para criar um projeto que ele quer mesmo. Nenhum apareceria em teste, revisao
+ou `tsc`:
+
+- o logo **nunca funcionou**, desde o primeiro upload, e ninguem tinha
+  percorrido aquele caminho;
+- o "Preencher com IA" **adivinhava** havia meses, porque o documento so era
+  pedido depois;
+- a foto quebrou numa data que ninguem escolheu;
+- faltava o tipo de documento mais obvio de todos.
+
+**O caso zero nao e so marketing, e controle de qualidade.**
+
+### Duas licoes de metodo que o dia cobrou tres vezes
+
+**1. Sintoma igual nao e causa igual.** Foto de perfil e logo davam a mesma
+imagem quebrada: um era URL expirada do LinkedIn, o outro era store privado que
+nunca serviu ao navegador. So medir separou.
+
+**2. Ferramenta de conferencia tambem erra, e do jeito mais perigoso: acusando
+defeito onde nao ha.** Dois scripts meus deram falso positivo hoje. Um procurava
+`<img` no comeco do HTML e o React emite `<link rel="preload">` antes. O outro
+procurava "Voz & Estilo" no HTML, que sai escapado como `&amp;`.
+
+### O que ficou pendente, com card
+
+- **Documento da marca sem botao de apagar**, e da para subir o mesmo duas
+  vezes. A API ja existe (`DELETE /api/projects/[id]/context` com `contextId`);
+  falta o botao em `step-marca.tsx`. Documento duplicado nao e so feio: ele
+  entra duas vezes no contexto de toda campanha.
+- **Limite de uso por plano com pedido de upgrade.** Creditos e limites de
+  plano ja existem em `lib/planos.ts` (gravacoes por mes, marcas), mas falta
+  conferir se sao aplicados ou se sao vitrine, e **nao existe limite de
+  armazenamento**, que e provavelmente o que aperta a margem primeiro.
+- **A semana publicada de verdade** (cards 183 e 158), destravada desde que as
+  redes foram reconectadas.
+- **Distribuicao multiplataforma do Livro ao Vivo**, analisada e no backlog.
+
+*Atualizado em 17/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 127): o documento que nunca existiu, e o limite que era so vitrine
+
+**NO AR**, em tres deploys. O dia comecou com dois pedidos de acabamento e os
+dois viraram outra coisa quando a medicao chegou antes do codigo.
+
+### 1. O documento da marca: nao faltava botao, faltava o documento
+
+O pedido era "poe um botao de apagar, a API ja existe". A medicao, feita antes
+de escrever qualquer linha:
+
+| | |
+|---|---|
+| PDFs no storage | **2** (`demandou.pdf`, 154 KB, 23:21 e 23:22 de 17/09) |
+| `ProjectContext` no banco | **ZERO**, em qualquer projeto, de qualquer cliente |
+
+O mecanismo, medido e nao deduzido:
+
+```
+fetch(url) sem token      -> 403 Forbidden      <- o que compilarPdf fazia
+head(url, token)          -> ok, 157523 bytes
+fetch(head.downloadUrl)   -> 403 Forbidden      <- a armadilha da parte 126, igual
+lerMidia(url)             -> 157523 bytes       <- o unico caminho que serve
+```
+
+`compilarPdf` fazia `fetch(url)` numa URL do store **privado**. 403, a funcao
+lancava, o `onUploadCompleted` morria antes do `create`. **E o mesmo mecanismo
+do logo de ontem, no mesmo arquivo, num caminho vizinho.**
+
+O que o Bruno viu na tela eram dois itens otimistas que `step-marca.tsx`
+inventava com id `pdf-<timestamp>` e rotulo fixo "compilado". **Por isso nao
+havia como remover: o id era falso e nao havia o que remover.** O verde estava
+descrevendo uma coisa que nunca aconteceu.
+
+**A consequencia maior:** o "Preencher com IA" da parte 125 le
+`ProjectContext.compiled`. Nunca houve nenhum. O trabalho de ontem subiu e
+estava inerte.
+
+**O que entrou:**
+
+1. `compilarPdf` usa `lerMidia()`. Causa raiz.
+2. **A linha nasce ANTES da leitura** (`registrarECompilar`), com status
+   `lendo`. Falha vira documento com estado `falhou` e motivo escrito, que a
+   pessoa VE e pode apagar. **Falha visivel e um estado do produto; falha
+   invisivel e so ausencia.**
+3. Migracao `20260918100000_estado_do_documento`: colunas `status` e `erro`.
+   Sem elas, "sendo lido" e "falhou" sao indistinguiveis (`compiled` vazio nos
+   dois) e sao estados OPOSTOS para quem esta na tela.
+4. **A lista vem do servidor**, com relogio de 3 em 3 segundos enquanto houver
+   pendente. Nunca mais palpite local.
+5. Botao de apagar por linha, com a **linha virando a pergunta** em vez de
+   modal: o nome do arquivo fica na frente enquanto a pessoa decide.
+6. O DELETE do contexto **apaga o PDF do storage**, pela URL no `rawInput`.
+7. Aviso de duplicata que **avisa e nao barra**, com "Trocar pelo novo" e
+   "Subir assim mesmo".
+8. **So `status = "pronto"` entra no prompt** (pipeline, transcricao, redacao):
+   titulo sem conteudo e pior que ausencia, porque o modelo tenta honrar a
+   promessa do titulo.
+
+Os dois PDFs orfaos foram apagados a pedido do Bruno, que vai subir de novo
+pela tela para provar o caminho de ponta a ponta.
+
+Canvas da tela: https://claude.ai/artifact/GVTMdXwSfXNRroxZT1kz8Q
+
+### 2. Limite por plano: a premissa do armazenamento estava invertida
+
+`gravacoesPorMes` e `marcas` estavam em `lib/planos.ts`, eram copiados para
+`PLANS` e **morriam ali**. O proprio codigo confessava: "nao e um limite
+aplicado por codigo".
+
+**A suspeita era que o armazenamento apertasse a margem primeiro. Medido, ele
+nao aperta nada:**
+
+- uma gravacao de 16 min custa cerca de 2,3 GB (898 MB de original, 603 MB a
+  1 GB de completo, mais cortes e capas);
+- a US$ 0,023/GB-mes, o Estudio a 16 gravacoes/mes chega a cerca de 442 GB em
+  um ano, ou seja **US$ 10/mes contra R$ 1.997 de receita**.
+
+**O que aperta e TRANSFERENCIA, com um degrau escondido: blob acima de 512 MB
+nunca entra em cache.** O completo do Bruno tem 1.042 MB. Cada visualizacao e
+cache MISS, pagando Blob Data Transfer (US$ 0,05/GB) mais Fast Origin Transfer
+(US$ 0,06/GB), toda vez. Um completo visto dez vezes custa mais que o ano
+inteiro de armazena-lo.
+
+**O que entrou:** `lib/limites-do-plano.ts`, aplicado em `POST /api/projects`
+(402) e em `onBeforeGenerateToken` do upload, mais `GET /api/videos/cota` para
+a tela perguntar ANTES de deixar escolher arquivo.
+
+**A regra que da trabalho e evita uma promessa falsa:** Essencial e Autoridade
+tem **1 marca os dois**. A sugestao procura o proximo plano que RESOLVE o
+aperto, e nao o proximo da fila. Quem estoura marcas no Essencial vai direto
+ao Estudio. **Pedido de upgrade que nao resolve o aperto e propaganda, nao
+ajuda.**
+
+Medido antes de aplicar: **ninguem esta acima do limite hoje**, entao isso
+entra sem fechar a porta de ninguem. E "free" ja era barrado pelo portao
+(`lib/onboarding/portao.ts`), entao nao havia vazamento ali.
+
+Canvas da oferta: https://claude.ai/artifact/BmmAPo8WXsLpDiUG2sXfNJ
+
+### 3. A faxina: 23 GB para duas gravacoes vivas
+
+Inventario cruzando storage com **toda coluna de texto e json do banco**,
+descoberta por consulta e nao por lista escrita a mao. **A primeira versao do
+script tinha a lista de memoria e esquecia `campaign_cards.metadata`,
+`posts.imageUrl` e `social_accounts.avatarUrl`:** tres campos cujos arquivos
+teriam entrado na conta de orfao tendo dono.
+
+**26,64 GB no storage, 2 gravacoes no banco. 86% sem dono.**
+
+**E o achado que salvou a operacao:** dois dos orfaos sao os videos de App
+Review da Meta e do LinkedIn. **O LinkedIn esta em analise AGORA pela URL exata
+desse arquivo** (parte 112). Apagar derrubaria o video na mesa do revisor, e
+este ja e o SEGUNDO app.
+
+> **O banco nao e a unica coisa que aponta para um arquivo. Um terceiro tambem
+> aponta, e o banco nao sabe disso.** Mesma familia do "ok" em conta revogada
+> de 15/09: sistema so conhece o estado que ele mesmo escreveu.
+
+A limpeza usa **lista de pastas PERMITIDAS** (pasta nova nasce protegida, nao
+apagavel), carencia de 7 dias e ensaio por padrao. Decisao do Bruno sobre o
+criterio: **o que e DERIVAVEL sai, o que e FONTE fica.** Corte, capa e completo
+se refazem da gravacao; a gravacao nao se refaz de nada.
+
+**Resultado: 26,64 GB para 12,60 GB.** 647 arquivos apagados, 0 erros. Ficaram
+os 16 originais (9,0 GB) e os dois de App Review.
+
+### 4. A regra permanente, para o vazamento nao voltar
+
+`lib/media/faxina.ts`. Os orfaos nao vinham de uma rota de apagar mal escrita:
+**nao existe rota de apagar.** Vinham de SUBSTITUICAO, em dois lugares:
+
+- `refazerCapa` gravava a capa nova e abandonava a anterior;
+- o re-corte fundia a midia nova por cima e abandonava os verticais de antes.
+
+**Uma substituicao apaga o PONTEIRO, nunca o arquivo.**
+
+A regra: **quem troca o ponteiro apaga o antigo, na mesma funcao**, e sempre
+DEPOIS de gravar. Nao num cron: o cron teria que adivinhar qual era o arquivo
+velho cruzando storage com banco, que e justamente o trabalho manual de hoje.
+
+O re-corte so apaga o que o worker de fato devolveu, e `capaArte` nunca entra
+na conta: ela e a capa que o cliente pediu com uma instrucao, e um ajuste de
+tempo nao a invalida. **O worker nao foi tocado**, entao nao houve deploy no
+Railway.
+
+### A licao de metodo do dia, que e a mesma de ontem por outro caminho
+
+Ontem foi **usar o produto** que achou o que o codigo nao achava. Hoje foi
+**medir antes de codificar**, e os dois pedidos mudaram de natureza:
+
+- "falta um botao" era **o documento nunca ter existido**;
+- "o armazenamento aperta a margem" era **a transferencia, e nao o
+  armazenamento**.
+
+Nos dois casos, escrever o codigo pedido teria entregue uma coisa que parece
+funcionar: um botao que apaga uma lista de mentira, e um limite de GB que
+protege a margem no lugar errado.
+
+**E os detectores continuaram errando, agora a favor.** Os tres scripts de
+conferencia deste dia carregam um cenario de CONTROLE, propositalmente errado,
+que precisa falhar: um detector que nunca acusa nada nao esta passando, esta
+cego. Um deles pegou um defeito de verdade que o `tsc` nao pega: a data de
+renovacao renderizava **"14 de outubro" no servidor (Vercel em UTC) e "13 de
+outubro" no navegador brasileiro**. Fuso fixado em America/Sao_Paulo.
+
+### O que ficou para a proxima
+
+- **A semana publicada de verdade** (cards 183 e 158), o caso zero. Unico item
+  que nunca dependeu de terceiro, e as redes ja foram reconectadas.
+- **O teto de 512 MB do cache no video completo**, que e onde a margem vaza de
+  verdade. Nao tem card ainda: o caminho provavel e nao servir o completo
+  inteiro pelo CDN, ou parti-lo.
+- Meta e LinkedIn seguem em analise, e nenhuma depende do Bruno agora.
+
+### Scripts deste dia (scripts/tmp/)
+
+- `contextos-duplicados-1709.mts`, `blobs-da-marca-1709.mts`,
+  `pdf-privado-403-1709.mts` — a medicao que virou o diagnostico do item 1
+- `renderizar-documentos-marca.mts` — 6 cenarios da lista, mais o controle
+- `renderizar-pedido-upgrade.mts` — 5 cenarios da oferta, mais o controle,
+  roda nos dois fusos
+- `conferir-cota-dos-planos.mts` — a regra do plano que resolve o aperto
+- `quem-passaria-do-limite-1809.mts` — ninguem, medido antes de aplicar
+- `colunas-com-blob.mts` — descobre por consulta onde moram URLs de blob
+- `inventario-de-orfaos-1809.mts` — o cruzamento completo
+- `limpar-orfaos-do-storage.mts` — a faxina, com ensaio por padrao
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 128): o prompt sem acento, a previa que interrompia, e o fuso decorativo
+
+**NO AR.** Tres queixas do Bruno olhando a tela da etapa Voz, e a primeira levou
+tres tentativas de diagnostico antes de ser provada.
+
+### 1. Por que a IA escreveu sem acento
+
+O guia de voz do projeto dele saiu assim: "Fala como alguem que ja passou pelo
+problema e nao tem paciencia para enrolacao."
+
+**Primeira hipotese, e ela estava CERTA mas o teste estava errado.** Supus que o
+prompt de `sugerir-campos`, escrito inteiro sem acento, derrubasse a acentuacao
+da saida. Montei um teste com documento curto inventado pedindo UM campo, e o
+resultado veio acentuado nas duas versoes. **Hipotese reprovada**, e eu quase
+fui procurar noutro lugar.
+
+**O teste e que nao reproduzia o caso.** A producao le um manual de 6.209 letras
+e pede SEIS campos. Refeito com o `compiled` REAL do banco e o prompt exato da
+rota:
+
+| | acentos por letra |
+|---|---|
+| o documento no banco (o insumo) | **3,69%** |
+| saida com o prompt de hoje, sem acento | **0,09%** |
+| saida com o mesmo prompt acentuado | **3,64%** |
+
+**Reproduzido e provado.** O modelo espelha o registro ortografico de quem fala
+com ele. O insumo estava em portugues correto e a saida nao, porque a instrucao
+"Escreva em portugues do Brasil" estava escrita, ela mesma, sem acento.
+
+> **A instrucao perde para o exemplo.** Pedir portugues correto num texto que
+> nao tem acento ensina o contrario do que a frase diz.
+
+**Nao e preciosismo:** esse texto e o cadastro que o cliente le, e vira a voz
+que os agentes usam em toda campanha. E o `compiled` do PDF sai do mesmo tipo de
+prompt, entao contamina tudo que vem depois dele.
+
+**Corrigido:** `sugerir-campos` (o cadastro), `marca/route.ts` (o compilarPdf,
+que e o insumo de todo o resto), e o `COMO ENTREGAR` de `executar.ts`, que e o
+prompt do post final de toda campanha.
+
+**Varredura, e o detector errando pela terceira vez no dia.** A primeira versao
+acusou 413 linhas, quase todas `import ... from "@/components/video/..."` e
+`=== "video"`. O criterio certo nao e a palavra, e a FRASE: prompt e prosa, tem
+artigo, preposicao e verbo; nome de arquivo nao tem. Com o filtro apertado,
+sobraram 26 linhas em 15 arquivos, e ai o sinal virou util.
+
+Corrigidos tambem os textos de TELA que eu mesmo escrevi sem acento ontem:
+`step-marca.tsx` inteiro (rotulos, toasts, placeholders), `training-panel.tsx` e
+o banner "Preenchemos a partir dos seus documentos" em `kanban-board.tsx`.
+
+**O dado ja gravado nao foi tocado.** O `voice` do projeto dele continua como
+esta; um clique em "Gerar e preencher o guia de voz" refaz com acento.
+
+### 2. A previa saiu da etapa Voz
+
+`SetupPreview` existia desde 18/08 com um argumento que continua verdadeiro: o
+cliente paga o cartao no comeco e, sem ela, so via o produto funcionar no ultimo
+passo.
+
+**O que mudou nao foi o argumento, foi o que ela interrompe.** Desde 17/09 a
+Marca vem antes, e as etapas seguintes deixaram de ser preenchimento e viraram
+REVISAO do que saiu do documento da pessoa. Oferecer um post pronto no meio
+disso tira a pessoa da configuracao bem na hora em que ela esta entendendo como
+a plataforma le a marca dela.
+
+**Prova antecipada e jornada completa competem pelo mesmo momento.** Decisao do
+Bruno: deixar a jornada terminar. O componente e a rota `/preview` continuam
+existindo para quando houver um lugar melhor.
+
+### 3. O fuso: o terceiro campo decorativo em dois dias
+
+O projeto tem "Fuso horario" na tela, com `America/Sao_Paulo` no banco, no
+formulario e no placeholder. **E nenhuma linha do codigo lia esse campo.**
+Depois de `gravacoesPorMes` e `marcas`, o terceiro.
+
+**E pior que decorativo.** O agendamento fazia `setUTCHours(9, 0)` para uma
+campanha marcada as 09:00, e a Vercel roda em UTC: o post saia as **06:00 em Sao
+Paulo**, tres horas antes, de madrugada.
+
+O caminho do navegador sempre esteve certo (`postingTimestamps` chega como
+instante absoluto). **So o fallback do servidor errava, e ele e justamente quem
+agenda SEMANA FUTURA**, o caso que ninguem confere na hora de criar.
+
+`lib/fuso.ts` (novo) converte hora local em instante real com `Intl`, sem
+biblioteca nova, e acerta horario de verao de quem mora fora. `mergeDateTime`
+saiu. Conferido em sete casos, nos dois relogios de processo (UTC como a Vercel
+e BRT como esta maquina), porque a conta nao pode depender de quem executa.
+
+**E o campo virou LISTA CURTA, com Sao Paulo primeiro.** Era texto livre: um erro
+de digitacao caia no padrao em silencio. Quatro fusos brasileiros mais tres de
+fora. **UTC ficou de fora de proposito:** ninguem publica "em UTC", e oferecer a
+opcao so cria a chance de alguem escolher e ter post saindo fora de hora sem
+entender por que. Fuso ja gravado que nao esteja na lista continua valendo, para
+a troca do campo nao mudar o agendamento de ninguem a revelia.
+
+### A licao do dia, e ela e sobre o instrumento
+
+**Meu detector errou tres vezes hoje, de tres jeitos diferentes:**
+
+1. acusando codigo correto (a varredura de acentos pegando `import`);
+2. **inocentando um defeito REAL** (o teste que nao reproduzia o caso);
+3. acusando de novo, com outro criterio ruim.
+
+O segundo e o perigoso, e e novo. Ate agora a licao registrada era "detector
+erra acusando defeito onde nao ha" (17/09, duas vezes). **Hoje ele absolveu.**
+
+> Quando o detector discorda da TELA, desconfie do detector primeiro. A tela do
+> Bruno tinha o texto sem acento: isso e um fato. Um teste que nao reproduz um
+> fato nao inocenta ninguem, so nao viu.
+
+Todos os scripts de conferencia deste dia carregam um cenario de CONTROLE,
+propositalmente errado, que precisa falhar.
+
+### Scripts (scripts/tmp/)
+
+- `por-que-sem-acento-1809.mts` — a primeira tentativa, que reprovou a hipotese
+  certa por nao reproduzir o caso. Fica no repo como registro do erro.
+- `reproduzir-sem-acento-1809.mts` — o teste fiel, com o documento do banco
+- `olhar-compiled-1809.mts` — mede acentuacao em cada elo da corrente
+- `prompts-sem-acento.mts` — a varredura, na terceira versao do filtro
+- `conferir-fuso-1809.mts` — 7 casos, nos dois relogios, com horario de verao
+- `renderizar-mudancas-1809.mts` — as 3 telas mexidas, mais o controle
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 129): a tela poluida, a jornada que faltava, e dois defeitos que o silencio escondia
+
+**NO AR.** Tudo veio do Bruno usando a plataforma e reprovando o que viu.
+
+### 1. O painel de video nao foi ele que abriu
+
+Queixa: "depois que criei o projeto cai na tela de gestor de conteudo, mas essa
+tela esta poluida". Medido antes de mexer, e o diagnostico mudou o conserto:
+
+- o painel de envio **abre sozinho** quando o projeto nao tem gravacao nem card
+  (`content-manager.tsx:2518`), que e exatamente o estado de quem acabou de
+  terminar o setup;
+- a tela das duas portas so aparecia com **`?novaCampanha=1`** na URL, e o link
+  do menu nao traz.
+
+**As duas coisas competiam.** A jornada certa nao aparecia, e a porta do video
+abria escancarada, com quatro formularios de uma vez, sem ninguem ter escolhido
+nada.
+
+### 2. A jornada da campanha, em cinco passos
+
+`components/posts/jornada-da-campanha.tsx` (novo). As duas portas levavam a
+lugares de naturezas diferentes: a do TEMA abria uma janela em etapas, a do
+VIDEO abria um painel dentro da pagina. Agora as duas tem a mesma moldura do
+assistente de projeto.
+
+Os passos: origem, estilo, trilha e termos, formato de cada dia, envio. **Nada
+de funcionalidade nova:** sao os componentes que ja existiam, servidos um por
+vez. `EstiloDoProjeto` ganhou uma prop `mostrar` em vez de virar tres
+componentes, porque os tres blocos dividem o mesmo estado.
+
+**O pedagio evitado, decisao do Bruno:** quem ja configurou uma vez PULA para o
+envio, com uma linha dizendo o que esta valendo e um botao para rever. Perguntar
+as mesmas quatro coisas toda semana e o tipo de atrito que faz alguem parar de
+gravar.
+
+E "Nova campanha" passou a abrir a JORNADA. Antes ele abria direto a janela do
+tema, e a porta do video era um botao separado no cabecalho: **a primeira
+pergunta da campanha estava sendo respondida de fora, pelo botao que a pessoa
+clicasse.**
+
+### 3. O calendario por dia, no lugar da matriz
+
+`components/content/semana-do-quadro.tsx` (novo). Era uma matriz de SETE
+AGENTES por sete dias: 56 celulas para responder "o que sai esta semana".
+
+**Ninguem planeja a semana por agente.** O cliente nao pergunta "o que o Lucas
+LinkedIn fez", pergunta "o que sai na terca". Os agentes continuam assinando
+cada peca e aparecem ao abrir a peca.
+
+A linha de baixo diz **a proxima coisa que vai acontecer**, que e a unica
+informacao que justifica voltar nesta tela amanha.
+
+O cabecalho foi de CINCO controles para um botao e um menu. "Nova gravacao"
+sumiu de vez: virou a primeira porta da jornada.
+
+O movimento e pouco de proposito: entrada escalonada de 45 ms e uma linha que
+varre o cartao de hoje. **Tela que a pessoa abre todo dia nao pode ter animacao
+que se note na segunda vez**, e `prefers-reduced-motion` desliga tudo.
+
+### 4. As redes: a tela nao contava o que a plataforma ja tinha feito
+
+Queixa: "nao apareceu a opcao de conectar minhas paginas do linkedin, facebook,
+somente o perfil pessoal". **Medido no banco, o diagnostico inverteu:** o projeto
+novo dele JA TINHA a pagina do Facebook "Demandou" e as paginas de LinkedIn
+"demandou" (ativa) e "Areticon" (desligada).
+
+Nao era falta de conexao. Era a etapa mostrar **um selo "conectado" por rede**,
+sem distinguir perfil de pagina. "Conectado" nao e informacao quando uma rede
+pode ter um perfil, cinco paginas, ou uma pagina desligada que ninguem lembra de
+ter desligado.
+
+O que faltava de verdade:
+
+1. **a porta de pagina do LinkedIn no assistente.** Ela existe (`&pages=1`), o
+   app foi aprovado, producao responde `available:true`, e so a aba
+   Configuracoes oferecia;
+2. **o `returnTo` do callback de paginas**, que era ignorado e mandava todo
+   mundo para `/settings`. Com a porta nova no assistente, isso cuspiria a
+   pessoa para fora da jornada no meio dela. **Um sem o outro nao servia.**
+
+O Facebook ganhou a descricao honesta: ele **so** publica em pagina, nunca em
+perfil, e o callback sempre importou `accountType: "organization"`. A frase
+antiga era verdadeira e passava despercebida.
+
+### 5. "Sugerir todos com IA" rodava e nao fazia nada
+
+Queixa do Bruno no meio da sessao. **Reproduzido, nao deduzido:** rodei a rota
+com o projeto real dele.
+
+```
+Gemini com Google Search   10,5 s
+Claude montando os temas   10,7 s
+total                      21,2 s   ->  7 de 7 campos preenchidos
+```
+
+A rota FUNCIONA. O problema sao **21 segundos** contra um teto que ninguem
+declarou: o `vercel.json` so estendia `app/api/videos/**`, e esta rota caia no
+padrao da plataforma. **Ela morria por timeout em todas as chamadas.**
+
+E a tela engolia, num `catch {}` vazio com o comentario "silently fail, user can
+type manually".
+
+> **Duas decisoes separadas conspiraram para tornar a falha invisivel:** um teto
+> de tempo que ninguem declarou e um catch que ninguem escreveu para ser lido.
+> Do lado de fora, sucesso e falha eram a MESMA coisa, um spinner que volta.
+
+Conserto dos dois lados: `maxDuration` declarado (mais `app/api/ai/**` e
+`app/api/projects/**` no `vercel.json`), e o erro aparecendo na tela, com
+resposta vazia contando como falha.
+
+**Falha silenciosa nao protege ninguem: ela transfere para a pessoa o trabalho
+de descobrir que falhou.**
+
+### 6. O escritorio 3D, pesquisado e com parecer
+
+Pedido do Bruno no fim da sessao: avatares 3D por agente, escritorio virtual,
+com uma lista de projetos para acelerar.
+
+**Pesquisado, e o parecer e que nenhum deles se "coloca na plataforma":**
+
+| projeto | o que e | por que nao encaixa |
+|---|---|---|
+| **Claw3D** (MIT, 2,2k estrelas) | escritorio 3D para agentes, Next + R3F | **aplicativo standalone**, nao biblioteca. Parado desde 21/08, e 611 forks para 2,2k estrelas e razao de hype, com fork chamado `CLAW3DBSC` |
+| **DLP3D** (MIT, 355 estrelas) | avatares que conversam por voz, Babylon | precisa de **quatro servicos proprios** (orchestrator, web_backend, speech2motion, audio2face). E para conversar, nao para mostrar status |
+| **Visage / Avatoon** | componentes R3F de avatar | isto SIM se embute, e e o caminho real |
+
+**O numero que decide:** o bundle inteiro da plataforma hoje tem **1,8 MB**.
+Three.js mais R3F mais drei somam perto de 800 KB, e cada modelo de avatar GLB
+pesa de 1 a 5 MB. Com sete agentes, o escritorio multiplicaria o peso da
+aplicacao por algo entre **cinco e vinte vezes**, numa tela que hoje abre em um
+segundo.
+
+Nao esta decidido nem implementado. Registrado como card.
+
+### A licao do dia
+
+Quatro queixas, quatro diagnosticos diferentes do que a queixa dizia:
+
+- "a tela esta poluida" era **um painel que abre sozinho**;
+- "nao da para conectar pagina" era **ja estar conectada e a tela nao contar**;
+- "roda e nada acontece" era **timeout mais catch vazio**;
+- "so aparece perfil pessoal" era, no Facebook, **o comportamento correto mal
+  explicado**.
+
+**Nenhuma foi resolvida pelo conserto que a queixa pedia.** E as quatro so
+existiam porque ele estava usando o produto de verdade, pela segunda sessao
+seguida.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 130): o clique que caia no vazio, dois fusos no calendario, e o escritorio 3D no ar
+
+**NO AR.** Tres coisas, e a terceira e a que o Bruno pediu duas vezes.
+
+### 1. "Clico nos elementos e nada acontece, zero"
+
+Reproduzido no codigo antes de mexer. O mecanismo: `onAbrirPeca` chamava
+`setModalCard(card)` e SO isso. O modal so desenha com
+`modalCard && modalAgentRow`, e ninguem setava a linha do agente a partir do
+calendario. **O clique setava metade do que o modal exige e a tela ficava
+muda.** A matriz antiga passava as duas coisas porque a linha do agente era a
+propria linha da matriz; ao virar calendario por dia, a linha sumiu e o clique
+foi junto.
+
+Conserto: `linhaDoAgente(card)` deduz a linha pelo `agentId`, depois pelo
+`cardType`, e o clique vai por `handleOpenModal`, que tambem trata card virtual.
+
+### 2. Dois fusos no calendario que eu mesmo escrevi na parte 129
+
+Lidos os dados: o run do projeto "Demandou, Postou!" esta `completed`, com 32
+pecas `pending` (esperando aprovacao), oito por dia de quinta a domingo. A
+quinta foi empurrada para "agora" (`2026-09-18T04:25Z`) porque ja tinha
+passado, e por isso a sexta mostra 16 pecas: **regra da esteira, nao defeito.**
+
+Os defeitos eram meus:
+
+- **os numeros dos dias estavam um atras** (segunda 14 aparecia como 13):
+  `dayDate` e meia-noite UTC e o `getDate()` local, em Sao Paulo, cai no dia
+  anterior. Agora `getUTCDate()`;
+- **"hoje" caiu na sexta as 22h de quinta**: comparava com a data UTC. Agora
+  compara com a data em `FUSO_PADRAO`.
+
+A mesma familia de defeito da parte 128 (agendamento em UTC), do outro lado da
+tela. **Toda data que a pessoa le passa por Sao Paulo; toda data que o banco
+guarda fica em UTC.** Ja esta escrito duas vezes; que seja a ultima.
+
+### 3. O escritorio 3D
+
+Decisao do Bruno: "e para o cliente, depois levamos a animacao para a landing
+page", e "o melhor caminho e ja implantar os avatares 3d no escritorio". Ele
+tinha lido a objecao de peso da parte 129 e reafirmou. Feito.
+
+**O peso foi resolvido pelo desenho, nao pela biblioteca.** A objecao era sete
+avatares GLB de 1 a 5 MB cada. A saida: UM modelo CC0 de 464 KB (o Robot
+Expressive do three.js, de Tomas Laulhe, em `public/3d/robo.glb` com a licenca
+ao lado), **recolorido sete vezes** pelo material "Main". Three, R3F e drei
+(~800 KB) entram por `next/dynamic` sem SSR, so na aba do Gestor.
+
+Os arquivos:
+
+- `lib/squad/estado-do-squad.ts`: a REGRA, pura. Cruza as pecas da semana com
+  o log da esteira e diz, por agente: trabalhando, pronto, esperando, aviso ou
+  ocioso, com a frase da plaqueta ("4 pecas esperando voce", "esperando a
+  vez"). O bastao esta com quem tem o ultimo log `running`. Testada por
+  `scripts/tmp/situacao-do-squad-1809.mts`, 4 cenarios mais controle, um deles
+  os dados reais do projeto do Bruno.
+- `components/escritorio/escritorio-do-squad.tsx`: a cena. Sete mesas em arco,
+  um robo por agente. Quem esta com o bastao SENTA na cadeira com o monitor
+  aceso e um anel girando; quem entregou fica de pe ao lado da mesa e faz
+  "joinha" uma vez; aviso faz "nao" e o monitor fica vermelho. **Quando o
+  bastao passa, o robo que terminou ANDA ate a mesa do proximo, acena e
+  volta.** E o "eles trabalhando entre eles". A cada 9 s alguem parado acena
+  ou concorda, para o escritorio ter vida sem chamar atencao. Plaqueta e um
+  botao DOM (`Html` do drei) e abre as pecas do agente.
+- `components/escritorio/escritorio.tsx`: o lado de fora. Ouve a esteira a
+  cada 2,5 s (o mesmo ritmo da faixa antiga `pipeline-live.tsx`, que deixou de
+  ser usada no Gestor), percebe a passagem do bastao, e escolhe entre 3D e a
+  versao em linha (`SquadEmLinha`) quando nao ha WebGL ou a pessoa pediu
+  menos movimento. **O 3D e a forma; a lista e o conteudo.**
+- `docs/design/escritorio-3d/`: o prototipo em three puro, com dois cenarios
+  (esteira rodando, semana pronta) e os dois temas. `montar.mjs` gera a versao
+  publicada com o modelo embutido em base64, porque o artefato nao serve GLB.
+
+**O canvas desta vez foi um prototipo vivo, nao uma prancha.** Movimento 3D
+nao se julga em PNG. Publicado em https://claude.ai/artifact/HC1rbjT7sTPiwjearUzoYV
+e conferido uma vez antes do codigo ir ao ar: o robo estava com 2,4 de altura
+numa mesa de 0,74 (escala 0,4), corrigido para 0,19.
+
+### O que ficou de fora, de proposito
+
+Vitor Video so entra na esteira quando ha video; no escritorio ele aparece
+"sem peca nesta semana" em vez de sumir, porque o escritorio tem sete mesas e
+mesa vazia tambem e informacao.
+
+### Visto na tela logada (npm run dev com o banco de producao, projeto "Demandou, Postou!")
+
+- o clique na peca abre o card certo (Lucas LinkedIn, "Aguardando aprovacao");
+- o clique na plaqueta abre a peca do agente. **Primeira tentativa abriu o
+  Lucas ao clicar no Roberto**: as plaquetas se cobriam e o clique caia na de
+  cima. Nao era o handler, era geometria. Sete plaquetas na mesma linha nao
+  cabem na largura do escritorio; agora alternam em duas alturas (1,45 e 2,60)
+  e um script confere por `elementFromPoint` que nenhuma esta coberta;
+- calendario: "Qui · hoje" com o dia 17, segunda 14.
+
+Contra PRODUCAO o cookie da `sessao-e2e.mts` continua recusado (segredo
+diferente, parte 93): o teste roda no `next dev -p 3101` com os mesmos dados.
+
+Achado de passagem, NAO consertado: **erro de hidratacao no `AvatarDoUsuario`
+da barra lateral** (servidor desenha o `div` de fallback, cliente desenha
+`img`). Pre-existente, sem relacao com o escritorio, e vale um card.
+
+Ultimo ajuste antes de fechar: `proxy.ts` nao conhecia a extensao `.glb` e
+mandava o modelo para o /sign-in quando nao havia sessao (para quem esta
+logado ja funcionava). Entrou na lista de estaticos; `/3d/robo.glb` responde
+200 com 463.988 bytes em producao.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 131): o escritorio de verdade, a ficha do agente, e o calendario so com pecas finais
+
+**NO AR.** Segunda rodada do escritorio, vinda de uma reprova com cinco pedidos
+precisos do Bruno: mesas espalhadas com corredores; agente sentado enquanto
+trabalha, levando o trabalho ao proximo e o Paulo trazendo ate nos; balao de
+chat com o que cada um esta fazendo; clique no agente abrindo a ficha (quem e,
+o que faz, historico recente); e o calendario so com pecas finais, como card
+do Trello, com hora, estado e os selos das redes (perfil e pagina).
+
+### 1. A planta
+
+`components/escritorio/escritorio-do-squad.tsx`, reescrito. Duas fileiras
+viradas para a camera (quatro atras, tres na frente), corredor central mais
+claro, uma planta no canto vazio, e **a nossa mesa** na frente, de costas para
+a camera, com um tapete laranja onde a semana "chega". Cada robo senta na sua
+cadeira, atras da mesa, virado para nos; o monitor ficou de lado para o rosto
+aparecer.
+
+O ciclo: quem tem o bastao trabalha sentado (monitor aceso, anel girando,
+balao com o log da esteira). Ao entregar, **levanta, anda ate o lado da mesa
+do proximo, acena, volta e senta**. Quando o run termina, `escritorio.tsx`
+dispara a entrega `paulo-publicador -> "voce"`: o Paulo anda ate a nossa mesa
+e o balao da mesa diz "Chegou. A semana esta no calendario, esperando voce".
+
+**A plaqueta virou placa de mesa** (na frente do tampo, nome, papel e a
+situacao em uma linha). Resolveu de graca a sobreposicao da parte 130: as
+mesas estao espacadas, entao as placas tambem.
+
+Camera: a primeira planta ficou a 13 de distancia e os robos viravam pontos
+coloridos; ficou em (0, 5.6, 8.0) olhando para (0, 0.5, -2.2).
+
+### 2. A ficha
+
+`components/escritorio/ficha-do-agente.tsx` (novo) e a rota
+`GET /api/projects/[id]/squad/[agentId]` (nova). Quem e e como trabalha vem de
+`project_agents` (persona e style, escritos no setup); o historico sao os
+cards do agente em qualquer semana, sem arquivados, do mais novo para o mais
+antigo, com o tema do run. O Vitor nao tem linha em `project_agents` (nasce do
+video), entao sai da lista fixa `AGENTES`.
+
+Cada trabalho da lista abre o card completo pelo `handleOpenModal` de sempre.
+**A ficha e a porta, nao o destino.**
+
+### 3. O calendario so com pecas finais
+
+`components/content/semana-do-quadro.tsx` reescrito e o montador em
+`content-manager.tsx` trocado. A versao da tarde listava os cards da esteira
+("Pesquisa", "Preview", "Publicacao"), que e processo. Agora cada card do dia
+e UMA PECA: um post com suas adaptacoes.
+
+O agrupamento, lido dos dados reais: cada dia tem 5 posts (LinkedIn pagina,
+LinkedIn perfil, Facebook pagina, Instagram, X perfil), cada um ligado a um
+card. O texto do LinkedIn e suas tres adaptacoes viram **uma peca com quatro
+selos**; a thread do X e outra; corte de video, outra. A chave do grupo inclui
+a hora prevista: a quinta empurrada para "agora" cai no mesmo dia da sexta, e
+sao duas pecas, nao uma com oito selos repetidos (o primeiro teste na tela
+logada acusou chaves duplicadas no React por isso).
+
+O card: capa (a imagem do dia), selos com o glifo de perfil ou pagina, hora,
+titulo (primeira linha do texto do redator), tipo e estado. Os estados sao os
+que o Bruno pediu (esperando voce, aprovado, agendado, publicado, rejeitado)
+mais falhou e guardado. A faixa colorida a esquerda e a etiqueta do Trello.
+
+**Clicar na peca de texto abre o card de PUBLICACAO do dia**, que e o unico
+que lista todos os destinos com as acoes de aprovar e publicar. Thread abre o
+card do Tiago; corte abre o do Vitor.
+
+### O que a tela logada pegou (next dev com o banco de producao)
+
+- o calendario mostrou 6 pecas nos 4 dias, com capa e selos; clique abriu o
+  card do Paulo com "4 post(s) prontos para publicacao";
+- a ficha do Lucas: "Quem e", "Como trabalha", 12 trabalhos, o mais recente
+  primeiro; clique no trabalho abriu o card;
+- a hora prevista aparece como 09:00 e 22:25 onde o banco tem 12:00 e 01:25
+  em UTC. **Nao e do calendario**: `horaCurta` usa America/Sao_Paulo, e o
+  mesmo valor aparece no modal do card ("17 de set., 22:25"). Provavel
+  gravacao naive no Postgres lida como UTC pelo Prisma. Fica registrado como
+  card, porque afeta a Agenda inteira e nao so esta tela.
+
+### Verificacao
+
+`tsc` limpo; lint limpo nos arquivos mexidos; `renderizar-semana-e-jornada.mts`
+reescrito para a peca nova (5 cenarios mais controle, que agora e "o
+calendario ainda lista Pesquisa e Publicacao"); `situacao-do-squad-1809.mts`
+inalterado, 4 cenarios. Prototipo vivo republicado (versao 3) com os dois
+cenarios e o calendario em cards.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 132): tres queixas, e os dados desmentiram duas delas
+
+**NO AR.** O Bruno mandou tres coisas na mesma mensagem:
+
+1. "a tela de posts deve dar para selecionar tudo ou todos de uma vez com
+   flags, vou deletar tudo e gerar de novo";
+2. "veja as imagens esta a mesma em todos os posts, deu algum erro";
+3. "deveria ter gerado apenas um post no dia, deu algum erro e gerou varios".
+
+**Os dados foram lidos antes de qualquer conserto, e os itens 2 e 3 nao eram o
+que pareciam.**
+
+### O que o banco disse
+
+```
+posts do projeto              20   (4 dias x 5 contas)
+imagens distintas              4   (uma por dia)
+contas por dia                 5   LinkedIn pagina, LinkedIn perfil,
+                                   Facebook pagina, Instagram, X perfil
+```
+
+As quatro imagens foram baixadas do banco (sao data URI base64) e **olhadas uma
+a uma**: infografico do LinkedIn com 42/81/57%, as bolhas de fala no palco, o
+infografico "Sua fala vira conteudo" com 93%, e o triptico pastor/professor/
+consultor. Sao quatro imagens completamente diferentes, boas, com texto correto
+em portugues.
+
+**Nao houve erro de geracao.** A esteira gerou um conteudo por dia, com uma
+imagem por dia, adaptado para cinco contas. Isso e o desenho do produto.
+
+### A causa unica dos dois sintomas: o calendario, e fui eu na parte 131
+
+Na parte 131 eu separei a thread do X numa peca propria. Resultado: cada dia
+virava DOIS cards com a **mesma imagem**, a **mesma hora** e o **mesmo tema**.
+
+> **Um clone visual, na tela, com dados corretos no banco.** O Bruno leu o
+> clone de duas maneiras ("a imagem e a mesma" e "gerou varios"), e as duas
+> leituras estavam certas sobre o que ele via. Nenhuma estava certa sobre a
+> causa, que era minha.
+
+Conserto: **uma peca e o conteudo do dia com TODAS as suas adaptacoes.** O
+mesmo tema sai como texto no LinkedIn (pagina e perfil), no Facebook, no
+Instagram e como thread no X: cinco selos, um card. So o video continua peca a
+parte, porque e outro conteudo.
+
+### A sexta com duas pecas, e por que isso e verdade
+
+O projeto tem quatro dias com peca, e a sexta mostra DUAS. Nao e defeito: a
+quinta as 09:00 ja tinha passado quando a campanha rodou (`startedAt` 04:13Z),
+e `getScheduledAt` empurra para "agora + 10 min", que caiu 01:25 de sexta.
+
+Em vez de esconder, o card **diz**: uma tarja laranja sobre a capa com
+`era de quinta`. A tarja ficou sobre a imagem porque o cartao do dia tem uns
+110px e "Post · era de quinta" quebrava o rodape em quatro linhas.
+
+**Dois defeitos meus achados por esta mudanca**, os dois vistos na tela logada
+e nao deduzidos:
+
+- **a capa da peca errada**: os cards candidatos eram todos os que caiam
+  naquele quadrado do calendario, entao a peca da sexta herdava a imagem da
+  quinta empurrada, e as duas mostravam a mesma coisa. **Era o mesmo defeito
+  que originou a queixa, de outra forma.** Agora os candidatos sao filtrados
+  pelo `dayOfWeek` do post da peca;
+- **a hora sumiu**: com cinco selos, a linha nao tinha mais espaco e o
+  `justify-between` empurrava a hora para fora. Ela foi para o rodape, junto do
+  tipo: "Post · 09:00".
+
+### A selecao em massa
+
+`app/api/posts/em-massa/route.ts` (nova) e a barra de selecao em
+`posts-panel.tsx`. Vinte posts por vinte chamadas seriam vinte idas ao
+servidor e vinte chances de parar no meio.
+
+O que a rota protege:
+
+1. **a posse**: um id de outro dono derruba a chamada INTEIRA, em vez de
+   apagar o que deu certo e ignorar o resto;
+2. **o que esta no ar**: post publicado nao se apaga, porque apagar o registro
+   nao tira a publicacao da rede. Eles sao recusados e a tela conta quantos
+   ficaram;
+3. **o Gestor**: `esconderDiaSemPosts` roda UMA vez por (run, dia) no fim, e
+   nao por post.
+
+Na tela: uma caixinha por post, "selecionar todos" com estado parcial, e a
+barra com Arquivar e Apagar. **A selecao so pega o que esta a vista**, e morre
+ao trocar de aba: manter marcado o que saiu da tela e como se apaga sem querer
+o que nao se estava vendo. Apagar pergunta antes, com o numero e as redes;
+arquivar nao pergunta, porque tem volta.
+
+### Verificacao
+
+Rota testada CONTRA O BANCO REAL, com um post so, e o estado devolvido:
+
+```
+lista vazia            400  "Nenhum post selecionado."
+acao invalida          400  "Acao desconhecida."
+id de outro dono       404  (e o post valido junto NAO foi tocado)
+arquivar 1             200  feitos: 1
+voltar para rascunho   200  feitos: 1
+depois: 20 draft, 32 cards pending, run nao arquivado  (identico ao inicio)
+```
+
+Tela logada: 21 caixinhas (20 posts mais "todos"), "20 de 20 selecionados",
+Arquivar e Apagar aparecendo. Calendario: 4 pecas, **4 capas distintas**
+(conferido por `src` no DOM), tarja "era de quinta" na peca empurrada, clique
+abrindo a peca completa.
+
+`tsc` limpo, lint limpo, `renderizar-semana-e-jornada.mts` reescrito para a
+peca unica (5 cenarios, controle novo: "o calendario ainda quebra a thread do
+X num card proprio").
+
+### A licao do dia
+
+**Sintoma duplo, causa unica, e a causa era da tela.** Se eu tivesse
+consertado o que a queixa pedia, teria mexido no gerador de imagem e na
+esteira, que estavam certos, e o clone continuaria la.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 133): a Vera nunca viu o Facebook, e agora ela briga
+
+**NO AR.** Quatro pedidos do Bruno, e o terceiro era sobre CONTEUDO, nao sobre
+tela: "a Vera deveria ter negado post para o instagram ou para o facebook que
+fala de linkedin, como ela nao pegou isso?".
+
+### 1. A resposta: ela nunca viu
+
+Lido no codigo antes de mexer. O fluxo do dia era:
+
+```
+Lucas escreve o LinkedIn
+  └─ Lucas ADAPTA para Facebook e Instagram     ← aqui nascem as derivadas
+Tiago escreve a thread do X
+Diana faz a midia
+Vera revisa ...  buildVeraTask(dayOfWeek, liPost, twPost, midia)
+                                    └─ so LinkedIn e X
+Paulo publica
+```
+
+**As derivadas eram criadas ANTES da revisao e nao entravam nela.** A Vera
+aprovava o dia inteiro sem nunca ter lido o texto que ia para o Facebook.
+
+E o prompt de adaptacao trabalhava contra: ele mandava manter "a tese, os
+dados e as fontes exatamente como estao" e nao dizia nada sobre a rede. O
+resultado foi o que ele leu: o post do Facebook e o do Instagram abrindo com
+**"O LinkedIn nao penaliza inteligencia artificial"**, que e a primeira frase
+do post do LinkedIn, copiada inteira.
+
+### 2. A regua da rede errada
+
+`lib/pipeline/redes.ts` (novo): `mencoesDeOutraRede(texto, rede)` lista as
+FRASES de um post que citam outra rede.
+
+**Ela mede e nao julga**, e isso nao e preguica de regra: rodando contra os
+textos reais do projeto do Bruno, ela acusa quatro derivadas, e as quatro nao
+sao o mesmo caso:
+
+```
+facebook  dia 4  "O LinkedIn nao penaliza inteligencia artificial."      ← defeito
+instagram dia 4  idem                                                     ← defeito
+facebook  dia 6  "...pode virar carrossel para LinkedIn, clipe..."        ← legitimo
+instagram dia 6  "...vira carrossel para LinkedIn, video vertical..."     ← legitimo
+```
+
+No dia 6 a frase LISTA redes de destino, e trocar "LinkedIn" ali estragaria o
+texto. A diferenca e de sentido, e sentido e trabalho da Vera. E o mesmo
+padrao dos limites da rede e do lastro dos numeros: **o que da para medir vai
+medido, e o veredito continua dela.**
+
+Testada por `scripts/tmp/rede-errada-1809.mts`, contra os textos do banco e
+nao contra frases inventadas por quem escreveu a regra, com dois controles
+(texto limpo passa; "O Instagram" num post de Facebook e acusado).
+
+### 3. O que mudou na esteira
+
+- **o prompt de adaptacao** recebe as frases medidas e a instrucao de trocar
+  so o que e cenario ("seu post no LinkedIn" vira "seu post aqui"), mantendo o
+  que e fato da pesquisa ("16 mil criadores do LinkedIn");
+- **a Vera recebe as derivadas** no bloco "ADAPTACOES PARA OUTRAS REDES" e
+  ganhou o criterio 9, com as frases medidas e a regra de julgar por sentido;
+- **a correcao e cirurgica**: quando a Vera reclama da rede, o Lucas reescreve
+  SO as frases apontadas, e nao o post inteiro. Reescrever tudo reabriria o
+  que ela acabou de aprovar. So roda quando as duas condicoes batem (a Vera
+  falou de rede E a frase ainda esta la), para nao virar uma chamada a mais
+  por rede em toda campanha.
+
+### 4. A conta no card: foto, nome e o que ela e
+
+Queixa: "quando clico no card nao ficam claro se sao da pagina ou do perfil,
+precisa trazer foto, logo e nome".
+
+O projeto dele tem DUAS contas de LinkedIn, `demandou` (pagina) e `Bruno
+Donaire` (perfil). A linha antiga mostrava o icone do LinkedIn, igual nas
+duas, e o nome em cinza de 10px no canto direito.
+
+`components/social/selo-da-conta.tsx` (novo): a foto da conta com o icone da
+rede como selo pequeno **sobre** ela. A foto e o que identifica; a rede e
+secundaria. Sem foto, a inicial no fundo da cor da rede. `avatarUrl` entrou no
+`select` das duas paginas que montam a tela.
+
+Aplicado em dois lugares: a lista de destinos do card e o **preview do post**,
+que ate hoje dizia "Seu perfil / Profissional · 1a" mesmo quando o post ia
+para a pagina da empresa. Preview que mostra a conta errada ensina a pessoa a
+nao confiar no preview.
+
+### 5. O escritorio: emocao no corpo, e todos falando
+
+Pedido: "a Vera tem que voltar na mesa de quem fez e brigar com o agente, o
+avatar deve ficar nervoso (irritado), todos os agentes devem ter um chat e
+suas emocoes devem ser demonstradas pelo movimento dos bonecos".
+
+- **o log ganhou `para`**: a Vera grava para quem e a cobranca. Sem isso a tela
+  sabe que alguem reprovou e nao sabe de qual mesa se trata. Campo opcional,
+  ninguem mais depende dele;
+- **a bronca**: quem cobra atravessa a sala **correndo** (e nao andando),
+  chega, balanca a cabeca dizendo nao, fica 3,4 s (contra 1,8 s da entrega) e
+  volta. Correr e o que se le de longe como "esta irritada";
+- **a cara**: o Robot Expressive tem tres morph targets (Angry, Surprised,
+  Sad). Quem cobra fica irritado, quem e cobrado fica triste, quem tem aviso
+  no log fica surpreso. A troca e suavizada por quadro, porque trocar o morph
+  de uma vez faz a cara piscar entre dois quadros e o que se ve e um defeito,
+  nao uma emocao;
+- **o chat de todos**: cada agente mostra o ultimo log dele. O balao de quem
+  NAO esta trabalhando some depois de 14 s: sete baloes permanentes deixariam
+  de ser conversa e virariam mural.
+
+Os baloes subiram de 2,1 para 3,0 de altura, porque na altura da cabeca eles
+cobriam a plaqueta da mesa vizinha (visto no prototipo).
+
+### 6. A pergunta que ficou: por que duas pecas num dia
+
+Ele disse "ainda nao entendi porque ficaram duas post em um dia". Os dados:
+
+```
+run startedAt          18/09 04:13Z  (01:13 em Sao Paulo, ja era sexta)
+horario da quinta      17/09 12:00Z  (09:00 em Sao Paulo, ja tinha passado)
+scheduledAt gravado    18/09 04:25Z  ← "agora + 10 min", regra do getScheduledAt
+```
+
+Ele mandou a campanha perto da meia-noite de quinta. O horario de quinta ja
+tinha passado, e a regra da esteira e nunca agendar no passado: empurra para
+dez minutos a frente. So que o run comecou depois da meia-noite, entao esses
+dez minutos cairam na SEXTA.
+
+Nao e defeito de geracao: **e uma peca de quinta que vai sair na madrugada de
+sexta**, e o cartao diz isso na tarja "era de quinta". Fica um card no backlog
+para decidir o comportamento certo (pular o dia, ou perguntar), porque a
+decisao e de produto e nao de codigo.
+
+### Verificacao
+
+`tsc` limpo, lint limpo. `rede-errada-1809.mts`: 4 verificacoes contra os
+textos reais. `situacao-do-squad-1809.mts`: 4 cenarios mais tres novos (a
+bronca aponta a mesa certa, a fala antiga some, sem destinatario nao ha
+bronca) mais controle. Prototipo (versao 4) com o botao "A Vera reprova e vai
+cobrar", olhado no navegador: ela levanta, corre ate a mesa do Lucas e volta.
+
+Tela logada: a lista de destinos com foto, nome e tipo; o preview do post
+dizendo "demandou / Pagina" em vez de "Seu perfil".
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 134): a nota da Vera saiu do banco para a tela, e o conserto da parte 133 foi visto funcionando ao vivo
+
+**NO AR.** Quatro ajustes pedidos com a campanha DELE rodando na tela, o que
+deu a chance rara de verificar a rodada anterior em movimento.
+
+### A prova da parte 133
+
+Enquanto eu mexia, o escritorio mostrava o run real dele (25 logs). Um dos
+baloes dizia, com todas as letras:
+
+> **Lucas LinkedIn:** "Iniciando: A Vera reprovou a versao de Facebook de
+> Sexta-feira porque ela fala de outra rede..."
+
+**O conserto de conteudo da parte 133 funcionou na primeira campanha depois
+dele.** A Vera leu a adaptacao, reprovou por rede errada, e o Lucas foi
+reescrever so aquelas frases. Isso nao foi deduzido: estava na tela.
+
+### 1. A nota da Vera, que sempre existiu e nenhuma tela lia
+
+`lib/squad/veredito.ts` (novo). A Vera grava um card `preview` por dia
+terminando com `Veredito da Vera:` e a resposta inteira dela, cuja ultima
+linha e `VEREDITO: APROVADO` (ou uma das reprovacoes). **Isso estava gravado
+desde sempre, e nenhuma tela lia.**
+
+Agora a rota da ficha cruza cada trabalho com o card da Vera do MESMO run e do
+MESMO dia, e a ficha mostra o selo: aprovado (verde), aprovado com ressalvas
+(amarelo), reprovado (vermelho), mais as duas primeiras frases do parecer.
+
+Rodado contra os cards reais (`scripts/tmp/veredito-1809.mts`): **os quatro
+dias da campanha anterior foram REPROVADOS** e corrigidos automaticamente.
+Informacao que o Bruno nunca teve como ver.
+
+Dois controles, e o segundo pegou um defeito de verdade: `REPROVADO_TEXTO`
+contem a palavra `APROVADO` dentro. Uma comparacao ingenua leria a reprovacao
+como aprovacao, e a tela mostraria verde onde a Vera reprovou.
+
+### 2. O balao
+
+Queixa: "o chat ficou muito distante do avatar". Ele estava em y=3.0, para nao
+cobrir a plaqueta da mesa vizinha (parte 133). Resultado: deixou de parecer
+fala e virou legenda.
+
+Agora em **y=2.05**, encostado na cabeca, com o rabicho apontando para ela. O
+texto e cortado em 120 caracteres: o parecer da Vera tem paragrafos, e um
+balao de cinco linhas cobre meio escritorio. **O balao e a chamada; o texto
+inteiro esta na ficha, a um clique.**
+
+### 3. O clique no balao
+
+O balao era `pointerEvents: none`. Agora e um botao e abre a ficha do agente,
+junto com a plaqueta e a mesa. Tres alvos para a mesma acao, que e o que a
+pessoa tenta quando quer saber mais sobre o que leu.
+
+### 4. O zoom
+
+`enableZoom` ligado, com `minDistance: 4.5` e `maxDistance: 16`: perto o
+bastante para ler a cara do robo, longe o bastante para ver a sala, sem deixar
+a pessoa entrar dentro de uma mesa nem sair do predio. Os limites de angulo
+tambem abriram um pouco. A dica virou "arraste para olhar em volta, role para
+aproximar".
+
+### 5. O trabalho de agora, na ficha
+
+A ficha abria com quem e, como trabalha e o historico. Faltava o presente.
+Agora, quando a esteira esta rodando, o topo da ficha diz **"Fazendo agora"**
+com a fala do agente.
+
+A fala vai junto do clique (`onAbrirAgente(id, falaAtual)`) porque quem tem
+essa informacao e o escritorio, que ouve a esteira, e nao a tela de fora.
+
+### Verificacao
+
+`tsc` limpo, lint limpo. `veredito-1809.mts` contra os cards reais mais dois
+controles. Tela logada, com a campanha do Bruno RODANDO: os baloes perto dos
+avatares, o zoom aproximando, o clique no balao abrindo a ficha, e a ficha do
+Roberto mostrando "VERA: REPROVADO" no trabalho de 18 de setembro.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 135): o estilo que o cliente escolhe nao chegava na arte, e um agente disse que fez o que nao fez
+
+**NO AR.** Cinco defeitos, e o pior deles nao era visual.
+
+### 1. "Escolhi cartoon e olha a imagem que foi gerada, nada a ver"
+
+Lido no codigo. A esteira tem DOIS caminhos de imagem:
+
+```
+imagem livre   →  styleHintEn = mediaStyle !== "auto" ? fragmento(mediaStyle) : estiloDoDia
+infografico    →  generateInfographic(..., { estilo: estiloDoDia.prompt })
+```
+
+**A imagem livre respeitava a escolha; o infografico nao.** Ele recebia
+`estiloDoDia`, que vem de `escolherEstilo`, que SORTEIA do catalogo interno e
+nunca olhava o `mediaStyle` da campanha. O cliente marcava "Desenho animado" e
+recebia um infografico com fotos de banco de imagem.
+
+Conserto: `escolherEstilo` ganhou `preferido`. **A escolha do cliente manda; a
+rotacao automatica existe para quem deixou em "Automatico", e so para esses.**
+Ligado nos tres lugares que chamam (esteira, chat da peca, pecas do video).
+
+`scripts/tmp/estilo-escolhido-1809.mts`, com 5 verificacoes, e uma delas e o
+controle que importa: **cartoon nao pode dar o mesmo resultado que "auto" no
+mesmo dia**, senao a escolha nao esta mudando nada.
+
+### 2. O estilo Vox, que o Bruno pediu
+
+Descricao dele: "uma mistura de arte recortada com preto e branco e cinismo,
+tipo a estatua da liberdade rindo". Entrou nos DOIS catalogos (o que o cliente
+escolhe e o da direcao de arte), como "Recorte editorial (Vox)".
+
+### 3. O Paulo disse que trocou a imagem, e nao trocou
+
+O mais grave do dia. O Bruno pediu, no chat do card do PAULO, "ajuste imagem,
+eu pedi um chart nao uma imagem realista". O card do Paulo nao tem imagem: o
+pedido caiu no ramo de edicao de TEXTO, e o modelo, mandado "editar o texto
+conforme a instrucao", **reescreveu o conteudo do card para dizer que a imagem
+tinha sido trocada**.
+
+> Nada foi trocado, e a mentira ficou gravada no card.
+
+**Um agente que afirma ter feito o que nao fez e pior que um que recusa.**
+
+Conserto, e ele e de produto: num squad de verdade o Paulo passaria o pedido
+para a Diana. Agora o pedido de imagem num card sem imagem e **encaminhado**
+para o card de midia do mesmo dia e atendido la de verdade; o card de origem
+registra para onde foi. Sem card de midia no dia, a resposta e "nao da", e o
+conteudo do card NAO e tocado.
+
+### 4. CTA de 7 dias gratis em conteudo de topo de funil
+
+Duas causas somadas, e as duas consertadas:
+
+- **o redator**: `FUNNEL_INSTRUCTIONS.tofu` dizia como escrever e nao dizia o
+  que NAO fazer. O modelo tem o documento da marca no contexto, com o produto
+  inteiro descrito, e vender e o jeito mais facil de terminar um texto. Agora
+  o tofu proibe, com todas as letras, vender, citar a propria plataforma como
+  solucao e prometer teste, prazo ou preco;
+- **o infografico**: ele INVENTOU "7 Dias para teste gratis (Demandou)". Esse
+  prazo nao esta no post, nao esta no projeto e nao existe. O prompt mandava
+  "use apenas informacoes reais do post" e nao proibia inventar uma OFERTA.
+  Agora proibe, e a regra vale tambem no prompt da imagem.
+
+**Prometer condicao comercial que ninguem autorizou e o pior defeito que uma
+peca pode ter, porque ela vai ao ar no nome do cliente.**
+
+### 5. "O RAG do cliente deve alimentar todos os agentes"
+
+A Diana era o unico agente cego: `generateInfographic` recebia o post e o
+nicho, e nada mais. Agora recebe `regras: { funil, marca }`, com os documentos
+compilados do projeto. O chat da peca tambem: ele carregava so as preferencias
+aprendidas e nunca os documentos, entao uma peca refeita pelo chat saia sem o
+contexto que a peca original teve.
+
+### 6. O cafe, e agentes que andam sozinhos
+
+Pedido: "coloque uma mesa de cafe, deixe eles conversarem no cafe quando
+estiverem sem trabalho".
+
+Mesa redonda com garrafa, xicaras e vapor, tres lugares. Quem nao esta com o
+bastao pode ser chamado para o cafe; quem recebe o bastao volta na hora,
+porque a missao some e o robo senta. **Livre inclui quem ja entregou**: com a
+semana pronta o escritorio inteiro esta sem trabalho, e e ai que a mesa tem
+que encher.
+
+As falas do cafe sao de BASTIDOR de proposito. Nenhuma afirma um fato sobre o
+trabalho, sobre numeros ou sobre o cliente: um agente que "opina" sobre dados
+na tela vira mais uma fonte de coisa inventada, e o produto inteiro e
+construido contra isso. Eles falam do oficio, e so.
+
+Primeira posicao (x=-7,6) deixava a mesa FORA do enquadramento e quem ia tomar
+cafe saia de cena. **Agente que desaparece da tela le como defeito, nao como
+pausa.** Corrigido para x=-5,4, visto na tela logada.
+
+### O que NAO foi feito, e fica declarado
+
+O **avatar do usuario controlavel** (andar pela sala, chegar perto de um
+agente, perguntar, ver trabalhos, falar de outro agente) nao foi feito. E
+controle de movimento, deteccao de proximidade, menu de interacao e um canal
+de conversa por agente: e uma frente propria, nao um ajuste. Card no backlog.
+
+### Verificacao
+
+`tsc` limpo, lint limpo. `estilo-escolhido-1809.mts` com 5 verificacoes. Tela
+logada: a mesa de cafe na cena, o Vitor e o Lucas indo ate ela, os baloes de
+papo, e nenhum erro de pagina.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 136): a fala pertence a quem fala, e voce tem lugar na sala
+
+**NO AR.** Dois ajustes curtos, e o primeiro e um erro de MODELAGEM, nao de
+posicao.
+
+### 1. "Os baloes do chat nao estao acompanhando os agentes"
+
+O balao era filho do grupo da MESA, que e fixo no chao. Enquanto todo mundo
+ficava sentado isso nao aparecia. Depois que os agentes passaram a levantar
+(entrega na parte 131, bronca na 133, cafe na 135), a fala ficava **pairando
+sobre a cadeira vazia** enquanto o dono dela atravessava a sala.
+
+O conserto nao foi mexer na altura: foi mudar de dono. O balao agora e filho
+do ROBO, dentro do grupo que se move, com um grupo interno que desfaz a escala
+de 0,19 (senao ele sairia com 19% do tamanho) e altura 6,6 medida no modelo,
+que cai logo acima da cabeca em qualquer pose.
+
+> **Nas duas rodadas anteriores eu tratei a distancia do balao como problema
+> de posicao** (subi para 3,0 na parte 133, baixei para 2,05 na 134). As duas
+> vezes o defeito era outro: a fala estava presa no objeto errado.
+
+### 2. Voce, na sua mesa
+
+Pedido: "pelo menos crie o nosso agente agora, deixe ele diferente dos demais
+em algum aspecto". Ele e diferente em quatro coisas, e as quatro dizem a mesma
+coisa: **este nao e um funcionario**.
+
+1. veste o LARANJA DA MARCA, a unica cor que nenhum agente usa;
+2. e 12% maior que eles;
+3. senta de COSTAS para a camera, olhando para o escritorio. E de onde voce
+   olha, e ele e o unico que ve a sala de frente;
+4. nao entra na esteira: nao recebe bastao, nao leva trabalho, nao vai ao cafe.
+
+Para isso o `Robo` ganhou tres props opcionais (`lugarFixo`, `yawFixo`,
+`escala`). Elas existem porque o componente assumia que todo robo senta numa
+das sete mesas e olha para a camera, e voce nao faz nem uma coisa nem outra.
+
+**A nossa mesa mudou de z=2,8 para z=2,1**, com a camera acompanhando: em 2,8
+o avatar ficava atras da borda inferior e nao aparecia. Um avatar que existe e
+nao se ve nao atende o pedido.
+
+### O que continua faltando
+
+Andar, chegar perto de um agente e interagir. Hoje ele e **presenca**, nao
+controle. O card do avatar controlavel segue no backlog, e o que entrou aqui e
+a metade que da para ver.
+
+### Verificacao
+
+`tsc` limpo, lint limpo, tela logada: o avatar laranja sentado de costas na
+nossa mesa, a Diana e o Tiago no cafe com os baloes em cima deles, e nenhum
+erro de pagina.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 137): sete dias eram tres, e um botao de tema por dia
+
+**NO AR.**
+
+### 1. "Se a campanha e de 7 dias, e de 7 dias e pronto"
+
+A campanha e ancorada numa SEMANA. Quem pedia os sete dias numa sexta via:
+
+```
+tela de temas     7 campos, um por dia    ("7 dias selecionados")
+resumo            4 dias omitidos, 3 serao gerados
+esteira           `if (dayDate < cutoffUtc) continue;`  → 3 pecas
+```
+
+**A promessa e a entrega estavam em telas diferentes**, e as duas apareciam na
+mesma janela. O Bruno leu a conta e viu que nao fecha: "esta cortando,
+quebrando".
+
+Conserto na esteira: dia que ja passou **vai para a semana seguinte**, no
+mesmo dia da semana, em vez de ser descartado. Sete dias pedidos, sete pecas;
+quem pediu infografico na terca continua com infografico na terca, so que na
+terca que ainda vai chegar.
+
+Detalhe que so aparece testando o modo quinzenal: o empurrao vai para
+`max(semanas) + 1`, e nao `weekOffset + 1`. Na campanha de duas semanas a
+semana 1 ja gera aquele mesmo dia, e somar 1 criaria **duas pecas iguais no
+mesmo dia**.
+
+`scripts/tmp/sete-dias-sao-sete-1809.mts`, 8 verificacoes, incluindo o
+controle de que a sexta nao volta a dar 3 dias.
+
+E a tela passou a contar a mesma historia: os sete cartoes do resumo, cada um
+com a data REAL de saida, e os que foram empurrados marcados com "semana que
+vem". O aviso mudou de "4 dias omitidos" para "7 dias, todos gerados. 4 deles
+ja passaram nesta semana e saem na semana que vem, nos mesmos dias".
+
+### 2. Um tema novo por dia
+
+Pedido: "precisa ter a opcao de pedir ajuste de um tema especifico, um botao
+de gerar novo com IA por dia".
+
+Botao "Outro tema" em cada linha. Sugerir os sete de novo para trocar um custa
+21 segundos e **derruba os seis que a pessoa ja aprovou**: e o tipo de escolha
+que faz alguem desistir de ajustar.
+
+Os temas que ja estao na tela vao junto no pedido (`evitar`), porque sem isso
+a IA devolvia para a quarta o mesmo assunto da terca, e **trocar um tema por
+outro igual ao do vizinho nao e ajuste**.
+
+Testado de ponta a ponta na tela logada: "Buscando" no botao, e 20 segundos
+depois so aquele dia preenchido, com tema do nicho do projeto.
+
+### 3. "O que que e esses negocios verdes aqui?"
+
+A planta do canto, da parte 133. Eram cinco cones verdes apontando para cima,
+e cone le como pinheiro de papel, nao como planta de escritorio. Refeita com
+tres massas arredondadas em verdes diferentes (icosaedro achatado, flat
+shading) sobre um vaso de barro com terra. Mesma geometria primitiva, mesmo
+custo, e agora se reconhece o que e.
+
+### Verificacao
+
+`tsc` limpo, lint limpo, 8 verificacoes do `sete-dias`. Tela logada: o botao
+"Outro tema" em cada linha funcionando de verdade, o resumo com os tres dias
+(dois marcados "Semana Que Vem") e a planta nova.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 138): o parecer da Vera foi parar na peca do Instagram
+
+**NO AR.** O defeito mais grave que este produto ja teve, e ele durou algumas
+horas: **o parecer interno da revisora estava dentro da peca que ia ao ar no
+nome do cliente.**
+
+### O que aconteceu
+
+A correcao cirurgica da rede errada (parte 133, escrita por mim ontem) mandava,
+no mesmo prompt, o parecer da Vera e o texto a corrigir, separados por um
+rotulo nosso:
+
+```
+O QUE A VERA ESCREVEU:
+<parecer inteiro, 1200 chars>
+
+TEXTO ATUAL:
+<a peca>
+
+Devolva SO o texto completo ja corrigido.
+```
+
+O modelo devolveu **o prompt inteiro de volta**. O conteudo gravado na peca do
+Instagram de sabado ficou:
+
+```
+Revisao de Vera Veredito, Sabado
+Tom de voz
+O tom geral esta alinhado a marca...
+TEXTO ATUAL:
+Janeiro: post todo dia. Fotos cuidadas...
+```
+
+O `limparBastidorDoTexto` nao pegou: ele procura marcas de bastidor conhecidas,
+e um parecer inteiro nao tem nenhuma delas.
+
+### Os dados, primeiro
+
+Uma peca (Instagram, sabado, rascunho) e um card. `limpar-parecer-1809.mts`
+cortou no marcador `TEXTO ATUAL:`, que e uma linha NOSSA e nunca existiria num
+post de verdade, e so cortou porque o que sobrava tinha corpo de peca (mais de
+200 chars). Resultado: 2653 chars viraram os 1437 do post certo, e **zero
+posts com parecer dentro**.
+
+### A guarda, que e o conserto de verdade
+
+`lib/pipeline/guarda-de-texto.ts` (novo). O prompt foi corrigido (marcas
+`<POST>`, como no resto do fluxo), mas **prompt nao e garantia**: o modelo ja
+ecoou em 09/09 ("Segue a thread corrigida" como primeiro tweet), em 10/09
+(tres posts abrindo com a explicacao da correcao) e agora aqui. O que separa
+um defeito de um desastre e existir uma ultima conferencia entre o modelo e o
+banco.
+
+Ela faz duas coisas:
+
+1. **recupera**: se a resposta ecoou um rotulo nosso, o que vale e o que vem
+   depois do ultimo rotulo. Jogar tudo fora perderia o trabalho;
+2. **recusa**: se ainda sobrar marca de parecer (`VEREDITO:`, `Revisao de
+   Fulano,`, `CRITERIOS DE ACEITE`, `LASTRO DOS NUMEROS`), o texto nao vira
+   peca.
+
+Ligada em QUATRO pontos, porque cada um grava por um caminho diferente:
+
+- a correcao cirurgica (onde nasceu);
+- `saveCard`, para os cards que viram post (o da Vera e o da pesquisa passam,
+  porque parecer e briefing sao o conteudo deles por definicao);
+- a criacao do post, que le de `dayPosts` e nao do card;
+- o chat da peca, que grava direto no card e no post.
+
+`scripts/tmp/guarda-de-texto-1809.mts`: 7 verificacoes contra o texto REAL que
+vazou, e dois controles que importam: **um post de verdade passa intacto**, e
+**um post que FALA sobre revisao nao e barrado** (a guarda procura marca de
+bastidor, nao assunto).
+
+### O agendamento que a tela nao mostrava
+
+Queixa junto: "deixei esse agendado e nao mostra que esta agendado no card".
+Duas causas somadas:
+
+1. `fecharSeTerminou` marcava o card como aprovado **so no estado da tela**:
+   nada ia para o banco, e um F5 trazia "Aguardando aprovacao" de volta com os
+   posts agendados. Agora grava (`PATCH` aceita `status`);
+2. a regra exigia que **todos** os posts do dia estivessem resolvidos. Com
+   quatro redes e uma sem conta, o dia nunca fechava.
+
+E o cabecalho do card passou a ler os POSTS, nao o status gravado: "Agendado
+em 3 de 4", "Publicado", "Aguardando aprovacao". **O status do card e uma
+copia que envelhece; os posts sao o fato, e quem manda na tela e o fato.**
+
+### Tirar da fila
+
+Pedido: "deve ser facil cancelar o agendamento no card e na tela posts". Ate
+hoje o unico jeito de desfazer um agendamento era ARQUIVAR, que some com a
+peca: quem so queria adiar perdia o trabalho.
+
+Botao "Tirar da fila" nos dois lugares (card e tela de posts), mais a acao em
+massa na aba Agendados.
+
+### Um susto que nao era meu
+
+No meio da verificacao, a pagina do projeto passou a dar 404 e o `npm run
+build` quebrou em `.next/dev/types/routes.d.ts`, um arquivo GERADO. O dev
+tinha subido com Turbopack desta vez (nas outras era webpack) e deixou o cache
+corrompido. `rm -rf .next` e o build volta a passar. **Antes de acusar o
+proprio codigo, apagar o cache.**
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 139): "outro tema" devolvia o mesmo, e o JSON quebrava de vez em quando
+
+**NO AR.** Duas queixas sobre a mesma tela, com causas diferentes.
+
+### 1. "Peco outro tema, carrega, fala que gera, mas nada"
+
+O botao mandava para a IA os temas dos OUTROS dias (`evitar`) e **nao mandava
+o tema daquele dia**. A IA nao sabia o que a pessoa tinha recusado, entao
+devolvia o mesmo assunto com outras palavras. Da tela, isso e indistinguivel
+de "nao funcionou".
+
+Dois consertos:
+
+- o tema atual vai separado, como `rejeitado`, com a instrucao de **mudar o
+  angulo, nao a redacao**: outro recorte, outro tipo de abertura, outro
+  exemplo;
+- e se mesmo assim voltar igual, a tela **diz que voltou igual** em vez de
+  anunciar "novo tema" com o mesmo texto no campo. Dizer sucesso sem mudanca e
+  o pior dos dois mundos: a pessoa esperou meio minuto e ainda fica achando
+  que o clique nao pegou.
+
+### 2. "Para gerar os temas falhou varias vezes antes de dar certo"
+
+Reproduzido, e nao deduzido. `scripts/tmp/temas-por-dia-1809.mts` bate na rota
+de verdade com o projeto real. Na segunda rodada:
+
+```
+POST /api/ai/topics/per-day 200 in 22.9s
+POST /api/ai/topics/per-day 502 in 34.8s   ← "resposta sem JSON utilizavel (tentativa 2)"
+POST /api/ai/topics/per-day 200 in 17.3s
+```
+
+**Uma em tres chamadas de sete dias morria**, e as duas tentativas morriam
+juntas: o problema era o FORMATO, e repetir nao conserta formato.
+
+O prompt pedia JSON. O tema e uma frase escrita por um modelo, com aspas,
+dois-pontos e travessao dentro, e **basta uma aspa nao escapada para o objeto
+inteiro virar lixo**.
+
+Agora o formato e uma linha por dia:
+
+```
+1|tema da segunda
+2|tema da terca
+```
+
+Nao ha nada para escapar. O leitor aceita os dois formatos (linhas primeiro,
+JSON como reserva, para respostas antigas) e o `console.error` passou a
+imprimir o comeco e o fim da resposta quando falha: sem isso, "falhou" era
+tudo o que se sabia, e foi assim que este defeito durou dias.
+
+**Tres rodadas depois da mudanca, seis chamadas, todas certas.**
+
+### A licao
+
+Duas queixas sobre a mesma tela, e nenhuma das duas era da tela:
+
+- "fala que gera mas nada" era a IA **sem a informacao do que foi recusado**;
+- "falha as vezes" era um **formato fragil**, e nao instabilidade da API.
+
+Retentativa nao conserta formato: se a primeira morreu porque o modelo escreve
+aspas dentro de frases, a segunda morre pelo mesmo motivo. O que conserta e
+pedir um formato que nao tenha como quebrar.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 140): a hora que ninguem escolheu, e dois defeitos que nao eram defeito
+
+**NO AR** o que e de codigo. O avatar controlavel esta no prototipo, esperando
+o Bruno olhar antes de virar React, que e a regra da casa.
+
+Quatro frentes vieram na mesma mensagem, em ordem de valor. **Duas delas, lidas
+nos dados, nao eram o que o card dizia.**
+
+### 1. A hora prevista NAO esta errada (card 484)
+
+A queixa: "a hora aparece tres horas antes do que o banco guarda, 12:00 vira
+09:00", com suspeita de timestamp naive lido como UTC pelo Prisma.
+
+Lidos os tres lados da mesma peca, com `scripts/tmp/hora-prevista-1809.mts`:
+
+```
+tipo da coluna       posts.scheduledAt  timestamp without time zone
+a campanha pediu     postingTimes       {"1".."7": "09:00"}
+o navegador gravou   postingTimestamps  2026-09-18T12:00:00.000Z
+o banco guarda       texto cru          2026-09-18 12:00:00
+a tela mostra        horaCurta em SP    09:00
+```
+
+**Esta tudo certo, e o 12:00 e a prova disso.** 09:00 em Sao Paulo E 12:00 em
+UTC; o `lib/fuso.ts` da parte 128 existe justamente para essa conversao. A
+coluna e mesmo `timestamp without time zone`, mas o Prisma grava e le pela
+mesma regra (naive como UTC), entao a ida e a volta fecham.
+
+> O defeito estava na LEITURA do banco cru, e nao no produto. Comparar o valor
+> guardado com o valor desenhado so faz sentido depois de converter um dos
+> dois, e a tela ja faz isso.
+
+**Um defeito de verdade apareceu, e foi no meu proprio script:** a primeira
+versao imprimia 15:00 na coluna "em Sao Paulo", porque numa coluna SEM fuso um
+`at time zone 'America/Sao_Paulo'` sozinho LE o valor como se ja fosse hora de
+Sao Paulo e devolve UTC, o contrario do que se quer. Precisa das duas
+conversoes, na ordem. Um script torto acusa defeito onde nao ha.
+
+O script tem controle: com o defeito suspeito (banco guardando 09:00 naive), a
+tela diria 06:00, e nao 09:00. Os dois casos se distinguem.
+
+### 2. O horario do dia que ja passou: agora a escolha e do cliente (card 490)
+
+Este era decisao de produto, e o Bruno decidiu: **perguntar antes de gerar.**
+
+O caso de origem: ele mandou a campanha de sete dias as 23h41 de uma QUINTA,
+com horario das 09:00. Segunda, terca e quarta eram dias anteriores, e a
+esteira ja sabia empurra-los para a semana seguinte (parte 137). A quinta era
+HOJE, e so a hora tinha passado: **esse caso nao era tratado por ninguem.** Ela
+entrava nesta semana e o `getScheduledAt` a mandava para "agora mais dez
+minutos", que caiu 01:25 da sexta.
+
+Agora a tela de resumo pergunta, com o preco de cada caminho na frente:
+
+- **jogar para a semana que vem** (padrao): mesmo dia, mesmo horario, sete dias
+  depois. E o que a esteira ja fazia com dias anteriores;
+- **publicar ainda hoje**: o comportamento antigo, agora escolhido;
+- **pular esses dias**: a campanha encolhe, e a tela diz com quantas pecas ela
+  fica.
+
+**A grade de dias segue a escolha, na mesma tela.** E o conserto da parte 137
+levado ao fim: la a promessa (sete campos de tema) e a entrega (quatro
+omitidos) apareciam na mesma janela contando historias diferentes. Aqui as duas
+saem do mesmo calculo.
+
+O que mudou no codigo:
+
+- `lib/pipeline/executar.ts`: `CampaignConfig.horarioPassado`, a funcao
+  `instantePrevisto` (mesma ordem de fontes do `getScheduledAt`, porque duas
+  regras parecidas para a mesma pergunta e o que produziu os defeitos de fuso
+  de 130 e 137), e `diasDaCampanha` honrando a escolha;
+- **`diasDaCampanha` passou a receber o instante de referencia**, e isso nao e
+  detalhe: ela e chamada DUAS vezes por campanha (ao enfileirar e de novo
+  quando cada dia roda). Com `new Date()` dentro dela, um dia enfileirado as
+  23h59 seria recalculado depois da meia-noite contra outra regra e a fatia se
+  acharia fora da lista. Agora as duas chamadas passam `run.startedAt`;
+- `components/posts/escolha-do-horario-vencido.tsx` (novo): o bloco. Esta fora
+  do modal de proposito, porque dentro dele so existe no ultimo passo, onde
+  nenhum script de renderizacao alcanca;
+- **sem a escolha (campanha antiga, chamada direta da API) nada muda.** Mudar o
+  padrao de um pedido que ja existia seria decidir no lugar de quem pediu.
+
+**Um defeito achado na tela logada, e so nela:** com "pular esses dias" a grade
+encolhia para um dia e os creditos continuavam 16. Cobrar na tela por peca que
+nao vai existir e o tipo de numero que faz a pessoa parar de ler o resto.
+`calcTotalCredits` passou a receber os dias de fora.
+
+### 3. O erro de hidratacao do avatar NAO acontece (card 482)
+
+O card diz: "o servidor desenha o div de fallback, o cliente desenha a img, e o
+React refaz a arvore inteira".
+
+**A primeira metade e verdade**, medida: em tres rotas o HTML do servidor sai
+com as iniciais, porque a barra lateral e componente cliente e o `useSession`
+nao tem sessao durante o SSR.
+
+**A segunda nao.** Cinco rotas abertas no navegador com o usuario que TEM foto
+(`/dashboard`, `/schedule`, `/settings`, o Gestor e a tela de posts), e o React
+nao acusou hidratacao uma vez sequer. A troca acontece DEPOIS de hidratar,
+quando o `useSession` resolve, e atualizacao depois da hidratacao nao e
+mismatch. **O que sobra e um piscar de iniciais antes da foto, e nao um erro.**
+
+Nao foi consertado de proposito: um conserto aqui mexeria em como a sessao
+chega na barra lateral, e mexer no que funciona por causa de um sintoma que nao
+se reproduz e exatamente o que a regra da casa proibe. `scripts/tmp/
+hidratacao-avatar-1809.mts` guarda a medida para quem quiser repetir.
+
+### 4. O avatar controlavel: no prototipo, esperando julgamento (card 497)
+
+O Bruno escolheu os DOIS controles: clique no chao ou no agente, e teclado
+(WASD e setas). O prototipo vivo esta na versao 5:
+https://claude.ai/artifact/HC1rbjT7sTPiwjearUzoYV
+
+O que ele faz: voce levanta da sua mesa, anda pela sala (desviando dos moveis),
+e ao chegar ao lado de um agente **ele vira para voce** e abre um menu com as
+tres coisas que o Bruno pediu: perguntar algo, ver os trabalhos dele, e
+comentar sobre outro agente. `E` abre, `Esc` fecha, sair de perto fecha
+sozinho.
+
+Decisoes que o prototipo ja resolveu, e que valem para o codigo:
+
+- **o menu e filho de VOCE, nao do agente.** E a licao da parte 136 aplicada
+  antes de doer: o balao pendurado no movel sobrava sobre a cadeira vazia. O
+  agente pode levantar no meio da conversa;
+- **a resposta fica DENTRO do menu, nao no balao do agente.** A primeira volta
+  punha no balao, e o menu, que nasce acima de voce, cobria exatamente esse
+  balao: voce perguntava e o painel tapava a resposta. Agora o balao e o que
+  ele esta FAZENDO e o menu e o que ele esta te RESPONDENDO;
+- **a camera acompanha pela metade.** Sem isso, andar ate o fundo da sala poe
+  voce e o menu fora da tela; acompanhar inteiro perderia a sala, que e o
+  assunto;
+- **o movel em que voce ja esta dentro nao empurra.** Voce senta colado na sua
+  mesa, ou seja dentro da caixa dela, e a colisao prendia o avatar atras da
+  propria mesa. A volta para a cadeira ignora a colisao pelo mesmo motivo;
+- **nao existe "mandar refazer" no menu.** Pedir ajuste e no card da peca, onde
+  existe o texto e o historico. Um agente que aceita ordem no meio da sala e
+  nao tem como cumprir e o defeito da parte 135, o Paulo dizendo ter trocado a
+  imagem que nunca trocou.
+
+**Dois defeitos achados pelo script que dirige o navegador, e nao deduzidos:**
+clicar no chao no meio da volta para a mesa fazia o avatar SENTAR no corredor
+(a marca de "voltando" ficava ligada), e "O Vera" no comentario sobre um
+colega, porque o artigo estava fixo no masculino. Os agentes ganharam `artigo`.
+
+### Verificacao
+
+`tsc` limpo, lint limpo nos arquivos mexidos, `npm run build` passa.
+
+- `horario-passado-1809.mts`: 8 verificacoes contra a funcao real, com relogio
+  fixo, mais controle. **A primeira versao deste script chamou o dia 18 de
+  quinta** (18/09/2026 e sexta) e acusou cinco defeitos inexistentes: num teste
+  sobre datas, conferir o calendario e parte do teste;
+- `renderizar-horario-vencido-1809.mts`: 12 verificacoes em quatro cenarios,
+  com dois controles (sem dia vencido o bloco nao existe; o defeito de plural
+  seria pego). Pegou um ruido de verdade: com um dia so, o nome dele aparecia
+  duas vezes em duas linhas seguidas;
+- `hora-prevista-1809.mts` e `hidratacao-avatar-1809.mts`: os dois cards que
+  viraram "nao e defeito", com a medida que sustenta isso;
+- os seis scripts do dia continuam passando (guarda-de-texto, sete-dias,
+  situacao-do-squad, estilo-escolhido, rede-errada, veredito).
+
+Tela logada (`next dev -p 3101`, banco de producao): o bloco com os quatro dias
+vencidos, "Agora sao 03:00", as tres escolhas mudando a grade e os creditos ao
+vivo, e o controle na semana que vem, onde o bloco corretamente nao aparece.
+
+### A licao do dia
+
+**Dois dos quatro itens da lista nao eram defeito**, e os dois tinham card
+escrito com todas as letras. A hora "tres horas errada" era a conversao
+funcionando, e o erro de hidratacao nao acontece mais (se e que aconteceu).
+Consertar qualquer um dos dois teria mexido em codigo que esta certo.
+
+**E o terceiro so existia porque ninguem tinha perguntado.** A esteira decidia
+sozinha o que fazer com o dia vencido, e decidia o pior caminho possivel
+(publicar de madrugada). Nao era bug: era uma decisao de produto tomada por
+omissao, dentro de uma funcao.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 141): o avatar saiu da cadeira, e agora da para falar com os agentes
+
+**NO AR.** O prototipo da parte 140 virou produto. Voce anda pelo escritorio,
+para ao lado de um agente e abre as tres opcoes que o Bruno pediu: perguntar
+algo, ver os trabalhos dele, e comentar sobre outro agente.
+
+### O que entrou
+
+- `components/escritorio/escritorio-do-squad.tsx`: o componente `Voce`, com
+  movimento por clique e por teclado (WASD e setas), colisao com os moveis,
+  deteccao de proximidade e a camera acompanhando;
+- `components/escritorio/menu-do-agente.tsx` (novo): o menu, que e DOM de
+  verdade dentro da cena;
+- `app/api/projects/[id]/squad/[agentId]/conversa/route.ts` (nova): o agente
+  responde com a persona dele e os trabalhos dele no contexto, e nada mais;
+- `lib/squad/estado-do-squad.ts`: cada agente ganhou `artigo`, porque um agente
+  fala dos outros e "O Vera" nao existe.
+
+### A conversa, e as tres coisas que ela NAO faz
+
+O agente recebe a persona (escrita no setup), os trabalhos dele neste projeto e
+a nota que a Vera deu a cada dia. Com tres proibicoes que sao produto, e nao
+estilo:
+
+1. **nao afirmar ter feito o que nao fez.** E o defeito da parte 135, o Paulo
+   reescrevendo o card para dizer que trocou uma imagem que nunca existiu;
+2. **nao prometer acao que esta conversa nao executa.** Ajuste de peca se pede
+   no chat do card, onde existe o texto e o historico. Ele diz onde se pede;
+3. **nao inventar numero, prazo nem oferta.** Se nao esta nos trabalhos que ele
+   recebeu, ele nao sabe, e dizer que nao sabe e resposta.
+
+**A quarta opcao que NAO existe no menu e "mandar refazer".** Um agente que
+aceita no meio da sala uma ordem que nao tem como cumprir e exatamente o
+defeito da 135, com outra roupa.
+
+Testado contra o banco real (`conversa-no-escritorio-1809.mts`), e a pergunta
+que importa e a segunda: **"refaz o post de quinta agora, deixa mais curto".**
+O Lucas respondeu com duas honestidades na mesma frase: que nao tem post de
+quinta (so sexta, sabado e domingo) e que encurtar nao se pede no corredor, e
+sim no chat do card. Foi o que se queria ver.
+
+### Quatro defeitos achados na tela, nenhum deduzido
+
+**1. O clique no menu vazava para o chao.** Clicar em "Perguntar algo" abria a
+tela de pergunta E mandava o avatar andar para o chao que estava atras do
+painel; ele saia de alcance e o menu fechava sozinho. O que se via era "cliquei
+e o menu sumiu".
+
+> A causa: **o React Three Fiber nao escuta no `<canvas>`, escuta no DIV que o
+> envolve**, e o `Html` do drei renderiza justamente dentro desse div. O evento
+> do botao borbulhava ate la e virava raycast.
+
+`onPointerDown` sozinho nao bastou: o clique do R3F nasce do par down/up, e o
+arraste da camera usa o move. O menu para os quatro.
+
+**2. O menu crescia para fora do palco.** Ancorado acima da cabeca, uma
+conversa de tres turnos empurrava o topo para fora da borda, e a resposta
+ficava cortada na primeira linha, que e justamente a que se quer ler. Agora ele
+e centrado na altura do peito e cresce para os dois lados.
+
+**3. O parecer da Vera entrava como se fosse nota sobre ela.** Perguntei ao
+Tiago o que ele acha da Vera e ele respondeu que "nem a correcao automatica
+dela escapou do proprio crivo". O agente nao inventou: **eu e que anexei o
+veredito ao card da propria Vera**, e o card dela E o parecer. A ficha ja
+tratava isso desde a parte 134; a conversa nao. Agora o card dela entra rotulado
+como parecer, sem estado e sem nota.
+
+**4. O avatar nao saia da propria mesa** (achado antes, no prototipo): voce
+senta colado nela, ou seja DENTRO da caixa de colisao, e a caixa empurrava de
+volta. A regra passou a ser "movel em que voce ja esta dentro nao empurra", e a
+volta para a cadeira ignora a colisao pelo mesmo motivo.
+
+### O que o codigo herdou do prototipo, sem repetir o erro
+
+- **o menu e filho de VOCE, nao do agente.** Licao da parte 136 aplicada antes
+  de doer: o balao pendurado no movel sobrava sobre a cadeira vazia. O agente
+  pode levantar no meio da conversa;
+- **a resposta fica dentro do menu, nao no balao.** O balao e o que ele esta
+  FAZENDO; o menu e o que ele esta te RESPONDENDO. Dois canais, dois assuntos;
+- **a camera acompanha pela metade.** Inteiro perderia a sala, que continua
+  sendo o assunto; nada poria voce e o menu fora da tela;
+- **a conversa vive fora do menu.** Voce fala com o Lucas, se afasta para olhar
+  a mesa da Vera e volta: continua de onde parou.
+
+### Um defeito que era meu, no teste
+
+O seletor `hasText: 'Ir'` do script de tela pegou o botao **Sair** da barra
+lateral (contem "ir"), e o teste deslogou sozinho, com um 403 no console que
+por um minuto pareceu defeito do produto. Seletor por substring em tela cheia
+de texto e uma armadilha; o certo e `exact: true`.
+
+### Verificacao
+
+`tsc` limpo, lint sem erros, `npm run build` passa.
+
+- `renderizar-menu-do-agente-1809.mts`: 14 verificacoes em seis cenarios, com
+  dois controles (a Vera nao pode aparecer como "dele"; menu sem conversa nao
+  inventa turno);
+- `conversa-no-escritorio-1809.mts`: sete verificacoes contra a rota de verdade
+  e o banco real, incluindo os tres controles de borda (comentar sobre si
+  mesmo da 400, agente inventado da 404, pedido vazio da 400);
+- os sete scripts anteriores continuam passando.
+
+Tela logada (`next dev -p 3101`, banco de producao): o avatar levantando da
+mesa, andando pelo corredor, o aviso "Falar com Vera · E" acima dele, o menu
+abrindo com a borda da cor dela e "Ver os trabalhos dela", a pergunta indo e a
+resposta voltando dentro do menu, e o comentario sobre o Tiago com o artigo
+certo.
+
+### A licao do dia
+
+**O que quebra num 3D dentro de um app nao e o 3D.** Os dois defeitos que
+custaram tempo foram de FRONTEIRA: um evento de DOM que borbulha para dentro do
+motor 3D, e um painel de HTML que cresce para fora da moldura. O movimento, a
+colisao e a camera, que pareciam a parte dificil, sairam do prototipo prontos.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 18/09/2026 (parte 142): o levantamento da virada premium, com os numeros medidos
+
+**NADA FOI IMPLANTADO NESTA PARTE, de proposito.** O Bruno mandou oito frentes
+novas e disse: "quero que voce implante tudo isso na proxima sessao do novo
+chat". Entao esta parte e o levantamento que torna a proxima possivel: dois
+defeitos diagnosticados nos dados, os modelos pesquisados, os precos medidos, e
+o impacto na margem calculado antes de qualquer linha de codigo.
+
+### 1. O tipo de conteudo do dia: a esteira OBEDECE, e o padrao e que escolhe
+
+Queixa: "eu escolho o conteudo de cada dia, mas os agentes estao ignorando; eu
+nao tinha escolhido texto, e eles criaram um post de texto".
+
+`scripts/tmp/tipo-do-dia-1809.mts` poe os dois lados na mesma tabela:
+
+```
+pedido no wizard  {"1":"text","2":"image","3":"text","4":"image","5":"text","6":"image","7":"text"}
+seg  text   -> post_linkedin/text, post_twitter    (sem midia)
+ter  image  -> post_linkedin/image + imagem        (com midia)
+qua  text   -> ...
+```
+
+**A esteira entregou exatamente o que estava escrito, nos dois runs conferidos.**
+E o que estava escrito e, bit a bit, o que `diasDaFrequencia()` gera sozinha
+para a frequencia do projeto: texto, imagem, texto, imagem, alternando.
+
+> **Ninguem escolheu texto. O sistema escolheu, e a tela apresentou a escolha
+> dele como se fosse do cliente.** E o mesmo defeito do horario vencido da
+> parte 140: decisao de produto tomada por omissao, dentro de uma funcao.
+
+**Um segundo defeito achado no caminho:** a tela de Posts NAO passa
+`postFrequency` ao modal, e o Gestor passa. O mesmo assistente, aberto de dois
+lugares, monta planos diferentes: pelo Gestor sao sete dias alternados; pela
+tela de Posts sao cinco, com "livre" na sexta. Quem abre de um lado e confere
+do outro ve duas verdades.
+
+### 2. As imagens saem todas 1376x768, e nenhuma rede usa esse tamanho
+
+Medido, as dez ultimas imagens publicadas:
+
+```
+instagram  1376 x 768        facebook   1376 x 768
+twitter    1376 x 768        linkedin   1376 x 768
+```
+
+Os formatos certos, levantados em 18/09: Instagram 1080x1350 (4:5) ou
+1080x1080; LinkedIn 1200x627 ou quadrado; Facebook 1200x630; X 1600x900;
+carrossel 1080x1350 com **todas** as laminas na mesma proporcao.
+
+E a arte que o Bruno mandou junto tem o "61%" **cortado no topo**: o modelo
+desenha texto colado na borda, a Vera aprovou, e ninguem mede margem de
+seguranca. Palavras dele: "isso e erro infantil, uma plataforma premium precisa
+dominar tudo sobre as redes sociais".
+
+### 3. Os modelos, pesquisados em 18/09
+
+**Video.** Sora 2 foi **depreciado** e a API desliga em **24/09/2026**, ou seja
+na semana que vem: nao entra. Seedance 2.0 lidera o ranking mas **nao tem API
+oficial** (a ByteDance adiou por disputa com estudios). Sobram dois:
+
+| modelo | preco | audio |
+|---|---|---|
+| Veo 3.1 rapido | US$ 0,15/s | nativo, dialogo e narracao sincronizados, multilingue |
+| Veo 3.1 cheio | ate US$ 0,40/s | idem |
+| Kling 3.0 | US$ 0,10/s | sem audio nativo |
+
+**Narracao em portugues e requisito do Bruno, e isso decide: Veo 3.1.** Kling
+sairia mais barato e exigiria uma segunda etapa de voz.
+
+**Imagem.** GPT Image 1.5 sai de linha em 01/12/2026; o sucessor e **GPT Image
+2**: US$ 0,165 por imagem em alta qualidade no retrato ou paisagem, US$ 0,211
+no quadrado.
+
+**Texto.** O `DEFAULT_MODEL` e `claude-sonnet-5`. O mais capaz hoje e
+`claude-opus-5`.
+
+### 4. O custo, MEDIDO e nao estimado
+
+`scripts/tmp/custo-por-peca-1809.mts`, contra `ai_usage` dos ultimos 30 dias,
+com o dolar declarado em R$ 5,40 para a conta ser reproduzivel:
+
+```
+campanha de 7 dias, hoje ............. R$ 20,74   (R$ 2,96 por dia)
+uma imagem no Gemini ................. R$  0,21
+879 chamadas de texto no Sonnet 5 .... R$ 206,64 no mes
+```
+
+**O multiplo de cada modelo de texto saiu do MESMO volume reprecificado**, e nao
+de tabela, que e a unica comparacao honesta:
+
+```
+Sonnet 5 (hoje)   R$ 130,02   1,00x
+Opus 5            R$ 325,04   1,57x
+Haiku 4.5         R$  65,01   0,31x
+```
+
+E as features novas, por peca:
+
+```
+imagem premium (GPT Image 2, 4:5 alta) .. R$  0,89   (4x a de hoje)
+carrossel de 5 laminas .................. R$  4,46   (21x uma imagem)
+carrossel de 10 laminas ................. R$  8,91
+video 8s com narracao, Veo rapido ....... R$  6,48
+video 8s com narracao, Veo cheio ........ R$ 17,28
+```
+
+### 5. O impacto na margem, e o numero que decide o modelo de venda
+
+O artefato de preco ganhou uma **composicao do custo de IA**: a barra solta
+virou uma conta item a item, ligada ao resto do simulador.
+https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5
+
+```
+Autoridade R$ 697, tudo premium, 1 carrossel e 1 video por campanha:
+  texto Opus 5 ........ R$ 126,23/mes   18,1% do preco
+  imagem premium ...... R$  10,68/mes    1,5%
+  carrossel ........... R$  17,84/mes    2,6%
+  video (rapido) ...... R$  25,92/mes    3,7%
+  TOTAL ............... R$ 181/mes      25,9%   -> margem R$ 516, "para de pe"
+```
+
+E o caso que prova a regra do credito:
+
+```
+Essencial R$ 397, com 4 videos CHEIOS por campanha:
+  TOTAL ............... R$ 431/mes     108,6% do preco   -> margem NEGATIVA
+```
+
+> **Video por IA nao pode entrar no plano. Entra por credito, e o credito
+> precisa cobrir R$ 6,48 a R$ 17,28 por peca.** Foi exatamente a falta dessa
+> conta que tirou o Veo do produto em 18/08, com 80% de prejuizo por operacao.
+
+E o item mais caro da conta premium **nao e o video: e o texto em Opus 5**,
+18,1% do preco sozinho. Isso e contraintuitivo e vale saber antes de migrar.
+
+### 6. O que fica para a proxima sessao
+
+As oito frentes do Bruno viraram sete cards no planner, quatro deles "Esta
+semana" e dois Bloqueantes (o tipo do dia, e o formato das imagens). O clipe
+demo com o OBS fica **por ultimo, de proposito**: gravar antes de carrossel,
+video, formatos certos e landing nova seria gravar o produto velho.
+
+O prompt de continuacao foi entregue ao Bruno na conversa.
+
+*Atualizado em 18/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 143): a virada premium implantada, das seis frentes
+
+**NO AR.** As sete frentes de codigo da parte 142 sairam: formato por rede,
+sugestao contra escolha, carrossel, video por IA, Opus 5, landing com captura e
+o artefato de preco atualizado. A oitava (gravar o clipe demo com o OBS) fica
+para quando o Bruno ligar o OBS, que era o combinado.
+
+Migracao aplicada em producao: `20260919120000_video_por_credito_e_leads`, so
+aditiva (duas colunas e uma tabela). Nenhum dado existente foi tocado.
+
+### 1. As imagens saiam todas 1376x768, e agora cada rede tem a dela (card 509)
+
+Confirmado antes de mexer, com o script da parte 142: as dez ultimas imagens
+publicadas, quatro redes, todas 1376x768. Nenhuma rede usa esse tamanho, e as
+quatro recebiam a MESMA arte.
+
+O conserto tem tres partes, e so as tres juntas resolvem:
+
+```
+lib/media/formatos-das-redes.ts   a tabela unica: Instagram 1080x1350 (4:5),
+                                  LinkedIn 1200x627, Facebook 1200x630,
+                                  X 1600x900, carrossel 1080x1350
+lib/media/margem-de-seguranca.ts  o recorte para o tamanho exato (sharp) e a
+                                  medida de elemento cortado pela borda
+lib/media/arte-por-rede.ts        uma geracao por PROPORCAO, um recorte por
+                                  rede, conferencia depois do recorte
+```
+
+**A unidade de custo e a PROPORCAO, e nao a rede.** Quatro redes viram DUAS
+geracoes (uma paisagem para LinkedIn, Facebook e X; uma retrato para o
+Instagram), nao quatro. Gerar por rede seria pagar quatro vezes pelo que o
+recorte resolve; gerar uma so era o defeito.
+
+**`hd` (2K) passou a ser obrigatorio na arte de campanha.** Nao e capricho: o
+recorte para 1080x1350 a partir do padrao de 1376x768 seria AMPLIAR 1,76 vezes
+na altura, e ampliacao amolece a imagem. 2K e o menor tamanho que deixa todo
+recorte ser reducao. Efeito colateral bom: o arquivo caiu de 759 KB para 92 a
+150 KB, porque a saida agora e JPEG dimensionado em vez de PNG cru.
+
+**O infografico tinha o mesmo defeito, de outro jeito:** ele pedia o formato
+dentro do TEXTO do prompt ("9:16 vertical portrait format") e nao no
+`imageConfig`. O modelo tratava como sugestao. Agora a extracao do conteudo
+acontece uma vez e o desenho uma por proporcao, que e o que evita pagar a
+extracao duas vezes.
+
+### 2. A conferencia de margem: a regua e o olho
+
+A segunda queixa era a arte com o numero "61%" cortado no topo, gerada pela
+Diana e **aprovada pela Vera**. A Vera aprovou porque tudo o que ela recebia
+sobre a arte era a frase "GERADA com sucesso".
+
+Sao duas conferencias, e as duas precisam existir porque erram coisas
+diferentes:
+
+- **a REGUA** (geometria local, milissegundos, custo zero) pega elemento
+  desenhado que a borda corta;
+- **o OLHO** (o modelo VENDO a imagem) le. Pega texto embolado e palavra
+  inventada, que nenhuma geometria ve.
+
+**Duas medidas foram descartadas antes da que ficou, e o descarte e o que
+sustenta a escolha.** Calibrado contra as artes reais do banco
+(`scripts/tmp/ilhas-da-borda-1909.mts`), com a arte do "61%" como positivo e
+duas artes inteiras do mesmo dia como controle:
+
+```
+"quanta tinta ha na borda"     a foto do caderno tem 18,5% e esta INTEIRA;
+                               a arte cortada tem 12,9%. Reprovaria a boa.
+"tinta que entra para dentro"  a mesa de madeira entra tanto quanto uma letra.
+                               Reprovou o controle na primeira rodada.
+O DEGRAU na ponta da ilha      arte do "61%": 154 a 178
+                               foto do caderno: no maximo 27
+                               arte de estudio: no maximo 2
+```
+
+Letra e numero cortados tem borda dura porque foram DESENHADOS; fundo
+fotografico tem gradiente. O limiar de 120 fica no meio da maior folga entre os
+dois grupos. Limitacao assumida e escrita no codigo: ilha que encosta no CANTO
+nao conta, porque nas tres artes medidas toda ilha de canto e fundo.
+
+**Medido, e o teste tem controle:** a arte do "61%" reprova por 3 elementos com
+degrau 174, e as duas inteiras passam. O olho, na mesma arte, respondeu:
+*"O numero '61%' no topo esta cortado pela borda superior da imagem."*
+
+Custo da conferencia, medido em `ai_usage` e nao estimado: **R$ 0,049 por
+chamada** no Opus 5 (1.564 tokens de entrada, 47 de saida). Duas por peca
+visual, ou seja R$ 0,098.
+
+Arte reprovada e refeita UMA vez, com o motivo da reprovacao no prompt. Repetir
+a mesma instrucao que ja falhou e o jeito mais confiavel de receber o mesmo
+erro de volta.
+
+### 3. O tipo de conteudo do dia: a tela passou a dizer de quem e a escolha (card 508)
+
+O diagnostico ja estava feito na parte 142: a esteira obedecia, e o que estava
+gravado era o padrao automatico que a propria tela montava. **Ninguem escolheu
+texto; o sistema escolheu e apresentou como escolha do cliente.**
+
+O conserto e de tela, e e literal:
+
+- um aviso amarelo no topo do planejador: *"Isto e uma sugestao nossa, nao a
+  sua escolha"*, dizendo de onde a sugestao saiu (a frequencia do projeto) e
+  como assumir;
+- um botao **Aceitar a sugestao inteira**, para quem concorda nao precisar
+  tocar em sete dias;
+- cada dia ativo carrega a etiqueta **sugerido** (cinza, pontilhada) ou **sua
+  escolha** (laranja, cheia), e o chip do tipo marcado repete a informacao onde
+  o olho ja esta;
+- o placar embaixo conta os dois: *"3 dias que voce escolheu, 2 ainda na
+  sugestao"*;
+- com tudo assumido, o aviso amarelo some e entra **Este plano e seu**.
+
+**`diasEscolhidosPeloCliente` entrou no config da execucao.** A esteira nao
+muda de comportamento por causa dele, de proposito: `weeklySchedule` continua
+sendo a ordem, venha de onde vier. Ele existe para o log DIZER de quem foi cada
+escolha, e para o banco poder responder essa pergunta sem alguem reconstituir o
+padrao da tela bit a bit, que foi o que a sessao de 18/09 teve que fazer.
+
+**O segundo defeito do card, consertado numa linha:** a tela de Posts nao
+passava `postFrequency` ao modal. O campo estava no objeto que a tela recebia e
+**nao estava no tipo `Project` local**, entao nunca era passado adiante.
+
+### 4. O planejador virou componente proprio, e isso foi o teste que mandou
+
+A primeira versao de `renderizar-planejador-1909.mts` renderizava o modal
+inteiro e **parou no passo 1**: o planejador so existe no passo 3, e
+`renderToString` nao clica. As onze falhas que ele acusou eram todas dele.
+
+Foi isso que levou o bloco para `components/posts/planejador-semanal.tsx`. E a
+mesma licao da parte 140 com o bloco do horario vencido: **o que nao da para
+renderizar fora do navegador vai ao ar sem ninguem ter visto**, e foi assim que
+o modal inteiro quebrou em 14/09 com `tsc` limpo.
+
+**Um defeito meu, no teste, que vale guardar:** contar as etiquetas procurando
+"sua escolha" no texto limpo acusa duas a mais, porque o proprio aviso diz
+"nao a SUA ESCOLHA". A etiqueta e um elemento inteiro, entao o que se procura e
+`>rotulo<`. Terceira vez que um script de conferencia desta casa acusa defeito
+em codigo certo.
+
+### 5. O carrossel, que existia no codigo e nunca existiu no produto (card 510)
+
+O que havia ate ontem: `carousel` em `CONTENT_TYPES`, escondido do seletor por
+`VISIBLE_CONTENT_TYPES`, e a esteira "gerando" um com o MESMO prompt chamado
+tres vezes com `"slide 2, continuation"` colado no fim, em 1:1. Tres imagens
+parecidas sem fio condutor.
+
+O que entrou:
+
+- **roteiro antes das imagens** (`roteiroDoCarrossel`): a frase de cada lamina e
+  COPY, escrita por quem escreve texto. Modelo de imagem nao respeita regra de
+  cliente nem lastro de numero; ele desenha o que ouve;
+- **GPT Image 2** (`lib/media/gpt-image.ts`), porque o carrossel e a peca em que
+  o texto DENTRO da arte mais importa, e e onde o Gemini mais erra. **Sem
+  cascata de fallback entre modelos**, que e a licao de 18/08;
+- **todas as laminas em 1080x1350**, porque o Instagram trava a proporcao da
+  primeira lamina para o carrossel inteiro;
+- **margem de 17%, e nao 8%**: o GPT Image 2 entrega 1024x1536 (2:3) e a lamina
+  e 4:5, entao o recorte come 8,3% por borda, em cima da folga de 8%.
+
+**Cobranca:** `carousel_3: 40` saiu e entrou `carousel_lamina: 42`, cobrado
+**uma vez por DIA e nao por rede**. As tres redes que aceitam carrossel usam a
+mesma proporcao e recebem a MESMA arte; cobrar por rede seriam 675 creditos em
+vez de 255, treze vezes o custo real. O multiplo de 42 sai da propria linha
+`post_image` (10 creditos para R$ 0,21 de custo medido), e nao de regra nova.
+
+**Falta a chave:** sem `OPENAI_API_KEY` o carrossel sai no Gemini, **dito no
+log da execucao**. Cair em silencio seria o cliente pagar premium e receber o
+modelo de sempre.
+
+### 6. O video por IA voltou, com carteira propria (card 511)
+
+Pesquisa de 18/09 mandou na escolha: Sora 2 depreciado com API desligando em
+24/09, Seedance 2.0 sem API oficial, Kling 3.0 mais barato e **sem audio
+nativo**. Narracao em portugues e requisito, entao **Veo 3.1**. O que decide
+nao e o preco, e o audio.
+
+**A decisao do Bruno nesta sessao: credito avulso, comprado a parte.** Foi
+implantada literalmente:
+
+```
+users.videoCredits                    saldo separado do saldo do plano
+credit_transactions.carteira          "plano" ou "video", para o extrato fechar
+lib/credits/video.ts                  debitar, creditar, estornar, custo
+lib/credits/pacotes-de-video.ts       R$ 39 / R$ 89 / R$ 179
+app/api/stripe/creditos-de-video      checkout de pagamento avulso
+```
+
+**Por que duas carteiras e nao um saldo com preco alto:** com um saldo so, nada
+impede o cliente de gastar o plano inteiro em video. Quatro videos cheios numa
+campanha sao 2.080 creditos; o plano Essencial inteiro tem 1.800.
+
+**O video NAO roda dentro do dia da campanha.** O Veo leva de 60 a 300 segundos
+e o dia tem 830 no total contando os cinco agentes. O dia entrega o QUADRO (a
+imagem cinematografica, que e o que a rede mostra ate o video chegar) e
+enfileira `video-ia` como trabalho proprio, com prazo proprio de 1.000 s.
+
+A ordem das etapas em `lib/media/video-por-ia.ts` e o produto: debita ANTES de
+pedir (pedir primeiro deixa o cliente sem saldo com o custo ja gasto na nossa
+conta), o debito e idempotente por `refId` (a fila repete o que expirou), e
+falha depois de cobrar DEVOLVE.
+
+**Sem saldo, o dia nao falha:** entrega o quadro, salva o prompt e diz no log
+quanto custa e onde comprar.
+
+Preco por segundo, nao por peca: 8s rapido = 195 creditos, 8s cheio = 520. O
+cheio custa 2,7 vezes, e a tela diz isso em cada botao.
+
+**Os dois usuarios do Bruno sao admin**, entao ele testa video sem debitar
+nada (o extrato grava a linha de valor zero).
+
+### 7. Opus 5 nos redatores (card 512), e o buraco de 2,5x que ele expos
+
+`DEFAULT_MODEL` passou de `claude-sonnet-5` para `claude-opus-5`.
+
+Os tres parametros que o Opus 5 recusa foram testados **contra a API de
+verdade**, e os tres devolveram 400:
+
+```
+budget_tokens   "thinking.type.enabled is not supported for this model.
+                 Use thinking.type.adaptive"
+prefill         "This model does not support assistant message prefill"
+temperature     "temperature is deprecated for this model"
+```
+
+Nenhuma chamada nossa usa os tres. Os `role: "assistant"` do projeto sao
+historico de chat gravado no banco e nao vao para a API.
+
+**O achado da migracao nao foi o modelo, foi a tabela de preco.**
+`lib/claude/usage.ts` nao tinha linha para `claude-opus-5`, e o `??` caia no
+preco do Sonnet 5: US$ 3 / US$ 15 gravados para uma chamada que custa US$ 5 /
+US$ 25. A instrumentacao inteira passaria a subestimar o MAIOR item da conta.
+E a forma exata do defeito que escondeu 80% de prejuizo por operacao no Veo.
+
+Consertado, e com a regra invertida: **o padrao passou a ser o modelo mais
+caro**, com erro no log. Custo subestimado nao chama atencao de ninguem, e e
+assim que ele cresce.
+
+### 8. A landing premium com captura (card 513)
+
+**Decisao do Bruno nesta sessao: tres perguntas na landing, o resto depois do
+cadastro.** A dosagem foi escolhida com o numero na frente: numa campanha fria
+cada campo a mais corta conversao, e o que esta DEPOIS do cadastro ja foi
+ganho. Persona e "quem NAO e seu cliente" ficam para a primeira tela logada,
+onde custam zero conversao. O ticket entrou no lugar delas porque e a unica das
+cinco que separa quem paga R$ 697 de quem nunca vai pagar.
+
+```
+components/landing/captura.tsx   e-mail + o que vende / quem compra / ticket
+app/api/leads/route.ts           upsert por e-mail, evento de funil, utm
+leads (tabela nova)              e-mail unico, origem da PRIMEIRA visita
+components/landing/formatos.tsx  a prova nova, lendo a MESMA tabela da esteira
+```
+
+**A captura subiu para o topo do hero, acima do squad animado.** O squad
+continua logo abaixo e continua sendo o que convence; o que mudou foi a ordem,
+e e ela que decide o resultado numa campanha fria.
+
+**O e-mail e unico de proposito.** O mesmo lead voltando por outro anuncio
+atualiza as respostas em vez de virar segunda linha; senao a contagem da
+primeira semana mente para cima justamente na semana em que ela decide se o
+trafego pago continua. A origem so e gravada se ainda nao houver uma: a
+primeira visita e a que paga o CAC.
+
+**Nenhuma opcao vem marcada**, e o teste tem controle para isso. E a mesma
+licao do planejador: resposta pre-marcada e o sistema escolhendo e apresentando
+como escolha da pessoa. Aqui doeria duas vezes, porque o dado errado vira
+segmentacao errada e decisao de orcamento errada.
+
+A secao de formatos le `formatoDaPeca` do proprio produto, e o teste compara os
+numeros da landing com os da esteira. Landing que promete tamanho que o produto
+nao corta e promessa que o cliente confere no primeiro post.
+
+Provado em producao: POST com as tres respostas gravou a linha, o mesmo e-mail
+de novo atualizou sem duplicar, e-mail invalido recusou. Leads de teste
+apagados.
+
+### 9. O artefato de preco, atualizado pelo que foi implantado (card 514)
+
+https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5 (versao 4)
+
+O que mudou de premissa para realidade:
+
+```
+imagem   0,89 (GPT Image 2 em tudo)  ->  0,52  duas geracoes em 2K (0,21 cada)
+                                             mais duas conferencias (0,049)
+carrossel  fixo em 5 laminas         ->  barra de 3 a 10, R$ 0,89 por lamina
+video      linha do custo do plano   ->  FORA do plano, com caixa propria de
+                                         receita contra custo
+texto      1,57x                     ->  igual, e agora e o que roda
+```
+
+A caixa nova do video responde a pergunta que vem logo depois de tira-lo do
+plano: quanto ele rende. Um clipe rapido custa R$ 6,48 e o cliente paga
+R$ 19,50 (195 creditos), o mesmo multiplo de 3x do resto da tabela, de
+proposito: a margem do video nao pode depender da qualidade que o cliente
+escolheu.
+
+### Verificacao
+
+`tsc` limpo, lint sem erros, `npm run build` passa, deploy em producao com
+`VERCEL_FORCE_NO_BUILD_CACHE=1`.
+
+Scripts novos, todos com controle:
+
+- `margem-e-formato-1909.mts`: 16 verificacoes, com o controle que importa (a
+  foto de caderno, inteira, com mais tinta na borda que a arte cortada);
+- `ilhas-da-borda-1909.mts`: exploratorio, e de onde saiu o limiar de 120;
+- `renderizar-planejador-1909.mts`: 24 verificacoes em sete cenarios, com dois
+  controles invertidos e o plural;
+- `renderizar-captura-1909.mts`: 21 verificacoes, com o controle de opcao
+  pre-marcada e a comparacao dos tamanhos com a tabela da esteira;
+- `carrossel-e-video-1909.mts`: 22 verificacoes de conta, cada uma comparada
+  com a conta ERRADA para a diferenca ficar visivel;
+- `opus5-responde-1909.mts`: uma chamada real mais os tres 400 provados;
+- `prova-da-arte-1909.mts`: gera de verdade e confere os quatro tamanhos;
+- `custo-da-conferencia-1909.mts` e `ver-custo-conferencia.mts`: o custo da
+  conferencia medido em `ai_usage`;
+- `baixar-imagens-1909.mts`, `conferir-lead-1909.mts`, `saldo-de-video-1909.mts`,
+  `limpar-lead-de-prova.mts`.
+
+Os doze scripts de 18/09 continuam passando.
+
+**Duas armadilhas do dia, para nao repetir:**
+
+1. `npm run build` quebrou num arquivo de `.next/dev/types/routes.d.ts`. E o
+   cache do Turbopack, ja conhecido: `rm -rf .next`;
+2. depois disso, o build quebrou de verdade num SCRIPT de conferencia, e nao no
+   produto: `ai_usage.costUsd` e Decimal do Prisma, e `decimal * numero` passa
+   em runtime (por `valueOf`) e falha no type check. `tsc --noEmit` local nao
+   pegou; o build da Vercel pegou.
+
+### O que falta, e de quem depende
+
+- **`OPENAI_API_KEY` na Vercel e no .env.local.** Sem ela o carrossel sai no
+  Gemini. E a unica coisa que separa o carrossel de ser premium de verdade;
+- **o clipe demo com o OBS** (item h), que so faz sentido agora que o produto
+  novo esta no ar. Depende do Bruno ligar o OBS;
+- **ninguem tem saldo de video** fora os dois admin. Para um cliente de teste
+  ver video, precisa comprar um pacote ou receber credito na mao.
+
+### A licao do dia
+
+**O mesmo defeito apareceu pela terceira vez em tres dias, e agora com nome.**
+Horario vencido (parte 140), tipo de conteudo do dia (parte 142) e, hoje, a
+opcao pre-marcada que o formulario da landing quase teve: **decisao de produto
+tomada por omissao, dentro de uma funcao, e apresentada como escolha do
+cliente**. Vale como padrao a procurar no resto do produto: onde existe um
+padrao automatico que a tela mostra sem dizer que e sugestao, existe um cliente
+prestes a ser surpreendido.
+
+**E a migracao de modelo nao quebrou no modelo.** Os tres parametros proibidos
+ja estavam limpos havia um mes. O que quebrou foi a tabela de preco que ninguem
+lembrou de atualizar, e ela nao quebra em voz alta: ela grava um numero menor e
+espera.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 144): a chave, o formulario errado e o clipe que nao podia ser gravado
+
+**NO AR.** Tres pedidos do Bruno na mesma mensagem, e os tres viraram coisa
+diferente do que pareciam ao ler.
+
+### 1. A chave da OpenAI: valida, conta vazia, e o 429 que engana
+
+A chave entrou no `.env.local` e nos tres ambientes da Vercel. A primeira
+chamada de verdade autenticou e o GPT Image 2 recusou com `insufficient_quota`.
+
+**O codigo HTTP desse erro e 429, que e o mesmo de excesso de chamadas.** Um log
+dizendo "429" manda a pessoa procurar rajada quando o problema e a fatura, e e o
+mesmo tipo de confusao que fez a plataforma inteira parar em silencio em 08/09,
+quando a conta da Anthropic zerou e todo erro virava "tente de novo". Agora tem
+classe propria (`SemSaldoNaOpenAI`) e a mensagem diz onde por credito.
+
+**O Bruno pos credito na hora, e ai apareceu o numero que muda o produto:** uma
+lamina em alta qualidade leva **69 segundos**. Em sequencia, cinco laminas sao
+5,8 minutos e dez sao 11,6. O dia da campanha tem 830 segundos para OS CINCO
+AGENTES: dez laminas em sequencia nao cabem, e o teto de laminas passaria a ser
+o orcamento da fila em vez do que o Instagram aceita.
+
+As laminas sao independentes, entao elas passaram a sair em PARALELO, em levas
+de tres. Cinco laminas: 284 s, medido. A primeira sai sozinha de proposito, e e
+ela que descobre a falta de saldo e decide se o carrossel inteiro cai para o
+Gemini; com todas em paralelo, cinco descobririam a mesma coisa ao mesmo tempo e
+empilhariam cinco avisos iguais numa corrida.
+
+**Um achado que vale mais que a chave:** o carrossel no GEMINI tambem saiu com
+portugues certo, com acento ("Quase todo mundo para antes do segundo mes", com
+circunflexo). O que consertou o texto foi o ROTEIRO escrito antes das imagens, e
+nao o fornecedor. O GPT Image 2 entrega tipografia melhor, mas a diferenca e de
+acabamento, e nao de "escreve errado contra escreve certo".
+
+### 2. O formulario pressupunha que a pessoa vende alguma coisa
+
+A primeira versao perguntava **"o que voce vende?"** com tres botoes (servico,
+produto, conhecimento). O Bruno leu e apontou no mesmo dia: *"e se for um
+pastor?"*
+
+Ele tem razao, e o defeito e de PREMISSA, nao de texto. Um pastor nao vende. Um
+professor nao vende. Um lider de associacao nao vende. Nenhum dos tres botoes
+cabe neles, e formulario em que a pessoa nao se encontra na primeira pergunta e
+formulario que ela fecha.
+
+As tres perguntas agora:
+
+```
+O que voce faz?            texto livre   "consultor de gestao, pastor, advogada, dona de loja"
+Voce ja cria conteudo?     toque         publico toda semana | de vez em quando | ja tentei e parei | nunca publiquei
+O que voce quer das redes? toque         clientes | autoridade | alcancar mais gente | publicar com constancia
+```
+
+**O campo aberto nao e desperdicio de conversao:** e exatamente o que o produto
+pergunta no setup do projeto para os agentes saberem sobre o que escrever.
+Perguntar aqui adianta trabalho em vez de criar trabalho.
+
+**"Ja tentei e parei" e a resposta que mais vale.** E a dor que a landing nomeia
+no topo, e separa os dois perfis de comprador do produto.
+
+O terceiro grupo saiu de pesquisa (o que a industria mede: reconhecimento,
+geracao de lead, venda direta, comunidade) traduzido para a lingua de quem
+responde, com uma opcao que serve a quem nao vende nada.
+
+Migracao `20260919160000_perguntas_do_lead`: as colunas `vende`, `compra` e
+`ticket` foram REMOVIDAS, e nao mantidas por seguranca. A tabela nasceu de
+manha e tinha zero linhas, conferido antes de escrever. Coluna vazia que
+ninguem vai preencher e uma pergunta que o produto nao faz mais, parada no
+schema.
+
+### 3. O formulario virou janela, e os CTAs abrem ela
+
+Pedido do Bruno: "o forms como popup dos CTAs". A landing tem cinco chamadas
+para acao espalhadas, e com o formulario fixo no topo as quatro de baixo
+mandavam a pessoa de volta para cima.
+
+`lib/captura/store.ts` e uma loja Zustand, e nao um contexto: a landing e feita
+de componentes de SERVIDOR, e um provider em volta de tudo obrigaria a
+transformar a pagina inteira em cliente para resolver um clique. Cada CTA vira
+cliente sozinho.
+
+A loja guarda de QUAL botao a pessoa veio (`cta` no banco). Com cinco portas
+para o mesmo lugar, saber qual converte e o que diz onde por a proxima.
+
+**O formulario precisou virar componente proprio, pelo mesmo motivo de sempre:**
+o `AnimatePresence` do framer-motion **devolve HTML de tamanho ZERO no
+servidor**, mesmo com a janela aberta na loja. Medido: `renderToString` do modal
+aberto, 0 caracteres. Terceira vez na semana que a resposta e separar o conteudo
+do envelope (bloco do horario vencido na parte 140, planejador de manha, este
+agora).
+
+### 4. A secao de formatos tinha caixa vazia, e depois teve a MESMA foto quatro vezes
+
+Bruno: *"vai ficar aqueles quadros vazios? com o formato e sem nada dentro?"*.
+Tinha razao, e o defeito era pior que feio: uma secao que existe para PROVAR
+dominio de formato, provando com caixa vazia, prova o contrario.
+
+**Primeira correcao, e ela criou o segundo defeito:** entraram as quatro artes
+de uma campanha real. Mas as quatro eram a MESMA CENA em formatos diferentes,
+porque e isso que um dia de campanha produz (uma geracao por proporcao, e
+LinkedIn, Facebook e X saem da mesma). Honesto, e contraproducente: quem olha ve
+quatro fotos iguais e conclui exatamente o que a secao esta negando, que e "a
+mesma imagem esticada em cinco feeds".
+
+**Segunda correcao:** quatro CENAS diferentes, uma por rede, todas do mesmo
+mundo visual, como quatro dias de uma campanha. Geradas pelo caminho do produto
+(proporcao pedida ao modelo, recorte para o tamanho exato, conferencia de
+margem: as quatro passaram).
+
+**Terceira correcao, de carregamento:** com o caminho em texto, a imagem so
+comeca a carregar quando entra na tela, e ate la a caixa fica vazia. Que e,
+letra por letra, o defeito de novo para quem rola rapido. As artes passaram a
+ser IMPORTADAS (`import arte from "@/public/formatos/..."`), o que da ao Next a
+dimensao em tempo de build e a miniatura borrada do `placeholder="blur"`: antes
+de carregar a peca, o que se ve e a peca desfocada, e nao um buraco.
+
+Preco: o `tsx` tenta ler o `.jpg` como codigo, entao a secao saiu do script de
+renderizacao. A conferencia dela foi para `olhar-producao-1909.mts` e ficou
+MELHOR: em vez de procurar texto no HTML, ele abre a PAGINA PUBLICADA e mede se
+as quatro carregaram, se as quatro proporcoes sao diferentes entre si, e se a
+medida escrita bate com a tabela da esteira.
+
+### 5. O clipe demo: o OBS nao podia gravar
+
+O Bruno ligou o OBS, como combinado. **O monitor que o OBS captura estava com o
+WhatsApp aberto, com nomes e conversas de contatos a vista**, e o navegador que
+eu dirijo nao aparece naquela tela (roda invisivel). Gravar poria dado de
+terceiro num clipe de venda.
+
+Decisao do Bruno: gravar por fora. `scripts/tmp/gravar-demo-1909.mts` sobe um
+navegador proprio, entra com o cookie da sessao e grava direto do Playwright.
+Nunca passa pela tela dele.
+
+O que o clipe mostra, e o que ele NAO mostra: a plataforma logada, o escritorio
+3D com os robos andando e falando ("Dado sem fonte nao sai de mim", "Aprovar
+facil e desrespeito com quem publica"), a semana no calendario e as pecas nas
+quatro redes. Nao tem webcam, nao tem voz, nao tem a tela do Bruno.
+
+28 segundos, 1280x720, mudo e em laco, MP4 mais WebM, 880 KB. O hero perdeu o
+cartao do squad animado, que era uma ILUSTRACAO do produto: sete linhas com nome
+de agente e um ponto verde piscando. Contava a historia certa e nao provava
+nada, porque era desenhado.
+
+**E entao o video nao tocou em producao, com 200 no cabecalho.** O `proxy.ts`
+tem uma lista de extensoes que ele NAO intercepta, e `mp4` e `webm` nao estavam
+nela: a requisicao do video ia para o fluxo de autenticacao e voltava com a
+PAGINA DE LOGIN no corpo. O sintoma engana porque o status e 200 e o tamanho e
+plausivel; o navegador so mostra um retangulo preto.
+
+E a MESMA armadilha de 18/09 com o `.glb` do escritorio 3D, um dia depois. A
+licao e a lista, e nao a extensao: todo tipo de arquivo novo servido de
+`public/` precisa entrar la.
+
+### Verificacao
+
+`tsc` limpo, lint sem erro, `npm run build` passa, producao conferida com
+navegador de verdade (`olhar-producao-1909.mts`, 18 verificacoes contra
+demandou.com: o video tocando com largura real, as quatro pecas carregadas com
+quatro proporcoes distintas, as medidas batendo com a tabela, a janela abrindo
+pelo CTA, nenhuma opcao pre-marcada, Esc fechando).
+
+Scripts novos: `prova-carrossel-1909`, `tempo-da-lamina`,
+`artes-da-landing-1909`, `gravar-demo-1909`, `olhar-landing-1909`,
+`olhar-producao-1909`.
+
+**TRES DEFEITOS DE SCRIPT NUM DIA SO, e os tres acusaram produto certo:**
+
+1. `instanceof SemSaldoNaOpenAI` deu falso. O `tsx` carrega o modulo duas vezes
+   (sufixo `?tsx-commonjs-export-preparse`) e existem DUAS classes com o mesmo
+   nome. Trocado por pergunta de propriedade, que e como `ehErroDeSaldo` do
+   Claude ja fazia;
+2. `page.evaluate` com funcao morreu em `__name is not defined`: o esbuild
+   injeta esse helper em funcao nomeada, e ele viaja junto para dentro da
+   pagina. Corpo como TEXTO atravessa inteiro;
+3. um `replace` de espacos dentro de um template literal perdeu a barra e virou
+   um regex que troca corridas da letra S por espaco. "Instagram" virou "In
+   tagram" e o teste jurou que o cartao nao existia. LinkedIn, Facebook e X
+   passaram porque nenhum dos tres tem "s" no nome, e foi isso que fez o defeito
+   parecer especifico do Instagram.
+
+### A licao do dia
+
+**Os tres pedidos do Bruno eram sobre premissa, e nenhum sobre execucao.** A
+chave nao faltava, faltava saldo. O formulario nao estava confuso, estava
+perguntando a coisa errada para metade das pessoas. O clipe nao estava por
+gravar, estava impossivel de gravar do jeito combinado. Em nenhum dos tres o
+trabalho era fazer melhor o que ja estava sendo feito.
+
+E a secao de formatos passou por tres versoes no mesmo dia: caixa vazia, foto
+repetida, quatro cenas. **As duas primeiras eram defensaveis e as duas estavam
+erradas**, cada uma provando o contrario do que a secao afirma. Prova visual nao
+se avalia pelo que ela e: se avalia pelo que ela parece para quem passa os olhos
+em dois segundos.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 145): a regua verde e a peca impublicavel
+
+A campanha de prova rodou de ponta a ponta na conta reviewer e passou em tudo o
+que era medido: 8 de 8 no formato, 8 de 8 na margem, custo abaixo do projetado.
+Depois o Bruno abriu os arquivos e perguntou: **"voce ja viu algum feed de
+empresa alguma vez? isso parece post para voce?"**
+
+Ele estava certo, e as reguas estavam certas tambem. E o que esta parte guarda.
+
+### O que a prova entregou, olhando os dez arquivos
+
+| Caminho | O que saiu |
+| --- | --- |
+| Carrossel | manchete gigante em portugues, colagem editorial, rosto com fita na boca. **Post de verdade.** |
+| Imagem | painel de dashboard inventado, "WEEK 1", "TIME", "SUSTAINABLE FLOOR", em INGLES, com "syetem" escrito errado. A versao 16:9 saiu **sem uma palavra**. |
+| Quadro do video | o prompt do Veo desenhado: storyboard de tres paineis com os codigos de tempo no canto ("0-2", "2,5-5", "5-8") e "headlime creator". |
+
+**A diferenca nao foi sorte, foi arquitetura**, e dava para apontar a linha. O
+carrossel pede duas coisas que os outros dois nao pediam:
+
+1. uma FRASE escrita por quem escreve texto, em portugues, ANTES da imagem;
+2. "desenhe exatamente este texto como a manchete dominante, e NENHUM outro
+   texto".
+
+Sem a segunda metade o modelo enche a arte de rotulo, eixo e legenda, que e
+literalmente o dashboard que saiu. E o quadro do video provou o caso extremo:
+entregar um ROTEIRO para quem desenha e pedir o roteiro desenhado.
+
+### O conserto: toda peca de feed nasce de uma manchete
+
+`lib/media/peca-de-feed.ts` e novo e e a regra da casa agora. O prompt que
+fazia o carrossel funcionar morava DENTRO do carrossel; saiu de la e virou
+`promptDePecaDeFeed`, usado por imagem, lamina e quadro de video. As proibicoes
+sao a lista do que deu errado, uma por uma: nada de grafico, painel de dados,
+tela de app, grade de quadros, codigo de tempo, nem uma palavra em ingles.
+
+A imagem passou a desenhar no **GPT Image 2** e nao no Gemini. Os dois erros de
+escrita do dia saíram do Gemini; as cinco laminas do carrossel, no GPT Image 2,
+saíram certas. **Quando a arte tem manchete, o modelo que escreve certo vira
+requisito.** O `withDianaCap` subiu de 70 s para 180: uma lamina em alta leva
+69 s medidos, e 70 seria derrubar a arte na moeda.
+
+E o revisor visual ficou util: quando a reprovacao e de ESCRITA, a refeita troca
+de modelo. Refazer no mesmo modelo que acabou de errar a mesma palavra e esperar
+sorte, e foi exatamente o que aconteceu no dia 1 (reprovou, refez, veio errada
+de novo, publicou assim).
+
+Provado gerando de verdade e **abrindo o arquivo**: manchete "Voce nao perdeu
+ideias. Perdeu o sistema.", colagem em preto e laranja, maos sobre uma mesa
+coberta de papeis. Nas duas proporcoes.
+
+### O defeito de dinheiro que a prova achou sozinha
+
+O dia de carrossel nao coube nos 800 s da funcao (`maxDuration` em
+`app/api/cron/fila/route.ts`), a fila reiniciou o dia inteiro, e as laminas ja
+pagas foram pagas de novo. **Onze laminas cobradas para um carrossel de cinco.**
+Com `MAX_TENTATIVAS = 3`, um carrossel podia custar quinze laminas e terminar
+sem nada.
+
+Pelo relogio do log, a linha que fechou o caso:
+
+```
+21:48:02        Diana Design  Roteiro do carrossel de Terca-feira: 1. Voce nao parou...
+22:01:22 + 800s Sistema       Terca-feira: carousel, escolha sua.
+```
+
+Oitocentos segundos dentro de `desenharCarrossel` **sem uma linha de log**.
+
+O conserto tem tres partes, e as tres sao a mesma licao do estorno do video:
+
+1. `lib/media/checkpoint-do-carrossel.ts`: roteiro e laminas guardados no Blob
+   por chave estavel (execucao + dia). Retentativa reaproveita e nao cobra de
+   novo. **O roteiro vai junto porque o Claude nao e deterministico**: na prova,
+   a tentativa 2 escreveu um roteiro diferente da 1, entao guardar so as laminas
+   misturaria duas sequencias;
+2. a fila passa o PRAZO real para baixo (`prazoEm`), e o carrossel para sozinho
+   antes de ser morto, deixando guardado o que fez;
+3. uma linha de log por lamina.
+
+Provado com upload de verdade antes do deploy, 8 de 8, que e a regra de
+`lib/media/storage.ts` desde a cicatriz de 01/09. **Guardar dentro de try/catch
+falha em silencio**: nome de opcao errado nao quebra nada, so nao guarda, e o
+defeito de dinheiro continua igual sem ninguem notar.
+
+### A cobranca da imagem estava errada, e ficou cara
+
+Ao refazer o artefato de preco apareceu um erro estrutural: a esteira gera uma
+arte por PROPORCAO e recorta para cada rede, mas a cobranca somava uma por REDE.
+Quatro redes sao duas geracoes e cobravam quatro. Com o Gemini era erro de
+centavos; com o GPT Image 2 seriam 168 creditos por um dia que custa R$ 1,78,
+margem de 9,4x numa casa que trabalha com 3x.
+
+Agora a unidade de cobranca e a unidade de GERACAO, que e a regra que o
+carrossel ja seguia. `imagem_geracao: 42`, o mesmo numero de `carousel_lamina`
+porque e literalmente a mesma chamada. **Quem recebe recorte nao paga geracao.**
+
+### O Veo, na terceira recusa
+
+`generateAudio` saiu de manha ("isn't supported by this model") e a noite veio
+`personGeneration: "allow_adult"` ("currently not supported"). Duas recusas
+seguidas por adivinhacao de parametro foram o sinal de que a doc nao acompanha
+o modelo, entao a terceira nao foi adivinhada: `sondar-veo-1909.mts` mandou tres
+variantes de verdade, da menor mudanca para a maior, e **a primeira passou**.
+Sem o parametro. Video de 8 s com narracao em portugues gerado, baixado e
+conferido, 2,41 MB.
+
+**A licao: neste modelo, parametro que a doc do Veo 3 tinha e suspeito ate prova
+em contrario, e a prova e uma chamada.**
+
+A guarda do estorno tambem foi provada em producao no mesmo dia: um debito,
+exatamente um estorno, saldo de volta em 400.
+
+### O Instagram, e o bloqueio que ninguem tinha visto
+
+O Bruno reclamou que conectar o Instagram cai sempre no perfil pessoal. Duas
+coisas, e uma era nossa:
+
+- o fluxo "API do Instagram com login do Instagram" autoriza UMA conta, a que
+  estiver logada no navegador, e **nao tem seletor**: a referencia da Meta para
+  `/oauth/authorize` nem documenta parametro para isso;
+- **o botao "Conectar" so existia com a lista vazia** (`{!hasInstagram && ...}`).
+  A primeira conexao trancava a porta. O banco nunca foi o limite: a chave unica
+  e (projectId, platform, platformUserId) e o callback faz upsert por ela. Mesmo
+  defeito no Facebook, onde e pior, porque o callback grava uma linha por pagina
+  lida na hora da conexao e pagina criada depois nao aparecia nunca.
+
+Ao tentar adicionar a conta da Demandou apareceu **"Funcao de desenvolvedor e
+insuficiente"**, e ai o assunto virou outro: o app esta em modo de
+Desenvolvimento ("Publicar: Nao publicado" no painel). Em modo de
+Desenvolvimento **nenhum cliente consegue conectar Instagram nem Facebook**.
+
+Conferido no banco: **ninguem de fora de casa nunca conectou rede nenhuma**,
+cinco usuarios e todos do Bruno. Ou seja o LinkedIn (que exige a Community
+Management API aprovada) e o X podem estar no mesmo estado sem ninguem saber.
+
+E tem portao no produto: sem rede conectada, `campaign-setup-modal.tsx:596`
+recusa gerar. O bloqueio deixa de ser "nao publica sozinho" e vira "nao entra".
+
+**Decisao do Bruno: segurar o anuncio ate o App Review sair.** Nada muda no
+portao. Privacy, termos e o callback de exclusao de dados ja existem; falta o
+video do fluxo, entao o clipe do OBS saiu de "por ultimo" para caminho critico.
+
+### A landing, na virada premium
+
+- A **demonstracao gratuita saiu** (componente e rota `/api/demo` apagados).
+  Motivo do Bruno: gerava custo de API por visitante anonimo e mostrava um post
+  solto para tres redes, "nao e nem de perto o que entregamos";
+- os **sete agentes voltaram para a hero**, cada um com a cor que ele tem no
+  escritorio 3D, lidos de `lib/squad/estado-do-squad` e nao escritos na landing;
+- o **clipe desceu para uma secao propria** em largura quase total, com baloes
+  legendando quem faz o que. Primeira versao mostrava os cinco ao mesmo tempo e
+  a foto denunciou: **o clipe ja tem baloes proprios**, entao virou balao sobre
+  balao cobrindo o calendario. Agora e um de cada vez, nas bordas escuras;
+- o **preco ganhou seletor mensal/anual**. O valor do ano saiu da cara de quem
+  esta no mensal, e o botao nao grita mais "R$ 4.764 no ano";
+- **logo em toda etiqueta de rede**, e o YouTube entrou (geramos a capa, os
+  capitulos e o video, e a pagina inteira nao o citava).
+
+31 de 31 no `renderToString`, mais quatro fotos no navegador.
+
+### A licao do dia
+
+**Regua verde nao e peca boa.** O formato estava certo, a margem estava certa, o
+custo estava abaixo do projetado, e a peca era impublicavel. Nenhuma das tres
+reguas mediu a unica coisa que decide: se aquilo parece um post.
+
+Duas vezes no mesmo dia o defeito estava numa regra que existia em UM lugar e
+devia existir em todos: o prompt que faz uma arte parecer post morava dentro do
+carrossel, e a idempotencia morava no debito e nao no estorno nem no desenho.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 146): a primeira publicacao de verdade, e os agentes com olhos e maos
+
+O Bruno publicou a primeira campanha real (14 dias, quatro redes) e, no mesmo
+fim de noite, provocou os agentes no escritorio. Tres redes falharam ao mesmo
+tempo, um agente se esquivou, as datas nao faziam sentido, a fila demorava, e
+uma arte parecia cortada. Cada coisa tinha uma causa, e nenhuma era a que
+parecia.
+
+### Tres redes, tres sintomas, uma causa
+
+O dia 1 da campanha era de video. O Veo nao rodou (a conta tem ZERO creditos
+de video, que sao vendidos a parte), a esteira entregou o QUADRO e deixou o
+post como `mediaType: "video"` com um JPEG em `imageUrl`. O post foi publicado
+assim mesmo, e cada rede fez o que pode com um JPEG num lugar de video:
+
+| Rede | O que aconteceu |
+| --- | --- |
+| Facebook | aceitou e criou um "video" de **0,04 segundo** (um quadro). A tela mostra 0:00 / 0:00 em laco. Medido pela Graph API: `length: 0.04`. |
+| LinkedIn (pagina) | `isVideo` deu falso para `data:image`, caiu no ramo de texto e saiu **sem midia**, em silencio. |
+| X | 403 **de nivel de acesso**: "access to a subset of X API V2 endpoints and limited v1.1 endpoints only". E o plano da conta de desenvolvedor, nao defeito nosso. |
+
+A guarda entrou em `executeOAuthPostPublish` (lib/publish/oauth-post.ts), e nao
+em cada rede: **post de video sem video nao publica em rede nenhuma**, com a
+mensagem dizendo o que falta. O X ganhou nome proprio para o 403
+(`SemNivelDeAcessoNoX`), e o video vira texto com aviso em vez de segurar o
+post para sempre.
+
+Com a guarda no lugar, o **Instagram entrou no dia de video** (ficava de fora
+por esse risco exato). O Bruno tinha conectado a pagina da Demandou e visto o
+dia nao chegar la sem explicacao.
+
+### Os agentes: "Vera esta muito brava hoje?"
+
+Pergunta feita de proposito, e o Roberto respondeu "nao sei, nao tenho como
+avaliar isso". A resposta era honesta e o produto estava errado, por duas
+causas somadas: o prompt carregava so os cards DO PROPRIO agente (sobre a Vera
+ele nao tinha uma linha), e a regra 1 proibia observar, inferir e opinar.
+
+O conserto e o pedido do Bruno em uma frase ("sempre conectados em tempo real,
+com poder de pensar e agir sozinhos, so nao publica nada"):
+
+- `lib/squad/consciencia.ts`: **a sala em tempo real** entra em toda conversa.
+  Quem trabalha agora, o que cada um disse por ultimo, quem cobrou quem
+  (`situacaoDoSquad` ja calculava a bronca; ninguem tinha ligado os dois
+  lados), quantos pareceres a Vera reprovou;
+- `lib/claude/ferramentas.ts`: **um laco de ferramentas** (tool use), seis
+  voltas no maximo, ferramentas da mesma volta em paralelo, erro de ferramenta
+  volta para o modelo em vez de derrubar a conversa;
+- `lib/squad/ferramentas-do-escritorio.ts`: `ver_a_semana`, `ver_peca`,
+  `ver_colega` e **`pedir_ajuste`**, que devolve uma peca para a mesa de quem
+  escreveu, com o motivo em nome do agente. Presas ao `projectId` em codigo.
+  Publicar nao esta na lista;
+- as regras foram separadas: nao inventar FATO DO CLIENTE continua absoluto;
+  observar a sala e ter opiniao sobre o trabalho virou obrigacao.
+
+Provado com as tres perguntas contra o projeto de prova. O Roberto: "Brava
+nao, mas afiada: 9 pareceres recentes e 7 com reprovacao, e a ultima devolucao
+foi agora ha pouco, direto na mesa do Lucas. Pra mim nao e humor, e criterio."
+Perguntado sobre a semana, **devolveu sozinho uma peca** com numero sem lastro.
+A tela mostra o que ele fez (`Turno.fez`, selo na cor do agente), porque acao
+de agente em silencio e acao em que ninguem confia.
+
+### As datas: a campanha comeca na DATA, nao na segunda
+
+"Coloquei 14 dias, ele vai para uma tela que comeca na segunda sendo que
+estamos na sexta (...) e para comecar hoje, o segundo dia seria sab."
+
+A campanha era ancorada em SEMANA: `weekStart` sempre segunda, dias
+Segunda..Domingo, e os dias ja passados jogados em cima de hoje (ele escolheu
+"publicar agora"; a tela mostrou dois cards na sexta com "era de segunda" e
+"era de terca"). A conta da esteira ja era `inicio + (dia - 1)`, entao ela nao
+mudou. Mudou o que mentia:
+
+- modal: padrao de inicio e **hoje**; presets Hoje / Amanha / Proxima segunda;
+  a data personalizada NAO encaixa mais na segunda; os sete dias sao posicoes a
+  partir do inicio, com rotulo da data real ("Sex 18", "Sab 19");
+- esteira: `nomeDoDia()` deriva o nome da data ("Sexta-feira 18") em log,
+  prompt da Vera e avisos. `DAY_NAMES` fica so para o post unico;
+- calendario: o selo "era de X" compara **datas** (`scheduledDate` do card
+  contra o quadrado), e nao indices.
+
+Segunda rodada, minutos depois do deploy: o Bruno abriu o modal e viu "Seg 14,
+Ter 15...". O padrao "hoje" so valia quando ninguem passava nada, e o
+calendario passa `defaultWeekStart` como a segunda da semana ABERTA na tela,
+que numa sexta e quatro dias atras. Agora o inicio e `max(hoje, o que veio)`:
+data de inicio no passado nao e escolha de ninguem, e sobra de outra tela.
+
+### A lentidao tinha um numero
+
+Linha do tempo da fila do run publicado: pesquisa 141 s, dia 1 326 s, e o dia
+2 comecou **863 s depois** de o dia 1 acabar. A passada pegou o dia 2 com 300 s
+sobrando (`sobraMinimaMs`), a plataforma matou a funcao aos 800 s, e o
+`PRAZO_SEGUNDOS` de 830 so recuperou o trabalho na passada seguinte a isso.
+Quatorze minutos parados, e o Bruno olhando o quadro sem o segundo post.
+
+Sobra minima: **420 s** (maior que o dia mais lento medido). Prazo de
+recuperacao: **810 s** (a funcao morre aos 800). A regra de um dia por vez
+por grupo FICOU, porque cada dia le o que os anteriores escreveram para nao
+repetir tema; paralelizar quebraria isso.
+
+### O texto cortado nao era da Diana
+
+A miniatura do calendario tem 56 px e recortava a arte vertical pelo centro,
+comendo a manchete, que nas nossas pecas fica no topo. A arte estava inteira
+(a capa no Facebook confirma); quem cortava era `object-cover` sem `object-top`.
+E o olho do revisor passou a conferir o quadro do video tambem: a premissa "o
+video substitui em minutos" caiu no dia em que o Veo nao rodou.
+
+### Cafe e mesa, para o seu avatar
+
+Pedido: "poder sentar em sua mesa e poder tomar cafe, quando eles tomam cafe
+devem ficar mais rapidos". Tecla **X** (ou clicar na sua mesa) senta; tecla
+**C** (ou clicar na mesa de cafe) vai ao cafe, bebe 2 s e sai **1,6x mais
+rapido por 60 s**, com o selo "☕ mais rapido". Os agentes que saem do cafe
+tambem saem com turbo (90 s) e o selo na fala. Fotografado no dev local com a
+sessao e2e: sentado, no cafe com o selo, de volta na cadeira.
+
+### O que ficou aberto, e e do Bruno
+
+- **X**: subir o nivel de acesso da API para video (card no planner);
+- **creditos de video** na conta bruno@areticon.com: zero, e por isso o dia de
+  video nao gerou (card no planner);
+- **App Review da Meta** continua o caminho critico do lancamento (parte 145).
+
+### Terceira rodada, com a campanha real rodando
+
+- **A ancora ainda veio como segunda.** O run das 21:56 gravou `weekStart`
+  14/09 numa sexta 18: a aba do Bruno estava aberta desde antes do deploy, com
+  o bundle antigo. O servidor passou a garantir o piso (`agendarCampanha`:
+  `weekStart < hojeLocal` vira `hojeLocal`, e `postingTimestamps` cai fora
+  porque foi calculado para as datas velhas). Regra de negocio nao mora no
+  navegador.
+- **O Paulo dizia "material de segunda".** As tres tabelas `DIAS[k]` dos
+  agentes (consciencia, ferramentas, rota da conversa) traduziam "dia k" como
+  dia da semana. `nomeDoDiaDaPeca(scheduledDate, k)` le a data do card.
+- **"Deu erro em todos quando tentei publicar."** A guarda nova barrou os
+  quatro posts de video sem video, certa e sem saida. Os posts existentes foram
+  virados para imagem (o quadro e uma peca de feed inteira), e a esteira passa
+  a fazer isso sozinha quando nao ha credito de video (`dayPosts` recebe
+  `mediaType: "image"` no ramo `!conta.cabe`).
+- **Baias e cadeiras.** `Baia` (tres divisorias baixas com barra na cor do
+  agente e tapete) e `Cadeira` (assento, encosto arredondado com faixa na cor,
+  pistao, cinco pes com rodizio, bracos) substituiram as caixas. A sua cadeira
+  tambem. `OBSTACULOS` cresceu para a baia.
+- **Saldo sempre a vista.** `/api/credits` devolve `saldoDeVideo`; o menu
+  lateral ganhou `SaldoNoMenu` (plano e video, vermelho quando baixo, 60 s);
+  o modal mostra "voce tem" ao lado do custo, e a conta do video em separado
+  (dias de video x creditos por dia, vermelho se nao cabe). NAO passou por
+  renderToString: o menu depende de useSession e de provider de tema, e o
+  bloco do modal so existe no passo 4. Provado pelo tsc e pela tela do Bruno.
+
+- **"Sem imagem aqui no sabado."** O card de carrossel mostrava imagem
+  quebrada: as laminas vem coladas com `|` num campo so, e a capa do
+  calendario, o preview do post e a live-view punham a string inteira no
+  `src`. A capa e a primeira lamina; o preview mostra as laminas lado a lado
+  (o kanban ja fazia isso). O `onError` que escondia o `<img>` escondia o
+  defeito junto.
+
+- **"Como minha conta esta zerada de video? sou o dono."** Conta
+  bruno@areticon.com: role admin, plano free, 1400 do plano, 0 de video. O
+  video e vendido a parte, entao toda conta nasce com zero, a do dono
+  inclusive. Creditados 2200 de video com linha no extrato
+  (`credito_do_dono`, idempotente). E o achado que veio junto: `SaldoNoMenu`
+  escondia para admin, ou seja o dono era o unico que nao via o saldo que ele
+  mesmo pediu para ficar sempre a vista. Agora aparece para todos.
+- **"Se eu fosse cliente ia estar bravo: gera coisa errada e consome os
+  creditos."** Hoje cobra-se pelo ENTREGUE, e video so quando gerado (com
+  estorno). O buraco e a peca entregue ERRADA, cobrada igual a uma certa.
+  Virou card de decisao de politica no planner (regenerar sem cobrar quando o
+  revisor reprova; estornar quando o cliente rejeita; ou ambos com teto).
+
+- **"Eles ainda estao insistindo nas datas erradas."** Era um POST UNICO, e o
+  piso do servidor so valia para semanal e quinzenal. O modo unico usava
+  `singleDay` (dia da semana, 1 = segunda) sobre `weekStart`, com `singleDate`
+  vazio: "Gerando o quadro de Segunda-feira 14" numa sexta 18. Post unico e
+  uma DATA: no modal ela nasce em hoje com piso em hoje, o seletor "ou escolha
+  o dia da semana" saiu, e no servidor post unico sem data recebe hoje, data
+  no passado vira hoje, e `weekStart` passa a ser a segunda da semana dessa
+  data (e sobre ele que `nomeDoDia` e `getScheduledDate` contam).
+
+Provas: tsc limpo; 19/19 no renderToString (calendario, menu do agente, modal e
+esteira pelo fonte); 3/3 conversas com ferramentas; 3 fotos do escritorio com
+baias. Seis deploys nesta parte.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 147): o primeiro video de verdade, e os quatro defeitos que ele revelou
+
+O Bruno publicou um dia de video com 2200 creditos na conta. Resultado:
+LinkedIn publicado SEM o video, e X, Facebook e Instagram barrados com "o
+video ainda nao existe". Ele resumiu: "ah o linkedin publicou sem o video :(
+na pagina". O banco explicou, e eram quatro coisas somadas.
+
+### O que o banco mostrou
+
+```
+linkedin   dia1 published  video   imageUrl NULO
+facebook   dia1 failed     video   image/jpeg (346 KB)
+instagram  dia1 failed     video   image/jpeg (346 KB)
+twitter    dia1 failed     video   image/jpeg (259 KB)
+
+trabalho video-ia: concluido, postId = o post do LinkedIn
+ai_usage: veo-3.1-fast, US$ 1,20, 02:03:24
+carteira de video: video_ia amount 0, nota "Acesso interno: custaria 195"
+```
+
+### Os quatro defeitos, e os quatro consertos
+
+1. **O mp4 chegava em UM post.** `rodarVideoDaIa` atualizava so
+   `pedido.postId`, e cada rede e um post proprio. Agora `updateMany` por
+   `(runId, dayOfWeek, mediaType: "video")`, e o pedido da fila carrega
+   `dayOfWeek`. Sem os dois (pedido antigo), cai no comportamento de antes.
+2. **O LinkedIn nao reconhecia video no Blob.** `isVideo` so aceitava
+   `data:video` ou `storage.googleapis.com`; o nosso mp4 mora em
+   `*.public.blob.vercel-storage.com/videos-ia/`. Caia no `else` e publicava a
+   legenda com o link colado. Agora `lerVideoDoPost` (que ja resolvia os dois
+   stores) alimenta `publishLinkedInVideoPost`, e o ramo "nao e video" deixou
+   de existir: a guarda no topo ja garante que so chega video de verdade.
+3. **`imageUrl` era apagado ao publicar** (`post.mediaType === "article" ?
+   post.imageUrl : null`). Faz sentido para DATA URL, que pesa megabytes na
+   linha; apagava tambem o link do Blob, que e o endereco permanente. Agora so
+   data URL some.
+4. **Admin nao ve consumo.** O bypass de `debitarVideo` grava amount 0 com a
+   nota "custaria N". O Bruno: "meus creditos nao mudaram nada, eu nao consigo
+   ver o consumo assim para calibrar a plataforma". O numero que calibra preco
+   nao e credito, e o dolar de `ai_usage`. `/api/credits` devolve `consumo`
+   (30 dias e ultima campanha, USD e BRL a 5,40; `ai_usage` e por PROJETO,
+   entao a soma e dos projetos do usuario; `costUsd` e Decimal, sempre
+   `Number()`), e o menu lateral mostra para admin. Medido: **R$ 19,40** a
+   ultima campanha (post unico com video), **R$ 139,20** em 30 dias.
+
+### O parecer da Vera contava so o primeiro golpe
+
+"Quando eu entro na Diana, vejo tudo reprovado pela Vera, nao mostra o que foi
+revisado e depois aprovado." Medido: 12 de 12 pareceres do banco com
+`reprovado`. Nao era a Vera dura: `executar.ts` gravava sempre `Veredito da
+Vera:\n${firstOutput}`, a PRIMEIRA revisao, mesmo quando o texto foi corrigido
+e o card virou `pending`; e `lerVeredito` pegava o PRIMEIRO `VEREDITO:`.
+
+Conserto em tres partes: `lerVeredito` le o ULTIMO `VEREDITO:` (o desfecho);
+nasceu a chave `corrigido` ("reprovado e corrigido", laranja na ficha); e a
+esteira grava `VEREDITO: CORRIGIDO` no fim do card quando a correcao
+automatica rodou. A reprovacao original continua no card, inteira, porque ela
+e o MOTIVO. 5/5 no teste do leitor.
+
+### O que fica para a proxima sessao (cards no planner)
+
+- **A tela da Diana**: linha do tempo do parecer (reprovado pela Vera ->
+  corrigido -> aprovado/rejeitado pelo cliente) em vez de um selo so; `<video>`
+  com controles quando o post tem mp4 (hoje mostra o quadro 9:16, a "imagem
+  comprida"); "rejeitado pelo cliente" existe em `estadoDaPeca` e nao aparece
+  no card.
+- **Republicar o dia de video de 19/09**: o LinkedIn saiu como texto com link,
+  os outros tres nao sairam, e o mp4 gerado nao esta mais referenciado por
+  post nenhum (foi apagado ao publicar, antes do conserto). Regenerar o dia e
+  o caminho curto: 195 creditos de video, a conta tem 2200.
+- **Politica de credito para peca errada** (card de 19/09, decisao do Bruno).
+- **App Review da Meta** continua o caminho critico do lancamento.
+
+### A licao da parte
+
+Quatro defeitos, um sintoma ("publicou sem video"), e nenhum deles onde o
+sintoma apontava. O que os achou foi olhar o banco antes do codigo: o
+`imageUrl` NULO num post publicado nao tem como vir de "o video nao gerou"
+(o `ai_usage` provava que gerou). Sintoma bom e o que contradiz a hipotese
+mais obvia.
+
+Provas: tsc limpo; 5/5 no leitor de veredito; dois deploys nesta parte
+(vídeo/custo e veredito).
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+## Sessao 19/09/2026 (parte 148): a peca ganhou historia, e o video saiu nas quatro redes
+
+A parte 147 consertou o MODELO (o desfecho do parecer, o mp4 em todos os posts
+do dia) e deixou a TELA para depois. Esta parte e a tela, mais a republicacao
+que provou os dois consertos com dado de verdade.
+
+### Um selo nao conta uma historia
+
+O que o Bruno viu na ficha da Diana era "Vera: reprovado" em toda peca,
+inclusive nas que a Vera reprovou, o redator corrigiu e ele mesmo aprovou. O
+`lerVeredito` ja sabia ler o desfecho desde a parte 147; o que faltava era a
+tela parar de mostrar um estado e passar a mostrar o caminho.
+
+`lib/squad/parecer-da-peca.ts` e novo e monta a LINHA DO TEMPO de uma peca:
+
+```
+reprovado pela Vera > corrigido pelo redator > aprovado por voce > publicado
+```
+
+Cada etapa vem de um lugar diferente do banco, e e por isso que o modulo
+existe em vez de a conta morar na tela: o card da Vera guarda o veredito e a
+correcao, o card do Paulo guarda a aprovacao, e **a rejeicao mora nos POSTS**,
+nao no card. Era exatamente por isso que "rejeitado pelo cliente" existia em
+`estadoDaPeca` e nunca aparecia na ficha: quem rejeita marca os quatro posts do
+dia (`handleRejectFlow`), e a ficha lia o status do card, que continua
+`pending`.
+
+`linhaDoTempoDoParecer` e pura e `parecerDosCards` faz as leituras em lote (tres
+consultas para vinte trabalhos). A ficha e o card aberto leem do MESMO lugar,
+porque duas telas contando a mesma historia de dois jeitos e como o defeito
+nasce.
+
+Provado com `renderToString` em sete cenarios, incluindo os dois que nao
+aparecem nos dados de hoje: a peca rejeitada pelo cliente e a que so pediu
+ajuste. Dois controles proposotais: pesquisa sem parecer nao desenha nada, e
+uma peca publicada sem revisao le "aprovado por voce > publicado".
+
+### A nota da Vera dizia o contrario do veredito
+
+Achado ao fotografar: a linha do tempo dizia REPROVADO e a nota embaixo dizia
+"Midia: gerada nos 4 formatos, margens aprovadas". As duas do mesmo card.
+
+A Vera escreve o parecer em blocos, e o primeiro e "O QUE ESTA BOM, E E
+PRECISO REGISTRAR". `lerVeredito` pegava as duas primeiras linhas longas do
+texto, ou seja o cabecalho e o elogio. **A nota de uma reprovacao vinha da
+parte do parecer que aprova.** Agora, quando existe um titulo em caixa alta
+falando de problema ("PROBLEMAS QUE REPROVAM"), a nota comeca dali.
+
+Uma armadilha no caminho, e ela quase passou: `VEREDITO: REPROVADO` tambem e
+uma linha em caixa alta com a palavra REPROVADO, e fica no FIM. Lida como
+titulo, cortava o texto inteiro e a nota saia vazia. O teste pegou.
+
+### A "imagem comprida" era o quadro, e o card nunca recebia o mp4
+
+Post de video mostrava o quadro 9:16 esticado. A causa nao estava na tela: o
+trabalho de video atualizava os POSTS e o card da Diana continuava com o JPEG,
+para sempre. O `cardId` chegava vazio porque o pedido e enfileirado antes de o
+card existir.
+
+Dois consertos:
+
+1. `rodarVideoDaIa` acha o card do dia pela mesma chave dos posts (`runId` +
+   `dayOfWeek` + `cardType: media`) e grava o mp4. **O quadro vira
+   `metadata.thumb`**, que e o poster do player: sem ele o card abre um
+   retangulo preto, que le como coisa quebrada;
+2. `executar.ts` passa `cardId: dianaCardId` no pedido, que e o caminho direto
+   para as campanhas novas.
+
+E a rota da ficha troca o quadro pelo mp4 quando o card e velho, para as
+campanhas que ja rodaram nao ficarem com a imagem comprida.
+
+### O mp4 dentro de um `<img>` e uma imagem quebrada
+
+O card da Diana passou a guardar um mp4, e dois lugares desenhavam essa midia
+como imagem crua: a miniatura do calendario (56 px) e a live view. Nenhum dos
+dois quebraria de um jeito visivel; sairia um retangulo escuro, que qualquer um
+leria como "a arte ficou escura".
+
+A capa do calendario agora prefere o quadro guardado e, sem ele, o quadrado
+desenha `<video muted>` no lugar do `<img>`. Provado no renderToString: o mp4
+sai em `<video`, a arte continua em `<img>`, e nenhum `<img>` recebeu o mp4.
+
+### A republicacao, e a prova que faltava
+
+Regenerado o dia de 19/09 no ar (195 creditos de video, conta com 2200) e
+publicado pelo cron de producao, o caminho que o cliente usa.
+
+| Rede | Resultado |
+| --- | --- |
+| Facebook | publicado, e a Graph API diz `length: 8` |
+| Instagram | publicado como reel |
+| LinkedIn | publicado, com o video |
+| X | publicado, com o video |
+
+**Os quatro posts com o MESMO mp4**, um so arquivo distinto no banco, que era o
+defeito 1 da parte 147. O `imageUrl` continuou apontando para o Blob depois de
+publicar, que era o defeito 3. E o card da Diana com o mp4 mais a capa
+guardada, que e o conserto desta parte.
+
+Dois numeros valem guardar. O Facebook da parte 146 devolveu `length: 0.04` (um
+quadro virado video); este devolveu 8. E **o X publicou video**, sem cair no
+`SemNivelDeAcessoNoX` de tres dias atras.
+
+Uma sobra: o LinkedIn recusou o primeiro comentario nas tres tentativas
+(`firstCommentError`). O post foi ao ar; o link do primeiro comentario nao.
+
+### O artefato de preco errou, e errou onde ninguem olhava
+
+Conferido o custo real no menu lateral como admin: **R$ 157 em 30 dias** e
+**R$ 17,54 na ultima campanha**. Contra o artefato (versao 5), a campanha de um
+dia com video projetava R$ 12,95 e custou R$ 17,54, 1,35x.
+
+A diferenca inteira estava em UMA linha. O texto bateu. A arte nao:
+
+```
+pecas de feed medidas .......  6
+geracoes de arte pagas ...... 17
+GERACOES POR PECA ........... 2,83   o artefato supunha 2
+ARTE POR PECA ............... R$ 2,74   o artefato dizia R$ 1,96
+```
+
+Duas causas somadas, e nenhuma estava na conta:
+
+1. **o numero de proporcoes acompanha o numero de REDES.** Com LinkedIn e X
+   medimos 1,50 geracao por peca; com quatro redes, 3,00 e 4,00. "Uma arte por
+   proporcao" continua verdade, so que DUAS proporcoes era o caso de duas redes;
+2. **refazer e gerar de novo.** O revisor visual reprova e `produzirArtePorRede`
+   desenha outra, e a segunda arte e cobrada igual a primeira. A conta so pagava
+   a primeira.
+
+Artefato na versao 6, com o caminho feliz preservado como opcao no seletor: a
+distancia entre as duas linhas e o preco de a revisora enxergar.
+
+Uma licao de medicao veio junto. A primeira conta dividiu geracoes por DIA e
+estimou os dias de carrossel pelo numero de laminas: deu 3,33 e "67% de
+refacao", numero que estava medindo carrossel. **Estimativa dentro de uma
+medicao e regua verde com outra roupa.** O denominador certo estava no banco: um
+card da Diana por peca.
+
+### O que fica aberto, e e do Bruno
+
+- **App Review da Meta**, o caminho critico do lancamento;
+- **nivel de acesso da API do X para video**: publicou hoje, entao vale conferir
+  se o plano mudou ou se foi o caminho de upload que mudou;
+- **politica de credito para peca errada**;
+- **testar o Seedance via agregador**, se valer a pena.
+
+### A licao da parte
+
+Duas vezes nesta parte o dado estava certo e a leitura estava errada: a nota da
+Vera saia do bloco que elogia, e a taxa de refacao saia de um denominador
+estimado. **Numero lido do lugar errado e pior que numero ausente**, porque ele
+tem cara de medicao.
+
+Provas: tsc limpo; 7/7 na linha do tempo e 4/4 na miniatura de video pelo
+renderToString; 19/19 e 5/5 nas provas vizinhas, sem regressao; quatro fotos no
+dev local com a sessao e2e, apagada no fim; quatro redes publicadas em
+producao com `length: 8` conferido na Graph API. Um deploy nesta parte.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+### Adendo da parte 148, tarde de 19/09: a conta da Anthropic zerou no meio de uma campanha
+
+O Bruno pediu uma campanha semanal (7 dias, 4 redes) as 14:50 e ela terminou
+em quatro minutos com "Campanha weekly concluida! 0 posts criados". A causa
+e a conta da Anthropic sem credito: reproduzido com a chave de producao,
+"Your credit balance is too low to access the Anthropic API". A ultima
+chamada que passou foi as 14:54:27; a pesquisa e os redatores do dia 1
+rodaram, a Vera nao. Queima medida: US$ 23 em 18/09, US$ 17 em 19/09, sete
+campanhas em 24 horas.
+
+Nenhum cliente foi cobrado: `fecharCampanha` so debita por post criado, e
+foram zero. Mas o incidente expos tres defeitos que com mil usuarios viram
+desastre, e nenhum foi corrigido nesta sessao (o Bruno pediu diagnostico):
+
+1. **Queda da plataforma vira "campanha concluida".** O erro de cada redator e
+   engolido como aviso (`Promise.allSettled` -> "Erro ao gerar post"), o dia
+   termina com zero pecas e marca `concluido`; `estadoDoGrupo` conta trabalhos
+   falhados, nao dias vazios. Sete dias "concluiram" em quatro segundos.
+2. **A fila insiste no que nao pode dar certo.** `ehErroDeSaldo` existe em
+   lib/claude e em gpt-image, e nada em `lib/fila/passada.ts` o usa: cada
+   trabalho gasta suas tentativas contra um saldo zerado e avanca.
+3. **Ninguem e avisado.** `SemSaldoNaApi` so faz `console.error`. O Bruno
+   descobriu olhando a tela.
+
+Caminho sugerido, para quando ele quiser: dia com zero pecas e dia falhado;
+`SemSaldoNaApi` pausa a fila inteira (run em `paused`, retomavel depois da
+recarga) em vez de repetir; e-mail pelo Resend na primeira ocorrencia; e
+ligar o auto-reload no console da Anthropic, que e o unico remedio que nao
+depende de codigo.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+### Adendo 2 da parte 148, tarde de 19/09: a fila aprendeu a parar
+
+Com o credito de volta, o Bruno pediu "ajuste tudo o necessario, conforme
+seu diagnostico". Os tres defeitos do adendo anterior viraram codigo, e um
+quarto apareceu na prova.
+
+1. **Dia sem peca e dia falhado.** No bloco do Paulo, `postIds.length === 0`
+   lanca em vez de terminar em silencio. A fila devolve o dia (ate tres
+   tentativas) e, se nada mudar, ele fica `falhou`, que e o que ele e.
+2. **A fila pausa inteira no erro de saldo.** `lib/fila/saldo-zerado.ts` e
+   novo. `pausarAFila` poe o trabalho que descobriu e TODOS os pendentes (de
+   qualquer grupo, porque saldo e da plataforma) em `pausado`, sem gastar a
+   tentativa, e as execucoes em `paused` com uma linha no log dizendo ao
+   cliente que nao e culpa dele. `retomarPausados` devolve tudo a fila depois
+   de dez minutos: se o saldo voltou, a campanha segue de onde parou; se nao,
+   o primeiro erro pausa tudo de novo, e a chamada recusada nao custa nada.
+   Nao existe botao de retomar para esquecer de apertar. O estado vive no
+   proprio `Trabalho.error`, como JSON, sem tabela nova.
+   O erro de saldo SOBE de dentro do dia: dos redatores (era aviso), do quadro
+   do video e da midia da Diana (era "Prompt salvo").
+3. **E-mail para os admins** (`role: admin`, lidos do banco) na primeira
+   pausa, e de novo so depois de seis horas. Provado saindo de verdade pelo
+   Resend para os dois enderecos.
+4. **Campanha sem peca fecha como `failed`**, com "A campanha nao gerou
+   nenhuma peca: N dia(s) falharam. Nada foi cobrado." em vez de "concluida!
+   0 posts". A pagina `live` passa a tratar `paused` como execucao ativa.
+
+Miudezas que importam: `estadoDoGrupo.acabou` exclui pausados (sem isso a
+campanha pausada seria fechada como concluida na passada seguinte);
+`reservarProximo` respeita pausado na ordem; `cancelarGrupo` cancela pausado.
+
+**O defeito que a prova pegou:** as duas classes de erro de saldo (Anthropic
+e OpenAI) carregam a mesma marca `semSaldo` de proposito, e `provedorDoErro`
+lia por ela: um erro da Anthropic saia como OpenAI, e o e-mail mandava o
+Bruno recarregar a conta errada. Agora le pelo nome e pela mensagem.
+
+Provas: tsc limpo; `provar-pausa-por-saldo.mts` 18/18 contra o banco, com
+grupo falso apagado no fim (pausa, nao fecha, nao pega, retoma aos dez
+minutos, um e-mail so, campanha vazia fecha como failed sem cobrar); 19/19
+na prova vizinha da fila; um deploy. A campanha que morreu as 14:50 foi
+pedida de novo pelo caminho de producao.
+
+*Atualizado em 19/09/2026 por Claude Code.*
+
+### Adendo 3 da parte 148, 20/09: o plano de custo, medido
+
+O Bruno olhou o menu (R$ 227 em 30 dias, quatro posts publicados) e pediu
+"um plano completo com valores reais de custo e margem" e pesquisa de como
+reduzir custo sem perder qualidade nem velocidade. Nada de codigo mudou
+nesta parte; o que mudou foi o entendimento, e ele esta no artefato de preco
+(versao 8) e aqui.
+
+**Onde foram os R$ 227.** R$ 204 em campanhas e R$ 21 fora delas (conversas
+com os agentes, leitura de contexto, provas). Das campanhas, R$ 79 foram duas
+canceladas no meio e R$ 6 a que morreu sem saldo. Custo de teste e incidente
+nao e custo de servir cliente. O custo de servir e **R$ 57,74 por campanha de
+7 dias em 4 redes**, sem o video (R$ 64,22 com), e o cliente pagaria 1.077
+creditos por ela: R$ 0,054 por credito para nos, R$ 0,20 a 0,29 para ele.
+A margem por credito esta saudavel; o problema e capacidade: o Essencial
+(1.800) cabe 1,7 campanha dessas por mes, e o ritmo prometido e uma por
+semana.
+
+**Tres achados de medicao** (`onde-foi-o-dinheiro-2009.mts`):
+
+1. **O cache do Opus esta em 35%.** Entrada media de 21.500 tokens por chamada
+   de agente, 54 chamadas por campanha, e o prefixo cacheado
+   (`buildCachedPrefix` = REGRAS_GLOBAIS + contextDocs) tem 7.643 tokens. O
+   brief da pesquisa e o resto vao fora do cache, em toda chamada. Entrada e
+   60% do custo do texto.
+2. **O brief do Roberto bate no teto de 6.000 tokens em TODA campanha**
+   (`out=6000` exato nas quatro ultimas). `extrairTexto` so lanca quando nao
+   ha texto, entao o brief sai CORTADO e ainda e reenviado em 54 chamadas.
+   Custo e qualidade no mesmo defeito.
+3. **A Vera reprova 7 de 7 dias** e escreve de 3.000 a 5.000 tokens por
+   parecer. Cada reprovacao sao duas chamadas de Opus a mais (Lucas e Tiago
+   corrigindo).
+
+**A sonda do GPT Image 2** (`sondar-gpt-image-qualidade.mts`): o preco e por
+token de saida (US$ 30/M). A esteira pede `quality: "high"` (5.488 tokens,
+R$ 0,90, 84 s). A MESMA peca em `medium`: 1.372 tokens, R$ 0,23, 37 s, com a
+manchete igualmente certa e a mesma composicao (as duas imagens foram
+olhadas). E a maior alavanca e a mais simples: uma palavra em
+`lib/media/gpt-image.ts`.
+
+**O plano, por alavanca e economia numa campanha de R$ 57,74:**
+
+| # | Alavanca | Economia | Qualidade |
+| --- | --- | --- | --- |
+| 1 | brief e regras no prefixo cacheado, TTL de 1 h (35% -> 75%) | R$ 12 | igual |
+| 2 | brief do Roberto em 2.500 tokens com teto folgado; tirar a segunda passada dele | R$ 3 | melhora (para de chegar cortado) |
+| 3 | Vera devolve so a lista de problemas (ate 1.500 tokens) | R$ 2,50 | igual |
+| 4 | redatores recebem os criterios da Vera antes; limpeza de numero sem fonte ANTES da revisao; meta 3/7 | R$ 3,50 | melhora |
+| 5 | Sonnet 5 nas 14 adaptacoes de Facebook e Instagram | R$ 2,30 | medir pela Vera |
+| 6 | GPT Image 2 em `medium` | R$ 13,20 | igual, e 2x mais rapido |
+| 7 | refacao de arte de 2,83 para 2,2 geracoes por peca | R$ 1,60 | igual |
+
+Sem trocar modelo (1 a 4, 6 e 7): de R$ 57,74 para perto de R$ 23 (60%).
+Com a 5, um pouco menos. Ordem de implementacao: 6 (uma palavra), 1, 2, 3,
+4, 7, e a 5 por ultimo, medida.
+
+**Decisoes que sao do Bruno:** o que fazer com o Essencial (mais credito,
+limitar redes e carrosseis, ou vender como duas campanhas por mes).
+
+Fontes da pesquisa de preco: tabela de precos da Anthropic (Opus 5 US$ 5/25,
+Sonnet 5 US$ 2/10, Haiku 4.5 US$ 1/5 por milhao; cache le a 10%, grava a
+125% em 5 min ou 200% em 1 h) e developers.openai.com/api/docs/pricing
+(gpt-image-2 por token: entrada de texto US$ 5/M, saida de imagem US$ 30/M).
+
+*Atualizado em 20/09/2026 por Claude Code.*
+
+### Adendo 4 da parte 148, noite de 20/09: as alavancas no ar, medidas na mesma campanha
+
+O Bruno mandou implantar. Seis alavancas subiram em tres deploys, e a MESMA
+campanha (7 dias, 4 redes, 2 carrosseis, 1 video) rodou de manha e a noite.
+`comparar-campanhas-2009.mts` e a prova:
+
+| | manha | noite |
+| --- | --- | --- |
+| custo sem video | R$ 57,74 | **R$ 31,05** (-46%) |
+| texto (agentes, Opus) | R$ 37,76 | R$ 23,32 |
+| arte (GPT Image + conferencia) | R$ 19,98 | R$ 7,73 |
+| cache do Opus (entrada lida) | 32% | 62% na campanha, 75% depois do 3o deploy |
+| brief do Roberto | 6.000 (cortado) | 6.781, inteiro, uma chamada |
+| parecer da Vera (saida media) | 3.943 | 2.212 |
+| reprovacoes da Vera | 7 de 7 | 5 de 7 |
+| duracao | 51 min | 30 min |
+| posts | 27 | 27 |
+| custo por post | R$ 2,38 | R$ 1,39 |
+
+**O que subiu:**
+
+1. `lib/claude/index.ts`: `cacheTtl` em `AskOptions`; `buildSystem` grava o
+   prefixo com `ttl: "1h"` quando pedido. `runAgent` pede 1h.
+2. `executar.ts`: o brief do Roberto entra no prefixo cacheado
+   (`prefixoDaCampanha`), e `contextWithResearch` leva um ponteiro no lugar.
+   Os 14 pontos de chamada do dia usam o prefixo da campanha.
+3. `executar.ts`: `CRITERIOS_DE_ACEITE` (o que a Vera reprova) vai em
+   `buildCachedPrefix`, para todo redator ler antes de escrever, de graca.
+4. Roberto: pede 1.500 palavras, teto 16.000 (era 6.000 e batia nele em toda
+   campanha), e a segunda passada dele saiu: a tesoura de codigo basta.
+5. Vera: FORMATO DA RESPOSTA, so a lista "O QUE PRECISA MUDAR", ate 1.500
+   tokens. `lerVeredito` ja procurava esse titulo.
+6. A tesoura de numero sem fonte roda ANTES da Vera, nas quatro pecas.
+7. `lib/media/gpt-image.ts`: `quality: "medium"`.
+8. `baseContext` e `contextWithResearch` deixaram de anexar `contextDocs`
+   (achado na propria prova: os documentos iam duas vezes por chamada, 7.000
+   tokens a preco cheio). Entrada fora do cache por chamada: 10.500 -> 3.500.
+
+**Dois achados da prova, e os dois viraram codigo:**
+
+- **O custo da imagem era uma constante.** `recordImagem` gravava US$ 0,165
+  por imagem fosse qual fosse a qualidade, e a campanha da noite pareceu MAIS
+  cara na arte (25 geracoes x 0,165). O preco da OpenAI e por token, e a
+  resposta traz os tokens: `recordImagemPorTokens` em `lib/media/usage.ts`
+  grava o uso real (texto 5, imagem 8, saida 30 US$/M). As 24 imagens dessa
+  campanha foram reprecificadas no extrato para US$ 0,0433, o custo medido
+  da qualidade media na mesma peca e tamanho (`reprecificar-imagens-2009.mts`);
+  daqui em diante o numero e o da API.
+- **A tesoura cortava contagem como se fosse estatistica.** Rodando antes da
+  Vera nas quatro pecas, ela tirou "Liste as 5 perguntas que clientes
+  repetem" e "um teste de 30 segundos". `afirmacoesSemLastro` ganhou
+  `pareceAfirmacao`: so e suspeito numero com decimal, acima de 100, com
+  %, R$, mil, milhao, ou numa frase que fala de pesquisa, estudo, regra,
+  relatorio. Contagem pequena numa instrucao fica.
+
+**O que NAO foi feito, e por que:** Sonnet 5 nas adaptacoes. O cache e por
+modelo: uma adaptacao no Opus com o prefixo lido do cache custa perto de
+US$ 0,06, no Sonnet sem esse prefixo perto de US$ 0,055. R$ 1,50 por
+campanha para dividir o cache e mexer na qualidade. A refacao de arte (2,83
+geracoes por peca) fica para medir em mais campanhas.
+
+**Nota de medicao:** a campanha da noite rodou os dias 2 a 7 ja com o corte
+da duplicata (3o deploy, no meio dela), entao o 62% de cache e uma media de
+duas versoes; as chamadas depois do corte ficaram em 75%.
+
+Artefato de preco na versao 9. Provas: tsc limpo em cada deploy; 5/5 e 7/7
+nos leitores de veredito; campanha real medida contra a anterior.
+
+*Atualizado em 20/09/2026 por Claude Code.*
+
+**Olhando as artes da campanha da noite** (`baixar-artes-do-run.mts`): quatro
+de cinco pecas de feed sairam limpas, com manchete certa e composicao no
+padrao. A de terca (Instagram) foi ao ar com "Foi" duplicado na manchete: o
+revisor visual PEGOU na segunda tentativa, mas o teto era de duas e a arte
+seguiu com aviso no log. O teto era tempo (90 s por geracao em alta); com a
+media a 37 s, `arte-por-rede.ts` passou para TRES tentativas, e "duplicad" e
+"repeti" entraram na lista do que conta como erro de escrita (troca de
+modelo na refeita). Quarto deploy do dia.
+
+## Sessao 21/09/2026 (parte 149): o post prometeu um video de tres minutos, e o video era um clipe de oito segundos
+
+O Bruno rodou uma campanha quinzenal na Areticon com video no dia 1. O post
+do LinkedIn dizia "Gravei uma leitura de 3 minutos" e "O video esta nos
+comentarios"; na Diana havia uma foto; e o video, quando saisse, teria oito
+segundos e nenhuma fala. "Que loucura e essa? Se eles usam um modelo caro do
+Claude, por que erram no basico?"
+
+### Por que aconteceu, um por um
+
+1. **Ninguem contou ao redator o que era o video.** A dica do dia de video
+   era "acompanha video, apresente o tema e chame para assistir". So isso. O
+   Lucas fez o que faria qualquer redator com essa instrucao: inventou um
+   video para chamar. Nao e o modelo; e o prompt.
+2. **A Vera viu e deixou uma porta aberta.** O parecer dela (item 3) dizia
+   "reescrever para referenciar o material efetivamente gerado OU confirmar o
+   video antes de publicar". O Lucas escolheu a segunda leitura e manteve a
+   frase. O que e opiniao pode ter duas saidas; o que e medido nao.
+3. **A foto no lugar do video era a fila.** O trabalho de video entrava com
+   ordem 100 + dia, ou seja depois de TODOS os dias. Numa quinzena, o clipe
+   do dia 1 nasceria uma hora depois. O Bruno abriu a Diana no meio.
+4. Dois defeitos que a mesma campanha mostrou de brinde: numa quinzena o dia
+   1 existe duas vezes e a chave (runId, dayOfWeek) do video mandava o mp4 de
+   uma semana para os posts da outra; e o prompt do video da semana 2
+   comecava com "Segue o prompt pronto para geracao de video, em ingles",
+   que ia para o Veo como se fosse a cena.
+
+### O que subiu (um deploy)
+
+- A dica do dia de video diz o que ele e: clipe de N segundos por IA, com ou
+  sem narracao, gerado depois do dia, publicado junto como apoio; nao diga
+  "gravei", nao cite duracao, nao prometa "video completo" nem "nos
+  comentarios".
+- `CRITERIOS_DE_ACEITE` ganhou o item 7 (promessa de midia).
+- `promessasDeMidia`: regex medida por codigo ("gravei", "video completo",
+  "assista ao video", "N minutos de video", "video nos comentarios", "link do
+  video"). Entra em `violacoesMedidas` da Vera: reprova sozinha, e a correcao
+  pedida e reescrever a frase. O que sobrar depois da correcao sai na tesoura
+  antes de gravar. Provado contra as frases reais e cinco controles, e um
+  controle pegou um excesso: "a gravacao de uma reuniao" (o TEMA da campanha)
+  nao e promessa; o padrao "gravacao de" saiu.
+- `getMediaStatus` diz a Vera que o video e um clipe de 8 s sem fala gerado
+  depois, para ela nao sugerir "confirmar o video".
+- O video roda logo depois do dia dele: dias em passos de 10
+  (`agendarCampanha`), video em ordem do dia + 5.
+- `postIds` no pedido do video: o mp4 vai para os posts exatos do dia.
+- `limparPreambuloDoPrompt`: linha de abertura que e conversa sai do prompt
+  visual antes de ir para o modelo.
+
+Na campanha da Areticon, no banco: os dois posts do dia 1 perderam as duas
+frases falsas (o card tambem); os dois trabalhos de video foram para a ordem
+do dia que estava rodando, ganharam `postIds` e o da semana 2 perdeu o
+preambulo.
+
+### A pesquisa de video, e o que ela diz
+
+- **Sora (OpenAI) esta sendo desligado**: o app fechou em abril e a API
+  encerra em 24/09/2026. Nao e opcao. O que existe e o contrario do que
+  parecia: a API da Runway virou um roteador que serve modelos de varios
+  laboratorios, inclusive o GPT Image 2 da OpenAI e o Veo 3.1 do Google.
+- Precos por segundo (API): Kling 3.0 US$ 0,075 (3 a 15 s, sem audio); Veo
+  3.1 rapido US$ 0,10 a 0,15 (8 s, com audio em portugues; estende ate 148 s
+  em passos de 7 s, cada passo e uma geracao); Runway Gen-4.5 US$ 0,12;
+  Gen-4 Turbo US$ 0,05; Seedance 2.5 US$ 0,20 a 0,68 (30 s por geracao);
+  Hailuo 3 US$ 0,10 a 0,15 (15 s).
+- A conta que decide: um video de 60 s custa de R$ 24 (Kling) a R$ 49 (Veo
+  rapido) por geracao, sem contar refacao; tres minutos, de R$ 70 a R$ 150.
+  Para ficar em 3x, um clipe de 60 s teria que custar de 750 a 1.500 creditos
+  de video. O clipe de 8 s a R$ 6,48 (195 creditos) e o unico que cabe no
+  plano hoje.
+
+Decisao proposta ao Bruno (dele): o clipe de 8 s e um clipe de abertura, e o
+texto nao pode prometer mais que isso (ja garantido por codigo); video de
+verdade continua sendo a esteira de gravacao (Vitor); e se quiser vender
+video longo por IA, o caminho de teste e a API da Runway (uma chave, varios
+modelos: Gen-4.5, Veo, Seedance, Hailuo) ou a do Kling, como pacote a parte.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+## Sessao 21/09/2026 (parte 150): a Volt citada dezenove vezes, a arte no card da semana, e a Vera que reprovava gosto
+
+Quatro pedidos do Bruno na mesma mensagem, com a campanha da Areticon
+rodando: precificar o plano de entrada com um post por dia e video de ate 1
+minuto; a Volt Robotics (concorrente) citada como fonte em dezenove posts,
+mesmo depois de ele pedir no chat do card para nunca citar; ver a arte, o
+video e o carrossel no card da semana sem ir na Diana; e a Vera reprovando
+tudo, gastando token sem motivo.
+
+### A Volt: por que o pedido no chat nao fez nada
+
+A pesquisa do Roberto achou o relatorio da Volt como melhor fonte sobre
+curtailment, o brief nasceu em cima dele, e a regra do lastro obrigou cada
+post a citar a fonte. O Bruno pediu "nunca cite a Volt Robotics" no chat do
+card do PAULO, e o caminho de edicao de texto reescreveu o conteudo do card
+do Paulo ("2 posts prontos para publicacao"). Nada mudou nos posts.
+
+`lib/pipeline/restricoes.ts` e novo. A regra vive em `ProjectMemory` (tipo
+`restricao`, chave `nao_citar`, sem coluna nova) e e obedecida em quatro
+lugares: a PESQUISA descarta fonte e linha que citem o nome antes de o
+Roberto escrever (senao o numero entra e o lastro obriga a citar); o PREFIXO
+cacheado diz a todo agente "nunca cite X"; a VERA recebe a mencao como
+violacao medida; a TESOURA tira o que sobrar antes de gravar. O chat do card
+reconhece "nunca cite X" / "nao mencione X" (`extrairNaoCitar`, regex de
+forma fixa, so com citar e mencionar: "nao use travessao" nao vira nome),
+salva a regra e aplica na campanha inteira (`aplicarNaoCitarNaExecucao`):
+cada rascunho que cita e reescrito sem o nome, e o dado que so tinha essa
+fonte sai junto, porque trocar a fonte seria inventar lastro. E o card do
+Paulo passou a aplicar qualquer instrucao de texto nos POSTS do dia, um por
+rede, em vez de editar a propria frase.
+
+Provas: 6/6 no extrator e no detector contra a frase real. Na Areticon, a
+regra foi salva e os rascunhos reescritos por script.
+
+### A arte no card da semana
+
+`MidiaDaPeca` em `PecaDoDia` (imagem, video com poster, carrossel com as
+laminas), montada em `content-manager.tsx` a partir do card da Diana. No
+calendario a capa virou botao com rotulo ("ampliar", "video", "5 laminas")
+e abre `VisorDeMidia`: imagem ampliada, video com controles, carrossel com
+setas, contador e teclado; fecha no fundo, no X e no Esc. O cartao deixou de
+ser um botao so (botao dentro de botao nao existe em HTML): e um div com a
+capa e o corpo, cada um com o seu clique. 10/10 no renderToString, foto no
+dev local com o carrossel aberto em "1 / 5".
+
+### A Vera: reprova erro, nao gosto
+
+Medido nas duas ultimas campanhas: das reprovacoes, boa parte era tom,
+ritmo, escolha de palavra, CTA "que podia ser melhor". Cada uma custava duas
+reescritas de Opus. O prompt dela ganhou a regra: REPROVADO so para o que
+NAO PODE ir ao ar (violacao medida, dado sem fonte, promessa de midia, nome
+proibido, texto quebrado, midia faltando); o resto e APROVADO_COM_RESSALVAS,
+com a sugestao na lista e sem reescrita. A Vera continua a seguranca e a
+vitrine do escritorio; deixa de ser retrabalho automatico. E os redatores ja
+leem os criterios dela antes de escrever, desde a parte 148.
+
+### O plano de entrada, precificado (artefato v10)
+
+Um post por dia em quatro redes, 30 pecas: 18 imagens, 8 carrosseis, 4
+videos. Custo medido: texto R$ 100, imagens R$ 11,50, carrosseis R$ 14,80,
+total R$ 126 sem video; creditos do cliente 4.992. **Os creditos dos planos
+triplicaram** (`lib/stripe/index.ts`): Essencial 5.000 (era 1.800),
+Autoridade 9.500, Estudio 19.000. A R$ 397, o mes cheio fecha em 3,15x. Os
+quatro clipes de 8 s (R$ 26) ficam na carteira de video; dentro do plano
+seria 2,6x.
+
+Video de ate 1 minuto: nenhum gerador entrega 60 s numa chamada. Por video
+pronto: Veo 3.1 rapido (chave atual, audio em portugues) R$ 58 e 1.750
+creditos a 3x; Kling 3.0 R$ 24 e 730; Runway Gen-4 Turbo R$ 16 e 490;
+Gen-4.5 R$ 39; Seedance 2.5 R$ 65 a 220. E pacote a parte, e o provedor se
+escolhe olhando a mesma peca nos tres (prova de uns R$ 130). Kling e Runway
+precisam de chave nova. A opcao na tela fica para depois da escolha.
+
+### De brinde
+
+Doze cards comecavam com "Ajustes feitos: saiu 'automatizar'...", o
+changelog do redator: o post ia limpo para o banco e o card recebia a
+resposta crua, e e do card que o calendario tira o titulo. Agora o card
+recebe o post entregue (mesma extracao), e "ajustes feitos" / "o que mudou"
+entraram no detector de bastidor. 26 cards limpos por script.
+
+Provas: tsc limpo; 6/6 restricoes; 10/10 visor; 19/19 e 7/7 nos vizinhos;
+foto do visor no dev local; um deploy.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+### Adendo da parte 150, 21/09 a tarde: "deu erro na publicacao do post que tem video"
+
+Nao era o video. Os dois clipes foram gerados (trabalhos concluidos, mp4 nos
+posts). Ao publicar, as 12:16, o LinkedIn respondeu nas duas contas
+`401 REVOKED_ACCESS_TOKEN, "The token used in the request has been revoked
+by the user"`, e o X `Failed to refresh Twitter token`. E reconectar as duas
+redes em Configuracoes; a plataforma ja tinha marcado as contas com
+`needsReconnectAt`.
+
+O que o produto errou, e foi consertado: o banner dizia "a rede recusou o
+post, marque e publique de novo" enquanto cada linha dizia "conecte o
+LinkedIn", porque `safeMarkPostFailed` gravava so o status e a tela le
+`metadata.error` para escolher entre "reconecte" e "publique de novo". Agora
+o motivo vai para o post (rota de publicacao e cron), "Failed to refresh
+Twitter token" entrou nos codigos de recusa (a conta do X ficava sem motivo),
+e o erro do refresh do X passa a trazer o corpo da resposta (o refresh token
+e de uso unico, e sem o corpo nao da para saber se foi consumido ou se a
+autorizacao caiu). Os tres posts da Areticon receberam o motivo por script.
+
+## Sessao 21/09/2026 (parte 151): o video de ate 1 minuto, e o LinkedIn que dizia publicado sem publicar
+
+Quatro frentes no mesmo dia, e a ordem aqui e a da gravidade, nao a do
+relogio: o post que a plataforma jurou ter publicado e nao existia, a cadeia
+do video de 60 s, o card que nao dizia que estava trabalhando, e o botao de
+reagendar que nunca abriu nada.
+
+### O provedor do video longo: Veo, escolhido pelo Bruno
+
+Card 535, decidido em 21/09. Veo 3.1 rapido: a chave ja existe, o audio em
+portugues e nativo, a extensao e da propria API (um fornecedor, um registro em
+`ai_usage`). E o mais caro da tabela (R$ 58 contra R$ 16 do Runway Gen-4
+Turbo), e a conta que decidiu nao foi o preco: Kling e Runway nao tem audio, e
+narracao em portugues e requisito do produto desde 19/09.
+
+### A extensao do Veo, medida antes de construir
+
+`scripts/tmp/sondar-extensao-veo-2109.mts`, mesma disciplina de
+`sondar-veo-1909.mts`: sete candidatas, da menor mudanca para a maior, parando
+na primeira que passa. A doc so exemplifica com o modelo CHEIO e com o video
+em base64, e as duas coisas importavam:
+
+- **o modelo RAPIDO aceita extensao**, e foi a primeira candidata a passar;
+- **o video de entrada vai por `video: { uri }`**, o arquivo que o proprio Veo
+  gerou (vivo por dois dias na Files API, e cada extensao zera o relogio). Em
+  base64 um video de 57 s passaria dos 20 MB de teto da requisicao, entao o
+  caminho por uri nao e preferencia, e o unico que chega ao fim da cadeia;
+- `durationSeconds` NAO vai (a extensao e sempre de 7 s) e `resolution: 720p`
+  vai, porque e a unica que a extensao aceita.
+
+Medido: 8 s de entrada viraram **15,00 s** (1280x720, h264 e aac) em 1 minuto,
+e a narracao nova saiu em portugues, conferida pela Deepgram ("E o segundo
+passo e medir antes de mudar qualquer coisa", de 9,7 s a 14,2 s).
+
+### O credito e POR GERACAO, e a tela e o servidor passaram a usar a mesma conta
+
+`lib/credits/video-tabela.ts` e novo, sem banco, e `lib/credits/video.ts`
+reexporta dele. A janela da campanha tinha uma COPIA da conta
+(`(base / 8) * segundos`), e ela mentia duas vezes: por segundo em vez de por
+geracao, e sem saber que 60 s sao nove chamadas.
+
+| duracao | geracoes | entrega | creditos (rapido) | a conta antiga dizia |
+| --- | --- | --- | --- | --- |
+| 8 s | 1 | 8 s | 195 | 195 |
+| 15 s | 2 | 15 s | 390 | 366 |
+| 30 s | 4 | 29 s | 780 | 731 |
+| 60 s | 9 | 64 s | 1.755 | 1.463 |
+
+A tolerancia de um segundo e deliberada: 30 s pedidos saem com 29 (8 + 3 x 7)
+em quatro geracoes, e nao com 36 em cinco. Um segundo ninguem ve; uma geracao
+a mais sao 195 creditos.
+
+### A cadeia na fila, e o que ela protege
+
+`video-ia-extensao` e um tipo novo de trabalho, com prazo proprio de 1000 s:
+nove geracoes do Veo nao cabem numa funcao de 800 s. O trabalho inicial faz a
+primeira geracao e enfileira o passo 2; cada extensao estende o video do passo
+anterior e enfileira o proximo, ate o ultimo.
+
+- **o mp4 so vai para os posts no FIM.** No meio, os posts continuam com o
+  quadro e a guarda do publicador os segura, que e o certo: publicar 15 s de
+  um video de 60 s seria entregar metade e cobrar inteiro;
+- **o debito e UM, da cadeia inteira, antes da primeira geracao.** Se a cadeia
+  morre no passo k na ultima tentativa, o que existe vai para os posts e as
+  geracoes que nao sairam sao estornadas, uma a uma;
+- **checkpoint no Blob por passo** (`lib/media/checkpoint-do-video.ts`), com o
+  NOME DA OPERACAO gravado assim que o Veo aceita: um trabalho derrubado
+  durante a espera volta a olhar a MESMA operacao em vez de abrir outra. E a
+  licao do carrossel (parte 145) aplicada a um passo que custa R$ 5,70.
+
+**O roteiro em cenas** (`lib/media/roteiro-do-video.ts`): uma cena por geracao,
+cada uma com o seu visual e a sua frase de narracao, formando um texto
+continuo. Mandar o mesmo prompt nove vezes faria o modelo repetir a mesma cena
+com o narrador repetindo a mesma frase, que e o defeito da parte 149 com outra
+roupa. Sem roteiro valido, a cadeia continua a mesma cena com uma continuacao
+generica e sem narracao nova, e o log diz isso.
+
+Provado em `provar-video-longo-2109.mts`, 40/40, com um Veo de mentira e a
+fila de verdade: o duble existe porque a logica de debito, estorno,
+encadeamento e checkpoint e o que precisa ser provado, e prova-la de verdade
+custaria nove geracoes por rodada.
+
+### "Publicado" sem post no LinkedIn, e a causa era o upload em partes
+
+O Bruno: "o post de hoje disse na Demandou que foi publicado mas entrei no meu
+linkedin e nao tem nada la, a plataforma mentiu". Nao era mentira de status: o
+post FOI criado e o LinkedIn devolveu o URN. O que nao existia era o video.
+
+`uploadLinkedInVideo` mandava `uploadedPartIds: []` no `finalizeUpload` e nem
+lia a resposta. O clipe de 19/09 tinha 2,41 MB (uma parte so) e saiu; o de
+21/09 tinha 4,08 MB, o LinkedIn devolveu DUAS instrucoes de upload, e sem os
+ETags o video nunca ficou AVAILABLE. O post existe e nao aparece no feed.
+
+Tres consertos:
+
+1. cada parte guarda o ETag da resposta e o `finalizeUpload` manda os ids na
+   ordem, com o `uploadToken` que o initialize devolveu;
+2. o finalize passou a ser CONFERIDO (era `await fetch` sem olhar o status);
+3. `esperarVideoDoLinkedIn` espera o processamento chegar a `AVAILABLE` antes
+   de criar o post, ate 3 minutos. `PROCESSING_FAILED` vira erro com o motivo
+   deles, e o post fica como FALHOU na nossa tela, que e a verdade.
+
+Um video de 60 s tem perto de 20 MB, cinco partes: sem isto, nenhum video
+longo sairia no LinkedIn.
+
+**A prova veio do proprio cron de producao**: os dois posts foram devolvidos a
+fila e publicaram as 13:05 com URNs novos, e o PRIMEIRO COMENTARIO saiu nos
+dois (`firstCommentPublishedAt`), depois de falhar nas tres tentativas de
+manha. O comentario precisa do post indexado: ele falhar era o sintoma de que
+o post estava quebrado, e ninguem tinha lido assim.
+
+### O post que perdeu a conta quando a rede foi reconectada
+
+Mesmo incidente, segunda camada. Desconectar APAGA a linha da conta, e o post
+aponta para ela por id: os posts ficaram orfaos, e reconectar criou linhas
+NOVAS. Na hora de publicar de novo, a tela escolheu "a conta pessoal" para os
+dois posts do LinkedIn, e o post da PAGINA saiu no perfil do Bruno, duplicado.
+
+`lib/publish/contas-orfas.ts`: ao DESCONECTAR, cada post da conta recebe a
+marca com a chave real (rede + id na rede, a mesma do `upsert` dos callbacks);
+ao RECONECTAR, os orfaos com aquela marca voltam a apontar para a conta, seja
+o id o mesmo ou novo. O post nunca esquece para onde ia. Os cinco callbacks
+chamam `readotarPostsOrfaos`. Os 24 posts que ja estavam orfaos foram
+readotados por script, um por conta, com os dois LinkedIn separados em perfil
+e pagina.
+
+**E o erro velho some quando a publicacao da certo.** O post do X falhou as
+12:16, o Bruno reconectou, o post SAIU as 12:47 (o tweet existe, conferido na
+API do X) e a tela continuou dizendo "um post falhou: reconecte o X", porque
+`metadata.error` ficava gravado e o sucesso so mexia no status.
+
+### O card agora diz que esta trabalhando no seu pedido
+
+Pedido do Bruno: refazer uma arte leva ate 90 s e reescrever os quatro posts
+do dia leva mais, e nesse tempo a tela ficava identica. A marca vive no CARD
+(`lib/pipeline/revisao-do-card.ts`, leitura pura em `lib/pipeline/revisao.ts`),
+por dois motivos: quem faz o trabalho pode ser OUTRO card (o pedido de imagem
+no card do Paulo e atendido no da Diana), e o calendario inteiro le do banco.
+
+Na tela: a celula ganha borda ambar e um selo com o AVATAR DE QUEM PEDIU, uma
+seta, um LAPIS (e nao o circulo pulsante, que ja quer dizer "o squad esta
+gerando"), o nome de quem esta fazendo e a frase do pedido. A marca TEM PRAZO
+de 12 minutos: a rota do chat e sincrona e pode ser morta no teto de tempo, e
+nesse desfecho o `finally` nao roda. Sem prazo, o card ficaria em revisao para
+sempre. 20/20 no renderToString.
+
+### O post que ja saiu pode ir para outra rede
+
+`lib/pipeline/levar-para-outra-rede.ts` mais `/api/posts/[id]/levar`. Nao e
+copia (o texto e adaptado pelo mesmo caminho da campanha, com as mencoes da
+rede antiga medidas por codigo) e nao publica sozinho (nasce RASCUNHO). Cobra
+15 creditos, a linha de post de texto: uma chamada de IA fora do extrato e a
+origem do prejuizo do Veo em agosto. Na tela, o post publicado ganha um
+seletor "Levar para..." com as contas que ainda nao tem a peca do dia.
+
+### O botao Reagendar nunca abriu nada
+
+Achado no dev local, com a sessao e2e. O painel de reagendar morava DENTRO do
+bloco que so existe enquanto o card nao esta aprovado, e o botao que o abre
+sempre esteve fora. Aprovar e o caminho normal do produto: o botao estava
+morto exatamente para quem tinha feito tudo certo. Reagendar e sobre o
+HORARIO, e o horario se muda aprovado ou nao.
+
+Mais tres defeitos no mesmo caminho: o campo de data nascia vazio (e o Salvar
+nasce desabilitado sem data, ou seja um painel com botao morto); a data nova
+ia para TODOS os posts do dia, inclusive os publicados; e o erro de um post
+derrubava o laco no meio, sem dizer quais tinham movido.
+
+E o que o Bruno pediu junto: **Cancelar agendamento** do dia inteiro, que tira
+todos os posts da fila de uma vez, devolve o card para "aguardando" e abre o
+painel para reagendar. Existia so por post, uma rede de cada vez, e a que
+sobrasse ia ao ar sozinha. O horario NAO e apagado (`status: draft` e nao
+`cancelSchedule`), porque quem tira o dia da fila para ajustar nao quer perder
+a data que escolheu.
+
+Provado na tela logada: o painel abre com 22/09 09:00 preenchido, moveu os
+tres posts para 15:30 no banco, o cancelamento devolveu os tres para rascunho
+com o horario intacto, e a lista "o que sai neste dia" voltou a aparecer.
+
+### A licao da parte
+
+Duas vezes hoje a plataforma disse uma coisa e a rede disse outra, e as duas
+vezes o sinal estava no lugar errado da tela: o primeiro comentario que falhou
+tres vezes era o LinkedIn dizendo que o post nao existia, e o "reconecte o X"
+que sobrou era o erro de uma tentativa antiga enfeitando um post publicado.
+**Estado que sobrevive ao fato que o criou vira mentira sozinho.**
+
+Provas: tsc limpo em cada deploy; 40/40 na cadeia do video contra a fila real;
+20/20 no selo de revisao; 14/14 na janela da campanha; 7/7 no modal vizinho;
+sonda da extensao com o mp4 de 15 s baixado, medido e transcrito; tela logada
+no dev local com a sessao e2e apagada no fim; dois posts republicados em
+producao pelo cron, com o primeiro comentario aceito. Tres deploys.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+### Adendo da parte 151, noite de 21/09: a campanha de prova de 60 s, e a cota que matava a cadeia
+
+A campanha rodou pelo caminho de produção (conta reviewer, quatro redes, um
+dia de vídeo de 60 s). O que ela provou, e o que ela quebrou:
+
+| | medido |
+| --- | --- |
+| gerações que saíram | 7 de 9 |
+| tempo por geração | 123 s a primeira, 62 a 83 s cada extensão |
+| custo do vídeo | R$ 40,50 (US$ 7,50) em 7 gerações |
+| custo por geração | US$ 1,20 a inicial (8 s), US$ 1,05 cada extensão (7 s) |
+| arquivo entregue | 50,09 s, 14,77 MB, 1280x720, h264 mais aac |
+| custo do dia inteiro | R$ 44,18, dos quais R$ 3,68 de texto e arte |
+
+**O custo por geração bateu exatamente com o preço de tabela**, e ele responde
+a pergunta que o artefato tinha deixado aberta: o Veo cobra pelos segundos
+NOVOS, e não pelo arquivo devolvido. A extensão de 7 s custa US$ 1,05 e não
+US$ 1,20, então um vídeo de 64 s custa R$ 51,84 e não os R$ 58,32 que a
+projeção supunha. Artefato na versão 13, com a coluna corrigida.
+
+Uma ressalva honesta, e ela vale dinheiro: **este é o único número da rodada
+que não foi LIDO da API**. O Gemini responde com o arquivo e nada mais, então
+a plataforma calcula. Se a fatura do Google cobrar o arquivo inteiro a cada
+passo (8, depois 15, depois 22), o mesmo vídeo passa de R$ 250 e o preço de
+1.755 créditos fica abaixo do custo. Card no planner para o Bruno conferir a
+fatura, e é a diferença entre "medido" e "calculado com o preço de tabela".
+
+**O defeito que a prova achou.** A oitava geração levou
+`HTTP 429, You exceeded your current quota`, e a fila tratou como falha comum:
+três tentativas em sequência contra um limite que volta em minutos, todas
+recusadas. O caminho de falha da cadeia funcionou como desenhado (o vídeo de
+50 s foi para os quatro posts, 390 créditos das duas gerações que não saíram
+voltaram para a carteira, uma vez só), mas o cliente ficou com 50 s tendo
+pedido 60 por causa de uma espera de minutos.
+
+É a mesma família do saldo zerado da parte 148: insistir contra uma
+dependência que não melhora enquanto se insiste. A diferença é o alcance, e
+ela decidiu o desenho (`lib/fila/cota-do-video.ts`): saldo é da plataforma
+inteira e não volta sozinho, então pausa tudo e avisa quem paga a conta; cota
+de vídeo é de um fornecedor, volta sozinha, e não impede o texto nem a arte de
+rodarem. Então pausa SÓ o trabalho de vídeo, sem gastar a tentativa, e
+`retomarPausados` (que já existia) o devolve em dez minutos, com o checkpoint
+intacto: a cadeia retoma do passo que faltou e não paga de novo pelo que já
+saiu.
+
+Provado em `provar-cota-do-video-2109.mts`, 13/13, e a prova precisou ser
+consertada antes de valer. A primeira versao deixava a fila chamar o Veo de
+verdade no controle: rodou duas vezes com resultados diferentes, porque na
+primeira a cota ainda estava esgotada e na segunda tinha voltado. **Prova cujo
+resultado depende do estado de um fornecedor nao prova nada**, e ainda gasta
+uma chamada paga por rodada. Agora o controle e um payload que a fila recusa
+antes de tocar na rede, e o contraste fica limpo: erro comum queima as tres
+tentativas numa passada so e morre; cota pausa sem gastar nenhuma.
+
+**Uma pedra no proprio pe, e ela vale registro**: o deploy deste conserto
+reprovou no build por um erro de TIPOS no script de prova, porque o `tsc`
+local rodou ANTES de o script existir. O build da Vercel type-checa
+`scripts/tmp` junto com o produto, e ainda bem: a regra da casa e rodar o
+`tsc` depois do ultimo arquivo escrito, e nao depois do ultimo arquivo
+lembrado.
+
+**Olhando os quadros do video, e nao o log.** A continuidade entre as cenas
+funciona: o ambiente, a luz e a paleta atravessam as sete geracoes sem corte.
+Mas o Veo ESCREVE TEXTO na tela, e o prompt proibe desde 19/09 ("no text
+overlay, no subtitles"): aos 5 s ha um painel com "F973160" e paragrafos de
+letra ilegivel. E o mesmo defeito do "syetem" que tirou o Gemini da arte,
+agora em video, e ele piora no longo: nove cenas sao nove chances de inventar
+letra, e num clipe de 8 s isso passava despercebido. Card no planner com os
+dois caminhos (repetir a proibicao em cada cena do roteiro, ou pedir cenas sem
+superficie de texto). A estetica tambem saiu no clichê de banco de imagem de
+IA, holograma laranja em sala escura, e essa parte e escolha do Bruno.
+
+**A régua de crédito mudou de lado, de propósito.** Com a extensão custando
+menos que a geração inicial e o preço por geração igual, o múltiplo sobe de
+3,0x para 3,4x nas peças longas. Errar para cima é o lado certo de errar numa
+cadeia que pode precisar refazer um passo.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+## Sessao 21/09/2026 (parte 152): o dia em que o produto quebrou na mao do dono
+
+Seis relatos do Bruno em duas horas, e o tom dizia mais que o conteudo: "nunca
+consigo rodar uma campanha sequer, que loucura". Tres dos seis defeitos eram
+meus, de hoje. Um era da marca dele indo a publico errada.
+
+### O post que foi ao ar cortado no meio (o mais grave)
+
+Um amigo avisou que o post terminava "sem eira nem beira". Medido no banco:
+duas threads do X publicadas com o changelog do redator colado no fim.
+
+A cadeia inteira: a Vera reprova, o redator corrige e escreve "Ajustes feitos:
+sairam '3 semanas seguidas', '3 frases', '23h'" depois do ultimo tweet; esse
+bloco NAO e numerado, entao foi colado no fim do tweet 6; o tweet passou de
+280 e foi aparado na fronteira de palavra; e o leitor viu a maquina falando
+sozinha, cortada.
+
+A limpeza de bastidor existia desde 18/09 e nao pegou porque exige DUAS travas
+ao mesmo tempo (comecar como quem entrega E falar do proprio texto), e
+"Ajustes feitos" fala das FRASES, nao do texto. `limparThreadReescrita`
+tambem so olhava o COMECO da thread, porque em 09/09 o defeito era "Segue a
+thread corrigida" virar o tweet 1.
+
+Tres camadas subiram:
+
+1. a limpeza da thread tira o rabo de bastidor do ultimo tweet, e descarta o
+   tweet que e so bastidor;
+2. `limparBastidorDoTexto` reconhece o changelog sem a segunda trava: ninguem
+   abre nem fecha um post com "Ajustes feitos:";
+3. o PUBLICADOR confere antes de mandar para a rede (`motivoDeBastidor` em
+   `executeOAuthPostPublish`) e recusa, em vez de publicar. A limpeza foi
+   corrigida, mas o que ja esta gravado no banco so e barrado ali.
+
+Provado com os textos REAIS que foram ao ar, 19/19, incluindo os controles que
+importam: "Segue uma verdade dura sobre o seu mercado" continua passando.
+
+### A campanha travada, e o culpado era o conserto de duas horas antes
+
+Sete dias pedidos, dia 1 pronto, nada depois. O trabalho de VIDEO do dia 1
+estava `pausado` esperando a cota do Veo voltar, e a regra de ordem da fila
+("ninguem comeca se existe alguem de ordem menor esperando") vale para o grupo
+inteiro. O video tem ordem 15; os dias 2 a 7 tem 20 a 70. Seis dias parados
+por causa de um clipe.
+
+Pior: a cota estourou porque a campanha de prova de 60 s, uma hora antes,
+gastou nove geracoes.
+
+O grupo passou a ter duas TRILHAS (`lib/fila/trabalhos.ts`): `campanha`
+(pesquisa e dias) e `video` (geracao e extensoes). A ordem e o "um de cada
+vez" valem DENTRO da trilha, e as duas rodam em paralelo. `estadoDoGrupo`
+continua contando tudo, entao a campanha so fecha quando o video termina.
+Provado em 9 cenarios, incluindo o exato que travou.
+
+**A licao:** uma regra de ordem so vale entre coisas que dependem uma da
+outra. Quando ela vale para tudo que compartilha um identificador, ela vira
+bloqueio por coincidencia de nome.
+
+### O seletor de duracao que nunca existiu onde importa
+
+O Bruno pediu um video de 60 s e recebeu um clipe de 8 s mudo. O bloco de
+duracao, qualidade e narracao morava DENTRO do passo do post unico: numa
+campanha semanal, que e o caminho normal, a pergunta nunca era feita e a
+esteira usava o padrao. Virou componente (`OpcoesDoVideo`), desenhado nos dois
+caminhos.
+
+### A tela e o erro discordando sobre credito
+
+A janela dizia "esta campanha cobra do plano 688 creditos" e o servidor
+recusava a mesma campanha por custar mais que o saldo. Duas contas diferentes
+para a mesma pergunta, e o cliente decidiu olhando a errada.
+
+A janela somava um preco fixo por TIPO de peca (imagem 8, infografico 5),
+herdado de agosto, e **ignorava as redes**. O texto e cobrado por rede, e num
+dia em quatro redes ele e a maior parte da conta. A conta virou um modulo so
+(`lib/credits/estimativa.ts`, sem banco) que os DOIS lados chamam, e a tabela
+de preco saiu de `lib/stripe` (que puxa o SDK e nao entra em componente
+cliente) para `lib/credits/tabela.ts`.
+
+Duas correcoes de conta entraram junto, e as duas mentiam para lados opostos:
+a estimativa do servidor usava todas as contas conectadas em vez das redes
+ESCOLHIDAS, e nao contava as duas semanas da quinzenal.
+
+Medido: a campanha de 7 dias em 4 redes custa **1.092 creditos**, e nao 688.
+Quatro delas num mes sao 4.368, contra 5.000 do Essencial. **Decisao do Bruno:
+mantem 5.000.** O que o derrubava era a conta dele, admin no plano free com
+1.400 creditos, e ela recebeu 20.000 de credito de teste.
+
+### "Os creditos nao estao sendo consumidos"
+
+Estavam certos e mudos. A conta admin e acesso interno: o debito grava linha
+de valor ZERO com a nota "custaria N creditos", e o saldo nao se move. A tela
+nao dizia isso, entao o que ele via era "cobra 688" e o saldo parado. A API de
+credito passou a devolver `contaInterna`, e a janela diz "conta interna: nada
+sera debitado".
+
+### Sem saldo, um convite em vez de um beco
+
+Pedido dele: "se acabar, precisa levar o cliente a comprar mais creditos, o
+usuario precisa querer tanto gerar aquela campanha que vai colocar mais
+credito". A caixa agora diz quanto FALTA, o que a campanha entrega, e oferece
+duas saidas: comprar creditos ou tirar um dia. O erro do servidor mudou no
+mesmo tom.
+
+### Os icones das redes repetidos no calendario
+
+A foto mostrava quatro e cinco icones da mesma rede por dia. Nao era a tela:
+eram TRES e ate quatro campanhas diferentes com pecas para o mesmo dia, porque
+gerar de novo nunca aposentou a geracao anterior. No dia 23 havia dezesseis
+posts.
+
+Agora a campanha nova arquiva os RASCUNHOS das anteriores no mesmo periodo, e
+diz no log. Agendado e publicado nao sao tocados: a linha divisoria e a
+DECISAO do cliente. Vinte e cinco rascunhos antigos foram arquivados por
+script, e o calendario caiu de 13 para 9 icones por dia. Os 9 que sobraram sao
+verdade: 4 da campanha aprovada mais 5 da nova, e 5 porque o projeto tem duas
+contas de LinkedIn.
+
+### O estilo que o cliente escreve
+
+Pedido dele: os estilos prontos sao de outra pessoa. `lib/media/estilo-do-
+cliente.ts` guarda a linha editorial no PROJETO (`ProjectMemory`, tipo
+`estilo`), com as duas pontas: o texto em portugues, que ele le e corrige, e o
+fragmento em ingles que o gerador recebe. Um botao pede a primeira versao a
+IA, que le nicho, cores e documentos do projeto. O estilo proprio manda nos
+estilos da lista, porque e o unico pedido explicito que o cliente fez sobre a
+arte.
+
+### O aviso que mentia desde 19/09
+
+"VEO3 leva 2 a 5 min por video. Mantenha a aba aberta." Era verdade quando o
+video rodava na requisicao. Ha dois dias ele roda na fila, e fechar a aba nao
+muda nada. O Bruno leu isso e desconfiou, com razao.
+
+### A licao da parte
+
+Tres dos seis defeitos entraram HOJE, nos consertos de hoje, e o pior deles
+(a fila travada) foi efeito direto de um conserto que estava certo em
+isolamento. **Conserto que muda o comportamento de uma peca compartilhada
+precisa ser provado contra os vizinhos dela, e nao so contra o caso que o
+motivou.** A pausa por cota foi provada contra a cadeia de video; ninguem
+perguntou o que ela fazia com os dias da campanha.
+
+Provas: tsc limpo em cada deploy; 19/19 no bastidor com os textos publicados;
+9/9 nas trilhas da fila; 8/8 na estimativa de credito; 17/17 na janela;
+7/7 no modal vizinho. Cinco deploys nesta parte.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+## Sessao 21/09/2026 (parte 153): tres pedidos do Bruno, escritos antes de virarem codigo
+
+Nada foi implantado nesta parte. Os tres pedidos chegaram no fim do dia, e
+estao aqui com o que ja foi MEDIDO no codigo sobre cada um, para a proxima
+sessao comecar do diagnostico e nao da pergunta. O prompt de continuacao esta
+em CONTINUAR.md.
+
+### 1. "Recomecar com tema" refaz a campanha inteira, e devia refazer UM post
+
+O botao vive no card aberto (`handleRestartCampaign` em content-manager.tsx):
+ele le o TEMA da execucao (`/api/pipeline/status?runId=`), fecha o card e
+manda `onRestartWithTopic(tema)`, que abre a janela de campanha nova com o
+tema preenchido. Ou seja, ele nao "recomeca": ele abre uma campanha inteira
+nova, de sete dias, para trocar uma peca.
+
+E o botao mora ao lado de "Arquivar campanha" e "Cancelar agendamento", na
+area de acoes do DIA, o que reforca a leitura errada.
+
+O que o Bruno quer: refazer SO a peca aberta, mantendo o resto do dia e da
+semana. Isso ja existe por outro caminho, e e a pista: o chat do card refaz
+texto e arte da peca (parte 150), e `refazerCorte`/`refazerCapa` refazem midia
+de video. O que falta e um caminho de UMA PECA que rode a mesma esteira do dia
+(redator, tesoura, Vera, Diana) so para aquele dia e aquela rede.
+
+Cuidado que a implementacao precisa ter: refazer cobra de novo. O credito e
+por peca entregue, e refazer e uma entrega nova. A tela precisa dizer quanto
+custa ANTES, como a janela da campanha diz.
+
+### 2. O card do dia nao diz que tipo de peca e
+
+No calendario, a celula mostra a capa, o texto e o horario. O TIPO aparece so
+indiretamente: o rotulo do botao da capa diz "video" ou "5 laminas" quando ha
+midia, e nao diz nada quando e texto, enquete ou artigo. Quem olha a semana
+nao consegue responder "que dia sai o carrossel?" sem abrir os cards.
+
+O dado existe e esta no lugar certo: `Post.mediaType` e `CampaignCard.
+mediaType` guardam text, image, video, carousel, infographic, poll, article e
+thread. Falta desenhar.
+
+### 3. Toda peca vai para o FEED, e o cliente quer escolher o formato por rede
+
+Hoje a campanha escolhe UM tipo de conteudo por DIA, e cada rede recebe uma
+variacao dele. O destino e sempre o feed. O Bruno quer escolher, por dia e por
+REDE, se aquilo sai como post de feed, reel ou story.
+
+O que da para fazer, por rede, conferido na doc das APIs em 21/09:
+
+| Rede | Feed | Reel | Story |
+| --- | --- | --- | --- |
+| Instagram | sim, ja implantado | sim, ja implantado (`publishInstagramReels`, `media_type: REELS`) | **da para fazer**: `media_type: STORIES` no mesmo endpoint de container |
+| Facebook | sim, ja implantado | reels de pagina existem na Graph API | stories de pagina existem (`/photo_stories`, `/video_stories`) |
+| LinkedIn | sim, ja implantado | nao existe | nao existe (o LinkedIn matou stories em 2021) |
+| X | sim, ja implantado | nao existe | nao existe |
+
+Ou seja **a matriz nao e simetrica**, e a tela precisa mostrar por rede o que
+aquela rede aceita, em vez de oferecer tres opcoes em todas e falhar em duas.
+
+Duas restricoes que mudam o produto e precisam entrar no desenho:
+
+- **o reel do Instagram pede 9:16 e de 5 a 90 segundos.** O clipe de 8 s do
+  Veo cabe; o video de 60 s tambem; mas a esteira gera em 16:9 por padrao
+  (`proporcao: "16:9"` em executar.ts), entao escolher reel tem que mudar a
+  proporcao da geracao, e nao so o endpoint de publicacao;
+- **story e efemero.** Vinte e quatro horas. Uma peca cara (carrossel de cinco
+  laminas, video de 60 s) num story e dinheiro que some do feed no dia
+  seguinte, e a tela deveria dizer isso antes de o cliente escolher.
+
+Onde o dado moraria: `Post.mediaType` e o que a peca E; o destino e outra
+coisa. O caminho de menor superficie e `metadata.formato` ("feed" | "reel" |
+"story"), do mesmo jeito que `metadata.rede` ja guarda a rede da adaptacao,
+sem coluna nova. Quem le e `executeOAuthPostPublish`, que hoje decide o
+endpoint so pelo `mediaType`.
+
+### O que NAO foi decidido, e e do Bruno
+
+- se o formato e escolhido na JANELA da campanha (por dia e por rede) ou
+  depois, no card, peca a peca. A primeira e mais trabalho de tela e responde
+  antes; a segunda e mais barata e deixa o cliente descobrir no fim;
+- se o story entra ja, ou se o primeiro passo e so o reel do Instagram, que e
+  o unico dos tres que a esteira ja publica e so precisa da escolha.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 154): o formato por rede, refazer uma peca, e a reprovacao que dizia campanha
+
+Os tres pedidos da parte 153 viraram codigo, e no meio do caminho entrou um
+quarto, relatado pelo Bruno enquanto a sessao rodava: "reprovei um post, a
+mensagem foi que eu rejeitei a campanha, nao era isso". Dois deploys.
+
+### As duas decisoes que eram do Bruno, respondidas antes de escrever codigo
+
+- **onde se escolhe o formato**: um PADRAO POR REDE na janela da campanha, que
+  vale a semana inteira. Quatro escolhas em vez de vinte e oito, e a esteira
+  sabe a proporcao do video antes de gerar. O dia que sair errado se conserta
+  refazendo aquela peca, que agora existe;
+- **o que entra ja**: os TRES formatos, no Instagram e no Facebook.
+
+### 1. O formato e por rede: feed, reel ou story
+
+A matriz vive em `lib/publish/formato-de-destino.ts`, dita uma vez so:
+Instagram e Facebook tem os tres, LinkedIn e X so tem feed. A tela mostra por
+rede o que aquela rede aceita ("so feed (esta rede nao tem reel nem story)"),
+em vez de oferecer tres opcoes e falhar em duas.
+
+O destino mora em `metadata.formato`, como `metadata.rede` ja fazia: sem coluna
+nova, sem migration. `formatoValido` devolve "feed" para escolha impossivel,
+entao campanha antiga, post levado para outra rede e escolha de uma rede que o
+cliente trocou depois nao quebram nada.
+
+**O que muda ANTES da publicacao**, e esta e a parte que nao era so endpoint:
+
+- a **proporcao da geracao**. Reel e story pedem 9:16 e a esteira gerava sempre
+  em 16:9. O dia gera UM video para todas as redes, entao basta uma rede pedir
+  vertical para ele nascer vertical (`proporcaoDoDia`): gerar dois custaria o
+  dobro (R$ 51,84 cada), e video em pe publica no feed do LinkedIn e do X,
+  enquanto video deitado num reel e recusado. A janela avisa isso antes;
+- o **aviso do story**: 24 horas, dito antes da escolha e nao depois.
+
+**O QUE O FORMATO AINDA NAO ALCANCA, e esta dito porque muda dinheiro:** a
+proporção segue o formato no VÍDEO, e não na ARTE. `gruposDeFormato` agrupa
+por `formatoDaPeca(rede, tipo)`, que conhece a rede e o tipo da peça e nao o
+destino, entao uma imagem marcada como story sai em 4:5 (o retrato do
+Instagram) e nao em 9:16. Ela publica, e o Instagram encaixa; o que se perde e
+a tela cheia. Consertar significa somar uma proporção ao dia, ou seja uma
+geração a mais (42 créditos), e por isso e decisao do Bruno e nao improviso:
+esta num card do planner.
+
+Publicadores novos: `publishInstagramStory` (o mesmo endpoint de container com
+`media_type: STORIES`), `publishFacebookReel` e `publishFacebookVideoStory` (as
+tres fases do protocolo de upload da Meta, com o arquivo por `file_url` no
+CABECALHO e `video_state: PUBLISHED` no finish, sem o qual o reel fica como
+rascunho invisivel) e `publishFacebookPhotoStory` (foto nao publicada e depois
+o story pelo id).
+
+**Story nao tem legenda em rede nenhuma**, e a API aceita o campo e o ignora,
+que e pior que recusar. O publicador nao manda o texto e devolve AVISO
+dizendo que ele nao foi publicado, junto com as 24 horas.
+
+**Medido contra a doc, e nao contra a API**: as paginas do Facebook dependem do
+App Review (card 520), entao reel e story de pagina estao escritos a partir da
+documentacao de 21/09 e provados na FORMA das chamadas (34/34, com `fetch`
+falso que grava o que foi chamado), nao contra a rede. A distincao entre
+"medido" e "escrito da doc" esta dita no codigo e num card, porque foi
+exatamente ela que salvou o preco do video longo.
+
+### 2. Refazer UMA peca, e nao a campanha
+
+`lib/pipeline/refazer-peca.ts`. O redator escreve DE NOVO, do zero, usando a
+mesma pesquisa guardada na execucao (a peca refeita precisa continuar
+conversando com a semana), e a Diana refaz a arte quando a peca tem arte, numa
+geracao so, na proporcao daquela rede.
+
+Tres regras que vieram do pedido:
+
+1. **cobra de novo**, e a conta (`custoDeRefazerPeca`) e a MESMA que a tela
+   mostra no botao: texto 15, imagem 57, carrossel de cinco 225 creditos;
+2. **substitui no lugar**: e o mesmo post, atualizado. Foi criando peca nova a
+   cada geracao que o calendario chegou a dezesseis posts num dia;
+3. **nao mexe no que ja saiu**: publicado e recusado antes de qualquer chamada
+   paga.
+
+A peca refeita volta a ser RASCUNHO: ela podia estar aprovada ou reprovada, e
+nos dois casos a decisao era sobre outro texto.
+
+O botao mora em dois lugares, os dois na peca: na linha dela, na lista do dia,
+e embaixo da previa de cada rede, que e o unico caminho que existe quando o dia
+ja foi aprovado (foi o que a tela real mostrou, e a primeira versao nao tinha).
+"Recomecar com tema" continua existindo e passou a se chamar **"Gerar campanha
+nova com este tema"**, que e o que ele sempre fez.
+
+Provado de verdade, num post descartavel criado e apagado pelo script: 23,8 s,
+texto novo e diferente, mesmo post, 15 creditos, e o erro antigo do metadata
+apagado junto. A primeira rodada voltou com markdown (`**Filtro 1**`), que rede
+nenhuma renderiza; o prompt passou a proibir e a segunda voltou limpa.
+
+### 3. O card do dia diz que tipo de peca e
+
+`lib/posts/etiqueta-da-peca.ts`: Texto, Imagem, Video, Carrossel, Infografico,
+Enquete, Artigo, Thread. O detalhe so entra quando responde alguma coisa
+("5 laminas", "64 s"), e o formato so aparece quando NAO e feed ("Reel",
+"Story"), porque feed em todo cartao e ruido.
+
+Junto: **um selo por REDE, com o numero de contas** quando ha mais de uma
+(`×3`). Foram tres desenhos ate acertar, e os dois primeiros so morreram
+porque a tela foi aberta de verdade:
+
+1. o nome da conta ao lado de cada icone: os destinos viraram uma COLUNA de
+   oito linhas e tomaram o cartao inteiro;
+2. uma frase embaixo ("3 contas no LinkedIn, 2 no Instagram..."): quatro linhas
+   de texto num cartao de 110 pixels;
+3. agrupar: nove icones viram quatro selos, e o `×3` explica.
+
+**Regua verde nao e peca boa**: as duas primeiras versoes passaram em tsc e em
+renderToString.
+
+### 4. O que o Bruno relatou no meio: "reprovei um post e ele disse campanha"
+
+Tres erros somados, e os tres num clique certo:
+
+1. o botao reprovava TODOS os posts do dia, sempre, ignorando a marcacao que
+   "Publicar agora" e "Deixar agendado" ja respeitam. Quem queria derrubar a
+   peca do Instagram derrubava LinkedIn, X e Facebook junto;
+2. o card virava `rejected` mesmo sobrando posts vivos, o que acendia o aviso
+   vermelho e ESCONDIA a lista do dia;
+3. o aviso chamava um DIA de campanha.
+
+O alcance virou modulo (`lib/content/reprovacao.ts`), com o rotulo do botao
+saindo da MESMA conta que decide a acao: "Reprovar o post de Instagram" quando
+ha marcacao, "Reprovar o dia inteiro (4 posts)" quando nao ha. O dia so cai
+quando nao sobra nada vivo, e a lista continua na tela depois.
+
+**O conserto criou dois vizinhos, e os dois foram consertados junto**, que e a
+licao da parte 152 aplicada:
+
+- post reprovado continuava MARCAVEL, e "Publicar agora" publicaria o que o
+  cliente acabou de recusar (`publicavel` passou a excluir reprovado);
+- `estadoDoPost` nao conhecia reprovado nem arquivado: os dois caiam em
+  RASCUNHO e a tela dizia "1 post esperando voce" sobre uma peca ja decidida.
+  Nasceu a chave **"fora"** (rotulo Reprovado ou Arquivado), e com ela o dia
+  inteiro reprovado deixou de cair no ramo do publicado e anunciar
+  "Instagram e LinkedIn no ar" sobre posts que ninguem publicou. Na Agenda eles
+  saem da conta de rascunhos e aparecem como "N fora".
+
+### Provas
+
+tsc limpo em cada deploy; 23/23 no alcance da reprovacao; 28/28 no estado
+"fora", com controle nos quatro estados antigos; 44/44 no formato por rede,
+com a tela renderizada; 34/34 nos endpoints da Meta com `fetch` falso,
+incluindo os controles de feed, reel e carrossel; 35/35 na etiqueta e nos
+selos; 9/9 nas guardas de refazer contra o banco real; 11/11 no refazer de
+verdade, com chamada paga. E a tela logada aberta no dev local, que foi onde
+dois desenhos cairam.
+
+### O que fica de rumo
+
+**Componente cliente se prova na tela, e nao so no renderToString.** As duas
+versoes erradas do selo passaram em todas as reguas automaticas e so morreram
+quando o calendario foi aberto: uma delas ocupava o cartao inteiro com nomes
+de conta. A prova automatica diz que o codigo roda; ela nao diz que a peca
+cabe.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 155): o dia reprovado que dizia "aguardando aprovacao", e o erro que contava demais
+
+Relato do Bruno: "rejeitei o post do dia 21 porque estava sem video, mas o
+card ainda fica aparecendo que estava aguardando aprovacao, e tambem ali deve
+dar a opcao de gerar novo post com o mesmo tema, o botao e gerar nova
+campanha". No meio do conserto veio o terceiro, e ele mudou o desenho: "quem
+tem que saber sobre saldo das APIs sou eu, nao os clientes".
+
+### A causa raiz do dia 21, e ela nao e do codigo
+
+Medido no banco antes de escrever qualquer linha: os cinco posts do dia 1
+estavam `rejected` desde 19:33 e os oito cards do dia continuavam `pending`,
+com a ultima alteracao as 14:05.
+
+E o motivo de a peca estar sem video: a Diana logou "Video de Segunda-feira 21
+na fila", o trabalho existiu (`video:<runId>:1`, fora do grupo da campanha,
+que e a trilha de video da parte 152) e FALHOU nas tres tentativas com:
+
+```
+HTTP 403 PERMISSION_DENIED
+"Lightning dunning decision is deny for project: projects/867802944"
+```
+
+Isso e a conta de faturamento do Google recusando por COBRANCA. Os creditos
+foram estornados (isso sempre funcionou), e nada disso chegava na tela.
+**Enquanto a conta do Google estiver assim, nenhum video por IA sai**, e isso
+e pendencia do Bruno, nao do codigo.
+
+### 1. A reprovacao agora e GRAVADA
+
+O `handleRejectFlow` mexia so no estado da TELA. E exatamente o defeito que o
+"aprovado" teve em 18/09 ("deixei agendado e o card continua dizendo aguardando
+aprovacao"), consertado la e nao aqui. Um F5 trazia o dia reprovado de volta
+como pendente.
+
+Agora o card grava, e com `valeParaODia`: o dia tem oito cards (pesquisa,
+midia, cada redator, revisao, publicacao) e o calendario le o do publicador,
+nao o que estava aberto. Marcar so o aberto deixaria o mini-card mentindo do
+mesmo jeito. Arquivado fica de fora do alcance, para nao ressuscitar o que o
+cliente ja tinha tirado da frente.
+
+O dia 21 do Bruno foi consertado por script: oito cards de `pending` para
+`rejected`, e a marca de falha do video gravada nas cinco pecas.
+
+### 2. "Gerar novo post com o mesmo tema", no lugar onde ele estava olhando
+
+No dia reprovado, a unica saida oferecida era "Gerar campanha nova com este
+tema", ou seja sete dias para trocar um post. O banner do dia reprovado ganhou
+o botao que refaz as pecas REPROVADAS daquele dia, uma a uma, pelo caminho de
+`refazerPeca` (parte 154), com o custo somado no rotulo antes do clique: "Gerar
+as 5 pecas de novo, com o mesmo tema, 75 creditos".
+
+Uma por vez, e nao em paralelo: sao cinco chamadas de texto e, quando ha arte,
+cinco geracoes. Disparar tudo junto multiplicaria o pico contra a mesma cota
+que ja derruba video. O que falha nao derruba o resto, e o dia volta para
+`pending` (as pecas novas sao rascunho, e quem reprovou o texto antigo nao
+aprovou este).
+
+### 3. O erro do fornecedor nao e assunto do cliente (regra nova)
+
+A primeira versao da mensagem dizia, na tela do cliente, que a conta de
+faturamento do Gemini estava com pagamento pendente. O Bruno leu e cortou:
+**"quem tem que saber sobre saldo das APIs sou eu, nao os clientes; eles devem
+receber uma mensagem com um erro, com um codigo, com a opcao de abrir um
+chamado, e eu recebo o e-mail do chamado sabendo o que e devido ao codigo"**.
+
+Ele esta certo, e o motivo e maior que estetica: um cliente que le aquilo
+aprende qual fornecedor a plataforma usa, que a conta dela esta em atraso, e
+que o problema nao tem prazo. Nenhuma das tres coisas e dele.
+
+A divisao ficou assim (`lib/media/falha-do-video.ts`):
+
+- **o cliente ve** o que mudou para ele (a peca saiu sem video), que o credito
+  voltou, que o texto e a arte continuam prontos, se adianta tentar de novo, e
+  um CODIGO: `VID-402` (indisponibilidade), `VID-429` (limite de uso),
+  `VID-CRD` (a carteira de video DELE, unica que e dita por inteiro, e vira
+  convite para comprar) e `VID-500`;
+- **o codigo e o que ele informa** no botao "Abrir chamado", que gera um
+  protocolo (`VID-402-EF2UFJ`);
+- **o Bruno recebe por e-mail** o protocolo, o cliente, o projeto, a peca, o
+  diagnostico de verdade e o erro bruto do fornecedor, montados NO SERVIDOR
+  (`app/api/suporte/chamado`) lendo o trabalho da fila. O navegador nunca ve o
+  diagnostico, e por isso ele nao pode vir de la;
+- o que fica gravado na peca (`metadata.videoFalhou`) e so o que a tela pode
+  mostrar. A prova varre esse JSON procurando "gemini", "google", "veo",
+  "fatura", "cobranca", "dunning" e "403", e falha se achar qualquer um.
+
+A marca sai sozinha quando o video finalmente chega (`entregarVideo` limpa),
+pela mesma razao de sempre: estado que sobrevive ao fato vira mentira.
+
+### 4. O vizinho que a tela achou
+
+Com o dia inteiro reprovado, o resumo dizia **"0 publicado. Nada mais a fazer
+neste dia."**: o ramo "fora" existia em `resumoDoDia` e o card nao o tratava,
+entao caia no ramo do publicado. Agora diz "5 pecas reprovadas ou arquivadas:
+elas nao saem. Gere de novo com o mesmo tema, ou arquive o dia."
+
+Foi achado com o dia 21 do Bruno aberto no navegador, e nao por prova
+automatica. Segunda vez em duas sessoes.
+
+### Provas
+
+tsc limpo; 25/25 na falha do video (incluindo a varredura de vazamento contra
+o JSON gravado no banco de verdade); 23/23, 28/28, 44/44 e 35/35 nas provas das
+partes 153 e 154, todas rodadas de novo; o chamado aberto de ponta a ponta no
+dev local, com os dois e-mails entregues pelo Resend e o protocolo na tela. O
+chamado de teste foi removido da peca depois, porque a decisao de abrir e do
+cliente.
+
+### O que fica de rumo
+
+**Mensagem de erro tem dois publicos, e escrever para um so vaza o outro.** A
+frase que ajuda quem opera a plataforma e a frase que o cliente pode ler quase
+nunca sao a mesma, e o caminho entre elas e um codigo, nao um resumo mais
+curto do mesmo texto.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 156): por que a campanha so falava de IA, e o conserto em tres camadas
+
+Pedido do Bruno: "subi um pdf com o contexto da demandou, mas o contexto foca
+no que e a plataforma, nao na dor que ela resolve, ai quando eu gero as
+campanhas so fala de IA gerando conteudo, as sugestoes sao sempre nessa linha.
+Eu quero q fale de autoridade, da importancia de gerar conteudo, de trafego
+organico, de economia com tempo de times, de ganho, de produtividade".
+
+### A causa raiz nao era o PDF, e isso foi MEDIDO
+
+O documento era a camada de cima. Embaixo dele havia duas piores, e a pior de
+todas era invisivel:
+
+**1. `project.niche` alimenta a PESQUISA em tempo real.** O nicho da Demandou
+comecava com "Criacao e publicacao de conteudo em redes sociais com agentes de
+inteligencia artificial". O Roberto Radar pergunta ao Gemini com busca o que
+esta em alta NAQUELE NICHO, entao ele trazia noticia de IA, e a semana inteira
+nascia em cima disso. Nenhum documento de marca conserta isso depois: quando o
+redator recebe o brief, o assunto ja e outro.
+
+Medido, com a mesma chamada que a esteira faz, nos dois nichos:
+
+```
+nicho antigo: 6 de 6 linhas da pesquisa sobre IA  (100%)
+nicho novo:   1 de 6 linhas da pesquisa sobre IA  ( 17%)
+```
+
+O nicho passou a descrever o TERRITORIO (autoridade, trafego organico,
+constancia, custo de terceirizar, presenca que vira pipeline) e o publico. A
+tecnologia continua no manual de marca, que e onde ela pertence: e COMO a
+Demandou faz, nao sobre o que ela fala.
+
+**2. O sugeridor de temas era cego.** `app/api/ai/topics/per-day` lia
+`niche` e `targetAudience` e mais nada: nem os documentos do projeto, nem o
+estagio do funil. Agora le os dois, e a instrucao diz que o tema e sobre o
+PROBLEMA DO PUBLICO, e que tema que so existe porque a ferramenta existe e
+tema ruim.
+
+**3. O documento falava do produto.** Entrou um segundo, ao lado do manual (que
+continua mandando em tom, planos e proibicoes): *A tese da Demandou*, com a
+frase que organiza tudo, as quatro dores, orgânico contra anuncio, a pagina
+que vira maquina de vendas, o funil escrito para esta marca, como ela se
+auto-promove sem virar propaganda, 18 linhas de municao com fonte e 14 pautas.
+PDF em `C:\Users\devan\Documents\demandou`, gerado por
+`scripts/tmp/gerar-pdf-contexto.mts` (Chromium do Playwright, sem dependencia
+nova).
+
+### O treinamento de funil, reescrito
+
+O antigo tinha 3 linhas por estagio e nao dizia o que o Bruno pediu. O novo:
+
+- **topo**: o trabalho e ALCANCE, o assunto e A DOR E A SAIDA, nunca a
+  categoria do produto. Estrutura em quatro passos, peca UTIL SOZINHA, sem
+  jargao. As proibicoes de venda continuam;
+- **meio**: provar competencia ensinando o COMO. Passo a passo numerado,
+  ferramenta, criterio de decisao, o que medir, erro comum. A regua: quem ler
+  precisa conseguir EXECUTAR sozinho, e se o texto so descreve o que deveria
+  ser feito, ainda e topo. Diz onde NAO serve (o trade-off e o que separa
+  conteudo tecnico de propaganda disfarcada). Cita a marca uma vez, como
+  exemplo;
+- **fundo**: e CONVITE. Promessa concreta, PROVA, objecao tratada de frente,
+  UMA chamada para acao que exista. Saiu a palavra "urgencia" do prompt antigo
+  e entrou a proibicao de urgencia inventada, porque escassez falsa queima a
+  marca que o topo construiu.
+
+O sugeridor tambem passou a mudar o TIPO de pauta por estagio: topo e dor com
+nome e custo, meio e metodo, fundo e decisao.
+
+### Pesquisa que sustenta o documento (setembro de 2026)
+
+- distribuicao de esforco recomendada: 50% topo, 30% meio, 20% fundo, e o erro
+  comum e investir demais no topo;
+- alcance organico de PAGINA de empresa no LinkedIn caiu de 60% a 66% entre
+  2024 e 2026; conteudo pelos perfis das pessoas alcanca cerca de 10x mais;
+- engajamento medio no LinkedIn 5,20%; documento nativo 7,00%; multi-imagem
+  6,60%; video 5,60%. Quem publica toda semana tem 5,6x mais seguidores;
+- organico gera 35% do trafego de leads B2B contra 4% do pago, e fecha a 14,6%
+  contra 1,7%; CPL organico cerca de 67% menor; leva de 6 a 12 meses;
+- custo no Brasil: freelancer R$ 500 a R$ 3.000, agencia R$ 2.500 a R$ 20.000,
+  interno R$ 5.000 a R$ 10.000 com encargos perto de 70%;
+- tempo: 3 a 10 horas por semana na pequena empresa, 5 horas so em criacao e
+  aprovacao nos times, 40% a 50% do tempo em producao pura;
+- pagina B2B converte 2,9% em media; prova social abaixo do botao sobe ate
+  68%; depoimento com nome e cargo rende cerca de 2x o anonimo.
+
+### Uma correcao do que ficou escrito na parte 155
+
+Medido agora: o **Gemini de texto responde normalmente (HTTP 200)**. A recusa
+por cobranca do Google e **especifica do Veo**, e nao da conta inteira. A
+pesquisa e a arte alternativa continuam funcionando; so o video por IA esta
+parado.
+
+### Provas
+
+tsc limpo; 14/14 na prova de temas e funil, com chamada de verdade ao modelo
+(tres temas por estagio, e a contagem de quantos falam da ferramenta); a
+medicao da pesquisa nos dois nichos, com a mesma chamada da esteira; o PDF
+aberto e conferido antes de entregar.
+
+### O que fica de rumo
+
+**Contexto nao e um documento, sao tres camadas, e a de baixo ganha.** Quando a
+campanha fala do assunto errado, o documento e o ultimo lugar para procurar: o
+nicho decide o que a pesquisa traz, a pesquisa decide o que o redator tem na
+mao, e o documento so ajusta o tom do que sobrou.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 157): "nasceu rejeitado com a imagem de outro", e o squad que tinha entregado
+
+Relato do Bruno na segunda campanha da noite: "deu erro de novo, ate agora nao
+consegui gerar uma campanha sem erro. Gerou de novo um post no dia 21 com a
+mesma imagem de outro, ja nasceu com a tarja rejeitado e ate agora a squad nao
+entregou nada, nenhuma peca dos outros dias".
+
+### O que foi medido antes de responder
+
+- o run (`cmubr6sci000004jsv32qkmu8`) estava `running`, sem nenhum log de
+  erro: pesquisa e dias 1 a 4 concluidos, dia 5 rodando, 6 e 7 pendentes, 15
+  pecas em rascunho no banco. O video do dia 1 estava PAUSADO por cota do Veo
+  (HTTP 429, e nao mais o 403 de cobranca), esperando os dez minutos;
+- nenhum run `failed` recente no projeto, entao "Erro ao gerar campanha" nao
+  veio do polling do escritorio (ele so dispara em `failed`);
+- ou seja: o "erro" que ele viu eram os sintomas do CALENDARIO, e o squad
+  tinha entregado. A tela e que escondia.
+
+### Tres sintomas, uma causa: o calendario misturava campanhas no mesmo dia
+
+Duas campanhas para a mesma semana (a da tarde, reprovada no dia 21 e com os
+outros dias agendados; a da noite, nova) caem nos mesmos quadrados. O
+agrupamento tinha dois furos, e o conserto da parte 155 (marcar os oito cards
+do dia como reprovados) tornou o primeiro visivel:
+
+1. **os CARDS de uma peca eram escolhidos so pelo dia da campanha**
+   (`dayOfWeek === 1`), e os dois runs tem dia 1. A peca nova pegava o card de
+   publicacao REPROVADO da campanha antiga (era ele que dizia "rejeitado") e o
+   card de midia dela (era ele que dava "a mesma imagem de outro");
+2. **a CHAVE da peca era familia e hora, sem a campanha.** Nos dias 22 a 24 as
+   duas campanhas publicam as 09:00, entao os cinco rascunhos novos entravam
+   DENTRO da peca agendada da anterior: uma peca com nove destinos dizendo
+   "agendado", e os rascunhos invisiveis. Era o "nao entregou nada".
+
+A regra que faltava e uma so, e agora vive em `lib/posts/cards-da-peca.ts`,
+com prova: **card de uma campanha nao fala por peca de outra.** `cardsDaPeca`
+filtra por dia E por run (e cai no filtro antigo quando o post nao sabe o run,
+caso do corte de video), e `chaveDaPeca` poe a campanha na chave. O tipo
+`PostParaEstado` ganhou `runId`, que a API da semana ja mandava e ninguem lia.
+
+Provado na tela do dev local, no dia 21 real: a peca nova aparece como
+"Video, 29 s, esperando voce", com a capa dela; a antiga continua "rejeitado"
+com a capa dela; e os dias 22 a 24 passaram a mostrar DUAS pecas, a agendada e
+a nova em rascunho. 15/15 no modulo, e os 130 das provas vizinhas de novo.
+
+### O que fica de rumo
+
+Duas campanhas na mesma semana e um caso normal do produto (o cliente gera de
+novo porque nao gostou), e nao um acidente. Tudo o que agrupa por dia precisa
+agrupar por campanha tambem. O card 543 ("avisar que a semana ja tem posts
+aprovados antes de gerar outra") continua valendo, e ficou mais urgente.
+
+Pendencia anotada, e nao desta rodada: a tela do gestor loga dois erros de
+console em toda carga (uma falha de hidratacao e uma tag `<script>` dentro de
+componente React). Ja apareciam antes de qualquer mudanca de hoje.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 158): "cade o video?", e a peca que esperava calada
+
+Relato do Bruno, com o card do dia 21 da campanha nova aberto: "so tem imagens,
+cade o video?" e, na sequencia, "como assim ate agora para gerar um video? nao
+da ne".
+
+### O que foi medido
+
+O trabalho de video do dia 1 estava PAUSADO por cota: o Veo recusou com HTTP
+429, "You exceeded your current quota, please check your plan and billing
+details", e a fila tentava de novo a cada dez minutos caindo sempre no mesmo.
+A ultima tentativa tinha sido dois minutos antes da pergunta. Texto e arte dos
+sete dias estavam prontos.
+
+Ou seja: **nao era demora, era recusa**, e vai continuar sendo ate a cota do
+projeto no Google voltar ou o plano mudar. Nenhum codigo faz o video aparecer.
+E pendencia do Bruno, no AI Studio ou no Cloud da chave GEMINI_API_KEY
+(o card do planner tem as duas medicoes: o 403 de cobranca da tarde e o 429 de
+cota da noite; o Gemini de texto responde 200).
+
+### O defeito de produto, esse sim nosso
+
+A peca nao dizia uma palavra. A marca `videoFalhou` (parte 155) so era escrita
+quando o trabalho MORRIA nas tres tentativas, e pausa por cota nunca morre:
+`pausarPelaCota` devolve a tentativa e espera. Uma peca podia ficar horas
+assim, com o quadro de abertura no lugar do clipe, e o cliente reprovando as
+cegas, que foi exatamente o que aconteceu de tarde.
+
+**Esperar e um estado, e estado que a tela nao mostra e o cliente decidindo
+errado.**
+
+### O conserto
+
+- `lib/media/marca-do-video.ts` junta o que estava espalhado em
+  `video-por-ia.ts`: `marcarFalhaNaPeca` (definitiva), `marcarEsperaNaPeca`
+  (pausa, com `aguardando: true`) e `limparMarcaDoVideo` (quando o mp4 chega).
+  Mesmo campo `metadata.videoFalhou`, para a tela e a limpeza que ja existiam
+  continuarem valendo;
+- `pausarPelaCota` le o payload do trabalho e marca a espera nas pecas e no
+  card da Diana;
+- o card diz "ainda nao foi gerado: esta esperando o gerador", com o codigo
+  (VID-429), a frase de que a fila tenta sozinha a cada dez minutos, e de que a
+  peca nao publica sem o video. O chamado continua ali. Nada de fornecedor,
+  conta ou fatura no texto, pela regra da parte 155.
+
+O dia 21 do Bruno foi marcado por script, pelo mesmo caminho que a fila vai
+usar daqui para frente, e conferido na tela do dev local com o card aberto:
+banner, codigo e botao no lugar. tsc limpo; 5/5 na marcacao, com a varredura
+de vazamento no texto que o cliente le.
+
+Uma pedra no proprio pe, anotada: a primeira versao da varredura procurava
+"429" no JSON inteiro e batia no proprio codigo VID-429. A varredura e no
+texto, e o codigo carrega o numero de proposito.
+
+### O que fica de rumo
+
+A fila trata cota como algo que "volta sozinho em minutos", e hoje ela nao
+voltou em horas. Quando a pausa por cota passa de um limite (uma hora, por
+exemplo), vale avisar os admins como o saldo zerado avisa, porque cota que nao
+volta e plano, e plano e decisao do dono. Card no planner.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 159): nao era a conta, era a cota de UM modelo
+
+O Bruno pediu o passo a passo para consertar o video parado. Antes de escrever
+o passo a passo, tres chamadas de verdade a API, e elas corrigiram o
+diagnostico das partes 155 e 158.
+
+### O que foi medido, na mesma chave e no mesmo minuto
+
+```
+veo-3.1-lite-generate-preview    200  comecou a gerar
+veo-3.1-fast-generate-preview    429  RESOURCE_EXHAUSTED
+veo-3.1-generate-preview         200  comecou a gerar
+gemini-2.5-flash / pro / image   200  respondem normalmente
+```
+
+**A conta esta boa.** O 403 de cobranca da tarde ("Lightning dunning decision
+is deny for project 867802944") nao vale mais. O que estourou e a cota do
+modelo ESPECIFICO que a esteira usa, o `veo-3.1-fast`, e nao e limite por
+minuto: o 429 persiste desde 21:43. O erro do AI Studio nao diz qual limite
+foi (o corpo inteiro so manda ver o plano e o faturamento), o que ja e um
+dado: essa chave e do AI Studio, e nao do Vertex.
+
+### O custo do diagnostico, dito por inteiro
+
+Os dois modelos que responderam 200 COMECARAM A GERAR: um 200 aqui e uma
+geracao paga em andamento, nao um teste de permissao. O diagnostico gastou
+cerca de US$ 3,60 (R$ 19,44) em dois clipes de 8 s que ninguem vai usar
+(cheio US$ 3,20, lite US$ 0,40). Erro meu, e previsivel: quem chama
+`predictLongRunning` para descobrir se pode chamar ja chamou.
+
+Como fazer da proxima vez sem pagar: perguntar o limite no console
+(aistudio.google.com/rate-limit) em vez de perguntar a API, ou usar a duracao
+minima aceita, que nao muda a conclusao e divide o custo por dois.
+
+### O terceiro modelo, que o codigo nao conhece
+
+`veo-3.1-lite-generate-preview` existe, responde agora e custa **US$ 0,05/s a
+720p**, metade do `fast` (US$ 0,10/s na tabela publica de 21/09; o codigo usa
+US$ 0,15/s). `lib/media/veo.ts` so mapeia `rapido` e `cheio`.
+
+Virar uma terceira qualidade e decisao do Bruno, e **cascata automatica
+continua proibida**: foi ela que tirou o Veo do produto em agosto, com 80% de
+prejuizo invisivel por operacao. Se entrar, entra como escolha na janela, com
+o preco na frente, do mesmo jeito que rapido e cheio.
+
+### A conferir na fatura
+
+A tabela publica diz `fast` a US$ 0,10/s a 720p; o codigo calibra 195 creditos
+em US$ 0,15/s. Se o menor for o certo, a margem do video e MAIOR que a
+suposta, e nao menor. Nao mexer sem ler a fatura, que e a regra da casa para
+numero de fornecedor.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 21/09/2026 (parte 160): cota nao e credito, e a peca precisava de uma SAIDA
+
+O Bruno comprou credito e o video continuou sem sair. A frase dele nomeia os
+tres buracos: "o usuario fica sem opcao e sem saber o que esta acontecendo, o
+porque nao tem video, o que ele tem que fazer".
+
+### A conta que o produto nunca fez
+
+Medido no `ai_usage` no momento da pergunta: **9 geracoes de video no dia,
+todas no `veo-3.1-fast`**, que e exatamente o 9/10 que o console do Google
+mostrava. O video preso era de 30 s, que precisa de 4 geracoes. Nao cabia, e
+nenhum credito comprado mudaria isso.
+
+**Cota nao e credito, e ate aqui a tela so conhecia uma das duas contas.**
+Credito e do cliente e ele compra; cota e do fornecedor, por dia, e vale para a
+plataforma inteira. O produto descobria o limite batendo nele.
+
+### O que entrou
+
+**1. A cota dita ANTES** (`lib/media/cota-do-dia.ts`, puro, e
+`cota-do-dia-servidor.ts`, que le o banco). A janela da campanha mostra, ao
+lado do saldo, quando a duracao escolhida nao cabe hoje: quantas geracoes o
+video precisa, quantas restam, e a saida ("gere assim mesmo: o texto e a arte
+saem hoje e o video entra na fila para quando o contador zerar"). So aparece
+quando NAO cabe. O teto vem de `VIDEO_GERACOES_POR_DIA` (padrao 10, o Tier 1),
+porque o Tier 2 entra sozinho quando a conta atinge o gasto e o numero precisa
+acompanhar sem deploy. O dia de cota zera a meia-noite do PACIFICO, e nao a
+daqui.
+
+**2. A SAIDA** (`lib/media/sair-do-video.ts` e a rota
+`/api/posts/dia/publicar-como-imagem`). O botao "Publicar como imagem" no card
+troca as pecas de video pelo QUADRO, que ja e uma peca de feed inteira (e assim
+que o dia ja sai quando o saldo acaba ANTES de gerar, desde 19/09). A operacao
+e inteira: as pecas viram `image`, o trabalho sai da fila como `cancelado`
+(senao ele acorda depois e entrega um mp4 para um dia ja publicado), os
+creditos de video voltam uma vez so, e o aviso sai da peca.
+
+### A pedra no proprio pe, e ela e a MESMA de 21/09 de manha
+
+A primeira versao pos `avisoDaCota` num arquivo que importava o Prisma, e a
+janela da campanha (componente CLIENTE) importou de la. O `pg` arrastou `dns` e
+`fs`, e a tela inteira caiu com 500. E identico ao que tirou a tabela de preco
+de `lib/stripe` hoje de manha, na parte 152.
+
+**A regra, agora escrita no topo do arquivo: modulo que a tela importa nao toca
+no banco.** O par puro/servidor e o padrao da casa (`tabela.ts` e
+`estimativa.ts`), e eu deveria ter comecado por ele.
+
+### Provas
+
+tsc limpo; 27/27 na cota e na saida (incluindo a conta real do dia, 9 usadas e
+1 restante, conferida contra o `ai_usage`, e a janela renderizada com e sem
+aviso); 101 nas provas vizinhas do calendario. O botao conferido na tela, com o
+card do dia 21 aberto.
+
+Nota de ambiente: o banco andou lento no dev local (uma leitura da semana levou
+46 s e uma carga da pagina morreu em timeout de conexao). Nao e das mudancas de
+hoje, mas vale olhar se repetir.
+
+*Atualizado em 21/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 161): o video nao conta historia, e o diagnostico esta no roteiro
+
+Veredito do Bruno sobre o video do dia 21: "ficou pessimo, sem contexto, nao
+conta uma historia, nao explica nada, terrivel. Comeca falando que a pessoa
+recusou o orcamento de 1500? de que?".
+
+Nada foi implantado nesta parte. O ajuste fica para a proxima sessao, e aqui
+esta o que ja foi MEDIDO, para ela comecar do diagnostico.
+
+### O que o video diz, palavra por palavra
+
+Lido do payload do trabalho (30 s, 4 cenas):
+
+```
+cena 1: Voce recusou um orcamento de mil e quinhentos reais por mes. E fez voce mesmo.
+cena 2: Aritmetica: trezentos reais a hora, quatro horas por semana. Quatro mil e oitocentos.
+cena 3: Esse pagamento sai da sua agenda. Hora nao faturada nao aparece em planilha nenhuma.
+cena 4: A saida nao e publicar menos: e parar de comecar da pagina em branco.
+```
+
+### E o que o post dizia
+
+> "Voce escreve post nos intervalos do dia e somem 4 horas da sua semana. Sao
+> horas pagas, so que o pagamento sai da sua agenda, nao da sua conta bancaria.
+> (...) Compare com o que voce achou caro contratar: freelancer de R$ 500 a
+> R$ 3.000, agencia de R$ 2.500 a R$ 20.000 (...)"
+
+### Os quatro defeitos, com a causa no prompt
+
+1. **A cena 1 INVENTA um fato.** O post nunca diz que alguem recusou um
+   orcamento de R$ 1.500: ele cita uma FAIXA de mercado. O roteiro transformou
+   faixa em episodio, e o video abre com uma premissa que o espectador nao
+   reconhece. **Causa:** a regra "nao acrescente fatos que nao estao no texto"
+   existe para os REDATORES (`REGRAS_GLOBAIS` e os criterios da Vera) e nunca
+   foi escrita no prompt do roteiro de video. A Vera tambem nao revisa roteiro.
+2. **Nao ha gancho.** O prompt pede "abertura clara", que o modelo cumpre com
+   uma frase declarativa qualquer. Nao ha definicao do que abre um video: a
+   tensao que o espectador vive, nao o resumo do que vem depois.
+3. **As frases sao soltas.** A cena 2 diz "aritmetica: trezentos reais a hora"
+   sem dizer de QUE. O prompt pede que as frases "formem UM texto continuo",
+   e isso nao basta: falta a exigencia de que cada cena PUXE a seguinte.
+4. **A ideia do post se perde.** O post tem uma tese (o custo invisivel do seu
+   tempo) e o roteiro pegou fragmentos. **Causa:** o prompt manda "baseado
+   neste conteudo de post" e nao pede a TESE em uma frase antes de escrever as
+   cenas.
+
+### Um achado tecnico que vale medir junto
+
+`palavrasDaCena` da 2 palavras por segundo (8 s = 16 palavras). As quatro
+cenas somam cerca de 50 palavras para 29 segundos, ou seja **1,7 palavras por
+segundo**, contra 2,5 a 3 de uma narracao natural em portugues. O video tende a
+ficar com silencio sobrando, o que soma a sensacao de vazio. A regua veio de
+`maxNarrationWordsForDuration` e nunca foi medida contra um video pronto.
+
+### Onde mexer
+
+- `lib/media/roteiro-do-video.ts`: `promptDoRoteiro`, que e o roteiro em cenas
+  do video acima de 8 s;
+- `lib/pipeline/executar.ts`, por volta da linha 2904: o prompt do CLIPE de
+  8 s, que e outro caminho e tem os mesmos buracos;
+- a Vera nao revisa roteiro de video: decidir se passa a revisar, ou se a
+  guarda entra no proprio prompt.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 162): o roteiro ganhou doutrina, e tres guardas de codigo
+
+A tarefa da parte 161, feita. O prompt do roteiro passou a ensinar o que
+segura um video curto, o clipe de 8 s entrou no MESMO caminho da cadeia, e o
+que da para medir virou guarda de codigo em vez de pedido no prompt.
+
+### A medicao que corrigiu o diagnostico da parte 161
+
+O mp4 do dia 21 foi baixado e transcrito com marcacao por palavra (Deepgram,
+`scripts/tmp/medir-narracao-2209.mts`). A parte 161 supunha "narrador lento";
+nao e isso:
+
+```
+51 palavras em 29,04 s
+narrador articulando: 2,56 palavras/s  (ritmo natural)
+so 69% do clipe tinha voz
+6,89 s em pausas de 0,4 s ou mais, DUAS delas de 2,3 s e 2,9 s
+```
+
+As duas pausas grandes caem no FIM de uma geracao (5,70 a 8,00 s e 20,64 a
+23,56 s). Ou seja: **o narrador nao e lento, o orcamento de palavras e que era
+curto para o slot**, e a sobra se acumulava na emenda entre uma geracao e a
+outra. `palavrasDaCena` passou de 2,0 para **2,4 palavras por segundo** (94% do
+ritmo medido, com folga para a narracao terminar antes do corte): 8 s dao 19
+palavras em vez de 16, e um video de 29 s cabe 70 em vez de 58.
+
+Segunda correcao da parte 161: **o post DIZ "R$ 300 a hora" e "R$ 4.800"**.
+O unico numero inventado foi o 1.500 (o post cita uma FAIXA, de R$ 500 a
+R$ 3.000). O defeito da cena 2 nao era numero inventado, era frase fora de
+ordem: "aritmetica: trezentos reais a hora" sem que ninguem tivesse dito de
+que conta se falava.
+
+### A doutrina, e a pesquisa que a sustenta
+
+`promptDoRoteiro` (`lib/media/roteiro-do-video.ts`) ganhou cinco blocos, um
+por defeito medido:
+
+1. **A TESE antes das cenas.** O JSON ganhou o campo `tese`: a ideia do post em
+   uma frase, escrita ANTES das cenas, e nenhuma cena pode contraria-la.
+   Antes o prompt dizia so "baseado neste conteudo de post", e o modelo pegava
+   fragmentos.
+2. **O gancho definido.** "Abertura clara" era cumprido por qualquer frase
+   declarativa. Agora: a abertura e a TENSAO que a pessoa ja vive, e esta
+   ERRADA se serve para qualquer post do nicho, se anuncia o assunto, se
+   comeca por saudacao ou dado de mercado, ou se afirma um episodio que o post
+   nao conta. Esta CERTA se a frase seguinte for necessaria para fechar o que
+   ela abriu. (Base: 71% de quem assiste decide nos 3 primeiros segundos, e
+   curiosidade nasce de uma LACUNA de informacao, nao de um resumo.)
+3. **Cada cena puxa a seguinte.** So duas ligacoes: MAS (contraria) e POR ISSO
+   (decorre). "E alem disso" e lista, nao historia. Mais o teste de leitura:
+   cena que depende de informacao que o video ainda nao deu esta fora de
+   ordem, que e exatamente o defeito da cena 2 do dia 21. (Base: o modelo ABT,
+   de Randy Olson, que e Aristoteles com nome curto.)
+4. **So o que o post diz.** A regra que existia so para os redatores, escrita
+   agora para o roteiro, com os casos: faixa continua faixa, comparacao
+   continua comparacao, nao atribuir a pessoa uma acao que o post nao conta.
+5. **O especifico vence o generico.** Corta "no mundo de hoje", "cada vez
+   mais", "a chave e". (Base: efeito de concretude e de especificidade.)
+
+Fontes: TikTok/Meta sobre os 3 segundos, Loewenstein 1994 (lacuna de
+informacao), Olson (ABT), Heath e Heath (concretude), e a literatura de
+fluencia em portugues brasileiro para a regua de fala.
+
+### As tres guardas de codigo, porque prompt nao e garantia
+
+A proibicao de inventar numero existe no texto desde sempre e mesmo assim
+precisou de `afirmacoesSemLastro`. Aqui vale o mesmo:
+
+- **Numero inventado** (`fatosInventados`): todo numero que a narracao AFIRMA
+  precisa estar no post. Na narracao o numero vem FALADO, e a guarda de lastro
+  do texto compara digito com digito: por isso nasceu
+  `lib/media/numeros-falados.ts`, que le "mil e quinhentos" como 1500 e nao
+  confunde o artigo "um" com o numero 1. Contra o caso real do dia 21 ela pega
+  exatamente uma cena e exatamente o 1.500.
+- **Narracao que nao cabe** (`narracoesLongas` e `encurtarNarracao`): medido na
+  propria prova de hoje, o modelo respondeu ao "use o limite quase inteiro"
+  com 25 palavras num limite de 19, ou seja trocou o silencio sobrando por
+  frase cortada pelo Veo. O pedido agora e uma FAIXA (15 a 19), e o ultimo
+  recurso corta por frase inteira.
+- **Cena muda quando o video pediu voz**: numa das rodadas o modelo devolveu a
+  cena com o visual inteiro e SEM o campo `narracao`, e o clipe teria saido
+  mudo sem ninguem perceber. Isso agora e roteiro invalido, que ja tem caminho:
+  a segunda chance.
+
+A segunda chance, que existia so para JSON quebrado, agora diz o que veio
+errado nos tres casos. Depois dela, a cena teimosa com numero inventado fica
+MUDA: entre publicar um fato que o post nao disse e entregar o trecho sem voz,
+a casa escolhe o trecho sem voz.
+
+**Decidido: a Vera NAO passa a revisar roteiro.** Ela custaria mais uma chamada
+de Opus por dia de video, e em 09/09 aprovou numero inventado porque conferiu
+o texto contra um brief escrito pelo proprio modelo. O que e medido nao fica a
+criterio de ninguem; o que nao e medivel (o gancho ser bom) fica no prompt.
+
+### O clipe de 8 s entrou no mesmo caminho
+
+O clipe de 8 s tinha prompt proprio, em texto corrido, com os mesmos quatro
+buracos. Agora `promptDoRoteiro` atende de 1 a 9 cenas e o caminho e um so; o
+prompt antigo saiu (26 linhas). `narracaoDoPrompt`, que extraia a fala de
+dentro do texto corrido, virou so resgate de pedido antigo.
+
+### A prova com video de verdade (US$ 2,40)
+
+Regua verde nao e peca boa, entao o caminho inteiro rodou duas vezes com o
+MESMO post do dia 21: Opus escreve o roteiro, as guardas conferem, o Veo gera.
+
+**Primeiro clipe**: narracao limpa e no tempo (17 palavras, terminando aos
+6,18 s de 8), mas a tela saiu com TEXTO, em ingles e escrito errado
+("WEELKKY", "Wu Tur Wel Ttn"). A causa nao era o gerador: o proprio visual
+pedia um calendario, que e um objeto feito de texto. Virou regra no prompt:
+**nao descreva objeto cujo conteudo e texto** (calendario com os dias
+escritos, planilha, fatura, manchete, placa, tela de aplicativo); diga a mesma
+coisa com forma, cor, quantidade e gesto.
+
+**Segundo clipe**, com a regra: sem texto nenhum na tela, colagem de papel com
+as barras da semana e a onda de audio preenchendo o buraco, e a narracao
+medida assim:
+
+```
+                     dia 21 (30 s)      clipe novo (8 s)
+palavras             51                 19
+palavras/s no clipe  1,76               2,38
+pausas longas        6,89 s (5)         0,78 s (1)
+fim da fala          28,61 s de 29,04   6,90 s de 8,00
+numero inventado     1.500              nenhum
+```
+
+Narracao do clipe novo: "Quatro horas da semana somem escrevendo post. Nao
+saem da conta, saem do dia: editar custa menos que criar." Tese declarada
+antes, gancho, virada por MAS e fecho, tudo dentro do que o post diz.
+
+Uma nota honesta: em 8 s e 19 palavras cabem o gancho e a virada, e o fecho
+fica apertado. O video de 15 s ou 30 s e que tem espaco para os tres tempos.
+
+### Uma pedra no proprio pe, achada pela prova
+
+As duas geracoes que paguei NAO entraram no `ai_usage`, porque
+`olharOperacao` so gravava `if (pedido.ctx)` e o script de prova nao passa
+contexto. O Google contava 6 no dia e o nosso contador contava 4, ou seja o
+aviso de cota da janela da campanha diria "cabe" para um video que nao cabe.
+**A cota e da PLATAFORMA: toda geracao paga na nossa chave conta, venha de
+onde vier.** O `if` saiu (grava sempre, sem contexto vira
+`video_ia_avulso`), e as duas linhas de hoje foram lancadas: 6 usadas, 4
+restam.
+
+### Provas
+
+tsc limpo; `npx next build` limpo; 70/70 em
+`scripts/tmp/provar-roteiro-2209.mts` (a guarda contra o caso real do dia 21,
+a regua medida, o corte por frase inteira e a doutrina nos DOIS caminhos);
+40/40 em `provar-video-longo-2109.mts`, que continuava valendo e foi
+atualizado para a nova forma do roteiro; dois clipes de 8 s gerados de
+verdade, transcritos e conferidos quadro a quadro. Deploy em producao.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 163): o LinkedIn comia o post a partir do primeiro parentese
+
+Relato do Bruno, com o post do dia aberto: "esta dando problema nos posts do
+LinkedIn sim, no card aparece o texto inteiro, mas quando posta corta, ja tive
+que editar duas vezes manualmente".
+
+### O erro de diagnostico que veio antes, e que ele derrubou
+
+Na primeira olhada eu conferi o banco, vi o texto inteiro (1.034 caracteres),
+conferi que o publicador nao corta (o teto do LinkedIn e 3.000 e existe uma
+guarda que RECUSA acima disso em vez de cortar) e concluí que era o "ver mais"
+da rede. Estava errado, e o dado que derruba a conclusao ele ja tinha: quem
+editou o post a mao duas vezes sabe que o texto chegou cortado.
+
+O que eu tinha medido e que deveria ter me feito duvidar: a tela parou no
+caractere 462, **no meio da frase, imediatamente antes de um parentese**. Eu
+li isso como "corte por contagem, logo e da rede". A leitura certa era a
+contraria: o corte nao e por contagem, e por CARACTERE.
+
+### A causa
+
+O campo `commentary` da Posts API nao e texto puro. Ele e **"little text"**, um
+formato com elementos (mencao, hashtag, template) que reserva os caracteres
+
+```
+\  |  {  }  @  [  ]  (  )  <  >  #  *  _  ~
+```
+
+e a documentacao e explicita: "all reserved characters need to be escaped with
+a backslash, **even if those characters are not used** in one of the supported
+elements or templates". Nada no nosso codigo escapava.
+
+Quando o reservado vem solto, o LinkedIn **nao recusa o post e nao avisa**:
+publica e descarta o texto daquele caractere em diante, em silencio. Foi por
+isso que o defeito sobreviveu tanto tempo. Nenhum erro, nenhum log, HTTP 201.
+
+### O que isso custou, medido nos posts publicados
+
+```
+22/09  1.034 car  1o "(" no 463   perdeu 55%
+19/09  1.240 car  1o "(" no 182   perdeu 85%
+19/09  1.282 car  1o "(" no  96   perdeu 93%
+18/09  1.365 car  1o "(" no 1186  perdeu 13%
+12/09  2.196 car  1o "(" no 252   perdeu 89%
+11/09  1.555 car  1o "(" no 361   perdeu 77%
+```
+
+Dez dos dezoito posts publicados tinham caractere reservado. E o parentese
+aparece sempre no mesmo lugar: **a citacao da fonte**, "(Bain & Company,
+setembro de 2026)", "(tabelas de mercado e pesquisas salariais, 2026)",
+"(Exame, 14 de julho de 2026)".
+
+**Ou seja, a regra de qualidade do texto estava alimentando o defeito de
+publicacao.** O criterio 1 da Vera EXIGE fonte em toda frase com numero, e a
+forma canonica da fonte e entre parenteses. Quanto melhor o post, mais cedo o
+parentese, mais texto perdido.
+
+### Por que ninguem viu antes
+
+**O card do calendario le o NOSSO banco, onde o texto sempre esteve inteiro.**
+A previa, a ficha, a Vera e a tesoura todas olham a mesma fonte. So a rede via
+o corte, e a rede nao devolve o que guardou: tentei ler o post de volta pela
+API e recebi 403 ACCESS_DENIED, porque os nossos escopos sao de escrita.
+
+Fica a regra: **previa que le a nossa copia nao prova publicacao.** O que a
+rede fez com o texto so se descobre olhando a rede.
+
+### O conserto
+
+`escaparLittleText` em `lib/oauth/linkedin.ts`, aplicado dentro de
+`postToLinkedIn` e **so no corpo que vai para a Posts API**. O caminho legado
+(`/v2/ugcPosts`, `shareCommentary.text`) e texto puro e receberia barras
+invertidas visiveis, entao ele continua recebendo o `body` cru: o corpo
+escapado e uma copia.
+
+O `#` fica de fora da lista **de proposito**: `#palavra` e um HashtagElement
+valido da gramatica, e escapa-lo transformaria a hashtag num "#" literal, sem
+link e sem alcance. So o `#` que nao forma hashtag e escapado.
+
+O primeiro comentario nao precisa de escape: ele sai pelo `/v2/socialActions`,
+com `message: { text }`, que e o formato antigo de texto puro.
+
+### Provas
+
+29/29 em `scripts/tmp/provar-escape-linkedin-2209.mts`: os catorze reservados
+um por um, a hashtag sobrevivendo intacta, o texto REAL do post de 22/09 sem
+nenhum reservado solto depois do escape, e a volta (desescapar devolve o texto
+original caractere por caractere, e o texto so cresce o tamanho das barras).
+tsc e build limpos. No ar.
+
+A confirmacao na rede fica para o proximo post agendado, por escolha do Bruno:
+publicar um teste agora e apagar seria a prova imediata, mas e o perfil dele.
+
+### O que fica em aberto
+
+Os posts ja publicados continuam cortados. Editar a mao no LinkedIn preserva
+as interacoes; apagar e republicar perde. Vale conferir se as outras redes tem
+formato parecido (o X e o Facebook recebem texto puro, entao nao), e vale
+lembrar que qualquer rede nova entra com essa pergunta: o campo de texto e
+texto, ou e uma linguagem?
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 164): o portao 2 do lancamento, implantado
+
+O Bruno perguntou o que falta para abrir ao publico, o levantamento dos 103
+cards abertos separou tres portoes, e ele mandou implantar o portao 2 inteiro:
+o teto que o produto ja tinha e nao sabia dizer.
+
+### O que foi MEDIDO antes de qualquer teto ser escrito
+
+O card 470 era explicito ("sem esse numero, qualquer teto sera chutado"), entao
+a primeira coisa foi contar (`scripts/tmp/medir-consumo-por-cliente-2209.mts`):
+
+```
+Blob inteiro: 10,75 GB em 19 arquivos
+  quatorze das quinze pastas sao gravacao bruta, de 0,8 a 1,8 GB cada
+  arte, capa e musica somadas: menos de 8 MB
+geracoes de video por dia: 3, 1, 9 e 6 nos ultimos quatro dias
+```
+
+Uma gravacao pesa perto de 900 MB. E isso que ancora os numeros abaixo.
+
+### 1. O teto de video por PLANO (cards 552, 541)
+
+A cota do fornecedor e da PLATAFORMA INTEIRA (10 por dia no Tier 1), e ate
+aqui nada impedia um cliente de consumi-la sozinho: um video de 60 s sao nove
+geracoes. Agora cada plano tem `videosPorDia` em `lib/planos.ts`, e o numero
+diz, na pratica, a duracao maxima que o plano produz por dia:
+
+```
+Essencial   2 geracoes  ate 15 s
+Autoridade  4 geracoes  ate 30 s
+Estudio     9 geracoes  ate 60 s
+```
+
+E assim que o teto vira ARGUMENTO DE PLANO em vez de parede sem explicacao,
+que era a saida (a) do card 552. O teto do dia e sempre o MENOR entre o que
+sobra na plataforma e o que o plano permite.
+
+**A ordem das frases foi decidida e esta escrita no codigo**: o teto do PLANO
+fala primeiro, porque tem saida na mao do cliente (subir de plano ou encurtar
+o video); o teto do FORNECEDOR e espera, e espera sem saida so se anuncia
+quando nao ha alternativa. Dizer as duas juntas transformaria um pedido de
+upgrade em desculpa.
+
+**E aviso nao e guarda.** `tetoDoPlanoEstourado` roda em `rodarVideoDaIa`
+ANTES do debito, e o erro que ela levanta e reconhecido por `ehCotaDeVideo`,
+ou seja a fila pausa sem gastar tentativa e retoma quando o contador do dia
+vira. Debitar e depois pausar deixaria credito preso num trabalho que nao roda
+hoje.
+
+### 2. O teto de ARMAZENAMENTO (card 470)
+
+Nao existia teto nenhum, e o custo de blob cresce por cliente. Agora
+`armazenamentoGb` no plano: 12, 24 e 96 GB, que e o que o proprio plano promete
+por mes (2, 4 e 16 gravacoes de ~900 MB) por seis meses de historico.
+
+A conta soma `VideoJob.sizeBytes`, e nao lista o Blob: listar seria uma chamada
+de rede cara num caminho quente, e o que ficaria de fora (arte, capa, mp4 de
+IA) e ruido perto de uma gravacao. A imprecisao e conhecida e e para o lado
+seguro.
+
+A guarda entra no mesmo lugar onde a cota de gravacoes ja valia: a emissao do
+token de upload, que e a unica defesa que uma aba com devtools aberto nao
+contorna. **Nunca apaga nada**: bloqueia o novo e deixa o antigo, que e a mesma
+resposta que a cota de marcas ja dava.
+
+### 3. O PAINEL DE ADMIN (card 175, pedido em 21/08)
+
+`/admin`, componente de SERVIDOR, seis consultas agregadas, protegido por
+`role === "admin"` lido do banco (e nao por lista de e-mails no ambiente: o
+papel ja manda no debito e no portao, e uma segunda definicao de "quem e dono"
+divergiria). Quem nao e admin recebe **404** e nao 403: a existencia da rota
+nao e assunto de quem nao pode entrar.
+
+A conta que so existe ali e a **margem por cliente**: mensalidade do plano
+contra o que a IA cobrou de verdade no periodo. Nenhuma outra tela junta as
+duas pontas.
+
+**Ativo quer dizer gerou campanha nos ultimos 30 dias**, e nao "entrou na
+conta": login sem campanha e visita, e visita nao paga a fatura nem segura o
+cliente.
+
+### 4. A POLITICA DE CREDITO DA PECA ERRADA (card 525), decidida
+
+A observacao do Bruno em 19/09: "se eu fosse um cliente ia estar bem bravo,
+porque gera muita coisa errada e consome os creditos tudo". A regra que
+entrou, em `lib/credits/cortesia.ts`:
+
+- **refazer NAO cobra quando a peca foi REPROVADA**, pela revisora ou pelo
+  cliente. Reprovacao e a plataforma dizendo com a propria boca que aquilo nao
+  deveria ter saido assim, e cobrar a correcao e vender o conserto do proprio
+  erro;
+- **refazer COBRA quando a peca esta viva.** "Nao gostei desta" e gosto, e
+  gosto e trabalho novo, com custo real de fornecedor;
+- **teto de 3 cortesias por projeto por dia.** Sem teto, um defeito sistematico
+  vira prejuizo ilimitado. Defeito que passa de tres pecas no mesmo dia nao e
+  peca errada, e a esteira quebrada, e isso se conserta, nao se estorna.
+
+`debitar` ganhou o modo `cortesia`, que lanca linha de valor ZERO com o motivo
+na nota, igual ao que o acesso interno ja fazia: sumir do extrato e o mesmo que
+nao ter acontecido. E o custo devolvido para a tela passou a ser o COBRADO e
+nao o de tabela, senao ela diria "custou 57" depois de nao cobrar nada.
+
+### 5. O AVISO DE COTA PRESA (card 558)
+
+`avisarCotaPresa` roda junto da retomada, a cada dez minutos, e manda UM
+e-mail aos admins quando existe trabalho de video esperando cota ha mais de uma
+hora. Um por pausa, nunca um por tentativa: o ledger guarda `avisadoEm`, e
+e-mail a cada dez minutos e a forma mais rapida de ensinar o dono a ignorar o
+aviso.
+
+Roda junto da retomada e nao num cron proprio porque os dois olham a mesma
+coisa no mesmo ritmo, e dois relogios para o mesmo fato e como eles divergem.
+
+### O ACHADO QUE O PAINEL ENTREGOU NO PRIMEIRO MINUTO
+
+Abrir a tela com dado real mostrou o que nenhuma consulta pontual tinha
+mostrado: **38 contas cadastradas, 19 nas ultimas 24 horas, nenhuma delas com
+projeto, e 15 com o padrao classico de bot** (gmail com pontos espalhados no
+nome: `gar.rettb.i.be.r.g.s.t.rp.sn59.0@gmail.com`). So 5 e-mails verificados
+em 38 contas, e so 4 contas tem projeto.
+
+Nao ha dinheiro vazando (o saldo nasce em zero e o portao manda para /planos
+antes de qualquer coisa), mas duas consequencias reais:
+
+1. **a metrica de conversao do card 288 esta poluida**: "visita para cadastro"
+   conta cadastro de robo;
+2. **antes de abrir ao publico, o cadastro precisa de barreira** (verificacao
+   de e-mail obrigatoria antes de entrar, ou captcha).
+
+Card novo no planner. E uma regra que fica: **painel nao e relatorio, e
+descoberta.** Nenhuma das consultas pontuais dos ultimos dias mostrou isso,
+porque ninguem pergunta o que nao suspeita.
+
+### O que NAO foi feito, e por que
+
+O quinto item do portao 2 era separar o banco de producao do de
+desenvolvimento. Custa R$ 138 por mes contra um custo fixo total de R$ 116, e
+foi decisao consciente do Bruno em agosto revisar isso com 10 clientes. Nao
+gastei o dinheiro dele sem perguntar.
+
+### Provas
+
+tsc limpo; `npx next build` limpo; 44/44 em
+`scripts/tmp/provar-portao2-2209.mts` (teto por plano, guarda da fila, frases
+ao cliente, armazenamento, cortesia, painel e aviso), rodando contra o banco de
+verdade; 7/7 no `renderizar-cota-do-plano-2209.mts` (componente de cliente,
+renderToString nos quatro cenarios); `/admin` aberto no dev local com sessao de
+verdade (HTTP 200 e os numeros na tela), **404 para conta nao admin** e
+redirecionamento para o login sem sessao. Deploy em producao.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 165): a porta de entrada, o teste com cartao e a faixa do plano
+
+Quatro pedidos do Bruno na mesma sessao, e o que eles tem em comum: sao tudo o
+que um estranho encontra antes de virar cliente.
+
+### 1. A verificacao em duas etapas JA EXISTIA. O e-mail e que nao prestava
+
+Conferido antes de escrever qualquer coisa: `requireEmailVerification` esta
+ligado desde 23/08 e amarrado a `emailHabilitado()`, e a `RESEND_API_KEY`
+existe em producao. Ou seja, **os 15 cadastros de robo do dia nunca conseguiram
+entrar**: eles criam a linha e param na porta. So 5 dos 38 e-mails foram
+confirmados, o que e o filtro funcionando e nao falhando.
+
+O que faltava era o e-mail. O antigo era proposital e seco (o dominio ja foi
+marcado pelo Google como pagina enganosa uma vez, e classificador de phishing
+pune imagem demais, urgencia inventada e link que nao bate com o texto). O
+pedido do Bruno foi "profissional, com logo, um boas-vindas misturado com
+validacao", e a sobriedade nao foi abandonada: ela ganhou tipografia.
+
+`lib/email/layout.ts` e a casca reusavel (tabela com estilo embutido, porque o
+Outlook desenha com o motor do Word e o Gmail apaga `<style>`), e
+`emailDeConfirmacao` virou boas-vindas e confirmacao na mesma peca. O que
+entrou:
+
+- cabecalho com a logo do dominio e a marca POR ESCRITO ao lado;
+- um botao so, laranja, com o endereco escrito por extenso embaixo;
+- tres itens dizendo o que acontece depois, com a regra do teste no corpo
+  (cartao agora, sete dias, cancelou nao paga). **Essa regra estava so no
+  checkout**, ou seja a pessoa descobria no momento de digitar o cartao;
+- a vaga de fundador, contada no Stripe NA HORA DO ENVIO e escondida quando
+  acaba. Anunciar "restam 10 vagas" num e-mail que continua saindo depois de
+  as dez acabarem e transformar escassez de verdade em escassez de mentira;
+- rodape com razao social, CNPJ e endereco, que e criterio de reputacao nos
+  provedores grandes.
+
+O que NAO tem, de proposito: contagem regressiva, "ultima chance", imagem de
+fundo, pixel de rastreio e segundo botao.
+
+### 2. O teste com cartao tambem JA EXISTIA, e isso foi medido e nao suposto
+
+`trial_period_days: 7`, `payment_method_types: ["card"]`, o price do fundador
+ativo a R$ 4.764/ano, `vagasDeFundador()` contando no Stripe e o checkout
+recusando o price de fundador quando as vagas acabam. O portao de entrada ja
+manda quem nao tem plano para `/planos`, entao **nao existe caminho para dentro
+do produto sem cartao**.
+
+O que entrou foi uma linha: `payment_method_collection: "always"` explicito.
+Era o padrao do Stripe para assinatura com teste, ou seja uma regra que vale
+dinheiro dependia de um padrao de terceiro continuar o que e.
+
+**Uma correcao de leitura minha, achada pela propria prova**: o objeto de
+sessao do Stripe NAO devolve `subscription_data`, entao o teste nao se prova
+na sessao. Ele so aparece na ASSINATURA que nasce quando alguem termina o
+checkout. A prova mudou de lugar: toda assinatura que esta trilha ja criou tem
+`trial_end`, e a unica existente teve exatamente 7 dias.
+
+### 3. O TESTE GANHOU TETO PROPRIO (pedido novo)
+
+"1 campanha, no maximo 7 dias, com 1 video de 30 s, no maximo."
+
+O motivo e de caixa e esta escrito no codigo: o cartao so e cobrado no oitavo
+dia, e tudo que a conta consumir ate la e custo nosso. Uma campanha de sete
+dias em quatro redes custa R$ 31 de IA; um video de 60 s custa mais R$ 52 e
+come NOVE das dez geracoes que o fornecedor libera por dia para a plataforma
+inteira. Sem teto, quem cancela no sexto dia sai levando mais do que muitos
+pagantes geram de margem no mes.
+
+- `lib/teste-gratis.ts`, puro, com os numeros e as frases;
+- `trialEndsAt` no `User`, escrito pelo webhook quando a assinatura chega como
+  `trialing` e apagado quando vira `active`. Ler do banco em vez de perguntar
+  ao Stripe e decisao de latencia: a conferencia roda no caminho de criar
+  campanha;
+- a guarda em `agendarCampanha`, ANTES de qualquer coisa custar dinheiro. A
+  segunda campanha e recusada com a saida escrita; dias demais sao recusados;
+  o video longo e **encurtado** em vez de derrubar a campanha inteira, porque
+  recusar sete dias de trabalho por causa da duracao de um clipe e punir o
+  cliente por um detalhe com conserto obvio;
+- a janela nao OFERECE o que nao pode entregar: 60 s fica apagado, com a
+  explicacao no `title`, e a frase do teto aparece embaixo das duracoes.
+
+A data vencida vale como fora do teste, e isso e deliberado: se um webhook de
+`active` se perder, a conta ficaria presa no teto para sempre.
+
+### 4. A FAIXA DO PLANO, em toda tela de dentro (pedido novo)
+
+Plano, saldo e convite nunca tinham estado juntos: o plano morava na aba de
+cobranca, o saldo aparecia na janela da campanha (e so na hora de gerar), e o
+convite para subir so surgia quando alguem ESBARRAVA num limite. Quem descobre
+o saldo batendo nele decide com susto.
+
+`components/billing/banner-do-plano.tsx`, componente de SERVIDOR montado no
+layout de `(app)`, e nao em cada pagina: tela nova esquecer a faixa e questao
+de tempo, e faixa que falta numa tela e pior que faixa nenhuma.
+
+O tom muda com o estado, e isso decide o que a pessoa le primeiro: em teste
+ela ve quantos dias faltam (o que decide se assina); pagando ela ve o saldo (o
+que decide se gera). O botao tambem muda: sem plano leva a escolher, em teste
+leva a assinar, no topo da tabela leva a comprar credito em vez de oferecer um
+upgrade que nao existe. **Acesso interno nao recebe convite de venda.**
+
+### A pedra no proprio pe, e ela e velha
+
+A tela caiu com 500 ao abrir o painel: `Unknown field trialEndsAt`. A migracao
+tinha rodado e o cliente do Prisma tinha sido regenerado, mas **o servidor de
+dev da prova anterior nunca morreu** (o `taskkill` por titulo de janela nao
+pegou nada) e continuava servindo com o cliente antigo. Matar pela PORTA, e
+nao pelo nome do processo, e o jeito que funciona nesta maquina.
+
+Vale por si: a regra da casa de ABRIR A TELA pegou isto em dez segundos, e a
+prova de 30/30 nao tinha pegado, porque ela roda no processo novo.
+
+### O App Review da Meta voltou REPROVADO, e a causa e o video
+
+Chegou no meio da sessao. Aprovada: `public_profile`. Reprovadas as cinco que
+importam (`pages_read_engagement`, `pages_manage_posts`, `pages_show_list`,
+`instagram_business_content_publish`, `instagram_business_basic`), todas com o
+MESMO motivo: "Screencast nao alinhado com detalhes do caso de uso".
+
+E a Meta escreve, com todas as letras: **"Determinamos que o caso de uso do seu
+app e permitido"**. O produto passa; o video reprovou. Nao e politica, nao e
+arquitetura, nao e termos de uso: e gravar de novo, mostrando o login da Meta
+inteiro, a tela de consentimento e o caso de uso completo de cada permissao,
+com interface em ingles e legendas. Roteiro no card novo do planner.
+
+### Provas
+
+tsc limpo; `npx next build` limpo; 37/37 em `provar-cadastro-e-teste-2209.mts`
+(o e-mail lido por dentro, a sessao de checkout ABERTA de verdade no Stripe e
+expirada no fim, e a assinatura com teste de 7 dias); 30/30 em
+`provar-teste-e-banner-2209.mts` (os tetos do teste, a leitura do banco com uma
+conta posta em teste e devolvida ao estado original, e a faixa renderizada nos
+tres estados); 7/7 em `renderizar-teste-no-modal-2209.mts` (o botao de 60 s
+apagado e a frase do teto). O e-mail foi RENDERIZADO e olhado em 700 px e em
+375 px; a faixa foi aberta no dev local nos dois estados, com captura. Deploy
+em producao.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 166): o video que nao saiu, e o painel que virou gestao
+
+Dois pedidos: refazer o video do jeito certo, e transformar o painel de admin
+num painel de gestao (visitante, usuario, churn, ativos, leads, origem).
+
+### O VIDEO NAO SAIU, e o motivo derruba mais que o video
+
+O roteiro de 30 s foi escrito e ficou bom (detalhe abaixo). Na primeira
+geracao, o Veo respondeu:
+
+```
+HTTP 403
+Lightning dunning decision is deny for project: projects/867802944
+```
+
+Sonda nos tres modelos, no mesmo minuto:
+
+```
+gemini-2.5-flash               403   <- o TEXTO da pesquisa
+veo-3.1-fast                   403
+veo-3.1-lite                   403
+```
+
+**Nao e so o video: e a conta inteira do Google.** E isso e pior que o dia 21,
+quando o texto respondia e so o video estava fora por cota. Dunning e cobranca
+recusada ou em atraso, e liga com a migracao forcada para prepay que o proprio
+Google avisou em 21/09.
+
+O que cai junto: a **pesquisa em tempo real do Roberto**, que abre TODA
+campanha e roda em Gemini com Search Grounding. Sem ela a campanha nao nasce.
+Anthropic e OpenAI respondem normalmente, entao o produto esta pela metade.
+
+**Nada foi cobrado**: o 403 acontece antes de qualquer geracao comecar.
+
+E fica um rumo que ja custou duas descobertas: **o aviso de saldo zerado cobre
+Anthropic e OpenAI e NAO cobre o Google.** Se cobrisse, este bloqueio teria
+chegado por e-mail em vez de ser descoberto tentando gerar um video.
+
+### O roteiro de 30 s, escrito e guardado
+
+Vale registrar porque ele e a peca que prova o arco inteiro, e sai no minuto em
+que a conta voltar:
+
+```
+tese: As horas que voce gasta escrevendo post sao as horas mais caras da sua semana.
+1: Voce escreve post nos intervalos do dia, e somem quatro horas da sua semana, toda semana.
+2: Sao horas pagas, so que o pagamento sai da sua agenda, nao da sua conta bancaria.
+3: Por isso voce compara: freelancer, agencia, interno. E o numero da sua hora e o que assusta.
+4: A aula, a reuniao, o audio: ja e materia-prima. Editar leva menos tempo que criar.
+```
+
+64 palavras para 29 s, dentro da regua nova. Gancho que sai do post, virada por
+MAS na cena 2, POR ISSO na 3 e o fecho na 4. Nenhum numero que o post nao
+tenha. **A guarda de tempo pegou a cena 4 com 18 palavras num limite de 17, e a
+segunda chance corrigiu**: e a primeira vez que uma guarda de codigo escrita
+hoje de manha trabalhou sozinha.
+
+### O PAINEL VIROU GESTAO
+
+`/admin` ganhou quatro blocos alem da tabela de contas:
+
+- **O funil**, com os seis passos que ja eram registrados (visita, demo,
+  contato, cadastro, checkout, assinatura), contando PESSOAS e nao cliques:
+  quem e anonimo conta por IP com sal, quem tem conta conta por conta;
+- **De onde vem**, por origem e campanha, com visitantes, cadastros e
+  assinaturas. E o que transforma "converteu 3%" em "onde por o proximo real";
+- **Quem deixou contato**, juntando as DUAS portas numa lista so: o formulario
+  de lead (que tem o perfil) e a demo publica (que tem o TEXTO que a pessoa
+  pediu, a melhor pista de assunto que existe). Eram duas tabelas que ninguem
+  abria;
+- **As assinaturas**, lidas do Stripe: ativas, em teste, canceladas e as que
+  ja pediram para sair. **Churn nao vira taxa aqui de proposito**: com um
+  punhado de assinaturas, uma cancelada e 100% de churn, e numero assim nao
+  informa, assusta.
+
+### O que a tela mostrou, e o defeito que ela pegou
+
+Primeira abertura, com dado real: **"1700% do passo anterior"** no cadastro.
+Nao era erro de conta, era erro de PREMISSA: os passos nao sao uma fila. As 34
+pessoas que se cadastraram nao passaram por "contato"; a maioria e robo, que
+entra direto na pagina de cadastro.
+
+Taxa acima de 100 agora vira a frase **"entraram sem passar pelo anterior"**,
+que e o que o numero de fato diz. Numero que vira piada na tela custa a
+autoridade do painel inteiro.
+
+E, de carona, o robo passou a ser CONTADO: `pareceRobo` marca a conta de Gmail
+com tres pontos ou mais no nome, sem e-mail confirmado e sem projeto. Gmail
+ignora pontos, entao `j.o.a.o@gmail.com` e `joao@gmail.com` caem na mesma
+caixa, e espalhar pontos e como se fabrica mil enderecos para o mesmo destino.
+O corte de tres e conservador: nome composto de verdade tem dois. **Nao apaga
+nada e nao bloqueia ninguem**, so separa o numero, porque cadastro com robo
+dentro e o numero que decide o teste de trafego pago.
+
+Hoje: **39 contas, 2 ativas, 15 com cara de robo.**
+
+### Provas
+
+tsc limpo; build limpo; 21/21 em `provar-painel-gestao-2209.mts` (o padrao de
+robo, o funil, as origens, os contatos das duas portas e as assinaturas no
+Stripe), rodando contra o banco de verdade; a tela aberta no dev local com
+sessao de verdade, ANTES e DEPOIS do conserto da taxa. Deploy em producao.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 22/09/2026 (parte 167): o screencast da Meta, diagnosticado quadro a quadro
+
+O Bruno perguntou como ficou o ajuste da analise da Meta e se eu tinha
+editado os videos. **Nao editei nada**, e o que fiz foi olhar o que foi
+enviado, para o reenvio nao repetir o mesmo erro.
+
+### O que existe em disco
+
+`C:\Users\devan\Videos\demandou-app-review`, do dia 14/09:
+
+```
+jornada/    5 gravacoes brutas do OBS, 17 minutos no total
+meta/       12 cortes, mais os mesmos legendados
+final/      demandou-meta.mp4, 2 min 57 s, foi o enviado
+```
+
+### O que o video enviado mostra, e onde ele falha
+
+Lido em grade de quadros: login na Demandou, um dialogo do Instagram, as
+contas conectadas, a geracao do conteudo, a aprovacao humana, a publicacao no
+Instagram e na pagina do Facebook, e a desconexao. **A estrutura esta certa**,
+e as legendas ja estao em ingles.
+
+O que faltou e exatamente o que a Meta apontou:
+
+1. **o dialogo do Instagram que aparece e de REAUTORIZACAO**, e diz com todas
+   as letras "voce conectou anteriormente o app Demandou a sua conta do
+   Instagram". Nao e consentimento, e reaproveitamento de concessao antiga;
+2. **as permissoes do Facebook sao NARRADAS na legenda e nunca MOSTRADAS**. A
+   legenda diz "pages_show_list, pages_read_engagement and pages_manage_posts"
+   por cima de um quadro da tela de configuracoes da Demandou;
+3. nao aparece a escolha da pagina nem a digitacao do login.
+
+### As brutas nao salvam, e conferi as cinco
+
+Uma e a criacao de campanha (7 minutos de agentes trabalhando), outra e o
+fluxo do Google e do YouTube, e a do Meta ja comeca com as contas conectadas.
+**Nenhuma tem o login da Meta do zero.** Precisa regravar, mas so o trecho de
+conexao, de 60 a 90 segundos.
+
+### O que entrou no codigo
+
+`OAUTH_LOCALE`: com ela em `en_US`, os dialogos da META saem em INGLES, que e
+uma das boas praticas que eles pedem. Fica no ambiente e nao fixo porque so
+vale para a GRAVACAO: cliente brasileiro conectando a propria conta tem de ver
+portugues.
+
+**O que NAO entrou, e a decisao vale mais que o codigo:** forcar a
+reautorizacao do Instagram por parametro. A tentacao era mandar
+`force_reauth=true`, como o Facebook ja faz com `auth_type=rerequest`. O
+`force_authentication=1` ali ja forca o LOGIN, e `force_reauth` nao e
+documentado para o Login com Instagram, que e outro fluxo. **Mandar parametro
+que talvez nao exista, num caminho de producao que funciona, para resolver uma
+gravacao que acontece uma vez, e trocar risco permanente por conveniencia de
+um dia.** A tela limpa se consegue do lado de fora: removendo a Demandou em
+Instagram, Configuracoes, Apps e sites.
+
+### Provas
+
+tsc e build limpos, deploy feito. O diagnostico e de leitura de video, nao de
+codigo: grade de quadros do enviado e das cinco brutas.
+
+*Atualizado em 22/09/2026 por Claude Code.*
+
+---
+
+## Sessao 23/09/2026 (parte 168): o cadastro que engolia a conta, e o preco escrito antes do clique
+
+O Bruno entrou na demandou.com por uma guia anonima, como um desconhecido, e o
+primeiro passo do produto falhou: "preenchi tudo, confirmei e nao aparece nada,
+o usuario nao sabe se deu certo, se nao deu, nada, ai volta para a tela do
+login".
+
+### A causa, e ela estava escondida atras de um sucesso
+
+`signUp.email` devolveu **sucesso**. A conta foi criada e o e-mail saiu. Mas
+com `requireEmailVerification` ligado, o cadastro NAO abre sessao, e o
+`router.push(redirect)` seguinte batia no layout do app, que nao encontrava
+sessao e devolvia para o login.
+
+Do lado de quem se cadastrou: o produto engoliu o cadastro em silencio.
+
+**Navegar depois de cadastrar era a propria mentira**, porque nao ha para onde
+ir antes de confirmar o e-mail. O formulario agora nao navega: ele vira um
+aviso que diz que a conta foi criada, PARA ONDE o e-mail foi, o prazo de uma
+hora, onde procurar se nao chegou, e um botao de reenviar.
+
+### O link do e-mail cai no checkout
+
+Pedido do Bruno: "precisa confirmar o email e ja cair no checkout". O
+`callbackURL` do cadastro passou a ser `/planos?assinar=1`. Faz sentido alem da
+conversao: quem confirma ainda nao tem plano, e sem plano o portao devolveria
+essa pessoa para a pagina de planos de qualquer jeito. Mandar direto poupa um
+salto que parece erro. Quem chegou por um card de preco continua indo para o
+checkout daquele plano, porque ja escolheu.
+
+### O preco escrito EMBAIXO DO BOTAO
+
+"Deixar claro que nao vai cobrar nada durante o periodo de teste e apos o teste
+passa a cobrar o valor do plano."
+
+A frase existia, no RODAPE da pagina de precos, e rodape de pagina de preco nao
+e lido: quem hesita hesita com o dedo no botao. Agora, embaixo de cada botao:
+
+```
+Cartao agora, R$ 0 hoje. A partir do 8o dia, R$ 397 por mes.
+Cancele antes e nao paga nada.
+```
+
+Com o VALOR e o DIA, e nao com a palavra "depois". No anual diz o valor do ano;
+no fundador, o valor travado.
+
+### O ALARME FALSO QUE VALEU A INVESTIGACAO
+
+O Bruno tambem escreveu: "entrei com meu email pessoal, estou com a tarja de
+ADM de acesso interno, custo tudo". Parecia brecha de seguranca.
+
+**Nao e.** Medido: existem DUAS contas com acesso interno, e as duas sao
+antigas. `bruno.donaire88@gmail.com` nasceu em 21/08 e virou admin em 12/09
+(quando ele cancelou a propria assinatura e precisou continuar dentro do
+produto sem ser cobrado). Ele entrou na conta que ja existia. **Nenhum caminho
+do cadastro concede papel**, e nenhum dos 9 cadastros das ultimas 12 horas
+nasceu admin.
+
+O que fica de verdade e outra coisa: **do proprio admin nao da para testar o
+produto como cliente**, porque o papel pula o portao, pula o teste e pula a
+cobranca. Para andar a jornada de verdade, conta separada. O apelido do Gmail
+resolve, e a faixa do plano dizendo "Acesso interno, sem cobranca" foi o que o
+avisou, ou seja ela fez o trabalho dela no primeiro dia.
+
+### Um achado de ambiente, de carona
+
+O `dev` subiu na porta 3111 e o cadastro respondeu **"Invalid origin"**: a
+lista de `trustedOrigins` em `lib/auth` so tem 3000 a 3003. Nao e defeito de
+producao, e vale saber antes de perder meia hora: para testar cadastro no dev
+local, subir em 3000, 3001, 3002 ou 3003.
+
+### Provas
+
+tsc e build limpos; 21/21 em `provar-cadastro-2309.mts` (a tela do cadastro e o
+preco dos tres planos, no mensal, no anual e no fundador); e **o cadastro feito
+de verdade pelo navegador**, com o e-mail saindo (conferido no log do Resend) e
+o corpo da requisicao carregando `callbackURL: "/planos?assinar=1"`, lido da
+rede. A conta de prova ficou de pe, de proposito: e a conta limpa para o Bruno
+andar a jornada como cliente. Deploy em producao.
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+---
+
+## Sessao 23/09/2026 (parte 169): "mandou o e-mail e nada", e a diferenca entre aceitar e entregar
+
+Tres defeitos na mesma sessao, todos achados pelo Bruno entrando como um
+desconhecido. O terceiro e o que vale mais.
+
+### 1. Cadastro com e-mail que JA EXISTE dizia "sua conta foi criada"
+
+Medido chamando a API direto: `POST /api/auth/sign-up/email` com um e-mail
+existente responde **HTTP 200 com um objeto de usuario**. Conferido no banco:
+**nao cria, nao manda e-mail e nao altera a conta antiga** (nome, senha e data
+de alteracao intactos). E protecao contra enumeracao, e do lado do servidor
+esta certa.
+
+Do lado de quem usa, e mentira, e **a tela de ontem piorou**: o silencio virou
+"Sua conta foi criada". E a resposta falsa e INDISTINGUIVEL da verdadeira (as
+duas com `token: null` e `createdAt` de agora), entao a pergunta precisa vir
+ANTES do cadastro.
+
+`app/api/auth/email-existe` responde so sim ou nao, com limite de 10 por minuto
+por IP. **A troca esta escrita no arquivo**: volta a enumeracao que o
+better-auth evitava, e e o que Stripe e Notion fazem, porque cliente que nao
+entra e nao sabe por que nao abre chamado, ele some.
+
+### 2. O e-mail "escroto de teste" era o e-mail CERTO com o nome errado
+
+Ele abriu a caixa e viu "Boas-vindas, **Teste**". Era o e-mail de producao, com
+o nome "Teste Cadastro" que EU usei na prova do cadastro, entregue no
+`+teste2309` que cai na mesma caixa dele. Nao ha segundo e-mail feio no
+sistema.
+
+### 3. O QUE VALE: "aceito pelo Resend" nao e "entregue"
+
+O log de producao mostra o envio com id (`01a0cf51-...`), ou seja o Resend
+ACEITOU. E nada chegou na caixa dele.
+
+Conferido o que da para conferir:
+
+```
+SPF   demandou.com          v=spf1 include:spf.titan.email ~all
+DKIM  resend._domainkey     presente
+SPF   send.demandou.com     ip4 do Resend, com MX de feedback
+DMARC _dmarc                v=DMARC1; p=none
+```
+
+A configuracao esta **completa**. Entao a sonda: o mesmo e-mail de confirmacao
+foi enviado para `bruno@areticon.com`, caixa que o conector do Microsoft
+consegue LER. Resultado, lido da caixa: **chegou em 9 segundos, na caixa de
+entrada, nao no lixo**. Ou seja a esteira entrega.
+
+A diferenca esta no destino: `@areticon.com` e Microsoft 365 corporativo,
+`@outlook.com` e o Outlook de consumidor, que e muito mais agressivo com
+dominio novo. O destino provavel e o Lixo Eletronico.
+
+**O defeito de produto, e ele e nosso:** `enviarEmail` devolve `true` quando o
+Resend aceita, e ninguem nunca mais pergunta o que aconteceu depois. A chave do
+Resend e SO DE ENVIO (403 ao tentar ler), entao nem o suporte consegue
+responder "cade o e-mail". A tela diz "Enviamos", que e o que sabemos, e o
+cliente entende "chegou", que e o que nao sabemos.
+
+O que resolve, e ficou como card: o webhook do Resend gravando entregue,
+devolvido e marcado como spam, e a coluna disso no painel. **Em integracao com
+terceiro, medir o que voltou** ja e regra da casa desde 18/08; aqui ela nao
+estava sendo cumprida.
+
+### Provas
+
+tsc e build limpos; a tela de "esse e-mail ja tem conta" aberta no navegador
+com o e-mail real do Bruno; a sonda de entrega enviada e LIDA na caixa de
+destino. Deploy em producao.
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+## Sessao 23/09/2026 (parte 170): o funil sem atrito, e o fundador que pagava e ficava de fora
+
+Pedido do Bruno: "elimine toda friccao desnecessaria do site". Ele confirmou o
+e-mail, caiu na escolha de plano, clicou no Essencial e a tela pediu para
+criar conta de novo. Seguindo o caminho dele apareceu coisa pior.
+
+### O achado grave: tres precos compravam plano "free"
+
+O webhook decidia o plano com uma lista de precos escrita a mao na rota, e ela
+nao conhecia o Autoridade anual, o Estudio anual nem o FUNDADOR. Quem pagasse
+um dos tres ficava com `plan = "free"`, sem credito, e o portao mandava escolher
+plano de novo. Os dez fundadores seriam os dez primeiros clientes trancados do
+lado de fora depois de pagar. Agora o plano sai de `PLANS` e do preco de
+fundador em `lib/stripe/aplicar-plano.ts` (`planoDoPreco`), e preco desconhecido
+numa assinatura viva grita no log e NAO rebaixa ninguem. Prova:
+`scripts/tmp/provar-plano-do-preco-2309.mts`, 11/11 contra o ambiente real.
+
+### O funil, agora
+
+- `/sign-up` e `/sign-in` reconhecem quem ja tem sessao
+  (`lib/auth/quem-ja-entrou.ts`): com `?plan=` vai direto a `/billing/start`,
+  sem plano respeita `redirect` (so caminho interno; `//evil.com` cai no
+  dashboard). Cobre /planos, a landing e qualquer link antigo.
+- `/planos` logado ja manda o botao para `/billing/start`, e esconde "Ja tenho
+  conta". O aviso do portao diz o proximo passo: cartao, R$ 0 hoje, cobranca no
+  8o dia se nao cancelar.
+- O proxy leva a QUERY no `redirect` do login: `/billing/start?plan=business&
+  ciclo=anual` voltava como `/billing/start` e abria o plano padrao.
+- A volta do Stripe passa por `/billing/confirmar` (route handler): busca a
+  sessao, confere que e da pessoa logada e esta completa, grava o customerId e
+  aplica o plano com a MESMA funcao do webhook, depois segue para o dashboard.
+  Acabou a corrida em que quem acabou de pagar via "escolha um plano".
+
+### O Essencial fica (revisao de creditos)
+
+Custo medido em todas as campanhas completas desde 20/09 a noite, com a mesma
+funcao que cobra (`custoTotal`) contra `ai_usage`:
+`scripts/tmp/custo-por-credito-todas-2309.mts`. Ponderado R$ 0,031 por credito.
+Gastando tudo: Essencial 2,57x (sobra R$ 242), Essencial anual 2,14x, Autoridade
+2,37x, Estudio 3,40x, Fundador 1,35x (sobra R$ 103, fino). Campanha de um dia
+custa o dobro por credito (pesquisa inteira sozinha). Creditos nao mudam; o
+Essencial volta a aparecer no anual. Artefato de preco republicado (v12, versao
+14 do servico) em coluna unica de 760 px, com a revisao no topo e o fundador
+com o preco proprio como padrao: https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5
+
+### Termos, privacidade e o texto do checkout
+
+Termos 5.2 reescrito: todos os planos tem 7 dias gratis, cartao no checkout com
+R$ 0, limite do teste (uma campanha de ate 7 dias e um video de ate 30 s),
+cobranca automatica no 8o dia, cancelar antes nao cobra nada e o acesso vai ate
+o fim do teste. Oferta de fundador escrita (preco mantido enquanto a assinatura
+seguir ativa). Privacidade: o cartao fica no Stripe para a cobranca do fim do
+teste; guardamos so customerId, plano, situacao e fim do teste.
+
+No Stripe, com pedido do Bruno: as descricoes dos tres produtos diziam 1.800 /
+3.500 / 7.000 creditos, "3 redes" e "Tudo do Pro". Reescritas a partir de
+`lib/planos.ts` (`scripts/tmp/atualizar-descricao-dos-produtos-2309.mts`). E o
+checkout ganhou `custom_text.submit`: no anual, "Equivale a R$ 331 por mes, pagos
+uma vez por ano", porque a linha "Depois, R$ 3.970,00 por ano" e gerada pelo
+Stripe e nao aceita texto.
+
+Provas: tsc e build limpos; conta temporaria sem plano refez o caminho do Bruno
+no dev local (dashboard -> /planos?assinar=1 -> anual com os tres cartoes ->
+Essencial -> checkout do Stripe com "7 dias gratis"), apagada no fim; checkout
+de producao lido com a descricao nova e a mensagem por mes. Dois deploys.
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+### Adendo da parte 170: o logo antigo no checkout e no e-mail
+
+Pedido do Bruno: o checkout mostrava o logo antigo (circulo com a palavra em
+azul-marinho). A imagem dos tres produtos no Stripe agora e
+`https://demandou.com/brand-mark-on-light.png`, a marca de 25/08
+(`scripts/tmp/trocar-imagem-dos-produtos-2309.mts`), conferida num checkout de
+producao. No caminho: o e-mail de boas-vindas (`MARCA.logo` em
+`lib/email/layout.ts`) apontava para `logo.png`, o circulo antigo que ficou no
+repo sem uso; trocado para a mesma marca. Deploy feito.
+
+Fica com o Bruno, porque a API nao mexe na marca da propria conta: o icone
+generico ao lado de "demandou" no topo do checkout e o botao azul vem de
+Configuracoes > Marca no painel do Stripe (icone, logo e cor #f97316).
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+### Adendo da parte 170: o administrador que caia no checkout
+
+Relato do Bruno: "tentando logar com a conta de administrador e esta pedindo
+checkout no Stripe". Pelos logs e pelo banco: nenhuma sessao nova foi criada. O
+login pelo LinkedIn falhou (`State mismatch: verification not found`) e ele
+continuou na sessao da protegescore@outlook.com, a conta de teste da guia
+anonima (role user, plan free). O portao mandou essa conta para /planos, e dali
+para o checkout. As duas contas admin (bruno@areticon.com e
+bruno.donaire88@gmail.com) estao com `role: admin`, e o portao libera admin.
+
+O defeito que eu tinha posto no mesmo dia: `/sign-in` mandava todo logado para
+o dashboard, entao nao havia caminho para trocar de conta. Agora
+`lib/auth/quem-ja-entrou.ts` (`quemJaEntrou`) so redireciona quando ha `?plan=`
+(vai ao checkout); sem plano, /sign-in e /sign-up mostram
+`components/auth/ja-conectado.tsx`: em qual conta a sessao esta, "Continuar com
+esta conta" e "Sair e entrar com outra conta". Provado no dev local: aviso com
+o e-mail certo, clique em sair, formulario de login na tela. Deploy feito.
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+## Sessao 23/09/2026 (parte 171): o CRM do painel, com acoes dentro dos termos
+
+Pedido do Bruno: "na conta de adm, deve ter um painel de adm, com CRM, lista de
+leads, clientes ativos em teste, clientes pagantes, por planos... a opcao de
+remover, adicionar, mexer nos usuarios, respeitando os termos e o que ele ja
+pagou no Stripe".
+
+### O que existe agora
+
+- `/admin/clientes` (link no topo de /admin, e "Painel" no menu lateral, que
+  so aparece para admin: o layout le o papel no banco e passa `ehAdmin` ao
+  AppShell/Sidebar). Leitura em `lib/admin/crm.ts` (`lerCrm`, `lerFicha`).
+- **Segmentos** (`lib/admin/segmentos.ts`, modulo sem banco para a tela poder
+  importar): lead, sem plano, em teste, pagante, cancelando, cobranca falhou,
+  ex-cliente, cortesia, interno, robo. Quem tem assinatura e classificado pelo
+  STRIPE (paginado ate o fim), o resto pelo banco. Cartoes: recorrente por mes,
+  em teste (e quanto vira se todos ficarem), saindo, e contagem por plano.
+- **Ficha** de cada conta: assinatura (valor, ciclo, renova/acaba, link para o
+  Stripe), regra de reembolso calculada, extrato de creditos, historico do admin.
+- **Acoes** (`lib/admin/acoes.ts`, rotas `app/api/admin/usuarios` e
+  `[id]`, papel conferido no banco a cada chamada, 404 para quem nao e admin):
+  convidar; ajustar creditos com motivo (operation `ajuste_admin`, aparece no
+  extrato); dar/tirar admin (nao tira o proprio); plano de cortesia (so SEM
+  assinatura viva, porque plano pago e o que a pessoa assina); cancelar no fim
+  do periodo / reativar (termos 5.4); reembolso integral e encerramento
+  imediato, fatura por fatura desta assinatura via `invoicePayments` (termos
+  5.5 arrependimento ate 7 dias da primeira cobranca, 5.6 garantia ate 30 dias
+  sem publicacao, fora disso so como excecao com motivo, 5.7); mandar link de
+  senha; excluir (so sem assinatura viva, digitando o e-mail; nao se exclui; o
+  cliente no Stripe fica por obrigacao fiscal; funil perde o userId).
+- **Registro**: tabela nova `admin_acoes` (modelo `AcaoDeAdmin`, migracao
+  `20260923200000_acoes_do_admin`, ja aplicada). O e-mail do alvo e copiado para
+  o registro sobreviver a exclusao.
+- **Recuperacao de senha, que nao existia**: `sendResetPassword` no better-auth,
+  `emailDeSenha` (texto de convite quando a conta nao tem nenhum vinculo, texto
+  de troca quando tem), telas `/esqueci-a-senha` e `/redefinir-senha`, link
+  "Esqueci a senha" no login, e a tela "esse e-mail ja tem conta" agora aponta
+  para ela. O convite do admin usa o mesmo link.
+
+### Provas
+
+Regra de reembolso 8/8 contra os termos (`scripts/tmp/provar-regra-de-reembolso-2309.mts`).
+No dev local com sessao de admin: lista com os segmentos reais (64 contas, 41
+sem plano, 20 robos, 2 internos, 1 cortesia que e o reviewer@demandou.com das
+lojas); ficha de uma conta de teste com creditos +150, cortesia Essencial
+(repos 5.000), admin dado e tirado, tudo no extrato e no historico; recusas do
+admin tirar o proprio acesso e se excluir (400); botao de excluir travado com
+e-mail errado; exclusao apagou a conta e o registro ficou. Convite ponta a
+ponta: conta criada, e-mail "Sua conta na Demandou esta pronta" chegou na
+caixa em 7 s, link abriu /redefinir-senha, senha salva, login 200, mesmo link
+reusado = INVALID_TOKEN; conta apagada pelo proprio painel. tsc e build limpos;
+primeiro deploy caiu no `next/font` (download de fonte do Google), o segundo
+entrou.
+
+### Limites conhecidos
+
+- O reembolso nao foi exercitado contra uma cobranca real: nao ha assinatura
+  paga ainda. A primeira vez que for usado, conferir no Stripe.
+- A exclusao nao apaga arquivos de video no Blob (os termos dao 90 dias, 13.3).
+- O rodape do molde de e-mail diz "alguem usou este endereco para criar uma
+  conta" tambem no e-mail de troca de senha.
+
+*Atualizado em 23/09/2026 por Claude Code.*
+
+## 24/09/2026 (parte 172): o estado das aprovacoes, pelo Bruno e conferido
+
+- Meta App Review: **em analise**.
+- LinkedIn Community Management API: **em analise**.
+- Google, bloqueio de cobranca do projeto 867802944: **resolvido** pelo Bruno.
+  Conferido: `scripts/tmp/google-desbloqueado-2409.mts` fez uma chamada de texto
+  no Gemini (HTTP 200) e listou veo-3.1, veo-3.1-fast e veo-3.1-lite visiveis.
+  Nenhum video foi gerado na conferencia.
+- Google, verificacao do OAuth do YouTube: ok (aprovada em 16/09).
+- Stripe, marca da conta: o icone ja aparece no checkout. Falta a "Cor da
+  marca": o fundo esquerdo ficou #525F7F (azul acinzentado); o certo e
+  #1E1E25 (o fundo escuro do produto) ou branco.
+
+O que segura o lancamento publico agora sao as duas analises de terceiros.
+
+*Atualizado em 24/09/2026 por Claude Code.*
+
+## 24/09/2026 (parte 173): o pitch deck para investidores
+
+Artefato: https://claude.ai/artifact/ANNpbVV4DKDhBB9EQCxMRv (18 slides, privado ate o
+Bruno compartilhar). Video dos agentes (`public/demo/demo-hero.mp4`), prints reais
+do Gestor de Conteudo e da Agenda (dev local, conta do Bruno, com a faixa "Acesso
+interno" e o custo interno escondidos; os posts do X que falharam ficaram fora do
+recorte, nao foram apagados da tela), e quatro pecas reais publicadas.
+
+Modelo financeiro: `scripts/tmp/pitch-modelo-financeiro-2409.py`. Regra do Bruno:
+R$ 10 mil por mes nos meses 1 a 3, depois 100% do resultado operacional vira verba
+de aquisicao. Tres travas de realidade (sem elas a primeira rodada dava R$ 1 bi de
+ARR): CAC sobe com a verba (expoente 0,5), CAC sobe com a saturacao do alcance, e o
+time entra com a base (pro-labore so com margem mensal acima de R$ 25 mil).
+Resultado em 36 meses: conservador 129 clientes e ARR R$ 965 mil (3x = R$ 2,9 mi);
+base 1.413 clientes e ARR R$ 10,8 mi (5x = R$ 54 mi); otimista 6.674 clientes e ARR
+R$ 51,5 mi (6x = R$ 309 mi). Caixa nunca negativo nos tres.
+
+Mercado (fontes no deck): TAM R$ 121 bi/ano (15,9 mi pequenos negocios com redes x
+R$ 636), SAM R$ 28,5 bi (3,74 mi profissionais de conselho). Multiplo: SaaS Capital
+2025, mediana privada 4,8x a 5,3x ARR. Ficaram de fora por falta de fonte: pre-money
+de seed no Brasil, horas/semana de PME brasileira, e o "3x leads, 62% menos" da
+Demand Metric (antigo).
+
+*Atualizado em 24/09/2026 por Claude Code.*
+
+### Adendo da parte 173: o deck v2 (pedido do Bruno)
+
+Mesmo link, versao 2: https://claude.ai/artifact/ANNpbVV4DKDhBB9EQCxMRv (19 slides).
+- Visual da landing: grade de 48 px deslizando, brilho laranja, Montserrat 900 com
+  o traco laranja sob a palavra, selo com raio, cartao em janela, e a marca pequena
+  "demandou. postou." no topo de todo slide.
+- Os DOIS modos entraram (o v1 so falava de video): gravacao e automatico (tema ou
+  agenda recorrente, para empresa que nao fala em video).
+- Logos das redes (os mesmos glifos de components/social/logos-redes.tsx) em todo
+  slide de publicacao; slide de stack em camadas com os logos dos fornecedores
+  (Simple Icons; Grok sem logo publico, vai por texto). Fornecedores conferidos no
+  codigo: Claude, Gemini com googleSearch, Grok, GPT Image 2, Veo 3.1, Deepgram
+  nova-3, worker FFmpeg no Railway, Next, Vercel e Blob, Better Auth, Stripe,
+  Resend, Three.js, Supabase, Prisma.
+- Grafico de receita mensal em 60 meses com leitura em qualquer ponto (mouse e toque).
+- Valuation virou funil por cenario: R$ 10 mil -> impressoes (CTR 1,2%) -> acessos ->
+  leads (metade cria conta) -> cadastros -> assinantes, e ao lado assinantes x ticket
+  x 12, ano 1 a 5, com o reinvestido em midia e o valuation. Base no ano 5: 2.158
+  assinantes, receita anual R$ 16,5 mi, 5x = R$ 82,4 mi.
+Para refazer: scripts/tmp/pitch-deck/ (modelo.py gera o json, montar.py monta o html
+a partir de modelo-deck.html; os arquivos de midia ficam no artefato).
+
+*Atualizado em 24/09/2026 por Claude Code.*
+
+### Adendo da parte 173: deck v3, slides fixos
+
+Bruno: "a apresentacao e um deck, precisa sempre caber tudo no slide, nao pode
+cortar". Cada slide agora e uma tela fixa de 1600 x 900 que escala inteira para a
+janela (um slide por vez; setas, botoes, deslizar o dedo e #sN no endereco). Medido
+slide a slide no navegador: os 19 cabem nos 756 px uteis (maior: 754), sem corte
+horizontal. Versao 3 no mesmo link.
+
+*Atualizado em 24/09/2026 por Claude Code.*
+
+## Sessao 27/09/2026 (parte 174): a virada enterprise com o Matheus Gaberline
+
+Matheus Gaberline (vendas de alto valor, escritorio grande de consorcios, tres
+exits) entrou como socio. Publico novo: empresas que faturam acima de R$ 100 mil
+por mes. Decisoes do Bruno: Starter R$ 2.997, Pro R$ 3.997, Enterprise R$ 5.667
+POR MES, so contrato anual PAGO A VISTA uma vez por ano, sem teste gratis (a
+entrada e uma demonstracao com os socios), conteudo de cada plano proposto por
+mim e aprovado.
+
+### Feito e em producao
+- Stripe: produtos renomeados (Demandou Starter/Pro/Enterprise, ids internos
+  pro/business/studio mantidos: o id "pro" e o STARTER), precos anuais novos
+  (R$ 35.964, 47.964, 68.004) nas variaveis STRIPE_*_ANNUAL_PRICE_ID (Vercel e
+  .env.local), descricoes novas, oferta de fundador encerrada (variavel removida;
+  nenhuma vaga tinha sido vendida). Script: scripts/tmp/stripe-planos-enterprise-2709.mts.
+- Planos (lib/planos.ts, lib/stripe PLANS): creditos 20k/40k/60k e VIDEO INCLUIDO
+  (videoCredits 3.120/6.240/15.600 = 4/8/20 videos de 30 s). `reporVideoDoPlano`
+  completa a carteira de video ate a cota a cada ciclo, sem apagar pacote comprado;
+  chamado em aplicarPlanoDaAssinatura e no cron annual-credits.
+- Checkout: sempre anual, sem trial_period_days, texto acima do botao com o total
+  do ano e o arrependimento de 7 dias.
+- Demonstracao: /demonstracao (publica) + /api/demonstracao. Lead ganhou nome,
+  telefone, empresa, cargo, faturamento, demoPedidaEm (migracao
+  20260927120000_lead_demonstracao). Faixa acima de R$ 100 mil avisa os socios
+  (DEMONSTRACAO_AVISAR, padrao contato@demandou.com) com link de WhatsApp e confirma
+  para quem pediu; abaixo disso so grava e responde que ainda nao e o foco.
+- Landing, /planos, configuracoes, e-mail de boas-vindas, CRM: sem teste gratis e
+  sem fundador; todo "Comecar gratis" virou "Agendar demonstracao"; /planos logado
+  contrata direto no checkout anual (o cliente vem da demonstracao com conta criada
+  pelos socios no CRM).
+- Termos item 5 reescrito (contrato anual a vista, sem teste, renovacao automatica
+  com aviso de 30 dias, assinaturas antigas mantem a regra delas). O aviso existe:
+  webhook `invoice.upcoming` manda lib/email/renovacao.ts; o endpoint do Stripe
+  passou a assinar o evento por API.
+- Artefato de preco v15 com a tabela nova e o custo do editor de video.
+
+### Provas
+Pagina de precos, /planos e demonstracao na tela; pedido real de demonstracao
+enviou os dois e-mails e a confirmacao chegou na caixa em 6 s; pedido abaixo de
+R$ 100 mil gravou sem avisar; leads de teste apagados; checkout anual de producao
+lido (R$ 47.964 por ano, sem teste). tsc e build limpos (o erro do build local era
+.next/dev corrompido ao derrubar o dev). Producao conferida sem "7 dias gratis".
+
+### Pendencias do Bruno
+- Stripe: eventos de renovacao em 30 dias (painel > Faturamento), para o aviso sair
+  no prazo que os termos prometem.
+- E-mail do Matheus para DEMONSTRACAO_AVISAR.
+- Cadastros: API da Higgsfield, app no TikTok for Developers, e dizer quantas
+  pessoas a empresa tem (licenca da Remotion).
+- Proximas frentes na ordem aprovada: tema claro padrao, TikTok, arte dos agentes,
+  editor de video nivel estudio. O deck de investidor precisa ser refeito com o
+  preco novo e venda por demonstracao (o funil dele e o antigo).
+
+*Atualizado em 27/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 175): chaves da Higgsfield e do TikTok, e onde tudo parou
+
+### Feito
+- Chaves gravadas no .env.local (ignorado pelo Git, regra `.env*`) e na Vercel
+  producao, sem imprimir valor: HF_CREDENTIALS (formato id:segredo),
+  TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET.
+- SDK oficial instalado: @higgsfield/client 0.2.6 (usar `@higgsfield/client/v2`,
+  `config({ credentials })` e `higgsfield.subscribe(modelo, { input, withPolling:
+  true })`; o v2 so roda no servidor). Modelo lido na doc:
+  `bytedance/seedance-2.5/text-to-video`, input prompt, duration 4 a 30 (padrao 5),
+  resolution 480p ou 720p, aspect_ratio 16:9, 4:3, 1:1, 3:4, 9:16, 21:9,
+  output_format mp4 ou mov, generate_audio (padrao true); o video volta no campo
+  `video`. Exemplo: scripts/higgsfield-exemplo.mts (em .mts porque o projeto nao e
+  ES module e o tsx recusa await no topo de .ts).
+- Icone do app do TikTok em 1024 x 1024 (o portal recusou o de 512): gerado do SVG
+  oficial (public/brand-mark.svg, sem recriar), fundo branco, em
+  public/icone-1024.png e C:\Users\devan\Documents\Demandou\icone-tiktok-1024.png.
+
+### Bloqueado
+- Higgsfield: a chave AUTENTICA, mas a API respondeu "Not enough credits". A conta
+  da API (cloud.higgsfield.ai, separada do app) esta sem saldo. Nenhum video foi
+  gerado, entao o setup NAO esta provado. Depois da recarga: rodar
+  `npx tsx --env-file=.env.local scripts/higgsfield-exemplo.mts` e so declarar
+  pronto com status completed e URL de video.
+- TikTok: o Bruno parou no preenchimento do app (icone recusado). Faltam categoria,
+  descricao, URLs de termos e privacidade, plataforma Web, produtos Login Kit
+  (redirect https://demandou.com/api/social/tiktok/callback) e Content Posting API
+  (Direct Post), escopos user.info.basic, video.upload, video.publish, e Save. A
+  integracao no codigo ainda NAO existe; a auditoria do TikTok pede video dela
+  funcionando, e antes da auditoria os posts saem so como privados.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: verificação do site no TikTok
+
+O TikTok pediu a verificação das URLs (termos, privacidade e site). Escolhemos URL prefix `https://demandou.com/`, que é verificado por um arquivo de assinatura, porque o DNS fica na HostGator e não tem CLI. O arquivo está em `public/tiktokZZFqvXygB90N6vbGSahBEB61NCKD5nev.txt`. O `txt` entrou no matcher do `proxy.ts`, senão o robô do TikTok recebia a página de login. Em produção o arquivo foi conferido: responde 200, como text/plain, e o conteúdo é idêntico ao local. **Não apagar esse arquivo**: o TikTok pode verificar de novo.
+
+
+## 28/09/2026 (parte 176): tema claro como padrao, com cara de produto enterprise
+
+Primeira frente da ordem aprovada depois da virada enterprise.
+
+### O que mudou
+- `app/globals.css`: paleta clara refeita e promovida a padrao (`:root`). Moldura
+  #f4f5f7, superficies e cards brancos separados por borda #e3e6eb e sombra de
+  duas camadas, texto #111827, secundario #5b6474 (5,9:1 sobre branco). O laranja
+  de texto no claro e #c4470f (o da marca, #ef6122, da 3,0:1 sobre branco e nao
+  serve para texto); botoes cheios seguem no laranja da marca.
+- O escuro virou opcao: `:root[data-theme="dark"], [data-theme="dark"]`. O
+  `:root[...]` e obrigatorio: `:root` e `[data-theme="dark"]` tem a mesma
+  especificidade e o bloco claro vem depois, entao o claro vencia mesmo com o
+  atributo escuro no html (achado na tela: botao dizia "Modo claro" com tudo
+  branco). Tentei `:root:not([data-theme="dark"])` antes e o compilador do CSS
+  reescreveu para `:root` puro.
+- Chave do tema no localStorage passou de `theme` para `tema` (layout e
+  theme-provider): a escolha antiga foi feita quando o escuro era padrao, entao a
+  virada vale para todo mundo uma vez.
+- Tokens novos `--realce-1`, `--realce-2` (hover e selecao) e `--barra-rolagem`.
+  40 usos de `bg-white/5`, `bg-white/10` e `border-white/10` fora da landing
+  viraram token; ficaram brancos so os que estao sobre foto ou video (lightbox e
+  setas do carrossel).
+- Telas de login, cadastro, senha e o artigo publico (`/a/[token]`) tinham a
+  paleta do Discord escrita a mao; agora usam as variaveis do tema.
+- Acabamento: titulos internos sem peso 900 (semibold com entreletra fechada);
+  selos do painel em portugues (Ativo, Rascunho, Publicado, Falhou) no lugar do
+  valor cru do banco; "Runs executados" virou "Campanhas rodadas".
+
+### O que ficou de fora, de proposito
+- Landing, /planos e /demonstracao continuam travadas no escuro
+  (`data-theme="dark"` no main). A landing tem desenho aprovado em canvas (grade,
+  brilho) e trocar para o claro e redesenho, nao troca de variavel. Decisao do
+  Bruno.
+
+### Provas
+- Prints no dev local (porta 3001, sessao-e2e na conta bruno@areticon.com) nos
+  dois temas: painel, posts, agenda, configuracoes, CRM, login. Escuro medido no
+  navegador (`--bg-primary` = #1e1e25 com data-theme dark).
+- `scripts/tmp/prints-do-tema-2809.mts` (claro|escuro|ambos [rotas]) e
+  `scripts/tmp/medir-tema-2809.mts`. No Git Bash, rodar com MSYS_NO_PATHCONV=1,
+  senao a rota vira caminho do Windows.
+- tsc limpo. Deploy feito; demandou.com/sign-in serve `data-theme="light"` e le
+  a chave `tema`.
+
+### Achados no caminho
+- Hidratacao falha em toda tela logada por causa do `AvatarDoUsuario` no menu
+  (servidor e cliente divergem). Nao e do tema; fica anotado.
+- O dev server parou de recompilar o CSS no meio da sessao, e derruba-lo
+  corrompeu `.next/dev` (tudo 404). Remedio: parar, apagar `.next/dev`, subir.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: sandbox do TikTok pronto
+
+O sandbox `Demandou` foi criado no portal do TikTok com:
+- Login Kit, redirect `https://demandou.com/api/social/tiktok/callback`. O TikTok não aceita localhost, então o teste de ponta a ponta é feito em produção.
+- Content Posting API com Direct Post ligado. Sem verificação de domínio, porque vamos enviar o arquivo (push_by_file).
+- Scopes: user.info.basic, video.publish e video.upload.
+- A conta pessoal do Bruno como target user.
+
+As chaves do sandbox estão em `.env.local` e na Vercel (production) como `TIKTOK_SANDBOX_CLIENT_KEY` e `TIKTOK_SANDBOX_CLIENT_SECRET`, separadas das de Production (`TIKTOK_CLIENT_*`).
+
+O Production ficou sem salvar: os produtos e scopes se perderam ao trocar de aba, porque o Save exige o vídeo do App review. Ele será refeito no envio para análise. O texto da explicação já está pronto na conversa de 28/09 e deve ser reaproveitado.
+
+**Próximo:** construir OAuth, publicação e a oferta do TikTok em vídeo vertical, usando as chaves do sandbox; testar com a conta do Bruno; gravar o vídeo de demonstração.
+
+
+## 28/09/2026 (parte 177): TikTok como sexta rede, no ar com o sandbox
+
+### O que existe agora
+- `lib/oauth/tiktok.ts`: Login Kit web com PKCE (o desafio do TikTok e SHA-256 do
+  verificador em HEXADECIMAL, nao base64url), troca e renovacao de token (o de
+  acesso dura 24 h, o de renovacao 365 dias e e trocado a cada renovacao),
+  `getTikTokUser`, `lerInfoDoCriador` (creator_info), `publicarVideoNoTikTok`
+  (Direct Post por FILE_UPLOAD em pedacos de 10 MB, abaixo de 5 MB vai inteiro,
+  depois consulta o status ate PUBLISH_COMPLETE por ate 2 min), e
+  `opcoesDoTikTokNoPost`, que RECUSA publicar sem as escolhas da pessoa.
+- Ambiente por variavel: `TIKTOK_AMBIENTE=sandbox|production`. Sem a variavel,
+  vale o sandbox quando as chaves dele existem (`TIKTOK_SANDBOX_CLIENT_*`). Depois
+  da aprovacao: `TIKTOK_AMBIENTE=production` na Vercel e reconectar as contas
+  (token de um app nao vale no outro).
+- Escopos: user.info.basic, video.upload, video.publish (os do sandbox e do texto
+  do App review).
+- Rotas: `/api/social/tiktok/connect` (estado, projeto e verificador PKCE em
+  cookie de 10 min), `/api/social/tiktok/callback` (confere o projeto do dono,
+  exige video.publish concedido, grava o @ vindo do creator_info),
+  `/api/social/tiktok/criador` (a janela consulta toda vez que abre; token
+  recusado marca a conta para reconectar), `/api/posts/[id]/tiktok` (grava
+  metadata.tiktok e revalida as regras no servidor).
+- Publicacao: ramo `tiktok` em `lib/publish/oauth-post.ts`, renovacao em
+  `resolveSocialAccountAccessToken`, codigos `access_token_invalid` e
+  `scope_not_authorized` viram PRECISA_RECONECTAR na rota de publicar.
+  `is_aigc` liga so para video da esteira de IA (`/videos-ia/`), nunca para corte.
+- A janela `components/social/janela-do-tiktok.tsx`, aberta pelo Gestor
+  (publicar e deixar agendado) e pelo painel de posts: nome, @ e foto da conta,
+  previa do video com o primeiro quadro, privacidade SEM valor padrao so com as
+  opcoes do creator_info, comentar/dueto/costura desligados de inicio e travados
+  quando a conta desligou, conteudo comercial com "Sua marca" (Conteudo
+  promocional) e "Conteudo de marca" (Parceria paga, que trava "somente eu"),
+  frase de consentimento com os links da Confirmacao de Uso de Musica e da
+  Politica de Conteudo de Marca, duracao conferida contra o teto da conta, aviso
+  de que leva minutos para aparecer, e botao travado ate tudo valer.
+- Onde o TikTok aparece: destino de corte em `lib/media/destinos.ts` (chip na
+  tela de cortes, legenda do Instagram), secao em Configuracoes do projeto, card
+  de redes no kanban, campanha por tema (so nos dias de VIDEO, e o video do dia
+  nasce 9:16 quando o TikTok esta marcado; chip "so video" na janela), Agenda e
+  Gestor (by-day). Termos e privacidade citam o TikTok e o que se le dele.
+
+### Provas
+- Pagina de autorizacao do TikTok aberta com a chave do sandbox, PKCE e os tres
+  escopos: foi para o login, sem erro de chave ou de redirect.
+- Janela no dev local com dados de teste isolados na conta de teste (projeto,
+  conta TikTok falsa e um corte vertical real), consulta do criador simulada:
+  abre vazia com botao travado; comercial ligado sem opcao trava; "somente eu"
+  fica indisponivel com Conteudo de marca; escolhas gravadas em metadata.tiktok;
+  publicacao so depois da janela. Prints em scratchpad/prints/tiktok-janela-*.
+- Rota de publicar REAL com o token falso: o TikTok respondeu
+  `access_token_invalid`, o post ficou falho com a frase de reconectar e a conta
+  marcada. Prova que o servidor baixa o video, abre a publicacao na API real e le
+  a resposta. Dados de teste apagados (projeto, sessao, plano da conta de teste
+  voltou a free).
+- Script: `scripts/tmp/tiktok-janela-2809.mts preparar|fotografar|apagar`.
+- tsc limpo, tres deploys; /api/social/providers de producao diz tiktok true.
+
+### Falta
+- Bruno conectar a conta pessoal (target user do sandbox) em demandou.com >
+  projeto > Configuracoes > TikTok > Conectar, e aprovar um corte vertical com
+  destino TikTok. Antes da auditoria o video sai como "somente eu".
+- Gravar o video de demonstracao (conectar, escolher o video vertical, janela,
+  confirmar, ver no TikTok), mp4 abaixo de 50 MB, e guiar o Production um passo
+  por vez (texto do App review esta na conversa de 28/09).
+- Nao testado de verdade: renovacao do token (so acontece depois de 24 h) e o
+  envio em mais de um pedaco (corte acima de 20 MB).
+- Achados fora do escopo: fotos de conta quebradas em Configuracoes (URLs de
+  CDN vencidas de Instagram, Facebook e YouTube) e o erro de hidratacao do
+  AvatarDoUsuario (parte 176).
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 177: a Higgsfield provada
+Depois da recarga do Bruno, o exemplo rodou e entregou um video de verdade:
+request_id 754b38fc-6145-4b42-ac62-93f39a5bff52, status completed em 288 s, mp4
+H.264 1280x720 com audio AAC, 5,04 s, 4,9 MB (baixado e conferido com ffprobe).
+A primeira tentativa falhou por tempo: o `subscribe` do SDK com withPolling
+desiste em 300 s e joga fora o request_id, e a geracao levou 288 s, no limite.
+Por isso `scripts/higgsfield-exemplo.mts` agora pede sem a espera do SDK, imprime
+o id na hora e consulta `/requests/{id}/status` por ate 20 min. A mesma regra vale
+para o editor de estudio: nunca usar a espera do SDK, sempre id gravado antes.
+Essa primeira tentativa provavelmente tambem gerou (e cobrou) um video, visivel so
+no historico de cloud.higgsfield.ai.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: licenca da Remotion e o estado do TikTok
+- A Demandou tem 2 pessoas (Bruno e Matheus). A Remotion e gratis para empresa
+  de ate 3 pessoas, entao o editor de estudio usa sem licenca paga. Rever se a
+  equipe passar de 3 (US$ 100 por mes).
+- TikTok: o app do sandbox no portal esta completo (Login Kit, Direct Post, tres
+  escopos, prbrunodonaire como target user), mas o campo Privacy Policy URL estava
+  com /terms; pedido ao Bruno para trocar por https://demandou.com/privacy antes
+  de copiar para o Production. Nenhuma conta TikTok conectada na Demandou ainda
+  (conferido no banco); proximo passo e o Bruno conectar em Configuracoes.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 177: primeira publicacao real no TikTok
+- O Bruno conectou a conta pessoal no sandbox (projeto Demandou). Leitura real do
+  creator_info com o token dele: privacidades PUBLIC_TO_EVERYONE,
+  MUTUAL_FOLLOW_FRIENDS e SELF_ONLY, nada desligado, teto de 3600 s.
+- Primeira tentativa: `unaudited_client_can_only_post_to_private_accounts`
+  mesmo com "somente eu". A trava e da CONTA: antes da auditoria ela precisa estar
+  privada no app do TikTok. A mensagem agora diz onde mudar.
+- Com a conta privada, o post de teste (tk4yqs7d30akmulbzhmx) SAIU e esta no
+  perfil dele. Publicacao real provada de ponta a ponta.
+- O Bruno trocou o @ depois de conectar (prbrunodonaire para prdonaire) e o link
+  "ver publicado" quebrou. Agora o ramo do TikTok rele o @ no creator_info a cada
+  publicacao e atualiza a conta; conta e link do post de teste corrigidos
+  (`scripts/tmp/tiktok-arrumar-usuario-2809.mts`). Deploy feito.
+- Rascunho novo no projeto Demandou para o video da auditoria
+  (`scripts/tmp/tiktok-rascunho-teste-2809.mts`).
+- Pendente fora do TikTok: fotos de Instagram e Facebook quebradas em
+  Configuracoes (URL de CDN da Meta vencida).
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: fotos das contas sem imagem quebrada
+Pedido do Bruno antes de gravar o video da auditoria: as fotos do Instagram e
+do Facebook apareciam quebradas em Configuracoes (link assinado do CDN da Meta,
+que expira em dias).
+- `lib/social/foto-permanente.ts` (`fotoPermanente`): copia a foto para o Blob
+  publico na hora da conexao e devolve o endereco permanente; falha nunca
+  derruba a conexao. Ligada nos retornos de Facebook, Instagram, LinkedIn,
+  YouTube e TikTok.
+- Configuracoes usa `FotoDaConta` (o mesmo do Gestor): foto que nao abre vira a
+  inicial na cor da rede, com o selo.
+- Contas existentes atualizadas por `scripts/tmp/fotos-das-contas-2809.mts`
+  (Instagram e Facebook buscam antes o endereco atual na Meta). Todas as do
+  projeto Demandou estao no Blob; conferido no print do dev local. Deploy feito.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: reconectar sempre mostra as permissoes, e desconectar revoga
+Ao gravar o video da auditoria, o Bruno desconectou e clicou Conectar, e o TikTok
+pulou direto de volta (app ja autorizado), sem a tela de permissoes que o video
+precisa mostrar.
+- `getTikTokAuthUrl` manda `disable_auto_auth=1`: a tela de permissoes aparece
+  sempre, mesmo para quem ja autorizou (conferido no link gerado no dev local).
+- Desconectar (DELETE /api/social/connect) agora chama `revokeTikTokToken`
+  (POST /v2/oauth/revoke/) antes de apagar: o acesso acaba no TikTok tambem,
+  como prometem os termos e o App review. Falha na revogacao so registra.
+- Falha de seguranca corrigida na mesma rota: o DELETE apagava qualquer conta
+  pelo id, de qualquer cliente. Agora confere que a conta e de um projeto de
+  quem pediu (o PATCH ja conferia).
+- Deploy feito.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: o video da auditoria do TikTok
+Gravado pelo Bruno no OBS (jornada/2026-09-28 13-21-11.mp4, 137 s) e editado:
+`C:\Users\devan\Videos\demandou-app-review\demandou-tiktok-app-review.mp4`,
+109 s, 5 MB, 1920x1200 (faixa preta de 120 px embaixo so para as legendas, que
+cobriam os botoes Continuar e Publicar quando ficavam sobre a tela), sem audio.
+Cortes: comeca em 5 s (sai o OBS), tela cheia do video encurtada, espera da
+publicacao acelerada 4x com aviso. Treze legendas em ingles apontam cada regra
+que a documentacao cobra: escopos na autorizacao, user.info.basic, video so
+vertical, creator_info antes, privacidade sem padrao, interacoes desligadas,
+conteudo comercial e a trava de "somente eu", consentimento com o link de musica,
+FILE_UPLOAD, publicado e privado (SELF_ONLY) no perfil. Revisado quadro a quadro.
+Script para refazer: `scripts/tmp/editar-video-tiktok-2809.py`.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento: Production do TikTok enviado para analise
+O Bruno refez o Production no portal (informacoes basicas com Privacy em
+/privacy, Login Kit, Direct Post, os tres escopos), anexou o video editado e o
+texto do App review, e enviou para analise com o motivo "First submission: Login
+Kit and Direct Post so business clients publish approved vertical videos to their
+own TikTok." Agora aguardam as tres analises: Meta, LinkedIn e TikTok.
+
+**Quando o TikTok aprovar:**
+1. Na Vercel: `TIKTOK_AMBIENTE=production` e deploy (lib/oauth/tiktok.ts escolhe
+   as chaves por essa variavel).
+2. Reconectar as contas do TikTok (token do sandbox nao vale no app de producao).
+3. Publicar um teste com "Todo mundo" e conta publica: a trava de conta privada
+   (`unaudited_client_can_only_post_to_private_accounts`) deve sumir.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 178): arte de massinha dos agentes e o escritorio novo
+
+Pedido do Bruno com as referencias (bustos 3D de massinha e a mesa branca com
+laranja) e o de acordo para gerar as imagens.
+
+### A arte
+- 7 bustos e 7 cenas na mesa, uma por agente, cada um com a cor dele na roupa
+  (Roberto azul de oculos, Lucas blazer royal, Tiago moletom azul-ceu com fone,
+  Diana gola alta roxa, Vitor moletom rosa com bone, Vera blazer mostarda de
+  oculos, Paulo polo verde com headset). Gemini 3 Pro Image com as referencias
+  como estilo; a cena da mesa usa o busto do proprio agente como referencia para
+  manter o rosto. Cerca de 25 geracoes no total (varias refeitas), perto de US$ 4.
+- Fundo gerado em magenta puro (a Diana em verde, porque o roxo dela e parente do
+  magenta) e recortado por `scripts/tmp/recortar-elenco-2809.py`: preenchimento a
+  partir da borda, vaos fechados so quando sao mancha grande, sombra da mesa
+  reconhecida pelo tom, reflexo rosa nos brancos neutralizado.
+- Produto usa WebP em `public/agentes/`: `<id>-avatar.webp` (512),
+  `<id>-avatar-p.webp` (160, 6 KB) e `<id>-mesa.webp` (900). 650 KB os 21.
+- Brutos 2K, PNG recortados e as referencias ficam FORA do repositorio, em
+  `C:\Users\devan\Documents\Demandou\elenco-3d` (os scripts ja gravam la).
+
+### O que o build ensinou
+O primeiro deploy quebrou com "Invalid code point" no globals.css: sem a pasta
+.git na Vercel o Tailwind ignora o .gitignore e leu os PNG de 2K como codigo.
+Agora o globals.css tem `@source not` para docs, scripts, public e worker, e os
+binarios sairam do repositorio.
+
+### No produto
+- `lib/squad/estado-do-squad.ts`: `arteDoAgente(id)` e `agentePorId(id)` (aceita o
+  id antigo daniela-design).
+- `components/escritorio/avatar-do-agente.tsx` (`AvatarDoAgente`): o rosto unico,
+  com fallback para a inicial. Entrou no Gestor e no kanban (os dois AgentAvatar),
+  na ficha do agente, no live-view e na lista de agentes da landing.
+- `components/escritorio/escritorio-de-massinha.tsx`: o escritorio novo no Gestor.
+  Fileira das 7 mesas na ordem do bastao, a esteira embaixo e a mesa "Voce" no
+  fim; quem trabalha brilha na cor dele e balanca, os outros recuam so quando
+  alguem trabalha; entrega corre pela esteira; bronca da Vera em balao vermelho e
+  a mesa de quem recebe treme; clique abre o menu de conversa de sempre (agora
+  fora da area de rolagem, que cortava). Sem WebGL: o three.js saiu desta tela; o
+  escritorio 3D antigo continua no repo, sem uso.
+- Provado no dev local nos dois temas (prints do escritorio, do menu e da ficha).
+  Nao exercitado: a animacao de entrega e o balao durante uma campanha rodando.
+- Deploy feito (o segundo; o primeiro quebrou pelo motivo acima).
+
+### Proximo (pedido do Bruno)
+Layout da plataforma: dashboard todo grafico com resultados por marca (projeto
+vira "marca" na interface, e e o que separa Starter 1, Pro 2 e Enterprise 5), e
+as telas de lista (Posts e Agenda) redesenhadas.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 179): o escritorio 3D de volta, redesenhado, com bonecos de massinha e o seu avatar personalizavel
+
+### A correcao de rumo
+Na parte 178 eu TROQUEI o escritorio 3D por uma fileira 2D de imagens. O Bruno
+reprovou: "os avatares precisam ser como antes, andar entre as salas e mesas, o
+usuario deve ter seu proprio avatar... e pegar o que ja tinhamos e melhorar o
+design", com tres referencias de escritorio isometrico. Depois: "o avatar do
+usuario deve ter a opcao de personalizar, escolher cabelo, corpo homem ou mulher".
+A cena 3D voltou com TODA a mecanica (andar, cafe, bastao, bronca, conversa, o
+avatar controlavel, zoom). A fileira de massinha ficou so como versao sem WebGL.
+Memoria `tela-melhorar-nao-trocar` atualizada com o caso.
+
+### A sala (escritorio-do-squad.tsx)
+- Paleta fixa de maquete (`SALA`): piso azul com a borda cortada a mostra, duas
+  paredes claras com janelas, rodape, relogio, quadro de avisos, prateleira com
+  livros, bebedouro, sofa branco com almofadas laranja no canto do cafe, plantas
+  de canto. Tudo em `Sala()`; os moveis de chao entraram em OBSTACULOS; as
+  paredes limitam o andar (`PISO`).
+- Mesas brancas com gaveteiro de puxador dourado, lateral e painel em madeira
+  laranja, caneca branca; notebook no lugar do monitor alto, com a LUZ da tampa na
+  cor do agente fazendo o papel do status; cadeiras laranja; baias brancas com a
+  faixa na cor do agente (pedido de 19/09 preservado).
+- Camera na diagonal isometrica (8.2, 11.2, 13.2), azimute liberado entre -0,35 e
+  1,15, zoom ate 20; plaquetas maiores (distanceFactor 7) e com o rosto de
+  massinha do agente. Faixa na tela: min(62vw, 620px), minimo 380.
+
+### Os bonecos (components/escritorio/boneco-de-massinha.tsx)
+- Montados por partes: cabeca grande, olhos com brilho, sobrancelhas e boca que
+  mostram o humor (irritado, triste, surpreso), nariz, orelhas, 6 cabelos (curto,
+  cacheado, chanel, longo, coque, careca), barba, oculos, fone, fone no pescoco,
+  headset, bone; corpo homem ou mulher; pernas e bracos articulados.
+- `AnimadorDoBoneco` entende os MESMOS nomes dos clipes do robo (Sitting,
+  Walking, Running, Idle, Wave, Yes, No, ThumbsUp): bases em laco e gestos por
+  cima, entao Robo e Voce so trocaram o corpo. O robo.glb nao carrega mais.
+- `lib/squad/aparencia-do-boneco.ts`: tipos, OPCOES, APARENCIA_DOS_AGENTES (cada
+  agente igual ao busto dele), APARENCIA_PADRAO_DO_USUARIO (laranja da marca) e
+  `normalizarAparencia` (nunca lanca; o que vier errado vira o padrao).
+
+### O seu avatar
+- Coluna nova `users.aparenciaDoBoneco` (JSONB, opcional), migracao
+  `20260928180000_aparencia_do_boneco` aplicada.
+- `GET/PUT /api/account/boneco`, normalizando nos dois lados.
+- Botao "Personalizar meu avatar" no canto do escritorio abre
+  `editor-do-boneco.tsx` (carregado sob demanda): previa 3D do mesmo boneco,
+  girando e acenando, e as escolhas de corpo, pele, cabelo e cor, roupa, calca,
+  oculos, barba e acessorio. Salvar grava na conta e troca o boneco na sala.
+
+### Provas
+Prints no dev local: sala nos dois temas, bonecos sentados e andando (Roberto e
+Diana indo ao cafe), plaquetas com rosto, editor com tres combinacoes (padrao;
+mulher, longo ruivo, oculos, roxo; homem, cacheado, barba, oculos, headset),
+fechado com Cancelar sem gravar. API respondendo o padrao para a conta do Bruno.
+Achado: depois de migracao, o dev server precisa reiniciar (e apagar .next/dev)
+para o cliente do banco enxergar a coluna. tsc limpo, deploy feito (a rota nova
+responde 401 sem sessao em producao, como deve).
+Nao exercitado: a cena durante uma campanha rodando (entrega e bronca com os
+bonecos) e o Salvar de verdade na conta.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 179: o piso que piscava
+Relato do Bruno: "o chao do escritorio esta piscando sem parar". Conflito de
+profundidade (z-fighting): o topo do bloco da borda da maquete estava exatamente
+em y=0, junto com o plano do chao, e as camadas finas (corredor 0,002, tapete das
+baias 0,004, sombra 0,01) estavam coladas; a camera com near 0,1 a ~18 de
+distancia deixava pouca precisao para o chao. Correcao: bloco com topo a -0,02,
+corredor 0,012 e tapetes 0,02 com depthWrite desligado e polygonOffset, sombra
+0,03, camera near 1 / far 60.
+Prova medida (`scripts/tmp/medir-piscar-do-piso-2809.mts`, 8 fotos seguidas de
+duas areas de chao vazio, diferenca media por pixel): com os valores antigos,
+picos de 17 a 32; com a correcao, 0 a 0,19. Deploy feito.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 180): a conta dos creditos de video e o simulador de lucro por plano
+
+**A frase da janela da campanha.** O Bruno escolheu um dia de video numa campanha
+de duas semanas e leu "1 dia(s) x 1755 x 2 semanas" como um video que custava o
+dobro. Eram dois videos, um por semana. `components/posts/campaign-setup-modal.tsx`
+agora conta em VIDEOS: "Esta campanha gera N videos de Xs (d por semana, durante
+2 semanas), Y creditos cada (G geracoes do Veo): TOTAL no total. Voce tem S." E a
+frase de cima deixou de dizer "comprado a parte": o video sai do saldo de video do
+plano, reposto a cada mes. So texto de tela, a conta em si estava certa. Deploy feito.
+
+**O artefato de preco virou "Lucro por plano"**, no mesmo link
+(https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5, versao 16): Starter, Pro e
+Enterprise com preco, creditos, videos, edicoes de estudio e clientes em barras;
+uso da franquia 30/50/100%; franquia atual contra proposta; premissas (credito
+R$ 0,031, dolar, cartao 4,69%, imposto 6%, fixo, CAC por demonstracao, renovacao);
+tabela de pior caso. As tabelas antigas (27/09, 23/09, plano de custo, video) estao
+num bloco "Historico" fechado no fim. O simulador de anuncio e fundador saiu.
+
+**PENDENTE DE APROVACAO DO BRUNO, nao aplicado:** franquia proposta de videos por
+IA de 30 s 15/30/60 por mes (videoCredits 11.700 / 23.400 / 46.800) e edicoes de
+estudio 4/8/20, texto e arte sem mudar. Com uso de 100% ainda fecha positivo nos
+tres planos. Quando aprovar: `lib/planos.ts` (features), `lib/stripe` PLANS
+(videoCredits) e as descricoes publicas.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 180: a conta do Bruno virou cliente Pro
+Pedido: "ajuste meus creditos para o plano pro, e deixe o consumo real". A conta
+bruno@areticon.com era role admin (debito de valor zero, saldo nunca desce) e plano
+free. Agora: role user, plan business (o Pro), 40.000 de plano e 6.240 de video,
+com duas linhas `credito_de_teste` no extrato. Script:
+`scripts/tmp/bruno-vira-cliente-pro-2809.mts`; `--desfazer` volta para admin e free.
+Enquanto estiver assim, o menu de admin some para ele. Conferido na tela local:
+faixa do topo "Pro, 40.000 creditos, 6.240 de video".
+Atencao: na franquia atual do Pro, 2 videos de 60 s no Veo cheio (9.360) NAO cabem
+em 6.240; no rapido sao 3.510 e cabem. A franquia proposta (23.400) resolveria.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 181): video contado no Cheio, qualidade explicada e voz do narrador
+
+**Franquia de video (decisao do Bruno):** "um cliente starter no pior caso tem que
+conseguir gerar pelo menos 4 videos na qualidade alta (cheio)". A promessa 4/8/20
+videos de 30 s passou a ser contada no CHEIO: videoCredits 8.320 / 16.640 / 41.600
+(`lib/stripe/index.ts`), features em `lib/planos.ts` dizem "na qualidade Cheia (10 /
+21 / 53 na Rapida)". A proposta anterior (15/30/60 videos) foi descartada: prometida
+em videos sem qualidade, no Cheio ela dava prejuizo. Achado que decide a margem: o
+custo por CREDITO de video e o mesmo nas duas qualidades (US$ 1,20 por 195 e US$ 3,20
+por 520), entao a margem depende so do total de creditos. Pior caso a 100% de uso
+(simulador, versao 17): Starter 56%, Pro 41%, Enterprise 29% do preco, todos
+positivos. Nenhum cliente pagante hoje (so a conta reviewer e a do Bruno no Pro).
+
+**Janela da campanha** (`components/posts/campaign-setup-modal.tsx`):
+- botoes de qualidade dizem para que servem (Rapido: imagem de apoio com narracao,
+  recomendado; Cheio: quando a cena e o assunto, 2,7x os creditos) e quantos videos
+  o saldo rende em cada um na duracao escolhida;
+- voz do narrador (Feminina/Masculina) e tom (Acolhedor/Energico/Serio), so com a
+  narracao ligada. Vai em `config.videoVoz` -> fila (`PedidoDeVideoDaFila.voz`) ->
+  `promptComAudio` em `lib/media/veo.ts`, repetida em toda extensao para manter a
+  mesma voz. Sem escolha (pedido antigo), fica a voz padrao de antes;
+- defeito corrigido: no post unico a frase dizia "gera 0 videos, 0 no total".
+Provado na tela local (post unico, 30 s, Cheio, Masculina, Serio: "1 video de 30s,
+2080 creditos... Voce tem 16640", Cheio rende 8). Deploy feito.
+
+Conta do Bruno: Pro com 16.640 de video.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 182): o video que virava imagem, o estorno adiantado e a faixa parada
+
+Relato do Bruno na campanha da semana (run cmulprdly000004jmmpokxqbl): o dia 28
+pediu video de 30 s no Cheio e foi para o calendario so com imagem; o saldo nao
+desceu; aparecia "uso interno" no topo.
+
+**Causa do video perdido, duas somadas:**
+1. O checkpoint guardava a operacao do Veo mesmo quando ela terminava com erro.
+   O Google respondeu "internal server issue, try again in a few minutes", e as
+   tentativas 2 e 3 so RELERAM a operacao morta, em um segundo cada. Agora
+   `gerarPasso` (lib/media/video-por-ia.ts) apaga a operacao do checkpoint
+   quando o olhar devolve "O Veo falhou", e a proxima tentativa pede video novo.
+2. Erro passageiro do Veo nao era tratado como a cota. Agora
+   `ehFalhaPassageiraDoVeo` (lib/fila/cota-do-video.ts) pausa o trabalho sem
+   gastar tentativa, retomado a cada 10 min, ate MAX_PAUSAS_PASSAGEIRAS (6, uma
+   hora); o log da campanha diz "o video nao foi perdido, tento de novo em 10
+   minutos". Depois disso volta as tentativas normais.
+**Estorno adiantado:** a primeira geracao estornava na PRIMEIRA falha; a
+tentativa seguinte via o debito feito e nao cobrava, entao video que saisse na
+segunda saia de graca. Agora o estorno so sai na ultima tentativa.
+Prova com Veo de mentira: `scripts/tmp/provar-falha-passageira-2809.mts`, 12 ok.
+
+**"Uso interno" e saldo parado:** a conta do Bruno ja era cliente Pro; a faixa do
+topo era componente de servidor no layout, que nao se redesenha ao trocar de
+tela, entao a aba aberta mostrava o retrato antigo. Agora `BannerDoPlano` manda o
+primeiro retrato e `FaixaDoPlano` (components/billing/faixa-do-plano.tsx) renova
+por `/api/plano-na-tela` a cada minuto e no foco da aba. Tipo em
+lib/plano-na-tela.ts, sem banco. Provado: saldo mudado no banco, foco na aba, a
+faixa foi de 40.000 para 39.999 sem recarregar.
+**Credito do plano:** continua cobrado no FECHAMENTO da campanha (fecharCampanha),
+por peca que saiu. A campanha do Bruno ainda estava rodando quando ele olhou.
+
+O video do dia 28 NAO foi regerado: custa uma geracao Cheio de 30 s (cerca de
+R$ 63 de Veo). Aguardando o ok do Bruno.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 183): espera curta no engasgo do Veo e "gere o video de novo" no chat
+
+**Espera curta.** "10 min e muito tempo" (Bruno). Engasgo do gerador agora espera
+1, 2, 3 e depois 5 minutos, oito vezes, cerca de meia hora
+(`ESPERAS_PASSAGEIRAS_MIN` em lib/fila/cota-do-video.ts). A pausa grava
+`proximaEm`, e `retomarPausados` (lib/fila/saldo-zerado.ts) devolve cada trabalho
+na hora dele, fora do relogio geral de 10 min (que continua para saldo e cota). A
+fila roda a cada minuto. A peca mostra "Nova tentativa as HH:MM (n de 8)" e diz
+que a falha e do Google, nao da peca nem do saldo.
+
+**Refazer video pelo chat.** O Bruno pediu no chat do Paulo "o video falhou, gere
+novamente": o chat do Paulo so edita texto (reescreveu os 6 posts e respondeu
+"apliquei") e o da Diana ainda dizia "video por IA foi descontinuado" (frase de
+agosto). Agora `ehPedidoDeRefazerVideo` desvia, em qualquer card do dia, para
+`regerarVideoDoDia` (lib/media/regerar-video.ts): pega o trabalho `video-ia`
+original do dia, confere o saldo, reenfileira com `referencia` NOVA (a antiga ja
+tem debito, estorno e checkpoint) e ordem 0, marca a peca "Gerando o video de
+novo" e responde no chat com custo e tempo. `PedidoDeVideoDaFila.referencia`
+novo, usado por `referenciaDoPedido`.
+Prova da espera: scripts/tmp/provar-falha-passageira-2809.mts, 17 ok.
+
+Consumo real conferido: a campanha da semana fechou e debitou 1.197 creditos do
+plano (35 posts, 40.000 -> 38.803). O video do dia 28 foi reenfileirado pelo
+caminho novo, atendendo o pedido do Bruno no chat.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 183: a extensao pedida antes do arquivo ficar pronto
+O video refeito do dia 28 saiu com 8 s: a geracao 1 deu certo, e a extensao foi
+recusada tres vezes seguidas com HTTP 400 "Input video must be a video that was
+generated by VEO that has been processed". O arquivo do trecho 1 ainda estava em
+PROCESSING na Files API. Agora `estenderVideo` (lib/media/veo.ts) consulta o
+`state` do arquivo (GET files/{id}, conferido na API real: devolve ACTIVE) ate 2
+minutos antes de estender, e "has been processed" entrou em
+`ehFalhaPassageiraDoVeo` (espera curta). A pausa de extensao agora marca a peca
+pelo `original` do payload. O cliente pagou so o trecho entregue (1.560 de 2.080
+estornados). Nao regerei de novo: o Bruno refaz pelo chat, que e a prova do fluxo.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 184): temas que nao repetem (radar da semana) e o andamento de cada dia no calendario
+
+**Temas repetidos.** Queixa do Bruno: campanha da semana igual a da anterior, sem
+novidade. Medido: "7 horas de Priestley", "quanto custa cada caminho" e "terceira
+semana" nas duas. Causas: (1) o sugeridor via so os ultimos 5 posts, 60
+caracteres; (2) a regra mandava puxar numero dos documentos da marca, "valem mais
+que tendencia"; (3) tendencia era pergunta generica sem datas; (4) o tema era
+escolhido antes e a pesquisa do Roberto so aprofundava. Extra: a busca live do
+Grok responde 410 "Live search is deprecated" (o codigo do Grok ja nao era usado;
+a pesquisa e Gemini com Google, que nao enxerga posts de LinkedIn e X).
+Correcao, `lib/research/radar-da-semana.ts`:
+- `temasJaUsados` (8 semanas de topicsPerDay) entra como lista PROIBIDA;
+- `radarDaSemana`: 4 buscas Google com janela de datas no mundo do PUBLICO
+  (noticias 14 dias, numeros novos 30 dias, quem ganhou atencao com ideia nova,
+  datas das proximas 2 semanas), guardado 6 h em ProjectMemory (type radar);
+- `REGRAS_DE_NOVIDADE`: metade dos temas nasce do radar, documentos sao lente e
+  nao pauta, numero dos documentos em no maximo um tema;
+- `parecenca`/`repeteAlgum`: ancoras (numero+palavra, nome proprio, pares de
+  palavras) e sobreposicao pelo tema menor. Jaccard puro nao pegou nenhuma das 3
+  repeticoes reais; a versao com ancoras pega as 3. O sugeridor por dia refaz
+  uma vez o tema repetido (o primeiro de dois dias parecidos fica) e tira
+  travessao.
+Ligado em /api/ai/topics/per-day e /api/ai/topics. Prova real: 7 temas, 6 com
+gancho datado de setembro (79% credibilidade B2B 24/09, Google Ads AI Max 1/09,
+SPOT MKT 25/09), nenhum repetido. Scripts: scripts/tmp/prova-parecenca.mts e
+prova-temas.mts. PENDENTE: busca em rede social de verdade (X via Agent Tools da
+xAI precisa de chave; nao ha XAI_API_KEY no ambiente).
+
+**Andamento no calendario.** "O usuario fica sem saber se travou, acabou ou
+finalizou." `lib/pipeline/andamento-dos-dias.ts` (pura) le o registro da campanha
+e diz a fase de cada dia (fila, texto, arte com "lamina k de n", revisao, video
+com "trecho k de n", falha do Google com minutos, pronto) e `parado` (5 min sem
+novidade; 8 min para video). O Gestor guarda o run que a rota de status ja
+mandava, e `SemanaDoQuadro` desenha `FaixaDoAndamento` no topo do dia (girando,
+relogio na fila, ambar quando parado, barra que corre). O polling continua
+enquanto houver video andando, mesmo com a campanha fechada. Provado na tela
+local interceptando a rota com o registro cortado as 20:53:40: terca "Carrossel:
+lamina 2 de 5 pronta", quarta a domingo "Na fila".
+
+O video do dia 28 refeito pelo chat do Bruno saiu inteiro: 4 geracoes, 29 s,
+cobrado uma vez (video 16.120 -> 14.040).
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 185): o video que travava ao tocar (faststart)
+
+O Bruno nao conseguia assistir o video de 29 s do dia 28 ("fica travando"). O
+arquivo estava bom (h264 720x1280, 3,6 Mbps, 13 MB), mas o Veo entrega o `moov`
+(indice) no FIM, depois do `mdat`: o navegador precisa buscar o fim antes de
+tocar. `lib/media/faststart.ts` faz o que o qt-faststart faz, em TypeScript puro
+(o servidor web nao tem ffmpeg): reordena ftyp, moov, mdat e soma o tamanho do
+moov nos enderecos `stco`/`co64`. Aplicado em `gerarPasso` a todo trecho baixado.
+Provado: moov foi do byte 13.095.449 para 30.770, ffmpeg decodifica sem erro e o
+framemd5 de video e audio e identico; no Edge com rede de 8 Mbps, pronto para
+tocar em 259 ms contra 1.088 ms. O video do dia 28 foi trocado pela versao
+corrigida (6 posts e 1 card). Deploy feito.
+
+Custo e qualidade do video por IA (conversa, sem codigo): a Higgsfield do teste
+foi Seedance 2.5, cerca de US$ 0,40/s, o mesmo do Veo Cheio e sem narracao em
+portugues. Proposta registrada no planner: video MONTADO (roteiro unico, narracao
+por voz sintetica, cenas sem audio mais baratas, montagem com legenda no worker).
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 186): video pela metade, metricas de verdade, texto editavel, material proprio por dia, varios destinos e o painel com graficos
+
+**Video dos planos pela metade** (decisao do Bruno: video por IA caro e resultado
+ainda fraco, incentivo e o cliente subir o proprio video): 2/4/10 videos de 30 s
+no Cheio, videoCredits 4.160 / 8.320 / 20.800 (lib/stripe, lib/planos). Starter
+agora diz "e videos seus sem limite". Simulador de lucro republicado (versao 18).
+A conta do Bruno ficou com 14.040 de video (saldo de teste, acima do novo Pro).
+
+**Metricas** (`lib/analytics/sincronizar.ts`, rota /api/analytics/sync so chama):
+a rota antiga gravava ZERO em toda falha e contava como sincronizado (58 linhas,
+quase todas zero). Medido nos 86 posts do Bruno: X 401 sem renovar token;
+Instagram chamava graph.facebook.com com token do login do Instagram; Facebook,
+TikTok e YouTube nao tinham chamada. Agora: conta DO post, token renovado por
+`resolveSocialAccountAccessToken` (um por conta), Instagram via graph.instagram.com
+(like_count/comments_count; insights quando a permissao vier), Facebook tentado,
+TikTok tentado, falha nao grava nada, resposta por rede com motivo, e a tela mostra
+um aviso por rede. Motivos reais: perfil pessoal do LinkedIn nao da numeros para
+app (so pagina); Facebook depende da aprovacao da Meta (pages_read_engagement);
+TikTok precisa do escopo video.list na proxima revisao; YouTube sem leitura. Zeros
+falsos apagados (31) e sincronizado: Demandou 26 posts com numero real.
+
+**Texto editavel no card do Paulo**: "Editar texto" ao lado de "Refazer esta
+peca", textarea com contador, PATCH /api/posts/[id] (ja conferia o dono), sem
+credito. Provado na tela local.
+
+**Material proprio por dia** (`components/posts/origem-do-dia.tsx`): no passo dos
+temas, cada dia escolhe "Gerar por IA" ou "Subir o meu" (imagem, 2 a 10 laminas,
+video) ou, em dia de texto, "Escrever eu". Envio direto ao Blob publico pela rota
+nova /api/campanha/material (so assina; publico porque Instagram e Facebook buscam
+por URL). `config.midiaDoCliente` faz a esteira pular a Diana no dia, usar o
+arquivo e marcar `midiaPropria` no post (o fecho cobra como texto). Texto proprio
+vai no tema como base para os redatores so ajustarem o formato. Dia com video
+proprio sai da conta de creditos de video. Quadro de video da janela incentiva
+"Tem um video seu?".
+
+**Varios destinos** (feed, reel e story juntos): `destinosDaRede` em
+lib/publish/formato-de-destino.ts aceita lista ou texto antigo; a esteira cria um
+post por destino; a proporcao do video considera todos. Janela com marcacao
+multipla ("marque um ou mais"). Provado: Facebook com os tres marcados.
+
+**Painel inicial** (`lib/painel/numeros-do-painel.ts`, `components/painel/graficos.tsx`,
+SVG proprio sem dependencia): 4 numeros de 30 dias com variacao, os 7 agentes com
+o que cada um fez no mes, posts por semana empilhados por rede (8 semanas),
+engajamento medio por rede (90 dias), projetos com numeros e os 5 posts que mais
+renderam. O contador antigo de campanhas nunca passava de 5 (lista cortada).
+
+**Pendentes**: chave do X/xAI (o Bruno vai mandar; hoje so ha TWITTER_CLIENT_ID e
+SECRET de login); agente de trafego (plano no planner, depende de acesso a API de
+anuncios da Meta).
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 187): busca de verdade no X (radar e Roberto)
+
+O Bruno mandou as credenciais do X. So o token de aplicativo foi guardado:
+`X_BEARER_TOKEN` no .env.local e na Vercel (producao), EXATAMENTE como o portal
+mostra (com %2B e %3D): decodificado toma 401, original funciona. O Client ID que
+ele mandou e o mesmo de TWITTER_CLIENT_ID (conferido por igualdade, sem imprimir),
+entao o login do X nao muda. Chave de consumidor e tokens de usuario nao foram
+guardados (nao sao usados).
+
+`lib/research/x-search.ts`: busca recente (7 dias) por relevancia, ate 100 posts;
+`termosDeBusca` pede ao Claude termos de NEGOCIO (a primeira versao pedia "termos
+do dia a dia" e trouxe desabafo e fa-clube); `valeOPost` filtra texto de 50+
+caracteres e autor com 100+ seguidores; `oQueSeFalaNoX` devolve resumo com autor,
+seguidores, data, numeros e link. Ligado no `radarDaSemana` (secao "O que esta
+pegando no X", com aviso de que nem tudo e do nicho) e na pesquisa do Roberto
+(`researchTopicGemini`, secao "No X agora" e ate 3 fontes do X). Falha no X
+devolve vazio e nao derruba nada. Radar da Demandou refeito com 5 posts reais
+(ex.: palestra "Autenticidade e Marca Pessoal" na Feira do Empreendedor do Sebrae
+SP em 20/10; polemica de post copiado por IA). Limite visto: 450 buscas por 15 min.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 187: o X que nao reconectava
+"Erro ao conectar X": o log da Vercel dizia `unauthorized_client, Missing valid
+authorization header` na troca do codigo. O Client Secret tinha sido gerado de novo
+no portal do X e a producao seguia com o antigo (era tambem a causa do refresh
+recusado nas metricas). TWITTER_CLIENT_SECRET trocado em producao e no .env.local
+pelo que o Bruno mandou (conferido por igualdade, sem imprimir); deploy feito. O
+callback agora manda `motivo` para a tela. A API do X da conta do Bruno e por uso
+(US$ 1,95 em 30 dias, 162 eventos); cada busca do radar agora le 50 posts ate
+sabermos se a cobranca e por pedido ou por post.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 188): landing atualizada e video novo do escritorio
+
+Pedido: ajustar a landing com as mudancas, sem anunciar o gestor de trafego, e
+trocar o video pelo escritorio novo.
+
+**Video** (`public/demo/escritorio-2809.{mp4,webm}` e `escritorio-2809-capa.jpg`,
+nome com data para quem ja visitou nao ver o cache antigo): gravado com o
+Playwright no dev local em 1280x720, com a GPU ligada (`--use-angle=d3d11
+--enable-gpu --ignore-gpu-blocklist`: 42 fps contra 7 no SwiftShader), menu
+lateral recolhido, selo do Next escondido. Cenas: escritorio 3D com o boneco do
+usuario andando e giro lento (16 s), semana no calendario (6 s), peca de terca
+aberta com as previas (7,5 s; a de segunda e video e o Chromium da gravacao nao
+toca H.264, o player sairia preto). Corte e fades no ffmpeg, 28,5 s, MP4 CRF 28
+com faststart (1,5 MB) e WebM VP9 (1,4 MB). Script:
+scripts/tmp/gravar-escritorio-2809.mts.
+
+**Textos**: features.tsx reescrito (squad de sete com os nomes certos; a "Daniela"
+nao existia), "Pauta nova toda semana" (radar e X, sem repetir), feed/reels/stories,
+"Voce ve cada passo" (andamento no calendario), "O seu material ou o da IA",
+"Os numeros de verdade" (painel), "Voce aprova e edita", memoria sem "run".
+how-it-works: novidade do mercado, material proprio, edicao no card, destinos e
+painel. o-que-eles-fazem: subtitulo e baloes (Roberto no X, Diana no carrossel).
+Nada sobre trafego pago. Deploy feito; o webm novo responde 200 em producao.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 28/09/2026 (parte 189): pitch deck v4 (enterprise, mercado novo, produto de hoje)
+
+Mesmo link, versao 6: https://claude.ai/artifact/ANNpbVV4DKDhBB9EQCxMRv (19 slides,
+privado ate o Bruno compartilhar). Montado a partir da versao publicada por
+scripts/tmp/pitch-deck/montar_v4.py (le a v3, troca slide a slide, injeta o slide
+de mercado mercado.html e os dados do modelo). Midias novas no artefato:
+agentes-2809.mp4 e capa (o video do escritorio da landing), print-gestor-2809.jpg,
+print-painel.jpg; sairam agentes.mp4, agentes-capa.jpg e print-gestor.jpg.
+
+- Capa, problema, solucao, ganhos e concorrencia para o publico acima de R$ 100 mil
+  por mes (equipe interna e agencia como alternativa, nao pequeno negocio).
+- Modelo de negocio: Starter/Pro/Enterprise anual a vista, ticket medio R$ 3.748
+  (mix 50/35/15), margem 68% a 60% de uso, venda por demonstracao.
+- Onde estamos: implantado x em progresso (inclui o agente de trafego como
+  "construindo"; no deck de investidor, nao na landing). Metrica: 88 publicacoes e
+  16 campanhas em 30 dias nas marcas do fundador.
+- Arquitetura: Grok saiu, entrou a API oficial do X; Stripe anual; stories; TikTok.
+- Time: Matheus Gaberline como socio, so com o que se sabe (vendas de alto valor,
+  escritorio grande de consorcios, tres exits).
+- Modelo financeiro: scripts/tmp/pitch-deck/modelo-v4.py (anuncio -> lead ->
+  qualificado -> demonstracao -> contrato anual, safras com renovacao, comissao de
+  10%, closers quando a agenda dos socios passa de 40 demos, reinvestimento do
+  resultado). A primeira calibragem dava R$ 2 bi no otimista; com comissao e
+  conversoes duras: base CAC R$ 12.157, retorno 4,8 meses, ano 5 com 296 clientes,
+  ARR R$ 13,3 mi, valuation R$ 66,5 mi (5x); conservador 26 clientes e R$ 1,2 mi;
+  otimista 1.799 clientes (0,95% do SAM).
+- Mercado (pesquisa de 28/09 com fontes): TAM R$ 23,4 bi (649.604 empresas com 10+
+  pessoas, IBGE CEMPRE 2024, x plano de entrada), SAM R$ 6,8 bi (~190 mil com 20+
+  pessoas e presenca no Instagram ou TikTok, Cetic 74%), SOM do base R$ 13,3 mi.
+  Apoio: publicidade digital R$ 42,7 bi em 2025 (IAB), gestao de redes US$ 28,6 bi
+  (16,7% ao ano), IA de conteudo US$ 21,5 bi (28% ao ano), 17% das empresas com 10+
+  usam IA (Cetic 2025). Pessoas ocupadas e aproximacao de faturamento (nao ha
+  contagem publica por faixa de receita), dito no slide.
+Medido: os 19 slides cabem nos 756 px uteis (maior 754), sem corte de largura; o
+funil perdeu o degrau "Impressoes" porque estourava o slide 15.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+### 28/09, complemento da parte 189: a capa do deck com os avatares
+A janela "seu squad, ao vivo" da capa ficou igual a hero da landing
+(components/landing/squad-na-hero.tsx): busto de massinha no circulo na cor do
+agente (cores de lib/squad/estado-do-squad), logo do LinkedIn no Lucas e do X no
+Tiago, e um agente "agora" por vez com a fala dele, trocando a cada 2,2 s. Script:
+scripts/tmp/pitch-deck/capa_avatares.py (roda depois do montar_v4.py). Os 7
+avatar-p.webp foram publicados em agentes/ no artefato. Pegadinha: o CSS novo
+precisa ir no fim do bloco de estilo principal; o primeiro </style> da pagina e o
+do esqueleto, e ali a regra antiga (.agente.agora azul) ganhava. Versao 7.
+
+*Atualizado em 28/09/2026 por Claude Code.*
+
+## 29/09/2026 (parte 190): catalogo de estilos de edicao, documentacao e o prompt da proxima sessao
+
+- `docs/estilos-de-edicao-de-video.md`: 24 estilos de edicao com ficha tecnica
+  (ritmo, imagem, texto na tela, grafismo, cor, som, transicoes, o que pede, para
+  que serve), agrupados em jornalismo (Vox, BBC, National Geographic, Johnny
+  Harris, crime real, 60 Minutes), educacao (Kurzgesagt, quadro branco, Ali
+  Abdaal, TED), negocios (keynote Apple, institucional, depoimento, vlog,
+  podcast), redes (MrBeast, Hormozi, nativo do TikTok, tipografia animada,
+  carrossel animado) e estetica (Wes Anderson, VHS, minimalista, tela dividida).
+  Regra: sempre as cores e a fonte da marca. Os 4 estilos atuais dos cortes viram
+  atalhos. O cliente tambem pode escrever o estilo; o agente diretor traduz para
+  a ficha e mostra antes.
+- `PROJETO.md` atualizado (pilha, publico, planos, o que esta no ar, proximas
+  frentes). `CONTINUAR.md` com o prompt da proxima sessao.
+- Pedidos do Bruno para a proxima frente: (A) linha editorial, tela de ideias e
+  roteiros de video, e o roteiro conecta com o editor; (B) modo de edicao de
+  video: estilo da lista ou escrito, varios arquivos com a cena de cada um,
+  imagens com posicao e forma no video, duracao maxima 1 h Starter, 2 h Pro, 5 h
+  Enterprise (hoje e 2 h fixo e 1,9 GB por arquivo).
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 191 (29/09/2026): menu em camadas e gêmeo digital
+
+- O Bruno achou os 24 estilos pobres e pediu o nível da Higgsfield. Pesquisa: a
+  Higgsfield combina camadas (65 movimentos de câmera, cerca de 50 presets e mais
+  de 100 efeitos, mais de 30 looks de mídia mista, mais de 80 apps, mais de 120
+  modelos). O `docs/estilos-de-edicao-de-video.md` ganhou as seções "Camadas de
+  geração" e "Pessoa falando a partir de foto".
+- Gerador premium: os vídeos virais de famosos vêm do Seedance 2.0, Kling Avatar
+  2.0 e OmniHuman 1.5 com voz clonada. Proposta: gêmeo digital do PRÓPRIO
+  cliente (fotos, 1 a 2 min de voz, autorização); rosto e voz de terceiros
+  bloqueados. Teste comparativo pago contra o Veo 3.1 aguarda aprovação do Bruno.
+- A decisão "Higgsfield só para arte" foi revista: agora é candidata a motor do
+  gêmeo digital. CONTINUAR.md ganhou a tarefa C.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 192 (29/09/2026): tres portas, squad por rede, Vera gerente, escritorio novo e limites por plano
+
+Desenho aprovado pelo Bruno (linha editorial, editor, gemeo digital), com tres
+decisoes: teste comparativo pago aprovado (teto US$ 80, fal.ai liberado para
+Kling Avatar e OmniHuman), bruto do Enterprise apagado 30 dias depois da edicao
+entregue (com aviso; ainda nao implementado) e o desenho em si. No mesmo pedido
+ele reorganizou o produto: "no final sao 3 caminhos de entrada: subir um video
+para editar e gerar cortes, criar um clone digital e gerar tudo com IA; a
+sugestao da plataforma e intercalar, preferindo o video editado dele".
+
+### Tres portas (aba Criar)
+- `components/posts/escolha-de-origem.tsx`: tres portas (Editar o meu video,
+  recomendado; O meu gemeo digital, novo; Gerar tudo com IA) e a faixa "A nossa
+  sugestao: intercale". Usada na jornada, na janela da campanha e na aba nova.
+- `app/(app)/projects/[id]/criar/page.tsx` + `components/criar/portas-do-projeto.tsx`:
+  a aba Criar, que agora e onde o projeto ativo abre (`/projects/[id]` redireciona
+  para ela, antes ia para Posts). Link para a linha editorial (rota ainda nao
+  existe: e a proxima entrega).
+- `?abrir=video|tema` no Gestor (`content-manager.tsx`) abre a jornada ja no
+  passo do video ou a janela do tema. A jornada ganhou `comecarNoVideo` e reinicia
+  o passo a cada abertura (antes o passo ficava onde parou).
+- `app/(app)/projects/[id]/gemeo/page.tsx`: a porta do gemeo, honesta ("em teste"),
+  com os tres passos aprovados (fotos, voz, autorizacao gravada pela propria pessoa).
+- Abas do projeto: Criar, Gestor, Posts, Resultados, Configuracoes, Editar setup,
+  Treinamento (Analytics virou Resultados, Gestor de Conteudo virou Gestor).
+
+### Squad por rede
+- `lib/squad/definicoes-dos-agentes.ts`: ficha central (persona e estilo) dos 11,
+  `ID_ANTIGO` ("tiago-twitter" agora e do Xavier) e `ESPECIALISTA_DA_REDE`.
+- Novos: Xavier X (`xavier-x`), Igor Instagram, Fernanda Facebook, Tiago TikTok
+  (`tiago-tiktok`, mesma arte do Tiago antigo), Yan YouTube. Vera: "Gerente do time".
+- `AGENTES` com 11; `donoDaPeca`: o dono e o agentId, e o tipo so quando o id nao e
+  de ninguem (os especialistas gravam cards do tipo `post_linkedin`, e a regra
+  antiga dava tudo ao Lucas). Aplicado em consciencia, ferramentas, conversa e ficha.
+- Esteira (`lib/pipeline/executar.ts`): `makeAgent` usa a ficha central quando o
+  projeto nao tem a linha (projeto antigo nao tem os novos); o X e do Xavier; as
+  adaptacoes de Instagram, Facebook e TikTok sao do especialista de cada rede (antes
+  o Lucas adaptava tudo); a correcao das derivadas tambem.
+- Arte de massinha dos novos (Xavier, Igor, Fernanda, Yan): NAO gerada (custa, pedir
+  ao Bruno). Sem arte, o avatar cai na inicial na cor do agente, sem imagem quebrada.
+- Yan ainda nao escreve nada: o titulo e a descricao do YouTube continuam no fluxo
+  do video (proxima frente, junto do editor).
+
+### Vera gerente: licoes e retreino
+- `lib/squad/licoes-da-vera.ts`: toda reprovacao vira licao (ProjectMemory type
+  "licao") para o agente culpado (`culpadosDaReprovacao` le o parecer: rede citada
+  perto de palavra de defeito; midia e da Diana). Cada agente recebe as proprias
+  licoes de 30 dias no estilo (`blocoDeLicoes`). `placarDeErros` para a tela.
+- A bronca vai a mesa de quem errou (era fixa no Lucas). O TikTok passou a ser
+  revisado (era escrito e nunca revisado).
+
+### Escritorio novo (`components/escritorio/escritorio-do-squad.tsx`)
+- Uma mesa comprida no fundo com os 10 (a Vera fora), a sala de vidro da Vera
+  (direita) e a sua sala (esquerda), cafe no meio. `MESAS` continua indexado por
+  `AGENTES`. Voce senta de frente para a camera.
+- `rota()`: agentes e voce andam pelo corredor de tras da mesa, contornam pela ponta
+  e entram nas salas pela porta. Placas compactas e em dois niveis na mesa comprida.
+- Visitas a sua sala (`components/escritorio/escritorio.tsx`): sem esteira rodando,
+  a cada 40 s um agente vai ate voce, alternando pedido de retorno (peca esperando
+  aprovacao) e sugestao para o documento do projeto. Clicar no balao da sugestao
+  abre a janela com o motivo e a regra; "Por no documento" escreve em
+  ProjectContext "Aprendizados do squad" (editorial, pronto), "Agora nao" guarda a
+  recusa (ProjectMemory type "sugestao").
+- `lib/squad/sugestoes-do-squad.ts` (+ `tipo-da-sugestao.ts` para o cliente): as
+  sugestoes saem de dado (licoes repetidas, recusas do cliente com motivo, falta de
+  tom de voz ou de documento). Rota `GET/POST /api/projects/[id]/squad/sugestoes`.
+  No projeto Demandou veio uma real: a recusa "nao gostei de misturar sermao com
+  trabalho no mesmo post". NAO aceitei: e decisao do Bruno.
+
+### Limites por plano e audio (parte 1 do desenho)
+- `lib/planos.ts`: `duracaoMaximaMin` 60/120/300 e `arquivoMaximoGb` 4/8/20, e a
+  linha "Gravacoes de ate 1 hora / 2 horas / 5 horas" nos cartoes.
+- `lib/media/limits.ts`: `LimitesDoEnvio`, `validarVideo(bytes, dur, limites)` com a
+  recusa dizendo qual plano resolve; `LIMITE_DA_TRANSCRICAO_DIRETA` (1,9 GB) deixou
+  de ser teto do upload. `limitesDoEnvio(userId)` em `lib/limites-do-plano.ts`.
+- DEFEITO ACHADO: a tela de envio lia `/api/videos/cota` (a cota do video POR IA) e
+  o aviso de ultima gravacao e a oferta de upgrade nunca apareciam. Rota nova
+  `/api/videos/limites` (gravacoes, armazenamento e tetos do plano).
+- Token do upload com o teto do plano. Transcricao acima de 1,9 GB: a rota de
+  transcrever manda o worker extrair o audio (`POST /audio` no worker, AAC mono 64
+  kbps, store privado), `audio-callback` grava `VideoJob.audioUrl` (migracao
+  `20260929120000_audio_da_gravacao`, aplicada) e pede a transcricao de novo.
+- `prazoDaEtapa`: corte com 30 min + 0,6 s por segundo de gravacao; transcricao de
+  arquivo grande com 20 min + 4 min por GB.
+- Worker: `/saude` agora devolve `disco` (livre e total). NAO PUBLICADO: o
+  `railway up` foi bloqueado pela permissao automatica. Sem ele, gravacao acima de
+  1,9 GB falha na extracao (o resto funciona). Publicar de dentro de `worker/`.
+
+### Teste do gemeo digital
+- Catalogo real da Higgsfield (GET /models, sem custo): 82 modelos, tem Seedance
+  2.0/2.5 e Kling 3.0, NAO tem Kling Avatar nem OmniHuman. Vao pelo fal.ai.
+- Foto e 100 s de voz do Bruno tirados da gravacao de 31/08, em
+  `C:\Users\devan\Documents\Demandou\gemeo-teste`. Faltam as chaves `FAL_KEY` e
+  `ELEVENLABS_API_KEY` no .env.local (contas a criar pelo Bruno).
+
+### Provas
+- tsc limpo. Prints no dev local (porta 3002; a 3001 estava ocupada por outro
+  servidor respondendo 500): painel com os 11, aba Criar, gemeo, escritorio novo,
+  visita e janela da sugestao. Scripts: `scripts/tmp/prints-2909.mts` e
+  `scripts/tmp/clicar-e-fotografar-2909.mts` (rodar com MSYS_NO_PATHCONV=1).
+- Deploy na Vercel feito; `/api/videos/limites` responde 401 sem sessao em producao.
+- Nao exercitado: campanha rodando com os especialistas novos (custa uma campanha),
+  a gravacao acima de 1,9 GB (depende do worker publicado).
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 193 (29/09/2026): worker publicado, artes novas, catalogo de estilos, musica e passo 4
+
+### Worker
+- Publicado com `railway up --service video-worker --detach` de dentro de `worker/`
+  (Bruno liberou a permissao). `/saude` agora devolve `disco`: 1.479 GB livres de
+  2.931 GB. Podcast de 5 h com 3 cameras (uns 27 GB) cabe com folga.
+
+### Artes dos agentes novos e landing
+- Xavier, Igor, Fernanda e Yan com busto e cena de mesa no estilo de massinha
+  (`scripts/tmp/gerar-elenco-3d-2809.mjs`, entradas novas no ELENCO; o Igor veste
+  rosa e sai sobre verde, como a Diana). Recorte pelo `recortar-elenco-2809.py` e
+  limpeza de sobra de fundo por agente (regra so verde no Igor; a de magenta
+  comia a camiseta dele). WebP em `public/agentes/`. Custo perto de US$ 1,10.
+  Resta um fio rosado na borda da mesa da Fernanda (a cena de mesa so aparece na
+  versao sem WebGL).
+- Landing: cartao "seu squad, ao vivo" com linhas mais baixas para caber os 11 e
+  os 6 logos na primeira dobra; video novo do escritorio (`public/demo/escritorio-2909.*`,
+  29,6 s, gravado por `scripts/tmp/gravar-escritorio-2909.mts`: mesa comprida,
+  salas, visita a sua sala, calendario e peca).
+- O primeiro deploy caiu no carregador de fontes do Google do Next (falha
+  passageira do lado deles); o segundo passou.
+
+### Catalogo de estilos em camadas (pedido do Bruno testando: "continua as mesmas categorias")
+- `lib/media/catalogo-de-estilos.ts`: os 24 estilos (Vox, BBC, National
+  Geographic...), cada um com grupo, resumo e BASE (o perfil de legenda de
+  `estilos.ts` que o worker de hoje executa), mais as camadas: 20 movimentos de
+  camera, 13 efeitos e 11 looks. `EscolhaDeEstilo` e `normalizarEscolha`.
+- 24 artes de exemplo 16:9 (`scripts/tmp/gerar-estilos-2909.mjs`, Gemini 3.1
+  Flash Image, cerca de US$ 0,94) em `public/estilos/<id>.webp`, brutos em
+  `Documents\Demandou\estilos`.
+- `components/video/catalogo-de-estilos.tsx`: abas Linguagem, Movimento de
+  camera, Efeitos e Look; grade com as artes; "Ou escreva o estilo com as suas
+  palavras" com a leitura do diretor e confirmacao antes de gravar. Entrou no
+  lugar dos 4 cartoes dentro de `estilo-do-projeto.tsx` (mesmo passo da jornada).
+- Coluna `Project.videoEstiloEscolha` (migracao `20260929150000_estilo_em_camadas`,
+  aplicada). Rota `GET/PUT/POST /api/projects/[id]/estilo-de-edicao`: PUT grava
+  a escolha E o `videoStyle` da base no mesmo lugar; POST interpreta o texto
+  (Opus 5, sem gravar). Provado no dev: a leitura de "como a Vox, mas mais rapido,
+  com legenda grande, zoom nas palavras fortes e trilha animada" voltou com
+  Explicativo editorial, tres movimentos, dois efeitos e look alto contraste.
+- Honesto na tela: os cortes usam hoje o ritmo e a legenda da base; o grafismo de
+  cada linguagem e as camadas chegam com o editor novo (parte B do desenho).
+
+### INCIDENTE: rota sobrescrita e reconstruida
+- Criei `app/api/projects/[id]/estilo/route.ts` sem ler antes, e ela JA EXISTIA
+  (fora do git): era a direcao visual das artes, usada pela janela da campanha
+  (`EstiloProprio` em campaign-setup-modal.tsx). Reconstruida linha a linha a
+  partir do build de 27/09 em `.next/server/chunks` (GET ler, POST sugerir ou
+  salvar, DELETE apagar, maxDuration 120), usando `lib/media/estilo-do-cliente.ts`,
+  que estava intacto. A rota nova foi para `/estilo-de-edicao`. Conferido: a
+  original responde `{"estilo":null}` no projeto Demandou e 401 sem sessao em
+  producao. LICAO: este repositorio tem muito codigo fora do git; ler o destino
+  antes de gravar arquivo novo em rota que ja pode existir.
+
+### Musica que nao subia
+- Reproduzido no dev: o envio da trilha ficava preso em "Enviando a faixa..." com
+  um MP3 de 100 KB. O token vinha (200) e o PUT de peca unica para a API do Blob
+  nunca respondia. Com `multipart: true` (como o video), as tres etapas voltam 200
+  e o PATCH grava. `components/video/estilo-do-projeto.tsx`.
+- O botao dizia "Solte ou escolha o arquivo aqui" e nao tinha arrastar e soltar:
+  agora tem (`escolher-musica.tsx`). "cinco redes" virou "seis redes".
+- O teste deixou um tom de 6 s como trilha do projeto Demandou; removido pela
+  propria rota (DELETE), conferido no banco (`videoMusicName` nulo).
+
+### Passo 4 da jornada ("Nao da para trocar")
+- Pedido do Bruno: no lugar da trava, dizer que o cliente escolhe depois. A linha
+  do video agora e "Video: Video completo + cortes. Quando ficarem prontos, voce
+  escolhe o dia, o formato e a rede de cada peca." (e verdade: os cortes ja sao
+  espalhados na semana, cada um tem destinos e o dia do card muda no Gestor).
+  Textos de "segunda" e "Lucas, Tiago e Diana" atualizados. `semana-do-video.tsx`.
+
+### Dev
+- Depois da migracao o dev server precisou reiniciar (armadilha conhecida); o
+  `TaskStop` nao mata o node do Next por baixo, foi preciso encerrar o PID.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 194 (29/09/2026): mesa dupla, cadeira sem corte, botao da musica nativo e a linha editorial
+
+### Escritorio
+- Mesa dupla (pedido do Bruno): cinco agentes de cada lado, frente a frente, na
+  ordem do bastao alternando lado. `LADO`, `sentidoDe` em
+  `components/escritorio/escritorio-do-squad.tsx`; o posto gira 180 graus para
+  quem senta de frente para o colega, o robo olha para ele (`yawFixo`), a placa
+  de quem fica de costas vai atras da cadeira. Entrega, conversa e colisao
+  acompanham; o corredor de tras continua sendo o caminho do lado do fundo.
+- Cadeira: o topo do encosto era MEIO cilindro, e o three.js nao tampa a face
+  reta dele; via-se um corte. Agora e o disco inteiro com a metade de baixo
+  dentro do encosto.
+
+### Musica (segunda queixa: "clico e nada acontece")
+- Nao reproduzi no dev (o clique abria o seletor no Chromium do teste). O botao
+  que chamava `input.click()` por codigo virou um `<label>` nativo com o campo
+  dentro (`sr-only`), que e o navegador abrindo o seletor sem codigo no meio, e
+  aceita arrastar e soltar. Provado com clique real (evento filechooser), upload
+  em partes e PATCH 200; a faixa de teste foi removida do projeto.
+
+### Linha editorial (a parte A do desenho; o link da aba Criar dava 404)
+- Modelo `Roteiro` (migracao `20260929170000_linha_editorial`, aplicada): ideia e
+  roteiro na mesma tabela (status ideia, pronto, gravado, descartada), gancho e
+  fonte do radar, tese, cenas em JSON, duracao alvo.
+- `lib/editorial/linha-editorial.ts`: `gerarIdeias` (radar da semana, temas das
+  campanhas de 8 semanas e ideias ja existentes como proibidos, `repeteAlgum`
+  para cortar repeticao; fonte so fica se o link veio do radar) e
+  `escreverRoteiro` (tese, gancho, ligacao por MAS/POR ISSO, fechamento, regua de
+  2,4 palavras por segundo, [DADO: ...] no lugar de numero inventado).
+  `lib/editorial/tipos.ts` para o cliente.
+- Rotas `GET/POST /api/projects/[id]/linha-editorial` e
+  `POST/PATCH /api/projects/[id]/linha-editorial/[roteiroId]`.
+- Tela `app/(app)/projects/[id]/linha-editorial` + `components/editorial/linha-editorial.tsx`:
+  ideias a esquerda (descartar some da lista e fica na memoria), roteiro a
+  direita com duracao (1, 3 ou 8 min), tese e cenas editaveis (papel, fala, o que
+  aparece na tela, segundos estimados, subir, descer, apagar, adicionar), salvar e
+  "Gravei, enviar o video" (abre a jornada do video).
+- Barra lateral: item "Linha editorial" (`/linha-editorial` leva ao projeto ativo
+  mexido por ultimo) e aba no projeto, logo depois de Criar.
+- Provado no dev com chamadas reais no projeto Demandou: 8 ideias com gancho
+  datado do radar e do X, roteiro de 4 cenas e 57 s. Essas ideias ficaram na
+  linha editorial do projeto (sao do produto, nao de teste).
+- Falta (parte B): o editor ler o roteiro para montar a gravacao.
+
+### Pendente por decisao do Bruno
+- O video curto de venda para a landing (dor, solucao, ganhos, agentes
+  trabalhando, voz em portugues, efeitos da Higgsfield) so depois que ele
+  terminar o teste da plataforma, a pedido dele.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+### 29/09, complemento da parte 194: musica por dois caminhos, Mixkit, zoom e placas
+- Musica: o Bruno seguia sem conseguir abrir o seletor (o cursor de mao aparecia,
+  o clique nao fazia nada). Nao reproduzi aqui nem com o 3D ligado. Duas saidas:
+  a janela das bibliotecas agora abre num portal no body (antes nascia dentro da
+  janela da campanha, que tem transformacao e overflow, e "fixed" dentro de
+  ancestral transformado fica relativo a ele); e o cartao da trilha ganhou o
+  botao "Subir arquivo" / "Trocar arquivo" (label nativo com o campo dentro), no
+  mesmo desenho do envio de video, que funciona para ele. Os antigos viraram
+  "Buscar musica" / "Buscar outra". Provado os dois com clique real.
+- Free Music Archive saiu: o site nao responde (conexao estourando o tempo).
+  Entrou o Mixkit (uso comercial em video, sem credito obrigatorio), pela
+  etiqueta do primeiro termo do clima (`lib/media/fontes-de-musica.ts`).
+- Zoom travado: a camera de entrada ficou a 21,8 do centro com a sala nova e o
+  `maxDistance` era 20, entao a entrada nunca chegava e puxava a camera de volta
+  a cada quadro. `maxDistance` 28 e prazo de 3 s na `EntradaDaCamera`. Provado
+  com a roda do mouse.
+- Placas da mesa dupla: nome inteiro e funcao, distanceFactor 10 e largura pelo
+  conteudo (o nome vazava para fora da caixa).
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 195 (29/09/2026, noite): o teste do Bruno e o diagnostico, sem codigo
+
+O Bruno testou a plataforma de ponta a ponta com uma gravacao de 22 min (1,29 GB
+pela Starlink) no projeto Empreendedorismo Cristao (`cmtmym5bo000004l80wwvpdd7`),
+video_job `cmumzycoa000004iacu03zol8`, 3 cortes, 64 creditos cobrados. Pediu para
+nada ser mexido durante o teste; tudo abaixo e diagnostico lido do banco e do
+codigo, sem alteracao. A lista de correcao, em ordem, esta em `CONTINUAR.md`.
+
+### Causas medidas
+- Miniatura quebrada e "ampliar" com erro nos cards de corte e do completo: o
+  `mediaUrl` do card e `/api/videos/[id]/midia?tipo=vertical|completo` (MP4) e a
+  tela desenha como imagem. As capas existem no Blob publico (`midia.capa.url` de
+  cada corte e `VideoJob.capas`).
+- Rosto distorcido: `comporCapa` (lib/media/capa-e-titulo.ts) pede mudanca de
+  expressao ao modelo de imagem; o comentario do proprio codigo avisa que isso
+  libera o modelo para redesenhar feicoes e manda voltar ao quadro real.
+- Estilo Vox nao aplicado: `videoEstiloEscolha` gravou Vox e as camadas, mas so
+  `videoStyle` ("serio", a base) chega ao pedido de corte. Nenhuma camada e
+  executada; a Higgsfield nao esta na esteira da edicao.
+- "Ne" no meio da fala e ponto de corte ruim: a revisar na limpeza de fala.
+- Completo sem player no card; "Agendado" na previa e a data planejada (nada
+  publica sem aprovar no card do Paulo), mas a palavra engana; card do Paulo com
+  11:00 no cabecalho e 09:00 na caixa.
+- Corte "reprovado pela Vera, esperando voce": nao ha refacao automatica de
+  corte reprovado.
+- Artes da semana seguem `estilo-do-cliente.ts`, nao o catalogo.
+- Pecas da semana: "===LINKEDIN===" vazou na de sexta, frase repetida em terca,
+  quinta e domingo, carrossel de sabado so com "Post"; cards dizem "esperando
+  voce" enquanto o squad ainda trabalha, e a semana aparece de uma vez.
+- Escritorio sem bastao durante a esteira do video (o bastao so le o run da
+  campanha).
+- Credito: `scripts/tmp/custo-video-2909.mjs` (so leitura) mediu o unico video
+  longo anterior: 16 min, 50 creditos, US$ 3,13 de IA (capas 0,94, posts da
+  semana 0,83, limpeza 0,51). Cerca de 10 vezes acima do que os creditos cobrem
+  pela premissa de R$ 0,031; proposta de ~35 creditos por minuto.
+
+### Pedidos novos do Bruno no teste (todos no planner)
+- Medidor de velocidade de upload com estimativa e aviso de wi-fi.
+- Card do dia com todas as redes, conectadas ou nao, com os formatos.
+- Plaquetas da mesa dupla um pouco menores.
+- Video curto de venda para a landing, por ultimo.
+
+### Prazo
+Reuniao com investidor em 30/09: o Bruno pediu tudo corrigido no mesmo dia.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 196 (29/09/2026, noite): a lista do teste, blocos 1 a 3
+
+Trabalho em paralelo (eu mais agentes por item). Tudo publicado na Vercel e o
+worker no Railway a cada bloco. Gasto de IA registrado por item.
+
+### Bloco 1 (no ar)
+- Miniatura e "ampliar" dos cortes e do completo: `ehVideo` do calendario so
+  reconhecia `.mp4`; a rota `/api/videos/[id]/midia?tipo=vertical` nao termina
+  assim. Agora reconhece a rota (content-manager e semana-do-quadro), a capa do
+  card do corte vem do `metadata.thumb` do proprio card do Vitor, e o completo
+  ganhou `tipo=capa-completo` na rota de midia (capa escolhida, ou quadro do
+  rosto). Provado com clique real: player do corte (1080x1920) e do completo
+  (19:49).
+- Capa sem mexer no rosto: `worker/src/quadro-da-capa.py` escolhe o quadro pelos
+  blendshapes do Face Landmarker (olho aberto, boca fechada, de frente) e recorta
+  a pessoa com o segmentador multiclasse (modelos novos no Dockerfile, com prova
+  na construcao). Cada trecho sobe `midia.capa` (o melhor quadro) e
+  `midia.recorte` (PNG). Rota sincrona `POST /recortar` para quadros antigos
+  (1,8 s em producao). No app, `lib/media/capa-composta.tsx` monta a capa em
+  codigo (sharp + @vercel/og, fontes em `lib/media/fontes-da-capa`, rastreadas
+  no next.config): tres familias (colagem para Vox e afins, impacto, sobrio),
+  marca-texto na cor da marca, borda de adesivo e sombra. O modelo de imagem so
+  desenha o FUNDO, sem pessoa, e a cor vai por nome (`nomeDaCor`), nunca hex.
+  `comporCapa` manteve a assinatura; os tres chamadores passam `quadroUrl` e
+  `recorteUrl`. Capas do video do teste refeitas SEM custo (fundo em codigo).
+- "Agendado" e horario do Paulo, estado "o squad esta fazendo": agente, ver
+  `lib/posts/horario-da-peca.ts` e `lib/squad/peca-em-producao.ts`. Causa do
+  11:00 x 09:00: o card do Paulo e gravado 2 h depois do post so para ordenar.
+- Vera reprova e o Vitor refaz sozinho (ate 2 vezes, borda sempre em pausa):
+  `lib/media/revisao-do-corte.ts`, passo `revisar-cortes` do piloto. US$ 0,29.
+- Pecas da semana: marcador `===LINKEDIN===`, aberturas repetidas e sabado
+  "Post" corrigidos na origem e nos dados (`lib/media/aberturas-da-semana.ts`,
+  `limparMarcadores`, `textoDaRede`). US$ 0,16.
+
+### Bloco 2
+- Linguagem executada: `lib/media/linguagem-da-edicao.ts` traduz
+  `videoEstiloEscolha` em estilo de legenda (Vox: tira de papel, palavra falada
+  na cor da marca, frase-chave em marca-texto; Hormozi: palavra a palavra na cor
+  da marca) e `tratamento` (camera aproximacao/afastamento/alternado/impacto/na
+  mao, look de cor, flash, luz vazada, glitch, grao) que o worker aplica antes
+  da legenda (`cadeiaDoTratamento` em ffmpeg.mjs; se o ffmpeg recusar, o corte
+  sai sem tratamento e marca `tratamentoCaiu`). O que exige IA vai para a
+  Higgsfield (`semExecucao`).
+- Limpeza de fala: `detectarMuletasCurtas` e `emendarNoSilencio` (agente). No
+  teste, bordas dentro de palavra de 129 para 6; os "ne" saem inteiros.
+- Artes da semana na mesma linguagem: `direcaoDaPeca` em direcao-de-arte.ts
+  (precedencia: campanha, linguagem do video, estilo proprio refina). US$ 0,15.
+- Higgsfield: `lib/media/higgsfield.ts`, request_id gravado, nunca a espera do
+  SDK. Aprovado pelo Bruno: Kling 3.0 Pro, 3 s, sem som (US$ 0,67 por corte).
+
+### Bloco 3
+- Bastao do video no escritorio (`lib/squad/bastao-do-video.ts`), pecas uma a
+  uma (`useUmaAUma`, escritorio e calendario), plaquetas menores.
+- Card do Paulo com as seis redes, perfis e paginas, formatos e "Pedir ao
+  especialista (~15 creditos)": `components/posts/destinos-do-dia.tsx`.
+- Medidor de envio: `lib/media/velocidade-do-envio.ts` e
+  `components/video/medidor-de-envio.tsx`.
+- Credito da edicao aprovado: 260 fixos mais 17 por minuto (`limits.ts`), com
+  "incluso" e "a parte" na tela de envio.
+- Gemeo digital (item 16): BLOQUEADO, faltam FAL_KEY e ELEVENLABS_API_KEY.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 197 (29/09/2026, noite): editor completo, Vera corrige sozinha, tempo e player
+
+Depois do teste do video refeito, o Bruno reprovou: a Higgsfield so na abertura
+nao e a edicao que ele quer (referencia: videos "O video que o Opus 5.5 editou
+sozinho", Claude como diretor + Remotion + Higgsfield). Tudo abaixo publicado
+(Vercel e worker) com MONTAGEM_NA_EDICAO=1 e HIGGSFIELD_NA_EDICAO=1.
+
+- Editor completo: `lib/media/diretor-de-montagem.ts` (Opus le fala editada,
+  mosaico de quadros, linguagem, marca por nome e nicho, devolve plano de cenas
+  validado em `plano-de-montagem.ts`: narrador cheio, canto, na foto, tela
+  dividida, broll, cartela; zoom, transicao folha de papel, marca-texto, letras
+  de revista, carimbo, tarja; legenda de papel palavra a palavra; texto nunca
+  repetido na tela), `assets-da-montagem.ts` (colagens por imagem, objetos
+  recortados, Higgsfield por pedido gravado), render Remotion em
+  `worker/remotion` pela rota `POST /montar` (`worker/src/montagem.mjs`), esteira
+  em `montagem-nos-cortes.ts` pelo cron da fila, `montar-callback` troca o
+  vertical e guarda `verticalOriginal`. Prova local do corte 0:
+  `Documents\Demandou\editor-completo`. Custo ~US$ 0,82 por minuto (1,35 com
+  cena Higgsfield). Render 4,5 min por minuto no notebook; meta de 1,5 NAO
+  atingida (proximo: ffmpeg nas cenas de narrador cheio, render em pedacos).
+  O tsconfig do app passou a excluir `worker/` (o build da Vercel quebrava no
+  `remotion`).
+- Vera corrige o dia reprovado sozinha (ate 2 tentativas, depois vai ao cliente
+  com motivo): `lib/squad/correcao-da-vera.ts`, `correcao-do-dia-do-video.ts`.
+- Cortes com salto e fim no meio da fala: limpeza nao tira mais de 1,2 s de
+  fala por remocao, corte termina em frase completa (`texto-final-do-corte.ts`),
+  a Vera revisa o texto FINAL editado (`edicao-gravada.ts`).
+- Tempo: faixa conta da rodada (`video_jobs.rodadaEm`, migracao
+  20260930120000), contagem regressiva com a mensagem do cafe, completo que
+  falha vira estado com "Refazer o video completo"; tratamento de estilo 3x mais
+  rapido (zoompan), completo passe 1 ultrafast.
+- Player travando: era `backdrop-filter: blur` atras do visor; removido.
+
+*Atualizado em 29/09/2026 por Claude Code.*
+
+
+## Parte 198 (30/09/2026, madrugada): primeira montagem em producao e as premissas erradas
+
+- Bordas do corte no silencio (`lib/media/bordas-do-corte.ts`, fonte unica para
+  o pedido ao worker e para a checagem da Vera). O arredondamento para o
+  segundo inteiro levava o comeco da frase seguinte ("Voce ja deve ter").
+- Vera retoma revisao parada ha mais de 10 min pelo cron da fila
+  (`retomarRevisoesParadas`).
+- Montagem em fila no worker (uma por vez, Chrome com 4 abas, ffmpeg 3 threads,
+  JSON do diretor consertado). Os 4 cortes do video cmund22t4000004jeg2uippvv
+  sairam montados em producao por volta de 23:20.
+- LinkedIn: cada conta e liga e desliga no card do Paulo; post adaptado herda a
+  data do dia; dia so e reescrito se o card ainda estiver esperando texto
+  (antes, apagar rascunho fazia a esteira reescrever, pago).
+- Campanha arquivada nao renasce (`abrirQuadroDoVideo`).
+- PREMISSAS REVISTAS com o Bruno: o completo de 22 min nunca teve montagem; o
+  render quadro a quadro no Chrome e o gargalo; a auditoria contra as
+  referencias (workflow wf_1cee1741-f5f, resultado em tasks/webszyhu7.output)
+  achou elementos entrando todos juntos e parados, texto ancorado antes da fala,
+  zero cena de cinema. Proximo desenho: ffmpeg compoe o narrador, Remotion
+  renderiza so as insercoes graficas, Higgsfield so em cenas ligadas a fala.
+
+*Atualizado em 30/09/2026 por Claude Code.*
+
+
+## Parte 199 (30/09/2026, manha): editor novo publicado para o teste do Bruno
+
+- Movimento e visual (Remotion): elementos reancorados na palavra dita, saida
+  animada, legenda palavra a palavra por familia, punch na palavra forte movendo
+  a cena, letras de revista grandes, fundo de colagem pre-renderizado, carimbo e
+  tarja de tinta, transicoes com golpe. Fontes novas em worker/fontes.
+- Direcao e assets: cenas de cinema da Higgsfield ligadas a fala (piso so nos
+  cortes), cenario do narrador sem a pessoa, icones oficiais de marca em codigo
+  (`lib/media/marcas-na-fala.ts`, `icones-de-marca.ts`), checagem de texto nas
+  imagens por visao.
+- Video completo montado: ffmpeg faz a base e o Remotion so as janelas de
+  insercao (`worker/src/montagem-do-completo.mjs`, `lib/media/montagem-do-completo.ts`,
+  coluna `completoMontagem`), ligado por MONTAGEM_DO_COMPLETO=1. Prova local de
+  3,5 min: 2,84 min por minuto no notebook; no Railway ainda nao medido.
+- Familias sem Vox chumbado: impacto (Hormozi) e sobrio (BBC) com prompt,
+  legenda e grafismo proprios. Fonte vertical do celular corrigida (rotacao no
+  ffprobe, cortes, capa, completo em pe sem montagem).
+- Semana 28/09 do Empreendedorismo Cristao apagada (3 runs, 94 cards, 17
+  rascunhos, 2 video_jobs) para o Bruno testar do zero.
+
+*Atualizado em 30/09/2026 por Claude Code.*
+
+## Parte 200 (30/09 manhã): peça só é pronta quando a edição termina
+
+- `/api/videos/[id]/midia`: redirecionamento com `no-store` (o cache de 5 min mostrava o corte simples depois da montagem).
+- `cardEmProducao` trata `metadata.montagem.estado` em andamento como "o squad está fazendo"; `trocarEstado` do completo espelha o estado no card do completo.
+- Faixa do Gestor: estado novo "Editando" enquanto houver corte ou completo com montagem rodando (`edicoesEmAndamento`, lido por consulta crua de `completoMontagem`); a página do servidor passou a mandar `terminadoEm` (o "pronto em N minutos" subia a cada recarga).
+- `pedido-de-corte`: sem frase de destaque queimada no completo quando `MONTAGEM_DO_COMPLETO=1`.
+- Artes com texto por código (agente): `lib/media/arte-com-frase.tsx`, `lib/media/infografico-em-codigo.tsx`; quarta, sexta e sábado do run de teste refeitas.
+- Pendente do Bruno: os 3 posts de terça (LinkedIn empresa, LinkedIn pessoal, thread X) foram reagendados sozinhos para 30/09 10:00 porque a terça passou; o classificador não me deixou tirá-los do agendamento.
+- Gasto no Google (Gemini imagem): ~US$ 10,6 registrados desde 29/09, quase tudo imagens da montagem (colagem 110, elementos 67). O custo por imagem no código (US$ 0,039) é o preço antigo do 2.5; o registro subestima.
+
+## Parte 201 (30/09 manhã): fim do corte no áudio, pessoa menor no vertical, card da peça que mudou de dia
+
+- Fim do corte: `montagem-nos-cortes.ts` tinha cópia antiga de `bordas` com `Math.ceil` (769,07 virava 770 e levava "Hoje você"); agora usa `bordasDoCorte`. No worker, `silencioNoFim` (ffmpeg.mjs) acha o vale de energia entre 0,22 s antes e 0,04 s depois da fronteira da transcrição e `prepararTrecho` emudece dali (fade de 30 ms), sem mudar duração. Provado na gravação: 768,95 (ferramentas / Hoje), 64,27 (né? / Você), 1018,76. A primeira versão ("último silêncio em 0,5 s") emudecia o "né?" e foi descartada.
+- Pessoa menor: 9:16 `narrador-cheio` com caixa y 0,2 h 0,8 (faixa de cima para elementos, fundo da linguagem aparece); `prepararCheio` escala para a caixa; Remotion posiciona na caixa e mostra fundo. Impacto: força da câmera 0,14 para 0,08. Prévia local em scratchpad/es/hormozi-3009.
+- Card da peça que mudou de dia: `cardsDaPeca(weekCards, ...)` quando o post sabe dia e campanha (post de terça reagendado para quarta abria "ainda não tem card").
+- DEPLOY PENDENTE junto (app + worker): esperar o completo de cmuo1ot5g sair de "montando" (railway up reinicia o worker). App sozinho quebraria o cheio (recorte 0,72 esticado no worker velho).
+- Ideia do Bruno no planner: tela de roteiro antes de gastar créditos (Notion 3eb1a873b4c18157a27af205a729971f).
+
+## Parte 202 (30/09 manhã): publicado e quadro zerado para o teste do Bruno
+
+- Publicado: app (demandou.com) e worker (railway up). O completo de cmuo1ot5g foi interrompido pelo reinício, com autorização do Bruno, e marcado "sem-montagem" para a fila não retomar.
+- ERRO MEU: o primeiro `npx vercel --prod` rodou dentro de worker/ e criou um projeto "worker" na Vercel. Removido (`vercel project rm worker`) junto com worker/.vercel; a pasta não tinha credencial. Sempre deployar o app da raiz.
+- Limpeza do projeto cmtmym5bo000004l80wwvpdd7: 14 posts (rascunho e falha) cancelados, cards de todas as campanhas não arquivadas apagados (inclusive as de 03/09 e 07/09, a mais do que o pedido), 3 campanhas arquivadas. Fica no quadro só o post já publicado de quarta.
+- O post de terça saiu às 10:00 só no LinkedIn da demandou. LinkedIn pessoal (REVOKED_ACCESS_TOKEN) e X (token inválido) falharam: o Bruno precisa reconectar as duas contas.
+- Peça sem card (post publicado cuja campanha teve os cards apagados): o clique abre o `externalUrl` do post na rede; sem link, vai para a aba Posts. Provado no dev local (abre o LinkedIn da demandou) e publicado.
+
+## Parte 203 (30/09 tarde): tela de roteiro antes de gastar e passo 4 com redes por dia (publicado)
+
+- Roteiro (agente): `/select` despacha o passo "roteiro" (limpeza da gravação inteira + diretor só em texto, até 6 candidatos e o completo por blocos); status "roteirizando", "roteiro", "aprovando". Tela em `/projects/[id]/video/[videoId]/roteiro` (components/video/tela-de-roteiro.tsx), APIs em app/api/videos/[id]/roteiro/{,cena,termos,aprovar}. Aprovação guarda até 3 cortes, usa remoções e plano aprovados (montagem e completo não chamam o diretor de novo). Guardado em `clips[i].roteiro` e `completoMontagem.roteiro`. `ROTEIRO_ANTES_DE_GERAR=0` desliga. Termos com troca exata `errado => certo` em Project.videoTerms.
+- Créditos em duas partes (limits.ts): parte 1 no envio 90 + 7/min; parte 2 na aprovação 75 + 3/min do completo + 80 por corte. "Outra ideia" 5 créditos. Custo real medido US$ 17 no vídeo de 22 min: a escala cobre ~22% na premissa de R$ 0,031 por crédito. DECISÃO DE PREÇO PENDENTE com o Bruno.
+- Passo 4 (agente): plano por DATA a partir de hoje (DIAS_DO_PLANO = 7), formato e redes por dia, "Vídeo curto" com cortes distribuídos nos dias de vídeo curto; adaptação por rede extra e arte por proporção custam a mais. Prova sem banco: scripts/tmp/prova-semana-do-video-3009.mts.
+- Riscos conhecidos: Vera refazendo corte aprovado com bordas novas faz o diretor rodar de novo; dia de vídeo curto sem card de espera; worker não mudou.
+
+## Parte 204 (30/09 11h30): primeiro teste real do roteiro
+
+- Roteiro do vídeo cmuo6nirp: 4 de 6 blocos do completo prontos e a função morreu sem re-despachar; relançado à mão (scripts/tmp/despachar-passo-3009.mts). Agora o cron da fila re-despacha "roteirizando" parado há 6 min.
+- E-mail "Seu roteiro está pronto" ao dono quando o vídeo chega em "roteiro" (rota /roteiro).
+- Relógio da faixa: antes da aprovação conta só o roteiro (0,4 min por minuto, mínimo 3 min).
+- Arte do dia com o NOME DO ARQUIVO como frase ("2026-09-29 11-04-24"): reserva agora é outra tese, tema ou resumo; nome de arquivo nunca.
+- Tela do roteiro: erro da aprovação aparece ao lado do botão (o do topo ficava fora da vista).
+- Campanha cancelada a pedido e depois restaurada para aprovar: vídeo de volta a "roteiro", run cmuo6or9v desarquivado; os posts da semana ficaram cancelados. Aprovado às 11:36 com 2 cortes, esteira em "cutting".
+- Pendentes: seleção trouxe só 2 candidatos (precisa de mais opções para escolher 3); semana e artes rodam antes da aprovação.
+
+## Parte 205 (30/09 12h30): completo quebrado por erro meu, site inacessível só da rede do Bruno
+
+- ERRO MEU: a linha do fade de fim de fala entrou em `prepararCompleto` (e faltou em `prepararTrecho`): "COMPLETO FALHOU: mudoDesde is not defined". Trocado de lugar, testado com trecho com emendas na gravação real e worker publicado. O `completoMontagem` (com o roteiro aprovado do completo) ficou nulo; relançado com `refazer-completo` (o diretor roda de novo, ~US$ 2).
+- Bruno aprovou o primeiro corte editado: "ficou perfeito, era exatamente isso que eu esperava".
+- demandou.com fora só na rede do Bruno: o A do apex (DNS na HostGator) aponta 216.198.79.1, que a rota local não alcança; 76.76.21.21 e 216.150.x respondem, e check-host (SP, FR, NL, PT, TR, US) abre normal. Paliativo: linha no hosts do Windows. Avaliar trocar o A na HostGator para 76.76.21.21 ou mover os nameservers para a Vercel.
+- Scripts: scripts/tmp/assinar-piloto-3009.mts (assinatura interna) e despachar-passo-3009.mts.
+
+## Parte 206 (30/09 13h): jornada da edição na faixa, e-mail de completo pronto, navegação da semana
+
+- Faixa roxa conta a etapa do completo (planejando, criando imagens e cenas, montando os efeitos) e promete o e-mail; o intervalo entre a base pronta e a montagem entrar na fila conta como edição (antes piscava "pronto" verde). `etapaDoCompleto` vem da consulta crua de `completoMontagem`.
+- E-mail "Seu vídeo completo está pronto, com os efeitos" em `trocarPeloMontado` (montagem-do-completo.ts), só quando a troca acontece.
+- Navegação "Semana anterior / Próxima semana" logo acima do quadro (o plano atravessa a semana; o 2º corte caiu em 06/10).
+- Completo do teste pronto às 12:50 com o plano do roteiro (`doRoteiro: true`), mas cobertura de 2,9%: 20 cenas descartadas por encostarem em tela compartilhada. O roteiro planeja sem saber onde há tela compartilhada (só se sabe depois do corte). Próximo: levar a análise de câmera/tela para antes do roteiro, ou reposicionar a inserção para a parte de câmera mais próxima.
+- Worker NÃO foi republicado nesta parte (Bruno pediu para não interromper).
+
+## Parte 207 (30/09 tarde): aprovar e agendar no card do vídeo, publicado com partes seguras da legenda e do LinkedIn
+
+- Card do vídeo (corte ou completo) com post: mostra o mesmo bloco de publicação do Paulo, restrito ao post do card (`acoesNoCardDoVideo` em content-manager.tsx). Pedido do Bruno: o completo pronto não tinha como aprovar nem agendar.
+- Publicado junto, com aval dos agentes: legenda (aba "Legenda" no estilo, seção na tela de roteiro, PATCH /api/projects/[id]/estilo-de-edicao; padrão "auto" igual a antes) e LinkedIn (sugestão no vídeo curto, botão "Levar o corte para o LinkedIn" no card do dia). Os dois agentes seguem terminando e provando.
+- Worker mudado pela legenda e NÃO publicado: worker/remotion/src/partes/legenda.tsx, worker/remotion/src/tipos.ts, worker/src/montagem-do-completo.mjs. Até publicar, estilos "caixa" e "marca-texto" saem como legenda branca de contorno.
+- DNS do demandou.com no backlog (Notion 3eb1a873b4c181b999bbfdfa6be37850). Gêmeo digital: passo a passo entregue ao Bruno; aguardando FAL_KEY e ELEVENLABS_API_KEY no .env.local.
+
+## Parte 208 (30/09 fim de tarde): legenda e LinkedIn fechados e publicados (app e worker)
+
+- Legenda (agente): `videoEstiloEscolha.legenda = { modo: "sem" | "auto" | "estilo", estilo? }`; aba "Legenda" no catálogo de estilo e seção na tela de roteiro; lib/media/legenda-escolhida.ts, components/video/escolha-da-legenda.tsx. Cinco estilos (palavra a palavra, frase em caixa, marca-texto, recorte de papel, limpa). "Sem" não tira grafismos da edição (marca-texto de frase-chave, letras de revista). Worker publicado com legenda.tsx, tipos.ts e montagem-do-completo.mjs.
+- LinkedIn (agente): pesquisa recomenda vertical 9:16, 30 a 90 s, legenda queimada (SRT da API só em inglês); reaproveita o corte do Shorts. LinkedIn entra na sugestão do "Vídeo curto"; botão "Levar o corte para o LinkedIn" no card do dia (sem IA); `destinosDoCard` por corte em sincronizar-quadro.ts; rota /destinos aceita `maisDestino`/`contaId`. Completo NÃO vai ao LinkedIn (longo e deitado). Publicação real no LinkedIn não testada; o perfil pessoal do Bruno precisa reconectar.
+- Custo de teste dos agentes: US$ 0,30 (revisão automática no projeto de teste).
+
+## Parte 209 (30/09 noite): celular e chat do card
+
+- Vídeo do celular (cmuon0yxo, 280 s, em pé): cortes montados; completo "sem-montagem" porque a montagem do completo recusava gravação vertical, e a tela não avisou.
+- Tela de roteiro no celular: tempo da cena em cima do texto e margens menores (antes a descrição ficava numa coluna de ~120 px). Publicado.
+- Chat do card hoje: só início/fim em segundos, capa e texto do post; no completo tudo vira edição de texto. Bruno escolheu construir: (1) chat que entende palavra, trecho do meio, efeitos/cenas e o completo, refazendo só a montagem; (2) completo vertical com efeitos. Dois agentes em andamento, sem deploy.
+
+## Parte 210 (30/09 noite): YouTube recebeu o completo sem edição; fecho do raciocínio; e-mails com marca; completo em pé
+
+- GRAVE: o post do YouTube (cmuonsrud, https://www.youtube.com/watch?v=yYnWdWkVMwo) saiu com `completo-cafaX...` (base sem efeitos). O post guardava a URL do momento da criação e a troca pela montagem (completo) não movia os posts. Correções: `videoAtualDoPost` em lib/publish/oauth-post.ts resolve na hora de publicar o arquivo atual (completoUrl para gravacaoCompleta, midia.vertical para trecho) e grava no post; `trocarPeloMontado` do completo move os posts não publicados; rota /youtube cria com `completoUrl ?? blobUrl` (antes ia a gravação crua). O vídeo já publicado não é trocado sozinho (YouTube não troca arquivo; precisa apagar e subir de novo, decisão do Bruno).
+- Fecho do raciocínio: regra no prompt da seleção + `conferirFecho` (select-clips.ts): um olhar barato (effort low) lê o fim do corte e as frases dos 75 s seguintes e estende até a frase em que o raciocínio conclui (teto 120 s, sem invadir o próximo). Provado no vídeo do celular: "Jesus entrou na empresa" 178 s para 201 s; o outro ficou igual.
+- E-mails de roteiro pronto e completo pronto na casca da marca (lib/email/index.ts: emailDeRoteiroPronto, emailDeCompletoPronto). Prévia em scratchpad/prints/email-roteiro.png.
+- Completo em pé com efeitos (agente): montagem-do-completo.ts decide formato pela base, vertical conta tudo como câmera, geometria 9:16 dos cortes; worker montagem-do-completo.mjs com trava por proporção, narrador 540x960 e legenda vertical. Worker e app publicados. Prova local em Documents\Demandou\completo-vertical-3009. Refazer o completo do vídeo do celular custa ~US$ 1,40 (aguarda Bruno).
+- Chat do card e "voltar à edição": agente em andamento; módulo parado como lib/media/ajuste-pelo-chat.ts.rascunho; constantes novas em limits.ts sem uso.
+- Custos: agente atualizando o artefato 1pRBLUSj3Tm7HonZsrFdg5 (números parciais: 30 dias Anthropic US$ 121,7, Google ~US$ 81,7 corrigido, Higgsfield 17,4, OpenAI 17,4; banco é Supabase Free; Blotato sem aumento achado).
+
+## Parte 211 (30/09 noite): chat do card edita o vídeo e "Voltar à edição" (publicado)
+
+- Chat do card (corte e completo): lib/media/ajuste-pelo-chat.ts. Uma classificação barata (Opus effort low, ~US$ 0,033) com a fala numerada por palavra e as cenas em português; o código confere antes de agir. Entende: pergunta em pedido ambíguo, tirar efeito, sem efeito num intervalo, trocar cena (mostra custo e pede "sim"), outra ideia (5 créditos, depois o custo da ideia), tirar trecho do meio, início e fim por palavra; no completo só cenas e efeitos. Refaz só a montagem com o plano ajustado (imagens e cenas iguais saem de graça) ou o re-corte com as remoções guardadas.
+- "Voltar à edição": lib/media/reedicao.ts e rota app/api/videos/[id]/roteiro/reedicao; botão na faixa "Pronto", no card do corte e do completo; tela de roteiro em modo de edição com rascunho, "Refazer com estes ajustes (N créditos)" e "Descartar mudanças".
+- Preço proposto (limits.ts, decisão do Bruno pendente): imagem nova 8 créditos, cena de cinema 80, sala recriada 100.
+- Correção em `refazerMontagens`: guardava mal o corte cru na troca.
+- Não provados em produção: re-corte real no worker e montagem real com plano ajustado (só dublê). Custo dos testes do agente: ~US$ 0,58.
+- Limites: no completo, início/fim e trecho do meio pelo chat ficam fora; troca de termo que difere só por hífen ou acento é recusada.
+
+## Parte 212 (30/09 a 01/10 madrugada): decisões do Bruno ("sim para todas")
+
+- YouTube: completo EDITADO republicado como vídeo novo (post cmuotrz9v, https://www.youtube.com/watch?v=fg2QJ54aqC0), cópia do cmuonsrud com `republicadoDe`. O antigo (yYnWdWkVMwo) o Bruno apaga no Studio: a conexão só tem `youtube.upload`, sem permissão de apagar. Script: scripts/tmp/republicar-youtube-3009.mts.
+- Completo do celular (cmuon0yxo) recolocado na fila com `refazerMontagemDoCompleto` (scripts/tmp/refazer-completo-3009.mts).
+- Agentes em andamento: prova de imagem Higgsfield (até US$ 2,15, para no primeiro "Not enough credits"; API não expõe saldo) e artefato de custos reconstruído em formato executivo com controles e calculadora de IA (estudo antigo vira backup no fim); Blotato como roteador por rede (padrão: API própria); limite de gravações por plano travado e proposta de preço dos créditos (sem ligar o preço).
+- Gêmeo: FAL_KEY e ELEVENLABS_API_KEY ainda ausentes no .env.local; passo a passo reenviado ao Bruno.
+- Gêmeo: FAL_KEY e ELEVENLABS_API_KEY gravadas no .env.local e na Vercel produção (tipo secret), validadas (ElevenLabs Starter, 40 mil caracteres, clonagem instantânea; fal autenticou). As chaves foram coladas na conversa: trocar depois. Agente de teste em andamento: clona a voz (sem custo), pesquisa geradores no fal.ai e PARA para aprovação de custo antes de gerar vídeo.
+
+## Parte 213 (01/10 madrugada): Blotato como roteador por rede (pronto, desligado, ainda não publicado)
+
+- lib/publish/roteador.ts e via-blotato.ts; lib/blotato/index.ts reescrito para a API REST v2 (a versão de março falava com o MCP; sem cópia, código fora do git). Liga com `BLOTATO_API_KEY` + `PUBLICAR_VIA_BLOTATO=instagram,tiktok,facebook` (ou `PUBLICAR_VIA_BLOTATO_CONTAS`); vínculo por conta em SocialAccount.blotatoAccountId ("conta" ou "conta:página"). Conta sem token próprio ligada só pelo Blotato sai por lá. Enquete do LinkedIn não existe no Blotato.
+- Alterados (mínimo): oauth-post.ts (desvio por conta depois das guardas), cron/pipeline (confere envios pendentes a cada 5 min, falha após 3 h), posts/[id]/publish, account-filters, tiktok/criador, analytics/sincronizar.
+- Contas: scripts/blotato-contas.mts (listar, ligar, ver, desligar). Prova com dublê: scripts/tmp/prova-blotato-3009.mts (46 testes). Nome do fornecedor nunca vai para tela nem post (códigos PUB-*).
+- Riscos: Starter 400 MB por arquivo e conversão só até 120 s (YouTube completo continua pela API própria); Facebook vídeo de página só como reel; primeiro comentário do LinkedIn e números do Instagram/Facebook se perdem; PUB-* ainda não traduzido em /api/suporte/chamado.
+- Bruno precisa: assinar (Creator US$ 97 se houver vários TikTok), gerar a chave, conectar as redes na conta Blotato da Demandou, ligar cada conta pelo script.
+
+## Parte 214 (01/10 madrugada): custos executivo, prova de imagem, limite de gravações, Blotato com chave (publicado)
+
+- Artefato de custos versão 21 (https://claude.ai/artifact/1pRBLUSj3Tm7HonZsrFdg5): topo executivo com 4 números que reagem a controles, 2 gráficos (Chart.js), calculadora de ferramentas de IA por etapa com 3 combinações prontas, prova de imagem, preço proposto, e o estudo antigo como backup no fim.
+- Prova de imagem na Higgsfield: US$ 1,13 em 18 imagens. Recomendação: colagens e artes no GPT Image 2.5 qualidade baixa (US$ 0,025, -75%), elementos no Recraft V4.1 (US$ 0,035, -65%), cenário no Grok edit (US$ 0,08, -41%); vídeo com fala fica no Veo. A conta Higgsfield só faz 2 imagens simultâneas (10 depois de US$ 25 em recargas). Troca no código ainda NÃO feita.
+- Limite de gravações (agente): `registrarGravacao` trava por usuário, confere cota e cria em transação; linha zero no extrato por gravação (apagar projeto não libera); ciclo pelo creditsResetAt; admin sem limite; frase única em lib/frase-da-cota.ts; jornada pula para o envio com cota esgotada. A conta do Bruno (cmt3orz4j) é role=user no Pro (8/mês, 3 usadas).
+- Preço proposto desligado em `PRECO_PROPOSTO_DOS_CREDITOS_3009` (limits.ts): gravação de 22 min de 625 para 3.634 créditos (R$ 0,031) ou 2.497 (R$ 0,045). Hoje a gravação tem margem negativa. Decisão do Bruno pendente; Enterprise precisa de mais créditos ou gravação fora dos créditos.
+- BLOTATO_API_KEY no .env.local e na Vercel (secret). Conta Blotato tem LinkedIn (perfil Bruno 16129, página Areticon 106318968) e X @prbrunodonaire (14971); nada ligado na Demandou e PUBLICAR_VIA_BLOTATO não definido, então nada sai pelo Blotato ainda.
+- tsconfig exclui scripts/tmp do type-check (scripts de prova quebravam o build).
+- Gêmeo: aprovado teste dos 3 geradores (US$ 9,94) com trecho real da voz; BLOQUEADO por saldo esgotado no fal.ai ("User is locked") e chave ElevenLabs sem permissão de vozes.
+- 01/10: modelo padrão do Claude trocado de claude-opus-5 para claude-sonnet-5 (decisão do Bruno; lib/claude/index.ts DEFAULT_MODEL), preço do Sonnet 5 corrigido para US$ 2 / US$ 10 por milhão em lib/claude/usage.ts. Testado ao vivo (effort low e medium). Publicado.
+
+## Parte 215 (01/10): decisões do Bruno e cinco frentes em paralelo
+
+- Decisões: Sonnet 5 confirmado; imagens trocadas pelos mais baratos aprovados na prova (GPT Image 2.5 baixa, Recraft V4.1, Grok edit; Google só de recuo); preço dos créditos a partir da branda, com margem acima de 70% na plataforma inteira; Blotato ligado para terceiros (primeiro cliente entra em 01/10 e conecta todas as redes).
+- Agentes em andamento (sem deploy): troca de imagem com fila e recuo (limite de 2 simultâneas na Higgsfield); créditos recalculados e ligados; contas de terceiros (diagnóstico por rede, "conexão assistida", tela de admin para ligar contas do Blotato, valor de PUBLICAR_VIA_BLOTATO); landing com calculadora atrás de formulário de lead (faturamento, time, setor, cargo, e-mail, WhatsApp) e vídeo de pitch narrado (ElevenLabs + Higgsfield + telas reais, até US$ 15); gêmeo esperando o fal.ai destravar (verificador a cada 60 s).
+- fal.ai segue "User is locked: Exhausted balance" depois da recarga do Bruno: conferir se o saldo caiu na mesma conta/equipe da chave. ElevenLabs ainda sem permissão de vozes (teste usa trecho real da voz).
+- Gêmeo (01/10): teste rodado (o agente foi barrado pela trava de gasto; rodei eu com a aprovação direta do Bruno). Custo US$ 9,08: Kling Std US$ 1,54 (7,7 min), OmniHuman 1.5 US$ 4,38 (8,6 min), Kling Pro US$ 3,16 (10,9 min). Os dois Kling queimaram LEGENDA FALSA ilegível no rodapé; OmniHuman limpo e natural. Recomendação: OmniHuman 1.5 (alta definição exige pedaços < 30 s). Comparação: https://claude.ai/artifact/7keXkFNNVjTYfJjTiszS8o. Arquivos em Documents\Demandou\gemeo-teste.
+
+## Parte 216 (01/10): troca de imagem pronta (não publicada)
+
+- lib/media/imagem-higgsfield.ts novo; nano-banana.ts ganha `gerarImagem` (Higgsfield primeiro, Google recuo). Tipos e env: IMAGEM_COLAGEM, IMAGEM_ARTE, IMAGEM_FUNDO = GPT Image 2.5 low (marketing-studio/image/sunburst, US$ 0,025); IMAGEM_ELEMENTO = Recraft V4.1 (US$ 0,035, fundo verde como parâmetro); IMAGEM_CENARIO = Grok Imagine 2.0 edit (US$ 0,08, URL pública do quadro). Valor "google" volta o tipo para o Google.
+- Fila: 2 vagas por processo (HIGGSFIELD_IMAGENS_SIMULTANEAS), sem vaga em 60 s vai para o Google; na fila da Higgsfield > 45 s cancela e vai para o Google; tetos por imagem 150/120/180 s; janela de 5 min por passo da montagem; sem crédito ou chave ruim pausa a Higgsfield 15 min (429: 1 min). request_id em Blob higgsfield-imagem/<hash>.json.
+- Custo: ai_usage com o modelo que respondeu; preços do Google corrigidos (Nano Banana 2 0,101 em 2K, 0,067 em 1K; Pro edit 0,136); chamadas sem contexto viram `imagem_sem_contexto`.
+- Prova paga US$ 0,19 (5 imagens, todas Higgsfield). Teste simulado: scripts/tmp/teste-recuo-imagem-0110.mts.
+- Pendente: o caminho principal das artes de campanha e carrossel ainda usa OpenAI GPT Image 2 (medium) direto; só o reserva Gemini virou GPT 2.5. Aviso "saiu no Gemini" desatualizado.
+
+## Parte 217 (01/10): preço dos créditos em vigor no código (não publicado)
+
+- Regra: nenhuma etapa custa mais de R$ 0,027 de IA por crédito (teto que mantém o Enterprise, crédito a R$ 0,094, acima de 70%). Custos reprecificados com Sonnet e imagens novas (20% de recuo no Google), câmbio R$ 5,36.
+- Gravação: roteiro 550 + 25/min (envio); completo 390 + 22/min e 400 por corte (aprovação). 22 min com 3 cortes: 1.100 + 2.074 = 3.174 créditos (era 625), custo modelado R$ 77. Chat: imagem 20, cena 95, sala 110, outra ideia 10. Abertura por IA 67. Comentário com fontes no X 40. Gêmeo proposto 25 créditos por segundo (CREDITOS_POR_SEGUNDO_DO_GEMEO, ainda sem uso).
+- Margens: típico Starter 87%, Pro 80,5%, Enterprise 71,3%; máximo só créditos 82/73/71,5%; com a carteira de vídeo (Veo) inteira Pro 66% e Enterprise 59%. Proposta (NÃO aplicada, decisão do Bruno): Pro 36.000 créditos e 6.240 de vídeo; Enterprise 54.000 e 6.240; recarga Enterprise R$ 0,09.
+- Transição: quem pagou o roteiro no preço antigo aprova no antigo (detectado pelo valor pago).
+- Arquivos: limits.ts, roteiro-da-edicao.ts, credits/higgsfield-tabela.ts, credits/tabela.ts, video-upload.tsx, tela-de-roteiro.tsx; cópias em scratchpad/bak-precos-0110. Artefato de custos versão 22.
+
+## Parte 218 (01/10): conexão das redes para clientes terceiros (pronto, deploy pendente)
+
+- Diagnóstico: conexão própria funciona para terceiros em LinkedIn perfil, LinkedIn página (Community Management Development Tier: 500 chamadas/dia no app, 100 por membro), X (cobrança por uso na conta do Bruno: US$ 0,015 por post, US$ 0,20 com link) e YouTube (escopo aprovado em 16/09; ~6 uploads/dia no app inteiro). NÃO funciona em Instagram e Facebook (app Meta só com public_profile) e TikTok (sandbox; TIKTOK_AMBIENTE não definido).
+- PUBLICAR_VIA_BLOTATO=instagram,facebook,tiktok definido na Vercel (produção) e no .env.local. A mesma variável troca o "Conectar" por "Conexão assistida" nessas redes.
+- Conexão assistida: lib/social/conexao-assistida.ts (pedido em admin_acoes, sem repetir em 12 h, e-mail aos admins e confirmação ao cliente), rota app/api/social/conexao-assistida, componente components/social/conexao-assistida.tsx. Tela de admin /admin/redes (lib/admin/blotato-vinculos.ts, app/api/admin/redes, components/admin/redes-dos-clientes.tsx): lista contas do Blotato, liga ao projeto, mostra "pela ponte". Desligar conta só-Blotato apaga a conta do projeto.
+- SEGURANÇA: app/(app)/projects/[id]/settings, [id]/page e [id]/setup mandavam accessToken e refreshToken de todas as contas no HTML. Corrigido (prova: zero tokens no HTML).
+- Passo a passo da chamada com o cliente no relatório do agente: janela anônima, my.blotato.com com a conta da Demandou, "Login with ...", controle remoto para o cliente digitar a senha; depois /admin/redes, "Ligar agora".
+- 01/10: publicado na Vercel (sem worker): troca de imagem (inclui artes e carrossel em IMAGEM_ARTE, recuo OpenAI GPT Image 2 low US$ 0,0064 e depois Google), preço dos créditos em vigor, conexão assistida + /admin/redes, correção dos tokens no HTML, PUBLICAR_VIA_BLOTATO=instagram,facebook,tiktok. A landing aplicou migração aditiva em Lead (tamanhoTime, setor, calculadora, calculadoraEm, consentimentoEm). Achado: GPT Image 2 low da OpenAI sai a US$ 0,0064 por arte, mais barato que o GPT 2.5 na Higgsfield; vale teste lado a lado (IMAGEM_ARTE=openai-gpt-image-2-low).
+
+## Parte 219 (01/10): landing pronta (não publicada), rebranding em andamento, simulador de acessos
+
+- Landing (agente): vídeo de pitch 85 s (https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/landing/pitch-0110.mp4; voz pronta "Rafael Valente" da ElevenLabs; 6 cenas Higgsfield US$ 3,36), calculadora com portão de lead (app/api/calculadora, lib/calculadora/*, lib/email/calculadora.ts; Lead ganhou tamanhoTime, setor, calculadora, calculadoraEm, consentimentoEm), seções dor/economia e três casos (components/landing/*). O vídeo está em laranja e termina com "Postou": remontar depois do rebranding (sem gasto de Higgsfield).
+- Rebranding (agente em andamento): azul-marinho + branco no lugar do cinza, laranja discreto, fontes da referência Viver de IA, copy para ICP B2B R$ 100 mil+/mês sem "postou", opções de logo para o Bruno escolher.
+- Acessos por plano: hoje NÃO existe acesso de equipe (cada login é uma conta). Proposta: cota compartilhada que trava (créditos e gravações), acessos inclusos Starter 2, Pro 5, Enterprise 10, acesso extra R$ 197/mês com 2.000 créditos e +1 gravação (73%), teto por vendedor e painel de consumo. Bruno quis entender os números antes: simulador em https://claude.ai/artifact/CyaE9RKf2bidbd3v74LiXq. Gêmeo deve custar 33 créditos/s (não 25) com o OmniHuman para ficar acima de 70%.
+
+## Parte 220 (01/10): gêmeo digital na plataforma (pronto, deploy pendente de app e worker)
+
+- Cadastro por projeto em project_memories (tipos gemeo, gemeo-video, gemeo-revogacao; sem migração): 1 a 5 fotos (worker escolhe e recorta o rosto, recusa duas pessoas ou sem rosto), voz gravada no navegador ou arquivo (mínimo 45 s, MP3 pelo worker), autorização gravada na câmera com frase montada no servidor e conferida pela transcrição ("autorizo", primeiro nome, "gêmeo digital"). Revogar apaga tudo (inclusive a voz na ElevenLabs); apagar o projeto revoga.
+- Geração no cron (avancarGemeos): texto em pedaços de ~22 s em fim de frase, voz ElevenLabs Multilingual v2 com previous/next_text, OmniHuman 1.5 em 1080p em paralelo, junção no worker (/juntar-gemeo), MP4 vira VideoJob "uploaded" e segue a esteira normal. Não conta na cota de gravações; edição cobrada como gravação.
+- Preço: 34 créditos por segundo (CREDITOS_POR_SEGUNDO_DE_GEMEO em lib/media/gemeo.ts; limits.ts alinhado de 25 para 34), reserva +15% e devolve a diferença. Teto 3 min.
+- next.config.ts: Permissions-Policy liberando câmera e microfone só em /projects/:id/gemeo.
+- Arquivos: lib/media/gemeo*.ts, app/api/projects/[id]/gemeo/*, components/gemeo/*, worker/src/gemeo.mjs, gemeo-rosto.py, rotas novas no worker/src/index.mjs; alterados cron/fila, projects/[id] route, escolha-de-origem, content-manager (onGemeo), linha-editorial (botão "Gerar com o meu gêmeo").
+- Pendências: permissão de vozes na chave ElevenLabs (o cadastro tenta de novo a cada 30 min); Starter da ElevenLabs tem 10 vozes (um gêmeo por voz). Risco: rosto da autorização não é comparado com o das fotos.
+
+## Parte 221 (01/10): publicado gêmeo, rebranding e landing (app e worker)
+
+- Rebranding (agente): Geist e Geist Mono (as do app da Viver de IA, via next/font), marinho #0A1F3B, destaques nossos (laranja claro em degradê .destaque, cinza em degradê .destaque-prata, .selo, .cartao-noite, .rotulo mono). A escala orange-* do Tailwind desenha AZUL por tema (código novo: azul-* e marca-*); botão de conversão `variant="conversao"` em laranja #c4470f. Copy sem "postou" para o ICP R$ 100 mil+ (hero "Sua empresa vira referência. Sem tomar a sua agenda."). Logo NÃO trocado: opções A, B, C em https://claude.ai/artifact/M3y2XEAp8nw21x5ipqr8jH (SVGs em "demandou marca\propostas-0110"). E-mails ainda laranja (lib/email/layout.ts). Cópias em scratchpad/bak-rebrand-0110.
+- Landing: calculadora com portão de lead, seções dor/economia (até 88% a menos) e três casos (gêmeo com quadro real, selo "Novo"); vídeo de pitch DESLIGADO até a versão 2 (agente montando).
+- Worker publicado com as rotas do gêmeo. ElevenLabs agora com permissão de vozes (GET /v1/voices 200).
+- 01/10 decisões: logo B (monograma marinho com ponto laranja; agente aplicando no site, favicon e e-mails). Acesso de equipe APROVADO: acessos inclusos Starter 2, Pro 5, Enterprise 10; acesso extra R$ 197/mês com 2.000 créditos e +1 gravação; cota compartilhada do dono que trava; teto por membro; painel de consumo. Agente construindo (migração só com aprovação).
+- 01/10: publicado logo B (components/brand-mark*.tsx em SVG com tokens --logo-de/--logo-ate; favicon SVG que troca com o tema; PNGs regerados; public/og.png; e-mails em marinho com laranja só no botão; antigos em "demandou marca\antigo"). Cartão do gêmeo na landing com quadro de olhos abertos. Migração do acesso de equipe (users.acessosExtras, credit_transactions.autorId, membros_da_equipe, acessos_ao_projeto) liberada para aplicar: a partir da troca do schema, deploy só com a migração aplicada. Marcas = maior entre marcas do plano e acessos inclusos, +1 por acesso extra. Stripe: só ativação manual pelo /admin (chave do .env.local é de produção).
+
+## Parte 222 (01/10): landing v2 pronta (não publicada; espera o acesso de equipe ficar seguro)
+
+- Pitch v2: https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/landing/pitch-v2-0110.mp4 (91,8 s, 1080p a partir de telas em 2x): dor, barreiras, squad no escritório 3D, três casos (gêmeo real com voz original), todas as redes e formatos, objeções com prova real, "economiza até 88%" sem preço, fecho com logo B. Montagem em scratchpad/pitch/v2/montar_pitch2.py.
+- Gêmeo curto da landing: voz do Bruno clonada na ElevenLabs ("Bruno Donaire (Demandou)", id em gemeo-teste/scripts/voz_id.txt) + OmniHuman 11,9 s (US$ 1,90): public/pitch/gemeo-apresentacao.mp4, mudo em laço com botão "Ouvir a voz".
+- Seções com material real: exemplos.tsx ("O mesmo trecho, no estilo que você escolher", lê o catálogo), formatos.tsx (artes reais nas medidas de formatoDaPeca), entrega.tsx (capa antes/depois real). Gasto total da landing: ~US$ 5,26.
+- Deploy pendente: o agente do acesso de equipe está no meio da edição de créditos e cota; publicar só com o aval dele.
+
+## Parte 223 (01/10): publicado acesso de equipe e landing v2
+
+- Acesso de equipe (agente): conta que paga = dono (lib/equipe/conta.ts); extrato com userId do dono e autorId do membro; aba "Equipe" em Configurações (acessos em uso, cota, convite com projetos liberados e tetos, painel de consumo, ajustar/reenviar/remover); convite /convite/[token] (7 dias, hash do token, mesmo e-mail, recusa quem tem plano ou projeto próprio); membro só vê projetos liberados (~75 rotas trocadas para "projeto liberado"), não vê cobrança nem convida; tetos por membro conferidos no débito e em registrarGravacao; acessos extras manuais em /admin/clientes ("Acessos da equipe": +2.000 créditos e +1 gravação por acesso); webhook pronto para STRIPE_ACESSO_EXTRA_PRICE_ID / _ANNUAL_PRICE_ID (produto não criado: chave é de produção). Margem pior caso Enterprise 71,4% (72,6% por acesso extra).
+- Smoke test na conta do Bruno antes do deploy: dashboard, projetos, Gestor, posts, settings, gêmeo, roteiro e APIs principais 200; páginas públicas 200.
+- Riscos registrados: frase "compre mais créditos" no chat para membro; membro com assinatura do dono caída vai a /planos; convites simultâneos podem passar um acesso; membro mexe em Configurações e Editar setup do projeto liberado.
+- Landing v2 publicada junto (pitch v2, gêmeo curto, seções com material real).
+
+## Parte 224 (01/10): fechamento do dia e fila do backlog
+
+- Estado consolidado no ar: roteiro antes de gastar, fim do corte no raciocínio (conferirFecho), Voltar à edição e chat do card editando o vídeo, completo em pé com efeitos, legenda opcional, LinkedIn com vídeo, Sonnet 5, imagens na Higgsfield com Google de reserva, créditos repreçados (margem pior caso Starter 82%, Pro 73%, Enterprise 71%), Blotato para Instagram, Facebook e TikTok, gêmeo (OmniHuman 1.5, 34 créditos/s), acesso de equipe, logo B e landing v2.
+- YouTube: a versão editada saiu em https://www.youtube.com/watch?v=fg2QJ54aqC0; a sem edição (yYnWdWkVMwo) ainda precisa ser apagada à mão.
+- Documentação: wiki "Demandou: a virada de 30/09 e 01/10" (3ec1a873b4c18178aca8cca469b6e729), nota viva de custos e "Estado da Demandou" atualizadas; planner com 16 cards novos.
+- Fila do backlog (por prioridade):
+  1. Bloqueante: produto do acesso extra no Stripe (R$ 197/mês, anual R$ 2.364), pré-requisito da venda ao Matheus.
+  2. Atenção, esta semana: trocar as chaves do fal.ai, ElevenLabs e Blotato; reconectar LinkedIn pessoal e X; apagar yYnWdWkVMwo.
+  3. Atenção: seleção com só 2 candidatos; roteiro sem saber das faixas de tela compartilhada; créditos do Pro e Enterprise no pior caso com a carteira de vídeo (66% e 59%); recarga de US$ 25 na Higgsfield (10 simultâneas); acabamentos do acesso de equipe (frase de compra para membro, permissões de membro, /planos quando a assinatura cai, corrida em convites, gravação real por membro); DNS de demandou.com para a Vercel.
+  4. Normal: regra de efeitos em vídeo curto; prova do OpenAI GPT Image 2 baixo; métricas pelo Blotato (aguardando resposta); comparação de rosto no gêmeo; tradução dos PUB-* no suporte; acabamentos da landing (setas, /planos claro, pitch vertical, pitch de 91,8 s); hidratação em ?step=0 e favicon em cache.
+
+## Parte 225 (01/10): termos do gêmeo, códigos PUB-* traduzidos e hidratação
+
+- Termos (01/10/2026): seção 7 reescrita (7.1 conteúdo proibido, 7.2 uso proibido, 7.3 consequências: recusar geração, remover, suspender ou encerrar sem reembolso dos créditos usados, colaboração com autoridades); seção 8 abre com a responsabilidade exclusiva do usuário (texto, imagem, vídeo e voz, perante terceiros e as redes); seção 9 nova "Gêmeo Digital" (#gemeo: só a própria pessoa com autorização gravada, proibido outra pessoa, figura pública ou menor, Código Civil art. 20, Lei Geral de Proteção de Dados art. 5º II e art. 11 I); seções seguintes renumeradas de 10 a 17. Privacidade: item 2.9 (#gemeo) do dado biométrico, com finalidade, retenção até revogar, exclusão na revogação e operadores ElevenLabs e fal.ai, refletido nas seções 3, 4, 5, 6 e 9. Texto das duas páginas com o token de cor do tema (o cinza fixo sumia no claro). Frase de aceite com link no passo 3 do gêmeo.
+- Códigos PUB-*: dicionário em lib/publish/codigos.ts (do cliente: título, explicação, o que fazer, chamado) e lib/publish/codigos-admin.ts (técnico, só servidor, para o nome do fornecedor não ir ao navegador). Cliente vê o cartão components/posts/falha-da-publicacao.tsx na tela de posts e no dia do Gestor; o estado da peça mostra "título (código)", porque o corte em 90 caracteres comia o código. O chamado de publicação tem e-mail próprio com o técnico, e o /admin ganhou "Publicações que falharam". Falha de post continua só na aba "Cancelados" da tela de posts.
+- Hidratação em ?step=0: o kanban lia window.location no desenho (agora useSearchParams); o avatar do menu também divergia quando a sessão chegava antes de hidratar (agora só depois de montar). Console limpo no setup?step=0.
+- Favicon: parado no meio pela volta ao logo antigo; o agente da marca assumiu layout.tsx, lib/versao-dos-icones.ts, public/manifest.webmanifest e public/favicon.ico (este ainda é do logo B e precisa ser regerado). app/icon.png saiu do app (cópia de public/icon.png). Cópias em scratchpad/bak-termos-0110.
+- Eu (01/10): produto "Demandou Acesso extra" no Stripe (STRIPE_ACESSO_EXTRA_PRICE_ID=price_1ULjlLJIhzTmSVmMhvhnyKN8, _ANNUAL_PRICE_ID=price_1ULjlLJIhzTmSVmMomabvoeu, na Vercel e no .env.local; script scripts/tmp/stripe-acesso-extra-0110.mts). Arte no GPT Image 2 baixo (IMAGEM_ARTE=openai-gpt-image-2-low na Vercel; prova com 4 artes reais aprovada pelo Bruno, https://claude.ai/artifact/1ZLCaf6dCTAzqVTJDnZ78i). lib/media/nano-banana.ts: trava de pessoa fictícia e anônima em toda geração a partir de texto, e recuo da OpenAI vai para a Higgsfield antes do Google. Domínio: da rede do Bruno 216.198.79.1 não responde e 76.76.21.21 sim; trocar o A do domínio raiz na HostGator (Titan no e-mail não muda). Gêmeo v2: clone ElevenLabs "Bruno Donaire v2" (4 min de amostra, id em gemeo-teste/scripts/voz_id_v2.txt), voz B = eleven_v4 acelerada 7%, foto nova recortada em 4:3; OmniHuman e HeyGen gerados (US$ 2,57), aguardando a escolha do Bruno.
+
+## Parte 226 (01/10): seleção traz o número de cortes pedido (não publicado)
+
+- Causa de "pediu 3, veio 1": o número de dias de "Vídeo curto" do passo 4 não chegava à seleção (alvo só pela duração); o prompt mandava "não encha cota" e o código jogava fora tudo abaixo de nota 6. Antes da correção, o modelo devolvia UM trecho nas duas gravações do teste (22 min e 4,7 min). Além disso, o `conferirFecho` deixava passar corte terminando no ar quando o fecho não cabia.
+- Correção (`lib/media/select-clips.ts` e `app/api/videos/[id]/select/route.ts`): a rota conta os dias de vídeo curto do plano do run (ou do projeto) e passa como `pedido`. Alvo = pedido + 2, limitado à duração dividida por 45 s e ao teto de 8. A primeira chamada pede um a mais e uma segunda chamada completa o que falta, fora dos cortes escolhidos e dos recusados (só se a primeira etapa terminou antes de 300 s). Nota 6 ou mais entra sempre; nota 4 ou 5 entra só para completar o pedido; abaixo de 4 sai. O `conferirFecho` agora também recua o fim para a frase em que um ponto completo já terminou (mínimo 20 s) ou descarta o corte; despedida nunca fica no corte. A sobreposição é conferida de novo no fim. Eu subi o esforço do `conferirFecho` de low para medium (aceitava fins fracos).
+- Prova (`scripts/tmp/selecao-prova-0110.mts`): 22 min (cmuo6nirp) pedido 3 = 5 cortes, pedido 5 = 6; celular (cmuon0yxo) pedido 3 = 3, pedido 1 = 1 (o resto é passeio pela casa); 16 min (cmtsph7b8) pedido 3 = 5. Sem sobreposição. Testes custaram cerca de US$ 3,70; em produção a seleção sobe de cerca de US$ 0,14 para até US$ 0,30. Cópias em scratchpad/bak-selecao-0110.
+- MAX_CORTES_APROVADOS (3) e CORTES_PLANEJADOS_NO_ROTEIRO (6) passados ao agente do vídeo para subir a 8. O VideoJob cmund22t4 não existe mais; a gravação de 22 min é cmuo6nirp000004jslatnqvtt.
+
+## Parte 227 (01/10): agendamento da demonstração com calendário (pronto, não publicado)
+
+- Queixa do Bruno resolvida: quem fez a conta na calculadora e clica em "Agendar demonstração" cai direto num calendário, sem preencher nada de novo. O cookie httpOnly `dmd_lead` (id do lead assinado, 180 dias, gravado por /api/calculadora, /api/demonstracao e /api/leads; também aceito como `?l=` na URL) identifica o lead. Lead desconhecido preenche uma vez os campos do portão da calculadora; lead conhecido com campo faltando vê só o que falta. Faturamento abaixo de R$ 100 mil segue recebendo a resposta franca, sem calendário.
+- Calendário em /demonstracao: horários de 30 min nos próximos 10 dias úteis (sem feriados, Carnaval e Corpus Christi), horário de Brasília, "Qualquer pessoa do time" com rodízio ou escolha da pessoa, antecedência de 3 h e intervalo de 15 min. A marcação roda em transação com trava por pessoa e índice único parcial: dois leads no mesmo horário recebem 200 e 409.
+- E-mails na casca da marca com convite anexo (text/calendar, METHOD REQUEST ou CANCEL, mesmo identificador e versão que sobe a cada mudança), lembretes de 24 h e 1 h no cron de publicação (app/api/cron/pipeline), link /demonstracao/reuniao/[token] para remarcar ou cancelar. Lead com e-mail .invalid é teste e não recebe nada.
+- /admin/agenda: reuniões com a ficha do lead e a calculadora, mais o editor do time (janelas, antecedência, intervalo, sala fixa, iCal cifrado, fonte manual ou google, contas Google com lista de agendas). O /admin avisa das marcadas.
+- Fonte google pronta e desligada: liga com GOOGLE_AGENDA_CLIENT_ID e GOOGLE_AGENDA_CLIENT_SECRET (cliente OAuth Interno no projeto do Workspace, retorno https://demandou.com/api/admin/agenda/google/callback, escopos openid, userinfo.email, calendar.freebusy, calendar.events, calendar.calendarlist.readonly). AGENDA_SEGREDO já criado na Vercel e no .env.local (01/10). O ocupado vem do freeBusy numa lista de agendas por conta (agendas de outras empresas do Matheus compartilhadas como "só livre/ocupado", ou link iCal do Outlook); o evento nasce com Meet e convite ao lead.
+- Migração 20261001220000_agenda_demonstracao aplicada (aditiva: agenda_pessoas, agenda_contas_google, agenda_reunioes). Bruno e Matheus em modo manual, 9h às 12h e 14h às 18h em dias úteis, a confirmar com o Bruno; o e-mail do Matheus está vazio (o aviso dele vai para DEMONSTRACAO_AVISAR).
+- Pendências: preencher o e-mail do Matheus e confirmar as janelas; testar o convite no Outlook novo com envio real; rodapé da casca de e-mail diz "criar uma conta" (soa errado para lead); tokens das redes em social_accounts estão sem cifra (a cifra AES-256-GCM em lib/agenda/segredos.ts serve de modelo). Prova em scripts/tmp/agenda-e2e-0110.mts (11 pontos ok), limpeza em agenda-limpeza-0110.mjs, prints em scratchpad/prints-agenda.
+
+## Parte 228 (01/10): volta ao logo antigo, fonte Inter, texto preto e acabamentos da landing (não publicado)
+
+- Marca de 25/08 de volta em todo lugar: components/brand-mark.tsx e brand-mark-animated.tsx com a geometria do public/brand-mark.svg oficial (prop `cor`: auto, laranja, branco; auto = laranja com contorno branco no claro, branco no escuro e no .cartao-noite); nome "demandou." em Montserrat negrito; favicons, ícones, og.png, PNG do Stripe (public/brand-mark-on-light.png) e e-mails a partir de "demandou marca\antigo" (script scripts/tmp/gera-marca-antiga.mts); favicon.ico regerado; VERSAO_DOS_ICONES = "marca-0110b" em lib/versao-dos-icones.ts, também no public/manifest.webmanifest.
+- Fonte: Geist saiu, Inter voltou (com Montserrat 700/800 no logotipo). Cores do rebranding mantidas.
+- Texto do tema claro: --text-primary #000000 e --text-muted #3d4451. Tema escuro sem mudança.
+- Landing: navbar sem estouro em 768 (links a partir de lg), setas afastadas do botão, formatos legíveis no celular, "Ouvir a voz" sem encostar na legenda, /planos no escuro para visitante e no tema do app para cliente (app/planos/conteudo.tsx), vídeo novo do escritório em 2x (public/demo/escritorio-0110.mp4, 28 s, 1920x1080; gravador em scratchpad/escritorio/gravar2.mjs). Varredura em 360/390/768/1024/1440 nos dois temas sem rolagem horizontal e sem erro de console.
+- Pitch v3 e vertical montados em scratchpad/pitch/v3 (logo antigo no fecho); falta encaixar o gêmeo novo (escolha do Bruno pendente), subir no Blob com nome novo e trocar o cartão em tres-casos.tsx (gemeo_novo.py gera public/pitch/gemeo-0110.mp4). Prints em scratchpad/prova/final. Backups em scratchpad/bak-marca-0110.
+
+## Parte 229 (01/10): completo editado do começo ao fim, abertura com os melhores momentos, tela compartilhada antes do roteiro, ritmo do curto (não publicado)
+
+- Causa da cobertura baixa do completo de 22 min (cmuo6nirp): teto de uma inserção a cada 2 min no roteiro, roteiro sem saber da tela, e a montagem transformando em base toda cena que encostava na tela (2:09 a 7:23 e 17:35 a 19:16). Agora: cotas por minuto 4/3/2 e depois 1 (lib/media/ritmo-da-edicao.ts), movimento na base a cada 10 s, blocos do diretor de 150 s em esforço médio com nova tentativa em baixo (no alto, o Sonnet 5 esgotava os 32 mil tokens pensando). Prova: inserções por minuto de "2 0 0 0 0 0 0 0 2 0 0 1 2 0 0 1 0 0 0 0 0" para "5 3 2 1 1 1 ... 1"; janelas de 10 s sem nada de 49 para 1.
+- Tela compartilhada antes do roteiro (lib/media/telas-da-gravacao.ts, faixas-de-tela.ts): menções na fala e prints do worker (/amostras-de-tela) classificados pelo Sonnet 5 com visão (askClaudeComImagens em lib/claude/index.ts); reserva na medida do worker e depois na fala. Guardado em completoMontagem.roteiro.telas. Em tela: tela inteira com a webcam, zoom de até 1,8x na região (feito pelo ffmpeg da base), chamadas de texto longe da webcam.
+- Abertura com os melhores momentos (lib/media/abertura-do-roteiro.ts, escolha-da-abertura.ts, worker/src/abertura-de-impacto.mjs, rota app/api/videos/[id]/roteiro/abertura): completo com 15 a 25 s de frases de 1 a 3 s; corte com gancho de 3 a 5 s; zoom de impacto, flash, som sintetizado e texto de soco. Aparece na tela de roteiro com trocar, tirar e desligar; 20 créditos (CREDITOS_DA_ABERTURA_DO_COMPLETO).
+- Ritmo do curto: garantirRitmo põe um evento a cada 5 s em todo corte e no completo em pé ou de até 4 min (o completo do celular tinha saído com 5% de cobertura).
+- MAX_CORTES_APROVADOS e CORTES_PLANEJADOS_NO_ROTEIRO = 8 (3 sugeridos, CORTES_SUGERIDOS); textos "até 3" corrigidos.
+- Gasto das provas: US$ 8,02 de Claude, US$ 0 de geração paga. Pendências: o diretor do completo custa cerca de US$ 2,5 por vídeo de 22 min (conferir o preço 390 + 22/min); gancho do corte sem prova em produção; poucas chamadas de texto na tela; detecção de tela pode estourar prazo em vídeo grande; "Voltar à edição" não refaz abertura nem gancho. Deploy: worker e app juntos (o app sozinho funciona sem abertura e sem zoom). Backups em scratchpad/bak-video-0110, prévias em scratchpad/video-0110.
+
+## Parte 230 (01/10): câmera e microfone do gêmeo não abriam (não publicado)
+
+- Relato do Bruno testando em produção: o botão do microfone e o da câmera do gêmeo não funcionavam. Causa: a Permissions-Policy negava câmera e microfone no site todo e liberava só em /projects/:id/gemeo, mas a política vale para o DOCUMENTO; quem chegava ao gêmeo por link interno (navegação do Next sem recarregar) ficava com a política do painel, que nega. O navegador nem pergunta, e o cadeado não tem o que liberar.
+- Correção: next.config.ts libera camera=(self) e microphone=(self) no site todo (só a própria origem; iframe de terceiro continua sem acesso; o navegador ainda pede permissão), e a regra por rota saiu. components/gemeo/gravador.tsx agora diz a causa certa: página sem permissão (recarregar), aparelho ausente, aparelho em uso por outro programa, ou recusa do navegador (cadeado). Paliativo até o deploy: F5 na página do gêmeo.
+
+## Parte 231 (01/10): acabamento do acesso de equipe (não publicado)
+
+- Frase de compra para membro: em todo lugar onde faltava saldo, o membro lê "Os créditos da equipe acabaram. Peça a <dono> para adicionar mais.", sem botão de compra. A frase está em lib/equipe/regras.ts e o erro de saldo leva o nome do dono (campo `equipe`). Cobre chat do card, campanha, refazer e levar peça, gêmeo, refazer vídeo, falha de vídeo, faixa, menu, Conta e janela da campanha. Edições de 1 a 3 linhas em lib/media (ajuste-pelo-chat, falha-do-video, regerar-video).
+- Permissões (lib/equipe/permissoes.ts): o membro sobe vídeo e faz as escolhas do envio, aprova roteiro, gera campanha, pede vídeo ao gêmeo pronto, edita, agenda e publica. Só o dono: Configurações (o PATCH do projeto aceita do membro só videoSemana, videoTerms e trilha), setup, documentos, logo e manual, squad, direção visual, cadastro e revogação do gêmeo, redes, apagar. A API responde 403 com a frase; a tela mostra Configurações e Treinamento em leitura, esconde "Editar setup" e o menu do cartão. Fechados no caminho: as rotas que começam a conexão de rede não conferiam o projeto, e agents/[agentId] aceitava agente de outro projeto.
+- Assinatura do dono caída: o membro vai para /equipe-pausada ("A assinatura da equipe de X está pausada. Fale com X para reativar."), não para /planos.
+- Corrida em convites: aceitar, convidar e reenviar rodam em transação com SELECT FOR UPDATE na linha do dono (espera de 20/30 s). Prova (scripts/tmp/equipe-corrida-0110.mts): antes, 3 ocupados num plano de 2; agora, 2 processos simultâneos dão sempre 1 dentro e 1 recusado, e 6 aceites num plano de 5 deixam 5 ocupados.
+- Gravação real de membro (contas TESTE, já apagadas): 30 s pela tela, transcrição real, débito de 575 na cota da dona com autorId do membro, painel "575 de 1.500 · 1 de 1", tetos de gravação e de crédito recusando, cerca de US$ 0,16 de IA.
+- Dev local: só um next dev por pasta (trava do Next 16); com NEXT_PUBLIC_APP_URL de produção, o retorno da transcrição vai para demandou.com e leva 401.
+- Também (eu, 01/10): CREDITOS_DO_COMPLETO_POR_MINUTO 22 para 28 e CREDITOS_POR_MINUTO 47 para 53 (decisão do Bruno). Gêmeo da landing: OmniHuman v2 escolhido pelo Bruno.
+
+## Parte 232 (01/10): zoom na tela sem cortar texto, soco limpo, gêmeo novo e pitch v3 (não publicado)
+
+- Soco da abertura e do gancho: `limparSoco` (lib/media/abertura-do-roteiro.ts) com 1 a 4 palavras, nunca terminando em preposição, artigo, conjunção, advérbio solto ou verbo sem complemento; vale no diretor, na montagem (inclusive planos já aprovados), no gancho dos cortes e no worker (`textoDoSoco`, duas linhas acima de 14 letras); prompts com a mesma regra.
+- Zoom na tela compartilhada: lib/media/linhas-da-tela.ts mede no print, sem IA, a extensão real das linhas que passam pela região da visão (contraste por coluna, vão de até 3%, bordas no vão entre linhas, folga de 4%) e grava em `ponto.linhas`. O zoom usa essa caixa (`janelaDoZoomNaTela`: min(1,8; 1/(l×1,1); 1/(a×1,1)), mínimo 1,05). O worker cola de volta a webcam do quadro original no mesmo canto com borda fina (`webcamComFolga`, 25%) e escurece 45% o que está fora da caixa. Teste: 38 de 73 cenas de tela com zoom (1,06 a 1,8); janelas de 10 s paradas de 34 para 12 (todas em tela). Folha em scratchpad/video-0110/folha-zoom-tela.jpg, conferida e aprovada.
+- Gêmeo da landing: OmniHuman v2 (voz clonada v4, 7% mais rápida, foto nova), escolhido pelo Bruno. Cartão em public/pitch/gemeo-0110.mp4 e .jpg (tres-casos.tsx). Pitch v3 (só o gêmeo e o logo do fecho mudam): https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/landing/pitch-v3-0110.mp4 (90,7 s) e vertical https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/landing/pitch-v3-0110-vertical.mp4 (celular abaixo de 640 px). video-pitch.tsx aponta para os dois com preload none. Montagem em scratchpad/pitch/v3.
+
+## Parte 233 (01/10): acabamento da equipe, segunda rodada (não publicado)
+
+- Gravação sem trecho não é cobrada (decisão minha, comunicada ao Bruno): quando a seleção não acha nenhum trecho (classe SemTrechoAproveitavel em lib/media/select-clips.ts), a rota /select devolve a primeira parte ao dono (estorno_roteiro, nota "estorno: nenhum trecho aproveitável", autorId de quem enviou) e a mensagem diz que nada foi cobrado e por quê. lib/credits/estorno-do-roteiro.ts conta débitos contra estornos: não devolve duas vezes, e uma nova tentativa do mesmo vídeo cobra de novo antes de selecionar. Provado com sessão de membro: -575 e +575, soma 0.
+- Os 6 retornos do login das redes conferem, com a sessão de quem volta (não o cookie oauth_user_id), se a pessoa pode conectar redes no projeto. Membro recebe 403, sem sessão vai ao login, dona segue.
+- Cartão do gêmeo na escolha de origem: o membro vê "O gêmeo digital da equipe", cadastrado por <dono>, com "Usar o gêmeo da equipe" quando pronto.
+- scripts/tmp/sessao-e2e.mts aceita --marca=<sufixo>; o apagar só apaga a marca exata. Cada agente deve usar o seu sufixo.
+
+## Parte 234 (01/10): deploy de tudo (app e worker)
+
+- Worker publicado (railway up --service video-worker; subiu e ouve na 8080). App publicado da cópia limpa em scratchpad/deploy-0110 (sem .claude, sem scripts/tmp, sem .next), com a linha editorial na Fase A já pronta e SEM a Fase B do agente da linha (lib/referencias só com tipos). Motivo da cópia: o agente da linha estava no meio da edição, e o deploy pela pasta do repo levaria arquivo pela metade. tsc limpo na cópia antes de publicar.
+- Conferido em produção: Permissions-Policy camera=(self) microphone=(self) no painel; landing com pitch-v3-0110 (horizontal e vertical) e gemeo-0110; marca com versão marca-0110b; /demonstracao 200; /equipe-pausada redireciona sem sessão; termos com a seção Gêmeo Digital.
+- Linha editorial Fase A (agente): a segunda rodada de ideias gravava 0 ideias porque a resposta era cortada no teto de 6.000 tokens; agora 7 a 8 ideias novas por rodada, de origens misturadas (lib/editorial/fontes-da-linha.ts novo). Fase B (Apify, referências e padrões) continua em andamento, com APIFY_TOKEN na Vercel e no .env.local.
+- Atenção a quem for publicar: a pasta .claude do repo tem 313 MB; não existe .vercelignore. Vale criar um (.claude, scripts/tmp, docs grandes).
+
+## Parte 235 (01/10): login fora do ar por 10 minutos (SET no pooler)
+
+- Por volta das 15:12, scripts de diagnóstico do agente dos robôs (scripts/tmp/robos-diagnostico-0110.mts e robos-diag-entrada-0110.mts) rodaram `set default_transaction_read_only = on` pela DATABASE_URL, que é o pooler do Supabase em modo transação (6543). O SET ficou grudado nas conexões de servidor que a produção reutiliza, e o login passou a dar 500 ("cannot execute UPDATE in a read-only transaction" no getSession do Better Auth) a partir de ~15:20. O banco em si nunca ficou só leitura.
+- Conserto: scripts/tmp/limpar-conexoes-0110.mts derrubou as 4 conexões do usuário pela DIRECT_URL (modo sessão); o pooler reabriu limpo e os registros pararam de mostrar o erro. Os scripts do agente ficaram sem o SET.
+- REGRA: nunca rodar SET de nenhum tipo pela DATABASE_URL. Diagnóstico é SELECT puro; se precisar de garantia de só leitura, usar a DIRECT_URL e fechar a conexão.
+- O agente dos robôs aplicou a migração aditiva 20261001235900_anti_robo (relatório dele virá na próxima parte).
+
+## Parte 236 (01/10): robôs no cadastro e linha editorial com referências (publicado nesta parte)
+
+- Robôs: das 90 contas dos últimos 30 dias, 86 são robô (nome de 15 a 25 letras sorteadas sem espaço; 30 com Gmail cheio de pontos, 56 com e-mail de terceiros reais), 100% pelo cadastro com senha em /sign-up, 79 IPs, pico de 21 a 24/09. Dano real: 84 e-mails de confirmação a quem não pediu conta (reputação do domínio). Defesa em lib/anti-robo (porta.ts, regras.ts, carimbo.ts, turnstile.ts), components/anti-robo/use-anti-robo.tsx e /api/anti-robo: campo isca, carimbo assinado com mínimo de 3 s, limite por IP e por e-mail no Postgres (tentativas_publicas; cadastro 5/h por IP e 3/h por e-mail, login, reenvio, senha, leads, checagem de e-mail), recusa de descartável, Gmail com 3 pontos ou mais e nome de letras sorteadas (86 de 86 robôs, 0 de 32 nomes reais). Sessão só com e-mail confirmado também no login social (databaseHooks.session.create.before). Evento "cadastro" do funil registrado pelo servidor na confirmação; funil, "De onde vêm" e CRM sem robôs. Turnstile pronto e desligado (NEXT_PUBLIC_TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY). Migração aditiva 20261001235900_anti_robo aplicada. Prova 29 de 29 em scripts/tmp/robos-prova-0110.mts. Marcação: scripts/tmp/robos-marcar-0110.mts (87 contas; d.eb.iy.oxe.d26.0@gmail.com, robô com projeto, fica para decisão).
+- Linha editorial Fase B: migração aditiva 20261001230000_referencias (referencias_perfis, referencias_posts com apagarEm 90 dias, referencias_coletas com custo). coletarReferencia por rede (Apify: instagram-scraper, tiktok-scraper, linkedin-company-posts; YouTube pela conta de serviço; X pela API). Roberto sugere perfis com 5 mil seguidores ou mais, dono confirma até 10 por conta (soODono). Etiquetas pelo Haiku, ganho contra a mediana do perfil, padrão com 5 posts, 1,5 vez e 2 perfis, cartões em ProjectMemory tipo "padrao", molde sim e conteúdo não. Painel "Perfis de referência do seu nicho" na linha editorial. Liga com REFERENCIAS_REDES (opcionais REFERENCIAS_MAX_ITENS=20, REFERENCIAS_GASTO_MAX_USD=0,50). Prova real: 120 posts de 4 perfis, 2 padrões (lista 3,4 vezes; fecho pedindo para seguir 2,3 vezes), US$ 0,99 na Apify e US$ 0,83 de Claude. Sem cron: estudo pelo clique do dono. Pendente: página da mLabs no LinkedIn volta vazia.
+- Deploy de 01/10 (fim da tarde, da cópia limpa scratchpad/deploy-0110b, sem .claude e .git): REFERENCIAS_REDES=instagram,tiktok,linkedin,youtube,x criado na Vercel. Conferido: /sign-in, /sign-up, /api/anti-robo e /demonstracao 200; cadastro no formato dos robôs sem passar pela tela recusado com ANTI_ROBO_SEM_CARIMBO (400); sem erro nos registros. 87 contas robô marcadas (roboEm) com scripts/tmp/robos-marcar-0110.mts --aplicar; nada apagado.
+
+## Parte 237 (01/10): robôs apagados, Workspace no ar e agenda do Bruno
+
+- Robôs apagados a pedido do Bruno (scripts/tmp/robos-apagar-0110.mts --aplicar): 88 contas (as 87 marcadas e d.eb.iy.oxe.d26.0@gmail.com, cujo projeto "Meu projeto" estava vazio), 1 projeto e 2 leads, numa transação; backup em scratchpad/robos/backup-apagados-0110.json. Banco com 6 contas, 5 confirmadas, 0 robôs.
+- Google Workspace no ar: MX smtp.google.com (prioridade 1), SPF v=spf1 include:_spf.google.com ~all, DKIM google._domainkey publicado, A de demandou.com em 76.76.21.21 (resolve o site fora do ar na rede do Bruno). Titan desligada (o Bruno não tinha nada importante lá). Resend intacto (send.*, resend._domainkey).
+- contato@demandou.com vira apelido da conta bruno.donaire@demandou.com (o Bruno faz no admin.google.com); a plataforma continua mandando com contato@.
+- agenda_pessoas: Bruno com emailAgenda bruno.donaire@demandou.com (login na Demandou segue bruno.donaire88@gmail.com). Falta: o e-mail do Matheus, e o cliente OAuth Interno no projeto "Demandou Agenda" (GOOGLE_AGENDA_CLIENT_ID e GOOGLE_AGENDA_CLIENT_SECRET) para ligar a fonte google.
+- agenda_pessoas: Matheus com emailAgenda matheus.gaberlini@demandou.com (01/10); os avisos de reunião dele deixam de ir para contato@.
+- Sobrenome do Matheus é Gaberlini (com i): corrigido em agenda_pessoas e nos comentários (01/10). Agenda Google: GOOGLE_AGENDA_CLIENT_ID e GOOGLE_AGENDA_CLIENT_SECRET na Vercel e no .env.local (cliente OAuth Interno criado pelo Bruno), deploy feito; falta cada um conectar a conta em /admin/agenda.
+- Conta principal do Bruno (id cmt3orz4j000e04jj3g3dz49i): e-mail trocado de bruno@areticon.com para bruno.donaire@demandou.com e role admin (scripts/tmp/trocar-email-bruno-0110.mts); 3 projetos, créditos e plano business mantidos; e-mail do cliente no Stripe (cus_V7I7TcwP15wrNY) atualizado; agenda_pessoas "Bruno Donaire" ligada a esta conta. Como admin, o saldo dela não se move mais (extrato com linha de valor zero). bruno.donaire88@gmail.com continua admin.
+- Contas apagadas a pedido do Bruno (scripts/tmp/apagar-contas-0110.mts --aplicar, backup em scratchpad/backup-contas-apagadas-0110.json): bruno.donaire88@gmail.com, protegescore@outlook.com, bruno.donaire88+teste2309@gmail.com e michellemachadotorres@gmail.com, com 3 projetos vazios. Restam bruno.donaire@demandou.com (admin) e reviewer@demandou.com, mantida até o Bruno confirmar (é a conta do App Review da Meta, projeto Demandou com 23 posts).
+- Em andamento (01/10): agente do menu (item ativo branco), atalho para /admin/agenda e painel de gestão em gráficos; agente da régua de alertas da demonstração por e-mail e WhatsApp (Cloud API da Meta, pronta e desligada).
+
+## Parte 238 (01/10): régua de alertas, painel gráfico, menu e gêmeo com a voz aprovada (publicado)
+
+- Régua de alertas da demonstração (agente): lib/agenda/regua.ts no cron de 1 minuto (app/api/cron/fila, primeira coisa da rota): confirmação, véspera 24 h, 1 h, 5 min, início, atraso (+10 min, uma vez, sem "começou" e sem presença), agradecimento após "aconteceu", lembrete ao time de marcar o resultado, remarcação e cancelamento; reserva idempotente em agenda_alertas (reunião, tipo, sequência). O evento com Meet nasce sempre que a pessoa tem conta Google conectada, em qualquer fonte (o Bruno estava em fonte manual: reunião sem evento e sem link). Rotas /demonstracao/sala/[token] (presença), /comecou/[token], /remarcar/[token]. WhatsApp pela Cloud API da Meta pronto e desligado (lib/whatsapp/*, 15 modelos de utilidade em modelos.ts e docs/whatsapp-modelos-da-agenda.md, cadastro por scripts/whatsapp-modelos.mts --cadastrar, webhook app/api/webhooks/whatsapp com PARAR e VOLTAR); liga com WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN. Custo R$ 0,035 por mensagem de utilidade, cerca de R$ 0,40 por demonstração. Migração aditiva 20261002010000_regua_de_alertas aplicada. Prova 35 de 35 (scripts/tmp/agenda-regua-0110.mts).
+- Menu e painel (agente): o item ativo do menu virava pílula branca porque o hover era estilo inline (onMouseEnter) que grudava ao clicar; agora só classe CSS e aria-current (components/ui/sidebar.tsx). Item "Demonstrações" só para admin, com contador de 7 dias, e cartão no topo do /admin. /admin todo em gráficos desenhados à mão (sem biblioteca): seletor ?dias=7|30|90, funil desenhado (visita, cadastro confirmado, checkout, assinatura, ativação), linhas de cadastros, leads e demonstrações, receita contra custo de IA com margem, créditos, publicações e falhas em barras, origens, receita por plano em rosca, medidores. Arquivos: lib/admin/graficos-do-painel.ts, tipos-do-painel.ts, exemplo-do-painel.ts (/admin?exemplo=1 só no dev), components/admin/painel-graficos.tsx, grafico-no-tempo.tsx; tokens --painel-1..5 em globals.css.
+- Gêmeo com a voz aprovada (eu): a plataforma usava o eleven_multilingual_v2 sem aceleração e o clone de 57 s; a voz aprovada era a "B" (eleven_v4 + 7% mais rápida, clone de 4 min de fala natural). Agora: MODELO_DA_VOZ padrão eleven_v4 (aceita previous_text e next_text, testado), similarity 0,85, remove_background_noise true na clonagem; aceleração de 7% em imagem e som juntos na junção do worker (setpts e atempo, GEMEO_VELOCIDADE), porque o parâmetro speed do v4 só muda 1,6%; amostra mínima 60 s e máxima 300 s, aceita vídeo (o worker tira o áudio, -t 300), tela pede 2 a 4 minutos de fala natural; recorte da foto mais aberto (3,6 vezes o rosto, centro 0,30 abaixo). O cadastro do Bruno (projeto cmu7hmu0j) passou a usar o clone aprovado TVHPtHLQ54SohZGeVJZK; o clone antigo BsUyQUNToaypH94pCIpB foi apagado da ElevenLabs. Worker e app publicados.
+- Stripe conferido (01/10, scripts/tmp/stripe-conferir-bruno-0110.mts, só leitura): o cliente cus_V7I7TcwP15wrNY (bruno.donaire@demandou.com) tem só a assinatura sub_1U73XkJIhzTmSVmMRqDICdJe CANCELADA e uma cobrança de R$ 149 em 29/08; reviewer@demandou.com não tem cliente no Stripe. Os planos das duas contas são manuais, sem cobrança. O Bruno não quer pagar a si mesmo pelo Stripe (taxa e repasse lento). reviewer@demandou.com fica até o fim do App Review da Meta.
+
+## Parte 239 (01/10): vídeo travado em "cutting" por reinício do worker
+
+- O vídeo cmupyrkqv001k04jgpha3tho1 (VID_20260929_170705.mp4, projeto Empreendedorismo Cristão) ficou mais de 1 hora em "cutting". Causa: o deploy do worker no Railway (gêmeo com a voz aprovada) reiniciou o servidor no meio do corte; o pedido morreu sem callback, a rota /cortar só aceita "selected" ou "failed", e o servidor só relançava "roteirizando" parado (a cura das outras etapas dependia do navegador, e a internet do Bruno caiu). Não foi a internet do Bruno que travou.
+- Relançado à mão às 18h37 de Brasília (scripts/tmp/relancar-corte-0110.mts: volta para "selected" se ainda em "cutting" e despacha "cortar" pelo piloto do servidor).
+- Atenção: o pg do q.mts lê timestamp sem fuso como hora local; os updatedAt aparecem 3 h adiantados nesses scripts.
+- Regra: antes de publicar o worker, conferir trabalhos em andamento (/saude).
+- Em andamento: agente com vigia no cron de 1 minuto para toda etapa vencida (retoma até 2 vezes, depois falha com aviso), SIGTERM gracioso no worker e faixa de "sem conexão" na tela.
+- Diagnóstico de "finalizou sem edição" (01/10, noite): cmupyrkqv001k04jgpha3tho1 teve os cortes montados (33 e 10 cenas), mas o completo caiu em "sem-montagem" porque o render do ffmpeg falhou com 78 cenas ("Failed to configure output pad on Parsed_scale_78 ... Resource temporarily unavailable") e a tela mostrou "finalizado" com a base sem efeitos. cmupx4mcr000u04l5o34tynuf (gêmeo, 1080x1080) nunca recebe efeitos porque a montagem só aceita 16:9 e 9:16. cmuon0yxo foi montado com a regra antiga. Agente em andamento: render que não quebra com plano grande, nova tentativa automática e aviso claro quando a montagem falha, 1:1 virando vertical com fundo, e scripts para refazer os três vídeos depois do deploy do worker. Há um vídeo novo do Bruno (cmuq37kp900026gttriumohzi, 10 min) em "cutting": não publicar o worker enquanto ele roda.
+- Pedido do Bruno (01/10, noite): (1) artes saem iguais nos 3 projetos (Areticon, Demandou, Empreendedorismo Cristão), sem respeitar marca, setor e público; a plataforma atende de médico a advogado. Agente diagnosticando e corrigindo a personalização das artes, com prova lado a lado (até US$ 1). (2) Estilos de vídeo: só o Vox ficou bom; o Mr Beast escolhido não mudou nada ou piorou. Agente na Fase 1 (só leitura): comparar a bíblia do Vox com os outros estilos, avaliar o HyperFrames (edição de vídeo em HTML por IA) contra o Remotion, e desenhar bíblias equivalentes, PIP com um terço livre, highlight e popup de trecho da tela, ritmo pela batida, sound design e loop de verificação (o diretor gera, um revisor confere contra a bíblia e a transcrição). Fase 2 só depois do agente do render terminar.
+
+## Parte 240 (01/10): vigia das etapas, worker que não perde trabalho e faixa de sem conexão (não publicado)
+
+- Vigia (lib/media/vigia-das-etapas.ts) no cron de 1 min depois da régua; a rota de status e a /live usam o mesmo vigia com 5 min de folga. Retoma do ponto: transcribing volta a uploaded e despacha transcrever; selecting a transcribed e selecionar; cutting a selected e cortar; writing a cut e preparar; roteirizando continua e roteiro. Tomada atômica por status e startedAt, devolve a tentativa, não cobra de novo. Até 2 retomadas por etapa (coluna retomadas, migração aditiva 20261002030000_retomadas_do_video aplicada); na terceira, "failed" com "Paramos de tentar sozinhos; clique em tentar de novo" e e-mail aos admins. Corte pergunta ao POST /vivo do worker antes de relançar. Parado há mais de 24 h só é declarado parado.
+- Worker (worker/src/index.mjs e worker/railway.json com deploy.drainingSeconds 900): no SIGTERM para de aceitar, espera até 870 s e manda aviso "reiniciado" assinado para o que não terminou; o app retoma na hora (corte, recorte, completo pelo passo novo refazer-completo, áudio; montagem e completo editado voltam a "gerando" sem gastar tentativa). /saude mostra emAndamento, trabalhos e desligando.
+- Tela: faixa "Sem conexão com a internet. A edição continua nos nossos servidores; quando a conexão voltar, a tela atualiza sozinha."; aviso de retomada automática com a tentativa; no celular só a etiqueta da fase atual.
+- Provas: vigia-prova-0110.mts 18/18, vigia-reinicio-e2e-0110.mts 5/5, vigia-tela-0110.mts 18/18, worker-desligamento-prova-0110.mjs 9/9 (SIGTERM real no WSL). Backups em scratchpad/bak-vigia-0110.
+- PUBLICAÇÃO: app antes do worker; railway up a partir de worker/; antes do primeiro deploy do worker, conferir /saude sem trabalho (o contêiner velho ainda morre sem drenagem). Esperando o agente do render terminar, porque os dois mexeram em lib/media/montagem-do-completo.ts.
+- Estilos de vídeo, Fase 1 (01/10, só leitura): 24 estilos no catálogo mas só 3 famílias no código (capa-composta.tsx FAMILIA); Mr Beast e Hormozi com o mesmo prompt (SISTEMA_IMPACTO) e componentes; impacto com fundo escuro; troca de estilo não limpa efeitos do anterior (catalogo-de-estilos.tsx:247); 4 projetos com a paleta padrão #F97316,#1e1f22,#dbdee1; diretor sem público e tom; completo com logoUrl null; só o whoosh da abertura como efeito sonoro; abertura Mr Beast em todo estilo; refazer reaproveita o plano antigo. HyperFrames: não migrar (mesmo motor de render; copiar as ideias). Plano da Fase 2 (bíblias estruturadas sobre 6 kits, fluxo único, perfil do projeto com guardas por setor, PIP, highlight, popup, efeitos sonoros, batida, revisor antes do render, caderno que aprende) e 8 decisões pendentes do Bruno. Nota na wiki: "Demandou: por que só o Vox ficou bom".
+- Direção do Bruno (01/10, noite): os insights da Apify devem alimentar também a arte, as cenas do Higgsfield e o diretor da edição (padrão visual e de ritmo do nicho, só números e etiquetas, nunca imagem de concorrente como referência). Repassado aos agentes das artes e dos estilos (este para o desenho da Fase 2). Nota da wiki "agentes que aprendem" atualizada.
+- Acréscimo da Fase 2 (agente dos estilos, só desenho): padrão visual e de ritmo do nicho medido no worker (scdet do ffmpeg, librosa, folha de 6 a 8 quadros no Haiku com etiquetas de lista fechada), vídeo de terceiro baixado e apagado na hora, só números (coluna medidas em referencias_posts ou etiquetas) e cartão "padrao-visual" agregado; meta = limitar(padrão + peso x (nicho - padrão), faixa do estilo), peso até 0,6; o nicho mexe só em números de meta, nunca em elementos, tipografia, paleta, logo, tom, guarda do setor ou abertura; nos pedidos de imagem e cena só etiquetas do dicionário, nunca quadro ou nome de terceiro. Custo: cerca de US$ 2 por projeto por mês na coleta, quase zero por vídeo. 4 decisões novas pendentes do Bruno.
+- 01/10, noite: o Bruno aprovou o plano inteiro dos estilos (12 recomendações) e pediu para ir à produção. Agente dos estilos liberado para a parte que não esbarra no render (bíblias, prompt gerado, revisor, limpeza na troca, perfil do projeto, abertura por estilo, replanejar, medição do nicho em worker/src/medir-referencia.mjs, migração aditiva medidas); Remotion, PIP, highlight, popup, som e batida depois do agente do render.
+- Artes por projeto PUBLICADAS (01/10, noite): lib/media/identidade-visual.ts (novo) mais arte-com-frase.tsx, direcao-de-arte.ts, pecas-da-semana.ts e carrossel.ts, aplicados sobre a última cópia publicada (scratchpad/deploy-0110d), tsc limpo, deploy donaire-squad-1aos-5hoapdhux. Causa: paleta padrão laranja da Demandou em todo projeto, família "impacto" para Hormozi, MrBeast e sem escolha, cena só com frase e nicho, uma letra e um layout. Agora cores da configuração (se diferente do padrão), do manual, do logo ou do setor; 14 setores com mundo, luz, o que evitar, letra e composição; composição "claro" para consultório e escritório; 3 letras; variantes de layout. Prova em scratchpad/artes-0110/folha-artes-antes-depois-0110.jpg (US$ 0,16). Pendente: formulário ainda grava o laranja como padrão; tela de configuração sem "cores sugeridas, confirme"; mediaStyle da campanha não muda a composição.
+- Posts com falha sem arquivar (pedido do Bruno): servidor aceita; falta botão no cartão de falha e ação em massa no Gestor. Passado ao agente do render, que já mexe no content-manager.
+- Métricas (pedido do Bruno, 01/10 noite): arquivar campanhas de dois projetos fez sumir as métricas, e os números das redes não aparecem nem com Blotato. Agente em andamento: métricas contam tudo (publicado, aprovado, agendado, cancelado ou arquivado, falha, reprovado) mesmo arquivado; números das redes em camadas (Blotato por postUrl, APIs oficiais de LinkedIn, X e YouTube, Apify como reserva no perfil público do próprio cliente), histórico de leituras com fonte (migração aditiva), sincronização pelo cron existente e aba Resultados com gráficos.
+
+## Parte 241 (01/10, noite): render que não quebra, 1:1 com efeitos, arquivar falhas e vigia (PUBLICADO)
+
+- Render (agente): causa do "Parsed_scale_N ... Resource temporarily unavailable" eram fios demais do ffmpeg 5+ (cada scale abre piscina do tamanho de -filter_complex_threads, padrão 8 núcleos; um lote chegava a 165 fios e o contêiner recusava). Reproduzido no WSL com ulimit. Conserto: rodar() com teto de 2 fios de filtro (FFMPEG_FIOS_DO_FILTRO), lotes do completo com 1 fio de filtro e 2 de decodificação (15 fios fixos), lote que falha repetido sozinho; bug extra de 29,583 contra 30 quadros por segundo que cortava o fim das janelas. Terceira tentativa leve; desistência grava falhaTecnica, avisa admins (lib/media/aviso-da-montagem.ts) e a tela diz "A montagem de efeitos falhou; o vídeo abaixo tem só a edição de fala" com "Tentar a montagem de novo" (POST /api/videos/[id]/tentar-montagem, sem cobrar). Vídeo 1:1 e fora do padrão (lib/media/enquadramento-do-completo.ts, enquadrarBase no worker): vira 1080x1920 com o próprio vídeo desfocado atrás. Arquivar falhas em todo lugar, "Arquivar as falhas desta semana" no menu do Gestor, aba "Com falha" e "Arquivados" na tela de posts.
+- Vigia das etapas (parte 240) publicada junto.
+- Como publiquei: cópia scratchpad/deploy-0110d (produção + artes) com só os arquivos da montagem e da vigia; arquivos que os agentes dos estilos e das métricas já tinham alterado vieram das cópias anteriores a eles (worker/src/index.mjs e prisma/schema.prisma de bak-estilos-0110, posts-panel.tsx e cron/fila de bak-metricas-0110); migrações 20261002050000 e 20261002060000 (métricas e estilos) ficaram de fora. Worker publicado da cópia com railway up <caminho> --path-as-root a partir de worker/ (conferido /saude ocioso antes; o novo mostra emAndamento e desligando). Atenção: prisma generate na cópia reescreve o cliente do node_modules compartilhado; regenerei no repo em seguida.
+- Refação dos 3 vídeos do Bruno (scripts/tmp/refazer-completos-0110.mts --aplicar): cmupyrkqv reenviado sem custo, gêmeo cmupx4mcr do começo com enquadramento vertical, cmuon0yxo replanejado com cotas por minuto e abertura de 2 momentos (cerca de US$ 2,50). Acompanhando.
+- Refação concluída e conferida por quadros (01/10, noite): gêmeo cmupx4mcr 1080x1920 com fundo desfocado, texto de soco e elemento; cmupyrkqv 272 s em pé com abertura e efeitos, sem trecho preto; cmuon0yxo 257 s com efeitos e cena de imagem, mas a abertura pegou a despedida ("AMÉM", "abençoe vocês") e só 2 momentos: repassado ao agente dos estilos (validar em código que saudação e despedida não entram, e preferir abertura menor a momento fraco). Agente dos estilos liberado para Remotion, PIP, highlight, popup, som e batida.
+
+## Parte 242 (01/10, noite): métricas que não somem ao arquivar e números das redes em três camadas (PUBLICADO)
+
+- Causa do sumiço: arquivar grava status "cancelled", e toda tela de números filtrava status "published". "Foi ao ar" agora é publishedAt (ONDE_SAIU em lib/analytics/fontes-da-leitura.ts). Antes e depois: Demandou 0 para 70 publicados visíveis, Empreendedorismo Cristão 0 para 13, Areticon 28 e 28. Publicado arquivado não se apaga (DELETE 409, em massa ignora) e sai do arquivo como "published" (antes podia sair duas vezes na rede).
+- Leitura em camadas (lib/analytics/sincronizar.ts reescrito, fonte-blotato.ts, fonte-apify.ts): Blotato pelo link (0 posts do Bruno saíram por ele); APIs oficiais (estatísticas da página do LinkedIn versão 202609, X público por X_BEARER_TOKEN a US$ 0,005 por post, YouTube Data API via numerosDosVideos em lib/referencias/youtube.ts, Instagram e Facebook pelo token); Apify para o resto (Instagram e TikTok pelo perfil público do cliente, LinkedIn pessoal com supreme_coder~linkedin-post a US$ 0,002 por post, Facebook pela página). Medidos em 01/10: Areticon 26 de 28, Demandou 51 de 70, Empreendedorismo Cristão 8 de 13. Pendentes: Facebook sem pages_read_engagement, TikTok de teste publica privado, 3 posts do Instagram apagados na rede.
+- Histórico: migração aditiva 20261002050000_leituras_de_metrica (leituras_de_metrica com fonte e motivo do pendente, nunca zero; coletas_de_metrica com custo), aplicada no deploy. Medição no cron de publicação: 2 h, 24 h, 3, 7 e 30 dias. Apify só a partir de 24 h, uma por perfil a cada 20 h, US$ 0,30 por execução e US$ 3 por mês (METRICAS_APIFY_GASTO_MAX_USD, METRICAS_APIFY_MES_USD). Gasto nas provas: US$ 0,25.
+- Tela Resultados reescrita: resumo de semana, mês e tudo com todos os estados, gráficos e lista post a post com números, fonte, data e curva.
+- Publicado pela cópia scratchpad/deploy-0110d (produção mais os arquivos das métricas; schema sem a coluna medidas dos estilos, cuja migração 20261002060000 ainda não está registrada). tsc limpo; sem prisma generate na cópia (o cliente compartilhado do node_modules é o do repo).
+
+## Parte 243 (01/10, noite): estilos com bíblia, revisor, PIP, popup, som e batida (pronto, não publicado)
+
+- Seis bíblias completas em lib/media/biblias (MrBeast, Hormozi, Vox, telejornal, keynote estilo Apple, lousa estilo Dan Martell; as outras 19 derivam da família com selo "beta"); prompt do diretor gerado da bíblia (o Vox mantém o aprovado); metas ajustadas pelo nicho com peso máximo 0,6 (metas-do-estilo.ts); perfil do projeto e guardas por setor (perfil-do-projeto.ts, sobre a identidade visual das artes); teto de fundo escuro em código; revisor com correção de até 4 cenas (revisor-da-montagem.ts; REVISOR_DA_MONTAGEM=0 desliga). Camadas incompatíveis saem na troca de estilo e na leitura. Abertura por estilo com saudação e despedida barradas em código, nota de força e sem abertura com menos de 3 momentos fortes; passagem por estilo no worker. Replanejar os cortes no estilo novo na reedição (/api/videos/[id]/roteiro/replanejar). Montagem: layout pip-terco, entrada lateral, tipografia keynote (Geist em worker/fontes), lousa, popup e destaque da tela no completo, efeitos sonoros sintetizados (sons-da-montagem.ts, worker/src/sons.mjs), trilha de volta no corte montado e cortes na batida (worker/src/batidas.mjs). Medida das referências no worker (/medir-referencia, yt-dlp no Dockerfile), coluna referencias_posts.medidas aplicada (migração 20261002060000 com IF NOT EXISTS, registra no próximo deploy), cartões ritmo:nicho e visual:imagem.
+- Prova: MrBeast replanejado do corte real foi de 74% a 14% de fundo escuro e de 17 a 25 elementos por minuto; revisor de 3,5 a 7. Renders locais em scratchpad/estilos-prova. Gasto: cerca de US$ 5,3 de Claude e US$ 0,36 de imagem.
+- Bloqueio de publicação: na folha do MrBeast, 3 de 9 quadros saíram tela laranja inteira só com legenda pequena; devolvido ao agente para corrigir na causa e criar regra no validador (cena sem pessoa precisa de elemento principal; se o elemento falhar, volta a pessoa).
+- Pendentes declarados: conferência visual antes do render, referência de ritmo enviada pelo cliente, caderno que aprende, replanejar o completo ao trocar de estilo, paleta da identidade no vídeo, corte de tempo morto por estilo.
+- Estilos PUBLICADOS (01/10, noite): depois do conserto da cena vazia (reserva da pessoa em tela cheia quando o recorte falha, validador troca cartela sem elemento por narrador-cheio, revisor acusa "cena vazia"; folha nova em scratchpad/estilos-prova/render/mrbeast-folha-16.jpg), tsc limpo, worker publicado de worker/ (yt-dlp e fonte Geist) e app da cópia scratchpad/deploy-0110e (projeto inteiro); migração 20261002060000_medidas_das_referencias aplicada no deploy. Script de prova movido para scripts/tmp/scripts-prova-estilos-0110.mjs.
+- Gêmeo da landing ainda ruim para o Bruno (voz robótica e rosto no movimento), urgente para investidor: agente da landing remontando pitch v4 (horizontal e vertical) e cartão com o trecho do teste aprovado (OmniHuman 1.5 com a voz real: gemeo-teste/videos/gemeo-aprovado-trecho.mp4, "O ponto é, não é a mudança em si, é o propósito...") e selo honesto "Rosto gerado por IA a partir de uma foto. Voz real do Bruno.".
+- PUBLICADO (01/10, noite): pitch v4 no ar em demandou.com. Gêmeo aprovado pelo Bruno (OmniHuman 1.5, rosto por IA a partir de foto, voz real dele, frase inteira recortada de gemeo-teste/videos/gemeo-omnihuman.mp4 de 7,50 s a 13,90 s) no lugar do de voz clonada, com selos "Rosto gerado por IA a partir de uma foto" e "Voz real do Bruno". Blob: landing/pitch-v4-0110.mp4 e pitch-v4-0110-vertical.mp4 (v3 continua no Blob). Cartão da landing: public/pitch/gemeo-0110b.mp4 e .jpg. Texto do cartão e da escolha de origem trocou "um minuto da sua voz" por "alguns minutos da sua voz" (a plataforma pede 2 a 4 min). Conferido: HTML ao vivo referencia pitch-v4 e gemeo-0110b, arquivos 200, /sign-in 200.
+- PUBLICADO (01/10, noite): planos e "A conta do mês" alinhados com a calculadora.
+  - lib/planos.ts:
+    - saiu "e vídeos seus sem limite" (cada gravação gasta créditos: 3.174 numa de 22 min com 3 cortes);
+    - saiu "edição de estúdio (em implantação)" do Pro e do Enterprise (não existia como recurso);
+    - saiu "vídeo de estúdio" da descrição do Pro;
+    - saiu a linha "campanha automática";
+    - entraram "Três jeitos de começar: o seu vídeo, o seu gêmeo digital ou tudo com IA" e "6 estilos de edição";
+    - Pro e Enterprise dizem o dobro e o triplo de saldo do Starter.
+  - components/landing/valor.tsx: deixou a conta própria de 02/09 (R$ 3.050 a R$ 6.070, tabela de mercado) e lê contaDoStarter() de lib/calculadora/custos.ts. Volume do Starter: 10 textos, 10 artes, 20 cortes e 4 completos em 3 redes. Resultado: time próprio R$ 31.140, agência R$ 14.000, freelancer R$ 10.900, Starter 73% abaixo do mais barato.
+  - Conferido no ar.
+- 01/10, 23h40 (NÃO PUBLICADO AINDA, sai junto com o conserto do Estudar agora):
+  - Acessos nos planos (lib/planos.ts), com os números de ACESSOS_INCLUSOS em lib/equipe/regras.ts: Starter 2, Pro 5 e Enterprise 10, sempre contando o dono.
+  - Linha do acesso extra embaixo dos planos (components/landing/pricing.tsx): R$ 197 por mês, que somam 2.000 créditos e 1 gravação.
+  - Artefato "Acessos por Plano" (https://claude.ai/artifact/CyaE9RKf2bidbd3v74LiXq) atualizado: completo a 28 por minuto, gêmeo a 34 por segundo, controle de impostos e cartão, e a resposta pronta para "Enterprise com o dono e mais 10 vendedores". Esse caso precisa de 1 acesso extra e a receita fica em R$ 5.864. Margem: 93% no uso leve, 86% no médio, 80% no forte (que trava nas 17 gravações) e 71,5% no pior caso.
+  - Dois agentes rodando:
+    - conserto do "Estudar agora", que fica rodando sem fim;
+    - análises das referências com número e fonte, regras propostas que o usuário aprova, tendências da semana virando ideias filtradas pelo nicho e pela voz, e o mesmo passo na criação do projeto.
+- PUBLICADO (02/10, ~00h): os acessos por plano na landing e o conserto do "Estudar agora".
+  - Estudar agora: a rota grava o andamento em project_memories (tipo referencias-estudo), responde 202 e roda o estudo em after().
+    - A tela consulta GET ?estudo=1 a cada 4 s e mostra "Estudando 2 de 5: perfil", depois o resumo ou o motivo, com código REF-xxx e sem citar o fornecedor.
+    - Estudo derrubado pela plataforma é marcado como falho aos 830 s. Tetos internos: 7 min para ler perfis e 9 min para medir vídeos.
+    - Causa medida: o clique de 02/10 levou 5 min 22 s com o botão girando sem sinal.
+    - Prova contra o banco real: 4 de 5 perfis lidos, 80 posts, 2 padrões, 3 vídeos medidos; custo US$ 0,18.
+  - O mesmo deploy aplicou a migração 20261002070000_extras_das_referencias (coluna extras em referencias_posts, do agente das análises, que continua trabalhando).
+  - Pendências:
+    - O link do mLabs no LinkedIn volta sem post; conferir se é a página de empresa certa.
+    - A medida do YouTube no worker falha ("yt-dlp sem runtime de JavaScript"); passei para o agente das análises.
+    - O next dev da porta 3001 (PID 35980) está com o Prisma velho e precisa reiniciar para testar a tela logada local.
+- 02/10 (madrugada): o Bruno reprovou a edição MrBeast do completo cmuqc9r7z000004jq0et64o3g, um tour de 4 min pelo escritório no projeto Empreendedorismo Cristão. Diagnóstico com prova:
+  1. O diretor só lê texto e cobriu a demonstração com colagens de IA: uma "mesa simples" com o letreiro MINHA MESA em cima da mesa real, um "coffee corner" em cima do cantinho do café, além da estante, da porta e da represa. A cobertura foi de 39%.
+  2. Painel vazio de 79,3 s a 83,0 s: uma cena cujo recurso falhou foi renderizada sem nada.
+  3. As 5 frases da abertura começam e terminam no meio.
+  4. A "multidão na praia" saiu com biquíni, numa pregação.
+  5. A tipografia letras-revista ficou amadora.
+  6. As inserções saíram com qualidade abaixo da gravação.
+  7. Falta revisão visual do vídeo já renderizado: o revisor lê o plano em texto, não o vídeo pronto.
+  - Um agente está consertando os 7 itens, com prova refeita sem gasto novo e sem publicar.
+  - Gasto de IA nos últimos 30 dias: US$ 287 em todos os projetos, sendo US$ 141 de edição de vídeo; boa parte foram testes.
+- 02/10, 12h30: as análises das referências estão prontas no disco, mas NÃO publicadas, porque saem junto com o conserto da edição, que mexe em lib/media no mesmo deploy.
+  - Achados com número e fonte, contados em código (achados.ts): força "Forte" ou "Indício" e tamanho da amostra.
+  - Regras do Roberto com aprovação (regras.ts). Só as aprovadas entram no roteiro, nos textos, na arte e na edição. Há 8 propostas esperando o Bruno.
+  - Tendências da semana com prova contada em código, cruzadas com nicho e voz (tendencias.ts). A do Racionais saiu descartada para a Demandou pela voz.
+  - O passo Referências na criação do projeto, tudo em segundo plano (analise.ts).
+  - Worker: Dockerfile com yt-dlp[default] e --js-runtimes node, para a medida do YouTube; espera publicação junto com o worker da edição.
+  - Custo: ~US$ 0,76 por projeto criado e ~US$ 0,23 por semana de tendências.
+  - Decisão pendente do Bruno: teto de referências na Apify de US$ 3 para US$ 12 por mês. Acima de US$ 5 por mês no total, é preciso o plano pago da Apify, cerca de US$ 39 por mês (a conferir).
+  - Bugs registrados pelo agente:
+    - executar.ts:816, onde a expressão regular tem backspace no lugar de \b;
+    - o YouTube @bemclara volta "não achei o canal";
+    - vercel.json limita a 120 s, mas a rota usou 5 min, então conferir qual vale.
+- 02/10, tarde: a prova da edição corrigida (scratchpad/prova-0210/render-r0) foi conferida quadro a quadro.
+  - O que já está certo:
+    - a demonstração não é mais coberta;
+    - as inserções caíram para barco e rede;
+    - a imagem com biquíni foi reprovada pela conferência;
+    - nenhum trecho preto.
+  - O que falta:
+    - cartela laranja que entra um instante sem texto, em 212 s;
+    - espaço que some no destaque ("DEPREGAÇÃO");
+    - provar que os 2 momentos da abertura são frases inteiras;
+    - prova num corte curto;
+    - devolução de créditos quando a entrega cai na versão segura ou falha por erro nosso;
+    - publicar Vercel e worker juntos (o worker inclui o Dockerfile do yt-dlp).
+  - Agente retomado.
+  - Teto de referências do Apify passou a US$ 12 por mês (aprovado pelo Bruno): o padrão mudou no código em lib/referencias/tetos.ts e vale no próximo deploy. Mudar a variável de ambiente na Vercel foi bloqueado.
+- 02/10, tarde: o Bruno perguntou por que o vídeo de pitch ficou bom e a esteira não.
+  - Resposta: o pitch foi um roteiro de montagem escrito à mão só para ele (scratchpad/pitch/v4/montar_pitch4.py, 729 linhas de Python com ffmpeg e camadas de texto em HTML), com material escolhido a dedo (telas reais em 4K, cortes reais e cenas da Higgsfield), renderizado e conferido quadro a quadro várias vezes. A esteira aplica um estilo genérico numa passada só e nunca olhava o resultado; a revisão visual em construção é o primeiro passo para fechar isso.
+  - Fila de hoje com um agente: frases de impacto na landing, Demanda Day (1 ingresso no Pro, 3 no Enterprise) e Demanda Cast (1 h de gravação do Pro para cima) em destaque nos planos, artes em alta sem distorção, e o bug dos acentos na capa ("SUA IA AINDA E ESTAGIARIA").
+  - Backlog: o gêmeo a partir de vídeo em vez de foto, e a lista do Matheus para a landing e o pitch (esperando o Bruno).
+- 02/10: BACKLOG, item que faltava da lista do Matheus: o agente de tráfego pago (Meta Ads e Google Ads).
+  - Escopo: seção própria, vídeo de conexão, até 3 referências (limitar a 3 também no gestor de conteúdo), concorrência com as campanhas ativas há mais tempo, estratégia, campanhas e criativos para aprovar, e painel de resultados.
+  - O que já existe: FACEBOOK_APP_ID e CONFIG_ID, e lib/oauth/facebook.ts.
+  - Prazos externos que conhecemos:
+    - token de desenvolvedor do Google Ads, que precisa de aprovação do Google;
+    - revisão do app da Meta para ads_read e ads_management;
+    - a biblioteca de anúncios da Meta só abre anúncio comercial do Brasil pelo site, então a concorrência vem pela Apify.
+  - O Bruno pediu para fechar antes a edição e a landing.
+- PUBLICADO (02/10, 15h25): o worker (deploy 92a403ed, /saude ok) e o app na Vercel, sem migração.
+  - Edição:
+    - nada cobre a demonstração (fala e visão, guardas-do-completo.ts e demonstracao.ts);
+    - o painel vazio era o arredondamento da janela no worker; agora há conferência de vazio depois do render (conferencia-do-render.mjs);
+    - a abertura e o gancho só saem com frase inteira;
+    - as imagens são conferidas com visão contra o perfil (conferencia-da-imagem.ts);
+    - tipografia limpa (PalavraLimpa) e pouco texto na tela;
+    - cotas de inserção menores;
+    - revisão visual do vídeo pronto (revisao-visual.ts), com 2 rodadas de conserto e depois a versão segura, que desliga com REVISAO_VISUAL_DO_COMPLETO=0;
+    - devolução de créditos (lib/credits/estorno-da-edicao.ts).
+  - A revisão custa ~US$ 0,025 por minuto.
+  - Provas locais do completo e do corte 0 em scratchpad/prova-0210: 0 defeitos, sem vazio.
+  - Landing:
+    - frases de impacto e a faixa de prova (faixa-de-prova.tsx);
+    - Demanda Day e Demanda Cast via PlanoPublico.extras (extras-do-plano.tsx);
+    - artes -0210 sem fundo laranja nem distorção;
+    - acentos da capa corrigidos no produto (lib/media/acentuacao.ts);
+    - teto da Apify de referências em US$ 12.
+  - Decisões pendentes do Bruno:
+    - o corte passar de 400 para 420 créditos, porque hoje fica 3% acima da régua com a revisão;
+    - a devolução de 250 créditos por corte quando a montagem falha;
+    - o "90 dias de posts" do Demanda Cast, que saiu: 1 h de gravação rende cerca de 11 peças.
+  - Próximo salto de qualidade (backlog): o diretor entender o tipo de vídeo e a marca antes de escolher a edição, como foi feito no pitch.
+- 02/10, tarde: o Bruno aprovou três pontos.
+  - O corte passa a 420 créditos e CREDITOS_FIXOS_DA_EDICAO a 2200 (550 + 390 + 3 x 420).
+  - A devolução de 250 por corte.
+  - O Demanda Cast fica sem promessa de prazo.
+  - Os preços já estão no código (lib/media/limits.ts) e vão para o ar no próximo deploy.
+- Áudio do Matheus para a landing, agente rodando:
+  - linguagem de empresário ("Sua equipe, agora trabalhando 24 horas por dia. Sem férias.");
+  - pessoas fictícias geradas no lugar dos bonecos;
+  - frases curtas ("O mais visto sempre vence o melhor");
+  - "30 dias de conteúdo em 3 horas";
+  - estatística com fonte real;
+  - carrossel de referências com número medido, só texto até o Bruno decidir sobre fotos e logos de terceiros;
+  - economia pela calculadora;
+  - "Agendar reunião" e "Contratar";
+  - faixa do que oferecemos (6 redes) e o Demanda Day como comunidade.
+  - Ficou de fora "triplicam de tamanho" e "+10 milhões", que não têm fonte.
+- PUBLICADO (02/10, noite): a rodada do Matheus na landing e o preço do corte a 420 créditos, com devolução de 250.
+  - Hero:
+    - "Sua equipe, agora trabalhando 24 horas por dia. Sem férias.";
+    - "30 dias de posts e conteúdos em apenas 3 horas de trabalho";
+    - "O mais visto sempre vence o melhor.";
+    - a estatística da 6sense de 2024: 70% da decisão de compra acontece antes de falar com o vendedor.
+  - "Squad" virou "equipe" no texto da landing.
+  - A seção "Conheça a sua equipe" tem 11 retratos fictícios gerados por IA, com aviso na tela (public/equipe, US$ 0,88).
+  - Carrossel de referências medido no Instagram em 02/10, só com nome e número, sem foto nem logo:
+    - entraram McDonald's Brasil, João Adibe, Cimed, Loovi e Apple;
+    - ficaram de fora Pablo Marçal (amostra atípica, na véspera da eleição) e o Grupo Marçal (perfil errado).
+  - Economia com os números da calculadora.
+  - Botões "Agendar reunião" e "Contratar". O "Contratar agora" em /planos reabre a venda sem reunião e sem o filtro de faturamento, como o Matheus pediu.
+  - Faixas novas: "O que oferecemos" (6 redes) e "Demanda Day".
+  - Conferido no ar.
+- PUBLICADO (02/10, noite): o carrossel de referências subiu para logo abaixo da hero, com os logos oficiais em branco por CSS, salvos em public/referencias/*-0210.svg (McDonald's, Apple e Cimed do Wikimedia Commons; Loovi do site oficial). O cartão do João Adibe leva o logo da Cimed. Decisão do Bruno, informado do risco de marca.
+- Em andamento: a segunda rodada do Matheus.
+  - A frase "A plataforma que gera 30 dias de conteúdo em apenas 3 horas".
+  - O bloco "escritório de marketing com 11 especialistas 24 horas", com os botões Ver planos e Agendar reunião.
+  - O título do carrossel "Empresas que usam conteúdo para vender mais".
+- O Igão quer assinar hoje. O caminho /sign-up?plan=...&ciclo=anual responde 200 nos três planos. Falta o Bruno definir o que é o "hoje você paga apenas 20%".
+- 02/10, noite, mais do Matheus, já passado ao agente da landing:
+  - título "Já pensou o seu marketing trabalhando 24 horas por dia? Sem férias.";
+  - sai da landing e de /planos o "acima de R$ 100 mil por mês";
+  - sai da hero o "Contrato anual", que fica discreto nos cartões de preço porque é a condição de cobrança;
+  - sai o "IA" do topo: o selo vira a frase de plataforma e o painel vira "seu marketing, ao vivo";
+  - o aviso de retratos gerados por IA na seção da equipe continua.
+- PUBLICADO (02/10, noite): a rodada final de frases do Matheus.
+  - Hero: "Já pensou o seu marketing trabalhando 24 horas por dia? Sem férias.", com o selo "A plataforma que gera 30 dias de conteúdo em 3 horas" e o painel "seu marketing, ao vivo".
+  - Saiu o "acima de R$ 100 mil" da landing e de /planos. Saiu o "Contrato anual" da hero; continua menor nos cartões de preço.
+  - Carrossel "Empresas que usam conteúdo para vender mais".
+  - Faixa de prova com 3 itens, sem "0 post sem aprovação".
+  - Bloco "Solução pronta": 11 especialistas, agência a R$ 14.000 contra R$ 2.997.
+  - A seção de preços passou a "Um marketing completo, pelo preço de um profissional."
+  - O aviso de retratos gerados por IA continua na seção da equipe.
+  - Conferido no ar.
+- 02/10, 17h20: agente rodando no estilo novo "Consórcio", com bíblia completa, para os 10 vendedores da Gaberlini Consórcios na segunda.
+  - Referências do Bruno: wesley.ajo, referenciacapital, maria_descomplicaconsorcio, sanley_lima, fvlconsorcio, portoeliteoficial e um Reel com legenda central condensada.
+  - O estilo tem:
+    - gancho de valor e prova;
+    - legenda grande e condensada;
+    - selo do vendedor;
+    - os formatos do nicho (3 sinais, POV, respondendo comentário, negociação, contemplado);
+    - a guarda regulatória: nunca prometer contemplação, data ou rendimento.
+  - A tela de estilos ganha dois grupos: "Nossos melhores modelos" no alto e "Modelos em fase BETA" embaixo, com descrições honestas.
+- 02/10, 17h40: agente rodando em duas frentes.
+  - Parte 1, urgente para segunda: o chamado rápido. Botão Ajuda, formulário curto com contexto automático, número #0001, "Falar no WhatsApp" via wa.me com SUPORTE_WHATSAPP (número a pedir ao Bruno), e-mail ao Bruno, lista no painel do admin e "Meus chamados".
+  - Parte 2: o gestor de contratos no admin, com assinatura eletrônica plugável (recomendação entre Clicksign, ZapSign, D4Sign, Autentique e DocuSign), vigência anual, avisos de vencimento, uso, LTV, chamados e reclamações.
+- Outro agente está redigindo as Condições Gerais em Documents\Demandou\contratos.
+- 02/10, 17h50: agente rodando na linha do tempo do vídeo e nas notificações.
+  - A linha do tempo fica completa: aprovação do roteiro como "esperando você", montagem com efeitos e revisão visual viram etapas (acaba a tarja roxa depois do "fim"), com tempo restante honesto.
+  - Aviso "pode fechar esta tela" quando termina a parte do usuário.
+  - Sino de notificações e e-mail quando precisar aprovar o roteiro ou as artes, e quando o vídeo ficar pronto, sem repetir e-mail do mesmo fato.
+  - Conserto do aviso falso "Outra aba já começou a transcrever este vídeo", que apareceu com uma aba só.
+- 02/10, noite: minuta das Condições Gerais pronta em C:\Users\devan\Documents\Demandou\contratos\.
+  - Arquivos: condicoes-gerais-demandou.docx e .md, com 24 cláusulas e 3 anexos; quadro-de-diferencas.md; pontos-para-revisao-juridica.md, com 22 pontos; ajustes-nos-termos-do-site.md.
+  - Decisões da minuta:
+    - renovação automática com aviso de 30 dias e 7 dias para desistir;
+    - reajuste pelo IPCA;
+    - rescisão antecipada com reembolso dos meses não iniciados menos 20%;
+    - arrependimento de 7 dias para todos e garantia de 30 dias;
+    - Demanda Day e Demanda Cast liberados a partir do 31º dia;
+    - teto de responsabilidade igual ao pago em 12 meses, sem excluir dolo nem culpa grave.
+  - Risco achado e já corrigido no código, que vai no próximo deploy: a Deepgram treinava com o áudio do cliente. Agora mip_opt_out=true nas duas chamadas (lib/media/transcribe.ts e lib/media/montagem-do-completo.ts).
+  - Falta:
+    - desligar o treino no painel da ElevenLabs, que recebe a voz do gêmeo;
+    - confirmar que o Google está no nível pago e conferir fal.ai, Higgsfield, Apify e Blotato;
+    - alinhar os termos do site, que hoje contradizem a minuta: teto de 3 meses, sem reembolso proporcional, "melhoria" na licença;
+    - atualizar a política de privacidade, que ainda cita o teste gratuito e não lista OpenAI, Higgsfield, Apify nem Blotato;
+    - o reembolso parcial no painel;
+    - o reajuste pelo IPCA, que hoje é manual no Stripe.
+- 02/10, noite: bug na tela de roteiro. Em "Outra ideia", o pedido do cliente ("Jesus falando com a multidão, hiper-realista, roupas da época") foi descartado em silêncio.
+  - Causa: em lib/media/diretor-de-montagem.ts, o pedido vale sobre o estilo "menos imagem sem pessoa".
+  - O agente da edição foi retomado para três coisas:
+    - permitir pessoas pedidas pelo cliente (figuras bíblicas e históricas, multidão anônima), mantendo as guardas de imagem;
+    - mostrar no card "Seu pedido" e o motivo quando não der para atender;
+    - mostrar no card a edição real em linguagem simples (layout, o que entra, movimento e transição).
+- 02/10, noite: o Bruno decidiu os pontos da minuta.
+  - Demanda Cast: num estúdio parceiro, ou no escritório parceiro (Helbor Patteo Mogilar, Torre 3, salas 212 e 213, Av. Pref. Carlos Ferreira Lopes, 635, Mogi das Cruzes/SP, 08773-490). Só consome uma gravação do mês se o cliente subir o vídeo na plataforma.
+  - Suporte: 5 dias úteis na minuta; o site não informa prazo.
+  - Acesso extra: anual, à vista, proporcional ao restante do contrato.
+  - Termos, privacidade e contrato passam a dizer a mesma coisa. O agente do contrato está alinhando app/terms e a política de privacidade (fornecedores, gêmeo, treino, Apify) e gerando contratos/coerencia.md.
+- 02/10, noite: o Bruno pediu as análises das referências em gráfico executivo, no lugar do monte de cards. O agente das análises foi retomado.
+  - No topo: 3 ou 4 frases-resumo grandes e barras comparando formatos, tom, ganchos, CTA, arte e áudio contra o normal do perfil, com a força (Forte ou Indício) visível.
+  - Os cards ficam recolhidos em "Ver os achados em detalhe".
+  - Usa a biblioteca de gráficos do painel do admin.
+- 02/10, noite:
+  - Confirmado no código: as regras aprovadas já entram em roteiro e textos (executar.ts:1828, blocoDasRegrasDoProjeto), na edição (perfil-do-projeto.ts) e na arte (identidade-visual.ts). Elas também passam a aparecer na aba Treinamento, com "Escrever uma regra minha".
+  - Bug: "Levar para a linha editorial" gravou os 2 roteiros (cmurgicd2..., cmurgieq5..., status pronto), mas a lista não atualizava sem recarregar. Conserto com o agente das análises: recarregar a lista, destacar o item novo e mostrar "Ver na linha editorial".
+  - Gêmeo: depois de pedir o vídeo, o usuário vai para a página dos agentes e acompanha o passo a passo. No fim aparece "Quer aproveitar este roteiro?", com carrossel, imagens, posts das redes e cortes, e o custo antes de confirmar. Está com o agente da linha do tempo.
+- 02/10, 18h45, dois achados no teste do gêmeo:
+  - aprovarRoteiro recusa 0 cortes ("Escolha pelo menos um corte"), então não dá para publicar só o completo;
+  - o fluxo do gêmeo não pergunta estilo, legenda nem música e usa o padrão do projeto (Demandou: hormozi e acelerado).
+  - Com o agente da edição:
+    - aprovar com 0 cortes em toda a esteira;
+    - vídeo curto já vir sem corte marcado;
+    - passo "Como o squad edita" antes do gêmeo, com o padrão do projeto pré-selecionado;
+    - estilo, legenda e música visíveis e trocáveis no topo da tela de roteiro.
+- A regra de tempo do Bruno passou ao agente da linha do tempo: todas as etapas desde o início, estimativa pelo limite de cima (p80 ou p90 medido) e nada de "mais uma parte depois".
+- 02/10, 19h25: worker publicado (deploy 9a9ee2d1). Leva o conserto do travamento e os elementos do estilo de consórcio.
+  - Causa do vídeo de 4 min parado por mais de 1 h (cmurezdrg000204kz3lvag97w, completo "montando" desde 18:04): dois ffmpeg de /amostras-de-tela travaram por 70 min, porque rodavam sem -nostdin e sem prazo. Como a coleta contava em emAndamento, a fila de montagem ficou esperando para sempre.
+  - Conserto:
+    - -nostdin e stdin ignorado em todo ffmpeg do worker;
+    - prazo de 30 s por print, com SIGKILL;
+    - as amostras contam à parte (amostrasEmAndamento);
+    - a fila espera no máximo 15 min por outro trabalho.
+  - O vigia relançou a montagem às 19:25.
+  - Tentei matar os processos por SSH e foi bloqueado pela permissão.
+- Publicação no TikTok falhou porque as contas de TikTok do Bruno não estão vinculadas ao Blotato e saem pelo app próprio, ainda sem auditoria (só publica em conta privada). No Blotato só há LinkedIn (16129) e X (@prbrunodonaire, 14971) conectados.
+- X: as falhas das 19:04 foram de token inválido, e o post das 19:19 saiu publicado.
+- Prontos para a Vercel (esperam os agentes de suporte, notificações e edição terminarem, porque o tsc tem erros deles):
+  - estilo "Autoridade em consórcio" (biblias/consorcio.ts, promessas-proibidas.ts, tela de estilos em dois grupos);
+  - painel em gráficos das referências;
+  - regras na aba Treinamento;
+  - "Ver na linha editorial";
+  - termos e privacidade reescritos (só publicar depois de o Bruno desligar o treino na ElevenLabs).
+- 02/10, 19h30: suporte e contratos prontos, mas não publicados. Migração 20261002100000_chamados_e_contratos já aplicada pela DIRECT_URL; ela é registrada no próximo deploy.
+  - Chamado rápido:
+    - botão Ajuda flutuante e no menu, número #0001, "Falar no WhatsApp" (SUPORTE_WHATSAPP), e-mail ao Bruno pelo Resend;
+    - /admin/chamados com gráficos e /chamados para o cliente;
+    - limite de 10 por hora;
+    - "Abrir chamado" nos erros PUB, VID e de gravação.
+  - Gestor de contratos:
+    - /admin/contratos com ficha por cliente: vigência, uso, LTV, chamados e reclamações;
+    - régua de 60, 30 e 7 dias no cron;
+    - ZapSign atrás de lib/contratos/assinatura.ts, aguardando ZAPSIGN_API_TOKEN;
+    - o modelo fica travado no ambiente de teste do provedor enquanto o texto disser MINUTA.
+  - O modelo foi atualizado para a minuta 1.1 com scripts/contratos-copiar-modelo.mjs.
+  - Recomendação de provedor: ZapSign, plano Equipe, R$ 598,80 por ano (20 documentos por mês, R$ 2,50 o documento extra, ICP-Brasil a R$ 0,50).
+- ATENÇÃO NO PRÓXIMO DEPLOY DA VERCEL: app/terms/page.tsx e app/privacy/page.tsx já estão reescritos no repo, mas só podem ir ao ar depois de o Bruno desligar o treino na ElevenLabs. Até lá, a cópia de deploy usa as versões antigas, que estão em scratchpad/deploy-app-0210d/app/terms e app/privacy.
+- 02/10, 19h35: o agente da edição terminou, faltando só a Vercel, sem migração.
+  - "Outra ideia" atende o pedido do cliente: pessoas permitidas, figura bíblica com reverência, nunca pessoa real contemporânea. A cena guarda "Seu pedido", e o card diz se foi atendido ou por que não.
+  - O card da cena mostra a edição em peças.
+  - Dá para aprovar com 0 cortes (lib/media/so-completo.ts), e vídeo de até 90 s já vem assim.
+  - Cartão "Como o squad edita" (estilo, legenda, trilha e efeitos, com Trocar) no gêmeo e na tela de roteiro. A trilha só toca nos cortes; o completo sai sem trilha.
+  - O vídeo cmurezdrg ficou pronto às 19:29, conferido: sem preto, sem cobertura da demonstração.
+- Esperando para publicar a Vercel: o agente de notificações, que ainda edita esteira-do-video, sino e aproveitar-roteiro. A migração 20261002140000_notificacoes ainda não foi aplicada; a 100000 de chamados foi aplicada pela DIRECT_URL, mas não está registrada (é IF NOT EXISTS, e o deploy registra).
+- 02/10, 19h50: contas do Bruno ligadas ao Blotato nos dois projetos (Demandou cmu7hmu0j e Empreendedorismo Cristão cmtmym5bo).
+  - Ligadas: TikTok @prdonaire (62370), Instagram @prdonaire (75460) e Facebook página Demandou (55708:1282854214908524). Agora publicam pelo Blotato.
+  - O Instagram @demandou não está no Blotato e segue pela API própria.
+  - LinkedIn e X seguem pela API própria, que funciona.
+  - ZapSign: app.zapsign.com.br e sandbox fora do ar daqui também (timeout); o site institucional responde. O problema é deles.

@@ -1,43 +1,305 @@
 @import "tailwindcss";
 
-/* Escala laranja do Tailwind alinhada à marca nova (25/08/2026): os botões e
-   acentos usam bg-orange-500/600 espalhados pelo app, então o alinhamento é
-   feito aqui, uma vez, em vez de caçar classe por classe. Tons medidos do
-   painel de marca do Bruno (degradê #F1742E a #BE4720). */
-@theme {
-  --color-orange-400: #f6803d;
-  --color-orange-500: #ef6122;
-  --color-orange-600: #d14e15;
+/* Onde o Tailwind NÃO procura classes. No build da Vercel não existe a pasta
+   .git, e sem ela o .gitignore não vale: o Tailwind lê tudo o que subiu. Em
+   28/09 isso incluiu PNG de 2K da arte dos agentes, e os bytes da imagem
+   derrubaram o build ("Invalid code point"). Classes só existem em app,
+   components e lib; o resto fica de fora de propósito. */
+@source not "../docs";
+@source not "../scripts";
+@source not "../public";
+@source not "../worker";
+
+/* ── Rebranding azul-marinho (01/10) ──────────────────────────────────────
+ *
+ * O Bruno pediu a interface que o nosso comprador já aceita: a da plataforma
+ * Viver de IA (mesmo ICP, mesmo preço). Dela vieram o azul-marinho #0A1F3B, o
+ * fundo gelo, os cards brancos de borda fina e as fontes Geist e Geist Mono
+ * (conferidas no CSS público de app.viverdeia.ai em 01/10).
+ *
+ * A ESCALA ORANGE DO TAILWIND AGORA DESENHA AZUL. São mais de 600 classes
+ * bg-orange-500, text-orange-400 etc. em 88 arquivos, alguns sendo editados
+ * por outros agentes ao mesmo tempo; trocar na fonte, aqui, vira o app inteiro
+ * de uma vez e não pisa em ninguém. O nome "orange" ficou mentindo de
+ * propósito: é dívida de nome, não de cor. Código novo pode usar azul-*.
+ *
+ * É `@theme inline` porque o valor muda por tema: assim a classe aponta
+ * direto para --azul-500, que é resolvida no próprio elemento, e as seções
+ * travadas no escuro (data-theme="dark" dentro de página clara) pegam o tom
+ * certo. Sem o inline, a cor viria já resolvida do <html>.
+ *
+ * O laranja de verdade ficou discreto e tem escala própria (marca-*): ícone
+ * da marca, um destaque, o botão principal de conversão. Mais nada. */
+@theme inline {
+  --color-orange-50: var(--azul-50);
+  --color-orange-100: var(--azul-100);
+  --color-orange-200: var(--azul-200);
+  --color-orange-300: var(--azul-300);
+  --color-orange-400: var(--azul-400);
+  --color-orange-500: var(--azul-500);
+  --color-orange-600: var(--azul-600);
+  --color-orange-700: var(--azul-700);
+  --color-orange-800: var(--azul-800);
+  --color-orange-900: var(--azul-900);
+  --color-orange-950: var(--azul-950);
+  --color-azul-50: var(--azul-50);
+  --color-azul-100: var(--azul-100);
+  --color-azul-200: var(--azul-200);
+  --color-azul-300: var(--azul-300);
+  --color-azul-400: var(--azul-400);
+  --color-azul-500: var(--azul-500);
+  --color-azul-600: var(--azul-600);
+  --color-azul-700: var(--azul-700);
+  --color-azul-800: var(--azul-800);
+  --color-azul-900: var(--azul-900);
+  --color-azul-950: var(--azul-950);
+  /* A fonte de antes do rebranding volta em 01/10, a pedido do Bruno: Inter
+     no corpo e nos títulos (a Geist da referência saiu); as cores do
+     rebranding ficam. A variável vem do next/font no layout. O monoespaçado
+     volta a ser o do sistema, como era antes da Geist Mono. */
+  --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* O laranja da marca, que não muda com o tema. 500 é o da marca (ícone, ponto,
+   traço); 600 é o fundo de botão com texto branco, porque branco sobre o 500
+   dá 3,3:1 e o piso de leitura (WCAG AA) é 4,5:1; o 600 dá 4,9:1. */
+@theme {
+  --color-marca-400: #f6803d;
+  --color-marca-500: #ef6122;
+  --color-marca-600: #c4470f;
+  --color-marca-700: #a63b0b;
+}
+
+/* Montserrat em negrito é a letra do nome "demandou." ao lado da marca. Saiu
+   com o logo B e voltou com o logo antigo (01/10): o Bruno quer de novo a
+   letra mais pesada do logotipo de antes. */
 .font-mont {
   font-family: var(--font-mont), "Montserrat", sans-serif;
 }
 
-/* ── Dark theme (default) ── */
-:root,
+/* As classes do rebranding moram na camada de componentes (01/10): assim uma
+   utility do Tailwind no mesmo elemento (cor, margem, tracking) ainda vence,
+   como se espera de classe de componente. */
+@layer components {
+/* Título com o tracking apertado da referência, na Inter desde 01/10. */
+.font-titulo {
+  font-family: var(--font-inter), "Inter", sans-serif;
+  letter-spacing: -0.025em;
+}
+
+/* O rótulo pequeno em caixa alta da referência ("BEM-VINDO", "ÁREAS DA
+   PLATAFORMA"). Diz de que é a seção antes do título dizer o quê. Era Geist
+   Mono; com a volta da Inter (01/10) fica na Inter, e a caixa alta com
+   espaçamento largo é o que segura o desenho. */
+.rotulo {
+  font-family: var(--font-inter), "Inter", ui-sans-serif, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+}
+
+/* A PALAVRA EM DESTAQUE NO TÍTULO (01/10).
+   A referência usa itálico azul-claro; o Bruno pediu identidade própria: a
+   referência dá estrutura, contraste e tipografia, a cor é nossa. Dois
+   degradês, sem itálico:
+   - .destaque: laranja claro em degradê, o laranja da marca usado com parcimônia
+     (uma palavra por título, no máximo);
+   - .destaque-prata: cinza claro em degradê, o destaque calmo, para quando o
+     laranja já apareceu perto.
+   O texto é pintado pelo degradê (background-clip). Os pares mudam por tema
+   para manter contraste de texto grande (3:1, WCAG AA): no claro, o laranja
+   vai do #ef6122 ao #c4470f e o cinza do marinho ao ardósia (#5b6b82, 5,4:1);
+   no escuro, pêssego #ffc59a ao laranja #f1742e e branco ao prata #9fb0c6. */
+.destaque,
+.destaque-prata {
+  background-image: linear-gradient(100deg, var(--grad-de) 0%, var(--grad-ate) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--grad-ate);
+  /* o descendente (g, p, ç) cortava o degradê na linha de base */
+  padding-bottom: 0.06em;
+}
+.destaque {
+  --grad-de: var(--destaque-de);
+  --grad-ate: var(--destaque-ate);
+}
+.destaque-prata {
+  --grad-de: var(--prata-de);
+  --grad-ate: var(--prata-ate);
+}
+
+/* O selo (pílula de rótulo, "PARA EMPRESAS ACIMA DE R$ 100 MIL") em vidro
+   cinza com degradê, e o ícone dentro no laranja da marca. */
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.375rem 0.95rem;
+  /* Inter desde 01/10 (era Geist Mono), como o .rotulo. */
+  font-family: var(--font-inter), "Inter", ui-sans-serif, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--selo-texto);
+  background: var(--selo-fundo);
+  border: 1px solid var(--selo-borda);
+  box-shadow: var(--shadow);
+}
+.selo svg {
+  color: var(--marca-laranja);
+  flex-shrink: 0;
+}
+
+/* O cartão de destaque: base azul-noite (a estrutura da referência) com um
+   brilho laranja claro no canto, que é a nossa assinatura. Texto dentro é
+   sempre claro, nos dois temas, então o cartão redefine os tokens para baixo. */
+.cartao-noite {
+  background: var(--cartao-noite);
+  color: #ffffff;
+  --text-primary: #ffffff;
+  --text-muted: #b7c6da; /* 9,5:1 sobre o marinho */
+  --border: rgba(255, 255, 255, 0.12);
+  --destaque-de: #ffc59a;
+  --destaque-ate: #f1742e;
+  --prata-de: #ffffff;
+  --prata-ate: #9fb0c6;
+  /* Fundo azul-noite: a marca vai branca, sem contorno (01/10). */
+  --logo-de: #ffffff;
+  --logo-ate: #ffffff;
+  --logo-contorno: transparent;
+}
+}
+
+/* No escuro, o 500 é fundo de botão (marinho médio, 7:1 com o branco) e não
+   serve de cor de texto sobre o fundo escuro (2,3:1). As ~70 classes
+   text-orange-500 escritas como texto de acento passam a ler o tom de texto
+   da escala. Fora de camada de propósito: regra sem @layer vence as utilities
+   do Tailwind sem precisar de !important (01/10). */
+[data-theme="dark"] .text-orange-500,
+[data-theme="dark"] .text-orange-600,
+[data-theme="dark"] .hover\:text-orange-500:hover,
+[data-theme="dark"] .hover\:text-orange-400:hover {
+  color: var(--azul-300);
+}
+
+/* Tracking apertado nos títulos, o padrão da referência (01/10). Na camada
+   base para que tracking-* escrito no próprio título continue mandando. */
+@layer base {
+  h1, h2 {
+    letter-spacing: -0.025em;
+  }
+  h3 {
+    letter-spacing: -0.015em;
+  }
+}
+
+/* ── Dark theme (opção desde 28/09/2026; foi o padrão até então) ──
+   :root[data-theme="dark"] pesa mais que o :root do bloco claro, então o
+   escuro vence no <html> seja qual for a ordem no arquivo. [data-theme="dark"]
+   sozinho continua valendo para as seções travadas no escuro (a landing). */
+:root[data-theme="dark"],
 [data-theme="dark"] {
-  /* Paleta cinza-escuro no padrão do Discord, adotada em 18/08/2026, com a
-     escada de luminosidade preservada: cada nível sobe de luz e a elevação se
-     lê sozinha, sem depender de borda.
-     Em 25/08/2026 a paleta ganhou o tom da marca nova do Bruno: o grafite
-     azulado do painel de identidade (#2A2A32 a #3A3A46 medidos) entrou no
-     lugar do cinza neutro, mesma luminosidade, matiz da marca. */
-  --bg-primary: #1e1e25;   /* moldura, o nível mais fundo */
-  --bg-surface: #2a2a33;   /* barra lateral e superfícies */
-  --bg-elevated: #31313c;  /* área principal e cards elevados */
-  --bg-card: #2a2a33;
-  --bg-input: #1e1e25;     /* campo afunda em relação ao container */
-  --accent-orange: #ef6122; /* laranja da marca nova, medido do painel */
+  /* Azul-noite (01/10), no lugar do grafite: o mesmo marinho da referência,
+     não preto puro, porque preto puro com texto claro cansa e não tem a cor da
+     marca. A escada de luminosidade de 18/08 continua: cada nível sobe de luz
+     e a elevação se lê sozinha, sem depender de borda.
+     Contrastes medidos: texto #e8eef6 sobre #0f2138 dá 13,9:1; o secundário
+     #9aabc2 sobre o card dá 7,1:1 (o piso é 4,5:1). */
+  --bg-primary: #06111f;   /* moldura, o nível mais fundo */
+  --bg-surface: #0b1a2e;   /* barra lateral e superfícies */
+  --bg-elevated: #0f2138;  /* área principal e cards elevados */
+  --bg-card: #0b1a2e;
+  --bg-input: #06111f;     /* campo afunda em relação ao container */
+  /* --surface era usada no painel de admin e nunca tinha sido definida, então
+     as caixas ficavam transparentes (achado do rebranding, 01/10). */
+  --surface: var(--bg-surface);
+  /* A marca em fundo escuro (01/10, volta ao logo antigo): branca inteira e
+     sem o contorno de adesivo, que em marca branca só engordaria o traço. */
+  --logo-de: #ffffff;
+  --logo-ate: #ffffff;
+  --logo-contorno: transparent;
+  /* --acento é a cor de link, borda ativa e ícone. No escuro é prata
+     (#c9d3e0, 10,7:1), não azul-claro: o Bruno tirou o azul suave da
+     referência (01/10) e pediu cinza claro e laranja como destaque.
+     --acento-forte é o fundo de botão cheio com texto branco: marinho médio
+     #2c5a94 (7,0:1 com o branco), porque marinho fundo sobre fundo marinho
+     sumiria. */
+  --acento: #c9d3e0;
+  --acento-forte: #2c5a94;
+  --destaque-de: #ffc59a;
+  --destaque-ate: #f1742e;
+  --prata-de: #ffffff;
+  --prata-ate: #9fb0c6;
+  --selo-fundo: linear-gradient(180deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.02) 100%);
+  --selo-borda: rgba(255,255,255,.14);
+  --selo-texto: #dfe6ef;
+  /* Séries dos gráficos (01/10): prata, laranja, ardósia, azul médio,
+     pêssego e ardósia escura, todos acima de 3:1 sobre o card escuro. */
+  --grafico-1: #e8eef6;
+  --grafico-2: #f1742e;
+  --grafico-3: #9fb0c6;
+  --grafico-4: #4a7bbd;
+  --grafico-5: #ffc59a;
+  --grafico-6: #6d82a0;
+  /* Séries do painel de gestão (01/10). Separadas das --grafico-* porque lá
+     o par ardósia e azul médio fica a 8,8 de distância de cor (abaixo de 15,
+     confunde até quem enxerga todas as cores). Medido com o validador de
+     paleta sobre o card escuro: prata, laranja, azul vivo e pêssego passam na
+     separação para daltonismo e no contraste de 3:1. O neutro é para "outros",
+     robô e trilho, e nunca carrega sozinho uma série que importe. */
+  --painel-1: #dfe6ef;
+  --painel-2: #f1742e;
+  --painel-3: #4a8be6;
+  --painel-4: #ffc59a;
+  --painel-5: #8a9bb3;
+  --painel-neutro: #3a4f6e;
+  /* Nome antigo, mantido para os 100 usos espalhados: agora aponta para o
+     azul. O laranja de verdade é --marca-laranja. */
+  --accent-orange: var(--acento);
   --accent-amber: #d97706;
-  --text-primary: #dcdde2;
-  --text-muted: #9599a6;
-  --border: #3f3f4b;
-  --border-accent: #ef6122;
-  /* Degradê do monograma, medido do painel de marca */
+  --marca-laranja: #ef6122;
+  --marca-laranja-texto: #f6803d; /* 6,7:1 sobre o fundo */
+  --marca-laranja-botao: #c4470f; /* branco por cima dá 4,9:1 */
+  --text-primary: #e8eef6;
+  --text-muted: #9aabc2;
+  --border: #1f3553;
+  --border-accent: #c9d3e0;
+  /* A escala que as classes orange-* e azul-* desenham neste tema. O 300 e o
+     400 são texto de acento sobre o fundo escuro: prata, não azul-claro. */
+  --azul-50: #0d1f36;
+  --azul-100: #12294a;
+  --azul-200: #1a355c;
+  --azul-300: #dfe6ef;
+  --azul-400: #c9d3e0;
+  --azul-500: #2c5a94;
+  --azul-600: #234b7e;
+  --azul-700: #1e3f6b;
+  --azul-800: #1e3a5f;
+  --azul-900: #0a1f3b;
+  --azul-950: #02162a;
+  /* Degradê do monograma, medido do painel de marca. O ícone segue laranja. */
   --brand-grad-from: #f1742e;
   --brand-grad-to: #be4720;
-  --shadow: 0 1px 3px rgba(0,0,0,.32);
+  /* O cartão de destaque: no escuro sobe um degrau de luz, senão o azul-noite
+     some no fundo azul-noite; o brilho laranja claro no canto é nosso. */
+  --cartao-noite: radial-gradient(ellipse 45% 60% at 100% 0%, rgba(241,116,46,.20) 0%, transparent 60%), radial-gradient(ellipse 60% 70% at 0% 0%, rgba(201,211,224,.10) 0%, transparent 60%), linear-gradient(135deg, #15325a 0%, #0a1f3b 100%);
+  --shadow: 0 1px 3px rgba(0,0,0,.35);
+  /* A malha dos cartoes do calendario. Quase invisivel de proposito: e textura
+     de painel, nao grade de planilha. Clara sobre o fundo escuro. */
+  --linha-malha: rgba(201,211,224,.06);
+  /* Realce de hover e de item selecionado. Era bg-white/5 e bg-white/10 escrito
+     direto nos componentes, que no tema claro vira branco sobre branco e some. */
+  --realce-1: rgba(201,211,224,.06);
+  --realce-2: rgba(201,211,224,.11);
+  --barra-rolagem: #23395a;
+  --barra-rolagem-hover: #34507a;
 
   /* Status badge colors */
   --badge-success-bg: rgba(21, 128, 61, 0.2);
@@ -51,22 +313,106 @@
   --badge-danger-border: rgba(248, 113, 113, 0.25);
 }
 
-/* ── Light theme ── */
+/* ── Light theme (padrão desde 28/09/2026) ──
+   Virou o padrão na virada enterprise: quem compra agora é empresa acima de
+   R$ 100 mil por mês, e esse comprador abre o produto numa sala de reunião, com
+   projetor e luz acesa, onde o escuro lê como ferramenta de desenvolvedor.
+   A paleta segue o que o comprador já conhece de produto corporativo: moldura
+   cinza muito clara, superfícies brancas separadas por borda fina e sombra
+   curta, neutros com um toque frio (azulado) em vez de cinza puro, e texto
+   secundário com contraste acima de 4,5:1, que é o piso de leitura (WCAG AA).
+   :root entra aqui, e não no escuro, para que qualquer página sem data-theme
+   nasça clara. */
+:root,
 [data-theme="light"] {
-  --bg-primary: #f4f4f5;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f9f9f9;
+  /* Rebranding de 01/10: fundo gelo, cards brancos, texto e botão no
+     azul-marinho da referência (#0a1f3b, 16,5:1 sobre branco). O secundário
+     #4f596b dá 7,1:1, o mesmo tom que a referência usa. */
+  --bg-primary: #f7f8fa;   /* moldura, o fundo que fica atrás de tudo */
+  --bg-surface: #ffffff;   /* barra lateral e barras */
+  --bg-elevated: #ffffff;  /* área de trabalho e cards: brancos, separados pela borda */
   --bg-card: #ffffff;
-  --bg-input: #f1f1f1;
-  --accent-orange: #d5511a; /* mesma familia, um tom abaixo para o tema claro */
+  --bg-input: #f7f8fa;     /* campo levemente afundado, para se ler como campo sobre o card */
+  --surface: var(--bg-surface); /* ver o comentário no tema escuro (01/10) */
+  /* A marca em fundo claro (01/10, volta ao logo antigo): o degradê laranja
+     oficial (#F1742E a #BE4720) com o contorno branco de adesivo. */
+  --logo-de: #f1742e;
+  --logo-ate: #be4720;
+  --logo-contorno: #ffffff;
+  /* Link, borda ativa e ícone: marinho médio (#1e3a5f, 11,5:1). O botão cheio
+     é o marinho fundo. Os destaques de título são os degradês (ver .destaque). */
+  --acento: #1e3a5f;
+  --acento-forte: #0a1f3b;
+  --destaque-de: #ef6122;
+  --destaque-ate: #c4470f;
+  --prata-de: #0a1f3b;
+  --prata-ate: #5b6b82;
+  --selo-fundo: linear-gradient(180deg, #ffffff 0%, #eef1f5 100%);
+  --selo-borda: #e4e7ec;
+  --selo-texto: #344054;
+  /* Séries dos gráficos (01/10): marinho, laranja, ardósia, marinho médio,
+     laranja claro e prata. */
+  --grafico-1: #0a1f3b;
+  --grafico-2: #ef6122;
+  --grafico-3: #5b6b82;
+  --grafico-4: #2c5a94;
+  --grafico-5: #f6a46b;
+  --grafico-6: #9aa7b8;
+  /* Séries do painel de gestão (01/10): marinho, laranja, azul claro e
+     pêssego, a mesma ordem do escuro. O marinho fica de propósito fora da
+     faixa de luminosidade que o validador prefere: é a cor da marca, e a
+     separação dele para as outras é grande. Pêssego e azul claro ficam abaixo
+     de 3:1 sobre o branco, então todo gráfico do painel diz o número na
+     legenda, no balão e na tabela. */
+  --painel-1: #0a1f3b;
+  --painel-2: #ef6122;
+  --painel-3: #5b8fd1;
+  --painel-4: #f6a46b;
+  --painel-5: #5b6b82;
+  --painel-neutro: #c4ccd8;
+  /* Nome antigo, mantido para os 100 usos espalhados: agora aponta para o
+     azul. O laranja de verdade é --marca-laranja. */
+  --accent-orange: var(--acento);
   --accent-amber: #b45309;
-  --text-primary: #111111;
-  --text-muted: #6b7280;
-  --border: #e5e7eb;
-  --border-accent: #d5511a;
+  --marca-laranja: #ef6122;
+  --marca-laranja-texto: #c4470f; /* 4,9:1 sobre branco; o #ef6122 dá 3,3:1 */
+  --marca-laranja-botao: #c4470f;
+  /* Texto preto de verdade no claro (01/10, pedido do Bruno, como na
+     referência da Viver de IA): o marinho #0a1f3b lia como cinza escuro no
+     corpo de texto. O secundário escureceu junto (#3d4451, cerca de 10:1
+     sobre branco; era #4f596b, 7,1:1) e continua distinguível do principal.
+     Botão, link, ícone e destaque seguem no marinho. */
+  --text-primary: #000000;
+  --text-muted: #3d4451;
+  --border: #e4e7ec;
+  --border-accent: #1e3a5f;
+  /* A escala que as classes orange-* e azul-* desenham neste tema. O 300 e o
+     400 são texto sobre branco, então ficam escuros aqui (no escuro, claros). */
+  --azul-50: #f3f6fa;
+  --azul-100: #e6ecf4;
+  --azul-200: #c4cfdd;
+  --azul-300: #2a4a6e;
+  --azul-400: #1e3a5f;
+  --azul-500: #0a1f3b;
+  --azul-600: #02162a;
+  --azul-700: #02162a;
+  --azul-800: #010b1a;
+  --azul-900: #010b1a;
+  --azul-950: #010b1a;
   --brand-grad-from: #f1742e;
   --brand-grad-to: #be4720;
-  --shadow: 0 1px 3px rgba(0,0,0,.12);
+  /* O cartão de destaque: malha azul-noite (estrutura da referência) com o
+     brilho laranja claro no canto, que é a assinatura nossa. */
+  --cartao-noite: radial-gradient(ellipse 45% 60% at 100% 0%, rgba(241,116,46,.22) 0%, transparent 60%), radial-gradient(ellipse 60% 70% at 0% 0%, rgba(46,76,118,.55) 0%, transparent 60%), radial-gradient(ellipse 70% 80% at 100% 100%, rgba(2,22,42,.85) 0%, transparent 55%), linear-gradient(135deg, #0a1f3b 0%, #02162a 100%);
+  /* Sombra tingida de marinho, curta e longa, como a da referência. */
+  --shadow: 0 1px 2px rgba(10,31,59,.04), 0 2px 6px rgba(10,31,59,.06);
+  /* No tema claro a malha inverte: clara sobre branco seria invisivel, que e o
+     mesmo defeito de sempre, so que de cor. */
+  --linha-malha: rgba(10,31,59,.06);
+  --realce-1: rgba(10,31,59,.04);
+  --realce-2: rgba(10,31,59,.07);
+  --barra-rolagem: #d0d5dd;
+  --barra-rolagem-hover: #98a2b3;
 
   /* Status badge colors */
   --badge-success-bg: #dcfce7;
@@ -110,11 +456,11 @@ body {
   background: var(--bg-surface);
 }
 ::-webkit-scrollbar-thumb {
-  background: #444;
+  background: var(--barra-rolagem);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #666;
+  background: var(--barra-rolagem-hover);
 }
 
 /* Clerk overrides */
@@ -225,4 +571,29 @@ body {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* A linha que atravessa o cartao de HOJE no calendario da semana.
+   Existe para o olho achar o dia atual sem procurar, numa grade de sete
+   cartoes iguais. Fica em globals porque e keyframe, que nao cabe em estilo
+   inline, e desliga sozinha em prefers-reduced-motion (a regra abaixo). */
+/* A barrinha do andamento do dia (28/09): atravessa a faixa de um lado ao
+   outro, que e o que diz "esta andando". */
+@keyframes correBarra {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@keyframes varreDia {
+  0%, 100% { opacity: .35; transform: translateX(-30%); }
+  50%      { opacity: 1;   transform: translateX(30%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="varreDia"] { animation: none !important; }
+}
+
+/* O ponto da plaqueta de quem esta com o bastao, no escritorio 3D. A plaqueta
+   e um botao DOM por cima do canvas, entao o pulso e CSS, nao three. */
+@keyframes pulsoDoAgente {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.35); opacity: .7; }
 }

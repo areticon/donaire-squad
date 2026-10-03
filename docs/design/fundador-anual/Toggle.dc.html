@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #1e1e25; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="padding: 30px; background: #1e1e25; min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+
+  <div>
+    <h2 style="margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #dcdde2;">A chave Mensal e Anual da /planos</h2>
+    <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #9599a6;">
+      Hoje a vaga de fundador só aparece no Mensal. Com o price anual, ela passa a só existir no Anual, ou seja a regra inverte e a chave precisa dizer isso em vez de esconder a oferta.
+    </p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: inline-flex; align-self: flex-start; padding: 4px; border-radius: 9999px; background: #2a2a33; border: 1px solid #3f3f4b;">
+        <span style="padding: 6px 14px; border-radius: 9999px; background: #ef6122; color: #ffffff; font-size: 13px; font-weight: 600;">Mensal</span>
+        <span style="padding: 6px 14px; border-radius: 9999px; color: #9599a6; font-size: 13px; font-weight: 500;">Anual</span>
+      </div>
+
+      <div style="border-radius: 16px; padding: 24px; background: #2a2a33; border: 1px solid #3f3f4b;">
+        <h3 style="margin: 0 0 4px; font-size: 18px; font-weight: 700; color: #dcdde2;">Autoridade</h3>
+        <p style="margin: 0 0 20px; font-size: 13px; color: #9599a6;">Uma gravação por semana vira o mês inteiro</p>
+
+        <div style="display: flex; align-items: baseline; gap: 6px;">
+          <span style="font-size: 18px; color: #9599a6;">R$</span>
+          <span style="font-size: 44px; font-weight: 900; color: #dcdde2; line-height: 1;">697</span>
+          <span style="font-size: 14px; color: #9599a6;">/mês</span>
+        </div>
+
+        <p style="margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: #f6803d; font-weight: 600;">
+          As 10 vagas de fundador existem no anual, por R$ 397 por mês travados para sempre.
+        </p>
+
+        <button style="width: 100%; height: 40px; margin-top: 20px; border: 1px solid #3f3f4b; border-radius: 8px; background: transparent; color: #dcdde2; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Começar os 7 dias grátis</button>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #9599a6;">
+        A oferta não some, ela aponta. Quem chegou pelo anúncio da vaga não bate numa tela que finge que ela não existe.
+      </p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: inline-flex; align-self: flex-start; padding: 4px; border-radius: 9999px; background: #2a2a33; border: 1px solid #3f3f4b;">
+        <span style="padding: 6px 14px; border-radius: 9999px; color: #9599a6; font-size: 13px; font-weight: 500;">Mensal</span>
+        <span style="padding: 6px 14px; border-radius: 9999px; background: #ef6122; color: #ffffff; font-size: 13px; font-weight: 600;">Anual</span>
+      </div>
+
+      <div style="position: relative; border-radius: 16px; padding: 24px; background: #2a2a33; border: 1px solid #ef6122; box-shadow: 0 0 40px rgba(249,115,22,0.15);">
+        <h3 style="margin: 0 0 4px; font-size: 18px; font-weight: 700; color: #dcdde2;">Autoridade</h3>
+        <p style="margin: 0 0 20px; font-size: 13px; color: #9599a6;">Uma gravação por semana vira o mês inteiro</p>
+
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+          <span style="font-size: 18px; color: #9599a6; text-decoration: line-through;">R$ 697</span>
+          <span style="font-size: 44px; font-weight: 900; color: #dcdde2; line-height: 1;">397</span>
+          <span style="font-size: 14px; color: #9599a6;">/mês</span>
+        </div>
+
+        <p style="margin: 8px 0 0; font-size: 13px; font-weight: 600; color: #f6803d;">Fundador: 10 de 10 vagas. Esse preço fica para sempre.</p>
+        <p style="margin: 6px 0 0; font-size: 13px; color: #9599a6;">Cobrado uma vez por ano, e é o que trava o preço</p>
+
+        <button style="width: 100%; height: 40px; margin-top: 20px; border: 0; border-radius: 8px; background: #ef6122; color: #ffffff; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Garantir vaga, R$ 4.764 no ano</button>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #9599a6;">
+        Enquanto houver vaga, este é o único lugar onde a oferta existe, e é para onde a chave do lado empurra.
+      </p>
+    </div>
+
+  </div>
+
+  <div style="border-radius: 12px; padding: 16px 18px; background: #2a2a33; border: 1px solid #3f3f4b;">
+    <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #9599a6;">
+      <span style="color: #dcdde2; font-weight: 600;">O que isso muda no código:</span>
+      a condição de hoje é <span style="color: #f6803d;">plano.id === FUNDADOR.plano &amp;&amp; vagas &gt; 0 &amp;&amp; !mostrandoAnual</span>, e passa a ser <span style="color: #f6803d;">&amp;&amp; mostrandoAnual</span>. O cartão do Mensal ganha a linha que aponta, que hoje não existe em lugar nenhum.
+    </p>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

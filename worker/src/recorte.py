@@ -169,12 +169,27 @@ def main():
 
     caixa = caixa_da_webcam(video, cfg["caixa"], inicio, duracao)
 
-    sonda = subprocess.run(
+    # A rotação do celular entra na conta (30/09): o ffmpeg que lê os quadros
+    # abaixo já gira a imagem, mas o ffprobe devolve o tamanho CODIFICADO,
+    # deitado. Sem a troca, o crop sairia com largura e altura invertidas.
+    # Hoje a entrada é sempre um intermediário recodificado (já em pé, sem
+    # rotação), e isto só protege quem um dia chamar com a gravação crua.
+    sonda = json.loads(subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-of", "csv=p=0", video],
+         "-show_entries", "stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+         "-of", "json", video],
         capture_output=True, text=True,
-    ).stdout.strip().split(",")
-    W, H = int(sonda[0]), int(sonda[1])
+    ).stdout or "{}")
+    fluxo = (sonda.get("streams") or [{}])[0]
+    W, H = int(fluxo.get("width", 0)), int(fluxo.get("height", 0))
+    giro = 0
+    for sd in fluxo.get("side_data_list") or []:
+        if "rotation" in sd:
+            giro = int(float(sd["rotation"]))
+    if not giro and (fluxo.get("tags") or {}).get("rotate"):
+        giro = int(float(fluxo["tags"]["rotate"]))
+    if abs(giro) % 180 == 90:
+        W, H = H, W
 
     # Dimensões PARES, porque libx264 recusa ímpar e o erro que aparece fala de
     # altura de plano, não de recorte.

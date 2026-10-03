@@ -19,12 +19,43 @@ import type { Word } from "@/lib/media/transcribe";
 /** Quantos termos o cliente pode cadastrar. Acima disso é lista, não glossário. */
 export const MAX_TERMOS = 30;
 
-export function parseTermos(texto: string | null | undefined): string[] {
+/**
+ * UMA TROCA EXPLÍCITA (30/09): "Cloud => Claude". O Bruno viu várias vezes a
+ * legenda escrever "Cloud" quando ele fala "Claude", com "Claude" já cadastrado
+ * nos termos: a comparação por semelhança não pega o par (cloud x claude dá
+ * 0,67, abaixo do limiar de 0,75), e baixar o limiar trocaria palavra comum
+ * por termo do cliente. Então o cliente diz a troca, na tela de roteiro ou nas
+ * configurações, e ela vale por igualdade exata (sem acento, sem caixa), antes
+ * da semelhança. Mora no mesmo texto de `Project.videoTerms`, sem coluna nova.
+ */
+export type Troca = { errado: string; certo: string };
+
+/** A lista de termos, com as trocas explícitas penduradas (quem fatia a lista, como o keyterm, não precisa delas). */
+export type ListaDeTermos = string[] & { trocas?: Troca[] };
+
+const SETA_DA_TROCA = /\s*(?:=>|->|→)\s*/;
+
+/** Lê "errado => certo" (ou -> e →); devolve null quando a entrada é um termo simples. */
+export function lerTroca(entrada: string): Troca | null {
+  const partes = entrada.split(SETA_DA_TROCA);
+  if (partes.length !== 2) return null;
+  const errado = partes[0].trim().replace(/\s+/g, " ");
+  const certo = partes[1].trim().replace(/\s+/g, " ");
+  if (!normalizar(errado) || !normalizar(certo) || normalizar(errado) === normalizar(certo)) return null;
+  return { errado, certo };
+}
+
+export function parseTermos(texto: string | null | undefined): ListaDeTermos {
   if (!texto) return [];
   const vistos = new Set<string>();
-  const termos: string[] = [];
+  const termos: ListaDeTermos = [];
+  const trocas: Troca[] = [];
   for (const bruto of texto.split(/[,\n;]+/)) {
-    const t = bruto.trim().replace(/\s+/g, " ");
+    // A troca entra nas duas listas: o lado CERTO vira termo (reforça o keyterm
+    // da transcrição e a comparação por semelhança), e o par vira troca exata.
+    const troca = lerTroca(bruto);
+    if (troca && trocas.length < MAX_TERMOS) trocas.push(troca);
+    const t = (troca ? troca.certo : bruto).trim().replace(/\s+/g, " ");
     if (t.length < 2) continue;
     const chave = normalizar(t);
     if (!chave || vistos.has(chave)) continue;
@@ -32,7 +63,57 @@ export function parseTermos(texto: string | null | undefined): string[] {
     termos.push(t);
     if (termos.length >= MAX_TERMOS) break;
   }
+  if (trocas.length) termos.trocas = trocas;
   return termos;
+}
+
+/** O texto de `videoTerms` com uma troca a mais (a mesma troca errada substitui a anterior). */
+export function comTroca(texto: string | null | undefined, troca: Troca): string {
+  const entradas = (texto ?? "")
+    .split(/[,\n;]+/)
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .filter((e) => {
+      const t = lerTroca(e);
+      return !t || normalizar(t.errado) !== normalizar(troca.errado);
+    });
+  entradas.push(`${troca.errado} => ${troca.certo}`);
+  return entradas.join(", ");
+}
+
+/**
+ * Aplica as trocas explícitas: a janela de palavras (1 a N, N = palavras do
+ * lado errado) que bate EXATAMENTE com o errado vira o certo, com o tempo de
+ * fim da última palavra preservado (mesmo cuidado de `aplicarTermos`).
+ */
+function aplicarTrocas(palavras: Word[], trocas: Troca[]): Word[] {
+  const lista = trocas
+    .map((t) => ({ ...t, chave: normalizar(t.errado), n: t.errado.split(/\s+/).length }))
+    .filter((t) => t.chave.length >= 2)
+    // A troca mais longa primeiro: "Cloud Code" ganha de "Cloud".
+    .sort((a, b) => b.n - a.n);
+  if (!lista.length) return palavras;
+  const saida: Word[] = [];
+  let i = 0;
+  while (i < palavras.length) {
+    let feita = false;
+    for (const t of lista) {
+      if (i + t.n > palavras.length) continue;
+      const janela = palavras.slice(i, i + t.n);
+      if (normalizar(janela.map((w) => partir(w.word).miolo).join("")) !== t.chave) continue;
+      const { antes } = partir(janela[0].word);
+      const { depois } = partir(janela[janela.length - 1].word);
+      saida.push({ ...janela[0], word: `${antes}${t.certo}${depois}`, end: janela[janela.length - 1].end });
+      i += t.n;
+      feita = true;
+      break;
+    }
+    if (!feita) {
+      saida.push(palavras[i]);
+      i += 1;
+    }
+  }
+  return saida;
 }
 
 /** Minúsculas, sem acento, só letras e números. */
@@ -95,7 +176,11 @@ function partir(palavra: string): { miolo: string; antes: string; depois: string
  * janela casa, a primeira palavra recebe o termo e as outras somem, com o
  * tempo de fim da última preservado, para a legenda continuar sincronizada.
  */
-export function aplicarTermos(palavras: Word[], termos: string[]): Word[] {
+export function aplicarTermos(palavras: Word[], termosDoCliente: ListaDeTermos): Word[] {
+  // As trocas explícitas vêm antes: são decisão do cliente, e a semelhança
+  // depois só completa o que ele não disse.
+  if (termosDoCliente.trocas?.length) palavras = aplicarTrocas(palavras, termosDoCliente.trocas);
+  const termos: string[] = termosDoCliente;
   const lista = termos
     .map((t) => ({ termo: t, chave: normalizar(t), n: t.split(/\s+/).length }))
     .filter((t) => t.chave.length >= 3);

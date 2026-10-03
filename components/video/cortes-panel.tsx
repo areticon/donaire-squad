@@ -11,6 +11,9 @@ import {
   cabeNoDestino,
 } from "@/lib/media/destinos";
 import { RedeIcone } from "@/components/social/rede-icone";
+import { lerRevisaoDoCorte, type RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
+import { lerAberturaIa } from "@/lib/media/estado-da-abertura-ia";
+import { lerMontagem } from "@/lib/media/estado-da-montagem";
 
 /**
  * A entrega do vídeo: a gravação inteira editada, e os cortes.
@@ -42,6 +45,12 @@ export type Corte = {
     enquadramento?: { cena: string; vertical: string; motivo: string } | null;
     erro?: string | null;
   } | null;
+  /** A revisão da Vera e a refação do Vitor (lib/media/revisao-do-corte.ts). */
+  revisaoDoCorte?: RevisaoDoCorte;
+  /** A abertura por IA da Higgsfield (lib/media/higgsfield-nos-cortes.ts). */
+  higgsfield?: unknown;
+  /** A edição completa (lib/media/montagem-nos-cortes.ts). */
+  montagem?: unknown;
 };
 
 function duracao(segundos: number): string {
@@ -280,6 +289,80 @@ export function CortesPanel({
                       {c.midia?.vertical ? `, ${megabytes(c.midia.vertical.bytes)}` : ""}
                     </p>
                   </div>
+
+                  {/* O que a Vera achou deste corte. Enquanto o Vitor refaz, o
+                      selo diz isso, e não "esperando você": o cliente não tem o
+                      que decidir ainda. Só o que não teve conserto pede o olhar
+                      dele, com o motivo escrito. */}
+                  {(() => {
+                    const leitura = lerRevisaoDoCorte(c.revisaoDoCorte);
+                    if (!leitura) return null;
+                    const cor =
+                      leitura.estado === "aprovado"
+                        ? "#4ade80"
+                        : leitura.trabalhando
+                          ? "#c084fc"
+                          : "var(--accent-orange)";
+                    return (
+                      <div className="text-xs space-y-0.5">
+                        <p className="flex items-center gap-1.5 font-medium" style={{ color: cor }}>
+                          {leitura.trabalhando ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : leitura.estado === "aprovado" ? (
+                            <Check className="w-3 h-3" />
+                          ) : null}
+                          {leitura.rotulo}
+                        </p>
+                        {leitura.detalhe && (
+                          <p style={{ color: "var(--text-muted)" }}>{leitura.detalhe}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* A edição completa (diretor, colagens e Remotion): enquanto
+                      roda, o selo diz quem está trabalhando; o corte na tela
+                      continua sendo o simples até a montagem chegar. */}
+                  {(() => {
+                    const m = lerMontagem(c.montagem);
+                    if (!m) return null;
+                    const cor = m.trabalhando ? "#c084fc" : m.estado === "pronto" ? "#4ade80" : "var(--text-muted)";
+                    return (
+                      <div className="text-xs space-y-0.5">
+                        <p className="flex items-center gap-1.5 font-medium" style={{ color: cor }}>
+                          {m.trabalhando ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : m.estado === "pronto" ? (
+                            <Check className="w-3 h-3" />
+                          ) : null}
+                          {m.rotulo}
+                        </p>
+                        {m.detalhe && <p style={{ color: "var(--text-muted)" }}>{m.detalhe}</p>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* A abertura por IA (Higgsfield): enquanto roda, o selo diz
+                      quem está trabalhando; o custo aparece à parte, em
+                      créditos, porque não sai do preço da edição. */}
+                  {(() => {
+                    const ia = lerAberturaIa(c.higgsfield);
+                    if (!ia) return null;
+                    const cor = ia.trabalhando ? "#c084fc" : ia.estado === "pronto" ? "#4ade80" : "var(--text-muted)";
+                    return (
+                      <div className="text-xs space-y-0.5">
+                        <p className="flex items-center gap-1.5 font-medium" style={{ color: cor }}>
+                          {ia.trabalhando ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : ia.estado === "pronto" ? (
+                            <Check className="w-3 h-3" />
+                          ) : null}
+                          {ia.rotulo}
+                        </p>
+                        {ia.detalhe && <p style={{ color: "var(--text-muted)" }}>{ia.detalhe}</p>}
+                      </div>
+                    );
+                  })()}
 
                   {!falhou && (
                     <>

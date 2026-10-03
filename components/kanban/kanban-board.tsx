@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
+import { ConexaoAssistida } from "@/components/social/conexao-assistida";
+import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { BrandMarkThemed } from "@/components/brand-mark-client";
 import toast from "react-hot-toast";
@@ -17,9 +19,13 @@ import {
   ChevronRight,
   Bot,
   Loader2,
+  Building2,
+  UserRound,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SetupPreview } from "@/components/kanban/setup-preview";
+import { StepMarca } from "@/components/kanban/step-marca";
+import { StepReferencias } from "@/components/kanban/step-referencias";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -39,6 +45,10 @@ interface Project {
   status: string;
   // JsonValue do Prisma: pode ser objeto, mas o tipo não garante.
   config?: unknown;
+  // A marca (14/09): o que a etapa Marca mostra ja preenchido.
+  logoUrl?: string | null;
+  brandManualName?: string | null;
+  contexts?: Array<{ id: string; type: string; title: string }>;
 }
 
 // As redes vêm primeiro, por decisão de produto de 21/08: conectar as contas
@@ -48,18 +58,54 @@ interface Project {
 // qual nada publica sozinho.
 const STEPS = [
   { id: 0, icon: Share2, label: "Redes Sociais", color: "text-green-400" },
+  // Marca SUBIU para a segunda posição em 17/09, por observação do Bruno ao
+  // criar um projeto de verdade: a plataforma pedia voz, nicho e público ANTES
+  // de deixar ele subir o documento que responde as três coisas. Quem tem um
+  // manual de marca na mão preenchia tudo na unha e só depois descobria que
+  // podia ter subido o arquivo.
+  //
+  // Com ela aqui, as etapas seguintes deixam de ser preenchimento e viram
+  // REVISÃO: chegam escritas a partir do documento, e a pessoa corrige.
+  { id: 1, icon: Palette, label: "Marca", color: "text-pink-400" },
   // Voz ANTES de Ideação, por correção do Bruno em 22/08: pedir ideia antes
   // de conhecer voz, referências e temas de domínio produz ideia genérica,
-  // que não conecta com o universo de quem vai publicar.
-  { id: 1, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
-  { id: 2, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
+  // que não conecta com o universo de quem vai publicar. A reordenação de
+  // 17/09 preservou isso de propósito.
+  { id: 2, icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  { id: 3, icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
   // A etapa "Time de Agentes" saiu em 31/08, por decisão do Bruno: o time é
   // sempre completo e igual para todo projeto, então a tela era uma escolha
   // que não escolhia nada, e ainda mostrava uma lista desatualizada (sem o
   // Vitor Vídeo). Os agentes continuam criados sozinhos na ativação.
-  { id: 4, icon: Palette, label: "Design", color: "text-pink-400" },
-  { id: 5, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
+  { id: 4, icon: Calendar, label: "Agenda", color: "text-cyan-400" },
+  // Referências (02/10, pedido do Bruno): o que funciona no nicho, com número
+  // e fonte, e as regras propostas pelo Roberto. Não trava: o estudo roda no
+  // servidor e a pessoa aprova depois. Vem depois da Agenda para ter nicho,
+  // público e voz salvos, e o pedido já sai ao deixar a etapa de Voz.
+  { id: 5, icon: Search, label: "Referências", color: "text-pink-400" },
   { id: 6, icon: Rocket, label: "Ativação", color: "text-orange-400" },
+];
+
+/**
+ * Os fusos que a tela oferece, com São Paulo PRIMEIRO e como padrão.
+ *
+ * A lista é curta de propósito. Todo produto lista UTC e as centenas de fusos
+ * da base IANA, e isso é ruído para quem vende no Brasil: a escolha certa está
+ * na primeira linha em 99% dos casos. Os quatro fusos brasileiros cobrem o país
+ * inteiro; os três últimos existem para o cliente que mora fora.
+ *
+ * UTC não está na lista, e é deliberado: ninguém publica "em UTC", e oferecer
+ * essa opção só cria a chance de alguém escolher e ter post saindo três horas
+ * fora sem entender por quê.
+ */
+const FUSOS: Array<{ id: string; rotulo: string }> = [
+  { id: "America/Sao_Paulo", rotulo: "Brasília, São Paulo, Sul e Nordeste (GMT-3)" },
+  { id: "America/Manaus", rotulo: "Manaus, Cuiabá, Porto Velho (GMT-4)" },
+  { id: "America/Rio_Branco", rotulo: "Rio Branco, Acre (GMT-5)" },
+  { id: "America/Noronha", rotulo: "Fernando de Noronha (GMT-2)" },
+  { id: "Europe/Lisbon", rotulo: "Lisboa (GMT+0/+1)" },
+  { id: "America/New_York", rotulo: "Nova York, Miami (GMT-5/-4)" },
+  { id: "Europe/London", rotulo: "Londres (GMT+0/+1)" },
 ];
 
 interface KanbanBoardProps {
@@ -70,13 +116,21 @@ interface KanbanBoardProps {
 export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
   const router = useRouter();
 
-  // If returning from OAuth (?step=N), jump to that step
+  /**
+   * A VOLTA DO OAUTH (?step=N) ABRE NA ETAPA CERTA, IGUAL NO SERVIDOR E NO NAVEGADOR.
+   *
+   * Até 01/10 a etapa inicial vinha de `window.location`, que só existe no
+   * navegador: o servidor desenhava a etapa salva no projeto (setupStep) e o
+   * navegador, lendo ?step=0, desenhava a etapa 0. Os dois HTMLs diferiam e o
+   * React acusava erro de hidratação na volta de toda conexão de rede.
+   * `useSearchParams` dá a mesma query nos dois lados (a página é dinâmica,
+   * então não precisa de Suspense), e o número é limitado às etapas que
+   * existem: "abc" ou "-3" na URL caem na etapa salva.
+   */
+  const searchParams = useSearchParams();
   const initialStep = (() => {
-    if (typeof window !== "undefined") {
-      const p = new URLSearchParams(window.location.search);
-      const s = p.get("step");
-      if (s !== null) return Math.min(parseInt(s), STEPS.length - 1);
-    }
+    const s = Number.parseInt(searchParams?.get("step") ?? "", 10);
+    if (Number.isFinite(s) && s >= 0) return Math.min(s, STEPS.length - 1);
     return Math.min(project.setupStep, STEPS.length - 1);
   })();
 
@@ -119,9 +173,74 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
   const set = (field: string, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
+  /**
+   * Os campos preenchidos a partir dos DOCUMENTOS que a pessoa subiu na etapa
+   * Marca, e nao adivinhados a partir do formulario vazio.
+   *
+   * Roda uma vez por sessao do assistente, ao sair da etapa Marca, e SO
+   * preenche campo que esta vazio: quem ja escreveu alguma coisa mandou mais
+   * que o documento. Sobrescrever texto digitado por texto gerado e a forma
+   * mais rapida de fazer alguem desconfiar da ferramenta.
+   */
+  const [lendoDocumentos, setLendoDocumentos] = useState(false);
+  const [veioDoDocumento, setVeioDoDocumento] = useState<string[]>([]);
+  const jaLeuDocumentos = useRef(false);
+
+  const preencherComDocumentos = useCallback(async () => {
+    if (jaLeuDocumentos.current) return;
+    jaLeuDocumentos.current = true;
+    setLendoDocumentos(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/sugerir-campos`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.pronto) {
+        // "ainda lendo" nao e erro, e nao merece alarme: o documento acabou de
+        // subir e a leitura acontece no servidor. Uma nova tentativa fica
+        // liberada.
+        if (data?.motivo === "lendo") jaLeuDocumentos.current = false;
+        // "falhou" merece alarme, e essa distincao nasceu em 18/09. Antes dela,
+        // documento ilegivel e documento ainda sendo lido davam a mesma tela
+        // silenciosa, e quem subiu um PDF ficava esperando uma leitura que nunca
+        // ia acontecer. Ausencia pede paciencia; falha pede acao.
+        if (data?.motivo === "falhou") {
+          toast.error("Não consegui ler o documento que você subiu. Volte na etapa Marca para ver o motivo.");
+        }
+        return;
+      }
+      const campos = (data.campos ?? {}) as Record<string, string>;
+      const aplicados: string[] = [];
+      setForm((prev) => {
+        const proximo = { ...prev } as Record<string, string>;
+        for (const [campo, valor] of Object.entries(campos)) {
+          const atual = String(proximo[campo] ?? "").trim();
+          if (atual.length === 0) {
+            proximo[campo] = valor;
+            aplicados.push(campo);
+          }
+        }
+        return proximo as typeof prev;
+      });
+      if (aplicados.length > 0) setVeioDoDocumento(aplicados);
+    } catch {
+      jaLeuDocumentos.current = false;
+    } finally {
+      setLendoDocumentos(false);
+    }
+  }, [project.id]);
+
   const saveAndNext = useCallback(async () => {
     setSaving(true);
     const nextStep = currentStep + 1;
+    // Ao SAIR da etapa Marca, os documentos viram campos. Aqui e nao na
+    // entrada da etapa seguinte porque a leitura leva segundos: disparada
+    // agora, ela corre enquanto o PATCH salva e a tela troca.
+    if (currentStep === 1) void preencherComDocumentos();
+    // Ao SAIR da Voz, com nicho, público e voz já escritos, o estudo do nicho
+    // começa em segundo plano (02/10): leva alguns minutos e assim chega
+    // pronto, ou quase, na etapa Referências. Só na criação, não na edição do
+    // setup, e só DEPOIS de salvar (a descoberta lê o nicho do banco); se já
+    // houver um pedido vivo, a rota recusa sem gastar nada.
+    const pedirEstudoDoNicho = currentStep === 2 && !editMode;
     try {
       const res = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
@@ -141,6 +260,13 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
         }),
       });
       if (!res.ok) throw new Error("Erro ao salvar");
+      if (pedirEstudoDoNicho) {
+        void fetch(`/api/projects/${project.id}/referencias/analises`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ acao: "comecar", tipo: "criacao", origem: "criacao" }),
+        }).catch(() => null);
+      }
 
       if (nextStep >= STEPS.length) {
         if (editMode) {
@@ -150,7 +276,14 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           toast.success("Projeto ativado! Vamos gerar sua primeira campanha.");
           // ?novaCampanha=1 abre direto a escolha de origem (vídeo ou tema),
           // em vez de largar quem acabou de ativar num quadro vazio.
-          router.push(`/projects/${project.id}/posts?novaCampanha=1`);
+          //
+          // Para /live e não para /posts, corrigido em 13/09: /posts é a tela
+          // antiga (PostsPanel), que ignora o parâmetro e cujo botão pede o
+          // TEMA antes de perguntar se a campanha vem de vídeo ou de tema. O
+          // Bruno viu exatamente isso: "o primeiro ponto é escolher o tema,
+          // mas está errado, porque depois vai ter um tema por dia". Quem
+          // trata o parâmetro é o ContentManager, que mora em /live.
+          router.push(`/projects/${project.id}/live?novaCampanha=1`);
         }
       } else {
         setCurrentStep(nextStep);
@@ -160,7 +293,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     } finally {
       setSaving(false);
     }
-  }, [currentStep, form, project.id, router, editMode]);
+  }, [currentStep, form, project.id, router, editMode, preencherComDocumentos]);
 
   const askAI = useCallback(
     async (message: string) => {
@@ -284,7 +417,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-black text-[var(--text-primary)] mb-1">
+        <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)] mb-1">
           {project.name}
         </h1>
         <p className="text-[var(--text-muted)]">{`Configure seu projeto em ${STEPS.length} etapas`}</p>
@@ -339,12 +472,50 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           className="border rounded-2xl p-8"
           style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
         >
+          {/*
+            De onde vieram os campos. Sem isto a pessoa chega numa tela cheia de
+            texto que ela nao escreveu e nao sabe se pode confiar: dizer que
+            saiu do documento DELA e o que transforma preenchimento em revisao.
+          */}
+          {lendoDocumentos && currentStep >= 2 && (
+            <div
+              className="mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Lendo os seus documentos para preencher esta etapa...
+            </div>
+          )}
+          {!lendoDocumentos && veioDoDocumento.length > 0 && currentStep >= 2 && (
+            <div
+              className="mb-4 rounded-lg border px-3 py-2 text-[13px]"
+              style={{ borderColor: "color-mix(in srgb, var(--acento) 35%, transparent)", color: "var(--text-muted)" }}
+            >
+              Preenchemos a partir dos seus documentos. Leia e corrija o que não estiver do seu jeito.
+            </div>
+          )}
           {currentStep === 0 && <StepNetworks projectId={project.id} />}
-          {currentStep === 1 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
-          {currentStep === 2 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
-          {currentStep === 3 && <StepDesign form={form} set={set} askAI={askAI} />}
+          {/*
+            A ordem mudou em 17/09: Marca subiu para 1, e Voz e Ideação
+            desceram. Os índices aqui sao a unica coisa que amarra a tela ao
+            numero da etapa, entao mexer em STEPS sem mexer aqui troca as telas
+            de lugar em silencio, sem erro de tipo nenhum.
+          */}
+          {currentStep === 1 && (
+            <StepMarca
+              projectId={project.id}
+              form={form}
+              set={set}
+              logoInicial={project.logoUrl ?? null}
+              manualInicial={project.brandManualName ?? null}
+              documentosIniciais={project.contexts ?? []}
+            />
+          )}
+          {currentStep === 2 && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
+          {currentStep === 3 && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
           {currentStep === 4 && <StepSchedule form={form} set={set} askAI={askAI} />}
-          {currentStep === 5 && <StepActivation project={project} form={form} />}
+          {currentStep === 5 && <StepReferencias projectId={project.id} />}
+          {currentStep === 6 && <StepActivation project={project} form={form} />}
 
           {/* AI Assistant reply */}
           {(aiLoading || aiReply) && (
@@ -593,12 +764,21 @@ function StepVoice({
         </div>
       </div>
 
-      {/* A prova de que funciona vem aqui, no passo 2 de 7, e não no 7.
-          Sem isto o cliente paga o cartão e só vê o produto no último passo. */}
-      <SetupPreview
-        projectId={projectId}
-        pronto={Boolean(form.voice && form.voice.trim().length > 20 && form.niche)}
-      />
+      {/* A PRÉVIA SAIU DAQUI EM 18/09, por decisão do Bruno usando a jornada.
+
+          Ela existia desde 18/08 com um argumento que continua verdadeiro: o
+          cliente paga o cartão no começo e, sem ela, só via o produto funcionar
+          no último passo do assistente.
+
+          O que mudou não foi o argumento, foi o que ela interrompe. Desde 17/09
+          a Marca vem antes, e as etapas seguintes deixaram de ser preenchimento
+          e viraram revisão do que saiu do documento da pessoa. Oferecer um post
+          pronto no meio disso tira a pessoa da configuração bem na hora em que
+          ela está entendendo como a plataforma lê a marca dela.
+
+          **Prova antecipada e jornada completa competem pelo mesmo momento**, e
+          a decisão foi deixar a jornada terminar. O componente e a rota
+          /preview continuam existindo para quando houver um lugar melhor. */}
     </div>
   );
 }
@@ -687,8 +867,50 @@ function StepDesign({
   );
 }
 
+/**
+ * "1 perfil e 2 páginas", em vez de "Conta conectada".
+ *
+ * O plural é resolvido aqui e não no JSX porque a frase tem quatro formas
+ * (1 perfil, 2 perfis, 1 página, 3 páginas) e montá-la com ternários dentro da
+ * marcação produz exatamente o tipo de "1 páginas" que faz um produto parecer
+ * descuidado.
+ */
+function resumoDasContas(contas: ContaConectada[]): string {
+  const paginas = contas.filter((c) => c.accountType === "organization").length;
+  const perfis = contas.length - paginas;
+  const partes: string[] = [];
+  if (perfis > 0) partes.push(perfis === 1 ? "1 perfil" : `${perfis} perfis`);
+  if (paginas > 0) partes.push(paginas === 1 ? "1 página" : `${paginas} páginas`);
+  const desligadas = contas.filter((c) => !c.isActive).length;
+  const base = partes.join(" e ");
+  return desligadas > 0 ? `${base}, ${desligadas} desligada${desligadas > 1 ? "s" : ""}` : base;
+}
+
+/** Uma conta conectada, como a API de conexão devolve. */
+type ContaConectada = {
+  id: string;
+  platform: string;
+  displayName: string | null;
+  username: string | null;
+  isActive: boolean;
+  accountType: string | null;
+};
+
 function StepNetworks({ projectId }: { projectId: string }) {
-  const [connected, setConnected] = useState<string[]>([]);
+  /**
+   * As contas INTEIRAS, e não só a lista de redes que têm alguma.
+   *
+   * Até 18/09 esta tela guardava só `platform` e mostrava um selo "conectado"
+   * por rede. Achado do Bruno criando um projeto de verdade: ele tinha a página
+   * do Facebook "Demandou" e as páginas de LinkedIn "demandou" e "Areticon"
+   * conectadas, e a etapa dizia apenas "conectado" no LinkedIn.
+   *
+   * **"Conectado" não é informação quando uma rede pode ter um perfil, cinco
+   * páginas, ou uma página desligada que ninguém lembra de ter desligado.** A
+   * plataforma tinha feito o trabalho e a tela não contava.
+   */
+  const [contas, setContas] = useState<ContaConectada[]>([]);
+  const connected = [...new Set(contas.filter((c) => c.isActive).map((c) => c.platform))];
 
   // returnTo points back to this wizard so the user returns here after OAuth
   const returnTo = `/projects/${projectId}?step=0`;
@@ -696,12 +918,30 @@ function StepNetworks({ projectId }: { projectId: string }) {
   const refresh = () => {
     fetch(`/api/social/connect?projectId=${projectId}`)
       .then((r) => r.json())
-      .then((d) => setConnected((d.storedAccounts ?? []).filter((a: { isActive: boolean }) => a.isActive).map((a: { platform: string }) => a.platform)));
+      .then((d) => setContas((d.storedAccounts ?? []) as ContaConectada[]))
+      .catch(() => undefined);
   };
 
   // Quais redes tem credencial no servidor. Perguntado em runtime de
   // proposito: ver app/api/social/providers/route.ts.
   const [prontas, setProntas] = useState<Record<string, boolean>>({});
+
+  // CONEXÃO ASSISTIDA (01/10): rede que o cliente de fora ainda não conecta
+  // sozinho mostra a caixa de pedir a conexão ao time, e não o "Conectar" que
+  // levaria a uma recusa da Meta ou do TikTok. Ver lib/social/conexao-assistida.ts.
+  const [assistidas, setAssistidas] = useState<string[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoDeConexao[]>([]);
+  const [conectarDireto, setConectarDireto] = useState(false);
+  useEffect(() => {
+    fetch(`/api/social/conexao-assistida?projectId=${projectId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { assistidas?: string[]; pedidos?: PedidoDeConexao[]; conectarDireto?: boolean } | null) => {
+        setAssistidas(d?.assistidas ?? []);
+        setPedidos(d?.pedidos ?? []);
+        setConectarDireto(d?.conectarDireto === true);
+      })
+      .catch(() => undefined);
+  }, [projectId]);
 
   // A conexão acontece em outra aba; quando esta volta ao foco, o status
   // verde precisa aparecer sem recarregar na mão.
@@ -729,13 +969,14 @@ function StepNetworks({ projectId }: { projectId: string }) {
     // absolutamente nada (achado do teste de 21/08: o Facebook não conectou
     // e a plataforma ficou muda, com o Bruno recarregando à toa).
     const params = new URLSearchParams(window.location.search);
-    const REDES = ["linkedin", "twitter", "instagram", "facebook", "youtube"] as const;
+    const REDES = ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"] as const;
     const NOMES: Record<string, string> = {
       linkedin: "LinkedIn",
       twitter: "X (Twitter)",
       instagram: "Instagram",
       facebook: "Facebook",
       youtube: "YouTube",
+      tiktok: "TikTok",
     };
     const MOTIVOS: Record<string, string> = {
       "sem-pagina":
@@ -770,17 +1011,56 @@ function StepNetworks({ projectId }: { projectId: string }) {
   const conectar = (rede: string) =>
     `/api/social/${rede}/connect?projectId=${projectId}&returnTo=${encodeURIComponent(returnTo)}`;
 
+  /**
+   * O app de PÁGINAS do LinkedIn é outro app, com a Community Management API.
+   *
+   * A porta dele existia só na aba Configurações até 18/09, e quem fazia o
+   * setup nunca descobria que podia publicar em página. Pior: o callback dele
+   * ignorava o `returnTo` e mandava todo mundo para /settings, o que teria
+   * cuspido a pessoa para fora do assistente no meio dele. Os dois foram
+   * consertados juntos, porque um sem o outro não serve.
+   */
+  const [temAppDePaginas, setTemAppDePaginas] = useState(false);
+  useEffect(() => {
+    fetch("/api/social/linkedin/pages-available")
+      .then((r) => r.json())
+      .then((d) => setTemAppDePaginas(d.available === true))
+      .catch(() => setTemAppDePaginas(false));
+  }, []);
+
   const NETWORKS: Array<{
     platform: RedeComLogo;
     label: string;
     descricao: string;
     connectUrl: string;
+    /** O texto do botão quando já há conta: nem toda rede aceita mais de uma. */
+    outra?: { rotulo: string; url: string };
   }> = [
-    { platform: "linkedin", label: "LinkedIn", descricao: "Autorize via OAuth, sem senha", connectUrl: conectar("linkedin") },
-    { platform: "instagram", label: "Instagram", descricao: "Conta profissional, autorize via OAuth", connectUrl: conectar("instagram") },
-    { platform: "twitter", label: "X (Twitter)", descricao: "Autorize via OAuth, sem senha", connectUrl: conectar("twitter") },
-    { platform: "facebook", label: "Facebook", descricao: "Publica na sua página, autorize via OAuth", connectUrl: conectar("facebook") },
+    {
+      platform: "linkedin",
+      label: "LinkedIn",
+      descricao: "Seu perfil e as páginas de empresa que você administra",
+      connectUrl: conectar("linkedin"),
+      // `pages=1` troca de app e importa as páginas. O `returnTo` volta para cá.
+      ...(temAppDePaginas
+        ? {
+            outra: {
+              rotulo: "Conectar página",
+              url: `/api/social/linkedin/connect?projectId=${projectId}&pages=1&returnTo=${encodeURIComponent(returnTo)}`,
+            },
+          }
+        : {}),
+    },
+    { platform: "instagram", label: "Instagram", descricao: "Conta profissional, ligada a uma página do Facebook", connectUrl: conectar("instagram") },
+    { platform: "twitter", label: "X (Twitter)", descricao: "Seu perfil, autorize via OAuth", connectUrl: conectar("twitter") },
+    // O Facebook NÃO publica em perfil pessoal, e nunca publicou: o callback
+    // importa só páginas (accountType "organization"). A descrição antiga
+    // ("Publica na sua página") era verdadeira e passava despercebida, e o
+    // Bruno conectou esperando o perfil. Dizer o que NÃO acontece é o que
+    // evita a expectativa errada.
+    { platform: "facebook", label: "Facebook", descricao: "Só páginas. O Facebook não permite publicar em perfil pessoal.", connectUrl: conectar("facebook") },
     { platform: "youtube", label: "YouTube", descricao: "Publica os vídeos do seu canal", connectUrl: conectar("youtube") },
+    { platform: "tiktok", label: "TikTok", descricao: "Publica seus vídeos verticais no perfil", connectUrl: conectar("tiktok") },
   ];
 
   return (
@@ -800,36 +1080,52 @@ function StepNetworks({ projectId }: { projectId: string }) {
 
       <div className="grid grid-cols-1 gap-3">
         {NETWORKS.map((net) => {
+          const daRede = contas.filter((c) => c.platform === net.platform);
           const isConnected = connected.includes(net.platform);
           return (
             <div
               key={net.platform}
-              className="p-4 rounded-xl border flex items-center gap-4"
+              className="p-4 rounded-xl border"
               style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
             >
+            <div className="flex items-center gap-4">
               {(() => {
                 const Logo = LOGO_POR_REDE[net.platform];
                 return <Logo />;
               })()}
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-[var(--text-primary)]">{net.label}</p>
                 <p className="text-xs text-[var(--text-muted)]">
-                  {isConnected ? "Conta conectada ✓" : net.descricao}
+                  {daRede.length > 0 ? resumoDasContas(daRede) : net.descricao}
                 </p>
               </div>
               {isConnected ? (
-                <span className="text-xs px-3 py-1.5 rounded-lg bg-green-900/20 border border-green-800/40 text-green-400">
-                  conectado
-                </span>
-              ) : prontas[net.platform] ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* A porta de PÁGINA continua disponível mesmo com o perfil
+                      já conectado: são apps diferentes, e ter um não dá o
+                      outro. Era justamente o caso do Bruno. */}
+                  {net.outra && (
+                    <a
+                      href={net.outra.url}
+                      className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      {net.outra.rotulo}
+                    </a>
+                  )}
+                  <span className="text-xs px-3 py-1.5 rounded-lg bg-green-900/20 border border-green-800/40 text-green-400">
+                    conectado
+                  </span>
+                </div>
+              ) : assistidas.includes(net.platform) ? null : prontas[net.platform] ? (
                 <a
                   href={net.connectUrl}
-                  // Aba nova por pedido do Bruno (21/08): o OAuth de serviço em
-                  // que a pessoa ainda não está logada vira um vai e vem que
-                  // destrói a aba do assistente. A aba original se atualiza
-                  // sozinha ao receber o foco de volta.
-                  target="_blank"
-                  rel="noopener"
+                  // Mesma aba, por pedido do Bruno em 13/09: a aba nova de
+                  // 21/08 deixava duas janelas da Demandou abertas e a pessoa
+                  // seguia na errada. O que a aba nova protegia (o vai e vem do
+                  // OAuth destruir o assistente) já é resolvido pelo `returnTo`
+                  // que o `conectar()` manda: o callback volta exatamente para
+                  // esta etapa, na mesma aba.
                   className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
                   style={{ borderColor: "var(--border)" }}
                 >
@@ -843,6 +1139,62 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   em breve
                 </span>
               )}
+            </div>
+
+            {assistidas.includes(net.platform) && (
+              <div className="mt-3">
+                <ConexaoAssistida
+                  compacta
+                  projectId={projectId}
+                  rede={net.platform}
+                  temConta={isConnected}
+                  pedido={pedidos.find((p) => p.rede === net.platform) ?? null}
+                  conectarDiretoUrl={conectarDireto ? net.connectUrl : null}
+                  onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
+                />
+              </div>
+            )}
+
+            {/* CADA CONTA, com nome e tipo. É o conserto do achado de 18/09:
+                um selo "conectado" escondia um perfil, duas páginas e uma
+                delas desligada. */}
+            {daRede.length > 0 && (
+              <div className="mt-3 pl-1 space-y-1.5">
+                {daRede.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 text-xs">
+                    {c.accountType === "organization" ? (
+                      <Building2 className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
+                    ) : (
+                      <UserRound className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
+                    )}
+                    <span className="text-[var(--text-muted)] shrink-0">
+                      {c.accountType === "organization" ? "Página:" : "Perfil:"}
+                    </span>
+                    <span className="truncate text-[var(--text-primary)]">
+                      {c.displayName ?? c.username ?? "sem nome"}
+                    </span>
+                    {/* Página nova nasce DESLIGADA de propósito, para nada ser
+                        publicado no nome de uma empresa sem alguém mandar.
+                        Mas desligada e silenciosa é a mesma coisa que ausente,
+                        e foi assim que a "Areticon" sumiu da vista dele. */}
+                    {!c.isActive && (
+                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-yellow-500/15 text-yellow-500">
+                        desligada
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {daRede.some((c) => !c.isActive) && (
+                  <p className="text-[11px] text-[var(--text-muted)] pt-0.5">
+                    Ligue em{" "}
+                    <a href={`/projects/${projectId}/settings`} className="text-orange-400 underline">
+                      Configurações
+                    </a>{" "}
+                    quando quiser publicar nela.
+                  </p>
+                )}
+              </div>
+            )}
             </div>
           );
         })}
@@ -908,12 +1260,38 @@ function StepSchedule({
         </div>
       </div>
 
-      <Input
-        label="Fuso horário"
-        value={form.timezone}
-        onChange={(e) => set("timezone", e.target.value)}
-        placeholder="America/Sao_Paulo"
-      />
+      {/* O fuso é uma ESCOLHA CURTA, e não um campo de texto livre.
+
+          Era um Input onde a pessoa digitava o nome técnico do fuso. Dois
+          problemas: um erro de digitação ("America/SaoPaulo") não avisava nada
+          e caía no padrão em silêncio, e a lista completa de fusos do mundo é
+          ruído para um produto cujo cliente está no Brasil.
+
+          São Paulo vem primeiro e é o padrão, aqui, no formulário e no banco.
+          Os outros existem para quem mora fora, que é caso real e raro. */}
+      <div>
+        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Fuso horário</label>
+        <select
+          value={form.timezone}
+          onChange={(e) => set("timezone", e.target.value)}
+          className="h-10 w-full rounded-md border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+        >
+          {FUSOS.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.rotulo}
+            </option>
+          ))}
+          {/* O fuso que já está gravado e não está na lista continua valendo:
+              trocar o campo não pode mudar o agendamento de ninguém à revelia. */}
+          {!FUSOS.some((f) => f.id === form.timezone) && form.timezone && (
+            <option value={form.timezone}>{form.timezone}</option>
+          )}
+        </select>
+        <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+          É a hora que vale para publicar. Tudo o que você agendar sai neste horário.
+        </p>
+      </div>
 
       <Button
         variant="outline"

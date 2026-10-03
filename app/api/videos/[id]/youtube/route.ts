@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { montarPostDeVideo } from "@/lib/media/youtube-post";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * Prepara a gravação inteira para ir ao canal do cliente no YouTube.
@@ -35,12 +36,12 @@ export async function POST(
   const { id } = await params;
 
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
+    where: { id, project: projetoVisivel(userId) },
     select: {
       id: true,
       status: true,
       clips: true,
-      blobUrl: true,
+      blobUrl: true, completoUrl: true,
       durationSec: true,
       projectId: true,
       project: { select: { name: true } },
@@ -87,9 +88,10 @@ export async function POST(
       platform: "youtube",
       content: conteudo,
       mediaType: "video",
-      // O arquivo original, no storage. A publicação lê daqui e repassa em
-      // fluxo para o YouTube, sem materializar na memória.
-      imageUrl: video.blobUrl,
+      // O completo EDITADO quando existe (30/09): antes ia a gravação crua,
+      // sem limpeza nem efeitos. A publicação lê daqui e repassa em fluxo para
+      // o YouTube, e na hora de publicar confere de novo a versão mais recente.
+      imageUrl: video.completoUrl ?? video.blobUrl,
       status: "draft",
       metadata: {
         origem: "video",

@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #1e1e25; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="padding:28px;background:#1e1e25;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:18px;">
+
+  <div>
+    <h2 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#dcdde2;">A rede que o app acha que está conectada</h2>
+    <p style="margin:0;font-size:13px;line-height:1.5;color:#9599a6;">
+      Hoje "ativa" é uma chave manual, não um fato. Oito contas aparecem verdes e seis estão mortas. Quando a publicação descobre a verdade, ela precisa gravar isso em vez de jogar fora.
+    </p>
+  </div>
+
+  <div>
+    <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:0.08em;color:#9599a6;text-transform:uppercase;">Hoje</p>
+    <div style="display:flex;align-items:center;gap:12px;border-radius:12px;border:1px solid #3f3f4b;background:#2a2a33;padding:14px 16px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#31313c;display:flex;align-items:center;justify-content:center;color:#9599a6;font-weight:700;font-size:13px;">in</div>
+      <div style="flex-grow:1;min-width:0;">
+        <p style="margin:0;font-size:14px;font-weight:600;color:#dcdde2;">Bruno Donaire</p>
+        <p style="margin:2px 0 0;font-size:12px;color:#9599a6;">Perfil pessoal</p>
+      </div>
+      <div style="width:36px;height:20px;border-radius:9999px;background:#22c55e;position:relative;">
+        <div style="position:absolute;top:2px;left:18px;width:16px;height:16px;border-radius:50%;background:#fff;"></div>
+      </div>
+      <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:rgba(21,128,61,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.25);">ativa</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#9599a6;">O token está morto há horas e a tela não tem como saber, porque ninguém nunca perguntou ao LinkedIn.</p>
+  </div>
+
+  <div>
+    <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:0.08em;color:#f6803d;text-transform:uppercase;">Proposto</p>
+    <div style="display:flex;align-items:center;gap:12px;border-radius:12px;border:1px solid rgba(248,113,113,0.35);background:#2a2a33;padding:14px 16px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#31313c;display:flex;align-items:center;justify-content:center;color:#9599a6;font-weight:700;font-size:13px;">in</div>
+      <div style="flex-grow:1;min-width:0;">
+        <p style="margin:0;font-size:14px;font-weight:600;color:#dcdde2;">Bruno Donaire</p>
+        <p style="margin:2px 0 0;font-size:12px;color:#f87171;">Acesso revogado no LinkedIn, hoje às 08:34</p>
+      </div>
+      <button style="display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 12px;border-radius:4px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;flex-grow:1;background:#ef6122;color:#fff;border:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reconectar</button>
+      <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:rgba(185,28,28,0.2);color:#f87171;border:1px solid rgba(248,113,113,0.25);">reconectar</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#9599a6;">
+      O estado não é adivinhado: ele é gravado no momento em que uma publicação leva 401 do LinkedIn, com a data e o motivo que a rede devolveu. A chave liga e desliga continua existindo, e é outra coisa: ela é escolha sua, este é um fato da rede.
+    </p>
+  </div>
+
+  <div style="border-radius:12px;padding:16px 18px;background:#2a2a33;border:1px solid #3f3f4b;">
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#9599a6;">
+      <span style="color:#dcdde2;font-weight:600;">Por que isso importa esta semana:</span>
+      gravar o App Review do LinkedIn EXIGE revogar o app para a tela de consentimento reaparecer. Ou seja você vai quebrar a própria conexão de propósito, mais de uma vez, e precisa ver na tela qual delas caiu.
+    </p>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

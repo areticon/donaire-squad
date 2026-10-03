@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { del } from "@vercel/blob";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * A trilha do projeto, que o CLIENTE traz.
@@ -53,7 +54,7 @@ export async function POST(
         const { userId } = await auth();
         if (!userId) throw new Error("Não autenticado");
         const project = await prisma.project.findFirst({
-          where: { id, userId },
+          where: { id, ...projetoVisivel(userId) },
           select: { id: true },
         });
         if (!project) throw new Error("Projeto não encontrado");
@@ -95,7 +96,7 @@ export async function DELETE(
 
   const { id } = await params;
   const project = await prisma.project.findFirst({
-    where: { id, userId },
+    where: { id, ...projetoVisivel(userId) },
     select: { videoMusicUrl: true },
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });

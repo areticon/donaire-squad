@@ -34,9 +34,14 @@ interface ProjectCardProps {
     updatedAt: Date;
     _count: { agents: number; posts: number };
   };
+  /**
+   * MEMBRO DA EQUIPE (01/10, acabamento): sem o menu de editar, arquivar e
+   * deletar. Projeto é do dono; a API recusa do mesmo jeito.
+   */
+  souMembro?: boolean;
 }
 
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, souMembro = false }: ProjectCardProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -123,7 +128,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
               <button
                 type="button"
                 onClick={() => { setEditing(false); setEditName(project.name); setEditDescription(project.description ?? ""); }}
-                className="p-1 rounded-lg hover:bg-white/10"
+                className="p-1 rounded-lg hover:bg-[var(--realce-2)]"
                 style={{ color: "var(--text-muted)" }}
               >
                 <X className="w-4 h-4" />
@@ -209,6 +214,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
       </Link>
 
       {/* Actions menu — top right, visible on hover */}
+      {!souMembro && (
       <div
         ref={menuRef}
         className="absolute top-3 right-3 z-10"
@@ -220,7 +226,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
           className={cn(
             "p-1.5 rounded-lg transition-all",
             menuOpen
-              ? "opacity-100 bg-white/10"
+              ? "opacity-100 bg-[var(--realce-2)]"
               : "opacity-0 group-hover:opacity-100"
           )}
           style={{ color: "var(--text-muted)" }}
@@ -237,7 +243,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); setMenuOpen(false); setEditing(true); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-white/5 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--realce-1)] transition-colors"
               style={{ color: "var(--text-primary)" }}
             >
               <Pencil className="w-3.5 h-3.5 text-orange-400 shrink-0" />
@@ -246,7 +252,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             <button
               type="button"
               onClick={handleArchive}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-white/5 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--realce-1)] transition-colors"
               style={{ color: "var(--text-primary)" }}
             >
               {isArchived
@@ -266,6 +272,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,8 @@ export type MediaStyleId =
   | "caricature"
   | "documentary"
   | "cinematic"
-  | "corporate_clean";
+  | "corporate_clean"
+  | "vox_recorte";
 
 export const MEDIA_STYLE_OPTIONS: Array<{
   id: MediaStyleId;
@@ -25,6 +26,9 @@ export const MEDIA_STYLE_OPTIONS: Array<{
   { id: "illustration", label: "Ilustração", short: "Arte digital, traço editorial, limpo" },
   { id: "cartoon", label: "Desenho animado", short: "Estilo cartoon, cores vivas, expressivo" },
   { id: "caricature", label: "Charge / caricatura", short: "Traços exagerados, humor visual" },
+  // Pedido do Bruno em 18/09, com a descrição dele: "uma mistura de arte
+  // recortada com preto e branco e cinismo, tipo a estátua da liberdade rindo".
+  { id: "vox_recorte", label: "Recorte editorial (Vox)", short: "Colagem de recortes, preto e branco com um acento, humor ácido" },
   { id: "corporate_clean", label: "Corporativo clean", short: "Minimalista, stock premium, B2B" },
 ];
 
@@ -48,6 +52,8 @@ export function getMediaStylePromptFragment(style: MediaStyleId | undefined): st
       "Cinematic lighting, film color grading, dramatic composition, shallow depth of field, moody and polished, anamorphic lens feel.",
     corporate_clean:
       "Clean corporate stock aesthetic, minimal clutter, soft even lighting, neutral background, professional B2B visual language.",
+    vox_recorte:
+      "Editorial cut-paper collage in the style of Vox and The Atlantic explainer art: black-and-white halftone photo cutouts with visible torn paper edges, arranged over flat solid shapes, ONE bold accent color only, generous negative space, deadpan visual irony and gentle satire (think the Statue of Liberty laughing), hand-cut imperfection, printed-zine texture, absolutely no glossy stock photography and no realistic 3D render.",
   };
   return map[s] ?? map.auto;
 }

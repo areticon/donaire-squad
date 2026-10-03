@@ -1,3 +1,5 @@
+import { oQueSeFalaNoX } from "@/lib/research/x-search";
+
 /**
  * Roberto Radar — Real-time Research Module
  *
@@ -113,9 +115,12 @@ Fontes: McKinsey, Gartner, IBGE, FGV, Statista, Forrester, IDC, etc.
 Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publicação.`,
   ];
 
-  const results = await Promise.allSettled(
-    searches.map((prompt) => searchGemini(prompt, apiKey))
-  );
+  // O X de verdade corre junto (28/09): o Google não enxerga posts do X, e era
+  // por isso que o brief dizia "a busca em redes não retornou" toda semana.
+  const [results, doX] = await Promise.all([
+    Promise.allSettled(searches.map((prompt) => searchGemini(prompt, apiKey))),
+    oQueSeFalaNoX(`${topic}. Nicho: ${niche}. Público: ${targetAudience}`).catch(() => ({ resumo: "", fontes: [], termos: [] as string[] })),
+  ]);
 
   const successful = results
     .filter((r): r is PromiseFulfilledResult<WebSearchResult> => r.status === "fulfilled")
@@ -125,8 +130,7 @@ Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publ
     throw new Error("Todas as buscas Gemini falharam.");
   }
 
-  const allSources = successful
-    .flatMap((r) => r.sources)
+  const allSources = [...doX.fontes.slice(0, 3).map((f) => ({ title: f.titulo, url: f.url })), ...successful.flatMap((r) => r.sources)]
     .filter((s, i, arr) => arr.findIndex((x) => x.url === s.url) === i)
     .slice(0, 8);
 
@@ -135,7 +139,10 @@ Nicho: ${niche}. Traga números reais, % de mercado, projeções com ano de publ
       const labels = ["NOTÍCIAS E TENDÊNCIAS RECENTES", "REDES SOCIAIS E HYPE", "DADOS E PESQUISAS"];
       return `=== ${labels[i] ?? `PESQUISA ${i + 1}`} ===\n\n${r.summary}`;
     })
-    .join("\n\n");
+    .join("\n\n") +
+    (doX.resumo
+      ? `\n\n=== NO X AGORA (posts reais dos últimos 7 dias, com autor, número e link; busca por: ${doX.termos.join(", ")}) ===\n\n${doX.resumo}`
+      : "");
 
   return { summary: combinedSummary, sources: allSources, rawText: combinedSummary };
 }

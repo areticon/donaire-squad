@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #1e1e25; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="padding: 30px; background: #1e1e25; min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #9599a6; text-transform: uppercase;">Como está no ar hoje</span>
+    <span style="height: 1px; flex-grow: 1; background: #3f3f4b;"></span>
+  </div>
+
+  <div style="position: relative; border-radius: 16px; padding: 32px; background: #2a2a33; border: 1px solid #ef6122; box-shadow: 0 0 40px rgba(249,115,22,0.15);">
+
+    <div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%);">
+      <span style="display: inline-block; background: #ef6122; color: #ffffff; font-size: 12px; font-weight: 700; padding: 4px 16px; border-radius: 9999px; white-space: nowrap;">MAIS ESCOLHIDO</span>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <h3 style="margin: 0 0 4px; font-size: 20px; font-weight: 700; color: #dcdde2;">Autoridade</h3>
+      <p style="margin: 0; font-size: 14px; color: #9599a6;">Uma gravação por semana vira o mês inteiro nas suas redes</p>
+    </div>
+
+    <div style="margin-bottom: 32px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 18px; color: #9599a6; text-decoration: line-through;">R$ 697</span>
+        <span style="font-size: 48px; font-weight: 900; color: #dcdde2; line-height: 1;">397</span>
+        <span style="font-size: 14px; color: #9599a6;">/mês</span>
+      </div>
+      <p style="margin: 6px 0 0; font-size: 14px; color: #f6803d;">Fundador: 10 de 10 vagas. Esse preço fica para sempre.</p>
+    </div>
+
+    <button style="width: 100%; height: 40px; margin-bottom: 32px; border: 0; border-radius: 8px; background: #ef6122; color: #ffffff; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Garantir vaga de fundador</button>
+
+    <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px;">
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>7 dias grátis para testar</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>4 gravações por mês viram cerca de 44 peças</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Cortes verticais com legenda e capa</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Vídeo completo editado, com capa do seu rosto</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Textos, imagens e carrosséis para 5 redes</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Pesquisa com fontes antes de cada texto</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Publicação agendada nas suas redes</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>De 26 a 36 horas de edição e escrita por mês, feitas</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Relatório mensal do que rendeu</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Suporte prioritário</span>
+      </li>
+      <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #dcdde2;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>1 marca</span>
+      </li>
+    </ul>
+  </div>
+
+  <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #9599a6;">
+    Cobra R$ 397 por mês, para sempre. Dez fundadores põem R$ 3.970 por mês na recorrência e R$ 3.970 no caixa do dia 1.
+  </p>
+
+</div>
+</x-dc>
+</body>
+</html>

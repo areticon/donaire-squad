@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
+import { PedidoDeUpgrade, type Estouro } from "@/components/planos/pedido-de-upgrade";
 
 /**
  * Esta tela era um formulário de nome e descrição que duplicava a etapa 1 do
@@ -16,6 +17,11 @@ export default function NewProjectPage() {
   // O StrictMode monta o componente duas vezes em dev; sem o ref, seriam
   // dois projetos criados por clique.
   const criando = useRef(false);
+  // Desde 18/09 a criacao pode ser recusada por limite de MARCAS do plano. A
+  // tela para aqui em vez de jogar a pessoa de volta no dashboard com um toast
+  // vermelho: quem clicou em "nova marca" queria uma marca, e este e o momento
+  // de maior intencao que existe para oferecer o plano que a entrega.
+  const [limite, setLimite] = useState<Estouro | null>(null);
 
   useEffect(() => {
     if (criando.current) return;
@@ -28,6 +34,16 @@ export default function NewProjectPage() {
           body: JSON.stringify({ name: "Meu projeto", description: "" }),
         });
         const data = await res.json();
+        if (res.status === 402 && data.limite) {
+          setLimite(data.limite as Estouro);
+          return;
+        }
+        // Membro da equipe (01/10): a recusa já vem com a frase certa.
+        if (res.status === 403 && data.error) {
+          toast.error(data.error);
+          router.replace("/projects");
+          return;
+        }
         if (!res.ok) throw new Error(data.error);
         router.replace(`/projects/${data.project.id}/setup`);
       } catch (err) {
@@ -37,6 +53,14 @@ export default function NewProjectPage() {
       }
     })();
   }, [router]);
+
+  if (limite) {
+    return (
+      <div className="mx-auto w-full max-w-[640px] px-4 py-10">
+        <PedidoDeUpgrade estouro={limite} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center gap-3" style={{ color: "var(--text-muted)" }}>

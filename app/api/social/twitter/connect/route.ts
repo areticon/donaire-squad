@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
@@ -10,6 +11,10 @@ export async function GET(req: NextRequest) {
 
   const projectId = req.nextUrl.searchParams.get("projectId");
   if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
+  // Conectar rede é configuração do projeto: só o dono, e só em projeto que
+  // ele vê (01/10, acabamento). Ver lib/equipe/permissoes.ts.
+  const barrado = await soQuemConectaRedes(userId, projectId);
+  if (barrado) return barrado;
 
   const state = crypto.randomBytes(16).toString("hex");
   const { codeVerifier, codeChallenge } = generatePKCE();

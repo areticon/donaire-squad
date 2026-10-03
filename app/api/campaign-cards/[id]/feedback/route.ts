@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: { project: { select: { userId: true } } },
   });
 
-  if (!card || card.project.userId !== userId) {
+  if (!card || !(await podeUsarProjeto(userId, { id: card.projectId, userId: card.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

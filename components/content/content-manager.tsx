@@ -1,25 +1,64 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
-  ChevronLeft, ChevronRight, CalendarDays, Sparkles, Loader2, CheckCircle2,
+  ChevronLeft, ChevronRight, CalendarDays, Sparkles, Loader2, CheckCircle2, PencilLine, ArrowRight,
   X, Clock, MessageCircle, Send, ThumbsDown, Image as ImageIcon,
   Video, LayoutGrid, AlarmClock, Zap, Ban, RotateCcw, Download, AlertCircle,
   FileText, Search, Pencil, Globe, Bot, ShieldAlert,
-  BarChart2, List, BookOpen, Archive, PieChart, Eye,
+  BarChart2, List, BookOpen, Archive, PieChart, Eye, MoreVertical, RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { RedeIcone } from "@/components/social/rede-icone";
+import { FotoDaConta } from "@/components/social/selo-da-conta";
 import toast from "react-hot-toast";
-import { PipelineLive } from "@/components/posts/pipeline-live";
+import dynamic from "next/dynamic";
+import { FUSO_PADRAO } from "@/lib/fuso";
+import { lerRevisao, type RevisaoEmAndamento } from "@/lib/pipeline/revisao";
+
+// Sem SSR: o escritorio decide WebGL e tema no primeiro render, e isso so
+// existe no navegador. O three.js so e baixado nesta aba, e so aqui.
+const Escritorio = dynamic(() => import("@/components/escritorio/escritorio").then((m) => m.Escritorio), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-xl border" style={{ borderColor: "var(--border)", height: "min(52vw, 400px)", minHeight: 260, background: "var(--bg-card)" }} />
+  ),
+});
 import { CampaignSetupModal, type CampaignConfig } from "@/components/posts/campaign-setup-modal";
+import { EscolhaDeOrigem } from "@/components/posts/escolha-de-origem";
 import { EsteiraDoVideo, type VideoAoVivo, type CorteGuardado } from "@/components/video/esteira-do-video";
+import { faltamAteOFim } from "@/lib/media/linha-do-tempo";
 import { EnviarGravacao } from "@/components/video/enviar-gravacao";
-import { estadoDoPost, resumoDoDia, CORES, type PostParaEstado, type ResumoDoDia } from "@/lib/posts/estado";
+import { estadoDoPost, resumoDoDia, horaCurta, CORES, type PostParaEstado, type ResumoDoDia } from "@/lib/posts/estado";
+import { horarioParaAprovar, rotuloDoHorario, diaEHora, paraCampos, deCampos } from "@/lib/posts/horario-da-peca";
+import { cardEmProducao } from "@/lib/squad/peca-em-producao";
+import { lerRevisaoDoCorte, type RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
+import { lerAberturaIa } from "@/lib/media/estado-da-abertura-ia";
+import { lerMontagem } from "@/lib/media/estado-da-montagem";
+import { TentarMontagem } from "@/components/video/tentar-montagem";
+import { AvisoDaMontagem, type FalhaDaMontagem } from "@/components/video/aviso-da-montagem";
+import { alcanceDaReprovacao, rotuloDaReprovacao, avisoDaReprovacao, ESTADOS_MORTOS } from "@/lib/content/reprovacao";
+import { etiquetaDaPeca } from "@/lib/posts/etiqueta-da-peca";
+import { cardsDaPeca, chaveDaPeca, familiaDaChave } from "@/lib/posts/cards-da-peca";
+import { custoDeRefazerPeca } from "@/lib/credits/estimativa";
+import { formatoDoPost } from "@/lib/publish/formato-de-destino";
+import { DestinosDoDia } from "@/components/posts/destinos-do-dia";
+import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
+import { TRADUCAO_DOS_CODIGOS, chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFrase } from "@/lib/publish/codigos";
+import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
+import { SemanaDoQuadro, proximaPeca, type DiaDaSemana, type PecaDoDia, type EstadoDaPeca } from "@/components/content/semana-do-quadro";
+import { andamentoDosDias } from "@/lib/pipeline/andamento-dos-dias";
+import { FichaDoAgente, type TrabalhoDoAgente } from "@/components/escritorio/ficha-do-agente";
+import { LinhaDoTempoDoParecer } from "@/components/escritorio/linha-do-tempo-do-parecer";
+import type { EtapaDoParecer } from "@/lib/squad/parecer-da-peca";
+import { JornadaDaCampanha } from "@/components/posts/jornada-da-campanha";
 import { CorteGuardadoModal } from "@/components/video/corte-guardado";
 import { CapaDoCompleto } from "@/components/video/capa-do-completo";
+import { JanelaDoTikTok, type PostParaTikTok } from "@/components/social/janela-do-tiktok";
+import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
+import { useUmaAUma } from "@/components/escritorio/pecas-uma-a-uma";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +99,10 @@ interface SocialAccount {
   platform: string;
   displayName: string | null;
   accountType: string;
+  /** A foto da conta: a logo da página ou o rosto do perfil. */
+  avatarUrl?: string | null;
+  /** Opcional porque nem toda tela que monta este tipo seleciona o campo. */
+  isActive?: boolean;
 }
 
 interface ContentManagerProps {
@@ -87,6 +130,12 @@ interface ContentManagerProps {
   videoTermos: string | null;
   /** Project.videoSemana: o formato de cada dia a partir do vídeo. */
   videoSemana: unknown;
+  /**
+   * As montagens de efeitos que DESISTIRAM por erro técnico (01/10, parte
+   * 240), para o aviso acima do quadro: a faixa do vídeo dizia "pronto" e o
+   * cliente achava que a edição tinha terminado.
+   */
+  falhasDaMontagem?: FalhaDaMontagem[];
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -104,15 +153,23 @@ const DAYS = [
 const AGENT_ROWS = [
   { agentId: "roberto-radar", label: "Roberto Radar", subtitle: "Pesquisa", color: "bg-blue-500", cardType: "research", icon: Search },
   { agentId: "lucas-linkedin", label: "Lucas LinkedIn", subtitle: "Post LinkedIn", color: "bg-blue-700", cardType: "post_linkedin", icon: Globe },
-  { agentId: "tiago-twitter", label: "Tiago Twitter", subtitle: "Thread X", color: "bg-sky-500", cardType: "post_twitter", icon: Globe },
+  { agentId: "xavier-x", label: "Xavier X", subtitle: "Thread X", color: "bg-slate-600", cardType: "post_twitter", icon: Globe },
+  // Os especialistas de 29/09 gravam peças do tipo do Lucas; o que os separa é o agentId.
+  { agentId: "igor-instagram", label: "Igor Instagram", subtitle: "Instagram", color: "bg-pink-600", cardType: "post_instagram", icon: Globe },
+  { agentId: "fernanda-facebook", label: "Fernanda Facebook", subtitle: "Facebook", color: "bg-indigo-500", cardType: "post_facebook", icon: Globe },
+  { agentId: "tiago-tiktok", label: "Tiago TikTok", subtitle: "TikTok", color: "bg-sky-500", cardType: "post_tiktok", icon: Globe },
+  { agentId: "yan-youtube", label: "Yan YouTube", subtitle: "YouTube", color: "bg-red-600", cardType: "post_youtube", icon: Video },
   { agentId: "diana-design", label: "Diana Design", subtitle: "Mídia", color: "bg-purple-500", cardType: "media", icon: ImageIcon },
   // A linha do vídeo existe porque o squad EDITA vídeo desde 23/08, e sem ela
   // os cortes cairiam na linha da Diana, misturados com imagem gerada. Quem
   // olha o quadro precisa ver que houve trabalho de vídeo.
   { agentId: "vitor-video", label: "Vitor Vídeo", subtitle: "Cortes", color: "bg-rose-500", cardType: "video_clip", icon: Video },
-  { agentId: "vera-veredito", label: "Vera Veredito", subtitle: "Preview", color: "bg-yellow-500", cardType: "preview", icon: FileText },
+  { agentId: "vera-veredito", label: "Vera Veredito", subtitle: "Gerente do time", color: "bg-yellow-500", cardType: "preview", icon: FileText },
   { agentId: "paulo-publicador", label: "Paulo Publicador", subtitle: "Publicação", color: "bg-green-500", cardType: "publish", icon: Send },
 ];
+
+/** A ordem em que as redes aparecem, e ela e a mesma no card e no calendario. */
+const ORDEM_DA_REDE = ["youtube", "tiktok", "linkedin", "instagram", "facebook", "twitter"];
 
 const CARD_TYPE_LABELS: Record<string, string> = {
   video_clip: "Corte de vídeo",
@@ -160,36 +217,90 @@ function formatDayDate(monday: Date, dayOfWeek: number): string {
  * (o cliente escolheu a semana atual e abriu o card depois da hora, ou dias
  * depois), a fila NÃO pode receber o horário original: a API recusa com
  * "Não é possível agendar no passado", que foi o toast do teste do Bruno de
- * 04/09. Aqui a fila anda para o mesmo horário do próximo dia que ainda não
- * chegou, e a tela avisa antes de o cliente clicar.
+ * 04/09. Aqui a fila anda para o próximo horário livre, e a tela avisa antes
+ * de o cliente clicar.
+ *
+ * Até 29/09 ela andava para o MESMO horário do dia seguinte, que numa
+ * campanha diária é o horário da peça seguinte. A conta agora mora em
+ * lib/posts/horario-da-peca.ts e recebe os horários das outras peças.
  */
-function horarioParaFila(isoDate: string | null | undefined): { iso: string; andou: boolean } | null {
-  if (!isoDate) return null;
-  const d = new Date(isoDate);
-  if (Number.isNaN(d.getTime())) return null;
-  const limite = Date.now() + 2 * 60 * 1000;
-  if (d.getTime() > limite) return { iso: d.toISOString(), andou: false };
-  while (d.getTime() <= limite) d.setDate(d.getDate() + 1);
-  return { iso: d.toISOString(), andou: true };
+function horarioParaFila(
+  isoDate: string | null | undefined,
+  ocupados: string[] = []
+): { iso: string; andou: boolean } | null {
+  return horarioParaAprovar(isoDate, ocupados);
 }
 
+// Sempre em Brasília: sem o fuso, quem abria a tela num navegador fora do
+// Brasil via outro horário no cabeçalho e na caixa do Paulo.
 function formatScheduledAt(isoDate: string | null | undefined): string {
   if (!isoDate) return "";
   const d = new Date(isoDate);
-  return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: FUSO_PADRAO });
 }
 
 // ── Small Components ──────────────────────────────────────────────────────────
 
-function AgentAvatar({ agentId, color, size = "sm" }: { agentId: string; color: string; size?: "sm" | "md" | "lg" }) {
-  const initials = agentId.split("-").map((w) => w[0].toUpperCase()).slice(0, 2).join("");
+// O rosto do agente (arte de massinha, 28/09). A assinatura antiga fica para
+// não mexer nas chamadas; a cor agora vem do próprio agente.
+function AgentAvatar({ agentId, size = "sm" }: { agentId: string; color?: string; size?: "sm" | "md" | "lg" }) {
+  return <AvatarDoAgente agenteId={agentId} tamanho={size === "sm" ? 28 : size === "md" ? 36 : 48} />;
+}
+
+/**
+ * O AVATAR DE QUEM PEDIU A REVISÃO, com o ícone do pedido por cima.
+ *
+ * Pedido do Bruno em 21/09: "o usuário precisa saber que o comando foi
+ * entendido e que seu pedido está sendo realizado", e o elemento que carrega
+ * essa informação é o avatar DELE indo para o agente que vai trabalhar. O
+ * ícone é um LÁPIS, e não o círculo pulsante: o pulsante já quer dizer "o
+ * squad está gerando a peça", e dois estados diferentes com o mesmo símbolo
+ * é o mesmo defeito do selo da Vera na parte 148, a tela contando uma coisa
+ * e o banco outra.
+ */
+function AvatarDeQuemPediu({ nome, imagem, size = "sm" }: { nome: string | null; imagem: string | null; size?: "sm" | "lg" }) {
+  const dim = size === "lg" ? "w-8 h-8 text-[11px]" : "w-5 h-5 text-[8px]";
+  const iniciais = (nome ?? "Você")
+    .split(" ")
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .slice(0, 2)
+    .join("");
+  if (imagem) {
+    return <img src={imagem} alt={nome ?? "você"} className={cn("rounded-full object-cover shrink-0 border", dim)} style={{ borderColor: "var(--border)" }} />;
+  }
   return (
-    <div className={cn(
-      "rounded-full flex items-center justify-center text-white font-bold shrink-0",
-      color,
-      size === "sm" ? "w-6 h-6 text-[10px]" : size === "md" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm"
-    )}>
-      {initials}
+    <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0 border", dim)}
+      style={{ background: "var(--bg-elevated)", color: "var(--text-primary)", borderColor: "var(--border)" }}>
+      {iniciais}
+    </div>
+  );
+}
+
+/**
+ * O SELO DE "EM REVISÃO PELO TIME", lido do card e não do componente aberto.
+ *
+ * Aparece na célula do calendário e no card aberto, com a mesma leitura
+ * (`lerRevisao`), porque duas telas contando a mesma história de dois jeitos
+ * é como o defeito nasce. Mostra quem pediu, quem está fazendo e o pedido em
+ * uma linha: sem o pedido, o cliente não tem como saber se foi o dele.
+ */
+export function SeloDeRevisao({ revisao, grande = false }: { revisao: RevisaoEmAndamento; grande?: boolean }) {
+  return (
+    <div
+      className={cn("flex items-center gap-1.5 rounded-md border px-1.5", grande ? "py-1.5 gap-2" : "py-1")}
+      style={{ borderColor: "#f59e0b", background: "rgba(245,158,11,0.10)" }}
+    >
+      <AvatarDeQuemPediu nome={revisao.porNome} imagem={revisao.porImagem} size={grande ? "lg" : "sm"} />
+      <ArrowRight className={cn("shrink-0", grande ? "w-4 h-4" : "w-3 h-3")} style={{ color: "#f59e0b" }} />
+      <PencilLine className={cn("shrink-0 animate-pulse", grande ? "w-4 h-4" : "w-3 h-3")} style={{ color: "#f59e0b" }} />
+      <div className="min-w-0">
+        <p className={cn("font-semibold leading-tight truncate", grande ? "text-xs" : "text-[9px]")} style={{ color: "#b45309" }}>
+          {revisao.agenteNome} está revisando
+        </p>
+        <p className={cn("leading-tight truncate", grande ? "text-[11px]" : "text-[9px]")} style={{ color: "var(--text-muted)" }}>
+          {`"${revisao.pedido}"`}
+        </p>
+      </div>
     </div>
   );
 }
@@ -413,7 +524,10 @@ function MediaPreview({
 
 // ── KanbanCard (minimal — opens modal on click) ───────────────────────────────
 
-function KanbanCard({
+// Exportados para a prova de renderToString: o quadro inteiro so monta as
+// celulas depois de escolher a semana no cliente, entao o SSR da pagina nunca
+// desenha um card. Provar o componente que desenha e o que pega o defeito.
+export function KanbanCard({
   card,
   agentRow,
   onOpenModal,
@@ -437,6 +551,9 @@ function KanbanCard({
 
   const isMedia = card.cardType === "media";
   const hasError = card.content?.startsWith("AVISO:");
+  // O pedido de ajuste em andamento, lido do proprio card: e o que faz o
+  // calendario mostrar a revisao sem depender do card estar aberto.
+  const revisao = lerRevisao(card.metadata);
   const virtual = (card.metadata as { virtual?: string; rotulo?: string } | null)?.virtual;
 
   // O lugar guardado do vídeo completo: traço pontilhado, porque é uma reserva
@@ -496,16 +613,24 @@ function KanbanCard({
       className={cn(
         "rounded-lg border cursor-pointer transition-all hover:shadow-md overflow-hidden",
         compact ? "text-[9px]" : "",
-        card.status === "approved" ? "border-green-500/40" : card.status === "rejected" ? "border-red-500/40" : ""
+        // A REVISÃO GANHA A COR, e ela vem antes de aprovado e rejeitado: um
+        // card que está sendo mexido agora não é mais o que o selo anterior
+        // dizia, e é isso que o cliente precisa ver primeiro.
+        revisao ? "border-amber-500" : card.status === "approved" ? "border-green-500/40" : card.status === "rejected" ? "border-red-500/40" : ""
       )}
       style={{
-        background: "var(--bg-card)",
-        borderColor: card.status === "approved" ? undefined : card.status === "rejected" ? undefined : "var(--border)",
+        background: revisao ? "rgba(245,158,11,0.06)" : "var(--bg-card)",
+        borderColor: revisao ? undefined : card.status === "approved" ? undefined : card.status === "rejected" ? undefined : "var(--border)",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
       }}
       onClick={() => onOpenModal(card, agentRow)}
     >
       <div className="p-2">
+        {revisao && (
+          <div className="mb-1.5">
+            <SeloDeRevisao revisao={revisao} />
+          </div>
+        )}
         <div className="flex items-start gap-1.5">
           <AgentAvatar agentId={card.agentId} color={agentRow.color} />
           <div className="flex-1 min-w-0">
@@ -573,11 +698,13 @@ function KanbanCard({
                 // "Aguardando revisão" para sempre, e o Bruno concluiu que a
                 // Vera "não está fazendo o trabalho dela".
                 const veredito = card.content?.match(/^Veredito:\s*(.+)$/m)?.[1]?.trim();
+                // "Precisa de você" e "o squad está corrigindo" nasceram em
+                // 29/09 com a correção automática depois da Vera.
                 const cor = !veredito
                   ? "var(--text-muted)"
-                  : /reprovad/i.test(veredito)
+                  : /reprovad|precisa de voc/i.test(veredito)
                     ? "#f87171"
-                    : /ressalva/i.test(veredito)
+                    : /ressalva|corrigindo/i.test(veredito)
                       ? "#fbbf24"
                       : "#4ade80";
                 const rotulo = veredito
@@ -642,14 +769,28 @@ function SocialPostPreview({
   content,
   imageUrl,
   scheduledAt,
+  status = "draft",
   poster,
+  conta,
 }: {
   platform: string | null;
   content: string;
   imageUrl: string | null;
   scheduledAt: string | null;
+  /**
+   * O status do post, que decide se o horário é "Agendado" (já aprovado, na
+   * fila) ou "sai ... se aprovar" (rascunho). Sem ele a prévia dizia
+   * "Agendado" sobre rascunho, e o cliente leu que ia sair sozinho (29/09).
+   */
+  status?: string;
   /** Capa do player quando a mídia é vídeo; sem ela o player abre preto. */
   poster?: string | null;
+  /**
+   * A conta por onde este post sai. Sem ela o preview mostrava "Seu perfil"
+   * genérico, inclusive quando o post ia para a PÁGINA da empresa: um preview
+   * que mostra a conta errada ensina a pessoa a não confiar no preview.
+   */
+  conta?: { platform: string; displayName: string | null; accountType: string; avatarUrl?: string | null } | null;
 }) {
   const isLinkedIn = platform === "linkedin";
   const isTwitter = platform === "twitter";
@@ -714,27 +855,39 @@ function SocialPostPreview({
             {marca.nome}
           </span>
         </div>
-        {scheduledAt && (
+        {scheduledAt && rotuloDoHorario({ status, scheduledAt }, true) && (
           <span style={{ color: "var(--text-muted)" }}>
-            Agendado: {new Date(scheduledAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            {rotuloDoHorario({ status, scheduledAt }, true)}
           </span>
         )}
       </div>
 
       {/* Post body */}
       <div className="p-4 space-y-3">
-        {/* Avatar + name mock */}
+        {/* Quem publica: a conta de verdade quando ela é conhecida. */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-            style={{ background: marca.cor === "var(--accent-orange)" ? "var(--bg-elevated)" : marca.cor }}>
-            P
-          </div>
+          {conta ? (
+            <FotoDaConta conta={conta} tamanho={40} />
+          ) : (
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+              style={{ background: marca.cor === "var(--accent-orange)" ? "var(--bg-elevated)" : marca.cor }}>
+              P
+            </div>
+          )}
           <div>
             <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
-              {isYouTube ? "Seu canal" : "Seu perfil"}
+              {conta?.displayName ?? (isYouTube ? "Seu canal" : "Seu perfil")}
             </p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {isLinkedIn ? "Profissional · 1ª" : isTwitter || isInstagram ? "@suaconta" : ""}
+              {conta
+                ? conta.accountType === "organization"
+                  ? "Página"
+                  : "Perfil"
+                : isLinkedIn
+                  ? "Profissional · 1ª"
+                  : isTwitter || isInstagram
+                    ? "@suaconta"
+                    : ""}
             </p>
           </div>
         </div>
@@ -784,6 +937,19 @@ function SocialPostPreview({
                   playsInline
                   style={{ maxHeight: 300, maxWidth: "100%", width: "auto", display: "block", margin: "0 auto" }}
                 />
+              </div>
+            );
+          }
+          // CARROSSEL: as lâminas vêm coladas com "|" num campo só, e o
+          // `<img>` com a string inteira quebrava (e o onError escondia o
+          // defeito). Cada lâmina no seu quadro, lado a lado.
+          const laminas = imageUrl.split("|").filter(Boolean);
+          if (laminas.length > 1) {
+            return (
+              <div className="flex gap-1 rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                {laminas.map((src, i) => (
+                  <img key={i} src={src} alt={`Lâmina ${i + 1}`} className="flex-1 min-w-0 object-cover" style={{ maxHeight: 200 }} />
+                ))}
               </div>
             );
           }
@@ -1019,16 +1185,35 @@ interface CardDetailModalProps {
   onCardUpdate: (card: CampaignCard) => void;
   onWeekRefresh?: () => void;
   onRestartWithTopic?: (topic: string) => void;
+  /**
+   * Os horários das peças da semana (id e instante). O card do Paulo usa para
+   * sugerir o próximo horário LIVRE quando a agenda do dia venceu, em vez de
+   * empurrar a peça para cima da peça de amanhã (29/09).
+   */
+  horariosDaSemana?: Array<{ id: string; scheduledAt: string }>;
 }
 
-function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, onCardUpdate, onWeekRefresh, onRestartWithTopic }: CardDetailModalProps) {
+function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, onCardUpdate, onWeekRefresh, onRestartWithTopic, horariosDaSemana = [] }: CardDetailModalProps) {
   const [localCard, setLocalCard] = useState(card);
   const [chatMsg, setChatMsg] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  /**
+   * A REVISÃO QUE ACABOU DE SER PEDIDA, antes de o servidor responder.
+   *
+   * O servidor grava a marca no card (lib/pipeline/revisao-do-card.ts), mas
+   * quem acabou de apertar enviar não vai reler o card no meio da própria
+   * chamada: a resposta só volta no fim. Este estado é o mesmo selo, mostrado
+   * na hora, e sai quando a resposta chega. O calendário continua lendo do
+   * banco, que é o que faz a outra aba ver a mesma coisa.
+   */
+  const [revisaoLocal, setRevisaoLocal] = useState<RevisaoEmAndamento | null>(null);
+  /** Qual post está sendo levado para outra rede agora (o id do original). */
+  const [levando, setLevando] = useState<string | null>(null);
   const [postScheduledAt, setPostScheduledAt] = useState<string | null>(null);
   const [postPlatform, setPostPlatform] = useState<string | null>(null);
   const [postContent, setPostContent] = useState<string | null>(null);
   const [postImageUrl, setPostImageUrl] = useState<string | null>(null);
+  const [postStatus, setPostStatus] = useState<string | null>(null);
   // All platform posts for the same day (linkedin + twitter)
   /**
    * O re-corte em andamento, com poll. Sem isto o Vitor dizia "estou
@@ -1059,6 +1244,32 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     return () => { vivo = false; };
   }, [card.metadata]);
 
+  // O TEXTO EDITÁVEL NO CARD DO PAULO (28/09). Pedido do Bruno: "no card,
+  // os textos devem ser editáveis, se o usuário quiser mudar algo no texto
+  // antes de aprovar". A edição existia só nos cards dos redatores, e é no
+  // Paulo que se aprova: quem queria trocar uma palavra tinha de pedir à IA
+  // e pagar para refazer a peça inteira.
+  const [editandoPost, setEditandoPost] = useState<{ id: string; texto: string } | null>(null);
+  const [salvandoPost, setSalvandoPost] = useState(false);
+  async function salvarTextoDoPost() {
+    if (!editandoPost) return;
+    setSalvandoPost(true);
+    try {
+      const res = await fetch(`/api/posts/${editandoPost.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editandoPost.texto }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "falha ao salvar");
+      setDayPosts((lista) => lista.map((x) => (x.id === editandoPost.id ? { ...x, content: editandoPost.texto } : x)));
+      setEditandoPost(null);
+      toast.success("Texto salvo. É esta versão que vai ao ar.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui salvar o texto");
+    } finally {
+      setSalvandoPost(false);
+    }
+  }
   const [dayPosts, setDayPosts] = useState<Array<{
     id: string;
     platform: string;
@@ -1080,6 +1291,12 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   const [editedContent, setEditedContent] = useState(localCard.content ?? "");
   const [savingEdit, setSavingEdit] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
+  /** Qual peça está sendo refeita agora, para a linha dela dizer isso. */
+  const [refazendo, setRefazendo] = useState<string | null>(null);
+  /** O protocolo do chamado recém-aberto, antes de o banco voltar na próxima leitura. */
+  const [chamadoAberto, setChamadoAberto] = useState<string | null>(null);
+  const [abrindoChamado] = useState(false); // a janela de ajuda cuida do envio (02/10)
+  const [publicandoComoImagem, setPublicandoComoImagem] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0); // for carousel navigation
   const [publishResult, setPublishResult] = useState<{
@@ -1089,9 +1306,42 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     url: string | null;
   }[] | null>(null);
 
+  /**
+   * A HISTÓRIA DA PEÇA, do parecer da Vera ao desfecho na rede.
+   *
+   * O modal abre pelo calendário, pelo kanban e pela ficha do agente, e só a
+   * ficha carregava o parecer. Aqui ele é buscado pelo próprio card, e vem
+   * junto o mp4 do dia quando o card ainda guarda o quadro 9:16 (o trabalho
+   * de vídeo atualizava os posts e não o card, até 19/09).
+   */
+  const [parecer, setParecer] = useState<{ etapas: EtapaDoParecer[]; videoUrl: string | null } | null>(null);
+  useEffect(() => {
+    if (card.cardType === "preview") return;
+    let vivo = true;
+    fetch(`/api/campaign-cards/${card.id}/parecer`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (vivo && d && Array.isArray(d.etapas)) setParecer({ etapas: d.etapas, videoUrl: d.videoUrl ?? null });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [card.id, card.cardType]);
+
+  // O selo vale para quem pediu agora (estado local) e para quem abriu o card
+  // no meio de um pedido feito de outra aba (a marca gravada no card).
+  const revisaoAberta = revisaoLocal ?? lerRevisao(localCard.metadata);
   const isMedia = localCard.cardType === "media";
   const isInfographic = isMedia && localCard.mediaType === "infographic";
+  // O mp4 no lugar do quadro, com o quadro de capa: "imagem comprida" nunca mais.
+  const midiaDaPeca = isMedia && parecer?.videoUrl ? parecer.videoUrl : localCard.mediaUrl;
+  const capaDaPeca =
+    (localCard.metadata as { thumb?: string | null } | null)?.thumb ??
+    (isMedia && parecer?.videoUrl && localCard.mediaUrl !== parecer.videoUrl ? localCard.mediaUrl : null);
   const isPublish = localCard.cardType === "publish";
+  // O card do vídeo (corte ou completo) com post ligado também aprova e agenda (30/09).
+  const acoesNoCardDoVideo = (localCard.cardType === "video_clip" || localCard.cardType === "video_completo") && Boolean(localCard.postId);
   const isPreview = localCard.cardType === "preview";
   const hasError = localCard.content?.startsWith("AVISO:");
 
@@ -1106,11 +1356,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
    * um texto mandando abrir o Paulo. Os dois cards travados foi o veredito do
    * Bruno. Para eles a busca é pela DATA do card, que a rota já aceitava.
    */
+  // Card do dia (Paulo, Vera) busca pela campanha e pelo dia dela, que não
+  // mudam quando o horário é remarcado (30/09); a data fica de reserva.
   const consultaDoDia = localCard.postId
     ? `postId=${localCard.postId}`
-    : (isPublish || isPreview) && localCard.scheduledDate
-      ? `scheduledDate=${encodeURIComponent(localCard.scheduledDate)}`
-      : null;
+    : (isPublish || isPreview) && localCard.runId && localCard.dayOfWeek
+      ? `runId=${localCard.runId}&dayOfWeek=${localCard.dayOfWeek}`
+      : (isPublish || isPreview) && localCard.scheduledDate
+        ? `scheduledDate=${encodeURIComponent(localCard.scheduledDate)}`
+        : null;
 
   useEffect(() => {
     // QUALQUER card com post ligado carrega o post, e não só o do Paulo.
@@ -1130,6 +1384,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
           setPostPlatform(data.post?.platform ?? null);
           setPostContent(data.post?.content ?? null);
           setPostImageUrl(data.post?.imageUrl ?? null);
+          setPostStatus(data.post?.status ?? null);
         })
         .catch(() => {});
     }
@@ -1161,6 +1416,14 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   async function sendChat() {
     if (!chatMsg.trim()) return;
     setChatLoading(true);
+    setRevisaoLocal({
+      pedido: chatMsg.trim().slice(0, 180),
+      porNome: null,
+      porImagem: null,
+      agenteId: localCard.agentId,
+      agenteNome: localCard.agentName,
+      desde: new Date().toISOString(),
+    });
     try {
       const isCarousel = localCard.mediaUrl?.includes("|");
       const res = await fetch(`/api/campaign-cards/${localCard.id}/chat`, {
@@ -1180,13 +1443,21 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         chatHistory: data.chatHistory,
         // For media cards, update mediaUrl if the API regenerated the image
         ...(data.updatedMediaUrl !== undefined ? { mediaUrl: data.updatedMediaUrl } : {}),
+        // O card de vídeo ajustado pelo chat (30/09) volta com o estado da
+        // edição: "o squad está fazendo" aparece na hora.
+        ...(data.updatedMetadata !== undefined ? { metadata: data.updatedMetadata } : {}),
       };
       setLocalCard(updated);
       setEditedContent(updated.content ?? "");
       onCardUpdate(updated);
       setChatMsg("");
+      if (data.refazendoCorte) vigiarRecorte();
 
-      if (data.updatedMediaUrl) {
+      if (data.aviso) {
+        // A resposta do Vitor pode ser uma pergunta ou um pedido de "sim":
+        // "Ajuste aplicado!" ali seria mentira.
+        toast.success(data.aviso);
+      } else if (data.updatedMediaUrl) {
         toast.success("Imagem regenerada com sucesso!");
       } else if (data.mediaError) {
         toast.error(`Prompt atualizado, mas imagem falhou: ${data.mediaError.slice(0, 80)}`);
@@ -1197,6 +1468,41 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
       toast.error("Erro ao ajustar.");
     } finally {
       setChatLoading(false);
+      setRevisaoLocal(null);
+      // O card que FEZ o trabalho pode ser outro (o pedido de imagem no card
+      // do Paulo é atendido no da Diana), e é o calendário que mostra os dois.
+      onWeekRefresh?.();
+    }
+  }
+
+  /**
+   * LEVA UM POST QUE JÁ SAIU PARA OUTRA REDE.
+   *
+   * Pedido do Bruno em 21/09. A peça nasce como RASCUNHO na rede nova, com o
+   * texto adaptado pelo mesmo caminho da campanha: quem aprovou o original
+   * aprova este também, e a plataforma não decide sozinha onde a marca fala.
+   * O porquê inteiro está em lib/pipeline/levar-para-outra-rede.ts.
+   */
+  async function levarParaRede(postId: string, accountId: string, rotulo: string) {
+    setLevando(postId);
+    try {
+      const res = await fetch(`/api/posts/${postId}/levar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não consegui levar o post.");
+        return;
+      }
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(`Post adaptado para ${rotulo}, em rascunho. Confira antes de publicar.`);
+    } catch {
+      toast.error("Não consegui levar o post.");
+    } finally {
+      setLevando(null);
     }
   }
 
@@ -1261,7 +1567,14 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
    * conta junto.
    */
   const [escolhidos, setEscolhidos] = useState<Set<string>>(new Set());
-  const publicavel = (p: { status: string }) => p.status !== "published" && p.status !== "cancelled";
+  /**
+   * REPROVADO NÃO SE PUBLICA. Antes de 21/09 isso nunca aparecia porque
+   * reprovar derrubava o dia inteiro e a lista sumia da tela; agora que a
+   * reprovação alcança uma peça só, o post reprovado continua na lista ao lado
+   * dos vivos, e deixá-lo marcável seria oferecer "Publicar agora" para
+   * exatamente o que o cliente acabou de recusar.
+   */
+  const publicavel = (p: { status: string }) => !ESTADOS_MORTOS.has(p.status);
   const chaveDosPosts = dayPosts.map((p) => `${p.id}:${p.status}`).join(",");
   useEffect(() => {
     // Ao carregar o dia, tudo o que ainda não saiu vem marcado: o caso comum
@@ -1270,8 +1583,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chaveDosPosts]);
 
-  const NOME_DA_REDE: Record<string, string> = { linkedin: "LinkedIn", twitter: "X", youtube: "YouTube", instagram: "Instagram", facebook: "Facebook" };
-  const ORDEM_DA_REDE = ["youtube", "linkedin", "instagram", "facebook", "twitter"];
+  const NOME_DA_REDE: Record<string, string> = { linkedin: "LinkedIn", twitter: "X", youtube: "YouTube", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
   const nomeDaRede = (plat: string) => NOME_DA_REDE[plat] ?? plat;
   const oQueE = (p: { platform: string; mediaType: string | null; content: string; metadata: Record<string, unknown> | null }) => {
     const mv = p.metadata as { trechoIndice?: number; gravacaoCompleta?: boolean } | null;
@@ -1281,22 +1593,142 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   };
   const postsDoDia = [...dayPosts].sort((a, b) => ORDEM_DA_REDE.indexOf(a.platform) - ORDEM_DA_REDE.indexOf(b.platform));
   const marcados = postsDoDia.filter((p) => escolhidos.has(p.id));
+  /**
+   * O HORÁRIO DO DIA TEM UMA FONTE SÓ: o `scheduledAt` do post (29/09).
+   *
+   * O card do Paulo mostrava 11:00 no cabeçalho, 09:00 na caixa e "o horário
+   * já passou" no rascunho. O 11:00 era o `scheduledDate` do próprio card de
+   * publicação, que a esteira grava duas horas depois do post (o post às 09:00,
+   * a Vera às 10:00, o Paulo às 11:00) para os cards caírem em ordem no quadro.
+   * Hora de card é ordem da esteira, não hora de publicação.
+   *
+   * `ocupados` são os horários das OUTRAS peças da semana: é com eles que a
+   * agenda vencida ganha uma sugestão de horário livre.
+   */
+  const idsDoDia = new Set(dayPosts.map((p) => p.id));
+  const ocupados = horariosDaSemana.filter((h) => !idsDoDia.has(h.id)).map((h) => h.scheduledAt);
+  const naFilaDoDia = postsDoDia.filter((p) => p.status === "scheduled" || p.status === "publishing");
+  const rascunhosDoDia = postsDoDia.filter((p) => publicavel(p) && p.status !== "scheduled" && p.status !== "publishing");
+  const horaDoCabecalho = naFilaDoDia[0]?.scheduledAt ?? postScheduledAt ?? localCard.scheduledDate;
+  // Onde o dia sai se o cliente aprovar agora: o planejado, ou a sugestão
+  // quando o planejado já passou. Nulo quando não há rascunho esperando.
+  const saidaSeAprovar = rascunhosDoDia.length > 0 && naFilaDoDia.length === 0 ? horarioParaFila(postScheduledAt, ocupados) : null;
+  // A hora que a prévia mostra: a da fila, para o que já foi aprovado; para o
+  // rascunho, a mesma que a caixa do Paulo propõe (a planejada, ou a
+  // sugestão quando ela venceu). "sai 29/09 09:00 se aprovar" às 16h seria
+  // outra promessa falsa.
+  const horaDaPrevia = (p: { status: string; scheduledAt: string | null }): string | null => {
+    const planejada = p.scheduledAt ?? postScheduledAt;
+    if (p.status === "scheduled" || p.status === "publishing" || p.status === "published") return planejada;
+    return horarioParaFila(planejada, ocupados)?.iso ?? planejada;
+  };
+  // AGENDA VENCIDA: a caixa de horário já abre com a sugestão preenchida,
+  // uma vez por abertura do card. Dizer só "o horário passou" deixava o
+  // cliente sem saber para quando mudar.
+  const sugestaoAberta = useRef(false);
+  useEffect(() => {
+    if (!isPublish || sugestaoAberta.current || !saidaSeAprovar?.andou) return;
+    sugestaoAberta.current = true;
+    const campos = paraCampos(new Date(saidaSeAprovar.iso));
+    setNewScheduleDate(campos.data);
+    setNewScheduleTime(campos.hora);
+    setRescheduleOpen(true);
+  }, [isPublish, saidaSeAprovar?.andou, saidaSeAprovar?.iso]);
+
+  /**
+   * O alcance da reprovação vive em `lib/content/reprovacao.ts`, com prova.
+   * O rótulo do botão e a ação saem da MESMA conta, que é o que faltava
+   * quando a tela dizia uma coisa e o clique fazia outra.
+   */
+  const alcanceReprovacao = alcanceDaReprovacao(postsDoDia, escolhidos);
 
   /** O card fecha (aprovado) quando nada do dia ficou por decidir. */
+  /**
+   * O card acompanha os posts dele.
+   *
+   * Duas correções de 18/09, das duas metades da queixa "deixei agendado e o
+   * card continua dizendo aguardando aprovação":
+   *
+   * 1. **grava no banco.** Antes isto só mexia no estado da tela, e um F5
+   *    trazia de volta o "Aguardando aprovação" com os posts agendados;
+   * 2. **basta UM post resolvido.** A regra antiga exigia que TODOS os posts
+   *    do dia estivessem agendados, publicados ou arquivados. Com quatro redes
+   *    e uma delas sem conta conectada, o dia nunca fechava.
+   */
   async function fecharSeTerminou() {
     if (!consultaDoDia) return;
     const r = await fetch(`/api/posts/by-day?projectId=${projectId}&${consultaDoDia}`);
     const data = await r.json();
     const posts: Array<{ status: string }> = Array.isArray(data.posts) ? data.posts : [];
-    if (posts.length > 0 && posts.every((p) => ["published", "scheduled", "cancelled"].includes(p.status))) {
-      const updated = { ...localCard, status: "approved" as const };
-      setLocalCard(updated);
-      onCardUpdate(updated);
+    const resolvidos = posts.filter((p) => ["published", "scheduled"].includes(p.status)).length;
+    if (resolvidos === 0 || localCard.status === "approved") return;
+
+    const updated = { ...localCard, status: "approved" as const };
+    setLocalCard(updated);
+    onCardUpdate(updated);
+    await fetch(`/api/campaign-cards/${localCard.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    }).catch(() => {
+      // A tela já mostra aprovado; o banco tenta de novo na próxima ação.
+    });
+    onWeekRefresh?.();
+  }
+
+  /**
+   * Tirar da fila: o post volta a rascunho e não sai mais sozinho.
+   *
+   * Pedido do Bruno em 18/09: "deve ser fácil cancelar o agendamento no card e
+   * na tela posts". Antes, o único caminho aqui era arquivar, que some com a
+   * peça: quem só queria adiar perdia o trabalho.
+   */
+  async function cancelarAgendamento(p: { id: string; platform: string }) {
+    setApproving(true);
+    try {
+      const res = await fetch(`/api/posts/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "draft" }),
+      });
+      if (!res.ok) throw new Error();
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(`${nomeDaRede(p.platform)} saiu da fila e voltou para rascunho.`);
+    } catch {
+      toast.error("Não consegui cancelar o agendamento. Tente de novo.");
+    } finally {
+      setApproving(false);
     }
+  }
+
+  /**
+   * A janela do TikTok, aberta antes de publicar ou agendar quando há post do
+   * TikTok entre os marcados. A promessa resolve com true depois que as
+   * escolhas foram gravadas, e false se a pessoa cancelou; aí a ação inteira
+   * para, porque seguir só com as outras redes sem avisar seria decidir por
+   * ela o que fazer com o vídeo do TikTok.
+   */
+  const [janelaTikTok, setJanelaTikTok] = useState<null | {
+    posts: PostParaTikTok[];
+    acao: "publicar" | "agendar";
+    resolver: (ok: boolean) => void;
+  }>(null);
+  function garantirEscolhasDoTikTok(lista: typeof marcados, acao: "publicar" | "agendar"): Promise<boolean> {
+    const doTikTok = lista.filter((p) => p.platform === "tiktok");
+    if (doTikTok.length === 0) return Promise.resolve(true);
+    return new Promise((resolver) =>
+      setJanelaTikTok({
+        posts: doTikTok.map((p) => ({ id: p.id, content: p.content, imageUrl: p.imageUrl })),
+        acao,
+        resolver,
+      })
+    );
   }
 
   async function publicarAgoraMarcados() {
     if (marcados.length === 0) return;
+    if (!(await garantirEscolhasDoTikTok(marcados, "publicar"))) return;
     setApproving(true);
     const results: { platform: string; accountName: string; publishedAt: string; url: string | null }[] = [];
     const falhas: string[] = [];
@@ -1332,13 +1764,14 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
   async function deixarAgendadoMarcados() {
     if (marcados.length === 0) return;
+    if (!(await garantirEscolhasDoTikTok(marcados, "agendar"))) return;
     setApproving(true);
     let agendados = 0;
     try {
       for (const p of marcados) {
         const acc = accountFor(p.platform, p.socialAccountId);
         if (!acc) { toast.error(`${nomeDaRede(p.platform)}: conecte a rede para agendar.`); continue; }
-        const fila = horarioParaFila(p.scheduledAt ?? postScheduledAt);
+        const fila = horarioParaFila(p.scheduledAt ?? postScheduledAt, ocupados);
         const res = await fetch(`/api/posts/${p.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1360,8 +1793,14 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     }
   }
 
+  /**
+   * Arquivar um post do dia. Sem a caixa do navegador desde 01/10: arquivar
+   * tem volta (o "Desfazer" do aviso, o "Desarquivar" da linha e a aba
+   * Arquivados de Posts), e confirmação para o que se desfaz só ensina a
+   * clicar em "sim" sem ler. O quadro da semana atualiza junto: antes, o post
+   * arquivado continuava "falhou" no cartão até recarregar a página.
+   */
   async function arquivarPost(p: { id: string; platform: string }) {
-    if (!window.confirm(`Arquivar o post de ${nomeDaRede(p.platform)} deste dia? Ele sai da fila; o resto do dia continua.`)) return;
     setApproving(true);
     try {
       const res = await fetch(`/api/posts/${p.id}`, {
@@ -1370,13 +1809,218 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         body: JSON.stringify({ status: "cancelled" }),
       });
       if (!res.ok) throw new Error();
-      toast.success(`Post de ${nomeDaRede(p.platform)} arquivado.`);
       await refreshDayPosts();
+      onWeekRefresh?.();
+      toast(
+        (t) => (
+          <span className="flex items-center gap-3 text-sm">
+            {`Post de ${nomeDaRede(p.platform)} arquivado.`}
+            <button
+              type="button"
+              className="rounded-md border px-2 py-0.5 text-xs font-semibold"
+              onClick={() => {
+                toast.dismiss(t.id);
+                void desarquivarPost(p);
+              }}
+            >
+              Desfazer
+            </button>
+          </span>
+        ),
+        { duration: 8000 }
+      );
     } catch {
       toast.error("Não foi possível arquivar o post.");
     } finally {
       setApproving(false);
     }
+  }
+
+  /** A volta do arquivar: o post retorna como rascunho, para revisar e agendar de novo. */
+  async function desarquivarPost(p: { id: string; platform: string }) {
+    try {
+      const res = await fetch(`/api/posts/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "draft" }),
+      });
+      if (!res.ok) throw new Error();
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(`Post de ${nomeDaRede(p.platform)} de volta, como rascunho.`);
+    } catch {
+      toast.error("Não consegui desarquivar. Use Posts, aba Arquivados.");
+    }
+  }
+
+  /**
+   * REFAZER UMA PEÇA, e o custo dito ANTES do clique.
+   *
+   * A conta sai de `custoDeRefazerPeca`, a MESMA função que o servidor chama
+   * para debitar. Tela e servidor calculando o mesmo preço em dois lugares foi
+   * o defeito de 21/09 (a janela dizia 688, a cobrança era 1.092), e a regra
+   * que ficou é que conta existe uma vez só.
+   */
+  function custoDeRefazer(p: { mediaType: string | null; imageUrl: string | null }) {
+    const laminas = (p.imageUrl ?? "").split("|").filter((u) => u.trim().length > 10).length;
+    return custoDeRefazerPeca({ mediaType: p.mediaType, laminas });
+  }
+
+  async function refazerUmaPeca(p: { id: string; platform: string; mediaType: string | null; imageUrl: string | null }) {
+    const custo = custoDeRefazer(p);
+    if (
+      !window.confirm(
+        `Refazer a peça de ${nomeDaRede(p.platform)}?\n\n` +
+          `O redator escreve o texto de novo, do zero${(p.imageUrl ?? "").length > 10 ? ", e a arte é refeita junto" : ""}. ` +
+          `A peça atual é substituída no lugar, e o dia continua como está.\n\n` +
+          `Custa ${custo} créditos, porque é uma entrega nova.`
+      )
+    ) {
+      return;
+    }
+    setRefazendo(p.id);
+    try {
+      const res = await fetch(`/api/posts/${p.id}/refazer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "não consegui refazer");
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(
+        `Peça de ${nomeDaRede(p.platform)} refeita${data.arteRefeita ? " com arte nova" : ""}. ${data.custo} créditos debitados.`
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui refazer a peça.");
+    } finally {
+      setRefazendo(null);
+    }
+  }
+
+  /**
+   * REFAZER AS PEÇAS REPROVADAS DO DIA, com o mesmo tema.
+   *
+   * Uma por vez, e não em paralelo: cada uma é uma chamada de texto e, quando
+   * tem arte, uma geração de imagem. Disparar quatro de uma vez multiplicaria
+   * o pico de uso do gerador contra a mesma cota que já derruba vídeo.
+   *
+   * O que falha não derruba o resto: a peça que não voltou fica onde está e a
+   * mensagem diz quantas saíram. Perder três porque a quarta falhou seria
+   * cobrar por um trabalho que não aconteceu.
+   */
+  async function refazerDiaReprovado(reprovados: Array<{ id: string; platform: string; mediaType: string | null; imageUrl: string | null }>) {
+    const custo = reprovados.reduce((s, p) => s + custoDeRefazer(p), 0);
+    if (
+      !window.confirm(
+        `Gerar ${reprovados.length === 1 ? "a peça" : `as ${reprovados.length} peças`} de novo, com o mesmo tema?\n\n` +
+          `O redator escreve do zero e a arte é refeita. As peças reprovadas são substituídas no lugar e voltam para rascunho, para você aprovar de novo.\n\n` +
+          `Custa ${custo} créditos, porque é entrega nova.`
+      )
+    ) {
+      return;
+    }
+    let feitas = 0;
+    const falhas: string[] = [];
+    for (const p of reprovados) {
+      setRefazendo(p.id);
+      try {
+        const res = await fetch(`/api/posts/${p.id}/refazer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "não consegui refazer");
+        feitas++;
+      } catch (e) {
+        falhas.push(`${nomeDaRede(p.platform)}: ${e instanceof Error ? e.message : "erro"}`);
+      }
+    }
+    setRefazendo(null);
+
+    // O dia volta a esperar decisão: as peças novas são rascunho, e quem
+    // reprovou o texto antigo não aprovou este.
+    if (feitas > 0) {
+      const updated = { ...localCard, status: "pending" };
+      setLocalCard(updated);
+      onCardUpdate(updated);
+      await fetch(`/api/campaign-cards/${localCard.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "pending", valeParaODia: true }),
+      }).catch(() => {});
+    }
+    await refreshDayPosts();
+    onWeekRefresh?.();
+
+    if (falhas.length === 0) {
+      toast.success(`${feitas === 1 ? "Peça refeita" : `${feitas} peças refeitas`} com o mesmo tema. Confira e aprove.`);
+    } else {
+      toast.error(`${feitas} refeita(s), ${falhas.length} não: ${falhas[0]}`);
+    }
+  }
+
+  /**
+   * ABRIR CHAMADO sobre uma peça que falhou.
+   *
+   * O cliente manda o que ele viu (a peça e o código). Quem sabe o que aquele
+   * código significa é o servidor, que lê o erro real do trabalho da fila e
+   * escreve o e-mail. Mandar o diagnóstico daqui seria pôr no navegador
+   * exatamente a informação que não pode estar nele.
+   */
+  /**
+   * PUBLICAR O DIA COMO IMAGEM, quando o video nao vem.
+   *
+   * A saida que faltava (21/09). Nao e um consolo: o quadro e uma peca de feed
+   * inteira, e e assim que o dia ja sai quando o saldo acaba antes de gerar. O
+   * credito de video volta e o trabalho sai da fila, senao ele acorda depois e
+   * entrega um mp4 para um dia que o cliente ja publicou.
+   */
+  async function publicarDiaComoImagem() {
+    if (!localCard.runId || !localCard.dayOfWeek) return;
+    if (
+      !window.confirm(
+        "Publicar este dia como imagem?\n\n" +
+          "A arte de abertura vira a peça: ela já tem manchete e o formato de cada rede. " +
+          "O vídeo sai da fila e os créditos de vídeo voltam para você.\n\n" +
+          "Isto não pode ser desfeito: para ter o vídeo depois, será preciso gerar o dia de novo."
+      )
+    ) {
+      return;
+    }
+    setPublicandoComoImagem(true);
+    try {
+      const res = await fetch("/api/posts/dia/publicar-como-imagem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: localCard.runId, dayOfWeek: localCard.dayOfWeek }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "não consegui trocar as peças");
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(
+        `${data.pecas} peça(s) agora são imagem.` +
+          (data.creditosDevolvidos > 0 ? ` ${data.creditosDevolvidos} créditos de vídeo devolvidos.` : "")
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui publicar como imagem.");
+    } finally {
+      setPublicandoComoImagem(false);
+    }
+  }
+
+  // O CHAMADO COM O CÓDIGO PREENCHIDO (02/10): abre a janela de ajuda já com
+  // a categoria, o código e a peça, e a pessoa só conta o que viu. O
+  // diagnóstico técnico continua sendo montado no servidor (lib/suporte).
+  async function abrirChamado(postId: string, codigo?: string) {
+    abrirJanelaDeChamado({
+      categoria: "problema",
+      codigo,
+      postId,
+      aoAbrir: (protocolo) => {
+        setChamadoAberto(protocolo);
+        void refreshDayPosts();
+      },
+    });
   }
 
   async function handleRestartCampaign() {
@@ -1420,15 +2064,37 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     }
   }
 
+  /**
+   * REPROVAR, e os dois exageros que ele tinha (relato do Bruno em 21/09:
+   * "reprovei um post, a mensagem foi que eu rejeitei a campanha").
+   *
+   * O botão reprovava TODOS os posts do dia, sempre, ignorando a marcação que
+   * as ações vizinhas ("Publicar agora", "Deixar agendado") já respeitam. Quem
+   * queria derrubar a peça do Instagram derrubava também LinkedIn, X e
+   * Facebook, sem ver a conta acontecendo.
+   *
+   * E o card virava `rejected` mesmo quando sobravam posts vivos, o que
+   * acendia o aviso vermelho, escondia a lista do dia e chamava um dia de
+   * CAMPANHA. Três leituras erradas a partir de um clique certo.
+   *
+   * Agora: reprova o que está marcado (ou o dia inteiro quando não há marcação,
+   * que é o comportamento antigo, mas dito antes no rótulo do botão), e o card
+   * só cai para `rejected` quando não sobra nenhum post vivo no dia.
+   */
   async function handleRejectFlow() {
     if (!localCard.postId) return;
     if (!showRejectForm) {
       setShowRejectForm(true);
       return;
     }
+    const alcance = alcanceReprovacao;
+    if (alcance.alvos.length === 0) {
+      toast.error("Nada para reprovar: os posts deste dia já foram publicados ou arquivados.");
+      return;
+    }
     setApproving(true);
     try {
-      const ids = dayPosts.length > 0 ? dayPosts.map((p) => p.id) : [localCard.postId];
+      const ids = alcance.alvos.map((p) => p.id);
       for (const pid of ids) {
         await fetch(`/api/posts/${pid}`, {
           method: "PATCH",
@@ -1447,12 +2113,43 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
           }),
         }).catch(() => {});
       }
-      const updated = { ...localCard, status: "rejected" };
-      setLocalCard(updated);
-      onCardUpdate(updated);
+
+      /**
+       * O DIA SÓ É "REJEITADO" QUANDO NÃO SOBRA NADA DE PÉ NELE, e isso agora
+       * é GRAVADO (21/09).
+       *
+       * Relato do Bruno: "rejeitei o post do dia 21, mas o card ainda fica
+       * aparecendo que estava aguardando aprovação". Medido no banco: os cinco
+       * posts estavam `rejected` desde 19:33 e os oito cards do dia continuavam
+       * `pending`, com a última alteração às 14:05.
+       *
+       * A reprovação só mexia no estado da TELA. É exatamente o defeito que o
+       * "aprovado" teve em 18/09 ("deixei agendado e o card continua dizendo
+       * aguardando aprovação"), consertado lá e não aqui.
+       *
+       * `valeParaODia` porque o dia tem oito cards (pesquisa, mídia, cada
+       * redator, revisão, publicação) e o calendário lê o do publicador, não o
+       * que estava aberto.
+       */
+      if (!alcance.sobrouVivo) {
+        const updated = { ...localCard, status: "rejected" };
+        setLocalCard(updated);
+        onCardUpdate(updated);
+        await fetch(`/api/campaign-cards/${localCard.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "rejected", valeParaODia: true }),
+        }).catch(() => {
+          // A tela já mostra reprovado; a próxima ação do dia tenta de novo.
+        });
+      }
+
       setShowRejectForm(false);
       setRejectReason("");
-      toast.success("Post(s) rejeitado(s). Feedback salvo para melhorar próximas campanhas.");
+      setEscolhidos(new Set());
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      toast.success(avisoDaReprovacao(alcance));
     } catch {
       toast.error("Erro.");
     } finally {
@@ -1482,28 +2179,127 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     }
   }
 
+  /**
+   * REAGENDAR, e o que estava quebrado nele (achado em 21/09, relato do Bruno
+   * de que "o botao reagendar nao funciona").
+   *
+   * Três defeitos somados, e nenhum quebrava compilação:
+   *
+   *   1. o campo de data nascia VAZIO, e o botão Salvar nasce desabilitado
+   *      enquanto ele estiver vazio. Quem clicava em Reagendar via um painel
+   *      com um botão morto, e a leitura correta disso é "não funciona".
+   *      Agora o painel abre com a data e a hora que o dia JÁ tem;
+   *   2. mandava a data nova para TODOS os posts do dia, inclusive os já
+   *      publicados. Post publicado não reagenda: mexer nele era escrever
+   *      uma data de publicação que não aconteceu;
+   *   3. o erro de um post derrubava o laço no meio, com os anteriores já
+   *      movidos e sem dizer quais. Agora cada falha é contada e nomeada.
+   *
+   * O post agendado continua agendado e sai no horário novo; o rascunho
+   * continua rascunho, que é a regra da rota e não muda aqui.
+   */
   async function handleReschedule() {
-    if (!newScheduleDate || !newScheduleTime) return;
+    if (!newScheduleDate || !newScheduleTime) {
+      toast.error("Escolha a data e a hora antes de salvar.");
+      return;
+    }
+    const moveis = postsDoDia.filter((p) => p.status !== "published" && p.status !== "cancelled");
+    if (moveis.length === 0) {
+      toast.error("Nada para reagendar: os posts deste dia já foram publicados ou arquivados.");
+      return;
+    }
     setRescheduling(true);
     try {
-      const dt = new Date(`${newScheduleDate}T${newScheduleTime}:00`).toISOString();
-      const ids = dayPosts.length > 0 ? dayPosts.map((p) => p.id) : localCard.postId ? [localCard.postId] : [];
-      for (const pid of ids) {
-        const res = await fetch(`/api/posts/${pid}`, {
+      // O que o cliente digitou é hora de Brasília, qualquer que seja o fuso
+      // do navegador (29/09).
+      const dt = deCampos(newScheduleDate, newScheduleTime).toISOString();
+      const falhas: string[] = [];
+      for (const post of moveis) {
+        const res = await fetch(`/api/posts/${post.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ scheduledAt: dt }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro ao reagendar");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) falhas.push(`${nomeDaRede(post.platform)}: ${data.error ?? `erro ${res.status}`}`);
       }
       await refreshDayPosts();
-      setRescheduleOpen(false);
-      toast.success("Reagendado com sucesso!");
+      onWeekRefresh?.();
+      if (falhas.length === 0) {
+        setRescheduleOpen(false);
+        toast.success(`${moveis.length} post(s) reagendado(s) para ${formatScheduledAt(dt)}.`);
+      } else if (falhas.length < moveis.length) {
+        toast.error(`Reagendei ${moveis.length - falhas.length}, e ${falhas.length} falhou: ${falhas[0]}`);
+      } else {
+        toast.error(falhas[0]);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao reagendar.");
     } finally {
       setRescheduling(false);
+    }
+  }
+
+  /**
+   * TIRAR O DIA INTEIRO DA FILA, para mexer nas configurações de novo.
+   *
+   * Pedido do Bruno em 21/09: "deve ter uma opção de cancelar o agendamento e
+   * mexer novamente nas configurações". Existia só por post ("Tirar da fila"),
+   * uma rede de cada vez, e quem queria repensar o dia tinha que clicar quatro
+   * vezes e torcer para não esquecer uma: a que sobrasse ia ao ar sozinha, que
+   * é o pior desfecho possível de uma tela de revisão.
+   */
+  async function cancelarAgendamentoDoDia() {
+    const naFila = postsDoDia.filter((p) => p.status === "scheduled" || p.status === "publishing");
+    if (naFila.length === 0) {
+      toast.error("Nenhum post deste dia está na fila.");
+      return;
+    }
+    setApproving(true);
+    try {
+      const falhas: string[] = [];
+      for (const post of naFila) {
+        const res = await fetch(`/api/posts/${post.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          // `status: draft` e nao `cancelSchedule`: o segundo APAGA o horario,
+          // e quem tira o dia da fila para ajustar nao quer perder a data que
+          // escolheu. Medido no dev local em 21/09: com cancelSchedule o card
+          // passava a dizer "sem horario definido" e o painel de reagendar
+          // sugeria daqui a uma hora, em vez do dia que era.
+          body: JSON.stringify({ status: "draft" }),
+        });
+        if (!res.ok) falhas.push(nomeDaRede(post.platform));
+      }
+      await refreshDayPosts();
+      onWeekRefresh?.();
+      if (falhas.length === 0) {
+        /**
+         * O CARD VOLTA A PEDIR DECISAO junto com os posts.
+         *
+         * Sem isto o card continuava "aprovado" com os posts em rascunho, e a
+         * lista "o que sai neste dia" (que so aparece em card nao aprovado)
+         * some: a pessoa cancela o agendamento para ajustar e fica sem a tela
+         * onde se ajusta. Duas telas contando a mesma historia de dois jeitos,
+         * de novo.
+         */
+        await fetch(`/api/campaign-cards/${localCard.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "pending" }),
+        }).catch(() => {});
+        const voltou = { ...localCard, status: "pending" };
+        setLocalCard(voltou);
+        onCardUpdate(voltou);
+        setRescheduleOpen(true);
+        toast.success(`${naFila.length} post(s) saíram da fila e voltaram para rascunho. Ajuste o que quiser e agende de novo.`);
+      } else {
+        toast.error(`Não consegui tirar da fila: ${falhas.join(", ")}.`);
+      }
+    } catch {
+      toast.error("Não consegui cancelar o agendamento do dia.");
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -1514,9 +2310,26 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+        // Sem desfoque: este modal toca o corte, e o backdrop-filter refazia o
+        // desfoque a cada quadro do vídeo (quadros caídos, ver semana-do-quadro).
+        style={{ background: "rgba(0,0,0,0.78)" }}
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
+        {janelaTikTok && (
+          <JanelaDoTikTok
+            projectId={projectId}
+            posts={janelaTikTok.posts}
+            acao={janelaTikTok.acao}
+            onConcluir={() => {
+              janelaTikTok.resolver(true);
+              setJanelaTikTok(null);
+            }}
+            onCancelar={() => {
+              janelaTikTok.resolver(false);
+              setJanelaTikTok(null);
+            }}
+          />
+        )}
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -1534,35 +2347,82 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
                   {CARD_TYPE_LABELS[localCard.cardType] ?? localCard.cardType}
                 </span>
-                {localCard.scheduledDate && (
+                {/* A hora do POST, e não a do card (29/09): ver horaDoCabecalho. */}
+                {horaDoCabecalho && (
                   <span className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
                     <AlarmClock className="w-3 h-3" />
-                    {formatScheduledAt(localCard.scheduledDate)}
+                    {formatScheduledAt(horaDoCabecalho)}
                   </span>
                 )}
               </div>
+              {/* O ESTADO VEM DOS POSTS, e não do status gravado no card.
+
+                  O Bruno agendou um dia e o cabeçalho continuou dizendo
+                  "Aguardando aprovação" com os posts já na fila. O status do
+                  card é uma cópia que pode envelhecer; os posts são o fato.
+                  Quem decide o que a tela diz é o fato. */}
+              {revisaoAberta && (
+                <div className="mt-2">
+                  <SeloDeRevisao revisao={revisaoAberta} grande />
+                </div>
+              )}
               <div className="flex items-center gap-2 mt-0.5">
-                {localCard.status === "approved" && <span className="text-xs flex items-center gap-1 text-green-400"><CheckCircle2 className="w-3 h-3" /> Aprovado</span>}
-                {localCard.status === "rejected" && <span className="text-xs flex items-center gap-1 text-red-400"><X className="w-3 h-3" /> Rejeitado</span>}
-                {localCard.status === "pending" && <span className="text-xs" style={{ color: "var(--text-muted)" }}>Aguardando aprovação</span>}
+                {(() => {
+                  const publicados = dayPosts.filter((p) => p.status === "published").length;
+                  const naFilaAgora = dayPosts.filter((p) => p.status === "scheduled").length;
+                  if (publicados > 0) {
+                    return (
+                      <span className="text-xs flex items-center gap-1 text-green-400">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {publicados === dayPosts.length ? "Publicado" : `Publicado em ${publicados} de ${dayPosts.length}`}
+                      </span>
+                    );
+                  }
+                  if (naFilaAgora > 0) {
+                    return (
+                      <span className="text-xs flex items-center gap-1" style={{ color: "rgb(96,165,250)" }}>
+                        <AlarmClock className="w-3 h-3" />
+                        {naFilaAgora === dayPosts.length
+                          ? "Agendado, sai sozinho"
+                          : `Agendado em ${naFilaAgora} de ${dayPosts.length}`}
+                      </span>
+                    );
+                  }
+                  if (localCard.status === "approved")
+                    return <span className="text-xs flex items-center gap-1 text-green-400"><CheckCircle2 className="w-3 h-3" /> Aprovado</span>;
+                  if (localCard.status === "rejected")
+                    return <span className="text-xs flex items-center gap-1 text-red-400"><X className="w-3 h-3" /> Rejeitado</span>;
+                  // Card de espera: não há o que aprovar ainda (29/09).
+                  if (cardEmProducao(localCard))
+                    return <span className="text-xs flex items-center gap-1" style={{ color: "#c084fc" }}><Loader2 className="w-3 h-3 animate-spin" /> O squad está fazendo esta peça</span>;
+                  return (
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      Aguardando aprovação
+                      {saidaSeAprovar ? `: ${saidaSeAprovar.andou ? "o horário planejado passou; sugerimos" : "sai"} ${diaEHora(new Date(saidaSeAprovar.iso))} se você aprovar` : ""}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg transition-all hover:bg-white/10" style={{ color: "var(--text-muted)" }}>
+            <button onClick={onClose} className="p-1.5 rounded-lg transition-all hover:bg-[var(--realce-2)]" style={{ color: "var(--text-muted)" }}>
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {/* A linha do tempo do parecer, antes do conteúdo: quem abre a
+                peça quer saber primeiro em que pé ela está. */}
+            {parecer && parecer.etapas.length > 0 && <LinhaDoTempoDoParecer etapas={parecer.etapas} />}
             {/* Content */}
             {isMedia ? (
               <div className="space-y-3">
                 <MediaPreview
-                  mediaUrl={localCard.mediaUrl}
+                  mediaUrl={midiaDaPeca}
                   cardType="media"
                   large
-                  // A capa do corte vira o quadro de abertura do player.
-                  poster={(localCard.metadata as { thumb?: string | null } | null)?.thumb ?? null}
+                  // A capa do corte (ou o quadro do vídeo) vira o quadro de abertura do player.
+                  poster={capaDaPeca}
                   onSlideChange={setCurrentSlide}
                 />
                 {isInfographic && !hasError && localCard.mediaUrl ? (
@@ -1611,7 +2471,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}
                     >
                       <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Ex: {isInfographic ? <em>"refaça o infográfico destacando os 3 principais dados do post"</em> : <em>"fundo azul com gráficos modernos, estilo corporativo"</em>}</span>
+                      <span>Ex: {isInfographic ? <em>&ldquo;refaça o infográfico destacando os 3 principais dados do post&rdquo;</em> : <em>&ldquo;fundo azul com gráficos modernos, estilo corporativo&rdquo;</em>}</span>
                     </div>
                   </div>
                 ) : localCard.content ? (
@@ -1660,6 +2520,91 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         Vitor Vídeo está refazendo este corte. O vídeo atualiza aqui sozinho.
                       </div>
                     )}
+                    {/* A revisão do corte pela Vera (lib/media/revisao-do-corte.ts):
+                        enquanto o Vitor refaz, o card diz isso e o motivo; se não
+                        teve conserto, o motivo chega ao cliente às claras. */}
+                    {!refazendoCorte && (() => {
+                      const leitura = lerRevisaoDoCorte(
+                        (localCard.metadata as { revisaoDoCorte?: RevisaoDoCorte } | null)?.revisaoDoCorte
+                      );
+                      if (!leitura || leitura.estado === "aprovado") return null;
+                      return (
+                        <div
+                          className="rounded-xl border px-3 py-2 text-sm space-y-1"
+                          style={{
+                            borderColor: leitura.trabalhando ? "#c084fc" : "var(--accent-orange)",
+                            color: leitura.trabalhando ? "#c084fc" : "var(--accent-orange)",
+                          }}
+                        >
+                          <p className="flex items-center gap-2 font-medium">
+                            {leitura.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {leitura.rotulo}
+                          </p>
+                          {leitura.detalhe && <p style={{ color: "var(--text-muted)" }}>{leitura.detalhe}</p>}
+                        </div>
+                      );
+                    })()}
+                    {/* A edição completa, espelhada no card como `montagem`
+                        (lib/media/montagem-nos-cortes.ts). */}
+                    {(() => {
+                      const mo = lerMontagem((localCard.metadata as { montagem?: unknown } | null)?.montagem);
+                      if (!mo) return null;
+                      const metaMo = localCard.metadata as { videoJobId?: string; completo?: boolean; trechoIndice?: number } | null;
+                      return (
+                        <div
+                          className="rounded-xl border px-3 py-2 text-sm space-y-1"
+                          style={{
+                            borderColor: mo.trabalhando ? "#c084fc" : mo.podeTentarDeNovo ? "var(--accent-orange)" : "var(--border)",
+                            color: mo.trabalhando ? "#c084fc" : mo.estado === "pronto" ? "#4ade80" : mo.podeTentarDeNovo ? "var(--accent-orange)" : "var(--text-muted)",
+                          }}
+                        >
+                          <p className="flex items-center gap-2 font-medium">
+                            {mo.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {mo.rotulo}
+                          </p>
+                          {mo.detalhe && <p style={{ color: "var(--text-muted)" }}>{mo.detalhe}</p>}
+                          {/* A saída da falha técnica (01/10, parte 240), sem cobrar. */}
+                          {mo.podeTentarDeNovo && metaMo?.videoJobId && (metaMo.completo === true || typeof metaMo.trechoIndice === "number") && (
+                            <div className="pt-1">
+                              <TentarMontagem
+                                videoJobId={metaMo.videoJobId}
+                                alvo={metaMo.completo === true ? "completo" : (metaMo.trechoIndice as number)}
+                                compacto
+                                aoPedir={() => {
+                                  const updated = {
+                                    ...localCard,
+                                    metadata: { ...(localCard.metadata ?? {}), montagem: { estado: "gerando", desde: new Date().toISOString(), motivo: null, falhaTecnica: false } },
+                                  };
+                                  setLocalCard(updated);
+                                  onCardUpdate(updated);
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* A abertura por IA (Higgsfield), espelhada no card como
+                        `aberturaIa` (lib/media/higgsfield-nos-cortes.ts). */}
+                    {(() => {
+                      const ia = lerAberturaIa((localCard.metadata as { aberturaIa?: unknown } | null)?.aberturaIa);
+                      if (!ia) return null;
+                      return (
+                        <div
+                          className="rounded-xl border px-3 py-2 text-sm space-y-1"
+                          style={{
+                            borderColor: ia.trabalhando ? "#c084fc" : "var(--border)",
+                            color: ia.trabalhando ? "#c084fc" : ia.estado === "pronto" ? "#4ade80" : "var(--text-muted)",
+                          }}
+                        >
+                          <p className="flex items-center gap-2 font-medium">
+                            {ia.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {ia.rotulo}
+                          </p>
+                          {ia.detalhe && <p style={{ color: "var(--text-muted)" }}>{ia.detalhe}</p>}
+                        </div>
+                      );
+                    })()}
                     {(() => {
                       const meta = localCard.metadata as { destinoRotulo?: string } | null;
                       const metaDest = localCard.metadata as { destino?: string } | null;
@@ -1693,7 +2638,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         (localCard.metadata as { thumb?: string | null } | null)?.thumb ?? undefined
                       }
                       controls
-                      preload="metadata"
+                      // Aberto = a pessoa vai assistir: buffer adiantado desde já (30/09).
+                      preload="auto"
                       className="w-full max-h-[50vh] rounded-xl bg-black object-contain"
                     />
                     {/* A capa do completo no YouTube: duas opções e o estilo,
@@ -1803,7 +2749,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             platform={proprio.platform}
                             content={proprio.content}
                             imageUrl={(localCard.metadata as { thumb?: string | null } | null)?.thumb ?? null}
-                            scheduledAt={proprio.scheduledAt ?? null}
+                            scheduledAt={horaDaPrevia(proprio)}
+                            status={proprio.status}
+                            conta={accountFor(proprio.platform, proprio.socialAccountId) ?? null}
                           />
                           {/* Publicar NÃO é aqui. O botão "Publicar agora"
                               viveu neste card de 31/08 a 02/09 e virou um
@@ -1815,7 +2763,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             {proprio.status === "published"
                               ? "Este post já foi publicado."
                               : conta
-                                ? "Para publicar, abra o card do Paulo deste dia: ele lista todos os posts prontos."
+                                ? "Aprove e agende logo abaixo, ou pelo card do Paulo deste dia, que lista todos os posts prontos."
                                 : "Conecte esta rede em Configurações; a publicação é pelo card do Paulo deste dia."}
                           </p>
                         </div>
@@ -1828,7 +2776,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   {!editing && localCard.cardType !== "preview" && localCard.cardType !== "publish" && (
                     <button
                       onClick={() => { setEditing(true); setEditedContent(localCard.content ?? ""); }}
-                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all hover:bg-white/5"
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all hover:bg-[var(--realce-1)]"
                       style={{ color: "var(--text-muted)" }}
                     >
                       <Pencil className="w-3 h-3" /> Editar
@@ -1875,6 +2823,110 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 se publica; na Vera, porque o card dela PROMETE "confira como
                 cada post vai aparecer na rede" e até 02/09 só mostrava esse
                 texto, sem prévia nenhuma. */}
+            {/* ── O VÍDEO QUE NÃO SAIU, e por quê (21/09) ──
+                O Bruno reprovou o dia 21 "porque estava sem vídeo", e a tela
+                não dizia nada: o Veo tinha recusado as três tentativas por
+                cobrança do Google, os créditos voltaram, e a peça ficou com o
+                quadro dentro, calada. Falha de fornecedor que o cliente paga
+                em silêncio é a pior das telas mudas. */}
+            {(() => {
+              type MarcaDeFalha = {
+                codigo?: string;
+                motivo?: string;
+                podeTentarDeNovo?: boolean;
+                resolveSozinho?: boolean;
+                /** O trabalho está pausado esperando o gerador: ainda vai tentar. */
+                aguardando?: boolean;
+                /** O cliente pediu de novo e o vídeo está sendo gerado (28/09). */
+                refazendo?: boolean;
+                /** Engasgo do gerador (28/09): a hora da próxima tentativa. */
+                proximaEm?: string;
+                tentativa?: number;
+                de?: number;
+                chamado?: { protocolo?: string };
+              };
+              const peca = dayPosts.find((p) => (p.metadata as { videoFalhou?: MarcaDeFalha } | null)?.videoFalhou?.motivo);
+              const falha = (peca?.metadata as { videoFalhou?: MarcaDeFalha } | null)?.videoFalhou;
+              if (!peca || !falha?.motivo) return null;
+              const protocolo = falha.chamado?.protocolo ?? chamadoAberto;
+              return (
+                <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }}>
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    {/* ESPERANDO e NÃO VEIO são estados diferentes (21/09, noite).
+                        O Bruno abriu o card com o vídeo pausado por cota e viu só o
+                        quadro, sem uma palavra. Enquanto a fila ainda vai tentar, a
+                        peça diz isso; quando desiste, diz que não veio. */}
+                    <p className="text-xs font-semibold text-amber-400">
+                      {falha.refazendo
+                        ? "Gerando o vídeo de novo"
+                        : falha.aguardando
+                          ? "O vídeo desta peça ainda não foi gerado: está esperando o gerador"
+                          : "O vídeo desta peça não foi gerado"}
+                    </p>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>
+                      {falha.motivo}
+                      {falha.refazendo
+                        ? ""
+                        : falha.aguardando && falha.proximaEm
+                        ? ` Nova tentativa às ${new Date(falha.proximaEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} (${falha.tentativa} de ${falha.de}). Enquanto isso, o que você vê é o quadro de abertura, e a peça não publica sem o vídeo.`
+                        : falha.aguardando
+                          ? " A fila tenta de novo sozinha; enquanto isso, o que você vê é o quadro de abertura, e a peça não publica sem o vídeo."
+                          : ""}
+                    </p>
+                    {/* O CÓDIGO, e não o diagnóstico. O que ele significa é
+                        assunto interno: o cliente informa o código e quem lê o
+                        resto é quem pode resolver (pedido do Bruno, 21/09). */}
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      {falha.codigo && !falha.refazendo && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-[2px] rounded font-mono"
+                          style={{ background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                        >
+                          {falha.codigo}
+                        </span>
+                      )}
+                      {!falha.resolveSozinho &&
+                        (protocolo ? (
+                          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                            Chamado aberto: <b className="font-mono">{protocolo}</b>. Você recebe a resposta por e-mail.
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={abrindoChamado}
+                            onClick={() => void abrirChamado(peca.id, falha.codigo)}
+                            className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-amber-500/50 hover:text-amber-400 disabled:opacity-50"
+                            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          >
+                            {abrindoChamado ? "Abrindo…" : "Abrir chamado"}
+                          </button>
+                        ))}
+                      {/* A SAIDA (21/09): "o usuario fica sem opcao".
+                          O quadro de abertura ja e uma peca de feed inteira,
+                          com manchete e formato de cada rede, e e assim que o
+                          dia sai quando o saldo de video acaba ANTES. Aqui a
+                          mesma saida e oferecida DEPOIS, quando o video foi
+                          tentado e nao veio: o dia publica como imagem, o
+                          trabalho sai da fila e o credito de video volta. */}
+                      {localCard.runId && localCard.dayOfWeek && (
+                        <button
+                          type="button"
+                          disabled={publicandoComoImagem}
+                          onClick={() => void publicarDiaComoImagem()}
+                          className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-orange-500/50 hover:text-orange-400 disabled:opacity-50"
+                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          title="Publica a arte de abertura como imagem, tira o vídeo da fila e devolve os créditos de vídeo."
+                        >
+                          {publicandoComoImagem ? "Trocando…" : "Publicar como imagem"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {(isPublish || isPreview) && (
               <div className="space-y-3">
                 <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
@@ -1893,9 +2945,81 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       const isTwitterThread =
                         p.platform === "twitter" &&
                         (mt === "thread" || /^\d+[\/\.]\s/m.test(p.content));
-                      if (mt === "poll") return <PollPreview key={p.id} content={p.content} platform={p.platform} />;
-                      if (isTwitterThread) return <ThreadPreview key={p.id} content={p.content} />;
-                      if (mt === "article") return <ArticlePreview key={p.id} content={p.content} />;
+                      /**
+                       * REFAZER ESTA PEÇA, embaixo da prévia dela (21/09).
+                       *
+                       * A lista "o que sai neste dia" só existe enquanto o dia
+                       * não foi aprovado, e é justamente no dia aprovado que o
+                       * cliente olha a peça pronta e não gosta. Sem esta barra,
+                       * quem aprovou a semana ficava sem caminho e voltava para
+                       * o botão que gera uma campanha inteira.
+                       */
+                      const barraDeRefazer =
+                        p.status === "published" || p.status === "cancelled" ? null : (
+                          <div className="flex items-center justify-end gap-3 px-1">
+                            <button
+                              type="button"
+                              disabled={approving || editandoPost?.id === p.id}
+                              onClick={() => setEditandoPost({ id: p.id, texto: p.content })}
+                              title={`Mudar o texto de ${nomeDaRede(p.platform)} antes de aprovar. Não gasta créditos.`}
+                              className="flex items-center gap-1 text-[10px] font-medium transition-all hover:text-orange-400 disabled:opacity-40"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                              Editar texto
+                            </button>
+                            <button
+                              type="button"
+                              disabled={approving || refazendo === p.id}
+                              onClick={() => void refazerUmaPeca(p)}
+                              title={`Escrever de novo a peça de ${nomeDaRede(p.platform)}, do zero. Custa ${custoDeRefazer(p)} créditos.`}
+                              className="flex items-center gap-1 text-[10px] font-medium transition-all hover:text-orange-400 disabled:opacity-40"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              <RefreshCw className={cn("w-3 h-3", refazendo === p.id && "animate-spin")} />
+                              {refazendo === p.id
+                                ? "Refazendo esta peça…"
+                                : `Refazer esta peça · ${custoDeRefazer(p)} créditos`}
+                            </button>
+                          </div>
+                        );
+                      const comRefazer = (previa: React.ReactNode) => (
+                        <div key={p.id} className="space-y-1.5">
+                          {editandoPost?.id === p.id ? (
+                            <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
+                              <p className="text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                                Texto de {nomeDaRede(p.platform)}
+                              </p>
+                              <textarea
+                                value={editandoPost.texto}
+                                onChange={(e) => setEditandoPost({ id: p.id, texto: e.target.value })}
+                                rows={10}
+                                autoFocus
+                                className="w-full text-sm px-3 py-2 rounded-lg border outline-none resize-y leading-relaxed"
+                                style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+                                  {editandoPost.texto.length} caracteres
+                                  {p.platform === "twitter" && !editandoPost.texto.includes("\n\n") && editandoPost.texto.length > 280 ? ", passa de 280 no X" : ""}
+                                </span>
+                                <div className="flex gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => setEditandoPost(null)}>Cancelar</Button>
+                                  <Button size="sm" onClick={() => void salvarTextoDoPost()} loading={salvandoPost} disabled={!editandoPost.texto.trim()}>
+                                    Salvar texto
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            previa
+                          )}
+                          {barraDeRefazer}
+                        </div>
+                      );
+                      if (mt === "poll") return comRefazer(<PollPreview content={p.content} platform={p.platform} />);
+                      if (isTwitterThread) return comRefazer(<ThreadPreview content={p.content} />);
+                      if (mt === "article") return comRefazer(<ArticlePreview content={p.content} />);
                       // A capa do player vem da esteira do vídeo: arte do
                       // corte para o trecho, capa da fonte para o completo.
                       // Sem isso os players do Paulo e da Vera abriam pretos.
@@ -1909,14 +3033,15 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             ? mv.capaUrl ?? `/api/videos/${mv.videoJobId}/midia?tipo=capa-fonte`
                             : null
                         : null;
-                      return (
+                      return comRefazer(
                         <SocialPostPreview
-                          key={p.id}
                           platform={p.platform}
                           content={p.content}
                           imageUrl={p.imageUrl}
-                          scheduledAt={p.scheduledAt ?? postScheduledAt}
+                          scheduledAt={horaDaPrevia(p)}
+                          status={p.status}
                           poster={poster}
+                          conta={accountFor(p.platform, p.socialAccountId) ?? null}
                         />
                       );
                     })}
@@ -1945,6 +3070,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     content={postContent}
                     imageUrl={postImageUrl}
                     scheduledAt={postScheduledAt}
+                    status={postStatus ?? undefined}
                   />
                 ) : (
                   <div className="rounded-xl p-4 text-sm text-center" style={{ background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
@@ -1954,8 +3080,57 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               </div>
             )}
 
+            {/* O CARD DO REDATOR (Xavier, Lucas...) CUJO POST FALHOU (01/10,
+                pedido do Bruno: "os posts que falham, eu não consigo
+                arquivar"). O card do X aberto mostrava o texto e o chat, e
+                nada dizia que a publicação tinha falhado nem dava a saída. */}
+            {!isPublish && !acoesNoCardDoVideo && localCard.postId && postStatus === "failed" && (() => {
+              const p = dayPosts.find((x) => x.id === localCard.postId) ?? { id: localCard.postId, platform: postPlatform ?? "", metadata: null };
+              const arquivar = async () => {
+                await arquivarPost({ id: p.id, platform: p.platform });
+                setPostStatus("cancelled");
+              };
+              const codigo = codigoDaFalha(p.metadata);
+              return codigo ? (
+                <FalhaDaPublicacao
+                  postId={p.id}
+                  codigo={codigo}
+                  protocolo={chamadoDaFalha(p.metadata)}
+                  motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
+                  onChamado={() => void refreshDayPosts()}
+                  onArquivar={arquivar}
+                />
+              ) : (
+                <div
+                  className="flex items-center gap-2.5 rounded-xl px-4 py-3 border"
+                  style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
+                >
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <p className="flex-1 min-w-0 text-xs" style={{ color: "var(--text-primary)" }}>
+                    <b className="font-semibold text-red-400">A publicação no {nomeDaRede(p.platform)} falhou.</b> Arquive para tirar do Gestor; tem volta em Posts, aba Arquivados.
+                  </p>
+                  <button
+                    type="button"
+                    data-arquivar-falha
+                    disabled={approving}
+                    onClick={() => void arquivar()}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border shrink-0 transition-all hover:border-red-400/50 hover:text-red-400 disabled:opacity-50"
+                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  >
+                    <Archive className="w-3 h-3" />
+                    Arquivar
+                  </button>
+                </div>
+              );
+            })()}
+
             {/* Publish card actions */}
-            {isPublish && (
+            {/* TAMBÉM NO CARD DO VÍDEO (30/09, pedido do Bruno): o completo
+                ficou pronto e o card não tinha como aprovar nem agendar, só
+                "abra o card do Paulo". O vídeo é a peça que o cliente mais
+                quer revisar e já sair publicando dali; o bloco é o mesmo do
+                Paulo, restrito ao post deste card. */}
+            {(isPublish || acoesNoCardDoVideo) && (
               <div className="space-y-3">
                 {/* Scheduled time banner */}
                 <div
@@ -1966,11 +3141,35 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando...
                     </div>
-                  ) : postScheduledAt ? (
+                  ) : naFilaDoDia[0]?.scheduledAt ? (
+                    // "Agendado" só quando o cliente já aprovou e o post está
+                    // na fila: antes disso o horário é proposta (29/09).
                     <div className="flex items-center gap-2">
                       <AlarmClock className="w-4 h-4 text-orange-400 shrink-0" />
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Publicação agendada</p>
+                        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{formatScheduledAt(naFilaDoDia[0].scheduledAt)}</p>
+                      </div>
+                    </div>
+                  ) : saidaSeAprovar ? (
+                    <div className="flex items-center gap-2">
+                      <AlarmClock className="w-4 h-4 text-orange-400 shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                          {saidaSeAprovar.andou ? "O horário planejado passou" : "Ainda não agendado"}
+                        </p>
+                        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                          {saidaSeAprovar.andou
+                            ? `Sugerimos ${diaEHora(new Date(saidaSeAprovar.iso))}, se você aprovar`
+                            : `Sai ${diaEHora(new Date(saidaSeAprovar.iso))} se você aprovar`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : postScheduledAt ? (
+                    <div className="flex items-center gap-2">
+                      <AlarmClock className="w-4 h-4 text-orange-400 shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Horário do dia</p>
                         <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{formatScheduledAt(postScheduledAt)}</p>
                       </div>
                     </div>
@@ -1980,48 +3179,253 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       <p className="text-sm" style={{ color: "var(--text-muted)" }}>Sem horário definido</p>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setRescheduleOpen(!rescheduleOpen)}
-                    disabled={approving}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-blue-500/50 hover:bg-blue-500/8 shrink-0"
-                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Reagendar
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* TIRAR O DIA DA FILA. Só aparece quando há algo na fila:
+                        um botão que não tem o que cancelar é um botão que
+                        ensina errado. */}
+                    {postsDoDia.some((p) => p.status === "scheduled" || p.status === "publishing") && (
+                      <button
+                        type="button"
+                        onClick={() => void cancelarAgendamentoDoDia()}
+                        disabled={approving}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-orange-500/50 hover:bg-orange-500/8 disabled:opacity-50"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                        title="Tira todos os posts deste dia da fila e volta para rascunho, para você ajustar e agendar de novo"
+                      >
+                        <Ban className="w-3 h-3" />
+                        Cancelar agendamento
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // O PAINEL ABRE PREENCHIDO com o que o dia já tem.
+                        // Nascer vazio deixava o botão Salvar desabilitado, e
+                        // um painel com botão morto lê como "não funciona".
+                        if (!rescheduleOpen) {
+                          const atual = postsDoDia.find((p) => p.scheduledAt)?.scheduledAt ?? postScheduledAt;
+                          // Data no passado nao serve de sugestao: a rota
+                          // recusa agendar para tras, com razao, e o painel
+                          // abriria ja condenado. Nesse caso vale o proximo
+                          // horario LIVRE, o mesmo que a caixa acima sugere
+                          // (29/09). Campos sempre em Brasilia.
+                          const base = new Date(horarioParaFila(atual, ocupados)?.iso ?? Date.now() + 60 * 60 * 1000);
+                          const campos = paraCampos(base);
+                          setNewScheduleDate(campos.data);
+                          setNewScheduleTime(campos.hora);
+                        }
+                        setRescheduleOpen(!rescheduleOpen);
+                      }}
+                      disabled={approving}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-blue-500/50 hover:bg-blue-500/8 disabled:opacity-50"
+                      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reagendar
+                    </button>
+                  </div>
                 </div>
+
+                {/* ── Reagendar expandido ──
+
+                    ELE MORAVA DENTRO DO BLOCO QUE SÓ EXISTE ENQUANTO O DIA NÃO
+                    ESTÁ APROVADO, e o botão que o abre sempre esteve fora.
+
+                    Medido em 21/09 no dev local, com o relato do Bruno de que
+                    "o botão reagendar não funciona": o dia aprovado esconde o
+                    bloco inteiro, então clicar em Reagendar mudava um estado
+                    que nada desenhava. E aprovar é justamente o caminho normal
+                    do produto, ou seja o botão estava morto exatamente para
+                    quem já tinha feito tudo certo. Reagendar é sobre o
+                    HORÁRIO, e o horário se muda aprovado ou não.
+                */}
+                {/* ── Reagendar expandido ── */}
+                    <AnimatePresence>
+                      {rescheduleOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="rounded-xl border p-3 space-y-2"
+                          style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
+                        >
+                          <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Nova data e horário de publicação</p>
+                          {(() => {
+                            const moveis = postsDoDia.filter((p) => p.status !== "published" && p.status !== "cancelled");
+                            const publicados = postsDoDia.filter((p) => p.status === "published").length;
+                            return (
+                              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                {moveis.length === 0
+                                  ? "Nada para mover: os posts deste dia já foram publicados ou arquivados."
+                                  : `Move ${moveis.length} post(s): ${moveis.map((p) => nomeDaRede(p.platform)).join(", ")}.`}
+                                {publicados > 0 ? ` ${publicados} já publicado(s) fica(m) como está(ão).` : ""}
+                              </p>
+                            );
+                          })()}
+                          <div className="flex gap-2">
+                            <input
+                              type="date"
+                              className="flex-1 text-sm px-3 py-2 rounded-xl border outline-none"
+                              style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)", colorScheme: "dark" }}
+                              value={newScheduleDate}
+                              onChange={(e) => setNewScheduleDate(e.target.value)}
+                            />
+                            <input
+                              type="time"
+                              className="w-32 text-sm px-3 py-2 rounded-xl border outline-none"
+                              style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)", colorScheme: "dark" }}
+                              value={newScheduleTime}
+                              onChange={(e) => setNewScheduleTime(e.target.value)}
+                            />
+                            <Button size="sm" onClick={handleReschedule} loading={rescheduling} disabled={!newScheduleDate}>
+                              Salvar
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                {/* AS SEIS REDES, conectadas ou não (item 13, 29/09). Fica
+                    fora da trava de "dia aprovado" de propósito: saber onde o
+                    dia sai, e o que falta conectar, vale antes e depois de
+                    aprovar. Marcar a rede aqui marca os posts dela na lista
+                    de baixo, que é quem publica. */}
+                <DestinosDoDia
+                  projectId={projectId}
+                  posts={postsDoDia}
+                  contas={socialAccounts}
+                  escolhidos={escolhidos}
+                  aoEscolher={setEscolhidos}
+                  ocupado={approving}
+                  aoMudar={async () => { await refreshDayPosts(); onWeekRefresh?.(); }}
+                />
+
+                {/* AS FALHAS NO DIA APROVADO (01/10, pedido do Bruno: "os posts
+                    que falham, eu não consigo arquivar"). A lista do dia, com o
+                    cartão da falha e o botão de arquivar, só aparece antes da
+                    aprovação; o post do X aprovado, agendado e que falhou na
+                    hora de sair ficava sem nenhuma saída neste card. */}
+                {localCard.status === "approved" &&
+                  postsDoDia
+                    .filter((p) => p.status === "failed")
+                    .map((p) =>
+                      codigoDaFalha(p.metadata) ? (
+                        <FalhaDaPublicacao
+                          key={`falha-aprovado-${p.id}`}
+                          postId={p.id}
+                          codigo={codigoDaFalha(p.metadata)!}
+                          protocolo={chamadoDaFalha(p.metadata)}
+                          motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
+                          onChamado={() => void refreshDayPosts()}
+                          onArquivar={() => arquivarPost(p)}
+                        />
+                      ) : (
+                        <div
+                          key={`falha-aprovado-${p.id}`}
+                          className="flex items-center gap-2.5 rounded-xl px-4 py-3 border"
+                          style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
+                        >
+                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                          <p className="flex-1 min-w-0 text-xs" style={{ color: "var(--text-primary)" }}>
+                            {/* Sem a frase crua da rede (ela é técnica e em inglês): o
+                                que fazer e a volta do arquivar. */}
+                            <b className="font-semibold text-red-400">A publicação no {nomeDaRede(p.platform)} não saiu.</b> Para tentar de novo, use Reagendar acima; para tirar do Gestor, arquive (tem volta em Posts, aba Arquivados).
+                          </p>
+                          <button
+                            type="button"
+                            data-arquivar-falha
+                            disabled={approving}
+                            onClick={() => void arquivarPost(p)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border shrink-0 transition-all hover:border-red-400/50 hover:text-red-400 disabled:opacity-50"
+                            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          >
+                            <Archive className="w-3 h-3" />
+                            Arquivar
+                          </button>
+                        </div>
+                      )
+                    )}
 
                 {localCard.status !== "approved" && dayPosts.length > 0 && (
                   <div className="space-y-2">
-                    {/* ── Banner: campanha rejeitada ── */}
-                    {localCard.status === "rejected" && (
-                      <div className="flex items-center gap-2.5 rounded-xl px-4 py-3 border border-red-500/30" style={{ background: "rgba(239,68,68,0.06)" }}>
-                        <X className="w-4 h-4 text-red-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-red-400">Campanha rejeitada</p>
-                          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>Use as ações abaixo para recomeçar, arquivar ou ajustar o agendamento.</p>
+                    {/* ── Banner: o DIA foi reprovado ──
+                        Dizia "Campanha rejeitada", e o card é um dia. Quem
+                        reprovava uma peça lia que tinha derrubado a semana
+                        inteira, que era a queixa do Bruno em 21/09. */}
+                    {localCard.status === "rejected" && (() => {
+                      /**
+                       * GERAR DE NOVO COM O MESMO TEMA, aqui mesmo (21/09).
+                       *
+                       * Pedido do Bruno depois de reprovar o dia 21: "ali deve
+                       * dar a opção de gerar novo post com o mesmo tema, o
+                       * botão é gerar nova campanha". Ele tinha razão: no dia
+                       * reprovado a única saída oferecida era abrir uma campanha
+                       * nova de sete dias.
+                       *
+                       * Isto refaz as peças REPROVADAS deste dia, uma a uma, no
+                       * lugar delas, pelo caminho que já existe e já cobra o que
+                       * cobra. O custo vai no rótulo, antes do clique.
+                       */
+                      const reprovados = postsDoDia.filter((p) => p.status === "rejected");
+                      const custoTotal = reprovados.reduce((s, p) => s + custoDeRefazer(p), 0);
+                      return (
+                        <div className="rounded-xl px-4 py-3 border border-red-500/30 space-y-2.5" style={{ background: "rgba(239,68,68,0.06)" }}>
+                          <div className="flex items-center gap-2.5">
+                            <X className="w-4 h-4 text-red-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-red-400">Dia reprovado</p>
+                              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                                Só este dia. O resto da campanha continua de pé.
+                              </p>
+                            </div>
+                          </div>
+                          {reprovados.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={approving || refazendo !== null}
+                              onClick={() => void refazerDiaReprovado(reprovados)}
+                              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-medium transition-all hover:border-orange-500/50 hover:bg-orange-500/10 disabled:opacity-50"
+                              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                            >
+                              <RefreshCw className={cn("w-3.5 h-3.5 text-orange-400", refazendo !== null && "animate-spin")} />
+                              {refazendo !== null
+                                ? "Gerando de novo…"
+                                : `Gerar ${reprovados.length === 1 ? "a peça" : `as ${reprovados.length} peças`} de novo, com o mesmo tema · ${custoTotal} créditos`}
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* A lista do dia: uma linha por post, com a rede, o que
                         é, o estado e a marcação. As ações embaixo valem para o
-                        que está marcado. */}
-                    {localCard.status !== "rejected" && postsDoDia.length > 0 && (() => {
+                        que está marcado. Ela continua visível depois da
+                        reprovação: esconder era tirar da tela justamente a
+                        prova do que foi reprovado. */}
+                    {postsDoDia.length > 0 && (() => {
                       // O resumo do dia em uma frase, antes da lista: e a
                       // resposta a "o que vai sair e quando" sem ler linha a linha.
                       const r = resumoDoDia(postsDoDia);
+                      const codigoDoDia = postsDoDia.map((p) => estadoDoPost(p)).find((e) => e.chave === "falhou")?.codigo;
                       const publicados = r.porEstado.publicado;
                       const frase =
                         r.dominante === "falhou" ? `Um post falhou: ${r.linha}.`
                         : r.dominante === "rascunho" ? `${r.porEstado.rascunho} em rascunho: não ${r.porEstado.rascunho > 1 ? "saem" : "sai"} enquanto você não agendar ou publicar.`
                         : r.dominante === "agendado" ? `${r.porEstado.agendado + r.porEstado.publicando} agendado${r.porEstado.agendado + r.porEstado.publicando > 1 ? "s" : ""} ${r.proximo ? `para ${formatScheduledAt(r.proximo.toISOString())}` : ""}. ${r.porEstado.agendado + r.porEstado.publicando > 1 ? "Saem" : "Sai"} sozinho${r.porEstado.agendado + r.porEstado.publicando > 1 ? "s" : ""}.`
+                        // O DIA FORA DA MESA tinha caído no ramo do publicado e
+                        // dizia "0 publicado. Nada mais a fazer neste dia." sobre
+                        // um dia inteiro reprovado. Achado na tela em 21/09, com
+                        // o dia 21 do Bruno aberto na frente.
+                        : r.dominante === "fora" ? `${r.porEstado.fora} ${r.porEstado.fora > 1 ? "peças reprovadas ou arquivadas" : "peça reprovada ou arquivada"}: ${r.porEstado.fora > 1 ? "elas não saem" : "ela não sai"}. Gere de novo com o mesmo tema, ou arquive o dia.`
                         : `${publicados} publicado${publicados > 1 ? "s" : ""}. Nada mais a fazer neste dia.`;
                       const complemento =
                         r.dominante === "agendado" && publicados > 0 ? `${publicados} já publicado${publicados > 1 ? "s" : ""}.`
                         : r.dominante === "agendado" ? "Você não precisa fazer nada."
                         : r.dominante === "rascunho" && (r.porEstado.agendado > 0 || publicados > 0) ? `${r.porEstado.agendado} agendado${r.porEstado.agendado > 1 ? "s" : ""}, ${publicados} publicado${publicados > 1 ? "s" : ""}.`
+                        // Falha com código PUB-* diz o que fazer pelo dicionário:
+                        // "publique de novo" é o conselho errado quando a causa é
+                        // nossa e tentar de novo não muda nada (PUB-INT).
+                        : r.dominante === "falhou" && codigoDoDia ? TRADUCAO_DOS_CODIGOS[codigoDoDia].oQueFazer
                         : r.dominante === "falhou" ? (r.rodape === "reconectar e tentar" ? "Reconecte a rede em Configurações e publique de novo." : "Marque o post e publique de novo.")
                         : "";
                       return (
@@ -2035,7 +3439,27 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       );
                     })()}
 
-                    {localCard.status !== "rejected" && (
+                    {/* AS FALHAS DE PUBLICAÇÃO COM CÓDIGO (01/10): cada peça
+                        que falhou com PUB-* ganha o cartão com o que aconteceu,
+                        o que fazer e o chamado. O resumo acima só diz o título. */}
+                    {postsDoDia
+                      .filter((p) => p.status === "failed" && codigoDaFalha(p.metadata))
+                      .map((p) => (
+                        <FalhaDaPublicacao
+                          key={`falha-${p.id}`}
+                          postId={p.id}
+                          codigo={codigoDaFalha(p.metadata)!}
+                          protocolo={chamadoDaFalha(p.metadata)}
+                          motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
+                          onChamado={() => void refreshDayPosts()}
+                          onArquivar={() => arquivarPost(p)}
+                        />
+                      ))}
+
+                    {/* A lista vale também no dia reprovado: esconder era tirar da
+                        tela a prova do que foi recusado, e foi assim que uma
+                        reprovação de uma peça pareceu a perda da campanha. */}
+                    {postsDoDia.length > 0 && (
                       <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
                         <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
                           <p className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
@@ -2060,28 +3484,39 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             const publicado = p.status === "published";
                             const naFila = p.status === "scheduled";
                             const arquivado = p.status === "cancelled";
+                            const reprovado = p.status === "rejected";
                             const podeMarcar = publicavel(p) && Boolean(conta);
                             const marcado = escolhidos.has(p.id);
                             const horario = p.scheduledAt ?? postScheduledAt;
-                            const fila = horarioParaFila(horario);
+                            const fila = horarioParaFila(horario, ocupados);
                             const url = (p.metadata as { url?: string } | null)?.url;
                             const estado = publicado
                               ? "Publicado"
                               : arquivado
                                 ? "Arquivado"
+                                : reprovado
+                                  // A peça reprovada continua na lista, dizendo o que é.
+                                  // Sem esta linha ela voltava a se chamar "Rascunho", e o
+                                  // cliente lia que ainda precisava decidir o que já decidiu.
+                                  ? "Reprovado: você recusou esta peça"
+                                : p.status === "failed"
+                                  // A peça que falhou se chamava "Rascunho" aqui,
+                                  // e o cliente não ligava a linha ao aviso de cima.
+                                  ? `Falhou: ${estadoDoPost(p).detalhe}`
                                 : !conta
                                   ? `Conecte o ${nomeDaRede(p.platform)} em Configurações para publicar`
                                   : naFila
                                     ? `Agendado: ${estadoDoPost(p).detalhe}`
                                     : fila?.andou
-                                      ? `Rascunho: o horário do dia já passou; se você deixar agendado, sai ${formatScheduledAt(fila.iso)}`
+                                      // Vencido: o próximo horário livre, e não só o aviso (29/09).
+                                      ? `Rascunho: o horário planejado passou; sugerimos ${diaEHora(new Date(fila.iso))}, se você aprovar`
                                       : fila
-                                        ? `Rascunho: ${formatScheduledAt(fila.iso)} se você deixar agendado`
+                                        ? `Rascunho: sai ${diaEHora(new Date(fila.iso))} se você aprovar`
                                         : "Rascunho, sem horário definido";
                             return (
                               <label
                                 key={p.id}
-                                className={cn("flex items-center gap-3 py-3 px-4 transition-all", podeMarcar ? "cursor-pointer hover:bg-white/5" : "opacity-60")}
+                                className={cn("flex items-center gap-3 py-3 px-4 transition-all", podeMarcar ? "cursor-pointer hover:bg-[var(--realce-1)]" : "opacity-60")}
                                 style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border)" }}
                               >
                                 <input
@@ -2095,32 +3530,178 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                     setEscolhidos(prox);
                                   }}
                                 />
-                                <RedeIcone plataforma={p.platform} className="w-5 h-5 shrink-0" monocromatico={!podeMarcar} />
+                                {/* A FOTO DA CONTA, e nao so o icone da rede.
+                                    Em 18/09 o Bruno disse que "quando clico no card nao
+                                    fica claro se sao da pagina ou do perfil". O projeto
+                                    dele tem duas contas de LinkedIn, e o icone da rede e
+                                    o mesmo nas duas: a foto e o que separa a logo da
+                                    empresa do rosto do dono. */}
+                                <FotoDaConta
+                                  conta={conta ?? { platform: p.platform, displayName: null, accountType: "personal" }}
+                                  tamanho={30}
+                                  className={podeMarcar ? undefined : "opacity-60"}
+                                />
                                 <span className="flex-1 min-w-0">
                                   <span className="block text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                                    {nomeDaRede(p.platform)}
-                                    <span className="font-normal" style={{ color: "var(--text-muted)" }}> · {oQueE(p)}</span>
+                                    {conta?.displayName ?? nomeDaRede(p.platform)}
+                                    <span className="font-normal" style={{ color: "var(--text-muted)" }}>
+                                      {conta ? ` · ${conta.accountType === "organization" ? "página" : "perfil"}` : ""} · {oQueE(p)}
+                                    </span>
                                   </span>
                                   <span className="block text-[10px] truncate" style={{ color: publicado ? "rgb(74,222,128)" : naFila ? "rgb(251,146,60)" : "var(--text-muted)" }}>
                                     {estado}
                                   </span>
                                 </span>
+                                {/* POR ONDE SAI. Ate 14/09 a linha dizia a rede e nao a
+                                    conta, e o post da gravacao saiu pelo perfil com a
+                                    pagina conectada, sem a tela avisar. Com mais de uma
+                                    conta na rede, da para trocar enquanto nao publicou. */}
+                                {(() => {
+                                  const daRede = socialAccounts.filter((a) => a.platform === p.platform);
+                                  const rotulo = (a: { displayName: string | null; accountType: string }) =>
+                                    `${a.displayName ?? p.platform} (${a.accountType === "organization" ? "página" : "perfil"})`;
+                                  // Com uma conta só na rede, o nome já está na
+                                  // linha, ao lado da foto: repetir no canto era
+                                  // dizer a mesma coisa duas vezes.
+                                  if (publicado || daRede.length <= 1) return null;
+                                  return (
+                                    <select
+                                      value={conta?.id ?? ""}
+                                      disabled={approving}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={async (e) => {
+                                        e.stopPropagation();
+                                        const socialAccountId = e.target.value;
+                                        try {
+                                          const res = await fetch(`/api/posts/${p.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ socialAccountId }) });
+                                          if (!res.ok) throw new Error();
+                                          await refreshDayPosts();
+                                          toast.success("Destino trocado.");
+                                        } catch {
+                                          toast.error("Não consegui trocar o destino.");
+                                        }
+                                      }}
+                                      className="text-[10px] rounded-md border px-1.5 py-1 shrink-0 max-w-[160px]"
+                                      style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                                      title="Por onde este post sai"
+                                    >
+                                      {daRede.map((a) => (
+                                        <option key={a.id} value={a.id}>{rotulo(a)}</option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()}
                                 {publicado && url && (
                                   <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium shrink-0 hover:underline" style={{ color: "var(--text-muted)" }} onClick={(e) => e.stopPropagation()}>
                                     Ver
                                   </a>
                                 )}
+                                {/* LEVAR PARA OUTRA REDE, só no post que já saiu.
+                                    Antes disto, o post que foi bem numa rede só
+                                    chegava a outra por copiar e colar, que é o
+                                    trabalho que a plataforma existe para tirar.
+                                    Só aparecem as contas que ainda não têm a peça
+                                    deste dia: oferecer o que já existe é oferecer
+                                    duplicata. */}
+                                {publicado && (() => {
+                                  const jaTem = new Set(postsDoDia.map((q) => q.socialAccountId).filter(Boolean) as string[]);
+                                  const destinos = socialAccounts.filter(
+                                    (a) => !jaTem.has(a.id) && a.id !== p.socialAccountId && ["linkedin", "instagram", "facebook", "twitter"].includes(a.platform)
+                                  );
+                                  if (destinos.length === 0) return null;
+                                  return (
+                                    <select
+                                      value=""
+                                      disabled={levando !== null}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const alvo = destinos.find((a) => a.id === e.target.value);
+                                        if (!alvo) return;
+                                        void levarParaRede(p.id, alvo.id, alvo.displayName ?? nomeDaRede(alvo.platform));
+                                        e.target.value = "";
+                                      }}
+                                      className="text-[10px] rounded-md border px-1.5 py-1 shrink-0 max-w-[150px]"
+                                      style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                                      title="Levar este post para outra rede, adaptado, como rascunho"
+                                    >
+                                      <option value="">{levando === p.id ? "Adaptando…" : "Levar para…"}</option>
+                                      {destinos.map((a) => (
+                                        <option key={a.id} value={a.id}>
+                                          {a.displayName ?? nomeDaRede(a.platform)} ({a.accountType === "organization" ? "página" : "perfil"})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()}
                                 {publicado && <CheckCircle2 className="w-4 h-4 shrink-0 text-green-400" />}
+                                {/* TIRAR DA FILA, e não arquivar: quem só quer
+                                    adiar não deveria precisar perder a peça. */}
+                                {naFila && (
+                                  <button
+                                    type="button"
+                                    disabled={approving}
+                                    title={`Cancelar o agendamento de ${nomeDaRede(p.platform)}`}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void cancelarAgendamento(p); }}
+                                    className="flex items-center gap-1 px-1.5 py-1 rounded-md shrink-0 text-[10px] font-medium transition-all hover:bg-orange-500/10 hover:text-orange-400 disabled:opacity-40"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    Tirar da fila
+                                  </button>
+                                )}
+                                {/* REFAZER ESTA PEÇA (21/09), e não a campanha.
+                                    Mora AQUI, na linha da peça, e não lá embaixo
+                                    ao lado de "Arquivar campanha": foi a vizinhança
+                                    que fez "Recomeçar com tema" parecer o que ele
+                                    não era. O custo vai no rótulo, porque refazer
+                                    é entrega nova e cobra de novo. */}
+                                {/* Arquivado fica de fora: ele saiu da fila por
+                                    decisão do cliente, e refazer o traria de volta
+                                    como rascunho sem que ninguém tenha pedido a
+                                    peça de volta. Reprovado ENTRA, porque recusar
+                                    e mandar refazer é o caminho natural. */}
+                                {!publicado && !arquivado && (
+                                  <button
+                                    type="button"
+                                    disabled={approving || refazendo === p.id}
+                                    title={`Escrever de novo a peça de ${nomeDaRede(p.platform)}, do zero, e refazer a arte dela. Custa ${custoDeRefazer(p)} créditos.`}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void refazerUmaPeca(p); }}
+                                    className="flex items-center gap-1 px-1.5 py-1 rounded-md shrink-0 text-[10px] font-medium transition-all hover:bg-orange-500/10 hover:text-orange-400 disabled:opacity-40"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    <RefreshCw className={cn("w-3 h-3", refazendo === p.id && "animate-spin")} />
+                                    {refazendo === p.id ? "Refazendo…" : `Refazer · ${custoDeRefazer(p)}`}
+                                  </button>
+                                )}
                                 {!publicado && !arquivado && (
                                   <button
                                     type="button"
                                     disabled={approving}
                                     title={`Arquivar o post de ${nomeDaRede(p.platform)}`}
                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); void arquivarPost(p); }}
-                                    className="p-1 rounded-md shrink-0 transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                                    className="flex items-center gap-1 px-1.5 py-1 rounded-md shrink-0 text-[10px] font-medium transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
                                     style={{ color: "var(--text-muted)" }}
                                   >
                                     <Archive className="w-3.5 h-3.5" />
+                                    {/* Na linha que falhou o rótulo aparece: só o ícone
+                                        não foi achado pelo Bruno (01/10). */}
+                                    {p.status === "failed" ? "Arquivar" : null}
+                                  </button>
+                                )}
+                                {/* A VOLTA do arquivar, na mesma linha (01/10). */}
+                                {arquivado && (
+                                  <button
+                                    type="button"
+                                    data-desarquivar
+                                    disabled={approving}
+                                    title={`Trazer de volta o post de ${nomeDaRede(p.platform)}, como rascunho`}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void desarquivarPost(p); }}
+                                    className="flex items-center gap-1 px-1.5 py-1 rounded-md shrink-0 text-[10px] font-medium transition-all hover:bg-orange-500/10 hover:text-orange-400 disabled:opacity-40"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    Desarquivar
                                   </button>
                                 )}
                               </label>
@@ -2164,7 +3745,12 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
                         >
                           <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
-                          Recomeçar com tema
+                          {/* O NOME DIZ O QUE ELE FAZ (21/09). Chamava-se
+                              "Recomeçar com tema" e abria a janela de campanha
+                              NOVA, de sete dias, com o tema preenchido: quem
+                              queria trocar uma peça pedia uma semana inteira.
+                              Trocar uma peça agora é o "Refazer" da linha dela. */}
+                          Gerar campanha nova com este tema
                         </button>
                       )}
 
@@ -2193,40 +3779,6 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       </div>
                     </div>
 
-                    {/* ── Reagendar expandido ── */}
-                    <AnimatePresence>
-                      {rescheduleOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="rounded-xl border p-3 space-y-2"
-                          style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
-                        >
-                          <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Nova data e horário de publicação</p>
-                          <div className="flex gap-2">
-                            <input
-                              type="date"
-                              className="flex-1 text-sm px-3 py-2 rounded-xl border outline-none"
-                              style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)", colorScheme: "dark" }}
-                              value={newScheduleDate}
-                              onChange={(e) => setNewScheduleDate(e.target.value)}
-                            />
-                            <input
-                              type="time"
-                              className="w-32 text-sm px-3 py-2 rounded-xl border outline-none"
-                              style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)", colorScheme: "dark" }}
-                              value={newScheduleTime}
-                              onChange={(e) => setNewScheduleTime(e.target.value)}
-                            />
-                            <Button size="sm" onClick={handleReschedule} loading={rescheduling} disabled={!newScheduleDate}>
-                              Salvar
-                            </Button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
                     {/* ── Rejeitar ── */}
                     {localCard.status === "pending" && (
                       <div className="space-y-2">
@@ -2241,7 +3793,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             >
                               <div className="flex items-center gap-2 text-sm text-amber-400">
                                 <ShieldAlert className="w-4 h-4 shrink-0" />
-                                <span className="font-medium">Motivo da rejeição</span>
+                                <span className="font-medium">
+                                  {/* O alcance dito antes do clique, e não depois: quem
+                                      marcou uma peça reprova uma peça. */}
+                                  {alcanceReprovacao.porMarcacao
+                                    ? `Motivo da reprovação de ${alcanceReprovacao.alvos.length === 1 ? nomeDaRede(alcanceReprovacao.alvos[0].platform) : `${alcanceReprovacao.alvos.length} posts marcados`}`
+                                    : "Motivo da reprovação do dia inteiro"}
+                                </span>
                               </div>
                               <textarea
                                 value={rejectReason}
@@ -2257,7 +3815,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                               </p>
                               <div className="flex gap-2">
                                 <Button size="sm" variant="destructive" className="flex-1" onClick={() => void handleRejectFlow()} loading={approving}>
-                                  <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Confirmar rejeição
+                                  <ThumbsDown className="w-3.5 h-3.5 mr-1" />
+                                  {rotuloDaReprovacao(alcanceReprovacao, nomeDaRede)}
                                 </Button>
                                 <Button size="sm" variant="outline" onClick={() => { setShowRejectForm(false); setRejectReason(""); }}>
                                   Cancelar
@@ -2275,7 +3834,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
                           >
                             <ThumbsDown className="w-3.5 h-3.5 text-red-400" />
-                            Rejeitar posts
+                            {/* O rótulo diz o alcance: marcou uma peça, reprova uma
+                                peça; não marcou nada, reprova o dia e avisa. */}
+                            {rotuloDaReprovacao(alcanceReprovacao, nomeDaRede)}
                           </button>
                         )}
                       </div>
@@ -2291,7 +3852,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 <MessageCircle className="w-3.5 h-3.5 inline mr-1" />
                 {localCard.cardType === "video_clip" && (
                   <span className="flex flex-wrap gap-1.5 mr-2">
-                    {["Encurtar o texto", "Mais direto e provocativo", "Trocar o título", "Adicionar hashtags"].map((a) => (
+                    {/* O VÍDEO também se ajusta por aqui (30/09): os atalhos mostram
+                        que dá, além do texto do post. */}
+                    {["Tirar a parte em que eu repito", "Terminar uma frase antes", "Sem efeito nos primeiros 10 segundos", "Trocar o título", "Encurtar o texto"].map((a) => (
                       <button
                         key={a}
                         type="button"
@@ -2306,6 +3869,18 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 )}
                                 {isMedia ? "Regenerar mídia via IA" : "Ajustar via IA"}
               </p>
+              {/* "Voltar à edição" (30/09): o vídeo inteiro (cortes e completo)
+                  reaberto na tela de roteiro, para quem prefere ver tudo de uma
+                  vez em vez de pedir pelo chat. Link comum: a tela é do servidor. */}
+              {localCard.cardType === "video_clip" && (localCard.metadata as { videoJobId?: string } | null)?.videoJobId && (
+                <a
+                  href={`/projects/${projectId}/video/${(localCard.metadata as { videoJobId: string }).videoJobId}/roteiro?editar=1`}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-400 hover:underline"
+                >
+                  <Pencil className="w-3 h-3" />
+                  Voltar à edição do vídeo: palavras, começo e fim dos cortes, cenas
+                </a>
+              )}
               {isMedia && !localCard.mediaUrl && (
                 <div className="text-xs rounded-xl px-3 py-2 flex items-start gap-2 border border-blue-500/20 bg-blue-500/5">
                   <ImageIcon className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
@@ -2350,6 +3925,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       ? `Ajustar slide ${currentSlide + 1}: mude a composição, cor, estilo...`
                       : isMedia
                       ? "Mude as cores, estilo, composição... (vai regerar a imagem)"
+                      : localCard.cardType === "video_clip" && (localCard.metadata as { videoJobId?: string } | null)?.videoJobId
+                      ? "Ex.: termine depois de “ferramentas”, tire a parte em que eu repito, tire a imagem da cena de 0:12"
                       : "Melhore o tom, ajuste o CTA, torne mais provocativo..."
                   }
                   value={chatMsg}
@@ -2440,14 +4017,22 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana, falhasDaMontagem }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [postsSemana, setPostsSemana] = useState<PostParaEstado[]>(postsDaSemana ?? []);
+  // A campanha da semana, com o registro: é dele que sai o andamento de cada
+  // dia no calendário (28/09). A rota de status já mandava, e a tela ignorava.
+  const [runDaSemana, setRunDaSemana] = useState<{ status: string; logs: unknown } | null>(null);
   const [loadingCards, setLoadingCards] = useState(false);
   const [runningPipelineId, setRunningPipelineId] = useState<string | null>(activeRun?.status === "running" ? activeRun.id : null);
   const [generating, setGenerating] = useState(activeRun?.status === "running");
   const [showSetupModal, setShowSetupModal] = useState(false);
+  // A tela das duas portas, que aparece ao terminar o setup. Depois de
+  // escolhida, a janela abre ja na porta certa (origemDoModal) e nao pergunta
+  // de novo.
+  const [primeiraCampanha, setPrimeiraCampanha] = useState(false);
+  const [origemDoModal, setOrigemDoModal] = useState<"video" | "tema" | undefined>(undefined);
   /**
    * O painel de envio nasce aberto para quem nunca subiu gravação neste
    * projeto: sem isto, quem chega num quadro vazio não tem por onde começar, e
@@ -2458,8 +4043,19 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   // Ate 09/09 bastava nao ter video, entao quem gerava a semana por TEMA
   // terminava com o squad trabalhando e um painel de "envie a gravacao" aberto
   // por cima, como se a campanha nao tivesse acontecido.
-  const [enviarAberto, setEnviarAberto] = useState(videos.length === 0 && initialCards.length === 0);
+  // Fechado enquanto uma campanha estiver rodando, corrigido em 13/09. O
+  // painel abria para todo projeto sem vídeo e sem card, e um projeto cuja
+  // campanha por TEMA acabou de começar é exatamente isso: zero card ainda,
+  // zero vídeo. Resultado que o Bruno viu: "vai nessa tela de vídeo e a squad
+  // fica trabalhando sozinha lá embaixo", com o planejador da semana do vídeo
+  // perguntando de novo dia e formato que a janela da campanha já tinha
+  // perguntado. O painel só deve aparecer quando a origem é vídeo.
+  const [enviarAberto, setEnviarAberto] = useState(
+    videos.length === 0 && initialCards.length === 0 && activeRun?.status !== "running"
+  );
+  const [menuAberto, setMenuAberto] = useState(false);
   const [gravacoesEnviadas, setGravacoesEnviadas] = useState(0);
+  const [comecarNoVideo, setComecarNoVideo] = useState(false);
   const [videosAoVivo, setVideosAoVivo] = useState<VideoAoVivo[]>(videos);
   const [corteGuardadoAberto, setCorteGuardadoAberto] = useState<
     { videoId: string; corte: CorteGuardado } | null
@@ -2470,10 +4066,22 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   // assistente e cai num quadro vazio, tendo que procurar por onde começar.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("novaCampanha") !== "1") return;
-    setShowSetupModal(true);
+    // A ABA CRIAR (29/09) manda a porta já escolhida: ?abrir=video abre a
+    // jornada do vídeo no passo seguinte à escolha, ?abrir=tema abre a janela
+    // do tema. A escolha foi feita lá; perguntar de novo aqui seria pedágio.
+    const abrir = params.get("abrir");
+    if (abrir === "video") {
+      setComecarNoVideo(true);
+      setEnviarAberto(true);
+    } else if (abrir === "tema") {
+      setOrigemDoModal("tema");
+      setShowSetupModal(true);
+    }
+    if (params.get("novaCampanha") === "1") setPrimeiraCampanha(true);
+    if (!abrir && params.get("novaCampanha") !== "1") return;
     const limpa = new URL(window.location.href);
     limpa.searchParams.delete("novaCampanha");
+    limpa.searchParams.delete("abrir");
     window.history.replaceState({}, "", limpa.toString());
   }, []);
   // Topic flow state
@@ -2483,6 +4091,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [suggestedTopics, setSuggestedTopics] = useState<Array<{ title: string; description: string; format: string }>>([]);
   const [modalCard, setModalCard] = useState<CampaignCard | null>(null);
   const [modalAgentRow, setModalAgentRow] = useState<typeof AGENT_ROWS[0] | null>(null);
+  // A ficha do agente aberta a partir do escritorio, com o que ele esta
+  // fazendo no momento do clique.
+  const [fichaAberta, setFichaAberta] = useState<{ id: string; fala: string | null } | null>(null);
 
   const weekStartIso = toIsoDate(selectedMonday);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2498,6 +4109,8 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [restoreWeekStart, setRestoreWeekStart] = useState("");
   const [restoreDays, setRestoreDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [restoring, setRestoring] = useState(false);
+  // A confirmação de "Arquivar as falhas desta semana", dentro do próprio menu.
+  const [confirmarFalhas, setConfirmarFalhas] = useState(false);
   // Persist dismissed state in localStorage keyed by run ID so it survives page reloads
   const DISMISSED_KEY = lastFailedRun ? `banner-dismissed-${lastFailedRun.id}` : null;
   const [failedBannerDismissed, setFailedBannerDismissed] = useState<boolean>(() => {
@@ -2512,6 +4125,11 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     }
   }
 
+  // Os posts que falharam na semana aberta (01/10): a lista do menu de três pontos.
+  const falhasDaSemana = postsSemana.filter((p) => p.status === "failed");
+  const nomeDaRede = (plat: string) =>
+    ({ linkedin: "LinkedIn", twitter: "X", youtube: "YouTube", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" } as Record<string, string>)[plat] ?? plat;
+
   const loadCardsForWeek = useCallback(async (mondayIso: string) => {
     setLoadingCards(true);
     try {
@@ -2519,6 +4137,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       const data = await res.json();
       setCards(data.cards ?? []);
       setPostsSemana(data.posts ?? []);
+      setRunDaSemana(data.run ? { status: data.run.status, logs: data.run.logs } : null);
     } catch {
       // silent
     } finally {
@@ -2531,9 +4150,17 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     loadCardsForWeek(weekStartIso);
   }, [weekStartIso, loadCardsForWeek]);
 
+  // O andamento de cada dia, e se ainda há algo andando (um vídeo refeito
+  // anda depois do fecho da campanha, e a tela precisa continuar olhando).
+  const andamento = useMemo(
+    () => (runDaSemana ? andamentoDosDias(runDaSemana.logs, runDaSemana.status) : {}),
+    [runDaSemana]
+  );
+  const algoAndando = Object.values(andamento).some((a) => a.fase === "video");
+
   // Real-time polling while pipeline is running
   useEffect(() => {
-    if (!generating) {
+    if (!generating && !algoAndando) {
       if (pollingRef.current) clearInterval(pollingRef.current);
       return;
     }
@@ -2543,7 +4170,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [generating, weekStartIso, loadCardsForWeek]);
+  }, [generating, algoAndando, weekStartIso, loadCardsForWeek]);
 
   function prevWeek() { setSelectedMonday((d) => addDays(d, -7)); }
   function nextWeek() { setSelectedMonday((d) => addDays(d, 7)); }
@@ -2568,8 +4195,21 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     }
   }
 
+  /**
+   * "Nova campanha" abre a JORNADA, e a jornada começa perguntando a origem.
+   *
+   * Até 18/09 este botão abria direto a janela do TEMA, e a porta do vídeo só
+   * existia num botão separado no cabeçalho. Ou seja: a escolha entre as duas
+   * origens, que é a primeira pergunta da campanha, estava resolvida de fora
+   * pelo botão que a pessoa clicasse. Quem clicasse em "Nova campanha" nem
+   * ficava sabendo que dava para partir de uma gravação.
+   *
+   * Agora é um caminho só, e ele pergunta. A janela do tema continua existindo
+   * e é para onde o passo 1 encaminha quem escolhe tema.
+   */
   function openNewCampaign() {
-    setShowSetupModal(true);
+    setOrigemDoModal(undefined);
+    setEnviarAberto(true);
   }
 
   async function openArchive() {
@@ -2602,6 +4242,56 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       }
     } catch {
       toast.error("Erro ao buscar tema.");
+    }
+  }
+
+  /**
+   * ARQUIVAR POSTS COM FALHA (01/10, pedido do Bruno: "os posts que falham, eu
+   * não consigo arquivar, preciso conseguir, para limpar o gestor"). Uma
+   * chamada só (`/api/posts/em-massa`, que também esconde do quadro o dia que
+   * ficou sem post vivo), sem caixa de confirmação do navegador porque tem
+   * volta: o toast oferece "Desfazer" e a aba Arquivados de Posts devolve o
+   * post como rascunho.
+   */
+  async function arquivarPostsComFalha(ids: string[]) {
+    if (!ids.length) return;
+    try {
+      const res = await fetch("/api/posts/em-massa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, acao: "arquivar" }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { feitos?: number; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "erro");
+      await loadCardsForWeek(weekStartIso);
+      const n = d.feitos ?? ids.length;
+      toast(
+        (t) => (
+          <span className="flex items-center gap-3 text-sm">
+            {n === 1 ? "Post com falha arquivado." : `${n} posts com falha arquivados.`}
+            <button
+              type="button"
+              className="rounded-md border px-2 py-0.5 text-xs font-semibold"
+              onClick={async () => {
+                toast.dismiss(t.id);
+                const volta = await fetch("/api/posts/em-massa", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ids, acao: "rascunho" }),
+                }).catch(() => null);
+                if (volta?.ok) toast.success(n === 1 ? "O post voltou como rascunho." : "Os posts voltaram como rascunho.");
+                else toast.error("Não consegui desfazer. Use Posts, aba Arquivados.");
+                await loadCardsForWeek(weekStartIso);
+              }}
+            >
+              Desfazer
+            </button>
+          </span>
+        ),
+        { duration: 8000 }
+      );
+    } catch {
+      toast.error("Não consegui arquivar agora. Tente de novo.");
     }
   }
 
@@ -2744,7 +4434,12 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       setCorteGuardadoAberto({ videoId: meta.videoId, corte: meta.corte });
       return;
     }
-    if (meta?.virtual) return;
+    // O completo a caminho não tem card ainda; o clique precisa responder
+    // alguma coisa, e o que há para dizer é que o squad está nele (29/09).
+    if (meta?.virtual) {
+      toast("O Vitor ainda está editando o vídeo completo. Ele aparece aqui para você aprovar quando ficar pronto.");
+      return;
+    }
     setModalCard(card);
     setModalAgentRow(agentRow);
   }
@@ -2755,16 +4450,44 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   }
 
   const todayIso = toIsoDate(new Date()); // UTC date of today
+  // A data de hoje em Sao Paulo, no formato YYYY-MM-DD do `toIsoDate`.
+  const hojeEmSaoPaulo = new Date().toLocaleDateString("en-CA", { timeZone: FUSO_PADRAO });
+
+  /** A linha do agente que assina o card, para o modal, que exige as duas coisas. */
+  function linhaDoAgente(card: CampaignCard) {
+    return (
+      AGENT_ROWS.find((r) => r.agentId === (card.agentId === "tiago-twitter" ? "xavier-x" : card.agentId)) ??
+      AGENT_ROWS.find((r) => r.cardType === card.cardType) ??
+      (card.cardType === "video_completo" ? AGENT_ROWS.find((r) => r.agentId === "vitor-video")! : AGENT_ROWS[0])
+    );
+  }
+
+  const aoTerminarRun = useCallback(() => {
+    setGenerating(false);
+    toast.success("Campanha gerada! Cards atualizados.");
+    void loadCardsForWeek(weekStartIso);
+    setRunningPipelineId(null);
+  }, [loadCardsForWeek, weekStartIso]);
+
+  const aoFalharRun = useCallback(() => {
+    setGenerating(false);
+    setRunningPipelineId(null);
+    toast.error("Erro ao gerar campanha.");
+  }, []);
   const isCurrentWeek = toIsoDate(selectedMonday) === toIsoDate(getMonday(new Date()));
 
   // Filter cards for the selected week
-  const weekCards = cards.filter((c) => {
+  const weekCardsDoBanco = cards.filter((c) => {
     if (!c.scheduledDate) return false;
     const dIso = toIsoDate(new Date(c.scheduledDate));
     const start = weekStartIso;
     const end = toIsoDate(addDays(selectedMonday, 6));
     return dIso >= start && dIso <= end;
   });
+  // AS PEÇAS CHEGAM UMA A UMA (30/09): o que já estava na tela aparece inteiro,
+  // e o que o squad entrega depois entra em fila, uma a cada 1,2 s. Cinco
+  // peças surgindo de uma vez não parecem trabalho, parecem carga de página.
+  const weekCards = useUmaAUma(weekCardsDoBanco, (c) => c.id);
 
   /**
    * Os dois cards que o quadro precisa mostrar e o banco não tem.
@@ -2791,16 +4514,25 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         const lista: CampaignCard[] = [];
 
         if (!v.temCompleto && v.status !== "failed") {
-          const decorrido = Math.max(0, (Date.now() - new Date(v.criadoEm).getTime()) / 1000);
-          const total = Math.max(6 * 60, Math.round((v.durationSec ?? 900) * 1.15));
-          const faltam = Math.max(0, Math.round((total - decorrido) / 60));
+          // O MESMO relógio da linha do tempo (02/10): medido e pelo alto, com
+          // efeitos, abertura e revisão dentro (lib/media/linha-do-tempo.ts).
+          // Antes era uma conta própria, de 1,15 min por minuto, que dizia
+          // "Terminando agora" com a montagem de efeitos ainda pela frente.
+          const ateOFim = faltamAteOFim(v, Date.now());
+          const faltam = Math.max(1, Math.ceil(ateOFim.segundos / 60));
+          // O completo de verdade cai no PRIMEIRO dia do plano (30/09), que é o
+          // dia do envio, e não mais na segunda: o lugar guardado vai no mesmo
+          // dia, senão ele pularia de segunda para quarta quando chegasse.
+          const isoDoEnvio = new Date(v.criadoEm).toLocaleDateString("en-CA", { timeZone: FUSO_PADRAO });
+          const isoDoCompleto = isoDoEnvio >= weekStartIso ? isoDoEnvio : hojeEmSaoPaulo;
+          const diaDoCompleto = new Date(`${isoDoCompleto}T12:00:00.000Z`).getUTCDay() || 7;
           lista.push({
             id: `virtual-completo-${v.id}`,
             runId: "",
             agentId: "vitor-video",
             agentName: "Vitor Vídeo",
-            dayOfWeek: 1,
-            scheduledDate: doDia(1),
+            dayOfWeek: diaDoCompleto,
+            scheduledDate: doDia(diaDoCompleto),
             cardType: "video_clip",
             mediaType: "video",
             content:
@@ -2814,7 +4546,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
             metadata: {
               virtual: "completo",
               videoId: v.id,
-              rotulo: faltam > 0 ? `Chega em ~${faltam} min` : "Terminando agora",
+              rotulo: ateOFim.passou ? `Levando mais que o previsto; até ~${faltam} min` : `Chega em até ${faltam} min`,
             },
           });
         }
@@ -2845,13 +4577,404 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
 
   const activeDays = DAYS;
 
+  /**
+   * Os sete cartões do calendário, montados aqui e não dentro do componente.
+   *
+   * O `SemanaDoQuadro` recebe dados prontos de propósito: ele desenha e não
+   * sabe o que é card, post, run ou agente. Quem sabe cruzar essas quatro
+   * coisas é esta tela.
+   *
+   * Desde 18/09 à noite o calendário mostra PEÇAS FINAIS, não cards da
+   * esteira. Veredito do Bruno: "somente as peças prontas, finais, igual um
+   * card do Trello, com data e hora prevista, se está aprovado, agendado,
+   * publicado, rejeitado, e os símbolos das redes (perfis e páginas)".
+   *
+   * Uma peça é o CONTEÚDO DO DIA com todas as suas adaptações: o mesmo tema
+   * sai como texto na página e no perfil do LinkedIn, no Facebook, no
+   * Instagram, e como thread no X. Isso é UMA peça com cinco destinos. Só o
+   * vídeo é peça à parte, porque é outro conteúdo.
+   *
+   * A thread do X ficou junto em 18/09 à noite. Separada, ela virava um
+   * segundo card com a MESMA imagem, a MESMA hora e o mesmo tema, e foi o que
+   * o Bruno leu como dois defeitos ao mesmo tempo: "a imagem está a mesma em
+   * todos os posts" e "deveria ter gerado apenas um post no dia, gerou
+   * vários". Os dados diziam o contrário dos dois: quatro imagens distintas,
+   * uma por dia, e um conteúdo por dia em cinco contas. **O clone era da
+   * tela, não da esteira.**
+   */
+  // Cada peça aponta para o card que a abre por inteiro (o mesmo modal de sempre).
+  const cardDaPeca = new Map<string, CampaignCard>();
+  // Os posts de cada peça, para abrir a peça que ficou SEM card (30/09): o
+  // post publicado de uma campanha cujos cards foram apagados na limpeza do
+  // quadro aparecia como "publicado" e o clique não fazia nada.
+  const postsDaPeca = new Map<string, PostParaEstado[]>();
+  const contaDoPost = (p: PostParaEstado) =>
+    p.socialAccountId ? socialAccounts.find((a) => a.id === p.socialAccountId) : undefined;
+  const DO_REDATOR = ["post_linkedin", "post_twitter", "video_clip", "video_completo"];
+  const familiaDoPost = (p: PostParaEstado, card?: CampaignCard): { chave: string; tipo: string } => {
+    if (card?.cardType === "video_completo") return { chave: `video:${card.id}`, tipo: "Vídeo completo" };
+    if (card?.cardType === "video_clip" || p.platform === "youtube") return { chave: `corte:${card?.id ?? p.id}`, tipo: "Corte de vídeo" };
+    return { chave: "post", tipo: "Post" };
+  };
+  const NOME_DO_DIA = ["", "segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
+  /** Um endereço de vídeo, para a tela não pendurar um mp4 dentro de `<img>`. */
+  // A rota de mídia do vídeo (`/api/videos/[id]/midia?tipo=vertical`) também é
+  // vídeo: ela não termina em .mp4, e era por isso que o card do corte e o do
+  // completo desenhavam o MP4 como imagem quebrada (teste de 29/09).
+  const ehVideo = (url: string) =>
+    /\.(mp4|webm)(\?|$)/i.test(url) ||
+    url.startsWith("data:video/") ||
+    /\/api\/videos\/[^/]+\/midia\?.*tipo=(vertical|horizontal|completo)(&|$)/.test(url);
+  const tituloDoCard = (c?: CampaignCard): string | null => {
+    if (!c?.content) return null;
+    const linha = c.content
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[#*_`>]/g, "")
+      .split("\n")
+      // Marcador de seção do redator ("===LINKEDIN===") nunca vira título (29/09).
+      .map((l) => l.replace(/^={2,}[^=\n]{0,40}={2,}\s*/, "").trim())
+      .find((l) => l.length > 0 && !/^(post|thread|tweet)\b/i.test(l));
+    if (!linha) return null;
+    return linha.length > 90 ? `${linha.slice(0, 90)}…` : linha;
+  };
+  /**
+   * Título da peça sem card de redator (sábado de 29/09: carrossel só com o
+   * card da Diana, e a peça aparecia como "Post"). A primeira lâmina ou a
+   * frase da arte dizem do que a peça trata; a descrição da Diana ("Imagem
+   * com a frase", "Carrossel de 3 lâminas") não serve de título.
+   */
+  const tituloDaArte = (c?: CampaignCard, p?: PostParaEstado): string | null => {
+    for (const meta of [c?.metadata, p?.metadata]) {
+      const m = meta as { slides?: unknown; frase?: unknown } | null | undefined;
+      const primeira = Array.isArray(m?.slides) ? m.slides.find((s): s is string => typeof s === "string" && s.trim().length > 0) : undefined;
+      const frase = primeira ?? (typeof m?.frase === "string" ? m.frase : undefined);
+      if (frase?.trim()) return frase.trim().length > 90 ? `${frase.trim().slice(0, 90)}…` : frase.trim();
+    }
+    if (c?.content && !/^(imagem com a frase|infogr[aá]fico com|carrossel de)/i.test(c.content.trim())) return tituloDoCard(c);
+    return null;
+  };
+  const estadoDaPeca = (posts: PostParaEstado[], principal?: CampaignCard, emProducao = false): EstadoDaPeca => {
+    const chaves = posts.map((p) => estadoDoPost(p).chave);
+    if (chaves.includes("publicado")) return "publicado";
+    if (chaves.includes("falhou")) return "falhou";
+    if (chaves.includes("agendado") || chaves.includes("publicando")) return "agendado";
+    if (principal?.status === "rejected") return "rejeitado";
+    if (principal?.status === "approved") return "aprovado";
+    // Ainda sendo feita: não há o que aprovar, e "esperando você" pedia
+    // decisão sobre o que não existe (29/09).
+    if (emProducao) return "fazendo";
+    return "esperando";
+  };
+  /**
+   * Os cards que PRODUZEM a peça (redator e Diana). Pesquisa, revisão e
+   * publicação ficam de fora: o card do Roberto guarda `aguardando` mesmo
+   * depois do briefing pronto, e ele não é peça.
+   */
+  const PRODUTORES = ["post_linkedin", "post_twitter", "media", "video_clip", "video_completo"];
+  const FASES_DO_SQUAD = ["texto", "arte", "revisao", "video"];
+  const ORDEM_DA_PECA = ["Post", "Corte de vídeo", "Vídeo completo"];
+
+  const diasDoCalendario: DiaDaSemana[] = DAYS.map((day) => {
+    const dayDate = addDays(selectedMonday, day.dayOfWeek - 1);
+    const iso = toIsoDate(dayDate);
+    const doDia = (c: CampaignCard) => Boolean(c.scheduledDate && toIsoDate(new Date(c.scheduledDate)) === iso);
+    const cardsDoDia = weekCards.filter(doDia);
+    const virtuaisDoDia = cardsVirtuais.filter(doDia);
+
+    // O formato que o cliente escolheu para o dia, quando a semana veio de um
+    // vídeo: mora no metadata dos cards de espera que o agendar cria (parte
+    // 90). O corte do Vitor vale como "Vídeo".
+    const formato =
+      [...cardsDoDia, ...virtuaisDoDia]
+        .map((c) => (c.metadata as { formatoRotulo?: string } | null)?.formatoRotulo)
+        .find((r): r is string => typeof r === "string" && r.length > 0) ??
+      ([...cardsDoDia, ...virtuaisDoDia].some((c) => c.cardType === "video_clip" || c.cardType === "video_completo")
+        ? "Vídeo"
+        : null);
+
+    const postsDoDia = postsSemana.filter((p) =>
+      p.scheduledAt
+        ? toIsoDate(new Date(p.scheduledAt)) === iso
+        : p.publishedAt
+          ? toIsoDate(new Date(p.publishedAt)) === iso
+          : false
+    );
+
+    // Agrupa os posts do dia em peças.
+    const grupos = new Map<string, { tipo: string; posts: PostParaEstado[]; cards: CampaignCard[] }>();
+    for (const p of postsDoDia) {
+      const card = cardsDoDia.find((c) => c.postId === p.id);
+      const { chave: familia, tipo } = familiaDoPost(p, card);
+      // A hora entra na chave: a quinta empurrada para "agora" cai no mesmo
+      // dia da sexta (visto em 18/09), e sao duas pecas, nao uma com oito
+      // destinos repetidos.
+      // A CAMPANHA também entra na chave (21/09): duas campanhas para a mesma
+      // semana, publicando no mesmo horário, viravam UMA peça com nove
+      // destinos, e os rascunhos novos sumiam dentro da peça agendada da
+      // anterior. Ver chaveDaPeca em lib/posts/cards-da-peca.ts.
+      const chave = chaveDaPeca(familia, p.runId, p.scheduledAt ? new Date(p.scheduledAt).toISOString() : "");
+      const g = grupos.get(chave) ?? { tipo, posts: [], cards: [] };
+      g.posts.push(p);
+      if (card) g.cards.push(card);
+      grupos.set(chave, g);
+    }
+
+    const pecas: PecaDoDia[] = [];
+    for (const [chaveComHora, g] of grupos) {
+      const chave = familiaDaChave(chaveComHora);
+      const primeiro = g.posts[0];
+
+      // "era de quinta": quando o horário do dia já tinha passado, a esteira
+      // agenda para daqui a dez minutos, e a peça cai num dia que não é o
+      // dela. Sem esta linha, o dia recebe duas peças e nada explica por quê.
+      //
+      // Desde 19/09 a comparação é entre DATAS, e não entre `dayOfWeek` e o
+      // dia da semana do quadrado: a campanha começa na data escolhida, então
+      // `dayOfWeek` é "dia k da campanha" e não "quinta". Comparar índices
+      // carimbava "era de segunda" numa peça criada para a sexta.
+      /**
+       * OS CARDS QUE VALEM PARA ESTA PEÇA: do mesmo dia da campanha E da
+       * MESMA CAMPANHA (21/09, segunda vez que este filtro precisou apertar).
+       *
+       * A primeira vez (19/09) filtrou por dia, porque a sexta mostrava a capa
+       * da quinta empurrada. A segunda foi hoje: o Bruno gerou outra campanha
+       * para a mesma semana, e a peça nova do dia 21 nasceu com a tarja
+       * "rejeitado" e a imagem da campanha anterior, reprovada horas antes.
+       * As duas campanhas têm `dayOfWeek === 1`, então o filtro por dia
+       * deixava o card de publicação e o de mídia da antiga falarem pela nova.
+       * A regra vive em lib/posts/cards-da-peca.ts, com prova.
+       */
+      // A peça que MUDOU DE DIA (30/09): o post de terça aprovado depois da
+      // terça foi para quarta, mas os cards dele continuam na terça. Procurando
+      // só nos cards de quarta, o clique dizia "ainda não tem card para abrir"
+      // numa peça agendada para dali a 20 minutos. Com o dia e a campanha do
+      // post conhecidos, a busca vai à semana inteira; sem eles, fica no dia.
+      const sabeDeOnde = g.posts.some((p) => p.dayOfWeek != null && p.runId);
+      const candidatos = cardsDaPeca(sabeDeOnde ? weekCards : cardsDoDia, g.posts);
+      // `cardDeOrigem`, e não `cardDaPeca`: esse nome já é o Map que liga o id
+      // da peça ao card principal, mais abaixo, e o tsc pegou a colisão.
+      const cardDeOrigem = candidatos[0] ?? cardsDoDia[0];
+      const dataDeOrigem = cardDeOrigem?.scheduledDate ? toIsoDate(new Date(cardDeOrigem.scheduledDate)) : null;
+      const origem =
+        dataDeOrigem && dataDeOrigem !== iso
+          ? `era de ${NOME_DO_DIA[new Date(dataDeOrigem + "T12:00:00").getDay() || 7]}`
+          : null;
+
+      // O texto que titula a peça vem do redator do LinkedIn, que é o mais
+      // longo; a thread do X do mesmo dia diz a mesma coisa em outro formato.
+      const redator =
+        g.cards.find((c) => c.cardType === "post_linkedin") ??
+        g.cards.find((c) => DO_REDATOR.includes(c.cardType)) ??
+        candidatos.find((c) => c.cardType === "post_linkedin");
+      // O card que abre a peça: a publicação lista todos os destinos e as
+      // ações de aprovar e publicar, então ela é a porta da peça de texto.
+      const principal =
+        (chave === "post" ? candidatos.find((c) => c.cardType === "publish") : undefined) ?? redator ?? g.cards[0];
+      const id = `${iso}:${chaveComHora}`;
+      if (principal) cardDaPeca.set(id, principal);
+      postsDaPeca.set(id, g.posts);
+      // A CAPA É A PRIMEIRA LÂMINA. O carrossel guarda as lâminas coladas com
+      // "|" num campo só, e o `<img>` recebia a string inteira: imagem
+      // quebrada em todo card de carrossel (o Bruno viu no sábado, 19/09).
+      //
+      // NO DIA DE VIDEO A MIDIA DO CARD E UM MP4 (desde 19/09, quando o
+      // trabalho de video passou a atualizar o card da Diana). Um `<img>` com
+      // src de mp4 e uma imagem quebrada, entao a capa vira o QUADRO que o
+      // trabalho guardou em `metadata.thumb`; sem quadro, o calendario recebe
+      // o proprio mp4 e desenha um `<video>`.
+      const cardDaMidia = candidatos.find((c) => c.cardType === "media" && c.mediaUrl);
+      const midiaDaCapa = redator?.mediaUrl ?? cardDaMidia?.mediaUrl ?? null;
+      const bruta = midiaDaCapa ? midiaDaCapa.split("|")[0] : null;
+      // O quadro vem do card do próprio corte (metadata.thumb, a capa do
+      // Vitor) e, sem ele, do card da Diana.
+      const quadroGuardado =
+        (redator?.metadata as { thumb?: string | null } | null)?.thumb ??
+        (cardDaMidia?.metadata as { thumb?: string | null } | null)?.thumb ??
+        null;
+      const capa = bruta && ehVideo(bruta) ? quadroGuardado ?? bruta : bruta;
+      // O que o visor do calendário mostra ao clicar na capa (21/09): o vídeo
+      // com controles, as lâminas do carrossel, ou a arte ampliada.
+      const laminas = midiaDaCapa ? midiaDaCapa.split("|").filter((u) => u.trim().length > 10) : [];
+      const midia =
+        !bruta
+          ? null
+          : ehVideo(bruta)
+            ? { tipo: "video" as const, urls: [bruta], poster: quadroGuardado }
+            : laminas.length > 1
+              ? { tipo: "carrossel" as const, urls: laminas }
+              : { tipo: "imagem" as const, urls: [bruta] };
+
+      /**
+       * A ETIQUETA DO TIPO (21/09), montada com o que a peça tem de verdade.
+       *
+       * O tipo sai do post, e não do card: é o post que vai para a rede, e foi
+       * ele que a esteira pode ter trocado no meio do caminho (o dia de vídeo
+       * sem saldo vira imagem, que é o caminho de 19/09). As lâminas são
+       * CONTADAS na mídia em vez de lidas da configuração, pelo mesmo motivo:
+       * o cliente precisa ver o que existe, não o que foi pedido.
+       */
+      const etiqueta = etiquetaDaPeca({
+        mediaType: primeiro.mediaType,
+        laminas: laminas.length,
+        segundos: (primeiro.metadata as { segundosDoVideo?: number } | null)?.segundosDoVideo ?? null,
+        formato: formatoDoPost(primeiro.metadata, primeiro.platform),
+      });
+
+      pecas.push({
+        id,
+        titulo: tituloDoCard(redator) ?? tituloDaArte(cardDaMidia ?? g.cards.find((c) => c.cardType === "media"), primeiro) ?? g.tipo,
+        tipo: g.tipo,
+        etiqueta,
+        hora: primeiro.scheduledAt ? horaCurta(new Date(primeiro.scheduledAt)) : null,
+        quando: primeiro.scheduledAt ? new Date(primeiro.scheduledAt).getTime() : 0,
+        origem,
+        // Em produção: algum card que faz ESTA peça ainda está em espera ou
+        // em revisão, ou o registro da campanha diz que o dia está no texto,
+        // na arte, na revisão ou no vídeo agora.
+        estado: estadoDaPeca(
+          g.posts,
+          principal,
+          (chave === "post"
+            ? candidatos.filter((c) => {
+                if (!PRODUTORES.includes(c.cardType)) return false;
+                if (c.postId) return g.posts.some((p) => p.id === c.postId);
+                // Card de espera que SOBROU: o mesmo tipo de card já entregou
+                // um post desta peça (visto na quinta 10/09, com a thread
+                // pronta e um segundo card do Xavier ainda "escrevendo").
+                return !candidatos.some((o) => o.cardType === c.cardType && o.postId && g.posts.some((p) => p.id === o.postId));
+              })
+            : g.cards
+          ).some((c) => cardEmProducao(c)) ||
+            FASES_DO_SQUAD.includes(andamento[day.dayOfWeek]?.fase ?? "")
+        ),
+        midia,
+        destinos: [...g.posts]
+          .sort((a, b) => ORDEM_DA_REDE.indexOf(a.platform) - ORDEM_DA_REDE.indexOf(b.platform))
+          .map((p) => {
+            const conta = contaDoPost(p);
+            return {
+              plataforma: p.platform,
+              tipo: conta ? (conta.accountType === "organization" ? ("pagina" as const) : ("perfil" as const)) : null,
+              nome: conta?.displayName ?? null,
+            };
+          }),
+        capa,
+      });
+    }
+    // Por hora, e depois por tipo: quem abre o dia quer ler de cima para baixo
+    // na ordem em que as coisas saem.
+    pecas.sort(
+      (a, b) => (a.quando ?? 0) - (b.quando ?? 0) || ORDEM_DA_PECA.indexOf(a.tipo) - ORDEM_DA_PECA.indexOf(b.tipo)
+    );
+
+    // Os cortes guardados e o vídeo completo a caminho: peças sem post ainda,
+    // que continuam visíveis para não sumirem do quadro (parte 87).
+    for (const v of virtuaisDoDia) {
+      cardDaPeca.set(v.id, v);
+      const meta = v.metadata as { virtual?: string; rotulo?: string } | null;
+      pecas.push({
+        id: v.id,
+        titulo: v.content ?? "Corte de vídeo",
+        tipo: meta?.virtual === "completo" ? (meta.rotulo ?? "Vídeo completo") : "Corte de vídeo",
+        hora: null,
+        // O completo virtual é o vídeo que o Vitor ainda está editando: não
+        // espera o cliente, espera o squad (29/09).
+        estado: meta?.virtual === "guardado" ? "guardado" : "fazendo",
+        destinos: [{ plataforma: "youtube", tipo: null, nome: null }],
+        capa: null,
+      });
+    }
+
+    /**
+     * A PEÇA QUE AINDA NÃO TEM POST (29/09): o dia cujo redator ou a Diana
+     * ainda estão no card de espera. Sem isto o dia ficava só com a faixa do
+     * andamento (ou vazio, na semana de vídeo) e nada para abrir; agora ele
+     * mostra a peça "o squad está fazendo", e o clique abre o card de espera,
+     * que diz quem está fazendo o quê. Uma peça por campanha e dia, como as
+     * peças prontas.
+     */
+    const esperaPorRun = new Map<string, CampaignCard[]>();
+    for (const c of cardsDoDia) {
+      if (!PRODUTORES.includes(c.cardType) || c.postId || !cardEmProducao(c)) continue;
+      esperaPorRun.set(c.runId, [...(esperaPorRun.get(c.runId) ?? []), c]);
+    }
+    for (const [runId, espera] of esperaPorRun) {
+      // A peça pronta da mesma campanha já responde pelo dia.
+      if (postsDoDia.some((p) => p.runId === runId && familiaDoPost(p, cardsDoDia.find((c) => c.postId === p.id)).chave === "post")) continue;
+      const redator = espera.find((c) => c.cardType !== "media") ?? espera[0];
+      const id = `espera:${iso}:${runId}`;
+      cardDaPeca.set(id, redator);
+      const quando = redator.scheduledDate ? new Date(redator.scheduledDate) : null;
+      pecas.push({
+        id,
+        titulo: tituloDoCard(redator) ?? "O squad está fazendo esta peça",
+        tipo: "Post",
+        hora: quando ? horaCurta(quando) : null,
+        quando: quando?.getTime() ?? 0,
+        estado: "fazendo",
+        destinos: espera.some((c) => c.cardType === "post_twitter") ? [{ plataforma: "twitter", tipo: null, nome: null }] : [],
+        capa: null,
+      });
+    }
+
+    return {
+      dayOfWeek: day.dayOfWeek,
+      curto: day.short,
+      // `dayDate` e meia-noite UTC: o `getDate()` local, em Sao Paulo, cai no
+      // dia ANTERIOR (21h). Em 18/09 a segunda 14 apareceu como 13.
+      numero: String(dayDate.getUTCDate()).padStart(2, "0"),
+      // "Hoje" e o dia em que a pessoa esta, e ela esta em Sao Paulo. O UTC
+      // vira o dia as 21h daqui, e as 22h de quinta a tela destacava a sexta.
+      hoje: iso === hojeEmSaoPaulo,
+      formato,
+      pecas,
+      andamento: andamento[day.dayOfWeek] ?? null,
+    };
+  });
+
+  const proximaSaida = proximaPeca(postsSemana);
+
+  /**
+   * O que o escritorio recebe: as pecas da semana (reais e virtuais), so com o
+   * que a situacao do squad precisa. O escritorio nao sabe o que e card.
+   */
+  const pecasDoSquad = [...weekCards, ...cardsVirtuais].map((c) => ({
+    id: c.id,
+    agentId: c.agentId,
+    cardType: c.cardType,
+    status: c.status,
+    // Card de espera não conta como "peça esperando você" (29/09).
+    emProducao: (c.metadata as { virtual?: string } | null)?.virtual === "completo" || cardEmProducao(c),
+  }));
+
+  const tituloDoEscritorio = generating
+    ? "O squad esta trabalhando"
+    : `Semana de ${diasDoCalendario[0]?.numero}/${String(selectedMonday.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  /**
+   * Clicar no agente abre a FICHA dele: quem e, o que faz e os trabalhos
+   * recentes. Cada trabalho da ficha abre o card completo, pelo mesmo modal.
+   * (Ate 18/09 a tarde o clique abria direto a primeira peca; o Bruno pediu
+   * a ficha.)
+   */
+  function abrirAgente(agentId: string, falaAtual: string | null = null) {
+    setFichaAberta({ id: agentId, fala: falaAtual });
+  }
+
+  function abrirTrabalhoDaFicha(t: TrabalhoDoAgente) {
+    setFichaAberta(null);
+    const card = t as unknown as CampaignCard;
+    handleOpenModal(card, linhaDoAgente(card));
+  }
+
   return (
     <div className="w-full min-w-0 space-y-4 p-4 lg:p-8">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-black" style={{ color: "var(--text-primary)" }}>Gestor de Conteúdo</h2>
-          <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{projectName}</p>
+          {/* Rótulo mono em cima do título, o padrão da referência (01/10). */}
+          <p className="rotulo mb-1.5">{projectName}</p>
+          <h2 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Gestor de Conteúdo</h2>
         </div>
 
         {/* `flex-wrap` porque são cinco controles numa linha: no computador
@@ -2875,43 +4998,17 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               Hoje
             </button>
           )}
-          {/* O envio da gravação mora aqui desde 02/09, ao lado de "Nova
-              campanha": as duas são a mesma pergunta, de onde vem o conteúdo
-              da semana, e antes uma delas ficava numa aba separada. */}
-          <Button
-            variant="outline"
-            onClick={() => setEnviarAberto((a) => !a)}
-            title="Envia uma gravação e o squad transforma em conteúdo"
-          >
-            <Video className="w-4 h-4" />
-            <span className="hidden sm:inline ml-1">Nova gravação</span>
-          </Button>
-          <Button variant="outline" onClick={() => void fillLastTopic()} disabled={generating} title="Reutiliza o tema da última campanha">
-            <RotateCcw className="w-4 h-4" />
-            <span className="hidden sm:inline ml-1">Último tema</span>
-          </Button>
-          {/* Archive week — only shown when there are cards in the current view */}
-          {weekCards.length > 0 && !generating && (
-            <Button
-              variant="outline"
-              onClick={() => void handleArchiveWeek()}
-              title="Arquiva todas as campanhas desta semana (pode restaurar depois)"
-              className="border-zinc-600/50 text-zinc-400 hover:border-zinc-500 hover:text-zinc-300"
-            >
-              <Archive className="w-4 h-4" />
-              <span className="hidden sm:inline ml-1">Limpar semana</span>
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => void openArchive()}
-            disabled={generating}
-            title="Campanhas arquivadas: restaurar ou só consultar"
-            aria-label="Abrir arquivo de campanhas"
-          >
-            <Archive className="w-4 h-4" />
-            <span className="hidden sm:inline ml-1">Arquivo</span>
-          </Button>
+          {/* UM BOTAO E UM MENU, desde 18/09.
+              
+              Eram CINCO controles disputando a mesma linha: Nova gravacao,
+              Ultimo tema, Limpar semana, Arquivo e Nova campanha. Quatro deles
+              sao usados uma vez por mes, e ficavam com o mesmo peso visual da
+              acao que a pessoa vem fazer.
+              
+              "Nova gravacao" sumiu daqui de vez: virou a primeira porta da
+              jornada, que e onde a pergunta "de onde vem o conteudo" faz
+              sentido. Ter um botao so para video ao lado de "Nova campanha"
+              era a propria escolha vazando para fora da jornada. */}
           {generating ? (
             <div className="flex items-center gap-2 ml-0 sm:ml-1">
               <Button disabled className="opacity-70 cursor-not-allowed">
@@ -2933,6 +5030,103 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               Nova campanha
             </Button>
           )}
+          <div className="relative">
+            <button
+              onClick={() => setMenuAberto((a) => !a)}
+              aria-label="Mais opcoes"
+              aria-expanded={menuAberto}
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-lg border transition-colors hover:border-orange-500 hover:text-orange-400"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {menuAberto && (
+              <>
+                {/* A cortina que fecha o menu ao clicar fora. Sem ela o menu
+                    fica aberto atras do modal que ele mesmo abriu. */}
+                <div className="fixed inset-0 z-10" onClick={() => setMenuAberto(false)} />
+                <div
+                  className="absolute right-0 z-20 mt-1.5 w-[210px] overflow-hidden rounded-xl border py-1 shadow-xl"
+                  style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+                >
+                  <button
+                    onClick={() => { setMenuAberto(false); void fillLastTopic(); }}
+                    disabled={generating}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--realce-1)] disabled:opacity-50"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                    Repetir o ultimo tema
+                  </button>
+                  <button
+                    onClick={() => { setMenuAberto(false); void openArchive(); }}
+                    disabled={generating}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--realce-1)] disabled:opacity-50"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    <Archive className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                    Arquivo de campanhas
+                  </button>
+                  {weekCards.length > 0 && !generating && (
+                    <button
+                      onClick={() => { setMenuAberto(false); void handleArchiveWeek(); }}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+                    >
+                      <Archive className="h-3.5 w-3.5 shrink-0" />
+                      Limpar esta semana
+                    </button>
+                  )}
+                  {/* ARQUIVAR AS FALHAS DA SEMANA (01/10, pedido do Bruno: "para
+                      limpar o gestor"). A confirmação é aqui mesmo, no menu,
+                      com o número e as redes: sem a caixa do navegador. */}
+                  {falhasDaSemana.length > 0 && !confirmarFalhas && (
+                    <button
+                      data-arquivar-falhas
+                      onClick={() => setConfirmarFalhas(true)}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-red-500/10"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                      Arquivar as falhas desta semana
+                    </button>
+                  )}
+                  {falhasDaSemana.length > 0 && confirmarFalhas && (
+                    <div className="space-y-2 border-t px-3.5 py-2.5" style={{ borderColor: "var(--border)" }} data-confirmar-falhas>
+                      <p className="text-[12px] leading-snug" style={{ color: "var(--text-primary)" }}>
+                        Arquivar {falhasDaSemana.length === 1 ? "1 post que falhou" : `${falhasDaSemana.length} posts que falharam`} (
+                        {[...new Set(falhasDaSemana.map((p) => nomeDaRede(p.platform)))].join(", ")})?
+                      </p>
+                      <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                        Eles saem do quadro e ficam em Posts, aba Arquivados, para voltar quando quiser.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          data-confirmar-falhas-sim
+                          onClick={() => {
+                            setMenuAberto(false);
+                            setConfirmarFalhas(false);
+                            void arquivarPostsComFalha(falhasDaSemana.map((p) => p.id));
+                          }}
+                          className="flex-1 rounded-lg bg-red-500/90 px-2 py-1.5 text-[12px] font-semibold text-white hover:bg-red-500"
+                        >
+                          Arquivar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmarFalhas(false)}
+                          className="flex-1 rounded-lg border px-2 py-1.5 text-[12px]"
+                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2947,19 +5141,71 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         sinalDeRecarga={gravacoesEnviadas}
       />
 
-      <EnviarGravacao
-        projectId={projectId}
+      {/* A montagem de efeitos que desistiu, dita com todas as letras e com a
+          saída sem custo (01/10, parte 240). Fica logo abaixo da faixa do
+          vídeo, que ainda diz "pronto" quando a edição de fala chegou. */}
+      {falhasDaMontagem?.length ? (
+        <AvisoDaMontagem falhas={falhasDaMontagem} aoPedir={() => void loadCardsForWeek(weekStartIso)} />
+      ) : null}
+
+      {/* A JORNADA, em janela e em passos, no lugar do painel que abria dentro
+          da pagina com quatro formularios de uma vez. Ver
+          components/posts/jornada-da-campanha.tsx para o porque. */}
+      <JornadaDaCampanha
         aberto={enviarAberto}
+        projectId={projectId}
         estilo={videoEstilo}
         musica={videoMusica}
         termos={videoTermos}
         semana={videoSemana}
-        onFechar={() => setEnviarAberto(false)}
+        redesConectadas={socialAccounts.filter((a) => a.isActive !== false).map((a) => a.platform)}
+        comecarNoVideo={comecarNoVideo}
+        onFechar={() => {
+          setEnviarAberto(false);
+          setComecarNoVideo(false);
+        }}
         onEnviado={() => {
           setEnviarAberto(false);
+          setComecarNoVideo(false);
           setGravacoesEnviadas((n) => n + 1);
         }}
+        onEscolherTema={() => {
+          setOrigemDoModal("tema");
+          setShowSetupModal(true);
+        }}
       />
+
+      {/* A tela cheia das duas portas saiu em 18/09: a escolha da origem passou
+          a ser o PASSO 1 da jornada, que abre sempre, e nao so quando a URL
+          trazia ?novaCampanha=1. Um caminho so, e ele nao depende de parametro
+          de URL que o menu nao punha. */}
+      <AnimatePresence>
+        {false && primeiraCampanha && !generating && (
+          <motion.div
+            key="primeira-campanha"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="rounded-2xl border px-6 py-10"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+          >
+            <EscolhaDeOrigem
+              variante="tela"
+              onVideo={() => {
+                setPrimeiraCampanha(false);
+                setEnviarAberto(true);
+              }}
+              onTema={() => {
+                setPrimeiraCampanha(false);
+                setOrigemDoModal("tema");
+                setShowSetupModal(true);
+              }}
+              // A porta do gêmeo aqui aparecia "em breve", sem clique (01/10).
+              onGemeo={() => { window.location.href = `/projects/${projectId}/gemeo`; }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Failed / cancelled run banner */}
       <AnimatePresence>
@@ -2999,7 +5245,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
             <button
               onClick={() => dismissFailedBanner()}
               title="Fechar"
-              className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors"
+              className="shrink-0 p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
               <X className="w-4 h-4" />
@@ -3075,193 +5321,131 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         )}
       </AnimatePresence>
 
-      {/* Kanban grid */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: `${180 + activeDays.length * 160}px` }}>
-            {/* Day headers */}
-            <div className="grid border-b" style={{ gridTemplateColumns: `180px repeat(${activeDays.length}, 1fr)`, borderColor: "var(--border)" }}>
-              <div className="p-3 flex items-center">
-                <CalendarDays className="w-4 h-4 mr-2" style={{ color: "var(--text-muted)" }} />
-                <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Agente</span>
-              </div>
-              {activeDays.map((day) => {
-                const dayDate = addDays(selectedMonday, day.dayOfWeek - 1);
-                const isToday = toIsoDate(dayDate) === todayIso;
-                const cardsDoDia = weekCards.filter((c) => c.scheduledDate && toIsoDate(new Date(c.scheduledDate)) === toIsoDate(dayDate));
-                const hasCards = cardsDoDia.length > 0;
-                // O formato que o cliente escolheu para o dia, quando a semana
-                // veio de um vídeo: mora no metadata dos cards de espera que o
-                // agendar cria (parte 90). O corte do Vitor vale como "Vídeo".
-                const formatoDoDia =
-                  cardsDoDia
-                    .map((c) => (c.metadata as { origem?: string; formatoRotulo?: string } | null)?.formatoRotulo)
-                    .find((r): r is string => typeof r === "string" && r.length > 0) ??
-                  (cardsDoDia.some((c) => c.cardType === "video_clip" || c.cardType === "video_completo") ? "Vídeo" : null);
-                return (
-                  <div key={day.dayOfWeek} className={cn("p-3 text-center border-l", isToday ? "bg-orange-500/5" : "")} style={{ borderColor: "var(--border)" }}>
-                    <p className={cn("text-xs font-bold", isToday ? "text-orange-400" : "")} style={!isToday ? { color: "var(--text-primary)" } : undefined}>{day.short}</p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{formatDayDate(selectedMonday, day.dayOfWeek)}</p>
-                    {formatoDoDia && (
-                      <span
-                        className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border"
-                        style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--bg-primary)" }}
-                      >
-                        {formatoDoDia}
-                      </span>
-                    )}
-                    {isToday && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mx-auto mt-1" />}
-                    {hasCards && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mx-auto mt-1" />}
-                  </div>
-                );
-              })}
-            </div>
+      {/* O ESCRITORIO, um robo por agente.
 
-            {/* Agent rows */}
-            {loadingCards && !generating ? (
-              <div className="flex items-center justify-center py-20 gap-2" style={{ color: "var(--text-muted)" }}>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Carregando...</span>
-              </div>
-            ) : (
-              AGENT_ROWS.map((agentRow, rowIdx) => {
-                const rowCards = [...weekCards, ...cardsVirtuais].filter((c) => c.agentId === agentRow.agentId);
-                const hasAnyCard = rowCards.length > 0;
+          Quando a matriz virou calendario por dia (18/09), os agentes sumiram
+          da tela e o Bruno disse na hora: "agora ficamos sem saber onde estao
+          os agentes". Aqui eles voltam, na frente do calendario: quem esta com
+          o bastao senta e trabalha, quem entregou fica de pe, e a passagem do
+          bastao e um robo andando ate a mesa do outro. O escritorio ouve a
+          esteira sozinho e avisa quando o run termina, no lugar da faixa
+          antiga (`pipeline-live.tsx`). */}
+      <Escritorio
+        pecas={pecasDoSquad}
+        runId={generating && runningPipelineId ? runningPipelineId : null}
+        titulo={tituloDoEscritorio}
+        projectId={projectId}
+        onRunTerminou={aoTerminarRun}
+        onRunFalhou={aoFalharRun}
+        onAbrirAgente={abrirAgente}
+        videos={videosAoVivo}
+      />
 
-                // Linha sem nenhum card na semana vira uma linha FINA, em vez
-                // de uma fileira de células "Vazio". No teste móvel de 31/08 as
-                // linhas vazias dominavam a tela e o conteúdo real sumia.
-                if (!hasAnyCard && !generating) {
-                  return (
-                    <div
-                      key={agentRow.agentId}
-                      className="flex items-center gap-2 border-b last:border-b-0 px-3 py-1.5"
-                      style={{ borderColor: "var(--border)", opacity: 0.45 }}
-                    >
-                      <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0", agentRow.color)}>
-                        {agentRow.agentId.split("-").map((w) => w[0].toUpperCase()).slice(0, 2).join("")}
-                      </div>
-                      <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
-                        {agentRow.label}: nada nesta semana
-                      </p>
-                    </div>
-                  );
-                }
+      {/* A SEMANA, um cartao por dia.
 
-                return (
-                  <div
-                    key={agentRow.agentId}
-                    className={cn("grid border-b last:border-b-0 items-start")}
-                    style={{
-                      gridTemplateColumns: `180px repeat(${activeDays.length}, 1fr)`,
-                      borderColor: "var(--border)",
-                      background: rowIdx % 2 === 0 ? "transparent" : "rgba(0,0,0,0.02)",
-                    }}
-                  >
-                    <div className="p-3 flex items-center gap-2 border-r" style={{ borderColor: "var(--border)" }}>
-                      <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0", agentRow.color)}>
-                        {agentRow.agentId.split("-").map((w) => w[0].toUpperCase()).slice(0, 2).join("")}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{agentRow.label}</p>
-                        <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{agentRow.subtitle}</p>
-                      </div>
-                    </div>
+          Substituiu em 18/09 uma matriz de SETE AGENTES por sete dias: 56
+          celulas para responder "o que sai esta semana". O veredito do Bruno,
+          olhando a propria tela depois de criar um projeto de verdade, foi que
+          ela estava poluida.
+          
+          **Ninguem planeja a semana por agente.** O cliente nao pergunta "o que
+          o Lucas LinkedIn fez", pergunta "o que sai na terca". Os agentes
+          continuam assinando cada peca e aparecem ao abrir a peca, que e quando
+          a pergunta sobre quem fez o que finalmente faz sentido. */}
+      {/* A NAVEGAÇÃO DA SEMANA TAMBÉM AQUI (30/09): o plano do vídeo começa no
+          dia do envio e atravessa para a semana seguinte, e as setas só
+          existiam no topo, acima do escritório. O Bruno, olhando o quadro lá
+          embaixo, não achou como ver o segundo corte, que caiu na terça 06/10. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <button
+          onClick={prevWeek}
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-orange-500"
+          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> Semana anterior
+        </button>
+        <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+          {formatWeekLabel(selectedMonday)}
+          {!isCurrentWeek && (
+            <button onClick={goToThisWeek} className="ml-2 underline font-normal" style={{ color: "var(--accent-orange)" }}>
+              voltar para hoje
+            </button>
+          )}
+        </p>
+        <button
+          onClick={nextWeek}
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-orange-500"
+          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+        >
+          Próxima semana <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <SemanaDoQuadro
+        dias={diasDoCalendario}
+        onAbrirDia={() => openNewCampaign()}
+        // A peça que falhou se arquiva no próprio cartão (01/10): só os posts
+        // dela que falharam; o que já saiu ou está na fila fica.
+        onArquivarPeca={(id) => void arquivarPostsComFalha((postsDaPeca.get(id) ?? []).filter((p) => p.status === "failed").map((p) => p.id))}
+        onAbrirPeca={(id) => {
+          // Pelo `handleOpenModal`, e nao pelo `setModalCard` direto: o modal
+          // so desenha com card E linha do agente, e em 18/09 o clique na peca
+          // setava so o card. A tela nao fazia nada, zero, e ninguem avisava.
+          const card = cardDaPeca.get(id);
+          if (card) handleOpenModal(card, linhaDoAgente(card));
+          else {
+            // Sem card: a peça publicada abre na própria rede; a que existe só
+            // como post abre na aba Posts, onde ela está por inteiro.
+            const posts = postsDaPeca.get(id) ?? [];
+            const link = posts.find((p) => p.externalUrl)?.externalUrl;
+            if (link) window.open(link, "_blank", "noopener,noreferrer");
+            else if (posts.length) window.location.href = `/projects/${projectId}/posts`;
+            else toast("Esta peça ainda não tem card para abrir.");
+          }
+        }}
+      />
 
-                    {activeDays.map((day) => {
-                      const dayDate = toIsoDate(addDays(selectedMonday, day.dayOfWeek - 1));
-                      const dayRowCards = rowCards
-                        .filter((c) => c.scheduledDate && toIsoDate(new Date(c.scheduledDate)) === dayDate)
-                        .sort((a, b) => {
-                          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                          return ta - tb;
-                        });
-                      const isToday = dayDate === todayIso;
-                      const isGeneratingThisAgent = generating && !hasAnyCard;
-
-                      return (
-                        <div key={day.dayOfWeek} className={cn("p-2 border-l min-w-0 overflow-hidden", isToday ? "bg-orange-500/5" : "")} style={{ borderColor: "var(--border)", minHeight: 64 }}>
-                          {isGeneratingThisAgent && dayRowCards.length === 0 ? (
-                            <div className="rounded-lg border border-dashed h-16 flex items-center justify-center gap-1" style={{ borderColor: "var(--border)" }}>
-                              <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--border)" }} />
-                              <span className="text-[10px]" style={{ color: "var(--border)" }}>Gerando...</span>
-                            </div>
-                          ) : dayRowCards.length === 0 ? (
-                            <KanbanCard card={undefined} agentRow={agentRow} onOpenModal={handleOpenModal} />
-                          ) : (
-                            <div className="space-y-1.5">
-                              {dayRowCards.map((c) => (
-                                <KanbanCard
-                                  key={c.id}
-                                  card={c}
-                                  agentRow={agentRow}
-                                  onOpenModal={handleOpenModal}
-                                  compact={dayRowCards.length > 1}
-                                  resumo={c.cardType === "publish" ? resumoDoDia(postsSemana.filter((p) => (p as PostParaEstado & { dayOfWeek?: number }).dayOfWeek === day.dayOfWeek)) : null}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
-            )}
-          </div>
+      {/* A LINHA DE BAIXO diz a proxima coisa que vai acontecer, que e a unica
+          informacao que justifica voltar nesta tela amanha. "Sete pecas" e um
+          numero que nao pede acao nenhuma; "a proxima sai hoje as 18:00" e. */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs"
+        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+      >
+        <div className="flex flex-wrap gap-3.5">
+          <span className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: CORES.publicado }} />
+            publicado
+          </span>
+          <span className="flex items-center gap-1.5">
+            {/* As cores são as mesmas dos cartões (ESTADO em semana-do-quadro).
+                Até 29/09 "fazendo" tinha a cor do agendado e o "esperando
+                você" laranja nem aparecia na legenda. */}
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: "#c084fc" }} />
+            o squad está fazendo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: "#f6803d" }} />
+            esperando você aprovar
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: CORES.agendado }} />
+            agendado (já aprovado)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: CORES.rascunho }} />
+            rascunho, nao sai
+          </span>
         </div>
-
-        {/* Empty state */}
-        {!loadingCards && weekCards.length === 0 && !generating && (
-          <div className="text-center py-12 px-8">
-            <CalendarDays className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--border)" }} />
-            <p className="text-sm font-medium mb-1" style={{ color: "var(--text-primary)" }}>Nenhuma campanha nesta semana</p>
-            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-              {isCurrentWeek
-                ? "Clique em \"Nova campanha\" para gerar conteúdo para essa semana."
-                : "Nenhuma campanha foi gerada para a semana selecionada."}
-            </p>
-            {isCurrentWeek && (
-              <Button size="sm" onClick={() => setShowSetupModal(true)}>
-                <Sparkles className="w-3 h-3" /> Nova campanha
-              </Button>
-            )}
-          </div>
-        )}
+        {proximaSaida ? (
+          <span>
+            A proxima peca sai{" "}
+            <b className="font-semibold" style={{ color: "var(--text-primary)" }}>{proximaSaida}</b>
+          </span>
+        ) : weekCards.length === 0 && !loadingCards && !generating ? (
+          <span>Nada nesta semana ainda. Comece por &ldquo;Nova campanha&rdquo;.</span>
+        ) : null}
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-[10px] flex-wrap" style={{ color: "var(--text-muted)" }}>
-        <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-400" /> Aprovado</span>
-        <span className="flex items-center gap-1"><X className="w-3 h-3 text-red-400" /> Rejeitado</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> Com conteúdo</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.publicado }} /> Publicado</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.agendado }} /> Agendado, sai sozinho</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.rascunho }} /> Rascunho, não sai</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{ background: CORES.falhou }} /> Falhou</span>
-        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-400" /> Hoje</span>
-        <span className="ml-auto">Clique em qualquer card para abrir e interagir com a IA</span>
-      </div>
-
-      {/* Pipeline live — abaixo do Kanban */}
-      {generating && runningPipelineId && (
-        <PipelineLive
-          runId={runningPipelineId}
-          onComplete={() => {
-            setGenerating(false);
-            toast.success("Campanha gerada! Cards atualizados.");
-            loadCardsForWeek(weekStartIso);
-            setRunningPipelineId(null);
-          }}
-          onError={() => {
-            setGenerating(false);
-            setRunningPipelineId(null);
-            toast.error("Erro ao gerar campanha.");
-          }}
-        />
-      )}
 
       {/* Um corte guardado, aberto para decidir se vai ao ar */}
       <AnimatePresence>
@@ -3279,11 +5463,39 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       <AnimatePresence>
         {showSetupModal && (
           <CampaignSetupModal
-          postFrequency={postFrequency}
+            postFrequency={postFrequency}
             onConfirm={handleSetupConfirm}
-            onClose={() => setShowSetupModal(false)}
+            onClose={() => {
+              setShowSetupModal(false);
+              setOrigemDoModal(undefined);
+            }}
             defaultWeekStart={weekStartIso}
             projectId={projectId}
+            origemInicial={origemDoModal}
+            // Conta desativada nao entra; conta sem o campo (tela que nao o
+            // seleciona) entra, porque a falta do dado nao pode virar rede sumida.
+            redesConectadas={socialAccounts.filter((a) => a.isActive !== false).map((a) => a.platform)}
+            contasConectadas={socialAccounts.filter((a) => a.isActive !== false)}
+            // "De um vídeo" abre o painel de envio aqui mesmo, em vez de
+            // navegar para /video e voltar. Ver o comentário da prop.
+            onEscolherVideo={() => {
+              setShowSetupModal(false);
+              setEnviarAberto(true);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* A ficha do agente, aberta pelo escritorio */}
+      <AnimatePresence>
+        {fichaAberta && (
+          <FichaDoAgente
+            key={fichaAberta.id}
+            projectId={projectId}
+            agentId={fichaAberta.id}
+            falaAtual={fichaAberta.fala}
+            onFechar={() => setFichaAberta(null)}
+            onAbrirTrabalho={abrirTrabalhoDaFicha}
           />
         )}
       </AnimatePresence>
@@ -3298,6 +5510,11 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           onClose={() => { setModalCard(null); setModalAgentRow(null); }}
           onCardUpdate={handleCardUpdate}
           onWeekRefresh={() => { void loadCardsForWeek(weekStartIso); }}
+          // Só o que ainda vai sair ocupa horário: publicado, reprovado e
+          // arquivado não disputam a agenda com ninguém.
+          horariosDaSemana={postsSemana
+            .filter((p) => p.scheduledAt && !["published", "rejected", "cancelled", "failed"].includes(p.status))
+            .map((p) => ({ id: p.id, scheduledAt: new Date(p.scheduledAt as string | Date).toISOString() }))}
           onRestartWithTopic={(t) => {
             setTopic(t);
             setShowTopicInput(true);
@@ -3330,7 +5547,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                   <h3 className="font-bold text-lg" style={{ color: "var(--text-primary)" }}>Arquivo de campanhas</h3>
                   <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Restaure no quadro escolhendo a semana e os dias (sem datas passadas).</p>
                 </div>
-                <button type="button" onClick={() => setArchiveOpen(false)} className="p-1 rounded-lg hover:bg-white/10" style={{ color: "var(--text-muted)" }}>
+                <button type="button" onClick={() => setArchiveOpen(false)} className="p-1 rounded-lg hover:bg-[var(--realce-2)]" style={{ color: "var(--text-muted)" }}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -3369,8 +5586,8 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                                   key={d.dayOfWeek}
                                   className="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-lg border"
                                   style={{
-                                    borderColor: restoreDays.includes(d.dayOfWeek) ? "rgba(249,115,22,0.5)" : "var(--border)",
-                                    background: restoreDays.includes(d.dayOfWeek) ? "rgba(249,115,22,0.08)" : "transparent",
+                                    borderColor: restoreDays.includes(d.dayOfWeek) ? "color-mix(in srgb, var(--acento) 50%, transparent)" : "var(--border)",
+                                    background: restoreDays.includes(d.dayOfWeek) ? "color-mix(in srgb, var(--acento) 8%, transparent)" : "transparent",
                                   }}
                                 >
                                   <input

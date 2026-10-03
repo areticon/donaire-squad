@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { MAX_X } from "@/lib/media/limits";
 import { destinoPorId } from "@/lib/media/destinos";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * Aprovação de um trecho: os textos viram posts de verdade.
@@ -48,7 +49,7 @@ export async function POST(
   }
 
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
+    where: { id, project: projetoVisivel(userId) },
     select: { id: true, status: true, clips: true, projectId: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -84,7 +85,13 @@ export async function POST(
   const aCriar = destinosMarcados.length
     ? destinosMarcados.map((d) => {
         const chaveDoTexto =
-          d.plataforma === "twitter" ? "x" : d.plataforma === "youtube" ? "linkedin" : d.plataforma;
+          d.plataforma === "twitter"
+            ? "x"
+            : d.plataforma === "youtube"
+              ? "linkedin"
+              : d.plataforma === "tiktok"
+                ? "instagram"
+                : d.plataforma;
         const texto = redes[chaveDoTexto as keyof typeof redes];
         return {
           plataforma: d.plataforma,

@@ -1,158 +1,132 @@
-"use client";
-
-import { useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CATALOGO_DE_ESTILOS, GRUPOS, arteDoEstilo } from "@/lib/media/catalogo-de-estilos";
+import { ESTILOS_DE_LEGENDA } from "@/lib/media/legenda-escolhida";
 
 /**
- * O CARROSSEL DE EXEMPLOS: o mesmo corte, ofício por ofício.
+ * O ESTILO DA EDIÇÃO, com material REAL (01/10, pedido do Bruno).
  *
- * Existe porque a seção da entrega mostrava UMA gravação, e quem chega na
- * página precisa se ver nela. O ICP não é uma pessoa: é consultor, dentista,
- * advogado, dono de negócio e quem vive de tráfego, e cada um grava por um
- * motivo diferente. A legenda de cada cartão diz o que a pessoa JÁ GRAVAVA
- * antes de conhecer a Demandou, que é o filtro do ICP fechado em 25/08.
+ * Até aqui esta seção era "O mesmo corte, para o seu ofício", com pessoas
+ * geradas por IA e legenda queimada por código: ilustração, e não saída da
+ * plataforma. O Bruno pediu para trocar pelos estilos que o cliente escolhe
+ * de verdade antes de subir o vídeo.
  *
- * As imagens são ILUSTRAÇÃO, e não saída da esteira: as pessoas não existem
- * (geradas no Nano Banana Pro) e a legenda foi queimada por código com a mesma
- * fonte, cor e contorno que o produto usa. Por isso esta seção não repete a
- * frase "saídas reais da plataforma", que a seção da entrega usa e cumpre.
+ * DUAS PROVAS, nesta ordem:
+ *
+ * 1. O MESMO TRECHO DA MESMA GRAVAÇÃO, editado em dois estilos. São dois
+ *    cortes reais do projeto Empreendedorismo Cristão, os dois a partir do
+ *    segundo 700 da gravação de 29/09 ("Moisés estava sobrecarregado"): um na
+ *    linguagem explicativa em colagem (estilo Vox, legenda em recorte de
+ *    papel), outro com o narrador em tela cheia e palavras gigantes na cor da
+ *    marca. Os arquivos são os montados pela esteira, só reduzidos para a web
+ *    (public/pitch/estilo-*.mp4, 10 s, sem som).
+ * 2. O CATÁLOGO, com as mesmas artes de exemplo que o cliente vê na tela de
+ *    estilo (public/estilos, lib/media/catalogo-de-estilos.ts) e os cinco
+ *    estilos de legenda da aba "Legenda". A seção lê o catálogo do código: se
+ *    um estilo entrar ou sair, a landing acompanha sem cópia manual.
+ *
+ * Componente de servidor: os vídeos tocam sozinhos, mudos e em laço, sem
+ * JavaScript nosso.
  */
 
-type Exemplo = {
-  arquivo: string;
-  oficio: string;
-  gravou: string;
-};
-
-const EXEMPLOS: Exemplo[] = [
+const LADO_A_LADO = [
   {
-    arquivo: "/exemplo/carrossel/consultora.jpg",
-    oficio: "Consultoria",
-    gravou: "Gravou a aula da mentoria",
+    video: "/pitch/estilo-colagem.mp4",
+    capa: "/pitch/estilo-colagem.jpg",
+    nome: "Explicativo editorial",
+    detalhe: "Colagem de recortes e legenda em recorte de papel (estilo Vox)",
   },
   {
-    arquivo: "/exemplo/carrossel/dentista.jpg",
-    oficio: "Odontologia",
-    gravou: "Gravou a explicação que dá todo dia",
-  },
-  {
-    arquivo: "/exemplo/carrossel/advogado.jpg",
-    oficio: "Advocacia",
-    gravou: "Gravou o parecer que já tinha dado",
-  },
-  {
-    arquivo: "/exemplo/carrossel/empresaria.jpg",
-    oficio: "Indústria",
-    gravou: "Gravou a conversa com o time",
-  },
-  {
-    arquivo: "/exemplo/carrossel/marketing.jpg",
-    oficio: "Marketing digital",
-    gravou: "Gravou a análise da campanha",
+    // 02/10: só os trechos com a parede real de fundo (0 a 3 s e 7,5 a 10 s do
+    // corte). O meio trocava o fundo por laranja chapado e trazia um cartão
+    // "NAO PRECISA" sem acento, que é defeito da montagem e não vitrine.
+    video: "/pitch/estilo-destaque-0210.mp4",
+    capa: "/pitch/estilo-destaque-0210.jpg",
+    nome: "Narrador com punch",
+    detalhe: "Você em tela cheia e palavras gigantes na cor da marca",
   },
 ];
 
+/** Os que aparecem primeiro: um de cada grupo e os que o mercado mais pede. */
+const DESTAQUES = ["vox", "bbc", "natgeo", "kurzgesagt", "ali-abdaal", "ted", "keynote", "podcast", "hormozi", "mrbeast", "tipografia", "minimalista"];
+
 export function Exemplos() {
-  const trilho = useRef<HTMLDivElement>(null);
-  const [noComeco, setNoComeco] = useState(true);
-  const [noFim, setNoFim] = useState(false);
-
-  function medir() {
-    const el = trilho.current;
-    if (!el) return;
-    setNoComeco(el.scrollLeft < 8);
-    setNoFim(el.scrollLeft + el.clientWidth >= el.scrollWidth - 8);
-  }
-
-  function andar(direcao: 1 | -1) {
-    const el = trilho.current;
-    if (!el) return;
-    // Um cartão por clique: a largura do primeiro filho mais o vão.
-    const passo = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 300;
-    el.scrollBy({ left: direcao * (passo + 20), behavior: "smooth" });
-  }
-
+  const destaques = DESTAQUES.map((id) => CATALOGO_DE_ESTILOS.find((e) => e.id === id)).filter((e) => e !== undefined);
   return (
     <section id="exemplos" className="py-24 lg:py-32 relative">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-12"
-        >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
-            Exemplos
-          </div>
+        <div className="text-center mb-12">
+          <div className="selo mb-6">O estilo da edição</div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
-            O mesmo corte,
+            O mesmo trecho,
             <br />
-            para o seu ofício.
+            no estilo que você escolher.
           </h2>
           <p className="text-lg text-[var(--text-muted)] max-w-2xl mx-auto">
-            Você já grava: aula, consulta explicada, parecer, reunião, análise de
-            campanha. O squad assiste, escolhe o momento que presta e devolve o
-            corte vertical legendado, pronto para Shorts e Reels.
+            Antes de subir o vídeo, você escolhe a linguagem da edição e o estilo da legenda. As cores, a
+            fonte e o logo são sempre os da sua marca.
           </p>
-        </motion.div>
+        </div>
 
-        <div className="relative">
-          <div
-            ref={trilho}
-            onScroll={medir}
-            className="flex gap-5 overflow-x-auto snap-x snap-mandatory pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {EXEMPLOS.map((e, i) => (
-              <motion.figure
-                key={e.arquivo}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{ delay: Math.min(i, 3) * 0.08 }}
-                className="snap-start shrink-0 w-[240px] sm:w-[270px]"
-              >
-                <div className="rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-card)]">
-                  {/* Sem `next/image` de propósito: o resto desta página usa
-                      `img` direto, e misturar os dois muda o comportamento de
-                      carregamento no meio da mesma tela. */}
-                  <img
-                    src={e.arquivo}
-                    alt={`Corte vertical de um profissional de ${e.oficio.toLowerCase()}, com legenda queimada`}
-                    className="w-full aspect-[9/16] object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                <figcaption className="mt-3">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">{e.oficio}</p>
-                  <p className="text-sm text-[var(--text-muted)]">{e.gravou}</p>
-                </figcaption>
-              </motion.figure>
+        <div className="grid grid-cols-2 gap-3 sm:gap-6 max-w-3xl mx-auto mb-4">
+          {LADO_A_LADO.map((v) => (
+            <figure key={v.video}>
+              <div className="rounded-2xl overflow-hidden border border-[var(--border)] bg-black">
+                <video
+                  src={v.video}
+                  poster={v.capa}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="w-full aspect-[9/16] object-cover block"
+                  aria-label={`Corte real editado no estilo ${v.nome}`}
+                />
+              </div>
+              <figcaption className="mt-3">
+                <p className="font-semibold text-[var(--text-primary)]">{v.nome}</p>
+                <p className="text-sm text-[var(--text-muted)]">{v.detalhe}</p>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        <p className="text-center text-sm text-[var(--text-muted)] mb-16">
+          Dois cortes reais da mesma gravação, do mesmo segundo, editados pela plataforma em estilos diferentes.
+        </p>
+
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-5">
+          <div>
+            <p className="rotulo mb-2">O catálogo</p>
+            <p className="text-2xl font-bold text-[var(--text-primary)]">
+              {CATALOGO_DE_ESTILOS.length} linguagens, em {GRUPOS.length} grupos
+            </p>
+          </div>
+          <p className="text-sm text-[var(--text-muted)]">As artes de exemplo são as mesmas da tela de escolha.</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-10">
+          {destaques.map((e) => (
+            <figure key={e.id} className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--bg-surface)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={arteDoEstilo(e.id)} alt={`Arte de exemplo do estilo ${e.nome}`} loading="lazy" className="w-full aspect-video object-cover" />
+              <figcaption className="p-3">
+                <p className="text-sm font-semibold text-[var(--text-primary)] leading-tight">{e.nome}</p>
+                <p className="text-xs text-[var(--text-muted)]">{e.referencia ?? e.grupo}</p>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-6">
+          <p className="rotulo mb-3">E a legenda, em 5 estilos</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {ESTILOS_DE_LEGENDA.map((l) => (
+              <div key={l.id}>
+                <p className="font-semibold text-[var(--text-primary)]">{l.nome}</p>
+                <p className="text-sm text-[var(--text-muted)] leading-snug">{l.resumo}</p>
+              </div>
             ))}
           </div>
-
-          {/* As setas só existem onde há o que rolar, e somem nas pontas: seta
-              que não faz nada ensina a pessoa a ignorar as suas setas. */}
-          <button
-            type="button"
-            onClick={() => andar(-1)}
-            aria-label="Ver os exemplos anteriores"
-            disabled={noComeco}
-            className="hidden lg:flex absolute -left-4 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] transition-opacity disabled:opacity-0 hover:border-orange-500 hover:text-orange-500 cursor-pointer"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => andar(1)}
-            aria-label="Ver os próximos exemplos"
-            disabled={noFim}
-            className="hidden lg:flex absolute -right-4 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] transition-opacity disabled:opacity-0 hover:border-orange-500 hover:text-orange-500 cursor-pointer"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
         </div>
       </div>
     </section>

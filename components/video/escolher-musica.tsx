@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, Music, UploadCloud, X } from "lucide-react";
 import {
   FONTES_DE_MUSICA,
@@ -36,7 +37,11 @@ export function EscolherMusica({
 
   const climas = CLIMA_DO_ESTILO[estilo] ?? CLIMA_DO_ESTILO.acelerado;
 
-  return (
+  // NUM PORTAL, direto no body (29/09): a janela nascia dentro da janela da
+  // campanha, que tem transformação e corte (overflow) animados, e um "fixed"
+  // dentro de ancestral transformado passa a ser relativo a ele. O que se vê e
+  // o que recebe o clique podem divergir, e o Bruno clicava sem efeito.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
@@ -111,24 +116,36 @@ export function EscolherMusica({
           ))}
         </div>
 
-        <input
-          ref={inputDeArquivo}
-          type="file"
-          accept="audio/*"
-          className="hidden"
-          onChange={(e) => {
-            const arquivo = e.target.files?.[0];
-            if (arquivo) onEnviar(arquivo);
-            e.target.value = "";
+        {/* UM RÓTULO NATIVO, e não um botão que clica no campo por código
+            (29/09). O Bruno clicava e "nada acontecia, como se o botão não
+            existisse"; no teste daqui o clique por código abria o seletor, mas
+            navegador e extensão podem barrar esse caminho. Com <label> é o
+            próprio navegador que abre o seletor. O campo fica visualmente
+            escondido, e não com display none, que alguns navegadores ignoram. */}
+        <label
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            // SOLTAR DE VERDADE (29/09): o texto sempre disse "solte" e não havia
+            // tratamento de arrastar; o arquivo caía no navegador.
+            e.preventDefault();
+            const arquivo = e.dataTransfer.files?.[0];
+            if (arquivo && !subindo) onEnviar(arquivo);
           }}
-        />
-        <button
-          type="button"
-          disabled={subindo}
-          onClick={() => inputDeArquivo.current?.click()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 text-sm font-bold disabled:opacity-60"
+          className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 text-sm font-bold ${subindo ? "pointer-events-none opacity-60" : "cursor-pointer hover:border-orange-500"}`}
           style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
         >
+          <input
+            ref={inputDeArquivo}
+            type="file"
+            accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac"
+            className="sr-only"
+            disabled={subindo}
+            onChange={(e) => {
+              const arquivo = e.target.files?.[0];
+              if (arquivo) onEnviar(arquivo);
+              e.target.value = "";
+            }}
+          />
           {subindo ? (
             <>
               <Music className="h-4 w-4 animate-pulse" /> Enviando a faixa...
@@ -138,12 +155,13 @@ export function EscolherMusica({
               <UploadCloud className="h-4 w-4" /> Baixou? Solte ou escolha o arquivo aqui
             </>
           )}
-        </button>
+        </label>
         <p className="mt-2 text-center text-xs" style={{ color: "var(--text-muted)" }}>
           A faixa fica no projeto e entra em todos os cortes, no volume do
           estilo, abaixando quando você fala.
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

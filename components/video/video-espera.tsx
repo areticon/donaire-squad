@@ -56,6 +56,10 @@ const ETAPAS: Array<{ chave: EstadoDeTrabalho; rotulo: string; detalhe: string }
  * aprende a ignorar.
  */
 const FRASES: Record<EstadoDeTrabalho, string[]> = {
+  roteirizando: [
+    "O squad está limpando a sua fala e planejando cada cena, em texto, antes de gastar com imagem.",
+    "Nada de imagem, cena ou corte sai antes de você aprovar o roteiro.",
+  ],
   transcribing: [
     "Separando cada palavra e o segundo exato em que ela foi dita.",
     "Guardando os nomes próprios do seu negócio para não virarem outra coisa.",
@@ -75,7 +79,8 @@ const FRASES: Record<EstadoDeTrabalho, string[]> = {
   ],
   writing: [
     "Lucas LinkedIn está escrevendo para quem lê no meio do expediente.",
-    "Tiago Twitter está cortando o que não cabe em 280 caracteres.",
+    "Xavier X está cortando o que não cabe em 280 caracteres.",
+    "Igor Instagram está achando a primeira linha que faz parar de rolar.",
     "Vera Veredito confere se o texto ficou fiel ao que você falou de verdade.",
     "Cada trecho vira um texto por rede, e nenhum deles inventa fala sua.",
   ],

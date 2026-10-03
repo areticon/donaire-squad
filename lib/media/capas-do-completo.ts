@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { lerMidia, midiaProduzida } from "@/lib/media/storage";
 import { comporCapa, type Expressao } from "@/lib/media/capa-e-titulo";
+import { acentuarFrases } from "@/lib/media/acentuacao";
 import {
   CLIMAS_DE_CAPA_ROTULO,
   estiloDeCapaValido,
@@ -16,6 +17,7 @@ import { setYouTubeThumbnail } from "@/lib/oauth/youtube";
 import { normalizarCapaParaYouTube } from "@/lib/media/capa-youtube";
 import { resolveSocialAccountAccessToken } from "@/lib/publish/oauth-post";
 import type { Radar } from "@/lib/media/radar-do-video";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * A capa (thumbnail) do vídeo COMPLETO no YouTube.
@@ -54,7 +56,7 @@ Cada opção tem:
 - "expressao": a emoção do rosto na capa, um destes valores exatos: "confiante" (afirma o que sabe, sorrindo), "alegre" (boa notícia, convite, conteúdo leve), "curioso" (levanta pergunta), "surpreso" (algo contraintuitivo), "provocativo" (opinião que desafia o senso comum), "serio" (nomeia erro, perda ou verdade dura), "preocupado" (alerta de risco). Varie: as duas opções NÃO podem ter a mesma expressão, e "serio" e "preocupado" só entram quando o conteúdo é de fato pesado. Capa com sorriso rende mais em canal pessoal; na dúvida, "confiante" ou "alegre".
 
 Regras:
-- Português do Brasil. Nunca use travessão.
+- Português do Brasil com acentuação completa, mesmo em caixa alta: "Sua IA ainda é estagiária", nunca "Sua IA ainda e estagiaria". Nunca use travessão.
 - Nunca invente fato, número ou nome que não esteja no material.
 - Nada de emoji, nada de aspas dentro da frase.
 
@@ -129,7 +131,10 @@ ${material.teses.map((t) => `- ${t}`).join("\n") || "(sem teses registradas)"}`,
       expressao: fixa ?? (frases.length === 0 ? "confiante" : "curioso"),
     });
   }
-  return frases;
+  // A frase sem acento ("SUA IA AINDA E ESTAGIARIA", 30/09): o modelo às vezes
+  // larga o acento em frase curta de miniatura. Ver lib/media/acentuacao.ts.
+  const acentuadas = await acentuarFrases(frases.map((f) => f.frase), { projectId });
+  return frases.map((f, i) => ({ ...f, frase: acentuadas[i] ?? f.frase }));
 }
 
 /** A cor principal da paleta do projeto ("#F97316,#1e1f22" vira "#F97316"). */
@@ -152,7 +157,7 @@ export async function gerarCapasDoCompleto(
   opcoes: { estilo?: EstiloDeCapa; clima?: ClimaDaCapa; userId?: string } = {}
 ): Promise<CapasDoCompleto> {
   const video = await prisma.videoJob.findFirst({
-    where: { id: videoJobId, ...(opcoes.userId ? { project: { userId: opcoes.userId } } : {}) },
+    where: { id: videoJobId, ...(opcoes.userId ? { project: projetoVisivel(opcoes.userId) } : {}) },
     select: {
       id: true,
       projectId: true,
@@ -222,6 +227,9 @@ export async function gerarCapasDoCompleto(
         clima: clima === "automatico" ? undefined : clima,
         corDaMarca: corPrincipal(video.project.colorPalette),
         usageCtx: { projectId: video.projectId },
+        // O worker recorta a pessoa do quadro-fonte; o rosto não passa por modelo nenhum.
+        quadroUrl: video.capaFonteUrl,
+        chaveDoRecorte: `cortes/${video.id}/recorte-fonte.png`,
       })
     )
   );
@@ -267,7 +275,7 @@ export async function escolherCapaDoCompleto(
   indice: number
 ): Promise<{ capas: CapasDoCompleto; aviso?: string }> {
   const video = await prisma.videoJob.findFirst({
-    where: { id: videoJobId, project: { userId } },
+    where: { id: videoJobId, project: projetoVisivel(userId) },
     select: { id: true, projectId: true, capas: true },
   });
   if (!video) throw new Error("Vídeo não encontrado.");

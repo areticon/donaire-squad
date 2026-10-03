@@ -5,6 +5,7 @@ export const maxDuration = 800;
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * Serve a mídia produzida pelo worker para o dono do vídeo assistir e baixar.
@@ -39,8 +40,8 @@ export async function GET(
   const baixar = req.nextUrl.searchParams.get("download") === "1";
 
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId } },
-    select: { clips: true, completoUrl: true, originalName: true, capaFonteUrl: true },
+    where: { id, project: projetoVisivel(userId) },
+    select: { clips: true, completoUrl: true, originalName: true, capaFonteUrl: true, capas: true },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
@@ -55,6 +56,13 @@ export async function GET(
     // card do vídeo completo no Gestor.
     url = video.capaFonteUrl;
     nome = "capa-fonte";
+  } else if (tipo === "capa-completo") {
+    // A capa ESCOLHIDA do vídeo completo (VideoJob.capas), que é a miniatura
+    // do card do YouTube. Sem capa escolhida, o quadro do melhor rosto: o card
+    // nunca mais recebe o MP4 para desenhar como imagem (teste de 29/09).
+    const capas = video.capas as { opcoes?: Array<{ url?: string }>; escolhida?: number } | null;
+    url = capas?.opcoes?.[capas.escolhida ?? 0]?.url ?? video.capaFonteUrl;
+    nome = "capa-do-video";
   } else {
     const trechos = (video.clips as unknown as Array<{ midia?: MidiaDoTrecho }>) ?? [];
     const trecho = trechos[Number(trechoParam)];
@@ -72,7 +80,7 @@ export async function GET(
 
   if (!url) return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
 
-  const extensao = tipo === "capa" || tipo === "capa-arte" || tipo === "capa-fonte" ? "jpg" : "mp4";
+  const extensao = tipo.startsWith("capa") ? "jpg" : "mp4";
 
   // Mídia PÚBLICA (padrão para o material produzido desde 01/09): o player
   // fala direto com o CDN do storage, que entrega Range, cache e buffering de
@@ -94,7 +102,18 @@ export async function GET(
         },
       });
     }
-    return NextResponse.redirect(url, 302);
+    // O redirecionamento pode ser guardado pelo navegador por 5 minutos
+    // (30/09). Sem isto, CADA pedido de faixa do player (o começo, cada busca na
+    // barra, cada retomada) passava de novo por sessão e banco antes de chegar
+    // ao CDN: medido no dev local, 0,5 a 1,4 s por pedido. Cinco minutos cobrem
+    // uma sessão de assistir e não seguram por muito um corte refeito, que
+    // troca a URL de destino.
+    const resposta = NextResponse.redirect(url, 302);
+    // SEM cache do redirecionamento (30/09): com 5 min, o card continuava
+    // tocando o corte simples depois de a montagem trocar o vídeo, e o Bruno viu
+    // "os cortes não têm edição nenhuma". O CDN continua cacheando o arquivo.
+    resposta.headers.set("Cache-Control", "no-store");
+    return resposta;
   }
 
   // Acervo antigo, privado: proxy com suporte REAL a Range. A versão anterior

@@ -9,6 +9,7 @@ import {
   gerarCapasDoCompleto,
   type CapasDoCompleto,
 } from "@/lib/media/capas-do-completo";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * As opções de capa do vídeo completo no YouTube.
@@ -29,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!userId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const { id } = await params;
   const video = await prisma.videoJob.findFirst({
-    where: { id, project: { userId: userId } },
+    where: { id, project: projetoVisivel(userId) },
     select: { capas: true, project: { select: { capaEstilo: true } } },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const capas = await gerarCapasDoCompleto(id, {
       estilo: estiloDeCapaValido(corpo.estilo) ? corpo.estilo : undefined,
       clima: climaDeCapaValido(corpo.clima) ? corpo.clima : undefined,
-      userId: acesso.where.project?.userId,
+      userId: acesso.userId,
     });
     return NextResponse.json({ capas });
   } catch (e) {

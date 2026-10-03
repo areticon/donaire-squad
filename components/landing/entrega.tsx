@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 
 /**
- * O que o squad entrega, com prova em imagem.
+ * O que a equipe entrega, com prova em imagem.
  *
  * A landing contava a história do vídeo em prosa, e prosa não vende
  * transformação: quem lê "o squad edita e distribui" imagina qualquer coisa.
@@ -18,6 +18,28 @@ import { Check } from "lucide-react";
  * As imagens vivem em `public/exemplo/` com nome descritivo, para trocar sem
  * caçar referência no código quando houver material de cliente melhor.
  */
+
+import { LogoLinkedIn, LogoX, LogoInstagram, LogoYouTube, LogoTikTok } from "@/components/social/logos-redes";
+
+/**
+ * O logo da rede ao lado do nome dela.
+ *
+ * Regra do Bruno (19/09): a pessoa reconhece a rede pelo logo antes de ler o
+ * nome, entao etiqueta de rede sem logo custa um tempo de leitura que ninguem
+ * precisa gastar.
+ */
+const LOGO_DA_REDE: Record<string, React.ComponentType<{ className?: string }>> = {
+  LinkedIn: LogoLinkedIn,
+  X: LogoX,
+  Instagram: LogoInstagram,
+  YouTube: LogoYouTube,
+  TikTok: LogoTikTok,
+};
+
+function LogoDaRede({ nome }: { nome: string }) {
+  const Logo = LOGO_DA_REDE[nome];
+  return Logo ? <Logo className="!w-4 !h-4 !rounded" /> : null;
+}
 
 const ENTREGAS = [
   {
@@ -43,21 +65,31 @@ const ENTREGAS = [
   {
     titulo: "A capa, feita para dar vontade de clicar",
     descricao:
-      "O squad procura no vídeo inteiro um quadro com o seu rosto, corrige a expressão, recorta você do fundo da sua sala e monta uma capa com fundo alinhado ao seu nicho.",
+      "A equipe procura no vídeo inteiro um quadro com o seu rosto, recorta você do fundo da sua sala e monta a capa no estilo da edição que você escolheu, com a frase que dá vontade de clicar.",
     itens: [
       "Boca fechada, olhar na câmera",
-      "Fundo novo, coerente com o seu tema",
+      "Fundo no estilo da sua edição",
       "Frase de impacto, legível no celular",
     ],
+    // REAIS desde 01/10 (pedido do Bruno): o quadro que a esteira escolheu da
+    // gravação de 29/09 (capaFonteUrl) e a capa que ela entregou para o vídeo
+    // completo, do projeto Empreendedorismo Cristão. A versão anterior usava
+    // uma pessoa gerada por IA, que era ilustração.
+    // REFEITAS em 02/10: a capa anterior dizia "SUA IA AINDA E ESTAGIARIA",
+    // sem acento (o modelo largou o acento na frase; conserto em
+    // lib/media/acentuacao.ts), e o quadro era fraco. Agora o quadro é o que
+    // worker/src/quadro-da-capa.py escolheu na mesma gravação de 29/09 (olho
+    // aberto, boca quase fechada) e a capa saiu de montarCapa com a frase
+    // gravada passada pelo corretor. Script: scripts/tmp/capa-landing-acento-0210.mts.
     antes: {
-      src: "/exemplo/capa-antes.jpg",
-      alt: "Quadro cru de uma gravação, com a pessoa falando e o fundo da sala dela",
-      rotulo: "Um quadro qualquer",
+      src: "/pitch/capa-antes-0210.jpg",
+      alt: "Quadro da gravação escolhido pela plataforma, com o Bruno falando para a câmera",
+      rotulo: "O quadro escolhido na gravação",
     },
     depois: {
-      src: "/exemplo/capa-depois.jpg",
-      alt: "Capa de vídeo com a pessoa recortada, fundo de escritório e o texto Sua hora tem teto duro",
-      rotulo: "A capa entregue",
+      src: "/pitch/capa-depois-0210.jpg",
+      alt: "Capa real entregue pela plataforma, em colagem, com o texto Sua IA ainda é estagiária",
+      rotulo: "A capa entregue, sem retoque",
     },
   },
   {
@@ -101,7 +133,7 @@ export function Entrega() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="selo mb-6">
             A entrega
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
@@ -202,7 +234,10 @@ export function Entrega() {
                       className="rounded-xl border p-4"
                       style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
                     >
-                      <p className="text-xs font-semibold text-orange-400 mb-1.5">{t.rede}</p>
+                      <p className="text-xs font-semibold text-orange-400 mb-1.5 flex items-center gap-1.5">
+                        <LogoDaRede nome={t.rede} />
+                        {t.rede}
+                      </p>
                       <p className="text-sm text-[var(--text-primary)] leading-relaxed">
                         {t.trecho}
                       </p>

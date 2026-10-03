@@ -1,0 +1,32 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1120, "title": "/settings, cliente que paga" },
+    { "file": "Admin.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 700, "title": "/settings, admin sem cobrança" },
+    { "file": "Projeto.dc.html", "x": 0, "y": 1280, "w": 1160, "h": 1380, "title": "/projects/[id]/settings, marca e voz" },
+    { "file": "ProjetoVideo.dc.html", "x": 1280, "y": 1280, "w": 1160, "h": 1500, "title": "/projects/[id]/settings, vídeo e semana" }
+  ],
+  "annotations": [
+    {
+      "id": "nota-engrenagem",
+      "x": 0,
+      "y": -150,
+      "w": 700,
+      "text": "A engrenagem da barra lateral aponta hoje para /projects. Aqui ela passa a abrir esta tela, e o item \"Plano\" sai da navegação porque plano e cobrança moram dentro de Configurações."
+    },
+    {
+      "id": "nota-stripe",
+      "x": 1560,
+      "y": -150,
+      "w": 700,
+      "text": "Tudo nesta caixa é lido do Stripe, não de user.plan. O estado admin não mostra oferta nenhuma: quem não paga não precisa ver botão de assinar."
+    },
+    {
+      "id": "nota-projeto",
+      "x": 0,
+      "y": 1150,
+      "w": 900,
+      "text": "Os campos já existem e já salvam, pela aba \"Editar setup\". O que não existe é salvar UM campo: hoje mudar a voz obriga a percorrer o assistente até a última etapa. Aqui cada seção salva sozinha, e o assistente continua para quem está começando."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

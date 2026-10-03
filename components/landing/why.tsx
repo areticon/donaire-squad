@@ -50,11 +50,14 @@ export function Why() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="selo mb-6">
             <span>A regra 7-11-4</span>
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
-            Autoridade tem uma conta. E ela não fecha no braço.
+            {/* "Constância sempre vence talento", do Bruno (02/10), abrindo a
+                regra que mede a constância. */}
+            Constância vence talento.{" "}
+            <span className="text-orange-500">E ela tem uma conta que não fecha no braço.</span>
           </h2>
           <p className="text-xl text-[var(--text-muted)] max-w-2xl mx-auto">
             Daniel Priestley mediu o que separa quem é lembrado de quem é

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 /**
  * GET /api/posts/by-day?projectId=...&scheduledDate=...
@@ -14,6 +15,11 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get("projectId");
   const scheduledDate = searchParams.get("scheduledDate");
   const postId = searchParams.get("postId"); // fallback: look up siblings of a known post
+  // O dia da CAMPANHA (30/09): campanha + dia não mudam quando o horário é
+  // remarcado. Pela data, o dia que já tinha passado e foi agendado para hoje
+  // ficava com o card vazio ("sumiu o texto, os posts").
+  const runId = searchParams.get("runId");
+  const dayOfWeek = searchParams.get("dayOfWeek");
 
   if (!projectId) {
     return NextResponse.json({ error: "projectId required" }, { status: 400 });
@@ -22,9 +28,9 @@ export async function GET(req: NextRequest) {
   // Verify ownership
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { userId: true },
+    select: { id: true, userId: true },
   });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -40,7 +46,27 @@ export async function GET(req: NextRequest) {
     socialAccountId: string | null;
   }>;
 
-  if (scheduledDate) {
+  if (runId && dayOfWeek && Number.isFinite(Number(dayOfWeek))) {
+    posts = await prisma.post.findMany({
+      where: {
+        projectId,
+        runId,
+        dayOfWeek: Number(dayOfWeek),
+        platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook", "tiktok"] },
+      },
+      select: {
+        id: true,
+        platform: true,
+        content: true,
+        imageUrl: true,
+        mediaType: true,
+        metadata: true,
+        scheduledAt: true,
+        status: true,
+        socialAccountId: true,
+      },
+    });
+  } else if (scheduledDate) {
     // Find posts scheduled within that date (UTC day)
     const dayStart = new Date(scheduledDate);
     dayStart.setUTCHours(0, 0, 0, 0);
@@ -51,7 +77,7 @@ export async function GET(req: NextRequest) {
       where: {
         projectId,
         scheduledAt: { gte: dayStart, lte: dayEnd },
-        platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
+        platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook", "tiktok"] },
       },
       select: {
         id: true,
@@ -82,7 +108,7 @@ export async function GET(req: NextRequest) {
         where: {
           projectId,
           scheduledAt: { gte: dayStart, lte: dayEnd },
-          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
+          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook", "tiktok"] },
           ...(ref.runId ? { runId: ref.runId } : {}),
         },
         select: {
@@ -102,7 +128,7 @@ export async function GET(req: NextRequest) {
         where: {
           projectId,
           dayOfWeek: ref.dayOfWeek,
-          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook"] },
+          platform: { in: ["linkedin", "twitter", "instagram", "youtube", "facebook", "tiktok"] },
           ...(ref.runId ? { runId: ref.runId } : {}),
         },
         orderBy: { createdAt: "desc" },

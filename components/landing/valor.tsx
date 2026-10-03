@@ -2,6 +2,8 @@
 
 import { motion } from "framer-motion";
 import { Clock, Film, PenLine, Scissors, Search, Send } from "lucide-react";
+import { contaDoStarter, emReais } from "@/lib/calculadora/custos";
+import { CtaDupla } from "@/components/landing/cta-dupla";
 
 /**
  * A conta do que a plataforma entrega por mês, em horas e em reais, logo
@@ -36,7 +38,7 @@ const ENTREGAS = [
     icon: PenLine,
     quantidade: "20",
     titulo: "peças escritas",
-    texto: "Texto, imagem, carrossel, thread e enquete, no seu tom, para LinkedIn, Instagram, X, Facebook e YouTube.",
+    texto: "Texto, imagem, carrossel, thread e enquete, no seu tom, para LinkedIn, Instagram, X, Facebook, YouTube e TikTok.",
     horas: "7 a 10 h",
   },
   {
@@ -55,12 +57,15 @@ const ENTREGAS = [
   },
 ];
 
-const MERCADO = [
-  { quem: "Ferramenta que só faz cortes", quanto: "R$ 150", o_que: "sem texto, sem completo, sem publicar" },
-  { quem: "Ferramenta que só escreve LinkedIn", quanto: "R$ 1.100", o_que: "sem vídeo nenhum" },
-  { quem: "Social media freelancer", quanto: "R$ 1.200 a R$ 3.500", o_que: "não edita vídeo" },
-  { quem: "Gestão completa com editor", quanto: "R$ 5.000 a R$ 10.000", o_que: "o que você compra aqui" },
-];
+// OS REAIS SAEM DA CALCULADORA (01/10, noite). Até aqui esta seção tinha a
+// conta própria de 02/09 (R$ 3.050 a R$ 6.070, "gestão completa por R$ 5.000"),
+// e a calculadora, logo acima na mesma página, dava R$ 12.000 para a agência.
+// Duas contas na mesma página, o comprador acredita na menor e desconfia do
+// resto. Agora as duas leem lib/calculadora/custos.ts, no volume do Starter.
+const CONTA = contaDoStarter();
+const MAIS_BARATO = Math.min(...CONTA.cenarios.map((c) => c.mensal));
+const MAIS_CARO = Math.max(...CONTA.cenarios.map((c) => c.mensal));
+const AGENCIA = CONTA.cenarios.find((c) => c.id === "agencia")?.mensal ?? MAIS_BARATO;
 
 export function Valor() {
   return (
@@ -75,19 +80,32 @@ export function Valor() {
           transition={{ duration: 0.5 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-sm text-orange-400 mb-6">
+          <div className="selo mb-6">
             <Clock className="w-3.5 h-3.5" />
             <span>A conta do mês</span>
           </div>
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
-            Uma gravação por semana.{" "}
+            {/* 3 horas desde 02/10, noite: a mesma conta da hero e da faixa. */}
+            3 horas suas no mês.{" "}
             <span className="text-orange-500">30 horas de trabalho devolvidas.</span>
           </h2>
-          <p className="text-xl text-[var(--text-muted)] max-w-2xl mx-auto">
-            É o que um cliente que grava 20 a 30 minutos por semana recebe de volta,
-            medido no que a plataforma entrega, com o tempo que um editor e um redator
-            levariam para fazer o mesmo.
-          </p>
+          {/* A ECONOMIA (02/10, noite, pedido do Matheus), em frases curtas e
+              com os números da calculadora no volume do Starter. Ele propôs
+              "R$ 10 mil por mês com marketing": o número que temos com fonte é
+              o da conta abaixo (de R$ 10.900 a R$ 31.140 feito por gente). Os
+              "estudos que triplicam a empresa" e as receitas de "+1 milhão"
+              ficaram de fora: não há fonte nem caso. */}
+          <div className="max-w-2xl mx-auto space-y-1.5 text-xl">
+            <p className="text-[var(--text-muted)]">
+              Fazer esse volume com gente custa de {emReais(MAIS_BARATO)} a {emReais(MAIS_CARO)} por mês.
+            </p>
+            <p className="text-[var(--text-muted)]">
+              Uma agência: {emReais(AGENCIA)} por mês, {emReais(AGENCIA * 12)} por ano.
+            </p>
+            <p className="font-semibold text-[var(--text-primary)]">
+              Com a Demandou, {emReais(CONTA.plano.mensal)}. O custo cai, no mínimo, pela metade.
+            </p>
+          </div>
         </motion.div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
@@ -132,42 +150,58 @@ export function Valor() {
               enquanto você atende cliente.
             </p>
             <p className="text-sm text-orange-400 font-semibold mb-2">Comprar isso de gente</p>
-            <p className="text-3xl font-black text-[var(--text-primary)] mb-2">R$ 3.050 a R$ 6.070</p>
+            <p className="text-3xl font-black text-[var(--text-primary)] mb-2 tabular-nums">
+              <span className="whitespace-nowrap">{emReais(MAIS_BARATO)}</span> a{" "}
+              <span className="whitespace-nowrap">{emReais(MAIS_CARO)}</span>
+            </p>
             <p className="text-[var(--text-muted)] text-sm">
-              por mês, em preço de mercado brasileiro de 2026: corte vertical avulso,
-              hora de edição, pacote de redação, pesquisa de pauta e agendamento.
+              por mês, na mesma conta da calculadora acima, do freelancer por peça ao
+              time próprio de carteira assinada.
             </p>
           </div>
 
           <div className="lg:col-span-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-8">
             <p className="text-sm text-orange-400 font-semibold mb-4">
-              O que o mesmo dinheiro compra fora daqui
+              O mesmo volume, feito por gente
             </p>
             <div className="divide-y divide-[var(--border)]">
-              {MERCADO.map((linha) => (
+              {CONTA.cenarios.map((c) => (
                 <div
-                  key={linha.quem}
+                  key={c.id}
                   className="py-3 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1"
                 >
                   <div>
-                    <p className="font-semibold text-[var(--text-primary)]">{linha.quem}</p>
-                    <p className="text-sm text-[var(--text-muted)]">{linha.o_que}</p>
+                    <p className="font-semibold text-[var(--text-primary)]">{c.nome}</p>
+                    <p className="text-sm text-[var(--text-muted)]">{c.linhas.map((l) => l.rotulo).join(", ")}</p>
                   </div>
-                  <p className="text-[var(--text-primary)] font-bold whitespace-nowrap">
-                    {linha.quanto}
+                  <p className="text-[var(--text-primary)] font-bold whitespace-nowrap tabular-nums">
+                    {emReais(c.mensal)}
                     <span className="text-[var(--text-muted)] font-normal text-sm">/mês</span>
                   </p>
                 </div>
               ))}
+              <div className="py-3 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
+                <div>
+                  <p className="font-semibold text-orange-400">Demandou, plano {CONTA.plano.nome}</p>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    {Math.round((1 - CONTA.plano.mensal / MAIS_BARATO) * 100)}% menos que a opção mais barata feita por gente
+                  </p>
+                </div>
+                <p className="text-orange-400 font-black whitespace-nowrap tabular-nums">
+                  {emReais(CONTA.plano.mensal)}
+                  <span className="text-[var(--text-muted)] font-normal text-sm">/mês</span>
+                </p>
+              </div>
             </div>
             <p className="mt-6 text-sm text-[var(--text-muted)]">
               45% dos decisores B2B dizem que o conteúdo de autoridade de uma empresa
               levou diretamente a fechar negócio com ela, e 60% aceitam pagar mais caro
-              a quem publica bem (Edelman e LinkedIn, 2024). A R$ 697 por mês, um único
-              cliente novo a cada cinco anos já paga a conta.
+              a quem publica bem (Edelman e LinkedIn, 2024). A partir de {emReais(CONTA.plano.mensal)} por mês,
+              menos do que contratar uma única pessoa para fazer só uma parte disso.
             </p>
           </div>
         </motion.div>
+        <CtaDupla origem="valor" className="mt-10" />
       </div>
     </section>
   );

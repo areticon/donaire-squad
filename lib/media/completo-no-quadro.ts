@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { DESTINO_COMPLETO } from "@/lib/media/destinos";
 import { montarPostDeVideo } from "@/lib/media/youtube-post";
+import { dataDoDia, diaDaSemanaDe, planoDoRun } from "@/lib/media/semana-do-video";
 
 /**
  * Põe o vídeo completo no Gestor de Conteúdo: o rascunho de YouTube (título e
@@ -37,7 +38,7 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       archived: false,
       config: { path: ["videoJobId"], equals: video.id },
     },
-    select: { id: true, weekStart: true },
+    select: { id: true, weekStart: true, config: true },
   });
   if (!run) return false;
 
@@ -53,9 +54,12 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
 
   const trechos = (video.clips as unknown as Trecho[]) ?? [];
   const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
-  const segunda = run.weekStart ?? new Date();
-  const data = new Date(segunda.getTime());
-  data.setUTCHours(9, 0, 0, 0);
+  // O completo sai no PRIMEIRO dia do plano (30/09), que é hoje ou a data
+  // escolhida no passo 4, e não na segunda da semana, que pode já ter
+  // passado. Run de antes de 30/09 (sem início) segue na segunda.
+  const inicio = planoDoRun(run.config).inicio;
+  const diaDoCompleto = inicio ? diaDaSemanaDe(inicio) : 1;
+  const data = dataDoDia({ inicio, weekStart: run.weekStart }, diaDoCompleto, 9);
 
   const conteudo = montarPostDeVideo(trechos, video.durationSec ?? 0, video.project?.name ?? nome);
   let postId: string | null = null;
@@ -90,7 +94,7 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
         imageUrl: video.completoUrl,
         status: "draft",
         runId: run.id,
-        dayOfWeek: 1,
+        dayOfWeek: diaDoCompleto,
         scheduledAt: data,
         metadata: {
           origem: "video",
@@ -110,7 +114,7 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       projectId: video.projectId,
       agentId: "vitor-video",
       agentName: "Vitor Vídeo",
-      dayOfWeek: 1,
+      dayOfWeek: diaDoCompleto,
       scheduledDate: data,
       cardType: "video_clip",
       mediaType: "video",
@@ -125,7 +129,9 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
         destinoRotulo: DESTINO_COMPLETO.rotulo,
         completo: true,
         videoJobId: video.id,
-        thumb: video.capaFonteUrl ? `/api/videos/${video.id}/midia?tipo=capa-fonte` : null,
+        // A capa escolhida (ou o quadro do rosto): a rota resolve na hora, então
+        // trocar a capa no card do vídeo troca a miniatura sem regravar o card.
+        thumb: `/api/videos/${video.id}/midia?tipo=capa-completo`,
       },
     },
   });

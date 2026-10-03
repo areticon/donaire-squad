@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 /** Lista execuções de pipeline (ex.: arquivadas para a tela de arquivo). */
 export async function GET(req: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   }
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

@@ -12,7 +12,7 @@ export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Nav */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[var(--bg-primary)]/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg-primary)]/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2">
             <BrandMarkImg variant="dark" size={28} />
@@ -37,11 +37,13 @@ export default function PrivacyPage() {
             Política de Privacidade
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 18/08/2026
+            Última atualização: 02/10/2026
           </p>
         </div>
 
-        <div className="space-y-10 text-[#d1d5db] leading-relaxed">
+        {/* Cor do texto pelo token do tema (01/10): o cinza fixo #d1d5db era
+            do tema escuro e sumia no fundo claro que virou o padrão. */}
+        <div className="space-y-10 text-[var(--text-muted)] leading-relaxed">
 
           {/* 1 */}
           <section>
@@ -52,7 +54,7 @@ export default function PrivacyPage() {
               Esta Política de Privacidade é aplicável à plataforma{" "}
               <strong className="text-[var(--text-primary)]">demandou</strong>, operada por:
             </p>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-5 space-y-1 text-sm">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-5 space-y-1 text-sm">
               <p><span className="text-[var(--text-muted)]">Razão Social:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
               <p><span className="text-[var(--text-muted)]">Nome Fantasia:</span> DEMANDOU</p>
               <p><span className="text-[var(--text-muted)]">CNPJ:</span> 66.140.770/0001-48</p>
@@ -64,9 +66,15 @@ export default function PrivacyPage() {
                 </a>
               </p>
             </div>
+            {/* Papéis separados em 02/10/2026, para bater com a cláusula 13.2
+                da minuta das Condições Gerais de Contratação. */}
             <p className="mt-3 text-sm">
-              Para os fins da Lei nº 13.709/2018 (LGPD), a demandou atua como{" "}
-              <strong className="text-[var(--text-primary)]">controladora</strong> dos dados pessoais tratados por meio desta plataforma.
+              Para os fins da Lei nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais, LGPD), a demandou atua como{" "}
+              <strong className="text-[var(--text-primary)]">controladora</strong> dos dados de cadastro, cobrança, acesso e uso da conta, e dos dados do gêmeo digital, cujo consentimento é dado pela própria pessoa (item 2.9).
+            </p>
+            <p className="mt-3 text-sm">
+              Já os dados pessoais que estão <strong className="text-[var(--text-primary)]">dentro do conteúdo do cliente</strong>, como pessoas que aparecem nas gravações ou clientes citados em posts, são de responsabilidade da empresa cliente, que é a controladora deles. Para esses dados, a demandou atua como{" "}
+              <strong className="text-[var(--text-primary)]">operadora</strong>: trata apenas para executar o serviço, conforme as instruções do cliente, e encaminha a ele os pedidos de titulares que chegarem a nós.
             </p>
           </section>
 
@@ -92,9 +100,19 @@ export default function PrivacyPage() {
                 </p>
               </div>
               <div>
-                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.3 Tokens de redes sociais</h3>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.3 Conexão das suas redes sociais</h3>
                 <p className="text-sm">
-                  Tokens de acesso OAuth fornecidos voluntariamente para integração com plataformas de redes sociais (LinkedIn, X/Twitter), necessários para publicação de conteúdo em seu nome.
+                  Quando você conecta uma rede, recebemos dela um token de acesso e os dados mínimos para identificar a conta conectada. As redes suportadas e o que recebemos de cada uma:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li><strong className="text-[var(--text-primary)]">LinkedIn:</strong> seu identificador, nome, foto e e-mail do perfil, e a lista das Páginas de empresa em que você é administrador. Usados para publicar o que você aprovou e para mostrar na tela em qual conta a publicação vai sair.</li>
+                  <li><strong className="text-[var(--text-primary)]">Instagram e Facebook (Meta):</strong> seu identificador, nome de usuário e foto, e a lista das Páginas e contas profissionais que você administra. Usados para publicar o que você aprovou nessas contas.</li>
+                  <li><strong className="text-[var(--text-primary)]">YouTube (Google):</strong> o identificador e o nome do seu canal, para enviar os vídeos que você aprovou.</li>
+                  <li><strong className="text-[var(--text-primary)]">X (Twitter):</strong> seu identificador e nome de usuário, para publicar o que você aprovou.</li>
+                  <li><strong className="text-[var(--text-primary)]">TikTok:</strong> seu identificador, nome de exibição, nome de usuário e foto, e as opções de publicação da sua conta (quem pode ver, se comentários, dueto e costura estão liberados e a duração máxima de vídeo). Usados para publicar os vídeos que você aprovou, com as escolhas que você fez na hora de publicar, e para mostrar em qual conta o vídeo vai sair.</li>
+                </ul>
+                <p className="mt-2 text-sm">
+                  Nada é publicado sem a sua aprovação explícita de cada peça. Não lemos, não armazenamos e não exibimos comentários, mensagens ou dados de perfil de outras pessoas. Não usamos esses dados para publicidade, e o conteúdo de uma conta nunca é mostrado a outro cliente.
                 </p>
               </div>
               <div>
@@ -124,13 +142,44 @@ export default function PrivacyPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.7 Dados de pagamento</h3>
                 <p className="text-sm">
-                  Dados de cobrança e histórico de transações, processados diretamente pelo Stripe. Não armazenamos dados de cartão de crédito em nossos servidores.
+                  Dados de cobrança e histórico de transações, processados diretamente pelo Stripe. O cartão é informado no checkout do Stripe na contratação anual e fica guardado por ele, para a cobrança à vista e para as renovações. Não recebemos nem armazenamos o número do cartão em nossos servidores: guardamos apenas o identificador de cliente do Stripe, o plano contratado e a situação da assinatura.
                 </p>
               </div>
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.8 Dados técnicos</h3>
                 <p className="text-sm">
                   Endereço IP, tipo e versão de navegador, sistema operacional, fuso horário e outros dados técnicos coletados automaticamente.
+                </p>
+              </div>
+              {/* O GÊMEO DIGITAL (01/10/2026). Rosto e voz são dado biométrico,
+                  que a Lei Geral de Proteção de Dados trata como dado sensível:
+                  a política precisa dizer o que é coletado, para quê, com quem
+                  é compartilhado, até quando fica e como sai. Âncora própria
+                  porque os Termos de Uso (seção 9) apontam para cá. */}
+              <div id="gemeo" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.9 Rosto e voz do gêmeo digital (dado biométrico)</h3>
+                <p className="text-sm">
+                  Só se você cadastrar um gêmeo digital: de 1 a 5 fotos do seu rosto (das quais recortamos o rosto usado no vídeo), uma amostra da sua voz, a voz clonada a partir dela, e o vídeo da sua autorização, com o nome, a data e o texto que você leu. Rosto e voz usados para identificar e reproduzir uma pessoa são{" "}
+                  <strong className="text-[var(--text-primary)]">dados pessoais sensíveis</strong> (art. 5º, II, da LGPD).
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li><strong className="text-[var(--text-primary)]">Finalidade:</strong> exclusivamente gerar os vídeos do gêmeo que você pedir no seu projeto e conferir que a autorização foi gravada pela própria pessoa. Não usamos esses dados para treinar modelos, para publicidade, nem para identificar você em outro lugar.</li>
+                  <li><strong className="text-[var(--text-primary)]">Base legal:</strong> o seu consentimento específico e destacado (art. 11, I, da LGPD), dado na autorização gravada.</li>
+                  <li><strong className="text-[var(--text-primary)]">Retenção:</strong> até você revogar o gêmeo (ou apagar o projeto, ou encerrar o contrato, que revogam junto).</li>
+                  <li><strong className="text-[var(--text-primary)]">Exclusão:</strong> ao revogar, apagamos as fotos, a amostra de voz, a voz clonada (inclusive na ElevenLabs) e o vídeo da autorização. Fica só o registro de que você autorizou e revogou, com as datas, para provar que o uso foi autorizado enquanto valeu. Os vídeos já gerados ficam no projeto até você apagá-los.</li>
+                  <li><strong className="text-[var(--text-primary)]">Operadores:</strong> a ElevenLabs recebe a amostra para clonar a voz e o texto de cada vídeo para falar com ela; a fal.ai recebe a foto do rosto e o áudio de cada trecho para gerar o vídeo. As duas atuam só sob as nossas instruções e para essa finalidade (seção 5).</li>
+                </ul>
+              </div>
+              {/* A coleta pela Apify (02/10/2026): lib/referencias/apify.ts e
+                  lib/analytics/fonte-apify.ts. Só números saem da medição;
+                  nomes de quem curtiu ou comentou não são gravados. */}
+              <div>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.10 Perfis públicos de referência e números das publicações</h3>
+                <p className="text-sm">
+                  Quando você indica perfis públicos de referência (do seu mercado ou de concorrentes) para a pesquisa, coletamos, por meio da Apify, apenas publicações públicas desses perfis, com textos, legendas e números de curtidas, comentários e visualizações, para analisar o que funciona no seu mercado. Também usamos essa coleta para ler os números das publicações do seu próprio perfil quando a rede não os entrega pela conexão oficial.
+                </p>
+                <p className="mt-2 text-sm">
+                  Não gravamos comentários, nomes ou perfis de quem curtiu, comentou ou foi marcado: guardamos só a publicação e os números da conta de referência ou do seu post. A base legal é o legítimo interesse (art. 7º, IX, da LGPD), limitado a dados que os próprios titulares tornaram públicos (art. 7º, § 4º), e a finalidade é só a análise de conteúdo para o seu projeto. O conteúdo coletado serve de referência e não é republicado.
                 </p>
               </div>
             </div>
@@ -145,12 +194,15 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-sm list-none">
               {[
                 "Operar e fornecer os serviços da plataforma demandou",
-                "Autenticar sua identidade e gerenciar sua conta",
+                "Autenticar sua identidade e gerenciar sua conta, incluindo a confirmação do seu e-mail no cadastro",
+                "Controlar o plano contratado e seus limites, e avisar sobre a renovação e o saldo de créditos",
+                "Pesquisar referências públicas e medir os números das publicações, quando você usar esses recursos (item 2.10)",
                 "Processar pagamentos e gerenciar assinaturas",
                 "Gerar conteúdo por meio de inteligência artificial com base nos seus insumos",
+                "Gerar os vídeos do seu gêmeo digital, quando você o cadastrar e autorizar (item 2.9)",
                 "Publicar conteúdo nas redes sociais conectadas, conforme sua solicitação",
                 "Enviar notificações sobre o serviço, atualizações e alertas relacionados à sua conta",
-                "Melhorar continuamente a plataforma e desenvolver novos recursos",
+                "Melhorar continuamente a plataforma e desenvolver novos recursos, apenas com dados de uso agregados e anonimizados, sem treinar modelos com o seu conteúdo (item 5.3)",
                 "Detectar e prevenir fraudes, abusos e violações de segurança",
                 "Cumprir obrigações legais e regulatórias aplicáveis",
                 "Exercer ou defender direitos em processos administrativos ou judiciais",
@@ -172,19 +224,23 @@ export default function PrivacyPage() {
               O tratamento dos seus dados pessoais está fundamentado nas seguintes hipóteses previstas no art. 7º da LGPD:
             </p>
             <div className="space-y-3">
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Execução de contrato (art. 7º, V)</p>
                 <p>Tratamento necessário para a prestação dos serviços contratados, incluindo autenticação, armazenamento de dados, publicação de conteúdo e processamento de pagamentos.</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Legítimo interesse (art. 7º, IX)</p>
                 <p>Melhorias contínuas da plataforma, segurança, prevenção a fraudes e comunicações sobre o serviço, desde que não violem seus direitos e liberdades fundamentais.</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Consentimento (art. 7º, I)</p>
                 <p>Para finalidades específicas não cobertas pelas bases acima, como o envio de comunicações de marketing, a entrega dos textos gerados na demonstração pública e o contato comercial por WhatsApp, quando você marca a caixa correspondente. O consentimento pode ser revogado a qualquer momento.</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
+                <p className="mb-1 font-medium text-[var(--text-primary)]">Consentimento específico para dado sensível (art. 11, I)</p>
+                <p>Para o rosto e a voz do gêmeo digital (item 2.9). O consentimento é dado pela própria pessoa, na autorização gravada em vídeo, e vale só para essa finalidade. Revogar apaga os dados, conforme o item 2.9.</p>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Cumprimento de obrigação legal (art. 7º, II)</p>
                 <p>Retenção de dados para fins fiscais, contábeis e atendimento a requisições de autoridades competentes.</p>
               </div>
@@ -192,7 +248,11 @@ export default function PrivacyPage() {
           </section>
 
           {/* 5 */}
-          <section>
+          {/* Lista conferida no código e nos nomes das variáveis de ambiente em
+              02/10/2026, igual ao Anexo II da minuta do contrato. O Pusher está
+              nas dependências mas não é usado (sem chave e sem chamada), por
+              isso não aparece; entrou em uso, entra aqui. */}
+          <section id="fornecedores" className="scroll-mt-24">
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
               5. Compartilhamento de Dados
             </h2>
@@ -207,14 +267,49 @@ export default function PrivacyPage() {
                   detail: "Responsável pelo processamento seguro de cobranças, assinaturas e histórico financeiro.",
                 },
                 {
-                  name: "Anthropic / Google",
-                  role: "Inteligência artificial",
-                  detail: "Seus insumos (textos, contextos e materiais do projeto) são enviados para modelos de linguagem e de imagem a fim de gerar conteúdo. Consulte as políticas de privacidade de cada fornecedor.",
+                  name: "Anthropic",
+                  role: "Inteligência artificial: pesquisa, roteiro e redação",
+                  detail: "Recebe textos, transcrições e instruções do projeto para pesquisar o tema e escrever posts, roteiros e legendas.",
+                },
+                {
+                  name: "OpenAI",
+                  role: "Inteligência artificial: imagens do carrossel",
+                  detail: "Recebe os textos e as instruções das artes para gerar as imagens do carrossel.",
+                },
+                {
+                  name: "Google (Gemini e Veo)",
+                  role: "Inteligência artificial: texto, imagem e vídeo",
+                  detail: "Recebe textos, instruções e imagens de referência para gerar textos, imagens e os vídeos por inteligência artificial.",
+                },
+                {
+                  name: "Higgsfield",
+                  role: "Efeitos e cenas na edição",
+                  detail: "Recebe quadros dos seus vídeos e as instruções do estilo escolhido para gerar aberturas, cenas de apoio e imagens.",
+                },
+                {
+                  name: "Apify",
+                  role: "Coleta de publicações públicas",
+                  detail: "Recebe os endereços dos perfis públicos de referência que você indicar, e o link das suas publicações, para trazer as publicações públicas e os números (item 2.10).",
+                },
+                {
+                  name: "Blotato",
+                  role: "Intermediário técnico de publicação",
+                  detail: "Em algumas redes, enquanto a aprovação do nosso aplicativo na rede não sai, recebe a peça que você aprovou e a identificação da conta conectada, só para publicá-la.",
                 },
                 {
                   name: "Deepgram",
                   role: "Transcrição de áudio",
-                  detail: "O áudio dos vídeos enviados por você é processado para gerar a transcrição usada na criação de conteúdo.",
+                  detail: "O áudio dos vídeos enviados por você é processado para gerar a transcrição usada na criação de conteúdo. Cada pedido vai marcado para ficar fora do programa de treino da Deepgram, e o áudio fica lá só pelo tempo do processamento.",
+                },
+                {
+                  name: "ElevenLabs",
+                  role: "Voz do gêmeo digital",
+                  detail: "Só se você cadastrar um gêmeo: recebe a amostra da sua voz para criar a voz clonada e o texto de cada vídeo para falar com ela. A voz clonada é apagada lá quando você revoga o gêmeo.",
+                },
+                {
+                  name: "fal.ai",
+                  role: "Vídeo do gêmeo digital",
+                  detail: "Só se você cadastrar um gêmeo: recebe a foto do seu rosto e o áudio de cada trecho para gerar o vídeo que você pediu.",
                 },
                 {
                   name: "Supabase",
@@ -226,8 +321,28 @@ export default function PrivacyPage() {
                   role: "Hospedagem, infraestrutura e arquivos",
                   detail: "Plataforma de implantação da aplicação web e armazenamento privado dos arquivos de vídeo enviados.",
                 },
+                {
+                  name: "Railway",
+                  role: "Processamento de vídeo",
+                  detail: "Servidor onde os cortes e o vídeo completo são renderizados. Recebe o arquivo enviado por você apenas durante o processamento.",
+                },
+                {
+                  name: "Resend",
+                  role: "Envio de e-mail",
+                  detail: "Entrega dos e-mails transacionais da plataforma, como confirmação de cadastro, aviso de renovação e avisos de publicação. Recebe o seu nome, e-mail e o texto da mensagem.",
+                },
+                {
+                  name: "LinkedIn, Meta (Facebook e Instagram), Google (YouTube), X e TikTok",
+                  role: "Publicação nas suas redes",
+                  detail: "Recebem o conteúdo que VOCÊ aprovou, para publicá-lo nas contas que você conectou. O envio acontece apenas nas contas que você escolheu e no momento que você agendou.",
+                },
+                {
+                  name: "Meta, Google, LinkedIn e TikTok",
+                  role: "Medição de anúncios",
+                  detail: "Somente se você aceitar os cookies de anúncio. Recebem dados de navegação nas nossas páginas públicas para medir de onde vêm os visitantes. Nunca recebem o conteúdo dos seus projetos, suas gravações ou os dados das suas redes conectadas.",
+                },
               ].map((item) => (
-                <div key={item.name} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+                <div key={item.name} className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                   <p className="mb-1">
                     <strong className="text-orange-500">{item.name}</strong>{" "}
                     <span className="text-[var(--text-muted)]">· {item.role}</span>
@@ -238,6 +353,57 @@ export default function PrivacyPage() {
             </div>
             <p className="mt-4 text-sm">
               Não vendemos, alugamos ou comercializamos seus dados pessoais com terceiros para fins de marketing. O compartilhamento ocorre apenas com os prestadores de serviço listados acima e, quando exigido, com autoridades públicas.
+            </p>
+
+            {/* Pedidos de autoridade pública.
+                Escrita em 14/09/2026, no App Review da Meta. A tela de
+                tratamento de dados pergunta quais processos a empresa aplica a
+                pedidos de autoridade, e a política não descrevia nenhum: dizia
+                só que o compartilhamento acontece "quando exigido". Marcar as
+                caixas sem ter o processo seria declaração sem lastro, então o
+                Bruno decidiu adotar os quatro compromissos e eles passam a
+                viver aqui, onde o cliente e o revisor conseguem ler. */}
+            <h3 className="mt-6 mb-3 text-base font-semibold text-[var(--text-primary)]">
+              5.1. Pedidos de autoridades públicas
+            </h3>
+            <p className="mb-3 text-sm">
+              Quando uma autoridade pública nos pede dados pessoais de um cliente ou de terceiros, aplicamos quatro regras, sempre, em qualquer país:
+            </p>
+            <ul className="mb-3 list-disc space-y-2 pl-5 text-sm">
+              <li>
+                <strong className="text-[var(--text-primary)]">Analisamos a legitimidade do pedido.</strong> Conferimos se ele vem de autoridade competente, se indica a base legal e se descreve com precisão o que está sendo requisitado. Pedido genérico, sem base legal ou fora da competência de quem assina não é atendido como está.
+              </li>
+              <li>
+                <strong className="text-[var(--text-primary)]">Contestamos o que consideramos ilegal.</strong> Se o pedido for ilegal, desproporcional ou exceder a competência da autoridade, nós o recusamos ou o contestamos pelas vias cabíveis, em vez de cumprir por precaução.
+              </li>
+              <li>
+                <strong className="text-[var(--text-primary)]">Entregamos o mínimo necessário.</strong> Fornecemos apenas os dados estritamente descritos no pedido, pelo período nele indicado. Não ampliamos o escopo por conveniência nossa nem de quem pede.
+              </li>
+              <li>
+                <strong className="text-[var(--text-primary)]">Registramos cada pedido.</strong> Guardamos o pedido, nossa resposta, o fundamento jurídico da decisão e quem participou dela, para que a nossa conduta seja auditável depois.
+              </li>
+            </ul>
+            <p className="text-sm">
+              Sempre que a lei permitir, avisamos o titular antes de entregar qualquer dado, para que ele possa exercer os próprios direitos. Quando a lei proibir o aviso, cumprimos a proibição e registramos o motivo.
+            </p>
+
+            {/* Transferência internacional e treino (02/10/2026), iguais às
+                cláusulas 11.6 e 13.5 da minuta do contrato. */}
+            <h3 className="mt-6 mb-3 text-base font-semibold text-[var(--text-primary)]">
+              5.2. Transferência internacional
+            </h3>
+            <p className="mb-3 text-sm">
+              Vários dos fornecedores acima processam dados fora do Brasil, principalmente nos Estados Unidos. Fazemos essas transferências com base nos mecanismos do art. 33 da LGPD, incluindo cláusulas contratuais com os fornecedores, conforme a regulamentação da Autoridade Nacional de Proteção de Dados (ANPD), e cada fornecedor recebe só o necessário para a sua função.
+            </p>
+
+            <h3 id="treino" className="mt-6 mb-3 scroll-mt-24 text-base font-semibold text-[var(--text-primary)]">
+              5.3. Sem treino de modelos com os seus dados
+            </h3>
+            <p className="mb-3 text-sm">
+              Não usamos o seu conteúdo nem o conteúdo gerado para treinar modelos de inteligência artificial, nossos ou de terceiros, sem o seu consentimento expresso e separado. Contratamos e configuramos os fornecedores para não usarem os seus dados para treinar modelos. Na transcrição, por exemplo, cada pedido à Deepgram vai marcado para ficar fora do programa de treino dela.
+            </p>
+            <p className="text-sm">
+              Para medir e melhorar a plataforma, usamos apenas dados de uso agregados e anonimizados, como volume de operações, tempo de processamento e taxas de erro, sem acesso ao conteúdo das peças.
             </p>
           </section>
 
@@ -259,6 +425,12 @@ export default function PrivacyPage() {
               <li className="flex gap-2">
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
+                  <strong className="text-[var(--text-primary)]">Conteúdo, gravações e acessos às redes, depois do fim do contrato:</strong> você tem 30 (trinta) dias para baixar o seu conteúdo; depois, eliminamos tudo em até 60 (sessenta) dias, inclusive nos fornecedores sob o nosso controle.
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
                   <strong className="text-[var(--text-primary)]">Dados fiscais e financeiros:</strong> por 5 (cinco) anos após o encerramento da conta, em cumprimento às obrigações legais tributárias e contábeis (Código Tributário Nacional e legislação correlata).
                 </span>
               </li>
@@ -266,6 +438,12 @@ export default function PrivacyPage() {
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
                   <strong className="text-[var(--text-primary)]">Logs de acesso:</strong> por 6 (seis) meses, conforme exigido pelo Marco Civil da Internet (Lei nº 12.965/2014).
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
+                  <strong className="text-[var(--text-primary)]">Rosto e voz do gêmeo digital:</strong> até você revogar o gêmeo ou apagar o projeto; na revogação, são apagados, e fica só o registro da autorização e da revogação, com as datas (item 2.9).
                 </span>
               </li>
               <li className="flex gap-2">
@@ -299,7 +477,7 @@ export default function PrivacyPage() {
                 { right: "Informação", desc: "Saber com quais entidades seus dados são compartilhados." },
                 { right: "Revisão de decisões automatizadas", desc: "Solicitar revisão de decisões tomadas exclusivamente por meios automatizados." },
               ].map((item) => (
-                <div key={item.right} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+                <div key={item.right} className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                   <p className="mb-1 font-medium text-[var(--text-primary)]">{item.right}</p>
                   <p className="text-[var(--text-muted)]">{item.desc}</p>
                 </div>
@@ -335,16 +513,87 @@ export default function PrivacyPage() {
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies de terceiros</h3>
                 <p>Nossos provedores de serviço (como o Stripe, no checkout) podem definir seus próprios cookies. Consulte as políticas de privacidade de cada fornecedor para mais informações.</p>
               </div>
+              <div>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">Cookies de anúncio, só com o seu sim</h3>
+                <p>
+                  Usamos os pixels de medição da Meta, do Google, do LinkedIn e do TikTok nas nossas páginas públicas, para saber de qual anúncio veio cada visitante. Eles só são carregados <strong className="text-[var(--text-primary)]">depois</strong> de você aceitar no aviso que aparece na primeira visita. A base legal é o consentimento (art. 7º, I, da LGPD), e recusar não tira nenhuma funcionalidade: o site inteiro funciona igual.
+                </p>
+                <p className="mt-2">
+                  Para mudar de ideia depois, apague os dados do site no seu navegador. O aviso aparece de novo na próxima visita e a sua nova resposta passa a valer. Dentro da plataforma, já autenticado, nenhum pixel de anúncio é carregado.
+                </p>
+              </div>
             </div>
             <p className="mt-3 text-sm">
               Você pode configurar seu navegador para recusar cookies, mas isso pode afetar o funcionamento de partes da plataforma.
             </p>
           </section>
 
-          {/* 9 */}
+          {/*
+            Exclusão, com âncora própria.
+
+            Existe como seção numerada e endereçável de propósito: a Meta exige
+            uma "Data Deletion Instructions URL" no App Review, e o Google e o
+            LinkedIn perguntam a mesma coisa em campo separado do formulário.
+            Apontar os três para https://demandou.com/privacy#exclusao é melhor
+            que três páginas soltas que envelhecem em ritmos diferentes.
+          */}
+          <section id="exclusao" className="scroll-mt-24">
+            <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
+              9. Como apagar seus dados
+            </h2>
+            <p className="mb-3">
+              Você pode apagar seus dados a qualquer momento, de quatro formas, conforme o que quiser remover:
+            </p>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
+                <p className="mb-1">
+                  <strong className="text-orange-500">Desconectar uma rede social</strong>
+                </p>
+                <p>
+                  Dentro da plataforma, em Configurações do projeto, aba Redes sociais, clique em desconectar na rede desejada. O token de acesso é apagado do nosso banco na hora, e a partir daí não temos mais como publicar nem ler nada naquela conta. Revogar o acesso pelo painel da própria rede também funciona, e tira o nosso acesso imediatamente, mas apagar o token guardado aqui depende de a rede nos avisar da revogação: o Facebook e o Instagram avisam, e nesse caso apagamos na hora; o Google, o LinkedIn e o X não avisam, e o token fica guardado sem servir para nada até você desconectar na plataforma ou pedir a exclusão da conta.
+                </p>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
+                <p className="mb-1">
+                  <strong className="text-orange-500">Revogar o gêmeo digital</strong>
+                </p>
+                <p>
+                  Na tela do gêmeo do projeto, clique em revogar. Apagamos na hora as fotos, a amostra de voz, a voz clonada e o vídeo da autorização, e a voz clonada também é apagada na ElevenLabs. Fica só o registro de que você autorizou e revogou, com as datas.
+                </p>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
+                <p className="mb-1">
+                  <strong className="text-orange-500">Apagar um projeto</strong>
+                </p>
+                <p>
+                  Apagar o projeto remove com ele as redes conectadas, os posts, as gravações enviadas, as transcrições geradas e o gêmeo digital, se houver.
+                </p>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
+                <p className="mb-1">
+                  <strong className="text-orange-500">Apagar a conta inteira</strong>
+                </p>
+                <p>
+                  Escreva para{" "}
+                  <strong className="text-[var(--text-primary)]">contato@demandou.com</strong> do
+                  e-mail cadastrado, pedindo a exclusão. Confirmamos a identidade e apagamos tudo em
+                  até 15 dias corridos, incluindo tokens, gravações, transcrições, conteúdo gerado e
+                  dados cadastrais. Permanecem apenas os registros que a lei obriga a guardar, como
+                  os fiscais das cobranças já emitidas.
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm">
+              Em qualquer dos casos, os posts que já foram publicados nas suas redes continuam lá,
+              porque passam a pertencer à sua conta naquela plataforma. Para tirá-los do ar, apague
+              na própria rede.
+            </p>
+          </section>
+
+          {/* 10 */}
           <section>
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
-              9. Segurança dos Dados
+              10. Segurança dos Dados
             </h2>
             <p className="mb-3">
               Adotamos medidas técnicas e organizacionais adequadas para proteger seus dados pessoais contra acesso não autorizado, perda, alteração ou divulgação indevida, incluindo:
@@ -364,14 +613,14 @@ export default function PrivacyPage() {
               ))}
             </ul>
             <p className="mt-3 text-sm">
-              Em caso de incidente de segurança que possa acarretar risco ou dano relevante a você, notificaremos a Autoridade Nacional de Proteção de Dados (ANPD) e os titulares afetados nos prazos legais aplicáveis.
+              Em caso de incidente de segurança que possa acarretar risco ou dano relevante a você, notificaremos a Autoridade Nacional de Proteção de Dados (ANPD) e os titulares afetados nos prazos legais aplicáveis. Se o incidente puder afetar dados que estão dentro do conteúdo de uma empresa cliente, avisamos essa empresa em até 48 (quarenta e oito) horas da ciência, para que ela cumpra as obrigações dela.
             </p>
           </section>
 
           {/* 10 */}
           <section>
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
-              10. Menores de Idade
+              11. Menores de Idade
             </h2>
             <p className="text-sm">
               A plataforma demandou é destinada exclusivamente a pessoas com{" "}
@@ -386,7 +635,7 @@ export default function PrivacyPage() {
           {/* 11 */}
           <section>
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
-              11. Alterações nesta Política
+              12. Alterações nesta Política
             </h2>
             <p className="mb-3 text-sm">
               Podemos atualizar esta Política de Privacidade periodicamente para refletir mudanças nos nossos serviços, na legislação aplicável ou nas nossas práticas de tratamento de dados.
@@ -400,12 +649,12 @@ export default function PrivacyPage() {
           {/* 12 */}
           <section>
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
-              12. Contato e DPO
+              13. Contato e DPO
             </h2>
             <p className="mb-3 text-sm">
               Para dúvidas, solicitações relacionadas aos seus dados pessoais ou para exercer seus direitos como titular, entre em contato com nosso Encarregado pelo Tratamento de Dados Pessoais (DPO):
             </p>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-sm space-y-1">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-5 text-sm space-y-1">
               <p><span className="text-[var(--text-muted)]">Empresa:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>
               <p><span className="text-[var(--text-muted)]">E-mail:</span>{" "}
                 <a href="mailto:contato@demandou.com" className="text-orange-500 hover:underline">
@@ -432,7 +681,7 @@ export default function PrivacyPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 py-8 text-center text-xs text-[var(--text-muted)]">
+      <footer className="border-t border-[var(--border)] py-8 text-center text-xs text-[var(--text-muted)]">
         <p>DEMANDOU TECNOLOGIA DA INFORMACAO LTDA · CNPJ 66.140.770/0001-48</p>
         <p className="mt-1">Rua Pais Leme, 215, Conj. 1713, Pinheiros, São Paulo/SP, CEP 05.424-150</p>
         <div className="mt-3 flex justify-center gap-4">

@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #1e1e25; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="padding:28px;background:#1e1e25;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:18px;">
+  <div>
+    <h2 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#dcdde2;">Card do Paulo: a conta aparece, e dá para trocar</h2>
+    <p style="margin:0;font-size:13px;line-height:1.5;color:#9599a6;">
+      A lista "O que sai neste dia, por rede" mostra a rede e o tipo, mas não POR QUAL CONTA. Cada linha ganha o nome da conta; quando a rede tem mais de uma conta no projeto, o nome vira um seletor. Trocar grava no post na hora. Publicado não troca mais.
+    </p>
+  </div>
+
+  <div style="border-radius:12px;overflow:hidden;border:1px solid #3f3f4b;background:#2a2a33;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#31313c;">
+      <p style="margin:0;font-size:12px;font-weight:600;color:#dcdde2;">O que sai neste dia, por conta</p>
+      <span style="font-size:10px;color:#9599a6;">Marcar tudo</span>
+    </div>
+    
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #3f3f4b;">
+        <span style="width:16px;height:16px;border:1.5px solid #9599a6;border-radius:3px;display:inline-block;"></span>
+        <span style="width:20px;height:20px;border-radius:5px;background:#0a66c2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">in</span>
+        <div style="flex-grow:1;min-width:0;">
+          <p style="margin:0;font-size:12px;font-weight:600;color:#dcdde2;">LinkedIn <span style="font-weight:400;color:#9599a6;">· infográfico</span></p>
+          <p style="margin:2px 0 0;font-size:10px;color:#9599a6;">Rascunho, sai às 09:00</p>
+        </div>
+        
+        <button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;border:1px solid #3f3f4b;background:transparent;color:#dcdde2;font-family:inherit;font-size:11px;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2"/></svg> demandou <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #3f3f4b;">
+        <span style="width:16px;height:16px;border:1.5px solid #9599a6;border-radius:3px;display:inline-block;"></span>
+        <span style="width:20px;height:20px;border-radius:5px;background:#0a66c2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">in</span>
+        <div style="flex-grow:1;min-width:0;">
+          <p style="margin:0;font-size:12px;font-weight:600;color:#dcdde2;">LinkedIn <span style="font-weight:400;color:#9599a6;">· infográfico</span></p>
+          <p style="margin:2px 0 0;font-size:10px;color:#9599a6;">Rascunho, sai às 09:00</p>
+        </div>
+        
+        <button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;border:1px solid #3f3f4b;background:transparent;color:#dcdde2;font-family:inherit;font-size:11px;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg> Bruno Donaire <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #3f3f4b;">
+        <span style="width:16px;height:16px;border:1.5px solid #9599a6;border-radius:3px;display:inline-block;"></span>
+        <span style="width:20px;height:20px;border-radius:6px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></span>
+        <div style="flex-grow:1;min-width:0;">
+          <p style="margin:0;font-size:12px;font-weight:600;color:#dcdde2;">Instagram <span style="font-weight:400;color:#9599a6;">· infográfico</span></p>
+          <p style="margin:2px 0 0;font-size:10px;color:#9599a6;">Rascunho, sai às 09:00</p>
+        </div>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#9599a6;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg> @demandou</span>
+      </div>
+    
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #3f3f4b;">
+        <span style="width:16px;height:16px;border:1.5px solid #9599a6;border-radius:3px;display:inline-block;"></span>
+        <span style="width:20px;height:20px;border-radius:5px;background:#0a66c2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">in</span>
+        <div style="flex-grow:1;min-width:0;">
+          <p style="margin:0;font-size:12px;font-weight:600;color:#dcdde2;">LinkedIn <span style="font-weight:400;color:#9599a6;">· infográfico</span></p>
+          <p style="margin:2px 0 0;font-size:10px;color:rgb(74,222,128);">Publicado</p>
+        </div>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#9599a6;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2"/></svg> demandou</span>
+      </div>
+  </div>
+
+  <p style="margin:0;font-size:12px;line-height:1.5;color:#9599a6;">
+    A última linha é o caso de hoje: publicado, e a conta fica escrita para ninguém precisar abrir o LinkedIn para saber por onde saiu. A conta só é seletor enquanto o post não saiu.
+  </p>
+</div>
+</x-dc>
+</body>
+</html>

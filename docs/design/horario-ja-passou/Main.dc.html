@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@700;800&display=swap">
+  <style>
+    body { margin: 0; background: #1e1e25; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #ef6122; } a:hover { color: #f1742e; }
+  </style>
+</helmet>
+
+<div style="padding: 28px 28px 32px; color: #dcdde2;">
+
+  <p style="margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #9599a6;">Passo 6 de 6</p>
+  <h2 style="margin: 0 0 20px; font-family: Montserrat, Inter, sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -.01em; color: #dcdde2;">Confira antes de gerar</h2>
+
+  <!-- O BLOCO NOVO. Ele só aparece quando existe dia com horário vencido, e é
+       a única coisa nesta tela que pede uma decisão: por isso leva a borda
+       laranja, que nada mais nesta tela usa. -->
+  <div style="border: 1px solid #ef6122; border-radius: 14px; background: #2a2a33; overflow: hidden; margin-bottom: 18px;">
+
+    <div style="display: flex; gap: 11px; padding: 15px 16px 13px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef6122" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 7v5l3 2"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <p style="margin: 0; font-size: 13.5px; font-weight: 700; color: #dcdde2;">4 dias desta semana já passaram das 09:00</p>
+        <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #9599a6; text-wrap: pretty;">São segunda, terça, quarta e a quinta de hoje. Agora são 23:41. O que eu faço com eles?</p>
+      </div>
+    </div>
+
+    <!-- As três escolhas. Cada uma diz o que ACONTECE, não o que ela é: quem
+         está nesta tela quer saber quando a peça sai, não o nome da regra. -->
+    <div style="display: flex; flex-direction: column;">
+      <sc-for list="{{opcoes}}" as="op" hint-placeholder-count="3">
+        <button type="button" onClick="{{op.escolher}}" style="{{op.estilo}}">
+          <span style="{{op.marca}}">
+            <sc-if value="{{op.ativa}}" hint-placeholder-val="{{true}}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1e1e25" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            </sc-if>
+          </span>
+          <span style="display: flex; flex-direction: column; gap: 2px; text-align: left;">
+            <span style="{{op.tituloEstilo}}">{{op.titulo}}</span>
+            <span style="font-size: 11.5px; line-height: 1.45; color: #9599a6;">{{op.detalhe}}</span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- A GRADE DOS DIAS, que é a prova da escolha: ela muda junto, e é aqui
+       que a pessoa vê o preço de cada caminho antes de pagar. -->
+  <p style="margin: 0 0 9px; font-size: 11.5px; color: #9599a6;">{{resumo}}</p>
+
+  <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;">
+    <sc-for list="{{dias}}" as="dia" hint-placeholder-count="7">
+      <div style="{{dia.caixa}}">
+        <p style="margin: 0 0 2px; font-size: 9px; font-weight: 700; color: #ef6122;">{{dia.ordem}}</p>
+        <p style="margin: 0 0 5px; font-size: 9px; line-height: 1.25; color: #9599a6;">{{dia.data}}</p>
+        <p style="{{dia.marcaEstilo}}">{{dia.marca}}</p>
+        <p style="margin: 0; font-size: 9.5px; font-weight: 600; color: #dcdde2;">{{dia.hora}}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #3f3f4b;">
+    <span style="font-size: 12px; color: #9599a6;">{{creditos}}</span>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" style="font: inherit; font-size: 12.5px; font-weight: 600; padding: 9px 15px; border-radius: 9px; border: 1px solid #3f3f4b; background: none; color: #9599a6; cursor: pointer;">Voltar</button>
+      <button type="button" style="font: inherit; font-size: 12.5px; font-weight: 700; padding: 9px 18px; border-radius: 9px; border: none; background: #ef6122; color: #fff; cursor: pointer;">{{botao}}</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"escolhaInicial":{"editor":"enum","options":["semanaSeguinte","agora","pular"],"default":"semanaSeguinte","section":"Cenário"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { escolha: null };
+  }
+
+  /* O caso REAL que originou esta tela: o Bruno mandou a campanha de sete dias
+     às 23h41 de uma quinta, com horário das 09:00. Segunda, terça e quarta já
+     tinham passado; a quinta era hoje, mas a hora já tinha ido embora. */
+  dados() {
+    const escolha = this.state.escolha ?? this.props.escolhaInicial ?? 'semanaSeguinte';
+    const vencidos = [
+      { ordem: 'Seg', dataOriginal: '15 set' },
+      { ordem: 'Ter', dataOriginal: '16 set' },
+      { ordem: 'Qua', dataOriginal: '17 set' },
+      { ordem: 'Qui', dataOriginal: '18 set' },
+    ];
+    /* O cartão já diz o dia da semana no topo, então a linha de baixo carrega
+       só a data. A primeira volta na tela repetia ("Seg / Seg, 22 Set"), que é
+       ruído num cartão de 90px. */
+    const futuros = [
+      { ordem: 'Sex', data: '19 set', hora: '09:00' },
+      { ordem: 'Sáb', data: '20 set', hora: '09:00' },
+      { ordem: 'Dom', data: '21 set', hora: '09:00' },
+    ];
+    return { escolha, vencidos, futuros };
+  }
+
+  renderVals() {
+    const { escolha, vencidos, futuros } = this.dados();
+
+    const opcoesBrutas = [
+      {
+        id: 'semanaSeguinte',
+        titulo: 'Jogar para a semana que vem',
+        detalhe: 'Cada peça sai no mesmo dia da semana, às 09:00. Sete dias pedidos, sete peças.',
+      },
+      {
+        id: 'agora',
+        titulo: 'Publicar ainda hoje',
+        detalhe: 'As quatro saem esta madrugada, de dez em dez minutos, fora do horário que você escolheu.',
+      },
+      {
+        id: 'pular',
+        titulo: 'Pular esses dias',
+        detalhe: 'A campanha fica com três peças. Os quatro dias não são gerados nem cobrados.',
+      },
+    ];
+
+    const opcoes = opcoesBrutas.map((o, i) => {
+      const ativa = o.id === escolha;
+      return {
+        ...o,
+        ativa,
+        escolher: () => this.setState({ escolha: o.id }),
+        estilo: [
+          'display: flex; align-items: flex-start; gap: 10px;',
+          'font: inherit; text-align: left; width: 100%; cursor: pointer;',
+          'padding: 11px 16px 12px;',
+          'border: none; border-top: 1px solid #3f3f4b;',
+          ativa ? 'background: rgba(239,97,34,.12);' : 'background: none;',
+        ].join(' '),
+        marca: [
+          'flex: none; margin-top: 1px; width: 16px; height: 16px; border-radius: 999px;',
+          'display: inline-flex; align-items: center; justify-content: center;',
+          ativa ? 'background: #ef6122; border: 1px solid #ef6122;' : 'background: none; border: 1px solid #575765;',
+        ].join(' '),
+        tituloEstilo: 'font-size: 12.5px; font-weight: 600; color: ' + (ativa ? '#ef6122' : '#dcdde2') + ';',
+      };
+    });
+
+    /* Como cada escolha reescreve os quatro dias vencidos. A grade é a prova:
+       o texto promete e os cartões mostram. */
+    let deVencidos = [];
+    if (escolha === 'semanaSeguinte') {
+      const datas = ['22 set', '23 set', '24 set', '25 set'];
+      deVencidos = vencidos.map((d, i) => ({
+        ordem: d.ordem, data: datas[i], hora: '09:00',
+        marca: 'semana que vem', tom: 'empurrado',
+      }));
+    } else if (escolha === 'agora') {
+      const horas = ['23:51', '00:01', '00:11', '00:21'];
+      deVencidos = vencidos.map((d, i) => ({
+        ordem: d.ordem, data: i === 0 ? 'hoje, 18' : 'madrugada, 19', hora: horas[i],
+        marca: 'fora do horário', tom: 'aviso',
+      }));
+    } else {
+      deVencidos = [];
+    }
+
+    const dias = [
+      ...deVencidos,
+      ...futuros.map((d) => ({ ...d, marca: 'no horário', tom: 'normal' })),
+    ].map((d) => ({
+      ...d,
+      caixa: [
+        'padding: 9px 6px 10px; border-radius: 11px; text-align: center;',
+        'background: #1e1e25;',
+        d.tom === 'aviso' ? 'border: 1px solid rgba(239,97,34,.55);' : 'border: 1px solid #3f3f4b;',
+      ].join(' '),
+      marcaEstilo: [
+        'margin: 0 0 4px; font-size: 8.5px; font-weight: 600; line-height: 1.2;',
+        d.tom === 'normal' ? 'color: #9599a6;' : 'color: #ef6122;',
+      ].join(' '),
+    }));
+
+    const resumo =
+      escolha === 'pular'
+        ? '3 peças. Os quatro dias vencidos não entram nesta campanha.'
+        : escolha === 'agora'
+          ? '7 peças. Quatro delas saem nesta madrugada, uma atrás da outra.'
+          : '7 peças, todas às 09:00. Quatro caem na semana de 22 de setembro.';
+
+    return {
+      opcoes,
+      dias,
+      resumo,
+      creditos: (escolha === 'pular' ? 21 : 49) + ' créditos de mídia',
+      botao: 'Gerar ' + (escolha === 'pular' ? '3' : '7') + ' dias',
+    };
+  }
+}
+</script>
+</body>
+</html>

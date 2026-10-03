@@ -4,47 +4,8 @@ import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
-
-/** Busca tendências em tempo real via Gemini 2.5 Flash + Google Search Grounding */
-async function fetchTrendingTopics(
-  niche: string,
-  targetAudience: string,
-  geminiKey: string
-): Promise<string> {
-  if (!geminiKey) return "";
-  const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-  const currentYear = new Date().getFullYear();
-
-  const prompt = `INSTRUÇÃO CRÍTICA: Use APENAS os resultados do Google Search retornados agora. NÃO use seu conhecimento de treinamento.
-
-Hoje é ${today}. Busque o que está em alta NESTE MOMENTO no nicho de "${niche}" para "${targetAudience}" no Brasil.
-Traga apenas das últimas 4 semanas:
-1. Notícias recentes com título, data e fonte real
-2. Temas com alto engajamento no LinkedIn e X (posts virais, hashtags)
-3. Relatórios publicados em ${currentYear} com dados numéricos
-4. Debates ou controvérsias atuais no setor
-Para cada item: cite a fonte, a data e os números reais.`;
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tools: [{ googleSearch: {} }],
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
-      }),
-      signal: AbortSignal.timeout(40_000),
-    }
-  );
-
-  if (!res.ok) return "";
-  const data = await res.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("") || "";
-}
+import { radarDaSemana, temasJaUsados, blocosDeNovidade, REGRAS_DE_NOVIDADE } from "@/lib/research/radar-da-semana";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -56,7 +17,7 @@ export async function POST(req: NextRequest) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
-      userId: true,
+      id: true, userId: true,
       niche: true,
       targetAudience: true,
       voice: true,
@@ -69,7 +30,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (!project || project.userId !== userId) {
+  if (!project || !(await podeUsarProjeto(userId, project))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -77,24 +38,15 @@ export async function POST(req: NextRequest) {
     .map((p) => p.content.slice(0, 80))
     .join("\n");
 
-  // Busca dados em tempo real do que está em alta agora no nicho
-  let trendingContext = "";
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
-    try {
-      trendingContext = await fetchTrendingTopics(
-        project.niche ?? "geral",
-        project.targetAudience ?? "profissionais",
-        geminiKey
-      );
-    } catch {
-      // Continua sem dados em tempo real se falhar
-    }
-  }
-
-  const trendingBlock = trendingContext
-    ? `\n=== O QUE ESTÁ EM ALTA AGORA (dados reais da internet) ===\n${trendingContext}\n=== FIM DOS DADOS EM TEMPO REAL ===\n`
-    : "";
+  // O radar da semana e a memória das últimas oito semanas, os mesmos do
+  // sugeridor por dia (28/09). Ver lib/research/radar-da-semana.ts.
+  const [radar, usados] = await Promise.all([
+    radarDaSemana({ projectId, nicho: project.niche ?? "geral", publico: project.targetAudience ?? "profissionais" }).catch(() => null),
+    temasJaUsados(projectId),
+  ]);
+  const trendingBlock = `
+${blocosDeNovidade(radar, usados)}
+`;
 
   const prompt = `Você é um estrategista de conteúdo especialista em redes sociais no Brasil.
 
@@ -109,6 +61,8 @@ Baseado nos dados em tempo real acima, sugira exatamente 5 temas de conteúdo pa
 - Ser específicos e acionáveis: citar dados, nomes, números reais
 - Variar em formato: dados/estatística, opinião provocativa, dica prática, case/história, tendência
 - Ser diferentes dos posts recentes acima
+
+${REGRAS_DE_NOVIDADE}
 
 Responda APENAS com um JSON válido neste formato exato (sem markdown, sem explicações):
 [

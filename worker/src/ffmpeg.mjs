@@ -72,18 +72,61 @@ const ZOOM_DO_COMPLETO = 1.06;
 const ALTURA_DO_COMPLETO = 1080;
 
 /**
+ * O que todo arquivo ENTREGUE ao player precisa (30/09): teto de pico e
+ * quadro-chave a cada 2 s.
+ *
+ * O CRF sozinho mantém a média (os cortes de 29/09 mediram 3,6 a 4,2 Mbps),
+ * mas deixa o pico livre: 8 Mbps num segundo de zoom com grão. O teto de 6
+ * Mbps com buffer de 12 segura esse pico sem mexer na média. E o GOP padrão do
+ * libx264 (250 quadros, um quadro-chave a cada 8 s nos cortes medidos) faz
+ * cada busca na barra do player decodificar até 8 s antes de mostrar a
+ * imagem; a cada 2 s a busca responde na hora, por alguns por cento de bytes.
+ */
+const PLAYER_WEB = ["-maxrate", "6M", "-bufsize", "12M", "-g", "60"];
+
+/**
  * Roda um ffmpeg até o fim. `nice` (0 a 19) abaixa a prioridade de CPU do
  * processo: o escalonador dá o processador a quem não tem nice quando os dois
  * disputam, e a quem tem nice quando sobra. É como o completo roda junto com
  * os trechos sem atrasá-los.
  */
-function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) {
+/**
+ * O TETO DE FIOS DOS FILTROS em todo ffmpeg do worker (01/10, parte 240).
+ *
+ * A causa de "Failed to configure output pad on Parsed_scale_N ... Error
+ * reinitializing filters! ... Resource temporarily unavailable" (29/09 no
+ * passe 2, 30/09 na montagem, 01/10 no completo do Bruno com 78 cenas): desde
+ * o ffmpeg 5, cada `scale` que de fato converte abre uma piscina de fios do
+ * tamanho de `-filter_complex_threads`, e o padrão dele é o número de núcleos
+ * (8 no Railway). Um lote do acabamento do completo tem até 42 `scale`: o
+ * processo chegava a 165 fios, dois lotes juntos a 330, e o contêiner tem
+ * teto de processos e fios. Quando o teto chega, o `pthread_create` devolve
+ * EAGAIN ("Resource temporarily unavailable") justamente na configuração do
+ * filtro seguinte. Reproduzido no WSL com o lote real e `ulimit -u 120`: a
+ * mesma mensagem, no `Parsed_scale_85`.
+ *
+ * Com o teto, o número de fios deixa de crescer com o tamanho do plano (o
+ * mesmo lote: 165 fios sem teto, 46 com 2). O ganho de velocidade de muitos
+ * fios por `scale` é nenhum aqui: o codificador é quem trabalha.
+ * `FFMPEG_FIOS_DO_FILTRO` ajusta sem deploy de código. Quem já passa o seu
+ * próprio teto (a montagem dos cortes e o completo) não é tocado.
+ */
+const FIOS_DO_FILTRO = String(Math.max(1, Number(process.env.FFMPEG_FIOS_DO_FILTRO) || 2));
+export function comTetoDeFios(args) {
+  const extra = [];
+  if (!args.includes("-filter_complex_threads")) extra.push("-filter_complex_threads", FIOS_DO_FILTRO);
+  if (!args.includes("-filter_threads")) extra.push("-filter_threads", FIOS_DO_FILTRO);
+  // Opções globais: valem em qualquer posição antes da saída, então entram na frente.
+  return [...extra, ...args];
+}
+
+export function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) {
   return new Promise((resolve, reject) => {
-    const linha = ["-hide_banner", "-loglevel", "error", "-y", ...args];
+    const linha = ["-hide_banner", "-loglevel", "error", "-y", ...comTetoDeFios(args)];
     // No Windows do desenvolvimento não há `nice`; a prioridade só importa no contêiner.
     const p = nice > 0 && process.platform !== "win32"
-      ? spawn("nice", ["-n", String(nice), "ffmpeg", ...linha], { cwd })
-      : spawn("ffmpeg", linha, { cwd });
+      ? spawn("nice", ["-n", String(nice), "ffmpeg", "-nostdin", ...linha], { cwd, stdio: ["ignore", "pipe", "pipe"] })
+      : spawn("ffmpeg", ["-nostdin", ...linha], { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let erro = "";
     p.stderr.on("data", (d) => {
       erro += d.toString();
@@ -209,6 +252,28 @@ function opcaoDeFiltro() {
   return _opcaoDeFiltro;
 }
 
+/**
+ * A rotação que o player aplica ao fluxo de vídeo, em graus (0, 90, -90, 180).
+ *
+ * Dois lugares, porque depende de quem gravou: celular e ffmpeg novo põem na
+ * matriz de exibição (`side_data_list`, campo `rotation`); arquivo antigo e
+ * alguns Android põem na tag `rotate`. O sinal não importa para a troca de
+ * largura e altura, só o módulo.
+ */
+function rotacaoDoFluxo(video) {
+  if (!video) return 0;
+  for (const sd of video.side_data_list ?? []) {
+    if (sd?.rotation != null && Number.isFinite(Number(sd.rotation))) return Math.round(Number(sd.rotation));
+  }
+  const tag = Number(video.tags?.rotate);
+  return Number.isFinite(tag) ? Math.round(tag) : 0;
+}
+
+/** A gravação é em pé (mais alta que larga), já com a rotação aplicada. */
+export function ehVertical(dim) {
+  return Boolean(dim?.largura && dim?.altura && dim.altura > dim.largura);
+}
+
 export function ffprobe(caminho) {
   return new Promise((resolve, reject) => {
     const p = spawn("ffprobe", [
@@ -226,10 +291,26 @@ export function ffprobe(caminho) {
       try {
         const json = JSON.parse(saida);
         const video = (json.streams ?? []).find((s) => s.codec_type === "video");
+        // GRAVAÇÃO DE CELULAR EM PÉ (30/09). O celular grava o sensor deitado
+        // (1920x1080) e marca "gire 90 graus" no metadado (displaymatrix, ou a
+        // tag antiga `rotate`). O ffprobe devolve a largura e a altura CODIFICADAS,
+        // sem a rotação, mas o ffmpeg aplica a rotação ao decodificar
+        // (autorotate, padrão). Sem a troca abaixo, todo filtro que usa estas
+        // dimensões (punch-in, recorte da pessoa, redução do completo) faria a
+        // conta num quadro deitado e aplicaria num quadro em pé: crop maior que
+        // a imagem, vídeo esticado ou erro do ffmpeg.
+        const rotacao = rotacaoDoFluxo(video);
+        const girado = Math.abs(rotacao) % 180 === 90;
+        const w = Number(video?.width ?? 0);
+        const h = Number(video?.height ?? 0);
         resolve({
           duracaoSec: Number(json.format?.duration ?? 0),
-          largura: Number(video?.width ?? 0),
-          altura: Number(video?.height ?? 0),
+          largura: girado ? h : w,
+          altura: girado ? w : h,
+          // A rotação do metadado, em graus. Vai junto para quem precisa saber
+          // que o arquivo NÃO pode ser copiado byte a byte e emendado com outro
+          // que já saiu em pé (ver prepararCompleto).
+          rotacao,
           bytes: Number(json.format?.size ?? 0),
           // Existe para a prova de fumaça poder cobrar o áudio: o passe 2 em
           // lotes sai sem som e o som é colado depois, então "tem áudio" virou
@@ -297,19 +378,74 @@ export function ffprobe(caminho) {
  * que reduzir. Largura `-2` porque o libx264 exige dimensão par.
  */
 function reducaoDoCompleto(dim) {
+  // Gravação EM PÉ (celular, 1080x1920): o teto de 1080 vale para o lado
+  // CURTO, que aqui é a largura. Aplicar na altura, como no deitado, reduzia
+  // um 1080x1920 para 608x1080, ou seja, entregava pior do que entrou, o que
+  // a regra da casa proíbe (30/09).
+  if (ehVertical(dim)) {
+    if (!ALTURA_DO_COMPLETO || dim.largura <= ALTURA_DO_COMPLETO) return "";
+    return `,scale=${ALTURA_DO_COMPLETO}:-2:flags=bicubic`;
+  }
   if (!ALTURA_DO_COMPLETO || !dim?.altura || dim.altura <= ALTURA_DO_COMPLETO) return "";
   return `,scale=-2:${ALTURA_DO_COMPLETO}:flags=bicubic`;
 }
 
+/*
+ * ## DECISÃO (30/09): o completo de gravação EM PÉ sai EM PÉ
+ *
+ * O que um editor faz com 22 minutos gravados no celular em pé: entrega em pé
+ * (Shorts longos, Reels, IGTV, Stories, e o YouTube toca vertical sem tarja no
+ * celular, onde está a maior parte da audiência de quem grava assim). A
+ * alternativa, 16:9 com a pessoa no meio e ~60% do quadro de fundo borrado
+ * durante 22 minutos, é a tarja preta com outra roupa, e inventar pixel para
+ * encher a lateral pioraria o que entrou, o que a regra da casa proíbe.
+ *
+ * Por isso aqui nada muda de proporção: a rotação do celular é aplicada, a
+ * redução respeita o lado curto (`reducaoDoCompleto`) e a legenda de destaque
+ * é reescrita para o quadro em pé (worker/src/index.mjs,
+ * `legendaNoQuadroDoCompleto`). A montagem de colagem do completo segue o
+ * formato desta base: em pé ela é montada em 9:16, com a geometria dos cortes
+ * verticais (desde 30/09, noite; lib/media/montagem-do-completo.ts,
+ * `formatoDoCompleto`, e worker/src/montagem-do-completo.mjs). Os CORTES seguem com os dois formatos de sempre: o vertical é
+ * o quadro inteiro, e o horizontal põe a pessoa no meio com a própria imagem
+ * desfocada nas laterais (`quadroDeitado`), porque ali são segundos, e não
+ * minutos, e o feed do LinkedIn e do X pede caixa larga.
+ */
 export async function prepararCompleto(entrada, saida, opcoes = {}) {
   const remocoes = (opcoes.remocoes ?? []).filter((r) => r.ate > r.de);
   const nice = opcoes.nice ?? 0;
   const editaTempo = remocoes.length > 0;
   const editaImagem = Boolean(opcoes.legendasArquivo);
 
-  if (!editaTempo && !editaImagem) {
+  // Gravação com ROTAÇÃO no metadado (celular em pé) não pode ser só copiada:
+  // a cópia sai deitada com a marca "gire 90", e a abertura, que é
+  // recodificada, sai em pé e sem a marca. A emenda das duas por cópia
+  // (`emendar`) juntaria dois tamanhos no mesmo fluxo e o player mostraria a
+  // segunda metade deitada ou esticada. Recodificar uma vez aplica a rotação
+  // nos pixels, e daí em diante tudo é em pé de verdade (30/09).
+  const dimDaEntrada = await ffprobe(entrada).catch(() => null);
+  const temRotacao = Boolean(dimDaEntrada?.rotacao);
+
+  if (!editaTempo && !editaImagem && !temRotacao) {
     await rodar(["-i", entrada, "-c", "copy", "-movflags", "+faststart", saida], { nice });
     return { recodificado: false, motivo: "nada a editar, arquivo preservado" };
+  }
+
+  if (!editaTempo && !editaImagem && temRotacao) {
+    const teto = Math.max(30 * 60 * 1000, Math.round((opcoes.duracaoSec ?? 0) * 1000));
+    await rodar(
+      [
+        "-i", entrada,
+        // O ffmpeg já gira ao decodificar; o `format` só existe para a cadeia
+        // não ficar vazia quando não há redução.
+        "-vf", "format=yuv420p" + reducaoDoCompleto(dimDaEntrada),
+        "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
+        "-c:a", "copy",
+        "-movflags", "+faststart", saida,
+      ],
+      { timeoutMs: teto, nice }
+    );
+    return { recodificado: true, motivo: "rotação do celular aplicada" };
   }
 
   // O teto de tempo acompanha a duração, e não é fixo.
@@ -329,7 +465,7 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
       [
         "-i", entrada,
         "-vf", "subtitles=" + basename(opcoes.legendasArquivo) + reducaoDoCompleto(await ffprobe(entrada).catch(() => null)),
-        "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
         "-c:a", "copy",
         "-movflags", "+faststart", saida,
       ],
@@ -414,10 +550,14 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
       "-i", entrada,
       opcaoDeFiltro(), basename(arquivoDeFiltro),
       "-map", "[v]", "-map", "[a]",
-      // Intermediário: crf 16 e veryfast. O crf mais fino que o do arquivo
-      // final existe para a segunda geração não somar perda visível, e o preset
-      // rápido porque este arquivo não é entregue a ninguém, é insumo.
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+      // Intermediário: crf 14 e ULTRAFAST (30/09; antes veryfast crf 16). O crf
+      // mais fino que o do arquivo final existe para a segunda geração não
+      // somar perda visível, e o preset é o mais rápido porque este arquivo
+      // não é entregue a ninguém, é insumo. Medido em 60 s de gravação real
+      // em 1080p: veryfast 22,0 s, ultrafast 11,8 s, com o arquivo 4x maior
+      // (cerca de 2,3 GB para 22 min), o que o disco de 2,9 TB do contêiner
+      // nem sente. No teste de 29/09 este passe levou 249 s.
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "14", "-pix_fmt", "yuv420p",
       // Áudio: esta é a ÚNICA recodificação de som do caminho. O passe 2 copia,
       // então a fala nunca passa por duas gerações de AAC.
       "-c:a", "aac", "-b:a", "192k",
@@ -568,18 +708,60 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
         // Cada lote precisa abrir com quadro-chave e fechar o GOP no fim, senão
         // a emenda por cópia entre os lotes trava na virada.
         "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+        // Teto de pico para o player (ver PLAYER_WEB); o GOP já está acima.
+        "-maxrate", "6M", "-bufsize", "12M",
         "-movflags", "+faststart", parte,
       ],
       { cwd: pasta, timeoutMs: teto, nice }
     );
 
+  // ## Segunda chance por lote, e o completo SEM plano como última saída
+  //
+  // Em 29/09 o passe 2 morreu com "Failed to configure output pad on
+  // Parsed_scale_17 ... Resource temporarily unavailable" enquanto três cortes
+  // travados disputavam o contêiner, e o vídeo completo simplesmente não veio:
+  // 22 minutos de trabalho perdidos e a faixa do Gestor contando para sempre.
+  // "Resource temporarily unavailable" é falta de recurso na hora, não defeito
+  // do lote (a mesma lição dos trechos em 08/09). Então: o lote que falha é
+  // repetido SOZINHO no fim; se falhar de novo, o completo sai do passe 1 numa
+  // codificação simples, sem a troca de plano nas emendas. Um completo sem
+  // punch-in é pior; completo nenhum é defeito.
   const emParalelo = Math.max(1, opcoes.lotesEmParalelo ?? 1);
   const fila = [...lotes];
+  const falhados = [];
   await Promise.all(
     Array.from({ length: Math.min(emParalelo, lotes.length) }, async () => {
-      while (fila.length) await codificarLote(fila.shift());
+      while (fila.length) {
+        const lote = fila.shift();
+        try {
+          await codificarLote(lote);
+        } catch (e) {
+          console.warn(`completo: lote ${lote.ordem} falhou, repete sozinho no fim: ${String(e?.message ?? e).slice(0, 200)}`);
+          falhados.push(lote);
+        }
+      }
     })
   );
+  try {
+    for (const lote of falhados) await codificarLote(lote);
+  } catch (e) {
+    console.error(`completo: passe 2 falhou de novo, entrego sem troca de plano: ${String(e?.message ?? e).slice(0, 300)}`);
+    await rodar(
+      [
+        "-i", uniforme,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
+        "-c:a", "copy",
+        "-movflags", "+faststart", saida,
+      ],
+      { cwd: pasta, timeoutMs: teto }
+    );
+    await rm(uniforme, { force: true }).catch(() => {});
+    for (const l of lotes) await rm(l.parte, { force: true }).catch(() => {});
+    return {
+      recodificado: true,
+      motivo: `${remocoes.length} trechos removidos, sem troca de plano (o acabamento falhou duas vezes)`,
+    };
+  }
   const partesDoVideo = lotes.map((l) => l.parte);
 
   // Os lotes viram um vídeo só por CÓPIA, sem recodificar nada.
@@ -658,8 +840,85 @@ export async function prepararCompleto(entrada, saida, opcoes = {}) {
  * isso é rápido, e CRF 18 aqui é qualidade de intermediário: quem manda na
  * qualidade final é o corte de saída.
  */
+/**
+ * O SILÊNCIO REAL NO FIM DO CORTE, medido no áudio (30/09).
+ *
+ * A transcrição cola as palavras: no teste do Bruno "ferramentas." terminava
+ * em 769,08 s e "Hoje" começava em 769,08 s, sem pausa nenhuma entre elas.
+ * Com a borda decidida só pelos tempos das palavras, o corte levava o começo
+ * da frase seguinte, e ele ouviu isso como "termina no início da próxima
+ * frase". Aqui o áudio decide, perto da fronteira que a transcrição deu: no
+ * trecho de 0,22 s antes até 0,04 s depois dela, acha o VALE de energia (o
+ * instante mais baixo, e entre vales parecidos o mais tardio) e devolve esse
+ * instante absoluto. O chamador emudece dali em diante, então nenhum tempo
+ * muda e legenda e montagem continuam alinhadas.
+ *
+ * A primeira versão procurava "o último silêncio da janela de 0,5 s" e, na
+ * prova com a gravação do Bruno, emudecia o "né?" inteiro (a pausa antes dele)
+ * e cortava o "-tas" de "ferramentas" (a oclusão do "t"). O vale colado na
+ * fronteira não tem esse risco: cai entre "ferramentas" e "Hoje" (768,92 s) e
+ * entre "né?" e "Você" (64,26 s). Sem vale claro, devolve null e nada muda.
+ */
+export async function silencioNoFim(entrada, fimAbs) {
+  const antes = 0.8;
+  const depois = 0.1;
+  const de = Math.max(0, fimAbs - antes);
+  const taxa = 16000;
+  const pcm = await new Promise((resolver) => {
+    const pedacos = [];
+    const p = spawn("ffmpeg", [
+      "-nostdin",
+      "-v", "error", "-ss", de.toFixed(3), "-i", entrada, "-t", (fimAbs - de + depois).toFixed(3),
+      "-vn", "-ac", "1", "-ar", String(taxa), "-f", "s16le", "-",
+    ]);
+    p.stdout.on("data", (d) => pedacos.push(d));
+    p.on("error", () => resolver(null));
+    p.on("close", (codigo) => resolver(codigo === 0 ? Buffer.concat(pedacos) : null));
+  });
+  if (!pcm || pcm.length < 2 * taxa * 0.4) return null;
+  const amostras = Math.floor(pcm.length / 2);
+  const passo = taxa / 100; // quadros de 10 ms
+  const bruto = [];
+  for (let i = 0; i + passo <= amostras; i += passo) {
+    let soma = 0;
+    for (let j = 0; j < passo; j++) {
+      const v = pcm.readInt16LE((i + j) * 2) / 32768;
+      soma += v * v;
+    }
+    bruto.push(Math.sqrt(soma / passo));
+  }
+  // Média de 30 ms: um quadro isolado baixo no meio de uma sílaba não é vale.
+  const rms = bruto.map((_, k) => {
+    const viz = bruto.slice(Math.max(0, k - 1), k + 2);
+    return viz.reduce((x, y) => x + y, 0) / viz.length;
+  });
+  const ordenado = [...rms].sort((x, y) => x - y);
+  const fala = ordenado[Math.floor(ordenado.length * 0.9)] ?? 0;
+  if (fala < 0.01) return null;
+  const alvo = Math.round((fimAbs - de) * 100);
+  const k0 = Math.max(0, alvo - 22);
+  const k1 = Math.min(rms.length - 1, alvo + 4);
+  let minimo = Infinity;
+  for (let k = k0; k <= k1; k++) minimo = Math.min(minimo, rms[k]);
+  // Vale de verdade: bem abaixo do nível da fala.
+  if (minimo > fala * 0.3) return null;
+  let escolhido = k0;
+  for (let k = k0; k <= k1; k++) if (rms[k] <= minimo * 1.3 + 0.0005) escolhido = k;
+  return de + escolhido / 100;
+}
+
 export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos, pessoa = null) {
   const manter = (intervalos ?? []).filter((m) => m.ate - m.de > 0.05);
+  // Onde o áudio de verdade termina (ver `silencioNoFim`). Só vale se cair no
+  // último pedaço mantido e antes do fim: aí o som é emudecido desse ponto em
+  // diante, sem mudar a duração.
+  const ultimoPedaco = manter.length ? manter[manter.length - 1] : { de: 0, ate: duracao };
+  const fimDoAudio = await silencioNoFim(entrada, inicio + Math.min(duracao, ultimoPedaco.ate)).catch(() => null);
+  const mudoDesde =
+    fimDoAudio != null && fimDoAudio - inicio > ultimoPedaco.de + 0.3 && fimDoAudio - inicio < Math.min(duracao, ultimoPedaco.ate) - 0.02
+      ? fimDoAudio - inicio
+      : null;
+  if (mudoDesde != null) console.log(`[trecho] fim da fala no áudio: emudece a partir de ${mudoDesde.toFixed(2)} s de ${duracao.toFixed(2)} s`);
   // Um único pedaço que cobre o trecho inteiro quer dizer que não havia nada a
   // remover ali. Nesse caso não vale montar grafo de filtro nenhum.
   const inteiro =
@@ -670,6 +929,7 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
     // Nada a tirar: recorta e pronto, sem recodificar à toa.
     await rodar([
       "-ss", String(inicio), "-i", entrada, "-t", String(duracao),
+      ...(mudoDesde != null ? ["-af", `afade=t=out:st=${Math.max(0, mudoDesde - 0.015).toFixed(3)}:d=0.03`] : []),
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
       "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
       "-movflags", "+faststart", saida,
@@ -692,7 +952,10 @@ export async function prepararTrecho(entrada, saida, inicio, duracao, intervalos
     partes.push(
       `[0:v]trim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},setpts=PTS-STARTPTS` +
         `${segmentoComPunchIn(fechado, dim.largura, dim.altura, pessoa, 1.08, m.ate - m.de)}[v${i}]`,
-      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}[a${i}]`
+      `[0:a]atrim=start=${m.de.toFixed(3)}:end=${m.ate.toFixed(3)},asetpts=PTS-STARTPTS${audioDoSegmento(m)}` +
+        // O último pedaço emudece onde a fala acabou de verdade (30/09).
+        (i === manter.length - 1 && mudoDesde != null ? `,afade=t=out:st=${Math.max(0, mudoDesde - m.de - 0.015).toFixed(3)}:d=0.03` : "") +
+        `[a${i}]`
     );
     mapa.push(`[v${i}][a${i}]`);
   });
@@ -926,6 +1189,7 @@ export async function medirFidelidade(original, entregue, duracaoSec) {
   const inicio = Math.max(0, Math.floor(duracaoSec / 2) - 30);
   return new Promise((resolve) => {
     const p = spawn("ffmpeg", [
+      "-nostdin",
       "-hide_banner",
       "-ss", String(inicio), "-t", "60", "-i", entregue,
       "-ss", String(inicio), "-t", "60", "-i", original,
@@ -1074,6 +1338,26 @@ export async function extrairCandidatosDeCapa(entrada, saidaPrefixo, duracaoSec,
 
 /** O quadro escolhido, em resolução cheia e já recortado para 16:9. */
 export async function extrairCapaFinal(entrada, saida, instante, recorte) {
+  // Gravação em pé (30/09): cortar 16:9 do meio de um quadro 9:16 fica com
+  // uma faixa do peito e corta a cabeça. A capa deitada leva a pessoa inteira
+  // no centro e a própria imagem desfocada nas laterais, como o horizontal
+  // dos cortes; o `recorte` do agente (a janela da webcam numa gravação de
+  // tela) não se aplica a quadro de celular.
+  if (ehVertical(await ffprobe(entrada).catch(() => null))) {
+    await rodar([
+      "-ss", String(instante),
+      "-i", entrada,
+      "-frames:v", "1",
+      "-vf",
+      "split=2[cfundo][cfrente];" +
+        "[cfundo]scale=320:180:force_original_aspect_ratio=increase,crop=320:180,boxblur=10:2," +
+        "scale=1280:720,eq=brightness=-0.06,setsar=1[cborrado];" +
+        "[cfrente]scale=-2:720,setsar=1[cpessoa];[cborrado][cpessoa]overlay=(W-w)/2:0",
+      "-q:v", "2",
+      saida,
+    ], { timeoutMs: 2 * 60 * 1000 });
+    return;
+  }
   const filtros = [];
   if (recorte) {
     const par = (n) => `floor(${n}/2)*2`;
@@ -1097,6 +1381,18 @@ export async function extrairCapaFinal(entrada, saida, instante, recorte) {
     "-q:v", "2",
     saida,
   ], { timeoutMs: 2 * 60 * 1000 });
+}
+
+/**
+ * Um quadro inteiro, na resolução e na orientação da gravação (já girado).
+ * Existe para o recorte da pessoa da capa de uma gravação em pé: a capa
+ * deitada tem a imagem desfocada nas laterais, e o segmentador poderia achar
+ * "pessoa" no borrão (30/09).
+ */
+export async function extrairQuadroInteiro(entrada, saida, instante) {
+  await rodar(["-ss", String(instante), "-i", entrada, "-frames:v", "1", "-q:v", "2", saida], {
+    timeoutMs: 2 * 60 * 1000,
+  });
 }
 
 /**
@@ -1224,13 +1520,20 @@ export async function cortarVertical(
   som,
   // As dimensoes da gravacao, para o empilhado saber a ALTURA de cada bloco
   // antes de compor. Sem elas o layout cai nas larguras fixas de antes.
-  dimensoes
+  dimensoes,
+  // O tratamento da linguagem (30/09): { ...tratamento, momentos }.
+  tratamento = null
 ) {
-  const comRecorte = matte && (fundo || enquadramento?.tela);
+  // GRAVAÇÃO JÁ EM PÉ (celular, 30/09): o quadro inteiro já é o vertical. Não
+  // há webcam no canto para achar nem slide para empilhar, e recortar a caixa
+  // da pessoa seria ampliar o rosto duas vezes sem motivo. O corte central
+  // abaixo, com a caixa ignorada, devolve o quadro inteiro em 1080x1920.
+  const emPe = ehVertical(dimensoes);
+  const comRecorte = !emPe && matte && (fundo || enquadramento?.tela);
   const filtro = comRecorte
     ? montarFiltroRecortado(enquadramento, matte, duracao, fundo, ritmo, ajusteDeBrilho, dimensoes)
     : montarFiltroVertical(
-        enquadramento,
+        emPe ? null : enquadramento,
         Math.max(0, Math.min(0.12, ritmo?.forcaDoZoom ?? 0.04)),
         duracao
       );
@@ -1244,9 +1547,13 @@ export async function cortarVertical(
   // Sem isto, a peça mais cara do corte não chegava na tela: 85% dos vídeos
   // curtos são assistidos sem som, e até 24/08 os cortes saíam sem legenda
   // nenhuma. O módulo existia e o fluxo não o chamava.
+  // O tratamento da linguagem entra ANTES da legenda: câmera e cor mexem no
+  // vídeo, nunca no texto por cima dele.
+  const trat = cadeiaDoTratamento(tratamento, 1080, 1920, duracao, tratamento?.momentos);
+  const comTratamento = trat ? filtro.replace(/\[v\]$/, `[semTrat];[semTrat]${trat}[v]`) : filtro;
   let grafo = legenda
-    ? filtro.replace(/\[v\]$/, `[semLegenda];[semLegenda]subtitles=${legenda}[v]`)
-    : filtro;
+    ? comTratamento.replace(/\[v\]$/, `[semLegenda];[semLegenda]subtitles=${legenda}[v]`)
+    : comTratamento;
 
   // E o emoji por último de todos, porque ele é acento e acento fica por cima.
   grafo = comEmoji(
@@ -1295,7 +1602,7 @@ export async function cortarVertical(
     // alguem esquecer o formato no fim, o video sai num formato que metade dos
     // aparelhos nao decodifica, e o sintoma e "o video nao abre no celular
     // dele", que e caro de diagnosticar.
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
     // Com trilha, o loudnorm ja fechou a cadeia dentro do grafo; sem ela, entra
     // como -af no caminho simples.
     ...(audio ? [] : ["-af", NIVELAR_VOZ]),
@@ -1308,6 +1615,11 @@ export async function cortarVertical(
     // de filtro. Rodar dentro da pasta e passar só o nome resolve os dois, e é
     // o mesmo cuidado que a legenda e o filtro em arquivo já tomavam.
     cwd: dirname(saida),
+    // Com o tratamento da linguagem, teto proporcional ao corte, e não os 30
+    // minutos padrão: em 29/09 três cortes travaram com o tratamento e cada
+    // um só caiu para a segunda tentativa (sem ele) depois de 1800 s. Oito
+    // segundos por segundo de corte são seis vezes o medido com a cadeia nova.
+    ...(trat ? { timeoutMs: Math.max(4 * 60_000, Math.round(duracao * 8000)) } : {}),
     });
   } catch (e) {
     e.message = `${e.message}
@@ -1651,8 +1963,13 @@ function montarFiltroVertical(enq, pushIn, duracaoDoPush) {
     const zoom = push > 0.005
       ? `,fps=30,zoompan=z='min(${(1 + push).toFixed(3)},1+${push.toFixed(3)}*on/${Math.max(1, Math.round((duracaoDoPush ?? 30) * 30))})':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30`
       : "";
+    // A altura do recorte também é limitada (`min(ih,iw*16/9)`): celular
+    // grava 9:19,5 ou 9:20 (1080x2340, 1080x2400), mais alto que 9:16, e com
+    // a altura inteira o `scale` achataria a pessoa. Nesse caso sobra altura,
+    // e o corte guarda mais do topo (35% da sobra em cima) para não cortar a
+    // cabeça. Em gravação deitada a sobra é zero e nada muda.
     return (
-      `[0:v]${foco}crop='min(iw,ih*9/16)':ih:'(iw-min(iw,ih*9/16))/2':0,` +
+      `[0:v]${foco}crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'(iw-min(iw,ih*9/16))/2':'(ih-min(ih,iw*16/9))*0.35',` +
       `scale=1080:1920${zoom},format=yuv420p[v]`
     );
   }
@@ -1693,7 +2010,7 @@ function montarFiltroVertical(enq, pushIn, duracaoDoPush) {
  * Existe separado do vertical porque no LinkedIn e no X o vídeo aparece dentro
  * do feed em caixa larga, e vídeo vertical entra minúsculo no meio da tela.
  */
-export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda, musica, som) {
+export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda, musica, som, tratamento = null) {
   // A legenda do horizontal é OUTRO arquivo, e não o mesmo do vertical.
   //
   // O ASS carrega a resolução para a qual foi escrito, e o libass escala o
@@ -1705,11 +2022,57 @@ export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda,
   // grafo complexo no mesmo comando foi exatamente o erro que derrubou o
   // completo em 24/08. A entrada aqui e intermediario recodificado, entao
   // filtros de video sao seguros.
-  const filtroDeVideo =
-    "scale=1920:1080:force_original_aspect_ratio=decrease," +
-    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" +
-    (legenda ? `,subtitles=${legenda}` : "");
+  const trat = tratamento ? cadeiaDoTratamento(tratamento, 1920, 1080, duracao, tratamento.momentos) : "";
   const audio = cadeiaDeAudio(musica, 1, duracao, som);
+  // Gravação em pé vira 16:9 com a pessoa inteira no meio e a PRÓPRIA imagem
+  // ampliada e desfocada nas laterais, e não com tarja preta (30/09). Ver
+  // `quadroDeitado`.
+  const emPe = ehVertical(await ffprobe(entrada).catch(() => null));
+  // O horizontal ganhou o tratamento em 30/09 SEM a segunda tentativa que o
+  // vertical tem: se o tratamento falhasse aqui, o trecho inteiro caía depois
+  // de o vertical já estar pronto. Agora cai só o tratamento, com teto
+  // proporcional ao corte (mesma conta do vertical).
+  if (trat) {
+    try {
+      return await codificarHorizontal(entrada, saida, inicio, duracao, legenda, musica, audio, trat, {
+        timeoutMs: Math.max(4 * 60_000, Math.round(duracao * 8000)),
+      }, emPe);
+    } catch (e) {
+      console.error(`horizontal falhou COM tratamento, tentando sem: ${String(e?.message ?? e).slice(0, 300)}`);
+    }
+  }
+  return codificarHorizontal(entrada, saida, inicio, duracao, legenda, musica, audio, "", {}, emPe);
+}
+
+/**
+ * O quadro 16:9 de uma gravação EM PÉ: a pessoa inteira, na altura toda, no
+ * centro, e nas laterais a mesma imagem ampliada, desfocada e um pouco mais
+ * escura. É o que editor faz com vídeo de celular em timeline deitada; a tarja
+ * preta de `pad` parece erro de exportação (30/09).
+ *
+ * O desfoque roda num quadro pequeno (384x216) e só depois sobe para 1920x1080:
+ * borrar 1080p inteiro a cada quadro custa caro e o resultado é o mesmo borrão.
+ * Um grafo com rótulos internos e UMA entrada e UMA saída, então serve tanto
+ * em `-vf` quanto depois de `[0:v]` num `-filter_complex`.
+ */
+function quadroDeitado() {
+  return (
+    "split=2[hfundo][hfrente];" +
+    "[hfundo]scale=384:216:force_original_aspect_ratio=increase,crop=384:216,boxblur=12:2," +
+    "scale=1920:1080,eq=brightness=-0.06,setsar=1[hborrado];" +
+    "[hfrente]scale=-2:1080,setsar=1[hpessoa];" +
+    "[hborrado][hpessoa]overlay=(W-w)/2:0,format=yuv420p"
+  );
+}
+
+async function codificarHorizontal(entrada, saida, inicio, duracao, legenda, musica, audio, trat, limites, emPe = false) {
+  const filtroDeVideo =
+    (emPe
+      ? quadroDeitado()
+      : "scale=1920:1080:force_original_aspect_ratio=decrease," +
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p") +
+    (trat ? `,${trat},format=yuv420p` : "") +
+    (legenda ? `,subtitles=${legenda}` : "");
 
   await rodar([
     "-ss", String(inicio),
@@ -1720,6 +2083,9 @@ export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda,
       ? ["-filter_complex", `[0:v]${filtroDeVideo}[v];${audio}`, "-map", "[v]", "-map", "[aout]"]
       : ["-vf", filtroDeVideo, "-af", NIVELAR_VOZ]),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    // Teto de pico e quadro-chave a cada 2 s: é o arquivo que o player do
+    // card toca e que a rede recebe. Ver PLAYER_WEB.
+    ...PLAYER_WEB,
     "-c:a", "aac", "-b:a", "128k",
     "-movflags", "+faststart",
     saida,
@@ -1728,6 +2094,7 @@ export async function cortarHorizontal(entrada, saida, inicio, duracao, legenda,
     // ao diretório de trabalho, e caminho absoluto do Windows com dois-pontos
     // quebra o parser de filtro.
     cwd: dirname(saida),
+    ...limites,
   });
 }
 
@@ -1749,4 +2116,269 @@ export async function extrairCapa(entrada, saida, inicio, duracao) {
     "-q:v", "3",
     saida,
   ], { timeoutMs: 2 * 60 * 1000 });
+}
+
+/**
+ * O TRATAMENTO DA LINGUAGEM (30/09/2026): câmera, look e efeitos pontuais.
+ *
+ * No teste de 29/09 o cliente escolheu Vox com aproximação, afastamento e luz
+ * vazada, e o corte saiu cru: o worker só recebia o perfil de legenda. O app
+ * agora manda `tratamento` (lib/media/linguagem-da-edicao.ts) e esta função o
+ * traduz em filtros, aplicados ANTES da legenda, para a cor e o movimento não
+ * mexerem no texto.
+ *
+ * Só entra o que o ffmpeg faz bem e de graça. O que exige gerar imagem nova
+ * (timelapse, mundo congelado, drone) é da Higgsfield, que liga à parte.
+ *
+ * Devolve a cadeia sem colchetes (filtros separados por vírgula), ou "" quando
+ * não há nada a fazer. `largura` e `altura` são as do quadro final.
+ */
+export function cadeiaDoTratamento(tratamento, largura, altura, duracao, momentos = []) {
+  if (!tratamento) return "";
+  const partes = [];
+  const D = Math.max(1, duracao).toFixed(3);
+  const F = Math.max(0, Math.min(0.2, tratamento.camera?.forca ?? 0.05));
+  const par = (expr) => `trunc((${expr})/2)*2`;
+  // Os momentos fortes, no máximo seis, para o grafo não crescer sem limite.
+  const ms = (momentos ?? []).filter((m) => m > 0.3 && m < duracao - 0.3).slice(0, 6);
+
+  // ── CÂMERA ── dolly digital com `zoompan`, que entrega SEMPRE o mesmo
+  // tamanho de quadro.
+  //
+  // Até 30/09 era `scale=...:eval=frame` seguido de `crop`: o quadro mudava de
+  // tamanho a cada imagem, e o ffmpeg 5.1 do contêiner reconfigura o grafo a
+  // cada mudança. Medido no teste de 29/09 (vídeo de 22 min, três cortes): um
+  // corte morreu na hora com "Error while opening encoder ... width or
+  // height", e outros três TRAVARAM até o teto de 1800 s do `rodar`, o que
+  // sozinho respondeu por uns 30 dos 36 minutos até os cortes chegarem. No
+  // ffmpeg 9 local a mesma cadeia levava 9x o tempo de um corte sem
+  // tratamento; com `zoompan` o custo da câmera cai para cerca de 1,2x.
+  //
+  // O tempo aqui é `on/30` (quadro de saída a 30 fps, garantido pelo `fps=30`
+  // logo antes), porque `t` não existe dentro do `zoompan`.
+  const T = "(on/30)";
+  const zoom = {
+    aproximacao: `1+${F}*${T}/${D}`,
+    afastamento: `1+${F}*(1-${T}/${D})`,
+    alternado: `1+${F}*(0.5+0.5*sin(2*PI*${T}/6))`,
+    impacto: ms.length
+      ? `1+0.02*${T}/${D}+${F}*(${ms.map((m) => `between(${T},${m.toFixed(2)},${(m + 0.7).toFixed(2)})`).join("+")})`
+      : `1+${F}*${T}/${D}`,
+  }[tratamento.camera?.modo];
+  if (tratamento.camera?.modo === "na-mao") {
+    // Tremor leve de quem segura a câmera: o quadro cresce 5% UMA vez (escala
+    // fixa, barata) e o recorte passeia com duas senoides fora de fase.
+    partes.push(`scale=${par(`${largura}*1.05`)}:${par(`${altura}*1.05`)}`);
+    partes.push(`crop=${largura}:${altura}:'(iw-${largura})/2+9*sin(t*2.3)+5*sin(t*5.9)':'(ih-${altura})/2+7*sin(t*1.7)+4*sin(t*6.7)'`);
+  } else if (zoom) {
+    partes.push(
+      `fps=30,zoompan=z='${zoom}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${largura}x${altura}:fps=30`
+    );
+  }
+
+  // ── LOOK ── a cor da linguagem. Tabela curta e medida a olho nos quadros do
+  // teste; o destaque em preto e branco segura a cor da MARCA.
+  const acento = (tratamento.marca?.acento ?? "#F97316").replace("#", "0x");
+  const looks = {
+    natural: "",
+    "cinema-quente": "eq=contrast=1.08:saturation=1.08,colorbalance=rs=.05:gs=.01:bs=-.06:rh=.03:bh=-.04",
+    "frio-escuro": "eq=contrast=1.12:brightness=-0.03:saturation=0.88,colorbalance=rs=-.05:bs=.07",
+    pastel: "eq=contrast=0.9:saturation=0.78:brightness=0.04",
+    "pb-destaque": `colorhold=color=${acento}:similarity=0.22:blend=0.12`,
+    "filme-16mm": "eq=contrast=1.05:saturation=0.9,noise=alls=12:allf=t,vignette=PI/5",
+    vhs: "rgbashift=rh=-3:bh=3,eq=saturation=0.82,noise=alls=9:allf=t",
+    ilustrado: "eq=saturation=1.15:contrast=1.1,unsharp=5:5:1.2",
+    papel: "eq=contrast=1.04:saturation=0.9,noise=alls=7:allf=t,vignette=PI/6",
+    pintura: "eq=saturation=1.2,gblur=sigma=0.6",
+    "alto-contraste": "eq=contrast=1.18:saturation=1.25",
+  };
+  const look = looks[tratamento.look ?? "natural"];
+  if (look) partes.push(look);
+  if (tratamento.efeitos?.grao && tratamento.look !== "papel" && tratamento.look !== "filme-16mm") {
+    partes.push("noise=alls=6:allf=t");
+  }
+
+  // ── EFEITOS PONTUAIS nos momentos fortes ──
+  for (const [i, m] of ms.entries()) {
+    const a = m.toFixed(2);
+    if (tratamento.efeitos?.flash && i % 2 === 0) {
+      // Clarão curto: dois quadros claros e um de volta, lido como "revelação".
+      partes.push(`eq=brightness=0.38:enable='between(t,${a},${(m + 0.07).toFixed(2)})'`);
+    }
+    if (tratamento.efeitos?.glitch && i % 2 === 1) {
+      partes.push(`rgbashift=rh=14:bh=-14:gv=6:enable='between(t,${a},${(m + 0.16).toFixed(2)})'`);
+    }
+    if (tratamento.efeitos?.luzVazada && i % 3 === 0) {
+      // Luz vazada de filme: um brilho vindo do canto de cima, que sobe e desce
+      // em 0,9 s (seno do tempo dentro da janela).
+      //
+      // Até 30/09 era um `geq` por pixel em RGB, e ele custava duas vezes: a
+      // expressão com `exp` avaliada em 2 milhões de pixels por quadro, e a
+      // conversão do fluxo INTEIRO para RGB, porque o formato é negociado para
+      // o grafo todo e não só para a janela do efeito. Medido em 10 s de
+      // 1080x1920: +9 s só o `geq`. Agora é um clarão quente do quadro inteiro
+      // (`eq` em YUV, brilho e saturação na mesma rampa), que custa quase nada.
+      // Perde o foco no canto; a vinheta fora do centro foi testada para
+      // recuperá-lo e deixava meio quadro preto, então ficou de fora.
+      const env = `sin(PI*(t-${a})/0.9)`;
+      const janela = `enable='between(t,${a},${(m + 0.9).toFixed(2)})'`;
+      partes.push(`eq=brightness='0.09*${env}':saturation='1+0.25*${env}':gamma='1+0.12*${env}':eval=frame:${janela}`);
+    }
+  }
+  return partes.join(",");
+}
+
+/**
+ * O fps de um arquivo, lido do fluxo de vídeo (ex.: "30/1" vira 30).
+ *
+ * Existe porque o `xfade` e o `overlay` exigem os dois lados no MESMO ritmo, e
+ * o clipe gerado pela Higgsfield (Kling) sai a 24 quadros enquanto o corte sai
+ * a 30. Sem igualar, o `xfade` recusa ou a emenda sai com o tempo torto.
+ */
+export function fpsDe(caminho) {
+  try {
+    const r = spawnSync("ffprobe", [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", caminho,
+    ], { encoding: "utf8" });
+    const [a, b] = String(r.stdout ?? "").trim().split("/").map(Number);
+    const fps = b ? a / b : a;
+    return fps > 0 && fps < 121 ? Math.round(fps * 1000) / 1000 : 30;
+  } catch {
+    return 30;
+  }
+}
+
+/**
+ * Deixa o clipe gerado exatamente no formato do corte: mesmo tamanho (cobrindo
+ * o quadro e cortando a sobra, nunca com tarja), mesmo fps, mesmo formato de
+ * pixel. Serve à abertura e à cena de apoio.
+ */
+function clipeNoFormato(largura, altura, fps, duracao) {
+  return [
+    `scale=${largura}:${altura}:force_original_aspect_ratio=increase`,
+    `crop=${largura}:${altura}`,
+    `fps=${fps}`,
+    "format=yuv420p",
+    "setsar=1",
+    `trim=duration=${duracao.toFixed(3)}`,
+    "setpts=PTS-STARTPTS",
+  ].join(",");
+}
+
+/**
+ * A ABERTURA DA HIGGSFIELD emendada no começo do corte (item 9, 29/09).
+ *
+ * O clipe gerado (3 s, sem som) entra ANTES do corte, com um crossfade de
+ * 0,3 s para o primeiro quadro do corte. O som do corte começa junto do
+ * crossfade, com fade de entrada do mesmo tamanho: a voz não pode começar
+ * cortada no meio de uma sílaba, e o vídeo gerado não tem som próprio.
+ *
+ * Só filtros que existem no ffmpeg 5.1 do contêiner (`xfade` é do 4.3,
+ * `adelay` e `afade` são antigos). Recodifica porque o crossfade exige; CRF 20
+ * e não o 23 do corte, para a segunda geração não piorar o que o cliente vê.
+ *
+ * A duração final é a do corte mais a da abertura menos o crossfade. Emojis e
+ * remoções do corte não mudam: a emenda entra depois deles.
+ */
+export async function emendarAberturaNoCorte(abertura, corte, saida, { crossfade = 0.3 } = {}) {
+  const c = await ffprobe(corte);
+  const a = await ffprobe(abertura);
+  if (!c.largura || !c.altura) throw new Error("corte sem vídeo legível");
+  const fps = fpsDe(corte);
+  // A abertura nunca passa de 5 s aqui: é gancho, não trecho.
+  const durA = Math.min(5, Math.max(crossfade + 0.5, a.duracaoSec || 3));
+  const offset = durA - crossfade;
+  const atraso = Math.round(offset * 1000);
+
+  const partes = [
+    `[0:v]${clipeNoFormato(c.largura, c.altura, fps, durA)}[ab]`,
+    `[1:v]fps=${fps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS[co]`,
+    `[ab][co]xfade=transition=fade:duration=${crossfade}:offset=${offset.toFixed(3)}[v]`,
+  ];
+  if (c.temAudio) {
+    partes.push(
+      `[1:a]aresample=48000,asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${crossfade},adelay=${atraso}|${atraso}[a]`
+    );
+  }
+  await rodar([
+    "-i", abertura,
+    "-i", corte,
+    "-filter_complex", partes.join(";"),
+    "-map", "[v]",
+    ...(c.temAudio ? ["-map", "[a]"] : []),
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
+    ...(c.temAudio ? ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"] : []),
+    "-movflags", "+faststart",
+    saida,
+  ], { timeoutMs: 10 * 60 * 1000 });
+  return { duracaoSec: c.duracaoSec + durA - crossfade };
+}
+
+/**
+ * A CENA DE APOIO da Higgsfield no meio do corte.
+ *
+ * Diferente da abertura, ela NÃO empurra o tempo: entra por cima da imagem do
+ * corte por 3 s, com a voz seguindo intacta por baixo (o áudio é copiado, sem
+ * recodificar). É o que um editor faz com imagem de cobertura. Fade de 0,3 s
+ * na entrada e na saída, pelo canal alfa, para não virar corte seco.
+ *
+ * Custo conhecido: a legenda queimada no corte fica escondida durante a cena.
+ * Por isso ela entra no meio do corte, longe do gancho do começo e do fecho.
+ */
+export async function inserirCenaDeApoio(apoio, corte, saida, { instante = null, crossfade = 0.3 } = {}) {
+  const c = await ffprobe(corte);
+  const a = await ffprobe(apoio);
+  if (!c.largura || !c.altura) throw new Error("corte sem vídeo legível");
+  const fps = fpsDe(corte);
+  const d = Math.min(5, Math.max(2 * crossfade + 0.5, a.duracaoSec || 3));
+  // Sem espaço para a cena inteira longe das pontas, não insere.
+  if (c.duracaoSec < d + 6) return null;
+  const meio = instante ?? (c.duracaoSec - d) / 2;
+  const t0 = Math.min(Math.max(3, meio), c.duracaoSec - d - 3);
+
+  const filtro = [
+    `[1:v]${clipeNoFormato(c.largura, c.altura, fps, d)},format=yuva420p,` +
+      `fade=t=in:st=0:d=${crossfade}:alpha=1,fade=t=out:st=${(d - crossfade).toFixed(3)}:d=${crossfade}:alpha=1,` +
+      `setpts=PTS+${t0.toFixed(3)}/TB[ap]`,
+    `[0:v][ap]overlay=eof_action=pass:enable='between(t,${t0.toFixed(3)},${(t0 + d).toFixed(3)})',format=yuv420p[v]`,
+  ].join(";");
+  await rodar([
+    "-i", corte,
+    "-i", apoio,
+    "-filter_complex", filtro,
+    "-map", "[v]",
+    ...(c.temAudio ? ["-map", "0:a", "-c:a", "copy"] : []),
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", ...PLAYER_WEB,
+    "-movflags", "+faststart",
+    saida,
+  ], { timeoutMs: 10 * 60 * 1000 });
+  return { instante: t0, duracaoSec: d };
+}
+
+/**
+ * O quadro que vai para a Higgsfield, já na proporção do corte.
+ *
+ * O Kling devolve o vídeo na proporção da imagem que recebe. A capa do corte
+ * sai em 16:9 (1280x720); mandada assim, a abertura voltaria deitada e teria
+ * de ser cortada DEPOIS, jogando fora 2/3 dos pixels gerados. Recortar ANTES,
+ * em volta da pessoa, faz o modelo gerar direto em pé.
+ *
+ * `centroX` (0 a 1) é o centro da pessoa no quadro, quando o enquadramento do
+ * corte sabe; sem ele, o meio.
+ */
+export async function quadroNaProporcao(entrada, saida, { proporcao = "9:16", centroX = 0.5 } = {}) {
+  const [pw, ph] = proporcao.split(":").map(Number);
+  const cx = Math.min(1, Math.max(0, Number(centroX) || 0.5));
+  const alvoL = pw >= ph ? 1280 : 720;
+  const alvoA = pw >= ph ? 720 : 1280;
+  const crop =
+    `crop='min(iw,ih*${pw}/${ph})':'min(ih,iw*${ph}/${pw})':` +
+    `'max(0,min(iw-min(iw,ih*${pw}/${ph}),iw*${cx.toFixed(4)}-min(iw,ih*${pw}/${ph})/2))':'(ih-min(ih,iw*${ph}/${pw}))/2'`;
+  await rodar([
+    "-i", entrada,
+    "-vf", `${crop},scale=${alvoL}:${alvoA}:flags=lanczos,setsar=1`,
+    "-frames:v", "1", "-q:v", "2",
+    saida,
+  ]);
 }

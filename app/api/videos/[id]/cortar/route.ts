@@ -12,7 +12,9 @@ import type { Trecho } from "@/lib/media/select-clips";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
+import { gravarEdicaoDoPedido } from "@/lib/media/edicao-gravada";
 import type { Word } from "@/lib/media/transcribe";
+import { lerRoteiroDoVideo, roteiroLigado } from "@/lib/media/roteiro-da-edicao";
 
 /**
  * Manda o worker cortar a gravação.
@@ -58,10 +60,11 @@ export async function POST(
       // envio: canal com estilo diferente a cada vídeo não constrói
       // reconhecimento. O nicho, que alimenta o fundo gerado, é lido na rota
       // `/enquadrar`, que é onde o fundo passou a ser gerado.
-      project: { select: { videoStyle: true, videoMusicUrl: true, videoTerms: true } },
+      project: { select: { videoStyle: true, videoMusicUrl: true, videoTerms: true, videoEstiloEscolha: true, colorPalette: true } },
       transcript: true,
       durationSec: true,
       projectId: true,
+      finishedAt: true,
     },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
@@ -80,10 +83,30 @@ export async function POST(
   }
 
   const trechos = (video.clips as unknown as Trecho[]) ?? [];
-  if (!trechos.length) {
+  // A PORTA DO ROTEIRO (30/09): com a tela de roteiro ligada, nada corta sem
+  // o cliente ter aprovado. Vídeo que chegou a "selected" antes desta regra
+  // (sem roteiro nenhum) segue como antes, para não travar quem estava no
+  // meio da esteira no dia da publicação.
+  const roteiro = await lerRoteiroDoVideo(id);
+  // SÓ O COMPLETO (02/10): o roteiro aprovado com zero cortes manda o worker
+  // produzir só o vídeo completo (a lista de trechos vai vazia). Sem roteiro
+  // aprovado, lista vazia continua sendo erro.
+  if (!trechos.length && !roteiro?.aprovadoEm) {
     return NextResponse.json(
       { error: "Esse vídeo não tem trechos escolhidos." },
       { status: 400 }
+    );
+  }
+  if (roteiro && !roteiro.aprovadoEm) {
+    return NextResponse.json(
+      { error: "O roteiro deste vídeo ainda não foi aprovado. Aprove na tela de roteiro e o corte começa." },
+      { status: 409 }
+    );
+  }
+  if (!roteiro && roteiroLigado() && !acesso.interno && video.status === "selected") {
+    return NextResponse.json(
+      { error: "Este vídeo precisa do roteiro antes do corte. O squad está montando." },
+      { status: 409 }
     );
   }
 
@@ -94,11 +117,16 @@ export async function POST(
       startedAt: new Date(),
       attempts: { increment: 1 },
       error: null,
+      // Vídeo que já tinha terminado e está sendo refeito: começa uma RODADA
+      // nova, e a faixa do Gestor conta dela, não do envio original (30/09,
+      // o "196:25" do vídeo de teste). O vídeo completo antigo fica onde está
+      // até o novo chegar; quem o troca é o cortar-callback.
+      ...(video.finishedAt ? { rodadaEm: new Date(), finishedAt: null } : {}),
     },
   });
   if (tomado.count === 0) {
     return NextResponse.json(
-      { error: "Outra aba já mandou cortar este vídeo." },
+      { error: "O corte deste vídeo já começou.", jaEmAndamento: true },
       { status: 409 }
     );
   }
@@ -116,6 +144,10 @@ export async function POST(
       estilo: video.project?.videoStyle ?? null,
       musicaUrl: video.project?.videoMusicUrl ?? null,
       termos: video.project?.videoTerms ?? null,
+      escolha: video.project?.videoEstiloEscolha ?? null,
+      colorPalette: video.project?.colorPalette ?? null,
+      // O texto que o cliente leu e aprovou: sem limpeza por IA de novo.
+      remocoesProntas: roteiro?.aprovadoEm ? roteiro.remocoes : null,
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );
@@ -135,6 +167,9 @@ export async function POST(
     if (!r.ok) {
       throw new Error(`worker respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`);
     }
+    // A edição de cada trecho fica gravada para a Vera ler o texto FINAL
+    // (depois da limpeza), e não a transcrição bruta. Ver edicao-gravada.ts.
+    await gravarEdicaoDoPedido(id, corpo);
   } catch (err) {
     // Devolve o estado: sem isto o vídeo ficaria "cortando" até o prazo, com o
     // worker sem saber que existe trabalho.

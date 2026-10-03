@@ -141,6 +141,210 @@ export function folgaParaEmenda(remocoes: Remocao[], folga = 0.03): Remocao[] {
     .filter((r) => r.ate - r.de > 0.05);
 }
 
+/**
+ * O mesmo limiar padrão de `detectarPausas`. Acima dele, o silêncio vizinho de
+ * uma remoção é PONTUAÇÃO, e quem decide quanto dele fica é a pausa, com o
+ * respiro proporcional; a remoção de fala só encosta nele.
+ */
+const LIMIAR_DE_PAUSA = 0.6;
+
+/**
+ * Quanto silêncio sempre fica colado numa palavra MANTIDA, no máximo.
+ *
+ * A Deepgram entrega tempo de palavra em degraus de uns 80ms, e o fim marcado
+ * costuma vir antes do fim real do som (a vogal final some devagar). Cortar
+ * rente ao número come esse rabo; 0,12s cobre um degrau e meio.
+ */
+const MARGEM_DA_PALAVRA = 0.12;
+
+/** Folga para decidir se um instante está "na" fronteira da palavra. */
+const EPS = 0.005;
+
+/**
+ * Quanto do buraco entre duas palavras fica do lado da palavra mantida, quando
+ * a palavra do outro lado sai.
+ *
+ * Buraco curto (vírgula, respiração): o corte cai no MEIO dele, com teto de
+ * `MARGEM_DA_PALAVRA`. Assim "funcionário, [0,16] né [0,24] agente" vira
+ * "funcionário, agente" com uns 0,2s de respiro, que é o tamanho de uma
+ * vírgula falada.
+ *
+ * Buraco longo (acima do limiar de pausa): quase todo ele fica, e a remoção só
+ * tira 30ms colados na palavra que sai. O buraco longo já é uma pausa, e
+ * `detectarPausas` vai encolhê-lo com o respiro certo. Se a remoção de fala
+ * comesse esse silêncio, a união das duas colaria o fim de uma frase no começo
+ * da outra, que é o defeito de 01/09 ("terminou em um tema e voltou em outro").
+ */
+export function margemNoSilencio(buraco: number): number {
+  const g = Math.max(0, buraco);
+  if (g > LIMIAR_DE_PAUSA) return g - 0.03;
+  return Math.min(g / 2, MARGEM_DA_PALAVRA);
+}
+
+/**
+ * Onde um instante cai em relação às palavras: dentro de uma, ou no buraco
+ * entre duas. Busca binária porque roda duas vezes por remoção e a gravação
+ * tem milhares de palavras.
+ */
+function ondeCai(
+  palavras: Word[],
+  t: number
+): { dentro?: number; antes?: number; depois?: number } {
+  let lo = 0;
+  let hi = palavras.length;
+  while (lo < hi) {
+    const meio = (lo + hi) >> 1;
+    if (palavras[meio].start <= t) lo = meio + 1;
+    else hi = meio;
+  }
+  // `lo` é a primeira palavra que começa depois de t.
+  const i = lo - 1;
+  if (i < 0) return { depois: 0 };
+  const w = palavras[i];
+  if (t <= w.start + EPS) {
+    return { antes: i - 1 >= 0 ? i - 1 : undefined, depois: i };
+  }
+  if (t >= w.end - EPS) {
+    return { antes: i, depois: lo < palavras.length ? lo : undefined };
+  }
+  return { dentro: i };
+}
+
+/** Que fração da palavra a remoção leva. Metade ou mais: a palavra sai. */
+function fracaoCoberta(r: { de: number; ate: number }, w: Word): number {
+  const dur = Math.max(w.end - w.start, 1e-3);
+  return Math.max(0, Math.min(r.ate, w.end) - Math.max(r.de, w.start)) / dur;
+}
+
+/**
+ * Leva cada borda de remoção para o silêncio entre palavras, e só então aplica
+ * a folga do fade. Substitui `folgaParaEmenda` quando há palavras à mão.
+ *
+ * ## O defeito, medido no teste de 29/09
+ *
+ * O corte saiu com um "né" no meio da fala. O "né" ESTAVA na lista de remoção
+ * desde 31/08; o que sobrava era o pedaço dele. As remoções de palavra iam do
+ * `start` ao `end` exatos da palavra, e a folga do fade encolhia cada uma 20 a
+ * 30ms para DENTRO, devolvendo ao vídeo o ataque do "n" e o fim do "é". Como a
+ * Deepgram marca tempo em degraus de 80ms, o som real passava ainda mais do
+ * número. A folga foi pensada para remoção de pausa, que é só silêncio; em
+ * remoção de palavra ela devolve a palavra.
+ *
+ * ## As regras
+ *
+ * 1. Borda DENTRO de palavra: se a remoção leva metade ou mais da palavra, a
+ *    palavra sai inteira e a borda vai para o silêncio do lado de fora dela;
+ *    se leva menos, a palavra fica inteira e a borda recua para o silêncio
+ *    antes (ou depois) dela. Nunca meia palavra.
+ * 2. Borda no silêncio, mas colada na palavra mantida: afasta até a margem,
+ *    para não comer o rabo nem o ataque dela.
+ * 3. Borda no silêncio, mas colada na palavra que SAI: vai para o meio do
+ *    buraco (`margemNoSilencio`), senão sobra o ataque da palavra removida.
+ * 4. A folga do fade só anda dentro do silêncio do lado removido. Onde as duas
+ *    palavras estão coladas (buraco zero), não há folga: o fade sobre a
+ *    palavra mantida é um tique de 15ms, e sobre a removida seria a sílaba.
+ *
+ * O "rabo gaguejado" de `detectarRepeticoes` corta dentro da palavra DE
+ * PROPÓSITO (a transcrição juntou gagueira e palavra num tempo só), então a
+ * borda final dele não é mexida.
+ */
+export function emendarNoSilencio(
+  remocoes: Remocao[],
+  palavras: Word[],
+  folga = 0.03
+): Remocao[] {
+  if (!palavras.length) return folgaParaEmenda(remocoes, folga);
+
+  const encaixadas = remocoes.map((r) => {
+    let { de, ate } = r;
+    const rabo = r.motivo.includes("rabo gaguejado");
+
+    // Começo da remoção: o que vem antes dela fica.
+    const a = ondeCai(palavras, r.de);
+    if (a.dentro !== undefined) {
+      const w = palavras[a.dentro];
+      const ant = palavras[a.dentro - 1];
+      if (fracaoCoberta(r, w) >= 0.5) {
+        de = ant ? Math.min(w.start, ant.end + margemNoSilencio(w.start - ant.end)) : w.start;
+      } else {
+        const seg = palavras[a.dentro + 1];
+        const g = seg ? seg.start - w.end : Infinity;
+        de = w.end + Math.min(g / 2, MARGEM_DA_PALAVRA);
+      }
+    } else if (a.antes !== undefined) {
+      const fimAnt = palavras[a.antes].end;
+      const g = a.depois !== undefined ? palavras[a.depois].start - fimAnt : Infinity;
+      const piso = fimAnt + Math.min(g / 2, MARGEM_DA_PALAVRA);
+      if (de < piso) de = piso;
+      else if (a.depois !== undefined && g > 0 && de >= palavras[a.depois].start - EPS) {
+        de = fimAnt + margemNoSilencio(g);
+      }
+    }
+
+    // Fim da remoção: o que vem depois dela fica.
+    const b = ondeCai(palavras, r.ate);
+    if (b.dentro !== undefined && !rabo) {
+      const w = palavras[b.dentro];
+      const seg = palavras[b.dentro + 1];
+      if (fracaoCoberta(r, w) >= 0.5) {
+        ate = seg ? Math.max(w.end, seg.start - margemNoSilencio(seg.start - w.end)) : w.end;
+      } else {
+        const ant = palavras[b.dentro - 1];
+        const g = ant ? w.start - ant.end : Infinity;
+        ate = w.start - Math.min(g / 2, MARGEM_DA_PALAVRA);
+      }
+    } else if (b.depois !== undefined && b.dentro === undefined) {
+      const inicioSeg = palavras[b.depois].start;
+      const g = b.antes !== undefined ? inicioSeg - palavras[b.antes].end : Infinity;
+      const teto = inicioSeg - Math.min(g / 2, MARGEM_DA_PALAVRA);
+      if (ate > teto) ate = teto;
+      else if (b.antes !== undefined && g > 0 && ate <= palavras[b.antes].end + EPS) {
+        ate = inicioSeg - margemNoSilencio(g);
+      }
+    }
+    return { ...r, de, ate, rabo };
+  });
+
+  // Encaixar pode fazer duas remoções vizinhas se tocarem no mesmo buraco.
+  const ordenadas = encaixadas.filter((r) => r.ate > r.de).sort((x, y) => x.de - y.de);
+  const unidas: Array<Remocao & { rabo: boolean }> = [];
+  for (const r of ordenadas) {
+    const anterior = unidas[unidas.length - 1];
+    if (anterior && r.de <= anterior.ate) {
+      if (r.ate > anterior.ate) {
+        anterior.ate = r.ate;
+        anterior.rabo = r.rabo;
+      }
+      if (!anterior.motivo.includes(r.motivo)) anterior.motivo = `${anterior.motivo} e ${r.motivo}`;
+    } else {
+      unidas.push({ ...r });
+    }
+  }
+
+  return unidas
+    .map(({ rabo, ...r }) => {
+      const dur = r.ate - r.de;
+      const teto = Math.max(0, (dur - 0.05) / 2);
+      // Silêncio disponível do lado de DENTRO de cada borda: é só ali que o
+      // fade pode acontecer sem tocar em palavra removida.
+      const a = ondeCai(palavras, r.de);
+      const livreNoInicio =
+        a.dentro !== undefined ? 0 : a.depois !== undefined ? palavras[a.depois].start - r.de : dur;
+      const b = ondeCai(palavras, r.ate);
+      const livreNoFim = rabo
+        ? folga
+        : b.dentro !== undefined
+          ? 0
+          : b.antes !== undefined
+            ? r.ate - palavras[b.antes].end
+            : dur;
+      const fDe = Math.min(folga, teto, Math.max(0, livreNoInicio));
+      const fAte = Math.min(folga, teto, Math.max(0, livreNoFim));
+      return { ...r, de: r.de + fDe, ate: r.ate - fAte };
+    })
+    .filter((r) => r.ate - r.de > 0.05);
+}
+
 /** Quanto tempo a edição devolve, para a tela poder dizer ao cliente. */
 export function segundosRemovidos(remocoes: Remocao[]): number {
   return remocoes.reduce((s, r) => s + (r.ate - r.de), 0);
@@ -302,7 +506,17 @@ export function montarLegendasDestaque(
 export function intervalosDoTrecho(
   remocoes: { de: number; ate: number }[],
   inicio: number,
-  fim: number
+  fim: number,
+  /**
+   * Opcional, e quem passa ganha bordas no silêncio.
+   *
+   * As bordas do trecho vêm arredondadas para o segundo inteiro, e o segundo
+   * inteiro cai onde cair: no teste de 29/09 o corte 2 começava em 504, dentro
+   * do "né?" dito antes (503,82 a 504,30). A remoção do "né" cobria até 504,27
+   * e o vídeo abria com o rabo dele. Com as palavras, a primeira e a última
+   * borda mantidas saem de dentro de palavra que pertence ao lado de fora.
+   */
+  palavras?: Word[]
 ): { de: number; ate: number }[] {
   const duracao = fim - inicio;
   const dentro = remocoes
@@ -321,6 +535,50 @@ export function intervalosDoTrecho(
     cursor = Math.max(cursor, r.ate);
   }
   if (duracao > cursor) fica.push({ de: cursor, ate: duracao });
+
+  if (palavras?.length && fica.length) {
+    // Primeira borda mantida: se cai dentro de uma palavra que é quase toda
+    // de ANTES do trecho, ou colada no fim dela, o trecho abre com o rabo de
+    // uma palavra que não é dele. Pula para o silêncio depois dela. O caso
+    // oposto (palavra quase toda dentro) não tem conserto aqui, porque o
+    // intervalo não pode começar antes do início do trecho: isso é assunto de
+    // quem escolhe as bordas.
+    const primeira = fica[0];
+    const s = inicio + primeira.de;
+    const a = ondeCai(palavras, s);
+    let novoInicio = s;
+    if (a.dentro !== undefined) {
+      const w = palavras[a.dentro];
+      if (s - w.start > w.end - s) {
+        const seg = palavras[a.dentro + 1];
+        novoInicio = w.end + (seg ? Math.min((seg.start - w.end) / 2, MARGEM_DA_PALAVRA) : 0);
+      }
+    } else if (a.antes !== undefined && a.depois !== undefined) {
+      const fimAnt = palavras[a.antes].end;
+      const g = palavras[a.depois].start - fimAnt;
+      novoInicio = Math.max(s, fimAnt + Math.min(g / 2, MARGEM_DA_PALAVRA));
+    }
+    primeira.de = Math.min(primeira.ate, novoInicio - inicio);
+
+    // Última borda mantida: o espelho, contra o ataque da palavra seguinte.
+    const ultima = fica[fica.length - 1];
+    const e = inicio + ultima.ate;
+    const b = ondeCai(palavras, e);
+    let novoFim = e;
+    if (b.dentro !== undefined) {
+      const w = palavras[b.dentro];
+      if (w.end - e > e - w.start) {
+        const ant = palavras[b.dentro - 1];
+        novoFim = w.start - (ant ? Math.min((w.start - ant.end) / 2, MARGEM_DA_PALAVRA) : 0);
+      }
+    } else if (b.antes !== undefined && b.depois !== undefined) {
+      const inicioSeg = palavras[b.depois].start;
+      const g = inicioSeg - palavras[b.antes].end;
+      novoFim = Math.min(e, inicioSeg - Math.min(g / 2, MARGEM_DA_PALAVRA));
+    }
+    ultima.ate = Math.max(ultima.de, novoFim - inicio);
+  }
+
   return fica.filter((f) => f.ate - f.de > 0.05);
 }
 

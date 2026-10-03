@@ -30,6 +30,7 @@ type TrechoComTudo = Trecho & {
   midia?: {
     capa?: { url: string } | null;
     capaArte?: { url: string } | null;
+    recorte?: { url: string } | null;
   } | null;
   texto?: {
     titulo: string;
@@ -107,7 +108,11 @@ export async function POST(
         //
         // Cai para o quadro do trecho quando a varredura não achou nada, que é
         // melhor que não ter capa.
-        const quadro = video.capaFonteUrl ?? t.midia?.capa?.url;
+        // Desde 30/09 o corte chega com o PRÓPRIO quadro escolhido pelo rosto
+        // (olho aberto, boca fechada) e a pessoa já recortada; esse vale mais
+        // que a capa-fonte, porque é do assunto do corte.
+        const recorteDoTrecho = t.midia?.recorte?.url ?? null;
+        const quadro = recorteDoTrecho ? t.midia?.capa?.url : video.capaFonteUrl ?? t.midia?.capa?.url;
         if (quadro) {
           // O quadro vive no storage privado, então precisa do SDK. `fetch`
           // devolveria 403, armadilha que este projeto já pagou três vezes.
@@ -125,6 +130,9 @@ export async function POST(
               // O corte é vertical, a capa dele também. A thumb 16:9 do vídeo
               // completo vem do quadro-fonte, não daqui.
               formato: "9:16",
+              quadroUrl: quadro,
+              recorteUrl: recorteDoTrecho,
+              chaveDoRecorte: `cortes/${video.id}/recorte-capa-${i}.png`,
             });
             if (arte) {
               const { url } = await put(

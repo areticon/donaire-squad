@@ -1,47 +1,23 @@
-import { prisma } from "@/lib/db/prisma";
-import {
-  TRABALHANDO,
-  expirado,
-  MORTE,
-  type EstadoDeTrabalho,
-} from "@/lib/media/video-state";
+import { vigiarEtapas } from "@/lib/media/vigia-das-etapas";
 
 /**
- * Declara mortos os trabalhos de um projeto que passaram do prazo.
+ * A rede de segurança do vigia, na LEITURA da tela.
  *
- * Roda na LEITURA, de propósito. Quem morreu por timeout não tem como se
- * declarar morto, então alguém que esteja vivo precisa fazer isso, e quem
- * sempre está vivo é quem abre a tela. Enquanto não existe fila, este é o
- * relógio do sistema.
+ * Até 01/10 esta função declarava MORTO (status "failed") todo trabalho que
+ * passava do prazo, e só rodava quando alguém abria a tela. Foi o que deixou o
+ * corte do Bruno parado mais de uma hora no incidente de 01/10: sem aba aberta
+ * ninguém olhava, e com a aba aberta o vídeo só ganharia um "falhou".
  *
- * Devolve quantos foram marcados, para o chamador saber se vale reler.
+ * Agora quem cuida é o vigia (lib/media/vigia-das-etapas.ts), no cron de 1
+ * minuto, e ele RETOMA em vez de declarar morto. Aqui ele roda só para este
+ * projeto e com 5 minutos de folga além do prazo: se a tela chegou a ver um
+ * vídeo parado tanto tempo, o cron falhou, e a tela faz o trabalho dele. Como
+ * a retomada é atômica, a tela e o cron juntos nunca retomam duas vezes.
+ *
+ * Devolve quantos foram retomados ou encerrados, para o chamador saber se vale
+ * reler.
  */
 export async function varrerExpirados(projectId: string): Promise<number> {
-  const agora = new Date();
-
-  const candidatos = await prisma.videoJob.findMany({
-    where: { projectId, status: { in: [...TRABALHANDO] } },
-    select: { id: true, status: true, startedAt: true },
-  });
-
-  const mortos = candidatos.filter((v) => expirado(v, agora));
-  if (!mortos.length) return 0;
-
-  await Promise.all(
-    mortos.map((v) =>
-      prisma.videoJob.updateMany({
-        // O `status` no filtro é a guarda contra corrida: se o trabalho
-        // terminou entre a leitura e esta escrita, o update não pega nada em
-        // vez de sobrescrever um resultado bom com "falhou".
-        where: { id: v.id, status: v.status },
-        data: {
-          status: "failed",
-          startedAt: null,
-          error: MORTE[v.status as EstadoDeTrabalho],
-        },
-      })
-    )
-  );
-
-  return mortos.length;
+  const r = await vigiarEtapas({ projectId, folgaExtraS: 5 * 60, limite: 5 }).catch(() => null);
+  return r ? r.retomados.length + r.desistidos.length : 0;
 }

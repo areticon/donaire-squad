@@ -1,6 +1,7 @@
 import { askClaude } from "@/lib/claude";
 import type { Word } from "@/lib/media/transcribe";
-import { respiroDaPausa, type Remocao } from "@/lib/media/edicao";
+import { margemNoSilencio, respiroDaPausa, type Remocao } from "@/lib/media/edicao";
+import { falaCoberta, FALA_MAXIMA_POR_REMOCAO_SEC } from "@/lib/media/texto-final-do-corte";
 
 /**
  * A limpeza da fala: hesitação, muleta e recomeço de frase.
@@ -95,6 +96,9 @@ const FAMILIAS = new Map<string, string>(
   })
 );
 
+/** Preposições que pedem complemento: a palavra depois delas é objeto. */
+const PREPOSICOES = new Set(["em", "de", "pra", "para", "com", "por", "sem", "ate", "sobre", "entre"]);
+
 /** Só letras, minúsculas, acento preservado: separa "e" de "é". */
 function comAcento(t: string): string {
   return t.toLowerCase().replace(/[^\p{L}]/gu, "");
@@ -137,6 +141,14 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
     if (
       chaveDeRepeticao(palavras[i - 3].word) === chaveDeRepeticao(palavras[i - 1].word) &&
       chaveDeRepeticao(palavras[i - 2].word) === k &&
+      // "bastante contexto, e contexto é rei" (corte de quinta, teste de
+      // 29/09): a chave sem acento via "e contexto é" como "e contexto e" e
+      // tirava "contexto, e", deixando "tem bastante contexto é rei". O acento
+      // separa conjunção de verbo, como já faz a regra A A A abaixo.
+      comAcento(palavras[i - 2].word) === comAcento(palavras[i].word) &&
+      // Primeira cópia fechada por vírgula é repetição de propósito (retórica),
+      // e não gagueira: "contexto, e contexto".
+      !separada(palavras[i - 3].word) &&
       palavras[i - 1].start - palavras[i - 3].end < 1.5 &&
       // "Isso é o ponto. O ponto é outro": a repetição atravessa o fim da
       // frase, então é retomada de propósito, e não gagueira.
@@ -167,6 +179,15 @@ export function detectarRepeticoes(palavras: Word[]): Remocao[] {
   while (i < palavras.length) {
     const k = chaveDeRepeticao(palavras[i].word);
     if (!k) {
+      i++;
+      continue;
+    }
+    // "se você centraliza tudo em você, você vai ficar esgotado" (corte de
+    // Moisés, 29/09): a primeira cópia fecha a oração ("em você,") e a segunda
+    // abre a seguinte. Tirar a primeira dava "tudo em você vai ficar
+    // esgotado", outra frase. Cópia com vírgula logo depois de preposição é
+    // objeto, não gagueira.
+    if (i > 0 && separada(palavras[i].word) && PREPOSICOES.has(chaveDaPalavra(palavras[i - 1].word))) {
       i++;
       continue;
     }
@@ -321,29 +342,164 @@ export function detectarFalsosComecos(palavras: Word[]): Remocao[] {
  *
  * Ficam aqui só os sons que não são palavra nenhuma em português.
  */
-const SONS_DE_HESITACAO = new Set(["eh", "ah", "ahn", "hum", "uhm", "mmm"]);
+const SONS_DE_HESITACAO = new Set([
+  "eh", "ah", "ahn", "hum", "uhm", "mmm",
+  // Grafias que a transcrição usa para o mesmo som, nenhuma é palavra.
+  "hmm", "hm", "humm", "mm", "ee", "eee", "eeee",
+]);
 
 /**
- * Vícios que saem SEMPRE, sem exigir duração. O "né" de vírgula é o caso que o
- * Bruno ouviu atravessar a edição em 31/08: dura pouco (não é arrastado), não é
- * silêncio (não é pausa) e o agente deixa passar. É marcador de discurso, não
- * conteúdo: em fala corrida, removê-lo nunca muda o sentido.
+ * Sons que saem SEMPRE, sem exigir duração: murmúrio nasal e "ééé" escrito
+ * como tal. O "ah" e o "eh" continuam exigindo arrasto porque, curtos, às vezes
+ * são interjeição com sentido ("ah, entendi").
  */
-const VICIOS_SEMPRE = new Set(["ne"]);
+const SONS_SEMPRE = new Set(["hum", "hmm", "hm", "humm", "uhm", "mmm", "mm", "ee", "eee", "eeee"]);
+
+/**
+ * A remoção de palavras [i..j] com as bordas no SILÊNCIO vizinho, e não no
+ * `start`/`end` delas. Ver `margemNoSilencio`: o tempo da palavra é impreciso,
+ * e cortar rente devolvia ao vídeo o ataque do "n" e o fim do "é" do "né" que
+ * o Bruno ouviu no teste de 29/09.
+ */
+function remocaoNoSilencio(palavras: Word[], i: number, j: number, motivo: string): Remocao {
+  const ant = palavras[i - 1];
+  const seg = palavras[j + 1];
+  const de = ant ? ant.end + margemNoSilencio(palavras[i].start - ant.end) : palavras[i].start;
+  const ate = seg ? seg.start - margemNoSilencio(seg.start - palavras[j].end) : palavras[j].end;
+  return { de: Math.min(de, palavras[i].start), ate: Math.max(ate, palavras[j].end), motivo };
+}
 
 export function detectarMuletasArrastadas(palavras: Word[]): Remocao[] {
   const remocoes: Remocao[] = [];
-  for (const p of palavras) {
+  palavras.forEach((p, i) => {
     const chave = chaveDaPalavra(p.word);
-    if (!SONS_DE_HESITACAO.has(chave) && !VICIOS_SEMPRE.has(chave)) continue;
+    if (!SONS_DE_HESITACAO.has(chave)) return;
     const duracao = p.end - p.start;
-    if (VICIOS_SEMPRE.has(chave) || duracao >= 0.38) {
-      remocoes.push({
-        de: p.start,
-        ate: p.end,
-        motivo: `hesitação arrastada: "${p.word}" (${duracao.toFixed(2)}s)`,
-      });
+    if (SONS_SEMPRE.has(chave) || duracao >= 0.38) {
+      remocoes.push(
+        remocaoNoSilencio(palavras, i, i, `hesitação arrastada: "${p.word}" (${duracao.toFixed(2)}s)`)
+      );
     }
+  });
+  // As muletas curtas entram por aqui para o pedido de corte pegá-las sem
+  // mudar a chamada: as duas são "vício de fala garantível por código".
+  return [...remocoes, ...detectarMuletasCurtas(palavras)].sort((a, b) => a.de - b.de);
+}
+
+/**
+ * As muletas CURTAS no meio da fala: "né", "tá?", "hein", "tipo".
+ *
+ * ## Por que existe, com o "né" já saindo desde 31/08
+ *
+ * O "né" saía, mas saía mal: a remoção ia do `start` ao `end` exatos e a folga
+ * do fade devolvia uns 20ms de cada ponta, que é exatamente o "n" e o "é". O
+ * teste de 29/09 (vídeo de 22 min) tem 27 "né", e o corte entregue ainda tinha
+ * um audível. Agora o "né" sai com as bordas no silêncio vizinho, e a lista
+ * ganhou as outras muletas curtas que só o agente pegava, quando pegava.
+ *
+ * ## Quando cada uma é muleta, e não conteúdo
+ *
+ * - "né" e "hein": sempre. São marcador de discurso; tirar nunca muda o que a
+ *   frase diz, nem no fim ("é caro, né?" vira "é caro").
+ * - "tá": só como pergunta de confirmação no fim, e ISOLADA antes (vírgula ou
+ *   respiro): "eu não pago, tá?" e "é pago tá pessoal?". Sem isolamento é
+ *   verbo: "como é que tá?", "ele tá cansado". E "tá bom", "tá certo" ficam.
+ * - "tipo": só isolado (vírgula ou respiro de um lado) e fora das construções
+ *   em que é substantivo: nada de "esse tipo", "que tipo", "um tipo", nem
+ *   "tipo de". "Tipo assim" sai junto.
+ *
+ * "Então" e "assim" ficam com o agente: metade das vezes ligam ideias ("não
+ * captamos, então voltei", "e assim nasceu"), e isso é leitura, não aritmética.
+ */
+const TA_EXPRESSOES = new Set([
+  "bom", "certo", "ok", "okay", "legal", "beleza", "vendo", "ligado", "bem", "combinado",
+]);
+const VOCATIVOS = new Set(["pessoal", "gente", "galera"]);
+const INTERROGATIVOS = new Set(["como", "que", "onde", "quanto", "quem", "qual"]);
+const TIPO_SUBSTANTIVO_ANTES = new Set([
+  "o", "um", "uns", "esse", "este", "aquele", "nesse", "neste", "desse", "deste", "daquele",
+  "que", "qual", "quais", "todo", "outro", "mesmo", "cada", "qualquer", "algum", "nenhum",
+  "seu", "meu", "nosso", "teu", "novo", "de", "do", "no", "pelo", "ao", "certo", "ultimo",
+]);
+const TIPO_SUBSTANTIVO_DEPOIS = new Set(["de", "do", "da", "dos", "das"]);
+
+/** Termina com sinal que separa: vírgula, ponto, interrogação. */
+function separada(palavra: string): boolean {
+  return /[,;:.!?…]["'”’)\]]?\s*$/.test(palavra);
+}
+
+export function detectarMuletasCurtas(palavras: Word[]): Remocao[] {
+  const RESPIRO = 0.15;
+  const isoladaAntes = (i: number): boolean => {
+    const ant = palavras[i - 1];
+    return !ant || separada(ant.word) || palavras[i].start - ant.end >= RESPIRO;
+  };
+  const isoladaDepois = (i: number): boolean => {
+    const seg = palavras[i + 1];
+    return !seg || separada(palavras[i].word) || seg.start - palavras[i].end >= RESPIRO;
+  };
+
+  /** Quantas palavras a partir de i formam a muleta (0 se não é muleta). */
+  const muleta = (i: number): number => {
+    const p = palavras[i];
+    const k = chaveDaPalavra(p.word);
+    const seg = palavras[i + 1];
+    const kSeg = seg ? chaveDaPalavra(seg.word) : "";
+
+    if (k === "ne" || k === "hein" || k === "ein") return 1;
+
+    if (k === "ta") {
+      // "tá pessoal?": a confirmação com vocativo, as duas saem juntas. Não
+      // exige isolamento porque o vocativo com interrogação já é a prova (no
+      // teste de 29/09 veio colado: "o cursor ele é pago tá pessoal?"); só não
+      // vale depois de pergunta de verdade ("como tá, pessoal?").
+      const kAnt = i > 0 ? chaveDaPalavra(palavras[i - 1].word) : "";
+      if (!separada(p.word) && VOCATIVOS.has(kSeg) && /\?/.test(seg.word) && !INTERROGATIVOS.has(kAnt)) {
+        return 2;
+      }
+      if (!isoladaAntes(i)) return 0;
+      if (/\?/.test(p.word)) return 1;
+      if (/,/.test(p.word) && !TA_EXPRESSOES.has(kSeg)) return 1;
+      return 0;
+    }
+
+    if (k === "tipo") {
+      if (fechaFrase(p.word)) return 0;
+      const kAnt = i > 0 ? chaveDaPalavra(palavras[i - 1].word) : "";
+      if (TIPO_SUBSTANTIVO_ANTES.has(kAnt) && !separada(palavras[i - 1].word)) return 0;
+      if (TIPO_SUBSTANTIVO_DEPOIS.has(kSeg) && !separada(p.word)) return 0;
+      if (!isoladaAntes(i) && !isoladaDepois(i)) return 0;
+      if (kSeg === "assim" && !fechaFrase(seg.word)) return 2;
+      return 1;
+    }
+    return 0;
+  };
+
+  const remocoes: Remocao[] = [];
+  let i = 0;
+  while (i < palavras.length) {
+    const n = muleta(i);
+    if (!n) {
+      i++;
+      continue;
+    }
+    // Muletas em sequência ("né, tipo,") saem numa remoção só, para a emenda
+    // cair uma vez no silêncio e não duas vezes entre elas.
+    let fim = i + n - 1;
+    while (fim + 1 < palavras.length) {
+      const m = muleta(fim + 1);
+      if (!m) break;
+      fim += m;
+    }
+    remocoes.push(
+      remocaoNoSilencio(
+        palavras,
+        i,
+        fim,
+        `muleta: "${palavras.slice(i, fim + 1).map((p) => p.word).join(" ")}"`
+      )
+    );
+    i = fim + 1;
   }
   return remocoes;
 }
@@ -375,7 +531,8 @@ Regras de decisão:
 - **O corte só pode conter hesitação.** Se a hesitação está colada a uma palavra que a frase precisa, corte SÓ a hesitação. Exemplo: em "de tema sobre, é, a minha trajetória", o corte é apenas "é". Cortar "sobre, é" deixaria "de tema a minha trajetória", que está quebrado. Antes de devolver cada corte, leia a frase sem ele e confirme que ela continua de pé.
 - Na dúvida, NÃO corte. Uma muleta que ficou é um detalhe; uma frase quebrada é um defeito que a pessoa ouve na hora.
 - Não corte mais que 15% das palavras. Se você está cortando mais que isso, está cortando conteúdo.
-- Cada intervalo precisa ser CURTO: no máximo 8 palavras. Intervalo longo é conteúdo disfarçado de hesitação.
+- Cada intervalo precisa ser CURTO: no máximo 8 palavras e cerca de 1 segundo de fala. Intervalo longo é conteúdo disfarçado de hesitação.
+- Só é recomeço quando a pessoa DIZ DE NOVO o que cortou. Palavra de conteúdo que não reaparece logo em seguida é a ideia da frase e fica. Caso real que saiu errado: em "a forma mais inteligente que tem é você, é delegar, né, então tanto pro seu time", cortar "você, é delegar, né" apagou o "delegar", que era a conclusão, e o vídeo ficou "a forma mais inteligente que tem é, então tanto pro seu time". Ali o corte certo era só o "né".
 - Não corte a última palavra de uma frase nem a primeira da seguinte, para não colar duas frases sem respiro.
 
 Escreva o "motivo" em português do Brasil, em duas ou três palavras ("hesitação", "recomeço de frase", "muleta"). Nunca use travessão.
@@ -449,7 +606,14 @@ export function cortePlausivel(
     ...palavras.slice(corte.ate + 1, corte.ate + 1 + janela),
   ].map((p) => normalizar(p.word));
 
-  return conteudo.some((p) => vizinhas.includes(p));
+  // TODAS as palavras de conteúdo precisam reaparecer, e não só uma. Até
+  // 29/09 bastava uma, e isso deixou passar o corte que o Bruno ouviu no
+  // Moisés: o agente marcou "você, é delegar, né" como recomeço, "você"
+  // reaparecia adiante (palavra comum reaparece sempre) e "delegar", que era
+  // A IDEIA da frase, sumiu. O vídeo saiu com "a forma mais inteligente que
+  // tem é / então tanto pro seu time". Repetição de verdade repete tudo o que
+  // sai; o recomeço longo com aparte tem a própria prova (`ehReleitura`).
+  return conteudo.every((p) => vizinhas.includes(p)) || ehReleitura(corte, palavras);
 }
 
 /**
@@ -564,7 +728,7 @@ export async function detectarHesitacao(
  */
 export function sanearLimpeza(
   cortes: Limpeza[],
-  palavras: Array<{ word: string }>
+  palavras: Array<{ word: string; start?: number; end?: number }>
 ): Limpeza[] {
   const totalDePalavras = palavras.length;
   const validos = cortes
@@ -597,6 +761,11 @@ export function sanearLimpeza(
 
   const plausiveis = unidos
     .filter((c) => c.ate - c.de + 1 <= PALAVRAS_MAXIMAS_POR_CORTE)
+    // Teto de FALA por corte (29/09, ordem do Bruno depois do salto no corte
+    // de Moisés): hesitação, muleta e repetição cabem em 1,2 s de voz; o que
+    // passa disso é conteúdo, e tirar conteúdo do meio cola duas ideias. O
+    // teto é de fala e não de tempo: silêncio no meio não conta.
+    .filter((c) => falaDasPalavras(palavras, c.de, c.ate) <= FALA_MAXIMA_POR_REMOCAO_SEC)
     // Corte que engole um fim de frase costuma estar colando dois assuntos, e
     // não limpando muleta. O prompt já pede isso ("não corte a última palavra
     // de uma frase nem a primeira da seguinte"), e pedir nunca garantiu nada.
@@ -643,6 +812,70 @@ export function limpezaParaRemocoes(
       return { de, ate, motivo: c.motivo || "hesitação" };
     })
     .filter((r) => r.ate - r.de > 0.08);
+}
+
+/** Soma da duração das palavras [de..ate]; sem tempo (teste), conta zero. */
+function falaDasPalavras(
+  palavras: Array<{ start?: number; end?: number }>,
+  de: number,
+  ate: number
+): number {
+  let s = 0;
+  for (let i = de; i <= ate && i < palavras.length; i++) {
+    const w = palavras[i];
+    if (typeof w.start === "number" && typeof w.end === "number") s += Math.max(0, w.end - w.start);
+  }
+  return s;
+}
+
+/**
+ * A última trava, sobre a lista JÁ UNIDA de remoções que vai ao worker.
+ *
+ * Cada detector sozinho respeita o teto de fala, mas a união pode juntar
+ * vizinhos (uma repetição colada numa muleta colada num recomeço) e o
+ * resultado tirar vários segundos de voz de uma vez. Remoção que passa de
+ * `FALA_MAXIMA_POR_REMOCAO_SEC` de FALA é trocada pelas pausas que ela
+ * continha: o silêncio continua saindo, a fala fica inteira. Perder uma
+ * muleta é detalhe; juntar duas ideias no meio da frase é o defeito que o
+ * Bruno ouviu no corte de Moisés em 29/09.
+ */
+/**
+ * A FRASE REGRAVADA (30/09): o veto de 1,2 s protegia a conclusão ("é
+ * delegar") de ser apagada, mas deixou no vídeo o erro que o Bruno repete logo
+ * em seguida ("eu erro, repito a frase e o erro está no vídeo"). Remoção longa
+ * passa quando quase tudo o que ela tira (70% das palavras de conteúdo) é dito
+ * de novo nos 12 s seguintes: é a tomada ruim, e a boa vem logo depois.
+ */
+function ehRegravacao(palavras: Word[], r: Remocao): boolean {
+  const norm = (w: string) => w.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  const conteudo = (ws: Word[]) => ws.map((w) => norm(w.word)).filter((w) => w.length > 3);
+  const tiradas = conteudo(palavras.filter((w) => w.start >= r.de - 0.02 && w.end <= r.ate + 0.02));
+  if (tiradas.length < 3) return false;
+  const depois = new Set(conteudo(palavras.filter((w) => w.start >= r.ate && w.start <= r.ate + 12)));
+  const repetidas = tiradas.filter((w) => depois.has(w)).length;
+  return repetidas / tiradas.length >= 0.7;
+}
+
+export function vetarRemocoesLongasDeFala(
+  remocoes: Remocao[],
+  palavras: Word[],
+  pausas: Remocao[]
+): Remocao[] {
+  const saida: Remocao[] = [];
+  for (const r of remocoes) {
+    if (falaCoberta(palavras, r.de, r.ate) <= FALA_MAXIMA_POR_REMOCAO_SEC || ehRegravacao(palavras, r)) {
+      saida.push(r);
+      continue;
+    }
+    console.warn(
+      `[limpeza] remoção de ${(r.ate - r.de).toFixed(2)}s em ${r.de.toFixed(2)}s vetada ` +
+        `(tiraria ${falaCoberta(palavras, r.de, r.ate).toFixed(2)}s de fala): ${r.motivo}`
+    );
+    for (const p of pausas) {
+      if (p.ate > r.de && p.de < r.ate) saida.push({ ...p, de: Math.max(p.de, r.de), ate: Math.min(p.ate, r.ate) });
+    }
+  }
+  return saida.sort((a, b) => a.de - b.de);
 }
 
 /** Junta as remoções de pausa com as de fala, sem sobrepor. */

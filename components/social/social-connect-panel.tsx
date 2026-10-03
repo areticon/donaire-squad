@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { LogoFacebook, LogoYouTube } from "@/components/social/logos-redes";
+import { LogoFacebook, LogoTikTok, LogoYouTube } from "@/components/social/logos-redes";
+import { FotoDaConta } from "@/components/social/selo-da-conta";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { CheckCircle2, Share2, Trash2, ExternalLink, Building2, User, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ConexaoAssistida } from "@/components/social/conexao-assistida";
+import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
 interface SocialAccount {
   id: string;
@@ -18,6 +21,43 @@ interface SocialAccount {
   accountType: string;       // "personal" | "organization"
   organizationId: string | null;
   avatarUrl: string | null;
+  /// Quando a rede recusou o token numa publicação. Null = nunca recusou.
+  needsReconnectAt: string | Date | null;
+  needsReconnectReason: string | null;
+  /// Conectada pelo time na conexão assistida (01/10), sem token próprio.
+  assistida?: boolean;
+}
+
+/**
+ * A frase do motivo, quando a rede disse o motivo.
+ *
+ * Existe porque até 14/09 a tela só sabia dizer "expirado", e o LinkedIn tinha
+ * dito `REVOKED_ACCESS_TOKEN`: o acesso foi RETIRADO, pelo próprio dono, nas
+ * permissões da conta dele. Chamar isso de "expirou" faz a pessoa procurar
+ * defeito onde não tem.
+ */
+function motivoEmPortugues(codigo: string | null): string {
+  switch (codigo) {
+    case "REVOKED_ACCESS_TOKEN":
+      return "O acesso foi retirado nas permissões da sua conta";
+    case "EXPIRED_ACCESS_TOKEN":
+      return "O acesso expirou";
+    case "invalid_grant":
+    case "INVALID_ACCESS_TOKEN":
+    case "invalid_token":
+      return "A rede não aceitou mais este acesso";
+    case "OAuthException":
+      return "A rede recusou o acesso";
+    default:
+      return "A rede recusou o acesso";
+  }
+}
+
+function quando(data: string | Date | null): string {
+  if (!data) return "";
+  const d = typeof data === "string" ? new Date(data) : data;
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("pt-BR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 interface Project {
@@ -57,6 +97,38 @@ export function SocialConnectPanel({
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
+  /**
+   * CONEXÃO ASSISTIDA (01/10). As redes em que o cliente de fora ainda não
+   * conecta sozinho (app da rede sem aprovação) trocam "Conectar" pela caixa
+   * que pede a conexão ao time. Lido do servidor, porque depende de variável
+   * de ambiente que muda sem build. Ver lib/social/conexao-assistida.ts.
+   */
+  const [assistidas, setAssistidas] = useState<string[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoDeConexao[]>([]);
+  const [conectarDireto, setConectarDireto] = useState(false);
+  useEffect(() => {
+    fetch(`/api/social/conexao-assistida?projectId=${project.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { assistidas?: string[]; pedidos?: PedidoDeConexao[]; conectarDireto?: boolean } | null) => {
+        setAssistidas(d?.assistidas ?? []);
+        setPedidos(d?.pedidos ?? []);
+        setConectarDireto(d?.conectarDireto === true);
+      })
+      .catch(() => undefined);
+  }, [project.id]);
+  const ehAssistida = (rede: string) => assistidas.includes(rede);
+  const caixaAssistida = (rede: string, temConta: boolean, urlDireta: string) =>
+    ehAssistida(rede) ? (
+      <ConexaoAssistida
+        projectId={project.id}
+        rede={rede}
+        temConta={temConta}
+        pedido={pedidos.find((p) => p.rede === rede) ?? null}
+        conectarDiretoUrl={conectarDireto ? urlDireta : null}
+        onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
+      />
+    ) : null;
+
   useEffect(() => {
     if (searchParams.get("linkedin") === "success") {
       toast.success("LinkedIn pessoal conectado com sucesso!");
@@ -71,7 +143,8 @@ export function SocialConnectPanel({
       toast.success("X (Twitter) conectado com sucesso!");
       refreshAccounts();
     } else if (searchParams.get("twitter") === "error") {
-      toast.error("Erro ao conectar X. Tente novamente.");
+      const motivoX = searchParams.get("motivo");
+      toast.error(motivoX ? `Erro ao conectar X: ${motivoX}.` : "Erro ao conectar X. Tente novamente.");
     } else if (searchParams.get("instagram") === "success") {
       toast.success("Instagram conectado com sucesso!");
       refreshAccounts();
@@ -89,6 +162,15 @@ export function SocialConnectPanel({
       refreshAccounts();
     } else if (searchParams.get("youtube") === "error") {
       toast.error("Erro ao conectar YouTube. A conta do Google precisa ter um canal.");
+    } else if (searchParams.get("tiktok") === "success") {
+      toast.success("TikTok conectado com sucesso!");
+      refreshAccounts();
+    } else if (searchParams.get("tiktok") === "error") {
+      // O motivo vem do retorno do TikTok ou da nossa conferência (a pessoa
+      // desmarcou a permissão de publicar, por exemplo), e ajuda mais que
+      // um "tente novamente" genérico.
+      const motivo = searchParams.get("motivo");
+      toast.error(motivo ? `Erro ao conectar TikTok: ${motivo}` : "Erro ao conectar TikTok. Tente novamente.");
     } else if (searchParams.get("instagram") === "error") {
       toast.error("Erro ao conectar Instagram. A conta precisa ser profissional (Business ou Creator).");
     }
@@ -162,11 +244,13 @@ export function SocialConnectPanel({
   // Bruno ao preparar a gravação).
   const facebookAccounts = accounts.filter((a) => a.platform === "facebook");
   const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
+  const tiktokAccounts = accounts.filter((a) => a.platform === "tiktok");
   const hasLinkedIn = linkedinAccounts.length > 0;
   const hasTwitter = twitterAccounts.length > 0;
   const hasInstagram = instagramAccounts.length > 0;
   const hasFacebook = facebookAccounts.length > 0;
   const hasYouTube = youtubeAccounts.length > 0;
+  const hasTikTok = tiktokAccounts.length > 0;
 
   const linkedinPersonal = linkedinAccounts.filter((a) => a.accountType === "personal");
   const linkedinPages = linkedinAccounts.filter((a) => a.accountType === "organization");
@@ -217,7 +301,7 @@ export function SocialConnectPanel({
             </div>
             {linkedinPersonal.length > 0 ? (
               <Badge variant="success" className="text-[10px] shrink-0">conectado</Badge>
-            ) : (
+            ) : ehAssistida("linkedin") ? null : (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
                 <a href={`/api/social/linkedin/connect?projectId=${project.id}`}>Conectar</a>
               </Button>
@@ -238,7 +322,7 @@ export function SocialConnectPanel({
             </div>
             {linkedinPages.length > 0 ? (
               <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
-            ) : hasPagesApp ? (
+            ) : hasPagesApp && !ehAssistida("linkedin") ? (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
                 <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
               </Button>
@@ -248,7 +332,7 @@ export function SocialConnectPanel({
           </div>
         </div>
 
-        {/* Pages button only shows when the pages app is configured — no user-visible warning */}
+        {caixaAssistida("linkedin", hasLinkedIn, `/api/social/linkedin/connect?projectId=${project.id}`)}
 
         {/* Connected accounts list */}
         {hasLinkedIn && (
@@ -287,7 +371,7 @@ export function SocialConnectPanel({
           </div>
         )}
 
-        {!hasLinkedIn && (
+        {!hasLinkedIn && !ehAssistida("linkedin") && (
           <div className="text-center py-6 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
             <Share2 className="w-7 h-7 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>Nenhuma conta LinkedIn conectada ainda</p>
@@ -304,14 +388,15 @@ export function SocialConnectPanel({
             </div>
             X (Twitter)
           </h2>
-          {!hasTwitter && (
+          {!hasTwitter && !ehAssistida("twitter") && (
             <Button size="sm" variant="outline" asChild>
               <a href={`/api/social/twitter/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
+        {caixaAssistida("twitter", hasTwitter, `/api/social/twitter/connect?projectId=${project.id}`)}
 
-        {!hasTwitter ? (
+        {!hasTwitter ? (ehAssistida("twitter") ? null :
           <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
             <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>X (Twitter) não conectado</p>
@@ -341,14 +426,27 @@ export function SocialConnectPanel({
             </div>
             Instagram
           </h2>
-          {!hasInstagram && (
+          {/*
+            O botão fica SEMPRE, e não só quando a lista está vazia.
+
+            Quem gerencia várias contas (o caso normal de agência, e o do
+            Bruno em 19/09) conectava o perfil pessoal na primeira tentativa e
+            depois não tinha mais onde clicar para conectar a conta certa: o
+            botão sumia. O banco nunca foi o limite, ele guarda uma linha por
+            `platformUserId` e o callback faz upsert por essa chave, ou seja
+            uma segunda conta VIRA linha nova. Quem impedia era esta tela.
+          */}
+          {!ehAssistida("instagram") && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`/api/social/instagram/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/instagram/connect?projectId=${project.id}`}>
+                {hasInstagram ? "Conectar outra" : "Conectar"}
+              </a>
             </Button>
           )}
         </div>
+        {caixaAssistida("instagram", hasInstagram, `/api/social/instagram/connect?projectId=${project.id}`)}
 
-        {!hasInstagram ? (
+        {!hasInstagram ? (ehAssistida("instagram") ? null :
           <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
             <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>Instagram não conectado</p>
@@ -370,6 +468,19 @@ export function SocialConnectPanel({
             ))}
           </div>
         )}
+
+        {/*
+          O aviso existe porque o comportamento é contraintuitivo e a culpa
+          parece ser nossa. O Instagram NÃO mostra lista de contas no diálogo
+          de autorização: ele conecta a conta que estiver logada no navegador,
+          e pronto. Quem tem o perfil pessoal logado conecta o perfil pessoal
+          achando que escolheu errado em algum lugar.
+        */}
+        {!ehAssistida("instagram") && <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+          O Instagram conecta a conta que estiver logada neste navegador e não oferece lista para
+          escolher. Para conectar outra, abra uma janela anônima (ou saia do Instagram) e entre com a
+          conta que você quer conectar antes de clicar.
+        </p>}
       </div>
 
       {/* ── Facebook ─────────────────────────────────────────────────────── */}
@@ -379,14 +490,24 @@ export function SocialConnectPanel({
             <LogoFacebook className="!w-7 !h-7" />
             Facebook
           </h2>
-          {!hasFacebook && (
+          {/*
+            Mesmo motivo do Instagram, com um agravante próprio: o callback do
+            Facebook grava UMA LINHA POR PÁGINA que o usuário administra, lidas
+            de /me/accounts na hora da conexão. Uma página criada depois (ou um
+            acesso de admin recebido depois) não existe em lugar nenhum até
+            alguém refazer o OAuth, e com o botão escondido não havia como.
+          */}
+          {!ehAssistida("facebook") && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`/api/social/facebook/connect?projectId=${project.id}`}>Conectar</a>
+              <a href={`/api/social/facebook/connect?projectId=${project.id}`}>
+                {hasFacebook ? "Buscar páginas de novo" : "Conectar"}
+              </a>
             </Button>
           )}
         </div>
+        {caixaAssistida("facebook", hasFacebook, `/api/social/facebook/connect?projectId=${project.id}`)}
 
-        {!hasFacebook ? (
+        {!hasFacebook ? (ehAssistida("facebook") ? null :
           <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
             <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>Facebook não conectado</p>
@@ -417,14 +538,15 @@ export function SocialConnectPanel({
             <LogoYouTube className="!w-7 !h-7" />
             YouTube
           </h2>
-          {!hasYouTube && (
+          {!hasYouTube && !ehAssistida("youtube") && (
             <Button size="sm" variant="outline" asChild>
               <a href={`/api/social/youtube/connect?projectId=${project.id}`}>Conectar</a>
             </Button>
           )}
         </div>
+        {caixaAssistida("youtube", hasYouTube, `/api/social/youtube/connect?projectId=${project.id}`)}
 
-        {!hasYouTube ? (
+        {!hasYouTube ? (ehAssistida("youtube") ? null :
           <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
             <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>YouTube não conectado</p>
@@ -448,10 +570,52 @@ export function SocialConnectPanel({
         )}
       </div>
 
+      {/* ── TikTok ───────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <LogoTikTok className="!w-7 !h-7" />
+            TikTok
+          </h2>
+          {!hasTikTok && !ehAssistida("tiktok") && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={`/api/social/tiktok/connect?projectId=${project.id}`}>Conectar</a>
+            </Button>
+          )}
+        </div>
+        {caixaAssistida("tiktok", hasTikTok, `/api/social/tiktok/connect?projectId=${project.id}`)}
+
+        {!hasTikTok ? (ehAssistida("tiktok") ? null :
+          <div className="text-center py-8 border border-dashed rounded-xl" style={{ borderColor: "var(--border)" }}>
+            <Share2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>TikTok não conectado</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Publica os seus vídeos verticais (cortes e vídeos por IA) no seu perfil
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tiktokAccounts.map((account) => (
+              <AccountRow
+                key={account.id}
+                account={account}
+                type="personal"
+                toggling={togglingId === account.id}
+                onToggle={toggleActive}
+                onDisconnect={disconnectAccount}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ── How it works ─────────────────────────────────────────────────── */}
       <div className="p-4 rounded-xl border text-xs space-y-2" style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-muted)" }}>
         <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Como funciona:</p>
         <p>• Você autoriza via OAuth: nunca pedimos sua senha.</p>
+        {assistidas.length > 0 && (
+          <p>• Nas redes com conexão assistida, conectamos junto com você numa chamada curta. Você mesmo entra na sua conta, e a publicação funciona igual.</p>
+        )}
         <p>• Ao conectar o LinkedIn, seu perfil pessoal <strong>e</strong> todas as páginas que você administra são importados.</p>
         <p>• Pages de empresa iniciam <strong>inativas</strong>: ative apenas as que quer usar neste projeto.</p>
         <p>• Cada projeto pode publicar em uma entidade diferente (ex: projeto Areticon → página Areticon).</p>
@@ -476,36 +640,48 @@ function AccountRow({
   onToggle: (a: SocialAccount) => void;
   onDisconnect: (a: SocialAccount) => void;
 }) {
+  // A rede recusou o token na última publicação. É um fato da rede, não a
+  // chave liga e desliga: por isso tem borda própria e não mexe no `isActive`.
+  const precisaReconectar = Boolean(account.needsReconnectAt);
+
   return (
     <div
       className={cn(
         "flex items-center gap-3 p-3 rounded-xl border transition-all",
-        !account.isActive && "opacity-60"
+        !account.isActive && !precisaReconectar && "opacity-60"
       )}
-      style={{ background: "var(--bg-card)", borderColor: account.isActive ? "var(--border)" : "var(--border)" }}
+      style={{
+        background: "var(--bg-card)",
+        borderColor: precisaReconectar ? "rgba(248,113,113,0.35)" : "var(--border)",
+      }}
     >
       {/* Avatar / icon */}
-      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden"
-        style={{ background: "var(--bg-surface)" }}>
-        {account.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={account.avatarUrl} alt={account.displayName ?? ""} className="w-full h-full object-cover" />
-        ) : type === "organization" ? (
-          <Building2 className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
-        ) : (
-          <User className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
-        )}
-      </div>
+      {/* A mesma foto do Gestor: quando o link do CDN da rede expira, fica a
+          inicial na cor da rede, e não a imagem quebrada com o texto
+          alternativo cortado (visto em 28/09 no Instagram e no Facebook). */}
+      <FotoDaConta
+        conta={{ platform: account.platform, displayName: account.displayName ?? account.username ?? null, accountType: account.accountType ?? type, avatarUrl: account.avatarUrl }}
+        tamanho={36}
+      />
 
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
           {account.displayName ?? account.username ?? account.platform}
         </p>
-        <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-          {type === "organization" ? "Página de empresa" : "Perfil pessoal"}
-          {account.username && ` · ${account.username}`}
-        </p>
+        {precisaReconectar ? (
+          <p className="text-xs truncate text-red-400">
+            {motivoEmPortugues(account.needsReconnectReason)}
+            {quando(account.needsReconnectAt) && `, em ${quando(account.needsReconnectAt)}`}
+          </p>
+        ) : (
+          <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+            {type === "organization" ? "Página de empresa" : "Perfil pessoal"}
+            {account.username && ` · ${account.username}`}
+            {/* Conectada pelo time na conexão assistida (01/10). */}
+            {account.assistida && " · conectada com o time"}
+          </p>
+        )}
       </div>
 
       {/* Active toggle */}
@@ -527,9 +703,14 @@ function AccountRow({
         />
       </button>
 
-      {/* Status badge */}
-      <Badge variant={account.isActive ? "success" : "outline"} className="text-[10px] shrink-0">
-        {account.isActive ? "ativa" : "inativa"}
+      {/* Status badge. "reconectar" ganha de "ativa" porque conta que a rede
+          recusou não publica, esteja a chave ligada ou não: mostrar "ativa" ali
+          é a mentira que este trabalho inteiro existe para tirar da tela. */}
+      <Badge
+        variant={precisaReconectar ? "destructive" : account.isActive ? "success" : "outline"}
+        className="text-[10px] shrink-0"
+      >
+        {precisaReconectar ? "reconectar" : account.isActive ? "ativa" : "inativa"}
       </Badge>
 
       {/* Remove */}

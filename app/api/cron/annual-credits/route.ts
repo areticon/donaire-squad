@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
+import { creditosDoCiclo } from "@/lib/equipe/regras";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getStripe, PLANS } from "@/lib/stripe";
 import { reporCiclo } from "@/lib/credits";
+import { reporVideoDoPlano } from "@/lib/credits/video";
 
 /**
  * Cron diário: repõe os créditos mensais de quem assina o plano anual.
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest) {
 
       const usuarios = await prisma.user.findMany({
         where: { stripeCustomerId: customerId },
-        select: { id: true, creditsResetAt: true },
+        select: { id: true, creditsResetAt: true, acessosExtras: true },
       });
 
       if (usuarios.length === 0) {
@@ -90,9 +92,15 @@ export async function GET(req: NextRequest) {
 
         await reporCiclo({
           userId: u.id,
-          creditos: PLANS[plano].credits,
+          // Mais 2.000 por acesso extra da equipe (01/10, lib/equipe/regras.ts).
+          creditos: creditosDoCiclo(PLANS[plano].credits, u.acessosExtras),
           note: `Plano ${plano} anual, reposição mensal`,
         });
+        // O vídeo incluído no plano (tabela de 27/09) repõe junto, todo mês.
+        const cotaDeVideo = (PLANS[plano] as { videoCredits?: number }).videoCredits ?? 0;
+        if (cotaDeVideo > 0) {
+          await reporVideoDoPlano({ userId: u.id, cota: cotaDeVideo, note: `Plano ${plano} anual, vídeo do mês` });
+        }
         repostos.push({ userId: u.id, plano });
       }
     }

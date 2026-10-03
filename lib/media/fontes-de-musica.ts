@@ -41,15 +41,22 @@ export const FONTES_DE_MUSICA: FonteDeMusica[] = [
     nome: "YouTube Audio Library",
     licenca: "Use SÓ as faixas marcadas Creative Commons (CC BY).",
     obrigacao:
-      "A licença padrão do YouTube só vale dentro do YouTube, e a Demandou publica em cinco redes. Filtre por CC BY e dê o crédito na descrição.",
+      "A licença padrão do YouTube só vale dentro do YouTube, e a Demandou publica em seis redes. Filtre por CC BY e dê o crédito na descrição.",
     busca: () => "https://studio.youtube.com/channel/UC/music",
   },
+  // O Free Music Archive saiu em 29/09: o site parou de responder (conexão
+  // estourando o tempo, conferido daqui) e o botão "Abrir" levava a uma página
+  // que não carrega. O Mixkit tem licença própria que permite uso comercial em
+  // vídeo publicado, sem crédito obrigatório. A busca vai pela etiqueta do
+  // primeiro termo do clima ("corporate background" vira /tag/corporate/).
   {
-    nome: "Free Music Archive",
-    licenca: "Faixas CC BY: uso comercial com crédito ao artista.",
-    obrigacao: "Confira a licença da faixa e dê o crédito na descrição do post.",
-    busca: (termo) =>
-      `https://freemusicarchive.org/search/?quicksearch=${encodeURIComponent(termo)}`,
+    nome: "Mixkit",
+    licenca: "Uso comercial liberado em vídeos, sem crédito obrigatório.",
+    obrigacao: "Não vale revender a faixa sozinha: ela entra dentro do seu vídeo.",
+    busca: (termo) => {
+      const etiqueta = (termo.split(/\s+/)[0] ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+      return etiqueta ? `https://mixkit.co/free-stock-music/tag/${etiqueta}/` : "https://mixkit.co/free-stock-music/";
+    },
   },
 ];
 

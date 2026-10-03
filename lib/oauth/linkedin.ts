@@ -5,15 +5,28 @@ const POSTS_URL = "https://api.linkedin.com/rest/posts";
 const IMAGES_URL = "https://api.linkedin.com/rest/images";
 const VIDEOS_URL = "https://api.linkedin.com/rest/videos";
 
-// Ordem: mais recente primeiro. 426 NONEXISTENT_VERSION → usar próximo em tryLinkedInRestPost.
+// Ordem: mais recente primeiro. 426 NONEXISTENT_VERSION → usar próximo.
+//
+// As versões de 2026 entraram em 12/09/2026, depois de `organizationAcls`
+// responder 426 em produção: a lista começava em "202504", de abril de 2025, e
+// o LinkedIn aposentou a linha de 2025 em 17/08/2026. Publicar continuava
+// funcionando porque o publicador percorre esta lista quando toma 426, e a
+// leitura de páginas não percorria: usava a versão fixa e desistia no primeiro
+// erro. Mesmo defeito, dois comportamentos, porque só um dos caminhos tinha
+// cascata.
+//
+// Versões futuras no topo são de graça: a que ainda não existe devolve 426 e a
+// cascata segue. O que custa caro é a lista ficar velha em silêncio.
 const LINKEDIN_VERSION_CANDIDATES = [
+  "202609", "202608", "202607", "202606", "202605",
+  "202604", "202603", "202602", "202601",
+  "202512", "202511", "202510", "202509", "202508",
   "202504", "202503", "202502", "202501",
   "202412", "202411", "202410", "202407",
   "202404", "202401",
-  "202312", "202310", "202307", "202304",
 ];
 
-/** REST default: vídeos, organizationAcls — alinhado ao candidato mais recente. */
+/** REST default para quem não percorre a lista. */
 const ACTIVE_VERSION = LINKEDIN_VERSION_CANDIDATES[0];
 
 const LINKEDIN_RETRY_STATUSES = new Set([404, 405, 426, 429]);
@@ -29,7 +42,8 @@ const LINKEDIN_RETRY_STATUSES = new Set([404, 405, 426, 429]);
  *   - "Sign In with LinkedIn"   → openid profile email
  *
  * App pages (LINKEDIN_PAGES_CLIENT_ID — app separada com Community Management API):
- *   - "Community Management API" → w_organization_social r_organization_admin
+ *   - "Community Management API" → r_organization_social w_organization_social
+ *     rw_organization_admin
  *
  * The `forPages` flag selects which app credentials to use.
  */
@@ -49,7 +63,13 @@ export function getLinkedInAuthUrl(
   // escopos de organizacao. O nome de quem conectou nao faz falta: o que se
   // grava e a PAGINA, e a pagina vem do organizationAcls.
   const scope = forPages
-    ? "r_organization_social w_organization_social r_organization_admin"
+    // `rw_organization_admin`, e NAO `r_organization_admin`. O segundo nao
+    // existe: o LinkedIn responde a tela generica "Bummer, something went
+    // wrong", sem dizer qual escopo recusou, e a mensagem e identica a de
+    // redirect_uri errado. Medido em 12/09 batendo no endpoint de autorizacao
+    // um escopo por vez: os tres validos devolvem 303 para o login, e
+    // `r_organization_admin` sozinho devolve 200 com a pagina de erro.
+    ? "r_organization_social w_organization_social rw_organization_admin"
     : "openid profile email w_member_social";
 
   const params = new URLSearchParams({
@@ -133,39 +153,96 @@ export interface LinkedInOrgPage {
   vanityName?: string;
 }
 
-export async function getLinkedInAdminPages(accessToken: string): Promise<LinkedInOrgPage[]> {
-  const aclRes = await fetch(
-    "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "LinkedIn-Version": ACTIVE_VERSION,
-        "X-Restli-Protocol-Version": "2.0.0",
-      },
+/**
+ * GET no /rest do LinkedIn percorrendo as versões, igual o publicador faz.
+ *
+ * Existe porque em 12/09/2026 a leitura de páginas devolveu 426 em produção e o
+ * código desistiu no primeiro erro, mostrando "0 páginas de empresa importada"
+ * para quem acabara de autorizar. A tela não tinha como estar certa: o defeito
+ * era de versão de API e a mensagem falava de permissão.
+ *
+ * Devolve a resposta boa, ou a última ruim para o chamador reportar direito.
+ */
+async function linkedinRestGet(url: string, accessToken: string): Promise<Response | null> {
+  let ultima: Response | null = null;
+  for (const version of LINKEDIN_VERSION_CANDIDATES) {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "LinkedIn-Version": version,
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (e) {
+      console.warn(`[LinkedIn] GET erro de rede na versão ${version}:`, e);
+      continue;
     }
+    if (res.ok) {
+      console.log(`[LinkedIn] GET ok com a versão ${version}: ${url}`);
+      return res;
+    }
+    ultima = res;
+    // 426 é "essa versão não existe mais". Qualquer outro erro é do pedido ou
+    // da permissão, e trocar de versão não resolve: para aqui.
+    if (res.status !== 426) return res;
+    console.warn(`[LinkedIn] versão ${version} devolveu 426, tentando a próxima`);
+  }
+  return ultima;
+}
+
+export async function getLinkedInAdminPages(accessToken: string): Promise<LinkedInOrgPage[]> {
+  const aclRes = await linkedinRestGet(
+    "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
+    accessToken
   );
 
+  if (!aclRes) {
+    console.warn("[LinkedIn] organizationAcls: nenhuma versão da API respondeu");
+    return [];
+  }
+
   if (!aclRes.ok) {
-    console.warn(`[LinkedIn] Could not fetch org pages (${aclRes.status})`);
+    // O corpo junto do status, porque status sozinho não diz o que fazer: 403
+    // é produto faltando no app, 426 é versão morta, 401 é token, e as três
+    // vinham aparecendo como o mesmo "0 páginas" na tela.
+    const corpo = await aclRes.text();
+    console.warn(
+      `[LinkedIn] organizationAcls falhou (${aclRes.status}): ${corpo.slice(0, 400)}`
+    );
     return [];
   }
 
   const aclData = await aclRes.json() as { elements?: Array<{ organization: string }> };
   const orgUrns = (aclData.elements ?? []).map((e) => e.organization);
-  if (orgUrns.length === 0) return [];
+  if (orgUrns.length === 0) {
+    console.warn(
+      "[LinkedIn] organizationAcls respondeu OK e veio VAZIO: esta pessoa não é ADMINISTRATOR aprovado de nenhuma página."
+    );
+    return [];
+  }
 
   const pages: LinkedInOrgPage[] = [];
   await Promise.allSettled(
     orgUrns.map(async (urn) => {
       const orgId = urn.replace("urn:li:organization:", "");
-      const orgRes = await fetch(`https://api.linkedin.com/rest/organizations/${orgId}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "LinkedIn-Version": ACTIVE_VERSION,
-          "X-Restli-Protocol-Version": "2.0.0",
-        },
-      });
-      if (!orgRes.ok) return;
+      const orgRes = await linkedinRestGet(
+        `https://api.linkedin.com/rest/organizations/${orgId}`,
+        accessToken
+      );
+      if (!orgRes?.ok) {
+        // A página EXISTE e a pessoa administra: só o nome não veio. Entrar na
+        // lista com o id no lugar do nome é melhor que sumir, porque sumir
+        // devolve "0 páginas" para quem acabou de autorizar, que foi o defeito
+        // de 12/09 um nível acima.
+        console.warn(
+          `[LinkedIn] nome da organização ${orgId} não veio (${orgRes?.status ?? "sem resposta"}), usando o id`
+        );
+        pages.push({ organizationId: orgId, name: `Página ${orgId}` });
+        return;
+      }
       const org = await orgRes.json() as {
         vanityName?: string;
         localizedName?: string;
@@ -345,33 +422,95 @@ export async function uploadLinkedInVideo(
   }
 
   const initData = await initRes.json() as {
-    value: { uploadInstructions: Array<{ uploadUrl: string; firstByte: number; lastByte: number }>; video: string };
+    value: {
+      uploadInstructions: Array<{ uploadUrl: string; firstByte: number; lastByte: number }>;
+      video: string;
+      uploadToken?: string;
+    };
   };
-  const { uploadInstructions, video: videoUrn } = initData.value;
+  const { uploadInstructions, video: videoUrn, uploadToken } = initData.value;
 
-  // Upload in chunks as indicated
+  /**
+   * O UPLOAD É EM PARTES DE 4 MB, E O FINALIZE PRECISA DO ETAG DE CADA UMA.
+   *
+   * Medido em 21/09 na Areticon, e é o defeito por trás de "a plataforma
+   * disse publicado e não tem nada no LinkedIn": o clipe de 19/09 tinha
+   * 2,41 MB (uma parte só) e saiu; o de 21/09 tinha 4,08 MB, o LinkedIn
+   * devolveu DUAS instruções de upload, e o `finalizeUpload` ia com
+   * `uploadedPartIds: []` e a resposta nem era lida. Sem finalize o vídeo
+   * nunca fica AVAILABLE; o post é criado (o LinkedIn devolve o URN) e nunca
+   * aparece no feed. Um vídeo de 60 s tem perto de 20 MB, cinco partes: sem
+   * isto nenhum vídeo longo sairia.
+   *
+   * A doc (Videos API): "Callers should get the IDs as ETags from the
+   * response headers when they upload the videos", na mesma ordem das
+   * instruções.
+   */
+  const etags: string[] = [];
   for (const instruction of uploadInstructions) {
-    const chunk = buffer.slice(instruction.firstByte, instruction.lastByte + 1);
+    const chunk = buffer.subarray(instruction.firstByte, instruction.lastByte + 1);
     const uploadRes = await fetch(instruction.uploadUrl, {
       method: "PUT",
-      headers: { "Content-Type": mimeType },
+      headers: { "Content-Type": "application/octet-stream" },
       body: new Uint8Array(chunk),
+      signal: AbortSignal.timeout(120_000),
     });
     if (!uploadRes.ok) {
       throw new Error(`LinkedIn video chunk upload failed: ${uploadRes.status}`);
     }
+    const etag = uploadRes.headers.get("etag");
+    if (!etag) throw new Error("LinkedIn video: a parte subiu sem ETag, e o finalize precisa dele.");
+    etags.push(etag);
   }
 
-  // Finalize
-  await fetch(`${VIDEOS_URL}?action=finalizeUpload`, {
+  const fimRes = await fetch(`${VIDEOS_URL}?action=finalizeUpload`, {
     method: "POST",
     headers: buildHeaders(accessToken),
     body: JSON.stringify({
-      finalizeUploadRequest: { video: videoUrn, uploadToken: "", uploadedPartIds: [] },
+      finalizeUploadRequest: { video: videoUrn, uploadToken: uploadToken ?? "", uploadedPartIds: etags },
     }),
+    signal: AbortSignal.timeout(60_000),
   });
+  if (!fimRes.ok) {
+    throw new Error(`LinkedIn video finalize failed (HTTP ${fimRes.status}): ${(await fimRes.text()).slice(0, 300)}`);
+  }
 
+  await esperarVideoDoLinkedIn(accessToken, videoUrn);
   return videoUrn;
+}
+
+/**
+ * ESPERA O LINKEDIN PROCESSAR O VÍDEO antes de criar o post com ele.
+ *
+ * O status vem de GET /rest/videos/{urn}: WAITING_UPLOAD, PROCESSING,
+ * AVAILABLE ou PROCESSING_FAILED. Criar o post antes de AVAILABLE é o que
+ * deixa o LinkedIn devolver um URN de um post que nunca vai aparecer. Falha
+ * de processamento vira erro com o motivo do LinkedIn, e o post fica como
+ * FALHOU na nossa tela, que é a verdade; "publicado" sem post na rede é a
+ * mentira que o Bruno pegou em 21/09.
+ */
+async function esperarVideoDoLinkedIn(accessToken: string, videoUrn: string): Promise<void> {
+  const limite = Date.now() + 180_000;
+  let ultimo = "";
+  while (Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 5_000));
+    const res = await fetch(`${VIDEOS_URL}/${encodeURIComponent(videoUrn)}`, {
+      headers: buildHeaders(accessToken),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      // Consulta que falha não é vídeo que falhou: tenta de novo até o teto.
+      ultimo = `consulta HTTP ${res.status}`;
+      continue;
+    }
+    const dados = (await res.json()) as { status?: string; processingFailureReason?: string };
+    ultimo = dados.status ?? "sem status";
+    if (dados.status === "AVAILABLE") return;
+    if (dados.status === "PROCESSING_FAILED") {
+      throw new Error(`O LinkedIn não conseguiu processar o vídeo: ${dados.processingFailureReason ?? "sem motivo"}`);
+    }
+  }
+  throw new Error(`O LinkedIn não terminou de processar o vídeo em 3 minutos (último estado: ${ultimo}). Publique de novo.`);
 }
 
 /**
@@ -423,6 +562,42 @@ async function postToLinkedInLegacy(
 }
 
 export const LINKEDIN_MAX_COMMENTARY_CHARS = 3000;
+
+/**
+ * O TEXTO DO POST E "LITTLE TEXT", E PARENTESE SEM ESCAPE COME O RESTO.
+ *
+ * Medido em 22/09 com tres posts do Bruno: o campo `commentary` da Posts API
+ * nao e texto puro, e um formato com elementos (mencao, hashtag, template) que
+ * reserva os caracteres  |  {  }  @  [  ]  (  )  <  >  #  *  _  ~  e a barra
+ * invertida. A documentacao e explicita: "all reserved characters need to be
+ * escaped with a backslash, EVEN IF those characters are not used in one of
+ * the supported elements or templates". Quando nao vem escapado, o LinkedIn
+ * nao recusa o post nem avisa: ele publica e DESCARTA o texto do caractere em
+ * diante, em silencio.
+ *
+ * O que isso custou, lido do banco:
+ *   • post de 22/09: 1.034 caracteres, primeiro "(" no 463, 55% perdido;
+ *   • post de 19/09: 1.240 caracteres, primeiro "(" no 182, 85% perdido;
+ *   • post de 19/09: 1.282 caracteres, primeiro "(" no 96, 93% perdido.
+ * Sempre no mesmo lugar: a citacao da fonte entre parenteses, que e
+ * justamente o que a Vera EXIGE em toda frase com numero. Ou seja, a regra de
+ * qualidade do texto estava alimentando o defeito de publicacao.
+ *
+ * O card do calendario mostrava o texto inteiro porque ele le o nosso banco,
+ * onde o texto sempre esteve inteiro. So a rede via o corte.
+ *
+ * O "#" fica de FORA da lista de proposito: `#palavra` e um HashtagElement
+ * valido da gramatica, e escapa-lo transformaria a hashtag num "#" literal,
+ * sem link e sem alcance. Escapamos so o "#" que nao forma hashtag.
+ */
+const RESERVADOS_DO_LINKEDIN = /[\\|{}@\[\]()<>*_~]/g;
+
+export function escaparLittleText(texto: string): string {
+  return texto
+    .replace(RESERVADOS_DO_LINKEDIN, (c) => "\\" + c)
+    // "#" so e reservado quando nao esta comecando uma hashtag de verdade.
+    .replace(/#(?![\p{L}\p{N}])/gu, "\\#");
+}
 
 /** Try POST /rest/posts across API versions; returns null if all versions failed (caller may use legacy). */
 async function tryLinkedInRestPost(
@@ -482,7 +657,20 @@ async function postToLinkedIn(
     );
   }
 
-  const rest = await tryLinkedInRestPost(accessToken, body);
+  /**
+   * O ESCAPE VALE SO PARA A POSTS API.
+   *
+   * O caminho legado (`/v2/ugcPosts`, `shareCommentary.text`) e texto puro:
+   * mandar escapado ali faria aparecer barra invertida na tela do leitor.
+   * Por isso o corpo escapado e uma COPIA, e o `body` cru segue para o
+   * fallback.
+   */
+  const corpoEscapado =
+    typeof body.commentary === "string"
+      ? { ...body, commentary: escaparLittleText(body.commentary) }
+      : body;
+
+  const rest = await tryLinkedInRestPost(accessToken, corpoEscapado);
   if (rest) return rest;
 
   console.warn(`[LinkedIn] Trying ugcPosts legacy fallback.`);
@@ -685,6 +873,53 @@ export type PollDuration = "ONE_DAY" | "THREE_DAYS" | "ONE_WEEK" | "TWO_WEEKS";
  * Publish a comment on a LinkedIn post (used for first comment with references).
  * postUrn: e.g. "urn:li:share:1234" or "urn:li:ugcPost:1234"
  */
+/**
+ * Apaga um post do LinkedIn, do perfil ou da página.
+ *
+ * Existe para o teste de ponta a ponta da publicação em página não deixar
+ * entulho no perfil público do cliente. Provar que publica é metade: sem poder
+ * limpar, cada prova custa um post de verdade na página de quem está vendendo.
+ *
+ * O `postUrn` é o mesmo que a publicação devolve (urn:li:share:... ou
+ * urn:li:ugcPost:...). Devolve false em vez de lançar: falhar ao limpar não
+ * pode derrubar o script que já provou o que importava.
+ */
+export async function deleteLinkedInPost(
+  accessToken: string,
+  postUrn: string
+): Promise<boolean> {
+  const encodedUrn = encodeURIComponent(postUrn);
+  // Percorre as versões igual a leitura e a publicação. Em 13/09 este caminho
+  // era o único sem cascata e tomou 426 ("Requested version 20260901 is not
+  // active"), deixando um post de teste PUBLICADO na página da empresa. Apagar
+  // é justamente o que não pode falhar: publicar errado se conserta apagando,
+  // e apagar errado não se conserta com nada.
+  for (const version of LINKEDIN_VERSION_CANDIDATES) {
+    let res: Response;
+    try {
+      res = await fetch(`https://api.linkedin.com/rest/posts/${encodedUrn}`, {
+        method: "DELETE",
+        headers: buildHeaders(accessToken, version),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      console.warn(`[LinkedIn] delete: erro de rede na versão ${version}:`, e);
+      continue;
+    }
+    if (res.ok || res.status === 204) {
+      console.log(`[LinkedIn] post apagado com a versão ${version}`);
+      return true;
+    }
+    if (res.status !== 426) {
+      const err = await res.text();
+      console.warn(`[LinkedIn] delete falhou (${res.status}): ${err.slice(0, 300)}`);
+      return false;
+    }
+  }
+  console.warn("[LinkedIn] delete: nenhuma versão da API aceitou");
+  return false;
+}
+
 export async function publishLinkedInComment(
   accessToken: string,
   platformUserId: string,

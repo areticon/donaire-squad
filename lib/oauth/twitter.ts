@@ -6,6 +6,42 @@ const USERINFO_URL = "https://api.twitter.com/2/users/me";
 const TWEETS_URL = "https://api.twitter.com/2/tweets";
 const MEDIA_UPLOAD_URL = "https://upload.twitter.com/1/media/upload.json";
 
+/**
+ * O X RECUSOU POR NIVEL DE ACESSO, e nao por erro nosso.
+ *
+ * Medido em 19/09 num corte de video: HTTP 403 com "You currently have access
+ * to a subset of X API V2 endpoints and limited v1.1 endpoints (e.g. media
+ * post, oauth) only".
+ *
+ * Isto e o plano da conta de desenvolvedor do X, nao um defeito: o upload em
+ * pedacos (INIT/APPEND/FINALIZE) exige um nivel pago. Nao melhora na segunda
+ * tentativa, e por isso precisa de nome proprio: quem chama decide degradar em
+ * vez de repetir, e a tela diz o que fazer em vez de mostrar JSON.
+ */
+export class SemNivelDeAcessoNoX extends Error {
+  readonly semNivelDeAcesso = true;
+  constructor(oQue: string) {
+    super(
+      `O X recusou ${oQue}: a conta de desenvolvedor esta num nivel de acesso que nao inclui este endpoint. ` +
+        `Isso e plano do X, nao erro da plataforma. Para liberar, suba o nivel em developer.x.com/en/portal/product.`
+    );
+    this.name = "SemNivelDeAcessoNoX";
+  }
+}
+
+/**
+ * E o 403 de nivel de acesso?
+ *
+ * Pergunta de PROPRIEDADE e nao `instanceof`, pela mesma razao do
+ * `ehSemSaldoDaOpenAI`: o tsx carrega modulo duas vezes em script e existem
+ * duas classes com o mesmo nome.
+ */
+export function ehSemNivelDeAcessoNoX(e: unknown): boolean {
+  if (typeof e === "object" && e !== null && "semNivelDeAcesso" in e) return true;
+  const texto = e instanceof Error ? e.message : String(e);
+  return /access to a subset of X API|different access level/i.test(texto);
+}
+
 export function generatePKCE() {
   const codeVerifier = crypto.randomBytes(32).toString("base64url");
   const codeChallenge = crypto
@@ -84,7 +120,13 @@ export async function refreshTwitterToken(refreshToken: string) {
     }),
   });
 
-  if (!res.ok) throw new Error("Failed to refresh Twitter token");
+  if (!res.ok) {
+    // O corpo vai junto: "invalid_request"/"invalid_grant" diz se o refresh
+    // token já foi usado (é de uso único) ou se a autorização caiu. Sem ele,
+    // em 21/09 o log dizia só "Failed to refresh" e não havia como saber.
+    const corpo = await res.text().catch(() => "");
+    throw new Error(`Failed to refresh Twitter token (HTTP ${res.status}): ${corpo.slice(0, 200)}`);
+  }
   return res.json() as Promise<{
     access_token: string;
     refresh_token?: string;
@@ -163,7 +205,12 @@ export async function uploadTwitterVideo(
     signal: AbortSignal.timeout(60_000),
   });
   if (!initRes.ok) {
-    throw new Error(`X vídeo INIT falhou (${initRes.status}): ${(await initRes.text()).slice(0, 300)}`);
+    const corpo = await initRes.text();
+    // O 403 de nivel de acesso ganha nome proprio: ver SemNivelDeAcessoNoX.
+    if (initRes.status === 403 && /subset of X API|different access level/i.test(corpo)) {
+      throw new SemNivelDeAcessoNoX("o envio de vídeo");
+    }
+    throw new Error(`X vídeo INIT falhou (${initRes.status}): ${corpo.slice(0, 300)}`);
   }
   const { media_id_string: mediaId } = (await initRes.json()) as { media_id_string?: string };
   if (!mediaId) throw new Error("X vídeo INIT: resposta sem id");

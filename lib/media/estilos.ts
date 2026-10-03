@@ -93,6 +93,24 @@ export type Estilo = {
      * Liberation Sans tem a versao negrito de verdade e pedem `true`.
      */
     negrito: boolean;
+    /**
+     * Caixa atrás da fala (cor ASS), para linguagens de colagem como a Vox:
+     * texto escuro sobre tira de papel clara. Sem ela, contorno de sempre.
+     */
+    caixa?: string;
+    /**
+     * A frase-chave em MARCA-TEXTO: faixa na cor da marca atrás do texto (Vox,
+     * 30/09). Sem isto, a frase de destaque sai só colorida, como antes.
+     */
+    marcaTexto?: { caixa: string; texto: string };
+    /**
+     * GRIFO palavra a palavra (estilo "marca-texto" da legenda, 30/09): cada
+     * palavra ganha a faixa na cor da marca quando é dita, e fica grifada até
+     * o bloco sair. O karaokê do ASS só troca a cor da LETRA, então aqui cada
+     * palavra vira um evento próprio, com a caixa trocando de cor por trecho
+     * (o libass desenha uma caixa por trecho de estilo, conferido em quadro).
+     */
+    grifo?: { caixa: string; texto: string };
   };
 
   ritmo: {

@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId } from "@/lib/media/destinos";
-import { diaDoTrecho } from "@/lib/media/quadro-do-video";
+import { diaDoTrecho, diaDoTrechoNoPlano } from "@/lib/media/quadro-do-video";
+import { dataDoDia, DESTINO_DE_CORTE_DA_REDE, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
 
 /**
  * Faz o Gestor de Conteúdo ESPELHAR a seleção da aba Vídeo.
@@ -16,11 +17,26 @@ import { diaDoTrecho } from "@/lib/media/quadro-do-video";
  * Também mantém a ESTEIRA: todo dia com corte no quadro ganha o card da Vera
  * (prévia por rede) e o do Paulo (publicação), que era o fim de linha que
  * faltava ("não passa para os agentes Vera nem Paulo").
+ *
+ * DESDE 30/09 O PLANO MANDA NO DIA E NA REDE DOS CORTES. Com dia de "Vídeo
+ * curto" no plano congelado no run, o primeiro corte aprovado vai no
+ * primeiro desses dias, nas redes marcadas nele, o segundo no segundo, e
+ * assim por diante; corte a mais volta a esses mesmos dias, em rodízio,
+ * porque o cliente disse em que dias quer corte e nenhum corte pode cair num
+ * dia que ele deixou sem post. Sem dia de vídeo curto vale o jeito de antes
+ * (as redes marcadas em cada corte), espalhado pelos dias do plano.
  */
 
 type TrechoDoQuadro = Trecho & {
   publicar?: boolean;
   destinos?: string[];
+  /**
+   * Destinos que o cliente acrescentou a ESTE corte no card do dia (30/09),
+   * além das redes do plano. Campo à parte, e não `destinos`, porque com dia
+   * de vídeo curto no plano `destinos` é ignorado (o plano manda), e a rede
+   * marcada no card sumiria na sincronização seguinte.
+   */
+  destinosDoCard?: string[];
   posts?: { linkedin?: string; x?: string; instagram?: string };
   texto?: { titulo?: string; descricao?: string };
   midia?: { vertical?: { url: string } | null } | null;
@@ -31,7 +47,11 @@ function legendaDoDestino(t: TrechoDoQuadro, plataforma: string): string {
     [t.texto?.titulo, t.texto?.descricao].filter(Boolean).join("\n\n") || t.titulo || "";
   if (plataforma === "twitter") return t.posts?.x || generica;
   if (plataforma === "linkedin") return t.posts?.linkedin || generica;
-  if (plataforma === "instagram" || plataforma === "facebook") return t.posts?.instagram || generica;
+  // TikTok usa a legenda do Instagram: é o mesmo registro (curta, gancho na
+  // primeira linha, hashtags), e o redator do vídeo não escreve uma própria.
+  if (plataforma === "instagram" || plataforma === "facebook" || plataforma === "tiktok") {
+    return t.posts?.instagram || generica;
+  }
   return generica;
 }
 
@@ -48,21 +68,41 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
       archived: false,
       config: { path: ["videoJobId"], equals: video.id },
     },
-    select: { id: true, weekStart: true },
+    select: { id: true, weekStart: true, config: true },
   });
   if (!run) return; // ainda não foi ao quadro; nada a espelhar
 
   const trechos = (video.clips as unknown as TrechoDoQuadro[]) ?? [];
+  const plano = planoDoRun(run.config);
+  const alvo = { inicio: plano.inicio, weekStart: run.weekStart };
+  const diasDeCorte = diasDeVideoCurto(plano);
+  // A posição de cada corte aprovado (0, 1, 2...), que escolhe o dia de vídeo curto dele.
+  const aprovados = trechos
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => t.publicar !== false && t.midia?.vertical)
+    .map(({ i }) => i);
+  const diaDoPlano = (indice: number) => {
+    const k = aprovados.indexOf(indice);
+    return k < 0 || !diasDeCorte.length ? null : diasDeCorte[k % diasDeCorte.length];
+  };
+
   const cards = await prisma.campaignCard.findMany({
     where: { runId: run.id, cardType: "video_clip" },
     select: { id: true, status: true, postId: true, dayOfWeek: true, metadata: true },
   });
 
   // O que a seleção PEDE: um card por (trecho marcado x destino de vídeo).
+  // Com dia de vídeo curto no plano, os destinos são as redes daquele dia.
   const esperados = new Map<string, { t: TrechoDoQuadro; indice: number; destinoId: string }>();
   trechos.forEach((t, indice) => {
     if (t.publicar === false || !t.midia?.vertical) return;
-    for (const d of t.destinos ?? []) {
+    const doPlano = diaDoPlano(indice);
+    const doDia = doPlano ? doPlano.redes.map((r) => DESTINO_DE_CORTE_DA_REDE[r]) : t.destinos ?? [];
+    // As redes do dia MAIS as que o cliente acrescentou a este corte no card
+    // do dia (30/09): sem somar, o LinkedIn marcado lá seria apagado aqui, na
+    // próxima sincronização, por não estar no plano.
+    const destinos = [...new Set([...doDia, ...(t.destinosDoCard ?? [])])];
+    for (const d of destinos) {
       const destino = destinoPorId(d);
       if (destino?.publicaVideo) esperados.set(`${indice}:${d}`, { t, indice, destinoId: d });
     }
@@ -94,30 +134,32 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
   }
 
   // Cria o que o cliente marcou depois do agendamento.
-  const segunda = run.weekStart ?? new Date();
-  for (const [chave, alvo] of esperados) {
+  for (const [chave, pedido] of esperados) {
     if (existentes.has(chave)) continue;
-    const destino = destinoPorId(alvo.destinoId)!;
+    const destino = destinoPorId(pedido.destinoId)!;
     const irmao = [...existentes.values()].find((c) => {
       const m = c.metadata as { trechoIndice?: number } | null;
-      return m?.trechoIndice === alvo.indice;
+      return m?.trechoIndice === pedido.indice;
     });
     // O mesmo dia do irmão (outro destino do mesmo corte), ou o dia que o
     // espalhamento uniforme dá a este corte. Desde 04/09 os cards do Vitor
     // nascem AQUI (o agendar só abre o quadro e chama a sincronização), então
     // esta conta é a que decide a semana inteira, e não só o corte marcado
-    // depois.
-    const dayOfWeek = irmao?.dayOfWeek ?? diaDoTrecho(trechos, alvo.indice);
-    const data = new Date(segunda.getTime() + (dayOfWeek - 1) * 86400000);
-    data.setUTCHours(12, 0, 0, 0);
-    const legenda = legendaDoDestino(alvo.t, destino.plataforma);
+    // depois. Desde 30/09: o dia de vídeo curto do plano, quando há; senão o
+    // espalhamento dentro dos dias do plano (ou da semana, em run antigo).
+    const dayOfWeek =
+      irmao?.dayOfWeek ??
+      diaDoPlano(pedido.indice)?.dia ??
+      (plano.inicio ? diaDoTrechoNoPlano(trechos, pedido.indice, plano.inicio) : diaDoTrecho(trechos, pedido.indice));
+    const data = dataDoDia(alvo, dayOfWeek);
+    const legenda = legendaDoDestino(pedido.t, destino.plataforma);
     const post = await prisma.post.create({
       data: {
         projectId: video.projectId,
         platform: destino.plataforma,
         content: legenda,
         mediaType: "video",
-        imageUrl: alvo.t.midia!.vertical!.url,
+        imageUrl: pedido.t.midia!.vertical!.url,
         status: "draft",
         dayOfWeek,
         scheduledAt: data,
@@ -125,7 +167,7 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
         metadata: {
           origem: "video",
           videoJobId: video.id,
-          trechoIndice: alvo.indice,
+          trechoIndice: pedido.indice,
           destino: destino.id,
         },
       },
@@ -142,16 +184,16 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
         cardType: "video_clip",
         mediaType: "video",
         content: legenda,
-        mediaUrl: `/api/videos/${video.id}/midia?trecho=${alvo.indice}&tipo=vertical`,
+        mediaUrl: `/api/videos/${video.id}/midia?trecho=${pedido.indice}&tipo=vertical`,
         status: "pending",
         postId: post.id,
         metadata: {
           destino: destino.id,
           destinoRotulo: destino.rotulo,
-          titulo: alvo.t.texto?.titulo ?? alvo.t.titulo,
+          titulo: pedido.t.texto?.titulo ?? pedido.t.titulo,
           videoJobId: video.id,
-          trechoIndice: alvo.indice,
-          thumb: `/api/videos/${video.id}/midia?trecho=${alvo.indice}&tipo=capa-arte`,
+          trechoIndice: pedido.indice,
+          thumb: `/api/videos/${video.id}/midia?trecho=${pedido.indice}&tipo=capa-arte`,
         },
       },
     });
@@ -197,8 +239,7 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
     for (const e of esteira) {
       const ja = cardsAtuais.find((c) => c.agentId === e.agentId && c.dayOfWeek === dia);
       if (ja) continue;
-      const data = new Date(segunda.getTime() + (dia - 1) * 86400000);
-      data.setUTCHours(e.hora, 0, 0, 0);
+      const data = dataDoDia(alvo, dia, e.hora);
       await prisma.campaignCard.create({
         data: {
           runId: run.id,

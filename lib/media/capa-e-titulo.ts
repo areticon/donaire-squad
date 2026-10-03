@@ -1,5 +1,11 @@
 import { askClaude } from "@/lib/claude";
-import { comporSobreImagem } from "@/lib/media/nano-banana";
+import { prisma } from "@/lib/db/prisma";
+import { generateImage, dataUrlToBuffer } from "@/lib/media/nano-banana";
+import { lerMidia } from "@/lib/media/storage";
+import { recortarQuadro } from "@/lib/media/recorte-do-quadro";
+import { acentuarFrases } from "@/lib/media/acentuacao";
+import { normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
+import { coresDaMarca, familiaDaLinguagem, montarCapa, promptDoFundo } from "@/lib/media/capa-composta";
 import type { Trecho } from "@/lib/media/select-clips";
 
 /**
@@ -78,7 +84,7 @@ Devolva três coisas, e cada uma tem um trabalho diferente:
 5. "cenario": em UMA frase, descreva um fundo novo para a capa, alinhado ao nicho do cliente. Ambiente real e moderno, não abstração. Exemplo para nicho de finanças: "escritório moderno desfocado com luz quente e uma janela grande ao fundo". Nada de texto no fundo, nada de logotipo, nada de pessoas ao fundo.
 
 Regras de escrita:
-- Português do Brasil.
+- Português do Brasil com acentuação completa, inclusive na frase da capa: "Sua IA ainda é estagiária", nunca "Sua IA ainda e estagiaria".
 - Nunca use travessão. Use vírgula, dois-pontos, ponto e vírgula ou parênteses.
 - Nunca invente fato, número ou nome que não esteja no que a pessoa falou.
 - Nada de emoji no título nem na frase da capa.
@@ -115,6 +121,8 @@ ${trecho.transcricao}`,
     .replace(/```$/, "");
 
   const dados = JSON.parse(limpo) as Partial<TextoDoCorte>;
+  // A frase da capa sem acento (30/09): ver lib/media/acentuacao.ts.
+  const [fraseAcentuada] = await acentuarFrases([(dados.fraseDaCapa ?? trecho.titulo ?? "").slice(0, 60)], usageCtx);
 
   return {
     // O corte de 100 acontece aqui e não no prompt: o modelo é instruído mas
@@ -122,7 +130,7 @@ ${trecho.transcricao}`,
     // depois de o cliente já ter aprovado.
     titulo: (dados.titulo ?? trecho.titulo ?? "").slice(0, 100),
     descricao: dados.descricao ?? trecho.ideia ?? "",
-    fraseDaCapa: (dados.fraseDaCapa ?? trecho.titulo ?? "").slice(0, 60),
+    fraseDaCapa: fraseAcentuada,
     // "confiante" é o padrão porque é a expressão que menos erra: funciona para
     // quase qualquer conteúdo e não promete drama que o vídeo não entrega.
     expressao: EXPRESSOES.includes(dados.expressao as Expressao)
@@ -146,134 +154,28 @@ const EXPRESSOES: Expressao[] = [
 ];
 
 /**
- * Como pedir cada expressão ao modelo de imagem, sem ambiguidade.
+ * A capa: a pessoa REAL recortada, sobre um fundo novo, com a frase composta
+ * em código na linguagem e nas cores da marca.
  *
- * Até 02/09 as cinco descrições diziam "boca FECHADA" e "olhar firme na
- * câmera", e o Bruno viu o efeito: toda capa saía com ele sério, quase bravo,
- * fosse qual fosse a emoção pedida. A instrução em caixa alta pesava mais
- * que "sorriso leve". Agora só "sério", "preocupado", "misterioso" e
- * "dramático" fecham a boca de propósito; as outras descrevem o sorriso ou a
- * boca que a emoção pede.
- */
-const COMO_MOSTRAR: Record<Expressao, string> = {
-  confiante:
-    "confiante e simpática: SORRISO visível e natural, de leve a médio, olhos abertos e focados na câmera, queixo levemente erguido, ombros relaxados",
-  serio:
-    "séria e direta: boca fechada sem sorrir, sobrancelhas levemente baixas, olhar firme na câmera",
-  curioso:
-    "intrigada: um meio sorriso contido, uma sobrancelha levemente erguida, cabeça um pouco inclinada, olhar na câmera",
-  surpreso:
-    "surpresa de verdade: olhos bem abertos, sobrancelhas erguidas, boca entreaberta como quem acabou de descobrir algo (nunca escancarada)",
-  preocupado:
-    "preocupada: boca fechada, testa levemente franzida, olhar atento na câmera",
-  alegre:
-    "alegre e calorosa: SORRISO ABERTO mostrando os dentes, olhos levemente apertados pelo sorriso (sorriso verdadeiro), cabeça um pouco para o lado, como quem recebe um amigo",
-  misterioso:
-    "misteriosa: boca fechada, sem sorrir, olhos levemente semicerrados fixos na câmera, cabeça um pouco baixa com o olhar por baixo das sobrancelhas, como quem guarda um segredo",
-  dramatico:
-    "tensa e intensa: boca fechada com os lábios apertados, testa franzida, olhar duro e fixo na câmera, como quem encara uma crise",
-  divertido:
-    "divertida: RINDO de verdade, boca aberta no riso, olhos apertados, cabeça levemente jogada para trás ou para o lado, como quem acabou de ouvir uma piada",
-  provocativo:
-    "provocadora: meio sorriso de canto de boca, uma sobrancelha erguida, queixo erguido, olhar desafiador direto na câmera, como quem pergunta se você duvida",
-};
-
-/**
- * A atmosfera da luz e do fundo para cada clima, quando o cliente escolheu um.
- * Vai junto com a expressão porque "misterioso" de rosto com fundo de
- * escritório bem iluminado não é misterioso.
- */
-const ATMOSFERA: Partial<Record<ClimaDaCapa, string>> = {
-  alegre: "luz quente e clara sobre a pessoa, fundo com cores vivas e acolhedoras, sem sombras pesadas",
-  confiante: "luz limpa e uniforme sobre a pessoa, fundo sóbrio e organizado",
-  serio: "luz lateral com contraste alto, fundo escurecido e sem distração",
-  curioso: "luz suave sobre a pessoa, fundo um pouco mais escuro que ela, com um ponto de luz ao fundo",
-  surpreso: "luz frontal clara, fundo vibrante que amplifica a surpresa",
-  misterioso: "MEIA-LUZ: um lado do rosto iluminado e o outro em sombra, fundo muito escuro, quase preto, com um brilho discreto ao longe",
-  dramatico: "luz fria e dura, sombras marcadas, fundo escuro com tons azulados ou dessaturados",
-  divertido: "luz clara e alegre, fundo com cores vivas e saturadas",
-  provocativo: "luz de contorno forte destacando a pessoa, fundo escuro com uma cor de destaque intensa",
-};
-
-/**
- * As seções RECORTE E FUNDO e TEXTO do prompt, que são o que muda entre um
- * estilo e outro. IDENTIDADE e EXPRESSÃO ficam iguais para todos.
- */
-function secoesDoEstilo(
-  estilo: EstiloDeCapa,
-  v: { frase: string; destaque: string; cenario: string; corDaMarca?: string | null }
-): string {
-  if (estilo === "limpo") {
-    return `RECORTE E FUNDO
-- MANTENHA a pessoa no cenário original: nada de recorte nem de fundo novo. É uma foto real, não uma montagem.
-- Escureça o fundo original de leve e desfoque um pouco, só o bastante para a pessoa e o texto ganharem contraste. Nada de texto, logotipo ou outras pessoas no fundo.
-- Se a pessoa estiver centralizada, reenquadre para deixá-la num terço da imagem e o outro lado livre para o texto.
-
-TEXTO
-- Escreva exatamente: "${v.frase}"
-- Tipografia FINA e elegante, sem serifa, peso leve ou regular, em caixa alta com espaçamento largo entre letras, branca.
-- Corpo médio: ocupa cerca de um terço da largura da imagem, em uma ou duas linhas, alinhado à esquerda no espaço livre.
-- Sem bloco de cor, sem contorno, sem sombra forte: o contraste vem do fundo escurecido.
-- O texto NUNCA pode cobrir o rosto.
-`;
-  }
-  if (estilo === "manchete") {
-    const cor = v.corDaMarca?.trim() || "#0f1b3d (azul-marinho escuro)";
-    return `RECORTE E FUNDO
-- Recorte a pessoa do fundo original com borda limpa, inclusive no cabelo.
-- Descarte o cenário original por completo.
-- Fundo novo: CHAPADO, cor sólida ${cor}, sem textura, sem gradiente, sem cenário. Nada de texto, logotipo ou outras pessoas no fundo.
-- Ponha a pessoa inteira em UM dos lados da imagem (esquerdo ou direito), ocupando cerca de 40% da largura, com uma leve luz de contorno separando ela do fundo.
-
-TEXTO
-- Escreva exatamente: "${v.frase}"
-- No lado OPOSTO ao da pessoa, em DUAS linhas, alinhado à esquerda, como manchete de jornal ou título de programa.
-- Sem serifa, peso pesado, caixa alta, branca. Corpo grande: as duas linhas juntas ocupam cerca de metade da altura da imagem.
-- Sublinhe ou destaque a palavra "${v.destaque}" numa cor clara e contrastante (amarelo ou branco quente), sem bloco atrás.
-- O texto NUNCA pode cobrir o rosto.
-`;
-  }
-  return `RECORTE E FUNDO
-- Recorte a pessoa do fundo original com borda limpa, inclusive no cabelo.
-- Descarte o cenário original por completo.
-- Fundo novo: ${v.cenario}
-- O fundo entra desfocado e mais escuro que a pessoa, para ela saltar. Nada de texto, logotipo ou outras pessoas no fundo.
-- Ilumine a pessoa de forma coerente com o fundo novo, com uma leve luz de contorno separando ela do cenário.
-
-TEXTO
-- Escreva exatamente: "${v.frase}"
-- Corpo ENORME, ocupando de um terço a metade da largura da imagem. Se em dúvida, aumente.
-- Sem serifa, muito pesada, condensada, em caixa alta.
-- Destaque a palavra "${v.destaque}" com um bloco de cor sólida atrás dela, em contraste com o resto.
-- Uma palavra por linha, ou duas no máximo, alinhadas à esquerda. As linhas NUNCA se sobrepõem: cada letra de cada palavra tem que aparecer inteira (na primeira capa de 02/09 a linha de cima cobriu a primeira letra da linha de baixo).
-- O texto NUNCA pode cobrir o rosto. Ponha no espaço vazio ao lado ou acima.
-`;
-}
-
-/**
- * A capa: a pessoa recortada, com expressão ajustada, sobre um fundo novo.
- *
- * Evoluiu em três passos, cada um por uma crítica do Bruno com o resultado na
- * mão:
+ * Evoluiu em quatro passos, cada um por uma crítica do Bruno com o resultado
+ * na mão:
  *
  * 1. Primeiro pegava um quadro qualquer do trecho e escrevia texto branco em
  *    cima. Numa gravação com slides, caía numa tela compartilhada.
  * 2. Depois passou a varrer o vídeo inteiro procurando rosto. Melhorou muito,
- *    mas a foto ainda era um quadro de vídeo cru: boca aberta no meio de uma
- *    sílaba, olho fechado, fundo da sala.
- * 3. Agora a pessoa é RECORTADA, a expressão é ajustada ao tom do conteúdo, e o
- *    fundo é substituído por um cenário alinhado ao nicho do cliente.
+ *    mas a foto ainda era um quadro de vídeo cru: boca aberta, olho fechado.
+ * 3. Então o modelo de imagem passou a recortar a pessoa e AJUSTAR A EXPRESSÃO.
+ *    O comentário daqui avisava: isso dá ao modelo licença para redesenhar o
+ *    rosto, e se um dia saísse outra pessoa, o caminho era voltar à composição
+ *    em código. Saiu (teste de 29/09: sorriso inventado, feições trocadas).
+ * 4. Agora (30/09): o worker escolhe o quadro pelos pontos do rosto (olho
+ *    aberto, boca fechada, de frente) e recorta a pessoa com o segmentador;
+ *    o modelo de imagem desenha SÓ o fundo, sem ninguém; a frase, o
+ *    marca-texto, a colagem e a sombra são código (lib/media/capa-composta.tsx).
+ *    O rosto da capa é pixel da gravação.
  *
- * ATENÇÃO AO RISCO QUE ISTO CRIA. Até o passo 2, a trava contra o modelo trocar
- * a pessoa por alguém inventado era a instrução de não alterar o rosto. Pedir
- * mudança de expressão remove essa trava, e o modelo passa a ter licença para
- * redesenhar feições. A compensação é a seção IDENTIDADE do prompt, primeira e
- * mais longa, mas ela é instrução, não garantia.
- *
- * Se algum dia sair uma capa com outra pessoa, o caminho certo NÃO é ajustar o
- * prompt de novo: é voltar para sobreposição de texto em código sobre a foto
- * real, que é mais feia e nunca inventa gente. Publicar o rosto errado de um
- * cliente é um dano que capa bonita nenhuma compensa.
+ * `expressao` e `clima` continuam aceitos para não quebrar quem chama, mas não
+ * mexem mais no rosto: o clima só muda a luz do fundo.
  */
 export async function comporCapa(
   quadroBase64: string,
@@ -285,62 +187,77 @@ export async function comporCapa(
     usageCtx?: { projectId?: string };
     /** "9:16" para capa de corte vertical; "16:9" para thumb de YouTube. */
     formato?: "9:16" | "16:9";
-    /** Instrução de ajuste vinda do CLIENTE, com prioridade sobre o padrão. */
+    /** Instrução de ajuste vinda do CLIENTE: entra no fundo, nunca no rosto. */
     ajuste?: string;
-    /** O estilo visual; "impacto" quando ausente, que é o histórico. */
+    /** O estilo da capa do completo, quando o cliente escolheu um (limpo, manchete, impacto). */
     estilo?: EstiloDeCapa;
-    /** O clima escolhido pelo cliente, que também dita a luz e o fundo. */
     clima?: ClimaDaCapa;
-    /**
-     * A cor principal da marca do cliente (hex), usada pelo estilo "manchete"
-     * como fundo. Sem ela o fundo é azul-marinho escuro.
-     */
     corDaMarca?: string | null;
+    /** De onde veio o quadro: o worker recorta a pessoa a partir dele. */
+    quadroUrl?: string | null;
+    /** A pessoa já recortada (PNG), quando o corte chegou com ela. */
+    recorteUrl?: string | null;
+    /** Onde guardar o recorte que o worker fizer agora. */
+    chaveDoRecorte?: string;
   } = {}
 ): Promise<string | null> {
-  // A palavra destacada é a mais longa da frase, que quase sempre é a que
-  // carrega o sentido ("consultoria", "escala", "sozinho"). Deixar o modelo
-  // escolher produzia destaque em preposição.
-  const palavras = frase.split(/\s+/).filter(Boolean);
-  const destaque = palavras.reduce((a, b) => (b.length > a.length ? b : a), palavras[0] ?? "");
+  const formato = opcoes.formato ?? "9:16";
+  const projeto = opcoes.usageCtx?.projectId
+    ? await prisma.project.findUnique({
+        where: { id: opcoes.usageCtx.projectId },
+        select: { colorPalette: true, videoEstiloEscolha: true, videoStyle: true },
+      })
+    : null;
+  const escolha = normalizarEscolha(projeto?.videoEstiloEscolha, projeto?.videoStyle);
+  const cores = coresDaMarca(projeto?.colorPalette ?? (opcoes.corDaMarca ? `${opcoes.corDaMarca}` : null));
+  // A linguagem do catálogo manda; o estilo de capa escolhido para o completo
+  // ajusta por cima quando existe ("limpo" mantém o cenário real).
+  let familia = familiaDaLinguagem(escolha.estiloId);
+  if (opcoes.estilo === "manchete") familia = "sobrio";
+  if (opcoes.estilo === "impacto" && familia === "sobrio") familia = "impacto";
+  const limpo = opcoes.estilo === "limpo";
 
-  const expressao = COMO_MOSTRAR[opcoes.expressao ?? "confiante"];
-  const atmosfera = opcoes.clima ? ATMOSFERA[opcoes.clima] : undefined;
-  const cenario =
-    opcoes.cenario?.trim() ||
-    `ambiente de trabalho moderno e limpo, coerente com ${opcoes.nicho ?? "negócios"}, desfocado`;
+  const quadro = quadroBase64 ? Buffer.from(quadroBase64, "base64") : null;
+  let recorte: Buffer | null = null;
+  if (!limpo) {
+    if (opcoes.recorteUrl) recorte = await lerMidia(opcoes.recorteUrl);
+    if (!recorte && opcoes.quadroUrl) {
+      const feito = await recortarQuadro(
+        opcoes.quadroUrl,
+        opcoes.chaveDoRecorte ?? `cortes/recortes/${Date.now()}.png`
+      );
+      if (feito) recorte = await lerMidia(feito.url);
+    }
+  }
 
-  const prompt = `Monte a THUMBNAIL de um vídeo de YouTube usando a pessoa desta captura.
+  // O fundo, e só o fundo, vem do modelo de imagem. Falhou, fica o fundo em
+  // código (papel na cor clara da marca, ou o tom escuro): a capa sai igual.
+  let fundo: Buffer | null = null;
+  if (!limpo) {
+    try {
+      const cenario = [opcoes.cenario?.trim(), opcoes.ajuste ? `(pedido do cliente: ${opcoes.ajuste})` : ""]
+        .filter(Boolean)
+        .join(" ");
+      const url = await generateImage(
+        promptDoFundo(familia, cores, cenario || `ambiente coerente com ${opcoes.nicho ?? "negócios"}`, formato),
+        formato,
+        "standard",
+        { operation: "video_capa_fundo", projectId: opcoes.usageCtx?.projectId }
+      );
+      fundo = dataUrlToBuffer(url);
+    } catch (e) {
+      console.warn(`[capa] fundo por IA falhou, sigo com o fundo em código: ${e instanceof Error ? e.message : e}`);
+    }
+  }
 
-IDENTIDADE, e esta é a regra que manda sobre todas as outras
-- A pessoa da imagem é uma PESSOA REAL e específica. O resultado precisa ser reconhecível como ela por quem a conhece.
-- Preserve sem alterar: formato do rosto, olhos, nariz, boca, orelhas, barba, cabelo (corte e cor), tom de pele, idade aparente e roupa.
-- Você pode mudar SOMENTE a expressão facial e a direção do olhar. Nada mais no rosto.
-- Se não conseguir ajustar a expressão mantendo a mesma pessoa, mantenha a expressão original. É melhor uma foto imperfeita que uma pessoa diferente.
-- Nunca substitua por um modelo genérico, nunca embeleze traços, nunca rejuvenesça, nunca mude o formato do corpo.
-
-EXPRESSÃO
-- Ajuste o rosto para ficar ${expressao}.
-- Corrija defeitos de quadro parado de vídeo: se a boca estiver aberta no meio de uma palavra, feche; se os olhos estiverem fechados ou semicerrados, abra; se o olhar estiver perdido, traga para a câmera.
-- O resultado tem que parecer uma FOTO, não um quadro pausado.
-${atmosfera ? `\nATMOSFERA\n- Luz e fundo: ${atmosfera}. Esta atmosfera vale por cima das instruções de luz do estilo abaixo.\n` : ""}
-${secoesDoEstilo(opcoes.estilo ?? "impacto", { frase, destaque, cenario, corDaMarca: opcoes.corDaMarca })}
-
-NÃO FAÇA
-- Nada de marca d'água, moldura, setas, círculos vermelhos ou emoji.
-- Nada de texto além da frase pedida.
-- Nada de mãos ou dedos deformados: se a mão original ficar estranha no recorte, corte o enquadramento acima dela.
-
-${opcoes.ajuste ? `AJUSTE PEDIDO PELO CLIENTE, com prioridade sobre qualquer regra acima que conflite (exceto a identidade da pessoa, que é intocável): ${opcoes.ajuste}
-` : ""}Formato final: ${opcoes.formato === "9:16" ? "9 por 16, VERTICAL como um Reels" : "16 por 9"}, cheio, sem barras.`;
-
-  return comporSobreImagem(
-    prompt,
-    quadroBase64,
-    "image/jpeg",
-    { operation: "video_capa", ...opcoes.usageCtx },
-    // A capa do corte acompanha o formato do corte. A paisagem num quadro
-    // 9:16 foi a "capa errada" que o Bruno viu duas vezes (31/08).
-    opcoes.formato ?? "9:16"
-  );
+  const jpeg = await montarCapa({
+    recorte,
+    quadro,
+    fundo,
+    frase,
+    formato,
+    familia: limpo ? "sobrio" : familia,
+    cores,
+  });
+  return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
 }

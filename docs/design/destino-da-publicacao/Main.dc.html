@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #1e1e25; }
+    a { color: #f6803d; } a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="padding:28px;background:#1e1e25;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:18px;">
+  <div>
+    <h2 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#dcdde2;">Janela de campanha: "Por onde sai?"</h2>
+    <p style="margin:0;font-size:13px;line-height:1.5;color:#9599a6;">
+      Hoje a seção "Em quais redes?" lista redes. Com duas contas de LinkedIn no projeto (perfil e página), "LinkedIn" não diz por onde o post sai, e a esteira escolhe sozinha: hoje cai no perfil. A seção passa a listar CONTAS, uma por chip, com o tipo escrito.
+    </p>
+  </div>
+
+  <div style="border-radius:16px;border:1px solid #3f3f4b;background:#2a2a33;padding:20px;display:flex;flex-direction:column;gap:14px;">
+    <div>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:500;color:#9599a6;">Por onde sai?</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        
+        <button style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;background:rgba(239,97,34,0.1);border:1px solid #ef6122;color:#dcdde2;">
+          <span style="width:20px;height:20px;border-radius:5px;background:#0a66c2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">in</span>
+          <span><span style="font-weight:600;">LinkedIn</span> · demandou</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:#31313c;color:#9599a6;">página</span>
+        </button>
+        
+        <button style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;background:transparent;border:1px solid #3f3f4b;color:#9599a6;">
+          <span style="width:20px;height:20px;border-radius:5px;background:#0a66c2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">in</span>
+          <span><span style="font-weight:600;">LinkedIn</span> · Bruno Donaire</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:#31313c;color:#9599a6;">perfil</span>
+        </button>
+        
+        <button style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;background:rgba(239,97,34,0.1);border:1px solid #ef6122;color:#dcdde2;">
+          <span style="width:20px;height:20px;border-radius:6px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></span>
+          <span><span style="font-weight:600;">Instagram</span> · @demandou</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:#31313c;color:#9599a6;">perfil</span>
+        </button>
+        
+        <button style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;background:rgba(239,97,34,0.1);border:1px solid #ef6122;color:#dcdde2;">
+          <span style="width:20px;height:20px;border-radius:5px;background:#1877f2;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">f</span>
+          <span><span style="font-weight:600;">Facebook</span> · Demandou</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:#31313c;color:#9599a6;">página</span>
+        </button>
+      </div>
+      <p style="margin:8px 0 0;font-size:10px;line-height:1.5;color:#9599a6;">
+        Cada conta ligada é uma peça a mais por dia. Duas contas da mesma rede recebem o mesmo texto, uma publicação em cada. O padrão são as páginas ligadas e o perfil desligado; sua última escolha fica guardada no projeto.
+      </p>
+    </div>
+  </div>
+
+  <div style="border-radius:12px;padding:14px 16px;background:#2a2a33;border:1px solid #3f3f4b;">
+    <p style="margin:0;font-size:12px;line-height:1.55;color:#9599a6;">
+      <span style="color:#dcdde2;font-weight:600;">O que muda por baixo:</span> a esteira grava um post por CONTA escolhida, com o <span style="color:#f6803d;">socialAccountId</span> daquela conta desde o nascimento. Hoje ela grava um post por rede e adivinha a conta. O card do Paulo e a aba de posts param de "preferir o perfil".
+    </p>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

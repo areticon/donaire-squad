@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f6803d; text-decoration: none; }
+    a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<div style="display: flex; width: 1440px; min-height: 1180px; background: #1e1e25; color: #dcdde2;">
+
+  <!-- Barra lateral, copiada de components/ui/sidebar.tsx. A mudanca esta no rodape:
+       a engrenagem deixa de apontar para /projects e passa a ser Configuracoes, e o
+       item "Plano" sai da navegacao porque plano e cobranca passam a morar aqui. -->
+  <aside style="width: 240px; flex-shrink: 0; background: #2a2a33; border-right: 1px solid #3f3f4b; display: flex; flex-direction: column;">
+    <div style="height: 64px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #3f3f4b;">
+      <svg width="32" height="32" viewBox="-28 -8 120 120" fill="none" style="flex-shrink: 0;"><defs><linearGradient id="GRAD" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1742E"/><stop offset="1" stop-color="#BE4720"/></linearGradient></defs><circle cx="32" cy="52" r="26" stroke="#ffffff" stroke-width="17"/><rect x="49.5" y="1.5" width="17" height="61" rx="8.5" fill="#ffffff"/><rect x="-2.5" y="41.5" width="17" height="61" rx="8.5" fill="#ffffff"/><circle cx="32" cy="52" r="26" stroke="url(#GRAD)" stroke-width="12"/><rect x="52" y="4" width="12" height="56" rx="6" fill="url(#GRAD)"/><rect x="0" y="44" width="12" height="56" rx="6" fill="url(#GRAD)"/></svg>
+      <span style="font-family: Montserrat, Inter, system-ui, sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -0.025em; color: #dcdde2;">demandou</span>
+    </div>
+
+    <nav style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; color: #9599a6; font-size: 14px; font-weight: 500;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span>Dashboard</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; color: #9599a6; font-size: 14px; font-weight: 500;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v8"/><path d="M12 10v4"/><path d="M16 10v6"/></svg>
+        <span>Projetos</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; color: #9599a6; font-size: 14px; font-weight: 500;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span>Agenda</span>
+      </div>
+    </nav>
+
+    <div style="padding: 16px; border-top: 1px solid #3f3f4b; display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; color: #9599a6; font-size: 14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <span>Modo claro</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 32px; height: 32px; border-radius: 9999px; background: #ef6122; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;">B</div>
+        <div style="flex: 1; min-width: 0;">
+          <p style="margin: 0; font-size: 12px; color: #9599a6;">Minha conta</p>
+        </div>
+        <div style="padding: 4px; border-radius: 8px; background: rgba(239,97,34,0.12); display: flex; align-items: center; justify-content: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef6122" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.2.6.76 1.02 1.4 1.02H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; color: #9599a6; font-size: 14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span>Sair</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Conteudo -->
+  <main style="flex: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px;">
+
+    <div>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 900; color: #dcdde2; letter-spacing: -0.01em;">Configurações</h1>
+      <p style="margin: 4px 0 0; font-size: 14px; color: #9599a6;">Sua conta, seu plano e sua cobrança. As redes sociais e a voz de cada marca ficam dentro do projeto.</p>
+    </div>
+
+    <!-- Conta -->
+    <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+      <div>
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Seus dados</h2>
+        <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">O nome aparece nos e-mails que a plataforma manda para você.</p>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div style="width: 56px; height: 56px; border-radius: 9999px; background: #ef6122; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">B</div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; flex-grow: 1;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 14px; font-weight: 500; color: #dcdde2;">Nome</label>
+            <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 14px; display: flex; align-items: center; padding: 0 12px;">Bruno Donaire</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 14px; font-weight: 500; color: #dcdde2;">E-mail</label>
+            <div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #9599a6; font-size: 14px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;">
+              <span>bruno@areticon.com</span>
+              <span style="font-size: 11px; font-weight: 600; color: #9599a6; border: 1px solid #3f3f4b; border-radius: 9999px; padding: 2px 8px;">Entra com Google</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center;">Salvar</div>
+      </div>
+    </section>
+
+    <!-- Plano atual, lido do Stripe -->
+    <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;">
+        <div style="display: flex; gap: 16px; align-items: flex-start;">
+          <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(239,97,34,0.1); display: flex; align-items: center; justify-content: center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <h2 style="margin: 0; font-size: 20px; font-weight: 800; color: #dcdde2;">Autoridade</h2>
+              <span style="font-size: 11px; font-weight: 600; color: #4ade80; background: rgba(21,128,61,0.2); border: 1px solid rgba(74,222,128,0.25); border-radius: 9999px; padding: 3px 10px;">Assinatura ativa</span>
+            </div>
+            <p style="margin: 6px 0 0; font-size: 14px; color: #dcdde2;">
+              <span style="font-weight: 700;">R$ 697</span> por mês, cobrado no cartão final 4242
+            </p>
+            <p style="margin: 2px 0 0; font-size: 13px; color: #9599a6;">Próxima cobrança em 12 de outubro de 2026. Renova sozinha até você cancelar.</p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <div style="height: 40px; padding: 0 16px; border-radius: 4px; border: 1px solid #3f3f4b; color: #dcdde2; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            Nota fiscal e cartão
+          </div>
+        </div>
+      </div>
+
+      <!-- Creditos do ciclo -->
+      <div style="background: #31313c; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <span style="font-size: 13px; color: #9599a6;">Créditos deste ciclo</span>
+          <span style="font-size: 14px; color: #dcdde2;"><span style="font-weight: 700;">2.958</span> de 3.500 restantes</span>
+        </div>
+        <div style="height: 6px; border-radius: 9999px; background: #1e1e25; overflow: hidden;">
+          <div style="width: 84.5%; height: 100%; background: #ef6122;"></div>
+        </div>
+        <span style="font-size: 12px; color: #9599a6;">Repostos em 12 de outubro, quando a assinatura renovar. O que sobra não acumula.</span>
+      </div>
+
+      <!-- Mudar de plano -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: #dcdde2;">Mudar de plano</h3>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+
+          <div style="background: #31313c; border: 1px solid #3f3f4b; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #dcdde2;">Essencial</p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">2 gravações por mês</p>
+            </div>
+            <p style="margin: 0; font-size: 13px; color: #9599a6;"><span style="font-size: 24px; font-weight: 900; color: #dcdde2;">R$ 397</span> /mês</p>
+            <div style="height: 40px; padding: 0 16px; border-radius: 4px; border: 1px solid #3f3f4b; color: #dcdde2; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center;">Mudar para Essencial</div>
+          </div>
+
+          <div style="background: #31313c; border: 1px solid #ef6122; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; position: relative;">
+            <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #ef6122; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 12px; border-radius: 9999px;">SEU PLANO</div>
+            <div>
+              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #dcdde2;">Autoridade</p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">4 gravações por mês</p>
+            </div>
+            <p style="margin: 0; font-size: 13px; color: #9599a6;"><span style="font-size: 24px; font-weight: 900; color: #dcdde2;">R$ 697</span> /mês</p>
+            <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(239,97,34,0.12); border: 1px solid rgba(239,97,34,0.3); color: #f6803d; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              É o seu plano
+            </div>
+          </div>
+
+          <div style="background: #31313c; border: 1px solid #3f3f4b; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #dcdde2;">Estúdio</p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Gravações à vontade</p>
+            </div>
+            <p style="margin: 0; font-size: 13px; color: #9599a6;"><span style="font-size: 24px; font-weight: 900; color: #dcdde2;">R$ 1.997</span> /mês</p>
+            <div style="height: 40px; padding: 0 16px; border-radius: 4px; border: 1px solid #3f3f4b; color: #dcdde2; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center;">Mudar para Estúdio</div>
+          </div>
+
+        </div>
+        <p style="margin: 0; font-size: 12px; color: #9599a6;">Trocar de plano cobra a diferença proporcional aos dias que faltam do ciclo. Quem muda para um plano maior recebe os créditos novos na hora.</p>
+      </div>
+    </section>
+
+    <!-- Cancelar -->
+    <section style="background: #2a2a33; border: 1px solid #3f3f4b; border-radius: 12px; padding: 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+      <div>
+        <h2 style="margin: 0; font-size: 15px; font-weight: 700; color: #dcdde2;">Cancelar assinatura</h2>
+        <p style="margin: 4px 0 0; font-size: 13px; color: #9599a6;">Você continua com tudo até 12 de outubro, o dia que já está pago. Depois dessa data a plataforma deixa de publicar, e seus posts ficam guardados.</p>
+      </div>
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(127,29,29,0.2); border: 1px solid rgba(127,29,29,0.5); color: #f87171; font-size: 14px; font-weight: 600; display: flex; align-items: center; flex-shrink: 0;">Cancelar assinatura</div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

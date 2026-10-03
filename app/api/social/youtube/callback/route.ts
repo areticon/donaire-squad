@@ -1,7 +1,10 @@
 import { auth } from "@/lib/auth/server";
+import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
+import { fotoPermanente } from "@/lib/social/foto-permanente";
 import { prisma } from "@/lib/db/prisma";
+import { readotarPostsOrfaos } from "@/lib/publish/contas-orfas";
 import { exchangeYouTubeCode, getYouTubeChannel } from "@/lib/oauth/youtube";
 
 export async function GET(req: NextRequest) {
@@ -34,6 +37,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(errorUrl);
   }
 
+  // QUEM VOLTA DO LOGIN DA REDE precisa poder conectar redes NESTE projeto
+  // (01/10, acabamento do acesso de equipe). O projeto vem de um cookie, e o
+  // cookie sozinho nÃ£o prova nada: conferimos com a sessÃ£o de quem voltou que
+  // ela Ã© dona do projeto (membro da equipe nÃ£o conecta rede; ver
+  // lib/equipe/permissoes.ts). Sem sessÃ£o, nÃ£o grava conta nenhuma.
+  const quemVolta = (await auth()).userId;
+  if (!quemVolta) return NextResponse.redirect(new URL("/sign-in", req.url));
+  const barrado = await soQuemConectaRedes(quemVolta, projectId);
+  if (barrado) return barrado;
+
   try {
     const redirectUri = `${appUrl}/api/social/youtube/callback`;
     const tokens = await exchangeYouTubeCode(code, redirectUri);
@@ -49,11 +62,15 @@ export async function GET(req: NextRequest) {
       },
       update: {
         accessToken: tokens.accessToken,
+        // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+        // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+        needsReconnectAt: null,
+        needsReconnectReason: null,
         refreshToken: tokens.refreshToken,
         tokenExpiresAt: tokens.expiresAt,
         displayName: channel.title,
         username: channel.title,
-        avatarUrl: channel.avatarUrl,
+        avatarUrl: await fotoPermanente(channel.avatarUrl, "youtube", channel.channelId),
         isActive: true,
       },
       create: {
@@ -61,14 +78,19 @@ export async function GET(req: NextRequest) {
         platform: "youtube",
         platformUserId: channel.channelId,
         accessToken: tokens.accessToken,
+        // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+        // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+        needsReconnectAt: null,
+        needsReconnectReason: null,
         refreshToken: tokens.refreshToken,
         tokenExpiresAt: tokens.expiresAt,
         displayName: channel.title,
         username: channel.title,
-        avatarUrl: channel.avatarUrl,
+        avatarUrl: await fotoPermanente(channel.avatarUrl, "youtube", channel.channelId),
         isActive: true,
       },
     });
+    await readotarPostsOrfaos(projectId, "youtube", channel.channelId);
 
     const res = NextResponse.redirect(successUrl);
     res.cookies.delete("oauth_state");

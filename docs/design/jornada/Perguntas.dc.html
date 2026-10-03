@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f6803d; text-decoration: none; }
+    a:hover { color: #ef6122; }
+  </style>
+</helmet>
+
+<!-- As perguntas da campanha, numa janela so, feitas UMA vez. Sao as mesmas
+     pelas duas portas. Hoje elas estao espalhadas: formato (1, 7, 14) na
+     janela, e depois dia e tipo de novo no painel do video. -->
+<div style="width: 900px; min-height: 1180px; background: #1e1e25; padding: 40px; box-sizing: border-box; display: flex; justify-content: center;">
+
+  <div style="width: 672px; border-radius: 16px; background: #2a2a33; border: 1px solid #3f3f4b; display: flex; flex-direction: column; overflow: hidden;">
+
+    <!-- Cabecalho da janela, igual ao de hoje -->
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 24px 16px; border-bottom: 1px solid #3f3f4b;">
+      <div>
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #dcdde2;">Configurar campanha</h2>
+        <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Automático, com IA, passo 2 de 3</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="display: flex; gap: 4px;">
+          <div style="width: 12px; height: 6px; border-radius: 9999px; background: #ef6122;"></div>
+          <div style="width: 24px; height: 6px; border-radius: 9999px; background: #ef6122;"></div>
+          <div style="width: 12px; height: 6px; border-radius: 9999px; background: #3f3f4b;"></div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9599a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 24px;">
+
+      <!-- 1. Periodo -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">Quanto conteúdo?</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Um post avulso, a semana inteira ou duas semanas de uma vez.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+          <div style="padding: 16px; border-radius: 12px; border: 1px solid #3f3f4b; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-size: 14px; font-weight: 600; color: #dcdde2;">Post único</span>
+            <span style="font-size: 12px; color: #9599a6;">Um post, num dia.</span>
+          </div>
+          <div style="padding: 16px; border-radius: 12px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-size: 14px; font-weight: 600; color: #dcdde2;">Semana completa</span>
+            <span style="font-size: 12px; color: #9599a6;">Um post por dia útil.</span>
+          </div>
+          <div style="padding: 16px; border-radius: 12px; border: 1px solid #3f3f4b; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-size: 14px; font-weight: 600; color: #dcdde2;">Quinzena</span>
+            <span style="font-size: 12px; color: #9599a6;">Duas semanas seguidas.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Redes: TODAS as conectadas, e as nao conectadas com o caminho -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">Em quais redes?</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Só as que você conectou. As outras ficam a um clique.</p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            LinkedIn, perfil
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            LinkedIn, página demandou
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Instagram
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #3f3f4b; font-size: 12px; font-weight: 500; color: #9599a6;">
+            <div style="width: 14px; height: 14px; border-radius: 4px; border: 1px solid #3f3f4b;"></div>
+            Facebook
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px dashed #3f3f4b; font-size: 12px; font-weight: 500; color: #9599a6;">
+            YouTube
+            <span style="font-size: 11px; color: #f6803d; font-weight: 600;">conectar</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #ef6122; background: rgba(239,97,34,0.10); font-size: 12px; font-weight: 600; color: #dcdde2;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            X
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Formato por dia, a "janela bonita" que ele gosta, feita uma vez so -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #dcdde2;">O que sai em cada dia?</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #9599a6;">Quem escolhe o formato é você. A IA propõe o tema de cada dia no próximo passo.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Seg</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Texto</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Ter</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Imagem</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Qua</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Carrossel</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Qui</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Texto</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #dcdde2;">Sex</span><div style="height: 40px; border-radius: 6px; border: 1px solid #3f3f4b; background: #1e1e25; color: #dcdde2; font-size: 12px; display: flex; align-items: center; justify-content: center;">Enquete</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #9599a6;">Sáb</span><div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; color: #9599a6; font-size: 12px; display: flex; align-items: center; justify-content: center;">Sem post</div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; font-weight: 600; color: #9599a6;">Dom</span><div style="height: 40px; border-radius: 6px; border: 1px dashed #3f3f4b; color: #9599a6; font-size: 12px; display: flex; align-items: center; justify-content: center;">Sem post</div></div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; background: #31313c;">
+          <span style="font-size: 12px; color: #9599a6;">5 posts em 3 redes: <span style="color: #dcdde2; font-weight: 600;">15 peças</span>, 32 créditos além do texto.</span>
+          <span style="font-size: 12px; color: #9599a6;">Imagem 8, carrossel 24.</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-top: 1px solid #3f3f4b;">
+      <span style="font-size: 14px; color: #9599a6;">Voltar</span>
+      <div style="height: 40px; padding: 0 16px; border-radius: 4px; background: #ef6122; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Próximo: temas por dia</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

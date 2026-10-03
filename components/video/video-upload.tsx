@@ -1,17 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Loader2, Upload, Video, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   MB_POR_MINUTO_RECOMENDADO,
-  MAX_DURACAO_SEGUNDOS,
+  LIMITES_SEM_PLANO,
   TIPOS_ACEITOS,
+  duracaoPorExtenso,
   validarVideo,
+  creditosEmDuasPartes,
+  creditosNaTela,
+  CREDITOS_POR_GB_EXTRA,
+  CORTES_SUGERIDOS,
+  MAX_CORTES_APROVADOS,
+  type LimitesDoEnvio,
   type Veredito,
 } from "@/lib/media/limits";
+import { CREDITOS_POR_GERACAO_HIGGSFIELD } from "@/lib/credits/higgsfield-tabela";
+import { FaixaDeCota, PedidoDeUpgrade, type Estouro } from "@/components/planos/pedido-de-upgrade";
+import { AvisoDeWifi, MedidorDeEnvio } from "@/components/video/medidor-de-envio";
+import { ARQUIVO_GRANDE_BYTES, emDadosMoveis } from "@/lib/media/velocidade-do-envio";
 
 /**
  * Envio do vídeo semanal.
@@ -57,15 +68,63 @@ export function VideoUpload({
   const [lendo, setLendo] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState(0);
+  // Os bytes que já saíram, para o medidor de velocidade (item 14, 29/09).
+  const [enviados, setEnviados] = useState(0);
+  // Dados móveis, quando o navegador sabe dizer (só Chrome e derivados).
+  const [movel, setMovel] = useState<boolean | null>(null);
+  useEffect(() => setMovel(emDadosMoveis()), []);
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState(false);
+
+  /**
+   * A cota de gravacoes do ciclo, perguntada ANTES de deixar escolher arquivo.
+   *
+   * Existe desde 18/09, quando os limites de plano passaram a valer. A pergunta
+   * acontece aqui e nao so na hora do upload porque a hora do upload e o pior
+   * momento possivel para descobrir: a pessoa ja escolheu um arquivo de 900 MB e
+   * ja esperou. O portao de verdade continua no servidor, que e o unico que
+   * uma aba com devtools aberto nao contorna.
+   */
+  const [limite, setLimite] = useState<Estouro | null>(null);
+  const [restantes, setRestantes] = useState<number | null>(null);
+  const [renovaEm, setRenovaEm] = useState<string | null>(null);
+  // Os tetos do PLANO (29/09): 1, 2 ou 5 horas. Até a resposta chegar vale o
+  // maior teto, e o servidor recusa no token se passar do plano.
+  const [envio, setEnvio] = useState<LimitesDoEnvio>(LIMITES_SEM_PLANO);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        // /api/videos/limites, e não /api/videos/cota, que é a cota do vídeo
+        // por IA: até 29/09 esta tela lia a rota errada e a oferta nunca vinha.
+        const r = await fetch("/api/videos/limites");
+        if (!r.ok || !vivo) return;
+        const data = await r.json();
+        if (data.envio) setEnvio(data.envio as LimitesDoEnvio);
+        if (!data.pode && data.limite) setLimite(data.limite as Estouro);
+        // Admin e quem nao tem cota nao veem contagem: mostrar "0 de 0" para
+        // quem opera a plataforma seria o produto cobrando plano do dono.
+        if (data.uso && !data.uso.admin && !data.uso.semPlano) {
+          setRestantes(data.uso.restantes as number);
+          setRenovaEm((data.uso.renovaEm as string | null) ?? null);
+        }
+      } catch {
+        // Sem resposta, a tela segue como antes. O servidor recusa se precisar,
+        // e um erro de rede aqui nao pode impedir alguem de enviar video.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [pronto]);
 
   async function escolher(file: File) {
     setErro(null);
     setPronto(false);
     setLendo(true);
     const duracao = await lerDuracao(file);
-    setArquivo({ file, duracao, veredito: validarVideo(file.size, duracao) });
+    setArquivo({ file, duracao, veredito: validarVideo(file.size, duracao, envio) });
     setLendo(false);
   }
 
@@ -74,6 +133,7 @@ export function VideoUpload({
     setEnviando(true);
     setErro(null);
     setProgresso(0);
+    setEnviados(0);
     try {
       const blob = await upload(`videos/${projectId}/${arquivo.file.name}`, arquivo.file, {
         // Privado de propósito: vídeo cru do cliente é material não publicado e
@@ -84,12 +144,15 @@ export function VideoUpload({
         multipart: true,
         handleUploadUrl: "/api/videos/upload",
         clientPayload: JSON.stringify({ projectId }),
-        onUploadProgress: (p) => setProgresso(Math.round(p.percentage)),
+        onUploadProgress: (p) => {
+          setProgresso(Math.round(p.percentage));
+          setEnviados(p.loaded);
+        },
       });
 
       // Em desenvolvimento o callback do storage não alcança o localhost, então
       // o registro também é exposto aqui. A rota é idempotente.
-      await fetch("/api/videos", {
+      const registro = await fetch("/api/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -99,6 +162,20 @@ export function VideoUpload({
           sizeBytes: arquivo.file.size,
         }),
       });
+
+      // A COTA CONFERIDA DE NOVO NO REGISTRO (30/09). O token foi emitido com
+      // gravação livre, mas outra aba pode ter usado a última enquanto este
+      // arquivo subia. Até aqui a resposta nem era lida: a tela dizia "vídeo
+      // recebido" para um registro que não existia.
+      if (!registro.ok) {
+        const corpo = (await registro.json().catch(() => ({}))) as { error?: string; limite?: Estouro };
+        if (corpo.limite?.recurso === "gravacoes") {
+          setArquivo(null);
+          setLimite(corpo.limite);
+          return;
+        }
+        throw new Error(corpo.error ?? "Não consegui registrar o vídeo.");
+      }
 
       setPronto(true);
       setArquivo(null);
@@ -112,7 +189,18 @@ export function VideoUpload({
 
   const v = arquivo?.veredito;
 
+  // Cota esgotada: o cartao de envio SOME e a oferta toma o lugar dele. Deixar o
+  // cartao na tela, desabilitado, convida a tentar e falhar, que e o contrario
+  // do que uma oferta faz.
+  if (limite) return <PedidoDeUpgrade estouro={limite} />;
+
   return (
+    <div className="space-y-4">
+    {/* O aviso de penultima e ultima gravacao, que so aparece perto do fim:
+        aviso que fica na tela o ciclo inteiro nao e aviso, e decoracao. */}
+    {restantes !== null && restantes > 0 && restantes <= 2 && (
+      <FaixaDeCota restantes={restantes} renovaEm={renovaEm} sugestao={null} />
+    )}
     <div
       className="rounded-xl border p-6"
       style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
@@ -163,7 +251,8 @@ export function VideoUpload({
                 {/* O número vem da constante, e não escrito à mão. O limite
                     subiu de 60 para 120 em 22/08 e este texto ficou para trás,
                     prometendo metade do que a plataforma aceita. */}
-                MP4, MOV, MKV ou WebM. Até {MAX_DURACAO_SEGUNDOS / 60} minutos.
+                MP4, MOV, MKV ou WebM. Até {duracaoPorExtenso(envio.duracaoMaximaSeg)}
+                {envio.plano ? ` no ${envio.plano}` : ""}.
               </span>
             </>
           )}
@@ -222,17 +311,49 @@ export function VideoUpload({
               className="rounded-xl border p-4 mb-4 space-y-3"
               style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
             >
-              <p className="text-sm text-[var(--text-muted)]">
-                Esse trabalho vai custar{" "}
-                <strong className="text-[var(--text-primary)]">
-                  {v.creditos} créditos
-                </strong>{" "}
-                e render cerca de{" "}
-                <strong className="text-[var(--text-primary)]">
-                  {v.clipes} trechos
-                </strong>
-                , cada um virando post nas suas redes.
-              </p>
+              {/* OS CRÉDITOS EM DUAS PARTES (30/09, tela de roteiro): o cliente
+                  paga no envio só o que roda antes de aprovar, e o resto só
+                  depois de escolher os cortes e aprovar as cenas. Os números
+                  saem de `creditosEmDuasPartes` (lib/media/limits.ts), no preço
+                  em vigor desde 01/10. Desde então passam de mil, e vão com
+                  separador de milhar: "3174" se lê errado, "3.174" não. */}
+              {(() => {
+                const partes = creditosEmDuasPartes(arquivo.duracao, arquivo.file.size);
+                return (
+                  <>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      <strong className="text-[var(--text-primary)]">Primeira parte, agora no envio:</strong>{" "}
+                      <strong className="text-[var(--text-primary)]">{creditosNaTela(partes.roteiro)} créditos</strong>.
+                      Eu transcrevo, limpo a sua fala, escolho cerca de{" "}
+                      <strong className="text-[var(--text-primary)]">{v.clipes} cortes possíveis</strong>, escrevo a
+                      semana de peças e preparo o roteiro da edição para você aprovar.
+                    </p>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      <strong className="text-[var(--text-primary)]">Segunda parte, só quando você aprovar o roteiro:</strong>{" "}
+                      <strong className="text-[var(--text-primary)]">{creditosNaTela(partes.aprovacaoMax)} créditos</strong>{" "}
+                      com os {CORTES_SUGERIDOS} cortes que eu sugiro, sendo {creditosNaTela(partes.completo)} do vídeo completo
+                      editado (com a abertura dos melhores momentos) e {creditosNaTela(partes.porCorte)} por corte que você
+                      escolher, até {MAX_CORTES_APROVADOS}. Nada de imagem, cena ou corte é gerado antes da sua aprovação.
+                    </p>
+                    <div className="text-xs text-[var(--text-muted)] space-y-1">
+                      <p>
+                        <strong className="text-[var(--text-primary)]">
+                          No total, {creditosNaTela(partes.total)} créditos com {CORTES_SUGERIDOS} cortes.
+                        </strong>{" "}
+                        Se você não aprovar o roteiro, só a primeira parte é usada. Com 1 corte em vez de {CORTES_SUGERIDOS}, a segunda
+                        parte fica {creditosNaTela(partes.porCorte * (CORTES_SUGERIDOS - 1))} créditos menor; cada corte a mais soma{" "}
+                        {creditosNaTela(partes.porCorte)}.
+                      </p>
+                      <p>
+                        Já incluso: legenda e edição na linguagem que você escolheu, as capas e o arquivo acima do
+                        tamanho recomendado ({CREDITOS_POR_GB_EXTRA} créditos por GB, na primeira parte). À parte, só
+                        se você escolher: a abertura com movimento de câmera por IA, {CREDITOS_POR_GERACAO_HIGGSFIELD}{" "}
+                        créditos por cena gerada.
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/*
                 Sugestão em vez de bloqueio (decisão do Bruno, 22/08). A versão
@@ -240,6 +361,17 @@ export function VideoUpload({
                 sobe, custa mais, e a pessoa fica sabendo quanto economizaria
                 gravando mais leve. Quem grava na taxa recomendada não vê nada.
               */}
+              {/* Antes de começar, o que dá para dizer sem medir: o tempo é da
+                  rede de quem envia, e arquivo grande pede wi-fi. A velocidade
+                  de verdade aparece nos primeiros segundos do envio. */}
+              {!enviando && (
+                <p className="text-xs text-[var(--text-muted)]">
+                  O tempo de envio depende da sua internet. Assim que começar, mostramos a velocidade da sua rede e
+                  quanto falta.
+                </p>
+              )}
+              {!enviando && (arquivo.file.size > ARQUIVO_GRANDE_BYTES || movel === true) && <AvisoDeWifi movel={movel === true} />}
+
               {v.sugestao && (
                 <p className="text-sm text-orange-300 border-t pt-3" style={{ borderColor: "var(--border)" }}>
                   {v.sugestao}
@@ -262,6 +394,7 @@ export function VideoUpload({
               <p className="text-sm text-[var(--text-muted)] mt-2">
                 Enviando, {progresso}%
               </p>
+              <MedidorDeEnvio enviados={enviados} total={arquivo.file.size} />
             </div>
           )}
 
@@ -302,6 +435,7 @@ export function VideoUpload({
         câmera a imagem é a mesma, e o arquivo sobe em segundos em vez de
         minutos.
       </p>
+    </div>
     </div>
   );
 }

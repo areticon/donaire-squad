@@ -1,0 +1,22 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 720, "h": 560, "is_interactive": true }
+  ],
+  "annotations": [
+    {
+      "id": "o-caso",
+      "x": 800,
+      "y": 0,
+      "w": 260,
+      "text": "O caso real: campanha de 7 dias mandada às 23h41 de quinta, com horário das 09:00.\n\nClique nas três opções. A grade de dias muda junto, porque a promessa e a entrega precisam estar na mesma tela: foi justamente a distância entre as duas que produziu a queixa."
+    },
+    {
+      "id": "o-que-muda",
+      "x": 800,
+      "y": 230,
+      "w": 260,
+      "text": "Hoje o produto faz o do meio (publicar ainda hoje) sem perguntar, e foi assim que a peça de quinta saiu 01:25 da sexta.\n\nO padrão proposto é o primeiro, que é o que a esteira já passou a fazer com dias anteriores."
+    }
+  ],
+  "launch": { "view": "focused", "file": "Main.dc.html" }
+}

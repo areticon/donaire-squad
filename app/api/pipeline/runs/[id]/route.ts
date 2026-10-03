@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { cancelarGrupo } from "@/lib/fila/trabalhos";
+import { podeUsarProjeto } from "@/lib/equipe/conta";
 
 function addDaysUtc(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 86400000);
@@ -54,7 +55,7 @@ export async function PATCH(
     include: { project: { select: { userId: true } } },
   });
 
-  if (!run || run.project.userId !== userId) {
+  if (!run || !(await podeUsarProjeto(userId, { id: run.projectId, userId: run.project.userId }))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

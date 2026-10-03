@@ -1,12 +1,15 @@
 import { put } from "@vercel/blob";
 import { lerMidia, midiaProduzida } from "@/lib/media/storage";
 import { prisma } from "@/lib/db/prisma";
-import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
+import { montarPedidoDeCorte, type VideoParaCortar } from "@/lib/media/pedido-de-corte";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { comporCapa, type Expressao } from "@/lib/media/capa-e-titulo";
 import { dataUrlToBuffer } from "@/lib/media/nano-banana";
+import { apagarMidias } from "@/lib/media/faxina";
+import { gravarEdicaoDoPedido } from "@/lib/media/edicao-gravada";
 import type { Word } from "@/lib/media/transcribe";
 import type { Trecho } from "@/lib/media/select-clips";
+import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
  * Os ajustes que o cliente pede depois de assistir: recomeçar o corte uns
@@ -38,7 +41,7 @@ export async function refazerCorte(
   if (!base) throw new Error("A edição de vídeo não está disponível agora.");
 
   const video = await prisma.videoJob.findFirst({
-    where: { id: videoJobId, project: { userId } },
+    where: { id: videoJobId, project: projetoVisivel(userId) },
     select: {
       id: true,
       blobUrl: true,
@@ -46,7 +49,7 @@ export async function refazerCorte(
       projectId: true,
       clips: true,
       transcript: true,
-      project: { select: { videoStyle: true, videoMusicUrl: true, videoTerms: true } },
+      project: { select: { videoStyle: true, videoMusicUrl: true, videoTerms: true, videoEstiloEscolha: true, colorPalette: true } },
     },
   });
   if (!video) throw new Error("Vídeo não encontrado.");
@@ -66,6 +69,10 @@ export async function refazerCorte(
     ...alvo,
     inicio: inicioNovo,
     fim: fimNovo,
+    // O ajuste do cliente é um delta em segundos sobre a borda que estava, sem
+    // garantia de cair em pausa: o arredondamento de sempre volta a valer
+    // (ver `emPausa` em pedido-de-corte.ts).
+    emPausa: false,
     midia: { ...(alvo.midia ?? {}), refazendo: true },
   };
   await prisma.videoJob.update({
@@ -73,24 +80,60 @@ export async function refazerCorte(
     data: { clips: trechos as never },
   });
 
-  const transcript = video.transcript as { words?: Word[] } | null;
-  const { corpo } = await montarPedidoDeCorte(
+  await enviarRecorteDoTrecho(
     {
       id: video.id,
       blobUrl: video.blobUrl,
       durationSec: duracaoTotal,
       projectId: video.projectId,
-      trechos: trechos as unknown as Trecho[],
-      palavras: transcript?.words ?? [],
+      palavras: (video.transcript as { words?: Word[] } | null)?.words ?? [],
       estilo: video.project?.videoStyle ?? null,
       musicaUrl: video.project?.videoMusicUrl ?? null,
       termos: video.project?.videoTerms ?? null,
+      escolha: video.project?.videoEstiloEscolha ?? null,
+      colorPalette: video.project?.colorPalette ?? null,
     },
+    trechos[indice] as Trecho,
+    indice
+  );
+  return { inicio: inicioNovo, fim: fimNovo };
+}
+
+/**
+ * Pede ao worker o recorte de UM trecho, com o mesmo pipeline do corte
+ * original. Usado pelo ajuste do cliente (`refazerCorte`) e pela refação que o
+ * Vitor faz sozinho quando a Vera reprova (`lib/media/revisao-do-corte.ts`).
+ *
+ * Monta o pedido SÓ com o trecho alvo e só com as palavras em volta dele. Até
+ * 29/09 o pedido era montado com todos os trechos e a transcrição inteira, e
+ * filtrado depois: a limpeza de fala (uma chamada de modelo sobre a gravação
+ * toda, US$ 0,51 num vídeo de 16 min) e os efeitos de TODOS os trechos eram
+ * pagos para refazer um corte só. Com a janela, a limpeza lê 30 segundos a
+ * mais de cada lado, que é tudo o que o trecho usa.
+ *
+ * O índice é reposto no pedido porque `montarPedidoDeCorte` numera pela
+ * posição na lista, e aqui a lista tem um trecho só.
+ */
+const FOLGA_DE_PALAVRAS_SEC = 30;
+
+export async function enviarRecorteDoTrecho(
+  video: Omit<VideoParaCortar, "trechos">,
+  trecho: Trecho,
+  indice: number
+): Promise<void> {
+  const base = process.env.VIDEO_WORKER_URL;
+  if (!base) throw new Error("A edição de vídeo não está disponível agora.");
+
+  const palavras = video.palavras.filter(
+    (w) => w.end > trecho.inicio - FOLGA_DE_PALAVRAS_SEC && w.start < trecho.fim + FOLGA_DE_PALAVRAS_SEC
+  );
+  const { corpo } = await montarPedidoDeCorte(
+    { ...video, trechos: [trecho], palavras },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );
 
   const pedido = JSON.parse(corpo) as { trechos: Array<{ indice: number }> } & Record<string, unknown>;
-  pedido.trechos = pedido.trechos.filter((t) => t.indice === indice);
+  pedido.trechos = pedido.trechos.slice(0, 1).map((t) => ({ ...t, indice }));
   // O worker pula o completo e o aviso parcial; o callback trata como fusão.
   pedido.soTrechos = true;
   pedido.reCorte = true;
@@ -106,7 +149,9 @@ export async function refazerCorte(
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error("O estúdio de vídeo não aceitou o pedido agora. Tente de novo.");
-  return { inicio: inicioNovo, fim: fimNovo };
+  // A edição que o worker vai emendar fica no trecho, para a Vera revisar o
+  // texto FINAL (depois da limpeza) quando a mídia nova voltar.
+  await gravarEdicaoDoPedido(video.id, texto);
 }
 
 export async function refazerCapa(
@@ -116,7 +161,7 @@ export async function refazerCapa(
   instrucao: string
 ): Promise<string> {
   const video = await prisma.videoJob.findFirst({
-    where: { id: videoJobId, project: { userId } },
+    where: { id: videoJobId, project: projetoVisivel(userId) },
     select: {
       id: true,
       clips: true,
@@ -133,8 +178,12 @@ export async function refazerCapa(
   const alvo = trechos[indice];
   if (!alvo?.texto?.fraseDaCapa) throw new Error("Esse corte ainda não tem capa para refazer.");
 
-  const quadro =
-    video.capaFonteUrl ?? (alvo.midia?.capa as { url?: string } | undefined)?.url;
+  // O corte que chegou com o recorte próprio (quadro escolhido pelo rosto
+  // dentro do trecho, desde 30/09) usa o dele; o antigo cai na capa-fonte.
+  const recorteDoTrecho = (alvo.midia as { recorte?: { url?: string } | null } | undefined)?.recorte?.url ?? null;
+  const quadro = recorteDoTrecho
+    ? (alvo.midia?.capa as { url?: string } | undefined)?.url
+    : video.capaFonteUrl ?? (alvo.midia?.capa as { url?: string } | undefined)?.url;
   if (!quadro) throw new Error("Não encontrei o quadro base da capa.");
 
   const bytes = await lerMidia(quadro);
@@ -147,6 +196,9 @@ export async function refazerCapa(
     formato: "9:16",
     ajuste: instrucao,
     usageCtx: { projectId: video.projectId },
+    quadroUrl: quadro,
+    recorteUrl: recorteDoTrecho,
+    chaveDoRecorte: `cortes/${video.id}/recorte-capa-${indice}.png`,
   });
   if (!arte) throw new Error("A capa nova não saiu desta vez. Tente descrever o ajuste de outro jeito.");
 
@@ -161,6 +213,17 @@ export async function refazerCapa(
     }
   );
 
+  // A capa ANTERIOR sai, e sai DEPOIS de a nova estar gravada no banco.
+  //
+  // Esta funcao era um dos dois geradores de arquivo orfao da plataforma: cada
+  // "refazer capa" gravava um arquivo novo e abandonava o anterior, para sempre.
+  // Numa conta so isso e invisivel; medido em 18/09 eram 23 GB.
+  //
+  // A ordem importa e e deliberada: gravar primeiro, apagar depois. Na ordem
+  // inversa, uma falha entre o apagar e o gravar deixaria o cliente sem capa
+  // nenhuma, e capa e coisa que ele ja aprovou.
+  const anterior = (alvo.midia?.capaArte as { url?: string } | undefined)?.url;
+
   trechos[indice] = {
     ...alvo,
     midia: { ...(alvo.midia ?? {}), capaArte: { url } },
@@ -169,5 +232,8 @@ export async function refazerCapa(
     where: { id: video.id },
     data: { clips: trechos as never },
   });
+
+  if (anterior && anterior !== url) await apagarMidias([anterior], "refazerCapa");
+
   return url;
 }

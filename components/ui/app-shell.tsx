@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Sidebar } from "@/components/ui/sidebar";
 import { BrandMarkThemed } from "@/components/brand-mark-client";
+import { Ajuda } from "@/components/suporte/ajuda";
+import { SinoDeNotificacoes } from "@/components/notificacoes/sino";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "sidebar-collapsed";
@@ -71,7 +73,19 @@ function gravar(valor: boolean) {
  * barra superior. Gaveta e não barra encolhida porque ícone sem rótulo em tela
  * pequena vira adivinhação, e o espaço que sobra é o que importa.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  ehAdmin = false,
+  demonstracoesProximas = 0,
+  chamadosAbertos = 0,
+}: {
+  children: React.ReactNode;
+  ehAdmin?: boolean;
+  /** Só admin: demonstrações marcadas para os próximos 7 dias (número do menu). */
+  demonstracoesProximas?: number;
+  /** Só admin: chamados de suporte ainda abertos (número do menu, 02/10). */
+  chamadosAbertos?: number;
+}) {
   const collapsed = useSyncExternalStore(assinar, lerLocal, lerNoServidor);
   const [gaveta, setGaveta] = useState(false);
   const pathname = usePathname();
@@ -105,6 +119,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <Sidebar
+        ehAdmin={ehAdmin}
+        demonstracoesProximas={demonstracoesProximas}
+        chamadosAbertos={chamadosAbertos}
         collapsed={collapsed}
         onToggle={toggle}
         gavetaAberta={gaveta}
@@ -117,7 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           type="button"
           aria-label="Fechar menu"
           onClick={() => setGaveta(false)}
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-30 bg-[#02162a]/60 lg:hidden"
         />
       )}
 
@@ -142,22 +159,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-label="Abrir menu"
             aria-expanded={gaveta}
             // 44px de alvo é o mínimo confortável para o dedo.
-            className="-ml-2 p-2.5 rounded-lg transition-colors active:bg-white/10"
+            className="-ml-2 p-2.5 rounded-lg transition-colors active:bg-[var(--realce-2)]"
             style={{ color: "var(--text-primary)" }}
           >
             <Menu className="w-5 h-5" />
           </button>
           <BrandMarkThemed className="w-7 h-7" />
           <span
+            // Montserrat negrito, o logotipo de antes (de volta em 01/10).
             className="font-mont font-bold text-base leading-none tracking-tight"
             style={{ color: "var(--text-primary)" }}
           >
             demandou
           </span>
+          {/* O SINO NO CELULAR (02/10): a gaveta fica fechada quase sempre, e o
+              aviso do vídeo pronto não pode depender de abri-la. */}
+          <div className="ml-auto -mr-2">
+            <SinoDeNotificacoes variante="topo" />
+          </div>
         </header>
 
         <main className="flex-1 min-w-0">{children}</main>
       </div>
+
+      {/* A JANELA DE AJUDA (02/10): botão flutuante e o formulário do chamado,
+          uma vez só para a plataforma inteira. */}
+      <Ajuda />
     </div>
   );
 }

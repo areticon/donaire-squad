@@ -1,0 +1,930 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style></head><body>
+<title>O preço para de pé?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@700;800&display=swap">
+
+<style>
+  /* Os tokens sao os do proprio produto (app/globals.css), e nao uma paleta
+     nova: esta pagina existe para decidir o preco da Demandou, entao ela veste
+     a Demandou. O verde, o ambar e o vermelho sao SEMANTICOS, separados do
+     laranja da marca, para o veredito nunca depender do acento. */
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f4f5;
+    --surface: #ffffff;
+    --campo: #f1f1f1;
+    --borda: #e5e7eb;
+    --texto: #111111;
+    --fraco: #6b7280;
+    --acento: #d5511a;
+    --bom: #15803d;
+    --limite: #a16207;
+    --ruim: #b91c1c;
+    --bom-fundo: #dcfce7;
+    --limite-fundo: #fef3c7;
+    --ruim-fundo: #fee2e2;
+    --grade: #e5e7eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1e1e25;
+      --surface: #2a2a33;
+      --campo: #1e1e25;
+      --borda: #3f3f4b;
+      --texto: #dcdde2;
+      --fraco: #9599a6;
+      --acento: #f97316;
+      --bom: #4ade80;
+      --limite: #fbbf24;
+      --ruim: #f87171;
+      --bom-fundo: rgba(74,222,128,0.12);
+      --limite-fundo: rgba(251,191,36,0.12);
+      --ruim-fundo: rgba(248,113,113,0.12);
+      --grade: #3f3f4b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1e1e25;
+    --surface: #2a2a33;
+    --campo: #1e1e25;
+    --borda: #3f3f4b;
+    --texto: #dcdde2;
+    --fraco: #9599a6;
+    --acento: #f97316;
+    --bom: #4ade80;
+    --limite: #fbbf24;
+    --ruim: #f87171;
+    --bom-fundo: rgba(74,222,128,0.12);
+    --limite-fundo: rgba(251,191,36,0.12);
+    --ruim-fundo: rgba(248,113,113,0.12);
+    --grade: #3f3f4b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--texto);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .pagina { max-width: 1180px; margin: 0 auto; padding: 32px 20px 72px; }
+
+  h1 {
+    font-family: Montserrat, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: clamp(28px, 4vw, 40px);
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .subtitulo { color: var(--fraco); max-width: 62ch; margin: 0 0 28px; }
+
+  .colunas { display: grid; gap: 24px; grid-template-columns: 1fr; align-items: start; }
+  @media (min-width: 900px) { .colunas { grid-template-columns: 380px 1fr; } }
+
+  .painel {
+    background: var(--surface);
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .grupo + .grupo { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--borda); }
+  .grupo h2 {
+    font-family: Montserrat, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fraco);
+    margin: 0 0 14px;
+  }
+
+  .controle { display: grid; gap: 6px; margin-bottom: 16px; }
+  .controle .linha { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .controle label { font-weight: 500; }
+  .controle output {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--acento);
+    white-space: nowrap;
+  }
+  .controle .fonte { font-size: 12px; color: var(--fraco); }
+  input[type="range"] { width: 100%; accent-color: var(--acento); cursor: pointer; }
+  input[type="range"]:focus-visible { outline: 2px solid var(--acento); outline-offset: 3px; }
+
+  .veredito {
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .veredito .selo {
+    font-family: Montserrat, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .veredito p { margin: 0; }
+  .veredito .porque { color: var(--fraco); font-size: 14px; margin-top: 4px; }
+
+  .placas { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (min-width: 640px) { .placas { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .placa { background: var(--surface); border: 1px solid var(--borda); border-radius: 12px; padding: 14px 16px; }
+  .placa .rotulo { font-size: 12px; color: var(--fraco); letter-spacing: 0.03em; }
+  .placa .valor {
+    font-family: Montserrat, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 26px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    margin-top: 2px;
+  }
+  .placa .nota { font-size: 12px; color: var(--fraco); margin-top: 2px; }
+
+  .secao { margin-top: 22px; }
+  .secao h2 {
+    font-family: Montserrat, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    margin: 0 0 4px;
+  }
+  .secao .legenda { color: var(--fraco); font-size: 14px; margin: 0 0 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .rolagem { overflow-x: auto; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--borda); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: 12px; color: var(--fraco); font-weight: 600; letter-spacing: 0.04em; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.negativo { color: var(--ruim); }
+  td.positivo { color: var(--bom); }
+
+  .rodape { margin-top: 28px; color: var(--fraco); font-size: 13px; max-width: 70ch; }
+  .rodape strong { color: var(--texto); }
+
+  /* Controles da oferta de fundador. Sao escolha de mecanica, nao numero
+     continuo, entao sao select e nao barra deslizante. */
+  select {
+    width: 100%; height: 36px; padding: 0 10px; margin-top: 6px;
+    border-radius: 6px; border: 1px solid var(--borda);
+    background: var(--campo); color: var(--texto);
+    font: inherit; font-size: 13px;
+  }
+  select:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+
+  .alerta {
+    margin-top: 14px; padding: 12px 14px; border-radius: 8px;
+    border: 1px solid var(--ruim); background: var(--ruim-fundo);
+    font-size: 13px; line-height: 1.5;
+  }
+  .alerta strong { color: var(--ruim); }
+
+  .comparacao { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 4px; }
+  @media (max-width: 640px) { .comparacao { grid-template-columns: minmax(0, 1fr); } }
+  .comparacao > div { padding: 14px; border-radius: 8px; border: 1px solid var(--borda); background: var(--campo); }
+  .comparacao .rotulo { font-size: 12px; color: var(--fraco); font-weight: 600; letter-spacing: 0.04em; margin: 0; }
+  .comparacao .valor { font-size: 24px; font-weight: 800; margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+  .comparacao .nota { font-size: 12px; color: var(--fraco); margin: 4px 0 0; line-height: 1.45; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="pagina">
+  <h1>O preço para de pé?</h1>
+  <p class="subtitulo">
+    Mexa nos controles e veja a conta virar. Os valores que já vêm preenchidos
+    são medidos, não estimados: o custo de IA saiu de <code>ai_usage</code> nos
+    últimos 30 dias, e as conversões saíram do estudo de tráfego do card 288.
+  </p>
+
+  <div class="colunas">
+    <form class="painel" id="controles">
+      <div class="grupo">
+        <h2>Preço e custo</h2>
+
+        <div class="controle">
+          <div class="linha"><label for="preco">Preço por cliente, por mês</label><output id="v-preco"></output></div>
+          <input type="range" id="preco" min="97" max="2500" step="10" value="697">
+          <p class="fonte">Hoje: Essencial 397, Autoridade 697, Estúdio 1.997.</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="variavel">Custo de IA por cliente, por mês</label><output id="v-variavel"></output></div>
+          <input type="range" id="variavel" min="0" max="400" step="5" value="49">
+          <p class="fonte" id="fonte-variavel">Medido: R$ 12,25 por entrega, quatro gravações por mês.</p>
+        </div>
+
+        <!-- A COMPOSIÇÃO, que entrou em 18/09 com as features premium.
+
+             Até aqui o custo de IA era uma barra solta, e barra solta esconde
+             de onde o número vem. Com carrossel, vídeo por IA e um modelo de
+             texto mais caro, a pergunta deixou de ser "quanto custa" e passou
+             a ser "o que dentro dele custa". Ligar a composição na barra é o
+             que impede as duas de contarem histórias diferentes. -->
+        <div class="controle">
+          <label for="composicao">
+            <input type="checkbox" id="composicao" checked>
+            Calcular pela composição das peças
+          </label>
+          <p class="fonte">Quando ligado, a barra acima passa a ser o resultado da conta abaixo.</p>
+        </div>
+
+        <div id="painel-composicao">
+          <div class="controle">
+            <div class="linha"><label for="campanhas">Campanhas por mês</label><output id="v-campanhas"></output></div>
+            <input type="range" id="campanhas" min="1" max="8" step="1" value="4">
+            <p class="fonte">Uma por semana é o ritmo do produto hoje.</p>
+          </div>
+
+          <div class="controle">
+            <label for="modelo">Modelo de texto dos redatores</label>
+            <select id="modelo">
+              <option value="1">Sonnet 5, o de hoje</option>
+              <option value="1.57" selected>Opus 5, o mais capaz</option>
+              <option value="0.31">Haiku 4.5, o mais barato</option>
+            </select>
+            <p class="fonte" id="fonte-modelo"></p>
+          </div>
+
+          <div class="controle">
+            <label for="imagem">Imagem das peças</label>
+            <select id="imagem">
+              <option value="0.21">Gemini, a de hoje</option>
+              <option value="0.89" selected>GPT Image 2, alta, no formato da rede</option>
+            </select>
+            <p class="fonte">3 imagens por campanha de 7 dias.</p>
+          </div>
+
+          <div class="controle">
+            <div class="linha"><label for="carrosseis">Carrosséis por campanha</label><output id="v-carrosseis"></output></div>
+            <input type="range" id="carrosseis" min="0" max="4" step="1" value="1">
+            <p class="fonte">5 lâminas cada, R$ 4,46 por carrossel.</p>
+          </div>
+
+          <div class="controle">
+            <div class="linha"><label for="videos">Vídeos por IA, por campanha</label><output id="v-videos"></output></div>
+            <input type="range" id="videos" min="0" max="4" step="1" value="1">
+            <p class="fonte" id="fonte-videos"></p>
+          </div>
+
+          <div class="controle">
+            <label for="qualidadeVideo">Qualidade do vídeo</label>
+            <select id="qualidadeVideo">
+              <option value="6.48" selected>Veo 3.1 rápido, 8s com narração</option>
+              <option value="17.28">Veo 3.1 cheio, 8s com narração</option>
+              <option value="5.40">Kling 3.0, 10s, áudio à parte</option>
+            </select>
+            <p class="fonte">Narração em português sai do áudio nativo do Veo.</p>
+          </div>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="fixo">Custo fixo da operação, por mês</label><output id="v-fixo"></output></div>
+          <input type="range" id="fixo" min="0" max="3000" step="50" value="300">
+          <p class="fonte">Vercel Pro e domínio são R$ 116. O resto é worker, e-mail e o que entrar depois.</p>
+        </div>
+      </div>
+
+      <div class="grupo">
+        <h2>Aquisição</h2>
+
+        <div class="controle">
+          <div class="linha"><label for="cpc">Custo por clique</label><output id="v-cpc"></output></div>
+          <input type="range" id="cpc" min="1" max="20" step="0.5" value="6">
+          <p class="fonte">R$ 6 é a persona mais barata (consultor de gestão).</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="conv1">Visita que vira cadastro</label><output id="v-conv1"></output></div>
+          <input type="range" id="conv1" min="0.5" max="10" step="0.1" value="2.2">
+          <p class="fonte">2,2% é o benchmark. A meta do card 288 é 3,5%.</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="conv2">Cadastro que vira pagante</label><output id="v-conv2"></output></div>
+          <input type="range" id="conv2" min="5" max="90" step="1" value="44">
+          <p class="fonte">44% é o benchmark de teste grátis com cartão na entrada.</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="verba">Verba de anúncio, por mês</label><output id="v-verba"></output></div>
+          <input type="range" id="verba" min="0" max="10000" step="100" value="1500">
+          <p class="fonte">R$ 1.500 é o teste de lançamento que já está no backlog.</p>
+        </div>
+      </div>
+
+      <div class="grupo">
+        <h2>Retenção</h2>
+
+        <div class="controle">
+          <div class="linha"><label for="churn">Cancelamento por mês</label><output id="v-churn"></output></div>
+          <input type="range" id="churn" min="1" max="20" step="0.5" value="5">
+          <p class="fonte">5% ao mês é doze meses de vida média. Acima de 8% o negócio vira balde furado.</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="fundadores">Fundadores já fechados</label><output id="v-fundadores"></output></div>
+          <input type="range" id="fundadores" min="0" max="30" step="1" value="0">
+          <p class="fonte">Clientes que entram sem custo de anúncio, pela sua rede.</p>
+        </div>
+      </div>
+
+      <div class="grupo">
+        <h2>Oferta de fundador</h2>
+
+        <div class="controle">
+          <label for="ciclo">Como o fundador paga</label>
+          <select id="ciclo">
+            <option value="mensal">Mensal, todo mês</option>
+            <option value="anual" selected>Anual, uma vez por ano</option>
+          </select>
+          <p class="fonte">O anual é sempre dez mensalidades: dois meses de desconto.</p>
+        </div>
+
+        <div class="controle">
+          <label for="mecanica">Mecânica do desconto</label>
+          <select id="mecanica">
+            <option value="fixo" selected>Valor fixo em reais</option>
+            <option value="percentual">Percentual</option>
+            <option value="proprio">Preço próprio de fundador</option>
+          </select>
+          <p class="fonte">Hoje o cupom FUNDADOR é valor fixo de R$ 300, para sempre, e vale em qualquer produto.</p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="desconto" id="rotulo-desconto">Desconto</label><output id="v-desconto"></output></div>
+          <input type="range" id="desconto" min="0" max="1000" step="10" value="300">
+          <p class="fonte" id="fonte-desconto"></p>
+        </div>
+
+        <div class="controle">
+          <div class="linha"><label for="vagas">Vagas de fundador</label><output id="v-vagas"></output></div>
+          <input type="range" id="vagas" min="0" max="30" step="1" value="10">
+          <p class="fonte">Escassez contável. O Stripe conta as vagas, não o código.</p>
+        </div>
+      </div>
+    </form>
+
+    <div>
+      <div class="veredito" id="veredito">
+        <span class="selo" id="selo"></span>
+        <div>
+          <p id="frase"></p>
+          <p class="porque" id="porque"></p>
+        </div>
+      </div>
+
+      <div class="placas">
+        <div class="placa">
+          <p class="rotulo">Margem por cliente</p>
+          <p class="valor" id="margem"></p>
+          <p class="nota">o que sobra do preço todo mês</p>
+        </div>
+        <div class="placa">
+          <p class="rotulo">Custo de aquisição</p>
+          <p class="valor" id="cac"></p>
+          <p class="nota" id="cac-nota"></p>
+        </div>
+        <div class="placa">
+          <p class="rotulo">Valor do cliente</p>
+          <p class="valor" id="ltv"></p>
+          <p class="nota" id="ltv-nota"></p>
+        </div>
+        <div class="placa">
+          <p class="rotulo">Retorno em</p>
+          <p class="valor" id="payback"></p>
+          <p class="nota">meses até o anúncio se pagar</p>
+        </div>
+      </div>
+
+      <!-- DE ONDE VEM O CUSTO. A tabela mostra o custo por campanha item a
+           item, e a coluna da direita mostra quanto ele come do preço. É a
+           resposta à pergunta que abriu esta rodada: qual o impacto das
+           features novas na margem. -->
+      <div class="secao" id="secao-composicao">
+        <h2>De onde vem o custo de IA</h2>
+        <p class="legenda" id="legenda-composicao"></p>
+        <div class="rolagem">
+          <table>
+            <thead>
+              <tr><th>Item</th><th>Unidades</th><th>Custo unitário</th><th>Por campanha</th><th>Por mês</th><th>% do preço</th></tr>
+            </thead>
+            <tbody id="tabela-composicao"></tbody>
+          </table>
+        </div>
+        <p class="legenda" id="nota-composicao" style="margin-top:12px"></p>
+      </div>
+
+      <div class="secao">
+        <h2>A oferta de fundador</h2>
+        <p class="legenda" id="legenda-fundador"></p>
+
+        <div class="comparacao">
+          <div>
+            <p class="rotulo">CADA FUNDADOR PAGA</p>
+            <p class="valor" id="f-paga"></p>
+            <p class="nota" id="f-paga-nota"></p>
+          </div>
+          <div>
+            <p class="rotulo">CAIXA NO DIA EM QUE FECHAR TODAS</p>
+            <p class="valor" id="f-caixa"></p>
+            <p class="nota" id="f-caixa-nota"></p>
+          </div>
+          <div>
+            <p class="rotulo">MARGEM POR FUNDADOR, POR MÊS</p>
+            <p class="valor" id="f-margem"></p>
+            <p class="nota" id="f-margem-nota"></p>
+          </div>
+          <div>
+            <p class="rotulo">O MESMO DINHEIRO NO MENSAL</p>
+            <p class="valor" id="f-alternativa"></p>
+            <p class="nota" id="f-alternativa-nota"></p>
+          </div>
+        </div>
+
+        <div class="alerta" id="f-alerta" hidden></div>
+      </div>
+
+      <div class="secao">
+        <h2>Doze meses com essa verba</h2>
+        <p class="legenda" id="legenda-grafico"></p>
+        <svg id="grafico" viewBox="0 0 720 260" width="100%" role="img" aria-labelledby="titulo-grafico"></svg>
+        <p id="titulo-grafico" class="legenda"></p>
+      </div>
+
+      <div class="secao">
+        <h2>Mês a mês</h2>
+        <p class="legenda">
+          O caixa é acumulado: a verba do anúncio sai toda no mês, e a mensalidade
+          volta diluída. É por isso que um negócio saudável pode ficar meses no
+          vermelho antes de virar.
+        </p>
+        <div class="rolagem">
+          <table>
+            <thead>
+              <tr>
+                <th>Mês</th><th>Novos</th><th>Clientes</th><th>Receita</th><th>Margem</th><th>Resultado</th><th>Caixa</th>
+              </tr>
+            </thead>
+            <tbody id="tabela"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="rodape">
+        <strong>As três contas, em uma linha cada.</strong>
+        A margem é o preço menos o custo de IA.
+        O custo de aquisição é o clique dividido pelas duas conversões, ou seja
+        quanto custa achar quem paga.
+        O valor do cliente é a margem dividida pelo cancelamento, que é o mesmo
+        que dizer margem vezes quantos meses ele fica.
+        A régua que o mercado usa: <strong>valor do cliente pelo menos três vezes
+        o custo de aquisição</strong>, e retorno em até doze meses.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const dinheiro = (n) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const dinheiroCentavos = (n) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
+
+  const campos = ["preco", "variavel", "fixo", "cpc", "conv1", "conv2", "verba", "churn", "fundadores", "desconto", "vagas",
+    "campanhas", "carrosseis", "videos"];
+  const selects = ["ciclo", "mecanica", "modelo", "imagem", "qualidadeVideo"];
+
+  /**
+   * O CUSTO MEDIDO, e não estimado.
+   *
+   * Tudo abaixo saiu de `ai_usage` dos últimos 30 dias em 18/09/2026
+   * (scripts/tmp/custo-por-peca-1809.mts), com o dólar a R$ 5,40:
+   *
+   *   campanha de 7 dias, texto + imagem ......... R$ 20,74  (R$ 2,96 por dia)
+   *   uma imagem no Gemini ....................... R$  0,21
+   *   879 chamadas de texto no Sonnet 5 .......... R$ 206,64 no mês
+   *
+   * Os preços das features novas são de tabela, pesquisados no mesmo dia:
+   * GPT Image 2 alta em retrato/paisagem US$ 0,165, Veo 3.1 rápido US$ 0,15/s
+   * com áudio nativo, Kling 3.0 US$ 0,10/s. O múltiplo de cada modelo de texto
+   * saiu do MESMO volume de tokens reprecificado, e não de tabela: é a única
+   * forma honesta de comparar, porque o volume é que manda na conta.
+   */
+  const MEDIDO = {
+    textoPorCampanha: 20.1,   // R$, a parte de texto de uma campanha de 7 dias
+    imagensPorCampanha: 3,
+    carrossel: 4.46,          // R$, 5 lâminas em GPT Image 2 alta
+  };
+
+  /** O plano de entrada de hoje. É por onde o cupom de valor fixo vaza. */
+  const PLANO_DE_ENTRADA = 397;
+
+  /**
+   * A barra do desconto muda de unidade conforme a mecânica, então ela muda de
+   * escala também: R$ de desconto, percentual, ou o preço próprio de fundador.
+   */
+  const ESCALAS = {
+    fixo: { min: 0, max: 1000, step: 10, valor: 300 },
+    percentual: { min: 0, max: 70, step: 1, valor: 43 },
+    proprioMensal: { min: 0, max: 2500, step: 10, valor: 397 },
+    proprioAnual: { min: 0, max: 25000, step: 100, valor: 3970 },
+  };
+  let mecanicaAnterior = null;
+  let cicloAnterior = null;
+  const el = {};
+  for (const id of campos) el[id] = document.getElementById(id);
+  for (const id of selects) el[id] = document.getElementById(id);
+  const saida = (id) => document.getElementById("v-" + id);
+
+  function ler() {
+    const v = {};
+    for (const id of campos) v[id] = Number(el[id].value);
+    for (const id of selects) v[id] = el[id].value;
+    return v;
+  }
+
+  /**
+   * Reajusta a barra do desconto quando a mecânica ou o ciclo mudam. Sem isto
+   * um desconto de 300 lido como percentual viraria 300%, que é a forma mais
+   * rápida de um simulador mentir.
+   */
+  function ajustarEscala(v) {
+    const chave =
+      v.mecanica === "proprio" ? (v.ciclo === "anual" ? "proprioAnual" : "proprioMensal") : v.mecanica;
+    if (chave === mecanicaAnterior && v.ciclo === cicloAnterior) return false;
+    const e = ESCALAS[chave];
+    el.desconto.min = e.min;
+    el.desconto.max = e.max;
+    el.desconto.step = e.step;
+    el.desconto.value = e.valor;
+    mecanicaAnterior = chave;
+    cicloAnterior = v.ciclo;
+    return true;
+  }
+
+  /**
+   * A conta da oferta de fundador. O que importa decidir não é o desconto, é o
+   * que ele põe no caixa no dia 1 contra o que tira da margem para sempre.
+   */
+  function fundador(v) {
+    const anual = v.ciclo === "anual";
+    // O anual é sempre dez mensalidades: dois meses de desconto embutidos.
+    const lista = anual ? v.preco * 10 : v.preco;
+    let paga;
+    if (v.mecanica === "fixo") paga = Math.max(0, lista - v.desconto);
+    else if (v.mecanica === "percentual") paga = lista * (1 - v.desconto / 100);
+    else paga = v.desconto;
+
+    const descontoEfetivo = lista > 0 ? (1 - paga / lista) * 100 : 0;
+    // Por mês, para comparar anual e mensal na mesma régua.
+    const porMes = anual ? paga / 12 : paga;
+    const margemMes = porMes - v.variavel;
+    const caixaDeEntrada = paga * v.vagas;
+
+    // A mesma oferta no outro ciclo, que é a comparação que decide.
+    const listaOutro = anual ? v.preco : v.preco * 10;
+    let pagaOutro;
+    if (v.mecanica === "fixo") pagaOutro = Math.max(0, listaOutro - v.desconto);
+    else if (v.mecanica === "percentual") pagaOutro = listaOutro * (1 - v.desconto / 100);
+    else pagaOutro = anual ? v.desconto / 10 : v.desconto * 10;
+    const caixaOutro = pagaOutro * v.vagas;
+
+    // O vazamento: cupom de valor fixo não sabe em que plano está caindo.
+    const sobraNoEntrada = v.mecanica === "fixo" ? Math.max(0, PLANO_DE_ENTRADA - v.desconto) : null;
+
+    return { anual, lista, paga, descontoEfetivo, porMes, margemMes, caixaDeEntrada, caixaOutro, sobraNoEntrada };
+  }
+
+  /**
+   * A composição do custo de IA, por campanha e por mês.
+   *
+   * Devolve as linhas da tabela e o total. Quando a caixa está marcada, este
+   * total SUBSTITUI a barra do custo variável, e a barra vira um mostrador:
+   * deixar as duas editáveis ao mesmo tempo seria a promessa e a entrega em
+   * telas diferentes, de novo.
+   */
+  function composicao(v) {
+    const texto = MEDIDO.textoPorCampanha * Number(v.modelo);
+    const imagens = MEDIDO.imagensPorCampanha * Number(v.imagem);
+    const carrosseis = v.carrosseis * MEDIDO.carrossel;
+    const videos = v.videos * Number(v.qualidadeVideo);
+    const porCampanha = texto + imagens + carrosseis + videos;
+    const linhas = [
+      { item: "Texto dos redatores", unidades: "7 dias", unitario: texto / 7, total: texto },
+      { item: "Imagem das peças", unidades: `${MEDIDO.imagensPorCampanha} imagens`, unitario: Number(v.imagem), total: imagens },
+      { item: "Carrossel", unidades: `${v.carrosseis} × 5 lâminas`, unitario: MEDIDO.carrossel, total: carrosseis },
+      { item: "Vídeo por IA", unidades: `${v.videos} vídeo(s)`, unitario: Number(v.qualidadeVideo), total: videos },
+    ];
+    return { linhas, porCampanha, porMes: porCampanha * v.campanhas };
+  }
+
+  function contas(v) {
+    const margem = v.preco - v.variavel;
+    // O custo de aquisicao e o clique dividido pelas DUAS conversoes: cada
+    // clique vira cadastro numa taxa, e cada cadastro vira pagante noutra.
+    const porPagante = (v.conv1 / 100) * (v.conv2 / 100);
+    const cac = porPagante > 0 ? v.cpc / porPagante : Infinity;
+    // Vida media em meses e o inverso do cancelamento.
+    const meses = 100 / v.churn;
+    const ltv = margem * meses;
+    const razao = cac > 0 && isFinite(cac) ? ltv / cac : Infinity;
+    const payback = margem > 0 ? cac / margem : Infinity;
+    const novosPorMes = cac > 0 && isFinite(cac) ? v.verba / cac : 0;
+    const clientesParaOFixo = margem > 0 ? v.fixo / margem : Infinity;
+    return { margem, cac, meses, ltv, razao, payback, novosPorMes, clientesParaOFixo };
+  }
+
+  function projetar(v, c) {
+    const linhas = [];
+    let clientes = v.fundadores;
+    let caixa = 0;
+    for (let m = 1; m <= 12; m++) {
+      const perdidos = clientes * (v.churn / 100);
+      const novos = c.novosPorMes;
+      clientes = Math.max(0, clientes - perdidos + novos);
+      const receita = clientes * v.preco;
+      const margemTotal = clientes * c.margem;
+      const resultado = margemTotal - v.verba - v.fixo;
+      caixa += resultado;
+      linhas.push({ m, novos, clientes, receita, margemTotal, resultado, caixa });
+    }
+    return linhas;
+  }
+
+  function desenhar(linhas) {
+    const svg = document.getElementById("grafico");
+    const L = 720, A = 260;
+    const esq = 74, dir = 16, topo = 18, base = 34;
+    const larg = L - esq - dir, alt = A - topo - base;
+
+    const valores = linhas.map((l) => l.caixa);
+    const maximo = Math.max(0, ...valores);
+    const minimo = Math.min(0, ...valores);
+    const faixa = maximo - minimo || 1;
+    const y = (valor) => topo + alt - ((valor - minimo) / faixa) * alt;
+    const x = (i) => esq + (i / (linhas.length - 1)) * larg;
+
+    const cor = getComputedStyle(document.documentElement);
+    const grade = cor.getPropertyValue("--grade").trim();
+    const fraco = cor.getPropertyValue("--fraco").trim();
+    const bom = cor.getPropertyValue("--bom").trim();
+    const ruim = cor.getPropertyValue("--ruim").trim();
+
+    const partes = [];
+    // Tres marcas no eixo, e cada uma nomeia um valor que a curva alcanca.
+    for (const valor of [maximo, (maximo + minimo) / 2, minimo]) {
+      const py = y(valor);
+      partes.push(`<line x1="${esq}" y1="${py.toFixed(1)}" x2="${L - dir}" y2="${py.toFixed(1)}" stroke="${grade}" stroke-width="1"/>`);
+      partes.push(`<text x="${esq - 8}" y="${(py + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="${fraco}">${dinheiro(valor)}</text>`);
+    }
+    if (minimo < 0 && maximo > 0) {
+      const zero = y(0);
+      partes.push(`<line x1="${esq}" y1="${zero.toFixed(1)}" x2="${L - dir}" y2="${zero.toFixed(1)}" stroke="${fraco}" stroke-width="1" stroke-dasharray="4 3"/>`);
+    }
+
+    const pontos = linhas.map((l, i) => `${x(i).toFixed(1)},${y(l.caixa).toFixed(1)}`).join(" ");
+    const corDaLinha = linhas[linhas.length - 1].caixa >= 0 ? bom : ruim;
+    partes.push(`<polyline points="${pontos}" fill="none" stroke="${corDaLinha}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`);
+
+    const ultimo = linhas[linhas.length - 1];
+    partes.push(`<circle cx="${x(linhas.length - 1).toFixed(1)}" cy="${y(ultimo.caixa).toFixed(1)}" r="4.5" fill="${corDaLinha}"/>`);
+
+    for (const i of [0, 5, 11]) {
+      partes.push(`<text x="${x(i).toFixed(1)}" y="${A - 12}" text-anchor="middle" font-size="11" fill="${fraco}">mês ${linhas[i].m}</text>`);
+    }
+
+    svg.innerHTML = partes.join("");
+  }
+
+  function atualizar() {
+    const v = ler();
+
+    // A COMPOSIÇÃO manda na barra quando está ligada.
+    const ligada = document.getElementById("composicao").checked;
+    document.getElementById("painel-composicao").hidden = !ligada;
+    document.getElementById("secao-composicao").hidden = !ligada;
+    const comp = composicao(v);
+    if (ligada) {
+      v.variavel = Math.round(comp.porMes);
+      el.variavel.value = String(Math.min(400, v.variavel));
+      el.variavel.disabled = true;
+      document.getElementById("fonte-variavel").textContent =
+        `Calculado pela composição abaixo: ${dinheiroCentavos(comp.porCampanha)} por campanha, ${v.campanhas} por mês.`;
+    } else {
+      el.variavel.disabled = false;
+      document.getElementById("fonte-variavel").textContent =
+        "Medido em 18/09: R$ 20,74 por campanha de 7 dias, texto mais imagem.";
+    }
+
+    saida("campanhas").textContent = v.campanhas === 1 ? "1 por mês" : v.campanhas + " por mês";
+    saida("carrosseis").textContent = v.carrosseis === 0 ? "nenhum" : v.carrosseis === 1 ? "1 por campanha" : v.carrosseis + " por campanha";
+    saida("videos").textContent = v.videos === 0 ? "nenhum" : v.videos === 1 ? "1 por campanha" : v.videos + " por campanha";
+    document.getElementById("fonte-modelo").textContent =
+      Number(v.modelo) === 1
+        ? "O de hoje. O múltiplo é 1 por definição."
+        : `${Number(v.modelo).toFixed(2).replace(".", ",")}x o custo de texto de hoje, no mesmo volume de tokens medido.`;
+    document.getElementById("fonte-videos").textContent =
+      v.videos > 0
+        ? "O item mais caro da lista. É o que justifica limitar por créditos."
+        : "Sem vídeo por IA, o custo desta campanha cai ao patamar de antes.";
+
+    saida("preco").textContent = dinheiro(v.preco);
+    saida("variavel").textContent = dinheiro(v.variavel);
+    saida("fixo").textContent = dinheiro(v.fixo);
+    saida("cpc").textContent = dinheiroCentavos(v.cpc);
+    saida("conv1").textContent = v.conv1.toFixed(1).replace(".", ",") + "%";
+    saida("conv2").textContent = v.conv2 + "%";
+    saida("verba").textContent = dinheiro(v.verba);
+    saida("churn").textContent = v.churn.toFixed(1).replace(".", ",") + "% ao mês";
+    saida("fundadores").textContent = v.fundadores === 1 ? "1 cliente" : v.fundadores + " clientes";
+    saida("vagas").textContent = v.vagas === 1 ? "1 vaga" : v.vagas + " vagas";
+    saida("desconto").textContent =
+      v.mecanica === "percentual" ? v.desconto + "%" : dinheiro(v.desconto);
+
+    document.getElementById("rotulo-desconto").textContent =
+      v.mecanica === "fixo"
+        ? "Desconto em reais"
+        : v.mecanica === "percentual"
+          ? "Desconto percentual"
+          : v.ciclo === "anual"
+            ? "Preço de fundador, por ano"
+            : "Preço de fundador, por mês";
+    document.getElementById("fonte-desconto").textContent =
+      v.mecanica === "fixo"
+        ? "O cupom que existe no Stripe hoje: R$ 300 fixos, para sempre."
+        : v.mecanica === "percentual"
+          ? "Percentual desconta igual no mensal e no anual, que é o que o valor fixo não faz."
+          : "Um price separado no Stripe, só para fundador. Sem cupom, sem código para vazar.";
+
+    const c = contas(v);
+    const f = fundador(v);
+
+    document.getElementById("legenda-fundador").textContent =
+      `Preço de lista ${dinheiro(f.lista)} ${f.anual ? "por ano" : "por mês"}. ` +
+      `A oferta tira ${f.descontoEfetivo.toFixed(1).replace(".", ",")}% disso, para sempre.`;
+
+    document.getElementById("f-paga").textContent = dinheiro(f.paga);
+    document.getElementById("f-paga-nota").textContent = f.anual
+      ? `por ano, ou ${dinheiro(f.porMes)} por mês`
+      : "por mês, todo mês";
+
+    document.getElementById("f-caixa").textContent = dinheiro(f.caixaDeEntrada);
+    document.getElementById("f-caixa-nota").textContent = `${v.vagas} vagas fechadas, na primeira cobrança de cada uma`;
+
+    document.getElementById("f-margem").textContent = dinheiro(f.margemMes);
+    document.getElementById("f-margem-nota").textContent =
+      f.margemMes > 0
+        ? `depois dos ${dinheiro(v.variavel)} de IA. Um fundador cobre ${(v.fixo > 0 ? f.margemMes / v.fixo : 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 0 })} do custo fixo`
+        : "a oferta custa dinheiro em vez de render";
+
+    document.getElementById("f-alternativa").textContent = dinheiro(f.caixaOutro);
+    document.getElementById("f-alternativa-nota").textContent = f.anual
+      ? `é o que as mesmas ${v.vagas} vagas poriam no caixa se a oferta fosse mensal`
+      : `é o que as mesmas ${v.vagas} vagas poriam no caixa se a oferta fosse anual`;
+
+    const alerta = document.getElementById("f-alerta");
+    if (f.sobraNoEntrada !== null) {
+      alerta.hidden = false;
+      alerta.innerHTML =
+        `<strong>Valor fixo não sabe em que plano está caindo.</strong> ` +
+        `Os mesmos ${dinheiro(v.desconto)} aplicados no plano de entrada de ${dinheiro(PLANO_DE_ENTRADA)} ` +
+        `deixam o cliente pagando <strong>${dinheiro(f.sobraNoEntrada)}</strong> por mês, para sempre. ` +
+        `E no anual de ${dinheiro(v.preco * 10)} o mesmo cupom vira ` +
+        `${((v.desconto / (v.preco * 10)) * 100).toFixed(1).replace(".", ",")}% de desconto, ` +
+        `ou seja não é oferta nenhuma. O código FUNDADOR está ativo no Stripe, sem valor mínimo e sem ` +
+        `restrição de produto, e o checkout aceita código digitado.`;
+    } else {
+      alerta.hidden = true;
+    }
+    document.getElementById("margem").textContent = dinheiro(c.margem);
+    document.getElementById("cac").textContent = isFinite(c.cac) ? dinheiro(c.cac) : "sem conversão";
+    document.getElementById("cac-nota").textContent =
+      isFinite(c.cac) ? `${Math.round(1 / ((v.conv1 / 100) * (v.conv2 / 100))).toLocaleString("pt-BR")} visitas por cliente` : "ajuste as conversões";
+    document.getElementById("ltv").textContent = dinheiro(c.ltv);
+    document.getElementById("ltv-nota").textContent = `${c.meses.toFixed(1).replace(".", ",")} meses de vida média`;
+    document.getElementById("payback").textContent =
+      isFinite(c.payback) ? c.payback.toFixed(1).replace(".", ",") : "nunca";
+
+    // A TABELA DA COMPOSIÇÃO, com a coluna que responde à pergunta da rodada:
+    // quanto cada feature nova come do preço.
+    if (ligada) {
+      document.getElementById("legenda-composicao").textContent =
+        `Uma campanha de 7 dias custa ${dinheiroCentavos(comp.porCampanha)} de IA. ` +
+        `Com ${v.campanhas} por mês, são ${dinheiro(comp.porMes)}, ou ` +
+        `${(comp.porMes / v.preco * 100).toFixed(1).replace(".", ",")}% do preço de ${dinheiro(v.preco)}.`;
+      document.getElementById("tabela-composicao").innerHTML = comp.linhas
+        .map((l) => {
+          const mes = l.total * v.campanhas;
+          const fatia = v.preco > 0 ? (mes / v.preco) * 100 : 0;
+          return `<tr>
+            <td>${l.item}</td>
+            <td>${l.unidades}</td>
+            <td>${l.total > 0 ? dinheiroCentavos(l.unitario) : "—"}</td>
+            <td>${dinheiroCentavos(l.total)}</td>
+            <td>${dinheiroCentavos(mes)}</td>
+            <td class="${fatia > 25 ? "negativo" : ""}">${fatia.toFixed(1).replace(".", ",")}%</td>
+          </tr>`;
+        })
+        .join("") +
+        `<tr><td><strong>Total</strong></td><td></td><td></td>
+          <td><strong>${dinheiroCentavos(comp.porCampanha)}</strong></td>
+          <td><strong>${dinheiro(comp.porMes)}</strong></td>
+          <td><strong class="${comp.porMes / v.preco > 0.3 ? "negativo" : ""}">${(comp.porMes / v.preco * 100).toFixed(1).replace(".", ",")}%</strong></td></tr>`;
+
+      const semVideo = comp.porMes - comp.linhas[3].total * v.campanhas;
+      document.getElementById("nota-composicao").textContent =
+        v.videos > 0
+          ? `Sem o vídeo por IA, o mesmo mês custaria ${dinheiro(semVideo)}, ou seja ` +
+            `${dinheiro(comp.porMes - semVideo)} a menos. O vídeo sozinho é ` +
+            `${((comp.linhas[3].total * v.campanhas / comp.porMes) * 100).toFixed(0)}% da conta, e é por isso que ele ` +
+            `precisa ser vendido por crédito e não incluído no plano.`
+          : `Com vídeo por IA ligado, um por campanha, este mês passaria a custar ` +
+            `${dinheiro(comp.porMes + Number(v.qualidadeVideo) * v.campanhas)}.`;
+    }
+
+    const linhas = projetar(v, c);
+    desenhar(linhas);
+
+    const corpo = document.getElementById("tabela");
+    corpo.innerHTML = linhas
+      .map(
+        (l) => `<tr>
+          <td>${l.m}</td>
+          <td>${l.novos.toFixed(1).replace(".", ",")}</td>
+          <td>${l.clientes.toFixed(1).replace(".", ",")}</td>
+          <td>${dinheiro(l.receita)}</td>
+          <td>${dinheiro(l.margemTotal)}</td>
+          <td class="${l.resultado >= 0 ? "positivo" : "negativo"}">${dinheiro(l.resultado)}</td>
+          <td class="${l.caixa >= 0 ? "positivo" : "negativo"}">${dinheiro(l.caixa)}</td>
+        </tr>`
+      )
+      .join("");
+
+    const ultimo = linhas[linhas.length - 1];
+    const viraNoMes = linhas.find((l) => l.resultado >= 0)?.m ?? null;
+    document.getElementById("legenda-grafico").textContent =
+      `Caixa acumulado com ${dinheiro(v.verba)} de anúncio por mês. ` +
+      (viraNoMes
+        ? `O resultado do mês fica positivo no mês ${viraNoMes}.`
+        : "O resultado do mês não fica positivo em nenhum mês desta janela.");
+    document.getElementById("titulo-grafico").textContent =
+      `No mês 12: ${ultimo.clientes.toFixed(0)} clientes, ${dinheiro(ultimo.receita)} de receita no mês, caixa acumulado de ${dinheiro(ultimo.caixa)}.`;
+
+    // O veredito olha duas reguas ao mesmo tempo, porque uma sozinha engana:
+    // razao boa com retorno em vinte meses quebra por caixa antes de dar certo.
+    const caixa = document.getElementById("veredito");
+    const selo = document.getElementById("selo");
+    const frase = document.getElementById("frase");
+    const porque = document.getElementById("porque");
+    let cor, fundo, rotulo, texto;
+
+    if (!isFinite(c.cac) || c.margem <= 0) {
+      cor = "var(--ruim)"; fundo = "var(--ruim-fundo)"; rotulo = "Não fecha";
+      texto = c.margem <= 0 ? "O custo de IA come o preço inteiro." : "Sem conversão não existe cliente.";
+    } else if (c.razao >= 3 && c.payback <= 12) {
+      cor = "var(--bom)"; fundo = "var(--bom-fundo)"; rotulo = "Para de pé";
+      texto = `Cada real de anúncio devolve ${c.razao.toFixed(1).replace(".", ",")} em margem, e o anúncio se paga em ${c.payback.toFixed(1).replace(".", ",")} meses.`;
+    } else if (c.razao >= 1.5) {
+      cor = "var(--limite)"; fundo = "var(--limite-fundo)"; rotulo = "No limite";
+      texto = `A razão está em ${c.razao.toFixed(1).replace(".", ",")} e o retorno em ${c.payback.toFixed(1).replace(".", ",")} meses.`;
+    } else {
+      cor = "var(--ruim)"; fundo = "var(--ruim-fundo)"; rotulo = "Não para de pé";
+      texto = `Cada cliente custa ${dinheiro(c.cac)} e devolve ${dinheiro(c.ltv)} ao longo da vida dele.`;
+    }
+
+    caixa.style.background = fundo;
+    caixa.style.borderColor = cor;
+    selo.style.background = cor;
+    selo.style.color = "var(--bg)";
+    selo.textContent = rotulo;
+    frase.textContent = texto;
+    porque.textContent =
+      `Precisa de ${isFinite(c.clientesParaOFixo) ? Math.ceil(c.clientesParaOFixo) : "infinitos"} cliente(s) só para cobrir o custo fixo. ` +
+      `Com ${dinheiro(v.verba)} por mês entram ${c.novosPorMes.toFixed(1).replace(".", ",")} clientes novos.`;
+  }
+
+  for (const id of campos) el[id].addEventListener("input", atualizar);
+  document.getElementById("composicao").addEventListener("change", atualizar);
+  // Trocar a mecânica reescala a barra do desconto antes de recalcular.
+  for (const id of selects)
+    el[id].addEventListener("change", () => {
+      ajustarEscala(ler());
+      atualizar();
+    });
+  ajustarEscala(ler());
+  atualizar();
+  // O grafico le a cor do tema na hora de desenhar, entao ele precisa ser
+  // redesenhado quando o tema do sistema muda debaixo da pagina.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", atualizar);
+</script>
+
+</body></html>

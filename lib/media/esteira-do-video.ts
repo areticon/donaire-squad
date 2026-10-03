@@ -30,6 +30,10 @@ export async function completarEsteiraDoVideo(videoJobId: string): Promise<{
     select: { radar: true, projectId: true },
   });
   if (!video) return { pesquisou: false, escritos: 0, revisados: 0 };
+  // O teto das rotas que chamam a esteira é 300 s (agendar, revisar, piloto).
+  // A correção do squad depois da Vera (29/09) é a parte que pode não caber,
+  // e ela precisa saber o prazo para não começar tentativa que morre no meio.
+  const prazoEm = Date.now() + 280_000;
 
   const tomou = await tomarEsteira(video.projectId, videoJobId);
   if (!tomou) {
@@ -60,7 +64,7 @@ export async function completarEsteiraDoVideo(videoJobId: string): Promise<{
     await sincronizarQuadroDoVideo(videoJobId).catch((e) =>
       console.error(`[esteira][${videoJobId}] sincronizar falhou:`, e)
     );
-    const revisados = await revisarDiasDoVideo(videoJobId).catch((e) => {
+    const revisados = await revisarDiasDoVideo(videoJobId, { prazoEm }).catch((e) => {
       console.error(`[esteira][${videoJobId}] vera falhou:`, e);
       return 0;
     });

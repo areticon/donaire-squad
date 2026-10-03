@@ -7,34 +7,105 @@ datasource db {
 }
 
 model User {
-  id               String    @id @default(cuid())
-  email            String    @unique
-  name             String?
-  emailVerified    Boolean   @default(false)
-  image            String?
-  plan             String    @default("free")
-  stripeCustomerId String?
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String?
+  emailVerified     Boolean   @default(false)
+  image             String?
+  plan              String    @default("free")
+  /// "user" ou "admin". Admin é acesso interno da própria Demandou: entra sem
+  /// plano e não tem crédito debitado. Nasceu em 12/09/2026, quando o Bruno
+  /// cancelou a própria assinatura de R$ 149 e precisou continuar dentro do
+  /// produto sem ser cobrado. NÃO é papel de cliente nem plano: quem paga
+  /// continua sendo governado por `plan` e pela assinatura no Stripe.
+  role              String    @default("user")
+  stripeCustomerId  String?
+  /// ATE QUANDO O PERIODO DE TESTE VAI. Null quando a conta nao esta em teste.
+  ///
+  /// Escrito pelo webhook do Stripe quando a assinatura chega como `trialing`,
+  /// e apagado quando ela vira `active`. Existe porque o teste tem limites
+  /// PROPRIOS (uma campanha, sete dias, um video de ate 30 s) e o produto
+  /// precisa saber que esta em teste sem perguntar ao Stripe a cada clique:
+  /// pergunta de rede no caminho de criar campanha e latencia que o cliente
+  /// sente e falha que ele nao entende.
+  trialEndsAt       DateTime?
   /// Saldo de créditos do ciclo atual. Reposto pelo webhook do Stripe a cada
   /// renovação. Nunca alterar direto: use lib/credits, que grava o extrato
   /// junto na mesma transação.
-  creditsBalance   Int       @default(0)
+  creditsBalance    Int       @default(0)
   /// Quando o saldo foi reposto pela última vez.
-  creditsResetAt   DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  creditsResetAt    DateTime?
+  /// SALDO DE VÍDEO POR IA, separado do saldo do plano. Decisão de 19/09.
+  ///
+  /// Não é capricho de modelagem: é a conta que tirou o Veo do produto em
+  /// agosto voltando pela porta certa. Um vídeo de 8 segundos com narração
+  /// custa de R$ 6,48 (Veo 3.1 rápido) a R$ 17,28 (cheio). No plano Essencial
+  /// de R$ 397, quatro vídeos cheios por campanha custam R$ 431 por mês, ou
+  /// 108,6% do preço do plano: a margem fica NEGATIVA antes de contar
+  /// qualquer outra peça.
+  ///
+  /// Com um saldo só, nada impediria o cliente de gastar o plano inteiro em
+  /// vídeo. Com dois, vídeo é comprado à parte e o plano não pode ser drenado
+  /// por ele. O extrato é o mesmo (`credit_transactions`), separado pela
+  /// coluna `carteira`.
+  videoCredits      Int       @default(0)
+  /// O boneco de massinha que a pessoa escolheu para andar no escritório 3D
+  /// (corpo, cabelo, pele, roupa, óculos, barba, acessório). Null = o padrão,
+  /// de laranja. Nasceu em 28/09/2026, pedido do Bruno: "o avatar do usuário
+  /// deve ter a opção de personalizar". Lido sempre por normalizarAparencia
+  /// (lib/squad/aparencia-do-boneco.ts), que devolve o padrão no que vier errado.
+  aparenciaDoBoneco Json?
+  /// ACESSOS EXTRAS vendidos à parte, além dos inclusos no plano (01/10).
+  /// Cada um custa R$ 197 por mês e soma 2.000 créditos e 1 gravação por mês à
+  /// cota da conta. Escrito pelo admin (/admin/clientes) ou pelo webhook do
+  /// Stripe quando existir o preço do acesso extra. Ver lib/equipe/regras.ts.
+  acessosExtras     Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  projects Project[]
-  sessions Session[]
-  accounts Account[]
-  creditTx CreditTransaction[]
-
-  @@map("users")
+  projects       Project[]
+  sessions       Session[]
+  accounts       Account[]
+  creditTx       CreditTransaction[]
+  /// Os chamados de suporte que esta pessoa abriu (02/10). Ver Chamado.
+  chamados       Chamado[]
+  /// Os contratos anuais desta conta, quando ela é cliente (02/10). Ver Contrato.
+  contratos      Contrato[]
+  /// A equipe desta conta, quando ela é a DONA (paga e convida). Ver MembroDaEquipe.
+  equipe         MembroDaEquipe[]    @relation("DonoDaEquipe")
+  /// As equipes de que esta pessoa faz ou fez parte como MEMBRO.
+  participacoes  MembroDaEquipe[]    @relation("MembroDaEquipe")
   /// De onde esta pessoa veio na PRIMEIRA visita (utm_source), gravado no
   /// cadastro a partir do cookie de primeira visita. Guardado aqui, e nao so
   /// no evento, porque e isto que permite responder "quanto custou este
   /// cliente" um ano depois, quando os eventos ja tiverem sido limpos.
   origem         String?
   campanha       String?
+  /// MARCADA COMO ROBÔ (01/10). Null = conta comum.
+  ///
+  /// Marcar e não apagar, de propósito: a conta de robô quase sempre usa o
+  /// e-mail de uma pessoa de verdade que nunca pediu conta aqui, e apagar
+  /// sem olhar pode levar junto alguém que só escreveu o nome de um jeito
+  /// estranho. Marcada, ela sai da métrica de conversão e do CRM, e a decisão
+  /// de apagar fica com o Bruno. Escrito por scripts/tmp/robos-marcar-0110.mts.
+  roboEm         DateTime?
+  /// Por que foi marcada ("nome_aleatorio", "gmail_com_pontos", ...).
+  roboMotivo     String?
+  /// IP com sal (mesma regra do funil) e navegador de onde o cadastro veio.
+  /// Até 01/10 nada disso era guardado, e o diagnóstico dos robôs não tinha
+  /// como dizer se 86 contas vinham de 1 máquina ou de 80.
+  cadastroIpHash String?
+  cadastroAgente String?
+  /// E-MAILS DE AVISO LIGADOS (02/10). Desligado, a pessoa deixa de receber
+  /// por e-mail os avisos que NÃO pedem a ação dela (vídeo pronto). Os de
+  /// aprovação (roteiro, peças da semana) continuam saindo sempre: sem eles o
+  /// trabalho fica parado esperando alguém que não sabe que é esperado. O sino
+  /// da plataforma recebe tudo, sempre. Ver lib/notificacoes.
+  emailsDeAviso  Boolean   @default(true)
+  /// O sino da plataforma (02/10). Ver Notificacao.
+  notificacoes   Notificacao[]
+
+  @@map("users")
 }
 
 /// Extrato de créditos, uma linha por movimento.
@@ -51,17 +122,33 @@ model CreditTransaction {
   amount    Int
   /// O que gerou: "video_job", "post_text", "recarga", "renovacao", "estorno".
   operation String
+  /// De QUAL saldo este movimento saiu: "plano" ou "video".
+  ///
+  /// Sem esta coluna, `balance` seria ambíguo a partir de 19/09: ele guarda o
+  /// saldo DEPOIS do movimento, e passam a existir dois saldos. Um extrato em
+  /// que não dá para saber a qual carteira a linha pertence não fecha com
+  /// nenhuma das duas, e extrato que não fecha é o mesmo que não existir.
+  carteira  String   @default("plano")
   /// Id do que gerou, para conciliar entrega com cobrança.
   refId     String?
   /// Saldo depois deste movimento, para auditar sem somar o extrato inteiro.
   balance   Int
   note      String?
+  /// QUEM FEZ, quando não foi o dono da conta (01/10, acesso de equipe).
+  ///
+  /// `userId` continua sendo a conta que PAGA (o saldo é dela e o extrato fecha
+  /// com ele). Sem esta coluna, o gasto de um vendedor ficaria igual ao do dono
+  /// e não haveria como mostrar o consumo por membro nem aplicar o teto de cada
+  /// um. Sem chave estrangeira de propósito: o extrato sobrevive à saída do
+  /// membro, como o registro do admin sobrevive à exclusão do alvo.
+  autorId   String?
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([operation, refId])
+  @@index([autorId, createdAt])
   @@map("credit_transactions")
 }
 
@@ -115,63 +202,149 @@ model Verification {
 }
 
 model Project {
-  id             String   @id @default(cuid())
-  userId         String
-  name           String
-  description    String?
-  status         String   @default("setup")
-  setupStep      Int      @default(0)
-  config         Json?
-  voice          String?
-  niche          String?
-  targetAudience String?
-  colorPalette   String?
+  id                 String   @id @default(cuid())
+  userId             String
+  name               String
+  description        String?
+  status             String   @default("setup")
+  setupStep          Int      @default(0)
+  config             Json?
+  voice              String?
+  niche              String?
+  targetAudience     String?
+  colorPalette       String?
+  /// O logo do cliente, no Blob privado. Entra na capa do video completo e
+  /// nas pecas visuais. Pedido do Bruno em 13/09: a etapa Design do setup so
+  /// tinha paleta em hex e quatro presets, e nao havia onde subir a marca.
+  logoUrl            String?  @db.Text
+  /// O manual de marca em PDF, no Blob. O texto dele vira um ProjectContext
+  /// do tipo "brand", compilado pela IA, que e o que as campanhas leem.
+  brandManualUrl     String?  @db.Text
+  brandManualName    String?
   /// O estilo de edicao de video: "dramatico", "acelerado", "serio" ou
   /// "animado". Fica no PROJETO e nao no envio de cada video, por decisao do
   /// Bruno em 24/08: canal com estilo diferente a cada video nao constroi
   /// reconhecimento. Nulo cai no acelerado, ver lib/media/estilos.ts.
-  videoStyle     String?
+  videoStyle         String?
+  /// A escolha COMPLETA do estilo de edição (29/09): a linguagem do catálogo
+  /// (Vox, BBC, National Geographic...), as camadas (câmera, efeitos, look) e,
+  /// quando o cliente escreveu o próprio estilo, o texto dele e a leitura do
+  /// diretor. `videoStyle` continua sendo o perfil de legenda que o worker de
+  /// hoje executa, derivado da base da linguagem. Ver lib/media/catalogo-de-estilos.ts.
+  videoEstiloEscolha Json?
   /// A trilha dos cortes, que o CLIENTE traz. Decisao juridica de 23/08: a
   /// Demandou nunca distribui musica, ela e ferramenta de edicao como o
   /// CapCut. A engenharia e a mesma para biblioteca do YouTube (so CC-BY),
   /// assinatura propria ou faixa autoral.
-  videoMusicUrl  String?  @db.Text
-  videoMusicName String?
+  videoMusicUrl      String?  @db.Text
+  videoMusicName     String?
   /// Termos do negocio do cliente que a transcricao costuma errar (nomes
   /// proprios, siglas: "Areticon", "SaaS"). Texto separado por virgula, que o
   /// cliente edita na tela de video. Pedido do Bruno em 30/08, depois de a
   /// legenda escrever o nome da empresa dele errado. Alimenta o keyterm da
   /// Deepgram na transcricao nova e a correcao deterministica das palavras.
-  videoTerms     String?  @db.Text
+  videoTerms         String?  @db.Text
   /// Como o cliente quer a semana a partir de cada gravacao: formato por dia
   /// (terca a domingo; segunda e sempre o video). Chaves "2".."7", valor
   /// "text" | "image" | "carousel" | "infographic" | "thread" | "poll" | "free"
   /// ou nulo para dia sem post. Nulo inteiro cai na sugestao do squad, ver
   /// lib/media/semana-do-video.ts. Pedido do Bruno em 02/09: mesmo com o video
   /// como fonte, quem escolhe o formato de cada dia e o cliente, nao o squad.
-  videoSemana    Json?
+  videoSemana        Json?
   /// O estilo da capa (thumbnail) do video completo no YouTube: "impacto",
   /// "limpo" ou "manchete", ver lib/media/capas-do-completo.ts. Fica no
   /// projeto pelo mesmo motivo do videoStyle: capa igual em todo video e o
   /// que faz o canal ser reconhecido na listagem. Pedido do Bruno em 02/09,
   /// junto com "pelo menos 2 opcoes" por video.
-  capaEstilo     String?
-  postFrequency  String?
-  timezone       String   @default("America/Sao_Paulo")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  capaEstilo         String?
+  postFrequency      String?
+  timezone           String   @default("America/Sao_Paulo")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user           User             @relation(fields: [userId], references: [id])
-  agents         ProjectAgent[]
-  socialAccounts SocialAccount[]
-  posts          Post[]
-  runs           PipelineRun[]
-  memories       ProjectMemory[]
-  cards          CampaignCard[]
-  contexts       ProjectContext[]
-  videoJobs      VideoJob[]
+  user               User               @relation(fields: [userId], references: [id])
+  agents             ProjectAgent[]
+  socialAccounts     SocialAccount[]
+  posts              Post[]
+  runs               PipelineRun[]
+  memories           ProjectMemory[]
+  cards              CampaignCard[]
+  contexts           ProjectContext[]
+  videoJobs          VideoJob[]
+  roteiros           Roteiro[]
+  /// Os membros da equipe a quem o dono liberou este projeto (01/10).
+  acessosDeEquipe    AcessoAoProjeto[]
+  /// Os perfis de referência do nicho e as coletas deles (01/10, trilho de referências).
+  referenciasPerfis  ReferenciaPerfil[]
+  referenciasColetas ReferenciaColeta[]
 
   @@map("projects")
+}
+
+/// UM MEMBRO DA EQUIPE de uma conta (01/10/2026, decisão do Bruno).
+///
+/// Até aqui cada login era uma conta: créditos, plano e projetos eram do
+/// usuário. O primeiro Enterprise (uma empresa de consórcio com ~20
+/// vendedores) precisa dar acesso ao time sem dar a cada vendedor um plano.
+///
+/// A regra que sustenta a margem: o membro NÃO tem saldo nem plano próprios.
+/// Todo gasto dele sai da conta do dono (créditos, carteira de vídeo e
+/// gravações do mês), e quando a cota do dono acaba ninguém gera mais até
+/// renovar ou recarregar. Por isso o número de pessoas não mexe no custo
+/// máximo: quem limita o gasto é a cota, que o plano paga.
+///
+/// Nasce como CONVITE (status "convidado", sem userId) e vira "ativo" quando a
+/// pessoa entra com o próprio login pelo link. "removido" guarda o histórico
+/// do consumo em vez de apagar a linha.
+model MembroDaEquipe {
+  id              String    @id @default(cuid())
+  /// A conta que paga e convida.
+  donoId          String
+  /// Quem entrou pelo convite. Null enquanto o convite não foi aceito.
+  userId          String?
+  /// Para quem o convite foi. O aceite exige entrar com este e-mail.
+  email           String
+  nome            String?
+  /// "convidado" | "ativo" | "removido"
+  status          String    @default("convidado")
+  /// Hash SHA-256 do token do link do convite: o token em si só existe no
+  /// e-mail, para quem lê o banco não conseguir aceitar convite alheio.
+  tokenHash       String?   @unique
+  conviteExpiraEm DateTime?
+  /// true: vê todos os projetos do dono, inclusive os criados depois.
+  todosOsProjetos Boolean   @default(false)
+  /// TETO OPCIONAL POR MÊS, definido pelo dono. Null é sem teto próprio (vale
+  /// só a cota da conta). O mês é o ciclo de créditos do dono.
+  tetoGravacoes   Int?
+  tetoCreditos    Int?
+  aceitoEm        DateTime?
+  removidoEm      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  dono     User              @relation("DonoDaEquipe", fields: [donoId], references: [id], onDelete: Cascade)
+  usuario  User?             @relation("MembroDaEquipe", fields: [userId], references: [id], onDelete: Cascade)
+  projetos AcessoAoProjeto[]
+
+  @@index([donoId, status])
+  @@index([userId, status])
+  @@index([email])
+  @@map("membros_da_equipe")
+}
+
+/// Qual projeto do dono um membro pode ver e usar (01/10). Um vendedor costuma
+/// ter o próprio projeto (a marca pessoal dele), criado pelo dono e liberado aqui.
+model AcessoAoProjeto {
+  membroId  String
+  projectId String
+  createdAt DateTime @default(now())
+
+  membro  MembroDaEquipe @relation(fields: [membroId], references: [id], onDelete: Cascade)
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([membroId, projectId])
+  @@index([projectId])
+  @@map("acessos_ao_projeto")
 }
 
 model ProjectAgent {
@@ -193,21 +366,40 @@ model ProjectAgent {
 }
 
 model SocialAccount {
-  id               String    @id @default(cuid())
-  projectId        String
-  platform         String
-  accountType      String    @default("personal") // "personal" | "organization"
-  organizationId   String? // LinkedIn org numeric ID (only for accountType=organization)
-  blotatoAccountId String?
-  displayName      String?
-  username         String?
-  platformUserId   String?
-  avatarUrl        String?
-  accessToken      String?
-  refreshToken     String?
-  tokenExpiresAt   DateTime?
-  isActive         Boolean   @default(true)
-  createdAt        DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  projectId            String
+  platform             String
+  accountType          String    @default("personal") // "personal" | "organization"
+  organizationId       String? // LinkedIn org numeric ID (only for accountType=organization)
+  blotatoAccountId     String?
+  displayName          String?
+  username             String?
+  platformUserId       String?
+  avatarUrl            String?
+  accessToken          String?
+  refreshToken         String?
+  tokenExpiresAt       DateTime?
+  isActive             Boolean   @default(true)
+  /// Quando a rede RECUSOU o token numa publicação (401). Null = nunca recusou.
+  ///
+  /// Existe porque `isActive` e "o token funciona" são coisas diferentes e
+  /// estavam no mesmo campo. `isActive` é escolha do usuário (a chave liga e
+  /// desliga da tela de Configurações); isto é fato da rede, descoberto na
+  /// única hora em que dá para descobrir, que é tentando publicar.
+  ///
+  /// Sem isto, em 14/09 a tela mostrava oito contas de LinkedIn verdes e
+  /// "ativa" com seis mortas: a rota de publicação aprendia a verdade, marcava
+  /// o POST como falho e jogava fora o que sabia sobre a CONTA. O cliente era
+  /// mandado para uma tela que parecia estar tudo certo.
+  ///
+  /// `tokenExpiresAt` não responde isso: ele guarda a validade PROMETIDA na
+  /// hora da conexão, e revogação não mexe nela. Os seis tokens revogados
+  /// valiam até novembro segundo esse campo.
+  needsReconnectAt     DateTime?
+  /// O código que a rede devolveu (REVOKED_ACCESS_TOKEN, expired_token, ...),
+  /// para a tela dizer o motivo em vez de chutar "expirou".
+  needsReconnectReason String?
+  createdAt            DateTime  @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   posts   Post[]
@@ -240,10 +432,12 @@ model Post {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
-  run           PipelineRun?   @relation(fields: [runId], references: [id])
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount?     @relation(fields: [socialAccountId], references: [id])
+  run           PipelineRun?       @relation(fields: [runId], references: [id])
   metrics       PostMetric?
+  /// O histórico das leituras dos números (01/10), com a fonte de cada uma.
+  leituras      LeituraDeMetrica[]
   cards         CampaignCard[]
 
   @@map("posts")
@@ -325,10 +519,18 @@ model CampaignCard {
 model ProjectContext {
   id        String   @id @default(cuid())
   projectId String
-  type      String // "brand" | "references" | "regulations" | "editorial" | "examples"
+  type      String // "brand" | "business" | "references" | "regulations" | "editorial" | "examples"
   title     String
   rawInput  String   @db.Text
   compiled  String   @db.Text
+  /// Em que pe esta a leitura pela IA: "lendo" | "pronto" | "falhou".
+  ///
+  /// Existe desde 18/09/2026. Sem ela, "ainda sendo lido" e "falhou" sao a
+  /// mesma coisa no banco (compiled vazio nos dois), e sao estados opostos para
+  /// quem esta na tela. So `pronto` entra no prompt das campanhas.
+  status    String   @default("pronto")
+  /// A mensagem do erro, para a tela dizer o que deu errado. So com "falhou".
+  erro      String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -341,9 +543,9 @@ model ProjectContext {
 /// O arquivo em si mora no object storage; aqui ficam só os metadados, a
 /// transcrição e os cortes escolhidos. Vídeo nunca vai para dentro do Postgres.
 model VideoJob {
-  id             String    @id @default(cuid())
-  projectId      String
-  userId         String
+  id               String    @id @default(cuid())
+  projectId        String
+  userId           String
   /// Estados de ESPERA (a plataforma aguarda o cliente):    uploaded,
   /// transcribed, selected, cut, ready, failed.
   /// Estados de TRABALHO (algo está rodando agora):          transcribing,
@@ -358,15 +560,15 @@ model VideoJob {
   /// Vercel matava a função no teto de tempo, o `catch` nunca rodava e o status
   /// ficava exatamente igual ao de quem nunca tinha começado. A falha era
   /// invisível por construção. Ver `lib/media/video-state.ts`.
-  status         String    @default("uploaded")
+  status           String    @default("uploaded")
   /// Quando o estado de TRABALHO atual começou. Null em estado de espera.
   /// É isto que permite declarar morto o trabalho que passou do prazo, que é o
   /// único jeito de perceber uma função derrubada pela plataforma: ela não
   /// consegue gravar o próprio erro.
-  startedAt      DateTime?
+  startedAt        DateTime?
   /// Quantas vezes a etapa atual foi tentada. Existe para a fila não repetir
   /// para sempre um trabalho que falha sozinho.
-  attempts       Int       @default(0)
+  attempts         Int       @default(0)
   /// Quando a esteira terminou de verdade: cortes, textos e vídeo completo no
   /// quadro.
   ///
@@ -375,39 +577,58 @@ model VideoJob {
   /// dizia 32 minutos e, três minutos depois, 35, para um trabalho que levou
   /// 11. O número que o cliente lê sobre a promessa central do produto não pode
   /// ser um cronômetro que continua correndo depois da entrega.
-  finishedAt     DateTime?
-  originalName   String?
-  blobUrl        String    @db.Text
-  sizeBytes      BigInt?
-  durationSec    Int?
+  finishedAt       DateTime?
+  /// Quando a RODADA atual começou. Null quer dizer "desde o envio"
+  /// (`createdAt`), que é o caso de todo vídeo que roda uma vez só.
+  ///
+  /// Existe desde 30/09: o vídeo de teste foi refeito às 17:35 e a faixa do
+  /// Gestor mostrou "196:25, quase lá" às 18:31, porque contava de `createdAt`
+  /// (15:15) e o vídeo completo tinha falhado sem prazo. Relógio que conta de
+  /// antes da rodada mente para o cliente justo na promessa de tempo.
+  rodadaEm         DateTime?
+  originalName     String?
+  blobUrl          String    @db.Text
+  sizeBytes        BigInt?
+  durationSec      Int?
   /// Transcrição com marcação de tempo por palavra, vinda do Whisper.
-  transcript     Json?
+  transcript       Json?
   /// A pesquisa do Roberto Radar feita a partir da transcricao (teses com
   /// minuto, o que estao falando, dados com fonte, angulo por dia). E o
   /// briefing que todo redator recebe junto com a transcricao, e mora aqui
   /// porque nasce antes de existir run ou card. Ver lib/media/radar-do-video.ts.
-  radar          Json?
+  radar            Json?
   /// Trechos escolhidos pela IA: início, fim, motivo, título e os textos de
   /// cada rede gerados a partir dele. Depois do corte, cada trecho ganha
   /// também a mídia produzida (vertical, horizontal, capa), o enquadramento
   /// que o squad decidiu, e as escolhas do cliente sobre publicar e para onde.
-  clips          Json?
+  clips            Json?
   /// A gravação inteira, recodificada para o canal: faststart, tamanho menor.
   /// Medido em 22/08: 811 MB de upload viraram cerca de 140 MB aqui, o que
   /// ataca a transferência, que é 58% do custo do produto de vídeo.
-  completoUrl    String?   @db.Text
-  completoBytes  BigInt?
+  completoUrl      String?   @db.Text
+  completoBytes    BigInt?
+  /// A EDIÇÃO do vídeo completo (30/09), no padrão da montagem dos cortes:
+  /// estado da esteira, a fala transcrita do próprio completo, a análise de
+  /// câmera e tela, o plano do diretor por blocos, os assets, e o completo
+  /// ORIGINAL guardado quando a versão editada toma o lugar em `completoUrl`.
+  /// Ver lib/media/montagem-do-completo.ts. Null: nunca pedida.
+  completoMontagem Json?
+  /// So o AUDIO da gravacao, extraido pelo worker quando o arquivo passa do
+  /// teto da Deepgram (1,9 GB). Existe desde 29/09, quando o limite passou a
+  /// ser de 1, 2 e 5 horas por plano: 5 h de video a 4 Mbps pesam 9 GB, e o
+  /// audio delas cerca de 110 MB. Null quando o video coube direto.
+  audioUrl         String?   @db.Text
   /// O quadro com o melhor rosto da gravação inteira, escolhido pelo squad.
   /// Base de todas as capas. Mora aqui e não no trecho porque os melhores
   /// momentos de FALA não coincidem com os melhores momentos de IMAGEM: numa
   /// gravação com slides, todos os trechos escolhidos caem em tela
   /// compartilhada, e a capa saía com texto branco em cima de um slide.
-  capaFonteUrl   String?   @db.Text
+  capaFonteUrl     String?   @db.Text
   /// As opcoes de capa do video completo, compostas sobre o quadro-fonte:
   /// { estilo, opcoes: [{ url, frase, expressao }], escolhida, geradaEm }.
   /// Ate 02/09 o completo subia ao YouTube SEM capa: o quadro-fonte existia
   /// so como poster do player. Ver lib/media/capas-do-completo.ts.
-  capas          Json?
+  capas            Json?
   /// O que o especialista achou da MATERIA-PRIMA, em uma frase, para o cliente
   /// ler.
   ///
@@ -416,11 +637,18 @@ model VideoJob {
   /// 2 possiveis cortes". Sem este campo, a analise ficava so no log do
   /// servidor, e o cliente via seis cortes viram dois sem nenhuma explicacao,
   /// que parece defeito e nao criterio.
-  diagnostico    String?   @db.Text
-  error          String?   @db.Text
-  creditsCharged Int       @default(0)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  diagnostico      String?   @db.Text
+  error            String?   @db.Text
+  creditsCharged   Int       @default(0)
+  /// Quantas vezes o VIGIA (lib/media/vigia-das-etapas.ts) retomou sozinho
+  /// cada etapa de trabalho: { "cutting": { "n": 1, "em": "...", "motivo":
+  /// "prazo" | "reiniciado" } }. Até 2 por etapa; na terceira o vídeo vira
+  /// "failed" com a mensagem para o cliente clicar. Lido e gravado por SQL cru,
+  /// para não depender do cliente do Prisma regenerado. Existe desde 01/10,
+  /// quando um deploy do worker matou um corte e nada no servidor relançou.
+  retomadas        Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -451,25 +679,25 @@ model VideoJob {
 /// credito), e ferramenta de fora nao ve o que acontece no servidor, que e
 /// justamente onde a assinatura acontece.
 model FunnelEvent {
-  id        String   @id @default(cuid())
+  id         String   @id @default(cuid())
   /// visita, demo, cadastro, checkout, assinatura. Ver lib/funil/eventos.ts.
-  evento    String
+  evento     String
   /// De onde a pessoa veio, na PRIMEIRA visita dela. E o que permite dizer
   /// quanto custou cada cliente, e nao so quantos clientes existem.
-  origem    String?
-  campanha  String?
-  midia     String?
-  termo     String?
+  origem     String?
+  campanha   String?
+  midia      String?
+  termo      String?
   /// O caminho onde o evento aconteceu, para separar landing de /planos.
-  caminho   String?
+  caminho    String?
   /// IP com sal, nunca em texto puro (mesma regra da demo publica).
-  ipHash    String?
+  ipHash     String?
   /// Preenchido quando ja existe sessao, que e o que liga a visita anonima ao
   /// cliente que assinou.
-  userId    String?
+  userId     String?
   valorCents Int?
-  meta      Json?
-  createdAt DateTime @default(now())
+  meta       Json?
+  createdAt  DateTime @default(now())
 
   @@index([evento, createdAt])
   @@index([origem, createdAt])
@@ -521,12 +749,12 @@ model ProjectMemory {
 ///
 /// O IP nunca é gravado em texto puro: só o hash com sal do BETTER_AUTH_SECRET.
 model DemoRun {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   ipHash          String
-  input           String   @db.Text
+  input           String    @db.Text
   output          Json?
-  error           String?  @db.Text
-  costUsd         Float    @default(0)
+  error           String?   @db.Text
+  costUsd         Float     @default(0)
   /// Preenchido se a pessoa criar conta depois, para medir a conversão da demo.
   convertedUserId String?
   /// O contato que a pessoa deixou para receber os textos.
@@ -551,7 +779,7 @@ model DemoRun {
   /// desmarcada. Guardar a DATA, e nao um sim ou nao, porque consentimento sem
   /// registro de quando foi dado nao se prova depois (LGPD, art. 8).
   consentimentoEm DateTime?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   @@index([ipHash, createdAt])
   @@index([createdAt])
@@ -606,4 +834,714 @@ model Trabalho {
   @@index([status, ordem, createdAt])
   @@index([grupo, status])
   @@map("trabalhos")
+}
+
+/// UM LEAD DA LANDING, com a qualificação que ele deu ao entrar.
+///
+/// Nasce da decisão de 19/09 de rodar campanha forte de anúncios com meta de
+/// 5.000 leads na primeira semana. Sem este registro, 5.000 cadastros viram
+/// 5.000 e-mails iguais e a segmentação depois é impossível: não dá para
+/// descobrir retroativamente quem comprava e quem só olhava.
+///
+/// TRÊS PERGUNTAS, E NÃO CINCO, e isso é decisão de produto tomada com o
+/// número na mão: cada campo a mais numa campanha fria corta conversão, e o
+/// que está DEPOIS do cadastro já foi ganho. Persona e "quem NÃO é seu
+/// cliente" ficam para a primeira tela logada, onde custam zero conversão.
+///
+/// O e-mail é único: o mesmo lead voltando pelo anúncio de outra campanha
+/// atualiza as respostas em vez de virar uma segunda linha, senão a contagem
+/// de leads da semana mente para cima justamente na semana em que ela decide
+/// se o tráfego pago continua.
+model Lead {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  /// O QUE A PESSOA FAZ, na frase dela: "consultor de gestão", "pastor",
+  /// "advogada", "dona de loja".
+  ///
+  /// Texto livre, e é o único campo aberto do formulário. A primeira versão
+  /// perguntava "o que você vende?" em três botões, e a pergunta PRESSUPUNHA
+  /// que a pessoa vende alguma coisa. Um pastor não vende; um professor não
+  /// vende. A correção é de premissa, e não de texto.
+  ///
+  /// Não é campo desperdiçado: é exatamente o que o produto pergunta no setup
+  /// do projeto para os agentes saberem sobre o que escrever.
+  faz             String?
+  /// "toda_semana" | "as_vezes" | "parei" | "nunca"
+  ///
+  /// A segmentação que mais vale, porque separa os dois perfis de comprador:
+  /// quem já publica e quer parar de sofrer, e quem nunca publicou e quer que
+  /// saia sozinho. "parei" é a dor exata que a landing nomeia no topo.
+  cria            String?
+  /// "clientes" | "autoridade" | "alcance" | "constancia"
+  ///
+  /// Levantado em 19/09 contra o que a indústria mede (reconhecimento, geração
+  /// de lead, venda direta, comunidade), traduzido para a língua de quem
+  /// responde, e com uma opção que serve a quem não vende nada.
+  objetivo        String?
+  /// De QUAL botão da landing a pessoa veio: hero, navbar, demo, preco.
+  ///
+  /// Com cinco CTAs na mesma página, saber qual converte é o que diz onde pôr
+  /// o próximo. Sem isso, "a landing converteu 3%" não ensina nada.
+  cta             String?
+  /// De onde ele veio, do cookie de primeira visita. É o que liga o lead ao
+  /// anúncio que o trouxe, e sem isso não dá para calcular CAC por campanha.
+  origem          String?
+  campanha        String?
+  /// Preenchido quando o lead vira conta, para medir a conversão de verdade.
+  convertedUserId String?
+  /// A DEMONSTRAÇÃO (27/09/2026): a entrada da Demandou deixou de ser o teste
+  /// grátis e virou uma conversa com os sócios, para empresas que faturam
+  /// acima de R$ 100 mil por mês. Venda consultiva precisa de nome, telefone e
+  /// empresa, que o formulário de lead antigo não pedia.
+  nome            String?
+  telefone        String?
+  empresa         String?
+  cargo           String?
+  /// Faixa de faturamento mensal declarada: "ate_50k" | "50k_100k" |
+  /// "100k_500k" | "500k_1m" | "acima_1m". As duas primeiras ficam fora do
+  /// público e recebem outra resposta.
+  faturamento     String?
+  demoPedidaEm    DateTime?
+  /// A CALCULADORA DA LANDING (01/10): o resultado da conta só aparece depois
+  /// deste cadastro, e o que a pessoa respondeu é o dado mais precioso para o
+  /// time de vendas. Tamanho do time em faixa ("so_eu" | "2_10" | "11_50" |
+  /// "51_200" | "acima_200") e setor em lista fechada, para dar para segmentar.
+  tamanhoTime     String?
+  setor           String?
+  /// O que a pessoa simulou (volumes, redes, cenários) e o que a conta deu,
+  /// do jeito que ela viu na tela. JSON e não colunas: a calculadora vai mudar
+  /// de controles, e cada mudança não pode pedir migração.
+  calculadora     Json?
+  calculadoraEm   DateTime?
+  /// Quando a pessoa marcou o consentimento de uso dos dados (LGPD, art. 7º,
+  /// I). Sem a marca, a rota recusa: o carimbo é a prova de que ela aceitou.
+  consentimentoEm DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  /// As demonstrações marcadas pelo calendário (01/10). Só o lado do Prisma:
+  /// a coluna fica na tabela de reuniões.
+  reunioes ReuniaoDeDemonstracao[]
+
+  @@index([createdAt])
+  @@index([origem, createdAt])
+  @@map("leads")
+}
+
+/// O QUE O ADMIN FEZ EM CADA CONTA, e por quê.
+///
+/// Entrou em 23/09 com o CRM do painel. Toda ação que mexe em conta de outra
+/// pessoa (crédito, plano de cortesia, papel, cancelamento, reembolso,
+/// exclusão, convite) grava uma linha aqui antes de responder. Existe porque
+/// o painel dá poder sobre dinheiro e dados de cliente, e poder sem registro
+/// vira "quem mexeu nisso?" no primeiro chamado.
+///
+/// O e-mail do alvo é copiado, e não só o id: a exclusão apaga o usuário, e o
+/// registro de que ele foi excluído precisa sobreviver a ela.
+model AcaoDeAdmin {
+  id         String   @id @default(cuid())
+  adminId    String
+  adminEmail String
+  alvoId     String?
+  alvoEmail  String
+  acao       String
+  detalhe    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([alvoId, createdAt])
+  @@index([createdAt])
+  @@map("admin_acoes")
+}
+
+/// A LINHA EDITORIAL (29/09/2026): as ideias de vídeo e os roteiros por cena.
+///
+/// Uma ideia é um Roteiro sem cenas (status "ideia"); escolhida, ganha tese e
+/// cenas (status "pronto") e o cliente edita à mão. O roteiro é a "partitura"
+/// do editor: é por ele que a edição sabe o que cada trecho da gravação é.
+/// Descartar não apaga: a ideia descartada entra na memória para não voltar.
+model Roteiro {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  /// "ideia" | "pronto" | "gravado" | "descartada"
+  status    String   @default("ideia")
+  titulo    String
+  /// O gancho novo do radar (fato, número, pessoa ou data) e por que agora.
+  gancho    String?  @db.Text
+  /// De onde veio o gancho: { titulo, url }.
+  fonte     Json?
+  tese      String?  @db.Text
+  /// [{ id, papel: "gancho"|"desenvolvimento"|"fechamento", fala, naTela, segundos }]
+  cenas     Json?
+  /// Duração alvo em segundos (60, 180, 480).
+  duracao   Int      @default(60)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status, createdAt])
+  @@map("roteiros")
+}
+
+/// O AGENDAMENTO DA DEMONSTRAÇÃO (01/10/2026): quem do time atende.
+///
+/// Nasce da queixa do Bruno: a calculadora já pede tudo, e a página de
+/// demonstração pedia de novo e ainda deixava o horário para uma conversa no
+/// WhatsApp. Agora o lead escolhe o horário num calendário, e o sistema
+/// escolhe a pessoa livre (rodízio) ou respeita quem ele escolheu.
+///
+/// A DISPONIBILIDADE TEM FONTE TROCÁVEL por pessoa: "manual" usa só as janelas
+/// semanais daqui, menos o que já está marcado no banco; "google" usa as mesmas
+/// janelas menos o ocupado das agendas Google conectadas (contas abaixo). O
+/// endereço iCal soma ocupado de agenda que não é Google (Outlook, por exemplo)
+/// nas duas fontes.
+model PessoaDoTime {
+  id              String   @id @default(cuid())
+  nome            String
+  /// O e-mail de login na Demandou, quando a pessoa tem conta (liga ao admin).
+  emailUsuario    String?
+  userId          String?
+  /// Para onde vão o aviso e o convite da reunião. Nulo enquanto o e-mail de
+  /// time não existe: o aviso cai na lista DEMONSTRACAO_AVISAR.
+  emailAgenda     String?
+  ativo           Boolean  @default(true)
+  /// "manual" | "google"
+  fonte           String   @default("manual")
+  /// [{ dia: 1..5 (segunda = 1), inicio: "09:00", fim: "12:00" }], no fuso de
+  /// São Paulo. JSON e não tabela: é configuração de tela, lida inteira.
+  janelas         Json
+  antecedenciaMin Int      @default(180)
+  intervaloMin    Int      @default(15)
+  /// Sala fixa de videochamada: só usada quando a reunião não ganha Meet (sem
+  /// conta Google conectada, ou o Google falhou na hora de criar o evento).
+  linkSala        String?
+  /// WhatsApp da pessoa (só dígitos, com 55: 5511987654321), para a régua de
+  /// alertas da demonstração (lib/agenda/regua.ts). Nulo = só e-mail.
+  whatsapp        String?
+  /// Endereço iCal de livre/ocupado, CIFRADO: quem tem o endereço lê a agenda.
+  icalCifrado     String?
+  /// Nota da configuração ("janelas a confirmar com o Bruno").
+  observacao      String?
+  ordem           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  contasGoogle ContaGoogleDoTime[]
+  reunioes     ReuniaoDeDemonstracao[]
+
+  @@map("agenda_pessoas")
+}
+
+/// UMA CONTA GOOGLE CONECTADA A UMA PESSOA DO TIME (fonte "google").
+///
+/// Uma pessoa pode ter mais de uma (o Matheus tem outras empresas): o ocupado
+/// de TODAS entra na conta, e o evento nasce na conta marcada como principal.
+/// `agendas` é a lista de agendas consultadas no freeBusy, inclusive as de
+/// outras empresas compartilhadas só como livre/ocupado com esta conta.
+model ContaGoogleDoTime {
+  id                  String    @id @default(cuid())
+  pessoaId            String
+  emailGoogle         String
+  /// Token de renovação cifrado (lib/agenda/cifra.ts). Nunca vai para a tela.
+  refreshTokenCifrado String
+  escopos             String?
+  /// ["primary", "agenda@outraempresa.com", ...]
+  agendas             Json
+  principal           Boolean   @default(false)
+  ultimoErro          String?
+  ultimoErroEm        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  pessoa PessoaDoTime @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+
+  @@unique([pessoaId, emailGoogle])
+  @@map("agenda_contas_google")
+}
+
+/// A DEMONSTRAÇÃO MARCADA.
+///
+/// A TRAVA CONTRA MARCAÇÃO DUPLA é dupla: a marcação roda em transação com
+/// trava por pessoa (pg_advisory_xact_lock) e confere sobreposição com o
+/// intervalo; e o banco tem um índice único PARCIAL em (pessoaId, inicio)
+/// onde status = 'marcada', que o Prisma não expressa (está na migração
+/// 20261001220000_agenda_demonstracao).
+model ReuniaoDeDemonstracao {
+  id             String    @id @default(cuid())
+  leadId         String
+  pessoaId       String
+  inicio         DateTime
+  fim            DateTime
+  /// "marcada" | "cancelada" | "realizada" | "faltou"
+  status         String    @default("marcada")
+  /// "qualquer" (rodízio) | "pessoa" (o lead escolheu)
+  escolha        String    @default("qualquer")
+  /// "manual" | "google": de onde veio a disponibilidade na hora de marcar.
+  fonte          String    @default("manual")
+  /// UID do convite (iCalendar). Com a fonte google é o iCalUID do evento,
+  /// para o convite do e-mail e o do Google virarem um evento só na agenda.
+  uid            String    @unique
+  /// SEQUENCE do iCalendar: sobe a cada remarcação, e o calendário do lead
+  /// troca o evento em vez de criar outro.
+  sequencia      Int       @default(0)
+  eventoGoogleId String?
+  contaGoogleId  String?
+  linkReuniao    String?
+  lembrete24hEm  DateTime?
+  lembrete1hEm   DateTime?
+  canceladaEm    DateTime?
+  canceladaPor   String?
+  /// Marcada como teste (lead de e-mail .invalid): não manda e-mail real.
+  teste          Boolean   @default(false)
+  /// A pessoa do time marcou que a reunião começou (botão no /admin/agenda ou
+  /// link do alerta de 5 minutos). Segura o alerta de atraso.
+  comecouEm      DateTime?
+  /// O lead abriu a sala pelo nosso link (/demonstracao/sala/[token]) perto do
+  /// horário. Sinal de presença: também segura o alerta de atraso.
+  leadEntrouEm   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  lead    Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pessoa  PessoaDoTime      @relation(fields: [pessoaId], references: [id], onDelete: Restrict)
+  alertas AlertaDaReuniao[]
+
+  @@index([pessoaId, inicio])
+  @@index([status, inicio])
+  @@index([leadId])
+  @@map("agenda_reunioes")
+}
+
+/// UM ALERTA DA RÉGUA DA DEMONSTRAÇÃO (01/10): confirmação, véspera, 1 hora,
+/// 5 minutos, início, atraso, depois, remarcação e cancelamento.
+///
+/// A CHAVE ÚNICA (reunião, tipo, sequência) É A TRAVA: o alerta é reservado
+/// com INSERT ... ON CONFLICT DO NOTHING antes de enviar, então duas passadas
+/// do cron sobrepostas nunca mandam o mesmo alerta duas vezes. A remarcação
+/// sobe a `sequencia` da reunião, e a régua nova começa do zero.
+model AlertaDaReuniao {
+  id        String   @id @default(cuid())
+  reuniaoId String
+  /// "marcada" | "remarcada" | "cancelada" | "h24" | "h1" | "m5" | "inicio" |
+  /// "atraso" | "depois_lead" | "depois_time"
+  tipo      String
+  sequencia Int
+  /// "reservado" (enviando) | "enviado" | "pulado" (fora de hora ou sem sentido)
+  situacao  String   @default("reservado")
+  /// [{ canal: "email" | "whatsapp", para, ok, simulado?, erro?, modelo? }]
+  detalhe   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  reuniao ReuniaoDeDemonstracao @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+
+  @@unique([reuniaoId, tipo, sequencia])
+  @@index([createdAt])
+  @@map("agenda_alertas")
+}
+
+/// QUEM PEDIU PARA NÃO RECEBER MAIS WHATSAPP (respondeu PARAR ao número da
+/// Demandou). Por número e não por lead: o mesmo celular pode estar em dois
+/// cadastros, e o pedido vale para a pessoa.
+model BloqueioDeWhatsapp {
+  numero    String   @id
+  palavra   String?
+  createdAt DateTime @default(now())
+
+  @@map("whatsapp_bloqueios")
+}
+
+/// UM PERFIL DE REFERÊNCIA DO NICHO (01/10, trilho de referências).
+///
+/// O Roberto sugere perfis famosos e relevantes do nicho do cliente, e o dono
+/// do projeto confirma até 10 por conta. Só perfil público; a coleta estuda o
+/// MOLDE (formato, gancho, estrutura, duração), nunca para copiar conteúdo.
+/// Ver lib/referencias/ e a pesquisa de 01/10 (Blotato x Apify x APIs oficiais).
+model ReferenciaPerfil {
+  id           String    @id @default(cuid())
+  projectId    String
+  /// "instagram" | "tiktok" | "linkedin" | "youtube" | "x"
+  rede         String
+  /// @usuario, link da página de empresa ou do canal, como a rede identifica.
+  perfil       String
+  nome         String?
+  url          String?
+  /// Por que o Roberto sugeriu (ou "indicado pelo cliente").
+  motivo       String?   @db.Text
+  seguidores   Int?
+  /// "sugerido" | "confirmado" | "recusado"
+  status       String    @default("sugerido")
+  /// "roberto" | "cliente"
+  origem       String    @default("roberto")
+  ultimaColeta DateTime?
+  ultimoErro   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  posts   ReferenciaPost[]
+
+  @@unique([projectId, rede, perfil])
+  @@index([projectId, status])
+  @@map("referencias_perfis")
+}
+
+/// UM POST DE UM PERFIL DE REFERÊNCIA, no formato único do trilho.
+///
+/// Dado bruto de terceiro: a legenda só o analista lê, e a linha inteira é
+/// apagada em 90 dias (`apagarEm`). Nunca guarda quem comentou nem comentário.
+/// O que sobra depois são os cartões de padrão (ProjectMemory tipo "padrao"),
+/// sem dado pessoal.
+model ReferenciaPost {
+  id                String    @id @default(cuid())
+  perfilId          String
+  projectId         String
+  rede              String
+  externoId         String
+  url               String?
+  /// reel, carrossel, imagem, video, short, texto, documento
+  formato           String
+  legenda           String?   @db.Text
+  duracaoSeg        Int?
+  publicadoEm       DateTime?
+  curtidas          Int?
+  comentarios       Int?
+  /// Float porque vídeo do YouTube passa de 2 bilhões de visualizações.
+  visualizacoes     Float?
+  compartilhamentos Int?
+  seguidoresDoAutor Int?
+  /// As etiquetas do Haiku: gancho, estrutura, chamada, tema.
+  etiquetas         Json?
+  /// Desempenho contra a mediana do próprio perfil (1 = mediano).
+  ganho             Float?
+  /// Os NÚMEROS medidos no vídeo (01/10): cortes, cena, gancho, texto, rosto,
+  /// imagem de apoio, batidas e etiquetas abstratas de imagem. O vídeo de
+  /// terceiro é medido e apagado na hora; aqui só os números.
+  medidas           Json?
+  /// Os sinais que a coleta já trazia (02/10): áudio, hashtags, salvamentos
+  /// e a capa (expira em dias). Ver lib/referencias/tipos-das-analises.ts.
+  extras            Json?
+  coletadoEm        DateTime  @default(now())
+  apagarEm          DateTime
+
+  perfil ReferenciaPerfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  @@unique([perfilId, externoId])
+  @@index([projectId, rede])
+  @@index([apagarEm])
+  @@map("referencias_posts")
+}
+
+/// CADA COLETA DE REFERÊNCIA, com o custo: o registro por projeto no molde do
+/// ai_usage, para saber quanto cada cliente custa em Apify e API do X.
+model ReferenciaColeta {
+  id        String   @id @default(cuid())
+  projectId String
+  perfilId  String?
+  rede      String
+  /// "apify:<ator>" | "api:youtube" | "api:x"
+  fonte     String
+  itens     Int      @default(0)
+  custoUsd  Decimal  @default(0) @db.Decimal(12, 6)
+  /// "ok" | "vazio" | "erro" | "sem_orcamento"
+  status    String
+  erro      String?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("referencias_coletas")
+}
+
+/// CADA TENTATIVA NAS PORTAS PÚBLICAS (01/10): cadastro, login, reenvio de
+/// e-mail, recuperação de senha e os formulários de lead da landing.
+///
+/// É o contador do limite por IP e por e-mail. Mora no Postgres e não em
+/// memória porque função da Vercel não tem memória compartilhada: o contador
+/// em `Map` que as rotas de lead usavam zerava a cada instância nova, e o
+/// limite valia só no papel. Guarda o resultado e o motivo da recusa, o que
+/// transforma o próximo diagnóstico de robô numa consulta, e não numa caça.
+///
+/// Nada em texto puro: IP e e-mail entram com sal (ver lib/anti-robo/limite.ts).
+/// Linhas com mais de 14 dias são apagadas pelo próprio uso.
+model TentativaPublica {
+  id        String   @id @default(cuid())
+  /// "cadastro" | "login" | "reenvio" | "senha" | "lead" | "calculadora" | "demonstracao" | "email_existe"
+  rota      String
+  ipHash    String
+  /// O e-mail normalizado (variações do Gmail juntas) e com sal. Null quando a rota não tem e-mail.
+  emailHash String?
+  aceita    Boolean
+  /// Por que foi recusada: "limite_ip", "isca", "rapido_demais", "nome_aleatorio", ...
+  motivo    String?
+  agente    String?
+  createdAt DateTime @default(now())
+
+  @@index([rota, ipHash, createdAt])
+  @@index([rota, emailHash, createdAt])
+  @@index([createdAt])
+  @@map("tentativas_publicas")
+}
+
+/// CADA LEITURA DOS NÚMEROS DE UM POST PUBLICADO, com a fonte (01/10).
+///
+/// O `PostMetric` guarda um número por post e apaga a curva: sem curva não dá
+/// para comparar post de 2 dias com post de 20, nem dizer se o post "pegou"
+/// nas primeiras horas. Aqui cada leitura é uma linha, e cada número diz de
+/// onde veio (Blotato, API oficial da rede ou perfil público lido pela Apify).
+///
+/// Campo nulo é "esta fonte não mede isto" ou "ainda não lido", NUNCA zero: a
+/// lição de 28/09 (zero falso lido como "post que ninguém viu") vale aqui.
+/// Linha com status "pendente" ou "erro" registra a tentativa e o motivo, e é
+/// o que impede o cron de perguntar de novo a cada 5 minutos.
+model LeituraDeMetrica {
+  id                String   @id @default(cuid())
+  postId            String
+  projectId         String
+  platform          String
+  /// "blotato" | "api:linkedin" | "api:x" | "api:youtube" | "api:instagram" | "api:facebook" | "api:tiktok" | "apify:instagram" | "apify:tiktok" | "apify:linkedin" | "apify:facebook" | "nenhuma"
+  fonte             String
+  /// "ok" (veio número) | "pendente" (a fonte ainda não tem o que dar) | "erro"
+  status            String   @default("ok")
+  motivo            String?
+  /// Quando a fonte leu (no Blotato, o fetchedAt de cada foto do histórico).
+  lidoEm            DateTime @default(now())
+  impressoes        Int?
+  alcance           Int?
+  visualizacoes     Int?
+  curtidas          Int?
+  comentarios       Int?
+  compartilhamentos Int?
+  salvamentos       Int?
+  cliques           Int?
+  /// Campos próprios da fonte (seguidores ganhos, tempo assistido...).
+  extras            Json?
+  /// A parte desta leitura no custo da coleta (Apify, X por uso).
+  custoUsd          Float    @default(0)
+  criadoEm          DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, fonte, lidoEm])
+  @@index([projectId, lidoEm])
+  @@index([postId, lidoEm])
+  @@map("leituras_de_metrica")
+}
+
+/// CADA COLETA PAGA DE MÉTRICAS (01/10): uma execução da Apify num perfil do
+/// próprio cliente. Existe para o teto de gasto do mês e para não ler o mesmo
+/// perfil duas vezes no mesmo dia (cada leitura custa, mesmo sem post novo).
+model ColetaDeMetrica {
+  id        String   @id @default(cuid())
+  projectId String
+  /// "apify:instagram" | "apify:tiktok" | "apify:linkedin" | "apify:facebook"
+  fonte     String
+  perfil    String?
+  /// "ok" | "vazio" | "erro" | "sem_orcamento"
+  status    String
+  erro      String?
+  itens     Int      @default(0)
+  casados   Int      @default(0)
+  custoUsd  Float    @default(0)
+  criadoEm  DateTime @default(now())
+
+  @@index([criadoEm])
+  @@index([projectId, fonte, criadoEm])
+  @@map("coletas_de_metrica")
+}
+
+/// UM CHAMADO DE SUPORTE (02/10/2026), pedido do Bruno para a segunda em que
+/// os 10 vendedores da Gaberlini começam: um jeito rápido de pedir ajuda e
+/// falar com uma pessoa.
+///
+/// O NÚMERO (#0001) é sequencial e é o que a pessoa fala no WhatsApp; o id
+/// continua sendo o cuid de sempre. O DIAGNÓSTICO é interno: o detalhe técnico
+/// montado no servidor a partir do código da falha (ver lib/suporte), que vai
+/// para o e-mail do Bruno e para o painel, e nunca para a tela do cliente.
+model Chamado {
+  id           String    @id @default(cuid())
+  numero       Int       @unique @default(autoincrement())
+  userId       String
+  /// "problema" | "duvida" | "cobranca" | "sugestao"
+  categoria    String
+  /// "aberto" | "andamento" | "resolvido"
+  status       String    @default("aberto")
+  /// Marcado pelo admin como reclamação, além das categorias que já contam
+  /// como reclamação no painel (cobrança e problema).
+  reclamacao   Boolean   @default(false)
+  texto        String
+  /// O código de erro que a tela mostrou (VID-402, PUB-...), quando veio de um.
+  codigo       String?
+  /// O print, no store PRIVADO; servido só ao dono e ao admin pela rota do chamado.
+  printUrl     String?
+  /// Página, projeto, vídeo ou post aberto, navegador, plano e e-mail no momento do envio.
+  contexto     Json?
+  /// Interno: o que o código significa de verdade. Nunca vai para o cliente.
+  diagnostico  String?
+  projectId    String?
+  postId       String?
+  videoId      String?
+  respondidoEm DateTime?
+  resolvidoEm  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos EventoDoChamado[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("suporte_chamados")
+}
+
+/// O HISTÓRICO DE UM CHAMADO: abertura, respostas, mensagens do cliente e
+/// trocas de status, na ordem em que aconteceram. Nota interna (`interno`) é
+/// do suporte e não aparece em "Meus chamados".
+model EventoDoChamado {
+  id        String   @id @default(cuid())
+  chamadoId String
+  /// "aberto" | "resposta" | "mensagem" | "status" | "nota" | "reclamacao"
+  tipo      String
+  /// "cliente" | "suporte"
+  lado      String
+  autorId   String?
+  autorNome String?
+  texto     String?
+  de        String?
+  para      String?
+  interno   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  chamado Chamado @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId, createdAt])
+  @@map("suporte_chamados_eventos")
+}
+
+/// UM CONTRATO ANUAL DE CLIENTE (02/10/2026), o gestor de contratos do admin.
+///
+/// O `status` guardado é o do CICLO DE ASSINATURA (rascunho, enviado,
+/// assinado, cancelado); vigente, a vencer e vencido saem das datas, pela
+/// função situacaoDoContrato (lib/contratos/situacao.ts), e o cron grava o
+/// resultado aqui para a lista filtrar sem recalcular. A vigência é sempre de
+/// um ano. O texto vem do modelo em .md (lib/contratos/modelo.ts) e o hash do
+/// texto enviado fica gravado: é ele que prova qual versão foi assinada.
+model Contrato {
+  id                  String    @id @default(cuid())
+  numero              Int       @unique @default(autoincrement())
+  userId              String
+  plano               String
+  /// Valor do ano, em centavos.
+  valorCentavos       Int
+  formaDePagamento    String?
+  /// "rascunho" | "enviado" | "assinado" | "vigente" | "a_vencer" | "vencido" | "cancelado"
+  status              String    @default("rascunho")
+  assinadoEm          DateTime?
+  inicioVigencia      DateTime?
+  fimVigencia         DateTime?
+  renovacaoAutomatica Boolean   @default(true)
+  /// O contrato do ano anterior, quando este é renovação.
+  renovadoDeId        String?
+  signatarioNome      String?
+  signatarioEmail     String?
+  signatarioDocumento String?
+  empresa             String?
+  /// Endereço do cliente, para o quadro do preâmbulo do contrato.
+  endereco            String?
+  /// "zapsign" | "clicksign" | ... ; null enquanto não há provedor ligado.
+  provedor            String?
+  provedorDocumentoId String?
+  /// "aguardando_provedor" | "enviado" | "assinado" | "recusado" | "erro"
+  provedorSituacao    String?
+  linkDeAssinatura    String?
+  modeloVersao        String?
+  textoHash           String?
+  pdfAssinadoUrl      String?
+  canceladoEm         DateTime?
+  motivoCancelamento  String?
+  observacao          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos EventoDoContrato[]
+  alertas AlertaDoContrato[]
+
+  @@index([userId])
+  @@index([status, fimVigencia])
+  @@map("contratos")
+}
+
+/// A TRILHA DE AUDITORIA do contrato: quem fez o quê e quando (criação,
+/// envio, retorno do provedor, assinatura, cancelamento, renovação, alertas).
+model EventoDoContrato {
+  id         String   @id @default(cuid())
+  contratoId String
+  tipo       String
+  autor      String?
+  detalhe    Json?
+  createdAt  DateTime @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@index([contratoId, createdAt])
+  @@map("contratos_eventos")
+}
+
+/// UM AVISO DE VENCIMENTO (60, 30 e 7 dias antes, e no dia em que vence). A
+/// chave única (contrato, tipo, fim da vigência) é a trava, no padrão da régua
+/// da demonstração: reservado com INSERT ... ON CONFLICT DO NOTHING antes de
+/// enviar. A renovação muda o fim da vigência, e os avisos recomeçam.
+model AlertaDoContrato {
+  id          String   @id @default(cuid())
+  contratoId  String
+  /// "d60" | "d30" | "d7" | "vencido"
+  tipo        String
+  fimVigencia DateTime
+  /// "reservado" | "enviado"
+  situacao    String   @default("reservado")
+  detalhe     Json?
+  createdAt   DateTime @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, tipo, fimVigencia])
+  @@map("contratos_alertas")
+}
+
+/// UMA NOTIFICAÇÃO DO SINO (02/10/2026).
+///
+/// Nasceu do pedido do Bruno para a segunda dos 10 vendedores: a edição de um
+/// vídeo leva meia hora e o cliente precisa saber que pode fechar a tela, e
+/// ser chamado de volta quando o roteiro pede aprovação, quando as peças estão
+/// prontas e quando o vídeo termina. Cada linha é UM FATO, e a chave única
+/// (dono, chave) é a trava: o mesmo fato observado duas vezes (o passo que
+/// avisa na hora e o observador do cron que confere depois) vira uma linha só,
+/// e o e-mail sai só para quem ganhou o INSERT. Ver lib/notificacoes.
+model Notificacao {
+  id        String    @id @default(cuid())
+  userId    String
+  projectId String?
+  /// "roteiro" | "pecas" | "campanha" | "completo" | "falha" | "estorno"
+  tipo      String
+  titulo    String
+  texto     String    @db.Text
+  /// Para onde o clique leva (caminho interno, "/projects/.../live").
+  link      String?
+  /// O código que a pessoa informa ao abrir um chamado (falhas).
+  codigo    String?
+  /// O fato, por extenso: "roteiro:<video>:<rodada>". Único por dono.
+  chave     String
+  lidaEm    DateTime?
+  /// Quando o e-mail deste fato saiu (null: não saiu, ou não era para sair).
+  emailEm   DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chave])
+  @@index([userId, createdAt])
+  @@map("notificacoes")
 }

@@ -1,17 +1,35 @@
-import { recordImagem, type ContextoMidia } from "@/lib/media/usage";
+import { gravarCustoDeImagem, precoDaImagem, type ContextoMidia } from "@/lib/media/usage";
+import {
+  FICHAS,
+  RecuoParaOGoogle,
+  ehDaHiggsfield,
+  ehDaOpenAI,
+  gerarNaHiggsfield,
+  geradorDoTipo,
+  tipoDaOperacao,
+  type ImagemGerada,
+  type TipoDeImagem,
+} from "@/lib/media/imagem-higgsfield";
+import { ehSemSaldoDaOpenAI, gerarImagemOpenAIComCusto, temChaveDaOpenAI, type QualidadeDaOpenAI } from "@/lib/media/gpt-image";
 /**
- * Image generation — priority order:
- * 1. Imagen 3 via Gemini API key (generativelanguage.googleapis.com — best quality, API key only)
- * 2. Gemini 2.0 Flash image generation (generateContent with IMAGE modality)
- * 3. Vertex AI Imagen 3 (Google Cloud service account — enterprise alternative)
- * 4. Pollinations.ai (free, no key — last resort fallback)
+ * Geração de imagem. Desde 01/10 a PRIMEIRA opção é a Higgsfield, com o
+ * modelo escolhido por tipo de imagem (lib/media/imagem-higgsfield.ts: GPT
+ * Image 2.5 baixa para colagem, arte e fundo; Recraft V4.1 para elemento;
+ * Grok Imagine 2.0 para editar o cenário), aprovada pelo Bruno depois da prova
+ * de 30/09. O que está abaixo virou o RECUO, na mesma ordem de antes:
+ * 1. Imagen 3 via Gemini API key
+ * 2. Gemini Nano Banana (generateContent com IMAGE)
+ * 3. Vertex AI Imagen 3 (service account)
+ * 4. Pollinations.ai (grátis, último recurso)
  */
 
 import { getGCPCredentials, getGCPProjectId, getGCPLocation, getVertexAccessToken } from "./google-auth";
+import { formatoDaPeca } from "./formatos-das-redes";
 
 export type AspectRatio =
   | "16:9"   // Twitter/X landscape, LinkedIn video, YouTube thumb — 1600x900
-  | "9:16"   // Reels/Stories — 720x1280
+  | "9:16"   // Reels/Stories — 1080x1920
+  | "4:5"    // Feed do Instagram e carrossel — 1080x1350
   | "4:3"    // Generic — 1024x768
   | "3:4"    // Portrait — 768x1024
   | "1:1"    // Square (Instagram/Twitter) — 1080x1080
@@ -20,12 +38,17 @@ export type AspectRatio =
 
 export type ImageQuality = "standard" | "hd";
 
-/** Map platform+contentType to the recommended aspect ratio */
+/**
+ * A proporção recomendada para uma rede.
+ *
+ * Desde 19/09 a resposta sai de `lib/media/formatos-das-redes.ts`, que é a
+ * tabela única do projeto. Esta função continua existindo porque chamadas
+ * antigas dependem dela, mas ela não decide mais nada por conta própria: a
+ * decisão de formato ter dois donos foi parte do defeito que fez toda imagem
+ * sair 1376x768.
+ */
 export function getPlatformAspectRatio(platform: string, contentType?: string): AspectRatio {
-  if (contentType === "video" || contentType === "reels" || contentType === "stories") return "9:16";
-  if (platform === "linkedin") return "linkedin-landscape";
-  if (platform === "twitter" || platform === "x") return "twitter-landscape";
-  return "linkedin-landscape"; // safe default
+  return formatoDaPeca(platform, contentType).proporcao;
 }
 
 export function getImageCreditCost(): number {
@@ -34,7 +57,8 @@ export function getImageCreditCost(): number {
 
 const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   "16:9":               { width: 1600, height: 900  },
-  "9:16":               { width: 720,  height: 1280 },
+  "9:16":               { width: 1080, height: 1920 },
+  "4:5":                { width: 1080, height: 1350 },
   "4:3":                { width: 1024, height: 768  },
   "3:4":                { width: 768,  height: 1024 },
   "1:1":                { width: 1080, height: 1080 },
@@ -63,6 +87,7 @@ const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> 
 const ASPECTO_ACEITO: Record<AspectRatio, string> = {
   "16:9":               "16:9",
   "9:16":               "9:16",
+  "4:5":                "4:5",
   "4:3":                "4:3",
   "3:4":                "3:4",
   "1:1":                "1:1",
@@ -71,11 +96,23 @@ const ASPECTO_ACEITO: Record<AspectRatio, string> = {
 };
 
 /**
+ * O preço REAL de uma imagem do Google (01/10). O código gravava US$ 0,039
+ * para o Nano Banana 2, que é o preço do 2.5 em 1K; o 3.1 cobra US$ 0,067 em
+ * 1K e US$ 0,101 em 2K, e "hd" pede 2K. O 2.5 só faz 1K, peça o que pedir. Na
+ * edição soma a imagem de entrada (~US$ 0,002 no Pro), daí os 0,136 medidos.
+ */
+function precoDoGoogle(model: string, quality: ImageQuality, edicao = false): number {
+  const entrada = edicao ? 0.002 : 0;
+  if (model === "gemini-3.1-flash-image-preview") return (quality === "hd" ? 0.101 : 0.067) + entrada;
+  return (precoDaImagem(model) ?? 0.134) + entrada;
+}
+
+/**
  * Imagen 3 via Gemini API key — accessed through generativelanguage.googleapis.com.
  * Same quality as Vertex AI but only requires GEMINI_API_KEY, no service account.
  * Models tried: imagen-3.0-generate-001 → imagen-3.0-fast-generate-001
  */
-async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, apiKey: string, ctx?: ContextoMidia): Promise<string | null> {
+async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, apiKey: string, ctx?: ContextoMidia): Promise<ImagemGerada | null> {
   const models = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"];
   const aspectParam = ASPECTO_ACEITO[aspectRatio] ?? "4:3";
 
@@ -115,8 +152,9 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
       const base64 = data.predictions?.[0]?.bytesBase64Encoded;
       if (base64) {
         console.log(`[Imagen3 API] ✓ Imagem gerada com ${model}`);
-        if (ctx) recordImagem(model, 1, ctx);
-        return `data:image/jpeg;base64,${base64}`;
+        const custoUsd = precoDoGoogle(model, "standard");
+        if (ctx) gravarCustoDeImagem(model, custoUsd, ctx);
+        return { dataUrl: `data:image/jpeg;base64,${base64}`, modelo: model, custoUsd };
       }
 
       console.warn(`[Imagen3 API][${model}] Resposta sem dados de imagem`);
@@ -137,7 +175,7 @@ async function tryGeminiFlashImage(
   ctx?: ContextoMidia,
   aspectRatio?: AspectRatio,
   quality: ImageQuality = "standard"
-): Promise<string | null> {
+): Promise<ImagemGerada | null> {
   const models = [
     "gemini-3.1-flash-image-preview",   // Nano Banana 2 — rápido, 4K
     "gemini-2.5-flash-image",           // Nano Banana — estável
@@ -193,8 +231,9 @@ async function tryGeminiFlashImage(
       if (imgPart?.inlineData) {
         const { data: b64, mimeType } = imgPart.inlineData;
         console.log(`[Gemini Flash Image] ✓ Gerada com ${model}`);
-        if (ctx) recordImagem(model, 1, ctx);
-        return `data:${mimeType ?? "image/jpeg"};base64,${b64}`;
+        const custoUsd = precoDoGoogle(model, quality);
+        if (ctx) gravarCustoDeImagem(model, custoUsd, ctx);
+        return { dataUrl: `data:${mimeType ?? "image/jpeg"};base64,${b64}`, modelo: model, custoUsd };
       }
     } catch (e) {
       console.warn(`[Gemini Flash Image][${model}] Erro:`, e);
@@ -207,7 +246,7 @@ async function tryGeminiFlashImage(
  * Vertex AI Imagen 3 — usa Service Account (GCP credentials).
  * Alternativa corporativa quando não se usa AI Studio key.
  */
-async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: ContextoMidia): Promise<string | null> {
+async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: ContextoMidia): Promise<ImagemGerada | null> {
   const creds = getGCPCredentials();
   if (!creds) return null;
 
@@ -250,8 +289,9 @@ async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: 
         const base64 = data.predictions?.[0]?.bytesBase64Encoded;
         if (base64) {
           console.log(`[Vertex Imagen] ✓ Imagem gerada com ${model}`);
-          if (ctx) recordImagem(model, 1, ctx);
-          return `data:image/jpeg;base64,${base64}`;
+          const custoUsd = precoDoGoogle(model, "standard");
+          if (ctx) gravarCustoDeImagem(model, custoUsd, ctx);
+          return { dataUrl: `data:image/jpeg;base64,${base64}`, modelo: model, custoUsd };
         }
       } catch (modelErr) {
         console.warn(`[Vertex Imagen][${model}] Erro:`, modelErr);
@@ -271,7 +311,7 @@ async function tryPollinationsAI(
   prompt: string,
   aspectRatio: AspectRatio,
   quality: ImageQuality
-): Promise<string | null> {
+): Promise<ImagemGerada | null> {
   const { width, height } = ASPECT_DIMENSIONS[aspectRatio] ?? { width: 1024, height: 768 };
   const models = quality === "hd" ? ["flux-pro", "flux", "turbo"] : ["flux", "turbo", "flux-pro"];
   const encodedPrompt = encodeURIComponent(prompt.slice(0, 800));
@@ -300,7 +340,7 @@ async function tryPollinationsAI(
 
         const base64 = Buffer.from(buffer).toString("base64");
         console.log(`[Pollinations] ✓ ${model} (${Math.round(buffer.byteLength / 1024)}KB)`);
-        return `data:${contentType.split(";")[0]};base64,${base64}`;
+        return { dataUrl: `data:${contentType.split(";")[0]};base64,${base64}`, modelo: `pollinations-${model}`, custoUsd: 0 };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const isRetryable = msg.includes("fetch failed") || msg.includes("ECONNRESET") || msg.includes("timeout") || msg.includes("abort");
@@ -313,6 +353,125 @@ async function tryPollinationsAI(
   return null;
 }
 
+export type OpcoesDaImagem = {
+  /** O tipo de imagem, quando a operação não diz (ver `tipoDaOperacao`). */
+  tipo?: TipoDeImagem;
+  /**
+   * Epoch em ms: depois disto não se espera a Higgsfield, vai direto ao
+   * Google. A montagem passa o fim da janela dela (o passo tem prazo).
+   */
+  higgsfieldAte?: number;
+  /**
+   * Pula o modelo principal do tipo e vai direto ao recuo (01/10). É o
+   * "desenharAlternativo" da arte por rede: quando o revisor reprova por
+   * texto desenhado, refazer no MESMO modelo repete o defeito.
+   */
+  outroModelo?: boolean;
+};
+
+/**
+ * PESSOA DESENHADA É SEMPRE ANÔNIMA (01/10). Na prova lado a lado das artes, o
+ * "recorte de foto de uma pessoa discursando" saiu com o rosto de uma política
+ * conhecida, nos três modelos. Arte de cliente com rosto de figura pública é
+ * risco de imagem e de direito de imagem, e os termos proíbem. A frase entra em
+ * toda geração a partir de texto; a edição sobre a foto do próprio cliente não
+ * passa por aqui. Vai no fim para não brigar com a direção de arte.
+ */
+// Figura histórica ou bíblica pedida pelo cliente (02/10: "Jesus falando com
+// a multidão, com roupas da época") é permitida, com respeito; o que continua
+// proibido é a pessoa REAL CONTEMPORÂNEA identificável.
+const PESSOA_ANONIMA =
+  " Any person shown must be a fictional, anonymous individual or a historical or biblical figure depicted respectfully in period clothing: never depict, resemble or evoke a real contemporary person, celebrity, politician or living public figure.";
+function comPessoaAnonima(prompt: string): string {
+  return prompt.includes("real contemporary person") ? prompt : prompt.trimEnd() + PESSOA_ANONIMA;
+}
+
+/**
+ * Gera a imagem e diz QUEM gerou e QUANTO custou (01/10). A montagem precisa
+ * do custo real no extrato do corte, e com a Higgsfield na frente ele varia de
+ * US$ 0,025 a 0,101 conforme quem respondeu.
+ */
+export async function gerarImagem(
+  prompt: string,
+  aspectRatio: AspectRatio = "4:3",
+  quality: ImageQuality = "standard",
+  ctx?: ContextoMidia,
+  opcoes: OpcoesDaImagem = {}
+): Promise<ImagemGerada> {
+  // Sem contexto o custo também é gravado (01/10): o chat do card e o
+  // "refazer peça" chamavam sem ctx, e essas imagens não apareciam no extrato.
+  const contexto: ContextoMidia = ctx ?? { operation: "imagem_sem_contexto" };
+  prompt = comPessoaAnonima(prompt);
+  const tipo = opcoes.tipo ?? tipoDaOperacao(contexto.operation);
+  const gerador = geradorDoTipo(tipo);
+  if (!opcoes.outroModelo && ehDaHiggsfield(gerador)) {
+    try {
+      return await gerarNaHiggsfield({
+        gerador,
+        prompt,
+        proporcao: aspectRatio,
+        fundoVerde: tipo === "elemento",
+        ctx: contexto,
+        ate: opcoes.higgsfieldAte,
+      });
+    } catch (e) {
+      avisarRecuo(tipo, gerador, e);
+    }
+  }
+  if (!opcoes.outroModelo && ehDaOpenAI(gerador)) {
+    const r = await tentarOpenAI(prompt, aspectRatio, contexto, gerador === "openai-gpt-image-2-low" ? "low" : "medium");
+    if (r) return r;
+    // OpenAI na frente e fora do ar (01/10): o próximo mais barato é o GPT
+    // Image 2.5 na Higgsfield (US$ 0,025), não o Google (US$ 0,101).
+    try {
+      return await gerarNaHiggsfield({ gerador: "higgsfield-gpt-image-2.5-low", prompt, proporcao: aspectRatio, ctx: contexto, ate: opcoes.higgsfieldAte });
+    } catch (e) {
+      avisarRecuo(tipo, "higgsfield-gpt-image-2.5-low", e);
+    }
+  }
+  // O recuo da ARTE passa pela OpenAI em qualidade baixa antes do Google
+  // (01/10): US$ 0,0064 medido contra US$ 0,101 do Nano Banana 2 em 2K. Só na arte,
+  // que foi o que o Bruno pediu; colagem e fundo não passaram por prova nele.
+  if (tipo === "arte" && gerador !== "google" && gerador !== "openai-gpt-image-2-low") {
+    const r = await tentarOpenAI(prompt, aspectRatio, contexto, "low");
+    if (r) return r;
+  }
+  return gerarNoGoogle(prompt, aspectRatio, quality, contexto);
+}
+
+/** A proporção da OpenAI, que só aceita retrato, paisagem e quadrado. */
+function proporcaoDaOpenAI(a: AspectRatio): "4:5" | "16:9" | "1:1" {
+  if (a === "1:1") return "1:1";
+  return a === "9:16" || a === "4:5" || a === "3:4" ? "4:5" : "16:9";
+}
+
+/** Sem saldo na OpenAI não melhora sozinho: 15 min sem tentar, neste processo. */
+let openAISemSaldoAte = 0;
+
+async function tentarOpenAI(prompt: string, aspectRatio: AspectRatio, ctx: ContextoMidia, qualidade: QualidadeDaOpenAI): Promise<ImagemGerada | null> {
+  if (!temChaveDaOpenAI() || Date.now() < openAISemSaldoAte) return null;
+  try {
+    return await gerarImagemOpenAIComCusto(prompt, proporcaoDaOpenAI(aspectRatio), ctx, qualidade);
+  } catch (e) {
+    if (ehSemSaldoDaOpenAI(e)) {
+      openAISemSaldoAte = Date.now() + 15 * 60_000;
+      console.error("[imagem] OpenAI SEM SALDO: a arte vai ao Google por 15 min. Saldo em platform.openai.com/settings/organization/billing.");
+    } else {
+      console.warn(`[imagem] OpenAI ${qualidade} falhou, sigo para o Google: ${e instanceof Error ? e.message : e}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Qualquer motivo (vaga, fila, prazo, saldo, recusa) vira Google: a imagem
+ * sai, e o motivo fica no log para o Bruno, nunca para o cliente.
+ */
+function avisarRecuo(tipo: TipoDeImagem, gerador: string, e: unknown): void {
+  const motivo = e instanceof Error ? e.message : String(e);
+  console.warn(`[imagem] ${tipo} pelo Google em vez de ${gerador}: ${motivo}${e instanceof RecuoParaOGoogle ? "" : " (erro inesperado)"}`);
+}
+
 export async function generateImage(
   prompt: string,
   aspectRatio: AspectRatio = "4:3",
@@ -320,11 +479,18 @@ export async function generateImage(
   /**
    * Sem isto, o custo de imagem fica invisível. E como isto aqui é uma cascata
    * de fallback, o que precisa ser gravado é o modelo que **respondeu**, não o
-   * que foi pedido: entre o Flash a US$ 0,039 e o Pro a US$ 0,134 há 3,4 vezes
-   * de diferença, e nada no retorno denuncia qual rodou.
+   * que foi pedido: entre o GPT Image 2.5 da Higgsfield a US$ 0,025 e o Nano
+   * Banana Pro a US$ 0,134 há cinco vezes de diferença, e nada no retorno
+   * denuncia qual rodou.
    */
-  ctx?: ContextoMidia
+  ctx?: ContextoMidia,
+  opcoes?: OpcoesDaImagem
 ): Promise<string> {
+  return (await gerarImagem(prompt, aspectRatio, quality, ctx, opcoes)).dataUrl;
+}
+
+/** A cascata do Google: o recuo desde 01/10, na mesma ordem de antes. */
+async function gerarNoGoogle(prompt: string, aspectRatio: AspectRatio, quality: ImageQuality, ctx: ContextoMidia): Promise<ImagemGerada> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   // ── 1. Imagen 3 via Gemini API key (melhor qualidade, só precisa da API key) ──
@@ -369,6 +535,10 @@ export async function generateImage(
  * geram a partir de texto e ignoram a imagem de entrada, então incluí-los como
  * fallback devolveria uma arte bonita e SEM o cliente dentro, que é exatamente
  * o que a decisão descartou. Falhar e manter o quadro real é melhor.
+ *
+ * Desde 01/10 o primeiro a tentar é o Grok Imagine 2.0 da Higgsfield, que
+ * EDITA (recebe o quadro em `image_urls`); o Nano Banana virou o recuo. A
+ * regra acima continua: nenhum modelo que só gera a partir de texto entra aqui.
  */
 export async function comporSobreImagem(
   prompt: string,
@@ -376,8 +546,62 @@ export async function comporSobreImagem(
   mimeType: string,
   ctx?: ContextoMidia,
   /** Proporção da imagem de saída (ex.: "9:16" para capa de corte vertical). */
-  aspectRatio?: string
+  aspectRatio?: string,
+  opcoes?: OpcoesDaEdicao
 ): Promise<string | null> {
+  return (await comporSobreImagemComCusto(prompt, imagemBase64, mimeType, ctx, aspectRatio, opcoes))?.dataUrl ?? null;
+}
+
+export type OpcoesDaEdicao = OpcoesDaImagem & {
+  /**
+   * A mesma imagem de entrada como URL pública. A Higgsfield só recebe imagem
+   * por URL; sem ela, a edição vai direto ao Google.
+   */
+  imagemUrl?: string | null;
+};
+
+/**
+ * A edição com quem respondeu e quanto custou (01/10). Primeiro o modelo do
+ * tipo "cenario" na Higgsfield (Grok Imagine 2.0, US$ 0,08), quando há URL da
+ * imagem e o modelo escolhido edita; senão, ou se ele recusar, estourar o
+ * prazo ou faltar saldo, a cascata do Nano Banana de sempre.
+ */
+export async function comporSobreImagemComCusto(
+  prompt: string,
+  imagemBase64: string,
+  mimeType: string,
+  ctx?: ContextoMidia,
+  aspectRatio?: string,
+  opcoes: OpcoesDaEdicao = {}
+): Promise<ImagemGerada | null> {
+  const contexto: ContextoMidia = ctx ?? { operation: "imagem_sem_contexto" };
+  const tipo = opcoes.tipo ?? "cenario";
+  const gerador = geradorDoTipo(tipo);
+  if (ehDaHiggsfield(gerador) && opcoes.imagemUrl && FICHAS[gerador].edita) {
+    try {
+      return await gerarNaHiggsfield({
+        gerador,
+        prompt,
+        proporcao: aspectRatio ?? "9:16",
+        imagemUrl: opcoes.imagemUrl,
+        ctx: contexto,
+        ate: opcoes.higgsfieldAte,
+      });
+    } catch (e) {
+      avisarRecuo(tipo, gerador, e);
+    }
+  }
+  return comporNoGoogle(prompt, imagemBase64, mimeType, contexto, aspectRatio);
+}
+
+/** A edição pelo Nano Banana: o recuo desde 01/10. */
+async function comporNoGoogle(
+  prompt: string,
+  imagemBase64: string,
+  mimeType: string,
+  ctx: ContextoMidia,
+  aspectRatio?: string
+): Promise<ImagemGerada | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -430,8 +654,11 @@ export async function comporSobreImagem(
       };
       const parte = (data.candidates?.[0]?.content?.parts ?? []).find((p) => p.inlineData?.data);
       if (parte?.inlineData) {
-        if (ctx) recordImagem(model, 1, ctx);
-        return `data:${parte.inlineData.mimeType ?? "image/jpeg"};base64,${parte.inlineData.data}`;
+        // Sem imageSize a edição sai no tamanho padrão (1K): preço do 1K mais
+        // a imagem de entrada.
+        const custoUsd = precoDoGoogle(model, "standard", true);
+        gravarCustoDeImagem(model, custoUsd, ctx);
+        return { dataUrl: `data:${parte.inlineData.mimeType ?? "image/jpeg"};base64,${parte.inlineData.data}`, modelo: model, custoUsd };
       }
     } catch (e) {
       console.warn(`[comporSobreImagem][${model}] erro:`, e);

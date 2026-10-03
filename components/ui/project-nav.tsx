@@ -2,17 +2,38 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit } from "lucide-react";
+import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit, Plus, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function ProjectNav({ projectId, isActive }: { projectId: string; isActive: boolean }) {
+export function ProjectNav({
+  projectId,
+  isActive,
+  souMembro = false,
+}: {
+  projectId: string;
+  isActive: boolean;
+  /**
+   * MEMBRO DA EQUIPE (01/10, acabamento): "Editar setup" some, porque o setup é
+   * do dono. Configurações e Treinamento ficam, em leitura com o aviso.
+   */
+  souMembro?: boolean;
+}) {
   const pathname = usePathname();
 
+  // A ORDEM conta a jornada (29/09): criar, acompanhar, ver o que saiu, medir.
+  // "Criar" abre o projeto e junta as três portas de entrada; antes o projeto
+  // abria na lista de Posts, que mostra o que já saiu e não por onde começar.
   const tabs = [
     {
-      href: `/projects/${projectId}/posts`,
-      label: "Posts",
-      icon: FileText,
+      href: `/projects/${projectId}/criar`,
+      label: "Criar",
+      icon: Plus,
+      show: isActive,
+    },
+    {
+      href: `/projects/${projectId}/linha-editorial`,
+      label: "Linha editorial",
+      icon: NotebookPen,
       show: isActive,
     },
     // A aba "Vídeo" saiu daqui em 02/09. O processo inteiro (envio, estilo,
@@ -23,8 +44,20 @@ export function ProjectNav({ projectId, isActive }: { projectId: string; isActiv
     // existindo por enquanto, redirecionando para cá.
     {
       href: `/projects/${projectId}/live`,
-      label: "Gestor de Conteúdo",
+      label: "Gestor",
       icon: Radio,
+      show: isActive,
+    },
+    {
+      href: `/projects/${projectId}/posts`,
+      label: "Posts",
+      icon: FileText,
+      show: isActive,
+    },
+    {
+      href: `/projects/${projectId}/analytics`,
+      label: "Resultados",
+      icon: BarChart2,
       show: isActive,
     },
     {
@@ -34,16 +67,10 @@ export function ProjectNav({ projectId, isActive }: { projectId: string; isActiv
       show: true,
     },
     {
-      href: `/projects/${projectId}/analytics`,
-      label: "Analytics",
-      icon: BarChart2,
-      show: isActive,
-    },
-    {
       href: `/projects/${projectId}/setup`,
       label: "Editar setup",
       icon: PencilLine,
-      show: true,
+      show: !souMembro,
     },
     {
       href: `/projects/${projectId}/training`,

@@ -3,8 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
-import { estaTrabalhando, PRAZO_SEGUNDOS } from "@/lib/media/video-state";
+import { MAX_RETOMADAS, estaTrabalhando, prazoDaEtapa, prazoDoCompletoSegundos, roteiroPendenteDe, type RetomadasDoVideo } from "@/lib/media/video-state";
+import { prazoDoVigia } from "@/lib/media/vigia-das-etapas";
+import { roteiroLigado } from "@/lib/media/roteiro-da-edicao";
 import { varrerExpirados } from "@/lib/media/video-sweep";
+import { projetoVisivel } from "@/lib/equipe/conta";
+import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
 
 /**
  * O estado dos vídeos de um projeto, enxuto, para a tela consultar de tempos em
@@ -21,6 +25,13 @@ import { varrerExpirados } from "@/lib/media/video-sweep";
  * está sempre vivo é quem tem a tela aberta esperando. Enquanto não existe
  * fila, é esta rota que fecha o buraco da falha silenciosa.
  */
+/** De qual etapa de trabalho cada estado de espera é a volta (ver o vigia). */
+const ETAPA_DA_VOLTA: Record<string, string | undefined> = {
+  uploaded: "transcribing",
+  transcribed: "selecting",
+  selected: "cutting",
+};
+
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,7 +42,7 @@ export async function GET(req: NextRequest) {
   }
 
   const project = await prisma.project.findFirst({
-    where: { id: projectId, userId },
+    where: { id: projectId, ...projetoVisivel(userId) },
     select: { id: true },
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
@@ -48,9 +59,11 @@ export async function GET(req: NextRequest) {
       startedAt: true,
       attempts: true,
       durationSec: true,
+      sizeBytes: true,
       updatedAt: true,
       createdAt: true,
       finishedAt: true,
+      rodadaEm: true,
       originalName: true,
       completoUrl: true,
       capas: true,
@@ -63,10 +76,38 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // O estado da edição do completo vive numa coluna fora do schema do Prisma
+  // (lib/media/montagem-do-completo.ts), então vem por consulta crua.
+  const estadoDoCompleto = new Map<string, string>();
+  // O roteiro (30/09) mora no mesmo jsonb: existe? foi aprovado?
+  const roteiros = new Map<string, { existe: boolean; aprovado: boolean }>();
+  // As retomadas do vigia (01/10), na mesma consulta crua: a coluna é lida por
+  // SQL para não depender do cliente do Prisma regenerado.
+  const retomadas = new Map<string, RetomadasDoVideo>();
+  if (videos.length) {
+    const linhas = await prisma.$queryRaw<{ id: string; estado: string | null; tem_roteiro: boolean | null; aprovado: string | null; retomadas: RetomadasDoVideo | null }[]>`
+      SELECT id, "completoMontagem" ->> 'estado' AS estado,
+             ("completoMontagem" -> 'roteiro') IS NOT NULL AS tem_roteiro,
+             "completoMontagem" -> 'roteiro' ->> 'aprovadoEm' AS aprovado,
+             retomadas
+      FROM video_jobs WHERE id = ANY(${videos.map((v) => v.id)})`.catch(() => []);
+    for (const l of linhas) {
+      if (l.estado) estadoDoCompleto.set(l.id, l.estado);
+      roteiros.set(l.id, { existe: Boolean(l.tem_roteiro), aprovado: Boolean(l.aprovado) });
+      if (l.retomadas) retomadas.set(l.id, l.retomadas);
+    }
+  }
+  const ligado = roteiroLigado();
+  // A LINHA DO TEMPO INTEIRA (02/10): efeitos, revisão final e as peças
+  // esperando aprovação. Ver lib/media/linha-do-tempo.ts.
+  const extras = await extrasDaLinha(projectId, videos);
+  // O GÊMEO DIGITAL gravando (02/10): a linha dele começa antes da esteira.
+  const gemeos = await gemeosNaFaixa(projectId);
+
   const agora = Date.now();
 
   return NextResponse.json({
-    videos: videos.map((v) => {
+    videos: [...gemeos.ativos, ...videos.map((v) => {
       const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
         publicar?: boolean;
         posts?: unknown;
@@ -78,6 +119,19 @@ export async function GET(req: NextRequest) {
         midia?: { vertical?: unknown };
       }>;
       const comMidia = trechos.filter((t) => t.midia?.vertical);
+      // O começo da RODADA atual: `rodadaEm` quando o vídeo foi refeito,
+      // senão o envio. Ver o campo no schema.
+      const inicioDaRodada = v.rodadaEm ?? v.createdAt;
+      // O COMPLETO QUE NÃO VEIO vira estado explícito, nunca contagem
+      // infinita (30/09). Dois jeitos de saber: o worker avisou a falha (o
+      // callback grava "completo: ..." em `error`), ou a rodada passou do
+      // prazo do completo sem ele chegar.
+      const esperandoCompleto =
+        !v.completoUrl && ["cut", "writing", "ready"].includes(v.status) && comMidia.length > 0;
+      const completoFalhou =
+        esperandoCompleto &&
+        (Boolean(v.error?.includes("completo:")) ||
+          (agora - inicioDaRodada.getTime()) / 1000 > prazoDoCompletoSegundos(v.durationSec));
       return {
       id: v.id,
       status: v.status,
@@ -86,12 +140,17 @@ export async function GET(req: NextRequest) {
       durationSec: v.durationSec,
       updatedAt: v.updatedAt.toISOString(),
       /**
-       * O relógio da faixa conta desde o ENVIO, e não desde a etapa atual.
-       * É o número que o dono da gravação tem na cabeça ("subi faz quanto
-       * tempo"), e é o único que permite dizer quanto falta para o vídeo
-       * completo, que só chega no fim de tudo.
+       * Quando a gravação foi enviada. Desde 30/09 a faixa conta a partir
+       * de `inicioDaRodada`, e não daqui: o vídeo refeito contava do envio
+       * original e mostrou 196 minutos para uma rodada de 56.
        */
       criadoEm: v.createdAt.toISOString(),
+      /**
+       * De onde a contagem regressiva da faixa parte (30/09). Igual a
+       * `criadoEm` no vídeo que roda uma vez só; diferente quando foi refeito.
+       */
+      inicioDaRodada: inicioDaRodada.toISOString(),
+      completoFalhou,
       /** Quando a esteira terminou. Null enquanto ela nao terminou, e null nos
        *  videos anteriores a 08/09, que nao tem o instante gravado. */
       terminadoEm: v.finishedAt?.toISOString() ?? null,
@@ -104,11 +163,35 @@ export async function GET(req: NextRequest) {
       trechosEscolhidos: trechos.length,
       cortesProntos: comMidia.length,
       cortesQueVaoAoAr: comMidia.filter((t) => t.publicar !== false).length,
+      // Edições ainda rodando (30/09): a faixa só diz "pronto" quando a
+      // montagem dos cortes e do completo terminou, e não quando o corte
+      // simples chegou. Antes ela dizia pronto com o completo sem edição.
+      edicoesEmAndamento:
+        (trechos as Array<{ montagem?: { estado?: string } }>).filter((t) => ["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(t.montagem?.estado ?? "")).length +
+        (["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(estadoDoCompleto.get(v.id) ?? "") ||
+        // O INTERVALO entre a gravação limpa chegar e a montagem entrar na
+        // fila (30/09): sem estado ainda, a faixa dizia "pronto" e o card do
+        // completo sumia do quadro por um instante. Vídeo recente, completo
+        // pronto, montagem ligada e nenhum estado: ainda é edição.
+        (Boolean(v.completoUrl) && !estadoDoCompleto.get(v.id) && process.env.MONTAGEM_DO_COMPLETO === "1" && Date.now() - v.createdAt.getTime() < 6 * 3600_000)
+          ? 1
+          : 0),
+      etapaDoCompleto: estadoDoCompleto.get(v.id) ?? null,
       temTranscricao: v.durationSec !== null,
       temTrechos: trechos.length > 0,
       temCortes: comMidia.length > 0,
       temTrechosComPosts: trechos.some((t) => t.posts),
       temCompleto: Boolean(v.completoUrl),
+      // A tela de roteiro (30/09): a faixa leva o cliente a ela, e o piloto da
+      // tela cura o vídeo parado em "selected" pelo roteiro, e não pelo corte.
+      roteiro: roteiros.get(v.id) ?? null,
+      roteiroPendente: roteiroPendenteDe({
+        status: v.status,
+        temTrechos: trechos.length > 0,
+        temCortes: comMidia.length > 0,
+        roteiroLigado: ligado,
+        roteiroAprovado: Boolean(roteiros.get(v.id)?.aprovado),
+      }),
       // A capa do completo já tem opções? O piloto gera uma vez quando não.
       capas: Boolean(v.capas),
       /**
@@ -159,7 +242,25 @@ export async function GET(req: NextRequest) {
         estaTrabalhando(v.status) && v.startedAt
           ? Math.max(0, Math.round((agora - v.startedAt.getTime()) / 1000))
           : null,
-      prazoSegundos: estaTrabalhando(v.status) ? PRAZO_SEGUNDOS[v.status] : null,
+      prazoSegundos: estaTrabalhando(v.status) ? prazoDaEtapa(v) : null,
+      /**
+       * A etapa passou do prazo que o vigia usa (01/10): a faixa troca o
+       * "passou do previsto" por "o servidor vai retomar sozinho".
+       */
+      passouDoPrazo:
+        estaTrabalhando(v.status) && v.startedAt ? (agora - v.startedAt.getTime()) / 1000 > prazoDoVigia(v) : false,
+      /**
+       * A etapa atual já foi retomada pelo vigia nesta rodada? A faixa mostra
+       * "foi retomada automaticamente (tentativa 1 de 2)". Também no estado de
+       * espera logo depois da retomada (ex.: "selected" antes de o corte ser
+       * tomado de novo), para a frase não piscar.
+       */
+      retomada: (() => {
+        const etapa = estaTrabalhando(v.status) ? v.status : ETAPA_DA_VOLTA[v.status];
+        const r = etapa ? retomadas.get(v.id)?.[etapa] : undefined;
+        if (!r || !r.n || !r.em || new Date(r.em).getTime() < inicioDaRodada.getTime()) return null;
+        return { n: r.n, max: MAX_RETOMADAS, motivo: r.motivo ?? "prazo", em: r.em };
+      })(),
       /**
        * Há quanto tempo o registro não muda. É o que o piloto da tela usa,
        * desde 04/09, para decidir se CURA: o servidor encadeia as etapas
@@ -167,7 +268,9 @@ export async function GET(req: NextRequest) {
        * significa que essa corrente quebrou.
        */
       paradoHaSegundos: Math.max(0, Math.round((agora - v.updatedAt.getTime()) / 1000)),
+      linha: extras.get(v.id) ?? null,
+      gemeo: gemeos.porVideoJob.get(v.id) ?? null,
       };
-    }),
+    })],
   });
 }

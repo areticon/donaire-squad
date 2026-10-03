@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/ui/app-shell";
 import { destinoDeEntrada } from "@/lib/onboarding/portao";
+import { BannerDoPlano } from "@/components/billing/banner-do-plano";
+import { prisma } from "@/lib/db/prisma";
 
 export default async function AppLayout({
   children,
@@ -28,6 +30,50 @@ export default async function AppLayout({
   const pathname = pathnameCedo;
   const destino = await destinoDeEntrada(userId, pathname);
   if (destino.tipo === "planos") redirect("/planos?assinar=1");
+  // Membro com a assinatura do dono pausada (01/10): tela própria, sem preço.
+  if (destino.tipo === "equipe-pausada") redirect("/equipe-pausada");
 
-  return <AppShell>{children}</AppShell>;
+  /**
+   * A FAIXA DO PLANO ENTRA AQUI, e nao em cada pagina (22/09).
+   *
+   * Uma tela nova esquecer a faixa e questao de tempo, e faixa que existe em
+   * sete telas e falta na oitava e pior que faixa nenhuma: o cliente aprende
+   * a procurar o saldo num lugar que as vezes nao tem.
+   *
+   * Ela e componente de SERVIDOR renderizado dentro de um componente de
+   * CLIENTE, o que so funciona porque quem monta e este layout, que e de
+   * servidor: o elemento ja vai pronto como `children`.
+   */
+  // O item "Painel" do menu só existe para admin. O papel é lido aqui, no
+  // servidor, porque a sessão do navegador não carrega o papel e o menu é
+  // componente de cliente.
+  const eu = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  const ehAdmin = eu?.role === "admin";
+  // O NÚMERO AO LADO DE "DEMONSTRAÇÕES" (01/10): reuniões marcadas que começam da última
+  // hora até 7 dias à frente. Só roda para admin, para cliente não pagar uma
+  // consulta a mais por página; leitura pura, e falha vira zero em vez de
+  // derrubar o menu.
+  const demonstracoesProximas = ehAdmin ? await contarDemonstracoesProximas() : 0;
+  // OS CHAMADOS ABERTOS (02/10), o número ao lado de "Chamados". Mesma regra:
+  // só admin, leitura pura, falha vira zero.
+  const chamadosAbertos = ehAdmin ? await prisma.chamado.count({ where: { status: "aberto" } }).catch(() => 0) : 0;
+
+  return (
+    <AppShell ehAdmin={ehAdmin} demonstracoesProximas={demonstracoesProximas} chamadosAbertos={chamadosAbertos}>
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+        <BannerDoPlano userId={userId} />
+      </div>
+      {children}
+    </AppShell>
+  );
+}
+
+/** Fora do componente: a regra do React não quer relógio lido durante o desenho. */
+async function contarDemonstracoesProximas(): Promise<number> {
+  const agora = Date.now();
+  return prisma.reuniaoDeDemonstracao
+    .count({
+      where: { status: "marcada", inicio: { gt: new Date(agora - 60 * 60 * 1000), lt: new Date(agora + 7 * 24 * 60 * 60 * 1000) } },
+    })
+    .catch(() => 0);
 }

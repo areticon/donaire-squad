@@ -239,6 +239,27 @@ export function legendaDoCorte(
     // de marca que não faz nada.
     const ajuste = corpo < L.corpo ? `{\\fs${corpo}}` : "";
 
+    if (L.grifo) {
+      // MARCA-TEXTO (30/09): um evento por palavra, do começo dela até a
+      // próxima entrar; as já ditas levam a faixa da marca (opaca) e o resto
+      // fica na faixa escura translúcida do estilo. O `\3c` do ASS só aceita a
+      // cor sem o alfa, por isso os seis últimos dígitos.
+      const cor6 = (c: string) => `&H${c.replace(/^&H/i, "").slice(-6)}&`;
+      const grifada = `{\\3c${cor6(L.grifo.caixa)}\\3a&H00&\\1c${cor6(L.grifo.texto)}}`;
+      const escrita = (w: { texto: string }) => (L.caixaAlta ? w.texto.toUpperCase() : w.texto);
+      bloco.forEach((p, i) => {
+        const de = i === 0 ? inicio : p.inicio;
+        const ate = i + 1 < bloco.length ? Math.min(bloco[i + 1].inicio, fim) : fim;
+        if (ate <= de) return;
+        const ditas = bloco.slice(0, i + 1).map(escrita).join(" ");
+        const resto = bloco.slice(i + 1).map(escrita).join(" ");
+        linhas.push(
+          `Dialogue: 0,${carimbo(de)},${carimbo(ate)},Fala,,0,0,0,,${ajuste}${grifada}${ditas}${resto ? `{\\r${ajuste ? `\\fs${corpo}` : ""}} ${resto}` : ""}`
+        );
+      });
+      continue;
+    }
+
     linhas.push(
       `Dialogue: 0,${carimbo(inicio)},${carimbo(fim)},Fala,,0,0,0,,${ajuste}${texto}`
     );
@@ -293,12 +314,22 @@ export function legendaDoCorte(
     // Fonte é escolhida pelo fontconfig do contêiner, e lá dentro só existe o
     // que o Dockerfile instalou; pilha de alternativas ao estilo do navegador
     // não significa nada para o libass, que trata a string toda como um nome.
-    `Style: Fala,${L.fonte},${L.corpo},${L.corDoDestaque},${L.cor},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo},1`,
+    // Com `caixa` (linguagem de colagem, 30/09) a fala vai em BorderStyle 3,
+    // que no ASS desenha uma caixa na cor do contorno atrás do texto: é a tira
+    // de papel clara com texto escuro. Sem ela, o contorno de sempre.
+    L.caixa
+      ? `Style: Fala,${L.fonte},${L.corpo},${L.corDoDestaque},${L.cor},${L.caixa},&H64000000,${L.negrito ? -1 : 0},0,3,${L.contorno},0,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo},1`
+      : `Style: Fala,${L.fonte},${L.corpo},${L.corDoDestaque},${L.cor},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo},1`,
     // A frase de destaque mora ACIMA da legenda, com o corpo pela metade e na
     // cor de destaque do estilo. Menor de propósito: ela reforça a legenda e
     // não compete com ela, e duas linhas do mesmo tamanho na tela fazem o olho
     // ter que escolher qual ler.
-    `Style: Destaque,${L.fonte},${Math.round(L.corpo * 0.5)},${L.corDoDestaque},${L.corDoDestaque},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo + Math.round(quadro.altura * 0.13)},1`,
+    // MARCA-TEXTO (Vox, 30/09): a frase-chave com a faixa na cor da marca
+    // atrás, texto escuro, um pouco maior que a fala. Sem marca-texto, a frase
+    // sai só na cor de destaque, como sempre foi.
+    L.marcaTexto
+      ? `Style: Destaque,${L.fonte},${Math.round(L.corpo * 0.9)},${L.marcaTexto.texto},${L.marcaTexto.texto},${L.marcaTexto.caixa},&H00000000,-1,0,3,${Math.round(L.contorno * 1.1)},0,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo + Math.round(quadro.altura * 0.13)},1`
+      : `Style: Destaque,${L.fonte},${Math.round(L.corpo * 0.5)},${L.corDoDestaque},${L.corDoDestaque},&H00000000,&HA0000000,${L.negrito ? -1 : 0},0,1,${L.contorno},2,2,${margemLateral},${margemLateral},${quadro.margemDeBaixo + Math.round(quadro.altura * 0.13)},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

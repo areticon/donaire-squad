@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth/server";
+import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
+import { fotoPermanente } from "@/lib/social/foto-permanente";
 import {
   exchangeLinkedInCode,
   exchangeLinkedInCodeForPages,
@@ -8,6 +10,7 @@ import {
   getLinkedInAdminPages,
 } from "@/lib/oauth/linkedin";
 import { prisma } from "@/lib/db/prisma";
+import { readotarPostsOrfaos } from "@/lib/publish/contas-orfas";
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -36,6 +39,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(errorUrl));
   }
 
+  // QUEM VOLTA DO LOGIN DA REDE precisa poder conectar redes NESTE projeto
+  // (01/10, acabamento do acesso de equipe). O projeto vem de um cookie, e o
+  // cookie sozinho nÃ£o prova nada: conferimos com a sessÃ£o de quem voltou que
+  // ela Ã© dona do projeto (membro da equipe nÃ£o conecta rede; ver
+  // lib/equipe/permissoes.ts). Sem sessÃ£o, nÃ£o grava conta nenhuma.
+  const quemVolta = (await auth()).userId;
+  if (!quemVolta) return NextResponse.redirect(new URL("/sign-in", req.url));
+  const barrado = await soQuemConectaRedes(quemVolta, projectId);
+  if (barrado) return barrado;
+
   try {
     const redirectUri = `${appUrl}/api/social/linkedin/callback`;
 
@@ -61,6 +74,10 @@ export async function GET(req: NextRequest) {
           },
           update: {
             accessToken: tokens.access_token,
+            // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+            // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+            needsReconnectAt: null,
+            needsReconnectReason: null,
             refreshToken: tokens.refresh_token ?? null,
             tokenExpiresAt,
             displayName: page.name,
@@ -76,6 +93,10 @@ export async function GET(req: NextRequest) {
             accountType: "organization",
             organizationId: page.organizationId,
             accessToken: tokens.access_token,
+            // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+            // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+            needsReconnectAt: null,
+            needsReconnectReason: null,
             refreshToken: tokens.refresh_token ?? null,
             tokenExpiresAt,
             displayName: page.name,
@@ -83,11 +104,21 @@ export async function GET(req: NextRequest) {
             isActive: false,
           },
         });
+        await readotarPostsOrfaos(projectId, "linkedin", page.organizationId);
       }
 
-      const pagesSuccessUrl = projectId
-        ? `${appUrl}/projects/${projectId}/settings?linkedin=pages_success&pages_count=${orgPages.length}`
-        : `${appUrl}/dashboard`;
+      // VOLTA PARA ONDE SAIU, e não sempre para /settings.
+      //
+      // O `returnTo` já era gravado no cookie pelo connect e este ramo o
+      // ignorava, mandando todo mundo para as Configurações. Enquanto a única
+      // porta para páginas estava nas Configurações, o efeito era invisível.
+      // Em 18/09 a porta entrou na ETAPA 1 do assistente, e sem isto quem
+      // conectasse a página no meio do setup seria cuspido para fora da
+      // jornada, numa tela que ele ainda nem sabia que existia.
+      const voltarPara = req.cookies.get("oauth_return_to")?.value;
+      const destino = voltarPara ?? (projectId ? `/projects/${projectId}/settings` : "/dashboard");
+      const juntar = destino.includes("?") ? "&" : "?";
+      const pagesSuccessUrl = `${appUrl}${destino}${juntar}linkedin=pages_success&pages_count=${orgPages.length}`;
 
       const res = NextResponse.redirect(new URL(pagesSuccessUrl));
       res.cookies.delete("oauth_state");
@@ -112,11 +143,15 @@ export async function GET(req: NextRequest) {
         },
         update: {
           accessToken: tokens.access_token,
+          // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+          // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+          needsReconnectAt: null,
+          needsReconnectReason: null,
           refreshToken: tokens.refresh_token ?? null,
           tokenExpiresAt,
           displayName: profile.name,
           username: profile.email,
-          avatarUrl: profile.picture ?? null,
+          avatarUrl: await fotoPermanente(profile.picture, "linkedin", profile.sub),
           accountType: "personal",
           isActive: true,
         },
@@ -126,14 +161,19 @@ export async function GET(req: NextRequest) {
           platformUserId: profile.sub,
           accountType: "personal",
           accessToken: tokens.access_token,
+          // Reconectar limpa a marca de recusa: a conta volta a poder publicar e some
+          // do estado "reconectar" na tela. Sem isto ela ficaria presa nele.
+          needsReconnectAt: null,
+          needsReconnectReason: null,
           refreshToken: tokens.refresh_token ?? null,
           tokenExpiresAt,
           displayName: profile.name,
           username: profile.email,
-          avatarUrl: profile.picture ?? null,
+          avatarUrl: await fotoPermanente(profile.picture, "linkedin", profile.sub),
           isActive: true,
         },
       });
+      await readotarPostsOrfaos(projectId, "linkedin", profile.sub);
 
       const res = NextResponse.redirect(new URL(settingsUrl));
       res.cookies.delete("oauth_state");
