@@ -214,7 +214,9 @@ export async function gerarBrolls(
   const idDe = (b: { id?: string }, k: number) => String(b.id ?? `b${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `b${k + 1}`;
   const pedidos = (e.broll ?? [])
     .map((b, k) => ({ ...b, id: idDe(b, k) }))
-    .filter((b) => limparConsulta(b.consulta) && (!o.so || o.so.includes(b.id)))
+    // `so` poupa só o que é PAGO (gerador): do banco, grátis, vem tudo, e o B-roll que
+    // a resolução derrubou volta sozinho se a revisão tirar a peça que o atrapalhava.
+    .filter((b) => limparConsulta(b.consulta) && (!o.so || fonteDoBroll() === "pexels" || o.so.includes(b.id)))
     .slice(0, o.teto ?? 40);
   if (!pedidos.length) return { insercoes, custoUsd: 0, erros, fonte: null, creditos };
   const fonte = fonteDoBroll();

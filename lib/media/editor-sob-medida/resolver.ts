@@ -326,9 +326,42 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     brutos.push({ id, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos, props, ficha, plano, passes: passesDaPeca(ficha), ...(pecaContinua(ficha) ? { continua: true } : {}) });
   });
 
+  // 1b. A MÍDIA PAGA MANDA (03/10, terceira volta): a inserção gerada e o
+  // B-roll que já existem (pagos ou baixados) reservam o tempo deles; peça de
+  // tela cheia ou de lado que o conserto pôs em cima começa depois ou cai. Na
+  // prova Vox do corte 0, o B-roll entrou na rodada 0 e sumiu no final porque
+  // a peça nova do conserto ganhou o lugar.
+  const reservas: Array<{ de: number; ate: number; id: string }> = [];
+  const gapR = ctx.ritmo === "corte" ? 1 : 0.3;
+  for (const [k, ins] of (e.insercoes ?? []).entries()) {
+    const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
+    const a = ctx.insercoes[id]?.url ? t(ins.de) : null;
+    if (a !== null) reservas.push({ de: Math.max(ctx.ritmo === "corte" ? 2 : 0, a - 0.05), ate: Math.max(ctx.ritmo === "corte" ? 2 : 0, a - 0.05) + (ctx.ritmo === "corte" ? 2.6 : 3.2), id });
+  }
+  for (const [k, b] of (e.broll ?? []).entries()) {
+    const id = String(b.id ?? `b${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `b${k + 1}`;
+    const a = ctx.insercoes[id]?.url && ctx.insercoes[id]?.origem === "banco" ? t(b.de) : null;
+    if (a !== null) reservas.push({ de: Math.max(ctx.ritmo === "corte" ? 2 : 1, a - 0.05), ate: Math.max(ctx.ritmo === "corte" ? 2 : 1, a - 0.05) + 1.5, id });
+  }
+  for (const m of brutos) {
+    if (m.plano === "cheio") continue;
+    for (const r of reservas.sort((x, y) => x.de - y.de)) {
+      if (!(m.de < r.ate + gapR && m.ate > r.de - gapR)) continue;
+      const novoDe = r.ate + gapR;
+      if (m.ate - novoDe >= Math.max(1.5, m.ficha.duracao[0] * 0.7)) {
+        m.eventos = m.eventos.map((x) => Math.max(x, novoDe + 0.25));
+        m.de = +novoDe.toFixed(3);
+      } else {
+        avisos.push(`${m.id}: cedeu o lugar à mídia paga ${r.id}`);
+        m.ate = -1;
+        break;
+      }
+    }
+  }
+
   // 2. Nada por cima de nada: o anterior manda; o seguinte começa depois ou cai.
   const momentos: MomentoResolvido[] = [];
-  for (const m of brutos.sort((a, b) => a.de - b.de)) {
+  for (const m of brutos.filter((x) => x.ate > 0).sort((a, b) => a.de - b.de)) {
     const ant = momentos[momentos.length - 1];
     if (ant && m.de < ant.ate + 0.15) {
       const novoDe = ant.ate + 0.15;
@@ -442,10 +475,13 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   // No corte o título e a pergunta já descem para o peito (arejarCorte): só o título de trás segura a câmera.
   const seguram = corte ? ["titulo-atras"] : ["titulo", "capitulo", "pergunta-resposta", "titulo-atras"];
   for (const m of momentos.filter((x) => x.plano === "cheio" && seguram.includes(x.peca))) {
+    // O título de trás no corte mede a cabeça no quadro ABERTO (props.cabeca): com zoom a cabeça
+    // sobe e cobre as letras (prova de 03/10, terceira volta: "ME__OR"). Ali a câmera fica aberta.
+    const alvo = corte && m.peca === "titulo-atras" ? 1 : 1.12;
     for (const c of camera)
-      if (c.de < m.ate && c.ate > m.de && c.zoom > 1.15 && !pedidos.includes(c)) {
-        c.zoom = 1.12;
-        if (c.zoomFinal) c.zoomFinal = +(1.12 * 1.04).toFixed(3);
+      if (c.de < m.ate && c.ate > m.de && c.zoom > alvo + 0.03 && !pedidos.includes(c)) {
+        c.zoom = alvo;
+        if (c.zoomFinal) c.zoomFinal = +(alvo * 1.03).toFixed(3);
       }
   }
   // 5b. O ZOOM DE SOCO (03/10, terceira volta): na palavra de ênfase a câmera

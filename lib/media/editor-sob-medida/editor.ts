@@ -250,8 +250,13 @@ export async function consertarEdicao(
     `# A FALA, NUMERADA\n${fala}`,
     `# A EDIÇÃO ATUAL DOS MOMENTOS COM DEFEITO\n${JSON.stringify(alvo, null, 1)}`,
     `# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (os quadros acima são os do defeito)\n${defeitos.map((d) => `- ${d.momento ?? "sem peça"} em ${d.t.toFixed(1)} s, ${d.tipo}: ${d.descricao} (sugestão: ${d.conserto})`).join("\n")}`,
+    edicao.insercoes?.length || edicao.broll?.length
+      ? `# IMAGENS JÁ PAGAS (fique com elas: peça de tela cheia ou de lado não entra por cima, e o rosto volta 1 s entre elas)\n${[...(edicao.insercoes ?? []).map((x) => `- inserção ${x.id}: ${x.de} a ${x.ate}`), ...(edicao.broll ?? []).map((x) => `- B-roll ${x.id} "${x.consulta}": ${x.de} a ${x.ate}`)].join("\n")}`
+      : "",
     `# A TAREFA\nConserte cada momento com defeito: reescreva a peça (outra peça, outro texto, outro tempo, outro lado) ou remova. Defeito sem peça (por exemplo, "falta algo aqui" ou câmera ruim) pode virar um momento novo ou uma câmera. Responda só o JSON: { "momentos": [momentos refeitos, com o MESMO id do que substituem; ids novos para os novos], "remover": ["ids"], "camera": [] }`,
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   // O conserto é pontual e vai no Sonnet 5: no Opus custou US$ 0,34 num vídeo de 4 min sem ganho visível (03/10).
   const r = (await chamar(contexto(e), msg, quadrosDoDefeito.slice(0, 16), { ...e, modelo: process.env.EDITOR_SOB_MEDIDA_MODELO_CONSERTO || "claude-sonnet-5" }, "editor-sob-medida-conserto")) as { momentos?: MomentoDoEditor[]; remover?: string[]; camera?: EdicaoDoEditor["camera"] };
   const novos = (r.momentos ?? []).filter((m) => m && m.peca && m.de && m.ate);
