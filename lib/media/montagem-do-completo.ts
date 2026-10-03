@@ -8,6 +8,7 @@ import { recordTranscricao, type ContextoMidia } from "@/lib/media/usage";
 import { normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
 import { dirigirMontagem, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
+import { umaTeseSo } from "@/lib/media/diretor-limpo";
 import { gerarAssetsDaMontagem, recortesDoProjeto, urlsDosAssets, type AssetGerado } from "@/lib/media/assets-da-montagem";
 import { concluirSePronto } from "@/lib/media/higgsfield";
 import {
@@ -506,6 +507,8 @@ function paraTela(c: CenaDoPlano, info: NonNullable<CenaDoPlano["tela"]>, inteir
     layout: "narrador-cheio",
     asset: undefined,
     elementos,
+    // O enquadramento do corte limpo não vale na tela: recortaria o que é mostrado.
+    zoom: undefined,
     movimento: zoom ? "zoom-in-lento" : "estatico",
     movimentoNa: zoom ? c.movimentoNa : undefined,
     // A região fica guardada mesmo sem zoom: a parte da cena que o ritmo
@@ -741,6 +744,9 @@ export function fecharPlanoDoCompleto(
   }
 ): { plano: PlanoDeMontagem; avisos: string[]; ritmo: number } {
   const curto = completoEhCurto(p.duracao, p.formato);
+  // Uma tese em tela cheia no vídeo inteiro (03/10, corte limpo): os blocos
+  // planejam em paralelo e cada um pode trazer a sua.
+  plano = umaTeseSo(plano);
   const ajustado = ajustarPlanoDoCompleto(plano, {
     palavras: p.palavras,
     duracao: p.duracao,

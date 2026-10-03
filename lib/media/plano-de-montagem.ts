@@ -198,7 +198,13 @@ export type EntradaDoRecorte = "cair" | "deslizar" | "pop";
 
 export type ElementoDoPlano =
   | { tipo: "recorte"; asset: string; zona: Zona; palavra: number; entrada: EntradaDoRecorte; tamanho: "p" | "m" | "g" }
-  | { tipo: "marca-texto"; texto: string; zona: Zona; palavra: number }
+  /**
+   * `visual: "faixa"` (03/10, corte limpo): a frase dita numa faixa
+   * semitransparente no terço de baixo, SOBRE a gravação, com a pessoa
+   * falando por trás (o texto do vídeo de pitch). Sem o campo, o desenho de
+   * sempre da família.
+   */
+  | { tipo: "marca-texto"; texto: string; zona: Zona; palavra: number; visual?: "faixa" }
   | { tipo: "letras-revista"; texto: string; zona: Zona; palavra: number }
   | { tipo: "carimbo"; texto: string; zona: Zona; palavra: number }
   /** `rotulo`: o chapéu da tarja de telejornal no sóbrio (até 3 palavras). */
@@ -304,6 +310,13 @@ export type CenaDoPlano = {
   elementos: ElementoDoPlano[];
   /** Por que o diretor escolheu isto; vai para o log e para a tela de revisão. */
   motivo: string;
+  /**
+   * O ENQUADRAMENTO da cena (03/10, corte limpo): 1 é o plano aberto da
+   * gravação, 1,1 o médio, 1,2 o fechado. Alternar entre cortes de câmera
+   * faz a gravação de uma câmera parecer duas. No punch, é o zoom de chegada
+   * na palavra forte (o padrão é 1,12). Ausente: aberto.
+   */
+  zoom?: number;
   /**
    * O que o cliente fez nesta cena na tela de roteiro (30/09): tirou o efeito,
    * reescreveu a ideia ou pediu outra ao diretor. Só a tela lê; a montagem
@@ -636,6 +649,7 @@ export function validarPlano(
       asset: typeof c.asset === "string" ? c.asset : undefined,
       elementos: (Array.isArray(c.elementos) ? c.elementos : []) as ElementoDoPlano[],
       motivo: texto(c.motivo, 240),
+      ...(typeof c.zoom === "number" && Number.isFinite(c.zoom) && c.zoom > 1.01 ? { zoom: +Math.min(1.3, c.zoom).toFixed(3) } : {}),
     }))
     .sort((x, y) => x.de - y.de);
 
@@ -905,7 +919,7 @@ function elementoValido(
       // O chapéu da tarja de telejornal é curto como um título; longo, sai só ele.
       const chapeu = r.tipo === "tarja" ? texto(r.rotulo, 28) : "";
       const rotulo = chapeu && palavrasDoTexto(chapeu).length <= REGRAS.palavrasPorTitulo ? chapeu : undefined;
-      return r.tipo === "tarja" ? { tipo: "tarja", texto: t, zona, palavra, ...(rotulo ? { rotulo } : {}) } : { tipo: "marca-texto", texto: t, zona, palavra };
+      return r.tipo === "tarja" ? { tipo: "tarja", texto: t, zona, palavra, ...(rotulo ? { rotulo } : {}) } : { tipo: "marca-texto", texto: t, zona, palavra, ...(r.visual === "faixa" ? { visual: "faixa" as const } : {}) };
     }
     case "icone-pop": {
       const nome = umDe(ICONES_POP, r.nome, "estrela");
@@ -1508,6 +1522,8 @@ export type ElementoResolvido = {
   check?: boolean;
   /** Comentário respondido (02/10): o @ de quem comentou, só quando foi dito. */
   autor?: string;
+  /** "faixa" (03/10): a frase sobre a gravação, numa faixa semitransparente no terço de baixo. */
+  visual?: "faixa";
 };
 
 export type CenaResolvida = {
@@ -1517,6 +1533,8 @@ export type CenaResolvida = {
   movimento: Movimento;
   /** Segundo da palavra forte: onde o punch bate e o zoom lento começa. */
   movimentoEm: number;
+  /** O enquadramento da cena (03/10, ver CenaDoPlano.zoom): o worker recorta a base nele. */
+  zoom?: number;
   /**
    * Para onde a câmera da cena aponta, em pixels do quadro: o centro do rosto
    * quando há narrador, o da mídia quando não há. O punch e o zoom mexem a
@@ -1714,7 +1732,9 @@ export function resolverMontagem(plano: PlanoDeMontagem, ctx: ContextoDaResoluca
     // a faixa livre de 20% no topo existe para os elementos (30/09); sem
     // nenhum, ela era uma tarja na cor da marca vazia em cima da pessoa, e a
     // revisão visual do corte a leu como "faixa laranja vazia".
-    const semFaixa = layout === "narrador-cheio" && plano.formato === "9:16" && !c.elementos.length;
+    // A faixa sobre a gravação (03/10) também quer a pessoa no quadro inteiro.
+    const soFaixaSobreVideo = c.elementos.length > 0 && c.elementos.every((e) => e.tipo === "marca-texto" && e.visual === "faixa");
+    const semFaixa = layout === "narrador-cheio" && plano.formato === "9:16" && (!c.elementos.length || soFaixaSobreVideo);
     const gl = semFaixa ? { ...geo[layout], narrador: { x: 0, y: 0, w: 1, h: 1 }, rostoNaCaixa: 0.16 } : geo[layout];
 
     // ── narrador ──
@@ -1792,7 +1812,7 @@ export function resolverMontagem(plano: PlanoDeMontagem, ctx: ContextoDaResoluca
     // O rosto cresce com o zoom da cena, então a folga acompanha o movimento.
     const proibidas: Retangulo[] = [caixaDaLegenda];
     if (rostoNaTela && narrador) {
-      const z = ESCALA_DO_MOVIMENTO[c.movimento];
+      const z = Math.max(ESCALA_DO_MOVIMENTO[c.movimento], c.zoom ?? 1);
       const ox = narrador.caixa.x + narrador.origemDoZoom.x * narrador.caixa.w;
       const oy = narrador.caixa.y + narrador.origemDoZoom.y * narrador.caixa.h;
       const crescido: Retangulo = {
@@ -1836,7 +1856,17 @@ export function resolverMontagem(plano: PlanoDeMontagem, ctx: ContextoDaResoluca
       const candidatas = (z: Zona) => [...(largo && FAIXA_INTEIRA[z] ? [FAIXA_INTEIRA[z]!] : []), zonaDoLayout(z, layout, plano.formato)];
       let caixa: Retangulo | null = null;
       let zonaFinal: Zona = e.zona;
-      if (e.tipo === "letras-revista") {
+      // A FAIXA SOBRE A GRAVAÇÃO (03/10): lugar fixo no terço de baixo, abaixo
+      // da legenda, larga; só cai na busca por zona se bater no rosto.
+      if (e.tipo === "marca-texto" && e.visual === "faixa") {
+        const r = px(plano.formato === "9:16" ? { x: 0.04, y: 0.815, w: 0.92, h: 0.14 } : { x: 0.04, y: 0.6, w: 0.56, h: 0.18 }, W, H);
+        if (livre(r)) caixa = r;
+        // A faixa fica abaixo da caixa da legenda (que sobe a 76% no vertical).
+        else avisos.push(`cena ${indice + 1}: a faixa sobre a gravação bateu no rosto ou na legenda; foi para a busca por zona`);
+      }
+      if (caixa) {
+        // já posta
+      } else if (e.tipo === "letras-revista") {
         // As letras de revista vão para onde saem MAIORES (são o maior
         // elemento do quadro na referência); a zona pedida ganha no quase
         // empate. "CONTEXTO" numa coluna de 0,31 da largura saía espremido.
@@ -1930,7 +1960,7 @@ export function resolverMontagem(plano: PlanoDeMontagem, ctx: ContextoDaResoluca
       } else if (e.tipo === "comentario") {
         elementos.push({ ...base, texto: e.texto, rotacao: 0, ...(e.autor ? { autor: e.autor } : {}) });
       } else {
-        elementos.push({ ...base, texto: e.texto });
+        elementos.push({ ...base, texto: e.texto, ...(e.tipo === "marca-texto" && e.visual === "faixa" ? { visual: "faixa" as const, rotacao: 0 } : {}) });
       }
     });
 
@@ -2003,7 +2033,7 @@ export function resolverMontagem(plano: PlanoDeMontagem, ctx: ContextoDaResoluca
       };
     }
 
-    return { inicio, fim, layout, movimento: c.movimento, movimentoEm, foco, transicao: indice === 0 ? "corte" : c.transicao, fundo: c.fundo, narrador, midia, elementos, legenda, ...(reserva ? { reserva } : {}) };
+    return { inicio, fim, layout, movimento: c.movimento, movimentoEm, ...(c.zoom && c.zoom > 1.01 ? { zoom: c.zoom } : {}), foco, transicao: indice === 0 ? "corte" : c.transicao, fundo: c.fundo, narrador, midia, elementos, legenda, ...(reserva ? { reserva } : {}) };
   });
 
   // A mesma cena gerada em cenas seguidas continua de onde parou (o B-roll

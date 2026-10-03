@@ -8,6 +8,7 @@ import { textoFinalDoCorte } from "@/lib/media/texto-final-do-corte";
 import { bordasDoCorte } from "@/lib/media/bordas-do-corte";
 import { remocoesDaGravacao } from "@/lib/media/pedido-de-corte";
 import { dirigirMontagem, novaIdeiaDaCena, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
+import { aberturaPeloJev } from "@/lib/media/diretor-limpo";
 import { falaDoCorte, montagemNaEdicaoLigada } from "@/lib/media/montagem-nos-cortes";
 import {
   blocosDaFala,
@@ -695,6 +696,14 @@ export async function prepararRoteiro(
     const radar = v.radar as { tema?: string; resumo?: string; teses?: Array<{ minuto: string; frase: string }> } | null;
     tarefas.unshift(async () => {
       try {
+        // No corte limpo (03/10) a abertura é a frase de gancho mais forte
+        // pela nota do JEV, de 2 a 4 s; o Sonnet lendo tudo fica para quem
+        // ligou as inserções de IA.
+        if (limpo) {
+          r.abertura = await aberturaPeloJev({ palavras: fala.palavras, projectId: v.projectId, nicho: v.project.niche, evitar: (t) => Boolean(faixaNoInstante(faixasC, t)) });
+          await gravar(() => gravarRoteiroDoVideo(videoId, r));
+          return;
+        }
         r.abertura = await escolherAberturaDoCompleto({
           projectId: v.projectId,
           referencia: `${v.id}/abertura`,

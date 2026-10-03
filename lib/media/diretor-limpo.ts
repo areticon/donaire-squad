@@ -1,7 +1,7 @@
 import { askClaude } from "@/lib/claude";
 import { decidirNoul, jevLigado, notaDoScore, perguntarAoJev, probabilidadeDeSim, usoVazio, type PerguntaDoJev, type RespostaDoJev, type UsoDoJev } from "@/lib/jev/cliente";
 import { momentoFraco } from "@/lib/media/escolha-da-abertura";
-import { PAUSA_DE_FRASE_SEG } from "@/lib/media/abertura-do-roteiro";
+import { PAUSA_DE_FRASE_SEG, bordasDoMomento, momentoEhFraseInteira, montarMomento, type AberturaDoCompleto, type MomentoDaAbertura } from "@/lib/media/abertura-do-roteiro";
 import {
   normalizarPalavra,
   REGRAS,
@@ -212,12 +212,36 @@ export function apararTrecho(trecho: string): string | null {
 }
 
 /** Onde um trecho de texto (2 a 6 palavras seguidas) aparece dentro da frase; null se não foi dito assim. */
-export function trechoNaFrase(trecho: string, palavras: PalavraNoCorte[], de: number, ate: number): { de: number; ate: number } | null {
+export function trechoNaFrase(trecho: string, palavras: PalavraNoCorte[], de: number, ate: number): { de: number; ate: number; pulos: number } | null {
   const quer = trecho.split(/\s+/).map(normalizarPalavra).filter(Boolean);
   if (quer.length < 2 || quer.length > REGRAS.palavrasPorTexto) return null;
   const tem = palavras.slice(de, ate + 1).map((p) => normalizarPalavra(p.texto));
   for (let i = 0; i + quer.length <= tem.length; i++) {
-    if (quer.every((q, k) => tem[i + k] === q)) return { de: de + i, ate: de + i + quer.length - 1 };
+    if (quer.every((q, k) => tem[i + k] === q)) return { de: de + i, ate: de + i + quer.length - 1, pulos: 0 };
+  }
+  // O texto limpo do modelo pode pular até duas palavras ditas no meio (a
+  // muleta "ele" em "Jesus ele não pode", a gagueira "multidão, multidão"):
+  // todas as palavras do texto continuam ditas e na ordem.
+  for (let i = 0; i < tem.length; i++) {
+    if (tem[i] !== quer[0]) continue;
+    let j = i;
+    let pulos = 0;
+    let ok = true;
+    for (let k = 1; k < quer.length && ok; k++) {
+      let achou = -1;
+      for (let x = j + 1; x <= Math.min(tem.length - 1, j + 3); x++) {
+        if (tem[x] === quer[k]) {
+          achou = x;
+          break;
+        }
+      }
+      if (achou < 0) ok = false;
+      else {
+        pulos += achou - j - 1;
+        j = achou;
+      }
+    }
+    if (ok && pulos <= 2) return { de: de + i, ate: de + j, pulos };
   }
   return null;
 }
@@ -399,7 +423,7 @@ async function trechosDasCartelas(frases: FraseDaFala[], ctx: { projectId?: stri
 
 export type EscolhasDoLimpo = {
   /** As frases que viram cartela, com o trecho dito (índices de palavra). */
-  cartelas: Array<{ frase: FraseDaFala; de: number; ate: number }>;
+  cartelas: Array<{ frase: FraseDaFala; de: number; ate: number; prob: number; texto?: string }>;
   /** As palavras do punch-in. */
   enfases: number[];
   /** Os cortes de câmera (índice da primeira palavra da cena nova). */
@@ -442,7 +466,7 @@ export function escolherDoLimpo(p: {
     .filter((x) => x.prob >= 0.55)
     .sort((a, b) => b.prob - a.prob);
   const cartelas: EscolhasDoLimpo["cartelas"] = [];
-  for (const { f } of candidatas) {
+  for (const { f, prob } of candidatas) {
     if (cartelas.length >= p.cartelas) break;
     if (cartelas.some((c) => Math.abs(c.frase.inicio - f.inicio) < ESPACO_ENTRE_CARTELAS_SEG)) continue;
     const pedido = p.trechos.get(f.id);
@@ -454,7 +478,9 @@ export function escolherDoLimpo(p: {
     // O mesmo texto duas vezes (o refrão do vídeo) é uma cartela só.
     if (repetido(trecho.de, trecho.ate)) continue;
     usados.push(palavras.slice(trecho.de, trecho.ate + 1).map((w) => normalizarPalavra(w.texto)).filter(Boolean));
-    cartelas.push({ frase: f, de: trecho.de, ate: trecho.ate });
+    // Com palavra pulada, a tela mostra o texto limpo do modelo (todas ditas, na ordem).
+    const texto = doModelo && doModelo.pulos > 0 && aparado ? aparado : undefined;
+    cartelas.push({ frase: f, de: trecho.de, ate: trecho.ate, prob, ...(texto ? { texto } : {}) });
   }
   cartelas.sort((a, b) => a.de - b.de);
 
@@ -503,6 +529,50 @@ export function escolherDoLimpo(p: {
 
 const FUNDO_DA_FAMILIA: Record<Familia, Fundo> = { colagem: "papel", impacto: "escuro", sobrio: "papel-marca" };
 
+/**
+ * OS ENQUADRAMENTOS (03/10, régua do vídeo de pitch): aberto, médio e
+ * fechado, alternando a cada corte de câmera para uma câmera parecer duas; o
+ * punch chega a 1,18 com corte seco na palavra forte e segura pouco, e a
+ * cena seguinte volta ao aberto (o respiro).
+ */
+export const ENQUADRAMENTOS = [1, 1.1, 1, 1.2] as const;
+export const ZOOM_DO_PUNCH = 1.18;
+/** Quanto o punch segura antes do respiro (o corte de volta ao aberto). */
+const PUNCH_SEGURA_SEG = [1.4, 2.8] as const;
+/** A cartela em TELA CHEIA é só para a tese: a mais provável, e só se o JEV tiver certeza. */
+export const PROB_DA_TESE = 0.85;
+const MOTIVO_DA_TESE = "corte limpo: tese";
+
+/**
+ * NO MÁXIMO UMA TESE EM TELA CHEIA no vídeo inteiro (03/10). Os blocos do
+ * completo são planejados em paralelo, cada um com a sua candidata; aqui
+ * fica a de maior probabilidade (gravada no motivo) e as outras voltam a ser
+ * faixa sobre a gravação, com a pessoa na tela. Plano de outro diretor passa
+ * intocado (nenhum motivo de tese).
+ */
+export function umaTeseSo(plano: PlanoDeMontagem): PlanoDeMontagem {
+  const teses = plano.cenas
+    .map((c, i) => ({ i, c, prob: c.layout === "cartela" && c.motivo.startsWith(MOTIVO_DA_TESE) ? Number(c.motivo.match(/\(([\d.]+)\)/)?.[1] ?? 0) : -1 }))
+    .filter((x) => x.prob >= 0)
+    .sort((a, b) => b.prob - a.prob);
+  if (teses.length <= 1) return plano;
+  const viram = new Set(teses.slice(1).map((x) => x.i));
+  return {
+    ...plano,
+    cenas: plano.cenas.map((c, i) =>
+      viram.has(i)
+        ? {
+            ...c,
+            layout: "narrador-cheio" as const,
+            zoom: undefined,
+            elementos: c.elementos.map((e) => (e.tipo === "marca-texto" ? { ...e, zona: "base" as const, visual: "faixa" as const } : e)),
+            motivo: "corte limpo: faixa sobre a gravação (a tese do vídeo ficou em outro bloco)",
+          }
+        : c
+    ),
+  };
+}
+
 /** As cenas do plano, no formato que o validador lê. */
 export function montarPlanoLimpo(p: {
   palavras: PalavraNoCorte[];
@@ -543,16 +613,37 @@ export function montarPlanoLimpo(p: {
       fila.push([a, melhor - 1], [melhor, b]);
     }
   };
+  // O RESPIRO: o punch segura de 1,4 a 2,8 s e a câmera volta ao aberto, de
+  // preferência num fim de frase ou numa pausa dentro dessa janela.
+  for (const e of escolhas.enfases) {
+    const t0 = palavras[e].inicio;
+    let melhor = -1;
+    let nota = -Infinity;
+    for (let i = e + 1; i < n && palavras[i].inicio - t0 <= PUNCH_SEGURA_SEG[1]; i++) {
+      if (palavras[i].inicio - t0 < PUNCH_SEGURA_SEG[0]) continue;
+      const pausa = palavras[i].inicio - palavras[i - 1].fim;
+      const s = (fimDeFrase.has(i) ? 2 : 0) + Math.min(1.5, pausa * 3) - (palavras[i].inicio - t0) * 0.2;
+      if (s > nota) {
+        nota = s;
+        melhor = i;
+      }
+    }
+    if (melhor > 0) bordas.add(melhor);
+  }
   const ordenadas = [...bordas].sort((a, b) => a - b);
   for (let k = 0; k < ordenadas.length; k++) partir(ordenadas[k], (ordenadas[k + 1] ?? n) - 1);
   const inicios = [...bordas].sort((a, b) => a - b);
 
   const cartelaEm = new Map(escolhas.cartelas.map((c) => [c.de, c]));
+  // A tese em tela cheia: a cartela mais provável, só com certeza do JEV.
+  const tese = [...escolhas.cartelas].sort((a, b) => b.prob - a.prob).find((c) => c.prob >= PROB_DA_TESE) ?? null;
+  // O enquadramento da próxima cena de narrador, no ciclo aberto, médio, aberto, fechado.
+  let ciclo = 0;
+  const proximoEnquadramento = () => ENQUADRAMENTOS[ciclo++ % ENQUADRAMENTOS.length];
   const enfases = new Set(escolhas.enfases);
   const numeros = new Set(escolhas.numeros);
   const mostra = (i: number) => escolhas.mostra.some((f) => i >= f.de && i <= f.ate);
   const cenas: CenaDoPlano[] = [];
-  let alterna = 0;
   for (let k = 0; k < inicios.length; k++) {
     const de = inicios[k];
     const ate = (inicios[k + 1] ?? n) - 1;
@@ -563,11 +654,21 @@ export function montarPlanoLimpo(p: {
       let fimDaCartela = Math.min(ate, cartela.ate);
       while (fimDaCartela < ate && tempo(fimDaCartela + 1) - palavras[de].inicio < CARTELA_MIN_SEG) fimDaCartela++;
       while (fimDaCartela > cartela.ate && tempo(fimDaCartela + 1) - palavras[de].inicio > CARTELA_MAX_SEG) fimDaCartela--;
-      const texto = palavras.slice(cartela.de, cartela.ate + 1).map((w) => w.texto.replace(/[.,!?;:"“”]+$/g, "")).join(" ");
-      const elementos: ElementoDoPlano[] = [{ tipo: "marca-texto", texto, zona: "centro", palavra: cartela.de }];
-      cenas.push({ de, ate: fimDaCartela, layout: "cartela", movimento: "estatico", transicao: "corte", fundo, elementos, motivo: `corte limpo: cartela com a afirmação-chave "${texto}"` });
+      const texto = cartela.texto ?? palavras.slice(cartela.de, cartela.ate + 1).map((w) => w.texto.replace(/[.,!?;:"“”]+$/g, "")).join(" ");
+      if (cartela === tese) {
+        // A TESE: a única tela cheia do vídeo, a frase no meio sobre a cor da linguagem.
+        const elementos: ElementoDoPlano[] = [{ tipo: "marca-texto", texto, zona: "centro", palavra: cartela.de }];
+        cenas.push({ de, ate: fimDaCartela, layout: "cartela", movimento: "estatico", transicao: "corte", fundo, elementos, motivo: `${MOTIVO_DA_TESE} (${cartela.prob.toFixed(3)}) "${texto}"` });
+      } else {
+        // A CARTELA NÃO SUBSTITUI A PESSOA (03/10): a frase entra numa faixa
+        // sobre a gravação, no terço de baixo, e a pessoa continua falando.
+        const elementos: ElementoDoPlano[] = [{ tipo: "marca-texto", texto, zona: "base", palavra: cartela.de, visual: "faixa" }];
+        cenas.push({ de, ate: fimDaCartela, layout: "narrador-cheio", movimento: "estatico", transicao: "corte", fundo, elementos, motivo: `corte limpo: faixa sobre a gravação com a afirmação-chave "${texto}"` });
+      }
+      ciclo = 0;
       if (fimDaCartela < ate) {
-        cenas.push({ de: fimDaCartela + 1, ate, layout: "narrador-cheio", movimento: "estatico", transicao: "corte", fundo, elementos: [], motivo: "corte limpo: a pessoa volta depois da cartela" });
+        const zoom = proximoEnquadramento();
+        cenas.push({ de: fimDaCartela + 1, ate, layout: "narrador-cheio", movimento: "estatico", ...(zoom > 1 ? { zoom } : {}), transicao: "corte", fundo, elementos: [], motivo: "corte limpo: a pessoa volta depois da frase-chave" });
       }
       continue;
     }
@@ -584,27 +685,115 @@ export function montarPlanoLimpo(p: {
     const parado = mostra(de) || mostra(ate);
     let movimento: CenaDoPlano["movimento"] = "estatico";
     let movimentoNa: number | undefined;
+    let zoom: number | undefined;
     let motivo = "corte limpo: narrador cheio";
-    if (enfase !== undefined && !parado) {
+    if (enfase !== undefined && !parado && !elementos.length) {
+      // O PUNCH: a cena abre no aberto e, na palavra forte, corta seco para o
+      // fechado; a próxima cena é o respiro, de volta ao aberto.
       movimento = "punch";
       movimentoNa = enfase;
+      zoom = ZOOM_DO_PUNCH;
       motivo = `corte limpo: punch-in na ênfase "${palavras[enfase].texto}"`;
+      ciclo = 0;
     } else if (parado) {
+      // Na demonstração o quadro fica aberto: o zoom recortaria o que é mostrado.
       motivo = "corte limpo: a pessoa está mostrando algo; nada por cima";
-    } else {
-      // Entre dois cortes de câmera o enquadramento alterna, para o jump cut ler como corte.
-      movimento = alterna % 2 === 1 ? "zoom-in-lento" : "estatico";
-      alterna++;
+      ciclo = 0;
+    } else if (!elementos.length) {
+      // Entre dois cortes de câmera o enquadramento alterna (aberto, médio,
+      // aberto, fechado): a gravação de uma câmera parece de duas.
+      const z = proximoEnquadramento();
+      if (z > 1) zoom = z;
+      motivo = `corte limpo: ${z === 1 ? "plano aberto" : z < 1.15 ? "plano médio" : "plano fechado"}`;
     }
-    cenas.push({ de, ate, layout: "narrador-cheio", movimento, ...(movimentoNa !== undefined ? { movimentoNa } : {}), transicao: "corte", fundo, elementos, motivo });
+    cenas.push({ de, ate, layout: "narrador-cheio", movimento, ...(movimentoNa !== undefined ? { movimentoNa } : {}), ...(zoom ? { zoom } : {}), transicao: "corte", fundo, elementos, motivo });
   }
   return {
     formato: p.formato,
-    resumo: `Corte limpo profissional: ${escolhas.cartelas.length} cartela(s), ${escolhas.enfases.length} punch-in(s), ${escolhas.cortes.length} corte(s) de câmera, ${escolhas.numeros.length} número(s) em destaque, sem imagem gerada.`,
+    resumo: `Corte limpo profissional: ${escolhas.cartelas.length} frase(s)-chave (${tese ? "1 tese em tela cheia, o resto em faixa sobre a gravação" : "todas em faixa sobre a gravação"}), ${escolhas.enfases.length} punch-in(s), ${escolhas.cortes.length} corte(s) de câmera, ${escolhas.numeros.length} número(s) em destaque, sem imagem gerada.`,
     legenda: { estilo: familia === "impacto" ? "destaque" : familia === "sobrio" ? "limpa" : "papel" },
     assets: [],
     cenas,
   };
+}
+
+// ─────────────────────────────── a abertura (rede) ───────────────────────────────
+
+/** A frase do gancho na abertura: entre 1,8 e 4,6 s (os "2 a 4 primeiros segundos" do pitch). */
+export const GANCHO_SEG = [1.8, 5.6] as const;
+/** Acima disto a frase perde um pouco da nota: a abertura do pitch é curta. */
+const GANCHO_IDEAL_SEG = 4.2;
+/**
+ * A nota mínima (0 fraca, 1 mediana, 2 forte). Medido em 03/10 no completo
+ * cmuqc9r7z: o JEV é avaro na nota de gancho (a melhor frase do vídeo, "onde
+ * a presença de Deus está, existe prosperidade", teve 0,86), mas a ORDEM é a
+ * de um editor; abaixo de 0,6 as frases eram saudação, tour e transição.
+ */
+const NOTA_MINIMA_DO_GANCHO = 0.6;
+
+/**
+ * A ABERTURA PELO JEV (03/10): a frase mais forte do vídeo, inteira, de 2 a 4
+ * s, tocada ANTES da fala inicial, com os cortes rápidos, o zoom e o soco que
+ * o worker já faz (worker/src/abertura-de-impacto.mjs). Antes era o Sonnet
+ * lendo a transcrição inteira (~US$ 0,05 e 30 s por vídeo); aqui o código
+ * acha as frases inteiras do tamanho certo, fora do começo e do fim (onde
+ * moram a saudação e a despedida), e o JEV dá a nota de gancho de cada uma
+ * num lote só. Sem frase forte (nota abaixo de "mediana para forte"), o vídeo
+ * segue sem abertura em vez de abrir com frase fraca.
+ */
+export async function aberturaPeloJev(p: {
+  palavras: PalavraNoCorte[];
+  projectId?: string | null;
+  nicho?: string | null;
+  uso?: UsoDoJev;
+  /** Instante em tela compartilhada: a frase ali vai para o fim da fila. */
+  evitar?: (t: number) => boolean;
+  /** Frases candidatas a avaliar (as mais longas dentro da janela primeiro): teto de custo. */
+  teto?: number;
+}): Promise<AberturaDoCompleto> {
+  const feitoEm = new Date().toISOString();
+  const palavras = p.palavras;
+  const total = palavras.at(-1)?.fim ?? 0;
+  if (palavras.length < 40) return { momentos: [], reservas: [], feitoEm, erro: "fala curta demais para uma abertura" };
+  const candidatas = frasesDaFala(palavras)
+    .map((f) => ({ f, b: bordasDoMomento(palavras, f.de, f.ate) }))
+    .filter(({ f, b }) => {
+      const dur = b.fim - b.inicio;
+      if (dur < GANCHO_SEG[0] || dur > GANCHO_SEG[1] || f.ate - f.de + 1 < 5) return false;
+      if (total >= 60 && (f.inicio / total < 0.05 || f.fim / total > 0.92)) return false;
+      return momentoEhFraseInteira(palavras, f.de, f.ate) && !momentoFraco(f.texto);
+    })
+    .slice(0, p.teto ?? 80);
+  if (!candidatas.length) return { momentos: [], reservas: [], feitoEm, erro: "nenhuma frase inteira de 2 a 4 s" };
+  const uso = p.uso ?? usoVazio();
+  const state = {
+    contexto: `Frases inteiras de um vídeo${p.nicho ? ` sobre ${resumoDe(p.nicho, 160)}` : ""}, candidatas a abrir o vídeo, tocadas sozinhas antes de tudo.`,
+    frases: candidatas.map(({ f }) => ({ id: f.id, frase: f.texto })),
+  };
+  const perguntas: Record<string, PerguntaDoJev> = {};
+  for (const { f } of candidatas) {
+    perguntas[f.id] = {
+      type: "score",
+      instructions: `Quão forte é a frase de id "${f.id}" em \`frases\` como GANCHO dos primeiros segundos do vídeo, ouvida sozinha, sem contexto?`,
+      criteria: ["fraca: saudação, transição, ou só faz sentido com o contexto", "mediana: interessante, mas não prende em 2 segundos", "forte: promessa, número, virada ou afirmação que contraria o senso comum e abre curiosidade"],
+    };
+  }
+  let r: Record<string, RespostaDoJev>;
+  try {
+    r = await perguntarAoJev({ projectId: p.projectId, etapa: "abertura", state, uso }, perguntas);
+  } catch (e) {
+    return { momentos: [], reservas: [], feitoEm, erro: `o JEV não respondeu (${e instanceof Error ? e.message.slice(0, 80) : "erro"})` };
+  }
+  const notas = candidatas
+    .map(({ f, b }) => ({ f, nota: (notaDoScore(r[f.id]) ?? 0) - 0.08 * Math.max(0, b.fim - b.inicio - GANCHO_IDEAL_SEG) }))
+    .sort((a, b) => b.nota - a.nota || (p.evitar?.(a.f.inicio) ? 1 : 0) - (p.evitar?.(b.f.inicio) ? 1 : 0));
+  const fortes = notas.filter((x) => x.nota >= NOTA_MINIMA_DO_GANCHO && !p.evitar?.((x.f.inicio + x.f.fim) / 2));
+  const reservas: MomentoDaAbertura[] = notas.filter((x) => x.nota >= NOTA_MINIMA_DO_GANCHO * 0.75).slice(1, 6).map((x) => montarMomento(palavras, x.f.de, x.f.ate, null, `nota de gancho ${x.nota.toFixed(2)} (JEV)`));
+  if (!fortes.length) return { momentos: [], reservas, feitoEm, erro: "nenhuma frase forte o bastante para abrir o vídeo" };
+  const g = fortes[0];
+  const momento = montarMomento(palavras, g.f.de, g.f.ate, null, `nota de gancho ${g.nota.toFixed(2)} (JEV)`);
+  // A passagem visual é a da bíblia do estilo (corpoDaMontagem a lê na hora do pedido).
+  return { momentos: [momento], reservas: reservas.filter((m) => m.de !== momento.de), feitoEm, erro: null, tipo: "frase" };
 }
 
 // ─────────────────────────────── a porta de entrada ───────────────────────────────

@@ -229,7 +229,9 @@ export const pedidaPeloCliente = (c: CenaDoPlano) => Boolean(c.pedido) || c.ajus
 
 /** A cena volta à pessoa: narrador cheio sem nada por cima e sem movimento (câmera na mão já mexe). */
 function paraPessoa(c: CenaDoPlano, motivo: string, parado: boolean): CenaDoPlano {
-  return { ...c, layout: "narrador-cheio", asset: undefined, elementos: [], movimento: parado ? "estatico" : c.movimento, movimentoNa: parado ? undefined : c.movimentoNa, motivo: `${c.motivo} (${motivo})` };
+  // Parada, a cena volta ao plano aberto (03/10): o enquadramento fechado do
+  // corte limpo recortaria o que a pessoa mostra.
+  return { ...c, layout: "narrador-cheio", asset: undefined, elementos: [], movimento: parado ? "estatico" : c.movimento, movimentoNa: parado ? undefined : c.movimentoNa, zoom: parado ? undefined : c.zoom, motivo: `${c.motivo} (${motivo})` };
 }
 
 const descreve = (c: CenaDoPlano) =>
@@ -256,7 +258,8 @@ export function tirarCoberturaDaDemonstracao(
     const t = toca(inicio, fim);
     if (!t || pedidaPeloCliente(c)) return c;
     // Movimento de câmera em cima da câmera andando também sai.
-    if (!ehInsercao(c)) return c.movimento === "estatico" ? c : { ...c, movimento: "estatico" as const, movimentoNa: undefined };
+    // E o enquadramento fechado do corte limpo (03/10): na demonstração, plano aberto.
+    if (!ehInsercao(c)) return c.movimento === "estatico" && !c.zoom ? c : { ...c, movimento: "estatico" as const, movimentoNa: undefined, zoom: undefined };
     const nova = paraPessoa(c, `demonstração: ${t.por}`, true);
     decisoes.push({ cena: i, antes: descreve(c), depois: "narrador-cheio", motivo: `cobria a demonstração (${t.por}${t.frase ? `: "${t.frase.slice(0, 80)}"` : ""})`, inicio, fim });
     return nova;

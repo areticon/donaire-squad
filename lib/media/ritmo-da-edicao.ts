@@ -108,7 +108,8 @@ export function eventosDoPlano(plano: PlanoDeMontagem, palavras: PalavraNoCorte[
   plano.cenas.forEach((c, i) => {
     const { inicio } = intervaloDaCena(c, palavras, duracao);
     const anterior = plano.cenas[i - 1];
-    if (i === 0 || c.layout !== anterior.layout || c.asset !== anterior.asset) eventos.push(inicio);
+    // A troca de enquadramento (03/10, corte limpo) é corte de câmera: conta como evento.
+    if (i === 0 || c.layout !== anterior.layout || c.asset !== anterior.asset || (c.zoom ?? 1) !== (anterior.zoom ?? 1)) eventos.push(inicio);
     if (c.movimento !== "estatico") eventos.push(typeof c.movimentoNa === "number" ? palavras[c.movimentoNa]?.inicio ?? inicio : inicio);
     for (const e of c.elementos) eventos.push(palavras[e.palavra]?.inicio ?? inicio);
   });
