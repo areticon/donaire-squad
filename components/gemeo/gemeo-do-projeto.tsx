@@ -724,9 +724,11 @@ function ListaDeVideos({ projectId, videos, onMudou }: { projectId: string; vide
         {videos.map((v) => {
           const andando = videoEmAndamento(v);
           return (
-            <li key={v.id} className="flex flex-wrap items-center gap-3 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium" style={{ color: "var(--text-primary)" }}>
+            <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+              {/* min-w de 14rem: com min-w-0 o selo e o link roubavam a largura e o
+                  título virava "Se ..." no celular (03/10); assim eles descem. */}
+              <div className="min-w-[min(100%,14rem)] flex-1">
+                <p className="line-clamp-2 break-words font-medium" style={{ color: "var(--text-primary)" }}>
                   {v.titulo}
                 </p>
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>

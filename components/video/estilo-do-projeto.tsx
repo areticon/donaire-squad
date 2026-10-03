@@ -163,9 +163,11 @@ export function EstiloDoProjeto({
         className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border p-4"
         style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}
       >
-        <Music className="h-5 w-5 shrink-0" style={{ color: "var(--text-muted)" }} />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+        <Music className="h-5 w-5 shrink-0 self-start sm:self-center" style={{ color: "var(--text-muted)" }} />
+        {/* min-w de 12rem: com min-w-0 o texto nunca quebrava a linha e virava
+            uma coluna de uma palavra no celular (03/10); assim os botões descem. */}
+        <div className="min-w-[min(100%,12rem)] flex-1">
+          <p className="break-words text-sm font-bold" style={{ color: "var(--text-primary)" }}>
             {musica ? musica : "Trilha dos cortes"}
           </p>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -177,11 +179,11 @@ export function EstiloDoProjeto({
         {subindoMusica ? (
           <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--text-muted)" }} />
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <button
               type="button"
               onClick={() => setPopupAberto(true)}
-              className="rounded-lg border px-3 py-1.5 text-sm font-bold"
+              className="flex-1 rounded-lg border px-3 py-2 text-center text-sm font-bold sm:flex-none sm:py-1.5"
               style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
             >
               {musica ? "Buscar outra" : "Buscar música"}
@@ -191,7 +193,7 @@ export function EstiloDoProjeto({
                 no Chrome dele, e o envio de vídeo, que tem o seletor na própria
                 tela, funcionava. Quem já baixou a faixa sobe por aqui. */}
             <label
-              className="cursor-pointer rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-bold text-white"
+              className="flex-1 cursor-pointer rounded-lg bg-orange-500 px-3 py-2 text-center text-sm font-bold text-white sm:flex-none sm:py-1.5"
               aria-disabled={subindoMusica}
             >
               <input
