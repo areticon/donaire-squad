@@ -3,6 +3,8 @@ import { Composition } from "remotion";
 import { Montagem } from "./Montagem";
 import { Fundos, TIPOS_DE_FUNDO, type PropsDosFundos } from "./partes/fundo-colagem";
 import type { PropsDaMontagem } from "./tipos";
+import { Camadas, FundoDaMarca } from "./sob-medida/Camadas";
+import type { PropsDasCamadas, PropsDoFundo } from "./sob-medida/tipos";
 
 /**
  * Uma composição só, que se mede pelas props: largura, altura, fps e duração
@@ -40,6 +42,35 @@ export const Raiz: React.FC = () => (
       calculateMetadata={({ props }) => {
         const p = props as unknown as PropsDosFundos;
         return { width: p.largura, height: p.altura };
+      }}
+    />
+    {/* O editor sob medida (03/10): as camadas transparentes e o fundo da marca. */}
+    <Composition
+      id="SobMedidaCamadas"
+      component={Camadas as unknown as React.FC<Record<string, unknown>>}
+      width={1920}
+      height={1080}
+      fps={30}
+      durationInFrames={1}
+      defaultProps={{} as Record<string, unknown>}
+      calculateMetadata={({ props }) => {
+        const p = props as unknown as PropsDasCamadas;
+        if (!p.trechos) return {};
+        const ult = p.trechos[p.trechos.length - 1];
+        return { width: p.largura, height: p.altura, fps: p.fps, durationInFrames: Math.max(1, ult ? ult.c0 + ult.n : 1) };
+      }}
+    />
+    <Composition
+      id="SobMedidaFundo"
+      component={FundoDaMarca as unknown as React.FC<Record<string, unknown>>}
+      width={1920}
+      height={1080}
+      fps={30}
+      durationInFrames={1}
+      defaultProps={{} as Record<string, unknown>}
+      calculateMetadata={({ props }) => {
+        const p = props as unknown as PropsDoFundo;
+        return p.largura ? { width: p.largura, height: p.altura } : {};
       }}
     />
   </>
