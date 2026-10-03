@@ -53,6 +53,22 @@ export type MarcaDaArte = {
   identidade?: IdentidadeVisual;
   /** Fixa o layout (o carrossel usa o mesmo em todas as lâminas). Sem isto, sai da frase. */
   variante?: number;
+  /**
+   * O BOOK DE MODELOS (03/10, lib/modelos-de-arte): os modelos que o cliente
+   * escolheu. Com eles a peça sai no molde de um deles (o mesmo desenho da
+   * prévia que ele aprovou), e não na composição da família.
+   */
+  modelos?: string[];
+  /** Um modelo fixo para todas as lâminas do carrossel. */
+  modeloFixo?: string;
+  /** A lâmina do carrossel, para os pontinhos e o "arraste". */
+  pagina?: { i: number; total: number };
+  /** O nome da marca e o logo em PNG, para o modelo assinar a peça. */
+  nomeDaMarca?: string;
+  logoDoModelo?: { src: string; proporcao: number } | null;
+  /** O texto do post, de onde o modelo tira itens, lados e número. */
+  contexto?: string;
+  projectId?: string;
 };
 
 /** A identidade do projeto em forma de marca da peça. */
@@ -68,7 +84,38 @@ export async function marcaDaArte(projectId?: string | null): Promise<MarcaDaArt
     const { identidadeDe } = await import("@/lib/media/identidade-visual");
     return marcaDaIdentidade(await identidadeDe({}));
   }
-  return marcaDaIdentidade(await identidadeDoProjeto(projectId));
+  const marca = marcaDaIdentidade(await identidadeDoProjeto(projectId));
+  // Os modelos escolhidos no book (03/10). Sem escolha, nada muda.
+  const { lerModelosEscolhidos } = await import("@/lib/modelos-de-arte/escolha");
+  const escolha = await lerModelosEscolhidos(projectId).catch(() => null);
+  if (!escolha) return marca;
+  const { prisma } = await import("@/lib/db/prisma");
+  const { lerMidia } = await import("@/lib/media/storage");
+  const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
+  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, logoUrl: true } });
+  const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
+  return { ...marca, modelos: escolha.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/** O modelo do book que vale para esta peça, quando a marca tem modelos. */
+export async function modeloDaMarca(marca: MarcaDaArte, largura: number, altura: number, frase: string) {
+  if (!marca.modelos?.length && !marca.modeloFixo) return null;
+  const { modeloParaAPeca } = await import("@/lib/modelos-de-arte/compor");
+  return modeloParaAPeca({ ids: marca.modelos, fixo: marca.modeloFixo, largura, altura, frase, contexto: marca.contexto, carrossel: Boolean(marca.pagina) });
+}
+
+/** Os textos extras do modelo, uma vez por (modelo, frase): a mesma peça em outra proporção não paga de novo. */
+const textosEmCache = new Map<string, Promise<import("@/lib/modelos-de-arte/catalogo").TextosDaArte>>();
+async function textosDaPecaNoModelo(modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte, frase: string, marca: MarcaDaArte) {
+  const chave = `${modelo.id}|${frase}`;
+  let v = textosEmCache.get(chave);
+  if (!v) {
+    const { textosDoModelo } = await import("@/lib/modelos-de-arte/compor");
+    v = textosDoModelo({ modelo, frase, contexto: marca.contexto, projectId: marca.projectId });
+    textosEmCache.set(chave, v);
+    if (textosEmCache.size > 200) textosEmCache.delete(textosEmCache.keys().next().value as string);
+  }
+  return v;
 }
 
 /** O layout desta peça: variante fixada na marca ou tirada da frase. */
@@ -375,6 +422,23 @@ export async function comporFraseNaArte(p: {
   largura: number;
   altura: number;
 }): Promise<Buffer> {
+  // O MODELO DO BOOK (03/10): quando o cliente escolheu modelos, a peça sai no
+  // molde de um deles, com o mesmo desenho da prévia que ele viu.
+  const modelo = await modeloDaMarca(p.marca, p.largura, p.altura, p.frase);
+  if (modelo) {
+    const { comporNoModelo } = await import("@/lib/modelos-de-arte/compor");
+    return comporNoModelo({
+      modelo,
+      textos: await textosDaPecaNoModelo(modelo, p.frase, p.marca),
+      cores: p.marca.cores,
+      largura: p.largura,
+      altura: p.altura,
+      foto: p.arte,
+      logo: p.marca.logoDoModelo,
+      marca: p.marca.nomeDaMarca || "Sua marca",
+      pagina: p.marca.pagina ?? null,
+    });
+  }
   const W = p.largura;
   const H = p.altura;
   const { familia } = p.marca;
@@ -626,6 +690,24 @@ export function desenharComFraseEmCodigo(
 ): (prompt: string, proporcao: ProporcaoPedida) => Promise<string> {
   return async (prompt, proporcao) => {
     const { largura, altura } = TAMANHO_DA_PROPORCAO[proporcao];
+    // MODELO DO BOOK (03/10): modelo sem foto não paga imagem nenhuma; modelo
+    // com foto pede a cena na proporção da zona da foto, na direção dele.
+    const modelo = await modeloDaMarca(marca, largura, altura, frase);
+    if (modelo) {
+      const { proporcaoDaFotoDoModelo, direcaoDaFotoDoModelo } = await import("@/lib/modelos-de-arte/compor");
+      const proporcaoDaFoto = proporcaoDaFotoDoModelo(modelo, largura, altura);
+      let foto: Buffer | null = null;
+      if (proporcaoDaFoto) {
+        try {
+          foto = bufferDe(await desenhista(`${prompt}${direcaoDaFotoDoModelo(modelo)}`, proporcaoDaFoto));
+        } catch (err) {
+          if (ehErroDeSaldo(err) || ehSemSaldoDaOpenAI(err) || err instanceof SemChaveDaOpenAI) throw err;
+          console.warn("[arte-com-frase] a foto do modelo não veio, a peça sai com o tom da marca:", err instanceof Error ? err.message : err);
+        }
+      }
+      const jpeg = await comporFraseNaArte({ arte: foto, frase, marca, largura, altura });
+      return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    }
     let arte: Buffer | null = null;
     // O layout sai da frase. Quando ele pede a arte na peça inteira e o
     // prompt veio montado sem saber disso (a esteira monta o prompt antes de

@@ -1,0 +1,7 @@
+Fontes do book de modelos de arte (lib/modelos-de-arte), baixadas do Google Fonts
+em 03/10/2026 como TTF estáticos. Todas sob a SIL Open Font License 1.1
+(https://openfontlicense.org): Anton, Bebas Neue, Oswald, Archivo Black,
+Montserrat, Inter, Poppins, Playfair Display, DM Serif Display, Space Grotesk,
+Caveat, Permanent Marker e JetBrains Mono. Uso, inclusão e redistribuição livres;
+não vender as fontes sozinhas. As larguras em lib/modelos-de-arte/metricas.ts
+saem destes arquivos (scripts/gerar-metricas-dos-modelos.py).

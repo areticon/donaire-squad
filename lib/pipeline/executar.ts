@@ -3283,7 +3283,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   usarOlho: true,
                   projectId: project.id,
                   runId,
-                  desenhar: desenharComFraseEmCodigo(pecaDoQuadro.manchete, marcaDaPeca, (prompt, proporcao) =>
+                  desenhar: desenharComFraseEmCodigo(pecaDoQuadro.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
                     withDianaCap(
                       desenharPecaDeFeed({
                         prompt,
@@ -3532,7 +3532,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 textoDoPost: liPost?.content,
                 projectId: project.id,
                 runId,
-                desenhar: desenharComFraseEmCodigo(peca.manchete, marcaDaPeca, (prompt, proporcao) =>
+                desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
                   withDianaCap(
                     desenharPecaDeFeed({
                       prompt,
@@ -3548,7 +3548,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 // principal da arte é o seletor IMAGEM_ARTE, e o "outro" é o
                 // recuo dele (`outroModelo`); generateImage puro cairia no
                 // MESMO modelo que acabou de errar.
-                desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, marcaDaPeca, (prompt, proporcao) =>
+                desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
                   withDianaCap(
                     generateImage(prompt, proporcao, "hd", {
                       projectId: project.id,
@@ -3579,10 +3579,10 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   textoDoPost: liPost?.content,
                   projectId: project.id,
                   runId,
-                  desenhar: desenharComFraseEmCodigo(peca.manchete, marcaDaPeca, (prompt, proporcao) =>
+                  desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
                     withDianaCap(desenharPecaDeFeed({ prompt, proporcao, permitirGemini: true, avisos: avisosDaRefeita, ctx: { projectId: project.id, runId, operation: "campanha_imagem" } }))
                   ),
-                  desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, marcaDaPeca, (prompt, proporcao) =>
+                  desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
                     withDianaCap(generateImage(prompt, proporcao, "hd", { projectId: project.id, runId, operation: "campanha_imagem" }, { outroModelo: true }))
                   ),
                 });

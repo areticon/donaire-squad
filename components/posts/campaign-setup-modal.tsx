@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
+import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
 import { avisoDaCota, type CotaDoCliente } from "@/lib/media/cota-do-dia";
 import { fraseDoTeste, SEM_TESTE, type LimiteDoTeste } from "@/lib/teste-gratis";
@@ -1852,6 +1853,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
+                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button
@@ -2011,6 +2014,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
+                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button
@@ -2193,6 +2198,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
+                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button

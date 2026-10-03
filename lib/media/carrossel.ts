@@ -9,7 +9,7 @@ import {
   laminaGuardada,
   guardarLamina,
 } from "@/lib/media/checkpoint-do-carrossel";
-import { comporFraseNaArte, layoutDaPeca, marcaDaArte, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { comporFraseNaArte, layoutDaPeca, marcaDaArte, modeloDaMarca, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 
 /**
  * O CARROSSEL, que existia no código e nunca existiu no produto.
@@ -203,7 +203,16 @@ export async function desenharCarrossel(opcoes: {
   // a variedade de layout é entre peças, não entre lâminas da mesma peça.
   const ancora = opcoes.roteiro[0]?.frase ?? "";
   const marca: MarcaDaArte = { ...marcaDoProjeto, variante: layoutDaPeca(marcaDoProjeto, ancora).variante };
-  const proporcaoArte = proporcaoDaArte(formato.largura, formato.altura, marca, ancora);
+  // O MODELO DO BOOK (03/10): um só para o carrossel inteiro, escolhido pela
+  // primeira lâmina; o roteiro inteiro é o contexto dos textos extras.
+  const modeloDoCarrossel = await modeloDaMarca({ ...marca, pagina: { i: 0, total: opcoes.roteiro.length } }, formato.largura, formato.altura, ancora);
+  if (modeloDoCarrossel) {
+    marca.modeloFixo = modeloDoCarrossel.id;
+    marca.contexto = marca.contexto ?? opcoes.roteiro.map((l) => l.frase).join("\n");
+  }
+  const { proporcaoDaFotoDoModelo, direcaoDaFotoDoModelo } = await import("@/lib/modelos-de-arte/compor");
+  const proporcaoDaFoto = modeloDoCarrossel ? proporcaoDaFotoDoModelo(modeloDoCarrossel, formato.largura, formato.altura) : null;
+  const proporcaoArte = proporcaoDaFoto ?? proporcaoDaArte(formato.largura, formato.altura, marca, ancora);
   // Desde 01/10 não há mais "premium" nem queda decidida aqui: a lâmina vai
   // ao seletor da arte, e a fila, o recuo e o registro de quem respondeu
   // moram em lib/media/nano-banana.ts. `permitirGemini` ficou por
@@ -266,16 +275,21 @@ export async function desenharCarrossel(opcoes: {
     // que a borda cortava; com a frase composta em código dentro da margem,
     // isso deixou de acontecer, e a arte encostar na borda é de propósito.
     {
-      const prompt = base;
-      const r = await gerarImagem(prompt, proporcaoArte, "hd", ctx, { tipo: "arte" });
-      const bruta = r.dataUrl;
-      const aviso = avisoDoRecuoDaArte(r.modelo);
-      if (aviso && !avisos.includes(aviso)) avisos.push(aviso);
+      // Modelo do book sem foto (lista, citação, só texto): nenhuma imagem paga.
+      let arte: Buffer | null = null;
+      if (!modeloDoCarrossel || proporcaoDaFoto) {
+        const prompt = modeloDoCarrossel ? `${base}${direcaoDaFotoDoModelo(modeloDoCarrossel)}` : base;
+        const r = await gerarImagem(prompt, proporcaoArte, "hd", ctx, { tipo: "arte" });
+        const bruta = r.dataUrl;
+        const aviso = avisoDoRecuoDaArte(r.modelo);
+        if (aviso && !avisos.includes(aviso)) avisos.push(aviso);
+        arte = Buffer.from(bruta.slice(bruta.indexOf(",") + 1), "base64");
+      }
 
       const composta = await comporFraseNaArte({
-        arte: Buffer.from(bruta.slice(bruta.indexOf(",") + 1), "base64"),
+        arte,
         frase: opcoes.roteiro[i].frase,
-        marca,
+        marca: modeloDoCarrossel ? { ...marca, pagina: { i, total: opcoes.roteiro.length } } : marca,
         largura: formato.largura,
         altura: formato.altura,
       });

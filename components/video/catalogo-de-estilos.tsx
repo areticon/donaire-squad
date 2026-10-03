@@ -22,6 +22,7 @@ import {
 import { ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
 import { nomeDoEstiloDeLegenda, type EscolhaDaLegenda, type EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { EscolhaDaLegenda as EscolhaDaLegendaNaTela } from "@/components/video/escolha-da-legenda";
+import { PreviaDoEstiloDeVideo, temPreviaDeVideo } from "@/components/video/previa-do-estilo-de-video";
 
 /**
  * O MENU DE ESTILO EM CAMADAS (29/09/2026), no lugar dos quatro cartões.
@@ -337,6 +338,10 @@ export function CatalogoDeEstilos({
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{melhores.map((e) => cartao(e))}</div>
           </section>
+
+          {/* "SEU VÍDEO VAI FICAR ASSIM" (03/10, book de modelos): ao tocar num
+              dos três em destaque, a fonte, as cores da marca e quadros de exemplo. */}
+          {estilo && temPreviaDeVideo(estilo.id) && <PreviaDoEstiloDeVideo projectId={projectId} estiloId={estilo.id} nomeDoEstilo={estilo.nome} />}
 
           {/* MODELOS EM FASE BETA: os derivados, com o aviso honesto e os grupos de antes. */}
           <section aria-labelledby="estilos-beta" className="rounded-xl border p-3" style={{ borderColor: "var(--border)" }}>

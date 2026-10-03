@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { NotebookPen, ArrowRight } from "lucide-react";
 import { EscolhaDeOrigem } from "@/components/posts/escolha-de-origem";
+import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 
 /**
  * A ABA CRIAR: a porta de entrada do projeto (29/09).
@@ -49,6 +50,12 @@ export function PortasDoProjeto({ projectId }: { projectId: string }) {
         </div>
         <ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1" style={{ color: "var(--text-muted)" }} />
       </Link>
+
+      {/* O BOOK DE MODELOS (03/10): antes de criar, o cliente vê como a arte
+          vai ficar, já na marca dele, e escolhe. A geração obedece. */}
+      <div className="w-full max-w-[1080px] rounded-xl border p-5" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+        <GaleriaDeModelos projectId={projectId} />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { gruposDeFormato, instrucaoDeFormato, type FormatoDaRede, type ProporcaoPedida } from "@/lib/media/formatos-das-redes";
 import { ajustarParaFormato } from "@/lib/media/margem-de-seguranca";
 import { conferirArte, pedidoDeCorrecao } from "@/lib/media/conferencia-da-arte";
+import { textoPermitidoComModelo } from "@/lib/modelos-de-arte/registro";
 
 /**
  * UMA ARTE POR PROPORÇÃO, UM RECORTE POR REDE, E UMA CONFERÊNCIA ANTES DE
@@ -139,7 +140,9 @@ export async function produzirArtePorRede(pedido: PedidoDeArte): Promise<ArteDoD
       veredito = await conferirArte(dataUri, {
         formato: pior.formato,
         textoDoPost: pedido.textoDoPost,
-        textoEsperado: pedido.textoEsperado,
+        // Com um modelo do book (03/10), o texto que o código compôs além da
+        // manchete (itens, lados, cabeçalho) também é permitido.
+        textoEsperado: textoPermitidoComModelo(pedido.textoEsperado),
         // Com a frase composta em código, a margem é garantida pelo layout.
         usarRegua: !pedido.textoEsperado,
         // O infográfico é montado em código desde 30/09: todo texto dele vem
