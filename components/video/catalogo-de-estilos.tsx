@@ -312,7 +312,7 @@ export function CatalogoDeEstilos({
                 className={cn("relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors", escolha.insercoesIA ? "bg-orange-500" : "bg-neutral-500/40")}
                 title={escolha.insercoesIA ? "Desligar as inserções de IA" : "Ligar as inserções de IA"}
               >
-                <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", escolha.insercoesIA ? "translate-x-5" : "translate-x-0.5")} />
+                <span className={cn("absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", escolha.insercoesIA ? "translate-x-5" : "translate-x-0")} />
               </button>
             </div>
           </section>
