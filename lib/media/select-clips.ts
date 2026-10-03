@@ -260,6 +260,18 @@ export async function selecionarTrechos(
   const meta = metaDaSelecao(duracaoSegundos, pedido);
   console.log(`[selecao] pedido ${meta.pedido}, alvo ${meta.alvo} candidatos (cabem ${meta.capacidade})`);
 
+  // O CAMINHO DO JEV (03/10): o código monta as janelas, o JEV decide e o
+  // Haiku só escreve os rótulos (ver `selecao-pelo-jev.ts`). Opt-in com
+  // SELECAO_PELO_JEV=1: medido no vídeo de 19 min, custa um quarto e roda em
+  // um sexto do tempo, mas abriu pior os cortes (8,5 contra 10,5 de 12 na
+  // melhor rodada), então o padrão segue no Claude. Qualquer falha, ou
+  // confiança baixa (menos que o mínimo), cai no caminho antigo logo abaixo.
+  const peloJev = await selecionarPeloJev(fonte, meta, contexto, usageCtx).catch((e: unknown) => {
+    console.error("[selecao] caminho do JEV falhou, volta ao Claude:", e instanceof Error ? e.message : e);
+    return null;
+  });
+  if (peloJev) return peloJev;
+
   // Pede um a mais que o alvo: a conferência do fecho descarta o trecho que
   // não conclui (medido em 01/10, um ou dois por rodada), e um candidato de
   // folga na mesma chamada sai mais barato e mais rápido que o complemento.
@@ -317,6 +329,51 @@ export async function selecionarTrechos(
 }
 
 type TrechoPreparado = TrechoBruto & { alinhado?: boolean };
+
+/**
+ * A seleção pelo JEV com a mesma conferência do fecho do caminho antigo.
+ * Devolve `null` para quem chama cair no Claude antigo (desligado, JEV fora do
+ * ar, confiança baixa, ou o fecho derrubou abaixo do mínimo).
+ */
+async function selecionarPeloJev(
+  fonte: FonteDaFala,
+  meta: MetaDaSelecao,
+  contexto: { nicho?: string | null; publico?: string | null; voz?: string | null } | undefined,
+  usageCtx?: { projectId?: string; runId?: string }
+): Promise<Trecho[] | null> {
+  // Import dinâmico: o módulo do JEV importa deste arquivo (guardas e tipos).
+  const { escolherPeloJev, selecaoPeloJevLigada } = await import("@/lib/media/selecao-pelo-jev");
+  const { paragrafos, palavras } = fonte;
+  if (!selecaoPeloJevLigada() || !palavras?.length) return null;
+  const r = await escolherPeloJev(palavras, contexto, usageCtx, meta, meta.alvo + FOLGA_CONTRA_DESCARTE);
+  if (!r) {
+    console.warn("[selecao] JEV sem confiança (abaixo do mínimo pedido): volta ao Claude");
+    return null;
+  }
+  if (r.diagnostico) console.log(`[selecao] diagnóstico (JEV): ${r.diagnostico}`);
+  // Os trechos vêm do mais forte para o mais fraco (a ordem do JEV); o fecho
+  // pode estender um fim, então a sobreposição é conferida de novo nessa ordem.
+  const conferidos = await conferirFecho(r.trechos, palavras, usageCtx);
+  const aceitos: typeof conferidos = [];
+  for (const t of conferidos) {
+    if (aceitos.length >= meta.alvo) break;
+    if (sobrepoe(t, aceitos)) {
+      console.log(`[selecao] JEV: descartado "${t.titulo}": encosta num corte mais forte depois do fecho`);
+      continue;
+    }
+    aceitos.push(t);
+  }
+  const finais = aceitos.sort((a, b) => a.inicio - b.inicio);
+  console.log(`[selecao] JEV: ${finais.length} cortes em ${Math.round(r.ms / 1000)} s, JEV US$ ${r.uso.custoUsd.toFixed(5)}`);
+  if (finais.length < meta.minimo) {
+    console.warn(`[selecao] JEV: o fecho deixou ${finais.length} de ${meta.minimo}: volta ao Claude`);
+    return null;
+  }
+  return finais.map(({ alinhado: _alinhado, ...t }) => ({
+    ...t,
+    transcricao: recortarFala(t.inicio, t.fim, paragrafos, palavras, true),
+  }));
+}
 
 /**
  * Do que o modelo devolveu ao que pode ir para a tela: tempos saneados, nota
