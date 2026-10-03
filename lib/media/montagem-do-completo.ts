@@ -1926,6 +1926,8 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
       referencia: `${ref.texto.slice(0, 1800)}\nQuadros típicos: ${ref.quadros.join(" | ")}`,
       soIds: sm.soIds ?? null,
       projectId: v.projectId,
+      estiloId: sm.estiloId,
+      rodada: sm.rodada,
     });
     const historico = [
       ...sm.historico,

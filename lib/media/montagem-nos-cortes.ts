@@ -863,6 +863,8 @@ async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: Tre
       soIds: sm.soIds ?? null,
       projectId: video.projectId,
       passo: 6,
+      estiloId: sm.estiloId,
+      rodada: sm.rodada,
     });
     // SÓ VAI AO AR O QUE PASSOU: sem olhar nenhum quadro, nada passou.
     if (rev.erro && !rev.quadros) throw new Error(`o revisor não olhou a prévia (${rev.erro})`);

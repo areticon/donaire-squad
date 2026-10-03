@@ -195,9 +195,9 @@ export const CONSORCIO: ReferenciaDeEstilo = {
     },
   ],
   quadrosDeReferencia: [
-    "A pessoa em plano médio num escritório claro e real, vestida de forma profissional; no meio do quadro, abaixo do rosto, duas palavras em condensada pesada branca com sombra; no topo, uma pílula branca com o nome em letra escura.",
-    "A mesma gravação com uma faixa inclinada na cor forte da marca acima da legenda, o valor dito em condensada grande branca dentro dela.",
-    "Um cartão branco arredondado no topo do quadro imitando um comentário, avatar cinza e a pergunta em texto escuro, com a pessoa olhando para ele e a legenda no meio.",
+    "PREMIUM ESCURO: a pessoa em plano médio, roupa escura bem cortada, recortada na frente de um fundo quase preto (#0B0B0F) com luz lateral dourada; atrás dela, uma palavra gigante em Anton dourado (#C9A227) ocupando 80% da largura, parcialmente escondida pelos ombros; no meio do quadro, abaixo do rosto, duas palavras em condensada pesada branca com sombra; no topo, uma pílula azul-marinho (#0F1B2D) com o nome em branco e um fio dourado. Contraste máximo, nada de tom pastel nem fundo cinza apagado.",
+    "A PROVA EM VERMELHO: sobre a gravação levemente escurecida, uma faixa inclinada (-3 graus) em vermelho forte (#C8102E) cruzando o quadro de borda a borda, o valor dito em condensada branca de 10% a 12% da altura, com o número contando; embaixo, um rótulo em dourado (#C9A227) com o que é o valor (\"CARTA DE CRÉDITO\"). A faixa tem sombra e profundidade: ela fica na frente da pessoa e um brilho dourado passa por ela ao entrar.",
+    "A TELA CHEIA DE AUTORIDADE: fundo azul-marinho profundo (#0A1426) com gradiente para o preto e textura sutil; um número enorme em dourado metálico no centro (30% da altura) e, embaixo, a frase-regra em branco caixa alta; à direita, uma foto real do setor (escritório, chave, contrato assinado) em moldura fina dourada, com a pessoa num cartão arredondado no canto. Três planos de profundidade (fundo, dado, pessoa), nunca um slide chapado.",
   ],
   fontes: [
     "lib/media/biblias/consorcio.ts (medição de 02/10/2026: 163 posts, 18 Reels quadro a quadro, seis perfis do nicho)",
