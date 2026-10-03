@@ -249,7 +249,9 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
       .slice(0, nItens);
     if (nItens && eventos.length < nItens) {
       // Os que faltam se espalham entre o último evento e o fim (a voz costuma listar em ritmo).
-      const ini = eventos.length ? eventos[eventos.length - 1] : de + ficha.entrada * 0.6;
+      // Um evento só (a resposta, o lado "depois") sem âncora: no meio da peça,
+      // e não logo na entrada (a resposta aparecia antes de ser dita, prova de 03/10).
+      const ini = eventos.length ? eventos[eventos.length - 1] : ficha.umEvento ? de + (ate - de) * 0.4 : de + ficha.entrada * 0.6;
       const faltam = nItens - eventos.length;
       const passo = Math.max(0.35, (ate - 0.8 - ini) / (faltam + (eventos.length ? 0 : 0)));
       for (let i = 0; i < faltam; i++) eventos.push(Math.min(ate - 0.5, ini + passo * (i + (eventos.length ? 1 : 0))));

@@ -500,7 +500,10 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       });
       if (abertura) {
         const final = join(pasta, "sob-medida-com-abertura.mp4");
-        await prefixarAbertura(abertura, saida, final, pasta, { copiar: false });
+        // Por cópia: os lotes saem com os mesmos parâmetros da abertura (fps da base,
+        // x264 veryfast crf 18, GOP 60), como no completo editado; recodificar
+        // 20 min só para emendar custava 5 min (prova de 03/10).
+        await prefixarAbertura(abertura, saida, final, pasta, { copiar: true });
         aberturaSeg = (await ffprobe(abertura)).duracaoSec || 0;
         saida = final;
       }

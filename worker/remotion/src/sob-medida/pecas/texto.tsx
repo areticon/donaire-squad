@@ -271,9 +271,9 @@ export function PainelLateral(c: Ctx) {
         {itens.map((it, k) => {
           const q = progressoDoItem(c, k, 0.15);
           return (
-            <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 18 * u, opacity: 0.25 + 0.75 * q, transform: `translateX(${(1 - q) * 16 * u}px)` }}>
+            <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 18 * u, opacity: 0.45 + 0.55 * q, transform: `translateX(${(1 - q) * 16 * u}px)` }}>
               <span style={{ marginTop: 12 * u, width: 14 * u, height: 14 * u, borderRadius: "50%", flex: "0 0 auto", background: q > 0.5 ? tema.acento : rgba("#ffffff", 0.25) }} />
-              <span style={{ fontFamily: tema.fonteTexto, fontWeight: 600, fontSize: (vertical ? 40 : 44) * u, lineHeight: 1.3, color: corDoTexto(c) }}>{texto(it.texto)}</span>
+              <span style={{ fontFamily: tema.fonteTexto, fontWeight: 600, fontSize: (vertical ? 40 : 50) * u, lineHeight: 1.3, color: corDoTexto(c) }}>{texto(it.texto)}</span>
             </div>
           );
         })}

@@ -305,7 +305,7 @@ export function Fluxo(c: Ctx) {
   const n = Math.max(1, nos.length);
   const a = area(c, Boolean(p.titulo));
   const prog = nos.map((_, k) => progressoDoItem(c, k, 0.4));
-  const tamNo = vertical ? 150 * u : Math.min(300 * u, (a.largura - (n - 1) * 110 * u) / n);
+  const tamNo = vertical ? 150 * u : Math.min(380 * u, (a.largura - (n - 1) * 110 * u) / n);
   return (
     <>
       <Cabeca c={c} titulo={p.titulo} rotulo={p.rotulo} />
@@ -326,8 +326,8 @@ export function Fluxo(c: Ctx) {
                 </svg>
               ) : null}
               <div style={{ ...estiloDoPainel(c), width: vertical ? a.largura * 0.8 : tamNo, padding: `${26 * u}px ${22 * u}px`, display: "flex", flexDirection: vertical ? "row" : "column", alignItems: "center", gap: 16 * u, textAlign: "center", opacity: limitar(q * 2.5), transform: `scale(${0.85 + 0.15 * e})` }}>
-                <IconeNaCaixa c={c} nome={no.icone ?? "estrela"} tam={vertical ? 60 : 74} />
-                <div style={{ ...estiloDoTitulo(c, vertical ? 38 : n > 3 ? 32 : 38), color: corDoTexto(c) }}>{texto(no.rotulo)}</div>
+                <IconeNaCaixa c={c} nome={no.icone ?? "estrela"} tam={vertical ? 60 : 110} />
+                <div style={{ ...estiloDoTitulo(c, vertical ? 38 : n > 3 ? 40 : 50), color: corDoTexto(c) }}>{texto(no.rotulo)}</div>
               </div>
             </React.Fragment>
           );
