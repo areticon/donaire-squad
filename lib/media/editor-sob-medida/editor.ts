@@ -17,7 +17,13 @@ import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-med
  * inteira (para saber onde está no argumento) e os quadros do próprio bloco.
  */
 
-export const MODELO_DO_EDITOR = process.env.EDITOR_SOB_MEDIDA_MODELO || "claude-sonnet-5";
+/**
+ * OPUS 5 como padrão (medido em 03/10, mesmo vídeo de 4 min): 40 peças e 66%
+ * do tempo com peça, estrutura de capítulos, painéis e fluxo, por US$ 0,32;
+ * o Sonnet 5 fez 27 peças e 44% por US$ 0,15. A diferença é ~US$ 0,04 por
+ * minuto de vídeo, e a edição é o produto. EDITOR_SOB_MEDIDA_MODELO troca.
+ */
+export const MODELO_DO_EDITOR = process.env.EDITOR_SOB_MEDIDA_MODELO || "claude-opus-5";
 const BLOCO_SEG = 300;
 
 const SISTEMA = `Você é o editor de vídeo e motion designer sênior da Demandou. Você não aplica um template: você ESCREVE a edição de um vídeo específico, peça por peça, como foi escrito o vídeo de pitch da nossa landing.
