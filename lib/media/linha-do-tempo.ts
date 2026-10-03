@@ -493,3 +493,62 @@ function fraseDoAgora(
         : "Tudo aprovado.";
   }
 }
+
+/**
+ * A ETAPA EXIBIDA SÓ AVANÇA (03/10, pedido do Bruno: "as etapas pulam, voltam e
+ * piscam").
+ *
+ * A leitura acima é honesta com o banco a cada consulta, e o banco oscila: o
+ * vigia relança uma etapa que já tinha terminado, a montagem de efeitos volta
+ * a "na-fila" por um instante entre duas rodadas, um passo paralelo some e
+ * reaparece. Lida a cada 4 s, cada oscilação virava a bolinha voltando um
+ * marco e voltando de novo. Para quem olha, isso é a máquina dando ré.
+ *
+ * A regra: a tela guarda a etapa mais adiantada que já mostrou e os marcos
+ * que já pintou de verde nesta rodada, e nunca desenha menos do que isso. A
+ * leitura nova só pode empurrar para frente. A memória é por CHAVE do passo, e
+ * não por índice, porque a lista de passos muda de tamanho (o gêmeo, os
+ * efeitos e a revisão entram quando o vídeo os tem). Uma falha passa por cima
+ * da regra: parar com erro não é voltar, é o que aconteceu, e a tela diz. A
+ * rodada nova (refazer) começa a memória do zero.
+ */
+export type MemoriaDaLinha = { rodada: string; atual: ChaveDoPasso | null; feitos: ChaveDoPasso[] };
+
+export function linhaQueSoAvanca(
+  l: LeituraDaLinha,
+  memoria: MemoriaDaLinha | null,
+  rodada: string
+): { leitura: LeituraDaLinha; memoria: MemoriaDaLinha } {
+  const mem = memoria && memoria.rodada === rodada ? memoria : { rodada, atual: null, feitos: [] as ChaveDoPasso[] };
+  if (l.passos.some((p) => p.estado === "falhou")) {
+    return { leitura: l, memoria: { rodada, atual: l.passos[l.atual]?.chave ?? mem.atual, feitos: mem.feitos } };
+  }
+  const piso = mem.atual ? l.passos.findIndex((p) => p.chave === mem.atual && !p.paralelo) : -1;
+  const atual = Math.max(l.atual, piso);
+  const feitos = new Set(mem.feitos);
+  const passos = l.passos.map((p, i): Passo => {
+    if (p.estado === "pulado") return p;
+    if (feitos.has(p.chave) || (!p.paralelo && i < atual)) return { ...p, estado: "feito" };
+    // Empurrado para frente pela memória: o marco segurado está "agora", e
+    // não "falta", mesmo que a leitura desta consulta diga que ele não começou.
+    if (i === atual && atual > l.atual && p.estado === "falta") return { ...p, estado: "agora" };
+    return p;
+  });
+  for (const p of passos) if (p.estado === "feito") feitos.add(p.chave);
+  const empurrado = atual > l.atual;
+  const passoAtual = passos[atual];
+  const leitura: LeituraDaLinha = {
+    ...l,
+    passos,
+    atual,
+    esperandoVoce: empurrado && passoAtual?.estado !== "voce" ? null : l.esperandoVoce,
+    agora: empurrado && passoAtual ? `${passoAtual.detalhe}.` : l.agora,
+  };
+  return { leitura, memoria: { rodada, atual: passoAtual?.chave ?? mem.atual, feitos: [...feitos] } };
+}
+
+/** Duas memórias iguais (para a tela só regravar quando algo avançou). */
+export function mesmaMemoria(a: MemoriaDaLinha | null, b: MemoriaDaLinha | null): boolean {
+  if (!a || !b) return a === b;
+  return a.rodada === b.rodada && a.atual === b.atual && a.feitos.length === b.feitos.length && a.feitos.every((f) => b.feitos.includes(f));
+}

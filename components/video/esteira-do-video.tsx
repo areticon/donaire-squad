@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
-import { lerLinhaDoTempo, type ExtrasDaLinha, type GemeoNaLinha, type Passo } from "@/lib/media/linha-do-tempo";
+import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
 import { CODIGO_DA_ETAPA, pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
 
 /**
@@ -657,7 +657,17 @@ function FaixaDeUmVideo({
   // envio original e mostrou 196 minutos.
   const decorrido = Math.max(0, Math.round((agora - inicioDe(v)) / 1000));
   const nome = v.originalName ?? "Gravação";
-  const linha = lerLinhaDoTempo(v, etapaLocal);
+  // A ETAPA EXIBIDA SÓ AVANÇA (03/10): a memória da faixa segura o marco mais
+  // adiantado que já foi mostrado nesta rodada (lib/media/linha-do-tempo.ts).
+  // Estado derivado da renderização anterior (o padrão do React para "guardar
+  // o que já foi mostrado"): só regrava quando a memória mudou de fato.
+  const [memoriaDaLinha, setMemoriaDaLinha] = useState<MemoriaDaLinha | null>(null);
+  const { leitura: linha, memoria: proximaMemoria } = linhaQueSoAvanca(
+    lerLinhaDoTempo(v, etapaLocal),
+    memoriaDaLinha,
+    `${v.id}:${v.inicioDaRodada ?? v.criadoEm}`
+  );
+  if (!mesmaMemoria(memoriaDaLinha, proximaMemoria)) setMemoriaDaLinha(proximaMemoria);
 
   // ── Terminou, e nada espera o cliente ─────────────────────────────────────
   // Só quando a linha inteira acabou (02/10): antes, "Pronto em N minutos"
