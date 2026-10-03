@@ -25,7 +25,7 @@ const SISTEMA = `Você é o editor de vídeo e motion designer sênior da Demand
 # O QUE FEZ O PITCH SER BOM (a régua)
 - Cada coisa importante que a voz diz GANHA FORMA na tela, no instante em que é dita: falou de três saídas, entram três cartões, um por um, cada um na palavra dele; falou de 88%, o número conta até 88; falou "Roberto", a câmera vai até o Roberto.
 - Hierarquia sempre: rótulo pequeno (selo), título curto com UMA palavra em destaque, apoio menor. Nunca parágrafo na tela.
-- O desenho é do ASSUNTO, não decorativo: três passos viram linha do tempo ou escada; dinheiro em vídeo de tecnologia vira o cifrão futurista; versículo vira pergaminho; lugares viram mapa; uma objeção vira pergunta e resposta.
+- O desenho é do ASSUNTO, não decorativo: três passos viram linha do tempo ou escada; dinheiro em vídeo de tecnologia vira o cifrão futurista; versículo lido ou citado vira PERGAMINHO (com a referência, "Lucas 5:4"); lugares viram mapa; uma objeção vira pergunta e resposta; um conceito sem peça vira um DESENHO seu (SVG simples).
 - Ritmo: algo novo a cada 5 a 10 segundos; peças de tela cheia alternam com a pessoa; nunca a mesma peça duas vezes seguidas.
 - Respiro: a pessoa falando, sem nada, é parte da edição. Emoção, história pessoal e oração ficam com o rosto.
 - Tudo nas cores e letras da marca do cliente (o código aplica; você só escolhe peças e textos).
@@ -38,8 +38,9 @@ const SISTEMA = `Você é o editor de vídeo e motion designer sênior da Demand
 5. Câmera: o código já alterna aberto, médio e fechado no ritmo das frases. Você só pede câmera quando ela deve ir a um lugar (o objeto mostrado, um detalhe), com zoom de 1,3 a 1,8 e o foco certo.
 6. Inserção gerada: só onde nenhuma peça e nenhum quadro da gravação mostra o que é dito, e a imagem agrega (um lugar, uma época, um objeto que não está na sala). Escreva o pedido como briefing de fotógrafo, em inglês: assunto, lugar, luz, lente, enquadramento, clima; sem texto na imagem, sem marca, sem pessoa real; figura bíblica só se a fala é sobre ela, de costas ou em plano aberto, com roupa da época. No máximo 1 por minuto, e zero se não agregar.
 
-# DENSIDADE
-- Peças cobrindo de 50% a 75% do tempo; uma peça nova a cada 5 a 10 s.
+# DENSIDADE (o pitch tem forma na tela quase o tempo todo; não economize)
+- Peças cobrindo de 65% a 85% do tempo; uma peça nova a cada 4 a 8 s. Um vídeo de 4 min pede 30 a 45 momentos; um bloco de 5 min, 35 a 55.
+- Entre duas peças grandes, uma pequena (palavra-chave, sublinhado, rótulo) mantém o ritmo; o respiro sem nada fica para emoção, história pessoal e oração, e nunca passa de 10 s.
 - Peças de TELA CHEIA somando no máximo 25% do tempo, nenhuma acima de 8 s.
 - Use a variedade do catálogo: num trecho de 5 min, pelo menos 7 tipos de peça diferentes.
 - Peça curta não é peça ruim: palavra-chave, sublinhado e rótulo dão ritmo entre as maiores.
@@ -143,53 +144,59 @@ async function chamar(sistemaExtra: string, mensagem: string, quadros: Array<{ t
   return extrairJson(resposta);
 }
 
+export type BlocoDoEditor = { de: number; ate: number; f0: number; f1: number };
+export type ParteDaEdicao = EdicaoDoEditor & { erro?: string };
+
+/** Um bloco do vídeo no editor (duas tentativas). */
+export async function escreverBloco(e: EntradaDoEditor, b: BlocoDoEditor, k: number, total: number): Promise<ParteDaEdicao> {
+  const ctx = contexto(e);
+  const quadros = e.quadros.filter((q) => q.t >= b.de - 1 && q.t <= b.ate + 1);
+  const fala = falaNumerada(e.frases);
+  const tarefa =
+    total === 1
+      ? `Edite o vídeo inteiro (F0 a F${e.frases.length - 1}).`
+      : `O vídeo foi dividido em ${total} partes, editadas em paralelo. VOCÊ EDITA SÓ A PARTE ${k + 1}: de F${b.f0} a F${b.f1} (${b.de.toFixed(0)} s a ${b.ate.toFixed(0)} s). Todas as âncoras dentro desse intervalo. ${k === 0 ? "É o começo: abra forte (título ou rótulo de quem fala nos primeiros segundos)." : ""}${k === total - 1 ? "É o fim: feche com a peça fecho na chamada final, se houver chamada." : ""}`;
+  let ultimoErro = "";
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      const j = (await chamar(ctx, `# A FALA, NUMERADA
+${fala}
+
+# A TAREFA
+${tarefa}`, quadros, e, "editor-sob-medida")) as EdicaoDoEditor;
+      if (!Array.isArray(j?.momentos)) throw new Error("resposta sem momentos");
+      const dentro = (a: string) => {
+        const n = Number(String(a).match(/\d+/)?.[0] ?? -1);
+        return n >= b.f0 && n <= b.f1 + 1;
+      };
+      return {
+        leitura: j.leitura ?? "",
+        momentos: j.momentos.filter((m) => dentro(m.de)).map((m, i) => ({ ...m, id: `p${k + 1}-${String(m.id ?? i + 1).replace(/^p\d+-/, "")}` })),
+        camera: (j.camera ?? []).filter((c) => dentro(c.de)),
+        insercoes: (j.insercoes ?? []).filter((x) => dentro(x.de)).map((x, i) => ({ ...x, id: `p${k + 1}-${String(x.id ?? `i${i + 1}`).replace(/^p\d+-/, "")}` })),
+      };
+    } catch (err) {
+      ultimoErro = err instanceof Error ? err.message.slice(0, 160) : String(err);
+    }
+  }
+  return { leitura: "", momentos: [], camera: [], insercoes: [], erro: ultimoErro || "falhou" };
+}
+
+/** Junta as partes na edição do vídeo inteiro. */
+export function juntarPartes(partes: ParteDaEdicao[]): EdicaoDoEditor {
+  return {
+    leitura: partes.map((p) => p.leitura).filter(Boolean)[0] ?? "",
+    momentos: partes.flatMap((p) => p.momentos),
+    camera: partes.flatMap((p) => p.camera ?? []),
+    insercoes: partes.flatMap((p) => p.insercoes ?? []),
+  };
+}
+
 /** A edição do vídeo inteiro (blocos em paralelo). */
 export async function escreverEdicao(e: EntradaDoEditor): Promise<{ edicao: EdicaoDoEditor; blocos: number; erros: string[] }> {
   const blocos = blocosDoEditor(e.frases, e.duracao);
-  const ctx = contexto(e);
-  const erros: string[] = [];
-  const partes = await Promise.all(
-    blocos.map(async (b, k) => {
-      const quadros = e.quadros.filter((q) => q.t >= b.de - 1 && q.t <= b.ate + 1);
-      const fala = falaNumerada(e.frases);
-      const tarefa =
-        blocos.length === 1
-          ? `Edite o vídeo inteiro (F0 a F${e.frases.length - 1}).`
-          : `O vídeo foi dividido em ${blocos.length} partes, editadas em paralelo. VOCÊ EDITA SÓ A PARTE ${k + 1}: de F${b.f0} a F${b.f1} (${b.de.toFixed(0)} s a ${b.ate.toFixed(0)} s). Todas as âncoras dentro desse intervalo. ${k === 0 ? "É o começo: abra forte (título ou rótulo de quem fala nos primeiros segundos)." : ""}${k === blocos.length - 1 ? "É o fim: feche com a peça fecho na chamada final, se houver chamada." : ""} Para não repetir as outras partes, use ids com o prefixo p${k + 1}-.`;
-      for (let tentativa = 0; tentativa < 2; tentativa++) {
-        try {
-          const j = (await chamar(ctx, `# A FALA, NUMERADA\n${fala}\n\n# A TAREFA\n${tarefa}`, quadros, e, `editor-sob-medida`)) as EdicaoDoEditor;
-          if (!Array.isArray(j?.momentos)) throw new Error("resposta sem momentos");
-          const dentro = (a: string) => {
-            const n = Number(String(a).match(/\d+/)?.[0] ?? -1);
-            return n >= b.f0 && n <= b.f1 + 1;
-          };
-          return {
-            leitura: j.leitura ?? "",
-            momentos: j.momentos.filter((m) => dentro(m.de)).map((m, i) => ({ ...m, id: `p${k + 1}-${String(m.id ?? i + 1).replace(/^p\d+-/, "")}` })),
-            camera: (j.camera ?? []).filter((c) => dentro(c.de)),
-            insercoes: (j.insercoes ?? []).filter((x) => dentro(x.de)).map((x, i) => ({ ...x, id: `p${k + 1}-${String(x.id ?? `i${i + 1}`).replace(/^p\d+-/, "")}` })),
-          };
-        } catch (err) {
-          if (tentativa === 1) {
-            erros.push(`parte ${k + 1}: ${err instanceof Error ? err.message.slice(0, 160) : err}`);
-            return { leitura: "", momentos: [], camera: [], insercoes: [] };
-          }
-        }
-      }
-      return { leitura: "", momentos: [], camera: [], insercoes: [] };
-    })
-  );
-  return {
-    edicao: {
-      leitura: partes.map((p) => p.leitura).filter(Boolean)[0] ?? "",
-      momentos: partes.flatMap((p) => p.momentos),
-      camera: partes.flatMap((p) => p.camera),
-      insercoes: partes.flatMap((p) => p.insercoes),
-    },
-    blocos: blocos.length,
-    erros,
-  };
+  const partes = await Promise.all(blocos.map((b, k) => escreverBloco(e, b, k, blocos.length)));
+  return { edicao: juntarPartes(partes), blocos: blocos.length, erros: partes.filter((p) => p.erro).map((p, k) => `parte ${k + 1}: ${p.erro}`) };
 }
 
 export type DefeitoDaRevisao = { momento: string | null; t: number; tipo: string; descricao: string; conserto: string };

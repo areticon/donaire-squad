@@ -47,7 +47,23 @@ import { estornarEdicaoNaoEntregue } from "@/lib/credits/estorno-da-edicao";
 import { detectarDemonstracao, quadrosPeloWorker, type ObterQuadros } from "@/lib/media/demonstracao";
 import { consertosDaRevisao, RODADAS_DE_CONSERTO, revisaoVisualLigada, revisarVideoPronto, type EstadoDaRevisaoVisual } from "@/lib/media/revisao-visual";
 import { conferirAssets } from "@/lib/media/conferencia-da-imagem";
-import { perfilDoProjeto } from "@/lib/media/perfil-do-projeto";
+import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
+import {
+  consertarEdicao,
+  editorSobMedidaLigado,
+  frasesNumeradas,
+  gerarInsercoes,
+  instantesParaOEditor,
+  medidasDaEdicao,
+  referenciaParaOEditor,
+  resolverEdicao,
+  revisarPrevia,
+  roteiroParaOEditor,
+  temaDoEstilo,
+  type EdicaoDoEditor,
+  type EdicaoResolvida,
+} from "@/lib/media/editor-sob-medida";
+import { blocosDoEditor, escreverBloco, juntarPartes, type BlocoDoEditor, type EntradaDoEditor, type ParteDaEdicao } from "@/lib/media/editor-sob-medida/editor";
 import {
   demonstracaoNaFala,
   insercoesDoPlano,
@@ -239,6 +255,31 @@ export type MontagemDoCompleto = {
   planoAntesDaSegura?: PlanoDeMontagem | null;
   /** O render que espera a revisão visual (ainda não trocou o completo do cliente). */
   candidato?: { url: string; bytes: number; tempos?: Record<string, number>; aberturaSeg?: number } | null;
+  /**
+   * O EDITOR SOB MEDIDA (03/10, lib/media/editor-sob-medida): o caminho novo,
+   * atrás de EDITOR_SOB_MEDIDA. Usa os estados de sempre ("dirigindo" enquanto
+   * o editor escreve, "montando" na prévia, na revisão e no final) para a tela
+   * e a linha do tempo não mudarem. `desistiu`: o caminho novo falhou e o
+   * completo voltou à esteira de sempre (a reserva).
+   */
+  sobMedida?: EstadoDoSobMedida | null;
+};
+
+export type EstadoDoSobMedida = {
+  fase: "editar" | "previa" | "revisar" | "final";
+  estiloId: string;
+  blocos: Array<BlocoDoEditor & { parte?: ParteDaEdicao | null }>;
+  editor?: EdicaoDoEditor | null;
+  insercoes?: Record<string, { url: string; tipo: "imagem" | "video" }>;
+  edicao?: EdicaoResolvida | null;
+  rodada: number;
+  historico: Array<{ rodada: number; quadros: number; nota: number | null; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
+  soIds?: string[] | null;
+  previaUrl?: string | null;
+  custoImagensUsd?: number;
+  medidas?: Record<string, number>;
+  avisos?: string[];
+  desistiu?: string | null;
 };
 
 // ─────────────────────────────── números ───────────────────────────────
@@ -1120,6 +1161,28 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     }
     const blocos = blocosDaFala(fala.palavras, analise.duracao || fala.duracao);
     const falaDoCompleto = { palavras: fala.palavras, duracao: analise.duracao || fala.duracao };
+    // O EDITOR SOB MEDIDA (03/10): com o interruptor ligado e o estilo com
+    // referência, o completo vai para o editor (passo "dirigindo" com
+    // `sobMedida`), e não para o plano por cenas. Se o caminho novo já
+    // desistiu neste vídeo, segue a esteira de sempre (a reserva).
+    const estiloDoVideo = contextoVisual(v).escolha.estiloId;
+    if (editorSobMedidaLigado(estiloDoVideo) && !lido.sobMedida?.desistiu) {
+      const falaAprovada = lido.roteiro?.completo?.fala?.palavras;
+      const aberturaSm = falaAprovada?.length ? aberturaNaBase(lido.roteiro, falaAprovada, falaDoCompleto.palavras) : null;
+      const frases = frasesNumeradas(falaDoCompleto.palavras);
+      await trocarEstado(v.id, tomado, {
+        ...tomado,
+        estado: "dirigindo",
+        desde: agora(),
+        fala: falaDoCompleto,
+        analise,
+        blocos,
+        abertura: aberturaSm,
+        motivo: null,
+        sobMedida: { fase: "editar", estiloId: estiloDoVideo, blocos: blocosDoEditor(frases, falaDoCompleto.duracao), rodada: 0, historico: [] },
+      });
+      return;
+    }
     // O PLANO APROVADO NA TELA DE ROTEIRO (30/09): o diretor já foi pago antes
     // da aprovação, e o cliente ajustou cena por cena. Aqui ele só é levado
     // para a fala transcrita do arquivo (alinhamento por sequência, em
@@ -1669,6 +1732,16 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
       } else if (m.estado === "preparando" && idade > PASSO_MORTO_MS) {
         r.olhados++;
         await trocarEstado(v.id, m, { ...m, estado: "na-fila", desde: agora() });
+      } else if (m.estado === "dirigindo" && m.sobMedida && !m.sobMedida.desistiu && !esperando && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
+        // O editor sob medida (03/10).
+        r.olhados++;
+        await editarSobMedida(v, m);
+      } else if (m.estado === "montando" && m.sobMedida?.fase === "revisar" && !m.sobMedida.desistiu && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
+        r.olhados++;
+        await revisarSobMedida(v, m);
+      } else if (m.estado === "montando" && m.sobMedida && !m.sobMedida.desistiu && idade > PRAZO_DO_RENDER_MS) {
+        r.olhados++;
+        await desistirDoSobMedida(v.id, m, "o render da edição sob medida não terminou no prazo");
       } else if (m.estado === "dirigindo" && !esperando && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
         // `trabalhando`: outra passada está no meio da onda. Tomar de novo
         // jogaria fora a onda dela e pagaria o diretor duas vezes.
@@ -1700,6 +1773,170 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
     }
   }
   return r;
+}
+
+// ─────────────────────────────── 2b. o editor sob medida ───────────────────────────────
+
+/** A edição sob medida desiste e o completo volta à esteira de sempre (a reserva), do começo. */
+async function desistirDoSobMedida(id: string, lido: MontagemDoCompleto, motivo: string): Promise<void> {
+  console.warn(`[montagem-do-completo][${id}] editor sob medida desistiu: ${motivo}`);
+  await trocarEstado(id, lido, {
+    ...lido,
+    estado: "na-fila",
+    desde: agora(),
+    trabalhando: false,
+    candidato: null,
+    tentativas: 0,
+    esperarAte: null,
+    sobMedida: { ...(lido.sobMedida as EstadoDoSobMedida), desistiu: motivo.slice(0, 300) },
+  });
+}
+
+async function entradaDoEditor(v: VideoDoCompleto, m: MontagemDoCompleto, quadros: Array<{ t: number; base64: string }>): Promise<EntradaDoEditor> {
+  const sm = m.sobMedida!;
+  const analise = m.analise!;
+  const perfil = await perfilDoProjeto(v.projectId).catch(() => null);
+  const { marca } = contextoVisual(v);
+  const tema = temaDoEstilo(sm.estiloId, marca);
+  return {
+    palavras: m.fala!.palavras,
+    frases: frasesNumeradas(m.fala!.palavras),
+    duracao: m.fala!.duracao,
+    formato: analise.altura > analise.largura ? "9:16" : "16:9",
+    referencia: referenciaParaOEditor(sm.estiloId).texto,
+    perfil: [perfilNoPrompt(perfil), `MARCA: cores ${marca.acento} (acento) e ${marca.escuro} (escuro); acabamento ${tema.visual}. Logo: ${v.logoUrl ? "sim" : "não (o fecho usa o nome do projeto)"}.`].join("\n"),
+    roteiro: roteiroParaOEditor(m.roteiro),
+    quadros,
+    projectId: v.projectId,
+    referenciaDeUso: v.id,
+  };
+}
+
+function resolverSobMedida(v: VideoDoCompleto, m: MontagemDoCompleto, editor: EdicaoDoEditor, insercoes: Record<string, { url: string; tipo: "imagem" | "video" }>) {
+  const sm = m.sobMedida!;
+  const analise = m.analise!;
+  const { marca, legenda } = contextoVisual(v);
+  const { rosto } = geometriaNoQuadro(v.clips, analise);
+  return resolverEdicao(editor, {
+    palavras: m.fala!.palavras,
+    duracao: m.fala!.duracao,
+    largura: analise.largura,
+    altura: analise.altura,
+    tema: { ...temaDoEstilo(sm.estiloId, marca), escuroLegenda: "#06111F" },
+    rosto,
+    estiloId: sm.estiloId,
+    // A legenda pequena do pitch, a menos que o cliente tenha escolhido "sem legenda".
+    comLegenda: legenda.mostrar,
+    logoUrl: v.logoUrl ?? null,
+    insercoes,
+  });
+}
+
+/** "dirigindo" com `sobMedida`: o editor escreve os blocos que faltam; com todos prontos, inserções, resolução e a prévia. */
+async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<void> {
+  const tomado: MontagemDoCompleto = { ...lido, desde: agora(), trabalhando: true };
+  if (!(await trocarEstado(v.id, lido, tomado))) return;
+  const sm = lido.sobMedida!;
+  try {
+    const base = lido.baseUrl ?? v.completoUrl!;
+    const quadros = await quadrosPeloWorker(base, 384)(instantesParaOEditor(lido.fala!.duracao)).catch(() => []);
+    const entrada = await entradaDoEditor(v, lido, quadros);
+    // Bloco pronto nunca é refeito; os que faltam vão juntos.
+    const blocos = sm.blocos.map((b) => ({ ...b }));
+    await Promise.all(
+      blocos.map(async (b, k) => {
+        if (b.parte) return;
+        b.parte = await escreverBloco(entrada, b, k, blocos.length);
+      })
+    );
+    const editor = juntarPartes(blocos.map((b) => b.parte!));
+    if (!editor.momentos.length) {
+      await desistirDoSobMedida(v.id, tomado, `o editor não devolveu edição (${blocos.map((b) => b.parte?.erro).filter(Boolean).join("; ").slice(0, 200)})`);
+      return;
+    }
+    const formato = lido.analise!.altura > lido.analise!.largura ? "9:16" : "16:9";
+    const ins = await gerarInsercoes(editor, { formato, projectId: v.projectId });
+    const r = resolverSobMedida(v, lido, editor, ins.insercoes);
+    const novo: EstadoDoSobMedida = { ...sm, blocos, editor, insercoes: ins.insercoes, edicao: r.edicao, fase: "previa", custoImagensUsd: ins.custoUsd, medidas: medidasDaEdicao(r.edicao), avisos: r.avisos.slice(0, 30) };
+    await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
+  } catch (e) {
+    await desistirDoSobMedida(v.id, tomado, `o editor falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
+  }
+}
+
+/** Manda a prévia (metade da resolução) ou o final (com a abertura) ao worker, pela porta do completo. */
+async function enviarSobMedida(v: VideoDoCompleto, estado: MontagemDoCompleto, lido: MontagemDoCompleto): Promise<void> {
+  const sm = estado.sobMedida!;
+  const final = sm.fase === "final";
+  const tomado: MontagemDoCompleto = { ...estado, estado: "montando", desde: agora(), tentativas: (estado.tentativas ?? 0) + 1, candidato: null };
+  if (!(await trocarEstado(v.id, lido, tomado))) return;
+  try {
+    const { marca } = contextoVisual(v);
+    const app = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
+    const chave = final ? `cortes/${v.id}/completo-editado.mp4` : `cortes/${v.id}/previa-sob-medida-${sm.rodada}.mp4`;
+    const texto = JSON.stringify({
+      chave,
+      videoJobId: v.id,
+      completoUrl: estado.baseUrl ?? v.completoUrl,
+      edicao: sm.edicao,
+      escala: final ? 1 : 0.5,
+      abertura: final && estado.abertura?.length ? { momentos: estado.abertura, familia: "sobrio", acento: marca.acento, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
+      callbackUrl: `${app}/api/videos/${v.id}/montar-completo-callback`,
+      retorno: { desde: tomado.desde },
+    });
+    const r = await fetch(`${urlDoWorker()}/montar-completo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [CABECALHO_ASSINATURA]: assinarCorpo(texto) },
+      body: texto,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (r.status !== 202) throw new Error(`worker recusou a edição sob medida (HTTP ${r.status})`);
+    await trocarEstado(v.id, tomado, { ...tomado, chave });
+  } catch (e) {
+    await desistirDoSobMedida(v.id, tomado, e instanceof Error ? e.message : "envio falhou");
+  }
+}
+
+/** A prévia voltou: o revisor olha; com defeito, o editor conserta (até 2 rodadas); o que ainda tem defeito sai; vai o final. */
+async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<void> {
+  const tomado: MontagemDoCompleto = { ...lido, trabalhando: true, desde: agora() };
+  if (!(await trocarEstado(v.id, lido, tomado))) return;
+  const sm = lido.sobMedida!;
+  try {
+    const frases = frasesNumeradas(lido.fala!.palavras);
+    const ref = referenciaParaOEditor(sm.estiloId);
+    const rev = await revisarPrevia({
+      edicao: sm.edicao!,
+      frases,
+      obterQuadros: quadrosPeloWorker(sm.previaUrl!, lido.analise!.altura > lido.analise!.largura ? 360 : 512),
+      referencia: `${ref.texto.slice(0, 1800)}\nQuadros típicos: ${ref.quadros.join(" | ")}`,
+      soIds: sm.soIds ?? null,
+      projectId: v.projectId,
+    });
+    const historico = [
+      ...sm.historico,
+      { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, defeitos: rev.defeitos.map((d) => ({ momento: d.momento, t: d.t, tipo: d.tipo, descricao: d.descricao })), falta: rev.falta, erro: rev.erro ?? null },
+    ].slice(-6);
+    let editor = sm.editor!;
+    if (rev.defeitos.length && sm.rodada < 2) {
+      const entrada = await entradaDoEditor(v, lido, []);
+      const quadrosDoDefeito = rev.olhados.filter((q) => rev.defeitos.some((d) => Math.abs(d.t - q.t) < 0.05));
+      editor = (await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito)).edicao;
+      const soIds = [...new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)))];
+      const r = resolverSobMedida(v, lido, editor, sm.insercoes ?? {});
+      const novo: EstadoDoSobMedida = { ...sm, editor, edicao: r.edicao, fase: "previa", rodada: sm.rodada + 1, soIds, historico, medidas: medidasDaEdicao(r.edicao) };
+      await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
+      return;
+    }
+    // SÓ VAI AO AR O QUE PASSOU: a peça que ainda tem defeito sai.
+    const reprovadas = new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)));
+    if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
+    const r = resolverSobMedida(v, lido, editor, sm.insercoes ?? {});
+    const novo: EstadoDoSobMedida = { ...sm, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: medidasDaEdicao(r.edicao) };
+    await enviarSobMedida(v, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
+  } catch (e) {
+    await desistirDoSobMedida(v.id, tomado, `a revisão da prévia falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
+  }
 }
 
 // ─────────────────────────────── 3. o callback ───────────────────────────────
@@ -1741,6 +1978,12 @@ export async function concluirMontagemDoCompleto(
     });
     return "falhou";
   }
+  // A edição sob medida que falha no render desiste para a reserva (voltar a
+  // "gerando" mandaria ao worker um plano que não existe).
+  if ((!resultado.ok || !resultado.montado?.url) && lido.sobMedida && !lido.sobMedida.desistiu) {
+    await desistirDoSobMedida(videoJobId, lido, `o render da edição sob medida falhou (${resumoDoErro(resultado.erro ?? "sem detalhe")})`);
+    return "falhou";
+  }
   if (!resultado.ok || !resultado.montado?.url) {
     await trocarEstado(videoJobId, lido, {
       ...lido,
@@ -1755,6 +1998,19 @@ export async function concluirMontagemDoCompleto(
       falhaTecnica: (lido.tentativas ?? 1) >= MAX_TENTATIVAS,
     });
     return "falhou";
+  }
+  // O EDITOR SOB MEDIDA (03/10): a prévia volta para o revisor; o final já
+  // passou pela revisão da prévia e vai ao ar.
+  if (lido.sobMedida && !lido.sobMedida.desistiu) {
+    if (lido.sobMedida.fase === "previa") {
+      const ok = await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...lido.sobMedida, fase: "revisar", previaUrl: resultado.montado.url } });
+      return ok ? "revisando" : "ignorado";
+    }
+    return entregarCompleto(
+      v,
+      { ...lido, revisaoVisual: { rodadas: lido.sobMedida.rodada, historico: [], pendente: false, final: true, motivo: "editor sob medida: revisado na prévia" } },
+      { url: resultado.montado.url, bytes: resultado.montado.bytes, tempos: resultado.tempos }
+    );
   }
   // A REVISÃO VISUAL FINAL (02/10): o render pronto vira CANDIDATO e o cron
   // confere quadro a quadro antes de trocar o completo do cliente

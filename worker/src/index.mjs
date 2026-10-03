@@ -1794,8 +1794,10 @@ const servidor = createServer((req, res) => {
         }
         return;
       }
-      if (!pedido.chave || !pedido.montagem || !pedido.callbackUrl) {
-        return responder(400, { error: "Faltam chave, montagem ou callbackUrl" });
+      // O EDITOR SOB MEDIDA (03/10) chega pela mesma porta, com `edicao` no
+      // lugar de `montagem` (src/edicao-sob-medida.mjs), e a mesma fila.
+      if (!pedido.chave || !(pedido.montagem || pedido.edicao) || !pedido.callbackUrl) {
+        return responder(400, { error: "Faltam chave, montagem (ou edicao) ou callbackUrl" });
       }
       responder(202, { aceito: true, chave: pedido.chave, naFila: filaDaMontagem.length + (montagemRodando ? 1 : 0) });
       enfileirarMontagem({
@@ -1812,8 +1814,14 @@ const servidor = createServer((req, res) => {
             reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
           });
           try {
-            const { montarCompleto } = await import("./montagem-do-completo.mjs");
-            const feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
+            let feito;
+            if (pedido.edicao) {
+              const { montarSobMedida } = await import("./edicao-sob-medida.mjs");
+              feito = await montarSobMedida(pedido, pasta, { baixar: baixarQualquer });
+            } else {
+              const { montarCompleto } = await import("./montagem-do-completo.mjs");
+              feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
+            }
             const montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
             await avisar(destino, {
               ok: true,
