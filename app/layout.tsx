@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/ui/theme-provider";
 import { PixelsDeAnuncio } from "@/components/analytics/pixels-de-anuncio";
 import { pixelsConfigurados } from "@/lib/pixels";
 import { comVersao } from "@/lib/versao-dos-icones";
+import { AberturaDoApp, SCRIPT_DA_ABERTURA } from "@/components/abertura-do-app";
 import "./globals.css";
 
 // As fontes de antes do rebranding, de volta em 01/10 a pedido do Bruno: Inter
@@ -87,6 +88,9 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem("tema");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`,
           }}
         />
+        {/* A abertura do app instalado (03/10): decide antes da primeira
+            pintura, ver components/abertura-do-app.tsx. */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_DA_ABERTURA }} />
       </head>
       {/*
         suppressHydrationWarning aqui porque extensões de navegador (ColorZilla,
@@ -99,6 +103,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${inter.variable} ${montserrat.variable} ${inter.className}`}
       >
+        <AberturaDoApp />
         <ThemeProvider>
           {children}
           {/*

@@ -597,3 +597,310 @@ body {
   0%, 100% { transform: scale(1); opacity: 1; }
   50%      { transform: scale(1.35); opacity: .7; }
 }
+
+/*
+ * A ABERTURA DO APLICATIVO INSTALADO (03/10): components/abertura-do-app.tsx.
+ * Escondida por padrão; o script do <head> põe a classe "abertura" no <html>
+ * só no app instalado, uma vez por sessão. O fundo é o --bg-primary do escuro
+ * (#06111f), o mesmo background_color do manifesto, para a splash nativa do
+ * Android emendar nesta sem piscar.
+ */
+@property --ab-dist {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --ab-giro {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+#abertura-app {
+  display: none;
+}
+html.abertura body {
+  overflow: hidden;
+}
+html.abertura #abertura-app {
+  --ab-palco: min(84vw, 340px);
+  --ab-r: calc(var(--ab-palco) * 0.39);
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  overflow: hidden;
+  background: #06111f;
+  color: #e8eef6;
+  cursor: pointer;
+  transition: opacity 0.42s ease, transform 0.42s ease, filter 0.42s ease;
+}
+html.abertura-saindo #abertura-app {
+  opacity: 0;
+  transform: scale(1.06);
+  filter: blur(6px);
+  pointer-events: none;
+}
+#abertura-app .ab-fundo {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(40% 32% at 50% 44%, rgba(241, 116, 46, 0.28), transparent 70%),
+    radial-gradient(60% 50% at 20% 10%, rgba(37, 99, 235, 0.22), transparent 70%),
+    radial-gradient(55% 45% at 85% 90%, rgba(190, 71, 32, 0.22), transparent 70%),
+    radial-gradient(120% 90% at 50% 50%, #0f2138 0%, #06111f 60%);
+  animation: ab-respira 2.4s ease-in-out both;
+}
+#abertura-app .ab-grade {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -10%;
+  height: 46%;
+  background-image:
+    linear-gradient(rgba(241, 116, 46, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(241, 116, 46, 0.22) 1px, transparent 1px);
+  background-size: 38px 38px;
+  transform: perspective(320px) rotateX(62deg);
+  transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 70%, transparent);
+  animation: ab-grade-anda 1.8s linear both;
+}
+#abertura-app .ab-particulas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  animation: ab-sobe 2.2s ease-out both, ab-pisca 0.9s ease-in-out infinite alternate;
+}
+#abertura-app .ab-particulas-2 {
+  width: 3px;
+  height: 3px;
+  filter: blur(0.6px);
+  animation-duration: 2.6s, 1.3s;
+}
+#abertura-app .ab-varredura {
+  position: absolute;
+  inset: -30% -60%;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.07) 48%, rgba(241, 116, 46, 0.16) 50%, rgba(255, 255, 255, 0.07) 52%, transparent 58%);
+  animation: ab-varre 1.5s 0.35s cubic-bezier(0.45, 0, 0.2, 1) both;
+}
+#abertura-app .ab-palco {
+  position: relative;
+  width: var(--ab-palco);
+  height: var(--ab-palco);
+}
+#abertura-app .ab-aneis,
+#abertura-app .ab-feixes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+#abertura-app .ab-anel {
+  fill: none;
+  stroke: rgba(201, 211, 224, 0.18);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+#abertura-app .ab-anel-1 {
+  stroke: rgba(241, 116, 46, 0.35);
+  stroke-dasharray: 2 7;
+  animation: ab-anel-entra 0.9s 0.05s ease-out both, ab-gira-anel 9s linear infinite;
+}
+#abertura-app .ab-anel-2 {
+  stroke-dasharray: 60 14 6 14;
+  animation: ab-anel-entra 0.9s 0.15s ease-out both, ab-gira-anel 6s linear infinite reverse;
+}
+#abertura-app .ab-anel-3 {
+  stroke: rgba(241, 116, 46, 0.5);
+  stroke-width: 1.5;
+  stroke-dasharray: 24 10;
+  animation: ab-anel-entra 0.9s 0.25s ease-out both, ab-gira-anel 4s linear infinite;
+}
+#abertura-app .ab-orbita {
+  position: absolute;
+  inset: 0;
+  animation: ab-giro 1.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+#abertura-app .ab-feixes {
+  transform: rotate(var(--ab-giro));
+}
+#abertura-app .ab-feixes line {
+  stroke: #f1742e;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-dasharray: 124;
+  stroke-dashoffset: 124;
+  opacity: 0.55;
+  filter: drop-shadow(0 0 3px rgba(241, 116, 46, 0.9));
+  animation: ab-feixe 0.6s calc(var(--i) * 45ms + 0.25s) ease-out both;
+}
+#abertura-app .ab-agente {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  transform: rotate(calc(var(--a) + var(--ab-giro))) translateY(calc(var(--ab-dist) * -1)) rotate(calc((var(--a) + var(--ab-giro)) * -1));
+  animation: ab-sai-do-centro 0.7s calc(var(--i) * 45ms + 0.12s) cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+#abertura-app .ab-agente img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(241, 116, 46, 0.85);
+  box-shadow: 0 0 0 3px rgba(6, 17, 31, 0.9), 0 0 18px 2px rgba(241, 116, 46, 0.55);
+  background: #0f2138;
+  animation: ab-acende 0.5s calc(var(--i) * 45ms + 0.5s) ease-out both;
+}
+#abertura-app .ab-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(241, 116, 46, 0.55) 0%, rgba(241, 116, 46, 0.12) 45%, transparent 70%);
+  animation: ab-pulsa 1.6s ease-in-out both;
+}
+#abertura-app .ab-marca {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  filter: drop-shadow(0 0 16px rgba(241, 116, 46, 0.65));
+  animation: ab-marca 0.9s 0.05s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+#abertura-app .ab-texto {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 0 24px;
+}
+#abertura-app .ab-nome {
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  text-shadow: 0 0 24px rgba(241, 116, 46, 0.45);
+  animation: ab-nome 0.8s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+#abertura-app .ab-frase {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aabc2;
+  animation: ab-frase 0.6s 0.8s ease-out both;
+}
+#abertura-app .ab-barra {
+  margin-top: 10px;
+  width: 140px;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(201, 211, 224, 0.15);
+  animation: ab-frase 0.4s 0.8s ease-out both;
+}
+#abertura-app .ab-barra span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #be4720, #f1742e, #ffd2b5);
+  box-shadow: 0 0 10px #f1742e;
+  animation: ab-carrega 1.35s 0.2s cubic-bezier(0.6, 0, 0.3, 1) both;
+}
+@keyframes ab-respira {
+  from { opacity: 0; transform: scale(1.15); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes ab-grade-anda {
+  from { opacity: 0; background-position: 0 0; }
+  30%  { opacity: 1; }
+  to   { opacity: 0.8; background-position: 0 76px; }
+}
+@keyframes ab-sobe {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(-18px); }
+}
+@keyframes ab-pisca {
+  from { filter: brightness(0.6); }
+  to   { filter: brightness(1.4); }
+}
+@keyframes ab-varre {
+  from { transform: translateX(-60%); opacity: 0; }
+  20%  { opacity: 1; }
+  to   { transform: translateX(60%); opacity: 0; }
+}
+@keyframes ab-anel-entra {
+  from { opacity: 0; scale: 0.4; }
+  to   { opacity: 1; scale: 1; }
+}
+@keyframes ab-gira-anel {
+  to { rotate: 360deg; }
+}
+@keyframes ab-giro {
+  from { --ab-giro: -75deg; }
+  to   { --ab-giro: 0deg; }
+}
+@keyframes ab-feixe {
+  from { stroke-dashoffset: 124; opacity: 0.9; }
+  to   { stroke-dashoffset: 0; opacity: 0.28; }
+}
+@keyframes ab-sai-do-centro {
+  from { --ab-dist: 0px; opacity: 0; scale: 0.2; }
+  60%  { opacity: 1; }
+  to   { --ab-dist: var(--ab-r); opacity: 1; scale: 1; }
+}
+@keyframes ab-acende {
+  from { box-shadow: 0 0 0 3px rgba(6, 17, 31, 0.9), 0 0 0 0 rgba(241, 116, 46, 0); }
+  50%  { box-shadow: 0 0 0 3px rgba(6, 17, 31, 0.9), 0 0 28px 8px rgba(241, 116, 46, 0.9); }
+  to   { box-shadow: 0 0 0 3px rgba(6, 17, 31, 0.9), 0 0 18px 2px rgba(241, 116, 46, 0.55); }
+}
+@keyframes ab-pulsa {
+  0%   { opacity: 0; transform: scale(0.3); }
+  45%  { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 0.85; transform: scale(1); }
+}
+@keyframes ab-marca {
+  from { opacity: 0; transform: scale(0.4) rotate(-180deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes ab-nome {
+  from { opacity: 0; letter-spacing: 0.5em; filter: blur(8px); }
+  to   { opacity: 1; letter-spacing: -0.01em; filter: blur(0); }
+}
+@keyframes ab-frase {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ab-carrega {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #abertura-app *,
+  html.abertura #abertura-app {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.2s !important;
+  }
+}
