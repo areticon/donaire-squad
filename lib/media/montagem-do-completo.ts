@@ -7,7 +7,7 @@ import { interpretarResposta, type Word } from "@/lib/media/transcribe";
 import { recordTranscricao, type ContextoMidia } from "@/lib/media/usage";
 import { normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
-import { dirigirMontagem } from "@/lib/media/diretor-de-montagem";
+import { dirigirMontagem, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
 import { gerarAssetsDaMontagem, recortesDoProjeto, urlsDosAssets, type AssetGerado } from "@/lib/media/assets-da-montagem";
 import { concluirSePronto } from "@/lib/media/higgsfield";
 import {
@@ -423,6 +423,8 @@ export function usadoNoPlano(plano: PlanoDeMontagem): string[] {
   for (const c of plano.cenas)
     for (const e of c.elementos) {
       if (e.tipo === "letras-revista" || e.tipo === "carimbo") saida.push(`${e.tipo}: "${e.texto}"`);
+      // A cartela do corte limpo (03/10): o texto dela não volta em outro bloco.
+      if (c.layout === "cartela" && e.tipo === "marca-texto") saida.push(`cartela: "${e.texto}"`);
     }
   return saida;
 }
@@ -1303,7 +1305,11 @@ async function dirigir(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<vo
     const analise = analiseDaMontagem(lido.analise!);
     const formato = formatoDoCompleto(analise);
     const blocos = (lido.blocos ?? []).map((b) => ({ ...b }));
-    const pendentes = blocos.map((b, i) => ({ b, i })).filter(({ b }) => b.plano === undefined).slice(0, BLOCOS_POR_ONDA);
+    // Com o diretor limpo (03/10) um bloco leva segundos, não minutos: a onda
+    // leva todos os blocos pendentes de uma vez e o completo não espera três
+    // passadas do cron. Bloco pronto nunca é refeito (`plano === undefined`).
+    const porOnda = usarDiretorLimpo(v.videoEstiloEscolha, v.videoStyle) ? Math.max(BLOCOS_POR_ONDA, 10) : BLOCOS_POR_ONDA;
+    const pendentes = blocos.map((b, i) => ({ b, i })).filter(({ b }) => b.plano === undefined).slice(0, porOnda);
     const { rosto, pessoa } = geometriaNoQuadro(v.clips, analise);
     const jaUsado = blocos.flatMap((b) => (b.plano ? usadoNoPlano(b.plano) : []));
     const recortes = await recortesDoProjeto(v.projectId).catch(() => []);
@@ -1415,6 +1421,10 @@ export async function dirigirBloco(p: {
     titulo: `Vídeo completo, bloco ${p.indice + 1} de ${p.total}`,
     recortesProntos: p.recortesProntos,
     contexto,
+    // O diretor limpo (03/10) tira daqui a fatia do bloco na cota de cartelas,
+    // e não repete a cartela que outro bloco já pôs.
+    duracaoDoVideo: p.fala.duracao,
+    jaUsado: p.jaUsado,
     // O validador cobra o teto do bloco, e não o piso dos cortes (30/09): sem
     // isto, cada bloco pedia uma 2a rodada ao diretor para bater o mínimo de
     // cinema dos cortes, dobrando tempo e custo. O cenário do narrador fica só

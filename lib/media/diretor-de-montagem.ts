@@ -9,6 +9,7 @@ import { bibliaDoEstilo, type BibliaDoEstilo } from "@/lib/media/biblias";
 import { sistemaDaBiblia } from "@/lib/media/biblias/prompt-do-diretor";
 import { ajustarAoEstilo } from "@/lib/media/biblias/ajuste";
 import { metasDoProjeto, metasNoPrompt } from "@/lib/media/metas-do-estilo";
+import { diretorLimpoLigado, planejarLimpo, type MedidaDoLimpo } from "@/lib/media/diretor-limpo";
 import { perfilDoProjeto, perfilNoPrompt, type PerfilDoProjeto } from "@/lib/media/perfil-do-projeto";
 import {
   LAYOUTS,
@@ -110,6 +111,13 @@ export type EntradaDoDiretor = {
    * `null` explícito pula a leitura (prova sem banco).
    */
   perfil?: PerfilDoProjeto | null;
+  /**
+   * A duração do vídeo inteiro (03/10, diretor limpo): o bloco do completo
+   * recebe a fatia dele na cota de cartelas. Sem o campo, vale a do trecho.
+   */
+  duracaoDoVideo?: number;
+  /** O que os blocos anteriores já puseram na tela (o diretor limpo não repete cartela). */
+  jaUsado?: string[];
 };
 
 export type SaidaDoDiretor = {
@@ -119,7 +127,21 @@ export type SaidaDoDiretor = {
   errosRestantes: string[];
   rodadas: number;
   modelo: string;
+  /** A medida do diretor limpo (03/10): chamadas e tokens do JEV, tempo de parede. */
+  medida?: MedidaDoLimpo;
 };
+
+/**
+ * O DIRETOR LIMPO É O PADRÃO DE TODOS OS ESTILOS (03/10, decisão do Bruno):
+ * o plano cena a cena do Sonnet, com imagem e cena geradas, só entra quando a
+ * escolha do projeto liga "inserções de IA" na tela de estilos (com o custo
+ * mostrado) ou quando o cliente pede numa cena ("outra ideia", que é outra
+ * função). Sem a chave do JEV, ou com DIRETOR_LIMPO=0, volta o caminho antigo.
+ */
+export function usarDiretorLimpo(escolhaBruta: unknown, videoStyle?: string | null): boolean {
+  if (!diretorLimpoLigado()) return false;
+  return !normalizarEscolha(escolhaBruta, videoStyle).insercoesIA;
+}
 
 function fichaDaLinguagem(
   escolhaBruta: unknown,
@@ -385,6 +407,37 @@ export async function dirigirMontagem(e: EntradaDoDiretor): Promise<SaidaDoDiret
   if (familia === "sobrio" && e.tetos?.cenarioDoNarrador === undefined) e = { ...e, tetos: { ...e.tetos, cenarioDoNarrador: 0 } };
   // Os tetos do estilo no corte (02/10, consórcio): só quando quem chama não disse os dele.
   if (biblia.tetosDoCorte && modoDaEntrada(e) === "corte" && !e.tetos) e = { ...e, tetos: biblia.tetosDoCorte };
+  const ctxDaValidacao = {
+    palavras: e.palavras,
+    duracao: e.duracao,
+    formato: e.formato,
+    familia,
+    recortesProntos: e.recortesProntos,
+    modo: modoDaEntrada(e),
+    tetos: e.tetos,
+    // O selo com check do consórcio (02/10) pode trazer o nome do projeto.
+    nomeDaMarca: perfil?.nome ?? null,
+  };
+  // O CORTE LIMPO PROFISSIONAL (03/10): candidatos no código, decisões no
+  // JEV, texto curto das cartelas no modelo barato. Nenhum asset, então o
+  // validador recebe teto zero de cinema e de cenário (sem piso, sem 2a rodada).
+  if (usarDiretorLimpo(e.escolha, e.videoStyle)) {
+    const limpo = await planejarLimpo({
+      projectId: e.projectId,
+      referencia: e.referencia,
+      palavras: e.palavras,
+      duracao: e.duracao,
+      formato: e.formato,
+      familia,
+      modo: modoDaEntrada(e),
+      nicho: e.nicho,
+      duracaoDoVideo: e.duracaoDoVideo,
+      jaUsado: e.jaUsado,
+    });
+    const r = validarPlano(limpo.plano, { ...ctxDaValidacao, tetos: { cinema: 0, cenarioDoNarrador: 0 } });
+    if (r.erros.length) console.warn(`[diretor-limpo ${e.referencia}] o validador apontou ${r.erros.length} erro(s): ${r.erros.join(" | ")}`);
+    return fecharPlano(e, r, { familia, biblia, metas }, { rodadas: 1, modelo: `jev+${limpo.medida.modeloDoTexto ?? "codigo"}`, avisos: limpo.avisos, medida: limpo.medida });
+  }
   const usuario = mensagem(e, ficha, legendaPadrao, metas.metas.mudancaACadaSeg);
   const opcoes = {
     model: DEFAULT_MODEL,
@@ -431,17 +484,6 @@ export async function dirigirMontagem(e: EntradaDoDiretor): Promise<SaidaDoDiret
     }
   };
   let bruto = await pedirPlano(usuario);
-  const ctxDaValidacao = {
-    palavras: e.palavras,
-    duracao: e.duracao,
-    formato: e.formato,
-    familia,
-    recortesProntos: e.recortesProntos,
-    modo: modoDaEntrada(e),
-    tetos: e.tetos,
-    // O selo com check do consórcio (02/10) pode trazer o nome do projeto.
-    nomeDaMarca: perfil?.nome ?? null,
-  };
   let r = validarPlano(bruto, ctxDaValidacao);
   let rodadas = 1;
   if (r.erros.length) {
@@ -461,26 +503,42 @@ export async function dirigirMontagem(e: EntradaDoDiretor): Promise<SaidaDoDiret
       console.error(`[diretor ${e.referencia}] revisão falhou, segue com a 1a: ${err instanceof Error ? err.message : err}`);
     }
   }
-  // O que sobrou de cena longa depois da revisão é aparado por código.
+  return fecharPlano(e, r, { familia, biblia, metas }, { rodadas, modelo: DEFAULT_MODEL });
+}
+
+/**
+ * O FECHO comum aos dois diretores: o que sobrou de cena longa é aparado por
+ * código, a bíblia garante em número o que ela garante (teto de fundo escuro
+ * do MrBeast, fundo colorido do keynote), e no corte o ritmo mínimo.
+ */
+function fecharPlano(
+  e: EntradaDoDiretor,
+  r: ReturnType<typeof validarPlano>,
+  ctx: { familia: FamiliaDaCapa; biblia: BibliaDoEstilo; metas: ReturnType<typeof metasDoProjeto> },
+  saida: { rodadas: number; modelo: string; avisos?: string[]; medida?: MedidaDoLimpo }
+): SaidaDoDiretor {
+  const { familia, biblia, metas } = ctx;
   const aparadoBruto = apararCenas(r.plano, e.palavras, e.duracao, familia);
-  // O que a bíblia garante em número (01/10): teto de fundo escuro do
-  // MrBeast, fundo colorido do keynote.
   const doEstilo = ajustarAoEstilo(aparadoBruto.plano, biblia);
   const aparado = { plano: doEstilo.plano, avisos: [...aparadoBruto.avisos, ...doEstilo.avisos] };
+  const base = { errosRestantes: r.erros, rodadas: saida.rodadas, modelo: saida.modelo, ...(saida.medida ? { medida: saida.medida } : {}) };
   // O RITMO MÍNIMO DO CORTE (01/10): o prompt pede algo novo na janela da
   // meta do estilo, e o código garante (regra da casa: o que dá para
   // garantir em código não fica na mão do modelo). Janela vazia ganha
   // movimento na palavra forte, um corte de câmera, ou uma palavra em
   // destaque. A janela do código é uma vez e meia a meta (o diretor faz o
   // ritmo; o código só tapa buraco), nunca acima da de antes. O completo tem
-  // o fecho dele (fecharPlanoDoCompleto), com as cotas por minuto.
+  // o fecho dele (fecharPlanoDoCompleto), com as cotas por minuto. No corte
+  // limpo (03/10) a janela vazia ganha só movimento: a palavra em destaque a
+  // cada frase era o que o Bruno reprovou.
   if (modoDaEntrada(e) === "corte") {
+    const limpo = Boolean(saida.medida);
     const janelaSeg = Math.min(JANELA_DO_CURTO_SEG, Math.max(2.5, metas.metas.mudancaACadaSeg * 1.5));
-    const ritmo = garantirRitmo(aparado.plano, e.palavras, e.duracao, { janelaSeg, familia, comElementos: true });
+    const ritmo = garantirRitmo(aparado.plano, e.palavras, e.duracao, { janelaSeg: limpo ? JANELA_DO_CURTO_SEG : janelaSeg, familia, comElementos: !limpo });
     const avisosDoRitmo = ritmo.adicionados ? [`ritmo: ${ritmo.adicionados} movimento(s) ou destaque(s) nas janelas vazias`] : [];
-    return { plano: ritmo.plano, avisos: [...r.avisos, ...aparado.avisos, ...avisosDoRitmo], errosRestantes: r.erros, rodadas, modelo: DEFAULT_MODEL };
+    return { ...base, plano: ritmo.plano, avisos: [...(saida.avisos ?? []), ...r.avisos, ...aparado.avisos, ...avisosDoRitmo] };
   }
-  return { plano: aparado.plano, avisos: [...r.avisos, ...aparado.avisos], errosRestantes: r.erros, rodadas, modelo: DEFAULT_MODEL };
+  return { ...base, plano: aparado.plano, avisos: [...(saida.avisos ?? []), ...r.avisos, ...aparado.avisos] };
 }
 
 export { LAYOUTS };
