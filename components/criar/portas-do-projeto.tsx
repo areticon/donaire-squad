@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { NotebookPen, ArrowRight } from "lucide-react";
 import { EscolhaDeOrigem } from "@/components/posts/escolha-de-origem";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
 
 /**
  * A ABA CRIAR: a porta de entrada do projeto (29/09).
@@ -30,6 +31,12 @@ export function PortasDoProjeto({ projectId }: { projectId: string }) {
         onGemeo={() => router.push(`/projects/${projectId}/gemeo`)}
         onTema={() => router.push(`/projects/${projectId}/live?abrir=tema`)}
       />
+
+      {/* SEUS MATERIAIS (03/10): fotos e vídeos do cliente, o uso mais comum.
+          A geração prefere estes antes de gerar imagem. */}
+      <section id="materiais" className="w-full max-w-[1080px] scroll-mt-24 rounded-xl border p-5" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+        <BibliotecaDeMateriais projectId={projectId} />
+      </section>
 
       <Link
         href={`/projects/${projectId}/linha-editorial`}

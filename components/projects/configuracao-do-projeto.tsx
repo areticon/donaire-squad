@@ -9,6 +9,7 @@ import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
 import { GemeoNasConfiguracoes } from "@/components/gemeo/gemeo-nas-configuracoes";
 import type { CadastroDoGemeo } from "@/lib/media/gemeo";
 import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
@@ -56,6 +57,7 @@ const ABAS = [
   { id: "redes", rotulo: "Redes sociais" },
   { id: "marca", rotulo: "Marca e voz" },
   { id: "modelos", rotulo: "Modelos de arte" },
+  { id: "materiais", rotulo: "Seus materiais" },
   { id: "video", rotulo: "Vídeo e semana" },
   { id: "links", rotulo: "Seus links" },
   // 03/10: o gêmeo tinha uma porta só, dentro de Criar; quem precisava
@@ -320,6 +322,13 @@ export function ConfiguracaoDoProjeto({
       )}
 
       {aba === "gemeo" && <GemeoNasConfiguracoes projectId={projeto.id} cadastro={gemeo?.cadastro ?? null} />}
+
+      {/* SEUS MATERIAIS (03/10): a mesma biblioteca do Criar. */}
+      {aba === "materiais" && (
+        <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+          <BibliotecaDeMateriais projectId={projeto.id} />
+        </section>
+      )}
 
       {aba === "links" && (
         <Secao

@@ -277,6 +277,8 @@ model Project {
   /// Os perfis de referência do nicho e as coletas deles (01/10, trilho de referências).
   referenciasPerfis  ReferenciaPerfil[]
   referenciasColetas ReferenciaColeta[]
+  /// A biblioteca de materiais do cliente (03/10): fotos e vídeos curtos dele.
+  materiais          MaterialDoCliente[]
 
   @@map("projects")
 }
@@ -1544,4 +1546,61 @@ model Notificacao {
   @@unique([userId, chave])
   @@index([userId, createdAt])
   @@map("notificacoes")
+}
+
+/// A BIBLIOTECA DE MATERIAIS DO CLIENTE (03/10/2026, pedido do Bruno).
+///
+/// "O uso mais comum é a pessoa subir os materiais dela: foto da pessoa, fotos
+/// da empresa, do local, dos produtos, vídeos; a plataforma gera os textos,
+/// efeitos, carrossel e vídeos a partir desse material." Cada linha é um
+/// arquivo no Blob PRIVADO (como a gravação), com etiquetas lidas por visão e
+/// editáveis. A geração das artes prefere o material que serve ao post antes
+/// de pagar imagem nova (lib/materiais/escolha.ts); o vídeo curto vira B-roll
+/// do editor sob medida antes do banco de vídeo.
+model MaterialDoCliente {
+  id                String    @id @default(cuid())
+  projectId         String
+  /// Quem subiu (o dono ou um membro da equipe).
+  userId            String
+  /// "foto" | "video"
+  tipo              String
+  url               String    @db.Text
+  /// A miniatura (JPEG pequeno) para a grade; no vídeo, um quadro do meio.
+  miniaturaUrl      String?   @db.Text
+  /// Vídeo: três quadros lado a lado, que a visão lê no lugar do vídeo.
+  folhaUrl          String?   @db.Text
+  /// A pessoa recortada (PNG com transparência), paga uma vez e guardada.
+  recorteUrl        String?   @db.Text
+  nome              String?
+  mimeType          String?
+  sizeBytes         BigInt?
+  largura           Int?
+  altura            Int?
+  duracaoSec        Float?
+  /// "pessoa" | "equipe" | "produto" | "local" | "bastidor" | "documento"
+  etiquetas         String[]  @default([])
+  /// O cliente mexeu nas etiquetas: a visão não sobrescreve mais.
+  etiquetasEditadas Boolean   @default(false)
+  /// O que a foto mostra, em português (até ~25 palavras).
+  descricao         String?   @db.Text
+  /// Palavras em inglês para casar com a consulta do B-roll e a cena do post.
+  palavrasEn        String[]  @default([])
+  /// "boa" | "media" | "fraca"
+  qualidade         String?
+  /// "boa" | "escura" | "estourada" | "mista"
+  luz               String?
+  /// "vertical" | "horizontal" | "quadrada"
+  orientacao        String?
+  temRosto          Boolean   @default(false)
+  /// "analisando" | "pronto" | "falhou"
+  status            String    @default("analisando")
+  usos              Int       @default(0)
+  ultimoUsoEm       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("materiais_do_cliente")
 }

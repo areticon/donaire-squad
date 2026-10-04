@@ -584,7 +584,12 @@ export async function usoDeArmazenamento(userIdDeQuemPede: string): Promise<UsoD
   if (!user) return vazio;
 
   const soma = await prisma.videoJob.aggregate({ where: { OR: [{ userId }, { project: { userId } }] }, _sum: { sizeBytes: true } });
-  const bytes = Number(soma._sum.sizeBytes ?? 0);
+  // A biblioteca de materiais (03/10) entra na mesma conta: vídeo de celular
+  // pesa como gravação, e foto soma pouco.
+  const materiais = await prisma.materialDoCliente
+    .aggregate({ where: { project: { userId } }, _sum: { sizeBytes: true } })
+    .catch(() => ({ _sum: { sizeBytes: null } }));
+  const bytes = Number(soma._sum.sizeBytes ?? 0) + Number(materiais._sum.sizeBytes ?? 0);
   const usadoGb = bytes / BYTES_POR_GB;
 
   if (user.role === "admin") return { ...vazio, bytes, usadoGb, semPlano: false, admin: true };
