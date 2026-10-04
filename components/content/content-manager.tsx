@@ -5400,8 +5400,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       {/* A NAVEGAÇÃO DA SEMANA TAMBÉM AQUI (30/09): o plano do vídeo começa no
           dia do envio e atravessa para a semana seguinte, e as setas só
           existiam no topo, acima do escritório. O Bruno, olhando o quadro lá
-          embaixo, não achou como ver o segundo corte, que caiu na terça 06/10. */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+          embaixo, não achou como ver o segundo corte, que caiu na terça 06/10.
+          O id é o destino do "Aprovar as peças" dos cartões de vídeo (03/10). */}
+      <div id="quadro-da-semana" className="flex items-center justify-between gap-2 flex-wrap scroll-mt-4">
         <button
           onClick={prevWeek}
           className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-all hover:border-orange-500"

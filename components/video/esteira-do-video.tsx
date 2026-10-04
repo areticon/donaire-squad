@@ -1,15 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, BellRing, Check, CheckCircle2, ClipboardCheck, Minus, RotateCcw, Sparkles, Video, WifiOff, X } from "lucide-react";
+import { AlertCircle, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Minus, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
-import { Button } from "@/components/ui/button";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
-import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
+import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type LeituraDaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
 import { CODIGO_DA_ETAPA, pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
 
 /**
@@ -531,25 +530,23 @@ export function EsteiraDoVideo({
   }, [sinalDeRecarga, consultar]);
 
   /**
-   * Quais gravações merecem faixa.
+   * Quais gravações merecem cartão.
    *
-   * As em andamento sempre. A que acabou de terminar também, por uma sessão:
-   * é ela que responde "cadê o vídeo completo", e some quando a pessoa dispensa
-   * ou recarrega a página com tudo pronto há mais de meia hora.
+   * As em andamento sempre. As que esperam o cliente (roteiro, peças, falha)
+   * também. As prontas ficam por três dias (03/10): no primeiro dia na lista
+   * "Prontos", depois num "ver anteriores" recolhido, e então somem. Antes a
+   * pronta sumia em uma hora e as peças esperando, em um dia, e a pessoa que
+   * voltava no dia seguinte não achava o que ainda pedia o ok dela.
    */
   const emFaixa = videos.filter((v) => {
     if (dispensados.includes(v.id)) return false;
     if (v.status === "failed") return true;
     if (v.status === "ready" && v.temCompleto) {
-      // A edição ainda rodando mantém a faixa, por mais que demore: efeitos,
+      // A edição ainda rodando mantém o cartão, por mais que demore: efeitos,
       // revisão final e consertos (02/10) contam como edição.
       const linha = lerLinhaDoTempo(v);
       if (!linha.fim) return true;
-      const desde = (Date.now() - inicioDe(v)) / 1000;
-      // As peças esperando aprovação mantêm a linha por um dia: é o último
-      // passo dela, e é do cliente.
-      if (linha.esperandoVoce === "pecas") return desde < 24 * 60 * 60;
-      return desde < 60 * 60;
+      return idadeDoPronto(v) < JANELA_DOS_PRONTOS_S;
     }
     // O completo que não veio aparece enquanto a rodada é recente: vídeo de
     // semanas atrás sem completo não ressurge na faixa de hoje.
@@ -557,17 +554,79 @@ export function EsteiraDoVideo({
     return v.status !== "ready" || !v.temCompleto;
   });
 
+  /**
+   * A ETAPA EXIBIDA SÓ AVANÇA (03/10), agora guardada AQUI, por vídeo, e não
+   * dentro de cada cartão: o agrupamento ("Precisa de você", "Em andamento",
+   * "Prontos") precisa da mesma leitura que o cartão desenha, senão o vídeo
+   * podia estar num grupo e o cartão dizer outra coisa. Estado derivado da
+   * renderização anterior: só regrava quando alguma memória mudou de fato.
+   */
+  const [memorias, setMemorias] = useState<Record<string, MemoriaDaLinha>>({});
+  const leituras: Record<string, LeituraDaLinha> = {};
+  let memoriasNovas: Record<string, MemoriaDaLinha> | null = null;
+  for (const v of emFaixa) {
+    const anterior = memorias[v.id] ?? null;
+    const { leitura, memoria } = linhaQueSoAvanca(lerLinhaDoTempo(v, etapaLocal[v.id] ?? null), anterior, `${v.id}:${v.inicioDaRodada ?? v.criadoEm}`);
+    leituras[v.id] = leitura;
+    if (!mesmaMemoria(anterior, memoria)) (memoriasNovas ??= { ...memorias })[v.id] = memoria;
+  }
+  if (memoriasNovas) setMemorias(memoriasNovas);
+
+  /** Grupos recolhidos pelo cliente nesta visita. */
+  const [recolhidos, setRecolhidos] = useState<Record<Grupo, boolean>>({ voce: false, andamento: false, prontos: false });
+  const [anterioresAbertos, setAnterioresAbertos] = useState(false);
+
   if (emFaixa.length === 0 && !erroDaAcao && !aproveitar) return null;
 
   // A faixa de sem conexão só faz sentido com algo andando: é ela que diz ao
   // cliente que o trabalho continua do lado de cá.
   const mostrarSemConexao = semConexao && emFaixa.some(emAndamento);
 
+  // ── OS GRUPOS (03/10, "tem 3 linhas do tempo aqui, que confusão") ─────────
+  // Um cartão compacto por vídeo, e os cartões juntos pelo que pedem: primeiro
+  // o que espera o cliente, depois o que está andando, por fim o que ficou pronto.
+  const porGrupo: Record<Grupo, VideoAoVivo[]> = { voce: [], andamento: [], prontos: [] };
+  for (const v of emFaixa) porGrupo[grupoDe(v, leituras[v.id])].push(v);
+  const pesoNaFila = (v: VideoAoVivo) =>
+    v.status === "failed" || (v.completoFalhou && !v.temCompleto) ? 0 : leituras[v.id].esperandoVoce === "roteiro" ? 1 : 2;
+  porGrupo.voce.sort((a, b) => pesoNaFila(a) - pesoNaFila(b) || inicioDe(a) - inicioDe(b));
+  porGrupo.andamento.sort((a, b) => inicioDe(a) - inicioDe(b));
+  porGrupo.prontos.sort((a, b) => idadeDoPronto(a) - idadeDoPronto(b));
+  const prontosRecentes = porGrupo.prontos.filter((v) => idadeDoPronto(v) < 24 * 60 * 60);
+  const prontosAnteriores = porGrupo.prontos.filter((v) => idadeDoPronto(v) >= 24 * 60 * 60);
+
+  // AS MENSAGENS QUE SE REPETIAM EM CADA VÍDEO, UMA VEZ SÓ, no topo da lista.
+  const podeSair = porGrupo.voce.length === 0 && porGrupo.andamento.some((v) => leituras[v.id].podeSair);
+  const andandoSemCompleto = porGrupo.andamento.some((v) => !v.temCompleto);
+  const pecasEsperando = porGrupo.voce.some((v) => leituras[v.id].esperandoVoce === "pecas");
+  const algumGemeoGravando = porGrupo.andamento.some((v) => leituras[v.id].relogio === "gemeo");
+
+  const cartao = (v: VideoAoVivo) => (
+    <CartaoDoVideo
+      key={v.id}
+      projectId={projectId}
+      video={v}
+      linha={leituras[v.id]}
+      agora={agora}
+      semConexao={semConexao}
+      aoRepetir={(rota) => void executar(v.id, rota)}
+      aoDispensar={() => {
+        // Some da tela na hora; o vídeo que parou é apagado de vez no servidor
+        // (03/10), para não voltar ao recarregar.
+        setDispensados((d) => [...d, v.id]);
+        if (v.status === "failed") void fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" }).catch(() => {});
+      }}
+      aoAproveitar={() => setAproveitar(v.id)}
+      avisoFixo={avisoDaEtapa(v)}
+    />
+  );
+  const alternar = (g: Grupo) => setRecolhidos((r) => ({ ...r, [g]: !r[g] }));
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-esteira>
       {mostrarSemConexao && (
         <div
-          className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-3"
+          className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3"
           role="status"
           aria-live="polite"
           data-faixa="sem-conexao"
@@ -588,25 +647,90 @@ export function EsteiraDoVideo({
         </p>
       )}
 
-      {emFaixa.map((v) => (
-        <FaixaDeUmVideo
-          key={v.id}
-          projectId={projectId}
-          video={v}
-          etapaLocal={etapaLocal[v.id] ?? null}
-          agora={agora}
-          semConexao={semConexao}
-          aoRepetir={(rota) => void executar(v.id, rota)}
-          aoDispensar={() => {
-            // Some da tela na hora; o vídeo que parou é apagado de vez no servidor
-            // (03/10), para não voltar ao recarregar.
-            setDispensados((d) => [...d, v.id]);
-            if (v.status === "failed") void fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" }).catch(() => {});
-          }}
-          aoAproveitar={() => setAproveitar(v.id)}
-          avisoFixo={avisoDaEtapa(v)}
-        />
-      ))}
+      {emFaixa.length > 0 && (
+        <section
+          className="rounded-2xl border p-3 sm:p-4 space-y-3"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+          aria-label="Seus vídeos em produção"
+        >
+          <div className="flex items-baseline justify-between gap-x-3 gap-y-0.5 flex-wrap">
+            <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Seus vídeos
+            </h2>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {[
+                porGrupo.voce.length ? `${porGrupo.voce.length} ${porGrupo.voce.length === 1 ? "precisa" : "precisam"} de você` : null,
+                porGrupo.andamento.length ? `${porGrupo.andamento.length} em andamento` : null,
+                porGrupo.prontos.length ? `${porGrupo.prontos.length} ${porGrupo.prontos.length === 1 ? "pronto" : "prontos"}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+
+          {/* UMA VEZ SÓ (03/10): antes "Pode fechar esta tela", "Nada sai nas
+              redes sem o seu ok" e "o vídeo completo chega por último" se
+              repetiam dentro de cada vídeo. */}
+          {(podeSair || pecasEsperando || andandoSemCompleto) && (
+            <ul className="space-y-1.5 rounded-xl px-3 py-2.5" style={{ background: "var(--realce-1)" }} data-avisos-da-lista>
+              {podeSair && (
+                <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-primary)" }} data-pode-sair>
+                  <BellRing className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-semibold">Pode fechar esta tela.</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>Vamos te avisar aqui e por e-mail quando precisarmos de você ou quando estiver pronto.</span>
+                  </span>
+                </li>
+              )}
+              {pecasEsperando && (
+                <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <ShieldCheck className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                  <span>Nada sai nas redes sem o seu ok.</span>
+                </li>
+              )}
+              {andandoSemCompleto && (
+                <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <Video className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                  <span>
+                    {algumGemeoGravando ? "O vídeo do gêmeo entra na edição como uma gravação sua. " : ""}
+                    Cada peça cai no quadro abaixo assim que fica pronta; o vídeo completo chega por último, e o lugar dele já está guardado.
+                  </span>
+                </li>
+              )}
+            </ul>
+          )}
+
+          {porGrupo.voce.length > 0 && (
+            <GrupoDaLista grupo="voce" titulo="Precisa de você" quantos={porGrupo.voce.length} recolhido={recolhidos.voce} aoAlternar={() => alternar("voce")}>
+              {porGrupo.voce.map(cartao)}
+            </GrupoDaLista>
+          )}
+          {porGrupo.andamento.length > 0 && (
+            <GrupoDaLista grupo="andamento" titulo="Em andamento" quantos={porGrupo.andamento.length} recolhido={recolhidos.andamento} aoAlternar={() => alternar("andamento")}>
+              {porGrupo.andamento.map(cartao)}
+            </GrupoDaLista>
+          )}
+          {porGrupo.prontos.length > 0 && (
+            <GrupoDaLista grupo="prontos" titulo="Prontos" quantos={porGrupo.prontos.length} recolhido={recolhidos.prontos} aoAlternar={() => alternar("prontos")}>
+              {prontosRecentes.map(cartao)}
+              {prontosAnteriores.length > 0 &&
+                (anterioresAbertos || prontosRecentes.length === 0 ? (
+                  prontosAnteriores.map(cartao)
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAnterioresAbertos(true)}
+                    className="w-full rounded-lg border border-dashed px-3 py-2 text-xs font-semibold text-left hover:border-orange-500/60 transition-colors"
+                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    data-ver-anteriores
+                  >
+                    Ver anteriores ({prontosAnteriores.length})
+                  </button>
+                ))}
+            </GrupoDaLista>
+          )}
+        </section>
+      )}
 
       {aproveitar && (
         <AproveitarRoteiro
@@ -630,10 +754,131 @@ export function EsteiraDoVideo({
   );
 }
 
-function FaixaDeUmVideo({
+type Grupo = "voce" | "andamento" | "prontos";
+
+/** Por quanto tempo o vídeo pronto fica na lista (três dias). */
+const JANELA_DOS_PRONTOS_S = 3 * 24 * 60 * 60;
+
+/** Há quantos segundos o vídeo ficou pronto (sem `terminadoEm`, desde a rodada). */
+function idadeDoPronto(v: VideoAoVivo): number {
+  const fim = v.terminadoEm ? new Date(v.terminadoEm).getTime() : inicioDe(v);
+  return (Date.now() - fim) / 1000;
+}
+
+function grupoDe(v: VideoAoVivo, l: LeituraDaLinha): Grupo {
+  if (v.status === "failed" || (v.completoFalhou && !v.temCompleto) || l.esperandoVoce) return "voce";
+  if (l.fim) return "prontos";
+  return "andamento";
+}
+
+/** Um grupo da lista, com o cabeçalho que recolhe e abre. */
+function GrupoDaLista({
+  grupo,
+  titulo,
+  quantos,
+  recolhido,
+  aoAlternar,
+  children,
+}: {
+  grupo: Grupo;
+  titulo: string;
+  quantos: number;
+  recolhido: boolean;
+  aoAlternar: () => void;
+  children: ReactNode;
+}) {
+  const destaque = grupo === "voce";
+  return (
+    <div
+      className={destaque ? "rounded-xl border p-2 sm:p-2.5 space-y-2" : "space-y-2"}
+      style={destaque ? { borderColor: "color-mix(in srgb, #f59e0b 55%, transparent)", background: "color-mix(in srgb, #f59e0b 7%, transparent)" } : undefined}
+      data-grupo={grupo}
+    >
+      <button type="button" onClick={aoAlternar} aria-expanded={!recolhido} className="flex w-full items-center gap-2 px-1 py-0.5 text-left">
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${recolhido ? "-rotate-90" : ""}`} style={{ color: "var(--text-muted)" }} />
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: destaque ? "#d97706" : "var(--text-muted)" }}>
+          {titulo}
+        </span>
+        <span
+          className="rounded-full px-1.5 text-[11px] font-semibold tabular-nums"
+          style={destaque ? { background: "#f59e0b", color: "#fff" } : { background: "var(--realce-2)", color: "var(--text-muted)" }}
+        >
+          {quantos}
+        </span>
+      </button>
+      {!recolhido && <div className="space-y-2">{children}</div>}
+    </div>
+  );
+}
+
+/** O nome do vídeo para ler: sem a extensão do arquivo e sem o prefixo do gêmeo. */
+function tituloDoVideo(v: VideoAoVivo): { titulo: string; gemeo: boolean } {
+  const bruto = (v.originalName ?? "Gravação").replace(/\.(mp4|mov|m4v|webm|mkv|avi)$/i, "").trim();
+  const m = bruto.match(/^Gêmeo digital\s*[-:–]\s*(.+)$/i);
+  return { titulo: m ? m[1] : bruto || "Gravação", gemeo: Boolean(m || v.gemeo || v.status === "gemeo") };
+}
+
+/** A etapa atual em linguagem simples, para a linha "Etapa N de M: ...". */
+function etapaEmPalavras(p: Passo | undefined): string {
+  if (!p) return "";
+  if (p.estado === "falhou") return `parou em ${p.rotulo.toLowerCase()}`;
+  switch (p.chave) {
+    case "gemeo-voz":
+      return "gravando a sua voz";
+    case "gemeo-pedacos":
+      return "gerando o vídeo com o seu rosto";
+    case "gemeo-juntar":
+      return "juntando os pedaços do vídeo";
+    case "ouvindo":
+      return "ouvindo a gravação";
+    case "pesquisando":
+      return "pesquisando o seu tema";
+    case "escolhendo":
+      return "escolhendo os melhores trechos";
+    case "roteiro":
+      return "escrevendo o roteiro da edição";
+    case "aprovar-roteiro":
+      return p.estado === "voce" ? "o roteiro espera a sua aprovação" : "recebendo a sua aprovação";
+    case "cortando":
+      return "cortando os vídeos curtos";
+    case "capas":
+      return "montando as capas";
+    case "escrevendo":
+      return "escrevendo os textos de cada rede";
+    case "edicao-da-fala":
+      return "editando a fala do vídeo inteiro";
+    case "efeitos":
+      return "criando os efeitos";
+    case "montagem":
+      return "montando com abertura, legenda e som";
+    case "revisao":
+      return "conferindo o vídeo quadro a quadro";
+    case "pronto":
+      return "vídeo completo pronto";
+    case "aprovar-pecas":
+      return p.estado === "voce" ? "as peças esperam a sua aprovação" : "tudo aprovado";
+  }
+}
+
+const maiuscula = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/** Leva o cliente ao quadro da semana, onde as peças se aprovam. */
+function irAoQuadro() {
+  document.getElementById("quadro-da-semana")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/**
+ * UM CARTÃO POR VÍDEO (03/10). Antes cada vídeo era uma faixa inteira, com 14
+ * a 17 marcos lado a lado, título, parágrafo e rodapé; três vídeos viravam
+ * três linhas do tempo empilhadas e o Bruno não sabia qual era qual. Agora o
+ * cartão diz em uma ou duas linhas: qual vídeo, onde está (barra e "Etapa N de
+ * M"), quanto falta, e o botão quando a vez é do cliente. A linha do tempo
+ * inteira, o "Agora:" e a promessa de tempo ficam no "ver etapas".
+ */
+function CartaoDoVideo({
   projectId,
   video: v,
-  etapaLocal,
+  linha,
   agora,
   semConexao,
   aoRepetir,
@@ -643,7 +888,8 @@ function FaixaDeUmVideo({
 }: {
   projectId: string;
   video: VideoAoVivo;
-  etapaLocal: string | null;
+  /** A leitura que só avança, guardada pelo pai (linhaQueSoAvanca). */
+  linha: LeituraDaLinha;
   agora: number;
   semConexao: boolean;
   aoRepetir: (rota: string) => void;
@@ -653,309 +899,315 @@ function FaixaDeUmVideo({
   /** O aviso do vigia desta etapa, fixo até a etapa mudar (sem piscar). */
   avisoFixo: string | null;
 }) {
+  const [aberto, setAberto] = useState(false);
   // Conta da RODADA atual, e não do envio (30/09): o vídeo refeito contava do
   // envio original e mostrou 196 minutos.
   const decorrido = Math.max(0, Math.round((agora - inicioDe(v)) / 1000));
   const nome = v.originalName ?? "Gravação";
-  // A ETAPA EXIBIDA SÓ AVANÇA (03/10): a memória da faixa segura o marco mais
-  // adiantado que já foi mostrado nesta rodada (lib/media/linha-do-tempo.ts).
-  // Estado derivado da renderização anterior (o padrão do React para "guardar
-  // o que já foi mostrado"): só regrava quando a memória mudou de fato.
-  const [memoriaDaLinha, setMemoriaDaLinha] = useState<MemoriaDaLinha | null>(null);
-  const { leitura: linha, memoria: proximaMemoria } = linhaQueSoAvanca(
-    lerLinhaDoTempo(v, etapaLocal),
-    memoriaDaLinha,
-    `${v.id}:${v.inicioDaRodada ?? v.criadoEm}`
-  );
-  if (!mesmaMemoria(memoriaDaLinha, proximaMemoria)) setMemoriaDaLinha(proximaMemoria);
+  const { titulo, gemeo } = tituloDoVideo(v);
 
-  // ── Terminou, e nada espera o cliente ─────────────────────────────────────
-  // Só quando a linha inteira acabou (02/10): antes, "Pronto em N minutos"
-  // aparecia com a montagem de efeitos ainda rodando numa tarja à parte.
-  if (linha.fim && !linha.esperandoVoce) {
-    // O relogio PARA quando a esteira termina. Antes de 08/09 este numero
-    // contava ate agora, entao a mesma entrega dizia 32 minutos e, tres minutos
-    // depois, 35, para um trabalho de 11. Sem `terminadoEm` (videos antigos)
-    // fica o tempo decorrido, que ao menos nao mente sobre a ordem de grandeza.
-    const ateOFim = v.terminadoEm
-      ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - inicioDe(v)) / 1000))
-      : decorrido;
-    const minutos = Math.max(1, Math.round(ateOFim / 60));
-    return (
-      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-green-500/25 bg-green-500/10 px-5 py-3" data-faixa="pronto">
-        <div className="flex items-center gap-3 min-w-0">
-          <CheckCircle2 className="w-[18px] h-[18px] text-green-400 shrink-0" />
-          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-            <span className="font-semibold">Pronto em {minutos} minutos.</span>{" "}
-            {v.cortesQueVaoAoAr} {v.cortesQueVaoAoAr === 1 ? "corte" : "cortes"} e o vídeo completo
-            estão no quadro abaixo, com os textos de cada rede.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs truncate max-w-[220px] hidden sm:block" style={{ color: "var(--text-muted)" }}>
-            {nome}
-          </p>
-          {/* "Voltar à edição" (30/09, pedido do Bruno): reabre o roteiro do
-              vídeo aprovado para corrigir palavra, bordas e cenas, e refazer
-              só o que mudou. */}
-          <Link
-            href={`/projects/${projectId}/video/${v.id}/roteiro?editar=1`}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:border-orange-500/60 transition-colors"
-            style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
-          >
-            <ClipboardCheck className="w-3.5 h-3.5 text-orange-400" />
-            Voltar à edição
-          </Link>
-          {/* APROVEITAR O ROTEIRO (02/10): o vídeo terminou, a pergunta de
-              gerar mais peças a partir dele. */}
-          <button
-            type="button"
-            onClick={aoAproveitar}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 transition-colors"
-            data-botao-aproveitar
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Aproveitar o roteiro
-          </button>
-          <button
-            onClick={aoDispensar}
-            title="Fechar"
-            className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── O completo não veio ───────────────────────────────────────────────────
-  // Estado próprio desde 30/09. Antes o vídeo ficava em "montando o vídeo
-  // completo" com o relógio andando para sempre; agora a faixa diz o que
-  // aconteceu, garante que o resto está salvo e oferece refazer só o completo.
-  if (v.completoFalhou && !v.temCompleto) {
-    return (
-      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-orange-500/40 bg-orange-500/5 px-5 py-4" data-faixa="completo-falhou">
-        <div className="flex items-start gap-3 min-w-0">
-          <AlertCircle className="w-[18px] h-[18px] text-orange-400 shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-              O vídeo completo de {nome} não ficou pronto
-            </p>
-            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-              {v.error?.includes("completo:")
-                ? "A montagem da gravação inteira falhou no meio do caminho."
-                : "A montagem da gravação inteira passou muito do tempo previsto."}{" "}
-              Os cortes e os textos já estão no quadro e não se perdem. Dá para refazer só o
-              vídeo completo, sem mexer no resto.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={aoDispensar}>
-            Dispensar
-          </Button>
-          <Button size="sm" onClick={() => aoRepetir("refazer-completo")}>
-            <RotateCcw className="w-3.5 h-3.5" />
-            Refazer o vídeo completo
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Falhou ────────────────────────────────────────────────────────────────
-  if (v.status === "failed") {
-    const acao = proximaAcao(v);
-    const codigoDaFalha = CODIGO_DA_ETAPA[etapaDeRetomada(v)];
-    return (
-      <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-red-500/30 bg-red-500/5 px-5 py-4" data-faixa="falhou">
-        <div className="flex items-start gap-3 min-w-0">
-          <AlertCircle className="w-[18px] h-[18px] text-red-400 shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-              O processamento de {nome} parou
-            </p>
-            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-              {v.error ??
-                "A etapa não terminou. O que já ficou pronto continua no quadro e não se perde."}
-            </p>
-            {/* O CÓDIGO E O CHAMADO (02/10): o mesmo código do aviso no sino,
-                para a pessoa informar sem descrever o erro. */}
-            <p className="text-xs mt-1.5 flex flex-wrap items-center gap-2" style={{ color: "var(--text-muted)" }}>
-              <span className="font-mono rounded px-1.5 py-0.5 border" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
-                Código {codigoDaFalha}
-              </span>
-              <button
-                type="button"
-                onClick={() => abrirChamado({ categoria: "problema", codigo: codigoDaFalha, texto: `O processamento de ${nome} parou.` })}
-                className="font-semibold text-orange-400 hover:underline"
-              >
-                Abrir chamado
-              </button>
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={aoDispensar}>
-            Dispensar
-          </Button>
-          {acao && (
-            <Button size="sm" onClick={() => aoRepetir(acao.rota)}>
-              <RotateCcw className="w-3.5 h-3.5" />
-              {acao.rotulo}
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── A LINHA DO TEMPO INTEIRA (02/10) ──────────────────────────────────────
-  // Uma faixa só, do envio até a aprovação das peças: a aprovação do roteiro
-  // e a das peças aparecem como "esperando você", e a montagem com efeitos e
-  // a revisão final são etapas da linha, e não mais uma tarja roxa depois do
-  // "Vídeo completo".
-  const passoAtual = linha.passos[linha.atual];
+  const falhou = v.status === "failed";
+  const completoFalhou = Boolean(v.completoFalhou && !v.temCompleto) && !falhou;
   const esperando = linha.esperandoVoce;
+  const pronto = linha.fim && !esperando && !falhou && !completoFalhou;
+  const passoAtual = linha.passos[linha.atual];
+  const n = linha.passos.length;
 
-  // CONTAGEM REGRESSIVA (pedido do Bruno em 30/09), agora honesta até o fim.
-  // O total é a promessa MEDIDA pelo alto (o gêmeo gravando, o roteiro antes
-  // da aprovação, a edição inteira depois, com efeitos e revisão); o que falta
-  // nunca cai abaixo do que as etapas seguintes ainda pesam. Passou da
-  // promessa inteira: a faixa NÃO mostra "faltam cerca de 1 min" parado (o que
-  // o Bruno viu com a montagem de efeitos rodando), diz há quanto tempo passou
-  // do previsto, número que só cresce (a troca de etapa não o faz voltar), e o
-  // que está acontecendo agora.
-  // O relógio do gêmeo conta do pedido (`inicioDaRodada` dele); os outros, da rodada.
-  // NUNCA PARADO (incidente das 21h de 02/10): o número só desce (a promessa
-  // menos o decorrido) e, passada a promessa, só sobe ("passou do previsto
-  // em N min"). O piso da etapa não segura mais o relógio, porque segurar era
-  // o "faltam 1 min" congelado; quando a etapa atrasa, quem diz é a frase do
-  // "Agora:", sem número.
-  const desdeOInicio = decorrido;
+  // ── O relógio (a mesma conta de antes, agora numa linha) ─────────────────
+  // O total é a promessa MEDIDA pelo alto; o número só desce e, passada a
+  // promessa, só sobe ("passou do previsto em N min"), nunca parado.
   const total = linha.totalSegundos;
-  const piso = linha.restaDepoisDoAtualSegundos;
-  const atraso = desdeOInicio - total;
+  const atraso = decorrido - total;
   const atrasou = atraso > 0;
-  const restante = Math.max(total - desdeOInicio, 0);
-  const atrasandoNaEtapa = !atrasou && total - desdeOInicio < piso;
+  const restante = Math.max(total - decorrido, 0);
+  const atrasandoNaEtapa = !atrasou && total - decorrido < linha.restaDepoisDoAtualSegundos;
   const minutosDaEdicao = Math.ceil(
     segundosDaEdicao(v.durationSec, { efeitos: Boolean(v.linha?.efeitosLigados), revisao: Boolean(v.linha?.revisaoLigada) }) / 60
   );
-
-  // O QUE O SERVIDOR ESTÁ FAZENDO COM A ETAPA LENTA (01/10). Sem conexão, o
-  // estado mostrado é o último que chegou, então a frase de retomada fica de
-  // fora para não afirmar o velho.
-  // SEM PISCAR (incidente das 21h de 02/10): a tarja laranja aparecia e sumia
-  // a cada consulta, porque `passouDoPrazo` vira falso no segundo em que o
-  // vigia retoma e verdadeiro de novo depois. Agora o aviso é FIXO por etapa
-  // (o pai guarda o último até a etapa mudar) e mora na frase do "Agora:",
-  // uma linha de texto, sem tarja.
+  // O relógio PARA quando a esteira termina (08/09): sem `terminadoEm` (vídeos
+  // antigos) fica o decorrido, que ao menos não mente sobre a ordem de grandeza.
+  const ateOFim = v.terminadoEm ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - inicioDe(v)) / 1000)) : decorrido;
   const avisoDoVigia = semConexao ? null : avisoFixo;
+  const codigoDaFalha = falhou ? CODIGO_DA_ETAPA[etapaDeRetomada(v)] : null;
+  const acaoDaFalha = falhou ? proximaAcao(v) : null;
 
-  const titulo =
-    esperando === "roteiro"
-      ? "Roteiro pronto: revise e aprove"
-      : esperando === "pecas"
-        ? "Tudo pronto. Falta você aprovar as peças"
-        : nome;
-  const subtitulo =
-    esperando === "roteiro"
-      ? `Separei ${v.trechosEscolhidos} ${v.trechosEscolhidos === 1 ? "corte possível" : "cortes possíveis"} de ${nome}, com a fala exata e as cenas planejadas. Escolha os que vão ao ar (até 8) e aprove: só depois disso eu gero imagens, cenas e cortes, e uso o restante dos créditos.`
-      : esperando === "pecas"
-        ? `${linha.agora} Assista, ajuste o que quiser e aprove para agendar.`
-        : `${passoAtual.detalhe}.`;
+  // ── A barra única: quantas etapas já ficaram para trás ───────────────────
+  const feitas = linha.passos.filter((p) => p.estado === "feito" || p.estado === "pulado").length;
+  const fracao = pronto ? 1 : Math.min(1, Math.max(feitas, linha.atual) / Math.max(1, n));
+  const corDaBarra = falhou || completoFalhou ? "#ef4444" : esperando ? "#f59e0b" : pronto ? "#22c55e" : "var(--accent-orange)";
 
-  // Os marcos que faltam ficam do tamanho da linha: com 13 etapas o grid é
-  // dinâmico (classe fixa do Tailwind não serve para número que varia).
-  const n = linha.passos.length;
-  const ultimoFeito = linha.passos.reduce((u, p, i) => (p.estado === "feito" || p.estado === "pulado" ? i : u), -1);
-  const ate = Math.max(linha.atual, ultimoFeito, 0);
-  const metadeDaColuna = 50 / n;
+  // ── A linha de baixo, em palavras ────────────────────────────────────────
+  const etapaTexto = falhou
+    ? `Parou em ${(passoAtual?.rotulo ?? "uma etapa").toLowerCase()}`
+    : completoFalhou
+      ? "O vídeo completo não ficou pronto"
+      : pronto
+        ? `Pronto em ${Math.max(1, Math.round(ateOFim / 60))} min`
+        : `Etapa ${linha.atual + 1} de ${n}: ${maiuscula(etapaEmPalavras(passoAtual))}`;
+  const complemento = falhou
+    ? null
+    : completoFalhou
+      ? "os cortes e os textos estão salvos"
+      : pronto
+        ? `${v.cortesQueVaoAoAr} ${v.cortesQueVaoAoAr === 1 ? "corte" : "cortes"} e o vídeo completo no quadro`
+        : esperando === "roteiro"
+          ? `a edição leva até ${minutosDaEdicao} min depois`
+          : esperando === "pecas"
+            ? (v.linha?.postsParaAprovar ?? 0) > 0
+              ? `${v.linha!.postsParaAprovar} no quadro abaixo`
+              : null
+            : null;
+
+  // ── O relógio de quem está andando ───────────────────────────────────────
+  const relogio = !pronto && !esperando && !falhou && !completoFalhou;
+  const rotuloDoRelogio = semConexao
+    ? "sem conexão, última previsão"
+    : atrasou
+      ? "passou do previsto em"
+      : v.retomada
+        ? "retomada, faltam até"
+        : linha.relogio === "gemeo"
+          ? "gêmeo pronto em até"
+          : linha.relogio === "roteiro"
+            ? "roteiro em até"
+            : "tudo pronto em até";
+
+  // ── O botão da vez do cliente ─────────────────────────────────────────────
+  const classeDoPrincipal =
+    "inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 transition-colors whitespace-nowrap";
+  const classeDoSecundario =
+    "inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold hover:border-orange-500/60 transition-colors whitespace-nowrap";
+  const principal = falhou ? (
+    acaoDaFalha ? (
+      <button type="button" onClick={() => aoRepetir(acaoDaFalha.rota)} className={classeDoPrincipal}>
+        <RotateCcw className="w-3.5 h-3.5" />
+        {acaoDaFalha.rotulo}
+      </button>
+    ) : null
+  ) : completoFalhou ? (
+    <button type="button" onClick={() => aoRepetir("refazer-completo")} className={classeDoPrincipal}>
+      <RotateCcw className="w-3.5 h-3.5" />
+      Refazer o vídeo completo
+    </button>
+  ) : esperando === "roteiro" ? (
+    <Link href={`/projects/${projectId}/video/${v.id}/roteiro`} className={classeDoPrincipal} data-acao="aprovar-roteiro">
+      <ClipboardCheck className="w-3.5 h-3.5" />
+      Revisar e aprovar o roteiro
+    </Link>
+  ) : esperando === "pecas" ? (
+    <button type="button" onClick={irAoQuadro} className={classeDoPrincipal} data-acao="aprovar-pecas">
+      <ClipboardCheck className="w-3.5 h-3.5" />
+      Aprovar as peças
+    </button>
+  ) : null;
+
+  const tipoDeFaixa = falhou ? "falhou" : completoFalhou ? "completo-falhou" : pronto ? "pronto" : "linha-do-tempo";
+  const Icone = falhou || completoFalhou ? AlertCircle : pronto ? CheckCircle2 : gemeo ? UserRound : Video;
+  const corDoIcone = falhou ? "text-red-400" : completoFalhou ? "text-orange-400" : pronto ? "text-green-500" : esperando ? "text-amber-500" : "text-orange-500";
+  const dispensavel = pronto || esperando === "pecas" || falhou || completoFalhou;
 
   return (
     <div
-      className="rounded-2xl border p-5 space-y-4"
-      style={{ background: "var(--bg-card)", borderColor: esperando ? "#f59e0b" : "var(--accent-orange)" }}
-      data-faixa="linha-do-tempo"
-      data-etapa={passoAtual.chave}
+      className="relative rounded-xl border px-3 py-3 sm:px-4"
+      style={{
+        background: "var(--bg-card)",
+        borderColor: falhou ? "rgba(239,68,68,.45)" : esperando || completoFalhou ? "color-mix(in srgb, #f59e0b 60%, transparent)" : "var(--border)",
+      }}
+      data-faixa={tipoDeFaixa}
+      data-etapa={passoAtual?.chave}
+      data-video={v.id}
     >
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        {/* min-w de 14rem (03/10): com min-w-0 o relógio ao lado espremia o
-            título numa coluna de uma palavra no celular; assim o relógio desce. */}
-        <div className="flex items-start gap-3 min-w-[min(100%,14rem)] flex-1">
-          <div className="w-[34px] h-[34px] rounded-lg border border-orange-500/35 bg-orange-500/10 flex items-center justify-center shrink-0">
-            {esperando ? <ClipboardCheck className="w-[17px] h-[17px] text-orange-500" /> : <Video className="w-[17px] h-[17px] text-orange-500" />}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <div
+            className="w-9 h-9 rounded-lg border flex items-center justify-center shrink-0"
+            style={{ borderColor: "var(--border)", background: "var(--realce-1)" }}
+            title={gemeo ? "Vídeo do gêmeo digital" : "Gravação enviada por você"}
+          >
+            <Icone className={`w-[18px] h-[18px] ${corDoIcone}`} />
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          <div className="min-w-0 flex-1">
+            <p
+              className={`text-[13px] sm:text-sm font-semibold leading-snug line-clamp-2 sm:line-clamp-1 break-words ${dispensavel ? "pr-6 sm:pr-0" : ""}`}
+              style={{ color: "var(--text-primary)" }}
+              title={nome}
+            >
               {titulo}
             </p>
-            <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-              {subtitulo}
+            <div
+              className="mt-1.5 h-1 w-full rounded-full overflow-hidden"
+              style={{ background: "var(--realce-2)" }}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={n}
+              aria-valuenow={pronto ? n : feitas}
+              aria-label={etapaTexto}
+            >
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.round(fracao * 100)}%`, background: corDaBarra }} />
+            </div>
+            <p className="mt-1.5 text-xs leading-snug" style={{ color: "var(--text-muted)" }} data-etapa-resumo>
+              {gemeo ? <span>Gêmeo digital · </span> : null}
+              <span className="font-medium" style={{ color: esperando ? "#d97706" : falhou ? "#ef4444" : "var(--text-primary)" }}>
+                {etapaTexto}
+              </span>
+              {complemento ? <span> · {complemento}</span> : null}
+              {codigoDaFalha ? <span className="font-mono"> · Código {codigoDaFalha}</span> : null}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {esperando === "roteiro" ? (
-            <Link
-              href={`/projects/${projectId}/video/${v.id}/roteiro`}
-              className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
-            >
-              <ClipboardCheck className="w-4 h-4" />
-              Revisar e aprovar
-            </Link>
-          ) : esperando === "pecas" ? (
-            <>
-              <button
-                type="button"
-                onClick={aoAproveitar}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 transition-colors"
-                data-botao-aproveitar
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Aproveitar o roteiro
-              </button>
-              <button
-                onClick={aoDispensar}
-                title="Fechar"
-                className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </>
-          ) : (
-            <div className="text-right">
-              <p className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
-                {/* Sem conexão o número é o da última notícia do servidor:
-                    "passou do previsto" ali diria que o vídeo atrasou, quando
-                    quem parou de ouvir foi a tela (o caso do Bruno em 01/10). */}
-                {semConexao
-                  ? "sem conexão, última previsão"
-                  : atrasou
-                    ? "passou do previsto em"
-                    : v.retomada
-                      ? "retomada automática, faltam até"
-                      : linha.relogio === "gemeo"
-                        ? "vídeo do gêmeo em até"
-                        : linha.relogio === "roteiro"
-                          ? "roteiro pronto em até"
-                          : "tudo pronto em até"}
+
+        <div className="flex items-center gap-2 sm:shrink-0">
+          {relogio && (
+            <div className="mr-auto sm:mr-0 sm:text-right pl-12 sm:pl-0" data-relogio>
+              <p className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>
+                {rotuloDoRelogio}
               </p>
               {/* O relógio é desenhado no servidor e de novo no navegador, com
                   um ou dois segundos de diferença: o aviso de hidratação aqui
                   seria falso alarme (visto na prova de 01/10). */}
-              <p className="text-xl font-bold tabular-nums leading-none" style={{ color: "var(--text-primary)" }} suppressHydrationWarning>
+              <p className="text-base font-bold tabular-nums leading-tight" style={{ color: "var(--text-primary)" }} suppressHydrationWarning>
                 {atrasou && !semConexao ? `${Math.max(1, Math.ceil(atraso / 60))} min` : mmss(restante)}
               </p>
             </div>
           )}
+          {principal}
+          {/* APROVEITAR O ROTEIRO (02/10): o vídeo terminou, a pergunta de
+              gerar mais peças a partir dele. */}
+          {(pronto || esperando === "pecas") && (
+            <button
+              type="button"
+              onClick={aoAproveitar}
+              className={`${classeDoSecundario} ${pronto ? "flex-1 sm:flex-none" : ""}`}
+              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+              data-botao-aproveitar
+              title="Aproveitar o roteiro"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+              <span className={esperando === "pecas" ? "hidden min-[400px]:inline" : ""}>Aproveitar o roteiro</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setAberto((a) => !a)}
+            aria-expanded={aberto}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold hover:bg-[var(--realce-2)] transition-colors whitespace-nowrap"
+            style={{ color: "var(--text-muted)" }}
+            data-ver-etapas
+          >
+            {falhou || completoFalhou ? "detalhes" : "etapas"}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${aberto ? "rotate-180" : ""}`} />
+          </button>
+          {dispensavel && (
+            <button
+              type="button"
+              onClick={aoDispensar}
+              title={falhou || completoFalhou ? "Dispensar" : "Tirar da lista"}
+              aria-label={falhou || completoFalhou ? "Dispensar" : "Tirar da lista"}
+              // No celular o X sobe para o canto do cartão: na fileira dos
+              // botões ele passava da borda em 360 px.
+              className="absolute right-1.5 top-1.5 sm:static p-1.5 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
+      {aberto && (
+        <div className="mt-3 pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }} data-etapas-abertas>
+          {(falhou || completoFalhou) && (
+            <div className="text-xs space-y-1.5" style={{ color: "var(--text-muted)" }}>
+              <p>
+                {falhou
+                  ? v.error ?? "A etapa não terminou. O que já ficou pronto continua no quadro e não se perde."
+                  : `${v.error?.includes("completo:") ? "A montagem da gravação inteira falhou no meio do caminho." : "A montagem da gravação inteira passou muito do tempo previsto."} Os cortes e os textos já estão no quadro e não se perdem. Dá para refazer só o vídeo completo, sem mexer no resto.`}
+              </p>
+              {/* O CÓDIGO E O CHAMADO (02/10): o mesmo código do aviso no sino,
+                  para a pessoa informar sem descrever o erro. */}
+              {codigoDaFalha && (
+                <button
+                  type="button"
+                  onClick={() => abrirChamado({ categoria: "problema", codigo: codigoDaFalha, texto: `O processamento de ${nome} parou.` })}
+                  className="font-semibold text-orange-400 hover:underline"
+                >
+                  Abrir chamado
+                </button>
+              )}
+            </div>
+          )}
+
+          <LinhaDetalhada linha={linha} />
+
+          {/* O QUE ESTÁ ACONTECENDO AGORA, numa frase (02/10). */}
+          {relogio && (
+            <p className="text-xs" style={{ color: "var(--text-primary)" }} data-agora>
+              <span className="font-semibold">Agora:</span> {linha.agora}
+              {avisoDoVigia ? (
+                <span style={{ color: "var(--text-muted)" }} data-retomada> {avisoDoVigia}</span>
+              ) : (atrasou || atrasandoNaEtapa) && !semConexao ? (
+                <span style={{ color: "var(--text-muted)" }}> Esta etapa está levando mais que o previsto, e segue andando.</span>
+              ) : null}
+            </p>
+          )}
+
+          {/* A PROMESSA DITA NO INÍCIO, com o número deste vídeo (30/09),
+              medida pelo alto e com todas as etapas dentro (02/10). */}
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            {linha.relogio === "gemeo" && relogio ? (
+              <>Primeiro o seu gêmeo grava o vídeo (até {Math.ceil(total / 60)} min). Depois ele entra na edição como uma gravação sua, com o roteiro para você aprovar.</>
+            ) : linha.relogio === "roteiro" && relogio ? (
+              <>
+                Primeiro eu preparo o roteiro da edição para você aprovar (até {Math.ceil(total / 60)} min).
+                {v.durationSec
+                  ? ` Depois da sua aprovação, a edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até ${minutosDaEdicao} min.`
+                  : " Depois da sua aprovação vem a edição inteira, com efeitos, abertura e revisão final."}
+              </>
+            ) : esperando === "roteiro" ? (
+              <>
+                Separei {v.trechosEscolhidos} {v.trechosEscolhidos === 1 ? "corte possível" : "cortes possíveis"}, com a fala exata e as cenas planejadas. Escolha os que vão ao
+                ar (até 8) e aprove: só depois disso eu gero imagens, cenas e cortes. Nada é gerado nem cobrado além do roteiro antes da sua aprovação.
+              </>
+            ) : esperando === "pecas" ? (
+              <>{linha.agora} Assista, ajuste o que quiser e aprove para agendar.</>
+            ) : relogio ? (
+              <>A edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até {Math.ceil(total / 60)} min.</>
+            ) : pronto ? (
+              <>Os cortes e o vídeo completo estão no quadro abaixo, com os textos de cada rede.</>
+            ) : null}
+          </p>
+
+          {/* "Voltar à edição" (30/09, pedido do Bruno): reabre o roteiro do
+              vídeo aprovado para corrigir palavra, bordas e cenas, e refazer
+              só o que mudou. */}
+          {(pronto || esperando === "pecas") && (
+            <Link
+              href={`/projects/${projectId}/video/${v.id}/roteiro?editar=1`}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:border-orange-500/60 transition-colors"
+              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-orange-400" />
+              Voltar à edição
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A linha do tempo inteira, atrás do "etapas" (03/10): no computador os
+ * marcos lado a lado, no celular a lista em pé. As duas leem a MESMA leitura
+ * que só avança.
+ */
+function LinhaDetalhada({ linha }: { linha: LeituraDaLinha }) {
+  const n = linha.passos.length;
+  const ultimoFeito = linha.passos.reduce((u, p, i) => (p.estado === "feito" || p.estado === "pulado" ? i : u), -1);
+  const ate = Math.max(linha.atual, ultimoFeito, 0);
+  const metadeDaColuna = 50 / n;
+  return (
+    <>
       <div className="relative hidden sm:grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
         <div className="absolute top-[9px] h-0.5" style={{ left: `${metadeDaColuna}%`, right: `${metadeDaColuna}%`, background: "var(--border)" }} />
         <div
@@ -966,86 +1218,8 @@ function FaixaDeUmVideo({
           <Marco key={p.chave} passo={p} atual={i === linha.atual} />
         ))}
       </div>
-
-      {/* NO CELULAR, UMA LISTA EM PÉ (03/10): 13 a 17 marcos lado a lado em 360 px
-          ficavam achatados e ilegíveis. A lista lê a MESMA leitura que só
-          avança (linhaQueSoAvanca), então a regra vale igual aqui. */}
       <EtapasNoCelular passos={linha.passos} atual={linha.atual} />
-
-      {/* O QUE ESTÁ ACONTECENDO AGORA, numa frase (02/10): é o que o cliente lê
-          quando o relógio passou do previsto, em vez de um número parado. */}
-      {!esperando && (
-        <p className="text-xs" style={{ color: "var(--text-primary)" }} data-agora>
-          <span className="font-semibold">Agora:</span> {linha.agora}
-          {avisoDoVigia ? (
-            <span style={{ color: "var(--text-muted)" }} data-retomada> {avisoDoVigia}</span>
-          ) : (atrasou || atrasandoNaEtapa) && !semConexao ? (
-            <span style={{ color: "var(--text-muted)" }}> Esta etapa está levando mais que o previsto, e segue andando.</span>
-          ) : null}
-        </p>
-      )}
-
-      {/* PODE SAIR (02/10, pedido do Bruno): quando a parte do cliente acabou
-          (enviou o vídeo, ou aprovou o roteiro), a faixa diz com todas as
-          letras que ele pode fechar a tela. O sino e o e-mail chamam de volta. */}
-      {linha.podeSair && (
-        <div
-          className="flex items-start gap-3 rounded-xl border px-4 py-3"
-          style={{ borderColor: "var(--accent-orange)", background: "color-mix(in srgb, var(--accent-orange) 8%, transparent)" }}
-          data-pode-sair
-        >
-          <BellRing className="w-[18px] h-[18px] text-orange-500 shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              Pode fechar esta tela.
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              Vamos te avisar aqui e por e-mail quando precisarmos de você ou quando estiver pronto.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div
-        className="flex items-center justify-between gap-4 flex-wrap pt-3 border-t"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {/* A PROMESSA DITA NO INÍCIO, com o número deste vídeo (pedido do
-              Bruno em 30/09), e desde 02/10 o número é o medido pelo alto,
-              com todas as etapas dentro: nada de "uma parte depois". */}
-          {linha.relogio === "gemeo" && !esperando ? (
-            <>
-              Primeiro o seu gêmeo grava o vídeo (até {Math.ceil(total / 60)} min). Depois ele entra na edição como uma gravação sua, com o
-              roteiro para você aprovar.
-            </>
-          ) : linha.relogio === "roteiro" && !esperando ? (
-            <>
-              Primeiro eu preparo o roteiro da edição para você aprovar (até {Math.ceil(total / 60)} min).
-              {v.durationSec
-                ? ` Depois da sua aprovação, a edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até ${minutosDaEdicao} min.`
-                : " Depois da sua aprovação vem a edição inteira, com efeitos, abertura e revisão final."}
-            </>
-          ) : esperando === "roteiro" ? (
-            <>
-              Nada é gerado nem cobrado além do roteiro antes da sua aprovação. Depois dela, a edição inteira leva até {minutosDaEdicao} min.
-            </>
-          ) : esperando === "pecas" ? (
-            "Nada sai nas redes sem o seu ok."
-          ) : (
-            <>
-              A edição inteira deste vídeo, com efeitos, abertura e revisão final, leva até {Math.ceil(total / 60)} min. Cada peça cai no quadro
-              abaixo assim que fica pronta.
-            </>
-          )}
-        </p>
-        {!v.temCompleto && !esperando ? (
-          <p className="text-xs font-medium text-orange-400">
-            O vídeo completo chega por último, e o lugar dele já está guardado no quadro.
-          </p>
-        ) : null}
-      </div>
-    </div>
+    </>
   );
 }
 
