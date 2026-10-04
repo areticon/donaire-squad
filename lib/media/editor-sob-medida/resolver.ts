@@ -252,6 +252,11 @@ function limparLetras(w: string): string {
   return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
 }
 
+/** No completo, o maior trecho sem peça nem imagem antes de o resolvedor pôr uma marca (s). */
+export const BURACO_DO_LONGO = 12;
+/** Palavras longas que não dizem nada sozinhas na tela (já sem acento e minúsculas). */
+const PALAVRAS_VAZIAS = /^(.*mente|entendeu|qualquer|aqueles|aquelas|daquele|daquela|naquele|naquela|enquanto|estamos|estavam|estaria|poderia|podemos|tivesse|teriam|fizemos|falando|falamos|dizendo|ninguem|alguma|algumas|alguns|outros|outras|tambem|porque|sempre|depois|quando|aquilo|isso|desse|dessa|nesse|nessa|deles|delas|vamos|vou|voce|voces|tinha|tenho|tiver|seria|sejam)$/;
+
 export type ContextoDaResolucao = {
   palavras: PalavraNoCorte[];
   duracao: number;
@@ -501,6 +506,59 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     }
   }
 
+  // 4d. NENHUM TRECHO LONGO SEM TROCA NO COMPLETO (03/10, à noite): o
+  // completo de cmurtv2zg chegou a minutos de cabeça falando depois que a
+  // revisão tirou peças. Buraco de BURACO_DO_LONGO s ou mais sem peça nem
+  // imagem ganha um SUBLINHADO a cada ~9 s, na palavra de ênfase que o editor
+  // marcou ali; sem ênfase, numa palavra longa da própria fala (nunca texto
+  // inventado). A câmera de ritmo continua trocando o enquadramento por baixo.
+  if (ctx.ritmo !== "corte" && FICHAS["sublinhado"]) {
+    const ficha = FICHAS["sublinhado"];
+    const ocupados = [...camadas.filter((c) => c.peca !== "moldura-do-cartao"), ...planos].map((x) => [x.de, x.ate] as [number, number]).sort((x, y) => x[0] - y[0]);
+    const buracos: Array<[number, number]> = [];
+    let cursor = 1;
+    for (const [x, y] of ocupados) {
+      if (x - cursor >= BURACO_DO_LONGO) buracos.push([cursor, x]);
+      cursor = Math.max(cursor, y);
+    }
+    if (D - 0.3 - cursor >= BURACO_DO_LONGO) buracos.push([cursor, D - 0.3]);
+    const limpar = (w: string) => String(w ?? "").replace(/[.,:;!?"“”()]/g, "").trim();
+    const enfases = (e.enfases ?? []).map((an) => t(an)).filter((x): x is number => x !== null);
+    const palavraEm = (x: number) => ctx.palavras.find((w) => Math.abs(w.inicio - x) < 0.01);
+    for (const [x, y] of buracos) {
+      let ultimo = x;
+      while (y - ultimo >= BURACO_DO_LONGO) {
+        const janela = (q: number) => q > ultimo + 4 && q < Math.min(y - 1.6, ultimo + 13);
+        const alvo = ultimo + 9;
+        const perto = (a: number, b: number) => Math.abs(a - alvo) - Math.abs(b - alvo);
+        const porEnfase = enfases.filter((q) => janela(q) && limpar(palavraEm(q)?.texto ?? "").length >= 4 && !PALAVRAS_VAZIAS.test(norm(palavraEm(q)?.texto ?? ""))).sort(perto)[0];
+        const porPalavra = ctx.palavras
+          .filter((w) => janela(w.inicio) && limpar(w.texto).length >= 7 && !PALAVRAS_VAZIAS.test(norm(w.texto)))
+          .map((w) => w.inicio)
+          .sort(perto)[0];
+        const instante = porEnfase ?? porPalavra;
+        const palavra = instante !== undefined ? palavraEm(instante) : undefined;
+        const texto = palavra ? limparLetras(limpar(palavra.texto)) : "";
+        if (instante === undefined || texto.length < 4) {
+          // Nada que valha a tela nesta janela: anda e tenta adiante.
+          ultimo += 6;
+          continue;
+        }
+        const de = Math.max(ultimo + 0.15, instante - 0.12);
+        const fimDaFrase = frases.find((f) => f.inicio <= instante + 0.01 && f.fim >= instante)?.fim ?? instante + 1.5;
+        const ate = Math.min(y - 0.15, de + 2.6, Math.max(fimDaFrase + 0.3, de + 1.8));
+        if (ate - de < ficha.duracao[0] - 0.01) {
+          ultimo = instante + 0.5;
+          continue;
+        }
+        camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { texto, lado: "centro" }, passes: passesDaPeca(ficha) });
+        avisos.push(`auto-${Math.round(de * 10)}: sublinhado "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
+        ultimo = ate;
+      }
+    }
+    camadas.sort((a, b) => a.de - b.de);
+  }
+
   // 5. A câmera: o ritmo e, por cima, o que o editor pediu.
   const pedidos: Enquadramento[] = [];
   for (const c of e.camera ?? []) {
@@ -563,11 +621,40 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
 }
 
 /** Números para o relatório: quanto da duração tem peça, quanto o rosto some. */
-export function medidasDaEdicao(ed: EdicaoResolvida): { pecas: number; porMinuto: number; comPeca: number; semRosto: number; insercoes: number; broll: number; tiposDePeca: number } {
+export function medidasDaEdicao(ed: EdicaoResolvida): {
+  pecas: number;
+  porMinuto: number;
+  comPeca: number;
+  semRosto: number;
+  insercoes: number;
+  broll: number;
+  tiposDePeca: number;
+  comPecaOuMidia: number;
+  maiorSemTroca: number;
+  maiorParado: number;
+} {
   const D = Math.max(1, ed.duracao);
   const reais = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao");
   const soma = (xs: Array<{ de: number; ate: number }>) => xs.reduce((s, x) => s + (x.ate - x.de), 0);
+  // A DENSIDADE DE VERDADE (03/10, à noite): o tempo com peça OU imagem (a união, sem contar duas vezes).
+  const trechos = [...reais, ...ed.planos.filter((p) => p.tipo === "insercao" || p.tipo === "grafico")].map((x) => [Math.max(0, x.de), Math.min(D, x.ate)] as [number, number]).sort((a, b) => a[0] - b[0]);
+  let coberto = 0;
+  let fim = 0;
+  for (const [a, b] of trechos) {
+    if (b <= fim) continue;
+    coberto += b - Math.max(a, fim);
+    fim = b;
+  }
+  // O maior trecho sem troca: entre duas entradas ou saídas de peça ou imagem; com a câmera, o maior trecho parado.
+  const maior = (ts: number[]) => {
+    const l = [...new Set([0, D, ...ts.map((x) => +Math.min(D, Math.max(0, x)).toFixed(2))])].sort((a, b) => a - b);
+    return +l.slice(1).reduce((m, x, i) => Math.max(m, x - l[i]), 0).toFixed(2);
+  };
+  const trocas = trechos.flatMap(([a, b]) => [a, b]);
   return {
+    comPecaOuMidia: +(coberto / D).toFixed(3),
+    maiorSemTroca: maior(trocas),
+    maiorParado: maior([...trocas, ...(ed.camera ?? []).map((c) => c.de)]),
     pecas: reais.length,
     porMinuto: +(reais.length / (D / 60)).toFixed(1),
     comPeca: +(soma(reais) / D).toFixed(3),

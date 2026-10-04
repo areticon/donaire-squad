@@ -90,6 +90,19 @@ Só um JSON, sem texto antes ou depois:
 # O CATÁLOGO DE PEÇAS
 ${catalogoNoPrompt()}`;
 
+/**
+ * O BLOCO DE 5 MIN DO COMPLETO (03/10, à noite): o juiz reprovou 124 de 131
+ * peças do completo de cmurtv2zg por "parece slide" e "cartão chapado"; muita
+ * peça fraca num bloco longo vira muito conserto. O bloco pede menos peças e
+ * mais FORTES, variadas, com imagem real entre elas.
+ */
+export const INSTRUCOES_DO_BLOCO_LONGO = `# ESTE BLOCO DE ~5 MIN (vale sobre as regras gerais de densidade)
+- Peças FORTES e VARIADAS: de 22 a 32 momentos no bloco, cada um desenhado para o que é dito. Nada de cartão escuro com texto em cima da pessoa (o juiz reprova como "parece slide"): prefira "titulo-atras" (2 a 3 no bloco, na ideia central de cada parte), "numero", "barras", "progresso", "passos-foco", "linha-do-tempo", "comparacao", "pergaminho" para versículo, "frase-impacto" na virada, "palavra-chave" e "sublinhado" para o ritmo entre as grandes.
+- No máximo 4 "titulo" e 3 "painel-lateral" no bloco; nunca a mesma peça duas vezes seguidas; pelo menos 9 tipos de peça diferentes.
+- Peça ou imagem real em 45% a 60% do tempo do bloco, alguma troca visual a cada 10 a 15 s, e nunca mais de 20 s seguidos só do rosto (a não ser oração ou emoção forte).
+- B-ROLL em "broll": de 12 a 18 no bloco, um a cada 15 a 25 s, onde a fala cita algo filmável; é o que mais tira o vídeo da cara de slide.
+- Texto curto: título com até 5 palavras, rótulo com até 3. Texto grande e legível no celular vale mais que texto completo.`;
+
 export type EntradaDoEditor = {
   palavras: PalavraNoCorte[];
   frases: Frase[];
@@ -188,7 +201,9 @@ export async function escreverBloco(e: EntradaDoEditor, b: BlocoDoEditor, k: num
 ${fala}
 
 # A TAREFA
-${tarefa}${e.instrucoes ? `\n\n${e.instrucoes}` : ""}`, quadros, e, e.instrucoes ? "editor-sob-medida-corte" : "editor-sob-medida")) as EdicaoDoEditor;
+${tarefa}
+
+${e.instrucoes ?? INSTRUCOES_DO_BLOCO_LONGO}`, quadros, e, e.instrucoes ? "editor-sob-medida-corte" : "editor-sob-medida")) as EdicaoDoEditor;
       if (!Array.isArray(j?.momentos)) throw new Error("resposta sem momentos");
       const dentro = (a: string) => {
         const n = Number(String(a).match(/\d+/)?.[0] ?? -1);
@@ -228,58 +243,157 @@ export async function escreverEdicao(e: EntradaDoEditor): Promise<{ edicao: Edic
   return { edicao: juntarPartes(partes), blocos: blocos.length, erros: partes.filter((p) => p.erro).map((p, k) => `parte ${k + 1}: ${p.erro}`) };
 }
 
-export type DefeitoDaRevisao = { momento: string | null; t: number; tipo: string; descricao: string; conserto: string };
+export type DefeitoDaRevisao = { momento: string | null; t: number; tipo: string; descricao: string; conserto: string; nota?: number };
+
+/** Os defeitos que podem TIRAR a peça (espelho de DEFEITOS_GRAVES em corte.ts). */
+const GRAVES = new Set(["ilegivel", "cobre", "incoerente", "imagem"]);
+/** Quantos defeitos cada chamada de conserto recebe (as chamadas vão em paralelo). */
+const CONSERTO_POR_CHAMADA = 10;
+
+type RespostaDoConserto = { momentos?: MomentoDoEditor[]; remover?: string[]; camera?: EdicaoDoEditor["camera"]; broll?: EdicaoDoEditor["broll"] };
 
 /**
- * O CONSERTO: o editor recebe os defeitos que o revisor viu nos quadros e
- * devolve, para cada momento com defeito, a peça refeita ou a remoção. O resto
- * da edição não muda (o que passou fica).
+ * O CONSERTO CONSERTA, NÃO APAGA (03/10, à noite). O completo de cmurtv2zg
+ * saiu quase sem edição: o editor escreveu 131 peças, o juiz pôs defeito em
+ * 124 (127 deles de "qualidade", nota abaixo de 7), o conserto numa chamada só
+ * refez uma parte, e o código apagava toda peça com defeito que não voltasse
+ * refeita: sobraram 37 peças e 12,7% do tempo com peça. Agora:
+ *   - os defeitos vão em grupos de 10, em paralelo, cada grupo com a fala em
+ *     volta dele e os quadros dele;
+ *   - a peça que o conserto não devolveu FICA como estava (defeito de
+ *     qualidade não apaga nada);
+ *   - só defeito GRAVE (ilegível, cobrindo, incoerente, imagem ruim) remove,
+ *     e o editor põe outra peça ou um B-roll no lugar; sem substituto, o
+ *     resolvedor preenche o buraco (sublinhado da ênfase) e a câmera segue.
+ * `brollNovos`: os ids dos B-rolls que o conserto pediu (quem chama busca).
  */
 export async function consertarEdicao(
   e: EntradaDoEditor,
   edicao: EdicaoDoEditor,
   defeitos: DefeitoDaRevisao[],
   quadrosDoDefeito: Array<{ t: number; base64: string }>
-): Promise<{ edicao: EdicaoDoEditor; trocados: number; removidos: number }> {
+): Promise<{ edicao: EdicaoDoEditor; trocados: number; removidos: number; brollNovos: string[]; erros: string[] }> {
   const ids = [...new Set(defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)))];
-  const alvo = edicao.momentos.filter((m) => ids.includes(String(m.id)));
-  const semMomento = defeitos.filter((d) => !d.momento);
-  if (!alvo.length && !semMomento.length) return { edicao, trocados: 0, removidos: 0 };
-  const fala = falaNumerada(e.frases);
-  const msg = [
-    `# A FALA, NUMERADA\n${fala}`,
-    `# A EDIÇÃO ATUAL DOS MOMENTOS COM DEFEITO\n${JSON.stringify(alvo, null, 1)}`,
-    `# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (os quadros acima são os do defeito)\n${defeitos.map((d) => `- ${d.momento ?? "sem peça"} em ${d.t.toFixed(1)} s, ${d.tipo}: ${d.descricao} (sugestão: ${d.conserto})`).join("\n")}`,
-    edicao.insercoes?.length || edicao.broll?.length
-      ? `# IMAGENS JÁ PAGAS (fique com elas: peça de tela cheia ou de lado não entra por cima, e o rosto volta 1 s entre elas)\n${[...(edicao.insercoes ?? []).map((x) => `- inserção ${x.id}: ${x.de} a ${x.ate}`), ...(edicao.broll ?? []).map((x) => `- B-roll ${x.id} "${x.consulta}": ${x.de} a ${x.ate}`)].join("\n")}`
-      : "",
-    `# A TAREFA\nConserte cada momento com defeito: reescreva a peça (outra peça, outro texto, outro tempo, outro lado) ou remova. Defeito sem peça (por exemplo, "falta algo aqui" ou câmera ruim) pode virar um momento novo ou uma câmera. Responda só o JSON: { "momentos": [momentos refeitos, com o MESMO id do que substituem; ids novos para os novos], "remover": ["ids"], "camera": [] }`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  // O conserto é pontual e vai no Sonnet 5: no Opus custou US$ 0,34 num vídeo de 4 min sem ganho visível (03/10).
-  const r = (await chamar(contexto(e), msg, quadrosDoDefeito.slice(0, 16), { ...e, modelo: process.env.EDITOR_SOB_MEDIDA_MODELO_CONSERTO || "claude-sonnet-5" }, "editor-sob-medida-conserto")) as { momentos?: MomentoDoEditor[]; remover?: string[]; camera?: EdicaoDoEditor["camera"] };
-  const novos = (r.momentos ?? []).filter((m) => m && m.peca && m.de && m.ate);
-  const remover = new Set((r.remover ?? []).map(String));
-  const porId = new Map(novos.map((m) => [String(m.id), m]));
-  let trocados = 0;
-  const momentos = edicao.momentos
-    .filter((m) => !remover.has(String(m.id)))
-    .map((m) => {
-      const n = porId.get(String(m.id));
-      if (n) {
-        trocados++;
-        porId.delete(String(m.id));
-        return n;
+  if (!ids.length && !defeitos.some((d) => !d.momento)) return { edicao, trocados: 0, removidos: 0, brollNovos: [], erros: [] };
+  const graves = new Set(defeitos.filter((d) => d.momento && GRAVES.has(d.tipo)).map((d) => String(d.momento)));
+  const ordenados = [...defeitos].sort((a, b) => a.t - b.t);
+  const grupos: DefeitoDaRevisao[][] = [];
+  for (let i = 0; i < ordenados.length; i += CONSERTO_POR_CHAMADA) grupos.push(ordenados.slice(i, i + CONSERTO_POR_CHAMADA));
+  const tDe = (m: { de: string }) => e.frases[Number(String(m.de).match(/\d+/)?.[0] ?? -1)]?.inicio ?? -1;
+  const selo = Date.now().toString(36).slice(-4);
+  const erros: string[] = [];
+  const respostas = await Promise.all(
+    grupos.map(async (g, gi): Promise<RespostaDoConserto | null> => {
+      const t0 = Math.min(...g.map((d) => d.t)) - 45;
+      const t1 = Math.max(...g.map((d) => d.t)) + 45;
+      const idsDoGrupo = new Set(g.map((d) => d.momento).filter(Boolean).map(String));
+      const alvo = edicao.momentos.filter((m) => idsDoGrupo.has(String(m.id)));
+      const vizinhos = edicao.momentos.filter((m) => !idsDoGrupo.has(String(m.id)) && tDe(m) >= t0 && tDe(m) <= t1);
+      const pagas = [
+        ...(edicao.insercoes ?? []).filter((x) => tDe(x) >= t0 && tDe(x) <= t1).map((x) => `- inserção ${x.id}: ${x.de} a ${x.ate}`),
+        ...(edicao.broll ?? []).filter((x) => tDe(x) >= t0 && tDe(x) <= t1).map((x) => `- B-roll ${x.id} "${x.consulta}": ${x.de} a ${x.ate}`),
+      ];
+      const msg = [
+        `# A FALA EM VOLTA DOS DEFEITOS (numeração do vídeo inteiro)\n${falaNumerada(e.frases, t0, t1)}`,
+        `# OS MOMENTOS COM DEFEITO (a edição atual deles)\n${JSON.stringify(alvo, null, 1)}`,
+        vizinhos.length ? `# AS PEÇAS VIZINHAS QUE PASSARAM (não mexa; a sua não pode se sobrepor a elas)\n${vizinhos.map((m) => `- ${m.id} ${m.peca}: ${m.de} a ${m.ate}`).join("\n")}` : "",
+        `# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (os quadros acima são os do defeito)\n${g.map((d) => `- ${d.momento ?? "sem peça"} em ${d.t.toFixed(1)} s, ${d.tipo}${GRAVES.has(d.tipo) ? " (GRAVE)" : ""}: ${d.descricao} (sugestão: ${d.conserto})`).join("\n")}`,
+        pagas.length ? `# IMAGENS JÁ PAGAS NESTE TRECHO (fique com elas: peça de tela cheia ou de lado não entra por cima, e o rosto volta 1 s entre elas)\n${pagas.join("\n")}` : "",
+        `# A TAREFA: CONSERTE, NÃO APAGUE
+- Para CADA momento com defeito, devolva a peça REFEITA com o MESMO id, subindo o nível como o revisor pediu: outra peça mais forte do catálogo quando o defeito é "parece slide" ou "cartão chapado" (titulo-atras, numero, passos-foco, barras, comparacao, frase-impacto, pergaminho), texto mais curto com a palavra-chave em **destaque**, outro lado, outro tempo. Varie: não troque tudo pela mesma peça.
+- "remover" só para defeito GRAVE sem conserto possível. Todo id removido ganha um SUBSTITUTO no mesmo trecho: outra peça (id novo) ou um B-roll em "broll" (consulta concreta em inglês, 2 a 4 palavras, 1,5 a 3 s, na palavra que cita o objeto, o lugar ou a ação).
+- Defeito "vazio" ou sem peça: um momento novo (id novo) ou um B-roll no trecho.
+- A densidade do vídeo é o que está em jogo: o vídeo final precisa de peça ou imagem em quase metade do tempo. Momento que você não devolver fica como está.
+Responda só o JSON: { "momentos": [refeitos com o MESMO id; novos com id novo], "remover": ["ids"], "broll": [ { "id": "b1", "de": "F8:pão", "ate": "F8/fim", "consulta": "hands kneading dough" } ], "camera": [] }`,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const quadros = quadrosDoDefeito.filter((q) => g.some((d) => Math.abs(d.t - q.t) < 0.05)).slice(0, 12);
+      try {
+        // O conserto é pontual e vai no Sonnet 5: no Opus custou US$ 0,34 num vídeo de 4 min sem ganho visível (03/10).
+        return (await chamar(contexto(e), msg, quadros, { ...e, modelo: process.env.EDITOR_SOB_MEDIDA_MODELO_CONSERTO || "claude-sonnet-5" }, "editor-sob-medida-conserto")) as RespostaDoConserto;
+      } catch (err) {
+        erros.push(`grupo ${gi + 1}: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+        return null;
       }
-      return m;
-    });
-  // O momento com defeito que o editor não refez nem removeu sai: só fica o que passou.
-  const restantes = momentos.filter((m) => !(ids.includes(String(m.id)) && !novos.some((n) => String(n.id) === String(m.id))));
-  const removidos = edicao.momentos.length - restantes.length;
+    })
+  );
+  const refeitos = new Map<string, MomentoDoEditor>();
+  const novos: MomentoDoEditor[] = [];
+  const remover = new Set<string>();
+  const brolls: NonNullable<EdicaoDoEditor["broll"]> = [];
+  const cameras: NonNullable<EdicaoDoEditor["camera"]> = [];
+  respostas.forEach((r, gi) => {
+    if (!r) return;
+    (r.momentos ?? [])
+      .filter((m) => m && m.peca && m.de && m.ate)
+      .forEach((m, i) => {
+        const id = String(m.id ?? "");
+        if (ids.includes(id)) refeitos.set(id, m);
+        else novos.push({ ...m, id: `c${selo}-${gi}n${i}` });
+      });
+    // Só o defeito grave tira a peça.
+    for (const id of (r.remover ?? []).map(String)) if (graves.has(id)) remover.add(id);
+    (Array.isArray(r.broll) ? r.broll : []).filter((b) => b && b.consulta && b.de && b.ate).forEach((b, i) => brolls.push({ ...b, id: `c${selo}-${gi}b${i}` }));
+    cameras.push(...(r.camera ?? []));
+  });
+  let trocados = 0;
+  let removidos = 0;
+  const momentos = edicao.momentos.flatMap((m) => {
+    const id = String(m.id);
+    if (remover.has(id)) {
+      removidos++;
+      return [];
+    }
+    const n = refeitos.get(id);
+    if (n) {
+      trocados++;
+      return [{ ...n, id }];
+    }
+    // Grave que não voltou refeito sai (o buraco o resolvedor preenche); o resto fica como estava.
+    if (graves.has(id)) {
+      removidos++;
+      return [];
+    }
+    return [m];
+  });
   return {
-    edicao: { ...edicao, momentos: [...restantes, ...porId.values()], camera: [...(edicao.camera ?? []), ...(r.camera ?? [])] },
+    edicao: { ...edicao, momentos: [...momentos, ...novos], camera: [...(edicao.camera ?? []), ...cameras], broll: [...(edicao.broll ?? []), ...brolls] },
     trocados,
-    removidos: Math.max(0, removidos),
+    removidos,
+    brollNovos: brolls.map((b) => String(b.id)),
+    erros,
   };
+}
+
+/**
+ * A DENSIDADE NUNCA CAI NO CONSERTO (03/10, à noite): o corte 0 de cmurtv2zg
+ * teve 57% de peça numa rodada e 34% na seguinte. Se a edição consertada
+ * ficou mais vazia que a anterior (medida pela resolução de quem chama), as
+ * peças boas da anterior voltam: primeiro as que sumiram sem defeito grave;
+ * se ainda faltar, a edição anterior inteira sem as graves, com o que o
+ * conserto trouxe de novo. Fica a opção mais densa.
+ */
+export function manterDensidade(
+  anterior: EdicaoDoEditor,
+  nova: EdicaoDoEditor,
+  graves: Set<string>,
+  medir: (e: EdicaoDoEditor) => number
+): { edicao: EdicaoDoEditor; antes: number; depois: number; motivo: string | null } {
+  const antes = medir(anterior);
+  const d1 = medir(nova);
+  if (d1 >= antes - 0.01) return { edicao: nova, antes, depois: d1, motivo: null };
+  const idsNova = new Set(nova.momentos.map((m) => String(m.id)));
+  const idsAnt = new Set(anterior.momentos.map((m) => String(m.id)));
+  const devolvidas: EdicaoDoEditor = { ...nova, momentos: [...nova.momentos, ...anterior.momentos.filter((m) => !idsNova.has(String(m.id)) && !graves.has(String(m.id)))] };
+  const daAnterior: EdicaoDoEditor = {
+    ...nova,
+    momentos: [...anterior.momentos.filter((m) => !graves.has(String(m.id))), ...nova.momentos.filter((m) => !idsAnt.has(String(m.id)) || graves.has(String(m.id)))],
+  };
+  const opcoes = [
+    { e: nova, d: d1, motivo: null as string | null },
+    { e: devolvidas, d: medir(devolvidas), motivo: "as peças que sumiram sem defeito grave voltaram" },
+    { e: daAnterior, d: medir(daAnterior), motivo: "a edição anterior voltou (sem as peças graves), com o que o conserto trouxe de novo" },
+  ].sort((a, b) => b.d - a.d);
+  return { edicao: opcoes[0].e, antes, depois: opcoes[0].d, motivo: opcoes[0].motivo };
 }

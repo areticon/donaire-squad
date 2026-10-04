@@ -168,6 +168,51 @@ export function arejarCorte(ed: EdicaoResolvida, minimo: Record<string, number>)
   return { edicao: { ...ed, camadas, planos }, mudancas };
 }
 
+/** As peças que valem como gancho no segundo 0. */
+const PECAS_DE_GANCHO = new Set(["titulo", "frase-impacto", "pergunta-resposta", "titulo-atras", "citacao", "numero"]);
+
+/**
+ * O GANCHO NO SEGUNDO 0, SEMPRE (03/10, à noite): o corte 0 de cmurtv2zg foi
+ * ao ar sem o título de abertura, porque o juiz achou o título do gancho
+ * ilegível na última rodada e a peça saiu sem substituto. Sem peça de gancho
+ * começando até 0,6 s, entra um TÍTULO com o título do corte (até 6 palavras,
+ * a palavra mais longa em destaque), de 0 a ~3 s, no peito; a peça que
+ * cruzava esse trecho começa depois dele ou sai.
+ */
+export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | undefined, ficha: { entrada: number; saida: number; evento: number }): { edicao: EdicaoResolvida; mudou: string | null } {
+  if (ed.camadas.some((c) => c.de <= 0.6 && PECAS_DE_GANCHO.has(c.peca))) return { edicao: ed, mudou: null };
+  const palavras = String(titulo ?? "").replace(/\*+/g, "").replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean).slice(0, 6);
+  if (palavras.length < 2) return { edicao: ed, mudou: null };
+  const maior = palavras.reduce((m, p, i) => (p.length > palavras[m].length ? i : m), 0);
+  const texto = palavras.map((p, i) => (i === maior ? `**${p}**` : p)).join(" ");
+  const primeiraTela = (ed.planos ?? []).filter((p) => p.tipo !== "cartao").map((p) => p.de).sort((a, b) => a - b)[0] ?? Infinity;
+  const fim = +Math.min(3, ed.duracao - 0.3, primeiraTela - 0.15).toFixed(3);
+  if (fim < 1.8) return { edicao: ed, mudou: null };
+  const novoDe = +(fim + 0.15).toFixed(3);
+  // O que cruza o trecho do gancho começa depois dele ou sai; a moldura e o plano do cartão seguem a peça dela.
+  const destino = new Map<string, number | null>();
+  for (const c of ed.camadas) {
+    if (c.peca === "moldura-do-cartao" || c.de >= novoDe || c.ate <= 0) continue;
+    destino.set(c.id, c.ate - novoDe >= 1.2 ? novoDe : null);
+  }
+  const camadas = ed.camadas.flatMap((c) => {
+    const id = c.peca === "moldura-do-cartao" ? c.id.replace(/-moldura$/, "") : c.id;
+    if (!destino.has(id)) return [c];
+    const de = destino.get(id);
+    if (de === null || de === undefined) return [];
+    return [{ ...c, de, eventos: c.eventos.map((x) => Math.max(x, de + 0.25)) }];
+  });
+  const planos = (ed.planos ?? []).flatMap((p): PlanoResolvido[] => {
+    if (p.tipo !== "cartao") return [p];
+    const dono = ed.camadas.find((c) => c.peca !== "moldura-do-cartao" && Math.abs(c.de - p.de) < 0.01 && Math.abs(c.ate - p.ate) < 0.01);
+    if (!dono || !destino.has(dono.id)) return [p];
+    const de = destino.get(dono.id);
+    return de === null || de === undefined ? [] : [{ ...p, de }];
+  });
+  const gancho: EdicaoResolvida["camadas"][number] = { id: "gancho-0", peca: "titulo", de: 0, ate: fim, entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { titulo: texto, posicao: "baixo" }, passes: ["vidro", "frente"] };
+  return { edicao: { ...ed, camadas: [gancho, ...camadas], planos }, mudou: `gancho-0: título do corte no segundo 0 ("${palavras.join(" ")}")` };
+}
+
 /** Fração do corte com peça (sem a moldura do cartão). */
 export function densidadeDoCorte(ed: EdicaoResolvida): number {
   const D = Math.max(1, ed.duracao);

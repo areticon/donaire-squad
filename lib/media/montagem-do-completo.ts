@@ -69,7 +69,7 @@ import {
   type EdicaoDoEditor,
   type EdicaoResolvida,
 } from "@/lib/media/editor-sob-medida";
-import { blocosDoEditor, escreverBloco, juntarPartes, type BlocoDoEditor, type EntradaDoEditor, type ParteDaEdicao } from "@/lib/media/editor-sob-medida/editor";
+import { blocosDoEditor, escreverBloco, juntarPartes, manterDensidade, type BlocoDoEditor, type EntradaDoEditor, type ParteDaEdicao } from "@/lib/media/editor-sob-medida/editor";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
 import { DEFEITOS_GRAVES } from "@/lib/media/editor-sob-medida/corte";
 import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
@@ -284,7 +284,7 @@ export type EstadoDoSobMedida = {
   videos?: PedidoDeVideo[];
   edicao?: EdicaoResolvida | null;
   rodada: number;
-  historico: Array<{ rodada: number; quadros: number; nota: number | null; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
+  historico: Array<{ rodada: number; quadros: number; nota: number | null; achados?: number; defeitos: Array<{ momento: string | null; t: number; tipo: string; descricao: string }>; falta: string[]; erro?: string | null }>;
   soIds?: string[] | null;
   previaUrl?: string | null;
   custoImagensUsd?: number;
@@ -1920,6 +1920,25 @@ async function enviarSobMedida(v: VideoDoCompleto, estado: MontagemDoCompleto, l
   }
 }
 
+/** O juiz do completo: quadros por bloco de 5 min e defeitos que vão ao conserto por rodada (o teto de custo). */
+const QUADROS_DO_JUIZ_POR_BLOCO = Number(process.env.EDITOR_SOB_MEDIDA_JUIZ_POR_BLOCO ?? 24);
+const DEFEITOS_POR_RODADA = Number(process.env.EDITOR_SOB_MEDIDA_DEFEITOS_POR_RODADA ?? 30);
+
+/**
+ * Os B-rolls da edição que ainda não têm vídeo: os que o conserto pediu no
+ * lugar de uma peça e os que o prazo da primeira passada deixou de fora. O
+ * banco é grátis e a escolha fica em cache pela consulta; 60 s de prazo.
+ */
+async function brollsQueFaltam(v: VideoDoCompleto, m: MontagemDoCompleto, editor: EdicaoDoEditor, insercoes: Record<string, MidiaDaInsercao>): Promise<Record<string, MidiaDaInsercao>> {
+  const faltam = (editor.broll ?? []).filter((b) => b.id && !insercoes[String(b.id)]);
+  if (!faltam.length) return {};
+  const formato = m.analise!.altura > m.analise!.largura ? "9:16" : "16:9";
+  const parcial = { ...editor, broll: faltam };
+  const so = brollsQueCabem(parcial, insercoes, (x) => resolverSobMedida(v, m, editor, x).edicao);
+  const r = await gerarBrolls(parcial, { formato, projectId: v.projectId, referencia: `${v.id}-completo`, teto: 40, prazoMs: 60_000, so }).catch(() => null);
+  return r?.insercoes ?? {};
+}
+
 /** A prévia voltou: o revisor olha; com defeito, o editor conserta (até 2 rodadas); o que ainda tem defeito sai; vai o final. */
 async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<void> {
   const tomado: MontagemDoCompleto = { ...lido, trabalhando: true, desde: agora() };
@@ -1937,19 +1956,29 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
       projectId: v.projectId,
       estiloId: sm.estiloId,
       rodada: sm.rodada,
+      // O TETO DO JUIZ NO COMPLETO (03/10, à noite): 24 quadros por bloco de 5 min e os 30 piores defeitos por rodada.
+      tetoPorBloco: QUADROS_DO_JUIZ_POR_BLOCO,
+      tetoDeDefeitos: DEFEITOS_POR_RODADA,
     });
     const historico = [
       ...sm.historico,
-      { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, defeitos: rev.defeitos.map((d) => ({ momento: d.momento, t: d.t, tipo: d.tipo, descricao: d.descricao })), falta: rev.falta, erro: rev.erro ?? null },
+      { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, achados: rev.achados ?? rev.defeitos.length, defeitos: rev.defeitos.map((d) => ({ momento: d.momento, t: d.t, tipo: d.tipo, descricao: d.descricao })), falta: rev.falta, erro: rev.erro ?? null },
     ].slice(-6);
     let editor = sm.editor!;
     if (rev.defeitos.length && sm.rodada < 2) {
       const entrada = await entradaDoEditor(v, lido, []);
       const quadrosDoDefeito = rev.olhados.filter((q) => rev.defeitos.some((d) => Math.abs(d.t - q.t) < 0.05));
-      editor = (await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito)).edicao;
-      const soIds = [...new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)))];
-      const r = resolverSobMedida(v, lido, editor, sm.insercoes ?? {});
-      const novo: EstadoDoSobMedida = { ...sm, editor, edicao: r.edicao, fase: "previa", rodada: sm.rodada + 1, soIds, historico, medidas: medidasDaEdicao(r.edicao) };
+      const c = await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito);
+      // O B-roll que o conserto pediu no lugar de uma peça, e o que o prazo da primeira passada deixou de fora.
+      const insercoes = { ...(sm.insercoes ?? {}), ...(await brollsQueFaltam(v, lido, c.edicao, sm.insercoes ?? {})) };
+      // A densidade nunca cai no conserto: se a consertada ficou mais vazia, as peças boas da anterior voltam.
+      const graves = new Set(rev.defeitos.filter((d) => DEFEITOS_GRAVES.has(d.tipo)).map((d) => d.momento).filter((x): x is string => Boolean(x)));
+      const md = manterDensidade(editor, c.edicao, graves, (x) => medidasDaEdicao(resolverSobMedida(v, lido, x, insercoes).edicao).comPecaOuMidia);
+      editor = md.edicao;
+      if (md.motivo) c.erros.push(`densidade ${md.antes} -> ${md.depois}: ${md.motivo}`);
+      const soIds = [...new Set([...rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)), ...editor.momentos.map((m) => String(m.id)).filter((id) => !sm.editor!.momentos.some((x) => String(x.id) === id))])];
+      const r = resolverSobMedida(v, lido, editor, insercoes);
+      const novo: EstadoDoSobMedida = { ...sm, editor, insercoes, edicao: r.edicao, fase: "previa", rodada: sm.rodada + 1, soIds, historico, medidas: medidasDaEdicao(r.edicao), avisos: [...(sm.avisos ?? []), `rodada ${sm.rodada}: ${rev.achados ?? rev.defeitos.length} defeito(s) achados, ${rev.defeitos.length} ao conserto, ${c.trocados} refeitos, ${c.removidos} removidos`, ...c.erros].slice(-30) };
       await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
       return;
     }
@@ -1960,8 +1989,10 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
     // falando sozinha e a nota caía mais (prova Vox de 03/10: 5,8 para 5,1).
     const reprovadas = new Set(rev.defeitos.filter((d) => DEFEITOS_GRAVES.has(d.tipo)).map((d) => d.momento).filter((x): x is string => Boolean(x)));
     if (reprovadas.size) editor = { ...editor, momentos: editor.momentos.filter((x) => !reprovadas.has(String(x.id))) };
+    // O lugar da peça que saiu: o B-roll que ainda falta entra, e o resolvedor põe o sublinhado da ênfase no buraco longo.
+    const comBroll = { ...(sm.insercoes ?? {}), ...(await brollsQueFaltam(v, lido, editor, sm.insercoes ?? {})) };
     // Os vídeos da Higgsfield que já ficaram prontos trocam as fotos no final.
-    const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(sm.insercoes ?? {}, sm.videos, { projectId: v.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? sm.insercoes ?? {} : sm.insercoes ?? {};
+    const comVideos = sm.videos?.length ? (await concluirVideosDasInsercoes(comBroll, sm.videos, { projectId: v.projectId, esperarMs: 60_000 }).catch(() => null))?.insercoes ?? comBroll : comBroll;
     const r = resolverSobMedida(v, lido, editor, comVideos);
     const novo: EstadoDoSobMedida = { ...sm, insercoes: comVideos, editor, edicao: r.edicao, fase: "final", historico, soIds: null, medidas: medidasDaEdicao(r.edicao) };
     await enviarSobMedida(v, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);

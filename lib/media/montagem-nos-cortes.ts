@@ -63,10 +63,10 @@ import {
   type EdicaoResolvida,
 } from "@/lib/media/editor-sob-medida";
 import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
-import { escreverBloco, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
+import { escreverBloco, manterDensidade, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
 import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
-import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
+import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, garantirGancho, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { levarEdicaoParaFalaNova, tempoNaFalaNova } from "@/lib/media/edicao-na-fala-nova";
 
@@ -693,7 +693,9 @@ export function resolverCorteSobMedida(
   });
   const ar = arejarCorte(r.edicao, DURACAO_MINIMA_DA_PECA);
   const a = adensarCorte(ar.edicao, DURACAO_MAXIMA_DA_PECA);
-  return { edicao: a.edicao, avisos: [...r.avisos, ...ar.mudancas, ...(a.esticadas ? [`adensar: ${a.esticadas} peça(s) esticada(s) até a próxima`] : [])] };
+  // O GANCHO NO SEGUNDO 0, SEMPRE (03/10, à noite): sem peça de gancho no começo, o título do corte entra.
+  const g = garantirGancho(a.edicao, t.titulo, PECAS.find((x) => x.nome === "titulo")!);
+  return { edicao: g.edicao, avisos: [...r.avisos, ...ar.mudancas, ...(a.esticadas ? [`adensar: ${a.esticadas} peça(s) esticada(s) até a próxima`] : []), ...(g.mudou ? [g.mudou] : [])] };
 }
 
 /** O que o editor recebe para um corte. */
@@ -975,10 +977,32 @@ async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: Tre
     if (rev.defeitos.length && sm.rodada < 2) {
       const entrada = await entradaDoCorte(video, indice, t, sm, []);
       const quadrosDoDefeito = rev.olhados.filter((q) => rev.defeitos.some((d) => Math.abs(d.t - q.t) < 0.05));
-      editor = (await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito)).edicao;
-      const soIds = [...new Set(rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)))];
-      const r = resolverCorteSobMedida(video, t, sm, editor, sm.insercoes ?? {});
-      const novo: SobMedidaDoCorte = { ...sm, editor, edicao: r.edicao, fase: "previa", rodada: sm.rodada + 1, soIds, historico, medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) } };
+      const c = await consertarEdicao(entrada, editor, rev.defeitos, quadrosDoDefeito);
+      // O B-roll que o conserto pediu no lugar de uma peça grave (banco grátis, 30 s de prazo).
+      const faltam = (c.edicao.broll ?? []).filter((b) => b.id && !(sm.insercoes ?? {})[String(b.id)]);
+      const novosBroll = faltam.length
+        ? ((await gerarBrolls({ ...c.edicao, broll: faltam }, { formato: "9:16", projectId: video.projectId, referencia: `${video.id}-corte-${indice}`, teto: 4, prazoMs: 30_000 }).catch(() => null))?.insercoes ?? {})
+        : {};
+      const insercoes = { ...(sm.insercoes ?? {}), ...novosBroll };
+      // A DENSIDADE NUNCA CAI NO CONSERTO (03/10, à noite): o corte 0 de cmurtv2zg foi de 57% a 34% numa rodada.
+      const graves = new Set(rev.defeitos.filter((d) => DEFEITOS_GRAVES.has(d.tipo)).map((d) => d.momento).filter((x): x is string => Boolean(x)));
+      const md = manterDensidade(editor, c.edicao, graves, (x) => medidasDaEdicao(resolverCorteSobMedida(video, t, sm, x, insercoes).edicao).comPecaOuMidia);
+      const anteriores = new Set(editor.momentos.map((m) => String(m.id)));
+      editor = md.edicao;
+      const soIds = [...new Set([...rev.defeitos.map((d) => d.momento).filter((x): x is string => Boolean(x)), ...editor.momentos.map((m) => String(m.id)).filter((id) => !anteriores.has(id))])];
+      const r = resolverCorteSobMedida(video, t, sm, editor, insercoes);
+      const novo: SobMedidaDoCorte = {
+        ...sm,
+        editor,
+        insercoes,
+        edicao: r.edicao,
+        fase: "previa",
+        rodada: sm.rodada + 1,
+        soIds,
+        historico,
+        medidas: { ...medidasDaEdicao(r.edicao), densidade: densidadeDoCorte(r.edicao) },
+        avisos: [...(sm.avisos ?? []), `rodada ${sm.rodada}: ${c.trocados} refeitos, ${c.removidos} removidos${md.motivo ? `; densidade ${md.antes} -> ${md.depois}: ${md.motivo}` : ""}`, ...c.erros].slice(-30),
+      };
       await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
       return;
     }

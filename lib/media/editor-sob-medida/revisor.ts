@@ -35,6 +35,31 @@ const POR_CHAMADA = 12;
 export const NOTA_MINIMA = 7;
 /** No máximo tantos defeitos de qualidade em trecho sem peça por revisão (cada um vira momento novo). */
 const MAX_VAZIOS = 3;
+/** Os defeitos que tiram a peça (espelho de DEFEITOS_GRAVES em corte.ts). */
+const GRAVES = new Set(["ilegivel", "cobre", "incoerente", "imagem"]);
+
+/**
+ * OS PIORES PRIMEIRO, COM TETO (03/10, à noite): uma peça entra uma vez só
+ * (com o defeito mais sério dela) e a lista vai ao conserto na ordem grave,
+ * vazio, feio, qualidade (a nota mais baixa antes). O resto fica registrado,
+ * mas não vai ao conserto nesta rodada: o conserto de 124 peças numa chamada
+ * só refazia uma parte e o código apagava o resto.
+ */
+export function priorizarDefeitos(defeitos: DefeitoDaRevisao[], teto: number): DefeitoDaRevisao[] {
+  const peso = (d: DefeitoDaRevisao) => (GRAVES.has(d.tipo) ? 0 : d.tipo === "vazio" ? 1 : d.tipo === "feio" ? 2 : 3);
+  const notaDe = (d: DefeitoDaRevisao) => d.nota ?? 10;
+  const ordem = [...defeitos].sort((a, b) => peso(a) - peso(b) || notaDe(a) - notaDe(b) || a.t - b.t);
+  const vistos = new Set<string>();
+  const saida: DefeitoDaRevisao[] = [];
+  for (const d of ordem) {
+    const chave = d.momento ?? `vazio-${Math.round(d.t / 10)}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    saida.push(d);
+    if (saida.length >= teto) break;
+  }
+  return saida.sort((a, b) => a.t - b.t);
+}
 
 export const CRITERIOS = ["impacto", "hierarquia", "profundidade", "densidade", "coerencia"] as const;
 export type Criterio = (typeof CRITERIOS)[number];
@@ -121,6 +146,8 @@ export type QualidadeDoQuadro = { t: number; momento: string | null; notas: Nota
 
 export type ResultadoDaRevisao = {
   defeitos: DefeitoDaRevisao[];
+  /** Quantos defeitos o juiz achou antes do teto da rodada (os que foram ao conserto estão em `defeitos`). */
+  achados?: number;
   quadros: number;
   nota: number | null;
   falta: string[];
@@ -135,8 +162,39 @@ export type ResultadoDaRevisao = {
   };
 };
 
-/** Os instantes a olhar: cada peça assentada (e depois do último passo) e uma amostra a cada `passo` s. */
-export function instantesDaRevisaoSobMedida(ed: EdicaoResolvida, passo = 20, soIds?: string[] | null): Array<{ t: number; momento: string | null }> {
+/**
+ * A AMOSTRA POR BLOCO DO COMPLETO (03/10, à noite): o juiz olhava cada peça
+ * do completo de 17 min (170 quadros, 186 defeitos numa rodada) e o conserto
+ * não dava conta de tudo. Com `tetoPorBloco`, cada bloco de `BLOCO_DA_AMOSTRA`
+ * segundos leva no máximo tantos quadros, espalhados pelo bloco; a peça que
+ * não foi olhada fica como está (não vira defeito).
+ */
+export const BLOCO_DA_AMOSTRA = 300;
+
+function espalhar<T extends { t: number }>(xs: T[], n: number): T[] {
+  if (xs.length <= n) return xs;
+  const passo = xs.length / n;
+  return Array.from({ length: n }, (_, i) => xs[Math.min(xs.length - 1, Math.floor(i * passo + passo / 2))]);
+}
+
+/** Os instantes a olhar: cada peça assentada (e depois do último passo) e uma amostra a cada `passo` s; com `tetoPorBloco`, no máximo tantos por bloco de 5 min. */
+export function instantesDaRevisaoSobMedida(ed: EdicaoResolvida, passo = 20, soIds?: string[] | null, tetoPorBloco?: number): Array<{ t: number; momento: string | null }> {
+  const todos = instantesSemTeto(ed, passo, soIds);
+  if (!tetoPorBloco || tetoPorBloco <= 0) return todos;
+  const saida: Array<{ t: number; momento: string | null }> = [];
+  for (let b = 0; b * BLOCO_DA_AMOSTRA < ed.duracao; b++) {
+    const doBloco = todos.filter((x) => x.t >= b * BLOCO_DA_AMOSTRA && x.t < (b + 1) * BLOCO_DA_AMOSTRA);
+    // O trecho sem peça entra sempre (no máximo 1/4 do teto): é ali que o vazio aparece.
+    const vazios = espalhar(doBloco.filter((x) => !x.momento), Math.max(1, Math.floor(tetoPorBloco / 4)));
+    // Uma olhada por peça (a primeira, assentada), espalhadas pelo bloco.
+    const vistos = new Set<string>();
+    const pecas = doBloco.filter((x) => x.momento && !vistos.has(x.momento) && vistos.add(x.momento));
+    saida.push(...vazios, ...espalhar(pecas, tetoPorBloco - vazios.length));
+  }
+  return saida.sort((a, b) => a.t - b.t);
+}
+
+function instantesSemTeto(ed: EdicaoResolvida, passo: number, soIds?: string[] | null): Array<{ t: number; momento: string | null }> {
   const saida: Array<{ t: number; momento: string | null }> = [];
   for (const c of ed.camadas) {
     if (c.peca === "moldura-do-cartao") continue;
@@ -184,6 +242,7 @@ export function defeitosDeQualidade(porQuadro: QualidadeDoQuadro[], minima = NOT
         momento: q.momento,
         t: q.t,
         tipo: "qualidade",
+        nota: q.menor,
         descricao: `abaixo da referência do estilo (${fracos.join(", ")}, de 10)`.slice(0, 220),
         conserto: (q.conserto || "subir ao nível da referência: título maior, profundidade e cor da marca").slice(0, 220),
       };
@@ -214,8 +273,12 @@ export async function revisarPrevia(p: {
   passo?: number;
   /** Para a prova local medir o custo sem gravar no banco. */
   perguntar?: Perguntar;
+  /** O completo: no máximo tantos quadros por bloco de 5 min (o teto de custo do juiz). */
+  tetoPorBloco?: number;
+  /** O completo: no máximo tantos defeitos vão ao conserto por rodada, os piores primeiro. */
+  tetoDeDefeitos?: number;
 }): Promise<ResultadoDaRevisao & { olhados: Array<{ t: number; momento: string | null; base64: string }> }> {
-  const alvo = instantesDaRevisaoSobMedida(p.edicao, p.passo ?? 20, p.soIds);
+  const alvo = instantesDaRevisaoSobMedida(p.edicao, p.passo ?? 20, p.soIds, p.tetoPorBloco);
   const desloc = p.deslocamento ?? 0;
   const perguntar = p.perguntar ?? askClaudeComImagens;
   const refs = imagensDeReferencia(p.estiloId);
@@ -278,6 +341,8 @@ export async function revisarPrevia(p: {
   const fracos = defeitosDeQualidade(porQuadro);
   const consertar = typeof p.rodada === "number" && p.rodada < 2;
   if (consertar) defeitos.push(...fracos);
+  const achados = defeitos.length;
+  if (p.tetoDeDefeitos) defeitos.splice(0, defeitos.length, ...priorizarDefeitos(defeitos, p.tetoDeDefeitos));
   const media = porQuadro.length
     ? (Object.fromEntries(CRITERIOS.map((c) => [c, +(porQuadro.reduce((s, q) => s + q.notas[c], 0) / porQuadro.length).toFixed(1)])) as NotasDoQuadro)
     : null;
@@ -285,6 +350,7 @@ export async function revisarPrevia(p: {
   const notaDoJuiz = media ? +(CRITERIOS.reduce((s, c) => s + media[c], 0) / CRITERIOS.length).toFixed(1) : null;
   return {
     defeitos,
+    achados,
     quadros: olhados.length,
     nota: notaDoJuiz ?? (notas.length ? +(notas.reduce((s, x) => s + x, 0) / notas.length).toFixed(1) : null),
     falta,
