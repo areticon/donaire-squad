@@ -5,6 +5,8 @@ import { extrairJson } from "@/lib/media/diretor-de-montagem";
 import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoResolvida } from "@/lib/media/editor-sob-medida/tipos";
 import type { DefeitoDaRevisao } from "@/lib/media/editor-sob-medida/editor";
+import { ehApoio } from "@/lib/media/editor-sob-medida/pecas";
+import { QUADROS_DA_LOUSA } from "@/lib/media/referencias-de-estilo/pecas-da-lousa";
 
 /**
  * O REVISOR COM VISÃO DO EDITOR SOB MEDIDA (03/10/2026): olha os quadros da
@@ -71,13 +73,18 @@ export type NotasDoQuadro = Record<Criterio, number>;
  * pasta para a função da Vercel). Quatro, escolhidos para cobrir os modos do
  * estilo: tela cheia, conceito sobre a pessoa, cartão ao lado, slate.
  */
-const IMAGENS_DE_REFERENCIA: Record<string, Array<{ arquivo: string; descricao: string }>> = {
-  lousa: [
-    { arquivo: "dan-martell/slate-fases.jpg", descricao: "tela cheia: título enorme com sublinhado ciano, seis blocos ciano com brilho em perspectiva, lousa escura com curvas de nível" },
-    { arquivo: "dan-martell/conceito-durable.jpg", descricao: "conceito sobre a pessoa: duas palavras em serifa itálica gigante com brilho no espaço livre do cenário quente" },
-    { arquivo: "dan-martell/card-lista.jpg", descricao: "cartão escuro arredondado ao lado da pessoa, título ciano, item numerado em branco bold" },
-    { arquivo: "dan-martell/barra-1080.jpg", descricao: "dado em tela cheia: título com número em ciano itálico, barra com borda neon, rótulos em serifa" },
-  ],
+type Referencia = { arquivo: string; descricao: string; peca?: string };
+
+/**
+ * OS 14 QUADROS DE TREINO DO DONO (04/10): na lousa e no consorcio o juiz
+ * compara com os quadros reais do Dan Martell (dm-01 a dm-14). No consorcio a
+ * composição é a mesma e o acabamento é de luxo: o juiz julga a composição e
+ * o nível, com o dourado no lugar do azul.
+ */
+const LUXO = " (COMPOSIÇÃO de referência; neste estilo o acabamento é de LUXO: preto e marinho, dourado metálico com reflexo, serifa elegante no título, brilho dourado suave. Julgue a composição, o movimento e o nível, não a cor azul)";
+const IMAGENS_DE_REFERENCIA: Record<string, Referencia[]> = {
+  lousa: QUADROS_DA_LOUSA,
+  consorcio: QUADROS_DA_LOUSA.map((q) => ({ ...q, descricao: q.descricao + LUXO })),
   vox: [
     { arquivo: "vox/cartao-pergunta.jpg", descricao: "título gigante em três linhas ATRÁS da pessoa recortada, cor forte sobre fundo claro texturizado" },
     { arquivo: "vox/stats-pessoa.jpg", descricao: "pessoa de perfil à esquerda; no espaço livre, nome e cargo, rótulo e o número dito enorme na cor de destaque" },
@@ -86,25 +93,40 @@ const IMAGENS_DE_REFERENCIA: Record<string, Array<{ arquivo: string; descricao: 
   ],
 };
 
-const cacheDeImagens = new Map<string, Array<{ base64: string; rotulo: string }>>();
+const cacheDeImagens = new Map<string, string | null>();
 
-/** As imagens de referência do estilo, prontas para a chamada (vazio quando o estilo não tem ou o disco falha). */
-export function imagensDeReferencia(estiloId: string | null | undefined): Array<{ base64: string; rotulo: string }> {
+/** Até tantas imagens de referência por chamada (o custo): as das peças do lote primeiro. */
+const MAX_REFERENCIAS = 6;
+/** Sem peça da lousa no lote, os quadros que dão a régua geral: palavra gigante, legenda, pilha acesa, busca. */
+const REFERENCIAS_PADRAO = ["dm-01", "dm-04", "dm-07", "dm-02"];
+
+/**
+ * As imagens de referência do estilo, prontas para a chamada (vazio quando o
+ * estilo não tem ou o disco falha). Com `pecas`, as referências das peças que
+ * estão no lote vêm primeiro, até MAX_REFERENCIAS.
+ */
+export function imagensDeReferencia(estiloId: string | null | undefined, pecas?: string[] | null): Array<{ base64: string; rotulo: string }> {
   if (!estiloId) return [];
   const lista = IMAGENS_DE_REFERENCIA[estiloId];
   if (!lista) return [];
-  const pronto = cacheDeImagens.get(estiloId);
-  if (pronto) return pronto;
+  const nas = new Set(pecas ?? []);
+  const doLote = lista.filter((r) => r.peca && nas.has(r.peca));
+  const padrao = lista.filter((r) => REFERENCIAS_PADRAO.some((x) => r.arquivo.includes(x)));
+  const escolhidas = [...new Set([...doLote, ...padrao, ...lista])].slice(0, MAX_REFERENCIAS);
   const saida: Array<{ base64: string; rotulo: string }> = [];
-  for (const [i, r] of lista.entries()) {
-    try {
-      const b = readFileSync(join(process.cwd(), "docs", "overlays", "referencias", r.arquivo));
-      saida.push({ base64: b.toString("base64"), rotulo: `REF ${i + 1} (REFERÊNCIA REAL do estilo, NÃO é da prévia; só a régua de qualidade, o formato pode ser outro): ${r.descricao}` });
-    } catch {
-      // Sem a imagem, o juiz usa a descrição dos quadros típicos.
+  for (const [i, r] of escolhidas.entries()) {
+    let b64 = cacheDeImagens.get(r.arquivo);
+    if (b64 === undefined) {
+      try {
+        b64 = readFileSync(join(process.cwd(), "docs", "overlays", "referencias", r.arquivo)).toString("base64");
+      } catch {
+        // Sem a imagem, o juiz usa a descrição dos quadros típicos.
+        b64 = null;
+      }
+      cacheDeImagens.set(r.arquivo, b64);
     }
+    if (b64) saida.push({ base64: b64, rotulo: `REF ${i + 1} (REFERÊNCIA REAL do estilo, NÃO é da prévia; só a régua de qualidade, o formato pode ser outro): ${r.descricao}` });
   }
-  cacheDeImagens.set(estiloId, saida);
   return saida;
 }
 
@@ -197,7 +219,7 @@ export function instantesDaRevisaoSobMedida(ed: EdicaoResolvida, passo = 20, soI
 function instantesSemTeto(ed: EdicaoResolvida, passo: number, soIds?: string[] | null): Array<{ t: number; momento: string | null }> {
   const saida: Array<{ t: number; momento: string | null }> = [];
   for (const c of ed.camadas) {
-    if (c.peca === "moldura-do-cartao") continue;
+    if (ehApoio(c)) continue;
     if (soIds && !soIds.includes(c.id)) continue;
     const assentado = Math.min(c.ate - 0.2, c.de + c.entrada + 0.35);
     saida.push({ t: assentado, momento: c.id });
@@ -206,7 +228,7 @@ function instantesSemTeto(ed: EdicaoResolvida, passo: number, soIds?: string[] |
   }
   if (!soIds) {
     for (let t = passo / 2; t < ed.duracao; t += passo) {
-      const ocupado = ed.camadas.some((c) => t >= c.de && t < c.ate);
+      const ocupado = ed.camadas.some((c) => !ehApoio(c) && t >= c.de && t < c.ate);
       if (!ocupado) saida.push({ t, momento: null });
     }
   }
@@ -281,7 +303,7 @@ export async function revisarPrevia(p: {
   const alvo = instantesDaRevisaoSobMedida(p.edicao, p.passo ?? 20, p.soIds, p.tetoPorBloco);
   const desloc = p.deslocamento ?? 0;
   const perguntar = p.perguntar ?? askClaudeComImagens;
-  const refs = imagensDeReferencia(p.estiloId);
+  const refs = imagensDeReferencia(p.estiloId, p.edicao.camadas.map((c) => c.peca));
   const defeitos: DefeitoDaRevisao[] = [];
   const notas: number[] = [];
   const falta: string[] = [];

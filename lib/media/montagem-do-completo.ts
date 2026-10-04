@@ -1842,6 +1842,7 @@ async function entradaDoEditor(v: VideoDoCompleto, m: MontagemDoCompleto, quadro
     duracao: m.fala!.duracao,
     formato: analise.altura > analise.largura ? "9:16" : "16:9",
     referencia: referenciaParaOEditor(sm.estiloId).texto,
+    estiloId: sm.estiloId,
     perfil: [perfilNoPrompt(perfil), `MARCA: cores ${marca.acento} (acento) e ${marca.escuro} (escuro); acabamento ${tema.visual}. Logo: ${v.logoUrl ? "sim" : "não (o fecho usa o nome do projeto)"}.`].join("\n"),
     roteiro: roteiroParaOEditor(m.roteiro),
     quadros,

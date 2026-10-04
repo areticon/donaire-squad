@@ -28,6 +28,12 @@ export type Tema = {
   caixaAlta: boolean;
   /** A cor da caixa da legenda (o escuro da marca levado ao quase preto). */
   escuroLegenda?: string;
+  /**
+   * O ACABAMENTO DAS PEÇAS DA LOUSA (04/10): "tecnologico" (a lousa do Dan
+   * Martell: azul, ciano, vidro claro) ou "luxo" (a autoridade high ticket:
+   * preto e marinho, dourado metálico, serifa elegante). Sem o campo, tecnológico.
+   */
+  acabamento?: "tecnologico" | "luxo";
 };
 
 export type CamadaResolvida = {

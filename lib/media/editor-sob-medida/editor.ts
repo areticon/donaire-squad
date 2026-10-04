@@ -26,7 +26,7 @@ import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-med
 export const MODELO_DO_EDITOR = process.env.EDITOR_SOB_MEDIDA_MODELO || "claude-opus-5";
 const BLOCO_SEG = 300;
 
-const SISTEMA = `Você é o editor de vídeo e motion designer sênior da Demandou. Você não aplica um template: você ESCREVE a edição de um vídeo específico, peça por peça, como foi escrito o vídeo de pitch da nossa landing.
+const sistemaDoEditor = (estiloId?: string | null) => `Você é o editor de vídeo e motion designer sênior da Demandou. Você não aplica um template: você ESCREVE a edição de um vídeo específico, peça por peça, como foi escrito o vídeo de pitch da nossa landing.
 
 # O QUE FEZ O PITCH SER BOM (a régua)
 - Cada coisa importante que a voz diz GANHA FORMA na tela, no instante em que é dita: falou de três saídas, entram três cartões, um por um, cada um na palavra dele; falou de 88%, o número conta até 88; falou "Roberto", a câmera vai até o Roberto.
@@ -88,7 +88,7 @@ Só um JSON, sem texto antes ou depois:
 }
 
 # O CATÁLOGO DE PEÇAS
-${catalogoNoPrompt()}`;
+${catalogoNoPrompt(estiloId)}`;
 
 /**
  * O BLOCO DE 5 MIN DO COMPLETO (03/10, à noite): o juiz reprovou 124 de 131
@@ -119,6 +119,8 @@ export type EntradaDoEditor = {
   projectId?: string | null;
   referenciaDeUso: string;
   modelo?: string;
+  /** O estilo escolhido: o catálogo leva só as peças dele (as da lousa vão para lousa e consorcio). Sem o campo, o catálogo inteiro, com as da lousa marcadas. */
+  estiloId?: string | null;
   /** Regras a mais para a tarefa (o corte curto vertical, lib/media/editor-sob-medida/corte.ts). */
   instrucoes?: string | null;
   /** Prazo de cada chamada (padrão 300 s) e tentativas do bloco (padrão 2): o corte cabe na passada do cron. */
@@ -167,7 +169,7 @@ export function blocosDoEditor(frases: Frase[], duracao: number): Array<{ de: nu
 
 async function chamar(sistemaExtra: string, mensagem: string, quadros: Array<{ t: number; base64: string }>, e: EntradaDoEditor, operacao: string): Promise<unknown> {
   const resposta = await askClaudeComImagens(
-    SISTEMA,
+    sistemaDoEditor(e.estiloId),
     `${sistemaExtra}\n\n${mensagem}`,
     quadros.map((q) => ({ base64: q.base64, rotulo: `Quadro da gravação em ${q.t.toFixed(1)} s:` })),
     {

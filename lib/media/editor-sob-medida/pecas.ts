@@ -33,7 +33,22 @@ export type FichaDaPeca = {
   props: string;
   /** As passadas do Remotion em que a peça é desenhada (padrão pelo plano: tela só "frente"; sobre e lado com o "vidro"). */
   passes?: Array<"frente" | "atras" | "vidro">;
+  /** A peça se mexe o tempo todo (digitação): todo quadro vai ao Chrome. */
+  continua?: boolean;
+  /** Só nos estilos que têm o acabamento dela (as peças da lousa: lousa e consorcio). */
+  estilos?: string[];
 };
+
+/** Os estilos com as peças da lousa (04/10): o tecnológico do Dan Martell e o luxo da autoridade high ticket. */
+export const ESTILOS_DA_LOUSA = ["lousa", "consorcio"];
+
+/**
+ * As camadas de APOIO, que o resolvedor põe sozinho e que não contam como
+ * peça (densidade, ritmo, gancho, revisão): a moldura do cartão, a legenda
+ * com a palavra sublinhada e a grade de cor do B-roll.
+ */
+export const CAMADAS_DE_APOIO = new Set(["moldura-do-cartao", "legenda-destaque", "grade-azul"]);
+export const ehApoio = (c: { peca: string }) => CAMADAS_DE_APOIO.has(c.peca);
 
 /**
  * AS PASSADAS E O MOVIMENTO CONTÍNUO (03/10, segunda volta): a peça de tela
@@ -45,7 +60,7 @@ export function passesDaPeca(f: FichaDaPeca): Array<"frente" | "atras" | "vidro"
   if (f.passes) return f.passes;
   return f.plano === "tela" ? ["frente"] : ["vidro", "frente"];
 }
-export const pecaContinua = (f: FichaDaPeca) => f.plano === "tela" || f.nome === "titulo-atras";
+export const pecaContinua = (f: FichaDaPeca) => f.plano === "tela" || f.nome === "titulo-atras" || Boolean(f.continua);
 
 export const PECAS: FichaDaPeca[] = [
   {
@@ -188,6 +203,68 @@ export const PECAS: FichaDaPeca[] = [
     quando: "Uma EVOLUÇÃO no tempo com números DITOS (o faturamento foi de 12 para 41 mil, a igreja passou de 30 para 300 pessoas): a linha se desenha passando pelos valores, com eixos e marcações. Nunca invente valor; com 2 valores ditos já vale.",
     props: 'titulo? (até 7 palavras, **destaque**), rotulo?, unidade? (" mil", "%", " pessoas"), pontos [{rotulo (quando: "2019", "Jan", "Antes"), valor (número dito)}]',
   },
+  // ─── As peças da lousa (04/10): dos 14 quadros reais do Dan Martell; no consórcio, o acabamento de luxo. ───
+  {
+    nome: "palavra-gigante", plano: "sobre", estilos: ESTILOS_DA_LOUSA, entrada: 0.9, saida: 0.3, evento: 0.6, duracao: [1.2, 3],
+    quando: "O IMPACTO: a palavra mais forte da frase, dita com ênfase (\"estraga TUDO\", \"NUNCA\", \"DOBROU\"). A gravação escurece e desfoca e a palavra ocupa a tela, com a menor apoiada nela. Uma a cada 30 a 60 s; é a peça do soco.",
+    props: "palavra (1 palavra do falante, até 9 letras), apoio? (1 ou 2 palavras que vêm antes dela na fala, pequenas)",
+  },
+  {
+    nome: "busca", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.8, duracao: [2.5, 6], umEvento: true,
+    quando: "A fala faz uma PERGUNTA ou cita uma busca, uma pesquisa, uma ferramenta de IA (\"o que você pesquisaria\", \"pergunta pro Claude\"): a barra de busca de vidro com a pergunta sendo digitada; o evento (opcional) vira a pílula \"Pensando...\".",
+    props: 'texto (a pergunta como foi dita, até 9 palavras), pensando? (false para não pensar, ou o texto da pílula), marca? (a ferramenta citada: "Google", "Claude", "Perplexity"; o ícone oficial entra)',
+  },
+  {
+    nome: "chat", plano: "sobre", estilos: ESTILOS_DA_LOUSA, continua: true, entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [3, 7],
+    quando: "A fala dita um PEDIDO para uma IA ou um assistente (\"eu falo pra ele: organiza meus recibos\"), ou mostra como se escreve um prompt: a caixa de chat embaixo, sobre a pessoa, com o texto digitando.",
+    props: 'texto (o pedido como foi dito, até 30 palavras), marca? (a IA citada: "Claude", "Gemini"; o nome e o ícone dela entram), rotulo? (a pílula, padrão "Pedir aprovação")',
+  },
+  {
+    nome: "pilha-passos", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.7, duracao: [3.5, 9], eventosDe: "itens", maxItens: 5,
+    quando: "A fala ENUMERA passos, camadas, pilares (os 4 passos, a pilha, o método): título com brilho e os losangos numerados em pilha 3D; cada passo acende na palavra dele e ganha a linha com o nome ao lado. Neste estilo, prefira a passos-foco e a cartoes.",
+    props: "titulo (até 7 palavras), itens [{rotulo (até 6 palavras)}] (2 a 5)",
+  },
+  {
+    nome: "marca-brilho", plano: "sobre", passes: ["frente"], estilos: ESTILOS_DA_LOUSA, entrada: 1.0, saida: 0.3, evento: 0.6, duracao: [2, 4.5],
+    quando: "A fala cita uma MARCA, um produto, uma ferramenta ou o nome de um método: o ícone com brilho e o nome grande ao lado da pessoa. Marca de terceiros citada usa o ícone oficial; a do próprio cliente, a logo (usarLogo).",
+    props: 'nome (como foi dito, até 3 palavras), marca? (o nome da marca citada, para o ícone oficial), icone? (ícone genérico do catálogo quando não é marca), usarLogo? (true só para a marca do PRÓPRIO cliente), lado? ("direita" | "esquerda", o lado vazio do quadro)',
+  },
+  {
+    nome: "notebook", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.8, duracao: [3, 8], eventosDe: "campos", maxItens: 4,
+    quando: "A fala explica um PROCESSO ou um SISTEMA (o formulário, o pedido, o cadastro, o fluxo da empresa): o notebook em 3D com a tela de um formulário; a cada evento o cursor vai ao campo e o valor é digitado.",
+    props: "titulo (o nome do formulário ou do processo, até 5 palavras), subtitulo? (até 9 palavras), campos [{rotulo (até 3 palavras), valor (até 4 palavras, do que foi dito)}] (2 a 4)",
+  },
+  {
+    nome: "ilustracao-traco", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
+    quando: "A fala é sobre uma IDEIA, a MENTE, o pensamento, a decisão interior (\"o trabalho de verdade está em você\"): o desenho de traço apagado ao fundo e a frase sendo digitada por cima.",
+    props: 'texto (a frase dita, até 8 palavras), desenho ("cerebro" para mente e pensamento, "lampada" para ideia, ou um ícone do catálogo)',
+  },
+  {
+    nome: "material", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
+    quando: "A fala oferece um MATERIAL, um e-book, um guia, uma planilha, um curso ou a oferta (\"eu montei um guia\", \"baixe o material\"): a capa com o título gigante e as folhas abrindo em leque atrás.",
+    props: "titulo (o nome do material como foi dito, 2 a 4 palavras), icone? (do catálogo: documento, livro, grafico, cadeado, chave), marca?",
+  },
+  {
+    nome: "seguir", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 6],
+    quando: "A CHAMADA PARA SEGUIR no fechamento (\"me segue\", \"manda DM com a palavra\"): o celular com o perfil do PRÓPRIO cliente e a pílula da chamada. Só com o @ do cliente (dito na fala ou nos links dele); nunca o perfil de outra pessoa.",
+    props: 'arroba (o @ do cliente), nome? (o nome do cliente), chamada (a chamada como foi dita, até 14 palavras), rede? ("Instagram", "TikTok", "YouTube"), bio? (até 12 palavras, só o que é verdade do cliente)',
+  },
+  {
+    nome: "ferramentas", plano: "tela", estilos: ESTILOS_DA_LOUSA, entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 7], eventosDe: "itens", maxItens: 4,
+    quando: "A fala cita 2 a 4 FERRAMENTAS ou apps (\"eu uso Notion, Drive e Obsidian\"): cada uma numa placa com moldura cromada (dourada no luxo), entrando quando é dita, com o ícone oficial da marca.",
+    props: "itens [{marca (o nome da ferramenta como foi dito), icone? (genérico, quando não é marca), rotulo? (até 2 palavras), usarLogo? (só a do próprio cliente)}]",
+  },
+  // As camadas de apoio da lousa: o resolvedor põe, o editor não escreve.
+  {
+    nome: "legenda-destaque", plano: "sobre", passes: ["frente"], estilos: ESTILOS_DA_LOUSA, entrada: 0.14, saida: 0.12, evento: 0.35, duracao: [0.4, 6], umEvento: true,
+    quando: "(automática) a legenda da lousa: a frase em negrito embaixo com UMA palavra sublinhada.",
+    props: "texto (com **a palavra-chave**)",
+  },
+  {
+    nome: "grade-azul", plano: "sobre", passes: ["frente"], estilos: ESTILOS_DA_LOUSA, entrada: 0.2, saida: 0.2, evento: 0.5, duracao: [0.5, 8],
+    quando: "(automática) a grade de cor escura do estilo por cima do B-roll.",
+    props: "nenhuma",
+  },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],
     quando: "As últimas palavras do vídeo (a chamada final): a marca do cliente, a frase final e a chamada para ação dita.",
@@ -197,12 +274,20 @@ export const PECAS: FichaDaPeca[] = [
 
 export const FICHAS: Record<string, FichaDaPeca> = Object.fromEntries(PECAS.map((p) => [p.nome, p]));
 
-/** O catálogo como texto para o prompt. */
-export function catalogoNoPrompt(): string {
+/** A ficha vale no estilo (sem `estilos`, vale em todos). */
+export const pecaNoEstilo = (f: FichaDaPeca, estiloId: string | null | undefined) => !f.estilos || f.estilos.includes(String(estiloId ?? ""));
+
+/**
+ * O catálogo como texto para o prompt: só as peças do estilo, sem as camadas
+ * de apoio (o resolvedor as põe). Sem o estilo, as peças da lousa vão
+ * marcadas como dela.
+ */
+export function catalogoNoPrompt(estiloId?: string | null): string {
+  const comEstilo = estiloId !== undefined;
   const grupo = (pl: PlanoDaPeca, titulo: string) =>
     `${titulo}\n` +
-    PECAS.filter((p) => p.plano === pl)
-      .map((p) => `- ${p.nome} (${p.duracao[0]} a ${p.duracao[1]} s${p.eventosDe ? `; um evento por item de "${p.eventosDe}"` : p.umEvento ? "; um evento" : ""}): ${p.quando}\n    props: ${p.props}`)
+    PECAS.filter((p) => p.plano === pl && !CAMADAS_DE_APOIO.has(p.nome) && (!comEstilo || pecaNoEstilo(p, estiloId)))
+      .map((p) => `- ${p.nome}${!comEstilo && p.estilos ? ` [só nos estilos ${p.estilos.join(" e ")}]` : ""} (${p.duracao[0]} a ${p.duracao[1]} s${p.eventosDe ? `; um evento por item de "${p.eventosDe}"` : p.umEvento ? "; um evento" : ""}): ${p.quando}\n    props: ${p.props}`)
       .join("\n");
   return [
     grupo("sobre", "PEÇAS SOBRE A PESSOA (ela continua cheia na tela):"),

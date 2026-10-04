@@ -1,4 +1,5 @@
 import { textoParaOPrompt, type ReferenciaDeEstilo } from "@/lib/media/referencias-de-estilo/tipos";
+import { elementosDaLousa, momentosDaLousa } from "@/lib/media/referencias-de-estilo/pecas-da-lousa";
 
 /**
  * AUTORIDADE HIGH TICKET (03/10/2026): consultores, advogados, vendedores e
@@ -13,13 +14,24 @@ import { textoParaOPrompt, type ReferenciaDeEstilo } from "@/lib/media/referenci
  * credibilidade, legenda por frase, logo discreto, ensinar em vez de vender, e
  * as regras de cada conselho (OAB, Banco Central, CVM, Código de Defesa do
  * Consumidor): nada de promessa de resultado nem de sensacionalismo.
+ *
+ * O ACABAMENTO DE LUXO (04/10/2026, pedido do dono): a mesma estrutura e as
+ * mesmas peças da lousa do Dan Martell (pecas-da-lousa.ts: palavra gigante,
+ * interfaces de vidro digitando, legenda com a palavra sublinhada, pilha 3D
+ * de passos, capa de material, celular com a chamada, ferramentas em placas,
+ * notebook, B-roll escuro), com outro material: alto padrão que remete a
+ * riqueza, preto profundo e marinho, dourado metálico com reflexo, toques de
+ * vermelho, mármore, couro, metal escovado e vidro fumê, serifa elegante no
+ * título e sem serifa fina no apoio, brilho dourado suave no lugar do neon.
+ * As regras de cada conselho continuam valendo: luxo no acabamento, nunca
+ * promessa na fala.
  */
 export const CONSORCIO: ReferenciaDeEstilo = {
   id: "consorcio",
   nome: "Autoridade high ticket",
   inspiracao: "Reels de consultores, advogados, vendedores e mentores de alto valor (medidos em perfis de consórcio)",
   essencia:
-    "Social, sério e premium: a pessoa real falando para a câmera desde o quadro zero, num lugar de trabalho crível, com a legenda grande em condensada pesada no MEIO do quadro. A prova aparece quando é dita: o valor numa faixa na cor da marca, o selo com o nome de quem fala, o cartão do comentário que está sendo respondido. Confiança acima de energia: luz de dia, cortes limpos, uma coisa por vez, nenhuma promessa que o setor proíbe.",
+    "Alto padrão: a mesma linguagem de peças da lousa do Dan Martell com acabamento de luxo (preto e marinho, dourado metálico, serifa elegante, brilho dourado suave). Social, sério e premium: a pessoa real falando para a câmera desde o quadro zero, num lugar de trabalho crível, com a legenda grande em condensada pesada no MEIO do quadro. A prova aparece quando é dita: o valor numa faixa na cor da marca, o selo com o nome de quem fala, o cartão do comentário que está sendo respondido. Confiança acima de energia: luz de dia, cortes limpos, uma coisa por vez, nenhuma promessa que o setor proíbe.",
   estrutura: {
     abre:
       "UMA frase inteira do próprio vídeo, dita no quadro zero: a que tem o valor ou o dado (gancho de prova), senão a do formato (\"3 sinais de que...\", \"POV: dia de fechamento\") ou a virada. Selo com o nome no topo nos 3 primeiros segundos. Nunca pergunta solta, nunca promessa, nunca vinheta.",
@@ -38,6 +50,8 @@ export const CONSORCIO: ReferenciaDeEstilo = {
   },
   tipografia: {
     familias: [
+      { papel: "título das peças, palavra gigante, capa", familia: "Playfair Display", pesos: "700 e 800, dourado metálico", origem: "local" },
+      { papel: "apoio fino, rótulo espaçado", familia: "Geist", pesos: "400", origem: "local" },
       { papel: "legenda, faixa e palavra", familia: "Anton", pesos: "400 (já pesada), caixa alta", origem: "google-fonts e local", alternativa: "Oswald 700" },
       { papel: "selo, cartão do comentário, rótulo", familia: "Inter", pesos: "600 e 800", origem: "google-fonts", alternativa: "Liberation Sans Bold local" },
     ],
@@ -46,11 +60,16 @@ export const CONSORCIO: ReferenciaDeEstilo = {
     regras: [
       "Legenda branca com sombra macia de 10 px a 50%; sem contorno grosso, sem palavra a palavra estourando.",
       "Uma cor de destaque só: a da marca, na faixa e no check.",
-      "Nada de letra fina, serifa decorativa ou letra torta.",
+      "Serifa só a elegante do título (Playfair); nada de letra torta ou decorativa de brinquedo.",
+      "Dourado metálico com reflexo (degradê de #7A5A1C a #F7E7A8) no título e nos aros; brilho dourado suave, nunca neon.",
     ],
   },
   paleta: {
     tipica: [
+      { papel: "fundo preto profundo", hex: "#020206" },
+      { papel: "marinho", hex: "#0D1830" },
+      { papel: "dourado metálico", hex: "#D4AF37" },
+      { papel: "reflexo do dourado", hex: "#F7E7A8" },
       { papel: "faixa do valor (destaque)", hex: "#C8102E" },
       { papel: "selo e cartão", hex: "#FFFFFF" },
       { papel: "texto sobre branco", hex: "#111111" },
@@ -62,6 +81,7 @@ export const CONSORCIO: ReferenciaDeEstilo = {
       "A faixa do valor, o círculo do check e a cartela da prova usam a cor forte da marca. Letra da faixa em branco ou quase preto, a que tiver mais contraste. O fundo é a gravação real; o escuro da marca só na cartela de ênfase, rara. Marca dourada ou preta (comum no premium) vira a faixa com letra no contraste.",
   },
   elementos: [
+    ...elementosDaLousa(true),
     {
       id: "faixa-valor",
       nome: "Faixa do valor",
@@ -144,11 +164,12 @@ export const CONSORCIO: ReferenciaDeEstilo = {
   insercoesGeradas: {
     quando: "Raras: a gravação real rende mais. No máximo uma cena por corte, só do objeto concreto dito.",
     tipos: [
+      "B-roll de alto padrão do que é dito: imóvel de alto padrão, carro, chave na mão, aperto de mão, relógio no pulso, mesa de reunião de mármore, sempre escuro e com luz dourada",
       "UM objeto do negócio dito (chave da casa, contrato assinado com a caneta, pasta de processo, agenda) em luz de dia, escritório real",
       "ação simples e real de 1,5 a 2,5 s com câmera calma (chave sendo posta na mesa)",
       "detalhe de mesa de reunião ou escritório premium sem pessoas e sem texto legível",
     ],
-    nunca: "dinheiro voando, pilha de notas, ouro, carro de luxo, mansão, iate, gente gerada, martelo de juiz caricato, texto ou número desenhado pelo modelo.",
+    nunca: "dinheiro voando, pilha de notas, barra de ouro caricata, iate, gente gerada, martelo de juiz caricato, texto ou número desenhado pelo modelo.",
   },
   som: {
     trilha: "Baixa e animada, 85 a 125 batidas por minuto (mediana medida: 100), corporativa moderna; nunca disputa a voz.",
@@ -158,12 +179,13 @@ export const CONSORCIO: ReferenciaDeEstilo = {
   nunca: [
     "Texto que promete o que o setor proíbe: contemplação garantida ou com data (Banco Central), resultado de causa ou ganho de processo (OAB, Provimento 205/2021), rendimento ou retorno garantido (CVM), faturamento garantido ou \"fique rico\" (Código de Defesa do Consumidor). Se a fala promete, a tela não repete.",
     "Sensacionalismo, comparação com outro profissional ou lista de clientes; nome de cliente real sem autorização.",
-    "Emoji de dinheiro, fogo ou foguete; imagem de luxo ou dinheiro.",
+    "Emoji de dinheiro, fogo ou foguete; dinheiro voando ou pilha de notas (o luxo é o acabamento, não ostentação).",
     "Valor na tela que não foi dito.",
     "Legenda no rodapé ou pequena; mais de 2 elementos além da legenda.",
     "Vinheta, logo grande ou abertura antes da fala.",
   ],
   momentos: [
+    ...momentosDaLousa(true),
     {
       quando: "A pessoa enumera 3 sinais ou erros",
       edicao:
@@ -195,9 +217,9 @@ export const CONSORCIO: ReferenciaDeEstilo = {
     },
   ],
   quadrosDeReferencia: [
-    "PREMIUM ESCURO: a pessoa em plano médio, roupa escura bem cortada, recortada na frente de um fundo quase preto (#0B0B0F) com luz lateral dourada; atrás dela, uma palavra gigante em Anton dourado (#C9A227) ocupando 80% da largura, parcialmente escondida pelos ombros; no meio do quadro, abaixo do rosto, duas palavras em condensada pesada branca com sombra; no topo, uma pílula azul-marinho (#0F1B2D) com o nome em branco e um fio dourado. Contraste máximo, nada de tom pastel nem fundo cinza apagado.",
+    "A PALAVRA GIGANTE DE LUXO: a gravação escurecida em marinho e desfocada e, no centro, a palavra do impacto em serifa elegante dourada metálica com reflexo, ocupando 75% da largura, com a menor em caixa alta espaçada por cima.",
+    "A PILHA DE OURO: fundo preto e marinho com luz dourada em feixe; título em serifa marfim no topo; losangos de aro dourado em pilha isométrica com números em serifa dourada; o passo dito acende com brilho dourado suave e a linha dourada leva ao nome em sem serifa fina.",
     "A PROVA EM VERMELHO: sobre a gravação levemente escurecida, uma faixa inclinada (-3 graus) em vermelho forte (#C8102E) cruzando o quadro de borda a borda, o valor dito em condensada branca de 10% a 12% da altura, com o número contando; embaixo, um rótulo em dourado (#C9A227) com o que é o valor (\"CARTA DE CRÉDITO\"). A faixa tem sombra e profundidade: ela fica na frente da pessoa e um brilho dourado passa por ela ao entrar.",
-    "A TELA CHEIA DE AUTORIDADE: fundo azul-marinho profundo (#0A1426) com gradiente para o preto e textura sutil; um número enorme em dourado metálico no centro (30% da altura) e, embaixo, a frase-regra em branco caixa alta; à direita, uma foto real do setor (escritório, chave, contrato assinado) em moldura fina dourada, com a pessoa num cartão arredondado no canto. Três planos de profundidade (fundo, dado, pessoa), nunca um slide chapado.",
   ],
   fontes: [
     "lib/media/biblias/consorcio.ts (medição de 02/10/2026: 163 posts, 18 Reels quadro a quadro, seis perfis do nicho)",

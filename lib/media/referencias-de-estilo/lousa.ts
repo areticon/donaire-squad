@@ -1,4 +1,5 @@
 import { textoParaOPrompt, type ReferenciaDeEstilo } from "@/lib/media/referencias-de-estilo/tipos";
+import { elementosDaLousa, momentosDaLousa } from "@/lib/media/referencias-de-estilo/pecas-da-lousa";
 
 /**
  * LOUSA DE NEGÓCIOS, LINGUAGEM DE DAN MARTELL (03/10/2026).
@@ -9,6 +10,16 @@ import { textoParaOPrompt, type ReferenciaDeEstilo } from "@/lib/media/referenci
  * por cima da medição: tecnologia pura e futurista, interface de painel (HUD),
  * linhas finas, gráficos, escada de passos, linha do tempo, lista com
  * desfoque, câmera em movimento e o gancho do MEIO do vídeo no começo, sempre.
+ *
+ * OS QUADROS DE TREINO DO DONO (04/10/2026): 14 quadros reais do Dan Martell
+ * (docs/overlays/referencias/dan-martell/bruno-0410) viraram as peças da
+ * lousa (pecas-da-lousa.ts): palavra gigante no impacto, barra de busca e
+ * chat quando a fala pergunta ou cita IA, pilha de passos quando enumera,
+ * marca com brilho quando cita marca, notebook quando fala de processo,
+ * ilustração de traço quando fala da mente, capa do material na oferta,
+ * celular com o perfil na chamada para seguir, ferramentas em placas, e a
+ * legenda com a palavra sublinhada como legenda do estilo. Elas vêm primeiro
+ * nos elementos e nos momentos: são o que o editor deve preferir.
  *
  * Convenção dos elementos (vale para todas as referências): a PRIMEIRA frase
  * de forma, animação e posição é a que vai para o prompt; as seguintes são o
@@ -65,6 +76,7 @@ export const LOUSA: ReferenciaDeEstilo = {
       "O ciano vira a cor de destaque da marca (clareada se não brilhar no preto); o fundo é o escuro da marca levado a quase preto. Verde e vermelho só para estado; se a marca for verde ou vermelha, o estado vira branco e cinza.",
   },
   elementos: [
+    ...elementosDaLousa(false),
     {
       id: "lousa-lista-desfoque",
       nome: "Lista de passos com desfoque",
@@ -189,6 +201,7 @@ export const LOUSA: ReferenciaDeEstilo = {
     "Legenda palavra a palavra amarela (isso é Hormozi).",
   ],
   momentos: [
+    ...momentosDaLousa(false),
     {
       quando: "A pessoa enumera 7 passos",
       edicao:
@@ -224,11 +237,12 @@ export const LOUSA: ReferenciaDeEstilo = {
     },
   ],
   quadrosDeReferencia: [
-    "Lousa quase preta com curvas de nível finas cinza; título branco bold com brilho no topo (\"7 passos para aumentar o valor da empresa\"); abaixo, 7 retângulos arredondados com borda ciano brilhante em duas linhas: o primeiro verde com o nome do passo em branco, o segundo ciano vivo, os outros teal escuro com números em serifa itálica cinza, desfocados.",
-    "A pessoa sentada à esquerda num cenário real e quente (madeira, luz âmbar, microfone de braço) e, no espaço vazio à direita, dois eixos brancos finos com brilho desenhados sobre a parede, rótulos em serifa itálica branca (\"Tempo\", \"Valor\") e uma curva ciano subindo.",
-    "Cartela escura de tela cheia com \"PASSO 03\" em mono ciano pequena entre duas linhas finas, o nome do passo em branco bold grande abaixo e quatro cantos de mira em L emoldurando o texto.",
+    "PALAVRA GIGANTE (dm-01): a gravação escurecida e desfocada e, no centro, a palavra do impacto em branco, grotesca pesada, ocupando 75% da largura, com a menor por cima dela (\"estraga TUDO\").",
+    "PILHA DE PASSOS ACESA (dm-07): fundo preto com feixe de luz azul esverdeado; título branco com brilho no topo; losangos numerados em pilha isométrica com borda cromada, acesos em brilho azul, e a linha de chamada com o nome do passo ativo à direita.",
+    "INTERFACE DE VIDRO (dm-02 e dm-11): a barra de busca clara com brilho branco no fundo azul profundo com luz subindo de baixo, a pergunta digitando com o cursor e a seta do mouse; ou a caixa de chat escura de borda clara embaixo, sobre a pessoa, com o pedido digitando.",
   ],
   fontes: [
+    "Quadros de treino do dono em 04/10: docs/overlays/referencias/dan-martell/bruno-0410 (dm-01 a dm-14).",
     "Quadros medidos em 25/08: docs/overlays/referencias/dan-martell (slate-7steps, slate-fases, card-lista, grafico-eixos, anotacao) e docs/overlays/BIBLIA-DE-ESTILO.md, Sistema 2.",
     "https://abhinavstellermedia.substack.com/p/how-dan-martell-grew-his-youtube (gancho imediato, muitos cortes nos primeiros 20 s)",
     "https://creators.spotify.com/pod/profile/1of10-podcast4/episodes/Meet-the-YouTube-Genius-Behind-Dan-Martell-Sam-Gaudet-e3ja3ph (Sam Gaudet, fórmula de gancho e retenção)",

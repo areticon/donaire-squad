@@ -1,5 +1,6 @@
 import type { Retangulo } from "@/lib/media/plano-de-montagem";
 import type { EdicaoResolvida, PlanoResolvido } from "@/lib/media/editor-sob-medida/tipos";
+import { ESTILOS_DA_LOUSA, ehApoio } from "@/lib/media/editor-sob-medida/pecas";
 
 /**
  * O EDITOR SOB MEDIDA NO CORTE (03/10/2026): o vídeo curto vertical passa
@@ -69,10 +70,30 @@ export function noQuadroDoCorte(r: Retangulo, q: Retangulo): Retangulo {
 }
 
 /**
+ * AS PEÇAS DA LOUSA NO CORTE (04/10, os 14 quadros reais do Dan Martell): no
+ * estilo lousa (tecnológico) e no consorcio (o mesmo desenho com acabamento
+ * de luxo), cada momento da fala tem a peça dele, e elas valem sobre as
+ * genéricas.
+ */
+export const INSTRUCOES_DA_LOUSA = [
+  `# AS PEÇAS DESTE ESTILO (valem sobre as genéricas: título, cartões e sublinhado ficam para o que estas não cobrem)`,
+  `- IMPACTO: "palavra-gigante" na palavra mais forte dita com ênfase (1 ou 2 no corte; pode ser o gancho do segundo 0).`,
+  `- PERGUNTA, BUSCA, PESQUISA ou IA citada: "busca" (a barra digitando; o evento é a IA "pensando").`,
+  `- PEDIDO ditado para uma IA ou assistente, ou um prompt: "chat" (a caixa embaixo, digitando).`,
+  `- ENUMERAÇÃO (passos, camadas, pilares): "pilha-passos", um evento por item na palavra dele.`,
+  `- MARCA, PRODUTO, FERRAMENTA ou nome de método citado: "marca-brilho" (o ícone oficial da marca entra sozinho: escreva em "marca" o nome como foi dito). Duas a quatro ferramentas: "ferramentas".`,
+  `- PROCESSO ou SISTEMA explicado: "notebook" (o formulário preenchendo, os valores do que foi dito).`,
+  `- IDEIA, MENTE, decisão interior: "ilustracao-traco" (cerebro ou lampada) com a frase digitando.`,
+  `- MATERIAL, e-book, guia, planilha ou oferta: "material".`,
+  `- CHAMADA PARA SEGUIR no fim: "seguir", só com o @ do PRÓPRIO cliente (dito na fala ou nos links dele); nunca o perfil de outra pessoa. Foto de pessoa real que não seja o cliente, nunca.`,
+  `- A legenda com a palavra sublinhada e a grade de cor do B-roll são automáticas: não escreva.`,
+].join("\n");
+
+/**
  * O que o editor recebe a mais no corte. Vale sobre as regras gerais de
  * densidade do prompt (as do vídeo longo).
  */
-export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; videos?: number }): string {
+export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; videos?: number; estiloId?: string | null }): string {
   const s = Math.round(p.duracao);
   return [
     `# ESTE É UM CORTE CURTO VERTICAL (${s} s, 9:16, Reels, Shorts e TikTok). As regras abaixo valem sobre as de densidade do vídeo longo.`,
@@ -90,6 +111,7 @@ export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; 
     `- B-ROLL REAL ("broll", vídeo de banco): cobre o resto da imagem real, 1 a cada 10 a 15 s (num corte de ${s} s, ${Math.max(1, Math.round(s / 15))} a ${Math.max(2, Math.round(s / 10))}), de 1,5 a 3 s cada, na palavra que cita um objeto, um lugar ou uma ação do mundo real; consulta em inglês de 2 a 4 palavras concretas. Nunca nos primeiros 2 s.`,
     `- RITMO DE CORTE: a imagem muda a cada 2 a 4 s (peça nova, B-roll, tela, ou a câmera que fecha e abre; o código troca o enquadramento entre elas). Marque em "enfases" ${Math.max(4, Math.round(s / 6))} a ${Math.max(6, Math.round(s / 4))} palavras-chave para o ZOOM DE SOCO.`,
     `- Sem "fecho" com marca no fim, a menos que a pessoa faça uma chamada para ação no próprio trecho.`,
+    ESTILOS_DA_LOUSA.includes(p.estiloId ?? "") ? INSTRUCOES_DA_LOUSA : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -103,7 +125,7 @@ export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; 
  */
 export function adensarCorte(ed: EdicaoResolvida, maximo: Record<string, number>): { edicao: EdicaoResolvida; esticadas: number } {
   const comPlano = (de: number, ate: number) => (ed.planos ?? []).some((p) => p.de < ate && p.ate > de);
-  const reais = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao").sort((a, b) => a.de - b.de);
+  const reais = ed.camadas.filter((c) => !ehApoio(c)).sort((a, b) => a.de - b.de);
   let esticadas = 0;
   const camadas = ed.camadas.map((c) => ({ ...c }));
   for (let i = 0; i < reais.length; i++) {
@@ -147,7 +169,7 @@ export function arejarCorte(ed: EdicaoResolvida, minimo: Record<string, number>)
   let fimDaTela = -Infinity;
   planos = planos.flatMap((p): PlanoResolvido[] => {
     if (p.tipo !== "grafico") return [p];
-    const c = camadas.find((x) => Math.abs(x.de - p.de) < 0.01 && !fora.has(x.id) && x.peca !== "moldura-do-cartao");
+    const c = camadas.find((x) => Math.abs(x.de - p.de) < 0.01 && !fora.has(x.id) && !ehApoio(x));
     if (p.de - fimDaTela < 1.2 && c) {
       const novoDe = +(fimDaTela + 1.5).toFixed(3);
       if (p.ate - novoDe >= Math.max(1.8, minimo[c.peca] ?? 2)) {
@@ -169,7 +191,7 @@ export function arejarCorte(ed: EdicaoResolvida, minimo: Record<string, number>)
 }
 
 /** As peças que valem como gancho no segundo 0. */
-const PECAS_DE_GANCHO = new Set(["titulo", "frase-impacto", "pergunta-resposta", "titulo-atras", "citacao", "numero"]);
+const PECAS_DE_GANCHO = new Set(["titulo", "frase-impacto", "pergunta-resposta", "titulo-atras", "citacao", "numero", "palavra-gigante", "busca"]);
 
 /**
  * O GANCHO NO SEGUNDO 0, SEMPRE (03/10, à noite): o corte 0 de cmurtv2zg foi
@@ -192,10 +214,12 @@ export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | unde
   // O que cruza o trecho do gancho começa depois dele ou sai; a moldura e o plano do cartão seguem a peça dela.
   const destino = new Map<string, number | null>();
   for (const c of ed.camadas) {
-    if (c.peca === "moldura-do-cartao" || c.de >= novoDe || c.ate <= 0) continue;
+    if (ehApoio(c) || c.de >= novoDe || c.ate <= 0) continue;
     destino.set(c.id, c.ate - novoDe >= 1.2 ? novoDe : null);
   }
   const camadas = ed.camadas.flatMap((c) => {
+    // A legenda da lousa embaixo do título do gancho sai (os dois moram no peito do 9:16).
+    if (c.peca === "legenda-destaque" && c.de < novoDe) return [];
     const id = c.peca === "moldura-do-cartao" ? c.id.replace(/-moldura$/, "") : c.id;
     if (!destino.has(id)) return [c];
     const de = destino.get(id);
@@ -216,7 +240,7 @@ export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | unde
 /** Fração do corte com peça (sem a moldura do cartão). */
 export function densidadeDoCorte(ed: EdicaoResolvida): number {
   const D = Math.max(1, ed.duracao);
-  const soma = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao").reduce((s, c) => s + (c.ate - c.de), 0);
+  const soma = ed.camadas.filter((c) => !ehApoio(c)).reduce((s, c) => s + (c.ate - c.de), 0);
   return +(soma / D).toFixed(3);
 }
 
@@ -229,7 +253,7 @@ export function densidadeDoCorte(ed: EdicaoResolvida): number {
 export function ritmoDoCorte(ed: EdicaoResolvida): { maiorParado: number; trocasPorMinuto: number } {
   const D = Math.max(1, ed.duracao);
   const ts = new Set<number>([0, D]);
-  for (const c of ed.camadas) if (c.peca !== "moldura-do-cartao") [c.de, c.ate].forEach((x) => ts.add(+x.toFixed(2)));
+  for (const c of ed.camadas) if (!ehApoio(c)) [c.de, c.ate].forEach((x) => ts.add(+x.toFixed(2)));
   for (const p of ed.planos ?? []) [p.de, p.ate].forEach((x) => ts.add(+x.toFixed(2)));
   for (const c of ed.camera ?? []) ts.add(+c.de.toFixed(2));
   const lista = [...ts].filter((x) => x >= 0 && x <= D).sort((a, b) => a - b);

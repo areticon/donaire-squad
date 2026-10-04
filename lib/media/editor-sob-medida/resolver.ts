@@ -1,7 +1,7 @@
 import { frasesDaFala } from "@/lib/media/diretor-limpo";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
 import { acentoApagado, acentoVivo } from "@/lib/media/editor-sob-medida/cor";
-import { FICHAS, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
+import { ESTILOS_DA_LOUSA, FICHAS, ehApoio, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type {
   Ancora,
   Caixa,
@@ -78,7 +78,9 @@ export function temaDoEstilo(estiloId: string | null | undefined, cores: { acent
   // A COR VIVA (03/10, terceira volta): acento apagado brilha no matiz dele; o original fica para a identidade.
   const acento = acentoApagado(cores.acento) ? acentoVivo(cores.acento) : cores.acento;
   const base = { ...cores, acento, acentoMarca: cores.acento, fonteTexto: "Geist", fonteMono: "Geist Mono" };
-  const t = (visual: Visual, fonteTitulo: string, pesoTitulo: number, caixaAlta: boolean): Tema => ({ ...base, visual, fonteTitulo, pesoTitulo, caixaAlta });
+  // O acabamento das peças da lousa (04/10): o tecnológico do Dan Martell e o luxo da autoridade high ticket.
+  const acabamento = id === "consorcio" ? ("luxo" as const) : id === "lousa" ? ("tecnologico" as const) : undefined;
+  const t = (visual: Visual, fonteTitulo: string, pesoTitulo: number, caixaAlta: boolean): Tema => ({ ...base, visual, fonteTitulo, pesoTitulo, caixaAlta, ...(acabamento ? { acabamento } : {}) });
   if (["hormozi", "mrbeast", "tipografia", "ugc", "vlog"].includes(id)) return t("impacto", "Archivo Black", 400, true);
   if (id === "consorcio") return t("impacto", "Oswald", 700, true);
   if (["documentario", "vox", "bbc", "natgeo", "60-minutes", "wes-anderson", "depoimento"].includes(id)) return t("documental", "Playfair Display", 700, false);
@@ -559,6 +561,36 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     camadas.sort((a, b) => a.de - b.de);
   }
 
+  // 4e. A LOUSA (04/10, os quadros reais do Dan Martell): a legenda vira a
+  // frase em negrito com UMA palavra sublinhada (dm-04), desenhada como camada
+  // e não mais no ASS; e o B-roll ganha a grade de cor escura do estilo (dm-05).
+  let legendaAss = ctx.comLegenda;
+  if (ESTILOS_DA_LOUSA.includes(ctx.estiloId ?? "")) {
+    const grade = FICHAS["grade-azul"];
+    const graduados = planos.filter((p) => p.tipo === "insercao").map((p): CamadaResolvida => ({ id: `grade-${Math.round(p.de * 10)}`, peca: "grade-azul", de: p.de, ate: p.ate, entrada: grade.entrada, saida: grade.saida, evento: grade.evento, eventos: [], props: {}, passes: ["frente"] }));
+    camadas.unshift(...graduados);
+    if (ctx.comLegenda) {
+      const leg = FICHAS["legenda-destaque"];
+      legendaAss = false;
+      // A legenda some onde a tela já tem o texto (tela cheia, chat, palavra gigante, título de trás).
+      const tapam = new Set(["chat", "palavra-gigante", "titulo-atras", "sublinhado", "palavra-chave", ...(H > W ? ["titulo", "pergunta-resposta", "rotulo-inferior", "marca-brilho", "icone"] : [])]);
+      const tapado = (de: number, ate: number) => planos.some((p) => p.tipo === "grafico" && p.de < ate && p.ate > de) || camadas.some((c) => tapam.has(c.peca) && c.de < ate && c.ate > de);
+      const enfases = (e.enfases ?? []).map((an) => t(an)).filter((x): x is number => x !== null);
+      const limpa = (w: string) => String(w ?? "").replace(/[.,:;!?"“”()]/g, "");
+      for (const pg of paginasDaLegenda(ctx.palavras)) {
+        if (tapado(pg.inicio, pg.fim)) continue;
+        const ws = ctx.palavras.filter((w) => w.inicio >= pg.inicio - 0.01 && w.inicio < pg.fim - 0.01);
+        if (!ws.length) continue;
+        // A palavra sublinhada: a ênfase do editor na página; senão a palavra longa que diz algo.
+        const porEnfase = ws.find((w) => enfases.some((x) => Math.abs(x - w.inicio) < 0.05));
+        const candidatas = ws.filter((w) => limpa(w.texto).length >= 5 && !PALAVRAS_VAZIAS.test(norm(w.texto)));
+        const chave = porEnfase ?? candidatas.sort((a, b) => limpa(b.texto).length - limpa(a.texto).length)[0];
+        const texto = ws.map((w) => (w === chave ? `**${limpa(w.texto)}**${String(w.texto).slice(limpa(w.texto).length)}` : w.texto)).join(" ").replace(/[,.:;]+$/, "");
+        camadas.push({ id: `leg-${Math.round(pg.inicio * 10)}`, peca: "legenda-destaque", de: +pg.inicio.toFixed(3), ate: +Math.max(pg.fim, pg.inicio + leg.duracao[0]).toFixed(3), entrada: leg.entrada, saida: leg.saida, evento: leg.evento, eventos: chave ? [+Math.max(pg.inicio, chave.inicio - 0.05).toFixed(3)] : [], props: { texto }, passes: ["frente"] });
+      }
+    }
+  }
+
   // 5. A câmera: o ritmo e, por cima, o que o editor pediu.
   const pedidos: Enquadramento[] = [];
   for (const c of e.camera ?? []) {
@@ -613,7 +645,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     camadas,
     planos,
     camera,
-    legenda: ctx.comLegenda ? { paginas: paginasDaLegenda(ctx.palavras) } : null,
+    legenda: legendaAss ? { paginas: paginasDaLegenda(ctx.palavras) } : null,
     insercoes: ctx.insercoes,
     palco: true,
   };
@@ -634,7 +666,7 @@ export function medidasDaEdicao(ed: EdicaoResolvida): {
   maiorParado: number;
 } {
   const D = Math.max(1, ed.duracao);
-  const reais = ed.camadas.filter((c) => c.peca !== "moldura-do-cartao");
+  const reais = ed.camadas.filter((c) => !ehApoio(c));
   const soma = (xs: Array<{ de: number; ate: number }>) => xs.reduce((s, x) => s + (x.ate - x.de), 0);
   // A DENSIDADE DE VERDADE (03/10, à noite): o tempo com peça OU imagem (a união, sem contar duas vezes).
   const trechos = [...reais, ...ed.planos.filter((p) => p.tipo === "insercao" || p.tipo === "grafico")].map((x) => [Math.max(0, x.de), Math.min(D, x.ate)] as [number, number]).sort((a, b) => a[0] - b[0]);
