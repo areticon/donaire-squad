@@ -271,10 +271,10 @@ async function matteDaPessoa(base, pasta, duracao, fps, intervalos) {
  */
 export function efeitosDaEdicao(camadas) {
   const ev = [];
-  const TELA = new Set(["frase-impacto", "citacao", "pergaminho", "cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "numero", "cifrao", "mapa", "fecho", "passos-foco", "grafico-linha"]);
+  const TELA = new Set(["frase-impacto", "citacao", "pergaminho", "cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "numero", "cifrao", "mapa", "fecho", "passos-foco", "grafico-linha", "palavra-gigante", "busca", "pilha-passos", "notebook", "ilustracao-traco", "chat", "material", "seguir", "ferramentas"]);
   const CONTA = new Set(["numero", "progresso", "barras", "grafico-linha", "cifrao"]);
   for (const c of camadas) {
-    if (c.peca === "moldura-do-cartao") continue;
+    if (["moldura-do-cartao", "legenda-destaque", "grade-azul"].includes(c.peca)) continue;
     if (c.peca === "transicao") ev.push({ t: c.de + 0.05, som: "whoosh", volume: c.props?.tipo === "flash" ? 0.3 : 0.22 });
     else if (c.peca === "titulo-atras") {
       ev.push({ t: Math.max(0, c.de - 0.45), som: "riser", volume: 0.14 });
