@@ -100,6 +100,9 @@ export async function fotoDoGerador(pedido, pasta, { baixar, subir }) {
  * conta tempo sem som).
  */
 export async function vozDoGemeo(pedido, pasta, { baixar, subir }) {
+  // 04/10: a mesma rota prepara a FALA de um pedaço (ver `prepararFala`), para
+  // não mexer no roteador; quem pede manda `fala: true`.
+  if (pedido.fala) return prepararFala(pedido, pasta, { baixar, subir });
   const entrada = join(pasta, "amostra");
   await baixar(pedido.audioUrl, entrada);
   const saida = join(pasta, "voz.mp3");
@@ -112,6 +115,99 @@ export async function vozDoGemeo(pedido, pasta, { baixar, subir }) {
   const info = await ffprobe(saida);
   const voz = await subir(saida, pedido.chave, "audio/mpeg", { privado: true });
   return { voz, duracaoSec: Math.round(info.duracaoSec * 10) / 10 };
+}
+
+/** O ffmpeg com o stderr de volta (o `rodar` só devolve erro): é onde o loudnorm escreve a medida. */
+function ffmpegComRelatorio(args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const p = spawn("ffmpeg", ["-nostdin", "-hide_banner", "-y", ...args], { stdio: ["ignore", "ignore", "pipe"] });
+    let erro = "";
+    p.stderr.on("data", (d) => {
+      erro += d;
+      if (erro.length > 20000) erro = erro.slice(-20000);
+    });
+    const relogio = setTimeout(() => {
+      p.kill("SIGKILL");
+      reject(new Error(`ffmpeg passou de ${Math.round(timeoutMs / 1000)} s`));
+    }, timeoutMs);
+    p.on("error", (e) => {
+      clearTimeout(relogio);
+      reject(e);
+    });
+    p.on("close", (codigo) => {
+      clearTimeout(relogio);
+      if (codigo !== 0) return reject(new Error(`ffmpeg saiu com ${codigo}: ${erro.slice(-600)}`));
+      resolve(erro);
+    });
+  });
+}
+
+/**
+ * O alvo do volume da fala: -17 LUFS no mono, que no vídeo final (o mesmo som
+ * nos dois canais) mede -14 LUFS, o volume que YouTube e Instagram esperam; o
+ * pico real fica em -1,5 dB.
+ */
+const ALVO_LUFS = -17;
+const ALVO_PICO = -1.5;
+
+/**
+ * A FALA DE UM PEDAÇO, PRONTA PARA O GERADOR (04/10/2026).
+ *
+ * O Bruno ouviu o vídeo do gêmeo e disse que o áudio ficou ruim e descasado
+ * da boca. Duas causas, medidas no vídeo de 03/10:
+ *
+ *  - a voz aprovada é a ElevenLabs acelerada 7%, e a aceleração era feita
+ *    DEPOIS de o gerador animar a boca, na junção: `setpts` na imagem e
+ *    `atempo` no som. O som ficava certo, mas a imagem a 26,75 quadros por
+ *    segundo voltava para 25 jogando fora 1 quadro a cada 15, e a boca andava
+ *    aos trancos de 40 ms contra uma fala lisa;
+ *  - o som passava por três compressões com perda: MP3 da ElevenLabs, AAC do
+ *    gerador e AAC de novo na junção, a 44,1 kHz mono virando 48 kHz estéreo
+ *    com 3 dB a menos, e o volume ficava em -18 LUFS.
+ *
+ * Aqui a aceleração acontece ANTES do gerador: a fala sai da ElevenLabs, é
+ * acelerada (`atempo`, sem mudar o tom), nivelada em duas passadas (o
+ * `loudnorm` linear, que só aplica ganho e não "bombeia") e gravada em WAV
+ * 48 kHz mono, sem perda. O gerador anima a boca já na velocidade final, e a
+ * junção não mexe mais no tempo de nada. Este WAV também é o som que vai no
+ * vídeo final, no lugar do AAC recomprimido do gerador (`juntarPedacos`).
+ *
+ * Devolve `preparada: true`: o app só confia no arquivo com essa marca (um
+ * worker antigo devolveria o MP3 nivelado da amostra de voz, sem acelerar).
+ */
+export async function prepararFala(pedido, pasta, { baixar, subir }) {
+  const entrada = join(pasta, "fala-crua");
+  await baixar(pedido.audioUrl, entrada);
+  const velocidade = Math.min(1.3, Math.max(0.8, Number(pedido.velocidade ?? 1) || 1));
+  const tempo = velocidade === 1 ? "" : `atempo=${velocidade},`;
+  const relatorio = await ffmpegComRelatorio(
+    ["-i", entrada, "-vn", "-af", `${tempo}loudnorm=I=${ALVO_LUFS}:TP=${ALVO_PICO}:LRA=11:print_format=json`, "-f", "null", "-"],
+    2 * 60_000
+  );
+  const json = relatorio.slice(relatorio.lastIndexOf("{"), relatorio.lastIndexOf("}") + 1);
+  let m = null;
+  try {
+    m = JSON.parse(json);
+  } catch {
+    m = null;
+  }
+  const medido =
+    m && Number.isFinite(Number(m.input_i)) && Number(m.input_i) > -70
+      ? `:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
+      : "";
+  const saida = join(pasta, "fala.wav");
+  await rodar(
+    [
+      "-i", entrada, "-vn",
+      // O loudnorm trabalha a 192 kHz por dentro; o aresample volta a 48 kHz.
+      "-af", `${tempo}loudnorm=I=${ALVO_LUFS}:TP=${ALVO_PICO}:LRA=11${medido},aresample=48000`,
+      "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", saida,
+    ],
+    { timeoutMs: 2 * 60_000 }
+  );
+  const info = await ffprobe(saida);
+  const voz = await subir(saida, pedido.chave, "audio/wav", { privado: true });
+  return { voz, duracaoSec: Math.round(info.duracaoSec * 1000) / 1000, preparada: true, velocidade, lufs: m ? Number(m.input_i) : null };
 }
 
 /**
@@ -285,13 +381,68 @@ export async function treinoDoGemeo(pedido, pasta, { baixar, subir }) {
 }
 
 /**
- * Os pedaços do gerador num vídeo só. `pedido.pedacos`: [{ url, segundos }],
- * na ordem da fala; `segundos` é a duração da FALA daquele pedaço.
+ * A SINCRONIA NATURAL: numa gravação real (o vídeo de treino do Bruno, 03/10)
+ * o som vem de 8 a 25 ms depois da abertura da boca. É o alvo da correção.
+ */
+const SINCRONIA_NATURAL_MS = Number(process.env.GEMEO_SINCRONIA_NATURAL_MS ?? 15);
+/** Abaixo disto não se mexe (um quadro a 25 fps são 40 ms). */
+const SINCRONIA_TOLERANCIA_MS = 35;
+/** Acima disto a medida é tratada como engano, não como atraso. */
+const SINCRONIA_TETO_MS = 250;
+/** A correlação mínima entre boca e som para confiar na medida. */
+const SINCRONIA_CORRELACAO_MINIMA = 0.28;
+const QUADROS_POR_SEGUNDO = 25;
+
+/**
+ * Mede um pedaço (gemeo-sincronia.py). Nunca derruba a junção: sem a medida,
+ * o pedaço entra sem correção, como antes de 04/10.
+ */
+async function medirSincronia(video, fala) {
+  try {
+    return await rodarPython("gemeo-sincronia.py", { video, fala: fala ?? null, modelo: MODELO_ROSTO }, 4 * 60_000);
+  } catch (e) {
+    console.warn(`[juntar-gemeo] sem medida de sincronia: ${e instanceof Error ? e.message : e}`);
+    return { boca_ms: null, corr: null, fala_ms: null };
+  }
+}
+
+/** Quanto adiantar o som deste pedaço (ms; negativo atrasa), pela medida da boca. */
+function correcaoDaBoca(m) {
+  if (m?.boca_ms === null || m?.boca_ms === undefined || (m.corr ?? 0) < SINCRONIA_CORRELACAO_MINIMA) return 0;
+  const desvio = m.boca_ms - SINCRONIA_NATURAL_MS;
+  if (Math.abs(desvio) < SINCRONIA_TOLERANCIA_MS || Math.abs(m.boca_ms) > SINCRONIA_TETO_MS) return 0;
+  return Math.round(desvio);
+}
+
+/**
+ * Os pedaços do gerador num vídeo só. `pedido.pedacos`: [{ url, segundos,
+ * falaUrl? }], na ordem da fala; `segundos` é a duração da FALA daquele
+ * pedaço e `falaUrl` (04/10) é a fala preparada (`prepararFala`, WAV).
  *
  * O corte no fim de cada pedaço: o OmniHuman devolve meio segundo a mais que o
  * áudio (27,4 s de vídeo para 26,9 s de fala, medido no teste de 01/10). Sem
  * aparar, cada emenda ganha uma pausa muda, e num vídeo de 6 pedaços isso são
  * 3 segundos de gente parada. Deixamos 0,15 s de respiro.
+ *
+ * SINCRONIA PERFEITA (04/10/2026), três regras:
+ *
+ *  1. imagem e som de cada pedaço são cortados no MESMO instante, num número
+ *     inteiro de quadros: o vídeo vai até o quadro N e o som é aparado e
+ *     completado com silêncio até exatamente N/25 s. Antes, o som de um
+ *     pedaço podia ser 40 ms mais curto que a imagem, e a emenda dependia do
+ *     concat preencher a diferença;
+ *  2. o som que entra é a NOSSA fala (WAV), e não o AAC recomprimido do
+ *     gerador: a posição dela é achada pela correlação com o som do pedaço
+ *     (a HeyGen atrasa o próprio áudio em ~21 ms, medido em 04/10). Sem a
+ *     fala preparada (pedido antigo, worker antigo), vale o som do gerador;
+ *  3. a boca é medida contra o som (gemeo-sincronia.py) e, se o som estiver
+ *     fora do natural por mais de um quadro, ele é adiantado ou atrasado
+ *     naquele pedaço. O OmniHuman entregou o som 70 a 100 ms depois da boca
+ *     em todos os pedaços do vídeo de 03/10 (o natural é 15 ms).
+ *
+ * A aceleração de 7% (a voz aprovada) agora vem na fala preparada, antes do
+ * gerador; `velocidade` só continua aqui para os pedidos antigos, com a fala
+ * crua (ver `prepararFala`).
  *
  * Reencoda em vez de copiar: os pedaços vêm do mesmo gerador, mas basta um
  * sair em outra resolução (recuo para 720p) para a cópia direta gerar um
@@ -306,33 +457,81 @@ export async function juntarPedacos(pedido, pasta, { baixar }) {
     await baixar(p.url, arq);
     const info = await ffprobe(arq);
     if (!info.temAudio) throw new Error(`O pedaço ${i + 1} veio sem som`);
+    let fala = null;
+    if (p.falaUrl) {
+      fala = join(pasta, `fala-${i}.wav`);
+      try {
+        await baixar(p.falaUrl, fala);
+      } catch (e) {
+        console.warn(`[juntar-gemeo] fala ${i + 1} não baixou, vai o som do gerador: ${e instanceof Error ? e.message : e}`);
+        fala = null;
+      }
+    }
     const ate = p.segundos ? Math.min(info.duracaoSec, Number(p.segundos) + 0.15) : info.duracaoSec;
-    arquivos.push({ arq, ate, largura: info.largura, altura: info.altura });
+    const quadros = Math.max(1, Math.round(ate * QUADROS_POR_SEGUNDO));
+    const medida = await medirSincronia(arq, fala);
+    // A nossa fala só entra se a correlação achou onde ela está no pedaço.
+    const usarFala = Boolean(fala) && medida.fala_ms !== null && medida.fala_ms !== undefined && Math.abs(medida.fala_ms) < 400;
+    arquivos.push({ arq, fala: usarFala ? fala : null, quadros, largura: info.largura, altura: info.altura, medida, correcao: correcaoDaBoca(medida) });
+  }
+  // O pedaço curto (2 a 3 s) mede com pouca confiança. O atraso é do gerador,
+  // e não do pedaço: quem não mediu bem recebe a correção mediana dos que
+  // mediram (no vídeo de 03/10, o pedaço de 2,9 s mediu 70 ms com correlação
+  // 0,28, e os outros dois, 100 e 80 ms).
+  const confiaveis = arquivos.filter((a) => (a.medida.corr ?? 0) >= SINCRONIA_CORRELACAO_MINIMA && a.medida.boca_ms !== null).map((a) => a.correcao);
+  if (confiaveis.length) {
+    const ordenadas = [...confiaveis].sort((x, y) => x - y);
+    const mediana = ordenadas[Math.floor(ordenadas.length / 2)];
+    for (const a of arquivos) {
+      if ((a.medida.corr ?? 0) < SINCRONIA_CORRELACAO_MINIMA || a.medida.boca_ms === null) {
+        a.correcao = mediana;
+        a.correcaoPelaMediana = true;
+      }
+    }
   }
   // O tamanho do primeiro pedaço manda; os outros entram nele sem esticar.
   const L = arquivos[0].largura - (arquivos[0].largura % 2);
   const A = arquivos[0].altura - (arquivos[0].altura % 2);
-  const entradas = arquivos.flatMap((a) => ["-i", a.arq]);
-  const filtros = arquivos
-    .map(
-      (a, i) =>
-        `[${i}:v]trim=0:${a.ate.toFixed(3)},setpts=PTS-STARTPTS,scale=${L}:${A}:force_original_aspect_ratio=decrease,` +
-        `pad=${L}:${A}:(ow-iw)/2:(oh-ih)/2,fps=25,format=yuv420p,setsar=1[v${i}];` +
-        `[${i}:a]atrim=0:${a.ate.toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a${i}]`
-    )
-    .join(";");
-  // VELOCIDADE APROVADA (01/10): a voz que o Bruno escolheu na comparação foi a
-  // "B", o modelo v4 acelerado 7% sem mudar o tom. O parâmetro de velocidade da
-  // ElevenLabs no v4 quase não mexe no ritmo, então a aceleração é feita aqui,
-  // no vídeo inteiro: imagem e som juntos (setpts e atempo), para a boca
-  // continuar sincronizada com a fala. 7% não aparece no movimento do corpo.
+  const entradas = [];
+  const filtros = [];
+  for (const [i, a] of arquivos.entries()) {
+    const iv = entradas.length / 2;
+    entradas.push("-i", a.arq);
+    let ia = iv;
+    if (a.fala) {
+      ia = entradas.length / 2;
+      entradas.push("-i", a.fala);
+    }
+    const dur = (a.quadros / QUADROS_POR_SEGUNDO).toFixed(3);
+    filtros.push(
+      `[${iv}:v]fps=${QUADROS_POR_SEGUNDO},trim=end_frame=${a.quadros},setpts=PTS-STARTPTS,` +
+        `scale=${L}:${A}:force_original_aspect_ratio=decrease,pad=${L}:${A}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,setsar=1[v${i}]`
+    );
+    // Quanto ATRASAR o som (ms): a posição da nossa fala no pedaço, menos a
+    // correção da boca (que adianta).
+    const atraso = (a.fala ? Number(a.medida.fala_ms) : 0) - a.correcao;
+    const mover =
+      atraso >= 1 ? `adelay=${Math.round(atraso)},` : atraso <= -1 ? `atrim=start=${(-atraso / 1000).toFixed(3)},asetpts=PTS-STARTPTS,` : "";
+    filtros.push(
+      `[${ia}:a]aformat=channel_layouts=mono,aresample=48000,${mover}apad,atrim=duration=${dur},asetpts=PTS-STARTPTS[a${i}]`
+    );
+  }
   const velocidade = Number(pedido.velocidade ?? process.env.GEMEO_VELOCIDADE ?? 1.07) || 1;
+  const todasPreparadas = arquivos.every((a) => a.fala);
+  const posVideo = velocidade === 1 ? "null" : `setpts=PTS/${velocidade},fps=${QUADROS_POR_SEGUNDO}`;
+  // A fala preparada já está em -16 LUFS; o som do gerador (pedido antigo) é
+  // nivelado aqui, uma vez, no vídeo inteiro.
+  const posAudio = [velocidade === 1 ? null : `atempo=${velocidade}`, todasPreparadas ? null : `loudnorm=I=${ALVO_LUFS}:TP=${ALVO_PICO}:LRA=11,aresample=48000`]
+    .filter(Boolean)
+    .join(",");
   const juncao =
     arquivos.map((_, i) => `[v${i}][a${i}]`).join("") +
     `concat=n=${arquivos.length}:v=1:a=1[vj][aj];` +
-    `[vj]setpts=PTS/${velocidade},fps=25[v];[aj]atempo=${velocidade}[a]`;
+    `[vj]${posVideo}[v];` +
+    // Mono duplicado nos dois canais, sem os 3 dB que o upmix tirava.
+    `[aj]${posAudio ? `${posAudio},` : ""}pan=stereo|c0=c0|c1=c0[a]`;
   const roteiroDoFiltro = join(pasta, "filtro.txt");
-  await writeFile(roteiroDoFiltro, `${filtros};${juncao}`);
+  await writeFile(roteiroDoFiltro, `${filtros.join(";")};${juncao}`);
   const saida = join(pasta, "gemeo.mp4");
   await rodar(
     [
@@ -345,15 +544,27 @@ export async function juntarPedacos(pedido, pasta, { baixar }) {
       "-c:v", "libx264",
       "-preset", "veryfast",
       "-crf", "19",
+      "-r", String(QUADROS_POR_SEGUNDO),
       "-c:a", "aac",
-      "-b:a", "160k",
+      "-b:a", "192k",
+      "-ar", "48000",
       "-movflags", "+faststart",
       saida,
     ],
     { timeoutMs: 20 * 60_000 }
   );
   const info = await ffprobe(saida);
-  return { arquivo: saida, duracaoSec: info.duracaoSec, largura: info.largura, altura: info.altura };
+  const sincronia = arquivos.map((a, i) => ({
+    pedaco: i + 1,
+    bocaMs: a.medida.boca_ms ?? null,
+    correlacao: a.medida.corr ?? null,
+    falaMs: a.medida.fala_ms ?? null,
+    correcaoMs: a.correcao,
+    pelaMediana: Boolean(a.correcaoPelaMediana),
+    somDaFala: Boolean(a.fala),
+  }));
+  console.log(`[juntar-gemeo] ${pedido.chave ?? ""} sincronia ${JSON.stringify(sincronia)}`);
+  return { arquivo: saida, duracaoSec: info.duracaoSec, largura: info.largura, altura: info.altura, sincronia };
 }
 
 let opcaoNova = null;
