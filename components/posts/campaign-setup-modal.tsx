@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { MateriaisDaCampanha } from "@/components/materiais/materiais-da-campanha";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
 import { avisoDaCota, type CotaDoCliente } from "@/lib/media/cota-do-dia";
 import { fraseDoTeste, SEM_TESTE, type LimiteDoTeste } from "@/lib/teste-gratis";
@@ -138,6 +139,12 @@ export interface CampaignConfig {
   formatosPorRede?: Record<string, FormatoDeDestino[]>;
   /** O material do próprio cliente, por dia (28/09). Ver lib/pipeline/executar.ts. */
   midiaDoCliente?: Record<string, { tipo: "imagem" | "carrossel" | "video"; urls: string[] }>;
+  /**
+   * Os materiais da biblioteca que o cliente marcou para esta campanha
+   * (03/10). A geração das artes prefere estes e distribui pelos posts; ver
+   * lib/materiais/escolha.ts (lido do config da execução pelo id do run).
+   */
+  materiaisDaCampanha?: string[];
 }
 
 export interface ContaConectada {
@@ -1349,6 +1356,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   // isto a janela dizia "gera 0 vídeos, 0 no total" com o vídeo marcado (28/09).
   // De onde vem a peça de cada dia: IA ou material do cliente (28/09).
   const [origens, setOrigens] = useState<Record<string, OrigemDoDia>>({});
+  // Os materiais da biblioteca marcados para esta campanha (03/10).
+  const [materiaisDaCampanha, setMateriaisDaCampanha] = useState<string[]>([]);
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -1512,6 +1521,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
 
     onConfirm({
       midiaDoCliente: Object.keys(midiaDoCliente).length ? midiaDoCliente : undefined,
+      materiaisDaCampanha: materiaisDaCampanha.length ? materiaisDaCampanha : undefined,
       campaignMode,
       funnelStage,
       weeklySchedule,
@@ -1855,6 +1865,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
                     <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
+                    <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button
@@ -2016,6 +2028,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
                     <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
+                    <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button
@@ -2200,6 +2214,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
                     <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
+                    <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                       {MEDIA_STYLE_OPTIONS.map((opt) => (
                         <button
