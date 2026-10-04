@@ -37,7 +37,7 @@ export default function TermsPage() {
             Termos de Uso e Condições de Serviço
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 02/10/2026
+            Última atualização: 04/10/2026
           </p>
         </div>
 
@@ -482,6 +482,15 @@ export default function TermsPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+              {/* Marcas e imagens de terceiros (04/10/2026, cláusula 10.10 das
+                  Condições Gerais): o cliente pede "faça um post citando a
+                  marca X"; quem responde pelo uso é quem pediu e aprovou. */}
+              <div>
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">8.2 Marcas, logotipos, nomes e imagens de terceiros</h3>
+                <p>
+                  O Usuário é o responsável pelo uso de marcas, logotipos, nomes comerciais, nomes de pessoas e imagens de terceiros que ele citar, enviar ou pedir nos conteúdos. A demandou apenas executa o que o Usuário pede e aprova, e não verifica se ele tem direito a esse uso. Ao pedir ou aprovar uma peça com esses elementos, o Usuário garante que tem a autorização do titular ou que o uso é apenas informativo ou nominativo, como citar um produto, uma empresa ou uma pessoa para identificá-los, sem sugerir parceria, patrocínio ou endosso que não existam. Reclamações de terceiros sobre esse uso são de responsabilidade do Usuário, que responde por elas e ressarce a demandou se ela for acionada por esse motivo.
+                </p>
               </div>
             </div>
           </section>

@@ -2,7 +2,7 @@
 
 Licença de uso da plataforma Demandou, software de conteúdo com inteligência artificial
 
-Versão 1.1, de 02 de outubro de 2026
+Versão 1.2, de 04 de outubro de 2026
 
 > MINUTA PARA REVISÃO JURÍDICA. Este documento foi preparado a partir de um modelo de mercado e dos fatos do produto, mas não foi revisado por advogado. Não deve ser publicado, assinado ou aceito por clientes antes dessa revisão. Os trechos entre colchetes, como [PREENCHER], dependem de confirmação.
 
@@ -208,6 +208,8 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 **10.8. Moderação.** A Demandou não revisa previamente o conteúdo do Cliente, mas pode usar filtros automáticos e, diante de violação ou de indício razoável de violação, aplicar a cláusula 9.7.
 
 **10.9. Ressarcimento.** Se a Demandou for acionada por terceiro, rede social ou autoridade por causa de conteúdo que o Cliente aprovou ou publicou, o Cliente assume a defesa ou ressarce a Demandou pelos valores comprovadamente pagos, inclusive custos razoáveis de defesa. A Demandou avisa o Cliente assim que for acionada e não faz acordo em nome dele sem consentimento. Esta cláusula não se aplica quando o dano decorrer de falha da própria Demandou.
+
+**10.10. Marcas, logotipos, nomes e imagens de terceiros.** O Cliente é o responsável pelo uso de marcas, logotipos, nomes comerciais, nomes de pessoas e imagens de terceiros que ele citar, enviar ou pedir nos conteúdos. A Demandou apenas executa o que o Cliente pede e aprova, e não verifica se o Cliente tem direito a esse uso. Ao pedir ou aprovar uma peça com esses elementos, o Cliente garante que tem a autorização do titular ou que o uso é apenas informativo ou nominativo, como citar um produto, uma empresa ou uma pessoa para identificá-los, sem sugerir parceria, patrocínio ou endosso que não existam. Reclamações de terceiros sobre esse uso são de responsabilidade do Cliente, na forma da cláusula 10.9, e a Demandou pode aplicar a cláusula 9.7 diante de notificação fundamentada do titular.
 
 ## 11. INTELIGÊNCIA ARTIFICIAL
 
