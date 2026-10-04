@@ -19,20 +19,25 @@ import {
   revogarGemeo,
 } from "@/lib/media/gemeo-servidor";
 import { nomeDoDono, projetoVisivel } from "@/lib/equipe/conta";
+import { conferirGemeoAgora, pedirLinkNovo } from "@/lib/media/gemeo-passo";
 import { soODono } from "@/lib/equipe/permissoes";
 
 /**
  * O CADASTRO DO GÊMEO DIGITAL (01/10/2026).
  *
- *   GET     o cadastro, os vídeos do gêmeo e o saldo, para a tela;
+ *   GET     o cadastro, os vídeos do gêmeo e o saldo, para a tela; com
+ *           ?conferir=1 (03/10), pergunta antes ao gerador se o gêmeo
+ *           terminou de treinar ou se a confirmação já valeu;
  *   POST    registra o que o navegador acabou de enviar ao storage (foto,
- *           voz, autorização) ou tira uma foto;
+ *           voz, autorização) ou tira uma foto; "link-novo" (03/10) pede
+ *           ao gerador outro link de confirmação, quando o anterior venceu;
  *   DELETE  revoga o gêmeo e apaga tudo (ver `revogarGemeo`).
  *
  * O arquivo nunca passa por aqui: vai do navegador direto ao store privado
  * (rota `upload`), como a gravação. Esta rota só grava a URL, e confere que
- * ela é deste projeto. Nada aqui chama fornecedor pago: o trabalho é do passo
- * do cron, cutucado logo depois de cada registro.
+ * ela é deste projeto. Nada aqui chama fornecedor pago (o link novo de
+ * confirmação não custa nada): o trabalho é do passo do cron, cutucado logo
+ * depois de cada registro.
  */
 
 async function dono(req: NextRequest, id: string) {
@@ -55,8 +60,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const d = await dono(req, id);
   if ("erro" in d) return d.erro;
+  // ?conferir=1 (03/10): a tela pergunta ao gerador agora, sem esperar o cron,
+  // quando a pessoa volta da confirmação e enquanto o gêmeo treina ou espera.
+  // Só consulta; quem é da equipe também pode (é leitura do estado).
+  const conferir = req.nextUrl.searchParams.get("conferir") === "1";
   const [cadastro, videos, usuario] = await Promise.all([
-    lerCadastro(id),
+    conferir ? conferirGemeoAgora(id).catch(() => lerCadastro(id)) : lerCadastro(id),
     listarVideos(id),
     prisma.user.findUnique({ where: { id: d.userId }, select: { creditsBalance: true, role: true, name: true } }),
   ]);
@@ -119,6 +128,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           userAgent: req.headers.get("user-agent"),
         });
         break;
+      case "link-novo": {
+        // "Pedir um link novo" (03/10): o link de confirmação do gerador venceu.
+        const renovou = await pedirLinkNovo(id);
+        if (!renovou) return NextResponse.json({ error: "Não consegui pedir um link novo agora. Tente de novo em alguns minutos." }, { status: 502 });
+        return NextResponse.json({ cadastro: cadastroParaTela(await lerCadastro(id)) });
+      }
       default:
         return NextResponse.json({ error: "Ação desconhecida" }, { status: 400 });
     }

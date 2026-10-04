@@ -6,7 +6,12 @@
  * delas. Quem grava mora em `lib/notificacoes/index.ts`.
  */
 
-export const TIPOS_DE_NOTIFICACAO = ["roteiro", "pecas", "campanha", "completo", "falha", "estorno"] as const;
+/**
+ * "gemeo" (03/10): o gêmeo digital pede a pessoa (a confirmação pela câmera
+ * no gerador, e o lembrete antes do link vencer). "gemeo-aviso": o gêmeo
+ * ficou pronto ou o gerador recusou o treino, sem ação obrigatória.
+ */
+export const TIPOS_DE_NOTIFICACAO = ["roteiro", "pecas", "campanha", "completo", "falha", "estorno", "gemeo", "gemeo-aviso"] as const;
 export type TipoDeNotificacao = (typeof TIPOS_DE_NOTIFICACAO)[number];
 
 /**
@@ -14,7 +19,7 @@ export type TipoDeNotificacao = (typeof TIPOS_DE_NOTIFICACAO)[number];
  * os avisos desligados em Configurações: sem ele o trabalho fica parado
  * esperando alguém que não sabe que é esperado.
  */
-export const TIPOS_DE_APROVACAO: readonly TipoDeNotificacao[] = ["roteiro", "pecas", "campanha"];
+export const TIPOS_DE_APROVACAO: readonly TipoDeNotificacao[] = ["roteiro", "pecas", "campanha", "gemeo"];
 
 /** Uma notificação do jeito que a rota entrega ao sino. */
 export type NotificacaoNaTela = {

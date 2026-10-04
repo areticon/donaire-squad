@@ -176,3 +176,68 @@ export function emailDeVideoPronto(args: {
     html: casca({ previa: "A edição completa terminou. Assista, aprove e agende no card.", miolo }),
   };
 }
+
+/**
+ * O GÊMEO DIGITAL (03/10): o pedido do Bruno depois de gravar o treino e ficar
+ * sem saber onde aprovar. Três momentos:
+ *
+ *   consentimento  falta confirmar pela câmera no gerador (pede ação, sai sempre);
+ *   lembrete       faltam 3 h para o link vencer e ninguém confirmou;
+ *   pronto         o gêmeo treinado já gera os vídeos;
+ *   falhou         o gerador recusou o treino; o gêmeo segue pela reserva.
+ *
+ * O botão leva à TELA DO GÊMEO, e não ao link do gerador: o link do gerador
+ * vence em 24 h e é renovado, e a tela sempre mostra o que vale agora (ou o
+ * "Pedir um link novo").
+ */
+export function emailDoGemeo(args: {
+  momento: "consentimento" | "lembrete" | "pronto" | "falhou";
+  nome?: string | null;
+  projeto: string;
+  link: string;
+  /** "domingo, 19h". */
+  prazo?: string | null;
+  motivo?: string | null;
+}): Email {
+  const oi = primeiroNome(args.nome);
+  const ate = args.prazo ? `até ${args.prazo}` : "por 24 horas";
+  const conteudo = {
+    consentimento: {
+      frase: oi ? `${oi}, falta um passo para o seu gêmeo digital` : "Falta um passo para o seu gêmeo digital",
+      corpo: `O seu gêmeo do projeto ${args.projeto} está treinado. O gerador de vídeo pede que você mesmo confirme, pela câmera, que autoriza o uso do seu rosto e da sua voz. Leva 30 segundos, e o link vale ${ate}.`,
+      depois: "Enquanto isso, os vídeos do gêmeo continuam saindo pela imagem do vídeo de treino. Se o prazo passar, abra a tela do gêmeo e clique em Pedir um link novo.",
+      botao: "Confirmar meu gêmeo",
+      previa: `Confirme pela câmera, em 30 segundos. O link vale ${ate}.`,
+    },
+    lembrete: {
+      frase: oi ? `${oi}, o link do seu gêmeo vence em poucas horas` : "O link do seu gêmeo vence em poucas horas",
+      corpo: `Ainda falta você confirmar, pela câmera, que autoriza o seu gêmeo do projeto ${args.projeto}. O link vale ${ate}. Leva 30 segundos.`,
+      depois: "Se o prazo passar, nada se perde: abra a tela do gêmeo e clique em Pedir um link novo.",
+      botao: "Confirmar agora",
+      previa: `Faltam poucas horas: o link vale ${ate}.`,
+    },
+    pronto: {
+      frase: oi ? `${oi}, seu gêmeo digital está pronto` : "Seu gêmeo digital está pronto",
+      corpo: `O gêmeo do projeto ${args.projeto} está treinado com os seus gestos e pronto para gerar. Os próximos vídeos do gêmeo saem por ele.`,
+      depois: "Escolha um roteiro da linha editorial e peça o vídeo na tela do gêmeo.",
+      botao: "Gerar um vídeo",
+      previa: "Os próximos vídeos do gêmeo saem pelo gêmeo treinado.",
+    },
+    falhou: {
+      frase: oi ? `${oi}, o gerador não treinou o seu gêmeo` : "O gerador não treinou o seu gêmeo",
+      corpo: `${args.motivo ?? "O gerador de vídeo recusou o vídeo de treino."} O seu gêmeo do projeto ${args.projeto} continua funcionando pela imagem do vídeo de treino, sem nada a fazer.`,
+      depois: "Se quiser o gêmeo treinado com os seus gestos, grave o vídeo de treino de novo na tela do gêmeo.",
+      botao: "Abrir a tela do gêmeo",
+      previa: "O gêmeo segue pela imagem do vídeo de treino.",
+    },
+  }[args.momento];
+  const texto = [`${conteudo.frase}.`, "", conteudo.corpo, conteudo.depois, "", `${conteudo.botao}: ${args.link}`, "", MARCA.nome, MARCA.site].join("\n");
+  const miolo = [
+    titulo(conteudo.frase + "."),
+    paragrafo(escapar(conteudo.corpo)),
+    botao(conteudo.botao, args.link),
+    paragrafo(escapar(conteudo.depois), { apagado: true, tamanho: 14 }),
+    seNaoAbrir(args.link),
+  ].join("\n");
+  return { para: "", assunto: conteudo.frase, texto, html: casca({ previa: conteudo.previa, miolo }) };
+}

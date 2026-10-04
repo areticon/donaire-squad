@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Bell, CheckCircle2, ClipboardCheck, Coins, LifeBuoy, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, ClipboardCheck, Coins, LifeBuoy, ShieldCheck, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EVENTO_DO_SINO, haQuanto, type NotificacaoNaTela } from "@/lib/notificacoes/tipos";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
@@ -32,6 +32,9 @@ function IconeDoTipo({ tipo }: { tipo: string }) {
   if (tipo === "falha") return <AlertTriangle className="w-4 h-4 text-orange-400" />;
   if (tipo === "completo") return <CheckCircle2 className="w-4 h-4 text-green-500" />;
   if (tipo === "estorno") return <Coins className="w-4 h-4 text-amber-500" />;
+  // O gêmeo digital (03/10): pedir a confirmação, e o pronto ou recusado.
+  if (tipo === "gemeo") return <ShieldCheck className="w-4 h-4 text-orange-400" />;
+  if (tipo === "gemeo-aviso") return <Sparkles className="w-4 h-4 text-orange-400" />;
   return <ClipboardCheck className="w-4 h-4 text-orange-400" />;
 }
 

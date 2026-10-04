@@ -8,6 +8,7 @@ import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 import { transcribeBlob } from "@/lib/media/transcribe";
 import { cutucar } from "@/lib/fila/trabalhos";
 import { comporSobreImagemComCusto, dataUrlToBuffer } from "@/lib/media/nano-banana";
+import { avisarGemeo } from "@/lib/notificacoes/avisos-do-gemeo";
 import {
   FOLGA_DO_VIDEO_SOBRE_A_FALA,
   GERADORES,
@@ -573,6 +574,20 @@ async function cuidarDoAvatar(projectId: string, c: CadastroGuardado): Promise<v
     return;
   }
 
+  await avancarAvatar(projectId, c);
+}
+
+/**
+ * TREINANDO E CONSENTIMENTO: pergunta ao gerador e avança o estado. É do passo
+ * do cron e, desde 03/10, também da tela (`conferirGemeoAgora`): o Bruno
+ * confirmou na HeyGen e a tela seguiu dizendo "Falta um passo" até a passada
+ * seguinte do cron. Só consulta (nada pago); o que cria o gêmeo fica no passo.
+ */
+async function avancarAvatar(projectId: string, c: CadastroGuardado): Promise<void> {
+  const origem = c.treino?.videoUrl;
+  const a = c.avatar;
+  if (!a || !origem || a.origem !== origem) return;
+
   if (a.estado === "treinando" && a.avatarId) {
     const r = await estadoDoLook(a.avatarId).catch((e) => ({ estado: "erro", motivo: mensagem(e) }));
     if (r.estado === "completed" || r.estado === "pending_consent") {
@@ -621,6 +636,37 @@ async function renovarConsentimento(projectId: string, origem: string, grupoId: 
   } catch (e) {
     console.warn(`[gemeo][${projectId}] consentimento da HeyGen:`, mensagem(e));
   }
+}
+
+/**
+ * CONFERIR AGORA (03/10): a tela pergunta ao gerador sem esperar o cron,
+ * quando a pessoa volta da página de confirmação e enquanto o gêmeo treina ou
+ * espera a confirmação. Avisa (sino e e-mail) pelo mesmo caminho do passo; a
+ * chave do fato impede o aviso em dobro quando o cron chega depois.
+ */
+export async function conferirGemeoAgora(projectId: string): Promise<CadastroGuardado | null> {
+  const c = await lerCadastro(projectId);
+  const a = c?.avatar;
+  if (!c || a?.gerador !== "heygen" || !["treinando", "consentimento"].includes(a.estado)) return c;
+  await avancarAvatar(projectId, c);
+  const depois = await lerCadastro(projectId);
+  if (depois) await avisarGemeo(projectId, depois);
+  return depois;
+}
+
+/**
+ * "PEDIR UM LINK NOVO" (03/10): a tela e o aviso oferecem quando o link de
+ * confirmação venceu (o passo renova sozinho, mas a pessoa não deve depender
+ * do próximo minuto do cron, nem de a renovação ter dado certo). Só vale com o
+ * gêmeo esperando a confirmação. Devolve se renovou.
+ */
+export async function pedirLinkNovo(projectId: string): Promise<boolean> {
+  const c = await lerCadastro(projectId);
+  const a = c?.avatar;
+  if (!a || a.estado !== "consentimento" || !a.grupoId) return false;
+  await renovarConsentimento(projectId, a.origem, a.grupoId);
+  const depois = await lerCadastro(projectId);
+  return Boolean(depois?.avatar?.consentimentoAte && depois.avatar.consentimentoAte !== a.consentimentoAte);
 }
 
 async function apagarAvataresPendentes(projectId: string, c: CadastroGuardado): Promise<void> {
@@ -675,6 +721,9 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       if (c) await apagarVozesPendentes(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await cuidarDoAvatar(projectId, c);
+      // Os avisos do gêmeo (03/10): pelo estado que acabou de ficar gravado.
+      c = await lerCadastro(projectId);
+      if (c) await avisarGemeo(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await apagarAvataresPendentes(projectId, c);
     } catch (e) {
