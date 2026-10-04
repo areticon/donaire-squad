@@ -118,6 +118,16 @@ export const auth = betterAuth({
      */
     resetPasswordTokenExpiresIn: 60 * 60,
     async sendResetPassword({ user, url }) {
+      // BOAS-VINDAS DO CONTRATO (04/10): o link pedido pela ativação de um
+      // contrato pago vai dentro do e-mail de boas-vindas, e não num segundo
+      // e-mail de "escolha a senha". Ver lib/contratos/boas-vindas.ts.
+      const { tirarBoasVindas } = await import("@/lib/contratos/boas-vindas");
+      const bv = tirarBoasVindas(user.email);
+      if (bv) {
+        const { boasVindasDoContrato } = await import("@/lib/email/contratos");
+        await enviarEmail({ ...boasVindasDoContrato({ nome: user.name ?? null, ...bv, url, definirSenha: true }), para: user.email });
+        return;
+      }
       const { prisma } = await import("@/lib/db/prisma");
       const vinculos = await prisma.account.count({ where: { userId: user.id } });
       const email = emailDeSenha({ nome: user.name ?? "", url, convite: vinculos === 0 });

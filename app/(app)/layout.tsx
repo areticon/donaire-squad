@@ -32,6 +32,8 @@ export default async function AppLayout({
   if (destino.tipo === "planos") redirect("/planos?assinar=1");
   // Membro com a assinatura do dono pausada (01/10): tela própria, sem preço.
   if (destino.tipo === "equipe-pausada") redirect("/equipe-pausada");
+  // Contrato assinado (ou a assinar) e ainda não pago (04/10): não é cliente ainda.
+  if (destino.tipo === "aguardando-pagamento") redirect("/aguardando-pagamento");
 
   /**
    * A FAIXA DO PLANO ENTRA AQUI, e nao em cada pagina (22/09).

@@ -32,7 +32,7 @@ async function destinosDoAdmin(): Promise<string[]> {
   return (await prisma.user.findMany({ where: { role: "admin" }, select: { email: true } })).map((a) => a.email).filter(Boolean);
 }
 
-export async function avancarContratos(agora = new Date()): Promise<{ olhados: number; mudancas: number; avisos: number }> {
+export async function avancarContratos(agora = new Date()): Promise<{ olhados: number; mudancas: number; avisos: number; repostos: number }> {
   const contratos = await prisma.contrato.findMany({
     where: {
       status: { in: ["assinado", "vigente", "a_vencer", "vencido"] },
@@ -44,8 +44,10 @@ export async function avancarContratos(agora = new Date()): Promise<{ olhados: n
   // Os assinados que começaram a valer (o início chegou) também mudam de
   // situação, mesmo longe do fim.
   const comecando = await prisma.contrato.findMany({
-    where: { status: "assinado", inicioVigencia: { lte: agora } },
-    select: { id: true, status: true, inicioVigencia: true, fimVigencia: true },
+    // Só os pagos (04/10): assinado sem pagamento continua aguardando, e o
+    // relógio não o transforma em vigente.
+    where: { status: "assinado", inicioVigencia: { lte: agora }, pagoEm: { not: null } },
+    select: { id: true, status: true, inicioVigencia: true, fimVigencia: true, pagoEm: true },
     take: 200,
   });
 
@@ -99,5 +101,11 @@ export async function avancarContratos(agora = new Date()): Promise<{ olhados: n
     await prisma.eventoDoContrato.create({ data: { contratoId: c.id, tipo: `aviso_${tipo}`, autor: "sistema", detalhe: { dias, envios } } });
     avisos++;
   }
-  return { olhados: contratos.length + comecando.length, mudancas, avisos };
+  // Os créditos mensais de quem pagou por contrato fora do Stripe (04/10).
+  const { reporCreditosDosContratos } = await import("@/lib/contratos/pagamento");
+  const repostos = await reporCreditosDosContratos(agora).catch((e) => {
+    console.error("[contratos] reposição dos contratos falhou:", e);
+    return 0;
+  });
+  return { olhados: contratos.length + comecando.length, mudancas, avisos, repostos };
 }

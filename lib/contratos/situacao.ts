@@ -1,24 +1,27 @@
 /**
- * A SITUAÇÃO DE UM CONTRATO, calculada das datas (02/10/2026).
+ * A SITUAÇÃO DE UM CONTRATO, calculada das datas (02/10/2026; o pagamento
+ * entrou em 04/10).
  *
  * Módulo PURO, sem banco: a tela do admin, a régua do cron e a prova usam a
  * mesma conta. O `status` guardado no banco diz em que ponto da ASSINATURA o
- * contrato está (rascunho, enviado, assinado, cancelado); vigente, a vencer e
- * vencido saem do relógio, e o cron grava o resultado para a lista filtrar.
+ * contrato está (rascunho, enviado, assinado, cancelado); "aguardando
+ * pagamento" sai de assinado sem `pagoEm`, e vigente, a vencer e vencido saem
+ * do relógio. O cron grava o resultado para a lista filtrar.
  *
  * A vigência é SEMPRE de um ano: começa no dia combinado e termina no mesmo
  * dia do ano seguinte.
  */
 
-export const STATUS_DO_CONTRATO = ["rascunho", "enviado", "assinado", "vigente", "a_vencer", "vencido", "cancelado"] as const;
+export const STATUS_DO_CONTRATO = ["rascunho", "enviado", "aguardando_pagamento", "assinado", "vigente", "a_vencer", "vencido", "cancelado"] as const;
 export type StatusDoContrato = (typeof STATUS_DO_CONTRATO)[number];
 
 export const NOME_DO_STATUS_DO_CONTRATO: Record<StatusDoContrato, string> = {
   rascunho: "Rascunho",
-  enviado: "Enviado para assinar",
-  assinado: "Assinado",
-  vigente: "Vigente",
-  a_vencer: "A vencer",
+  enviado: "Enviado para assinatura",
+  aguardando_pagamento: "Assinado, aguardando pagamento",
+  assinado: "Pago, começa em breve",
+  vigente: "Pago e ativo",
+  a_vencer: "Ativo, a vencer",
   vencido: "Vencido",
   cancelado: "Cancelado",
 };
@@ -27,9 +30,10 @@ export const NOME_DO_STATUS_DO_CONTRATO: Record<StatusDoContrato, string> = {
 export const COR_DO_STATUS_DO_CONTRATO: Record<StatusDoContrato, string> = {
   rascunho: "var(--painel-neutro)",
   enviado: "var(--painel-4)",
+  aguardando_pagamento: "var(--painel-2)",
   assinado: "var(--painel-3)",
   vigente: "var(--painel-1)",
-  a_vencer: "var(--painel-2)",
+  a_vencer: "var(--painel-5)",
   vencido: "var(--badge-danger-text)",
   cancelado: "var(--painel-neutro)",
 };
@@ -55,6 +59,13 @@ export type DatasDoContrato = {
   status: string;
   inicioVigencia: Date | string | null;
   fimVigencia: Date | string | null;
+  /**
+   * O primeiro pagamento confirmado (04/10). Contrato assinado e sem
+   * pagamento "aguarda pagamento", qualquer que seja a data: pela cláusula 5.1
+   * a vigência só conta da confirmação do pagamento, e até lá a pessoa não é
+   * cliente.
+   */
+  pagoEm?: Date | string | null;
 };
 
 const data = (d: Date | string | null) => (d ? new Date(d) : null);
@@ -69,7 +80,9 @@ export function diasParaVencer(c: DatasDoContrato, agora = new Date()): number |
 export function situacaoDoContrato(c: DatasDoContrato, agora = new Date()): StatusDoContrato {
   if (c.status === "cancelado") return "cancelado";
   if (c.status === "rascunho" || c.status === "enviado") return c.status;
-  // Daqui para baixo o contrato está assinado: o que muda é o relógio.
+  // Assinado e ainda sem pagamento: nem o relógio liga.
+  if (!c.pagoEm) return "aguardando_pagamento";
+  // Daqui para baixo o contrato está assinado e pago: o que muda é o relógio.
   const inicio = data(c.inicioVigencia);
   const fim = data(c.fimVigencia);
   if (!inicio || !fim) return "assinado";
@@ -108,3 +121,49 @@ export function fracaoDaVigencia(c: DatasDoContrato, agora = new Date()): number
 }
 
 export const centavosEmReais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/**
+ * OS GRUPOS DO GESTOR (04/10), na língua do dono: rascunho, enviado para
+ * assinatura, assinado aguardando pagamento, pago e ativo, vencido e
+ * cancelado. "Pago e ativo" junta o que já foi pago e vale (ou vai valer).
+ */
+export const GRUPOS_DO_GESTOR = ["rascunho", "enviado", "aguardando_pagamento", "ativo", "vencido", "cancelado"] as const;
+export type GrupoDoGestor = (typeof GRUPOS_DO_GESTOR)[number];
+
+export const NOME_DO_GRUPO: Record<GrupoDoGestor, string> = {
+  rascunho: "Rascunho",
+  enviado: "Enviado para assinatura",
+  aguardando_pagamento: "Assinado, aguardando pagamento",
+  ativo: "Pago e ativo",
+  vencido: "Vencido",
+  cancelado: "Cancelado",
+};
+
+export const COR_DO_GRUPO: Record<GrupoDoGestor, string> = {
+  rascunho: "var(--painel-neutro)",
+  enviado: "var(--painel-4)",
+  aguardando_pagamento: "var(--painel-2)",
+  ativo: "var(--painel-1)",
+  vencido: "var(--badge-danger-text)",
+  cancelado: "var(--painel-neutro)",
+};
+
+export function grupoDaSituacao(s: StatusDoContrato): GrupoDoGestor {
+  if (s === "assinado" || s === "vigente" || s === "a_vencer") return "ativo";
+  return s;
+}
+
+export function ehGrupoDoGestor(v: unknown): v is GrupoDoGestor {
+  return typeof v === "string" && (GRUPOS_DO_GESTOR as readonly string[]).includes(v);
+}
+
+/** As formas de pagamento que o admin registra à mão (04/10). */
+export const FORMAS_DE_PAGAMENTO = ["pix", "boleto", "transferencia", "cartao"] as const;
+export type FormaDePagamento = (typeof FORMAS_DE_PAGAMENTO)[number];
+export const NOME_DA_FORMA: Record<string, string> = {
+  pix: "Pix",
+  boleto: "Boleto",
+  transferencia: "Transferência",
+  cartao: "Cartão",
+  stripe: "Link de pagamento do Stripe",
+};

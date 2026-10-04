@@ -6,7 +6,15 @@ import { exigirAdmin } from "@/lib/admin/guarda";
 import { prisma } from "@/lib/db/prisma";
 import { contratosDoPainel } from "@/lib/contratos/painel";
 import { provedorDeAssinatura } from "@/lib/contratos/assinatura";
-import { COR_DO_STATUS_DO_CONTRATO, NOME_DO_STATUS_DO_CONTRATO, STATUS_DO_CONTRATO, centavosEmReais } from "@/lib/contratos/situacao";
+import {
+  COR_DO_GRUPO,
+  COR_DO_STATUS_DO_CONTRATO,
+  GRUPOS_DO_GESTOR,
+  NOME_DO_GRUPO,
+  NOME_DO_STATUS_DO_CONTRATO,
+  centavosEmReais,
+  ehGrupoDoGestor,
+} from "@/lib/contratos/situacao";
 import { BarraEmpilhada, BarrasHorizontais, Cartao, Numero, Rosca, Vazio } from "@/components/admin/painel-graficos";
 import { NovoContrato } from "@/components/admin/contratos-acoes";
 
@@ -14,8 +22,13 @@ import { NovoContrato } from "@/components/admin/contratos-acoes";
  * O GESTOR DE CONTRATOS (02/10/2026), no padrão gráfico do painel: quanto
  * está contratado e em que situação, o que vence nos próximos 60 dias e a
  * lista, que leva à ficha de cada cliente (/admin/contratos/[conta]). Só admin.
+ *
+ * 04/10: os estados na língua do dono (rascunho, enviado para assinatura,
+ * assinado aguardando pagamento, pago e ativo, vencido, cancelado), com o
+ * filtro por estado e o valor a receber. Contrato novo também para quem ainda
+ * não tem conta (prospect).
  */
-export default async function ContratosPage({ searchParams }: { searchParams: Promise<{ conta?: string }> }) {
+export default async function ContratosPage({ searchParams }: { searchParams: Promise<{ conta?: string; filtro?: string }> }) {
   if (!(await exigirAdmin())) notFound();
   const sp = await searchParams;
   const agora = new Date();
@@ -30,11 +43,21 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   ]);
   const provedor = provedorDeAssinatura();
 
-  const porSituacao = new Map(STATUS_DO_CONTRATO.map((s) => [s, contratos.filter((c) => c.situacao === s)]));
-  const emVigor = contratos.filter((c) => c.situacao === "vigente" || c.situacao === "a_vencer");
+  const porGrupo = new Map(GRUPOS_DO_GESTOR.map((g) => [g, contratos.filter((c) => c.grupo === g)]));
+  const emVigor = porGrupo.get("ativo") ?? [];
   const valorEmVigor = emVigor.reduce((s, c) => s + c.valorCentavos, 0);
+  // A RECEBER: o que falta entrar dos contratos assinados (aguardando
+  // pagamento, ou pagos em parte). Em assinatura fica à parte: ainda não é
+  // dívida de ninguém.
+  const aReceber = contratos
+    .filter((c) => c.grupo === "aguardando_pagamento" || c.grupo === "ativo")
+    .reduce((s, c) => s + Math.max(0, c.valorCentavos - c.pagoCentavos), 0);
+  const emAssinatura = [...(porGrupo.get("rascunho") ?? []), ...(porGrupo.get("enviado") ?? [])];
+  const aVencer = contratos.filter((c) => c.situacao === "a_vencer");
+  const filtro = ehGrupoDoGestor(sp.filtro) ? sp.filtro : null;
+  const lista = filtro ? (porGrupo.get(filtro) ?? []) : contratos;
   const proximos = contratos
-    .filter((c) => c.dias !== null && c.dias <= 60 && c.dias > -30 && c.situacao !== "cancelado" && c.situacao !== "rascunho" && c.situacao !== "enviado")
+    .filter((c) => c.dias !== null && c.dias <= 60 && c.dias > -30 && (c.grupo === "ativo" || c.grupo === "vencido"))
     .sort((a, b) => (a.dias ?? 0) - (b.dias ?? 0));
   const data = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "a definir");
 
@@ -64,23 +87,27 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <Numero rotulo="Em vigor" valor={String(emVigor.length)} nota={`${centavosEmReais(valorEmVigor)} por ano`} />
-        <Numero rotulo="A vencer em 60 dias" valor={String(porSituacao.get("a_vencer")?.length ?? 0)} nota="avisos em 60, 30 e 7 dias" />
-        <Numero rotulo="Vencidos" valor={String(porSituacao.get("vencido")?.length ?? 0)} nota="sem renovação registrada" />
-        <Numero rotulo="Esperando assinatura" valor={String((porSituacao.get("rascunho")?.length ?? 0) + (porSituacao.get("enviado")?.length ?? 0))} nota="rascunhos e enviados" />
+        <Numero rotulo="Pagos e ativos" valor={String(emVigor.length)} nota={`${centavosEmReais(valorEmVigor)} por ano`} />
+        <Numero
+          rotulo="Aguardando pagamento"
+          valor={String(porGrupo.get("aguardando_pagamento")?.length ?? 0)}
+          nota={`${centavosEmReais(aReceber)} a receber`}
+        />
+        <Numero rotulo="Em assinatura" valor={String(emAssinatura.length)} nota={`rascunhos e enviados, ${centavosEmReais(emAssinatura.reduce((s, c) => s + c.valorCentavos, 0))}`} />
+        <Numero rotulo="A vencer em 60 dias" valor={String(aVencer.length)} nota={`${porGrupo.get("vencido")?.length ?? 0} vencido(s) · avisos em 60, 30 e 7 dias`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <Cartao className="lg:col-span-2" titulo="Por situação" subtitulo="Valor anual de cada situação. Cancelado e rascunho ficam na conta, para nada sumir.">
+        <Cartao className="lg:col-span-2" titulo="Por estado" subtitulo="Valor anual de cada estado. Cancelado e rascunho ficam na conta, para nada sumir.">
           <Rosca
             centro={centavosEmReais(valorEmVigor).replace(",00", "")}
-            rotuloDoCentro="em vigor por ano"
+            rotuloDoCentro="pago e ativo por ano"
             formatar={(n) => centavosEmReais(n).replace(",00", "")}
-            fatias={STATUS_DO_CONTRATO.map((s) => ({
-              nome: NOME_DO_STATUS_DO_CONTRATO[s],
-              valor: (porSituacao.get(s) ?? []).reduce((t, c) => t + c.valorCentavos, 0),
-              cor: COR_DO_STATUS_DO_CONTRATO[s],
-              nota: `· ${(porSituacao.get(s) ?? []).length}`,
+            fatias={GRUPOS_DO_GESTOR.map((g) => ({
+              nome: NOME_DO_GRUPO[g],
+              valor: (porGrupo.get(g) ?? []).reduce((t, c) => t + c.valorCentavos, 0),
+              cor: COR_DO_GRUPO[g],
+              nota: `· ${(porGrupo.get(g) ?? []).length}`,
             }))}
             vazio={{ titulo: "Nenhum contrato ainda", texto: "Crie o primeiro pelo botão Novo contrato. Ele nasce como rascunho." }}
           />
@@ -101,16 +128,38 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
         </Cartao>
       </div>
 
-      <Cartao titulo="Novo contrato" subtitulo="Nasce como rascunho. Depois, na ficha do cliente, vai para assinatura eletrônica ou é marcado como assinado com o PDF.">
+      <Cartao
+        titulo="Novo contrato"
+        subtitulo="Para um novo cliente ou para uma conta que já existe. Nasce como rascunho; na ficha, vai para assinatura eletrônica, recebe o pagamento e, pago, libera o acesso."
+      >
         <NovoContrato contas={contas.map((c) => ({ id: c.id, rotulo: `${c.name ?? "(sem nome)"} · ${c.email} · ${c.plan}`, plano: c.plan }))} contaInicial={sp.conta ?? null} />
       </Cartao>
 
-      <Cartao titulo="Todos os contratos">
-        {contratos.length === 0 ? (
-          <Vazio titulo="Nenhum contrato" texto="A lista aparece aqui, com a situação calculada pelas datas da vigência." />
+      <Cartao titulo={filtro ? `Contratos: ${NOME_DO_GRUPO[filtro].toLowerCase()}` : "Todos os contratos"}>
+        <nav className="mb-3 flex flex-wrap gap-1.5" aria-label="Filtrar por estado" data-filtros-de-contrato>
+          {[null, ...GRUPOS_DO_GESTOR].map((g) => {
+            const ativo = g === filtro;
+            const n = g ? (porGrupo.get(g)?.length ?? 0) : contratos.length;
+            return (
+              <Link
+                key={g ?? "todos"}
+                href={g ? `/admin/contratos?filtro=${g}` : "/admin/contratos"}
+                aria-current={ativo ? "page" : undefined}
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+                style={ativo ? { borderColor: "var(--text-primary)", color: "var(--text-primary)", background: "var(--realce-2)" } : { borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                {g && <span className="h-2 w-2 rounded-full" style={{ background: COR_DO_GRUPO[g] }} />}
+                {g ? NOME_DO_GRUPO[g] : "Todos"}
+                <span className="tabular-nums">{n}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        {lista.length === 0 ? (
+          <Vazio titulo="Nenhum contrato" texto={filtro ? "Nenhum contrato neste estado." : "A lista aparece aqui, com o estado calculado pela assinatura, pelo pagamento e pelas datas da vigência."} />
         ) : (
           <ul className="space-y-2">
-            {contratos.map((c) => (
+            {lista.map((c) => (
               <li key={c.id}>
                 <Link
                   href={`/admin/contratos/${c.userId}`}
@@ -125,6 +174,13 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                     <span className="block text-xs truncate" style={{ color: "var(--text-muted)" }}>
                       {c.plano} · {centavosEmReais(c.valorCentavos)} por ano · {c.email}
                     </span>
+                    <span className="block text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                      {c.grupo === "aguardando_pagamento"
+                        ? `a receber ${centavosEmReais(Math.max(0, c.valorCentavos - c.pagoCentavos))}${c.formaDePagamento ? ` · ${c.formaDePagamento}` : ""}`
+                        : c.pagoEm && c.fim
+                          ? `pago em ${data(c.pagoEm)} · renova em ${data(c.fim)}`
+                          : c.formaDePagamento ?? ""}
+                    </span>
                   </span>
                   <span className="text-xs self-center" style={{ color: "var(--text-primary)" }}>
                     <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: COR_DO_STATUS_DO_CONTRATO[c.situacao] }} />
@@ -132,6 +188,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                     {c.provedorSituacao === "aguardando_provedor" ? " · aguardando provedor" : ""}
                   </span>
                   <span className="self-center">
+                    {c.inicio ? (
                     <BarraEmpilhada
                       rotulo="Vigência"
                       partes={[
@@ -139,6 +196,11 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                         { nome: "dias restantes", valor: Math.max(0, c.dias ?? 0), cor: "var(--painel-neutro)" },
                       ]}
                     />
+                    ) : (
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        Vigência de 12 meses a partir da confirmação do pagamento
+                      </span>
+                    )}
                   </span>
                 </Link>
               </li>

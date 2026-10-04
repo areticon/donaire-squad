@@ -126,9 +126,44 @@ function zapsign(): ProvedorDeAssinatura | null {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Simulado (04/10): SÓ fora de produção, para provar o fluxo inteiro sem chave
+// da ZapSign. O envio não sai para ninguém; a assinatura chega pelo MESMO
+// webhook (/api/webhooks/assinatura, com o segredo), no formato da ZapSign
+// ({ token, external_id, event_type: "doc_signed" }), e a reconsulta lê o que
+// o webhook deixou. Em produção, ASSINATURA_PROVEDOR=simulado devolve null:
+// assinatura sem validade jurídica nunca chega a cliente de verdade.
+// ---------------------------------------------------------------------------
+
+const EVENTOS_SIMULADOS: Map<string, string> = ((globalThis as { __assinaturaSimulada?: Map<string, string> }).__assinaturaSimulada ??= new Map());
+
+function simulado(): ProvedorDeAssinatura | null {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") return null;
+  return {
+    nome: "simulado",
+    ambiente: "teste",
+    async enviar(e) {
+      return { documentoId: `sim_${e.externoId}`, linkDeAssinatura: null };
+    },
+    async consultar(documentoId) {
+      const evento = EVENTOS_SIMULADOS.get(documentoId);
+      const assinado = evento === "doc_signed";
+      return { situacao: assinado ? "assinado" : evento === "doc_refused" ? "recusado" : "enviado", pdfAssinadoUrl: null, assinadoEm: assinado ? new Date() : null };
+    },
+    lerWebhook(corpo) {
+      const c = (corpo ?? {}) as { token?: unknown; external_id?: unknown; event_type?: unknown };
+      if (typeof c.token !== "string") return null;
+      const evento = String(c.event_type ?? "");
+      EVENTOS_SIMULADOS.set(c.token, evento);
+      return { documentoId: c.token, externoId: typeof c.external_id === "string" ? c.external_id : null, evento };
+    },
+  };
+}
+
 /** O provedor ligado, ou null quando falta a chave (o contrato aguarda). */
 export function provedorDeAssinatura(): ProvedorDeAssinatura | null {
   const escolhido = (process.env.ASSINATURA_PROVEDOR ?? "zapsign").toLowerCase();
   if (escolhido === "zapsign") return zapsign();
+  if (escolhido === "simulado") return simulado();
   return null;
 }

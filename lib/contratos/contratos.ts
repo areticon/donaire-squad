@@ -10,8 +10,9 @@ import { PLANOS_PUBLICOS } from "@/lib/planos";
  * O GESTOR DE CONTRATOS, do lado do servidor (02/10/2026).
  *
  * Um contrato é anual, ligado à conta do cliente, e passa por rascunho,
- * envio para assinar, assinado e (pelas datas) vigente, a vencer e vencido,
- * ou cancelado. TODA mudança grava um evento em contratos_eventos com quem
+ * envio para assinar, assinado aguardando pagamento, pago (e, pelas datas,
+ * vigente, a vencer e vencido), ou cancelado. O pagamento e a ativação da
+ * conta moram em lib/contratos/pagamento.ts (04/10). TODA mudança grava um evento em contratos_eventos com quem
  * fez e o detalhe: é a trilha de auditoria que responde "quem mandou, quando
  * assinou, qual texto".
  *
@@ -27,10 +28,10 @@ export class RecusaDoContrato extends Error {
   }
 }
 
-type Autor = { id: string; email: string } | "sistema" | "provedor";
+export type Autor = { id: string; email: string } | "sistema" | "provedor" | "stripe";
 const nomeDoAutor = (a: Autor) => (typeof a === "string" ? a : a.email);
 
-async function registrar(contratoId: string, autor: Autor, tipo: string, detalhe?: unknown) {
+export async function registrar(contratoId: string, autor: Autor, tipo: string, detalhe?: unknown) {
   await prisma.eventoDoContrato.create({ data: { contratoId, tipo, autor: nomeDoAutor(autor), detalhe: (detalhe ?? undefined) as never } });
 }
 
@@ -39,7 +40,16 @@ export function nomeDoPlano(plano: string): string {
 }
 
 export type NovoContrato = {
-  userId: string;
+  /** A conta de quem já é cliente. Sem ela, vale o `prospect`. */
+  userId?: string | null;
+  /**
+   * O PROSPECT (04/10): quem ainda não tem conta. A conta nasce aqui, sem
+   * senha e sem plano, e nada é enviado a ela: até pagar, a pessoa não entra
+   * (o portão manda para /aguardando-pagamento). Se o e-mail já tem conta, o
+   * contrato vai para ela.
+   */
+  prospect?: { email: string; nome: string | null } | null;
+  acessosExtras?: number | null;
   plano: string;
   valorCentavos: number;
   inicioVigencia: Date | null;
@@ -54,14 +64,39 @@ export type NovoContrato = {
   renovadoDeId?: string | null;
 };
 
+/** A conta do prospect: a que já existe com o e-mail, ou uma nova, sem senha e sem plano. */
+async function contaDoProspect(p: { email: string; nome: string | null }): Promise<{ id: string; email: string; name: string | null; acessosExtras: number; criada: boolean }> {
+  const email = p.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RecusaDoContrato("E-mail do cliente inválido.");
+  const ja = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true, acessosExtras: true } });
+  if (ja) return { ...ja, criada: false };
+  // E-mail confirmado porque quem confirma é o admin que digitou (o mesmo
+  // desenho do convite do CRM); sem senha, porque senha escolhida por outra
+  // pessoa não é senha. O link de escolher a senha só sai no pagamento.
+  const u = await prisma.user.create({
+    data: { email, name: p.nome?.trim() || null, emailVerified: true, role: "user", plan: "free" },
+    select: { id: true, email: true, name: true, acessosExtras: true },
+  });
+  return { ...u, criada: true };
+}
+
 export async function criarContrato(admin: Autor, n: NovoContrato) {
-  const u = await prisma.user.findUnique({ where: { id: n.userId }, select: { id: true, email: true, name: true } });
-  if (!u) throw new RecusaDoContrato("Conta não encontrada.", 404);
   if (!Number.isFinite(n.valorCentavos) || n.valorCentavos <= 0) throw new RecusaDoContrato("Informe o valor anual.");
   if (!n.plano) throw new RecusaDoContrato("Informe o plano.");
+  const extras = n.acessosExtras ?? null;
+  if (extras !== null && (!Number.isInteger(extras) || extras < 0 || extras > 200)) throw new RecusaDoContrato("Acessos extras: um número inteiro de 0 a 200.");
+  let u: { id: string; email: string; name: string | null; acessosExtras: number; criada?: boolean } | null = null;
+  if (n.userId) {
+    u = await prisma.user.findUnique({ where: { id: n.userId }, select: { id: true, email: true, name: true, acessosExtras: true } });
+  } else if (n.prospect?.email) {
+    u = await contaDoProspect(n.prospect);
+  } else {
+    throw new RecusaDoContrato("Escolha a conta do cliente ou preencha o e-mail do novo cliente.");
+  }
+  if (!u) throw new RecusaDoContrato("Conta não encontrada.", 404);
   const c = await prisma.contrato.create({
     data: {
-      userId: n.userId,
+      userId: u.id,
       plano: n.plano,
       valorCentavos: Math.round(n.valorCentavos),
       formaDePagamento: n.formaDePagamento ?? null,
@@ -71,6 +106,7 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
       endereco: n.endereco ?? null,
       signatarioNome: n.signatarioNome ?? u.name ?? null,
       signatarioEmail: n.signatarioEmail ?? u.email,
+      acessosExtras: extras ?? u.acessosExtras,
       signatarioDocumento: n.signatarioDocumento ?? null,
       renovacaoAutomatica: n.renovacaoAutomatica ?? true,
       observacao: n.observacao ?? null,
@@ -83,6 +119,8 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
     inicio: c.inicioVigencia,
     fim: c.fimVigencia,
     renovadoDe: n.renovadoDeId ?? undefined,
+    acessosExtras: c.acessosExtras,
+    ...(u.criada ? { contaCriada: u.email } : {}),
   });
   return c;
 }
@@ -119,13 +157,14 @@ export function textoDoContrato(c: {
  * fica gravado e o signatário recebe o e-mail do provedor.
  */
 export async function enviarParaAssinar(admin: Autor, id: string) {
-  const c = await prisma.contrato.findUnique({ where: { id }, include: { user: { select: { email: true, name: true, acessosExtras: true } } } });
+  const c = await prisma.contrato.findUnique({ where: { id }, include: { user: { select: { email: true, name: true } } } });
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status !== "rascunho" && c.status !== "enviado") throw new RecusaDoContrato("Só rascunho ou contrato enviado podem ser (re)enviados.");
   if (!c.signatarioEmail || !c.signatarioNome) throw new RecusaDoContrato("Preencha o nome e o e-mail de quem assina.");
-  if (!c.inicioVigencia) throw new RecusaDoContrato("Preencha a data de início da vigência.");
+  // Sem data combinada, o texto diz que a vigência começa na confirmação do
+  // pagamento (cláusula 5.1), e é isso que a ativação grava (04/10).
 
-  const t = textoDoContrato({ ...c, acessosExtras: c.user.acessosExtras });
+  const t = textoDoContrato(c);
   const provedor = provedorDeAssinatura();
   if (!provedor) {
     await prisma.contrato.update({ where: { id }, data: { provedorSituacao: "aguardando_provedor", modeloVersao: t.versao, textoHash: t.hash } });
@@ -187,16 +226,22 @@ export async function marcarAssinado(autor: Autor, id: string, args: { assinadoE
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status === "cancelado") throw new RecusaDoContrato("Contrato cancelado não pode ser assinado.");
   const assinadoEm = args.assinadoEm ?? new Date();
-  const inicio = c.inicioVigencia ?? assinadoEm;
   const pdfUrl = args.pdf ? await guardarPdf(id, args.pdf) : c.pdfAssinadoUrl;
-  const base = { status: "assinado", inicioVigencia: inicio, fimVigencia: fimDaVigencia(inicio) };
+  // Sem data combinada, a vigência só ganha datas no pagamento (cláusula 5.1).
+  const inicio = c.inicioVigencia ?? c.pagoEm ?? null;
+  const base = { status: "assinado", inicioVigencia: inicio, fimVigencia: inicio ? fimDaVigencia(inicio) : null, pagoEm: c.pagoEm };
   const status = situacaoDoContrato(base);
   await prisma.contrato.update({
     where: { id },
     // Assinado por fora enquanto esperava o provedor: o "aguardando" perde o sentido.
-    data: { ...base, status, assinadoEm, pdfAssinadoUrl: pdfUrl, provedorSituacao: c.provedor ? "assinado" : null },
+    data: { status, inicioVigencia: base.inicioVigencia, fimVigencia: base.fimVigencia, assinadoEm, pdfAssinadoUrl: pdfUrl, provedorSituacao: c.provedor ? "assinado" : null },
   });
-  await registrar(id, autor, "assinado", { origem: args.origem, assinadoEm, inicio, fim: base.fimVigencia, comPdf: Boolean(pdfUrl) });
+  await registrar(id, autor, "assinado", { origem: args.origem, assinadoEm, inicio, fim: base.fimVigencia, comPdf: Boolean(pdfUrl), aguardaPagamento: !c.pagoEm });
+  // Pago antes de assinar (o link do Stripe chegou primeiro): ativa agora.
+  if (c.pagoEm) {
+    const { ativarSePronto } = await import("@/lib/contratos/pagamento");
+    await ativarSePronto(autor, id);
+  }
   return { status };
 }
 
@@ -251,6 +296,7 @@ export async function renovarContrato(admin: Autor, id: string, valorCentavos?: 
     signatarioEmail: c.signatarioEmail,
     signatarioDocumento: c.signatarioDocumento,
     renovacaoAutomatica: c.renovacaoAutomatica,
+    acessosExtras: c.acessosExtras,
     renovadoDeId: c.id,
   });
   await registrar(id, admin, "renovado", { novo: novo.id, numero: novo.numero });

@@ -65,7 +65,12 @@ export function montarTexto(d: DadosDoContrato, md = lerModelo()): { texto: stri
     [/Representante legal/i, d.representante ?? "[PREENCHER]"],
     [/E-mail para comunica/i, d.email ?? "[PREENCHER]"],
     [/Plano contratado/i, d.plano],
-    [/Valor anual e data de in[ií]cio/i, `${centavosEmReais(d.valorCentavos)}, a partir de ${dataBR(d.inicioVigencia)}`],
+    // Sem data combinada, vale a cláusula 5.1: os 12 meses contam da
+    // confirmação do pagamento (04/10, contrato de prospect).
+    [
+      /Valor anual e data de in[ií]cio/i,
+      `${centavosEmReais(d.valorCentavos)}, ${d.inicioVigencia ? `a partir de ${dataBR(d.inicioVigencia)}` : "com início na confirmação do pagamento"}`,
+    ],
     [/Acessos extras/i, d.acessosExtras > 0 ? String(d.acessosExtras) : "nenhum"],
   ];
   const texto =

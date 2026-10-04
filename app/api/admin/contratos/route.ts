@@ -11,7 +11,11 @@ function reaisDoTexto(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Cria um contrato (rascunho) para a conta de um cliente. Só admin. */
+/**
+ * Cria um contrato (rascunho) para a conta de um cliente, ou para um PROSPECT
+ * (04/10): sem `userId`, vale `prospectEmail` e `prospectNome`, e a conta nasce
+ * sem senha e sem plano. Só admin.
+ */
 export async function POST(req: NextRequest) {
   const admin = await exigirAdmin();
   if (!admin) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
@@ -20,7 +24,9 @@ export async function POST(req: NextRequest) {
   const inicio = s("inicioVigencia");
   try {
     const c = await criarContrato(admin, {
-      userId: s("userId") ?? "",
+      userId: s("userId"),
+      prospect: s("userId") ? null : s("prospectEmail") ? { email: s("prospectEmail")!, nome: s("prospectNome") } : null,
+      acessosExtras: b.acessosExtras === undefined || b.acessosExtras === "" || b.acessosExtras === null ? null : Number(b.acessosExtras),
       plano: s("plano") ?? "",
       valorCentavos: Math.round(reaisDoTexto(b.valorReais) * 100),
       inicioVigencia: inicio ? new Date(`${inicio}T12:00:00-03:00`) : null,
@@ -33,7 +39,7 @@ export async function POST(req: NextRequest) {
       renovacaoAutomatica: b.renovacaoAutomatica !== false,
       observacao: s("observacao"),
     });
-    return NextResponse.json({ id: c.id, numero: c.numero });
+    return NextResponse.json({ id: c.id, numero: c.numero, userId: c.userId });
   } catch (e) {
     if (e instanceof RecusaDoContrato) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;

@@ -47,3 +47,31 @@ export function avisoDeVencimentoAoAdmin(a: { cliente: string; numero: number; p
     html: casca({ previa: linha, miolo: [titulo(a.dias <= 0 ? "Contrato vencido" : "Contrato a vencer"), paragrafo(linha), botao("Ver o cliente", link)].join("\n") }),
   };
 }
+
+/**
+ * AS BOAS-VINDAS DO CONTRATO (04/10/2026): sai quando o pagamento é
+ * confirmado e a conta é ativada. Leva o link de entrada: para quem ainda não
+ * tem senha, o link de escolher a senha (o mesmo mecanismo do convite, que
+ * vale 1 hora); para quem já tem, o link de entrar. Diz o que vem primeiro na
+ * plataforma, que é a jornada de entrada (perfil, referências, redes).
+ */
+export function boasVindasDoContrato(a: { nome: string | null; numero: number; plano: string; fim: Date | null; url: string; definirSenha: boolean }): Email {
+  const primeiro = (a.nome ?? "").trim().split(/\s+/)[0] || "";
+  const oi = primeiro ? `Olá, ${primeiro}` : "Olá";
+  const n = String(a.numero).padStart(4, "0");
+  const abertura = `Recebemos o pagamento do contrato nº ${n} e a sua conta na ${MARCA.nome} está ativa, no plano ${a.plano}${a.fim ? `, até ${dataLonga(a.fim)}` : ""}.`;
+  const passo = a.definirSenha
+    ? "Para entrar pela primeira vez, escolha a sua senha no botão abaixo. O link vale por 1 hora; se vencer, use \"Esqueci a senha\" na tela de entrada com este mesmo e-mail."
+    : "Entre com o seu e-mail e a sua senha de sempre.";
+  const jornada = "Logo na entrada, a plataforma conduz o setup do seu projeto, passo a passo: seu perfil, as referências que você admira, a sua marca, a sua voz e o seu estilo, até conectar as redes. É o que deixa o primeiro conteúdo com a sua cara.";
+  const acao = a.definirSenha ? "Escolher minha senha e entrar" : "Entrar na plataforma";
+  return {
+    para: "",
+    assunto: `Boas-vindas à ${MARCA.nome}: sua conta está ativa`,
+    texto: [`${oi}.`, "", abertura, "", passo, "", a.url, "", jornada, "", "Qualquer dúvida, é só responder a este e-mail.", "", MARCA.nome, MARCA.site].join("\n"),
+    html: casca({
+      previa: abertura,
+      miolo: [titulo(`${oi}.`), paragrafo(abertura), paragrafo(passo), botao(acao, a.url), paragrafo(jornada), paragrafo("Qualquer dúvida, é só responder a este e-mail.", { apagado: true, tamanho: 13 })].join("\n"),
+    }),
+  };
+}

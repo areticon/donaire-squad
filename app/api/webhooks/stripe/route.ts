@@ -38,6 +38,18 @@ export async function POST(req: NextRequest) {
         const customerId = session.customer as string;
 
         /**
+         * PAGAMENTO DE CONTRATO (04/10): o link de pagamento gerado no gestor
+         * de contratos. Sai cedo como a compra de vídeo: não é assinatura, e
+         * quem libera o acesso é o próprio contrato (lib/contratos/pagamento),
+         * idempotente pelo id da sessão.
+         */
+        if (session.metadata?.tipo === "contrato") {
+          const { pagamentoDoStripe } = await import("@/lib/contratos/pagamento");
+          await pagamentoDoStripe(session);
+          break;
+        }
+
+        /**
          * COMPRA DE CREDITO DE VIDEO, que e pagamento avulso e nao assinatura.
          *
          * Vem primeiro e sai cedo de proposito: uma compra de credito nao tem
@@ -99,6 +111,16 @@ export async function POST(req: NextRequest) {
             valorCents: session.amount_total ?? null,
             meta: { moeda: session.currency ?? "brl", assinatura: String(session.subscription ?? "") },
           });
+        }
+        break;
+      }
+
+      // O boleto do link de pagamento do contrato compensa depois (04/10).
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.tipo === "contrato") {
+          const { pagamentoDoStripe } = await import("@/lib/contratos/pagamento");
+          await pagamentoDoStripe(session);
         }
         break;
       }

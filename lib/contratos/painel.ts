@@ -4,7 +4,7 @@ import { creditosDoCiclo } from "@/lib/equipe/regras";
 import { usoDeGravacoes } from "@/lib/limites-do-plano";
 import { PLANS } from "@/lib/stripe";
 import { resumoDoSuporte } from "@/lib/suporte/painel";
-import { diasParaVencer, situacaoDoContrato, type StatusDoContrato } from "@/lib/contratos/situacao";
+import { diasParaVencer, grupoDaSituacao, situacaoDoContrato, type GrupoDoGestor, type StatusDoContrato } from "@/lib/contratos/situacao";
 import { nomeDoPlano } from "@/lib/contratos/contratos";
 
 /**
@@ -22,17 +22,23 @@ export type ContratoNaLista = {
   plano: string;
   valorCentavos: number;
   situacao: StatusDoContrato;
+  /** O grupo do gestor (04/10): rascunho, enviado, aguardando pagamento, pago e ativo, vencido, cancelado. */
+  grupo: GrupoDoGestor;
   inicio: string | null;
   fim: string | null;
   dias: number | null;
   provedorSituacao: string | null;
+  /** Quanto já entrou, em centavos (pagamentos registrados e do Stripe). */
+  pagoCentavos: number;
+  pagoEm: string | null;
+  formaDePagamento: string | null;
 };
 
 export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaLista[]> {
   const lista = await prisma.contrato.findMany({
     orderBy: [{ fimVigencia: "asc" }, { createdAt: "desc" }],
     take: 500,
-    include: { user: { select: { email: true, name: true } } },
+    include: { user: { select: { email: true, name: true } }, pagamentos: { select: { valorCentavos: true } } },
   });
   return lista.map((c) => ({
     id: c.id,
@@ -43,10 +49,14 @@ export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaL
     plano: nomeDoPlano(c.plano),
     valorCentavos: c.valorCentavos,
     situacao: situacaoDoContrato(c, agora),
+    grupo: grupoDaSituacao(situacaoDoContrato(c, agora)),
     inicio: c.inicioVigencia?.toISOString() ?? null,
     fim: c.fimVigencia?.toISOString() ?? null,
     dias: diasParaVencer(c, agora),
     provedorSituacao: c.provedorSituacao,
+    pagoCentavos: c.pagamentos.reduce((s, p) => s + p.valorCentavos, 0),
+    pagoEm: c.pagoEm?.toISOString() ?? null,
+    formaDePagamento: c.formaDePagamento,
   }));
 }
 
@@ -75,7 +85,7 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
     prisma.contrato.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      include: { eventos: { orderBy: { createdAt: "desc" }, take: 40 }, alertas: { orderBy: { createdAt: "desc" } } },
+      include: { eventos: { orderBy: { createdAt: "desc" }, take: 40 }, alertas: { orderBy: { createdAt: "desc" } }, pagamentos: { orderBy: { pagoEm: "desc" } } },
     }),
     // Consumo da carteira do plano no ciclo: débitos menos estornos, sem
     // contar reposição, recarga, ajuste do admin e compras.
@@ -98,6 +108,9 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
   // LTV: o que o Stripe recebeu de verdade (cobranças pagas menos devoluções),
   // com os pacotes de vídeo do extrato separados. Sem Stripe, fica o extrato.
   const pacotesReais = pacotes.reduce((s, p) => s + reaisDaNota(p.note), 0);
+  // O que o contrato recebeu POR FORA do Stripe (Pix, boleto, transferência;
+  // 04/10): o Stripe não sabe dele, e o LTV sem ele mentiria para baixo.
+  const porFora = contratos.flatMap((c) => c.pagamentos).filter((p) => p.origem === "manual").reduce((s, p) => s + p.valorCentavos, 0) / 100;
   let stripeReais: number | null = null;
   if (u.stripeCustomerId) {
     try {
@@ -110,9 +123,10 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
   }
   const ltv = {
     leuStripe: stripeReais !== null,
-    total: stripeReais ?? pacotesReais,
+    total: (stripeReais ?? pacotesReais) + porFora,
     pacotes: pacotesReais,
-    assinatura: Math.max(0, (stripeReais ?? pacotesReais) - pacotesReais),
+    assinatura: Math.max(0, (stripeReais ?? pacotesReais) - pacotesReais) + porFora,
+    porFora,
     // O valor dos contratos assinados, para comparar com o que entrou.
     contratado: contratos.filter((c) => c.status !== "cancelado" && c.assinadoEm).reduce((s, c) => s + c.valorCentavos, 0) / 100,
   };
@@ -142,6 +156,22 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
       formaDePagamento: c.formaDePagamento,
       status: c.status,
       situacao: situacaoDoContrato(c, agora),
+      pagoEm: c.pagoEm?.toISOString() ?? null,
+      ativadoEm: c.ativadoEm?.toISOString() ?? null,
+      acessosExtras: c.acessosExtras,
+      linkDePagamento: c.linkDePagamento,
+      pagoCentavos: c.pagamentos.reduce((s, p) => s + p.valorCentavos, 0),
+      pagamentos: c.pagamentos.map((p) => ({
+        id: p.id,
+        valorCentavos: p.valorCentavos,
+        pagoEm: p.pagoEm.toISOString(),
+        forma: p.forma,
+        origem: p.origem,
+        autor: p.autor,
+        temComprovante: Boolean(p.comprovanteUrl),
+        comprovanteNome: p.comprovanteNome,
+        observacao: p.observacao,
+      })),
       dias: diasParaVencer(c, agora),
       inicio: c.inicioVigencia?.toISOString() ?? null,
       fim: c.fimVigencia?.toISOString() ?? null,

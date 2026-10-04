@@ -1464,12 +1464,26 @@ model Contrato {
   canceladoEm         DateTime?
   motivoCancelamento  String?
   observacao          String?
+  /// Acessos extras vendidos NESTE contrato (04/10). Aplicados à conta quando
+  /// o pagamento é confirmado.
+  acessosExtras       Int       @default(0)
+  /// A PORTA DO PAGAMENTO (04/10): enquanto for null, o contrato assinado
+  /// "aguarda pagamento" e a pessoa não entra na plataforma. É a data do
+  /// primeiro pagamento confirmado (registrado pelo admin ou vindo do Stripe).
+  pagoEm              DateTime?
+  /// Quando a conta foi ativada por este contrato (plano, créditos, boas-vindas
+  /// e onboarding). Null até assinar E pagar; é a trava de ativar uma vez só.
+  ativadoEm           DateTime?
+  /// O link de pagamento do Stripe gerado para este contrato, e a sessão dele.
+  linkDePagamento     String?
+  stripeSessaoId      String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventos EventoDoContrato[]
-  alertas AlertaDoContrato[]
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventos    EventoDoContrato[]
+  alertas    AlertaDoContrato[]
+  pagamentos PagamentoDoContrato[]
 
   @@index([userId])
   @@index([status, fimVigencia])
@@ -1490,6 +1504,32 @@ model EventoDoContrato {
 
   @@index([contratoId, createdAt])
   @@map("contratos_eventos")
+}
+
+/// UM PAGAMENTO DO CONTRATO (04/10/2026): registrado pelo admin (Pix, boleto,
+/// transferência, cartão, com o comprovante no store privado) ou vindo do link
+/// de pagamento do Stripe. `referencia` é o id da sessão do Stripe, única, para
+/// o webhook repetido não lançar o mesmo pagamento duas vezes.
+model PagamentoDoContrato {
+  id              String   @id @default(cuid())
+  contratoId      String
+  valorCentavos   Int
+  pagoEm          DateTime
+  /// "pix" | "boleto" | "transferencia" | "cartao" | "stripe"
+  forma           String
+  /// "manual" | "stripe"
+  origem          String
+  referencia      String?  @unique
+  comprovanteUrl  String?
+  comprovanteNome String?
+  observacao      String?
+  autor           String?
+  createdAt       DateTime @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@index([contratoId, pagoEm])
+  @@map("contratos_pagamentos")
 }
 
 /// UM AVISO DE VENCIMENTO (60, 30 e 7 dias antes, e no dia em que vence). A

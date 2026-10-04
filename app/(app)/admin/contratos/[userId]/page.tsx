@@ -6,7 +6,7 @@ import { exigirAdmin } from "@/lib/admin/guarda";
 import { reais } from "@/lib/admin/tipos-do-painel";
 import { fichaDoCliente } from "@/lib/contratos/painel";
 import { provedorDeAssinatura } from "@/lib/contratos/assinatura";
-import { COR_DO_STATUS_DO_CONTRATO, NOME_DO_STATUS_DO_CONTRATO, centavosEmReais, fracaoDaVigencia } from "@/lib/contratos/situacao";
+import { COR_DO_STATUS_DO_CONTRATO, NOME_DA_FORMA, NOME_DO_STATUS_DO_CONTRATO, centavosEmReais, fracaoDaVigencia } from "@/lib/contratos/situacao";
 import { BarraEmpilhada, BarrasHorizontais, Cartao, Medidor, Numero, Rosca, Vazio } from "@/components/admin/painel-graficos";
 import { AcoesDoContrato } from "@/components/admin/contratos-acoes";
 
@@ -38,7 +38,22 @@ const NOME_DO_EVENTO: Record<string, string> = {
   aviso_d30: "Aviso de 30 dias enviado",
   aviso_d7: "Aviso de 7 dias enviado",
   aviso_vencido: "Aviso de vencido enviado",
+  pagamento_registrado: "Pagamento registrado",
+  link_de_pagamento: "Link de pagamento do Stripe gerado",
+  conta_ativada: "Conta ativada: plano, créditos e boas-vindas",
+  onboarding_iniciado: "Onboarding iniciado (setup do projeto)",
+  creditos_repostos: "Créditos do ciclo repostos",
 };
+
+/** O detalhe que vale mostrar na trilha, em uma linha (04/10). */
+function resumoDoEvento(tipo: string, d: unknown): string {
+  const x = (d ?? {}) as Record<string, unknown>;
+  if (tipo === "pagamento_registrado") return `${String(x.valor ?? "")} por ${NOME_DA_FORMA[String(x.forma)] ?? String(x.forma ?? "")}${x.comComprovante ? ", com comprovante" : ""}`;
+  if (tipo === "conta_ativada") return `plano ${String(x.plano ?? "")}, ${Number(x.creditos ?? 0).toLocaleString("pt-BR")} créditos, boas-vindas ${String(x.boasVindas ?? "")}`;
+  if (tipo === "criado" && x.contaCriada) return `conta criada para ${String(x.contaCriada)}`;
+  if (tipo === "cancelado" && x.motivo) return String(x.motivo);
+  return "";
+}
 
 export default async function FichaDeContratoPage({ params }: { params: Promise<{ userId: string }> }) {
   if (!(await exigirAdmin())) notFound();
@@ -51,6 +66,7 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
   const atual =
     f.contratos.find((c) => c.situacao === "vigente" || c.situacao === "a_vencer") ??
     f.contratos.find((c) => c.situacao === "assinado") ??
+    f.contratos.find((c) => c.situacao === "aguardando_pagamento") ??
     f.contratos.find((c) => c.situacao === "vencido") ??
     f.contratos[0] ??
     null;
@@ -85,6 +101,13 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
         </div>
       </header>
 
+      {atual?.situacao === "aguardando_pagamento" && (
+        <p className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: "var(--painel-2)", color: "var(--marca-laranja-texto)", background: "var(--bg-elevated)" }} data-aguarda-pagamento>
+          O contrato nº {String(atual.numero).padStart(4, "0")} está assinado e aguarda pagamento de {centavosEmReais(atual.valorCentavos - atual.pagoCentavos)}. Até o pagamento ser registrado, esta conta
+          não entra na plataforma.
+        </p>
+      )}
+
       {alerta && (
         <p className="rounded-xl border px-4 py-2 text-sm font-semibold" style={{ borderColor: alerta.cor, color: alerta.cor, background: "var(--bg-elevated)" }} data-alerta-de-vencimento>
           {alerta.texto} {atual?.renovacaoAutomatica ? "A renovação é automática." : "A renovação não é automática."}
@@ -95,7 +118,13 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
         <Numero
           rotulo="Vigência"
           valor={atual ? NOME_DO_STATUS_DO_CONTRATO[atual.situacao] : "sem contrato"}
-          nota={atual ? `${data(atual.inicio)} a ${data(atual.fim)}${dias !== null && dias > 0 ? `, faltam ${dias} dias` : ""}` : "crie o primeiro contrato"}
+          nota={
+            atual
+              ? atual.inicio
+                ? `${data(atual.inicio)} a ${data(atual.fim)}${dias !== null && dias > 0 ? `, faltam ${dias} dias` : ""}`
+                : "12 meses a partir da confirmação do pagamento"
+              : "crie o primeiro contrato"
+          }
         >
           {atual && <Medidor valor={Math.round(fracaoDaVigencia({ status: atual.status, inicioVigencia: atual.inicio, fimVigencia: atual.fim }) * 365)} teto={365} rotulo="Dias da vigência já passados" />}
         </Numero>
@@ -117,7 +146,10 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Cartao titulo="Quanto já pagou (LTV)" subtitulo={f.ltv.leuStripe ? "Cobranças pagas no Stripe, menos devoluções; os pacotes de vídeo saem do extrato." : "Sem Stripe ligado a esta conta (ou sem resposta): só o extrato de pacotes."}>
+        <Cartao
+          titulo="Quanto já pagou (LTV)"
+          subtitulo={`${f.ltv.leuStripe ? "Cobranças pagas no Stripe, menos devoluções; os pacotes de vídeo saem do extrato." : "Sem Stripe ligado a esta conta (ou sem resposta): o extrato de pacotes."}${f.ltv.porFora > 0 ? ` Inclui ${reais(f.ltv.porFora)} de contrato pago por fora do Stripe.` : ""}`}
+        >
           <Rosca
             centro={reais(f.ltv.total)}
             rotuloDoCentro="pago no total"
@@ -179,9 +211,11 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                       nº {String(c.numero).padStart(4, "0")} · {c.plano} · {centavosEmReais(c.valorCentavos)} por ano
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                      {data(c.inicio)} a {data(c.fim)} · renovação {c.renovacaoAutomatica ? "automática" : "manual"}
+                      {c.inicio ? `${data(c.inicio)} a ${data(c.fim)}` : "vigência começa na confirmação do pagamento"} · renovação {c.renovacaoAutomatica ? "automática" : "manual"}
+                      {c.fim && c.pagoEm ? ` em ${data(c.fim)}` : ""}
                       {c.formaDePagamento ? ` · ${c.formaDePagamento}` : ""}
                       {c.assinadoEm ? ` · assinado em ${data(c.assinadoEm)}` : ""}
+                      {c.acessosExtras > 0 ? ` · ${c.acessosExtras} acesso(s) extra(s)` : ""}
                     </p>
                     <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                       Quem assina: {c.signatarioNome ?? "?"} ({c.signatarioEmail ?? "?"}){c.signatarioDocumento ? `, ${c.signatarioDocumento}` : ""}
@@ -201,7 +235,14 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <AcoesDoContrato id={c.id} status={c.situacao} temProvedor={Boolean(provedor)} provedorSituacao={c.provedorSituacao} />
+                  <AcoesDoContrato
+                    id={c.id}
+                    status={c.situacao}
+                    temProvedor={Boolean(provedor)}
+                    provedorSituacao={c.provedorSituacao}
+                    faltaCentavos={Math.max(0, c.valorCentavos - c.pagoCentavos)}
+                    linkDePagamento={c.linkDePagamento}
+                  />
                   {c.temPdf && (
                     <a href={`/api/admin/contratos/${c.id}/pdf`} target="_blank" rel="noopener noreferrer" className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
                       PDF assinado
@@ -213,6 +254,49 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                     </a>
                   )}
                 </div>
+                {(c.pagamentos.length > 0 || c.situacao === "aguardando_pagamento") && (
+                  <div className="mt-3" data-pagamentos-do-contrato={c.numero}>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                      Pago {centavosEmReais(c.pagoCentavos)} de {centavosEmReais(c.valorCentavos)}
+                      {c.valorCentavos > c.pagoCentavos ? (
+                        <span style={{ color: "var(--marca-laranja-texto)" }}> · a receber {centavosEmReais(c.valorCentavos - c.pagoCentavos)}</span>
+                      ) : null}
+                    </p>
+                    <div
+                      className="mt-1.5 h-2 w-full overflow-hidden rounded-full"
+                      style={{ background: "var(--bg-elevated)" }}
+                      role="img"
+                      aria-label={`Pago ${centavosEmReais(c.pagoCentavos)} de ${centavosEmReais(c.valorCentavos)}`}
+                    >
+                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, (c.pagoCentavos / Math.max(1, c.valorCentavos)) * 100)}%`, background: "var(--painel-1)" }} />
+                    </div>
+                    {c.pagamentos.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {c.pagamentos.map((p) => (
+                          <li key={p.id} className="flex flex-wrap items-center gap-x-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                            <span className="font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
+                              {centavosEmReais(p.valorCentavos)}
+                            </span>
+                            <span>
+                              em {data(p.pagoEm)} · {NOME_DA_FORMA[p.forma] ?? p.forma} · registrado por {p.autor ?? "?"}
+                              {p.observacao ? ` · ${p.observacao}` : ""}
+                            </span>
+                            {p.temComprovante && (
+                              <a href={`/api/admin/contratos/${c.id}/comprovante/${p.id}`} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--text-primary)" }}>
+                                comprovante
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {c.linkDePagamento && c.situacao === "aguardando_pagamento" && (
+                      <p className="mt-1 text-xs break-all" style={{ color: "var(--text-muted)" }}>
+                        Link de pagamento do Stripe: {c.linkDePagamento}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {c.motivoCancelamento && (
                   <p className="mt-2 text-xs" style={{ color: "var(--badge-danger-text)" }}>
                     Cancelado: {c.motivoCancelamento}
@@ -226,6 +310,7 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                     {c.eventos.map((e) => (
                       <li key={e.id} className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                         <span className="tabular-nums">{quando(e.em)}</span> · {NOME_DO_EVENTO[e.tipo] ?? e.tipo} · {e.autor ?? "?"}
+                        {resumoDoEvento(e.tipo, e.detalhe) ? ` · ${resumoDoEvento(e.tipo, e.detalhe)}` : ""}
                       </li>
                     ))}
                   </ol>

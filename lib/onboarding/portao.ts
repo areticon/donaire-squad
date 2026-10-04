@@ -36,6 +36,8 @@ export type Destino =
   | { tipo: "planos" }
   /** Membro da equipe cujo dono ficou sem assinatura (01/10, acabamento). */
   | { tipo: "equipe-pausada" }
+  /** Tem contrato esperando assinatura ou pagamento (04/10): ainda não é cliente. */
+  | { tipo: "aguardando-pagamento" }
   | { tipo: "setup"; projectId: string };
 
 /**
@@ -67,7 +69,15 @@ export async function destinoDeEntrada(
   // MEMBRO com a assinatura do dono caída (01/10, acabamento): /planos pediria
   // ao vendedor um cartão que não é dele (e assinar criaria uma conta paga fora
   // da equipe). Ele vai para a tela que diz com quem falar, sem preço.
-  if (!user || !user.plan || user.plan === "free") return membro ? { tipo: "equipe-pausada" } : { tipo: "planos" };
+  if (!user || !user.plan || user.plan === "free") {
+    if (membro) return { tipo: "equipe-pausada" };
+    // O CONTRATO ESPERANDO PAGAMENTO (04/10): quem fechou por contrato não vai
+    // para /planos (preço de vitrine e outro checkout); vai para a tela que diz
+    // em que pé está o contrato dele e o que falta.
+    const { contratoPendenteDaConta } = await import("@/lib/contratos/pagamento");
+    if (await contratoPendenteDaConta(userId).catch(() => null)) return { tipo: "aguardando-pagamento" };
+    return { tipo: "planos" };
+  }
 
   return { tipo: "segue" };
 }
