@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { availableParallelism, tmpdir } from "node:os";
-import { ffprobe, prepararTrecho, rodar } from "./ffmpeg.mjs";
+import { ffprobe, prepararTrecho, rodar, sinalDoTrabalho } from "./ffmpeg.mjs";
 import { gerarMatte } from "./segmentacao.mjs";
 
 /**
@@ -126,6 +126,9 @@ export function opcoesDoRender() {
     // um next dev na 3001 fazia o Remotion abrir a página errada (29/09);
     // no contêiner fica a escolha automática.
     port: Number(process.env.REMOTION_PORTA) || null,
+    // O PRAZO DO TRABALHO (04/10, src/ffmpeg.mjs): estourado, o Remotion
+    // cancela o render e fecha o Chrome, em vez de pendurar a fila.
+    cancelSignal: sinalDoTrabalho(),
   };
 }
 
@@ -259,6 +262,7 @@ async function fundosDeColagem(m, pasta, papel) {
       concurrency: Math.min(4, opcoes.concurrency),
       chromiumOptions: opcoes.chromiumOptions,
       timeoutInMilliseconds: opcoes.timeoutInMilliseconds,
+      cancelSignal: opcoes.cancelSignal,
       port: opcoes.port,
       onStart: () => {},
       onFrameUpdate: () => {},

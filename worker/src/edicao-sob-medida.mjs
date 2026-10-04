@@ -3,7 +3,7 @@ import { cp, mkdir, readdir, rm, writeFile, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { emendar, ffprobe, fpsDe, rodar } from "./ffmpeg.mjs";
+import { aoCancelarOTrabalho, emendar, ffprobe, fpsDe, processoDoTrabalho, rodar, trabalhoCancelado } from "./ffmpeg.mjs";
 import { bundleDoRemotion, opcoesDoRender } from "./montagem.mjs";
 import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
 
@@ -146,7 +146,19 @@ const passesDa = (c) => (Array.isArray(c.passes) && c.passes.length ? c.passes :
  * condensada: só as camadas dela vão ao Chrome.
  */
 async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
-  const { renderFrames, renderStill, selectComposition } = await import("@remotion/renderer");
+  const { renderFrames, renderStill, selectComposition, makeCancelSignal } = await import("@remotion/renderer");
+  // O PRAZO DO TRABALHO (04/10): estourado, o Chrome do Remotion é fechado
+  // pelo sinal de cancelamento, em vez de deixar a promessa pendurada.
+  const { cancelSignal, cancel } = makeCancelSignal();
+  const soltarCancelamento = aoCancelarOTrabalho(cancel);
+  try {
+    return await renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso);
+  } finally {
+    soltarCancelamento();
+  }
+}
+
+async function renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso) {
   const serveUrl = await bundleDoRemotion();
   const fps = edicao.fps;
   const opcoes = opcoesDoRender();
@@ -180,6 +192,7 @@ async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
         scale: escala,
         chromiumOptions: opcoes.chromiumOptions,
         timeoutInMilliseconds: 120_000,
+        cancelSignal,
         onStart: () => {},
         onFrameUpdate: (n) => aoProgresso?.((antes + n) / Math.max(1, totalQuadros)),
       });
@@ -200,7 +213,7 @@ async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
     const inputProps = { largura: edicao.largura, altura: edicao.altura, tema: edicao.tema, cartao };
     const composition = await selectComposition({ serveUrl, id: "SobMedidaFundo", inputProps, chromiumOptions: opcoes.chromiumOptions });
     const out = join(pasta, `fundo-${nome}.png`);
-    await renderStill({ composition, serveUrl, inputProps, output: out, frame: 0, imageFormat: "png", scale: escala, chromiumOptions: opcoes.chromiumOptions });
+    await renderStill({ composition, serveUrl, inputProps, output: out, frame: 0, imageFormat: "png", scale: escala, chromiumOptions: opcoes.chromiumOptions, cancelSignal });
     fundos[chave ?? "liso"] = out;
   }
   return { passadas, fundos, quadros: totalQuadros, todas };
@@ -225,7 +238,7 @@ async function matteDaPessoa(base, pasta, duracao, fps, intervalos) {
   const modelo = process.env.MODELO_SEGMENTACAO ?? "/app/modelos/selfie_segmenter.tflite";
   const config = JSON.stringify({ modo: "linha", video: base, saida, fps, duracao, largura: 512, intervalos: juntos, modelo });
   const texto = await new Promise((resolver) => {
-    const p = spawn(PYTHON, [join(AQUI, "recorte.py"), config], { cwd: pasta });
+    const p = processoDoTrabalho(spawn(PYTHON, [join(AQUI, "recorte.py"), config], { cwd: pasta }));
     let out = "";
     let err = "";
     p.stdout.on("data", (d) => (out += d));
@@ -373,6 +386,9 @@ export function segmentosDoLote(edicao, a, b) {
 export function grafoDoLote(edicao, lote, ctx) {
   const { W, H, fps, escala, fundos, insercoes } = ctx;
   const dur = lote.ate - lote.de;
+  // De que inserção veio cada entrada (índice do -i): quando o ffmpeg falha
+  // citando "stream #N:0", é por aqui que a mídia culpada sai do lote (04/10).
+  const origens = {};
   const segs = segmentosDoLote(edicao, lote.de, lote.ate);
   const entradas = [
     ["-ss", lote.de.toFixed(4), "-t", dur.toFixed(4), "-i", ctx.base],
@@ -473,18 +489,24 @@ export function grafoDoLote(edicao, lote, ctx) {
         // reenquadrado para o formato (preenche e corta no centro), um empurrão
         // de 8% que nunca para, e a COR CASADA com a gravação (grade).
         const i = entradas.length;
-        entradas.push(["-ss", Number(m.inicio ?? 0).toFixed(3), "-stream_loop", "-1", "-t", (d + 0.2).toFixed(4), "-i", m.arquivo]);
+        origens[i] = s.midia;
+        // -reinit_filter 0 (04/10): a mídia de fora já vem normalizada
+        // (normalizarMidia), e mesmo assim uma troca de propriedade no meio
+        // (o laço do -stream_loop, um quadro com outra cor) não reinicia o grafo.
+        entradas.push(["-ss", Number(m.inicio ?? 0).toFixed(3), "-stream_loop", "-1", "-t", (d + 0.2).toFixed(4), "-reinit_filter", "0", "-i", m.arquivo]);
         const W2 = PAR(W * 1.1);
         const H2 = PAR(H * 1.1);
         nos.push(`[${i}:v]fps=${fps},scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS${m.grade ? `,${m.grade}` : ""},zoompan=z='1+0.08*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else if (m.tipo === "video") {
         const i = entradas.length;
-        entradas.push(["-stream_loop", "-1", "-t", d.toFixed(4), "-i", m.arquivo]);
+        origens[i] = s.midia;
+        entradas.push(["-stream_loop", "-1", "-t", d.toFixed(4), "-reinit_filter", "0", "-i", m.arquivo]);
         // O empurrão por cima do vídeo (03/10, segunda volta): mesmo que o
         // Kling devolva a câmera quase parada, a inserção nunca fica imóvel.
         nos.push(`[${i}:v]fps=${fps},scale=${PAR(W * 1.12)}:${PAR(H * 1.12)}:force_original_aspect_ratio=increase:flags=bicubic,crop=${PAR(W * 1.12)}:${PAR(H * 1.12)},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS,zoompan=z='1+0.1*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else {
         const i = imagemExtra(m.arquivo);
+        origens[i] = s.midia;
         const W2 = PAR(W * 1.4);
         const H2 = PAR(H * 1.4);
         // Ken Burns lento (6%), do centro: a foto nunca fica parada. A foto é UM
@@ -553,7 +575,23 @@ export function grafoDoLote(edicao, lote, ctx) {
   }
   // GRÃO E VINHETA leves no fim (a textura de filme que tira o "digital chapado").
   nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=duration=${dur.toFixed(4)}[v]`);
-  return { entradas: entradas.flat(), grafo: nos.join(";\n") };
+  // OS FIOS DOS DECODIFICADORES (04/10): cada -i abre um decodificador com um
+  // fio por núcleo, e o lote do sob medida chega a 13 entradas. Medido no WSL
+  // com o lote 8 da prévia de cmurtv2zg: 186 fios sem teto, 73 com 2 na base
+  // e 1 no resto; dois lotes juntos passavam de 370, e com o teto de processos
+  // do contêiner o ffmpeg morria ao abrir o fio seguinte ("Failed to configure
+  // output pad on auto_scale_N ... Resource temporarily unavailable", a falha
+  // da prévia em produção; reproduzida com `ulimit -u 150`).
+  return { entradas: entradas.flatMap((e, k) => ["-threads", k === 0 ? "2" : "1", ...e]), grafo: nos.join(";\n"), origens };
+}
+
+/**
+ * A edição sem as mídias `ids`: o plano de inserção delas vira câmera cheia
+ * (a pessoa), em vez do fundo liso da marca que a inserção ausente mostrava.
+ */
+export function semMidias(ed, ids) {
+  if (!ids?.size) return ed;
+  return { ...ed, planos: (ed.planos ?? []).map((p) => (p.tipo === "insercao" && ids.has(p.midia) ? { ...p, tipo: "cheio" } : p)) };
 }
 
 /** A lista de exibição das camadas recortada no lote, no formato do demuxer de concatenação. */
@@ -573,6 +611,54 @@ function listaDoLote(exibir, arquivos, a, b, dir = "camadas") {
   return linhas.join("\n") + "\n";
 }
 
+// ─────────────────────────────── 4a. a mídia de fora, normalizada ───────────────────────────────
+
+/**
+ * A MÍDIA DE FORA NORMALIZADA AO BAIXAR (04/10). Cada B-roll do Pixabay vem de
+ * um autor, com resolução (1440x1080, 1920x1080...), fps (24 a 60), faixa de
+ * cor e metadados próprios, e as fotos geradas chegam como JPEG 2752x1536 em
+ * faixa cheia com nome de .png. Tudo isso era decodificado em tamanho cheio
+ * dentro do lote e convertido no meio do grafo. Aqui cada B-roll, vídeo
+ * gerado e foto vira um arquivo NOSSO, todo igual (e pequeno de decodificar): o tamanho do alvo (com folga para o empurrão),
+ * yuv420p (rgb24 na foto), fps da base, SAR 1, cor bt709 faixa limitada, sem
+ * áudio, sem rotação (aplicada) e sem metadado; o vídeo só no trecho usado. O
+ * que não normaliza sai da edição (o plano vira câmera cheia), e o render segue.
+ */
+export async function normalizarMidia(m, { W, H, fps, segundos = 8 }) {
+  const PARn = (v) => Math.max(2, Math.round(v / 2) * 2);
+  if (m.tipo === "video") {
+    const WN = PARn(W * 1.12);
+    const HN = PARn(H * 1.12);
+    const saida = m.arquivo.replace(/\.[a-z0-9]+$/i, "") + `-norm-${WN}x${HN}.mp4`;
+    const dim = await ffprobe(m.arquivo);
+    let inicio = Math.max(0, Number(m.inicio) || 0);
+    if (!(dim.duracaoSec > 0.3)) throw new Error("vídeo sem duração");
+    if (inicio > dim.duracaoSec - 1) inicio = 0;
+    const dur = Math.max(1, Math.min(dim.duracaoSec - inicio, segundos + 1));
+    await rodar(
+      [
+        "-ss", inicio.toFixed(3), "-t", dur.toFixed(3), "-i", m.arquivo,
+        "-map", "0:v:0", "-an", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
+        "-vf", `scale=${WN}:${HN}:force_original_aspect_ratio=increase:flags=bicubic,crop=${WN}:${HN},setsar=1,fps=${fps},format=yuv420p`,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+        "-g", String(Math.max(1, Math.round(fps))), "-movflags", "+faststart",
+        saida,
+      ],
+      { timeoutMs: 5 * 60_000 }
+    );
+    const conferido = await ffprobe(saida);
+    if (!(conferido.duracaoSec > 0.3) || conferido.largura !== WN || conferido.altura !== HN) throw new Error(`normalizado saiu ${conferido.largura}x${conferido.altura} com ${conferido.duracaoSec}s`);
+    return { ...m, arquivo: saida, inicio: 0 };
+  }
+  const WI = PARn(W * 1.4);
+  const HI = PARn(H * 1.4);
+  const saida = m.arquivo.replace(/\.[a-z0-9]+$/i, "") + `-norm-${WI}x${HI}.png`;
+  await rodar(["-i", m.arquivo, "-map", "0:v:0", "-frames:v", "1", "-map_metadata", "-1", "-vf", `scale=${WI}:${HI}:force_original_aspect_ratio=increase:flags=bicubic,crop=${WI}:${HI},setsar=1,format=rgb24`, saida], { timeoutMs: 2 * 60_000 });
+  if (!existsSync(saida)) throw new Error("foto não normalizou");
+  return { ...m, arquivo: saida };
+}
+
 // ─────────────────────────────── 4b. a cor casada do B-roll ───────────────────────────────
 
 /** A cor média (RGB 0 a 255) de um vídeo nos instantes pedidos, pelo ffmpeg reduzindo o quadro a 1 pixel. */
@@ -581,10 +667,14 @@ export async function corMedia(arquivo, instantes) {
   let n = 0;
   for (const t of instantes) {
     const buf = await new Promise((ok, falha) => {
-      const p = spawn("ffmpeg", ["-v", "error", "-ss", Math.max(0, t).toFixed(3), "-i", arquivo, "-frames:v", "1", "-vf", "scale=1:1:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      const p = processoDoTrabalho(spawn("ffmpeg", ["-nostdin", "-v", "error", "-ss", Math.max(0, t).toFixed(3), "-i", arquivo, "-frames:v", "1", "-vf", "scale=1:1:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { stdio: ["ignore", "pipe", "ignore"] }));
       const pedacos = [];
+      const relogio = setTimeout(() => p.kill("SIGKILL"), 60_000);
       p.stdout.on("data", (d) => pedacos.push(d));
-      p.on("close", (c) => (c === 0 ? ok(Buffer.concat(pedacos)) : falha(new Error(`ffmpeg ${c}`))));
+      p.on("close", (c) => {
+        clearTimeout(relogio);
+        c === 0 ? ok(Buffer.concat(pedacos)) : falha(new Error(`ffmpeg ${c}`));
+      });
       p.on("error", falha);
     });
     if (buf.length >= 3) {
@@ -669,8 +759,9 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   const duracao = Math.min(ed.duracao, dim.duracaoSec);
   marcar("base");
 
-  // As inserções geradas, baixadas.
+  // As inserções geradas e o B-roll, baixados e normalizados.
   const insercoes = {};
+  const midiasTiradas = [];
   for (const [id, m] of Object.entries(ed.insercoes ?? {})) {
     if (!m?.url) continue;
     const ext = m.tipo === "video" ? "mp4" : (m.url.match(/\.(png|jpe?g|webp)(\?|$)/i)?.[1] ?? "jpg");
@@ -680,9 +771,12 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
         if (/^https?:/i.test(m.url)) await baixar(m.url, arq);
         else await copyFile(m.url, arq);
       }
-      insercoes[id] = { tipo: m.tipo, arquivo: arq, origem: m.origem ?? null, inicio: Number(m.inicio) || 0 };
+      const usado = (ed.planos ?? []).filter((p) => p.tipo === "insercao" && p.midia === id).reduce((mx, p) => Math.max(mx, p.ate - p.de), 0);
+      insercoes[id] = await normalizarMidia({ tipo: m.tipo, arquivo: arq, origem: m.origem ?? null, inicio: Number(m.inicio) || 0 }, { W, H, fps, segundos: Math.max(3, usado) });
     } catch (e) {
-      console.warn(`[sob-medida] inserção ${id} não baixou: ${e?.message ?? e}`);
+      delete insercoes[id];
+      midiasTiradas.push(`${id}: ${String(e?.message ?? e).slice(-200)}`);
+      console.warn(`[sob-medida] inserção ${id} fora da edição (não baixou ou não normalizou): ${e?.message ?? e}`);
     }
   }
   // A COR CASADA (03/10, terceira volta): o B-roll de banco vem com a cor do
@@ -750,11 +844,11 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     await writeFile(join(pasta, lote.lista), listaDoLote(frente.exibir, frente.arquivos, lote.de, lote.ate, frente.nomeDir), "utf8");
     // As passadas a mais entram no lote só se têm camada dentro dele.
     const temNoLote = (ps) => ps && ps.intervalos.some(([a, b]) => b > lote.de && a < lote.ate);
-    if (temNoLote(atras)) {
+    if (temNoLote(atras) && !lote.simples) {
       lote.listaAtras = `lista-atras-${i}.txt`;
       await writeFile(join(pasta, lote.listaAtras), listaDoLote(atras.exibir, atras.arquivos, lote.de, lote.ate, atras.nomeDir), "utf8");
     }
-    if (temNoLote(vidro)) {
+    if (temNoLote(vidro) && !lote.simples) {
       lote.listaVidro = `lista-vidro-${i}.txt`;
       await writeFile(join(pasta, lote.listaVidro), listaDoLote(vidro.exibir, vidro.arquivos, lote.de, lote.ate, vidro.nomeDir), "utf8");
     }
@@ -762,7 +856,11 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       lote.legenda = `legenda-${i}.ass`;
       await writeFile(join(pasta, lote.legenda), legendaSobMedida(ed, W, H, lote.de, lote.ate - lote.de), "utf8");
     }
-    const { entradas, grafo } = grafoDoLote(ed, lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes, base, mascara, matte });
+    // As mídias que ficaram fora (não normalizaram, ou quebraram este lote) viram câmera cheia.
+    const fora = new Set([...Object.keys(ed.insercoes ?? {}).filter((id) => !insercoes[id]), ...(lote.ruins ?? [])]);
+    const insercoesDoLote = Object.fromEntries(Object.entries(insercoes).filter(([id]) => !fora.has(id)));
+    const { entradas, grafo, origens } = grafoDoLote(semMidias(ed, fora), lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes: insercoesDoLote, base, mascara, matte });
+    lote.origens = origens;
     await writeFile(join(pasta, `grafo-${i}.txt`), grafo, "utf8");
     await writeFile(join(pasta, `entradas-${i}.json`), JSON.stringify(entradas), "utf8");
     const saida = join(pasta, `lote-${String(i).padStart(3, "0")}.mp4`);
@@ -783,7 +881,10 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
    * Um lote com a guarda de memória: só começa com memória para ele; se o
    * ffmpeg morrer por SINAL (o OOM do contêiner), registra o sinal, espera a
    * memória voltar e refaz o lote em DUAS METADES, uma depois da outra (até
-   * dois níveis, lotes de 15 s), emendadas no mesmo arquivo. Outro erro sobe.
+   * dois níveis, lotes de 15 s), emendadas no mesmo arquivo. Outro erro
+   * (04/10): falta de recurso refaz igual uma vez; depois sai a mídia de fora
+   * culpada (ou todas as do lote); sem mídia, sai o que vai atrás e o vidro.
+   * Só então sobe.
    */
   const fazerLote = async (lote, i, nivel = 0) => {
     const nome = String(i);
@@ -791,14 +892,46 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     try {
       return await renderLote(lote, nome);
     } catch (e) {
+      if (trabalhoCancelado()) throw e;
       const dur = lote.ate - lote.de;
-      if (!e?.sinal || nivel >= 2 || dur < 8) throw e;
+      if (!e?.sinal) {
+        // A MÍDIA QUE QUEBROU SAI E O LOTE SEGUE (04/10): o ffmpeg diz o
+        // "stream #N" que falhou; sendo uma inserção, ela sai deste lote (o
+        // plano vira câmera cheia) e o lote é refeito. Sem culpada achada,
+        // saem todas as mídias de fora do lote, de uma vez.
+        const ruins = lote.ruins ?? new Set();
+        // Falta de recurso passageira (fios, memória): o mesmo lote, igual, mais uma vez.
+        if (/Resource temporarily unavailable|Cannot allocate memory/i.test(String(e?.message)) && !lote.repetido) {
+          midiasTiradas.push(`lote ${nome}: refeito por falta de recurso`);
+          console.warn(`[sob-medida] lote ${nome} sem recurso (${memoriaLivreMb()} MB livres); refaz igual`);
+          await new Promise((r) => setTimeout(r, 5_000));
+          return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: true }, `${nome}r`, nivel);
+        }
+        const n = Number((String(e?.message ?? "").match(/stream #(\d+):\d+/i) ?? [])[1]);
+        const culpada = Number.isFinite(n) ? lote.origens?.[n] : null;
+        const doLote = [...new Set(Object.values(lote.origens ?? {}))].filter((id) => !ruins.has(id));
+        const tirar = culpada && !ruins.has(culpada) ? [culpada] : doLote;
+        if (!tirar.length) {
+          // Sem mídia de fora para tirar: o último recurso é o lote SÓ com a
+          // passada da frente (sem o título atrás da pessoa e sem o vidro).
+          if (!lote.simples && (lote.listaAtras || lote.listaVidro)) {
+            midiasTiradas.push(`lote ${nome}: sem as passadas de trás e do vidro (${String(e?.message ?? e).replace(/\s+/g, " ").slice(-160)})`);
+            console.warn(`[sob-medida] lote ${nome} falhou sem mídia culpada; refaz só com a frente`);
+            return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: lote.repetido, simples: true }, `${nome}s`, nivel);
+          }
+          throw e;
+        }
+        midiasTiradas.push(`lote ${nome}: ${tirar.join(", ")} (${String(e?.message ?? e).replace(/\s+/g, " ").slice(-160)})`);
+        console.warn(`[sob-medida] lote ${nome} falhou; refaz sem ${tirar.join(", ")}`);
+        return await fazerLote({ de: lote.de, ate: lote.ate, ruins: new Set([...ruins, ...tirar]), repetido: lote.repetido, simples: lote.simples }, `${nome}m`, nivel);
+      }
+      if (nivel >= 2 || dur < 8) throw e;
       sinais.push(`lote ${nome} (${dur.toFixed(0)} s) morto por ${e.sinal} com ${memoriaLivreMb()} MB livres`);
       console.warn(`[sob-medida] ${sinais.at(-1)}; refaz em duas metades`);
       await esperarMemoria(Math.round(MB_POR_LOTE * 1.2), { ateMs: 10 * 60_000, rotulo: `lote ${nome} de novo` });
       const meio = +(Math.round(((lote.de + lote.ate) / 2) * fps) / fps).toFixed(5);
-      const a = await fazerLote({ de: lote.de, ate: meio }, `${nome}a`, nivel + 1);
-      const b = await fazerLote({ de: meio, ate: lote.ate }, `${nome}b`, nivel + 1);
+      const a = await fazerLote({ de: lote.de, ate: meio, ruins: lote.ruins }, `${nome}a`, nivel + 1);
+      const b = await fazerLote({ de: meio, ate: lote.ate, ruins: lote.ruins }, `${nome}b`, nivel + 1);
       const saida = join(pasta, `lote-${nome.padStart(3, "0")}-junto.mp4`);
       await emendar([a, b], saida, pasta);
       await rm(a, { force: true }).catch(() => {});
@@ -814,18 +947,29 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   tempos.memoria = { livreNoInicioMb: livreNoInicio, mbPorLote: MB_POR_LOTE, lotesJuntos: juntos };
   const fila = lotes.map((l, i) => [l, i]);
   const res = new Array(lotes.length);
+  // O PRIMEIRO ERRO PARA A PISCINA (04/10): antes o outro laço seguia
+  // pegando lotes enquanto o erro já subia e a pasta era apagada por baixo dele.
+  let primeiroErro = null;
   await Promise.all(
     Array.from({ length: Math.min(juntos, lotes.length) }, async () => {
-      while (fila.length) {
+      while (fila.length && !primeiroErro && !trabalhoCancelado()) {
         const [l, i] = fila.shift();
-        res[i] = await fazerLote(l, i);
+        try {
+          res[i] = await fazerLote(l, i);
+        } catch (e) {
+          primeiroErro ??= e;
+          return;
+        }
         feitos++;
         aoProgresso?.(0.6 + 0.35 * (feitos / lotes.length));
       }
     })
   );
+  if (primeiroErro) throw primeiroErro;
+  if (trabalhoCancelado()) throw new Error("render cancelado pelo prazo do trabalho");
   partes.push(...res);
   if (sinais.length) tempos.sinais = sinais;
+  if (midiasTiradas.length) tempos.midiasTiradas = midiasTiradas.slice(0, 20);
   marcar("lotes");
 
   const soVideo = join(pasta, "so-video.mp4");

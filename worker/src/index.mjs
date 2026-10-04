@@ -32,6 +32,7 @@ import {
   emendarAberturaNoCorte,
   inserirCenaDeApoio,
   quadroNaProporcao,
+  comPrazoDoTrabalho,
 } from "./ffmpeg.mjs";
 import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
 import { guardarFala } from "./guarda-da-fala.mjs";
@@ -97,7 +98,10 @@ async function baixarQualquer(url, destino) {
 }
 
 async function baixarFonte(sourceUrl, destino) {
-  const blob = await get(sourceUrl, { access: "private", token: BLOB_TOKEN });
+  // Com prazo (04/10): sem ele, um download do store privado que emperra
+  // segura a montagem para sempre, e a gravação em cache (obterOriginal)
+  // prende todo corte do mesmo vídeo atrás dela.
+  const blob = await get(sourceUrl, { access: "private", token: BLOB_TOKEN, abortSignal: AbortSignal.timeout(30 * 60_000) });
   if (!blob || blob.statusCode !== 200) {
     throw new Error("Não consegui ler o vídeo no storage");
   }
@@ -1376,12 +1380,43 @@ function obterOriginal(url) {
   return originais.get(url);
 }
 
+/**
+ * O CORTE NA FRENTE DO COMPLETO (04/10). A fila era por ordem de chegada: um
+ * completo de 17 min (prévia e final, dezenas de minutos cada) segurava os
+ * cortes de 1 min atrás dele, e o prazo do app vencia com o corte na fila.
+ * Agora o corte (prioridade 0: /montar e o sob medida com `trecho`) passa na
+ * frente de todo completo que ainda espera (prioridade 1). O que já está
+ * rodando termina.
+ */
+function prioridadeDaMontagem(pedido, rota) {
+  return rota === "completo" && !pedido?.trecho ? 1 : 0;
+}
+
+/**
+ * O PRAZO DE UMA MONTAGEM (04/10), proporcional à duração do que se monta:
+ * 20 min fixos (baixar, Chrome, subir, guarda da fala) mais `fator` segundos
+ * por segundo de vídeo (6 no final, 3 na prévia de meia resolução). Medido
+ * local em 04/10 com cmurtv2zg: o corte de 43 s levou 10 min (com a prévia do
+ * completo rodando ao lado) e ganha 24; a prévia do completo de 17 min levou
+ * 34 min e ganha 72; o final do completo ganha 124. MONTAGEM_PRAZO_FATOR
+ * ajusta o fator do final sem deploy de código.
+ */
+export function prazoDaMontagem(pedido) {
+  const dur = Number(pedido?.edicao?.duracao ?? pedido?.trecho?.duracao ?? pedido?.montagem?.duracao ?? pedido?.duracao) || 1200;
+  const final = !(Number(pedido?.escala) < 1);
+  const fator = final ? Number(process.env.MONTAGEM_PRAZO_FATOR) || 6 : 3;
+  return Math.round((20 * 60 + dur * fator) * 1000);
+}
+
 function enfileirarMontagem(trabalho) {
+  trabalho.prioridade ??= 0;
   // Só pedido com callback é substituído: o síncrono tem alguém esperando a resposta.
   const repetido = trabalho.pedido.callbackUrl
     ? filaDaMontagem.findIndex((t) => t.pedido.callbackUrl && t.pedido.chave === trabalho.pedido.chave)
     : -1;
-  if (repetido >= 0) filaDaMontagem.splice(repetido, 1, trabalho);
+  if (repetido >= 0) filaDaMontagem.splice(repetido, 1);
+  const depois = filaDaMontagem.findIndex((t) => (t.prioridade ?? 0) > trabalho.prioridade);
+  if (depois >= 0) filaDaMontagem.splice(depois, 0, trabalho);
   else filaDaMontagem.push(trabalho);
   void andarFilaDaMontagem();
 }
@@ -1466,12 +1501,18 @@ const servidor = createServer((req, res) => {
         return responder(400, { error: "Corpo não é JSON" });
       }
       const achado = [...trabalhosVivos.values()].find(
-        (t) => t.videoJobId === pedido.videoJobId && (!pedido.tipo || t.tipo === pedido.tipo)
+        (t) => t.videoJobId === pedido.videoJobId && (!pedido.tipo || t.tipo === pedido.tipo) && (!pedido.chave || t.chave === pedido.chave)
       );
+      // A MONTAGEM NA FILA (04/10): o app pergunta pela `chave` antes de
+      // desistir por prazo; esperando a vez aqui não é morta.
+      const posicao = pedido.chave ? filaDaMontagem.findIndex((t) => t.pedido.chave === pedido.chave && (t.pedido.videoJobId ?? t.pedido.chave) === (pedido.videoJobId ?? t.pedido.videoJobId)) : -1;
       responder(200, {
         vivo: Boolean(achado),
         tipo: achado?.tipo ?? null,
         desdeSegundos: achado ? Math.round((Date.now() - achado.desde) / 1000) : null,
+        prazoSegundos: achado?.prazoMs ? Math.round(achado.prazoMs / 1000) : null,
+        naFila: posicao >= 0,
+        posicaoNaFila: posicao >= 0 ? posicao + 1 : null,
         desligando,
       });
     });
@@ -1830,42 +1871,51 @@ const servidor = createServer((req, res) => {
       responder(202, { aceito: true, chave: pedido.chave, naFila: filaDaMontagem.length + (montagemRodando ? 1 : 0) });
       enfileirarMontagem({
         pedido,
+        prioridade: prioridadeDaMontagem(pedido, "completo"),
         executar: async () => {
           const pasta = await mkdtemp(join(tmpdir(), "completo-editado-"));
           emAndamento += 1;
           const inicio = Date.now();
           const destino = { callbackUrl: pedido.callbackUrl, videoJobId: pedido.videoJobId ?? pedido.chave };
+          const prazoMs = prazoDaMontagem(pedido);
           const soltar = registrarTrabalho({
             videoJobId: destino.videoJobId,
             tipo: "montar-completo",
+            chave: pedido.chave,
+            prazoMs,
             destino,
             reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
           });
           try {
-            let feito;
-            if (pedido.edicao) {
-              const { montarSobMedida } = await import("./edicao-sob-medida.mjs");
-              feito = await montarSobMedida(pedido, pasta, { baixar: baixarQualquer });
-            } else {
-              const { montarCompleto } = await import("./montagem-do-completo.mjs");
-              feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
-            }
-            let montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
-            // A GUARDA NA SAÍDA (03/10, src/guarda-da-fala.mjs): só no render
-            // final (o app manda `guardaDaFala`). A abertura e o gancho repetem
-            // uma frase de propósito e ficam protegidos.
-            const inicioProtegido = (feito.aberturaSeg ?? 0) + (feito.ganchoSeg ?? 0);
-            const guarda = await guardarFala({
-              arquivo: feito.arquivo,
-              montado,
-              guarda: pedido.guardaDaFala,
-              protegido: inicioProtegido > 0 ? [{ de: 0, ate: inicioProtegido + 0.3 }] : [],
-              pasta,
-              chave: pedido.chave,
-              subir,
-              assinar,
+            // O PRAZO DO TRABALHO (04/10): estourado, os processos dele morrem
+            // e o erro vai ao app pelo callback; a fila anda.
+            const { feito, montado, guarda } = await comPrazoDoTrabalho(prazoMs, pedido.edicao ? "o render da edição sob medida" : "o render do completo", async () => {
+              let feito;
+              if (pedido.edicao) {
+                const { montarSobMedida } = await import("./edicao-sob-medida.mjs");
+                feito = await montarSobMedida(pedido, pasta, { baixar: baixarQualquer });
+              } else {
+                const { montarCompleto } = await import("./montagem-do-completo.mjs");
+                feito = await montarCompleto(pedido, pasta, { baixar: baixarQualquer });
+              }
+              let montado = await subir(feito.arquivo, pedido.chave, "video/mp4");
+              // A GUARDA NA SAÍDA (03/10, src/guarda-da-fala.mjs): só no render
+              // final (o app manda `guardaDaFala`). A abertura e o gancho repetem
+              // uma frase de propósito e ficam protegidos.
+              const inicioProtegido = (feito.aberturaSeg ?? 0) + (feito.ganchoSeg ?? 0);
+              const guarda = await guardarFala({
+                arquivo: feito.arquivo,
+                montado,
+                guarda: pedido.guardaDaFala,
+                protegido: inicioProtegido > 0 ? [{ de: 0, ate: inicioProtegido + 0.3 }] : [],
+                pasta,
+                chave: pedido.chave,
+                subir,
+                assinar,
+              });
+              montado = guarda.montado;
+              return { feito, montado, guarda };
             });
-            montado = guarda.montado;
             await avisar(destino, {
               ok: true,
               montado,
@@ -1922,7 +1972,7 @@ const servidor = createServer((req, res) => {
       }
       const assincrono = Boolean(pedido.callbackUrl);
       if (assincrono) responder(202, { aceito: true, chave: pedido.chave, naFila: filaDaMontagem.length + (montagemRodando ? 1 : 0) });
-      enfileirarMontagem({ pedido, executar: () => executarMontagem(pedido, assincrono) });
+      enfileirarMontagem({ pedido, prioridade: prioridadeDaMontagem(pedido, "corte"), executar: () => executarMontagem(pedido, assincrono) });
     });
     return;
   }
@@ -1933,31 +1983,37 @@ const servidor = createServer((req, res) => {
       // Só a montagem com aviso entra no registro: a síncrona tem alguém
       // esperando a resposta, e quem espera vê a conexão cair.
       const destino = { callbackUrl: pedido.callbackUrl, videoJobId: pedido.videoJobId ?? pedido.chave };
+      const prazoMs = prazoDaMontagem(pedido);
       const soltar = assincrono
         ? registrarTrabalho({
             videoJobId: destino.videoJobId,
             tipo: "montar",
+            chave: pedido.chave,
+            prazoMs,
             destino,
             reinicio: () => ({ ok: false, reiniciado: true, erro: "reiniciado", retorno: pedido.retorno ?? null }),
           })
         : () => {};
       try {
-        const { montar } = await import("./montagem.mjs");
-        const { arquivo, tempos, ganchoSeg } = await montar(pedido, pasta, { baixar: baixarQualquer, obterOriginal });
-        let montado = await subir(arquivo, pedido.chave, "video/mp4");
-        // A GUARDA NA SAÍDA (03/10): o corte montado conferido pela fala do
-        // próprio arquivo antes de ir ao cliente (src/guarda-da-fala.mjs).
-        const guarda = await guardarFala({
-          arquivo,
-          montado,
-          guarda: pedido.guardaDaFala,
-          protegido: ganchoSeg ? [{ de: 0, ate: ganchoSeg + 0.3 }] : [],
-          pasta,
-          chave: pedido.chave,
-          subir,
-          assinar,
+        const { montado, tempos, guarda } = await comPrazoDoTrabalho(prazoMs, "o render do corte", async () => {
+          const { montar } = await import("./montagem.mjs");
+          const { arquivo, tempos, ganchoSeg } = await montar(pedido, pasta, { baixar: baixarQualquer, obterOriginal });
+          let montado = await subir(arquivo, pedido.chave, "video/mp4");
+          // A GUARDA NA SAÍDA (03/10): o corte montado conferido pela fala do
+          // próprio arquivo antes de ir ao cliente (src/guarda-da-fala.mjs).
+          const guarda = await guardarFala({
+            arquivo,
+            montado,
+            guarda: pedido.guardaDaFala,
+            protegido: ganchoSeg ? [{ de: 0, ate: ganchoSeg + 0.3 }] : [],
+            pasta,
+            chave: pedido.chave,
+            subir,
+            assinar,
+          });
+          montado = guarda.montado;
+          return { montado, tempos, guarda };
         });
-        montado = guarda.montado;
         // `retorno` volta como veio: o app manda nele o corte e o estado que
         // pediu, e o callback (assinado no corpo) só age se ainda casar.
         const resultado = { ok: true, montado, tempos, guardaDaFala: guarda.relatorio, segundos: Math.round((Date.now() - inicio) / 1000), retorno: pedido.retorno ?? null };

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -120,6 +121,95 @@ export function comTetoDeFios(args) {
   return [...extra, ...args];
 }
 
+/**
+ * O PRAZO DO TRABALHO (04/10). Um corte sob medida de cmurtv2zg ficou 14 h
+ * "rodando" no worker com 786 MB de memória (nada pesado vivo): alguma etapa
+ * esperou para sempre, e a fila de montagem (uma por vez) parou atrás dele com
+ * seis pedidos; os cortes e o completo caíram em "sem-montagem" por prazo,
+ * inclusive a reserva. Agora cada montagem roda dentro de um prazo: os
+ * processos que ela abre (ffmpeg pelo `rodar`, o recorte, o Chrome do
+ * Remotion pelo sinal de cancelamento) ficam registrados no contexto dela e
+ * são mortos quando o prazo estoura, e o erro sobe para o callback.
+ */
+const contextoDoTrabalho = new AsyncLocalStorage();
+
+/** Registra um processo no trabalho em andamento (se houver): morre junto se o prazo estourar. */
+export function processoDoTrabalho(p) {
+  const ctx = contextoDoTrabalho.getStore();
+  if (!ctx || !p) return p;
+  if (ctx.cancelado) {
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+    return p;
+  }
+  ctx.processos.add(p);
+  p.once("close", () => ctx.processos.delete(p));
+  return p;
+}
+
+/** Chamado quando o prazo estoura (ex.: o cancelamento do Remotion). Devolve a função que desfaz o registro. */
+export function aoCancelarOTrabalho(fn) {
+  const ctx = contextoDoTrabalho.getStore();
+  if (!ctx) return () => {};
+  if (ctx.cancelado) {
+    try {
+      fn();
+    } catch {}
+    return () => {};
+  }
+  ctx.aoCancelar.add(fn);
+  return () => ctx.aoCancelar.delete(fn);
+}
+
+/**
+ * O sinal de cancelamento no formato do Remotion (`cancelSignal`), preso ao
+ * trabalho em andamento: estourado o prazo, o Remotion fecha o Chrome dele.
+ */
+export function sinalDoTrabalho() {
+  return (callback) => {
+    aoCancelarOTrabalho(callback);
+  };
+}
+
+/** O trabalho em andamento já foi cancelado? (quem está num laço para de pegar coisa nova) */
+export function trabalhoCancelado() {
+  return Boolean(contextoDoTrabalho.getStore()?.cancelado);
+}
+
+/**
+ * Roda `fn` com prazo: estourado, cancela o que estiver aberto e rejeita com
+ * uma mensagem que diz o que estourou. Sem prazo (0), só registra.
+ */
+export async function comPrazoDoTrabalho(prazoMs, rotulo, fn) {
+  const ctx = { processos: new Set(), aoCancelar: new Set(), cancelado: false };
+  let relogio = null;
+  const estouro = new Promise((_, rejeitar) => {
+    if (!(prazoMs > 0)) return;
+    relogio = setTimeout(() => {
+      ctx.cancelado = true;
+      for (const f of ctx.aoCancelar) {
+        try {
+          f();
+        } catch {}
+      }
+      for (const p of ctx.processos) {
+        try {
+          p.kill("SIGKILL");
+        } catch {}
+      }
+      const e = new Error(`${rotulo} passou do prazo de ${Math.round(prazoMs / 60_000)} min e foi interrompido`);
+      e.prazo = true;
+      rejeitar(e);
+    }, prazoMs);
+  });
+  try {
+    return await Promise.race([contextoDoTrabalho.run(ctx, fn), estouro]);
+  } finally {
+    if (relogio) clearTimeout(relogio);
+  }
+}
+
 export function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const linha = ["-hide_banner", "-loglevel", "error", "-y", ...comTetoDeFios(args)];
@@ -127,6 +217,7 @@ export function rodar(args, { timeoutMs = 30 * 60 * 1000, cwd, nice = 0 } = {}) 
     const p = nice > 0 && process.platform !== "win32"
       ? spawn("nice", ["-n", String(nice), "ffmpeg", "-nostdin", ...linha], { cwd, stdio: ["ignore", "pipe", "pipe"] })
       : spawn("ffmpeg", ["-nostdin", ...linha], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    processoDoTrabalho(p);
     let erro = "";
     p.stderr.on("data", (d) => {
       erro += d.toString();
