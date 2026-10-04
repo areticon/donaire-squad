@@ -1,7 +1,7 @@
 import { askClaudeComImagens } from "@/lib/claude";
 import { extrairJson } from "@/lib/media/diretor-de-montagem";
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
-import { catalogoNoPrompt } from "@/lib/media/editor-sob-medida/pecas";
+import { catalogoNoPrompt, ESTILOS_DA_LOUSA } from "@/lib/media/editor-sob-medida/pecas";
 import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
 
@@ -302,7 +302,7 @@ export async function consertarEdicao(
         `# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (os quadros acima são os do defeito)\n${g.map((d) => `- ${d.momento ?? "sem peça"} em ${d.t.toFixed(1)} s, ${d.tipo}${GRAVES.has(d.tipo) ? " (GRAVE)" : ""}: ${d.descricao} (sugestão: ${d.conserto})`).join("\n")}`,
         pagas.length ? `# IMAGENS JÁ PAGAS NESTE TRECHO (fique com elas: peça de tela cheia ou de lado não entra por cima, e o rosto volta 1 s entre elas)\n${pagas.join("\n")}` : "",
         `# A TAREFA: CONSERTE, NÃO APAGUE
-- Para CADA momento com defeito, devolva a peça REFEITA com o MESMO id, subindo o nível como o revisor pediu: outra peça mais forte do catálogo quando o defeito é "parece slide" ou "cartão chapado" (titulo-atras, numero, passos-foco, barras, comparacao, frase-impacto, pergaminho), texto mais curto com a palavra-chave em **destaque**, outro lado, outro tempo. Varie: não troque tudo pela mesma peça.
+- Para CADA momento com defeito, devolva a peça REFEITA com o MESMO id, subindo o nível como o revisor pediu: outra peça mais forte do catálogo quando o defeito é "parece slide" ou "cartão chapado" (${ESTILOS_DA_LOUSA.includes(e.estiloId ?? "") ? "neste estilo, as da lousa primeiro: palavra-gigante, busca, chat, pilha-passos, marca-brilho, ferramentas, notebook, ilustracao-traco, material; e mantenha a peça da lousa que já está lá, só ajuste o texto" : "titulo-atras, numero, passos-foco, barras, comparacao, frase-impacto, pergaminho"}), texto mais curto com a palavra-chave em **destaque**, outro lado, outro tempo. Varie: não troque tudo pela mesma peça.
 - "remover" só para defeito GRAVE sem conserto possível. Todo id removido ganha um SUBSTITUTO no mesmo trecho: outra peça (id novo) ou um B-roll em "broll" (consulta concreta em inglês, 2 a 4 palavras, 1,5 a 3 s, na palavra que cita o objeto, o lugar ou a ação).
 - Defeito "vazio" ou sem peça: um momento novo (id novo) ou um B-roll no trecho.
 - A densidade do vídeo é o que está em jogo: o vídeo final precisa de peça ou imagem em quase metade do tempo. Momento que você não devolver fica como está.

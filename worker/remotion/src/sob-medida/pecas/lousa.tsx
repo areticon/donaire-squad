@@ -128,7 +128,7 @@ const luxo = (c: Ctx) => c.tema.acabamento === "luxo";
 /** O acento das peças: o da marca no tecnológico, o dourado no luxo. */
 const acentoDa = (c: Ctx): string => (luxo(c) ? OURO : c.tema.acento);
 const tintaDeOuro: React.CSSProperties = { background: OURO_METAL, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", textShadow: "none" };
-const brilhoDeOuro = (u: number, k = 1) => `drop-shadow(0 0 ${6 * u * k}px rgba(212,175,55,.5)) drop-shadow(0 ${3 * u}px ${10 * u}px rgba(0,0,0,.55))`;
+const brilhoDeOuro = (u: number, k = 1) => `drop-shadow(0 0 ${6 * u * k}px rgba(212,175,55,.5)) drop-shadow(0 ${3 * u}px ${10 * u}px rgba(0,0,0,.6)) drop-shadow(0 0 ${22 * u}px rgba(0,0,0,.55))`;
 const MARMORE = `url("data:image/svg+xml;utf8,${encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.004 .012' numOctaves='5' seed='7'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 -9 4.6'/></filter><rect width='900' height='900' filter='url(#m)'/></svg>"
 )}")`;
@@ -169,7 +169,9 @@ export function PalavraGigante(c: Ctx) {
   const palavra = semAsteriscos(texto(p.palavra ?? p.texto)).trim();
   const apoio = semAsteriscos(texto(p.apoio)).trim();
   const n = Math.max(2, palavra.length);
-  const fs = Math.min(H * (vertical ? 0.26 : 0.56), (W * (vertical ? 0.92 : 0.8)) / (n * 0.52));
+  // A largura da palavra em "em": maiúscula larga, minúscula estreita (prova de 04/10: ESSENCIAL saía cortada no 9:16).
+  const emDaPalavra = Math.max(1.2, [...palavra].reduce((t, ch) => t + (/[A-ZÁÂÃÀÉÊÍÓÔÕÚÇMW]/.test(ch) ? 0.67 : /[mw]/.test(ch) ? 0.86 : /[iljtf]/.test(ch) ? 0.3 : 0.56), 0));
+  const fs = Math.min(H * (vertical ? 0.26 : 0.56), (W * (vertical ? 0.88 : 0.8)) / (emDaPalavra * 0.96 * 1.04));
   const fsA = Math.max(fs * 0.27, Math.min(W, H) * 0.06);
   const veu = saiSuave(c.t / 0.3) * c.fica;
   const m = molaFisica(c.t - 0.04, 200, 17);

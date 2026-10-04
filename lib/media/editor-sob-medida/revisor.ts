@@ -105,7 +105,8 @@ const REFERENCIAS_PADRAO = ["dm-01", "dm-04", "dm-07", "dm-02"];
  * estilo não tem ou o disco falha). Com `pecas`, as referências das peças que
  * estão no lote vêm primeiro, até MAX_REFERENCIAS.
  */
-export function imagensDeReferencia(estiloId: string | null | undefined, pecas?: string[] | null): Array<{ base64: string; rotulo: string }> {
+type ImagemDeReferencia = { base64: string; rotulo: string; mediaType?: "image/jpeg" | "image/png" };
+export function imagensDeReferencia(estiloId: string | null | undefined, pecas?: string[] | null): ImagemDeReferencia[] {
   if (!estiloId) return [];
   const lista = IMAGENS_DE_REFERENCIA[estiloId];
   if (!lista) return [];
@@ -113,7 +114,7 @@ export function imagensDeReferencia(estiloId: string | null | undefined, pecas?:
   const doLote = lista.filter((r) => r.peca && nas.has(r.peca));
   const padrao = lista.filter((r) => REFERENCIAS_PADRAO.some((x) => r.arquivo.includes(x)));
   const escolhidas = [...new Set([...doLote, ...padrao, ...lista])].slice(0, MAX_REFERENCIAS);
-  const saida: Array<{ base64: string; rotulo: string }> = [];
+  const saida: ImagemDeReferencia[] = [];
   for (const [i, r] of escolhidas.entries()) {
     let b64 = cacheDeImagens.get(r.arquivo);
     if (b64 === undefined) {
@@ -125,7 +126,8 @@ export function imagensDeReferencia(estiloId: string | null | undefined, pecas?:
       }
       cacheDeImagens.set(r.arquivo, b64);
     }
-    if (b64) saida.push({ base64: b64, rotulo: `REF ${i + 1} (REFERÊNCIA REAL do estilo, NÃO é da prévia; só a régua de qualidade, o formato pode ser outro): ${r.descricao}` });
+    // Os quadros de treino são PNG: o tipo vai junto (sem ele a API recusa a chamada inteira, prova de 04/10).
+    if (b64) saida.push({ base64: b64, mediaType: /\.png$/i.test(r.arquivo) ? "image/png" : "image/jpeg", rotulo: `REF ${i + 1} (REFERÊNCIA REAL do estilo, NÃO é da prévia; só a régua de qualidade, o formato pode ser outro): ${r.descricao}` });
   }
   return saida;
 }
