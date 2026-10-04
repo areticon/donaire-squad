@@ -368,7 +368,7 @@ export function AnalisesDasReferencias({ projectId, modo = "painel" }: { project
           </div>
           {!dePara && modo === "painel" && (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Para ver você contra as referências (ritmo, mix de formatos, o maior gap), estude o seu próprio perfil em Editar setup, na etapa Seu perfil.
+              Para ver você contra as referências (ritmo, mix de formatos, a maior diferença), estude o seu próprio perfil em Editar setup, na etapa Seu perfil.
             </p>
           )}
         </>

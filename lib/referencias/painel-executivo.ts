@@ -187,7 +187,7 @@ export function numerosDoTopo({
   if (gap) {
     nums.push({
       chave: "gap",
-      rotulo: "Maior gap contra as referências",
+      rotulo: "Maior diferença contra as referências",
       valor: valorDaLinha(gap, gap.voce),
       contra: `contra ${valorDaLinha(gap, gap.elas)}`,
       frase: `${gap.medida}${gap.prioridade === "alta" ? ", e o estudo prova que rende." : "."}`,

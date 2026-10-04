@@ -315,7 +315,7 @@ export function DeParaNaTela({
       />
 
       <div className="space-y-2">
-        <Detalhes titulo="Todas as medidas comparadas" resumo={`${dePara.linhas.length} medidas, do maior gap ao menor`}>
+        <Detalhes titulo="Todas as medidas comparadas" resumo={`${dePara.linhas.length} medidas, da maior diferença à menor`}>
           <VoceContraReferencias linhas={dePara.linhas} />
           {dePara.linhas.some((l) => l.prova) && (
             <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs" style={{ color: "var(--text-muted)" }}>
