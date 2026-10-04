@@ -4,6 +4,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { ProjectNav } from "@/components/ui/project-nav";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { ShieldCheck } from "lucide-react";
+import { lerCadastro } from "@/lib/media/gemeo-servidor";
+import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
 
 export default async function ProjectLayout({
   children,
@@ -23,6 +26,11 @@ export default async function ProjectLayout({
 
   if (!project || !(await podeUsarProjeto(userId, project))) notFound();
 
+  // O SELO "FALTA UM PASSO" (03/10): o gêmeo treinado esperando a pessoa
+  // confirmar no gerador. Visível em qualquer aba do projeto, até ela
+  // confirmar; só para o dono, que é quem gravou e quem confirma.
+  const gemeoEspera = project.userId === userId && faltaUmPasso(situacaoDoGemeo(await lerCadastro(id).catch(() => null)));
+
   return (
     <div className="min-h-screen">
       {/* Project header */}
@@ -37,7 +45,7 @@ export default async function ProjectLayout({
       >
         <div className="px-4 lg:px-8">
           <div className="flex items-center justify-between gap-2 h-14 min-w-0">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Link
                 href="/projects"
                 className="text-sm transition-colors"
@@ -53,6 +61,19 @@ export default async function ProjectLayout({
                 {project.name}
               </span>
             </div>
+            {gemeoEspera && (
+              <Link
+                href={`/projects/${id}/gemeo#ultimo-passo`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-orange-500 transition-colors hover:bg-orange-500/10"
+                style={{ borderColor: "rgb(249 115 22 / 0.55)" }}
+                title="O seu gêmeo digital espera você confirmar pela câmera"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>
+                  Falta um passo<span className="hidden sm:inline"> no gêmeo</span>
+                </span>
+              </Link>
+            )}
           </div>
           <ProjectNav projectId={id} isActive={project.status === "active"} souMembro={project.userId !== userId} />
         </div>

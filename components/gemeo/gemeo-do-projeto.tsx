@@ -46,6 +46,8 @@ import {
 import { creditosDoRoteiro } from "@/lib/media/limits";
 import { Gravador } from "@/components/gemeo/gravador";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
+import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
+import { ConfirmacaoDoGemeo } from "@/components/gemeo/confirmacao-do-gemeo";
 
 /**
  * A TELA DO GÊMEO DIGITAL (01/10/2026): o cadastro e os vídeos, numa página.
@@ -101,11 +103,32 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
   const c = estado.cadastro;
   const arquivo = (u?: string | null) => (u ? `/api/projects/${projectId}/gemeo/arquivo?u=${encodeURIComponent(u)}` : "");
 
-  const recarregar = useCallback(async () => {
-    const r = await fetch(`/api/projects/${projectId}/gemeo`, { cache: "no-store" });
-    if (r.ok) setEstado((await r.json()) as Estado);
-  }, [projectId]);
+  /**
+   * `conferir` (03/10): pergunta ao gerador agora, sem esperar o cron, se o
+   * gêmeo terminou de treinar ou se a confirmação já valeu. Avisa quando o
+   * gêmeo fica pronto aqui na frente da pessoa.
+   */
+  const roteador = useRouter();
+  const estadoAtual = useRef(estado);
+  estadoAtual.current = estado;
+  const recarregar = useCallback(
+    async (conferir = false) => {
+      const r = await fetch(`/api/projects/${projectId}/gemeo${conferir ? "?conferir=1" : ""}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const novo = (await r.json()) as Estado;
+      const antes = estadoAtual.current.cadastro?.avatar?.estado;
+      setEstado(novo);
+      if (antes === "consentimento" && novo.cadastro?.avatar?.estado === "pronto") {
+        toast.success("Confirmação recebida: o seu gêmeo está pronto.");
+        // O selo "Falta um passo" do topo é do servidor: some com o refresh.
+        roteador.refresh();
+      }
+    },
+    [projectId, roteador]
+  );
 
+  // O gêmeo esperando o gerador: treinando, ou esperando a confirmação.
+  const esperandoGerador = ["enviando", "treinando", "consentimento"].includes(estado.cadastro?.avatar?.estado ?? "");
   // Pergunta enquanto algo anda do lado do servidor.
   const andando = useMemo(() => {
     const cad = estado.cadastro;
@@ -115,15 +138,45 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         ["convertendo", "clonando", "esperando", "sem-permissao", "falhou"].includes(cad?.voz?.estado ?? "") ||
         cad?.autorizacao?.estado === "conferindo" ||
         ["preparando", "conferindo"].includes(cad?.treino?.estado ?? "") ||
-        ["enviando", "treinando", "consentimento"].includes(cad?.avatar?.estado ?? "") ||
         estado.videos.some(videoEmAndamento)
     );
   }, [estado]);
   useEffect(() => {
-    if (!andando) return;
-    const t = setInterval(() => void recarregar(), 6000);
+    if (!andando && !esperandoGerador) return;
+    // O gerador é consultado a cada 12 s; o resto do cadastro, a cada 6 s.
+    const t = setInterval(() => void recarregar(esperandoGerador), andando ? 6000 : 12_000);
     return () => clearInterval(t);
-  }, [andando, recarregar]);
+  }, [andando, esperandoGerador, recarregar]);
+
+  // A VOLTA DA CONFIRMAÇÃO (03/10): a página do gerador devolve a pessoa para
+  // esta tela (ou ela volta para a aba). Em vez de esperar o cron, a tela
+  // confere na hora e diz que está conferindo.
+  const [conferindo, setConferindo] = useState(() => inicial.cadastro?.avatar?.estado === "consentimento");
+  const conferirAgora = useCallback(async () => {
+    setConferindo(true);
+    try {
+      await recarregar(true);
+    } finally {
+      setConferindo(false);
+    }
+  }, [recarregar]);
+  useEffect(() => {
+    if (!["treinando", "consentimento"].includes(inicial.cadastro?.avatar?.estado ?? "")) {
+      setConferindo(false);
+      return;
+    }
+    void conferirAgora();
+    // Só na chegada: o intervalo cuida do resto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (estado.cadastro?.avatar?.estado !== "consentimento") return;
+    const voltou = () => {
+      if (document.visibilityState === "visible") void conferirAgora();
+    };
+    document.addEventListener("visibilitychange", voltou);
+    return () => document.removeEventListener("visibilitychange", voltou);
+  }, [estado.cadastro?.avatar?.estado, conferirAgora]);
 
   async function enviar(tipo: "treino", blob: Blob, corpo: Record<string, unknown>) {
     const contentType = (blob.type || "application/octet-stream").split(";")[0];
@@ -181,6 +234,15 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
   /** Cadastro de antes de 03/10 (fotos, voz e autorização separadas), sem vídeo de treino. */
   const legado = Boolean(c && !c.treino && c.fotos?.length);
   const doMembro = estado.equipe ?? null;
+  // 03/10: o estado do gêmeo numa frase, o mesmo das Configurações e dos avisos.
+  const situacao = situacaoDoGemeo(c);
+  // O ÚLTIMO PASSO (03/10): do vídeo de treino aceito até a confirmação no
+  // gerador, na mesma sequência da tela, para o cadastro parecer um passo só.
+  const ultimoPasso = c?.treino?.estado === "valido" && (esperandoGerador || faltaUmPasso(situacao));
+  const renovou = (cad: CadastroDoGemeo | null) => {
+    if (cad) setEstado((e) => ({ ...e, cadastro: cad }));
+    else void recarregar();
+  };
 
   // MEMBRO DA EQUIPE: sem os três passos do cadastro e sem revogar. Ele vê se
   // o gêmeo está pronto e pede o vídeo; quem cadastra é o dono (01/10).
@@ -213,19 +275,34 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
           saldo={estado.saldo}
           acessoInterno={estado.acessoInterno}
           roteiroInicial={roteiroInicial}
-          onPedido={recarregar}
+          onPedido={() => recarregar()}
           donoDaEquipe={doMembro.dono}
           gerador={estado.gerador ?? "omnihuman"}
           numero={1}
         />
-        {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={recarregar} />}
+        {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={() => recarregar()} />}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* O RESUMO: pronto, ou o que falta. */}
+      {/* O RESUMO: pronto, ou o que falta. Com o gêmeo esperando a
+          confirmação no gerador (03/10), o resumo vira o passo que falta. */}
+      {ultimoPasso ? (
+        <div
+          className="flex items-start gap-3 rounded-xl border px-4 py-3"
+          style={{ background: "var(--bg-elevated)", borderColor: "rgb(249 115 22 / 0.55)" }}
+        >
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            <strong style={{ color: "var(--text-primary)" }}>Falta o último passo: confirmar pela câmera (30 s).</strong>{" "}
+            <a href="#ultimo-passo" className="font-semibold text-orange-400 underline-offset-2 hover:underline">
+              Ir para o último passo
+            </a>
+          </p>
+        </div>
+      ) : (
       <div
         className="flex items-start gap-3 rounded-xl border px-4 py-3"
         style={{ background: "var(--bg-elevated)", borderColor: ativo ? "rgb(34 197 94 / 0.4)" : "var(--border)" }}
@@ -243,6 +320,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
           )}
         </p>
       </div>
+      )}
 
       {/* PASSO 1: O VÍDEO DE TREINO (03/10). Um vídeo só, lendo o texto que
           rola: é a autorização, a amostra de voz e a amostra de imagem. As
@@ -340,6 +418,44 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         )}
       </Passo>
 
+      {/* O ÚLTIMO PASSO (03/10): logo depois do vídeo de treino aceito, a
+          confirmação que o gerador exige. Enquanto ele treina, o lugar do
+          botão já aparece; na volta da página dele, a tela confere na hora. */}
+      {ultimoPasso && (
+        <section
+          id="ultimo-passo"
+          className="flex scroll-mt-48 flex-col gap-3 rounded-xl border p-5 lg:scroll-mt-28"
+          style={{ background: "var(--bg-card)", borderColor: "rgb(249 115 22 / 0.55)" }}
+        >
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" />
+            <div className="flex min-w-0 flex-col gap-1">
+              <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+                Último passo: confirme pela câmera (30 s)
+              </h2>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                É uma exigência do gerador de vídeo: ele só usa o seu rosto depois que você mesmo confirma, na página dele.
+              </p>
+            </div>
+          </div>
+          <div className="pl-8">
+            {conferindo && c?.avatar?.estado === "consentimento" ? (
+              <p className="inline-flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                <Loader2 className="h-4 w-4 animate-spin text-orange-400" /> Conferindo a sua confirmação...
+              </p>
+            ) : c?.avatar?.estado === "consentimento" ? (
+              <ConfirmacaoDoGemeo projectId={projectId} situacao={situacao} onRenovou={renovou} />
+            ) : (
+              <p className="inline-flex items-start gap-2 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-orange-400" />
+                O gerador está treinando o seu gêmeo com o vídeo. O botão aparece aqui em alguns minutos; pode fechar a tela, avisamos
+                por e-mail.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* PASSO 2: O GÊMEO. O que sai do vídeo de treino: a imagem, a voz
           clonada e (com o gerador treinado ligado) o gêmeo treinado. */}
       {(c?.treino?.estado === "valido" || legado) && (
@@ -373,22 +489,12 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
                     {
                       enviando: "Enviando o vídeo para treinar o seu gêmeo...",
                       treinando: "Treinando o seu gêmeo com o vídeo: rosto, gestos e boca. Leva alguns minutos.",
-                      consentimento: "Falta um passo: o gerador de vídeo pede que você confirme, pela câmera, que autoriza o seu gêmeo. Leva 30 segundos.",
+                      consentimento: "Treinado. Falta você confirmar pela câmera, no último passo acima.",
                       pronto: "Gêmeo treinado com os seus gestos. Os vídeos saem por ele.",
                       falhou: `${c.avatar.motivo ?? "O gerador não treinou o gêmeo."} Os vídeos continuam saindo pela imagem do vídeo de treino.`,
                     }[c.avatar.estado]
                   }
                 />
-              )}
-              {c?.avatar?.estado === "consentimento" && c.avatar.consentimentoUrl && (
-                <a
-                  href={c.avatar.consentimentoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white"
-                >
-                  <ShieldCheck className="h-4 w-4" /> Confirmar no gerador de vídeo
-                </a>
               )}
               {c?.avatar && c.avatar.estado !== "pronto" && c.avatar.estado !== "falhou" && ativo && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -408,12 +514,12 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         saldo={estado.saldo}
         acessoInterno={estado.acessoInterno}
         roteiroInicial={roteiroInicial}
-        onPedido={recarregar}
+        onPedido={() => recarregar()}
         gerador={estado.gerador ?? "omnihuman"}
         numero={legado || c?.treino?.estado === "valido" ? 3 : 2}
       />
 
-      {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={recarregar} />}
+      {estado.videos.length > 0 && <ListaDeVideos projectId={projectId} videos={estado.videos} onMudou={() => recarregar()} />}
 
       {c && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)" }}>

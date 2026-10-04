@@ -3,6 +3,8 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { ConfiguracaoDoProjeto } from "@/components/projects/configuracao-do-projeto";
 import { nomeDoDono, podeUsarProjeto } from "@/lib/equipe/conta";
+import { cadastroParaTela } from "@/lib/media/gemeo";
+import { lerCadastro } from "@/lib/media/gemeo-servidor";
 
 /**
  * Configuração do PROJETO: o que é da marca, e não da pessoa.
@@ -53,6 +55,8 @@ export default async function ProjectSettingsPage({
         // de quem muda. A API recusa do mesmo jeito (lib/equipe/permissoes.ts).
         somenteLeitura={project.userId === userId ? null : { dono: (await nomeDoDono(project.userId)) ?? "quem administra a conta" }}
         projeto={semContas}
+        // A aba "Gêmeo digital" (03/10): o cadastro sem ids de fornecedor.
+        gemeo={{ cadastro: cadastroParaTela(await lerCadastro(id)) }}
         contasSociais={project.socialAccounts.map((c) => ({
           id: c.id,
           platform: c.platform,

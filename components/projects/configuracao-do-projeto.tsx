@@ -9,6 +9,9 @@ import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { GemeoNasConfiguracoes } from "@/components/gemeo/gemeo-nas-configuracoes";
+import type { CadastroDoGemeo } from "@/lib/media/gemeo";
+import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
 import {
   creditosDaSemana,
   diaComFormato,
@@ -55,6 +58,10 @@ const ABAS = [
   { id: "modelos", rotulo: "Modelos de arte" },
   { id: "video", rotulo: "Vídeo e semana" },
   { id: "links", rotulo: "Seus links" },
+  // 03/10: o gêmeo tinha uma porta só, dentro de Criar; quem precisava
+  // confirmar no gerador não achava onde ("devo fingir que vou gerar outro
+  // conteúdo?"). Aqui ele tem endereço fixo: ?aba=gemeo.
+  { id: "gemeo", rotulo: "Gêmeo digital" },
 ] as const;
 
 const TONS = [
@@ -151,8 +158,11 @@ export function ConfiguracaoDoProjeto({
   projeto,
   contasSociais,
   somenteLeitura = null,
+  gemeo = null,
 }: {
   projeto: Projeto;
+  /** O cadastro do gêmeo como a tela vê (`cadastroParaTela`), para a aba "Gêmeo digital". */
+  gemeo?: { cadastro: CadastroDoGemeo | null } | null;
   // O painel de redes tem tipo próprio e vem inteiro do servidor.
   contasSociais: Parameters<typeof SocialConnectPanel>[0]["initialAccounts"];
   /**
@@ -253,6 +263,8 @@ export function ConfiguracaoDoProjeto({
 
   const cores = form.colorPalette.split(",").map((c) => c.trim()).filter(Boolean);
 
+  const pedeConfirmacao = faltaUmPasso(situacaoDoGemeo(gemeo?.cadastro ?? null));
+
   // Custo em créditos da semana escolhida, além do texto.
   const custoDaSemana = creditosDaSemana({ ...semana, inicio: null });
 
@@ -282,6 +294,9 @@ export function ConfiguracaoDoProjeto({
               }
             >
               {a.rotulo}
+              {a.id === "gemeo" && pedeConfirmacao && (
+                <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-orange-500 align-middle" aria-label="falta um passo" />
+              )}
             </button>
           );
         })}
@@ -303,6 +318,8 @@ export function ConfiguracaoDoProjeto({
           <GaleriaDeModelos projectId={projeto.id} />
         </section>
       )}
+
+      {aba === "gemeo" && <GemeoNasConfiguracoes projectId={projeto.id} cadastro={gemeo?.cadastro ?? null} />}
 
       {aba === "links" && (
         <Secao
