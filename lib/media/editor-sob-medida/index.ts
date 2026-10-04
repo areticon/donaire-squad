@@ -112,12 +112,32 @@ const GUARDA_DO_VIDEO =
  *   EDITOR_SOB_MEDIDA_VIDEOS        teto FIXO do completo (sem ela, pela duração)
  *   EDITOR_SOB_MEDIDA_VIDEOS_POR_MIN quantos por minuto no completo (padrão 1,2)
  *   EDITOR_SOB_MEDIDA_VIDEOS_CORTE  teto do corte (padrão 4)
+ *
+ * Decisão do dono em 04/10: no completo, uma cena a cada ~3 min (0,33 por
+ * minuto na Vercel), intercalada com as peças e o B-roll. O piso de 4 que
+ * havia aqui contrariava isso num vídeo curto (5 min pediria 4); agora o piso
+ * é 1 (todo completo com duração ganha ao menos uma cena). Sem duração, 4,
+ * como nas provas antigas.
  */
 export function tetoDeVideos(alvo: "completo" | "corte", minutos = 0): number {
   if (alvo === "corte") return Math.max(0, Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS_CORTE ?? 4));
   if (process.env.EDITOR_SOB_MEDIDA_VIDEOS) return Math.max(0, Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS));
   const porMin = Number(process.env.EDITOR_SOB_MEDIDA_VIDEOS_POR_MIN ?? 1.2);
-  return Math.max(4, Math.round(minutos * porMin));
+  if (!(minutos > 0)) return 4;
+  return Math.max(1, Math.round(minutos * porMin));
+}
+
+/**
+ * Quais inserções viram vídeo quando o teto é menor que a lista: ESPALHADAS
+ * pela lista (que segue a ordem do vídeo, bloco a bloco), e não as primeiras.
+ * Com 0,33 por minuto, as primeiras N caíam todas no começo do completo e o
+ * resto ficava sem cena (04/10).
+ */
+export function espalhar<T>(lista: T[], teto: number): T[] {
+  const n = Math.max(0, Math.floor(teto));
+  if (n >= lista.length) return lista;
+  if (n === 0) return [];
+  return Array.from({ length: n }, (_, k) => lista[Math.min(lista.length - 1, Math.floor(((k + 0.5) * lista.length) / n))]);
 }
 /** Compatível com as provas antigas: o teto do corte e o do completo sem duração. */
 export const TETO_DE_VIDEOS = { completo: tetoDeVideos("completo"), corte: tetoDeVideos("corte") };
@@ -144,10 +164,10 @@ export async function pedirVideosDasInsercoes(
   const lista = (e.insercoes ?? [])
     .map((ins, k) => ({ ins, id: String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}` }))
     // Só as que ficaram na edição resolvida (a que cruza uma tela cheia cai lá e não paga vídeo).
-    .filter(({ id }) => insercoes[id] && (!o.duracoes || id in o.duracoes))
-    .slice(0, Math.max(0, o.teto));
+    .filter(({ id }) => insercoes[id] && (!o.duracoes || id in o.duracoes));
+  const escolhidas = espalhar(lista, o.teto);
   await Promise.all(
-    lista.map(async ({ ins, id }) => {
+    escolhidas.map(async ({ ins, id }) => {
       const prompt = `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DO_VIDEO}`;
       const segundos = Math.min(5, Math.max(3, Math.ceil(o.duracoes?.[id] ?? 4)));
       const chave = `sob-medida-${id}-${createHash("sha1").update(`${prompt}|${segundos}|${o.formato}`).digest("hex").slice(0, 10)}`;
