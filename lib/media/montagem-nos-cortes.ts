@@ -68,6 +68,7 @@ import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
 import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, garantirGancho, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
+import { aindaEsperaOWorker, prazoDaMontagemMs } from "@/lib/media/montagem-no-worker";
 import { levarEdicaoParaFalaNova, tempoNaFalaNova } from "@/lib/media/edicao-na-fala-nova";
 
 /**
@@ -1092,7 +1093,15 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
         } else if (m.estado === "montando" && sobMedidaVivo && sm!.fase === "revisar" && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
           r.olhados++;
           pesados.push(() => revisarCorteSobMedida(video, i, t, m));
-        } else if (m.estado === "montando" && sobMedidaVivo && idade > PRAZO_DO_RENDER_MS) {
+        } else if (
+          m.estado === "montando" &&
+          sobMedidaVivo &&
+          // O PRAZO PROPORCIONAL (04/10, lib/media/montagem-no-worker.ts): o do
+          // worker para a duração do corte mais a fila; passado ele, pergunta
+          // ao worker antes de desistir (rodando ou na fila não é morto).
+          idade > prazoDaMontagemMs(sm!.edicao?.duracao ?? sm!.fala?.duracao, sm!.fase === "final") &&
+          !(await aindaEsperaOWorker(video.id, m.chave, idade))
+        ) {
           r.olhados++;
           await desistirDoCorteSobMedida(video.id, i, m, "o render da edição sob medida não terminou no prazo");
         } else if (m.estado === "gerando") {
@@ -1105,9 +1114,12 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
           pesados.push(() => revisarCorte(video, i, m));
         } else if (m.estado === "montando" && sobMedidaVivo) {
           // A edição sob medida está no worker: espera o callback.
-        } else if (m.estado === "montando" && idade > PRAZO_DO_RENDER_MS) {
+        } else if (m.estado === "montando" && !sobMedidaVivo && idade > PRAZO_DO_RENDER_MS && !(await aindaEsperaOWorker(video.id, m.chave, idade))) {
           r.olhados++;
           // Sem callback no prazo: volta para "gerando" (reenvia) ou desiste.
+          // A reserva também pergunta ao worker antes (04/10): em 04/10 ela
+          // foi dada por morta três vezes na fila parada atrás de um render
+          // pendurado, e o corte caiu em "sem-montagem".
           await trocarEstado(video.id, i, m, {
             ...m,
             estado: (m.tentativas ?? 1) >= MAX_TENTATIVAS ? "sem-montagem" : "gerando",

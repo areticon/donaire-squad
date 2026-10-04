@@ -1,4 +1,5 @@
 import { pedidoDaGuarda } from "@/lib/media/guarda-da-fala";
+import { aindaEsperaOWorker, prazoDaMontagemMs } from "@/lib/media/montagem-no-worker";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { avisarVideoPronto } from "@/lib/notificacoes/avisos";
@@ -293,6 +294,13 @@ export type EstadoDoSobMedida = {
   /** O crédito dos B-rolls de banco (a API do Pexels pede o link de volta onde o app mostra o resultado). */
   creditos?: string[];
   desistiu?: string | null;
+  /**
+   * O worker reiniciou com a prévia ou o final na fila ou no meio (04/10):
+   * a próxima passada reenvia a MESMA fase, com a edição guardada. Antes o
+   * reinício mandava o completo para "gerando", que é a esteira de sempre e
+   * não tem plano no caminho novo.
+   */
+  reenviar?: boolean;
 };
 
 // ─────────────────────────────── números ───────────────────────────────
@@ -1751,10 +1759,23 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
         // O editor sob medida (03/10).
         r.olhados++;
         await editarSobMedida(v, m);
+      } else if (m.estado === "montando" && m.sobMedida && !m.sobMedida.desistiu && m.sobMedida.reenviar && m.sobMedida.edicao && (m.sobMedida.fase === "previa" || m.sobMedida.fase === "final") && !esperando) {
+        // O worker reiniciou (ou a montagem foi recolocada na fila): reenvia a mesma fase, sem IA.
+        r.olhados++;
+        await enviarSobMedida(v, { ...m, trabalhando: false, sobMedida: { ...m.sobMedida, reenviar: false } }, m);
       } else if (m.estado === "montando" && m.sobMedida?.fase === "revisar" && !m.sobMedida.desistiu && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
         r.olhados++;
         await revisarSobMedida(v, m);
-      } else if (m.estado === "montando" && m.sobMedida && !m.sobMedida.desistiu && idade > PRAZO_DO_RENDER_MS) {
+      } else if (
+        m.estado === "montando" &&
+        m.sobMedida &&
+        !m.sobMedida.desistiu &&
+        // O PRAZO PROPORCIONAL (04/10, lib/media/montagem-no-worker.ts): o do
+        // worker para a duração (prévia ou final) mais a fila; passado ele,
+        // pergunta ao worker antes de desistir (rodando ou na fila não é morto).
+        idade > prazoDaMontagemMs(m.sobMedida.edicao?.duracao ?? m.fala?.duracao, m.sobMedida.fase === "final") &&
+        !(await aindaEsperaOWorker(v.id, m.chave, idade))
+      ) {
         r.olhados++;
         await desistirDoSobMedida(v.id, m, "o render da edição sob medida não terminou no prazo");
       } else if (m.estado === "dirigindo" && !esperando && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
@@ -1772,7 +1793,9 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
         // A revisão visual do render pronto (02/10).
         r.olhados++;
         await revisarCandidato(v, m);
-      } else if (m.estado === "montando" && idade > PRAZO_DO_RENDER_MS) {
+      } else if (m.estado === "montando" && !(m.sobMedida && !m.sobMedida.desistiu) && idade > PRAZO_DO_RENDER_MS && !(await aindaEsperaOWorker(v.id, m.chave, idade))) {
+        // A reserva também pergunta ao worker antes (04/10): em 04/10 ela foi
+        // dada por morta três vezes na fila parada atrás de um render pendurado.
         r.olhados++;
         await trocarEstado(v.id, m, {
           ...m,
@@ -2029,6 +2052,10 @@ export async function concluirMontagemDoCompleto(
   // O WORKER REINICIOU (deploy, 01/10): o render foi cortado no meio, não
   // falhou. Volta para "gerando" sem espera e sem gastar tentativa; a próxima
   // passada do cron reenvia ao worker novo.
+  if (resultado.reiniciado && lido.sobMedida && !lido.sobMedida.desistiu) {
+    await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), tentativas: Math.max(0, (lido.tentativas ?? 1) - 1), sobMedida: { ...lido.sobMedida, reenviar: true } });
+    return "falhou";
+  }
   if (resultado.reiniciado) {
     await trocarEstado(videoJobId, lido, {
       ...lido,
