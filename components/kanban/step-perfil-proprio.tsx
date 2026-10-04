@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { LinhaDeCusto, RelatorioDoPerfilNaTela } from "@/components/kanban/relatorio-do-perfil";
 import type { RedeDeReferencia } from "@/lib/referencias/tipos";
+import type { RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import { ROTULO_DA_ETAPA_DO_PERFIL, type EtapaDoPerfilProprio, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
@@ -32,7 +33,18 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
   const [dados, setDados] = useState<RespostaDoPerfilProprio | null>(null);
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
+  // As regras do projeto, para o "o que fazer" do relatório saber o que já virou regra.
+  const [analise, setAnalise] = useState<RespostaDasAnalises | null>(null);
   const preencheu = useRef(false);
+
+  const carregarRegras = useCallback(async () => {
+    const r = await fetch(`/api/projects/${projectId}/referencias/analises`).catch(() => null);
+    if (r?.ok) setAnalise((await r.json()) as RespostaDasAnalises);
+  }, [projectId]);
+
+  useEffect(() => {
+    void carregarRegras();
+  }, [carregarRegras]);
 
   const carregar = useCallback(async () => {
     const r = await fetch(`/api/projects/${projectId}/perfil-proprio`).catch(() => null);
@@ -178,7 +190,9 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {dados?.relatorio && !rodando && <RelatorioDoPerfilNaTela relatorio={dados.relatorio} />}
+      {dados?.relatorio && !rodando && (
+        <RelatorioDoPerfilNaTela relatorio={dados.relatorio} projectId={projectId} podeEditar={dados.podeEditar} analise={analise} aoMudar={carregarRegras} />
+      )}
     </div>
   );
 }

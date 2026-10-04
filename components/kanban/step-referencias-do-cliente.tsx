@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { GitCompareArrows, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DeParaNaTela, LinhaDeCusto } from "@/components/kanban/relatorio-do-perfil";
-import { ROTULO_DA_ETAPA, type EstadoDaAnalise } from "@/lib/referencias/tipos-das-analises";
+import { ROTULO_DA_ETAPA, type RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import type { EstudoNaTela, RedeDeReferencia } from "@/lib/referencias/tipos";
 import { MAX_REFERENCIAS_POR_PROJETO, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
 
@@ -32,7 +32,7 @@ type Linha = { rede: RedeDeReferencia; perfil: string };
 
 export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
   const [dados, setDados] = useState<RespostaDoPerfilProprio | null>(null);
-  const [analise, setAnalise] = useState<{ estado: EstadoDaAnalise | null; parado: boolean } | null>(null);
+  const [analise, setAnalise] = useState<RespostaDasAnalises | null>(null);
   const [estudo, setEstudo] = useState<EstudoNaTela | null>(null);
   const [linhas, setLinhas] = useState<Linha[]>([{ rede: "instagram", perfil: "" }]);
   const [enviando, setEnviando] = useState(false);
@@ -52,7 +52,7 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
         setLinhas(d.referencias.map((x) => ({ rede: x.rede, perfil: x.rede === "instagram" || x.rede === "tiktok" ? `@${x.perfil}` : x.perfil })));
       }
     }
-    if (a) setAnalise({ estado: a.estado ?? null, parado: Boolean(a.parado) });
+    if (a) setAnalise(a as RespostaDasAnalises);
     if (e) setEstudo((e.estudo as EstudoNaTela | null) ?? null);
   }, [projectId]);
 
@@ -192,7 +192,9 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
         </ul>
       )}
 
-      {dados?.dePara && !estudando && <DeParaNaTela dePara={dados.dePara} />}
+      {dados?.dePara && !estudando && (
+        <DeParaNaTela dePara={dados.dePara} relatorio={dados.relatorio} projectId={projectId} podeEditar={dados.podeEditar} analise={analise} aoMudar={carregar} />
+      )}
     </div>
   );
 }

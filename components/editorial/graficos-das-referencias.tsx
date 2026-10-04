@@ -84,10 +84,21 @@ export function Exemplo({ e }: { e: ExemploDoAchado }) {
 }
 
 /** A barra divergente a partir de 1x, na escala de dobros. */
-export function BarraDivergente({ vezes, forca, altura = 10 }: { vezes: number; forca: "forte" | "indicio"; altura?: number }) {
+export function BarraDivergente({
+  vezes,
+  forca,
+  altura = 10,
+  naPonta = DOBROS_NA_PONTA,
+}: {
+  vezes: number;
+  forca: "forte" | "indicio";
+  altura?: number;
+  /** Quantos dobros cabem até a ponta (3 = 8x; o painel executivo de 03/10 usa 2 = 4x, para a barra curta aparecer). */
+  naPonta?: number;
+}) {
   const dobros = Math.log2(Math.max(vezes, 0.001));
-  const fracao = Math.min(Math.abs(dobros), DOBROS_NA_PONTA) / DOBROS_NA_PONTA;
-  const passou = Math.abs(dobros) > DOBROS_NA_PONTA;
+  const fracao = Math.min(Math.abs(dobros), naPonta) / naPonta;
+  const passou = Math.abs(dobros) > naPonta;
   const mais = vezes >= 1;
   const cor = mais ? "var(--painel-2)" : "var(--painel-5)";
   const largura = `${Math.max(fracao * 50, 0.8)}%`;
@@ -218,11 +229,20 @@ function Legenda() {
   );
 }
 
-export function PainelExecutivoDasReferencias({ painel, amostra }: { painel: PainelExecutivo; amostra: { comGanho: number; perfis: number } }) {
+export function PainelExecutivoDasReferencias({
+  painel,
+  amostra,
+  semFrases = false,
+}: {
+  painel: PainelExecutivo;
+  amostra: { comGanho: number; perfis: number };
+  /** Os números grandes já estão no topo do painel executivo (03/10): aqui, só os gráficos. */
+  semFrases?: boolean;
+}) {
   if (!painel.graficos.length) return null;
   return (
     <div className="space-y-4">
-      {painel.frases.length > 0 && (
+      {!semFrases && painel.frases.length > 0 && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {painel.frases.map((f) => {
             const mais = !f.texto.startsWith("Evite");

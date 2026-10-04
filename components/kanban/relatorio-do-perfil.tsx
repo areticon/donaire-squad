@@ -1,79 +1,46 @@
 "use client";
 
-import { ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
-import type { CustoDoEstudo, DeParaDoPerfil, FatiaDoPerfil, LinhaDoDePara, RelatorioDoPerfil } from "@/lib/referencias/tipos-do-perfil-proprio";
+import {
+  Bloco,
+  BarrasDeRende,
+  BarrasPorPerfil,
+  CartaoDoPost,
+  COR_REFS,
+  COR_VOCE,
+  Detalhes,
+  MixDeFormatos,
+  NumerosDoTopo,
+  OQueFazer,
+  Paleta,
+  VoceContraReferencias,
+} from "@/components/editorial/painel-do-estudo";
+import { barrasQueMaisRendem, numeroCurto, numerosDoTopo, porcentoCurto, recomendacoes } from "@/lib/referencias/painel-executivo";
+import type { RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
+import type { CustoDoEstudo, DeParaDoPerfil, FatiaDoPerfil, RelatorioDoPerfil } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
- * O RELATÓRIO DO PERFIL DO CLIENTE E O DE-PARA EM GRÁFICOS (03/10/2026), as
- * duas primeiras telas da jornada de entrada.
+ * O RELATÓRIO DO PERFIL DO CLIENTE E O DE-PARA (03/10/2026), as duas
+ * primeiras telas da jornada de entrada, como PAINEL EXECUTIVO.
  *
- * Mesma linguagem do painel das referências (graficos-das-referencias.tsx):
- * HTML e CSS, sem biblioteca, as cores --painel-* validadas nos dois temas, o
- * número sempre escrito ao lado da barra. Aqui as barras são de PARTE DO
- * TODO (quanto do perfil é reel, é educativo, abre com pergunta) e, quando dá
- * para medir, o rendimento vai ao lado ("rende 2,1x").
- *
- * No de-para, cada medida tem duas barras na mesma escala: VOCÊ (azul) e as
- * REFERÊNCIAS (laranja, a mediana dos perfis). A cor diz o lado e o rótulo
- * também, para não depender só de cor.
+ * Pedido do Bruno no mesmo dia: "muita informação misturada e confusa,
+ * precisa ser gráfico e executivo". Cada tela tem três andares
+ * (components/editorial/painel-do-estudo.tsx): os números grandes do topo, os
+ * gráficos (mix de formatos, o que rende, a paleta, o post de maior
+ * engajamento com a miniatura; no de-para, você contra as referências e o
+ * ritmo de cada perfil) e o que fazer, com o botão de virar regra. O resto
+ * (temas, tom, ganchos, a tabela dos perfis, todas as medidas) fica em "ver
+ * detalhes".
  */
 
-const COR_VOCE = "var(--painel-3)";
-const COR_ELAS = "var(--painel-2)";
-
-function numero(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "sem dado";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
-  if (n >= 10_000) return `${Math.round(n / 1000).toLocaleString("pt-BR")} mil`;
-  return n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-}
-
-/** Porcentagem pequena precisa de mais casas: 0,03% não é 0%. */
-const porcento = (n: number | null | undefined) =>
-  n === null || n === undefined ? "sem dado" : `${n.toLocaleString("pt-BR", { maximumFractionDigits: n < 1 ? 2 : 1 })}%`;
-
-const dataCurta = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" }) : "");
-
-function Cartao({ titulo, children, className = "" }: { titulo?: string; children: React.ReactNode; className?: string }) {
-  return (
-    <section className={`min-w-0 rounded-2xl border p-3 sm:p-4 ${className}`} style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      {titulo && (
-        <h3 className="mb-2 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          {titulo}
-        </h3>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function Numero({ valor, rotulo, detalhe }: { valor: string; rotulo: string; detalhe?: string }) {
-  return (
-    <div className="min-w-0 rounded-2xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <p className="truncate text-2xl font-extrabold tabular-nums leading-none sm:text-3xl" style={{ color: "var(--text-primary)" }}>
-        {valor}
-      </p>
-      <p className="mt-1.5 text-xs font-medium leading-snug" style={{ color: "var(--text-primary)" }}>
-        {rotulo}
-      </p>
-      {detalhe && (
-        <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
-          {detalhe}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Barras de parte do todo, com o rendimento ao lado quando existe. */
+/** Barras de parte do todo, com o rendimento ao lado quando existe (os detalhes). */
 function Distribuicao({ titulo, pergunta, fatias }: { titulo: string; pergunta: string; fatias: FatiaDoPerfil[] }) {
   if (!fatias.length) return null;
   const maior = Math.max(...fatias.map((f) => f.pct), 1);
   return (
-    <Cartao>
-      <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+    <div className="min-w-0">
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
         {titulo}
-      </h3>
+      </p>
       <p className="mb-2 text-xs" style={{ color: "var(--text-muted)" }}>
         {pergunta}
       </p>
@@ -101,7 +68,7 @@ function Distribuicao({ titulo, pergunta, fatias }: { titulo: string; pergunta: 
           </li>
         ))}
       </ul>
-    </Cartao>
+    </div>
   );
 }
 
@@ -116,319 +83,299 @@ export function LinhaDeCusto({ custo, rotulo }: { custo: CustoDoEstudo | null | 
   );
 }
 
-export function RelatorioDoPerfilNaTela({ relatorio }: { relatorio: RelatorioDoPerfil }) {
+type Comum = {
+  projectId: string;
+  podeEditar: boolean;
+  /** As análises das referências (regras e tendências), para o "o que fazer" saber o que já é regra. */
+  analise?: RespostaDasAnalises | null;
+  aoMudar?: () => void | Promise<void>;
+};
+
+export function RelatorioDoPerfilNaTela({ relatorio, projectId, podeEditar, analise, aoMudar }: Comum & { relatorio: RelatorioDoPerfil }) {
   const n = relatorio.numeros;
   const m = relatorio.melhorPost;
   const q = relatorio.quemE;
   const v = relatorio.visual;
+  const rende = barrasQueMaisRendem(relatorio.graficos, { max: 5 });
+  // Na primeira tela, o que fazer sai do que rende ou não no SEU perfil.
+  const itens = recomendacoes({ relatorio, regras: analise?.regras ?? [] });
   return (
     <div className="space-y-3">
-      {/* Os números grandes */}
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Numero valor={String(n.posts)} rotulo="posts estudados" detalhe={n.periodoDias ? `dos últimos ${n.periodoDias} dias` : undefined} />
-        <Numero valor={n.porSemana !== null ? numero(n.porSemana) : "sem dado"} rotulo="posts por semana" />
-        <Numero
-          valor={porcento(n.taxaDeEngajamento)}
-          rotulo="engajamento por post"
-          detalhe={n.seguidores ? `curtidas e comentários sobre ${numero(n.seguidores)} seguidores` : "sem o número de seguidores"}
-        />
-        <Numero
-          valor={n.medianaVisualizacoes !== null ? numero(n.medianaVisualizacoes) : numero(n.medianaCurtidas)}
-          rotulo={n.medianaVisualizacoes !== null ? "visualizações num post típico" : "curtidas num post típico"}
-          detalhe="a mediana: metade dos posts fica acima"
-        />
-      </div>
+      <NumerosDoTopo numeros={numerosDoTopo({ relatorio })} />
 
-      {/* O melhor post */}
-      {m && (
-        <Cartao>
-          <div className="flex items-start gap-3">
-            <Trophy className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "var(--painel-2)" }} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                O seu post de maior engajamento
-                {m.publicadoEm ? <span className="font-normal" style={{ color: "var(--text-muted)" }}>{`, ${dataCurta(m.publicadoEm)}`}</span> : null}
-              </p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
-                {[
-                  m.visualizacoes ? `${numero(m.visualizacoes)} visualizações` : null,
-                  m.curtidas !== null ? `${numero(m.curtidas)} curtidas` : null,
-                  m.comentarios !== null ? `${numero(m.comentarios)} comentários` : null,
-                ]
-                  .filter(Boolean)
-                  .join(", ")}
-                . {m.porQue}
-              </p>
-              {m.legenda && (
-                <p className="mt-1.5 line-clamp-2 text-xs italic" style={{ color: "var(--text-primary)" }}>
-                  &ldquo;{m.legenda}
-                  {m.legenda.length >= 220 ? "..." : ""}&rdquo;
-                </p>
-              )}
-              {m.url && (
-                <a href={m.url} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-orange-500 hover:underline">
-                  Abrir o post <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          </div>
-        </Cartao>
-      )}
-
-      {/* Quem é */}
-      {q && (
-        <Cartao titulo="O que eu entendi de você">
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-            {[
-              ["Quem é", q.pessoa],
-              ["O produto", q.produto],
-              ["O objetivo", q.objetivo],
-              ["Público", q.publico],
-            ].map(([k, t]) =>
-              t ? (
-                <div key={k} className="min-w-0">
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                    {k}
-                  </dt>
-                  <dd className="text-sm" style={{ color: "var(--text-primary)" }}>
-                    {t}
-                  </dd>
-                </div>
-              ) : null
-            )}
-            {q.linguagem && (
-              <div className="min-w-0 sm:col-span-2">
-                <dt className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                  A sua linguagem
-                </dt>
-                <dd className="text-sm" style={{ color: "var(--text-primary)" }}>
-                  {q.linguagem}
-                </dd>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {m && (
+          <Bloco titulo="O seu post de maior engajamento">
+            <CartaoDoPost post={m} titulo={m.tema ? `Sobre ${m.tema}` : "O post"} porQue={m.porQue} legenda={m.legenda} />
+          </Bloco>
+        )}
+        {relatorio.formatos.length > 0 && (
+          <Bloco titulo="Mix de formatos" pergunta="O que você mais posta, e quanto cada formato rende">
+            <MixDeFormatos voce={relatorio.formatos} />
+          </Bloco>
+        )}
+        {rende.length > 0 && (
+          <Bloco titulo="O que rende mais no seu perfil" pergunta="Cada tipo de post contra o normal do seu próprio perfil">
+            <BarrasDeRende barras={rende} lado="do seu perfil" />
+          </Bloco>
+        )}
+        {v && (v.cores.length > 0 || v.estilo) && (
+          <Bloco titulo="O seu visual" pergunta="As cores que mais aparecem nas suas capas">
+            <Paleta cores={v.cores} />
+            {(v.artes.length > 0 || v.comRostoPct !== null) && (
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
+                {v.artes.slice(0, 2).map((a) => (
+                  <span key={a.chave} className="min-w-0">
+                    <span className="block text-xl font-extrabold leading-none tabular-nums" style={{ color: "var(--text-primary)" }}>
+                      {a.pct}%
+                    </span>
+                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      capas de {a.nome}
+                    </span>
+                  </span>
+                ))}
+                {v.comRostoPct !== null && (
+                  <span className="min-w-0">
+                    <span className="block text-xl font-extrabold leading-none tabular-nums" style={{ color: "var(--text-primary)" }}>
+                      {v.comRostoPct}%
+                    </span>
+                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      com rosto
+                    </span>
+                  </span>
+                )}
               </div>
             )}
-          </dl>
-          {q.temas.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {q.temas.map((t) => (
-                <span key={t} className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-        </Cartao>
-      )}
+          </Bloco>
+        )}
+      </div>
 
-      {/* O que rende */}
-      {relatorio.oQueRende.length > 0 && (
-        <Cartao titulo="O que mais rende no seu perfil">
-          <ul className="space-y-1">
-            {relatorio.oQueRende.map((f) => (
-              <li key={f} className="flex gap-2 text-sm" style={{ color: "var(--text-primary)" }}>
-                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: f.includes("rende só") ? "var(--painel-5)" : "var(--painel-2)" }} />
-                {f}
+      <OQueFazer
+        projectId={projectId}
+        itens={itens}
+        podeEditar={podeEditar}
+        aoMudar={aoMudar}
+        vazio="Ainda não há diferença clara entre os seus posts. O próximo passo é comparar com as suas referências."
+      />
+
+      <div className="space-y-2">
+        {q && (
+          <Detalhes titulo="O que eu entendi de você" resumo={q.pessoa}>
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+              {[
+                ["Quem é", q.pessoa],
+                ["O produto", q.produto],
+                ["O objetivo", q.objetivo],
+                ["Público", q.publico],
+                ["A sua linguagem", q.linguagem],
+              ].map(([k, t]) =>
+                t ? (
+                  <div key={k} className={k === "A sua linguagem" ? "min-w-0 sm:col-span-2" : "min-w-0"}>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                      {k}
+                    </dt>
+                    <dd className="text-sm" style={{ color: "var(--text-primary)" }}>
+                      {t}
+                    </dd>
+                  </div>
+                ) : null
+              )}
+            </dl>
+            {q.temas.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {q.temas.map((t) => (
+                  <span key={t} className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {v?.estilo && (
+              <p className="mt-2 text-sm" style={{ color: "var(--text-primary)" }}>
+                <b>Estilo das capas:</b> {v.estilo}
+              </p>
+            )}
+          </Detalhes>
+        )}
+        {(relatorio.temas.length > 0 || relatorio.tons.length > 0 || relatorio.ganchos.length > 0) && (
+          <Detalhes titulo="Temas, tom e ganchos" resumo="Os assuntos, o jeito de falar e como a primeira frase prende, post a post">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Distribuicao titulo="Temas" pergunta="Os assuntos dos seus posts" fatias={relatorio.temas} />
+              <Distribuicao titulo="Tom" pergunta="O jeito de falar" fatias={relatorio.tons} />
+              <Distribuicao titulo="Ganchos" pergunta="Como a primeira frase prende" fatias={relatorio.ganchos} />
+            </div>
+          </Detalhes>
+        )}
+        <Detalhes titulo="Os números do estudo" resumo={`${n.posts} posts lidos${n.periodoDias ? ` dos últimos ${n.periodoDias} dias` : ""}`}>
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+            {[
+              [String(n.posts), "posts estudados"],
+              [n.seguidores ? numeroCurto(n.seguidores) : "sem dado", "seguidores"],
+              [numeroCurto(n.medianaCurtidas), "curtidas num post típico"],
+              [numeroCurto(n.medianaComentarios), "comentários num post típico"],
+              [numeroCurto(n.medianaVisualizacoes), "visualizações num post típico"],
+              [porcentoCurto(n.taxaDeEngajamento), "engajamento por post"],
+            ].map(([valor, rotulo]) => (
+              <li key={rotulo}>
+                <span className="block text-lg font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
+                  {valor}
+                </span>
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {rotulo}
+                </span>
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Cada post comparado com o normal (a mediana) do seu próprio perfil. Com poucos posts de um tipo, leia como pista.
-          </p>
-        </Cartao>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Distribuicao titulo="Formatos" pergunta="O que você mais posta, e quanto cada formato rende" fatias={relatorio.formatos} />
-        <Distribuicao titulo="Temas" pergunta="Os assuntos dos seus posts" fatias={relatorio.temas} />
-        <Distribuicao titulo="Tom" pergunta="O jeito de falar" fatias={relatorio.tons} />
-        <Distribuicao titulo="Ganchos" pergunta="Como a primeira frase prende" fatias={relatorio.ganchos} />
-      </div>
-
-      {/* O visual */}
-      {v && (v.cores.length > 0 || v.estilo || v.artes.length > 0) && (
-        <Cartao titulo="O seu visual">
-          {v.cores.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {v.cores.map((c) => (
-                <span key={c} className="inline-flex items-center gap-1.5 text-xs tabular-nums" style={{ color: "var(--text-muted)" }}>
-                  <span className="h-6 w-6 rounded-md border" style={{ background: c, borderColor: "var(--border)" }} />
-                  {c}
-                </span>
+          {relatorio.oQueRende.length > 0 && (
+            <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs" style={{ color: "var(--text-primary)" }}>
+              {relatorio.oQueRende.map((f) => (
+                <li key={f}>{f}</li>
               ))}
-            </div>
+            </ul>
           )}
-          {v.estilo && (
-            <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-              {v.estilo}
-            </p>
+          <p className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Cada post comparado com o normal (a mediana) do seu próprio perfil. A mediana: metade dos posts fica acima. Com poucos posts de um tipo, leia como pista.
+          </p>
+          {relatorio.redes.some((r) => r.motivo) && (
+            <ul className="mt-2 space-y-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
+              {relatorio.redes
+                .filter((r) => r.motivo)
+                .map((r) => (
+                  <li key={r.rede + r.perfil}>
+                    {r.rede}: {r.motivo}
+                  </li>
+                ))}
+            </ul>
           )}
-          {v.artes.length > 0 && (
-            <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-              Capas: {v.artes.map((a) => `${a.nome} ${a.pct}%`).join(", ")}
-              {v.comRostoPct !== null ? `; rosto em ${v.comRostoPct}% delas` : ""}.
-            </p>
-          )}
-        </Cartao>
-      )}
-
-      {relatorio.redes.some((r) => r.motivo) && (
-        <ul className="space-y-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
-          {relatorio.redes
-            .filter((r) => r.motivo)
-            .map((r) => (
-              <li key={r.rede + r.perfil}>
-                {r.rede}: {r.motivo}
-              </li>
-            ))}
-        </ul>
-      )}
+        </Detalhes>
+      </div>
       <LinhaDeCusto custo={relatorio.custo} rotulo="Custo deste estudo" />
     </div>
   );
 }
 
-function BarraDupla({ l }: { l: LinhaDoDePara }) {
-  const max = Math.max(l.voce ?? 0, l.elas ?? 0, l.unidade === "%" ? 1 : 0.1);
-  const escala = l.unidade === "%" ? 100 : max;
-  const txt = (x: number | null) => (x === null ? "sem dado" : l.unidade === "%" ? porcento(x) : `${numero(x)}${l.unidade === "s" ? " s" : ""}`);
-  const linhaDaBarra = (rotulo: string, valor: number | null, cor: string) => (
-    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_4.5rem] items-center gap-2">
-      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-        {rotulo}
-      </span>
-      <span className="h-3 rounded-full" style={{ background: "var(--bg-input)" }}>
-        <span className="block h-full rounded-full" style={{ width: `${valor === null ? 0 : Math.max(2, (valor / escala) * 100)}%`, background: cor }} />
-      </span>
-      <span className="text-right text-xs font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
-        {txt(valor)}
-      </span>
-    </div>
-  );
-  return (
-    <li className="space-y-1 py-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-        <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          {l.medida}
-        </span>
-        {l.prioridade !== "baixa" && (
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-            style={{
-              background: l.prioridade === "alta" ? "color-mix(in srgb, var(--painel-2) 22%, transparent)" : "var(--bg-input)",
-              color: "var(--text-primary)",
-            }}
-          >
-            {l.prioridade === "alta" ? "prioridade alta" : "vale olhar"}
-          </span>
-        )}
-      </div>
-      {linhaDaBarra("Você", l.voce, COR_VOCE)}
-      {linhaDaBarra("Referências", l.elas, COR_ELAS)}
-      {l.prova && (
-        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-          Por que importa: {l.prova}
-        </p>
-      )}
-    </li>
-  );
-}
-
-export function DeParaNaTela({ dePara }: { dePara: DeParaDoPerfil }) {
+export function DeParaNaTela({
+  dePara,
+  relatorio,
+  projectId,
+  podeEditar,
+  analise,
+  aoMudar,
+}: Comum & {
+  dePara: DeParaDoPerfil;
+  /** O relatório do seu perfil, para o mix trazer o "rende Nx" de cada formato. */
+  relatorio?: RelatorioDoPerfil | null;
+}) {
   const todos = [dePara.voce, ...dePara.referencias];
-  const relevantes = dePara.linhas.filter((l) => l.prioridade !== "baixa");
-  const resto = dePara.linhas.filter((l) => l.prioridade === "baixa");
+  const painel = analise?.painel ?? null;
+  const principais = dePara.linhas.filter((l) => l.chave !== "engajamento" && l.chave !== "frequencia").slice(0, 4);
+  const rende = painel ? barrasQueMaisRendem(painel.graficos, { max: 6 }) : [];
+  const itens = recomendacoes({ dePara, painel, regras: analise?.regras ?? [], tendencias: analise?.tendencias?.itens ?? [] });
+  const vezesDoSeu = new Map((relatorio?.formatos ?? []).map((f) => [f.chave, f.vezes]));
+  const mixSeu = dePara.mix?.voce.map((f) => ({ ...f, vezes: vezesDoSeu.get(f.chave) ?? null })) ?? [];
+  const perfil = (r: (typeof todos)[number], i: number) => ({ rotulo: i === 0 ? "Você" : r.rotulo.replace(/^Instagram |^TikTok |^YouTube |^LinkedIn /, ""), voce: i === 0, url: r.url });
   return (
     <div className="space-y-3">
-      {dePara.manchetes.length > 0 && (
-        <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-          {dePara.manchetes.map((f) => (
-            <div key={f} className="flex gap-2.5 rounded-2xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-              <Target className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "var(--painel-2)" }} />
-              <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
-                {f}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <NumerosDoTopo numeros={numerosDoTopo({ dePara, painel })} />
 
-      {/* Os perfis lado a lado */}
-      <Cartao titulo="Os perfis comparados">
-        <ul className="space-y-2 sm:hidden">
-          {todos.map((r, i) => (
-            <li key={r.rotulo + i} className="text-xs" style={{ color: "var(--text-muted)" }}>
-              <span className="flex items-center gap-1.5 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: i === 0 ? COR_VOCE : COR_ELAS }} />
-                {r.rotulo}
-              </span>
-              {numero(r.seguidores)} seguidores, {numero(r.porSemana)} posts por semana, engajamento {porcento(r.taxaDeEngajamento)},{" "}
-              {r.medianaVisualizacoes !== null ? `${numero(r.medianaVisualizacoes)} visualizações` : `${numero(r.medianaInteracao)} interações`} num post típico
-            </li>
-          ))}
-        </ul>
-        <div className="-mx-1 hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[30rem] text-left text-xs tabular-nums">
-            <thead>
-              <tr style={{ color: "var(--text-muted)" }}>
-                <th className="px-1 py-1 font-medium">Perfil</th>
-                <th className="px-1 py-1 text-right font-medium">Seguidores</th>
-                <th className="px-1 py-1 text-right font-medium">Posts por semana</th>
-                <th className="px-1 py-1 text-right font-medium">Engajamento</th>
-                <th className="px-1 py-1 text-right font-medium">Post típico</th>
-              </tr>
-            </thead>
-            <tbody>
-              {todos.map((r, i) => (
-                <tr key={r.rotulo + i} className="border-t" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
-                  <td className="px-1 py-1.5">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full" style={{ background: i === 0 ? COR_VOCE : COR_ELAS }} />
-                      {r.url ? (
-                        <a href={r.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                          {r.rotulo}
-                        </a>
-                      ) : (
-                        <b>{r.rotulo}</b>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-1 py-1.5 text-right">{numero(r.seguidores)}</td>
-                  <td className="px-1 py-1.5 text-right">{numero(r.porSemana)}</td>
-                  <td className="px-1 py-1.5 text-right">{porcento(r.taxaDeEngajamento)}</td>
-                  <td className="px-1 py-1.5 text-right">{r.medianaVisualizacoes !== null ? `${numero(r.medianaVisualizacoes)} visualizações` : `${numero(r.medianaInteracao)} interações`}</td>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {principais.length > 0 && (
+          <Bloco titulo="Você contra as referências" pergunta="As medidas de maior diferença, na mesma escala dos dois lados">
+            <VoceContraReferencias linhas={principais} />
+          </Bloco>
+        )}
+        <Bloco titulo="Ritmo e engajamento por perfil" pergunta="Quantos posts por semana, e quanto cada post engaja por seguidor">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Posts por semana
+          </p>
+          <BarrasPorPerfil itens={todos.map((r, i) => ({ ...perfil(r, i), valor: r.porSemana }))} formato={numeroCurto} />
+          <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Engajamento por post
+          </p>
+          <BarrasPorPerfil itens={todos.map((r, i) => ({ ...perfil(r, i), valor: r.taxaDeEngajamento }))} formato={porcentoCurto} />
+        </Bloco>
+        {mixSeu.length > 0 && (
+          <Bloco titulo="Mix de formatos" pergunta="Quanto de cada formato, você e as referências">
+            <MixDeFormatos voce={mixSeu} referencias={dePara.mix?.referencias} />
+          </Bloco>
+        )}
+        {rende.length > 0 && (
+          <Bloco titulo="O que rende mais nas referências" pergunta="Cada tipo de post contra o normal do próprio perfil">
+            <BarrasDeRende barras={rende} />
+          </Bloco>
+        )}
+      </div>
+
+      <OQueFazer
+        projectId={projectId}
+        itens={itens}
+        podeEditar={podeEditar}
+        aoMudar={aoMudar}
+        vazio="Você já faz o que as referências fazem de diferente. As regras e as tendências continuam chegando na linha editorial."
+      />
+
+      <div className="space-y-2">
+        <Detalhes titulo="Todas as medidas comparadas" resumo={`${dePara.linhas.length} medidas, do maior gap ao menor`}>
+          <VoceContraReferencias linhas={dePara.linhas} />
+          {dePara.linhas.some((l) => l.prova) && (
+            <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs" style={{ color: "var(--text-muted)" }}>
+              {dePara.linhas
+                .filter((l) => l.prova)
+                .map((l) => (
+                  <li key={l.chave}>
+                    <b style={{ color: "var(--text-primary)" }}>{l.medida}:</b> {l.prova}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </Detalhes>
+        <Detalhes titulo="Os perfis comparados" resumo={dePara.referencias.map((r) => r.rotulo).join(", ")}>
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[30rem] text-left text-xs tabular-nums">
+              <thead>
+                <tr style={{ color: "var(--text-muted)" }}>
+                  <th className="px-1 py-1 font-medium">Perfil</th>
+                  <th className="px-1 py-1 text-right font-medium">Seguidores</th>
+                  <th className="px-1 py-1 text-right font-medium">Posts lidos</th>
+                  <th className="px-1 py-1 text-right font-medium">Posts por semana</th>
+                  <th className="px-1 py-1 text-right font-medium">Engajamento</th>
+                  <th className="px-1 py-1 text-right font-medium">Post típico</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Cartao>
-
-      <Cartao titulo="O que elas fazem que você não faz">
-        <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-6 rounded-sm" style={{ background: COR_VOCE }} />
-            você
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-6 rounded-sm" style={{ background: COR_ELAS }} />
-            referências (a mediana dos perfis)
-          </span>
-        </div>
-        <ul className="divide-y divide-[var(--border)]">
-          {(relevantes.length ? relevantes : dePara.linhas.slice(0, 4)).map((l) => (
-            <BarraDupla key={l.chave} l={l} />
-          ))}
-        </ul>
-        {relevantes.length > 0 && resto.length > 0 && (
-          <details className="mt-1">
-            <summary className="cursor-pointer text-xs font-medium text-orange-500">Ver as outras {resto.length} medidas (diferença pequena)</summary>
-            <ul className="divide-y divide-[var(--border)]">
-              {resto.map((l) => (
-                <BarraDupla key={l.chave} l={l} />
+              </thead>
+              <tbody>
+                {todos.map((r, i) => (
+                  <tr key={r.rotulo + i} className="border-t" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
+                    <td className="px-1 py-1.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ background: i === 0 ? COR_VOCE : COR_REFS }} />
+                        {r.url ? (
+                          <a href={r.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {r.rotulo}
+                          </a>
+                        ) : (
+                          <b>{r.rotulo}</b>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-1 py-1.5 text-right">{numeroCurto(r.seguidores)}</td>
+                    <td className="px-1 py-1.5 text-right">{r.posts}</td>
+                    <td className="px-1 py-1.5 text-right">{numeroCurto(r.porSemana)}</td>
+                    <td className="px-1 py-1.5 text-right">{porcentoCurto(r.taxaDeEngajamento)}</td>
+                    <td className="px-1 py-1.5 text-right">{r.medianaVisualizacoes !== null ? `${numeroCurto(r.medianaVisualizacoes)} visualizações` : `${numeroCurto(r.medianaInteracao)} interações`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {dePara.manchetes.length > 0 && (
+            <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs" style={{ color: "var(--text-primary)" }}>
+              {dePara.manchetes.map((f) => (
+                <li key={f}>{f}</li>
               ))}
             </ul>
-          </details>
-        )}
-      </Cartao>
+          )}
+        </Detalhes>
+      </div>
     </div>
   );
 }
