@@ -28,6 +28,12 @@ export type Tema = {
   /** O acabamento das peças: o vidro do pitch, o bloco do Hormozi ou o papel do documentário. */
   visual: Visual;
   caixaAlta: boolean;
+  /**
+   * O ACABAMENTO DAS PEÇAS DA LOUSA (04/10): "tecnologico" (a lousa do Dan
+   * Martell: azul, ciano, vidro claro) ou "luxo" (a autoridade high ticket:
+   * preto e marinho, dourado metálico, serifa elegante). Sem o campo, tecnológico.
+   */
+  acabamento?: "tecnologico" | "luxo";
 };
 
 export type CamadaResolvida = {

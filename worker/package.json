@@ -16,7 +16,8 @@
     "@vercel/blob": "^2.3.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "remotion": "4.0.530"
+    "remotion": "4.0.530",
+    "simple-icons": "16.33.0"
   },
   "engines": {
     "node": ">=22"

@@ -28,6 +28,8 @@ export function carregarFontesDoTema(): void {
     loadFont({ family: "Oswald", url: staticFile("Oswald-Variable.ttf"), weight: "200 700" }),
     loadFont({ family: "Archivo Black", url: staticFile("ArchivoBlack-Regular.ttf") }),
     loadFont({ family: "Anton", url: staticFile("Anton-Regular.ttf") }),
+    // A grotesca pesada da palavra gigante da lousa (04/10, dm-01): o desenho da Helvetica Bold.
+    loadFont({ family: "Liberation Sans", url: staticFile("LiberationSans-Bold.ttf"), weight: "700" }),
   ])
     .catch((e) => console.error("fonte do editor sob medida não carregou", e))
     .finally(() => continueRender(espera));

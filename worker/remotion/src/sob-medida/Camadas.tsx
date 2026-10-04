@@ -5,6 +5,7 @@ import { Capitulo, Citacao, Fecho, FraseImpacto, PainelLateral, PalavraChave, Pe
 import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo, PassosFoco } from "./pecas/estrutura";
 import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
 import { Circulo, Desenho, IconeComRotulo, MolduraDoCartao, Seta, Sublinhado } from "./pecas/apontar";
+import { Busca, Chat, Ferramentas, GradeAzul, IlustracaoTraco, LegendaDestaque, MarcaBrilho, Material, Notebook, PalavraGigante, PilhaPassos, Seguir } from "./pecas/lousa";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
 /**
@@ -45,6 +46,19 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   "passos-foco": PassosFoco,
   "grafico-linha": GraficoLinha,
   transicao: Transicao,
+  // As peças da lousa (04/10), dos 14 quadros reais do Dan Martell (pecas/lousa.tsx).
+  "palavra-gigante": PalavraGigante,
+  busca: Busca,
+  "legenda-destaque": LegendaDestaque,
+  "grade-azul": GradeAzul,
+  "pilha-passos": PilhaPassos,
+  "marca-brilho": MarcaBrilho,
+  notebook: Notebook,
+  "ilustracao-traco": IlustracaoTraco,
+  chat: Chat,
+  material: Material,
+  seguir: Seguir,
+  ferramentas: Ferramentas,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
