@@ -292,12 +292,21 @@ export async function gerarBrolls(
     .filter((b) => limparConsulta(b.consulta) && (!o.so || ehBanco(fonteDoBroll()) || o.so.includes(b.id)))
     .slice(0, o.teto ?? 40);
   if (!pedidos.length) return { insercoes, custoUsd: 0, erros, fonte: null, creditos };
+  // O VÍDEO DO PRÓPRIO CLIENTE PRIMEIRO (03/10, lib/materiais/broll.ts): o
+  // escritório, o produto e a equipe dele, quando a consulta casa. O que
+  // sobra vai ao banco.
+  const doCliente = await import("@/lib/materiais/broll")
+    .then((m) => m.brollDoCliente(o.projectId, pedidos.map((b) => ({ id: b.id, consulta: b.consulta }))))
+    .catch(() => ({ insercoes: {} as Record<string, MidiaDaInsercao>, usados: [] as string[] }));
+  Object.assign(insercoes, doCliente.insercoes);
+  const restantes = pedidos.filter((b) => !doCliente.insercoes[b.id]);
   const fonte = fonteDoBroll();
-  if (!fonte) return { insercoes, custoUsd: 0, erros: ["sem PEXELS_API_KEY nem PIXABAY_API_KEY: edição sem B-roll"], fonte: null, creditos };
+  if (!restantes.length) return { insercoes, custoUsd: 0, erros, fonte: null, creditos };
+  if (!fonte) return { insercoes, custoUsd: 0, erros: Object.keys(insercoes).length ? erros : ["sem PEXELS_API_KEY nem PIXABAY_API_KEY: edição sem B-roll"], fonte: null, creditos };
   const guarda = o.guarda ?? guardaNoBlob();
   const usados = new Set<string>();
   const vezes = new Map<string, number>();
-  const itens = pedidos.map((b, k) => {
+  const itens = restantes.map((b, k) => {
     const consulta = limparConsulta(b.consulta);
     const n = vezes.get(consulta) ?? 0;
     vezes.set(consulta, n + 1);
