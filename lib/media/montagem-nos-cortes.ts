@@ -777,7 +777,7 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     const { erro: _erro, ...editor } = parte;
     void _erro;
     const ins = await gerarInsercoes(editor, { formato: "9:16", projectId: video.projectId, teto: tetoDeVideos("corte") });
-    // O B-ROLL de banco (03/10, terceira volta): sem PEXELS_API_KEY, o corte segue sem ele.
+    // O B-ROLL de banco (03/10, terceira volta): sem PEXELS_API_KEY nem PIXABAY_API_KEY, o corte segue sem ele.
     const so = brollsQueCabem(editor, ins.insercoes, (x) => resolverCorteSobMedida(video, t, sm, editor, x).edicao);
     const broll = await gerarBrolls(editor, { formato: "9:16", projectId: video.projectId, referencia: `${video.id}-corte-${indice}`, teto: 8, prazoMs: 60_000, so }).catch((e) => ({ insercoes: {}, custoUsd: 0, erros: [`B-roll falhou: ${e instanceof Error ? e.message.slice(0, 120) : e}`], fonte: null, creditos: [] as string[] }));
     ins.insercoes = { ...ins.insercoes, ...broll.insercoes };

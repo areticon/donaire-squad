@@ -1871,7 +1871,7 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
     }
     const formato = lido.analise!.altura > lido.analise!.largura ? "9:16" : "16:9";
     const ins = await gerarInsercoes(editor, { formato, projectId: v.projectId });
-    // O B-ROLL de banco (03/10, terceira volta): 1 a cada 15 a 25 s; sem PEXELS_API_KEY, segue sem ele.
+    // O B-ROLL de banco (03/10, terceira volta): 1 a cada 15 a 25 s; sem PEXELS_API_KEY nem PIXABAY_API_KEY, segue sem ele.
     const so = brollsQueCabem(editor, ins.insercoes, (x) => resolverSobMedida(v, lido, editor, x).edicao);
     const broll = await gerarBrolls(editor, { formato, projectId: v.projectId, referencia: `${v.id}-completo`, teto: 80, prazoMs: 120_000, so }).catch((e) => ({ insercoes: {}, custoUsd: 0, erros: [`B-roll falhou: ${e instanceof Error ? e.message.slice(0, 120) : e}`], fonte: null, creditos: [] as string[] }));
     ins.insercoes = { ...ins.insercoes, ...broll.insercoes };

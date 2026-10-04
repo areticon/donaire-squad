@@ -16,7 +16,15 @@ import type { EdicaoDoEditor, MidiaDaInsercao } from "@/lib/media/editor-sob-med
  *     `credito`). Não pode revender o arquivo sem alteração nem montar outro
  *     banco de imagens: aqui ele é sempre editado (recorte, cor, zoom, 1,5 a
  *     3 s dentro do vídeo do cliente).
- *   - Sem a chave: nada, e o editor segue sem B-roll. Só com
+ *   - PIXABAY (PIXABAY_API_KEY), quando não há chave do Pexels (a emissão de
+ *     chaves novas do Pexels foi pausada em out/2026): Licença de Conteúdo do
+ *     Pixabay, uso comercial e modificação livres, sem atribuição obrigatória;
+ *     proíbe vender ou distribuir o arquivo sozinho, sem alteração, e usar
+ *     comercialmente o que mostra marca ou logotipo reconhecível. A API pede o
+ *     cache das buscas por 24 h (100 pedidos por minuto) e recomenda guardar o
+ *     vídeo no nosso servidor: o arquivo vem sempre para o nosso Blob. A API
+ *     de vídeo não filtra orientação: a nota põe o em pé na frente.
+ *   - Sem nenhuma das chaves: nada, e o editor segue sem B-roll. Só com
  *     BROLL_PELA_HIGGSFIELD=1 (e HIGGSFIELD_NA_EDICAO=1) a consulta vira um
  *     vídeo de 3 s no Kling Pro (US$ 0,34; o Std falhou em todo pedido de texto para vídeo na prova de 03/10, sem cobrar), e o pedido ESPERA ficar pronto: é
  *     o caminho da prova local, não da esteira. BROLL_PELA_FAL=1 (com FAL_KEY)
@@ -31,11 +39,12 @@ import type { EdicaoDoEditor, MidiaDaInsercao } from "@/lib/media/editor-sob-med
  */
 
 export type BrollEscolhido = MidiaDaInsercao & { consulta: string; fonte: FonteDoBroll; custoUsd: number };
-export type FonteDoBroll = "pexels" | "higgsfield" | "fal";
+export type FonteDoBroll = "pexels" | "pixabay" | "higgsfield" | "fal";
 
-/** De onde sai o B-roll agora: o banco (com a chave) ou, só na prova, um gerador. */
+/** De onde sai o B-roll agora: um banco (com a chave; Pexels antes do Pixabay) ou, só na prova, um gerador. */
 export function fonteDoBroll(): FonteDoBroll | null {
   if (process.env.PEXELS_API_KEY) return "pexels";
+  if (process.env.PIXABAY_API_KEY) return "pixabay";
   if (process.env.BROLL_PELA_HIGGSFIELD === "1" && process.env.HIGGSFIELD_NA_EDICAO === "1") return "higgsfield";
   if (process.env.BROLL_PELA_FAL === "1" && process.env.FAL_KEY) return "fal";
   return null;
@@ -43,6 +52,9 @@ export function fonteDoBroll(): FonteDoBroll | null {
 
 type ArquivoPexels = { quality?: string; file_type?: string; width?: number; height?: number; link?: string };
 type VideoPexels = { id: number; width: number; height: number; duration: number; url?: string; user?: { name?: string; url?: string }; video_files?: ArquivoPexels[] };
+
+/** Banco de vídeo grátis (busca e escolhe), contra gerador pago (cria). */
+const ehBanco = (f: FonteDoBroll | null): f is "pexels" | "pixabay" => f === "pexels" || f === "pixabay";
 
 export function bancoDeVideoLigado(): boolean {
   return fonteDoBroll() !== null;
@@ -99,6 +111,67 @@ async function buscarNoPexels(consulta: string, formato: "9:16" | "16:9"): Promi
     const r2 = await fetch(`https://api.pexels.com/videos/search?${q2}`, { headers: { Authorization: process.env.PEXELS_API_KEY ?? "" }, signal: AbortSignal.timeout(20_000) });
     if (r2.ok) lista = [...lista, ...(((await r2.json()) as { videos?: VideoPexels[] }).videos ?? [])];
   }
+  return lista;
+}
+
+// ─────────────────────────────── Pixabay ───────────────────────────────
+
+type ArquivoPixabay = { url?: string; width?: number; height?: number; size?: number; thumbnail?: string };
+export type VideoPixabay = {
+  id: number;
+  pageURL?: string;
+  type?: string;
+  tags?: string;
+  duration?: number;
+  videos?: Partial<Record<"large" | "medium" | "small" | "tiny", ArquivoPixabay>>;
+  user_id?: number;
+  user?: string;
+};
+
+/**
+ * Um vídeo do Pixabay no formato do Pexels, para a mesma nota e a mesma
+ * escolha de arquivo: as quatro versões viram `video_files` (as vazias, como o
+ * "large" que não existe, ficam de fora) e o tamanho do vídeo é o da maior.
+ */
+export function doPixabay(v: VideoPixabay): VideoPexels {
+  const arquivos: ArquivoPexels[] = [];
+  for (const q of ["large", "medium", "small", "tiny"] as const) {
+    const a = v.videos?.[q];
+    if (a?.url && a.width && a.height) arquivos.push({ quality: q, file_type: "video/mp4", width: a.width, height: a.height, link: a.url });
+  }
+  const maior = arquivos.reduce<ArquivoPexels | null>((m, f) => (!m || f.width! * f.height! > m.width! * m.height! ? f : m), null);
+  const autor = String(v.user ?? "").trim();
+  return {
+    id: v.id,
+    width: maior?.width ?? 0,
+    height: maior?.height ?? 0,
+    duration: Number(v.duration) || 0,
+    url: v.pageURL ?? `https://pixabay.com/videos/id-${v.id}/`,
+    user: autor ? { name: autor, url: v.user_id ? `https://pixabay.com/users/${autor}-${v.user_id}/` : undefined } : undefined,
+    video_files: arquivos,
+  };
+}
+
+/** A resposta da busca de vídeos do Pixabay, já no formato do Pexels. */
+export function lerRespostaDoPixabay(j: unknown): VideoPexels[] {
+  const hits = (j as { hits?: VideoPixabay[] } | null)?.hits;
+  if (!Array.isArray(hits)) return [];
+  return hits.filter((h) => h && typeof h.id === "number").map(doPixabay).filter((v) => v.video_files?.length);
+}
+
+/** O cache de 24 h das buscas (os termos da API pedem): a mesma consulta não volta ao Pixabay no mesmo dia. */
+const buscasDoPixabay = new Map<string, { quando: number; lista: VideoPexels[] }>();
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+async function buscarNoPixabay(consulta: string): Promise<VideoPexels[]> {
+  const guardada = buscasDoPixabay.get(consulta);
+  if (guardada && Date.now() - guardada.quando < DIA_MS) return guardada.lista;
+  // Sem filtro de orientação na API de vídeo: vêm 50, e a nota põe os em pé na frente no 9:16.
+  const q = new URLSearchParams({ key: process.env.PIXABAY_API_KEY ?? "", q: consulta.slice(0, 100), video_type: "film", safesearch: "true", per_page: "50" });
+  const r = await fetch(`https://pixabay.com/api/videos/?${q}`, { signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`Pixabay respondeu HTTP ${r.status}`);
+  const lista = lerRespostaDoPixabay(await r.json());
+  buscasDoPixabay.set(consulta, { quando: Date.now(), lista });
   return lista;
 }
 
@@ -199,7 +272,7 @@ async function brollPeloFal(consulta: string, formato: "9:16" | "16:9", guarda: 
 
 /**
  * OS B-ROLLS que o editor pediu, já escolhidos e copiados para o nosso lado
- * (o Pexels pede que não se use o link deles direto). Cada id do editor vira
+ * (o Pexels e o Pixabay pedem que não se use o link deles direto). Cada id do editor vira
  * uma entrada de `insercoes` com `origem: "banco"`. Um vídeo do banco nunca
  * se repete na mesma edição.
  */
@@ -216,11 +289,11 @@ export async function gerarBrolls(
     .map((b, k) => ({ ...b, id: idDe(b, k) }))
     // `so` poupa só o que é PAGO (gerador): do banco, grátis, vem tudo, e o B-roll que
     // a resolução derrubou volta sozinho se a revisão tirar a peça que o atrapalhava.
-    .filter((b) => limparConsulta(b.consulta) && (!o.so || fonteDoBroll() === "pexels" || o.so.includes(b.id)))
+    .filter((b) => limparConsulta(b.consulta) && (!o.so || ehBanco(fonteDoBroll()) || o.so.includes(b.id)))
     .slice(0, o.teto ?? 40);
   if (!pedidos.length) return { insercoes, custoUsd: 0, erros, fonte: null, creditos };
   const fonte = fonteDoBroll();
-  if (!fonte) return { insercoes, custoUsd: 0, erros: ["sem PEXELS_API_KEY: edição sem B-roll"], fonte: null, creditos };
+  if (!fonte) return { insercoes, custoUsd: 0, erros: ["sem PEXELS_API_KEY nem PIXABAY_API_KEY: edição sem B-roll"], fonte: null, creditos };
   const guarda = o.guarda ?? guardaNoBlob();
   const usados = new Set<string>();
   const vezes = new Map<string, number>();
@@ -242,12 +315,12 @@ export async function gerarBrolls(
               : await brollPelaHiggsfield(consulta, o.formato, `${o.referencia}-broll`, o.projectId, o.esperarMs ?? 600_000);
           if (escolhido) custo += escolhido.custoUsd;
         } else {
-          const lista = (await buscarNoPexels(consulta, o.formato)).filter((v) => !usados.has(`pexels-${v.id}`));
+          const lista = (fonte === "pixabay" ? await buscarNoPixabay(consulta) : await buscarNoPexels(consulta, o.formato)).filter((v) => !usados.has(`${fonte}-${v.id}`));
           const ordem = lista.map((v) => ({ v, nota: notaDoVideo(v, o.formato), arq: melhorArquivo(v, o.formato) })).filter((x) => x.arq && x.nota > 0).sort((a, b) => b.nota - a.nota);
           const melhor = ordem[n] ?? ordem[0];
           if (melhor?.arq?.link) {
             const r = await fetch(melhor.arq.link, { signal: AbortSignal.timeout(90_000) });
-            if (!r.ok) throw new Error(`download do Pexels HTTP ${r.status}`);
+            if (!r.ok) throw new Error(`download do ${fonte === "pixabay" ? "Pixabay" : "Pexels"} HTTP ${r.status}`);
             const url = await guarda.arquivo(`${chave}.mp4`, Buffer.from(await r.arrayBuffer()));
             const v = melhor.v;
             escolhido = {
@@ -257,11 +330,14 @@ export async function gerarBrolls(
               // O começo limpo: pula o primeiro segundo (o fade do autor) quando o vídeo tem folga.
               inicio: v.duration >= 7 ? 1.5 : v.duration >= 5 ? 0.8 : 0,
               consulta,
-              fonte: "pexels",
+              fonte,
               custoUsd: 0,
-              credito: `Vídeo de ${v.user?.name ?? "autor"} no Pexels (${v.url ?? `https://www.pexels.com/video/${v.id}/`})`,
+              credito:
+                fonte === "pixabay"
+                  ? `Vídeo de ${v.user?.name ?? "autor"} no Pixabay (${v.url})`
+                  : `Vídeo de ${v.user?.name ?? "autor"} no Pexels (${v.url ?? `https://www.pexels.com/video/${v.id}/`})`,
             };
-            usados.add(`pexels-${v.id}`);
+            usados.add(`${fonte}-${v.id}`);
           }
         }
         if (escolhido) await guarda.gravar(chave, escolhido);
@@ -276,10 +352,10 @@ export async function gerarBrolls(
       erros.push(`${id}: ${err instanceof Error ? err.message.slice(0, 140) : err}`);
     }
   };
-  // Pexels em série (a ordem decide quem leva o melhor vídeo, e a API tem 200
-  // pedidos por hora); os geradores em paralelo (cada um espera minutos).
+  // Os bancos em série (a ordem decide quem leva o melhor vídeo; o Pexels tem 200
+  // pedidos por hora, o Pixabay 100 por minuto); os geradores em paralelo (cada um espera minutos).
   const prazo = Date.now() + (o.prazoMs ?? Infinity);
-  if (fonte === "pexels")
+  if (ehBanco(fonte))
     for (const it of itens) {
       // O prazo da passada: o que não coube fica sem B-roll (a edição segue).
       if (Date.now() > prazo) {
