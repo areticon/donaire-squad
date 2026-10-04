@@ -182,6 +182,7 @@ function exemplo(p: PostParaAchado): ExemploDoAchado {
     compartilhamentos: p.compartilhamentos,
     salvamentos: p.extras?.salvamentos ?? null,
     ganho: p.ganho !== null ? Math.round(p.ganho * 10) / 10 : null,
+    capa: p.extras?.capa ?? null,
   };
 }
 

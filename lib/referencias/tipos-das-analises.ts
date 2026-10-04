@@ -101,6 +101,11 @@ export type ExemploDoAchado = {
   salvamentos: number | null;
   /** Quantas vezes o normal do próprio perfil. */
   ganho: number | null;
+  /**
+   * A capa do post, para a miniatura no painel (03/10). É o endereço da rede e
+   * expira em dias: a tela troca por um quadro neutro quando não carrega.
+   */
+  capa?: string | null;
 };
 
 export type TipoDeAchado =

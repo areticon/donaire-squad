@@ -286,7 +286,7 @@ export function taxaDeEngajamento(posts: Array<{ curtidas: number | null; coment
   return m === null ? null : Math.round(m * 100) / 100;
 }
 
-const NOME_DO_FORMATO: Record<string, string> = { reel: "Reels", carrossel: "Carrosséis", imagem: "Imagem única", video: "Vídeos", short: "Shorts", texto: "Só texto", documento: "Documentos" };
+export const NOME_DO_FORMATO: Record<string, string> = { reel: "Reels", carrossel: "Carrosséis", imagem: "Imagem única", video: "Vídeos", short: "Shorts", texto: "Só texto", documento: "Documentos" };
 const FORMATO_NO_SINGULAR: Record<string, string> = { reel: "reel", carrossel: "carrossel", imagem: "imagem única", video: "vídeo", short: "short", texto: "post de texto", documento: "documento" };
 const NOME_DO_GANCHO: Record<string, string> = {
   pergunta: "Pergunta",
@@ -368,6 +368,7 @@ export function montarRelatorio(
       compartilhamentos: melhor.compartilhamentos,
       salvamentos: melhor.extras?.salvamentos ?? null,
       ganho: melhor.ganho !== null ? Math.round(melhor.ganho * 10) / 10 : null,
+      capa: melhor.extras?.capa ?? null,
       legenda: (melhor.legenda ?? "").replace(/\s+/g, " ").trim().slice(0, 220) || null,
       tema: temaDe(melhor),
       porQue:

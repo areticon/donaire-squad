@@ -241,7 +241,12 @@ export async function decidirRegra(projectId: string, id: string, d: DecisaoDaRe
 }
 
 /** Uma regra escrita pelo próprio cliente: já nasce aprovada. */
-export async function criarRegraDoCliente(projectId: string, texto: string, alvos: string[]): Promise<RegraDoProjeto> {
+/**
+ * `porque` (03/10): quando a regra nasce de uma recomendação do painel
+ * executivo ("Virar regra"), o dado que a justificou vai junto, para a lista
+ * de regras mostrar de onde ela veio.
+ */
+export async function criarRegraDoCliente(projectId: string, texto: string, alvos: string[], porque?: string): Promise<RegraDoProjeto> {
   const limpo = semTravessao(texto).slice(0, 220);
   if (limpo.length < 8) throw new Error("Escreva a regra com pelo menos uma frase curta.");
   const validos = alvos.filter((a): a is AlvoDaRegra => (ALVOS_DA_REGRA as string[]).includes(a));
@@ -250,7 +255,7 @@ export async function criarRegraDoCliente(projectId: string, texto: string, alvo
     id: randomUUID(),
     texto: limpo,
     textoOriginal: null,
-    porque: "Regra escrita por você.",
+    porque: porque ? semTravessao(porque).slice(0, 300) : "Regra escrita por você.",
     alvos: validos.length ? validos : ["roteiro", "redacao"],
     status: "aprovada",
     origem: "cliente",

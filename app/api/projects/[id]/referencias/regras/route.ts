@@ -6,7 +6,7 @@ import { soODono } from "@/lib/equipe/permissoes";
 import { criarRegraDoCliente } from "@/lib/referencias/regras";
 
 /**
- * POST { texto, alvos }: uma regra escrita pelo próprio dono (02/10). Já
+ * POST { texto, alvos, porque? }: uma regra escrita pelo próprio dono (02/10). Já
  * nasce aprovada e entra no que os agentes leem. Ver lib/referencias/regras.ts.
  */
 export const dynamic = "force-dynamic";
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!projeto || !(await podeUsarProjeto(userId, projeto))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const negado = await soODono(userId, projeto, "mexer nas regras do projeto");
   if (negado) return negado;
-  const corpo = (await req.json().catch(() => ({}))) as { texto?: string; alvos?: string[] };
+  const corpo = (await req.json().catch(() => ({}))) as { texto?: string; alvos?: string[]; porque?: string };
   try {
-    const regra = await criarRegraDoCliente(id, String(corpo.texto ?? ""), Array.isArray(corpo.alvos) ? corpo.alvos : []);
+    const regra = await criarRegraDoCliente(id, String(corpo.texto ?? ""), Array.isArray(corpo.alvos) ? corpo.alvos : [], typeof corpo.porque === "string" ? corpo.porque : undefined);
     return NextResponse.json({ ok: true, regra });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Não consegui salvar a regra." }, { status: 400 });

@@ -133,6 +133,12 @@ export type DeParaDoPerfil = {
   linhas: LinhaDoDePara[];
   /** As três frases do topo, já ordenadas pela prioridade. */
   manchetes: string[];
+  /**
+   * O mix de formatos dos dois lados (03/10, painel executivo): o seu, contado
+   * nos seus posts; o das referências, a média das porcentagens de cada perfil
+   * (cada perfil pesa um, como no resto do de-para).
+   */
+  mix?: { voce: FatiaDoPerfil[]; referencias: FatiaDoPerfil[] };
 };
 
 /** Os campos do setup que a jornada preenche, com o porquê de cada um. */

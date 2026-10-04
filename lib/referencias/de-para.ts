@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { achadosDoProjeto, type PostParaAchado } from "@/lib/referencias/achados";
 import { faixaDeDuracao } from "@/lib/referencias/padroes";
-import { interacaoDoPost, mediana, postsParaAchado, postsPorSemana, taxaDeEngajamento } from "@/lib/referencias/perfil-proprio";
+import { interacaoDoPost, mediana, NOME_DO_FORMATO, postsParaAchado, postsPorSemana, taxaDeEngajamento } from "@/lib/referencias/perfil-proprio";
 import { rotuloDoPerfil } from "@/lib/referencias/estudo";
 import type { RedeDeReferencia } from "@/lib/referencias/tipos";
 import type { Achado, EtiquetasExtras } from "@/lib/referencias/tipos-das-analises";
-import { STATUS_DO_PERFIL_PROPRIO, type DeParaDoPerfil, type LinhaDoDePara, type ResumoDoPerfilNoDePara } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { STATUS_DO_PERFIL_PROPRIO, type DeParaDoPerfil, type FatiaDoPerfil, type LinhaDoDePara, type ResumoDoPerfilNoDePara } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
  * O DE-PARA (03/10/2026), a segunda tela da jornada de entrada: o que as
@@ -96,6 +96,35 @@ function medir(posts: Post[], seguidores: number | null): Medidas {
     medianaInteracao: mediana(posts.map((p) => interacaoDoPost(p) ?? NaN)),
     ganchoPct: comGancho.length >= 3 ? contar(comGancho, (p) => String(et(p).gancho)) : {},
     tomPct: contar(posts.filter((p) => et(p).tom), (p) => String(et(p).tom)),
+  };
+}
+
+/** A porcentagem de cada formato num conjunto de posts. */
+function pctDosFormatos(posts: Post[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const p of posts) m.set(p.formato, (m.get(p.formato) ?? 0) + 1);
+  for (const [k, n] of m) m.set(k, posts.length ? (n / posts.length) * 100 : 0);
+  return m;
+}
+
+/**
+ * O mix de formatos dos dois lados (03/10, painel executivo). O das
+ * referências é a média das porcentagens de cada perfil: um perfil que posta
+ * 30 reels não fala pelos outros dois.
+ */
+function mixDosFormatos(proprios: Post[], refs: Post[][]): { voce: FatiaDoPerfil[]; referencias: FatiaDoPerfil[] } {
+  const fatias = (m: Map<string, number>, contagem: (k: string) => number): FatiaDoPerfil[] =>
+    [...m.entries()]
+      .map(([chave, pct]) => ({ chave, nome: NOME_DO_FORMATO[chave] ?? chave, posts: contagem(chave), pct: Math.round(pct), vezes: null }))
+      .filter((f) => f.pct > 0)
+      .sort((a, b) => b.pct - a.pct);
+  const seu = pctDosFormatos(proprios);
+  const deCada = refs.filter((r) => r.length).map(pctDosFormatos);
+  const media = new Map<string, number>();
+  for (const m of deCada) for (const [k, v] of m) media.set(k, (media.get(k) ?? 0) + v / deCada.length);
+  return {
+    voce: fatias(seu, (k) => proprios.filter((p) => p.formato === k).length),
+    referencias: fatias(media, (k) => refs.flat().filter((p) => p.formato === k).length),
   };
 }
 
@@ -263,6 +292,7 @@ export function calcularDePara(proprios: Post[], refs: Map<string, { rotulo: str
     referencias: deCada.map(({ r, m }) => resumo(r.rotulo, r.url, r.seguidores, r.posts, m)),
     linhas: validas,
     manchetes: validas.filter((l) => l.prioridade !== "baixa").slice(0, 3).map((l) => l.frase),
+    mix: mixDosFormatos(proprios, deCada.map(({ r }) => r.posts)),
   };
 }
 

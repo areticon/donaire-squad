@@ -71,6 +71,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     lerSetupSugerido(id),
     eAdmin(a.userId),
   ]);
+  // A miniatura do post de maior engajamento (03/10): o relatório gravado antes
+  // de 03/10 não tinha a capa; ela vem do post, enquanto o endereço da rede vale.
+  if (relatorio?.melhorPost && relatorio.melhorPost.capa === undefined && relatorio.melhorPost.url) {
+    const post = await prisma.referenciaPost
+      .findFirst({ where: { projectId: id, url: relatorio.melhorPost.url }, select: { extras: true } })
+      .catch(() => null);
+    const capa = (post?.extras as { capa?: unknown } | null)?.capa;
+    relatorio.melhorPost.capa = typeof capa === "string" ? capa : null;
+  }
   const doCliente = redes.map((r) => r.rede as RedeDeReferencia);
   const dasRefs = refs.map((r) => r.rede as RedeDeReferencia);
   const resposta: RespostaDoPerfilProprio = {
