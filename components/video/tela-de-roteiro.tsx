@@ -885,11 +885,25 @@ function AberturaDoCompleto({
 function CoberturaETelas({ completo }: { completo: CompletoNaTela }) {
   const porMinuto = completo.porMinuto ?? [];
   const telas = completo.telas ?? [];
+  // SEM PLANO AINDA (03/10, print do Bruno: "o completo não aparece nenhum
+  // efeito"): com o editor sob medida a edição do completo é escrita depois da
+  // aprovação. Um gráfico zerado dizia "sem edição"; agora a tela diz o que vem.
+  const semPlano = porMinuto.length > 0 && porMinuto.every((q) => !q);
   if (!porMinuto.length && !telas.length) return null;
   const maior = Math.max(1, ...porMinuto);
   return (
     <div className="mb-4">
-      {porMinuto.length > 0 && (
+      {semPlano && (
+        <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
+          <p className="font-semibold">A edição deste vídeo vem depois que você aprovar.</p>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            O editor escreve a edição no estilo que você escolheu: títulos, gráficos, cenas geradas por IA, imagens e
+            transições ao longo do vídeo inteiro. Cada quadro é conferido antes de chegar ao seu quadro de posts, e
+            depois você ainda ajusta o corte e pede mudanças pelo chat do card.
+          </p>
+        </div>
+      )}
+      {porMinuto.length > 0 && !semPlano && (
         <>
           <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
             Efeitos por minuto
