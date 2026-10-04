@@ -14,8 +14,11 @@ function Cabeca({ c, titulo, rotulo }: { c: Ctx; titulo?: unknown; rotulo?: unkn
   if (!titulo) return null;
   const { u, vertical } = c;
   const m = margens(c);
+  // No 9:16 a câmera do palco aproxima até 8% e anda de lado: o título entra mais
+  // para dentro, senão a primeira letra sai pela borda (prova de 03/10, quarta volta).
+  const dentro = vertical ? 40 * u : 0;
   return (
-    <div style={{ position: "absolute", left: m.x, top: m.topo, maxWidth: m.largura }}>
+    <div style={{ position: "absolute", left: m.x + dentro, top: m.topo, maxWidth: m.largura - 2 * dentro }}>
       {rotulo ? <SeloVivo c={c} texto={texto(rotulo)} estilo={{ marginBottom: 14 * u }} atraso={0.25} /> : <EtiquetaHud c={c} texto={vertical ? "" : "· · ·"} estilo={{ marginBottom: 10 * u, opacity: saiSuave((c.t - 0.3) / 0.3) }} />}
       <div style={{ ...estiloDoTitulo(c, vertical ? 64 : 72), color: "#f4f7fb", textShadow: `0 ${4 * c.u}px ${24 * c.u}px rgba(0,0,0,.6)` }}>
         <TextoCinetico c={c} texto={texto(titulo)} estilo={{}} inicio={0.3} />
@@ -108,13 +111,20 @@ export function LinhaDoTempo(c: Ctx) {
   });
   alvo = Math.max(0, alvo);
   const N = vertical ? 74 : 96;
-  const passo = vertical ? 300 * u : 560 * u;
+  // No 9:16 (03/10, quarta volta): a trilha cabe na área abaixo do título quando dá
+  // (o passo encolhe até 200), e a câmera só desce o que falta, nunca mais que isso.
+  // Antes ela descia sempre e os passos subiam por trás do título e saíam pelo topo.
+  // O apoio curto fica numa linha só (o cartão baixa de ~165 para ~125).
+  const apoioCurto = passos.every((ps) => texto(ps.texto).length <= 24);
+  const ultimo = (apoioCurto ? 140 : 180) * u; // a altura do último cartão, com folga
+  const passo = vertical ? Math.max(ultimo + 16 * u, Math.min(300 * u, (a.altura - 20 * u - ultimo) / Math.max(1, n - 1))) : 560 * u;
   const linhaP = n > 1 ? limitar(alvo / (n - 1)) : 1;
   const comp = passo * (n - 1);
+  const sobra = Math.max(0, 20 * u + comp + ultimo - a.altura);
   // A câmera: mantém o nó atual perto do centro (no 16:9) ou do terço de cima (no 9:16).
-  const desloc = vertical ? Math.max(0, alvo * passo - a.altura * 0.25) : Math.max(0, Math.min(Math.max(0, comp - (c.W - 2 * a.x - 2 * N * u)), alvo * passo - c.W * 0.3));
+  const desloc = vertical ? Math.min(sobra, Math.max(0, alvo * passo - a.altura * 0.25)) : Math.max(0, Math.min(Math.max(0, comp - (c.W - 2 * a.x - 2 * N * u)), alvo * passo - c.W * 0.3));
   const x0 = a.x + N * u;
-  const y0 = vertical ? a.topo + 40 * u : Math.max(a.topo + 170 * u, c.H * 0.5);
+  const y0 = vertical ? a.topo + 20 * u : Math.max(a.topo + 170 * u, c.H * 0.5);
   const no = (k: number, q: number) => {
     const aceso = q > 0.02;
     const s = molaFisica(q * 0.8, 220, 14);
@@ -156,7 +166,7 @@ export function LinhaDoTempo(c: Ctx) {
               <div style={{ maxWidth: a.largura - 130 * u, ...f, transform: `translateX(${(1 - e) * 24 * u}px)` }}>
                 <Vidro c={c} estilo={{ padding: `${14 * u}px ${24 * u}px` }}>
                   <div style={{ ...estiloDoTitulo(c, 44), color: corDoTexto(c) }}>{texto(ps.rotulo)}</div>
-                  {ps.texto ? <div style={{ ...estiloDoApoio(c, 28), marginTop: 4 * u }}>{texto(ps.texto)}</div> : null}
+                  {ps.texto ? <div style={{ ...estiloDoApoio(c, 28), marginTop: 4 * u, whiteSpace: apoioCurto ? "nowrap" : "normal" }}>{texto(ps.texto)}</div> : null}
                 </Vidro>
               </div>
             </div>
@@ -176,10 +186,13 @@ export function LinhaDoTempo(c: Ctx) {
       })}
     </div>
   );
+  const corteDoTopo = a.topo - (p.titulo ? 10 : 60) * u;
+  const mascaraDoTopo = `linear-gradient(180deg, transparent ${corteDoTopo - 50 * u}px, #000 ${corteDoTopo}px)`;
   return (
     <Palco c={c} semente={semente(c)}>
       <Cabeca c={c} titulo={p.titulo} rotulo={p.rotulo} />
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", opacity: limitar((c.t - 0.2) * 4) }}>{trilha}</div>
+      {/* No 9:16 o que a câmera leva para cima some num esfumado antes do título, nunca por trás dele. */}
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden", opacity: limitar((c.t - 0.2) * 4), ...(vertical ? { WebkitMaskImage: mascaraDoTopo, maskImage: mascaraDoTopo } : {}) }}>{trilha}</div>
     </Palco>
   );
 }

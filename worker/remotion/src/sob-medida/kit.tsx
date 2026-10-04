@@ -1,5 +1,5 @@
 import React from "react";
-import { escuroDoTema, limitar, misturar, mola, rgba, saiSuave, sobreOAcento, type Ctx } from "./base";
+import { escuroDoTema, limitar, luz, misturar, mola, rgba, saiSuave, sobreOAcento, type Ctx } from "./base";
 
 /**
  * O ACABAMENTO DO EDITOR SOB MEDIDA (03/10/2026, segunda volta). O dono viu
@@ -162,7 +162,10 @@ export function TextoCinetico({
   const ps = pedacos(textoCru);
   const doc = tema.visual === "documental";
   const imp = tema.visual === "impacto";
-  const acento = corDestaque ?? (doc ? misturar(tema.acento, "#000000", 0.25) : tema.acento);
+  const acento0 = corDestaque ?? (doc ? misturar(tema.acento, "#000000", 0.25) : tema.acento);
+  // CONTRASTE GARANTIDO (03/10, quarta volta): o destaque em degradê nunca fica
+  // mais escuro que a luz 0,5, senão some no palco escuro (marca de cor funda).
+  const acento = doc || luz(acento0) >= 0.5 ? acento0 : misturar(acento0, "#ffffff", (0.5 - luz(acento0)) / (1 - luz(acento0)));
   const claro = misturar(acento, "#ffffff", doc ? 0.1 : 0.5);
   const fimDasPalavras = inicio + ps.length * atraso + 0.45;
   const grupos = new Map<number, Pedaco[]>();
@@ -171,6 +174,69 @@ export function TextoCinetico({
     g.push(p);
     grupos.set(p.grupo, g);
   });
+  // Para cada palavra: o primeiro índice do seu trecho e a posição dentro dele.
+  const noTrecho: Array<{ k0: number; j: number; m: number }> = [];
+  let k0 = 0;
+  for (const lista of grupos.values()) {
+    lista.forEach((_, j) => noTrecho.push({ k0, j, m: lista.length }));
+    k0 += lista.length;
+  }
+  /** A faixa (marca-texto ou bloco) embaixo da palavra k: 0 a 1, correndo pelo trecho da esquerda para a direita. */
+  const faixaDe = (k: number) => {
+    const { k0: ki, j, m } = noTrecho[k];
+    const faixa = saiSuave((c.t - inicio - ki * atraso) / (doc ? 0.5 : 0.35));
+    return limitar((faixa - j / m) * m);
+  };
+  /** Quanto a faixa já cobriu a palavra (a tinta escurece um pouco antes do fim). */
+  const cobertura = (k: number) => limitar(faixaDe(k) * 1.4);
+  /**
+   * A FAIXA POR PALAVRA (03/10, quarta volta): uma faixa só para o trecho todo,
+   * presa a um span em linha, sumia quando o trecho quebrava de linha (a caixa
+   * dela ia do começo da 1ª linha ao fim da 2ª, largura negativa) e a tinta
+   * escura ficava sobre o palco escuro. Cada palavra leva a sua; a do meio
+   * cobre também o espaço até a seguinte.
+   */
+  const comFaixa = (no: React.ReactNode, k: number) => {
+    const { j, m } = noTrecho[k];
+    const ultima = j === m - 1;
+    const f = faixaDe(k);
+    return (
+      <span style={{ position: "relative", display: "inline-block", zIndex: 0 }}>
+        <span
+          aria-hidden
+          style={
+            doc
+              ? {
+                  position: "absolute",
+                  left: j === 0 ? "-0.08em" : "-0.02em",
+                  right: ultima ? "-0.06em" : "-0.3em",
+                  top: "0.16em",
+                  bottom: "0.04em",
+                  borderRadius: `${j === 0 ? 3 * u : 0}px ${ultima ? 9 * u : 0}px ${ultima ? 4 * u : 0}px ${j === 0 ? 10 * u : 0}px`,
+                  background: `linear-gradient(178deg, ${rgba(misturar(tema.acento, "#ffffff", 0.32), 0.95)}, ${rgba(misturar(tema.acento, "#ffffff", 0.18), 0.92)})`,
+                  transform: `scaleX(${f}) skewX(-4deg)`,
+                  transformOrigin: "left",
+                  zIndex: -1,
+                }
+              : {
+                  position: "absolute",
+                  left: j === 0 ? "-0.1em" : "-0.02em",
+                  right: ultima ? "-0.06em" : "-0.3em",
+                  top: "0.02em",
+                  bottom: "-0.02em",
+                  background: `linear-gradient(180deg, ${misturar(tema.acento, "#ffffff", 0.15)}, ${tema.acento})`,
+                  borderRadius: `${j === 0 ? 8 * u : 0}px ${ultima ? 8 * u : 0}px ${ultima ? 8 * u : 0}px ${j === 0 ? 8 * u : 0}px`,
+                  transform: `scaleX(${f})`,
+                  transformOrigin: "left",
+                  boxShadow: `0 0 ${30 * u}px ${rgba(tema.acento, 0.5)}`,
+                  zIndex: -1,
+                }
+          }
+        />
+        {no}
+      </span>
+    );
+  };
   let indice = 0;
   const palavra = (p: Pedaco, k: number) => {
     const t = c.t - inicio - k * atraso;
@@ -178,13 +244,20 @@ export function TextoCinetico({
     const op = limitar(t / 0.12);
     const brilhoT = c.t - fimDasPalavras - k * 0.05;
     const varre = varrer && brilhoT > -0.05 && brilhoT < 0.6 ? saiSuave(brilhoT / 0.55) : brilhoT >= 0.6 ? 1 : 0;
+    // A tinta sobre a faixa só escurece quando a faixa já passou por baixo da
+    // palavra: antes disso ela é clara, e nunca fica escuro sobre escuro.
+    const sobreFaixa = (tinta: string) => {
+      const q = cobertura(k);
+      return q >= 1 ? tinta : misturar("#f7f3ea", tinta, q);
+    };
     const corBase: React.CSSProperties = p.destaque
       ? imp
-        ? { color: sobreOAcento(tema) }
+        ? { color: sobreFaixa(sobreOAcento(tema)), textShadow: luz(sobreOAcento(tema)) < 0.5 && cobertura(k) > 0.5 ? "none" : undefined }
         : doc
         ? // MARCA-TEXTO da Vox (03/10, terceira volta): tinta quase preta sobre a faixa clara da marca, em fundo claro ou escuro.
-          { color: "#15130f", fontStyle: tema.fonteTitulo === "Playfair Display" ? "italic" : "normal", textShadow: "none" }
-        : { background: `linear-gradient(100deg, ${claro}, ${acento})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: `drop-shadow(0 0 ${10 * u}px ${rgba(acento, 0.55)})` }
+          { color: sobreFaixa("#15130f"), fontStyle: tema.fonteTitulo === "Playfair Display" ? "italic" : "normal", textShadow: cobertura(k) > 0.5 ? "none" : undefined }
+        : // Sem a sombra herdada: no Chrome a text-shadow de um texto recortado no degradê cobre o degradê (era o "escuro sobre escuro").
+          { background: `linear-gradient(100deg, ${claro}, ${acento})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", textShadow: "none", filter: `drop-shadow(0 0 ${10 * u}px ${rgba(acento, 0.55)}) drop-shadow(0 ${3 * u}px ${6 * u}px rgba(0,0,0,.55))` }
       : {};
     const transf = modo === "estourar" ? `scale(${0.4 + 0.6 * s}) translateY(${(1 - s) * 30}%)` : `translateY(${(1 - s) * 105}%) rotate(${(1 - s) * 5}deg)`;
     return (
@@ -221,7 +294,7 @@ export function TextoCinetico({
           const k = indice++;
           return (
             <React.Fragment key={k}>
-              {palavra(p, k)}
+              {p.destaque && (doc || imp) ? comFaixa(palavra(p, k), k) : palavra(p, k)}
               {" "}
             </React.Fragment>
           );
@@ -232,44 +305,8 @@ export function TextoCinetico({
         const traco = saiSuave((c.t - inicio - kFim * atraso - 0.3) / 0.4);
         return (
           <span key={g} style={{ position: "relative", display: "inline", whiteSpace: "normal" }}>
-            {imp ? (
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  left: "-0.1em",
-                  right: "0.12em",
-                  top: "0.02em",
-                  bottom: "-0.02em",
-                  background: `linear-gradient(180deg, ${misturar(tema.acento, "#ffffff", 0.15)}, ${tema.acento})`,
-                  borderRadius: 8 * u,
-                  transform: `scaleX(${saiSuave((c.t - inicio - (kFim - lista.length + 1) * atraso) / 0.35)})`,
-                  transformOrigin: "left",
-                  boxShadow: `0 0 ${30 * u}px ${rgba(tema.acento, 0.5)}`,
-                  zIndex: -1,
-                }}
-              />
-            ) : null}
             {nodos}
-            {doc ? (
-              // A faixa do marca-texto: 78% do corpo, um pouco abaixo do meio, borda irregular de marcador,
-              // corre da esquerda para a direita junto com as palavras (400 a 600 ms).
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  left: "-0.08em",
-                  right: "0.18em",
-                  top: "0.16em",
-                  bottom: "0.04em",
-                  borderRadius: `${3 * u}px ${9 * u}px ${4 * u}px ${10 * u}px`,
-                  background: `linear-gradient(178deg, ${rgba(misturar(tema.acento, "#ffffff", 0.32), 0.95)}, ${rgba(misturar(tema.acento, "#ffffff", 0.18), 0.92)})`,
-                  transform: `scaleX(${saiSuave((c.t - inicio - (kFim - lista.length + 1) * atraso) / 0.5)}) skewX(-4deg)`,
-                  transformOrigin: "left",
-                  zIndex: -1,
-                }}
-              />
-            ) : !imp && !semTraco ? (
+            {!doc && !imp && !semTraco ? (
               <span
                 aria-hidden
                 style={{
