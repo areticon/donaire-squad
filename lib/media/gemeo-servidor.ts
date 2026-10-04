@@ -223,10 +223,14 @@ export async function registrarVoz(
     const c = atual ?? cadastroVazio();
     if (c.voz?.amostraUrl === args.url) return undefined;
     const vozesParaApagar = [...(c.vozesParaApagar ?? [])];
+    // 04/10: a voz APROVADA não sai com a amostra nova. A nova vira candidata;
+    // a aprovada continua nos vídeos até a pessoa ouvir e aprovar a nova.
+    const aprovada = c.vozAprovada;
     if (c.voz) {
-      antigos.push(c.voz.amostraUrl, ...(c.voz.mp3Url ? [c.voz.mp3Url] : []));
-      // Voz nova substitui a clonada: a antiga sai da ElevenLabs no passo.
-      if (c.voz.voiceId) vozesParaApagar.push(c.voz.voiceId);
+      if (c.voz.amostraUrl !== aprovada?.amostraUrl) antigos.push(c.voz.amostraUrl, ...(c.voz.mp3Url ? [c.voz.mp3Url] : []));
+      if (c.voz.previaUrl && c.voz.previaUrl !== aprovada?.previaUrl) antigos.push(c.voz.previaUrl);
+      // Voz candidata substituída: sai da ElevenLabs no passo.
+      if (c.voz.voiceId && c.voz.voiceId !== aprovada?.voiceId) vozesParaApagar.push(c.voz.voiceId);
     }
     return {
       ...c,
@@ -236,6 +240,44 @@ export async function registrarVoz(
   });
   if (antigos.length) await apagarMidias(antigos, `gemeo-voz/${projectId}`);
   return c!;
+}
+
+/**
+ * APROVAR A VOZ (04/10/2026): a pessoa ouviu a amostra da voz clonada e
+ * aprovou. Ela vira a voz dos vídeos; a aprovada antes dela (se era outra)
+ * sai da ElevenLabs no passo. Só vale para a voz pronta e com a amostra para
+ * ouvir: ninguém aprova o que não ouviu.
+ */
+export async function aprovarVoz(projectId: string): Promise<CadastroGuardado> {
+  let recusa: string | null = null;
+  const antigos: string[] = [];
+  const c = await mudarCadastro(projectId, (atual) => {
+    const v = atual?.voz;
+    if (!atual || !v || v.estado !== "pronta" || !v.voiceId) {
+      recusa = "A voz ainda não está pronta para aprovar.";
+      return undefined;
+    }
+    if (!v.previaUrl) {
+      recusa = "A amostra da voz ainda está sendo preparada. Ouça antes de aprovar.";
+      return undefined;
+    }
+    const anterior = atual.vozAprovada;
+    if (anterior?.voiceId === v.voiceId) return undefined;
+    if (anterior) {
+      if (anterior.amostraUrl && anterior.amostraUrl !== v.amostraUrl) antigos.push(anterior.amostraUrl);
+      if (anterior.previaUrl && anterior.previaUrl !== v.previaUrl) antigos.push(anterior.previaUrl);
+    }
+    const quando = agora();
+    return {
+      ...atual,
+      vozesParaApagar: [...(atual.vozesParaApagar ?? []), ...(anterior ? [anterior.voiceId] : [])],
+      voz: { ...v, aprovadaEm: quando },
+      vozAprovada: { voiceId: v.voiceId, aprovadaEm: quando, origem: v.origem, amostraUrl: v.amostraUrl, segundos: v.segundos ?? null, previaUrl: v.previaUrl },
+    };
+  });
+  if (recusa) throw new ErroDoCadastro(recusa);
+  if (antigos.length) await apagarMidias(antigos, `gemeo-voz/${projectId}`);
+  return c ?? (await lerCadastro(projectId))!;
 }
 
 export async function registrarAutorizacao(
@@ -449,7 +491,8 @@ export async function pedirVideoDoGemeo(args: {
     segundosEstimados: preco.segundos,
     creditosReservados: preco.creditosReservados,
     fotoUrl: cadastro!.foto!.url!,
-    voiceId: cadastro!.voz!.voiceId!,
+    // 04/10: só a voz que a pessoa ouviu e aprovou (`gemeoAtivo` exige).
+    voiceId: cadastro!.vozAprovada!.voiceId,
     gerador,
     avatarId: gerador === "heygen" ? cadastro!.avatar!.avatarId! : null,
     pedacos: (cenas.length ? pedacosDasCenas(cenas) : dividirEmPedacos(texto).map((t) => ({ texto: t, cenario: cenarioUnico }))).map((p) => ({
@@ -511,7 +554,13 @@ export async function revogarGemeo(projectId: string, motivo: string): Promise<{
     }
   }
 
-  const vozes = [...(cadastro?.vozesParaApagar ?? []), ...(cadastro?.voz?.voiceId ? [cadastro.voz.voiceId] : [])];
+  const vozes = [
+    ...new Set([
+      ...(cadastro?.vozesParaApagar ?? []),
+      ...(cadastro?.voz?.voiceId ? [cadastro.voz.voiceId] : []),
+      ...(cadastro?.vozAprovada?.voiceId ? [cadastro.vozAprovada.voiceId] : []),
+    ]),
+  ];
   const pendentes: string[] = [];
   for (const voz of vozes) {
     try {
@@ -541,6 +590,9 @@ export async function revogarGemeo(projectId: string, motivo: string): Promise<{
       cadastro.foto?.url,
       cadastro.voz?.amostraUrl,
       cadastro.voz?.mp3Url,
+      cadastro.voz?.previaUrl,
+      cadastro.vozAprovada?.amostraUrl,
+      cadastro.vozAprovada?.previaUrl,
       cadastro.autorizacao?.videoUrl,
       cadastro.treino?.videoUrl,
       ...Object.values(cadastro.treino?.arquivos ?? {}),

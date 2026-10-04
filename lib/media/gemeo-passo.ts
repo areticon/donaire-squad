@@ -37,9 +37,14 @@ import {
   estadoDoLook,
   geradorDoPedido,
   geradorPreferido,
+  imagemDaHeygen,
+  type PedidoAoGerador,
+  lerImagemDaHeygen,
   pedidoDoPedaco,
   pedirConsentimento,
+  subirNaHeygen,
 } from "@/lib/media/gemeo-geradores";
+import { conferirPessoaNoCenario, fazerFundo } from "@/lib/media/gemeo-conferencia";
 import {
   TIPO_REVOGACAO,
   agora,
@@ -286,6 +291,49 @@ async function cuidarDaVoz(projectId: string, c: CadastroGuardado): Promise<void
   if (erro) console.warn(`[gemeo][${projectId}] clonagem:`, erro.message);
 }
 
+/** A frase da amostra para ouvir: curta, em tom de conversa, com pergunta e pausa. */
+const FRASE_DA_PREVIA =
+  "Oi! Essa é a minha voz no gêmeo digital. Ficou parecida comigo? É assim que eu vou falar nos vídeos que a Demandou gravar por mim.";
+
+/**
+ * A AMOSTRA PARA OUVIR (04/10/2026): a voz clonada falando uma frase, com o
+ * mesmo tratamento do vídeo (acelerada 7% e nivelada pelo worker). A pessoa
+ * ouve na tela e aprova; sem aprovação, nenhum vídeo usa a voz. Até 3
+ * tentativas; sem o worker, vai a fala crua (ouvir é melhor que esperar).
+ */
+async function prepararPrevia(projectId: string, c: CadastroGuardado): Promise<void> {
+  const v = c.voz;
+  if (!v || v.estado !== "pronta" || !v.voiceId || v.previaUrl || (v.previaTentativas ?? 0) >= 3) return;
+  const voiceId = v.voiceId;
+  let previaUrl: string | null = null;
+  try {
+    const fala = await falar({ voiceId, texto: FRASE_DA_PREVIA });
+    gravarCustoDeVideo(`elevenlabs/${fala.modelo}`, fala.caracteres * DOLAR_POR_CARACTERE, { projectId, operation: "gemeo_voz" });
+    const { url } = await put(`gemeo/${projectId}/previa-da-voz.mp3`, fala.mp3, { ...midiaPrivada(), contentType: "audio/mpeg", addRandomSuffix: true });
+    previaUrl = url;
+    try {
+      const r = await chamarWorker<{ voz: { url: string }; preparada?: boolean }>(
+        "voz-do-gemeo",
+        { fala: true, audioUrl: url, chave: `gemeo/${projectId}/previa-da-voz.wav`, velocidade: VELOCIDADE_DA_VOZ() },
+        120_000
+      );
+      if (r.preparada) {
+        previaUrl = r.voz.url;
+        await apagarMidias([url], `gemeo-previa/${projectId}`);
+      }
+    } catch (e) {
+      console.warn(`[gemeo][${projectId}] amostra da voz sem o worker (vai crua):`, mensagem(e));
+    }
+  } catch (e) {
+    console.warn(`[gemeo][${projectId}] amostra da voz:`, mensagem(e));
+  }
+  await mudarCadastro(projectId, (x) =>
+    x?.voz?.voiceId === voiceId
+      ? { ...x, voz: previaUrl ? { ...x.voz, previaUrl } : { ...x.voz, previaTentativas: (x.voz.previaTentativas ?? 0) + 1 } }
+      : undefined
+  );
+}
+
 async function apagarVozesPendentes(projectId: string, c: CadastroGuardado): Promise<void> {
   const lista = c.vozesParaApagar ?? [];
   if (!lista.length) return;
@@ -451,32 +499,41 @@ async function cuidarDoTreino(projectId: string, c: CadastroGuardado): Promise<v
     // VALEU: o treino vira foto, voz e autorização. O que era do cadastro
     // antigo (fotos, amostra, gravação da autorização) sai; a voz clonada
     // antiga vai para a fila de apagar.
+    //
+    // MENOS A VOZ APROVADA (04/10/2026): o treino de 03/10 (1 min LENDO um
+    // texto) clonou uma voz por cima da que o Bruno tinha aprovado (4 min de
+    // fala natural), apagou a aprovada, e o vídeo seguinte saiu com uma voz
+    // que ele não reconheceu. Com voz aprovada, o treino não mexe na voz.
     const a = atual!;
+    const aprovada = a.vozAprovada ?? null;
     const doTreino = new Set(Object.values(x.arquivos).filter(Boolean));
     paraApagar = [
       ...a.fotos.map((f) => f.url),
       a.foto?.url,
-      a.voz?.amostraUrl,
-      a.voz?.mp3Url,
+      aprovada ? null : a.voz?.amostraUrl,
+      aprovada ? null : a.voz?.mp3Url,
+      aprovada ? null : a.voz?.previaUrl,
       a.autorizacao?.videoUrl !== x.videoUrl ? a.autorizacao?.videoUrl : null,
     ].filter((u) => u && !doTreino.has(u as string));
-    const vozesParaApagar = [...(a.vozesParaApagar ?? []), ...(a.voz?.voiceId ? [a.voz.voiceId] : [])];
+    const vozesParaApagar = [...(a.vozesParaApagar ?? []), ...(!aprovada && a.voz?.voiceId ? [a.voz.voiceId] : [])];
     return {
       ...a,
       treino,
       vozesParaApagar,
       fotos: [],
       foto: { estado: "pronta", desde: agora(), origem: `treino:${x.gravadoEm}`, url: x.arquivos.foto, escolhida: null, avaliacoes: [], motivo: null },
-      voz: {
-        estado: "clonando",
-        desde: agora(),
-        origem: "treino",
-        amostraUrl: x.arquivos.voz,
-        contentType: "audio/mpeg",
-        mp3Url: x.arquivos.voz,
-        segundos: x.medidas.duracaoSec,
-        tentativas: 0,
-      },
+      voz: aprovada
+        ? a.voz
+        : {
+            estado: "clonando",
+            desde: agora(),
+            origem: "treino",
+            amostraUrl: x.arquivos.voz,
+            contentType: "audio/mpeg",
+            mp3Url: x.arquivos.voz,
+            segundos: x.medidas.duracaoSec,
+            tentativas: 0,
+          },
       autorizacao: {
         estado: "valida",
         desde: agora(),
@@ -693,6 +750,7 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
     WHERE type = 'gemeo' AND key = 'cadastro' AND (
       value -> 'foto' ->> 'estado' IN ('preparando', 'falhou')
       OR value -> 'voz' ->> 'estado' IN ('convertendo', 'esperando', 'clonando', 'sem-permissao', 'falhou')
+      OR (value -> 'voz' ->> 'estado' = 'pronta' AND value -> 'voz' ->> 'previaUrl' IS NULL AND COALESCE((value -> 'voz' ->> 'previaTentativas')::int, 0) < 3)
       OR value -> 'autorizacao' ->> 'estado' = 'conferindo'
       OR jsonb_array_length(COALESCE(value -> 'vozesParaApagar', '[]'::jsonb)) > 0
       OR value -> 'treino' ->> 'estado' IN ('preparando', 'conferindo')
@@ -717,6 +775,8 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       if (c) await conferirAutorizacao(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await cuidarDaVoz(projectId, c);
+      c = await lerCadastro(projectId);
+      if (c) await prepararPrevia(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await apagarVozesPendentes(projectId, c);
       c = await lerCadastro(projectId);
@@ -754,47 +814,142 @@ function gravarComTrava(projectId: string, id: string, trava: Trava, mudar: (v: 
 }
 
 /**
- * A IMAGEM (OU O LOOK) DE UM CENÁRIO para um vídeo, já do lado do gerador.
- * Devolve "esperar" quando o look da HeyGen ainda está sendo gerado (o vídeo
- * pausa um minuto e volta).
- *
- * OmniHuman: "camera" é a foto recortada; os outros são a pessoa COMPOSTA no
- * cenário a partir do quadro inteiro do vídeo de treino (edição de imagem,
- * `comporSobreImagemComCusto`), guardada no cadastro para os próximos vídeos.
- * Quadrada, como a foto, para a junção receber sempre o mesmo formato.
- *
- * HeyGen: "camera" é o próprio gêmeo treinado; os outros, um look por prompt
- * sobre ele (`criarLookNaHeygen`), também guardado.
- *
- * Se a composição falhar, o pedaço sai no close: o cliente recebe o vídeo, e
- * o log diz qual cenário caiu.
+ * A VELOCIDADE DA VOZ APROVADA: a "B" de 01/10, ElevenLabs v4 acelerada 7%
+ * sem mudar o tom. Desde 04/10 é aplicada na fala, antes do gerador.
  */
-async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDoGerador, cen: IdDoCenario): Promise<string | "esperar"> {
+const VELOCIDADE_DA_VOZ = () => Number(process.env.GEMEO_VELOCIDADE ?? 1.07) || 1;
+
+/** Marca o cenário da HeyGen como caído (fundo ou look): os próximos vídeos vão no close. */
+async function marcarCenarioRecusado(projectId: string, imagem: string, cen: IdDoCenario, motivo: string): Promise<void> {
+  const i = lerImagemDaHeygen(imagem, cen);
+  if (i.tipo === "gemeo") return;
+  const chave = i.tipo === "fundo" ? `heygen-fundo:${cen}` : `heygen:${cen}`;
+  await mudarCadastro(projectId, (x) => {
+    const atual = x?.cenarios?.[chave];
+    if (!x || !atual) return undefined;
+    return { ...x, cenarios: { ...(x.cenarios ?? {}), [chave]: { ...atual, estado: "falhou", desde: agora(), motivo: motivo.slice(0, 300) } } };
+  });
+}
+
+/** O quadro do pedaço pronto contra o quadro do treino. Null quando não deu para conferir (não bloqueia). */
+export async function conferirPedacoPronto(projectId: string, quadroUrl: string, cen: IdDoCenario, pessoa: "gerada" | "gemeo" = "gemeo") {
+  try {
+    const treino = await quadroDoTreino(projectId);
+    if (!treino) return null;
+    const r = await fetch(quadroUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!r.ok) return null;
+    return await conferirPessoaNoCenario(treino, Buffer.from(await r.arrayBuffer()), cen, { projectId }, pessoa);
+  } catch (e) {
+    console.warn(`[gemeo][${projectId}] conferir o pedaço pronto (${cen}):`, mensagem(e));
+    return null;
+  }
+}
+
+/**
+ * A VERSÃO DOS CENÁRIOS (04/10/2026): entra na `origem` de cada cenário
+ * guardado. Os de antes (prompt sem a roupa lisa, sem conferência) são
+ * refeitos uma vez com os textos novos e a conferência por visão. v3: o
+ * fundo em pé (9:16), na proporção do vídeo do gêmeo. v4: o estúdio do
+ * close em cinza médio, sem a vinheta escura.
+ */
+const VERSAO_DOS_CENARIOS = "v4";
+
+/** Como a HeyGen põe cada cenário: o gêmeo sobre um fundo nosso (padrão) ou um look por prompt. */
+const CENARIO_NA_HEYGEN = () => (process.env.GEMEO_HEYGEN_CENARIO === "look" ? "look" : "fundo");
+
+/** O quadro do vídeo de treino: a referência da conferência (a pessoa e a roupa reais). */
+async function quadroDoTreino(projectId: string): Promise<Buffer | null> {
+  const c = await lerCadastro(projectId);
+  const u = c?.treino?.arquivos?.quadro ?? c?.foto?.url ?? null;
+  return u ? lerMidia(u) : null;
+}
+
+/**
+ * A IMAGEM (OU O LOOK, OU O FUNDO) DE UM CENÁRIO para um vídeo, já do lado
+ * do gerador. Devolve "esperar" quando o look da HeyGen ainda está sendo
+ * gerado (o vídeo pausa um minuto e volta).
+ *
+ * CENÁRIO PROFISSIONAL (04/10/2026), depois do Bruno ver fundo feio e uma
+ * estampa inventada na camisa:
+ *
+ * HeyGen, padrão ("fundo"): TODO cenário, inclusive o close, é o gêmeo
+ * treinado recortado do corredor de casa e posto sobre um fundo profissional
+ * gerado sem pessoa, desfocado e aprovado pela visão (`fazerFundo`). Nada da
+ * pessoa é inventado: rosto, roupa e gestos são os do treino. O fundo fica no
+ * cadastro e na HeyGen (asset) para os próximos vídeos.
+ *
+ * HeyGen, GEMEO_HEYGEN_CENARIO=look: o look por prompt (texto novo, roupa
+ * lisa dita por extenso), usado só se a prévia passar na conferência contra
+ * o quadro do treino.
+ *
+ * OmniHuman (a reserva): a pessoa COMPOSTA no cenário a partir do quadro
+ * inteiro do treino, conferida antes de usar; o close também é composto
+ * (estúdio neutro) quando há quadro do treino, porque a foto recortada no
+ * rosto deixava o gerador inventar o resto da camiseta.
+ *
+ * Reprovado ou com falha, o pedaço sai no close do treino: o cliente recebe o
+ * vídeo, e o log diz qual cenário caiu e por quê.
+ */
+export async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDoGerador, cen: IdDoCenario): Promise<string | "esperar"> {
   const g = geradorDoPedido(gerador);
   const close = async (): Promise<string> => {
-    if (gerador === "heygen") return v.avatarId!;
+    if (gerador === "heygen") return imagemDaHeygen({ tipo: "gemeo", avatarId: v.avatarId! });
     const foto = await lerMidia(v.fotoUrl);
     if (!foto) throw new Error("a foto do gêmeo sumiu do storage");
     return g.subirImagem!(foto, "foto.jpg");
   };
-  if (cen === "camera") return close();
-
-  const chave = `${gerador}:${cen}`;
   const c = await lerCadastro(projectId);
-  const origem = gerador === "heygen" ? v.avatarId ?? "" : c?.treino?.arquivos?.quadro ?? v.fotoUrl;
+  const modo = gerador === "heygen" ? CENARIO_NA_HEYGEN() : "composicao";
+  // O close da reserva só é composto quando há o quadro inteiro do treino.
+  if (cen === "camera" && (modo === "look" || (modo === "composicao" && !c?.treino?.arquivos?.quadro))) return close();
+
+  const chave = modo === "fundo" ? `heygen-fundo:${cen}` : `${gerador}:${cen}`;
+  const origem =
+    modo === "fundo"
+      ? VERSAO_DOS_CENARIOS
+      : `${gerador === "heygen" ? v.avatarId ?? "" : c?.treino?.arquivos?.quadro ?? v.fotoUrl}#${VERSAO_DOS_CENARIOS}`;
   const pronto = c?.cenarios?.[chave];
   const guardar = (novo: CenarioPronto) =>
     mudarCadastro(projectId, (x) => (x ? { ...x, cenarios: { ...(x.cenarios ?? {}), [chave]: novo } } : undefined));
+  const ctx = { projectId };
 
   if (pronto?.estado === "falhou" && pronto.origem === origem) return close();
 
-  if (gerador === "heygen") {
+  if (modo === "fundo") {
+    if (pronto?.estado === "pronto" && pronto.origem === origem && pronto.assetId) {
+      return imagemDaHeygen({ tipo: "fundo", avatarId: v.avatarId!, assetId: pronto.assetId });
+    }
+    const feito = await fazerFundo(cen, ctx);
+    if (!feito.imagem) {
+      await guardar({ estado: "falhou", desde: agora(), origem, conferencia: feito.parecer, motivo: `fundo reprovado: ${feito.parecer.motivos.join("; ")}` });
+      console.warn(`[gemeo][${projectId}] fundo ${cen} reprovado duas vezes; vai no close:`, feito.parecer.motivos.join("; "));
+      return close();
+    }
+    const blob = await put(`gemeo/${projectId}/fundo-${cen}.jpg`, feito.imagem, { ...midiaPrivada(), contentType: "image/jpeg", addRandomSuffix: true });
+    const { assetId } = await subirNaHeygen(feito.imagem, "image/jpeg", `fundo-${cen}.jpg`);
+    await guardar({ estado: "pronto", desde: agora(), origem, url: blob.url, assetId, conferencia: feito.parecer });
+    return imagemDaHeygen({ tipo: "fundo", avatarId: v.avatarId!, assetId });
+  }
+
+  if (modo === "look") {
     if (pronto?.origem === origem && pronto.lookId) {
-      if (pronto.estado === "pronto") return pronto.lookId;
+      if (pronto.estado === "pronto") return imagemDaHeygen({ tipo: "look", lookId: pronto.lookId });
       const r = await estadoDoLook(pronto.lookId);
       if (r.estado === "completed") {
-        await guardar({ ...pronto, estado: "pronto", desde: agora() });
-        return pronto.lookId;
+        // A CONFERÊNCIA ANTES DE USAR: a prévia do look contra o treino.
+        const treino = await quadroDoTreino(projectId);
+        const previa = r.previa ? Buffer.from(await (await fetch(r.previa, { signal: AbortSignal.timeout(60_000) })).arrayBuffer()) : null;
+        const parecer =
+          treino && previa
+            ? await conferirPessoaNoCenario(treino, previa, cen, ctx).catch((e) => ({ aprovado: false, motivos: [`a conferência não respondeu: ${mensagem(e)}`] }))
+            : { aprovado: false, motivos: ["sem prévia do look ou sem quadro do treino para conferir"] };
+        if (!parecer.aprovado) {
+          await guardar({ ...pronto, estado: "falhou", desde: agora(), conferencia: parecer, motivo: `look reprovado: ${parecer.motivos.join("; ")}` });
+          console.warn(`[gemeo][${projectId}] look ${cen} reprovado; vai no close:`, parecer.motivos.join("; "));
+          return close();
+        }
+        await guardar({ ...pronto, estado: "pronto", desde: agora(), conferencia: parecer });
+        return imagemDaHeygen({ tipo: "look", lookId: pronto.lookId });
       }
       if (r.estado === "failed") {
         await guardar({ ...pronto, estado: "falhou", desde: agora(), motivo: r.motivo });
@@ -809,10 +964,11 @@ async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDo
     return "esperar";
   }
 
-  // OmniHuman: compõe (ou reaproveita) a imagem do cenário.
+  // OmniHuman: compõe (ou reaproveita) a imagem do cenário, e confere.
   let url = pronto?.estado === "pronto" && pronto.origem === origem ? pronto.url ?? null : null;
   if (!url) {
-    const quadro = await lerMidia(origem);
+    const fonte = c?.treino?.arquivos?.quadro ?? v.fotoUrl;
+    const quadro = await lerMidia(fonte);
     if (!quadro) return close();
     const feita = await comporSobreImagemComCusto(
       cenarioPorId(cen).prompt,
@@ -828,14 +984,21 @@ async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDo
       await guardar({ estado: "falhou", desde: agora(), origem, motivo: "a edição de imagem não respondeu", tentativas: (pronto?.tentativas ?? 0) + 1 });
       return close();
     }
+    const dados = dataUrlToBuffer(feita.dataUrl);
+    const parecer = await conferirPessoaNoCenario(quadro, dados, cen, ctx).catch((e) => ({ aprovado: false, motivos: [`a conferência não respondeu: ${mensagem(e)}`] }));
+    if (!parecer.aprovado) {
+      await guardar({ estado: "falhou", desde: agora(), origem, conferencia: parecer, motivo: `composição reprovada: ${parecer.motivos.join("; ")}` });
+      console.warn(`[gemeo][${projectId}] composição ${cen} reprovada; vai no close:`, parecer.motivos.join("; "));
+      return close();
+    }
     const tipo = feita.dataUrl.slice(5, feita.dataUrl.indexOf(";")) || "image/png";
-    const blob = await put(`gemeo/${projectId}/cenario-${cen}.${tipo.includes("png") ? "png" : "jpg"}`, dataUrlToBuffer(feita.dataUrl), {
+    const blob = await put(`gemeo/${projectId}/cenario-${cen}.${tipo.includes("png") ? "png" : "jpg"}`, dados, {
       ...midiaPrivada(),
       contentType: tipo,
       addRandomSuffix: true,
     });
     url = blob.url;
-    await guardar({ estado: "pronto", desde: agora(), origem, url });
+    await guardar({ estado: "pronto", desde: agora(), origem, url, conferencia: parecer });
   }
   const imagem = await lerMidia(url);
   if (!imagem) return close();
@@ -899,6 +1062,37 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
       await salvar((x) => ({ ...x, pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, audioUrl: url, segundos, caracteres: fala.caracteres } : q)) }));
     }
 
+    // 1b. A FALA PREPARADA (04/10): acelerada 7%, nivelada e em WAV 48 kHz,
+    // pelo worker, ANTES do gerador (ver `prepararFala` no worker). Um vídeo
+    // que já tinha pedaço enviado com a fala crua segue crua até o fim, e um
+    // worker antigo (sem a marca `preparada`) também: imagem e som são
+    // acelerados juntos na junção, como antes. Nunca meio a meio.
+    if (!v.falaCrua && v.pedacos.some((p) => p.requestId && !p.preparada)) await salvar((x) => ({ ...x, falaCrua: true }));
+    for (let i = 0; i < v.pedacos.length && !v.falaCrua; i++) {
+      if (Date.now() > prazo) return pausar(null, 0);
+      const p = v.pedacos[i];
+      if (p.preparada || p.requestId || !p.audioUrl) continue;
+      let r: { voz: { url: string }; duracaoSec: number; preparada?: boolean };
+      try {
+        r = await chamarWorker("voz-do-gemeo", { fala: true, audioUrl: p.audioUrl, chave: `gemeo/${projectId}/${v.id}/fala-${i}.wav`, velocidade: VELOCIDADE_DA_VOZ() }, 120_000);
+      } catch (e) {
+        console.warn(`[gemeo][${projectId}][${v.id}] preparar a fala ${i + 1}:`, mensagem(e));
+        if (idade(v.criadoEm) < PRAZO_PARA_ENVIAR_MS) return pausar("Preparando a fala. Tentamos de novo em instantes.", 2 * 60_000);
+        throw e;
+      }
+      if (!r.preparada) {
+        console.warn(`[gemeo][${projectId}][${v.id}] o worker não preparou a fala (versão antiga): vai crua, acelerada na junção`);
+        await salvar((x) => ({ ...x, falaCrua: true }));
+        break;
+      }
+      const cru = p.audioUrl;
+      await salvar((x) => ({
+        ...x,
+        pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, audioUrl: r.voz.url, segundos: Math.round(r.duracaoSec * 100) / 100, preparada: true } : q)),
+      }));
+      await apagarMidias([cru], `gemeo-fala-crua/${projectId}`);
+    }
+
     // 2. O ACERTO DA RESERVA: cobra o tempo real da fala, devolve o resto.
     if (v.creditosCobrados == null) {
       const segundosDaFala = Math.round(v.pedacos.reduce((s, p) => s + (p.segundos ?? 0), 0) * 10) / 10;
@@ -918,6 +1112,8 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
     // cadastro. Um cenário que não saiu cai no close, sem travar o vídeo.
     for (const cen of [...new Set(v.pedacos.map((p) => p.cenario ?? "camera"))]) {
       if (v.imagensDoGerador?.[cen]) continue;
+      // O fundo de um cenário novo leva de 20 s a 1 min (imagem e conferência).
+      if (Date.now() > prazo) return pausar(null, 0);
       if (cen === "camera" && v.falFotoUrl && gerador.id === "omnihuman") {
         const legado = v.falFotoUrl;
         await salvar((x) => ({ ...x, imagensDoGerador: { ...(x.imagensDoGerador ?? {}), camera: legado } }));
@@ -937,12 +1133,26 @@ async function falarEEnviar(projectId: string, lido: VideoDoGemeo, prazo: number
       if (!falAudioUrl) {
         const audio = await lerMidia(p.audioUrl!);
         if (!audio) throw new Error(`a fala do pedaço ${i + 1} sumiu do storage`);
-        falAudioUrl = await gerador.subirFala(audio, `fala-${i}.mp3`);
+        falAudioUrl = await gerador.subirFala(audio, p.preparada ? `fala-${i}.wav` : `fala-${i}.mp3`, p.preparada ? "audio/wav" : "audio/mpeg");
         const guardada = falAudioUrl;
         await salvar((x) => ({ ...x, pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, falAudioUrl: guardada } : q)) }));
       }
       const cen = p.cenario ?? "camera";
-      const pedido = await gerador.pedir({ imagem: v.imagensDoGerador![cen]!, fala: falAudioUrl, cenario: cen });
+      let imagem = v.imagensDoGerador![cen]!;
+      let pedido: PedidoAoGerador;
+      try {
+        pedido = await gerador.pedir({ imagem, fala: falAudioUrl, cenario: cen });
+      } catch (e) {
+        // O gêmeo sem recorte de fundo (treinado sem "matting") ou o look
+        // recusado: o cenário cai, e o pedaço vai no close do treino.
+        if (!(gerador.id === "heygen" && e instanceof ErroDoFornecedor && e.tipo === "recusado" && lerImagemDaHeygen(imagem, cen).tipo !== "gemeo")) throw e;
+        console.warn(`[gemeo][${projectId}][${v.id}] a HeyGen recusou o cenário ${cen}; vai no close:`, mensagem(e));
+        await marcarCenarioRecusado(projectId, imagem, cen, `recusado pela HeyGen: ${mensagem(e).slice(0, 200)}`);
+        const fechado = imagemDaHeygen({ tipo: "gemeo", avatarId: v.avatarId! });
+        imagem = fechado;
+        await salvar((x) => ({ ...x, imagensDoGerador: { ...(x.imagensDoGerador ?? {}), [cen]: fechado } }));
+        pedido = await gerador.pedir({ imagem, fala: falAudioUrl, cenario: cen });
+      }
       await salvar((x) => ({
         ...x,
         pedacos: x.pedacos.map((q, j) => (j === i ? { ...q, ...pedido, status: "IN_QUEUE", enviadoEm: agora(), erro: null } : q)),
@@ -971,6 +1181,8 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
   const pedacos: PedacoDoGemeo[] = [];
   let mudou = false;
   let recusado: string | null = null;
+  /** Cenários que caíram para o close nesta passada (pedaço reprovado). */
+  const imagensNovas: Partial<Record<IdDoCenario, string>> = {};
   for (const [i, p] of lido.pedacos.entries()) {
     if (!p.requestId || p.videoUrl) {
       pedacos.push(p);
@@ -991,6 +1203,27 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
           projectId,
           operation: "gemeo_video",
         });
+        // A CONFERÊNCIA DO PEDAÇO PRONTO (04/10): o cenário que a HeyGen montou
+        // (gêmeo sobre fundo, ou look) contra o quadro do treino. Reprovado não
+        // entra no vídeo: o pedaço é refeito no close do treino.
+        const cen = p.cenario ?? "camera";
+        const imagem = imagensNovas[cen] ?? lido.imagensDoGerador?.[cen] ?? null;
+        if (gerador.id === "heygen" && r.quadroUrl && imagem && lerImagemDaHeygen(imagem, cen).tipo !== "gemeo" && !p.conferencia) {
+          const parecer = await conferirPedacoPronto(projectId, r.quadroUrl, cen, lerImagemDaHeygen(imagem, cen).tipo === "fundo" ? "gemeo" : "gerada");
+          if (parecer && !parecer.aprovado) {
+            console.warn(`[gemeo][${projectId}][${lido.id}] pedaço ${i + 1} reprovado (${cen}); refeito no close:`, parecer.motivos.join("; "));
+            await marcarCenarioRecusado(projectId, imagem, cen, `pedaço reprovado: ${parecer.motivos.join("; ")}`);
+            const fechado = imagemDaHeygen({ tipo: "gemeo", avatarId: lido.avatarId! });
+            imagensNovas[cen] = fechado;
+            const novo = await gerador.pedir({ imagem: fechado, fala: p.falAudioUrl!, cenario: cen });
+            pedacos.push({ ...p, ...novo, status: "IN_QUEUE", enviadoEm: agora(), conferencia: parecer });
+            mudou = true;
+            continue;
+          }
+          pedacos.push({ ...p, status, videoUrl: r.videoUrl, duracaoDoVideo: duracao, conferencia: parecer });
+          mudou = true;
+          continue;
+        }
         pedacos.push({ ...p, status, videoUrl: r.videoUrl, duracaoDoVideo: duracao });
         mudou = true;
       } catch (e) {
@@ -1003,7 +1236,7 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
           pedacos.push({ ...p, tentativas, erro: e.message });
         } else {
           const cen = p.cenario ?? "camera";
-          const novo = await gerador.pedir({ imagem: lido.imagensDoGerador?.[cen] ?? lido.falFotoUrl!, fala: p.falAudioUrl!, cenario: cen });
+          const novo = await gerador.pedir({ imagem: imagensNovas[cen] ?? lido.imagensDoGerador?.[cen] ?? lido.falFotoUrl!, fala: p.falAudioUrl!, cenario: cen });
           pedacos.push({ ...p, ...novo, status: "IN_QUEUE", enviadoEm: agora(), tentativas, erro: e.message });
         }
         mudou = true;
@@ -1017,12 +1250,17 @@ async function acompanhar(projectId: string, lido: VideoDoGemeo): Promise<void> 
   if (recusado) return falhar(projectId, lido, recusado);
   const trava: Trava = { estado: "gerando", desde: lido.desde };
   const prontos = pedacos.every((p) => p.videoUrl);
+  const comImagens = (x: VideoDoGemeo): VideoDoGemeo => ({
+    ...x,
+    pedacos,
+    ...(Object.keys(imagensNovas).length ? { imagensDoGerador: { ...(x.imagensDoGerador ?? {}), ...imagensNovas } } : {}),
+  });
   if (!prontos) {
     if (idade(lido.desde) > PRAZO_DO_GERADOR_MS) return falhar(projectId, lido, "O gerador não entregou em 1 hora.");
-    if (mudou) await gravarComTrava(projectId, lido.id, trava, (x) => ({ ...x, pedacos }));
+    if (mudou) await gravarComTrava(projectId, lido.id, trava, comImagens);
     return;
   }
-  const atualizado = await gravarComTrava(projectId, lido.id, trava, (x) => ({ ...x, pedacos }));
+  const atualizado = await gravarComTrava(projectId, lido.id, trava, comImagens);
   if (atualizado) await pedirJuncao(projectId, atualizado);
 }
 
@@ -1044,7 +1282,11 @@ async function pedirJuncao(projectId: string, lido: VideoDoGemeo): Promise<void>
       "juntar-gemeo",
       {
         chave: `gemeo/${projectId}/${lido.id}/gemeo.mp4`,
-        pedacos: tomado.pedacos.map((p) => ({ url: p.videoUrl, segundos: p.segundos })),
+        // 04/10: a fala preparada vai junto (o som do vídeo final sai dela, e
+        // não do AAC recomprimido do gerador), e a velocidade só se aplica na
+        // junção quando a fala foi crua (pedidos antigos).
+        pedacos: tomado.pedacos.map((p) => ({ url: p.videoUrl, segundos: p.segundos, falaUrl: p.preparada ? p.audioUrl : null })),
+        velocidade: tomado.pedacos.every((p) => p.preparada) ? 1 : VELOCIDADE_DA_VOZ(),
         callbackUrl: `${baseDoApp()}/api/projects/${projectId}/gemeo/juntar-callback`,
         retorno: { projectId, id: lido.id, desde },
       },

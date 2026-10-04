@@ -9,6 +9,7 @@ import { cadastroParaTela, videoParaTela } from "@/lib/media/gemeo";
 import {
   ErroDoCadastro,
   adicionarFoto,
+  aprovarVoz,
   lerCadastro,
   listarVideos,
   geradorDoCadastro,
@@ -31,6 +32,7 @@ import { soODono } from "@/lib/equipe/permissoes";
  *   POST    registra o que o navegador acabou de enviar ao storage (foto,
  *           voz, autorização) ou tira uma foto; "link-novo" (03/10) pede
  *           ao gerador outro link de confirmação, quando o anterior venceu;
+ *           "aprovar-voz" (04/10) aprova a voz clonada depois de ouvir;
  *   DELETE  revoga o gêmeo e apaga tudo (ver `revogarGemeo`).
  *
  * O arquivo nunca passa por aqui: vai do navegador direto ao store privado
@@ -127,6 +129,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           contentType: typeof corpo.contentType === "string" ? corpo.contentType : null,
           userAgent: req.headers.get("user-agent"),
         });
+        break;
+      case "aprovar-voz":
+        // 04/10: a pessoa ouviu a amostra e aprovou; só a voz aprovada vai nos vídeos.
+        cadastro = await aprovarVoz(id);
         break;
       case "link-novo": {
         // "Pedir um link novo" (03/10): o link de confirmação do gerador venceu.

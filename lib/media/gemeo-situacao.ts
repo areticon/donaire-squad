@@ -20,6 +20,7 @@ export type FaseDoGemeo =
   | "treinando"
   | "falta-um-passo"
   | "link-vencido"
+  | "aprovar-voz"
   | "pronto"
   | "reserva";
 
@@ -94,6 +95,17 @@ export function situacaoDoGemeo(c: CadastroDoGemeo | null | undefined, agora: Da
       tom: "andando",
       titulo: "Treinando o seu gêmeo",
       texto: "O gerador está aprendendo rosto, gestos e boca com o seu vídeo de treino. Leva alguns minutos, e avisamos quando precisar de você.",
+    };
+  }
+  // 04/10: a voz clonada espera a pessoa ouvir e aprovar; sem isso nenhum
+  // vídeo sai (a voz de leitura do treino não substitui a voz que ela aprovou).
+  if (!ativo && t?.estado === "valido" && !c?.vozAprovada && c?.voz?.estado === "pronta") {
+    return {
+      ...base,
+      fase: "aprovar-voz",
+      tom: "espera",
+      titulo: "Falta ouvir e aprovar a sua voz",
+      texto: "A sua voz foi clonada. Ouça a amostra na tela do gêmeo e aprove: os vídeos só usam a voz que você aprovou.",
     };
   }
   if (a?.estado === "pronto" && ativo) {

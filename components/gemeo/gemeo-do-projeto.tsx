@@ -18,12 +18,15 @@ import {
   Upload,
   Trash2,
   ArrowRight,
+  Headphones,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CENARIOS,
+  SEGUNDOS_MAXIMOS_DA_VOZ,
   SEGUNDOS_MAXIMOS_DO_ROTEIRO,
   SEGUNDOS_MAXIMOS_DO_TREINO,
+  SEGUNDOS_MINIMOS_DA_VOZ,
   SEGUNDOS_MINIMOS_DO_ROTEIRO,
   SEGUNDOS_MINIMOS_DO_TREINO,
   cenarioPorId,
@@ -100,6 +103,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     inicial.cadastro?.treino?.nome ?? inicial.cadastro?.autorizacao?.nome ?? inicial.nome ?? ""
   );
   const entradaDeTreino = useRef<HTMLInputElement | null>(null);
+  const entradaDeVoz = useRef<HTMLInputElement | null>(null);
   const c = estado.cadastro;
   const arquivo = (u?: string | null) => (u ? `/api/projects/${projectId}/gemeo/arquivo?u=${encodeURIComponent(u)}` : "");
 
@@ -136,6 +140,8 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
       cad?.foto?.estado === "preparando" ||
         cad?.foto?.estado === "falhou" ||
         ["convertendo", "clonando", "esperando", "sem-permissao", "falhou"].includes(cad?.voz?.estado ?? "") ||
+        // 04/10: a amostra para ouvir ainda sendo preparada.
+        (cad?.voz?.estado === "pronta" && !cad.voz.previaUrl && (cad.voz.previaTentativas ?? 0) < 3) ||
         cad?.autorizacao?.estado === "conferindo" ||
         ["preparando", "conferindo"].includes(cad?.treino?.estado ?? "") ||
         estado.videos.some(videoEmAndamento)
@@ -178,7 +184,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     return () => document.removeEventListener("visibilitychange", voltou);
   }, [estado.cadastro?.avatar?.estado, conferirAgora]);
 
-  async function enviar(tipo: "treino", blob: Blob, corpo: Record<string, unknown>) {
+  async function enviar(tipo: "treino" | "voz", blob: Blob, corpo: Record<string, unknown>) {
     const contentType = (blob.type || "application/octet-stream").split(";")[0];
     const enviado = await upload(`gemeo/${projectId}/${tipo}-${Date.now()}.${extensao(contentType)}`, blob, {
       access: "private",
@@ -211,6 +217,40 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     } finally {
       setEnviando(null);
       if (entradaDeTreino.current) entradaDeTreino.current.value = "";
+    }
+  }
+
+  /** 04/10: a amostra de fala natural, para melhorar a voz (vira candidata; a aprovada continua). */
+  async function mandarVoz(blob: Blob, origem: "gravada" | "arquivo") {
+    if (blob.size > 300 * 1024 * 1024) return toast.error("O arquivo passa de 300 MB. Envie um trecho de 2 a 4 minutos.");
+    setEnviando("voz");
+    try {
+      await enviar("voz", blob, { origem });
+      toast.success("Recebido. Clonamos a voz nova e preparamos uma amostra para você ouvir antes de usar.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui enviar o áudio.");
+    } finally {
+      setEnviando(null);
+      if (entradaDeVoz.current) entradaDeVoz.current.value = "";
+    }
+  }
+
+  async function aprovarVoz() {
+    setEnviando("aprovar-voz");
+    try {
+      const r = await fetch(`/api/projects/${projectId}/gemeo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "aprovar-voz" }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Não consegui aprovar agora.");
+      toast.success("Voz aprovada. Os próximos vídeos saem com ela.");
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui aprovar agora.");
+    } finally {
+      setEnviando(null);
     }
   }
 
@@ -466,21 +506,48 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               <img src={arquivo(c.foto.url)} alt="A imagem do gêmeo" className="h-24 w-24 rounded-lg object-cover" />
             )}
             <div className="flex min-w-0 flex-1 flex-col gap-2">
-              {c?.voz && (
+              {/* A VOZ (04/10): a aprovada é a única dos vídeos; a clonada é
+                  candidata até a pessoa ouvir a amostra e aprovar. */}
+              {c?.vozAprovada && (
+                <div className="flex flex-col gap-1.5">
+                  <Situacao tom="ok" texto={`Voz aprovada por você em ${new Date(c.vozAprovada.aprovadaEm).toLocaleDateString("pt-BR")}. Os vídeos saem com ela.`} />
+                  {c.vozAprovada.previaUrl && <audio src={arquivo(c.vozAprovada.previaUrl)} controls preload="none" className="h-9 w-full max-w-[360px]" />}
+                </div>
+              )}
+              {c?.voz && !(c.vozAprovada && c.voz.estado === "pronta" && c.voz.aprovadaEm) && (
                 <Situacao
-                  tom={c.voz.estado === "pronta" ? "ok" : ["curta", "falhou"].includes(c.voz.estado) ? "erro" : c.voz.estado === "sem-permissao" ? "espera" : "andando"}
+                  tom={c.voz.estado === "pronta" ? "espera" : ["curta", "falhou"].includes(c.voz.estado) ? "erro" : c.voz.estado === "sem-permissao" ? "espera" : "andando"}
                   texto={
                     {
                       convertendo: "Conferindo a gravação da voz...",
                       curta: c.voz.motivo ?? "A gravação ficou curta.",
                       esperando: "A voz é clonada assim que a autorização valer.",
-                      clonando: "Clonando a sua voz...",
+                      clonando: c.vozAprovada ? "Clonando a voz nova. A aprovada continua nos vídeos até você aprovar a nova." : "Clonando a sua voz...",
                       "sem-permissao": c.voz.motivo ?? "Esperando o fornecedor de voz liberar a clonagem.",
-                      pronta: `Voz clonada a partir de ${duracaoFalada(c.voz.segundos ?? 0)} de gravação.`,
+                      pronta: `${c.vozAprovada ? "Voz nova" : "Voz"} clonada a partir de ${duracaoFalada(c.voz.segundos ?? 0)} de gravação. Ouça e aprove antes de usar.`,
                       falhou: c.voz.motivo ?? "Não consegui clonar a voz.",
                     }[c.voz.estado]
                   }
                 />
+              )}
+              {c?.voz?.estado === "pronta" && !c.voz.aprovadaEm && !doMembro && (
+                <div className="flex flex-wrap items-center gap-3">
+                  {c.voz.previaUrl ? (
+                    <audio src={arquivo(c.voz.previaUrl)} controls preload="none" className="h-9 w-full max-w-[360px]" />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-sm" style={{ color: "var(--text-muted)" }}>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Preparando a amostra para você ouvir...
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={Boolean(enviando) || !c.voz.previaUrl}
+                    onClick={() => void aprovarVoz()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {enviando === "aprovar-voz" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Aprovar esta voz
+                  </button>
+                </div>
               )}
               {c?.avatar && (
                 <Situacao
@@ -501,6 +568,49 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
                   Enquanto isso, você já pode gerar vídeos: eles saem pela imagem do vídeo de treino.
                 </p>
               )}
+            </div>
+          </div>
+          {/* MELHORAR A VOZ (04/10): a voz clonada de um texto lido soa menos
+              natural que a de uma conversa. A amostra nova vira candidata: a
+              aprovada continua nos vídeos até a pessoa ouvir e aprovar a nova. */}
+          <div className="flex flex-col gap-2 rounded-lg border px-4 py-3" style={{ borderColor: "var(--border)" }}>
+            <p className="flex items-start gap-2 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              <Headphones className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+              <span>
+                <strong style={{ color: "var(--text-primary)" }}>Melhorar a voz.</strong> A voz clonada de um texto lido costuma soar menos natural.
+                Para ficar mais parecida com você, envie de 2 a 4 minutos de você falando do seu jeito: uma conversa, uma aula, uma live, um
+                áudio longo. A voz nova só entra nos vídeos depois que você ouvir e aprovar.
+              </span>
+            </p>
+            <div className="flex flex-wrap items-start gap-3">
+              <Gravador
+                key={c?.voz?.amostraUrl ?? "sem-voz"}
+                video={false}
+                rotulo="Gravar falando do meu jeito"
+                minSegundos={SEGUNDOS_MINIMOS_DA_VOZ}
+                maxSegundos={SEGUNDOS_MAXIMOS_DA_VOZ}
+                enviando={enviando === "voz"}
+                onPronto={(blob) => void mandarVoz(blob, "gravada")}
+              />
+              <button
+                type="button"
+                disabled={Boolean(enviando)}
+                onClick={() => entradaDeVoz.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+              >
+                {enviando === "voz" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Enviar um áudio ou vídeo
+              </button>
+              <input
+                ref={entradaDeVoz}
+                type="file"
+                accept="audio/*,video/mp4,video/quicktime,video/webm"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void mandarVoz(f, "arquivo");
+                }}
+              />
             </div>
           </div>
         </Passo>

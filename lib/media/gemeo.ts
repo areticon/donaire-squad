@@ -108,8 +108,8 @@ export const CREDITOS_POR_SEGUNDO_DE_GEMEO = Math.ceil(
  *              chave que já temos;
  *   heygen     o gêmeo TREINADO a partir do vídeo de treino (API v3 da HeyGen,
  *              "digital twin"): gesto, postura e boca aprendidos da própria
- *              pessoa, e os cenários como "looks" gerados por prompt sobre o
- *              gêmeo. É o recomendado, e liga com HEYGEN_API_KEY e
+ *              pessoa; desde 04/10, os cenários são o próprio gêmeo recortado
+ *              sobre um fundo profissional. É o recomendado, e liga com HEYGEN_API_KEY e
  *              GEMEO_GERADOR=heygen (ver gemeo-geradores.ts).
  *
  * A tabela mora aqui porque a tela mostra o preço ANTES do clique com a mesma
@@ -146,10 +146,15 @@ export const GERADORES: Record<IdDoGerador, FichaDoGerador> = {
    * entra na conta como no OmniHuman. Pedido de até 10 min de áudio: o teto
    * aqui é o do texto que dividimos (22 s), e sobe sem mexer em nada.
    */
+  //
+  // MEDIDO EM 04/10 no saldo da conta, com o Avatar V (o motor de melhor boca,
+  // padrão desde então) e o fundo trocado: US$ 0,25 por 2,85 s e US$ 1,70 por
+  // 15,5 s, perto de US$ 0,11/s. Pela regra acima (contar o maior), a régua
+  // passa a 0,11.
   heygen: {
     id: "heygen",
     nome: "HeyGen (gêmeo treinado)",
-    dolarPorSegundo: 0.0667,
+    dolarPorSegundo: 0.11,
     folga: 1,
     tetoDoPedaco: 120,
   },
@@ -521,12 +526,29 @@ export function conferirTreino(
 /**
  * O GÊMEO EM CENÁRIOS (03/10/2026): a pessoa não fala só de frente para a
  * câmera; o roteiro pode pô-la sentada à mesa, em pé num palco, no escritório.
- * Cada cenário é uma IMAGEM da pessoa naquele lugar, composta uma vez por
- * cadastro a partir do quadro do vídeo de treino (na HeyGen, um "look" gerado
- * por prompt sobre o gêmeo treinado), e guardada para os próximos vídeos.
  *
- * `prompt` vai em inglês porque os modelos de edição de imagem seguem melhor
- * a instrução em inglês; `movimento` acompanha o pedido do vídeo.
+ * CENÁRIO PROFISSIONAL (04/10/2026). O Bruno viu o primeiro vídeo com
+ * cenários e reclamou de "fundo feio" (o corredor de casa do vídeo de treino)
+ * e de uma "estampa na minha camisa" que ele não usa: o gerador inventou o
+ * resto da roupa abaixo do recorte. Regra dele: a plataforma é profissional e
+ * sempre gera vídeo profissional, cuidando do cenário. Daí três textos por
+ * cenário:
+ *
+ *   fundo     o CENÁRIO SEM PESSOA (inglês, para o gerador de imagem), que
+ *             entra ATRÁS do gêmeo treinado: na HeyGen, o gêmeo é recortado do
+ *             fundo original (`remove_background`) e posto sobre esta imagem.
+ *             A pessoa, a roupa e os gestos são os do vídeo de treino, sem
+ *             nada inventado; só o fundo muda. É o caminho padrão;
+ *   prompt    a PESSOA no cenário (inglês), para quando a imagem inteira é
+ *             gerada: o look por prompt da HeyGen (GEMEO_HEYGEN_CENARIO=look)
+ *             e a composição da reserva (OmniHuman). Diz e repete a mesma
+ *             roupa, lisa, sem estampa, sem logo, sem texto;
+ *   movimento o que acompanha o pedido do vídeo (onde o gerador aceita).
+ *
+ * Toda imagem gerada passa pela conferência por visão antes de ser usada
+ * (`lib/media/gemeo-conferencia.ts`): fundo sóbrio, sem texto, sem estampa,
+ * mesma roupa e mesmo rosto do treino. Reprovada não entra: o pedaço cai no
+ * close do treino.
  */
 export type IdDoCenario = "camera" | "mesa" | "palco" | "escritorio" | "estudio" | "sala";
 
@@ -536,12 +558,29 @@ export type Cenario = {
   plano: "close" | "médio" | "aberto";
   /** Palavras que, no roteiro, pedem este cenário. */
   sinais: string[];
+  /** O cenário sem pessoa, para pôr atrás do gêmeo treinado. */
+  fundo: string;
+  /** A pessoa no cenário, para gerar a imagem inteira (look ou composição). */
   prompt: string;
   movimento: string;
 };
 
+/**
+ * A MESMA PESSOA E A MESMA ROUPA. A roupa é dita duas vezes, e as proibições
+ * por extenso: o gerador inventou estampa onde a imagem de referência não
+ * mostrava a camiseta inteira, e "same clothes" sozinho não segurou.
+ */
 const MESMA_PESSOA =
-  "Keep the exact same person: same face, same identity, same hair, same skin tone, same clothes. Photorealistic photo, natural light, shot on a full-frame camera, no text, no captions, no logos.";
+  "Keep the exact same person from the reference: same face, same identity, same hair, same beard, same skin tone, same body. " +
+  "Same clothes as in the reference, unchanged: same garment, same color, same neckline. The garment is plain: no print, no graphic, no logo, no text, no pattern, no badge. " +
+  "Photorealistic photo, natural skin texture, shot on a full-frame camera.";
+
+/** O cenário sóbrio, dito para os dois usos (com e sem pessoa). */
+const SOBRIO =
+  "Sober, professional and tidy, soft even flattering light. No text, no letters, no signs, no logos, no posters, no screens showing content, no other people, no odd objects.";
+
+/** O fundo sem pessoa: desfocado como numa câmera de cinema, sem nada que puxe o olho. */
+const FUNDO = `Empty background plate, no people in frame. Shallow depth of field, strongly out of focus, gentle bokeh. ${SOBRIO}`;
 
 export const CENARIOS: Cenario[] = [
   {
@@ -549,7 +588,10 @@ export const CENARIOS: Cenario[] = [
     nome: "Falando para a câmera",
     plano: "close",
     sinais: [],
-    prompt: "",
+    // 04/10: cinza médio e claro, luz por igual; o carvão da primeira prova
+    // saiu escuro, com vinheta, e a conferência reprovou.
+    fundo: `Professional video studio backdrop for a talking-head video: smooth seamless backdrop in a soft medium warm gray, evenly lit with a gentle lighter glow behind where the speaker stands, no dark vignette. ${FUNDO}`,
+    prompt: `Head-and-shoulders shot of this person facing the camera and talking, in a professional video studio with a smooth charcoal-gray seamless backdrop, softly out of focus, soft key light. ${MESMA_PESSOA} ${SOBRIO}`,
     movimento: INSTRUCAO_DO_GERADOR,
   },
   {
@@ -557,7 +599,8 @@ export const CENARIOS: Cenario[] = [
     nome: "Sentado à mesa",
     plano: "médio",
     sinais: ["mesa", "sentado", "sentada", "reunião", "notebook"],
-    prompt: `Medium shot of this person sitting at a wooden desk with a laptop, facing the camera and talking, hands resting on the desk, softly blurred bookshelf behind. ${MESMA_PESSOA}`,
+    fundo: `Modern, well-lit home office seen at seated eye level: bookshelf with neatly arranged books in neutral tones, a green plant, soft daylight from a side window. ${FUNDO}`,
+    prompt: `Medium shot of this person sitting at a clean wooden desk in a modern, well-lit office, facing the camera and talking, hands resting on the desk, a bookshelf with neutral-toned books softly blurred behind. ${MESMA_PESSOA} ${SOBRIO}`,
     movimento: "A pessoa, sentada à mesa, fala para a câmera com gestos naturais das mãos sobre a mesa. Câmera parada. Sem texto na imagem.",
   },
   {
@@ -565,7 +608,8 @@ export const CENARIOS: Cenario[] = [
     nome: "Em pé num palco",
     plano: "aberto",
     sinais: ["palco", "palestra", "plateia", "evento", "auditório"],
-    prompt: `Wide shot of this person standing on a conference stage, visible from the knees up, warm stage lights, blurred audience silhouettes in the foreground, dark background with a soft glow. ${MESMA_PESSOA}`,
+    fundo: `Conference stage seen from the audience at eye level: dark elegant stage, soft warm spotlights and a subtle blue ambient glow, out-of-focus bokeh lights. ${FUNDO}`,
+    prompt: `Medium shot of this person standing on a conference stage, facing the camera and talking, soft warm stage spotlights, dark elegant background with out-of-focus bokeh lights. ${MESMA_PESSOA} ${SOBRIO}`,
     movimento: "A pessoa, em pé no palco, fala para a plateia e para a câmera, com gestos amplos e confiantes. Câmera parada. Sem texto na imagem.",
   },
   {
@@ -573,7 +617,8 @@ export const CENARIOS: Cenario[] = [
     nome: "No escritório",
     plano: "médio",
     sinais: ["escritório", "empresa", "time", "equipe"],
-    prompt: `Medium shot of this person standing in a bright modern office, glass walls and plants softly blurred behind, facing the camera and talking. ${MESMA_PESSOA}`,
+    fundo: `Bright modern office: glass walls, light wood, green plants, soft daylight, calm and clean. ${FUNDO}`,
+    prompt: `Medium shot of this person standing in a bright modern office, facing the camera and talking, glass walls and plants softly blurred behind, soft daylight. ${MESMA_PESSOA} ${SOBRIO}`,
     movimento: "A pessoa, em pé no escritório, fala para a câmera com gestos naturais. Câmera parada. Sem texto na imagem.",
   },
   {
@@ -581,15 +626,17 @@ export const CENARIOS: Cenario[] = [
     nome: "Estúdio de podcast",
     plano: "médio",
     sinais: ["podcast", "microfone", "estúdio", "entrevista"],
-    prompt: `Medium shot of this person sitting in a podcast studio in front of a professional microphone on a boom arm, acoustic panels and warm practical lights softly blurred behind. ${MESMA_PESSOA}`,
-    movimento: "A pessoa, sentada no estúdio, fala perto do microfone olhando para a câmera, com gestos discretos. Câmera parada. Sem texto na imagem.",
+    fundo: `Professional podcast and video studio: dark acoustic wall panels, warm practical lamps, soft key light, no microphone in the foreground. ${FUNDO}`,
+    prompt: `Medium shot of this person sitting in a professional podcast studio, facing the camera and talking, dark acoustic panels and warm practical lights softly blurred behind. ${MESMA_PESSOA} ${SOBRIO}`,
+    movimento: "A pessoa, sentada no estúdio, fala olhando para a câmera, com gestos discretos. Câmera parada. Sem texto na imagem.",
   },
   {
     id: "sala",
     nome: "Na sala de casa",
     plano: "médio",
     sinais: ["casa", "sofá", "família"],
-    prompt: `Medium shot of this person sitting on a sofa in a cozy living room, plants and a lamp softly blurred behind, relaxed posture, facing the camera and talking. ${MESMA_PESSOA}`,
+    fundo: `Tidy, elegant living room: neutral sofa, a green plant, a warm lamp, soft natural light, no picture frames. ${FUNDO}`,
+    prompt: `Medium shot of this person sitting on a neutral sofa in a tidy, elegant living room, facing the camera and talking, a plant and a warm lamp softly blurred behind. ${MESMA_PESSOA} ${SOBRIO}`,
     movimento: "A pessoa, sentada no sofá, conversa com a câmera de um jeito descontraído. Câmera parada. Sem texto na imagem.",
   },
 ];
@@ -705,6 +752,37 @@ export type VozDoGemeo = {
   motivo?: string | null;
   tentativas?: number;
   ultimaTentativa?: string | null;
+  /**
+   * 04/10: a AMOSTRA PARA OUVIR, a voz clonada falando uma frase curta, já
+   * acelerada e nivelada como sai no vídeo. É o que a pessoa ouve antes de
+   * aprovar (store privado).
+   */
+  previaUrl?: string | null;
+  previaTentativas?: number;
+  /** 04/10: quando a pessoa aprovou ESTA voz (ela vira a `vozAprovada`). */
+  aprovadaEm?: string | null;
+};
+
+/**
+ * A VOZ APROVADA (04/10/2026): a única que os vídeos usam. O Bruno aprovou em
+ * 01/10 uma voz clonada de 4 min de fala natural; o vídeo de treino de 03/10
+ * (1 min LENDO um texto) clonou outra por cima, apagou a aprovada, e o vídeo
+ * seguinte saiu com uma voz que ele não reconheceu. Daí:
+ *
+ *  - a voz clonada (`voz`) é só CANDIDATA até a pessoa ouvir a amostra e
+ *    aprovar; os vídeos só saem com uma voz aprovada;
+ *  - o vídeo de treino NÃO substitui a voz aprovada: ele clona uma voz só
+ *    quando ainda não há aprovada;
+ *  - uma amostra nova (melhorar a voz) vira candidata, e a aprovada continua
+ *    valendo até a nova ser aprovada.
+ */
+export type VozAprovada = {
+  voiceId: string;
+  aprovadaEm: string;
+  origem: VozDoGemeo["origem"];
+  amostraUrl?: string | null;
+  segundos?: number | null;
+  previaUrl?: string | null;
 };
 
 /**
@@ -784,7 +862,12 @@ export type AvatarDoGemeo = {
   ultimaTentativa?: string | null;
 };
 
-/** Um cenário pronto para um gerador: a imagem composta (OmniHuman) ou o look (HeyGen). */
+/**
+ * Um cenário pronto para um gerador: a imagem composta (OmniHuman), o look
+ * (HeyGen, GEMEO_HEYGEN_CENARIO=look) ou o FUNDO que vai atrás do gêmeo
+ * treinado (HeyGen, o padrão desde 04/10: `url` no nosso store e `assetId` na
+ * HeyGen). `conferencia` é o parecer da visão (`gemeo-conferencia.ts`).
+ */
 export type CenarioPronto = {
   estado: "compondo" | "pronto" | "falhou";
   desde: string;
@@ -792,6 +875,8 @@ export type CenarioPronto = {
   origem: string;
   url?: string | null;
   lookId?: string | null;
+  assetId?: string | null;
+  conferencia?: { aprovado: boolean; motivos: string[] } | null;
   motivo?: string | null;
   tentativas?: number;
 };
@@ -802,6 +887,8 @@ export type CadastroDoGemeo = {
   fotos: FotoDoGemeo[];
   foto?: FotoDoGerador | null;
   voz?: VozDoGemeo | null;
+  /** 04/10: a voz que a pessoa ouviu e aprovou; a única que os vídeos usam. */
+  vozAprovada?: VozAprovada | null;
   autorizacao?: AutorizacaoDoGemeo | null;
   /** 03/10: o vídeo único de treino, que preenche foto, voz e autorização. */
   treino?: TreinoDoGemeo | null;
@@ -819,13 +906,16 @@ export function oQueFalta(c: CadastroDoGemeo | null | undefined): string[] {
   if (c?.treino || !c?.fotos?.length) {
     if (!c?.treino) return ["o seu vídeo de treino"];
     if (c.treino.estado !== "valido") return ["a conferência do vídeo de treino"];
-    if (c.voz?.estado !== "pronta") falta.push("a clonagem da sua voz");
+    if (!c.vozAprovada) falta.push(c.voz?.estado === "pronta" ? "ouvir e aprovar a sua voz" : "a clonagem da sua voz");
     if (c.foto?.estado !== "pronta") falta.push("a imagem do gêmeo");
     return falta;
   }
   if (c.foto?.estado !== "pronta") falta.push("a foto do gerador");
-  if (!c?.voz) falta.push("a amostra da sua voz");
-  else if (c.voz.estado !== "pronta") falta.push("a clonagem da sua voz");
+  if (!c?.vozAprovada) {
+    if (!c?.voz) falta.push("a amostra da sua voz");
+    else if (c.voz.estado !== "pronta") falta.push("a clonagem da sua voz");
+    else falta.push("ouvir e aprovar a sua voz");
+  }
   if (!c?.autorizacao) falta.push("a sua autorização gravada");
   else if (c.autorizacao.estado !== "valida") falta.push("a conferência da autorização");
   return falta;
@@ -844,6 +934,12 @@ export type PedacoDoGemeo = {
   audioUrl?: string | null;
   segundos?: number | null;
   caracteres?: number | null;
+  /**
+   * 04/10: a fala já preparada pelo worker (acelerada 7%, nivelada, WAV 48
+   * kHz): o gerador anima a boca na velocidade final e a junção usa este som.
+   * Ausente nos pedidos antigos (MP3 cru, acelerado na junção).
+   */
+  preparada?: boolean | null;
   /** O áudio já no armazenamento do fal (o gerador só lê de lá ou de URL pública). */
   falAudioUrl?: string | null;
   requestId?: string | null;
@@ -854,6 +950,11 @@ export type PedacoDoGemeo = {
   /** O vídeo pronto, na URL do fal (temporária: o worker baixa ao juntar). */
   videoUrl?: string | null;
   duracaoDoVideo?: number | null;
+  /**
+   * 04/10: a CONFERÊNCIA do cenário no pedaço pronto (o quadro que o gerador
+   * devolveu, contra o vídeo de treino). Reprovado é refeito no close.
+   */
+  conferencia?: { aprovado: boolean; motivos: string[] } | null;
   tentativas?: number;
   erro?: string | null;
 };
@@ -905,6 +1006,11 @@ export type VideoDoGemeo = {
   imagensDoGerador?: Partial<Record<IdDoCenario, string>> | null;
   voiceId: string;
   pedacos: PedacoDoGemeo[];
+  /**
+   * 04/10: a fala deste vídeo vai CRUA ao gerador e é acelerada na junção
+   * (pedido que já estava andando antes da fala preparada, ou worker antigo).
+   */
+  falaCrua?: boolean | null;
   segundosDaFala?: number | null;
   finalUrl?: string | null;
   finalBytes?: number | null;
@@ -973,9 +1079,10 @@ export function cadastroParaTela(
   return {
     ...resto,
     voz: resto.voz ? { ...resto.voz, voiceId: resto.voz.voiceId ? "pronta" : null } : null,
+    vozAprovada: resto.vozAprovada ? { ...resto.vozAprovada, voiceId: "aprovada" } : null,
     avatar: resto.avatar ? { ...resto.avatar, avatarId: resto.avatar.avatarId ? "pronto" : null, grupoId: null } : null,
     cenarios: resto.cenarios
-      ? Object.fromEntries(Object.entries(resto.cenarios).map(([k, v]) => [k, { ...v, lookId: null }]))
+      ? Object.fromEntries(Object.entries(resto.cenarios).map(([k, v]) => [k, { ...v, lookId: null, assetId: null }]))
       : null,
   };
 }

@@ -18,8 +18,9 @@ import { ErroDoFornecedor, dubleLigado, estadoNoFal, pedirOmniHuman, resultadoNo
  *   omnihuman  o de 01/10 (fal.ai), a RESERVA. Anima uma imagem: o melhor
  *              quadro do vídeo de treino, ou a pessoa já composta no cenário;
  *   heygen     o RECOMENDADO: o gêmeo treinado a partir do vídeo de treino
- *              (API v3, "digital twin"), com cada cenário como um "look"
- *              gerado por prompt sobre o próprio gêmeo.
+ *              (API v3, "digital twin"); desde 04/10, cada cenário é o
+ *              próprio gêmeo recortado e posto sobre um fundo profissional
+ *              (`imagemDaHeygen`).
  *
  * QUAL VALE: `GEMEO_GERADOR` (padrão "omnihuman"). Com "heygen", o gêmeo
  * treinado só é usado quando HEYGEN_API_KEY existe E o avatar do projeto está
@@ -43,12 +44,16 @@ export interface GeradorDoGemeo {
    * o "cenário" já é um look do gêmeo e não há imagem para subir.
    */
   subirImagem?(dados: Buffer, nome: string): Promise<string>;
-  /** Leva a fala do pedaço para o lado do fornecedor. */
-  subirFala(dados: Buffer, nome: string): Promise<string>;
-  /** Pede um pedaço. `imagem` é a URL do fal (OmniHuman) ou o id do look (HeyGen). */
+  /** Leva a fala do pedaço para o lado do fornecedor (MP3 cru ou, desde 04/10, o WAV preparado). */
+  subirFala(dados: Buffer, nome: string, contentType?: string): Promise<string>;
+  /**
+   * Pede um pedaço. `imagem` é a URL do fal (OmniHuman) ou, na HeyGen, o que
+   * `imagemDaHeygen` monta: o gêmeo, um look, ou o gêmeo sobre um fundo.
+   */
   pedir(args: { imagem: string; fala: string; cenario: IdDoCenario }): Promise<PedidoAoGerador>;
   estado(p: PedidoAoGerador): Promise<"IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | string>;
-  resultado(p: PedidoAoGerador): Promise<{ videoUrl: string; duracao: number | null }>;
+  /** O vídeo pronto e, quando o gerador dá, um quadro dele (a conferência do cenário olha esse quadro). */
+  resultado(p: PedidoAoGerador): Promise<{ videoUrl: string; duracao: number | null; quadroUrl?: string | null }>;
 }
 
 // ─────────────────────────────── OmniHuman (fal.ai), a reserva ───────────────────────────────
@@ -58,7 +63,7 @@ export const omnihuman: GeradorDoGemeo = {
   modelo: MODELO_DO_GERADOR,
   configurado: () => Boolean(process.env.FAL_KEY) || dubleLigado(),
   subirImagem: (dados, nome) => subirNoFal(dados, "image/jpeg", nome),
-  subirFala: (dados, nome) => subirNoFal(dados, "audio/mpeg", nome),
+  subirFala: (dados, nome, contentType) => subirNoFal(dados, contentType ?? "audio/mpeg", nome),
   pedir: ({ imagem, fala, cenario }) =>
     pedirOmniHuman({ imagemUrl: imagem, audioUrl: fala, prompt: cenario === "camera" ? INSTRUCAO_DO_GERADOR : cenarioPorId(cenario).movimento }),
   estado: (p) => estadoNoFal(p.statusUrl),
@@ -138,10 +143,13 @@ export async function criarGemeoNaHeygen(args: { nome: string; video: Buffer }):
 }
 
 /** O estado de um look (o gêmeo ou um cenário): processing, pending_consent, completed, failed. */
-export async function estadoDoLook(lookId: string): Promise<{ estado: string; motivo: string | null }> {
-  if (lookId.startsWith("duble-")) return { estado: "completed", motivo: null };
-  const d = await heygen<{ status?: string; error?: { message?: string } }>(`/v3/avatars/looks/${encodeURIComponent(lookId)}`, { method: "GET", acao: "consultar o gêmeo" });
-  return { estado: d.status ?? "processing", motivo: d.error?.message ?? null };
+export async function estadoDoLook(lookId: string): Promise<{ estado: string; motivo: string | null; previa: string | null }> {
+  if (lookId.startsWith("duble-")) return { estado: "completed", motivo: null, previa: null };
+  const d = await heygen<{ status?: string; preview_image_url?: string; error?: { message?: string } }>(`/v3/avatars/looks/${encodeURIComponent(lookId)}`, {
+    method: "GET",
+    acao: "consultar o gêmeo",
+  });
+  return { estado: d.status ?? "processing", motivo: d.error?.message ?? null, previa: d.preview_image_url ?? null };
 }
 
 /**
@@ -170,9 +178,12 @@ export async function estadoDoConsentimento(grupoId: string): Promise<string | n
 }
 
 /**
- * UM CENÁRIO NA HEYGEN: um look novo do mesmo gêmeo, gerado por prompt (a
- * imagem do gêmeo condiciona a geração; a pessoa continua reconhecível e o
- * prompt muda o resto). Fica salvo no gêmeo e vale para todos os vídeos.
+ * UM CENÁRIO NA HEYGEN POR PROMPT: um look novo do mesmo gêmeo (a imagem do
+ * gêmeo condiciona a geração; a pessoa continua reconhecível e o prompt muda
+ * o resto). Fica salvo no gêmeo e vale para todos os vídeos. Desde 04/10 é a
+ * alternativa (GEMEO_HEYGEN_CENARIO=look): o padrão é o gêmeo treinado sobre
+ * um fundo nosso, que não inventa roupa. O look só é usado depois da
+ * conferência por visão da prévia.
  */
 export async function criarLookNaHeygen(avatarId: string, cenario: IdDoCenario, nome: string): Promise<{ lookId: string }> {
   if (avatarId.startsWith("duble-")) return { lookId: `duble-look-${cenario}-${Date.now().toString(36)}` };
@@ -199,17 +210,86 @@ export async function apagarGemeoNaHeygen(grupoId: string): Promise<void> {
 }
 
 /**
- * A PROPORÇÃO do vídeo do gêmeo: quadrada, igual à da reserva (a foto
- * recortada do OmniHuman é quadrada), para que a junção e a esteira recebam
- * sempre o mesmo formato, troque o gerador ou não.
+ * O QUE VAI NO `imagem` DE UM PEDAÇO DA HEYGEN (04/10/2026):
+ *
+ *   gemeo:<avatar>            o gêmeo treinado com o fundo do vídeo de treino;
+ *   fundo:<avatar>:<asset>    o gêmeo treinado, recortado do fundo original
+ *                             (`remove_background`) e posto sobre a imagem do
+ *                             cenário (asset na HeyGen). A pessoa, a roupa e
+ *                             os gestos são os do treino; só o fundo muda.
+ *                             É o caminho padrão dos cenários;
+ *   look:<look>               um look gerado por prompt (GEMEO_HEYGEN_CENARIO=look).
+ *
+ * Os pedidos de antes de 04/10 guardaram só o id (o gêmeo no close, o look
+ * nos outros cenários), e continuam valendo.
  */
-const PROPORCAO = () => process.env.GEMEO_PROPORCAO ?? "1:1";
+export type ImagemDaHeygen = { tipo: "gemeo"; avatarId: string } | { tipo: "fundo"; avatarId: string; assetId: string } | { tipo: "look"; lookId: string };
+
+export function imagemDaHeygen(i: ImagemDaHeygen): string {
+  return i.tipo === "gemeo" ? `gemeo:${i.avatarId}` : i.tipo === "fundo" ? `fundo:${i.avatarId}:${i.assetId}` : `look:${i.lookId}`;
+}
+
+export function lerImagemDaHeygen(imagem: string, cenario: IdDoCenario): ImagemDaHeygen {
+  const [tipo, a, b] = imagem.split(":");
+  if (tipo === "gemeo" && a) return { tipo: "gemeo", avatarId: a };
+  if (tipo === "fundo" && a && b) return { tipo: "fundo", avatarId: a, assetId: b };
+  if (tipo === "look" && a) return { tipo: "look", lookId: a };
+  return cenario === "camera" ? { tipo: "gemeo", avatarId: imagem } : { tipo: "look", lookId: imagem };
+}
+
+/**
+ * O MOTOR (04/10): Avatar V, o de melhor boca e movimento da HeyGen, para o
+ * gêmeo treinado e para os looks (que usam o gêmeo treinado como referência
+ * de movimento). GEMEO_HEYGEN_MOTOR=avatar_iv volta ao anterior.
+ */
+const MOTOR = () => process.env.GEMEO_HEYGEN_MOTOR ?? "avatar_v";
+
+/**
+ * O CORPO DO PEDIDO DE UM PEDAÇO na HeyGen. Exportado para a prova.
+ *
+ * `motion_prompt` só vai para o LOOK: a HeyGen recusa com 400 ("motion_prompt
+ * is not supported for video avatars") no gêmeo treinado com Avatar IV, e foi
+ * por isso que o primeiro vídeo do Bruno pela HeyGen (03/10) falhou e o que
+ * ele viu saiu pela reserva. No gêmeo, o movimento é o do próprio treino.
+ */
+export function pedidoDaHeygen(args: { imagem: string; fala: string; cenario: IdDoCenario }): Record<string, unknown> {
+  const i = lerImagemDaHeygen(args.imagem, args.cenario);
+  const corpo: Record<string, unknown> = {
+    type: "avatar",
+    avatar_id: i.tipo === "look" ? i.lookId : i.avatarId,
+    audio_asset_id: args.fala,
+    aspect_ratio: PROPORCAO(),
+    resolution: "1080p",
+    engine: { type: MOTOR() },
+    title: "Demandou gêmeo",
+  };
+  if (i.tipo === "fundo") {
+    corpo.remove_background = true;
+    corpo.background = { type: "image", asset_id: i.assetId };
+    // O quadro inteiro preenchido: com "contain" num quadrado, a prova de
+    // 04/10 saiu com faixas BRANCAS dos lados (o fundo só cobre a área da
+    // pessoa). Com a proporção do treino (9:16), "cover" não corta nada.
+    corpo.fit = "cover";
+  }
+  if (i.tipo === "look") corpo.motion_prompt = cenarioPorId(args.cenario).movimento;
+  return corpo;
+}
+
+/**
+ * A PROPORÇÃO do vídeo do gêmeo na HeyGen (04/10/2026): 9:16, a do vídeo de
+ * treino (gravado em pé no celular). Era 1:1, igual à da reserva, e no
+ * quadrado o gêmeo saía com a cabeça cortada ("cover") ou com faixas brancas
+ * dos lados ("contain", prova de 04/10). Todos os pedaços de um vídeo saem
+ * do mesmo gerador, então a junção recebe sempre o mesmo formato; a esteira
+ * aceita qualquer proporção (é o formato dos cortes verticais).
+ */
+const PROPORCAO = () => process.env.GEMEO_PROPORCAO ?? "9:16";
 
 export const heygenGerador: GeradorDoGemeo = {
   id: "heygen",
   modelo: "heygen/avatar-iv-digital-twin",
   configurado: () => Boolean(process.env.HEYGEN_API_KEY) || dubleLigado(),
-  subirFala: async (dados, nome) => (await subirNaHeygen(dados, "audio/mpeg", nome)).assetId,
+  subirFala: async (dados, nome, contentType) => (await subirNaHeygen(dados, contentType ?? "audio/mpeg", nome)).assetId,
   async pedir({ imagem, fala, cenario }) {
     if (dubleLigado()) {
       const id = `duble-heygen-${Math.random().toString(36).slice(2, 10)}`;
@@ -217,18 +297,7 @@ export const heygenGerador: GeradorDoGemeo = {
     }
     const d = await heygen<{ video_id?: string }>("/v3/videos", {
       method: "POST",
-      body: JSON.stringify({
-        type: "avatar",
-        avatar_id: imagem,
-        audio_asset_id: fala,
-        aspect_ratio: PROPORCAO(),
-        resolution: "1080p",
-        // Avatar IV serve o gêmeo e os looks gerados por prompt; o V é só do
-        // look original (GEMEO_HEYGEN_MOTOR=avatar_v para testar no close).
-        engine: { type: cenario === "camera" ? (process.env.GEMEO_HEYGEN_MOTOR ?? "avatar_iv") : "avatar_iv" },
-        motion_prompt: cenarioPorId(cenario).movimento,
-        title: "Demandou gêmeo",
-      }),
+      body: JSON.stringify(pedidoDaHeygen({ imagem, fala, cenario })),
       acao: "pedir o vídeo",
     });
     if (!d.video_id) throw new ErroDoFornecedor("heygen", "recusado", 200, "HeyGen não devolveu o video_id");
@@ -242,14 +311,14 @@ export const heygenGerador: GeradorDoGemeo = {
   },
   async resultado(p) {
     if (p.responseUrl.startsWith("duble://")) return resultadoNoFal(p.responseUrl);
-    const d = await heygen<{ status?: string; video_url?: string; duration?: number; error?: { message?: string } }>(
+    const d = await heygen<{ status?: string; video_url?: string; thumbnail_url?: string; duration?: number; error?: { message?: string } }>(
       `/v3/videos/${encodeURIComponent(p.requestId)}`,
       { method: "GET", acao: "buscar o vídeo" }
     );
     if (d.status === "failed" || !d.video_url) {
       throw new ErroDoFornecedor("heygen", "recusado", 200, `HeyGen não gerou o vídeo: ${d.error?.message ?? d.status ?? "sem vídeo"}`);
     }
-    return { videoUrl: d.video_url, duracao: typeof d.duration === "number" ? d.duration : null };
+    return { videoUrl: d.video_url, duracao: typeof d.duration === "number" ? d.duration : null, quadroUrl: d.thumbnail_url ?? null };
   },
 };
 
