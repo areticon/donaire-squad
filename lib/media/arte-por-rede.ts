@@ -2,6 +2,7 @@ import { gruposDeFormato, instrucaoDeFormato, type FormatoDaRede, type Proporcao
 import { ajustarParaFormato } from "@/lib/media/margem-de-seguranca";
 import { conferirArte, pedidoDeCorrecao } from "@/lib/media/conferencia-da-arte";
 import { textoPermitidoComModelo } from "@/lib/modelos-de-arte/registro";
+import { pecaUsaMaterial } from "@/lib/materiais/escolha";
 
 /**
  * UMA ARTE POR PROPORÇÃO, UM RECORTE POR REDE, E UMA CONFERÊNCIA ANTES DE
@@ -149,7 +150,9 @@ export async function produzirArtePorRede(pedido: PedidoDeArte): Promise<ArteDoD
         // da extração, e nenhum modelo de imagem desenha nada. O olho ali só
         // estranhava conteúdo legítimo do vídeo que não está no post ("Jetro",
         // na sexta do teste) e fazia a peça idêntica ser refeita três vezes.
-        usarOlho: pedido.contentType === "infographic" ? false : pedido.usarOlho,
+        // A FOTO REAL DO CLIENTE (03/10, lib/materiais) também não vai ao olho:
+        // ele reprova gente e letreiro, e ali a gente e a placa são do cliente.
+        usarOlho: pedido.contentType === "infographic" || pecaUsaMaterial(pedido.textoEsperado) ? false : pedido.usarOlho,
         projectId: pedido.projectId,
         runId: pedido.runId,
       });

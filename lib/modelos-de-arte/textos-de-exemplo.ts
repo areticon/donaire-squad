@@ -455,6 +455,8 @@ export function textosDeExemplo(modelo: ModeloDeArte, setorId: string): TextosDa
       return { titulo: modelo.maxPalavras <= 6 ? e.curto : e.titulo };
     case "print-post":
       return { titulo: `${e.titulo}. ${e.apoio}` };
+    case "foto-profundidade":
+      return { titulo: e.curto, apoio: e.apoio };
     default:
       return { titulo: e.titulo, apoio: modelo.campos.includes("apoio") ? e.apoio : undefined };
   }

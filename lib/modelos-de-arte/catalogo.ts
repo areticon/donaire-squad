@@ -27,6 +27,7 @@ export type Arquetipo =
   | "foto-topo"
   | "foto-inteira"
   | "foto-lado"
+  | "foto-profundidade"
   | "frase"
   | "citacao"
   | "lista"
@@ -57,7 +58,8 @@ export type CampoDoModelo = "apoio" | "itens" | "numero" | "lados" | "autor" | "
 
 export type FundoDoModelo = "claro" | "escuro" | "acento" | "branco" | "papel";
 export type DestaqueDoModelo = "cor" | "bloco" | "marca-texto" | "sublinhado" | "nenhum";
-export type FotoDoModelo = "nenhuma" | "topo" | "inteira" | "lado" | "moldura" | "colagem";
+/** "recorte" (03/10): a foto real do cliente, com a pessoa recortada na frente do título. */
+export type FotoDoModelo = "nenhuma" | "topo" | "inteira" | "lado" | "moldura" | "colagem" | "recorte";
 
 export interface ModeloDeArte {
   id: string;
@@ -107,6 +109,27 @@ const FOTO_EDITORIAL =
   "Realistic editorial photograph, natural light, one clear focal subject, believable real place and materials, shallow depth of field, calm composition, no people's faces, no text, no logos.";
 
 export const MODELOS_DE_ARTE: ModeloDeArte[] = [
+  // ── Com a sua foto (03/10, biblioteca de materiais) ──
+  {
+    id: "voce-na-frente-do-titulo",
+    nome: "Você na frente do título",
+    paraQuem: "Quem aparece na própria marca: a sua foto real vira capa, com profundidade.",
+    categoria: "Com foto",
+    formatos: ["post", "carrossel", "story", "reels"],
+    arquetipo: "foto-profundidade",
+    estrutura: "A sua foto em tela cheia, com o fundo desfocado e na luz da marca; o título gigante passa ATRÁS de você, que fica recortado na frente; linha de apoio e logo embaixo.",
+    tipografia: { titulo: "Anton-400", texto: "Inter-700", caixaAlta: true },
+    cor: "Luz da cor de destaque atrás de você e na palavra-chave; o resto em branco sobre o tom escuro da marca.",
+    fundo: "escuro",
+    destaque: "cor",
+    foto: "recorte",
+    fotoOnde: "A peça inteira: a sua foto da biblioteca de materiais, sem mexer no rosto, só luz, cor e recorte.",
+    fotoPrompt: `${FOTO_EDITORIAL} Full-bleed frame with a calm upper half for a giant headline.`,
+    regrasDeTexto: "Título de até 6 palavras, curto e forte; uma linha de apoio de até 12 palavras.",
+    maxPalavras: 6,
+    campos: ["apoio"],
+    inspiracao: "Capas de criadores e palestrantes com o rosto na frente do título (efeito de profundidade de Reels e YouTube).",
+  },
   // ── Com foto ──
   {
     id: "foto-legenda-escura",

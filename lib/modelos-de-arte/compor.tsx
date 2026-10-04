@@ -148,15 +148,29 @@ export interface PedidoDeComposicao {
   marca: string;
   arroba?: string;
   pagina?: { i: number; total: number } | null;
+  /** A pessoa recortada da foto real do cliente (PNG), para o modelo com profundidade. */
+  recorte?: Buffer | null;
 }
 
 /** Compõe a peça no modelo e devolve JPEG. Sem chamada paga. */
 export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
   const z = zonaDaFoto(p.modelo, p.largura, p.altura);
   let foto: string | null = null;
-  if (p.foto && z) {
-    const recorte = await sharp(p.foto).resize(Math.max(1, Math.round(z.w)), Math.max(1, Math.round(z.h)), { fit: "cover", position: "attention" }).jpeg({ quality: 90 }).toBuffer();
-    foto = dataUri(recorte, "image/jpeg");
+  let recorte: string | null = null;
+  let fundoDesfocado: string | null = null;
+  // PROFUNDIDADE (03/10): foto, pessoa e fundo desfocado no mesmo recorte.
+  if (p.foto && p.recorte && p.modelo.foto === "recorte") {
+    const { enquadrarComPessoa } = await import("@/lib/materiais/profundidade");
+    const e = await enquadrarComPessoa({ foto: p.foto, recorte: p.recorte, largura: p.largura, altura: p.altura }).catch(() => null);
+    if (e) {
+      foto = dataUri(e.foto, "image/jpeg");
+      recorte = dataUri(e.recorte);
+      fundoDesfocado = dataUri(e.fundo, "image/jpeg");
+    }
+  }
+  if (!foto && p.foto && z) {
+    const ajustada = await sharp(p.foto).resize(Math.max(1, Math.round(z.w)), Math.max(1, Math.round(z.h)), { fit: "cover", position: "attention" }).jpeg({ quality: 90 }).toBuffer();
+    foto = dataUri(ajustada, "image/jpeg");
   }
   registrarTextoComposto(p.textos.titulo, textoComposto(p.textos, p.marca, p.modelo));
   const elemento = desenharModelo({
@@ -171,6 +185,8 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     marca: p.marca,
     arroba: p.arroba,
     pagina: p.pagina,
+    recorte,
+    fundoDesfocado,
   });
   const resposta = new ImageResponse(elemento as React.ReactElement, { width: p.largura, height: p.altura, fonts: await fontesDosModelos() });
   const png = Buffer.from(await resposta.arrayBuffer());

@@ -9,7 +9,8 @@ import {
   laminaGuardada,
   guardarLamina,
 } from "@/lib/media/checkpoint-do-carrossel";
-import { comporFraseNaArte, layoutDaPeca, marcaDaArte, modeloDaMarca, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { arteComMaterialDoCliente, comporFraseNaArte, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import type { MaterialDaMarca } from "@/lib/materiais/escolha";
 
 /**
  * O CARROSSEL, que existia no código e nunca existiu no produto.
@@ -198,14 +199,31 @@ export async function desenharCarrossel(opcoes: {
   const formato = formatoDaPeca("instagram", "carousel");
   // A instrução de formato não vai mais ao modelo: ele desenha só a arte, na
   // proporção da zona da arte, e a frase é composta em código (30/09).
-  const marcaDoProjeto = opcoes.marca ?? (await marcaDaArte(opcoes.projectId));
+  const marcaDoProjeto = opcoes.marca ?? (await marcaDaArte(opcoes.projectId, { runId: opcoes.runId }));
   // Um layout só para o carrossel inteiro, tirado da primeira lâmina (01/10):
   // a variedade de layout é entre peças, não entre lâminas da mesma peça.
   const ancora = opcoes.roteiro[0]?.frase ?? "";
   const marca: MarcaDaArte = { ...marcaDoProjeto, variante: layoutDaPeca(marcaDoProjeto, ancora).variante };
   // O MODELO DO BOOK (03/10): um só para o carrossel inteiro, escolhido pela
   // primeira lâmina; o roteiro inteiro é o contexto dos textos extras.
-  const modeloDoCarrossel = await modeloDaMarca({ ...marca, pagina: { i: 0, total: opcoes.roteiro.length } }, formato.largura, formato.altura, ancora);
+  // OS MATERIAIS DO CLIENTE (03/10, lib/materiais): cada lâmina leva a foto
+  // real que serve à frase dela, sem repetir no mesmo carrossel. Escolhidos em
+  // fila, antes de desenhar, para as lâminas em paralelo não pegarem a mesma.
+  const materialDaLamina: Array<MaterialDaMarca | null> = opcoes.roteiro.map(() => null);
+  if (marca.materiais?.length) {
+    const { escolherMaterial } = await import("@/lib/materiais/escolha");
+    const usados = new Set<string>();
+    const fio = opcoes.roteiro.map((l) => l.frase).join(" | ");
+    for (let i = 0; i < opcoes.roteiro.length; i++) {
+      const m = await escolherMaterial({ materiais: marca.materiais, frase: opcoes.roteiro[i].frase, contexto: fio, projectId: opcoes.projectId, evitar: usados, chave: `carrossel:${i}` }).catch(() => null);
+      materialDaLamina[i] = m;
+      if (m) usados.add(m.id);
+    }
+  }
+  const comPagina = { ...marca, pagina: { i: 0, total: opcoes.roteiro.length } };
+  const doMaterial = materialDaLamina[0] ?? materialDaLamina.find(Boolean) ?? null;
+  const modeloPeloMaterial = doMaterial ? await modeloParaOMaterial(comPagina, doMaterial, formato.largura, formato.altura, ancora) : null;
+  const modeloDoCarrossel = modeloPeloMaterial?.usar && modeloPeloMaterial.modelo ? modeloPeloMaterial.modelo : await modeloDaMarca(comPagina, formato.largura, formato.altura, ancora);
   if (modeloDoCarrossel) {
     marca.modeloFixo = modeloDoCarrossel.id;
     marca.contexto = marca.contexto ?? opcoes.roteiro.map((l) => l.frase).join("\n");
@@ -274,7 +292,19 @@ export async function desenharCarrossel(opcoes: {
     // UMA tentativa desde 30/09. A retentativa existia para frase desenhada
     // que a borda cortava; com a frase composta em código dentro da margem,
     // isso deixou de acontecer, e a arte encostar na borda é de propósito.
-    {
+    // A FOTO REAL DA LÂMINA (03/10): composta sem imagem paga.
+    const material = materialDaLamina[i];
+    if (material) {
+      const r = await arteComMaterialDoCliente({
+        frase: opcoes.roteiro[i].frase,
+        marca: modeloDoCarrossel ? { ...marca, pagina: { i, total: opcoes.roteiro.length } } : marca,
+        largura: formato.largura,
+        altura: formato.altura,
+        material,
+      }).catch(() => null);
+      if (r) uri = (await ajustarParaFormato(r.jpeg, formato)).dataUri;
+    }
+    if (!uri) {
       // Modelo do book sem foto (lista, citação, só texto): nenhuma imagem paga.
       let arte: Buffer | null = null;
       if (!modeloDoCarrossel || proporcaoDaFoto) {

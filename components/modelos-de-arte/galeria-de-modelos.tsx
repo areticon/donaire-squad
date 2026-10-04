@@ -108,7 +108,10 @@ export function PreviaDoModelo({
         cores: marca.cores,
         largura: W,
         altura: H,
-        foto: modelo.foto === "nenhuma" ? null : `/modelos-de-arte/fotos/${marca.setor}.jpg`,
+        // "Você na frente do título" (03/10): na prévia, a foto do setor vira o
+        // fundo e uma silhueta mostra onde a sua foto entra recortada.
+        foto: modelo.foto === "nenhuma" || modelo.foto === "recorte" ? null : `/modelos-de-arte/fotos/${marca.setor}.jpg`,
+        fundoDesfocado: modelo.foto === "recorte" ? `/modelos-de-arte/fotos/${marca.setor}.jpg` : null,
         logo: marca.logoUrl && logoProporcao ? marca.logoUrl : null,
         logoProporcao,
         marca: marca.nome,

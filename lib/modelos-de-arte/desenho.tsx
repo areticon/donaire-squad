@@ -39,6 +39,13 @@ export interface EntradaDoDesenho {
   arroba?: string;
   /** Lâmina de carrossel (0 = capa). */
   pagina?: { i: number; total: number } | null;
+  /**
+   * PROFUNDIDADE (03/10, biblioteca de materiais): a pessoa recortada da foto
+   * real (PNG com transparência, no tamanho da peça, alinhada com `foto`) e o
+   * fundo desfocado da mesma foto. Com os dois, o título passa atrás da pessoa.
+   */
+  recorte?: string | null;
+  fundoDesfocado?: string | null;
 }
 
 export interface Zona {
@@ -111,6 +118,7 @@ export function zonaDaFoto(modelo: ModeloDeArte, largura: number, altura: number
       return { x: 0, y: 0, w: W, h: Math.round(H * 0.6) };
     case "foto-inteira":
     case "revista":
+    case "foto-profundidade":
       return { x: 0, y: 0, w: W, h: H };
     case "foto-lado":
       if (alta) return { x: 0, y: 0, w: W, h: Math.round(H * 0.5) };
@@ -444,6 +452,56 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
           </div>
         </>,
         "#000000"
+      );
+    }
+
+    case "foto-profundidade": {
+      // O TÍTULO ATRÁS DA PESSOA (03/10). Camadas, de baixo para cima: a foto
+      // (desfocada quando há recorte), o tom da marca, a luz de destaque atrás
+      // da pessoa, o título gigante, a pessoa recortada e o rodapé. Sem a foto
+      // do cliente (prévia), uma silhueta mostra onde a pessoa entra.
+      const z = { x: 0, y: 0, w: W, h: H };
+      const [ar, ag, ab] = rgb(acento);
+      const temRecorte = Boolean(e.recorte);
+      const tituloTop = Math.round(m * 1.1);
+      const tituloAltura = Math.round(H * (alta ? 0.3 : 0.36));
+      const silhueta = !e.foto;
+      const baseH = Math.round(H * (alta ? 0.22 : 0.26));
+      return raiz(
+        <>
+          {e.fundoDesfocado || e.foto ? <Foto src={e.fundoDesfocado ?? e.foto} z={z} cor={tomDaFoto} /> : null}
+          <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `linear-gradient(180deg, ${rgba(escuro, 0.82)} 0%, ${rgba(escuro, 0.35)} 42%, ${rgba(escuro, 0.25)} 62%, ${rgba(escuro, 0.9)} 100%)` })} />
+          <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `radial-gradient(circle at 50% ${alta ? 52 : 58}%, rgba(${ar},${ag},${ab},0.55) 0%, rgba(${ar},${ag},${ab},0.18) 30%, rgba(${ar},${ag},${ab},0) 55%)` })} />
+          <div style={flex({ position: "absolute", left: m * 0.6, top: tituloTop, width: W - m * 1.2, justifyContent: "center" })}>
+            <Texto texto={t.titulo} fonte={tf} largura={W - m * 1.2} altura={tituloAltura} corpoMaximo={250 * u} corpoMinimo={60 * u} entrelinha={0.98} cor="#ffffff" destaque={modoDestaque === "sublinhado" ? "cor" : modoDestaque} corDestaque={acento} palavras={palavras} caixaAlta={caixaAlta} alinhar="center" maxLinhas={3} />
+          </div>
+          {temRecorte ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={e.recorte!} alt="" width={W} height={H} style={{ position: "absolute", left: 0, top: 0, width: W, height: H }} />
+          ) : silhueta ? (
+            <div style={flex({ position: "absolute", left: 0, top: Math.round(H * 0.3), width: W, height: Math.round(H * 0.7), justifyContent: "center" })}>
+              <svg width={Math.round(W * 0.78)} height={Math.round(H * 0.7)} viewBox="0 0 100 100" preserveAspectRatio="none">
+                <ellipse cx="50" cy="22" rx="15" ry="19" fill={misturar(escuro, "#000000", 0.35)} />
+                <path d="M8 100 C 10 62, 28 50, 50 50 C 72 50, 90 62, 92 100 Z" fill={misturar(escuro, "#000000", 0.35)} />
+              </svg>
+            </div>
+          ) : null}
+          <div style={flex({ position: "absolute", left: 0, top: H - baseH, width: W, height: baseH, backgroundImage: `linear-gradient(180deg, ${rgba(escuro, 0)} 0%, ${rgba(escuro, 0.92)} 70%)` })} />
+          <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 1.6 - (t.apoio ? 110 * u : 0) - (alta ? H * 0.08 : 0), width: larguraUtil, flexDirection: "column", alignItems: "center" })}>
+            {t.apoio ? (
+              <div style={flex({ marginBottom: 22 * u })}>
+                <Texto texto={t.apoio} fonte={xf} largura={larguraUtil} altura={96 * u} corpoMaximo={38 * u} entrelinha={1.25} cor="#ffffff" maxLinhas={2} alinhar="center" sombra />
+              </div>
+            ) : null}
+            <Assinatura e={e} fundo="#000000" altura={logoH} alinhar="center" />
+          </div>
+          {e.pagina && e.pagina.total > 1 ? (
+            <div style={flex({ position: "absolute", left: m, top: m * 0.45 })}>
+              <Pontos e={e} cor={acento} apagado="rgba(255,255,255,0.35)" u={u} />
+            </div>
+          ) : null}
+        </>,
+        escuro
       );
     }
 

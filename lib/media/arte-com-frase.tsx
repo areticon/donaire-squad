@@ -69,6 +69,12 @@ export type MarcaDaArte = {
   /** O texto do post, de onde o modelo tira itens, lados e número. */
   contexto?: string;
   projectId?: string;
+  /**
+   * A BIBLIOTECA DE MATERIAIS (03/10, lib/materiais): as fotos reais do
+   * cliente que podem virar arte. Com elas, a peça usa a foto que serve ao
+   * post ANTES de pagar imagem gerada.
+   */
+  materiais?: import("@/lib/materiais/escolha").MaterialDaMarca[];
 };
 
 /** A identidade do projeto em forma de marca da peça. */
@@ -77,7 +83,7 @@ export function marcaDaIdentidade(identidade: IdentidadeVisual): MarcaDaArte {
 }
 
 /** A marca do projeto: família respeitando a escolha, cores efetivas, letra e setor. */
-export async function marcaDaArte(projectId?: string | null): Promise<MarcaDaArte> {
+export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: string }): Promise<MarcaDaArte> {
   if (!projectId) {
     // Sem projeto não há identidade: a marca neutra do setor genérico, e não
     // mais o laranja da Demandou.
@@ -87,14 +93,95 @@ export async function marcaDaArte(projectId?: string | null): Promise<MarcaDaArt
   const marca = marcaDaIdentidade(await identidadeDoProjeto(projectId));
   // Os modelos escolhidos no book (03/10). Sem escolha, nada muda.
   const { lerModelosEscolhidos } = await import("@/lib/modelos-de-arte/escolha");
-  const escolha = await lerModelosEscolhidos(projectId).catch(() => null);
-  if (!escolha) return marca;
+  const { materiaisDaMarca } = await import("@/lib/materiais/escolha");
+  const [escolha, materiais] = await Promise.all([lerModelosEscolhidos(projectId).catch(() => null), materiaisDaMarca(projectId, opcoes?.runId).catch(() => [])]);
+  if (materiais.length) marca.materiais = materiais;
+  if (!escolha && !materiais.length) return marca;
   const { prisma } = await import("@/lib/db/prisma");
   const { lerMidia } = await import("@/lib/media/storage");
   const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
   const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, logoUrl: true } });
   const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
-  return { ...marca, modelos: escolha.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+  return { ...marca, modelos: escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/** O modelo do book com a pessoa recortada na frente do título. */
+export const MODELO_COM_PROFUNDIDADE = "voce-na-frente-do-titulo";
+
+/**
+ * O MODELO quando a peça vai sair de uma foto real do cliente (03/10): entre
+ * os modelos escolhidos, só os que têm lugar para foto; foto de pessoa vai para
+ * "Você na frente do título" quando ele está escolhido ou quando o cliente não
+ * escolheu modelo nenhum. Devolve `usar: false` quando os modelos escolhidos
+ * não têm foto: a escolha do cliente manda, e a foto fica para outra peça.
+ */
+export async function modeloParaOMaterial(
+  marca: MarcaDaArte,
+  material: import("@/lib/materiais/escolha").MaterialDaMarca,
+  largura: number,
+  altura: number,
+  frase: string
+): Promise<{ usar: boolean; modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte | null }> {
+  const { modeloPorId } = await import("@/lib/modelos-de-arte/catalogo");
+  if (marca.modeloFixo) {
+    const m = modeloPorId(marca.modeloFixo);
+    return { usar: !m || m.foto !== "nenhuma", modelo: m ?? null };
+  }
+  const ids = marca.modelos ?? [];
+  const pessoa = material.etiquetas.includes("pessoa");
+  if (pessoa && (!ids.length || ids.includes(MODELO_COM_PROFUNDIDADE))) return { usar: true, modelo: modeloPorId(MODELO_COM_PROFUNDIDADE) ?? null };
+  if (!ids.length) return { usar: true, modelo: null };
+  const comFoto = ids.filter((id) => (modeloPorId(id)?.foto ?? "nenhuma") !== "nenhuma" && (pessoa || id !== MODELO_COM_PROFUNDIDADE));
+  if (!comFoto.length) return { usar: false, modelo: null };
+  const { modeloParaAPeca } = await import("@/lib/modelos-de-arte/compor");
+  const m = modeloParaAPeca({ ids: comFoto, largura, altura, frase, contexto: marca.contexto, carrossel: Boolean(marca.pagina) });
+  return { usar: Boolean(m), modelo: m };
+}
+
+const usosMarcados = new Set<string>();
+
+/**
+ * A ARTE A PARTIR DA FOTO REAL (03/10). Escolhe o material que serve à frase,
+ * trata a foto (luz e cor no quadro inteiro), recorta a pessoa quando o modelo
+ * pede profundidade e compõe a frase. Nenhuma imagem gerada é paga. Null
+ * quando nada serve, e a peça segue o caminho de antes.
+ */
+export async function arteComMaterialDoCliente(o: {
+  frase: string;
+  marca: MarcaDaArte;
+  largura: number;
+  altura: number;
+  material?: import("@/lib/materiais/escolha").MaterialDaMarca | null;
+}): Promise<{ jpeg: Buffer; materialId: string; modelo: string | null; recorte: boolean } | null> {
+  if (!o.marca.materiais?.length && !o.material) return null;
+  const { escolherMaterial, registrarPecaComMaterial } = await import("@/lib/materiais/escolha");
+  const material =
+    o.material ??
+    (await escolherMaterial({ materiais: o.marca.materiais ?? [], frase: o.frase, contexto: o.marca.contexto, projectId: o.marca.projectId }));
+  if (!material) return null;
+  const { usar, modelo } = await modeloParaOMaterial(o.marca, material, o.largura, o.altura, o.frase);
+  if (!usar) return null;
+  const { lerMidia } = await import("@/lib/media/storage");
+  const { tratarFoto, recorteDoMaterial, marcarUso } = await import("@/lib/materiais/servidor");
+  const original = await lerMidia(material.url).catch(() => null);
+  if (!original) return null;
+  const foto = await tratarFoto(original, material.luz);
+  const recorte = modelo?.foto === "recorte" && material.etiquetas.includes("pessoa") ? await recorteDoMaterial(material.id) : null;
+  const jpeg = await comporFraseNaArte({
+    arte: foto,
+    frase: o.frase,
+    marca: modelo ? { ...o.marca, modeloFixo: modelo.id } : { ...o.marca, modelos: undefined },
+    largura: o.largura,
+    altura: o.altura,
+    recorte,
+  });
+  registrarPecaComMaterial(o.frase);
+  const chaveDoUso = `${material.id}|${o.frase}`;
+  if (!usosMarcados.has(chaveDoUso)) {
+    usosMarcados.add(chaveDoUso);
+    void marcarUso(material.id);
+  }
+  return { jpeg, materialId: material.id, modelo: modelo?.id ?? null, recorte: Boolean(recorte) };
 }
 
 /** O modelo do book que vale para esta peça, quando a marca tem modelos. */
@@ -421,6 +508,8 @@ export async function comporFraseNaArte(p: {
   marca: MarcaDaArte;
   largura: number;
   altura: number;
+  /** A pessoa recortada da foto real (PNG), para o modelo com profundidade. */
+  recorte?: Buffer | null;
 }): Promise<Buffer> {
   // O MODELO DO BOOK (03/10): quando o cliente escolheu modelos, a peça sai no
   // molde de um deles, com o mesmo desenho da prévia que ele viu.
@@ -437,6 +526,7 @@ export async function comporFraseNaArte(p: {
       logo: p.marca.logoDoModelo,
       marca: p.marca.nomeDaMarca || "Sua marca",
       pagina: p.marca.pagina ?? null,
+      recorte: p.recorte ?? null,
     });
   }
   const W = p.largura;
@@ -690,6 +780,15 @@ export function desenharComFraseEmCodigo(
 ): (prompt: string, proporcao: ProporcaoPedida) => Promise<string> {
   return async (prompt, proporcao) => {
     const { largura, altura } = TAMANHO_DA_PROPORCAO[proporcao];
+    // O MATERIAL DO CLIENTE PRIMEIRO (03/10): a foto real que serve ao post,
+    // tratada e composta, sem pagar imagem nova. Falhou, segue o de antes.
+    if (marca.materiais?.length) {
+      const doCliente = await arteComMaterialDoCliente({ frase, marca, largura, altura }).catch((e) => {
+        console.warn("[arte-com-frase] o material do cliente não entrou:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (doCliente) return `data:image/jpeg;base64,${doCliente.jpeg.toString("base64")}`;
+    }
     // MODELO DO BOOK (03/10): modelo sem foto não paga imagem nenhuma; modelo
     // com foto pede a cena na proporção da zona da foto, na direção dele.
     const modelo = await modeloDaMarca(marca, largura, altura, frase);
