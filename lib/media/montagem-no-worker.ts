@@ -16,10 +16,10 @@ import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
  * esperando a vez na fila não é morta, até o teto.
  */
 
-/** A mesma conta do worker: 20 min fixos mais 6 s por segundo de vídeo no final (3 na prévia). */
+/** A mesma conta do worker: 20 min fixos mais 8 s por segundo de vídeo no final (3 na prévia). */
 export function prazoDoWorkerMs(duracaoSeg: number | null | undefined, final: boolean): number {
   const dur = Number(duracaoSeg) > 0 ? Number(duracaoSeg) : 1200;
-  return Math.round((20 * 60 + dur * (final ? 6 : 3)) * 1000);
+  return Math.round((20 * 60 + dur * (final ? 8 : 3)) * 1000);
 }
 
 /** A espera na fila do worker que o app tolera sem perguntar (um completo inteiro pode estar na frente). */

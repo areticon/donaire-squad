@@ -1395,16 +1395,18 @@ function prioridadeDaMontagem(pedido, rota) {
 /**
  * O PRAZO DE UMA MONTAGEM (04/10), proporcional à duração do que se monta:
  * 20 min fixos (baixar, Chrome, subir, guarda da fala) mais `fator` segundos
- * por segundo de vídeo (6 no final, 3 na prévia de meia resolução). Medido
+ * por segundo de vídeo (8 no final, 3 na prévia de meia resolução). Medido
  * local em 04/10 com cmurtv2zg: o corte de 43 s levou 10 min (com a prévia do
- * completo rodando ao lado) e ganha 24; a prévia do completo de 17 min levou
- * 34 min e ganha 72; o final do completo ganha 124. MONTAGEM_PRAZO_FATOR
+ * completo rodando ao lado) e ganha 26; a prévia do completo de 17 min levou
+ * 34 a 37 min e ganha 72; o final do completo (as camadas em 1080p passam de
+ * uma hora na máquina local) ganha 158. Prazo curto mata render saudável;
+ * prazo longo só atrasa a descoberta de um pendurado. MONTAGEM_PRAZO_FATOR
  * ajusta o fator do final sem deploy de código.
  */
 export function prazoDaMontagem(pedido) {
   const dur = Number(pedido?.edicao?.duracao ?? pedido?.trecho?.duracao ?? pedido?.montagem?.duracao ?? pedido?.duracao) || 1200;
   const final = !(Number(pedido?.escala) < 1);
-  const fator = final ? Number(process.env.MONTAGEM_PRAZO_FATOR) || 6 : 3;
+  const fator = final ? Number(process.env.MONTAGEM_PRAZO_FATOR) || 8 : 3;
   return Math.round((20 * 60 + dur * fator) * 1000);
 }
 
