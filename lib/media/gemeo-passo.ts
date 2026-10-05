@@ -8,10 +8,11 @@ import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 import { transcribeBlob } from "@/lib/media/transcribe";
 import { cutucar } from "@/lib/fila/trabalhos";
 import { comporSobreImagemComCusto, dataUrlToBuffer } from "@/lib/media/nano-banana";
-import { avisarGemeo } from "@/lib/notificacoes/avisos-do-gemeo";
+import { avisarEquipeSemVaga, avisarGemeo } from "@/lib/notificacoes/avisos-do-gemeo";
 import {
   FOLGA_DO_VIDEO_SOBRE_A_FALA,
   GERADORES,
+  MOTIVO_SEM_VAGA,
   SEGUNDOS_MINIMOS_DA_VOZ,
   cenarioPorId,
   conferirFalaDaAutorizacao,
@@ -19,6 +20,7 @@ import {
   creditosDoGemeo,
   duracaoFalada,
   partirAoMeio,
+  avatarSemVaga,
   type AvaliacaoDaFoto,
   type CenarioPronto,
   type IdDoCenario,
@@ -88,6 +90,14 @@ const PRAZO_DO_GERADOR_MS = 60 * 60_000;
 const PRAZO_DA_JUNCAO_MS = 20 * 60_000;
 const ESPERA_SEM_PERMISSAO_MS = 30 * 60_000;
 const ESPERA_DE_FALHA_MS = 10 * 60_000;
+/**
+ * SEM VAGA NA HEYGEN (05/10): de quanto em quanto tempo o passo tenta criar o
+ * gêmeo de novo sozinho. Cada tentativa sobe o vídeo de treino e pede o gêmeo;
+ * a recusa por limite não cobra, mas não precisa bater na porta todo minuto.
+ */
+const ESPERA_DE_VAGA_MS = 6 * 3600_000;
+/** O botão "Tentar de novo" da tela não dispara duas criações seguidas. */
+const ESPERA_DO_BOTAO_MS = 2 * 60_000;
 /** ElevenLabs no plano Creator, por caractere, para o registro de custo. */
 const DOLAR_POR_CARACTERE = 0.00022;
 
@@ -571,6 +581,12 @@ async function cuidarDoAvatar(projectId: string, c: CadastroGuardado): Promise<v
   const origem = t.videoUrl;
   const a = c.avatar;
 
+  // SEM VAGA (05/10): avisa a equipe uma vez e, de tempos em tempos, tenta de novo.
+  if (a && a.origem === origem && avatarSemVaga(a)) {
+    await cuidarDaFaltaDeVaga(projectId, origem);
+    return;
+  }
+
   if (!a || a.origem !== origem || (a.estado === "enviando" && idade(a.ultimaTentativa) > ESPERA_DE_FALHA_MS)) {
     if (a?.estado === "falhou") return;
     if (a && a.origem === origem && (a.tentativas ?? 0) >= 3) {
@@ -594,6 +610,8 @@ async function cuidarDoAvatar(projectId: string, c: CadastroGuardado): Promise<v
           origem,
           tentativas: (x.avatar?.origem === origem ? x.avatar.tentativas ?? 0 : 0) + 1,
           ultimaTentativa: marca,
+          // A equipe já avisada da falta de vaga não recebe o mesmo e-mail a cada nova tentativa.
+          equipeAvisadaEm: x.avatar?.origem === origem ? x.avatar.equipeAvisadaEm ?? null : null,
         },
       };
     });
@@ -604,34 +622,125 @@ async function cuidarDoAvatar(projectId: string, c: CadastroGuardado): Promise<v
       const criado = await criarGemeoNaHeygen({ nome: `${t.nome} (Demandou)`, video });
       gravarCustoDeVideo("heygen/digital-twin-criacao", 1, { projectId, operation: "gemeo_treino" });
       let orfao: string | null = null;
+      let semCadastro = false;
       await mudarCadastro(projectId, (x) => {
         if (x?.avatar?.origem !== origem) {
           orfao = criado.grupoId;
+          semCadastro = !x;
           return x ? { ...x, avataresParaApagar: [...(x.avataresParaApagar ?? []), criado.grupoId] } : undefined;
         }
-        return { ...x, avatar: { ...x.avatar, estado: "treinando", desde: agora(), avatarId: criado.avatarId, grupoId: criado.grupoId, motivo: null } };
+        return {
+          ...x,
+          avatar: { ...x.avatar, estado: "treinando", desde: agora(), avatarId: criado.avatarId, grupoId: criado.grupoId, motivo: null, semVaga: false, erroTecnico: null },
+        };
       });
-      if (orfao) console.warn(`[gemeo][${projectId}] gêmeo treinado órfão ${orfao} na fila de apagar`);
+      if (orfao && semCadastro) {
+        // 05/10: o projeto (ou o gêmeo) foi apagado enquanto o gêmeo nascia:
+        // não há cadastro onde guardar a fila, então apaga já, e não ocupa a vaga.
+        const grupo: string = orfao;
+        await apagarGemeoNaHeygen(grupo).catch((e) =>
+          console.error(`[gemeo][${projectId}] gêmeo treinado órfão ${grupo} NÃO apagado (apagar à mão na HeyGen):`, mensagem(e))
+        );
+      } else if (orfao) console.warn(`[gemeo][${projectId}] gêmeo treinado órfão ${orfao} na fila de apagar`);
     } catch (e) {
-      console.warn(`[gemeo][${projectId}] criar o gêmeo na HeyGen:`, mensagem(e));
+      const tecnico = mensagem(e).slice(0, 600);
+      console.warn(`[gemeo][${projectId}] criar o gêmeo na HeyGen:`, tecnico);
+      const limite = e instanceof ErroDoFornecedor && e.tipo === "limite";
       const recusado = e instanceof ErroDoFornecedor && e.tipo === "recusado";
-      await mudarCadastro(projectId, (x) =>
+      // O motivo é o que a pessoa lê; o erro do fornecedor fica em `erroTecnico` (log e admin).
+      const depois = await mudarCadastro(projectId, (x) =>
         x?.avatar?.origem === origem && x.avatar.estado === "enviando"
           ? {
               ...x,
               avatar: {
                 ...x.avatar,
-                estado: recusado ? "falhou" : "enviando",
-                motivo: recusado ? `O gerador recusou o vídeo de treino (${mensagem(e).slice(0, 160)}).` : "O gerador não respondeu; tentamos de novo em alguns minutos.",
+                estado: limite || recusado ? "falhou" : "enviando",
+                desde: limite || recusado ? agora() : x.avatar.desde,
+                semVaga: limite,
+                erroTecnico: tecnico,
+                motivo: limite
+                  ? MOTIVO_SEM_VAGA
+                  : recusado
+                    ? "O gerador não aceitou o vídeo de treino."
+                    : "O gerador não respondeu; tentamos de novo em alguns minutos.",
               },
             }
           : undefined
       );
+      if (limite && depois?.avatar?.origem === origem) await cuidarDaFaltaDeVaga(projectId, origem);
     }
     return;
   }
 
   await avancarAvatar(projectId, c);
+}
+
+/**
+ * SEM VAGA NA HEYGEN (05/10/2026). O Bruno criou um gêmeo na conta pessoal e a
+ * HeyGen respondeu "resource_limit_reached": a conta da Demandou chegou ao
+ * máximo de gêmeos do plano. O vídeo dele estava certo; falta vaga, e a vaga
+ * é assunto da equipe. Então:
+ *
+ *   1. a equipe (admins) recebe um e-mail, uma vez por vídeo de treino, com o
+ *      erro técnico; a pessoa lê só a frase de `MOTIVO_SEM_VAGA`;
+ *   2. a cada `ESPERA_DE_VAGA_MS` o passo reabre o pedido sozinho, para o gêmeo
+ *      nascer assim que a vaga liberar, sem ninguém lembrar de clicar;
+ *   3. a tela oferece "Tentar de novo" (`tentarGemeoDeNovo`) para quando a
+ *      equipe avisar que liberou.
+ *
+ * Também acerta o registro gravado antes de 05/10 (motivo com o JSON cru).
+ * Enquanto isso, os vídeos saem pela reserva, como em qualquer falha do avatar.
+ */
+async function cuidarDaFaltaDeVaga(projectId: string, origem: string): Promise<void> {
+  let avisar: string | null = null;
+  const marcado = await mudarCadastro(projectId, (x) => {
+    const a = x?.avatar;
+    if (!x || !a || a.origem !== origem || !avatarSemVaga(a) || a.equipeAvisadaEm) return undefined;
+    const tecnico = a.erroTecnico ?? a.motivo ?? "resource_limit_reached";
+    avisar = tecnico;
+    return { ...x, avatar: { ...a, semVaga: true, motivo: MOTIVO_SEM_VAGA, erroTecnico: tecnico, equipeAvisadaEm: agora() } };
+  });
+  if (avisar && marcado) {
+    await avisarEquipeSemVaga(projectId, avisar);
+    return;
+  }
+  const c = await lerCadastro(projectId);
+  const a = c?.avatar;
+  if (a && a.origem === origem && avatarSemVaga(a) && idade(a.desde) > ESPERA_DE_VAGA_MS) {
+    console.log(`[gemeo][${projectId}] sem vaga na HeyGen há mais de 6 h; tentando criar o gêmeo de novo`);
+    await reabrirAvatar(projectId, origem);
+  }
+}
+
+/**
+ * Devolve o avatar recusado por falta de vaga ao estado "enviando", sem
+ * tentativas, para a próxima passada do passo pedir o gêmeo de novo. Mantém
+ * `equipeAvisadaEm` (a equipe não recebe o mesmo e-mail a cada tentativa).
+ */
+async function reabrirAvatar(projectId: string, origem: string): Promise<boolean> {
+  const depois = await mudarCadastro(projectId, (x) => {
+    const a = x?.avatar;
+    if (!x || !a || a.origem !== origem || !avatarSemVaga(a)) return undefined;
+    return {
+      ...x,
+      avatar: { ...a, estado: "enviando", desde: agora(), tentativas: 0, ultimaTentativa: null, semVaga: false, motivo: "Tentando criar o seu gêmeo de novo." },
+    };
+  });
+  return depois?.avatar?.origem === origem && depois.avatar.estado === "enviando";
+}
+
+/**
+ * "TENTAR DE NOVO" (05/10), o botão da tela quando o gêmeo ficou sem vaga na
+ * HeyGen. Só reabre o pedido; quem chama o fornecedor é o passo do cron
+ * (cutucado pela rota). Devolve se reabriu.
+ */
+export async function tentarGemeoDeNovo(projectId: string): Promise<boolean> {
+  const c = await lerCadastro(projectId);
+  const a = c?.avatar;
+  const origem = c?.treino?.videoUrl;
+  if (!a || !origem || a.origem !== origem || !avatarSemVaga(a)) return false;
+  if (idade(a.desde) < ESPERA_DO_BOTAO_MS) return false;
+  return reabrirAvatar(projectId, origem);
 }
 
 /**
@@ -755,6 +864,9 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       OR jsonb_array_length(COALESCE(value -> 'vozesParaApagar', '[]'::jsonb)) > 0
       OR value -> 'treino' ->> 'estado' IN ('preparando', 'conferindo')
       OR value -> 'avatar' ->> 'estado' IN ('enviando', 'treinando', 'consentimento')
+      OR (${heygen} AND value -> 'avatar' ->> 'estado' = 'falhou'
+        AND (value -> 'avatar' ->> 'semVaga' = 'true' OR value -> 'avatar' ->> 'motivo' LIKE '%resource_limit_reached%')
+        AND (value -> 'avatar' ->> 'equipeAvisadaEm' IS NULL OR (value -> 'avatar' ->> 'desde')::timestamptz < now() - interval '6 hours'))
       OR jsonb_array_length(COALESCE(value -> 'avataresParaApagar', '[]'::jsonb)) > 0
       OR (${heygen} AND value -> 'treino' ->> 'estado' = 'valido' AND jsonb_typeof(value -> 'avatar') IS DISTINCT FROM 'object')
     )

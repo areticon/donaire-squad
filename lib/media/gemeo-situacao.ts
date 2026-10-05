@@ -1,4 +1,4 @@
-import { gemeoAtivo, type AvatarDoGemeo, type CadastroDoGemeo } from "@/lib/media/gemeo";
+import { gemeoAtivo, motivoDoAvatar, type AvatarDoGemeo, type CadastroDoGemeo } from "@/lib/media/gemeo";
 
 /**
  * EM QUE PÉ ESTÁ O GÊMEO, numa frase (03/10/2026).
@@ -117,7 +117,7 @@ export function situacaoDoGemeo(c: CadastroDoGemeo | null | undefined, agora: Da
       fase: "reserva",
       tom: "neutro",
       titulo: "Gêmeo ativo pela imagem do vídeo de treino",
-      texto: `${a.motivo ?? "O gerador não treinou o gêmeo."} Os vídeos continuam saindo, pela imagem do vídeo de treino.`,
+      texto: `${motivoDoAvatar(a) ?? "O gerador não treinou o gêmeo."} Os vídeos continuam saindo, pela imagem do vídeo de treino.`,
     };
   }
   if (ativo) return { ...base, fase: "pronto", tom: "ok", titulo: "Gêmeo pronto", texto: "Você já pode gerar vídeos com o seu rosto e a sua voz." };

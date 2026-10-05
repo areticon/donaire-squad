@@ -95,6 +95,8 @@ export default async function GemeoPage({
           nome: usuario?.name ?? "",
           projeto: project.name,
           gerador: geradorDoCadastro(cadastro),
+          // 05/10: o erro do fornecedor por extenso, só para admin.
+          erroTecnico: conta?.role === "admin" ? cadastro?.avatar?.erroTecnico ?? null : null,
           // Membro da equipe (01/10): cadastro e revogação ficam com o dono.
           equipe: donoDaEquipe ? { dono: donoDaEquipe } : null,
         }}

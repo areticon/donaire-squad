@@ -898,6 +898,9 @@ export type TreinoDoGemeo = {
  *                   deles; Enterprise aceita o nosso vídeo);
  *   pronto          pode gerar;
  *   falhou          o fornecedor recusou (motivo); o gêmeo segue pela reserva.
+ *                   Com `semVaga` (05/10), a recusa foi o limite de gêmeos da
+ *                   conta na HeyGen: o passo tenta de novo sozinho, de tempos
+ *                   em tempos, e a tela oferece "Tentar de novo".
  */
 export type AvatarDoGemeo = {
   gerador: IdDoGerador;
@@ -909,10 +912,41 @@ export type AvatarDoGemeo = {
   grupoId?: string | null;
   consentimentoUrl?: string | null;
   consentimentoAte?: string | null;
+  /** O que a PESSOA lê. Nunca o corpo cru do fornecedor (esse vai em `erroTecnico`). */
   motivo?: string | null;
   tentativas?: number;
   ultimaTentativa?: string | null;
+  /** 05/10: a HeyGen recusou por limite de gêmeos da conta (resource_limit_reached). */
+  semVaga?: boolean;
+  /** 05/10: o erro do fornecedor por extenso, só para o log e o admin. A tela do cliente nunca recebe. */
+  erroTecnico?: string | null;
+  /** 05/10: quando a equipe recebeu o e-mail da falta de vaga (um por vídeo de treino). */
+  equipeAvisadaEm?: string | null;
 };
+
+/**
+ * O QUE A PESSOA LÊ QUANDO A HEYGEN NÃO TEM VAGA (05/10/2026). O Bruno criou um
+ * gêmeo novo na conta pessoal e a tela mostrou o JSON cru do fornecedor
+ * ("resource_limit_reached"). Quem cuida da vaga é a equipe, não o cliente.
+ */
+export const MOTIVO_SEM_VAGA =
+  "Chegamos ao limite de gêmeos da conta; já avisamos a equipe e o seu gêmeo é criado assim que liberar.";
+
+/** A recusa por limite, inclusive a gravada antes de 05/10 (motivo com o corpo cru). */
+export function avatarSemVaga(a: AvatarDoGemeo | null | undefined): boolean {
+  return Boolean(a && a.estado === "falhou" && (a.semVaga || /resource_limit_reached/i.test(a.motivo ?? "")));
+}
+
+/**
+ * O MOTIVO DO AVATAR PARA A TELA: a falta de vaga vira a frase acima, e um
+ * motivo antigo com corpo de fornecedor (JSON) vira uma frase genérica.
+ */
+export function motivoDoAvatar(a: AvatarDoGemeo | null | undefined): string | null {
+  if (!a) return null;
+  if (avatarSemVaga(a)) return MOTIVO_SEM_VAGA;
+  if (a.motivo && /[{}]|"error"/.test(a.motivo)) return "O gerador não aceitou o vídeo de treino.";
+  return a.motivo ?? null;
+}
 
 /**
  * Um cenário pronto para um gerador: a imagem composta (OmniHuman), o look
@@ -1132,7 +1166,17 @@ export function cadastroParaTela(
     ...resto,
     voz: resto.voz ? { ...resto.voz, voiceId: resto.voz.voiceId ? "pronta" : null } : null,
     vozAprovada: resto.vozAprovada ? { ...resto.vozAprovada, voiceId: "aprovada" } : null,
-    avatar: resto.avatar ? { ...resto.avatar, avatarId: resto.avatar.avatarId ? "pronto" : null, grupoId: null } : null,
+    // 05/10: o erro técnico não sai daqui; o motivo vai já na frase da pessoa.
+    avatar: resto.avatar
+      ? {
+          ...resto.avatar,
+          avatarId: resto.avatar.avatarId ? "pronto" : null,
+          grupoId: null,
+          motivo: motivoDoAvatar(resto.avatar),
+          semVaga: avatarSemVaga(resto.avatar),
+          erroTecnico: null,
+        }
+      : null,
     cenarios: resto.cenarios
       ? Object.fromEntries(Object.entries(resto.cenarios).map(([k, v]) => [k, { ...v, lookId: null, assetId: null }]))
       : null,

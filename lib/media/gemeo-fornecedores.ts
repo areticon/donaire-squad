@@ -31,7 +31,8 @@ const PASTA_DO_DUBLE = () => process.env.GEMEO_DUBLE_PASTA ?? "C:/Users/devan/Do
 export class ErroDoFornecedor extends Error {
   constructor(
     readonly fornecedor: "elevenlabs" | "fal" | "heygen",
-    readonly tipo: "sem-permissao" | "sem-saldo" | "recusado" | "rede",
+    /** "limite" (05/10): a conta chegou ao máximo de um recurso (gêmeos, vozes); só a equipe resolve. */
+    readonly tipo: "sem-permissao" | "sem-saldo" | "recusado" | "rede" | "limite",
     readonly status: number,
     mensagem: string
   ) {

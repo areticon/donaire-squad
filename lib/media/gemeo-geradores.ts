@@ -81,8 +81,27 @@ function chaveHeygen(): string {
 }
 
 async function erroHeygen(r: Response, acao: string): Promise<ErroDoFornecedor> {
-  const corpo = (await r.text().catch(() => "")).slice(0, 400);
-  if (r.status === 402 || /insufficient|balance|credit|quota/i.test(corpo)) {
+  const bruto = (await r.text().catch(() => "")).slice(0, 400);
+  // 05/10: o corpo vem em `{ error: { code, message } }`; a mensagem guarda o
+  // código e o texto, e não o JSON cru (que chegou a aparecer na tela).
+  let codigo = "";
+  let corpo = bruto;
+  try {
+    const e = (JSON.parse(bruto) as { error?: { code?: string; message?: string } | string | null }).error;
+    if (e && typeof e === "object") {
+      codigo = e.code ?? "";
+      corpo = [e.code, e.message].filter(Boolean).join(": ") || bruto;
+    } else if (typeof e === "string") corpo = e;
+  } catch {
+    // não era JSON: fica o texto como veio
+  }
+  // O LIMITE DA CONTA (05/10): "resource_limit_reached" (HTTP 400) é a conta
+  // da Demandou na HeyGen sem vaga de gêmeo (ou de voz). Não é o vídeo da
+  // pessoa que está errado: quem resolve é a equipe, liberando ou comprando vaga.
+  if (codigo === "resource_limit_reached" || /resource_limit_reached/i.test(bruto)) {
+    return new ErroDoFornecedor("heygen", "limite", r.status, `HeyGen sem vaga para ${acao} (resource_limit_reached): ${corpo}`);
+  }
+  if (r.status === 402 || /insufficient|balance|credit|quota/i.test(bruto)) {
     return new ErroDoFornecedor("heygen", "sem-saldo", r.status, `HeyGen sem saldo para ${acao}`);
   }
   if (r.status === 401 || r.status === 403) return new ErroDoFornecedor("heygen", "sem-permissao", r.status, `HeyGen recusou a chave ao ${acao} (${r.status})`);

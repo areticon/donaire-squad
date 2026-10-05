@@ -20,7 +20,7 @@ import {
   revogarGemeo,
 } from "@/lib/media/gemeo-servidor";
 import { nomeDoDono, projetoVisivel } from "@/lib/equipe/conta";
-import { conferirGemeoAgora, pedirLinkNovo } from "@/lib/media/gemeo-passo";
+import { conferirGemeoAgora, pedirLinkNovo, tentarGemeoDeNovo } from "@/lib/media/gemeo-passo";
 import { soODono } from "@/lib/equipe/permissoes";
 
 /**
@@ -33,6 +33,8 @@ import { soODono } from "@/lib/equipe/permissoes";
  *           voz, autorização) ou tira uma foto; "link-novo" (03/10) pede
  *           ao gerador outro link de confirmação, quando o anterior venceu;
  *           "aprovar-voz" (04/10) aprova a voz clonada depois de ouvir;
+ *           "tentar-de-novo" (05/10) reabre a criação do gêmeo treinado que
+ *           ficou sem vaga na HeyGen (quem chama a HeyGen é o passo);
  *   DELETE  revoga o gêmeo e apaga tudo (ver `revogarGemeo`).
  *
  * O arquivo nunca passa por aqui: vai do navegador direto ao store privado
@@ -82,6 +84,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     projeto: d.project.name,
     // Quem gera os vídeos deste projeto (03/10): a tela mostra o preço dele.
     gerador: geradorDoCadastro(cadastro),
+    // 05/10: o erro do fornecedor por extenso só vai para admin (o cliente lê o motivo amigável).
+    erroTecnico: conta?.role === "admin" ? cadastro?.avatar?.erroTecnico ?? null : null,
     // Para a tela esconder o cadastro e a revogação de quem é membro.
     equipe: d.project.userId === d.userId ? null : { dono: (await nomeDoDono(d.project.userId)) ?? "quem administra a conta" },
   });
@@ -138,6 +142,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // "Pedir um link novo" (03/10): o link de confirmação do gerador venceu.
         const renovou = await pedirLinkNovo(id);
         if (!renovou) return NextResponse.json({ error: "Não consegui pedir um link novo agora. Tente de novo em alguns minutos." }, { status: 502 });
+        return NextResponse.json({ cadastro: cadastroParaTela(await lerCadastro(id)) });
+      }
+      case "tentar-de-novo": {
+        // 05/10: o gêmeo treinado ficou sem vaga na HeyGen; a pessoa (ou a
+        // equipe, depois de liberar) pede para tentar de novo.
+        const reabriu = await tentarGemeoDeNovo(id);
+        if (!reabriu) return NextResponse.json({ error: "Acabamos de tentar. Espere uns minutos e tente de novo." }, { status: 409 });
+        cutucar();
         return NextResponse.json({ cadastro: cadastroParaTela(await lerCadastro(id)) });
       }
       default:

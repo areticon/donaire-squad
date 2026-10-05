@@ -19,6 +19,7 @@ import {
   Trash2,
   ArrowRight,
   Headphones,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -83,6 +84,8 @@ type Estado = {
    * pede vídeos ao gêmeo pronto. Null para o dono.
    */
   equipe?: { dono: string } | null;
+  /** 05/10: o erro do fornecedor por extenso, só para admin. */
+  erroTecnico?: string | null;
 };
 
 type RoteiroDaLinha = { id: string; titulo: string; status: string; cenas: Array<{ fala?: string; naTela?: string; papel?: string }> };
@@ -249,6 +252,26 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
       await recarregar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui aprovar agora.");
+    } finally {
+      setEnviando(null);
+    }
+  }
+
+  /** 05/10: o gêmeo treinado ficou sem vaga na HeyGen; reabre o pedido. */
+  async function tentarDeNovo() {
+    setEnviando("tentar-de-novo");
+    try {
+      const r = await fetch(`/api/projects/${projectId}/gemeo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "tentar-de-novo" }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Não consegui tentar agora.");
+      toast.success("Pedimos o seu gêmeo de novo. Avisamos quando ficar pronto.");
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui tentar agora.");
     } finally {
       setEnviando(null);
     }
@@ -551,7 +574,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               )}
               {c?.avatar && (
                 <Situacao
-                  tom={c.avatar.estado === "pronto" ? "ok" : c.avatar.estado === "falhou" ? "erro" : c.avatar.estado === "consentimento" ? "espera" : "andando"}
+                  tom={c.avatar.estado === "pronto" ? "ok" : c.avatar.estado === "falhou" ? (c.avatar.semVaga ? "espera" : "erro") : c.avatar.estado === "consentimento" ? "espera" : "andando"}
                   texto={
                     {
                       enviando: "Enviando o vídeo para treinar o seu gêmeo...",
@@ -562,6 +585,28 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
                     }[c.avatar.estado]
                   }
                 />
+              )}
+              {/* SEM VAGA (05/10): o gêmeo nasce assim que a vaga liberar; o botão é para não esperar o passo. */}
+              {c?.avatar?.estado === "falhou" && c.avatar.semVaga && !estado.equipe && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={Boolean(enviando)}
+                    onClick={() => void tentarDeNovo()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                    style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                  >
+                    {enviando === "tentar-de-novo" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Tentar de novo
+                  </button>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Também tentamos sozinhos a cada poucas horas.
+                  </span>
+                </div>
+              )}
+              {estado.erroTecnico && c?.avatar?.estado === "falhou" && (
+                <p className="break-words text-xs" style={{ color: "var(--text-muted)" }}>
+                  Só para admin: {estado.erroTecnico}
+                </p>
               )}
               {c?.avatar && c.avatar.estado !== "pronto" && c.avatar.estado !== "falhou" && ativo && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
