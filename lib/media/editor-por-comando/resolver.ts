@@ -82,8 +82,10 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   // 1. As peças, em segundos.
   const camadas: CamadaResolvida[] = [];
   const planos: PlanoResolvido[] = [];
+  // O PLANO LIVRE (dois eixos, 05/10 à noite): com a linguagem no tema, nenhuma peça é trocada pelo estilo e a imagem em tela cheia vale em toda linguagem.
+  const livre = Boolean(p.tema?.linguagem);
   for (const [k, m0] of (p.momentos ?? []).entries()) {
-    const ajuste = ctx.base ? pecaNoEstiloDoComando(m0, ctx.base) : { momento: m0 };
+    const ajuste = ctx.base && !livre ? pecaNoEstiloDoComando(m0, ctx.base) : { momento: m0 };
     if (ajuste.aviso) avisos.push(ajuste.aviso);
     if (!ajuste.momento) continue;
     const m = ajuste.momento;
@@ -107,6 +109,16 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       continue;
     }
     const props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    // A janela de imagem: a url é a da inserção gerada com o id em `midia`; sem ela, a peça sai.
+    if (ficha.nome === "imagem-janela") {
+      const midia = ctx.insercoes[String(props.midia ?? "")];
+      if (!midia?.url) {
+        avisos.push(`${id}: imagem da janela não gerada, saiu`);
+        continue;
+      }
+      props.url = midia.url;
+      props.tipo = midia.tipo;
+    }
     if (ficha.eventosDe && Array.isArray(props[ficha.eventosDe])) props[ficha.eventosDe] = (props[ficha.eventosDe] as unknown[]).slice(0, ficha.maxItens ?? 6);
     const nItens = ficha.eventosDe ? (Array.isArray(props[ficha.eventosDe]) ? (props[ficha.eventosDe] as unknown[]).length : 0) : ficha.umEvento ? 1 : 0;
     const eventos = (m.eventos ?? [])
@@ -141,8 +153,10 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
 
   // 2. As imagens de cinema (tela cheia, foto com movimento): onde o diretor pôs.
   // No Vox não há cena de cinema em tela cheia: a imagem é a foto de arquivo dentro das peças de papel.
-  for (const [k, ins] of (ctx.base && ESTILOS_DO_VOX.includes(ctx.base) ? [] : p.insercoes ?? []).entries()) {
+  for (const [k, ins] of (ctx.base && ESTILOS_DO_VOX.includes(ctx.base) && !livre ? [] : p.insercoes ?? []).entries()) {
     const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
+    // A imagem de janela entra pela peça "imagem-janela", sem plano de tela cheia.
+    if (ins.janela) continue;
     if (!ctx.insercoes[id]) {
       avisos.push(`${id}: imagem não gerada, ficou de fora`);
       continue;
@@ -151,7 +165,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     const b = t(ins.ate);
     if (a === null || b === null) continue;
     const de = Math.max(0, a - 0.05);
-    const ate = Math.min(D, Math.min(de + 5, Math.max(b + 0.2, de + 2.4)));
+    const ate = Math.min(D, Math.min(de + (ins.midia === "video" ? Math.max(5, ins.segundos ?? 5) : 5), Math.max(b + 0.2, de + 2.4)));
     planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "insercao", midia: id });
   }
 

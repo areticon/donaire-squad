@@ -36,6 +36,7 @@ import type { Formato } from "@/lib/media/plano-de-montagem";
 import { recortesDoProjeto } from "@/lib/media/assets-da-montagem";
 import { estiloDoCatalogo, normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
+import { NOME_DO_TIPO, type TipoDeElemento } from "@/lib/media/editor-por-comando/elementos";
 import { comandoPadrao, editorPorComandoLigado, escreverPlanoDoCompletoPorComando, lerComandoDoProjeto, paletaDoProjeto, tetoDeImagens } from "@/lib/media/editor-por-comando";
 import { frasesNumeradas, resolverAncora } from "@/lib/media/editor-sob-medida/resolver";
 import { FICHAS } from "@/lib/media/editor-sob-medida/pecas";
@@ -703,6 +704,7 @@ export async function prepararRoteiro(
             perfil: perfil ? perfilNoPrompt(perfil) : null,
             projectId: v.projectId,
             imagens: tetoDeImagens("completo", fala.duracao),
+            nicho: v.project.niche,
           });
           completo.comando = { texto: comando.texto, base: p.base, plano: p.plano.momentos.length ? p.plano : null, feitoEm: agora(), erro: p.erro ?? null, tempos: { ...p.tempos, total: +((Date.now() - t0) / 1000).toFixed(1) }, avisos: p.avisos.slice(0, 20) };
         } catch (e) {
@@ -994,6 +996,18 @@ const ROTULO_DA_PECA: Record<string, string> = {
   "painel-lateral": "painel ao lado",
   "frase-impacto": "frase de impacto",
   "palavra-chave": "palavra-chave",
+  "imagem-janela": "imagem em janela",
+  icone: "ícone animado",
+  numero: "número animado",
+  barras: "comparação de números",
+  progresso: "porcentagem animada",
+  "grafico-linha": "gráfico de evolução",
+  cartoes: "lista em cartões",
+  citacao: "citação",
+  pergaminho: "versículo",
+  sublinhado: "legenda de destaque",
+  "palavra-gigante": "palavra gigante",
+  "pilha-passos": "passos em pilha",
 };
 
 /**
@@ -1012,15 +1026,35 @@ function comPecasDoComando(tela: ReturnType<typeof completoNaTela>, c: RoteiroDo
     }
     return "";
   };
-  const pecas = (plano.momentos ?? [])
-    .map((m) => ({ inicio: resolverAncora(m.de, frases, c.fala.palavras), peca: m.peca, texto: texto((m.props ?? {}) as Record<string, unknown>) }))
+  // As imagens e os vídeos gerados (dois eixos, 05/10 à noite) entram no cena a cena com o que aparece, em português.
+  const daMidia = (plano.insercoes ?? [])
+    .filter((x) => !x.janela)
+    .map((x) => ({ inicio: resolverAncora(x.de, frases, c.fala.palavras), peca: x.midia === "video" ? "b-roll" : "imagem", texto: x.oQueAparece ?? "", rotulo: x.midia === "video" ? "B-roll em vídeo" : "imagem em tela cheia", tela: true }));
+  const pecas = [
+    ...(plano.momentos ?? []).map((m) => {
+      const props = (m.props ?? {}) as Record<string, unknown>;
+      const daJanela = m.peca === "imagem-janela" ? (plano.insercoes ?? []).find((x) => x.id === props.midia)?.oQueAparece : undefined;
+      return { inicio: resolverAncora(m.de, frases, c.fala.palavras), peca: m.peca, texto: daJanela ?? texto(props) };
+    }),
+    ...daMidia,
+  ]
     .filter((x): x is { inicio: number; peca: string; texto: string } => x.inicio !== null)
-    .map((x) => ({ ...x, rotulo: ROTULO_DA_PECA[x.peca] ?? x.peca.replace(/-/g, " "), tela: FICHAS[x.peca]?.plano === "tela" }));
+    .map((x) => ({ ...x, rotulo: ROTULO_DA_PECA[x.peca] ?? (x as { rotulo?: string }).rotulo ?? x.peca.replace(/-/g, " "), tela: (x as { tela?: boolean }).tela ?? FICHAS[x.peca]?.plano === "tela" }))
+    .sort((a, b) => a.inicio - b.inicio);
   const trechos = tela.trechos.map((t) => {
     const daqui = pecas.filter((p) => p.inicio >= t.inicio - 0.05 && p.inicio < t.fim - 0.05).map(({ peca, rotulo, texto, inicio, tela }) => ({ peca, rotulo, texto, inicio, tela }));
     return daqui.length ? { ...t, pecas: daqui } : t;
   });
-  return { ...tela, trechos, cenas: pecas.length };
+  // A linguagem, os elementos por tipo e a estimativa de custo (antes de gerar).
+  const porTipo = new Map<string, number>();
+  for (const el of plano.elementos ?? []) porTipo.set(el.tipo, (porTipo.get(el.tipo) ?? 0) + 1);
+  const est = plano.estimativa;
+  const comando = {
+    linguagem: plano.linguagem?.nome ?? null,
+    porTipo: [...porTipo.entries()].sort((a, b) => b[1] - a[1]).map(([tipo, n]) => ({ tipo, nome: NOME_DO_TIPO[tipo as TipoDeElemento] ?? tipo, n })),
+    custo: est ? { usd: est.usd, usdPorMinuto: est.usdPorMinuto, tetoUsdPorMinuto: est.tetoUsdPorMinuto, imagens: est.imagens, videos: est.videos, segundosDeVideo: est.segundosDeVideo } : null,
+  };
+  return { ...tela, trechos, cenas: pecas.length, comando };
 }
 
 /** A abertura com os melhores momentos (01/10): cobrada só se ligada, e nunca no preço antigo. */

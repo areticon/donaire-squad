@@ -388,6 +388,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
         >
           <AberturaDoCompleto completo={tela.completo} creditos={aberturaCreditos} ocupado={ocupado} naAbertura={podeMexerNaAbertura ? naAbertura : undefined} />
           <CoberturaETelas completo={tela.completo} />
+          <EstimativaDoComando completo={tela.completo} />
           {tela.completo.semCenas && (
             <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
               {tela.completo.semCenas}
@@ -1042,6 +1043,35 @@ function CenaACenaDoCompleto({
           )
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * O EDITOR POR COMANDO EM DOIS EIXOS (05/10, noite): antes de aprovar, o
+ * cliente vê a linguagem visual escolhida, os elementos por tipo e quanto as
+ * imagens e os vídeos gerados vão custar (preço da tabela da Higgsfield).
+ */
+function EstimativaDoComando({ completo }: { completo: CompletoNaTela }) {
+  const c = completo.comando;
+  if (!c || (!c.porTipo.length && !c.custo)) return null;
+  const usd = (v: number) => `US$ ${v.toFixed(2).replace(".", ",")}`;
+  const total = c.porTipo.reduce((s, x) => s + x.n, 0);
+  return (
+    <div className="mb-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--border)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        {c.linguagem ? `Linguagem visual: ${c.linguagem}` : "Elementos planejados"}
+      </p>
+      {total > 0 && (
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+          {total} {total === 1 ? "elemento" : "elementos"}: {c.porTipo.map((x) => `${x.n} ${x.nome}`).join(", ")}.
+        </p>
+      )}
+      {c.custo && (
+        <p className="text-xs mt-1" style={{ color: c.custo.usdPorMinuto > c.custo.tetoUsdPorMinuto + 0.005 ? "#dc2626" : "var(--text-muted)" }}>
+          Imagens e vídeos gerados: {c.custo.imagens} {c.custo.imagens === 1 ? "imagem" : "imagens"} e {c.custo.videos} {c.custo.videos === 1 ? "vídeo" : "vídeos"} ({c.custo.segundosDeVideo} s), cerca de {usd(c.custo.usd)} ({usd(c.custo.usdPorMinuto)} por minuto; teto de {usd(c.custo.tetoUsdPorMinuto)} por minuto). Nada é gerado antes da sua aprovação.
+        </p>
+      )}
     </div>
   );
 }

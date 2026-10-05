@@ -213,6 +213,11 @@ export const PECAS: FichaDaPeca[] = [
     quando: "Uma EVOLUÇÃO no tempo com números DITOS (o faturamento foi de 12 para 41 mil, a igreja passou de 30 para 300 pessoas): a linha se desenha passando pelos valores, com eixos e marcações. Nunca invente valor; com 2 valores ditos já vale.",
     props: 'titulo? (até 7 palavras, **destaque**), rotulo?, unidade? (" mil", "%", " pessoas"), pontos [{rotulo (quando: "2019", "Jan", "Antes"), valor (número dito)}]',
   },
+  {
+    nome: "imagem-janela", plano: "sobre", passes: ["frente"], entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [2.5, 5.5],
+    quando: "(editor por comando em dois eixos, 05/10) A IMAGEM gerada na Higgsfield numa JANELA ao lado da pessoa, com a moldura da linguagem do vídeo (papel, vidro, neon, luxo, traço). O código liga a imagem (midia); o redator escreve a cena e a legenda.",
+    props: 'midia (o id da imagem, posto pelo código), legenda? (até 5 palavras do falante), lado? ("direita" | "esquerda" | "topo")',
+  },
   // ─── As peças da lousa (04/10): dos 14 quadros reais do Dan Martell; no consórcio, o acabamento de luxo. ───
   {
     nome: "palavra-gigante", plano: "sobre", estilos: ESTILOS_DA_LOUSA, entrada: 0.9, saida: 0.3, evento: 0.6, duracao: [1.2, 3],

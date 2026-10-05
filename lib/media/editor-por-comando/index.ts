@@ -191,6 +191,10 @@ export type EntradaDoPlano = {
    * fala. O diretor os trata como instrução obrigatória daquele trecho.
    */
   pedidos?: PedidoDaCena[];
+  /** O nicho e o público do projeto (setup, linha editorial): o JEV e o redator leem (05/10, noite). */
+  nicho?: string | null;
+  /** O nome da marca do projeto. */
+  marcaNome?: string | null;
 };
 
 export type PlanoPorComando = {
@@ -228,8 +232,10 @@ const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosD
 async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
   // As cenas que já existem (a correção que manteve a imagem) não são geradas de novo.
   const novas = (plano.insercoes ?? []).filter((x) => !ja[String(x.id)]);
-  const tetoCenas = Math.min(novas.length, Math.max(0, Math.floor(e.imagens / 3)));
-  const tetoFotos = Math.max(0, e.imagens - tetoCenas);
+  // O plano em dois eixos (05/10, noite) já cabe no teto de custo por minuto: as imagens dele saem todas.
+  const livre = Boolean(plano.tema?.linguagem);
+  const tetoCenas = livre ? novas.length : Math.min(novas.length, Math.max(0, Math.floor(e.imagens / 3)));
+  const tetoFotos = livre ? Math.max(e.imagens, plano.estimativa?.imagens ?? 0) : Math.max(0, e.imagens - tetoCenas);
   const [fotos, cenas] = await Promise.all([
     prepararFotosDoVox(plano, { projectId: e.projectId, teto: tetoFotos, guarda: e.guardaDosRecortes }).catch((err) => ({ prontas: 0, custoUsd: 0, erros: [`fotos: ${String(err).slice(0, 120)}`] })),
     tetoCenas
@@ -249,10 +255,26 @@ export type PlanoPronto = { base: string; plano: PlanoDoDiretor };
  * por bloco de ~5 min em paralelo. Sem imagem e sem resolução: é o que o
  * roteiro grava para o cliente aprovar e a montagem reaproveita.
  */
-export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Promise<{ plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number>; erro?: string }> {
+export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Promise<{ plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string }> {
   const cores = coresDoComando(e.comando, e.marca);
   if (!diretorPorLlm()) {
-    return escreverPlanoPeloJev({ frases: frasesNumeradas(e.palavras), duracao: e.duracao, formato: e.formato, comando: e.comando, base, titulo: e.titulo, perfil: e.perfil, projectId: e.projectId, pedidos: e.pedidos });
+    // Os dois eixos (05/10, noite): a linguagem e os elementos pelo JEV; a base volta da família escolhida.
+    return escreverPlanoPeloJev({
+      frases: frasesNumeradas(e.palavras),
+      palavras: e.palavras,
+      duracao: e.duracao,
+      formato: e.formato,
+      comando: e.comando,
+      base,
+      titulo: e.titulo,
+      perfil: e.perfil,
+      projectId: e.projectId,
+      pedidos: e.pedidos,
+      nicho: e.nicho,
+      marca: e.marcaNome,
+      paleta: e.comando.cores.tipo === "marca" ? e.paleta ?? null : [cores.acento, cores.escuro, cores.claro],
+      cores,
+    });
   }
   const t = Date.now();
   const blocos = e.duracao > 95 ? blocosDoCompleto(e.palavras, e.duracao) : [];
@@ -267,9 +289,10 @@ export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Pro
 
 /** Só o plano do completo (o roteiro): a base pelo JEV e o plano, sem imagem nem resolução. */
 export async function escreverPlanoDoCompletoPorComando(e: EntradaDoPlano): Promise<{ base: string; plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number>; erro?: string }> {
-  const base = await classificarComando(e.comando.texto, e.projectId);
-  const p = await escreverPlanoDoVideo(e, base);
-  return { base, ...p };
+  // No plano em dois eixos a família da linguagem dá a base; a classificação antiga só serve ao diretor Opus.
+  const base0 = diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote";
+  const p = await escreverPlanoDoVideo(e, base0);
+  return { ...p, base: p.base ?? base0 };
 }
 
 /** Classificação + plano + imagens + resolução. Lança se não houve plano. */
@@ -283,8 +306,9 @@ export async function planejarPorComando(e: EntradaDoPlano, pronto?: PlanoPronto
   const cores = coresDoComando(e.comando, e.marca);
   // O plano do roteiro é reaproveitado (sem decidir nem pagar de novo), a não ser que haja pedido novo do cliente.
   const reusar = pronto && !e.pedidos?.length ? pronto : null;
-  const base = reusar?.base ?? (await classificarComando(e.comando.texto, e.projectId));
-  const d = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined as string | undefined } : await escreverPlanoDoVideo(e, base);
+  const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
+  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined } : await escreverPlanoDoVideo(e, base0);
+  const base = d.base ?? base0;
   Object.assign(tempos, d.tempos);
   marcar("diretor");
   if (!d.plano.momentos.length) throw new Error(`o diretor não devolveu plano (${d.erro ?? "sem momentos"})`);
@@ -349,8 +373,9 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano, pronto?: Pla
   const blocos = blocosDoCompleto(e.palavras, e.duracao);
   // O plano do roteiro (já aprovado pelo cliente) é reaproveitado; com pedido novo cena a cena, o plano sai de novo com os pedidos.
   const reusar = pronto && !e.pedidos?.length ? pronto : null;
-  const base = reusar?.base ?? (await classificarComando(e.comando.texto, e.projectId));
-  const d = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined as string | undefined } : await escreverPlanoDoVideo(e, base);
+  const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
+  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined } : await escreverPlanoDoVideo(e, base0);
+  const base = d.base ?? base0;
   Object.assign(tempos, d.tempos);
   tempos.diretor = +((Date.now() - t) / 1000).toFixed(1);
   t = Date.now();

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { normalizarComando } from "@/lib/media/editor-por-comando/comando";
-import { editorPorComandoLigado, lerComandoDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-por-comando";
+import { editorPorComandoLigado, lerComandoDoProjeto, paletaDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-por-comando";
 import { coresDaMarca } from "@/lib/media/capa-composta";
 
 /**
@@ -25,7 +25,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const r = await projetoDoUsuario(id);
   if (r.erro) return r.erro;
   const ligado = editorPorComandoLigado();
-  return NextResponse.json({ ligado, comando: ligado ? await lerComandoDoProjeto(id) : null, marca: coresDaMarca(r.project.colorPalette) });
+  // A paleta inteira (na ordem do cliente), o nicho e o público: as miniaturas dos estilos preenchem o comando com eles (05/10, noite).
+  return NextResponse.json({
+    ligado,
+    comando: ligado ? await lerComandoDoProjeto(id) : null,
+    marca: coresDaMarca(r.project.colorPalette),
+    paleta: paletaDoProjeto(r.project.colorPalette),
+    nicho: r.project.niche ?? null,
+    publico: r.project.targetAudience ?? null,
+    nome: r.project.name,
+  });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

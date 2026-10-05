@@ -2,7 +2,7 @@ import { put, head } from "@vercel/blob";
 import { midiaProduzida } from "@/lib/media/storage";
 import { gravarCustoDeVideo, type ContextoMidia } from "@/lib/media/usage";
 import { normalizarEscolha, type EscolhaDeEstilo } from "@/lib/media/catalogo-de-estilos";
-import { geracoesPorCorte } from "@/lib/credits/higgsfield-tabela";
+import { DOLAR_POR_SEGUNDO_DE_VIDEO, DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM, geracoesPorCorte } from "@/lib/credits/higgsfield-tabela";
 
 /**
  * A HIGGSFIELD NA EDIÇÃO DOS CORTES (item 9, fase de preparo, 29/09/2026).
@@ -120,8 +120,8 @@ export const MODELOS: Record<IdDoModelo, FichaDoModelo> = {
     resolucao: "720p",
     minSeg: 3,
     maxSeg: 15,
-    dolarPorSegundo: 0.084,
-    dolarPorSegundoComSom: 0.126,
+    dolarPorSegundo: DOLAR_POR_SEGUNDO_DE_VIDEO["kling-std"],
+    dolarPorSegundoComSom: DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM["kling-std"],
   },
   "kling-pro": {
     imagemParaVideo: "kling-video/v3.0/pro/image-to-video",
@@ -129,8 +129,8 @@ export const MODELOS: Record<IdDoModelo, FichaDoModelo> = {
     resolucao: "1080p",
     minSeg: 3,
     maxSeg: 15,
-    dolarPorSegundo: 0.112,
-    dolarPorSegundoComSom: 0.168,
+    dolarPorSegundo: DOLAR_POR_SEGUNDO_DE_VIDEO["kling-pro"],
+    dolarPorSegundoComSom: DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM["kling-pro"],
   },
   // Seedance 2.5 cobra por token de vídeo: ceil(alt x larg x seg x 24 / 1024)
   // tokens, a US$ 0,0214 por mil em 720p. Em 1280x720 dá US$ 0,4622 por
@@ -142,8 +142,8 @@ export const MODELOS: Record<IdDoModelo, FichaDoModelo> = {
     resolucao: "720p",
     minSeg: 4,
     maxSeg: 30,
-    dolarPorSegundo: 0.4622,
-    dolarPorSegundoComSom: 0.4622,
+    dolarPorSegundo: DOLAR_POR_SEGUNDO_DE_VIDEO["seedance-25"],
+    dolarPorSegundoComSom: DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM["seedance-25"],
   },
 };
 

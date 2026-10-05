@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { head, put } from "@vercel/blob";
 import { cabecalho } from "@/lib/media/higgsfield";
+import { DOLAR_POR_IMAGEM } from "@/lib/credits/higgsfield-tabela";
 import { midiaProduzida } from "@/lib/media/storage";
 import { gravarCustoDeImagem, type ContextoMidia } from "@/lib/media/usage";
 
@@ -116,7 +117,7 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
   // proibições de texto e de gente), e reescrita automática as dilui.
   "higgsfield-gpt-image-2.5-low": {
     endpoint: "marketing-studio/image/sunburst",
-    precoUsd: 0.025,
+    precoUsd: DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-low"],
     edita: true,
     limiteDoPrompt: 5000,
     proporcoes: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"],
@@ -140,7 +141,7 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
    */
   "higgsfield-gpt-image-2.5-medium": {
     endpoint: "marketing-studio/image/sunburst",
-    precoUsd: 0.06,
+    precoUsd: DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-medium"],
     edita: true,
     limiteDoPrompt: 5000,
     proporcoes: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"],
@@ -159,7 +160,7 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
   // prova, só com o texto, um modelo devolveu fundo cáqui (30/09).
   "higgsfield-recraft-v4.1": {
     endpoint: "recraft/v4.1/utility/text-to-image",
-    precoUsd: 0.035,
+    precoUsd: DOLAR_POR_IMAGEM["higgsfield-recraft-v4.1"],
     edita: false,
     limiteDoPrompt: 10000,
     proporcoes: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"],
@@ -175,7 +176,7 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
   // Edição do quadro: o mesmo endpoint, com a imagem em `image_urls`.
   "higgsfield-grok-imagine-2.0": {
     endpoint: "xai/grok-imagine-image-2.0",
-    precoUsd: 0.08,
+    precoUsd: DOLAR_POR_IMAGEM["higgsfield-grok-imagine-2.0"],
     edita: true,
     limiteDoPrompt: 8000,
     proporcoes: ["1:1", "1:2", "2:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"],

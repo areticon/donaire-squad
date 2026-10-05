@@ -781,6 +781,16 @@ export type CompletoNaTela = {
   telas?: Array<{ inicio: number; fim: number; mostra: string[] }>;
   /** Inserções por minuto do plano (a cobertura de ponta a ponta, 01/10). */
   porMinuto?: number[];
+  /**
+   * O EDITOR POR COMANDO EM DOIS EIXOS (05/10, noite): a linguagem visual
+   * escolhida, os elementos por tipo e a ESTIMATIVA de custo das imagens e
+   * vídeos da Higgsfield (preço da tabela), mostrada antes de gerar.
+   */
+  comando?: {
+    linguagem: string | null;
+    porTipo: Array<{ tipo: string; nome: string; n: number }>;
+    custo: { usd: number; usdPorMinuto: number; tetoUsdPorMinuto: number; imagens: number; videos: number; segundosDeVideo: number } | null;
+  };
 };
 
 export type TelaDeRoteiro = {

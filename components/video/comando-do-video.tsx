@@ -8,12 +8,14 @@ import {
   montarComando,
   OPCOES_DO_AJUDANTE,
   PALETAS_PRONTAS,
-  REFERENCIAS_DE_COMANDO,
   type ComandoDoVideo,
   type CoresDoComando,
   type EscolhasDoAjudante,
   type FonteDoComando,
 } from "@/lib/media/editor-por-comando/comando";
+import { comandoDoEstilo, miniaturasDosEstilos } from "@/lib/media/editor-por-comando/comando-dos-estilos";
+import { estiloDoCatalogo } from "@/lib/media/catalogo-de-estilos";
+import { PreviaDoEstiloDeVideo, temPreviaDeVideo } from "@/components/video/previa-do-estilo-de-video";
 
 /**
  * O COMANDO DO VÍDEO (05/10/2026): com o editor por comando ligado
@@ -27,11 +29,17 @@ import {
  */
 
 type Marca = { acento: string; escuro: string; claro: string };
+type Projeto = { paleta: string[]; nicho: string | null; publico: string | null; nome: string | null };
+
+/** As miniaturas visíveis antes de "ver todos" (as em destaque e as de bíblia completa vêm primeiro). */
+const MINIATURAS_INICIAIS = 8;
 
 export function ComandoDoVideo({ projectId, reserva }: { projectId: string; reserva: ReactNode }) {
   const [carregando, setCarregando] = useState(true);
   const [ligado, setLigado] = useState(false);
   const [marca, setMarca] = useState<Marca>({ acento: "#F97316", escuro: "#15171a", claro: "#f2efe8" });
+  const [projeto, setProjeto] = useState<Projeto>({ paleta: [], nicho: null, publico: null, nome: null });
+  const [todosOsEstilos, setTodosOsEstilos] = useState(false);
   const [texto, setTexto] = useState("");
   const [fonte, setFonte] = useState<FonteDoComando>("geist");
   const [cores, setCores] = useState<CoresDoComando>({ tipo: "marca" });
@@ -50,10 +58,11 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
     let vivo = true;
     fetch(`/api/projects/${projectId}/comando-do-video`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { ligado?: boolean; comando?: ComandoDoVideo | null; marca?: Marca } | null) => {
+      .then((d: { ligado?: boolean; comando?: ComandoDoVideo | null; marca?: Marca; paleta?: string[]; nicho?: string | null; publico?: string | null; nome?: string | null } | null) => {
         if (!vivo) return;
         setLigado(Boolean(d?.ligado));
         if (d?.marca) setMarca(d.marca);
+        setProjeto({ paleta: Array.isArray(d?.paleta) && d.paleta.length ? d.paleta : d?.marca ? [d.marca.acento, d.marca.escuro, d.marca.claro] : [], nicho: d?.nicho ?? null, publico: d?.publico ?? null, nome: d?.nome ?? null });
         if (d?.comando) {
           setTexto(d.comando.texto);
           setFonte(d.comando.fonte);
@@ -81,14 +90,19 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
 
   const mudou = JSON.stringify([texto.trim(), fonte, cores]) !== salvo;
 
-  function usarReferencia(id: string) {
-    const r = REFERENCIAS_DE_COMANDO.find((x) => x.id === id);
-    if (!r) return;
-    setTexto(r.texto);
-    setFonte(r.fonte);
-    setReferencia(r.id);
+  // A MINIATURA DO ESTILO (05/10, noite): o clique preenche o comando com a linguagem do estilo, as cores da
+  // marca, o nicho do projeto e a sugestão de ritmo e elementos (o texto continua editável; o JEV segue livre).
+  const miniaturas = miniaturasDosEstilos();
+  function usarEstilo(id: string) {
+    const m = miniaturas.find((x) => x.id === id);
+    const t = comandoDoEstilo(id, projeto);
+    if (!m || !t) return;
+    setTexto(t);
+    setFonte(m.fonte);
+    setReferencia(id);
     setOrigem("referencia");
   }
+  const estiloEscolhido = referencia ? estiloDoCatalogo(referencia) : undefined;
 
   async function salvar() {
     if (texto.trim().length < 3) {
@@ -166,23 +180,34 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
           Escreva ou fale do seu jeito: o estilo, o clima, o que deve aparecer na tela. O diretor de edição monta cada corte a partir deste comando.
         </p>
 
-        {/* As referências prontas: um clique preenche o comando, a letra e sugere as cores. */}
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {REFERENCIAS_DE_COMANDO.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => usarReferencia(r.id)}
-              className="rounded-lg border p-3 text-left transition-colors"
-              style={chip(referencia === r.id && texto === r.texto)}
-            >
-              <span className="block text-sm font-bold">{r.nome}</span>
-              <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
-                {r.resumo}
-              </span>
-            </button>
-          ))}
+        {/* As miniaturas dos estilos (05/10, noite): um clique preenche o comando com a linguagem, as cores da marca e o nicho. */}
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {(todosOsEstilos ? miniaturas : miniaturas.slice(0, MINIATURAS_INICIAIS)).map((m) => {
+            const ativo = referencia === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => usarEstilo(m.id)}
+                aria-pressed={ativo}
+                className="min-w-0 overflow-hidden rounded-lg border text-left transition-colors"
+                style={chip(ativo)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={m.arte} alt="" loading="lazy" className="block aspect-video w-full object-cover" style={{ background: "var(--bg-input)" }} />
+                <span className="block px-2 pt-1.5 text-xs font-bold leading-tight sm:text-sm">{m.nome}</span>
+                <span className="block truncate px-2 pb-2 text-[11px] sm:text-xs" style={{ color: "var(--text-muted)" }}>
+                  {m.referencia ?? (m.destaque ? "em destaque" : " ")}
+                </span>
+              </button>
+            );
+          })}
         </div>
+        {miniaturas.length > MINIATURAS_INICIAIS && (
+          <button type="button" onClick={() => setTodosOsEstilos((v) => !v)} className="mb-3 text-sm font-bold" style={{ color: "#f97316" }}>
+            {todosOsEstilos ? "Ver menos estilos" : `Ver todos os estilos (${miniaturas.length})`}
+          </button>
+        )}
 
         <div className="relative">
           <textarea
@@ -208,6 +233,11 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
             {transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" /> : gravando ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </button>
         </div>
+        {origem === "referencia" && estiloEscolhido && (
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            Preenchido a partir do estilo {estiloEscolhido.nome}, com as cores da sua marca e o seu nicho. Edite à vontade: é uma sugestão, e o editor escolhe em cada momento o que a fala pede.
+          </p>
+        )}
         {gravando && (
           <p className="mt-1 text-xs font-bold" style={{ color: "#dc2626" }}>
             Gravando. Fale o vídeo que você quer e toque no quadrado para parar.
@@ -269,6 +299,9 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
           </div>
         )}
       </div>
+
+      {/* A prévia do estilo escolhido, nas cores reais da marca (os estilos com prévia própria). */}
+      {estiloEscolhido && temPreviaDeVideo(estiloEscolhido.id) && <PreviaDoEstiloDeVideo projectId={projectId} estiloId={estiloEscolhido.id} nomeDoEstilo={estiloEscolhido.nome} />}
 
       {/* Pergunta 1: a letra, mostrada nela mesma (aproximada no navegador). */}
       <div className={cartao} style={estiloCartao}>

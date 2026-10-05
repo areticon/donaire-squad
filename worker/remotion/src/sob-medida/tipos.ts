@@ -41,6 +41,8 @@ export type Tema = {
    */
   /** Os acentos da marca no Vox (05/10): realce do marca-texto, a letra por cima dele, a tinta dos títulos, o carimbo e o fio. */
   vox?: { realce?: string; tintaNoRealce?: string; tinta?: string; carimbo?: string; fio?: string };
+  /** A família da linguagem visual do editor por comando (05/10, noite): papel, vidro, neon, luxo, giz, realista, traco, minimalista, impacto. */
+  linguagem?: string;
 };
 
 export type CamadaResolvida = {

@@ -5,6 +5,8 @@ import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor, Visual } from "@/lib/media/editor-sob-medida/tipos";
 import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
+import type { LinguagemDoVideo } from "@/lib/media/editor-por-comando/linguagem";
+import type { EstimativaDeCusto, TipoDeElemento } from "@/lib/media/editor-por-comando/elementos";
 
 /**
  * O DIRETOR DO EDITOR POR COMANDO (05/10/2026): o Opus lê a fala com os
@@ -23,8 +25,18 @@ export const MODELO_DO_DIRETOR = process.env.EDITOR_POR_COMANDO_MODELO || "claud
 
 /** O que o diretor escreve além da edição de sempre: o acabamento e o fundo. */
 export type PlanoDoDiretor = EdicaoDoEditor & {
-  tema?: { visual?: Visual; acabamento?: "tecnologico" | "luxo"; fundoColagem?: boolean };
+  /** `linguagem` (05/10, noite): a família da linguagem visual; com ela o plano é LIVRE (nenhuma peça é trocada pelo estilo). */
+  tema?: { visual?: Visual; acabamento?: "tecnologico" | "luxo"; fundoColagem?: boolean; linguagem?: string };
+  /** A linguagem decidida (família, bloco de estilo dos prompts, letra, cores, nicho). */
+  linguagem?: LinguagemDoVideo;
+  /** A estimativa de custo das imagens e vídeos da Higgsfield, mostrada antes de gerar. */
+  estimativa?: EstimativaDeCusto;
+  /** O resumo dos elementos por tipo, na ordem do vídeo (a tela e a prova leem). */
+  elementos?: ElementoDoPlano[];
 };
+
+/** Um elemento decidido: o tipo (eixo 1), a peça ou a inserção que o desenha na linguagem (eixo 2). */
+export type ElementoDoPlano = { id: string; tipo: TipoDeElemento; variante: string; inicio: number; fim: number; peca: string | null; midia: "imagem" | "video" | null; fala?: string };
 
 export type EntradaDoDiretor = {
   frases: Frase[];
@@ -66,7 +78,8 @@ const NOME_DO_PLANO: Record<PlanoDaPeca, string> = {
  *   - o resto: só as genéricas (nenhuma peça de acabamento próprio).
  */
 export function pecasDoEstilo(base: string): FichaDaPeca[] {
-  const semApoio = PECAS.filter((p) => !CAMADAS_DE_APOIO.has(p.nome));
+  // A janela de imagem é do plano em dois eixos (o código liga a imagem); o diretor Opus não a usa.
+  const semApoio = PECAS.filter((p) => !CAMADAS_DE_APOIO.has(p.nome) && p.nome !== "imagem-janela");
   if (ESTILOS_DO_VOX.includes(base)) return semApoio.filter((p) => p.estilos?.includes(base));
   return semApoio.filter((p) => pecaNoEstilo(p, base));
 }
@@ -254,7 +267,7 @@ const vazio = (v: unknown) => v === undefined || v === null || (typeof v === "st
  * props obrigatórias presentes. O que não passa SAI com o motivo (o revisor
  * vê o vídeo depois e o diretor corrige); nada é inventado no lugar.
  */
-export function validarPlano(bruto: unknown, base: string): { plano: PlanoDoDiretor; avisos: string[] } {
+export function validarPlano(bruto: unknown, base: string, opcoes: { livre?: boolean } = {}): { plano: PlanoDoDiretor; avisos: string[] } {
   const j = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
   const avisos: string[] = [];
   const momentos: MomentoDoEditor[] = [];
@@ -264,8 +277,8 @@ export function validarPlano(bruto: unknown, base: string): { plano: PlanoDoDire
     const id = String(m.id ?? `m${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `m${k + 1}`;
     const peca0 = String(m.peca ?? "");
     if (!FICHAS[peca0] || CAMADAS_DE_APOIO.has(peca0)) return avisos.push(`${id}: peça "${peca0}" não existe`);
-    // Peça fora do estilo do comando: vira a peça do estilo (no Vox, marca-texto) ou sai.
-    const ajuste = pecaNoEstiloDoComando({ id, peca: peca0, de: "", ate: "", props: (m.props ?? {}) as Record<string, unknown> }, base);
+    // Peça fora do estilo do comando: vira a peça do estilo (no Vox, marca-texto) ou sai. No plano livre (dois eixos), nenhuma troca.
+    const ajuste = opcoes.livre ? { momento: { id, peca: peca0, de: "", ate: "", props: {} } as MomentoDoEditor, aviso: undefined } : pecaNoEstiloDoComando({ id, peca: peca0, de: "", ate: "", props: (m.props ?? {}) as Record<string, unknown> }, base);
     if (ajuste.aviso) avisos.push(ajuste.aviso);
     if (!ajuste.momento) return;
     const peca = ajuste.momento.peca;
@@ -289,6 +302,7 @@ export function validarPlano(bruto: unknown, base: string): { plano: PlanoDoDire
     visual: ["vidro", "impacto", "documental"].includes(String(tema0.visual)) ? (tema0.visual as Visual) : undefined,
     acabamento: tema0.acabamento === "luxo" ? "luxo" : tema0.acabamento === "tecnologico" ? "tecnologico" : undefined,
     fundoColagem: tema0.fundoColagem === true,
+    ...(opcoes.livre && typeof tema0.linguagem === "string" ? { linguagem: tema0.linguagem.slice(0, 20) } : {}),
   };
   const camera = (Array.isArray(j.camera) ? j.camera : [])
     .map((c) => (c && typeof c === "object" ? (c as Record<string, unknown>) : {}))
@@ -301,10 +315,20 @@ export function validarPlano(bruto: unknown, base: string): { plano: PlanoDoDire
       movimento: c.movimento === "empurrao" ? ("empurrao" as const) : ("fixo" as const),
     }));
   // No Vox a imagem é a foto de arquivo dentro do papel: nenhuma cena de cinema em tela cheia.
-  const insercoes = (Array.isArray(j.insercoes) && !ESTILOS_DO_VOX.includes(base) ? j.insercoes : [])
+  const insercoes = (Array.isArray(j.insercoes) && (opcoes.livre || !ESTILOS_DO_VOX.includes(base)) ? j.insercoes : [])
     .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
     .filter((x) => ANCORA.test(String(x.de ?? "")) && ANCORA.test(String(x.ate ?? "")) && typeof x.briefing === "string" && x.briefing.length > 10)
-    .map((x, k) => ({ id: String(x.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `i${k + 1}`, de: String(x.de), ate: String(x.ate), briefing: String(x.briefing).slice(0, 900) }));
+    .map((x, k) => ({
+      id: String(x.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `i${k + 1}`,
+      de: String(x.de),
+      ate: String(x.ate),
+      briefing: String(x.briefing).slice(0, opcoes.livre ? 1600 : 900),
+      ...(opcoes.livre && (x.midia === "video" || x.midia === "imagem") ? { midia: x.midia as "imagem" | "video" } : {}),
+      ...(opcoes.livre && x.janela === true ? { janela: true } : {}),
+      ...(opcoes.livre && x.estilizada === true ? { estilizada: true } : {}),
+      ...(opcoes.livre && Number(x.segundos) > 0 ? { segundos: Math.min(15, Math.max(3, Math.ceil(Number(x.segundos)))) } : {}),
+      ...(opcoes.livre && typeof x.oQueAparece === "string" ? { oQueAparece: x.oQueAparece.slice(0, 120) } : {}),
+    }));
   const enfases = (Array.isArray(j.enfases) ? j.enfases : []).map(String).filter((a) => ANCORA.test(a));
   return { plano: { leitura: typeof j.leitura === "string" ? j.leitura.slice(0, 600) : "", tema, momentos, camera, insercoes, enfases }, avisos };
 }

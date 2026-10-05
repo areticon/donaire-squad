@@ -41,6 +41,8 @@ export type Tema = {
    */
   /** Os acentos da marca no Vox (05/10): realce do marca-texto, a letra por cima dele, a tinta dos títulos, o carimbo e o fio. */
   vox?: { realce?: string; tintaNoRealce?: string; tinta?: string; carimbo?: string; fio?: string };
+  /** A família da linguagem visual do editor por comando (05/10, noite): papel, vidro, neon, luxo, giz, realista, traco, minimalista, impacto. */
+  linguagem?: string;
 };
 
 export type CamadaResolvida = {
@@ -135,6 +137,19 @@ export type InsercaoDoEditor = {
   /** O pedido de imagem como briefing de foto, em inglês. */
   briefing: string;
   porque?: string;
+  /**
+   * O EDITOR POR COMANDO EM DOIS EIXOS (05/10, noite): "video" é B-roll gerado
+   * na Higgsfield (Kling); "imagem" fica foto. `janela`: a imagem entra numa
+   * peça "imagem-janela" (sem plano de tela cheia). `estilizada`: o briefing já
+   * traz o bloco de estilo da linguagem do vídeo (a guarda não força "foto").
+   */
+  midia?: "imagem" | "video";
+  janela?: boolean;
+  estilizada?: boolean;
+  /** Os segundos que o vídeo pedido deve ter (o plano já mediu). */
+  segundos?: number;
+  /** O que aparece, em português, para a tela de aprovação. */
+  oQueAparece?: string;
 };
 
 /** O B-ROLL que o editor pede: uma consulta CURTA e concreta em inglês para o banco de vídeo. */

@@ -7,6 +7,7 @@ import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from ".
 import { Circulo, Desenho, IconeComRotulo, MolduraDoCartao, Seta, Sublinhado } from "./pecas/apontar";
 import { Busca, Chat, Ferramentas, GradeAzul, IlustracaoTraco, LegendaDestaque, MarcaBrilho, Material, Notebook, PalavraGigante, PilhaPassos, Seguir } from "./pecas/lousa";
 import { CarimboSobre, Censura, Colagem, Cronologia, FundoColagem, Jornal, MapaAntigo, MarcaTexto } from "./pecas/vox";
+import { ImagemJanela } from "./pecas/midia";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
 /**
@@ -69,6 +70,8 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   carimbo: CarimboSobre,
   "fundo-colagem": FundoColagem,
   cronologia: Cronologia,
+  // A imagem gerada em janela, com a moldura da linguagem do vídeo (05/10, noite: editor por comando em dois eixos).
+  "imagem-janela": ImagemJanela,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */

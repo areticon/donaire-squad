@@ -56,3 +56,58 @@ export function geracoesPorCorte(escolha: EscolhaMinima): { abertura: boolean; a
 export function creditosDaAberturaPorCorte(escolha: EscolhaMinima): number {
   return geracoesPorCorte(escolha).total * CREDITOS_POR_GERACAO_HIGGSFIELD;
 }
+
+// ─────────────────────────────── os preços por geração (05/10) ───────────────────────────────
+
+/**
+ * O PREÇO CHEIO DE CADA GERAÇÃO NA HIGGSFIELD, em dólar, numa tabela PURA
+ * (05/10/2026, editor por comando): a tela de aprovação do roteiro mostra a
+ * estimativa do vídeo antes de gerar, com a MESMA conta que o servidor usa.
+ * `lib/media/higgsfield.ts` (vídeo) e `lib/media/imagem-higgsfield.ts`
+ * (imagem) leem daqui, para não existir uma segunda cópia do preço.
+ *
+ * Vídeo: US$ por segundo, sem som gerado (levantado em 29/09 nas páginas de
+ * cada modelo; a API cobra em dólar, falha não é cobrada). Imagem: US$ por
+ * imagem na configuração que a montagem pede (o medium do GPT Image 2.5 é
+ * estimativa, a conferir no painel; ver imagem-higgsfield.ts).
+ */
+export const DOLAR_POR_SEGUNDO_DE_VIDEO = {
+  "kling-std": 0.084,
+  "kling-pro": 0.112,
+  "seedance-25": 0.4622,
+} as const;
+
+/** Com som gerado (a edição não usa; fica para comparar). */
+export const DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM = {
+  "kling-std": 0.126,
+  "kling-pro": 0.168,
+  "seedance-25": 0.4622,
+} as const;
+
+/** A faixa de segundos que cada modelo de vídeo aceita (e cobra). */
+export const SEGUNDOS_DO_VIDEO = {
+  "kling-std": { min: 3, max: 15 },
+  "kling-pro": { min: 3, max: 15 },
+  "seedance-25": { min: 4, max: 30 },
+} as const;
+
+export const DOLAR_POR_IMAGEM = {
+  "higgsfield-gpt-image-2.5-low": 0.025,
+  "higgsfield-gpt-image-2.5-medium": 0.06,
+  "higgsfield-recraft-v4.1": 0.035,
+  "higgsfield-grok-imagine-2.0": 0.08,
+} as const;
+
+/** O recorte do fundo (BiRefNet na fal) das fotos de papel. */
+export const DOLAR_POR_RECORTE = 0.003;
+
+/** O que a edição usa: a imagem é a "colagem" (GPT Image 2.5 medium) e o vídeo o Kling 3.0 Pro. */
+export const IMAGEM_DA_EDICAO = "higgsfield-gpt-image-2.5-medium" as const;
+export const VIDEO_DA_EDICAO = "kling-pro" as const;
+
+/** O custo de UM vídeo da edição com `segundos` (arredondado para a faixa que o modelo cobra). */
+export function dolarDoVideoDaEdicao(segundos: number, modelo: keyof typeof DOLAR_POR_SEGUNDO_DE_VIDEO = VIDEO_DA_EDICAO): number {
+  const f = SEGUNDOS_DO_VIDEO[modelo];
+  const cobrados = Math.min(f.max, Math.max(f.min, Math.ceil(segundos)));
+  return +(cobrados * DOLAR_POR_SEGUNDO_DE_VIDEO[modelo]).toFixed(4);
+}
