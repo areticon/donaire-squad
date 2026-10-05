@@ -4,8 +4,6 @@ Licença de uso da plataforma Demandou, software de conteúdo com inteligência 
 
 Versão 1.2, de 04 de outubro de 2026
 
-> MINUTA PARA REVISÃO JURÍDICA. Este documento foi preparado a partir de um modelo de mercado e dos fatos do produto, mas não foi revisado por advogado. Não deve ser publicado, assinado ou aceito por clientes antes dessa revisão. Os trechos entre colchetes, como [PREENCHER], dependem de confirmação.
-
 ## PREÂMBULO
 
 Estas Condições Gerais regem a contratação da licença de uso da plataforma Demandou. Leia com atenção antes de contratar. Elas valem para todos os planos e são sempre anuais.
