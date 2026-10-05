@@ -254,6 +254,10 @@ export async function createCheckoutSession(
     // Se um dia houver campanha com código digitado, o lugar de voltar é aqui,
     // e o cupom dela precisa ser PERCENTUAL ou preso a um produto. Fixo e solto
     // foi o que sangrou.
+    // CÓDIGO PROMOCIONAL SÓ QUANDO LIGADO (04/10, teste da jornada completa do
+    // Bruno com cupom de 100%): STRIPE_CODIGO_PROMOCIONAL=1 mostra o campo. Os
+    // códigos criados são percentuais e de uso único (ver o aviso acima).
+    ...(process.env.STRIPE_CODIGO_PROMOCIONAL === "1" ? { allow_promotion_codes: true } : {}),
     customer_email: email,
     metadata: { userId },
     line_items: [{ price: priceId, quantity: 1 }],
