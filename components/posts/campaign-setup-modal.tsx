@@ -59,6 +59,11 @@ export interface DayScheduleTime {
 
 export interface CampaignConfig {
   campaignMode: CampaignMode;
+  /**
+   * A pessoa escolheu substituir os rascunhos de outras campanhas nos dias
+   * desta (05/10). Sem isto a campanha é somada ao dia; nada existente é tocado.
+   */
+  substituirRascunhos?: boolean;
   funnelStage: FunnelStage;
   weeklySchedule: WeeklySchedule;
   // Posting times: key = dayOfWeek (1-7), value = "HH:mm"
@@ -1145,6 +1150,13 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [origem, setOrigem] = useState<"video" | "tema" | null>(origemInicial ?? null);
   const [step, setStep] = useState(0);
   const [campaignMode, setCampaignMode] = useState<CampaignMode>("weekly");
+  /**
+   * "JÁ EXISTE PEÇA NESTE DIA" (05/10): a campanha pronta para sair espera a
+   * pessoa escolher entre somar ao dia (padrão) e substituir os rascunhos
+   * que já estão lá. A esteira nunca decide isso sozinha.
+   */
+  const [sobreposicao, setSobreposicao] = useState<{ aviso: string; config: CampaignConfig } | null>(null);
+  const [conferindoSobreposicao, setConferindoSobreposicao] = useState(false);
   const [funnelStage, setFunnelStage] = useState<FunnelStage>("tofu");
   // Default: Mon–Fri active, Sat–Sun off (key absent = não postar naquele dia)
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>(() => diasDaFrequencia(postFrequency));
@@ -1456,6 +1468,41 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
     setPostingTimes({ "1": time, "2": time, "3": time, "4": time, "5": time, "6": time, "7": time });
   }
 
+  /**
+   * Antes de mandar a campanha de semana, pergunta ao servidor se os dias
+   * escolhidos já têm peça. Com sobreposição, a decisão fica com a pessoa
+   * (somar ou substituir). Post único e recorrente saem direto: nunca
+   * substituem nada. Falha na conferência não barra: sai somando, que é o
+   * caminho que não mexe em nada.
+   */
+  async function confirmarComAvisoDeSobreposicao(config: CampaignConfig) {
+    const diasEscolhidos = Object.keys(config.weeklySchedule).filter((k) => config.weeklySchedule[k as keyof WeeklySchedule]);
+    if (isSingle || isRecurring || !projectId || !config.weekStart || diasEscolhidos.length === 0) {
+      onConfirm(config);
+      return;
+    }
+    setConferindoSobreposicao(true);
+    try {
+      const q = new URLSearchParams({
+        projectId,
+        weekStart: config.weekStart,
+        dias: diasEscolhidos.join(","),
+        semanas: config.campaignMode === "biweekly" ? "2" : "1",
+      });
+      const res = await fetch(`/api/pipeline/sobreposicao?${q.toString()}`);
+      const data = res.ok ? ((await res.json()) as { aviso: string | null }) : { aviso: null };
+      if (data.aviso) {
+        setSobreposicao({ aviso: data.aviso, config });
+        return;
+      }
+    } catch {
+      // Sem resposta, sai somando: é o caminho que não toca em nada.
+    } finally {
+      setConferindoSobreposicao(false);
+    }
+    onConfirm(config);
+  }
+
   function handleConfirm() {
     // SEM REDE NAO HA O QUE PEDIR. Em 14/09 o projeto estava sem conta nenhuma,
     // a janela deixou confirmar, e a esteira devolveu "concluida! 0 posts". A
@@ -1521,7 +1568,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
       }
     }
 
-    onConfirm({
+    void confirmarComAvisoDeSobreposicao({
       midiaDoCliente: Object.keys(midiaDoCliente).length ? midiaDoCliente : undefined,
       materiaisDaCampanha: materiaisDaCampanha.length ? materiaisDaCampanha : undefined,
       campaignMode,
@@ -2912,6 +2959,37 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               Próximo
               <ChevronRight className="w-4 h-4" />
             </Button>
+          ) : sobreposicao ? (
+            // A escolha é da pessoa: somar ao dia (nada é tocado) ou substituir os rascunhos.
+            <div className="flex flex-col items-end gap-2">
+              <p className="max-w-[360px] text-right text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                {sobreposicao.aviso}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    const config = { ...sobreposicao.config, substituirRascunhos: true };
+                    setSobreposicao(null);
+                    onConfirm(config);
+                  }}
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Substituir os rascunhos desses dias
+                </Button>
+                <Button
+                  onClick={() => {
+                    const config = { ...sobreposicao.config, substituirRascunhos: false };
+                    setSobreposicao(null);
+                    onConfirm(config);
+                  }}
+                  className="bg-orange-500 hover:bg-orange-600"
+                >
+                  <Zap className="w-4 h-4" />
+                  Somar ao dia
+                </Button>
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col items-end gap-1">
               {identidadeAprovada === false && (
@@ -2920,9 +2998,9 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                   Identidade visual sem aprovação: os textos saem e as artes ficam aguardando, sem gastar. Aprove no passo do estilo ou em Configurações.
                 </p>
               )}
-              <Button onClick={handleConfirm} className="bg-orange-500 hover:bg-orange-600">
+              <Button onClick={handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
                 <Zap className="w-4 h-4" />
-                Gerar campanha
+                {conferindoSobreposicao ? "Conferindo os dias..." : "Gerar campanha"}
               </Button>
             </div>
           )}

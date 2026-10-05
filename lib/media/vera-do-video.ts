@@ -75,17 +75,38 @@ type VideoDaVera = NonNullable<Awaited<ReturnType<typeof carregarVideoDaVera>>>;
 
 type CardDaVera = { id: string; dayOfWeek: number; scheduledDate: Date | null; metadata: unknown; runId: string };
 
-/** Os posts do MESMO dia do card (dia UTC, como a rota by-day faz), na ordem em que a Vera os numera. */
-export async function postsDoDiaDaVera(projectId: string, scheduledDate: Date) {
-  const inicio = new Date(scheduledDate);
+/**
+ * O que a Vera NÃO revisa, e o squad NÃO reescreve: o que já saiu ou está
+ * saindo, o que o cliente arquivou ou reprovou, e o que falhou.
+ *
+ * Até 05/10 só `failed` ficava de fora, e a busca era por projeto e dia, sem
+ * run. Na noite de 05/10 a Vera numerou, e a correção REESCREVEU, posts de
+ * dois runs arquivados (vídeos cancelados), o post de uma campanha de post
+ * único e uma thread do X JÁ PUBLICADA de outro run, porque todos caíam na
+ * mesma data. A campanha é o run: a Vera do vídeo só olha as peças dele.
+ */
+export const STATUS_FORA_DA_REVISAO = ["failed", "published", "publishing", "cancelled", "rejected"] as const;
+
+/**
+ * O filtro dos posts de UM dia de UM run (dia UTC, como a rota by-day faz).
+ * Função pura, para a prova em scripts/testes/vera-so-do-run-0510.test.mts.
+ */
+export function filtroDosPostsDoDia(args: { projectId: string; runId: string; scheduledDate: Date }) {
+  const inicio = new Date(args.scheduledDate);
   inicio.setUTCHours(0, 0, 0, 0);
   const fim = new Date(inicio.getTime() + 86400000);
+  return {
+    projectId: args.projectId,
+    runId: args.runId,
+    scheduledAt: { gte: inicio, lt: fim },
+    status: { notIn: [...STATUS_FORA_DA_REVISAO] },
+  };
+}
+
+/** Os posts do MESMO dia e do MESMO run do card, na ordem em que a Vera os numera. */
+export async function postsDoDiaDaVera(projectId: string, scheduledDate: Date, runId: string) {
   return prisma.post.findMany({
-    where: {
-      projectId,
-      scheduledAt: { gte: inicio, lt: fim },
-      status: { notIn: ["failed"] },
-    },
+    where: filtroDosPostsDoDia({ projectId, runId, scheduledDate }),
     select: { id: true, platform: true, content: true, mediaType: true, imageUrl: true, metadata: true, createdAt: true },
     orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
   });
@@ -127,7 +148,7 @@ async function revisarUmDia(
     .filter((f): f is string => Boolean(f))
     .slice(0, 5);
 
-  const posts = await postsDoDiaDaVera(video.projectId, card.scheduledDate);
+  const posts = await postsDoDiaDaVera(video.projectId, card.scheduledDate, card.runId);
   if (posts.length === 0) return null;
 
   const dia = DIAS[card.dayOfWeek] ?? "o dia";
@@ -353,7 +374,7 @@ export async function revisarDiasDoVideo(videoJobId: string, opcoes: { prazoEm?:
     // Vitor, e o dia ganha o corte depois), a Vera revisa o dia de novo.
     if (meta.veredito) {
       const revisadoEm = typeof meta.revisadoEm === "string" ? new Date(meta.revisadoEm).getTime() : 0;
-      const posts = await postsDoDiaDaVera(video.projectId, card.scheduledDate);
+      const posts = await postsDoDiaDaVera(video.projectId, card.scheduledDate, card.runId);
       if (!posts.some((p) => p.createdAt.getTime() > revisadoEm)) {
         // Revisado e parado: só retoma a correção que ficou devendo.
         if (precisaDaCorrecao(meta, card.content ?? "")) {

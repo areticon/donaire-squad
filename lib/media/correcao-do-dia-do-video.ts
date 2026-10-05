@@ -8,7 +8,7 @@ import { limparMarcadores } from "@/lib/media/write-posts";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
 import { REGRAS_DE_TEXTO, separarTweets, fraseDaArte, arteDoDia } from "@/lib/media/pecas-da-semana";
 import { formatoDaPeca as formatoDaRede } from "@/lib/media/formatos-das-redes";
-import { revisarDiaDoVideo, postsDoDiaDaVera, ROTULO_DO_VEREDITO, type RevisaoDoDia } from "@/lib/media/vera-do-video";
+import { revisarDiaDoVideo, postsDoDiaDaVera, ROTULO_DO_VEREDITO, STATUS_FORA_DA_REVISAO, type RevisaoDoDia } from "@/lib/media/vera-do-video";
 import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
 import { marcarEmRevisao, encerrarRevisao } from "@/lib/pipeline/revisao-do-card";
 import { fichaDoAgente } from "@/lib/squad/definicoes-dos-agentes";
@@ -298,7 +298,7 @@ export async function corrigirDiaDoVideo(args: {
   let ordem: string[] = args.primeira?.postIds ?? (Array.isArray(meta0.pecasRevisadas) ? (meta0.pecasRevisadas as string[]) : []);
   // Card revisado antes de 29/09 não guardou a ordem: ela é refeita pela
   // mesma consulta que a Vera usou para numerar as peças.
-  if (!ordem.length) ordem = (await postsDoDiaDaVera(video.projectId, card.scheduledDate)).map((p) => p.id);
+  if (!ordem.length) ordem = (await postsDoDiaDaVera(video.projectId, card.scheduledDate, card.runId)).map((p) => p.id);
   const motivoInicial = motivoDoParecer(parecer);
   const historico: TentativaDaCorrecao[] = [];
   let tentativa = 0;
@@ -328,14 +328,17 @@ export async function corrigirDiaDoVideo(args: {
     }
     tentativa++;
 
+    // SÓ AS PEÇAS DO RUN DO CARD, e só as que ainda podem mudar (05/10): a
+    // ordem gravada por uma Vera antiga pode trazer ids de outros runs (até
+    // post publicado), e reescrever esses é mexer no que não é desta campanha.
     const posts: PostDoDia[] = await prisma.post.findMany({
-      where: { id: { in: ordem } },
+      where: { id: { in: ordem }, runId: card.runId, status: { notIn: [...STATUS_FORA_DA_REVISAO] } },
       select: { id: true, platform: true, content: true, mediaType: true, imageUrl: true, metadata: true, runId: true, dayOfWeek: true },
     });
     const porId = new Map(posts.map((p) => [p.id, p]));
     const ordenados = ordem.map((id) => porId.get(id)).filter((p): p is PostDoDia => Boolean(p));
     const produtores: CardProdutor[] = await prisma.campaignCard.findMany({
-      where: { postId: { in: ordem } },
+      where: { postId: { in: ordenados.map((p) => p.id) }, runId: card.runId },
       select: { id: true, agentId: true, cardType: true, postId: true, content: true, metadata: true, mediaUrl: true },
     });
 

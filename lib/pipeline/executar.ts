@@ -56,6 +56,7 @@ import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
 import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
+import { janelaDaCampanha, substituiRascunhos } from "@/lib/pipeline/sobreposicao-de-campanha";
 
 // O teto de tempo vive nas ROTAS (`/api/cron/fila`), e nao mais aqui: desde
 // 10/09 o motor gera UM dia por chamada, e cada dia tem os seus 800 s. Antes,
@@ -93,6 +94,12 @@ interface CampaignConfig {
   /** O "hoje" de quem esta na tela (AAAA-MM-DD, fuso do navegador). Ver o wizard. */
   hojeLocal?: string;
   campaignMode: CampaignMode;
+  /**
+   * A pessoa escolheu, na janela, SUBSTITUIR os rascunhos de outras campanhas
+   * nos dias desta (05/10). Sem isto a campanha nova é somada ao dia e nada
+   * do que já existe é tocado. Ver lib/pipeline/sobreposicao-de-campanha.ts.
+   */
+  substituirRascunhos?: boolean;
   funnelStage: FunnelStage;
   weeklySchedule: WeeklySchedule;
   postingTimes?: Record<string, string>; // dayOfWeek -> "HH:mm"
@@ -1276,37 +1283,36 @@ export async function agendarCampanha({
   const weekStartDate = new Date(config.weekStart + "T00:00:00.000Z");
 
   /**
-   * A CAMPANHA NOVA APOSENTA OS RASCUNHOS DA ANTERIOR, no mesmo periodo.
+   * A CAMPANHA NOVA NÃO MEXE NO QUE JÁ EXISTE, a não ser que a pessoa peça.
    *
-   * Achado em 21/09, na foto que o Bruno mandou: o calendario mostrava os
-   * icones das redes repetidos quatro e cinco vezes num dia so. Nao era a
-   * tela. Era o banco: TRES campanhas diferentes tinham gerado pecas para o
-   * mesmo dia, cada uma com quatro posts, e todas ficaram ali. Gerar de novo
-   * nunca aposentou o que a geracao anterior deixou.
-   *
-   * O criterio e estreito de proposito, e a linha divisoria e a DECISAO do
-   * cliente:
-   *
-   *   • RASCUNHO e uma proposta que ele nunca aprovou. Uma proposta nova para
-   *     o mesmo dia substitui a antiga, como em qualquer mesa de trabalho;
-   *   • AGENDADO e um plano aprovado, e PUBLICADO e um fato. Nenhum dos dois
-   *     e tocado aqui: apagar o que ele aprovou porque pediu outra coisa
-   *     seria a plataforma decidindo no lugar dele.
+   * De 21/09 a 05/10 este trecho arquivava sozinho todo rascunho do projeto
+   * que caísse nos dias da campanha nova ("a proposta nova substitui a
+   * antiga"). Em 05/10 um POST ÚNICO de segunda cancelou os seis posts da
+   * semana que o vídeo tinha acabado de gerar: a janela do único é a semana
+   * inteira e o filtro não olhava run nem modo. Regra do Bruno desde então:
+   * uma campanha NUNCA arquiva peça de outra por conta própria. O quadro
+   * aceita várias peças por dia, e a nova é SOMADA. A tela avisa "já existe
+   * peça neste dia" e oferece substituir; só com essa escolha explícita
+   * (`substituirRascunhos`), e só na campanha de semana, os rascunhos de
+   * OUTRAS campanhas saem. Post único e recorrente nunca substituem.
    *
    * Arquivar e nao apagar: a peca continua no banco e volta se alguem quiser.
    */
-  const fimDaJanela = new Date(weekStartDate);
-  fimDaJanela.setUTCDate(fimDaJanela.getUTCDate() + (config.campaignMode === "biweekly" ? 14 : 7));
-  const { count: aposentados } = await prisma.post.updateMany({
-    where: {
-      projectId: project.id,
-      status: "draft",
-      scheduledAt: { gte: weekStartDate, lt: fimDaJanela },
-    },
-    data: { status: "cancelled" },
-  });
-  if (aposentados > 0) {
-    console.log(`[campanha] ${aposentados} rascunho(s) de campanhas anteriores arquivados no periodo`);
+  const { fim: fimDaJanela } = janelaDaCampanha({ campaignMode: config.campaignMode, weekStart: config.weekStart });
+  let aposentados = 0;
+  if (substituiRascunhos(config)) {
+    const r = await prisma.post.updateMany({
+      where: {
+        projectId: project.id,
+        status: "draft",
+        scheduledAt: { gte: weekStartDate, lt: fimDaJanela },
+      },
+      data: { status: "cancelled" },
+    });
+    aposentados = r.count;
+    if (aposentados > 0) {
+      console.log(`[campanha] ${aposentados} rascunho(s) de outras campanhas arquivados a pedido do cliente`);
+    }
   }
 
   const run = await prisma.pipelineRun.create({
@@ -1328,8 +1334,8 @@ export async function agendarCampanha({
     await appendLog(run.id, {
       agent: "Sistema",
       message:
-        `${aposentados} rascunho(s) de campanhas anteriores para estes dias foram arquivados: ` +
-        `a campanha nova substitui a proposta antiga. Posts agendados e publicados nao foram tocados.`,
+        `${aposentados} rascunho(s) de outras campanhas para estes dias foram arquivados, como voce escolheu ` +
+        `ao gerar esta campanha. Posts agendados e publicados nao foram tocados.`,
       status: "running",
     });
   }
