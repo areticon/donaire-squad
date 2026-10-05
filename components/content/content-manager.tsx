@@ -5252,7 +5252,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       const midiaDaCapa =
         (pecaDeVideo ? (redator?.cardType === "video_clip" ? redator.mediaUrl : null) ?? midiaDoVideo : redator?.mediaUrl) ??
         cardDaMidia?.mediaUrl ??
-        (pecaDeVideo ? null : ((primeiro as { imageUrl?: string | null }).imageUrl ?? null)) ??
+        (pecaDeVideo ? null : primeiro.imageUrl ?? null) ??
         null;
       const bruta = midiaDaCapa ? midiaDaCapa.split("|")[0] : null;
       // O quadro vem do card do próprio corte (metadata.thumb, a capa do
