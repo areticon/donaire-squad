@@ -3,7 +3,7 @@ import { jevLigado, perguntarAoJev, decidirChoice } from "@/lib/jev/cliente";
 import { estiloDoCatalogo, type EscolhaDeEstilo } from "@/lib/media/catalogo-de-estilos";
 import { gerarInsercoes, frasesNumeradas, temaDoEstilo } from "@/lib/media/editor-sob-medida";
 import { blocosDoEditor } from "@/lib/media/editor-sob-medida/editor";
-import { prepararFotosDoVox, type GuardaDoRecorte } from "@/lib/media/editor-sob-medida/recortes-vox";
+import { fotosDoMomento, prepararFotosDoVox, type GuardaDoRecorte } from "@/lib/media/editor-sob-medida/recortes-vox";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
 import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-sob-medida/tipos";
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
@@ -189,6 +189,9 @@ function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: st
   };
 }
 
+/** Quantas fotos das peças de papel ficaram sem url (a peça usa a reserva do assunto). */
+const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosDoMomento).filter((f) => !f.url).length;
+
 /** As imagens que o plano pede, dentro do teto: as fotos das peças de papel e as cenas, em paralelo. */
 async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
   // As cenas que já existem (a correção que manteve a imagem) não são geradas de novo.
@@ -201,7 +204,7 @@ async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Reco
       ? gerarInsercoes({ ...plano, momentos: [], insercoes: novas }, { formato: e.formato, projectId: e.projectId, teto: tetoCenas, local: e.local }).catch((err) => ({ insercoes: {}, custoUsd: 0, erros: [`cenas: ${String(err).slice(0, 120)}`] }))
       : Promise.resolve({ insercoes: {}, custoUsd: 0, erros: [] as string[] }),
   ]);
-  return { insercoes: cenas.insercoes, custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4), erros: [...fotos.erros, ...cenas.erros, ...(fotos.prontas === 0 && (plano.momentos ?? []).some((m) => ["colagem", "jornal", "mapa-antigo", "censura", "cronologia"].includes(m.peca)) ? ["nenhuma foto gerada: as peças de papel usam as fotos de reserva (worker/fontes/vox)"] : [])] };
+  return { insercoes: cenas.insercoes, custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4), erros: [...fotos.erros, ...cenas.erros, ...(semFoto(plano) ? [`${semFoto(plano)} foto(s) sem imagem gerada: as peças de papel usam as fotos de reserva (worker/fontes/vox)`] : [])] };
 }
 
 /** Classificação + diretor + imagens + resolução. Lança se o diretor não devolveu plano. */
