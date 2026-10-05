@@ -8,8 +8,11 @@ import { lerPainel, lerFunil, lerOrigens, lerContatos, lerAssinaturas } from "@/
 import { eixoDoTempo, lerGraficos } from "@/lib/admin/graficos-do-painel";
 import { periodoDaUrl, reais, soma, type DadosNoTempo } from "@/lib/admin/tipos-do-painel";
 import { tetoDeVideosPorDia } from "@/lib/media/cota-do-dia";
+import { lerUsoDeIa } from "@/lib/admin/uso-de-ia";
+import { periodoDeIaDaUrl } from "@/lib/admin/tipos-do-uso-de-ia";
 import { FalhasDePublicacao } from "@/components/admin/falhas-de-publicacao";
 import { GraficoNoTempo } from "@/components/admin/grafico-no-tempo";
+import { UsoDeIa } from "@/components/admin/uso-de-ia";
 import {
   BarraEmpilhada,
   BarrasHorizontais,
@@ -43,7 +46,7 @@ import {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dias?: string; exemplo?: string }>;
+  searchParams: Promise<{ dias?: string; exemplo?: string; ia?: string }>;
 }) {
   const { userId } = await auth();
   if (!userId) notFound();
@@ -52,6 +55,9 @@ export default async function AdminPage({
 
   const sp = await searchParams;
   const dias = periodoDaUrl(sp.dias);
+  // O período da seção "Uso de IA e margem" (05/10) é próprio (7, 30 ou mês
+  // corrente) e mora em ?ia=, para o resto do painel não mudar junto.
+  const periodoDeIa = periodoDeIaDaUrl(sp.ia);
   // Dados de exemplo só no `next dev` (ver lib/admin/exemplo-do-painel.ts):
   // em produção o parâmetro não faz nada.
   const exemplo = process.env.NODE_ENV === "development" && sp.exemplo === "1";
@@ -60,12 +66,13 @@ export default async function AdminPage({
   // totais dos cartões e as somas dos gráficos fecham entre si.
   const { desde } = eixoDoTempo(dias, agora);
 
-  const [painel, funilReal, origensReais, contatos, assinaturasReais] = await Promise.all([
+  const [painel, funilReal, origensReais, contatos, assinaturasReais, usoDeIa] = await Promise.all([
     lerPainel(agora, dias, desde),
     lerFunil(desde),
     lerOrigens(desde),
     lerContatos(40),
     lerAssinaturas(),
+    lerUsoDeIa(periodoDeIa, agora),
   ]);
   const graficosReais = await lerGraficos(dias, painel.resumo.mrr, agora);
 
@@ -127,7 +134,7 @@ export default async function AdminPage({
     .map((s) => ({ nome: s.nome, valor: soma(s.valores), cor: s.cor }))
     .sort((a, b) => b.valor - a.valor);
   const maiorCusto = Math.max(1, ...linhas.map((l) => Math.max(l.custoIaReais, l.mensalidade)));
-  const seletorExtra = exemplo ? "&exemplo=1" : "";
+  const seletorExtra = `${exemplo ? "&exemplo=1" : ""}${periodoDeIa !== "30" ? `&ia=${periodoDeIa}` : ""}`;
 
   return (
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
@@ -382,6 +389,11 @@ export default async function AdminPage({
           )}
         </Cartao>
       </div>
+
+      {/* USO DE IA E MARGEM (05/10): cliente contra desenvolvimento, margem
+          contra o desenho e o cruzamento "os créditos estão funcionando?".
+          Vem logo depois do gráfico de custo, que é o número que ela explica. */}
+      <UsoDeIa dados={usoDeIa} dias={dias} extra={exemplo ? "&exemplo=1" : ""} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Cartao titulo="Publicações por rede" subtitulo="O que foi ao ar de verdade, de todas as contas, pela data da publicação.">

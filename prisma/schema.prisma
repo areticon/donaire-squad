@@ -60,6 +60,14 @@ model User {
   /// cota da conta. Escrito pelo admin (/admin/clientes) ou pelo webhook do
   /// Stripe quando existir o preço do acesso extra. Ver lib/equipe/regras.ts.
   acessosExtras     Int       @default(0)
+  /// CONTA INTERNA (05/10): o uso de IA desta conta é do time de
+  /// desenvolvimento, não de cliente. Separa, no painel de admin, o gasto dos
+  /// testes do gasto que a margem precisa pagar. Diferente de `role`: admin é
+  /// acesso sem cobrança; interna é só classificação do gasto, e uma conta
+  /// comum (com plano e débito de verdade, como a do Bruno no Gmail) pode ser
+  /// interna. Marcada pela migração nos e-mails @demandou.com e no Gmail do
+  /// Bruno; o resto é feito à mão no banco.
+  contaInterna      Boolean   @default(false)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -149,6 +157,9 @@ model CreditTransaction {
   @@index([userId, createdAt])
   @@index([operation, refId])
   @@index([autorId, createdAt])
+  /// O cruzamento "créditos cobrados contra uso de IA" do painel (05/10) lê o
+  /// extrato por janela de tempo, sem usuário fixo.
+  @@index([createdAt])
   @@map("credit_transactions")
 }
 
@@ -723,6 +734,9 @@ model AiUsage {
 
   @@index([projectId, createdAt])
   @@index([runId])
+  /// O painel de admin soma o período inteiro (05/10): sem este índice a soma
+  /// por janela varre a tabela toda.
+  @@index([createdAt])
   @@map("ai_usage")
 }
 
