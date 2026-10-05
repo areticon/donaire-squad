@@ -21,7 +21,7 @@ import { NOME_DA_REDE, O_QUE_PREPARAR, POR_QUE_ASSISTIDA, type PedidoDeConexao }
 export function ConexaoAssistida({
   projectId,
   rede,
-  pedido,
+  pedido: pedidoRecebido,
   temConta,
   conectarDiretoUrl,
   onPedido,
@@ -37,6 +37,9 @@ export function ConexaoAssistida({
   /** No assistente do projeto o espaço é menor: sem o texto longo. */
   compacta?: boolean;
 }) {
+  // Conta já conectada encerra o pedido (04/10, print do Bruno: a faixa
+  // "Pedido enviado" ficava em cima da conta já ligada pelo admin).
+  const pedido = temConta ? null : pedidoRecebido;
   const [aberta, setAberta] = useState(!temConta && !compacta);
   const [nota, setNota] = useState("");
   const [enviando, setEnviando] = useState(false);
