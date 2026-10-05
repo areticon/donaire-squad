@@ -458,14 +458,15 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
     case "foto-profundidade": {
       // O TÍTULO ATRÁS DA PESSOA (03/10). Camadas, de baixo para cima: a foto
       // (desfocada quando há recorte), o tom da marca, a luz de destaque atrás
-      // da pessoa, o título gigante, a pessoa recortada e o rodapé. Sem a foto
-      // do cliente (prévia), uma silhueta mostra onde a pessoa entra.
+      // da pessoa, o título gigante, a pessoa recortada e o rodapé. Na prévia
+      // (05/10) entra a foto real do cliente já recortada ou uma pessoa de
+      // banco recortada; a silhueta preta saiu a pedido do Bruno. O recorte usa
+      // "cover", como a foto, para continuar alinhado em qualquer formato.
       const z = { x: 0, y: 0, w: W, h: H };
       const [ar, ag, ab] = rgb(acento);
       const temRecorte = Boolean(e.recorte);
       const tituloTop = Math.round(m * 1.1);
       const tituloAltura = Math.round(H * (alta ? 0.3 : 0.36));
-      const silhueta = !e.foto;
       const baseH = Math.round(H * (alta ? 0.22 : 0.26));
       return raiz(
         <>
@@ -477,14 +478,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
           </div>
           {temRecorte ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={e.recorte!} alt="" width={W} height={H} style={{ position: "absolute", left: 0, top: 0, width: W, height: H }} />
-          ) : silhueta ? (
-            <div style={flex({ position: "absolute", left: 0, top: Math.round(H * 0.3), width: W, height: Math.round(H * 0.7), justifyContent: "center" })}>
-              <svg width={Math.round(W * 0.78)} height={Math.round(H * 0.7)} viewBox="0 0 100 100" preserveAspectRatio="none">
-                <ellipse cx="50" cy="22" rx="15" ry="19" fill={misturar(escuro, "#000000", 0.35)} />
-                <path d="M8 100 C 10 62, 28 50, 50 50 C 72 50, 90 62, 92 100 Z" fill={misturar(escuro, "#000000", 0.35)} />
-              </svg>
-            </div>
+            <img src={e.recorte!} alt="" width={W} height={H} style={{ position: "absolute", left: 0, top: 0, width: W, height: H, objectFit: "cover" }} />
           ) : null}
           <div style={flex({ position: "absolute", left: 0, top: H - baseH, width: W, height: baseH, backgroundImage: `linear-gradient(180deg, ${rgba(escuro, 0)} 0%, ${rgba(escuro, 0.92)} 70%)` })} />
           <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 1.6 - (t.apoio ? 110 * u : 0) - (alta ? H * 0.08 : 0), width: larguraUtil, flexDirection: "column", alignItems: "center" })}>

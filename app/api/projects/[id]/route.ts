@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { revogarGemeo } from "@/lib/media/gemeo-servidor";
+import { esquecerIdentidade } from "@/lib/media/identidade-visual";
 import { FICHAS_DOS_AGENTES } from "@/lib/squad/definicoes-dos-agentes";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { CAMPOS_DO_ENVIO, soODono } from "@/lib/equipe/permissoes";
@@ -75,6 +76,10 @@ export async function PATCH(
     where: { id },
     data: data as Prisma.ProjectUpdateInput,
   });
+
+  // A identidade visual fica 10 min em cache: mudou cor, logo, nicho ou
+  // manual, a próxima prévia e a próxima arte já saem na marca nova (05/10).
+  if (["colorPalette", "logoUrl", "niche", "name", "brandManualUrl", "targetAudience"].some((k) => k in data)) esquecerIdentidade(id);
 
   // Create default agents when project is activated for the first time
   if (body.status === "active") {

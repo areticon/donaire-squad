@@ -22,12 +22,20 @@ import { textosDeExemplo } from "@/lib/modelos-de-arte/textos-de-exemplo";
  * Pedido do Bruno: "o que gera rejeição é o cliente não saber o que vem e vir
  * uma surpresa; escolher antes é o mais inteligente". Cada modelo aparece JÁ na
  * marca do cliente (as cores efetivas, o logo e o nome dele), com um texto de
- * exemplo do nicho e uma foto de exemplo do setor no lugar da foto. O desenho é
+ * exemplo do nicho e uma foto de exemplo no lugar da foto. O desenho é
  * o mesmo que compõe a arte de verdade no servidor (lib/modelos-de-arte/desenho.tsx),
  * então a prévia é instantânea, de graça, e a arte sai parecida com ela.
  *
  * A escolha (um ou mais) grava no projeto a cada toque e vale para as próximas
  * artes; muda-se aqui mesmo, no Criar, na campanha ou em Configurações.
+ *
+ * AS FOTOS (05/10): cada modelo com foto ganha uma foto DIFERENTE, de banco
+ * gratuito e curado (lib/modelos-de-arte/fotos-do-book.ts, servidas pela rota),
+ * primeiro as do setor do cliente e depois a reserva variada, alternando
+ * pessoas, ambientes, produtos, comida, arquitetura e plantas. O cartão usa a
+ * versão leve; a ficha, a grande. O "Você na frente do título" usa a foto real
+ * do cliente já recortada ou uma pessoa de banco recortada, nunca silhueta.
+ * As cores são as da paleta do projeto (marca.cores, da identidade visual).
  */
 
 interface MarcaDaGaleria {
@@ -37,6 +45,39 @@ interface MarcaDaGaleria {
   setor: string;
   setorNome: string;
   arroba?: string;
+}
+
+/** Uma foto de prévia, nas duas versões (ver lib/modelos-de-arte/fotos-do-book.ts). */
+interface FotoDaPrevia {
+  p: string;
+  g: string;
+  tipo: string;
+}
+
+/** A pessoa recortada da prévia do "Você na frente do título". */
+interface PessoaDaPrevia {
+  fundo: string;
+  recorte: string;
+  origem: "cliente" | "banco";
+}
+
+/** O que a prévia precisa além da marca: a foto de cada modelo e a pessoa recortada. */
+interface MidiaDaGaleria {
+  fotos: FotoDaPrevia[];
+  pessoa: PessoaDaPrevia | null;
+}
+
+/** Os modelos com foto, na ordem do catálogo: a posição de cada um escolhe a foto dele. */
+const POSICAO_DA_FOTO = new Map(
+  MODELOS_DE_ARTE.filter((m) => m.foto !== "nenhuma" && m.foto !== "recorte").map((m, i) => [m.id, i] as const)
+);
+
+/** A foto do modelo: uma diferente para cada modelo; sem lista, a foto antiga do setor. */
+function fotoDoModelo(modelo: ModeloDeArte, midia: MidiaDaGaleria, setor: string, grande: boolean): string | null {
+  if (modelo.foto === "nenhuma" || modelo.foto === "recorte") return null;
+  const i = POSICAO_DA_FOTO.get(modelo.id) ?? 0;
+  const f = midia.fotos.length ? midia.fotos[i % midia.fotos.length] : null;
+  return f ? (grande ? f.g : f.p) : `/modelos-de-arte/fotos/${setor}.jpg`;
 }
 
 /** As fontes do book entram uma vez na página. */
@@ -88,12 +129,17 @@ export function PreviaDoModelo({
   modelo,
   formato,
   marca,
+  midia,
+  grande = false,
   logoProporcao,
   caixa,
 }: {
   modelo: ModeloDeArte;
   formato: FormatoDoModelo;
   marca: MarcaDaGaleria;
+  midia: MidiaDaGaleria;
+  /** Na ficha, a foto em 1280 px; no cartão, a leve. */
+  grande?: boolean;
   logoProporcao: number | null;
   /** A caixa onde a prévia cabe inteira (largura e altura em px). */
   caixa: { largura: number; altura: number };
@@ -108,17 +154,18 @@ export function PreviaDoModelo({
         cores: marca.cores,
         largura: W,
         altura: H,
-        // "Você na frente do título" (03/10): na prévia, a foto do setor vira o
-        // fundo e uma silhueta mostra onde a sua foto entra recortada.
-        foto: modelo.foto === "nenhuma" || modelo.foto === "recorte" ? null : `/modelos-de-arte/fotos/${marca.setor}.jpg`,
-        fundoDesfocado: modelo.foto === "recorte" ? `/modelos-de-arte/fotos/${marca.setor}.jpg` : null,
+        // "Você na frente do título": a pessoa recortada (a do cliente ou a de
+        // banco) na frente do título, sobre o fundo dela desfocado.
+        foto: modelo.foto === "recorte" ? (midia.pessoa?.fundo ?? null) : fotoDoModelo(modelo, midia, marca.setor, grande),
+        fundoDesfocado: modelo.foto === "recorte" ? (midia.pessoa?.fundo ?? null) : null,
+        recorte: modelo.foto === "recorte" ? (midia.pessoa?.recorte ?? null) : null,
         logo: marca.logoUrl && logoProporcao ? marca.logoUrl : null,
         logoProporcao,
         marca: marca.nome,
         arroba: marca.arroba,
         pagina: formato === "carrossel" ? { i: 0, total: 5 } : null,
       }),
-    [modelo, formato, marca, logoProporcao, W, H]
+    [modelo, formato, marca, midia, grande, logoProporcao, W, H]
   );
   if (!caixa.largura) return null;
   return (
@@ -131,6 +178,7 @@ export function PreviaDoModelo({
 function CartaoDoModelo({
   modelo,
   marca,
+  midia,
   logoProporcao,
   escolhido,
   podeMudar,
@@ -139,6 +187,7 @@ function CartaoDoModelo({
 }: {
   modelo: ModeloDeArte;
   marca: MarcaDaGaleria;
+  midia: MidiaDaGaleria;
   logoProporcao: number | null;
   escolhido: boolean;
   podeMudar: boolean;
@@ -153,7 +202,7 @@ function CartaoDoModelo({
     >
       <button type="button" onClick={aoAbrir} className="relative block w-full" aria-label={`Ver o modelo ${modelo.nome}`}>
         <div ref={ref} className="flex aspect-[4/5] w-full items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} logoProporcao={logoProporcao} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
+          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} midia={midia} logoProporcao={logoProporcao} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
         </div>
         {escolhido && (
           <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-white shadow">
@@ -195,6 +244,7 @@ function CartaoDoModelo({
 function FichaDoModelo({
   modelo,
   marca,
+  midia,
   logoProporcao,
   escolhido,
   podeMudar,
@@ -203,6 +253,7 @@ function FichaDoModelo({
 }: {
   modelo: ModeloDeArte;
   marca: MarcaDaGaleria;
+  midia: MidiaDaGaleria;
   logoProporcao: number | null;
   escolhido: boolean;
   podeMudar: boolean;
@@ -227,7 +278,7 @@ function FichaDoModelo({
         onClick={(e) => e.stopPropagation()}
       >
         <div ref={ref} className="flex items-center justify-center p-4 md:w-1/2" style={{ background: "var(--bg-elevated)" }}>
-          <PreviaDoModelo modelo={modelo} formato={formato} marca={marca} logoProporcao={logoProporcao} caixa={{ largura: w - 32, altura: Math.min(560, typeof window !== "undefined" ? window.innerHeight * 0.55 : 560) }} />
+          <PreviaDoModelo modelo={modelo} formato={formato} marca={marca} midia={midia} grande logoProporcao={logoProporcao} caixa={{ largura: w - 32, altura: Math.min(560, typeof window !== "undefined" ? window.innerHeight * 0.55 : 560) }} />
         </div>
         <div className="flex flex-col gap-3 p-5 md:w-1/2">
           <div className="flex items-start justify-between gap-3">
@@ -267,7 +318,11 @@ function FichaDoModelo({
             ))}
           </dl>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Texto e foto de exemplo do seu nicho ({marca.setorNome}); na sua arte entram o texto do post e uma foto feita para ele. Números do exemplo são ilustrativos.
+            {modelo.foto === "recorte"
+              ? midia.pessoa?.origem === "cliente"
+                ? "Prévia com a sua foto da biblioteca de materiais; na arte entra a foto que combinar com o post."
+                : "Prévia com uma pessoa de banco de imagem; na sua arte entra a SUA foto da biblioteca de materiais, recortada."
+              : `Texto e foto de exemplo do seu nicho (${marca.setorNome}); na sua arte entram o texto do post e uma foto feita para ele. Números do exemplo são ilustrativos.`}
           </p>
           <button
             type="button"
@@ -293,7 +348,7 @@ export function GaleriaDeModelos({
   variante?: "completa" | "compacta";
 }) {
   useFontesDoBook();
-  const [dados, setDados] = useState<{ marca: MarcaDaGaleria; podeMudar: boolean } | null>(null);
+  const [dados, setDados] = useState<{ marca: MarcaDaGaleria; podeMudar: boolean; midia: MidiaDaGaleria } | null>(null);
   const [escolha, setEscolha] = useState<string[]>([]);
   const [categoria, setCategoria] = useState<string>("Todos");
   const [aberto, setAberto] = useState<string | null>(null);
@@ -307,7 +362,7 @@ export function GaleriaDeModelos({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!vivo || !d) return;
-        setDados({ marca: d.marca, podeMudar: Boolean(d.podeMudar) });
+        setDados({ marca: d.marca, podeMudar: Boolean(d.podeMudar), midia: { fotos: Array.isArray(d.fotos) ? d.fotos : [], pessoa: d.pessoa ?? null } });
         setEscolha(d.escolha ?? []);
         salvo.current = JSON.stringify(d.escolha ?? []);
       })
@@ -345,7 +400,7 @@ export function GaleriaDeModelos({
     );
   }
 
-  const { marca, podeMudar } = dados;
+  const { marca, podeMudar, midia } = dados;
   const categorias = ["Todos", "Escolhidos", ...CATEGORIAS_DOS_MODELOS];
   const lista = MODELOS_DE_ARTE.filter((m) => (categoria === "Todos" ? true : categoria === "Escolhidos" ? escolha.includes(m.id) : m.categoria === categoria));
   const modeloAberto = aberto ? modeloPorId(aberto) : undefined;
@@ -396,6 +451,7 @@ export function GaleriaDeModelos({
               key={m.id}
               modelo={m}
               marca={marca}
+              midia={midia}
               logoProporcao={logoProporcao}
               escolhido={escolha.includes(m.id)}
               podeMudar={podeMudar}
@@ -424,6 +480,7 @@ export function GaleriaDeModelos({
         <FichaDoModelo
           modelo={modeloAberto}
           marca={marca}
+          midia={midia}
           logoProporcao={logoProporcao}
           escolhido={escolha.includes(modeloAberto.id)}
           podeMudar={podeMudar}

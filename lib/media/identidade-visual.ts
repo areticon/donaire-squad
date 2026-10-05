@@ -367,7 +367,24 @@ function hexDoHsl(h: number, s: number, l: number): string {
 function coresDaPaleta(texto: string | null | undefined): CoresDaMarca | null {
   const cores = (texto ?? "").split(",").map((c) => c.trim()).filter((c) => /^#[0-9a-f]{6}$/i.test(c) || /^#[0-9a-f]{3}$/i.test(c));
   if (!cores.length) return null;
-  return completarCores(cores[0], cores[1], cores[2]);
+  // A paleta é uma lista livre (a tela deixa somar cores), sem papel por
+  // posição. A ordem "destaque, escuro, claro" vale quando a segunda é escura
+  // e a terceira clara, como no padrão; senão (05/10, paleta de cinco cores
+  // do Bruno, que punha um azul-marinho como destaque e um laranja como
+  // fundo claro), cada papel vai para a cor que serve a ele: o escuro é a
+  // mais escura, o claro a mais clara, e o destaque a primeira que sobrar.
+  const luz = (c: string) => {
+    const f = c.replace("#", "");
+    const h = f.length === 3 ? f.split("").map((x) => x + x).join("") : f;
+    return hslDe(parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)).l;
+  };
+  const naOrdem = cores.length < 2 || (luz(cores[1]) < 0.3 && (cores.length < 3 || luz(cores[2]) > 0.7));
+  if (naOrdem) return completarCores(cores[0], cores[1], cores[2]);
+  const porLuz = [...cores].sort((a, b) => luz(a) - luz(b));
+  const escuro = luz(porLuz[0]) < 0.3 ? porLuz[0] : undefined;
+  const claro = luz(porLuz[porLuz.length - 1]) > 0.7 ? porLuz[porLuz.length - 1] : undefined;
+  const acento = cores.find((c) => c !== escuro && c !== claro) ?? cores[0];
+  return completarCores(acento, escuro, claro);
 }
 
 /** Completa o que faltar a partir do tom do acento, em vez de cair no carvão de todo mundo. */
