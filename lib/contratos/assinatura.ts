@@ -50,6 +50,11 @@ export interface ProvedorDeAssinatura {
   ambiente: "teste" | "producao";
   enviar(envio: EnvioParaAssinar): Promise<ResultadoDoEnvio>;
   consultar(documentoId: string): Promise<SituacaoNoProvedor>;
+  /**
+   * Cancela um envio que ainda não foi assinado (04/10): a versão nova do
+   * contrato sai, e o link antigo não pode continuar assinável.
+   */
+  cancelar(documentoId: string): Promise<void>;
   /** Lê o corpo do webhook: devolve o documento a reconsultar, ou null. */
   lerWebhook(corpo: unknown): { documentoId: string; externoId: string | null; evento: string } | null;
 }
@@ -118,6 +123,11 @@ function zapsign(): ProvedorDeAssinatura | null {
         assinadoEm: assinado ? new Date(ultima ?? doc.last_update_at ?? Date.now()) : null,
       };
     },
+    async cancelar(documentoId) {
+      // "Excluir documento" da ZapSign: o link de assinatura deixa de valer.
+      const r = await fetch(`${base}/docs/${encodeURIComponent(documentoId)}/`, { method: "DELETE", headers: cabecalho, signal: AbortSignal.timeout(20_000) });
+      if (!r.ok && r.status !== 404) throw new FalhaDoProvedor(`ZapSign ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    },
     lerWebhook(corpo) {
       const c = (corpo ?? {}) as { token?: unknown; external_id?: unknown; event_type?: unknown };
       if (typeof c.token !== "string") return null;
@@ -137,13 +147,21 @@ function zapsign(): ProvedorDeAssinatura | null {
 
 const EVENTOS_SIMULADOS: Map<string, string> = ((globalThis as { __assinaturaSimulada?: Map<string, string> }).__assinaturaSimulada ??= new Map());
 
+const ENVIOS_SIMULADOS: Map<string, number> = ((globalThis as { __enviosSimulados?: Map<string, number> }).__enviosSimulados ??= new Map());
+
 function simulado(): ProvedorDeAssinatura | null {
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") return null;
   return {
     nome: "simulado",
     ambiente: "teste",
     async enviar(e) {
-      return { documentoId: `sim_${e.externoId}`, linkDeAssinatura: null };
+      // Um id por envio: o reenvio da versão nova não pode herdar o "assinado" do envio cancelado.
+      const n = (ENVIOS_SIMULADOS.get(e.externoId) ?? 0) + 1;
+      ENVIOS_SIMULADOS.set(e.externoId, n);
+      return { documentoId: n === 1 ? `sim_${e.externoId}` : `sim_${e.externoId}_v${n}`, linkDeAssinatura: null };
+    },
+    async cancelar(documentoId) {
+      EVENTOS_SIMULADOS.set(documentoId, "doc_deleted");
     },
     async consultar(documentoId) {
       const evento = EVENTOS_SIMULADOS.get(documentoId);

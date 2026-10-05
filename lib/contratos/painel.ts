@@ -5,7 +5,7 @@ import { usoDeGravacoes } from "@/lib/limites-do-plano";
 import { PLANS } from "@/lib/stripe";
 import { resumoDoSuporte } from "@/lib/suporte/painel";
 import { diasParaVencer, grupoDaSituacao, situacaoDoContrato, type GrupoDoGestor, type StatusDoContrato } from "@/lib/contratos/situacao";
-import { nomeDoPlano } from "@/lib/contratos/contratos";
+import { esperaAprovacao, nomeDoPlano } from "@/lib/contratos/contratos";
 
 /**
  * O QUE O PAINEL DE CONTRATOS LÊ (02/10/2026): a lista de todos os contratos e
@@ -32,13 +32,22 @@ export type ContratoNaLista = {
   pagoCentavos: number;
   pagoEm: string | null;
   formaDePagamento: string | null;
+  /** O preço (04/10): tabela, desconto e quem concedeu; null nos contratos de antes. */
+  precoTabelaCentavos: number | null;
+  descontoCentavos: number;
+  descontoPercentual: number;
+  descontoMotivo: string | null;
+  descontoConcedidoPor: string | null;
+  descontoConcedidoEm: string | null;
+  esperaAprovacao: boolean;
+  fundador: boolean;
 };
 
 export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaLista[]> {
   const lista = await prisma.contrato.findMany({
     orderBy: [{ fimVigencia: "asc" }, { createdAt: "desc" }],
     take: 500,
-    include: { user: { select: { email: true, name: true } }, pagamentos: { select: { valorCentavos: true } } },
+    include: { user: { select: { email: true, name: true } }, pagamentos: { where: { aditivoId: null }, select: { valorCentavos: true } } },
   });
   return lista.map((c) => ({
     id: c.id,
@@ -57,7 +66,46 @@ export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaL
     pagoCentavos: c.pagamentos.reduce((s, p) => s + p.valorCentavos, 0),
     pagoEm: c.pagoEm?.toISOString() ?? null,
     formaDePagamento: c.formaDePagamento,
+    precoTabelaCentavos: c.precoTabelaCentavos,
+    descontoCentavos: c.descontoCentavos,
+    descontoPercentual: c.precoTabelaCentavos ? (c.descontoCentavos / c.precoTabelaCentavos) * 100 : 0,
+    descontoMotivo: c.descontoMotivo,
+    descontoConcedidoPor: c.descontoConcedidoPor,
+    descontoConcedidoEm: c.descontoConcedidoEm?.toISOString() ?? null,
+    esperaAprovacao: c.status !== "cancelado" && esperaAprovacao(c),
+    fundador: c.fundador,
   }));
+}
+
+/**
+ * OS DESCONTOS DO MÊS (04/10): quanto foi concedido no mês corrente (horário
+ * de Brasília), no total e por vendedor, contando os contratos não cancelados
+ * pela data em que o desconto foi concedido. Aditivos ficam fora desta conta.
+ */
+export function descontosDoMes(lista: ContratoNaLista[], agora = new Date()) {
+  const mes = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+  const atual = mes(agora);
+  const doMes = lista.filter((c) => c.situacao !== "cancelado" && c.descontoCentavos > 0 && c.descontoConcedidoEm && mes(new Date(c.descontoConcedidoEm)) === atual);
+  const porVendedor = new Map<string, { centavos: number; contratos: number; tabela: number }>();
+  for (const c of doMes) {
+    const k = c.descontoConcedidoPor ?? "sem registro";
+    const v = porVendedor.get(k) ?? { centavos: 0, contratos: 0, tabela: 0 };
+    v.centavos += c.descontoCentavos;
+    v.contratos += 1;
+    v.tabela += c.precoTabelaCentavos ?? 0;
+    porVendedor.set(k, v);
+  }
+  const tabela = doMes.reduce((t, c) => t + (c.precoTabelaCentavos ?? 0), 0);
+  const total = doMes.reduce((t, c) => t + c.descontoCentavos, 0);
+  return {
+    mes: new Date(agora).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", month: "long", year: "numeric" }),
+    totalCentavos: total,
+    tabelaCentavos: tabela,
+    percentualMedio: tabela > 0 ? (total / tabela) * 100 : 0,
+    contratos: doMes.length,
+    porVendedor: [...porVendedor.entries()].map(([vendedor, v]) => ({ vendedor, ...v, percentual: v.tabela > 0 ? (v.centavos / v.tabela) * 100 : 0 })).sort((a, b) => b.centavos - a.centavos),
+    esperandoAprovacao: lista.filter((c) => c.esperaAprovacao),
+  };
 }
 
 export type FichaDoCliente = Awaited<ReturnType<typeof fichaDoCliente>>;
@@ -85,7 +133,12 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
     prisma.contrato.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      include: { eventos: { orderBy: { createdAt: "desc" }, take: 40 }, alertas: { orderBy: { createdAt: "desc" } }, pagamentos: { orderBy: { pagoEm: "desc" } } },
+      include: {
+        eventos: { orderBy: { createdAt: "desc" }, take: 60 },
+        alertas: { orderBy: { createdAt: "desc" } },
+        pagamentos: { orderBy: { pagoEm: "desc" } },
+        aditivos: { orderBy: { ordem: "desc" } },
+      },
     }),
     // Consumo da carteira do plano no ciclo: débitos menos estornos, sem
     // contar reposição, recarga, ajuste do admin e compras.
@@ -160,8 +213,60 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
       ativadoEm: c.ativadoEm?.toISOString() ?? null,
       acessosExtras: c.acessosExtras,
       linkDePagamento: c.linkDePagamento,
-      pagoCentavos: c.pagamentos.reduce((s, p) => s + p.valorCentavos, 0),
-      pagamentos: c.pagamentos.map((p) => ({
+      // O que quita aditivo fica com o aditivo (04/10).
+      pagoCentavos: c.pagamentos.filter((p) => !p.aditivoId).reduce((s, p) => s + p.valorCentavos, 0),
+      precoTabelaCentavos: c.precoTabelaCentavos,
+      descontoCentavos: c.descontoCentavos,
+      descontoPercentual: c.precoTabelaCentavos ? (c.descontoCentavos / c.precoTabelaCentavos) * 100 : 0,
+      descontoMotivo: c.descontoMotivo,
+      descontoObservacao: c.descontoObservacao,
+      descontoConcedidoPor: c.descontoConcedidoPor,
+      descontoAprovadoPor: c.descontoAprovadoPor,
+      descontoAprovadoEm: c.descontoAprovadoEm?.toISOString() ?? null,
+      descontoTipo: c.descontoTipo,
+      descontoValor: c.descontoValor,
+      esperaAprovacao: c.status !== "cancelado" && esperaAprovacao(c),
+      fundador: c.fundador,
+      versao: c.versao,
+      inicioIso: c.inicioVigencia?.toISOString().slice(0, 10) ?? null,
+      aditivos: c.aditivos.map((a) => {
+        const pagos = c.pagamentos.filter((p) => p.aditivoId === a.id);
+        const ant = a.anterior as unknown as { plano: string; acessosExtras: number; valorAnualCentavos: number };
+        return {
+          id: a.id,
+          ordem: a.ordem,
+          status: a.status,
+          de: { plano: nomeDoPlano(ant.plano), acessosExtras: ant.acessosExtras, valorAnualCentavos: ant.valorAnualCentavos },
+          plano: nomeDoPlano(a.plano),
+          planoId: a.plano,
+          acessosExtras: a.acessosExtras,
+          precoTabelaCentavos: a.precoTabelaCentavos,
+          descontoCentavos: a.descontoCentavos,
+          descontoPercentual: a.precoTabelaCentavos ? (a.descontoCentavos / a.precoTabelaCentavos) * 100 : 0,
+          descontoMotivo: a.descontoMotivo,
+          descontoConcedidoPor: a.descontoConcedidoPor,
+          descontoAprovadoPor: a.descontoAprovadoPor,
+          esperaAprovacao: a.status !== "cancelado" && esperaAprovacao(a),
+          fundador: a.fundador,
+          valorAnualCentavos: a.valorAnualCentavos,
+          valeDesde: a.valeDesde.toISOString(),
+          diferencaCentavos: a.diferencaCentavos,
+          diasRestantes: a.diasRestantes,
+          tratamento: a.tratamento,
+          provedor: a.provedor,
+          provedorSituacao: a.provedorSituacao,
+          linkDeAssinatura: a.linkDeAssinatura,
+          textoHash: a.textoHash,
+          assinadoEm: a.assinadoEm?.toISOString() ?? null,
+          pagoEm: a.pagoEm?.toISOString() ?? null,
+          aplicadoEm: a.aplicadoEm?.toISOString() ?? null,
+          linkDePagamento: a.linkDePagamento,
+          motivoCancelamento: a.motivoCancelamento,
+          pagoCentavos: pagos.reduce((t, p) => t + p.valorCentavos, 0),
+          pagamentos: pagos.map((p) => ({ id: p.id, valorCentavos: p.valorCentavos, pagoEm: p.pagoEm.toISOString(), forma: p.forma, autor: p.autor, temComprovante: Boolean(p.comprovanteUrl) })),
+        };
+      }),
+      pagamentos: c.pagamentos.filter((p) => !p.aditivoId).map((p) => ({
         id: p.id,
         valorCentavos: p.valorCentavos,
         pagoEm: p.pagoEm.toISOString(),

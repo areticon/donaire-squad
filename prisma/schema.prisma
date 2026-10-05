@@ -1477,6 +1477,29 @@ model Contrato {
   /// O link de pagamento do Stripe gerado para este contrato, e a sessão dele.
   linkDePagamento     String?
   stripeSessaoId      String?
+  /// O PREÇO (04/10): o valor nasce da tabela (plano anual mais acessos extras
+  /// pelo preço de tabela) menos o desconto. Null nos contratos de antes, em
+  /// que o valor era digitado.
+  precoTabelaCentavos Int?
+  /// "percentual" | "valor"; `descontoValor` é a porcentagem em centésimos
+  /// (800 = 8%) ou o desconto em centavos, como o vendedor digitou.
+  descontoTipo        String?
+  descontoValor       Int?
+  descontoCentavos    Int       @default(0)
+  /// "campanha" | "negociacao" | "fundador" | "parceiro"
+  descontoMotivo      String?
+  descontoObservacao  String?
+  /// Quem concedeu (o e-mail do admin vendedor) e quando.
+  descontoConcedidoPor String?
+  descontoConcedidoEm DateTime?
+  /// A aprovação do dono, quando o desconto passa do teto livre.
+  descontoAprovadoPor String?
+  descontoAprovadoEm  DateTime?
+  /// Condição de Fundador (cláusula 5.6).
+  fundador            Boolean   @default(false)
+  /// A versão do contrato antes de assinar: cada edição soma 1, e a anterior
+  /// fica na trilha (evento "nova_versao").
+  versao              Int       @default(1)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -1484,6 +1507,7 @@ model Contrato {
   eventos    EventoDoContrato[]
   alertas    AlertaDoContrato[]
   pagamentos PagamentoDoContrato[]
+  aditivos   AditivoDoContrato[]
 
   @@index([userId])
   @@index([status, fimVigencia])
@@ -1524,12 +1548,76 @@ model PagamentoDoContrato {
   comprovanteNome String?
   observacao      String?
   autor           String?
+  /// O aditivo que este pagamento quita (a diferença proporcional); null é
+  /// pagamento do próprio contrato.
+  aditivoId       String?
   createdAt       DateTime @default(now())
 
   contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
 
   @@index([contratoId, pagoEm])
   @@map("contratos_pagamentos")
+}
+
+/// O ADITIVO (04/10/2026): contrato assinado não é editado. Mudar plano,
+/// acessos extras, valor ou desconto depois da assinatura é um documento curto
+/// que referencia o contrato, diz o que muda, desde quando e a diferença
+/// (cobrar a proporcional ou creditar na renovação). Vai para assinatura pelo
+/// mesmo provedor; assinado e (se houver diferença a pagar) pago, a mudança é
+/// aplicada na conta, uma vez só (`aplicadoEm`). A trilha fica na do contrato.
+model AditivoDoContrato {
+  id                   String    @id @default(cuid())
+  contratoId           String
+  /// 1, 2, 3... dentro do contrato.
+  ordem                Int
+  /// "rascunho" | "enviado" | "aguardando_pagamento" | "aplicado" | "cancelado"
+  status               String    @default("rascunho")
+  /// As condições antes da mudança (plano, acessos, tabela, desconto, valor).
+  anterior             Json
+  plano                String
+  acessosExtras        Int       @default(0)
+  precoTabelaCentavos  Int
+  descontoTipo         String?
+  descontoValor        Int?
+  descontoCentavos     Int       @default(0)
+  descontoMotivo       String?
+  descontoObservacao   String?
+  descontoConcedidoPor String?
+  descontoAprovadoPor  String?
+  descontoAprovadoEm   DateTime?
+  fundador             Boolean   @default(false)
+  /// O novo valor anual (tabela menos desconto).
+  valorAnualCentavos   Int
+  /// Desde quando a mudança vale.
+  valeDesde            DateTime
+  /// Positiva: o cliente paga a diferença proporcional. Negativa: crédito.
+  diferencaCentavos    Int       @default(0)
+  diasRestantes        Int       @default(0)
+  /// "cobrar" | "creditar" | "sem_diferenca"
+  tratamento           String
+  provedor             String?
+  provedorDocumentoId  String?
+  provedorSituacao     String?
+  linkDeAssinatura     String?
+  modeloVersao         String?
+  textoHash            String?
+  pdfAssinadoUrl       String?
+  assinadoEm           DateTime?
+  pagoEm               DateTime?
+  aplicadoEm           DateTime?
+  linkDePagamento      String?
+  stripeSessaoId       String?
+  canceladoEm          DateTime?
+  motivoCancelamento   String?
+  autor                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, ordem])
+  @@index([provedorDocumentoId])
+  @@map("contratos_aditivos")
 }
 
 /// UM AVISO DE VENCIMENTO (60, 30 e 7 dias antes, e no dia em que vence). A

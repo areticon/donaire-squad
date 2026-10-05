@@ -25,8 +25,8 @@ import { midiaPrivada } from "@/lib/media/storage";
  * Só servidor.
  */
 
-const COMPROVANTE_MAXIMO = 4 * 1024 * 1024;
-const TIPOS_DE_COMPROVANTE = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+export const COMPROVANTE_MAXIMO = 4 * 1024 * 1024;
+export const TIPOS_DE_COMPROVANTE = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
 const ASSINADO = ["aguardando_pagamento", "assinado", "vigente", "a_vencer", "vencido"];
 
 export type NovoPagamento = {
@@ -37,7 +37,7 @@ export type NovoPagamento = {
   observacao?: string | null;
 };
 
-async function guardarComprovante(contratoId: string, arquivo: File): Promise<string> {
+export async function guardarComprovante(contratoId: string, arquivo: File): Promise<string> {
   const destino = midiaPrivada();
   const ext = arquivo.type === "application/pdf" ? "pdf" : (arquivo.type.split("/")[1] ?? "bin");
   const blob = await put(`contratos/${contratoId}/comprovantes/comprovante.${ext}`, arquivo, {
@@ -49,10 +49,13 @@ async function guardarComprovante(contratoId: string, arquivo: File): Promise<st
   return blob.url;
 }
 
-/** Quanto já entrou neste contrato, em centavos. */
+/**
+ * Quanto já entrou neste contrato, em centavos. O que quita um ADITIVO
+ * (04/10) fica fora: é a diferença do aditivo, e não o valor do contrato.
+ */
 export async function pagoNoContrato(contratoId: string): Promise<number> {
   const r = await prisma.pagamentoDoContrato.aggregate({
-    where: { contratoId },
+    where: { contratoId, aditivoId: null },
     _sum: { valorCentavos: true },
   });
   return r._sum.valorCentavos ?? 0;
@@ -74,6 +77,8 @@ async function lancar(
     comprovanteUrl?: string | null;
     comprovanteNome?: string | null;
     observacao?: string | null;
+    /** O aditivo que o pagamento quita (04/10). */
+    aditivoId?: string | null;
   },
 ) {
   if (p.referencia) {
@@ -95,8 +100,16 @@ async function lancar(
       comprovanteNome: p.comprovanteNome ?? null,
       observacao: p.observacao ?? null,
       autor: typeof autor === "string" ? autor : autor.email,
+      aditivoId: p.aditivoId ?? null,
     },
   });
+  // O pagamento do ADITIVO (04/10) não mexe na porta do contrato: quita a
+  // diferença e, assinado, aplica a mudança na conta.
+  if (p.aditivoId) {
+    const { pagamentoDoAditivoLancado } = await import("@/lib/contratos/aditivos");
+    const r = await pagamentoDoAditivoLancado(autor, p.aditivoId, pg.id, { valorCentavos: p.valorCentavos, pagoEm: p.pagoEm, forma: p.forma, origem: p.origem, comComprovante: Boolean(p.comprovanteUrl) });
+    return { repetido: false as const, pagamentoId: pg.id, totalPagoCentavos: r.totalPagoCentavos, ativacao: r.aplicacao };
+  }
   // A data do PRIMEIRO pagamento confirmado é a que abre a porta. updateMany
   // com pagoEm null é a trava contra dois pagamentos simultâneos.
   await prisma.contrato.updateMany({
@@ -123,7 +136,7 @@ async function lancar(
 }
 
 /** O admin registra um pagamento recebido por fora do Stripe. */
-export async function registrarPagamento(admin: Autor, contratoId: string, n: NovoPagamento) {
+export async function registrarPagamento(admin: Autor, contratoId: string, n: NovoPagamento & { aditivoId?: string | null }) {
   const c = await prisma.contrato.findUnique({
     where: { id: contratoId },
     select: { status: true, assinadoEm: true },
@@ -131,6 +144,11 @@ export async function registrarPagamento(admin: Autor, contratoId: string, n: No
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status === "cancelado") throw new RecusaDoContrato("Contrato cancelado não recebe pagamento.");
   if (!c.assinadoEm && !ASSINADO.includes(c.status)) throw new RecusaDoContrato("Registre o pagamento depois da assinatura: até lá o contrato não vale.");
+  if (n.aditivoId) {
+    const ad = await prisma.aditivoDoContrato.findFirst({ where: { id: n.aditivoId, contratoId }, select: { status: true } });
+    if (!ad) throw new RecusaDoContrato("Aditivo não encontrado.", 404);
+    if (ad.status !== "aguardando_pagamento") throw new RecusaDoContrato("Registre o pagamento do aditivo depois da assinatura dele, quando há diferença a pagar.");
+  }
   if (!Number.isFinite(n.valorCentavos) || n.valorCentavos <= 0) throw new RecusaDoContrato("Informe o valor recebido.");
   if (!(FORMAS_DE_PAGAMENTO as readonly string[]).includes(n.forma)) throw new RecusaDoContrato("Escolha a forma: Pix, boleto, transferência ou cartão.");
   if (Number.isNaN(n.pagoEm.getTime())) throw new RecusaDoContrato("Informe a data do pagamento.");
@@ -148,6 +166,7 @@ export async function registrarPagamento(admin: Autor, contratoId: string, n: No
     comprovanteUrl: url,
     comprovanteNome: arq?.name?.slice(0, 200) ?? null,
     observacao: n.observacao?.trim().slice(0, 500) || null,
+    aditivoId: n.aditivoId ?? null,
   });
 }
 
@@ -168,6 +187,7 @@ export async function pagamentoDoStripe(session: Stripe.Checkout.Session): Promi
     return true;
   }
   await lancar("stripe", c.id, {
+    aditivoId: session.metadata.aditivoId || null,
     valorCentavos: session.amount_total ?? 0,
     // A confirmação é agora: no cartão é segundos depois da sessão, e no boleto
     // é o dia da compensação, que é quando o dinheiro existe.
@@ -184,15 +204,21 @@ export async function pagamentoDoStripe(session: Stripe.Checkout.Session): Promi
  * pagamento único, no valor que falta, com o e-mail de quem assina. A sessão
  * do Stripe vence em 24 horas; gerar de novo troca o link.
  */
-export async function gerarLinkDePagamento(admin: Autor, contratoId: string, base: string) {
+export async function gerarLinkDePagamento(admin: Autor, contratoId: string, base: string, aditivoId?: string | null) {
   const c = await prisma.contrato.findUnique({ where: { id: contratoId } });
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status === "cancelado") throw new RecusaDoContrato("Contrato cancelado não recebe pagamento.");
   if (!c.assinadoEm) throw new RecusaDoContrato("Gere o link depois da assinatura.");
-  const falta = c.valorCentavos - (await pagoNoContrato(contratoId));
-  if (falta <= 0) throw new RecusaDoContrato("Este contrato já está pago.");
+  // O ADITIVO (04/10): o link é da diferença proporcional que falta.
+  const ad = aditivoId ? await prisma.aditivoDoContrato.findFirst({ where: { id: aditivoId, contratoId } }) : null;
+  if (aditivoId && !ad) throw new RecusaDoContrato("Aditivo não encontrado.", 404);
+  if (ad && ad.status !== "aguardando_pagamento") throw new RecusaDoContrato("O link do aditivo sai depois da assinatura, quando há diferença a pagar.");
+  const pagoDoAditivo = ad ? ((await prisma.pagamentoDoContrato.aggregate({ where: { aditivoId: ad.id }, _sum: { valorCentavos: true } }))._sum.valorCentavos ?? 0) : 0;
+  const falta = ad ? ad.diferencaCentavos - pagoDoAditivo : c.valorCentavos - (await pagoNoContrato(contratoId));
+  if (falta <= 0) throw new RecusaDoContrato(ad ? "Este aditivo já está pago." : "Este contrato já está pago.");
   const { getStripe } = await import("@/lib/stripe");
   const n = String(c.numero).padStart(4, "0");
+  const meta = { tipo: "contrato", contratoId: c.id, numero: n, ...(ad ? { aditivoId: ad.id } : {}) };
   const s = await getStripe().checkout.sessions.create({
     mode: "payment",
     currency: "brl",
@@ -204,23 +230,26 @@ export async function gerarLinkDePagamento(admin: Autor, contratoId: string, bas
           currency: "brl",
           unit_amount: falta,
           product_data: {
-            name: `Contrato Demandou nº ${n}, plano ${nomeDoPlano(c.plano)} (anual)`,
+            name: ad ? `Aditivo nº ${ad.ordem} ao contrato Demandou nº ${n}, diferença proporcional` : `Contrato Demandou nº ${n}, plano ${nomeDoPlano(c.plano)} (anual)`,
           },
         },
       },
     ],
-    metadata: { tipo: "contrato", contratoId: c.id, numero: n },
+    metadata: meta,
     payment_intent_data: {
-      metadata: { tipo: "contrato", contratoId: c.id, numero: n },
+      metadata: meta,
     },
     success_url: `${base}/aguardando-pagamento?pago=1`,
     cancel_url: `${base}/aguardando-pagamento`,
   });
-  await prisma.contrato.update({
-    where: { id: contratoId },
-    data: { linkDePagamento: s.url, stripeSessaoId: s.id },
-  });
-  await registrar(contratoId, admin, "link_de_pagamento", {
+  if (ad) await prisma.aditivoDoContrato.update({ where: { id: ad.id }, data: { linkDePagamento: s.url, stripeSessaoId: s.id } });
+  else
+    await prisma.contrato.update({
+      where: { id: contratoId },
+      data: { linkDePagamento: s.url, stripeSessaoId: s.id },
+    });
+  await registrar(contratoId, admin, ad ? "aditivo_link_de_pagamento" : "link_de_pagamento", {
+    ...(ad ? { aditivo: ad.id, ordem: ad.ordem } : {}),
     sessao: s.id,
     valor: centavosEmReais(falta),
     venceEm: s.expires_at ? new Date(s.expires_at * 1000) : null,
