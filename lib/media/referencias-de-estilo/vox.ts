@@ -1,223 +1,218 @@
 import { textoParaOPrompt, type ReferenciaDeEstilo } from "@/lib/media/referencias-de-estilo/tipos";
 
 /**
- * EXPLICATIVO EDITORIAL, LINGUAGEM DA VOX (03/10/2026).
+ * EXPLICATIVO EDITORIAL, LINGUAGEM DA VOX (03/10/2026; refeita em 04/10).
  *
- * Base: a bíblia lib/media/biblias/vox.ts (o único estilo que o Bruno aprovou;
- * corte de 48 s com 46 elementos por minuto e 20 recortes) e as análises de
- * edição da Vox: colagem de papel com meio-tom, marca-texto que corre sob a
- * frase no tempo da narração, gráficos animados a 12 quadros por segundo dentro
- * da linha de 24 (o "engasgo" proposital), passagem por câmera 3D com desfoque,
- * mapa com borda pincelada, textura que respira por baixo de tudo.
+ * Base: a bíblia lib/media/biblias/vox.ts e as análises de edição da Vox. Em
+ * 04/10 o dono mandou o QUADRO DE TREINO docs/overlays/referencias/vox/
+ * bruno-0410/vox-01.png, e o juiz tinha dado 4,9 ao Vox ("cabeça falando com
+ * cartões de texto, parece slide"). O que o quadro ensina e o que faltava:
+ *   - PROFUNDIDADE: papel envelhecido no fundo, manuscrito, mapa recortado,
+ *     fotos recortadas na frente, cada camada com sombra e parallax;
+ *   - MISTURA DE RECORTES COM FOTOS DE ALTA RESOLUÇÃO: fotos de arquivo em P&B
+ *     nítidas (prédio com chaminé, homem de terno), recortadas com borda de
+ *     papel, geradas na Higgsfield e recortadas no BiRefNet
+ *     (lib/media/editor-sob-medida/recortes-vox.ts);
+ *   - ELEMENTOS POLÊMICOS: a tarja AMARELA de censura nos olhos (estátua ou
+ *     figura anônima fictícia, nunca pessoa real) e o carimbo vermelho;
+ *   - O JORNAL e o papel rasgado: a manchete serifada no recorte de jornal;
+ *   - o título serifado preto na faixa amarela de marca-texto e o círculo
+ *     vermelho sobre o lugar no mapa.
+ * Cada elemento é uma peça do editor sob medida: o `id` é o nome da peça
+ * (worker/remotion/src/sob-medida/pecas/vox.tsx).
  */
 export const VOX: ReferenciaDeEstilo = {
   id: "vox",
   nome: "Explicativo editorial",
   inspiracao: "Vox (vídeos explicativos)",
   essencia:
-    "Explicar com colagem editorial: papel claro com grão, gravuras em preto e branco recortadas, marca-texto na cor da marca correndo sob a frase-chave no instante em que é dita, títulos condensados, gráficos simples que se desenham. Cada coisa na tela responde ao que o narrador acabou de dizer; nada é enfeite. O ritmo é o da narração, sem pressa, mas o quadro nunca para: algo novo entra a cada 2 s e o mural inteiro deriva devagar. Os gráficos andam a 12 quadros por segundo: o engasgo artesanal de papel animado à mão.",
+    "Explicar com COLAGEM DE ARQUIVO em camadas, como o quadro de treino vox-01: papel envelhecido com textura e grão no fundo, um manuscrito antigo esmaecido, um MAPA ANTIGO recortado com o CÍRCULO VERMELHO no lugar dito e, na frente, FOTOS DE ARQUIVO em preto e branco de ALTA RESOLUÇÃO (prédio com chaminé, figura anônima de terno, estátua, documento) recortadas com borda de papel e sombra, em camadas que se movem em velocidades diferentes (parallax). O título é serifado preto, pesado, numa faixa AMARELA de marca-texto que corre. Na polêmica, a TARJA AMARELA de censura bate sobre os olhos da estátua; no que alguém disse, o recorte de JORNAL rasgado com a manchete. Cada coisa na tela responde ao que o narrador acabou de dizer; algo novo entra a cada 2 s; o papel anima a 12 quadros por segundo (o engasgo artesanal) e a câmera deriva contínua por cima. Cartão chapado com texto sobre a pessoa não é Vox.",
   estrutura: {
     abre:
-      "Com a PERGUNTA que o vídeo responde, dita pela pessoa, sobre uma colagem que já mostra o que está em jogo (2 a 3 recortes caindo, um número marcado). Em seguida dois ou três momentos curtos do próprio vídeo e o título do assunto em letras condensadas sobre papel. Até 12 s, passagem por folha de papel.",
+      "Com a PERGUNTA ou a tensão do vídeo dita pela pessoa e, no segundo 0, uma colagem que já mostra o que está em jogo (2 a 3 fotos de arquivo caindo, o título no marca-texto amarelo), ou a tarja de censura se o assunto é polêmico. Depois o rosto, com o marca-texto na frase-chave.",
     avanca:
-      "Por blocos de argumento: cada bloco abre com um título-capítulo em papel, desenvolve com a pessoa no canto e a colagem grande ilustrando cada substantivo dito, prova com um documento ampliado com marca-texto ou um gráfico, e fecha com a frase-síntese marcada. Mapa quando a fala tem lugar; linha do tempo quando tem data.",
+      "Por blocos de argumento: cada bloco abre com uma colagem do contexto (época, lugar, personagem), desenvolve com a pessoa e o marca-texto nas frases-chave, prova com o jornal (o que foi dito), o mapa antigo (o lugar) ou um gráfico de papel, e põe a tarja de censura onde a fala toca na polêmica. Entre duas telas de papel o rosto volta.",
     fecha:
-      "A resposta da pergunta inicial em marca-texto sobre papel, um último gráfico ou documento que amarra o argumento e a pessoa em plano cheio dizendo a chamada. Fusão em folha de papel para o fim.",
+      "A resposta da pergunta inicial no marca-texto sobre a pessoa, um último recorte que amarra o argumento, o carimbo no veredito e a pessoa em plano cheio dizendo a chamada.",
   },
   ritmo: {
-    cenaSeg: [4, 7],
-    cortesPorMinuto: [12, 20],
+    cenaSeg: [3, 6],
+    cortesPorMinuto: [14, 22],
     zoom:
-      "Aproximação lenta (100% a 106% em 5 s) sobre a colagem nas frases importantes; afastamento para abrir assunto; punch de 112% só na palavra mais forte, 2 a 6 por minuto. Entre blocos, a câmera 3D atravessa a colagem com desfoque de movimento.",
+      "Dentro da colagem a câmera deriva e aproxima 6% devagar, com parallax entre as camadas; sobre a pessoa, aproximação lenta e soco de 112% só na palavra mais forte.",
     observacoes:
-      "Algo novo a cada 1,5 a 3 s: recorte caindo, marca-texto, número, seta. Gráficos a 12 quadros por segundo; a câmera e o vídeo a 24 ou 30. Cada recorte entra na SUA palavra, nunca dois na mesma.",
+      "Algo novo a cada 1,5 a 3 s: recorte caindo, marca-texto, círculo, tarja, carimbo. As animações de papel a 12 quadros por segundo; a câmera e o vídeo a 24 ou 30. Cada recorte entra na SUA palavra, nunca dois na mesma.",
   },
   tipografia: {
     familias: [
-      { papel: "título de bloco e rótulo", familia: "Oswald", pesos: "600 e 700, caixa alta", origem: "google-fonts", alternativa: "Anton local" },
-      { papel: "texto corrido, tarja e legenda", familia: "Libre Franklin", pesos: "600 e 800", origem: "google-fonts", alternativa: "Liberation Sans Bold local" },
-      { papel: "citação de documento, manchete recortada", familia: "PT Serif", pesos: "400 e 700", origem: "google-fonts e local" },
+      { papel: "título no marca-texto e manchete", familia: "Playfair Display", pesos: "800 e 900, caixa alta no marca-texto", origem: "google-fonts e local" },
+      { papel: "carimbo e rótulo", familia: "Oswald", pesos: "600 e 700, caixa alta", origem: "google-fonts", alternativa: "Anton local" },
+      { papel: "texto corrido e legenda", familia: "Geist", pesos: "600", origem: "local" },
     ],
     hierarquia:
-      "Título de bloco a 7% a 9% da altura em condensada caixa alta, escuro sobre papel. Frase-chave a 4,5% a 5,5%, com o marca-texto atrás. Número a 14% a 18% na cor de destaque, rótulo a 2,2% em caixa alta espaçada (+8%). Legenda a 3,8% em tira de papel.",
+      "Título no marca-texto a 9% a 12% da altura no 16:9 e 6% a 7% no 9:16, serifa preta pesada sobre o amarelo. Manchete do jornal a 8% a 10%. Rótulo do lugar em tira de papel a 3,5%. Carimbo a 6%.",
     regras: [
-      "Texto escuro (quase preto) sobre papel claro; a cor da marca só no marca-texto, nas formas e na fita.",
-      "Até 8 palavras por frase na tela; texto só com palavra dita, nunca contradizendo a fala.",
-      "Rótulo pequeno sempre em caixa alta espaçada; manchete de documento em serifa.",
+      "Texto preto sobre amarelo ou sobre papel; nunca texto claro sobre caixa escura.",
+      "Até 6 palavras no marca-texto; texto só com palavra dita, nunca contradizendo a fala.",
+      "Manchete e título sempre em serifa; carimbo em condensada.",
     ],
   },
   paleta: {
     tipica: [
-      { papel: "papel", hex: "#F2EDE4" },
-      { papel: "papel kraft", hex: "#D9C7A7" },
-      { papel: "tinta", hex: "#1A1A1A" },
-      { papel: "meio-tom e sombra", hex: "#6B6B6B" },
-      { papel: "marca-texto (destaque)", hex: "#FFD84D" },
-      { papel: "segunda cor de dado", hex: "#3E6FB0" },
-      { papel: "borda do recorte", hex: "#FFFFFF" },
+      { papel: "papel envelhecido", hex: "#D3BF97" },
+      { papel: "tinta", hex: "#16130E" },
+      { papel: "marca-texto e tarja", hex: "#FFE11F" },
+      { papel: "círculo, fio e carimbo", hex: "#B8231B" },
+      { papel: "foto de arquivo", hex: "#6B6B6B" },
+      { papel: "borda do recorte", hex: "#F2EAD8" },
     ],
     marca:
-      "O amarelo do marca-texto vira a cor de destaque da marca (clareada a 70% se for escura, para o texto preto ler por cima). Papel e tinta não mudam. A segunda cor de dado é o escuro da marca. Nunca mais de uma cor de destaque na mesma cena.",
+      "O amarelo do marca-texto e da tarja e o vermelho do círculo são a assinatura do estilo e não mudam; a cor da marca entra só nas peças de dado (gráfico) e no fecho. Papel e tinta não mudam.",
   },
   elementos: [
     {
+      id: "colagem",
+      nome: "Colagem de arquivo em camadas",
+      forma:
+        "Papel envelhecido com textura, manuscrito esmaecido atrás, mapa antigo recortado com borda rasgada e círculo vermelho, e 1 a 3 fotos de arquivo P&B de alta resolução recortadas com borda de papel clara e sombra de verdade, sobrepostas em profundidade; o título serifado preto na faixa amarela; o fio vermelho com alfinetes ligando dois recortes; o carimbo.",
+      animacao:
+        "A folha varre a tela com a borda rasgada; cada recorte CAI grande e torto e assenta a 12 quadros por segundo na palavra dele; o marca-texto corre sob o título; o círculo se desenha no mapa; a câmera deriva e cada camada anda na sua profundidade (parallax).",
+      duracaoSeg: [3.5, 8],
+      posicao916: "Mapa no alto (0% a 32%), título no marca-texto a 33%, a foto maior embaixo à direita (40% a 100%), as menores à esquerda.",
+      posicao169: "Mapa no canto de cima à esquerda, título no meio à esquerda, a foto maior na altura toda à direita, o prédio no centro embaixo.",
+      quando: "FATO HISTÓRICO, ORIGEM, PERSONAGEM, ÉPOCA, LUGAR com contexto. A peça-mãe: 1 a 2 por corte, 1 a cada 40 a 60 s no longo. Nunca sem foto (colagem só de texto é slide).",
+    },
+    {
+      id: "jornal",
+      nome: "Recorte de jornal rasgado",
+      forma:
+        "Folha de jornal com as bordas rasgadas e a fibra branca aparecendo, fios do cabeçalho, manchete serifada preta pesada, colunas de texto miúdo ilegível e a foto de arquivo saltando do papel para a frente, com sombra.",
+      animacao: "A folha entra varrendo e a câmera se aproxima devagar; no evento o marca-texto amarelo corre sob o destaque da manchete; a foto cai por cima.",
+      duracaoSeg: [3, 7],
+      posicao916: "Jornal de 7% a 67% da altura, a foto recortada embaixo à direita.",
+      posicao169: "Jornal à esquerda (60% da largura), a foto recortada à direita na altura toda.",
+      quando: "Notícia, acontecimento, declaração, reclamação, o que alguém disse: a frase dita vira manchete. Só lugar ou data DITOS no cabeçalho; nunca nome de jornal real.",
+    },
+    {
+      id: "mapa-antigo",
+      nome: "Mapa antigo com círculo vermelho",
+      forma: "Mapa antigo em sépia com borda rasgada ocupando a tela, o círculo vermelho translúcido com o anel à mão sobre o lugar, o nome numa tira de papel com fita.",
+      animacao: "A câmera aproxima o ponto durante a peça; no evento o círculo se desenha (12 quadros por segundo) e a tira cai; a foto do lugar pode cair ao lado como cópia fotográfica.",
+      duracaoSeg: [3, 7],
+      posicao916: "Mapa de 5% a 61% da altura, título no marca-texto a 60%, a foto embaixo.",
+      posicao169: "Mapa em 80% da tela, a foto à direita.",
+      quando: "Lugar dito: cidade, região, país, de onde para onde, onde aconteceu.",
+    },
+    {
+      id: "cronologia",
+      nome: "Linha do tempo em tira de papel",
+      forma: "Tira de papel rasgada atravessando a tela com a régua de tinta; os anos em serifa preta pesada acima dela, o ano dito com o marcador amarelo; etiquetas de papel com o que aconteceu; a foto de arquivo de cada marco pendurada por fita.",
+      animacao: "A câmera anda pela tira até o marco dito (0,7 s, suave); o marcador corre no ano a 12 quadros por segundo; a foto do marco cai e assenta.",
+      duracaoSeg: [3.5, 8],
+      posicao916: "Tira a 56% da altura, anos acima, etiquetas abaixo, título no alto.",
+      posicao169: "Tira a 60% da altura, três marcos visíveis por vez.",
+      quando: "Datas, épocas, a ordem dos acontecimentos, uma história contada com anos.",
+    },
+    {
+      id: "censura",
+      nome: "Tarja de censura na estátua",
+      forma: "Estátua genérica (ou figura anônima de época, fictícia) grande, em P&B de alta resolução, recortada sobre o papel com manuscrito; a tarja AMARELA chapada sobre os olhos; o carimbo vermelho com a palavra dita.",
+      animacao: "A estátua cai e assenta; no evento a tarja BATE (entra grande e encolhe com mola) e o quadro treme 0,3 s; o carimbo bate meio segundo depois.",
+      duracaoSeg: [2.5, 6],
+      posicao916: "Estátua embaixo no centro (34% a 100%), título no alto, carimbo a 27%.",
+      posicao169: "Estátua à direita na altura toda, título e carimbo à esquerda.",
+      quando: "Polêmica, tabu, o que ninguém fala, o proibido, a crítica, a revelação. Sempre onde couber (1 por corte). Tarja SÓ em estátua ou figura anônima fictícia, nunca em pessoa real.",
+    },
+    {
       id: "marca-texto",
-      nome: "Marca-texto na frase",
-      forma:
-        "Faixa de cor da marca atrás da frase-chave, com bordas levemente irregulares de marcador. Altura de 70% do corpo da letra, deslocada 10% para baixo, opacidade 85%, multiplicando sobre o papel.",
-      animacao:
-        "Corre da esquerda para a direita em 400 a 600 ms. No ritmo das sílabas da frase dita; em frase de duas linhas, a segunda começa quando a primeira termina; sai junto com o texto.",
-      duracaoSeg: [2, 4],
-      posicao916: "Faixa de 30% a 55% da altura. Largura de 6% a 88%; nunca sob o rosto quando a pessoa está cheia.",
-      posicao169: "Terço central ou o lado livre da colagem, 25% a 70% da altura.",
-      quando: "A frase-chave do trecho, a definição, o dado que a pessoa enfatiza.",
-    },
-    {
-      id: "recorte-caindo",
-      nome: "Recorte de gravura",
-      forma:
-        "Gravura ou foto em preto e branco recortada com borda branca. Meio-tom, borda de 6 px, sombra curta 8 px a 40% de opacidade; leve rotação de -6 a 6 graus.",
-      animacao:
-        "Cai de 115% para 100% em 250 ms. Assenta a 12 quadros por segundo e um pedaço de fita estica sobre a borda 100 ms depois; na saída, é empurrado para fora pelo próximo.",
-      duracaoSeg: [2, 5],
-      posicao916: "Colagem de 15% a 50% da altura. Acima da pessoa no canto; até 3 recortes sobrepostos.",
-      posicao169: "Metade livre ao lado da pessoa, 10% a 85% da altura.",
-      quando: "Cada substantivo concreto dito (o objeto, o lugar, a pessoa histórica).",
-    },
-    {
-      id: "documento-ampliado",
-      nome: "Documento ampliado",
-      forma:
-        "Folha inclinada com um trecho ampliado numa janela e marca-texto na frase. Papel levemente amarelado; texto do documento em serifa cinza, só o trecho dito legível.",
-      animacao:
-        "A folha assenta em 400 ms e a câmera aproxima o trecho em 800 ms. Desliza 60 px; o marca-texto corre depois; sai por empurrão lateral.",
-      duracaoSeg: [3, 6],
-      posicao916: "Folha de 18% a 62% da altura. Largura de 6% a 88%.",
-      posicao169: "Centro, 12% a 88% da altura. A pessoa sai ou fica em janela à direita.",
-      quando: "A pessoa cita lei, estudo, notícia, contrato ou relatório.",
-    },
-    {
-      id: "grafico-simples",
-      nome: "Gráfico de papel",
-      forma:
-        "Barras ou linha chapadas, uma série na cor da marca e a outra em cinza. Eixos em traço de tinta de 3 px; rótulos em caixa alta pequena; o valor dito em número grande ao lado.",
-      animacao:
-        "Eixos em 400 ms, barras em cascata de 120 ms. A linha se desenha em 900 ms, tudo a 12 quadros por segundo; o valor conta junto.",
-      duracaoSeg: [3, 6],
-      posicao916: "Faixa de 16% a 50% da altura, pessoa no canto inferior.",
-      posicao169: "Dois terços da tela, 15% a 85% da altura.",
-      quando: "Comparação, evolução no tempo, proporção dita com números.",
-    },
-    {
-      id: "mapa-pincelado",
-      nome: "Mapa com borda pincelada",
-      forma:
-        "Mapa chapado em tons de papel com a região dita contornada por pincelada da cor da marca. Rótulo em caixa alta; pincel de 8 a 12 px com borda irregular; sem nomes de rua.",
-      animacao:
-        "Aproximação em 1.000 ms e pincelada em 600 ms. O rótulo cai como recorte.",
-      duracaoSeg: [3, 6],
-      posicao916: "Mapa de 13% a 60% da altura, tela cheia na largura.",
-      posicao169: "Tela cheia, rótulos dentro da margem de 5%.",
-      quando: "País, cidade, região, rota ou expansão dita.",
-    },
-    {
-      id: "titulo-capitulo",
-      nome: "Título-capítulo em papel",
-      forma:
-        "Tira de papel rasgado com o título do bloco em condensada caixa alta. Número de capítulo pequeno acima; borda rasgada nos dois lados, sombra curta.",
-      animacao: "A tira desliza para dentro em 300 ms. O texto bate em 2 quadros; sai com a folha de papel que passa por cima.",
-      duracaoSeg: [1.5, 3],
-      posicao916: "Faixa de 35% a 50% da altura, centro.",
-      posicao169: "Centro, 40% a 60% da altura.",
-      quando: "Troca de bloco de argumento.",
-    },
-    {
-      id: "seta-circulo",
-      nome: "Seta e círculo à mão",
-      forma:
-        "Círculo e seta em traço de marcador da cor da marca, irregulares como feitos à mão. Traço de 6 px, ponta aberta.",
-      animacao: "Desenham-se por traço em 350 ms, a 12 quadros por segundo. Ficam até a troca de cena.",
+      nome: "Marca-texto amarelo",
+      forma: "Texto serifado preto, pesado, em caixa alta, numa faixa amarela chapada que acompanha cada linha, levemente inclinada, com sombra curta.",
+      animacao: "A faixa e o texto correm juntos da esquerda para a direita em 0,4 s, a 12 quadros por segundo.",
       duracaoSeg: [1.5, 4],
-      posicao916: "Sobre o detalhe apontado, dentro da área segura.",
-      posicao169: "Sobre o detalhe apontado.",
-      quando: "\"Olha aqui\", \"esse número\", \"repare que\".",
+      posicao916: "No alto (15%) ou no centro (36%), largura de 7% a 93%.",
+      posicao169: "No alto à esquerda, até metade da largura.",
+      quando: "A frase-chave, o número, a definição, sobre a pessoa; o ritmo entre as telas de papel.",
     },
     {
-      id: "linha-do-tempo",
-      nome: "Linha do tempo rolando",
-      forma:
-        "Régua horizontal de tinta com anos em caixa alta e um recorte pequeno pendurado em cada marco. Marco atual com marca-texto.",
-      animacao: "Rola até o ano dito em 700 ms. Da direita para a esquerda, com desaceleração; o recorte do marco cai.",
+      id: "carimbo",
+      nome: "Carimbo vermelho",
+      forma: "Palavra condensada em caixa alta, vermelha, borda dupla, tinta gasta e inclinada.",
+      animacao: "Entra grande e bate no papel em 0,15 s; o quadro treme.",
+      duracaoSeg: [1.2, 3],
+      posicao916: "No alto, do lado vazio.",
+      posicao169: "No alto, do lado vazio.",
+      quando: "A palavra de veredito dita com força: proibido, errado, aprovado, mentira.",
+    },
+    {
+      id: "grafico-linha",
+      nome: "Gráfico de papel",
+      forma: "Linha ou barras chapadas, rótulos pequenos, o valor dito grande.",
+      animacao: "A linha se desenha a 12 quadros por segundo; o valor conta junto.",
       duracaoSeg: [3, 6],
-      posicao916: "Faixa de 55% a 72% da altura.",
-      posicao169: "Terço inferior, 62% a 82% da altura.",
-      quando: "Datas e sequência histórica.",
+      posicao916: "Faixa de 16% a 50% da altura.",
+      posicao169: "Dois terços da tela.",
+      quando: "Evolução ou comparação com números DITOS.",
     },
   ],
   insercoesGeradas: {
-    quando: "Muitas, pequenas e de papel: 6 a 12 recortes por minuto, mais 1 a 2 cenas de cinema curtas por bloco para o substantivo mais concreto.",
+    quando: "As FOTOS DE ARQUIVO das peças de papel (3 a 8 por corte, geradas pelo código a partir da descrição em inglês do editor), mais 1 a 2 cenas de cinema curtas por bloco para o substantivo mais concreto.",
     tipos: [
-      "gravura de enciclopédia ou foto antiga em preto e branco do objeto dito, isolada para recortar",
-      "textura de papel, kraft, papel milimetrado ou jornal sem texto legível para o fundo",
+      "foto de arquivo em preto e branco de ALTA resolução, nítida, de época (1900 a 1950): prédio, objeto, documento, estátua genérica, figura anônima fictícia, isolada para recortar",
       "cena de cinema de 35 mm, luz natural, uma ação simples ligada à palavra concreta, 2 a 4 s",
     ],
-    nunca: "texto ou número desenhado pelo modelo, render 3D, foto de produto brilhante, fundo escuro.",
+    nunca: "pessoa real ou famosa, estátua de pessoa real, nome próprio de gente na descrição, foto colorida saturada, render 3D, texto legível desenhado pelo modelo.",
   },
   som: {
     trilha: "Eletrônica discreta e pulsante, 88 a 112 batidas por minuto, com sintetizador quente; muda de tom a cada bloco.",
-    efeitos: ["papel passando na troca de bloco", "papel pousando no recorte", "risco de marcador no marca-texto", "batida seca no carimbo ou no título", "whoosh grave na câmera 3D"],
+    efeitos: ["papel passando na troca de bloco", "papel pousando no recorte", "risco de marcador no marca-texto", "batida seca na tarja e no carimbo", "whoosh grave na câmera"],
     mixagem: "Voz a -14 LUFS; trilha a -26 dB sob a fala e -18 dB nos respiros de colagem; efeitos de papel baixos e secos.",
   },
   nunca: [
-    "Fundo escuro como base da colagem.",
-    "Mais de uma cor de destaque, ou fotos coloridas saturadas no recorte.",
-    "Elemento sem palavra dita que o motive.",
-    "Legenda palavra a palavra amarela gigante (isso é Hormozi).",
-    "Render 3D, brilho, partícula ou interface futurista.",
-    "Cena de 4 s ou mais sem nada novo entrando.",
+    "Cartão chapado com texto em cima da pessoa (o juiz reprova como slide): no Vox o texto vive no marca-texto ou no papel.",
+    "Colagem sem foto de arquivo: papel e título sozinhos são slide.",
+    "Tarja de censura em pessoa real ou identificável; foto ou estátua de pessoa real; figura histórica com nome.",
+    "Foto em baixa resolução, borrada ou colorida saturada; recorte sem borda de papel e sem sombra (parece colado).",
+    "Fundo escuro como base da colagem; outro amarelo; vermelho fora do círculo, do fio e do carimbo.",
+    "Elemento sem palavra dita que o motive; manchete com nome de jornal real ou fato que a fala não disse.",
+    "Duas telas de papel seguidas sem o rosto voltar; 4 s ou mais sem nada novo entrando.",
   ],
   momentos: [
     {
-      quando: "A pessoa enumera 4 razões",
-      edicao:
-        "Folha com as 4 razões em tiras rasgadas; 3 em cinza claro, a 1 com marca-texto; tira-título RAZÃO 1; volta para a pessoa no canto com recortes caindo a cada substantivo; na troca, a folha volta com a 1 riscada e a 2 marcada.",
-    },
-    {
       quando: "Os primeiros segundos",
-      edicao: "A pergunta dita sobre a pessoa recortada no papel, 2 recortes caindo do que está em jogo; dois momentos curtos do vídeo; título do assunto em tira rasgada; folha de papel.",
+      edicao: "Colagem: o assunto em 2 ou 3 fotos de arquivo caindo, o título com as palavras do falante no marca-texto amarelo; ou a censura, se o trecho abre com polêmica.",
     },
     {
-      quando: "Ela cita uma lei ou um estudo",
-      edicao: "Documento inclinado, câmera no trecho, marca-texto correndo enquanto ela lê; seta à mão no número.",
+      quando: "Ele conta um fato histórico, uma origem, uma história bíblica",
+      edicao: "Colagem com as fotos da época (a casa, o objeto, a estátua genérica), o mapa com o círculo vermelho no lugar dito, o fio vermelho ligando os dois recortes que a fala liga.",
     },
     {
-      quando: "Ela compara dois números (\"o aluguel subiu 12%, o salário 4%\")",
-      edicao: "Gráfico de papel com duas barras, a da marca crescendo primeiro, os valores contando; círculo à mão na diferença.",
+      quando: "Ele diz um lugar",
+      edicao: "Mapa antigo rasgado, a câmera chegando no ponto, o círculo vermelho se desenhando na palavra do lugar, o nome numa tira de papel.",
     },
     {
-      quando: "Ela fala de uma cidade ou região",
-      edicao: "Mapa de papel, aproximação até a região, pincelada da cor da marca contornando, rótulo caindo como recorte.",
+      quando: "Alguém disse, reclamou, declarou algo",
+      edicao: "Jornal rasgado com a frase como manchete, o marca-texto correndo no destaque, a foto de arquivo saltando do papel.",
     },
     {
-      quando: "Ela conta a origem histórica de algo",
-      edicao: "Linha do tempo rolando até o ano dito, gravura do marco caindo, aproximação lenta; corte para a pessoa no canto.",
+      quando: "Ele toca numa polêmica, num tabu, numa verdade incômoda",
+      edicao: "Censura: a estátua grande, a tarja amarela batendo nos olhos com tremor, o carimbo com a palavra dita.",
     },
     {
-      quando: "A frase-síntese do bloco",
-      edicao: "Frase escura sobre papel, marca-texto no tempo da fala, aproximação lenta; papel passando para o próximo bloco.",
+      quando: "Um número ou a frase-síntese",
+      edicao: "Marca-texto amarelo sobre a pessoa com o número ou a frase em serifa preta; no veredito, o carimbo vermelho.",
     },
   ],
   quadrosDeReferencia: [
-    "Fundo de papel bege com grão; à direita, três gravuras em preto e branco recortadas com borda branca e fita, levemente tortas; à esquerda, a frase-chave em sem serifa preta bold com uma faixa de marca-texto amarela atrás de três palavras; a pessoa recortada pequena no canto inferior.",
-    "Uma página de documento inclinada ocupando a tela, texto em serifa cinza ilegível exceto uma linha ampliada numa janela retangular, com marca-texto na cor de destaque sob ela e um círculo de marcador em volta do número.",
-    "Mapa chapado em tons de papel e cinza, uma região contornada por pincelada grossa da cor de destaque e um rótulo em caixa alta condensada preta numa tira de papel, com uma gravura pequena colada ao lado.",
+    "QUADRO DE TREINO vox-01: papel envelhecido com textura; mapa antigo recortado no canto com borda amarelada e um círculo vermelho num lugar; manuscrito antigo ao fundo; recortes de foto de arquivo P&B de alta resolução (prédio industrial com chaminé, homem de terno) em camadas com profundidade e sombra; tarja amarela sobre os olhos do homem; título serifado preto numa faixa amarela de marca-texto.",
+    "Recorte de jornal rasgado inclinado com a manchete serifada preta e o marca-texto amarelo em duas palavras; colunas ilegíveis; uma foto de arquivo recortada saltando do papel com sombra.",
+    "Estátua clássica em P&B recortada grande sobre papel com manuscrito, a tarja amarela de censura sobre os olhos e um carimbo vermelho.",
   ],
   fontes: [
+    "docs/overlays/referencias/vox/bruno-0410/vox-01.png (quadro de treino do dono, 04/10)",
     "lib/media/biblias/vox.ts (bíblia aprovada, corte cmuon0yxo de 30/09) e docs/overlays/BIBLIA-DE-ESTILO.md",
     "https://earnedits.com/how-vox-style-edits-are-built/ (12 quadros por segundo dentro de 24, câmera 3D com desfoque, marca-texto no tempo da narração, mapa com pincelada)",
-    "https://www.premiumbeat.com/blog/replicating-vox-motion-graphic/ (texturas em camadas que respiram, tarja com máscara rasgada, aberração cromática nas bordas)",
+    "https://www.premiumbeat.com/blog/replicating-vox-motion-graphic/ (texturas em camadas que respiram, tarja com máscara rasgada)",
     "https://www.flatpackfx.com/blog/create-vox-style-collage-animation-adobe-after-effects (colagem de papel e meio-tom)",
-    "https://fontsinuse.com/uses/6828/vox-website (tipografia da casa: Balto, Harriet; aqui substituídas por famílias abertas)",
   ],
 };
 

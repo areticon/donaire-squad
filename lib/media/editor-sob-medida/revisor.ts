@@ -85,11 +85,14 @@ const LUXO = " (COMPOSIÇÃO de referência; neste estilo o acabamento é de LUX
 const IMAGENS_DE_REFERENCIA: Record<string, Referencia[]> = {
   lousa: QUADROS_DA_LOUSA,
   consorcio: QUADROS_DA_LOUSA.map((q) => ({ ...q, descricao: q.descricao + LUXO })),
+  // O QUADRO DE TREINO DO DONO (04/10) vem sempre primeiro: é a régua do Vox (colagem de arquivo em camadas).
   vox: [
-    { arquivo: "vox/cartao-pergunta.jpg", descricao: "título gigante em três linhas ATRÁS da pessoa recortada, cor forte sobre fundo claro texturizado" },
-    { arquivo: "vox/stats-pessoa.jpg", descricao: "pessoa de perfil à esquerda; no espaço livre, nome e cargo, rótulo e o número dito enorme na cor de destaque" },
-    { arquivo: "vox/grafico-linha.jpg", descricao: "gráfico de linha limpo com título e fonte ao lado da pessoa, fundo claro com papel texturizado" },
-    { arquivo: "vox/revista-grifo.jpg", descricao: "documento real de arquivo em close, com o marca-texto amarelo entrando na frase dita, grão e vinheta" },
+    { arquivo: "vox/bruno-0410/vox-01.png", peca: "colagem", descricao: "O QUADRO DE TREINO do dono, a régua principal do Vox: papel envelhecido com textura, mapa antigo recortado com círculo vermelho num lugar, manuscrito ao fundo, fotos de arquivo P&B de ALTA resolução recortadas (prédio com chaminé, homem de terno) em camadas com profundidade e sombra, tarja AMARELA de censura nos olhos, título serifado preto na faixa amarela de marca-texto (ignore o ícone do After Effects no canto)" },
+    { arquivo: "vox/revista-grifo.jpg", peca: "jornal", descricao: "documento real de arquivo em close, com o marca-texto amarelo entrando na frase dita, grão e vinheta (a régua do jornal e do documento)" },
+    { arquivo: "vox/cartelas-amarelas.jpg", peca: "marca-texto", descricao: "rótulo preto pesado na faixa AMARELA sobre a imagem real (a régua do marca-texto)" },
+    { arquivo: "vox/mapa-verde.jpg", peca: "mapa-antigo", descricao: "mapa de arquivo com a região marcada e o rótulo em caixa alta (a régua do mapa; no nosso Vox o mapa é antigo, em sépia, com o círculo vermelho)" },
+    { arquivo: "vox/cartao-pergunta.jpg", peca: "titulo-atras", descricao: "título gigante em três linhas ATRÁS da pessoa recortada, cor forte sobre fundo claro texturizado" },
+    { arquivo: "vox/stats-pessoa.jpg", peca: "numero", descricao: "pessoa de perfil à esquerda; no espaço livre, nome e cargo, rótulo e o número dito enorme na cor de destaque" },
   ],
 };
 
@@ -97,8 +100,8 @@ const cacheDeImagens = new Map<string, string | null>();
 
 /** Até tantas imagens de referência por chamada (o custo): as das peças do lote primeiro. */
 const MAX_REFERENCIAS = 6;
-/** Sem peça da lousa no lote, os quadros que dão a régua geral: palavra gigante, legenda, pilha acesa, busca. */
-const REFERENCIAS_PADRAO = ["dm-01", "dm-04", "dm-07", "dm-02"];
+/** Os quadros que dão a régua geral: no Vox, o quadro de treino vox-01; na lousa, palavra gigante, legenda, pilha acesa, busca. */
+const REFERENCIAS_PADRAO = ["vox-01", "dm-01", "dm-04", "dm-07", "dm-02"];
 
 /**
  * As imagens de referência do estilo, prontas para a chamada (vazio quando o
