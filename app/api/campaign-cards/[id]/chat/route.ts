@@ -149,7 +149,12 @@ async function tratarChatDoCard(
   // O card de um vídeo GRAVADO (corte ou completo) nunca cai aqui: "faça outra
   // ideia para a cena do vídeo" casava com a regra e pedia um vídeo novo ao
   // gerador (Veo), com cobrança. O ajuste dele é o Vitor, lá embaixo (30/09).
-  const doVideoGravado = Boolean((card.metadata as { videoJobId?: string } | null)?.videoJobId);
+  // Só o card do CORTE é "do vídeo gravado" (05/10, bug do Bruno): os cards de
+  // texto, arte e publicação da semana do vídeo também guardam o videoJobId, e
+  // por isso o pedido deles caía no caminho antigo, que mandava tudo para a Diana.
+  const doVideoGravado =
+    Boolean((card.metadata as { videoJobId?: string } | null)?.videoJobId) &&
+    (card.cardType === "video_clip" || card.mediaType === "video");
   if (!doVideoGravado && ehPedidoDeRefazerVideo(message) && card.runId && card.dayOfWeek) {
     const r = await regerarVideoDoDia({ runId: card.runId, dayOfWeek: card.dayOfWeek, userId });
     const resposta = r.ok
@@ -206,7 +211,7 @@ async function tratarChatDoCard(
   }
 
   const PEDIDO_DE_MIDIA =
-    /\b(imagem|foto|arte|gr[aá]fic|chart|infogr[aá]fic|capa|ilustra|visual|design|est[ií]lo|cor(es)?|layout|thumb)/i;
+    /\b(imagem|imagens|fotos?|artes?|gr[aá]fic\w*|chart|infogr[aá]fic\w*|capas?|ilustra\w*|visual|design|est[ií]lo|cor|cores|layout|thumb)\b/i; // palavra inteira: "corrige" não é "cor"
   const cardDeOrigem = card;
   let encaminhadoDe: string | null = null;
 

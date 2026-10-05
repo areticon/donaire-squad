@@ -122,7 +122,7 @@ export async function estadoDoPedido(cardId: string) {
 // ── Entender ─────────────────────────────────────────────────────────────────
 
 const HEX = /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/i;
-const PEDIDO_DE_ARTE = /\b(imagem|foto|arte|gr[aá]fic|infogr[aá]fic|capa|ilustra|visual|design|cor(es)?|layout|l[aâ]mina|slide)/i;
+const PEDIDO_DE_ARTE = /\b(imagem|imagens|fotos?|artes?|gr[aá]fic\w*|infogr[aá]fic\w*|capas?|ilustra\w*|visual|design|cor|cores|layout|l[aâ]minas?|slides?)\b/i; // palavra inteira: "corrige" não é "cor"
 
 /** Sem o modelo (falhou ou demorou), a leitura por palavra: melhor que nada. */
 function entenderNaUnha(mensagem: string): AcaoDoPedido[] {
