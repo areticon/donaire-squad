@@ -7,6 +7,7 @@ import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { ShieldCheck } from "lucide-react";
 import { lerCadastro } from "@/lib/media/gemeo-servidor";
 import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
+import { GerenteVera } from "@/components/vera/gerente-vera";
 
 export default async function ProjectLayout({
   children,
@@ -80,6 +81,10 @@ export default async function ProjectLayout({
       </div>
 
       {children}
+
+      {/* A VERA GERENTE (04/10): em qualquer tela do projeto, a conversa em que
+          a pessoa pede e ela aplica (regras, setup, peças do quadro). */}
+      <GerenteVera projectId={id} />
     </div>
   );
 }

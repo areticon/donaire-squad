@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AGENTES, type Agente } from "@/lib/squad/estado-do-squad";
+import { EVENTO_ABRIR_VERA, ID_DA_VERA } from "@/lib/vera/tipos";
 
 /**
  * O menu que abre quando você para ao lado de um agente no escritório.
@@ -167,7 +168,22 @@ export function MenuDoAgente({
 
       {tela === "opcoes" && (
         <div className="flex flex-col">
-          <Opcao onClick={() => setTela("perguntar")} cor={agente.cor} rotulo="Perguntar algo" dica="fala" />
+          {/* A VERA É A GERENTE (04/10): com ela não é só pergunta, é pedido
+              que ela executa. A conversa dela abre a janela da gerente, que
+              mostra o que vai mudar e pede o ok, em vez deste menu pequeno. */}
+          {agente.id === ID_DA_VERA ? (
+            <Opcao
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent(EVENTO_ABRIR_VERA));
+                onFechar();
+              }}
+              cor={agente.cor}
+              rotulo="Pedir algo à gerente"
+              dica="ela aplica"
+            />
+          ) : (
+            <Opcao onClick={() => setTela("perguntar")} cor={agente.cor} rotulo="Perguntar algo" dica="fala" />
+          )}
           <Opcao onClick={onVerTrabalhos} cor={agente.cor} rotulo={`Ver os trabalhos ${dele}`} dica="ficha" />
           <Opcao onClick={() => setTela("sobre")} cor={agente.cor} rotulo="Comentar sobre outro agente" />
         </div>
