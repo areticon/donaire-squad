@@ -194,7 +194,7 @@ export function marcaComCor(marca: MarcaDaArte, cor: string | null): MarcaDaArte
   };
 }
 
-function frasesDoCarrossel(meta: Record<string, unknown> | null | undefined, conteudo: string | null): string[] {
+export function frasesDoCarrossel(meta: Record<string, unknown> | null | undefined, conteudo: string | null): string[] {
   const slides = meta?.slides;
   if (Array.isArray(slides) && slides.every((s) => typeof s === "string")) return slides as string[];
   // "Carrossel de 3 lâminas:\n1. frase\n2. frase"

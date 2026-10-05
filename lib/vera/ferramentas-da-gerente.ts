@@ -29,7 +29,7 @@ import { custoDeRefazerPeca, estimarCampanha } from "@/lib/credits/estimativa";
 import { decidirCortesia, cortesiasDeHoje, reprovadaPelaRevisora } from "@/lib/credits/cortesia";
 import { instanteLocalSeguro } from "@/lib/fuso";
 import { diaEHora } from "@/lib/posts/horario-da-peca";
-import { artesPendentes, agruparArtes, custoDasArtes } from "@/lib/vera/regerar-arte";
+import { artesPendentes, agruparArtes, custoDasArtes, resumoDasArtes } from "@/lib/vera/regerar-arte";
 import type { AcaoDoPedido, Escrita, Mudanca } from "@/lib/vera/pedidos";
 
 /**
@@ -374,13 +374,13 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
     {
       nome: "contar_artes_pendentes",
       descricao:
-        "Conta as artes (imagem e infográfico) das peças pendentes que seriam refeitas depois de uma mudança de marca, e o custo em créditos. Use SEMPRE depois de propor troca de cor, para oferecer refazer as artes.",
+        "Conta as artes (imagem, infográfico e carrossel) das peças pendentes que seriam refeitas depois de uma mudança de marca, e o custo em créditos. Use SEMPRE depois de propor troca de cor, para oferecer refazer as artes.",
       entrada: { type: "object", properties: {}, required: [] },
       rodar: async () => {
         const artes = await artesPendentes(projectId);
         if (!artes.length) return "Não há arte pendente para refazer.";
         const grupos = agruparArtes(artes);
-        return `${artes.length} peças com arte pendente, em ${grupos.length} ${grupos.length === 1 ? "arte" : "artes"} (uma por dia, com o recorte de cada rede). Refazer custa ${custoDasArtes(grupos)} créditos. Carrossel não entra (se refaz pelo chat do card). OFEREÇA NA RESPOSTA, com esses números: as artes pendentes continuam com a cor antiga até serem refeitas; pergunte se a pessoa quer refazer.`;
+        return `${artes.length} peças com arte pendente, em ${grupos.length} ${grupos.length === 1 ? "arte" : "artes"} (uma por dia e formato, com o recorte de cada rede): ${resumoDasArtes(grupos)}. Refazer custa ${custoDasArtes(grupos)} créditos. Carrossel continua carrossel, com o mesmo número de lâminas. OFEREÇA NA RESPOSTA, com esses números (quantas artes, quantos carrosséis, o custo): as artes pendentes continuam com a cor antiga até serem refeitas; pergunte se a pessoa quer refazer.`;
       },
     },
 
@@ -947,7 +947,7 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
     {
       nome: "regerar_artes_pendentes",
       descricao:
-        "Prepara refazer TODAS as artes (imagem e infográfico) das peças pendentes com a marca de hoje, por exemplo depois de trocar a cor. TEM CUSTO; diga a quantidade e o custo antes. Se a cor também está mudando neste pedido, ela é gravada primeiro.",
+        "Prepara refazer TODAS as artes (imagem, infográfico e carrossel, lâmina por lâmina) das peças pendentes com a marca de hoje, por exemplo depois de trocar a cor. TEM CUSTO; diga a quantidade e o custo antes. Se a cor também está mudando neste pedido, ela é gravada primeiro.",
       entrada: { type: "object", properties: {}, required: [] },
       rodar: async () => {
         const artes = await artesPendentes(projectId);
@@ -960,14 +960,14 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
           custo,
           item: {
             titulo: `Refazer ${grupos.length} ${grupos.length === 1 ? "arte pendente" : "artes pendentes"} com a marca nova`,
-            depois: `${artes.length} ${artes.length === 1 ? "peça" : "peças"} (rascunho ou agendada), cada rede no seu recorte; as publicadas não mudam`,
+            depois: `${resumoDasArtes(grupos)}, em ${artes.length} ${artes.length === 1 ? "peça" : "peças"} (rascunho ou agendada), cada rede no seu recorte; carrossel continua carrossel, com as mesmas lâminas; as publicadas não mudam`,
             link: LINK.quadro,
-            aviso: `Custa ${custo} créditos. Desfazer volta as artes antigas, mas não os créditos. Carrossel não entra.`,
+            aviso: `Custa ${custo} créditos. Desfazer volta as artes antigas, mas não os créditos.`,
           },
         });
         const corNoPlano = plano.mudancas.some((m) => m.escritas.some((e) => e.onde === "projeto" && e.campo === "colorPalette"));
         const { colorPalette } = await projeto();
-        return `${grupos.length} artes, ${custo} créditos. ${corNoPlano ? "A cor nova deste mesmo pedido é gravada antes, e as artes saem com ela." : `A marca de hoje JÁ ESTÁ GRAVADA (cores ${colorPalette ?? "padrão"}); este pedido só refaz as artes com ela, não mexe na cor.`} ${resumoDoPlano(plano).frase}`;
+        return `${grupos.length} artes (${resumoDasArtes(grupos)}), ${custo} créditos. ${corNoPlano ? "A cor nova deste mesmo pedido é gravada antes, e as artes saem com ela." : `A marca de hoje JÁ ESTÁ GRAVADA (cores ${colorPalette ?? "padrão"}); este pedido só refaz as artes com ela, não mexe na cor.`} ${resumoDoPlano(plano).frase}`;
       },
     },
   ];
