@@ -514,15 +514,16 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     <div className="p-4 sm:p-8 max-w-4xl mx-auto overflow-x-hidden">
       {/* Edit mode warning */}
       {editMode && !warningDismissed && (
-        <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/40 rounded-xl flex flex-wrap items-start gap-3">
-          <span className="text-yellow-400 text-lg shrink-0">⚠️</span>
+        // Contraste (04/10, print do Bruno: amarelo sobre bege não se lia).
+        <div className="mb-6 p-4 rounded-xl flex flex-wrap items-start gap-3 border" style={{ background: "var(--bg-card)", borderColor: "#d97706" }}>
+          <span className="text-lg shrink-0">⚠️</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-yellow-400 mb-1">Você está editando um projeto ativo</p>
-            <p className="text-xs text-[var(--text-muted)]">
+            <p className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Você está editando um projeto ativo</p>
+            <p className="text-xs" style={{ color: "var(--text-secondary, var(--text-primary))" }}>
               Alterações no nicho, tom de voz ou público-alvo podem afetar a consistência editorial dos próximos posts gerados. Edite com cuidado e salve apenas o que for realmente necessário.
             </p>
           </div>
-          <button onClick={() => setWarningDismissed(true)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs shrink-0">
+          <button onClick={() => setWarningDismissed(true)} className="rounded-lg border px-3 py-1 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
             Entendi
           </button>
         </div>
