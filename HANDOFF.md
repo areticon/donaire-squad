@@ -19614,3 +19614,14 @@ sozinho", Claude como diretor + Remotion + Higgsfield). Tudo abaixo publicado
 - Gasto de IA: 86% dos US$ 334 da semana foram testes na conta demandou.com. REGRA NOVA: todo gasto de desenvolvimento só com o OK do Bruno e o valor antes.
 - Em andamento: agente do quadro (espera do corte e completo visível), LinkedIn página pelo Blotato.
 - Pendente comigo: cláusula 10.10 no original em Documents\Demandou\contratos; custo real de um vídeo contra créditos; fonte do dado "23x".
+
+## 05/10/2026 (tarde): publicação grande com migrações, contratos em duas partes, cancelamentos, trava das artes, painel de IA
+- PUBLICADO (Bruno: "pode publicar"), com 3 migrações aditivas aplicadas pelo build (contrato parcelado, contaInterna e índices, formas da entrada e do restante):
+  - Contratos (a507d07, 6221ee0, dcad0f4): condição em duas partes. Entrada (total/12 sugerido) com forma Pix, boleto, transferência (por fora, comprovante no gestor) ou cartão à vista pelo Stripe; restante calculado (padrão 11 parcelas) com forma cartão recorrente (assinatura que termina sozinha), cartão parcelado pelo emissor (só com CONTRATOS_PARCELAMENTO_EMISSOR=1 e Installments ligado no Dashboard do Stripe) ou cartão à vista. Links nossos que não vencem (/api/contratos/pagar/<id>/<entrada|restante>?t=hmac). Porta: entrada confirmada E restante resolvido => ativa. Aprovadores de desconto >10%: Bruno ou Matheus (CONTRATOS_APROVADOR_EMAIL). E-mail de boas-vindas com "Agendar o meu onboarding" se CONTRATOS_AGENDA_URL. PENDENTE do Bruno: CONTRATOS_CHAVE_PIX, CONTRATOS_AGENDA_URL. Webhook do Stripe ganhou invoice.paid e invoice.payment_failed.
+  - Cancelar este vídeo na faixa (05e973d); Cancelar a campanha desta semana no menu ⋮ e Cancelar esta peça no cartão e na janela (8f62323).
+  - Trava das artes (1e36144): nenhuma arte paga sem identidade aprovada (modelo + letra + papéis das cores com contraste); hoje nenhum projeto tem identidade aprovada: a primeira campanha fica "Aguardando a sua identidade visual" até aprovar em Configurações > Modelos.
+  - Painel /admin "Uso de IA e margem" (5cddad0): cliente vs desenvolvimento (contaInterna: @demandou.com, gmail do Bruno, admins), por fornecedor e operação, créditos vs custo. Achado: custo real por crédito acima da régua R$ 0,027 em posts/artes (0,181), completo/cortes (0,052) e roteiro (0,042); gêmeo dentro (0,021).
+- Stripe limpo: 5 preços antigos arquivados (backup e reversão em scratchpad/stripe-limpeza e scripts/tmp/stripe-limpeza-*.mjs); dúvida para o Bruno: 2 produtos em dólar de 17/09.
+- Quadro do Fé & Gestão limpo a pedido (cards e posts não publicados); gêmeo novo repovoou a semana.
+- Limite semanal do Opus bateu (volta 09/10 12h): sessão e agentes seguem no Fable.
+- Em andamento: revisor do roteiro (prévia nas cores da marca por camadas HTML; cena a cena do completo com sugestões por cena) e chat do card com paleta estrita (duotone sem IA) e modelo de papel.
