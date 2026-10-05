@@ -1350,7 +1350,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   {/* A porta de PÁGINA continua disponível mesmo com o perfil
                       já conectado: são apps diferentes, e ter um não dá o
                       outro. Era justamente o caso do Bruno. */}
-                  <span className="text-xs px-3 py-1.5 rounded-lg bg-green-900/20 border border-green-800/40 text-green-400">
+                  <span className="text-xs px-3 py-1.5 rounded-lg bg-green-600 border border-green-700 text-white font-semibold">
                     conectado
                   </span>
                 </div>
@@ -1473,8 +1473,8 @@ function StepNetworks({ projectId }: { projectId: string }) {
                       className={cn(
                         "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-all disabled:opacity-50",
                         c.isActive
-                          ? "bg-green-500/15 text-green-500 hover:bg-green-500/25"
-                          : "bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25"
+                          ? "bg-green-600 text-white hover:bg-green-700"
+                          : "bg-amber-500 text-white hover:bg-amber-600"
                       )}
                       title={c.isActive ? "Recebe posts. Clique para desligar." : "Não recebe posts. Clique para ligar."}
                     >
@@ -1642,8 +1642,8 @@ function StepActivation({
         ))}
       </div>
 
-      <div className="p-4 bg-green-900/20 border border-green-800/40 rounded-xl">
-        <p className="text-sm text-green-400">
+      <div className="p-4 bg-green-50 border border-green-600/50 rounded-xl">
+        <p className="text-sm text-green-800">
           ✓ Ao clicar em &quot;Ativar projeto&quot;, seu squad de agentes estará pronto para criar e publicar conteúdo automaticamente.
         </p>
       </div>
