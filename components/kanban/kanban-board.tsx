@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
+import { PaginaDeEmpresaLinkedIn } from "@/components/social/pagina-empresa-linkedin";
 import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1014,6 +1015,16 @@ function resumoDasContas(contas: ContaConectada[]): string {
   return desligadas > 0 ? `${base}, ${desligadas} desligada${desligadas > 1 ? "s" : ""}` : base;
 }
 
+const CHAVE_CONECTANDO = "demandou:conectando-rede";
+const NOME_DA_REDE_NA_TELA: Record<string, string> = {
+  linkedin: "LinkedIn",
+  twitter: "X (Twitter)",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  youtube: "YouTube",
+  tiktok: "TikTok",
+};
+
 /** Uma conta conectada, como a API de conexão devolve. */
 type ContaConectada = {
   id: string;
@@ -1044,12 +1055,84 @@ function StepNetworks({ projectId }: { projectId: string }) {
   // A etapa das contas mudou de lugar em 03/10: o número sai da chave.
   const returnTo = `/projects/${projectId}?step=${indiceDa("redes")}`;
 
+  /**
+   * A ABA QUE FICOU PARA TRÁS PERCEBE A CONEXÃO (04/10).
+   *
+   * No celular o login da Meta pode terminar no app do Instagram, e a volta
+   * cai no navegador de dentro do app (ver app/conectado/page.tsx). A conta é
+   * gravada lá, e esta aba precisa saber sem a pessoa recarregar: a consulta
+   * periódica abaixo compara as contas e avisa a que chegou.
+   */
+  const conhecidas = useRef<Set<string> | null>(null);
   const refresh = () => {
     fetch(`/api/social/connect?projectId=${projectId}`)
       .then((r) => r.json())
-      .then((d) => setContas((d.storedAccounts ?? []) as ContaConectada[]))
+      .then((d) => {
+        const lista = (d.storedAccounts ?? []) as ContaConectada[];
+        const antes = conhecidas.current;
+        if (antes) {
+          const novas = lista.filter((c) => !antes.has(c.id));
+          for (const rede of new Set(novas.map((c) => c.platform))) {
+            const n = novas.filter((c) => c.platform === rede);
+            const paginasDesligadas = n.filter((c) => c.accountType === "organization" && !c.isActive).length;
+            toast.success(
+              paginasDesligadas > 0
+                ? `${NOME_DA_REDE_NA_TELA[rede] ?? rede}: ${paginasDesligadas === 1 ? "1 página encontrada" : `${paginasDesligadas} páginas encontradas`}. Ligue abaixo as que vão receber posts.`
+                : `${NOME_DA_REDE_NA_TELA[rede] ?? rede} conectado com sucesso.`,
+              { duration: 6000 }
+            );
+          }
+          if (novas.length > 0) {
+            try {
+              sessionStorage.removeItem(CHAVE_CONECTANDO);
+            } catch {}
+            setPresoEm(null);
+          }
+        }
+        conhecidas.current = new Set(lista.map((c) => c.id));
+        setContas(lista);
+      })
       .catch(() => undefined);
   };
+
+  // A consulta de tempos em tempos, só com a aba visível.
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * "FICOU PRESO NO INSTAGRAM" (04/10). Ao clicar em Conectar, a tela anota a
+   * rede e a hora. Se a pessoa volta para esta aba (voltar do navegador, ou
+   * trocar de app no celular) sem a conta ter chegado, aparece a saída: tentar
+   * de novo já logado (o Instagram vai direto para a autorização) ou pedir a
+   * conexão assistida. Antes ela ficava no feed do Instagram sem caminho.
+   */
+  const [presoEm, setPresoEm] = useState<string | null>(null);
+  const [paginasLinkedIn, setPaginasLinkedIn] = useState<"nenhuma" | "erro" | null>(null);
+  const anotarSaida = (rede: string) => {
+    try {
+      sessionStorage.setItem(CHAVE_CONECTANDO, JSON.stringify({ rede, em: Date.now() }));
+    } catch {}
+  };
+  useEffect(() => {
+    const conferir = () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const v = JSON.parse(sessionStorage.getItem(CHAVE_CONECTANDO) ?? "null") as { rede: string; em: number } | null;
+        if (v && Date.now() - v.em < 20 * 60 * 1000 && Date.now() - v.em > 1500) setPresoEm(v.rede);
+      } catch {}
+    };
+    conferir();
+    document.addEventListener("visibilitychange", conferir);
+    window.addEventListener("pageshow", conferir);
+    return () => {
+      document.removeEventListener("visibilitychange", conferir);
+      window.removeEventListener("pageshow", conferir);
+    };
+  }, []);
 
   // Quais redes tem credencial no servidor. Perguntado em runtime de
   // proposito: ver app/api/social/providers/route.ts.
@@ -1115,9 +1198,30 @@ function StepNetworks({ projectId }: { projectId: string }) {
     for (const rede of REDES) {
       const estado = params.get(rede);
       if (!estado) continue;
+      // Voltou pelo caminho normal: a saída anotada no clique já se resolveu.
+      try {
+        sessionStorage.removeItem(CHAVE_CONECTANDO);
+      } catch {}
+      setPresoEm(null);
       if (estado === "success") {
         toast.success(`${NOMES[rede]} conectado com sucesso.`);
         refresh();
+      } else if (rede === "linkedin" && estado === "pages_success") {
+        // O app de PÁGINAS volta com a contagem. Antes esta tela não lia este
+        // retorno: zero páginas ou cinco, a pessoa via a mesma tela muda.
+        const n = Number.parseInt(params.get("pages_count") ?? "0", 10) || 0;
+        if (n > 0) {
+          toast.success(
+            `${n === 1 ? "1 página de empresa encontrada" : `${n} páginas de empresa encontradas`}. Ligue abaixo as que vão receber posts.`,
+            { duration: 7000 }
+          );
+          setPaginasLinkedIn(null);
+        } else {
+          setPaginasLinkedIn("nenhuma");
+        }
+        refresh();
+      } else if (rede === "linkedin" && estado === "error" && params.get("pages") === "1") {
+        setPaginasLinkedIn("erro");
       } else if (estado === "error") {
         const motivo = params.get("motivo");
         toast.error(
@@ -1131,6 +1235,8 @@ function StepNetworks({ projectId }: { projectId: string }) {
       const limpa = new URL(window.location.href);
       REDES.forEach((r) => limpa.searchParams.delete(r));
       limpa.searchParams.delete("motivo");
+      limpa.searchParams.delete("pages_count");
+      limpa.searchParams.delete("pages");
       window.history.replaceState({}, "", limpa.toString());
     }
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1157,28 +1263,38 @@ function StepNetworks({ projectId }: { projectId: string }) {
       .catch(() => setTemAppDePaginas(false));
   }, []);
 
+  const urlPaginasLinkedIn = `/api/social/linkedin/connect?projectId=${projectId}&pages=1&returnTo=${encodeURIComponent(returnTo)}`;
+
+  const [alternando, setAlternando] = useState<string | null>(null);
+  const alternarConta = async (c: ContaConectada) => {
+    setAlternando(c.id);
+    try {
+      const r = await fetch("/api/social/connect", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id, isActive: !c.isActive }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { isActive?: boolean; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Não consegui mudar agora. Tente de novo.");
+      setContas((prev) => prev.map((x) => (x.id === c.id ? { ...x, isActive: d.isActive ?? !c.isActive } : x)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui mudar agora.");
+    } finally {
+      setAlternando(null);
+    }
+  };
+
   const NETWORKS: Array<{
     platform: RedeComLogo;
     label: string;
     descricao: string;
     connectUrl: string;
-    /** O texto do botão quando já há conta: nem toda rede aceita mais de uma. */
-    outra?: { rotulo: string; url: string };
   }> = [
     {
       platform: "linkedin",
       label: "LinkedIn",
-      descricao: "Seu perfil e as páginas de empresa que você administra",
+      descricao: "Seu perfil pessoal. A página de empresa tem a porta própria, logo abaixo.",
       connectUrl: conectar("linkedin"),
-      // `pages=1` troca de app e importa as páginas. O `returnTo` volta para cá.
-      ...(temAppDePaginas
-        ? {
-            outra: {
-              rotulo: "Conectar página",
-              url: `/api/social/linkedin/connect?projectId=${projectId}&pages=1&returnTo=${encodeURIComponent(returnTo)}`,
-            },
-          }
-        : {}),
     },
     { platform: "instagram", label: "Instagram", descricao: "Conta profissional, ligada a uma página do Facebook", connectUrl: conectar("instagram") },
     { platform: "twitter", label: "X (Twitter)", descricao: "Seu perfil, autorize via OAuth", connectUrl: conectar("twitter") },
@@ -1233,15 +1349,6 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   {/* A porta de PÁGINA continua disponível mesmo com o perfil
                       já conectado: são apps diferentes, e ter um não dá o
                       outro. Era justamente o caso do Bruno. */}
-                  {net.outra && (
-                    <a
-                      href={net.outra.url}
-                      className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      {net.outra.rotulo}
-                    </a>
-                  )}
                   <span className="text-xs px-3 py-1.5 rounded-lg bg-green-900/20 border border-green-800/40 text-green-400">
                     conectado
                   </span>
@@ -1249,6 +1356,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
               ) : assistidas.includes(net.platform) ? null : prontas[net.platform] ? (
                 <a
                   href={net.connectUrl}
+                  onClick={() => anotarSaida(net.platform)}
                   // Mesma aba, por pedido do Bruno em 13/09: a aba nova de
                   // 21/08 deixava duas janelas da Demandou abertas e a pessoa
                   // seguia na errada. O que a aba nova protegia (o vai e vem do
@@ -1258,7 +1366,7 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   className="text-xs px-3 py-1.5 rounded-lg border text-[var(--text-muted)] hover:border-orange-500/40 hover:text-orange-400 transition-all"
                   style={{ borderColor: "var(--border)" }}
                 >
-                  Conectar
+                  {net.platform === "linkedin" ? "Conectar perfil" : "Conectar"}
                 </a>
               ) : (
                 <span
@@ -1284,6 +1392,54 @@ function StepNetworks({ projectId }: { projectId: string }) {
               </div>
             )}
 
+            {net.platform === "linkedin" && (
+              <PaginaDeEmpresaLinkedIn
+                projectId={projectId}
+                appLiberado={temAppDePaginas}
+                urlDoApp={urlPaginasLinkedIn}
+                paginas={daRede.filter((c) => c.accountType === "organization").length}
+                resultado={paginasLinkedIn}
+                pedido={pedidos.find((p) => p.rede === "linkedin") ?? null}
+                onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
+                onSair={() => anotarSaida("linkedin")}
+              />
+            )}
+
+            {presoEm === net.platform && !isConnected && (
+              <div className="mt-3 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3 text-xs text-[var(--text-primary)] space-y-2">
+                <p>
+                  <strong>A conexão com o {net.label} não terminou.</strong> Se o login ficou parado no {net.label} (no
+                  feed ou no app), tente de novo: agora que você já entrou, ele vai direto para a autorização.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`${net.connectUrl}&tentativa=2`}
+                    onClick={() => anotarSaida(net.platform)}
+                    className="px-3 py-1.5 rounded-lg bg-orange-500 text-white font-semibold"
+                  >
+                    Tentar de novo
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        sessionStorage.removeItem(CHAVE_CONECTANDO);
+                      } catch {}
+                      setPresoEm(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg border text-[var(--text-muted)]"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    Fechar aviso
+                  </button>
+                </div>
+                <p className="text-[var(--text-muted)]">
+                  No celular, se o app do {net.label} abrir sozinho, termine a autorização nele e volte para esta tela:
+                  ela atualiza sozinha.
+                </p>
+              </div>
+            )}
+
             {/* CADA CONTA, com nome e tipo. É o conserto do achado de 18/09:
                 um selo "conectado" escondia um perfil, duas páginas e uma
                 delas desligada. */}
@@ -1306,20 +1462,28 @@ function StepNetworks({ projectId }: { projectId: string }) {
                         publicado no nome de uma empresa sem alguém mandar.
                         Mas desligada e silenciosa é a mesma coisa que ausente,
                         e foi assim que a "Areticon" sumiu da vista dele. */}
-                    {!c.isActive && (
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-yellow-500/15 text-yellow-500">
-                        desligada
-                      </span>
-                    )}
+                    {/* Ligar e desligar AQUI (04/10): a página de empresa nasce
+                        desligada, e mandar a pessoa às Configurações no meio do
+                        setup para escolher a página era tirar ela da jornada. */}
+                    <button
+                      type="button"
+                      onClick={() => alternarConta(c)}
+                      disabled={alternando === c.id}
+                      className={cn(
+                        "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-all disabled:opacity-50",
+                        c.isActive
+                          ? "bg-green-500/15 text-green-500 hover:bg-green-500/25"
+                          : "bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25"
+                      )}
+                      title={c.isActive ? "Recebe posts. Clique para desligar." : "Não recebe posts. Clique para ligar."}
+                    >
+                      {c.isActive ? "ligada" : "desligada, ligar"}
+                    </button>
                   </div>
                 ))}
                 {daRede.some((c) => !c.isActive) && (
                   <p className="text-[11px] text-[var(--text-muted)] pt-0.5">
-                    Ligue em{" "}
-                    <a href={`/projects/${projectId}/settings`} className="text-orange-400 underline">
-                      Configurações
-                    </a>{" "}
-                    quando quiser publicar nela.
+                    Só recebe posts a conta ligada. Toque em &quot;ligar&quot; na que vai publicar.
                   </p>
                 )}
               </div>

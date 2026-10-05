@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
+import { PaginaDeEmpresaLinkedIn } from "@/components/social/pagina-empresa-linkedin";
 import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
 interface SocialAccount {
@@ -117,6 +118,7 @@ export function SocialConnectPanel({
       .catch(() => undefined);
   }, [project.id]);
   const ehAssistida = (rede: string) => assistidas.includes(rede);
+  const [paginasLinkedIn, setPaginasLinkedIn] = useState<"nenhuma" | "erro" | null>(null);
   const caixaAssistida = (rede: string, temConta: boolean, urlDireta: string) =>
     ehAssistida(rede) ? (
       <ConexaoAssistida
@@ -134,9 +136,14 @@ export function SocialConnectPanel({
       toast.success("LinkedIn pessoal conectado com sucesso!");
       refreshAccounts();
     } else if (searchParams.get("linkedin") === "pages_success") {
-      const count = searchParams.get("pages_count") ?? "0";
-      toast.success(`${count} página(s) de empresa importada(s)! Ative as que quiser usar.`);
+      const count = Number.parseInt(searchParams.get("pages_count") ?? "0", 10) || 0;
+      // Zero páginas não é sucesso (04/10): a tela explica e oferece a
+      // conexão assistida, em vez de comemorar "0 página(s) importada(s)".
+      if (count > 0) toast.success(`${count} página(s) de empresa importada(s)! Ative as que quiser usar.`);
+      else setPaginasLinkedIn("nenhuma");
       refreshAccounts();
+    } else if (searchParams.get("linkedin") === "error" && searchParams.get("pages") === "1") {
+      setPaginasLinkedIn("erro");
     } else if (searchParams.get("linkedin") === "error") {
       toast.error("Erro ao conectar LinkedIn. Verifique as permissões do app e tente novamente.");
     } else if (searchParams.get("twitter") === "success") {
@@ -321,7 +328,14 @@ export function SocialConnectPanel({
               </p>
             </div>
             {linkedinPages.length > 0 ? (
-              <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
+                {hasPagesApp && !ehAssistida("linkedin") && (
+                  <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
+                    <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Buscar outras</a>
+                  </Button>
+                )}
+              </div>
             ) : hasPagesApp && !ehAssistida("linkedin") ? (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
                 <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
@@ -333,6 +347,22 @@ export function SocialConnectPanel({
         </div>
 
         {caixaAssistida("linkedin", hasLinkedIn, `/api/social/linkedin/connect?projectId=${project.id}`)}
+
+        {/* Os becos da página de empresa (04/10): app de páginas não liberado ou
+            nenhuma página administrada. Explica e oferece a conexão assistida. */}
+        {!ehAssistida("linkedin") && (paginasLinkedIn !== null || !hasPagesApp) && (
+          <div className="mb-4">
+            <PaginaDeEmpresaLinkedIn
+              projectId={project.id}
+              appLiberado={hasPagesApp}
+              urlDoApp={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}
+              paginas={linkedinPages.length}
+              resultado={paginasLinkedIn}
+              pedido={pedidos.find((p) => p.rede === "linkedin") ?? null}
+              onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
+            />
+          </div>
+        )}
 
         {/* Connected accounts list */}
         {hasLinkedIn && (

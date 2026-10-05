@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
     projectId ? `/projects/${projectId}/settings` : "/dashboard"
   );
   const settingsUrl = `${appUrl}${baseReturn}${baseReturn.includes("?") ? "&" : "?"}linkedin=success`;
-  const errorUrl = `${appUrl}${baseReturn}${baseReturn.includes("?") ? "&" : "?"}linkedin=error`;
+  // `pages=1` diz à tela que foi o app de PÁGINAS que falhou, para ela oferecer
+  // a conexão assistida da página em vez do aviso genérico (04/10).
+  const errorUrl = `${appUrl}${baseReturn}${baseReturn.includes("?") ? "&" : "?"}linkedin=error${forPages ? "&pages=1" : ""}`;
 
   if (error || !code || !state || state !== savedState || !projectId) {
     console.error("[linkedin/callback] OAuth error:", error, errorDesc);
