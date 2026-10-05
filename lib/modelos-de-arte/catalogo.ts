@@ -1055,6 +1055,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "papel-com-titulo-e-faixa-rasgada",
     prompt: PROMPTS_VOX["papel-com-titulo-e-faixa-rasgada"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/papel-com-titulo-e-faixa-rasgada.jpg",
     nome: "Papel com título e faixa rasgada",
     paraQuem: "O post de opinião do feed: título enorme, você em preto e branco e uma faixa de papel rasgado na cor da marca.",
     categoria: "Colagem e papel",
@@ -1077,6 +1079,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "papel-com-foto-rasgada",
     prompt: PROMPTS_VOX["papel-com-foto-rasgada"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/papel-com-foto-rasgada.jpg",
     nome: "Papel com foto rasgada e destaque",
     paraQuem: "Mostrar um dado, uma tela, um detalhe: a foto num papel rasgado, em meio-tom, com um ponto marcado.",
     categoria: "Colagem e papel",
@@ -1099,6 +1103,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "jornal-com-marca-texto",
     prompt: PROMPTS_VOX["jornal-com-marca-texto"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/jornal-com-marca-texto.jpg",
     nome: "Jornal com marca-texto",
     paraQuem: "A colagem Vox clássica: jornal antigo, frase grifada, você recortado e o selo da marca.",
     categoria: "Colagem e papel",
@@ -1121,6 +1127,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "antes-e-depois-em-papel",
     prompt: PROMPTS_VOX["antes-e-depois-em-papel"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/antes-e-depois-em-papel.jpg",
     nome: "Antes e depois em papel",
     paraQuem: "Transformação, resultado, comparação: a mesma foto dividida ao meio, com a barra da marca.",
     categoria: "Colagem e papel",
@@ -1143,6 +1151,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "rosto-em-pedacos-de-jornal",
     prompt: PROMPTS_VOX["rosto-em-pedacos-de-jornal"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/rosto-em-pedacos-de-jornal.jpg",
     nome: "Rosto em pedaços de jornal",
     paraQuem: "Capa ousada: blocos de papel nas cores da marca, você em preto e branco e recortes de jornal colados.",
     categoria: "Colagem e papel",
@@ -1165,6 +1175,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "capa-de-carrossel-em-papel",
     prompt: PROMPTS_VOX["capa-de-carrossel-em-papel"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/capa-de-carrossel-em-papel.jpg",
     nome: "Capa de carrossel em papel",
     paraQuem: "A primeira lâmina da série em papel: título enorme, selo circulado à mão e o 'arraste' numa tira de papel.",
     categoria: "Colagem e papel",
@@ -1187,6 +1199,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "infografico-em-papel",
     prompt: PROMPTS_VOX["infografico-em-papel"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/infografico-em-papel.jpg",
     nome: "Infográfico em papel com ícones",
     paraQuem: "Explicar em 3 ou 4 pontos, com ícones desenhados a traço, no papel do feed.",
     categoria: "Colagem e papel",
@@ -1207,6 +1221,8 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   {
     id: "frase-com-carimbo-e-foto",
     prompt: PROMPTS_VOX["frase-com-carimbo-e-foto"],
+    // Prévia gerada uma vez pelo modelo de imagem (05/10, paleta do Fé & Gestão, US$ 0,06).
+    previaGerada: "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/previas-vox/frase-com-carimbo-e-foto.jpg",
     nome: "Frase com carimbo e foto colada",
     paraQuem: "Opinião com assinatura: o título, o carimbo torto da marca e uma foto pequena colada com fita.",
     categoria: "Colagem e papel",
