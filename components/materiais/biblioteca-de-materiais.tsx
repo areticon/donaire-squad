@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { Camera, Check, ImagePlus, Loader2, Play, RefreshCw, Trash2, Images } from "lucide-react";
+import Link from "next/link";
+import { Camera, Check, Download, ExternalLink, Film, ImagePlus, Loader2, Play, RefreshCw, Trash2, Images } from "lucide-react";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
-import { DICA_DA_ETIQUETA, ETIQUETAS, LIMITES_DO_MATERIAL, ROTULO_DA_ETIQUETA, type Etiqueta, type MaterialNaTela } from "@/lib/materiais/tipos";
+import { DICA_DA_ETIQUETA, ETIQUETAS, LIMITES_DO_MATERIAL, ROTULO_DA_ETIQUETA, linkDoCard, type CorteNaTela, type Etiqueta, type MaterialNaTela } from "@/lib/materiais/tipos";
 
 /**
  * SEUS MATERIAIS (03/10/2026), pedido do Bruno: "o uso mais comum é a pessoa
@@ -19,6 +20,11 @@ import { DICA_DA_ETIQUETA, ETIQUETAS, LIMITES_DO_MATERIAL, ROTULO_DA_ETIQUETA, t
  * duração, uma miniatura e uma folha de três quadros, que é o que a visão lê.
  * Tudo vai para o Blob privado; as etiquetas chegam sozinhas em segundos e o
  * cliente corrige com um toque.
+ *
+ * Os CORTES (05/10/2026): os Reels que o squad tirou da gravação do cliente
+ * entram aqui também, numa faixa própria com miniatura, duração e o caminho
+ * para o card. Moram no vídeo (não são linha de material), então não têm
+ * etiqueta nem botão de apagar: aqui é para assistir, baixar e reaproveitar.
  */
 
 const urlDoArquivo = (projectId: string, id: string, v: "mini" | "original" = "mini") => `/api/projects/${projectId}/materiais/${id}/arquivo?v=${v}`;
@@ -97,7 +103,9 @@ const nomeSeguro = (n: string) => n.normalize("NFD").replace(/[^\w.-]+/g, "-").r
 
 export function BibliotecaDeMateriais({ projectId, compacto = false }: { projectId: string; compacto?: boolean }) {
   const [materiais, setMateriais] = useState<MaterialNaTela[] | null>(null);
-  const [filtro, setFiltro] = useState<Etiqueta | "todos" | "video">("todos");
+  const [cortes, setCortes] = useState<CorteNaTela[]>([]);
+  const [filtro, setFiltro] = useState<Etiqueta | "todos" | "video" | "cortes">("todos");
+  const [tocando, setTocando] = useState<string | null>(null);
   const [envio, setEnvio] = useState<{ feitos: number; total: number; atual: string } | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const galeria = useRef<HTMLInputElement>(null);
@@ -106,8 +114,9 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
   const carregar = useCallback(async () => {
     const r = await fetch(`/api/projects/${projectId}/materiais`, { cache: "no-store" }).catch(() => null);
     if (!r?.ok) return;
-    const j = (await r.json()) as { materiais: MaterialNaTela[] };
+    const j = (await r.json()) as { materiais: MaterialNaTela[]; cortes?: CorteNaTela[] };
     setMateriais(j.materiais);
+    setCortes(j.cortes ?? []);
   }, [projectId]);
 
   useEffect(() => {
@@ -202,6 +211,7 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
   const visiveis = useMemo(() => {
     const l = materiais ?? [];
     if (filtro === "todos") return l;
+    if (filtro === "cortes") return [];
     if (filtro === "video") return l.filter((m) => m.tipo === "video");
     return l.filter((m) => m.etiquetas.includes(filtro));
   }, [materiais, filtro]);
@@ -258,10 +268,10 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
         </div>
       )}
 
-      {materiais && materiais.length > 0 && (
+      {materiais && materiais.length + cortes.length > 0 && (
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-          {(["todos", ...ETIQUETAS, "video"] as const).map((f) => {
-            const n = f === "todos" ? materiais.length : f === "video" ? nVideos : contagem(f);
+          {(["todos", ...ETIQUETAS, "video", "cortes"] as const).map((f) => {
+            const n = f === "todos" ? materiais.length + cortes.length : f === "video" ? nVideos : f === "cortes" ? cortes.length : contagem(f);
             if (f !== "todos" && n === 0) return null;
             return (
               <button
@@ -271,7 +281,7 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
                 className={cn("h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors", filtro === f ? "border-orange-500 bg-orange-500/10" : "hover:border-orange-500/40")}
                 style={{ borderColor: filtro === f ? undefined : "var(--border)", color: filtro === f ? "var(--text-primary)" : "var(--text-muted)" }}
               >
-                {f === "todos" ? "Tudo" : f === "video" ? "Vídeos" : ROTULO_DA_ETIQUETA[f]} <span className="opacity-60">{n}</span>
+                {f === "todos" ? "Tudo" : f === "video" ? "Vídeos" : f === "cortes" ? "Cortes" : ROTULO_DA_ETIQUETA[f]} <span className="opacity-60">{n}</span>
               </button>
             );
           })}
@@ -297,7 +307,7 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
             Uma sua de frente, bem iluminada; o seu espaço; os produtos; a equipe trabalhando. Vídeos de até 3 minutos também.
           </span>
         </button>
-      ) : (
+      ) : filtro === "cortes" ? null : (
         <div className={cn("grid items-start gap-3", compacto ? "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5")}>
           {visiveis.map((m) => (
             <div key={m.id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border" style={{ borderColor: editando === m.id ? "rgb(249 115 22)" : "var(--border)", background: "var(--bg-elevated)" }}>
@@ -368,6 +378,68 @@ export function BibliotecaDeMateriais({ projectId, compacto = false }: { project
             </div>
           ))}
         </div>
+      )}
+
+      {cortes.length > 0 && (filtro === "todos" || filtro === "cortes") && (
+        <section className="flex flex-col gap-3" aria-label="Cortes das suas gravações">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              <Film className="h-4 w-4 text-orange-400" />
+              Cortes das suas gravações <span className="font-normal opacity-60">{cortes.length}</span>
+            </h3>
+            <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--text-muted)" }}>
+              Os Reels que o squad tirou do que você gravou. Assista, baixe para postar em outro lugar ou abra o card para ajustar.
+            </p>
+          </div>
+          <div className={cn("grid items-start gap-3", compacto ? "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5")}>
+            {cortes.map((c) => (
+              <div key={c.id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border" style={{ borderColor: tocando === c.id ? "rgb(249 115 22)" : "var(--border)", background: "var(--bg-elevated)" }}>
+                <div className="relative aspect-[4/5] w-full overflow-hidden bg-black">
+                  {tocando === c.id ? (
+                    <video src={c.videoUrl} poster={c.miniaturaUrl} controls autoPlay playsInline preload="auto" className="h-full w-full object-contain" />
+                  ) : (
+                    <button type="button" onClick={() => setTocando(c.id)} className="block h-full w-full" aria-label={`Assistir o corte ${c.titulo}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={c.miniaturaUrl} alt={c.titulo} loading="lazy" className="h-full w-full object-cover" />
+                      <span className="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                        <Play className="h-3 w-3" /> {c.duracaoSec ? `${c.duracaoSec} s` : "corte"}
+                      </span>
+                      <span className="absolute right-2 top-2 rounded-md bg-orange-500/90 px-1.5 py-0.5 text-[11px] font-semibold text-white">Corte</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5 p-2">
+                  <p className="line-clamp-2 text-[12px] font-medium leading-snug" style={{ color: "var(--text-primary)" }} title={c.gravacao ? `De: ${c.gravacao}` : undefined}>
+                    {c.titulo}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {c.cardId ? (
+                      <Link
+                        href={linkDoCard(projectId, c.cardId, c.semanaDoCard)}
+                        className="flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors hover:border-orange-500/50"
+                        style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Abrir card
+                      </Link>
+                    ) : (
+                      <span className="flex h-8 items-center px-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                        Ainda sem card
+                      </span>
+                    )}
+                    <a
+                      href={c.baixarUrl}
+                      className="flex h-8 items-center gap-1 rounded-md px-2 text-[11px] transition-colors hover:bg-orange-500/10"
+                      style={{ color: "var(--text-muted)" }}
+                      aria-label={`Baixar o corte ${c.titulo}`}
+                    >
+                      <Download className="h-3.5 w-3.5" /> Baixar
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

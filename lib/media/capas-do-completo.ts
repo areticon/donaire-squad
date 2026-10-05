@@ -250,10 +250,13 @@ export async function gerarCapasDoCompleto(
     throw new Error("Nenhuma capa saiu desta vez. Tente de novo em instantes.");
   }
 
+  // A foto da biblioteca que o cliente já tinha posto entre as opções fica
+  // (05/10): "Gerar outras 2" troca as composições, não a escolha dele.
+  const daBiblioteca = ((video.capas as CapasDoCompleto | null)?.opcoes ?? []).filter((o) => o.materialId);
   const capas: CapasDoCompleto = {
     estilo,
     clima,
-    opcoes: prontas,
+    opcoes: [...prontas, ...daBiblioteca],
     escolhida: 0,
     geradaEm: new Date().toISOString(),
   };
@@ -308,6 +311,70 @@ export async function escolherCapaDoCompleto(
     }
   }
   return { capas: novas, aviso };
+}
+
+/**
+ * A CAPA A PARTIR DA BIBLIOTECA DE MATERIAIS (05/10/2026): o cliente escolhe
+ * uma foto que ele mesmo subiu, além das duas compostas pelo squad.
+ *
+ * A foto é a real, sem modelo de imagem nenhum (custo zero): recortada para
+ * 16:9 pelo ponto de maior interesse (rosto, produto), em JPEG 1280x720, que
+ * é o que o YouTube aceita. Vai para o store público como as outras capas,
+ * porque capa é mídia produzida e é pública no YouTube de qualquer forma.
+ *
+ * Entra como mais uma opção em `capas.opcoes` (com `materialId`) e já sai
+ * escolhida, pelo mesmo caminho da escolha comum: card, post e, se o vídeo
+ * já está no ar, o YouTube. A mesma foto escolhida de novo não duplica.
+ */
+export async function usarMaterialComoCapa(
+  videoJobId: string,
+  userId: string,
+  materialId: string
+): Promise<{ capas: CapasDoCompleto; aviso?: string }> {
+  const video = await prisma.videoJob.findFirst({
+    where: { id: videoJobId, project: projetoVisivel(userId) },
+    select: { id: true, projectId: true, capas: true, project: { select: { capaEstilo: true } } },
+  });
+  if (!video) throw new Error("Vídeo não encontrado.");
+  const material = await prisma.materialDoCliente.findFirst({
+    where: { id: materialId, projectId: video.projectId },
+    select: { id: true, tipo: true, url: true, descricao: true },
+  });
+  if (!material) throw new Error("Essa foto não está na biblioteca deste projeto.");
+  if (material.tipo !== "foto") throw new Error("A capa precisa ser uma foto.");
+
+  const atuais = video.capas as CapasDoCompleto | null;
+  const ja = atuais?.opcoes.findIndex((o) => o.materialId === material.id) ?? -1;
+  if (atuais && ja >= 0) return escolherCapaDoCompleto(video.id, userId, ja);
+
+  const original = await lerMidia(material.url);
+  if (!original) throw new Error("Não consegui ler a foto da biblioteca.");
+  const { default: sharp } = await import("sharp");
+  const jpeg = await sharp(original)
+    .rotate()
+    .resize(1280, 720, { fit: "cover", position: sharp.strategy.attention })
+    .jpeg({ quality: 88, mozjpeg: true })
+    .toBuffer();
+  const { url } = await put(`cortes/${video.id}/capa-material-${material.id}.jpg`, jpeg, {
+    ...midiaProduzida(),
+    contentType: "image/jpeg",
+    addRandomSuffix: true,
+  });
+
+  const nova: OpcaoDeCapa = { url, frase: "Foto da sua biblioteca", expressao: "confiante", materialId: material.id };
+  const capas: CapasDoCompleto = atuais
+    ? { ...atuais, opcoes: [...atuais.opcoes, nova] }
+    : {
+        estilo: estiloDeCapaValido(video.project.capaEstilo) ? video.project.capaEstilo : "impacto",
+        opcoes: [nova],
+        escolhida: 0,
+        geradaEm: new Date().toISOString(),
+      };
+  await prisma.videoJob.update({ where: { id: video.id }, data: { capas: capas as never } });
+  await prisma.materialDoCliente
+    .update({ where: { id: material.id }, data: { usos: { increment: 1 }, ultimoUsoEm: new Date() } })
+    .catch(() => {});
+  return escolherCapaDoCompleto(video.id, userId, capas.opcoes.length - 1);
 }
 
 /**

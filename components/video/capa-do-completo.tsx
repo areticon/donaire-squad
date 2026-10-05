@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Check, Loader2, RefreshCw } from "lucide-react";
+import { Check, ImageIcon, Loader2, RefreshCw, X } from "lucide-react";
+import type { MaterialNaTela } from "@/lib/materiais/tipos";
 import {
   CLIMAS_DE_CAPA,
   CLIMAS_DE_CAPA_ROTULO,
@@ -32,6 +33,10 @@ import {
  *
  * Quando o vídeo já está no ar, escolher troca a capa no YouTube na hora, e
  * a tela diz se o YouTube recusou (canal sem verificação por telefone).
+ *
+ * Desde 05/10 a capa também pode ser uma FOTO DA BIBLIOTECA de materiais do
+ * projeto: "Usar foto dos materiais" abre a faixa de fotos, um toque escolhe,
+ * e a foto entra como mais uma opção, já marcada. Sem gerar imagem.
  */
 export function CapaDoCompleto({
   videoJobId,
@@ -47,13 +52,18 @@ export function CapaDoCompleto({
   const [carregando, setCarregando] = useState(true);
   const [gerando, setGerando] = useState(false);
   const [escolhendo, setEscolhendo] = useState<number | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<MaterialNaTela[] | null>(null);
+  const [biblioteca, setBiblioteca] = useState(false);
+  const [usandoFoto, setUsandoFoto] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
       const r = await fetch(`/api/videos/${videoJobId}/capas-do-completo`);
       if (!r.ok) return;
-      const d = (await r.json()) as { capas: CapasDoCompleto | null; estilo: EstiloDeCapa };
+      const d = (await r.json()) as { capas: CapasDoCompleto | null; estilo: EstiloDeCapa; projectId?: string };
       setCapas(d.capas);
+      if (d.projectId) setProjectId(d.projectId);
       setEstilo(d.capas?.estilo ?? d.estilo);
       setClima(d.capas?.clima ?? "automatico");
     } finally {
@@ -119,14 +129,65 @@ export function CapaDoCompleto({
     }
   };
 
+  // As fotos da biblioteca, lidas só quando o cliente abre a faixa.
+  const abrirBiblioteca = async () => {
+    if (biblioteca) return setBiblioteca(false);
+    setBiblioteca(true);
+    if (fotos || !projectId) return;
+    try {
+      const r = await fetch(`/api/projects/${projectId}/materiais`, { cache: "no-store" });
+      const d = (await r.json().catch(() => ({}))) as { materiais?: MaterialNaTela[] };
+      setFotos((d.materiais ?? []).filter((m) => m.tipo === "foto" && m.status !== "falhou" && !m.etiquetas.includes("documento")));
+    } catch {
+      setFotos([]);
+    }
+  };
+
+  const usarFoto = async (materialId: string) => {
+    if (usandoFoto) return;
+    setUsandoFoto(materialId);
+    try {
+      const r = await fetch(`/api/videos/${videoJobId}/capas-do-completo`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ materialId }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { capas?: CapasDoCompleto; aviso?: string; error?: string };
+      if (!r.ok || !d.capas) throw new Error(d.error ?? "Não consegui usar essa foto.");
+      setCapas(d.capas);
+      onEscolhida?.(d.capas.opcoes[d.capas.escolhida]?.url);
+      setBiblioteca(false);
+      if (d.aviso) toast.error(d.aviso, { duration: 9_000 });
+      else toast.success("Foto da biblioteca escolhida como capa.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui usar essa foto.");
+    } finally {
+      setUsandoFoto(null);
+    }
+  };
+
   const ocupado = gerando || carregando;
 
   return (
     <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
           Capa no YouTube
         </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+        {projectId && (
+          <button
+            type="button"
+            disabled={gerando || usandoFoto !== null}
+            onClick={() => void abrirBiblioteca()}
+            aria-expanded={biblioteca}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-all hover:border-orange-500/50 disabled:opacity-50"
+            style={{ borderColor: biblioteca ? "var(--accent-orange)" : "var(--border)", color: biblioteca ? "var(--accent-orange)" : "var(--text-muted)" }}
+          >
+            {biblioteca ? <X className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+            {biblioteca ? "Fechar fotos" : "Usar foto dos materiais"}
+          </button>
+        )}
         {capas && (
           <button
             type="button"
@@ -139,7 +200,50 @@ export function CapaDoCompleto({
             Gerar outras 2
           </button>
         )}
+        </div>
       </div>
+
+      {biblioteca && (
+        <div className="rounded-lg border p-2 space-y-2" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+          <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            Toque numa foto sua para virar a capa. Ela entra como está, recortada em 16:9 no que mais chama atenção.
+          </p>
+          {fotos === null ? (
+            <div className="flex items-center gap-2 text-xs py-2" style={{ color: "var(--text-muted)" }}>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando as fotos
+            </div>
+          ) : fotos.length === 0 ? (
+            <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>
+              Nenhuma foto na biblioteca ainda.{" "}
+              <a href={`/projects/${projectId}/criar#materiais`} className="text-orange-400 underline-offset-2 hover:underline">
+                Subir fotos
+              </a>
+            </p>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {fotos.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => void usarFoto(m.id)}
+                  disabled={usandoFoto !== null}
+                  title={m.descricao ?? undefined}
+                  aria-label={`Usar como capa: ${m.descricao ?? m.nome ?? "foto"}`}
+                  className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-transparent transition-all hover:border-orange-500 disabled:opacity-60"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/projects/${projectId}/materiais/${m.id}/arquivo?v=mini`} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  {usandoFoto === m.id && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {ESTILOS_DE_CAPA.map((e) => {

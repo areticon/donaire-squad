@@ -142,7 +142,16 @@ export type ExpressaoDaCapa =
   | "divertido"
   | "provocativo";
 
-export type OpcaoDeCapa = { url: string; frase: string; expressao: ExpressaoDaCapa };
+export type OpcaoDeCapa = {
+  url: string;
+  frase: string;
+  expressao: ExpressaoDaCapa;
+  /**
+   * Presente quando a capa é uma foto da biblioteca de materiais (05/10), e não
+   * composição do squad: o id do material de onde ela saiu.
+   */
+  materialId?: string;
+};
 
 export type CapasDoCompleto = {
   estilo: EstiloDeCapa;

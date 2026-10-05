@@ -3,7 +3,7 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db/prisma";
 import { askClaudeComImagem } from "@/lib/claude";
 import { lerMidia, midiaPrivada } from "@/lib/media/storage";
-import { ehEtiqueta, orientacaoDe, type Etiqueta, type MaterialNaTela } from "@/lib/materiais/tipos";
+import { ehEtiqueta, orientacaoDe, type CorteNaTela, type Etiqueta, type MaterialNaTela } from "@/lib/materiais/tipos";
 
 /**
  * A BIBLIOTECA DE MATERIAIS DO CLIENTE, no servidor (03/10/2026).
@@ -191,6 +191,72 @@ export async function caixaDaPessoa(recorte: Buffer): Promise<{ x: number; y: nu
   }
   if (x1 < 0) return null;
   return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, W: info.width, H: info.height };
+}
+
+// ───────────────────────────── cortes da gravação ─────────────────────────────
+
+/** A segunda-feira (UTC) da data, no formato do Gestor. */
+function segundaDe(d: Date): string {
+  const dia = d.getUTCDay();
+  const base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return new Date(base + (dia === 0 ? -6 : 1 - dia) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Os cortes (Reels) prontos das gravações do projeto, para a biblioteca
+ * (05/10/2026). Lê só o que já existe: o trecho com o vertical renderizado e
+ * o card do Vitor que aponta para ele. Nada é copiado nem gravado, então o
+ * corte refeito no card aparece aqui já refeito.
+ */
+export async function cortesDoProjeto(projectId: string): Promise<CorteNaTela[]> {
+  const [videos, cards] = await Promise.all([
+    prisma.videoJob.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, originalName: true, clips: true, createdAt: true, finishedAt: true },
+    }),
+    prisma.campaignCard.findMany({
+      where: { projectId, cardType: "video_clip" },
+      orderBy: { scheduledDate: "asc" },
+      select: { id: true, metadata: true, scheduledDate: true, createdAt: true },
+    }),
+  ]);
+
+  // Um trecho pode virar mais de um card (um por rede): vale o primeiro da agenda.
+  const cardDoTrecho = new Map<string, { id: string; semana: string }>();
+  for (const c of cards) {
+    const meta = c.metadata as { videoJobId?: string; trechoIndice?: number; completo?: boolean } | null;
+    if (!meta?.videoJobId || meta.completo || typeof meta.trechoIndice !== "number") continue;
+    const chave = `${meta.videoJobId}:${meta.trechoIndice}`;
+    if (!cardDoTrecho.has(chave)) cardDoTrecho.set(chave, { id: c.id, semana: segundaDe(c.scheduledDate ?? c.createdAt) });
+  }
+
+  const cortes: CorteNaTela[] = [];
+  for (const v of videos) {
+    const trechos = Array.isArray(v.clips) ? (v.clips as Array<{ inicio?: number; fim?: number; titulo?: string; texto?: { titulo?: string }; midia?: { vertical?: { url?: string } | null } | null }>) : [];
+    trechos.forEach((t, i) => {
+      if (!t?.midia?.vertical?.url) return;
+      const id = `${v.id}:${i}`;
+      const card = cardDoTrecho.get(id);
+      const base = `/api/videos/${v.id}/midia?trecho=${i}`;
+      cortes.push({
+        id,
+        videoJobId: v.id,
+        indice: i,
+        titulo: (t.texto?.titulo || t.titulo || `Corte ${i + 1}`).replace(/\s*[—–]\s*/g, ", "),
+        duracaoSec: Math.max(0, Math.round((Number(t.fim) || 0) - (Number(t.inicio) || 0))),
+        gravacao: v.originalName,
+        miniaturaUrl: `${base}&tipo=capa-arte`,
+        videoUrl: `${base}&tipo=vertical`,
+        baixarUrl: `${base}&tipo=vertical&download=1`,
+        cardId: card?.id ?? null,
+        semanaDoCard: card?.semana ?? null,
+        createdAt: (v.finishedAt ?? v.createdAt).toISOString(),
+      });
+    });
+  }
+  return cortes;
 }
 
 // ───────────────────────────── uso ─────────────────────────────

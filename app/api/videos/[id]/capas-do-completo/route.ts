@@ -7,6 +7,7 @@ import {
   escolherCapaDoCompleto,
   estiloDeCapaValido,
   gerarCapasDoCompleto,
+  usarMaterialComoCapa,
   type CapasDoCompleto,
 } from "@/lib/media/capas-do-completo";
 import { projetoVisivel } from "@/lib/equipe/conta";
@@ -17,7 +18,8 @@ import { projetoVisivel } from "@/lib/equipe/conta";
  * GET devolve o que existe; POST gera 2 opções (no estilo do projeto, ou no
  * estilo passado, que vira o estilo do projeto; e no clima passado, que é só
  * deste vídeo); PUT marca a escolhida e, se o vídeo já está no ar, troca a
- * capa lá.
+ * capa lá. PUT com `materialId` (05/10) usa uma foto da biblioteca de
+ * materiais do projeto como capa, sem gerar imagem.
  *
  * Duas composições no Nano Banana Pro em paralelo passam de 1 minuto; o
  * teto de 5 min sobra.
@@ -31,12 +33,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const video = await prisma.videoJob.findFirst({
     where: { id, project: projetoVisivel(userId) },
-    select: { capas: true, project: { select: { capaEstilo: true } } },
+    select: { capas: true, projectId: true, project: { select: { capaEstilo: true } } },
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
   return NextResponse.json({
     capas: (video.capas as CapasDoCompleto | null) ?? null,
     estilo: video.project.capaEstilo ?? "impacto",
+    // A tela usa para listar as fotos da biblioteca do projeto.
+    projectId: video.projectId,
   });
 }
 
@@ -71,7 +75,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const { id } = await params;
-  const corpo = (await req.json().catch(() => ({}))) as { escolhida?: unknown };
+  const corpo = (await req.json().catch(() => ({}))) as { escolhida?: unknown; materialId?: unknown };
+  if (typeof corpo.materialId === "string" && corpo.materialId) {
+    try {
+      return NextResponse.json(await usarMaterialComoCapa(id, userId, corpo.materialId));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Não consegui usar essa foto.";
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+  }
   if (typeof corpo.escolhida !== "number") {
     return NextResponse.json({ error: "Informe qual capa escolheu" }, { status: 400 });
   }

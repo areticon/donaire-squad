@@ -4219,10 +4219,20 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       setShowSetupModal(true);
     }
     if (params.get("novaCampanha") === "1") setPrimeiraCampanha(true);
-    if (!abrir && params.get("novaCampanha") !== "1") return;
+    // A BIBLIOTECA DE MATERIAIS (05/10) manda ?card=<id>&semana=<segunda>: o
+    // corte listado lá abre aqui, no próprio card, na semana em que ele está.
+    const cardDoLink = params.get("card");
+    if (cardDoLink) {
+      setCardDoLink(cardDoLink);
+      const semana = params.get("semana");
+      if (semana && /^\d{4}-\d{2}-\d{2}$/.test(semana)) setSelectedMonday(getMonday(new Date(`${semana}T00:00:00Z`)));
+    }
+    if (!abrir && params.get("novaCampanha") !== "1" && !cardDoLink) return;
     const limpa = new URL(window.location.href);
     limpa.searchParams.delete("novaCampanha");
     limpa.searchParams.delete("abrir");
+    limpa.searchParams.delete("card");
+    limpa.searchParams.delete("semana");
     window.history.replaceState({}, "", limpa.toString());
   }, []);
   // Topic flow state
@@ -4232,6 +4242,18 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [suggestedTopics, setSuggestedTopics] = useState<Array<{ title: string; description: string; format: string }>>([]);
   const [modalCard, setModalCard] = useState<CampaignCard | null>(null);
   const [modalAgentRow, setModalAgentRow] = useState<typeof AGENT_ROWS[0] | null>(null);
+  // O card pedido pelo link (?card=), aberto assim que a semana dele carregar.
+  const [cardDoLink, setCardDoLink] = useState<string | null>(null);
+  useEffect(() => {
+    if (!cardDoLink || loadingCards) return;
+    const alvo = cards.find((c) => c.id === cardDoLink);
+    if (!alvo) return;
+    const linha = AGENT_ROWS.find((r) => r.agentId === alvo.agentId) ?? AGENT_ROWS.find((r) => r.cardType === alvo.cardType);
+    if (!linha) return;
+    setCardDoLink(null);
+    setModalCard(alvo);
+    setModalAgentRow(linha);
+  }, [cardDoLink, cards, loadingCards]);
   // A ficha do agente aberta a partir do escritorio, com o que ele esta
   // fazendo no momento do clique.
   const [fichaAberta, setFichaAberta] = useState<{ id: string; fala: string | null } | null>(null);

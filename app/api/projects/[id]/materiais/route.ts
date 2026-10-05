@@ -5,7 +5,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
-import { etiquetarMaterial, paraTela } from "@/lib/materiais/servidor";
+import { cortesDoProjeto, etiquetarMaterial, paraTela } from "@/lib/materiais/servidor";
 import { LIMITES_DO_MATERIAL, orientacaoDe } from "@/lib/materiais/tipos";
 
 /**
@@ -26,8 +26,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   if (!(await projetoDe(id, userId))) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const linhas = await prisma.materialDoCliente.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" }, take: 300 });
-  return NextResponse.json({ materiais: linhas.map(paraTela) });
+  // Os cortes da gravação vêm junto (05/10): são material do projeto também,
+  // mas moram no vídeo, então seguem numa lista à parte. Falha neles não
+  // derruba a biblioteca.
+  const [linhas, cortes] = await Promise.all([
+    prisma.materialDoCliente.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" }, take: 300 }),
+    cortesDoProjeto(id).catch((e) => {
+      console.warn("[materiais] cortes não vieram:", e instanceof Error ? e.message : e);
+      return [];
+    }),
+  ]);
+  return NextResponse.json({ materiais: linhas.map(paraTela), cortes });
 }
 
 function doBlobPrivado(u: unknown, id: string): u is string {

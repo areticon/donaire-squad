@@ -60,6 +60,40 @@ export interface MaterialNaTela {
   createdAt: string;
 }
 
+/**
+ * UM CORTE (Reels) QUE O SQUAD TIROU DA GRAVAÇÃO DO CLIENTE (05/10/2026).
+ *
+ * Não é linha de MaterialDoCliente: o arquivo mora no trecho do VideoJob
+ * (`clips[i].midia`) e a biblioteca só mostra, para o cliente reaproveitar
+ * (assistir, baixar, abrir o card). Apagar ou trocar etiqueta não se aplica:
+ * o corte é do vídeo, e quem manda nele é o card.
+ */
+export interface CorteNaTela {
+  /** `${videoJobId}:${indice}`, estável enquanto o trecho existir. */
+  id: string;
+  videoJobId: string;
+  indice: number;
+  titulo: string;
+  duracaoSec: number;
+  /** De onde veio: o nome do arquivo que o cliente gravou. */
+  gravacao: string | null;
+  miniaturaUrl: string;
+  videoUrl: string;
+  baixarUrl: string;
+  /** O card do corte no Gestor, quando já virou card. */
+  cardId: string | null;
+  /** A segunda-feira (AAAA-MM-DD) da semana do card, para o Gestor abrir nela. */
+  semanaDoCard: string | null;
+  createdAt: string;
+}
+
+/** O link que abre o card no Gestor, na semana certa. */
+export function linkDoCard(projectId: string, cardId: string, semana?: string | null): string {
+  const q = new URLSearchParams({ card: cardId });
+  if (semana) q.set("semana", semana);
+  return `/projects/${projectId}/live?${q.toString()}`;
+}
+
 export function orientacaoDe(largura?: number | null, altura?: number | null): "vertical" | "horizontal" | "quadrada" | null {
   if (!largura || !altura) return null;
   const r = largura / altura;
