@@ -67,6 +67,13 @@ export interface EntradaDoDesenho {
    * o Satori não entende filter nem mix-blend-mode.
    */
   tratamento?: TratamentoDaFoto | null;
+  /**
+   * O FUNDO GERADO DO MODELO POR PROMPT (05/10, lib/modelos-de-arte/prompts-vox.ts):
+   * a colagem inteira que o modelo de imagem desenhou, já no tamanho da peça,
+   * sem texto. Com ele, o desenho Vox só põe a tipografia por cima
+   * (desenho-vox.tsx, modo "fundo gerado"); sem ele, desenha tudo em código.
+   */
+  fundoGerado?: string | null;
 }
 
 export interface Zona {

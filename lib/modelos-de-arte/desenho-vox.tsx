@@ -337,6 +337,141 @@ export function desenharModeloVox(e: EntradaDoDesenho): ReactNode | null {
     </div>
   );
 
+  // ── O MODO "FUNDO GERADO" (05/10): o modelo por prompt ──
+  // A colagem inteira veio do modelo de imagem (lib/modelos-de-arte/prompts-vox.ts),
+  // sem texto, com a zona do título deixada quieta. Aqui entram SÓ a
+  // tipografia (título com a palavra no destaque), a assinatura e as peças
+  // que carregam texto da marca (selo, carimbo, "arraste", Antes e Depois).
+  // Um pedaço de papel rasgado, quase opaco, fica atrás do título: lê mesmo
+  // se o gerador encheu a zona, e parece colado como o resto da colagem.
+  if (e.fundoGerado) {
+    const fundo = <Imagem src={e.fundoGerado} z={inteira} />;
+    const papelDoTitulo = (z: Zona) => (
+      <Figura src={rasgoDataUri(z.w + 60 * u, z.h + 50 * u, "#ecebe6", semente + 21, true)} x={z.x - 30 * u} y={z.y - 25 * u} w={z.w + 60 * u} h={z.h + 50 * u} rot={-1} opacidade={0.9} />
+    );
+    const tituloNoPapel = (fracao: number, p: { corpo?: number; linhas?: number; largura?: number } = {}) => {
+      const z: Zona = { x: m, y: m, w: p.largura ?? larguraUtil, h: Math.round(H * fracao) - m };
+      return (
+        <>
+          {papelDoTitulo(z)}
+          {titulo({ top: z.y, altura: z.h, largura: z.w, corpo: p.corpo ?? 150, linhas: p.linhas })}
+        </>
+      );
+    };
+    switch (md.arquetipo) {
+      case "vox-faixa":
+        return raiz(<>{fundo}{tituloNoPapel(0.42, { corpo: 170 })}{assinatura("flex-start")}</>, papel);
+      case "vox-foto-rasgada":
+        return raiz(<>{fundo}{tituloNoPapel(0.4)}{assinatura("flex-end")}</>, papel);
+      case "vox-jornal":
+        return raiz(
+          <>
+            {fundo}
+            {tituloNoPapel(alta ? 0.3 : 0.42, { largura: Math.round(W * (alta ? 0.9 : 0.6)), linhas: 5 })}
+            <div style={flex({ position: "absolute", left: m, top: H - m - 190 * u })}>
+              <Selo e={e} cor={destaque} tam={170 * u} fonte={tf} />
+            </div>
+          </>,
+          PAPEL_JORNAL
+        );
+      case "vox-antes-depois": {
+        const rot = t.lados?.rotulos ?? (["Antes", "Depois"] as [string, string]);
+        const tiraH = Math.round(H * (alta ? 0.2 : 0.24));
+        const rotuloY = Math.round(H * (alta ? 0.66 : 0.64));
+        const rotulo = (texto: string, x: number, alinhar: "flex-start" | "flex-end") => (
+          <div style={flex({ position: "absolute", left: x, top: rotuloY, width: Math.round(W / 2 - 30 * u), justifyContent: alinhar, ...estiloDaFonte("PlayfairDisplay-400i"), fontSize: 96 * u, color: "#ffffff", textShadow: "0 4px 18px rgba(0,0,0,0.6)" })}>{texto}</div>
+        );
+        return raiz(
+          <>
+            {fundo}
+            {rotulo(rot[0], 0, "flex-end")}
+            {rotulo(rot[1], Math.round(W / 2 + 30 * u), "flex-start")}
+            <Figura src={rasgoDataUri(W + 40 * u, tiraH, papel, semente + 3)} x={-20 * u} y={-Math.round(tiraH * 0.12)} w={W + 40 * u} h={tiraH} opacidade={0.94} />
+            <div style={flex({ position: "absolute", left: m, top: Math.round(m * 0.6), width: larguraUtil, height: tiraH - m, flexDirection: "column", justifyContent: "center" })}>
+              <Texto texto={t.titulo} fonte={tf} largura={larguraUtil} altura={tiraH - m * 1.2} corpoMaximo={92 * u} corpoMinimo={36 * u} entrelinha={1.0} cor={tinta} caixaAlta={caixaAlta} destaque={modoDaPalavra} corDestaque={destaque} palavras={[palavra]} maxLinhas={3} />
+            </div>
+            <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 1.4, width: larguraUtil, justifyContent: "center" })}>
+              <Assinatura e={e} fundo="#000000" altura={logoH} alinhar="center" />
+            </div>
+          </>,
+          "#000000"
+        );
+      }
+      case "vox-rosto":
+        return raiz(<>{fundo}{tituloNoPapel(0.3, { linhas: 2 })}{assinatura("flex-end")}</>, papel);
+      case "vox-capa": {
+        const seloTam = Math.round(200 * u);
+        const seloX = Math.round(W - m - seloTam);
+        const seloY = Math.round(H * (alta ? 0.5 : 0.47));
+        const tiraW = Math.round(W * 0.56);
+        const tiraH = Math.round(110 * u);
+        return raiz(
+          <>
+            {fundo}
+            {tituloNoPapel(0.45, { corpo: 190 })}
+            <div style={flex({ position: "absolute", left: seloX, top: seloY })}>
+              <Selo e={e} cor={destaque} tam={seloTam} fonte={tf} rot={8} />
+            </div>
+            <Figura src={circuloAMaoDataUri(seloTam * 1.5, seloTam * 1.3, tinta)} x={seloX - seloTam * 0.25} y={seloY - seloTam * 0.15} w={seloTam * 1.5} h={seloTam * 1.3} rot={-6} />
+            {capaDoCarrossel ? (
+              <>
+                <Figura src={rasgoDataUri(tiraW, tiraH, "#f4f2ec", semente + 4)} x={m - 10 * u} y={H - m - tiraH} w={tiraW} h={tiraH} rot={-2} />
+                <div style={flex({ position: "absolute", left: m + 20 * u, top: H - m - tiraH + 28 * u, alignItems: "center", transform: "rotate(-2deg)" })}>
+                  <span style={{ ...estiloDaFonte(xf), fontSize: 34 * u, color: "#141414", marginRight: 18 * u }}>Arraste para o lado</span>
+                  <Seta cor={destaque} tam={26 * u} />
+                </div>
+              </>
+            ) : (
+              assinatura("flex-start")
+            )}
+          </>,
+          papel
+        );
+      }
+      case "vox-infografico": {
+        const itens = (t.itens ?? []).slice(0, 4);
+        const n = Math.max(1, itens.length);
+        const topo = Math.round(H * 0.3);
+        const espaco = H - topo - m - logoH * 1.6;
+        const altItem = espaco / n;
+        const icone = Math.round(110 * u);
+        const esq = Math.round(W * 0.15);
+        const larg = Math.round(W * 0.7);
+        return raiz(
+          <>
+            {fundo}
+            {tituloNoPapel(0.28, { corpo: 110, linhas: 3 })}
+            {itens.map((it, i) => (
+              <div key={i} style={flex({ position: "absolute", left: esq, top: topo + i * altItem, width: larg, height: altItem, alignItems: "center" })}>
+                <div style={flex({ width: icone, height: icone, borderRadius: icone / 2, background: "#f4f2ec", border: `${3 * u}px solid ${tinta}`, alignItems: "center", justifyContent: "center", marginRight: 30 * u, boxShadow: "0 6px 14px rgba(0,0,0,0.18)" })}>
+                  <IconeATraco i={i} cor={tinta} tam={Math.round(icone * 0.6)} />
+                </div>
+                <div style={flex({ ...estiloDaFonte(tf), fontSize: 64 * u, lineHeight: 1, color: destaqueLeNoPapel ? destaque : tinta, marginRight: 22 * u, width: 90 * u })}>{String(i + 1).padStart(2, "0")}</div>
+                <div style={flex({ background: rgba("#ecebe6", 0.86), padding: `${8 * u}px ${14 * u}px` })}>
+                  <Texto texto={it} fonte={xf} largura={larg - icone - 170 * u} altura={altItem * 0.7} corpoMaximo={42 * u} entrelinha={1.2} cor={tinta} maxLinhas={2} />
+                </div>
+              </div>
+            ))}
+            {assinatura("flex-end")}
+          </>,
+          papel
+        );
+      }
+      case "vox-carimbo":
+        return raiz(
+          <>
+            {fundo}
+            {tituloNoPapel(0.48)}
+            <div style={flex({ position: "absolute", left: Math.round(W * 0.55), top: Math.round(H * (alta ? 0.7 : 0.66)) })}>
+              <Carimbo texto={e.marca} cor={destaqueLeNoPapel ? destaque : misturar(tinta, destaque, 0.3)} fonte={tf} u={u} />
+            </div>
+            {assinatura("flex-end")}
+          </>,
+          papel
+        );
+    }
+  }
+
   switch (md.arquetipo) {
     case "vox-faixa": {
       // O post do feed do Bruno: título enorme com uma palavra no destaque, a

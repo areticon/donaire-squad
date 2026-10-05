@@ -568,6 +568,8 @@ export async function comporFraseNaArte(p: {
   altura: number;
   /** A pessoa recortada da foto real (PNG), para o modelo com profundidade. */
   recorte?: Buffer | null;
+  /** O fundo gerado pelo modelo de imagem (modelo por prompt, 05/10): a colagem sem texto. */
+  fundoGerado?: Buffer | null;
 }): Promise<Buffer> {
   // O TRATAMENTO DA FOTO (05/10): antes de qualquer composição, a cena vira
   // dois tons da marca (ou preto e branco) quando a identidade ou o pedido do
@@ -599,6 +601,7 @@ export async function comporFraseNaArte(p: {
       pagina: p.marca.pagina ?? null,
       recorte: p.recorte ?? null,
       letra: p.marca.letra ?? null,
+      fundoGerado: p.fundoGerado ?? null,
     });
   }
   const W = p.largura;
@@ -848,6 +851,78 @@ function bufferDe(uri: string): Buffer {
  * frase no tamanho da proporção da peça. O recorte e a conferência de
  * `produzirArtePorRede` seguem iguais, agora sobre a peça composta.
  */
+/** A proporção pedida ao gerador para uma peça inteira deste tamanho. */
+function proporcaoDaPeca(largura: number, altura: number): ProporcaoPedida {
+  const r = largura / altura;
+  return r > 1.2 ? "16:9" : r > 0.95 ? "1:1" : r < 0.62 ? "9:16" : "4:5";
+}
+
+/**
+ * O FUNDO DO MODELO POR PROMPT (05/10, lib/modelos-de-arte/prompts-vox.ts).
+ *
+ * Decisão do Bruno: nos modelos complexos (a família Vox) quem desenha o
+ * visual é o modelo de imagem, porque sai muito melhor que o desenho em
+ * código. O prompt do catálogo é preenchido com as cores da marca, o título
+ * (que o modelo NÃO escreve), a palavra em destaque e a descrição da foto. A
+ * foto do cliente (biblioteca de materiais) entra como imagem de referência
+ * pela edição (GPT Image 2.5 na Higgsfield ou Nano Banana, o tipo "colagem");
+ * sem material, o mesmo desenhista de sempre gera a colagem com um figurante
+ * anônimo. O custo é o de uma imagem, gravado como sempre; o crédito da peça
+ * é o normal. Null quando o fundo não veio por falha que não é de saldo.
+ */
+export async function fundoDoModeloPorPrompt(o: {
+  modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte & { prompt: string };
+  frase: string;
+  marca: MarcaDaArte;
+  largura: number;
+  altura: number;
+  desenhista: (prompt: string, proporcao: ProporcaoPedida) => Promise<string>;
+  /** O material já escolhido (o carrossel escolhe em fila); sem ele, escolhe aqui. */
+  material?: import("@/lib/materiais/escolha").MaterialDaMarca | null;
+}): Promise<Buffer | null> {
+  const { preencherPromptDoModelo, COM_FOTO_DE_REFERENCIA } = await import("@/lib/modelos-de-arte/prompt-do-modelo");
+  const { formatoPeloTamanho } = await import("@/lib/modelos-de-arte/catalogo");
+  const formato = formatoPeloTamanho(o.largura, o.altura, Boolean(o.marca.pagina));
+  const proporcao = proporcaoDaPeca(o.largura, o.altura);
+  let material = o.material ?? null;
+  if (!material && o.marca.materiais?.length && o.modelo.foto !== "nenhuma") {
+    const { escolherMaterial } = await import("@/lib/materiais/escolha");
+    material = await escolherMaterial({ materiais: o.marca.materiais, frase: o.frase, contexto: o.marca.contexto, projectId: o.marca.projectId }).catch(() => null);
+  }
+  const descricaoDaFoto = material ? [material.palavrasEn.join(", "), material.descricao].filter(Boolean).join("; ") : null;
+  const prompt = preencherPromptDoModelo(o.modelo, { cores: o.marca.cores, titulo: o.frase, foto: descricaoDaFoto, formato });
+  try {
+    if (material) {
+      const { lerMidia, ehPublica } = await import("@/lib/media/storage");
+      const original = await lerMidia(material.url).catch(() => null);
+      if (original) {
+        // A foto como referência da edição: JPEG normalizado, porque a
+        // biblioteca guarda PNG e WebP também.
+        const jpeg = await sharp(original).rotate().resize({ width: 1536, height: 1536, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        const { comporSobreImagemComCusto } = await import("@/lib/media/nano-banana");
+        const r = await comporSobreImagemComCusto(
+          `${prompt}${COM_FOTO_DE_REFERENCIA}`,
+          jpeg.toString("base64"),
+          "image/jpeg",
+          { projectId: o.marca.projectId, operation: "modelo_por_prompt" },
+          proporcao,
+          { tipo: "colagem", imagemUrl: ehPublica(material.url) ? material.url : null }
+        );
+        if (r) {
+          const { marcarUso } = await import("@/lib/materiais/servidor");
+          void marcarUso(material.id);
+          return bufferDe(r.dataUrl);
+        }
+      }
+    }
+    return bufferDe(await o.desenhista(prompt, proporcao));
+  } catch (err) {
+    if (ehErroDeSaldo(err) || ehSemSaldoDaOpenAI(err) || err instanceof SemChaveDaOpenAI) throw err;
+    console.warn("[arte-com-frase] o fundo do modelo por prompt não veio, a peça sai no desenho em código:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export function desenharComFraseEmCodigo(
   frase: string,
   marca: MarcaDaArte,
@@ -857,6 +932,18 @@ export function desenharComFraseEmCodigo(
     // A TRAVA (05/10): sem identidade aprovada, nada pago sai daqui.
     exigirIdentidadeAprovada(marca);
     const { largura, altura } = TAMANHO_DA_PROPORCAO[proporcao];
+    // O MODELO POR PROMPT (05/10): o modelo de imagem desenha a colagem
+    // inteira (sem texto), com a foto do cliente de referência quando há; a
+    // tipografia entra em código. Sem o fundo (falha que não é de saldo), a
+    // peça segue o caminho de sempre, com o desenho em código como reserva.
+    const porPrompt = await modeloDaMarca(marca, largura, altura, frase);
+    if (porPrompt?.prompt) {
+      const fundo = await fundoDoModeloPorPrompt({ modelo: porPrompt as typeof porPrompt & { prompt: string }, frase, marca, largura, altura, desenhista });
+      if (fundo) {
+        const jpeg = await comporFraseNaArte({ arte: null, frase, marca: { ...marca, modeloFixo: porPrompt.id }, largura, altura, fundoGerado: fundo });
+        return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+      }
+    }
     // O MATERIAL DO CLIENTE PRIMEIRO (03/10): a foto real que serve ao post,
     // tratada e composta, sem pagar imagem nova. Falhou, segue o de antes.
     if (marca.materiais?.length) {

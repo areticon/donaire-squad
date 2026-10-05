@@ -175,6 +175,7 @@ const OPERACOES_DE_POST = new Set([
 
 const OPERACOES_DE_ARTE = new Set([
   "campanha_imagem",
+  "modelo_por_prompt",
   "carrossel_lamina",
   "carrossel_roteiro",
   "conferencia_da_arte",

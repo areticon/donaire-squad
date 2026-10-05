@@ -1,4 +1,5 @@
 import type { FonteId } from "@/lib/modelos-de-arte/fontes";
+import { PROMPTS_VOX } from "@/lib/modelos-de-arte/prompts-vox";
 
 /**
  * O BOOK DE MODELOS DA DEMANDOU (03/10/2026).
@@ -116,6 +117,22 @@ export interface ModeloDeArte {
    * porque aqui o preto e branco é o próprio desenho do modelo.
    */
   fotoPretoEBranco?: boolean;
+  /**
+   * O MODELO POR PROMPT (05/10, lib/modelos-de-arte/prompts-vox.ts): nos
+   * modelos complexos (a família Vox), quem desenha o visual é o próprio
+   * modelo de imagem, a partir deste prompt com variáveis ({destaque},
+   * {manchete}, {foto}...), SEM texto; a tipografia entra depois em código
+   * (lib/modelos-de-arte/prompt-do-modelo.ts e desenho-vox.tsx, modo "fundo
+   * gerado"). Sem prompt, o modelo é desenhado inteiro em código.
+   */
+  prompt?: string;
+  /**
+   * A prévia do modelo por prompt: UM exemplo gerado uma vez pelo modelo de
+   * imagem e guardado no Blob (scripts/tmp/gerar-previas-vox-0510.mts). Sem
+   * ela, a galeria mostra o desenho em código com o selo "exemplo gerado pelo
+   * modelo de imagem ao escolher".
+   */
+  previaGerada?: string;
 }
 
 export interface TextosDaArte {
@@ -1037,6 +1054,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   // e meio-tom são desenhados em código (lib/modelos-de-arte/desenho-vox.tsx).
   {
     id: "papel-com-titulo-e-faixa-rasgada",
+    prompt: PROMPTS_VOX["papel-com-titulo-e-faixa-rasgada"],
     nome: "Papel com título e faixa rasgada",
     paraQuem: "O post de opinião do feed: título enorme, você em preto e branco e uma faixa de papel rasgado na cor da marca.",
     categoria: "Colagem e papel",
@@ -1058,6 +1076,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "papel-com-foto-rasgada",
+    prompt: PROMPTS_VOX["papel-com-foto-rasgada"],
     nome: "Papel com foto rasgada e destaque",
     paraQuem: "Mostrar um dado, uma tela, um detalhe: a foto num papel rasgado, em meio-tom, com um ponto marcado.",
     categoria: "Colagem e papel",
@@ -1079,6 +1098,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "jornal-com-marca-texto",
+    prompt: PROMPTS_VOX["jornal-com-marca-texto"],
     nome: "Jornal com marca-texto",
     paraQuem: "A colagem Vox clássica: jornal antigo, frase grifada, você recortado e o selo da marca.",
     categoria: "Colagem e papel",
@@ -1100,6 +1120,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "antes-e-depois-em-papel",
+    prompt: PROMPTS_VOX["antes-e-depois-em-papel"],
     nome: "Antes e depois em papel",
     paraQuem: "Transformação, resultado, comparação: a mesma foto dividida ao meio, com a barra da marca.",
     categoria: "Colagem e papel",
@@ -1121,6 +1142,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "rosto-em-pedacos-de-jornal",
+    prompt: PROMPTS_VOX["rosto-em-pedacos-de-jornal"],
     nome: "Rosto em pedaços de jornal",
     paraQuem: "Capa ousada: blocos de papel nas cores da marca, você em preto e branco e recortes de jornal colados.",
     categoria: "Colagem e papel",
@@ -1142,6 +1164,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "capa-de-carrossel-em-papel",
+    prompt: PROMPTS_VOX["capa-de-carrossel-em-papel"],
     nome: "Capa de carrossel em papel",
     paraQuem: "A primeira lâmina da série em papel: título enorme, selo circulado à mão e o 'arraste' numa tira de papel.",
     categoria: "Colagem e papel",
@@ -1163,6 +1186,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "infografico-em-papel",
+    prompt: PROMPTS_VOX["infografico-em-papel"],
     nome: "Infográfico em papel com ícones",
     paraQuem: "Explicar em 3 ou 4 pontos, com ícones desenhados a traço, no papel do feed.",
     categoria: "Colagem e papel",
@@ -1182,6 +1206,7 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
   },
   {
     id: "frase-com-carimbo-e-foto",
+    prompt: PROMPTS_VOX["frase-com-carimbo-e-foto"],
     nome: "Frase com carimbo e foto colada",
     paraQuem: "Opinião com assinatura: o título, o carimbo torto da marca e uma foto pequena colada com fita.",
     categoria: "Colagem e papel",

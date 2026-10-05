@@ -154,6 +154,8 @@ export interface PedidoDeComposicao {
   recorte?: Buffer | null;
   /** A letra aprovada pelo cliente (05/10, lib/modelos-de-arte/identidade.ts). */
   letra?: LetraId | null;
+  /** O fundo gerado pelo modelo de imagem (modelo por prompt, 05/10): a colagem sem texto, no tamanho da peça. */
+  fundoGerado?: Buffer | null;
 }
 
 /**
@@ -196,6 +198,13 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     const ajustada = await sharp(p.foto).resize(Math.max(1, Math.round(z.w)), Math.max(1, Math.round(z.h)), { fit: "cover", position: "attention" }).jpeg({ quality: 90 }).toBuffer();
     foto = dataUri(ajustada, "image/jpeg");
   }
+  // O MODELO POR PROMPT (05/10): a colagem gerada vira o fundo inteiro da peça,
+  // no pixel exato; a tipografia entra por cima no desenho.
+  let fundoGerado: string | null = null;
+  if (p.fundoGerado) {
+    const inteiro = await sharp(p.fundoGerado).resize(p.largura, p.altura, { fit: "cover", position: "centre" }).jpeg({ quality: 92 }).toBuffer();
+    fundoGerado = dataUri(inteiro, "image/jpeg");
+  }
   registrarTextoComposto(p.textos.titulo, textoComposto(p.textos, p.marca, p.modelo));
   const elemento = desenharModelo({
     modelo: p.modelo,
@@ -211,6 +220,7 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     pagina: p.pagina,
     recorte,
     fundoDesfocado,
+    fundoGerado,
     letra: p.letra ?? null,
   });
   const resposta = new ImageResponse(elemento as React.ReactElement, { width: p.largura, height: p.altura, fonts: await fontesDosModelos() });

@@ -195,12 +195,29 @@ export function PreviaDoModelo({
         pagina: formato === "carrossel" ? { i: 0, total: 5 } : null,
         tratamento: tratamento ?? null,
       }),
-    [modelo, formato, marca, midia, grande, logoProporcao, W, H, letra, titulo, tratamento]
+    [modelo, formato, marca, midia, pessoa, grande, logoProporcao, W, H, letra, titulo, tratamento]
   );
   if (!caixa.largura) return null;
+  // O MODELO POR PROMPT (05/10, lib/modelos-de-arte/prompts-vox.ts): a prévia
+  // é um exemplo gerado uma vez pelo modelo de imagem (`previaGerada`); até
+  // ela existir, o desenho em código com o selo que avisa o que vem.
+  const porPrompt = Boolean(modelo.prompt);
   return (
     <div style={{ width: W * escala, height: H * escala, overflow: "hidden", position: "relative", borderRadius: 6, boxShadow: "0 1px 6px rgba(0,0,0,0.18)" }}>
-      <div style={{ width: W, height: H, transform: `scale(${escala})`, transformOrigin: "top left", position: "absolute", left: 0, top: 0 }}>{desenho}</div>
+      {porPrompt && modelo.previaGerada ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={modelo.previaGerada} alt="" style={{ width: W * escala, height: H * escala, objectFit: "cover", display: "block" }} />
+      ) : (
+        <div style={{ width: W, height: H, transform: `scale(${escala})`, transformOrigin: "top left", position: "absolute", left: 0, top: 0 }}>{desenho}</div>
+      )}
+      {porPrompt && !modelo.previaGerada && (
+        <span
+          className="absolute bottom-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-tight"
+          style={{ background: "rgba(0,0,0,0.72)", color: "#ffd166", maxWidth: "92%" }}
+        >
+          Exemplo gerado pelo modelo de imagem ao escolher
+        </span>
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   laminaGuardada,
   guardarLamina,
 } from "@/lib/media/checkpoint-do-carrossel";
-import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, fundoDoModeloPorPrompt, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 import type { MaterialDaMarca } from "@/lib/materiais/escolha";
 
 /**
@@ -297,7 +297,31 @@ export async function desenharCarrossel(opcoes: {
     // isso deixou de acontecer, e a arte encostar na borda é de propósito.
     // A FOTO REAL DA LÂMINA (03/10): composta sem imagem paga.
     const material = materialDaLamina[i];
-    if (material) {
+    // O MODELO POR PROMPT (05/10): a colagem da lâmina vem do modelo de
+    // imagem (com a foto do cliente de referência quando há) e a frase entra
+    // em código. Sem o fundo, a lâmina segue o caminho de sempre.
+    if (modeloDoCarrossel?.prompt) {
+      const marcaDaLamina = { ...marca, pagina: { i, total: opcoes.roteiro.length } };
+      const fundo = await fundoDoModeloPorPrompt({
+        modelo: modeloDoCarrossel as typeof modeloDoCarrossel & { prompt: string },
+        frase: opcoes.roteiro[i].frase,
+        marca: marcaDaLamina,
+        largura: formato.largura,
+        altura: formato.altura,
+        material,
+        desenhista: async (prompt, proporcao) => {
+          const r = await gerarImagem(prompt, proporcao, "hd", ctx, { tipo: "colagem" });
+          const aviso = avisoDoRecuoDaArte(r.modelo);
+          if (aviso && !avisos.includes(aviso)) avisos.push(aviso);
+          return r.dataUrl;
+        },
+      });
+      if (fundo) {
+        const composta = await comporFraseNaArte({ arte: null, frase: opcoes.roteiro[i].frase, marca: marcaDaLamina, largura: formato.largura, altura: formato.altura, fundoGerado: fundo });
+        uri = (await ajustarParaFormato(composta, formato)).dataUri;
+      }
+    }
+    if (!uri && material) {
       const r = await arteComMaterialDoCliente({
         frase: opcoes.roteiro[i].frase,
         marca: modeloDoCarrossel ? { ...marca, pagina: { i, total: opcoes.roteiro.length } } : marca,
