@@ -22,18 +22,21 @@ import { PLANOS_PUBLICOS } from "@/lib/planos";
  *
  * - até TETO_SEM_APROVACAO, o próprio vendedor (qualquer admin) concede;
  * - acima dele e até TETO_COM_APROVACAO, o contrato só vai para assinatura
- *   depois da aprovação do dono, registrada na trilha;
+ *   depois da aprovação de um sócio, registrada na trilha;
  * - acima de TETO_COM_APROVACAO, bloqueado.
  */
 export const TETO_SEM_APROVACAO = 10;
 export const TETO_COM_APROVACAO = 30;
 
 /**
- * Quem aprova desconto acima do teto livre: o dono (Bruno, admin principal).
- * Pela variável CONTRATOS_APROVADOR_EMAIL dá para trocar sem publicar código
- * (e a prova do dev local usa uma conta de teste no lugar do Bruno).
+ * Quem aprova desconto acima do teto livre: os sócios, Bruno ou Matheus
+ * (05/10; até aí era só o Bruno). Qualquer um dos dois aprova. Pela variável
+ * CONTRATOS_APROVADOR_EMAIL (um ou mais e-mails separados por vírgula) dá
+ * para trocar sem publicar código (e a prova do dev local usa uma conta de
+ * teste). O e-mail é o do LOGIN de admin de cada um na plataforma.
  */
-export const APROVADOR_PADRAO = "bruno.donaire@demandou.com";
+export const APROVADORES_PADRAO = ["bruno.donaire@demandou.com", "matheus.gaberlini@demandou.com"];
+export const APROVADOR_PADRAO = APROVADORES_PADRAO[0];
 
 export const MOTIVOS_DE_DESCONTO = {
   campanha: "Campanha",
@@ -94,7 +97,7 @@ export function faixaDoDesconto(percentual: number): FaixaDoDesconto {
 export const NOME_DA_FAIXA: Record<FaixaDoDesconto, string> = {
   sem_desconto: "Sem desconto",
   livre: `Até ${TETO_SEM_APROVACAO}%: o vendedor concede`,
-  aprovacao: `De ${TETO_SEM_APROVACAO}% a ${TETO_COM_APROVACAO}%: precisa da aprovação do dono antes de enviar`,
+  aprovacao: `De ${TETO_SEM_APROVACAO}% a ${TETO_COM_APROVACAO}%: precisa da aprovação de um sócio antes de enviar`,
   bloqueado: `Acima de ${TETO_COM_APROVACAO}%: bloqueado`,
 };
 

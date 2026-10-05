@@ -1,4 +1,5 @@
-import type { DescontoPedido } from "@/lib/contratos/contratos";
+import type { CondicaoPedida, DescontoPedido } from "@/lib/contratos/contratos";
+import { CONDICAO_PARCELADA } from "@/lib/contratos/condicao";
 
 /**
  * A LEITURA DO FORMULÁRIO DO GESTOR (04/10/2026): as rotas de contrato, de
@@ -31,4 +32,21 @@ export function descontoDoCorpo(b: Record<string, unknown>): DescontoPedido | nu
 /** "2026-10-04" vira meio-dia de Brasília (o dia não escorrega no fuso). */
 export function dataDoTexto(v: unknown): Date | null {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00-03:00`) : null;
+}
+
+/**
+ * A CONDIÇÃO DE PAGAMENTO do corpo (05/10): `condicaoDePagamento`
+ * ("a_vista" ou "entrada_pix_parcelas_cartao"), `entradaReais`, `parcelas` e
+ * `primeiraParcelaEm` (AAAA-MM-DD, opcional). Sem o campo, undefined (na
+ * edição, mantém o que está).
+ */
+export function condicaoDoCorpo(b: Record<string, unknown>): CondicaoPedida | undefined {
+  if (!("condicaoDePagamento" in b)) return undefined;
+  if (b.condicaoDePagamento !== CONDICAO_PARCELADA) return { tipo: "a_vista" };
+  return {
+    tipo: CONDICAO_PARCELADA,
+    entradaCentavos: Math.round(numeroDoTexto(b.entradaReais) * 100),
+    parcelas: Math.floor(Number(b.parcelas ?? 0)),
+    primeiraParcelaEm: dataDoTexto(b.primeiraParcelaEm),
+  };
 }

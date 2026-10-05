@@ -55,7 +55,54 @@ export function avisoDeVencimentoAoAdmin(a: { cliente: string; numero: number; p
  * vale 1 hora); para quem já tem, o link de entrar. Diz o que vem primeiro na
  * plataforma, que é a jornada de entrada (perfil, referências, redes).
  */
-export function boasVindasDoContrato(a: { nome: string | null; numero: number; plano: string; fim: Date | null; url: string; definirSenha: boolean }): Email {
+/**
+ * O PAGAMENTO DO PARCELADO (05/10/2026): o contrato assinado com a 1ª parcela
+ * no Pix e as demais no cartão manda ao cliente a condição por extenso, a
+ * chave Pix da 1ª parcela (o comprovante vai por e-mail e a equipe registra
+ * no gestor) e o link do cartão, que não vence.
+ */
+export function linksDoPagamentoParcelado(a: {
+  nome: string | null;
+  numero: number;
+  plano: string;
+  entradaCentavos: number;
+  parcelas: number;
+  parcelaCentavos: number;
+  primeiraParcelaEm: Date | null;
+  chavePix: string | null;
+  linkDoCartao: string;
+}): Email {
+  const primeiro = (a.nome ?? "").trim().split(/\s+/)[0] || "";
+  const oi = primeiro ? `Olá, ${primeiro}` : "Olá";
+  const n = String(a.numero).padStart(4, "0");
+  const quando = a.primeiraParcelaEm ? `a primeira em ${dataLonga(a.primeiraParcelaEm)}` : "a primeira um mês depois da 1ª parcela";
+  const abertura = `O contrato nº ${n}, plano ${a.plano}, está assinado. Falta o pagamento, em duas partes, para liberar o seu acesso.`;
+  const condicao = `1ª parcela de ${reais(a.entradaCentavos)} via Pix, mais ${a.parcelas} parcelas mensais de ${reais(a.parcelaCentavos)} no cartão de crédito em cobrança recorrente (${quando}). Cada mês cobra só a parcela do mês, sem comprometer o limite total do cartão, e a cobrança termina sozinha depois da última parcela.`;
+  const passo1 = a.chavePix
+    ? `1. Pague a 1ª parcela (${reais(a.entradaCentavos)}) pelo Pix na chave ${a.chavePix} e responda a este e-mail com o comprovante. A nossa equipe registra e confirma.`
+    : `1. Pague a 1ª parcela (${reais(a.entradaCentavos)}) pelo Pix: responda a este e-mail e enviamos a chave. Depois mande o comprovante, que a nossa equipe registra e confirma.`;
+  const passo2 = "2. Cadastre o cartão das parcelas pelo link abaixo: nada é cobrado antes da data da primeira parcela.";
+  const fim = "Com a 1ª parcela confirmada e o cartão cadastrado, a sua conta é ativada e chega o e-mail de boas-vindas. Qualquer dúvida, é só responder a este e-mail.";
+  return {
+    para: "",
+    assunto: `Contrato nº ${n} assinado: como pagar`,
+    texto: [`${oi}.`, "", abertura, "", condicao, "", passo1, "", passo2, a.linkDoCartao, "", fim, "", MARCA.nome, MARCA.site].join("\n"),
+    html: casca({
+      previa: abertura,
+      miolo: [
+        titulo(`${oi}.`),
+        paragrafo(abertura),
+        paragrafo(condicao),
+        paragrafo(passo1),
+        paragrafo(passo2),
+        botao("Cadastrar o cartão das parcelas", a.linkDoCartao),
+        paragrafo(fim, { apagado: true, tamanho: 13 }),
+      ].join("\n"),
+    }),
+  };
+}
+
+export function boasVindasDoContrato(a: { nome: string | null; numero: number; plano: string; fim: Date | null; url: string; definirSenha: boolean; agendaUrl?: string | null }): Email {
   const primeiro = (a.nome ?? "").trim().split(/\s+/)[0] || "";
   const oi = primeiro ? `Olá, ${primeiro}` : "Olá";
   const n = String(a.numero).padStart(4, "0");
@@ -64,14 +111,27 @@ export function boasVindasDoContrato(a: { nome: string | null; numero: number; p
     ? "Para entrar pela primeira vez, escolha a sua senha no botão abaixo. O link vale por 1 hora; se vencer, use \"Esqueci a senha\" na tela de entrada com este mesmo e-mail."
     : "Entre com o seu e-mail e a sua senha de sempre.";
   const jornada = "Logo na entrada, a plataforma conduz o setup do seu projeto, passo a passo: seu perfil, as referências que você admira, a sua marca, a sua voz e o seu estilo, até conectar as redes. É o que deixa o primeiro conteúdo com a sua cara.";
+  // O ONBOARDING (05/10): a conversa de entrada com o Bruno, pelo link de agenda.
+  const onboarding = a.agendaUrl
+    ? "E marque a sua conversa de onboarding: em 30 minutos com o Bruno, alinhamos o seu posicionamento e o plano das primeiras semanas."
+    : "E marque a sua conversa de onboarding: responda a este e-mail com dois horários que ficam bons para você, e alinhamos o seu posicionamento e o plano das primeiras semanas.";
   const acao = a.definirSenha ? "Escolher minha senha e entrar" : "Entrar na plataforma";
   return {
     para: "",
     assunto: `Boas-vindas à ${MARCA.nome}: sua conta está ativa`,
-    texto: [`${oi}.`, "", abertura, "", passo, "", a.url, "", jornada, "", "Qualquer dúvida, é só responder a este e-mail.", "", MARCA.nome, MARCA.site].join("\n"),
+    texto: [`${oi}.`, "", abertura, "", passo, "", a.url, "", jornada, "", onboarding, ...(a.agendaUrl ? [a.agendaUrl] : []), "", "Qualquer dúvida, é só responder a este e-mail.", "", MARCA.nome, MARCA.site].join("\n"),
     html: casca({
       previa: abertura,
-      miolo: [titulo(`${oi}.`), paragrafo(abertura), paragrafo(passo), botao(acao, a.url), paragrafo(jornada), paragrafo("Qualquer dúvida, é só responder a este e-mail.", { apagado: true, tamanho: 13 })].join("\n"),
+      miolo: [
+        titulo(`${oi}.`),
+        paragrafo(abertura),
+        paragrafo(passo),
+        botao(acao, a.url),
+        paragrafo(jornada),
+        paragrafo(onboarding),
+        ...(a.agendaUrl ? [botao("Agendar o meu onboarding", a.agendaUrl)] : []),
+        paragrafo("Qualquer dúvida, é só responder a este e-mail.", { apagado: true, tamanho: 13 }),
+      ].join("\n"),
     }),
   };
 }

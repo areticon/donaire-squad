@@ -16,7 +16,7 @@ import {
 } from "@/lib/contratos/contratos";
 import { gerarLinkDePagamento, registrarPagamento } from "@/lib/contratos/pagamento";
 import { criarAditivo } from "@/lib/contratos/aditivos";
-import { dataDoTexto, descontoDoCorpo } from "@/lib/contratos/formulario";
+import { condicaoDoCorpo, dataDoTexto, descontoDoCorpo } from "@/lib/contratos/formulario";
 
 /** "35.964,00", "35964,00" ou "35964.00" viram 35964. */
 function reaisDoTexto(v: unknown): number {
@@ -106,6 +106,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             signatarioEmail: txt("signatarioEmail"),
             signatarioDocumento: txt("signatarioDocumento"),
             observacao: txt("observacao"),
+            condicao: condicaoDoCorpo(b),
           })
         );
       }

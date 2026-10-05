@@ -170,7 +170,7 @@ export async function enviarAditivo(admin: Autor, aditivoId: string) {
   if (esperaAprovacao(a)) {
     const pct = porcentagem((a.descontoCentavos / a.precoTabelaCentavos) * 100);
     await registrar(c.id, admin, "envio_barrado_desconto", { aditivo: a.id, ordem: a.ordem, percentual: pct, aprovador: aprovadorDoDesconto() });
-    throw new RecusaDoContrato(`O desconto de ${pct} do aditivo passa de ${TETO_SEM_APROVACAO}% e espera a aprovação do dono (${aprovadorDoDesconto()}) antes de ir para assinatura.`, 409);
+    throw new RecusaDoContrato(`O desconto de ${pct} do aditivo passa de ${TETO_SEM_APROVACAO}% e espera a aprovação de um sócio (${aprovadorDoDesconto()}) antes de ir para assinatura.`, 409);
   }
   const t = textoDoAditivo(a);
   const provedor = provedorDeAssinatura();
@@ -216,7 +216,7 @@ export async function marcarAditivoAssinado(autor: Autor, aditivoId: string, arg
   const a = await carregar(aditivoId);
   if (a.status === "cancelado" || a.status === "aplicado") throw new RecusaDoContrato(`Aditivo ${a.status} não muda de situação.`);
   if (a.assinadoEm) return { status: a.status };
-  if (esperaAprovacao(a)) throw new RecusaDoContrato("O desconto deste aditivo ainda espera a aprovação do dono.");
+  if (esperaAprovacao(a)) throw new RecusaDoContrato("O desconto deste aditivo ainda espera a aprovação de um sócio.");
   const assinadoEm = args.assinadoEm ?? new Date();
   const pdfUrl = args.pdf ? await guardarPdfDoAditivo(a.id, a.contratoId, args.pdf) : a.pdfAssinadoUrl;
   const status = a.diferencaCentavos > 0 ? "aguardando_pagamento" : a.status;
@@ -344,7 +344,7 @@ export async function cancelarAditivo(admin: Autor, aditivoId: string, motivo: s
 }
 
 export async function aprovarDescontoDoAditivo(admin: Autor, aditivoId: string) {
-  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só o dono (${aprovadorDoDesconto()}) aprova desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
+  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só os sócios (${aprovadorDoDesconto()}) aprova desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
   const a = await carregar(aditivoId);
   if (!esperaAprovacao(a)) throw new RecusaDoContrato("Este aditivo não tem desconto esperando aprovação.");
   await prisma.aditivoDoContrato.update({ where: { id: a.id }, data: { descontoAprovadoPor: typeof admin === "string" ? admin : admin.email, descontoAprovadoEm: new Date() } });

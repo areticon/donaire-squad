@@ -50,6 +50,17 @@ export async function POST(req: NextRequest) {
         }
 
         /**
+         * AS PARCELAS DO CONTRATO NO CARTÃO (05/10): a assinatura que cobra a
+         * parcela do mês e termina sozinha. Sai cedo: não é plano da vitrine, e
+         * quem libera o acesso é o contrato (lib/contratos/parcelado).
+         */
+        if (session.metadata?.tipo === "contrato_parcelas") {
+          const { parcelasDoCheckout } = await import("@/lib/contratos/parcelado");
+          await parcelasDoCheckout(session);
+          break;
+        }
+
+        /**
          * COMPRA DE CREDITO DE VIDEO, que e pagamento avulso e nao assinatura.
          *
          * Vem primeiro e sai cedo de proposito: uma compra de credito nao tem
@@ -128,7 +139,28 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
+        // A assinatura das PARCELAS de um contrato (05/10) não é plano: passar
+        // ela aqui rebaixaria a conta para "free" quando ficasse incompleta,
+        // atrasada ou terminasse depois da última parcela.
+        if (sub.metadata?.tipo === "contrato_parcelas") break;
         await aplicarPlanoDaAssinatura(sub);
+        break;
+      }
+
+      /**
+       * AS PARCELAS DO CONTRATO (05/10): cada fatura paga vira um pagamento do
+       * contrato (idempotente pelo id da fatura); a que falha vira pendência no
+       * painel. Faturas de outras assinaturas passam reto.
+       */
+      case "invoice.paid": {
+        const { parcelaPaga } = await import("@/lib/contratos/parcelado");
+        await parcelaPaga(event.data.object as Stripe.Invoice);
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const { parcelaFalhou } = await import("@/lib/contratos/parcelado");
+        await parcelaFalhou(event.data.object as Stripe.Invoice);
         break;
       }
 
@@ -142,6 +174,8 @@ export async function POST(req: NextRequest) {
        */
       case "invoice.upcoming": {
         const fatura = event.data.object as Stripe.Invoice;
+        // Parcela de contrato (05/10) não é renovação: sem este aviso.
+        if (fatura.parent?.subscription_details?.metadata?.tipo === "contrato_parcelas") break;
         const email = fatura.customer_email;
         if (email && (fatura.amount_due ?? 0) > 0) {
           const { avisoDeRenovacao } = await import("@/lib/email/renovacao");
@@ -160,6 +194,12 @@ export async function POST(req: NextRequest) {
 
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
+        // O fim das PARCELAS (05/10): registra no contrato e NÃO mexe no plano.
+        if (sub.metadata?.tipo === "contrato_parcelas") {
+          const { parcelasEncerradas } = await import("@/lib/contratos/parcelado");
+          await parcelasEncerradas(sub);
+          break;
+        }
         const customerId = sub.customer as string;
         await prisma.user.updateMany({
           where: { stripeCustomerId: customerId },

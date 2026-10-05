@@ -5,8 +5,10 @@ import { montarTexto } from "@/lib/contratos/modelo";
 import { centavosEmReais, fimDaVigencia, situacaoDoContrato } from "@/lib/contratos/situacao";
 import { midiaPrivada } from "@/lib/media/storage";
 import { PLANOS_PUBLICOS } from "@/lib/planos";
+import { CONDICAO_PARCELADA, calcularParcelamento, ehParcelado, ajustarDiaDaCobranca } from "@/lib/contratos/condicao";
+import { chavePix, linkDoCartao } from "@/lib/contratos/links-de-pagamento";
 import {
-  APROVADOR_PADRAO,
+  APROVADORES_PADRAO,
   MOTIVOS_DE_DESCONTO,
   TETO_COM_APROVACAO,
   TETO_SEM_APROVACAO,
@@ -52,13 +54,20 @@ export function nomeDoPlano(plano: string): string {
   return PLANOS_PUBLICOS.find((p) => p.id === plano)?.nome ?? plano;
 }
 
-/** O e-mail de quem aprova desconto acima do teto livre (o dono). */
+/** Os e-mails de quem aprova desconto acima do teto livre (os sócios, 05/10). */
+export function aprovadoresDoDesconto(): string[] {
+  const env = process.env.CONTRATOS_APROVADOR_EMAIL?.trim();
+  const lista = env ? env.split(",") : APROVADORES_PADRAO;
+  return lista.map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Os aprovadores por extenso, para as mensagens ("a ou b"). */
 export function aprovadorDoDesconto(): string {
-  return (process.env.CONTRATOS_APROVADOR_EMAIL ?? APROVADOR_PADRAO).trim().toLowerCase();
+  return aprovadoresDoDesconto().join(" ou ");
 }
 
 export function ehAprovador(autor: Autor): boolean {
-  return typeof autor !== "string" && autor.email.trim().toLowerCase() === aprovadorDoDesconto();
+  return typeof autor !== "string" && aprovadoresDoDesconto().includes(autor.email.trim().toLowerCase());
 }
 
 /** O desconto como veio do formulário. `valor`: porcentagem (8 ou 7,5) ou reais. */
@@ -155,14 +164,17 @@ async function avisarAprovador(contratoId: string, autor: Autor, p: PrecoCalcula
   const n = String(c.numero).padStart(4, "0");
   const motivo = ehMotivoDeDesconto(p.descontoMotivo) ? MOTIVOS_DE_DESCONTO[p.descontoMotivo].toLowerCase() : (p.descontoMotivo ?? "");
   const linha = `${nomeDoAutor(autor)} deu ${porcentagem(p.percentual)} de desconto (${motivo}) no ${onde} do contrato nº ${n}${c.empresa ? `, ${c.empresa}` : ""}: tabela ${centavosEmReais(p.precoTabelaCentavos)}, valor final ${centavosEmReais(p.valorCentavos)}.`;
-  await enviarEmail({
-    para: aprovadorDoDesconto(),
-    assunto: `Desconto de ${porcentagem(p.percentual)} esperando a sua aprovação (contrato nº ${n})`,
-    texto: [linha, "", `Acima de ${TETO_SEM_APROVACAO}%, o documento só vai para assinatura depois da sua aprovação.`, "", `${base}/admin/contratos/${c.userId}`].join("\n"),
-  });
+  // Os dois sócios recebem (05/10); a aprovação de qualquer um vale.
+  for (const para of aprovadoresDoDesconto()) {
+    await enviarEmail({
+      para,
+      assunto: `Desconto de ${porcentagem(p.percentual)} esperando a sua aprovação (contrato nº ${n})`,
+      texto: [linha, "", `Acima de ${TETO_SEM_APROVACAO}%, o documento só vai para assinatura depois da aprovação de um dos sócios (${aprovadorDoDesconto()}).`, "", `${base}/admin/contratos/${c.userId}`].join("\n"),
+    });
+  }
 }
 
-/** O desconto espera a aprovação do dono? */
+/** O desconto espera a aprovação de um sócio? */
 export function esperaAprovacao(c: { descontoCentavos: number; precoTabelaCentavos: number | null; descontoAprovadoEm: Date | string | null }): boolean {
   if (!c.precoTabelaCentavos || c.descontoCentavos <= 0) return false;
   return faixaDoDesconto((c.descontoCentavos / c.precoTabelaCentavos) * 100) === "aprovacao" && !c.descontoAprovadoEm;
@@ -200,7 +212,40 @@ export type NovoContrato = {
   renovacaoAutomatica?: boolean;
   observacao?: string | null;
   renovadoDeId?: string | null;
+  /** A condição de pagamento (05/10). Sem ela, à vista. */
+  condicao?: CondicaoPedida | null;
 };
+
+/**
+ * A CONDIÇÃO DE PAGAMENTO como veio do formulário (05/10): entrada no Pix
+ * (em centavos), número de parcelas no cartão em crédito recorrente e, se
+ * escolhida, a data da primeira parcela (sem ela, um mês depois da entrada).
+ */
+export type CondicaoPedida = {
+  tipo: "a_vista" | typeof CONDICAO_PARCELADA;
+  entradaCentavos?: number | null;
+  parcelas?: number | null;
+  primeiraParcelaEm?: Date | null;
+};
+
+/** Os campos da condição que vão para o banco, já com a conta feita e conferida. */
+export function camposDaCondicao(valorCentavos: number, pedido: CondicaoPedida | null | undefined) {
+  if (!pedido || pedido.tipo !== CONDICAO_PARCELADA) {
+    return { condicaoDePagamento: null, entradaCentavos: null, parcelas: null, parcelaCentavos: null, primeiraParcelaEm: null };
+  }
+  const p = calcularParcelamento(valorCentavos, pedido.entradaCentavos ?? 0, pedido.parcelas ?? 0);
+  if ("erro" in p) throw new RecusaDoContrato(p.erro);
+  if (pedido.primeiraParcelaEm && pedido.primeiraParcelaEm.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+    throw new RecusaDoContrato("A data da primeira parcela não pode ser no passado.");
+  }
+  return {
+    condicaoDePagamento: CONDICAO_PARCELADA,
+    entradaCentavos: p.entradaCentavos,
+    parcelas: p.parcelas,
+    parcelaCentavos: p.parcelaCentavos,
+    primeiraParcelaEm: pedido.primeiraParcelaEm ? ajustarDiaDaCobranca(pedido.primeiraParcelaEm) : null,
+  };
+}
 
 /** A conta do prospect: a que já existe com o e-mail, ou uma nova, sem senha e sem plano. */
 async function contaDoProspect(p: { email: string; nome: string | null }): Promise<{ id: string; email: string; name: string | null; acessosExtras: number; criada: boolean }> {
@@ -247,8 +292,10 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
     throw new RecusaDoContrato("Escolha a conta do cliente ou preencha o e-mail do novo cliente.");
   }
   if (!u) throw new RecusaDoContrato("Conta não encontrada.", 404);
+  const condicao = camposDaCondicao(preco.valorCentavos, n.condicao);
   const c = await prisma.contrato.create({
     data: {
+      ...condicao,
       userId: u.id,
       plano: n.plano,
       valorCentavos: preco.valorCentavos,
@@ -288,6 +335,7 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
     desconto: centavosEmReais(preco.descontoCentavos),
     fundador: c.fundador,
     ...(u.criada ? { contaCriada: u.email } : {}),
+    ...(condicao.condicaoDePagamento ? { condicao: { entrada: condicao.entradaCentavos, parcelas: condicao.parcelas, parcela: condicao.parcelaCentavos, primeira: condicao.primeiraParcelaEm } } : {}),
   });
   if (!renovacao) {
     const aprovou = await registrarDesconto(c.id, admin, preco);
@@ -297,6 +345,12 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
 }
 
 export function textoDoContrato(c: {
+  id?: string;
+  condicaoDePagamento?: string | null;
+  entradaCentavos?: number | null;
+  parcelas?: number | null;
+  parcelaCentavos?: number | null;
+  primeiraParcelaEm?: Date | null;
   numero: number;
   empresa: string | null;
   endereco?: string | null;
@@ -337,6 +391,20 @@ export function textoDoContrato(c: {
             fundador: Boolean(c.fundador),
           }
         : null,
+    // A CONDIÇÃO DE PAGAMENTO (05/10): 1ª parcela no Pix, demais no cartão,
+    // por extenso e com o link do cartão (que não vence). À vista, nada muda
+    // no texto (e o hash dos contratos de antes fica o mesmo).
+    condicao:
+      ehParcelado(c) && c.id && c.entradaCentavos && c.parcelas && c.parcelaCentavos
+        ? {
+            entradaCentavos: c.entradaCentavos,
+            parcelas: c.parcelas,
+            parcelaCentavos: c.parcelaCentavos,
+            primeiraParcelaEm: c.primeiraParcelaEm ?? null,
+            linkDoCartao: linkDoCartao(c.id),
+            chavePix: chavePix(),
+          }
+        : null,
   });
 }
 
@@ -350,11 +418,11 @@ export async function enviarParaAssinar(admin: Autor, id: string) {
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status !== "rascunho" && c.status !== "enviado") throw new RecusaDoContrato("Só rascunho ou contrato enviado podem ser (re)enviados.");
   if (!c.signatarioEmail || !c.signatarioNome) throw new RecusaDoContrato("Preencha o nome e o e-mail de quem assina.");
-  // O TETO DO DESCONTO (04/10): acima do teto livre, só sai com a aprovação do dono na trilha.
+  // O TETO DO DESCONTO (04/10): acima do teto livre, só sai com a aprovação de um sócio na trilha.
   if (esperaAprovacao(c)) {
     const pct = porcentagem((c.descontoCentavos / (c.precoTabelaCentavos ?? 1)) * 100);
     await registrar(id, admin, "envio_barrado_desconto", { percentual: pct, aprovador: aprovadorDoDesconto() });
-    throw new RecusaDoContrato(`O desconto de ${pct} passa de ${TETO_SEM_APROVACAO}% e espera a aprovação do dono (${aprovadorDoDesconto()}) antes de ir para assinatura.`, 409);
+    throw new RecusaDoContrato(`O desconto de ${pct} passa de ${TETO_SEM_APROVACAO}% e espera a aprovação de um sócio (${aprovadorDoDesconto()}) antes de ir para assinatura.`, 409);
   }
   // Sem data combinada, o texto diz que a vigência começa na confirmação do
   // pagamento (cláusula 5.1), e é isso que a ativação grava (04/10).
@@ -436,6 +504,31 @@ export async function marcarAssinado(autor: Autor, id: string, args: { assinadoE
   if (c.pagoEm) {
     const { ativarSePronto } = await import("@/lib/contratos/pagamento");
     await ativarSePronto(autor, id);
+  }
+  // O PARCELADO (05/10): assinado, o cliente recebe a condição por extenso, o
+  // pedido do Pix da 1ª parcela (com o comprovante) e o link do cartão.
+  if (!c.pagoEm && ehParcelado(c) && c.signatarioEmail && c.entradaCentavos && c.parcelas && c.parcelaCentavos) {
+    try {
+      const { enviarEmail } = await import("@/lib/email");
+      const { linksDoPagamentoParcelado } = await import("@/lib/email/contratos");
+      const foi = await enviarEmail({
+        ...linksDoPagamentoParcelado({
+          nome: c.signatarioNome,
+          numero: c.numero,
+          plano: nomeDoPlano(c.plano),
+          entradaCentavos: c.entradaCentavos,
+          parcelas: c.parcelas,
+          parcelaCentavos: c.parcelaCentavos,
+          primeiraParcelaEm: c.primeiraParcelaEm,
+          chavePix: chavePix(),
+          linkDoCartao: linkDoCartao(c.id),
+        }),
+        para: c.signatarioEmail,
+      });
+      await registrar(id, "sistema", "links_de_pagamento_enviados", { para: c.signatarioEmail, enviado: foi });
+    } catch (e) {
+      console.error("[contratos] e-mail com os links do parcelado não saiu:", e);
+    }
   }
   return { status };
 }
@@ -569,6 +662,8 @@ export type MudancaDoContrato = {
   signatarioDocumento?: string | null;
   renovacaoAutomatica?: boolean;
   observacao?: string | null;
+  /** undefined mantém a condição (refeita sobre o valor novo, se o preço mudar). */
+  condicao?: CondicaoPedida | null;
 };
 
 const CAMPOS_DA_VERSAO = [
@@ -593,6 +688,11 @@ const CAMPOS_DA_VERSAO = [
   "signatarioDocumento",
   "renovacaoAutomatica",
   "observacao",
+  "condicaoDePagamento",
+  "entradaCentavos",
+  "parcelas",
+  "parcelaCentavos",
+  "primeiraParcelaEm",
   "textoHash",
   "provedorDocumentoId",
 ] as const;
@@ -651,6 +751,16 @@ export async function editarContrato(admin: Autor, id: string, m: MudancaDoContr
     signatarioDocumento: m.signatarioDocumento === undefined ? c.signatarioDocumento : m.signatarioDocumento,
     renovacaoAutomatica: m.renovacaoAutomatica ?? c.renovacaoAutomatica,
     observacao: m.observacao === undefined ? c.observacao : m.observacao,
+    // A CONDIÇÃO (05/10): a entrada e as parcelas ficam; a parcela é refeita
+    // sobre o valor novo (se não couber mais, a versão é recusada).
+    ...camposDaCondicao(
+      preco.valorCentavos,
+      m.condicao !== undefined
+        ? m.condicao
+        : ehParcelado(c)
+          ? { tipo: CONDICAO_PARCELADA, entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, primeiraParcelaEm: c.primeiraParcelaEm }
+          : null,
+    ),
   };
   const mudou = (Object.keys(novo) as Array<keyof typeof novo>).filter((k) => {
     const a = c[k as keyof typeof c];
@@ -702,7 +812,7 @@ export async function editarContrato(admin: Autor, id: string, m: MudancaDoContr
 
 /** O DONO APROVA o desconto acima do teto livre; a aprovação fica na trilha. */
 export async function aprovarDesconto(admin: Autor, id: string) {
-  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só o dono (${aprovadorDoDesconto()}) aprova desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
+  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só os sócios (${aprovadorDoDesconto()}) aprova desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
   const c = await prisma.contrato.findUnique({ where: { id } });
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (!esperaAprovacao(c)) throw new RecusaDoContrato("Este contrato não tem desconto esperando aprovação.");
@@ -722,7 +832,7 @@ export async function aprovarDesconto(admin: Autor, id: string) {
 
 /** O DONO RECUSA o desconto: o contrato fica em rascunho até uma versão nova. */
 export async function recusarDesconto(admin: Autor, id: string, motivo: string) {
-  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só o dono (${aprovadorDoDesconto()}) decide desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
+  if (!ehAprovador(admin)) throw new RecusaDoContrato(`Só os sócios (${aprovadorDoDesconto()}) decide desconto acima de ${TETO_SEM_APROVACAO}%.`, 403);
   if (motivo.trim().length < 3) throw new RecusaDoContrato("Escreva o motivo da recusa.");
   const c = await prisma.contrato.findUnique({ where: { id } });
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { CamposDoPreco, EditarContrato, NovoAditivo, contaDoPreco, corpoDoPreco } from "@/components/admin/contratos-preco";
+import { CamposDaCondicao, CamposDoPreco, EditarContrato, NovoAditivo, bloqueiaCondicao, condicaoInicial, contaDoPreco, corpoDaCondicao, corpoDoPreco } from "@/components/admin/contratos-preco";
 import { valorInicialDoPreco, type ValorDoPreco } from "@/lib/contratos/preco";
 
 /**
@@ -49,6 +49,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
   // O VALOR NASCE DA TABELA (04/10): plano e acessos extras pelo preço de
   // tabela, menos o desconto com motivo. Ver components/admin/contratos-preco.
   const [preco, setPreco] = useState<ValorDoPreco>(valorInicialDoPreco(conta?.plano && conta.plano !== "free" ? conta.plano : "pro"));
+  const [condicao, setCondicao] = useState(condicaoInicial);
   const [enviando, setEnviando] = useState(false);
 
   async function criar(e: React.FormEvent<HTMLFormElement>) {
@@ -57,6 +58,8 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
     const conta = contaDoPreco(preco);
     if (conta.faixa === "bloqueado") return void toast.error("Desconto acima do teto não sai.");
     if (conta.descontoCentavos > 0 && !preco.motivo) return void toast.error("Escolha o motivo do desconto.");
+    const erroDaCondicao = bloqueiaCondicao(condicao, conta.finalCentavos);
+    if (erroDaCondicao) return void toast.error(erroDaCondicao);
     setEnviando(true);
     try {
       const nome = f.get("nome");
@@ -64,8 +67,9 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
       const d = await chamar("/api/admin/contratos", {
         ...(modo === "conta" ? { userId } : { prospectNome: nome, prospectEmail: email }),
         ...corpoDoPreco(preco),
+        ...corpoDaCondicao(condicao),
         inicioVigencia: f.get("inicio"),
-        formaDePagamento: f.get("forma"),
+        formaDePagamento: condicao.tipo === "a_vista" ? f.get("forma") : "1ª parcela no Pix, demais no cartão (crédito recorrente)",
         empresa: f.get("empresa"),
         endereco: f.get("endereco"),
         signatarioNome: nome,
@@ -75,7 +79,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         observacao: f.get("observacao"),
       });
       toast.success(
-        contaDoPreco(preco).faixa === "aprovacao" ? "Contrato criado como rascunho. O desconto espera a aprovação do dono antes de ir para assinatura." : "Contrato criado como rascunho."
+        contaDoPreco(preco).faixa === "aprovacao" ? "Contrato criado como rascunho. O desconto espera a aprovação de um sócio antes de ir para assinatura." : "Contrato criado como rascunho."
       );
       router.push(`/admin/contratos/${String(d.userId ?? userId)}`);
       router.refresh();
@@ -156,17 +160,20 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         <input name="endereco" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <CamposDoPreco valor={preco} mudar={setPreco} />
-      <label className={rotulo} style={corDoRotulo}>
-        Forma de pagamento combinada
-        <select name="forma" defaultValue="Pix" className={`${campo} mt-1`} style={estiloCampo}>
-          {FORMAS.map((f) => (
-            <option key={f.id} value={f.nome}>
-              {f.nome}
-            </option>
-          ))}
-          <option value="Cartão pelo link do Stripe">Cartão pelo link do Stripe</option>
-        </select>
-      </label>
+      <CamposDaCondicao valor={condicao} mudar={setCondicao} totalCentavos={contaDoPreco(preco).finalCentavos} />
+      {condicao.tipo === "a_vista" && (
+        <label className={rotulo} style={corDoRotulo}>
+          Forma de pagamento combinada
+          <select name="forma" defaultValue="Pix" className={`${campo} mt-1`} style={estiloCampo}>
+            {FORMAS.map((f) => (
+              <option key={f.id} value={f.nome}>
+                {f.nome}
+              </option>
+            ))}
+            <option value="Cartão pelo link do Stripe">Cartão pelo link do Stripe</option>
+          </select>
+        </label>
+      )}
       <label className={rotulo} style={corDoRotulo}>
         Início da vigência (opcional: sem data, conta do pagamento)
         <input type="date" name="inicio" className={`${campo} mt-1`} style={estiloCampo} />

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { centavosEmReais } from "@/lib/contratos/situacao";
 import { ACESSO_EXTRA_ANUAL_CENTAVOS, MOTIVOS_DE_DESCONTO, ehMotivoDeDesconto, porcentagem } from "@/lib/contratos/preco";
+import { condicaoPorExtenso } from "@/lib/contratos/condicao";
 
 /**
  * O TEXTO DO CONTRATO, montado do modelo em Markdown (02/10/2026).
@@ -42,7 +43,41 @@ export type DadosDoContrato = {
    * texto dele fica idêntico ao que foi assinado (o hash não muda).
    */
   proposta?: PropostaComercial | null;
+  /**
+   * A CONDIÇÃO DE PAGAMENTO parcelada (05/10): entrada no Pix mais parcelas no
+   * cartão em crédito recorrente. Null é à vista, e o texto fica como sempre.
+   */
+  condicao?: CondicaoNoTexto | null;
 };
+
+export type CondicaoNoTexto = {
+  entradaCentavos: number;
+  parcelas: number;
+  parcelaCentavos: number;
+  primeiraParcelaEm: Date | null;
+  /** O link do cartão das parcelas (o Pix da 1ª parcela é feito por fora). */
+  linkDoCartao: string;
+  /** A chave Pix da Demandou, quando configurada. */
+  chavePix: string | null;
+};
+
+/**
+ * A CONDIÇÃO DE PAGAMENTO por extenso, com o link do cartão. Vale pela cláusula
+ * 6.2 ("outro meio que a Demandou indicar na Proposta Comercial") e, pela
+ * cláusula 2.2, prevalece sobre o "anual e à vista" das condições gerais.
+ */
+export function textoDaCondicao(c: CondicaoNoTexto): string {
+  return [
+    "### Condição de pagamento",
+    "",
+    `${condicaoPorExtenso(c)}. A 1ª parcela mais as ${c.parcelas} parcelas no cartão somam o valor anual final desta Proposta Comercial.`,
+    "",
+    `A 1ª parcela é paga via Pix diretamente à Demandou${c.chavePix ? ` (chave Pix ${c.chavePix})` : ""}, e o Cliente envia o comprovante. As demais parcelas são cobradas automaticamente, uma por mês, no cartão de crédito que o Cliente cadastrar pelo Stripe: cada mês cobra só a parcela daquele mês, e a cobrança se encerra sozinha depois da ${c.parcelas}ª parcela no cartão. Não é o parcelamento do emissor do cartão da cláusula 6.3. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da 1ª parcela, com o cartão das parcelas cadastrado. Parcela não paga no vencimento segue as cláusulas 6.5 e 9.6.`,
+    "",
+    `Cadastrar o cartão das parcelas: ${c.linkDoCartao}`,
+    "",
+  ].join("\n");
+}
 
 export type PropostaComercial = {
   planoCentavos: number;
@@ -60,7 +95,7 @@ const motivoPorExtenso = (m: string | null) => (ehMotivoDeDesconto(m) ? MOTIVOS_
  * cláusula 1. Pela cláusula 2.2 ela prevalece sobre o Anexo I: é ela que diz o
  * preço de tabela, o desconto e o valor final daquela contratação.
  */
-export function textoDaProposta(d: { plano: string; acessosExtras: number; proposta: PropostaComercial }): string {
+export function textoDaProposta(d: { plano: string; acessosExtras: number; proposta: PropostaComercial; parcelado?: boolean }): string {
   const p = d.proposta;
   const pct = p.tabelaCentavos > 0 ? (p.descontoCentavos / p.tabelaCentavos) * 100 : 0;
   const linhas: Array<[string, string]> = [[`Plano ${d.plano}, anual, preço de tabela`, centavosEmReais(p.planoCentavos)]];
@@ -72,7 +107,8 @@ export function textoDaProposta(d: { plano: string; acessosExtras: number; propo
     p.descontoCentavos > 0 ? `Desconto (${porcentagem(pct)}, ${motivoPorExtenso(p.descontoMotivo)})` : "Desconto",
     p.descontoCentavos > 0 ? `menos ${centavosEmReais(p.descontoCentavos)}` : "nenhum",
   ]);
-  linhas.push(["Valor anual final, à vista", centavosEmReais(p.tabelaCentavos - p.descontoCentavos)]);
+  // No parcelado (05/10) o "à vista" sai do rótulo: a condição vem logo abaixo.
+  linhas.push([d.parcelado ? "Valor anual final" : "Valor anual final, à vista", centavosEmReais(p.tabelaCentavos - p.descontoCentavos)]);
   linhas.push(["Condição de Fundador (cláusula 5.6)", p.fundador ? "sim" : "não"]);
   const renovacao = p.fundador
     ? "Na renovação, vale o valor anual final acima, sem o reajuste da cláusula 5.4, pela Condição de Fundador (cláusula 5.6)."
@@ -135,7 +171,9 @@ export function montarTexto(d: DadosDoContrato, md = lerModelo()): { texto: stri
     });
   // A Proposta Comercial entra antes da cláusula 1 (04/10). Sem a cláusula 1
   // achada, vai no fim, para nunca sumir do texto assinado.
-  const proposta = d.proposta ? textoDaProposta({ plano: d.plano, acessosExtras: d.acessosExtras, proposta: d.proposta }) : "";
+  const proposta =
+    (d.proposta ? textoDaProposta({ plano: d.plano, acessosExtras: d.acessosExtras, proposta: d.proposta, parcelado: Boolean(d.condicao) }) : d.condicao ? "## PROPOSTA COMERCIAL\n\n" : "") +
+    (d.condicao ? textoDaCondicao(d.condicao) : "");
   const comProposta = !proposta ? preenchido : /^## 1\. /m.test(preenchido) ? preenchido.replace(/^## 1\. /m, `${proposta}\n## 1. `) : `${preenchido}\n\n${proposta}`;
   const texto = comProposta + `\n\nContrato nº ${String(d.numero).padStart(4, "0")}.\n`;
   return { texto, hash: createHash("sha256").update(texto).digest("hex"), versao: versaoDoModelo(md), minuta: ehMinuta(md) };

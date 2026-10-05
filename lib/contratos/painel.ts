@@ -6,6 +6,8 @@ import { PLANS } from "@/lib/stripe";
 import { resumoDoSuporte } from "@/lib/suporte/painel";
 import { diasParaVencer, grupoDaSituacao, situacaoDoContrato, type GrupoDoGestor, type StatusDoContrato } from "@/lib/contratos/situacao";
 import { esperaAprovacao, nomeDoPlano } from "@/lib/contratos/contratos";
+import { condicaoPorExtenso, ehParcelado } from "@/lib/contratos/condicao";
+import { linkDoCartao } from "@/lib/contratos/links-de-pagamento";
 
 /**
  * O QUE O PAINEL DE CONTRATOS LÊ (02/10/2026): a lista de todos os contratos e
@@ -41,6 +43,10 @@ export type ContratoNaLista = {
   descontoConcedidoEm: string | null;
   esperaAprovacao: boolean;
   fundador: boolean;
+  /** Entrada no Pix + parcelas no cartão (05/10). */
+  parcelado: boolean;
+  /** Uma parcela falhou e ainda não foi paga: a pendência do painel (05/10). */
+  parcelaEmAtrasoDesde: string | null;
 };
 
 export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaLista[]> {
@@ -74,6 +80,8 @@ export async function contratosDoPainel(agora = new Date()): Promise<ContratoNaL
     descontoConcedidoEm: c.descontoConcedidoEm?.toISOString() ?? null,
     esperaAprovacao: c.status !== "cancelado" && esperaAprovacao(c),
     fundador: c.fundador,
+    parcelado: ehParcelado(c),
+    parcelaEmAtrasoDesde: c.status !== "cancelado" && c.parcelaEmAtraso ? (c.parcelaEmAtrasoDesde?.toISOString() ?? agora.toISOString()) : null,
   }));
 }
 
@@ -213,6 +221,24 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
       ativadoEm: c.ativadoEm?.toISOString() ?? null,
       acessosExtras: c.acessosExtras,
       linkDePagamento: c.linkDePagamento,
+      // A CONDIÇÃO DE PAGAMENTO (05/10): 1ª parcela no Pix, demais no cartão,
+      // por extenso, com o link do cartão (que não vence) e a pendência.
+      parcelado: ehParcelado(c)
+        ? {
+            porExtenso:
+              c.entradaCentavos && c.parcelas && c.parcelaCentavos
+                ? condicaoPorExtenso({ entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, parcelaCentavos: c.parcelaCentavos, primeiraParcelaEm: c.primeiraParcelaEm })
+                : "",
+            entradaCentavos: c.entradaCentavos ?? 0,
+            parcelas: c.parcelas ?? 0,
+            parcelaCentavos: c.parcelaCentavos ?? 0,
+            entradaPagaCentavos: c.pagamentos.filter((p) => !p.aditivoId && p.forma !== "cartao_recorrente").reduce((t, p) => t + p.valorCentavos, 0),
+            parcelasPagas: c.pagamentos.filter((p) => !p.aditivoId && p.forma === "cartao_recorrente").length,
+            cartaoCadastrado: Boolean(c.assinaturaParcelasId),
+            parcelaEmAtrasoDesde: c.parcelaEmAtraso ? (c.parcelaEmAtrasoDesde?.toISOString() ?? null) : null,
+            linkDoCartao: linkDoCartao(c.id),
+          }
+        : null,
       // O que quita aditivo fica com o aditivo (04/10).
       pagoCentavos: c.pagamentos.filter((p) => !p.aditivoId).reduce((s, p) => s + p.valorCentavos, 0),
       precoTabelaCentavos: c.precoTabelaCentavos,

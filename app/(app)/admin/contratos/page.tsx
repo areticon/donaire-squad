@@ -102,7 +102,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
 
       <Cartao
         titulo={`Descontos de ${descontos.mes}`}
-        subtitulo={`Até ${TETO_SEM_APROVACAO}% o vendedor concede; de ${TETO_SEM_APROVACAO}% a ${TETO_COM_APROVACAO}%, só com a aprovação do dono; acima de ${TETO_COM_APROVACAO}%, bloqueado. Contratos não cancelados, pela data em que o desconto foi concedido.`}
+        subtitulo={`Até ${TETO_SEM_APROVACAO}% o vendedor concede; de ${TETO_SEM_APROVACAO}% a ${TETO_COM_APROVACAO}%, só com a aprovação de um sócio; acima de ${TETO_COM_APROVACAO}%, bloqueado. Contratos não cancelados, pela data em que o desconto foi concedido.`}
       >
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5" data-descontos-do-mes>
           <div className="lg:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
@@ -116,7 +116,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
               }
             />
             <Numero
-              rotulo="Esperando a aprovação do dono"
+              rotulo="Esperando a aprovação de um sócio"
               valor={String(descontos.esperandoAprovacao.length)}
               nota={
                 descontos.esperandoAprovacao.length ? (
@@ -245,7 +245,7 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                     {c.provedorSituacao === "aguardando_provedor" ? " · aguardando provedor" : ""}
                     {c.esperaAprovacao ? (
                       <span className="block font-semibold" style={{ color: "var(--marca-laranja-texto)" }}>
-                        desconto espera a aprovação do dono
+                        desconto espera a aprovação de um sócio
                       </span>
                     ) : null}
                   </span>

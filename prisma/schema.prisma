@@ -1500,6 +1500,22 @@ model Contrato {
   /// A versão do contrato antes de assinar: cada edição soma 1, e a anterior
   /// fica na trilha (evento "nova_versao").
   versao              Int       @default(1)
+  /// A CONDIÇÃO DE PAGAMENTO (05/10): null é à vista (o de sempre);
+  /// "entrada_pix_parcelas_cartao" é entrada no Pix mais N parcelas mensais
+  /// no cartão em cobrança recorrente (assinatura do Stripe que termina
+  /// sozinha depois da N-ésima). Ver lib/contratos/condicao.ts.
+  condicaoDePagamento String?
+  entradaCentavos     Int?
+  parcelas            Int?
+  parcelaCentavos     Int?
+  /// O dia da primeira parcela (por padrão, um mês depois da entrada).
+  primeiraParcelaEm   DateTime?
+  /// A assinatura do Stripe que cobra as parcelas; única, para o webhook
+  /// repetido não ligar duas.
+  assinaturaParcelasId String?  @unique
+  /// A fatura da parcela que falhou e ainda não foi paga (a pendência do painel).
+  parcelaEmAtraso      String?
+  parcelaEmAtrasoDesde DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

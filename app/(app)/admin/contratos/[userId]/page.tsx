@@ -47,7 +47,7 @@ const NOME_DO_EVENTO: Record<string, string> = {
   onboarding_iniciado: "Onboarding iniciado (setup do projeto)",
   creditos_repostos: "Créditos do ciclo repostos",
   desconto_concedido: "Desconto concedido",
-  desconto_pede_aprovacao: "Desconto acima do teto: pedida a aprovação do dono",
+  desconto_pede_aprovacao: "Desconto acima do teto: pedida a aprovação de um sócio",
   desconto_aprovado: "Desconto aprovado pelo dono",
   desconto_recusado: "Desconto recusado pelo dono",
   envio_barrado_desconto: "Envio barrado: desconto sem aprovação",
@@ -461,6 +461,34 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                       <p className="mt-1 text-xs break-all" style={{ color: "var(--text-muted)" }}>
                         Link de pagamento do Stripe: {c.linkDePagamento}
                       </p>
+                    )}
+                    {/* A CONDIÇÃO PARCELADA (05/10): 1ª parcela no Pix (registrada
+                        com o comprovante acima) e as demais no cartão pelo link
+                        que não vence, para o vendedor copiar e mandar. */}
+                    {c.parcelado && (
+                      <div className="mt-2 rounded-xl border p-3 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }} data-condicao-parcelada>
+                        <p className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                          Condição: {c.parcelado.porExtenso}
+                        </p>
+                        <ul className="mt-1 space-y-0.5" style={{ color: "var(--text-muted)" }}>
+                          <li>
+                            1ª parcela (Pix): {centavosEmReais(c.parcelado.entradaPagaCentavos)} de {centavosEmReais(c.parcelado.entradaCentavos)}{" "}
+                            {c.parcelado.entradaPagaCentavos >= c.parcelado.entradaCentavos ? "· paga" : "· falta registrar o comprovante"}
+                          </li>
+                          <li>
+                            Cartão: {c.parcelado.cartaoCadastrado ? `cadastrado · ${c.parcelado.parcelasPagas} de ${c.parcelado.parcelas} parcelas pagas` : "ainda não cadastrado pelo cliente"}
+                          </li>
+                          {c.parcelado.parcelaEmAtrasoDesde && (
+                            <li style={{ color: "var(--badge-danger-text)" }}>Parcela em atraso desde {data(c.parcelado.parcelaEmAtrasoDesde)}: o Stripe tenta de novo sozinho; se não entrar, fale com o cliente.</li>
+                          )}
+                        </ul>
+                        <p className="mt-1 break-all" style={{ color: "var(--text-muted)" }}>
+                          Link do cartão (não vence, vai no contrato e no e-mail):{" "}
+                          <a href={c.parcelado.linkDoCartao} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--text-primary)" }}>
+                            {c.parcelado.linkDoCartao}
+                          </a>
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}

@@ -15,6 +15,8 @@ export type BoasVindasPendente = {
   numero: number;
   plano: string;
   fim: Date | null;
+  /** O link para agendar o onboarding com o Bruno (CONTRATOS_AGENDA_URL), quando há (05/10). */
+  agendaUrl?: string | null;
 };
 
 const PENDENTES: Map<string, BoasVindasPendente> = ((globalThis as { __boasVindasDoContrato?: Map<string, BoasVindasPendente> }).__boasVindasDoContrato ??=
