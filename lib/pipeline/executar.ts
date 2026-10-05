@@ -52,6 +52,7 @@ import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-ver
 import { veraConfereNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 
@@ -921,7 +922,10 @@ REGRA DE OURO - INTEGRIDADE DE DADOS (obrigatório):
 Você NUNCA pode inventar estatísticas, nomes de pessoas reais, nomes de empresas, estudos, pesquisas ou indicadores de mercado.
 Se precisar citar um número, um estudo, uma empresa ou indicador, use SOMENTE dados reais e verificáveis, indicando sempre a fonte (ex: "segundo a McKinsey, 2024" ou "de acordo com o IBGE, 2025").
 Apenas a redação, argumentação e estrutura textual devem ser criativas: os fatos devem ser sempre reais.
-Se não tiver dados reais sobre um ponto específico, deixe em aberto para o usuário preencher com dados reais, não invente.`;
+Se não tiver dados reais sobre um ponto específico, deixe em aberto para o usuário preencher com dados reais, não invente.
+
+PESSOAS E NÚMEROS NO TEXTO PÚBLICO (obrigatório):
+${REGRA_DE_PESSOAS_E_NUMEROS}`;
 
 /**
  * Monta o prefixo cacheável de um projeto: regras globais mais os documentos

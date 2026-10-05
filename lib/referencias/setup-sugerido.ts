@@ -113,7 +113,7 @@ Monte o setup do projeto. Devolva:
  "niche": "o nicho em uma frase específica (mercado, o que vende, onde atua)",
  "targetAudience": "o público em 2 ou 3 frases: quem é, o que quer, o que trava a compra",
  "description": "o objetivo do conteúdo em 2 frases",
- "voice": "o guia de voz completo, em até 900 caracteres: tom, pessoa do discurso, tamanho das frases, palavras e bordões que ele já usa, o que nunca fazer; parta da LINGUAGEM REAL dele no diagnóstico, não de um modelo genérico",
+ "voice": "o guia de voz completo, em até 900 caracteres: tom, pessoa do discurso, tamanho das frases, palavras e bordões que ele já usa (nunca um apelido íntimo dirigido a uma pessoa, como o jeito de chamar a esposa ou um filho: isso não é bordão de post público), o que nunca fazer; parta da LINGUAGEM REAL dele no diagnóstico, não de um modelo genérico",
  "colorPalette": "3 cores em hexadecimal separadas por vírgula, a primeira a de destaque; use as cores do diagnóstico",
  "postFrequency": "uma destas, exatamente: ${FREQUENCIAS.join(" | ")}",
  "linhaEditorial": "3 a 5 pilares, um por linha, cada um com nome, do que trata, o formato que rende e quantos por semana. Exemplo de UMA linha (não copie o conteúdo): 'Bastidores do negócio: o dia a dia por trás da empresa; reel contando um caso, fechando com pergunta; 1 por semana'. Os formatos e a frequência saem do de-para e dos achados, e a soma bate com a frequência escolhida",
