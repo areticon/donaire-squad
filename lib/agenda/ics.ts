@@ -63,7 +63,8 @@ function dobrar(linha: string): string {
 export function montarConvite(c: Convite): string {
   const linhas = [
     "BEGIN:VCALENDAR",
-    "PRODID:-//Demandou//Agenda de demonstracao//PT-BR",
+    // Identificador do produtor: a agenda serve à demonstração e ao onboarding (05/10).
+    "PRODID:-//Demandou//Agenda//PT-BR",
     "VERSION:2.0",
     "CALSCALE:GREGORIAN",
     `METHOD:${c.metodo}`,
@@ -84,7 +85,8 @@ export function montarConvite(c: Convite): string {
     `STATUS:${c.metodo === "CANCEL" ? "CANCELLED" : "CONFIRMED"}`,
     "TRANSP:OPAQUE",
     ...(c.metodo === "REQUEST"
-      ? ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Demonstração da Demandou", "TRIGGER:-PT15M", "END:VALARM"]
+      // O alarme repete o título do evento (05/10: pode ser o onboarding, e não a demonstração).
+      ? ["BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${texto(c.titulo)}`, "TRIGGER:-PT15M", "END:VALARM"]
       : []),
     "END:VEVENT",
     "END:VCALENDAR",

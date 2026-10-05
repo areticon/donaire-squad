@@ -85,6 +85,7 @@ export function Agendamento({
 }
 
 export function Confirmada({ r, titulo = "Demonstração marcada.", comGerenciar = true }: { r: ReuniaoMarcada; titulo?: string; comGerenciar?: boolean }) {
+  // O onboarding (05/10) usa este mesmo cartão com outro título (gerenciar-reuniao.tsx e app/onboarding).
   const inicio = new Date(r.inicio);
   return (
     <div>

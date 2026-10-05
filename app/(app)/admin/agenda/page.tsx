@@ -65,12 +65,23 @@ export default async function AgendaAdminPage({ searchParams }: { searchParams: 
     })),
   }));
 
+  // O onboarding (05/10) mostra o número do contrato no cartão: a reunião
+  // guarda só o id, sem relação, então o número vem numa leitura à parte.
+  const idsDeContrato = [...new Set(reunioes.map((r) => r.contratoId).filter((x): x is string => Boolean(x)))];
+  const contratos = idsDeContrato.length
+    ? await prisma.contrato.findMany({ where: { id: { in: idsDeContrato } }, select: { id: true, numero: true, userId: true } })
+    : [];
+  const contratoPorId = new Map(contratos.map((c) => [c.id, c]));
+
   const reunioesNaTela: ReuniaoNoAdmin[] = reunioes.map((r) => {
     const calc = r.lead.calculadora as Resultado | null;
+    const contrato = r.contratoId ? contratoPorId.get(r.contratoId) : null;
     return {
       id: r.id,
       inicio: r.inicio.toISOString(),
       status: r.status,
+      tipo: r.tipo === "onboarding" ? "onboarding" : "demonstracao",
+      contrato: contrato ? { numero: contrato.numero, userId: contrato.userId } : null,
       escolha: r.escolha,
       fonte: r.fonte,
       teste: r.teste,
@@ -123,14 +134,15 @@ export default async function AgendaAdminPage({ searchParams }: { searchParams: 
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
       <div className="flex items-baseline justify-between gap-4 mb-1">
         <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
-          Agenda de demonstrações
+          Agenda do time
         </h1>
         <Link href="/admin" className="text-sm text-orange-400 hover:text-orange-300">
           Voltar ao painel
         </Link>
       </div>
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
-        O lead escolhe o horário em /demonstracao; o sistema escolhe quem atende pelo rodízio entre quem está livre.
+        Demonstrações: o lead escolhe o horário em /demonstracao e o sistema escolhe quem atende pelo rodízio entre quem está livre.
+        Onboardings: o cliente do contrato ativado escolhe o horário pelo link do e-mail de boas-vindas, sempre com o Bruno.
       </p>
       <AgendaDoTime
         pessoas={paraTela}

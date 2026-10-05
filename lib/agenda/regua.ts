@@ -272,6 +272,10 @@ async function planoDoAlerta(id: string, dados: DadosCompletos, tipo: TipoDeAler
       break;
     }
   }
+  // O ONBOARDING (05/10) sai só por e-mail: os modelos de WhatsApp aprovados
+  // na Meta falam em "demonstração", e mandar isso a um cliente que acabou de
+  // assinar seria errar o nome da conversa. Os e-mails seguem o tipo.
+  if (dados.tipo === "onboarding") p.zaps = [];
   return p;
 }
 

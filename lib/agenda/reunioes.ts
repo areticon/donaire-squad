@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { tokenDaReuniao } from "@/lib/agenda/segredos";
-import { dadosDaReuniao, linkGerenciar } from "@/lib/agenda/envio";
+import { dadosDaReuniao, linkGerenciarDe } from "@/lib/agenda/envio";
 import { dispararAlerta } from "@/lib/agenda/regua";
+import { tipoDeReuniao, tituloDoEvento, type TipoDeReuniao } from "@/lib/agenda/tipo";
 import { DURACAO_MIN, proximosDiasUteis } from "@/lib/agenda/tempo";
 import { gradeDaPessoa, livreNoHorario, ocupadoDaPessoa, pessoasAtivas, type PessoaComContas } from "@/lib/agenda/disponibilidade";
 import { buscarEvento, cancelarEvento, criarEvento, googleAgendaConfigurado, linkDoMeet, moverEvento } from "@/lib/agenda/google";
@@ -67,6 +67,7 @@ async function pessoaLivre(p: PessoaComContas, inicio: Date, agora: Date, ignora
  */
 async function gravarParaPessoa(args: {
   p: PessoaComContas; inicio: Date; fim: Date; leadId: string; escolha: string; teste: boolean; reuniaoId?: string | null;
+  tipo: TipoDeReuniao; contratoId: string | null;
 }): Promise<{ id: string } | null> {
   const { p, inicio, fim } = args;
   const folga = p.intervaloMin * 60_000;
@@ -101,6 +102,7 @@ async function gravarParaPessoa(args: {
           leadId: args.leadId, pessoaId: p.id, inicio, fim, escolha: args.escolha, fonte: p.fonte,
           uid: `${randomUUID()}@demandou.com`, teste: args.teste,
           linkReuniao: p.linkSala ?? null,
+          tipo: args.tipo, contratoId: args.contratoId,
         },
         select: { id: true },
       });
@@ -154,12 +156,14 @@ async function sincronizarGoogle(reuniaoId: string, p: PessoaComContas, antes: {
       if (link && link !== r.linkReuniao) await prisma.reuniaoDeDemonstracao.update({ where: { id: r.id }, data: { linkReuniao: link } });
       return;
     }
+    // O título e a descrição seguem o tipo (05/10): onboarding não é demonstração.
+    const onboarding = tipoDeReuniao(r.tipo) === "onboarding";
     let ev = await criarEvento(conta.refreshTokenCifrado, {
       uid: r.uid,
       inicio: r.inicio,
       fim: r.fim,
-      titulo: "Demonstração da Demandou",
-      descricao: `Demonstração com ${r.lead.nome ?? r.lead.email}${r.lead.empresa ? ` (${r.lead.empresa})` : ""}.\nRemarcar ou cancelar: ${linkGerenciar(r.id)}`,
+      titulo: tituloDoEvento(r.tipo),
+      descricao: `${onboarding ? "Onboarding do cliente" : "Demonstração com"} ${r.lead.nome ?? r.lead.email}${r.lead.empresa ? ` (${r.lead.empresa})` : ""}.\nRemarcar ou cancelar: ${linkGerenciarDe(r)}`,
       convidados: [{ email: r.lead.email, nome: r.lead.nome ?? undefined }],
     });
     // A sala do Meet pode voltar "pendente" (criada um instante depois do
@@ -183,12 +187,38 @@ async function sincronizarGoogle(reuniaoId: string, p: PessoaComContas, antes: {
   }
 }
 
+/** O caminho (sem a base) da página que gerencia a reunião, conforme o tipo. */
+function caminhoDeGerenciar(r: { id: string; tipo?: string | null; contratoId?: string | null }): string {
+  return linkGerenciarDe(r).replace(/^https?:\/\/[^/]+/, "");
+}
+
 /**
- * Marca (ou remarca, com `reuniaoId`) a demonstração do lead no horário pedido.
+ * A TRILHA DO CONTRATO (05/10): o onboarding marcado, remarcado ou cancelado
+ * fica registrado no contrato que o originou. Importação tardia para a agenda
+ * não carregar o módulo de contratos em toda marcação de demonstração.
+ */
+async function registrarNoContrato(reuniaoId: string, tipo: "onboarding_agendado" | "onboarding_remarcado" | "onboarding_cancelado", extra: Record<string, unknown> = {}) {
+  const r = await prisma.reuniaoDeDemonstracao.findUnique({ where: { id: reuniaoId }, include: { pessoa: { select: { nome: true } }, lead: { select: { email: true } } } });
+  if (!r || tipoDeReuniao(r.tipo) !== "onboarding" || !r.contratoId) return;
+  const { registrar } = await import("@/lib/contratos/contratos");
+  await registrar(r.contratoId, "sistema", tipo, { reuniao: r.id, inicio: r.inicio.toISOString(), pessoa: r.pessoa.nome, cliente: r.lead.email, ...extra }).catch((e) =>
+    console.error("[agenda] trilha do contrato falhou:", e)
+  );
+}
+
+/**
+ * Marca (ou remarca, com `reuniaoId`) a reunião do lead no horário pedido.
  * `pessoaId` nulo = "qualquer pessoa do time": o sistema escolhe pelo rodízio
  * entre quem está livre.
+ *
+ * O ONBOARDING (05/10) passa por aqui com `tipo: "onboarding"` e o contrato:
+ * não exige faixa de faturamento (o cliente já comprou), é sempre com a
+ * pessoa pedida (o Bruno), e a remarcação fica com a mesma pessoa.
  */
-export async function marcarReuniao(args: { leadId: string; inicioIso: string; pessoaId?: string | null; reuniaoId?: string | null }) {
+export async function marcarReuniao(args: {
+  leadId: string; inicioIso: string; pessoaId?: string | null; reuniaoId?: string | null;
+  tipo?: TipoDeReuniao; contratoId?: string | null;
+}) {
   const agora = new Date();
   const inicio = new Date(args.inicioIso);
   if (Number.isNaN(inicio.getTime()) || inicio.getTime() % (30 * 60_000) !== 0) throw new ErroDeAgenda("Horário inválido.", 400);
@@ -197,33 +227,45 @@ export async function marcarReuniao(args: { leadId: string; inicioIso: string; p
 
   const lead = await prisma.lead.findUnique({ where: { id: args.leadId } });
   if (!lead) throw new ErroDeAgenda("Não encontrei o seu cadastro. Preencha os dados de novo.", 404);
-  if (!lead.faturamento || !FAIXAS_ATENDIDAS.has(lead.faturamento)) {
-    throw new ErroDeAgenda("Hoje a demonstração é para empresas que faturam acima de R$ 100 mil por mês.", 403);
-  }
 
+  let tipo: TipoDeReuniao = tipoDeReuniao(args.tipo);
+  let contratoId = args.contratoId ?? null;
   let antes: { pessoaId: string; eventoGoogleId: string | null; contaGoogleId: string | null; escolha: string; inicio: Date } | null = null;
   if (args.reuniaoId) {
     const r = await prisma.reuniaoDeDemonstracao.findUnique({ where: { id: args.reuniaoId } });
     if (!r || r.leadId !== lead.id) throw new ErroDeAgenda("Reunião não encontrada.", 404);
     if (r.status !== "marcada") throw new ErroDeAgenda("Esta reunião já foi cancelada. Marque uma nova.", 409);
+    // A remarcação não troca o tipo nem o contrato: são os da reunião.
+    tipo = tipoDeReuniao(r.tipo);
+    contratoId = r.contratoId;
     antes = { pessoaId: r.pessoaId, eventoGoogleId: r.eventoGoogleId, contaGoogleId: r.contaGoogleId, escolha: r.escolha, inicio: r.inicio };
-  } else {
+  }
+  if (tipo === "demonstracao" && (!lead.faturamento || !FAIXAS_ATENDIDAS.has(lead.faturamento))) {
+    throw new ErroDeAgenda("Hoje a demonstração é para empresas que faturam acima de R$ 100 mil por mês.", 403);
+  }
+  if (!args.reuniaoId) {
+    // Uma reunião futura de cada tipo por lead: o cliente pode ter uma
+    // demonstração antiga marcada e ainda assim marcar o onboarding.
     const jaTem = await prisma.reuniaoDeDemonstracao.findFirst({
-      where: { leadId: lead.id, status: "marcada", inicio: { gt: agora } },
+      where: { leadId: lead.id, status: "marcada", inicio: { gt: agora }, tipo },
       orderBy: { inicio: "asc" },
     });
     if (jaTem) {
-      throw new ErroDeAgenda("Você já tem uma demonstração marcada. Para mudar o horário, use o link de remarcar.", 409, {
-        gerenciar: `/demonstracao/reuniao/${tokenDaReuniao(jaTem.id)}`,
-      });
+      throw new ErroDeAgenda(
+        tipo === "onboarding" ? "Você já tem o onboarding marcado. Para mudar o horário, use remarcar." : "Você já tem uma demonstração marcada. Para mudar o horário, use o link de remarcar.",
+        409,
+        { gerenciar: caminhoDeGerenciar(jaTem) }
+      );
     }
   }
 
   const todas = await pessoasAtivas();
-  const escolha = args.pessoaId ? "pessoa" : "qualquer";
+  // O onboarding é com a pessoa pedida, e na remarcação fica com quem já tinha.
+  const pessoaPedida = tipo === "onboarding" ? (antes?.pessoaId ?? args.pessoaId ?? null) : args.pessoaId ?? null;
+  const escolha = pessoaPedida ? "pessoa" : "qualquer";
   let candidatas: PessoaComContas[];
-  if (args.pessoaId) {
-    candidatas = todas.filter((p) => p.id === args.pessoaId);
+  if (pessoaPedida) {
+    candidatas = todas.filter((p) => p.id === pessoaPedida);
     if (!candidatas.length) throw new ErroDeAgenda("Essa pessoa não está atendendo agora. Escolha outra ou qualquer pessoa do time.", 400);
   } else {
     candidatas = await emOrdemDeRodizio(todas);
@@ -235,7 +277,7 @@ export async function marcarReuniao(args: { leadId: string; inicioIso: string; p
   const teste = ehLeadDeTeste(lead.email);
   for (const p of candidatas) {
     if (!(await pessoaLivre(p, inicio, agora, args.reuniaoId))) continue;
-    const gravada = await gravarParaPessoa({ p, inicio, fim, leadId: lead.id, escolha, teste, reuniaoId: args.reuniaoId });
+    const gravada = await gravarParaPessoa({ p, inicio, fim, leadId: lead.id, escolha, teste, reuniaoId: args.reuniaoId, tipo, contratoId });
     if (!gravada) continue;
 
     await sincronizarGoogle(gravada.id, p, antes);
@@ -245,13 +287,16 @@ export async function marcarReuniao(args: { leadId: string; inicioIso: string; p
     await dispararAlerta(gravada.id, antes ? "remarcada" : "marcada", {
       anterior: antes ? { pessoaId: antes.pessoaId, inicio: antes.inicio } : null,
     }).catch((e) => console.error("[agenda] alerta da marcação falhou:", e));
+    if (tipo === "onboarding") {
+      await registrarNoContrato(gravada.id, antes ? "onboarding_remarcado" : "onboarding_agendado", antes ? { de: antes.inicio.toISOString() } : {});
+    }
     const dados = await dadosDaReuniao(gravada.id);
     return {
       id: gravada.id,
       inicio: inicio.toISOString(),
       pessoa: p.nome.split(/\s+/)[0],
       linkReuniao: dados?.d.linkReuniao ?? null,
-      gerenciar: `/demonstracao/reuniao/${tokenDaReuniao(gravada.id)}`,
+      gerenciar: caminhoDeGerenciar({ id: gravada.id, tipo, contratoId }),
     };
   }
   throw new ErroDeAgenda("Esse horário acabou de ser ocupado. Escolha outro.", 409, { recarregar: true });
@@ -270,5 +315,6 @@ export async function cancelarReuniao(reuniaoId: string, por: "lead" | "admin"):
     if (conta) await cancelarEvento(conta.refreshTokenCifrado, r.eventoGoogleId).catch((e) => console.error("[agenda] cancelar evento falhou:", e));
   }
   await dispararAlerta(reuniaoId, "cancelada", { por }).catch((e) => console.error("[agenda] alerta do cancelamento falhou:", e));
+  await registrarNoContrato(reuniaoId, "onboarding_cancelado", { por: por === "lead" ? "cliente" : "painel" });
   return true;
 }

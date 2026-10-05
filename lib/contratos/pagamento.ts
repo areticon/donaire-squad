@@ -434,8 +434,11 @@ export async function ativarSePronto(autor: Autor, contratoId: string) {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
   const vinculos = await prisma.account.count({ where: { userId: u.id } });
   // O ONBOARDING (05/10): o e-mail leva o link para o cliente agendar a
-  // conversa de entrada com o Bruno, quando CONTRATOS_AGENDA_URL está definida.
-  const dados = { numero: c.numero, plano: nomeDoPlano(c.plano), fim, agendaUrl: process.env.CONTRATOS_AGENDA_URL?.trim() || null };
+  // conversa de entrada com o Bruno. O link é gerado por contrato
+  // (/onboarding/agendar/<token>, o calendário da própria Demandou);
+  // CONTRATOS_AGENDA_URL, quando definida, continua valendo por cima.
+  const { linkDoOnboarding } = await import("@/lib/contratos/links-de-pagamento");
+  const dados = { numero: c.numero, plano: nomeDoPlano(c.plano), fim, agendaUrl: process.env.CONTRATOS_AGENDA_URL?.trim() || linkDoOnboarding(c.id, base) };
   let email = false;
   try {
     if (vinculos === 0) {

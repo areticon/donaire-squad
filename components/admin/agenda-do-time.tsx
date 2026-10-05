@@ -36,6 +36,10 @@ export type ReuniaoNoAdmin = {
   id: string;
   inicio: string;
   status: string;
+  /** "demonstracao" | "onboarding" (05/10). */
+  tipo: "demonstracao" | "onboarding";
+  /** O contrato do onboarding, para o cartão mostrar o número e levar à ficha do cliente. */
+  contrato: { numero: number; userId: string } | null;
   escolha: string;
   fonte: string;
   teste: boolean;
@@ -108,7 +112,7 @@ export function AgendaDoTime({ pessoas, reunioes, google, aviso, whatsappLigado 
           ))}
         </div>
         {(aba === "proximas" ? proximas : passadas).length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">{aba === "proximas" ? "Nenhuma demonstração marcada." : "Nada nos últimos 14 dias."}</p>
+          <p className="text-sm text-[var(--text-muted)]">{aba === "proximas" ? "Nenhuma reunião marcada." : "Nada nos últimos 14 dias."}</p>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {(aba === "proximas" ? proximas : passadas).map((r) => <CartaoReuniao key={r.id} r={r} />)}
@@ -167,6 +171,10 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
   const t = Date.now();
   const podeComecar = r.status === "marcada" && !r.comecouEm && t > inicio.getTime() - 10 * 60_000 && t < inicio.getTime() + 30 * 60_000;
   const corStatus = r.status === "marcada" ? "text-green-400" : r.status === "cancelada" ? "text-red-400" : "text-[var(--text-muted)]";
+  // O onboarding (05/10) se apresenta pelo cliente: nome, empresa e contrato.
+  const onboarding = r.tipo === "onboarding";
+  const cliente = [r.lead.nome, r.lead.empresa].filter(Boolean).join(", ") || r.lead.email;
+  const quem = onboarding ? "O cliente" : "O lead";
   return (
     <div className={cartao} data-reuniao={r.id}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -178,8 +186,19 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
           {r.status}{r.teste ? " (teste)" : ""}
         </span>
       </div>
+      {onboarding && (
+        <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-orange-400">Onboarding</span>
+          <span className="text-[var(--text-primary)] font-semibold">{cliente}</span>
+          {r.contrato && (
+            <a href={`/admin/contratos/${r.contrato.userId}`} className="text-xs text-orange-400 hover:text-orange-300">
+              contrato nº {String(r.contrato.numero).padStart(4, "0")}
+            </a>
+          )}
+        </p>
+      )}
       <p className="mt-1 text-xs text-[var(--text-muted)]">
-        {r.escolha === "pessoa" ? "O lead escolheu a pessoa" : "Rodízio"} · fonte {r.fonte} · marcada em {new Date(r.criadaEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}
+        {onboarding ? "Onboarding do cliente" : r.escolha === "pessoa" ? "O lead escolheu a pessoa" : "Rodízio"} · fonte {r.fonte} · marcada em {new Date(r.criadaEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}
       </p>
       {r.alertas.length > 0 && (
         <p className="mt-1 text-xs text-[var(--text-muted)]" title="Régua de alertas: e-mail e WhatsApp já registrados nesta reunião">
@@ -190,7 +209,7 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
         <p className="mt-1 text-xs text-green-400">
           {r.comecouEm ? `Começou às ${horaEmSP(new Date(r.comecouEm))}` : ""}
           {r.comecouEm && r.leadEntrouEm ? " · " : ""}
-          {r.leadEntrouEm ? `lead abriu a sala às ${horaEmSP(new Date(r.leadEntrouEm))}` : ""}
+          {r.leadEntrouEm ? `${onboarding ? "cliente" : "lead"} abriu a sala às ${horaEmSP(new Date(r.leadEntrouEm))}` : ""}
         </p>
       )}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
@@ -199,13 +218,18 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
         {r.lead.empresa && (<><dt className="text-[var(--text-muted)]">Empresa</dt><dd className="text-[var(--text-primary)]">{r.lead.empresa}</dd></>)}
         <dt className="text-[var(--text-muted)]">WhatsApp</dt>
         <dd>{zap ? <a className="text-orange-400 hover:text-orange-300" href={`https://wa.me/${zap.startsWith("55") ? zap : `55${zap}`}`} target="_blank" rel="noopener noreferrer">{r.lead.telefone}</a> : "não informado"}</dd>
-        <dt className="text-[var(--text-muted)]">Cargo</dt><dd className="text-[var(--text-primary)]">{r.lead.cargo ?? "não informado"}</dd>
-        <dt className="text-[var(--text-muted)]">Setor</dt><dd className="text-[var(--text-primary)]">{r.lead.setor ?? "não informado"}</dd>
-        <dt className="text-[var(--text-muted)]">Faturamento</dt><dd className="text-[var(--text-primary)]">{(r.lead.faturamento && FAIXA[r.lead.faturamento]) ?? "não informado"}</dd>
-        <dt className="text-[var(--text-muted)]">Time</dt><dd className="text-[var(--text-primary)]">{(r.lead.tamanhoTime && TIME[r.lead.tamanhoTime]) ?? "não informado"}</dd>
-        <dt className="text-[var(--text-muted)]">Veio de</dt><dd className="text-[var(--text-primary)]">{[r.lead.cta, r.lead.origem].filter(Boolean).join(", ") || "direto"}</dd>
+        {/* A ficha de venda (cargo, setor, faturamento, calculadora) é da demonstração; no onboarding o cliente já comprou. */}
+        {!onboarding && (
+          <>
+            <dt className="text-[var(--text-muted)]">Cargo</dt><dd className="text-[var(--text-primary)]">{r.lead.cargo ?? "não informado"}</dd>
+            <dt className="text-[var(--text-muted)]">Setor</dt><dd className="text-[var(--text-primary)]">{r.lead.setor ?? "não informado"}</dd>
+            <dt className="text-[var(--text-muted)]">Faturamento</dt><dd className="text-[var(--text-primary)]">{(r.lead.faturamento && FAIXA[r.lead.faturamento]) ?? "não informado"}</dd>
+            <dt className="text-[var(--text-muted)]">Time</dt><dd className="text-[var(--text-primary)]">{(r.lead.tamanhoTime && TIME[r.lead.tamanhoTime]) ?? "não informado"}</dd>
+            <dt className="text-[var(--text-muted)]">Veio de</dt><dd className="text-[var(--text-primary)]">{[r.lead.cta, r.lead.origem].filter(Boolean).join(", ") || "direto"}</dd>
+          </>
+        )}
       </dl>
-      {r.calculadora && (
+      {!onboarding && r.calculadora && (
         <div className="mt-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] p-3 text-sm">
           <p className="font-semibold text-[var(--text-primary)]">Calculadora</p>
           <p className="text-[var(--text-muted)]">{r.calculadora.volume}</p>
@@ -231,9 +255,9 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
           </button>
         )}
         {r.status === "marcada" && !passou && (
-          <button type="button" disabled={ocupado} onClick={() => fazer({ acao: "cancelarReuniao", id: r.id }, "Cancelar e avisar o lead por e-mail?")}
+          <button type="button" disabled={ocupado} onClick={() => fazer({ acao: "cancelarReuniao", id: r.id }, `Cancelar e avisar ${quem.toLowerCase()} por e-mail?`)}
             className="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs text-red-400 disabled:opacity-50">
-            Cancelar e avisar o lead
+            Cancelar e avisar {quem.toLowerCase()}
           </button>
         )}
         {passou && r.status !== "cancelada" && (
@@ -241,7 +265,7 @@ function CartaoReuniao({ r }: { r: ReuniaoNoAdmin }) {
             <button type="button" disabled={ocupado} onClick={() => fazer({ acao: "statusReuniao", id: r.id, status: "realizada" })}
               className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-primary)] disabled:opacity-50">Aconteceu</button>
             <button type="button" disabled={ocupado} onClick={() => fazer({ acao: "statusReuniao", id: r.id, status: "faltou" })}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-primary)] disabled:opacity-50">Lead faltou</button>
+              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-primary)] disabled:opacity-50">{quem} faltou</button>
           </>
         )}
       </div>

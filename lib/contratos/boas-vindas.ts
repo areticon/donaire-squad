@@ -15,7 +15,7 @@ export type BoasVindasPendente = {
   numero: number;
   plano: string;
   fim: Date | null;
-  /** O link para agendar o onboarding com o Bruno (CONTRATOS_AGENDA_URL), quando há (05/10). */
+  /** O link para agendar o onboarding com o Bruno (05/10): /onboarding/agendar/<token>, ou CONTRATOS_AGENDA_URL por cima. */
   agendaUrl?: string | null;
 };
 

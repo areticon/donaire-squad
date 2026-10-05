@@ -1116,6 +1116,14 @@ model ReuniaoDeDemonstracao {
   /// O lead abriu a sala pelo nosso link (/demonstracao/sala/[token]) perto do
   /// horário. Sinal de presença: também segura o alerta de atraso.
   leadEntrouEm   DateTime?
+  /// O TIPO DA REUNIÃO (05/10): "demonstracao" (o lead, antes de comprar) ou
+  /// "onboarding" (o cliente novo, depois de o contrato ser ativado). A mesma
+  /// engine, as mesmas janelas e a mesma régua; muda o texto, quem atende (o
+  /// onboarding é sempre com o Bruno) e a trilha do contrato.
+  tipo           String    @default("demonstracao")
+  /// O contrato do onboarding (sem FK: a reunião sobrevive ao contrato na
+  /// trilha, e a chave é só para achar a reunião do cliente).
+  contratoId     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1126,6 +1134,7 @@ model ReuniaoDeDemonstracao {
   @@index([pessoaId, inicio])
   @@index([status, inicio])
   @@index([leadId])
+  @@index([contratoId])
   @@map("agenda_reunioes")
 }
 

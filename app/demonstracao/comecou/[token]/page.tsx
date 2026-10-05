@@ -36,10 +36,12 @@ export default async function ComecouPage({ params, searchParams }: { params: Pr
   }
   const quem = [r.lead.nome, r.lead.empresa].filter(Boolean).join(", ") || r.lead.email;
   const quando = `${rotuloLongoDoDia(dataEmSP(r.inicio))}, às ${horaEmSP(r.inicio)}`;
+  // O tipo (05/10): "o onboarding" ou "a demonstração".
+  const a = r.tipo === "onboarding" ? "o onboarding" : "a demonstração";
   return (
     <CascaDaReuniao>
       <h1 className="text-2xl font-black text-[var(--text-primary)] mb-2">
-        {r.comecouEm || ok ? "Marcado: a demonstração começou." : "A demonstração começou?"}
+        {r.comecouEm || ok ? `Marcado: ${a} começou.` : `${a.charAt(0).toUpperCase()}${a.slice(1)} começou?`}
       </h1>
       <p className="text-[var(--text-muted)]">
         Com {quem}, {quando} (horário de Brasília).

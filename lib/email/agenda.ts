@@ -4,6 +4,7 @@ import { NOME_DO_TIME } from "@/lib/email/calculadora";
 import { emReais, type Resultado } from "@/lib/calculadora/custos";
 import { montarConvite } from "@/lib/agenda/ics";
 import { quandoPorExtenso, rotuloDoDia, horaEmSP, dataEmSP } from "@/lib/agenda/tempo";
+import { descricaoDaReuniao, nomeCurtoDaReuniao, nomeDaReuniao, tipoDeReuniao, tituloDoEvento, type TipoDeReuniao } from "@/lib/agenda/tipo";
 import type { Email } from "@/lib/email";
 
 /**
@@ -16,6 +17,8 @@ import type { Email } from "@/lib/email";
  */
 
 export type DadosDaReuniao = {
+  /** "demonstracao" (padrão) | "onboarding" (05/10): muda o nome da reunião em todo texto. */
+  tipo?: TipoDeReuniao;
   inicio: Date;
   fim: Date;
   uid: string;
@@ -58,7 +61,11 @@ export function proximoPasso(pessoa: string): string {
   return `${pessoa} manda a proposta com o plano que montamos juntos`;
 }
 
-const TITULO_DO_EVENTO = "Demonstração da Demandou";
+// O NOME DA REUNIÃO EM CADA TEXTO (05/10): "demonstração" ou "conversa de
+// onboarding", conforme o tipo. Os textos abaixo nunca escrevem o nome fixo.
+const ehOnboarding = (d: DadosDaReuniao) => tipoDeReuniao(d.tipo) === "onboarding";
+const nome = (d: DadosDaReuniao) => nomeDaReuniao(d.tipo);
+const Nome = (d: DadosDaReuniao) => nomeCurtoDaReuniao(d.tipo);
 
 function remetenteDoConvite(): string {
   const r = process.env.EMAIL_REMETENTE ?? "Demandou <contato@demandou.com>";
@@ -87,9 +94,9 @@ function convite(d: DadosDaReuniao, metodo: "REQUEST" | "CANCEL"): NonNullable<E
     sequencia: d.sequencia,
     inicio: d.inicio,
     fim: d.fim,
-    titulo: TITULO_DO_EVENTO,
+    titulo: tituloDoEvento(d.tipo),
     descricao: [
-      `Demonstração da Demandou com ${d.pessoa.nome}.`,
+      `${tituloDoEvento(d.tipo)} com ${d.pessoa.nome}.`,
       linhaDaSala(d),
       "",
       `Remarcar ou cancelar: ${d.linkGerenciar}`,
@@ -132,10 +139,9 @@ export function emailReuniaoParaLead(d: DadosDaReuniao, tipo: "marcada" | "remar
   const oi = primeiro ? `Olá, ${primeiro}` : "Olá";
   const abertura =
     tipo === "marcada"
-      ? `Sua demonstração da Demandou está marcada para ${quando}, com ${d.pessoa.nome}.`
-      : `Sua demonstração da Demandou mudou para ${quando}, com ${d.pessoa.nome}.`;
-  const detalhe =
-    "São 30 minutos por vídeo. Mostramos a plataforma produzindo o conteúdo de uma empresa de verdade e montamos com você o plano que faz sentido para a sua.";
+      ? `Sua ${nome(d)} da Demandou está marcada para ${quando}, com ${d.pessoa.nome}.`
+      : `Sua ${nome(d)} da Demandou mudou para ${quando}, com ${d.pessoa.nome}.`;
+  const detalhe = descricaoDaReuniao(d.tipo);
   // Remarcar e cancelar em links separados (01/10, régua): o remarcar abre
   // direto no calendário, o cancelar abre a página da reunião com o botão.
   const remarcar = d.linkRemarcar ?? d.linkGerenciar;
@@ -157,12 +163,12 @@ export function emailReuniaoParaLead(d: DadosDaReuniao, tipo: "marcada" | "remar
     MARCA.site,
   ].join("\n");
   const miolo = [
-    titulo(tipo === "marcada" ? "Demonstração marcada." : "Demonstração remarcada."),
+    titulo(tipo === "marcada" ? `${Nome(d)} ${ehOnboarding(d) ? "marcado" : "marcada"}.` : `${Nome(d)} ${ehOnboarding(d) ? "remarcado" : "remarcada"}.`),
     paragrafo(escapar(abertura)),
     linkDaSalaHtml(d),
     paragrafo(escapar(detalhe), { apagado: true, tamanho: 15 }),
     botao("Remarcar", remarcar),
-    paragrafo(`<a href="${escapar(d.linkGerenciar)}" style="color:${MARCA.link}">Cancelar a demonstração</a>`, { tamanho: 14 }),
+    paragrafo(`<a href="${escapar(d.linkGerenciar)}" style="color:${MARCA.link}">Cancelar ${ehOnboarding(d) ? "o onboarding" : "a demonstração"}</a>`, { tamanho: 14 }),
     paragrafo(
       `Se o botão não abrir, copie este endereço no navegador:<br><span style="word-break:break-all;color:${MARCA.apagado}">${escapar(d.linkGerenciar)}</span>`,
       { apagado: true, tamanho: 13 }
@@ -171,7 +177,7 @@ export function emailReuniaoParaLead(d: DadosDaReuniao, tipo: "marcada" | "remar
   ].join("\n");
   return {
     para: d.lead.email,
-    assunto: `${tipo === "marcada" ? "Demonstração marcada" : "Demonstração remarcada"}: ${quandoCurto(d.inicio)} (horário de Brasília)`,
+    assunto: `${Nome(d)} ${tipo === "marcada" ? (ehOnboarding(d) ? "marcado" : "marcada") : ehOnboarding(d) ? "remarcado" : "remarcada"}: ${quandoCurto(d.inicio)} (horário de Brasília)`,
     texto,
     html: casca({ previa: abertura, miolo }),
     anexos: [convite(d, "REQUEST")],
@@ -210,7 +216,8 @@ function fichaDoLead(d: DadosDaReuniao): { pares: Array<[string, string]>; simul
 export function emailReuniaoParaTime(d: DadosDaReuniao, tipo: "marcada" | "remarcada", para: string): Email {
   const { pares, simulou, zap } = fichaDoLead(d);
   const quem = d.lead.empresa || [d.lead.cargo, d.lead.setor].filter(Boolean).join(", ") || d.lead.email;
-  const assunto = `${tipo === "marcada" ? "Demonstração marcada" : "Demonstração remarcada"}: ${quandoCurto(d.inicio)}, ${quem}`;
+  const marcada = tipo === "marcada" ? (ehOnboarding(d) ? "marcado" : "marcada") : ehOnboarding(d) ? "remarcado" : "remarcada";
+  const assunto = `${Nome(d)} ${marcada}: ${quandoCurto(d.inicio)}, ${quem}`;
   const texto = [
     assunto,
     "",
@@ -225,7 +232,7 @@ export function emailReuniaoParaTime(d: DadosDaReuniao, tipo: "marcada" | "remar
     `Todas as reuniões: ${d.linkAdmin}`,
   ].join("\n");
   const miolo = [
-    titulo(tipo === "marcada" ? "Nova demonstração marcada." : "Demonstração remarcada."),
+    titulo(tipo === "marcada" ? (ehOnboarding(d) ? "Novo onboarding marcado." : "Nova demonstração marcada.") : `${Nome(d)} ${marcada}.`),
     paragrafo(`<strong>${escapar(quandoPorExtenso(d.inicio))}</strong>, com ${escapar(d.pessoa.nome)}.`),
     linkDaSalaHtml(d),
     separador(),
@@ -242,7 +249,7 @@ export function emailReuniaoParaTime(d: DadosDaReuniao, tipo: "marcada" | "remar
 export function emailLembrete(d: DadosDaReuniao, quando: "24h" | "1h", para: string, lado: "lead" | "time"): Email {
   const falta = quando === "24h" ? "amanhã" : "daqui a 1 hora";
   const comQuem = lado === "lead" ? d.pessoa.nome : d.lead.empresa || d.lead.email;
-  const frase = `Lembrete: a demonstração da Demandou é ${falta}, ${quandoPorExtenso(d.inicio)}, com ${comQuem}.`;
+  const frase = `Lembrete: a ${nome(d)} da Demandou é ${falta}, ${quandoPorExtenso(d.inicio)}, com ${comQuem}.`;
   const texto = [
     frase,
     linhaDaSala(d),
@@ -253,7 +260,7 @@ export function emailLembrete(d: DadosDaReuniao, quando: "24h" | "1h", para: str
     MARCA.site,
   ].join("\n");
   const miolo = [
-    titulo(quando === "24h" ? "A demonstração é amanhã." : "A demonstração começa em 1 hora."),
+    titulo(quando === "24h" ? `A ${nome(d)} é amanhã.` : `A ${nome(d)} começa em 1 hora.`),
     paragrafo(escapar(frase)),
     linkDaSalaHtml(d),
     lado === "lead"
@@ -262,7 +269,7 @@ export function emailLembrete(d: DadosDaReuniao, quando: "24h" | "1h", para: str
   ].join("\n");
   return {
     para,
-    assunto: `Lembrete: demonstração ${falta}, ${horaEmSP(d.inicio)} (horário de Brasília)`,
+    assunto: `Lembrete: ${ehOnboarding(d) ? "onboarding" : "demonstração"} ${falta}, ${horaEmSP(d.inicio)} (horário de Brasília)`,
     texto,
     html: casca({ previa: frase, miolo }),
   };
@@ -274,19 +281,20 @@ export function emailCancelamento(d: DadosDaReuniao, para: string, lado: "lead" 
   const frase =
     lado === "lead"
       ? por === "lead"
-        ? `Cancelamos a sua demonstração de ${quando}, como você pediu.`
-        : `Precisamos cancelar a demonstração de ${quando}. Pedimos desculpas pelo transtorno.`
-      : `A demonstração de ${quando} com ${d.lead.empresa || d.lead.email} foi cancelada ${por === "lead" ? "pelo lead" : "pelo painel"}.`;
-  const volta = `${MARCA.site}/demonstracao`;
+        ? `Cancelamos a sua ${nome(d)} de ${quando}, como você pediu.`
+        : `Precisamos cancelar a ${nome(d)} de ${quando}. Pedimos desculpas pelo transtorno.`
+      : `A ${nome(d)} de ${quando} com ${d.lead.empresa || d.lead.email} foi cancelada ${por === "lead" ? (ehOnboarding(d) ? "pelo cliente" : "pelo lead") : "pelo painel"}.`;
+  // O onboarding volta à página do contrato (que abre o calendário de novo); a demonstração, à página pública.
+  const volta = ehOnboarding(d) ? d.linkGerenciar : `${MARCA.site}/demonstracao`;
   const texto = [frase, "", lado === "lead" ? `Quando quiser, escolha outro horário: ${volta}` : `Painel: ${d.linkAdmin}`, "", MARCA.nome, MARCA.site].join("\n");
   const miolo = [
-    titulo("Demonstração cancelada."),
+    titulo(`${Nome(d)} ${ehOnboarding(d) ? "cancelado" : "cancelada"}.`),
     paragrafo(escapar(frase)),
     lado === "lead" ? botao("Escolher outro horário", volta) : paragrafo(`<a href="${escapar(d.linkAdmin)}" style="color:${MARCA.link}">Abrir o painel</a>`, { tamanho: 14 }),
   ].join("\n");
   return {
     para,
-    assunto: `Demonstração cancelada: ${quandoCurto(d.inicio)}`,
+    assunto: `${Nome(d)} ${ehOnboarding(d) ? "cancelado" : "cancelada"}: ${quandoCurto(d.inicio)}`,
     texto,
     html: casca({ previa: frase, miolo }),
     anexos: [convite(d, "CANCEL")],
@@ -315,7 +323,7 @@ function semLinkParaOLead(d: DadosDaReuniao): string {
 export function emailCincoMinutos(d: DadosDaReuniao, para: string, lado: "lead" | "time"): Email {
   const hora = horaEmSP(d.inicio);
   if (lado === "lead") {
-    const frase = `Sua demonstração da Demandou com ${d.pessoa.nome} começa em 5 minutos, às ${hora} (horário de Brasília).`;
+    const frase = `Sua ${nome(d)} da Demandou com ${d.pessoa.nome} começa em 5 minutos, às ${hora} (horário de Brasília).`;
     const entrar = entrarDoLead(d);
     const texto = [frase, "", d.linkReuniao && entrar ? `Entrar na sala: ${entrar}` : semLinkParaOLead(d), "", MARCA.nome, MARCA.site].join("\n");
     const miolo = [
@@ -324,9 +332,9 @@ export function emailCincoMinutos(d: DadosDaReuniao, para: string, lado: "lead" 
       d.linkReuniao && entrar ? botao("Entrar na sala", entrar) : paragrafo(escapar(semLinkParaOLead(d))),
       ...(d.linkReuniao ? [paragrafo(`Ou abra direto: <span style="word-break:break-all">${escapar(d.linkReuniao)}</span>`, { apagado: true, tamanho: 13 })] : []),
     ].join("\n");
-    return { para, assunto: `Começa em 5 minutos: demonstração às ${hora}`, texto, html: casca({ previa: frase, miolo }) };
+    return { para, assunto: `Começa em 5 minutos: ${ehOnboarding(d) ? "onboarding" : "demonstração"} às ${hora}`, texto, html: casca({ previa: frase, miolo }) };
   }
-  const frase = `A demonstração com ${quemEhOLead(d)} começa em 5 minutos, às ${hora} (horário de Brasília).`;
+  const frase = `${ehOnboarding(d) ? "O onboarding" : "A demonstração"} com ${quemEhOLead(d)} começa em 5 minutos, às ${hora} (horário de Brasília).`;
   const alertaSemLink = "Atenção: a reunião está sem link de videochamada. Mande o link ao lead agora.";
   const comecou = d.linkComecou ?? d.linkAdmin;
   const texto = [
@@ -337,7 +345,7 @@ export function emailCincoMinutos(d: DadosDaReuniao, para: string, lado: "lead" 
     ...(d.lead.whatsapp ? [`WhatsApp do lead: https://wa.me/${d.lead.whatsapp}`] : []),
   ].join("\n");
   const miolo = [
-    titulo("Demonstração em 5 minutos."),
+    titulo(`${Nome(d)} em 5 minutos.`),
     paragrafo(escapar(frase)),
     d.linkReuniao ? botao("Entrar na sala", d.linkReuniao) : paragrafo(`<strong>${escapar(alertaSemLink)}</strong>`),
     paragrafo(
@@ -346,12 +354,12 @@ export function emailCincoMinutos(d: DadosDaReuniao, para: string, lado: "lead" 
     ),
     ...(d.lead.whatsapp ? [paragrafo(`<a href="https://wa.me/${d.lead.whatsapp}" style="color:${MARCA.link}">Chamar o lead no WhatsApp</a>`, { tamanho: 14 })] : []),
   ].join("\n");
-  return { para, assunto: `Em 5 minutos: demonstração com ${quemEhOLead(d)}`, texto, html: casca({ previa: frase, miolo }) };
+  return { para, assunto: `Em 5 minutos: ${ehOnboarding(d) ? "onboarding" : "demonstração"} com ${quemEhOLead(d)}`, texto, html: casca({ previa: frase, miolo }) };
 }
 
 /** Na hora de começar, só para o lead: "estamos na sala". */
 export function emailComecando(d: DadosDaReuniao): Email {
-  const frase = `Estamos na sala. Sua demonstração da Demandou com ${d.pessoa.nome} está começando agora.`;
+  const frase = `Estamos na sala. Sua ${nome(d)} da Demandou com ${d.pessoa.nome} está começando agora.`;
   const entrar = entrarDoLead(d);
   const texto = [frase, "", d.linkReuniao && entrar ? `Entrar: ${entrar}` : semLinkParaOLead(d), "", MARCA.nome, MARCA.site].join("\n");
   const miolo = [
@@ -359,7 +367,7 @@ export function emailComecando(d: DadosDaReuniao): Email {
     paragrafo(escapar(frase)),
     d.linkReuniao && entrar ? botao("Entrar agora", entrar) : paragrafo(escapar(semLinkParaOLead(d))),
   ].join("\n");
-  return { para: d.lead.email, assunto: "Estamos na sala: sua demonstração está começando", texto, html: casca({ previa: frase, miolo }) };
+  return { para: d.lead.email, assunto: `Estamos na sala: ${ehOnboarding(d) ? "seu onboarding" : "sua demonstração"} está começando`, texto, html: casca({ previa: frase, miolo }) };
 }
 
 /**
@@ -367,7 +375,7 @@ export function emailComecando(d: DadosDaReuniao): Email {
  * sem cobrança. Entrar agora ou remarcar com um clique.
  */
 export function emailEsperando(d: DadosDaReuniao): Email {
-  const frase = `Estamos na sala esperando você para a demonstração da Demandou com ${d.pessoa.nome}.`;
+  const frase = `Estamos na sala esperando você para a ${nome(d)} da Demandou com ${d.pessoa.nome}.`;
   const entrar = entrarDoLead(d);
   const remarcar = d.linkRemarcar ?? d.linkGerenciar;
   const texto = [
@@ -388,13 +396,18 @@ export function emailEsperando(d: DadosDaReuniao): Email {
     paragrafo(`Se o horário ficou ruim, <a href="${escapar(remarcar)}" style="color:${MARCA.link};font-weight:600">escolha outro com um clique</a>.`),
     paragrafo("Se você já entrou, pode ignorar esta mensagem.", { apagado: true, tamanho: 13 }),
   ].join("\n");
-  return { para: d.lead.email, assunto: "Estamos esperando você na demonstração", texto, html: casca({ previa: frase, miolo }) };
+  return { para: d.lead.email, assunto: `Estamos esperando você ${ehOnboarding(d) ? "no onboarding" : "na demonstração"}`, texto, html: casca({ previa: frase, miolo }) };
 }
 
-/** Depois da reunião que aconteceu: agradecimento com o próximo passo. */
+/**
+ * Depois da reunião que aconteceu: agradecimento com o próximo passo. No
+ * onboarding (05/10) o próximo passo não é proposta: é seguir na plataforma.
+ */
 export function emailObrigado(d: DadosDaReuniao): Email {
-  const frase = "Obrigado pela conversa de hoje na demonstração da Demandou.";
-  const passo = `O próximo passo: ${proximoPasso(d.pessoa.nome)}.`;
+  const frase = `Obrigado pela conversa de hoje ${ehOnboarding(d) ? "no onboarding" : "na demonstração"} da Demandou.`;
+  const passo = ehOnboarding(d)
+    ? "O próximo passo: entre na plataforma e siga o setup do seu projeto, que já está começado. O primeiro conteúdo sai dali."
+    : `O próximo passo: ${proximoPasso(d.pessoa.nome)}.`;
   const duvida = "Se surgir alguma dúvida antes disso, é só responder este e-mail.";
   const texto = [frase, "", passo, duvida, "", MARCA.nome, MARCA.site].join("\n");
   const miolo = [titulo("Obrigado pela conversa."), paragrafo(escapar(frase)), paragrafo(escapar(passo)), paragrafo(escapar(duvida), { apagado: true, tamanho: 14 })].join("\n");
@@ -403,10 +416,11 @@ export function emailObrigado(d: DadosDaReuniao): Email {
 
 /** Depois da reunião, para o time: marcar "aconteceu" ou "faltou" no painel. */
 export function emailResultado(d: DadosDaReuniao, para: string): Email {
-  const frase = `A demonstração com ${quemEhOLead(d)} de hoje, às ${horaEmSP(d.inicio)}, terminou.`;
+  const frase = `${ehOnboarding(d) ? "O onboarding" : "A demonstração"} com ${quemEhOLead(d)} de hoje, às ${horaEmSP(d.inicio)}, terminou.`;
+  const quemFaltou = ehOnboarding(d) ? "o cliente" : "o lead";
   const pedido =
-    "Marque no painel se aconteceu ou se o lead faltou, para o funil ficar certo. O agradecimento ao lead só sai para reunião marcada como começada ou como aconteceu.";
+    `Marque no painel se aconteceu ou se ${quemFaltou} faltou, para o funil ficar certo. O agradecimento só sai para reunião marcada como começada ou como aconteceu.`;
   const texto = [frase, "", pedido, "", `Painel: ${d.linkAdmin}`].join("\n");
-  const miolo = [titulo("Como foi a demonstração?"), paragrafo(escapar(frase)), paragrafo(escapar(pedido)), botao("Marcar no painel", d.linkAdmin)].join("\n");
-  return { para, assunto: `Marcar resultado: demonstração com ${quemEhOLead(d)}`, texto, html: casca({ previa: frase, miolo }) };
+  const miolo = [titulo(`Como foi ${ehOnboarding(d) ? "o onboarding" : "a demonstração"}?`), paragrafo(escapar(frase)), paragrafo(escapar(pedido)), botao("Marcar no painel", d.linkAdmin)].join("\n");
+  return { para, assunto: `Marcar resultado: ${ehOnboarding(d) ? "onboarding" : "demonstração"} com ${quemEhOLead(d)}`, texto, html: casca({ previa: frase, miolo }) };
 }

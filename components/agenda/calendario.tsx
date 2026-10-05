@@ -34,6 +34,7 @@ export function Calendario({
   onMarcada,
   onSemLead,
   tokenDaReuniao = null,
+  pessoaFixa = null,
 }: {
   /** Rota que marca (ou remarca) a reunião. */
   enviarPara: string;
@@ -43,8 +44,13 @@ export function Calendario({
   onSemLead?: () => void;
   /** Na remarcação: o horário antigo não conta como ocupado para ela mesma. */
   tokenDaReuniao?: string | null;
+  /**
+   * O onboarding (05/10) é sempre com a mesma pessoa (o Bruno): o calendário
+   * mostra só os horários dela e não oferece "com quem".
+   */
+  pessoaFixa?: string | null;
 }) {
-  const [pessoa, setPessoa] = useState("qualquer");
+  const [pessoa, setPessoa] = useState(pessoaFixa ?? "qualquer");
   const [dados, setDados] = useState<HorariosDaApi | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -121,7 +127,7 @@ export function Calendario({
   const pessoas = dados?.pessoas ?? [];
   return (
     <div>
-      {pessoas.length > 1 && (
+      {!pessoaFixa && pessoas.length > 1 && (
         <div className="mb-5">
           <p className="text-sm font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
             <Users className="w-4 h-4 text-orange-400" /> Com quem

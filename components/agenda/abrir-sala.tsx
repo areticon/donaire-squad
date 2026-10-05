@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
  * um GET que registrasse presença faria o robô do filtro parecer o lead na
  * sala, segurando o aviso de atraso de quem não entrou.
  */
-export function AbrirSala({ token, link, pessoa }: { token: string; link: string; pessoa: string }) {
+export function AbrirSala({ token, link, pessoa, nome = "demonstração" }: { token: string; link: string; pessoa: string; /** "demonstração" ou "conversa de onboarding" (05/10). */ nome?: string }) {
   const [demorou, setDemorou] = useState(false);
   useEffect(() => {
     let ido = false;
@@ -36,7 +36,7 @@ export function AbrirSala({ token, link, pessoa }: { token: string; link: string
   return (
     <div>
       <h1 className="text-2xl font-black text-[var(--text-primary)] mb-2">Abrindo a sala...</h1>
-      <p className="text-[var(--text-muted)]">A demonstração com {pessoa} é por videochamada.</p>
+      <p className="text-[var(--text-muted)]">A {nome} com {pessoa} é por videochamada.</p>
       <a
         href={link}
         className={`mt-5 inline-flex rounded-full bg-marca-600 px-6 py-3 text-sm font-bold text-white hover:bg-marca-700 ${demorou ? "" : "opacity-80"}`}

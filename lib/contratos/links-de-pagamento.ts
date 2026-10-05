@@ -69,6 +69,37 @@ export function linksDoContrato(c: { id: string; formaDaEntrada?: string | null;
   return { entrada: linkDaEntrada(c, base), restante: linkDoRestante(c.id, base) };
 }
 
+/**
+ * O LINK DE AGENDAR O ONBOARDING (05/10/2026): /onboarding/agendar/<contrato>.<assinatura>.
+ *
+ * Vai no e-mail de boas-vindas do contrato ativado e não vence: o cliente pode
+ * abrir dias depois, e a mesma página mostra a reunião já marcada (remarcar e
+ * cancelar). A assinatura é um HMAC do contrato com rótulo próprio: o token de
+ * pagamento não abre a agenda, e o da agenda não paga nada. Público (fora do
+ * portão de login), porque o cliente pode ainda não ter escolhido a senha.
+ */
+export function assinaturaDoOnboarding(contratoId: string): string {
+  return createHmac("sha256", segredo()).update(`contrato-onboarding:${contratoId}`).digest("hex").slice(0, 32);
+}
+
+export function tokenDoOnboarding(contratoId: string): string {
+  return `${contratoId}.${assinaturaDoOnboarding(contratoId)}`;
+}
+
+/** O id do contrato de um token válido, ou null. */
+export function contratoDoTokenDeOnboarding(token: string | null | undefined): string | null {
+  if (!token) return null;
+  const [id, sig, ...resto] = token.split(".");
+  if (resto.length || !id || !sig || sig.length !== 32 || !/^[a-z0-9]{10,40}$/i.test(id)) return null;
+  const certo = Buffer.from(assinaturaDoOnboarding(id));
+  const veio = Buffer.from(sig);
+  return certo.length === veio.length && timingSafeEqual(certo, veio) ? id : null;
+}
+
+export function linkDoOnboarding(contratoId: string, base = baseDoApp()): string {
+  return `${base}/onboarding/agendar/${tokenDoOnboarding(contratoId)}`;
+}
+
 /** A chave Pix da Demandou para a entrada, quando configurada (CONTRATOS_CHAVE_PIX). */
 export function chavePix(): string | null {
   return process.env.CONTRATOS_CHAVE_PIX?.trim() || null;

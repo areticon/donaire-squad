@@ -45,6 +45,9 @@ const NOME_DO_EVENTO: Record<string, string> = {
   link_de_pagamento: "Link de pagamento do Stripe gerado",
   conta_ativada: "Conta ativada: plano, créditos e boas-vindas",
   onboarding_iniciado: "Onboarding iniciado (setup do projeto)",
+  onboarding_agendado: "Onboarding agendado pelo cliente",
+  onboarding_remarcado: "Onboarding remarcado",
+  onboarding_cancelado: "Onboarding cancelado",
   creditos_repostos: "Créditos do ciclo repostos",
   desconto_concedido: "Desconto concedido",
   desconto_pede_aprovacao: "Desconto acima do teto: pedida a aprovação de um sócio",
@@ -79,6 +82,9 @@ function resumoDoEvento(tipo: string, d: unknown): string {
   if (tipo === "pagamento_registrado") return `${String(x.valor ?? "")} por ${NOME_DA_FORMA[String(x.forma)] ?? String(x.forma ?? "")}${x.comComprovante ? ", com comprovante" : ""}`;
   if (tipo === "conta_ativada") return `plano ${String(x.plano ?? "")}, ${Number(x.creditos ?? 0).toLocaleString("pt-BR")} créditos, boas-vindas ${String(x.boasVindas ?? "")}`;
   if (tipo === "criado" && x.contaCriada) return `conta criada para ${String(x.contaCriada)}`;
+  if (tipo === "onboarding_agendado" || tipo === "onboarding_remarcado")
+    return `${quando(String(x.inicio))} (horário de Brasília), com ${String(x.pessoa ?? "")}`;
+  if (tipo === "onboarding_cancelado") return `era ${quando(String(x.inicio))}, cancelado ${x.por === "painel" ? "pelo painel" : "pelo cliente"}`;
   if (tipo === "cancelado" && x.motivo) return String(x.motivo);
   if (tipo === "desconto_concedido" || tipo === "desconto_pede_aprovacao" || tipo === "desconto_aprovado")
     return `${String(x.percentual ?? "")} (${motivo((x.motivo as string) ?? null).toLowerCase()}), tabela ${String(x.tabela ?? "")}, final ${String(x.final ?? "")}${x.onde && x.onde !== "contrato" ? `, ${String(x.onde)}` : ""}`;

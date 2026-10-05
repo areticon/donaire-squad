@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import { GerenciarReuniao } from "@/components/agenda/gerenciar-reuniao";
 import { prisma } from "@/lib/db/prisma";
 import { reuniaoDoToken } from "@/lib/agenda/segredos";
 import { horaEmSP, rotuloLongoDoDia, dataEmSP } from "@/lib/agenda/tempo";
+import { tokenDoOnboarding } from "@/lib/contratos/links-de-pagamento";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,12 @@ export default async function ReuniaoPage({ params, searchParams }: { params: Pr
   const r = id
     ? await prisma.reuniaoDeDemonstracao.findUnique({ where: { id }, include: { pessoa: { select: { nome: true } } } })
     : null;
+
+  // O onboarding (05/10) se gerencia na página do contrato, com o mesmo
+  // "?remarcar=1" dos alertas; aqui só caem links antigos ou montados à mão.
+  if (r && r.tipo === "onboarding" && r.contratoId) {
+    redirect(`/onboarding/agendar/${tokenDoOnboarding(r.contratoId)}${abrirNoCalendario ? "?remarcar=1" : ""}`);
+  }
 
   let conteudo: React.ReactNode;
   if (!r) {

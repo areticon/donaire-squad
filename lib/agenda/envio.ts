@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { enviarEmail, type Email } from "@/lib/email";
 import type { DadosDaReuniao } from "@/lib/email/agenda";
 import { tokenDaReuniao, tokenDoComecou } from "@/lib/agenda/segredos";
+import { tipoDeReuniao, type TipoDeReuniao } from "@/lib/agenda/tipo";
+import { linkDoOnboarding } from "@/lib/contratos/links-de-pagamento";
 import { numeroDoWhatsapp } from "@/lib/whatsapp/numero";
 
 /**
@@ -25,6 +27,26 @@ export function linkGerenciar(reuniaoId: string): string {
 /** Remarcar com um toque: abre direto no calendário (alerta de atraso). */
 export function linkRemarcar(reuniaoId: string): string {
   return `${base()}/demonstracao/remarcar/${tokenDaReuniao(reuniaoId)}`;
+}
+
+/** O que basta para saber para onde os links de uma reunião apontam. */
+export type ReuniaoParaLinks = { id: string; tipo?: string | null; contratoId?: string | null };
+
+/**
+ * OS LINKS DE GERENCIAR E REMARCAR CONFORME O TIPO (05/10). O onboarding
+ * volta à página do contrato (/onboarding/agendar/<token do contrato>), que
+ * mostra a reunião marcada com remarcar e cancelar; a demonstração continua
+ * em /demonstracao/reuniao/<token da reunião>. Onboarding sem contrato (não
+ * deveria existir) cai no link da demonstração, que também funciona.
+ */
+export function linkGerenciarDe(r: ReuniaoParaLinks): string {
+  if (tipoDeReuniao(r.tipo) === "onboarding" && r.contratoId) return linkDoOnboarding(r.contratoId, base());
+  return linkGerenciar(r.id);
+}
+
+export function linkRemarcarDe(r: ReuniaoParaLinks): string {
+  if (tipoDeReuniao(r.tipo) === "onboarding" && r.contratoId) return `${linkDoOnboarding(r.contratoId, base())}?remarcar=1`;
+  return linkRemarcar(r.id);
 }
 
 /**
@@ -81,6 +103,9 @@ export type DadosCompletos = {
   contaGoogleId: string | null;
   linkSalaFixa: string | null;
   pessoaId: string;
+  /** "demonstracao" | "onboarding" (05/10). */
+  tipo: TipoDeReuniao;
+  contratoId: string | null;
 };
 
 /** Carrega o que os e-mails e o WhatsApp precisam. */
@@ -102,7 +127,10 @@ export async function dadosDaReuniao(reuniaoId: string): Promise<DadosCompletos 
     contaGoogleId: r.contaGoogleId,
     linkSalaFixa: r.pessoa.linkSala,
     pessoaId: r.pessoaId,
+    tipo: tipoDeReuniao(r.tipo),
+    contratoId: r.contratoId,
     d: {
+      tipo: tipoDeReuniao(r.tipo),
       inicio: r.inicio,
       fim: r.fim,
       uid: r.uid,
@@ -115,8 +143,8 @@ export async function dadosDaReuniao(reuniaoId: string): Promise<DadosCompletos 
         calculadora: r.lead.calculadora,
         whatsapp: numeroDoWhatsapp(r.lead.telefone),
       },
-      linkGerenciar: linkGerenciar(r.id),
-      linkRemarcar: linkRemarcar(r.id),
+      linkGerenciar: linkGerenciarDe(r),
+      linkRemarcar: linkRemarcarDe(r),
       linkSalaDoLead: linkSalaDoLead(r.id),
       linkComecou: linkComecou(r.id),
       linkAdmin: linkAdmin(),

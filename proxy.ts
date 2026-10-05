@@ -23,6 +23,10 @@ const PUBLIC_ROUTES: RegExp[] = [
   // A demonstração é a entrada da Demandou desde 27/09/2026 (plano anual,
   // empresas acima de R$ 100 mil por mês): é página de visitante.
   /^\/demonstracao/,
+  // O agendamento do onboarding (05/10) chega pelo e-mail de boas-vindas do
+  // contrato, e o cliente pode ainda não ter escolhido a senha: o token do
+  // contrato na URL é a autorização.
+  /^\/onboarding\/agendar\//,
   // O convite da equipe (01/10) é aberto por quem ainda não tem conta: a
   // própria página pede para entrar ou criar a conta com o e-mail convidado.
   /^\/convite\//,
