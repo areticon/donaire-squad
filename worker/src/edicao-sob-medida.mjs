@@ -315,13 +315,18 @@ export function legendaSobMedida(edicao, W, H, desloc, duracao) {
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Leg,Geist SemiBold,${tam},&H00FFFFFF,&H00FFFFFF,${assCor(edicao.tema?.escuroLegenda ?? "#06111F", 0x28)},&H00000000,0,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,2,${Math.round(80 * ey)},${Math.round(80 * ey)},${margemV},1`,
+    // A FAIXA DE CIMA (05/10): a mesma legenda, acima da cabeça, quando uma peça com texto ocupa a de baixo.
+    `Style: LegTopo,Geist SemiBold,${tam},&H00FFFFFF,&H00FFFFFF,${assCor(edicao.tema?.escuroLegenda ?? "#06111F", 0x28)},&H00000000,0,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,8,${Math.round(80 * ey)},${Math.round(80 * ey)},${Math.round(vertical ? H * 0.035 : 40 * ey)},1`,
     "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   for (const p of edicao.legenda?.paginas ?? []) {
     if (p.fim <= desloc || p.inicio >= desloc + duracao) continue;
+    // ZONAS EXCLUSIVAS (05/10, lib/media/editor-sob-medida/faixa-da-legenda.ts): o app decide a faixa
+    // de cada página pelas peças na tela; "oculta" é quando a peça já é o texto daquele instante.
+    if (p.faixa === "oculta") continue;
     const texto = String(p.texto).replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
     if (!texto) continue;
-    linhas.push(`Dialogue: 0,${assTempo(p.inicio - desloc)},${assTempo(Math.min(duracao, p.fim - desloc))},Leg,,0,0,0,,${texto}`);
+    linhas.push(`Dialogue: 0,${assTempo(p.inicio - desloc)},${assTempo(Math.min(duracao, p.fim - desloc))},${p.faixa === "topo" ? "LegTopo" : "Leg"},,0,0,0,,${texto}`);
   }
   return linhas.join("\n") + "\n";
 }
