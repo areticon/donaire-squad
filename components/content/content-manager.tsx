@@ -36,6 +36,7 @@ import { EnviarGravacao } from "@/components/video/enviar-gravacao";
 import { estadoDoPost, resumoDoDia, horaCurta, CORES, type PostParaEstado, type ResumoDoDia } from "@/lib/posts/estado";
 import { horarioParaAprovar, rotuloDoHorario, diaEHora, paraCampos, deCampos } from "@/lib/posts/horario-da-peca";
 import { cardEmProducao } from "@/lib/squad/peca-em-producao";
+import { esperaDaPeca } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { lerRevisaoDoCorte, type RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
 import { lerAberturaIa } from "@/lib/media/estado-da-abertura-ia";
 import { lerMontagem } from "@/lib/media/estado-da-montagem";
@@ -4419,6 +4420,24 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     loadCardsForWeek(weekStartIso);
   }, [weekStartIso, loadCardsForWeek]);
 
+  /**
+   * "TENTAR DE NOVO" A ARTE QUE FALHOU depois da aprovação da identidade
+   * (05/10): o mesmo POST do "Aprovar e gerar". Ele responde na hora
+   * (marca "gerando") e desenha depois; o quadro recarrega para mostrar "o
+   * squad está fazendo" e, quando a arte cai, "esperando você aprovar".
+   */
+  const tentarArteDeNovo = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "POST" });
+      const d = (await r.json().catch(() => ({}))) as { frase?: string; error?: string; iniciadas?: number };
+      if (!r.ok) throw new Error(d.error || "Não consegui pedir a arte de novo.");
+      toast.success(d.frase ?? "A arte está sendo gerada de novo.");
+      setTimeout(() => void loadCardsForWeek(weekStartIso), 800);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui pedir a arte de novo.");
+    }
+  }, [projectId, weekStartIso, loadCardsForWeek]);
+
   // O andamento de cada dia, e se ainda há algo andando (um vídeo refeito
   // anda depois do fecho da campanha, e a tela precisa continuar olhando).
   const andamento = useMemo(
@@ -5053,6 +5072,14 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     if (chaves.includes("agendado") || chaves.includes("publicando")) return "agendado";
     if (principal?.status === "rejected") return "rejeitado";
     if (principal?.status === "approved") return "aprovado";
+    // A ARTE QUE ESPERA A IDENTIDADE (05/10, noite): "esperando você
+    // aprovar" sobre um post sem arte fez o Bruno perguntar "como eu
+    // aprovo?". Aguardando a identidade é o cliente que precisa escolher e
+    // aprovar; gerando é o squad fazendo; falhou pede "Tentar de novo".
+    const espera = esperaDaPeca(posts.map((p) => ({ imageUrl: p.imageUrl, metadata: p.metadata })));
+    if (espera?.estado === "gerando") return "fazendo";
+    if (espera?.estado === "falhou") return "falhou";
+    if (espera?.estado === "aguardando") return "aguardando";
     // Ainda sendo feita: não há o que aprovar, e "esperando você" pedia
     // decisão sobre o que não existe (29/09).
     if (emProducao) return "fazendo";
@@ -5297,6 +5324,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         quando: primeiro.scheduledAt ? new Date(primeiro.scheduledAt).getTime() : 0,
         origem,
         estado,
+        identidade: esperaDaPeca(g.posts.map((p) => ({ imageUrl: p.imageUrl, metadata: p.metadata }))),
         // CANCELÁVEL pelo cartão (05/10): tem card para cancelar, não está
         // publicada e o squad não está no meio dela (cancelar o que a esteira
         // ainda escreve não a para; para isso existe o cancelar da geração).
@@ -5893,6 +5921,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       </div>
       <SemanaDoQuadro
         dias={diasDoCalendario}
+        projectId={projectId}
+        // "Tentar de novo" a arte que falhou depois da aprovação (05/10): o
+        // mesmo POST do "Aprovar e gerar", que responde na hora e desenha depois.
+        onTentarArte={() => void tentarArteDeNovo()}
         onAbrirDia={() => openNewCampaign()}
         // O cartão de espera do corte leva à faixa do vídeo, onde a gravação e
         // os cortes estão (05/10).
@@ -5946,6 +5978,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           <span className="flex items-center gap-1.5">
             <span className="h-[7px] w-[7px] rounded-full" style={{ background: "#f6803d" }} />
             esperando você aprovar
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: "#fbbf24" }} />
+            aguardando sua identidade visual
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-[7px] w-[7px] rounded-full" style={{ background: CORES.agendado }} />

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
@@ -7,7 +7,8 @@ import { PALETA_PADRAO_DA_PLATAFORMA, esquecerIdentidade, identidadeDoProjeto } 
 import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import { fotosDaVitrine, pessoasDeBanco, type PessoaDaPrevia } from "@/lib/modelos-de-arte/fotos-do-book";
 import { estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
-import { artesAguardandoIdentidade, gerarArtesAguardando } from "@/lib/media/artes-aguardando-identidade";
+import { artesAguardandoIdentidade, gerarGruposMarcados, iniciarGeracaoDasArtes } from "@/lib/media/artes-aguardando-identidade";
+import { contarArtesEsperando } from "@/lib/modelos-de-arte/espera-da-identidade";
 
 /**
  * O BOOK DE MODELOS DO PROJETO (03/10/2026).
@@ -27,9 +28,15 @@ import { artesAguardandoIdentidade, gerarArtesAguardando } from "@/lib/media/art
  * ou nas cores da marca) e se está aprovada; PUT aceita { letra, papeis,
  * fotos, aprovar } além de { ids }; POST gera as artes que ficaram
  * aguardando a aprovação (só o dono, e só com a identidade aprovada).
+ *
+ * 05/10, noite: o POST RESPONDE NA HORA. O Bruno clicou em "Aprovar e gerar
+ * (1 arte esperando)" e o botão ficou girando minutos com "Gerando...". Agora
+ * o clique só marca o que vai ser desenhado ("o squad está fazendo" no
+ * quadro) e responde; o desenho roda depois da resposta, com `after()`, e a
+ * tela manda o cliente de volta ao quadro, onde a arte cai.
  */
 export const dynamic = "force-dynamic";
-/** O POST desenha as artes que esperavam: até 800 s, como a esteira. */
+/** O desenho depois da resposta (`after`) ainda precisa do tempo da função: até 800 s, como a esteira. */
 export const maxDuration = 800;
 
 async function projetoDoUsuario(projectId: string, userId: string) {
@@ -60,7 +67,14 @@ async function pessoaDoCliente(projectId: string): Promise<PessoaDaPrevia | null
 
 /** O estado da identidade como a galeria lê. */
 async function identidadeParaATela(projectId: string, colorPalette: string | null) {
-  const [estado, aguardando] = await Promise.all([estadoDaIdentidade(projectId, colorPalette), artesAguardandoIdentidade(projectId).catch(() => [])]);
+  const [estado, aguardando, todas] = await Promise.all([
+    estadoDaIdentidade(projectId, colorPalette),
+    artesAguardandoIdentidade(projectId).catch(() => []),
+    artesAguardandoIdentidade(projectId, { incluirGerando: true }).catch(() => []),
+  ]);
+  // Conta ARTES (um grupo por dia e campanha), não posts: o carrossel do X e
+  // do Instagram do mesmo dia é uma arte esperando, e não duas.
+  const esperando = contarArtesEsperando(aguardando);
   return {
     letra: estado.letra,
     papeis: estado.papeis,
@@ -68,7 +82,9 @@ async function identidadeParaATela(projectId: string, colorPalette: string | nul
     paleta: estado.paleta,
     aprovada: estado.aprovada,
     aprovadaEm: estado.registro?.aprovadaEm ?? null,
-    aguardando: aguardando.length,
+    aguardando: esperando,
+    /** Quantas artes o "Aprovar e gerar" está desenhando agora. */
+    gerando: Math.max(0, contarArtesEsperando(todas) - esperando),
   };
 }
 
@@ -138,7 +154,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ escolha: escolha?.ids ?? [], em: escolha?.em ?? null, identidade: await identidadeParaATela(id, p.colorPalette) });
 }
 
-/** Gera as artes que ficaram aguardando a identidade. Cobra cada uma depois de sair. */
+/**
+ * Começa a gerar as artes que ficaram aguardando a identidade e responde na
+ * hora com quantas são; o desenho roda depois da resposta e cobra cada arte
+ * depois de ela sair. O mesmo POST é o "Tentar de novo" do quadro: a arte
+ * que falhou continua marcada e entra de novo.
+ */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -148,8 +169,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const recusa = await soODono(userId, p, "gerar as artes que aguardavam a identidade visual");
   if (recusa) return recusa;
   try {
-    const r = await gerarArtesAguardando({ projectId: id, userId: p.userId });
-    return NextResponse.json({ ...r, identidade: await identidadeParaATela(id, p.colorPalette) });
+    const args = { projectId: id, userId: p.userId };
+    const { grupos, frase } = await iniciarGeracaoDasArtes(args);
+    if (grupos.length) {
+      after(async () => {
+        const r = await gerarGruposMarcados(args, grupos).catch((e) => ({ frase: e instanceof Error ? e.message : String(e) }));
+        console.log(`[identidade][gerar] ${id}: ${r.frase}`);
+      });
+    }
+    return NextResponse.json({ iniciadas: grupos.length, total: grupos.length, frase, identidade: await identidadeParaATela(id, p.colorPalette) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Não consegui gerar as artes." }, { status: 400 });
   }

@@ -32,6 +32,8 @@ import {
   type TratamentoDaFoto,
 } from "@/lib/modelos-de-arte/tratamento";
 import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
+import { MENSAGEM_AGUARDANDO, ehIdentidadeNaoAprovada } from "@/lib/modelos-de-arte/identidade";
+import { conteudoDoCardAguardando, marcarEspera, tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -404,7 +406,37 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
 
     const arte = acoes.find((a): a is Extract<AcaoDoPedido, { tipo: "arte" }> => a.tipo === "arte");
     if (arte) {
-      if (!daDiana) {
+      /**
+       * A TRAVA DA IDENTIDADE NO CHAT (05/10, noite): sem modelo, letra e
+       * cores aprovados, a arte pedida não sai; os posts do dia e o card da
+       * Diana ficam marcados "aguardando a sua identidade visual" (o mesmo
+       * estado da esteira), e o "Aprovar e gerar" desenha depois. A peça sem
+       * card da Diana (a campanha só de X de antes de hoje) ganha o card.
+       */
+      const deixarAguardando = async () => {
+        const comArte = posts.filter((p) => tipoGeraArte(p.mediaType));
+        for (const p of comArte) {
+          await prisma.post.update({ where: { id: p.id }, data: { imageUrl: null, metadata: marcarEspera(p.metadata) as Prisma.InputJsonValue } }).catch(() => {});
+        }
+        const conteudo = conteudoDoCardAguardando(comArte[0]?.mediaType ?? "image");
+        if (daDiana) {
+          await prisma.campaignCard.update({ where: { id: daDiana.id }, data: { mediaUrl: null, content: conteudo, metadata: marcarEspera(daDiana.metadata) as Prisma.InputJsonValue } }).catch(() => {});
+        } else if (comArte.length && runId && dia) {
+          await prisma.campaignCard
+            .create({
+              data: { runId, projectId: card.projectId, agentId: "diana-design", agentName: "Diana Design", dayOfWeek: dia, scheduledDate: quando, cardType: "media", mediaType: comArte[0].mediaType ?? "image", content: conteudo, postId: comArte[0].id, metadata: marcarEspera(null) as Prisma.InputJsonValue },
+            })
+            .catch((e) => console.warn("[pedido-do-card] card da Diana aguardando:", e));
+        }
+        for (const chave of pedido.etapas.map((e) => e.chave).filter((c) => c === "arte" || c.startsWith("lamina-"))) await marcar(chave, "falhou", "aguardando a identidade visual");
+        frases.push(`${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. A arte sai depois da aprovação, e só então é cobrada.`);
+      };
+      // Confere ANTES de desenhar: o carrossel refaz lâmina a lâmina e engole
+      // o erro de cada uma, então a trava precisa ser vista aqui, de uma vez.
+      const travada = posts.some((p) => tipoGeraArte(p.mediaType)) && (await marcaDaArte(card.projectId).catch(() => null))?.identidadeAprovada === false;
+      if (travada) {
+        await deixarAguardando();
+      } else if (!daDiana) {
         frases.push("Este dia não tem imagem, então não havia arte para refazer.");
       } else {
         try {
@@ -413,8 +445,12 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
             : await refazerArteUnica({ daDiana, posts, acao: arte, marcar, formato: formatoDaPecaDoDia });
           frases.push(r);
         } catch (e) {
-          frases.push("A arte não saiu desta vez e ficou a que estava. Pode pedir de novo daqui a pouco.");
-          console.warn("[pedido-do-card] arte:", e);
+          if (ehIdentidadeNaoAprovada(e) || (e instanceof Error && e.message.startsWith(MENSAGEM_AGUARDANDO))) {
+            await deixarAguardando();
+          } else {
+            frases.push("A arte não saiu desta vez e ficou a que estava. Pode pedir de novo daqui a pouco.");
+            console.warn("[pedido-do-card] arte:", e);
+          }
         }
         const acentoDaMarca = arte.cor ? (await marcaDaArte(card.projectId).catch(() => null))?.cores.acento : null;
         if (arte.cor && acentoDaMarca?.toUpperCase() !== arte.cor.toUpperCase()) {

@@ -24,6 +24,8 @@ export type PostParaEstado = {
   externalUrl?: string | null;
   socialAccountId?: string | null;
   metadata?: unknown;
+  /** A arte da peça, quando a tela a seleciona: a espera da identidade (05/10) lê com ela. */
+  imageUrl?: string | null;
   /**
    * O dia da semana a que o post PERTENCE (1=Seg … 7=Dom), que nem sempre é o
    * dia em que ele cai: quando o horário já passou, a esteira agenda para

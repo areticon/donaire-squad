@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play, Scissors, Eye } from "lucide-react";
+import Link from "next/link";
+import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play, Scissors, Eye, Palette, RefreshCw } from "lucide-react";
+import { ROTULO_DO_BOTAO_ESCOLHER, type EsperaDaIdentidade } from "@/lib/modelos-de-arte/espera-da-identidade";
 import type { EsperaDoCorte } from "@/lib/media/espera-do-corte";
 import { cn } from "@/lib/utils";
 import { RedeIcone } from "@/components/social/rede-icone";
@@ -44,7 +46,14 @@ const ehVideoNaCapa = (url: string) =>
  * desenhando dizia "esperando você", e o cliente clicava para aprovar algo
  * que não existia. Esperando você é só a peça PRONTA que falta aprovar.
  */
-export type EstadoDaPeca = "fazendo" | "esperando" | "aprovado" | "agendado" | "publicado" | "rejeitado" | "falhou" | "guardado";
+/**
+ * "aguardando" entrou em 05/10 (noite): a peça cuja ARTE espera o cliente
+ * aprovar a identidade visual (modelo, letra e cores). Não é "esperando
+ * você" (não há o que aprovar na peça) nem "fazendo" (ninguém está
+ * desenhando): é o cliente que precisa escolher e aprovar, e o cartão diz
+ * isso com o botão que leva lá.
+ */
+export type EstadoDaPeca = "fazendo" | "esperando" | "aprovado" | "agendado" | "publicado" | "rejeitado" | "falhou" | "guardado" | "aguardando";
 
 export type DestinoDaPeca = {
   plataforma: string;
@@ -101,6 +110,14 @@ export type PecaDoDia = {
    * decide é a tela que monta a peça; aqui só se desenha o botão.
    */
   cancelavel?: boolean;
+  /**
+   * A ESPERA DA IDENTIDADE (05/10): a arte não saiu porque o cliente ainda
+   * não aprovou a identidade visual ("aguardando"), está sendo desenhada
+   * depois da aprovação ("gerando") ou a geração falhou ("falhou", com o
+   * motivo e o "Tentar de novo"). Nulo quando a arte existe ou a peça nunca
+   * esperou. Ver lib/modelos-de-arte/espera-da-identidade.ts.
+   */
+  identidade?: EsperaDaIdentidade | null;
 };
 
 export type DiaDaSemana = {
@@ -265,9 +282,11 @@ const ESTADO: Record<EstadoDaPeca, { rotulo: string; cor: string; classe: string
   rejeitado: { rotulo: "rejeitado", cor: "#f87171", classe: "text-red-400" },
   falhou: { rotulo: "falhou", cor: "#f87171", classe: "text-red-400" },
   guardado: { rotulo: "guardado, não sai", cor: "#9599a6", classe: "text-[var(--text-muted)]" },
+  aguardando: { rotulo: "aguardando sua identidade", cor: "#fbbf24", classe: "text-amber-400" },
 };
 
 function IconeDoEstado({ estado }: { estado: EstadoDaPeca }) {
+  if (estado === "aguardando") return <Palette className="h-3 w-3 shrink-0" />;
   if (estado === "publicado" || estado === "aprovado") return <Check className="h-3 w-3 shrink-0" />;
   if (estado === "rejeitado") return <X className="h-3 w-3 shrink-0" />;
   if (estado === "falhou") return <AlertCircle className="h-3 w-3 shrink-0" />;
@@ -336,7 +355,43 @@ function SeloDaRede({ plataforma, contas }: { plataforma: string; contas: Destin
   );
 }
 
-function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: PecaDoDia; onAbrir: () => void; onVerMidia?: () => void; onArquivar?: () => void; onCancelar?: () => void }) {
+/**
+ * O AVISO DA IDENTIDADE NO CARTÃO (05/10, noite). O Bruno viu "esperando
+ * você aprovar" num carrossel sem arte e perguntou "como eu aprovo?". O
+ * cartão agora diz o que falta e tem o botão que leva à escolha; depois da
+ * aprovação, diz que a arte está sendo feita; se a geração falhar, diz o
+ * motivo e oferece "Tentar de novo".
+ */
+function AvisoDaIdentidade({ espera, projectId, onTentarArte }: { espera: EsperaDaIdentidade; projectId?: string; onTentarArte?: () => void }) {
+  if (espera.estado === "gerando") return null;
+  const falhou = espera.estado === "falhou";
+  return (
+    <div className="space-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-aviso-da-identidade={espera.estado}>
+      <p className="flex items-start gap-1 text-[10px] leading-snug" style={{ color: falhou ? "#f87171" : "var(--text-muted)" }}>
+        {falhou ? <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> : <Palette className="mt-[1px] h-3 w-3 shrink-0 text-amber-400" />}
+        <span>{falhou ? `A arte não saiu: ${espera.motivo ?? "a geração falhou"}. Nada foi cobrado.` : "Aguardando a sua identidade visual: escolha o modelo, a letra e as cores e aprove. Nada é gasto antes disso."}</span>
+      </p>
+      {falhou && onTentarArte ? (
+        <button
+          type="button"
+          onClick={onTentarArte}
+          className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
+        >
+          <RefreshCw className="h-3 w-3" /> Tentar de novo
+        </button>
+      ) : projectId ? (
+        <Link
+          href={`/projects/${projectId}/settings?aba=modelos`}
+          className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
+        >
+          {ROTULO_DO_BOTAO_ESCOLHER} <ChevronRight className="h-3 w-3" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar, projectId, onTentarArte }: { p: PecaDoDia; onAbrir: () => void; onVerMidia?: () => void; onArquivar?: () => void; onCancelar?: () => void; projectId?: string; onTentarArte?: () => void }) {
   const e = ESTADO[p.estado];
   const temVisor = Boolean(p.midia && onVerMidia);
   // A confirmação de "Cancelar esta peça" mora no próprio cartão (05/10):
@@ -408,7 +463,7 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: P
         type="button"
         onClick={onAbrir}
         // A hora antes da aprovação é proposta, e o rótulo diz isso (29/09).
-        title={`${p.tipo}${p.hora ? (p.estado === "agendado" ? `, agendado para ${p.hora}` : p.estado === "esperando" || p.estado === "fazendo" ? `, sai ${p.hora} se você aprovar` : `, ${p.hora}`) : ""}: ${p.titulo}`}
+        title={`${p.tipo}${p.hora ? (p.estado === "agendado" ? `, agendado para ${p.hora}` : p.estado === "esperando" || p.estado === "fazendo" ? `, sai ${p.hora} se você aprovar` : p.estado === "aguardando" ? `, sai ${p.hora} depois de você aprovar a identidade visual` : `, ${p.hora}`) : ""}: ${p.titulo}`}
         className="flex w-full flex-col gap-1.5 px-2.5 pb-2 pt-1.5 pl-3 text-left"
       >
         {/* Os selos ficam sozinhos na linha: com cinco destinos eles ocupam a
@@ -458,10 +513,11 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: P
           </span>
           <span className={cn("flex items-center gap-1 font-semibold", e.classe)}>
             <IconeDoEstado estado={p.estado} />
-            {e.rotulo}
+            {p.identidade?.estado === "gerando" ? "o squad está fazendo a arte" : e.rotulo}
           </span>
         </span>
       </button>
+      {p.identidade && <AvisoDaIdentidade espera={p.identidade} projectId={projectId} onTentarArte={onTentarArte} />}
       {/* ARQUIVAR A PEÇA QUE FALHOU, aqui mesmo (01/10, pedido do Bruno: "os
           posts que falham, eu não consigo arquivar, preciso conseguir, para
           limpar o gestor"). Fica fora do botão que abre o card: botão dentro
@@ -471,7 +527,7 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: P
           botão que abre o card. A confirmação abre no lugar do rodapé, e o
           texto diz o alcance antes do clique. O cartão de espera do corte não
           passa por aqui: ele é promessa, e o cancelamento dele é o do vídeo. */}
-      {(p.estado === "falhou" && onArquivar) || podeCancelar ? (
+      {(p.estado === "falhou" && onArquivar && !p.identidade) || podeCancelar ? (
         confirmandoCancelar ? (
           <div className="space-y-1.5 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-confirmar-cancelar-peca>
             <p className="text-[10.5px] font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
@@ -504,7 +560,7 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: P
           </div>
         ) : (
           <div className="flex border-t" style={{ borderColor: "var(--border)" }}>
-            {p.estado === "falhou" && onArquivar && (
+            {p.estado === "falhou" && onArquivar && !p.identidade && (
               <button
                 type="button"
                 data-arquivar-peca
@@ -633,8 +689,14 @@ export function SemanaDoQuadro({
   onCancelarPeca,
   onVerVideo,
   onAbrirCorte,
+  projectId,
+  onTentarArte,
 }: {
   dias: DiaDaSemana[];
+  /** O projeto, para o botão "Escolher e aprovar" da identidade levar ao book (05/10). */
+  projectId?: string;
+  /** "Tentar de novo" a arte que falhou depois da aprovação da identidade (05/10). */
+  onTentarArte?: (pecaId: string) => void;
   /** Clicar no vazio de um dia: é por onde se põe algo naquele dia. */
   onAbrirDia: (dayOfWeek: number) => void;
   onAbrirPeca: (pecaId: string) => void;
@@ -725,7 +787,7 @@ export function SemanaDoQuadro({
           {dia.pecas.length > 0 || dia.esperasDoCorte?.length ? (
             <div className="relative flex flex-col gap-2">
               {dia.pecas.map((p) => (
-                <CartaoDaPeca key={p.id} p={p} onAbrir={() => onAbrirPeca(p.id)} onVerMidia={p.midia ? () => setVisor(p) : undefined} onArquivar={onArquivarPeca ? () => onArquivarPeca(p.id) : undefined} onCancelar={onCancelarPeca ? () => onCancelarPeca(p.id) : undefined} />
+                <CartaoDaPeca key={p.id} p={p} onAbrir={() => onAbrirPeca(p.id)} onVerMidia={p.midia ? () => setVisor(p) : undefined} onArquivar={onArquivarPeca ? () => onArquivarPeca(p.id) : undefined} onCancelar={onCancelarPeca ? () => onCancelarPeca(p.id) : undefined} projectId={projectId} onTentarArte={onTentarArte ? () => onTentarArte(p.id) : undefined} />
               ))}
               {/* O lugar do corte que ainda não chegou (05/10), depois das
                   peças prontas: quando o corte chega, ele vira peça e o

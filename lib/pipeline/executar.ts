@@ -25,7 +25,7 @@ import { generateImage } from "@/lib/media/nano-banana";
 import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/infographic";
 import { mancheteDaPeca, desenharPecaDeFeed } from "@/lib/media/peca-de-feed";
 import { marcaDaArte, promptDaArteSemTexto, desenharComFraseEmCodigo } from "@/lib/media/arte-com-frase";
-import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
+import { TEXTO_DO_CARD_AGUARDANDO, diaPedeArte, pecaBaseDoDia } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { roteiroDoCarrossel, desenharCarrossel, redesQueAceitamCarrossel, laminasPermitidas } from "@/lib/media/carrossel";
 import { cabeNoSaldoDeVideo, type PedidoDeVideoDaFila } from "@/lib/media/video-por-ia";
@@ -2191,8 +2191,8 @@ ${researchBrief}
  * continua existindo como a arte principal, para o card da Diana e para as
  * telas que so sabem mostrar uma.
  */
-/** O texto do card da Diana quando a arte espera a identidade (05/10). A tela reconhece pelo começo. */
-const TEXTO_DO_CARD_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. Nenhum crédito de imagem foi gasto; a arte sai depois da aprovação.`;
+// O texto do card da Diana quando a arte espera a identidade (05/10) mora em
+// lib/modelos-de-arte/espera-da-identidade.ts, junto com os outros caminhos.
 
 const mediaByDayKey: Record<string, {
   imageUrl?: string;
@@ -2922,13 +2922,26 @@ ${postDoLinkedIn.content}`,
     }
 
     // ── Diana — Media (inclui capa para artigos LinkedIn) ────────────────────
-    const needsMedia = designer && liPost && !["text", "poll", "thread"].includes(resolvedType) && !midiaPropria?.urls?.length;
+    /**
+     * A PEÇA DE QUE A DIANA PARTE (05/10, noite). Até aqui era `liPost`, e só
+     * ele: a campanha de um post só para o X (carrossel de segunda do Fé &
+     * Gestão) saía sem a Diana, sem arte, sem a marca de espera e sem o card
+     * "aguardando a sua identidade visual". O quadro dizia "esperando você
+     * aprovar" sobre um post sem arte. Agora o X (ou qualquer peça do dia)
+     * serve de base quando não há LinkedIn.
+     */
+    const pecaBase = pecaBaseDoDia(
+      liPost,
+      twPost,
+      dayPosts.filter((p) => p.dayOfWeek === dayOfWeek && p.scheduledDate.toDateString() === scheduledDate.toDateString())
+    );
+    const needsMedia = designer && pecaBase && diaPedeArte(resolvedType, Boolean(midiaPropria?.urls?.length));
     const visualPromptSource =
       resolvedType === "article" && liPost
         ? parseLinkedInArticleContent(liPost.content).body.slice(0, 2800)
-        : liPost?.content ?? "";
+        : pecaBase?.content ?? "";
 
-    if (needsMedia && designer && liPost) {
+    if (needsMedia && designer && pecaBase) {
       if (!hasApiKey) {
         await appendLog(runId, {
           agent: "Diana Design",
@@ -3046,7 +3059,7 @@ ${postDoLinkedIn.content}`,
               redes: redesDoDia,
               contentType: "infographic",
               promptBase: "",
-              textoDoPost: liPost?.content,
+              textoDoPost: pecaBase?.content,
               projectId: project.id,
               runId,
               desenhar: async (_prompt, proporcao) => {
@@ -3308,7 +3321,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                  * nasce do post, não do plano de filmagem.
                  */
                 const pecaDoQuadro = await mancheteDaPeca({
-                  textoDoPost: liPost?.content ?? visualPromptSource,
+                  textoDoPost: pecaBase?.content ?? visualPromptSource,
                   estiloVisual: styleHintEn,
                   nicho: project.niche,
                   projectId: project.id,
@@ -3320,7 +3333,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   // Arte sem texto e manchete em código (30/09): o modelo não escreve mais.
                   promptBase: promptDaArteSemTexto({ visual: pecaDoQuadro.visual, estilo: styleHintEn, marca: marcaDaPeca }),
                   textoEsperado: [pecaDoQuadro.manchete],
-                  textoDoPost: liPost?.content,
+                  textoDoPost: pecaBase?.content,
                   /**
                    * O OLHO CONFERE O QUADRO TAMBÉM, desde 19/09.
                    *
@@ -3334,7 +3347,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   usarOlho: true,
                   projectId: project.id,
                   runId,
-                  desenhar: desenharComFraseEmCodigo(pecaDoQuadro.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
+                  desenhar: desenharComFraseEmCodigo(pecaDoQuadro.manchete, { ...marcaDaPeca, contexto: pecaBase?.content }, (prompt, proporcao) =>
                     withDianaCap(
                       desenharPecaDeFeed({
                         prompt,
@@ -3477,7 +3490,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
               const chaveDoCarrossel = `${runId}-${dayKey}`;
 
               const roteiro = await roteiroDoCarrossel({
-                textoDoPost: liPost?.content ?? visualPromptSource,
+                textoDoPost: pecaBase?.content ?? visualPromptSource,
                 laminas: pedidas,
                 estiloVisual: styleHintEn,
                 nicho: project.niche,
@@ -3560,7 +3573,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                */
               const avisosDaArte: string[] = [];
               const peca = await mancheteDaPeca({
-                textoDoPost: liPost?.content ?? visualPromptSource,
+                textoDoPost: pecaBase?.content ?? visualPromptSource,
                 estiloVisual: styleHintEn,
                 nicho: project.niche,
                 projectId: project.id,
@@ -3580,10 +3593,10 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 // e as cores da marca. Ver lib/media/arte-com-frase.tsx.
                 promptBase: promptDaArteSemTexto({ visual: peca.visual, estilo: styleHintEn, marca: marcaDaPeca }),
                 textoEsperado: [peca.manchete],
-                textoDoPost: liPost?.content,
+                textoDoPost: pecaBase?.content,
                 projectId: project.id,
                 runId,
-                desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
+                desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: pecaBase?.content }, (prompt, proporcao) =>
                   withDianaCap(
                     desenharPecaDeFeed({
                       prompt,
@@ -3599,7 +3612,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 // principal da arte é o seletor IMAGEM_ARTE, e o "outro" é o
                 // recuo dele (`outroModelo`); generateImage puro cairia no
                 // MESMO modelo que acabou de errar.
-                desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
+                desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: pecaBase?.content }, (prompt, proporcao) =>
                   withDianaCap(
                     generateImage(prompt, proporcao, "hd", {
                       projectId: project.id,
@@ -3627,13 +3640,13 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   // A manchete continua composta em código; a correção vai só para a cena.
                   promptBase: `${promptDaArteSemTexto({ visual: peca.visual, estilo: styleHintEn, marca: marcaDaPeca })}\n\nCORRECTION REQUESTED BY THE REVIEWER (fix this in the scene; the headline is added later in code): ${motivo}`,
                   textoEsperado: [peca.manchete],
-                  textoDoPost: liPost?.content,
+                  textoDoPost: pecaBase?.content,
                   projectId: project.id,
                   runId,
-                  desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
+                  desenhar: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: pecaBase?.content }, (prompt, proporcao) =>
                     withDianaCap(desenharPecaDeFeed({ prompt, proporcao, permitirGemini: true, avisos: avisosDaRefeita, ctx: { projectId: project.id, runId, operation: "campanha_imagem" } }))
                   ),
-                  desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: liPost?.content }, (prompt, proporcao) =>
+                  desenharAlternativo: desenharComFraseEmCodigo(peca.manchete, { ...marcaDaPeca, contexto: pecaBase?.content }, (prompt, proporcao) =>
                     withDianaCap(generateImage(prompt, proporcao, "hd", { projectId: project.id, runId, operation: "campanha_imagem" }, { outroModelo: true }))
                   ),
                 });

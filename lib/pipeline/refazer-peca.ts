@@ -14,6 +14,8 @@ import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto } from "@/l
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
 import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/infographic";
 import { lerNaoCitar } from "@/lib/pipeline/restricoes";
+import { ehIdentidadeNaoAprovada } from "@/lib/modelos-de-arte/identidade";
+import { conteudoDoCardAguardando, marcarEspera } from "@/lib/modelos-de-arte/espera-da-identidade";
 
 /**
  * REFAZER UMA PEÇA, e não a campanha inteira.
@@ -68,7 +70,7 @@ export async function refazerPeca(args: {
    */
   instrucao?: string;
 }): Promise<
-  | { ok: true; post: { id: string; content: string; imageUrl: string | null }; custo: number; arteRefeita: boolean; cortesia?: string }
+  | { ok: true; post: { id: string; content: string; imageUrl: string | null }; custo: number; arteRefeita: boolean; cortesia?: string; aguardandoIdentidade?: boolean }
   | ({ ok: false } & FalhaAoRefazer)
 > {
   const post = await prisma.post.findUnique({
@@ -169,6 +171,13 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
    */
   let novaImagem: string | null = null;
   let arteRefeita = false;
+  /**
+   * A TRAVA DA IDENTIDADE (05/10, noite): sem modelo, letra e cores
+   * aprovados, a arte não sai e a peça fica marcada "aguardando a sua
+   * identidade visual", como na esteira; o "Aprovar e gerar" desenha depois.
+   * Cobra só o texto: a arte é cobrada quando sair.
+   */
+  let aguardandoIdentidade = false;
   if (GERA_ARTE.has(post.mediaType ?? "")) {
     try {
       /**
@@ -208,22 +217,24 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
       });
       novaImagem = arte.principal ?? null;
       arteRefeita = Boolean(novaImagem);
-    } catch {
+    } catch (e) {
       // Arte que não saiu não derruba o texto que saiu: a peça fica com a arte
       // anterior e o cliente decide se pede de novo. Perder o texto novo por
       // causa do desenho seria cobrar duas vezes pelo mesmo trabalho.
+      if (ehIdentidadeNaoAprovada(e)) aguardandoIdentidade = true;
     }
   }
+  const custoCobrado = aguardandoIdentidade ? custoDeRefazerPeca({ mediaType: "text" }) : custo;
 
   try {
     await debitar({
       // Quem pediu paga pela conta (01/10): marca o membro e conta no teto dele.
       userId: args.userId,
-      quantidade: custo,
+      quantidade: custoCobrado,
       operation: "refazer_peca",
       projectId: post.projectId,
       refId: `${post.id}:${Date.now()}`,
-      note: `Peça de ${NOME_DA_REDE[post.platform] ?? post.platform} refeita${arteRefeita ? " com arte nova" : ""}`,
+      note: `Peça de ${NOME_DA_REDE[post.platform] ?? post.platform} refeita${arteRefeita ? " com arte nova" : aguardandoIdentidade ? " (arte aguardando a identidade visual, cobrada quando sair)" : ""}`,
       cortesia: cortesia ?? undefined,
     });
   } catch (e) {
@@ -237,7 +248,9 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
     where: { id: post.id },
     data: {
       content: limpo.texto,
-      ...(novaImagem ? { imageUrl: novaImagem } : {}),
+      // Aguardando a identidade: a arte antiga (feita para o texto antigo) sai
+      // do lugar, e a nova entra pelo "Aprovar e gerar".
+      ...(novaImagem ? { imageUrl: novaImagem } : aguardandoIdentidade ? { imageUrl: null } : {}),
       /**
        * A PEÇA REFEITA VOLTA A SER RASCUNHO.
        *
@@ -249,7 +262,7 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
       status: "draft",
       scheduledAt: post.scheduledAt,
       metadata: {
-        ...metadata,
+        ...(aguardandoIdentidade ? marcarEspera(metadata) : metadata),
         refeitoEm: new Date().toISOString(),
         // O erro da tentativa antiga não sobrevive ao texto novo, que é a
         // mesma regra de 21/09: estado que sobrevive ao fato vira mentira.
@@ -271,10 +284,19 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
         data: { content: limpo.texto, ...(novaImagem ? { mediaUrl: novaImagem } : {}) },
       })
       .catch(() => {});
+    // O card da Diana do dia também espera: o quadro mostra o aviso e o botão de escolher.
+    if (aguardandoIdentidade) {
+      const cards = await prisma.campaignCard.findMany({ where: { runId: post.runId, dayOfWeek: post.dayOfWeek, cardType: "media" }, select: { id: true, metadata: true } }).catch(() => []);
+      for (const c of cards) {
+        await prisma.campaignCard
+          .update({ where: { id: c.id }, data: { mediaUrl: null, content: conteudoDoCardAguardando(post.imagePrompt ?? post.mediaType ?? "image"), metadata: marcarEspera(c.metadata) as never } })
+          .catch(() => {});
+      }
+    }
   }
 
   // O custo devolvido e o COBRADO, e nao o de tabela: a tela que diz "custou
   // 57" depois de nao cobrar nada estaria mentindo para o cliente sobre o
   // proprio extrato dele.
-  return { ok: true, post: atualizado, custo: cortesia ? 0 : custo, arteRefeita, cortesia: cortesia?.motivo };
+  return { ok: true, post: atualizado, custo: cortesia ? 0 : custoCobrado, arteRefeita, cortesia: cortesia?.motivo, ...(aguardandoIdentidade ? { aguardandoIdentidade: true } : {}) };
 }

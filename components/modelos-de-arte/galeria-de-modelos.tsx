@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, X, LayoutTemplate, Palette, Sparkles, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import toast from "react-hot-toast";
+import { Check, Loader2, X, LayoutTemplate, Palette, Sparkles, AlertTriangle, ArrowLeft } from "lucide-react";
+import { avisoDaTroca, fraseDaAprovacao, type OQueMudou } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { cn } from "@/lib/utils";
 import {
   LETRAS,
@@ -419,6 +422,33 @@ interface IdentidadeDaTela {
   aprovadaEm: string | null;
   /** Quantas artes de campanha ficaram esperando a aprovação. */
   aguardando: number;
+  /** Quantas artes o "Aprovar e gerar" está desenhando agora (05/10). */
+  gerando?: number;
+}
+
+/**
+ * A CAIXA DE CONFIRMAÇÃO depois de "Aprovar e gerar" (05/10, noite). O
+ * Bruno clicou e o botão ficou girando minutos com "Gerando..."; ele não
+ * sabia se tinha dado certo nem para onde ir. A aprovação agora responde na
+ * hora, e esta caixa confirma e manda de volta ao quadro, onde a arte cai.
+ */
+function ConfirmacaoDaAprovacao({ projectId, frase, aoFicar, compacta }: { projectId: string; frase: string; aoFicar: () => void; compacta: boolean }) {
+  return (
+    <div role="status" className="rounded-lg border p-3" style={{ borderColor: "rgba(34,197,94,0.5)", background: "rgba(34,197,94,0.08)" }} data-confirmacao-da-aprovacao>
+      <p className={cn("flex items-start gap-2 font-semibold", compacta ? "text-xs" : "text-sm")} style={{ color: "var(--text-primary)" }}>
+        <Check className="mt-[2px] h-4 w-4 shrink-0 text-green-500" />
+        <span>{frase}</span>
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2 pl-6">
+        <Link href={`/projects/${projectId}/live`} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600">
+          <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao quadro
+        </Link>
+        <button type="button" onClick={aoFicar} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+          Ficar aqui
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** O título que o cliente digita para a prévia ao vivo; sem ele, o exemplo do nicho. */
@@ -460,6 +490,9 @@ function IdentidadeDoCliente({
   aoMudarFotos,
   aoAprovar,
   compacta,
+  confirmacao,
+  aoFecharConfirmacao,
+  projectId,
 }: {
   identidade: IdentidadeDaTela;
   marca: MarcaDaGaleria;
@@ -474,6 +507,10 @@ function IdentidadeDoCliente({
   aoMudarFotos: (f: FotosDaIdentidade) => void;
   aoAprovar: () => void;
   compacta: boolean;
+  /** A confirmação depois de aprovar (05/10), até o cliente escolher ficar ou voltar ao quadro. */
+  confirmacao?: string | null;
+  aoFecharConfirmacao?: () => void;
+  projectId: string;
 }) {
   const [titulo, setTitulo] = useState(TITULO_PADRAO_DA_PREVIA);
   const [ref, w] = useLargura<HTMLDivElement>();
@@ -498,13 +535,29 @@ function IdentidadeDoCliente({
             Escolha a letra e diga onde cada cor da sua paleta entra. Veja a prévia com o seu texto e aprove: só depois os agentes gastam com arte.
           </p>
         </div>
-        <span
-          className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-          style={identidade.aprovada ? { background: "rgba(34,197,94,0.15)", color: "#16a34a" } : { background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
-        >
-          {identidade.aprovada ? "Aprovada" : "Aguardando a sua aprovação"}
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span
+            data-selo-da-identidade={identidade.aprovada ? "aprovada" : "aguardando"}
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            style={identidade.aprovada ? { background: "rgba(34,197,94,0.15)", color: "#16a34a" } : { background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
+          >
+            {identidade.aprovada ? "Aprovada" : "Aguardando a sua aprovação"}
+          </span>
+          {/* As artes que esperam a aprovação (05/10): o número aparece aqui e no botão. */}
+          {identidade.aguardando > 0 && (
+            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: "rgba(251,191,36,0.18)", color: "#b45309" }} title="Artes de campanha que ficaram sem desenho até você aprovar a identidade">
+              {identidade.aguardando === 1 ? "1 arte esperando" : `${identidade.aguardando} artes esperando`}
+            </span>
+          )}
+          {(identidade.gerando ?? 0) > 0 && (
+            <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: "rgba(192,132,252,0.18)", color: "#7e22ce" }}>
+              <Loader2 className="h-3 w-3 animate-spin" /> {identidade.gerando === 1 ? "1 arte sendo gerada" : `${identidade.gerando} artes sendo geradas`}
+            </span>
+          )}
         </span>
       </div>
+
+      {confirmacao && aoFecharConfirmacao && <ConfirmacaoDaAprovacao projectId={projectId} frase={confirmacao} aoFicar={aoFecharConfirmacao} compacta={compacta} />}
 
       {/* A letra: quatro opções, cada uma escrita na própria fonte. */}
       <div>
@@ -642,8 +695,8 @@ function IdentidadeDoCliente({
           onClick={aoAprovar}
           className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
         >
-          {aprovando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {identidade.aguardando > 0 ? `Aprovar e gerar (${identidade.aguardando} ${identidade.aguardando === 1 ? "arte esperando" : "artes esperando"})` : identidade.aprovada ? "Aprovar de novo" : "Aprovar e gerar"}
+          {aprovando ? <Loader2 className="h-4 w-4 animate-spin" /> : identidade.aprovada && identidade.aguardando === 0 ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+          {identidade.aguardando > 0 ? `Aprovar e gerar (${identidade.aguardando} ${identidade.aguardando === 1 ? "arte esperando" : "artes esperando"})` : identidade.aprovada ? "Identidade aprovada" : "Aprovar e gerar"}
         </button>
         <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
           {!podeMudar
@@ -683,6 +736,8 @@ export function GaleriaDeModelos({
   const [estado, setEstado] = useState<"" | "guardando" | "guardado" | "erro">("");
   const [estadoDaIdentidade, setEstadoDaIdentidade] = useState<string>("");
   const [aprovando, setAprovando] = useState(false);
+  // A confirmação depois de aprovar (05/10): a frase da caixa, até o cliente fechá-la.
+  const [confirmacao, setConfirmacao] = useState<string | null>(null);
   const salvo = useRef<string>("");
   const identidadeSalva = useRef<string>("");
   const logoProporcao = useProporcaoDoLogo(dados?.marca.logoUrl);
@@ -753,12 +808,58 @@ export function GaleriaDeModelos({
     return () => clearTimeout(t);
   }, [identidade, dados, projectId, aplicarIdentidade]);
 
-  const alternar = useCallback((id: string) => setEscolha((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id])), []);
-  const mudarLetra = useCallback((letra: LetraId) => setIdentidade((i) => (i ? { ...i, letra, aprovada: false } : i)), []);
-  const mudarPapel = useCallback((papel: PapelDaCor, cor: string) => setIdentidade((i) => (i ? { ...i, papeis: { ...i.papeis, [papel]: cor }, aprovada: false } : i)), []);
-  const mudarFotos = useCallback((fotos: FotosDaIdentidade) => setIdentidade((i) => (i ? { ...i, fotos, aprovada: false } : i)), []);
+  /**
+   * O AVISO NA HORA (05/10, noite): trocar modelo, letra, cores ou fotos
+   * derruba a aprovação, e a tela diz isso no ato (toast e selo "Aguardando"),
+   * com quantas artes estão esperando. Só avisa quando a troca muda algo que
+   * o cliente precisa saber: a identidade estava aprovada, ou há arte esperando.
+   */
+  const avisarTroca = useCallback(
+    (oQue: OQueMudou) => {
+      const i = identidade;
+      if (!i || (!i.aprovada && i.aguardando === 0)) return;
+      toast(avisoDaTroca(oQue, i.aguardando, i.aprovada), { id: "identidade-mudou", duration: 5000 });
+      setConfirmacao(null);
+    },
+    [identidade]
+  );
+  const alternar = useCallback(
+    (id: string) => {
+      avisarTroca("modelo");
+      setEscolha((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]));
+      setIdentidade((i) => (i ? { ...i, aprovada: false } : i));
+    },
+    [avisarTroca]
+  );
+  const mudarLetra = useCallback(
+    (letra: LetraId) => {
+      avisarTroca("letra");
+      setIdentidade((i) => (i ? { ...i, letra, aprovada: false } : i));
+    },
+    [avisarTroca]
+  );
+  const mudarPapel = useCallback(
+    (papel: PapelDaCor, cor: string) => {
+      avisarTroca("cores");
+      setIdentidade((i) => (i ? { ...i, papeis: { ...i.papeis, [papel]: cor }, aprovada: false } : i));
+    },
+    [avisarTroca]
+  );
+  const mudarFotos = useCallback(
+    (fotos: FotosDaIdentidade) => {
+      avisarTroca("fotos");
+      setIdentidade((i) => (i ? { ...i, fotos, aprovada: false } : i));
+    },
+    [avisarTroca]
+  );
 
-  /** Aprova com o que está na tela e, se havia arte esperando, gera. */
+  /**
+   * Aprova com o que está na tela e, se havia arte esperando, PEDE a geração.
+   * A resposta vem na hora (05/10, noite): o POST só marca o que vai ser
+   * desenhado e responde; a arte é feita depois, cai no quadro, e a caixa de
+   * confirmação diz isso e oferece "Voltar ao quadro". Antes o clique
+   * esperava a imagem sair, e o botão girava minutos sem dizer nada.
+   */
   const aprovar = useCallback(async () => {
     if (!identidade) return;
     setAprovando(true);
@@ -772,18 +873,22 @@ export function GaleriaDeModelos({
       const d = (await r.json()) as { identidade?: IdentidadeDaTela; error?: string };
       if (!r.ok) throw new Error(d.error || "Não consegui aprovar.");
       aplicarIdentidade(d.identidade);
+      let iniciadas = 0;
       if ((d.identidade?.aguardando ?? 0) > 0) {
-        setEstadoDaIdentidade(`Aprovada. Gerando ${d.identidade!.aguardando} arte(s) que esperavam, pode levar alguns minutos...`);
         const g = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "POST" });
-        const gd = (await g.json()) as { frase?: string; error?: string; identidade?: IdentidadeDaTela };
-        if (!g.ok) throw new Error(gd.error || "As artes não saíram.");
+        const gd = (await g.json()) as { frase?: string; error?: string; iniciadas?: number; identidade?: IdentidadeDaTela };
+        if (!g.ok) throw new Error(gd.error || "Não consegui pedir as artes que esperavam.");
         aplicarIdentidade(gd.identidade);
-        setEstadoDaIdentidade(gd.frase ?? "Artes geradas.");
-      } else {
-        setEstadoDaIdentidade("Aprovada. As próximas artes saem assim.");
+        iniciadas = gd.iniciadas ?? 0;
       }
+      const frase = fraseDaAprovacao(iniciadas);
+      setConfirmacao(frase);
+      setEstadoDaIdentidade("");
+      toast.success(frase, { id: "identidade-aprovada" });
     } catch (e) {
-      setEstadoDaIdentidade(e instanceof Error ? e.message : "Não consegui aprovar.");
+      const msg = e instanceof Error ? e.message : "Não consegui aprovar.";
+      setEstadoDaIdentidade(msg);
+      toast.error(msg, { id: "identidade-aprovada" });
     } finally {
       setAprovando(false);
     }
@@ -892,6 +997,9 @@ export function GaleriaDeModelos({
           aoMudarFotos={mudarFotos}
           aoAprovar={aprovar}
           compacta={compacta}
+          confirmacao={confirmacao}
+          aoFecharConfirmacao={() => setConfirmacao(null)}
+          projectId={projectId}
         />
       )}
 

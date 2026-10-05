@@ -82,6 +82,8 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, platform: true, mediaType: true, status: true, scheduledAt: true,
         publishedAt: true, externalUrl: true, socialAccountId: true, metadata: true, dayOfWeek: true, runId: true,
+        // A arte (05/10): o quadro lê a espera da identidade visual com ela.
+        imageUrl: true,
       },
     });
     // OS PLANOS DE VÍDEO QUE TOCAM ESTA SEMANA (05/10): o run de vídeo guarda o
