@@ -1,6 +1,6 @@
 import { askClaudeComImagens } from "@/lib/claude";
 import { extrairJson } from "@/lib/media/diretor-de-montagem";
-import { CAMADAS_DE_APOIO, FICHAS, PECAS, type PlanoDaPeca } from "@/lib/media/editor-sob-medida/pecas";
+import { CAMADAS_DE_APOIO, ESTILOS_DO_VOX, FICHAS, PECAS, pecaNoEstilo, type FichaDaPeca, type PlanoDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor, Visual } from "@/lib/media/editor-sob-medida/tipos";
 import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
@@ -41,6 +41,8 @@ export type EntradaDoDiretor = {
   quadros?: Array<{ t: number; base64: string }>;
   projectId?: string | null;
   timeoutMs?: number;
+  /** A base do estilo classificada do comando (vox, lousa, consorcio...): o catálogo e a validação só aceitam as peças dela. */
+  base: string;
   /** No completo: o bloco que este diretor escreve (frases f0 a f1 de `total` blocos em paralelo). */
   bloco?: { f0: number; f1: number; k: number; total: number } | null;
 };
@@ -51,13 +53,49 @@ const NOME_DO_PLANO: Record<PlanoDaPeca, string> = {
   tela: "TELA CHEIA (cobre a gravação; a voz continua)",
 };
 
-/** O catálogo inteiro, sem filtro de estilo: o comando decide o que combina. */
-export function catalogoDoDiretor(): string {
+/**
+ * AS PEÇAS DO ESTILO DO COMANDO (05/10, segunda volta). A primeira prova
+ * misturou estilos: o diretor recebeu o catálogo inteiro e pôs "pergaminho" e
+ * "frase-impacto" (fundo azul escuro de outro acabamento) no meio do Vox, e o
+ * Bruno reprovou. Agora cada base tem só as peças dela:
+ *   - vox: só as de papel (worker/remotion/src/sob-medida/pecas/vox.tsx);
+ *   - lousa e consorcio: as genéricas que valem nelas mais as da lousa;
+ *   - o resto: só as genéricas (nenhuma peça de acabamento próprio).
+ */
+export function pecasDoEstilo(base: string): FichaDaPeca[] {
+  const semApoio = PECAS.filter((p) => !CAMADAS_DE_APOIO.has(p.nome));
+  if (ESTILOS_DO_VOX.includes(base)) return semApoio.filter((p) => p.estilos?.includes(base));
+  return semApoio.filter((p) => pecaNoEstilo(p, base));
+}
+
+/** O texto curto que uma peça de fora carrega (para virar a peça do estilo). */
+function textoDaPeca(props: Record<string, unknown>): string {
+  for (const k of ["texto", "titulo", "manchete", "frase", "citacao", "palavra", "rotulo", "pergunta"]) {
+    const v = props[k];
+    if (typeof v === "string" && v.trim()) return v.replace(/\*\*/g, "").replace(/[.!]+$/, "").split(/\s+/).slice(0, 5).join(" ");
+  }
+  return "";
+}
+
+/**
+ * Peça fora do estilo: no Vox vira MARCA-TEXTO de papel com o texto dela (nunca
+ * fundo escuro de outro acabamento); sem texto, ou fora do Vox, cai.
+ */
+export function pecaNoEstiloDoComando(m: MomentoDoEditor, base: string): { momento: MomentoDoEditor | null; aviso?: string } {
+  if (pecasDoEstilo(base).some((p) => p.nome === m.peca)) return { momento: m };
+  const texto = textoDaPeca((m.props ?? {}) as Record<string, unknown>);
+  if (ESTILOS_DO_VOX.includes(base) && texto.length >= 3) return { momento: { ...m, peca: "marca-texto", eventos: undefined, plano: undefined, props: { texto, posicao: "topo" } }, aviso: `${m.id}: "${m.peca}" fora do estilo virou marca-texto` };
+  return { momento: null, aviso: `${m.id}: "${m.peca}" fora do estilo ${base}, saiu` };
+}
+
+/** O catálogo do estilo do comando (só as peças que existem nele). */
+export function catalogoDoDiretor(base: string): string {
   return (["sobre", "lado", "tela"] as PlanoDaPeca[])
+    .filter((pl) => pecasDoEstilo(base).some((p) => p.plano === pl))
     .map(
       (pl) =>
         `## ${NOME_DO_PLANO[pl]}\n` +
-        PECAS.filter((p) => p.plano === pl && !CAMADAS_DE_APOIO.has(p.nome))
+        pecasDoEstilo(base).filter((p) => p.plano === pl)
           .map((p) => `- ${p.nome}${p.estilos ? ` [acabamento ${p.estilos.includes("vox") ? "papel/Vox" : "lousa"}]` : ""} (${p.duracao[0]} a ${p.duracao[1]} s${p.eventosDe ? `; um evento por item de "${p.eventosDe}"` : p.umEvento ? "; um evento" : ""}${p.continua || p.plano === "tela" ? "; render contínuo" : ""}): ${p.quando}\n    props: ${p.props}`)
           .join("\n")
     )
@@ -102,6 +140,7 @@ Só um JSON, sem texto antes ou depois:
 "visual" é o acabamento das peças genéricas: "documental" (papel, serifa), "impacto" (blocos fortes), "vidro" (tecnológico, painéis translúcidos). "acabamento" só vale para as peças de lousa.
 
 # O CATÁLOGO DAS PEÇAS REMOTION
+Este catálogo tem SÓ as peças do estilo do comando; não existe outra peça. Peça com outro nome sai do vídeo.
 `;
 
 function falaNumerada(frases: Frase[], bloco?: EntradaDoDiretor["bloco"]): string {
@@ -183,7 +222,7 @@ const vazio = (v: unknown) => v === undefined || v === null || (typeof v === "st
  * props obrigatórias presentes. O que não passa SAI com o motivo (o revisor
  * vê o vídeo depois e o diretor corrige); nada é inventado no lugar.
  */
-export function validarPlano(bruto: unknown): { plano: PlanoDoDiretor; avisos: string[] } {
+export function validarPlano(bruto: unknown, base: string): { plano: PlanoDoDiretor; avisos: string[] } {
   const j = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
   const avisos: string[] = [];
   const momentos: MomentoDoEditor[] = [];
@@ -191,8 +230,18 @@ export function validarPlano(bruto: unknown): { plano: PlanoDoDiretor; avisos: s
   lista.forEach((m0, k) => {
     const m = (m0 && typeof m0 === "object" ? m0 : {}) as Record<string, unknown>;
     const id = String(m.id ?? `m${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `m${k + 1}`;
-    const peca = String(m.peca ?? "");
-    if (!FICHAS[peca] || CAMADAS_DE_APOIO.has(peca)) return avisos.push(`${id}: peça "${peca}" não existe`);
+    const peca0 = String(m.peca ?? "");
+    if (!FICHAS[peca0] || CAMADAS_DE_APOIO.has(peca0)) return avisos.push(`${id}: peça "${peca0}" não existe`);
+    // Peça fora do estilo do comando: vira a peça do estilo (no Vox, marca-texto) ou sai.
+    const ajuste = pecaNoEstiloDoComando({ id, peca: peca0, de: "", ate: "", props: (m.props ?? {}) as Record<string, unknown> }, base);
+    if (ajuste.aviso) avisos.push(ajuste.aviso);
+    if (!ajuste.momento) return;
+    const peca = ajuste.momento.peca;
+    if (peca !== peca0) {
+      m.props = ajuste.momento.props;
+      m.eventos = undefined;
+      m.plano = undefined;
+    }
     const de = String(m.de ?? "").trim();
     const ate = String(m.ate ?? "").trim();
     if (!ANCORA.test(de) || !ANCORA.test(ate)) return avisos.push(`${id}: âncora fora do formato (${de} a ${ate})`);
@@ -219,7 +268,8 @@ export function validarPlano(bruto: unknown): { plano: PlanoDoDiretor; avisos: s
       foco: c.foco && typeof c.foco === "object" ? { x: Number((c.foco as { x?: unknown }).x) || 0.5, y: Number((c.foco as { y?: unknown }).y) || 0.4 } : undefined,
       movimento: c.movimento === "empurrao" ? ("empurrao" as const) : ("fixo" as const),
     }));
-  const insercoes = (Array.isArray(j.insercoes) ? j.insercoes : [])
+  // No Vox a imagem é a foto de arquivo dentro do papel: nenhuma cena de cinema em tela cheia.
+  const insercoes = (Array.isArray(j.insercoes) && !ESTILOS_DO_VOX.includes(base) ? j.insercoes : [])
     .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
     .filter((x) => ANCORA.test(String(x.de ?? "")) && ANCORA.test(String(x.ate ?? "")) && typeof x.briefing === "string" && x.briefing.length > 10)
     .map((x, k) => ({ id: String(x.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `i${k + 1}`, de: String(x.de), ate: String(x.ate), briefing: String(x.briefing).slice(0, 900) }));
@@ -232,7 +282,7 @@ export function validarPlano(bruto: unknown): { plano: PlanoDoDiretor; avisos: s
 async function chamar(mensagem: string, e: EntradaDoDiretor, operacao: string): Promise<unknown> {
   const quadros = (e.quadros ?? []).slice(0, 4);
   const r = await askClaudeComImagens(
-    SISTEMA + catalogoDoDiretor(),
+    SISTEMA + catalogoDoDiretor(e.base),
     mensagem,
     quadros.map((q) => ({ base64: q.base64, rotulo: `Quadro da gravação em ${q.t.toFixed(1)} s:` })),
     { model: MODELO_DO_DIRETOR, maxTokens: 24000, effort: "medium", timeoutMs: e.timeoutMs ?? 240_000, usage: { projectId: e.projectId ?? undefined, operation: operacao } }
@@ -246,7 +296,7 @@ export async function escreverPlano(e: EntradaDoDiretor): Promise<{ plano: Plano
   let erro = "";
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     try {
-      const v = validarPlano(await chamar(msg, e, "editor-por-comando-diretor"));
+      const v = validarPlano(await chamar(msg, e, "editor-por-comando-diretor"), e.base);
       v.plano = dentroDoBloco(v.plano, e.bloco);
       if (v.plano.momentos.length) return v;
       erro = `plano sem momentos válidos (${v.avisos.slice(0, 3).join("; ")})`;
@@ -263,7 +313,7 @@ export type NotaDoRevisor = { t: number; momento: string | null; problema: strin
 export async function corrigirPlano(e: EntradaDoDiretor, plano: PlanoDoDiretor, notas: NotaDoRevisor[], resumo: string): Promise<{ plano: PlanoDoDiretor; avisos: string[]; erro?: string }> {
   const msg = `${contextoDaTarefa(e)}\n\n# A FALA, NUMERADA\n${falaNumerada(e.frases, e.bloco)}\n\n# O PLANO QUE VOCÊ ESCREVEU\n${JSON.stringify(plano)}\n\n# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (contra o comando do cliente)\n${resumo}\n${notas.map((n) => `- ${n.t.toFixed(1)} s${n.momento ? ` (${n.momento})` : ""}: ${n.problema} -> ${n.conserto}`).join("\n")}\n\n# A TAREFA\nCorrija o plano: resolva cada nota (troque a peça, mova, encurte, reescreva o texto, mude o lugar), mantenha o que está bom e devolva o plano INTEIRO no mesmo formato JSON.`;
   try {
-    const v = validarPlano(await chamar(msg, { ...e, quadros: [] }, "editor-por-comando-correcao"));
+    const v = validarPlano(await chamar(msg, { ...e, quadros: [] }, "editor-por-comando-correcao"), e.base);
     v.plano = dentroDoBloco(v.plano, e.bloco);
     if (v.plano.momentos.length) return v;
     return { plano, avisos: v.avisos, erro: "correção sem momentos válidos" };

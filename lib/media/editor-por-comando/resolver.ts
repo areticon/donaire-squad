@@ -1,5 +1,6 @@
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
-import { FICHAS, passesDaPeca, pecaContinua } from "@/lib/media/editor-sob-medida/pecas";
+import { ESTILOS_DO_VOX, FICHAS, passesDaPeca, pecaContinua } from "@/lib/media/editor-sob-medida/pecas";
+import { pecaNoEstiloDoComando } from "@/lib/media/editor-por-comando/diretor";
 import { caixaDoCartao, cameraDeRitmo, frasesNumeradas, limparSvg, paginasDaLegenda, resolverAncora } from "@/lib/media/editor-sob-medida/resolver";
 import { posicionarLegenda } from "@/lib/media/editor-sob-medida/faixa-da-legenda";
 import type { CamadaResolvida, EdicaoResolvida, Enquadramento, MidiaDaInsercao, PlanoResolvido, Tema } from "@/lib/media/editor-sob-medida/tipos";
@@ -34,6 +35,8 @@ export type ContextoDoComando = {
   comLegenda: boolean;
   logoUrl: string | null;
   insercoes: Record<string, MidiaDaInsercao>;
+  /** A base do estilo do comando: peça de fora dela vira a peça do estilo ou sai (a defesa do que o diretor validou). */
+  base?: string | null;
 };
 
 function limparProps(v: unknown, prof = 0): unknown {
@@ -79,7 +82,11 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   // 1. As peças, em segundos.
   const camadas: CamadaResolvida[] = [];
   const planos: PlanoResolvido[] = [];
-  for (const [k, m] of (p.momentos ?? []).entries()) {
+  for (const [k, m0] of (p.momentos ?? []).entries()) {
+    const ajuste = ctx.base ? pecaNoEstiloDoComando(m0, ctx.base) : { momento: m0 };
+    if (ajuste.aviso) avisos.push(ajuste.aviso);
+    if (!ajuste.momento) continue;
+    const m = ajuste.momento;
     const ficha = FICHAS[m.peca];
     const id = String(m.id ?? `m${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `m${k + 1}`;
     if (!ficha) {
@@ -133,7 +140,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   }
 
   // 2. As imagens de cinema (tela cheia, foto com movimento): onde o diretor pôs.
-  for (const [k, ins] of (p.insercoes ?? []).entries()) {
+  // No Vox não há cena de cinema em tela cheia: a imagem é a foto de arquivo dentro das peças de papel.
+  for (const [k, ins] of (ctx.base && ESTILOS_DO_VOX.includes(ctx.base) ? [] : p.insercoes ?? []).entries()) {
     const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
     if (!ctx.insercoes[id]) {
       avisos.push(`${id}: imagem não gerada, ficou de fora`);

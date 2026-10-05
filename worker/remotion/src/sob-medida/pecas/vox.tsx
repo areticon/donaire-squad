@@ -27,7 +27,20 @@ import { acaso, molaFisica } from "../kit";
  * papel andam a 12 quadros por segundo (o engasgo da Vox); a câmera, contínua.
  */
 
-const AMARELO = "#ffe11f";
+/**
+ * O REALCE (a faixa amarela do marca-texto) e a tinta do CARIMBO: os do Vox, ou
+ * os acentos da marca quando o editor por comando manda (tema.vox, 05/10). Cada
+ * peça exportada chama `usarAcentos(c)` antes de desenhar; o tema é o mesmo
+ * para todas as camadas de um vídeo.
+ */
+let AMARELO = "#ffe11f";
+let TINTA_DO_CARIMBO = "#b8231b";
+const HEX6 = /^#[0-9a-f]{6}$/i;
+function usarAcentos(c: { tema?: { vox?: { realce?: string; carimbo?: string } } }): void {
+  const v = c.tema?.vox;
+  AMARELO = v?.realce && HEX6.test(v.realce) ? v.realce : "#ffe11f";
+  TINTA_DO_CARIMBO = v?.carimbo && HEX6.test(v.carimbo) ? v.carimbo : "#b8231b";
+}
 const TINTA = "#16130e";
 const VERMELHO = "#b8231b";
 const PAPEL = "#d3bf97";
@@ -312,8 +325,8 @@ function Carimbo({ txt, tam, p, rot = -9 }: { txt: string; tam: number; p: numbe
         fontSize: tam,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
-        color: VERMELHO,
-        border: `${tam * 0.09}px double ${VERMELHO}`,
+        color: TINTA_DO_CARIMBO,
+        border: `${tam * 0.09}px double ${TINTA_DO_CARIMBO}`,
         padding: `0.02em 0.32em`,
         transform: `rotate(${rot}deg) scale(${(2.3 - 1.3 * k).toFixed(3)})`,
         opacity: 0.25 + 0.65 * k,
@@ -396,6 +409,7 @@ type Vaga = { esquerda?: number; direita?: number; baixo?: number; topo?: number
 
 /** COLAGEM: a cena da referência vox-01, em camadas com parallax. */
 export function Colagem(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const cam = camera(c, 1);
@@ -526,6 +540,7 @@ function Manchete({ txt, tam, p }: { txt: string; tam: number; p: number }) {
 
 /** JORNAL: o recorte de jornal rasgado com a manchete; a foto salta do papel para a frente. */
 export function Jornal(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const cam = camera(c, 2);
@@ -597,6 +612,7 @@ function FotoMeioTom({ foto, s }: { foto: Foto; s: number }) {
 
 /** MAPA ANTIGO: o mapa rasgado ocupa a tela, a câmera chega no lugar e o círculo vermelho se desenha no evento. */
 export function MapaAntigo(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const cam = camera(c, 3);
@@ -654,6 +670,7 @@ function FotoImpressa({ foto, largura, s }: { foto: Foto; largura: number; s: nu
 
 /** CENSURA: a estátua (ou figura fictícia) grande e a tarja amarela que bate sobre os olhos. */
 export function Censura(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const cam = camera(c, 4);
@@ -701,6 +718,7 @@ export function Censura(c: Ctx) {
  * altura do rosto: "topo" fica acima da cabeça e "centro" desce para o peito.
  */
 export function MarcaTexto(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical, u } = c;
   const s = Math.min(W, H) / 1080;
   const txt = texto(c.props.texto);
@@ -728,6 +746,7 @@ export function MarcaTexto(c: Ctx) {
 
 /** CARIMBO: o carimbo vermelho batendo sobre a pessoa. */
 export function CarimboSobre(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical, u } = c;
   const s = Math.min(W, H) / 1080;
   const lado = texto(c.props.lado, "direita");
@@ -750,6 +769,7 @@ export function CarimboSobre(c: Ctx) {
  * que aconteceu e a foto de arquivo do marco cai pendurada por fita.
  */
 export function Cronologia(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const marcos = lista<{ ano?: string | number; rotulo?: string; foto?: Foto }>(c.props.marcos).slice(0, 5);
@@ -829,6 +849,7 @@ export function Cronologia(c: Ctx) {
  * sozinho em todo trecho com a pessoa cheia (camada de apoio).
  */
 export function FundoColagem(c: Ctx) {
+  usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const k = Math.round(Number(c.props.semente ?? 0));

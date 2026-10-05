@@ -34,6 +34,12 @@ export type Tema = {
    * preto e marinho, dourado metálico, serifa elegante). Sem o campo, tecnológico.
    */
   acabamento?: "tecnologico" | "luxo";
+  /**
+   * OS ACENTOS DA MARCA NO VOX (05/10, editor por comando): a faixa do
+   * marca-texto e a tinta do carimbo na cor da marca; o papel continua o do
+   * Vox. Sem o campo, o amarelo e o vermelho do Vox.
+   */
+  vox?: { realce?: string; carimbo?: string };
 };
 
 export type CamadaResolvida = {

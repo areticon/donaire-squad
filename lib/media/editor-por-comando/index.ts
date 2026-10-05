@@ -127,7 +127,7 @@ export function coresDoComando(c: ComandoDoVideo, marca: { acento: string; escur
 }
 
 /** O tema da edição: a base classificada, a letra escolhida, as cores e o acabamento que o diretor pediu. */
-export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: string; escuro: string; claro: string }, plano?: PlanoDoDiretor | null): Tema {
+export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: string; escuro: string; claro: string }, plano?: PlanoDoDiretor | null, paleta?: string[] | null): Tema {
   const b = temaDoEstilo(base, cores);
   const f = fichaDaFonte(c.fonte);
   return {
@@ -138,7 +138,40 @@ export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: 
     ...(plano?.tema?.visual ? { visual: plano.tema.visual } : {}),
     ...(plano?.tema?.acabamento ? { acabamento: plano.tema.acabamento } : {}),
     escuroLegenda: "#06111F",
+    // NO VOX a base é o papel envelhecido da peça; a marca entra só como ACENTO no marca-texto e no carimbo.
+    ...(base === "vox" ? { vox: acentosDoVox(c.cores.tipo === "marca" ? paleta ?? [cores.acento, cores.escuro, cores.claro] : [c.cores.acento]) } : {}),
   };
+}
+
+function hsl(hex: string): { l: number; s: number; lum: number } | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return { l, s, lum: 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) };
+}
+
+/**
+ * Os acentos da marca no Vox: o REALCE (a faixa do marca-texto, com tinta preta
+ * por cima: a cor mais viva da paleta que ainda deixa o preto legível) e o
+ * CARIMBO (a cor viva e escura da paleta). Sem cor que sirva, o amarelo e o
+ * vermelho do Vox. Ex.: Fé & Gestão (#1f2f3a,#98092b,#df931b,#e0daa3,#9fb982)
+ * dá realce #df931b e carimbo #98092b.
+ */
+export function acentosDoVox(paleta: string[]): { realce?: string; carimbo?: string } {
+  const cs = paleta.map((h) => ({ h: h.trim(), c: hsl(h) })).filter((x): x is { h: string; c: NonNullable<ReturnType<typeof hsl>> } => Boolean(x.c));
+  const realce = cs.filter((x) => x.c.lum >= 0.3 && x.c.s >= 0.45).sort((a, b) => b.c.s - a.c.s)[0]?.h;
+  const carimbo = cs.filter((x) => x.c.lum < 0.3 && x.c.lum > 0.02 && x.c.s >= 0.45).sort((a, b) => b.c.s - a.c.s)[0]?.h;
+  return { ...(realce ? { realce } : {}), ...(carimbo ? { carimbo } : {}) };
+}
+
+/** A paleta inteira do projeto (projects.colorPalette), em hex. */
+export function paletaDoProjeto(colorPalette: string | null | undefined): string[] {
+  return String(colorPalette ?? "").split(",").map((x) => x.trim()).filter((x) => /^#[0-9a-f]{6}$/i.test(x));
 }
 
 // ─────────────────────────────── o plano inteiro ───────────────────────────────
@@ -149,6 +182,8 @@ export type EntradaDoPlano = {
   formato: "9:16" | "16:9";
   comando: ComandoDoVideo;
   marca: { acento: string; escuro: string; claro: string };
+  /** A paleta inteira da marca (todas as cores do projeto): o Vox escolhe dela os acentos. */
+  paleta?: string[] | null;
   rosto: Retangulo;
   comLegenda: boolean;
   logoUrl: string | null;
@@ -173,8 +208,9 @@ export type PlanoPorComando = {
   tempos: Record<string, number>;
 };
 
-function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: string; claro: string }): EntradaDoDiretor {
+function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: string; claro: string }, base: string): EntradaDoDiretor {
   return {
+    base,
     frases: frasesNumeradas(e.palavras),
     duracao: e.duracao,
     formato: e.formato,
@@ -217,12 +253,14 @@ export async function planejarPorComando(e: EntradaDoPlano): Promise<PlanoPorCom
   };
   const cores = coresDoComando(e.comando, e.marca);
   // A classificação (JEV, meio segundo) corre junto com o diretor: só decide o tema padrão.
-  const [base, d] = await Promise.all([classificarComando(e.comando.texto, e.projectId), escreverPlano(entradaDoDiretor(e, cores))]);
+  // A base vem antes do diretor (meio segundo no JEV): o catálogo dele é só o do estilo.
+  const base = await classificarComando(e.comando.texto, e.projectId);
+  const d = await escreverPlano(entradaDoDiretor(e, cores, base));
   marcar("diretor");
   if (!d.plano.momentos.length) throw new Error(`o diretor não devolveu plano (${d.erro ?? "sem momentos"})`);
   const img = await imagensDoPlano(d.plano, e);
   marcar("imagens");
-  const r = resolverPorComando(d.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, tema: temaDoComando(e.comando, base, cores, d.plano), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
+  const r = resolverPorComando(d.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, d.plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
   marcar("resolver");
   return { base, plano: d.plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
@@ -237,7 +275,7 @@ export async function corrigirPorComando(
   const tempos: Record<string, number> = {};
   let t = Date.now();
   const cores = coresDoComando(e.comando, e.marca);
-  const c = await corrigirPlano(entradaDoDiretor(e, cores), anterior.plano, notas, resumo);
+  const c = await corrigirPlano(entradaDoDiretor(e, cores, anterior.base), anterior.plano, notas, resumo);
   tempos.correcao = +((Date.now() - t) / 1000).toFixed(1);
   t = Date.now();
   // As fotos já pagas voltam pelo cache (mesmo pedido, mesmo hash); as novas cabem no que sobrou do teto.
@@ -245,7 +283,7 @@ export async function corrigirPorComando(
   const img = await imagensDoPlano(c.plano, { ...e, imagens: sobra }, anterior.insercoes);
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
-  const r = resolverPorComando(c.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, tema: temaDoComando(e.comando, anterior.base, cores, c.plano), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
+  const r = resolverPorComando(c.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, c.plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
   return { base: anterior.base, plano: c.plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...(c.erro ? [`correção: ${c.erro}`] : []), ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
 
@@ -279,9 +317,9 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano): Promise<Pla
   let t = Date.now();
   const cores = coresDoComando(e.comando, e.marca);
   const blocos = blocosDoCompleto(e.palavras, e.duracao);
-  const base0 = entradaDoDiretor(e, cores);
-  const [base, partes] = await Promise.all([
-    classificarComando(e.comando.texto, e.projectId),
+  const base = await classificarComando(e.comando.texto, e.projectId);
+  const base0 = entradaDoDiretor(e, cores, base);
+  const [partes] = await Promise.all([
     Promise.all(blocos.map((b, k) => escreverPlano({ ...base0, imagens: Math.max(1, Math.round(e.imagens / blocos.length)), quadros: (e.quadros ?? []).filter((q) => q.t >= b.de - 1 && q.t <= b.ate + 1), bloco: { f0: b.f0, f1: b.f1, k, total: blocos.length } }))),
   ]);
   tempos.diretor = +((Date.now() - t) / 1000).toFixed(1);
@@ -290,7 +328,7 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano): Promise<Pla
   if (!plano.momentos.length) throw new Error(`o diretor não devolveu plano em nenhum bloco (${partes.map((p) => p.erro).filter(Boolean).join("; ").slice(0, 200)})`);
   const img = await imagensDoPlano(plano, e);
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, tema: temaDoComando(e.comando, base, cores, plano), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
   const errosDosBlocos = partes.map((p, k) => (p.erro ? `bloco ${k + 1}: ${p.erro}` : "")).filter(Boolean);
   return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...errosDosBlocos, ...partes.flatMap((p) => p.avisos), ...img.erros, ...r.avisos].slice(0, 40), tempos, blocos: blocos.length, errosDosBlocos };
 }
@@ -312,7 +350,7 @@ export async function corrigirCompletoPorComando(
     return { ...anterior.plano, momentos: anterior.plano.momentos.filter((m) => dentro(m.de)), camera: (anterior.plano.camera ?? []).filter((c) => dentro(c.de)), insercoes: (anterior.plano.insercoes ?? []).filter((x) => dentro(x.de)), enfases: (anterior.plano.enfases ?? []).filter(dentro) };
   };
   const comNota = [...new Set(notas.map((n) => blocoDe(n.t)))];
-  const base0 = entradaDoDiretor(e, cores);
+  const base0 = entradaDoDiretor(e, cores, anterior.base);
   const novos = await Promise.all(
     blocos.map(async (b, k) => {
       if (!comNota.includes(k)) return { plano: doBloco(k), avisos: [] as string[] };
@@ -323,7 +361,7 @@ export async function corrigirCompletoPorComando(
   const sobra = Math.max(0, e.imagens - Math.round(anterior.custoImagensUsd / 0.065));
   const img = await imagensDoPlano(plano, { ...e, imagens: sobra }, anterior.insercoes);
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, tema: temaDoComando(e.comando, anterior.base, cores, plano), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
   return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...novos.flatMap((x) => x.avisos), ...img.erros, ...r.avisos].slice(0, 40), tempos: { correcao: +((Date.now() - t) / 1000).toFixed(1) } };
 }
 
