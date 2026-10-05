@@ -52,6 +52,27 @@ export type ExtrasDaLinha = {
   cortesEmRevisao: number;
   /** Peças deste vídeo no quadro esperando o ok do cliente (posts em rascunho). */
   postsParaAprovar: number;
+  /**
+   * ONDE CADA PEÇA DO VÍDEO ESTÁ NO QUADRO (05/10): o completo e um card por
+   * corte, com a data. O vídeo enviado no domingo à noite tem o completo e o
+   * primeiro corte no domingo, e na segunda o quadro abre na semana nova: a
+   * faixa dizia "pronto" e o Bruno não achava onde assistir nem aprovar. Com a
+   * data, a faixa e o quadro levam direto à peça, na semana dela.
+   */
+  pecas?: PecaDoVideoNaLinha[];
+};
+
+/** Uma peça do vídeo no quadro (o completo ou um corte), para abrir direto. */
+export type PecaDoVideoNaLinha = {
+  /** O card que abre a peça (um dos cards do corte, um por rede). */
+  cardId: string;
+  /** AAAA-MM-DD, em UTC, do jeito que o quadro compara as datas. */
+  data: string;
+  completo: boolean;
+  /** O índice do trecho, no corte. Nulo no completo. */
+  trecho: number | null;
+  /** Algum post da peça ainda espera o ok do cliente (rascunho). */
+  paraAprovar: boolean;
 };
 
 /**

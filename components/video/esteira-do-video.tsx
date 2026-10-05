@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Minus, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
+import { AlertCircle, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
@@ -192,6 +192,8 @@ export function EsteiraDoVideo({
   videosIniciais,
   aoMudar,
   sinalDeRecarga = 0,
+  aoAbrirPeca,
+  aoIrAoQuadro,
 }: {
   projectId: string;
   videosIniciais: VideoAoVivo[];
@@ -210,6 +212,16 @@ export function EsteiraDoVideo({
    * não estava na lista.
    */
   sinalDeRecarga?: number;
+  /**
+   * Abre uma peça do vídeo (o completo, um corte) no card dela, na semana em
+   * que ela está no quadro (05/10). Sem ele o botão do completo não aparece.
+   */
+  aoAbrirPeca?: (cardId: string, data: string) => void;
+  /**
+   * Leva ao quadro, na semana da data pedida (05/10). Sem ele, rola até o
+   * quadro na semana que estiver aberta, que era o comportamento de antes.
+   */
+  aoIrAoQuadro?: (data?: string) => void;
 }) {
   const [videos, setVideos] = useState<VideoAoVivo[]>(videosIniciais);
   const [etapaLocal, setEtapaLocal] = useState<Record<string, string | null>>({});
@@ -618,6 +630,8 @@ export function EsteiraDoVideo({
       }}
       aoAproveitar={() => setAproveitar(v.id)}
       avisoFixo={avisoDaEtapa(v)}
+      aoAbrirPeca={aoAbrirPeca}
+      aoIrAoQuadro={aoIrAoQuadro}
     />
   );
   const alternar = (g: Grupo) => setRecolhidos((r) => ({ ...r, [g]: !r[g] }));
@@ -885,6 +899,8 @@ function CartaoDoVideo({
   aoDispensar,
   aoAproveitar,
   avisoFixo,
+  aoAbrirPeca,
+  aoIrAoQuadro,
 }: {
   projectId: string;
   video: VideoAoVivo;
@@ -898,6 +914,8 @@ function CartaoDoVideo({
   aoAproveitar: () => void;
   /** O aviso do vigia desta etapa, fixo até a etapa mudar (sem piscar). */
   avisoFixo: string | null;
+  aoAbrirPeca?: (cardId: string, data: string) => void;
+  aoIrAoQuadro?: (data?: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
   // Conta da RODADA atual, e não do envio (30/09): o vídeo refeito contava do
@@ -972,6 +990,20 @@ function CartaoDoVideo({
             ? "roteiro em até"
             : "tudo pronto em até";
 
+  // ── ONDE ESTÃO AS PEÇAS (05/10) ──────────────────────────────────────────
+  // O vídeo enviado no domingo à noite tem o completo e o primeiro corte no
+  // domingo; na segunda o quadro abre na semana nova, e o "Aprovar as peças"
+  // rolava até um quadro sem elas. Agora o botão leva à semana da primeira
+  // peça que espera o ok, e o completo pronto ganha botão próprio.
+  const pecas = v.linha?.pecas ?? [];
+  const temOCompleto = v.temCompleto && !falhou;
+  const pecaDoCompleto = temOCompleto ? pecas.find((p) => p.completo) ?? null : null;
+  // Sem card do completo no quadro (o run arquivado, o card apagado), o botão
+  // não some: o vídeo toca aqui mesmo, num player por cima da tela.
+  const [assistindo, setAssistindo] = useState(false);
+  const primeiraParaAprovar = pecas.filter((p) => p.paraAprovar).sort((a, b) => a.data.localeCompare(b.data))[0] ?? null;
+  const irAsPecas = () => (aoIrAoQuadro ? aoIrAoQuadro(primeiraParaAprovar?.data) : irAoQuadro());
+
   // ── O botão da vez do cliente ─────────────────────────────────────────────
   const classeDoPrincipal =
     "inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 transition-colors whitespace-nowrap";
@@ -995,7 +1027,7 @@ function CartaoDoVideo({
       Revisar e aprovar o roteiro
     </Link>
   ) : esperando === "pecas" ? (
-    <button type="button" onClick={irAoQuadro} className={classeDoPrincipal} data-acao="aprovar-pecas">
+    <button type="button" onClick={irAsPecas} className={classeDoPrincipal} data-acao="aprovar-pecas">
       <ClipboardCheck className="w-3.5 h-3.5" />
       Aprovar as peças
     </button>
@@ -1056,7 +1088,9 @@ function CartaoDoVideo({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:shrink-0">
+        {/* flex-wrap (05/10): com o botão do completo, a fileira passava da
+            borda em 390 px. */}
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
           {relogio && (
             <div className="mr-auto sm:mr-0 sm:text-right pl-12 sm:pl-0" data-relogio>
               <p className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>
@@ -1071,6 +1105,23 @@ function CartaoDoVideo({
             </div>
           )}
           {principal}
+          {/* O VÍDEO COMPLETO PRONTO (05/10): a faixa dizia "pronto" e não
+              havia por onde assistir. Abre o card do completo, com o player
+              e a aprovação, na semana em que ele está no quadro. */}
+          {temOCompleto && (
+            <button
+              type="button"
+              onClick={() =>
+                pecaDoCompleto && aoAbrirPeca ? aoAbrirPeca(pecaDoCompleto.cardId, pecaDoCompleto.data) : setAssistindo(true)
+              }
+              className={`${classeDoSecundario} flex-1 sm:flex-none`}
+              style={{ borderColor: "color-mix(in srgb, var(--accent-orange) 55%, transparent)", color: "var(--text-primary)" }}
+              data-acao="assistir-completo"
+            >
+              <PlayCircle className="w-3.5 h-3.5 text-orange-500" />
+              Assistir o vídeo completo
+            </button>
+          )}
           {/* APROVEITAR O ROTEIRO (02/10): o vídeo terminou, a pergunta de
               gerar mais peças a partir dele. */}
           {(pronto || esperando === "pecas") && (
@@ -1190,6 +1241,47 @@ function CartaoDoVideo({
               Voltar à edição
             </Link>
           )}
+        </div>
+      )}
+
+      {/* O PLAYER DO COMPLETO (05/10), para quando ele não tem card no quadro:
+          o vídeo pronto sempre tem onde ser assistido e baixado. */}
+      {assistindo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vídeo completo"
+          onClick={() => setAssistindo(false)}
+          data-player-do-completo
+        >
+          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-semibold text-white">{titulo}</p>
+              <button
+                type="button"
+                onClick={() => setAssistindo(false)}
+                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+                aria-label="Fechar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <video
+              src={`/api/videos/${v.id}/midia?tipo=completo`}
+              poster={`/api/videos/${v.id}/midia?tipo=capa-completo`}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-[75vh] w-full rounded-lg bg-black"
+            />
+            <a
+              href={`/api/videos/${v.id}/midia?tipo=completo&download=1`}
+              className="mt-2 inline-block text-xs font-semibold text-white/80 underline hover:text-white"
+            >
+              Baixar o vídeo completo
+            </a>
+          </div>
         </div>
       )}
     </div>

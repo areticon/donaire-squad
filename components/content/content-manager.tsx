@@ -4634,6 +4634,37 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     );
   }
 
+  /**
+   * ABRE UMA PEÇA DO VÍDEO NA SEMANA DELA (05/10): o completo pela faixa, o
+   * corte pronto pelo cartão "Corte pronto: aprovar". Na semana aberta abre
+   * o card na hora; fora dela, o quadro vai para a semana da peça e o card
+   * abre quando ela carregar (o mesmo caminho do ?card= da biblioteca). Nada
+   * de rolar a tela: o modal cobre a tela onde a pessoa está.
+   */
+  function abrirPecaDoVideo(cardId: string, data: string) {
+    const aqui = cards.find((c) => c.id === cardId);
+    if (aqui) {
+      handleOpenModal(aqui, linhaDoAgente(aqui));
+      return;
+    }
+    const segunda = getMonday(new Date(`${data}T12:00:00.000Z`));
+    if (toIsoDate(segunda) !== weekStartIso) setSelectedMonday(segunda);
+    setCardDoLink(cardId);
+  }
+
+  /**
+   * O "Aprovar as peças" da faixa (05/10): leva ao quadro NA SEMANA da
+   * primeira peça que espera o ok. Antes rolava até a semana aberta, e o
+   * vídeo de domingo à noite tinha as peças na semana anterior.
+   */
+  function irAoQuadroNaSemana(data?: string) {
+    if (data) {
+      const segunda = getMonday(new Date(`${data}T12:00:00.000Z`));
+      if (toIsoDate(segunda) !== weekStartIso) setSelectedMonday(segunda);
+    }
+    document.getElementById("quadro-da-semana")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const aoTerminarRun = useCallback(() => {
     setGenerating(false);
     toast.success("Campanha gerada! Cards atualizados.");
@@ -4886,6 +4917,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       semanaDoProjeto: videoSemana,
       postsDoDia: postsSemana.filter((p) => (p.scheduledAt ? toIsoDate(new Date(p.scheduledAt)) === iso : false)),
       cardsDoDia,
+      // A semana aberta (05/10): o corte pronto que caiu em outra semana vira
+      // "Corte pronto: aprovar" num dia vazio desta, e não promessa de chegada.
+      semana: { de: weekStartIso, ate: toIsoDate(addDays(selectedMonday, 6)) },
     });
     const formato = formatosDoDia.length ? formatosDoDia.join(" · ") : esperasDoCorte.length ? "Vídeo curto" : null;
 
@@ -5364,6 +5398,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           if (statusMudou) void loadCardsForWeek(weekStartIso);
         }}
         sinalDeRecarga={gravacoesEnviadas}
+        // O completo pronto abre no card dele, e o "Aprovar as peças" leva à
+        // semana das peças (05/10).
+        aoAbrirPeca={abrirPecaDoVideo}
+        aoIrAoQuadro={irAoQuadroNaSemana}
       />
 
       {/* A montagem de efeitos que desistiu, dita com todas as letras e com a
@@ -5612,6 +5650,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         // O cartão de espera do corte leva à faixa do vídeo, onde a gravação e
         // os cortes estão (05/10).
         onVerVideo={() => document.querySelector("[data-esteira]")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        // O corte já pronto abre direto, na semana dele (05/10): sem subir
+        // até a faixa e voltar.
+        onAbrirCorte={abrirPecaDoVideo}
         // A peça que falhou se arquiva no próprio cartão (01/10): só os posts
         // dela que falharam; o que já saiu ou está na fila fica.
         onArquivarPeca={(id) => void arquivarPostsComFalha((postsDaPeca.get(id) ?? []).filter((p) => p.status === "failed").map((p) => p.id))}

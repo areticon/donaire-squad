@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { roteiroLigado } from "@/lib/media/roteiro-da-edicao";
 import { revisaoVisualLigada } from "@/lib/media/revisao-visual";
-import type { ExtrasDaLinha, GemeoNaLinha } from "@/lib/media/linha-do-tempo";
+import type { ExtrasDaLinha, GemeoNaLinha, PecaDoVideoNaLinha } from "@/lib/media/linha-do-tempo";
 import { listarVideos } from "@/lib/media/gemeo-servidor";
 import type { VideoAoVivo } from "@/components/video/esteira-do-video";
 
@@ -83,7 +83,7 @@ export async function extrasDaLinha(
   const r = new Map<string, ExtrasDaLinha>();
   if (!videos.length) return r;
   const ids = videos.map((v) => v.id);
-  const [montagens, rascunhos] = await Promise.all([
+  const [montagens, rascunhos, cardsDoVideo] = await Promise.all([
     prisma.$queryRaw<Array<{ id: string; estado: string | null; pendente: string | null; candidato: boolean | null; rodadas: string | null; segura: string | null; falha: string | null }>>`
       SELECT id,
              "completoMontagem" ->> 'estado' AS estado,
@@ -99,9 +99,41 @@ export async function extrasDaLinha(
       WHERE r."projectId" = ${projectId} AND r.archived = false
         AND r.config ->> 'videoJobId' = ANY(${ids}) AND p.status = 'draft'
       GROUP BY 1`.catch(() => []),
+    // AS PEÇAS DO VÍDEO NO QUADRO (05/10): o completo e os cortes, com a data
+    // e se ainda esperam o ok. É o que deixa a faixa abrir o completo e o
+    // quadro apontar o corte pronto, mesmo quando ele caiu em outra semana.
+    prisma.$queryRaw<Array<{ vid: string; id: string; data: Date | null; completo: string | null; trecho: string | null; status: string | null }>>`
+      SELECT r.config ->> 'videoJobId' AS vid, c.id, c."scheduledDate" AS data,
+             c.metadata ->> 'completo' AS completo, c.metadata ->> 'trechoIndice' AS trecho, p.status
+      FROM pipeline_runs r
+      JOIN campaign_cards c ON c."runId" = r.id
+      LEFT JOIN posts p ON p.id = c."postId"
+      WHERE r."projectId" = ${projectId} AND r.archived = false
+        AND r.config ->> 'videoJobId' = ANY(${ids})
+        AND c."cardType" IN ('video_clip', 'video_completo') AND c.status <> 'archived'
+        AND c."scheduledDate" IS NOT NULL
+      ORDER BY c."scheduledDate" ASC, c."createdAt" ASC`.catch(() => []),
   ]);
   const porVideo = new Map(montagens.map((m) => [m.id, m]));
   const posts = new Map(rascunhos.map((x) => [x.vid, x.n]));
+  // Uma peça por completo e por corte (o corte tem um card por rede): fica o
+  // primeiro card, e a peça espera o ok se qualquer post dela for rascunho.
+  const pecasPorVideo = new Map<string, Map<string, PecaDoVideoNaLinha>>();
+  for (const c of cardsDoVideo) {
+    if (!c.data) continue;
+    const completo = c.completo === "true";
+    const trecho = c.trecho != null && /^\d+$/.test(c.trecho) ? Number(c.trecho) : null;
+    if (!completo && trecho === null) continue;
+    const doVideo = pecasPorVideo.get(c.vid) ?? new Map<string, PecaDoVideoNaLinha>();
+    pecasPorVideo.set(c.vid, doVideo);
+    const chave = completo ? "completo" : `corte:${trecho}`;
+    const ja = doVideo.get(chave);
+    if (ja) {
+      if (c.status === "draft") ja.paraAprovar = true;
+      continue;
+    }
+    doVideo.set(chave, { cardId: c.id, data: c.data.toISOString().slice(0, 10), completo, trecho: completo ? null : trecho, paraAprovar: c.status === "draft" });
+  }
   const montagemLigada = process.env.MONTAGEM_DO_COMPLETO === "1" || process.env.MONTAGEM_NA_EDICAO === "1";
   const revisao = revisaoVisualLigada();
   const roteiro = roteiroLigado();
@@ -129,6 +161,7 @@ export async function extrasDaLinha(
       cortesEmEfeitos,
       cortesEmRevisao,
       postsParaAprovar: posts.get(v.id) ?? 0,
+      pecas: [...(pecasPorVideo.get(v.id)?.values() ?? [])],
     });
   }
   return r;

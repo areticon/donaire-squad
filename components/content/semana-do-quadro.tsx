@@ -126,9 +126,19 @@ export type DiaDaSemana = {
  * entra no lugar dele. As cores vêm da escala orange-*, que desenha o azul da
  * marca, e o mesmo par de ícone e cor da faixa do andamento.
  */
-function CartaoDaEsperaDoCorte({ e, onVerVideo }: { e: EsperaDoCorte; onVerVideo?: () => void }) {
+function CartaoDaEsperaDoCorte({
+  e,
+  onVerVideo,
+  onAbrirCorte,
+}: {
+  e: EsperaDoCorte;
+  onVerVideo?: () => void;
+  onAbrirCorte?: (cardId: string, data: string) => void;
+}) {
   const andando = e.estado === "cortando";
-  const pronto = e.estado === "revisar";
+  // O CORTE JÁ PRONTO (05/10): nada de "chega aqui". O cartão diz que está
+  // pronto e abre o próprio corte, sem rolar a tela até a faixa e voltar.
+  const pronto = e.estado === "aprovar" && Boolean(e.corte);
   const Icone = pronto ? Eye : andando ? Loader2 : Clock;
   const conteudo = (
     <>
@@ -140,7 +150,7 @@ function CartaoDaEsperaDoCorte({ e, onVerVideo }: { e: EsperaDoCorte; onVerVideo
           <Scissors className="h-3 w-3" />
         </span>
         <span className="text-[11.5px] font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
-          O corte do seu vídeo chega aqui
+          {pronto ? "Corte pronto: aprovar" : "O corte do seu vídeo chega aqui"}
         </span>
       </span>
       {e.redes.length > 0 && (
@@ -175,12 +185,13 @@ function CartaoDaEsperaDoCorte({ e, onVerVideo }: { e: EsperaDoCorte; onVerVideo
     background: "var(--bg-input)",
     borderColor: pronto ? "rgba(246,128,61,.55)" : "var(--border)",
   };
-  return onVerVideo ? (
+  const aoClicar = pronto ? (onAbrirCorte && e.corte ? () => onAbrirCorte(e.corte!.cardId, e.corte!.data) : undefined) : onVerVideo;
+  return aoClicar ? (
     <button
       type="button"
       data-espera-do-corte={e.estado}
-      onClick={onVerVideo}
-      title="Ver a gravação e os cortes, na faixa do vídeo"
+      onClick={aoClicar}
+      title={pronto ? "Assistir e aprovar o corte" : "Ver a gravação e os cortes, na faixa do vídeo"}
       className={cn(classe, "hover:border-orange-500/60")}
       style={estilo}
     >
@@ -556,6 +567,7 @@ export function SemanaDoQuadro({
   onAbrirPeca,
   onArquivarPeca,
   onVerVideo,
+  onAbrirCorte,
 }: {
   dias: DiaDaSemana[];
   /** Clicar no vazio de um dia: é por onde se põe algo naquele dia. */
@@ -565,6 +577,8 @@ export function SemanaDoQuadro({
   onArquivarPeca?: (pecaId: string) => void;
   /** Levar o cliente à faixa do vídeo, a partir do cartão de espera do corte (05/10). */
   onVerVideo?: () => void;
+  /** Abrir o corte pronto que o cartão "Corte pronto: aprovar" aponta (05/10). */
+  onAbrirCorte?: (cardId: string, data: string) => void;
 }) {
   // A peça cuja mídia está aberta no visor. Estado da semana, e não do
   // cartão, porque o visor cobre a tela inteira.
@@ -650,7 +664,7 @@ export function SemanaDoQuadro({
                   peças prontas: quando o corte chega, ele vira peça e o
                   cartão de espera some. */}
               {dia.esperasDoCorte?.map((e) => (
-                <CartaoDaEsperaDoCorte key={e.id} e={e} onVerVideo={onVerVideo} />
+                <CartaoDaEsperaDoCorte key={e.id} e={e} onVerVideo={onVerVideo} onAbrirCorte={onAbrirCorte} />
               ))}
             </div>
           ) : dia.andamento && dia.andamento.fase !== "pronto" ? null : (
