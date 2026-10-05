@@ -301,11 +301,35 @@ export function EsteiraDoVideo({
    * um corte guardado não mexe no status nenhum. Confiar só na troca de status
    * deixaria a peça nova invisível até alguém recarregar a página.
    */
+  /**
+   * O `aoMudar` DO GESTOR MORA NUMA REF, e `consultar` só depende do projeto.
+   *
+   * Causa da tela travada de 05/10 (card do dia "esperando você" que não
+   * abria): o Gestor passa `aoMudar` como arrow inline, que é outra função a
+   * cada render. `consultar` dependia dela, então o efeito do ritmo
+   * (`[algumAndando, consultar]`) rodava de novo a cada render e disparava
+   * uma consulta na hora; a resposta gravava o estado no Gestor, que
+   * renderizava de novo, que disparava outra consulta. Com vídeo em
+   * andamento e a latência de produção, isso virou mil chamadas a
+   * /api/videos/status em dois segundos (logs da Vercel, 18:51Z), e as três
+   * rotas do card ficaram na fila atrás delas. Com a ref, a função é a mesma
+   * enquanto o projeto for o mesmo, e o ritmo volta a ser um a cada 4 s.
+   */
+  const aoMudarRef = useRef(aoMudar);
+  useEffect(() => {
+    aoMudarRef.current = aoMudar;
+  });
   const forcarRecarga = useCallback(() => {
-    aoMudar(videosAgora.current, true);
-  }, [aoMudar]);
+    aoMudarRef.current(videosAgora.current, true);
+  }, []);
 
+  // Uma consulta de cada vez: a que chega com outra no ar não começa. As
+  // consultas escalonadas do `executar` e o ritmo de 4 s se sobrepunham, e
+  // cada resposta a mais era mais um render e mais uma consulta.
+  const consultando = useRef(false);
   const consultar = useCallback(async () => {
+    if (consultando.current) return;
+    consultando.current = true;
     try {
       const r = await fetch(`/api/videos/status?projectId=${projectId}`, { cache: "no-store" });
       // Resposta do servidor, mesmo com erro, prova que a conexão existe.
@@ -323,7 +347,7 @@ export function EsteiraDoVideo({
           statusConhecidos.current[v.id] !== assinaturaDoEstado(v)
       );
       setVideos(frescos);
-      aoMudar(frescos, mudou);
+      aoMudarRef.current(frescos, mudou);
       if (mudou) {
         // ERRO GRAVADO QUE NINGUÉM APAGA VIRA MENTIRA NA TELA (02/10): o aviso
         // de uma ação que falhou some quando o vídeo anda, em vez de ficar em
@@ -338,8 +362,10 @@ export function EsteiraDoVideo({
       // acende a faixa de sem conexão.
       falhasSeguidas.current += 1;
       if (falhasSeguidas.current >= FALHAS_PARA_SEM_CONEXAO) setSemConexao(true);
+    } finally {
+      consultando.current = false;
     }
-  }, [projectId, aoMudar]);
+  }, [projectId]);
 
   // O navegador avisa quando a rede cai e quando volta. Na volta, consulta NA
   // HORA (sem esperar o próximo ciclo de quatro segundos): quem estava olhando

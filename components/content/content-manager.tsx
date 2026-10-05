@@ -5629,7 +5629,12 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         projectId={projectId}
         videosIniciais={videos}
         aoMudar={(frescos, statusMudou) => {
-          setVideosAoVivo(frescos);
+          // SÓ GRAVA QUANDO O CONTEÚDO MUDOU (05/10). A consulta de 4 s
+          // devolve quase sempre o mesmo estado; gravar um array novo a cada
+          // volta renderizava o Gestor inteiro (escritório, quadro, modal) a
+          // cada consulta, e cada render disparava outra consulta na faixa.
+          // Ver o comentário de `aoMudarRef` em esteira-do-video.tsx.
+          setVideosAoVivo((atuais) => (JSON.stringify(atuais) === JSON.stringify(frescos) ? atuais : frescos));
           if (statusMudou) void loadCardsForWeek(weekStartIso);
         }}
         sinalDeRecarga={gravacoesEnviadas}
