@@ -40,7 +40,19 @@ export async function POST(req: NextRequest) {
     where: { provedorDocumentoId: aviso.documentoId, ...(aviso.externoId ? { id: aviso.externoId } : {}) },
     select: { id: true },
   });
-  if (!c) return NextResponse.json({ ok: true, ignorado: "documento desconhecido" });
+  if (!c) {
+    // O ADITIVO (04/10) vai pelo mesmo provedor e volta pelo mesmo webhook.
+    const { aditivoDoDocumento, sincronizarAditivo } = await import("@/lib/contratos/aditivos");
+    const ad = await aditivoDoDocumento(aviso.documentoId, aviso.externoId);
+    if (!ad) return NextResponse.json({ ok: true, ignorado: "documento desconhecido" });
+    try {
+      const r = await sincronizarAditivo("provedor", ad.id);
+      return NextResponse.json({ ok: true, evento: aviso.evento, aditivo: ad.id, ...r });
+    } catch (e) {
+      console.error("[assinatura] webhook do aditivo não sincronizou:", e);
+      return NextResponse.json({ error: "falha ao sincronizar" }, { status: 500 });
+    }
+  }
   try {
     const r = await sincronizarComProvedor("provedor", c.id);
     return NextResponse.json({ ok: true, evento: aviso.evento, ...r });

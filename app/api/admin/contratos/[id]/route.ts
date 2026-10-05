@@ -5,13 +5,18 @@ import { exigirAdmin } from "@/lib/admin/guarda";
 import {
   RecusaDoContrato,
   anexarPdf,
+  aprovarDesconto,
   cancelarContrato,
+  editarContrato,
+  recusarDesconto,
   enviarParaAssinar,
   marcarAssinado,
   renovarContrato,
   sincronizarComProvedor,
 } from "@/lib/contratos/contratos";
 import { gerarLinkDePagamento, registrarPagamento } from "@/lib/contratos/pagamento";
+import { criarAditivo } from "@/lib/contratos/aditivos";
+import { dataDoTexto, descontoDoCorpo } from "@/lib/contratos/formulario";
 
 /** "35.964,00", "35964,00" ou "35964.00" viram 35964. */
 function reaisDoTexto(v: unknown): number {
@@ -84,6 +89,41 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         return NextResponse.json(await gerarLinkDePagamento(admin, id, req.nextUrl.origin));
       case "cancelar":
         return NextResponse.json(await cancelarContrato(admin, id, String(b.motivo ?? "")));
+      case "editar": {
+        // A VERSÃO NOVA antes de assinar (04/10): só o que veio no corpo muda.
+        const txt = (k: string) => (k in b ? (typeof b[k] === "string" && (b[k] as string).trim() ? (b[k] as string).trim() : null) : undefined);
+        return NextResponse.json(
+          await editarContrato(admin, id, {
+            plano: typeof b.plano === "string" && b.plano ? b.plano : undefined,
+            acessosExtras: b.acessosExtras === undefined || b.acessosExtras === "" ? undefined : Number(b.acessosExtras),
+            desconto: "descontoValor" in b ? descontoDoCorpo(b) : undefined,
+            fundador: "fundador" in b ? b.fundador === true || b.fundador === "on" : undefined,
+            inicioVigencia: "inicioVigencia" in b ? dataDoTexto(b.inicioVigencia) : undefined,
+            formaDePagamento: txt("formaDePagamento"),
+            empresa: txt("empresa"),
+            endereco: txt("endereco"),
+            signatarioNome: txt("signatarioNome"),
+            signatarioEmail: txt("signatarioEmail"),
+            signatarioDocumento: txt("signatarioDocumento"),
+            observacao: txt("observacao"),
+          })
+        );
+      }
+      case "aprovar_desconto":
+        return NextResponse.json(await aprovarDesconto(admin, id));
+      case "recusar_desconto":
+        return NextResponse.json(await recusarDesconto(admin, id, String(b.motivo ?? "")));
+      case "aditivo":
+        // O ADITIVO (04/10): mudar plano, acessos ou desconto depois de assinado.
+        return NextResponse.json(
+          await criarAditivo(admin, id, {
+            plano: String(b.plano ?? ""),
+            acessosExtras: Number(b.acessosExtras ?? 0),
+            desconto: descontoDoCorpo(b),
+            fundador: b.fundador === true || b.fundador === "on",
+            valeDesde: dataDoTexto(b.valeDesde),
+          })
+        );
       case "renovar":
         return NextResponse.json(await renovarContrato(admin, id, b.valorCentavos ? Number(b.valorCentavos) : null));
       default:

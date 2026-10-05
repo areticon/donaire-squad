@@ -3,18 +3,16 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { exigirAdmin } from "@/lib/admin/guarda";
 import { RecusaDoContrato, criarContrato } from "@/lib/contratos/contratos";
-
-/** "35.964,00", "35964,00" ou "35964.00" viram 35964. */
-function reaisDoTexto(v: unknown): number {
-  const t = String(v ?? "").replace(/[^\d.,]/g, "");
-  const n = t.includes(",") ? Number(t.replace(/\./g, "").replace(",", ".")) : Number(t);
-  return Number.isFinite(n) ? n : 0;
-}
+import { descontoDoCorpo } from "@/lib/contratos/formulario";
 
 /**
  * Cria um contrato (rascunho) para a conta de um cliente, ou para um PROSPECT
  * (04/10): sem `userId`, vale `prospectEmail` e `prospectNome`, e a conta nasce
  * sem senha e sem plano. Só admin.
+ *
+ * O VALOR (04/10) não é mais digitado: nasce do plano e dos acessos extras
+ * pelo preço de tabela, menos o desconto (`descontoTipo`, `descontoValor`,
+ * `descontoMotivo`, `descontoObservacao`), com os tetos de lib/contratos/preco.
  */
 export async function POST(req: NextRequest) {
   const admin = await exigirAdmin();
@@ -28,7 +26,8 @@ export async function POST(req: NextRequest) {
       prospect: s("userId") ? null : s("prospectEmail") ? { email: s("prospectEmail")!, nome: s("prospectNome") } : null,
       acessosExtras: b.acessosExtras === undefined || b.acessosExtras === "" || b.acessosExtras === null ? null : Number(b.acessosExtras),
       plano: s("plano") ?? "",
-      valorCentavos: Math.round(reaisDoTexto(b.valorReais) * 100),
+      desconto: descontoDoCorpo(b),
+      fundador: b.fundador === true || b.fundador === "on",
       inicioVigencia: inicio ? new Date(`${inicio}T12:00:00-03:00`) : null,
       formaDePagamento: s("formaDePagamento"),
       empresa: s("empresa"),
