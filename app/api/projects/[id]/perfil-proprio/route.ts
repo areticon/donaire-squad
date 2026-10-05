@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
 import { redesLigadas } from "@/lib/referencias/config";
-import { perfilCanonico, urlDoPerfil } from "@/lib/referencias/coletar";
+import { urlDoPerfil } from "@/lib/referencias/coletar";
 import { lerAnalise, pedirAnalise, rodarAnalise } from "@/lib/referencias/analise";
 import { deParaDoProjeto } from "@/lib/referencias/de-para";
 import { estimativaDasTendencias } from "@/lib/referencias/tendencias";
@@ -20,7 +20,7 @@ import {
   salvarRedesDoCliente,
 } from "@/lib/referencias/perfil-proprio";
 import { MAX_REFERENCIAS_POR_CONTA, REDES_DE_REFERENCIA, type RedeDeReferencia } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { MAX_REFERENCIAS_POR_PROJETO, conferirReferencia, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
  * A JORNADA DE ENTRADA (03/10/2026): o perfil do próprio cliente, as até 3
@@ -37,6 +37,8 @@ import { MAX_REFERENCIAS_POR_PROJETO, type RespostaDoPerfilProprio } from "@/lib
  *   "referencias"  { referencias: [{ rede, perfil }] } até 3: viram as
  *                  confirmadas do projeto e o estudo delas sai pelas análises
  *                  (pedido "cliente": estudar, etiquetar, regras, tendências);
+ *   "salvar-referencias" { referencias } a mesma lista e as mesmas travas,
+ *                  só que grava sem estudar (remover, trocar, adicionar; 05/10);
  *   "setup"        gera o setup sugerido (uma chamada de Sonnet, ~30 s).
  */
 export const dynamic = "force-dynamic";
@@ -133,35 +135,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ aceito: true, estado, avisos: recusadas }, { status: 202 });
     }
 
-    if (corpo.acao === "referencias") {
+    if (corpo.acao === "referencias" || corpo.acao === "salvar-referencias") {
+      // "salvar-referencias" (05/10): só grava a lista (remover, trocar,
+      // adicionar), sem estudar. O estudo novo é pedido à parte, com o custo à
+      // vista, pelo botão "Refazer o estudo" (que manda "referencias").
+      const soSalvar = corpo.acao === "salvar-referencias";
       const lista: Array<{ rede: RedeDeReferencia; perfil: string }> = [];
       for (const r of corpo.referencias ?? []) {
         const rede = String(r.rede ?? "") as RedeDeReferencia;
         const bruto = String(r.perfil ?? "").trim();
         if (!bruto || !REDES_DE_REFERENCIA.includes(rede) || rede === "x") continue;
-        if (rede === "linkedin" && !/linkedin\.com\/(company|school|showcase)\//i.test(bruto)) {
-          return NextResponse.json({ error: "No LinkedIn, só página de empresa (o link com /company/)." }, { status: 400 });
-        }
-        const perfil = perfilCanonico(rede, bruto);
+        const conferida = conferirReferencia(rede, bruto);
+        if (!conferida.ok) return NextResponse.json({ error: `${bruto}: ${conferida.erro}` }, { status: 400 });
+        const perfil = conferida.perfil;
         if (perfil && !lista.some((x) => x.rede === rede && x.perfil === perfil)) lista.push({ rede, perfil });
       }
-      if (!lista.length) return NextResponse.json({ error: "Escreva pelo menos uma referência (o @ ou o link do perfil)." }, { status: 400 });
+      if (!lista.length && !soSalvar) return NextResponse.json({ error: "Escreva pelo menos uma referência (o @ ou o link do perfil)." }, { status: 400 });
       if (lista.length > MAX_REFERENCIAS_POR_PROJETO) {
-        return NextResponse.json({ error: `São até ${MAX_REFERENCIAS_POR_PROJETO} referências por projeto. Fique com as que mais parecem com o que você quer ser.` }, { status: 400 });
+        return NextResponse.json({ error: `São até ${MAX_REFERENCIAS_POR_PROJETO} referências por projeto. Remova uma para colocar outra no lugar.` }, { status: 400 });
       }
       const proprias = await redesDoCliente(id);
       if (lista.some((x) => proprias.some((p) => p.rede === x.rede && p.perfil === x.perfil))) {
         return NextResponse.json({ error: "Uma das referências é o seu próprio perfil. Escolha perfis de outras pessoas do seu segmento." }, { status: 400 });
       }
-      // O teto da conta (10, somando os projetos), sem contar as deste projeto
+      // O teto da conta (somando os projetos), sem contar as deste projeto
       // que serão trocadas. Conta admin (a nossa) não tem teto, como nos limites do plano.
       const naConta = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: a.projeto.userId }, NOT: { projectId: id } } });
       if (naConta + lista.length > MAX_REFERENCIAS_POR_CONTA && !(await eAdmin(a.userId))) {
         return NextResponse.json({ error: `A conta já tem ${naConta} perfis de referência em outros projetos (o limite é ${MAX_REFERENCIAS_POR_CONTA}). Tire algum lá para estudar estes.` }, { status: 409 });
       }
-      // As de antes que saíram da lista voltam a "sugerido" (não apaga: o histórico e os posts ficam).
+      // Trocar a lista no meio de um estudo misturaria perfis velhos e novos no mesmo resultado.
+      if (soSalvar) {
+        const { estado: vivo, parado } = await lerAnalise(id);
+        if (vivo?.status === "rodando" && !parado) {
+          return NextResponse.json({ error: "Há um estudo rodando agora. Espere ele terminar para mudar as referências." }, { status: 409 });
+        }
+      }
+      // As de antes que saíram da lista voltam a "sugerido" (não apaga: o
+      // histórico e os posts ficam, e somem sozinhos em 90 dias). O de-para e
+      // os achados leem só as confirmadas, então a removida sai do comparativo na hora.
       await prisma.referenciaPerfil.updateMany({
-        where: { projectId: id, status: "confirmado", NOT: { OR: lista.map((x) => ({ rede: x.rede, perfil: x.perfil })) } },
+        where: lista.length
+          ? { projectId: id, status: "confirmado", NOT: { OR: lista.map((x) => ({ rede: x.rede, perfil: x.perfil })) } }
+          : { projectId: id, status: "confirmado" },
         data: { status: "sugerido" },
       });
       for (const x of lista) {
@@ -171,6 +187,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           update: { status: "confirmado" },
         });
       }
+      if (soSalvar) return NextResponse.json({ ok: true, referencias: lista });
       const estado = await pedirAnalise(id, { tipo: "cliente", origem: "criacao", base: req.nextUrl.origin, userId: a.userId });
       if (!estado) {
         const { estado: vivo } = await lerAnalise(id);

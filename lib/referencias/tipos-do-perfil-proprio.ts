@@ -29,6 +29,50 @@ export const MAX_REFERENCIAS_POR_PROJETO = 3;
 
 export const STATUS_DO_PERFIL_PROPRIO = "proprio";
 
+/**
+ * CONFERE UMA REFERÊNCIA ANTES DE GRAVAR (05/10), sem banco: a tela usa para
+ * avisar na hora e a API usa de novo antes de gravar. Aceita o @ ou o link do
+ * perfil. No Instagram e no TikTok o nome de usuário só tem letras, números,
+ * ponto e sublinhado (até 30 no Instagram, 24 no TikTok); link de post ou de
+ * reel não é perfil. Devolve o perfil já no formato que o banco guarda (o
+ * mesmo de perfilCanonico em lib/referencias/coletar.ts).
+ */
+export function conferirReferencia(rede: RedeDeReferencia, entrada: string): { ok: true; perfil: string } | { ok: false; erro: string } {
+  const e = entrada.trim();
+  if (!e) return { ok: false, erro: "Escreva o @ ou o link do perfil." };
+  if (rede === "linkedin") {
+    const m = e.match(/linkedin\.com\/(company|school|showcase)\/([^/?#]+)/i);
+    if (!m) return { ok: false, erro: "No LinkedIn, só página de empresa (o link com /company/)." };
+    return { ok: true, perfil: `https://www.linkedin.com/${m[1].toLowerCase()}/${m[2]}/` };
+  }
+  if (rede === "youtube") {
+    const m = e.match(/youtube\.com\/(@[^/?#]+|channel\/(UC[\w-]+))/i);
+    if (m) return { ok: true, perfil: m[2] ?? m[1] };
+    if (/^https?:\/\//i.test(e) || /\s/.test(e)) return { ok: false, erro: "No YouTube, use o @ do canal ou o link do canal." };
+    return { ok: true, perfil: e.startsWith("@") || e.startsWith("UC") ? e : `@${e}` };
+  }
+  if (rede === "instagram" || rede === "tiktok") {
+    const dominio = rede === "instagram" ? /instagram\.com/i : /tiktok\.com/i;
+    let nome = e;
+    if (/^(https?:\/\/)?(www\.|m\.)?[a-z]+\.com\//i.test(e)) {
+      if (!dominio.test(e)) return { ok: false, erro: `Esse link não é do ${rede === "instagram" ? "Instagram" : "TikTok"}.` };
+      const caminho = e.replace(/^(https?:\/\/)?(www\.|m\.)?[a-z]+\.com\//i, "").replace(/[?#].*$/, "");
+      const partes = caminho.split("/").filter(Boolean);
+      if (!partes.length || /^(p|reel|reels|tv|stories|explore|video)$/i.test(partes[0]) || (partes.length > 1 && /^(p|reel|video)$/i.test(partes[1]))) {
+        return { ok: false, erro: "Esse link é de um post. Cole o link do perfil (ou só o @)." };
+      }
+      nome = partes[0];
+    }
+    nome = nome.replace(/^@/, "").toLowerCase();
+    const max = rede === "instagram" ? 30 : 24;
+    if (!new RegExp(`^[a-z0-9._]{1,${max}}$`).test(nome)) {
+      return { ok: false, erro: `Esse @ não parece válido: no ${rede === "instagram" ? "Instagram" : "TikTok"} só vale letra, número, ponto e sublinhado.` };
+    }
+    return { ok: true, perfil: nome };
+  }
+  return { ok: false, erro: "Essa rede não entra nas referências." };
+}
+
 export type RedeLidaDoCliente = {
   rede: RedeDeReferencia;
   perfil: string;
