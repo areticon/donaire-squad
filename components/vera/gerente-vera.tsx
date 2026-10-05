@@ -32,7 +32,7 @@ import {
  */
 
 const SUGESTOES = [
-  "Pare de usar \"minha preta\" nos textos",
+  "Não use gírias nos textos",
   "Mude o tom para mais direto",
   "Tira o LinkedIn de sexta",
   "Como eu edito uma regra?",

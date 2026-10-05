@@ -319,7 +319,7 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
       entrada: {
         type: "object",
         properties: {
-          texto: { type: "string", description: "Trecho a procurar no texto da peça, ex.: minha preta." },
+          texto: { type: "string", description: "Trecho a procurar no texto da peça, ex.: uma palavra que o cliente não quer mais." },
           dia: { type: "number", description: "Dia da semana, 1 a 7." },
           rede: { type: "string" },
         },
@@ -405,7 +405,7 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
     {
       nome: "regra_nova",
       descricao:
-        "Prepara uma regra nova do projeto, que passa a valer para os agentes (já nasce aprovada, porque quem pediu é o cliente). Texto no imperativo, curto e conferível, sem travessão. Ex.: \"Nunca usar o apelido 'minha preta' nem vocativo íntimo; falar com o público em geral\".",
+        "Prepara uma regra nova do projeto, que passa a valer para os agentes (já nasce aprovada, porque quem pediu é o cliente). Texto no imperativo, curto e conferível, sem travessão. Ex.: \"Nunca usar gírias; falar com o público em geral\".",
       entrada: {
         type: "object",
         properties: {
@@ -753,11 +753,11 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
     {
       nome: "reescrever_pecas",
       descricao:
-        "Prepara a correção do TEXTO de peças pendentes, aplicando só a instrução e mantendo o resto. Use `com_o_texto` para pegar TODAS as pendentes que têm um trecho (ex.: \"minha preta\"), ou `ids` para peças escolhidas. O texto novo de cada uma já sai pronto para a pessoa conferir. Até 20 peças por pedido.",
+        "Prepara a correção do TEXTO de peças pendentes, aplicando só a instrução e mantendo o resto. Use `com_o_texto` para pegar TODAS as pendentes que têm um trecho (ex.: uma gíria ou uma palavra que o cliente quer tirar), ou `ids` para peças escolhidas. O texto novo de cada uma já sai pronto para a pessoa conferir. Até 20 peças por pedido.",
       entrada: {
         type: "object",
         properties: {
-          instrucao: { type: "string", description: "O que corrigir, em uma frase. Ex.: tirar o vocativo íntimo 'minha preta' e falar com o público em geral." },
+          instrucao: { type: "string", description: "O que corrigir, em uma frase. Ex.: tirar as gírias e falar com o público em geral." },
           com_o_texto: { type: "string" },
           ids: { type: "array", items: { type: "string" } },
         },
