@@ -35,7 +35,10 @@ import {
 import type { Formato } from "@/lib/media/plano-de-montagem";
 import { recortesDoProjeto } from "@/lib/media/assets-da-montagem";
 import { estiloDoCatalogo, normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
-import { familiaDaLinguagem } from "@/lib/media/capa-composta";
+import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
+import { comandoPadrao, editorPorComandoLigado, escreverPlanoDoCompletoPorComando, lerComandoDoProjeto, paletaDoProjeto, tetoDeImagens } from "@/lib/media/editor-por-comando";
+import { frasesNumeradas, resolverAncora } from "@/lib/media/editor-sob-medida/resolver";
+import { FICHAS } from "@/lib/media/editor-sob-medida/pecas";
 import {
   CREDITOS_DA_ABERTURA_DO_COMPLETO,
   CREDITOS_POR_NOVA_IDEIA,
@@ -68,7 +71,7 @@ import type { Word } from "@/lib/media/transcribe";
 import { projetoVisivel } from "@/lib/equipe/conta";
 import { revisarECorrigir, revisorLigado } from "@/lib/media/revisor-da-montagem";
 import type { ResumoDaRevisao } from "@/lib/media/revisao-tipos";
-import { perfilDoProjeto } from "@/lib/media/perfil-do-projeto";
+import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { falaDoBloco } from "@/lib/media/montagem-do-completo";
 
@@ -142,8 +145,27 @@ export function roteiroLigado(): boolean {
 // Até 01/10: export const CORTES_PLANEJADOS_NO_ROTEIRO = 6;
 export const CORTES_PLANEJADOS_NO_ROTEIRO = 8;
 
-/** Diretor em paralelo: cortes e blocos do completo dividem a mesma fila. */
-const DIRETORES_EM_PARALELO = 6;
+/**
+ * Diretor em paralelo: cortes e blocos do completo dividem a mesma fila.
+ *
+ * Até 05/10 eram 6. No vídeo de 19 min de cmuums24z a fila tinha 17 tarefas
+ * (abertura, ganchos, 8 cortes, 7 blocos) de 8 a 13 min cada (diretor,
+ * revisor e correções); com 6 vagas e o orçamento de 150 s para COMEÇAR
+ * tarefa, cada chamada da rota fazia uma onda só, e as tarefas que passavam
+ * do teto de 800 s da Vercel morriam no meio (duas vezes, 02:44 e 03:03), com
+ * 6 min parados até o vigia relançar. O roteiro levou 56 min. Com 12 vagas a
+ * primeira onda pega quase tudo. As chamadas são as mesmas (o custo não muda);
+ * o 429 da Anthropic é retentado uma vez pelo cliente. ROTEIRO_DIRETORES ajusta.
+ */
+const DIRETORES_EM_PARALELO = Math.max(1, Math.min(24, Number(process.env.ROTEIRO_DIRETORES) || 12));
+
+/**
+ * O teto da rota do roteiro (app/api/videos/[id]/roteiro, maxDuration 800 s),
+ * menos a folga para gravar e responder. Passou daqui com tarefa em voo, a
+ * chamada devolve "continuar" e o re-despacho é imediato, em vez de a Vercel
+ * matar a função e o vigia só relançar 6 min depois (05/10).
+ */
+const TETO_DA_CHAMADA_MS = 740_000;
 
 const agora = () => new Date().toISOString();
 
@@ -525,7 +547,14 @@ export async function prepararRoteiro(
   // cenas novas ao diretor cena a cena: não tem o que fazer sobre o corte
   // limpo (03/10), que não tem imagem nem cena gerada e já sai validado.
   const limpo = usarDiretorLimpo(v.project.videoEstiloEscolha, v.project.videoStyle);
-  const revisar = revisorLigado() && !opcoes.semDiretor && !limpo;
+  // O EDITOR POR COMANDO (05/10, à tarde): o roteiro NÃO roda o diretor de
+  // blocos, o revisor nem a correção por LLM. Os cortes ficam sem plano (a
+  // montagem escreve a edição deles pelo comando), a abertura sai pelo JEV e
+  // o completo ganha o plano decidido pelo JEV e escrito pelo redator
+  // (lib/media/editor-por-comando/plano-pelo-jev.ts), gravado em
+  // `completo.comando` para a tela cena a cena e para a montagem reaproveitar.
+  const comandoLigado = editorPorComandoLigado();
+  const revisar = revisorLigado() && !opcoes.semDiretor && !limpo && !comandoLigado;
   const pessoa = { x: 0.2, y: 0, w: 0.6, h: 1 };
   const rosto = { x: pessoa.x + pessoa.w * 0.3, y: pessoa.y + 0.1, w: pessoa.w * 0.4, h: 0.3 };
 
@@ -552,14 +581,14 @@ export async function prepararRoteiro(
     // estilo não é reaproveitado (01/10): o cliente trocou o estilo para mudar.
     const velho = t.montagem?.plano;
     const mesmaFala = velho?.fala && Math.abs(velho.fala.duracao - f.fala.duracao) <= Math.max(3, f.fala.duracao * 0.1);
-    if (planejar.includes(i) && velho?.cenas?.length && velho.fala && mesmaFala && planoServeAoEstilo(velho, t.roteiro?.estiloId, estiloAtual)) {
+    if (!comandoLigado && planejar.includes(i) && velho?.cenas?.length && velho.fala && mesmaFala && planoServeAoEstilo(velho, t.roteiro?.estiloId, estiloAtual)) {
       const plano = iguais(velho.fala.manter, f.manter) && velho.fala.palavras.length === f.fala.palavras.length
         ? semFala(velho)
         : remapearPlano(semFala(velho), velho.fala.palavras, f.fala.palavras);
       await gravarRoteiroDoCorte(videoId, i, { ...base, plano, planoOriginal: plano, origem: "reaproveitado" });
       continue;
     }
-    if (!planejar.includes(i)) {
+    if (!planejar.includes(i) || comandoLigado) {
       await gravarRoteiroDoCorte(videoId, i, base);
       continue;
     }
@@ -640,13 +669,48 @@ export async function prepararRoteiro(
   // 3. O completo: coberto do começo ao fim (cotas por minuto, mais denso no
   // começo; ritmo-da-edicao.ts), planejado por blocos, com a tela compartilhada.
   const fecho = { formato, familia: familiaDaLinguagem(normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle).estiloId), faixas: faixasC };
-  if (montagemDoCompletoLigada() && !r.completo?.plano && !r.completo?.erro) {
+  if (montagemDoCompletoLigada() && !r.completo?.plano && !r.completo?.erro && !r.completo?.comando) {
     const fala = r.completo?.fala ?? (await falaDoCompleto(v, r.remocoes, termos));
     const insercoes = insercoesDoCompleto(fala.duracao, formato);
-    const lido = await montagemDoCompletoAnterior(videoId);
+    const lido = comandoLigado ? null : await montagemDoCompletoAnterior(videoId);
     // Plano de outro estilo não volta (01/10): o diretor planeja de novo.
     const anterior = lido && planoServeAoEstilo(lido.plano, r.completo?.estiloId, estiloAtual) ? lido : null;
-    if (anterior) {
+    if (comandoLigado && !opcoes.semDiretor) {
+      // O PLANO PELO COMANDO: uma tarefa só (o JEV decide frase a frase em
+      // lotes paralelos; o redator escreve um bloco de 5 min por chamada, em
+      // paralelo). Gravado em `completo.comando`; `plano` fica null.
+      const completo: RoteiroDoCompleto = r.completo ?? { fala, blocos: [], plano: null, insercoes, estiloId: estiloAtual };
+      if (!r.completo) {
+        r.completo = completo;
+        await gravarRoteiroDoVideo(videoId, r);
+      }
+      tarefas.push(async () => {
+        const t0 = Date.now();
+        const comando = (await lerComandoDoProjeto(v.projectId).catch(() => null)) ?? comandoPadrao(normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle));
+        try {
+          const { rosto: rostoDoVideo } = geometriaDaPessoa(v.clips);
+          const p = await escreverPlanoDoCompletoPorComando({
+            palavras: fala.palavras,
+            duracao: fala.duracao,
+            formato,
+            comando,
+            marca: coresDaMarca(v.project.colorPalette),
+            paleta: paletaDoProjeto(v.project.colorPalette),
+            rosto: rostoDoVideo,
+            comLegenda: true,
+            logoUrl: null,
+            titulo: trechos.map((t) => t.titulo).filter(Boolean).slice(0, 6).join("; ") || null,
+            perfil: perfil ? perfilNoPrompt(perfil) : null,
+            projectId: v.projectId,
+            imagens: tetoDeImagens("completo", fala.duracao),
+          });
+          completo.comando = { texto: comando.texto, base: p.base, plano: p.plano.momentos.length ? p.plano : null, feitoEm: agora(), erro: p.erro ?? null, tempos: { ...p.tempos, total: +((Date.now() - t0) / 1000).toFixed(1) }, avisos: p.avisos.slice(0, 20) };
+        } catch (e) {
+          completo.comando = { texto: comando.texto, base: "", plano: null, feitoEm: agora(), erro: e instanceof Error ? e.message.slice(0, 140) : "falhou" };
+        }
+        await gravar(() => gravarRoteiroDoVideo(videoId, r));
+      });
+    } else if (anterior) {
       // Vídeo refeito: o plano da montagem anterior, levado para esta fala.
       const plano = fecharCompleto(remapearPlano(anterior.plano, anterior.fala.palavras, fala.palavras), fala, fecho);
       r.completo = { fala, blocos: [], plano, planoOriginal: plano, insercoes, estiloId: estiloAtual };
@@ -734,7 +798,7 @@ export async function prepararRoteiro(
         // No corte limpo (03/10) a abertura é a frase de gancho mais forte
         // pela nota do JEV, de 2 a 4 s; o Sonnet lendo tudo fica para quem
         // ligou as inserções de IA.
-        if (limpo) {
+        if (limpo || comandoLigado) {
           r.abertura = await aberturaPeloJev({ palavras: fala.palavras, projectId: v.projectId, nicho: v.project.niche, evitar: (t) => Boolean(faixaNoInstante(faixasC, t)) });
           await gravar(() => gravarRoteiroDoVideo(videoId, r));
           return;
@@ -765,19 +829,39 @@ export async function prepararRoteiro(
     void prisma.videoJob.updateMany({ where: { id: videoId, status: "roteirizando" }, data: { startedAt: new Date() } }).catch(() => {});
   }, 60_000);
   let proxima = 0;
+  let emVoo = 0;
   const trabalhador = async () => {
     while (proxima < tarefas.length && Date.now() - inicioMs < orcamento) {
       const t = tarefas[proxima++];
-      await t();
+      emVoo++;
+      try {
+        await t();
+      } finally {
+        emVoo--;
+      }
     }
   };
+  // O TETO DA CHAMADA (05/10): tarefa que ainda está em voo perto dos 800 s
+  // morreria com a função; aqui a chamada devolve "continuar" antes, e a
+  // seguinte refaz só o que não foi gravado (cada plano é gravado ao chegar).
+  let relogio: ReturnType<typeof setTimeout> | undefined;
+  const teto = new Promise<"teto">((ok) => {
+    relogio = setTimeout(() => ok("teto"), Math.max(0, TETO_DA_CHAMADA_MS - (Date.now() - inicioMs)));
+  });
+  let estourou = false;
   try {
-    await Promise.all(Array.from({ length: Math.min(DIRETORES_EM_PARALELO, tarefas.length) }, trabalhador));
+    const fim = await Promise.race([Promise.all(Array.from({ length: Math.min(DIRETORES_EM_PARALELO, tarefas.length) }, trabalhador)).then(() => "fim" as const), teto]);
+    estourou = fim === "teto" && emVoo > 0;
     await fila;
   } finally {
+    clearTimeout(relogio);
     clearInterval(vivo);
   }
 
+  if (estourou) {
+    console.warn(`[roteiro][${videoId}] ${emVoo} tarefa(s) ainda em voo no teto da chamada; continua na próxima`);
+    return { estado: "continuar", planejados: proxima, blocos: r.completo?.blocos.length ?? 0 };
+  }
   if (proxima < tarefas.length) return { estado: "continuar", planejados: proxima, blocos: r.completo?.blocos.length ?? 0 };
 
   // 5. Com todos os blocos, o plano do completo inteiro.
@@ -866,7 +950,7 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
     termos: v.project.videoTerms ?? "",
     trocas: lista.trocas ?? [],
     cortes: cortesNaTela(comGancho, familia, montagemNaEdicaoLigada()),
-    completo: completoNaTela(r?.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0, { abertura: r?.abertura, telas }),
+    completo: comPecasDoComando(completoNaTela(r?.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0, { abertura: r?.abertura, telas }), r?.completo),
     duracaoSec: v.durationSec ?? 0,
     creditos: {
       roteiro: pago ? Math.abs(pago.amount) || creditosDoRoteiro(v.durationSec ?? 0) : creditosDoRoteiro(v.durationSec ?? 0),
@@ -893,6 +977,50 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
           .map((x) => x.i)
           .sort((a, b) => a - b),
   };
+}
+
+/** O nome de cada peça do editor por comando como o cliente lê. */
+const ROTULO_DA_PECA: Record<string, string> = {
+  colagem: "colagem de papel",
+  jornal: "recorte de jornal",
+  "mapa-antigo": "mapa antigo",
+  cronologia: "linha do tempo de papel",
+  censura: "tarja de censura",
+  "marca-texto": "marca-texto",
+  carimbo: "carimbo",
+  "titulo-atras": "palavra gigante atrás de você",
+  "passos-foco": "passos numerados",
+  "linha-do-tempo": "linha do tempo",
+  "painel-lateral": "painel ao lado",
+  "frase-impacto": "frase de impacto",
+  "palavra-chave": "palavra-chave",
+};
+
+/**
+ * O CENA A CENA DO EDITOR POR COMANDO (05/10, à tarde): sem o plano antigo,
+ * os trechos da fala ganham as peças que o JEV decidiu e o redator escreveu,
+ * cada uma no trecho em que entra, para o cliente ler e sugerir por cima.
+ */
+function comPecasDoComando(tela: ReturnType<typeof completoNaTela>, c: RoteiroDoCompleto | null | undefined): ReturnType<typeof completoNaTela> {
+  const plano = c?.comando?.plano;
+  if (!plano || c?.plano || !tela.trechos?.length || !c?.fala?.palavras?.length) return tela;
+  const frases = frasesNumeradas(c.fala.palavras);
+  const texto = (props: Record<string, unknown>) => {
+    for (const k of ["texto", "titulo", "manchete", "frase", "palavra", "rotulo", "lugar"]) {
+      const v = props[k];
+      if (typeof v === "string" && v.trim()) return v.replace(/\*\*/g, "").trim();
+    }
+    return "";
+  };
+  const pecas = (plano.momentos ?? [])
+    .map((m) => ({ inicio: resolverAncora(m.de, frases, c.fala.palavras), peca: m.peca, texto: texto((m.props ?? {}) as Record<string, unknown>) }))
+    .filter((x): x is { inicio: number; peca: string; texto: string } => x.inicio !== null)
+    .map((x) => ({ ...x, rotulo: ROTULO_DA_PECA[x.peca] ?? x.peca.replace(/-/g, " "), tela: FICHAS[x.peca]?.plano === "tela" }));
+  const trechos = tela.trechos.map((t) => {
+    const daqui = pecas.filter((p) => p.inicio >= t.inicio - 0.05 && p.inicio < t.fim - 0.05).map(({ peca, rotulo, texto, inicio, tela }) => ({ peca, rotulo, texto, inicio, tela }));
+    return daqui.length ? { ...t, pecas: daqui } : t;
+  });
+  return { ...tela, trechos, cenas: pecas.length };
 }
 
 /** A abertura com os melhores momentos (01/10): cobrada só se ligada, e nunca no preço antigo. */

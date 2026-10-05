@@ -86,7 +86,9 @@ import {
   type ComandoDoVideo,
   type EntradaDoPlano,
   type PlanoDoDiretor,
+  type PlanoPronto,
 } from "@/lib/media/editor-por-comando";
+import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
 import {
   demonstracaoNaFala,
   insercoesDoPlano,
@@ -1927,8 +1929,18 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
     // O EDITOR POR COMANDO (05/10): um diretor por bloco, em paralelo; o final sai direto, sem prévia.
     if (editorPorComandoLigado()) {
       const comando = (await lerComandoDoProjeto(v.projectId).catch(() => null)) ?? comandoPadrao(contextoVisual(v).escolha);
-      const quadros = await quadrosPeloWorker(base, 320)(instantesParaOEditor(lido.fala!.duracao).filter((_, k) => k % 3 === 0)).catch(() => []);
-      const p = await planejarCompletoPorComando(await entradaDoPlanoDoCompleto(v, lido, comando, quadros));
+      // O PLANO DO ROTEIRO (05/10, à tarde): o que o cliente aprovou cena a cena,
+      // levado para a fala transcrita do arquivo pronto; a montagem não decide de novo.
+      const rc = lido.roteiro?.completo?.comando;
+      const falaDoRoteiro = lido.roteiro?.completo?.fala?.palavras;
+      let pronto: PlanoPronto | null = null;
+      if (rc?.plano?.momentos?.length && rc.texto === comando.texto && falaDoRoteiro?.length && lido.fala?.palavras?.length) {
+        const levada = levarEdicaoParaFalaNova(rc.plano, falaDoRoteiro, lido.fala.palavras, mapaDePalavras(falaDoRoteiro, lido.fala.palavras));
+        pronto = { base: rc.base, plano: { ...rc.plano, ...levada.editor } };
+        console.log(`[montagem-do-completo][${v.id}] plano do roteiro reaproveitado: ${pronto.plano.momentos.length} peças (${levada.perdidos} saíram com a fala)`);
+      }
+      const quadros = pronto ? [] : await quadrosPeloWorker(base, 320)(instantesParaOEditor(lido.fala!.duracao).filter((_, k) => k % 3 === 0)).catch(() => []);
+      const p = await planejarCompletoPorComando(await entradaDoPlanoDoCompleto(v, lido, comando, quadros), pronto);
       const novo: EstadoDoSobMedida = {
         ...sm,
         estiloId: p.base,
@@ -2221,7 +2233,8 @@ export async function concluirMontagemDoCompleto(
       return ok ? "revisando" : "ignorado";
     }
     // O EDITOR POR COMANDO (05/10): o primeiro final vai ao revisor (que entrega ou manda corrigir); o corrigido vai ao ar.
-    if (lido.sobMedida.comando && lido.sobMedida.comando.correcoes === 0) {
+    // Sem rodada de correção (o padrão desde 05/10 à tarde), o final vai ao ar sem passar pelo revisor por LLM.
+    if (lido.sobMedida.comando && lido.sobMedida.comando.correcoes < correcoesDoCompleto()) {
       const montado = { url: resultado.montado.url, bytes: resultado.montado.bytes, tempos: resultado.tempos };
       const ok = await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...lido.sobMedida, fase: "revisar", previaUrl: resultado.montado.url, comando: { ...lido.sobMedida.comando, montado } } });
       return ok ? "revisando" : "ignorado";

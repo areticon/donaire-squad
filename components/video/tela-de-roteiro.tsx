@@ -1055,10 +1055,23 @@ function LinhaDoTrecho({ trecho: t, naSugestao, trabalhando }: { trecho: TrechoD
           {mmss(t.inicio)} a {mmss(t.fim)}
         </p>
         <div className="min-w-0 flex-1">
-          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-            <Video className="inline w-3.5 h-3.5 mr-1 -mt-0.5 opacity-50" />
-            Você na tela; a edição deste trecho é escrita pelo editor depois da aprovação.
-          </p>
+          {t.pecas?.length ? (
+            <ul className="space-y-0.5">
+              {t.pecas.map((p, k) => (
+                <li key={k} className="text-sm" style={{ color: "var(--text-primary)" }}>
+                  <Video className="inline w-3.5 h-3.5 mr-1 -mt-0.5 opacity-50" />
+                  <span className="font-semibold">{p.rotulo}</span>
+                  {p.tela ? " (tela cheia)" : ""}
+                  {p.texto ? <span style={{ color: "var(--text-muted)" }}>: “{p.texto}”</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+              <Video className="inline w-3.5 h-3.5 mr-1 -mt-0.5 opacity-50" />
+              Você na tela; a edição deste trecho é escrita pelo editor depois da aprovação.
+            </p>
+          )}
           <p className="text-xs mt-1 italic" style={{ color: "var(--text-muted)" }}>
             “{t.fala}”
           </p>

@@ -9,6 +9,7 @@ import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import { corrigirPlano, escreverPlano, type EntradaDoDiretor, type NotaDoRevisor, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
+import { diretorPorLlm, escreverPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 
@@ -33,9 +34,13 @@ export function editorPorComandoLigado(): boolean {
   return process.env.EDITOR_POR_COMANDO === "1";
 }
 
-/** Quantas correções o diretor faz depois do revisor (padrão 1; 0 entrega o primeiro final). */
+/**
+ * Quantas correções por LLM depois do revisor. ZERO por padrão desde 05/10 à
+ * tarde (regra do Bruno: nenhuma decisão ou correção por LLM; o JEV decide e
+ * confere antes do render). EDITOR_POR_COMANDO_RODADAS=1 religa para comparar.
+ */
 export function rodadasDeCorrecao(): number {
-  return Math.max(0, Math.min(2, Number(process.env.EDITOR_POR_COMANDO_RODADAS ?? 1)));
+  return Math.max(0, Math.min(2, Number(process.env.EDITOR_POR_COMANDO_RODADAS ?? 0)));
 }
 
 /** O teto de imagens NOVAS por vídeo (o custo): corte 6, completo 1 a cada ~40 s até 30. */
@@ -234,8 +239,41 @@ async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Reco
   return { insercoes: cenas.insercoes, custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4), erros: [...fotos.erros, ...cenas.erros, ...(semFoto(plano) ? [`${semFoto(plano)} foto(s) sem imagem gerada: as peças de papel usam as fotos de reserva (worker/fontes/vox)`] : [])] };
 }
 
-/** Classificação + diretor + imagens + resolução. Lança se o diretor não devolveu plano. */
-export async function planejarPorComando(e: EntradaDoPlano): Promise<PlanoPorComando> {
+/** O plano já escrito (no roteiro) que a montagem reaproveita em vez de decidir de novo. */
+export type PlanoPronto = { base: string; plano: PlanoDoDiretor };
+
+/**
+ * O PLANO DO VÍDEO INTEIRO: pelo JEV e pelo redator (o padrão desde 05/10 à
+ * tarde: o JEV decide, o Sonnet só escreve os textos, uma chamada por bloco
+ * em paralelo), ou pelo diretor Opus (EDITOR_POR_COMANDO_DIRETOR=opus), um
+ * por bloco de ~5 min em paralelo. Sem imagem e sem resolução: é o que o
+ * roteiro grava para o cliente aprovar e a montagem reaproveita.
+ */
+export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Promise<{ plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number>; erro?: string }> {
+  const cores = coresDoComando(e.comando, e.marca);
+  if (!diretorPorLlm()) {
+    return escreverPlanoPeloJev({ frases: frasesNumeradas(e.palavras), duracao: e.duracao, formato: e.formato, comando: e.comando, base, titulo: e.titulo, perfil: e.perfil, projectId: e.projectId, pedidos: e.pedidos });
+  }
+  const t = Date.now();
+  const blocos = e.duracao > 95 ? blocosDoCompleto(e.palavras, e.duracao) : [];
+  const base0 = entradaDoDiretor(e, cores, base);
+  const partes = blocos.length > 1
+    ? await Promise.all(blocos.map((b, k) => escreverPlano({ ...base0, imagens: Math.max(1, Math.round(e.imagens / blocos.length)), quadros: (e.quadros ?? []).filter((q) => q.t >= b.de - 1 && q.t <= b.ate + 1), bloco: { f0: b.f0, f1: b.f1, k, total: blocos.length } })))
+    : [await escreverPlano(base0)];
+  const plano = partes.length > 1 ? juntarPlanos(partes.map((p) => p.plano)) : partes[0].plano;
+  const erros = partes.map((p, k) => (p.erro ? `bloco ${k + 1}: ${p.erro}` : "")).filter(Boolean);
+  return { plano, avisos: [...erros, ...partes.flatMap((p) => p.avisos)], tempos: { diretor: +((Date.now() - t) / 1000).toFixed(1) }, erro: plano.momentos.length ? undefined : erros.join("; ") || "sem momentos" };
+}
+
+/** Só o plano do completo (o roteiro): a base pelo JEV e o plano, sem imagem nem resolução. */
+export async function escreverPlanoDoCompletoPorComando(e: EntradaDoPlano): Promise<{ base: string; plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number>; erro?: string }> {
+  const base = await classificarComando(e.comando.texto, e.projectId);
+  const p = await escreverPlanoDoVideo(e, base);
+  return { base, ...p };
+}
+
+/** Classificação + plano + imagens + resolução. Lança se não houve plano. */
+export async function planejarPorComando(e: EntradaDoPlano, pronto?: PlanoPronto | null): Promise<PlanoPorComando> {
   const tempos: Record<string, number> = {};
   let t = Date.now();
   const marcar = (n: string) => {
@@ -243,10 +281,11 @@ export async function planejarPorComando(e: EntradaDoPlano): Promise<PlanoPorCom
     t = Date.now();
   };
   const cores = coresDoComando(e.comando, e.marca);
-  // A classificação (JEV, meio segundo) corre junto com o diretor: só decide o tema padrão.
-  // A base vem antes do diretor (meio segundo no JEV): o catálogo dele é só o do estilo.
-  const base = await classificarComando(e.comando.texto, e.projectId);
-  const d = await escreverPlano(entradaDoDiretor(e, cores, base));
+  // O plano do roteiro é reaproveitado (sem decidir nem pagar de novo), a não ser que haja pedido novo do cliente.
+  const reusar = pronto && !e.pedidos?.length ? pronto : null;
+  const base = reusar?.base ?? (await classificarComando(e.comando.texto, e.projectId));
+  const d = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined as string | undefined } : await escreverPlanoDoVideo(e, base);
+  Object.assign(tempos, d.tempos);
   marcar("diretor");
   if (!d.plano.momentos.length) throw new Error(`o diretor não devolveu plano (${d.erro ?? "sem momentos"})`);
   const img = await imagensDoPlano(d.plano, e);
@@ -303,25 +342,25 @@ function juntarPlanos(planos: PlanoDoDiretor[]): PlanoDoDiretor {
  * teto do vídeo inteiro, e a resolução única. Bloco que falhou fica sem peça
  * (a pessoa segue falando); só lança se nenhum bloco voltou.
  */
-export async function planejarCompletoPorComando(e: EntradaDoPlano): Promise<PlanoPorComando & { blocos: number; errosDosBlocos: string[] }> {
+export async function planejarCompletoPorComando(e: EntradaDoPlano, pronto?: PlanoPronto | null): Promise<PlanoPorComando & { blocos: number; errosDosBlocos: string[] }> {
   const tempos: Record<string, number> = {};
   let t = Date.now();
   const cores = coresDoComando(e.comando, e.marca);
   const blocos = blocosDoCompleto(e.palavras, e.duracao);
-  const base = await classificarComando(e.comando.texto, e.projectId);
-  const base0 = entradaDoDiretor(e, cores, base);
-  const [partes] = await Promise.all([
-    Promise.all(blocos.map((b, k) => escreverPlano({ ...base0, imagens: Math.max(1, Math.round(e.imagens / blocos.length)), quadros: (e.quadros ?? []).filter((q) => q.t >= b.de - 1 && q.t <= b.ate + 1), bloco: { f0: b.f0, f1: b.f1, k, total: blocos.length } }))),
-  ]);
+  // O plano do roteiro (já aprovado pelo cliente) é reaproveitado; com pedido novo cena a cena, o plano sai de novo com os pedidos.
+  const reusar = pronto && !e.pedidos?.length ? pronto : null;
+  const base = reusar?.base ?? (await classificarComando(e.comando.texto, e.projectId));
+  const d = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined as string | undefined } : await escreverPlanoDoVideo(e, base);
+  Object.assign(tempos, d.tempos);
   tempos.diretor = +((Date.now() - t) / 1000).toFixed(1);
   t = Date.now();
-  const plano = juntarPlanos(partes.map((p) => p.plano));
-  if (!plano.momentos.length) throw new Error(`o diretor não devolveu plano em nenhum bloco (${partes.map((p) => p.erro).filter(Boolean).join("; ").slice(0, 200)})`);
+  const plano = d.plano;
+  if (!plano.momentos.length) throw new Error(`nenhum plano para o completo (${d.erro ?? "sem momentos"})`);
   const img = await imagensDoPlano(plano, e);
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
   const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
-  const errosDosBlocos = partes.map((p, k) => (p.erro ? `bloco ${k + 1}: ${p.erro}` : "")).filter(Boolean);
-  return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...errosDosBlocos, ...partes.flatMap((p) => p.avisos), ...img.erros, ...r.avisos].slice(0, 40), tempos, blocos: blocos.length, errosDosBlocos };
+  const errosDosBlocos = d.avisos.filter((a) => /^bloco \d+:/.test(a));
+  return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos, blocos: blocos.length, errosDosBlocos };
 }
 
 /** A correção do completo: só os blocos com nota voltam ao diretor (em paralelo); os outros ficam como estão. */

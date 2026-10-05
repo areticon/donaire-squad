@@ -2,6 +2,7 @@ import type { CenaDoPlano, ElementoDoPlano, PalavraNoCorte, PlanoDeMontagem, Ass
 import { aberturaNaTela, ganchoNaTela, type AberturaDoCompleto, type AberturaNaTela, type GanchoDoCorte, type GanchoNaTela } from "@/lib/media/abertura-do-roteiro";
 import type { TelasDaGravacao } from "@/lib/media/faixas-de-tela";
 import type { ResumoDaRevisao } from "@/lib/media/revisao-tipos";
+import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { cotasDoCompleto } from "@/lib/media/ritmo-da-edicao";
 
 /**
@@ -77,6 +78,22 @@ export type RoteiroDoCompleto = {
    * o "Outra ideia" da cena. Ver lib/media/sugestoes-do-completo.ts.
    */
   sugestoes?: SugestaoDaCena[];
+  /**
+   * O PLANO DO EDITOR POR COMANDO (05/10, à tarde), escrito no roteiro: o JEV
+   * decide as peças e o redator escreve os textos, com as âncoras na fala do
+   * completo (`fala`). A montagem leva este plano para a fala transcrita do
+   * arquivo pronto e não decide de novo. `plano` (cena a cena antigo) fica
+   * null quando este existe; a tela mostra os trechos da fala com as peças.
+   */
+  comando?: {
+    texto: string;
+    base: string;
+    plano: PlanoDoDiretor | null;
+    feitoEm: string;
+    erro?: string | null;
+    tempos?: Record<string, number>;
+    avisos?: string[];
+  } | null;
 };
 
 /** Uma sugestão do cliente num trecho do completo, no tempo da fala do roteiro. */
@@ -745,6 +762,8 @@ export type TrechoDoCompletoNaTela = {
   /** A cena planejada neste trecho; null quando a edição é escrita depois da aprovação. */
   cena: CenaNaTela | null;
   sugestao: string | null;
+  /** As peças do editor por comando que entram neste trecho (05/10): o nome em português e o texto escrito. */
+  pecas?: Array<{ peca: string; rotulo: string; texto: string; inicio: number; tela: boolean }>;
 };
 
 export type CompletoNaTela = {
@@ -885,9 +904,13 @@ export function completoNaTela(
       cenas: 0,
       semCenas: !montagemLigada
         ? "O vídeo completo sai com a edição de fala (pausas e muletas fora), sem inserções geradas."
-        : c?.erro
-          ? `Não consegui planejar as inserções do completo agora (${c.erro}).`
-          : "O vídeo completo sai com a edição de fala; as inserções são planejadas depois da aprovação.",
+        : c?.comando?.plano
+          ? null
+          : c?.erro
+            ? `Não consegui planejar as inserções do completo agora (${c.erro}).`
+            : c?.comando?.erro
+              ? `Não consegui escrever a composição do completo agora (${c.comando.erro}).`
+              : "O vídeo completo sai com a edição de fala; as inserções são planejadas depois da aprovação.",
       abertura,
       telas: extra.telas,
       trechos,
