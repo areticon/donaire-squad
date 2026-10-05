@@ -3,6 +3,7 @@ import { encaixar, larguraDoTexto, palavraDeDestaque, type Encaixe } from "@/lib
 import { estiloDaFonte, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte, TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
 import { CONTRASTE_MINIMO_DO_TEXTO, tipografiaDaLetra, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
+import type { TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
 
 /**
  * O DESENHO DE CADA MODELO, UM SÓ PARA A PRÉVIA E PARA A ARTE (03/10/2026).
@@ -56,6 +57,14 @@ export interface EntradaDoDesenho {
    */
   recorte?: string | null;
   fundoDesfocado?: string | null;
+  /**
+   * O TRATAMENTO DA FOTO NA PRÉVIA (05/10, lib/modelos-de-arte/tratamento.ts),
+   * SÓ NO NAVEGADOR: a galeria mostra a foto em preto e branco ou em duotone
+   * com filtro CSS e um véu em multiply. O servidor NUNCA passa isto: lá a
+   * foto já chega tratada no pixel (lib/media/tratamento-da-foto.ts), porque
+   * o Satori não entende filter nem mix-blend-mode.
+   */
+  tratamento?: TratamentoDaFoto | null;
 }
 
 export interface Zona {
@@ -160,13 +169,32 @@ const flex = (s: CSSProperties = {}): CSSProperties => {
   return limpo as CSSProperties;
 };
 
-function Foto({ src, z, raio = 0, cor, extra = {} }: { src?: string | null; z: Zona; raio?: number; cor: string; extra?: CSSProperties }) {
+/**
+ * A foto tratada na PRÉVIA (navegador): a imagem em cinza e, no duotone, um
+ * véu na cor do destaque em multiply (luz vira a cor, sombra fica escura). Sem
+ * tratamento, devolve a imagem como está. O Satori nunca recebe `tratamento`.
+ */
+function imagemTratada(img: ReactNode, tratamento: TratamentoDaFoto | null | undefined, destaque: string): ReactNode {
+  if (!tratamento) return img;
+  return (
+    <div style={flex({ position: "relative", width: "100%", height: "100%", overflow: "hidden" })}>
+      <div style={flex({ width: "100%", height: "100%", filter: "grayscale(1) contrast(1.12)" })}>{img}</div>
+      {tratamento === "duotone" && <div style={flex({ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", background: destaque, mixBlendMode: "multiply" })} />}
+    </div>
+  );
+}
+
+function Foto({ src, z, raio = 0, cor, extra = {}, tratamento, destaque = "#000000" }: { src?: string | null; z: Zona; raio?: number; cor: string; extra?: CSSProperties; tratamento?: TratamentoDaFoto | null; destaque?: string }) {
   return (
     <div style={flex({ position: "absolute", left: z.x, top: z.y, width: z.w, height: z.h, borderRadius: raio, overflow: "hidden", background: cor, ...extra })}>
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover" }} />
-      ) : null}
+      {src
+        ? imagemTratada(
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover" }} />,
+            tratamento,
+            destaque
+          )
+        : null}
     </div>
   );
 }
@@ -425,7 +453,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
                 </div>
               ) : null}
             </div>
-            <Foto src={e.foto} z={z} cor={tomDaFoto} />
+            <Foto src={e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
             <div style={flex({ position: "absolute", left: m, top: z.y + z.h + 8 * u, ...estiloDaFonte("Inter-400"), fontSize: 20 * u, color: "#666666" })}>Foto ilustrativa</div>
           </>,
           papel
@@ -438,7 +466,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const th = (deitada ? H - 2 * m : H - ty - m) - logoH - 20 * u - (t.apoio ? 100 * u : 0);
       return raiz(
         <>
-          <Foto src={e.foto} z={z} raio={clara ? Math.round(28 * u) : 0} cor={tomDaFoto} />
+          <Foto src={e.foto} z={z} raio={clara ? Math.round(28 * u) : 0} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
           <div style={flex({ position: "absolute", left: tx, top: ty, width: tw, flexDirection: "column" })}>
             {!clara && <div style={flex({ width: 110 * u, height: 10 * u, background: acento, marginBottom: 22 * u })} />}
             <Texto texto={t.titulo} fonte={tf} largura={tw} altura={th} corpoMaximo={(clara ? 72 : 80) * u} entrelinha={1.12} cor={tinta} destaque={modoDestaque} corDestaque={acento} palavras={palavras} caixaAlta={caixaAlta} />
@@ -460,7 +488,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
         const bw = larguraUtil;
         return raiz(
           <>
-            <Foto src={e.foto} z={z} cor={tomDaFoto} />
+            <Foto src={e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
             <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, background: "rgba(0,0,0,0.18)" })} />
             <div style={flex({ position: "absolute", left: m, top: Math.round(H * 0.5 - H * 0.11), width: bw, height: Math.round(H * 0.22), background: acento, alignItems: "center", justifyContent: "center", borderRadius: 18 * u, padding: 30 * u })}>
               <Texto texto={t.titulo} fonte={tf} largura={bw - 60 * u} altura={H * 0.22 - 60 * u} corpoMaximo={150 * u} entrelinha={1.0} cor={sobre(acento)} caixaAlta alinhar="center" />
@@ -472,7 +500,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const th = Math.round(H * (alta ? 0.3 : 0.38));
       return raiz(
         <>
-          <Foto src={e.foto} z={z} cor={tomDaFoto} />
+          <Foto src={e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: "linear-gradient(0deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.7) 38%, rgba(0,0,0,0) 72%)" })} />
           <div style={flex({ position: "absolute", left: m, top: m, width: larguraUtil })}>
             <Assinatura e={e} fundo="#000000" altura={logoH} />
@@ -500,7 +528,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const baseH = Math.round(H * (alta ? 0.22 : 0.26));
       return raiz(
         <>
-          {e.fundoDesfocado || e.foto ? <Foto src={e.fundoDesfocado ?? e.foto} z={z} cor={tomDaFoto} /> : null}
+          {e.fundoDesfocado || e.foto ? <Foto src={e.fundoDesfocado ?? e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} /> : null}
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `linear-gradient(180deg, ${rgba(escuro, 0.82)} 0%, ${rgba(escuro, 0.35)} 42%, ${rgba(escuro, 0.25)} 62%, ${rgba(escuro, 0.9)} 100%)` })} />
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `radial-gradient(circle at 50% ${alta ? 52 : 58}%, rgba(${ar},${ag},${ab},0.55) 0%, rgba(${ar},${ag},${ab},0.18) 30%, rgba(${ar},${ag},${ab},0) 55%)` })} />
           <div style={flex({ position: "absolute", left: m * 0.6, top: tituloTop, width: W - m * 1.2, justifyContent: "center" })}>
@@ -538,7 +566,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const th = (vertical ? H - z.h - 2 * m : H - 2 * m) - logoH - 40 * u - (t.apoio ? 150 * u : 0);
       return raiz(
         <>
-          <Foto src={e.foto} z={z} cor={tomDaFoto} />
+          <Foto src={e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
           <div style={flex({ position: "absolute", left: tx, top: ty, width: tw, height: vertical ? H - z.h - 2 * m : H - 2 * m, flexDirection: "column", justifyContent: "center" })}>
             <div style={flex({ width: 90 * u, height: 8 * u, background: acento, marginBottom: 26 * u })} />
             <Texto texto={t.titulo} fonte={tf} largura={tw} altura={th} corpoMaximo={78 * u} entrelinha={1.12} cor={tinta} destaque={modoDestaque} corDestaque={acento} palavras={palavras} />
@@ -997,10 +1025,14 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
         <>
           <div style={flex({ position: "absolute", left: z.x - pad, top: z.y - pad, width: z.w + 2 * pad, height: z.h + pad + base, background: "#ffffff", transform: "rotate(-3deg)", boxShadow: "0 30px 60px rgba(0,0,0,0.30)", flexDirection: "column", alignItems: "center", padding: pad })}>
             <div style={flex({ width: z.w, height: z.h, background: tomDaFoto, overflow: "hidden" })}>
-              {e.foto ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={e.foto} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover" }} />
-              ) : null}
+              {e.foto
+                ? imagemTratada(
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={e.foto} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover" }} />,
+                    e.tratamento,
+                    acento
+                  )
+                : null}
             </div>
             <div style={flex({ marginTop: 18 * u, width: z.w, height: base - pad - 18 * u, alignItems: "center", justifyContent: "center" })}>
               <Texto texto={t.titulo} fonte={tf} largura={z.w} altura={base - pad - 30 * u} corpoMaximo={80 * u} entrelinha={1.05} cor="#222222" alinhar="center" />
@@ -1024,10 +1056,14 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const foto = (zz: Zona, rot: number, pos: string) => (
         <div style={flex({ position: "absolute", left: zz.x - borda, top: zz.y - borda, padding: borda, background: "#ffffff", transform: `rotate(${rot}deg)`, boxShadow: "0 16px 36px rgba(0,0,0,0.25)" })}>
           <div style={flex({ width: zz.w, height: zz.h, overflow: "hidden", background: tomDaFoto })}>
-            {e.foto ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={e.foto} alt="" width={zz.w} height={zz.h} style={{ width: zz.w, height: zz.h, objectFit: "cover", objectPosition: pos }} />
-            ) : null}
+            {e.foto
+              ? imagemTratada(
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={e.foto} alt="" width={zz.w} height={zz.h} style={{ width: zz.w, height: zz.h, objectFit: "cover", objectPosition: pos }} />,
+                  e.tratamento,
+                  acento
+                )
+              : null}
           </div>
         </div>
       );
@@ -1070,7 +1106,7 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const itens = (t.itens ?? []).slice(0, 2);
       return raiz(
         <>
-          <Foto src={e.foto} z={z} cor={tomDaFoto} />
+          <Foto src={e.foto} z={z} cor={tomDaFoto} tratamento={e.tratamento} destaque={acento} />
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 26%, rgba(0,0,0,0) 48%, rgba(0,0,0,0.85) 100%)" })} />
           <div style={flex({ position: "absolute", left: m, top: m * 0.8, width: larguraUtil, justifyContent: "center" })}>
             <Texto texto={e.marca} fonte={tf} largura={larguraUtil} altura={220 * u} corpoMaximo={210 * u} entrelinha={1.0} cor={acento} maxLinhas={1} alinhar="center" />

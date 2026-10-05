@@ -12,6 +12,7 @@ import {
   type LetraId,
   type PapeisEscolhidos,
 } from "@/lib/modelos-de-arte/identidade";
+import { FOTOS_PADRAO, fotosValidas, type FotosDaIdentidade } from "@/lib/modelos-de-arte/tratamento";
 
 /**
  * O REGISTRO DA IDENTIDADE APROVADA (05/10/2026), no banco.
@@ -38,6 +39,7 @@ export async function lerIdentidadeVisual(projectId: string): Promise<Identidade
   return {
     letra: v.letra,
     papeis,
+    fotos: fotosValidas(v.fotos) ? v.fotos : FOTOS_PADRAO,
     aprovadaEm: typeof v.aprovadaEm === "string" ? v.aprovadaEm : null,
     modelos: Array.isArray(v.modelos) ? v.modelos.filter((x): x is string => typeof x === "string") : [],
   };
@@ -57,20 +59,24 @@ export async function paletaDoProjetoParaOsPapeis(projectId: string, colorPalett
  */
 export async function salvarIdentidadeVisual(
   projectId: string,
-  mudanca: { letra?: unknown; papeis?: unknown; aprovar?: boolean; modelosMudaram?: boolean }
+  mudanca: { letra?: unknown; papeis?: unknown; fotos?: unknown; aprovar?: boolean; modelosMudaram?: boolean }
 ): Promise<IdentidadeVisualEscolhida> {
   const atual = await lerIdentidadeVisual(projectId);
   const letra: LetraId = letraValida(mudanca.letra) ? mudanca.letra : (atual?.letra ?? LETRA_PADRAO);
   const papeisNovos = normalizarPapeis(mudanca.papeis);
   const papeis: PapeisEscolhidos = papeisNovos ?? atual?.papeis ?? papeisPadrao(await paletaDoProjetoParaOsPapeis(projectId));
+  // As fotos (05/10): trocar também derruba a aprovação, pela mesma regra da letra.
+  const fotos: FotosDaIdentidade = fotosValidas(mudanca.fotos) ? mudanca.fotos : (atual?.fotos ?? FOTOS_PADRAO);
   const mudou =
     Boolean(mudanca.modelosMudaram) ||
     letra !== atual?.letra ||
+    fotos !== (atual?.fotos ?? FOTOS_PADRAO) ||
     JSON.stringify(papeis) !== JSON.stringify(atual?.papeis ?? null);
   const escolha = mudanca.aprovar ? await lerModelosEscolhidos(projectId) : null;
   const valor: IdentidadeVisualEscolhida = {
     letra,
     papeis,
+    fotos,
     aprovadaEm: mudanca.aprovar ? new Date().toISOString() : mudou ? null : (atual?.aprovadaEm ?? null),
     modelos: mudanca.aprovar ? (escolha?.ids ?? []) : (atual?.modelos ?? []),
   };
@@ -87,6 +93,8 @@ export interface EstadoDaIdentidade {
   /** Letra e papéis a mostrar: os gravados, senão o padrão da hierarquia. */
   letra: LetraId;
   papeis: PapeisEscolhidos;
+  /** As fotos: naturais, preto e branco ou nas cores da marca (05/10). */
+  fotos: FotosDaIdentidade;
   paleta: string[];
   modelos: string[];
   aprovada: boolean;
@@ -100,6 +108,7 @@ export async function estadoDaIdentidade(projectId: string, colorPalette?: strin
     registro,
     letra: registro?.letra ?? LETRA_PADRAO,
     papeis: registro?.papeis ?? papeisPadrao(paleta),
+    fotos: registro?.fotos ?? FOTOS_PADRAO,
     paleta,
     modelos,
     aprovada: identidadeAprovada(registro, modelos, paleta),

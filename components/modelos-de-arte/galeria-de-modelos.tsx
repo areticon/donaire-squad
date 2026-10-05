@@ -25,6 +25,7 @@ import {
 import { desenharModelo, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
 import { FONTES, URL_DAS_FONTES } from "@/lib/modelos-de-arte/fontes";
 import { textosDeExemplo } from "@/lib/modelos-de-arte/textos-de-exemplo";
+import { FOTOS_DA_IDENTIDADE, tratamentoDasFotos, type FotosDaIdentidade, type TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
 
 /**
  * O BOOK DE MODELOS NA TELA (03/10/2026).
@@ -153,6 +154,7 @@ export function PreviaDoModelo({
   caixa,
   letra,
   titulo,
+  tratamento,
 }: {
   modelo: ModeloDeArte;
   formato: FormatoDoModelo;
@@ -167,6 +169,8 @@ export function PreviaDoModelo({
   letra?: LetraId | null;
   /** O título do cliente no lugar do exemplo (a prévia ao vivo). */
   titulo?: string;
+  /** As fotos tratadas (05/10): preto e branco ou nas cores da marca. */
+  tratamento?: TratamentoDaFoto | null;
 }) {
   const { largura: W, altura: H } = TAMANHO_DO_FORMATO[formato];
   const escala = Math.min(caixa.largura / W, caixa.altura / H);
@@ -189,8 +193,9 @@ export function PreviaDoModelo({
         marca: marca.nome,
         arroba: marca.arroba,
         pagina: formato === "carrossel" ? { i: 0, total: 5 } : null,
+        tratamento: tratamento ?? null,
       }),
-    [modelo, formato, marca, midia, grande, logoProporcao, W, H, letra, titulo]
+    [modelo, formato, marca, midia, grande, logoProporcao, W, H, letra, titulo, tratamento]
   );
   if (!caixa.largura) return null;
   return (
@@ -372,6 +377,8 @@ function FichaDoModelo({
 interface IdentidadeDaTela {
   letra: LetraId;
   papeis: PapeisEscolhidos;
+  /** As fotos: naturais, preto e branco ou nas cores da marca (05/10). */
+  fotos: FotosDaIdentidade;
   paleta: string[];
   aprovada: boolean;
   aprovadaEm: string | null;
@@ -415,6 +422,7 @@ function IdentidadeDoCliente({
   aprovando,
   aoMudarLetra,
   aoMudarPapel,
+  aoMudarFotos,
   aoAprovar,
   compacta,
 }: {
@@ -428,6 +436,7 @@ function IdentidadeDoCliente({
   aprovando: boolean;
   aoMudarLetra: (l: LetraId) => void;
   aoMudarPapel: (papel: PapelDaCor, cor: string) => void;
+  aoMudarFotos: (f: FotosDaIdentidade) => void;
   aoAprovar: () => void;
   compacta: boolean;
 }) {
@@ -527,6 +536,37 @@ function IdentidadeDoCliente({
         </ul>
       </div>
 
+      {/* As fotos (05/10): naturais, preto e branco ou nas cores da marca, com a prévia abaixo. */}
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Fotos
+        </p>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Como as fotos entram nas artes">
+          {(Object.keys(FOTOS_DA_IDENTIDADE) as FotosDaIdentidade[]).map((id) => {
+            const f = FOTOS_DA_IDENTIDADE[id];
+            const ativa = identidade.fotos === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={ativa}
+                disabled={!podeMudar}
+                onClick={() => aoMudarFotos(id)}
+                title={f.descricao}
+                className={cn("rounded-full border px-3 py-1 text-xs font-medium transition disabled:opacity-50", ativa ? "border-orange-500 bg-orange-500/10" : "hover:border-orange-500/50")}
+                style={{ borderColor: ativa ? undefined : "var(--border)", color: "var(--text-primary)" }}
+              >
+                {f.nome}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+          {FOTOS_DA_IDENTIDADE[identidade.fotos].descricao}
+        </p>
+      </div>
+
       {/* A prévia ao vivo, nos modelos escolhidos, com o texto do cliente. */}
       <div>
         <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }} htmlFor="titulo-da-previa">
@@ -545,7 +585,7 @@ function IdentidadeDoCliente({
             <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))` }}>
               {modelosDaPrevia.map((m) => (
                 <div key={m.id} className="flex flex-col items-center gap-1">
-                  <PreviaDoModelo modelo={m} formato={formatoDeVitrine(m)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={identidade.letra} titulo={titulo} caixa={{ largura: larguraDaPrevia, altura: larguraDaPrevia * 1.25 }} />
+                  <PreviaDoModelo modelo={m} formato={formatoDeVitrine(m)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={identidade.letra} titulo={titulo} tratamento={tratamentoDasFotos(identidade.fotos)} caixa={{ largura: larguraDaPrevia, altura: larguraDaPrevia * 1.25 }} />
                   <span className="line-clamp-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
                     {m.nome}
                   </span>
@@ -616,7 +656,7 @@ export function GaleriaDeModelos({
     (i: IdentidadeDaTela | null | undefined) => {
       if (!i) return;
       setIdentidade(i);
-      identidadeSalva.current = JSON.stringify({ letra: i.letra, papeis: i.papeis });
+      identidadeSalva.current = JSON.stringify({ letra: i.letra, papeis: i.papeis, fotos: i.fotos });
       aoMudarAprovacao?.(i.aprovada);
     },
     [aoMudarAprovacao]
@@ -659,15 +699,15 @@ export function GaleriaDeModelos({
     return () => clearTimeout(t);
   }, [escolha, dados, projectId, aplicarIdentidade]);
 
-  // A letra e os papéis também gravam a cada mudança (e derrubam a aprovação).
+  // A letra, os papéis e as fotos também gravam a cada mudança (e derrubam a aprovação).
   useEffect(() => {
     if (!dados || !identidade) return;
-    const atual = JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis });
+    const atual = JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis, fotos: identidade.fotos });
     if (atual === identidadeSalva.current) return;
     const t = setTimeout(async () => {
       setEstadoDaIdentidade("Guardando...");
       try {
-        const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis }) });
+        const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis, fotos: identidade.fotos }) });
         if (!r.ok) throw new Error();
         aplicarIdentidade(((await r.json()) as { identidade?: IdentidadeDaTela }).identidade);
         setEstadoDaIdentidade("");
@@ -681,6 +721,7 @@ export function GaleriaDeModelos({
   const alternar = useCallback((id: string) => setEscolha((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id])), []);
   const mudarLetra = useCallback((letra: LetraId) => setIdentidade((i) => (i ? { ...i, letra, aprovada: false } : i)), []);
   const mudarPapel = useCallback((papel: PapelDaCor, cor: string) => setIdentidade((i) => (i ? { ...i, papeis: { ...i.papeis, [papel]: cor }, aprovada: false } : i)), []);
+  const mudarFotos = useCallback((fotos: FotosDaIdentidade) => setIdentidade((i) => (i ? { ...i, fotos, aprovada: false } : i)), []);
 
   /** Aprova com o que está na tela e, se havia arte esperando, gera. */
   const aprovar = useCallback(async () => {
@@ -691,7 +732,7 @@ export function GaleriaDeModelos({
       const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: escolha, letra: identidade.letra, papeis: identidade.papeis, aprovar: true }),
+        body: JSON.stringify({ ids: escolha, letra: identidade.letra, papeis: identidade.papeis, fotos: identidade.fotos, aprovar: true }),
       });
       const d = (await r.json()) as { identidade?: IdentidadeDaTela; error?: string };
       if (!r.ok) throw new Error(d.error || "Não consegui aprovar.");
@@ -813,6 +854,7 @@ export function GaleriaDeModelos({
           aprovando={aprovando}
           aoMudarLetra={mudarLetra}
           aoMudarPapel={mudarPapel}
+          aoMudarFotos={mudarFotos}
           aoAprovar={aprovar}
           compacta={compacta}
         />

@@ -22,6 +22,16 @@ import {
   type EtapaDoPedido,
   type PedidoDoCard,
 } from "@/lib/media/pedido-do-card-estado";
+import {
+  MODELO_DE_PAPEL,
+  NOME_DO_TRATAMENTO,
+  pedidoDePaletaEstrita,
+  pedidoDePapel,
+  pedidoDePretoEBranco,
+  tratamentoValido,
+  type TratamentoDaFoto,
+} from "@/lib/modelos-de-arte/tratamento";
+import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -50,7 +60,24 @@ type Mensagem = { role: "user" | "assistant"; content: string; timestamp: string
 
 export type AcaoDoPedido =
   | { tipo: "texto"; instrucao: string; feito?: string }
-  | { tipo: "arte"; instrucao: string; cor: string | null; lamina: number | null; marcaToda: boolean }
+  | {
+      tipo: "arte";
+      instrucao: string;
+      cor: string | null;
+      lamina: number | null;
+      marcaToda: boolean;
+      /**
+       * PALETA ESTRITA (05/10): "somente preto e vermelho", "só as cores da
+       * marca". A foto da cena é tratada em código (duotone, ou preto e
+       * branco) para cada pixel ser uma cor da paleta; pedir isso ao modelo de
+       * imagem não garantia nada (lib/modelos-de-arte/tratamento.ts).
+       */
+      paletaEstrita?: boolean;
+      /** O cliente pediu preto e branco de fato. */
+      pretoEBranco?: boolean;
+      /** "papel rasgado", "colagem", "recorte": a peça sai no modelo de colagem do book. */
+      papel?: boolean;
+    }
   | { tipo: "data"; data: string; hora: string | null }
   | { tipo: "rede"; incluir: string[]; tirar: string[] };
 
@@ -130,8 +157,23 @@ function entenderNaUnha(mensagem: string): AcaoDoPedido[] {
   const temArte = PEDIDO_DE_ARTE.test(mensagem);
   const temTexto = /\b(tira|tire|remov|texto|legenda|frase|escrev|reescrev|troca a palavra|corrig)/i.test(mensagem) || !temArte;
   if (temTexto) acoes.push({ tipo: "texto", instrucao: mensagem });
-  if (temArte) acoes.push({ tipo: "arte", instrucao: mensagem, cor: mensagem.match(HEX)?.[0]?.toUpperCase() ?? null, lamina: null, marcaToda: false });
+  if (temArte) acoes.push(comAsPistasDoTexto({ tipo: "arte", instrucao: mensagem, cor: mensagem.match(HEX)?.[0]?.toUpperCase() ?? null, lamina: null, marcaToda: false }, mensagem));
   return acoes;
+}
+
+/**
+ * As pistas lidas por palavra valem por cima do que o modelo respondeu: se o
+ * cliente escreveu "somente preto e vermelho", é paleta estrita mesmo que o
+ * JSON tenha vindo sem o campo.
+ */
+function comAsPistasDoTexto(a: Extract<AcaoDoPedido, { tipo: "arte" }>, mensagem: string): Extract<AcaoDoPedido, { tipo: "arte" }> {
+  const texto = `${a.instrucao}\n${mensagem}`;
+  return {
+    ...a,
+    paletaEstrita: Boolean(a.paletaEstrita) || pedidoDePaletaEstrita(texto),
+    pretoEBranco: Boolean(a.pretoEBranco) || pedidoDePretoEBranco(texto),
+    papel: Boolean(a.papel) || pedidoDePapel(texto),
+  };
 }
 
 export async function entenderPedido(args: {
@@ -147,7 +189,7 @@ export async function entenderPedido(args: {
 
 Tipos de ação (use quantas o pedido tiver, na ordem em que aparecem):
 - {"tipo":"texto","instrucao":"...","feito":"..."}: mudar o TEXTO/legenda do post (tirar palavra, mudar tom, encurtar, corrigir). A instrução repete só a parte do pedido sobre o texto. "feito" é o que vai ser feito contado ao cliente na primeira pessoa, no passado, curto e sem termo técnico, terminando antes de dizer onde (ex.: "tirei o 'minha preta' da legenda", "deixei o texto mais curto").
-- {"tipo":"arte","instrucao":"...","cor":"#RRGGBB ou null","lamina":número ou null,"marcaToda":true|false}: refazer a IMAGEM, o carrossel ou o infográfico. "cor" é a cor pedida em hex (converta nome de cor conhecido: escarlate #E3000F só se o cliente não deu o hex; se deu, use o dele). "lamina" só se o cliente nomeou UMA lâmina/slide (1, 2, 3...). "marcaToda" true só se ele pediu essa cor para a marca inteira ("sempre", "em tudo", "na marca").
+- {"tipo":"arte","instrucao":"...","cor":"#RRGGBB ou null","lamina":número ou null,"marcaToda":true|false,"paletaEstrita":true|false,"pretoEBranco":true|false,"papel":true|false}: refazer a IMAGEM, o carrossel ou o infográfico. "cor" é a cor pedida em hex (converta nome de cor conhecido: escarlate #E3000F só se o cliente não deu o hex; se deu, use o dele). "lamina" só se o cliente nomeou UMA lâmina/slide (1, 2, 3...). "marcaToda" true só se ele pediu essa cor para a marca inteira ("sempre", "em tudo", "na marca"). "paletaEstrita" true quando ele exige que a arte use SÓ certas cores ("somente preto e vermelho", "só as cores da marca", "use só a paleta", "nada fora da paleta"); "mude para vermelho" não é estrito. "pretoEBranco" true só se pediu preto e branco literalmente. "papel" true se citou papel, papel rasgado, colagem, recorte ou fita adesiva.
 - {"tipo":"data","data":"AAAA-MM-DD","hora":"HH:MM ou null"}: mudar o dia/horário de publicação. Resolva "sexta", "amanhã" etc. a partir de hoje.
 - {"tipo":"rede","incluir":["instagram"|"linkedin"|"facebook"|"twitter"|"threads"|"tiktok"|"youtube"],"tirar":[...]}: publicar também em outra rede, ou tirar de uma rede.
 
@@ -163,7 +205,7 @@ Pedido do cliente: ${args.mensagem}`;
     if (acoes.length) {
       // O hex escrito pelo cliente vale mais que o que o modelo converteu.
       const hexDoCliente = args.mensagem.match(HEX)?.[0]?.toUpperCase();
-      return acoes.map((a) => (a.tipo === "arte" && hexDoCliente ? { ...a, cor: hexDoCliente } : a));
+      return acoes.map((a) => (a.tipo === "arte" ? comAsPistasDoTexto(hexDoCliente ? { ...a, cor: hexDoCliente } : a, args.mensagem) : a));
     }
   } catch (e) {
     console.warn("[pedido-do-card] entender falhou, lendo por palavra:", e instanceof Error ? e.message : e);
@@ -193,6 +235,76 @@ export function marcaComCor(marca: MarcaDaArte, cor: string | null): MarcaDaArte
     cores,
     ...(marca.identidade ? { identidade: { ...marca.identidade, cores: { ...marca.identidade.cores, acento: cor } } } : {}),
   };
+}
+
+/** O que fica gravado no metadata do post e do card da Diana para as próximas regerações. */
+export type ArteGravada = { tratamento: TratamentoDaFoto | null; modeloDaArte: string | null };
+
+/** O tratamento e o modelo já gravados num metadata (post ou card), validados. */
+export function arteGravadaEm(meta: unknown): ArteGravada {
+  const m = (meta && typeof meta === "object" ? meta : {}) as Record<string, unknown>;
+  return {
+    tratamento: tratamentoValido(m.tratamento) ? m.tratamento : null,
+    modeloDaArte: typeof m.modeloDaArte === "string" && modeloPorId(m.modeloDaArte) ? m.modeloDaArte : null,
+  };
+}
+
+/**
+ * A MARCA DESTA PEÇA, pelo pedido (05/10): a cor pedida vira o destaque; a
+ * paleta estrita vira tratamento da foto (duotone escuro + destaque, ou preto
+ * e branco); papel/colagem fixa o modelo de colagem do book. O que o pedido
+ * não disse vem do que já estava gravado no post (a regeração seguinte
+ * respeita a anterior), e por último da identidade do projeto.
+ */
+export function marcaDoPedido(
+  marca: MarcaDaArte,
+  acao: Extract<AcaoDoPedido, { tipo: "arte" }>,
+  gravado: ArteGravada
+): { marca: MarcaDaArte; decidido: ArteGravada; mudou: { tratamento: boolean; modelo: boolean } } {
+  const comCor = marcaComCor(marca, acao.cor);
+  const temDestaque = comCor.cores.acento.toLowerCase() !== comCor.cores.escuro.toLowerCase();
+  const tratamento: TratamentoDaFoto | null = acao.pretoEBranco
+    ? "pb"
+    : acao.paletaEstrita
+      ? temDestaque
+        ? "duotone"
+        : "pb"
+      : (gravado.tratamento ?? comCor.tratamento ?? null);
+  const modeloDaArte = acao.papel ? MODELO_DE_PAPEL : gravado.modeloDaArte;
+  return {
+    marca: { ...comCor, tratamento, ...(modeloDaArte ? { modeloFixo: modeloDaArte } : {}) },
+    decidido: { tratamento, modeloDaArte },
+    mudou: { tratamento: tratamento !== gravado.tratamento, modelo: modeloDaArte !== gravado.modeloDaArte },
+  };
+}
+
+/** Grava `tratamento` e `modeloDaArte` no metadata do post e do card, sem tocar no resto (jsonb_set, não SET). */
+async function gravarArteNoMetadata(alvos: { postIds: string[]; cardIds: string[] }, decidido: ArteGravada): Promise<void> {
+  const json = JSON.stringify({ tratamento: decidido.tratamento, modeloDaArte: decidido.modeloDaArte });
+  for (const id of alvos.postIds) {
+    await prisma.$executeRaw`UPDATE posts SET metadata = COALESCE(metadata, '{}'::jsonb) || ${json}::jsonb WHERE id = ${id}`;
+  }
+  for (const id of alvos.cardIds) {
+    await prisma.$executeRaw`UPDATE campaign_cards SET metadata = COALESCE(metadata, '{}'::jsonb) || ${json}::jsonb WHERE id = ${id}`;
+  }
+}
+
+/** A direção da cena quando a foto vai virar dois tons: contraste e forma, não cor. */
+function direcaoParaOTratamento(t: TratamentoDaFoto | null): string {
+  if (!t) return "";
+  return t === "duotone"
+    ? "The photo will be converted in code to a two-tone treatment (dark shadows, brand-colour highlights): compose for strong tonal contrast, simple shapes and a clear silhouette; colour in the scene does not matter."
+    : "The photo will be converted in code to black and white: compose for strong tonal contrast and simple shapes; colour in the scene does not matter.";
+}
+
+/** O que de fato mudou na arte, contado ao cliente. */
+function contarOQueMudou(acao: Extract<AcaoDoPedido, { tipo: "arte" }>, decidido: ArteGravada, mudou: { tratamento: boolean; modelo: boolean }): string {
+  const partes: string[] = [];
+  if (acao.cor) partes.push(`com a cor ${acao.cor}`);
+  if (decidido.tratamento && (mudou.tratamento || acao.paletaEstrita || acao.pretoEBranco)) partes.push(`com as fotos ${NOME_DO_TRATAMENTO[decidido.tratamento]}`);
+  if (decidido.modeloDaArte && (mudou.modelo || acao.papel)) partes.push(`no modelo ${modeloPorId(decidido.modeloDaArte)?.nome.toLowerCase() ?? "de papel"}`);
+  if (!partes.length) return "";
+  return partes.length === 1 ? ` ${partes[0]}` : ` ${partes.slice(0, -1).join(", ")} e ${partes.at(-1)}`;
 }
 
 export function frasesDoCarrossel(meta: Record<string, unknown> | null | undefined, conteudo: string | null): string[] {
@@ -339,7 +451,9 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
     const falhou = pedido.etapas.some((e) => e.estado === "falhou");
     const tudoFalhou = pedido.etapas.filter((e) => e.chave !== "entender").every((e) => e.estado === "falhou");
     pedido.estado = tudoFalhou && pedido.etapas.length > 1 ? "falhou" : "feito";
-    const abertura = tudoFalhou ? "" : falhou ? "Fiz parte. " : "Pronto. ";
+    // Nunca um "Pronto" genérico (05/10): cada frase conta o que de fato
+    // mudou, e quando nada mudou, diz isso. Só a parte feita ganha aviso.
+    const abertura = falhou && !tudoFalhou ? "Fiz parte. " : "";
     await acrescentarNoChat(card.id, [{ role: "assistant", content: `${abertura}${frases.join(" ")}`.trim(), timestamp: agora() }]);
     // A marca de revisão sai ANTES do "feito": a tela para de consultar quando
     // lê "feito", e o que ela ler nessa hora é o que fica no cabeçalho.
@@ -441,11 +555,14 @@ async function refazerCarrossel(o: {
   const runId = daDiana.runId;
   const dia = daDiana.dayOfWeek;
   const direcao = await direcaoDaPeca({ projectId: daDiana.projectId, runId, dayOfWeek: dia, infografico: false, preferido: null }).catch(() => ({ styleHint: "" }));
-  const marca = marcaComCor(await marcaDaArte(daDiana.projectId, { runId }), acao.cor);
+  // O que já estava gravado (tratamento e modelo) vale até o pedido mudar.
+  const gravado = arteGravadaEm(daDiana.metadata);
+  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId }), acao, gravado);
   const estilo = [
     direcao.styleHint,
     `CLIENT REQUEST FOR THIS CAROUSEL: ${acao.instrucao}`,
     acao.cor ? `Use ${acao.cor} as the dominant accent color of every slide.` : "",
+    direcaoParaOTratamento(decidido.tratamento),
   ].filter(Boolean).join("\n");
   const plataforma = o.posts[0]?.platform ?? "instagram";
   const novas = [...o.laminasAtuais];
@@ -473,17 +590,21 @@ async function refazerCarrossel(o: {
   );
   if (!feitas) throw new Error("nenhuma lâmina saiu");
   const mediaUrl = novas.join("|");
+  // Nada mudou de verdade (as mesmas lâminas, byte a byte)? Então é isso que
+  // o cliente ouve, e não "refiz".
+  if (mediaUrl === o.laminasAtuais.join("|")) return "Tentei refazer as lâminas, mas o resultado saiu igual ao que já estava, então nada mudou no carrossel.";
   // O carrossel é 4:5 em todas as redes: as mesmas lâminas servem a todas.
   await prisma.campaignCard.update({ where: { id: daDiana.id }, data: { mediaUrl } });
-  for (const p of o.posts) {
-    if (p.mediaType === "carousel" || p.imageUrl) {
-      await prisma.post.update({ where: { id: p.id }, data: { imageUrl: mediaUrl, mediaType: "carousel" } });
-    }
+  const postsComArte = o.posts.filter((p) => p.mediaType === "carousel" || p.imageUrl);
+  for (const p of postsComArte) {
+    await prisma.post.update({ where: { id: p.id }, data: { imageUrl: mediaUrl, mediaType: "carousel" } });
   }
-  const cor = acao.cor ? ` com a cor ${acao.cor}` : "";
+  // O tratamento e o modelo ficam gravados: a próxima regeração respeita.
+  await gravarArteNoMetadata({ postIds: postsComArte.map((p) => p.id), cardIds: [daDiana.id] }, decidido).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
+  const oQueMudou = contarOQueMudou(acao, decidido, mudou);
   const falhas = alvo.length - feitas;
   const quais = alvo.length === total ? (total === 1 ? "a lâmina" : `as ${total} lâminas`) : alvo.length === 1 ? `a lâmina ${alvo[0] + 1}` : `${alvo.length} lâminas`;
-  return `Refiz ${quais} do carrossel${cor}, e elas já estão aqui no card${falhas ? `; ${falhas === 1 ? "uma não saiu e ficou como estava" : `${falhas} não saíram e ficaram como estavam`}` : ""}.`;
+  return `Refiz ${quais} do carrossel${oQueMudou}, e ${alvo.length === 1 && total > 1 ? "ela já está" : "elas já estão"} aqui no card${falhas ? `; ${falhas === 1 ? "uma não saiu e ficou como estava" : `${falhas} não saíram e ficaram como estavam`}` : ""}.`;
 }
 
 async function refazerArteUnica(o: {
@@ -497,9 +618,10 @@ async function refazerArteUnica(o: {
   const { daDiana, acao } = o;
   const base = o.posts[0];
   const textoDoPost = base?.content ?? "";
-  const marca = marcaComCor(await marcaDaArte(daDiana.projectId, { runId: daDiana.runId }), acao.cor);
+  const gravado = arteGravadaEm(daDiana.metadata);
+  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId: daDiana.runId }), acao, gravado);
   const ehInfografico = o.formato === "infographic";
-  const pedidoVisual = `${acao.instrucao}${acao.cor ? `. Use ${acao.cor} as the dominant accent color.` : ""}`;
+  const pedidoVisual = `${acao.instrucao}${acao.cor ? `. Use ${acao.cor} as the dominant accent color.` : ""}${decidido.tratamento ? ` ${direcaoParaOTratamento(decidido.tratamento)}` : ""}`;
   try {
     const conteudo =
       ehInfografico && process.env.GEMINI_API_KEY
@@ -527,13 +649,21 @@ async function refazerArteUnica(o: {
         : desenharComFraseEmCodigo(manchete, marca, (prompt, proporcao) => generateImage(prompt, proporcao, "hd")),
     });
     if (!arte.principal) throw new Error("a arte não saiu");
+    if (arte.principal === daDiana.mediaUrl) {
+      await o.marcar("arte", "feito", "saiu igual");
+      return `Tentei refazer ${ehInfografico ? "o infográfico" : "a arte"}, mas saiu igual ao que já estava, então nada mudou.`;
+    }
     await prisma.campaignCard.update({ where: { id: daDiana.id }, data: { mediaUrl: arte.principal } });
     for (const p of o.posts) {
       const nova = arte.porRede[p.platform] ?? arte.principal;
       if (p.imageUrl !== nova) await prisma.post.update({ where: { id: p.id }, data: { imageUrl: nova } });
     }
+    if (!ehInfografico) {
+      await gravarArteNoMetadata({ postIds: o.posts.map((p) => p.id), cardIds: [daDiana.id] }, decidido).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
+    }
     await o.marcar("arte", "feito");
-    return `Refiz ${ehInfografico ? "o infográfico" : "a arte"}${acao.cor ? ` com a cor ${acao.cor}` : ""}, e ${ehInfografico ? "ele já está" : "ela já está"} aqui no card.`;
+    const oQueMudou = ehInfografico ? (acao.cor ? ` com a cor ${acao.cor}` : "") : contarOQueMudou(acao, decidido, mudou);
+    return `Refiz ${ehInfografico ? "o infográfico" : "a arte"}${oQueMudou}, e ${ehInfografico ? "ele já está" : "ela já está"} aqui no card.`;
   } catch (e) {
     await o.marcar("arte", "falhou", "ficou a anterior");
     throw e;

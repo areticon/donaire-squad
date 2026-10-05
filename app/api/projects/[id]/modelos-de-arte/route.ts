@@ -22,8 +22,9 @@ import { artesAguardandoIdentidade, gerarArtesAguardando } from "@/lib/media/art
  * ou uma pessoa de banco de imagem recortada; nunca silhueta).
  *
  * 05/10, A IDENTIDADE APROVADA (lib/modelos-de-arte/identidade.ts): GET traz
- * a paleta, a letra, os papéis das cores e se está aprovada; PUT aceita
- * { letra, papeis, aprovar } além de { ids }; POST gera as artes que ficaram
+ * a paleta, a letra, os papéis das cores, as fotos (naturais, preto e branco
+ * ou nas cores da marca) e se está aprovada; PUT aceita { letra, papeis,
+ * fotos, aprovar } além de { ids }; POST gera as artes que ficaram
  * aguardando a aprovação (só o dono, e só com a identidade aprovada).
  */
 export const dynamic = "force-dynamic";
@@ -62,6 +63,7 @@ async function identidadeParaATela(projectId: string, colorPalette: string | nul
   return {
     letra: estado.letra,
     papeis: estado.papeis,
+    fotos: estado.fotos,
     paleta: estado.paleta,
     aprovada: estado.aprovada,
     aprovadaEm: estado.registro?.aprovadaEm ?? null,
@@ -115,7 +117,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const recusa = await soODono(userId, p, "mudar os modelos de arte da marca");
   if (recusa) return recusa;
-  const corpo = (await req.json().catch(() => ({}))) as { ids?: unknown; letra?: unknown; papeis?: unknown; aprovar?: unknown };
+  const corpo = (await req.json().catch(() => ({}))) as { ids?: unknown; letra?: unknown; papeis?: unknown; fotos?: unknown; aprovar?: unknown };
   let escolha = await lerModelosEscolhidos(id);
   let modelosMudaram = false;
   if (Array.isArray(corpo.ids)) {
@@ -128,8 +130,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (aprovar && !escolha?.ids.length) return NextResponse.json({ error: "Escolha ao menos um modelo de arte antes de aprovar." }, { status: 400 });
   // Qualquer mudança (modelo, letra ou papéis) derruba a aprovação; só o
   // "Aprovar e gerar" carimba de novo, com o que está na tela agora.
-  if (aprovar || modelosMudaram || corpo.letra !== undefined || corpo.papeis !== undefined) {
-    await salvarIdentidadeVisual(id, { letra: corpo.letra, papeis: corpo.papeis, aprovar, modelosMudaram });
+  if (aprovar || modelosMudaram || corpo.letra !== undefined || corpo.papeis !== undefined || corpo.fotos !== undefined) {
+    await salvarIdentidadeVisual(id, { letra: corpo.letra, papeis: corpo.papeis, fotos: corpo.fotos, aprovar, modelosMudaram });
   }
   return NextResponse.json({ escolha: escolha?.ids ?? [], em: escolha?.em ?? null, identidade: await identidadeParaATela(id, p.colorPalette) });
 }

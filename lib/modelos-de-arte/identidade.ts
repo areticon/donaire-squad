@@ -1,6 +1,7 @@
 import type { FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 import { contraste, hexDe6, medidaDaCor, papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
+import type { FotosDaIdentidade } from "@/lib/modelos-de-arte/tratamento";
 
 /**
  * A IDENTIDADE VISUAL APROVADA PELO CLIENTE (05/10/2026).
@@ -202,6 +203,12 @@ export function coresDaIdentidade(papeis: PapeisEscolhidos): { acento: string; e
 export interface IdentidadeVisualEscolhida {
   letra: LetraId;
   papeis: PapeisEscolhidos;
+  /**
+   * As FOTOS (05/10, lib/modelos-de-arte/tratamento.ts): naturais, em preto e
+   * branco ou nas cores da marca (duotone no fundo e no destaque). Ausente
+   * vale "naturais", como toda identidade aprovada antes dessa opção.
+   */
+  fotos?: FotosDaIdentidade;
   /** Quando o cliente apertou "Aprovar e gerar". Sem isto, nada pago sai. */
   aprovadaEm?: string | null;
   /** Os modelos que estavam escolhidos na aprovação, para a tela mostrar. */

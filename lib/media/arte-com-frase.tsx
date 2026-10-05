@@ -18,6 +18,8 @@ import {
 } from "@/lib/media/identidade-visual";
 import { IdentidadeNaoAprovada, LETRAS, coresDaIdentidade, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
 import { estadoDaIdentidade } from "@/lib/modelos-de-arte/identidade-aprovada";
+import { tratamentoDasFotos, type TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
+import { aplicarTratamento } from "@/lib/media/tratamento-da-foto";
 
 /**
  * TEXTO EM ARTE GERADA POR IA É SEMPRE CÓDIGO (30/09/2026).
@@ -63,6 +65,14 @@ export type MarcaDaArte = {
    * Ausente em marca montada à mão (scripts, infográfico de teste): sem trava.
    */
   identidadeAprovada?: boolean;
+  /**
+   * O TRATAMENTO DA FOTO (05/10, lib/modelos-de-arte/tratamento.ts): com
+   * "duotone" ou "pb", a cena gerada (ou a foto real) é tratada em código
+   * antes de o texto entrar, e cada pixel dela vira uma cor da paleta. Vem da
+   * identidade ("Fotos: nas cores da marca") ou do pedido do chat ("somente
+   * preto e vermelho"). Null ou ausente: a foto fica com as cores dela.
+   */
+  tratamento?: TratamentoDaFoto | null;
   /** Fixa o layout (o carrossel usa o mesmo em todas as lâminas). Sem isto, sai da frase. */
   variante?: number;
   /**
@@ -127,6 +137,8 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
     marca.letra = identidade.letra;
     marca.tipografia = LETRAS[identidade.letra].familia;
     if (marca.identidade) marca.identidade = { ...marca.identidade, cores, tipografia: marca.tipografia };
+    // As fotos como o cliente aprovou: naturais, preto e branco ou nas cores da marca.
+    marca.tratamento = tratamentoDasFotos(identidade.fotos);
   }
   if (!escolha && !materiais.length) return marca;
   const { lerMidia } = await import("@/lib/media/storage");
@@ -557,6 +569,19 @@ export async function comporFraseNaArte(p: {
   /** A pessoa recortada da foto real (PNG), para o modelo com profundidade. */
   recorte?: Buffer | null;
 }): Promise<Buffer> {
+  // O TRATAMENTO DA FOTO (05/10): antes de qualquer composição, a cena vira
+  // dois tons da marca (ou preto e branco) quando a identidade ou o pedido do
+  // cliente exige a paleta estrita. Em código, sem pagar imagem nova. Se o
+  // tratamento falhar, a foto segue natural: pior sair sem tratar que sem foto.
+  if (p.arte && p.marca.tratamento) {
+    p = {
+      ...p,
+      arte: await aplicarTratamento(p.arte, p.marca.tratamento, { escuro: p.marca.cores.escuro, destaque: p.marca.cores.acento }).catch((e) => {
+        console.warn("[arte-com-frase] o tratamento da foto não entrou, a foto segue natural:", e instanceof Error ? e.message : e);
+        return p.arte;
+      }),
+    };
+  }
   // O MODELO DO BOOK (03/10): quando o cliente escolheu modelos, a peça sai no
   // molde de um deles, com o mesmo desenho da prévia que ele viu.
   const modelo = await modeloDaMarca(p.marca, p.largura, p.altura, p.frase);
