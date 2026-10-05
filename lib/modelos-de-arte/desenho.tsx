@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { encaixar, larguraDoTexto, palavraDeDestaque, type Encaixe } from "@/lib/modelos-de-arte/encaixe";
 import { estiloDaFonte, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte, TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
+import { CONTRASTE_MINIMO_DO_TEXTO, tipografiaDaLetra, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
 
 /**
  * O DESENHO DE CADA MODELO, UM SÓ PARA A PRÉVIA E PARA A ARTE (03/10/2026).
@@ -21,12 +22,21 @@ export interface CoresDoDesenho {
   acento: string;
   escuro: string;
   claro: string;
+  /**
+   * OS PAPÉIS APROVADOS PELO CLIENTE (05/10, lib/modelos-de-arte/identidade.ts):
+   * com eles, o fundo da peça é `papeis.fundo`, o título é `papeis.titulo` e o
+   * destaque é `papeis.destaque`, exatamente como ele viu na prévia. Sem eles,
+   * vale a conta de antes (fundo claro ou escuro pelo modelo).
+   */
+  papeis?: PapeisEscolhidos;
 }
 
 export interface EntradaDoDesenho {
   modelo: ModeloDeArte;
   textos: TextosDaArte;
   cores: CoresDoDesenho;
+  /** A letra aprovada pelo cliente (05/10); sem ela, a tipografia do modelo. */
+  letra?: LetraId | null;
   largura: number;
   altura: number;
   /** A foto (URL ou data URI). Sem ela, o lugar da foto fica num tom da marca. */
@@ -82,6 +92,13 @@ function misturar(a: string, b: string, t: number): string {
 function rgba(hex: string, a: number): string {
   const [r, g, b] = rgb(hex);
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/** Contraste WCAG entre duas cores (1 a 21). */
+function contrasteEntre(a: string, b: string): number {
+  const x = luminancia(a);
+  const y = luminancia(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
 /** A letra que dá contraste sobre um fundo. */
@@ -342,17 +359,30 @@ function Pontos({ e, cor, apagado, u }: { e: EntradaDoDesenho; cor: string; apag
 
 export function desenharModelo(e: EntradaDoDesenho): ReactNode {
   const { W, H, u, m, deitada, alta } = medidas(e);
-  const { acento, escuro, claro } = e.cores;
+  const { escuro, claro, papeis } = e.cores;
+  // O destaque aprovado manda; sem papéis, o acento da marca.
+  const acento = papeis?.destaque ?? e.cores.acento;
   const md = e.modelo;
   const t = e.textos;
-  const tf = md.tipografia.titulo;
-  const xf = md.tipografia.texto;
-  const caixaAlta = Boolean(md.tipografia.caixaAlta);
+  // A letra aprovada por cima da do modelo (05/10); modelo de caráter (à mão,
+  // pincel, código) mantém a dele.
+  const tipografia = tipografiaDaLetra(e.letra, md);
+  const tf = tipografia.titulo;
+  const xf = tipografia.texto;
+  const caixaAlta = tipografia.caixaAlta;
   const papel = misturar(claro, "#f3ede1", 0.55);
-  const fundoDe = (f: typeof md.fundo) => (f === "escuro" ? escuro : f === "acento" ? acento : f === "branco" ? "#ffffff" : f === "papel" ? papel : claro);
+  // Com os papéis aprovados, o fundo do modelo (claro, escuro ou na cor) é a
+  // cor que o cliente chamou de fundo; branco e papel são o desenho do modelo
+  // (print, jornal) e ficam.
+  const fundoDe = (f: typeof md.fundo) =>
+    papeis && (f === "escuro" || f === "acento" || f === "claro") ? papeis.fundo : f === "escuro" ? escuro : f === "acento" ? acento : f === "branco" ? "#ffffff" : f === "papel" ? papel : claro;
   const fundo = fundoDe(md.fundo);
-  const tinta = sobre(fundo);
-  const tintaFraca = rgba(tinta === "#ffffff" ? "#ffffff" : "#141414", 0.68);
+  // O título na cor aprovada quando ela lê sobre o fundo (4,5:1); senão a
+  // tinta que contrasta, para a peça nunca sair ilegível.
+  const tinta = papeis && fundo === papeis.fundo && contrasteEntre(papeis.titulo, fundo) >= CONTRASTE_MINIMO_DO_TEXTO ? papeis.titulo : sobre(fundo);
+  // O apoio na mesma tinta do título, mais fraca (com o título numa cor da
+  // marca, o apoio segue a cor dela, e não um cinza de outra família).
+  const tintaFraca = rgba(tinta, 0.68);
   // Destaque legível: acento sobre fundo de baixo contraste vira sublinhado.
   const contrasteAcento = Math.abs(luminancia(acento) - luminancia(fundo));
   const modoDestaque: ModoDestaque = md.destaque === "cor" && contrasteAcento < 0.18 ? "sublinhado" : md.destaque;

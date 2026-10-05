@@ -16,7 +16,11 @@ import {
   ThumbsUp,
   ThumbsDown,
   Loader2,
+  Palette,
+  ChevronRight,
 } from "lucide-react";
+import Link from "next/link";
+import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -69,6 +73,31 @@ const AGENT_ROWS = [
 // O rosto do agente (arte de massinha, 28/09), o mesmo do Gestor.
 function AgentAvatar({ agentId, size = "sm" }: { agentId: string; color?: string; size?: "sm" | "md" }) {
   return <AvatarDoAgente agenteId={agentId} tamanho={size === "sm" ? 28 : 36} />;
+}
+
+/** O card da Diana que ficou esperando a identidade (05/10): reconhecido pelo começo do texto. */
+function aguardandoIdentidade(content: string | null | undefined): boolean {
+  return Boolean(content && content.startsWith(MENSAGEM_AGUARDANDO));
+}
+
+/**
+ * A TRAVA DA IDENTIDADE NO QUADRO (05/10): a arte não foi gerada de
+ * propósito, sem gastar, e o botão leva à escolha de modelo, letra e cores.
+ */
+function AguardandoIdentidade({ projectId }: { projectId: string }) {
+  return (
+    <div className="mt-2 rounded-lg border border-dashed p-2.5 text-xs" style={{ borderColor: "var(--accent-orange, #f97316)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
+      <p className="flex items-center gap-1.5 font-semibold">
+        <Palette className="h-3.5 w-3.5 shrink-0 text-orange-500" /> Aguardando a sua identidade visual
+      </p>
+      <p className="mt-1 leading-snug" style={{ color: "var(--text-muted)" }}>
+        Escolha o modelo de arte, a letra e as cores, veja a prévia e aprove. Nada foi gasto; a arte sai depois.
+      </p>
+      <Link href={`/projects/${projectId}/settings?aba=modelos`} onClick={(e) => e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-orange-600">
+        Escolher e aprovar <ChevronRight className="h-3 w-3" />
+      </Link>
+    </div>
+  );
 }
 
 function MediaPreview({ mediaUrl, cardType }: { mediaUrl: string | null; cardType: string }) {
@@ -233,6 +262,8 @@ function KanbanCard({
           <div className="flex-1 min-w-0">
             {isMedia && localCard.mediaUrl ? (
               <MediaPreview mediaUrl={localCard.mediaUrl} cardType="media" />
+            ) : isMedia && aguardandoIdentidade(localCard.content) ? (
+              <AguardandoIdentidade projectId={projectId} />
             ) : (
               <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: "var(--text-primary)" }}>
                 {localCard.content ?? "..."}
@@ -267,7 +298,7 @@ function KanbanCard({
                 />
               ) : isMedia ? (
                 <div className="space-y-2 pt-2">
-                  <MediaPreview mediaUrl={localCard.mediaUrl} cardType="media" />
+                  {!localCard.mediaUrl && aguardandoIdentidade(localCard.content) ? <AguardandoIdentidade projectId={projectId} /> : <MediaPreview mediaUrl={localCard.mediaUrl} cardType="media" />}
                   {localCard.content && (
                     <p className="text-[10px] italic" style={{ color: "var(--text-muted)" }}>
                       Prompt: {localCard.content.slice(0, 120)}...

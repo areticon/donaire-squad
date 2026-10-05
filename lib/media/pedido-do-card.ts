@@ -186,7 +186,8 @@ const DADOS = { project: true } as const;
 /** A cor pedida vira a cor de destaque da peça (sem mexer na marca gravada). */
 export function marcaComCor(marca: MarcaDaArte, cor: string | null): MarcaDaArte {
   if (!cor) return marca;
-  const cores = { ...marca.cores, acento: cor };
+  // Com os papéis aprovados (05/10), a cor pedida entra no papel de destaque.
+  const cores = { ...marca.cores, acento: cor, ...(marca.cores.papeis ? { papeis: { ...marca.cores.papeis, destaque: cor } } : {}) };
   return {
     ...marca,
     cores,

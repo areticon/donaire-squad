@@ -9,7 +9,7 @@ import {
   laminaGuardada,
   guardarLamina,
 } from "@/lib/media/checkpoint-do-carrossel";
-import { arteComMaterialDoCliente, comporFraseNaArte, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 import type { MaterialDaMarca } from "@/lib/materiais/escolha";
 
 /**
@@ -200,6 +200,9 @@ export async function desenharCarrossel(opcoes: {
   // A instrução de formato não vai mais ao modelo: ele desenha só a arte, na
   // proporção da zona da arte, e a frase é composta em código (30/09).
   const marcaDoProjeto = opcoes.marca ?? (await marcaDaArte(opcoes.projectId, { runId: opcoes.runId }));
+  // A TRAVA DA IDENTIDADE (05/10): o carrossel paga uma imagem por lâmina;
+  // sem modelo, letra e cores aprovados pelo cliente, nenhuma sai.
+  exigirIdentidadeAprovada(marcaDoProjeto);
   // Um layout só para o carrossel inteiro, tirado da primeira lâmina (01/10):
   // a variedade de layout é entre peças, não entre lâminas da mesma peça.
   const ancora = opcoes.roteiro[0]?.frase ?? "";

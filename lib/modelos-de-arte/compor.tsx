@@ -7,6 +7,7 @@ import { FONTES, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import { modeloPorId, modeloDaPeca, formatoPeloTamanho, type ModeloDeArte, type TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
 import { desenharModelo, zonaDaFoto, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
 import { registrarTextoComposto } from "@/lib/modelos-de-arte/registro";
+import type { LetraId } from "@/lib/modelos-de-arte/identidade";
 
 /**
  * A ARTE DE VERDADE NO MODELO ESCOLHIDO (03/10/2026), no servidor.
@@ -150,6 +151,8 @@ export interface PedidoDeComposicao {
   pagina?: { i: number; total: number } | null;
   /** A pessoa recortada da foto real do cliente (PNG), para o modelo com profundidade. */
   recorte?: Buffer | null;
+  /** A letra aprovada pelo cliente (05/10, lib/modelos-de-arte/identidade.ts). */
+  letra?: LetraId | null;
 }
 
 /** Compõe a peça no modelo e devolve JPEG. Sem chamada paga. */
@@ -187,6 +190,7 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     pagina: p.pagina,
     recorte,
     fundoDesfocado,
+    letra: p.letra ?? null,
   });
   const resposta = new ImageResponse(elemento as React.ReactElement, { width: p.largura, height: p.altura, fonts: await fontesDosModelos() });
   const png = Buffer.from(await resposta.arrayBuffer());

@@ -25,6 +25,7 @@ import { generateImage } from "@/lib/media/nano-banana";
 import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/infographic";
 import { mancheteDaPeca, desenharPecaDeFeed } from "@/lib/media/peca-de-feed";
 import { marcaDaArte, promptDaArteSemTexto, desenharComFraseEmCodigo } from "@/lib/media/arte-com-frase";
+import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { roteiroDoCarrossel, desenharCarrossel, redesQueAceitamCarrossel, laminasPermitidas } from "@/lib/media/carrossel";
 import { cabeNoSaldoDeVideo, type PedidoDeVideoDaFila } from "@/lib/media/video-por-ia";
@@ -1466,8 +1467,10 @@ export async function fecharCampanha(runId: string): Promise<void> {
   if (postsDaCampanha.length > 0 && !(await jaCobrado("campanha", runId))) {
     creditosCobrados = custoTotal(
       postsDaCampanha.map((p) => ({
-        // Material que o cliente subiu não é arte gerada: cobra como texto.
-        mediaType: (p.metadata as { midiaPropria?: boolean } | null)?.midiaPropria ? "text" : p.mediaType,
+        // Material que o cliente subiu não é arte gerada: cobra como texto. A
+        // arte que ficou aguardando a identidade (05/10) também: ela é cobrada
+        // quando sair, depois da aprovação.
+        mediaType: (p.metadata as { midiaPropria?: boolean; aguardandoIdentidade?: boolean } | null)?.midiaPropria || (p.metadata as { aguardandoIdentidade?: boolean } | null)?.aguardandoIdentidade ? "text" : p.mediaType,
         platform: p.platform,
         temLink: Boolean(p.sourcesComment),
         // `dia` e `laminas` existem para o carrossel: as tres redes que o
@@ -2188,6 +2191,9 @@ ${researchBrief}
  * continua existindo como a arte principal, para o card da Diana e para as
  * telas que so sabem mostrar uma.
  */
+/** O texto do card da Diana quando a arte espera a identidade (05/10). A tela reconhece pelo começo. */
+const TEXTO_DO_CARD_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. Nenhum crédito de imagem foi gasto; a arte sai depois da aprovação.`;
+
 const mediaByDayKey: Record<string, {
   imageUrl?: string;
   imagemPorRede?: Record<string, string>;
@@ -2195,6 +2201,8 @@ const mediaByDayKey: Record<string, {
   videoUrl?: string;
   imagePrompt?: string;
   visualStyle?: string;
+  /** A TRAVA DA IDENTIDADE (05/10): o dia ficou sem arte de propósito, sem gastar, até o cliente aprovar modelo, letra e cores. */
+  aguardandoIdentidade?: boolean;
 }> = {};
   const hasApiKey = !!process.env.GEMINI_API_KEY;
   const liAccount = project.socialAccounts.find((a) => a.platform === "linkedin");
@@ -2975,6 +2983,33 @@ ${postDoLinkedIn.content}`,
           : resolvedType === "article"
             ? "capa do artigo"
             : "imagem";
+      /**
+       * A TRAVA DA IDENTIDADE (05/10/2026).
+       *
+       * Queixa do Bruno: a esteira gerou o carrossel (fundo laranja, texto
+       * vinho sobre faixas creme, sem contraste) ANTES de ele aprovar o
+       * estilo, a letra e onde cada cor entra, e queimou crédito à toa. Agora
+       * nada pago sai enquanto o projeto não tem a identidade aprovada
+       * (modelos do book + letra + papéis das cores, em
+       * lib/modelos-de-arte/identidade.ts). O dia sai com os textos, e o card
+       * da Diana fica em "aguardando a sua identidade visual", com o botão que
+       * leva à escolha; depois de aprovar, "Aprovar e gerar" desenha o que
+       * ficou esperando (lib/media/artes-aguardando-identidade.ts).
+       */
+      const identidadeAprovada = marcaDaPeca.identidadeAprovada !== false;
+      if (!identidadeAprovada) {
+        mediaByDayKey[dayKey] = { ...(mediaByDayKey[dayKey] ?? {}), aguardandoIdentidade: true };
+        await appendLog(runId, {
+          agent: "Diana Design",
+          message: `${mediaTypeLabel[0].toUpperCase()}${mediaTypeLabel.slice(1)} de ${dayName} NÃO foi gerado(a): aguardando a sua identidade visual (modelo de arte, letra e cores). Nenhum crédito de imagem foi gasto. Aprove em Configurações, aba Modelos, e as artes saem.`,
+          status: "warning",
+        });
+        if (isVideoType) {
+          // Sem o quadro, o vídeo por IA também espera: o dia sai como imagem
+          // (como no caso sem crédito) e volta a ser pedido depois da aprovação.
+          for (const p of dayPosts) if (p.mediaType === "video") p.mediaType = "image";
+        }
+      }
 
       await appendLog(runId, {
         agent: "Diana Design",
@@ -2987,7 +3022,7 @@ ${postDoLinkedIn.content}`,
       let dianaMediaError: string | undefined;
 
       if (isInfographicType) {
-        if (hasApiKey) {
+        if (hasApiKey && identidadeAprovada) {
           try {
             // A EXTRAÇÃO ACONTECE UMA VEZ, O DESENHO UMA POR PROPORÇÃO.
             //
@@ -3049,7 +3084,19 @@ ${postDoLinkedIn.content}`,
         } else {
           mediaByDayKey[dayKey] = { ...mediaByDayKey[dayKey], imagePrompt: "infographic" };
         }
-        const dc = await saveCard({ runId, projectId: project.id, agentId: "diana-design", agentName: designer.name, dayOfWeek, scheduledDate, cardType: "media", mediaType: "infographic", content: dianaMediaError ? `AVISO: ${dianaMediaError}\n\nPrompt: infographic` : "infographic", mediaUrl: dianaFinalUrl });
+        const dc = await saveCard({
+          runId,
+          projectId: project.id,
+          agentId: "diana-design",
+          agentName: designer.name,
+          dayOfWeek,
+          scheduledDate,
+          cardType: "media",
+          mediaType: "infographic",
+          content: !identidadeAprovada ? `${TEXTO_DO_CARD_AGUARDANDO}\n\nPrompt: infographic` : dianaMediaError ? `AVISO: ${dianaMediaError}\n\nPrompt: infographic` : "infographic",
+          mediaUrl: dianaFinalUrl,
+          ...(identidadeAprovada ? {} : { metadata: { aguardandoIdentidade: true } }),
+        });
         dianaCardId = dc.id;
       } else {
         /**
@@ -3197,7 +3244,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         }
         const visualPrompt = roteiro ? roteiro.cenas[0].visual : limparPreambuloDoPrompt(visualPromptBruto);
 
-        if (hasApiKey) {
+        if (hasApiKey && identidadeAprovada) {
           /**
            * O teto de tempo de UMA geração de arte.
            *
@@ -3618,10 +3665,23 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
             await appendLog(runId, { agent: "Diana Design", message: `Falha ao gerar mídia para ${dayName}: ${dianaMediaError}. Prompt salvo para regeneração manual.`, status: "warning" });
           }
         } else {
-          mediaByDayKey[dayKey] = { imagePrompt: visualPrompt };
+          mediaByDayKey[dayKey] = { ...(mediaByDayKey[dayKey] ?? {}), imagePrompt: visualPrompt };
         }
 
-        const dc = await saveCard({ runId, projectId: project.id, agentId: "diana-design", agentName: designer.name, dayOfWeek, scheduledDate, cardType: "media", mediaType: resolvedType, content: dianaMediaError ? `AVISO: ${dianaMediaError}\n\nPrompt: ${visualPrompt}` : visualPrompt, mediaUrl: dianaFinalUrl });
+        const dc = await saveCard({
+          runId,
+          projectId: project.id,
+          agentId: "diana-design",
+          agentName: designer.name,
+          dayOfWeek,
+          scheduledDate,
+          cardType: "media",
+          // O dia de vídeo que ficou aguardando vira imagem (ver a trava acima).
+          mediaType: !identidadeAprovada && isVideoType ? "image" : resolvedType,
+          content: !identidadeAprovada ? `${TEXTO_DO_CARD_AGUARDANDO}\n\nPrompt: ${visualPrompt}` : dianaMediaError ? `AVISO: ${dianaMediaError}\n\nPrompt: ${visualPrompt}` : visualPrompt,
+          mediaUrl: dianaFinalUrl,
+          ...(identidadeAprovada ? {} : { metadata: { aguardandoIdentidade: true } }),
+        });
         dianaCardId = dc.id;
       }
     }
@@ -3696,6 +3756,8 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
           }
           return `GERADA com sucesso${formatos}, conferência de margem aprovada (nenhum elemento encosta na borda)`;
         }
+        // A trava da identidade (05/10): não é falha, é espera combinada com o cliente.
+        if (dayMedia?.aguardandoIdentidade) return "NÃO GERADA DE PROPÓSITO: o cliente ainda não aprovou a identidade visual (modelo de arte, letra e cores), e a arte sai depois da aprovação sem gastar agora. Não é falha; não peça para refazer a arte nem cite a falta dela como erro.";
         if (dayMedia?.imagePrompt) return "FALHOU — apenas prompt salvo, sem imagem/vídeo real";
         return "NAO SOLICITADA (post de texto)";
       }
@@ -4168,6 +4230,9 @@ ${d.content}
               formato: formatoDoDestino,
               // Marca de material próprio: a cobrança do fecho conta só o texto.
               ...(config.midiaDoCliente?.[String(dp.dayOfWeek)]?.urls?.length ? { midiaPropria: true } : {}),
+              // A trava da identidade (05/10): a arte ficou esperando a
+              // aprovação; o fecho cobra só o texto, e a arte é cobrada quando sair.
+              ...(dayMedia?.aguardandoIdentidade ? { aguardandoIdentidade: true } : {}),
             }) as Prisma.InputJsonValue,
             dayOfWeek: dp.dayOfWeek,
             status: "draft",

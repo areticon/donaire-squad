@@ -16,6 +16,8 @@ import {
   type IdentidadeVisual,
   type Tipografia,
 } from "@/lib/media/identidade-visual";
+import { IdentidadeNaoAprovada, LETRAS, coresDaIdentidade, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
+import { estadoDaIdentidade } from "@/lib/modelos-de-arte/identidade-aprovada";
 
 /**
  * TEXTO EM ARTE GERADA POR IA É SEMPRE CÓDIGO (30/09/2026).
@@ -48,9 +50,19 @@ import {
  */
 export type MarcaDaArte = {
   familia: FamiliaDaArte;
-  cores: CoresDaMarca;
+  /** Com `papeis` (05/10): as cores exatamente nos papéis que o cliente aprovou. */
+  cores: CoresDaMarca & { papeis?: PapeisEscolhidos };
   tipografia?: Tipografia;
   identidade?: IdentidadeVisual;
+  /** A letra aprovada pelo cliente (05/10, lib/modelos-de-arte/identidade.ts). */
+  letra?: LetraId;
+  /**
+   * A TRAVA DA IDENTIDADE (05/10): false quando o projeto ainda não aprovou
+   * modelo, letra e papéis das cores. Com false, nenhuma arte paga sai
+   * (desenharComFraseEmCodigo e o carrossel lançam IdentidadeNaoAprovada).
+   * Ausente em marca montada à mão (scripts, infográfico de teste): sem trava.
+   */
+  identidadeAprovada?: boolean;
   /** Fixa o layout (o carrossel usa o mesmo em todas as lâminas). Sem isto, sai da frase. */
   variante?: number;
   /**
@@ -94,15 +106,43 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
   // Os modelos escolhidos no book (03/10). Sem escolha, nada muda.
   const { lerModelosEscolhidos } = await import("@/lib/modelos-de-arte/escolha");
   const { materiaisDaMarca } = await import("@/lib/materiais/escolha");
-  const [escolha, materiais] = await Promise.all([lerModelosEscolhidos(projectId).catch(() => null), materiaisDaMarca(projectId, opcoes?.runId).catch(() => [])]);
-  if (materiais.length) marca.materiais = materiais;
-  if (!escolha && !materiais.length) return marca;
   const { prisma } = await import("@/lib/db/prisma");
+  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, logoUrl: true, colorPalette: true } });
+  const [escolha, materiais, identidade] = await Promise.all([
+    lerModelosEscolhidos(projectId).catch(() => null),
+    materiaisDaMarca(projectId, opcoes?.runId).catch(() => []),
+    // A IDENTIDADE APROVADA (05/10): letra e papéis das cores que o cliente
+    // viu e aprovou. Lida a cada peça (sem cache): aprovou agora, vale agora.
+    estadoDaIdentidade(projectId, p?.colorPalette).catch(() => null),
+  ]);
+  if (materiais.length) marca.materiais = materiais;
+  marca.projectId = projectId;
+  marca.identidadeAprovada = Boolean(identidade?.aprovada);
+  if (identidade?.aprovada) {
+    // As cores EXATAMENTE nos papéis aprovados: o fundo é o fundo, o título é
+    // o título, o destaque é o destaque. Nenhum agente escolhe outra cor da
+    // paleta para o fundo (a queixa de 05/10: fundo laranja que ninguém pediu).
+    const cores = coresDaIdentidade(identidade.papeis);
+    marca.cores = cores;
+    marca.letra = identidade.letra;
+    marca.tipografia = LETRAS[identidade.letra].familia;
+    if (marca.identidade) marca.identidade = { ...marca.identidade, cores, tipografia: marca.tipografia };
+  }
+  if (!escolha && !materiais.length) return marca;
   const { lerMidia } = await import("@/lib/media/storage");
   const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
-  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, logoUrl: true } });
   const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
   return { ...marca, modelos: escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/**
+ * A TRAVA (05/10): marca de projeto sem identidade aprovada não gera arte
+ * paga. Lança antes de qualquer chamada ao modelo de imagem; o chamador que
+ * sabe esperar (a esteira) nem chega aqui, e os outros (chat do card, refazer)
+ * devolvem a mensagem ao cliente.
+ */
+export function exigirIdentidadeAprovada(marca: MarcaDaArte): void {
+  if (marca.projectId && marca.identidadeAprovada === false) throw new IdentidadeNaoAprovada();
 }
 
 /** O modelo do book com a pessoa recortada na frente do título. */
@@ -270,8 +310,11 @@ export const TAMANHO_DA_PROPORCAO: Record<ProporcaoPedida, { largura: number; al
  * no tom claro da marca, e a arte inteira vai até a borda.
  */
 function fundoDaArte(marca: MarcaDaArte, arteInteira: boolean): string {
-  const { escuro, claro } = marca.cores;
+  const { escuro, claro, papeis } = marca.cores;
   if (arteInteira) return FUNDO_INTEIRO;
+  // O fundo aprovado (05/10): a cena assenta na cor que o cliente chamou de
+  // fundo, e não na que o modelo achar que combina.
+  if (papeis) return `Background: plain ${nomeDaCor(papeis.fundo)}, evenly lit, so the image blends into a ${nomeDaCor(papeis.fundo)} page.`;
   if (marca.familia === "colagem") return `Background: plain ${nomeDaCor(claro)} paper, evenly lit.`;
   if (marca.familia === "claro") return `Background: plain, bright ${nomeDaCor(claro)}, evenly lit, so the image blends into a light page.`;
   return `Background: plain, very dark ${nomeDaCor(escuro)}, fading to black at the edges, so the image blends into a dark page.`;
@@ -323,7 +366,10 @@ export function promptDaArteSemTexto(o: { visual: string; estilo?: string; marca
     ...(setor ? [`Light and mood: ${setor.luz}.`] : []),
     `Framing: ${enquadramentoDaPeca(o.frase ?? o.visual)}.`,
     `Look: ${BASE_DA_FAMILIA[o.marca.familia]}.${look ? ` Mood from the brand's visual language: ${look}.` : ""}`,
-    `Colour: natural to the scene, leaning toward ${nomeDaCor(acento)} as the accent, ${nomeDaCor(escuro)} as the dark tone and ${nomeDaCor(claro)} as the light tone.`,
+    o.marca.cores.papeis
+      ? // Os papéis aprovados (05/10): cada cor no lugar que o cliente deu, sem o modelo redistribuir a paleta.
+        `Colour: natural to the scene, leaning toward ${nomeDaCor(o.marca.cores.papeis.destaque)} as the one accent; the page behind it is ${nomeDaCor(o.marca.cores.papeis.fundo)} and the text that will be added is ${nomeDaCor(o.marca.cores.papeis.titulo)}, so keep the scene from fighting those two.`
+      : `Colour: natural to the scene, leaning toward ${nomeDaCor(acento)} as the accent, ${nomeDaCor(escuro)} as the dark tone and ${nomeDaCor(claro)} as the light tone.`,
     fundoDaArte(o.marca, arteInteira),
     // O padrão visual medido no nicho (trilho de referências), quando existir.
     // Traço abstrato, nunca a peça de outra marca.
@@ -527,6 +573,7 @@ export async function comporFraseNaArte(p: {
       marca: p.marca.nomeDaMarca || "Sua marca",
       pagina: p.marca.pagina ?? null,
       recorte: p.recorte ?? null,
+      letra: p.marca.letra ?? null,
     });
   }
   const W = p.largura;
@@ -577,8 +624,11 @@ export async function comporFraseNaArte(p: {
     folga: familia === "colagem" ? 0.5 : 0.3,
   });
   const s = encaixe.corpo;
-  const fundoClaro = familia === "colagem" || familia === "claro";
-  const corDoTexto = fundoClaro ? escuro : "#ffffff";
+  // Com os papéis aprovados (05/10), o fundo e o título são os que o cliente
+  // escolheu, em qualquer família; "claro" passa a ser "o fundo aprovado é claro".
+  const papeis = p.marca.cores.papeis;
+  const fundoClaro = papeis ? luminancia(papeis.fundo) > 0.42 : familia === "colagem" || familia === "claro";
+  const corDoTexto = papeis ? papeis.titulo : fundoClaro ? escuro : "#ffffff";
   // Contraste do destaque: acento claro some no fundo claro, acento escuro
   // some no fundo escuro. Nesses casos a palavra fica na cor do texto e o
   // acento vira o sublinhado.
@@ -639,7 +689,7 @@ export async function comporFraseNaArte(p: {
     );
   };
 
-  const fundoDaPeca = fundoClaro ? claro : escuro;
+  const fundoDaPeca = papeis ? papeis.fundo : fundoClaro ? claro : escuro;
   const fioNoTopo = familia === "sobrio" || familia === "claro";
   const resposta = new ImageResponse(
     (
@@ -779,6 +829,8 @@ export function desenharComFraseEmCodigo(
   desenhista: (prompt: string, proporcao: ProporcaoPedida) => Promise<string>
 ): (prompt: string, proporcao: ProporcaoPedida) => Promise<string> {
   return async (prompt, proporcao) => {
+    // A TRAVA (05/10): sem identidade aprovada, nada pago sai daqui.
+    exigirIdentidadeAprovada(marca);
     const { largura, altura } = TAMANHO_DA_PROPORCAO[proporcao];
     // O MATERIAL DO CLIENTE PRIMEIRO (03/10): a foto real que serve ao post,
     // tratada e composta, sem pagar imagem nova. Falhou, segue o de antes.

@@ -1,8 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, X, LayoutTemplate } from "lucide-react";
+import { Check, Loader2, X, LayoutTemplate, Palette, Sparkles, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  LETRAS,
+  NEUTROS,
+  ROTULO_DO_PAPEL,
+  checarContraste,
+  type ChecagemDeContraste,
+  type LetraId,
+  type PapeisEscolhidos,
+  type PapelDaCor,
+} from "@/lib/modelos-de-arte/identidade";
 import {
   CATEGORIAS_DOS_MODELOS,
   MODELOS_DE_ARTE,
@@ -36,6 +46,14 @@ import { textosDeExemplo } from "@/lib/modelos-de-arte/textos-de-exemplo";
  * versão leve; a ficha, a grande. O "Você na frente do título" usa a foto real
  * do cliente já recortada ou uma pessoa de banco recortada, nunca silhueta.
  * As cores são as da paleta do projeto (marca.cores, da identidade visual).
+ *
+ * A IDENTIDADE APROVADA (05/10, lib/modelos-de-arte/identidade.ts): a queixa
+ * do Bruno foi arte gerada antes de ele aprovar estilo, letra e cores, com
+ * fundo laranja e texto vinho sem contraste. Agora, abaixo do book, o cliente
+ * escolhe a LETRA (quatro), os PAPÉIS das cores da paleta (fundo, título,
+ * destaque; a hierarquia da marca vem preenchida), vê a prévia ao vivo com o
+ * texto dele nos modelos escolhidos, lê a checagem de contraste (4,5:1 para o
+ * título) e aperta "Aprovar e gerar". Sem isso a esteira não gasta com arte.
  */
 
 interface MarcaDaGaleria {
@@ -133,6 +151,8 @@ export function PreviaDoModelo({
   grande = false,
   logoProporcao,
   caixa,
+  letra,
+  titulo,
 }: {
   modelo: ModeloDeArte;
   formato: FormatoDoModelo;
@@ -143,6 +163,10 @@ export function PreviaDoModelo({
   logoProporcao: number | null;
   /** A caixa onde a prévia cabe inteira (largura e altura em px). */
   caixa: { largura: number; altura: number };
+  /** A letra escolhida (05/10); sem ela, a do modelo. */
+  letra?: LetraId | null;
+  /** O título do cliente no lugar do exemplo (a prévia ao vivo). */
+  titulo?: string;
 }) {
   const { largura: W, altura: H } = TAMANHO_DO_FORMATO[formato];
   const escala = Math.min(caixa.largura / W, caixa.altura / H);
@@ -150,8 +174,9 @@ export function PreviaDoModelo({
     () =>
       desenharModelo({
         modelo,
-        textos: textosDeExemplo(modelo, marca.setor),
+        textos: titulo?.trim() ? { ...textosDeExemplo(modelo, marca.setor), titulo: titulo.trim() } : textosDeExemplo(modelo, marca.setor),
         cores: marca.cores,
+        letra: letra ?? null,
         largura: W,
         altura: H,
         // "Você na frente do título": a pessoa recortada (a do cliente ou a de
@@ -165,7 +190,7 @@ export function PreviaDoModelo({
         arroba: marca.arroba,
         pagina: formato === "carrossel" ? { i: 0, total: 5 } : null,
       }),
-    [modelo, formato, marca, midia, grande, logoProporcao, W, H]
+    [modelo, formato, marca, midia, grande, logoProporcao, W, H, letra, titulo]
   );
   if (!caixa.largura) return null;
   return (
@@ -184,6 +209,7 @@ function CartaoDoModelo({
   podeMudar,
   aoAlternar,
   aoAbrir,
+  letra,
 }: {
   modelo: ModeloDeArte;
   marca: MarcaDaGaleria;
@@ -193,6 +219,7 @@ function CartaoDoModelo({
   podeMudar: boolean;
   aoAlternar: () => void;
   aoAbrir: () => void;
+  letra: LetraId;
 }) {
   const [ref, w] = useLargura<HTMLDivElement>();
   return (
@@ -202,7 +229,7 @@ function CartaoDoModelo({
     >
       <button type="button" onClick={aoAbrir} className="relative block w-full" aria-label={`Ver o modelo ${modelo.nome}`}>
         <div ref={ref} className="flex aspect-[4/5] w-full items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} midia={midia} logoProporcao={logoProporcao} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
+          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={letra} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
         </div>
         {escolhido && (
           <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-white shadow">
@@ -250,6 +277,7 @@ function FichaDoModelo({
   podeMudar,
   aoAlternar,
   aoFechar,
+  letra,
 }: {
   modelo: ModeloDeArte;
   marca: MarcaDaGaleria;
@@ -259,13 +287,14 @@ function FichaDoModelo({
   podeMudar: boolean;
   aoAlternar: () => void;
   aoFechar: () => void;
+  letra: LetraId;
 }) {
   const [formato, setFormato] = useState<FormatoDoModelo>(formatoDeVitrine(modelo));
   const [ref, w] = useLargura<HTMLDivElement>();
   const linhas: Array<[string, string]> = [
     ["A quem serve", modelo.paraQuem],
     ["Estrutura", modelo.estrutura],
-    ["Tipografia", `${FONTES[modelo.tipografia.titulo].rotulo} no título, ${FONTES[modelo.tipografia.texto].rotulo} no texto${modelo.tipografia.caixaAlta ? ", em caixa alta" : ""}`],
+    ["Tipografia", `${FONTES[modelo.tipografia.titulo].rotulo} no título, ${FONTES[modelo.tipografia.texto].rotulo} no texto${modelo.tipografia.caixaAlta ? ", em caixa alta" : ""}; a letra que você escolher (${LETRAS[letra].nome}) entra por cima`],
     ["Cor", modelo.cor],
     ["Foto", modelo.fotoOnde],
     ["Regras do texto", modelo.regrasDeTexto],
@@ -278,7 +307,7 @@ function FichaDoModelo({
         onClick={(e) => e.stopPropagation()}
       >
         <div ref={ref} className="flex items-center justify-center p-4 md:w-1/2" style={{ background: "var(--bg-elevated)" }}>
-          <PreviaDoModelo modelo={modelo} formato={formato} marca={marca} midia={midia} grande logoProporcao={logoProporcao} caixa={{ largura: w - 32, altura: Math.min(560, typeof window !== "undefined" ? window.innerHeight * 0.55 : 560) }} />
+          <PreviaDoModelo modelo={modelo} formato={formato} marca={marca} midia={midia} grande logoProporcao={logoProporcao} letra={letra} caixa={{ largura: w - 32, altura: Math.min(560, typeof window !== "undefined" ? window.innerHeight * 0.55 : 560) }} />
         </div>
         <div className="flex flex-col gap-3 p-5 md:w-1/2">
           <div className="flex items-start justify-between gap-3">
@@ -339,22 +368,259 @@ function FichaDoModelo({
   );
 }
 
+/** O estado da identidade, como a rota devolve. */
+interface IdentidadeDaTela {
+  letra: LetraId;
+  papeis: PapeisEscolhidos;
+  paleta: string[];
+  aprovada: boolean;
+  aprovadaEm: string | null;
+  /** Quantas artes de campanha ficaram esperando a aprovação. */
+  aguardando: number;
+}
+
+/** O título que o cliente digita para a prévia ao vivo; sem ele, o exemplo do nicho. */
+const TITULO_PADRAO_DA_PREVIA = "";
+
+/** Uma bolinha de cor escolhível, com o anel quando é a escolhida. */
+function Bolinha({ cor, escolhida, aoEscolher, rotulo, desabilitada }: { cor: string; escolhida: boolean; aoEscolher: () => void; rotulo: string; desabilitada: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={aoEscolher}
+      disabled={desabilitada}
+      aria-label={rotulo}
+      aria-pressed={escolhida}
+      title={cor}
+      className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-50", escolhida ? "ring-2 ring-orange-500 ring-offset-2" : "hover:scale-105")}
+      style={{ background: cor, borderColor: "var(--border)", ["--tw-ring-offset-color" as string]: "var(--bg-card)" }}
+    >
+      {escolhida && <Check className="h-4 w-4" style={{ color: cor.toLowerCase() === "#ffffff" || cor.toLowerCase() === "#fff" ? "#141414" : "#ffffff" }} />}
+    </button>
+  );
+}
+
+/**
+ * A IDENTIDADE DO CLIENTE (05/10): letra, papéis das cores, prévia ao vivo
+ * com o texto dele e a checagem de contraste, com o "Aprovar e gerar".
+ */
+function IdentidadeDoCliente({
+  identidade,
+  marca,
+  midia,
+  logoProporcao,
+  escolha,
+  podeMudar,
+  estado,
+  aprovando,
+  aoMudarLetra,
+  aoMudarPapel,
+  aoAprovar,
+  compacta,
+}: {
+  identidade: IdentidadeDaTela;
+  marca: MarcaDaGaleria;
+  midia: MidiaDaGaleria;
+  logoProporcao: number | null;
+  escolha: string[];
+  podeMudar: boolean;
+  estado: string;
+  aprovando: boolean;
+  aoMudarLetra: (l: LetraId) => void;
+  aoMudarPapel: (papel: PapelDaCor, cor: string) => void;
+  aoAprovar: () => void;
+  compacta: boolean;
+}) {
+  const [titulo, setTitulo] = useState(TITULO_PADRAO_DA_PREVIA);
+  const [ref, w] = useLargura<HTMLDivElement>();
+  const checagens = useMemo(() => checarContraste(identidade.papeis, identidade.paleta), [identidade.papeis, identidade.paleta]);
+  const tituloReprovado = checagens.some((c) => c.papel === "titulo" && !c.ok);
+  // Os modelos da prévia ao vivo: os três primeiros escolhidos.
+  const modelosDaPrevia = escolha.map((id) => modeloPorId(id)).filter((m): m is ModeloDeArte => Boolean(m)).slice(0, 3);
+  const colunas = Math.max(1, modelosDaPrevia.length);
+  const larguraDaPrevia = w ? (w - 8 * (colunas - 1)) / colunas : 0;
+  const opcoesDe = (papel: PapelDaCor) => (papel === "titulo" ? [...identidade.paleta, ...NEUTROS] : identidade.paleta);
+  const podeAprovar = podeMudar && escolha.length > 0 && !tituloReprovado && !aprovando;
+
+  return (
+    <section className="space-y-3 rounded-xl border p-3 sm:p-4" style={{ borderColor: identidade.aprovada ? "var(--brand)" : "var(--border)", background: "var(--bg-surface)" }} aria-labelledby="identidade-do-cliente">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 id="identidade-do-cliente" className={cn("flex items-center gap-2 font-semibold", compacta ? "text-xs" : "text-base")} style={{ color: "var(--text-primary)" }}>
+            <Palette className={cn("text-orange-500", compacta ? "h-3.5 w-3.5" : "h-4 w-4")} />
+            Sua identidade: letra e cores
+          </h3>
+          <p className={cn(compacta ? "text-[10px]" : "text-xs", "mt-0.5")} style={{ color: "var(--text-muted)" }}>
+            Escolha a letra e diga onde cada cor da sua paleta entra. Veja a prévia com o seu texto e aprove: só depois os agentes gastam com arte.
+          </p>
+        </div>
+        <span
+          className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          style={identidade.aprovada ? { background: "rgba(34,197,94,0.15)", color: "#16a34a" } : { background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
+        >
+          {identidade.aprovada ? "Aprovada" : "Aguardando a sua aprovação"}
+        </span>
+      </div>
+
+      {/* A letra: quatro opções, cada uma escrita na própria fonte. */}
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Letra
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(Object.keys(LETRAS) as LetraId[]).map((id) => {
+            const l = LETRAS[id];
+            const f = FONTES[l.titulo];
+            const ativa = identidade.letra === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={!podeMudar}
+                onClick={() => aoMudarLetra(id)}
+                aria-pressed={ativa}
+                className={cn("rounded-lg border p-2.5 text-left transition disabled:opacity-50", ativa ? "border-orange-500 bg-orange-500/10" : "hover:border-orange-500/50")}
+                style={{ borderColor: ativa ? undefined : "var(--border)" }}
+              >
+                <span className="block truncate text-lg leading-tight" style={{ fontFamily: f.familia, fontWeight: f.peso, color: "var(--text-primary)", textTransform: l.caixaAlta ? "uppercase" : "none" }}>
+                  {l.nome}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                  {l.descricao}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Os papéis: fundo, título e destaque, cada um a partir da paleta. */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Onde cada cor entra
+        </p>
+        {(["fundo", "titulo", "destaque"] as PapelDaCor[]).map((papel) => (
+          <div key={papel} className="flex flex-wrap items-center gap-2">
+            <span className="w-16 shrink-0 text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+              {ROTULO_DO_PAPEL[papel]}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {opcoesDe(papel).map((cor) => (
+                <Bolinha key={`${papel}-${cor}`} cor={cor} escolhida={identidade.papeis[papel] === cor} aoEscolher={() => aoMudarPapel(papel, cor)} rotulo={`${ROTULO_DO_PAPEL[papel]} em ${cor}`} desabilitada={!podeMudar} />
+              ))}
+            </div>
+          </div>
+        ))}
+        {/* A checagem de contraste: o mínimo WCAG para texto é 4,5:1. */}
+        <ul className="space-y-1">
+          {checagens.map((c: ChecagemDeContraste) => (
+            <li key={c.papel} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style={{ color: c.ok ? "var(--text-muted)" : "#ea580c" }}>
+              {c.ok ? <Check className="h-3.5 w-3.5 shrink-0 text-green-500" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+              <span>{c.mensagem}</span>
+              {!c.ok && c.sugestao && podeMudar && (
+                <button type="button" onClick={() => aoMudarPapel(c.papel, c.sugestao!)} className="rounded border px-1.5 py-0.5 font-semibold" style={{ borderColor: "currentColor" }}>
+                  Usar {c.sugestao}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* A prévia ao vivo, nos modelos escolhidos, com o texto do cliente. */}
+      <div>
+        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }} htmlFor="titulo-da-previa">
+          Prévia com o seu texto
+        </label>
+        <input
+          id="titulo-da-previa"
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value.slice(0, 90))}
+          placeholder="Escreva um título seu para ver na arte (opcional)"
+          className="mb-2 w-full rounded-lg border px-3 py-2 text-sm"
+          style={{ background: "var(--bg-input, var(--bg-elevated))", borderColor: "var(--border)", color: "var(--text-primary)" }}
+        />
+        <div ref={ref} className="w-full">
+          {modelosDaPrevia.length ? (
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))` }}>
+              {modelosDaPrevia.map((m) => (
+                <div key={m.id} className="flex flex-col items-center gap-1">
+                  <PreviaDoModelo modelo={m} formato={formatoDeVitrine(m)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={identidade.letra} titulo={titulo} caixa={{ largura: larguraDaPrevia, altura: larguraDaPrevia * 1.25 }} />
+                  <span className="line-clamp-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    {m.nome}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg border px-3 py-4 text-center text-xs" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+              Escolha ao menos um modelo acima para ver a prévia com a sua letra e as suas cores.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={!podeAprovar}
+          onClick={aoAprovar}
+          className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+        >
+          {aprovando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {identidade.aguardando > 0 ? `Aprovar e gerar (${identidade.aguardando} ${identidade.aguardando === 1 ? "arte esperando" : "artes esperando"})` : identidade.aprovada ? "Aprovar de novo" : "Aprovar e gerar"}
+        </button>
+        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          {!podeMudar
+            ? "Só o dono da conta aprova a identidade."
+            : estado
+              ? estado
+              : escolha.length === 0
+                ? "Falta escolher um modelo."
+                : tituloReprovado
+                  ? "Troque a cor do título ou do fundo antes de aprovar."
+                  : identidade.aprovada
+                    ? `Aprovada${identidade.aprovadaEm ? ` em ${new Date(identidade.aprovadaEm).toLocaleDateString("pt-BR")}` : ""}. Mudou algo? Aprove de novo.`
+                    : "Nada é gerado nem cobrado antes de você aprovar."}
+        </span>
+      </div>
+    </section>
+  );
+}
+
 export function GaleriaDeModelos({
   projectId,
   variante = "completa",
+  aoMudarAprovacao,
 }: {
   projectId: string;
   /** "compacta": dentro da janela da campanha, com a lista rolando em menos altura. */
   variante?: "completa" | "compacta";
+  /** Avisa a tela de fora (a janela da campanha) se a identidade está aprovada. */
+  aoMudarAprovacao?: (aprovada: boolean) => void;
 }) {
   useFontesDoBook();
   const [dados, setDados] = useState<{ marca: MarcaDaGaleria; podeMudar: boolean; midia: MidiaDaGaleria } | null>(null);
   const [escolha, setEscolha] = useState<string[]>([]);
+  const [identidade, setIdentidade] = useState<IdentidadeDaTela | null>(null);
   const [categoria, setCategoria] = useState<string>("Todos");
   const [aberto, setAberto] = useState<string | null>(null);
   const [estado, setEstado] = useState<"" | "guardando" | "guardado" | "erro">("");
+  const [estadoDaIdentidade, setEstadoDaIdentidade] = useState<string>("");
+  const [aprovando, setAprovando] = useState(false);
   const salvo = useRef<string>("");
+  const identidadeSalva = useRef<string>("");
   const logoProporcao = useProporcaoDoLogo(dados?.marca.logoUrl);
+
+  const aplicarIdentidade = useCallback(
+    (i: IdentidadeDaTela | null | undefined) => {
+      if (!i) return;
+      setIdentidade(i);
+      identidadeSalva.current = JSON.stringify({ letra: i.letra, papeis: i.papeis });
+      aoMudarAprovacao?.(i.aprovada);
+    },
+    [aoMudarAprovacao]
+  );
 
   useEffect(() => {
     let vivo = true;
@@ -365,12 +631,13 @@ export function GaleriaDeModelos({
         setDados({ marca: d.marca, podeMudar: Boolean(d.podeMudar), midia: { fotos: Array.isArray(d.fotos) ? d.fotos : [], pessoa: d.pessoa ?? null } });
         setEscolha(d.escolha ?? []);
         salvo.current = JSON.stringify(d.escolha ?? []);
+        aplicarIdentidade(d.identidade);
       })
       .catch(() => {});
     return () => {
       vivo = false;
     };
-  }, [projectId]);
+  }, [projectId, aplicarIdentidade]);
 
   // Grava a cada mudança, com um pequeno atraso: vários toques viram um PUT.
   useEffect(() => {
@@ -383,14 +650,68 @@ export function GaleriaDeModelos({
         if (!r.ok) throw new Error();
         salvo.current = atual;
         setEstado("guardado");
+        // Mudar os modelos derruba a aprovação: a rota devolve o estado novo.
+        aplicarIdentidade(((await r.json()) as { identidade?: IdentidadeDaTela }).identidade);
       } catch {
         setEstado("erro");
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [escolha, dados, projectId]);
+  }, [escolha, dados, projectId, aplicarIdentidade]);
+
+  // A letra e os papéis também gravam a cada mudança (e derrubam a aprovação).
+  useEffect(() => {
+    if (!dados || !identidade) return;
+    const atual = JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis });
+    if (atual === identidadeSalva.current) return;
+    const t = setTimeout(async () => {
+      setEstadoDaIdentidade("Guardando...");
+      try {
+        const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ letra: identidade.letra, papeis: identidade.papeis }) });
+        if (!r.ok) throw new Error();
+        aplicarIdentidade(((await r.json()) as { identidade?: IdentidadeDaTela }).identidade);
+        setEstadoDaIdentidade("");
+      } catch {
+        setEstadoDaIdentidade("Não consegui guardar; tente de novo.");
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [identidade, dados, projectId, aplicarIdentidade]);
 
   const alternar = useCallback((id: string) => setEscolha((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id])), []);
+  const mudarLetra = useCallback((letra: LetraId) => setIdentidade((i) => (i ? { ...i, letra, aprovada: false } : i)), []);
+  const mudarPapel = useCallback((papel: PapelDaCor, cor: string) => setIdentidade((i) => (i ? { ...i, papeis: { ...i.papeis, [papel]: cor }, aprovada: false } : i)), []);
+
+  /** Aprova com o que está na tela e, se havia arte esperando, gera. */
+  const aprovar = useCallback(async () => {
+    if (!identidade) return;
+    setAprovando(true);
+    setEstadoDaIdentidade("Aprovando...");
+    try {
+      const r = await fetch(`/api/projects/${projectId}/modelos-de-arte`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: escolha, letra: identidade.letra, papeis: identidade.papeis, aprovar: true }),
+      });
+      const d = (await r.json()) as { identidade?: IdentidadeDaTela; error?: string };
+      if (!r.ok) throw new Error(d.error || "Não consegui aprovar.");
+      aplicarIdentidade(d.identidade);
+      if ((d.identidade?.aguardando ?? 0) > 0) {
+        setEstadoDaIdentidade(`Aprovada. Gerando ${d.identidade!.aguardando} arte(s) que esperavam, pode levar alguns minutos...`);
+        const g = await fetch(`/api/projects/${projectId}/modelos-de-arte`, { method: "POST" });
+        const gd = (await g.json()) as { frase?: string; error?: string; identidade?: IdentidadeDaTela };
+        if (!g.ok) throw new Error(gd.error || "As artes não saíram.");
+        aplicarIdentidade(gd.identidade);
+        setEstadoDaIdentidade(gd.frase ?? "Artes geradas.");
+      } else {
+        setEstadoDaIdentidade("Aprovada. As próximas artes saem assim.");
+      }
+    } catch (e) {
+      setEstadoDaIdentidade(e instanceof Error ? e.message : "Não consegui aprovar.");
+    } finally {
+      setAprovando(false);
+    }
+  }, [identidade, escolha, projectId, aplicarIdentidade]);
 
   if (!dados) {
     return (
@@ -400,7 +721,10 @@ export function GaleriaDeModelos({
     );
   }
 
-  const { marca, podeMudar, midia } = dados;
+  const { podeMudar, midia } = dados;
+  // As prévias já saem nos papéis escolhidos (fundo, título, destaque) e na letra.
+  const marca: MarcaDaGaleria = identidade ? { ...dados.marca, cores: { ...dados.marca.cores, papeis: identidade.papeis } } : dados.marca;
+  const letra: LetraId = identidade?.letra ?? "moderna";
   const categorias = ["Todos", "Escolhidos", ...CATEGORIAS_DOS_MODELOS];
   const lista = MODELOS_DE_ARTE.filter((m) => (categoria === "Todos" ? true : categoria === "Escolhidos" ? escolha.includes(m.id) : m.categoria === categoria));
   const modeloAberto = aberto ? modeloPorId(aberto) : undefined;
@@ -418,9 +742,9 @@ export function GaleriaDeModelos({
             Cada modelo já nas suas cores, com o seu logo e um texto do seu nicho. Escolha um ou mais: as próximas artes saem nesses moldes, sem surpresa.
           </p>
         </div>
-        <div className="flex items-center gap-1.5" title="As cores da sua marca usadas nas prévias">
-          {[marca.cores.acento, marca.cores.escuro, marca.cores.claro].map((c) => (
-            <span key={c} className="h-5 w-5 rounded-full border" style={{ background: c, borderColor: "var(--border)" }} />
+        <div className="flex items-center gap-1.5" title="As cores nos papéis escolhidos: fundo, título e destaque">
+          {[marca.cores.papeis?.fundo ?? marca.cores.escuro, marca.cores.papeis?.titulo ?? marca.cores.claro, marca.cores.papeis?.destaque ?? marca.cores.acento].map((c, i) => (
+            <span key={`${c}-${i}`} className="h-5 w-5 rounded-full border" style={{ background: c, borderColor: "var(--border)" }} />
           ))}
         </div>
       </div>
@@ -457,6 +781,7 @@ export function GaleriaDeModelos({
               podeMudar={podeMudar}
               aoAlternar={() => alternar(m.id)}
               aoAbrir={() => setAberto(m.id)}
+              letra={letra}
             />
           ))}
         </div>
@@ -471,10 +796,27 @@ export function GaleriaDeModelos({
             {escolha.map((id) => modeloPorId(id)?.nome).filter(Boolean).join(", ")}. As artes alternam entre eles conforme o formato e o texto do dia.
           </>
         ) : (
-          "Sem modelo escolhido, as artes seguem a composição automática da sua marca."
+          "Sem modelo escolhido, nenhuma arte é gerada: escolha ao menos um e aprove a identidade abaixo."
         )}
         <span className="ml-2 opacity-80">{!podeMudar ? "Só o dono da conta muda os modelos." : estado === "guardando" ? "Guardando..." : estado === "guardado" ? "Guardado no projeto." : estado === "erro" ? "Não consegui guardar; tente de novo." : ""}</span>
       </div>
+
+      {identidade && (
+        <IdentidadeDoCliente
+          identidade={identidade}
+          marca={marca}
+          midia={midia}
+          logoProporcao={logoProporcao}
+          escolha={escolha}
+          podeMudar={podeMudar}
+          estado={estadoDaIdentidade}
+          aprovando={aprovando}
+          aoMudarLetra={mudarLetra}
+          aoMudarPapel={mudarPapel}
+          aoAprovar={aprovar}
+          compacta={compacta}
+        />
+      )}
 
       {modeloAberto && (
         <FichaDoModelo
@@ -486,6 +828,7 @@ export function GaleriaDeModelos({
           podeMudar={podeMudar}
           aoAlternar={() => alternar(modeloAberto.id)}
           aoFechar={() => setAberto(null)}
+          letra={letra}
         />
       )}
     </section>

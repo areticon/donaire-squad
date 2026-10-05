@@ -1358,6 +1358,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [origens, setOrigens] = useState<Record<string, OrigemDoDia>>({});
   // Os materiais da biblioteca marcados para esta campanha (03/10).
   const [materiaisDaCampanha, setMateriaisDaCampanha] = useState<string[]>([]);
+  // A IDENTIDADE APROVADA (05/10): sem ela, a campanha sai com os textos e as artes ficam esperando, sem gastar. Null até o book responder.
+  const [identidadeAprovada, setIdentidadeAprovada] = useState<boolean | null>(null);
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -1864,7 +1866,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2027,7 +2029,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2213,7 +2215,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
                     {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" />
+                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
@@ -2911,10 +2913,18 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               <ChevronRight className="w-4 h-4" />
             </Button>
           ) : (
-            <Button onClick={handleConfirm} className="bg-orange-500 hover:bg-orange-600">
-              <Zap className="w-4 h-4" />
-              Gerar campanha
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              {identidadeAprovada === false && (
+                // A trava da identidade (05/10): avisa antes de gerar, sem barrar os textos.
+                <p className="max-w-[260px] text-right text-[10px] leading-snug" style={{ color: "#ea580c" }}>
+                  Identidade visual sem aprovação: os textos saem e as artes ficam aguardando, sem gastar. Aprove no passo do estilo ou em Configurações.
+                </p>
+              )}
+              <Button onClick={handleConfirm} className="bg-orange-500 hover:bg-orange-600">
+                <Zap className="w-4 h-4" />
+                Gerar campanha
+              </Button>
+            </div>
           )}
         </div>
       </motion.div>
