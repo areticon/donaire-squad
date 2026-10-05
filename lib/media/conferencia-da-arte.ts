@@ -36,8 +36,8 @@ export interface VereditoDaArte {
   medida: MedidaDeMargem;
   /** O que o olho disse, quando ele foi chamado e respondeu. */
   parecerDoOlho?: string;
-  /** Quem julgou o olho (03/10): o Sonnet vendo a imagem, ou o Haiku descrevendo e o JEV decidindo. */
-  olhoPor?: "sonnet" | "haiku+jev";
+  /** Quem julgou o olho: o Sonnet vendo a imagem (só por pedido), ou o Haiku descrevendo e o código ou o JEV decidindo (05/10). */
+  olhoPor?: "sonnet" | "haiku+jev" | "haiku+codigo";
 }
 
 const SISTEMA_DO_OLHO = `Você confere ARTE de rede social antes de ela ir ao ar em nome de um cliente pagante.
@@ -69,33 +69,38 @@ Não comente estilo, gosto, paleta nem composição. A pergunta é se esta arte 
  *
  * Decisão do Bruno de 02/10: decisão sobre texto vai ao JEV, e o JEV não vê
  * imagem. Então um modelo barato com visão (Haiku) só TRANSCREVE e DESCREVE a
- * arte (texto letra por letra, com os erros; gente; o que a borda corta), e o
- * JEV decide cada regra do SISTEMA_DO_OLHO sobre essa descrição. Decide só
- * quem está confiante: alguma regra >= 0,7 reprova, todas <= 0,3 aprova; o
- * meio, e qualquer falha, cai no Sonnet de sempre.
+ * arte (texto letra por letra, com os erros; gente; o que a borda corta), e
+ * quem decide é o CÓDIGO (o que é contagem: texto além do permitido, gente,
+ * elemento cortado) e o JEV (o que é leitura: palavra que não existe, número
+ * que contradiz o post).
  *
- * ## O que a medição mandou: DESLIGADO por padrão (03/10, 31 artes reais)
- * Economiza 41% (US$ 0,177 contra US$ 0,104 nas 31 artes, contando a dúvida
- * que volta ao Sonnet), mas é duas vezes mais lento (3,3 s contra 1,7 s por
- * arte) e erra justamente o caso para o qual o olho existe: o Haiku CONSERTA
- * a palavra ao transcrever. Na arte cmu7hm4zq estava escrito "syetem for
- * tired days"; o Haiku leu "system", e o JEV aprovou uma arte com palavra
- * errada. Na primeira rodada o Haiku ainda inventou uma pessoa numa cadeira
- * vazia (reprovação falsa, que custa uma arte nova, uns US$ 0,04, mais do
- * que a economia de 17 conferências). A economia, US$ 0,0024 por arte (uns
- * US$ 0,50 por mês no volume de setembro), não paga arte errada no ar.
- * Fica o código para medir de novo com um modelo de visão melhor.
+ * ## A medição de 03/10 (31 artes reais) e por que o padrão mudou em 05/10
+ * Ficou desligado em 03/10: economizava 41% mas o Haiku CONSERTAVA a palavra
+ * ao transcrever ("syetem" virou "system") e a dúvida voltava ao Sonnet. Em
+ * 05/10 o Bruno fechou a regra ("revisões e conferências: nada de LLM, vai
+ * para o JEV"), e o caso medido deixou de existir na esteira: a frase da arte
+ * é composta em CÓDIGO desde 30/09 (`textoEsperado`), então não há palavra
+ * permitida para o gerador errar; qualquer texto que o Haiku transcreva fora
+ * da frase é invenção e reprova por contagem, mesmo com a grafia consertada.
+ * A dúvida não vai mais ao Sonnet: aprova (a régua de margem continua
+ * mandando). O Sonnet vendo a imagem só volta com CONFERENCIA_OLHO_SONNET=1.
  *
- * Interruptor: CONFERENCIA_PELO_JEV=1 liga (e precisa do JEV ligado); sem
- * ele, o Sonnet confere como sempre. Prova: scripts/tmp/conferencia-prova-0310.mts.
+ * Interruptores: CONFERENCIA_PELO_JEV=0 desliga o JEV nas perguntas de
+ * leitura (o código ainda decide a contagem sobre a descrição do Haiku);
+ * CONFERENCIA_OLHO_SONNET=1 volta ao olho antigo. Prova:
+ * scripts/tmp/conferencia-prova-0310.mts.
  */
 export function conferenciaPeloJev(): boolean {
-  return jevLigado() && process.env.CONFERENCIA_PELO_JEV === "1";
+  return jevLigado() && process.env.CONFERENCIA_PELO_JEV !== "0";
+}
+
+/** O Sonnet vendo a imagem, só por pedido explícito (05/10). */
+export function olhoDoSonnetLigado(): boolean {
+  return process.env.CONFERENCIA_OLHO_SONNET === "1";
 }
 
 const MODELO_DA_DESCRICAO = process.env.CONFERENCIA_MODELO_DA_DESCRICAO || "claude-haiku-4-5";
 const REPROVA = 0.7;
-const APROVA = 0.3;
 
 const SISTEMA_DA_DESCRICAO = `Você TRANSCREVE e DESCREVE uma arte de rede social. Você não julga e não corrige nada.
 
@@ -112,7 +117,7 @@ Responda SOMENTE com JSON válido, sem cerca de código:
  "assunto":"o assunto principal em poucas palavras"}
 Sem texto nenhum na arte, "textos" é [].`;
 
-type DescricaoDaArte = {
+export type DescricaoDaArte = {
   textos?: Array<{ texto?: string; onde?: string; borda?: string }>;
   pessoas?: string;
   cortado?: string;
@@ -128,14 +133,87 @@ function palavras(t: string): string[] {
     .filter(Boolean);
 }
 
+/** Sem acento, para a comparação tolerante com a frase composta em código. */
+function semAcento(t: string): string {
+  return t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+/** Distância de edição até 2 (o Haiku troca uma letra ao transcrever a frase que o código escreveu). */
+function parecidas(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let erros = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    if (++erros > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else {
+      i++;
+      j++;
+    }
+  }
+  return erros + (a.length - i) + (b.length - j) <= 1;
+}
+
 /**
- * O olho barato: Haiku descreve, JEV decide. `decidido` falso quer dizer
- * dúvida (alguma regra entre 0,3 e 0,7): quem chama vai ao Sonnet.
+ * As palavras transcritas que NÃO são da frase composta em código. Tolerante
+ * à transcrição (acento e uma letra trocada), porque a frase permitida foi
+ * desenhada certa pelo código: o que importa é palavra que não está nela.
+ * Palavra de uma letra e "?" (letra ilegível) não contam sozinhas. Puro.
+ */
+export function palavrasForaDoPermitido(textos: string[], permitido: string[]): string[] {
+  const permitidas = permitido.flatMap(palavras).map(semAcento);
+  return textos
+    .flatMap(palavras)
+    .map(semAcento)
+    .filter((w) => w.length >= 2 && w !== "?" && !permitidas.some((p) => parecidas(w, p)));
+}
+
+export type DecisaoDaDescricao = { reprovou: string | null; porCodigo: boolean };
+
+/**
+ * O que o CÓDIGO decide sobre a descrição, sem JEV: texto além do permitido,
+ * gente onde não pode, e elemento (não fundo) que a borda corta. Puro.
+ */
+export function decidirPelaDescricao(descricao: DescricaoDaArte, opcoes: { textoEsperado?: string[]; permitirPessoas?: boolean }): DecisaoDaDescricao {
+  const textos = (descricao.textos ?? []).filter((t) => String(t?.texto ?? "").trim());
+  const motivos: string[] = [];
+  if (opcoes.textoEsperado) {
+    const fora = palavrasForaDoPermitido(
+      textos.map((t) => String(t.texto)),
+      opcoes.textoEsperado
+    );
+    if (fora.length) motivos.push(`texto além do permitido: "${fora.slice(0, 6).join(" ")}"`);
+  }
+  const pessoas = String(descricao.pessoas ?? "nenhuma").trim();
+  if (!opcoes.permitirPessoas && pessoas && !/^(nenhuma|nenhum|n[ãa]o|sem|none|no)\b/i.test(pessoas)) {
+    motivos.push(`a arte tem pessoa (${pessoas.slice(0, 80)}), e esta arte não pode ter`);
+  }
+  const cortado = String(descricao.cortado ?? "nada").trim();
+  if (cortado && !/^(nada|nenhum|nenhuma|none|nothing)\b/i.test(cortado)) motivos.push(`elemento cortado pela borda: ${cortado.slice(0, 80)}`);
+  // Texto que NÃO é o permitido encostado ou cortado pela borda da imagem.
+  const permitido = opcoes.textoEsperado ?? [];
+  const naBorda = textos.filter((t) => (t.borda === "cortado" || t.borda === "perto") && palavrasForaDoPermitido([String(t.texto)], permitido).length);
+  if (naBorda.length) motivos.push(`texto cortado ou encostado na borda: ${naBorda.map((t) => `"${String(t.texto).slice(0, 40)}"`).join(", ")}`);
+  return { reprovou: motivos.length ? motivos.join("; ") : null, porCodigo: motivos.length > 0 };
+}
+
+/**
+ * O olho barato: Haiku descreve, o código decide a contagem e o JEV decide a
+ * leitura. Sempre decide (05/10): a dúvida do JEV aprova, porque o Sonnet não
+ * é mais chamado por padrão.
  */
 async function olharPeloJev(
   base64: string,
   opcoes: Parameters<typeof conferirArte>[1]
-): Promise<{ decidido: boolean; parecer?: string; reprovou?: string; descricao: DescricaoDaArte; notas: Record<string, number | null> }> {
+): Promise<{ decidido: boolean; parecer?: string; reprovou?: string; descricao: DescricaoDaArte; notas: Record<string, number | null>; por: "haiku+codigo" | "haiku+jev" }> {
   const bruto = await askClaudeComImagem(SISTEMA_DA_DESCRICAO, `Formato da arte: ${opcoes.formato.rotulo}. Transcreva e descreva.`, base64, "image/jpeg", {
     model: MODELO_DA_DESCRICAO,
     maxTokens: 4096,
@@ -146,10 +224,16 @@ async function olharPeloJev(
   const descricao = JSON.parse(limpo.slice(limpo.indexOf("{"), limpo.lastIndexOf("}") + 1)) as DescricaoDaArte;
   const textos = (descricao.textos ?? []).filter((t) => String(t?.texto ?? "").trim());
 
-  // Em código, o que é contagem: as palavras da arte que não estão no texto permitido.
-  const permitidas = new Set((opcoes.textoEsperado ?? []).flatMap(palavras));
-  const foraDoPermitido = opcoes.textoEsperado ? textos.flatMap((t) => palavras(String(t.texto))).filter((w) => !permitidas.has(w)) : [];
+  // 1. O código, sobre o que é contagem.
+  const pelaDescricao = decidirPelaDescricao(descricao, opcoes);
+  if (pelaDescricao.reprovou) {
+    return { decidido: true, reprovou: pelaDescricao.reprovou, parecer: `VEREDITO: REPROVADA\nMOTIVO: ${pelaDescricao.reprovou}`, descricao, notas: {}, por: "haiku+codigo" };
+  }
+  // 2. O JEV, sobre o que é leitura. Sem texto na arte não há o que ler.
+  const temNumero = textos.some((t) => /\d/.test(String(t.texto)));
+  if (!textos.length || !conferenciaPeloJev()) return { decidido: true, parecer: "VEREDITO: APROVADA", descricao, notas: {}, por: "haiku+codigo" };
 
+  const foraDoPermitido = opcoes.textoEsperado ? palavrasForaDoPermitido(textos.map((t) => String(t.texto)), opcoes.textoEsperado) : [];
   const state = {
     contexto:
       "Conferência de uma arte de rede social antes de ir ao ar em nome de um cliente. Quem viu a imagem transcreveu o texto LETRA POR LETRA, com os erros, sem corrigir. Fundo, textura, parede, mesa e céu tocando a borda não contam: não são elementos.",
@@ -164,33 +248,16 @@ async function olharPeloJev(
     textoDoPost: opcoes.textoDoPost ? opcoes.textoDoPost.slice(0, 1200) : "não informado",
     descricaoDaArte: { ...descricao, textos },
   };
+  // Só o que é leitura vai ao JEV: contagem, gente e borda já foram decididas em código.
   const regras: Record<string, { pergunta: string; motivo: string }> = {
-    cortado: {
-      pergunta:
-        "Pela descrição, algum texto, número, logotipo ou o assunto principal está CORTADO pela borda da imagem (campo cortado diferente de \"nada\", ou texto com borda \"cortado\"), ou algum texto que NÃO é o texto permitido tem borda \"perto\"?",
-      motivo: "elemento cortado ou encostado na borda",
-    },
     escrita: {
       pergunta:
         "Algum texto transcrito tem palavra que não existe em português (ou no idioma do texto), letras repetidas, letras embaralhadas, texto embolado ou letra ilegível (\"?\")? Nome próprio, sigla e hashtag corretos não contam.",
       motivo: "texto com palavra que não existe ou escrita errada",
     },
   };
-  if (opcoes.textoEsperado) {
-    regras.extra = {
-      pergunta:
-        "Há na arte QUALQUER texto além do texto permitido (rótulo, número, passo numerado, legenda, placa, tela com escrita), comparando palavra por palavra e ignorando caixa e pontuação? A lista palavrasForaDoTextoPermitido ajuda: vazia quer dizer que não há.",
-      motivo: "texto além do permitido",
-    };
-  }
-  if (opcoes.textoDoPost) {
+  if (opcoes.textoDoPost && temNumero) {
     regras.numero = { pergunta: "Algum número escrito na arte CONTRADIZ um número do texto do post?", motivo: "número na arte que contradiz o post" };
-  }
-  if (!opcoes.permitirPessoas) {
-    regras.pessoas = {
-      pergunta: "A descrição mostra PESSOA na arte: rosto, corpo, mão, silhueta ou personagem ilustrado, em foto ou desenho?",
-      motivo: "a arte tem pessoa, e esta arte não pode ter",
-    };
   }
   const perguntas: Record<string, PerguntaDoJev> = Object.fromEntries(
     Object.entries(regras).map(([k, r]) => [k, { type: "noul", instructions: r.pergunta } as PerguntaDoJev])
@@ -198,25 +265,14 @@ async function olharPeloJev(
   const respostas = await perguntarAoJev({ projectId: opcoes.projectId, etapa: "conferencia-da-arte", state, uso: opcoes.usoDoJev }, perguntas);
   const notas: Record<string, number | null> = Object.fromEntries(Object.keys(regras).map((k) => [k, probabilidadeDeSim(respostas[k])]));
 
-  const quebradas = Object.keys(regras).filter((k) => (notas[k] ?? 0.5) >= REPROVA);
+  const quebradas = Object.keys(regras).filter((k) => (notas[k] ?? 0) >= REPROVA);
   if (quebradas.length) {
-    const detalhe = (k: string) =>
-      k === "pessoas"
-        ? `: ${descricao.pessoas}`
-        : k === "cortado"
-          ? `: ${descricao.cortado && descricao.cortado !== "nada" ? descricao.cortado : textos.filter((t) => t.borda !== "longe").map((t) => `"${t.texto}"`).join(", ")}`
-          : k === "extra" && foraDoPermitido.length
-            ? `: "${foraDoPermitido.slice(0, 6).join(" ")}"`
-            : k === "escrita"
-              ? `: ${textos.map((t) => `"${t.texto}"`).join(", ").slice(0, 200)}`
-              : "";
+    const detalhe = (k: string) => (k === "escrita" ? `: ${textos.map((t) => `"${t.texto}"`).join(", ").slice(0, 200)}` : "");
     const reprovou = quebradas.map((k) => `${regras[k].motivo}${detalhe(k)}`).join("; ");
-    return { decidido: true, reprovou, parecer: `VEREDITO: REPROVADA\nMOTIVO: ${reprovou}`, descricao, notas };
+    return { decidido: true, reprovou, parecer: `VEREDITO: REPROVADA\nMOTIVO: ${reprovou}`, descricao, notas, por: "haiku+jev" };
   }
-  if (Object.values(notas).every((n) => n !== null && n <= APROVA)) {
-    return { decidido: true, parecer: "VEREDITO: APROVADA", descricao, notas };
-  }
-  return { decidido: false, descricao, notas };
+  // A dúvida aprova (05/10): o Sonnet não é mais chamado, e a régua de margem continua mandando.
+  return { decidido: true, parecer: "VEREDITO: APROVADA", descricao, notas, por: "haiku+jev" };
 }
 
 /** Só para a prova (scripts/tmp/conferencia-prova-0310.mts): o olho barato sem o resto. */
@@ -262,20 +318,23 @@ export async function conferirArte(
   let olhoReprovou: string | undefined;
   let olhoPor: VereditoDaArte["olhoPor"];
 
-  // 03/10: o Haiku descreve, o JEV decide; a dúvida e a falha caem no Sonnet abaixo.
-  if (opcoes.usarOlho !== false && conferenciaPeloJev()) {
+  // 05/10: o Haiku descreve, o código e o JEV decidem; o Sonnet só por pedido
+  // (CONFERENCIA_OLHO_SONNET=1). Falha do Haiku: a régua decide sozinha.
+  if (opcoes.usarOlho !== false && !olhoDoSonnetLigado()) {
     const r = await olharPeloJev(dataUri.slice(dataUri.indexOf(",") + 1), opcoes).catch((e: unknown) => {
-      console.warn("[conferirArte] Haiku+JEV falhou, vai ao Sonnet:", e instanceof Error ? e.message : e);
+      console.warn("[conferirArte] o olho (Haiku) não respondeu, fica a régua:", e instanceof Error ? e.message : e);
       return null;
     });
     if (r?.decidido) {
       parecerDoOlho = r.parecer;
       olhoReprovou = r.reprovou;
-      olhoPor = "haiku+jev";
+      olhoPor = r.por;
+    } else {
+      olhoPor = "haiku+codigo";
     }
   }
 
-  if (opcoes.usarOlho !== false && !olhoPor) {
+  if (opcoes.usarOlho !== false && olhoDoSonnetLigado()) {
     olhoPor = "sonnet";
     try {
       const base64 = dataUri.slice(dataUri.indexOf(",") + 1);

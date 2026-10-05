@@ -1,5 +1,6 @@
 import { askClaude } from "@/lib/claude";
 import type { Word } from "@/lib/media/transcribe";
+import { conferirFechoPeloJev } from "@/lib/media/fecho-pelo-jev";
 import { fechaCorte } from "@/lib/media/texto-final-do-corte";
 import type { RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
 
@@ -592,7 +593,12 @@ export async function conferirFecho<T extends { inicio: number; fim: number; tit
         if (atual.length) internas.push({ n: 0, texto: atual.join(" "), fim: fimDoCorte });
         const finais = internas.slice(-FRASES_FINAIS_MOSTRADAS).map((f, i) => ({ ...f, n: i + 1 }));
         const atualFim = finais.length;
-        const bruto = await askClaude(
+        // A decisão é do JEV desde 05/10 (lib/media/fecho-pelo-jev.ts); o
+        // Claude abaixo só com FECHO_PELO_JEV=0 ou sem o JEV no ar.
+        const peloJev = await conferirFechoPeloJev({ titulo: t.titulo, ideia: t.ideia, finais, frases, projectId: usageCtx?.projectId });
+        const bruto = peloJev
+          ? JSON.stringify(peloJev)
+          : await askClaude(
           `Você confere se um CORTE de vídeo curto termina com o raciocínio concluído. Quem assiste só o corte precisa sair entendendo o ponto. Uma cena forte no meio de uma história não é conclusão se o ponto que ela ilustra vem depois. Frase que anuncia o que vem ("vamos ver", "o próximo passo é"), muda de assunto ou só pede confirmação ("né?", "tá?") também não é conclusão. Despedida ou encerramento do vídeo ("Deus abençoe, até mais", "se inscreve", "espero que tenha ajudado") NUNCA fica no corte: se o corte termina nela, concluido é false e recuarAte aponta a última frase antes da despedida.
 Responda APENAS JSON: {"concluido": true|false, "fraseDoFecho": número da frase DEPOIS do corte em que o raciocínio conclui, ou null, "recuarAte": número da frase FINAL DO CORTE em que um raciocínio completo já terminou, ou null, "motivo": "curto"}.
 Se já concluiu, os dois são null. Se não concluiu e a conclusão aparece nas frases depois, use fraseDoFecho. Se não concluiu e a conclusão NÃO aparece depois, use recuarAte (só se cortar ali deixa um ponto completo e entendível); se nem isso, os dois são null.`,

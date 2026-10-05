@@ -43,16 +43,20 @@ import { defeitoDaAbertura, type MetaDaSelecao } from "@/lib/media/select-clips"
  * corrida (o "Michelangelo ele está" do caminho antigo fica no meio de uma
  * frase de 60 palavras, então aqui o corte abre 20 s antes, no rodeio); e ele
  * oscila de rodada para rodada (nota da janela muda com a mesma entrada).
- * Por isso o PADRÃO CONTINUA NO CLAUDE e este caminho é opt-in.
+ * Até 05/10 o padrão continuava no Claude por isso. Desde 05/10 este caminho
+ * é o PADRÃO, por regra do Bruno ("escolhas e decisões: nada de LLM, vai
+ * para o JEV"): a seleção é escolha, o Claude só escreve os rótulos. A
+ * abertura pior fica como ponto a medir e melhorar no código das janelas
+ * (abrir no meio de frase longa), não voltando ao Claude.
  *
- * Interruptores: SELECAO_PELO_JEV=1 liga este caminho (sem ele, ou sem o JEV
- * no ar, fica o Claude antigo); SELECAO_MODELO_DO_TEXTO troca o modelo que
- * escreve (padrão Haiku); SELECAO_MODELO_DO_DESEMPATE, o da dúvida sobre
- * raciocínio repetido (padrão Sonnet com esforço baixo).
+ * Interruptores: SELECAO_PELO_JEV=0 desliga este caminho (e sem o JEV no ar
+ * fica o Claude antigo); SELECAO_MODELO_DO_TEXTO troca o modelo que escreve
+ * (padrão Haiku); SELECAO_MODELO_DO_DESEMPATE, o da dúvida sobre raciocínio
+ * repetido (padrão Sonnet com esforço baixo).
  */
 
 export function selecaoPeloJevLigada(): boolean {
-  return jevLigado() && process.env.SELECAO_PELO_JEV === "1";
+  return jevLigado() && process.env.SELECAO_PELO_JEV !== "0";
 }
 
 export type Frase = {

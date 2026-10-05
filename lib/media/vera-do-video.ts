@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { vereditoPedeCorrecao, VALIDADE_DA_CORRECAO_MIN, type CorrecaoDaVera } from "@/lib/squad/estado-da-correcao";
-import { parecerDaAprovacao, parecerDaConferencia, veraAprovaPeloJev, veraConfereCorrecaoPeloJev, veraPeloJevLigada, veraPrimeiraPeloJevLigada } from "@/lib/squad/vera-pelo-jev";
+import { parecerDaConferencia, parecerDaConferenciaPendente, pendentesDaConferencia, veraConfereCorrecaoPeloJev, veraPeloJevLigada, veraRevisaPeloJev } from "@/lib/squad/vera-pelo-jev";
 
 /**
  * A Vera revisa os dias de vídeo.
@@ -179,29 +179,37 @@ async function revisarUmDia(
       ...(radar?.achados ?? []).map((a) => `- ${a.titulo} (${a.fonte}${a.data ? `, ${a.data}` : ""})`),
     ].join("\n") || "(o Roberto não pesquisou este vídeo)";
 
-  // A VERA DECIDE PELO JEV (03/10, lib/squad/vera-pelo-jev.ts). Na segunda
-  // revisão ela só confere o que pediu: o JEV responde pedido a pedido e, tudo
-  // atendido com folga, ela aprova sem o Claude (não há motivo a escrever). A
-  // primeira revisão pelo JEV existe e fica desligada por padrão (a medição
-  // está no arquivo). Qualquer dúvida ou falha segue para o Claude, como antes.
+  // A VERA DECIDE PELO JEV (03/10, lib/squad/vera-pelo-jev.ts), e desde 05/10
+  // SEM CLAUDE (regra do Bruno: o Claude só escreve texto; revisão é decisão).
+  // Primeira revisão: o JEV responde os critérios por peça e o parecer é
+  // composto em código (a dúvida vira ressalva; só a falha certa reprova).
+  // Segunda revisão: o JEV confere pedido a pedido; o que não foi atendido
+  // volta como reprovação com a lista. O Claude só entra com o JEV desligado
+  // ou fora do ar.
   const pecasDaVera = posts.map((p, i) => ({ id: `post${i + 1}`, rede: p.platform, tipo: p.mediaType ?? "texto", texto: p.content ?? "" }));
+  const postIds = posts.map((p) => p.id);
+  const comParecer = (saidaDoJev: string): RevisaoDoDia => ({
+    veredito: extrairVeredito(saidaDoJev),
+    saida: saidaDoJev,
+    corpo: saidaDoJev.replace(/\n?VEREDITO:.*$/i, "").trim(),
+    postIds,
+  });
   try {
-    const jev = opcoes.parecerAnterior
-      ? veraPeloJevLigada()
-        ? await veraConfereCorrecaoPeloJev({ projectId: video.projectId, parecerAnterior: opcoes.parecerAnterior, pecas: pecasDaVera })
-        : null
-      : veraPrimeiraPeloJevLigada()
-        ? await veraAprovaPeloJev({
-            projectId: video.projectId,
-            projeto: { nome: video.project.name, nicho: video.project.niche, publico: video.project.targetAudience, voz: video.project.voice },
-            pecas: pecasDaVera,
-            dadosPesquisados: dadosDoRoberto,
-          })
-        : null;
-    if (jev?.decisao === "aprova") {
-      const saidaDoJev =
-        "itens" in jev && Array.isArray(jev.itens) ? parecerDaConferencia(jev.itens as string[]) : parecerDaAprovacao(pecasDaVera);
-      return { veredito: "APROVADO", saida: saidaDoJev, corpo: saidaDoJev.replace(/\n?VEREDITO:.*$/i, "").trim(), postIds: posts.map((p) => p.id) };
+    if (opcoes.parecerAnterior) {
+      if (veraPeloJevLigada()) {
+        const jev = await veraConfereCorrecaoPeloJev({ projectId: video.projectId, parecerAnterior: opcoes.parecerAnterior, pecas: pecasDaVera });
+        if (jev.decisao === "aprova") return comParecer(parecerDaConferencia(jev.itens));
+        return comParecer(parecerDaConferenciaPendente({ itens: jev.itens, pendentes: pendentesDaConferencia(jev), estilo: "video" }));
+      }
+    } else {
+      const r = await veraRevisaPeloJev({
+        projectId: video.projectId,
+        projeto: { nome: video.project.name, nicho: video.project.niche, publico: video.project.targetAudience, voz: video.project.voice },
+        pecas: pecasDaVera,
+        dadosPesquisados: dadosDoRoberto,
+        estilo: "video",
+      });
+      if (r) return comParecer(r.parecer);
     }
   } catch (e) {
     console.error(`[vera][${video.id}] JEV falhou, segue o Claude:`, e instanceof Error ? e.message : e);

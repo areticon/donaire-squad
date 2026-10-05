@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
+import { jevLigado, perguntarAoJev, type RespostaDoJev } from "@/lib/jev/cliente";
 import { ehEtiqueta, type Etiqueta } from "@/lib/materiais/tipos";
 
 /**
@@ -15,9 +16,12 @@ import { ehEtiqueta, type Etiqueta } from "@/lib/materiais/tipos";
  * - Distribuição: entre fotos que servem igual, a menos usada (e a usada há
  *   mais tempo). Assim uma campanha de sete dias passeia pela biblioteca em
  *   vez de repetir a mesma foto.
- * - A decisão é uma chamada curta de texto sobre as descrições que a visão já
- *   escreveu (~US$ 0,003), uma vez por frase: a mesma peça em outra proporção
- *   reaproveita.
+ * - A decisão é do JEV desde 05/10 (regra do Bruno: escolha não é LLM): uma
+ *   pergunta de escolha sobre as descrições que a visão já escreveu, primeiro
+ *   entre as marcadas na campanha, depois no resto da biblioteca; entre as que
+ *   servem igual (probabilidade perto da maior), o código pega a menos usada.
+ *   Uma vez por frase: a mesma peça em outra proporção reaproveita. Sem o JEV
+ *   no ar, a chamada curta de texto de antes (~US$ 0,003).
  */
 
 export interface MaterialDaMarca {
@@ -106,7 +110,61 @@ export function escolherMaterial(o: {
   return v;
 }
 
+/** Entre as que o JEV pôs perto do topo, a menos usada ganha (é o que distribui a biblioteca). */
+export const FOLGA_DE_EMPATE = 0.1;
+/** Abaixo disto o JEV não sabe, e a peça segue sem material (a arte gerada é a reserva). */
+export const CONFIANCA_MINIMA = 0.5;
+
+/**
+ * Da resposta do JEV à foto, ou null. Puro, para o teste. `lista` está na
+ * ordem apresentada ao JEV (ids "1", "2", ...).
+ */
+export function escolhaDeMaterial(r: RespostaDoJev | undefined, lista: MaterialDaMarca[]): MaterialDaMarca | null {
+  if (!r || r.type !== "choice" || !lista.length) return null;
+  if ((r.confidence ?? 0) < CONFIANCA_MINIMA) return null;
+  if (r.choice === "nenhuma") return null;
+  const prob = (i: number) => r.probabilities?.[String(i + 1)] ?? 0;
+  const escolhida = Number(r.choice);
+  if (!Number.isInteger(escolhida) || escolhida < 1 || escolhida > lista.length) return null;
+  const topo = Math.max(prob(escolhida - 1), ...lista.map((_, i) => prob(i)));
+  const empatadas = lista.map((m, i) => ({ m, p: prob(i) })).filter((x) => x.p >= topo - FOLGA_DE_EMPATE);
+  if (!empatadas.length) return lista[escolhida - 1];
+  return empatadas.sort((a, b) => a.m.usos - b.m.usos || a.m.ultimoUsoEm - b.m.ultimoUsoEm)[0].m;
+}
+
+/** A escolha pelo JEV: marcadas na campanha primeiro, o resto da biblioteca depois. */
+export async function decidirPeloJev(
+  o: { materiais: MaterialDaMarca[]; frase: string; contexto?: string; projectId?: string },
+  perguntar: typeof perguntarAoJev = perguntarAoJev
+): Promise<MaterialDaMarca | null> {
+  const ordem = [...o.materiais].sort((a, b) => a.usos - b.usos || a.ultimoUsoEm - b.ultimoUsoEm).slice(0, 24);
+  const escolher = async (lista: MaterialDaMarca[]): Promise<MaterialDaMarca | null> => {
+    if (!lista.length) return null;
+    const state = {
+      contexto:
+        "Um pequeno negócio vai publicar um post e tem uma biblioteca de fotos REAIS (o dono, a equipe, o lugar, o produto). Foto real do próprio negócio quase sempre vale mais que imagem genérica gerada. Escolha a foto que serve de imagem do post: combina com o assunto, ou mostra quem fala num post de opinião, bastidor ou autoridade.",
+      manchete_do_post: o.frase,
+      texto_do_post: o.contexto ? o.contexto.slice(0, 1200) : "(não informado)",
+      fotos: lista.map((m, i) => ({ id: String(i + 1), etiquetas: m.etiquetas, usada_vezes: m.usos, descricao: m.descricao || "(sem descrição)" })),
+    };
+    const criteria: Record<string, string> = Object.fromEntries(lista.map((m, i) => [String(i + 1), `${m.descricao || "(sem descrição)"}${m.etiquetas.length ? ` [${m.etiquetas.join(", ")}]` : ""}`.slice(0, 300)]));
+    criteria.nenhuma = "nenhuma foto tem relação com o post, ou todas contradizem o post (produto errado, clima oposto)";
+    const r = await perguntar(
+      { projectId: o.projectId, etapa: "material-escolha", state },
+      { foto: { type: "choice", instructions: "Qual foto de `fotos` serve de imagem para este post? \"nenhuma\" se nenhuma tiver relação ou se a foto contradisser o post.", criteria } }
+    );
+    return escolhaDeMaterial(r.foto, lista);
+  };
+  const marcadas = ordem.filter((m) => m.daCampanha);
+  if (marcadas.length) {
+    const m = await escolher(marcadas);
+    if (m) return m;
+  }
+  return escolher(ordem.filter((m) => !m.daCampanha));
+}
+
 async function decidir(o: { materiais: MaterialDaMarca[]; frase: string; contexto?: string; projectId?: string }): Promise<MaterialDaMarca | null> {
+  if (jevLigado() && process.env.MATERIAL_PELO_JEV !== "0") return decidirPeloJev(o);
   // Marcados na campanha primeiro; menos usados antes; até 24 na lista.
   const ordem = [...o.materiais].sort((a, b) => Number(b.daCampanha) - Number(a.daCampanha) || a.usos - b.usos || a.ultimoUsoEm - b.ultimoUsoEm).slice(0, 24);
   const temMarcados = ordem.some((m) => m.daCampanha);

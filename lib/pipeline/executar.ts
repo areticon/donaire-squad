@@ -50,7 +50,7 @@ import { formatoValido, destinosDaRede, proporcaoDoDia } from "@/lib/publish/for
 import type { CenaDoVideo } from "@/lib/media/video-por-ia";
 import { MAX_TENTATIVAS_DA_VERA, vereditoPedeCorrecao, type CorrecaoDaVera, type TentativaDaCorrecao } from "@/lib/squad/estado-da-correcao";
 import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-vera";
-import { veraConfereNaCampanha } from "@/lib/squad/vera-pelo-jev";
+import { veraConfereNaCampanha, veraRevisaNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
 import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
@@ -3762,19 +3762,42 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         return "NAO SOLICITADA (post de texto)";
       }
 
-      const firstOutput = await runAgent(
-        reviewer,
-        buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), false, derivadasDoDia),
-        `${contextWithResearch}\n\nTema da campanha: ${topic}`,
-        runId,
-        funnelInstruction,
-        prefixoDaCampanha,
-        project.id,
-        // 16000 para a Vera, e nao os 8192 do padrao: o checklist dela cresceu com
-        // as duas reguas medidas (limites da rede e lastro dos numeros), e em
-        // 09/09 ela gastou o teto inteiro pensando na quarta e derrubou o dia.
-        // O padrao ja e 16.000 desde 10/09; a Vera foi a primeira a precisar.
-      );
+      // A PRIMEIRA REVISÃO SEM CLAUDE (05/10, lib/squad/vera-pelo-jev.ts): as
+      // réguas medidas da tarefa, a mídia e os critérios por peça vão ao JEV,
+      // e o parecer sai composto em código no formato que o laço abaixo lê.
+      // O Claude só revisa com o JEV desligado ou fora do ar.
+      const tarefaDaPrimeira = buildVeraTask(dayOfWeek, liPost?.content, twPost?.content, getMediaStatus(), false, derivadasDoDia);
+      const pecasDaPrimeira = [
+        ...(liPost?.content ? [{ id: "linkedin", rede: "linkedin", tipo: "post", texto: liPost.content }] : []),
+        ...(twPost?.content ? [{ id: "x", rede: "twitter", tipo: "thread", texto: twPost.content }] : []),
+        ...derivadasDoDia.map((d) => ({ id: d.platform, rede: d.platform, tipo: "adaptação", texto: d.content })),
+      ];
+      const primeiraPeloJev = await veraRevisaNaCampanha({
+        projectId: project.id,
+        projeto: { nome: project.name, nicho: project.niche, publico: project.targetAudience, voz: project.voice, naoCitar },
+        pecas: pecasDaPrimeira,
+        dadosPesquisados: webSearchDataGlobal.slice(0, 3000),
+        tarefa: tarefaDaPrimeira,
+        midia: getMediaStatus(),
+      });
+      if (primeiraPeloJev) {
+        await appendLog(runId, { agent: "Vera Veredito", message: `${dayName}: revisei as ${pecasDaPrimeira.length} peça(s) pelo JEV: ${primeiraPeloJev.veredito}.`, status: "running" });
+      }
+      const firstOutput =
+        primeiraPeloJev?.parecer ??
+        (await runAgent(
+          reviewer,
+          tarefaDaPrimeira,
+          `${contextWithResearch}\n\nTema da campanha: ${topic}`,
+          runId,
+          funnelInstruction,
+          prefixoDaCampanha,
+          project.id,
+          // 16000 para a Vera, e nao os 8192 do padrao: o checklist dela cresceu com
+          // as duas reguas medidas (limites da rede e lastro dos numeros), e em
+          // 09/09 ela gastou o teto inteiro pensando na quarta e derrubou o dia.
+          // O padrao ja e 16.000 desde 10/09; a Vera foi a primeira a precisar.
+        ));
 
       const { verdict } = parseVeraVerdict(firstOutput);
 
@@ -4042,7 +4065,13 @@ ${d.content}
           ],
         });
         if (conferida.parecer) {
-          await appendLog(runId, { agent: "Vera Veredito", message: `${dayName}: conferi os pedidos da correção um a um, todos atendidos.`, status: "running" });
+          await appendLog(runId, {
+            agent: "Vera Veredito",
+            message: conferida.porque.length
+              ? `${dayName}: conferi os pedidos da correção um a um; ainda falta: ${conferida.porque.slice(0, 3).join("; ").slice(0, 200)}`
+              : `${dayName}: conferi os pedidos da correção um a um, todos atendidos.`,
+            status: "running",
+          });
         }
         parecerDaVez =
           conferida.parecer ??

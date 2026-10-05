@@ -34,16 +34,34 @@ import {
 const POR_CHAMADA = 16;
 const CHAMADAS_JUNTAS = 3;
 
-const SISTEMA = `Você classifica prints de uma gravação de vídeo de um criador de conteúdo brasileiro. Cada print vem com um rótulo "Quadro k (m:ss)".
+/**
+ * O MODELO DESCREVE, O CÓDIGO CLASSIFICA (05/10). Regra do Bruno: o Claude
+ * não classifica. A visão só diz o que VÊ em cada print (há tela de
+ * computador ocupando o quadro? a pessoa aparece numa janela pequena? o que
+ * a tela mostra? onde está o texto que importa?), e `tipoDoQuadro` deriva
+ * câmera, tela ou misto dessas respostas. Com a decisão fora do modelo, o
+ * Haiku serve (metade do preço do Sonnet por print); TELAS_MODELO troca.
+ */
+const MODELO_DA_DESCRICAO = process.env.TELAS_MODELO || "claude-haiku-4-5";
+
+const SISTEMA = `Você DESCREVE prints de uma gravação de vídeo de um criador de conteúdo brasileiro. Você não classifica nem julga: só diz o que vê. Cada print vem com um rótulo "Quadro k (m:ss)".
 
 Para CADA quadro, diga:
-- "tipo": "camera" quando a pessoa falando para a câmera ocupa o quadro (sem tela de computador); "tela" quando a tela do computador (navegador, aplicativo, documento, apresentação) ocupa o quadro e a pessoa NÃO aparece; "misto" quando a tela do computador ocupa o quadro e a pessoa aparece numa janela menor (a webcam num canto).
-- "mostra": o que aparece na tela, em português do Brasil, até 10 palavras e concreto (o aplicativo e o conteúdo: "o Notion com o roteiro do vídeo", "o Claude Code respondendo um pedido", "planilha de custos por mês"). null quando o tipo é "camera".
-- "regiao": a parte da tela que importa AGORA (o texto em destaque, a resposta, o gráfico, onde o olho deve ir), como [x, y, largura, altura] em fração do quadro (0 a 1), fora da webcam. A caixa contém as LINHAS DE TEXTO INTEIRAS, de ponta a ponta (o zoom vai mostrar só ela, e linha cortada no meio da palavra não serve); se o texto ocupa a largura toda, a caixa ocupa a largura toda. null quando o tipo é "camera" ou quando não dá para saber.
-- "narrador": a caixa da webcam com a pessoa no quadro "misto", [x, y, largura, altura] em fração do quadro. null nos outros tipos.
+- "telaDeComputador": true quando a tela de um computador (navegador, aplicativo, documento, apresentação) ocupa o quadro; false quando o quadro é a pessoa falando para a câmera, sem tela de computador.
+- "pessoaEmJanela": a caixa da janela pequena com a pessoa (a webcam num canto) quando a tela do computador ocupa o quadro e a pessoa aparece nessa janela, como [x, y, largura, altura] em fração do quadro (0 a 1). null quando não há essa janela.
+- "mostra": o que aparece na tela do computador, em português do Brasil, até 10 palavras e concreto (o aplicativo e o conteúdo: "o Notion com o roteiro do vídeo", "o Claude Code respondendo um pedido", "planilha de custos por mês"). null quando não há tela de computador.
+- "regiao": a parte da tela que importa AGORA (o texto em destaque, a resposta, o gráfico, onde o olho deve ir), como [x, y, largura, altura] em fração do quadro (0 a 1), fora da janela da pessoa. A caixa contém as LINHAS DE TEXTO INTEIRAS, de ponta a ponta (o zoom vai mostrar só ela, e linha cortada no meio da palavra não serve); se o texto ocupa a largura toda, a caixa ocupa a largura toda. null quando não há tela de computador ou quando não dá para saber.
 
 Sem travessão. Responda SOMENTE com JSON válido, sem cerca de código:
-{"quadros":[{"k":0,"tipo":"misto","mostra":"...","regiao":[0.1,0.2,0.5,0.4],"narrador":[0.75,0.7,0.25,0.3]}]}`;
+{"quadros":[{"k":0,"telaDeComputador":true,"pessoaEmJanela":[0.75,0.7,0.25,0.3],"mostra":"...","regiao":[0.1,0.2,0.5,0.4]}]}`;
+
+/** Câmera, tela ou misto, derivado do que a visão descreveu. Puro. */
+export function tipoDoQuadro(q: { telaDeComputador?: unknown; pessoaEmJanela?: unknown; tipo?: unknown }): TipoDoQuadro {
+  // Resposta no formato antigo (um worker ou uma prova que ainda manda "tipo").
+  if (q.tipo === "tela" || q.tipo === "misto" || q.tipo === "camera") return q.tipo;
+  if (q.telaDeComputador !== true) return "camera";
+  return caixa(q.pessoaEmJanela) ? "misto" : "tela";
+}
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -83,22 +101,24 @@ async function classificarLote(lote: Array<{ t: number; base64: string; mencao: 
     SISTEMA,
     `Classifique os ${lote.length} quadros acima (k de 0 a ${lote.length - 1}).`,
     lote.map((q, k) => ({ base64: q.base64, rotulo: `Quadro ${k} (${mmss(q.t)})` })),
-    // Classificar é tarefa mecânica sobre lista: esforço baixo, com conferência em código.
-    { effort: "low", maxTokens: 8000, timeoutMs: 150_000, usage: { projectId: ctx.projectId, operation: "telas-da-gravacao" } }
+    // Descrever é tarefa mecânica sobre lista: esforço baixo, e a classificação é em código.
+    { model: MODELO_DA_DESCRICAO, effort: "low", maxTokens: 8000, timeoutMs: 150_000, usage: { projectId: ctx.projectId, operation: "telas-da-gravacao" } }
   );
-  const dados = extrairJson(resposta) as { quadros?: Array<{ k?: number; tipo?: string; mostra?: string | null; regiao?: unknown; narrador?: unknown }> };
+  const dados = extrairJson(resposta) as {
+    quadros?: Array<{ k?: number; tipo?: string; telaDeComputador?: unknown; pessoaEmJanela?: unknown; mostra?: string | null; regiao?: unknown; narrador?: unknown }>;
+  };
   const saida: AmostraDeTela[] = [];
   for (const q of dados.quadros ?? []) {
     const k = typeof q.k === "number" ? q.k : -1;
     const base = lote[k];
     if (!base) continue;
-    const tipo: TipoDoQuadro = q.tipo === "tela" || q.tipo === "misto" ? q.tipo : "camera";
+    const tipo = tipoDoQuadro(q);
     saida.push({
       t: base.t,
       tipo,
       mostra: tipo === "camera" ? null : typeof q.mostra === "string" ? q.mostra.replace(/\s+/g, " ").trim().slice(0, 90) : null,
       regiao: tipo === "camera" ? null : caixa(q.regiao),
-      narrador: tipo === "misto" ? caixa(q.narrador) : null,
+      narrador: tipo === "misto" ? caixa(q.pessoaEmJanela ?? q.narrador) : null,
       mencao: base.mencao,
     });
   }
@@ -226,8 +246,8 @@ export async function telasDosQuadros(p: {
         amostras: amostras.length,
         mencoes,
         faixas: faixasDasAmostras(amostras, duracao),
-        // ~442 tokens por print de 640x360 a US$ 2 por milhão, mais a resposta (estimativa para o relatório).
-        custoUsd: +(quadros.length * 0.0012).toFixed(3),
+        // ~442 tokens por print de 640x360 a US$ 1 por milhão (Haiku), mais a resposta (estimativa para o relatório).
+        custoUsd: +(quadros.length * 0.0006).toFixed(3),
         aviso: falhas ? `${falhas} de ${lotes.length} lotes sem visão (medida no lugar)` : aviso,
         quadro,
       };
