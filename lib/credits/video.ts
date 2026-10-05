@@ -201,17 +201,9 @@ export async function jaCreditado(operation: string, refId: string): Promise<boo
 }
 
 /**
- * O VÍDEO INCLUÍDO NO PLANO, reposto a cada ciclo (tabela de 27/09).
- *
- * Completa a carteira de vídeo ATÉ a cota do plano, e não soma: cota de plano
- * não acumula, pelo mesmo motivo do crédito de plano (quem usa pouco viraria
- * passivo crescente). E não zera: o que a pessoa comprou em pacote à parte,
- * acima da cota, continua dela.
+ * O VÍDEO INCLUÍDO NO PLANO, reposto a cada ciclo (tabela de 27/09), vive em
+ * `concederCiclo` (lib/credits/ciclo.ts) desde 05/10. A função que morava
+ * aqui lia o saldo e DEPOIS creditava, fora de transação: duas chegadas
+ * simultâneas leram zero e a conta ganhou a cota em dobro. Completar até a
+ * cota só é seguro com a leitura dentro da trava, junto com o crédito do plano.
  */
-export async function reporVideoDoPlano(args: { userId: string; cota: number; note: string }): Promise<number> {
-  const atual = await saldoDeVideo(args.userId);
-  const falta = args.cota - atual;
-  if (falta <= 0) return 0;
-  await creditarVideo({ userId: args.userId, quantidade: falta, operation: "plano_video", note: args.note });
-  return falta;
-}

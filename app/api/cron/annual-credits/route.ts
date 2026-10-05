@@ -4,8 +4,7 @@ import { creditosDoCiclo } from "@/lib/equipe/regras";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getStripe, PLANS } from "@/lib/stripe";
-import { reporCiclo } from "@/lib/credits";
-import { reporVideoDoPlano } from "@/lib/credits/video";
+import { concederCiclo } from "@/lib/credits/ciclo";
 
 /**
  * Cron diário: repõe os créditos mensais de quem assina o plano anual.
@@ -21,8 +20,10 @@ import { reporVideoDoPlano } from "@/lib/credits/video";
  * reposição), não numa data fixa do calendário. O corte de 30 dias dá 12,1
  * reposições por ano em vez de 12; imprecisão aceita pela simplicidade.
  *
- * Repor é idempotente no efeito: `reporCiclo` zera para o teto do plano, não
- * soma. Rodar duas vezes no mesmo dia não dá crédito de graça.
+ * Repor é idempotente de verdade desde 05/10: `concederCiclo` confere a chave
+ * do dia e o guarda dos 30 dias DENTRO de uma trava por usuário, então duas
+ * execuções simultâneas (ou o cron junto com um evento do Stripe) concedem uma
+ * vez só, inclusive o vídeo, que completa até a cota e somaria em dobro.
  */
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -90,17 +91,18 @@ export async function GET(req: NextRequest) {
           agora - u.creditsResetAt.getTime() >= TRINTA_DIAS_MS;
         if (!vencido) continue;
 
-        await reporCiclo({
+        const r = await concederCiclo({
           userId: u.id,
           // Mais 2.000 por acesso extra da equipe (01/10, lib/equipe/regras.ts).
           creditos: creditosDoCiclo(PLANS[plano].credits, u.acessosExtras),
+          // O vídeo incluído no plano (tabela de 27/09) repõe junto, todo mês.
+          cotaDeVideo: (PLANS[plano] as { videoCredits?: number }).videoCredits ?? 0,
+          chave: `anual:${sub.id}:${new Date(agora).toISOString().slice(0, 10)}`,
+          desde: new Date(agora - TRINTA_DIAS_MS),
           note: `Plano ${plano} anual, reposição mensal`,
+          noteVideo: `Plano ${plano} anual, vídeo do mês`,
         });
-        // O vídeo incluído no plano (tabela de 27/09) repõe junto, todo mês.
-        const cotaDeVideo = (PLANS[plano] as { videoCredits?: number }).videoCredits ?? 0;
-        if (cotaDeVideo > 0) {
-          await reporVideoDoPlano({ userId: u.id, cota: cotaDeVideo, note: `Plano ${plano} anual, vídeo do mês` });
-        }
+        if (!r.concedido) continue;
         repostos.push({ userId: u.id, plano });
       }
     }

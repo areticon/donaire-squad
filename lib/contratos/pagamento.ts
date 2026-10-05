@@ -315,21 +315,17 @@ export async function ativarSePronto(autor: Autor, contratoId: string) {
   let creditos = 0;
   if (plano?.credits) {
     const { creditosDoCiclo } = await import("@/lib/equipe/regras");
-    const { reporCiclo } = await import("@/lib/credits");
+    const { concederCiclo } = await import("@/lib/credits/ciclo");
     creditos = creditosDoCiclo(plano.credits, extras);
-    await reporCiclo({
+    // Uma vez por contrato, mesmo que a ativação rode duas vezes (05/10).
+    await concederCiclo({
       userId: u.id,
       creditos,
+      cotaDeVideo: plano.videoCredits ?? 0,
+      chave: `contrato:${c.id}:ativacao`,
       note: `Contrato nº ${String(c.numero).padStart(4, "0")}, plano ${nomeDoPlano(c.plano)}${extras > 0 ? ` + ${extras} acesso(s) extra(s)` : ""}`,
+      noteVideo: `Vídeo incluído no plano ${nomeDoPlano(c.plano)} (contrato)`,
     });
-    if (plano.videoCredits) {
-      const { reporVideoDoPlano } = await import("@/lib/credits/video");
-      await reporVideoDoPlano({
-        userId: u.id,
-        cota: plano.videoCredits,
-        note: `Vídeo incluído no plano ${nomeDoPlano(c.plano)} (contrato)`,
-      });
-    }
   }
 
   // O COMEÇO DA JORNADA DE ENTRADA: o primeiro projeto nasce em setup, e o
@@ -462,8 +458,10 @@ export async function reporCreditosDosContratos(agora = new Date()): Promise<num
   if (!vivos.length) return 0;
   const { PLANS } = await import("@/lib/stripe");
   const { creditosDoCiclo } = await import("@/lib/equipe/regras");
-  const { reporCiclo } = await import("@/lib/credits");
-  const { reporVideoDoPlano } = await import("@/lib/credits/video");
+  const { concederCiclo } = await import("@/lib/credits/ciclo");
+  // A régua roda em mais de uma instância às vezes: a chave do dia e o guarda
+  // dos 30 dias, conferidos dentro da trava, concedem uma vez só (05/10).
+  const dia = agora.toISOString().slice(0, 10);
   let repostos = 0;
   const vistos = new Set<string>();
   for (const c of vivos) {
@@ -471,17 +469,16 @@ export async function reporCreditosDosContratos(agora = new Date()): Promise<num
     vistos.add(c.user.id);
     const plano = (PLANS as Record<string, { credits?: number; videoCredits?: number }>)[c.user.plan];
     if (!plano?.credits) continue;
-    await reporCiclo({
+    const r = await concederCiclo({
       userId: c.user.id,
       creditos: creditosDoCiclo(plano.credits, c.user.acessosExtras),
+      cotaDeVideo: plano.videoCredits ?? 0,
+      chave: `contrato:${c.id}:ciclo:${dia}`,
+      desde: new Date(agora.getTime() - TRINTA_DIAS),
       note: `Ciclo do contrato nº ${String(c.numero).padStart(4, "0")}`,
+      noteVideo: "Vídeo incluído no plano (contrato)",
     });
-    if (plano.videoCredits)
-      await reporVideoDoPlano({
-        userId: c.user.id,
-        cota: plano.videoCredits,
-        note: "Vídeo incluído no plano (contrato)",
-      });
+    if (!r.concedido) continue;
     await registrar(c.id, "sistema", "creditos_repostos", {
       plano: c.user.plan,
     });

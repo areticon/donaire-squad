@@ -101,7 +101,7 @@ export const PLANS = {
     // US$ 3,20 por 520), então a margem depende só deste número: R$ 125 de
     // Veo no mês se usar tudo, contra R$ 2.997.
     // A reposição completa a carteira de vídeo até este número, sem apagar
-    // pacote comprado à parte. Ver `reporVideoDoPlano`.
+    // pacote comprado à parte. Ver `concederCiclo` (lib/credits/ciclo.ts).
     // 28/09, à noite: metade (2 vídeos no Cheio). Ver lib/planos.ts.
     videoCredits: 4160,
     extraCreditPrice: 0.12,

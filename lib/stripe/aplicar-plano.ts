@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db/prisma";
-import { reporCiclo } from "@/lib/credits";
+import { concederCiclo } from "@/lib/credits/ciclo";
 import { PLANS, FUNDADOR_PRICE_ID } from "@/lib/stripe";
 import { creditosDoCiclo } from "@/lib/equipe/regras";
 
@@ -157,26 +157,24 @@ export async function aplicarPlanoDaAssinatura(sub: Stripe.Subscription): Promis
   if (creditos) {
     const usuarios = await prisma.user.findMany({
       where: { stripeCustomerId: customerId },
-      select: { id: true, creditsResetAt: true, acessosExtras: true },
+      select: { id: true, acessosExtras: true },
     });
     const inicioDoCiclo = itemDoPlano?.current_period_start;
+    const cotaDeVideo = (PLANS[plan] as { videoCredits?: number }).videoCredits ?? 0;
     for (const u of usuarios) {
-      const jaReposNesteCiclo =
-        u.creditsResetAt && inicioDoCiclo && u.creditsResetAt.getTime() >= inicioDoCiclo * 1000;
-      if (!jaReposNesteCiclo) {
-        // Os acessos extras da equipe somam 2.000 créditos cada ao ciclo (01/10).
-        const doCiclo = creditosDoCiclo(creditos, u.acessosExtras);
-        await reporCiclo({
-          userId: u.id,
-          creditos: doCiclo,
-          note: u.acessosExtras > 0 ? `Plano ${plan} + ${u.acessosExtras} acesso(s) extra(s)` : `Plano ${plan}`,
-        });
-        const cotaDeVideo = (PLANS[plan] as { videoCredits?: number }).videoCredits ?? 0;
-        if (cotaDeVideo > 0) {
-          const { reporVideoDoPlano } = await import("@/lib/credits/video");
-          await reporVideoDoPlano({ userId: u.id, cota: cotaDeVideo, note: `Vídeo incluído no plano ${plan}` });
-        }
-      }
+      // A chave e o guarda vivem DENTRO da trava de concederCiclo (05/10): a
+      // volta do checkout e os dois eventos do Stripe chegam juntos, e o guarda
+      // lido aqui fora deixava os três passarem. Ver lib/credits/ciclo.ts.
+      // Os acessos extras da equipe somam 2.000 créditos cada ao ciclo (01/10).
+      await concederCiclo({
+        userId: u.id,
+        creditos: creditosDoCiclo(creditos, u.acessosExtras),
+        cotaDeVideo,
+        chave: `stripe:${sub.id}:${inicioDoCiclo ?? "sem-periodo"}`,
+        desde: inicioDoCiclo ? new Date(inicioDoCiclo * 1000) : null,
+        note: u.acessosExtras > 0 ? `Plano ${plan} + ${u.acessosExtras} acesso(s) extra(s)` : `Plano ${plan}`,
+        noteVideo: `Vídeo incluído no plano ${plan}`,
+      });
     }
   }
   return plan;
