@@ -900,9 +900,14 @@ export async function arteDoDia(
    * lâmina para todas: o layout varia de peça para peça, mas lâminas do mesmo
    * carrossel com layouts diferentes parecem posts colados.
    */
-  layoutDe?: string
+  layoutDe?: string,
+  /**
+   * A marca já lida, com o que o pedido mudou (05/10): o chat do card refaz a
+   * lâmina "com a cor escarlate #E3000F" sem trocar a cor da marca toda.
+   */
+  marcaPronta?: Awaited<ReturnType<typeof marcaDaArte>>
 ): Promise<string> {
-  const base = await marcaDaArte(video.projectId);
+  const base = marcaPronta ?? (await marcaDaArte(video.projectId));
   const marca = layoutDe ? { ...base, variante: layoutDaPeca(base, layoutDe).variante } : base;
   // A cena nasce do mundo, do público e do tom do projeto (01/10), e não só do nicho.
   const visual = await cenaDaFrase(frase, video.project.niche, ctx, base.identidade);

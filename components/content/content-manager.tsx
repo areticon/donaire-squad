@@ -17,6 +17,7 @@ import toast from "react-hot-toast";
 import dynamic from "next/dynamic";
 import { FUSO_PADRAO } from "@/lib/fuso";
 import { lerRevisao, type RevisaoEmAndamento } from "@/lib/pipeline/revisao";
+import { pedidoEmCurso, pedidoParado, rotuloDaEtapa, type PedidoDoCard } from "@/lib/media/pedido-do-card-estado";
 
 // Sem SSR: o escritorio decide WebGL e tema no primeiro render, e isso so
 // existe no navegador. O three.js so e baixado nesta aba, e so aqui.
@@ -1438,8 +1439,71 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     if (/refazendo o corte/i.test(respostaDoAgente)) vigiarRecorte();
   };
 
+  /**
+   * O PEDIDO FEITO NO SERVIDOR (05/10): o chat do card manda o pedido, a
+   * resposta volta na hora, e o andamento (etapas) é consultado aqui. Ao abrir
+   * o modal, lê o chat e o pedido gravados: fechar no meio não perde nada.
+   */
+  const [pedido, setPedido] = useState<PedidoDoCard | null>(null);
+  const [vigiarPedido, setVigiarPedido] = useState(0);
+  useEffect(() => {
+    if (card.cardType === "preview") return;
+    let vivo = true;
+    let espera: ReturnType<typeof setTimeout> | null = null;
+    let estavaFazendo = false;
+    let etapasProntas = -1;
+    const olhar = async () => {
+      try {
+        const r = await fetch(`/api/campaign-cards/${card.id}/chat`);
+        if (!r.ok || !vivo) return;
+        const d = (await r.json()) as { chatHistory?: ChatMessage[]; pedido?: PedidoDoCard | null; metadata?: CampaignCard["metadata"]; content?: string | null; mediaUrl?: string | null } | null;
+        if (!d || !vivo) return;
+        const p = d.pedido ?? null;
+        const emCurso = pedidoEmCurso(p ? { pedidoDoChat: p } : null);
+        setPedido(p);
+        setLocalCard((c) => ({
+          ...c,
+          chatHistory: Array.isArray(d.chatHistory) ? d.chatHistory : c.chatHistory,
+          ...(d.metadata !== undefined ? { metadata: d.metadata } : {}),
+          ...(estavaFazendo && !emCurso ? { content: d.content ?? c.content, mediaUrl: d.mediaUrl ?? c.mediaUrl } : {}),
+        }));
+        // Cada etapa que acaba já aparece no card (o texto novo sai antes das
+        // lâminas): relê os posts do dia quando mais uma etapa fica pronta.
+        const prontas = p?.etapas.filter((e) => e.estado === "feito").length ?? 0;
+        if (emCurso && prontas > etapasProntas && etapasProntas >= 0) refreshDayPosts().catch(() => {});
+        etapasProntas = prontas;
+        if (emCurso) {
+          estavaFazendo = true;
+          espera = setTimeout(olhar, 2500);
+        } else if (estavaFazendo) {
+          // Terminou com o modal aberto: os posts do dia (texto e arte novos)
+          // aparecem neste card, e o calendário relê.
+          estavaFazendo = false;
+          refreshDayPosts().catch(() => {});
+          onWeekRefresh?.();
+          if (p?.estado === "falhou") toast.error("O pedido não terminou. A resposta está no chat.");
+          else toast.success("Pronto. O resultado já está neste card.");
+        }
+      } catch {
+        if (vivo) espera = setTimeout(olhar, 5000);
+      }
+    };
+    olhar();
+    return () => {
+      vivo = false;
+      if (espera) clearTimeout(espera);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, card.cardType, vigiarPedido]);
+  const pedidoAndando = pedido ? pedidoEmCurso({ pedidoDoChat: pedido }) : null;
+  const pedidoQueParou = pedido ? pedidoParado({ pedidoDoChat: pedido }) : null;
+
   async function sendChat() {
     if (!chatMsg.trim()) return;
+    if (pedidoAndando) {
+      toast("Ainda estou fazendo o pedido anterior. Assim que terminar, eu respondo aqui.");
+      return;
+    }
     setChatLoading(true);
     setRevisaoLocal({
       pedido: chatMsg.trim().slice(0, 180),
@@ -1461,6 +1525,16 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+
+      // Pedido de um dia da campanha: virou tarefa no servidor (05/10).
+      if (data.emAndamento || data.jaFazendo) {
+        if (data.pedido) setPedido(data.pedido);
+        if (Array.isArray(data.chatHistory)) setLocalCard((c) => ({ ...c, chatHistory: data.chatHistory }));
+        if (data.jaFazendo) toast(data.aviso ?? "Ainda estou fazendo o pedido anterior.");
+        else setChatMsg("");
+        setVigiarPedido((v) => v + 1);
+        return;
+      }
 
       const updated: CampaignCard = {
         ...localCard,
@@ -3932,6 +4006,46 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                       {m.content}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* O ANDAMENTO DO PEDIDO (05/10): cada etapa com o seu estado, lida
+                  do servidor; fechar e reabrir o modal mostra o mesmo. */}
+              {(pedidoAndando || pedidoQueParou) && (
+                <div
+                  className="text-xs rounded-xl px-3 py-2 mr-6 space-y-1"
+                  style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+                  data-testid="andamento-do-pedido"
+                >
+                  <span className="font-medium opacity-60 text-[10px] block">{localCard.agentName}</span>
+                  {pedidoQueParou ? (
+                    <p style={{ color: "var(--text-muted)" }}>
+                      O pedido parou no meio e não terminou. O que já estava pronto ficou salvo; mande de novo para eu terminar.
+                    </p>
+                  ) : (
+                    (pedidoAndando?.etapas ?? []).map((e) => (
+                      <div key={e.chave} className="flex items-center gap-2">
+                        {e.estado === "feito" ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                        ) : e.estado === "fazendo" ? (
+                          <Loader2 className="w-3.5 h-3.5 text-orange-400 animate-spin shrink-0" />
+                        ) : e.estado === "falhou" ? (
+                          <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                        )}
+                        <span style={e.estado === "esperando" ? { color: "var(--text-muted)" } : undefined}>
+                          {rotuloDaEtapa(e)}
+                          {e.detalhe && e.estado !== "fazendo" ? <span style={{ color: "var(--text-muted)" }}>: {e.detalhe}</span> : null}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                  {pedidoAndando && (
+                    <p className="text-[10px] pt-1" style={{ color: "var(--text-muted)" }}>
+                      Pode fechar esta janela: eu continuo, e o resultado aparece aqui no card.
+                    </p>
+                  )}
                 </div>
               )}
 
