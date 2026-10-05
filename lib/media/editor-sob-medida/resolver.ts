@@ -1,7 +1,7 @@
 import { frasesDaFala } from "@/lib/media/diretor-limpo";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
 import { acentoApagado, acentoVivo } from "@/lib/media/editor-sob-medida/cor";
-import { ESTILOS_DA_LOUSA, FICHAS, ehApoio, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
+import { ESTILOS_DA_LOUSA, ESTILOS_DO_VOX, FICHAS, ehApoio, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type {
   Ancora,
   Caixa,
@@ -344,7 +344,9 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   // prova Vox do corte 0, o B-roll entrou na rodada 0 e sumiu no final porque
   // a peça nova do conserto ganhou o lugar.
   const reservas: Array<{ de: number; ate: number; id: string }> = [];
-  const gapR = ctx.ritmo === "corte" ? 1 : 0.3;
+  // A mesma folga do passo 4 (1,5 s no corte): com folgas diferentes a peça cedia o lugar e a inserção caía
+  // do mesmo jeito, e o trecho ficava sem nada (prova Vox de 04/10: o jornal cedeu e a inserção caiu).
+  const gapR = ctx.ritmo === "corte" ? 1.5 : 0.3;
   for (const [k, ins] of (e.insercoes ?? []).entries()) {
     const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
     const a = ctx.insercoes[id]?.url ? t(ins.de) : null;
@@ -355,8 +357,13 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const a = ctx.insercoes[id]?.url && ctx.insercoes[id]?.origem === "banco" ? t(b.de) : null;
     if (a !== null) reservas.push({ de: Math.max(ctx.ritmo === "corte" ? 2 : 1, a - 0.05), ate: Math.max(ctx.ritmo === "corte" ? 2 : 1, a - 0.05) + 1.5, id });
   }
+  // No Vox as telas de papel (colagem, jornal, mapa, censura) SÃO a mídia paga do estilo (as fotos de
+  // arquivo já foram geradas): não cedem o lugar; a inserção ou o B-roll que cruzar cai (prova de 04/10:
+  // a colagem do gancho e a censura cediam e o corte perdia as duas).
+  const papelNaoCede = ESTILOS_DO_VOX.includes(ctx.estiloId ?? "");
   for (const m of brutos) {
     if (m.plano === "cheio") continue;
+    if (papelNaoCede && ["colagem", "jornal", "mapa-antigo", "censura", "cronologia"].includes(m.peca)) continue;
     for (const r of reservas.sort((x, y) => x.de - y.de)) {
       if (!(m.de < r.ate + gapR && m.ate > r.de - gapR)) continue;
       const novoDe = r.ate + gapR;
@@ -476,16 +483,21 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   // referência derrubou os trechos de "só cabeça falando". Buraco de 3,5 s ou
   // mais sem peça nem imagem ganha um SUBLINHADO (o marca-texto) com a palavra
   // de ênfase que o próprio editor marcou ali; nunca texto inventado.
-  if (ctx.ritmo === "corte" && FICHAS["sublinhado"]) {
-    const ficha = FICHAS["sublinhado"];
+  // No Vox o buraco ganha o MARCA-TEXTO amarelo da referência (04/10), não o sublinhado genérico.
+  const pecaDoBuraco = ESTILOS_DO_VOX.includes(ctx.estiloId ?? "") ? "marca-texto" : "sublinhado";
+  const propsDoBuraco = (texto: string) => (pecaDoBuraco === "marca-texto" ? { texto, posicao: "topo" } : { texto, lado: "centro" });
+  if (ctx.ritmo === "corte" && FICHAS[pecaDoBuraco]) {
+    const ficha = FICHAS[pecaDoBuraco];
     const ocupados = [...camadas.filter((c) => c.peca !== "moldura-do-cartao"), ...planos].map((x) => [x.de, x.ate] as [number, number]).sort((x, y) => x[0] - y[0]);
     const buracos: Array<[number, number]> = [];
     let cursor = 2;
+    // No Vox o buraco é menor (2,5 s): o juiz derruba cada amostra de rosto sozinho (prova de 04/10).
+    const minimo = pecaDoBuraco === "marca-texto" ? 2.5 : 3.5;
     for (const [x, y] of ocupados) {
-      if (x - cursor >= 3.5) buracos.push([cursor, x]);
+      if (x - cursor >= minimo) buracos.push([cursor, x]);
       cursor = Math.max(cursor, y);
     }
-    if (D - 0.3 - cursor >= 3.5) buracos.push([cursor, D - 0.3]);
+    if (D - 0.3 - cursor >= minimo) buracos.push([cursor, D - 0.3]);
     const limpar = (w: string) => String(w ?? "").replace(/[.,:;!?"“”()]/g, "").trim();
     let n = 0;
     for (const [x, y] of buracos) {
@@ -503,8 +515,8 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
       if (ate - de < ficha.duracao[0]) continue;
       n++;
       // O id leva o instante: a revisão de uma rodada não confunde com a peça da outra.
-      camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { texto, lado: "centro" }, passes: passesDaPeca(ficha) });
-      avisos.push(`auto-${Math.round(de * 10)}: sublinhado "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
+      camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: propsDoBuraco(texto), passes: passesDaPeca(ficha) });
+      avisos.push(`auto-${Math.round(de * 10)}: ${pecaDoBuraco} "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
     }
   }
 
@@ -514,8 +526,8 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   // imagem ganha um SUBLINHADO a cada ~9 s, na palavra de ênfase que o editor
   // marcou ali; sem ênfase, numa palavra longa da própria fala (nunca texto
   // inventado). A câmera de ritmo continua trocando o enquadramento por baixo.
-  if (ctx.ritmo !== "corte" && FICHAS["sublinhado"]) {
-    const ficha = FICHAS["sublinhado"];
+  if (ctx.ritmo !== "corte" && FICHAS[pecaDoBuraco]) {
+    const ficha = FICHAS[pecaDoBuraco];
     const ocupados = [...camadas.filter((c) => c.peca !== "moldura-do-cartao"), ...planos].map((x) => [x.de, x.ate] as [number, number]).sort((x, y) => x[0] - y[0]);
     const buracos: Array<[number, number]> = [];
     let cursor = 1;
@@ -553,8 +565,8 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
           ultimo = instante + 0.5;
           continue;
         }
-        camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { texto, lado: "centro" }, passes: passesDaPeca(ficha) });
-        avisos.push(`auto-${Math.round(de * 10)}: sublinhado "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
+        camadas.push({ id: `auto-${Math.round(de * 10)}`, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: propsDoBuraco(texto), passes: passesDaPeca(ficha) });
+        avisos.push(`auto-${Math.round(de * 10)}: ${pecaDoBuraco} "${texto}" no buraco de ${(y - x).toFixed(1)} s`);
         ultimo = ate;
       }
     }
@@ -589,6 +601,35 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
         camadas.push({ id: `leg-${Math.round(pg.inicio * 10)}`, peca: "legenda-destaque", de: +pg.inicio.toFixed(3), ate: +Math.max(pg.fim, pg.inicio + leg.duracao[0]).toFixed(3), entrada: leg.entrada, saida: leg.saida, evento: leg.evento, eventos: chave ? [+Math.max(pg.inicio, chave.inicio - 0.05).toFixed(3)] : [], props: { texto }, passes: ["frente"] });
       }
     }
+  }
+
+  // 4f. O VOX: A PESSOA DENTRO DA COLAGEM (04/10, segunda volta da prova). O
+  // juiz dava 3 a 4 aos trechos de cabeça falando e 8 às telas de papel. Em
+  // todo trecho com a pessoa cheia, o FUNDO DE COLAGEM vai por baixo da
+  // pessoa recortada (passada "atras"): papel, manuscrito, mapa e dois
+  // recortes de arquivo nas bordas, os mesmos que as peças do vídeo já
+  // pagaram (sem foto nova). Um trecho de fundo por trecho cheio, cada um com
+  // outra composição.
+  if (ESTILOS_DO_VOX.includes(ctx.estiloId ?? "") && FICHAS["fundo-colagem"]) {
+    const ficha = FICHAS["fundo-colagem"];
+    const fotos = (e.momentos ?? []).flatMap((m) => {
+      const campo = ({ colagem: "recortes", jornal: "foto", "mapa-antigo": "foto", censura: "figura", cronologia: "marcos" } as Record<string, string>)[m.peca];
+      const v0 = campo ? (m.props as Record<string, unknown> | undefined)?.[campo] : null;
+      const v = m.peca === "cronologia" && Array.isArray(v0) ? v0.map((x) => (x as { foto?: unknown } | null)?.foto) : v0;
+      return (Array.isArray(v) ? v : v && typeof v === "object" ? [v] : []).filter((f): f is { url: string; assunto?: string; olhos?: unknown } => Boolean(f && typeof (f as { url?: unknown }).url === "string"));
+    });
+    const recortes = fotos.slice(0, 6).map((f) => ({ url: f.url, assunto: f.assunto ?? "objeto" }));
+    // O fundo cobre o vídeo INTEIRO, cortado nas bordas dos planos (cada trecho com outra composição):
+    // sob a tela cheia e a inserção ele não aparece (a base ali é opaca), e um plano que o ajuste do corte
+    // tire depois não deixa a parede da gravação à mostra (prova de 04/10: 3 s de parede azul aos 26 s).
+    const cortes = [...new Set([0, D, ...planos.flatMap((p) => [p.de, p.ate])].map((x) => +Math.min(D, Math.max(0, x)).toFixed(3)))].sort((a, b) => a - b);
+    let k = 0;
+    for (let i = 0; i + 1 < cortes.length; i++) {
+      const [a, b] = [cortes[i], cortes[i + 1]];
+      if (b - a < 0.05) continue;
+      camadas.push({ id: `fundo-${Math.round(a * 10)}`, peca: "fundo-colagem", de: a, ate: b, entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { semente: k++, recortes }, passes: ["atras"] });
+    }
+    camadas.sort((a, b) => a.de - b.de);
   }
 
   // 5. A câmera: o ritmo e, por cima, o que o editor pediu.

@@ -1,6 +1,6 @@
 import type { Retangulo } from "@/lib/media/plano-de-montagem";
 import type { EdicaoResolvida, PlanoResolvido } from "@/lib/media/editor-sob-medida/tipos";
-import { ESTILOS_DA_LOUSA, ehApoio } from "@/lib/media/editor-sob-medida/pecas";
+import { ESTILOS_DA_LOUSA, ESTILOS_DO_VOX, ehApoio } from "@/lib/media/editor-sob-medida/pecas";
 
 /**
  * O EDITOR SOB MEDIDA NO CORTE (03/10/2026): o vídeo curto vertical passa
@@ -70,6 +70,26 @@ export function noQuadroDoCorte(r: Retangulo, q: Retangulo): Retangulo {
 }
 
 /**
+ * AS PEÇAS DO VOX NO CORTE (04/10, quadro de treino vox-01 do dono). Valem
+ * sobre as regras gerais do corte: aqui não há "titulo", "sublinhado",
+ * "palavra-chave" nem "icone" (o catálogo do Vox não tem); o gancho, a
+ * densidade e as telas são feitos com as peças de papel.
+ */
+export const INSTRUCOES_DO_VOX = [
+  `# AS PEÇAS DESTE ESTILO (o VOX de verdade; valem sobre as regras gerais do corte: aqui não existem "titulo", "sublinhado", "palavra-chave", "icone", "pergaminho", "citacao", "frase-impacto" nem "titulo-atras")`,
+  `- O GANCHO do segundo 0 é uma "colagem" (o assunto em fotos de arquivo, o título no marca-texto) ou uma "censura" se o trecho é polêmico; na falta, "marca-texto" com a promessa.`,
+  `- FATO HISTÓRICO, ORIGEM, PERSONAGEM, ÉPOCA: "colagem" com 2 ou 3 recortes de foto de arquivo (cada um cai na palavra dele) e, se há lugar dito, o mapa com o círculo vermelho. É a peça que dá a PROFUNDIDADE; 1 a 2 no corte.`,
+  `- LUGAR dito: "mapa-antigo" (o círculo vermelho se desenha na palavra do lugar).`,
+  `- DATAS, ÉPOCAS, a ordem dos fatos: "cronologia" (a tira de papel com os anos; um evento por marco).`,
+  `- NOTÍCIA, DECLARAÇÃO, RECLAMAÇÃO, o que alguém disse, CITAÇÃO ou VERSÍCULO: "jornal" (a manchete com as palavras ditas e o marca-texto no destaque; no versículo, "data" leva a referência).`,
+  `- POLÊMICA, TABU, o que ninguém fala, crítica, REVELAÇÃO: "censura" (estátua ou figura anônima com a tarja amarela batendo nos olhos). Onde couber, 1 por corte. Tarja só em estátua ou figura anônima fictícia, NUNCA em pessoa real.`,
+  `- NÚMERO, frase-chave, definição: "marca-texto" sobre a pessoa; veredito dito com força: "carimbo".`,
+  `- As fotos de arquivo são GERADAS pelo código a partir da sua "descricao" (em inglês, concreta, P&B de época): nunca pessoa real ou famosa, nunca nome próprio de gente na descrição; figura é sempre um anônimo de época; estátua é genérica.`,
+  `- Alterne: tela de papel (colagem, jornal, mapa-antigo, cronologia, censura), rosto com "marca-texto" ou "carimbo", B-roll. Nunca duas telas de papel seguidas: o rosto volta pelo menos 2 s entre elas. Pelo menos 3 peças de papel diferentes no corte.`,
+  `- IMAGEM REAL no Vox é de ARQUIVO: o briefing da INSERÇÃO sempre pede "black and white archival photograph, early 1900s, film grain"; B-roll de banco no máximo 1 no corte, só de objeto ou ação que a fala cita, nunca cena colorida genérica (o juiz reprova a foto colorida de banco no meio da colagem sépia).`,
+].join("\n");
+
+/**
  * AS PEÇAS DA LOUSA NO CORTE (04/10, os 14 quadros reais do Dan Martell): no
  * estilo lousa (tecnológico) e no consorcio (o mesmo desenho com acabamento
  * de luxo), cada momento da fala tem a peça dele, e elas valem sobre as
@@ -112,6 +132,7 @@ export function instrucoesDoCorte(p: { duracao: number; titulo?: string | null; 
     `- RITMO DE CORTE: a imagem muda a cada 2 a 4 s (peça nova, B-roll, tela, ou a câmera que fecha e abre; o código troca o enquadramento entre elas). Marque em "enfases" ${Math.max(4, Math.round(s / 6))} a ${Math.max(6, Math.round(s / 4))} palavras-chave para o ZOOM DE SOCO.`,
     `- Sem "fecho" com marca no fim, a menos que a pessoa faça uma chamada para ação no próprio trecho.`,
     ESTILOS_DA_LOUSA.includes(p.estiloId ?? "") ? INSTRUCOES_DA_LOUSA : "",
+    ESTILOS_DO_VOX.includes(p.estiloId ?? "") ? INSTRUCOES_DO_VOX : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -191,7 +212,9 @@ export function arejarCorte(ed: EdicaoResolvida, minimo: Record<string, number>)
 }
 
 /** As peças que valem como gancho no segundo 0. */
-const PECAS_DE_GANCHO = new Set(["titulo", "frase-impacto", "pergunta-resposta", "titulo-atras", "citacao", "numero", "palavra-gigante", "busca"]);
+const PECAS_DE_GANCHO = new Set(["titulo", "frase-impacto", "pergunta-resposta", "titulo-atras", "citacao", "numero", "palavra-gigante", "busca", "colagem", "jornal", "censura", "mapa-antigo", "marca-texto", "cronologia"]);
+/** As peças do Vox: a edição que tem alguma é do Vox, e o gancho automático sai no marca-texto. */
+const PECAS_DO_VOX = new Set(["colagem", "jornal", "mapa-antigo", "censura", "marca-texto", "carimbo", "cronologia"]);
 
 /**
  * O GANCHO NO SEGUNDO 0, SEMPRE (03/10, à noite): o corte 0 de cmurtv2zg foi
@@ -233,7 +256,10 @@ export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | unde
     const de = destino.get(dono.id);
     return de === null || de === undefined ? [] : [{ ...p, de }];
   });
-  const gancho: EdicaoResolvida["camadas"][number] = { id: "gancho-0", peca: "titulo", de: 0, ate: fim, entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { titulo: texto, posicao: "baixo" }, passes: ["vidro", "frente"] };
+  const vox = ed.camadas.some((c) => PECAS_DO_VOX.has(c.peca));
+  const gancho: EdicaoResolvida["camadas"][number] = vox
+    ? { id: "gancho-0", peca: "marca-texto", de: 0, ate: fim, entrada: 0.5, saida: 0.25, evento: 0.6, eventos: [], props: { texto: texto.replace(/\*\*/g, ""), posicao: "topo" }, passes: ["frente"] }
+    : { id: "gancho-0", peca: "titulo", de: 0, ate: fim, entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { titulo: texto, posicao: "baixo" }, passes: ["vidro", "frente"] };
   return { edicao: { ...ed, camadas: [gancho, ...camadas], planos }, mudou: `gancho-0: título do corte no segundo 0 ("${palavras.join(" ")}")` };
 }
 

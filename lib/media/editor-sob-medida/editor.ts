@@ -1,7 +1,8 @@
 import { askClaudeComImagens } from "@/lib/claude";
 import { extrairJson } from "@/lib/media/diretor-de-montagem";
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
-import { catalogoNoPrompt, ESTILOS_DA_LOUSA } from "@/lib/media/editor-sob-medida/pecas";
+import { catalogoNoPrompt, ESTILOS_DA_LOUSA, ESTILOS_DO_VOX } from "@/lib/media/editor-sob-medida/pecas";
+import { INSTRUCOES_DO_VOX } from "@/lib/media/editor-sob-medida/corte";
 import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
 
@@ -205,7 +206,10 @@ ${fala}
 # A TAREFA
 ${tarefa}
 
-${e.instrucoes ?? INSTRUCOES_DO_BLOCO_LONGO}`, quadros, e, e.instrucoes ? "editor-sob-medida-corte" : "editor-sob-medida")) as EdicaoDoEditor;
+${e.instrucoes ?? INSTRUCOES_DO_BLOCO_LONGO}${!e.instrucoes && ESTILOS_DO_VOX.includes(e.estiloId ?? "") ? `
+
+${INSTRUCOES_DO_VOX}
+- No bloco de 5 min: 3 a 5 "colagem", 1 a 2 "jornal", "mapa-antigo" em todo lugar dito, 1 a 2 "censura" onde houver polêmica, e "marca-texto" no ritmo entre elas.` : ""}`, quadros, e, e.instrucoes ? "editor-sob-medida-corte" : "editor-sob-medida")) as EdicaoDoEditor;
       if (!Array.isArray(j?.momentos)) throw new Error("resposta sem momentos");
       const dentro = (a: string) => {
         const n = Number(String(a).match(/\d+/)?.[0] ?? -1);
@@ -302,7 +306,7 @@ export async function consertarEdicao(
         `# O QUE O REVISOR VIU NO VÍDEO RENDERIZADO (os quadros acima são os do defeito)\n${g.map((d) => `- ${d.momento ?? "sem peça"} em ${d.t.toFixed(1)} s, ${d.tipo}${GRAVES.has(d.tipo) ? " (GRAVE)" : ""}: ${d.descricao} (sugestão: ${d.conserto})`).join("\n")}`,
         pagas.length ? `# IMAGENS JÁ PAGAS NESTE TRECHO (fique com elas: peça de tela cheia ou de lado não entra por cima, e o rosto volta 1 s entre elas)\n${pagas.join("\n")}` : "",
         `# A TAREFA: CONSERTE, NÃO APAGUE
-- Para CADA momento com defeito, devolva a peça REFEITA com o MESMO id, subindo o nível como o revisor pediu: outra peça mais forte do catálogo quando o defeito é "parece slide" ou "cartão chapado" (${ESTILOS_DA_LOUSA.includes(e.estiloId ?? "") ? "neste estilo, as da lousa primeiro: palavra-gigante, busca, chat, pilha-passos, marca-brilho, ferramentas, notebook, ilustracao-traco, material; e mantenha a peça da lousa que já está lá, só ajuste o texto" : "titulo-atras, numero, passos-foco, barras, comparacao, frase-impacto, pergaminho"}), texto mais curto com a palavra-chave em **destaque**, outro lado, outro tempo. Varie: não troque tudo pela mesma peça.
+- Para CADA momento com defeito, devolva a peça REFEITA com o MESMO id, subindo o nível como o revisor pediu: outra peça mais forte do catálogo quando o defeito é "parece slide" ou "cartão chapado" (${ESTILOS_DO_VOX.includes(e.estiloId ?? "") ? "neste estilo, as de papel do Vox: colagem (fotos de arquivo em camadas, mapa com círculo vermelho), jornal, mapa-antigo, censura (tarja na estátua), marca-texto, carimbo; mantenha a peça Vox que já está lá e só ajuste o texto ou as fotos" : ESTILOS_DA_LOUSA.includes(e.estiloId ?? "") ? "neste estilo, as da lousa primeiro: palavra-gigante, busca, chat, pilha-passos, marca-brilho, ferramentas, notebook, ilustracao-traco, material; e mantenha a peça da lousa que já está lá, só ajuste o texto" : "titulo-atras, numero, passos-foco, barras, comparacao, frase-impacto, pergaminho"}), texto mais curto com a palavra-chave em **destaque**, outro lado, outro tempo. Varie: não troque tudo pela mesma peça.
 - "remover" só para defeito GRAVE sem conserto possível. Todo id removido ganha um SUBSTITUTO no mesmo trecho: outra peça (id novo) ou um B-roll em "broll" (consulta concreta em inglês, 2 a 4 palavras, 1,5 a 3 s, na palavra que cita o objeto, o lugar ou a ação).
 - Defeito "vazio" ou sem peça: um momento novo (id novo) ou um B-roll no trecho.
 - A densidade do vídeo é o que está em jogo: o vídeo final precisa de peça ou imagem em quase metade do tempo. Momento que você não devolver fica como está.
@@ -359,8 +363,15 @@ Responda só o JSON: { "momentos": [refeitos com o MESMO id; novos com id novo],
     }
     return [m];
   });
+  const consertada: EdicaoDoEditor = { ...edicao, momentos: [...momentos, ...novos], camera: [...(edicao.camera ?? []), ...cameras], broll: [...(edicao.broll ?? []), ...brolls] };
+  // As fotos de arquivo das peças Vox novas ou refeitas (o cache pelo pedido: a descrição repetida sai de graça).
+  if (ESTILOS_DO_VOX.includes(e.estiloId ?? "")) {
+    const { prepararFotosDoVox } = await import("@/lib/media/editor-sob-medida/recortes-vox");
+    const f = await prepararFotosDoVox(consertada, { projectId: e.projectId, teto: 4 }).catch((err) => ({ erros: [String(err).slice(0, 120)] }));
+    erros.push(...f.erros);
+  }
   return {
-    edicao: { ...edicao, momentos: [...momentos, ...novos], camera: [...(edicao.camera ?? []), ...cameras], broll: [...(edicao.broll ?? []), ...brolls] },
+    edicao: consertada,
     trocados,
     removidos,
     brollNovos: brolls.map((b) => String(b.id)),

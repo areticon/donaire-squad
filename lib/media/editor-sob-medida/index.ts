@@ -6,6 +6,7 @@ import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { referenciaDoEstilo, textoDaReferencia } from "@/lib/media/referencias-de-estilo";
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
 import type { EdicaoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
+import { fotosDoMomento, prepararFotosDoVox } from "@/lib/media/editor-sob-medida/recortes-vox";
 
 /**
  * O EDITOR SOB MEDIDA (03/10/2026): o caminho novo da edição, atrás do
@@ -71,6 +72,12 @@ export async function gerarInsercoes(
   const insercoes: Record<string, { url: string; tipo: "imagem" | "video" }> = {};
   const erros: string[] = [];
   let custo = 0;
+  // AS FOTOS DE ARQUIVO DO VOX (04/10): as peças de papel que pedem foto ganham a url aqui, nas props do próprio momento.
+  if (e.momentos?.some((m) => fotosDoMomento(m).length)) {
+    const f = await prepararFotosDoVox(e, { projectId: o.projectId }).catch((err) => ({ prontas: 0, custoUsd: 0, erros: [`fotos do Vox: ${String(err).slice(0, 120)}`] }));
+    custo += f.custoUsd;
+    erros.push(...f.erros);
+  }
   const pedidos = (e.insercoes ?? []).slice(0, o.teto ?? 24);
   await Promise.all(
     pedidos.map(async (ins, k) => {
