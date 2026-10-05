@@ -103,7 +103,40 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
   let porRede: Record<string, string> = {};
   let laminas: number | undefined;
 
-  if (base.mediaType === "carousel") {
+  // O DIA DE VÍDEO (05/10): a peça derivada do vídeo (origem "video") sai pelo
+  // MESMO caminho da semana do vídeo (`arteDoDia`): a frase gravada no post
+  // (nunca truncada), o quadro do vídeo só como referência, o modelo do book
+  // aprovado. Aqui a trava já está aberta.
+  const metaDoVideo = posts[0].metadata as { origem?: string; frase?: string; slides?: unknown; videoJobId?: string } | null;
+  if (metaDoVideo?.origem === "video") {
+    const { arteDoDia, tetoDePalavrasDoModelo } = await import("@/lib/media/pecas-da-semana");
+    const { fraseGarantida } = await import("@/lib/media/frase-da-arte");
+    const { formatoDaPeca } = await import("@/lib/media/formatos-das-redes");
+    const video = { id: metaDoVideo.videoJobId, projectId: args.projectId, project: { niche: nicho } };
+    const ctxDoVideo = { projectId: args.projectId, runId: runId ?? "" };
+    if (base.mediaType === "carousel") {
+      const slides = Array.isArray(metaDoVideo.slides) ? metaDoVideo.slides.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : [];
+      if (!slides.length) throw new Error("o carrossel do vídeo não tem as frases das lâminas gravadas");
+      const formato = formatoDaPeca(posts[0].platform, "carousel");
+      const urls = await Promise.all(slides.map((frase) => arteDoDia(video, frase, estiloVisual, formato, ctxDoVideo, slides[0], marca)));
+      principal = urls.join("|");
+      porRede = Object.fromEntries(redes.map((r) => [r, principal!]));
+      laminas = urls.length;
+    } else {
+      const bruta = typeof metaDoVideo.frase === "string" && metaDoVideo.frase.trim() ? metaDoVideo.frase : texto.split(/(?<=[.!?])\s/)[0];
+      const formatoPrincipal = formatoDaPeca(posts[0].platform, "image");
+      const frase = await fraseGarantida({ bruta, maxPalavras: await tetoDePalavrasDoModelo(marca, bruta, formatoPrincipal), contexto: texto, usage: { projectId: args.projectId, runId } });
+      // Uma geração por proporção; as redes da mesma proporção recebem a mesma arte.
+      const porProporcao = new Map<string, Promise<string>>();
+      for (const p of posts) {
+        const f = formatoDaPeca(p.platform, "image");
+        if (!porProporcao.has(f.proporcao)) porProporcao.set(f.proporcao, arteDoDia(video, frase, estiloVisual, f, ctxDoVideo, undefined, marca));
+        porRede[p.platform] = await porProporcao.get(f.proporcao)!;
+      }
+      principal = porRede[posts[0].platform];
+      for (const p of posts) await prisma.post.update({ where: { id: p.id }, data: { metadata: { ...((p.metadata as Record<string, unknown> | null) ?? {}), frase } as Prisma.InputJsonValue } }).catch(() => {});
+    }
+  } else if (base.mediaType === "carousel") {
     const aceitam = redesQueAceitamCarrossel(redes);
     const teto = laminasPermitidas(aceitam.length ? aceitam : ["instagram"]);
     const pedidas = Math.min(config?.laminasDoCarrossel ?? 5, teto || 5);

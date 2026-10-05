@@ -97,6 +97,15 @@ export type MarcaDaArte = {
    * post ANTES de pagar imagem gerada.
    */
   materiais?: import("@/lib/materiais/escolha").MaterialDaMarca[];
+  /**
+   * A REFERÊNCIA DA PESSOA (05/10, lib/media/referencia-da-pessoa.ts): a foto
+   * real do cliente, ou o melhor quadro do vídeo, que o gerador recebe como
+   * imagem de referência nos modelos com o lugar de "você". Só referência:
+   * nunca vai crua para a arte.
+   */
+  referenciaDaPessoa?: import("@/lib/media/referencia-da-pessoa").ReferenciaDaPessoa | null;
+  /** O vídeo de que a peça nasce (semana do vídeo), de onde sai o quadro de referência quando não há foto. */
+  videoJobId?: string | null;
 };
 
 /** A identidade do projeto em forma de marca da peça. */
@@ -157,15 +166,17 @@ export function exigirIdentidadeAprovada(marca: MarcaDaArte): void {
   if (marca.projectId && marca.identidadeAprovada === false) throw new IdentidadeNaoAprovada();
 }
 
-/** O modelo do book com a pessoa recortada na frente do título. */
+/** O modelo do book com a pessoa recortada na frente do título (o primeiro; hoje há vários com foto "recorte"). */
 export const MODELO_COM_PROFUNDIDADE = "voce-na-frente-do-titulo";
 
 /**
  * O MODELO quando a peça vai sair de uma foto real do cliente (03/10): entre
- * os modelos escolhidos, só os que têm lugar para foto; foto de pessoa vai para
- * "Você na frente do título" quando ele está escolhido ou quando o cliente não
- * escolheu modelo nenhum. Devolve `usar: false` quando os modelos escolhidos
- * não têm foto: a escolha do cliente manda, e a foto fica para outra peça.
+ * os modelos escolhidos, só os que têm lugar para foto. Foto de PESSOA (05/10)
+ * vai para QUALQUER modelo escolhido com foto "recorte" (o "Você na frente do
+ * título", o cartaz em preto e branco, o mapa, a família Vox...), escolhido
+ * pela frase como os demais; sem modelo escolhido, vale o "Você na frente do
+ * título". Devolve `usar: false` quando os modelos escolhidos não têm foto: a
+ * escolha do cliente manda, e a foto fica para outra peça.
  */
 export async function modeloParaOMaterial(
   marca: MarcaDaArte,
@@ -883,57 +894,129 @@ function proporcaoDaPeca(largura: number, altura: number): ProporcaoPedida {
  * anônimo. O custo é o de uma imagem, gravado como sempre; o crédito da peça
  * é o normal. Null quando o fundo não veio por falha que não é de saldo.
  */
-export async function fundoDoModeloPorPrompt(o: {
-  modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte & { prompt: string };
+/**
+ * A IMAGEM DO MODELO COM PROMPT (05/10, regra geral): todo modelo que não é só
+ * texto gera o visual pelo melhor modelo de imagem da conta, na ordem
+ * configurável de lib/media/gerador-com-referencia.ts (GPT Image 2, Gemini,
+ * Higgsfield por último), com o prompt do modelo (catálogo ou
+ * lib/modelos-de-arte/prompts-com-foto.ts). A foto REAL do cliente (ou o
+ * melhor quadro do vídeo) entra como referência SÓ nos modelos com o lugar de
+ * "você" (foto "recorte"); nos outros, o material do cliente só entra quando
+ * não é pessoa (produto, local) e o modelo tem foto. Devolve a imagem e, nos
+ * modelos "você", a pessoa recortada dela (BiRefNet), para o título passar
+ * atrás. Null quando o modelo pede a pessoa e não há referência nenhuma, ou
+ * quando todos os geradores falharam (registrado em aviso-da-arte.ts): a
+ * peça segue no desenho em código, com o aviso no card.
+ */
+export async function imagemDoModeloComPrompt(o: {
+  modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte;
   frase: string;
   marca: MarcaDaArte;
   largura: number;
   altura: number;
-  desenhista: (prompt: string, proporcao: ProporcaoPedida) => Promise<string>;
+  /** A cena da frase em inglês (cenaDaFrase), para os modelos de cena. */
+  cena?: string | null;
   /** O material já escolhido (o carrossel escolhe em fila); sem ele, escolhe aqui. */
   material?: import("@/lib/materiais/escolha").MaterialDaMarca | null;
-}): Promise<Buffer | null> {
+}): Promise<{ imagem: Buffer; recorte: Buffer | null; modeloDeImagem: string; fundoInteiro: boolean } | null> {
   const { preencherPromptDoModelo, COM_FOTO_DE_REFERENCIA } = await import("@/lib/modelos-de-arte/prompt-do-modelo");
+  const { promptDoModelo, fotoDoClienteEntra, fundoInteiroDoModelo, preencherCena } = await import("@/lib/modelos-de-arte/prompts-com-foto");
   const { formatoPeloTamanho } = await import("@/lib/modelos-de-arte/catalogo");
+  const { registrarRecuoParaCodigo, limparRecuo } = await import("@/lib/media/aviso-da-arte");
+  const promptBase = promptDoModelo(o.modelo);
+  if (!promptBase) return null;
   const formato = formatoPeloTamanho(o.largura, o.altura, Boolean(o.marca.pagina));
   const proporcao = proporcaoDaPeca(o.largura, o.altura);
-  let material = o.material ?? null;
-  if (!material && o.marca.materiais?.length && o.modelo.foto !== "nenhuma") {
-    const { escolherMaterial } = await import("@/lib/materiais/escolha");
-    material = await escolherMaterial({ materiais: o.marca.materiais, frase: o.frase, contexto: o.marca.contexto, projectId: o.marca.projectId }).catch(() => null);
-  }
-  const descricaoDaFoto = material ? [material.palavrasEn.join(", "), material.descricao].filter(Boolean).join("; ") : null;
-  const prompt = preencherPromptDoModelo(o.modelo, { cores: o.marca.cores, titulo: o.frase, foto: descricaoDaFoto, formato });
-  try {
+  const ctx = { projectId: o.marca.projectId, operation: "modelo_por_prompt" };
+
+  // A referência: a pessoa (modelos "você") ou um material que não é pessoa.
+  let referencia: import("@/lib/media/gerador-com-referencia").Referencia | null = null;
+  let descricaoDaFoto: string | null = null;
+  let materialUsado: string | null = null;
+  const pedePessoa = fotoDoClienteEntra(o.modelo);
+  if (pedePessoa) {
+    const { referenciaDaPessoa } = await import("@/lib/media/referencia-da-pessoa");
+    const ref = o.marca.referenciaDaPessoa ?? (await referenciaDaPessoa({ materiais: o.marca.materiais, frase: o.frase, projectId: o.marca.projectId, videoJobId: o.marca.videoJobId }));
+    if (!ref) {
+      console.warn(`[arte-com-frase] o modelo "${o.modelo.id}" pede a foto do cliente e não há foto nem quadro com rosto; a peça não sai neste modelo`);
+      return null;
+    }
+    referencia = ref;
+    materialUsado = ref.materialId ?? null;
+    const m = ref.materialId ? o.marca.materiais?.find((x) => x.id === ref.materialId) : null;
+    descricaoDaFoto = m ? [m.palavrasEn.join(", "), m.descricao].filter(Boolean).join("; ") : "the person in the reference photograph";
+  } else if (o.modelo.foto !== "nenhuma") {
+    let material = o.material ?? null;
+    if (material?.etiquetas.includes("pessoa")) material = null;
+    if (!material && o.marca.materiais?.length) {
+      const { escolherMaterial } = await import("@/lib/materiais/escolha");
+      const semPessoa = o.marca.materiais.filter((x) => !x.etiquetas.includes("pessoa"));
+      material = semPessoa.length ? await escolherMaterial({ materiais: semPessoa, frase: o.frase, contexto: o.marca.contexto, projectId: o.marca.projectId }).catch(() => null) : null;
+    }
     if (material) {
       const { lerMidia, ehPublica } = await import("@/lib/media/storage");
+      const { normalizarReferencia } = await import("@/lib/media/gerador-com-referencia");
       const original = await lerMidia(material.url).catch(() => null);
       if (original) {
-        // A foto como referência da edição: JPEG normalizado, porque a
-        // biblioteca guarda PNG e WebP também.
-        const jpeg = await sharp(original).rotate().resize({ width: 1536, height: 1536, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
-        const { comporSobreImagemComCusto } = await import("@/lib/media/nano-banana");
-        const r = await comporSobreImagemComCusto(
-          `${prompt}${COM_FOTO_DE_REFERENCIA}`,
-          jpeg.toString("base64"),
-          "image/jpeg",
-          { projectId: o.marca.projectId, operation: "modelo_por_prompt" },
-          proporcao,
-          { tipo: "colagem", imagemUrl: ehPublica(material.url) ? material.url : null }
-        );
-        if (r) {
-          const { marcarUso } = await import("@/lib/materiais/servidor");
-          void marcarUso(material.id);
-          return bufferDe(r.dataUrl);
-        }
+        referencia = await normalizarReferencia(original, ehPublica(material.url) ? material.url : null);
+        materialUsado = material.id;
+        descricaoDaFoto = [material.palavrasEn.join(", "), material.descricao].filter(Boolean).join("; ");
       }
     }
-    return bufferDe(await o.desenhista(prompt, proporcao));
+  }
+
+  const prompt = preencherCena(
+    preencherPromptDoModelo({ ...o.modelo, prompt: promptBase }, { cores: o.marca.cores, titulo: o.frase, foto: descricaoDaFoto, formato }),
+    o.cena
+  );
+  const promptFinal = referencia ? `${prompt}${o.modelo.arquetipo.startsWith("vox-") ? COM_FOTO_DE_REFERENCIA : "\nThe attached image is the reference photograph of the subject: keep it faithful."}` : prompt;
+  try {
+    const { gerarComReferencia } = await import("@/lib/media/gerador-com-referencia");
+    const r = await gerarComReferencia({ prompt: promptFinal, proporcao, referencia, ctx });
+    const imagem = bufferDe(r.dataUrl);
+    if (materialUsado) {
+      const { marcarUso } = await import("@/lib/materiais/servidor");
+      void marcarUso(materialUsado);
+    }
+    // A pessoa recortada da imagem gerada, para o título passar atrás dela.
+    let recorte: Buffer | null = null;
+    if (pedePessoa && !fundoInteiroDoModelo(o.modelo)) {
+      const { recortarPessoaNoFal } = await import("@/lib/materiais/servidor");
+      const jpeg = await sharp(imagem).jpeg({ quality: 92 }).toBuffer();
+      recorte = await recortarPessoaNoFal(jpeg, { projectId: o.marca.projectId, operation: "modelo_por_prompt_recorte" }).catch((e) => {
+        console.warn("[arte-com-frase] a pessoa não foi recortada da imagem gerada; o título fica na frente:", e instanceof Error ? e.message : e);
+        return null;
+      });
+    }
+    limparRecuo(o.frase);
+    return { imagem, recorte, modeloDeImagem: r.modelo, fundoInteiro: fundoInteiroDoModelo(o.modelo) };
   } catch (err) {
-    if (ehErroDeSaldo(err) || ehSemSaldoDaOpenAI(err) || err instanceof SemChaveDaOpenAI) throw err;
-    console.warn("[arte-com-frase] o fundo do modelo por prompt não veio, a peça sai no desenho em código:", err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[arte-com-frase] a imagem do modelo não veio de nenhum gerador; a peça sai no desenho em código:", msg);
+    registrarRecuoParaCodigo(o.frase, msg);
     return null;
   }
+}
+
+/**
+ * A peça inteira no modelo com prompt: a imagem gerada (fundo inteiro na
+ * família Vox, zona da foto nos demais) e a tipografia em código por cima.
+ * Null quando a imagem não veio (ver `imagemDoModeloComPrompt`).
+ */
+export async function pecaNoModeloComPrompt(o: {
+  modelo: import("@/lib/modelos-de-arte/catalogo").ModeloDeArte;
+  frase: string;
+  marca: MarcaDaArte;
+  largura: number;
+  altura: number;
+  cena?: string | null;
+  material?: import("@/lib/materiais/escolha").MaterialDaMarca | null;
+}): Promise<Buffer | null> {
+  const gerada = await imagemDoModeloComPrompt(o);
+  if (!gerada) return null;
+  const marca = { ...o.marca, modeloFixo: o.modelo.id };
+  if (gerada.fundoInteiro) return comporFraseNaArte({ arte: null, frase: o.frase, marca, largura: o.largura, altura: o.altura, fundoGerado: gerada.imagem });
+  return comporFraseNaArte({ arte: gerada.imagem, frase: o.frase, marca, largura: o.largura, altura: o.altura, recorte: gerada.recorte });
 }
 
 export function desenharComFraseEmCodigo(
@@ -949,12 +1032,17 @@ export function desenharComFraseEmCodigo(
     // inteira (sem texto), com a foto do cliente de referência quando há; a
     // tipografia entra em código. Sem o fundo (falha que não é de saldo), a
     // peça segue o caminho de sempre, com o desenho em código como reserva.
+    // REGRA GERAL (05/10): todo modelo do book que não é só texto gera o
+    // visual pelo melhor modelo de imagem (lib/modelos-de-arte/prompts-com-foto.ts),
+    // com a foto do cliente de referência nos modelos "você"; a tipografia
+    // entra em código. O desenho em código é só a reserva, com aviso.
     const porPrompt = await modeloDaMarca(marca, largura, altura, frase);
-    if (porPrompt?.prompt) {
-      const fundo = await fundoDoModeloPorPrompt({ modelo: porPrompt as typeof porPrompt & { prompt: string }, frase, marca, largura, altura, desenhista });
-      if (fundo) {
-        const jpeg = await comporFraseNaArte({ arte: null, frase, marca: { ...marca, modeloFixo: porPrompt.id }, largura, altura, fundoGerado: fundo });
-        return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    if (porPrompt) {
+      const { promptDoModelo } = await import("@/lib/modelos-de-arte/prompts-com-foto");
+      if (promptDoModelo(porPrompt)) {
+        const cena = prompt.match(/^Scene: (.+)$/m)?.[1] ?? null;
+        const jpeg = await pecaNoModeloComPrompt({ modelo: porPrompt, frase, marca, largura, altura, cena });
+        if (jpeg) return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
       }
     }
     // O MATERIAL DO CLIENTE PRIMEIRO (03/10): a foto real que serve ao post,

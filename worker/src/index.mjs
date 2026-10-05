@@ -1656,6 +1656,60 @@ const servidor = createServer((req, res) => {
     });
     return;
   }
+  // /melhor-quadro (05/10): o melhor quadro da GRAVAÇÃO como foto, escolhido
+  // pelo Face Landmarker (rosto inteiro dentro, olho aberto, boca fechada, de
+  // frente, nítido), e a pessoa recortada dele. Serve à arte do dia de vídeo
+  // (lib/media/referencia-da-pessoa.ts), que usa o quadro SÓ como referência
+  // do modelo de imagem, nunca como arte final. Síncrona como o /recortar:
+  // baixa a gravação (o mesmo cache dos cortes), avalia os instantes pedidos
+  // e responde em segundos. Entra {sourceUrl, instantes, chave}; sai
+  // {quadro, recorte, rosto, notas, avaliados}.
+  const ehMelhorQuadro = req.method === "POST" && req.url?.startsWith("/melhor-quadro");
+  if (ehMelhorQuadro) {
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.sourceUrl || !pedido.chave) return responder(400, { error: "Faltam sourceUrl ou chave" });
+      const instantes = Array.isArray(pedido.instantes) ? pedido.instantes.map(Number).filter((t) => Number.isFinite(t) && t >= 0).slice(0, 40) : [];
+      if (!instantes.length) return responder(400, { error: "Faltam instantes" });
+      const pasta = await mkdtemp(join(tmpdir(), "melhor-quadro-"));
+      emAndamento += 1;
+      try {
+        const fonte = join(pasta, "fonte.mp4");
+        await baixarQualquer(pedido.sourceUrl, fonte);
+        const escolhido = await quadroDaCapa({ video: fonte, instantes }, pasta, "mq");
+        if (!escolhido) return responder(422, { error: "Nenhum quadro com rosto inteiro e olhos abertos" });
+        const quadro = await subir(escolhido.quadro, `${pedido.chave}-quadro.jpg`, "image/jpeg");
+        const recorte = await subir(escolhido.recorte, `${pedido.chave}-recorte.png`, "image/png");
+        responder(200, {
+          quadro,
+          recorte,
+          instante: escolhido.instante,
+          rosto: escolhido.rosto,
+          notas: escolhido.notas,
+          avaliados: escolhido.avaliados,
+          largura: escolhido.largura,
+          altura: escolhido.altura,
+        });
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "falhou" });
+      } finally {
+        emAndamento -= 1;
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+    return;
+  }
   // /amostras-de-tela (01/10): os prints da gravação para a detecção de tela
   // compartilhada ANTES do roteiro (lib/media/telas-da-gravacao.ts). Síncrona:
   // baixa a gravação uma vez (o mesmo cache dos cortes, `obterOriginal`), tira

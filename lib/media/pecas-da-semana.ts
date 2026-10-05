@@ -4,8 +4,11 @@ import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { direcaoDaPeca, escolherEstilo, paletaDoProjeto } from "@/lib/media/direcao-de-arte";
 import { generateInfographic } from "@/lib/media/infographic";
-import { cenaDaFrase, layoutDaPeca, marcaDaArte, pecaComFraseEmCodigo } from "@/lib/media/arte-com-frase";
+import { cenaDaFrase, layoutDaPeca, marcaDaArte, modeloDaMarca, pecaComFraseEmCodigo } from "@/lib/media/arte-com-frase";
+import { avisoDoRecuo } from "@/lib/media/aviso-da-arte";
+import { fraseCompleta, fraseGarantida, pareceTruncada, TETO_DA_FRASE } from "@/lib/media/frase-da-arte";
 import { conferirArte } from "@/lib/media/conferencia-da-arte";
+import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
 import type { FormatoDaRede } from "@/lib/media/formatos-das-redes";
 import { formatoDaPeca, gruposDeFormato } from "@/lib/media/formatos-das-redes";
 import { FORMATO_DA_REDE } from "@/lib/pipeline/levar-para-outra-rede";
@@ -435,6 +438,15 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   // levou 1,8 min só de redação (14,9 aos 16,7); em paralelo é o tempo do dia
   // mais lento, e o prefixo cacheado (perfil, briefing, transcrição) é o
   // mesmo em todas as chamadas, então o custo não muda.
+  //
+  // O PREFIXO É GRAVADO NO CACHE UMA VEZ (05/10). Como os dias correm em
+  // paralelo, a primeira chamada de cada um gravava o prefixo de 11 mil tokens
+  // de novo (1,25x o preço de entrada) em vez de ler o cache (0,1x): no run
+  // cmuvllw4v, 12 das 15 chamadas de texto pagaram a gravação, US$ 0,027 cada,
+  // dois terços do custo da redação. Uma chamada mínima grava; as outras leem.
+  if (dias.filter((d) => !cardsDoVideo.some((c) => c.dayOfWeek === d.dia && c.postId)).length > 1) {
+    await aquecerPrefixo(prefixo, { runId: run.id, projectId: video.projectId });
+  }
   await Promise.all(dias.map(async ({ dia, formato, escolhido, redes }) => {
     const derivadosDoDia = cardsDoVideo.filter(
       (c) => c.dayOfWeek === dia && (c.metadata as { derivado?: boolean } | null)?.derivado
@@ -592,6 +604,24 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
     // escrita de novo sabendo quais ganchos estão tomados (ver aberturas-da-semana.ts).
     const semTopo = (t: string, tirar: (x: string) => string | null) => tirar(t);
 
+    /**
+     * A TRAVA DA IDENTIDADE NO DIA DE VÍDEO (05/10). Sem identidade aprovada,
+     * a arte do dia de vídeo fica "aguardando a sua identidade visual" como
+     * as outras (lib/pipeline/executar.ts): os textos saem, o post nasce sem
+     * arte e marcado, o card da Diana explica, e nada de imagem é pago. Quem
+     * gera depois é lib/media/artes-aguardando-identidade.ts, pelo mesmo
+     * caminho (`arteDoDia`). Antes de 05/10 este dia escapava da trava.
+     */
+    const marcaDoDia = formato === "image" || formato === "carousel" ? await marcaDaArte(video.projectId, { runId: run.id }) : null;
+    if (marcaDoDia) marcaDoDia.videoJobId = video.id;
+    const aguardandoIdentidade = Boolean(marcaDoDia && marcaDoDia.identidadeAprovada === false);
+    const TEXTO_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. Nenhum crédito de imagem foi gasto; a arte sai depois da aprovação.`;
+    /** O card da Diana: o aviso do recuo para o desenho em código vem antes do conteúdo. */
+    const conteudoDaDiana = (texto: string, manchetes: string[]) => {
+      const aviso = avisoDoRecuo(manchetes);
+      return aviso ? `${aviso}\n\n${texto}` : texto;
+    };
+
     try {
       if (formato === "text" && principal === "twitter") {
         // Só o X marcado num dia de texto: o texto do dia é a thread do Xavier.
@@ -636,9 +666,15 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         // nome de arquivo (data, hora, extensão).
         const pareceArquivo = /\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{2}|^(img|vid|mov|dsc|gravacao)[_-]?\d/i.test(nome);
         const radarDoDia = radar as { teses?: Array<{ frase?: string }>; resumo?: string } | null | undefined;
-        const frase = fraseDaArte(
-          tese?.frase ?? radarDoDia?.teses?.find((t) => t?.frase)?.frase ?? radar?.tema ?? radarDoDia?.resumo?.split(/(?<=[.!?])\s/)[0] ?? (pareceArquivo ? "O que ninguém te contou sobre isso" : nome)
-        );
+        const fraseBruta = tese?.frase ?? radarDoDia?.teses?.find((t) => t?.frase)?.frase ?? radar?.tema ?? radarDoDia?.resumo?.split(/(?<=[.!?])\s/)[0] ?? (pareceArquivo ? "O que ninguém te contou sobre isso" : nome);
+        // A FRASE NUNCA SAI TRUNCADA (05/10): inteira, em frases completas,
+        // ou a manchete curta do redator dentro do teto do modelo do book.
+        const frase = await fraseGarantida({
+          bruta: fraseBruta,
+          maxPalavras: await tetoDePalavrasDoModelo(marcaDoDia, fraseBruta, formatoDaPeca(principal, "image")),
+          contexto: [radar?.tema, radar?.resumo].filter(Boolean).join(". "),
+          usage: { projectId: video.projectId, runId: run.id },
+        });
         const legenda = await aberturas.escrever(
           DIAS[dia],
           (proibidas) =>
@@ -649,15 +685,22 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         // A direcao de arte do projeto (linguagem do video, estilo proprio),
         // igual a esteira; sem ela a imagem saia "bold typographic" fixo.
         const direcao = await direcaoDaPeca({ projectId: video.projectId, runId: run.id, dayOfWeek: dia, infografico: false, preferido: (run.config as { mediaStyle?: string } | null)?.mediaStyle });
-        // A FRASE ENTRA EM CÓDIGO (30/09): o modelo desenha só a arte, sem
-        // letra e sem gente, e a frase é composta por cima no tamanho da rede.
-        // Ver lib/media/arte-com-frase.tsx para a quarta que originou a regra.
-        const artes = await artesPorRede((f) => arteDoDia(video, frase, direcao.styleHint, f, { projectId: video.projectId, runId: run.id }));
-        const url = artes.get(principal) ?? [...artes.values()][0];
-        const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: url, extra: { frase } });
-        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
-        await gravarCard(AGENTES.diana, { content: `Imagem com a frase: "${frase}"`, mediaType: "image", mediaUrl: url, postId, extra: { rede: principal, frase } });
-        await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "image", imageUrl: artes.get(rede) ?? url, extra: { frase } }));
+        if (aguardandoIdentidade) {
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: null, extra: { frase, aguardandoIdentidade: true } });
+          await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+          await gravarCard(AGENTES.diana, { content: `${TEXTO_AGUARDANDO}\n\nImagem com a frase: "${frase}"`, mediaType: "image", mediaUrl: null, postId, extra: { rede: principal, frase, aguardandoIdentidade: true } });
+          await levarParaAsOutras(postId, legenda, () => ({ mediaType: "image", imageUrl: null, extra: { frase, aguardandoIdentidade: true } }));
+        } else {
+          // A FRASE ENTRA EM CÓDIGO (30/09): o modelo desenha só a arte, sem
+          // letra e sem gente, e a frase é composta por cima no tamanho da rede.
+          // Ver lib/media/arte-com-frase.tsx para a quarta que originou a regra.
+          const artes = await artesPorRede((f) => arteDoDia(video, frase, direcao.styleHint, f, { projectId: video.projectId, runId: run.id }, undefined, marcaDoDia ?? undefined));
+          const url = artes.get(principal) ?? [...artes.values()][0];
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: url, extra: { frase } });
+          await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+          await gravarCard(AGENTES.diana, { content: conteudoDaDiana(`Imagem com a frase: "${frase}"`, [frase]), mediaType: "image", mediaUrl: url, postId, extra: { rede: principal, frase } });
+          await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "image", imageUrl: artes.get(rede) ?? url, extra: { frase } }));
+        }
       } else if (formato === "carousel") {
         const contextoDaLegenda = [
           radar ? `Tema: ${radar.tema}. ${radar.resumo}` : "",
@@ -697,22 +740,30 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         // Cada lâmina: arte sem texto do modelo e a frase composta em código,
         // no formato do carrossel (1080x1350), como a imagem do dia. O
         // carrossel é 4:5 em todas as redes, então as lâminas servem a todas.
-        const urls = await Promise.all(
-          frases.map((frase) => arteDoDia(video, frase, direcao.styleHint, formatoDaPeca(principal, "carousel"), { projectId: video.projectId, runId: run.id }, frases[0]))
-        );
-        const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases } });
-        // A legenda também ganha o card do redator, como no dia de imagem.
-        // Sem ele, o quadro não tinha de onde tirar o título da peça e o
-        // sábado de 29/09 apareceu só como "Post" (a tela titula pelo redator).
-        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
-        await gravarCard(AGENTES.diana, {
-          content: `Carrossel de ${frases.length} lâminas:\n${frases.map((f, i) => `${i + 1}. ${f}`).join("\n")}`,
-          mediaType: "carousel",
-          mediaUrl: urls.join("|"),
-          postId,
-          extra: { rede: principal, slides: frases },
-        });
-        await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases } }));
+        const listaDasFrases = `Carrossel de ${frases.length} lâminas:\n${frases.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+        if (aguardandoIdentidade) {
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "carousel", imageUrl: null, extra: { carrossel: true, slides: frases, aguardandoIdentidade: true } });
+          await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+          await gravarCard(AGENTES.diana, { content: `${TEXTO_AGUARDANDO}\n\n${listaDasFrases}`, mediaType: "carousel", mediaUrl: null, postId, extra: { rede: principal, slides: frases, aguardandoIdentidade: true } });
+          await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: null, extra: { carrossel: true, slides: frases, aguardandoIdentidade: true } }));
+        } else {
+          const urls = await Promise.all(
+            frases.map((frase) => arteDoDia(video, frase, direcao.styleHint, formatoDaPeca(principal, "carousel"), { projectId: video.projectId, runId: run.id }, frases[0], marcaDoDia ?? undefined))
+          );
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases } });
+          // A legenda também ganha o card do redator, como no dia de imagem.
+          // Sem ele, o quadro não tinha de onde tirar o título da peça e o
+          // sábado de 29/09 apareceu só como "Post" (a tela titula pelo redator).
+          await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+          await gravarCard(AGENTES.diana, {
+            content: conteudoDaDiana(listaDasFrases, frases),
+            mediaType: "carousel",
+            mediaUrl: urls.join("|"),
+            postId,
+            extra: { rede: principal, slides: frases },
+          });
+          await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases } }));
+        }
       } else if (formato === "infographic") {
         const legenda = await aberturas.escrever(
           DIAS[dia],
@@ -776,6 +827,26 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   }));
 
   return { escritos, falhas };
+}
+
+/**
+ * Grava o prefixo cacheável antes das chamadas em paralelo. Uma chamada de
+ * resposta mínima: o que custa é a gravação do prefixo, que alguém pagaria
+ * de qualquer jeito; o que economiza é cada chamada seguinte ler a 0,1x em
+ * vez de gravar de novo a 1,25x. Falha aqui não derruba nada: sem o
+ * aquecimento, a semana sai como antes (mais cara).
+ */
+export async function aquecerPrefixo(prefixo: string, usage: { runId: string; projectId: string }): Promise<void> {
+  try {
+    await askClaude("Responda apenas com a palavra OK.", "OK", {
+      maxTokens: 4000,
+      effort: "low",
+      cachedPrefix: prefixo,
+      usage: { operation: "cache_aquecimento", runId: usage.runId, projectId: usage.projectId },
+    });
+  } catch (e) {
+    console.warn("[semana] aquecimento do cache falhou (segue sem):", e instanceof Error ? e.message : e);
+  }
 }
 
 export async function escreverTexto(
@@ -858,6 +929,8 @@ Escolha as frases dos slides de um CARROSSEL de 3 slides a partir do vídeo e do
     .split("\n")
     .map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, "").replace(/^["“]|["”]$/g, "").trim())
     .filter((l) => l.length > 3)
+    // Lâmina com frase truncada não sai (05/10): fica a frase completa que cabe.
+    .map((l) => (pareceTruncada(l) ? (fraseCompleta(l, { caracteres: TETO_DA_FRASE }) ?? l) : l))
     .slice(0, 3);
   if (frases.length < 2) throw new Error("A Diana não devolveu frases para os slides");
   return frases;
@@ -867,19 +940,25 @@ Escolha as frases dos slides de um CARROSSEL de 3 slides a partir do vídeo e do
  * A frase que vai ESCRITA na imagem, fechada.
  *
  * Era `.slice(0, 140)` cru, e a quarta de 30/09 saiu com a arte terminando
- * em "a IA nunca precisa perguntar quem vo": a Vera reprovou o dia por texto
- * quebrado indo ao ar. Frase longa agora corta no fim da última frase
- * completa que cabe, ou na última palavra inteira, e nunca no meio dela.
+ * em "a IA nunca precisa perguntar quem vo". Em 05/10 o corte na vírgula com
+ * ponto pregado entregou "(relações, valores." na arte de Fé & Gestão. Agora
+ * (lib/media/frase-da-arte.ts) a frase vai inteira ou em frases COMPLETAS; se
+ * nem a primeira cabe, fica a frase inteira sem corte (quem pode pedir a
+ * manchete curta ao redator usa `fraseGarantida`, a versão assíncrona).
+ * Nunca mais reticências nem vírgula pendurada.
  */
-export function fraseDaArte(bruta: string, max = 140): string {
-  const t = bruta.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  const corte = t.slice(0, max);
-  const fimDeFrase = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("? "), corte.lastIndexOf("! "));
-  if (fimDeFrase > max * 0.4) return corte.slice(0, fimDeFrase + 1).trim();
-  const virgula = corte.lastIndexOf(", ");
-  if (virgula > max * 0.5) return corte.slice(0, virgula).trim() + ".";
-  return corte.slice(0, corte.lastIndexOf(" ")).replace(/[,;:]$/, "").trim() + "…";
+export function fraseDaArte(bruta: string, max = TETO_DA_FRASE): string {
+  return fraseCompleta(bruta, { caracteres: max }) ?? bruta.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * O teto de palavras da frase, pelo modelo do book que vai desenhar a peça
+ * (`maxPalavras`); sem modelo, ou modelo sem texto, 12 palavras.
+ */
+export async function tetoDePalavrasDoModelo(marca: Awaited<ReturnType<typeof marcaDaArte>> | null, frase: string, formato: FormatoDaRede): Promise<number> {
+  if (!marca) return 12;
+  const modelo = await modeloDaMarca(marca, formato.largura, formato.altura, frase).catch(() => null);
+  return modelo?.maxPalavras && modelo.maxPalavras > 0 ? Math.max(modelo.maxPalavras, 5) : 12;
 }
 
 /**
@@ -890,7 +969,8 @@ export function fraseDaArte(bruta: string, max = 140): string {
  * artes do teste usar exatamente o mesmo caminho.
  */
 export async function arteDoDia(
-  video: { projectId: string; project: { niche?: string | null } },
+  /** `id` (05/10): o vídeo de que a peça nasce, de onde sai o quadro de referência da pessoa quando não há foto na biblioteca. */
+  video: { id?: string; projectId: string; project: { niche?: string | null } },
   frase: string,
   estilo: string,
   formato: FormatoDaRede,
@@ -908,7 +988,10 @@ export async function arteDoDia(
   marcaPronta?: Awaited<ReturnType<typeof marcaDaArte>>
 ): Promise<string> {
   const base = marcaPronta ?? (await marcaDaArte(video.projectId));
-  const marca = layoutDe ? { ...base, variante: layoutDaPeca(base, layoutDe).variante } : base;
+  // NUNCA O QUADRO CRU COMO ARTE (05/10): o vídeo entra na marca só como a
+  // origem do quadro de REFERÊNCIA (lib/media/referencia-da-pessoa.ts), e só
+  // nos modelos "você" do book aprovado. A arte sai sempre do modelo de imagem.
+  const marca: Awaited<ReturnType<typeof marcaDaArte>> = { ...base, videoJobId: base.videoJobId ?? video.id ?? null, ...(layoutDe ? { variante: layoutDaPeca(base, layoutDe).variante } : {}) };
   // A cena nasce do mundo, do público e do tom do projeto (01/10), e não só do nicho.
   const visual = await cenaDaFrase(frase, video.project.niche, ctx, base.identidade);
   const desenhar = (correcao?: string) =>

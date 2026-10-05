@@ -164,6 +164,7 @@ const OPERACOES_DE_POST = new Set([
   "ajuste_do_dia",
   "restricao_nao_citar",
   "manchete_da_peca",
+  "manchete_curta",
   "refazer_peca",
   "levar_para_outra_rede",
   "reescrever_campo",

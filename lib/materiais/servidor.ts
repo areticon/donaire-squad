@@ -143,28 +143,14 @@ export async function recorteDoMaterial(id: string): Promise<Buffer | null> {
     const guardado = await lerMidia(m.recorteUrl).catch(() => null);
     if (guardado) return guardado;
   }
-  const chave = process.env.FAL_KEY;
-  if (!chave) return null;
+  if (!process.env.FAL_KEY) return null;
   try {
     const original = await lerMidia(m.url);
     if (!original) return null;
     // A mesma base que a arte usa (orientada e no teto de 2400), para o recorte casar pixel a pixel.
     const base = await sharp(original).rotate().resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
-    const r = await fetch(`https://fal.run/${MODELO_DO_RECORTE}`, {
-      method: "POST",
-      headers: { Authorization: `Key ${chave}`, "content-type": "application/json" },
-      body: JSON.stringify({ image_url: `data:image/jpeg;base64,${base.toString("base64")}`, model: "General Use (Heavy)", operating_resolution: "2048x2048", output_format: "png", refine_foreground: true }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (!r.ok) throw new Error(`fal.ai HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
-    const d = (await r.json()) as { image?: { url?: string } };
-    if (!d.image?.url) throw new Error("fal.ai não devolveu a imagem");
-    const png = Buffer.from(await (await fetch(d.image.url, { signal: AbortSignal.timeout(60_000) })).arrayBuffer());
-    const { gravarCustoDeImagem } = await import("@/lib/media/usage");
-    gravarCustoDeImagem(MODELO_DO_RECORTE, CUSTO_DO_RECORTE, { projectId: m.projectId, operation: "material_recorte" });
-    // Recorte que sobrou quase vazio (sem pessoa de verdade) não serve.
-    const st = await sharp(png).ensureAlpha().extractChannel(3).stats();
-    if ((st.channels[0]?.mean ?? 0) < 6) return null;
+    const png = await recortarPessoaNoFal(base, { projectId: m.projectId, operation: "material_recorte" });
+    if (!png) return null;
     const salvo = await put(`materiais/${m.projectId}/recorte-${m.id}.png`, png, { ...midiaPrivada(), contentType: "image/png", addRandomSuffix: true });
     await prisma.materialDoCliente.update({ where: { id }, data: { recorteUrl: salvo.url } });
     return png;
@@ -172,6 +158,33 @@ export async function recorteDoMaterial(id: string): Promise<Buffer | null> {
     console.warn("[materiais] recorte falhou:", e instanceof Error ? e.message : e);
     return null;
   }
+}
+
+/**
+ * A pessoa recortada de QUALQUER foto (05/10): o mesmo BiRefNet, para a imagem
+ * que o modelo de imagem gerou a partir da foto de referência (os modelos
+ * "você" do book, lib/media/arte-com-frase.tsx). Sem chave ou sem pessoa de
+ * verdade no resultado, null. Custo gravado em `ai_usage` na operação dada.
+ */
+export async function recortarPessoaNoFal(jpeg: Buffer, ctx: { projectId?: string; operation: string }): Promise<Buffer | null> {
+  const chave = process.env.FAL_KEY;
+  if (!chave) return null;
+  const r = await fetch(`https://fal.run/${MODELO_DO_RECORTE}`, {
+    method: "POST",
+    headers: { Authorization: `Key ${chave}`, "content-type": "application/json" },
+    body: JSON.stringify({ image_url: `data:image/jpeg;base64,${jpeg.toString("base64")}`, model: "General Use (Heavy)", operating_resolution: "2048x2048", output_format: "png", refine_foreground: true }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!r.ok) throw new Error(`fal.ai HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
+  const d = (await r.json()) as { image?: { url?: string } };
+  if (!d.image?.url) throw new Error("fal.ai não devolveu a imagem");
+  const png = Buffer.from(await (await fetch(d.image.url, { signal: AbortSignal.timeout(60_000) })).arrayBuffer());
+  const { gravarCustoDeImagem } = await import("@/lib/media/usage");
+  gravarCustoDeImagem(MODELO_DO_RECORTE, CUSTO_DO_RECORTE, ctx);
+  // Recorte que sobrou quase vazio (sem pessoa de verdade) não serve.
+  const st = await sharp(png).ensureAlpha().extractChannel(3).stats();
+  if ((st.channels[0]?.mean ?? 0) < 6) return null;
+  return png;
 }
 
 /** A caixa da pessoa no recorte (em pixels da base), pelo canal alfa. */

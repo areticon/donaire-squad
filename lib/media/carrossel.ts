@@ -9,7 +9,9 @@ import {
   laminaGuardada,
   guardarLamina,
 } from "@/lib/media/checkpoint-do-carrossel";
-import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, fundoDoModeloPorPrompt, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, pecaNoModeloComPrompt, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { promptDoModelo } from "@/lib/modelos-de-arte/prompts-com-foto";
+import { avisoDoRecuo } from "@/lib/media/aviso-da-arte";
 import type { MaterialDaMarca } from "@/lib/materiais/escolha";
 
 /**
@@ -300,25 +302,23 @@ export async function desenharCarrossel(opcoes: {
     // O MODELO POR PROMPT (05/10): a colagem da lâmina vem do modelo de
     // imagem (com a foto do cliente de referência quando há) e a frase entra
     // em código. Sem o fundo, a lâmina segue o caminho de sempre.
-    if (modeloDoCarrossel?.prompt) {
+    // Desde a regra geral de 05/10 vale para TODO modelo com foto, e a
+    // referência vai primeiro ao GPT Image 2 ou ao Gemini (gerador-com-referencia.ts).
+    if (modeloDoCarrossel && promptDoModelo(modeloDoCarrossel)) {
       const marcaDaLamina = { ...marca, pagina: { i, total: opcoes.roteiro.length } };
-      const fundo = await fundoDoModeloPorPrompt({
-        modelo: modeloDoCarrossel as typeof modeloDoCarrossel & { prompt: string },
+      const composta = await pecaNoModeloComPrompt({
+        modelo: modeloDoCarrossel,
         frase: opcoes.roteiro[i].frase,
         marca: marcaDaLamina,
         largura: formato.largura,
         altura: formato.altura,
         material,
-        desenhista: async (prompt, proporcao) => {
-          const r = await gerarImagem(prompt, proporcao, "hd", ctx, { tipo: "colagem" });
-          const aviso = avisoDoRecuoDaArte(r.modelo);
-          if (aviso && !avisos.includes(aviso)) avisos.push(aviso);
-          return r.dataUrl;
-        },
+        cena: opcoes.roteiro[i].visual ?? null,
       });
-      if (fundo) {
-        const composta = await comporFraseNaArte({ arte: null, frase: opcoes.roteiro[i].frase, marca: marcaDaLamina, largura: formato.largura, altura: formato.altura, fundoGerado: fundo });
-        uri = (await ajustarParaFormato(composta, formato)).dataUri;
+      if (composta) uri = (await ajustarParaFormato(composta, formato)).dataUri;
+      else {
+        const aviso = avisoDoRecuo([opcoes.roteiro[i].frase]);
+        if (aviso && !avisos.includes(aviso)) avisos.push(aviso);
       }
     }
     if (!uri && material) {

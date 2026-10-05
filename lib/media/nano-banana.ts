@@ -492,7 +492,7 @@ export async function generateImage(
 }
 
 /** A cascata do Google: o recuo desde 01/10, na mesma ordem de antes. */
-async function gerarNoGoogle(prompt: string, aspectRatio: AspectRatio, quality: ImageQuality, ctx: ContextoMidia): Promise<ImagemGerada> {
+export async function gerarNoGoogle(prompt: string, aspectRatio: AspectRatio, quality: ImageQuality, ctx: ContextoMidia): Promise<ImagemGerada> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   // ── 1. Imagen 3 via Gemini API key (melhor qualidade, só precisa da API key) ──
@@ -597,7 +597,7 @@ export async function comporSobreImagemComCusto(
 }
 
 /** A edição pelo Nano Banana: o recuo desde 01/10. */
-async function comporNoGoogle(
+export async function comporNoGoogle(
   prompt: string,
   imagemBase64: string,
   mimeType: string,

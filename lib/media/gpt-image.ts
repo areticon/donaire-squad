@@ -196,3 +196,53 @@ export async function gerarImagemOpenAIComCusto(
   if (ctx) recordImagemPorTokens(modelo, uso, ctx);
   return { dataUrl: `data:image/png;base64,${b64}`, modelo, custoUsd };
 }
+
+/**
+ * A EDIÇÃO COM IMAGEM DE REFERÊNCIA no GPT Image 2 (05/10/2026).
+ *
+ * Decisão do Bruno: a arte de post sai primeiro do GPT Image 2 ou do Gemini
+ * COM A FOTO DO CLIENTE DE REFERÊNCIA, e a Higgsfield fica em terceiro
+ * (lib/media/gerador-com-referencia.ts). Aqui é o `images/edits` da OpenAI:
+ * a foto vai como arquivo (multipart) junto do prompt, e o modelo compõe a
+ * cena mantendo a pessoa. Mesmo custo por token do `generations`, mais os
+ * tokens da imagem de entrada, gravados em `ai_usage` pelo mesmo caminho.
+ * Sem chave lança `SemChaveDaOpenAI`; sem saldo, `SemSaldoNaOpenAI`.
+ */
+export async function editarImagemOpenAIComCusto(
+  prompt: string,
+  referencia: { buffer: Buffer; mime: string },
+  proporcao: ProporcaoPedida,
+  ctx: ContextoMidia | undefined,
+  qualidade: QualidadeDaOpenAI
+): Promise<{ dataUrl: string; modelo: string; custoUsd: number }> {
+  const chave = process.env.OPENAI_API_KEY;
+  if (!chave) throw new SemChaveDaOpenAI();
+  const size = TAMANHO_ACEITO[proporcao] ?? "1024x1536";
+  const form = new FormData();
+  form.append("model", "gpt-image-2");
+  form.append("prompt", prompt);
+  form.append("size", size);
+  form.append("quality", qualidade);
+  form.append("n", "1");
+  const extensao = referencia.mime === "image/png" ? "png" : referencia.mime === "image/webp" ? "webp" : "jpg";
+  form.append("image", new Blob([new Uint8Array(referencia.buffer)], { type: referencia.mime }), `referencia.${extensao}`);
+  const res = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${chave}` },
+    body: form,
+    signal: AbortSignal.timeout(300_000),
+  });
+  if (!res.ok) {
+    const corpo = await res.text();
+    if (/insufficient_quota|no credits remaining/i.test(corpo)) throw new SemSaldoNaOpenAI();
+    throw new Error(`GPT Image 2 (edição) recusou (HTTP ${res.status}): ${corpo.slice(0, 220)}`);
+  }
+  const dados = (await res.json()) as { data?: Array<{ b64_json?: string }>; usage?: UsoDaImagem };
+  const b64 = dados.data?.[0]?.b64_json;
+  if (!b64) throw new Error("GPT Image 2 (edição) respondeu sem imagem.");
+  const modelo = `${MODELO_GRAVADO[qualidade]}-edit`;
+  const uso = dados.usage;
+  const custoUsd = uso && (uso.output_tokens || uso.input_tokens) ? custoDaImagemPorTokens(uso) : (precoDaImagem(MODELO_GRAVADO[qualidade]) ?? 0);
+  if (ctx) recordImagemPorTokens(modelo, uso, ctx);
+  return { dataUrl: `data:image/png;base64,${b64}`, modelo, custoUsd };
+}
