@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth/server";
 import { soQuemConectaRedes } from "@/lib/equipe/permissoes";
 import { returnToSeguro } from "@/lib/oauth/return-to";
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { assinarEstado } from "@/lib/oauth/estado-assinado";
 import { getInstagramAuthUrl, instagramConfigured } from "@/lib/oauth/instagram";
 
 export async function GET(req: NextRequest) {
@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
   const barrado = await soQuemConectaRedes(userId, projectId);
   if (barrado) return barrado;
 
-  const state = crypto.randomBytes(16).toString("hex");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
   const redirectUri = `${appUrl}/api/social/instagram/callback`;
 
@@ -32,8 +31,14 @@ export async function GET(req: NextRequest) {
     req.nextUrl.searchParams.get("returnTo"),
     defaultReturn
   );
+  // O state leva, assinado, quem pediu, o projeto e a volta: o callback pode
+  // cair no navegador de dentro do app do Instagram/Facebook, sem os cookies
+  // daqui. Ver lib/oauth/estado-assinado.ts.
+  const state = assinarEstado({ userId, projectId, returnTo });
 
-  const res = NextResponse.redirect(getInstagramAuthUrl(redirectUri, state));
+  const res = NextResponse.redirect(getInstagramAuthUrl(redirectUri, state, {
+      semForcarLogin: req.nextUrl.searchParams.get("tentativa") === "2",
+    }));
   const cookieOpts = { httpOnly: true, maxAge: 600, path: "/" } as const;
   res.cookies.set("oauth_state", state, cookieOpts);
   res.cookies.set("oauth_user_id", userId, cookieOpts);

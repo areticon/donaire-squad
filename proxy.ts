@@ -26,6 +26,9 @@ const PUBLIC_ROUTES: RegExp[] = [
   // O convite da equipe (01/10) é aberto por quem ainda não tem conta: a
   // própria página pede para entrar ou criar a conta com o e-mail convidado.
   /^\/convite\//,
+  // A volta do login da rede (04/10): no celular ela cai no navegador de
+  // dentro do app do Instagram/Facebook, sem sessão. Ver app/conectado/page.tsx.
+  /^\/conectado/,
 ];
 
 export function proxy(req: NextRequest) {

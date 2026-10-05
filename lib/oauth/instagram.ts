@@ -39,7 +39,11 @@ export function instagramConfigured(): boolean {
   return Boolean(process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET);
 }
 
-export function getInstagramAuthUrl(redirectUri: string, state: string): string {
+export function getInstagramAuthUrl(
+  redirectUri: string,
+  state: string,
+  opcoes: { semForcarLogin?: boolean } = {}
+): string {
   const params = new URLSearchParams({
     client_id: process.env.INSTAGRAM_APP_ID!,
     redirect_uri: redirectUri,
@@ -51,6 +55,13 @@ export function getInstagramAuthUrl(redirectUri: string, state: string): string 
     enable_fb_login: "0",
     force_authentication: "1",
   });
+
+  // A SEGUNDA TENTATIVA NÃO FORÇA O LOGIN (04/10). Quem ficou preso no
+  // Instagram depois de entrar (feed, "salvar login", código de confirmação de
+  // conta nova) já tem a sessão lá; forçar o login de novo devolvia a pessoa ao
+  // mesmo beco. Sem `force_authentication`, o Instagram vai direto para a tela
+  // de autorização da conta que está logada.
+  if (opcoes.semForcarLogin) params.delete("force_authentication");
 
   /**
    * A TELA DE CONSENTIMENTO DO INSTAGRAM, e por que ela NAO e forcada aqui.
