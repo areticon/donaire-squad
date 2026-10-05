@@ -30,7 +30,7 @@ import {
 import { legendaDecidida } from "@/lib/media/legenda-escolhida";
 import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
-import { mapaDePalavras, remapearPlano, type RoteiroDoVideo } from "@/lib/media/roteiro-em-texto";
+import { mapaDePalavras, remapearPlano, sugestoesNaFala, type PedidoDaCena, type RoteiroDoVideo } from "@/lib/media/roteiro-em-texto";
 import { faixasDaMedida, janelaDoZoomNaTela, pontoMaisPerto, webcamComFolga, type FaixaDeTela } from "@/lib/media/faixas-de-tela";
 import {
   agendaDoBloco,
@@ -477,6 +477,8 @@ export function contextoDoBloco(p: {
   /** Completo curto (em pé ou até 4 min): ritmo de corte, não de vídeo longo. */
   curto?: boolean;
   formato?: Formato;
+  /** Os pedidos do cliente neste bloco (05/10), já em linhas no tempo do bloco. */
+  pedidos?: string[];
 }): string {
   const min = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
   const emPe = p.formato === "9:16";
@@ -502,8 +504,19 @@ export function contextoDoBloco(p: {
           .join("; ")}. Ali a IMAGEM é a tela: use narrador-cheio (que mostra a tela inteira, com a webcam), nunca canto, foto, B-roll, cartela, colagem ou recorte por cima. Edite a tela como tela: a cada 6 a 10 s uma CHAMADA sobre o que está sendo mostrado, com palavras DITAS (tarja, marca-texto ou palavra, até 4 palavras, zona "topo" ou "base"), e entre as chamadas, cenas narrador-cheio com zoom-in-lento (o código leva o zoom para a parte da tela que importa). Nunca deixe uma faixa de tela sem chamada nenhuma.`
       : "",
     p.jaUsado.length ? `JÁ USADO nos blocos anteriores (não repita a mesma imagem nem o mesmo título):\n${p.jaUsado.slice(-40).map((u) => `- ${u}`).join("\n")}` : "",
+    p.pedidos?.length
+      ? `PEDIDOS DO CLIENTE NESTE BLOCO (obrigatórios; valem sobre as cotas e o ritmo naquele trecho). Ele leu a fala e pediu o ajuste ou o efeito; atenda cada um no trecho pedido, e "sem efeito" deixa o trecho em narrador cheio parado:\n${p.pedidos.map((x) => `- ${x}`).join("\n")}`
+      : "",
   ];
   return linhas.filter(Boolean).join("\n");
+}
+
+/** Os pedidos do cliente que caem no bloco, em linhas no tempo DO BLOCO (o diretor vê o bloco começando no zero). */
+export function pedidosNoBloco(pedidos: PedidoDaCena[] | undefined, b: BlocoDoCompleto): string[] {
+  const min = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  return (pedidos ?? [])
+    .filter((x) => x.inicio < b.fim && x.fim > b.inicio)
+    .map((x) => `de ${min(Math.max(0, x.inicio - b.inicio))} a ${min(Math.max(0, Math.min(b.fim, x.fim) - b.inicio))} do bloco, onde a fala é "${x.fala.slice(0, 120)}": "${x.texto}"`);
 }
 
 /** O que um plano já usou, em linhas curtas, para os blocos seguintes não repetirem. */
@@ -1431,11 +1444,13 @@ async function dirigir(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<vo
     const jaUsado = blocos.flatMap((b) => (b.plano ? usadoNoPlano(b.plano) : []));
     const recortes = await recortesDoProjeto(v.projectId).catch(() => []);
     const cotas = cotasDoCompleto(fala.duracao, formato);
+    // As sugestões cena a cena do roteiro (05/10), no tempo desta fala: cada bloco recebe as suas.
+    const pedidos = sugestoesDoCliente(lido);
     await Promise.all(
       pendentes.map(async ({ b, i }) => {
         try {
           b.plano = await dirigirBloco({
-            v, bloco: b, indice: i, total: blocos.length, fala, analise, rosto, pessoa, jaUsado, recortesProntos: recortes.map((r) => r.descricao), formato, cotas,
+            v, bloco: b, indice: i, total: blocos.length, fala, analise, rosto, pessoa, jaUsado, recortesProntos: recortes.map((r) => r.descricao), formato, cotas, pedidos,
             // Tetos do replanejamento por script (custo combinado com o dono).
             ...(lido.tetosDoReplanejamento ? { cenasDeCinema: lido.tetosDoReplanejamento.cinema === 0 ? 0 : undefined } : {}),
           });
@@ -1503,6 +1518,8 @@ export async function dirigirBloco(p: {
   cotas?: CotaDeInsercoes[];
   /** As faixas de tela no tempo da fala do completo, com o que mostram (01/10). */
   faixas?: FaixaDeTela[];
+  /** As sugestões cena a cena do cliente (05/10), no tempo da fala do completo. */
+  pedidos?: PedidoDaCena[];
 }): Promise<PlanoDeMontagem> {
   const formato = p.formato ?? "16:9";
   const doBloco = falaDoBloco(p.fala.palavras, p.bloco);
@@ -1514,6 +1531,7 @@ export async function dirigirBloco(p: {
     bloco: p.bloco,
     resumoDoVideo: resumoDoVideo(p.v.clips),
     jaUsado: p.jaUsado,
+    pedidos: pedidosNoBloco(p.pedidos, p.bloco),
     tela: telaNoBloco(p.fala.palavras, p.bloco, p.analise.trechosDeCamera),
     telasComMostra: p.faixas ? telasComMostraNoBloco(p.fala.palavras, p.bloco, p.faixas) : undefined,
     imagens: p.imagens ?? Math.max(3, Math.round(minutos * (curto ? IMAGENS_POR_MINUTO_NO_CURTO : IMAGENS_POR_MINUTO_NO_COMPLETO))),
@@ -1978,7 +1996,20 @@ async function entradaDoPlanoDoCompleto(v: VideoDoCompleto, m: MontagemDoComplet
     quadros,
     projectId: v.projectId,
     imagens: tetoDeImagens("completo", m.fala!.duracao),
+    // As sugestões cena a cena do roteiro (05/10) viram instrução obrigatória do trecho no diretor.
+    pedidos: sugestoesDoCliente(m),
   };
+}
+
+/**
+ * AS SUGESTÕES CENA A CENA que o cliente deixou na tela de roteiro (05/10),
+ * levadas para a fala da montagem (a transcrição do completo pronto) pelo
+ * mesmo alinhamento por sequência do plano.
+ */
+function sugestoesDoCliente(m: MontagemDoCompleto): PedidoDaCena[] {
+  const sugestoes = m.roteiro?.completo?.sugestoes ?? [];
+  if (!sugestoes.length || !m.fala?.palavras?.length) return [];
+  return sugestoesNaFala(sugestoes, m.roteiro?.completo?.fala?.palavras ?? [], m.fala.palavras);
 }
 
 /** A revisão do completo por comando: sem nota (ou sem rodada), o final vai ao ar; com nota, só os blocos com nota voltam ao diretor. */

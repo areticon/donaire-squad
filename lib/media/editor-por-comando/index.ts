@@ -9,7 +9,8 @@ import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import { corrigirPlano, escreverPlano, type EntradaDoDiretor, type NotaDoRevisor, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
-import { contraste, papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
+import { acentosDoVox } from "@/lib/media/acentos-do-vox";
+import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -144,49 +145,13 @@ export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: 
   };
 }
 
-/** O papel envelhecido das peças Vox (a média de worker/fontes/vox/papel.jpg), para medir contraste. */
-const PAPEL_DO_VOX = "#e6d8b8";
-const TINTA_DO_VOX = "#16130e";
-const CREME = "#fff8ec";
-
-export type AcentosDoVox = {
-  /** A faixa do marca-texto (e a tarja dos olhos). */
-  realce?: string;
-  /** A letra por cima do realce: a que dá contraste de leitura (4,5:1 ou mais). */
-  tintaNoRealce?: string;
-  /** Títulos e texto escuro sobre o papel. */
-  tinta?: string;
-  /** A tinta do carimbo. */
-  carimbo?: string;
-  /** O fio entre recortes e o marco da linha do tempo. */
-  fio?: string;
-};
-
 /**
- * Os acentos da marca no Vox, PELA HIERARQUIA da paleta (05/10,
- * lib/media/papeis-da-paleta.ts), e não pela cor "que combina mais" com o
- * papel: o marca-texto é o DESTAQUE principal (com letra clara quando ele é
- * escuro), o texto e os títulos vão na outra cor principal quando ela é
- * escura, e o carimbo também. As cores de apoio (dourado, creme, verde) não
- * entram. Cada uso confere o contraste; o que não passa volta ao do Vox.
- * Ex.: Fé & Gestão (#1f2f3a,#98092b,#df931b,#e0daa3,#9fb982) dá marca-texto
- * vinho #98092b com letra creme, títulos e carimbo marinho #1f2f3a e fio vinho.
+ * Os acentos da marca no Vox pela hierarquia da paleta moram em
+ * lib/media/acentos-do-vox.ts (módulo puro, 05/10): a prévia do estilo na
+ * tela faz a mesma conta que a montagem. Re-exportados daqui para quem já
+ * importava deste módulo.
  */
-export function acentosDoVox(paleta: string[]): AcentosDoVox {
-  const p = papeisDaPaleta(paleta);
-  if (!p) return {};
-  const realce = p.destaque;
-  // A letra no realce: a mais legível entre o creme e a tinta do Vox (ou o escuro da marca).
-  const opcoes = [CREME, p.escuro ?? TINTA_DO_VOX, TINTA_DO_VOX];
-  const tintaNoRealce = opcoes.sort((a, b) => contraste(b, realce) - contraste(a, realce))[0];
-  const saida: AcentosDoVox = { realce, tintaNoRealce };
-  // O escuro principal (a segunda cor, ou a primeira quando ela é tinta) escreve os títulos e o carimbo.
-  if (p.escuro && contraste(p.escuro, PAPEL_DO_VOX) >= 7) saida.tinta = p.escuro;
-  const carimbo = [p.segunda, realce].find((c) => c && contraste(c, PAPEL_DO_VOX) >= 4.5);
-  if (carimbo) saida.carimbo = carimbo;
-  if (contraste(realce, PAPEL_DO_VOX) >= 3) saida.fio = realce;
-  return saida;
-}
+export { acentosDoVox, type AcentosDoVox } from "@/lib/media/acentos-do-vox";
 
 /** A paleta inteira do projeto (projects.colorPalette), em hex. */
 export function paletaDoProjeto(colorPalette: string | null | undefined): string[] {
@@ -215,6 +180,12 @@ export type EntradaDoPlano = {
   /** A prova grava em disco: as cenas e os recortes vão para cá. */
   local?: (nome: string, dados: Buffer) => Promise<string>;
   guardaDosRecortes?: GuardaDoRecorte;
+  /**
+   * OS PEDIDOS DO CLIENTE CENA A CENA (05/10, tela de roteiro do completo):
+   * "zoom aqui", "põe um mapa", "sem efeito nesta parte", já no tempo desta
+   * fala. O diretor os trata como instrução obrigatória daquele trecho.
+   */
+  pedidos?: PedidoDaCena[];
 };
 
 export type PlanoPorComando = {
@@ -241,6 +212,7 @@ function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: st
     imagens: e.imagens,
     quadros: e.quadros,
     projectId: e.projectId,
+    pedidos: e.pedidos,
   };
 }
 

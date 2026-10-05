@@ -68,7 +68,104 @@ export type RoteiroDoCompleto = {
   estiloId?: string;
   /** A revisão de cada bloco, na ordem dos blocos (01/10). */
   revisoes?: Array<ResumoDaRevisao | null>;
+  /**
+   * AS SUGESTÕES DO CLIENTE CENA A CENA (05/10, pedido do Bruno: "preciso ver
+   * cena a cena para analisar e sugerir efeitos"). Texto curto, sem IA e sem
+   * custo, guardado aqui e lido pelo diretor na montagem: no editor por
+   * comando entra como instrução obrigatória do trecho; no caminho antigo vai
+   * ao diretor de bloco (quando o completo é dirigido na montagem) e preenche
+   * o "Outra ideia" da cena. Ver lib/media/sugestoes-do-completo.ts.
+   */
+  sugestoes?: SugestaoDaCena[];
 };
+
+/** Uma sugestão do cliente num trecho do completo, no tempo da fala do roteiro. */
+export type SugestaoDaCena = {
+  /** Índices de palavra na fala do completo (inclusivos): sobrevivem ao alinhamento com a fala da montagem. */
+  de: number;
+  ate: number;
+  inicio: number;
+  fim: number;
+  /** A fala do trecho quando o cliente sugeriu (o diretor lê; a tela confere). */
+  fala: string;
+  texto: string;
+  em: string;
+};
+
+/** A sugestão já levada para a fala de quem vai montar (o diretor lê o tempo e a fala de lá). */
+export type PedidoDaCena = { inicio: number; fim: number; fala: string; texto: string };
+
+/**
+ * As sugestões no tempo de OUTRA fala (a transcrição do completo pronto, na
+ * montagem): alinhamento por sequência de palavras, o mesmo do plano
+ * (`mapaDePalavras`). Sem fala de origem, valem os tempos gravados.
+ */
+export function sugestoesNaFala(sugestoes: SugestaoDaCena[] | null | undefined, origem: PalavraNoCorte[] | null | undefined, alvo: PalavraNoCorte[]): PedidoDaCena[] {
+  const lista = (sugestoes ?? []).filter((s) => s.texto.trim());
+  if (!lista.length) return [];
+  if (!origem?.length || !alvo.length) return lista.map((s) => ({ inicio: s.inicio, fim: s.fim, fala: s.fala, texto: s.texto }));
+  const mapa = mapaDePalavras(origem, alvo);
+  const m = (i: number) => mapa[Math.max(0, Math.min(mapa.length - 1, i))] ?? 0;
+  return lista.map((s) => {
+    const de = m(s.de);
+    const ate = Math.max(de, m(s.ate));
+    return { inicio: alvo[de]?.inicio ?? s.inicio, fim: alvo[ate]?.fim ?? s.fim, fala: s.fala, texto: s.texto };
+  });
+}
+
+/** A sugestão que cobre um trecho (metade do menor dos dois intervalos, no mínimo). */
+export function sugestaoDoTrecho(sugestoes: SugestaoDaCena[] | null | undefined, inicio: number, fim: number): SugestaoDaCena | null {
+  let melhor: SugestaoDaCena | null = null;
+  let maior = 0;
+  for (const s of sugestoes ?? []) {
+    const d = Math.min(fim, s.fim) - Math.max(inicio, s.inicio);
+    const menor = Math.max(0.2, Math.min(fim - inicio, s.fim - s.inicio));
+    if (d > maior && d >= menor * 0.5) {
+      maior = d;
+      melhor = s;
+    }
+  }
+  return melhor;
+}
+
+/**
+ * OS TRECHOS DA FALA sem plano (o completo cuja edição é escrita depois da
+ * aprovação, ou o plano que falhou): frases inteiras (ponto final, pausa de
+ * 0,7 s ou 28 palavras) juntas em trechos de 12 a 25 s, para o cliente ler
+ * e sugerir efeito mesmo sem cena planejada.
+ */
+export function trechosDaFala(palavras: PalavraNoCorte[], duracao: number): Array<{ de: number; ate: number; inicio: number; fim: number; fala: string }> {
+  const frases: Array<{ de: number; ate: number }> = [];
+  let de = 0;
+  for (let i = 0; i < palavras.length; i++) {
+    const pausa = i + 1 < palavras.length ? palavras[i + 1].inicio - palavras[i].fim : Infinity;
+    const fecha = i === palavras.length - 1 || /[.!?…]["”]?$/.test(palavras[i].texto) || pausa >= 0.7 || i - de + 1 >= 28;
+    if (!fecha) continue;
+    frases.push({ de, ate: i });
+    de = i + 1;
+  }
+  const saida: Array<{ de: number; ate: number; inicio: number; fim: number; fala: string }> = [];
+  let atual: { de: number; ate: number } | null = null;
+  const fechar = () => {
+    if (!atual) return;
+    const proxima = palavras[atual.ate + 1];
+    saida.push({ de: atual.de, ate: atual.ate, inicio: palavras[atual.de].inicio, fim: proxima ? proxima.inicio : duracao, fala: palavras.slice(atual.de, atual.ate + 1).map((p) => p.texto).join(" ") });
+    atual = null;
+  };
+  for (const f of frases) {
+    if (!atual) {
+      atual = { ...f };
+      continue;
+    }
+    const dur = palavras[f.ate].fim - palavras[atual.de].inicio;
+    if (dur > 25 || palavras[atual.ate].fim - palavras[atual.de].inicio >= 12) fechar();
+    if (!atual) atual = { ...f };
+    else atual.ate = f.ate;
+  }
+  fechar();
+  if (saida.length) saida[0].inicio = 0;
+  return saida;
+}
 
 /** `completoMontagem.roteiro`: o que vale para o vídeo inteiro. */
 export type RoteiroDoVideo = {
@@ -633,11 +730,32 @@ export function revisaoNaTela(r: ResumoDaRevisao | null | undefined): string | n
   return null;
 }
 
+/**
+ * UM TRECHO DO COMPLETO, CENA A CENA (05/10): o tempo, a fala exata daquele
+ * pedaço, a cena planejada (com as peças) quando há plano, e a sugestão que
+ * o cliente deixou. Sem plano, os trechos são frases da fala.
+ */
+export type TrechoDoCompletoNaTela = {
+  indice: number;
+  de: number;
+  ate: number;
+  inicio: number;
+  fim: number;
+  fala: string;
+  /** A cena planejada neste trecho; null quando a edição é escrita depois da aprovação. */
+  cena: CenaNaTela | null;
+  sugestao: string | null;
+};
+
 export type CompletoNaTela = {
   duracao: number;
   insercoes: CenaNaTela[];
   cenas: number;
   semCenas: string | null;
+  /** O completo cena a cena (05/10): toda cena do plano, ou os trechos da fala sem plano. */
+  trechos?: TrechoDoCompletoNaTela[];
+  /** Quantas sugestões o cliente deixou. */
+  sugestoes?: number;
   /** A abertura com os melhores momentos (01/10). */
   abertura?: AberturaNaTela | null;
   /** As faixas de tela compartilhada no tempo do completo, para o cliente conferir. */
@@ -754,7 +872,13 @@ export function completoNaTela(
   extra: { abertura?: AberturaDoCompleto | null; telas?: Array<{ inicio: number; fim: number; mostra: string[] }> } = {}
 ): CompletoNaTela {
   const abertura = aberturaNaTela(extra.abertura);
+  const sugestoes = (c?.sugestoes ?? []).filter((s) => s.texto.trim()).length;
   if (!c?.plano) {
+    // Sem plano, o cena a cena são os trechos da fala (05/10): o cliente lê e sugere mesmo assim.
+    const palavras = c?.fala?.palavras ?? [];
+    const trechos: TrechoDoCompletoNaTela[] = palavras.length
+      ? trechosDaFala(palavras, c!.fala.duracao).map((t, indice) => ({ indice, ...t, cena: null, sugestao: sugestaoDoTrecho(c?.sugestoes, t.inicio, t.fim)?.texto ?? null }))
+      : [];
     return {
       duracao: c?.fala.duracao ?? duracaoSec,
       insercoes: [],
@@ -766,16 +890,27 @@ export function completoNaTela(
           : "O vídeo completo sai com a edição de fala; as inserções são planejadas depois da aprovação.",
       abertura,
       telas: extra.telas,
+      trechos,
+      sugestoes,
     };
   }
   const plano = c.plano;
-  const insercoes = plano.cenas
-    .map((cena, i) => ({ cena, i }))
-    .filter(({ cena }) => cenaEhInsercao(cena) || cena.ajuste === "removido")
-    .map(({ i }) => cenaNaTela(plano, i, c.fala, familia, c.planoOriginal));
+  const todas = plano.cenas.map((_, i) => cenaNaTela(plano, i, c.fala, familia, c.planoOriginal));
+  const insercoes = todas.filter((x, i) => cenaEhInsercao(plano.cenas[i]) || plano.cenas[i].ajuste === "removido");
+  // O cena a cena (05/10): TODA cena do plano, com a fala e a sugestão do cliente.
+  const trechos: TrechoDoCompletoNaTela[] = todas.map((cena, i) => ({
+    indice: i,
+    de: plano.cenas[i].de,
+    ate: plano.cenas[i].ate,
+    inicio: cena.inicio,
+    fim: cena.fim,
+    fala: cena.fala,
+    cena,
+    sugestao: sugestaoDoTrecho(c.sugestoes, cena.inicio, cena.fim)?.texto ?? null,
+  }));
   // Inserções por minuto: o cliente vê que o vídeo está coberto do começo ao fim.
   const minutos = Math.max(1, Math.ceil(c.fala.duracao / 60));
   const porMinuto = Array.from({ length: minutos }, () => 0);
   for (const x of insercoes) if (x.efeito) porMinuto[Math.min(minutos - 1, Math.floor(x.inicio / 60))]++;
-  return { duracao: c.fala.duracao, insercoes, cenas: plano.cenas.length, semCenas: null, abertura, telas: extra.telas, porMinuto };
+  return { duracao: c.fala.duracao, insercoes, cenas: plano.cenas.length, semCenas: null, abertura, telas: extra.telas, porMinuto, trechos, sugestoes };
 }

@@ -16,6 +16,7 @@ import {
   Film,
   Hash,
   Image as ImageIcon,
+  Lightbulb,
   MessageSquareQuote,
   MoveRight,
   PictureInPicture2,
@@ -44,7 +45,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EscolhaDaLegenda } from "@/components/video/escolha-da-legenda";
 import { ControleDoCorte } from "@/components/video/controle-do-corte";
-import { mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela } from "@/lib/media/roteiro-em-texto";
+import { mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela, type TrechoDoCompletoNaTela } from "@/lib/media/roteiro-em-texto";
 import { creditosNaTela } from "@/lib/media/limits";
 
 /**
@@ -177,14 +178,16 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
     });
   }
 
-  async function aprovar() {
+  // A lista vem por parâmetro (05/10): o botão da barra aprova os escolhidos, e
+  // o do vídeo completo aprova com lista vazia, independente dos cortes marcados.
+  async function aprovar(lista: number[]) {
     setErro(null);
     setAprovando(true);
     try {
       const r = await fetch(`/api/videos/${tela.videoId}/roteiro/aprovar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ escolhidos }),
+        body: JSON.stringify({ escolhidos: lista }),
       });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) {
@@ -385,23 +388,55 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
         >
           <AberturaDoCompleto completo={tela.completo} creditos={aberturaCreditos} ocupado={ocupado} naAbertura={podeMexerNaAbertura ? naAbertura : undefined} />
           <CoberturaETelas completo={tela.completo} />
-          {tela.completo.semCenas ? (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          {tela.completo.semCenas && (
+            <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
               {tela.completo.semCenas}
             </p>
+          )}
+          {/* O CENA A CENA DO COMPLETO (05/10): toda cena com o tempo, a fala,
+              as peças planejadas e o campo "sugerir ajuste ou efeito". Antes
+              só as inserções apareciam, e o Bruno, que quer só o completo,
+              não tinha como analisar o vídeo inteiro. */}
+          {tela.completo.trechos?.length ? (
+            <CenaACenaDoCompleto
+              completo={tela.completo}
+              aberto={aberto}
+              ocupado={ocupado}
+              novaIdeia={tela.creditos.novaIdeia}
+              naCena={(cena, a, texto) => naCena({ alvo: "completo", cena }, a, texto)}
+              naSugestao={tela.status === "roteiro" && !editando ? (t, texto) => acao(`/api/videos/${tela.videoId}/roteiro/sugestao`, { inicio: t.inicio, fim: t.fim, texto }, `sugestao:${t.indice}`) : undefined}
+            />
           ) : (
-            <div className="space-y-2">
-              {tela.completo.insercoes.map((cena) => (
-                <LinhaDaCena
-                  key={cena.indice}
-                  cena={cena}
-                  aberto={aberto}
-                  ocupado={ocupado}
-                  chave={chaveDe({ alvo: "completo", cena: cena.indice })}
-                  novaIdeia={tela.creditos.novaIdeia}
-                  naCena={(a, texto) => naCena({ alvo: "completo", cena: cena.indice }, a, texto)}
-                />
-              ))}
+            !tela.completo.semCenas && (
+              <div className="space-y-2">
+                {tela.completo.insercoes.map((cena) => (
+                  <LinhaDaCena
+                    key={cena.indice}
+                    cena={cena}
+                    aberto={aberto}
+                    ocupado={ocupado}
+                    chave={chaveDe({ alvo: "completo", cena: cena.indice })}
+                    novaIdeia={tela.creditos.novaIdeia}
+                    naCena={(a, texto) => naCena({ alvo: "completo", cena: cena.indice }, a, texto)}
+                  />
+                ))}
+              </div>
+            )
+          )}
+          {/* APROVAR SÓ O COMPLETO (05/10): independente dos cortes marcados
+              acima. Só com o completo planejado (a aprovação com zero cortes
+              exige o plano). */}
+          {aberto && !reed && tela.completo.cenas > 0 && (
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs min-w-0" style={{ color: "var(--text-muted)" }}>
+                Quer só o vídeo completo? Aprove aqui, sem corte nenhum:{" "}
+                <strong style={{ color: "var(--text-primary)" }}>{creditosNaTela(tela.creditos.completo + aberturaCreditos)} créditos</strong>
+                {tela.completo.sugestoes ? `, com ${tela.completo.sugestoes === 1 ? "a sua sugestão" : `as suas ${tela.completo.sugestoes} sugestões`} no roteiro do editor` : ""}.
+              </p>
+              <Button variant="outline" className="w-full sm:w-auto h-auto min-h-10 whitespace-normal py-2 shrink-0" onClick={() => void aprovar([])} disabled={aprovando || Boolean(ocupado)}>
+                {aprovando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Aprovar o vídeo completo
+              </Button>
             </div>
           )}
         </Secao>
@@ -501,7 +536,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
                 </p>
               )}
             </div>
-            <Button size="lg" className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2" onClick={aprovar} disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado)}>
+            <Button size="lg" className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2" onClick={() => void aprovar(escolhidos)} disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado)}>
               {aprovando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {n === 0 ? "Aprovar só o vídeo completo" : "Aprovar e gerar"} ({creditosNaTela(aPagar)} créditos)
             </Button>
@@ -941,6 +976,187 @@ function CoberturaETelas({ completo }: { completo: CompletoNaTela }) {
   );
 }
 
+/**
+ * O CENA A CENA DO VÍDEO COMPLETO (05/10). A mesma linha de cena dos cortes
+ * (tempo, fala exata, peças planejadas, os botões da cena), para TODA cena do
+ * plano, e em cada uma o campo "sugerir ajuste ou efeito", que fica gravado no
+ * roteiro e vai ao diretor na montagem. Sem plano (a edição escrita depois da
+ * aprovação), os trechos são as frases da fala, só com a sugestão. Num vídeo
+ * longo a lista abre filtrada nas cenas com efeito, com o botão para ver todas.
+ */
+function CenaACenaDoCompleto({
+  completo,
+  aberto,
+  ocupado,
+  novaIdeia,
+  naCena,
+  naSugestao,
+}: {
+  completo: CompletoNaTela;
+  aberto: boolean;
+  ocupado: string | null;
+  novaIdeia: number;
+  naCena: (cena: number, acao: "remover" | "editar" | "restaurar" | "nova-ideia", texto?: string) => Promise<boolean>;
+  naSugestao?: (trecho: TrechoDoCompletoNaTela, texto: string) => Promise<boolean>;
+}) {
+  const trechos = completo.trechos ?? [];
+  const comEfeito = trechos.filter((t) => t.cena?.efeito || t.sugestao);
+  const longo = trechos.length > 24 && comEfeito.length > 0;
+  const [todas, setTodas] = useState(!longo);
+  const lista = todas ? trechos : comEfeito;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Cena a cena ({trechos.length} {trechos.length === 1 ? "cena" : "cenas"}
+          {completo.sugestoes ? `, ${completo.sugestoes} ${completo.sugestoes === 1 ? "sugestão sua" : "sugestões suas"}` : ""})
+        </p>
+        {longo && (
+          <button type="button" onClick={() => setTodas(!todas)} className="text-xs font-medium text-orange-400 hover:underline">
+            {todas ? `Só as ${comEfeito.length} com efeito` : `Ver todas as ${trechos.length} cenas`}
+          </button>
+        )}
+      </div>
+      {naSugestao && (
+        <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+          Em cada cena, toque em &quot;Sugerir ajuste ou efeito&quot; e escreva em poucas palavras (um zoom na palavra forte, um mapa, uma cartela, sem efeito aqui). Não custa crédito: a sugestão fica no roteiro e o editor a segue na montagem.
+        </p>
+      )}
+      <div className="space-y-2">
+        {lista.map((t) =>
+          t.cena ? (
+            <LinhaDaCena
+              key={t.indice}
+              cena={t.cena}
+              aberto={aberto}
+              ocupado={ocupado}
+              chave={chaveDe({ alvo: "completo", cena: t.indice })}
+              novaIdeia={novaIdeia}
+              naCena={(a, texto) => naCena(t.indice, a, texto)}
+              sugestao={t.sugestao}
+              naSugestao={naSugestao ? (texto) => naSugestao(t, texto) : undefined}
+              trabalhandoNaSugestao={ocupado === `sugestao:${t.indice}`}
+            />
+          ) : (
+            <LinhaDoTrecho key={t.indice} trecho={t} naSugestao={naSugestao ? (texto) => naSugestao(t, texto) : undefined} trabalhando={ocupado === `sugestao:${t.indice}`} />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Um trecho do completo SEM cena planejada (a edição vem depois da aprovação): o tempo, a fala e a sugestão. */
+function LinhaDoTrecho({ trecho: t, naSugestao, trabalhando }: { trecho: TrechoDoCompletoNaTela; naSugestao?: (texto: string) => Promise<boolean>; trabalhando: boolean }) {
+  return (
+    <div className="rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--border)", background: "var(--bg-primary, transparent)" }}>
+      <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-3">
+        <p className="text-xs font-semibold tabular-nums shrink-0 sm:w-[88px] pt-0.5" style={{ color: t.sugestao ? "var(--accent-orange)" : "var(--text-muted)" }}>
+          {mmss(t.inicio)} a {mmss(t.fim)}
+        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+            <Video className="inline w-3.5 h-3.5 mr-1 -mt-0.5 opacity-50" />
+            Você na tela; a edição deste trecho é escrita pelo editor depois da aprovação.
+          </p>
+          <p className="text-xs mt-1 italic" style={{ color: "var(--text-muted)" }}>
+            “{t.fala}”
+          </p>
+          <Sugestao texto={t.sugestao} naSugestao={naSugestao} trabalhando={trabalhando} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A SUGESTÃO DO CLIENTE numa cena (05/10): o texto gravado, com "Mudar" e
+ * "Tirar", ou o botão que abre o campo curto. Sem IA e sem custo.
+ */
+function Sugestao({ texto, naSugestao, trabalhando }: { texto: string | null; naSugestao?: (texto: string) => Promise<boolean>; trabalhando: boolean }) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState("");
+  if (!naSugestao && !texto) return null;
+  if (editando && naSugestao) {
+    return (
+      <form
+        className="mt-2 space-y-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (await naSugestao(rascunho)) setEditando(false);
+        }}
+      >
+        <textarea
+          value={rascunho}
+          onChange={(e) => setRascunho(e.target.value)}
+          rows={2}
+          maxLength={300}
+          autoFocus
+          placeholder="Ex.: zoom na palavra forte; põe um mapa aqui; cartela com a frase; sem efeito nesta parte"
+          className="w-full rounded-lg border px-3 py-2 text-sm bg-transparent"
+          style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button type="submit" size="sm" disabled={trabalhando || !rascunho.trim()}>
+            {trabalhando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Guardar a sugestão
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={trabalhando} onClick={() => setEditando(false)}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    );
+  }
+  if (texto) {
+    return (
+      <div className="mt-1.5 rounded-md px-2 py-1.5 text-[11px]" style={{ background: "rgba(249,115,22,0.10)" }}>
+        <p style={{ color: "var(--text-primary)" }}>
+          <Lightbulb className="inline w-3 h-3 mr-1 -mt-0.5" style={{ color: "var(--accent-orange)" }} />
+          Sua sugestão: “{texto}”. Vai no roteiro para o editor seguir na montagem.
+        </p>
+        {naSugestao && (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              disabled={trabalhando}
+              onClick={() => {
+                setRascunho(texto);
+                setEditando(true);
+              }}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Mudar
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={trabalhando} onClick={() => void naSugestao("")}>
+              <XCircle className="w-3.5 h-3.5" />
+              Tirar
+            </Button>
+            {trabalhando && <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-7 px-2 text-xs mt-1.5"
+      disabled={trabalhando}
+      onClick={() => {
+        setRascunho("");
+        setEditando(true);
+      }}
+    >
+      <Lightbulb className="w-3.5 h-3.5" />
+      Sugerir ajuste ou efeito
+    </Button>
+  );
+}
+
 /** O gancho do corte curto (01/10): a frase que toca antes do começo, com zoom e som de impacto. */
 function LinhaDoGancho({
   gancho,
@@ -1037,6 +1253,9 @@ export function LinhaDaCena({
   chave,
   novaIdeia,
   naCena,
+  sugestao = null,
+  naSugestao,
+  trabalhandoNaSugestao = false,
 }: {
   cena: CenaNaTela;
   aberto: boolean;
@@ -1044,6 +1263,10 @@ export function LinhaDaCena({
   chave: string;
   novaIdeia: number;
   naCena: (acao: "remover" | "editar" | "restaurar" | "nova-ideia", texto?: string) => Promise<boolean>;
+  /** A sugestão do cliente nesta cena (05/10, só no completo) e como gravar outra. */
+  sugestao?: string | null;
+  naSugestao?: (texto: string) => Promise<boolean>;
+  trabalhandoNaSugestao?: boolean;
 }) {
   const [modo, setModo] = useState<"ver" | "editar" | "ideia">("ver");
   const [texto, setTexto] = useState("");
@@ -1112,6 +1335,8 @@ export function LinhaDaCena({
             Entra com: {cena.transicao}
             {cena.porque ? `. Por quê: ${cena.porque}` : ""}
           </p>
+          {/* A sugestão do cliente (05/10): texto curto, gravado no roteiro, sem custo. */}
+          {modo === "ver" && <Sugestao texto={sugestao} naSugestao={naSugestao} trabalhando={trabalhandoNaSugestao} />}
 
           {aberto && modo === "ver" && (
             <div className="flex items-center gap-1 mt-2 flex-wrap">
@@ -1140,7 +1365,8 @@ export function LinhaDaCena({
                 className="h-7 px-2 text-xs"
                 disabled={trabalhando}
                 onClick={() => {
-                  setTexto("");
+                  // A sugestão gravada já vai como o pedido ao diretor (05/10).
+                  setTexto(sugestao ?? "");
                   setModo("ideia");
                 }}
               >

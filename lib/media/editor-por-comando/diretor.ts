@@ -4,6 +4,7 @@ import { CAMADAS_DE_APOIO, ESTILOS_DO_VOX, FICHAS, PECAS, pecaNoEstilo, type Fic
 import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor, Visual } from "@/lib/media/editor-sob-medida/tipos";
 import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
+import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 
 /**
  * O DIRETOR DO EDITOR POR COMANDO (05/10/2026): o Opus lê a fala com os
@@ -45,6 +46,8 @@ export type EntradaDoDiretor = {
   base: string;
   /** No completo: o bloco que este diretor escreve (frases f0 a f1 de `total` blocos em paralelo). */
   bloco?: { f0: number; f1: number; k: number; total: number } | null;
+  /** Os pedidos do cliente cena a cena (05/10), no tempo desta fala: instrução obrigatória do trecho. */
+  pedidos?: PedidoDaCena[];
 };
 
 const NOME_DO_PLANO: Record<PlanoDaPeca, string> = {
@@ -109,6 +112,7 @@ const SISTEMA = `Você é o diretor de motion design da Demandou. O cliente desc
 - Não misture acabamentos que brigam (papel do Vox com vidro tecnológico) a não ser que o comando peça.
 - Você é responsável pelo LAYOUT: nenhum código vai derrubar ou mover peça depois. Duas peças de tela cheia nunca ao mesmo tempo; uma peça de lado e uma de tela nunca ao mesmo tempo; peça sobre a pessoa pode conviver com outra sobre a pessoa só se ficarem em lugares diferentes (topo e centro). Deixe 0,2 s entre uma peça e a próxima que ocupa o mesmo lugar.
 - A LEGENDA da fala ocupa a faixa de baixo do quadro (no vertical, o terço de baixo). Texto de peça sobre a pessoa vai no topo ou no centro, nunca embaixo.
+- Os PEDIDOS DO CLIENTE CENA A CENA, quando vierem na tarefa, mandam sobre o ritmo geral naquele trecho: ele leu a fala e pediu o ajuste ou o efeito ali. Atenda cada um com as peças do catálogo, no trecho pedido; "sem efeito" deixa o trecho só com a pessoa.
 
 # RITMO E FORMA
 - Cada coisa importante que a voz diz ganha forma no instante em que é dita: lista vira passos que acendem um a um (eventos na palavra de cada item); número dito vira número; lugar dito vira mapa; data vira cronologia; citação vira jornal; polêmica vira censura.
@@ -175,6 +179,33 @@ function dentroDoBloco(plano: PlanoDoDiretor, b: EntradaDoDiretor["bloco"]): Pla
   };
 }
 
+/**
+ * OS PEDIDOS DO CLIENTE no prompt (05/10): cada um com o tempo, as frases
+ * numeradas que ele cobre (a âncora que o diretor usa) e a fala do trecho. No
+ * completo em blocos, só os pedidos que caem no bloco deste diretor.
+ */
+function pedidosNoPrompt(e: EntradaDoDiretor): string {
+  const b = e.bloco;
+  const inicioDoBloco = b && b.total > 1 ? e.frases[b.f0]?.inicio ?? 0 : 0;
+  const fimDoBloco = b && b.total > 1 ? e.frases[b.f1]?.fim ?? e.duracao : e.duracao;
+  const mm = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const linhas = (e.pedidos ?? [])
+    .filter((p) => p.inicio < fimDoBloco && p.fim > inicioDoBloco)
+    .map((p) => {
+      let k0 = e.frases.findIndex((f) => f.fim > p.inicio + 0.05);
+      if (k0 < 0) k0 = e.frases.length - 1;
+      let k1 = k0;
+      for (let k = e.frases.length - 1; k >= k0; k--) if (e.frases[k].inicio < p.fim - 0.05) {
+        k1 = k;
+        break;
+      }
+      const frases = k0 === k1 ? `F${k0}` : `F${k0} a F${k1}`;
+      return `- ${mm(p.inicio)} a ${mm(p.fim)} (${frases}), onde a fala é "${p.fala.slice(0, 120)}": "${p.texto}"`;
+    });
+  if (!linhas.length) return "";
+  return `# PEDIDOS DO CLIENTE, CENA A CENA (obrigatórios)\nO cliente leu a fala e pediu, em trechos específicos, o ajuste ou o efeito abaixo. Atenda cada um naquele trecho, com as peças do catálogo; "sem efeito" ou "só eu na tela" deixa o trecho só com a pessoa.\n${linhas.join("\n")}`;
+}
+
 function contextoDaTarefa(e: EntradaDoDiretor): string {
   return [
     `FORMATO: ${e.formato === "9:16" ? "vertical 9:16 (celular): as peças no alto e no meio; a base é da legenda e da interface da rede" : "deitado 16:9"}. DURAÇÃO: ${e.duracao.toFixed(1)} s.`,
@@ -182,6 +213,7 @@ function contextoDaTarefa(e: EntradaDoDiretor): string {
     e.perfil ?? "",
     `# O COMANDO DO CLIENTE\n"${e.comando.texto}"`,
     `# AS RESPOSTAS DO CLIENTE\n- Letra dos títulos: ${e.fonte}\n- Cores: acento ${e.cores.acento}, escuro ${e.cores.escuro}, claro ${e.cores.claro} (${e.comando.cores.tipo === "marca" ? "as da marca do projeto" : "escolhidas para este vídeo"})`,
+    pedidosNoPrompt(e),
     `# TETO DE IMAGENS NOVAS NESTE VÍDEO: ${e.imagens}`,
   ]
     .filter(Boolean)

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { BarChart3, CalendarDays, Film, MessageCircle } from "lucide-react";
+import { acentosParaDesenhar, type AcentosDoVox } from "@/lib/media/acentos-do-vox";
+import { LETRAS, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
 
 /**
  * "SEU VÍDEO VAI FICAR ASSIM" (03/10/2026, book de modelos; refeito em 04/10).
@@ -21,12 +23,117 @@ import { BarChart3, CalendarDays, Film, MessageCircle } from "lucide-react";
  * péssimo: o fundo de cada quadro agora é a foto de um apresentador FICTÍCIO,
  * gerada uma vez por IA no cenário do estilo (public/estilos-de-video/fotos,
  * scripts/tmp/previa-estilos-fotos-0410.mts). Nunca pessoa real.
+ *
+ * AS CORES DA MARCA DE VERDADE (05/10). O Bruno, com a paleta #B3001B e
+ * #111111, viu a faixa do título e o marca-texto do Vox em ROSA: a prévia
+ * clareava todo acento escuro (misturava 35% de branco "para ler melhor") e
+ * escolhia a cor por conta própria. Agora as peças de papel usam a MESMA
+ * conta da montagem (lib/media/acentos-do-vox.ts, a hierarquia da paleta): a
+ * faixa, o marca-texto e a tarja no destaque, a letra por cima na cor que
+ * contrasta, os títulos e o carimbo na outra cor principal quando ela é
+ * escura; a identidade aprovada no book entra na frente, quando existe. E o
+ * texto dos quadros é o do próprio roteiro do cliente (a linha editorial),
+ * não a frase genérica.
  */
 
 interface Cores {
   acento: string;
   escuro: string;
   claro: string;
+}
+
+/** O que a tela sabe da identidade aprovada no book (GET modelos-de-arte, `identidade`). */
+interface Identidade {
+  letra: LetraId;
+  papeis: PapeisEscolhidos;
+  paleta: string[];
+  aprovada: boolean;
+}
+
+/** Os textos de exemplo tirados do roteiro do cliente (a linha editorial), com o genérico de reserva. */
+interface TextosDaPrevia {
+  /** De onde vieram, para a tela dizer. */
+  doRoteiro: boolean;
+  titulo1: string;
+  titulo2: string;
+  citacao: { antes: string; marcado: string };
+  pergunta: string;
+  resposta: { antes: string; marcado: string };
+}
+
+const TEXTOS_GENERICOS: TextosDaPrevia = {
+  doRoteiro: false,
+  titulo1: "Por que o cliente some",
+  titulo2: "O que ninguém te conta",
+  citacao: { antes: "Quem é lembrado", marcado: "é escolhido." },
+  pergunta: "Sem tempo de gravar?",
+  resposta: { antes: "Uma gravação vira a", marcado: "semana" },
+};
+
+type RoteiroDaLinha = { titulo?: string; tese?: string | null; gancho?: string | null; status?: string; cenas?: Array<{ papel?: string; fala?: string }> | null };
+
+/** A primeira frase de um texto, até o limite, cortada em palavra inteira. */
+function primeiraFrase(t: string | null | undefined, max: number): string {
+  const limpo = String(t ?? "").replace(/\s+/g, " ").trim();
+  if (!limpo) return "";
+  const frase = limpo.split(/(?<=[.!?])\s+/)[0] ?? limpo;
+  if (frase.length <= max) return frase;
+  const corte = frase.slice(0, max).replace(/\s+\S*$/, "");
+  return `${corte}…`;
+}
+
+/** As últimas palavras marcadas (o marca-texto), o resto antes. */
+function comMarca(frase: string, palavras = 2): { antes: string; marcado: string } {
+  const partes = frase.replace(/[.]+$/, "").split(" ");
+  if (partes.length <= palavras) return { antes: "", marcado: frase };
+  return { antes: partes.slice(0, -palavras).join(" "), marcado: partes.slice(-palavras).join(" ") + (frase.endsWith(".") ? "." : "") };
+}
+
+/** Os textos dos quadros a partir dos roteiros da linha editorial do cliente (o gravado ou pronto na frente). */
+function textosDoRoteiro(roteiros: RoteiroDaLinha[]): TextosDaPrevia {
+  const ordem = (r: RoteiroDaLinha) => (r.status === "gravado" ? 0 : r.status === "pronto" ? 1 : 2);
+  const lista = roteiros.filter((r) => r.titulo?.trim()).sort((a, b) => ordem(a) - ordem(b));
+  const r1 = lista[0];
+  if (!r1?.titulo) return TEXTOS_GENERICOS;
+  const r2 = lista[1];
+  const falas = (r1.cenas ?? []).map((c) => String(c.fala ?? "")).filter(Boolean);
+  const pergunta = falas.map((f) => primeiraFrase(f, 44)).find((f) => f.endsWith("?")) ?? (r1.titulo.length <= 40 ? `${r1.titulo.replace(/[?.!]+$/, "")}?` : TEXTOS_GENERICOS.pergunta);
+  const tese = primeiraFrase(r1.tese, 72) || primeiraFrase(falas[0], 72) || primeiraFrase(r1.gancho, 72);
+  const resposta = primeiraFrase(r2?.titulo ?? r1.titulo, 36);
+  return {
+    doRoteiro: true,
+    titulo1: r1.titulo,
+    titulo2: r2?.titulo || primeiraFrase(r1.gancho, 40) || TEXTOS_GENERICOS.titulo2,
+    citacao: tese ? comMarca(tese) : TEXTOS_GENERICOS.citacao,
+    pergunta,
+    resposta: resposta ? comMarca(resposta, 1) : TEXTOS_GENERICOS.resposta,
+  };
+}
+
+/**
+ * O título em caixa alta, quebrado em linhas que cabem na faixa (até 3), e
+ * o tamanho da letra pelo comprimento da maior linha (a faixa tem ~980 px).
+ */
+function linhasDaFaixa(titulo: string, maxLinhas = 3, porLinha = 16): { linhas: string[]; tam: number } {
+  const palavras = titulo.replace(/[?.!]+$/, "").toUpperCase().split(/\s+/).filter(Boolean);
+  const linhas: string[] = [];
+  let atual = "";
+  for (const p of palavras) {
+    if (atual && (atual + " " + p).length > porLinha) {
+      linhas.push(atual);
+      atual = p;
+    } else atual = atual ? `${atual} ${p}` : p;
+  }
+  if (atual) linhas.push(atual);
+  const cabem = linhas.slice(0, maxLinhas);
+  if (linhas.length > maxLinhas) cabem[maxLinhas - 1] = `${cabem[maxLinhas - 1]}…`;
+  const maior = Math.max(1, ...cabem.map((l) => l.length));
+  return { linhas: cabem, tam: Math.max(58, Math.min(96, Math.floor(980 / (maior * 0.66)))) };
+}
+
+/** O tamanho da letra para uma linha única caber na largura dada (serifa pesada, ~0,56 em por letra). */
+function tamQueCabe(texto: string, largura: number, max: number, min = 34): number {
+  return Math.max(min, Math.min(max, Math.floor(largura / (Math.max(1, texto.length) * 0.56))));
 }
 
 const FICHA: Record<string, { fonte: string; peso: number; acabamento: string }> = {
@@ -71,11 +178,6 @@ function misturar(a: string, b: string, t: number) {
   const y = rgb(b);
   return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
-function luz(hex: string) {
-  const [r, g, b] = rgb(hex).map((v) => v / 255);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
 /** Sorteio determinístico (os rasgos saem sempre iguais). */
 function sorteio(semente: number) {
   let s = semente >>> 0 || 1;
@@ -425,10 +527,10 @@ function Fita({ x, y, w = 170, giro = 0 }: { x: number; y: number; w?: number; g
   return <div style={{ position: "absolute", left: x, top: y, width: w, height: 52, transform: `rotate(${giro}deg)`, background: "linear-gradient(180deg, rgba(244,236,210,.82), rgba(226,214,180,.78))", clipPath: rasgo(w, 52, Math.round(x + y), { esq: true, dir: true }, 7), boxShadow: "0 2px 6px rgba(0,0,0,.15)", zIndex: 6 }} />;
 }
 
-/** O marca-texto da cor da marca, com a ponta irregular. */
-function MarcaTexto({ children, cor }: { children: ReactNode; cor: string }) {
+/** O marca-texto no destaque da marca, com a ponta irregular e a letra na cor que contrasta (a mesma conta da montagem). */
+function MarcaTexto({ children, cor, tinta }: { children: ReactNode; cor: string; tinta: string }) {
   return (
-    <span style={{ backgroundImage: `linear-gradient(100deg, ${rgba(cor, 0)} 0.4%, ${rgba(cor, 0.82)} 2%, ${rgba(cor, 0.72)} 96%, ${rgba(cor, 0)} 99.6%)`, backgroundSize: "100% 74%", backgroundPosition: "0 70%", backgroundRepeat: "no-repeat", padding: "0 0.12em", margin: "0 -0.05em", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", color: luz(cor) < 0.3 ? "#ffffff" : "inherit" }}>
+    <span style={{ backgroundImage: `linear-gradient(100deg, ${rgba(cor, 0)} 0.4%, ${rgba(cor, 0.92)} 2%, ${rgba(cor, 0.86)} 96%, ${rgba(cor, 0)} 99.6%)`, backgroundSize: "100% 74%", backgroundPosition: "0 70%", backgroundRepeat: "no-repeat", padding: "0 0.12em", margin: "0 -0.05em", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", color: tinta }}>
       {children}
     </span>
   );
@@ -501,12 +603,12 @@ function Recorte({ nome, x, y, w, giro = 0, tarja, cor, sombra }: { nome: string
   );
 }
 
-/** O título serifado preto em caixa alta, cada linha na sua faixa da cor da marca. */
-function TituloNaFaixa({ x, y, linhas, cor, tam }: { x: number; y: number; linhas: string[]; cor: string; tam: number }) {
+/** O título serifado em caixa alta, cada linha na sua faixa do destaque da marca, com a letra na cor que contrasta. */
+function TituloNaFaixa({ x, y, linhas, cor, tinta, tam }: { x: number; y: number; linhas: string[]; cor: string; tinta: string; tam: number }) {
   return (
     <div style={{ position: "absolute", left: x, top: y, zIndex: 8, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10, transform: "rotate(-1.5deg)" }}>
       {linhas.map((l) => (
-        <span key={l} style={{ background: cor, padding: "4px 24px 0", fontFamily: SERIFA, fontWeight: 900, fontSize: tam, lineHeight: 1.08, letterSpacing: "0.01em", color: luz(cor) < 0.3 ? "#ffffff" : "#111111", boxShadow: "0 8px 18px rgba(30,20,8,.3)" }}>{l}</span>
+        <span key={l} style={{ background: cor, padding: "4px 24px 0", fontFamily: SERIFA, fontWeight: 900, fontSize: tam, lineHeight: 1.08, letterSpacing: "0.01em", color: tinta, boxShadow: "0 8px 18px rgba(30,20,8,.3)" }}>{l}</span>
       ))}
     </div>
   );
@@ -520,23 +622,29 @@ const GraoDoPapel = () => (
   </>
 );
 
-function quadrosDoVox(c: Cores): ReactNode[] {
-  const m = luz(c.acento) < 0.3 ? misturar(c.acento, "#ffffff", 0.35) : c.acento;
-  const traco = misturar(c.acento, "#000000", luz(c.acento) > 0.7 ? 0.35 : 0);
+/**
+ * Os quatro quadros do Vox nos acentos da MARCA (a conta de acentos-do-vox.ts):
+ * a faixa, o marca-texto, a tarja e o círculo no destaque; a letra por cima no
+ * que contrasta; os títulos, as aspas e o círculo à mão na tinta/carimbo. Os
+ * textos vêm do roteiro do cliente.
+ */
+function quadrosDoVox(a: Required<AcentosDoVox>, t: TextosDaPrevia): ReactNode[] {
   const PAPEL = "#ece4d2";
+  const t1 = linhasDaFaixa(t.titulo1);
+  const t2 = linhasDaFaixa(t.titulo2, 2, 15);
   return [
     // 1. A colagem do Vox (referência do dono, vox-01): papel envelhecido, mapa antigo rasgado com o
     //    círculo, manuscrito ao fundo, recortes P&B em camadas com sombra, a tarja de censura nos olhos
-    //    da estátua e o título serifado preto na faixa da cor da marca; a apresentadora recortada, em cor.
+    //    da estátua e o título serifado na faixa do destaque da marca; a apresentadora recortada, em cor.
     <div key="colagem" style={{ position: "absolute", inset: 0, overflow: "hidden", ...FUNDO_VELHO }}>
       <Papel x={430} y={90} w={720} h={700} giro={3} semente={5} amp={14} estilo={imagemDePapel("vox-manuscrito", 0.9)} />
       <Papel x={-60} y={-40} w={720} h={640} giro={-4} semente={9} amp={18} estilo={imagemDePapel("vox-mapa", 1)}>
-        <CirculoCheio x={300} y={300} r={105} cor={c.acento} />
+        <CirculoCheio x={300} y={300} r={105} cor={a.realce} />
       </Papel>
-      <Recorte nome="vox-recorte-estatua" x={-40} y={880} w={520} giro={-2} tarja={{ topo: 22.6, esq: 36, larg: 40 }} cor={m} />
+      <Recorte nome="vox-recorte-estatua" x={-40} y={880} w={520} giro={-2} tarja={{ topo: 22.6, esq: 36, larg: 40 }} cor={a.realce} />
       <Recorte nome="vox-recorte-fabrica" x={-30} y={1450} w={640} />
       <Recorte nome="vox-recorte-apresentadora" x={430} y={960} w={700} sombra="drop-shadow(0 24px 30px rgba(30,20,8,.45))" />
-      <TituloNaFaixa x={50} y={640} cor={m} linhas={["POR QUE O", "CLIENTE SOME"]} tam={96} />
+      <TituloNaFaixa x={50} y={t1.linhas.length > 2 ? 560 : 640} cor={a.realce} tinta={a.tintaNoRealce} linhas={t1.linhas} tam={t1.tam} />
       <GraoDoPapel />
     </div>,
 
@@ -550,26 +658,27 @@ function quadrosDoVox(c: Cores): ReactNode[] {
         <div style={{ position: "absolute", left: 0, top: 0, width: 620, height: 520, opacity: 0.55, backgroundImage: "url(/estilos-de-video/fotos/vox-manuscrito.webp)", backgroundSize: "cover", mixBlendMode: "multiply" }} />
       </Papel>
       <Papel x={30} y={420} w={500} h={400} giro={-5} semente={14} amp={14} estilo={imagemDePapel("vox-mapa", 1, "70% 60%")}>
-        <CirculoCheio x={250} y={190} r={80} cor={c.acento} />
+        <CirculoCheio x={250} y={190} r={80} cor={a.realce} />
       </Papel>
-      <Recorte nome="vox-recorte-homem" x={600} y={330} w={480} giro={2} tarja={{ topo: 18.5, esq: 22, larg: 40 }} cor={m} />
-      <TituloNaFaixa x={50} y={120} cor={m} linhas={["O QUE NINGUÉM", "TE CONTA"]} tam={84} />
+      <Recorte nome="vox-recorte-homem" x={600} y={330} w={480} giro={2} tarja={{ topo: 18.5, esq: 22, larg: 40 }} cor={a.realce} />
+      <TituloNaFaixa x={50} y={120} cor={a.realce} tinta={a.tintaNoRealce} linhas={t2.linhas} tam={Math.min(84, t2.tam)} />
       <GraoDoPapel />
     </div>,
-    // 3. A citação no papel, com aspas grandes da cor da marca.
+    // 3. A citação do roteiro no papel, com as aspas grandes na tinta da marca e o marca-texto no destaque.
     <div key="citacao" style={{ position: "absolute", inset: 0, background: "#1a1510", overflow: "hidden" }}>
       <Foto nome="vox-mulher" escala={1.12} origem="50% 0%" />
       <GraoDoVox />
       <Camada fundo="linear-gradient(0deg, rgba(20,14,6,.45), transparent 40%)" />
       <Papel x={-20} y={1200} w={1120} h={760} giro={-1.5} cor={PAPEL} semente={44} bordas={{ topo: true }} amp={20}>
         <div style={{ padding: "60px 90px" }}>
-          <div style={{ fontFamily: SERIFA, fontWeight: 900, fontSize: 220, lineHeight: 0.6, height: 110, color: traco }}>“</div>
-          <div style={{ fontFamily: SERIFA, fontStyle: "italic", fontWeight: 500, fontSize: 84, lineHeight: 1.12, color: "#15120e" }}>
-            Quem é lembrado <MarcaTexto cor={m}>é escolhido.</MarcaTexto>
+          <div style={{ fontFamily: SERIFA, fontWeight: 900, fontSize: 220, lineHeight: 0.6, height: 110, color: a.carimbo }}>“</div>
+          <div style={{ fontFamily: SERIFA, fontStyle: "italic", fontWeight: 500, fontSize: t.citacao.antes.length + t.citacao.marcado.length > 48 ? 66 : 84, lineHeight: 1.12, color: a.tinta }}>
+            {t.citacao.antes ? `${t.citacao.antes} ` : ""}
+            <MarcaTexto cor={a.realce} tinta={a.tintaNoRealce}>{t.citacao.marcado}</MarcaTexto>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 34 }}>
-            <span style={{ width: 60, height: 3, background: "#15120e" }} />
-            <span style={{ fontFamily: GEIST, fontWeight: 500, fontSize: 28, letterSpacing: "0.22em", color: "#4a4136" }}>EQUIPE DE CONTEÚDO</span>
+            <span style={{ width: 60, height: 3, background: a.tinta }} />
+            <span style={{ fontFamily: GEIST, fontWeight: 500, fontSize: 28, letterSpacing: "0.22em", color: "#4a4136" }}>{t.doRoteiro ? "DO SEU ROTEIRO" : "EQUIPE DE CONTEÚDO"}</span>
           </div>
         </div>
       </Papel>
@@ -583,30 +692,45 @@ function quadrosDoVox(c: Cores): ReactNode[] {
       <Camada fundo="linear-gradient(180deg, rgba(20,14,6,.4), transparent 38%)" />
       <Papel x={650} y={130} w={380} h={300} giro={7} cor="#e7e0cd" semente={55}>
         <div style={{ padding: "18px 22px" }}>
-          <div style={{ fontFamily: SERIFA, fontWeight: 900, fontSize: 30, lineHeight: 1.05, color: "#15120e" }}>A semana inteira com uma gravação</div>
+          <div style={{ fontFamily: SERIFA, fontWeight: 900, fontSize: 30, lineHeight: 1.05, color: a.tinta }}>{t.doRoteiro ? primeiraFrase(t.titulo1, 40) : "A semana inteira com uma gravação"}</div>
           <div style={{ marginTop: 10 }}>
             <Colunas n={2} tam={13} altura={190} />
           </div>
         </div>
       </Papel>
       <Papel x={50} y={260} w={760} h={150} giro={-2.5} cor="#fbf8f1" semente={66} amp={8}>
-        <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 40px", fontFamily: SERIFA, fontWeight: 800, fontSize: 70, color: "#15120e", whiteSpace: "nowrap" }}>Sem tempo de gravar?</div>
+        <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 40px", fontFamily: SERIFA, fontWeight: 800, fontSize: tamQueCabe(t.pergunta, 680, 70), color: a.tinta, whiteSpace: "nowrap" }}>{t.pergunta}</div>
       </Papel>
       <Papel x={110} y={440} w={900} h={140} giro={1.5} cor={PAPEL} semente={77} amp={8}>
-        <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 40px", fontFamily: SERIFA, fontWeight: 700, fontSize: 60, color: "#15120e", whiteSpace: "nowrap" }}>
-          Uma gravação vira a&nbsp;<MarcaTexto cor={m}>semana</MarcaTexto>.
+        <div style={{ height: "100%", display: "flex", alignItems: "center", padding: "0 40px", fontFamily: SERIFA, fontWeight: 700, fontSize: tamQueCabe(`${t.resposta.antes} ${t.resposta.marcado}`, 820, 60), color: a.tinta, whiteSpace: "nowrap" }}>
+          {t.resposta.antes ? `${t.resposta.antes} ` : ""}
+          <MarcaTexto cor={a.realce} tinta={a.tintaNoRealce}>{t.resposta.marcado}</MarcaTexto>
+          {t.resposta.marcado.endsWith(".") ? "" : "."}
         </div>
       </Papel>
-      <Circulo x={640} y={430} w={300} h={160} cor={traco} giro={3} />
+      <Circulo x={640} y={430} w={300} h={160} cor={a.carimbo} giro={3} />
       <Fita x={60} y={240} w={140} giro={-20} />
     </div>,
   ];
 }
 
-function quadros(estilo: string, c: Cores, nome: string): ReactNode[] {
+/**
+ * A paleta que a conta do Vox lê: a identidade APROVADA no book vem na
+ * frente (destaque, fundo, título, na ordem dos papéis), seguida da paleta
+ * do projeto; sem aprovação, a paleta na ordem que o cliente gravou (a mesma
+ * hierarquia que a montagem usa).
+ */
+function paletaDoVox(marca: Cores, identidade: Identidade | null): string[] {
+  const base = identidade?.paleta?.length ? identidade.paleta : [marca.acento, marca.escuro, marca.claro];
+  if (!identidade?.aprovada) return base;
+  const p = identidade.papeis;
+  return [...new Set([p.destaque, p.fundo, p.titulo, ...base].map((c) => c.toLowerCase()))];
+}
+
+function quadros(estilo: string, c: Cores, nome: string, identidade: Identidade | null, textos: TextosDaPrevia): ReactNode[] {
   if (estilo === "lousa") return quadrosDaLousa();
   if (estilo === "consorcio") return quadrosDoLuxo(nome);
-  return quadrosDoVox(c);
+  return quadrosDoVox(acentosParaDesenhar(paletaDoVox(c, identidade)), textos);
 }
 
 function Quadro({ children, largura }: { children: ReactNode; largura: number }) {
@@ -620,14 +744,27 @@ function Quadro({ children, largura }: { children: ReactNode; largura: number })
 
 export function PreviaDoEstiloDeVideo({ projectId, estiloId, nomeDoEstilo }: { projectId: string; estiloId: string; nomeDoEstilo: string }) {
   useFontesDoVideo();
-  const [marca, setMarca] = useState<{ cores: Cores; nome: string } | null>(null);
+  const [marca, setMarca] = useState<{ cores: Cores; nome: string; identidade: Identidade | null } | null>(null);
+  const [textos, setTextos] = useState<TextosDaPrevia>(TEXTOS_GENERICOS);
   const caixa = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
   useEffect(() => {
     let vivo = true;
+    // A marca e a identidade aprovada no book (o mesmo GET da galeria).
     fetch(`/api/projects/${projectId}/modelos-de-arte`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => vivo && d?.marca && setMarca({ cores: d.marca.cores, nome: d.marca.nome }))
+      .then((d) => {
+        if (!vivo || !d?.marca) return;
+        const i = d.identidade as Partial<Identidade> | undefined;
+        const identidade: Identidade | null =
+          i && typeof i.letra === "string" && i.papeis && Array.isArray(i.paleta) ? { letra: i.letra as LetraId, papeis: i.papeis as PapeisEscolhidos, paleta: i.paleta as string[], aprovada: Boolean(i.aprovada) } : null;
+        setMarca({ cores: d.marca.cores, nome: d.marca.nome, identidade });
+      })
+      .catch(() => {});
+    // O texto dos quadros é o do roteiro do cliente (a linha editorial), quando ele já tem um.
+    fetch(`/api/projects/${projectId}/linha-editorial`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => vivo && Array.isArray(d?.roteiros) && setTextos(textosDoRoteiro(d.roteiros as RoteiroDaLinha[])))
       .catch(() => {});
     return () => {
       vivo = false;
@@ -646,6 +783,17 @@ export function PreviaDoEstiloDeVideo({ projectId, estiloId, nomeDoEstilo }: { p
   // Quatro por linha no computador, dois no celular.
   const porLinha = w < 520 ? 2 : 4;
   const larguraDoQuadro = Math.max(80, Math.floor((w - (porLinha - 1) * 10) / porLinha));
+  // Os acentos do Vox, ditos na tela com o hex de cada papel: o cliente confere que são as cores dele.
+  const acentos = estiloId === "vox" ? acentosParaDesenhar(paletaDoVox(marca.cores, marca.identidade)) : null;
+  const papeis: Array<{ nome: string; cor: string }> = acentos
+    ? [
+        { nome: "faixa, marca-texto e tarja", cor: acentos.realce },
+        { nome: "letra sobre a faixa", cor: acentos.tintaNoRealce },
+        { nome: "títulos", cor: acentos.tinta },
+        ...(acentos.carimbo.toLowerCase() !== acentos.tinta.toLowerCase() ? [{ nome: "carimbo e círculo", cor: acentos.carimbo }] : []),
+      ]
+    : [];
+  const letraAprovada = marca.identidade?.aprovada ? LETRAS[marca.identidade.letra] : null;
   return (
     <section className="rounded-xl border p-4" style={{ borderColor: "var(--brand)", background: "var(--bg-elevated)" }} aria-labelledby="previa-video">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -655,22 +803,37 @@ export function PreviaDoEstiloDeVideo({ projectId, estiloId, nomeDoEstilo }: { p
           </p>
           <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
             {ficha.acabamento} Fonte <b style={{ fontFamily: `'${ficha.fonte}'`, fontWeight: ficha.peso }}>{ficha.fonte}</b>
-            {estiloId === "consorcio" ? ", com o dourado do estilo." : estiloId === "lousa" ? ", no azul do estilo." : ", nas cores da sua marca."}
+            {estiloId === "consorcio" ? ", com o dourado do estilo." : estiloId === "lousa" ? ", no azul do estilo." : "."}
+            {acentos && (
+              <>
+                {" "}
+                As peças de papel saem nas cores da sua marca, na ordem em que você as gravou
+                {marca.identidade?.aprovada ? ", com a identidade aprovada no book na frente" : ""}:{" "}
+                {papeis.map((p, i) => (
+                  <span key={p.nome}>
+                    {i > 0 ? (i === papeis.length - 1 ? " e " : ", ") : ""}
+                    {p.nome} em <b style={{ color: "var(--text-primary)" }}>{p.cor.toLowerCase()}</b>
+                  </span>
+                ))}
+                .{letraAprovada ? ` A letra ${letraAprovada.nome.toLowerCase()} aprovada no book vale para as artes dos posts; no vídeo deste estilo, o título é na ${ficha.fonte}.` : ""}
+              </>
+            )}
           </p>
         </div>
-        {estiloId === "vox" && (
-          <div className="flex items-center gap-1.5">
-            {[marca.cores.acento, marca.cores.escuro, marca.cores.claro].map((cor) => (
-              <span key={cor} className="h-5 w-5 rounded-full border" style={{ background: cor, borderColor: "var(--border)" }} />
+        {acentos && (
+          <div className="flex items-center gap-1.5" aria-hidden>
+            {papeis.map((p) => (
+              <span key={p.nome} title={`${p.nome}: ${p.cor}`} className="h-5 w-5 rounded-full border" style={{ background: p.cor, borderColor: "var(--border)" }} />
             ))}
           </div>
         )}
       </div>
       <div ref={caixa} className="mt-3 flex flex-wrap gap-[10px]">
-        {w > 0 && quadros(estiloId, marca.cores, marca.nome).map((q, i) => <Quadro key={i} largura={larguraDoQuadro}>{q}</Quadro>)}
+        {w > 0 && quadros(estiloId, marca.cores, marca.nome, marca.identidade, textos).map((q, i) => <Quadro key={i} largura={larguraDoQuadro}>{q}</Quadro>)}
       </div>
       <p className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
-        Quadros de exemplo com apresentadores fictícios, criados por IA; no vídeo de verdade é você, com a sua fala e o seu texto.
+        Quadros de exemplo com apresentadores fictícios, criados por IA; no vídeo de verdade é você, com a sua fala
+        {estiloId === "vox" && textos.doRoteiro ? ". Os textos são do seu roteiro na linha editorial." : " e o seu texto."}
       </p>
     </section>
   );
