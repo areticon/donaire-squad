@@ -71,6 +71,19 @@ import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, garantirGancho, densidadeDo
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { aindaEsperaOWorker, prazoDaMontagemMs } from "@/lib/media/montagem-no-worker";
 import { levarEdicaoParaFalaNova, tempoNaFalaNova } from "@/lib/media/edicao-na-fala-nova";
+import {
+  comandoPadrao,
+  corrigirPorComando,
+  editorPorComandoLigado,
+  lerComandoDoProjeto,
+  planejarPorComando,
+  revisarPorComando,
+  rodadasDeCorrecao,
+  tetoDeImagens,
+  type ComandoDoVideo,
+  type EntradaDoPlano,
+  type PlanoDoDiretor,
+} from "@/lib/media/editor-por-comando";
 
 /**
  * O EDITOR COMPLETO NA ESTEIRA (30/09/2026), com a trava MONTAGEM_NA_EDICAO=1.
@@ -628,6 +641,22 @@ export type SobMedidaDoCorte = {
   /** O worker reiniciou com o pedido na fila: a próxima passada reenvia a mesma fase. */
   reenviar?: boolean;
   desistiu?: string | null;
+  /**
+   * O EDITOR POR COMANDO (05/10, EDITOR_POR_COMANDO=1): o comando do cliente,
+   * o plano do diretor e o final que o revisor está olhando. Com o campo, o
+   * corte não passa pela prévia: o final sai direto, o revisor olha o final e
+   * o diretor corrige no máximo `rodadasDeCorrecao()` vezes.
+   */
+  comando?: {
+    comando: ComandoDoVideo;
+    base: string;
+    plano: PlanoDoDiretor;
+    /** O final em revisão (entregue como está se o revisor não pedir correção). */
+    montado?: { url: string; bytes: number } | null;
+    tempos?: Record<string, number>;
+    correcoes: number;
+    inicio: string;
+  } | null;
 };
 
 /** Passos pesados (editor, revisão) rodando juntos numa passada do cron. */
@@ -650,7 +679,7 @@ function sobMedidaDe(m: MontagemDoCorte | null | undefined): SobMedidaDoCorte | 
 /** O corte vai pelo editor sob medida? Ligado, estilo com referência, e o caminho novo não desistiu neste corte. */
 export function corteVaiSobMedida(video: Pick<VideoDoPasso, "project">, m: MontagemDoCorte | null | undefined): boolean {
   const escolha = normalizarEscolha(video.project.videoEstiloEscolha, video.project.videoStyle);
-  return editorSobMedidaLigado(escolha.estiloId) && !sobMedidaDe(m)?.desistiu;
+  return (editorPorComandoLigado() || editorSobMedidaLigado(escolha.estiloId)) && !sobMedidaDe(m)?.desistiu;
 }
 
 /** O caminho novo desiste e o corte volta à fila, para a montagem de sempre (a reserva). */
@@ -742,6 +771,68 @@ export async function entradaDoCorte(
   };
 }
 
+/** O que o diretor do editor por comando recebe para um corte (a prova local usa a mesma função). */
+export async function entradaDoPlanoDoCorte(
+  video: VideoDoPasso,
+  t: TrechoComMontagem,
+  sm: SobMedidaDoCorte,
+  comando: ComandoDoVideo,
+  quadros: Array<{ t: number; base64: string }>
+): Promise<EntradaDoPlano> {
+  const ctx = contexto(video, t);
+  const perfil = await perfilDoProjeto(video.projectId).catch(() => null);
+  const fala = sm.fala!;
+  return {
+    palavras: fala.palavras,
+    duracao: fala.duracao,
+    formato: "9:16",
+    comando,
+    marca: ctx.marca,
+    rosto: sm.rosto ?? { x: 0.3, y: 0.2, w: 0.4, h: 0.25 },
+    comLegenda: ctx.legenda.mostrar,
+    logoUrl: video.project.logoUrl ?? null,
+    titulo: t.titulo ?? null,
+    perfil: perfilNoPrompt(perfil),
+    quadros,
+    projectId: video.projectId,
+    imagens: tetoDeImagens("corte"),
+  };
+}
+
+/**
+ * A REVISÃO DO EDITOR POR COMANDO (05/10): o revisor olha quadros do FINAL
+ * contra o comando; sem nota, o final já renderizado vai ao ar (nada é
+ * renderizado de novo); com nota, o diretor corrige e o final sai de novo,
+ * e esse segundo final vai ao ar sem outra revisão.
+ */
+async function revisarCortePorComando(video: VideoDoPasso, indice: number, t: TrechoComMontagem, lido: MontagemDoCorte, tomado: MontagemDoCorte, sm: SobMedidaDoCorte): Promise<void> {
+  const c = sm.comando!;
+  const rev = await revisarPorComando({ edicao: sm.edicao!, comando: c.comando.texto, obterQuadros: quadrosPeloWorker(sm.previaUrl!, 360), projectId: video.projectId });
+  const historico = [...sm.historico, { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, defeitos: rev.notas.map((n) => ({ momento: n.momento, t: n.t, tipo: "comando", descricao: n.problema })), falta: rev.resumo ? [rev.resumo] : [], erro: rev.erro ?? null }].slice(-6);
+  if (!rev.notas.length || c.correcoes >= rodadasDeCorrecao()) {
+    // Aprovado (ou sem rodada): o final em revisão vai ao ar como está.
+    await entregarCorte(video.id, indice, t, { ...tomado, sobMedida: { ...sm, historico }, revisaoVisual: { rodadas: sm.rodada, historico: [], pendente: false, final: true, motivo: `editor por comando: ${rev.notas.length ? "sem rodada de correção" : "aprovado pelo revisor"}` } }, c.montado!, c.tempos);
+    return;
+  }
+  const entrada = await entradaDoPlanoDoCorte(video, t, sm, c.comando, []);
+  const p = await corrigirPorComando(entrada, { base: c.base, plano: c.plano, insercoes: sm.insercoes ?? {}, custoImagensUsd: sm.custoImagensUsd ?? 0 }, rev.notas, rev.resumo);
+  const novo: SobMedidaDoCorte = {
+    ...sm,
+    editor: p.plano,
+    insercoes: p.insercoes,
+    edicao: p.edicao,
+    fase: "final",
+    rodada: sm.rodada + 1,
+    historico,
+    custoImagensUsd: p.custoImagensUsd,
+    medidas: { ...medidasDaEdicao(p.edicao), densidade: densidadeDoCorte(p.edicao) },
+    avisos: [...(sm.avisos ?? []), `correção ${c.correcoes + 1}: ${rev.notas.length} nota(s) do revisor`, ...p.avisos].slice(-30),
+    comando: { ...c, plano: p.plano, montado: null, correcoes: c.correcoes + 1, tempos: { ...(c.tempos ?? {}), ...Object.fromEntries(Object.entries(p.tempos).map(([k, v]) => [`r${c.correcoes + 1}-${k}`, v])) } },
+  };
+  void lido;
+  await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
+}
+
 /** O vertical cru do corte (sem a montagem): é dele que o editor vê os quadros. */
 function verticalCru(t: TrechoComMontagem, lido: MontagemDoCorte): string | null {
   return t.midia?.verticalOriginal?.url && lido.montadoUrl && t.midia?.vertical?.url === lido.montadoUrl ? t.midia.verticalOriginal.url : t.midia?.vertical?.url ?? null;
@@ -759,7 +850,7 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
   // O CONTROLE DO CORTE (03/10): o cliente ajustou o corte e a edição que já
   // estava paga volta encaixada na fala nova, sem editor, imagem nem vídeo novos.
   const reuso = (t as TrechoComMontagem & { reaproveitarMontagem?: ReaproveitarMontagem | null }).reaproveitarMontagem;
-  if (reuso?.sobMedida?.editor && reuso.sobMedida.estiloId === ctx.escolha.estiloId) {
+  if (!editorPorComandoLigado() && reuso?.sobMedida?.editor && reuso.sobMedida.estiloId === ctx.escolha.estiloId) {
     if (await reaproveitarSobMedida(video, indice, t, lido, reuso)) return;
   }
   const sm0: SobMedidaDoCorte = { fase: "editar", estiloId: ctx.escolha.estiloId, rodada: 0, historico: [] };
@@ -787,6 +878,26 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     const gancho = aprovado?.gancho && !aprovado.gancho.desligado ? ganchoEmFraseInteira(fala.palavras, { inicio: aprovado.gancho.inicio, fim: aprovado.gancho.fim, soco: limparSoco(aprovado.gancho.soco) ?? "" }) : null;
     const sm: SobMedidaDoCorte = { ...sm0, fala, quadro, rosto: noQuadroDoCorte(ctx.rosto, quadro), gancho };
     const cru = verticalCru(t, lido);
+    // O EDITOR POR COMANDO (05/10): o diretor escreve o plano pelo comando do cliente; o final sai direto.
+    if (editorPorComandoLigado()) {
+      const quadros4 = cru ? await comPrazo(quadrosPeloWorker(cru, 320)([0.2, 0.4, 0.6, 0.8].map((f) => +(f * fala.duracao).toFixed(2))), PRAZO_DOS_QUADROS_MS, []) : [];
+      const comando = (await lerComandoDoProjeto(video.projectId).catch(() => null)) ?? comandoPadrao(ctx.escolha);
+      const p = await planejarPorComando(await entradaDoPlanoDoCorte(video, t, sm, comando, quadros4));
+      const novo: SobMedidaDoCorte = {
+        ...sm,
+        estiloId: p.base,
+        editor: p.plano,
+        insercoes: p.insercoes,
+        edicao: p.edicao,
+        fase: "final",
+        custoImagensUsd: p.custoImagensUsd,
+        medidas: { ...medidasDaEdicao(p.edicao), densidade: densidadeDoCorte(p.edicao) },
+        avisos: p.avisos.slice(0, 30),
+        comando: { comando, base: p.base, plano: p.plano, tempos: p.tempos, correcoes: 0, inicio: tomado.desde },
+      };
+      await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, custoUsd: p.custoImagensUsd, sobMedida: novo }, tomado);
+      return;
+    }
     const quadros = cru ? await comPrazo(quadrosPeloWorker(cru, 384)(instantesDoCorte(fala.duracao)), PRAZO_DOS_QUADROS_MS, []) : [];
     const entrada = await entradaDoCorte(video, indice, t, sm, quadros);
     const parte = await escreverBloco(entrada, { de: 0, ate: fala.duracao, f0: 0, f1: entrada.frases.length - 1 }, 0, 1);
@@ -969,6 +1080,10 @@ async function revisarCorteSobMedida(video: VideoDoPasso, indice: number, t: Tre
   if (!(await trocarEstado(video.id, indice, lido, tomado))) return;
   const sm = sobMedidaDe(lido)!;
   try {
+    if (sm.comando) {
+      await revisarCortePorComando(video, indice, t, lido, tomado, sm);
+      return;
+    }
     const frases = frasesNumeradas(sm.fala!.palavras);
     const ref = referenciaParaOEditor(sm.estiloId);
     const rev = await revisarPrevia({
@@ -1185,6 +1300,16 @@ export async function concluirMontagem(
     }
     if (sm.fase === "previa") {
       const ok = await trocarEstado(videoJobId, indice, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...sm, fase: "revisar", previaUrl: resultado.montado.url } });
+      return ok ? "trocado" : "ignorado";
+    }
+    // O EDITOR POR COMANDO (05/10): o primeiro final vai ao revisor; o corrigido vai ao ar.
+    if (sm.comando && sm.comando.correcoes < rodadasDeCorrecao()) {
+      const ok = await trocarEstado(videoJobId, indice, lido, {
+        ...lido,
+        desde: agora(),
+        trabalhando: false,
+        sobMedida: { ...sm, fase: "revisar", previaUrl: resultado.montado.url, comando: { ...sm.comando, montado: resultado.montado, tempos: { ...(sm.comando.tempos ?? {}), ...(resultado.tempos ?? {}) } } },
+      });
       return ok ? "trocado" : "ignorado";
     }
     return entregarCorte(

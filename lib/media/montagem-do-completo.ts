@@ -75,6 +75,18 @@ import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll
 import { DEFEITOS_GRAVES } from "@/lib/media/editor-sob-medida/corte";
 import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import {
+  comandoPadrao,
+  corrigirCompletoPorComando,
+  editorPorComandoLigado,
+  lerComandoDoProjeto,
+  planejarCompletoPorComando,
+  revisarPorComando,
+  tetoDeImagens,
+  type ComandoDoVideo,
+  type EntradaDoPlano,
+  type PlanoDoDiretor,
+} from "@/lib/media/editor-por-comando";
+import {
   demonstracaoNaFala,
   insercoesDoPlano,
   juntarDemonstracao,
@@ -301,7 +313,21 @@ export type EstadoDoSobMedida = {
    * não tem plano no caminho novo.
    */
   reenviar?: boolean;
+  /** O EDITOR POR COMANDO (05/10): como no corte (lib/media/montagem-nos-cortes.ts), o final sai direto e o revisor olha o final. */
+  comando?: {
+    comando: ComandoDoVideo;
+    base: string;
+    plano: PlanoDoDiretor;
+    montado?: { url: string; bytes: number; tempos?: Record<string, number> } | null;
+    tempos?: Record<string, number>;
+    correcoes: number;
+  } | null;
 };
+
+/** Correções do completo depois do revisor: padrão 0 (um segundo render de 20 min estoura a meta de 40 min). */
+function correcoesDoCompleto(): number {
+  return Math.max(0, Math.min(1, Number(process.env.EDITOR_POR_COMANDO_RODADAS_COMPLETO ?? 0)));
+}
 
 // ─────────────────────────────── números ───────────────────────────────
 
@@ -1187,7 +1213,7 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // `sobMedida`), e não para o plano por cenas. Se o caminho novo já
     // desistiu neste vídeo, segue a esteira de sempre (a reserva).
     const estiloDoVideo = contextoVisual(v).escolha.estiloId;
-    if (editorSobMedidaLigado(estiloDoVideo) && !lido.sobMedida?.desistiu) {
+    if ((editorPorComandoLigado() || editorSobMedidaLigado(estiloDoVideo)) && !lido.sobMedida?.desistiu) {
       const falaAprovada = lido.roteiro?.completo?.fala?.palavras;
       const aberturaSm = falaAprovada?.length ? aberturaNaBase(lido.roteiro, falaAprovada, falaDoCompleto.palavras) : null;
       const frases = frasesNumeradas(falaDoCompleto.palavras);
@@ -1878,6 +1904,26 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
   const sm = lido.sobMedida!;
   try {
     const base = lido.baseUrl ?? v.completoUrl!;
+    // O EDITOR POR COMANDO (05/10): um diretor por bloco, em paralelo; o final sai direto, sem prévia.
+    if (editorPorComandoLigado()) {
+      const comando = (await lerComandoDoProjeto(v.projectId).catch(() => null)) ?? comandoPadrao(contextoVisual(v).escolha);
+      const quadros = await quadrosPeloWorker(base, 320)(instantesParaOEditor(lido.fala!.duracao).filter((_, k) => k % 3 === 0)).catch(() => []);
+      const p = await planejarCompletoPorComando(await entradaDoPlanoDoCompleto(v, lido, comando, quadros));
+      const novo: EstadoDoSobMedida = {
+        ...sm,
+        estiloId: p.base,
+        editor: p.plano,
+        insercoes: p.insercoes,
+        edicao: p.edicao,
+        fase: "final",
+        custoImagensUsd: p.custoImagensUsd,
+        medidas: medidasDaEdicao(p.edicao),
+        avisos: p.avisos.slice(0, 30),
+        comando: { comando, base: p.base, plano: p.plano, tempos: p.tempos, correcoes: 0 },
+      };
+      await enviarSobMedida(v, { ...tomado, trabalhando: false, sobMedida: novo }, tomado);
+      return;
+    }
     const quadros = await quadrosPeloWorker(base, 384)(instantesParaOEditor(lido.fala!.duracao)).catch(() => []);
     const entrada = await entradaDoEditor(v, lido, quadros);
     // Bloco pronto nunca é refeito; os que faltam vão juntos.
@@ -1907,6 +1953,46 @@ async function editarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): Pr
   } catch (e) {
     await desistirDoSobMedida(v.id, tomado, `o editor falhou (${e instanceof Error ? e.message.slice(0, 200) : e})`);
   }
+}
+
+/** O que o diretor do editor por comando recebe para o completo. */
+async function entradaDoPlanoDoCompleto(v: VideoDoCompleto, m: MontagemDoCompleto, comando: ComandoDoVideo, quadros: Array<{ t: number; base64: string }>): Promise<EntradaDoPlano> {
+  const analise = m.analise!;
+  const perfil = await perfilDoProjeto(v.projectId).catch(() => null);
+  const { marca, legenda } = contextoVisual(v);
+  const { rosto } = geometriaNoQuadro(v.clips, analise);
+  return {
+    palavras: m.fala!.palavras,
+    duracao: m.fala!.duracao,
+    formato: analise.altura > analise.largura ? "9:16" : "16:9",
+    comando,
+    marca,
+    rosto,
+    comLegenda: legenda.mostrar,
+    logoUrl: v.logoUrl ?? null,
+    titulo: resumoDoVideo(v.clips) || null,
+    perfil: perfilNoPrompt(perfil),
+    quadros,
+    projectId: v.projectId,
+    imagens: tetoDeImagens("completo", m.fala!.duracao),
+  };
+}
+
+/** A revisão do completo por comando: sem nota (ou sem rodada), o final vai ao ar; com nota, só os blocos com nota voltam ao diretor. */
+async function revisarCompletoPorComando(v: VideoDoCompleto, lido: MontagemDoCompleto, tomado: MontagemDoCompleto): Promise<void> {
+  const sm = lido.sobMedida!;
+  const c = sm.comando!;
+  const vertical = lido.analise!.altura > lido.analise!.largura;
+  const rev = await revisarPorComando({ edicao: sm.edicao!, comando: c.comando.texto, obterQuadros: quadrosPeloWorker(sm.previaUrl!, vertical ? 360 : 512), projectId: v.projectId, teto: Math.min(24, Math.max(10, Math.round(lido.fala!.duracao / 50))) });
+  const historico = [...sm.historico, { rodada: sm.rodada, quadros: rev.quadros, nota: rev.nota, defeitos: rev.notas.map((n) => ({ momento: n.momento, t: n.t, tipo: "comando", descricao: n.problema })), falta: rev.resumo ? [rev.resumo] : [], erro: rev.erro ?? null }].slice(-6);
+  if (!rev.notas.length || c.correcoes >= correcoesDoCompleto()) {
+    await entregarCompleto(v, { ...tomado, sobMedida: { ...sm, historico }, revisaoVisual: { rodadas: sm.rodada, historico: [], pendente: false, final: true, motivo: "editor por comando: revisado no final" } }, c.montado!);
+    return;
+  }
+  const entrada = await entradaDoPlanoDoCompleto(v, lido, c.comando, []);
+  const p = await corrigirCompletoPorComando(entrada, { base: c.base, plano: c.plano, insercoes: sm.insercoes ?? {}, custoImagensUsd: sm.custoImagensUsd ?? 0 }, rev.notas, rev.resumo);
+  const novo: EstadoDoSobMedida = { ...sm, editor: p.plano, insercoes: p.insercoes, edicao: p.edicao, fase: "final", rodada: sm.rodada + 1, historico, custoImagensUsd: p.custoImagensUsd, medidas: medidasDaEdicao(p.edicao), avisos: [...(sm.avisos ?? []), ...p.avisos].slice(-30), comando: { ...c, plano: p.plano, montado: null, correcoes: c.correcoes + 1 } };
+  await enviarSobMedida(v, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo }, tomado);
 }
 
 /** Manda a prévia (metade da resolução) ou o final (com a abertura) ao worker, pela porta do completo. */
@@ -1969,6 +2055,10 @@ async function revisarSobMedida(v: VideoDoCompleto, lido: MontagemDoCompleto): P
   if (!(await trocarEstado(v.id, lido, tomado))) return;
   const sm = lido.sobMedida!;
   try {
+    if (sm.comando) {
+      await revisarCompletoPorComando(v, lido, tomado);
+      return;
+    }
     const frases = frasesNumeradas(lido.fala!.palavras);
     const ref = referenciaParaOEditor(sm.estiloId);
     const rev = await revisarPrevia({
@@ -2094,6 +2184,12 @@ export async function concluirMontagemDoCompleto(
   if (lido.sobMedida && !lido.sobMedida.desistiu) {
     if (lido.sobMedida.fase === "previa") {
       const ok = await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...lido.sobMedida, fase: "revisar", previaUrl: resultado.montado.url } });
+      return ok ? "revisando" : "ignorado";
+    }
+    // O EDITOR POR COMANDO (05/10): o primeiro final vai ao revisor (que entrega ou manda corrigir); o corrigido vai ao ar.
+    if (lido.sobMedida.comando && lido.sobMedida.comando.correcoes === 0) {
+      const montado = { url: resultado.montado.url, bytes: resultado.montado.bytes, tempos: resultado.tempos };
+      const ok = await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...lido.sobMedida, fase: "revisar", previaUrl: resultado.montado.url, comando: { ...lido.sobMedida.comando, montado } } });
       return ok ? "revisando" : "ignorado";
     }
     return entregarCompleto(

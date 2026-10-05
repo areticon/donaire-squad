@@ -6,6 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { Loader2, Music, X } from "lucide-react";
 import type { NomeDoEstilo } from "@/lib/media/estilos";
 import { CatalogoDeEstilos } from "@/components/video/catalogo-de-estilos";
+import { ComandoDoVideo } from "@/components/video/comando-do-video";
 import { EscolherMusica } from "@/components/video/escolher-musica";
 
 /**
@@ -150,7 +151,8 @@ export function EstiloDoProjeto({
       {/* O catálogo em camadas (29/09) no lugar dos quatro cartões. A linguagem
           escolhida decide o perfil de legenda dos cortes, que volta por
           `aoMudarBase` para a trilha sugerir o clima certo. */}
-      {verEstilo && <CatalogoDeEstilos projectId={projectId} aoMudarBase={setEscolhido} />}
+      {/* O EDITOR POR COMANDO (05/10): com EDITOR_POR_COMANDO=1 o comando do cliente substitui o catálogo; desligado, o catálogo de sempre. */}
+      {verEstilo && <ComandoDoVideo projectId={projectId} reserva={<CatalogoDeEstilos projectId={projectId} aoMudarBase={setEscolhido} />} />}
 
       {verResto && (
       <>
