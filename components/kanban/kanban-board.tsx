@@ -557,17 +557,19 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               onClick={() => i <= currentStep && setCurrentStep(i)}
               className={cn(
                 "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all",
+                // Paleta da marca (04/10, pedido do Bruno): feita em azul cheio
+                // com letra branca; a atual em branco com borda azul.
                 active
-                  ? "bg-orange-500/10 border border-orange-500/30 text-orange-400"
+                  ? "border-2 border-orange-500 text-orange-500 font-semibold shadow-sm"
                   : done
-                  ? "bg-green-900/20 border border-green-800/30 text-green-400 cursor-pointer hover:bg-green-900/30"
+                  ? "bg-orange-500 border border-orange-500 text-white cursor-pointer hover:bg-orange-600"
                   : "border border-[var(--border)] text-[var(--text-muted)] cursor-not-allowed opacity-50"
               )}
-              style={!active && !done ? { background: "var(--bg-elevated)" } : undefined}
+              style={active ? { background: "var(--bg-card, #fff)" } : !done ? { background: "var(--bg-elevated)" } : undefined}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
               {step.label}
-              {done && <span className="text-green-400">✓</span>}
+              {done && <span className="text-white">✓</span>}
             </button>
           );
         })}
