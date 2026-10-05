@@ -35,14 +35,27 @@ import { acaso, molaFisica } from "../kit";
  */
 let AMARELO = "#ffe11f";
 let TINTA_DO_CARIMBO = "#b8231b";
+// A HIERARQUIA DA MARCA (05/10, lib/media/editor-por-comando acentosDoVox): o
+// realce pode ser o vinho da marca (escuro), e aí a letra por cima dele é
+// clara (TINTA_NO_REALCE); títulos e texto vão no escuro da marca (TINTA); o
+// fio vermelho e o marco da linha do tempo, no destaque (VERMELHO).
+let TINTA = "#16130e";
+let TINTA_NO_REALCE = "#16130e";
+let VERMELHO = "#b8231b";
+/** O realce é escuro (letra clara por cima): sem multiply, que apagaria a letra. */
+let REALCE_ESCURO = false;
 const HEX6 = /^#[0-9a-f]{6}$/i;
-function usarAcentos(c: { tema?: { vox?: { realce?: string; carimbo?: string } } }): void {
+const cor = (x: string | undefined, padrao: string) => (x && HEX6.test(x) ? x : padrao);
+function usarAcentos(c: { tema?: { vox?: { realce?: string; tintaNoRealce?: string; tinta?: string; carimbo?: string; fio?: string } } }): void {
   const v = c.tema?.vox;
-  AMARELO = v?.realce && HEX6.test(v.realce) ? v.realce : "#ffe11f";
-  TINTA_DO_CARIMBO = v?.carimbo && HEX6.test(v.carimbo) ? v.carimbo : "#b8231b";
+  AMARELO = cor(v?.realce, "#ffe11f");
+  TINTA_DO_CARIMBO = cor(v?.carimbo, "#b8231b");
+  TINTA = cor(v?.tinta, "#16130e");
+  TINTA_NO_REALCE = cor(v?.tintaNoRealce, TINTA);
+  VERMELHO = cor(v?.fio, "#b8231b");
+  const h = TINTA_NO_REALCE.slice(1);
+  REALCE_ESCURO = (parseInt(h.slice(0, 2), 16) * 299 + parseInt(h.slice(2, 4), 16) * 587 + parseInt(h.slice(4, 6), 16) * 114) / 1000 > 150;
 }
-const TINTA = "#16130e";
-const VERMELHO = "#b8231b";
 const PAPEL = "#d3bf97";
 const SERIFA = '"Playfair Display", Georgia, serif';
 const CONDENSADA = 'Oswald, "Liberation Sans", sans-serif';
@@ -298,7 +311,7 @@ function TituloMarcado({ texto: txt, tam, p, rot = -1.2, largura, caixaAlta = tr
             lineHeight: 1.22,
             letterSpacing: "0.01em",
             textTransform: caixaAlta ? "uppercase" : "none",
-            color: TINTA,
+            color: TINTA_NO_REALCE,
             background: AMARELO,
             padding: `0.04em 0.22em 0.08em`,
             boxDecorationBreak: "clone",
@@ -508,7 +521,7 @@ function Colunas({ w, h, s, colunas = 2, trecho, grifo }: { w: number; h: number
             <>
               {MIUDO.slice(0, 180)}
               <span style={{ display: "block", margin: `${0.5 * corpo}px 0`, fontSize: corpo * 3.2, lineHeight: 1.15, color: TINTA, fontWeight: 700, filter: "none", textAlign: "left" }}>
-                <span style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(corre * 100).toFixed(1)}% 80%`, backgroundPosition: "0 75%", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}>{semAsteriscos(trecho)}</span>
+                <span style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(corre * 100).toFixed(1)}% 80%`, backgroundPosition: "0 75%", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", ...(REALCE_ESCURO && corre > 0.5 ? { color: TINTA_NO_REALCE } : {}) }}>{semAsteriscos(trecho)}</span>
               </span>
             </>
           ) : null}
@@ -529,7 +542,7 @@ function Manchete({ txt, tam, p }: { txt: string; tam: number; p: number }) {
         i % 2 === 0 ? (
           <React.Fragment key={i}>{x}</React.Fragment>
         ) : (
-          <span key={i} style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(corre * 100).toFixed(1)}% 78%`, backgroundPosition: "0 70%", padding: "0 0.06em", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", mixBlendMode: "multiply" }}>
+          <span key={i} style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(corre * 100).toFixed(1)}% 78%`, backgroundPosition: "0 70%", padding: "0 0.06em", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", ...(REALCE_ESCURO ? (corre > 0.5 ? { color: TINTA_NO_REALCE } : {}) : { mixBlendMode: "multiply" as const }) }}>
             {x}
           </span>
         )
@@ -817,7 +830,7 @@ export function Cronologia(c: Ctx) {
           <React.Fragment key={i}>
             <div style={{ position: "absolute", left: x, top: yFaixa + hFaixa * 0.5, width: 18 * s, height: 18 * s, marginLeft: -9 * s, marginTop: -9 * s, borderRadius: "50%", background: dito ? VERMELHO : TINTA, boxShadow: "0 2px 3px rgba(0,0,0,.4)" }} />
             <div style={{ position: "absolute", left: x, top: yFaixa - (vertical ? 0.085 : 0.13) * H, transform: "translateX(-50%)", whiteSpace: "nowrap", fontFamily: SERIFA, fontWeight: 900, fontSize: (vertical ? 88 : 100) * s, color: dito ? TINTA : "rgba(22,19,14,.35)", lineHeight: 1 }}>
-              <span style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(i === atual && dito ? doze(saiSuave(pm) * 0.5) / 0.5 : 0) * 100}% 70%`, backgroundPosition: "0 80%", padding: "0 0.12em" }}>{String(m.ano ?? "")}</span>
+              <span style={{ backgroundImage: `linear-gradient(${AMARELO}, ${AMARELO})`, backgroundRepeat: "no-repeat", backgroundSize: `${(i === atual && dito ? doze(saiSuave(pm) * 0.5) / 0.5 : 0) * 100}% 70%`, backgroundPosition: "0 80%", padding: "0 0.12em", ...(REALCE_ESCURO && i === atual && dito && pm > 0.5 ? { color: TINTA_NO_REALCE } : {}) }}>{String(m.ano ?? "")}</span>
             </div>
             {m.rotulo ? (
               <div style={{ position: "absolute", left: x, top: yFaixa + hFaixa * 1.15, transform: "translateX(-50%)", opacity: dito ? 1 : 0.35, maxWidth: passo * 0.9 }}>

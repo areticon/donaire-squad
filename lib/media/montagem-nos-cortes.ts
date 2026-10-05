@@ -1,5 +1,5 @@
 import { decidirRetomadas } from "@/lib/media/decidir-retomadas";
-import { pedidoDaGuarda } from "@/lib/media/guarda-da-fala";
+import { pedidoDaGuarda, type MantidoPeloUsuario } from "@/lib/media/guarda-da-fala";
 import { ganchoEmFraseInteira, limparSoco } from "@/lib/media/abertura-do-roteiro";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -85,6 +85,7 @@ import {
   type EntradaDoPlano,
   type PlanoDoDiretor,
 } from "@/lib/media/editor-por-comando";
+import { conferirFalaDoCorte } from "@/lib/media/editor-por-comando/fala-conferida";
 
 /**
  * O EDITOR COMPLETO NA ESTEIRA (30/09/2026), com a trava MONTAGEM_NA_EDICAO=1.
@@ -882,11 +883,19 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     const cru = verticalCru(t, lido);
     // O EDITOR POR COMANDO (05/10): o diretor escreve o plano pelo comando do cliente; o final sai direto.
     if (editorPorComandoLigado()) {
-      const quadros4 = cru ? await comPrazo(quadrosPeloWorker(cru, 320)([0.2, 0.4, 0.6, 0.8].map((f) => +(f * fala.duracao).toFixed(2))), PRAZO_DOS_QUADROS_MS, []) : [];
+      // A FALA CONFERIDA (05/10): a mesma conferência de retake da guarda na
+      // saída, ANTES do diretor (o tropeço sai do `manter`, e a composição é
+      // escrita sobre a fala sem ele). Ver lib/media/editor-por-comando/fala-conferida.ts.
+      const conf = await conferirFalaDoCorte(fala, { projectId: video.projectId, mantidos: (t as TrechoComMontagem & { mantidosPeloUsuario?: MantidoPeloUsuario[] | null }).mantidosPeloUsuario ?? null });
+      const ganchoConf = aprovado?.gancho && !aprovado.gancho.desligado ? ganchoEmFraseInteira(conf.fala.palavras, { inicio: conf.tempo(aprovado.gancho.inicio), fim: conf.tempo(aprovado.gancho.fim), soco: limparSoco(aprovado.gancho.soco) ?? "" }) : null;
+      const smConf: SobMedidaDoCorte = { ...sm, fala: conf.fala, gancho: ganchoConf };
+      const avisosDaFala = [...conf.sobras.map((s) => `fala conferida: saiu "${s.texto}" (${s.motivo}, ${s.quem})`), ...(conf.erro ? [conf.erro] : [])];
+      const quadros4 = cru ? await comPrazo(quadrosPeloWorker(cru, 320)([0.2, 0.4, 0.6, 0.8].map((f) => +(f * conf.fala.duracao).toFixed(2))), PRAZO_DOS_QUADROS_MS, []) : [];
       const comando = (await lerComandoDoProjeto(video.projectId).catch(() => null)) ?? comandoPadrao(ctx.escolha);
-      const p = await planejarPorComando(await entradaDoPlanoDoCorte(video, t, sm, comando, quadros4));
+      const p = await planejarPorComando(await entradaDoPlanoDoCorte(video, t, smConf, comando, quadros4));
+      p.avisos = [...avisosDaFala, ...p.avisos];
       const novo: SobMedidaDoCorte = {
-        ...sm,
+        ...smConf,
         estiloId: p.base,
         editor: p.plano,
         insercoes: p.insercoes,

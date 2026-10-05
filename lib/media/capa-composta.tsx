@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { ImageResponse } from "@vercel/og";
 import { nomeDaCor } from "@/lib/media/direcao-de-arte";
 import { estiloDoCatalogo } from "@/lib/media/catalogo-de-estilos";
+import { papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
 
 /**
  * A CAPA COMPOSTA EM CÓDIGO (30/09/2026).
@@ -65,13 +66,15 @@ export function familiaDaLinguagem(estiloId: string | null | undefined): Familia
 
 export type CoresDaMarca = { acento: string; escuro: string; claro: string };
 
-/** "#F97316,#1e1f22,#dbdee1" vira as três cores, com padrão neutro no que faltar. */
+/**
+ * "#F97316,#1e1f22,#dbdee1" vira as três cores, com padrão neutro no que
+ * faltar. Os papéis seguem a hierarquia do cliente (05/10,
+ * lib/media/papeis-da-paleta.ts): "#1f2f3a,#98092b,..." (marinho e vinho)
+ * dá acento vinho e escuro marinho, e não o marinho como acento.
+ */
 export function coresDaMarca(colorPalette: string | null | undefined): CoresDaMarca {
-  const cores = (colorPalette ?? "")
-    .split(",")
-    .map((c) => c.trim())
-    .filter((c) => /^#[0-9a-f]{3,8}$/i.test(c));
-  return { acento: cores[0] ?? "#F97316", escuro: cores[1] ?? "#15171a", claro: cores[2] ?? "#f2efe8" };
+  const p = papeisDaPaleta(colorPalette);
+  return { acento: p?.destaque ?? "#F97316", escuro: p?.escuro ?? "#15171a", claro: p?.claro ?? "#f2efe8" };
 }
 
 /**

@@ -31,7 +31,7 @@ import type { Word } from "@/lib/media/transcribe";
  * larga e a decisão é estreita.
  */
 
-export type TipoDeRetomada = "retomada" | "recomeco" | "falso-comeco" | "marcador" | "gaguejo";
+export type TipoDeRetomada = "retomada" | "recomeco" | "falso-comeco" | "marcador" | "gaguejo" | "eco";
 
 export type CandidatoDeRetomada = {
   id: string;
@@ -221,6 +221,17 @@ export function candidatosDeRetomada(p: Word[]): CandidatoDeRetomada[] {
     }
   }
 
+  // 2b. ECO DA PALAVRA (05/10): a palavra forte que fecha a frase volta
+  // colada, sozinha, e fica pendurada numa pausa. "Lembra Jesus com Marta e
+  // Maria? Maria [0,8 s] nos pés de Jesus" (cmurtv2zg, corte 0): o Bruno
+  // tropeçou no nome e repetiu; a transcrição junta a tomada boa numa palavra
+  // só, então nem a repetição colada (a primeira cópia fecha frase) nem o
+  // falso começo (a prova não acha "Maria" depois) pegavam. Vem antes do
+  // falso começo para o mesmo trecho ficar com a prova certa (`ecoDaPalavra`).
+  for (let i = 0; i + 2 < p.length; i++) {
+    if (ecoDaPalavra(p, i + 1)) add("eco", i + 1, i + 1, i + 2, 1);
+  }
+
   // 3. FALSO COMEÇO: fragmento de 1 a 4 palavras que não fecha frase, solto
   // por pausa, e a fala segue com outra coisa. "Mas, é, [1,2 s] o que Deus
   // nos pede". Também pega o contrário ("Então é você buscar, [1,2 s]
@@ -355,6 +366,25 @@ export function tentativaIncompletaRefeita(p: Array<{ word: string }>, c: Pick<C
     }
   }
   return false;
+}
+
+/**
+ * O ECO DA PALAVRA (05/10), certeza por código: a palavra `i` repete a
+ * anterior, que é forte (nome, substantivo; 4 letras ou mais) e fecha a frase
+ * ou a oração ("Maria?", "Maria,"); as duas estão coladas (menos de 0,6 s) e a
+ * cópia fica solta, sem fechar frase, seguida de pausa de 0,3 s ou mais (na
+ * fala já limpa do corte a pausa de 0,8 s da gravação sobra com 0,36 s). Nada
+ * de conteúdo some ao tirar a cópia: a palavra acabou de ser dita. "Sim. Sim,
+ * mas veja" não passa (a cópia emenda na fala sem pausa).
+ */
+export function ecoDaPalavra(p: Array<{ word: string; start: number; end: number }>, i: number): boolean {
+  if (i < 1 || i + 1 >= p.length) return false;
+  const k = chave(p[i].word);
+  if (k.length < 4 || FRACAS.has(k) || chave(p[i - 1].word) !== k) return false;
+  if (!fechaFrase(p[i - 1].word) && !/,\s*$/.test(p[i - 1].word)) return false;
+  if (fechaFrase(p[i].word)) return false;
+  if (p[i].start - p[i - 1].end >= 0.6) return false;
+  return p[i + 1].start - p[i].end >= 0.3;
 }
 
 /** O texto de [de..ate], para o relatório e para o JEV. */

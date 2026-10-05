@@ -1,7 +1,7 @@
 import { askClaude } from "@/lib/claude";
 import { jevLigado, perguntarAoJev, probabilidadeDeSim, usoVazio, type PerguntaDoJev, type UsoDoJev } from "@/lib/jev/cliente";
 import type { Remocao } from "@/lib/media/edicao";
-import { candidatosDeRetomada, chave, provaDeRetomada, tentativaIncompletaRefeita, textoDe, type CandidatoDeRetomada } from "@/lib/media/retomadas";
+import { candidatosDeRetomada, chave, ecoDaPalavra, provaDeRetomada, tentativaIncompletaRefeita, textoDe, type CandidatoDeRetomada } from "@/lib/media/retomadas";
 import type { Word } from "@/lib/media/transcribe";
 
 /**
@@ -178,7 +178,9 @@ export async function decidirRetomadas(
   // segunda não continua), e a prova de baixo ainda confere.
   const paraDecidir: DecisaoDeRetomada[] = [];
   for (const c of decisoes) {
-    if (tentativaIncompletaRefeita(p, c)) {
+    // O eco da palavra (05/10, `ecoDaPalavra`) também é certeza: a cópia solta
+    // repete a palavra que acabou de ser dita.
+    if (tentativaIncompletaRefeita(p, c) || (c.tipo === "eco" && ecoDaPalavra(p, c.de))) {
       c.quem = "codigo";
       c.corta = true;
     } else paraDecidir.push(c);
@@ -262,7 +264,9 @@ export async function decidirRetomadas(
     // leitura do JEV: só sai se ele o classificou como refez ou hesitação
     // ("em Isaías," e "ele" saíam no Claude e eram conteúdo, 03/10).
     const semLeitura = c.tipo === "falso-comeco" && c.escolha !== null && !/^(refez|hesitacao) /.test(c.escolha);
-    if (c.corta && (semLeitura || !provaDeRetomada(p, c.de, c.ate))) {
+    // O eco tem a prova para TRÁS (a palavra veio logo antes), e não para frente.
+    const provado = c.tipo === "eco" ? ecoDaPalavra(p, c.de) : provaDeRetomada(p, c.de, c.ate);
+    if (c.corta && (semLeitura || !provado)) {
       c.corta = false;
       c.quem = `${c.quem}+veto` as DecisaoDeRetomada["quem"];
     }

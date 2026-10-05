@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { lerMidia } from "@/lib/media/storage";
 import { familiaDaLinguagem, type CoresDaMarca, type FamiliaDaCapa } from "@/lib/media/capa-composta";
 import { linguagemDoProjeto } from "@/lib/media/direcao-de-arte";
+import { papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
 import { regrasAprovadas } from "@/lib/referencias/regras";
 
 /**
@@ -367,24 +368,15 @@ function hexDoHsl(h: number, s: number, l: number): string {
 function coresDaPaleta(texto: string | null | undefined): CoresDaMarca | null {
   const cores = (texto ?? "").split(",").map((c) => c.trim()).filter((c) => /^#[0-9a-f]{6}$/i.test(c) || /^#[0-9a-f]{3}$/i.test(c));
   if (!cores.length) return null;
-  // A paleta é uma lista livre (a tela deixa somar cores), sem papel por
-  // posição. A ordem "destaque, escuro, claro" vale quando a segunda é escura
-  // e a terceira clara, como no padrão; senão (05/10, paleta de cinco cores
-  // do Bruno, que punha um azul-marinho como destaque e um laranja como
-  // fundo claro), cada papel vai para a cor que serve a ele: o escuro é a
-  // mais escura, o claro a mais clara, e o destaque a primeira que sobrar.
-  const luz = (c: string) => {
-    const f = c.replace("#", "");
-    const h = f.length === 3 ? f.split("").map((x) => x + x).join("") : f;
-    return hslDe(parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)).l;
-  };
-  const naOrdem = cores.length < 2 || (luz(cores[1]) < 0.3 && (cores.length < 3 || luz(cores[2]) > 0.7));
-  if (naOrdem) return completarCores(cores[0], cores[1], cores[2]);
-  const porLuz = [...cores].sort((a, b) => luz(a) - luz(b));
-  const escuro = luz(porLuz[0]) < 0.3 ? porLuz[0] : undefined;
-  const claro = luz(porLuz[porLuz.length - 1]) > 0.7 ? porLuz[porLuz.length - 1] : undefined;
-  const acento = cores.find((c) => c !== escuro && c !== claro) ?? cores[0];
-  return completarCores(acento, escuro, claro);
+  // A paleta é uma lista livre (a tela deixa somar cores). Os papéis saem da
+  // HIERARQUIA do cliente (lib/media/papeis-da-paleta.ts, 05/10): as duas
+  // primeiras são as principais; o destaque é a primeira que é cor de verdade,
+  // e a outra principal assume o escuro (ou o claro). O remapeio de 05/10 de
+  // madrugada pegava "o mais escuro da lista inteira", o que podia tirar a
+  // segunda cor principal do papel dela; agora o resto da lista só completa.
+  const p = papeisDaPaleta(cores);
+  if (!p) return null;
+  return completarCores(p.destaque, p.escuro, p.claro);
 }
 
 /** Completa o que faltar a partir do tom do acento, em vez de cair no carvão de todo mundo. */

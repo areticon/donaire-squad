@@ -9,6 +9,7 @@ import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import { corrigirPlano, escreverPlano, type EntradaDoDiretor, type NotaDoRevisor, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
+import { contraste, papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -138,35 +139,53 @@ export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: 
     ...(plano?.tema?.visual ? { visual: plano.tema.visual } : {}),
     ...(plano?.tema?.acabamento ? { acabamento: plano.tema.acabamento } : {}),
     escuroLegenda: "#06111F",
-    // NO VOX a base é o papel envelhecido da peça; a marca entra só como ACENTO no marca-texto e no carimbo.
-    ...(base === "vox" ? { vox: acentosDoVox(c.cores.tipo === "marca" ? paleta ?? [cores.acento, cores.escuro, cores.claro] : [c.cores.acento]) } : {}),
+    // NO VOX a base é o papel envelhecido da peça; a marca entra pela hierarquia: o destaque no marca-texto, o escuro nos títulos e no carimbo.
+    ...(base === "vox" ? { vox: acentosDoVox(c.cores.tipo === "marca" ? paleta ?? [cores.acento, cores.escuro, cores.claro] : [c.cores.acento, c.cores.escuro, c.cores.claro]) } : {}),
   };
 }
 
-function hsl(hex: string): { l: number; s: number; lum: number } | null {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return null;
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
-  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
-  return { l, s, lum: 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) };
-}
+/** O papel envelhecido das peças Vox (a média de worker/fontes/vox/papel.jpg), para medir contraste. */
+const PAPEL_DO_VOX = "#e6d8b8";
+const TINTA_DO_VOX = "#16130e";
+const CREME = "#fff8ec";
+
+export type AcentosDoVox = {
+  /** A faixa do marca-texto (e a tarja dos olhos). */
+  realce?: string;
+  /** A letra por cima do realce: a que dá contraste de leitura (4,5:1 ou mais). */
+  tintaNoRealce?: string;
+  /** Títulos e texto escuro sobre o papel. */
+  tinta?: string;
+  /** A tinta do carimbo. */
+  carimbo?: string;
+  /** O fio entre recortes e o marco da linha do tempo. */
+  fio?: string;
+};
 
 /**
- * Os acentos da marca no Vox: o REALCE (a faixa do marca-texto, com tinta preta
- * por cima: a cor mais viva da paleta que ainda deixa o preto legível) e o
- * CARIMBO (a cor viva e escura da paleta). Sem cor que sirva, o amarelo e o
- * vermelho do Vox. Ex.: Fé & Gestão (#1f2f3a,#98092b,#df931b,#e0daa3,#9fb982)
- * dá realce #df931b e carimbo #98092b.
+ * Os acentos da marca no Vox, PELA HIERARQUIA da paleta (05/10,
+ * lib/media/papeis-da-paleta.ts), e não pela cor "que combina mais" com o
+ * papel: o marca-texto é o DESTAQUE principal (com letra clara quando ele é
+ * escuro), o texto e os títulos vão na outra cor principal quando ela é
+ * escura, e o carimbo também. As cores de apoio (dourado, creme, verde) não
+ * entram. Cada uso confere o contraste; o que não passa volta ao do Vox.
+ * Ex.: Fé & Gestão (#1f2f3a,#98092b,#df931b,#e0daa3,#9fb982) dá marca-texto
+ * vinho #98092b com letra creme, títulos e carimbo marinho #1f2f3a e fio vinho.
  */
-export function acentosDoVox(paleta: string[]): { realce?: string; carimbo?: string } {
-  const cs = paleta.map((h) => ({ h: h.trim(), c: hsl(h) })).filter((x): x is { h: string; c: NonNullable<ReturnType<typeof hsl>> } => Boolean(x.c));
-  const realce = cs.filter((x) => x.c.lum >= 0.3 && x.c.s >= 0.45).sort((a, b) => b.c.s - a.c.s)[0]?.h;
-  const carimbo = cs.filter((x) => x.c.lum < 0.3 && x.c.lum > 0.02 && x.c.s >= 0.45).sort((a, b) => b.c.s - a.c.s)[0]?.h;
-  return { ...(realce ? { realce } : {}), ...(carimbo ? { carimbo } : {}) };
+export function acentosDoVox(paleta: string[]): AcentosDoVox {
+  const p = papeisDaPaleta(paleta);
+  if (!p) return {};
+  const realce = p.destaque;
+  // A letra no realce: a mais legível entre o creme e a tinta do Vox (ou o escuro da marca).
+  const opcoes = [CREME, p.escuro ?? TINTA_DO_VOX, TINTA_DO_VOX];
+  const tintaNoRealce = opcoes.sort((a, b) => contraste(b, realce) - contraste(a, realce))[0];
+  const saida: AcentosDoVox = { realce, tintaNoRealce };
+  // O escuro principal (a segunda cor, ou a primeira quando ela é tinta) escreve os títulos e o carimbo.
+  if (p.escuro && contraste(p.escuro, PAPEL_DO_VOX) >= 7) saida.tinta = p.escuro;
+  const carimbo = [p.segunda, realce].find((c) => c && contraste(c, PAPEL_DO_VOX) >= 4.5);
+  if (carimbo) saida.carimbo = carimbo;
+  if (contraste(realce, PAPEL_DO_VOX) >= 3) saida.fio = realce;
+  return saida;
 }
 
 /** A paleta inteira do projeto (projects.colorPalette), em hex. */
