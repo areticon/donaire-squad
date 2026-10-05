@@ -23,6 +23,16 @@ import type { SocialAccount } from "@prisma/client";
  *          (cliente cujo Instagram a Meta ainda não deixa conectar), e não
  *          existe outro caminho para ela.
  *
+ *   4. PÁGINA DE EMPRESA DO LINKEDIN (05/10, decisão do Bruno): conta LinkedIn
+ *      de organização com página no vínculo sai pelo Blotato SEMPRE que a
+ *      chave existe, tenha ou não token próprio, sem precisar de "linkedin" em
+ *      PUBLICAR_VIA_BLOTATO (que levaria o perfil pessoal junto). O app de
+ *      páginas da Demandou está no nível de desenvolvimento da Community
+ *      Management API e só publica para quem é administrador do app; o
+ *      perfil pessoal continua pela API própria. Para desligar só esta regra,
+ *      PAGINA_LINKEDIN_PELA_PONTE=0 (a mesma variável tira a conexão assistida
+ *      da página na tela do cliente, ver lib/social/conexao-assistida.ts).
+ *
  * Quando uma rede for aprovada, basta tirá-la de PUBLICAR_VIA_BLOTATO: as
  * contas com token próprio voltam na hora para a API própria. As que só têm o
  * vínculo continuam pelo Blotato até o cliente conectar pela Demandou, porque
@@ -63,6 +73,16 @@ export function blotatoLigado(): boolean {
 }
 
 /**
+ * A página de empresa do LinkedIn conecta e publica pela ponte (regra 4 do
+ * topo). Ligada por padrão com a chave presente; "0", "nao" ou "false" em
+ * PAGINA_LINKEDIN_PELA_PONTE desliga.
+ */
+export function paginaDoLinkedInPelaPonte(valor = process.env.PAGINA_LINKEDIN_PELA_PONTE): boolean {
+  if (!blotatoLigado()) return false;
+  return !/^(0|n[aã]o|false|off)$/i.test((valor ?? "").trim());
+}
+
+/**
  * O VÍNCULO COM O BLOTATO, guardado na coluna `blotatoAccountId` que já existe
  * (herança de março), sem migração.
  *
@@ -86,13 +106,17 @@ export function escreverVinculo(v: VinculoBlotato): string {
   return v.paginaId ? `${v.contaId}:${v.paginaId}` : v.contaId;
 }
 
-type ContaParaRotear = Pick<SocialAccount, "id" | "platform" | "accessToken" | "blotatoAccountId">;
+type ContaParaRotear = Pick<SocialAccount, "id" | "platform" | "accessToken" | "blotatoAccountId"> & {
+  /** "organization" é página; sem o campo, a conta é tratada como perfil. */
+  accountType?: string | null;
+};
 
 export function caminhoDaConta(
   conta: ContaParaRotear,
-  env: { redes?: string; contas?: string } = {}
+  env: { redes?: string; contas?: string; paginaLinkedIn?: string } = {}
 ): { caminho: CaminhoDePublicacao; motivo: string } {
-  if (!lerVinculo(conta.blotatoAccountId)) {
+  const vinculo = lerVinculo(conta.blotatoAccountId);
+  if (!vinculo) {
     return { caminho: "propria", motivo: "conta sem vínculo com o Blotato" };
   }
   if (!conta.accessToken) {
@@ -103,6 +127,14 @@ export function caminhoDaConta(
   }
   if (!blotatoLigado()) {
     return { caminho: "propria", motivo: "Blotato desligado (sem BLOTATO_API_KEY)" };
+  }
+  if (
+    conta.platform === "linkedin" &&
+    conta.accountType === "organization" &&
+    vinculo.paginaId &&
+    paginaDoLinkedInPelaPonte(env.paginaLinkedIn ?? process.env.PAGINA_LINKEDIN_PELA_PONTE)
+  ) {
+    return { caminho: "blotato", motivo: "página de empresa do LinkedIn (sempre pela ponte)" };
   }
   if (contasPeloBlotato(env.contas ?? process.env.PUBLICAR_VIA_BLOTATO_CONTAS).has(conta.id)) {
     return { caminho: "blotato", motivo: "conta ligada em PUBLICAR_VIA_BLOTATO_CONTAS" };

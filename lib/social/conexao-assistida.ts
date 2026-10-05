@@ -1,8 +1,15 @@
 import { prisma } from "@/lib/db/prisma";
 import { enviarEmail, type Email } from "@/lib/email";
 import { casca, escapar, item, MARCA, paragrafo, titulo, botao } from "@/lib/email/layout";
-import { blotatoLigado, redesPeloBlotato } from "@/lib/publish/roteador";
-import { NOME_DA_REDE, O_QUE_PREPARAR, REDES_DA_DEMANDOU, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
+import { blotatoLigado, paginaDoLinkedInPelaPonte, redesPeloBlotato } from "@/lib/publish/roteador";
+import {
+  DESTINOS_DA_CONEXAO,
+  NOME_DA_REDE,
+  O_QUE_PREPARAR,
+  PAGINA_DO_LINKEDIN,
+  REDES_DA_DEMANDOU,
+  type PedidoDeConexao,
+} from "@/lib/social/textos-da-conexao";
 import { projetoVisivel } from "@/lib/equipe/conta";
 
 /**
@@ -23,11 +30,18 @@ import { projetoVisivel } from "@/lib/equipe/conta";
  *
  * Sem BLOTATO_API_KEY nenhuma rede é assistida: não haveria por onde publicar
  * o que o time conectasse, e prometer a chamada seria mentir.
+ *
+ * A PÁGINA DE EMPRESA DO LINKEDIN (05/10) entra como destino à parte,
+ * "linkedin-pagina", ligado pela regra própria do roteador
+ * (paginaDoLinkedInPelaPonte): o perfil pessoal segue com o botão do app da
+ * Demandou e só a página vira conexão assistida.
  */
 export function redesDeConexaoAssistida(): string[] {
   if (!blotatoLigado()) return [];
   const ligadas = redesPeloBlotato();
-  return REDES_DA_DEMANDOU.filter((r) => ligadas.has(r));
+  const redes: string[] = REDES_DA_DEMANDOU.filter((r) => ligadas.has(r));
+  if (paginaDoLinkedInPelaPonte()) redes.push(PAGINA_DO_LINKEDIN);
+  return redes;
 }
 
 /**
@@ -53,7 +67,7 @@ export async function pedirConexaoAssistida(args: {
   baseUrl?: string;
 }): Promise<{ pedidoEm: string; jaPedido: boolean; avisados: number }> {
   const { userId, projectId, rede } = args;
-  if (!(REDES_DA_DEMANDOU as readonly string[]).includes(rede)) throw new RecusaDoPedido("Rede desconhecida.");
+  if (!DESTINOS_DA_CONEXAO.includes(rede)) throw new RecusaDoPedido("Rede desconhecida.");
   const projeto = await prisma.project.findFirst({
     where: { id: projectId, ...projetoVisivel(userId) },
     select: { id: true, name: true, user: { select: { id: true, email: true, name: true } } },
@@ -103,6 +117,12 @@ export async function pedirConexaoAssistida(args: {
         "",
         "Responda este e-mail ao cliente para marcar a chamada. Na chamada, conecte a rede no painel da ponte",
         "(janela anônima, o cliente digita a própria senha) e depois ligue a conta ao projeto em:",
+        ...(rede === PAGINA_DO_LINKEDIN
+          ? [
+              "(Página do LinkedIn: no painel da ponte, conecte o LinkedIn de quem administra a página e marque a página;",
+              "na tela abaixo, escolha a conta LinkedIn e a página no campo Página da empresa.)",
+            ]
+          : []),
         `${base}/admin/redes?projeto=${projeto.id}`,
       ].join("\n"),
     });
@@ -156,9 +176,16 @@ export async function pedidosRecentes(): Promise<PedidoParaOAdmin[]> {
   const ids = [...new Set(linhas.map((l) => (l.detalhe as Detalhe | null)?.projectId).filter(Boolean) as string[])];
   const contas = await prisma.socialAccount.findMany({
     where: { projectId: { in: ids }, isActive: true },
-    select: { projectId: true, platform: true },
+    select: { projectId: true, platform: true, accountType: true, blotatoAccountId: true },
   });
   const tem = new Set(contas.map((c) => `${c.projectId}|${c.platform}`));
+  // A página do LinkedIn só conta como atendida quando há página ligada à
+  // ponte: a página antiga do app próprio não publica para quem não é admin.
+  for (const c of contas) {
+    if (c.platform === "linkedin" && c.accountType === "organization" && c.blotatoAccountId?.includes(":")) {
+      tem.add(`${c.projectId}|${PAGINA_DO_LINKEDIN}`);
+    }
+  }
   return linhas.flatMap((l) => {
     const d = l.detalhe as Detalhe | null;
     if (!d) return [];

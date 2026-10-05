@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
 import { PaginaDeEmpresaLinkedIn } from "@/components/social/pagina-empresa-linkedin";
-import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
+import { PAGINA_DO_LINKEDIN, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -1396,11 +1396,17 @@ function StepNetworks({ projectId }: { projectId: string }) {
             {net.platform === "linkedin" && (
               <PaginaDeEmpresaLinkedIn
                 projectId={projectId}
+                // Página de empresa pela conexão assistida (05/10): o app de
+                // páginas próprio só autoriza administradores do app.
+                assistida={assistidas.includes(PAGINA_DO_LINKEDIN)}
+                conectarDiretoUrl={conectarDireto && temAppDePaginas ? urlPaginasLinkedIn : null}
                 appLiberado={temAppDePaginas}
                 urlDoApp={urlPaginasLinkedIn}
                 paginas={daRede.filter((c) => c.accountType === "organization").length}
                 resultado={paginasLinkedIn}
-                pedido={pedidos.find((p) => p.rede === "linkedin") ?? null}
+                pedido={
+                  pedidos.find((p) => p.rede === (assistidas.includes(PAGINA_DO_LINKEDIN) ? PAGINA_DO_LINKEDIN : "linkedin")) ?? null
+                }
                 onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
                 onSair={() => anotarSaida("linkedin")}
               />

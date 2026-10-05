@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
 import { PaginaDeEmpresaLinkedIn } from "@/components/social/pagina-empresa-linkedin";
-import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
+import { PAGINA_DO_LINKEDIN, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
 interface SocialAccount {
   id: string;
@@ -261,6 +261,9 @@ export function SocialConnectPanel({
 
   const linkedinPersonal = linkedinAccounts.filter((a) => a.accountType === "personal");
   const linkedinPages = linkedinAccounts.filter((a) => a.accountType === "organization");
+  // A página de empresa conecta pela conexão assistida (05/10): o app de
+  // páginas próprio só autoriza administradores do app.
+  const paginaAssistida = ehAssistida(PAGINA_DO_LINKEDIN);
 
   // Whether the "pages" app credentials are configured in env (we detect via a feature flag endpoint)
   const [hasPagesApp, setHasPagesApp] = useState(false);
@@ -324,19 +327,25 @@ export function SocialConnectPanel({
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Páginas de empresa</p>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {linkedinPages.length > 0 ? `${linkedinPages.length} página(s) importada(s)` : hasPagesApp ? "Conecte para importar suas páginas" : "Disponível em breve"}
+                {linkedinPages.length > 0
+                  ? `${linkedinPages.length} página(s) importada(s)`
+                  : paginaAssistida
+                    ? "Conexão assistida, logo abaixo"
+                    : hasPagesApp
+                      ? "Conecte para importar suas páginas"
+                      : "Disponível em breve"}
               </p>
             </div>
             {linkedinPages.length > 0 ? (
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant="success" className="text-[10px] shrink-0">{linkedinPages.length} página(s)</Badge>
-                {hasPagesApp && !ehAssistida("linkedin") && (
+                {hasPagesApp && !ehAssistida("linkedin") && !paginaAssistida && (
                   <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
                     <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Buscar outras</a>
                   </Button>
                 )}
               </div>
-            ) : hasPagesApp && !ehAssistida("linkedin") ? (
+            ) : paginaAssistida ? null : hasPagesApp && !ehAssistida("linkedin") ? (
               <Button size="sm" variant="outline" className="text-xs shrink-0" asChild>
                 <a href={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}>Conectar</a>
               </Button>
@@ -350,7 +359,22 @@ export function SocialConnectPanel({
 
         {/* Os becos da página de empresa (04/10): app de páginas não liberado ou
             nenhuma página administrada. Explica e oferece a conexão assistida. */}
-        {!ehAssistida("linkedin") && (paginasLinkedIn !== null || !hasPagesApp) && (
+        {paginaAssistida && (
+          <div className="mb-4">
+            <PaginaDeEmpresaLinkedIn
+              assistida
+              projectId={project.id}
+              appLiberado={hasPagesApp}
+              urlDoApp={`/api/social/linkedin/connect?projectId=${project.id}&pages=1`}
+              conectarDiretoUrl={conectarDireto && hasPagesApp ? `/api/social/linkedin/connect?projectId=${project.id}&pages=1` : null}
+              paginas={linkedinPages.length}
+              resultado={paginasLinkedIn}
+              pedido={pedidos.find((p) => p.rede === PAGINA_DO_LINKEDIN) ?? null}
+              onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
+            />
+          </div>
+        )}
+        {!paginaAssistida && !ehAssistida("linkedin") && (paginasLinkedIn !== null || !hasPagesApp) && (
           <div className="mb-4">
             <PaginaDeEmpresaLinkedIn
               projectId={project.id}

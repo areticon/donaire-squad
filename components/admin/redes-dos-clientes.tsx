@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 // módulo, que lê o banco, nunca chega ao navegador (mesma regra do CRM).
 import type { ContaDoProjeto } from "@/lib/admin/blotato-vinculos";
 import type { PedidoParaOAdmin } from "@/lib/social/conexao-assistida";
-import { NOME_DA_REDE } from "@/lib/social/textos-da-conexao";
+import { NOME_DA_REDE, redeDoDestino } from "@/lib/social/textos-da-conexao";
 
 /**
  * A TELA DE LIGAR CONTAS DA PONTE A PROJETOS (01/10). Ver
@@ -216,7 +216,9 @@ export function RedesDosClientes({
                         onClick={() => {
                           setProjectId(p.projectId);
                           setSocialId("");
-                          const daRede = ponte.filter((c) => c.platform === p.rede);
+                          // A página do LinkedIn é pedida como "linkedin-pagina", e a conta
+                          // na ponte é a do LinkedIn de quem administra a página.
+                          const daRede = ponte.filter((c) => c.platform === redeDoDestino(p.rede));
                           setContaId(daRede.length === 1 ? daRede[0].id : "");
                           document.getElementById("ligar-conta")?.scrollIntoView({ behavior: "smooth" });
                         }}
@@ -310,6 +312,13 @@ export function RedesDosClientes({
                 ))}
               </select>
             </label>
+          )}
+          {conta && conta.platform === "linkedin" && conta.paginas.length === 0 && (
+            <p className="text-xs text-yellow-500">
+              Esta conta do LinkedIn não trouxe página nenhuma{conta.erroDasPaginas ? ` (${conta.erroDasPaginas})` : ""}. Para
+              publicar na página da empresa, quem conectou precisa ser Superadministrador ou Administrador de conteúdo dela;
+              reconecte no painel da ponte. Sem página, liga só o perfil pessoal.
+            </p>
           )}
           {conta && exigePagina && conta.paginas.length === 0 && (
             <p className="text-xs text-red-400">

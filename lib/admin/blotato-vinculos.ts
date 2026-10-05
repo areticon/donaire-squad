@@ -135,13 +135,44 @@ export async function ligarContaDaPonte(args: {
   // Playlist do YouTube não é destino: o vínculo do YouTube é só o canal.
   const vinculo = escreverVinculo({ contaId: args.contaId, paginaId: conta.platform === "youtube" ? null : pagina });
 
-  if (args.socialId) {
-    const social = await prisma.socialAccount.findUnique({ where: { id: args.socialId } });
-    if (!social || social.projectId !== args.projectId) throw new RecusaDoVinculo(`A conta ${args.socialId} não é deste projeto.`);
+  // PÁGINA DO LINKEDIN JÁ EXISTENTE NO PROJETO (05/10): a página que alguém
+  // importou pelo app próprio tem o MESMO número da página na ponte (o id da
+  // subconta do Blotato é o id da organização no LinkedIn, conferido na
+  // listagem de 05/10). Ligar essa em vez de criar outra evita a mesma página
+  // aparecer duas vezes para o cliente.
+  let socialId = args.socialId || null;
+  if (!socialId && conta.platform === "linkedin" && pagina) {
+    const mesmaPagina = await prisma.socialAccount.findFirst({
+      where: { projectId: args.projectId, platform: "linkedin", accountType: "organization", organizationId: pagina },
+      select: { id: true },
+    });
+    socialId = mesmaPagina?.id ?? null;
+  }
+
+  if (socialId) {
+    const social = await prisma.socialAccount.findUnique({ where: { id: socialId } });
+    if (!social || social.projectId !== args.projectId) throw new RecusaDoVinculo(`A conta ${socialId} não é deste projeto.`);
     if (social.platform !== conta.platform) {
-      throw new RecusaDoVinculo(`A conta ${args.socialId} é de ${social.platform}, e a da ponte é de ${conta.platform}.`);
+      throw new RecusaDoVinculo(`A conta ${socialId} é de ${social.platform}, e a da ponte é de ${conta.platform}.`);
     }
-    await prisma.socialAccount.update({ where: { id: args.socialId }, data: { blotatoAccountId: vinculo } });
+    if (social.platform === "linkedin" && social.accountType === "organization") {
+      // Página sem página no vínculo publicaria no perfil de quem conectou.
+      if (!pagina) throw new RecusaDoVinculo("Esta conta do projeto é uma página do LinkedIn: escolha a página no campo Página da empresa.");
+      if (social.organizationId && social.organizationId !== pagina) {
+        throw new RecusaDoVinculo(`A conta do projeto é a página ${social.organizationId}, e a escolhida na ponte é a ${pagina}.`);
+      }
+    }
+    // A página ligada na chamada é a que o cliente quer usar: liga e tira o
+    // "reconecte" que o token próprio vencido tivesse deixado (ela não usa
+    // mais o token para publicar).
+    const paginaDoLinkedIn = social.platform === "linkedin" && social.accountType === "organization";
+    await prisma.socialAccount.update({
+      where: { id: socialId },
+      data: {
+        blotatoAccountId: vinculo,
+        ...(paginaDoLinkedIn ? { isActive: true, needsReconnectAt: null, needsReconnectReason: null } : {}),
+      },
+    });
     return { socialAccountId: social.id, criada: false, nome: social.displayName ?? social.platform, vinculo };
   }
 

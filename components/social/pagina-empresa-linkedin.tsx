@@ -2,7 +2,7 @@
 
 import { Building2 } from "lucide-react";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
-import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
+import { PAGINA_DO_LINKEDIN, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
 /**
  * A PORTA DA PÁGINA DE EMPRESA DO LINKEDIN, separada e com nome (04/10).
@@ -18,6 +18,13 @@ import type { PedidoDeConexao } from "@/lib/social/textos-da-conexao";
  * (app de páginas não liberado, ou nenhuma página onde a pessoa é
  * administradora) a explicação e a conexão assistida.
  *
+ * PELA PONTE (05/10, decisão do Bruno): o app de páginas do LinkedIn está no
+ * nível de desenvolvimento e só autoriza quem é administrador do app. Com
+ * `assistida`, a porta da página É a conexão assistida (destino
+ * "linkedin-pagina"): o time conecta a página na ponte junto com o cliente, e
+ * a publicação na página sai por lá. O botão do app próprio fica só para o
+ * admin, como link discreto. O perfil pessoal não muda.
+ *
  * Só importa componentes de tela e textos puros: nada que toque o banco.
  */
 export function PaginaDeEmpresaLinkedIn({
@@ -29,6 +36,8 @@ export function PaginaDeEmpresaLinkedIn({
   pedido,
   onPedido,
   onSair,
+  assistida = false,
+  conectarDiretoUrl = null,
 }: {
   projectId: string;
   /** LINKEDIN_PAGES_CLIENT_ID e _SECRET presentes no servidor. */
@@ -41,7 +50,42 @@ export function PaginaDeEmpresaLinkedIn({
   pedido: PedidoDeConexao | null;
   onPedido: (p: PedidoDeConexao) => void;
   onSair?: () => void;
+  /** A página conecta pela conexão assistida (ver lib/social/conexao-assistida.ts). */
+  assistida?: boolean;
+  /** Só para admin, com a página assistida: o app de páginas próprio. */
+  conectarDiretoUrl?: string | null;
 }) {
+  if (assistida) {
+    return (
+      <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--border)" }} data-linkedin-paginas="assistida">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-blue-800/20 text-blue-400 flex items-center justify-center shrink-0">
+            <Building2 className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-[12rem]">
+            <p className="text-sm font-medium text-[var(--text-primary)]">Página de empresa do LinkedIn</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              {paginas > 0
+                ? `${paginas === 1 ? "1 página conectada" : `${paginas} páginas conectadas`}. Para ligar outra página, peça uma nova conexão.`
+                : "Para publicar em nome da empresa. Conectamos a página junto com você; o perfil pessoal continua no botão de cima."}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3">
+          <ConexaoAssistida
+            compacta
+            projectId={projectId}
+            rede={PAGINA_DO_LINKEDIN}
+            temConta={paginas > 0}
+            pedido={pedido}
+            conectarDiretoUrl={conectarDiretoUrl}
+            onPedido={onPedido}
+          />
+        </div>
+      </div>
+    );
+  }
+
   const beco = !appLiberado || resultado !== null;
 
   return (
