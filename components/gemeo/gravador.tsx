@@ -177,6 +177,14 @@ export function Gravador({
       {video && (fase === "gravando" || fase === "pedindo") && (
         <video ref={aoVivo} muted playsInline className="aspect-video w-full max-w-[520px] rounded-lg bg-black object-cover" style={{ transform: "scaleX(-1)" }} />
       )}
+      {/* O ENQUADRAMENTO (05/10): o gêmeo repete o do treino em todo vídeo; a
+          checagem recusa rosto acima de 32% da altura (ver enquadramentoDoTreino). */}
+      {video && fase !== "revendo" && (
+        <p className="w-full max-w-[520px] text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+          Enquadre do peito para cima, com o celular um pouco mais longe: a cabeça no terço de cima, com espaço acima dela, e os
+          dois ombros inteiros. O seu gêmeo repete este enquadramento em todos os vídeos.
+        </p>
+      )}
       {roteiro && fase !== "revendo" && (
         <div className="flex w-full max-w-[520px] flex-col gap-1">
           {/* ANTES DE GRAVAR, O TEXTO INTEIRO (03/10, print do Bruno no celular):

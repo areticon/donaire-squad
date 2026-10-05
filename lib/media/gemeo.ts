@@ -421,12 +421,23 @@ export type MedidasDoTreino = {
   duracaoSec: number;
   largura?: number | null;
   altura?: number | null;
-  rosto: { quadros: number; comRosto: number; comVarios: number; virados: number };
+  rosto: {
+    quadros: number;
+    comRosto: number;
+    comVarios: number;
+    virados: number;
+    /**
+     * 05/10: a altura mediana do rosto (malha, testa ao queixo) e o topo dele,
+     * em fração da altura do quadro. Ausentes nos treinos medidos antes.
+     */
+    altura?: number | null;
+    topo?: number | null;
+  };
   audio: { falaDb: number | null; ruidoDb: number | null; picoDb: number | null; falaPct: number };
 };
 
 export type ChecagemDoTreino = {
-  id: "duracao" | "rosto" | "audio" | "leitura";
+  id: "duracao" | "rosto" | "enquadramento" | "audio" | "leitura";
   /** ok: passou; aviso: passou, mas a tela recomenda gravar de novo; erro: recusado. */
   resultado: "ok" | "aviso" | "erro";
   texto: string;
@@ -463,6 +474,44 @@ export function coberturaDaLeitura(transcricao: string, texto: string): number {
  *  - leitura: pelo menos 70% das palavras do texto e a autorização inteira
  *    ("autorizo", o nome, "gêmeo digital").
  */
+/**
+ * O ENQUADRAMENTO DO TREINO (05/10/2026). O gêmeo treinado da HeyGen REPETE o
+ * enquadramento do vídeo de treino: medido no treino do Bruno (selfie em pé,
+ * celular perto) e nos pedaços de 04/10, o rosto ocupa 39% da altura do
+ * quadro no treino e 37 a 41% em todos os pedaços, em qualquer cenário, com
+ * os ombros cortados pelas laterais. A API v3 não tem escala nem deslocamento
+ * do avatar (só `fit` cover/contain), e abrir o plano depois do gerador
+ * (recortar a pessoa, diminuir e subir) deixa um busto flutuando, porque o
+ * treino não tem corpo abaixo do peito nem ombro além da borda: testado em
+ * 05/10 e descartado. O plano só abre de verdade se o treino já vier aberto.
+ *
+ * Os limites são da malha do rosto (testa ao queixo; com cabelo a cabeça é
+ * ~1,25 vez isso), em fração da altura do quadro:
+ *   acima de 0,32  recusa: a cabeça passaria de 40% da altura, sem ombros;
+ *   acima de 0,26  aviso: passa, mas o close sai apertado;
+ *   topo abaixo de 0,10 aviso: cabeça colada no alto do quadro.
+ * O alvo é o plano de peito: rosto entre 18 e 25% da altura, olhos perto do
+ * terço de cima, ombros inteiros.
+ */
+export const ROSTO_MAXIMO_NO_TREINO = 0.32;
+export const ROSTO_CONFORTAVEL_NO_TREINO = 0.26;
+const TOPO_MINIMO_DO_ROSTO = 0.1;
+
+const COMO_ENQUADRAR =
+  "Afaste o celular (ou dê um passo para trás) até aparecer do peito para cima: a cabeça no terço de cima, com um pouco de espaço acima dela, e os dois ombros inteiros no quadro. O seu gêmeo repete este enquadramento em todos os vídeos.";
+
+export function enquadramentoDoTreino(r: MedidasDoTreino["rosto"]): ChecagemDoTreino | null {
+  if (typeof r.altura !== "number" || r.altura <= 0) return null;
+  const pct = Math.round(r.altura * 100);
+  if (r.altura > ROSTO_MAXIMO_NO_TREINO)
+    return { id: "enquadramento", resultado: "erro", texto: `Você está perto demais da câmera: o rosto ocupa ${pct}% da altura do vídeo. ${COMO_ENQUADRAR}` };
+  if (r.altura > ROSTO_CONFORTAVEL_NO_TREINO)
+    return { id: "enquadramento", resultado: "aviso", texto: `O rosto ocupa ${pct}% da altura do vídeo, e o gêmeo vai sair em close apertado. ${COMO_ENQUADRAR}` };
+  if (typeof r.topo === "number" && r.topo < TOPO_MINIMO_DO_ROSTO)
+    return { id: "enquadramento", resultado: "aviso", texto: `A cabeça ficou colada no alto do quadro. ${COMO_ENQUADRAR}` };
+  return { id: "enquadramento", resultado: "ok", texto: "Enquadramento aberto: cabeça com espaço acima e ombros no quadro." };
+}
+
 export function conferirTreino(
   m: MedidasDoTreino,
   transcricao: string,
@@ -487,6 +536,9 @@ export function conferirTreino(
     });
   else if (r.virados > 1) c.push({ id: "rosto", resultado: "aviso", texto: "Em alguns momentos o rosto ficou virado. Olhe para a lente enquanto lê." });
   else c.push({ id: "rosto", resultado: "ok", texto: "Rosto visível, de frente, só você no quadro." });
+
+  const enq = enquadramentoDoTreino(r);
+  if (enq) c.push(enq);
 
   const a = m.audio;
   const ruido = a.ruidoDb ?? -120;

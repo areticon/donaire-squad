@@ -340,6 +340,18 @@ export async function treinoDoGemeo(pedido, pasta, { baixar, subir }) {
   const comRosto = avaliacoes.filter((a) => a.rosto && !a.varios).length;
   const comVarios = avaliacoes.filter((a) => a.varios).length;
   const virados = avaliacoes.filter((a) => a.rosto && !a.varios && Math.abs(a.giro ?? 0) > 30).length;
+  // O ENQUADRAMENTO (05/10): o gêmeo da HeyGen repete o enquadramento do
+  // treino, e a API não tem escala nem deslocamento do avatar. A altura do
+  // rosto (malha, testa ao queixo) e o topo dele, em fração da altura do
+  // quadro, medianos entre os quadros com um rosto só. O app decide.
+  const caixas = avaliacoes.filter((a) => a.rosto && !a.varios && a.caixa).map((a) => a.caixa);
+  const mediana = (xs) => {
+    if (!xs.length) return null;
+    const o = [...xs].sort((x, y) => x - y);
+    return Math.round(o[Math.floor(o.length / 2)] * 1000) / 1000;
+  };
+  const alturaDoRosto = mediana(caixas.map((c) => c.h));
+  const topoDoRosto = mediana(caixas.map((c) => c.y));
 
   // 4. A referência de gesto: 20 s do meio, sem som, em 16:9 (o formato que
   // os geradores por referência aceitam), com o rosto centrado pelo pad.
@@ -375,7 +387,7 @@ export async function treinoDoGemeo(pedido, pasta, { baixar, subir }) {
     foto,
     quadro,
     escolhida: r.escolhida ?? null,
-    rosto: { quadros: N, comRosto, comVarios, virados },
+    rosto: { quadros: N, comRosto, comVarios, virados, altura: alturaDoRosto, topo: topoDoRosto },
     audio,
   };
 }
