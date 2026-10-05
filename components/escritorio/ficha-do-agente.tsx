@@ -260,7 +260,7 @@ export function FichaDoAgente({
                         <span className="flex items-center gap-1.5 tabular-nums">
                           {dia(t.scheduledDate ?? t.createdAt ?? null)}
                           <span aria-hidden>·</span>
-                          {TIPO[t.cardType] ?? t.cardType}
+                          {t.cardType === "post_linkedin" && agentId !== "lucas-linkedin" && papel ? `Post ${papel}` : TIPO[t.cardType] ?? t.cardType}
                         </span>
                         {/* Com linha do tempo, o selo do canto sai: ele lia o
                             status do card da Diana ("esperando você") quando

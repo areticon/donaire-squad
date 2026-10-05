@@ -1,6 +1,7 @@
 import { askClaude } from "@/lib/claude";
 import type { Trecho } from "@/lib/media/select-clips";
 import { MAX_X } from "@/lib/media/limits";
+import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 
 /**
  * Passo 4: transformar cada trecho escolhido em post para as três redes.
@@ -41,6 +42,7 @@ Regras que não se quebram:
   qualquer post está proibida.
 - Nunca use travessão. Use vírgula, dois-pontos, ponto e vírgula ou parênteses.
 - Sem hashtag, a não ser que a pessoa use hashtag na fala dela.
+${REGRA_DE_PESSOAS_E_NUMEROS}
 - Português do Brasil.`;
 
 /**

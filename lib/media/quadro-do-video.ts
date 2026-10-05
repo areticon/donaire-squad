@@ -10,6 +10,8 @@ import {
   planoParaGravar,
   ROTULO_DO_FORMATO,
 } from "@/lib/media/semana-do-video";
+import type { FormatoEscrito, RedeDoPlano } from "@/lib/media/semana-do-video";
+import { redatorDoDia, type RedatorDaRede } from "@/lib/media/redator-da-rede";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -88,20 +90,33 @@ async function runDoVideo(projectId: string, videoJobId: string) {
   });
 }
 
-const ESPERA: Record<string, Array<{ agentId: string; agentName: string; cardType: string; texto: string }>> = {
-  text: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo o post de texto deste dia a partir do vídeo e do briefing do Roberto." }],
-  poll: [{ agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a enquete deste dia a partir do vídeo e do briefing do Roberto." }],
-  thread: [{ agentId: "xavier-x", agentName: "Xavier X", cardType: "post_twitter", texto: "Xavier está escrevendo a thread deste dia a partir do vídeo e do briefing do Roberto." }],
-  image: [
-    { agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a legenda da imagem deste dia." },
-    { agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está criando a imagem deste dia com uma frase do vídeo, nas cores da marca." },
-  ],
-  carousel: [{ agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está montando o carrossel deste dia: três slides, uma ideia do vídeo por slide, nas cores da marca." }],
-  infographic: [
-    { agentId: "lucas-linkedin", agentName: "Lucas LinkedIn", cardType: "post_linkedin", texto: "Lucas está escrevendo a legenda do infográfico deste dia." },
-    { agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: "Diana está montando o infográfico deste dia com os dados do briefing do Roberto." },
-  ],
-};
+/**
+ * Os cards de espera de um dia. O do texto leva o especialista DA REDE do dia
+ * (04/10): era sempre o "Lucas LinkedIn", e num projeto sem LinkedIn a
+ * legenda do Instagram aparecia no quadro como "Post LinkedIn". Dia de texto
+ * só com o X é do Xavier; carrossel não tem espera de texto (a legenda chega
+ * junto das lâminas).
+ */
+function esperaDoDia(formato: FormatoEscrito, redes: RedeDoPlano[]): Array<RedatorDaRede & { texto: string }> {
+  const r = redatorDoDia(formato, redes);
+  const nome = r.agentName.split(" ")[0];
+  const texto = (oQue: string) => ({ ...r, texto: `${nome} está escrevendo ${oQue} deste dia a partir do vídeo e do briefing do Roberto.` });
+  const diana = (t: string) => ({ agentId: "diana-design", agentName: "Diana Design", cardType: "media", texto: t });
+  switch (formato) {
+    case "text":
+      return [texto(r.agentId === "xavier-x" ? "a thread" : "o post de texto")];
+    case "poll":
+      return [texto("a enquete")];
+    case "thread":
+      return [texto("a thread")];
+    case "image":
+      return [texto("a legenda da imagem"), diana("Diana está criando a imagem deste dia com uma frase do vídeo, nas cores da marca.")];
+    case "carousel":
+      return [diana("Diana está montando o carrossel deste dia: três slides, uma ideia do vídeo por slide, nas cores da marca.")];
+    case "infographic":
+      return [texto("a legenda do infográfico"), diana("Diana está montando o infográfico deste dia com os dados do briefing do Roberto.")];
+  }
+}
 
 /**
  * Abre o quadro do vídeo: o run da semana (uma vez) e os cards de espera do
@@ -206,7 +221,7 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
     // A DATA do dia dentro do plano (30/09): com início na quarta, a terça é
     // a da semana seguinte, e não a de ontem.
     const data = dataDoDia(alvo, dia);
-    for (const e of ESPERA[formato] ?? []) {
+    for (const e of esperaDoDia(formato, redes)) {
       if (tem(e.agentId, dia)) continue;
       await prisma.campaignCard.create({
         data: {

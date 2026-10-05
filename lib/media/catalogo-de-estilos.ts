@@ -73,7 +73,7 @@ export type GrupoDeEstilo = "Jornalismo e explicação" | "Educação" | "Negóc
 export const GRUPOS: GrupoDeEstilo[] = ["Jornalismo e explicação", "Educação", "Negócios e marca", "Redes e retenção", "Estética"];
 
 export const CATALOGO_DE_ESTILOS: EstiloDoCatalogo[] = [
-  { id: "vox", nome: "Explicativo editorial", referencia: "estilo Vox", grupo: "Jornalismo e explicação", resumo: "Colagem de recortes, marca-texto nas frases-chave e gráficos simples. Para explicar um tema do mercado.", base: "serio", kit: "colagem", destaque: true },
+  { id: "vox", nome: "Explicativo editorial", referencia: "estilo Vox", grupo: "Jornalismo e explicação", resumo: "Colagem de recortes, marca-texto nas frases-chave e gráficos simples. Para explicar um tema do mercado.", base: "serio", kit: "colagem", arte: "/estilos/vox-0410.webp", destaque: true },
   { id: "bbc", nome: "Telejornal e reportagem", referencia: "estilo BBC", grupo: "Jornalismo e explicação", resumo: "Sóbrio, com tarja de nome e cargo, número grande com fonte. Notícia da empresa com credibilidade.", base: "serio", kit: "sobrio" },
   { id: "natgeo", nome: "Documentário cinematográfico", referencia: "estilo National Geographic", grupo: "Jornalismo e explicação", resumo: "Ritmo calmo de documentário, cenas de cinema geradas e tarjas limpas. História da empresa, obra, campo.", base: "dramatico", kit: "sobrio" },
   { id: "johnny-harris", nome: "Jornalismo de mapa", referencia: "estilo Johnny Harris", grupo: "Jornalismo e explicação", resumo: "Colagem com setas e círculos desenhados à mão sobre as imagens de apoio. Mercado por região, logística, expansão.", base: "serio", kit: "colagem" },
@@ -94,8 +94,9 @@ export const CATALOGO_DE_ESTILOS: EstiloDoCatalogo[] = [
   { id: "mrbeast", nome: "Alta retenção", referencia: "estilo MrBeast", grupo: "Redes e retenção", resumo: "Muito rápido, legenda palavra a palavra, zoom e efeito sonoro em cada corte. Alcance.", base: "acelerado", kit: "impacto" },
   { id: "hormozi", nome: "Corte com legenda dinâmica", referencia: "estilo Hormozi", grupo: "Redes e retenção", resumo: "Legenda grande no centro, palavra-chave na cor da marca, zoom alternado. Reels, Shorts, TikTok.", base: "acelerado", kit: "impacto" },
   // O do vendedor de consórcio (02/10): bíblia completa (lib/media/biblias/consorcio.ts),
-  // medida em seis perfis do nicho. A arte de exemplo é um quadro da prova real.
-  { id: "consorcio", nome: "Autoridade high ticket", referencia: "Consultores, advogados, vendedores e mentores", grupo: "Negócios e marca", resumo: "Social, sério e premium: o número em faixa de destaque, selo com o seu nome, legenda grande e comentário respondido na tela. Cores fortes da sua marca. Sem promessa que o seu setor proíbe.", base: "acelerado", kit: "impacto", arte: "/estilos/autoridade-0310.webp", destaque: true },
+  // medida em seis perfis do nicho. A arte de exemplo (04/10) é a capa no acabamento de
+  // luxo, com apresentador fictício gerado por IA; a do Vox também (jornal rasgado).
+  { id: "consorcio", nome: "Autoridade high ticket", referencia: "Consultores, advogados, vendedores e mentores", grupo: "Negócios e marca", resumo: "Social, sério e premium: o número em faixa de destaque, selo com o seu nome, legenda grande e comentário respondido na tela. Cores fortes da sua marca. Sem promessa que o seu setor proíbe.", base: "acelerado", kit: "impacto", arte: "/estilos/consorcio-0410.webp", destaque: true },
   { id: "ugc", nome: "Nativo do TikTok", grupo: "Redes e retenção", resumo: "Gravação de celular em ambiente real, legenda grande e poucos enfeites. Humaniza a marca.", base: "animado", kit: "impacto" },
   { id: "tipografia", nome: "Tipografia animada", grupo: "Redes e retenção", resumo: "Palavras grandes entram no ritmo da voz, com cartelas de texto entre as falas. Frase de impacto, manifesto.", base: "animado", kit: "impacto" },
   { id: "carrossel-animado", nome: "Carrossel animado", grupo: "Redes e retenção", resumo: "Cartelas de texto na cor da marca, uma ideia por vez, com deslize entre elas. Dicas em lista.", base: "animado", kit: "impacto" },

@@ -184,6 +184,26 @@ const CARD_TYPE_LABELS: Record<string, string> = {
   publish: "Publicação",
 };
 
+/**
+ * O rótulo do tipo do card, pela REDE DO POST quando o card é de texto
+ * (04/10): `post_linkedin` é o tipo de texto de qualquer rede desde que o
+ * Igor, a Fernanda e os outros especialistas escrevem, e a legenda do
+ * Instagram aparecia como "Post LinkedIn".
+ */
+const NOME_DA_REDE_NO_CARD: Record<string, string> = {
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  twitter: "X",
+};
+function rotuloDoTipoDoCard(card: { cardType: string; metadata?: unknown }): string {
+  const rede = (card.metadata as { rede?: string } | null | undefined)?.rede;
+  if (card.cardType === "post_linkedin" && rede && NOME_DA_REDE_NO_CARD[rede]) return `Post ${NOME_DA_REDE_NO_CARD[rede]}`;
+  return CARD_TYPE_LABELS[card.cardType] ?? card.cardType;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getMonday(d: Date): Date {
@@ -2352,7 +2372,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
                   {(localCard.metadata as { completo?: boolean } | null)?.completo === true
                     ? "Vídeo completo"
-                    : CARD_TYPE_LABELS[localCard.cardType] ?? localCard.cardType}
+                    : rotuloDoTipoDoCard(localCard)}
                 </span>
                 {/* A hora do POST, e não a do card (29/09): ver horaDoCabecalho. */}
                 {horaDoCabecalho && (

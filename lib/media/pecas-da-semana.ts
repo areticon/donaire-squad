@@ -26,7 +26,11 @@ import {
   type FormatoEscrito,
   type RedeDoPlano,
 } from "@/lib/media/semana-do-video";
+import { IDS_DOS_REDATORES, principalDoDia, redatorDaRede, type RedatorDaRede } from "@/lib/media/redator-da-rede";
+import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import type { Prisma } from "@prisma/client";
+
+export { principalDoDia };
 
 /**
  * Os redatores escrevem a semana que o cliente escolheu, a partir do vídeo.
@@ -65,7 +69,7 @@ function fichaComoAgente(agentId: string): Agente | undefined {
 
 type VideoParaEscrever = NonNullable<Awaited<ReturnType<typeof carregarVideo>>>;
 
-async function carregarVideo(videoJobId: string) {
+export async function carregarVideo(videoJobId: string) {
   return prisma.videoJob.findUnique({
     where: { id: videoJobId },
     select: {
@@ -87,7 +91,7 @@ async function carregarVideo(videoJobId: string) {
           videoSemana: true,
           socialAccounts: { where: { isActive: true }, select: { platform: true, id: true } },
           agents: {
-            where: { agentId: { in: ["lucas-linkedin", "xavier-x", "tiago-twitter", "diana-design"] } },
+            where: { agentId: { in: [...IDS_DOS_REDATORES, "tiago-twitter", "diana-design"] } },
             select: { agentId: true, name: true, role: true, persona: true, style: true },
           },
         },
@@ -106,7 +110,8 @@ export const REGRAS_DE_TEXTO = `REGRAS:
 - Nada de markdown (sem #, sem **), texto limpo com parágrafos separados por linha em branco.
 - Nenhum dado, estudo, nome ou citação que não esteja na transcrição ou no briefing do Roberto. Se usar um dado do briefing, cite a fonte como está lá.
 - Sem travessão: use vírgula, dois-pontos ou parênteses.
-- Sem clichê motivacional, no máximo 2 emojis, no máximo 3 hashtags e só no fim.`;
+- Sem clichê motivacional, no máximo 2 emojis, no máximo 3 hashtags e só no fim.
+${REGRA_DE_PESSOAS_E_NUMEROS}`;
 
 export function separarTweets(texto: string): string[] {
   const linhas = texto.split("\n");
@@ -143,7 +148,7 @@ function lerEnquete(texto: string) {
  * Sem o formato das três redes: cada redator aqui devolve UM texto, e o
  * "===LINKEDIN===" do prefixo vazava para dentro da peça (sexta, 29/09).
  */
-function prefixoDoVideo(video: VideoParaEscrever): string {
+export function prefixoDoVideo(video: VideoParaEscrever): string {
   const radar = video.radar as unknown as Radar | null;
   const transcript = video.transcript as { text?: string } | null;
   const nome = (video.originalName ?? "Gravação").replace(/\.[^.]+$/, "");
@@ -155,7 +160,7 @@ function prefixoDoVideo(video: VideoParaEscrever): string {
 }
 
 /** O que cada dia vai tratar, para que nenhum redator puxe o ângulo do outro. */
-function planoDaSemana(dias: Array<{ dia: number; formato: FormatoDoDia; redes?: string[] }>, radar: Radar | null): string {
+export function planoDaSemana(dias: Array<{ dia: number; formato: FormatoDoDia; redes?: string[] }>, radar: Radar | null): string {
   return dias
     .map(({ dia: d, formato: f, redes }) => {
       const a = radar?.angulos.find((x) => x.dia === d)?.texto;
@@ -176,7 +181,7 @@ function teseDoDia(radar: Radar | null, dia: number) {
 }
 
 /** O pedido do dia: formato, ângulo e tese, mais a semana inteira para o redator não invadir outro dia. */
-function contextoDoDia(dia: number, formato: FormatoDoDia, radar: Radar | null, plano: string): string {
+export function contextoDoDia(dia: number, formato: FormatoDoDia, radar: Radar | null, plano: string): string {
   const angulo = radar?.angulos.find((a) => a.dia === dia)?.texto ?? "";
   const tese = teseDoDia(radar, dia);
   return (
@@ -262,6 +267,10 @@ export async function reescreverAberturasRepetidas(
   const plano = planoDaSemana(dias, radar);
   const lucas = video.project.agents.find((a) => a.agentId === "lucas-linkedin");
   const tiago = video.project.agents.find((a) => a.agentId === "xavier-x") ?? fichaComoAgente("xavier-x");
+  const personaDaRede = (rede: string) => {
+    const id = redatorDaRede(rede).agentId;
+    return video.project.agents.find((a) => a.agentId === id) ?? fichaComoAgente(id) ?? lucas;
+  };
   const cards = await prisma.campaignCard.findMany({
     where: { runId: run.id, metadata: { path: ["videoJobId"], equals: video.id } },
     select: { id: true, agentId: true, dayOfWeek: true, postId: true, metadata: true, content: true },
@@ -301,7 +310,7 @@ export async function reescreverAberturasRepetidas(
       const post = await prisma.post.findUnique({ where: { id: card.postId }, select: { platform: true } });
       const texto = await aberturas.escrever(
         DIAS[dia],
-        (p) => escreverTexto(lucas, prefixo, contexto + p, post?.platform ?? "linkedin", usage(AGENTES.lucas.agentId)),
+        (p) => escreverTexto(personaDaRede(post?.platform ?? "linkedin"), prefixo, contexto + p, post?.platform ?? "linkedin", usage(redatorDaRede(post?.platform ?? "linkedin").agentId)),
         (t) => t,
         { ajustar: (t, tirar) => tirar(t) }
       );
@@ -311,25 +320,6 @@ export async function reescreverAberturasRepetidas(
     }
   }
   return feitos;
-}
-
-/**
- * A REDE PRINCIPAL de cada formato (30/09): é para ela que o redator escreve,
- * e as outras redes marcadas no dia recebem a adaptação desse texto. Imagem e
- * carrossel começam no Instagram, onde a peça visual vive; texto e
- * infográfico no LinkedIn. O X só é principal quando é a única rede do dia.
- */
-const PRINCIPAL: Record<FormatoEscrito, RedeDoPlano[]> = {
-  text: ["linkedin", "facebook", "twitter"],
-  poll: ["linkedin"],
-  thread: ["twitter"],
-  image: ["instagram", "linkedin", "facebook", "twitter"],
-  carousel: ["instagram", "linkedin", "facebook"],
-  infographic: ["linkedin", "instagram", "facebook", "twitter"],
-};
-
-export function principalDoDia(formato: FormatoEscrito, redes: RedeDoPlano[]): RedeDoPlano {
-  return PRINCIPAL[formato].find((r) => redes.includes(r)) ?? redes[0] ?? PRINCIPAL[formato][0];
 }
 
 /**
@@ -463,18 +453,35 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
     // As redes do dia: a principal recebe o texto do redator, as outras a
     // adaptação, e a arte sai uma vez por proporção (ver `pecasDoDia`).
     const { principal, outras, grupos } = pecasDoDia(formato, redes);
+    // QUEM ASSINA o texto do dia é o especialista da rede do post (04/10): a
+    // legenda do Instagram é do Igor, e não do "Lucas LinkedIn" (o card que o
+    // Bruno viu num projeto sem LinkedIn). O persona também é o dele.
+    const redator = redatorDaRede(principal);
+    const persona = agentes.find((a) => a.agentId === redator.agentId) ?? fichaComoAgente(redator.agentId) ?? lucas;
 
     const usage = (agentId: string) => ({ operation: "agent", runId: run.id, agentId, projectId: video.projectId });
     // `formatoRotulo` é o que o cabeçalho do quadro mostra; sem ele o chip
     // do dia sumia assim que o card de espera virava peça (visto em 02/09).
     const metaBase = { origem: "video", videoJobId: video.id, derivado: true, formato: escolhido, formatoRotulo: ROTULO_DO_FORMATO[escolhido], dia, redes };
 
-    /** Cria ou preenche o card de um agente neste dia. */
+    /**
+     * Cria ou preenche o card de um agente neste dia. O card de espera de um
+     * redator ("Lucas está escrevendo...") é aproveitado por quem de fato
+     * escreve, e passa a levar o nome dele: o card de espera de run antigo
+     * nasceu sempre do Lucas, seja qual fosse a rede do dia.
+     */
+    const usados = new Set<string>();
     const gravarCard = async (
-      agente: (typeof AGENTES)[keyof typeof AGENTES],
+      agente: RedatorDaRede,
       dados: { content: string; mediaType: string; mediaUrl?: string | null; postId?: string | null; extra?: Record<string, unknown>; status?: string }
     ) => {
-      const existente = derivadosDoDia.find((c) => c.agentId === agente.agentId);
+      const ehRedator = IDS_DOS_REDATORES.includes(agente.agentId);
+      const existente =
+        derivadosDoDia.find((c) => c.agentId === agente.agentId && !usados.has(c.id)) ??
+        (ehRedator
+          ? derivadosDoDia.find((c) => IDS_DOS_REDATORES.includes(c.agentId) && !c.postId && !usados.has(c.id))
+          : undefined);
+      if (existente) usados.add(existente.id);
       const metadata = { ...((existente?.metadata as Record<string, unknown> | null) ?? {}), ...metaBase, ...(dados.extra ?? {}) };
       delete (metadata as { aguardando?: boolean }).aguardando;
       const base = {
@@ -486,7 +493,10 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         metadata: metadata as Prisma.InputJsonValue,
       };
       if (existente) {
-        await prisma.campaignCard.update({ where: { id: existente.id }, data: base });
+        await prisma.campaignCard.update({
+          where: { id: existente.id },
+          data: { ...base, agentId: agente.agentId, agentName: agente.agentName, cardType: agente.cardType },
+        });
         return existente.id;
       }
       const criado = await prisma.campaignCard.create({
@@ -595,22 +605,22 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
       } else if (formato === "text") {
         const texto = await aberturas.escrever(
           DIAS[dia],
-          (proibidas) => escreverTexto(lucas, prefixo, contexto + proibidas, principal, usage(AGENTES.lucas.agentId)),
+          (proibidas) => escreverTexto(persona, prefixo, contexto + proibidas, principal, usage(redator.agentId)),
           (t) => t,
           { ajustar: semTopo }
         );
         const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: texto, mediaType: "text" });
-        await gravarCard(AGENTES.lucas, { content: texto, mediaType: "text", postId, extra: { rede: principal } });
+        await gravarCard(redator, { content: texto, mediaType: "text", postId, extra: { rede: principal } });
         await levarParaAsOutras(postId, texto, () => ({ mediaType: "text" }));
       } else if (formato === "poll") {
         const enquete = await aberturas.escrever(
           DIAS[dia],
-          (proibidas) => escreverEnquete(lucas, prefixo, contexto + proibidas, principal, usage(AGENTES.lucas.agentId)),
+          (proibidas) => escreverEnquete(persona, prefixo, contexto + proibidas, principal, usage(redator.agentId)),
           (e) => e.intro
         );
         const legivel = textoDaEnquete(enquete);
         const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legivel, mediaType: "poll", extra: enquete });
-        await gravarCard(AGENTES.lucas, { content: legivel, mediaType: "poll", postId, extra: { rede: principal, ...enquete } });
+        await gravarCard(redator, { content: legivel, mediaType: "poll", postId, extra: { rede: principal, ...enquete } });
       } else if (formato === "thread") {
         const texto = await aberturas.escrever(
           DIAS[dia],
@@ -632,7 +642,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         const legenda = await aberturas.escrever(
           DIAS[dia],
           (proibidas) =>
-            escreverTexto(lucas, prefixo, `${contexto}${proibidas}\n\nEsta legenda acompanha uma IMAGEM com a frase "${frase}" escrita nela. Não repita a frase literalmente na primeira linha; desenvolva a ideia.`, principal, usage(AGENTES.lucas.agentId)),
+            escreverTexto(persona, prefixo, `${contexto}${proibidas}\n\nEsta legenda acompanha uma IMAGEM com a frase "${frase}" escrita nela. Não repita a frase literalmente na primeira linha; desenvolva a ideia.`, principal, usage(redator.agentId)),
           (t) => t,
           { ajustar: semTopo }
         );
@@ -645,7 +655,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         const artes = await artesPorRede((f) => arteDoDia(video, frase, direcao.styleHint, f, { projectId: video.projectId, runId: run.id }));
         const url = artes.get(principal) ?? [...artes.values()][0];
         const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: url, extra: { frase } });
-        await gravarCard(AGENTES.lucas, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
         await gravarCard(AGENTES.diana, { content: `Imagem com a frase: "${frase}"`, mediaType: "image", mediaUrl: url, postId, extra: { rede: principal, frase } });
         await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "image", imageUrl: artes.get(rede) ?? url, extra: { frase } }));
       } else if (formato === "carousel") {
@@ -653,6 +663,12 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           radar ? `Tema: ${radar.tema}. ${radar.resumo}` : "",
           ...(radar?.teses.map((t) => `[${t.minuto}] ${t.frase}`) ?? []),
           angulo ? `Ângulo do dia: ${angulo}` : "",
+          // A FONTE de cada dado e de cada achado (04/10). O ângulo do Roberto
+          // cita "o dado dos 23 vezes" e "o achado do Tiago Brunet" sem dizer de
+          // quem é cada um, e a legenda emendou os dois como se o número fosse
+          // dele. Com a fonte ao lado, cada um fica com o dono certo.
+          ...(radar?.dados ?? []).map((d) => `Dado: ${d.valor}, ${d.oQueMede} (fonte: ${d.fonte})`),
+          ...(radar?.achados ?? []).map((x) => `Achado: ${x.titulo} (fonte: ${x.fonte}${x.data ? `, ${x.data}` : ""})`),
         ].filter(Boolean);
         // Frases e legenda saem juntas pela fila de aberturas, ANTES das
         // lâminas: se a legenda repetir o gancho de outro dia, reescrever as
@@ -688,7 +704,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         // A legenda também ganha o card do redator, como no dia de imagem.
         // Sem ele, o quadro não tinha de onde tirar o título da peça e o
         // sábado de 29/09 apareceu só como "Post" (a tela titula pelo redator).
-        await gravarCard(AGENTES.lucas, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
         await gravarCard(AGENTES.diana, {
           content: `Carrossel de ${frases.length} lâminas:\n${frases.map((f, i) => `${i + 1}. ${f}`).join("\n")}`,
           mediaType: "carousel",
@@ -701,7 +717,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         const legenda = await aberturas.escrever(
           DIAS[dia],
           (proibidas) =>
-            escreverTexto(lucas, prefixo, `${contexto}${proibidas}\n\nEsta legenda acompanha um INFOGRÁFICO com os dados do briefing (se o briefing não tem dado com fonte, o infográfico organiza as teses do vídeo). Cite no texto só o que está no briefing.`, principal, usage(AGENTES.lucas.agentId)),
+            escreverTexto(persona, prefixo, `${contexto}${proibidas}\n\nEsta legenda acompanha um INFOGRÁFICO com os dados do briefing (se o briefing não tem dado com fonte, o infográfico organiza as teses do vídeo). Cite no texto só o que está no briefing.`, principal, usage(redator.agentId)),
           (t) => t,
           { ajustar: semTopo }
         );
@@ -734,18 +750,23 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         });
         const url = artes.get(principal) ?? [...artes.values()][0];
         const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "infographic", imageUrl: url });
-        await gravarCard(AGENTES.lucas, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
         await gravarCard(AGENTES.diana, { content: "Infográfico com os dados do briefing do Roberto.", mediaType: "infographic", mediaUrl: url, postId, extra: { rede: principal } });
         await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "infographic", imageUrl: artes.get(rede) ?? url }));
       }
       escritos++;
+      // Card de espera que ninguém aproveitou sai (04/10): o "Lucas está
+      // escrevendo o post de texto" de um dia que só tem o X ficava no quadro
+      // para sempre, ao lado da thread do Xavier, sem post e sem rede.
+      const sobras = derivadosDoDia.filter((c) => !usados.has(c.id) && !c.postId && ESPERA.test((c.content ?? "").trim()));
+      if (sobras.length) await prisma.campaignCard.deleteMany({ where: { id: { in: sobras.map((c) => c.id) }, postId: null } });
     } catch (e) {
       falhas++;
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[semana][${videoJobId}] ${DIAS[dia]} (${formato}) falhou:`, e);
       // O card fica com o aviso, e não some: sumir é o que o Bruno leu como
       // "travou" no sábado de 02/09. Rodar de novo tenta outra vez.
-      const dono = formato === "thread" || (formato === "text" && principal === "twitter") ? AGENTES.tiago : formato === "carousel" ? AGENTES.diana : AGENTES.lucas;
+      const dono = formato === "thread" || (formato === "text" && principal === "twitter") ? AGENTES.tiago : formato === "carousel" ? AGENTES.diana : redator;
       await gravarCard(dono, {
         content: `AVISO: não consegui montar ${ROTULO_DO_FORMATO[formato].toLowerCase()} de ${DIAS[dia]} (${msg.slice(0, 160)}). A esteira tenta de novo sozinha; se persistir, peça pelo chat deste card.`,
         mediaType: "text",
@@ -757,7 +778,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   return { escritos, falhas };
 }
 
-async function escreverTexto(
+export async function escreverTexto(
   lucas: Agente | undefined,
   prefixo: string,
   contexto: string,

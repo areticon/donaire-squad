@@ -1,4 +1,5 @@
 import { askClaude } from "@/lib/claude";
+import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 
 /**
  * A legenda do carrossel da Diana, escrita com o nicho, o público e a voz.
@@ -54,6 +55,7 @@ REGRAS:
 - Português brasileiro natural, sem clichê motivacional, no máximo 2 emojis, sem hashtag no corpo.
 - Nenhum dado, estatística ou citação que não esteja no contexto acima.
 - Sem travessão: use vírgula, dois-pontos ou parênteses.
+${REGRA_DE_PESSOAS_E_NUMEROS}
 - Entre 600 e 1100 caracteres. Devolva SÓ a legenda, sem título, sem comentário.${proibicoes ?? ""}`;
 
   const saida = await askClaude(
