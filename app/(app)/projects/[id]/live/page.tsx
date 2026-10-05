@@ -10,6 +10,7 @@ import { podeUsarProjeto } from "@/lib/equipe/conta";
 import type { FalhaDaMontagem } from "@/components/video/aviso-da-montagem";
 import { estornosDaEdicao, refDoEstorno } from "@/lib/credits/estorno-da-edicao";
 import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
+import { temCapasGeradas } from "@/lib/media/estilos-de-capa";
 
 function getMonday(d: Date): Date {
   const day = d.getUTCDay();
@@ -251,7 +252,7 @@ export default async function LivePage({
             roteiroLigado: ligado,
             roteiroAprovado: Boolean(roteiros.get(v.id)?.aprovado),
           }),
-          capas: Boolean(v.capas),
+          capas: temCapasGeradas(v.capas),
           radar: (() => {
             const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
             if (!r) return null;

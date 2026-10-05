@@ -12,6 +12,7 @@ import {
   type CapasDoCompleto,
   type ClimaDaCapa,
   type EstiloDeCapa,
+  temCapasGeradas,
 } from "@/lib/media/estilos-de-capa";
 
 /**
@@ -77,8 +78,10 @@ export function CapaDoCompleto({
 
   // O piloto da esteira gera as capas sozinho quando o completo chega; se o
   // cliente abriu o card antes disso, a tela espera e consulta de novo.
+  // A foto da biblioteca escolhida antes da geração não para a espera
+  // (05/10): as duas compostas ainda chegam, como opções.
   useEffect(() => {
-    if (carregando || capas || gerando) return;
+    if (carregando || temCapasGeradas(capas) || gerando) return;
     const t = setInterval(() => void carregar(), 8_000);
     return () => clearInterval(t);
   }, [carregando, capas, gerando, carregar]);

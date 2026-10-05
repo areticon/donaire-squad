@@ -162,3 +162,13 @@ export type CapasDoCompleto = {
   escolhida: number;
   geradaEm: string;
 };
+
+/**
+ * As capas do squad já saíram? A foto da biblioteca (opção com `materialId`)
+ * não conta (05/10): quem escolheu a própria foto antes da geração continua
+ * recebendo as duas compostas, só que como opções, sem trocar a escolha.
+ */
+export function temCapasGeradas(capas: unknown): boolean {
+  const opcoes = (capas as { opcoes?: Array<{ materialId?: string }> } | null)?.opcoes;
+  return Array.isArray(opcoes) && opcoes.some((o) => !o?.materialId);
+}

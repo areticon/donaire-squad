@@ -251,17 +251,24 @@ export async function gerarCapasDoCompleto(
   }
 
   // A foto da biblioteca que o cliente já tinha posto entre as opções fica
-  // (05/10): "Gerar outras 2" troca as composições, não a escolha dele.
-  const daBiblioteca = ((video.capas as CapasDoCompleto | null)?.opcoes ?? []).filter((o) => o.materialId);
+  // (05/10): "Gerar outras 2" e a geração automática trocam as composições,
+  // não a escolha dele. Se a escolhida era uma foto da biblioteca, ela segue
+  // escolhida e as geradas entram só como opções.
+  const anteriores = video.capas as CapasDoCompleto | null;
+  const daBiblioteca = (anteriores?.opcoes ?? []).filter((o) => o.materialId);
+  const fotoEscolhida = anteriores?.opcoes[anteriores.escolhida]?.materialId;
+  const opcoesNovas = [...prontas, ...daBiblioteca];
+  const escolhida = fotoEscolhida ? Math.max(0, opcoesNovas.findIndex((o) => o.materialId === fotoEscolhida)) : 0;
   const capas: CapasDoCompleto = {
     estilo,
     clima,
-    opcoes: [...prontas, ...daBiblioteca],
-    escolhida: 0,
+    opcoes: opcoesNovas,
+    escolhida,
     geradaEm: new Date().toISOString(),
   };
   await prisma.videoJob.update({ where: { id: video.id }, data: { capas: capas as never } });
-  await apontarCapaEscolhida(video.id, video.projectId, post, capas.opcoes[0].url);
+  // A escolha da foto já está no card, no post e no YouTube: não reaponta.
+  if (!fotoEscolhida) await apontarCapaEscolhida(video.id, video.projectId, post, capas.opcoes[0].url);
   return capas;
 }
 

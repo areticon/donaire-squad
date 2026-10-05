@@ -9,6 +9,7 @@ import { roteiroLigado } from "@/lib/media/roteiro-da-edicao";
 import { varrerExpirados } from "@/lib/media/video-sweep";
 import { projetoVisivel } from "@/lib/equipe/conta";
 import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
+import { temCapasGeradas } from "@/lib/media/estilos-de-capa";
 
 /**
  * O estado dos vídeos de um projeto, enxuto, para a tela consultar de tempos em
@@ -193,7 +194,7 @@ export async function GET(req: NextRequest) {
         roteiroAprovado: Boolean(roteiros.get(v.id)?.aprovado),
       }),
       // A capa do completo já tem opções? O piloto gera uma vez quando não.
-      capas: Boolean(v.capas),
+      capas: temCapasGeradas(v.capas),
       /**
        * A pesquisa do Roberto, em contagem: a faixa mostra "Pesquisando"
        * enquanto não existe e "3 teses, 4 fontes" quando existe. O briefing
