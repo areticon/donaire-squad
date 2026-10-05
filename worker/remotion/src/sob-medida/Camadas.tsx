@@ -6,6 +6,7 @@ import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo, PassosFoco
 import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
 import { Circulo, Desenho, IconeComRotulo, MolduraDoCartao, Seta, Sublinhado } from "./pecas/apontar";
 import { Busca, Chat, Ferramentas, GradeAzul, IlustracaoTraco, LegendaDestaque, MarcaBrilho, Material, Notebook, PalavraGigante, PilhaPassos, Seguir } from "./pecas/lousa";
+import { CarimboSobre, Censura, Colagem, Cronologia, FundoColagem, Jornal, MapaAntigo, MarcaTexto } from "./pecas/vox";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
 /**
@@ -59,6 +60,15 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   material: Material,
   seguir: Seguir,
   ferramentas: Ferramentas,
+  // As peças do estilo Vox (04/10), do quadro de treino vox-01 do dono (pecas/vox.tsx).
+  colagem: Colagem,
+  jornal: Jornal,
+  "mapa-antigo": MapaAntigo,
+  censura: Censura,
+  "marca-texto": MarcaTexto,
+  carimbo: CarimboSobre,
+  "fundo-colagem": FundoColagem,
+  cronologia: Cronologia,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
@@ -89,6 +99,7 @@ export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas)
     entra: limitar(local / Math.max(0.05, camada.entrada)),
     fica: saiSuave((camada.ate - t) / Math.max(0.05, camada.saida)),
     passos: camada.eventos.map((e) => limitar((t - e) / Math.max(0.05, camada.evento))),
+    eventosLocais: camada.eventos.map((e) => e - camada.de),
     props: camada.props,
     tema: p.tema,
     W: p.largura,

@@ -271,16 +271,16 @@ async function matteDaPessoa(base, pasta, duracao, fps, intervalos) {
  */
 export function efeitosDaEdicao(camadas) {
   const ev = [];
-  const TELA = new Set(["frase-impacto", "citacao", "pergaminho", "cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "numero", "cifrao", "mapa", "fecho", "passos-foco", "grafico-linha", "palavra-gigante", "busca", "pilha-passos", "notebook", "ilustracao-traco", "chat", "material", "seguir", "ferramentas"]);
+  const TELA = new Set(["frase-impacto", "citacao", "pergaminho", "cartoes", "linha-do-tempo", "escada", "comparacao", "fluxo", "numero", "cifrao", "mapa", "fecho", "passos-foco", "grafico-linha", "palavra-gigante", "busca", "pilha-passos", "notebook", "ilustracao-traco", "chat", "material", "seguir", "ferramentas", "colagem", "jornal", "mapa-antigo", "censura", "cronologia"]);
   const CONTA = new Set(["numero", "progresso", "barras", "grafico-linha", "cifrao"]);
   for (const c of camadas) {
-    if (["moldura-do-cartao", "legenda-destaque", "grade-azul"].includes(c.peca)) continue;
+    if (["moldura-do-cartao", "legenda-destaque", "grade-azul", "fundo-colagem"].includes(c.peca)) continue;
     if (c.peca === "transicao") ev.push({ t: c.de + 0.05, som: "whoosh", volume: c.props?.tipo === "flash" ? 0.3 : 0.22 });
     else if (c.peca === "titulo-atras") {
       ev.push({ t: Math.max(0, c.de - 0.45), som: "riser", volume: 0.14 });
       ev.push({ t: c.de + 0.12, som: "impacto", volume: 0.28 });
     } else if (TELA.has(c.peca)) ev.push({ t: Math.max(0, c.de - 0.05), som: "whoosh", volume: 0.24 });
-    else if (c.peca === "palavra-chave" || c.peca === "capitulo") ev.push({ t: c.de + 0.02, som: "impacto", volume: 0.18 });
+    else if (c.peca === "palavra-chave" || c.peca === "capitulo" || c.peca === "carimbo") ev.push({ t: c.de + 0.02, som: "impacto", volume: 0.18 });
     else ev.push({ t: c.de + 0.05, som: "pop", volume: 0.12 });
     if (CONTA.has(c.peca)) ev.push({ t: c.de + 0.4, som: "riser", volume: 0.1 });
     for (const e of c.eventos ?? []) ev.push({ t: e, som: "tique", volume: 0.16 });

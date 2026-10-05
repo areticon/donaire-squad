@@ -94,6 +94,8 @@ export type ContextoDaPeca = {
   fica: number;
   /** Progresso suavizado de cada evento (0 antes, 1 depois). */
   passos: number[];
+  /** O instante (s desde o começo da camada) de cada evento (as peças Vox medem o tempo depois dele). */
+  eventosLocais?: number[];
   props: Record<string, unknown>;
   tema: Tema;
   W: number;
