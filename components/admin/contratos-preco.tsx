@@ -147,11 +147,18 @@ export function CamposDaCondicao({ valor, mudar, totalCentavos, emissorDisponive
           <label className={rotulo} style={corDoRotulo}>
             Forma do restante
             <select value={valor.formaDoRestante} onChange={(e) => set({ formaDoRestante: e.target.value as FormaDoRestante })} className={`${campo} mt-1`} style={estiloCampo} data-campo-forma-do-restante>
-              {Object.entries(FORMAS_DO_RESTANTE).map(([id, nome]) => (
-                <option key={id} value={id} disabled={id === "cartao_parcelado_emissor" && !emissorDisponivel}>
-                  {id === "cartao_parcelado_emissor" && !emissorDisponivel ? `${nome}: indisponível na conta` : nome}
-                </option>
-              ))}
+              {/* O parcelamento pelo emissor não existe no Stripe do Brasil (só
+                  México, Japão e Mastercard Installments, conferido em 05/10):
+                  a opção só aparece se um dia a conta ganhar isso
+                  (CONTRATOS_PARCELAMENTO_EMISSOR=1). Mostrar "indisponível"
+                  mandava o Bruno procurar no painel o que não existe. */}
+              {Object.entries(FORMAS_DO_RESTANTE)
+                .filter(([id]) => id !== "cartao_parcelado_emissor" || emissorDisponivel)
+                .map(([id, nome]) => (
+                  <option key={id} value={id}>
+                    {nome}
+                  </option>
+                ))}
             </select>
           </label>
           {recorrente && (
