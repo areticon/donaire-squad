@@ -952,7 +952,9 @@ function ListaDeVideos({ projectId, videos, onMudou }: { projectId: string; vide
                   {v.creditosCobrados != null ? ` · ${fmt(v.creditosCobrados)} créditos` : ` · ${fmt(v.creditosReservados)} reservados`}
                   {v.creditosDevolvidos ? ` · ${fmt(v.creditosDevolvidos)} devolvidos` : ""}
                 </p>
-                {v.motivo && <p className="text-xs text-orange-400">{v.motivo}</p>}
+                {/* `break-words`: o motivo pode trazer um caminho ou código sem espaço, que
+                    alargava a página inteira no celular (506px numa tela de 390, 05/10). */}
+                {v.motivo && <p className="break-words text-xs text-orange-400">{v.motivo}</p>}
               </div>
               <span
                 className={cn(

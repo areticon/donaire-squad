@@ -3998,7 +3998,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     <div
                       key={i}
                       className={cn(
-                        "text-xs px-3 py-2 rounded-xl leading-relaxed",
+                        // `[overflow-wrap:anywhere]`: link ou caminho colado no chat não
+                        // tem onde quebrar e empurrava o balão para fora no celular.
+                        "text-xs px-3 py-2 rounded-xl leading-relaxed [overflow-wrap:anywhere]",
                         m.role === "user" ? "ml-6 bg-orange-500/10 text-orange-300" : "mr-6"
                       )}
                       style={m.role === "assistant" ? { background: "var(--bg-elevated)", color: "var(--text-primary)" } : undefined}
@@ -4060,7 +4062,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
               <div className="flex gap-2">
                 <input
-                  className="flex-1 text-sm px-4 py-2.5 rounded-xl border outline-none"
+                  // `min-w-0`: o campo tem largura mínima própria (uns 20 caracteres) e,
+                  // sem isto, empurra o botão de enviar para fora numa tela estreita.
+                  className="flex-1 min-w-0 text-sm px-4 py-2.5 rounded-xl border outline-none"
                   style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)" }}
                   placeholder={
                     isMedia && localCard.mediaUrl?.includes("|")
