@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { cancelarGrupo } from "@/lib/fila/trabalhos";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { cancelarCampanha } from "@/lib/pipeline/cancelar-campanha";
 
 function addDaysUtc(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 86400000);
@@ -49,6 +50,21 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
+
+  // "CANCELAR A CAMPANHA DESTA SEMANA" (05/10): o menu do Gestor. A regra
+  // (posts que não saíram cancelados, cards sem post no ar arquivados, run no
+  // arquivo, aviso no sino) mora em lib/pipeline/cancelar-campanha.ts, que
+  // confere sessão e permissão do projeto por conta própria.
+  if (body.cancelarCampanha === true) {
+    try {
+      const r = await cancelarCampanha(id, userId);
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+      return NextResponse.json(r);
+    } catch (e) {
+      console.error(`[cancelar-campanha][${id}]`, e);
+      return NextResponse.json({ error: "Não consegui cancelar agora. Tente de novo em instantes." }, { status: 500 });
+    }
+  }
 
   const run = await prisma.pipelineRun.findUnique({
     where: { id },

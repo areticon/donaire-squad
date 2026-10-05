@@ -18,6 +18,7 @@ import dynamic from "next/dynamic";
 import { FUSO_PADRAO } from "@/lib/fuso";
 import { lerRevisao, type RevisaoEmAndamento } from "@/lib/pipeline/revisao";
 import { pedidoEmCurso, pedidoParado, rotuloDaEtapa, type PedidoDoCard } from "@/lib/media/pedido-do-card-estado";
+import { pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
 
 // Sem SSR: o escritorio decide WebGL e tema no primeiro render, e isso so
 // existe no navegador. O three.js so e baixado nesta aba, e so aqui.
@@ -230,6 +231,17 @@ function formatWeekLabel(monday: Date): string {
   const sunday = addDays(monday, 6);
   const fmt = (d: Date) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: "UTC" });
   return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+
+/**
+ * O período da semana para a frase de confirmação ("5 a 11 de out."), sem o
+ * traço do rótulo do cabeçalho: é texto corrido, e texto corrido não leva traço.
+ */
+function periodoDaSemana(monday: Date): string {
+  const sunday = addDays(monday, 6);
+  const dia = (d: Date) => d.toLocaleDateString("pt-BR", { day: "numeric", timeZone: "UTC" });
+  const diaEMes = (d: Date) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: "UTC" });
+  return monday.getUTCMonth() === sunday.getUTCMonth() ? `${dia(monday)} a ${diaEMes(sunday)}` : `${diaEMes(monday)} a ${diaEMes(sunday)}`;
 }
 
 function formatDayDate(monday: Date, dayOfWeek: number): string {
@@ -2143,6 +2155,37 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
     }
   }
 
+  /**
+   * CANCELAR ESTA PEÇA, na janela do card (05/10). A confirmação fica na
+   * própria janela; o servidor cancela os posts da peça que ainda não saíram,
+   * arquiva o card e deixa no ar o que já foi publicado
+   * (lib/pipeline/cancelar-campanha.ts). Depois, a janela fecha: a peça não
+   * está mais no quadro.
+   */
+  const [confirmarCancelarPeca, setConfirmarCancelarPeca] = useState(false);
+  async function handleCancelarPeca() {
+    setApproving(true);
+    try {
+      const res = await fetch(`/api/campaign-cards/${localCard.id}/cancelar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postIds: dayPosts.map((p) => p.id) }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string; quadro?: { postsCancelados: number }; ficou?: string | null };
+      if (!res.ok) throw new Error(d.error ?? "erro");
+      const n = d.quadro?.postsCancelados ?? 0;
+      toast.success(["Peça cancelada.", n ? `${n} ${n === 1 ? "post saiu" : "posts saíram"} da fila.` : null, d.ficou].filter(Boolean).join(" "), { duration: 6000 });
+      pedirLeituraDoSino();
+      onWeekRefresh?.();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message !== "erro" ? e.message : "Não consegui cancelar agora. Tente de novo.");
+    } finally {
+      setApproving(false);
+      setConfirmarCancelarPeca(false);
+    }
+  }
+
   async function handleArchiveCampaign() {
     if (!localCard.runId) return;
     if (!window.confirm("Arquivar esta campanha inteira? Ela some do quadro e vai para o arquivo (pode restaurar depois).")) return;
@@ -2513,6 +2556,58 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {/* CANCELAR ESTA PEÇA, no alto da janela e em todo card que abre
+                (05/10): o "Arquivar campanha" lá embaixo só aparece no card
+                do Paulo, e o Bruno não achava onde cancelar. Fica de fora o
+                card de espera (o squad ainda faz a peça; o texto dele diz o
+                que cancelar) e a peça já publicada por inteiro. */}
+            {!cardEmProducao(localCard) && !(dayPosts.length > 0 && dayPosts.every((p) => p.status === "published")) && (
+              <div data-cancelar-peca-janela>
+                {confirmarCancelarPeca ? (
+                  <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: "rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.05)" }}>
+                    <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Cancelar esta peça?</p>
+                    <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
+                      Ela sai do quadro e os posts dela que ainda não saíram vão para o arquivo de Posts; o que já foi publicado fica.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        data-confirmar-cancelar-peca-sim
+                        disabled={approving}
+                        onClick={() => void handleCancelarPeca()}
+                        className="flex-1 rounded-lg bg-red-500/90 px-2 py-2 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                      >
+                        {approving ? "Cancelando…" : "Cancelar peça"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={approving}
+                        onClick={() => setConfirmarCancelarPeca(false)}
+                        className="flex-1 rounded-lg border px-2 py-2 text-xs"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                      >
+                        Voltar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      data-cancelar-peca
+                      disabled={approving}
+                      onClick={() => setConfirmarCancelarPeca(true)}
+                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all hover:border-red-500/40 hover:bg-red-500/5 hover:text-red-400 disabled:opacity-50"
+                      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                      title="Tirar esta peça do quadro. O que já foi publicado fica."
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      Cancelar esta peça
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {/* A linha do tempo do parecer, antes do conteúdo: quem abre a
                 peça quer saber primeiro em que pé ela está. */}
             {parecer && parecer.etapas.length > 0 && <LinhaDoTempoDoParecer etapas={parecer.etapas} />}
@@ -4282,6 +4377,8 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [restoring, setRestoring] = useState(false);
   // A confirmação de "Arquivar as falhas desta semana", dentro do próprio menu.
   const [confirmarFalhas, setConfirmarFalhas] = useState(false);
+  // A confirmação de "Cancelar a campanha desta semana", no mesmo menu (05/10).
+  const [confirmarCancelarCampanha, setConfirmarCancelarCampanha] = useState(false);
   // Persist dismissed state in localStorage keyed by run ID so it survives page reloads
   const DISMISSED_KEY = lastFailedRun ? `banner-dismissed-${lastFailedRun.id}` : null;
   const [failedBannerDismissed, setFailedBannerDismissed] = useState<boolean>(() => {
@@ -4464,6 +4561,93 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       );
     } catch {
       toast.error("Não consegui arquivar agora. Tente de novo.");
+    }
+  }
+
+  /**
+   * CANCELAR A CAMPANHA DESTA SEMANA (05/10, pedido do Bruno: não achava onde
+   * cancelar uma campanha; "Arquivar campanha" só existia dentro da janela de
+   * aprovação, que nem todo card abre). A confirmação é no próprio menu, e a
+   * regra é a do fechar o quadro que o cancelar vídeo já usa: o que não saiu
+   * sai do quadro, o que saiu fica (lib/pipeline/cancelar-campanha.ts).
+   */
+  async function cancelarCampanhaDaSemana() {
+    const runIds = [...new Set(weekCards.map((c) => c.runId).filter(Boolean))] as string[];
+    if (runIds.length === 0) {
+      toast("Nenhuma campanha nesta semana para cancelar.");
+      return;
+    }
+    try {
+      let posts = 0;
+      let ficou: string | null = null;
+      const erros: string[] = [];
+      for (const id of runIds) {
+        const res = await fetch(`/api/pipeline/runs/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cancelarCampanha: true }),
+        });
+        const d = (await res.json().catch(() => ({}))) as { error?: string; quadro?: { postsCancelados: number }; ficou?: string | null };
+        if (!res.ok) {
+          erros.push(d.error ?? "Não consegui cancelar.");
+          continue;
+        }
+        posts += d.quadro?.postsCancelados ?? 0;
+        if (d.ficou) ficou = d.ficou;
+      }
+      // A campanha que ainda gerava parou na fila junto: a tela acompanha.
+      if (runningPipelineId && runIds.includes(runningPipelineId)) {
+        setGenerating(false);
+        setRunningPipelineId(null);
+      }
+      dismissFailedBanner();
+      await loadCardsForWeek(weekStartIso);
+      pedirLeituraDoSino();
+      if (erros.length === runIds.length) {
+        toast.error(erros[0]);
+        return;
+      }
+      toast.success(
+        [
+          runIds.length > 1 ? `${runIds.length - erros.length} campanhas canceladas.` : "Campanha cancelada.",
+          posts ? `${posts} ${posts === 1 ? "post saiu" : "posts saíram"} da fila.` : null,
+          ficou,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        { duration: 7000 }
+      );
+    } catch {
+      toast.error("Não consegui cancelar agora. Tente de novo.");
+    }
+  }
+
+  /**
+   * CANCELAR ESTA PEÇA pelo cartão da semana (05/10). O card principal da
+   * peça e os posts dela vão juntos: o servidor cancela o que ainda não saiu e
+   * deixa no ar o que já foi publicado.
+   */
+  async function cancelarPecaDoQuadro(pecaId: string) {
+    const card = cardDaPeca.get(pecaId);
+    if (!card) {
+      toast("Esta peça não tem card para cancelar. Use a aba Posts.");
+      return;
+    }
+    const postIds = (postsDaPeca.get(pecaId) ?? []).map((p) => p.id);
+    try {
+      const res = await fetch(`/api/campaign-cards/${card.id}/cancelar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postIds }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string; quadro?: { postsCancelados: number }; ficou?: string | null };
+      if (!res.ok) throw new Error(d.error ?? "erro");
+      await loadCardsForWeek(weekStartIso);
+      pedirLeituraDoSino();
+      const n = d.quadro?.postsCancelados ?? 0;
+      toast.success(["Peça cancelada.", n ? `${n} ${n === 1 ? "post saiu" : "posts saíram"} da fila.` : null, d.ficou].filter(Boolean).join(" "), { duration: 6000 });
+    } catch (e) {
+      toast.error(e instanceof Error && e.message !== "erro" ? e.message : "Não consegui cancelar agora. Tente de novo.");
     }
   }
 
@@ -5078,6 +5262,25 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       const tituloDoCorte = g.cards
         .map((c) => (c.metadata as { titulo?: unknown } | null)?.titulo)
         .find((t): t is string => typeof t === "string" && t.trim().length > 0);
+      // Em produção: algum card que faz ESTA peça ainda está em espera ou
+      // em revisão, ou o registro da campanha diz que o dia está no texto,
+      // na arte, na revisão ou no vídeo agora.
+      const estado = estadoDaPeca(
+        g.posts,
+        principal,
+        (chave === "post"
+          ? candidatos.filter((c) => {
+              if (!PRODUTORES.includes(c.cardType)) return false;
+              if (c.postId) return g.posts.some((p) => p.id === c.postId);
+              // Card de espera que SOBROU: o mesmo tipo de card já entregou
+              // um post desta peça (visto na quinta 10/09, com a thread
+              // pronta e um segundo card do Xavier ainda "escrevendo").
+              return !candidatos.some((o) => o.cardType === c.cardType && o.postId && g.posts.some((p) => p.id === o.postId));
+            })
+          : g.cards
+        ).some((c) => cardEmProducao(c)) ||
+          FASES_DO_SQUAD.includes(andamento[day.dayOfWeek]?.fase ?? "")
+      );
       pecas.push({
         id,
         titulo: (chave.startsWith("corte:") && tituloDoCorte ? tituloDoCorte : null) ?? tituloDoCard(redator) ?? (ehVideoNaChave ? tituloDoCard(principal) : null) ?? tituloDaArte(cardDaMidia ?? g.cards.find((c) => c.cardType === "media"), primeiro) ?? g.tipo,
@@ -5086,25 +5289,11 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         hora: primeiro.scheduledAt ? horaCurta(new Date(primeiro.scheduledAt)) : null,
         quando: primeiro.scheduledAt ? new Date(primeiro.scheduledAt).getTime() : 0,
         origem,
-        // Em produção: algum card que faz ESTA peça ainda está em espera ou
-        // em revisão, ou o registro da campanha diz que o dia está no texto,
-        // na arte, na revisão ou no vídeo agora.
-        estado: estadoDaPeca(
-          g.posts,
-          principal,
-          (chave === "post"
-            ? candidatos.filter((c) => {
-                if (!PRODUTORES.includes(c.cardType)) return false;
-                if (c.postId) return g.posts.some((p) => p.id === c.postId);
-                // Card de espera que SOBROU: o mesmo tipo de card já entregou
-                // um post desta peça (visto na quinta 10/09, com a thread
-                // pronta e um segundo card do Xavier ainda "escrevendo").
-                return !candidatos.some((o) => o.cardType === c.cardType && o.postId && g.posts.some((p) => p.id === o.postId));
-              })
-            : g.cards
-          ).some((c) => cardEmProducao(c)) ||
-            FASES_DO_SQUAD.includes(andamento[day.dayOfWeek]?.fase ?? "")
-        ),
+        estado,
+        // CANCELÁVEL pelo cartão (05/10): tem card para cancelar, não está
+        // publicada e o squad não está no meio dela (cancelar o que a esteira
+        // ainda escreve não a para; para isso existe o cancelar da geração).
+        cancelavel: Boolean(principal) && estado !== "publicado" && estado !== "fazendo",
         midia,
         destinos: [...g.posts]
           .sort((a, b) => ORDEM_DA_REDE.indexOf(a.platform) - ORDEM_DA_REDE.indexOf(b.platform))
@@ -5303,7 +5492,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               <>
                 {/* A cortina que fecha o menu ao clicar fora. Sem ela o menu
                     fica aberto atras do modal que ele mesmo abriu. */}
-                <div className="fixed inset-0 z-10" onClick={() => setMenuAberto(false)} />
+                <div className="fixed inset-0 z-10" onClick={() => { setMenuAberto(false); setConfirmarCancelarCampanha(false); setConfirmarFalhas(false); }} />
                 <div
                   className="absolute right-0 z-20 mt-1.5 w-[210px] overflow-hidden rounded-xl border py-1 shadow-xl"
                   style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
@@ -5334,6 +5523,52 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                       <Archive className="h-3.5 w-3.5 shrink-0" />
                       Limpar esta semana
                     </button>
+                  )}
+                  {/* CANCELAR A CAMPANHA DESTA SEMANA (05/10). Aparece com
+                      campanha no quadro, gerando ou não: cancelar a que ainda
+                      gera também para a fila. A confirmação é aqui mesmo, com
+                      as datas e o alcance ditos antes do clique. */}
+                  {weekCards.length > 0 && !confirmarCancelarCampanha && (
+                    <button
+                      data-cancelar-campanha
+                      onClick={() => setConfirmarCancelarCampanha(true)}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+                    >
+                      <Ban className="h-3.5 w-3.5 shrink-0" />
+                      Cancelar a campanha desta semana
+                    </button>
+                  )}
+                  {weekCards.length > 0 && confirmarCancelarCampanha && (
+                    <div className="space-y-2 border-t px-3.5 py-2.5" style={{ borderColor: "var(--border)" }} data-confirmar-cancelar-campanha>
+                      <p className="text-[12px] leading-snug" style={{ color: "var(--text-primary)" }}>
+                        Cancelar a campanha de {periodoDaSemana(selectedMonday)}?
+                      </p>
+                      <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                        As peças ainda não publicadas saem do quadro; o que já foi publicado fica.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          data-confirmar-cancelar-campanha-sim
+                          onClick={() => {
+                            setMenuAberto(false);
+                            setConfirmarCancelarCampanha(false);
+                            void cancelarCampanhaDaSemana();
+                          }}
+                          className="flex-1 rounded-lg bg-red-500/90 px-2 py-1.5 text-[12px] font-semibold text-white hover:bg-red-500"
+                        >
+                          Cancelar campanha
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmarCancelarCampanha(false)}
+                          className="flex-1 rounded-lg border px-2 py-1.5 text-[12px]"
+                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
                   )}
                   {/* ARQUIVAR AS FALHAS DA SEMANA (01/10, pedido do Bruno: "para
                       limpar o gestor"). A confirmação é aqui mesmo, no menu,
@@ -5656,6 +5891,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         // A peça que falhou se arquiva no próprio cartão (01/10): só os posts
         // dela que falharam; o que já saiu ou está na fila fica.
         onArquivarPeca={(id) => void arquivarPostsComFalha((postsDaPeca.get(id) ?? []).filter((p) => p.status === "failed").map((p) => p.id))}
+        // Cancelar a peça pelo próprio cartão (05/10): o card dela e os posts
+        // que ainda não saíram; o publicado fica.
+        onCancelarPeca={(id) => void cancelarPecaDoQuadro(id)}
         onAbrirPeca={(id) => {
           // Pelo `handleOpenModal`, e nao pelo `setModalCard` direto: o modal
           // so desenha com card E linha do agente, e em 18/09 o clique na peca

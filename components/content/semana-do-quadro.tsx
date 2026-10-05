@@ -95,6 +95,12 @@ export type PecaDoDia = {
    * peça guardada e a virtual não têm tipo no banco.
    */
   etiqueta?: EtiquetaDaPeca | null;
+  /**
+   * A peça pode ser cancelada pelo próprio cartão (05/10): tem card para
+   * cancelar, não está publicada e o squad não está no meio dela. Quem
+   * decide é a tela que monta a peça; aqui só se desenha o botão.
+   */
+  cancelavel?: boolean;
 };
 
 export type DiaDaSemana = {
@@ -330,9 +336,13 @@ function SeloDaRede({ plataforma, contas }: { plataforma: string; contas: Destin
   );
 }
 
-function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar }: { p: PecaDoDia; onAbrir: () => void; onVerMidia?: () => void; onArquivar?: () => void }) {
+function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar, onCancelar }: { p: PecaDoDia; onAbrir: () => void; onVerMidia?: () => void; onArquivar?: () => void; onCancelar?: () => void }) {
   const e = ESTADO[p.estado];
   const temVisor = Boolean(p.midia && onVerMidia);
+  // A confirmação de "Cancelar esta peça" mora no próprio cartão (05/10):
+  // sem a caixa do navegador, e sem abrir o card para achar a ação.
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+  const podeCancelar = Boolean(p.cancelavel && onCancelar);
   // A CAPA QUE NÃO CARREGA (03/10): o vídeo do gêmeo sem capa ainda devolvia
   // 404 e o cartão mostrava o ícone de imagem quebrada. Com vídeo, o primeiro
   // quadro do próprio mp4 entra no lugar; sem vídeo, a capa some.
@@ -456,19 +466,73 @@ function CartaoDaPeca({ p, onAbrir, onVerMidia, onArquivar }: { p: PecaDoDia; on
           posts que falham, eu não consigo arquivar, preciso conseguir, para
           limpar o gestor"). Fica fora do botão que abre o card: botão dentro
           de botão não existe. Arquivar tem volta (Posts, aba Arquivados). */}
-      {p.estado === "falhou" && onArquivar && (
-        <button
-          type="button"
-          data-arquivar-peca
-          onClick={onArquivar}
-          className="flex items-center justify-center gap-1 border-t px-2 py-1 text-[10.5px] font-medium transition-colors hover:bg-red-500/10 hover:text-red-400"
-          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-          title="Arquivar os posts desta peça que falharam. Tem volta: Posts, aba Arquivados."
-        >
-          <Archive className="h-3 w-3" />
-          Arquivar
-        </button>
-      )}
+      {/* CANCELAR ESTA PEÇA, no rodapé do cartão (05/10, pedido do Bruno:
+          não achava onde cancelar uma peça). Mesma régua do arquivar: fora do
+          botão que abre o card. A confirmação abre no lugar do rodapé, e o
+          texto diz o alcance antes do clique. O cartão de espera do corte não
+          passa por aqui: ele é promessa, e o cancelamento dele é o do vídeo. */}
+      {(p.estado === "falhou" && onArquivar) || podeCancelar ? (
+        confirmandoCancelar ? (
+          <div className="space-y-1.5 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-confirmar-cancelar-peca>
+            <p className="text-[10.5px] font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+              Cancelar esta peça?
+            </p>
+            <p className="text-[10px] leading-snug" style={{ color: "var(--text-muted)" }}>
+              Ela sai do quadro; o que já foi publicado fica.
+            </p>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                data-confirmar-cancelar-peca-sim
+                onClick={() => {
+                  setConfirmandoCancelar(false);
+                  onCancelar?.();
+                }}
+                className="flex-1 rounded-md bg-red-500/90 px-1.5 py-1 text-[10.5px] font-semibold text-white hover:bg-red-500"
+              >
+                Cancelar peça
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmandoCancelar(false)}
+                className="flex-1 rounded-md border px-1.5 py-1 text-[10.5px]"
+                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex border-t" style={{ borderColor: "var(--border)" }}>
+            {p.estado === "falhou" && onArquivar && (
+              <button
+                type="button"
+                data-arquivar-peca
+                onClick={onArquivar}
+                className="flex flex-1 items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium transition-colors hover:bg-red-500/10 hover:text-red-400"
+                style={{ color: "var(--text-muted)" }}
+                title="Arquivar os posts desta peça que falharam. Tem volta: Posts, aba Arquivados."
+              >
+                <Archive className="h-3 w-3" />
+                Arquivar
+              </button>
+            )}
+            {podeCancelar && (
+              <button
+                type="button"
+                data-cancelar-peca
+                onClick={() => setConfirmandoCancelar(true)}
+                className="flex flex-1 items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium transition-colors hover:bg-red-500/10 hover:text-red-400"
+                style={{ color: "var(--text-muted)" }}
+                title="Cancelar esta peça: ela sai do quadro e os posts dela que ainda não saíram vão para o arquivo de Posts."
+              >
+                <X className="h-3 w-3" />
+                Cancelar
+              </button>
+            )}
+          </div>
+        )
+      ) : null}
     </div>
   );
 }
@@ -566,6 +630,7 @@ export function SemanaDoQuadro({
   onAbrirDia,
   onAbrirPeca,
   onArquivarPeca,
+  onCancelarPeca,
   onVerVideo,
   onAbrirCorte,
 }: {
@@ -575,6 +640,8 @@ export function SemanaDoQuadro({
   onAbrirPeca: (pecaId: string) => void;
   /** Arquivar os posts com falha da peça (01/10). Sem ele, o botão não aparece. */
   onArquivarPeca?: (pecaId: string) => void;
+  /** Cancelar a peça pelo cartão (05/10): só nas peças marcadas `cancelavel`. */
+  onCancelarPeca?: (pecaId: string) => void;
   /** Levar o cliente à faixa do vídeo, a partir do cartão de espera do corte (05/10). */
   onVerVideo?: () => void;
   /** Abrir o corte pronto que o cartão "Corte pronto: aprovar" aponta (05/10). */
@@ -658,7 +725,7 @@ export function SemanaDoQuadro({
           {dia.pecas.length > 0 || dia.esperasDoCorte?.length ? (
             <div className="relative flex flex-col gap-2">
               {dia.pecas.map((p) => (
-                <CartaoDaPeca key={p.id} p={p} onAbrir={() => onAbrirPeca(p.id)} onVerMidia={p.midia ? () => setVisor(p) : undefined} onArquivar={onArquivarPeca ? () => onArquivarPeca(p.id) : undefined} />
+                <CartaoDaPeca key={p.id} p={p} onAbrir={() => onAbrirPeca(p.id)} onVerMidia={p.midia ? () => setVisor(p) : undefined} onArquivar={onArquivarPeca ? () => onArquivarPeca(p.id) : undefined} onCancelar={onCancelarPeca ? () => onCancelarPeca(p.id) : undefined} />
               ))}
               {/* O lugar do corte que ainda não chegou (05/10), depois das
                   peças prontas: quando o corte chega, ele vira peça e o
