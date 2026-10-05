@@ -1,17 +1,20 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { entradaPorFora, formasDoContrato } from "@/lib/contratos/condicao";
 
 /**
- * O LINK DO CARTÃO DAS PARCELAS, QUE NÃO VENCE (05/10/2026).
+ * OS LINKS DE PAGAMENTO DO CONTRATO, QUE NÃO VENCEM (05/10/2026).
  *
- * Na condição "1ª parcela no Pix, demais no cartão de crédito recorrente", o
- * Pix da entrada é feito POR FORA (o vendedor manda a chave, o cliente paga e
- * o comprovante é registrado no gestor, o caminho que já existia). O sistema
- * gera só o link do cartão. Como a sessão de checkout do Stripe vence em 24
- * horas e o contrato precisa SAIR com o link pronto (no texto, na tela do
- * admin, no e-mail e na página do cliente), o link é nosso:
- * /api/contratos/pagar/<contrato>/parcelas?t=<assinatura>, e cada clique abre
- * uma sessão nova do Stripe. O `t` é um HMAC do contrato e da parte: quem não
- * recebeu o link não adivinha o de outro contrato.
+ * Na condição em duas partes (entrada mais restante), o sistema gera os links
+ * do Stripe que fazem sentido: o da ENTRADA, só quando a entrada é no cartão
+ * pelo Stripe (Pix, boleto e transferência são por fora, com o comprovante
+ * registrado no gestor), e o do RESTANTE, sempre (assinatura mensal, cartão
+ * parcelado pelo emissor ou cartão à vista, conforme a forma escolhida).
+ *
+ * Como a sessão de checkout do Stripe vence em 24 horas e o contrato precisa
+ * SAIR com o link pronto (no texto, na tela do admin, no e-mail e na página do
+ * cliente), o link é nosso: /api/contratos/pagar/<contrato>/<parte>?t=<assinatura>,
+ * e cada clique abre uma sessão nova do Stripe. O `t` é um HMAC do contrato e
+ * da parte: quem não recebeu o link não adivinha o de outro contrato.
  *
  * O cliente prospect ainda não tem senha (só ganha na ativação), por isso o
  * link é público e a rota mora em /api (fora do portão de login).
@@ -19,7 +22,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * Só servidor.
  */
 
-export const PARTES_DO_PAGAMENTO = ["parcelas"] as const;
+export const PARTES_DO_PAGAMENTO = ["entrada", "restante"] as const;
 export type ParteDoPagamento = (typeof PARTES_DO_PAGAMENTO)[number];
 
 export function ehParteDoPagamento(v: unknown): v is ParteDoPagamento {
@@ -51,12 +54,35 @@ export function linkDoPagamento(contratoId: string, parte: ParteDoPagamento, bas
   return `${base}/api/contratos/pagar/${contratoId}/${parte}?t=${assinaturaDoLink(contratoId, parte)}`;
 }
 
-/** O link do cartão das parcelas de um contrato parcelado. */
-export function linkDoCartao(contratoId: string, base = baseDoApp()): string {
-  return linkDoPagamento(contratoId, "parcelas", base);
+/** O link do restante (assinatura, parcelado pelo emissor ou à vista, conforme a forma). */
+export function linkDoRestante(contratoId: string, base = baseDoApp()): string {
+  return linkDoPagamento(contratoId, "restante", base);
 }
 
-/** A chave Pix da Demandou para a 1ª parcela, quando configurada (CONTRATOS_CHAVE_PIX). */
+/** O link da entrada: só existe quando a entrada é no cartão pelo Stripe. */
+export function linkDaEntrada(c: { id: string; formaDaEntrada?: string | null }, base = baseDoApp()): string | null {
+  return entradaPorFora(formasDoContrato(c).formaDaEntrada) ? null : linkDoPagamento(c.id, "entrada", base);
+}
+
+/** OS LINKS QUE FAZEM SENTIDO para um contrato parcelado (o da entrada pode não existir). */
+export function linksDoContrato(c: { id: string; formaDaEntrada?: string | null; formaDoRestante?: string | null }, base = baseDoApp()): { entrada: string | null; restante: string } {
+  return { entrada: linkDaEntrada(c, base), restante: linkDoRestante(c.id, base) };
+}
+
+/** A chave Pix da Demandou para a entrada, quando configurada (CONTRATOS_CHAVE_PIX). */
 export function chavePix(): string | null {
   return process.env.CONTRATOS_CHAVE_PIX?.trim() || null;
+}
+
+/**
+ * O PARCELAMENTO PELO EMISSOR está liberado na conta Stripe? A API não expõe
+ * isso em leitura (nem em accounts.retrieve nem em paymentMethodConfigurations),
+ * e só o Dashboard liga: Configurações > Pagamentos > Formas de pagamento >
+ * Cartões > Parcelamento. Ligado lá, o dono define CONTRATOS_PARCELAMENTO_EMISSOR=1
+ * e a opção aparece no formulário; sem isso, o formulário mostra "indisponível
+ * na conta" e o servidor recusa a forma.
+ */
+export function parcelamentoDoEmissorDisponivel(): boolean {
+  const v = process.env.CONTRATOS_PARCELAMENTO_EMISSOR?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "sim";
 }

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { contratosDoPainel, descontosDoMes } from "@/lib/contratos/painel";
 import { TETO_COM_APROVACAO, TETO_SEM_APROVACAO, porcentagem } from "@/lib/contratos/preco";
 import { provedorDeAssinatura } from "@/lib/contratos/assinatura";
+import { parcelamentoDoEmissorDisponivel } from "@/lib/contratos/links-de-pagamento";
 import {
   COR_DO_GRUPO,
   COR_DO_STATUS_DO_CONTRATO,
@@ -187,7 +188,11 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
         titulo="Novo contrato"
         subtitulo="Para um novo cliente ou para uma conta que já existe. Nasce como rascunho; na ficha, vai para assinatura eletrônica, recebe o pagamento e, pago, libera o acesso."
       >
-        <NovoContrato contas={contas.map((c) => ({ id: c.id, rotulo: `${c.name ?? "(sem nome)"} · ${c.email} · ${c.plan}`, plano: c.plan }))} contaInicial={sp.conta ?? null} />
+        <NovoContrato
+          contas={contas.map((c) => ({ id: c.id, rotulo: `${c.name ?? "(sem nome)"} · ${c.email} · ${c.plan}`, plano: c.plan }))}
+          contaInicial={sp.conta ?? null}
+          emissorDisponivel={parcelamentoDoEmissorDisponivel()}
+        />
       </Cartao>
 
       <Cartao titulo={filtro ? `Contratos: ${NOME_DO_GRUPO[filtro].toLowerCase()}` : "Todos os contratos"}>

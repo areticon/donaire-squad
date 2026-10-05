@@ -462,30 +462,50 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                         Link de pagamento do Stripe: {c.linkDePagamento}
                       </p>
                     )}
-                    {/* A CONDIÇÃO PARCELADA (05/10): 1ª parcela no Pix (registrada
-                        com o comprovante acima) e as demais no cartão pelo link
-                        que não vence, para o vendedor copiar e mandar. */}
+                    {/* A CONDIÇÃO PARCELADA (05/10): a entrada (por fora, registrada
+                        com o comprovante acima, ou no cartão pelo link) e o restante
+                        (recorrência, parcelado pelo emissor ou à vista) pelos links
+                        que não vencem, para o vendedor copiar e mandar. */}
                     {c.parcelado && (
                       <div className="mt-2 rounded-xl border p-3 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }} data-condicao-parcelada>
                         <p className="font-semibold" style={{ color: "var(--text-primary)" }}>
                           Condição: {c.parcelado.porExtenso}
                         </p>
                         <ul className="mt-1 space-y-0.5" style={{ color: "var(--text-muted)" }}>
-                          <li>
-                            1ª parcela (Pix): {centavosEmReais(c.parcelado.entradaPagaCentavos)} de {centavosEmReais(c.parcelado.entradaCentavos)}{" "}
-                            {c.parcelado.entradaPagaCentavos >= c.parcelado.entradaCentavos ? "· paga" : "· falta registrar o comprovante"}
+                          <li data-entrada-do-parcelado>
+                            Entrada ({c.parcelado.nomeDaFormaDaEntrada}): {centavosEmReais(c.parcelado.entradaPagaCentavos)} de {centavosEmReais(c.parcelado.entradaCentavos)}{" "}
+                            {c.parcelado.entradaOk
+                              ? "· paga"
+                              : c.parcelado.formaDaEntrada === "cartao_stripe"
+                                ? `· falta ${centavosEmReais(c.parcelado.entradaCentavos - c.parcelado.entradaPagaCentavos)} (o cliente paga pelo link da entrada)`
+                                : `· falta ${centavosEmReais(c.parcelado.entradaCentavos - c.parcelado.entradaPagaCentavos)}: registre o comprovante`}
                           </li>
-                          <li>
-                            Cartão: {c.parcelado.cartaoCadastrado ? `cadastrado · ${c.parcelado.parcelasPagas} de ${c.parcelado.parcelas} parcelas pagas` : "ainda não cadastrado pelo cliente"}
+                          <li data-restante-do-parcelado>
+                            Restante ({c.parcelado.nomeDaFormaDoRestante}):{" "}
+                            {c.parcelado.formaDoRestante === "cartao_recorrente"
+                              ? c.parcelado.cartaoCadastrado
+                                ? `cartão cadastrado · ${c.parcelado.parcelasPagas} de ${c.parcelado.parcelas} parcelas de ${centavosEmReais(c.parcelado.parcelaCentavos)} pagas`
+                                : `${c.parcelado.parcelas} parcelas de ${centavosEmReais(c.parcelado.parcelaCentavos)} · cartão ainda não cadastrado pelo cliente`
+                              : c.parcelado.restanteOk
+                                ? `${centavosEmReais(c.parcelado.restanteCentavos)} · pago`
+                                : `${centavosEmReais(c.parcelado.restantePagoCentavos)} de ${centavosEmReais(c.parcelado.restanteCentavos)} · falta o cliente pagar pelo link do restante`}
                           </li>
                           {c.parcelado.parcelaEmAtrasoDesde && (
                             <li style={{ color: "var(--badge-danger-text)" }}>Parcela em atraso desde {data(c.parcelado.parcelaEmAtrasoDesde)}: o Stripe tenta de novo sozinho; se não entrar, fale com o cliente.</li>
                           )}
                         </ul>
+                        {c.parcelado.links.entrada && (
+                          <p className="mt-1 break-all" style={{ color: "var(--text-muted)" }}>
+                            Link da entrada (não vence, vai no contrato e no e-mail):{" "}
+                            <a href={c.parcelado.links.entrada} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--text-primary)" }}>
+                              {c.parcelado.links.entrada}
+                            </a>
+                          </p>
+                        )}
                         <p className="mt-1 break-all" style={{ color: "var(--text-muted)" }}>
-                          Link do cartão (não vence, vai no contrato e no e-mail):{" "}
-                          <a href={c.parcelado.linkDoCartao} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--text-primary)" }}>
-                            {c.parcelado.linkDoCartao}
+                          Link do restante (não vence, vai no contrato e no e-mail):{" "}
+                          <a href={c.parcelado.links.restante} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--text-primary)" }}>
+                            {c.parcelado.links.restante}
                           </a>
                         </p>
                       </div>

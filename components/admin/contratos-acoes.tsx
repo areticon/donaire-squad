@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { CamposDaCondicao, CamposDoPreco, EditarContrato, NovoAditivo, bloqueiaCondicao, condicaoInicial, contaDoPreco, corpoDaCondicao, corpoDoPreco } from "@/components/admin/contratos-preco";
 import { valorInicialDoPreco, type ValorDoPreco } from "@/lib/contratos/preco";
+import { rotuloDaCondicao } from "@/lib/contratos/condicao";
 
 /**
  * AS PARTES INTERATIVAS DO GESTOR DE CONTRATOS (02/10/2026): o formulário de
@@ -40,7 +41,7 @@ const FORMAS = [
  * existe. Todo plano é anual; sem data de início, a vigência conta da
  * confirmação do pagamento (cláusula 5.1).
  */
-export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: string; rotulo: string; plano: string }>; contaInicial?: string | null }) {
+export function NovoContrato({ contas, contaInicial, emissorDisponivel = false }: { contas: Array<{ id: string; rotulo: string; plano: string }>; contaInicial?: string | null; emissorDisponivel?: boolean }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(Boolean(contaInicial));
   const [modo, setModo] = useState<"prospect" | "conta">(contaInicial ? "conta" : "prospect");
@@ -58,7 +59,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
     const conta = contaDoPreco(preco);
     if (conta.faixa === "bloqueado") return void toast.error("Desconto acima do teto não sai.");
     if (conta.descontoCentavos > 0 && !preco.motivo) return void toast.error("Escolha o motivo do desconto.");
-    const erroDaCondicao = bloqueiaCondicao(condicao, conta.finalCentavos);
+    const erroDaCondicao = bloqueiaCondicao(condicao, conta.finalCentavos, emissorDisponivel);
     if (erroDaCondicao) return void toast.error(erroDaCondicao);
     setEnviando(true);
     try {
@@ -69,7 +70,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         ...corpoDoPreco(preco),
         ...corpoDaCondicao(condicao),
         inicioVigencia: f.get("inicio"),
-        formaDePagamento: condicao.tipo === "a_vista" ? f.get("forma") : "1ª parcela no Pix, demais no cartão (crédito recorrente)",
+        formaDePagamento: condicao.tipo === "a_vista" ? f.get("forma") : rotuloDaCondicao(condicao.formaDaEntrada, condicao.formaDoRestante, condicao.parcelas),
         empresa: f.get("empresa"),
         endereco: f.get("endereco"),
         signatarioNome: nome,
@@ -160,7 +161,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         <input name="endereco" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <CamposDoPreco valor={preco} mudar={setPreco} />
-      <CamposDaCondicao valor={condicao} mudar={setCondicao} totalCentavos={contaDoPreco(preco).finalCentavos} />
+      <CamposDaCondicao valor={condicao} mudar={setCondicao} totalCentavos={contaDoPreco(preco).finalCentavos} emissorDisponivel={emissorDisponivel} />
       {condicao.tipo === "a_vista" && (
         <label className={rotulo} style={corDoRotulo}>
           Forma de pagamento combinada

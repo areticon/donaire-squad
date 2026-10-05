@@ -2,20 +2,26 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { baseDoApp, ehParteDoPagamento, linkValido } from "@/lib/contratos/links-de-pagamento";
-import { RecusaDoLink, contratoDoLink, resumoDaCondicao, sessaoDasParcelas } from "@/lib/contratos/parcelado";
+import { formasDoContrato } from "@/lib/contratos/condicao";
+import { RecusaDoLink, contratoDoLink, resumoDaCondicao, sessaoDaEntrada, sessaoDoRestante } from "@/lib/contratos/parcelado";
 
 type Ctx = { params: Promise<{ id: string; parte: string }> };
 
 /**
- * O LINK DO CARTÃO DAS PARCELAS (05/10/2026). Na condição "1ª parcela no Pix,
- * demais no cartão de crédito recorrente", o Pix é feito por fora e registrado
- * com o comprovante no gestor; este link é só o do cartão. Ele não vence: cada
+ * OS LINKS DE PAGAMENTO DO CONTRATO PARCELADO (05/10/2026). Na condição de
+ * entrada mais restante, cada parte tem o seu link, que não vence: cada
  * clique abre uma sessão nova do Stripe no valor certo e redireciona para ela.
+ *
+ *  - "entrada": o cartão à vista no valor da entrada (só quando a entrada é no
+ *    cartão; por fora, o comprovante é registrado no gestor e não há link);
+ *  - "restante": a assinatura mensal (recorrência), o pagamento parcelado pelo
+ *    emissor ou o pagamento à vista, conforme a forma do contrato.
+ *
  * Público (o prospect ainda não tem senha), protegido pela assinatura `t`.
  * Ver lib/contratos/links-de-pagamento.ts e lib/contratos/parcelado.ts.
  *
- * Quando não há o que fazer (cartão já cadastrado, contrato não assinado ou
- * cancelado), responde uma página curta dizendo o que fazer.
+ * Quando não há o que fazer (já pago, contrato não assinado ou cancelado),
+ * responde uma página curta dizendo o que fazer.
  */
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id, parte } = await params;
@@ -25,18 +31,22 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   if (!c) return pagina("Link inválido", "Não encontramos este contrato.", 404);
   const n = String(c.numero).padStart(4, "0");
   const condicao = resumoDaCondicao(c);
+  const { formaDoRestante } = formasDoContrato(c);
 
-  // A volta do Stripe depois de cadastrar o cartão.
+  // A volta do Stripe depois de pagar (ou de cadastrar o cartão).
   if (req.nextUrl.searchParams.get("ok") === "1") {
-    return pagina("Cartão cadastrado", `As parcelas do contrato nº ${n} estão programadas no seu cartão. Com a 1ª parcela (o Pix) confirmada pela nossa equipe, a sua conta é ativada e chega o e-mail de boas-vindas.`);
+    if (parte === "entrada") return pagina("Entrada paga", `Recebemos a entrada do contrato nº ${n} e estamos confirmando. Com o restante resolvido pelo link dele, a sua conta é ativada e chega o e-mail de boas-vindas.`);
+    if (formaDoRestante === "cartao_recorrente") return pagina("Cartão cadastrado", `As parcelas do contrato nº ${n} estão programadas no seu cartão. Com a entrada confirmada, a sua conta é ativada e chega o e-mail de boas-vindas.`);
+    return pagina("Restante pago", `Recebemos o restante do contrato nº ${n} e estamos confirmando. Com a entrada confirmada, a sua conta é ativada e chega o e-mail de boas-vindas.`);
   }
 
   try {
-    return NextResponse.redirect(await sessaoDasParcelas(c, baseDoApp()), 303);
+    const url = parte === "entrada" ? await sessaoDaEntrada(c, baseDoApp()) : await sessaoDoRestante(c, baseDoApp());
+    return NextResponse.redirect(url, 303);
   } catch (e) {
     if (e instanceof RecusaDoLink) return pagina(`Contrato nº ${n}`, `${e.message}${condicao ? ` Condição do contrato: ${condicao}.` : ""}`);
-    console.error(`[contratos] link do cartão do contrato ${id} falhou:`, e);
-    return pagina("Não deu certo agora", "Não conseguimos abrir o cadastro do cartão neste momento. Tente de novo em alguns minutos ou responda ao e-mail do contrato.", 502);
+    console.error(`[contratos] link de pagamento (${parte}) do contrato ${id} falhou:`, e);
+    return pagina("Não deu certo agora", "Não conseguimos abrir o pagamento neste momento. Tente de novo em alguns minutos ou responda ao e-mail do contrato.", 502);
   }
 }
 

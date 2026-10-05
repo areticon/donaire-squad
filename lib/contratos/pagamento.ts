@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db/prisma";
 import { RecusaDoContrato, nomeDoPlano, registrar, type Autor } from "@/lib/contratos/contratos";
 import { FORMAS_DE_PAGAMENTO, centavosEmReais, fimDaVigencia, situacaoDoContrato } from "@/lib/contratos/situacao";
-import { ehParcelado } from "@/lib/contratos/condicao";
+import { ehParcelado, portaDoParcelado } from "@/lib/contratos/condicao";
 import { midiaPrivada } from "@/lib/media/storage";
 
 /**
@@ -135,32 +135,51 @@ async function lancar(
 
 /** A forma das parcelas cobradas pela assinatura do Stripe (05/10). */
 export const FORMA_DA_PARCELA = "cartao_recorrente";
+/** A forma do RESTANTE pago de uma vez pelo Stripe (à vista ou parcelado pelo emissor, 05/10). */
+export const FORMA_DO_RESTANTE = "cartao_restante";
+/** As formas que são do restante, e não da entrada. */
+const FORMAS_DO_RESTANTE_PAGO = [FORMA_DA_PARCELA, FORMA_DO_RESTANTE];
+
+/** A forma gravada no pagamento que veio do Stripe, pela parte do link (05/10). */
+export function formaDoPagamentoDoStripe(parte: string | null | undefined): string {
+  return parte === "restante" ? FORMA_DO_RESTANTE : "stripe";
+}
 
 /**
- * O QUE JÁ ENTROU DA ENTRADA (a 1ª parcela, no Pix) de um contrato parcelado
- * (05/10): tudo o que não é parcela recorrente nem aditivo (o Pix registrado
- * à mão com o comprovante). `ultimaEm` é quando a entrada se completou.
+ * O QUE JÁ ENTROU DA ENTRADA de um contrato parcelado (05/10): tudo o que não
+ * é do restante (parcela recorrente ou restante pelo Stripe) nem aditivo: o
+ * Pix, boleto ou transferência registrados à mão com o comprovante, ou a
+ * entrada paga no cartão pelo link do Stripe. `ultimaEm` é quando a entrada
+ * se completou.
  */
 export async function entradaPaga(contratoId: string): Promise<{ centavos: number; ultimaEm: Date | null }> {
   const pagos = await prisma.pagamentoDoContrato.findMany({
-    where: { contratoId, aditivoId: null, forma: { not: FORMA_DA_PARCELA } },
+    where: { contratoId, aditivoId: null, forma: { notIn: FORMAS_DO_RESTANTE_PAGO } },
     select: { valorCentavos: true, pagoEm: true },
     orderBy: { pagoEm: "asc" },
   });
   return { centavos: pagos.reduce((s, p) => s + p.valorCentavos, 0), ultimaEm: pagos.at(-1)?.pagoEm ?? null };
 }
 
+/** O que já entrou do RESTANTE pago de uma vez pelo Stripe (à vista ou parcelado pelo emissor). */
+export async function restantePago(contratoId: string): Promise<number> {
+  const r = await prisma.pagamentoDoContrato.aggregate({ where: { contratoId, aditivoId: null, forma: FORMA_DO_RESTANTE }, _sum: { valorCentavos: true } });
+  return r._sum.valorCentavos ?? 0;
+}
+
 /**
  * A PORTA DO PAGAMENTO. À vista: abre no primeiro pagamento confirmado. No
- * PARCELADO (05/10, pedido do dono): abre quando a entrada está paga E a
- * assinatura das parcelas está criada no Stripe, e a data é a da entrada
- * (a vigência conta dela, cláusula 5.1). updateMany com pagoEm null é a
- * trava contra dois eventos simultâneos.
+ * PARCELADO (05/10, pedido do dono): abre quando a entrada está confirmada E
+ * o restante está resolvido (a assinatura das parcelas cadastrada, ou o
+ * restante pago de uma vez: à vista ou parcelado pelo emissor), e a data é a
+ * da entrada (a vigência conta dela, cláusula 5.1). A conta é a de
+ * portaDoParcelado (lib/contratos/condicao.ts). updateMany com pagoEm null é
+ * a trava contra dois eventos simultâneos.
  */
 async function abrirPorta(contratoId: string, pagoEm: Date) {
   const c = await prisma.contrato.findUnique({
     where: { id: contratoId },
-    select: { pagoEm: true, condicaoDePagamento: true, entradaCentavos: true, assinaturaParcelasId: true },
+    select: { pagoEm: true, condicaoDePagamento: true, entradaCentavos: true, valorCentavos: true, formaDoRestante: true, assinaturaParcelasId: true },
   });
   if (!c || c.pagoEm) return;
   if (!ehParcelado(c)) {
@@ -168,7 +187,8 @@ async function abrirPorta(contratoId: string, pagoEm: Date) {
     return;
   }
   const entrada = await entradaPaga(contratoId);
-  if (!c.assinaturaParcelasId || entrada.centavos < (c.entradaCentavos ?? 0) || !entrada.ultimaEm) return;
+  const porta = portaDoParcelado({ ...c, entradaPagaCentavos: entrada.centavos, restantePagoCentavos: await restantePago(contratoId) });
+  if (!porta.aberta || !entrada.ultimaEm) return;
   await prisma.contrato.updateMany({ where: { id: contratoId, pagoEm: null }, data: { pagoEm: entrada.ultimaEm } });
 }
 
@@ -247,15 +267,21 @@ export async function pagamentoDoStripe(session: Stripe.Checkout.Session): Promi
     console.error(`[contratos] pagamento do Stripe para contrato inexistente: ${session.metadata.contratoId} (sessão ${session.id})`);
     return true;
   }
+  // A PARTE do contrato parcelado (05/10): "entrada" (cartão à vista pelo
+  // Stripe) ou "restante" (à vista ou parcelado pelo emissor). Sem parte, é o
+  // link do à vista de sempre.
+  const parte = session.metadata.parte || null;
+  const observacao = parte === "entrada" ? "Entrada no cartão (Stripe)" : parte === "restante" ? (session.metadata.parcelado === "emissor" ? "Restante no cartão, parcelado pelo emissor (Stripe)" : "Restante no cartão à vista (Stripe)") : null;
   await lancar("stripe", c.id, {
     aditivoId: session.metadata.aditivoId || null,
     valorCentavos: session.amount_total ?? 0,
     // A confirmação é agora: no cartão é segundos depois da sessão, e no boleto
     // é o dia da compensação, que é quando o dinheiro existe.
     pagoEm: new Date(),
-    forma: "stripe",
+    forma: formaDoPagamentoDoStripe(parte),
     origem: "stripe",
     referencia: session.id,
+    observacao,
   });
   return true;
 }
@@ -270,10 +296,10 @@ export async function gerarLinkDePagamento(admin: Autor, contratoId: string, bas
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status === "cancelado") throw new RecusaDoContrato("Contrato cancelado não recebe pagamento.");
   if (!c.assinadoEm) throw new RecusaDoContrato("Gere o link depois da assinatura.");
-  // O PARCELADO (05/10) tem o link do cartão dele, que não vence, e a 1ª
-  // parcela é Pix registrado com comprovante: um link do total aqui cobraria
-  // o ano inteiro de uma vez e quebraria a condição.
-  if (!aditivoId && ehParcelado(c)) throw new RecusaDoContrato("Este contrato é de 1ª parcela no Pix e demais no cartão: registre o Pix com o comprovante e mande o link do cartão das parcelas, na ficha do contrato.");
+  // O PARCELADO (05/10) tem os links dele, que não vencem (o da entrada, se
+  // ela é no cartão, e o do restante): um link do total aqui cobraria o ano
+  // inteiro de uma vez e quebraria a condição.
+  if (!aditivoId && ehParcelado(c)) throw new RecusaDoContrato("Este contrato é de entrada mais restante: use os links da entrada e do restante na ficha do contrato (a entrada por fora é registrada com o comprovante).");
   // O ADITIVO (04/10): o link é da diferença proporcional que falta.
   const ad = aditivoId ? await prisma.aditivoDoContrato.findFirst({ where: { id: aditivoId, contratoId } }) : null;
   if (aditivoId && !ad) throw new RecusaDoContrato("Aditivo não encontrado.", 404);
@@ -493,8 +519,10 @@ export async function contratoPendenteDaConta(userId: string) {
       stripeSessaoId: true,
       formaDePagamento: true,
       empresa: true,
-      // O parcelado (05/10): a página do cliente mostra a condição e os dois links.
+      // O parcelado (05/10): a página do cliente mostra a condição e os links.
       condicaoDePagamento: true,
+      formaDaEntrada: true,
+      formaDoRestante: true,
       entradaCentavos: true,
       parcelas: true,
       parcelaCentavos: true,

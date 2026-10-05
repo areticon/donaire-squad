@@ -1520,8 +1520,17 @@ model Contrato {
   /// sozinha depois da N-ésima). Ver lib/contratos/condicao.ts.
   condicaoDePagamento String?
   entradaCentavos     Int?
+  /// A FORMA DA ENTRADA (05/10): "pix" | "boleto" | "transferencia" (por fora,
+  /// com comprovante no gestor) | "cartao_stripe" (link do cartão à vista).
+  /// Null no parcelado antigo vale "pix".
+  formaDaEntrada      String?
   parcelas            Int?
   parcelaCentavos     Int?
+  /// A FORMA DO RESTANTE (05/10): "cartao_recorrente" (assinatura mensal que
+  /// termina sozinha) | "cartao_parcelado_emissor" (um checkout com o
+  /// parcelamento do emissor) | "cartao_a_vista" (um checkout). Null vale
+  /// "cartao_recorrente".
+  formaDoRestante     String?
   /// O dia da primeira parcela (por padrão, um mês depois da entrada).
   primeiraParcelaEm   DateTime?
   /// A assinatura do Stripe que cobra as parcelas; única, para o webhook

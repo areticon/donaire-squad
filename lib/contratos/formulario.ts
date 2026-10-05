@@ -35,10 +35,12 @@ export function dataDoTexto(v: unknown): Date | null {
 }
 
 /**
- * A CONDIÇÃO DE PAGAMENTO do corpo (05/10): `condicaoDePagamento`
- * ("a_vista" ou "entrada_pix_parcelas_cartao"), `entradaReais`, `parcelas` e
- * `primeiraParcelaEm` (AAAA-MM-DD, opcional). Sem o campo, undefined (na
- * edição, mantém o que está).
+ * A CONDIÇÃO DE PAGAMENTO do corpo (05/10): `condicaoDePagamento` ("a_vista"
+ * ou "entrada_e_restante"), `entradaReais`, `formaDaEntrada` (pix, boleto,
+ * transferencia, cartao_stripe), `parcelas`, `formaDoRestante`
+ * (cartao_recorrente, cartao_parcelado_emissor, cartao_a_vista) e
+ * `primeiraParcelaEm` (AAAA-MM-DD, opcional, só na recorrência). Sem o campo,
+ * undefined (na edição, mantém o que está).
  */
 export function condicaoDoCorpo(b: Record<string, unknown>): CondicaoPedida | undefined {
   if (!("condicaoDePagamento" in b)) return undefined;
@@ -46,7 +48,9 @@ export function condicaoDoCorpo(b: Record<string, unknown>): CondicaoPedida | un
   return {
     tipo: CONDICAO_PARCELADA,
     entradaCentavos: Math.round(numeroDoTexto(b.entradaReais) * 100),
+    formaDaEntrada: typeof b.formaDaEntrada === "string" ? b.formaDaEntrada : null,
     parcelas: Math.floor(Number(b.parcelas ?? 0)),
+    formaDoRestante: typeof b.formaDoRestante === "string" ? b.formaDoRestante : null,
     primeiraParcelaEm: dataDoTexto(b.primeiraParcelaEm),
   };
 }

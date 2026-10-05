@@ -5,8 +5,8 @@ import { montarTexto } from "@/lib/contratos/modelo";
 import { centavosEmReais, fimDaVigencia, situacaoDoContrato } from "@/lib/contratos/situacao";
 import { midiaPrivada } from "@/lib/media/storage";
 import { PLANOS_PUBLICOS } from "@/lib/planos";
-import { CONDICAO_PARCELADA, calcularParcelamento, ehParcelado, ajustarDiaDaCobranca } from "@/lib/contratos/condicao";
-import { chavePix, linkDoCartao } from "@/lib/contratos/links-de-pagamento";
+import { CONDICAO_PARCELADA, calcularParcelamento, ehParcelado, ajustarDiaDaCobranca, ehFormaDaEntrada, ehFormaDoRestante, formasDoContrato, restanteDoContrato, FORMAS_DA_ENTRADA, FORMAS_DO_RESTANTE } from "@/lib/contratos/condicao";
+import { chavePix, linksDoContrato, parcelamentoDoEmissorDisponivel } from "@/lib/contratos/links-de-pagamento";
 import {
   APROVADORES_PADRAO,
   MOTIVOS_DE_DESCONTO,
@@ -217,33 +217,46 @@ export type NovoContrato = {
 };
 
 /**
- * A CONDIÇÃO DE PAGAMENTO como veio do formulário (05/10): entrada no Pix
- * (em centavos), número de parcelas no cartão em crédito recorrente e, se
- * escolhida, a data da primeira parcela (sem ela, um mês depois da entrada).
+ * A CONDIÇÃO DE PAGAMENTO como veio do formulário (05/10): a entrada (em
+ * centavos) e a forma dela (Pix, boleto, transferência ou cartão pelo Stripe),
+ * o número de parcelas do restante e a forma dele (cartão com recorrência,
+ * parcelado pelo emissor ou à vista) e, na recorrência, a data da primeira
+ * parcela (sem ela, um mês depois da entrada).
  */
 export type CondicaoPedida = {
   tipo: "a_vista" | typeof CONDICAO_PARCELADA;
   entradaCentavos?: number | null;
+  formaDaEntrada?: string | null;
   parcelas?: number | null;
+  formaDoRestante?: string | null;
   primeiraParcelaEm?: Date | null;
 };
 
 /** Os campos da condição que vão para o banco, já com a conta feita e conferida. */
 export function camposDaCondicao(valorCentavos: number, pedido: CondicaoPedida | null | undefined) {
   if (!pedido || pedido.tipo !== CONDICAO_PARCELADA) {
-    return { condicaoDePagamento: null, entradaCentavos: null, parcelas: null, parcelaCentavos: null, primeiraParcelaEm: null };
+    return { condicaoDePagamento: null, entradaCentavos: null, formaDaEntrada: null, parcelas: null, parcelaCentavos: null, formaDoRestante: null, primeiraParcelaEm: null };
   }
-  const p = calcularParcelamento(valorCentavos, pedido.entradaCentavos ?? 0, pedido.parcelas ?? 0);
+  if (!ehFormaDaEntrada(pedido.formaDaEntrada)) throw new RecusaDoContrato(`Forma da entrada: ${Object.values(FORMAS_DA_ENTRADA).join(", ")}.`);
+  if (!ehFormaDoRestante(pedido.formaDoRestante)) throw new RecusaDoContrato(`Forma do restante: ${Object.values(FORMAS_DO_RESTANTE).join("; ")}.`);
+  if (pedido.formaDoRestante === "cartao_parcelado_emissor" && !parcelamentoDoEmissorDisponivel()) {
+    throw new RecusaDoContrato("O parcelamento pelo emissor do cartão está indisponível na conta Stripe. Ligue-o no Dashboard do Stripe e defina CONTRATOS_PARCELAMENTO_EMISSOR=1, ou escolha o cartão com recorrência.");
+  }
+  const p = calcularParcelamento(valorCentavos, pedido.entradaCentavos ?? 0, pedido.parcelas ?? 0, pedido.formaDoRestante);
   if ("erro" in p) throw new RecusaDoContrato(p.erro);
-  if (pedido.primeiraParcelaEm && pedido.primeiraParcelaEm.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+  const recorrente = pedido.formaDoRestante === "cartao_recorrente";
+  if (recorrente && pedido.primeiraParcelaEm && pedido.primeiraParcelaEm.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
     throw new RecusaDoContrato("A data da primeira parcela não pode ser no passado.");
   }
   return {
     condicaoDePagamento: CONDICAO_PARCELADA,
     entradaCentavos: p.entradaCentavos,
+    formaDaEntrada: pedido.formaDaEntrada,
     parcelas: p.parcelas,
     parcelaCentavos: p.parcelaCentavos,
-    primeiraParcelaEm: pedido.primeiraParcelaEm ? ajustarDiaDaCobranca(pedido.primeiraParcelaEm) : null,
+    formaDoRestante: pedido.formaDoRestante,
+    // A data da primeira parcela só faz sentido na recorrência.
+    primeiraParcelaEm: recorrente && pedido.primeiraParcelaEm ? ajustarDiaDaCobranca(pedido.primeiraParcelaEm) : null,
   };
 }
 
@@ -335,7 +348,9 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
     desconto: centavosEmReais(preco.descontoCentavos),
     fundador: c.fundador,
     ...(u.criada ? { contaCriada: u.email } : {}),
-    ...(condicao.condicaoDePagamento ? { condicao: { entrada: condicao.entradaCentavos, parcelas: condicao.parcelas, parcela: condicao.parcelaCentavos, primeira: condicao.primeiraParcelaEm } } : {}),
+    ...(condicao.condicaoDePagamento
+      ? { condicao: { entrada: condicao.entradaCentavos, formaDaEntrada: condicao.formaDaEntrada, restante: preco.valorCentavos - (condicao.entradaCentavos ?? 0), parcelas: condicao.parcelas, parcela: condicao.parcelaCentavos, formaDoRestante: condicao.formaDoRestante, primeira: condicao.primeiraParcelaEm } }
+      : {}),
   });
   if (!renovacao) {
     const aprovou = await registrarDesconto(c.id, admin, preco);
@@ -348,8 +363,10 @@ export function textoDoContrato(c: {
   id?: string;
   condicaoDePagamento?: string | null;
   entradaCentavos?: number | null;
+  formaDaEntrada?: string | null;
   parcelas?: number | null;
   parcelaCentavos?: number | null;
+  formaDoRestante?: string | null;
   primeiraParcelaEm?: Date | null;
   numero: number;
   empresa: string | null;
@@ -391,17 +408,19 @@ export function textoDoContrato(c: {
             fundador: Boolean(c.fundador),
           }
         : null,
-    // A CONDIÇÃO DE PAGAMENTO (05/10): 1ª parcela no Pix, demais no cartão,
-    // por extenso e com o link do cartão (que não vence). À vista, nada muda
-    // no texto (e o hash dos contratos de antes fica o mesmo).
+    // A CONDIÇÃO DE PAGAMENTO (05/10): entrada mais restante, com as formas
+    // das duas partes por extenso e os links que não vencem. À vista, nada
+    // muda no texto (e o hash dos contratos de antes fica o mesmo).
     condicao:
       ehParcelado(c) && c.id && c.entradaCentavos && c.parcelas && c.parcelaCentavos
         ? {
             entradaCentavos: c.entradaCentavos,
+            restanteCentavos: restanteDoContrato({ valorCentavos: c.valorCentavos, entradaCentavos: c.entradaCentavos }),
             parcelas: c.parcelas,
             parcelaCentavos: c.parcelaCentavos,
+            ...formasDoContrato(c),
             primeiraParcelaEm: c.primeiraParcelaEm ?? null,
-            linkDoCartao: linkDoCartao(c.id),
+            links: linksDoContrato({ id: c.id, ...formasDoContrato(c) }),
             chavePix: chavePix(),
           }
         : null,
@@ -505,23 +524,27 @@ export async function marcarAssinado(autor: Autor, id: string, args: { assinadoE
     const { ativarSePronto } = await import("@/lib/contratos/pagamento");
     await ativarSePronto(autor, id);
   }
-  // O PARCELADO (05/10): assinado, o cliente recebe a condição por extenso, o
-  // pedido do Pix da 1ª parcela (com o comprovante) e o link do cartão.
+  // O PARCELADO (05/10): assinado, o cliente recebe a condição por extenso, as
+  // instruções da entrada (chave Pix e comprovante, ou o link do cartão) e o
+  // link do restante.
   if (!c.pagoEm && ehParcelado(c) && c.signatarioEmail && c.entradaCentavos && c.parcelas && c.parcelaCentavos) {
     try {
       const { enviarEmail } = await import("@/lib/email");
       const { linksDoPagamentoParcelado } = await import("@/lib/email/contratos");
+      const formas = formasDoContrato(c);
       const foi = await enviarEmail({
         ...linksDoPagamentoParcelado({
           nome: c.signatarioNome,
           numero: c.numero,
           plano: nomeDoPlano(c.plano),
           entradaCentavos: c.entradaCentavos,
+          restanteCentavos: restanteDoContrato(c),
           parcelas: c.parcelas,
           parcelaCentavos: c.parcelaCentavos,
+          ...formas,
           primeiraParcelaEm: c.primeiraParcelaEm,
           chavePix: chavePix(),
-          linkDoCartao: linkDoCartao(c.id),
+          links: linksDoContrato({ id: c.id, ...formas }),
         }),
         para: c.signatarioEmail,
       });
@@ -690,8 +713,10 @@ const CAMPOS_DA_VERSAO = [
   "observacao",
   "condicaoDePagamento",
   "entradaCentavos",
+  "formaDaEntrada",
   "parcelas",
   "parcelaCentavos",
+  "formaDoRestante",
   "primeiraParcelaEm",
   "textoHash",
   "provedorDocumentoId",
@@ -758,7 +783,7 @@ export async function editarContrato(admin: Autor, id: string, m: MudancaDoContr
       m.condicao !== undefined
         ? m.condicao
         : ehParcelado(c)
-          ? { tipo: CONDICAO_PARCELADA, entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, primeiraParcelaEm: c.primeiraParcelaEm }
+          ? { tipo: CONDICAO_PARCELADA, entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, primeiraParcelaEm: c.primeiraParcelaEm, ...formasDoContrato(c) }
           : null,
     ),
   };

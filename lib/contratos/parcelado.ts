@@ -2,33 +2,43 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db/prisma";
 import { nomeDoPlano, registrar } from "@/lib/contratos/contratos";
 import { centavosEmReais } from "@/lib/contratos/situacao";
-import { ajustarDiaDaCobranca, condicaoPorExtenso, ehParcelado, fimDasParcelas, primeiraParcelaPadrao } from "@/lib/contratos/condicao";
-import { conferirPortaDoParcelado, entradaPaga, lancarParcela, FORMA_DA_PARCELA } from "@/lib/contratos/pagamento";
-import { linkDoPagamento } from "@/lib/contratos/links-de-pagamento";
+import { ajustarDiaDaCobranca, condicaoPorExtenso, ehParcelado, entradaPorFora, fimDasParcelas, formasDoContrato, primeiraParcelaPadrao, restanteDoContrato } from "@/lib/contratos/condicao";
+import { conferirPortaDoParcelado, entradaPaga, lancarParcela, restantePago, FORMA_DA_PARCELA } from "@/lib/contratos/pagamento";
+import { linkDoPagamento, parcelamentoDoEmissorDisponivel } from "@/lib/contratos/links-de-pagamento";
 
 /**
- * ENTRADA NO PIX + PARCELAS NO CARTÃO EM CRÉDITO RECORRENTE (05/10/2026).
+ * ENTRADA MAIS RESTANTE, do lado do Stripe (05/10/2026).
  *
- * As duas cobranças de um contrato parcelado, do lado do Stripe:
+ * As cobranças de um contrato parcelado:
  *
- *  - a ENTRADA (1ª parcela) é um Pix feito POR FORA do Stripe: o vendedor
- *    manda a chave, o cliente paga e o comprovante é registrado no gestor
- *    (registrarPagamento, o caminho manual que já existia);
- *  - as PARCELAS: Checkout mode=subscription, só cartão, um preço mensal de
- *    (total menos entrada) / N. A primeira cobrança é na data combinada
- *    (billing_cycle_anchor, sem proporcional: até lá nada é cobrado), e a
- *    assinatura ganha `cancel_at` logo que nasce, para terminar sozinha
- *    depois da N-ésima cobrança. Cada fatura paga vira um PagamentoDoContrato
- *    (idempotente pelo id da fatura); fatura que falha vira a pendência do
- *    painel até ser paga.
+ *  - a ENTRADA, por fora (Pix, boleto, transferência: o vendedor manda a
+ *    chave, o cliente paga e o comprovante é registrado no gestor, o caminho
+ *    manual que já existia) ou no CARTÃO À VISTA pelo Stripe (Checkout
+ *    mode=payment, só cartão, no valor da entrada; o webhook lança o
+ *    pagamento pela parte "entrada");
+ *  - o RESTANTE, conforme a forma escolhida:
+ *      · cartão com RECORRÊNCIA: Checkout mode=subscription, só cartão, um
+ *        preço mensal de (total menos entrada) / N. A primeira cobrança é na
+ *        data combinada (billing_cycle_anchor, sem proporcional: até lá nada
+ *        é cobrado), e a assinatura ganha `cancel_at` logo que nasce, para
+ *        terminar sozinha depois da N-ésima cobrança. Cada fatura paga vira
+ *        um PagamentoDoContrato (idempotente pelo id da fatura); fatura que
+ *        falha vira a pendência do painel até ser paga;
+ *      · cartão PARCELADO PELO EMISSOR: Checkout mode=payment no valor do
+ *        restante com o parcelamento do emissor ligado (o cliente escolhe o
+ *        número de vezes na tela do Stripe; para a Demandou é um pagamento
+ *        só, lançado pela parte "restante");
+ *      · cartão À VISTA: Checkout mode=payment no valor do restante.
  *
  * O contrato só é considerado pago (a porta abre e a conta é ativada, uma vez
- * só) quando a entrada está paga E a assinatura das parcelas existe.
+ * só) quando a entrada está confirmada E o restante está resolvido
+ * (assinatura cadastrada, ou restante pago).
  *
  * A assinatura das parcelas é marcada com metadata.tipo = "contrato_parcelas"
  * e o webhook NÃO passa ela pelo aplicarPlanoDaAssinatura: o plano do
  * contrato vem do contrato, e o fim natural dela (cancelada depois da última
- * parcela) não pode rebaixar ninguém para "free".
+ * parcela) não pode rebaixar ninguém para "free". Os pagamentos únicos levam
+ * metadata.tipo = "contrato" com a `parte`, e caem em pagamentoDoStripe.
  *
  * Só servidor.
  */
@@ -54,6 +64,8 @@ export async function contratoDoLink(id: string) {
       empresa: true,
       linkDeAssinatura: true,
       condicaoDePagamento: true,
+      formaDaEntrada: true,
+      formaDoRestante: true,
       entradaCentavos: true,
       parcelas: true,
       parcelaCentavos: true,
@@ -66,7 +78,7 @@ export async function contratoDoLink(id: string) {
 const numero = (n: number) => String(n).padStart(4, "0");
 
 function conferirContrato(c: ContratoDoLink) {
-  if (!ehParcelado(c) || !c.entradaCentavos || !c.parcelas || !c.parcelaCentavos) throw new RecusaDoLink("Este contrato não tem a condição de entrada no Pix mais parcelas no cartão.");
+  if (!ehParcelado(c) || !c.entradaCentavos || !c.parcelas || !c.parcelaCentavos) throw new RecusaDoLink("Este contrato não tem a condição de entrada mais restante.");
   if (c.status === "cancelado") throw new RecusaDoLink("Este contrato foi cancelado e não recebe pagamento.");
   if (!c.assinadoEm) throw new RecusaDoLink("O pagamento abre depois da assinatura do contrato. Assine pelo link que chegou no seu e-mail e volte a este link.");
 }
@@ -76,9 +88,103 @@ export async function faltaDaEntrada(c: { id: string; entradaCentavos: number | 
   return Math.max(0, (c.entradaCentavos ?? 0) - (await entradaPaga(c.id)).centavos);
 }
 
+/** Quanto falta do restante pago de uma vez (à vista ou pelo emissor), em centavos. */
+export async function faltaDoRestante(c: { id: string; valorCentavos: number; entradaCentavos: number | null }): Promise<number> {
+  return Math.max(0, restanteDoContrato(c) - (await restantePago(c.id)));
+}
+
 /**
- * A sessão das parcelas. A primeira cobrança é na data combinada; se ela já
- * passou (o cliente demorou), a primeira parcela é cobrada na hora.
+ * A SESSÃO DA ENTRADA no cartão à vista pelo Stripe (parte "entrada"). Só
+ * quando a forma da entrada é o cartão; por fora, não há link.
+ */
+export async function sessaoDaEntrada(c: ContratoDoLink, base: string): Promise<string> {
+  conferirContrato(c);
+  if (entradaPorFora(formasDoContrato(c).formaDaEntrada)) throw new RecusaDoLink("A entrada deste contrato é paga por fora (Pix, boleto ou transferência): envie o comprovante, que a nossa equipe registra.");
+  const falta = await faltaDaEntrada(c);
+  if (falta <= 0) throw new RecusaDoLink("A entrada deste contrato já está paga. Nada mais a fazer aqui.");
+  const { getStripe } = await import("@/lib/stripe");
+  const n = numero(c.numero);
+  const meta = { tipo: "contrato", contratoId: c.id, numero: n, parte: "entrada" };
+  const volta = linkDoPagamento(c.id, "entrada", base);
+  const s = await getStripe().checkout.sessions.create({
+    mode: "payment",
+    currency: "brl",
+    payment_method_types: ["card"],
+    customer_email: c.signatarioEmail ?? undefined,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "brl",
+          unit_amount: falta,
+          product_data: { name: `Contrato Demandou nº ${n}, plano ${nomeDoPlano(c.plano)}: entrada` },
+        },
+      },
+    ],
+    metadata: meta,
+    payment_intent_data: { metadata: meta },
+    success_url: `${volta}&ok=1`,
+    cancel_url: volta,
+  });
+  await registrar(c.id, "sistema", "link_da_entrada_aberto", { sessao: s.id, valor: centavosEmReais(falta) });
+  return s.url!;
+}
+
+/**
+ * A SESSÃO DO RESTANTE (parte "restante"), pela forma escolhida: a assinatura
+ * mensal, o pagamento único parcelado pelo emissor ou o pagamento único à vista.
+ */
+export async function sessaoDoRestante(c: ContratoDoLink, base: string): Promise<string> {
+  conferirContrato(c);
+  const { formaDoRestante } = formasDoContrato(c);
+  if (formaDoRestante === "cartao_recorrente") return sessaoDasParcelas(c, base);
+  return sessaoDoRestanteDeUmaVez(c, base, formaDoRestante === "cartao_parcelado_emissor");
+}
+
+/**
+ * O restante pago DE UMA VEZ: Checkout mode=payment no valor que falta. Com
+ * `emissor`, o parcelamento do emissor do cartão fica ligado na tela do
+ * Stripe (o cliente escolhe o número de vezes lá; a conta precisa ter o
+ * parcelamento liberado no Dashboard).
+ */
+async function sessaoDoRestanteDeUmaVez(c: ContratoDoLink, base: string, emissor: boolean): Promise<string> {
+  if (emissor && !parcelamentoDoEmissorDisponivel()) throw new RecusaDoLink("O parcelamento pelo emissor do cartão ainda não está liberado na nossa conta. Responda ao e-mail do contrato que a equipe resolve com você.");
+  const falta = await faltaDoRestante(c);
+  if (falta <= 0) throw new RecusaDoLink("O restante deste contrato já está pago. Nada mais a fazer aqui.");
+  const { getStripe } = await import("@/lib/stripe");
+  const n = numero(c.numero);
+  const meta = { tipo: "contrato", contratoId: c.id, numero: n, parte: "restante", ...(emissor ? { parcelado: "emissor" } : {}) };
+  const volta = linkDoPagamento(c.id, "restante", base);
+  const s = await getStripe().checkout.sessions.create({
+    mode: "payment",
+    currency: "brl",
+    payment_method_types: ["card"],
+    customer_email: c.signatarioEmail ?? undefined,
+    ...(emissor ? { payment_method_options: { card: { installments: { enabled: true } } } } : {}),
+    custom_text: emissor ? { submit: { message: `Restante do contrato: escolha em quantas vezes parcelar (até ${c.parcelas}x, conforme o seu cartão).` } } : undefined,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "brl",
+          unit_amount: falta,
+          product_data: { name: `Contrato Demandou nº ${n}, plano ${nomeDoPlano(c.plano)}: restante${emissor ? " (parcelado pelo emissor)" : ""}` },
+        },
+      },
+    ],
+    metadata: meta,
+    payment_intent_data: { metadata: meta },
+    success_url: `${volta}&ok=1`,
+    cancel_url: volta,
+  });
+  await registrar(c.id, "sistema", "link_do_restante_aberto", { sessao: s.id, valor: centavosEmReais(falta), forma: emissor ? "cartao_parcelado_emissor" : "cartao_a_vista" });
+  return s.url!;
+}
+
+/**
+ * A sessão das parcelas (restante no cartão com recorrência). A primeira
+ * cobrança é na data combinada; se ela já passou (o cliente demorou), a
+ * primeira parcela é cobrada na hora.
  */
 export async function sessaoDasParcelas(c: ContratoDoLink, base: string): Promise<string> {
   conferirContrato(c);
@@ -86,7 +192,7 @@ export async function sessaoDasParcelas(c: ContratoDoLink, base: string): Promis
   const { getStripe } = await import("@/lib/stripe");
   const n = numero(c.numero);
   const meta = { tipo: TIPO_DAS_PARCELAS, contratoId: c.id, numero: n, parcelas: String(c.parcelas) };
-  const volta = linkDoPagamento(c.id, "parcelas", base);
+  const volta = linkDoPagamento(c.id, "restante", base);
   // A data da primeira parcela: a combinada ou, sem ela, um mês depois da
   // entrada (paga ou, se ainda não, de hoje). A âncora precisa estar no
   // futuro (com folga de uma hora para o checkout); se a combinada já passou,
@@ -257,7 +363,23 @@ export async function parcelasEncerradas(sub: Stripe.Subscription): Promise<bool
 }
 
 /** O resumo por extenso do contrato, para o e-mail e a página do cliente. */
-export function resumoDaCondicao(c: { entradaCentavos: number | null; parcelas: number | null; parcelaCentavos: number | null; primeiraParcelaEm: Date | string | null }): string | null {
+export function resumoDaCondicao(c: {
+  valorCentavos: number;
+  entradaCentavos: number | null;
+  parcelas: number | null;
+  parcelaCentavos: number | null;
+  formaDaEntrada?: string | null;
+  formaDoRestante?: string | null;
+  primeiraParcelaEm: Date | string | null;
+}): string | null {
   if (!c.entradaCentavos || !c.parcelas || !c.parcelaCentavos) return null;
-  return condicaoPorExtenso({ entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, parcelaCentavos: c.parcelaCentavos, primeiraParcelaEm: c.primeiraParcelaEm });
+  return condicaoPorExtenso({
+    entradaCentavos: c.entradaCentavos,
+    parcelas: c.parcelas,
+    parcelaCentavos: c.parcelaCentavos,
+    restanteCentavos: restanteDoContrato(c),
+    formaDaEntrada: c.formaDaEntrada,
+    formaDoRestante: c.formaDoRestante,
+    primeiraParcelaEm: c.primeiraParcelaEm,
+  });
 }

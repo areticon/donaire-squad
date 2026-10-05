@@ -166,6 +166,8 @@ export const NOME_DA_FORMA: Record<string, string> = {
   transferencia: "Transferência",
   cartao: "Cartão",
   stripe: "Link de pagamento do Stripe",
-  // As parcelas da assinatura do contrato parcelado (05/10).
+  // As parcelas da assinatura do contrato parcelado (05/10), e o restante pago
+  // de uma vez pelo Stripe (à vista ou parcelado pelo emissor).
   cartao_recorrente: "Cartão, crédito recorrente",
+  cartao_restante: "Cartão pelo Stripe (restante)",
 };

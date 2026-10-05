@@ -6,8 +6,9 @@ import { PLANS } from "@/lib/stripe";
 import { resumoDoSuporte } from "@/lib/suporte/painel";
 import { diasParaVencer, grupoDaSituacao, situacaoDoContrato, type GrupoDoGestor, type StatusDoContrato } from "@/lib/contratos/situacao";
 import { esperaAprovacao, nomeDoPlano } from "@/lib/contratos/contratos";
-import { condicaoPorExtenso, ehParcelado } from "@/lib/contratos/condicao";
-import { linkDoCartao } from "@/lib/contratos/links-de-pagamento";
+import { FORMAS_DA_ENTRADA, FORMAS_DO_RESTANTE, condicaoPorExtenso, ehParcelado, formasDoContrato, portaDoParcelado, restanteDoContrato } from "@/lib/contratos/condicao";
+import { linksDoContrato } from "@/lib/contratos/links-de-pagamento";
+import { FORMA_DA_PARCELA, FORMA_DO_RESTANTE } from "@/lib/contratos/pagamento";
 
 /**
  * O QUE O PAINEL DE CONTRATOS LÊ (02/10/2026): a lista de todos os contratos e
@@ -118,6 +119,55 @@ export function descontosDoMes(lista: ContratoNaLista[], agora = new Date()) {
 
 export type FichaDoCliente = Awaited<ReturnType<typeof fichaDoCliente>>;
 
+/**
+ * O BLOCO DO PARCELADO na ficha (05/10): a entrada (forma, pago e falta), o
+ * restante (forma, parcelas pagas ou pago, cartão cadastrado, pendência) e
+ * os links para o vendedor copiar. A porta é a mesma conta do servidor.
+ */
+function blocoDoParcelado(c: {
+  id: string;
+  valorCentavos: number;
+  entradaCentavos: number | null;
+  parcelas: number | null;
+  parcelaCentavos: number | null;
+  formaDaEntrada: string | null;
+  formaDoRestante: string | null;
+  primeiraParcelaEm: Date | null;
+  assinaturaParcelasId: string | null;
+  parcelaEmAtraso: string | null;
+  parcelaEmAtrasoDesde: Date | null;
+  pagamentos: Array<{ aditivoId: string | null; forma: string; valorCentavos: number }>;
+}) {
+  const formas = formasDoContrato(c);
+  const doContrato = c.pagamentos.filter((p) => !p.aditivoId);
+  const entradaPagaCentavos = doContrato.filter((p) => p.forma !== FORMA_DA_PARCELA && p.forma !== FORMA_DO_RESTANTE).reduce((t, p) => t + p.valorCentavos, 0);
+  const restantePagoCentavos = doContrato.filter((p) => p.forma === FORMA_DO_RESTANTE).reduce((t, p) => t + p.valorCentavos, 0);
+  const restanteCentavos = restanteDoContrato(c);
+  const porta = portaDoParcelado({ ...c, entradaPagaCentavos, restantePagoCentavos });
+  return {
+    porExtenso:
+      c.entradaCentavos && c.parcelas && c.parcelaCentavos
+        ? condicaoPorExtenso({ entradaCentavos: c.entradaCentavos, restanteCentavos, parcelas: c.parcelas, parcelaCentavos: c.parcelaCentavos, ...formas, primeiraParcelaEm: c.primeiraParcelaEm })
+        : "",
+    entradaCentavos: c.entradaCentavos ?? 0,
+    formaDaEntrada: formas.formaDaEntrada,
+    nomeDaFormaDaEntrada: FORMAS_DA_ENTRADA[formas.formaDaEntrada],
+    entradaPagaCentavos,
+    entradaOk: porta.entradaOk,
+    restanteCentavos,
+    formaDoRestante: formas.formaDoRestante,
+    nomeDaFormaDoRestante: FORMAS_DO_RESTANTE[formas.formaDoRestante],
+    restantePagoCentavos,
+    restanteOk: porta.restanteOk,
+    parcelas: c.parcelas ?? 0,
+    parcelaCentavos: c.parcelaCentavos ?? 0,
+    parcelasPagas: doContrato.filter((p) => p.forma === FORMA_DA_PARCELA).length,
+    cartaoCadastrado: Boolean(c.assinaturaParcelasId),
+    parcelaEmAtrasoDesde: c.parcelaEmAtraso ? (c.parcelaEmAtrasoDesde?.toISOString() ?? null) : null,
+    links: linksDoContrato({ id: c.id, ...formas }),
+  };
+}
+
 /** Soma o valor em reais escrito na nota do extrato ("Pacote x, R$ 197.00"). */
 function reaisDaNota(nota: string | null): number {
   const m = nota?.match(/R\$\s*([\d.,]+)/);
@@ -221,24 +271,10 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
       ativadoEm: c.ativadoEm?.toISOString() ?? null,
       acessosExtras: c.acessosExtras,
       linkDePagamento: c.linkDePagamento,
-      // A CONDIÇÃO DE PAGAMENTO (05/10): 1ª parcela no Pix, demais no cartão,
-      // por extenso, com o link do cartão (que não vence) e a pendência.
-      parcelado: ehParcelado(c)
-        ? {
-            porExtenso:
-              c.entradaCentavos && c.parcelas && c.parcelaCentavos
-                ? condicaoPorExtenso({ entradaCentavos: c.entradaCentavos, parcelas: c.parcelas, parcelaCentavos: c.parcelaCentavos, primeiraParcelaEm: c.primeiraParcelaEm })
-                : "",
-            entradaCentavos: c.entradaCentavos ?? 0,
-            parcelas: c.parcelas ?? 0,
-            parcelaCentavos: c.parcelaCentavos ?? 0,
-            entradaPagaCentavos: c.pagamentos.filter((p) => !p.aditivoId && p.forma !== "cartao_recorrente").reduce((t, p) => t + p.valorCentavos, 0),
-            parcelasPagas: c.pagamentos.filter((p) => !p.aditivoId && p.forma === "cartao_recorrente").length,
-            cartaoCadastrado: Boolean(c.assinaturaParcelasId),
-            parcelaEmAtrasoDesde: c.parcelaEmAtraso ? (c.parcelaEmAtrasoDesde?.toISOString() ?? null) : null,
-            linkDoCartao: linkDoCartao(c.id),
-          }
-        : null,
+      // A CONDIÇÃO DE PAGAMENTO (05/10): entrada mais restante, por extenso,
+      // com a forma e o estado de cada parte, os links (que não vencem) e a
+      // pendência.
+      parcelado: ehParcelado(c) ? blocoDoParcelado(c) : null,
       // O que quita aditivo fica com o aditivo (04/10).
       pagoCentavos: c.pagamentos.filter((p) => !p.aditivoId).reduce((s, p) => s + p.valorCentavos, 0),
       precoTabelaCentavos: c.precoTabelaCentavos,

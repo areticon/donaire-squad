@@ -17,36 +17,70 @@ import {
   precoDeTabela,
   type ValorDoPreco,
 } from "@/lib/contratos/preco";
-import { CONDICAO_PARCELADA, CONDICOES_DE_PAGAMENTO, PARCELAS_MAXIMAS, PARCELAS_MINIMAS, calcularParcelamento, condicaoPorExtenso, entradaSugerida, type CondicaoDePagamento } from "@/lib/contratos/condicao";
+import {
+  CONDICAO_PARCELADA,
+  CONDICOES_DE_PAGAMENTO,
+  FORMAS_DA_ENTRADA,
+  FORMAS_DO_RESTANTE,
+  FORMA_DA_ENTRADA_PADRAO,
+  FORMA_DO_RESTANTE_PADRAO,
+  PARCELAS_MAXIMAS,
+  PARCELAS_MINIMAS,
+  PARCELAS_PADRAO,
+  calcularParcelamento,
+  condicaoPorExtenso,
+  entradaPorFora,
+  entradaSugerida,
+  type CondicaoDePagamento,
+  type FormaDaEntrada,
+  type FormaDoRestante,
+} from "@/lib/contratos/condicao";
 
 /**
- * A CONDIÇÃO DE PAGAMENTO no formulário (05/10): à vista, ou 1ª parcela no
- * Pix mais N parcelas no cartão em crédito recorrente (ferramenta de
- * negociação dos vendedores). A conta é a de lib/contratos/condicao.ts, a
- * mesma do servidor; o corpo vai nos campos que formulario.ts lê.
+ * A CONDIÇÃO DE PAGAMENTO no formulário (05/10): à vista, ou ENTRADA (valor e
+ * forma: Pix, boleto, transferência ou cartão pelo Stripe) mais RESTANTE
+ * (calculado na hora, com o número de parcelas e a forma: cartão com
+ * recorrência, parcelado pelo emissor ou à vista). Ferramenta de negociação
+ * dos vendedores. A conta é a de lib/contratos/condicao.ts, a mesma do
+ * servidor; o corpo vai nos campos que formulario.ts lê.
  */
-export type ValorDaCondicao = { tipo: CondicaoDePagamento; entradaReais: string; parcelas: number; primeiraParcelaEm: string };
+export type ValorDaCondicao = {
+  tipo: CondicaoDePagamento;
+  entradaReais: string;
+  formaDaEntrada: FormaDaEntrada;
+  parcelas: number;
+  formaDoRestante: FormaDoRestante;
+  primeiraParcelaEm: string;
+};
 
-export const condicaoInicial: ValorDaCondicao = { tipo: "a_vista", entradaReais: "", parcelas: 10, primeiraParcelaEm: "" };
+export const condicaoInicial: ValorDaCondicao = { tipo: "a_vista", entradaReais: "", formaDaEntrada: FORMA_DA_ENTRADA_PADRAO, parcelas: PARCELAS_PADRAO, formaDoRestante: FORMA_DO_RESTANTE_PADRAO, primeiraParcelaEm: "" };
 
 export function corpoDaCondicao(v: ValorDaCondicao) {
   return v.tipo === CONDICAO_PARCELADA
-    ? { condicaoDePagamento: v.tipo, entradaReais: v.entradaReais, parcelas: v.parcelas, primeiraParcelaEm: v.primeiraParcelaEm || "" }
+    ? { condicaoDePagamento: v.tipo, entradaReais: v.entradaReais, formaDaEntrada: v.formaDaEntrada, parcelas: v.parcelas, formaDoRestante: v.formaDoRestante, primeiraParcelaEm: v.primeiraParcelaEm || "" }
     : { condicaoDePagamento: "a_vista" };
 }
 
 /** O motivo que trava o envio, ou null. */
-export function bloqueiaCondicao(v: ValorDaCondicao, totalCentavos: number): string | null {
+export function bloqueiaCondicao(v: ValorDaCondicao, totalCentavos: number, emissorDisponivel = false): string | null {
   if (v.tipo !== CONDICAO_PARCELADA) return null;
-  const p = calcularParcelamento(totalCentavos, Math.round(numero(v.entradaReais) * 100), v.parcelas);
+  if (v.formaDoRestante === "cartao_parcelado_emissor" && !emissorDisponivel) return "O parcelamento pelo emissor está indisponível na conta Stripe: escolha o cartão com recorrência ou à vista.";
+  const p = calcularParcelamento(totalCentavos, Math.round(numero(v.entradaReais) * 100), v.parcelas, v.formaDoRestante);
   return "erro" in p ? p.erro : null;
 }
 
-export function CamposDaCondicao({ valor, mudar, totalCentavos }: { valor: ValorDaCondicao; mudar: (v: ValorDaCondicao) => void; totalCentavos: number }) {
+export function CamposDaCondicao({ valor, mudar, totalCentavos, emissorDisponivel = false }: { valor: ValorDaCondicao; mudar: (v: ValorDaCondicao) => void; totalCentavos: number; emissorDisponivel?: boolean }) {
   const set = (p: Partial<ValorDaCondicao>) => mudar({ ...valor, ...p });
   const parcelado = valor.tipo === CONDICAO_PARCELADA;
-  const conta = parcelado ? calcularParcelamento(totalCentavos, Math.round(numero(valor.entradaReais) * 100), valor.parcelas) : null;
+  const conta = parcelado ? calcularParcelamento(totalCentavos, Math.round(numero(valor.entradaReais) * 100), valor.parcelas, valor.formaDoRestante) : null;
+  const recorrente = valor.formaDoRestante === "cartao_recorrente";
   const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const aviso = parcelado
+    ? [
+        entradaPorFora(valor.formaDaEntrada) ? `A entrada em ${FORMAS_DA_ENTRADA[valor.formaDaEntrada]} é feita por fora e registrada com o comprovante na ficha.` : "A entrada sai com o link do cartão (não vence).",
+        recorrente ? "O restante sai com o link do cartão das parcelas: cada mês cobra só a parcela do mês, sem comprometer o limite todo, e termina sozinho." : valor.formaDoRestante === "cartao_parcelado_emissor" ? "O restante sai com o link do cartão parcelado pelo emissor: o cliente escolhe em quantas vezes na tela do Stripe, e o banco reserva o total no limite." : "O restante sai com o link do cartão à vista.",
+      ].join(" ")
+    : "";
   return (
     <fieldset className="sm:col-span-2 grid grid-cols-1 gap-3 rounded-xl border p-3 sm:grid-cols-3" style={{ borderColor: "var(--border)" }} data-campos-da-condicao>
       <legend className="px-1 text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -58,7 +92,8 @@ export function CamposDaCondicao({ valor, mudar, totalCentavos }: { valor: Valor
           value={valor.tipo}
           onChange={(e) => {
             const tipo = e.target.value as CondicaoDePagamento;
-            const entrada = tipo === CONDICAO_PARCELADA && !valor.entradaReais ? (entradaSugerida(totalCentavos, valor.parcelas) / 100).toFixed(2).replace(".", ",") : valor.entradaReais;
+            // A sugestão da entrada: o total dividido por 12 (o vendedor troca à vontade).
+            const entrada = tipo === CONDICAO_PARCELADA && !valor.entradaReais ? (entradaSugerida(totalCentavos) / 100).toFixed(2).replace(".", ",") : valor.entradaReais;
             set({ tipo, entradaReais: entrada });
           }}
           className={`${campo} mt-1`}
@@ -75,22 +110,61 @@ export function CamposDaCondicao({ valor, mudar, totalCentavos }: { valor: Valor
       {parcelado && (
         <>
           <label className={rotulo} style={corDoRotulo}>
-            1ª parcela no Pix (R$)
+            Entrada (R$)
             <input inputMode="decimal" value={valor.entradaReais} onChange={(e) => set({ entradaReais: e.target.value })} placeholder="Ex.: 1.500,00" className={`${campo} mt-1`} style={estiloCampo} data-campo-entrada />
           </label>
+          <label className={`sm:col-span-2 ${rotulo}`} style={corDoRotulo}>
+            Forma da entrada
+            <select value={valor.formaDaEntrada} onChange={(e) => set({ formaDaEntrada: e.target.value as FormaDaEntrada })} className={`${campo} mt-1`} style={estiloCampo} data-campo-forma-da-entrada>
+              {Object.entries(FORMAS_DA_ENTRADA).map(([id, nome]) => (
+                <option key={id} value={id}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={rotulo} style={corDoRotulo}>
+            Restante (calculado)
+            <p className="mt-1 h-[38px] rounded-lg border px-3 py-2 text-sm font-semibold tabular-nums" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }} data-restante-calculado>
+              {conta && !("erro" in conta) ? reais(conta.restanteCentavos) : reais(Math.max(0, totalCentavos - Math.round(numero(valor.entradaReais) * 100)))}
+            </p>
+          </div>
           <label className={rotulo} style={corDoRotulo}>
-            Parcelas no cartão ({PARCELAS_MINIMAS} a {PARCELAS_MAXIMAS})
-            <input type="number" min={PARCELAS_MINIMAS} max={PARCELAS_MAXIMAS} step={1} value={valor.parcelas} onChange={(e) => set({ parcelas: Math.max(PARCELAS_MINIMAS, Math.min(PARCELAS_MAXIMAS, Math.floor(Number(e.target.value) || 0))) })} className={`${campo} mt-1`} style={estiloCampo} data-campo-parcelas />
+            Parcelas do restante ({PARCELAS_MINIMAS} a {PARCELAS_MAXIMAS})
+            <input
+              type="number"
+              min={PARCELAS_MINIMAS}
+              max={PARCELAS_MAXIMAS}
+              step={1}
+              value={valor.formaDoRestante === "cartao_a_vista" ? 1 : valor.parcelas}
+              disabled={valor.formaDoRestante === "cartao_a_vista"}
+              onChange={(e) => set({ parcelas: Math.max(PARCELAS_MINIMAS, Math.min(PARCELAS_MAXIMAS, Math.floor(Number(e.target.value) || 0))) })}
+              className={`${campo} mt-1 disabled:opacity-60`}
+              style={estiloCampo}
+              data-campo-parcelas
+            />
           </label>
           <label className={rotulo} style={corDoRotulo}>
-            Primeira parcela no cartão (opcional: sem data, um mês depois do Pix)
-            <input type="date" min={hoje} value={valor.primeiraParcelaEm} onChange={(e) => set({ primeiraParcelaEm: e.target.value })} className={`${campo} mt-1`} style={estiloCampo} />
+            Forma do restante
+            <select value={valor.formaDoRestante} onChange={(e) => set({ formaDoRestante: e.target.value as FormaDoRestante })} className={`${campo} mt-1`} style={estiloCampo} data-campo-forma-do-restante>
+              {Object.entries(FORMAS_DO_RESTANTE).map(([id, nome]) => (
+                <option key={id} value={id} disabled={id === "cartao_parcelado_emissor" && !emissorDisponivel}>
+                  {id === "cartao_parcelado_emissor" && !emissorDisponivel ? `${nome}: indisponível na conta` : nome}
+                </option>
+              ))}
+            </select>
           </label>
+          {recorrente && (
+            <label className={`sm:col-span-3 ${rotulo}`} style={corDoRotulo}>
+              Primeira parcela no cartão (opcional: sem data, um mês depois da entrada)
+              <input type="date" min={hoje} value={valor.primeiraParcelaEm} onChange={(e) => set({ primeiraParcelaEm: e.target.value })} className={`${campo} mt-1`} style={estiloCampo} />
+            </label>
+          )}
           <p className="sm:col-span-3 text-xs" style={{ color: conta && "erro" in conta ? "var(--badge-danger-text)" : "var(--text-muted)" }} data-conta-da-condicao aria-live="polite">
             {conta && "erro" in conta
               ? conta.erro
               : conta
-                ? `${condicaoPorExtenso({ ...conta, primeiraParcelaEm: valor.primeiraParcelaEm ? `${valor.primeiraParcelaEm}T12:00:00-03:00` : null })}.${conta.ajusteNaEntradaCentavos ? ` Os ${reais(conta.ajusteNaEntradaCentavos)} que sobram da divisão vão para a 1ª parcela, para as parcelas ficarem iguais.` : ""} O Pix é feito por fora e registrado com o comprovante; o contrato sai com o link do cartão.`
+                ? `${condicaoPorExtenso({ ...conta, formaDaEntrada: valor.formaDaEntrada, formaDoRestante: valor.formaDoRestante, primeiraParcelaEm: recorrente && valor.primeiraParcelaEm ? `${valor.primeiraParcelaEm}T12:00:00-03:00` : null })}.${conta.ajusteNaEntradaCentavos ? ` Os ${reais(conta.ajusteNaEntradaCentavos)} que sobram da divisão vão para a entrada, para as parcelas ficarem iguais.` : ""} ${aviso}`
                 : ""}
           </p>
         </>

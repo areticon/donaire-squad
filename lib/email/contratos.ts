@@ -1,5 +1,6 @@
 import type { Email } from "@/lib/email";
 import { casca, titulo, paragrafo, botao, MARCA } from "@/lib/email/layout";
+import { condicaoPorExtenso, type FormaDaEntrada, type FormaDoRestante } from "@/lib/contratos/condicao";
 
 /**
  * OS AVISOS DE VENCIMENTO DO CONTRATO (02/10/2026): 60, 30 e 7 dias antes e
@@ -56,37 +57,58 @@ export function avisoDeVencimentoAoAdmin(a: { cliente: string; numero: number; p
  * plataforma, que é a jornada de entrada (perfil, referências, redes).
  */
 /**
- * O PAGAMENTO DO PARCELADO (05/10/2026): o contrato assinado com a 1ª parcela
- * no Pix e as demais no cartão manda ao cliente a condição por extenso, a
- * chave Pix da 1ª parcela (o comprovante vai por e-mail e a equipe registra
- * no gestor) e o link do cartão, que não vence.
+ * O PAGAMENTO DO PARCELADO (05/10/2026): o contrato assinado com entrada mais
+ * restante manda ao cliente a condição por extenso, as instruções da entrada
+ * (a chave Pix, o boleto ou a transferência com o comprovante, que a equipe
+ * registra no gestor; ou o link do cartão) e o link do restante (cadastrar o
+ * cartão das parcelas, pagar parcelado pelo emissor ou pagar à vista). Os
+ * links não vencem.
  */
 export function linksDoPagamentoParcelado(a: {
   nome: string | null;
   numero: number;
   plano: string;
   entradaCentavos: number;
+  restanteCentavos: number;
   parcelas: number;
   parcelaCentavos: number;
+  formaDaEntrada: FormaDaEntrada;
+  formaDoRestante: FormaDoRestante;
   primeiraParcelaEm: Date | null;
   chavePix: string | null;
-  linkDoCartao: string;
+  links: { entrada: string | null; restante: string };
 }): Email {
   const primeiro = (a.nome ?? "").trim().split(/\s+/)[0] || "";
   const oi = primeiro ? `Olá, ${primeiro}` : "Olá";
   const n = String(a.numero).padStart(4, "0");
-  const quando = a.primeiraParcelaEm ? `a primeira em ${dataLonga(a.primeiraParcelaEm)}` : "a primeira um mês depois da 1ª parcela";
   const abertura = `O contrato nº ${n}, plano ${a.plano}, está assinado. Falta o pagamento, em duas partes, para liberar o seu acesso.`;
-  const condicao = `1ª parcela de ${reais(a.entradaCentavos)} via Pix, mais ${a.parcelas} parcelas mensais de ${reais(a.parcelaCentavos)} no cartão de crédito em cobrança recorrente (${quando}). Cada mês cobra só a parcela do mês, sem comprometer o limite total do cartão, e a cobrança termina sozinha depois da última parcela.`;
-  const passo1 = a.chavePix
-    ? `1. Pague a 1ª parcela (${reais(a.entradaCentavos)}) pelo Pix na chave ${a.chavePix} e responda a este e-mail com o comprovante. A nossa equipe registra e confirma.`
-    : `1. Pague a 1ª parcela (${reais(a.entradaCentavos)}) pelo Pix: responda a este e-mail e enviamos a chave. Depois mande o comprovante, que a nossa equipe registra e confirma.`;
-  const passo2 = "2. Cadastre o cartão das parcelas pelo link abaixo: nada é cobrado antes da data da primeira parcela.";
-  const fim = "Com a 1ª parcela confirmada e o cartão cadastrado, a sua conta é ativada e chega o e-mail de boas-vindas. Qualquer dúvida, é só responder a este e-mail.";
+  const condicao = `${condicaoPorExtenso({ ...a })}.`;
+  const entrada = reais(a.entradaCentavos);
+  // A ENTRADA: por fora (com o comprovante) ou pelo link do cartão.
+  const passo1 =
+    a.formaDaEntrada === "cartao_stripe"
+      ? `1. Pague a entrada (${entrada}) no cartão de crédito pelo link abaixo.`
+      : a.formaDaEntrada === "pix"
+        ? a.chavePix
+          ? `1. Pague a entrada (${entrada}) pelo Pix na chave ${a.chavePix} e responda a este e-mail com o comprovante. A nossa equipe registra e confirma.`
+          : `1. Pague a entrada (${entrada}) pelo Pix: responda a este e-mail e enviamos a chave. Depois mande o comprovante, que a nossa equipe registra e confirma.`
+        : a.formaDaEntrada === "boleto"
+          ? `1. Pague a entrada (${entrada}) pelo boleto que a nossa equipe envia em resposta a este e-mail, e mande o comprovante. A equipe registra e confirma.`
+          : `1. Pague a entrada (${entrada}) por transferência bancária: responda a este e-mail e enviamos os dados da conta. Depois mande o comprovante, que a nossa equipe registra e confirma.`;
+  // O RESTANTE: pela forma escolhida.
+  const restante = reais(a.restanteCentavos);
+  const passo2 =
+    a.formaDoRestante === "cartao_recorrente"
+      ? `2. Cadastre o cartão das ${a.parcelas} parcelas de ${reais(a.parcelaCentavos)} pelo link abaixo: nada é cobrado antes da data da primeira parcela, cada mês cobra só a parcela do mês e a cobrança termina sozinha depois da última.`
+      : a.formaDoRestante === "cartao_parcelado_emissor"
+        ? `2. Pague o restante (${restante}) no cartão de crédito pelo link abaixo, escolhendo na tela em quantas vezes parcelar (até ${a.parcelas}x, conforme o seu cartão).`
+        : `2. Pague o restante (${restante}) no cartão de crédito, à vista, pelo link abaixo.`;
+  const acaoDoRestante = a.formaDoRestante === "cartao_recorrente" ? "Cadastrar o cartão das parcelas" : "Pagar o restante";
+  const fim = `Com a entrada confirmada e ${a.formaDoRestante === "cartao_recorrente" ? "o cartão cadastrado" : "o restante pago"}, a sua conta é ativada e chega o e-mail de boas-vindas. Qualquer dúvida, é só responder a este e-mail.`;
   return {
     para: "",
     assunto: `Contrato nº ${n} assinado: como pagar`,
-    texto: [`${oi}.`, "", abertura, "", condicao, "", passo1, "", passo2, a.linkDoCartao, "", fim, "", MARCA.nome, MARCA.site].join("\n"),
+    texto: [`${oi}.`, "", abertura, "", condicao, "", passo1, ...(a.links.entrada ? [a.links.entrada] : []), "", passo2, a.links.restante, "", fim, "", MARCA.nome, MARCA.site].join("\n"),
     html: casca({
       previa: abertura,
       miolo: [
@@ -94,8 +116,9 @@ export function linksDoPagamentoParcelado(a: {
         paragrafo(abertura),
         paragrafo(condicao),
         paragrafo(passo1),
+        ...(a.links.entrada ? [botao("Pagar a entrada", a.links.entrada)] : []),
         paragrafo(passo2),
-        botao("Cadastrar o cartão das parcelas", a.linkDoCartao),
+        botao(acaoDoRestante, a.links.restante),
         paragrafo(fim, { apagado: true, tamanho: 13 }),
       ].join("\n"),
     }),

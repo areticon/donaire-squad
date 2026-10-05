@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { centavosEmReais } from "@/lib/contratos/situacao";
 import { ACESSO_EXTRA_ANUAL_CENTAVOS, MOTIVOS_DE_DESCONTO, ehMotivoDeDesconto, porcentagem } from "@/lib/contratos/preco";
-import { condicaoPorExtenso } from "@/lib/contratos/condicao";
+import { condicaoPorExtenso, type FormaDaEntrada, type FormaDoRestante } from "@/lib/contratos/condicao";
 
 /**
  * O TEXTO DO CONTRATO, montado do modelo em Markdown (02/10/2026).
@@ -52,29 +52,55 @@ export type DadosDoContrato = {
 
 export type CondicaoNoTexto = {
   entradaCentavos: number;
+  restanteCentavos: number;
   parcelas: number;
   parcelaCentavos: number;
+  formaDaEntrada: FormaDaEntrada;
+  formaDoRestante: FormaDoRestante;
   primeiraParcelaEm: Date | null;
-  /** O link do cartão das parcelas (o Pix da 1ª parcela é feito por fora). */
-  linkDoCartao: string;
+  /** Os links que não vencem: o da entrada só existe quando ela é no cartão pelo Stripe. */
+  links: { entrada: string | null; restante: string };
   /** A chave Pix da Demandou, quando configurada. */
   chavePix: string | null;
 };
 
+/** Como a entrada é paga, por extenso, para o texto do contrato. */
+function paragrafoDaEntrada(c: CondicaoNoTexto): string {
+  if (c.formaDaEntrada === "cartao_stripe") return "A entrada é paga no cartão de crédito, à vista, pelo link do Stripe indicado abaixo.";
+  const meio = c.formaDaEntrada === "pix" ? `via Pix${c.chavePix ? ` (chave Pix ${c.chavePix})` : ""}` : c.formaDaEntrada === "boleto" ? "por boleto emitido pela Demandou" : "por transferência bancária";
+  return `A entrada é paga ${meio} diretamente à Demandou, e o Cliente envia o comprovante.`;
+}
+
+/** Como o restante é cobrado, por extenso, para o texto do contrato. */
+function paragrafoDoRestante(c: CondicaoNoTexto): string {
+  if (c.formaDoRestante === "cartao_recorrente") {
+    return `O restante é cobrado automaticamente, uma parcela por mês, no cartão de crédito que o Cliente cadastrar pelo Stripe: cada mês cobra só a parcela daquele mês, e a cobrança se encerra sozinha depois da ${c.parcelas}ª parcela. Não é o parcelamento do emissor do cartão da cláusula 6.3. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada, com o cartão das parcelas cadastrado. Parcela não paga no vencimento segue as cláusulas 6.5 e 9.6.`;
+  }
+  if (c.formaDoRestante === "cartao_parcelado_emissor") {
+    return `O restante é pago de uma vez no cartão de crédito pelo link do Stripe, com o parcelamento do emissor do cartão (cláusula 6.3) em até ${c.parcelas} vezes, escolhido pelo Cliente na tela de pagamento; o emissor reserva o total no limite do cartão. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada e do restante.`;
+  }
+  return "O restante é pago à vista no cartão de crédito pelo link do Stripe. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada e do restante.";
+}
+
 /**
- * A CONDIÇÃO DE PAGAMENTO por extenso, com o link do cartão. Vale pela cláusula
- * 6.2 ("outro meio que a Demandou indicar na Proposta Comercial") e, pela
- * cláusula 2.2, prevalece sobre o "anual e à vista" das condições gerais.
+ * A CONDIÇÃO DE PAGAMENTO por extenso, com as duas partes, as formas e os
+ * links. Vale pela cláusula 6.2 ("outro meio que a Demandou indicar na
+ * Proposta Comercial") e, pela cláusula 2.2, prevalece sobre o "anual e à
+ * vista" das condições gerais.
  */
 export function textoDaCondicao(c: CondicaoNoTexto): string {
+  const linkDoRestante = c.formaDoRestante === "cartao_recorrente" ? `Cadastrar o cartão das parcelas (restante): ${c.links.restante}` : `Pagar o restante: ${c.links.restante}`;
   return [
     "### Condição de pagamento",
     "",
-    `${condicaoPorExtenso(c)}. A 1ª parcela mais as ${c.parcelas} parcelas no cartão somam o valor anual final desta Proposta Comercial.`,
+    `${condicaoPorExtenso(c)}. A entrada (${centavosEmReais(c.entradaCentavos)}) mais o restante (${centavosEmReais(c.restanteCentavos)}) somam o valor anual final desta Proposta Comercial.`,
     "",
-    `A 1ª parcela é paga via Pix diretamente à Demandou${c.chavePix ? ` (chave Pix ${c.chavePix})` : ""}, e o Cliente envia o comprovante. As demais parcelas são cobradas automaticamente, uma por mês, no cartão de crédito que o Cliente cadastrar pelo Stripe: cada mês cobra só a parcela daquele mês, e a cobrança se encerra sozinha depois da ${c.parcelas}ª parcela no cartão. Não é o parcelamento do emissor do cartão da cláusula 6.3. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da 1ª parcela, com o cartão das parcelas cadastrado. Parcela não paga no vencimento segue as cláusulas 6.5 e 9.6.`,
+    paragrafoDaEntrada(c),
     "",
-    `Cadastrar o cartão das parcelas: ${c.linkDoCartao}`,
+    paragrafoDoRestante(c),
+    "",
+    ...(c.links.entrada ? [`Pagar a entrada: ${c.links.entrada}`, ""] : []),
+    linkDoRestante,
     "",
   ].join("\n");
 }

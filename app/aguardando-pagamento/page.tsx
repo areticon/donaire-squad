@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { Check, Clock, FileSignature, Wallet, Rocket } from "lucide-react";
 import { auth } from "@/lib/auth/server";
-import { contratoPendenteDaConta } from "@/lib/contratos/pagamento";
+import { contratoPendenteDaConta, entradaPaga, restantePago } from "@/lib/contratos/pagamento";
 import { nomeDoPlano } from "@/lib/contratos/contratos";
 import { centavosEmReais } from "@/lib/contratos/situacao";
+import { ehParcelado, formasDoContrato, portaDoParcelado } from "@/lib/contratos/condicao";
+import { resumoDaCondicao } from "@/lib/contratos/parcelado";
+import { chavePix, linksDoContrato } from "@/lib/contratos/links-de-pagamento";
 import { SairDaConta } from "@/components/equipe/sair-da-conta";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +34,15 @@ export default async function AguardandoPagamentoPage({ searchParams }: { search
   const n = String(c.numero).padStart(4, "0");
   const assinado = Boolean(c.assinadoEm);
   const voltouDoStripe = sp.pago === "1";
+  // O PARCELADO (05/10): a condição por extenso, o que falta de cada parte e
+  // os links que não vencem (a entrada por fora não tem link: vai a chave Pix).
+  const parcelado = ehParcelado(c)
+    ? await (async () => {
+        const formas = formasDoContrato(c);
+        const porta = portaDoParcelado({ ...c, entradaPagaCentavos: (await entradaPaga(c.id)).centavos, restantePagoCentavos: await restantePago(c.id) });
+        return { ...formas, ...porta, porExtenso: resumoDaCondicao(c), links: linksDoContrato({ id: c.id, ...formas }), chavePix: chavePix() };
+      })()
+    : null;
   const passos = [
     {
       nome: "Assinatura do contrato",
@@ -108,8 +120,33 @@ export default async function AguardandoPagamentoPage({ searchParams }: { search
               </li>
             ))}
           </ol>
+          {parcelado && (
+            <div className="rounded-xl border p-3 text-xs space-y-1.5" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)" }} data-condicao-parcelada>
+              {parcelado.porExtenso && (
+                <p className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {parcelado.porExtenso}.
+                </p>
+              )}
+              <p>
+                Entrada: {parcelado.entradaOk ? "confirmada." : parcelado.formaDaEntrada === "cartao_stripe" ? "pague pelo link abaixo." : parcelado.formaDaEntrada === "pix" ? `pague pelo Pix${parcelado.chavePix ? ` na chave ${parcelado.chavePix}` : ""} e envie o comprovante respondendo ao e-mail do contrato.` : "pague por fora e envie o comprovante respondendo ao e-mail do contrato."}
+              </p>
+              <p>
+                Restante: {parcelado.restanteOk ? (parcelado.formaDoRestante === "cartao_recorrente" ? "cartão das parcelas cadastrado." : "pago.") : parcelado.formaDoRestante === "cartao_recorrente" ? "cadastre o cartão das parcelas pelo link abaixo." : "pague pelo link abaixo."}
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-2.5">
-            {assinado && c.linkDePagamento && !voltouDoStripe && (
+            {assinado && parcelado && !parcelado.entradaOk && parcelado.links.entrada && (
+              <a href={parcelado.links.entrada} className="inline-flex h-12 items-center justify-center rounded-lg bg-marca-600 px-6 text-base font-medium text-white hover:bg-marca-700">
+                Pagar a entrada no cartão
+              </a>
+            )}
+            {assinado && parcelado && !parcelado.restanteOk && (
+              <a href={parcelado.links.restante} className="inline-flex h-12 items-center justify-center rounded-lg bg-marca-600 px-6 text-base font-medium text-white hover:bg-marca-700">
+                {parcelado.formaDoRestante === "cartao_recorrente" ? "Cadastrar o cartão das parcelas" : "Pagar o restante no cartão"}
+              </a>
+            )}
+            {assinado && !parcelado && c.linkDePagamento && !voltouDoStripe && (
               <a
                 href={c.linkDePagamento}
                 className="inline-flex h-12 items-center justify-center rounded-lg bg-marca-600 px-6 text-base font-medium text-white hover:bg-marca-700"
