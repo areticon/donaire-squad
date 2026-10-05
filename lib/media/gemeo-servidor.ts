@@ -171,23 +171,39 @@ export class ErroDoCadastro extends Error {
   }
 }
 
-export async function adicionarFoto(projectId: string, url: string, nome?: string | null): Promise<CadastroGuardado> {
+/**
+ * Registra uma foto enviada. `unica` (05/10/2026): o cadastro pede UMA foto
+ * de alta qualidade; a nova substitui as anteriores (os arquivos saem), e o
+ * gêmeo de foto na HeyGen recomeça (o passo cria outro pela foto nova e põe o
+ * antigo na fila de apagar).
+ */
+export async function adicionarFoto(projectId: string, url: string, nome?: string | null, opcoes: { unica?: boolean } = {}): Promise<CadastroGuardado> {
   if (!urlDoProjeto(url, projectId)) throw new ErroDoCadastro("Arquivo fora do projeto.");
   let cheio = false as boolean;
+  const antigos: unknown[] = [];
   const c = await mudarCadastro(projectId, (atual) => {
     const c = atual ?? cadastroVazio();
     if (c.fotos.some((f) => f.url === url)) return undefined;
-    if (c.fotos.length >= MAX_FOTOS) {
+    if (!opcoes.unica && c.fotos.length >= MAX_FOTOS) {
       cheio = true;
       return undefined;
     }
-    const fotos = [...c.fotos, { url, nome: nome ?? null, enviadaEm: agora() }];
-    return { ...c, fotos, foto: { estado: "preparando", desde: agora(), origem: origemDasFotos(fotos.map((f) => f.url)), url: c.foto?.url ?? null } };
+    if (opcoes.unica) antigos.push(...c.fotos.map((f) => f.url));
+    const fotos = [...(opcoes.unica ? [] : c.fotos), { url, nome: nome ?? null, enviadaEm: agora() }];
+    const avataresParaApagar = [...(c.avataresParaApagar ?? []), ...(c.avatarFoto?.grupoId ? [c.avatarFoto.grupoId] : [])];
+    return {
+      ...c,
+      fotos,
+      avataresParaApagar,
+      avatarFoto: null,
+      foto: { estado: "preparando", desde: agora(), origem: origemDasFotos(fotos.map((f) => f.url)), url: c.foto?.url ?? null },
+    };
   });
   if (cheio) {
     await apagarMidias([url], `gemeo-foto-recusada/${projectId}`);
     throw new ErroDoCadastro(`São no máximo ${MAX_FOTOS} fotos. Tire uma antes de mandar outra.`);
   }
+  if (antigos.length) await apagarMidias(antigos, `gemeo-foto-trocada/${projectId}`);
   return c!;
 }
 
@@ -409,10 +425,19 @@ export class ErroDoPedido extends Error {
  * ambiente pede, a chave existe e o avatar do projeto está pronto; senão a
  * reserva (OmniHuman). A tela recebe o id pelo GET e mostra o preço dele.
  */
+/**
+ * QUEM GERA PARA ESTE PROJETO (05/10/2026):
+ *   GEMEO_GERADOR=heygen       o gêmeo treinado, se pronto; senão o gêmeo de
+ *                              foto, se pronto; senão a reserva;
+ *   GEMEO_GERADOR=heygen-foto  o gêmeo de foto, se pronto; senão a reserva
+ *                              (o treinado, mesmo pronto, não é usado);
+ *   GEMEO_GERADOR=omnihuman    a reserva, sempre.
+ */
 export function geradorDoCadastro(c: CadastroGuardado | null): IdDoGerador {
-  return geradorPreferido() === "heygen" && c?.avatar?.gerador === "heygen" && c.avatar.estado === "pronto" && c.avatar.avatarId
-    ? "heygen"
-    : "omnihuman";
+  const p = geradorPreferido();
+  if (p === "heygen" && c?.avatar?.gerador === "heygen" && c.avatar.estado === "pronto" && c.avatar.avatarId) return "heygen";
+  if ((p === "heygen" || p === "heygen-foto") && c?.avatarFoto?.estado === "pronto" && c.avatarFoto.lookId) return "heygen-foto";
+  return "omnihuman";
 }
 
 /**
@@ -494,7 +519,8 @@ export async function pedirVideoDoGemeo(args: {
     // 04/10: só a voz que a pessoa ouviu e aprovou (`gemeoAtivo` exige).
     voiceId: cadastro!.vozAprovada!.voiceId,
     gerador,
-    avatarId: gerador === "heygen" ? cadastro!.avatar!.avatarId! : null,
+    // O gêmeo treinado ou (05/10) o look do gêmeo de foto; a reserva não tem.
+    avatarId: gerador === "heygen" ? cadastro!.avatar!.avatarId! : gerador === "heygen-foto" ? cadastro!.avatarFoto!.lookId! : null,
     pedacos: (cenas.length ? pedacosDasCenas(cenas) : dividirEmPedacos(texto).map((t) => ({ texto: t, cenario: cenarioUnico }))).map((p) => ({
       ...p,
       tentativas: 0,
@@ -573,7 +599,12 @@ export async function revogarGemeo(projectId: string, motivo: string): Promise<{
 
   // O gêmeo treinado na HeyGen (03/10) sai junto; o que não sair agora fica
   // no registro da revogação, como a voz, e o passo tenta de novo.
-  const avatares = [...(cadastro?.avataresParaApagar ?? []), ...(cadastro?.avatar?.grupoId ? [cadastro.avatar.grupoId] : [])];
+  const avatares = [
+    ...(cadastro?.avataresParaApagar ?? []),
+    ...(cadastro?.avatar?.grupoId ? [cadastro.avatar.grupoId] : []),
+    // 05/10: o gêmeo de foto sai junto (mesmo endpoint de apagar o grupo).
+    ...(cadastro?.avatarFoto?.grupoId ? [cadastro.avatarFoto.grupoId] : []),
+  ];
   const avataresPendentes: string[] = [];
   for (const grupo of avatares) {
     try {

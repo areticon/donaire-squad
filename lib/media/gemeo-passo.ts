@@ -16,9 +16,11 @@ import {
   SEGUNDOS_MINIMOS_DA_VOZ,
   cenarioPorId,
   conferirFalaDaAutorizacao,
+  conferirFoto,
   conferirTreino,
   creditosDoGemeo,
   duracaoFalada,
+  fotoEnviada,
   partirAoMeio,
   avatarSemVaga,
   type AvaliacaoDaFoto,
@@ -33,12 +35,15 @@ import {
 import { ErroDoFornecedor, apagarVoz, clonarVoz, dubleLigado, duracaoDoMp3, falar } from "@/lib/media/gemeo-fornecedores";
 import {
   apagarGemeoNaHeygen,
+  criarGemeoDeFotoNaHeygen,
   criarGemeoNaHeygen,
   criarLookNaHeygen,
   estadoDoConsentimento,
   estadoDoLook,
+  gemeoDeFotoLigado,
   geradorDoPedido,
   geradorPreferido,
+  imagemDaFotoNaHeygen,
   imagemDaHeygen,
   type PedidoAoGerador,
   lerImagemDaHeygen,
@@ -160,7 +165,31 @@ async function cuidarDaFoto(projectId: string, c: CadastroGuardado): Promise<voi
         foto: { estado: "recusada", desde: agora(), origem, url: null, escolhida: null, avaliacoes: resultado.avaliacoes, motivo: `Nenhuma foto serviu. ${[...new Set(motivos)].join(" ")}`.trim() },
       };
     }
-    return { ...atual, foto: { estado: "pronta", desde: agora(), origem, url: resultado.foto.url, escolhida: resultado.escolhida, avaliacoes: resultado.avaliacoes, motivo: null } };
+    // AS CHECAGENS DA FOTO (05/10): resolução, rosto e enquadramento da foto
+    // escolhida, pela régua de `conferirFoto`. Erro recusa (o recorte que o
+    // worker subiu vira lixo); aviso passa e aparece na tela.
+    const escolhida = resultado.avaliacoes.find((a) => a.indice === resultado!.escolhida);
+    const conferida = escolhida ? conferirFoto(escolhida) : { ok: true, checagens: [] };
+    if (!conferida.ok) {
+      substituida = resultado.foto.url;
+      return {
+        ...atual,
+        foto: {
+          estado: "recusada",
+          desde: agora(),
+          origem,
+          url: null,
+          escolhida: null,
+          avaliacoes: resultado.avaliacoes,
+          checagens: conferida.checagens,
+          motivo: conferida.checagens.filter((k) => k.resultado === "erro").map((k) => k.texto).join(" "),
+        },
+      };
+    }
+    return {
+      ...atual,
+      foto: { estado: "pronta", desde: agora(), origem, url: resultado.foto.url, escolhida: resultado.escolhida, avaliacoes: resultado.avaliacoes, checagens: conferida.checagens, motivo: null },
+    };
   });
   if (erro) console.error(`[gemeo][${projectId}] foto:`, erro);
   if (substituida) await apagarMidias([substituida], `gemeo-foto-antiga/${projectId}`);
@@ -516,10 +545,15 @@ async function cuidarDoTreino(projectId: string, c: CadastroGuardado): Promise<v
     // que ele não reconheceu. Com voz aprovada, o treino não mexe na voz.
     const a = atual!;
     const aprovada = a.vozAprovada ?? null;
+    // E MENOS A FOTO ENVIADA (05/10/2026): a foto de alta qualidade do
+    // cadastro vale mais que o quadro do treino (foi o quadro que saiu
+    // envelhecido e com a mão deformada). Com foto enviada pronta, o treino
+    // não mexe na imagem; o quadro dele fica só como referência dos cenários.
+    const fotoFica = fotoEnviada(a.foto);
     const doTreino = new Set(Object.values(x.arquivos).filter(Boolean));
     paraApagar = [
-      ...a.fotos.map((f) => f.url),
-      a.foto?.url,
+      ...(fotoFica ? [] : a.fotos.map((f) => f.url)),
+      fotoFica ? null : a.foto?.url,
       aprovada ? null : a.voz?.amostraUrl,
       aprovada ? null : a.voz?.mp3Url,
       aprovada ? null : a.voz?.previaUrl,
@@ -530,8 +564,8 @@ async function cuidarDoTreino(projectId: string, c: CadastroGuardado): Promise<v
       ...a,
       treino,
       vozesParaApagar,
-      fotos: [],
-      foto: { estado: "pronta", desde: agora(), origem: `treino:${x.gravadoEm}`, url: x.arquivos.foto, escolhida: null, avaliacoes: [], motivo: null },
+      fotos: fotoFica ? a.fotos : [],
+      foto: fotoFica ? a.foto : { estado: "pronta", desde: agora(), origem: `treino:${x.gravadoEm}`, url: x.arquivos.foto, escolhida: null, avaliacoes: [], motivo: null },
       voz: aprovada
         ? a.voz
         : {
@@ -852,12 +886,106 @@ async function apagarAvataresPendentes(projectId: string, c: CadastroGuardado): 
   }
 }
 
+/**
+ * O GÊMEO DE FOTO NA HEYGEN (05/10/2026), quando o ambiente pede a HeyGen
+ * (`gemeoDeFotoLigado`) e a foto ENVIADA está pronta (o quadro do vídeo de
+ * treino não serve: foi ele que saiu envelhecido). Cria o avatar de foto
+ * (`type: photo`, US$ 1,00), espera o processamento e marca pronto. Sem
+ * consentimento gravado e sem vaga de gêmeo treinado. Recusado, o projeto
+ * segue pela reserva com a mesma foto; até 3 tentativas em falha de rede.
+ */
+async function cuidarDoAvatarDaFoto(projectId: string, c: CadastroGuardado): Promise<void> {
+  if (!gemeoDeFotoLigado()) return;
+  if (!fotoEnviada(c.foto)) return;
+  const origem = c.foto!.url!;
+  const a = c.avatarFoto;
+
+  if (a?.origem === origem && a.estado === "criando" && a.lookId) {
+    if (idade(a.ultimaTentativa) < 30_000) return;
+    const r = await estadoDoLook(a.lookId).catch((e) => ({ estado: "erro", motivo: mensagem(e) }));
+    if (r.estado === "completed") {
+      await mudarCadastro(projectId, (x) =>
+        x?.avatarFoto?.origem === origem ? { ...x, avatarFoto: { ...x.avatarFoto, estado: "pronto", desde: agora(), motivo: null, ultimaTentativa: agora() } } : undefined
+      );
+    } else if (r.estado === "failed") {
+      await mudarCadastro(projectId, (x) =>
+        x?.avatarFoto?.origem === origem
+          ? { ...x, avatarFoto: { ...x.avatarFoto, estado: "falhou", desde: agora(), motivo: "O gerador não aceitou a foto. Envie outra, de frente e com luz no rosto.", erroTecnico: r.motivo ?? null } }
+          : undefined
+      );
+    } else {
+      await mudarCadastro(projectId, (x) => (x?.avatarFoto?.origem === origem ? { ...x, avatarFoto: { ...x.avatarFoto, ultimaTentativa: agora() } } : undefined));
+    }
+    return;
+  }
+  if (a?.origem === origem && (a.estado === "pronto" || a.estado === "falhou")) return;
+  if (a?.origem === origem && (a.tentativas ?? 0) >= 3) {
+    await mudarCadastro(projectId, (x) =>
+      x?.avatarFoto?.origem === origem ? { ...x, avatarFoto: { ...x.avatarFoto, estado: "falhou", desde: agora(), motivo: "O gerador não respondeu. Os vídeos saem pela reserva, com a sua foto." } } : undefined
+    );
+    return;
+  }
+  if (a?.origem === origem && idade(a.ultimaTentativa) < ESPERA_DE_FALHA_MS) return;
+
+  // A marca é a trava: duas passadas do cron não criam dois avatares.
+  const marca = agora();
+  const tomado = await mudarCadastro(projectId, (x) => {
+    if (!x || x.foto?.url !== origem) return undefined;
+    if (x.avatarFoto?.origem === origem && x.avatarFoto.lookId) return undefined;
+    if (x.avatarFoto?.origem === origem && idade(x.avatarFoto.ultimaTentativa) < ESPERA_DE_FALHA_MS) return undefined;
+    return {
+      ...x,
+      avatarFoto: { estado: "criando", desde: x.avatarFoto?.origem === origem ? x.avatarFoto.desde : marca, origem, tentativas: (x.avatarFoto?.origem === origem ? x.avatarFoto.tentativas ?? 0 : 0) + 1, ultimaTentativa: marca },
+    };
+  });
+  if (tomado?.avatarFoto?.ultimaTentativa !== marca) return;
+  try {
+    const foto = await lerMidia(origem);
+    if (!foto) throw new Error("a foto do gêmeo sumiu do storage");
+    const nome = c.autorizacao?.nome ?? c.treino?.nome ?? "Cliente";
+    const criado = await criarGemeoDeFotoNaHeygen({ nome: `${nome} (Demandou, foto)`, foto });
+    gravarCustoDeVideo("heygen/photo-avatar-criacao", 1, { projectId, operation: "gemeo_treino" });
+    let orfao: string | null = null;
+    await mudarCadastro(projectId, (x) => {
+      if (x?.avatarFoto?.origem !== origem) {
+        orfao = criado.grupoId;
+        return x ? { ...x, avataresParaApagar: [...(x.avataresParaApagar ?? []), criado.grupoId] } : undefined;
+      }
+      return { ...x, avatarFoto: { ...x.avatarFoto, lookId: criado.lookId, grupoId: criado.grupoId, motivo: null, erroTecnico: null, ultimaTentativa: agora() } };
+    });
+    if (orfao) await apagarGemeoNaHeygen(orfao).catch((e) => console.error(`[gemeo][${projectId}] gêmeo de foto órfão ${orfao} não apagado:`, mensagem(e)));
+  } catch (e) {
+    const tecnico = mensagem(e).slice(0, 600);
+    console.warn(`[gemeo][${projectId}] criar o gêmeo de foto na HeyGen:`, tecnico);
+    const recusado = e instanceof ErroDoFornecedor && (e.tipo === "recusado" || e.tipo === "limite");
+    await mudarCadastro(projectId, (x) =>
+      x?.avatarFoto?.origem === origem && x.avatarFoto.estado === "criando" && !x.avatarFoto.lookId
+        ? {
+            ...x,
+            avatarFoto: {
+              ...x.avatarFoto,
+              estado: recusado ? "falhou" : "criando",
+              desde: recusado ? agora() : x.avatarFoto.desde,
+              erroTecnico: tecnico,
+              motivo: recusado ? "O gerador não aceitou a foto. Envie outra, de frente e com luz no rosto." : "O gerador não respondeu; tentamos de novo em alguns minutos.",
+            },
+          }
+        : undefined
+    );
+  }
+}
+
 async function cuidarDosCadastros(prazo: number): Promise<number> {
   const heygen = geradorPreferido() === "heygen";
+  const heygenFoto = gemeoDeFotoLigado();
   const linhas = await prisma.$queryRaw<Array<{ projectId: string }>>`
     SELECT "projectId" FROM project_memories
     WHERE type = 'gemeo' AND key = 'cadastro' AND (
       value -> 'foto' ->> 'estado' IN ('preparando', 'falhou')
+      OR (${heygenFoto} AND value -> 'foto' ->> 'estado' = 'pronta' AND value -> 'foto' ->> 'origem' NOT LIKE 'treino:%'
+        AND (jsonb_typeof(value -> 'avatarFoto') IS DISTINCT FROM 'object'
+          OR value -> 'avatarFoto' ->> 'origem' IS DISTINCT FROM value -> 'foto' ->> 'url'
+          OR value -> 'avatarFoto' ->> 'estado' = 'criando'))
       OR value -> 'voz' ->> 'estado' IN ('convertendo', 'esperando', 'clonando', 'sem-permissao', 'falhou')
       OR (value -> 'voz' ->> 'estado' = 'pronta' AND value -> 'voz' ->> 'previaUrl' IS NULL AND COALESCE((value -> 'voz' ->> 'previaTentativas')::int, 0) < 3)
       OR value -> 'autorizacao' ->> 'estado' = 'conferindo'
@@ -893,6 +1021,8 @@ async function cuidarDosCadastros(prazo: number): Promise<number> {
       if (c) await apagarVozesPendentes(projectId, c);
       c = await lerCadastro(projectId);
       if (c) await cuidarDoAvatar(projectId, c);
+      c = await lerCadastro(projectId);
+      if (c) await cuidarDoAvatarDaFoto(projectId, c);
       // Os avisos do gêmeo (03/10): pelo estado que acabou de ficar gravado.
       c = await lerCadastro(projectId);
       if (c) await avisarGemeo(projectId, c);
@@ -1003,6 +1133,9 @@ async function quadroDoTreino(projectId: string): Promise<Buffer | null> {
  * vídeo, e o log diz qual cenário caiu e por quê.
  */
 export async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerador: IdDoGerador, cen: IdDoCenario): Promise<string | "esperar"> {
+  // O GÊMEO DE FOTO (05/10): todo pedaço sai no busto da foto, em qualquer
+  // cenário. Nada é composto nem inventado em volta da pessoa.
+  if (gerador === "heygen-foto") return imagemDaFotoNaHeygen(v.avatarId!);
   const g = geradorDoPedido(gerador);
   const close = async (): Promise<string> => {
     if (gerador === "heygen") return imagemDaHeygen({ tipo: "gemeo", avatarId: v.avatarId! });
@@ -1012,14 +1145,16 @@ export async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerado
   };
   const c = await lerCadastro(projectId);
   const modo = gerador === "heygen" ? CENARIO_NA_HEYGEN() : "composicao";
-  // O close da reserva só é composto quando há o quadro inteiro do treino.
-  if (cen === "camera" && (modo === "look" || (modo === "composicao" && !c?.treino?.arquivos?.quadro))) return close();
+  // O close da reserva só é composto quando a imagem vem do quadro inteiro do
+  // treino; a foto enviada (05/10, busto de alta qualidade) vai como está.
+  const daFoto = fotoEnviada(c?.foto);
+  if (cen === "camera" && (modo === "look" || (modo === "composicao" && (daFoto || !c?.treino?.arquivos?.quadro)))) return close();
 
   const chave = modo === "fundo" ? `heygen-fundo:${cen}` : `${gerador}:${cen}`;
   const origem =
     modo === "fundo"
       ? VERSAO_DOS_CENARIOS
-      : `${gerador === "heygen" ? v.avatarId ?? "" : c?.treino?.arquivos?.quadro ?? v.fotoUrl}#${VERSAO_DOS_CENARIOS}`;
+      : `${gerador === "heygen" ? v.avatarId ?? "" : daFoto ? v.fotoUrl : c?.treino?.arquivos?.quadro ?? v.fotoUrl}#${VERSAO_DOS_CENARIOS}`;
   const pronto = c?.cenarios?.[chave];
   const guardar = (novo: CenarioPronto) =>
     mudarCadastro(projectId, (x) => (x ? { ...x, cenarios: { ...(x.cenarios ?? {}), [chave]: novo } } : undefined));
@@ -1079,7 +1214,8 @@ export async function imagemDoCenario(projectId: string, v: VideoDoGemeo, gerado
   // OmniHuman: compõe (ou reaproveita) a imagem do cenário, e confere.
   let url = pronto?.estado === "pronto" && pronto.origem === origem ? pronto.url ?? null : null;
   if (!url) {
-    const fonte = c?.treino?.arquivos?.quadro ?? v.fotoUrl;
+    // 05/10: a foto enviada (alta qualidade) na frente do quadro do treino.
+    const fonte = daFoto ? v.fotoUrl : c?.treino?.arquivos?.quadro ?? v.fotoUrl;
     const quadro = await lerMidia(fonte);
     if (!quadro) return close();
     const feita = await comporSobreImagemComCusto(

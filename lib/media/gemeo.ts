@@ -50,9 +50,24 @@ export const SEGUNDOS_MINIMOS_DO_ROTEIRO = 5;
  * (sem gênero, idade ou cenário): quem descreve a pessoa é a foto. O teste de
  * 01/10 usou uma descrição do Bruno ("homem brasileiro de barba"), que não
  * serve para ninguém mais.
+ *
+ * SEM MÃOS, SEM ENVELHECER (05/10/2026). O Bruno viu o gêmeo pelo quadro do
+ * vídeo de treino e reclamou: envelhecido e com a mão deformada. A mão
+ * deformada é o gerador inventando gestos que a foto não mostra; o
+ * envelhecimento é a textura da pele reinventada. Daí a instrução pede busto
+ * parado, câmera fixa, mãos fora do quadro e o rosto exatamente como na foto.
  */
 export const INSTRUCAO_DO_GERADOR =
-  "A pessoa da foto fala direto para a câmera, com calma e convicção, gestos naturais e discretos, olhar firme na lente. Sem texto nem legenda na imagem.";
+  "Bust shot, static camera. The person in the photo talks directly to the camera, calm and confident, with natural facial expression and subtle head movement only. " +
+  "Hands stay out of frame, no hand gestures, no body movement. Keep the exact same face, age, skin and hair as the photo. No text, no captions, no subtitles.";
+
+/**
+ * O MOVIMENTO PEDIDO À HEYGEN (Avatar IV, gêmeo de foto): a mesma ideia, nas
+ * palavras que a tabela deles reconhece ("hands still", "no hand gestures",
+ * ver gemeo-geradores.ts). Vale até 10 s e depois a HeyGen segura a pose, o
+ * que é exatamente o que queremos de um busto parado.
+ */
+export const MOVIMENTO_DA_FOTO_NA_HEYGEN = "calm expression, grounded posture, hands still, no hand gestures, subtle natural head movement";
 
 // ─────────────────────────────── o preço ───────────────────────────────
 
@@ -100,23 +115,39 @@ export const CREDITOS_POR_SEGUNDO_DE_GEMEO = Math.ceil(
 // ─────────────────────────────── os geradores (03/10) ───────────────────────────────
 
 /**
- * O GERADOR É PLUGÁVEL (03/10/2026). Dois hoje:
+ * O GERADOR É PLUGÁVEL (03/10/2026). Três desde 05/10:
  *
- *   omnihuman  OmniHuman 1.5 no fal.ai, o de 01/10: anima UMA imagem (o melhor
- *              quadro do vídeo de treino, ou a pessoa composta num cenário)
- *              com a fala. Não treina nada; é a RESERVA, e funciona com a
- *              chave que já temos;
- *   heygen     o gêmeo TREINADO a partir do vídeo de treino (API v3 da HeyGen,
- *              "digital twin"): gesto, postura e boca aprendidos da própria
- *              pessoa; desde 04/10, os cenários são o próprio gêmeo recortado
- *              sobre um fundo profissional. É o recomendado, e liga com HEYGEN_API_KEY e
- *              GEMEO_GERADOR=heygen (ver gemeo-geradores.ts).
+ *   omnihuman    OmniHuman 1.5 no fal.ai, o de 01/10: anima UMA imagem (a
+ *                foto do cadastro, ou a pessoa composta num cenário) com a
+ *                fala. Não treina nada; é a RESERVA, e funciona com a chave
+ *                que já temos;
+ *   heygen       o gêmeo TREINADO a partir do vídeo de treino (API v3 da
+ *                HeyGen, "digital twin"): gesto, postura e boca aprendidos da
+ *                própria pessoa; os cenários são o próprio gêmeo recortado
+ *                sobre um fundo profissional. Ocupa uma VAGA de gêmeo na conta
+ *                (1 por conta no plano de 05/10), por isso é o caminho
+ *                avançado, opcional;
+ *   heygen-foto  o GÊMEO DE FOTO da HeyGen (Avatar IV, "photo avatar"): uma
+ *                foto de rosto vira um avatar em segundos, sem vídeo de
+ *                treino, sem consentimento gravado e sem ocupar vaga de gêmeo
+ *                treinado. É o que a pesquisa de 05/10 apontou como melhor
+ *                custo x qualidade para "foto + áudio" (US$ 0,05/s contra
+ *                0,16 do OmniHuman, e a boca e a identidade mais estáveis do
+ *                mercado nas comparações de 2026). Pede busto parado e mãos
+ *                fora do quadro (`MOVIMENTO_DA_FOTO_NA_HEYGEN`). Liga com
+ *                HEYGEN_API_KEY e GEMEO_GERADOR=heygen-foto (ou =heygen, que
+ *                cai nele enquanto o gêmeo treinado não existe).
  *
  * A tabela mora aqui porque a tela mostra o preço ANTES do clique com a mesma
  * conta que o servidor cobra; quem decide qual gerador vale para o projeto é
  * o servidor, que manda o id para a tela.
  */
-export type IdDoGerador = "omnihuman" | "heygen";
+export type IdDoGerador = "omnihuman" | "heygen" | "heygen-foto";
+
+/** O gerador leva a pessoa a cenários (mesa, palco)? O gêmeo de foto sai sempre no busto da foto. */
+export function geradorTemCenarios(id: IdDoGerador): boolean {
+  return id !== "heygen-foto";
+}
 
 export type FichaDoGerador = {
   id: IdDoGerador;
@@ -155,6 +186,22 @@ export const GERADORES: Record<IdDoGerador, FichaDoGerador> = {
     id: "heygen",
     nome: "HeyGen (gêmeo treinado)",
     dolarPorSegundo: 0.11,
+    folga: 1,
+    tetoDoPedaco: 120,
+  },
+  /**
+   * HeyGen, GÊMEO DE FOTO com o Avatar IV (05/10/2026): US$ 0,05 por segundo
+   * em 720p e 1080p na tabela da API de 2026 (US$ 3,00 por minuto; 4K sobe a
+   * 0,0667), mais US$ 1,00 uma vez por foto para criar o avatar (vai no
+   * registro de custo como `heygen/photo-avatar-criacao`, fora do preço por
+   * segundo). O gêmeo treinado, medido em 04/10, saiu a 0,11/s: o de foto é
+   * menos da metade. A régua conta 0,06 (20% acima da tabela) até a primeira
+   * medição no saldo, pela regra de nunca ficar abaixo do custo real.
+   */
+  "heygen-foto": {
+    id: "heygen-foto",
+    nome: "HeyGen (gêmeo de foto, Avatar IV)",
+    dolarPorSegundo: 0.06,
     folga: 1,
     tetoDoPedaco: 120,
   },
@@ -304,6 +351,76 @@ export function textoDasCenas(cenas: Array<{ fala?: string | null }> | null | un
 // ─────────────────────────────── o cadastro ───────────────────────────────
 
 export const MAX_FOTOS = 5;
+
+/**
+ * UMA FOTO SÓ (05/10/2026, decisão do Bruno). O cadastro volta a pedir uma
+ * foto de rosto e a amostra de voz, "como era antes, mas com os melhores
+ * modelos": o quadro tirado do vídeo de treino (comprimido, luz de corredor)
+ * saiu envelhecido e com a mão deformada no OmniHuman. A foto decide metade
+ * do resultado, então a tela orienta e o código confere:
+ *
+ *   - de frente, luz uniforme no rosto, fundo neutro, ombros visíveis, sem
+ *     óculos escuros nem boné (as orientações da própria HeyGen para o
+ *     Avatar IV e do guia do OmniHuman 1.5);
+ *   - o lado MENOR com pelo menos 1024 px (o gerador entrega 1080p; uma foto
+ *     menor vira um vídeo borrado, pago por segundo);
+ *   - um rosto só, de frente (até 30 graus), e com espaço para os ombros no
+ *     quadro: a mesma régua do enquadramento do treino (`enquadramentoDoTreino`).
+ *
+ * O navegador confere a resolução antes de enviar; o rosto e o enquadramento
+ * são conferidos pelo worker (Face Landmarker, gemeo-rosto.py) na mesma
+ * passada que recorta a foto, e o resultado aparece na tela.
+ */
+export const LADO_MINIMO_DA_FOTO = 1024;
+
+export const ORIENTACOES_DA_FOTO = [
+  "De frente para a câmera, olhando para a lente, expressão natural (um sorriso leve vale).",
+  "Luz uniforme no rosto, sem sombra forte de um lado nem contraluz de janela.",
+  "Fundo neutro e limpo (parede lisa, estúdio), sem outras pessoas.",
+  "Do peito para cima: cabeça com espaço acima e os dois ombros inteiros no quadro.",
+  "Sem óculos escuros, boné ou mão perto do rosto.",
+  `Foto nítida, de câmera ou celular bom, com pelo menos ${LADO_MINIMO_DA_FOTO} px no lado menor.`,
+];
+
+export type ChecagemDaFoto = {
+  id: "resolucao" | "rosto" | "enquadramento";
+  resultado: "ok" | "aviso" | "erro";
+  texto: string;
+};
+
+/** A resolução da foto serve? Mesma régua no navegador (antes de enviar) e no servidor. */
+export function resolucaoDaFoto(largura: number, altura: number): ChecagemDaFoto {
+  const menor = Math.min(largura, altura);
+  if (menor < LADO_MINIMO_DA_FOTO) {
+    return {
+      id: "resolucao",
+      resultado: "erro",
+      texto: `A foto tem ${largura} x ${altura} px. Precisamos de pelo menos ${LADO_MINIMO_DA_FOTO} px no lado menor: envie a foto original, sem reduzir, ou tire outra com a câmera principal.`,
+    };
+  }
+  return { id: "resolucao", resultado: "ok", texto: `Resolução: ${largura} x ${altura} px.` };
+}
+
+/**
+ * As checagens da foto escolhida, a partir do que o worker mediu
+ * (`AvaliacaoDaFoto`). Erro recusa a foto; aviso passa, mas a tela recomenda
+ * outra. Sem a caixa do rosto (avaliação antiga), só a resolução é conferida.
+ */
+export function conferirFoto(a: AvaliacaoDaFoto): { ok: boolean; checagens: ChecagemDaFoto[] } {
+  const c: ChecagemDaFoto[] = [];
+  if (typeof a.largura === "number" && typeof a.altura === "number") c.push(resolucaoDaFoto(a.largura, a.altura));
+  if (!a.rosto) c.push({ id: "rosto", resultado: "erro", texto: "Não achei um rosto nesta foto. Envie uma foto sua de frente, com luz no rosto." });
+  else if (a.varios) c.push({ id: "rosto", resultado: "erro", texto: "Tem mais de uma pessoa na foto. O gêmeo é só de quem autorizou: envie uma foto só sua." });
+  else if (typeof a.giro === "number" && Math.abs(a.giro) > 30) c.push({ id: "rosto", resultado: "erro", texto: "O rosto está virado demais. Use uma foto de frente, olhando para a lente." });
+  else if (a.motivo) c.push({ id: "rosto", resultado: "aviso", texto: a.motivo });
+  else c.push({ id: "rosto", resultado: "ok", texto: "Rosto de frente, só você na foto." });
+  if (a.rosto && !a.varios && a.caixa) {
+    const enq = enquadramentoDoTreino({ quadros: 1, comRosto: 1, comVarios: 0, virados: 0, altura: a.caixa.h, topo: a.caixa.y });
+    if (enq) c.push({ id: "enquadramento", resultado: enq.resultado, texto: enq.texto.replace("da altura do vídeo", "da altura da foto").replace("Afaste o celular (ou dê um passo para trás)", "Tire outra foto mais de longe") });
+  }
+  return { ok: c.every((x) => x.resultado !== "erro"), checagens: c };
+}
+
 /**
  * A amostra de voz (01/10): o clone aprovado pelo Bruno saiu de 4 minutos dele
  * FALANDO de verdade; o de 57 s lendo um texto soou robótico. Mínimo de 1
@@ -758,6 +875,12 @@ export type AvaliacaoDaFoto = {
   varios?: boolean;
   nota?: number;
   motivo?: string;
+  /** 05/10: o que o worker já media e a checagem da foto passou a ler. */
+  largura?: number;
+  altura?: number;
+  giro?: number;
+  /** A malha do rosto, em fração da foto (x, y do canto superior esquerdo; w, h). */
+  caixa?: { x: number; y: number; w: number; h: number };
 };
 
 /**
@@ -775,9 +898,16 @@ export type FotoDoGerador = {
   url?: string | null;
   escolhida?: number | null;
   avaliacoes?: AvaliacaoDaFoto[];
+  /** 05/10: resolução, rosto e enquadramento da foto escolhida, para a tela. */
+  checagens?: ChecagemDaFoto[] | null;
   motivo?: string | null;
   tentativas?: number;
 };
+
+/** A foto do gerador veio de uma foto enviada (e não do quadro do vídeo de treino)? */
+export function fotoEnviada(f: FotoDoGerador | null | undefined): boolean {
+  return Boolean(f && f.estado === "pronta" && f.url && !f.origem.startsWith("treino:"));
+}
 
 /**
  * A voz:
@@ -925,6 +1055,27 @@ export type AvatarDoGemeo = {
 };
 
 /**
+ * O GÊMEO DE FOTO na HeyGen (05/10/2026): o avatar criado a partir da foto
+ * enviada (`type: photo` na API v3). Nasce em segundos, sem consentimento
+ * gravado e sem ocupar vaga de gêmeo treinado.
+ *   criando  pedido feito; a HeyGen processa a foto (segundos a minutos);
+ *   pronto   pode gerar (`lookId` é o avatar_id do pedido de vídeo);
+ *   falhou   recusado (motivo); os vídeos seguem pela reserva, com a foto.
+ * `origem` é a URL da foto recortada: foto nova recomeça.
+ */
+export type AvatarDaFoto = {
+  estado: "criando" | "pronto" | "falhou";
+  desde: string;
+  origem: string;
+  lookId?: string | null;
+  grupoId?: string | null;
+  motivo?: string | null;
+  tentativas?: number;
+  ultimaTentativa?: string | null;
+  erroTecnico?: string | null;
+};
+
+/**
  * O QUE A PESSOA LÊ QUANDO A HEYGEN NÃO TEM VAGA (05/10/2026). O Bruno criou um
  * gêmeo novo na conta pessoal e a tela mostrou o JSON cru do fornecedor
  * ("resource_limit_reached"). Quem cuida da vaga é a equipe, não o cliente.
@@ -978,32 +1129,45 @@ export type CadastroDoGemeo = {
   autorizacao?: AutorizacaoDoGemeo | null;
   /** 03/10: o vídeo único de treino, que preenche foto, voz e autorização. */
   treino?: TreinoDoGemeo | null;
-  /** 03/10: o gêmeo treinado no fornecedor recomendado. */
+  /** 03/10: o gêmeo treinado no fornecedor recomendado (caminho avançado desde 05/10). */
   avatar?: AvatarDoGemeo | null;
+  /** 05/10: o gêmeo de foto na HeyGen, criado da foto enviada. */
+  avatarFoto?: AvatarDaFoto | null;
   /** 03/10: os cenários já compostos, por "gerador:cenário". */
   cenarios?: Record<string, CenarioPronto> | null;
 };
 
-/** O que falta para o gêmeo poder gerar vídeo, em frases para a tela. */
+/** A pessoa autorizou: pela gravação curta da autorização ou pelo vídeo de treino (que começa com ela). */
+export function autorizacaoValida(c: CadastroDoGemeo | null | undefined): boolean {
+  return c?.autorizacao?.estado === "valida" || c?.treino?.estado === "valido";
+}
+
+/**
+ * O que falta para o gêmeo poder gerar vídeo, em frases para a tela.
+ *
+ * O CAMINHO PADRÃO (05/10/2026): uma foto, a amostra de voz e a autorização
+ * gravada. O vídeo de treino é o caminho avançado (gêmeo treinado na HeyGen)
+ * e, quando vale, preenche o que faltar: a imagem (se não houver foto
+ * enviada), a voz (se não houver aprovada) e a autorização.
+ */
 export function oQueFalta(c: CadastroDoGemeo | null | undefined): string[] {
   const falta: string[] = [];
-  // O CAMINHO NOVO (03/10): um vídeo só. Enquanto ele não vale, é a única
-  // coisa que falta; depois, a clonagem da voz (que sai dele).
-  if (c?.treino || !c?.fotos?.length) {
-    if (!c?.treino) return ["o seu vídeo de treino"];
-    if (c.treino.estado !== "valido") return ["a conferência do vídeo de treino"];
-    if (!c.vozAprovada) falta.push(c.voz?.estado === "pronta" ? "ouvir e aprovar a sua voz" : "a clonagem da sua voz");
-    if (c.foto?.estado !== "pronta") falta.push("a imagem do gêmeo");
-    return falta;
+  const treinoAndando = ["preparando", "conferindo"].includes(c?.treino?.estado ?? "");
+  if (c?.foto?.estado !== "pronta") {
+    if (c?.foto?.estado === "recusada") falta.push("outra foto (a enviada não serviu)");
+    else if (c?.fotos?.length) falta.push("a conferência da sua foto");
+    else if (treinoAndando) falta.push("a conferência do vídeo de treino");
+    else falta.push("a sua foto");
   }
-  if (c.foto?.estado !== "pronta") falta.push("a foto do gerador");
   if (!c?.vozAprovada) {
-    if (!c?.voz) falta.push("a amostra da sua voz");
-    else if (c.voz.estado !== "pronta") falta.push("a clonagem da sua voz");
-    else falta.push("ouvir e aprovar a sua voz");
+    if (!c?.voz && !treinoAndando) falta.push("a amostra da sua voz");
+    else if (c?.voz?.estado === "pronta") falta.push("ouvir e aprovar a sua voz");
+    else falta.push("a clonagem da sua voz");
   }
-  if (!c?.autorizacao) falta.push("a sua autorização gravada");
-  else if (c.autorizacao.estado !== "valida") falta.push("a conferência da autorização");
+  if (!autorizacaoValida(c)) {
+    if (c?.autorizacao?.estado === "conferindo" || treinoAndando) falta.push("a conferência da autorização");
+    else falta.push("a sua autorização gravada");
+  }
   return falta;
 }
 
@@ -1159,6 +1323,7 @@ export function videoParaTela(v: VideoDoGemeo): VideoNaTela {
 export function cadastroParaTela(
   c: (CadastroDoGemeo & { vozesParaApagar?: string[]; avataresParaApagar?: unknown[] }) | null
 ): CadastroDoGemeo | null {
+  // (o gêmeo de foto, 05/10, também sai sem os ids do fornecedor)
   if (!c) return null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { vozesParaApagar, avataresParaApagar, ...resto } = c;
@@ -1177,6 +1342,7 @@ export function cadastroParaTela(
           erroTecnico: null,
         }
       : null,
+    avatarFoto: resto.avatarFoto ? { ...resto.avatarFoto, lookId: resto.avatarFoto.lookId ? "pronto" : null, grupoId: null, erroTecnico: null } : null,
     cenarios: resto.cenarios
       ? Object.fromEntries(Object.entries(resto.cenarios).map(([k, v]) => [k, { ...v, lookId: null, assetId: null }]))
       : null,

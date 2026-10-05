@@ -102,7 +102,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let cadastro;
     switch (corpo.acao) {
       case "foto":
-        cadastro = await adicionarFoto(id, String(corpo.url ?? ""), typeof corpo.nome === "string" ? corpo.nome.slice(0, 120) : null);
+        // `unica` (05/10): o cadastro pede uma foto só; a nova substitui a anterior.
+        cadastro = await adicionarFoto(id, String(corpo.url ?? ""), typeof corpo.nome === "string" ? corpo.nome.slice(0, 120) : null, { unica: corpo.unica === true });
         break;
       case "remover-foto":
         cadastro = await removerFoto(id, String(corpo.url ?? ""));

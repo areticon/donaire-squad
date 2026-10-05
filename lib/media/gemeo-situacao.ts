@@ -121,6 +121,13 @@ export function situacaoDoGemeo(c: CadastroDoGemeo | null | undefined, agora: Da
     };
   }
   if (ativo) return { ...base, fase: "pronto", tom: "ok", titulo: "Gêmeo pronto", texto: "Você já pode gerar vídeos com o seu rosto e a sua voz." };
+  // 05/10: a foto enviada não serviu (resolução, rosto ou enquadramento).
+  if (c?.foto?.estado === "recusada") {
+    return { ...base, fase: "refazer", tom: "erro", titulo: "A foto precisa ser trocada", texto: c.foto.motivo ?? "A foto não passou nas checagens. Abra a tela do gêmeo para ver o que corrigir." };
+  }
+  if (c?.foto?.estado === "preparando") {
+    return { ...base, fase: "conferindo", tom: "andando", titulo: "Conferindo a sua foto", texto: "Estamos conferindo resolução, rosto e enquadramento. Leva menos de um minuto." };
+  }
   if (t?.estado === "preparando" || t?.estado === "conferindo") {
     return { ...base, fase: "conferindo", tom: "andando", titulo: "Conferindo o vídeo de treino", texto: "Estamos conferindo luz, enquadramento, som e a frase da autorização. Leva alguns minutos." };
   }
@@ -135,7 +142,7 @@ export function situacaoDoGemeo(c: CadastroDoGemeo | null | undefined, agora: Da
     fase: "sem-gemeo",
     tom: "neutro",
     titulo: "Você ainda não tem um gêmeo digital",
-    texto: "Para as semanas sem tempo de gravar: o gêmeo fala o roteiro da sua linha editorial com o seu rosto e a sua voz. Basta um vídeo de cerca de 1 minuto lendo o texto que aparece na tela.",
+    texto: "Para as semanas sem tempo de gravar: o gêmeo fala o roteiro da sua linha editorial com o seu rosto e a sua voz. Basta uma foto de frente, uma amostra da sua voz e a autorização gravada pela câmera.",
   };
 }
 

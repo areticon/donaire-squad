@@ -2,6 +2,7 @@ import {
   GERADORES,
   INSTRUCAO_DO_GERADOR,
   MODELO_DO_GERADOR,
+  MOVIMENTO_DA_FOTO_NA_HEYGEN,
   cenarioPorId,
   type IdDoCenario,
   type IdDoGerador,
@@ -13,20 +14,25 @@ import { ErroDoFornecedor, dubleLigado, estadoNoFal, pedirOmniHuman, resultadoNo
  *
  * O passo do cron (`gemeo-passo.ts`) não sabe mais QUEM gera: ele fala a voz,
  * pede cada pedaço a um `GeradorDoGemeo`, pergunta o estado e busca o vídeo.
- * Dois atrás da interface:
+ * Três atrás da interface:
  *
- *   omnihuman  o de 01/10 (fal.ai), a RESERVA. Anima uma imagem: o melhor
- *              quadro do vídeo de treino, ou a pessoa já composta no cenário;
- *   heygen     o RECOMENDADO: o gêmeo treinado a partir do vídeo de treino
- *              (API v3, "digital twin"); desde 04/10, cada cenário é o
- *              próprio gêmeo recortado e posto sobre um fundo profissional
- *              (`imagemDaHeygen`).
+ *   omnihuman    o de 01/10 (fal.ai), a RESERVA. Anima uma imagem: a foto do
+ *                cadastro, ou a pessoa já composta no cenário;
+ *   heygen       o gêmeo treinado a partir do vídeo de treino (API v3,
+ *                "digital twin"); desde 04/10, cada cenário é o próprio gêmeo
+ *                recortado e posto sobre um fundo profissional
+ *                (`imagemDaHeygen`). Ocupa vaga de gêmeo na conta;
+ *   heygen-foto  (05/10) o GÊMEO DE FOTO: `type: photo` no POST /v3/avatars
+ *                a partir da foto enviada, e o vídeo pelo Avatar IV com
+ *                `motion_prompt` de busto parado e `expressiveness: low`.
+ *                Sem treino, sem consentimento gravado, sem vaga.
  *
  * QUAL VALE: `GEMEO_GERADOR` (padrão "omnihuman"). Com "heygen", o gêmeo
  * treinado só é usado quando HEYGEN_API_KEY existe E o avatar do projeto está
- * pronto (treinado e com o consentimento aceito); até lá, e se a HeyGen
- * recusar o treino, o projeto segue gerando pela reserva, sem o cliente
- * ficar parado.
+ * pronto (treinado e com o consentimento aceito); sem ele, e também com
+ * "heygen-foto", vale o gêmeo de foto quando ele existe; e se a HeyGen
+ * recusar, o projeto segue gerando pela reserva, sem o cliente ficar parado
+ * (ver `geradorDoCadastro` em gemeo-servidor.ts).
  *
  * Do SERVIDOR (lê chave de ambiente).
  */
@@ -159,6 +165,31 @@ export async function criarGemeoNaHeygen(args: { nome: string; video: Buffer }):
   });
   if (!d.avatar_item?.id || !d.avatar_group?.id) throw new ErroDoFornecedor("heygen", "recusado", 200, "HeyGen não devolveu o avatar");
   return { avatarId: d.avatar_item.id, grupoId: d.avatar_group.id, vozId: d.avatar_item.default_voice_id ?? null };
+}
+
+/**
+ * CRIA O GÊMEO DE FOTO (05/10/2026): `type: photo` com a foto recortada do
+ * cadastro (busto, 1440 px). A HeyGen devolve o look em "processing" e o
+ * passo pergunta o estado (`estadoDoLook`) até "completed". Custa US$ 1,00
+ * por criação na tabela da API; não pede consentimento e não ocupa a vaga de
+ * gêmeo treinado (é um "photo avatar", não um "digital twin").
+ */
+export async function criarGemeoDeFotoNaHeygen(args: { nome: string; foto: Buffer; contentType?: string }): Promise<{ lookId: string; grupoId: string }> {
+  if (dubleLigado()) {
+    const id = Date.now().toString(36);
+    return { lookId: `duble-foto-${id}`, grupoId: `duble-grupo-foto-${id}` };
+  }
+  const { assetId } = await subirNaHeygen(args.foto, args.contentType ?? "image/jpeg", "foto.jpg");
+  const d = await heygen<{ avatar_item?: { id?: string; group_id?: string }; avatar_group?: { id?: string } }>("/v3/avatars", {
+    method: "POST",
+    body: JSON.stringify({ type: "photo", name: args.nome.slice(0, 80), file: { type: "asset_id", asset_id: assetId } }),
+    acao: "criar o gêmeo de foto",
+    timeoutMs: 120_000,
+  });
+  const lookId = d.avatar_item?.id;
+  const grupoId = d.avatar_group?.id ?? d.avatar_item?.group_id;
+  if (!lookId || !grupoId) throw new ErroDoFornecedor("heygen", "recusado", 200, "HeyGen não devolveu o avatar de foto");
+  return { lookId, grupoId };
 }
 
 /** O estado de um look (o gêmeo ou um cenário): processing, pending_consent, completed, failed. */
@@ -341,14 +372,87 @@ export const heygenGerador: GeradorDoGemeo = {
   },
 };
 
+// ─────────────────────────────── HeyGen, o gêmeo de foto (05/10) ───────────────────────────────
+
+/**
+ * O `imagem` de um pedaço do gêmeo de foto é `foto:<look>`: o avatar de foto
+ * do cadastro. Não há cenário: o busto da foto é o quadro de todos os pedaços
+ * (`geradorTemCenarios`), e é isso que evita mão inventada e fundo trocado.
+ */
+export function imagemDaFotoNaHeygen(lookId: string): string {
+  return `foto:${lookId}`;
+}
+
+export function lerImagemDaFotoNaHeygen(imagem: string): string {
+  return imagem.startsWith("foto:") ? imagem.slice(5) : imagem;
+}
+
+/**
+ * A PROPORÇÃO do gêmeo de foto: "auto" (a da própria foto, o quadrado do
+ * recorte), como a HeyGen recomenda para o Avatar IV. É o mesmo formato que o
+ * OmniHuman entregava (1440 x 1440) e a esteira aceita. GEMEO_PROPORCAO_FOTO
+ * troca (16:9, 9:16, 4:5, 1:1).
+ */
+const PROPORCAO_DA_FOTO = () => process.env.GEMEO_PROPORCAO_FOTO ?? "auto";
+
+/**
+ * O CORPO DO PEDIDO de um pedaço pelo gêmeo de foto. Exportado para a prova.
+ *
+ * Avatar IV, e não V: a tabela da HeyGen diz que `expressiveness` só existe no
+ * IV e que o `motion_prompt` em foto no V exige referência de animação. O
+ * movimento pedido é o busto parado com as mãos fora do quadro; a
+ * expressividade baixa é a padrão deles e a que menos inventa gesto.
+ */
+export function pedidoDaFotoNaHeygen(args: { imagem: string; fala: string }): Record<string, unknown> {
+  return {
+    type: "avatar",
+    avatar_id: lerImagemDaFotoNaHeygen(args.imagem),
+    audio_asset_id: args.fala,
+    aspect_ratio: PROPORCAO_DA_FOTO(),
+    resolution: "1080p",
+    engine: { type: process.env.GEMEO_HEYGEN_MOTOR_FOTO ?? "avatar_iv" },
+    motion_prompt: MOVIMENTO_DA_FOTO_NA_HEYGEN,
+    expressiveness: process.env.GEMEO_HEYGEN_EXPRESSIVIDADE ?? "low",
+    title: "Demandou gêmeo de foto",
+  };
+}
+
+export const heygenFotoGerador: GeradorDoGemeo = {
+  id: "heygen-foto",
+  modelo: "heygen/avatar-iv-photo-avatar",
+  configurado: () => Boolean(process.env.HEYGEN_API_KEY) || dubleLigado(),
+  subirFala: async (dados, nome, contentType) => (await subirNaHeygen(dados, contentType ?? "audio/mpeg", nome)).assetId,
+  async pedir({ imagem, fala }) {
+    if (dubleLigado()) {
+      const id = `duble-heygen-foto-${Math.random().toString(36).slice(2, 10)}`;
+      return { requestId: id, statusUrl: `duble://status/${id}?em=${Date.now()}`, responseUrl: `duble://resposta/${id}` };
+    }
+    const d = await heygen<{ video_id?: string }>("/v3/videos", {
+      method: "POST",
+      body: JSON.stringify(pedidoDaFotoNaHeygen({ imagem, fala })),
+      acao: "pedir o vídeo",
+    });
+    if (!d.video_id) throw new ErroDoFornecedor("heygen", "recusado", 200, "HeyGen não devolveu o video_id");
+    return { requestId: d.video_id, statusUrl: `heygen://video/${d.video_id}`, responseUrl: `heygen://video/${d.video_id}` };
+  },
+  estado: (p) => heygenGerador.estado(p),
+  resultado: (p) => heygenGerador.resultado(p),
+};
+
 // ─────────────────────────────── qual vale ───────────────────────────────
 
-export const GERADORES_DO_GEMEO: Record<IdDoGerador, GeradorDoGemeo> = { omnihuman, heygen: heygenGerador };
+export const GERADORES_DO_GEMEO: Record<IdDoGerador, GeradorDoGemeo> = { omnihuman, heygen: heygenGerador, "heygen-foto": heygenFotoGerador };
 
 /** O gerador escolhido pelo ambiente (GEMEO_GERADOR), se tiver chave. */
 export function geradorPreferido(): IdDoGerador {
   const pedido = (process.env.GEMEO_GERADOR ?? "omnihuman") as IdDoGerador;
   return pedido in GERADORES && GERADORES_DO_GEMEO[pedido].configurado() ? pedido : "omnihuman";
+}
+
+/** O ambiente pede a HeyGen (treinado ou de foto) e há chave: o gêmeo de foto é criado para o projeto. */
+export function gemeoDeFotoLigado(): boolean {
+  const p = geradorPreferido();
+  return p === "heygen" || p === "heygen-foto";
 }
 
 /** O gerador de um pedido já gravado (os antigos não têm o campo). */
