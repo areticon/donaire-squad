@@ -7,6 +7,7 @@ import { FONTES, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import { modeloPorId, modeloDaPeca, formatoPeloTamanho, type ModeloDeArte, type TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
 import { desenharModelo, zonaDaFoto, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
 import { TEXTO_FIXO_DOS_MODELOS_COM_FOTO } from "@/lib/modelos-de-arte/desenho-com-foto";
+import { efeitoDoModelo } from "@/lib/modelos-de-arte/pecas-do-desenho";
 import { registrarTextoComposto } from "@/lib/modelos-de-arte/registro";
 import type { LetraId } from "@/lib/modelos-de-arte/identidade";
 
@@ -150,7 +151,7 @@ export interface PedidoDeComposicao {
   marca: string;
   arroba?: string;
   pagina?: { i: number; total: number } | null;
-  /** A pessoa recortada da foto real do cliente (PNG), para o modelo com profundidade. */
+  /** A pessoa recortada da foto real do cliente (PNG), para qualquer modelo com foto "recorte". */
   recorte?: Buffer | null;
   /** A letra aprovada pelo cliente (05/10, lib/modelos-de-arte/identidade.ts). */
   letra?: LetraId | null;
@@ -175,16 +176,57 @@ async function semCor(foto: Buffer | null | undefined, png: boolean): Promise<Bu
   }
 }
 
+/**
+ * OS EFEITOS NO PIXEL (05/10), o que o Satori não faz e o sharp faz, pela
+ * tabela EFEITOS_DO_MODELO (lib/modelos-de-arte/pecas-do-desenho.tsx): a curva
+ * de contraste "alto impacto" (na foto e na pessoa, sem mexer no alfa), o
+ * desfoque do fundo e o PNG da sombra suave da pessoa (a silhueta do alfa,
+ * desfocada e escurecida). Se algo falhar, a peça segue sem o efeito.
+ */
+async function contrasteNoPixel(img: Buffer, png: boolean): Promise<Buffer> {
+  try {
+    if (!png) return await sharp(img).linear(1.12, -14).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+    // No PNG, a curva vai só no RGB; o alfa volta como estava.
+    const alfa = await sharp(img).ensureAlpha().extractChannel(3).raw().toBuffer();
+    const { data, info } = await sharp(img).removeAlpha().linear(1.12, -14).raw().toBuffer({ resolveWithObject: true });
+    return await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 } }).joinChannel(alfa, { raw: { width: info.width, height: info.height, channels: 1 } }).png().toBuffer();
+  } catch (e) {
+    console.warn("[modelos-de-arte] o contraste não entrou:", e instanceof Error ? e.message : e);
+    return img;
+  }
+}
+
+async function sombraSuaveDaPessoa(recorte: Buffer, u: number): Promise<Buffer | null> {
+  try {
+    const meta = await sharp(recorte).metadata();
+    const W = meta.width ?? 0;
+    const H = meta.height ?? 0;
+    if (!W || !H) return null;
+    const alfa = await sharp(recorte).ensureAlpha().extractChannel(3).blur(Math.max(4, 14 * u)).linear(0.6, 0).raw().toBuffer();
+    const preto = Buffer.alloc(W * H * 3, 0);
+    return await sharp(preto, { raw: { width: W, height: H, channels: 3 } }).joinChannel(alfa, { raw: { width: W, height: H, channels: 1 } }).png().toBuffer();
+  } catch (e) {
+    console.warn("[modelos-de-arte] a sombra suave não entrou:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 /** Compõe a peça no modelo e devolve JPEG. Sem chamada paga. */
 export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
   if (p.modelo.fotoPretoEBranco) {
     p = { ...p, foto: await semCor(p.foto, false), recorte: await semCor(p.recorte, true) };
   }
+  const efeito = efeitoDoModelo(p.modelo.arquetipo);
+  const u = Math.min(p.largura, p.altura) / 1080;
+  if (p.foto && efeito.contrasteDaFoto) p = { ...p, foto: await contrasteNoPixel(p.foto, false) };
+  if (p.recorte && efeito.pessoa?.contraste) p = { ...p, recorte: await contrasteNoPixel(p.recorte, true) };
   const z = zonaDaFoto(p.modelo, p.largura, p.altura);
   let foto: string | null = null;
   let recorte: string | null = null;
   let fundoDesfocado: string | null = null;
-  // PROFUNDIDADE (03/10): foto, pessoa e fundo desfocado no mesmo recorte.
+  let recorteSombra: string | null = null;
+  // PROFUNDIDADE (03/10): foto, pessoa e fundo desfocado no mesmo recorte, em
+  // qualquer modelo com foto "recorte" (05/10: não só o "Você na frente do título").
   if (p.foto && p.recorte && p.modelo.foto === "recorte") {
     const { enquadrarComPessoa } = await import("@/lib/materiais/profundidade");
     const e = await enquadrarComPessoa({ foto: p.foto, recorte: p.recorte, largura: p.largura, altura: p.altura }).catch(() => null);
@@ -192,11 +234,17 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
       foto = dataUri(e.foto, "image/jpeg");
       recorte = dataUri(e.recorte);
       fundoDesfocado = dataUri(e.fundo, "image/jpeg");
+      if (efeito.pessoa?.sombra === "suave") {
+        const sombra = await sombraSuaveDaPessoa(e.recorte, u);
+        if (sombra) recorteSombra = dataUri(sombra);
+      }
     }
   }
   if (!foto && p.foto && z) {
-    const ajustada = await sharp(p.foto).resize(Math.max(1, Math.round(z.w)), Math.max(1, Math.round(z.h)), { fit: "cover", position: "attention" }).jpeg({ quality: 90 }).toBuffer();
-    foto = dataUri(ajustada, "image/jpeg");
+    let ajustada = sharp(p.foto).resize(Math.max(1, Math.round(z.w)), Math.max(1, Math.round(z.h)), { fit: "cover", position: "attention" });
+    // O desfoque do fundo do modelo, no pixel (a prévia faz por filtro CSS).
+    if (efeito.fundo?.desfoque) ajustada = ajustada.blur(Math.max(1, efeito.fundo.desfoque * u));
+    foto = dataUri(await ajustada.jpeg({ quality: 90 }).toBuffer(), "image/jpeg");
   }
   // O MODELO POR PROMPT (05/10): a colagem gerada vira o fundo inteiro da peça,
   // no pixel exato; a tipografia entra por cima no desenho.
@@ -221,6 +269,7 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     recorte,
     fundoDesfocado,
     fundoGerado,
+    recorteSombra,
     letra: p.letra ?? null,
   });
   const resposta = new ImageResponse(elemento as React.ReactElement, { width: p.largura, height: p.altura, fonts: await fontesDosModelos() });

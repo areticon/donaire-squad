@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { estiloDaFonte, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 import type { EntradaDoDesenho, Zona } from "@/lib/modelos-de-arte/desenho";
-import { Assinatura, Imagem, Seta, Texto, Vazio, base, contrasteEntre, flex, misturar, noNavegador, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
+import { Assinatura, Imagem, Pessoa, Seta, Texto, Vazio, Vinheta, base, contrasteEntre, efeitoDoModelo, flex, misturar, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
 import { CONTRASTE_MINIMO_DO_TEXTO } from "@/lib/modelos-de-arte/identidade";
 
 /**
@@ -301,7 +301,9 @@ export function desenharModeloVox(e: EntradaDoDesenho): ReactNode | null {
   const modoDaPalavra = destaqueLeNoPapel ? "cor" : "bloco";
   const semente = e.textos.titulo.length * 7 + W;
   const pb = Boolean(md.fotoPretoEBranco);
-  const filtroPb = pb && noNavegador() ? { filter: "grayscale(1) contrast(1.15)" } : {};
+  // Os efeitos do modelo (05/10): sombra, luz, vinheta, contraste; um por modelo.
+  const efeito = efeitoDoModelo(md.arquetipo);
+  const coresDoEfeito = { acento: destaque, tinta };
   const inteira: Zona = { x: 0, y: 0, w: W, h: H };
 
   const Papel = () => <Fundo src={papelDataUri(W, H, papel, semente)} W={W} H={H} />;
@@ -310,14 +312,9 @@ export function desenharModeloVox(e: EntradaDoDesenho): ReactNode | null {
       <Assinatura e={e} fundo={bg} altura={logoH} alinhar={alinhar} />
     </div>
   );
-  /** A pessoa recortada, em preto e branco, deslocada e escalada (frações da peça). */
+  /** A pessoa recortada, em preto e branco, deslocada e escalada (frações da peça), com o efeito do modelo. */
   const pessoa = (desloca: number, escala: number) =>
-    e.recorte ? (
-      <div style={flex({ position: "absolute", left: Math.round(W * desloca), top: Math.round(H * (1 - escala)), width: Math.round(W * escala), height: Math.round(H * escala), overflow: "hidden" })}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={e.recorte} alt="" width={Math.round(W * escala)} height={Math.round(H * escala)} style={{ width: Math.round(W * escala), height: Math.round(H * escala), objectFit: "cover", ...filtroPb }} />
-      </div>
-    ) : null;
+    e.recorte ? <Pessoa src={e.recorte} W={W} H={H} desloca={desloca} escala={escala} pb={pb} efeito={efeito.pessoa} cores={coresDoEfeito} sombraSrc={e.recorteSombra} /> : null;
   /** A foto num pedaço de papel rasgado, com meio-tom; o que entra quando não há pessoa recortada. */
   const fotoRasgada = (z: Zona, rot: number) => {
     const borda = Math.round(22 * u);
@@ -548,6 +545,7 @@ export function desenharModeloVox(e: EntradaDoDesenho): ReactNode | null {
       return raiz(
         <>
           {e.foto ? <Imagem src={e.foto} z={inteira} pb={pb} /> : <Vazio z={inteira} cor={tomDaFoto} />}
+          {efeito.fundo?.vinheta ? <Vinheta W={W} H={H} forca={efeito.fundo.vinheta} /> : null}
           <MeioTom z={direita} u={u} />
           <div style={flex({ position: "absolute", left: Math.round(W / 2 - barra / 2), top: 0, width: barra, height: H, background: destaque })} />
           {rotulo(rot[0], 0, "flex-end")}

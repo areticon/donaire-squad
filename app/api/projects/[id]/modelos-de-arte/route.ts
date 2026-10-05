@@ -5,7 +5,7 @@ import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
 import { PALETA_PADRAO_DA_PLATAFORMA, esquecerIdentidade, identidadeDoProjeto } from "@/lib/media/identidade-visual";
 import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
-import { fotosDaVitrine, pessoaDeBanco, type PessoaDaPrevia } from "@/lib/modelos-de-arte/fotos-do-book";
+import { fotosDaVitrine, pessoasDeBanco, type PessoaDaPrevia } from "@/lib/modelos-de-arte/fotos-do-book";
 import { estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
 import { artesAguardandoIdentidade, gerarArtesAguardando } from "@/lib/media/artes-aguardando-identidade";
 
@@ -17,9 +17,10 @@ import { artesAguardandoIdentidade, gerarArtesAguardando } from "@/lib/media/art
  * PUT { ids } grava a escolha, que a geração das artes obedece
  * (lib/media/arte-com-frase.tsx). Só o dono muda, como a direção visual.
  *
- * 05/10: devolve também as fotos das prévias (uma diferente por modelo) e a
- * pessoa do "Você na frente do título" (a foto real do cliente já recortada,
- * ou uma pessoa de banco de imagem recortada; nunca silhueta).
+ * 05/10: devolve também as fotos das prévias (uma diferente por modelo), a
+ * pessoa do cliente (a foto real já recortada, quando existe; tem prioridade)
+ * e a lista de pessoas de banco sorteada para o projeto, de onde cada modelo
+ * com recorte pega a sua (lib/modelos-de-arte/fotos-do-book.ts); nunca silhueta.
  *
  * 05/10, A IDENTIDADE APROVADA (lib/modelos-de-arte/identidade.ts): GET traz
  * a paleta, a letra, os papéis das cores, as fotos (naturais, preto e branco
@@ -104,7 +105,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       arroba: usuario ? `@${usuario}` : undefined,
     },
     fotos: fotosDaVitrine(identidade.setor.id, id),
-    pessoa: daFotoReal ?? pessoaDeBanco(id),
+    pessoa: daFotoReal,
+    pessoas: pessoasDeBanco(id),
     identidade: await identidadeParaATela(id, p.colorPalette),
   });
 }

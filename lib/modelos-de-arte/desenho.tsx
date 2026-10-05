@@ -60,6 +60,13 @@ export interface EntradaDoDesenho {
   recorte?: string | null;
   fundoDesfocado?: string | null;
   /**
+   * A SOMBRA SUAVE DA PESSOA (05/10), só do servidor: o PNG da silhueta
+   * desfocada que o sharp desenha em lib/modelos-de-arte/compor.tsx para os
+   * modelos cujo efeito pede sombra suave (lib/modelos-de-arte/pecas-do-desenho.tsx).
+   * Na prévia a sombra é drop-shadow do CSS, e isto fica vazio.
+   */
+  recorteSombra?: string | null;
+  /**
    * O TRATAMENTO DA FOTO NA PRÉVIA (05/10, lib/modelos-de-arte/tratamento.ts),
    * SÓ NO NAVEGADOR: a galeria mostra a foto em preto e branco ou em duotone
    * com filtro CSS e um véu em multiply. O servidor NUNCA passa isto: lá a

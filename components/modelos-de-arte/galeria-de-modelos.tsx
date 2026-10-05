@@ -73,23 +73,40 @@ interface FotoDaPrevia {
   tipo: string;
 }
 
-/** A pessoa recortada da prévia do "Você na frente do título". */
+/** A pessoa recortada da prévia dos modelos com recorte. */
 interface PessoaDaPrevia {
   fundo: string;
   recorte: string;
   origem: "cliente" | "banco";
+  rotulo?: string;
 }
 
-/** O que a prévia precisa além da marca: a foto de cada modelo e a pessoa recortada. */
+/**
+ * O que a prévia precisa além da marca: a foto de cada modelo, a pessoa do
+ * cliente (quando ele tem foto recortada; tem prioridade) e as pessoas de banco
+ * sorteadas para o projeto (uma por modelo com recorte, sem repetir na tela).
+ */
 interface MidiaDaGaleria {
   fotos: FotoDaPrevia[];
   pessoa: PessoaDaPrevia | null;
+  pessoas: PessoaDaPrevia[];
 }
 
 /** Os modelos com foto, na ordem do catálogo: a posição de cada um escolhe a foto dele. */
 const POSICAO_DA_FOTO = new Map(
   MODELOS_DE_ARTE.filter((m) => m.foto !== "nenhuma" && m.foto !== "recorte").map((m, i) => [m.id, i] as const)
 );
+
+/** Os modelos com pessoa recortada, na ordem do catálogo: a posição escolhe a pessoa de banco. */
+const POSICAO_DA_PESSOA = new Map(MODELOS_DE_ARTE.filter((m) => m.foto === "recorte").map((m, i) => [m.id, i] as const));
+
+/** A pessoa do modelo: a do cliente quando existe; senão a de banco da posição do modelo (05/10). */
+function pessoaDoModelo(modelo: ModeloDeArte, midia: MidiaDaGaleria): PessoaDaPrevia | null {
+  if (modelo.foto !== "recorte") return null;
+  if (midia.pessoa) return midia.pessoa;
+  if (!midia.pessoas.length) return null;
+  return midia.pessoas[(POSICAO_DA_PESSOA.get(modelo.id) ?? 0) % midia.pessoas.length];
+}
 
 /** A foto do modelo: uma diferente para cada modelo; sem lista, a foto antiga do setor. */
 function fotoDoModelo(modelo: ModeloDeArte, midia: MidiaDaGaleria, setor: string, grande: boolean): string | null {
@@ -174,6 +191,7 @@ export function PreviaDoModelo({
 }) {
   const { largura: W, altura: H } = TAMANHO_DO_FORMATO[formato];
   const escala = Math.min(caixa.largura / W, caixa.altura / H);
+  const pessoa = pessoaDoModelo(modelo, midia);
   const desenho = useMemo(
     () =>
       desenharModelo({
@@ -183,11 +201,11 @@ export function PreviaDoModelo({
         letra: letra ?? null,
         largura: W,
         altura: H,
-        // "Você na frente do título": a pessoa recortada (a do cliente ou a de
-        // banco) na frente do título, sobre o fundo dela desfocado.
-        foto: modelo.foto === "recorte" ? (midia.pessoa?.fundo ?? null) : fotoDoModelo(modelo, midia, marca.setor, grande),
-        fundoDesfocado: modelo.foto === "recorte" ? (midia.pessoa?.fundo ?? null) : null,
-        recorte: modelo.foto === "recorte" ? (midia.pessoa?.recorte ?? null) : null,
+        // Modelos com recorte: a pessoa (a do cliente ou a de banco sorteada
+        // para este modelo) na frente do título, sobre o fundo dela desfocado.
+        foto: modelo.foto === "recorte" ? (pessoa?.fundo ?? null) : fotoDoModelo(modelo, midia, marca.setor, grande),
+        fundoDesfocado: modelo.foto === "recorte" ? (pessoa?.fundo ?? null) : null,
+        recorte: modelo.foto === "recorte" ? (pessoa?.recorte ?? null) : null,
         logo: marca.logoUrl && logoProporcao ? marca.logoUrl : null,
         logoProporcao,
         marca: marca.nome,
@@ -370,7 +388,7 @@ function FichaDoModelo({
           </dl>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             {modelo.foto === "recorte"
-              ? midia.pessoa?.origem === "cliente"
+              ? midia.pessoa
                 ? "Prévia com a sua foto da biblioteca de materiais; na arte entra a foto que combinar com o post."
                 : "Prévia com uma pessoa de banco de imagem; na sua arte entra a SUA foto da biblioteca de materiais, recortada."
               : `Texto e foto de exemplo do seu nicho (${marca.setorNome}); na sua arte entram o texto do post e uma foto feita para ele. Números do exemplo são ilustrativos.`}
@@ -685,7 +703,7 @@ export function GaleriaDeModelos({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!vivo || !d) return;
-        setDados({ marca: d.marca, podeMudar: Boolean(d.podeMudar), midia: { fotos: Array.isArray(d.fotos) ? d.fotos : [], pessoa: d.pessoa ?? null } });
+        setDados({ marca: d.marca, podeMudar: Boolean(d.podeMudar), midia: { fotos: Array.isArray(d.fotos) ? d.fotos : [], pessoa: d.pessoa ?? null, pessoas: Array.isArray(d.pessoas) ? d.pessoas : [] } });
         setEscolha(d.escolha ?? []);
         salvo.current = JSON.stringify(d.escolha ?? []);
         aplicarIdentidade(d.identidade);

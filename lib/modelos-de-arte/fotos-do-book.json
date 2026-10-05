@@ -1135,22 +1135,15 @@
  ],
  "pessoas": [
   {
-   "id": 7175038,
-   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7175038-fundo.jpg",
-   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7175038-recorte.png",
-   "w": 1080,
-   "h": 1350,
-   "autor": "AlisaDyson",
-   "pagina": "https://pixabay.com/photos/woman-smiling-portrait-outdoors-7175038/"
-  },
-  {
    "id": 890885,
    "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/890885-fundo.jpg",
    "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/890885-recorte.png",
    "w": 1080,
    "h": 1350,
    "autor": "752910",
-   "pagina": "https://pixabay.com/photos/man-cook-cooking-cut-food-meat-890885/"
+   "pagina": "https://pixabay.com/photos/man-cook-cooking-cut-food-meat-890885/",
+   "rotulo": "chef de chapéu",
+   "enquadramento": "corpo"
   },
   {
    "id": 6066661,
@@ -1159,16 +1152,273 @@
    "w": 1080,
    "h": 1350,
    "autor": "LEVEL_uP_PICTURES",
-   "pagina": "https://pixabay.com/photos/fashion-model-woman-manager-6066661/"
+   "pagina": "https://pixabay.com/photos/fashion-model-woman-manager-6066661/",
+   "rotulo": "mulher de blazer pensando",
+   "enquadramento": "rosto"
   },
   {
-   "id": 841171,
-   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/841171-fundo.jpg",
-   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/841171-recorte.png",
+   "id": 1868750,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1868750-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1868750-recorte.png",
    "w": 1080,
    "h": 1350,
-   "autor": "PourquoiPas",
-   "pagina": "https://pixabay.com/photos/book-read-woman-reading-glasses-841171/"
+   "autor": "Pexels",
+   "pagina": "https://pixabay.com/photos/adult-bald-beard-corporate-1868750/",
+   "rotulo": "homem rindo de terno",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 1690965,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1690965-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1690965-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "shawrypa",
+   "pagina": "https://pixabay.com/photos/man-smile-bold-elegant-male-1690965/",
+   "rotulo": "homem sorrindo de blazer",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 4568762,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/4568762-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/4568762-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "elsimage",
+   "pagina": "https://pixabay.com/photos/portrait-man-social-company-4568762/",
+   "rotulo": "homem sério de terno escuro",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 4568761,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/4568761-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/4568761-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "elsimage",
+   "pagina": "https://pixabay.com/photos/man-suit-black-male-portrait-adult-4568761/",
+   "rotulo": "homem de óculos pensando",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 5791566,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/5791566-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/5791566-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "ShaneRoybal",
+   "pagina": "https://pixabay.com/photos/businessman-smile-portrait-man-5791566/",
+   "rotulo": "homem de camisa apoiado",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 7175038,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7175038-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7175038-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "AlisaDyson",
+   "pagina": "https://pixabay.com/photos/woman-smiling-portrait-outdoors-7175038/",
+   "rotulo": "mulher sorrindo casual",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 7956041,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7956041-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7956041-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "itay-verchik",
+   "pagina": "https://pixabay.com/photos/man-suit-success-business-career-7956041/",
+   "rotulo": "homem de blazer de perfil",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 9182458,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/9182458-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/9182458-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "GlassesShop",
+   "pagina": "https://pixabay.com/photos/man-fashion-model-pose-portrait-9182458/",
+   "rotulo": "homem de casaco com celular",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 6576618,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/6576618-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/6576618-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "Surprising_Media",
+   "pagina": "https://pixabay.com/photos/woman-red-dress-phone-purse-bag-6576618/",
+   "rotulo": "mulher de vestido com celular",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 1868730,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1868730-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1868730-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "Pexels",
+   "pagina": "https://pixabay.com/photos/man-black-man-mobile-phone-person-1868730/",
+   "rotulo": "homem de camiseta com celular",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 1281562,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1281562-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1281562-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "Pexels",
+   "pagina": "https://pixabay.com/photos/man-portrait-model-profile-fashion-1281562/",
+   "rotulo": "homem de camisa no estúdio",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 1850703,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1850703-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1850703-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "Pexels",
+   "pagina": "https://pixabay.com/photos/woman-model-fashion-portrait-1850703/",
+   "rotulo": "mulher de perfil",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 3098319,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3098319-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3098319-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "uminov-v-v",
+   "pagina": "https://pixabay.com/photos/portrait-woman-adult-people-pretty-3098319/",
+   "rotulo": "mulher séria de suéter",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 3157821,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3157821-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3157821-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "artsysolomon",
+   "pagina": "https://pixabay.com/photos/portrait-people-adult-africa-3157821/",
+   "rotulo": "homem de óculos pensando",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 3803551,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3803551-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/3803551-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "melancholiaphotography",
+   "pagina": "https://pixabay.com/photos/man-coffee-outdoors-lake-lakeside-3803551/",
+   "rotulo": "homem sorrindo com café",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 1280445,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1280445-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1280445-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "brenkee",
+   "pagina": "https://pixabay.com/photos/granny-woman-senior-elder-elderly-1280445/",
+   "rotulo": "mulher madura sorrindo",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 1845166,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1845166-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/1845166-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "Pexels",
+   "pagina": "https://pixabay.com/photos/beard-face-man-model-mustache-1845166/",
+   "rotulo": "homem de barba casual",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 657753,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/657753-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/657753-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "818376",
+   "pagina": "https://pixabay.com/photos/woman-portrait-model-smile-smiling-657753/",
+   "rotulo": "mulher sorrindo",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 635271,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/635271-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/635271-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "JillWellington",
+   "pagina": "https://pixabay.com/photos/beautiful-young-woman-black-coat-635271/",
+   "rotulo": "mulher de casaco",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 2141808,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/2141808-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/2141808-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "voltamax",
+   "pagina": "https://pixabay.com/photos/woman-doctor-surgeon-physician-2141808/",
+   "rotulo": "médica de jaleco",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 2359121,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/2359121-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/2359121-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "JerzyGórecki",
+   "pagina": "https://pixabay.com/photos/beautiful-woman-portrait-model-2359121/",
+   "rotulo": "mulher ruiva séria",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 8499901,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/8499901-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/8499901-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "This_is_Engineering",
+   "pagina": "https://pixabay.com/photos/solar-panel-solar-panels-8499901/",
+   "rotulo": "engenheiro de capacete",
+   "enquadramento": "corpo"
+  },
+  {
+   "id": 7275452,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7275452-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/7275452-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "itayverchik",
+   "pagina": "https://pixabay.com/photos/male-model-portrait-man-face-7275452/",
+   "rotulo": "homem de terno claro",
+   "enquadramento": "rosto"
+  },
+  {
+   "id": 657869,
+   "fundo": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/657869-fundo.jpg",
+   "recorte": "https://9e0m1l1ldork0jul.public.blob.vercel-storage.com/book-modelos/pessoas/657869-recorte.png",
+   "w": 1080,
+   "h": 1350,
+   "autor": "muratkalenderoglu",
+   "pagina": "https://pixabay.com/photos/man-beard-portrait-bearded-man-657869/",
+   "rotulo": "homem de barba sério",
+   "enquadramento": "rosto"
   }
  ]
 }

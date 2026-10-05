@@ -181,11 +181,24 @@ export async function modeloParaOMaterial(
   }
   const ids = marca.modelos ?? [];
   const pessoa = material.etiquetas.includes("pessoa");
-  if (pessoa && (!ids.length || ids.includes(MODELO_COM_PROFUNDIDADE))) return { usar: true, modelo: modeloPorId(MODELO_COM_PROFUNDIDADE) ?? null };
+  if (pessoa && !ids.length) return { usar: true, modelo: modeloPorId(MODELO_COM_PROFUNDIDADE) ?? null };
   if (!ids.length) return { usar: true, modelo: null };
-  const comFoto = ids.filter((id) => (modeloPorId(id)?.foto ?? "nenhuma") !== "nenhuma" && (pessoa || id !== MODELO_COM_PROFUNDIDADE));
-  if (!comFoto.length) return { usar: false, modelo: null };
   const { modeloParaAPeca } = await import("@/lib/modelos-de-arte/compor");
+  // Com pessoa na foto, os modelos com recorte escolhidos têm a preferência:
+  // a pessoa recortada vai na frente do título em qualquer um deles.
+  const comRecorte = pessoa ? ids.filter((id) => modeloPorId(id)?.foto === "recorte") : [];
+  if (comRecorte.length) {
+    const m = modeloParaAPeca({ ids: comRecorte, largura, altura, frase, contexto: marca.contexto, carrossel: Boolean(marca.pagina) });
+    if (m) return { usar: true, modelo: m };
+  }
+  // A FOTO DA PESSOA SÓ NOS MODELOS "VOCÊ" (05/10). O post de Fé & Gestão
+  // saiu com a foto do Bruno cortada nos olhos num modelo de cena
+  // ("foto-legenda-escura"), que ele nunca pediu: "quando eu falei que queria
+  // usar essa foto em algum post?". Sem modelo com recorte escolhido, a foto
+  // dele fica fora, e a cena vem do modelo de imagem.
+  if (pessoa) return { usar: false, modelo: null };
+  const comFoto = ids.filter((id) => !["nenhuma", "recorte"].includes(modeloPorId(id)?.foto ?? "nenhuma"));
+  if (!comFoto.length) return { usar: false, modelo: null };
   const m = modeloParaAPeca({ ids: comFoto, largura, altura, frase, contexto: marca.contexto, carrossel: Boolean(marca.pagina) });
   return { usar: Boolean(m), modelo: m };
 }

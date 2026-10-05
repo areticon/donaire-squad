@@ -4,7 +4,7 @@ import { estiloDaFonte, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 import type { EntradaDoDesenho, Zona } from "@/lib/modelos-de-arte/desenho";
 import { mapaPontilhadoDataUri } from "@/lib/modelos-de-arte/mapa-pontilhado";
-import { Arraste, Assinatura, Imagem, Texto, Vazio, base, flex, luminancia, misturar, noNavegador, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
+import { Arraste, Assinatura, Imagem, Pessoa, Texto, Vazio, Vinheta, base, efeitoDoModelo, flex, luminancia, misturar, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
 import { ARQUETIPOS_VOX, TEXTO_FIXO_DOS_MODELOS_VOX, desenharModeloVox, zonaDaFotoVox } from "@/lib/modelos-de-arte/desenho-vox";
 
 /**
@@ -29,6 +29,10 @@ import { ARQUETIPOS_VOX, TEXTO_FIXO_DOS_MODELOS_VOX, desenharModeloVox, zonaDaFo
  * O preto e branco é feito em código, sem IA: na prévia, filtro CSS (só no
  * navegador); no servidor, o sharp tira a cor do pixel antes de compor
  * (lib/modelos-de-arte/compor.tsx), porque o Satori não entende `filter`.
+ *
+ * OS EFEITOS (05/10): cada modelo tem o seu em EFEITOS_DO_MODELO
+ * (lib/modelos-de-arte/pecas-do-desenho.tsx): sombra dura ou suave da pessoa,
+ * rim light ou glow atrás dela, vinheta e desfoque do fundo, contraste.
  *
  * Fica num arquivo próprio para o desenho principal receber só a chamada; as
  * peças comuns moram em lib/modelos-de-arte/pecas-do-desenho.tsx e a família
@@ -86,14 +90,12 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
   const { W, H, u, m, md, acento, acentoLegivel, fundo, tinta, tintaFraca, tf, xf, caixaAlta, palavra, logoH, larguraUtil, alta, tomDaFoto, capaDoCarrossel, raiz, t } = b;
   const inteira: Zona = { x: 0, y: 0, w: W, h: H };
   const pb = Boolean(md.fotoPretoEBranco);
-  const fotoInteira = (src: string | null | undefined) => (src ? <Imagem src={src} z={inteira} pb={pb} /> : <Vazio z={inteira} cor={tomDaFoto} />);
+  const fotoInteira = (src: string | null | undefined) => (src ? <Imagem src={src} z={inteira} pb={pb} desfoque={efeito.fundo?.desfoque ?? 0} contraste={Boolean(efeito.contrasteDaFoto)} /> : <Vazio z={inteira} cor={tomDaFoto} />);
+  const efeito = efeitoDoModelo(md.arquetipo);
+  const coresDoEfeito = { acento, tinta };
   const recorteNaFrente = (desloca = 0, escala = 1) =>
-    e.recorte ? (
-      <div style={flex({ position: "absolute", left: Math.round(W * desloca), top: Math.round(H * (1 - escala)), width: Math.round(W * escala), height: Math.round(H * escala), overflow: "hidden" })}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={e.recorte} alt="" width={Math.round(W * escala)} height={Math.round(H * escala)} style={{ width: Math.round(W * escala), height: Math.round(H * escala), objectFit: "cover", ...(pb && noNavegador() ? { filter: "grayscale(1) contrast(1.08)" } : {}) }} />
-      </div>
-    ) : null;
+    e.recorte ? <Pessoa src={e.recorte} W={W} H={H} desloca={desloca} escala={escala} pb={pb} efeito={efeito.pessoa} cores={coresDoEfeito} sombraSrc={e.recorteSombra} /> : null;
+  const vinheta = efeito.fundo?.vinheta ? <Vinheta W={W} H={H} forca={efeito.fundo.vinheta} /> : null;
   const logoNoAlto = (bg: string, alinhar: "flex-start" | "center" | "flex-end" = "flex-start") => (
     <div style={flex({ position: "absolute", left: m, top: m, width: larguraUtil, justifyContent: alinhar })}>
       <Assinatura e={e} fundo={bg} altura={logoH} alinhar={alinhar} />
@@ -114,7 +116,8 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
       // Sobre o degradê quase opaco do fundo, o título lê na tinta aprovada.
       return raiz(
         <>
-          {fotoInteira(e.foto)}
+          {fotoInteira(e.fundoDesfocado ?? e.foto)}
+          {vinheta}
           {recorteNaFrente()}
           <div style={flex({ position: "absolute", left: 0, top: H - baseH, width: W, height: baseH, backgroundImage: `linear-gradient(180deg, ${rgba(fundo, 0)} 0%, ${rgba(fundo, 0.72)} 45%, ${rgba(fundo, 0.96)} 100%)` })} />
           {logoNoAlto("#000000")}
@@ -134,6 +137,7 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
       return raiz(
         <>
           {fotoInteira(e.foto)}
+          {vinheta}
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)" })} />
           {logoNoAlto("#000000")}
           <div style={flex({ position: "absolute", left: m, bottom: m + (alta ? H * 0.08 : 0), width: larguraUtil, flexDirection: "column", alignItems: "flex-start" })}>
@@ -201,7 +205,7 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
       const palavraLimpa = palavra.replace(/[.,;:!?]+$/u, "");
       return raiz(
         <>
-          {fotoInteira(e.foto)}
+          {fotoInteira(e.recorte ? (e.fundoDesfocado ?? e.foto) : e.foto)}
           <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 28%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.85) 100%)" })} />
           <div style={flex({ position: "absolute", left: m * 0.5, top: topoDaPalavra, width: W - m, height: palavraCaixa, justifyContent: "center", alignItems: "center" })}>
             <Texto texto={palavraLimpa} fonte={tf} largura={W - m} altura={palavraCaixa} corpoMaximo={360 * u} corpoMinimo={80 * u} entrelinha={1.0} cor={acento} caixaAlta alinhar="center" maxLinhas={1} />
@@ -252,6 +256,7 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
       return raiz(
         <>
           {fotoInteira(e.foto)}
+          {vinheta}
           <div style={flex({ position: "absolute", left: 0, top: H - Math.round(H * 0.2), width: W, height: Math.round(H * 0.2), backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 100%)" })} />
           <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 0.8 - 10 * u, width: 90 * u, height: 8 * u, background: acento })} />
           <div style={flex({ position: "absolute", right: m, top: H - m - logoH * 0.8, justifyContent: "flex-end" })}>

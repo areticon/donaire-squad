@@ -69,16 +69,162 @@ export const noNavegador = () => typeof window !== "undefined";
 
 /**
  * A imagem numa zona, cobrindo. Com `pb`, a prévia aplica o filtro de cinza;
- * no servidor a foto já chega sem cor no pixel, e o filtro não entra.
+ * no servidor a foto já chega sem cor no pixel, e o filtro não entra. O mesmo
+ * vale para `desfoque` (px) e `contraste` (05/10): na prévia, filtro CSS; no
+ * servidor, o sharp já fez no pixel (lib/modelos-de-arte/compor.tsx).
  */
-export function Imagem({ src, z, pb, raio = 0, posicao = "center", extra = {} }: { src: string; z: Zona; pb?: boolean; raio?: number; posicao?: string; extra?: CSSProperties }) {
-  const filtro = pb && noNavegador() ? { filter: "grayscale(1) contrast(1.08)" } : {};
+export function Imagem({ src, z, pb, raio = 0, posicao = "center", extra = {}, desfoque = 0, contraste = false }: { src: string; z: Zona; pb?: boolean; raio?: number; posicao?: string; extra?: CSSProperties; desfoque?: number; contraste?: boolean }) {
+  const filtros: string[] = [];
+  if (noNavegador()) {
+    if (pb) filtros.push("grayscale(1)", contraste ? "contrast(1.2)" : "contrast(1.08)");
+    else if (contraste) filtros.push("contrast(1.12)", "saturate(1.08)");
+    if (desfoque > 0) filtros.push(`blur(${desfoque}px)`);
+  }
+  const filtro = filtros.length ? { filter: filtros.join(" ") } : {};
+  // Com desfoque, a imagem cresce um pouco para a borda borrada não aparecer.
+  const cresce = desfoque > 0 && noNavegador() ? { transform: "scale(1.05)" } : {};
   return (
     <div style={flex({ position: "absolute", left: z.x, top: z.y, width: z.w, height: z.h, borderRadius: raio, overflow: "hidden", ...extra })}>
       {/* O raio também na imagem: o Satori não recorta a imagem só pelo pai. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover", objectPosition: posicao, borderRadius: raio, ...filtro }} />
+      <img src={src} alt="" width={z.w} height={z.h} style={{ width: z.w, height: z.h, objectFit: "cover", objectPosition: posicao, borderRadius: raio, ...filtro, ...cresce }} />
     </div>
+  );
+}
+
+// ── os efeitos de profundidade e luz (05/10) ─────────────────────────────────
+
+/**
+ * OS EFEITOS DOS MODELOS COM FOTO (05/10/2026), pedido do Bruno: "efeitos de
+ * profundidade, luz de fundo, sombra, desfoque de fundo", e cada modelo com o
+ * seu, nunca o mesmo efeito em todos. Tudo em código, sem IA:
+ *
+ *   - sombra da pessoa recortada: "dura" (a silhueta deslocada numa cor sólida,
+ *     de cartaz ou adesivo; é a própria imagem usada como máscara) ou "suave"
+ *     (a silhueta desfocada; na prévia é drop-shadow do CSS, no servidor o
+ *     sharp desenha o PNG da sombra e manda em `recorteSombra`);
+ *   - luz atrás da pessoa: "aro" (rim light, um anel claro atrás da cabeça e
+ *     dos ombros) ou "brilho" (glow largo na cor de destaque);
+ *   - fundo: desfoque e vinheta (escurece as bordas);
+ *   - contraste de alto impacto na pessoa e na foto (prévia: filtro CSS;
+ *     servidor: curva do sharp).
+ *
+ * As cores são símbolos ("acento", "tinta", "branca", "preta"), resolvidos na
+ * hora do desenho com as cores aprovadas do cliente.
+ */
+export type CorDoEfeito = "acento" | "tinta" | "branca" | "preta";
+
+export interface EfeitoDaPessoa {
+  sombra?: "dura" | "suave";
+  corDaSombra?: CorDoEfeito;
+  luz?: "aro" | "brilho";
+  corDaLuz?: CorDoEfeito;
+  contraste?: boolean;
+}
+
+export interface EfeitoDoModelo {
+  pessoa?: EfeitoDaPessoa;
+  /** O desfoque do fundo em px (na peça de 1080) e a força da vinheta (0 a 1). */
+  fundo?: { desfoque?: number; vinheta?: number };
+  /** A curva de contraste na foto inteira. */
+  contrasteDaFoto?: boolean;
+}
+
+/** O efeito de cada arquétipo. Um diferente por modelo, de propósito. */
+export const EFEITOS_DO_MODELO: Record<string, EfeitoDoModelo> = {
+  // A pessoa em cores com rim light branca, sombra suave e vinheta no fundo.
+  "retrato-bloco": { pessoa: { luz: "aro", corDaLuz: "branca", sombra: "suave", contraste: true }, fundo: { vinheta: 0.35 } },
+  // O cartaz em preto e branco: sombra dura na cor de destaque, contraste alto.
+  "pb-palavra": { pessoa: { sombra: "dura", corDaSombra: "acento", contraste: true } },
+  // Sobre o mapa: glow no destaque atrás da pessoa e sombra suave.
+  "mapa-pontilhado": { pessoa: { luz: "brilho", corDaLuz: "acento", sombra: "suave" } },
+  // A colagem em papel: a pessoa como adesivo, com sombra dura escura.
+  "vox-faixa": { pessoa: { sombra: "dura", corDaSombra: "tinta" } },
+  // O jornal: recorte de papel com sombra suave.
+  "vox-jornal": { pessoa: { sombra: "suave", contraste: true } },
+  // O rosto em pedaços: um aro de luz branca separa a pessoa dos rasgos coloridos.
+  "vox-rosto": { pessoa: { luz: "aro", corDaLuz: "branca" } },
+  // A capa em papel: sombra suave e contraste.
+  "vox-capa": { pessoa: { sombra: "suave", contraste: true } },
+  // Os modelos de foto inteira, cada um com um tratamento de fundo.
+  "retrato-faixas": { fundo: { vinheta: 0.4 }, contrasteDaFoto: true },
+  "foto-escurecida": { fundo: { desfoque: 6 } },
+  "foto-pura": { fundo: { vinheta: 0.5 }, contrasteDaFoto: true },
+  "papel-pb": { contrasteDaFoto: true },
+  "vox-antes-depois": { fundo: { vinheta: 0.3 } },
+};
+
+export function efeitoDoModelo(arquetipo: string): EfeitoDoModelo {
+  return EFEITOS_DO_MODELO[arquetipo] ?? {};
+}
+
+/** A cor de um símbolo do efeito, com as cores da peça. */
+export function corDoEfeito(c: CorDoEfeito | undefined, cores: { acento: string; tinta: string }, padrao: CorDoEfeito): string {
+  const k = c ?? padrao;
+  return k === "acento" ? cores.acento : k === "tinta" ? cores.tinta : k === "branca" ? "#ffffff" : "#000000";
+}
+
+/** A vinheta: as bordas escurecem, o centro fica como está. */
+export function Vinheta({ W, H, forca }: { W: number; H: number; forca: number }) {
+  const a = Math.max(0, Math.min(1, forca));
+  return <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 45%, rgba(0,0,0,${(a * 0.55).toFixed(2)}) 80%, rgba(0,0,0,${a.toFixed(2)}) 100%)` })} />;
+}
+
+/**
+ * A pessoa recortada (PNG do tamanho da peça, alinhado com a foto), deslocada
+ * e escalada em frações da peça, com os efeitos do modelo por baixo: a luz,
+ * a sombra e, na prévia, o contraste por filtro.
+ */
+export function Pessoa(p: { src: string; W: number; H: number; desloca?: number; escala?: number; pb?: boolean; efeito?: EfeitoDaPessoa; cores: { acento: string; tinta: string }; sombraSrc?: string | null }) {
+  const { W, H, src } = p;
+  const desloca = p.desloca ?? 0;
+  const escala = p.escala ?? 1;
+  const ef = p.efeito ?? {};
+  const x = Math.round(W * desloca);
+  const y = Math.round(H * (1 - escala));
+  const w = Math.round(W * escala);
+  const h = Math.round(H * escala);
+  const u = Math.min(W, H) / 1080;
+  const navegador = noNavegador();
+  // A sombra cai para baixo e para a direita, como uma luz alta à esquerda.
+  const dx = Math.round(22 * u);
+  const dy = Math.round(16 * u);
+  const corDaSombra = corDoEfeito(ef.corDaSombra, p.cores, "preta");
+  const corDaLuz = corDoEfeito(ef.corDaLuz, p.cores, "branca");
+  // A luz fica atrás da cabeça e dos ombros: o terço de cima da caixa da pessoa.
+  const cx = Math.round(x + w / 2);
+  const cy = Math.round(y + h * 0.32);
+  const filtros: string[] = [];
+  if (navegador) {
+    if (p.pb) filtros.push("grayscale(1)", ef.contraste ? "contrast(1.2)" : "contrast(1.08)");
+    else if (ef.contraste) filtros.push("contrast(1.12)", "saturate(1.06)");
+    if (ef.sombra === "suave") filtros.push(`drop-shadow(${dx}px ${dy}px ${Math.round(28 * u)}px ${rgba(corDaSombra, 0.55)})`);
+  }
+  const mascara = { maskImage: `url(${src})`, maskSize: `${w}px ${h}px`, maskRepeat: "no-repeat", maskPosition: "0 0", WebkitMaskImage: `url(${src})`, WebkitMaskSize: `${w}px ${h}px`, WebkitMaskRepeat: "no-repeat" } as CSSProperties;
+  return (
+    <>
+      {ef.luz === "brilho" ? (
+        <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `radial-gradient(circle at ${cx}px ${cy}px, ${rgba(corDaLuz, 0.6)} 0%, ${rgba(corDaLuz, 0.22)} ${Math.round(W * 0.22)}px, ${rgba(corDaLuz, 0)} ${Math.round(W * 0.5)}px)` })} />
+      ) : null}
+      {ef.luz === "aro" ? (
+        // O aro: um anel claro, fino, logo atrás do contorno da pessoa.
+        <div style={flex({ position: "absolute", left: 0, top: 0, width: W, height: H, backgroundImage: `radial-gradient(circle at ${cx}px ${cy}px, ${rgba(corDaLuz, 0)} 0%, ${rgba(corDaLuz, 0)} ${Math.round(w * 0.14)}px, ${rgba(corDaLuz, 0.42)} ${Math.round(w * 0.24)}px, ${rgba(corDaLuz, 0.12)} ${Math.round(w * 0.36)}px, ${rgba(corDaLuz, 0)} ${Math.round(w * 0.48)}px)` })} />
+      ) : null}
+      {ef.sombra === "dura" ? (
+        // A silhueta sólida: a própria imagem como máscara de um bloco de cor (o Satori entende mask-image).
+        <div style={flex({ position: "absolute", left: x + Math.round(dx * 1.6), top: y + Math.round(dy * 1.4), width: w, height: h, background: corDaSombra, opacity: 0.85, ...mascara })} />
+      ) : null}
+      {ef.sombra === "suave" && !navegador && p.sombraSrc ? (
+        <div style={flex({ position: "absolute", left: x + dx, top: y + dy, width: w, height: h })}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={p.sombraSrc} alt="" width={w} height={h} style={{ width: w, height: h, objectFit: "cover" }} />
+        </div>
+      ) : null}
+      <div style={flex({ position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden" })}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" width={w} height={h} style={{ width: w, height: h, objectFit: "cover", ...(filtros.length ? { filter: filtros.join(" ") } : {}) }} />
+      </div>
+    </>
   );
 }
 
