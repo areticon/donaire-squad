@@ -83,7 +83,12 @@ export type EdicaoResolvida = {
   camadas: CamadaResolvida[];
   planos: PlanoResolvido[];
   camera: Enquadramento[];
-  legenda: { paginas: Array<{ inicio: number; fim: number; texto: string }> } | null;
+  /**
+   * `faixa` (05/10, lib/media/editor-sob-medida/faixa-da-legenda.ts): onde a
+   * página vai no 9:16 para não cair em cima do texto de uma peça. Sem o
+   * campo, embaixo (o lugar de sempre).
+   */
+  legenda: { paginas: Array<{ inicio: number; fim: number; texto: string; faixa?: "baixo" | "topo" | "oculta" }> } | null;
   insercoes: Record<string, MidiaDaInsercao>;
   /** As telas cheias têm PALCO próprio (opaco, com câmera): o worker deixa a gravação por baixo em vez do fundo parado. */
   palco?: boolean;

@@ -65,6 +65,7 @@ import {
 import type { MidiaDaInsercao } from "@/lib/media/editor-sob-medida/tipos";
 import { escreverBloco, manterDensidade, type EntradaDoEditor } from "@/lib/media/editor-sob-medida/editor";
 import { PECAS } from "@/lib/media/editor-sob-medida/pecas";
+import { posicionarLegenda } from "@/lib/media/editor-sob-medida/faixa-da-legenda";
 import { brollsQueCabem, gerarBrolls } from "@/lib/media/editor-sob-medida/broll";
 import { DEFEITOS_GRAVES, adensarCorte, arejarCorte, garantirGancho, densidadeDoCorte, instantesDoCorte, instrucoesDoCorte, noQuadroDoCorte, quadroDoCorte } from "@/lib/media/editor-sob-medida/corte";
 import { perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
@@ -695,8 +696,20 @@ export function resolverCorteSobMedida(
   const ar = arejarCorte(r.edicao, DURACAO_MINIMA_DA_PECA);
   const a = adensarCorte(ar.edicao, DURACAO_MAXIMA_DA_PECA);
   // O GANCHO NO SEGUNDO 0, SEMPRE (03/10, à noite): sem peça de gancho no começo, o título do corte entra.
-  const g = garantirGancho(a.edicao, t.titulo, PECAS.find((x) => x.nome === "titulo")!);
-  return { edicao: g.edicao, avisos: [...r.avisos, ...ar.mudancas, ...(a.esticadas ? [`adensar: ${a.esticadas} peça(s) esticada(s) até a próxima`] : []), ...(g.mudou ? [g.mudou] : [])] };
+  // O estilo decide o gancho (05/10): no Vox ele sai no marca-texto, nunca no título genérico.
+  const g = garantirGancho(a.edicao, t.titulo, PECAS.find((x) => x.nome === "titulo")!, sm.estiloId);
+  // ZONAS EXCLUSIVAS DA LEGENDA (05/10): por último, com as peças já no lugar final.
+  const l = posicionarLegenda(g.edicao);
+  return {
+    edicao: l.edicao,
+    avisos: [
+      ...r.avisos,
+      ...ar.mudancas,
+      ...(a.esticadas ? [`adensar: ${a.esticadas} peça(s) esticada(s) até a próxima`] : []),
+      ...(g.mudou ? [g.mudou] : []),
+      ...(l.movidas || l.ocultas ? [`legenda: ${l.movidas} página(s) subiram para o topo e ${l.ocultas} saíram sob peça com texto`] : []),
+    ],
+  };
 }
 
 /** O que o editor recebe para um corte. */

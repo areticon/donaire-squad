@@ -224,7 +224,12 @@ const PECAS_DO_VOX = new Set(["colagem", "jornal", "mapa-antigo", "censura", "ma
  * a palavra mais longa em destaque), de 0 a ~3 s, no peito; a peça que
  * cruzava esse trecho começa depois dele ou sai.
  */
-export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | undefined, ficha: { entrada: number; saida: number; evento: number }): { edicao: EdicaoResolvida; mudou: string | null } {
+export function garantirGancho(
+  ed: EdicaoResolvida,
+  titulo: string | null | undefined,
+  ficha: { entrada: number; saida: number; evento: number },
+  estiloId?: string | null
+): { edicao: EdicaoResolvida; mudou: string | null } {
   if (ed.camadas.some((c) => c.de <= 0.6 && PECAS_DE_GANCHO.has(c.peca))) return { edicao: ed, mudou: null };
   const palavras = String(titulo ?? "").replace(/\*+/g, "").replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean).slice(0, 6);
   if (palavras.length < 2) return { edicao: ed, mudou: null };
@@ -256,7 +261,10 @@ export function garantirGancho(ed: EdicaoResolvida, titulo: string | null | unde
     const de = destino.get(dono.id);
     return de === null || de === undefined ? [] : [{ ...p, de }];
   });
-  const vox = ed.camadas.some((c) => PECAS_DO_VOX.has(c.peca));
+  // O ESTILO ESCOLHIDO MANDA (05/10): no Vox o gancho é o marca-texto mesmo quando a
+  // edição não tem nenhuma peça de papel (antes era só por adivinhação pelas peças, e
+  // um Vox sem peça de papel ganhava o título genérico de outro estilo no segundo 0).
+  const vox = ESTILOS_DO_VOX.includes(String(estiloId ?? "")) || ed.camadas.some((c) => PECAS_DO_VOX.has(c.peca));
   const gancho: EdicaoResolvida["camadas"][number] = vox
     ? { id: "gancho-0", peca: "marca-texto", de: 0, ate: fim, entrada: 0.5, saida: 0.25, evento: 0.6, eventos: [], props: { texto: texto.replace(/\*\*/g, ""), posicao: "topo" }, passes: ["frente"] }
     : { id: "gancho-0", peca: "titulo", de: 0, ate: fim, entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { titulo: texto, posicao: "baixo" }, passes: ["vidro", "frente"] };

@@ -136,3 +136,22 @@ export function lerRevisaoDoCorte(
       };
   }
 }
+
+/**
+ * AS BORDAS SÃO DO CLIENTE (05/10/2026): o corte que ele ajustou no controle do
+ * corte (puxou início e fim, `trecho.controleDoCorte`) não é recortado pelo
+ * Vitor. No teste do Bruno de 05/10 (cmuums24z, corte 1) ele moveu o começo
+ * 104 palavras para frente (260,57 s); a Vera reprovou a abertura e o Vitor
+ * refez duas vezes, a última começando em 238,9 s, ANTES do que ele tinha
+ * cortado: o corte voltou "completo", como se o ajuste não existisse. O ajuste
+ * do cliente é soberano: a Vera ainda lê e o motivo dela chega a ele, mas
+ * quem mexe nas bordas é só ele.
+ */
+export function bordasDoCliente(trecho: { controleDoCorte?: { ultima?: unknown } | null } | null | undefined): boolean {
+  return Boolean(trecho?.controleDoCorte?.ultima);
+}
+
+/** O que a Vera disse, para o cliente que escolheu as bordas: o corte fica como ele quis. */
+export function motivoParaQuemEscolheu(motivo: string): string {
+  return `O corte ficou exatamente como você escolheu. Se quiser ajustar, a revisão apontou: ${motivo}`;
+}

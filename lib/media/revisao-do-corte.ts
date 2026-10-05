@@ -4,7 +4,9 @@ import type { Word } from "@/lib/media/transcribe";
 import type { Trecho } from "@/lib/media/select-clips";
 import { enviarRecorteDoTrecho } from "@/lib/media/refazer";
 import {
+  bordasDoCliente,
   MAX_REFACOES_DO_CORTE,
+  motivoParaQuemEscolheu,
   type RevisaoDoCorte,
   type TentativaDoCorte,
 } from "@/lib/media/estado-da-revisao-do-corte";
@@ -617,6 +619,14 @@ export async function revisarCortesDoVideo(videoJobId: string): Promise<{
       if (parecer.veredito === "APROVADO") {
         await gravarEstado(videoJobId, i, { ...comHistorico, estado: "aprovado", motivo: null, desde: agora() });
         resultado.aprovados++;
+        return;
+      }
+
+      // AS BORDAS SÃO DO CLIENTE (05/10): ele puxou início e fim no controle do corte, e o
+      // Vitor não recorta por cima. O motivo da Vera vai a ele, o corte fica como está.
+      if (bordasDoCliente(t as TrechoGravado & { controleDoCorte?: { ultima?: unknown } | null })) {
+        await gravarEstado(videoJobId, i, { ...comHistorico, estado: "para-voce", motivo: motivoParaQuemEscolheu(parecer.motivo), desde: agora() });
+        resultado.paraOCliente++;
         return;
       }
 

@@ -1,0 +1,135 @@
+import { FICHAS, ehApoio } from "@/lib/media/editor-sob-medida/pecas";
+import type { CamadaResolvida, EdicaoResolvida } from "@/lib/media/editor-sob-medida/tipos";
+
+/**
+ * ZONAS EXCLUSIVAS DA LEGENDA NO 9:16 (05/10/2026).
+ *
+ * No teste do Bruno de 05/10 (vídeo cmuums24z, cortes 0 e 1) a legenda e o
+ * texto das peças saíram um em cima do outro: "Maria nos pés de Jesus" sobre o
+ * título do gancho, "né? E" sobre "Michelangelo", o item da lista cortado pela
+ * legenda. A causa: a legenda era desenhada SEMPRE no mesmo lugar (o ASS do
+ * worker, alinhada embaixo a 20% da base, de ~0,70 a ~0,82 da altura), e o
+ * corte manda o título e a pergunta para o PEITO (`arejarCorte`, a 0,63 da
+ * altura), que é exatamente a faixa dela. Nada no caminho conferia as duas.
+ *
+ * A regra agora: cada página da legenda olha as peças com texto que estão na
+ * tela no tempo dela e escolhe uma faixa LIVRE:
+ *   - "baixo": a de sempre, quando nenhuma peça usa a faixa de baixo;
+ *   - "topo": acima da cabeça, quando a faixa de baixo está ocupada e a de
+ *     cima livre;
+ *   - "oculta": as duas ocupadas, ou uma tela cheia com texto (a peça já é o
+ *     texto daquele instante; é o mesmo critério da lousa).
+ *
+ * As faixas das peças são as do desenho no worker
+ * (worker/remotion/src/sob-medida/pecas e base.tsx `margens`): margem de cima
+ * 0,13 da altura, base 0,76, título do corte a 0,63. Peça nova sem faixa
+ * conhecida conta como "embaixo" (o lado seguro: a legenda sobe).
+ *
+ * Módulo puro: só o 16:9 fica como estava (a legenda do completo mora no pé
+ * do quadro, abaixo das peças).
+ */
+
+export type FaixaDaLegenda = "baixo" | "topo" | "oculta";
+
+/** Faixa vertical, em fração da altura do quadro: [de, ate]. */
+type Faixa = [number, number];
+
+/** Onde a legenda mora em cada posição, no 9:16 (a conta do ASS do worker, com folga para duas linhas). */
+export const FAIXAS_DA_LEGENDA_9X16: Record<"baixo" | "topo", Faixa> = {
+  baixo: [0.69, 0.83],
+  topo: [0.035, 0.12],
+};
+
+const TELA = "tela" as const;
+
+/**
+ * A faixa que a peça ocupa no 9:16, ou "tela" (ocupa o quadro inteiro), ou
+ * null (não tem texto que brigue com a legenda: seta, círculo, apoio).
+ */
+export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa | typeof TELA | null {
+  if (ehApoio(c)) return null;
+  const pos = String((c.props ?? {}).posicao ?? "");
+  switch (c.peca) {
+    // Sem texto próprio na faixa da legenda.
+    case "seta":
+    case "circulo":
+    case "transicao":
+      return null;
+    // No peito (TituloSemTarja a 0,63) ou no topo.
+    case "titulo":
+      return pos === "baixo" ? [0.6, 0.88] : [0.1, 0.45];
+    case "pergunta-resposta":
+      return pos === "baixo" ? [0.58, 0.88] : [0.12, 0.5];
+    case "rotulo-inferior":
+      return [0.6, 0.84];
+    case "sublinhado":
+      return [0.55, 0.74];
+    case "palavra-chave":
+    case "capitulo":
+      return [0.1, 0.32];
+    case "titulo-atras":
+      return [0.08, 0.48];
+    case "icone":
+      return pos === "centro" ? [0.34, 0.62] : [0.1, 0.4];
+    case "marca-texto":
+      return pos === "centro" ? [0.6, 0.8] : [0.08, 0.26];
+    case "carimbo":
+      return [0.18, 0.34];
+    case "chat":
+      return [0.55, 0.82];
+    case "legenda-destaque":
+      return [0.64, 0.8];
+    case "palavra-gigante":
+    case "marca-brilho":
+      return [0.12, 0.5];
+    case "fecho":
+      return TELA;
+  }
+  const ficha = FICHAS[c.peca];
+  if (!ficha) return [0.55, 0.88];
+  if (ficha.plano === "tela") return TELA;
+  // Ao lado, no 9:16: a peça ocupa o alto e o cartão da pessoa fica embaixo dela, acima da legenda.
+  if (ficha.plano === "lado") return [0.08, 0.66];
+  return [0.55, 0.88];
+}
+
+const cruza = (a: Faixa, b: Faixa) => a[0] < b[1] && b[0] < a[1];
+
+/** A faixa de uma página da legenda no tempo [inicio, fim], dadas as peças e os planos. */
+export function faixaDaPagina(
+  pagina: { inicio: number; fim: number },
+  camadas: Array<Pick<CamadaResolvida, "peca" | "props" | "de" | "ate">>,
+  planos: Array<{ de: number; ate: number; tipo: string }>
+): FaixaDaLegenda {
+  const { inicio, fim } = pagina;
+  // Tela cheia (o plano gráfico): a peça cobre o quadro, a legenda some.
+  if (planos.some((p) => p.tipo === "grafico" && p.de < fim && p.ate > inicio)) return "oculta";
+  const ocupadas: Faixa[] = [];
+  for (const c of camadas) {
+    if (!(c.de < fim && c.ate > inicio)) continue;
+    const f = faixaDaPeca(c);
+    if (f === TELA) return "oculta";
+    if (f) ocupadas.push(f);
+  }
+  if (!ocupadas.some((f) => cruza(f, FAIXAS_DA_LEGENDA_9X16.baixo))) return "baixo";
+  if (!ocupadas.some((f) => cruza(f, FAIXAS_DA_LEGENDA_9X16.topo))) return "topo";
+  return "oculta";
+}
+
+/**
+ * A edição com a faixa de cada página da legenda decidida. Roda DEPOIS de
+ * tudo que mexe nas peças (arejar, adensar, gancho do segundo 0), porque é a
+ * posição final delas que conta. No 16:9 devolve a edição como veio.
+ */
+export function posicionarLegenda(ed: EdicaoResolvida): { edicao: EdicaoResolvida; movidas: number; ocultas: number } {
+  if (!ed.legenda?.paginas?.length || ed.altura <= ed.largura) return { edicao: ed, movidas: 0, ocultas: 0 };
+  let movidas = 0;
+  let ocultas = 0;
+  const paginas = ed.legenda.paginas.map((p) => {
+    const faixa = faixaDaPagina(p, ed.camadas, ed.planos ?? []);
+    if (faixa === "topo") movidas++;
+    if (faixa === "oculta") ocultas++;
+    return { ...p, faixa };
+  });
+  return { edicao: { ...ed, legenda: { ...ed.legenda, paginas } }, movidas, ocultas };
+}

@@ -1,7 +1,7 @@
 import { frasesDaFala } from "@/lib/media/diretor-limpo";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
 import { acentoApagado, acentoVivo } from "@/lib/media/editor-sob-medida/cor";
-import { ESTILOS_DA_LOUSA, ESTILOS_DO_VOX, FICHAS, ehApoio, passesDaPeca, pecaContinua, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
+import { ESTILOS_DA_LOUSA, ESTILOS_DO_VOX, FICHAS, ehApoio, passesDaPeca, pecaContinua, pecaNoEstilo, type FichaDaPeca } from "@/lib/media/editor-sob-medida/pecas";
 import type {
   Ancora,
   Caixa,
@@ -289,6 +289,12 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const ficha = FICHAS[m.peca];
     const id = String(m.id ?? `m${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `m${k + 1}`;
     if (!ficha) return avisos.push(`${id}: peça desconhecida "${m.peca}"`);
+    // O ESTILO ESCOLHIDO MANDA (05/10): peça fora do catálogo do estilo não vai ao ar. No
+    // teste do Bruno (Vox) o corte saiu com título, rótulo e frase de impacto genéricos,
+    // que é a cara de outro estilo; o prompt já filtrava, mas o conserto da revisão e a
+    // edição reaproveitada passavam por aqui sem conferência. O buraco que fica o 4c fecha
+    // com a peça do estilo (no Vox, o marca-texto).
+    if (ctx.estiloId && !pecaNoEstilo(ficha, ctx.estiloId)) return avisos.push(`${id}: peça "${m.peca}" fora do estilo ${ctx.estiloId}, saiu`);
     const t0 = t(m.de);
     const t1 = t(m.ate);
     if (t0 === null || t1 === null) return avisos.push(`${id}: âncora inválida (${m.de} a ${m.ate})`);
