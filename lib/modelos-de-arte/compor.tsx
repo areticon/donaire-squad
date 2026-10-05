@@ -6,6 +6,7 @@ import { askClaude } from "@/lib/claude";
 import { FONTES, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import { modeloPorId, modeloDaPeca, formatoPeloTamanho, type ModeloDeArte, type TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
 import { desenharModelo, zonaDaFoto, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
+import { TEXTO_FIXO_DOS_MODELOS_COM_FOTO } from "@/lib/modelos-de-arte/desenho-com-foto";
 import { registrarTextoComposto } from "@/lib/modelos-de-arte/registro";
 import type { LetraId } from "@/lib/modelos-de-arte/identidade";
 
@@ -134,7 +135,7 @@ Devolva um JSON com: ${precisa.map((c) => pedidoDe[c]).join("; ")}.`,
 
 /** Todo o texto que o desenho vai compor, para a conferência saber que é do código. */
 function textoComposto(t: TextosDaArte, marca: string, modelo: ModeloDeArte): string[] {
-  const fixos = ["Arraste", "Foto ilustrativa", "EDIÇÃO ESPECIAL", "OPINIÃO E ANÁLISE", "DICIONÁRIO", "substantivo", "Escreva sua resposta", "online", "agora", "PASSO", modelo.id === "manchete-de-jornal" || modelo.arquetipo === "revista" ? marca : ""];
+  const fixos = ["Arraste", "Foto ilustrativa", "EDIÇÃO ESPECIAL", "OPINIÃO E ANÁLISE", "DICIONÁRIO", "substantivo", "Escreva sua resposta", "online", "agora", "PASSO", ...TEXTO_FIXO_DOS_MODELOS_COM_FOTO, modelo.id === "manchete-de-jornal" || modelo.arquetipo === "revista" ? marca : ""];
   return [t.apoio ?? "", ...(t.itens ?? []), t.numero ?? "", ...(t.lados ? [...t.lados.rotulos, ...t.lados.esquerda, ...t.lados.direita] : []), t.autor ?? "", ...(t.opcoes ?? []), t.chamada ?? "", marca, ...fixos].filter(Boolean);
 }
 
@@ -155,8 +156,28 @@ export interface PedidoDeComposicao {
   letra?: LetraId | null;
 }
 
+/**
+ * O PRETO E BRANCO DO MODELO (05/10), no pixel e sem IA: a foto e a pessoa
+ * recortada perdem a cor antes de compor, porque o Satori não aplica filtro.
+ * O PNG do recorte mantém a transparência. Se falhar, a foto segue em cores:
+ * pior sair colorida do que sair sem foto.
+ */
+async function semCor(foto: Buffer | null | undefined, png: boolean): Promise<Buffer | null> {
+  if (!foto) return null;
+  try {
+    const cinza = sharp(foto).rotate().greyscale().normalise().linear(1.08, -6);
+    return png ? await cinza.png().toBuffer() : await cinza.jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  } catch (e) {
+    console.warn("[modelos-de-arte] o preto e branco do modelo não entrou; a foto segue em cores:", e instanceof Error ? e.message : e);
+    return foto;
+  }
+}
+
 /** Compõe a peça no modelo e devolve JPEG. Sem chamada paga. */
 export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
+  if (p.modelo.fotoPretoEBranco) {
+    p = { ...p, foto: await semCor(p.foto, false), recorte: await semCor(p.recorte, true) };
+  }
   const z = zonaDaFoto(p.modelo, p.largura, p.altura);
   let foto: string | null = null;
   let recorte: string | null = null;

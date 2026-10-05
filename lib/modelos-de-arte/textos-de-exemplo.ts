@@ -457,6 +457,18 @@ export function textosDeExemplo(modelo: ModeloDeArte, setorId: string): TextosDa
       return { titulo: `${e.titulo}. ${e.apoio}` };
     case "foto-profundidade":
       return { titulo: e.curto, apoio: e.apoio };
+    // Os modelos com foto de 05/10: a palavra gigante pede frase curta; a foto
+    // de palco não desenha texto nenhum (a frase vai para a legenda).
+    case "pb-palavra":
+    case "foto-pura":
+      return { titulo: e.curto };
+    // A família Vox (05/10): o infográfico pede itens; o antes e depois, os dois lados.
+    case "vox-infografico":
+      return { titulo: e.titulo, itens: e.itens.slice(0, 4) };
+    case "vox-antes-depois":
+      return { titulo: e.titulo, lados: { rotulos: ["Antes", "Depois"], esquerda: e.antes, direita: e.depois } };
+    case "vox-rosto":
+      return { titulo: e.curto };
     default:
       return { titulo: e.titulo, apoio: modelo.campos.includes("apoio") ? e.apoio : undefined };
   }

@@ -3,6 +3,8 @@ import { encaixar, larguraDoTexto, palavraDeDestaque, type Encaixe } from "@/lib
 import { estiloDaFonte, type FonteId } from "@/lib/modelos-de-arte/fontes";
 import type { ModeloDeArte, TextosDaArte } from "@/lib/modelos-de-arte/catalogo";
 import { CONTRASTE_MINIMO_DO_TEXTO, tipografiaDaLetra, type LetraId, type PapeisEscolhidos } from "@/lib/modelos-de-arte/identidade";
+// Os modelos com foto de 05/10 moram em arquivo próprio; aqui só a chamada.
+import { desenharModeloNovo, zonaDaFotoNova } from "@/lib/modelos-de-arte/desenho-com-foto";
 import type { TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
 
 /**
@@ -157,7 +159,7 @@ export function zonaDaFoto(modelo: ModeloDeArte, largura: number, altura: number
       // UMA foto (05/10): a zona cresceu para a foto não precisar de uma cópia ao lado.
       return deitada ? { x: m, y: m, w: Math.round(W * 0.5), h: H - 2 * m } : { x: m, y: Math.round(m * 1.2), w: W - 2 * m, h: Math.round(H * 0.44) };
     default:
-      return null;
+      return zonaDaFotoNova(modelo, W, H);
   }
 }
 
@@ -1129,5 +1131,6 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       );
     }
   }
-  return raiz(null);
+  // Os modelos com foto de 05/10 (lib/modelos-de-arte/desenho-com-foto.tsx).
+  return desenharModeloNovo(e) ?? raiz(null);
 }
