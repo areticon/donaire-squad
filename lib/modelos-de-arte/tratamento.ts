@@ -15,11 +15,12 @@
  * vermelho", "só as cores da marca", "use só a paleta"), a foto recebe um
  * tratamento em código, sem IA, antes de o texto ser composto:
  *
- *   - "duotone": a foto vira dois tons, o escuro e o destaque da marca
- *     (sombra no escuro, luz no destaque). Cada pixel passa a ser uma cor da
- *     paleta, por construção;
- *   - "pb": preto e branco, para quem pediu assim ou para a marca sem cor de
- *     destaque; o papel e as tiras do modelo dão o contraste.
+ *   - "pb": preto e branco. É o padrão da paleta estrita: a cor da marca entra
+ *     só nos acentos (palavra destacada, faixa, fita, fundo de uma cor com
+ *     letra de outra), nunca na foto. O Bruno reprovou a primeira versão
+ *     (duotone) justamente por tingir a foto de vermelho;
+ *   - "duotone": a foto tingida em dois tons (escuro e destaque). Só por
+ *     escolha explícita na identidade ("Tingidas na cor da marca").
  *
  * A escolha fica gravada no metadata do post e do card (`tratamento`), para
  * as próximas regerações respeitarem, e existe também como opção da
@@ -36,10 +37,18 @@ export type TratamentoDaFoto = "duotone" | "pb";
 /** A opção como o cliente escolhe na identidade. */
 export type FotosDaIdentidade = "naturais" | "pb" | "marca";
 
+/**
+ * A REGRA (05/10, depois da reprovação do Bruno): a cor da marca entra SÓ nos
+ * acentos (palavra destacada, faixa e fita de papel, fundo de uma cor com
+ * letra de outra, carimbo, marca-texto). A FOTO fica natural ou em preto e
+ * branco. Tingir a foto na cor da marca ("duotone") existe só como escolha
+ * explícita da identidade, com o rótulo dizendo que tinge a foto inteira;
+ * nenhum pedido do chat cai nele por padrão.
+ */
 export const FOTOS_DA_IDENTIDADE: Record<FotosDaIdentidade, { nome: string; descricao: string }> = {
-  naturais: { nome: "Naturais", descricao: "A foto com as cores dela." },
-  pb: { nome: "Preto e branco", descricao: "A foto sem cor; a paleta fica no fundo, no título e no destaque." },
-  marca: { nome: "Nas cores da marca", descricao: "A foto em dois tons: o fundo e o destaque da sua paleta." },
+  naturais: { nome: "Naturais", descricao: "A foto com as cores dela; a paleta fica nos acentos (destaque, faixa, fundo e letra)." },
+  pb: { nome: "Preto e branco", descricao: "A foto sem cor; a paleta fica só nos acentos: destaque, faixa, fundo e letra." },
+  marca: { nome: "Tingidas na cor da marca", descricao: "Tinge a foto INTEIRA em dois tons (fundo e destaque da paleta). Só se você quer a foto colorida pela marca." },
 };
 
 export const FOTOS_PADRAO: FotosDaIdentidade = "naturais";
@@ -59,8 +68,8 @@ export function tratamentoDasFotos(fotos: FotosDaIdentidade | null | undefined):
 
 /** Como o tratamento é contado ao cliente, na resposta do chat. */
 export const NOME_DO_TRATAMENTO: Record<TratamentoDaFoto, string> = {
-  duotone: "em duotone nas cores da marca",
-  pb: "em preto e branco",
+  duotone: "tingidas na cor da marca",
+  pb: "em preto e branco e a cor da marca só nos acentos",
 };
 
 /** O modelo do book de colagem com foto (categoria "Colagem e papel"). */
@@ -97,12 +106,13 @@ export function pedidoDePapel(texto: string): boolean {
 }
 
 /**
- * O tratamento que um pedido do chat exige. Null quando o cliente não falou
- * em paleta estrita: a foto segue como o projeto manda (a identidade ou o que
+ * O tratamento que um pedido do chat exige: paleta estrita e preto e branco
+ * dão "pb" (a foto sem cor, a paleta nos acentos). Nunca duotone por pedido:
+ * tingir a foto é escolha explícita da identidade. Null quando o cliente não
+ * falou em paleta: a foto segue como o projeto manda (a identidade ou o que
  * já estava gravado no post).
  */
-export function tratamentoDoPedido(texto: string, marcaTemDestaque = true): TratamentoDaFoto | null {
-  if (pedidoDePretoEBranco(texto)) return "pb";
-  if (!pedidoDePaletaEstrita(texto)) return null;
-  return marcaTemDestaque ? "duotone" : "pb";
+export function tratamentoDoPedido(texto: string): TratamentoDaFoto | null {
+  if (pedidoDePretoEBranco(texto) || pedidoDePaletaEstrita(texto)) return "pb";
+  return null;
 }

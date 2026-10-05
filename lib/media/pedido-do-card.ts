@@ -262,14 +262,10 @@ export function marcaDoPedido(
   gravado: ArteGravada
 ): { marca: MarcaDaArte; decidido: ArteGravada; mudou: { tratamento: boolean; modelo: boolean } } {
   const comCor = marcaComCor(marca, acao.cor);
-  const temDestaque = comCor.cores.acento.toLowerCase() !== comCor.cores.escuro.toLowerCase();
-  const tratamento: TratamentoDaFoto | null = acao.pretoEBranco
-    ? "pb"
-    : acao.paletaEstrita
-      ? temDestaque
-        ? "duotone"
-        : "pb"
-      : (gravado.tratamento ?? comCor.tratamento ?? null);
+  // Paleta estrita e preto e branco dão "pb": a foto sem cor e a cor da marca
+  // só nos acentos. Nunca duotone por pedido (a foto tingida foi reprovada em
+  // 05/10); tingir é escolha explícita da identidade.
+  const tratamento: TratamentoDaFoto | null = acao.pretoEBranco || acao.paletaEstrita ? "pb" : (gravado.tratamento ?? comCor.tratamento ?? null);
   const modeloDaArte = acao.papel ? MODELO_DE_PAPEL : gravado.modeloDaArte;
   return {
     marca: { ...comCor, tratamento, ...(modeloDaArte ? { modeloFixo: modeloDaArte } : {}) },
@@ -293,8 +289,8 @@ async function gravarArteNoMetadata(alvos: { postIds: string[]; cardIds: string[
 function direcaoParaOTratamento(t: TratamentoDaFoto | null): string {
   if (!t) return "";
   return t === "duotone"
-    ? "The photo will be converted in code to a two-tone treatment (dark shadows, brand-colour highlights): compose for strong tonal contrast, simple shapes and a clear silhouette; colour in the scene does not matter."
-    : "The photo will be converted in code to black and white: compose for strong tonal contrast and simple shapes; colour in the scene does not matter.";
+    ? "The photo will be tinted in code in two brand tones: compose for strong tonal contrast, simple shapes and a clear silhouette; colour in the scene does not matter."
+    : "The photo will be converted in code to black and white (the brand colour goes only on accents added later): compose for strong tonal contrast and simple shapes; colour in the scene does not matter.";
 }
 
 /** O que de fato mudou na arte, contado ao cliente. */

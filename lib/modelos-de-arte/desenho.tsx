@@ -154,7 +154,8 @@ export function zonaDaFoto(modelo: ModeloDeArte, largura: number, altura: number
       return { x: Math.round((W - lado) / 2), y: Math.round(H * (alta ? 0.24 : 0.14)), w: lado, h: lado };
     }
     case "colagem":
-      return { x: m, y: Math.round(m * 1.2), w: Math.round(W * (deitada ? 0.4 : 0.6)), h: Math.round(H * (deitada ? 0.62 : 0.36)) };
+      // UMA foto (05/10): a zona cresceu para a foto não precisar de uma cópia ao lado.
+      return deitada ? { x: m, y: m, w: Math.round(W * 0.5), h: H - 2 * m } : { x: m, y: Math.round(m * 1.2), w: W - 2 * m, h: Math.round(H * 0.44) };
     default:
       return null;
   }
@@ -1045,13 +1046,15 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
     }
 
     case "colagem": {
+      // A COLAGEM DEPOIS DA REPROVAÇÃO DE 05/10: a foto entra UMA vez (a cópia
+      // ao lado repetia a mesma cena), a fita vai na cor de destaque (era rosa,
+      // fora da paleta) e a cor da marca fica só nos acentos: fita, palavra de
+      // realce. O papel claro e as tiras brancas com tinta escura dão o
+      // contraste; a foto não é tingida.
       const z = zonaDaFoto(md, W, H)!;
       const borda = Math.round(16 * u);
-      const z2 = deitada
-        ? { x: Math.round(W * 0.3), y: Math.round(H * 0.3), w: Math.round(W * 0.26), h: Math.round(H * 0.5) }
-        : { x: Math.round(W * 0.42), y: Math.round(H * 0.3), w: Math.round(W * 0.48), h: Math.round(H * 0.26) };
       const fita = (x: number, y: number, rot: number) => (
-        <div style={flex({ position: "absolute", left: x, top: y, width: 150 * u, height: 46 * u, background: rgba(misturar(acento, "#ffffff", 0.55), 0.8), transform: `rotate(${rot}deg)` })} />
+        <div style={flex({ position: "absolute", left: x, top: y, width: 150 * u, height: 46 * u, background: rgba(acento, 0.88), transform: `rotate(${rot}deg)` })} />
       );
       const foto = (zz: Zona, rot: number, pos: string) => (
         <div style={flex({ position: "absolute", left: zz.x - borda, top: zz.y - borda, padding: borda, background: "#ffffff", transform: `rotate(${rot}deg)`, boxShadow: "0 16px 36px rgba(0,0,0,0.25)" })}>
@@ -1074,10 +1077,9 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const marcadas = new Set(palavras.map((w) => w.toUpperCase()));
       return raiz(
         <>
-          {foto(z, -4, "center")}
-          {foto(z2, 5, "right")}
-          {fita(z.x + z.w * 0.35, z.y - 34 * u, -6)}
-          {fita(z2.x + z2.w * 0.5, z2.y + z2.h - 4 * u, 8)}
+          {foto(z, -2.5, "center")}
+          {fita(z.x + z.w * 0.08, z.y - 30 * u, -8)}
+          {fita(z.x + z.w * 0.72, z.y + z.h - 14 * u, 7)}
           <div style={flex({ position: "absolute", left: textoX, top: textoTop, width: textoW, flexDirection: "column", alignItems: "flex-start" })}>
             {enc.linhas.map((l, li) => (
               <div key={li} style={flex({ background: "#ffffff", padding: `${4 * u}px ${18 * u}px`, marginBottom: 12 * u, transform: `rotate(${li % 2 ? 0.9 : -0.9}deg)`, boxShadow: "0 6px 16px rgba(0,0,0,0.14)", whiteSpace: "nowrap", ...estiloDaFonte(tf), fontSize: enc.corpo, lineHeight: 1.25, color: "#151515" })}>
