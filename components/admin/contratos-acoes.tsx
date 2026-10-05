@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { PLANOS_PUBLICOS } from "@/lib/planos";
+import { CamposDoPreco, EditarContrato, NovoAditivo, contaDoPreco, corpoDoPreco } from "@/components/admin/contratos-preco";
+import { valorInicialDoPreco, type ValorDoPreco } from "@/lib/contratos/preco";
 
 /**
  * AS PARTES INTERATIVAS DO GESTOR DE CONTRATOS (02/10/2026): o formulário de
@@ -45,25 +46,26 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
   const [modo, setModo] = useState<"prospect" | "conta">(contaInicial ? "conta" : "prospect");
   const [userId, setUserId] = useState(contaInicial ?? "");
   const conta = contas.find((c) => c.id === userId);
-  const [plano, setPlano] = useState(conta?.plano && conta.plano !== "free" ? conta.plano : "pro");
-  const valorDoPlano = (id: string) => String(PLANOS_PUBLICOS.find((p) => p.id === id)?.anual ?? "");
-  const [valor, setValor] = useState(valorDoPlano(plano));
+  // O VALOR NASCE DA TABELA (04/10): plano e acessos extras pelo preço de
+  // tabela, menos o desconto com motivo. Ver components/admin/contratos-preco.
+  const [preco, setPreco] = useState<ValorDoPreco>(valorInicialDoPreco(conta?.plano && conta.plano !== "free" ? conta.plano : "pro"));
   const [enviando, setEnviando] = useState(false);
 
   async function criar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const conta = contaDoPreco(preco);
+    if (conta.faixa === "bloqueado") return void toast.error("Desconto acima do teto não sai.");
+    if (conta.descontoCentavos > 0 && !preco.motivo) return void toast.error("Escolha o motivo do desconto.");
     setEnviando(true);
     try {
       const nome = f.get("nome");
       const email = f.get("email");
       const d = await chamar("/api/admin/contratos", {
         ...(modo === "conta" ? { userId } : { prospectNome: nome, prospectEmail: email }),
-        plano,
-        valorReais: valor,
+        ...corpoDoPreco(preco),
         inicioVigencia: f.get("inicio"),
         formaDePagamento: f.get("forma"),
-        acessosExtras: f.get("extras"),
         empresa: f.get("empresa"),
         endereco: f.get("endereco"),
         signatarioNome: nome,
@@ -72,7 +74,9 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         renovacaoAutomatica: f.get("renova") === "on",
         observacao: f.get("observacao"),
       });
-      toast.success("Contrato criado como rascunho.");
+      toast.success(
+        contaDoPreco(preco).faixa === "aprovacao" ? "Contrato criado como rascunho. O desconto espera a aprovação do dono antes de ir para assinatura." : "Contrato criado como rascunho."
+      );
       router.push(`/admin/contratos/${String(d.userId ?? userId)}`);
       router.refresh();
     } catch (err) {
@@ -151,28 +155,7 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
         Endereço
         <input name="endereco" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
-      <label className={rotulo} style={corDoRotulo}>
-        Plano (anual)
-        <select
-          value={plano}
-          onChange={(e) => {
-            setPlano(e.target.value);
-            setValor(valorDoPlano(e.target.value));
-          }}
-          className={`${campo} mt-1`}
-          style={estiloCampo}
-        >
-          {PLANOS_PUBLICOS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={rotulo} style={corDoRotulo}>
-        Valor anual (R$)
-        <input required inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} className={`${campo} mt-1`} style={estiloCampo} />
-      </label>
+      <CamposDoPreco valor={preco} mudar={setPreco} />
       <label className={rotulo} style={corDoRotulo}>
         Forma de pagamento combinada
         <select name="forma" defaultValue="Pix" className={`${campo} mt-1`} style={estiloCampo}>
@@ -183,10 +166,6 @@ export function NovoContrato({ contas, contaInicial }: { contas: Array<{ id: str
           ))}
           <option value="Cartão pelo link do Stripe">Cartão pelo link do Stripe</option>
         </select>
-      </label>
-      <label className={rotulo} style={corDoRotulo}>
-        Acessos extras (R$ 2.364 por ano cada)
-        <input name="extras" type="number" min={0} max={200} step={1} defaultValue={0} className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <label className={rotulo} style={corDoRotulo}>
         Início da vigência (opcional: sem data, conta do pagamento)
@@ -284,6 +263,8 @@ export function AcoesDoContrato({
   provedorSituacao,
   faltaCentavos = 0,
   linkDePagamento = null,
+  edicao = null,
+  aditivo = null,
 }: {
   id: string;
   status: string;
@@ -292,10 +273,15 @@ export function AcoesDoContrato({
   /** Quanto falta pagar, em centavos (04/10). */
   faltaCentavos?: number;
   linkDePagamento?: string | null;
+  /** Para a versão nova antes de assinar (04/10). */
+  edicao?: Omit<React.ComponentProps<typeof EditarContrato>, "id" | "enviado" | "aoFechar"> | null;
+  /** Para o aditivo depois de assinado e ativo (04/10); null quando não cabe. */
+  aditivo?: Omit<React.ComponentProps<typeof NovoAditivo>, "id" | "aoFechar"> | null;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [pagando, setPagando] = useState(false);
+  const [aberto, setAberto] = useState<"editar" | "aditivo" | null>(null);
 
   async function fazer(acao: string, corpo: Record<string, unknown> | FormData, ok: string) {
     setOcupado(acao);
@@ -329,6 +315,16 @@ export function AcoesDoContrato({
       {status === "enviado" && temProvedor && (
         <button type="button" disabled={Boolean(ocupado)} className={botao} style={estilo} onClick={() => void fazer("sincronizar", { acao: "sincronizar" }, "Situação conferida no provedor.")}>
           Conferir no provedor
+        </button>
+      )}
+      {edicao && (status === "rascunho" || status === "enviado") && (
+        <button type="button" disabled={Boolean(ocupado)} className={botao} style={estilo} onClick={() => setAberto((v) => (v === "editar" ? null : "editar"))} data-editar={id}>
+          Editar (versão nova)
+        </button>
+      )}
+      {aditivo && (
+        <button type="button" disabled={Boolean(ocupado)} className={botao} style={estilo} onClick={() => setAberto((v) => (v === "aditivo" ? null : "aditivo"))} data-abrir-aditivo={id}>
+          Novo aditivo
         </button>
       )}
       {ativo && !assinado && (
@@ -432,6 +428,8 @@ export function AcoesDoContrato({
         </button>
       )}
       {pagando && <RegistrarPagamento id={id} faltaCentavos={faltaCentavos} aoFechar={() => setPagando(false)} />}
+      {aberto === "editar" && edicao && <EditarContrato id={id} enviado={status === "enviado"} {...edicao} aoFechar={() => setAberto(null)} />}
+      {aberto === "aditivo" && aditivo && <NovoAditivo id={id} {...aditivo} aoFechar={() => setAberto(null)} />}
     </div>
   );
 }

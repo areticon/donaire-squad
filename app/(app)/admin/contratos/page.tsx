@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { exigirAdmin } from "@/lib/admin/guarda";
 import { prisma } from "@/lib/db/prisma";
-import { contratosDoPainel } from "@/lib/contratos/painel";
+import { contratosDoPainel, descontosDoMes } from "@/lib/contratos/painel";
+import { TETO_COM_APROVACAO, TETO_SEM_APROVACAO, porcentagem } from "@/lib/contratos/preco";
 import { provedorDeAssinatura } from "@/lib/contratos/assinatura";
 import {
   COR_DO_GRUPO,
@@ -60,6 +61,8 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
     .filter((c) => c.dias !== null && c.dias <= 60 && c.dias > -30 && (c.grupo === "ativo" || c.grupo === "vencido"))
     .sort((a, b) => (a.dias ?? 0) - (b.dias ?? 0));
   const data = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "a definir");
+  // OS DESCONTOS DO MÊS (04/10): total e por vendedor, e o que espera o dono.
+  const descontos = descontosDoMes(contratos, agora);
 
   return (
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
@@ -96,6 +99,58 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
         <Numero rotulo="Em assinatura" valor={String(emAssinatura.length)} nota={`rascunhos e enviados, ${centavosEmReais(emAssinatura.reduce((s, c) => s + c.valorCentavos, 0))}`} />
         <Numero rotulo="A vencer em 60 dias" valor={String(aVencer.length)} nota={`${porGrupo.get("vencido")?.length ?? 0} vencido(s) · avisos em 60, 30 e 7 dias`} />
       </div>
+
+      <Cartao
+        titulo={`Descontos de ${descontos.mes}`}
+        subtitulo={`Até ${TETO_SEM_APROVACAO}% o vendedor concede; de ${TETO_SEM_APROVACAO}% a ${TETO_COM_APROVACAO}%, só com a aprovação do dono; acima de ${TETO_COM_APROVACAO}%, bloqueado. Contratos não cancelados, pela data em que o desconto foi concedido.`}
+      >
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-5" data-descontos-do-mes>
+          <div className="lg:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <Numero
+              rotulo="Desconto concedido no mês"
+              valor={centavosEmReais(descontos.totalCentavos)}
+              nota={
+                descontos.contratos
+                  ? `${descontos.contratos} contrato(s) com desconto, ${porcentagem(descontos.percentualMedio)} da tabela em média`
+                  : "nenhum desconto concedido neste mês"
+              }
+            />
+            <Numero
+              rotulo="Esperando a aprovação do dono"
+              valor={String(descontos.esperandoAprovacao.length)}
+              nota={
+                descontos.esperandoAprovacao.length ? (
+                  <span className="flex flex-wrap gap-x-2">
+                    {descontos.esperandoAprovacao.map((c) => (
+                      <Link key={c.id} href={`/admin/contratos/${c.userId}`} className="underline" style={{ color: "var(--marca-laranja-texto)" }}>
+                        nº {String(c.numero).padStart(4, "0")}, {porcentagem(c.descontoPercentual)}
+                      </Link>
+                    ))}
+                  </span>
+                ) : (
+                  `desconto acima de ${TETO_SEM_APROVACAO}% não vai para assinatura sem aprovação`
+                )
+              }
+            />
+          </div>
+          <div className="lg:col-span-3 min-w-0">
+            <p className="rotulo mb-2">Por vendedor</p>
+            {descontos.porVendedor.length ? (
+              <BarrasHorizontais
+                formatar={(n) => centavosEmReais(n).replace(",00", "")}
+                linhas={descontos.porVendedor.map((v) => ({
+                  nome: v.vendedor,
+                  valor: v.centavos,
+                  nota: `· ${v.contratos} contrato(s), ${porcentagem(v.percentual)} da tabela`,
+                  cor: v.percentual > TETO_SEM_APROVACAO ? "var(--painel-2)" : "var(--painel-1)",
+                }))}
+              />
+            ) : (
+              <Vazio compacto titulo="Nenhum desconto neste mês" texto="Quando um vendedor der desconto num contrato, o valor aparece aqui, por quem concedeu." />
+            )}
+          </div>
+        </div>
+      </Cartao>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <Cartao className="lg:col-span-2" titulo="Por estado" subtitulo="Valor anual de cada estado. Cancelado e rascunho ficam na conta, para nada sumir.">
@@ -172,7 +227,9 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                       nº {String(c.numero).padStart(4, "0")} · {c.cliente}
                     </span>
                     <span className="block text-xs truncate" style={{ color: "var(--text-muted)" }}>
-                      {c.plano} · {centavosEmReais(c.valorCentavos)} por ano · {c.email}
+                      {c.plano} · {centavosEmReais(c.valorCentavos)} por ano
+                      {c.descontoCentavos > 0 && c.precoTabelaCentavos ? ` (tabela ${centavosEmReais(c.precoTabelaCentavos)}, desconto ${porcentagem(c.descontoPercentual)})` : ""}
+                      {c.fundador ? " · Fundador" : ""} · {c.email}
                     </span>
                     <span className="block text-xs truncate" style={{ color: "var(--text-muted)" }}>
                       {c.grupo === "aguardando_pagamento"
@@ -186,6 +243,11 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
                     <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: COR_DO_STATUS_DO_CONTRATO[c.situacao] }} />
                     {NOME_DO_STATUS_DO_CONTRATO[c.situacao]}
                     {c.provedorSituacao === "aguardando_provedor" ? " · aguardando provedor" : ""}
+                    {c.esperaAprovacao ? (
+                      <span className="block font-semibold" style={{ color: "var(--marca-laranja-texto)" }}>
+                        desconto espera a aprovação do dono
+                      </span>
+                    ) : null}
                   </span>
                   <span className="self-center">
                     {c.inicio ? (
