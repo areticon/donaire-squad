@@ -198,9 +198,10 @@ export function CamposDoPreco({ valor, mudar, rotuloDoPlano = "Plano (anual)" }:
         <legend className="px-1 text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
           Desconto (opcional)
         </legend>
-        <div className={rotulo} style={corDoRotulo}>
+        {/* "Em" fica em coluna, como os outros rótulos, e o seletor na altura dos campos. */}
+        <div className={`${rotulo} flex flex-col`} style={corDoRotulo}>
           Em
-          <div className="mt-1 inline-flex w-fit rounded-lg border p-0.5" style={{ borderColor: "var(--border)" }} role="radiogroup" aria-label="Desconto em porcentagem ou em reais">
+          <div className="mt-1 inline-flex h-[38px] w-fit items-center rounded-lg border p-0.5" style={{ borderColor: "var(--border)" }} role="radiogroup" aria-label="Desconto em porcentagem ou em reais">
             {(
               [
                 ["percentual", "%"],
