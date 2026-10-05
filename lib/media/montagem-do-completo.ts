@@ -1763,6 +1763,7 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
   const ids = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM video_jobs
     WHERE "createdAt" > now() - interval '14 days'
+      AND status <> 'cancelado'
       AND "completoMontagem" ->> 'estado' IN ('na-fila', 'preparando', 'dirigindo', 'ilustrando', 'gerando', 'montando')
     ORDER BY "createdAt" DESC
     LIMIT 10`;

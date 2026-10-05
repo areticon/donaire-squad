@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { concluirMontagem } from "@/lib/media/montagem-nos-cortes";
+import { videoCancelado } from "@/lib/media/video-cancelado";
 
 /**
  * O worker avisa que terminou (ou não) a MONTAGEM de um corte (editor
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (typeof indice !== "number" || typeof desde !== "string") {
     return NextResponse.json({ error: "Sem o corte de retorno" }, { status: 400 });
   }
+  // O vídeo cancelado pelo cliente (05/10): a montagem que o worker terminou
+  // depois do cancelamento é descartada, sem trocar corte nem post.
+  if (await videoCancelado(id)) return NextResponse.json({ ok: true, resultado: "ignorado", motivo: "cancelado" });
   const r = await concluirMontagem(id, indice, desde, corpo);
   const g = corpo.guardaDaFala;
   if (g?.tirados) console.log(`[montar-callback][${id}] guarda da fala tirou ${g.tirados}: ${(g.sobras ?? []).map((x) => `${x.de.toFixed(1)}s "${x.texto}"`).join("; ").slice(0, 400)}`);

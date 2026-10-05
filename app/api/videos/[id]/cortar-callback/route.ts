@@ -163,6 +163,14 @@ export async function POST(
   });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
+  // O VÍDEO CANCELADO PELO CLIENTE (05/10): o worker não tem botão de parar,
+  // então o corte pedido antes do cancelamento chega aqui depois. Vai para o
+  // lixo: nada é gravado, nenhum card nasce. 200 para o worker não repetir.
+  if (video.status === "cancelado") {
+    console.log(`[cortar-callback][${id}] vídeo cancelado pelo cliente; o resultado do worker foi descartado.`);
+    return NextResponse.json({ ok: true, ignorado: "cancelado" });
+  }
+
   // O WORKER REINICIOU NO MEIO (01/10): no desligamento por deploy ele espera
   // o que está rodando terminar e, para o que não terminou a tempo, manda este
   // aviso em vez de morrer calado. O app retoma NA HORA, em vez de esperar o

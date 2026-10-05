@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { concluirMontagemDoCompleto } from "@/lib/media/montagem-do-completo";
+import { videoCancelado } from "@/lib/media/video-cancelado";
 
 /**
  * O worker avisa que terminou (ou não) a EDIÇÃO do vídeo completo
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const desde = corpo.retorno?.desde;
   if (typeof desde !== "string") return NextResponse.json({ error: "Sem o estado de retorno" }, { status: 400 });
+  // O vídeo cancelado pelo cliente (05/10): o completo montado depois do
+  // cancelamento é descartado, sem trocar o vídeo nem o card.
+  if (await videoCancelado(id)) return NextResponse.json({ ok: true, resultado: "ignorado", motivo: "cancelado" });
   const r = await concluirMontagemDoCompleto(id, desde, corpo);
   const g = corpo.guardaDaFala;
   if (g?.tirados) console.log(`[montar-completo-callback][${id}] guarda da fala tirou ${g.tirados}: ${(g.sobras ?? []).map((x) => `${x.de.toFixed(1)}s "${x.texto}"`).join("; ").slice(0, 400)}`);

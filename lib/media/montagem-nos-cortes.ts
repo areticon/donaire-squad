@@ -1190,6 +1190,7 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
   const ids = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM video_jobs
     WHERE "createdAt" > now() - interval '7 days'
+      AND status <> 'cancelado'
       AND clips IS NOT NULL
       AND jsonb_typeof(clips) = 'array'
       AND jsonb_path_exists(clips, '$[*].montagem.estado ? (@ == "na-fila" || @ == "dirigindo" || @ == "gerando" || @ == "montando")')

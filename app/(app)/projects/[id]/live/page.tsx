@@ -48,7 +48,8 @@ export default async function LivePage({
   await varrerExpirados(id);
 
   const videos = await prisma.videoJob.findMany({
-    where: { projectId: id },
+    // O vídeo cancelado pelo cliente (05/10) não ocupa lugar na faixa.
+    where: { projectId: id, status: { not: "cancelado" } },
     orderBy: { createdAt: "desc" },
     take: 5,
     select: {

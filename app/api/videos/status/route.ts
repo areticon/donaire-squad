@@ -51,7 +51,9 @@ export async function GET(req: NextRequest) {
   await varrerExpirados(projectId);
 
   const videos = await prisma.videoJob.findMany({
-    where: { projectId },
+    // O vídeo CANCELADO pelo cliente (05/10) sai da faixa de vez: o registro
+    // fica no banco e no sino, não na tela de trabalho andando.
+    where: { projectId, status: { not: "cancelado" } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

@@ -28,6 +28,10 @@ export default async function RoteiroPage({
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
   const { id, videoId } = await params;
+  // O vídeo cancelado pela faixa (05/10) não tem mais roteiro para aprovar:
+  // o link antigo (sino, e-mail) volta ao Gestor.
+  const cancelado = await prisma.videoJob.findFirst({ where: { id: videoId, projectId: id, status: "cancelado" }, select: { id: true } });
+  if (cancelado) redirect(`/projects/${id}/live`);
   // Com a reedição (30/09): vídeo já aprovado ganha o "Voltar à edição".
   const tela = await montarTelaComReedicao(videoId, userId);
   if (!tela || tela.projectId !== id) notFound();

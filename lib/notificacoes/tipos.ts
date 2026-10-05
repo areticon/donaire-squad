@@ -11,7 +11,8 @@
  * no gerador, e o lembrete antes do link vencer). "gemeo-aviso": o gêmeo
  * ficou pronto ou o gerador recusou o treino, sem ação obrigatória.
  */
-export const TIPOS_DE_NOTIFICACAO = ["roteiro", "pecas", "campanha", "completo", "falha", "estorno", "gemeo", "gemeo-aviso"] as const;
+// "cancelado" (05/10): o cliente cancelou um vídeo pela faixa; o registro fica no sino.
+export const TIPOS_DE_NOTIFICACAO = ["roteiro", "pecas", "campanha", "completo", "falha", "estorno", "gemeo", "gemeo-aviso", "cancelado"] as const;
 export type TipoDeNotificacao = (typeof TIPOS_DE_NOTIFICACAO)[number];
 
 /**

@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
+import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
+import { STATUS_CANCELADO, TEXTO_DA_CONFIRMACAO } from "@/lib/media/cancelamento";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
 import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type LeituraDaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
@@ -160,7 +161,7 @@ function mmss(segundos: number): string {
  * estados de trabalho deixaria o fluxo parado até alguém recarregar a página.
  */
 function emAndamento(v: VideoAoVivo): boolean {
-  if (v.status === "failed") return false;
+  if (v.status === "failed" || v.status === STATUS_CANCELADO) return false;
   // Roteiro pronto espera o cliente: nada muda sozinho até ele aprovar.
   if (v.status === "roteiro") return false;
   // O completo que falhou para de pedir consulta: nada vai mudar sozinho até
@@ -226,6 +227,12 @@ export function EsteiraDoVideo({
   const [videos, setVideos] = useState<VideoAoVivo[]>(videosIniciais);
   const [etapaLocal, setEtapaLocal] = useState<Record<string, string | null>>({});
   const [erroDaAcao, setErroDaAcao] = useState<string | null>(null);
+  /**
+   * O AVISO DE UMA AÇÃO QUE DEU CERTO (05/10): o "cancelado" diz o que foi
+   * feito com o quadro, com os créditos e com o que ainda termina sozinho.
+   * Fica até a pessoa fechar; não é erro, então não some quando o estado anda.
+   */
+  const [avisoDaAcao, setAvisoDaAcao] = useState<string | null>(null);
   const [dispensados, setDispensados] = useState<string[]>([]);
   /**
    * O AVISO DO VIGIA, FIXO POR ETAPA (02/10, incidente das 21h): o texto do
@@ -382,6 +389,39 @@ export function EsteiraDoVideo({
         // A requisição pode cair antes de a etapa longa terminar (rede, aba
         // trocada, proxy impaciente), e isso não quer dizer que o trabalho
         // parou. Quem sabe o estado de verdade é o banco.
+      } finally {
+        void consultar();
+        forcarRecarga();
+      }
+    },
+    [consultar, forcarRecarga]
+  );
+
+  /**
+   * "CANCELAR ESTE VÍDEO" (05/10): a confirmação é dentro do cartão (o
+   * cartão chama isto só depois do "Sim, cancelar"). Devolve se cancelou: o
+   * cartão some na hora e o quadro recarrega, porque os cards do vídeo saíram.
+   */
+  const cancelar = useCallback(
+    async (videoId: string): Promise<boolean> => {
+      setErroDaAcao(null);
+      try {
+        const r = await fetch(`/api/videos/${videoId}/cancelar`, { method: "POST" });
+        const corpo = (await r.json().catch(() => ({}))) as { error?: string; aviso?: string | null; creditos?: string; quadro?: { cardsArquivados: number } | null };
+        if (!r.ok) {
+          setErroDaAcao(corpo.error ?? `A plataforma recusou com código ${r.status}.`);
+          return false;
+        }
+        setDispensados((d) => [...d, videoId]);
+        const cards = corpo.quadro?.cardsArquivados ?? 0;
+        setAvisoDaAcao(
+          ["Vídeo cancelado.", cards ? `${cards} ${cards === 1 ? "card saiu" : "cards saíram"} do quadro.` : null, corpo.aviso ?? null, corpo.creditos ?? null].filter(Boolean).join(" ")
+        );
+        pedirLeituraDoSino();
+        return true;
+      } catch {
+        setErroDaAcao("Não consegui falar com a plataforma. Confira a conexão e tente de novo.");
+        return false;
       } finally {
         void consultar();
         forcarRecarga();
@@ -552,6 +592,9 @@ export function EsteiraDoVideo({
    */
   const emFaixa = videos.filter((v) => {
     if (dispensados.includes(v.id)) return false;
+    // O cancelado pelo cliente (05/10) não volta: a consulta já o deixa de
+    // fora, e esta guarda cobre a lista inicial da página.
+    if (v.status === STATUS_CANCELADO) return false;
     if (v.status === "failed") return true;
     if (v.status === "ready" && v.temCompleto) {
       // A edição ainda rodando mantém o cartão, por mais que demore: efeitos,
@@ -588,7 +631,7 @@ export function EsteiraDoVideo({
   const [recolhidos, setRecolhidos] = useState<Record<Grupo, boolean>>({ voce: false, andamento: false, prontos: false });
   const [anterioresAbertos, setAnterioresAbertos] = useState(false);
 
-  if (emFaixa.length === 0 && !erroDaAcao && !aproveitar) return null;
+  if (emFaixa.length === 0 && !erroDaAcao && !avisoDaAcao && !aproveitar) return null;
 
   // A faixa de sem conexão só faz sentido com algo andando: é ela que diz ao
   // cliente que o trabalho continua do lado de cá.
@@ -629,6 +672,7 @@ export function EsteiraDoVideo({
         if (v.status === "failed") void fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" }).catch(() => {});
       }}
       aoAproveitar={() => setAproveitar(v.id)}
+      aoCancelar={() => cancelar(v.id)}
       avisoFixo={avisoDaEtapa(v)}
       aoAbrirPeca={aoAbrirPeca}
       aoIrAoQuadro={aoIrAoQuadro}
@@ -659,6 +703,29 @@ export function EsteiraDoVideo({
         >
           {erroDaAcao}
         </p>
+      )}
+      {avisoDaAcao && (
+        <div
+          className="flex items-start gap-3 rounded-xl border px-4 py-3"
+          style={{ borderColor: "var(--border)", background: "var(--realce-1)" }}
+          role="status"
+          aria-live="polite"
+          data-faixa="cancelado"
+        >
+          <Info className="w-[18px] h-[18px] shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }} />
+          <p className="text-sm flex-1 min-w-0" style={{ color: "var(--text-primary)" }}>
+            {avisoDaAcao}
+          </p>
+          <button
+            type="button"
+            onClick={() => setAvisoDaAcao(null)}
+            aria-label="Fechar"
+            className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors shrink-0"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
       {emFaixa.length > 0 && (
@@ -898,6 +965,7 @@ function CartaoDoVideo({
   aoRepetir,
   aoDispensar,
   aoAproveitar,
+  aoCancelar,
   avisoFixo,
   aoAbrirPeca,
   aoIrAoQuadro,
@@ -912,6 +980,8 @@ function CartaoDoVideo({
   aoDispensar: () => void;
   /** Abre o "Aproveitar o roteiro" deste vídeo (02/10). */
   aoAproveitar: () => void;
+  /** Cancela este vídeo no servidor, depois da confirmação (05/10). Devolve se cancelou. */
+  aoCancelar: () => Promise<boolean>;
   /** O aviso do vigia desta etapa, fixo até a etapa mudar (sem piscar). */
   avisoFixo: string | null;
   aoAbrirPeca?: (cardId: string, data: string) => void;
@@ -1001,6 +1071,22 @@ function CartaoDoVideo({
   // Sem card do completo no quadro (o run arquivado, o card apagado), o botão
   // não some: o vídeo toca aqui mesmo, num player por cima da tela.
   const [assistindo, setAssistindo] = useState(false);
+  // ── CANCELAR ESTE VÍDEO (05/10) ──────────────────────────────────────────
+  // O relato do Bruno: o vídeo do gêmeo ficou parado em "o roteiro espera a
+  // sua aprovação" sem jeito de sair. O botão existe para o que espera o
+  // cliente ou está andando (o gêmeo gravando inclusive); o pronto se arquiva
+  // peça por peça, e o que parou tem o "dispensar". A confirmação é dentro do
+  // cartão, não a janela do navegador: ela diz o que acontece com o que já foi
+  // gerado e com os créditos.
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const cancelavel = !pronto && !falhou && !completoFalhou;
+  const confirmarCancelamento = async () => {
+    setCancelando(true);
+    const cancelou = await aoCancelar();
+    setCancelando(false);
+    if (!cancelou) setConfirmandoCancelar(false);
+  };
   const primeiraParaAprovar = pecas.filter((p) => p.paraAprovar).sort((a, b) => a.data.localeCompare(b.data))[0] ?? null;
   const irAsPecas = () => (aoIrAoQuadro ? aoIrAoQuadro(primeiraParaAprovar?.data) : irAoQuadro());
 
@@ -1148,6 +1234,24 @@ function CartaoDoVideo({
             {falhou || completoFalhou ? "detalhes" : "etapas"}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${aberto ? "rotate-180" : ""}`} />
           </button>
+          {cancelavel && (
+            <button
+              type="button"
+              onClick={() => setConfirmandoCancelar((c) => !c)}
+              aria-expanded={confirmandoCancelar}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold hover:bg-[var(--realce-2)] hover:text-red-400 transition-colors whitespace-nowrap"
+              style={{ color: "var(--text-muted)" }}
+              title="Cancelar este vídeo"
+              aria-label="Cancelar este vídeo"
+              data-acao="cancelar"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              {/* Em 390 px a fileira já tem o relógio, o botão principal e o
+                  "etapas": fica só "Cancelar"; de 400 px para cima, a frase. */}
+              <span className="hidden min-[400px]:inline">Cancelar este vídeo</span>
+              <span className="min-[400px]:hidden">Cancelar</span>
+            </button>
+          )}
           {dispensavel && (
             <button
               type="button"
@@ -1164,6 +1268,50 @@ function CartaoDoVideo({
           )}
         </div>
       </div>
+
+      {/* A CONFIRMAÇÃO DO CANCELAMENTO, dentro do cartão (05/10). */}
+      {cancelavel && confirmandoCancelar && (
+        <div
+          className="mt-3 rounded-xl border px-3 py-3 space-y-2.5"
+          style={{ borderColor: "rgba(239,68,68,.45)", background: "color-mix(in srgb, #ef4444 7%, transparent)" }}
+          role="alertdialog"
+          aria-label="Cancelar este vídeo"
+          data-confirmar-cancelamento
+        >
+          <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+            {TEXTO_DA_CONFIRMACAO}
+          </p>
+          <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
+            {gemeo && v.status === "gemeo"
+              ? "O gêmeo para de gravar este vídeo; o que o gerador já estava fazendo termina sozinho e vai para o lixo."
+              : esperando === "roteiro"
+                ? "O roteiro deixa de esperar a sua aprovação, e a segunda parte da edição não é cobrada. A primeira parte, já feita, fica cobrada."
+                : "O que ainda estiver rodando nos nossos servidores termina sozinho e é descartado; os cards deste vídeo que não foram publicados saem do quadro."}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void confirmarCancelamento()}
+              disabled={cancelando}
+              className="inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors whitespace-nowrap disabled:opacity-60"
+              data-acao="confirmar-cancelamento"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              {cancelando ? "Cancelando..." : "Sim, cancelar este vídeo"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmandoCancelar(false)}
+              disabled={cancelando}
+              className={classeDoSecundario}
+              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+              data-acao="manter-video"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
 
       {aberto && (
         <div className="mt-3 pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }} data-etapas-abertas>
