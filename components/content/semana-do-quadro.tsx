@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play } from "lucide-react";
+import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play, Scissors, Eye } from "lucide-react";
+import type { EsperaDoCorte } from "@/lib/media/espera-do-corte";
 import { cn } from "@/lib/utils";
 import { RedeIcone } from "@/components/social/rede-icone";
 import { estadoDoPost, horaCurta, NOMES_DAS_REDES, type PostParaEstado } from "@/lib/posts/estado";
@@ -108,7 +109,89 @@ export type DiaDaSemana = {
   pecas: PecaDoDia[];
   /** Em que ponto a geração deste dia está (28/09). Nulo sem campanha. */
   andamento?: AndamentoDoDia | null;
+  /**
+   * O lugar guardado do corte (05/10): o plano marca vídeo curto neste dia e
+   * o corte ainda não chegou. Ver lib/media/espera-do-corte.ts.
+   */
+  esperasDoCorte?: EsperaDoCorte[];
 };
+
+/**
+ * O CARTÃO DE ESPERA DO CORTE (05/10).
+ *
+ * Dia de vídeo curto sem corte pronto ficava vazio, e o cliente achava que o
+ * plano tinha pulado o dia. Este cartão guarda o lugar: diz que o corte chega
+ * aqui, em que pé ele está e em que redes ele sai. Tracejado de propósito, para
+ * não ser lido como peça pronta; quando o corte chega, o cartão de verdade
+ * entra no lugar dele. As cores vêm da escala orange-*, que desenha o azul da
+ * marca, e o mesmo par de ícone e cor da faixa do andamento.
+ */
+function CartaoDaEsperaDoCorte({ e, onVerVideo }: { e: EsperaDoCorte; onVerVideo?: () => void }) {
+  const andando = e.estado === "cortando";
+  const pronto = e.estado === "revisar";
+  const Icone = pronto ? Eye : andando ? Loader2 : Clock;
+  const conteudo = (
+    <>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-orange-500/35 bg-orange-500/10 text-orange-400"
+          aria-hidden
+        >
+          <Scissors className="h-3 w-3" />
+        </span>
+        <span className="text-[11.5px] font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+          O corte do seu vídeo chega aqui
+        </span>
+      </span>
+      {e.redes.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1.5" aria-label="Redes deste dia">
+          {e.redes.map((r) => (
+            <RedeIcone key={r} plataforma={r} className="h-3.5 w-3.5" />
+          ))}
+        </span>
+      )}
+      <span
+        className={cn(
+          "flex items-center gap-1 text-[10.5px] font-semibold",
+          pronto || andando ? "text-orange-400" : "text-[var(--text-muted)]"
+        )}
+      >
+        <Icone className={cn("h-3 w-3 shrink-0", andando && "animate-spin motion-reduce:animate-none")} />
+        {e.rotulo}
+      </span>
+      <span className="line-clamp-3 text-[10px] leading-snug" style={{ color: "var(--text-muted)" }} title={e.detalhe}>
+        {e.detalhe}
+      </span>
+      {andando && (
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
+          <span className="block h-full w-1/3 animate-[correBarra_1.4s_ease-in-out_infinite] motion-reduce:hidden" style={{ background: "var(--accent-orange)" }} />
+        </span>
+      )}
+    </>
+  );
+  const classe =
+    "relative flex w-full flex-col gap-1.5 overflow-hidden rounded-lg border border-dashed px-2.5 py-2 text-left transition-colors";
+  const estilo = {
+    background: "var(--bg-input)",
+    borderColor: pronto ? "rgba(246,128,61,.55)" : "var(--border)",
+  };
+  return onVerVideo ? (
+    <button
+      type="button"
+      data-espera-do-corte={e.estado}
+      onClick={onVerVideo}
+      title="Ver a gravação e os cortes, na faixa do vídeo"
+      className={cn(classe, "hover:border-orange-500/60")}
+      style={estilo}
+    >
+      {conteudo}
+    </button>
+  ) : (
+    <div data-espera-do-corte={e.estado} role="status" className={classe} style={estilo}>
+      {conteudo}
+    </div>
+  );
+}
 
 /**
  * A FAIXA DO ANDAMENTO, no topo do dia (28/09).
@@ -472,6 +555,7 @@ export function SemanaDoQuadro({
   onAbrirDia,
   onAbrirPeca,
   onArquivarPeca,
+  onVerVideo,
 }: {
   dias: DiaDaSemana[];
   /** Clicar no vazio de um dia: é por onde se põe algo naquele dia. */
@@ -479,6 +563,8 @@ export function SemanaDoQuadro({
   onAbrirPeca: (pecaId: string) => void;
   /** Arquivar os posts com falha da peça (01/10). Sem ele, o botão não aparece. */
   onArquivarPeca?: (pecaId: string) => void;
+  /** Levar o cliente à faixa do vídeo, a partir do cartão de espera do corte (05/10). */
+  onVerVideo?: () => void;
 }) {
   // A peça cuja mídia está aberta no visor. Estado da semana, e não do
   // cartão, porque o visor cobre a tela inteira.
@@ -555,10 +641,16 @@ export function SemanaDoQuadro({
 
           {dia.andamento && <FaixaDoAndamento a={dia.andamento} />}
 
-          {dia.pecas.length > 0 ? (
+          {dia.pecas.length > 0 || dia.esperasDoCorte?.length ? (
             <div className="relative flex flex-col gap-2">
               {dia.pecas.map((p) => (
                 <CartaoDaPeca key={p.id} p={p} onAbrir={() => onAbrirPeca(p.id)} onVerMidia={p.midia ? () => setVisor(p) : undefined} onArquivar={onArquivarPeca ? () => onArquivarPeca(p.id) : undefined} />
+              ))}
+              {/* O lugar do corte que ainda não chegou (05/10), depois das
+                  peças prontas: quando o corte chega, ele vira peça e o
+                  cartão de espera some. */}
+              {dia.esperasDoCorte?.map((e) => (
+                <CartaoDaEsperaDoCorte key={e.id} e={e} onVerVideo={onVerVideo} />
               ))}
             </div>
           ) : dia.andamento && dia.andamento.fase !== "pronto" ? null : (

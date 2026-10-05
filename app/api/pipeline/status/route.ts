@@ -84,7 +84,30 @@ export async function GET(req: NextRequest) {
         publishedAt: true, externalUrl: true, socialAccountId: true, metadata: true, dayOfWeek: true, runId: true,
       },
     });
-    return NextResponse.json({ cards, run: weekRun, posts });
+    // OS PLANOS DE VÍDEO QUE TOCAM ESTA SEMANA (05/10): o run de vídeo guarda o
+    // plano congelado (config.semana), e é dele que o quadro tira os dias de
+    // "Vídeo curto" para guardar o lugar do corte que ainda não chegou. O plano
+    // começa no dia do envio e atravessa para a semana seguinte, então entra
+    // também o run que começou na semana anterior.
+    const runsDoVideo = await prisma.pipelineRun.findMany({
+      where: {
+        projectId,
+        archived: false,
+        weekStart: {
+          gte: new Date(weekStartDate.getTime() - 7 * 24 * 60 * 60 * 1000),
+          lte: new Date(weekStartDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      orderBy: { startedAt: "desc" },
+      select: { id: true, weekStart: true, config: true },
+    });
+    const planosDoVideo = runsDoVideo.flatMap((r) => {
+      const videoJobId = (r.config as { videoJobId?: unknown } | null)?.videoJobId;
+      if (typeof videoJobId !== "string") return [];
+      return [{ runId: r.id, videoJobId, weekStart: r.weekStart?.toISOString() ?? null, config: r.config }];
+    });
+
+    return NextResponse.json({ cards, run: weekRun, posts, planosDoVideo });
   }
 
   const latestRun = await prisma.pipelineRun.findFirst({

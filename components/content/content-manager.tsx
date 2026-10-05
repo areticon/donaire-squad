@@ -53,6 +53,7 @@ import { TRADUCAO_DOS_CODIGOS, chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFras
 import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
 import { SemanaDoQuadro, proximaPeca, type DiaDaSemana, type PecaDoDia, type EstadoDaPeca } from "@/components/content/semana-do-quadro";
 import { andamentoDosDias } from "@/lib/pipeline/andamento-dos-dias";
+import { esperasDoCorteNoDia, type PlanoDoVideo } from "@/lib/media/espera-do-corte";
 import { FichaDoAgente, type TrabalhoDoAgente } from "@/components/escritorio/ficha-do-agente";
 import { LinhaDoTempoDoParecer } from "@/components/escritorio/linha-do-tempo-do-parecer";
 import type { EtapaDoParecer } from "@/lib/squad/parecer-da-peca";
@@ -4165,6 +4166,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   // A campanha da semana, com o registro: é dele que sai o andamento de cada
   // dia no calendário (28/09). A rota de status já mandava, e a tela ignorava.
   const [runDaSemana, setRunDaSemana] = useState<{ status: string; logs: unknown } | null>(null);
+  // Os planos de vídeo que tocam a semana aberta (05/10): é deles que sai o
+  // lugar guardado do corte nos dias de vídeo curto (lib/media/espera-do-corte.ts).
+  const [planosDoVideo, setPlanosDoVideo] = useState<PlanoDoVideo[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [runningPipelineId, setRunningPipelineId] = useState<string | null>(activeRun?.status === "running" ? activeRun.id : null);
   const [generating, setGenerating] = useState(activeRun?.status === "running");
@@ -4301,6 +4305,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       setCards(data.cards ?? []);
       setPostsSemana(data.posts ?? []);
       setRunDaSemana(data.run ? { status: data.run.status, logs: data.run.logs } : null);
+      setPlanosDoVideo(Array.isArray(data.planosDoVideo) ? data.planosDoVideo : []);
     } catch {
       // silent
     } finally {
@@ -4864,7 +4869,21 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           .filter((r): r is string => typeof r === "string" && r.length > 0),
       ]),
     ];
-    const formato = formatosDoDia.length ? formatosDoDia.join(" · ") : null;
+    /**
+     * O LUGAR GUARDADO DO CORTE (05/10): dia de vídeo curto no plano cujo
+     * corte ainda não chegou. Sem isto o dia ficava vazio ou sumia, e o
+     * cliente achava que o plano tinha pulado o dia. Quando o corte chega, o
+     * card dele ocupa o lugar e a espera some.
+     */
+    const esperasDoCorte = esperasDoCorteNoDia({
+      iso,
+      planos: planosDoVideo,
+      gravacoes: videosAoVivo,
+      semanaDoProjeto: videoSemana,
+      postsDoDia: postsSemana.filter((p) => (p.scheduledAt ? toIsoDate(new Date(p.scheduledAt)) === iso : false)),
+      cardsDoDia,
+    });
+    const formato = formatosDoDia.length ? formatosDoDia.join(" · ") : esperasDoCorte.length ? "Vídeo curto" : null;
 
     const postsDoDia = postsSemana.filter((p) =>
       p.scheduledAt
@@ -5130,6 +5149,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       formato,
       pecas,
       andamento: andamento[day.dayOfWeek] ?? null,
+      esperasDoCorte,
     };
   });
 
@@ -5585,6 +5605,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       <SemanaDoQuadro
         dias={diasDoCalendario}
         onAbrirDia={() => openNewCampaign()}
+        // O cartão de espera do corte leva à faixa do vídeo, onde a gravação e
+        // os cortes estão (05/10).
+        onVerVideo={() => document.querySelector("[data-esteira]")?.scrollIntoView({ behavior: "smooth", block: "start" })}
         // A peça que falhou se arquiva no próprio cartão (01/10): só os posts
         // dela que falharam; o que já saiu ou está na fila fica.
         onArquivarPeca={(id) => void arquivarPostsComFalha((postsDaPeca.get(id) ?? []).filter((p) => p.status === "failed").map((p) => p.id))}
