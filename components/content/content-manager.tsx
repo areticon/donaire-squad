@@ -5219,7 +5219,14 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           ? `/api/videos/${jobDaPeca}/midia?tipo=completo`
           : `/api/videos/${jobDaPeca}/midia?trecho=${trechoDaPeca}&tipo=vertical`
         : null;
-      const midiaDaCapa = (pecaDeVideo ? (redator?.cardType === "video_clip" ? redator.mediaUrl : null) ?? midiaDoVideo : redator?.mediaUrl) ?? cardDaMidia?.mediaUrl ?? null;
+      // SEM CARD DE MÍDIA, A CAPA VEM DO PRÓPRIO POST (05/10): o post único e a
+      // arte gerada depois da identidade aprovada gravam a arte no post, não
+      // num card da Diana, e o quadro mostrava o carrossel sem miniatura.
+      const midiaDaCapa =
+        (pecaDeVideo ? (redator?.cardType === "video_clip" ? redator.mediaUrl : null) ?? midiaDoVideo : redator?.mediaUrl) ??
+        cardDaMidia?.mediaUrl ??
+        (pecaDeVideo ? null : primeiro.imageUrl) ??
+        null;
       const bruta = midiaDaCapa ? midiaDaCapa.split("|")[0] : null;
       // O quadro vem do card do próprio corte (metadata.thumb, a capa do
       // Vitor) e, sem ele, do card da Diana.
