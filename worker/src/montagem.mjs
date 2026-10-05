@@ -4,9 +4,10 @@ import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { availableParallelism, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { ffprobe, prepararTrecho, rodar, sinalDoTrabalho } from "./ffmpeg.mjs";
 import { gerarMatte } from "./segmentacao.mjs";
+import { fatiaAtual } from "./capacidade.mjs";
 
 /**
  * O EDITOR COMPLETO no worker (30/09/2026): recebe o plano de montagem JÁ
@@ -108,10 +109,12 @@ export function opcoesDoRender() {
     // o dobro para codificar e não muda nada num vídeo h264.
     imageFormat: "jpeg",
     jpegQuality: 90,
-    // No máximo 4 abas do Chrome: com uma por CPU o compositor morreu por
-    // memória na primeira rodada em produção (SIGKILL, contêiner de 7,6 GB).
-    // REMOTION_CONCORRENCIA ajusta sem deploy de código, sempre até 4.
-    concurrency: Math.min(4, Number(process.env.REMOTION_CONCORRENCIA) || availableParallelism()),
+    // 4 abas do Chrome por unidade da máquina: com uma por CPU o compositor
+    // morreu por memória na primeira rodada em produção (SIGKILL, contêiner de
+    // 7,6 GB). A conta (núcleos e memória da fatia deste render) está em
+    // capacidade.mjs; na máquina de 8 vCPU / 7,6 GB dá as mesmas 4 de antes.
+    // REMOTION_CONCORRENCIA ajusta sem deploy de código, sempre só para baixo.
+    concurrency: fatiaAtual().remotion,
     // O cache de quadros do OffthreadVideo cresce até metade da memória livre
     // por padrão; 512 MB bastam para um corte e deixam o resto para o Chrome.
     offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
@@ -145,7 +148,7 @@ function pessoaEmPixels(fonte, pessoa) {
  * (e o filtro outras tantas), e somados ao Chrome estouraram o teto de
  * processos do contêiner ("Resource temporarily unavailable", 30/09).
  */
-const THREADS = process.env.MONTAGEM_FFMPEG_THREADS || "3";
+const fios = () => fatiaAtual().ffmpegFios;
 
 /** Cores dos fundos: as mesmas de worker/remotion/src/partes/cena.tsx. */
 const COR_DO_PAPEL = "#EEEAE1";
@@ -198,7 +201,7 @@ export async function prepararFundos(m, pasta, baixar) {
             "-filter_complex",
             `[1:v]scale=${m.largura}:${m.altura}:force_original_aspect_ratio=increase,crop=${m.largura}:${m.altura},format=gbrp[p];` +
               `[0:v]format=gbrp[c];[c][p]blend=all_mode=${modo}:all_opacity=${opacidade},format=yuvj420p`,
-            "-frames:v", "1", "-q:v", "3", "-threads", THREADS, saida,
+            "-frames:v", "1", "-q:v", "3", "-threads", fios(), saida,
           ]
         : ["-f", "lavfi", "-i", `color=c=${cor6}:s=${tamanho}`, "-frames:v", "1", "-q:v", "3", saida]
     );
@@ -304,7 +307,7 @@ export async function prepararCheio(narrador, m, pasta) {
     // No tamanho da CAIXA do narrador, que no vertical deixa a faixa de cima
     // para os elementos (30/09); no resto ela ainda é o quadro inteiro.
     "-vf", `crop=${r.w}:${r.h}:${r.x}:${r.y},scale=${par(cena.narrador.caixa.w)}:${par(cena.narrador.caixa.h)}:flags=bicubic,setsar=1`,
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", "-threads", THREADS, saida,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p", "-threads", fios(), saida,
   ]);
   return { arquivo: basename(saida), recorte: r };
 }
@@ -370,8 +373,8 @@ export async function comporRecortado(narrador, mascara, cena, indice, fundoJpg,
       "-ss", inicio, "-t", dur, "-i", narrador,
       "-ss", inicio, "-t", dur, "-i", matte.arquivo,
       "-loop", "1", "-framerate", String(m.fps), "-t", dur, "-i", fundoJpg,
-      "-filter_complex", grafo, "-filter_complex_threads", THREADS, "-map", "[v]", "-an", "-r", String(m.fps),
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", THREADS, saida,
+      "-filter_complex", grafo, "-filter_complex_threads", fios(), "-map", "[v]", "-an", "-r", String(m.fps),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", fios(), saida,
     ],
     { cwd: pasta }
   );

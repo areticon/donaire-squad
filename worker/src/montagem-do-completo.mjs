@@ -6,6 +6,7 @@ import { availableParallelism } from "node:os";
 import { createServer } from "node:net";
 import { emendar, ffprobe, fpsDe, rodar } from "./ffmpeg.mjs";
 import { bundleDoRemotion, opcoesDoRender, prepararFundos, servirPasta } from "./montagem.mjs";
+import { fatiaAtual } from "./capacidade.mjs";
 
 /**
  * O VÍDEO COMPLETO EDITADO (30/09/2026): o completo no mesmo padrão da
@@ -49,8 +50,12 @@ import { bundleDoRemotion, opcoesDoRender, prepararFundos, servirPasta } from ".
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const PASTA_DAS_FONTES = resolve(AQUI, "..", "fontes");
 
-/** Threads de cada ffmpeg (a mesma trava do montagem.mjs: o contêiner tem teto de processos). */
-const THREADS = process.env.MONTAGEM_FFMPEG_THREADS || "3";
+/**
+ * Threads de cada ffmpeg (a mesma trava do montagem.mjs: o contêiner tem teto
+ * de processos). Saem da fatia deste render (capacidade.mjs): 3 na máquina de
+ * 8 vCPU, mais numa máquina maior; MONTAGEM_FFMPEG_THREADS fixa.
+ */
+const fios = () => fatiaAtual().ffmpegFios;
 
 /**
  * Os parâmetros do ACABAMENTO em lotes (01/10, parte 240). O render de um
@@ -71,7 +76,8 @@ function parametrosDoAcabamento(leve) {
     ? { loteSeg: 30, lotesJuntos: 1, fiosDoCodificador: "2", fiosDeEntrada: "1", renders: 1 }
     : {
         loteSeg: LOTE_SEG,
-        lotesJuntos: Math.max(1, Number(process.env.MONTAGEM_COMPLETO_LOTES ?? 2)),
+        // 2 por unidade da fatia (2 na máquina de 8 vCPU); MONTAGEM_COMPLETO_LOTES fixa.
+        lotesJuntos: fatiaAtual().lotesDoCompleto,
         fiosDoCodificador: process.env.MONTAGEM_COMPLETO_THREADS_LOTE || "4",
         fiosDeEntrada: "2",
         renders: null,
@@ -708,7 +714,7 @@ export async function montarCompleto(pedido, pasta, { baixar, aoProgresso } = {}
         "-vf", "setpts=PTS-STARTPTS", "-af", "asetpts=PTS-STARTPTS",
         "-fps_mode", "cfr", "-r", String(fps),
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "14", "-pix_fmt", "yuv420p", "-g", "30",
-        "-c:a", "aac", "-b:a", "96k", "-threads", THREADS, saida,
+        "-c:a", "aac", "-b:a", "96k", "-threads", fios(), saida,
       ]);
       return saida;
     });
@@ -726,7 +732,7 @@ export async function montarCompleto(pedido, pasta, { baixar, aoProgresso } = {}
     // das caixas sairia espremido.
     await rodar([
       "-i", narrador, "-an", "-vf", `scale=${H > W ? "540:960" : "960:540"}:flags=bicubic,setsar=1`,
-      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", "-threads", THREADS,
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", "-threads", fios(),
       join(pasta, "narrador-caixas.mp4"),
     ]);
     marcar("narrador");
@@ -756,7 +762,8 @@ export async function montarCompleto(pedido, pasta, { baixar, aoProgresso } = {}
       // quadro do Chrome passa por mais uma compressão que a base; a 90 a
       // imagem gerada perdia detalhe fino perto da gravação.
       const opcoes = { ...opcoesDoRender(), jpegQuality: 95 };
-      const renders = Math.max(1, Math.min(4, Number(P.renders ?? pedido.renders ?? process.env.MONTAGEM_COMPLETO_RENDERS ?? 2)));
+      // 2 por unidade da fatia, até 4 (2 na máquina de 8 vCPU); MONTAGEM_COMPLETO_RENDERS fixa.
+      const renders = Math.max(1, Math.min(4, Number(P.renders ?? pedido.renders ?? fatiaAtual().rendersDoCompleto)));
       // As abas do Chrome se dividem entre os renders: o total fica no teto
       // que já sobreviveu em produção (4 abas no contêiner de 7,6 GB), com
       // folga de uma aba por render a mais.

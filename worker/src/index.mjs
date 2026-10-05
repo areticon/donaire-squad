@@ -37,6 +37,7 @@ import {
 import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
 import { guardarFala } from "./guarda-da-fala.mjs";
 import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
+import { CAPACIDADE, comFatia, resumoDaCapacidade } from "./capacidade.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -363,21 +364,15 @@ function calcularAjusteDeBrilho(arquivo, alvo, videoJobId) {
 /**
  * Quantas coisas rodar ao mesmo tempo, a partir do contêiner de verdade.
  *
- * Lido na subida, uma vez. O limite de memória é o do cgroup (7,6 GB no
- * Railway Hobby, medido em 04/09 pelo /saude); fora de contêiner cai no
- * conservador.
+ * Lido na subida, uma vez, em capacidade.mjs: núcleos e o teto de memória do
+ * cgroup (7,6 GB no Railway Hobby, medido em 04/09 pelo /saude). Na máquina de
+ * 8 vCPU / 7,6 GB dá os mesmos 3 trechos e 2 lotes de antes; numa maior, mais.
  */
-const PARALELISMO = (() => {
-  const limite = memoriaDoConteiner().limite;
-  const mb = typeof limite === "string" && /MB$/.test(limite) ? Number(limite.replace(/\D/g, "")) : 0;
-  const cpus = availableParallelism();
-  // Um trecho no pior caso: ffmpeg em 1440p mais o Python da segmentação,
-  // perto de 1,5 GB. Um lote do completo com fios automáticos, perto de 1,2 GB.
-  const trechos = Math.max(1, Math.min(3, Math.floor((mb || 3000) / 1800), cpus));
-  const lotes = mb >= 6000 && cpus >= 4 ? 2 : 1;
-  console.log(`paralelismo: ${trechos} trechos, ${lotes} lotes do completo (${cpus} cpus, ${limite})`);
-  return { trechos, lotes };
-})();
+const PARALELISMO = { trechos: CAPACIDADE.trechos, lotes: CAPACIDADE.lotes };
+console.log(
+  `paralelismo: ${PARALELISMO.trechos} trechos, ${PARALELISMO.lotes} lotes do completo, ` +
+    `${CAPACIDADE.rendersJuntos} unidade(s) na fila de montagem (${CAPACIDADE.cpus} cpus, ${memoriaDoConteiner().limite})`
+);
 
 /** Roda `fn` sobre `itens`, no máximo `n` de cada vez. Nenhuma rejeição escapa: cada `fn` trata a própria. */
 async function emPiscina(itens, n, fn) {
@@ -1359,6 +1354,11 @@ process.on("SIGINT", () => void desligar("SIGINT"));
  */
 const filaDaMontagem = [];
 let montagemRodando = false;
+/** Renders da fila rodando agora, e as unidades que eles reservaram (só a fila paralela usa). */
+let montagensRodando = 0;
+let unidadesOcupadas = 0;
+/** Acorda a fila paralela antes dos 10 s (pedido novo, render que terminou). */
+let acordarFila = null;
 
 /**
  * A gravação original, baixada UMA vez para todos os cortes do mesmo vídeo
@@ -1424,6 +1424,9 @@ function enfileirarMontagem(trabalho) {
 }
 
 async function andarFilaDaMontagem() {
+  // Máquina maior que a de 8 vCPU / 7,6 GB: a fila paralela (abaixo). Com uma
+  // unidade só, a fila serial de sempre, sem mudar uma linha.
+  if (CAPACIDADE.rendersJuntos > 1) return andarFilaParalela();
   if (montagemRodando) return;
   montagemRodando = true;
   try {
@@ -1448,6 +1451,86 @@ async function andarFilaDaMontagem() {
     }
   } finally {
     montagemRodando = false;
+    originais.clear();
+    await rm(PASTA_DOS_ORIGINAIS, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Quantas unidades da máquina um render da fila reserva: o completo, todas menos uma; o corte, uma. */
+function unidadesDaMontagem(trabalho) {
+  return (trabalho.prioridade ?? 0) > 0 ? CAPACIDADE.unidadesDoCompleto : 1;
+}
+
+/**
+ * A FILA PARALELA (05/10, máquina do plano Pro). A regra de 03/10 continua:
+ * nunca dois renders pesados juntos NA MESMA UNIDADE. Cada render reserva a
+ * sua fatia (capacidade.mjs) e roda com os números dela (abas, fios, lotes);
+ * o próximo só começa se sobrar fatia para ele, na ordem da fila (o completo
+ * na cabeça segura os de trás até caber, e os cortes sempre passam na frente
+ * dele ao entrar). Os trabalhos fora da fila (cortes e completo de base) têm
+ * prioridade: enquanto rodam, guardam metade das unidades para eles. E todo
+ * render que começa com outro ao lado precisa de 3 GB livres por unidade.
+ *
+ * Quando nada da fila roda e os trabalhos não deixam fatia que baste, vale a
+ * espera de sempre: até 15 min por eles, depois memória para um render.
+ */
+async function andarFilaParalela() {
+  if (montagemRodando) {
+    acordarFila?.();
+    return;
+  }
+  montagemRodando = true;
+  const dormir = (ms) =>
+    new Promise((r) => {
+      const t = setTimeout(r, ms);
+      acordarFila = () => {
+        clearTimeout(t);
+        r();
+      };
+    });
+  let esperaDesde = null;
+  try {
+    while (filaDaMontagem.length || montagensRodando > 0) {
+      const cabeca = filaDaMontagem[0];
+      if (cabeca) {
+        const k = unidadesDaMontagem(cabeca);
+        const reserva = emAndamento > 0 ? CAPACIDADE.unidadesDosTrabalhos : 0;
+        const temFatia = CAPACIDADE.rendersJuntos - unidadesOcupadas - reserva >= k;
+        const sozinho = unidadesOcupadas === 0 && emAndamento === 0;
+        let pode = temFatia && (sozinho || memoriaLivreMb() >= 3000 * k);
+        if (!pode && unidadesOcupadas === 0 && emAndamento > 0) {
+          // A espera de sempre, sem nada da fila rodando: 15 min pelos trabalhos.
+          esperaDesde ??= Date.now();
+          if (Date.now() - esperaDesde >= 15 * 60_000) {
+            const ok = await esperarMemoria(3000, { ateMs: 30 * 60_000, rotulo: "fila de montagem" });
+            console.error(`[montar] fila esperou por ${emAndamento} trabalho(s) em andamento; segue ${ok ? "com memória" : `com ${memoriaLivreMb()} MB livres`}`);
+            pode = true;
+          }
+        }
+        if (pode && filaDaMontagem[0] === cabeca) {
+          esperaDesde = null;
+          filaDaMontagem.shift();
+          montagensRodando++;
+          unidadesOcupadas += k;
+          console.log(`[montar] começa com ${k} unidade(s); ${unidadesOcupadas}/${CAPACIDADE.rendersJuntos} ocupadas, ${filaDaMontagem.length} na fila`);
+          void comFatia(k, () => cabeca.executar())
+            .catch((e) => console.error(`[montar] ${e?.message ?? e}`))
+            // Respiro antes de soltar a fatia: o Chrome e o compositor deste
+            // render terminam de sair e devolvem a memória.
+            .then(() => new Promise((r) => setTimeout(r, 3_000)))
+            .finally(() => {
+              montagensRodando--;
+              unidadesOcupadas -= k;
+              acordarFila?.();
+            });
+          continue;
+        }
+      }
+      await dormir(10_000);
+    }
+  } finally {
+    montagemRodando = false;
+    acordarFila = null;
     originais.clear();
     await rm(PASTA_DOS_ORIGINAIS, { recursive: true, force: true }).catch(() => {});
   }
@@ -1482,6 +1565,9 @@ const servidor = createServer((req, res) => {
       memoria: memoriaDoConteiner(),
       cpus: availableParallelism(),
       paralelismo: PARALELISMO,
+      // Os números calculados da máquina (capacidade.mjs): unidades, a fatia
+      // do corte e a do completo, e quantos renders da fila rodam agora.
+      capacidade: { ...resumoDaCapacidade(), montagensRodando, unidadesOcupadas },
     }));
   }
 
