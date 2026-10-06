@@ -72,6 +72,11 @@ export type EstadoDaRevisaoVisual = {
   /** O próximo render vai ao ar sem revisão (versão segura ou revisão desligada). */
   final?: boolean;
   motivo?: string | null;
+  /**
+   * A CONFERÊNCIA DEPOIS DA CORREÇÃO (06/10, noite; lib/media/conferencia-visual.ts versaoQueVaiAoAr): o render
+   * corrigido volta ao olho só nos `momentos` corrigidos; se piorou, vai ao ar o `anterior` (o render conferido).
+   */
+  depois?: { momentos: string[]; anterior: { url: string; bytes?: number; tempos?: unknown }; antes: { elementos: number; defeitos: number } } | null;
 };
 
 export const RODADAS_DE_CONSERTO = 2;

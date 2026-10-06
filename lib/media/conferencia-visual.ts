@@ -404,7 +404,34 @@ const GRAVES_SEM_JEV = new Set<TipoDeProblema>(["texto-sobreposto", "texto-corta
 
 export type ProblemaNoQuadro = { t: number; momento: string | null; tipo: TipoDeProblema; descricao: string };
 
-export type PecaReprovada = { momento: string; t: number; problemas: ProblemaNoQuadro[]; probabilidade: number | null };
+/**
+ * O CONSERTO DA PEÇA REPROVADA (06/10, noite; vídeo cmux4417u: 11 peças reprovadas por "legenda sobreposta ao
+ * texto da peça" foram TIRADAS e o vídeo ficou quase sem elementos):
+ *   - "legenda": o defeito é a legenda em cima do texto da peça (ou a peça escondendo a legenda). A peça está boa;
+ *     quem sai do caminho é a LEGENDA (muda de faixa ou se esconde durante a peça, faixa-da-legenda.ts desviarLegenda);
+ *   - "peca": o defeito é da própria peça (cobre o rosto, cortada, colagem, minúscula, quadro vazio): só esta é
+ *     tirada e replanejada.
+ * O JEV decide (pergunta c{k}); sem ele, a reserva pelos tipos descritos (`consertoDeReserva`).
+ */
+export type ConsertoDaPeca = "legenda" | "peca";
+
+export type PecaReprovada = { momento: string; t: number; problemas: ProblemaNoQuadro[]; probabilidade: number | null; conserto: ConsertoDaPeca };
+
+/** A legenda está no meio do defeito: "legenda-escondida", ou o texto sobreposto em que a descrição fala da legenda. */
+export const problemaDaLegenda = (x: Pick<ProblemaNoQuadro, "tipo" | "descricao">) => x.tipo === "legenda-escondida" || (x.tipo === "texto-sobreposto" && /legenda|fala/i.test(x.descricao));
+
+/** A reserva sem o JEV: só problemas da legenda (e nenhum da peça em si) pedem que a legenda desvie; o resto refaz a peça. */
+export function consertoDeReserva(lista: Array<Pick<ProblemaNoQuadro, "tipo" | "descricao">>): ConsertoDaPeca {
+  const graves = lista.filter((x) => x.tipo !== "outro");
+  if (graves.length && graves.every(problemaDaLegenda)) return "legenda";
+  return "peca";
+}
+
+/** O que cada conserto quer dizer, para o JEV escolher. */
+export const CRITERIO_DO_CONSERTO: Record<ConsertoDaPeca, string> = {
+  legenda: "o defeito é a LEGENDA da fala em cima do texto da peça (ou a peça escondendo a legenda): a peça está boa, quem deve sair do caminho é a legenda (muda de faixa ou some durante a peça)",
+  peca: "o defeito é da PRÓPRIA peça: cobre o rosto, está cortada, é colagem, está minúscula, deixa o quadro vazio ou está fora do assunto; só refazendo a peça resolve",
+};
 
 export type ResultadoDoVideo = {
   quadros: number;
@@ -565,28 +592,45 @@ export async function conferirVideoPronto(p: {
   for (const pr of problemas) if (pr.momento) porPeca.set(pr.momento, [...(porPeca.get(pr.momento) ?? []), pr]);
   const pecas = [...porPeca.entries()];
   const probs: Record<string, number | null> = {};
+  const consertos: Record<string, ConsertoDaPeca> = {};
   if (pecas.length && (jevLigado() || juiz !== perguntarAoJev)) {
     try {
       const r = await juiz(
         { projectId: p.projectId, etapa: "conferencia-visual-video", state: { pedidoDoCliente: p.comando.slice(0, 1200) } },
         Object.fromEntries(
-          pecas.map(([id, lista], k) => {
+          pecas.flatMap(([id, lista], k) => {
             const c = p.edicao.camadas.find((x) => x.id === id);
+            const peca = c ? `${c.peca} de ${c.de.toFixed(1)} s a ${c.ate.toFixed(1)} s` : id;
+            const vistos = lista.slice(0, 6).map((x) => `${x.t.toFixed(1)} s, ${x.tipo}: ${x.descricao}`);
             return [
+              [
+                `c${k}`,
+                {
+                  type: "choice" as const,
+                  instructions: `No vídeo pronto, a peça ${peca} teve estes problemas descritos: ${vistos.join(" | ")}. Se for consertar, o que deve mudar?`,
+                  criteria: { ...CRITERIO_DO_CONSERTO },
+                },
+              ],
+              [
               `p${k}`,
               {
                 type: "noul" as const,
                 instructions: {
                   pergunta: "No vídeo pronto, esta peça tem problema visual que qualquer espectador vê e que estraga o momento, a ponto de valer tirar a peça e refazer só esse momento?",
-                  peca: c ? `${c.peca} de ${c.de.toFixed(1)} s a ${c.ate.toFixed(1)} s` : id,
-                  problemasVistos: lista.slice(0, 6).map((x) => `${x.t.toFixed(1)} s, ${x.tipo}: ${x.descricao}`),
+                  peca,
+                  problemasVistos: vistos,
                 },
               },
+              ],
             ];
           })
         )
       );
-      pecas.forEach(([id], k) => (probs[id] = probabilidadeDeSim(r[`p${k}`])));
+      pecas.forEach(([id], k) => {
+        probs[id] = probabilidadeDeSim(r[`p${k}`]);
+        const c = r[`c${k}`];
+        if (c && c.type === "choice" && (c.confidence ?? 0) >= 0.4 && (c.choice === "legenda" || c.choice === "peca")) consertos[id] = c.choice;
+      });
     } catch {
       // Sem o JEV, vale o padrão pelos tipos graves.
     }
@@ -595,14 +639,41 @@ export async function conferirVideoPronto(p: {
     .map(([id, lista]) => {
       const pr = probs[id] ?? null;
       const reprova = pr === null ? lista.some((x) => GRAVES_SEM_JEV.has(x.tipo)) : pr >= 0.5;
-      return reprova ? { momento: id, t: lista[0].t, problemas: lista, probabilidade: pr } : null;
+      return reprova ? { momento: id, t: lista[0].t, problemas: lista, probabilidade: pr, conserto: consertos[id] ?? consertoDeReserva(lista) } : null;
     })
     .filter((x): x is PecaReprovada => Boolean(x));
   const notas: NotaDoRevisor[] = reprovadas.map((r) => ({
     t: r.t,
     momento: r.momento,
     problema: [...new Set(r.problemas.map((x) => `${x.tipo}: ${x.descricao}`))].slice(0, 3).join("; "),
-    conserto: "tirar a peça e refazer só este momento",
+    conserto: r.conserto === "legenda" ? "a legenda desvia da peça (outra faixa ou some durante ela); a peça fica" : "tirar a peça e refazer só este momento",
   }));
   return { quadros: quadros.length, problemas, reprovadas, notas, custoUsd: +custoUsd.toFixed(5), erro, ms: Date.now() - t0 };
+}
+
+// ─────────────────────────────── a versão que vai ao ar ───────────────────────────────
+
+export type PlacarDaVersao = { elementos: number; defeitos: number };
+
+/** Quantos elementos (peças que não são apoio) a edição tem. */
+export function elementosDaEdicao(ed: Pick<EdicaoResolvida, "camadas">): number {
+  return ed.camadas.filter((c) => !ehApoio(c)).length;
+}
+
+/**
+ * A CONFERÊNCIA DEPOIS DA CORREÇÃO (06/10, noite): a correção só vai ao ar se não
+ * piorou. Piorou quando ficou com MAIS defeitos que antes, ou com o mesmo número
+ * de defeitos e menos elementos. Empate: vai a corrigida (os defeitos de antes
+ * nos momentos corrigidos foram tratados).
+ */
+export function versaoQueVaiAoAr(antes: PlacarDaVersao, depois: PlacarDaVersao): "corrigida" | "anterior" {
+  if (depois.defeitos > antes.defeitos) return "anterior";
+  if (depois.defeitos === antes.defeitos && depois.elementos < antes.elementos) return "anterior";
+  return "corrigida";
+}
+
+/** A edição só com as peças dos momentos corrigidos (a conferência rápida olha só elas). */
+export function soOsMomentos(ed: EdicaoResolvida, momentos: string[]): EdicaoResolvida {
+  const ids = new Set(momentos);
+  return { ...ed, camadas: ed.camadas.filter((c) => idNoPlano(c.id, ids) !== null) };
 }

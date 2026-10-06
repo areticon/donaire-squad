@@ -537,8 +537,90 @@ export function desenhoDaLegenda(estilo, W, H) {
   return { fonte, tam, contorno, alinhamento: 2, margemV: Math.round(vertical ? H * 0.17 : 40 * ey), caixaAlta };
 }
 
+const DESENHOS_DO_CLIENTE = new Set(["palavra", "caixa", "marca-texto", "limpa", "papel"]);
+
+/**
+ * O ESTILO DE LEGENDA ESCOLHIDO PELO CLIENTE (06/10, noite; vídeo cmux4417u: escolheu "Recorte de papel" e saiu a
+ * pílula pequena de sempre). Mesmo desenho da legenda do caminho antigo (montagem-do-completo.mjs legendaEmAss,
+ * que é o ASS da legenda do Remotion dos cortes): "papel" é a tira clara de papel com texto escuro e sombra;
+ * "caixa" é a frase na faixa escura da marca com a palavra dita no acento; "marca-texto" grifa na cor da marca
+ * cada palavra já dita; "palavra" é a palavra grande em caixa alta no centro, a dita no acento; "limpa" é a frase
+ * branca com contorno e sombra, a dita no acento. A posição (e a faixa de cada página) segue a do editor.
+ */
+export function legendaDoDesenho(edicao, W, H, desloc, duracao) {
+  const vertical = H > W;
+  const ey = H / (vertical ? 1920 : 1080);
+  const est = edicao.legenda.estilo;
+  const desenho = est.desenho;
+  const d = desenhoDaLegenda(est, W, H);
+  const papel = desenho === "papel";
+  const caixa = desenho === "caixa";
+  const grifo = desenho === "marca-texto";
+  const palavra = desenho === "palavra";
+  const limpa = desenho === "limpa";
+  const base = Math.round((vertical ? (palavra ? 112 : limpa ? 58 : caixa || grifo ? 80 : 78) : palavra ? 74 : 58) * ey);
+  const acentoHex = edicao.tema?.acento || "#F97316";
+  const escuroHex = edicao.tema?.escuroLegenda || edicao.tema?.escuro || "#15171A";
+  const sobreOAcento = (() => {
+    const h = String(acentoHex).replace("#", "").padEnd(6, "0");
+    const l = (0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16)) / 255;
+    return l > 0.6 ? "#16171A" : "#FFFFFF";
+  })();
+  const cor6 = (hex) => `&H${assCor(hex).slice(-6)}&`;
+  const fonte = palavra ? "Anton" : "Liberation Sans";
+  const corpo = (alin, margem) =>
+    papel
+      ? `${fonte},${base},${assCor("#16171A")},${assCor("#16171A")},${assCor("#FBFAF5")},${assCor("#000000", 0x90)},-1,0,0,0,100,100,0,0,3,${Math.round(12 * ey)},${Math.round(3 * ey)},${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`
+      : caixa || grifo
+      ? `${fonte},${base},${assCor("#FFFFFF")},${assCor("#FFFFFF")},${assCor(escuroHex, grifo ? 0x70 : 0x10)},${assCor("#000000", 0x90)},-1,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`
+      : `${fonte},${base},${assCor("#FFFFFF")},${assCor("#FFFFFF")},${assCor("#000000")},${assCor("#000000", 0x60)},${palavra ? 0 : -1},0,0,0,100,100,${palavra ? 1 : 0},0,1,${Math.round((palavra ? 6 : 4) * ey)},${Math.round(2 * ey)},${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`;
+  const linhas = [
+    "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Leg,${corpo(d.alinhamento, d.margemV)}`,
+    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.035 : 40 * ey))}`,
+    "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+  const acento = assCor(acentoHex);
+  const larg = W - Math.round(140 * ey);
+  const limparTexto = (t) => String(t).replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+  for (const p of edicao.legenda?.paginas ?? []) {
+    if (p.fim <= desloc || p.inicio >= desloc + duracao || p.faixa === "oculta") continue;
+    const estilo = p.faixa === "topo" ? "LegTopo" : "Leg";
+    const ws = (Array.isArray(p.palavras) && p.palavras.length ? p.palavras : [{ texto: p.texto, inicio: p.inicio, fim: p.fim }])
+      .map((w) => ({ ...w, texto: limparTexto(palavra ? String(w.texto).toLocaleUpperCase("pt-BR") : w.texto) }))
+      .filter((w) => w.texto);
+    if (!ws.length) continue;
+    // Até duas linhas na largura útil: a letra encolhe na página longa (a mesma conta do caminho antigo).
+    const letras = ws.reduce((s, w) => s + w.texto.length + 1, 0);
+    const tam = Math.round(Math.min(base, (larg * 2) / Math.max(8, letras * (palavra ? 0.62 : 0.56))));
+    ws.forEach((w, i) => {
+      const de = i === 0 ? p.inicio : w.inicio;
+      const ate = ws[i + 1]?.inicio ?? p.fim;
+      if (ate <= de) return;
+      const texto = ws
+        .map((v, k) => {
+          if (grifo) return k <= i ? `{\\3c${cor6(acentoHex)}\\3a&H00&\\1c${cor6(sobreOAcento)}}${v.texto}{\\r}` : v.texto;
+          if (k === i) return `{\\c${acento}&}${v.texto}{\\c}`;
+          // A que ainda vem fica apagada no papel e no limpo (\1a e não \alpha: o \alpha apaga a caixa de papel).
+          if (k > i && (papel || limpa)) return `{\\1a&H90&}${v.texto}{\\1a&H00&}`;
+          return v.texto;
+        })
+        .join(" ");
+      const a = Math.max(0, de - desloc);
+      const b = Math.min(duracao, ate - desloc);
+      if (b <= a) return;
+      linhas.push(`Dialogue: 0,${assTempo(a)},${assTempo(b)},${estilo},,0,0,0,,{\\fs${tam}}${texto}`);
+    });
+  }
+  return linhas.join("\n") + "\n";
+}
+
 /** A legenda do editor: a pequena e limpa do pitch (Geist SemiBold, caixa escura da marca, no terço de baixo), ou a do estilo. */
 export function legendaSobMedida(edicao, W, H, desloc, duracao) {
+  // O estilo de legenda fixado pelo cliente tem o desenho dele (papel, caixa, marca-texto, palavra, limpa).
+  if (DESENHOS_DO_CLIENTE.has(edicao.legenda?.estilo?.desenho)) return legendaDoDesenho(edicao, W, H, desloc, duracao);
   const vertical = H > W;
   const ey = H / (vertical ? 1920 : 1080);
   const d = desenhoDaLegenda(edicao.legenda?.estilo ?? null, W, H);

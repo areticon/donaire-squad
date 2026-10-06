@@ -288,6 +288,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     }
     // Uma caixa que cobriria rosto, tela, quadro ou uma pessoa inteira tira a peça (com aviso). A caixa PEDIDA pelo
     // cliente no centro fica (ele sabe por que pediu), com o aviso.
+    const cobriria = (caixa: Retangulo): boolean => Boolean(tr && (cobreAlgo(caixa, tr) || cobreUmaPessoa(caixa, tr)));
     const semCobrir = (caixa: Retangulo, nome: string): boolean => {
       if (!tr || !(cobreAlgo(caixa, tr) || cobreUmaPessoa(caixa, tr))) return true;
       if (noCentro) {
@@ -296,6 +297,22 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       }
       avisos.push(`${id}: ${nome} cobriria rosto, tela ou quadro no trecho, saiu`);
       return false;
+    };
+    // OUTRA PEÇA NO MESMO MOMENTO (06/10, noite; vídeo cmux4417u: "j44: cartoes-em-linha cobriria rosto... saiu" e o
+    // vídeo ficou com 2 elementos sobre 13). A peça que não cabe pela posição não deixa o momento vazio: vira a versão
+    // na frente que o JEV escolheu no plano (`props.naFrente`: caixa no topo, cartão embaixo, título no topo), ou a
+    // seguinte que couber sem cobrir rosto, tela nem quadro. Só sem nenhuma o momento fica sem peça.
+    const trocarPelaFrente = (motivo: string): boolean => {
+      if (noCentro) return false;
+      const frente = pecaNaFrente(props, rostoM, vertical0, tr ? (c) => cobreAlgo(c, tr) || cobreUmaPessoa(c, tr) : undefined);
+      if (!frente || !FICHAS[frente.peca]) return false;
+      const original = fichaM.nome;
+      fichaM = FICHAS[frente.peca];
+      props = frente.props;
+      naFrente = true;
+      ate = Math.min(Math.max(ate, de + fichaM.duracao[0]), de + fichaM.duracao[1], D);
+      avisos.push(`${id}: ${original} ${motivo}, entrou ${frente.peca} na frente (${frente.versao}${frente.doJev ? ", escolha do JEV" : ""})`);
+      return true;
     };
     // A janela de imagem: a url é a da inserção gerada com o id em `midia`; sem ela, a peça sai.
     if (fichaM.nome === "imagem-janela") {
@@ -405,19 +422,30 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         const { maxW: w, maxH: h } = pedido;
         caixa = vertical0 ? { x: +((1 - w) / 2).toFixed(4), y: faixaM === "topo" ? 0.08 : 0.5, w, h } : { x: ladoM === "esquerda" ? 0.04 : +(0.96 - w).toFixed(4), y: 0.18, w, h };
       }
-      if (!semCobrir(caixa, fichaM.nome)) continue;
-      props.caixa = caixa;
+      if (cobriria(caixa) && !noCentro) {
+        if (!trocarPelaFrente("cobriria rosto, tela ou quadro no trecho")) {
+          avisos.push(`${id}: ${fichaM.nome} cobriria rosto, tela ou quadro no trecho, saiu (nenhuma versão na frente coube)`);
+          continue;
+        }
+      } else {
+        if (!semCobrir(caixa, fichaM.nome)) continue;
+        props.caixa = caixa;
+      }
     }
     // AS PEÇAS VETORIAIS (06/10, tarefa D): abaixo do rosto (o título, acima da cabeça), nunca sobre ele.
     if (ehVetorial(fichaM.nome)) {
       const t = TAMANHO_DAS_VETORIAIS[fichaM.nome];
       const caixa = noCentro ? caixaNoCentro(vertical0, fator, { w: (vertical0 ? t.vertical : t.horizontal)[0], h: (vertical0 ? t.vertical : t.horizontal)[1] }) : caixaDaVetorial(fichaM.nome, { vertical: vertical0, rosto: rostoM, tr, fator, lado: ladoM });
-      if (!caixa) {
-        avisos.push(`${id}: sem lugar para ${fichaM.nome} fora do rosto no trecho, saiu`);
-        continue;
+      if (!caixa || (cobriria(caixa) && !noCentro)) {
+        const motivo = caixa ? "cobriria rosto, tela ou quadro no trecho" : "sem lugar fora do rosto no trecho";
+        if (!trocarPelaFrente(motivo)) {
+          avisos.push(`${id}: ${fichaM.nome} ${motivo}, saiu (nenhuma versão na frente coube)`);
+          continue;
+        }
+      } else {
+        if (!semCobrir(caixa, fichaM.nome)) continue;
+        props.caixa = caixa;
       }
-      if (!semCobrir(caixa, fichaM.nome)) continue;
-      props.caixa = caixa;
     }
     // A PEÇA COMBINADA (06/10): com o vídeo de fundo pronto, o fundo entra como plano de inserção (entra, fica e sai,
     // como todo B-roll; o cenário do cliente não é trocado) e a camada exata vai por cima no quadro inteiro, com o

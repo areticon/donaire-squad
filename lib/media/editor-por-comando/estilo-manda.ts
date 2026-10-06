@@ -45,10 +45,18 @@ export type LegendaDoEstilo = {
   caixaAlta: boolean;
   /** Quem decidiu: o JEV lendo o comando, a leitura do texto do comando (reserva) ou o estilo fixado pelo cliente. */
   origem: "jev" | "comando" | "cliente";
+  /**
+   * O DESENHO DO ESTILO DE LEGENDA ESCOLHIDO PELO CLIENTE (06/10, noite; vídeo cmux4417u): papel, caixa,
+   * marca-texto, palavra ou limpa, desenhado no worker com o MESMO visual da legenda do caminho antigo
+   * (worker/src/montagem-do-completo.mjs legendaEmAss). Só o estilo fixado pelo cliente leva o campo.
+   */
+  desenho?: EstiloDeLegenda;
 };
 
 /** O desenho que vai ao worker (EdicaoResolvida.legenda.estilo): `y` é o alto da legenda no centro, abaixo do rosto (fração da altura). */
-export type LegendaDesenhada = { posicao: PosicaoDaLegenda; tamanho: TamanhoDaLegenda; letra: LetraDaLegenda; caixaAlta: boolean; y?: number };
+export type LegendaDesenhada = { posicao: PosicaoDaLegenda; tamanho: TamanhoDaLegenda; letra: LetraDaLegenda; caixaAlta: boolean; y?: number; desenho?: EstiloDeLegenda };
+
+const DESENHOS: readonly EstiloDeLegenda[] = ["palavra", "caixa", "marca-texto", "limpa", "papel"];
 
 const normal = (s: string) =>
   String(s ?? "")
@@ -82,11 +90,11 @@ export function legendaPorPalavras(comando: string | null | undefined): LegendaD
 
 /** O estilo de legenda fixado pelo cliente no desenho da legenda do editor (vale sobre o estilo do vídeo). */
 export function legendaDoEstiloFixo(id: EstiloDeLegenda): LegendaDoEstilo {
-  if (id === "palavra") return { posicao: "centro", tamanho: "grande", letra: "condensada", palavras: 2, caixaAlta: true, origem: "cliente" };
-  if (id === "limpa") return { posicao: "baixo", tamanho: "pequeno", letra: "limpa", palavras: 5, caixaAlta: false, origem: "cliente" };
-  if (id === "marca-texto") return { posicao: "baixo", tamanho: "medio", letra: "limpa", palavras: 3, caixaAlta: false, origem: "cliente" };
-  // caixa e papel: a frase curta na caixa, no lugar de sempre.
-  return { posicao: "baixo", tamanho: "medio", letra: "limpa", palavras: 4, caixaAlta: false, origem: "cliente" };
+  if (id === "palavra") return { posicao: "centro", tamanho: "grande", letra: "condensada", palavras: 2, caixaAlta: true, origem: "cliente", desenho: id };
+  if (id === "limpa") return { posicao: "baixo", tamanho: "pequeno", letra: "limpa", palavras: 5, caixaAlta: false, origem: "cliente", desenho: id };
+  if (id === "marca-texto") return { posicao: "baixo", tamanho: "medio", letra: "limpa", palavras: 4, caixaAlta: false, origem: "cliente", desenho: id };
+  // caixa e papel: a frase curta na faixa (escura da marca, ou a tira de papel clara), no lugar de sempre.
+  return { posicao: "baixo", tamanho: "medio", letra: "limpa", palavras: 4, caixaAlta: false, origem: "cliente", desenho: id };
 }
 
 const NAO_DIZ = "nao-diz";
@@ -152,7 +160,8 @@ export function legendaValida(v: unknown): LegendaDoEstilo | null {
   if (!posicao || !tamanho || !letra) return null;
   const palavras = Math.max(1, Math.min(7, Math.round(Number(o.palavras) || 3)));
   const origem = o.origem === "cliente" || o.origem === "comando" ? o.origem : "jev";
-  return { posicao, tamanho, letra, palavras, caixaAlta: Boolean(o.caixaAlta), origem };
+  const desenho = DESENHOS.find((x) => x === o.desenho);
+  return { posicao, tamanho, letra, palavras, caixaAlta: Boolean(o.caixaAlta), origem, ...(desenho ? { desenho } : {}) };
 }
 
 /**
@@ -172,14 +181,21 @@ const LETRAS_POR_PAGINA: Record<TamanhoDaLegenda, [number, number]> = { grande: 
  * As páginas da legenda no estilo: até `palavras` palavras por vez e o teto
  * de letras do tamanho, quebrando na pontuação e na pausa (como a de sempre).
  */
-export function paginasNoEstilo(palavras: Array<{ texto: string; inicio: number; fim: number }>, l: Pick<LegendaDoEstilo, "palavras" | "tamanho" | "caixaAlta">, vertical: boolean): Array<{ inicio: number; fim: number; texto: string }> {
-  const saida: Array<{ inicio: number; fim: number; texto: string }> = [];
+export function paginasNoEstilo(
+  palavras: Array<{ texto: string; inicio: number; fim: number }>,
+  l: Pick<LegendaDoEstilo, "palavras" | "tamanho" | "caixaAlta" | "desenho">,
+  vertical: boolean
+): Array<{ inicio: number; fim: number; texto: string; palavras?: Array<{ texto: string; inicio: number; fim: number }> }> {
+  const saida: Array<{ inicio: number; fim: number; texto: string; palavras?: Array<{ texto: string; inicio: number; fim: number }> }> = [];
   const teto = LETRAS_POR_PAGINA[l.tamanho][vertical ? 0 : 1];
   let g: Array<{ texto: string; inicio: number; fim: number }> = [];
   const fechar = (fim: number) => {
     if (!g.length) return;
     const txt = g.map((x) => x.texto).join(" ").replace(/[,.:;]+$/, "");
-    saida.push({ inicio: g[0].inicio, fim, texto: l.caixaAlta ? txt.toLocaleUpperCase("pt-BR") : txt });
+    const caixa = (t: string) => (l.caixaAlta ? t.toLocaleUpperCase("pt-BR") : t);
+    // Com o desenho do cliente, cada palavra leva o tempo dela: o worker acende a falada (como no caminho antigo).
+    const ws = l.desenho ? g.map((x, k) => ({ texto: caixa(k === g.length - 1 ? x.texto.replace(/[,.:;]+$/, "") : x.texto), inicio: +x.inicio.toFixed(3), fim: +x.fim.toFixed(3) })) : null;
+    saida.push({ inicio: g[0].inicio, fim, texto: caixa(txt), ...(ws ? { palavras: ws } : {}) });
     g = [];
   };
   palavras.forEach((p, j) => {
@@ -199,7 +215,7 @@ export const ALTURA_DA_LEGENDA: Record<TamanhoDaLegenda, number> = { grande: 0.1
 
 /** O desenho da legenda para o worker: no centro, o alto da legenda fica logo abaixo do rosto (nada cobre o rosto). */
 export function legendaDesenhada(l: LegendaDoEstilo, rosto: Retangulo, vertical: boolean): LegendaDesenhada {
-  const base = { posicao: l.posicao, tamanho: l.tamanho, letra: l.letra, caixaAlta: l.caixaAlta };
+  const base = { posicao: l.posicao, tamanho: l.tamanho, letra: l.letra, caixaAlta: l.caixaAlta, ...(l.desenho ? { desenho: l.desenho } : {}) };
   if (l.posicao !== "centro") return base;
   const y = Math.min(vertical ? 0.66 : 0.72, Math.max(vertical ? 0.5 : 0.55, rosto.y + rosto.h + 0.04));
   return { ...base, y: +y.toFixed(3) };
@@ -228,8 +244,12 @@ export const CRITERIO_DA_FRENTE: Record<VersaoNaFrente, string> = {
 
 /** A peça depende de recorte ou de área livre (pode ser barrada pela guarda), e por isso leva uma versão na frente escolhida no plano. */
 export function precisaDeVersaoNaFrente(peca: string, planoDaFicha: string | undefined): boolean {
-  return peca === "titulo-atras" || planoDaFicha === "tela" || planoDaFicha === "lado";
+  // E as peças de caixa medida (06/10, noite): a vetorial e o cartão que não couberem pela posição viram a versão na frente.
+  return peca === "titulo-atras" || planoDaFicha === "tela" || planoDaFicha === "lado" || PECAS_DE_CAIXA.has(peca);
 }
+
+/** As peças posicionadas por caixa medida no trecho (podem não caber sem cobrir o rosto). */
+const PECAS_DE_CAIXA = new Set(["icone-com-frase", "comparacao-lado-a-lado", "cartoes-em-linha", "interface-de-edicao", "titulo-em-caixa", "cartao-de-passo", "frase-chave"]);
 
 /** A pergunta ao JEV: qual versão na frente, se esta peça não puder entrar como planejada. */
 export function perguntaDaFrente(peca: string, texto: string, fala: string): PerguntaDoJev {
