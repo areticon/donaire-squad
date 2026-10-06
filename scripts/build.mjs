@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { travarAmbiente } from "../lib/ambiente/trava-do-banco.mjs";
 
 /**
  * O build, com a migração rodando SÓ em produção.
@@ -27,9 +28,24 @@ import { spawnSync } from "node:child_process";
  * certo para o build local.
  */
 
+/*
+ * Ambiente de dev (06/10): o Preview da Vercel vira o ambiente `dev`
+ * (dev.demandou.com, banco `demandou-dev`). Ali a migração roda também, porque
+ * o banco de dev é descartável e é nele que a migração nova se prova antes de
+ * chegar à produção. Só migra com DEMANDOU_AMBIENTE=dev gravado no Preview E
+ * com a trava confirmando que o banco não é o de produção; sem isso o Preview
+ * continua como antes (compila e pula a migração). Em produção nada muda: a
+ * trava só confere que o banco é o de produção, o que ele já é.
+ */
 const naVercel = Boolean(process.env.VERCEL);
 const producao = process.env.VERCEL_ENV === "production";
-const migrar = !naVercel || producao;
+const ambiente = travarAmbiente(process.env, { origem: "build" });
+const previewDeDev =
+  naVercel &&
+  process.env.VERCEL_ENV === "preview" &&
+  ambiente === "dev" &&
+  (process.env.DEMANDOU_AMBIENTE ?? "").trim().toLowerCase() === "dev";
+const migrar = !naVercel || producao || previewDeDev;
 
 function rodar(comando, args) {
   const r = spawnSync(comando, args, { stdio: "inherit", shell: true });
@@ -38,9 +54,11 @@ function rodar(comando, args) {
 
 if (migrar) {
   console.log(
-    naVercel
-      ? "[build] produção: aplicando migrações"
-      : "[build] fora da Vercel: aplicando migrações"
+    !naVercel
+      ? "[build] fora da Vercel: aplicando migrações"
+      : producao
+        ? "[build] produção: aplicando migrações"
+        : "[build] dev (Preview com banco de dev): aplicando migrações"
   );
   rodar("prisma", ["migrate", "deploy", "--config", "prisma.config.ts"]);
 } else {

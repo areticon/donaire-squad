@@ -39,6 +39,7 @@ import { guardarFala } from "./guarda-da-fala.mjs";
 import { imprimirHtml } from "./contrato-pdf.mjs";
 import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
 import { CAPACIDADE, comFatia, resumoDaCapacidade } from "./capacidade.mjs";
+import { travarPartidaDoWorker, motivoParaRecusarCallback } from "./trava-do-ambiente.mjs";
 
 /**
  * A paleta de emoji, que mora ao lado do codigo e nao na pasta temporaria.
@@ -66,6 +67,8 @@ const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 if (!SEGREDO) throw new Error("WORKER_SECRET não configurado");
 if (!BLOB_TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN não configurado");
+/** A trava dos ambientes (06/10): dev nunca entrega na produção, nem o contrário. */
+const AMBIENTE = travarPartidaDoWorker(process.env);
 /** O store público da mídia produzida. Ausente, tudo cai no privado. */
 const DESTINO_PUBLICO = process.env.BLOB_PUBLIC_READ_WRITE_TOKEN || null;
 
@@ -1176,6 +1179,11 @@ async function avisar(trabalho, corpo) {
   // "reiniciado" e relançou). Um aviso de pronto atrasado deste mesmo trabalho
   // cairia em cima da nova rodada; melhor calar.
   if (trabalho?.__abandonado) return;
+  const recusa = motivoParaRecusarCallback(trabalho.callbackUrl, AMBIENTE);
+  if (recusa) {
+    console.error(`[${trabalho.videoJobId}] ${recusa}`);
+    return;
+  }
   const texto = JSON.stringify(corpo);
   const esperas = [5_000, 15_000, 45_000, 135_000];
 
@@ -1278,6 +1286,11 @@ function esperaNoDesligamentoMs() {
  * insiste por até 3 minutos, o que estouraria a janela antes do SIGKILL.
  */
 async function avisarReinicio(destino, corpo) {
+  const recusa = motivoParaRecusarCallback(destino.callbackUrl, AMBIENTE);
+  if (recusa) {
+    console.error(`[${destino.videoJobId}] ${recusa}`);
+    return false;
+  }
   const texto = JSON.stringify(corpo);
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     try {
@@ -1553,6 +1566,8 @@ const servidor = createServer((req, res) => {
     return discoLivre().then((disco) => responder(200, {
       disco,
       ok: true,
+      // producao, dev ou local (06/10): o script de deploy confere que fala com o worker certo.
+      ambiente: AMBIENTE,
       trabalhando: emAndamento > 0 || amostrasEmAndamento > 0 || montagemRodando || filaDaMontagem.length > 0,
       // Para quem vai publicar (01/10): espere `emAndamento` e `trabalhos`
       // chegarem a zero. `desligando` diz que este contêiner já recebeu
@@ -2307,6 +2322,9 @@ const servidor = createServer((req, res) => {
     if (!trabalho.videoJobId || !trabalho.sourceUrl || !trabalho.callbackUrl) {
       return responder(400, { error: "Faltam videoJobId, sourceUrl ou callbackUrl" });
     }
+    // A trava dos ambientes (06/10): recusa na entrada, antes de gastar o corte.
+    const recusaDoAmbiente = motivoParaRecusarCallback(trabalho.callbackUrl, AMBIENTE);
+    if (recusaDoAmbiente) return responder(403, { error: recusaDoAmbiente });
 
     // Responde ANTES de trabalhar. O app não pode ficar segurando uma requisição
     // por vários minutos: é a mesma armadilha que derrubou a seleção de trechos.
