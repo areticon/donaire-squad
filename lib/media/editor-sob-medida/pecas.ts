@@ -370,6 +370,15 @@ export const PECAS: FichaDaPeca[] = [
     quando: "(contexto) um slide ao lado da pessoa, na folha da área livre: o título do ponto e 2 a 4 itens que a fala percorre (o item dito acende). Palestra e aula.",
     props: "rotulo? (selo, 1 a 3 palavras), titulo (até 6 palavras, **destaque**), itens [{texto (até 6 palavras)}] (2 a 4, só o que a fala diz, na ordem dita)",
   },
+  // A PEÇA COMBINADA (06/10): o vídeo de IA ao fundo (inserção em vídeo, ligada por `fundo`) e esta camada exata por cima,
+  // desenhada em código na linguagem do vídeo (worker/remotion/src/sob-medida/pecas/combinadas.tsx). O código liga o fundo,
+  // o tipo do fundo e a ligação (decididos pelo JEV); o redator escreve as etiquetas, o título, o número e a cena do fundo.
+  // Sem o vídeo pronto, a peça cai na folha sobre a gravação com o fundo próprio dela (lib/media/editor-por-comando/resolver.ts).
+  {
+    nome: "camada-exata", plano: "tela", entrada: 0.9, saida: 0.35, evento: 0.7, duracao: [3.5, 5], eventosDe: "itens", maxItens: 5,
+    quando: "(editor por comando, 06/10) a camada exata sobre o vídeo de fundo gerado: os pontos ou alfinetes com as etiquetas dos itens ditos (lugares, pessoas, partes), a linha da rota ou o fio ligando, o número dito. Cada item acende quando é dito.",
+    props: 'itens [{rotulo (até 3 palavras: o lugar, a pessoa ou a parte que a fala cita)}] (2 a 5, na ordem dita), titulo? (até 5 palavras do falante), numero? {valor (só o número DITO), prefixo?, sufixo?, rotulo? (até 3 palavras)}',
+  },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],
     quando: "As últimas palavras do vídeo (a chamada final): a marca do cliente, a frase final e a chamada para ação dita.",
@@ -392,7 +401,8 @@ export function catalogoNoPrompt(estiloId?: string | null): string {
   const comEstilo = estiloId !== undefined;
   const grupo = (pl: PlanoDaPeca, titulo: string) =>
     `${titulo}\n` +
-    PECAS.filter((p) => p.plano === pl && !CAMADAS_DE_APOIO.has(p.nome) && (!comEstilo || pecaNoEstilo(p, estiloId)))
+    // A camada exata da combinada (06/10) é só do editor por comando: o código liga o vídeo de fundo dela.
+    PECAS.filter((p) => p.plano === pl && !CAMADAS_DE_APOIO.has(p.nome) && p.nome !== "camada-exata" && (!comEstilo || pecaNoEstilo(p, estiloId)))
       .map((p) => `- ${p.nome}${!comEstilo && p.estilos ? ` [só nos estilos ${p.estilos.join(" e ")}]` : ""} (${p.duracao[0]} a ${p.duracao[1]} s${p.eventosDe ? `; um evento por item de "${p.eventosDe}"` : p.umEvento ? "; um evento" : ""}): ${p.quando}\n    props: ${p.props}`)
       .join("\n");
   return [

@@ -98,8 +98,8 @@ const NOME_DO_PLANO: Record<PlanoDaPeca, string> = {
  *   - o resto: só as genéricas (nenhuma peça de acabamento próprio).
  */
 export function pecasDoEstilo(base: string): FichaDaPeca[] {
-  // A janela de imagem é do plano em dois eixos (o código liga a imagem); o diretor Opus não a usa.
-  const semApoio = PECAS.filter((p) => !CAMADAS_DE_APOIO.has(p.nome) && p.nome !== "imagem-janela");
+  // A janela de imagem e a camada exata da combinada são do plano em dois eixos (o código liga a imagem e o fundo); o diretor Opus não as usa.
+  const semApoio = PECAS.filter((p) => !CAMADAS_DE_APOIO.has(p.nome) && p.nome !== "imagem-janela" && p.nome !== "camada-exata");
   if (ESTILOS_DO_VOX.includes(base)) return semApoio.filter((p) => p.estilos?.includes(base));
   return semApoio.filter((p) => pecaNoEstilo(p, base));
 }
@@ -346,6 +346,8 @@ export function validarPlano(bruto: unknown, base: string, opcoes: { livre?: boo
       ...(opcoes.livre && (x.midia === "video" || x.midia === "imagem") ? { midia: x.midia as "imagem" | "video" } : {}),
       ...(opcoes.livre && x.janela === true ? { janela: true } : {}),
       ...(opcoes.livre && x.estilizada === true ? { estilizada: true } : {}),
+      // O fundo da peça combinada (06/10): a inserção em vídeo que a camada exata liga; nunca vira plano de tela cheia sozinha.
+      ...(opcoes.livre && x.combinada === true ? { combinada: true } : {}),
       ...(opcoes.livre && Number(x.segundos) > 0 ? { segundos: Math.min(15, Math.max(3, Math.ceil(Number(x.segundos)))) } : {}),
       ...(opcoes.livre && typeof x.oQueAparece === "string" ? { oQueAparece: x.oQueAparece.slice(0, 120) } : {}),
       // O pedido do cliente (06/10) viaja com a inserção: a tela e a conferência da imagem leem.

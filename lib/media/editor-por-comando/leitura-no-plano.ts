@@ -267,8 +267,8 @@ export function tiposPossiveis(base: TipoDeElemento[], l: LeituraDoVideo | null 
   if (pessoasEmCena(tr).length >= 2) saida.push("realce-de-quem-fala");
   if (regiaoDoConteudo(tr)) saida.push("zoom-no-ponto", "destaque-na-tela");
   saida.push("cartao-de-passo", "frase-chave", "slide");
-  // Com tela ou quadro em cena, a peça de tela cheia e o texto atrás da pessoa não cabem: cobririam o conteúdo.
-  const semConteudo: TipoDeElemento[] = regiaoDoConteudo(tr) ? ["impacto", "texto-atras"] : [];
+  // Com tela ou quadro em cena, a peça de tela cheia, a combinada (vídeo de fundo em tela cheia) e o texto atrás da pessoa não cabem: cobririam o conteúdo.
+  const semConteudo: TipoDeElemento[] = regiaoDoConteudo(tr) ? ["impacto", "texto-atras", "combinada"] : [];
   // Com a pessoa se mexendo muito, o recorte atrás dela falha: nada de profundidade.
   if (tr?.movimento === "muito") semConteudo.push("texto-atras");
   const ordem = saida.filter((t, i) => saida.indexOf(t) === i && !semConteudo.includes(t));
