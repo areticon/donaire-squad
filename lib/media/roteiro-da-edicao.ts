@@ -84,6 +84,10 @@ import { falaDoBloco } from "@/lib/media/montagem-do-completo";
 import { listaDaAprovacao } from "@/lib/media/decisao-dos-cortes";
 import { esteiraDoCompleto, estadoNovo } from "@/lib/media/jornada/estado";
 import { prepararPlanoDaJornada } from "@/lib/media/jornada/roteiro";
+import { jornadaNaTela } from "@/lib/media/jornada/tela";
+import { aprovarJornada, pedirElementoNovo, pedirMudanca, PlanoCongelado, removerElemento, restaurarElemento } from "@/lib/media/jornada/revisao";
+import { jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
+import { frasesDaFala } from "@/lib/media/jornada/linha-do-tempo";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -1018,7 +1022,11 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
     termos: v.project.videoTerms ?? "",
     trocas: lista.trocas ?? [],
     cortes: cortesNaTela(comGancho, familia, montagemNaEdicaoLigada()),
-    completo: comPecasDoComando(completoNaTela(r?.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0, { abertura: r?.abertura, telas }), r?.completo),
+    completo: r?.jornada
+      ? // A JORNADA (E3): o completo mostra o plano por elemento (componente próprio); nada do cena a cena antigo.
+        { ...completoNaTela(r.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0, { telas }), trechos: [], insercoes: [], semCenas: null, abertura: null, cenas: (r.jornada.plano?.elementos ?? []).filter((el) => r.jornada?.revisao[el.id]?.acao !== "removido").length }
+      : comPecasDoComando(completoNaTela(r?.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0, { abertura: r?.abertura, telas }), r?.completo),
+    jornada: jornadaNaTela(r?.jornada, r?.completo?.fala?.palavras),
     duracaoSec: v.durationSec ?? 0,
     creditos: {
       roteiro: pago ? Math.abs(pago.amount) || creditosDoRoteiro(v.durationSec ?? 0) : creditosDoRoteiro(v.durationSec ?? 0),
@@ -1273,6 +1281,49 @@ async function outraIdeia(
   return trocarCena(alvo.plano, a.cena, plano, `n${Date.now() % 1_000_000}`);
 }
 
+export type AcaoNoElemento = {
+  acao: "mudar" | "remover" | "restaurar" | "novo";
+  /** O id do elemento (mudar, remover, restaurar). */
+  id?: string;
+  /** O índice da frase (novo). */
+  momento?: number;
+  texto?: string;
+};
+
+/**
+ * O PASSO 5 DA JORNADA (E3): mudar um elemento por texto livre, remover,
+ * restaurar, ou pedir um elemento novo num momento sem elemento. A descrição
+ * nova aparece na tela antes de aprovar. Devolve a tela nova.
+ */
+export async function ajustarElementoDaJornada(videoId: string, userId: string, a: AcaoNoElemento): Promise<TelaDeRoteiro> {
+  const v = await videoDoDono(videoId, userId);
+  const r = await lerRoteiroDoVideo(videoId);
+  const estado = r?.jornada;
+  const fala = r?.completo?.fala;
+  if (!r || !estado?.plano || !fala) throw new RecusaDoRoteiro("O plano do vídeo ainda não está pronto.", 409);
+  try {
+    const palavras = fala.palavras;
+    const frases = frasesDaFala(palavras);
+    const deps = { jev: jevDaJornada(), redator: redatorDaJornada(v.projectId, "jornada-revisao"), projectId: v.projectId };
+    let novo = estado;
+    if (a.acao === "remover" && a.id) novo = removerElemento(estado, a.id);
+    else if (a.acao === "restaurar" && a.id) novo = restaurarElemento(estado, a.id);
+    else if (a.acao === "mudar" && a.id) {
+      if (!a.texto?.trim()) throw new RecusaDoRoteiro("Escreva o que você quer mudar neste elemento.", 400);
+      novo = await pedirMudanca(estado, a.id, a.texto, deps, { palavras, frases, marca: null });
+    } else if (a.acao === "novo" && typeof a.momento === "number") {
+      const f = frases.find((x) => x.indice === a.momento);
+      if (!f || !a.texto?.trim()) throw new RecusaDoRoteiro("Escolha o momento e escreva o elemento que você quer.", 400);
+      novo = await pedirElementoNovo(estado, f, a.texto, deps, { palavras, marca: null, formato: estado.plano.formato });
+    } else throw new RecusaDoRoteiro("Pedido incompleto.", 400);
+    await gravarRoteiroDoVideo(videoId, { ...r, jornada: novo });
+  } catch (e) {
+    if (e instanceof PlanoCongelado) throw new RecusaDoRoteiro(e.message, 409);
+    throw e;
+  }
+  return (await montarTela(videoId, userId))!;
+}
+
 export type AcaoNaAbertura = {
   alvo: "completo" | "corte";
   /** Corte: o índice em `clips` (antes da aprovação). */
@@ -1393,7 +1444,7 @@ export async function aprovarRoteiro(
   // 52 s não pede corte nenhum). Zero cortes vale: cobra só a parte do
   // completo e a esteira monta só ele (o cortar-callback trata a lista vazia).
   // Sem o completo planejado (pelo plano antigo ou pelo editor por comando, 06/10) não há o que aprovar.
-  if (!lista.length && !r.completo?.plano && !r.completo?.comando) throw new RecusaDoRoteiro("Escolha pelo menos um corte: este vídeo não tem o completo planejado.", 400);
+  if (!lista.length && !r.completo?.plano && !r.completo?.comando && !r.jornada?.plano?.elementos?.length) throw new RecusaDoRoteiro("Escolha pelo menos um corte: este vídeo não tem o completo planejado.", 400);
   if (lista.length > MAX_CORTES_APROVADOS) throw new RecusaDoRoteiro(`Escolha no máximo ${MAX_CORTES_APROVADOS} cortes.`, 400);
 
   // Toma a aprovação antes de cobrar: dois cliques seguidos, e só um passa.
@@ -1439,6 +1490,8 @@ export async function aprovarRoteiro(
   const descartados = trechos.filter((_, i) => !lista.includes(i));
   await gravarRoteiroDoVideo(videoId, {
     ...r,
+    // A JORNADA (E3): aprovar CONGELA o plano por elemento; o que vai ao ar é exatamente esta lista.
+    ...(r.jornada?.plano ? { jornada: aprovarJornada(r.jornada) } : {}),
     aprovadoEm: agora(),
     // A decisão explícita: nenhum passo deduz mais "zero cortes" de `clips` vazio.
     cortesAprovados: lista,

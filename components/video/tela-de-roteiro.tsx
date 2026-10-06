@@ -47,6 +47,7 @@ import { EscolhaDaLegenda } from "@/components/video/escolha-da-legenda";
 import { ControleDoCorte } from "@/components/video/controle-do-corte";
 import { listaDoCenaACena, mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela, type TrechoDoCompletoNaTela } from "@/lib/media/roteiro-em-texto";
 import { creditosNaTela } from "@/lib/media/limits";
+import type { JornadaNaTela } from "@/lib/media/jornada/tela";
 
 /**
  * A TELA DE ROTEIRO (30/09/2026), do lado do cliente. Só desenha e manda as
@@ -389,9 +390,22 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
               : ""
           }`}
         >
-          <AberturaDoCompleto completo={tela.completo} creditos={aberturaCreditos} ocupado={ocupado} naAbertura={podeMexerNaAbertura ? naAbertura : undefined} />
-          <CoberturaETelas completo={tela.completo} />
-          <EstimativaDoComando completo={tela.completo} />
+          {/* A JORNADA OFICIAL (EDITOR_JORNADA=1): o plano por elemento, com aprovar, remover e pedir mudança. */}
+          {tela.jornada && (
+            <JornadaDoCompleto
+              jornada={tela.jornada}
+              aberto={tela.status === "roteiro" && !editando}
+              ocupado={ocupado}
+              naAcao={(corpo, chave) => acao(`/api/videos/${tela.videoId}/roteiro/elemento`, corpo, chave)}
+            />
+          )}
+          {!tela.jornada && (
+            <>
+              <AberturaDoCompleto completo={tela.completo} creditos={aberturaCreditos} ocupado={ocupado} naAbertura={podeMexerNaAbertura ? naAbertura : undefined} />
+              <CoberturaETelas completo={tela.completo} />
+              <EstimativaDoComando completo={tela.completo} />
+            </>
+          )}
           {tela.completo.semCenas && (
             <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
               {tela.completo.semCenas}
@@ -1507,6 +1521,172 @@ export function LinhaDaCena({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * O PLANO DA JORNADA NA TELA (E3, EDITOR_JORNADA=1): cada elemento no seu
+ * momento, com a palavra em que entra, o que aparece, como entra e o custo.
+ * Por elemento: remover ou pedir mudança em texto livre (a descrição nova
+ * volta aqui antes de aprovar); nos momentos sem elemento, pedir um novo.
+ */
+function JornadaDoCompleto({
+  jornada,
+  aberto,
+  ocupado,
+  naAcao,
+}: {
+  jornada: JornadaNaTela;
+  aberto: boolean;
+  ocupado: string | null;
+  naAcao: (corpo: Record<string, unknown>, chave: string) => Promise<boolean>;
+}) {
+  const [pedindo, setPedindo] = useState<string | null>(null);
+  const [texto, setTexto] = useState("");
+  const [novoEm, setNovoEm] = useState<number | null>(null);
+  if (jornada.lendo) return <Aviso tipo="andando">Lendo o vídeo e escolhendo os elementos de cada momento. Leva de 2 a 4 minutos.</Aviso>;
+  if (jornada.erro && !jornada.elementos.length) return <Aviso tipo="erro">Não consegui montar o plano deste vídeo ({jornada.erro}).</Aviso>;
+  const vivos = jornada.elementos.filter((e) => e.estado !== "removido");
+  return (
+    <div className="space-y-2">
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        {vivos.length} {vivos.length === 1 ? "elemento" : "elementos"} gerados por IA para este vídeo{jornada.densidade ? `, ${jornada.densidade}` : ""}. Custo previsto das mídias: US$ {jornada.custoTotalUsd.toFixed(2)}.
+        {jornada.aprovado ? " Plano aprovado: é exatamente esta lista que vai ao ar." : " Aprove como está ou peça mudanças em cada elemento."}
+      </p>
+      {jornada.elementos.map((e) => {
+        const chave = `el:${e.id}`;
+        const trabalhando = Boolean(ocupado?.startsWith(chave));
+        const fora = e.estado === "removido";
+        const pedidosDoCliente = e.pedidos.filter((p) => p !== "remover");
+        return (
+          <div key={e.id} className="rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--border)", opacity: fora ? 0.55 : 1 }}>
+            <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-3">
+              <p className="text-xs font-semibold tabular-nums shrink-0 sm:w-[88px] pt-0.5" style={{ color: "var(--accent-orange)" }}>
+                {mmss(e.inicio)}
+              </p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+                  {e.descricao}
+                  {e.estado !== "aprovado" && (
+                    <span className="ml-2 text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-orange-500/15" style={{ color: "var(--accent-orange)" }}>
+                      {e.estado === "removido" ? "removido" : e.estado === "novo" ? "pedido seu" : "mudado"}
+                    </span>
+                  )}
+                </p>
+                <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                  Entra em &ldquo;{e.gatilho}&rdquo;, {e.formato}
+                  {e.textoNaImagem ? `, com o texto "${e.textoNaImagem}"` : ""}. Fala: &ldquo;{e.frase}&rdquo;
+                </p>
+                {pedidosDoCliente.length > 0 && (
+                  <p className="text-[11px] mt-1" style={{ color: "var(--text-primary)" }}>
+                    Seu pedido: {pedidosDoCliente.map((p) => `"${p}"`).join("; ")}
+                  </p>
+                )}
+                {aberto && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {fora ? (
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={trabalhando} onClick={() => void naAcao({ acao: "restaurar", id: e.id }, chave)}>
+                        Pôr de volta
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          disabled={trabalhando}
+                          onClick={() => {
+                            setPedindo(pedindo === e.id ? null : e.id);
+                            setTexto("");
+                          }}
+                        >
+                          Pedir mudança
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={trabalhando} onClick={() => void naAcao({ acao: "remover", id: e.id }, chave)}>
+                          Remover
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {aberto && pedindo === e.id && (
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <input
+                      className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-sm bg-transparent"
+                      style={{ borderColor: "var(--border)" }}
+                      placeholder="Ex.: troque a Ferrari vermelha por uma preta"
+                      value={texto}
+                      onChange={(x) => setTexto(x.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={trabalhando || !texto.trim()}
+                      onClick={async () => {
+                        if (await naAcao({ acao: "mudar", id: e.id, texto }, chave)) setPedindo(null);
+                      }}
+                    >
+                      {trabalhando ? <Loader2 className="w-4 h-4 animate-spin" /> : "Mudar"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {aberto && jornada.momentosLivres.length > 0 && (
+        <div className="rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--border)" }}>
+          <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+            Quer um elemento num momento sem elemento? Escolha o momento e descreva.
+          </p>
+          <div className="flex flex-col gap-2">
+            <select
+              className="rounded-md border px-2 py-1.5 text-sm bg-transparent"
+              style={{ borderColor: "var(--border)" }}
+              value={novoEm ?? ""}
+              onChange={(x) => setNovoEm(x.target.value === "" ? null : Number(x.target.value))}
+            >
+              <option value="">Escolha o momento</option>
+              {jornada.momentosLivres.map((m) => (
+                <option key={m.indice} value={m.indice}>
+                  {mmss(m.inicio)} {m.texto.slice(0, 70)}
+                </option>
+              ))}
+            </select>
+            {novoEm !== null && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-sm bg-transparent"
+                  style={{ borderColor: "var(--border)" }}
+                  placeholder="O que deve aparecer aqui"
+                  value={pedindo === "novo" ? texto : ""}
+                  onFocus={() => {
+                    if (pedindo !== "novo") {
+                      setPedindo("novo");
+                      setTexto("");
+                    }
+                  }}
+                  onChange={(x) => setTexto(x.target.value)}
+                />
+                <Button
+                  size="sm"
+                  disabled={Boolean(ocupado?.startsWith("el:novo")) || pedindo !== "novo" || !texto.trim()}
+                  onClick={async () => {
+                    if (await naAcao({ acao: "novo", momento: novoEm, texto }, "el:novo")) {
+                      setPedindo(null);
+                      setNovoEm(null);
+                    }
+                  }}
+                >
+                  Pedir elemento
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
