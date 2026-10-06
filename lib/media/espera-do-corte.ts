@@ -86,9 +86,14 @@ const TERMINADOS = new Set(["cut", "ready"]);
  * ainda roda são os textos ou a montagem do completo, não o corte.
  */
 const edicaoTerminou = (v: GravacaoParaEspera) => {
+  // GRAVAÇÃO TERMINADA SEM NENHUM CORTE (05/10, noite): os dois vídeos do
+  // gêmeo da conta admin (30 s e 49 s) ficaram "ready" com zero cortes, e o
+  // quadro prometeu "cortando" em terça e quinta para sempre, girando sem
+  // parar e sem jeito de cancelar. Vídeo terminado é terminado: com corte ou
+  // sem corte, nada mais vai chegar.
+  if (TERMINADOS.has(v.status)) return true;
   const prontos = v.cortesProntos ?? 0;
   if (prontos <= 0) return false;
-  if (TERMINADOS.has(v.status)) return true;
   const escolhidos = v.trechosEscolhidos ?? 0;
   return escolhidos > 0 && prontos >= escolhidos && v.status !== "failed";
 };
