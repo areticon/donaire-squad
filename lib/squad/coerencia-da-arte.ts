@@ -121,3 +121,50 @@ export async function teseDoAnguloPeloJev(p: {
     return p.padrao;
   }
 }
+
+/**
+ * O INFOGRÁFICO REPETE UM DADO? (06/10/2026). O JEV olha o conjunto inteiro
+ * (destaque, cartões e rodapé) e diz se o mesmo dado ou a mesma afirmação
+ * aparece mais de uma vez, mesmo com outras palavras ("9,3 horas/dia" no
+ * destaque e "9,3 horas por dia" no cartão 1). Com veto, a extração roda de
+ * novo uma vez sabendo o que não repetir (lib/media/infographic.ts). Sem JEV
+ * ou com erro: `null`, e a guarda pura (lib/media/infografico-sem-repeticao.ts)
+ * continua valendo. O JEV decide; o modelo de texto só escreve.
+ */
+export async function infograficoRepeteDado(p: {
+  projectId?: string | null;
+  conjunto: { destaque?: string; cartoes: string[]; rodape: string[] };
+  uso?: UsoDoJev;
+}): Promise<{ repete: boolean | null; nota: number | null }> {
+  const itens = [p.conjunto.destaque ?? "", ...p.conjunto.cartoes, ...p.conjunto.rodape].filter((t) => t.trim());
+  if (itens.length < 2 || !jevLigado()) return { repete: null, nota: null };
+  try {
+    const r = await perguntarAoJev(
+      {
+        projectId: p.projectId,
+        etapa: "infografico-repeticao",
+        state: {
+          contexto:
+            "Um infográfico de rede social tem um DESTAQUE (o número principal), CARTÕES (cada um com título, número opcional e texto) e um RODAPÉ (números-chave). Cada dado deve aparecer UMA vez só no conjunto: repetir o mesmo número em dois lugares desperdiça espaço e parece erro.",
+          destaque: (p.conjunto.destaque ?? "").slice(0, 200),
+          cartoes: p.conjunto.cartoes.map((c) => c.slice(0, 300)),
+          rodape: p.conjunto.rodape.map((c) => c.slice(0, 120)),
+        },
+        uso: p.uso,
+      },
+      {
+        repete: {
+          type: "noul",
+          instructions:
+            "O mesmo dado (o mesmo número, ou a mesma afirmação com outras palavras) aparece em mais de um lugar do conjunto (destaque, cartões, rodapé)? Responda sim quando um número do destaque volta num cartão ou no rodapé, ou quando dois cartões dizem a mesma coisa.",
+        },
+      }
+    );
+    const nota = probabilidadeDeSim(r.repete);
+    if (nota === null) return { repete: null, nota: null };
+    return { repete: nota >= 0.5, nota };
+  } catch (e) {
+    console.warn("[coerencia-da-arte] JEV da repetição do infográfico falhou (fica a guarda pura):", e instanceof Error ? e.message : e);
+    return { repete: null, nota: null };
+  }
+}

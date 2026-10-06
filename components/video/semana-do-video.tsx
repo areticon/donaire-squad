@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, Film, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RedeIcone } from "@/components/social/rede-icone";
+import { AvisoDaIdentidade } from "@/components/modelos-de-arte/aviso-da-identidade";
+import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import {
   creditosDaSemana,
   datasDoPlano,
@@ -297,6 +299,8 @@ export function SemanaDoVideoPlanejador({
           </span>
         )}
       </p>
+      {/* O estilo é perguntado ANTES (06/10): dia de arte sem identidade aprovada sai só com o texto. */}
+      <AvisoDaIdentidade projectId={projectId} temArte={doPlano.some((d) => d && tipoGeraArte(d.formato))} />
     </section>
   );
 }
