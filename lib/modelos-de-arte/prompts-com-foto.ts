@@ -32,7 +32,7 @@ import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 
 /** O que todo prompt com foto repete: fotografia de verdade, sem texto, sem logo. */
 const BASE_COM_FOTO =
-  "Realistic editorial photograph for a social media post, shot on a full-frame camera, natural believable light, true-to-life materials and places, one clear focal subject, nothing cluttered. Brand palette for any accent in the scene: {paleta}. Absolutely NO text, letters, numbers, captions, watermarks, logos or interface panels anywhere: the headline \"{manchete}\" is printed on top in code afterwards.";
+  "Realistic editorial photograph for a social media post, shot on a full-frame camera with a 35 to 85 mm lens, natural believable light with soft shadows, true-to-life materials and places, fine natural grain, one clear focal subject, nothing cluttered. The scene belongs to the client's real field, never a generic stock set. Brand palette for any accent in the scene: {paleta}, as small details only, never a colour wash over the photo. Avoid the stock-photo look: no posed models smiling at the camera, no HDR gloss, no lens flare, no plastic skin, no generic office handshake, no floating money. Absolutely NO text, letters, numbers, captions, watermarks, logos or interface panels anywhere: the headline \"{manchete}\" is printed on top in code afterwards.";
 
 /** O que todo prompt com a pessoa de referência repete: a mesma pessoa, sem redesenhar o rosto. */
 const PESSOA_DE_REFERENCIA =
