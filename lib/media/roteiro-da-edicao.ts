@@ -1348,8 +1348,8 @@ export async function aprovarRoteiro(videoId: string, userId: string, escolhidos
   // APROVAR SÓ O VÍDEO COMPLETO (02/10, pedido do Bruno: o vídeo do gêmeo de
   // 52 s não pede corte nenhum). Zero cortes vale: cobra só a parte do
   // completo e a esteira monta só ele (o cortar-callback trata a lista vazia).
-  // Sem o completo planejado não há o que aprovar.
-  if (!lista.length && !r.completo?.plano) throw new RecusaDoRoteiro("Escolha pelo menos um corte: este vídeo não tem o completo planejado.", 400);
+  // Sem o completo planejado (pelo plano antigo ou pelo editor por comando, 06/10) não há o que aprovar.
+  if (!lista.length && !r.completo?.plano && !r.completo?.comando) throw new RecusaDoRoteiro("Escolha pelo menos um corte: este vídeo não tem o completo planejado.", 400);
   if (lista.length > MAX_CORTES_APROVADOS) throw new RecusaDoRoteiro(`Escolha no máximo ${MAX_CORTES_APROVADOS} cortes.`, 400);
 
   // Toma a aprovação antes de cobrar: dois cliques seguidos, e só um passa.
