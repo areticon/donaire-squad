@@ -48,6 +48,7 @@ import { abrirMidia } from "@/lib/media/storage";
 import { publishYouTubeVideo, refreshYouTubeToken, setYouTubeThumbnail } from "@/lib/oauth/youtube";
 import { lerMidia } from "@/lib/media/storage";
 import { normalizarCapaParaYouTube } from "@/lib/media/capa-youtube";
+import { ligarCortesAoCompleto } from "@/lib/media/cortes-com-link-do-completo";
 import { lerInfoDoCriador, opcoesDoTikTokNoPost, publicarVideoNoTikTok, refreshTikTokToken } from "@/lib/oauth/tiktok";
 import { caminhoDaConta } from "@/lib/publish/roteador";
 import { naoFazPelaPonte, publicarPeloBlotato } from "@/lib/publish/via-blotato";
@@ -864,6 +865,15 @@ export async function executeOAuthPostPublish(
       metadata: metadataSemErro as never,
     },
   });
+
+  // O COMPLETO FOI AO AR: os cortes ainda não publicados recebem o link dele
+  // (05/10, lib/media/cortes-com-link-do-completo.ts). Falha aqui não desfaz
+  // a publicação, que já aconteceu.
+  if (account.platform === "youtube" && externalUrl) {
+    await ligarCortesAoCompleto(post, externalUrl).catch((e) =>
+      console.warn(`[publicar][${post.id}] os cortes ficaram sem o link do completo:`, e instanceof Error ? e.message : e)
+    );
+  }
 
   // Primeiro comentário com referências (LinkedIn apenas)
   if (account.platform === "linkedin" && externalId) {
