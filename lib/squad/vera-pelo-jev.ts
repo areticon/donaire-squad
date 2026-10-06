@@ -1,5 +1,6 @@
 import { jevLigado, perguntarAoJev, probabilidadeDeSim, usoVazio, type PerguntaDoJev, type UsoDoJev } from "@/lib/jev/cliente";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { COERENTE_A_PARTIR_DE } from "@/lib/squad/coerencia-da-arte";
 
 /**
  * A VERA DECIDE PELO JEV (03/10/2026).
@@ -30,7 +31,34 @@ export function veraPeloJevLigada(): boolean {
   return jevLigado() && process.env.VERA_PELO_JEV !== "0";
 }
 
-export type PecaParaVera = { id: string; rede: string; tipo: string; texto: string };
+export type PecaParaVera = {
+  id: string;
+  rede: string;
+  tipo: string;
+  texto: string;
+  /** A frase desenhada na imagem da peça (post de imagem), para o critério de coerência. */
+  frase?: string | null;
+  /** As frases dos slides (carrossel), idem. */
+  slides?: string[] | null;
+};
+
+/** A peça como o JEV a lê: o texto e, quando há, a frase da imagem ou as dos slides (05/10, noite). */
+function pecaParaOEstado(x: PecaParaVera): Record<string, unknown> {
+  const slides = (x.slides ?? []).filter((s): s is string => typeof s === "string" && Boolean(s.trim()));
+  return {
+    id: x.id,
+    rede: x.rede,
+    tipo: x.tipo,
+    ...(x.frase?.trim() ? { frase_na_imagem: x.frase.trim().slice(0, 300) } : {}),
+    ...(slides.length ? { frases_nos_slides: slides.map((s) => s.slice(0, 300)) } : {}),
+    texto: x.texto.slice(0, 3500),
+  };
+}
+
+/** O critério de coerência só é perguntado para peça que tem frase na imagem ou nos slides. */
+function temParteVisual(x: PecaParaVera): boolean {
+  return Boolean(x.frase?.trim()) || (x.slides ?? []).some((s) => typeof s === "string" && Boolean(s.trim()));
+}
 
 export type DecisaoDaVera = {
   decisao: "aprova" | "duvida";
@@ -82,6 +110,16 @@ const CRITERIOS: Array<{ k: string; bom: "sim" | "nao"; limite: number; pergunta
     limite: 0.65,
     pergunta: (id) => `A peça de id "${id}" em \`pecas\` está adequada à rede dela (tamanho, formato, hashtags e chamada para ação fazem sentido ali)?`,
   },
+  // COERÊNCIA ENTRE A ARTE E O TEXTO (05/10, noite): a arte de sexta do Fé &
+  // Gestão saiu com a tese de outro dia desenhada, e a Vera não viu porque
+  // não recebia a frase da imagem. Só é perguntado para peça com parte visual.
+  {
+    k: "coerencia",
+    bom: "sim",
+    limite: 0.7,
+    pergunta: (id) =>
+      `A peça de id "${id}" em \`pecas\` tem a frase desenhada na imagem (\`frase_na_imagem\`) ou as frases dos slides (\`frases_nos_slides\`) falando da MESMA ideia central e do mesmo assunto do \`texto\`, de modo que imagem e legenda formam uma peça só, e não dois assuntos diferentes?`,
+  },
 ];
 
 async function estadoDoProjeto(p: {
@@ -121,13 +159,19 @@ export async function veraAprovaPeloJev(p: {
     contexto: "Peças de conteúdo de um dia, prontas para ir às redes de um cliente. Você é a revisora de qualidade antes de chegar ao cliente.",
     projeto: await estadoDoProjeto({ projectId: p.projectId, ...p.projeto }),
     dados_pesquisados: (p.dadosPesquisados ?? "").slice(0, 3000) || "(nenhum)",
-    pecas: p.pecas.map((x) => ({ id: x.id, rede: x.rede, tipo: x.tipo, texto: x.texto.slice(0, 3500) })),
+    pecas: p.pecas.map(pecaParaOEstado),
   };
   const perguntas: Record<string, PerguntaDoJev> = {};
-  for (const x of p.pecas) for (const c of CRITERIOS) perguntas[`${c.k}:${x.id}`] = { type: "noul", instructions: c.pergunta(x.id) };
+  for (const x of p.pecas) {
+    for (const c of CRITERIOS) {
+      if (c.k === "coerencia" && !temParteVisual(x)) continue;
+      perguntas[`${c.k}:${x.id}`] = { type: "noul", instructions: c.pergunta(x.id) };
+    }
+  }
   const r = await perguntarAoJev({ projectId: p.projectId, etapa: p.etapa ?? "vera", state, uso }, perguntas);
   for (const x of p.pecas) {
     for (const c of CRITERIOS) {
+      if (!(`${c.k}:${x.id}` in perguntas)) continue;
       const s = probabilidadeDeSim(r[`${c.k}:${x.id}`]);
       notas[`${c.k}:${x.id}`] = s;
       const passou = s !== null && (c.bom === "sim" ? s >= c.limite : s <= c.limite);
@@ -192,7 +236,7 @@ export async function veraConfereCorrecaoPeloJev(
     contexto:
       "A revisora reprovou ou fez ressalvas a peças de conteúdo, listou o que mudar (`pedidos`), e o time corrigiu. `pecas` é a versão NOVA, já corrigida. Confira cada pedido contra a versão nova.",
     pedidos: itens.map((t, i) => ({ id: `p${i + 1}`, pedido: t })),
-    pecas: p.pecas.map((x) => ({ id: x.id, rede: x.rede, tipo: x.tipo, texto: x.texto.slice(0, 3500) })),
+    pecas: p.pecas.map(pecaParaOEstado),
   };
   const perguntas: Record<string, PerguntaDoJev> = {};
   itens.forEach((_, i) => {
@@ -201,6 +245,12 @@ export async function veraConfereCorrecaoPeloJev(
       instructions: `O pedido de id "p${i + 1}" em \`pedidos\` foi atendido na versão nova de \`pecas\` (o problema apontado não existe mais, de um jeito razoável)?`,
     };
   });
+  // A coerência da arte com o texto é conferida de novo depois da correção
+  // (05/10, noite): a reescrita pode ter mudado o assunto da legenda.
+  const criterioDeCoerencia = CRITERIOS.find((c) => c.k === "coerencia");
+  for (const x of p.pecas) {
+    if (criterioDeCoerencia && temParteVisual(x)) perguntas[`coerencia:${x.id}`] = { type: "noul", instructions: criterioDeCoerencia.pergunta(x.id) };
+  }
   perguntas.bloqueio = {
     type: "noul",
     instructions:
@@ -215,6 +265,12 @@ export async function veraConfereCorrecaoPeloJev(
   const b = probabilidadeDeSim(r.bloqueio);
   notas.bloqueio = b;
   if (b === null || b > 0.25) porque.push(`bloqueio ${b === null ? "sem resposta" : b.toFixed(2)}`);
+  for (const x of p.pecas) {
+    if (!(`coerencia:${x.id}` in perguntas)) continue;
+    const s = probabilidadeDeSim(r[`coerencia:${x.id}`]);
+    notas[`coerencia:${x.id}`] = s;
+    if (s !== null && s < COERENTE_A_PARTIR_DE) porque.push(`${x.rede} (${x.tipo}): a frase da imagem não conversa com o texto (${s.toFixed(2)})`);
+  }
   return { decisao: porque.length ? "duvida" : "aprova", notas, porque, uso, ms: Date.now() - t0, itens };
 }
 
@@ -311,6 +367,10 @@ const TEXTO_DO_CRITERIO: Record<string, { reprova: string; ressalva: string }> =
   rede: {
     reprova: "a peça não está no formato da rede dela (tamanho, formato, chamada); ajuste ao formato da rede",
     ressalva: "a peça poderia aproveitar melhor o formato da rede",
+  },
+  coerencia: {
+    reprova: "a frase da imagem não conversa com o texto da peça (fala de outro assunto); a frase da imagem precisa nascer da ideia central do texto, e a arte é refeita com ela",
+    ressalva: "confira se a frase da imagem e a legenda falam da mesma ideia",
   },
 };
 
@@ -430,13 +490,14 @@ async function notasDaPrimeiraRevisao(
     contexto: "Peças de conteúdo de um dia, prontas para ir às redes de um cliente. Você é a revisora de qualidade antes de chegar ao cliente.",
     projeto: await estadoDoProjeto({ projectId: p.projectId, ...p.projeto }),
     dados_pesquisados: (p.dadosPesquisados ?? "").slice(0, 3000) || "(nenhum)",
-    pecas: p.pecas.map((x) => ({ id: x.id, rede: x.rede, tipo: x.tipo, texto: x.texto.slice(0, 3500) })),
+    pecas: p.pecas.map(pecaParaOEstado),
   };
   const perguntas: Record<string, PerguntaDoJev> = {};
   for (const x of p.pecas) {
     for (const c of CRITERIOS) {
       // A numeração dos tweets ("1/", "2/") não é número do texto.
       if (c.k === "dado" && !/\d/.test(x.texto.replace(/(^|\s)\d+\/\s*/g, " "))) continue;
+      if (c.k === "coerencia" && !temParteVisual(x)) continue;
       perguntas[`${c.k}:${x.id}`] = { type: "noul", instructions: c.pergunta(x.id) };
     }
   }

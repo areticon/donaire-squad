@@ -1,9 +1,45 @@
 import { auth } from "@/lib/auth/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { esconderDiaSemPosts, reabrirDia } from "@/lib/posts/espelhar-no-gestor";
 import { formatoValido } from "@/lib/publish/formato-de-destino";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { arteCoerenteComOTexto } from "@/lib/squad/coerencia-da-arte";
+import { abrirPedido, executarPedido } from "@/lib/media/pedido-do-card";
+
+/**
+ * O CLIENTE EDITOU A LEGENDA E A ARTE FICOU DE OUTRO ASSUNTO? (05/10, noite)
+ * O JEV confere a frase desenhada na imagem contra o texto novo; se não
+ * conversa mais, a arte é refeita pelo mesmo caminho do chat do card (a frase
+ * nasce do texto novo), e o cliente vê no card. Nada aqui segura a resposta.
+ */
+async function arteAcompanhaOTexto(post: { id: string; projectId: string; runId: string | null; mediaType: string | null; metadata: unknown }, userId: string, texto: string): Promise<void> {
+  try {
+    if (post.mediaType !== "image" || !post.runId) return;
+    const frase = (post.metadata as { frase?: unknown } | null)?.frase;
+    if (typeof frase !== "string" || !frase.trim() || !texto.trim()) return;
+    const c = await arteCoerenteComOTexto({ projectId: post.projectId, texto, arte: { frase }, etapa: "arte-coerencia" });
+    if (c.coerente !== false) return;
+    const card = await prisma.campaignCard.findFirst({
+      where: { postId: post.id, runId: post.runId, cardType: { notIn: ["media", "publish", "preview", "research"] }, NOT: { status: "archived" } },
+      select: { id: true, agentName: true, dayOfWeek: true },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!card?.dayOfWeek) return;
+    const mensagem = "A legenda foi editada e a frase da imagem ficou de outro assunto: refaça a arte com uma frase que nasça do texto novo.";
+    const aberto = await abrirPedido({ cardId: card.id, mensagem, agenteNome: card.agentName });
+    if (aberto.jaFazendo) return;
+    await executarPedido({
+      cardId: card.id,
+      userId,
+      mensagem,
+      slideIndex: null,
+      acoesProntas: [{ tipo: "arte", instrucao: mensagem, cor: null, lamina: null, marcaToda: false }],
+    });
+  } catch (e) {
+    console.warn("[posts] arte acompanha o texto:", e instanceof Error ? e.message : e);
+  }
+}
 
 const PAST_TOLERANCE_MS = 60_000;
 
@@ -148,6 +184,8 @@ export async function PATCH(
       where: { postId: id, cardType: { notIn: ["media", "publish", "preview", "research"] } },
       data: { content: body.content },
     });
+    const texto = body.content;
+    after(() => arteAcompanhaOTexto({ id: post.id, projectId: post.projectId, runId: post.runId, mediaType: post.mediaType, metadata: post.metadata }, userId, texto));
   }
 
   const virouArquivado = updated.status === "cancelled" && post.status !== "cancelled";

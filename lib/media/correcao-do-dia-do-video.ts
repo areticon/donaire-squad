@@ -7,6 +7,8 @@ import { midiaProduzida } from "@/lib/media/storage";
 import { limparMarcadores } from "@/lib/media/write-posts";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
 import { REGRAS_DE_TEXTO, separarTweets, fraseDaArte, arteDoDia } from "@/lib/media/pecas-da-semana";
+import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
+import { arteCoerenteComOTexto } from "@/lib/squad/coerencia-da-arte";
 import { formatoDaPeca as formatoDaRede } from "@/lib/media/formatos-das-redes";
 import { revisarDiaDoVideo, postsDoDiaDaVera, ROTULO_DO_VEREDITO, STATUS_FORA_DA_REVISAO, type RevisaoDoDia } from "@/lib/media/vera-do-video";
 import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
@@ -101,7 +103,12 @@ function pecaDaSecao(secao: string, naPosicao: PostDoDia, todas: PostDoDia[]): P
 
 /** A Vera apontou a FRASE escrita na arte? Aí o conserto é da Diana. */
 function arteApontada(secao: string): boolean {
-  return /(frase da (imagem|arte|capa)|imagem|arte)[\s\S]{0,240}(cortad|quebrad|trunc|incomplet|no meio de uma palavra|ileg[ií]vel|erro de escrita)/i.test(secao);
+  // Frase cortada ou quebrada (30/09), e desde 05/10 (noite) também a frase
+  // que não conversa com o texto: o critério "coerencia" da Vera pelo JEV.
+  return (
+    /(frase da (imagem|arte|capa)|imagem|arte)[\s\S]{0,240}(cortad|quebrad|trunc|incomplet|no meio de uma palavra|ileg[ií]vel|erro de escrita)/i.test(secao) ||
+    /frase da imagem[\s\S]{0,160}(não conversa|não combina|outro assunto|não fala da mesma|descasad|coerên|coeren)/i.test(secao)
+  );
 }
 
 function nomeDoAgente(agentId: string): string {
@@ -395,8 +402,35 @@ export async function corrigirDiaDoVideo(args: {
           if (!novo) return;
           const postMeta = { ...((t.post.metadata as Record<string, unknown> | null) ?? {}) };
           let imageUrl: string | undefined;
-          if (t.diana) {
-            const frase = novo.frase ?? (typeof postMeta.frase === "string" ? fraseDaArte(postMeta.frase, 110) : null);
+          // A FRASE DA IMAGEM ACOMPANHA O TEXTO NOVO (05/10, noite): mesmo quando
+          // a Vera não apontou a arte, a reescrita pode ter mudado o assunto da
+          // legenda. O JEV confere; se não conversa mais, a frase nasce do texto
+          // novo (uma chamada curta) e a Diana refaz a arte.
+          let refazer = t.diana;
+          let fraseNova: string | null = novo.frase ?? null;
+          if (!refazer && t.post.mediaType === "image" && typeof postMeta.frase === "string" && postMeta.frase.trim()) {
+            const c = await arteCoerenteComOTexto({
+              projectId: video.projectId,
+              texto: novo.texto,
+              arte: { frase: postMeta.frase },
+              projeto: { nicho: video.project.niche, marca: video.project.name },
+              etapa: "arte-coerencia",
+            });
+            if (c.coerente === false) {
+              console.warn(`[correcao][${video.id}] dia ${card.dayOfWeek}: a frase da imagem não conversa mais com o texto (${c.nota?.toFixed(2)}); a frase nasce de novo.`);
+              refazer = true;
+            }
+          }
+          if (refazer && !fraseNova) {
+            try {
+              const manchete = await mancheteDaPeca({ textoDoPost: novo.texto, estiloVisual: "editorial, one scene", nicho: video.project.niche, projectId: video.projectId, runId: ctx.runId });
+              fraseNova = fraseDaArte(manchete.manchete, 110);
+            } catch (e) {
+              console.error(`[correcao][${video.id}] a frase nova da imagem não saiu:`, e instanceof Error ? e.message : e);
+            }
+          }
+          if (refazer) {
+            const frase = fraseNova ?? (typeof postMeta.frase === "string" ? fraseDaArte(postMeta.frase, 110) : null);
             if (frase) {
               try {
                 imageUrl = await refazerArte(ctx, t.post, frase);

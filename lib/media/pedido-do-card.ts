@@ -6,6 +6,7 @@ import { direcaoDaPeca } from "@/lib/media/direcao-de-arte";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
+import { arteCoerenteComOTexto } from "@/lib/squad/coerencia-da-arte";
 import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/infographic";
 import { arteDoDia } from "@/lib/media/pecas-da-semana";
 import { formatoDaPeca } from "@/lib/media/formatos-das-redes";
@@ -552,7 +553,24 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
       }
     }
 
-    const arte = acoes.find((a): a is Extract<AcaoDoPedido, { tipo: "arte" }> => a.tipo === "arte");
+    let arte = acoes.find((a): a is Extract<AcaoDoPedido, { tipo: "arte" }> => a.tipo === "arte");
+    // O TEXTO MUDOU E A ARTE FICOU DE OUTRO ASSUNTO? (05/10, noite) O JEV confere
+    // a frase gravada contra a legenda nova; se não conversa mais, a arte é
+    // refeita junto, sem o cliente ter de pedir. Regra do Bruno: a coerência
+    // entre imagem e texto nunca passa.
+    if (!arte && texto && !ehCarrossel && formatoDaPecaDoDia === "image") {
+      const comFrase = posts.find((p) => p.mediaType === "image" && typeof (p.metadata as { frase?: unknown } | null)?.frase === "string");
+      const fraseAtual = comFrase ? String((comFrase.metadata as { frase?: string }).frase ?? "").trim() : "";
+      if (comFrase && fraseAtual && comFrase.content?.trim()) {
+        const c = await arteCoerenteComOTexto({ projectId: card.projectId, texto: comFrase.content, arte: { frase: fraseAtual }, etapa: "arte-coerencia" }).catch(() => ({ coerente: null, nota: null }));
+        if (c.coerente === false) {
+          arte = { tipo: "arte", instrucao: "A legenda mudou e a frase da imagem ficou de outro assunto: refaça a arte com uma frase que nasça do texto novo.", cor: null, lamina: null, marcaToda: false };
+          pedido.etapas.push({ chave: "arte", rotulo: "refazendo a arte para acompanhar o texto novo", estado: "esperando" });
+          await salvar();
+          frases.push("Com o texto novo, a frase da imagem ficou de outro assunto, então refiz a arte também.");
+        }
+      }
+    }
     if (arte) {
       /**
        * A TRAVA DA IDENTIDADE NO CHAT (05/10, noite): sem modelo, letra e
@@ -912,11 +930,27 @@ async function refazerArteUnica(o: {
       ehInfografico && process.env.GEMINI_API_KEY
         ? await extrairConteudoDoInfografico(`${textoDoPost}\n\n[INSTRUÇÃO DE ESTILO DO CLIENTE, mantenha o conteúdo: ${pedidoVisual}]`, daDiana.project.niche ?? "negocios", process.env.GEMINI_API_KEY)
         : null;
-    const frase = (daDiana.metadata as { frase?: string } | null)?.frase;
-    const peca = conteudo
-      ? null
-      : await mancheteDaPeca({ textoDoPost, estiloVisual: pedidoVisual, nicho: daDiana.project.niche, projectId: daDiana.projectId, runId: daDiana.runId });
-    const manchete = frase ?? peca?.manchete ?? "";
+    // A FRASE GRAVADA SÓ FICA SE CONVERSA COM O TEXTO (05/10, noite). Na arte
+    // de sexta do Fé & Gestão o cliente disse "a imagem não conversa com o
+    // texto", e o chat "refez" a arte com a MESMA frase de outra tese, porque
+    // reaproveitava a frase gravada e jogava fora a manchete nova. Agora o
+    // JEV confere a frase gravada contra o texto atual; se não conversa (ou
+    // não há frase gravada), a manchete nasce do texto e fica gravada.
+    const fraseGravada =
+      (daDiana.metadata as { frase?: string } | null)?.frase?.trim() ||
+      (o.posts.map((p) => (p.metadata as { frase?: string } | null)?.frase?.trim()).find(Boolean) ?? null);
+    const coerencia =
+      fraseGravada && !conteudo
+        ? await arteCoerenteComOTexto({ projectId: daDiana.projectId, texto: textoDoPost, arte: { frase: fraseGravada }, projeto: { nicho: daDiana.project.niche }, etapa: "arte-coerencia" })
+        : null;
+    const manterGravada = Boolean(fraseGravada) && coerencia?.coerente !== false;
+    if (fraseGravada && coerencia?.coerente === false) console.warn(`[pedido-do-card] a frase gravada não conversa com o texto (${coerencia.nota?.toFixed(2)}); a manchete nasce do texto.`);
+    const peca =
+      conteudo || manterGravada
+        ? null
+        : await mancheteDaPeca({ textoDoPost, estiloVisual: pedidoVisual, nicho: daDiana.project.niche, projectId: daDiana.projectId, runId: daDiana.runId });
+    const manchete = manterGravada && fraseGravada ? fraseGravada : (peca?.manchete ?? "");
+    const fraseNova = !manterGravada && manchete ? manchete : null;
     const arte = await produzirArtePorRede({
       redes: [...new Set(o.posts.map((p) => p.platform))],
       contentType: ehInfografico ? "infographic" : "image",
@@ -944,11 +978,18 @@ async function refazerArteUnica(o: {
       if (p.imageUrl !== nova) await prisma.post.update({ where: { id: p.id }, data: { imageUrl: nova } });
     }
     if (!ehInfografico) {
-      await gravarArteNoMetadata({ postIds: o.posts.map((p) => p.id), cardIds: [daDiana.id] }, decidido).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
+      await gravarArteNoMetadata({ postIds: o.posts.map((p) => p.id), cardIds: [daDiana.id] }, decidido, fraseNova ? { frase: fraseNova } : {}).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
+      // O card da Diana conta a frase que está desenhada; a frase antiga no texto dele seria mentira.
+      if (fraseNova && daDiana.content && /Imagem com a frase: "[^"]*"/.test(daDiana.content)) {
+        await prisma.campaignCard
+          .update({ where: { id: daDiana.id }, data: { content: daDiana.content.replace(/Imagem com a frase: "[^"]*"/, `Imagem com a frase: "${fraseNova.replace(/"/g, "'")}"`) } })
+          .catch((e) => console.warn("[pedido-do-card] frase no card da Diana:", e));
+      }
     }
     await o.marcar("arte", "feito");
     const oQueMudou = ehInfografico ? (acao.cor ? ` com a cor ${acao.cor}` : "") : contarOQueMudou(acao, decidido, mudou);
-    return `Refiz ${ehInfografico ? "o infográfico" : "a arte"}${oQueMudou}, e ${ehInfografico ? "ele já está" : "ela já está"} aqui no card.`;
+    const daFrase = fraseNova ? ` com a frase "${fraseNova}", escrita a partir do texto` : "";
+    return `Refiz ${ehInfografico ? "o infográfico" : "a arte"}${oQueMudou}${daFrase}, e ${ehInfografico ? "ele já está" : "ela já está"} aqui no card.`;
   } catch (e) {
     await o.marcar("arte", "falhou", "ficou a anterior");
     throw e;

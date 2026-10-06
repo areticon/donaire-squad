@@ -20,6 +20,8 @@ import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 import { AberturasDaSemana, aberturaDe } from "@/lib/media/aberturas-da-semana";
 import { escreverLegendaDoCarrossel } from "@/lib/media/carrossel-do-video";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
+import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
+import { arteCoerenteComOTexto, teseDoAnguloPeloJev } from "@/lib/squad/coerencia-da-arte";
 import {
   dataDoDia,
   diasDaSemana,
@@ -184,9 +186,9 @@ function teseDoDia(radar: Radar | null, dia: number) {
 }
 
 /** O pedido do dia: formato, ângulo e tese, mais a semana inteira para o redator não invadir outro dia. */
-export function contextoDoDia(dia: number, formato: FormatoDoDia, radar: Radar | null, plano: string): string {
+export function contextoDoDia(dia: number, formato: FormatoDoDia, radar: Radar | null, plano: string, teseEscolhida?: { minuto: string; frase: string }): string {
   const angulo = radar?.angulos.find((a) => a.dia === dia)?.texto ?? "";
-  const tese = teseDoDia(radar, dia);
+  const tese = teseEscolhida ?? teseDoDia(radar, dia);
   return (
     `DIA: ${DIAS[dia]}\nFORMATO ESCOLHIDO PELO CLIENTE: ${ROTULO_DO_FORMATO[formato]}\nÂNGULO DO DIA (do Roberto): ${angulo || "use a tese abaixo"}\nTESE PRINCIPAL DO DIA: ${tese ? `[${tese.minuto}] ${tese.frase}` : "escolha a tese mais forte do vídeo para este dia"}` +
     `\n\nA SEMANA INTEIRA (cada dia é uma peça diferente, com gancho próprio; escreva só o de ${DIAS[dia]} e não puxe o ângulo dos outros):\n${plano}` +
@@ -461,7 +463,17 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
 
     const data = dataDoDia(alvo, dia);
     const angulo = radar?.angulos.find((a) => a.dia === dia)?.texto ?? "";
-    const tese = teseDoDia(radar, dia);
+    // A TESE DO DIA CASA COM O ÂNGULO DO DIA (05/10, noite): a conta de módulo
+    // deu a mesma tese para segunda e sexta no Fé & Gestão, e a frase da arte
+    // (da tese) saiu de outro assunto que a legenda (do ângulo). O JEV escolhe
+    // a tese que o ângulo desenvolve; sem ângulo ou sem JEV, fica a conta.
+    const tese = await (async () => {
+      const padrao = teseDoDia(radar, dia);
+      const teses = radar?.teses ?? [];
+      if (!radar || !angulo || teses.length < 2) return padrao;
+      const i = await teseDoAnguloPeloJev({ projectId: video.projectId, angulo, teses, padrao: Math.max(0, teses.indexOf(padrao as (typeof teses)[number])) });
+      return teses[i] ?? padrao;
+    })();
     // As redes do dia: a principal recebe o texto do redator, as outras a
     // adaptação, e a arte sai uma vez por proporção (ver `pecasDoDia`).
     const { principal, outras, grupos } = pecasDoDia(formato, redes);
@@ -599,7 +611,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
       return artes;
     };
 
-    const contexto = contextoDoDia(dia, formato, radar, plano);
+    const contexto = contextoDoDia(dia, formato, radar, plano, tese);
     // Cada peça passa pela fila de aberturas: se abrir igual a outro dia, é
     // escrita de novo sabendo quais ganchos estão tomados (ver aberturas-da-semana.ts).
     const semTopo = (t: string, tirar: (x: string) => string | null) => tirar(t);
@@ -669,7 +681,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         const fraseBruta = tese?.frase ?? radarDoDia?.teses?.find((t) => t?.frase)?.frase ?? radar?.tema ?? radarDoDia?.resumo?.split(/(?<=[.!?])\s/)[0] ?? (pareceArquivo ? "O que ninguém te contou sobre isso" : nome);
         // A FRASE NUNCA SAI TRUNCADA (05/10): inteira, em frases completas,
         // ou a manchete curta do redator dentro do teto do modelo do book.
-        const frase = await fraseGarantida({
+        let frase = await fraseGarantida({
           bruta: fraseBruta,
           maxPalavras: await tetoDePalavrasDoModelo(marcaDoDia, fraseBruta, formatoDaPeca(principal, "image")),
           contexto: [radar?.tema, radar?.resumo].filter(Boolean).join(". "),
@@ -682,6 +694,26 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           (t) => t,
           { ajustar: semTopo }
         );
+        // A FRASE E A LEGENDA SÃO UMA PEÇA SÓ (05/10, noite): o JEV confere antes
+        // de pagar a arte. Se a legenda foi para outro assunto, a frase nasce da
+        // legenda (uma chamada curta de texto) e a arte sai coerente.
+        {
+          const c = await arteCoerenteComOTexto({ projectId: video.projectId, texto: legenda, arte: { frase }, projeto: { nicho: video.project.niche, marca: video.project.name }, etapa: "arte-coerencia" });
+          if (c.coerente === false) {
+            console.warn(`[pecas-da-semana][${video.id}] dia ${dia}: a frase da arte não conversa com a legenda (${c.nota?.toFixed(2)}); a frase nasce da legenda.`);
+            try {
+              const manchete = await mancheteDaPeca({ textoDoPost: legenda, estiloVisual: "editorial, one scene", nicho: video.project.niche, projectId: video.projectId, runId: run.id });
+              frase = await fraseGarantida({
+                bruta: manchete.manchete,
+                maxPalavras: await tetoDePalavrasDoModelo(marcaDoDia, manchete.manchete, formatoDaPeca(principal, "image")),
+                contexto: legenda,
+                usage: { projectId: video.projectId, runId: run.id },
+              });
+            } catch (e) {
+              console.error(`[pecas-da-semana][${video.id}] dia ${dia}: a frase nova não saiu, fica a da tese:`, e instanceof Error ? e.message : e);
+            }
+          }
+        }
         // A direcao de arte do projeto (linguagem do video, estilo proprio),
         // igual a esteira; sem ela a imagem saia "bold typographic" fixo.
         const direcao = await direcaoDaPeca({ projectId: video.projectId, runId: run.id, dayOfWeek: dia, infografico: false, preferido: (run.config as { mediaStyle?: string } | null)?.mediaStyle });
@@ -716,7 +748,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         // Frases e legenda saem juntas pela fila de aberturas, ANTES das
         // lâminas: se a legenda repetir o gancho de outro dia, reescrever as
         // duas custa centavos, e as imagens ainda não foram pagas.
-        const { frases, legenda } = await aberturas.escrever(
+        const escrito = await aberturas.escrever(
           DIAS[dia],
           async (proibidas) => {
             const frases = await frasesDosSlides(diana, prefixo, contexto + proibidas, usage(AGENTES.diana.agentId));
@@ -733,6 +765,22 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           (p) => p.legenda,
           { ajustar: (p, tirar) => { const l = tirar(p.legenda); return l ? { ...p, legenda: l } : null; } }
         );
+        const legenda = escrito.legenda;
+        let frases = escrito.frases;
+        // AS LÂMINAS E A LEGENDA SÃO UMA PEÇA SÓ (05/10, noite): o JEV confere
+        // antes de pagar as lâminas; se a legenda foi para outro assunto, as
+        // frases nascem de novo tendo a legenda como fonte.
+        {
+          const c = await arteCoerenteComOTexto({ projectId: video.projectId, texto: legenda, arte: { slides: frases }, projeto: { nicho: video.project.niche, marca: video.project.name }, etapa: "arte-coerencia" });
+          if (c.coerente === false) {
+            console.warn(`[pecas-da-semana][${video.id}] dia ${dia}: as frases das lâminas não conversam com a legenda (${c.nota?.toFixed(2)}); elas nascem da legenda.`);
+            try {
+              frases = await frasesDosSlides(diana, prefixo, `${contexto}\n\nLEGENDA JÁ ESCRITA DESTE CARROSSEL (as frases dos slides nascem dela, na mesma ideia):\n${legenda}`, usage(AGENTES.diana.agentId));
+            } catch (e) {
+              console.error(`[pecas-da-semana][${video.id}] dia ${dia}: as frases novas não saíram, ficam as da tese:`, e instanceof Error ? e.message : e);
+            }
+          }
+        }
         // Os slides não dependem um do outro: três chamadas ao mesmo tempo.
         // Uma direcao so para as tres laminas: carrossel com cara diferente
         // por lamina parece tres posts colados.

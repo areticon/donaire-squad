@@ -207,7 +207,19 @@ async function revisarUmDia(
   // Segunda revisão: o JEV confere pedido a pedido; o que não foi atendido
   // volta como reprovação com a lista. O Claude só entra com o JEV desligado
   // ou fora do ar.
-  const pecasDaVera = posts.map((p, i) => ({ id: `post${i + 1}`, rede: p.platform, tipo: p.mediaType ?? "texto", texto: p.content ?? "" }));
+  // A FRASE DA IMAGEM VAI JUNTO (05/10, noite): sem ela o JEV não tinha como
+  // ver que a arte de sexta falava de outra tese; é o critério "coerencia".
+  const pecasDaVera = posts.map((p, i) => {
+    const pm = (p.metadata as Record<string, unknown> | null) ?? {};
+    return {
+      id: `post${i + 1}`,
+      rede: p.platform,
+      tipo: p.mediaType ?? "texto",
+      texto: p.content ?? "",
+      frase: p.mediaType === "image" && typeof pm.frase === "string" ? pm.frase : null,
+      slides: p.mediaType === "carousel" && Array.isArray(pm.slides) ? (pm.slides as unknown[]).filter((f): f is string => typeof f === "string") : null,
+    };
+  });
   const postIds = posts.map((p) => p.id);
   const comParecer = (saidaDoJev: string): RevisaoDoDia => ({
     veredito: extrairVeredito(saidaDoJev),
