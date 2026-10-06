@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
+import { podeTerCardDeCorte } from "@/lib/media/decisao-dos-cortes";
+import { lerDecisaoDosCortes } from "@/lib/media/decisao-dos-cortes-banco";
 import { destinoPorId } from "@/lib/media/destinos";
 import { diaDoTrecho, diaDoTrechoNoPlano } from "@/lib/media/quadro-do-video";
 import { dataDoDia, DESTINO_DE_CORTE_DA_REDE, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
@@ -91,7 +93,11 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
   });
   if (!run) return; // ainda não foi ao quadro; nada a espelhar
 
-  const trechos = (video.clips as unknown as TrechoDoQuadro[]) ?? [];
+  // ZERO CORTES APROVADO É ZERO CORTES (06/10): com "só o completo" gravado
+  // no roteiro, nenhum trecho pede card de corte (e o card pendente que
+  // tenha nascido sem pedido sai na remoção abaixo, junto do rascunho).
+  const decisao = await lerDecisaoDosCortes(video.id).catch(() => null);
+  const trechos = podeTerCardDeCorte(decisao) ? ((video.clips as unknown as TrechoDoQuadro[]) ?? []) : [];
   const plano = planoDoRun(run.config);
   const alvo = { inicio: plano.inicio, weekStart: run.weekStart };
   const diasDeCorte = diasDeVideoCurto(plano);

@@ -180,14 +180,16 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
 
   // A lista vem por parâmetro (05/10): o botão da barra aprova os escolhidos, e
   // o do vídeo completo aprova com lista vazia, independente dos cortes marcados.
-  async function aprovar(lista: number[]) {
+  async function aprovar(lista: number[], soCompleto = lista.length === 0) {
     setErro(null);
     setAprovando(true);
     try {
       const r = await fetch(`/api/videos/${tela.videoId}/roteiro/aprovar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ escolhidos: lista }),
+        // Zero cortes vai como decisão explícita (06/10): o servidor grava
+        // `soCompleto` e nenhum passo da esteira escolhe corte sozinho.
+        body: JSON.stringify(soCompleto ? { escolhidos: [], soCompleto: true } : { escolhidos: lista }),
       });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) {
@@ -435,7 +437,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
                 <strong style={{ color: "var(--text-primary)" }}>{creditosNaTela(tela.creditos.completo + aberturaCreditos)} créditos</strong>
                 {tela.completo.sugestoes ? `, com ${tela.completo.sugestoes === 1 ? "a sua sugestão" : `as suas ${tela.completo.sugestoes} sugestões`} no roteiro do editor` : ""}.
               </p>
-              <Button variant="outline" className="w-full sm:w-auto h-auto min-h-10 whitespace-normal py-2 shrink-0" onClick={() => void aprovar([])} disabled={aprovando || Boolean(ocupado)}>
+              <Button variant="outline" className="w-full sm:w-auto h-auto min-h-10 whitespace-normal py-2 shrink-0" onClick={() => void aprovar([], true)} disabled={aprovando || Boolean(ocupado)}>
                 {aprovando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 Aprovar o vídeo completo
               </Button>
