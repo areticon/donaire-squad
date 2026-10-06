@@ -331,6 +331,45 @@ export const PECAS: FichaDaPeca[] = [
     quando: "(automática) a animação de curtir e se inscrever sobre a gravação, perto de um momento forte; o evento é o clique.",
     props: 'chamada? (até 4 palavras), lado? ("direita" | "esquerda")',
   },
+  // ─── AS PEÇAS DE CONTEXTO (06/10): o editor decide pelo contexto do vídeo inteiro (leitura-no-plano.ts). O JEV escolhe o tipo
+  // por momento só quando a leitura do trecho permite (duas pessoas, tela ou quadro, pessoa nomeada); o resolvedor põe a caixa
+  // (props.caixa, fração do quadro) na área livre do trecho, nunca sobre rosto, tela ou quadro. Desenhadas na linguagem do vídeo
+  // (worker/remotion/src/sob-medida/pecas/contexto.tsx), nunca condicionadas a um estilo.
+  {
+    nome: "nome-de-quem-fala", plano: "sobre", entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
+    quando: "(contexto) o nome e o papel de quem está falando, numa tarja no terço inferior perto da pessoa (conversa, podcast, entrevista, apresentação).",
+    props: "nome (o nome de quem fala, como a leitura do vídeo ou a fala diz; nunca inventado), papel? (até 5 palavras: o cargo, o ofício ou o que a pessoa é no vídeo)",
+  },
+  {
+    nome: "realce-de-quem-fala", plano: "sobre", passes: ["frente"], entrada: 0.5, saida: 0.3, evento: 0.5, duracao: [2, 6],
+    quando: "(contexto) com duas ou mais pessoas em cena, a moldura acesa em volta de quem fala; ninguém escurece. O código põe a caixa de quem fala.",
+    props: "rotulo? (até 3 palavras, opcional: o nome ou o papel de quem fala)",
+  },
+  {
+    nome: "zoom-no-ponto", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
+    quando: "(contexto) a câmera aproxima a região da tela compartilhada ou do quadro que a fala explica, com a moldura na região. O código mede a região e o zoom.",
+    props: "rotulo? (até 4 palavras do falante sobre o que se vê)",
+  },
+  {
+    nome: "destaque-na-tela", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2, 5],
+    quando: "(contexto) a moldura ou o realce em volta da região da tela ou do quadro que a fala nomeia, sem aproximar a câmera. O código mede a região.",
+    props: "rotulo? (até 4 palavras do falante)",
+  },
+  {
+    nome: "cartao-de-passo", plano: "sobre", entrada: 0.9, saida: 0.3, evento: 0.6, duracao: [2.5, 6],
+    quando: "(contexto) um cartão pequeno na área livre: o passo numerado, o ingrediente com a quantidade dita, ou o lugar (demonstração, receita, tutorial, vlog).",
+    props: 'numero? ("1", "2": só se a fala numera), titulo (até 4 palavras: o passo, o ingrediente, o lugar), texto? (até 8 palavras: a quantidade, o detalhe dito), icone? (nome do catálogo de ícones)',
+  },
+  {
+    nome: "frase-chave", plano: "sobre", entrada: 0.9, saida: 0.3, evento: 0.6, duracao: [3, 7],
+    quando: "(contexto) a frase inteira que resume o ponto, num cartão na área livre, enquanto a pessoa segue falando (palestra, aula, sermão).",
+    props: "texto (a frase dita, até 14 palavras, **destaque** em 1 a 3), autor? (só se a fala atribui a alguém)",
+  },
+  {
+    nome: "slide", plano: "tela", entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [3.5, 9], eventosDe: "itens", maxItens: 4,
+    quando: "(contexto) um slide ao lado da pessoa, na folha da área livre: o título do ponto e 2 a 4 itens que a fala percorre (o item dito acende). Palestra e aula.",
+    props: "rotulo? (selo, 1 a 3 palavras), titulo (até 6 palavras, **destaque**), itens [{texto (até 6 palavras)}] (2 a 4, só o que a fala diz, na ordem dita)",
+  },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],
     quando: "As últimas palavras do vídeo (a chamada final): a marca do cliente, a frase final e a chamada para ação dita.",

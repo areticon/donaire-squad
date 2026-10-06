@@ -87,6 +87,8 @@ import {
   type PlanoDoDiretor,
 } from "@/lib/media/editor-por-comando";
 import { conferirFalaDoCorte } from "@/lib/media/editor-por-comando/fala-conferida";
+import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import { leituraNoCorte } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**
  * O EDITOR COMPLETO NA ESTEIRA (30/09/2026), com a trava MONTAGEM_NA_EDICAO=1.
@@ -774,6 +776,23 @@ export async function entradaDoCorte(
   };
 }
 
+/**
+ * A LEITURA DO VÍDEO INTEIRO para um corte (06/10): a gravada em
+ * completoMontagem.leitura (lib/media/leitura-do-video.ts), levada para o
+ * tempo do corte (pelos intervalos mantidos) e para o quadro 9:16 dele. Sem
+ * leitura gravada, null: o corte segue como antes.
+ */
+async function leituraDoCorte(videoJobId: string, sm: SobMedidaDoCorte, inicioDoCorte: number): Promise<LeituraDoVideo | null> {
+  try {
+    const r = await prisma.$queryRaw<Array<{ l: unknown }>>`SELECT "completoMontagem" -> 'leitura' AS l FROM video_jobs WHERE id = ${videoJobId}`;
+    const l = r[0]?.l as LeituraDoVideo | null | undefined;
+    if (!l || typeof l !== "object" || !Array.isArray(l.trechos) || !sm.fala?.manter?.length) return null;
+    return leituraNoCorte(l, sm.quadro ?? { x: 0, y: 0, w: 1, h: 1 }, inicioDoCorte, sm.fala.manter);
+  } catch {
+    return null;
+  }
+}
+
 /** O que o diretor do editor por comando recebe para um corte (a prova local usa a mesma função). */
 export async function entradaDoPlanoDoCorte(
   video: VideoDoPasso,
@@ -785,7 +804,9 @@ export async function entradaDoPlanoDoCorte(
   const ctx = contexto(video, t);
   const perfil = await perfilDoProjeto(video.projectId).catch(() => null);
   const fala = sm.fala!;
+  const leitura = await leituraDoCorte(video.id, sm, bordas(t, video).inicio);
   return {
+    leitura,
     palavras: fala.palavras,
     duracao: fala.duracao,
     formato: "9:16",

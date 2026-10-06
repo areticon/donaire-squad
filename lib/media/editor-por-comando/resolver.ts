@@ -5,8 +5,42 @@ import { caixaDoCartao, cameraDeRitmo, frasesNumeradas, limparSvg, paginasDaLege
 import { posicionarLegenda } from "@/lib/media/editor-sob-medida/faixa-da-legenda";
 import type { CamadaResolvida, EdicaoResolvida, Enquadramento, MidiaDaInsercao, PlanoResolvido, Tema } from "@/lib/media/editor-sob-medida/tipos";
 import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
+import type { LeituraDoVideo, TrechoLido } from "@/lib/media/editor-por-comando/leitura-tipos";
+import { componenteDa, familiaValida } from "@/lib/media/editor-por-comando/linguagem";
+import {
+  caixaLivre,
+  caixaNaCamera,
+  centroDe,
+  cobreAlgo,
+  cobreUmaPessoa,
+  enquadramentoDoPonto,
+  faixaLivreDoTrecho,
+  ladoLivreDoTrecho,
+  movimentoEm,
+  quemFala,
+  regiaoDoConteudo,
+  rostoDoTrecho,
+  trechoEm,
+  zonaLivre,
+} from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**
+ * A POSIÇÃO PELO TEMPO, NÃO POR UM QUADRO (06/10/2026; regra do Bruno: o
+ * editor decide pelo contexto do vídeo inteiro). Com a leitura do vídeo em
+ * `ctx.leitura`, cada peça é posicionada pelo TRECHO LIDO do instante dela:
+ *   - o rosto é o de QUEM FALA no trecho (com duas pessoas, o título atrás vai
+ *     atrás de quem fala; a câmera de ritmo mira quem fala);
+ *   - a folha, o cartão de passo, a frase-chave, o nome de quem fala, a
+ *     janela de imagem e a chamada de inscrever vão para a ÁREA LIVRE medida
+ *     do trecho; nenhuma cobre rosto, tela ou quadro, nem uma pessoa inteira
+ *     (sem área que sirva, a peça sai, com aviso);
+ *   - com TELA ou QUADRO em cena, a câmera fica aberta (o zoom cortaria o
+ *     conteúdo) e o "zoom no ponto" é o único zoom: ele mira a caixa da tela
+ *     ou do quadro e a moldura cai na posição da região depois do zoom;
+ *   - com movimento "muito", a peça fica mais curta e o título atrás da
+ *     pessoa vira a legenda de destaque da linguagem (o recorte falha).
+ * Sem leitura (vídeo antigo), vale o rosto medido num quadro, como em 05/10.
+ *
  * O RESOLVEDOR DO EDITOR POR COMANDO (05/10/2026): o plano do diretor (âncoras
  * na fala) vira a edição que o worker desenha (segundos e pixels), SEM as
  * regras de colisão do editor sob medida. Nada é derrubado por cruzar outra
@@ -49,7 +83,34 @@ export type ContextoDoComando = {
   insercoes: Record<string, MidiaDaInsercao>;
   /** A base do estilo do comando: peça de fora dela vira a peça do estilo ou sai (a defesa do que o diretor validou). */
   base?: string | null;
+  /** A LEITURA DO VÍDEO INTEIRO (06/10), no tempo desta fala: a posição de cada peça sai do trecho lido dela. */
+  leitura?: LeituraDoVideo | null;
 };
+
+const limitar = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+
+/**
+ * A CAIXA DA FOLHA NO TRECHO (06/10): a área livre medida que serve à folha
+ * (no 16:9, pelo menos 26% de largura e 40% de altura; no 9:16, a faixa), do
+ * lado livre e perto de quem fala; sem área medida, a conta pelo rosto de
+ * quem fala (`caixaDaFolha`), desde que não cubra outro rosto, a tela ou o
+ * quadro. Null: não há onde pôr a folha sem cobrir alguém ou o conteúdo.
+ */
+export function caixaDaFolhaNoTrecho(tr: TrechoLido | null, rosto: Retangulo, vertical: boolean, lado: string): { x: number; y: number; w: number; h: number } | null {
+  if (tr) {
+    const livre = caixaLivre(tr, vertical ? { minW: 0.5, minH: 0.3, maxW: 0.92, maxH: 0.44, ancora: lado === "topo" ? "topo" : "baixo" } : { minW: 0.26, minH: 0.4, maxW: 0.5, maxH: 0.72, lado: lado === "esquerda" ? "esquerda" : "direita", perto: centroDe(rosto) });
+    if (livre) return livre;
+  }
+  const c = caixaDaFolha(rosto, vertical, lado);
+  if (tr && (cobreAlgo(c, tr) || cobreUmaPessoa(c, tr))) return null;
+  return c;
+}
+
+/** As posições fixas do ícone, do sublinhado e do marca-texto (fração do quadro), para a escolha da zona livre. */
+const ZONAS_DO_ICONE = { direita: { x: 0.62, y: 0.07, w: 0.34, h: 0.3 }, "topo-esquerda": { x: 0.04, y: 0.06, w: 0.3, h: 0.25 }, topo: { x: 0.3, y: 0.05, w: 0.4, h: 0.22 } };
+const ZONAS_DO_SUBLINHADO = { centro: { x: 0.28, y: 0.58, w: 0.44, h: 0.14 }, esquerda: { x: 0.04, y: 0.58, w: 0.42, h: 0.14 }, direita: { x: 0.54, y: 0.58, w: 0.42, h: 0.14 } };
+const ZONAS_DO_MARCA_TEXTO = { topo: { x: 0.05, y: 0.09, w: 0.5, h: 0.16 }, centro: { x: 0.05, y: 0.58, w: 0.5, h: 0.16 } };
+const ZONAS_DO_INSCREVER = { direita: { x: 0.62, y: 0.72, w: 0.36, h: 0.24 }, esquerda: { x: 0.02, y: 0.72, w: 0.36, h: 0.24 } };
 
 function limparProps(v: unknown, prof = 0): unknown {
   if (prof > 4) return null;
@@ -121,6 +182,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   const vertical0 = H > W;
   const ladoLivre: "esquerda" | "direita" = x0 > 0.5 ? "esquerda" : "direita";
   const faixaLivre: "topo" | "baixo" = ctx.rosto.y + ctx.rosto.h / 2 > 0.5 ? "topo" : "baixo";
+  // Os enquadramentos que a leitura pede (o zoom no ponto da tela ou do quadro), por cima do ritmo.
+  const pedidosDaLeitura: Enquadramento[] = [];
   for (const [k, m0] of (p.momentos ?? []).entries()) {
     const ajuste = ctx.base && !livre ? pecaNoEstiloDoComando(m0, ctx.base) : { momento: m0 };
     if (ajuste.aviso) avisos.push(ajuste.aviso);
@@ -145,9 +208,40 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       avisos.push(`${id}: curto demais no fim do vídeo`);
       continue;
     }
-    const props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    let props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    // A LEITURA DO TRECHO (06/10): a posição é decidida pelo TEMPO da peça, não por um quadro só. O rosto é o de
+    // quem fala neste trecho, o lado livre é o da área livre medida, e nada cobre rosto, tela nem quadro.
+    const tr = trechoEm(ctx.leitura, de);
+    const rostoM = rostoDoTrecho(tr, ctx.rosto);
+    const mexeMuito = movimentoEm(ctx.leitura, de, ate) === "muito";
+    const ladoM: "esquerda" | "direita" = tr ? ladoLivreDoTrecho(tr, rostoM) : ladoLivre;
+    const faixaM: "topo" | "baixo" = tr ? faixaLivreDoTrecho(tr, rostoM) : faixaLivre;
+    const conteudo = regiaoDoConteudo(tr);
+    const xM = limitar(rostoM.x + rostoM.w / 2, 0.15, 0.85);
+    const yM = limitar(rostoM.y + rostoM.h * 0.55, 0.2, 0.75);
+    let fichaM = ficha;
+    if (mexeMuito) {
+      // Com a pessoa se mexendo muito a peça fica curta, e nada vai atrás dela (o recorte em movimento falha).
+      ate = Math.min(ate, de + Math.max(ficha.duracao[0], 3.2));
+      if (ficha.nome === "titulo-atras") {
+        const alt = componenteDa(familiaValida(p.tema?.linguagem), "legenda-destaque");
+        const fichaAlt = alt ? FICHAS[alt] : null;
+        if (fichaAlt) {
+          fichaM = fichaAlt;
+          props = { texto: String(props.texto ?? props.titulo ?? "").replace(/\*\*/g, "") };
+          ate = Math.min(ate, de + fichaAlt.duracao[1]);
+          avisos.push(`${id}: a pessoa se mexe muito, o título atrás virou ${alt}`);
+        }
+      }
+    }
+    // Uma caixa que cobriria rosto, tela, quadro ou uma pessoa inteira tira a peça (com aviso).
+    const semCobrir = (caixa: Retangulo, nome: string): boolean => {
+      if (!tr || !(cobreAlgo(caixa, tr) || cobreUmaPessoa(caixa, tr))) return true;
+      avisos.push(`${id}: ${nome} cobriria rosto, tela ou quadro no trecho, saiu`);
+      return false;
+    };
     // A janela de imagem: a url é a da inserção gerada com o id em `midia`; sem ela, a peça sai.
-    if (ficha.nome === "imagem-janela") {
+    if (fichaM.nome === "imagem-janela") {
       const midia = ctx.insercoes[String(props.midia ?? "")];
       if (!midia?.url) {
         avisos.push(`${id}: imagem da janela não gerada, saiu`);
@@ -155,9 +249,19 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       }
       props.url = midia.url;
       props.tipo = midia.tipo;
+      // A janela vai para a área livre do trecho (nunca sobre a tela, o quadro ou um rosto).
+      if (tr) {
+        const livre = caixaLivre(tr, { minW: 0.22, minH: 0.16, maxW: vertical0 ? 0.78 : 0.4, maxH: vertical0 ? 0.3 : 0.32, lado: ladoM, perto: centroDe(rostoM) });
+        if (livre) props.caixa = livre;
+        else if (conteudo) {
+          avisos.push(`${id}: sem área livre para a janela (tela ou quadro em cena), saiu`);
+          continue;
+        }
+        props.lado = vertical0 ? "topo" : ladoM;
+      }
     }
-    if (ficha.eventosDe && Array.isArray(props[ficha.eventosDe])) props[ficha.eventosDe] = (props[ficha.eventosDe] as unknown[]).slice(0, ficha.maxItens ?? 6);
-    const nItens = ficha.eventosDe ? (Array.isArray(props[ficha.eventosDe]) ? (props[ficha.eventosDe] as unknown[]).length : 0) : ficha.umEvento ? 1 : 0;
+    if (fichaM.eventosDe && Array.isArray(props[fichaM.eventosDe])) props[fichaM.eventosDe] = (props[fichaM.eventosDe] as unknown[]).slice(0, fichaM.maxItens ?? 6);
+    const nItens = fichaM.eventosDe ? (Array.isArray(props[fichaM.eventosDe]) ? (props[fichaM.eventosDe] as unknown[]).length : 0) : fichaM.umEvento ? 1 : 0;
     const eventos = (m.eventos ?? [])
       .map((a) => t(a))
       .filter((x): x is number => x !== null)
@@ -167,31 +271,100 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       .slice(0, nItens);
     // Eventos que o diretor não ancorou: espalhados no tempo da peça (a peça precisa de um por item para desenhar).
     if (nItens && eventos.length < nItens) {
-      const ini = eventos.length ? eventos[eventos.length - 1] : ficha.umEvento ? de + (ate - de) * 0.4 : de + ficha.entrada * 0.6;
+      const ini = eventos.length ? eventos[eventos.length - 1] : fichaM.umEvento ? de + (ate - de) * 0.4 : de + fichaM.entrada * 0.6;
       const faltam = nItens - eventos.length;
       const passo = Math.max(0.35, (ate - 0.6 - ini) / Math.max(1, faltam));
       for (let i = 0; i < faltam; i++) eventos.push(Math.min(ate - 0.4, ini + passo * (i + (eventos.length ? 1 : 0))));
     }
-    if (ficha.nome === "titulo-atras") props.cabeca = +Math.max(0.05, ctx.rosto.y).toFixed(3);
-    if (ficha.nome === "inscrever") props.lado = vertical0 ? faixaLivre : ladoLivre;
-    let plano: "cheio" | "grafico" | "cartao" = ficha.plano === "tela" ? "grafico" : ficha.plano === "lado" ? "cartao" : "cheio";
-    if (m.plano === "grafico" && ficha.plano !== "tela") plano = "grafico";
+    if (fichaM.nome === "titulo-atras") {
+      props.cabeca = +Math.max(0.05, rostoM.y).toFixed(3);
+      // Atrás de QUEM FALA (06/10): com a leitura, o título se centra no rosto de quem fala neste trecho.
+      if (tr) props.centro = +(rostoM.x + rostoM.w / 2).toFixed(3);
+    }
+    // A chamada de inscrever fica no canto de baixo que não tem rosto nem conteúdo no trecho.
+    if (fichaM.nome === "inscrever") props.lado = vertical0 ? faixaM : zonaLivre(ZONAS_DO_INSCREVER, ladoM, tr);
+    // O ícone, o sublinhado e o marca-texto têm posições fixas: a pedida, se não cobre ninguém no trecho; senão a livre.
+    if (fichaM.nome === "icone" && tr) props.posicao = zonaLivre(ZONAS_DO_ICONE, (["direita", "topo-esquerda", "topo"] as const).find((z) => z === props.posicao) ?? "topo-esquerda", tr);
+    if (fichaM.nome === "sublinhado" && tr) props.lado = zonaLivre(ZONAS_DO_SUBLINHADO, (["centro", "esquerda", "direita"] as const).find((z) => z === props.lado) ?? "centro", tr);
+    if (fichaM.nome === "marca-texto" && tr) props.posicao = zonaLivre(ZONAS_DO_MARCA_TEXTO, props.posicao === "centro" ? "centro" : "topo", tr);
+    // AS PEÇAS DE CONTEXTO (06/10): a caixa de cada uma vem da leitura do trecho.
+    if (fichaM.nome === "nome-de-quem-fala") {
+      const fala = quemFala(tr);
+      const w = vertical0 ? 0.7 : 0.34;
+      const h = vertical0 ? 0.1 : 0.14;
+      // No terço inferior, embaixo do rosto de quem fala (o peito pode ficar por baixo; o rosto, nunca).
+      let caixa: Retangulo = fala
+        ? { x: +limitar(fala.caixa.x + fala.caixa.w / 2 - w / 2, 0.03, 0.97 - w).toFixed(4), y: +limitar(Math.max(fala.caixa.y + fala.caixa.h * 0.55, rostoM.y + rostoM.h + 0.06), 0.5, 0.86 - h).toFixed(4), w, h }
+        : { x: 0.04, y: vertical0 ? 0.66 : 0.72, w, h };
+      if (tr && cobreAlgo(caixa, tr)) caixa = caixaLivre(tr, { minW: 0.22, minH: 0.08, maxW: w, maxH: h, perto: centroDe(rostoM), ancora: "baixo" }) ?? caixa;
+      if (!semCobrir(caixa, "o nome de quem fala")) continue;
+      props.caixa = caixa;
+    }
+    if (fichaM.nome === "realce-de-quem-fala") {
+      const fala = quemFala(tr);
+      if (!fala) {
+        avisos.push(`${id}: a leitura não diz quem fala, o realce saiu`);
+        continue;
+      }
+      props.caixa = fala.caixa;
+    }
+    if (fichaM.nome === "zoom-no-ponto" || fichaM.nome === "destaque-na-tela") {
+      if (!conteudo) {
+        avisos.push(`${id}: sem tela nem quadro na leitura, ${fichaM.nome} saiu`);
+        continue;
+      }
+      const enq = fichaM.nome === "zoom-no-ponto" ? enquadramentoDoPonto(conteudo) : null;
+      if (fichaM.nome === "zoom-no-ponto" && !enq) {
+        // A região já ocupa o quadro (a tela inteira, o quadro inteiro): aproximar cortaria; fica o destaque sem zoom.
+        avisos.push(`${id}: a região da tela ou do quadro já é grande, o zoom no ponto virou destaque na tela`);
+        fichaM = FICHAS["destaque-na-tela"] ?? fichaM;
+      }
+      if (enq) {
+        pedidosDaLeitura.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: enq.zoom, x: enq.x, y: enq.y, movimento: "empurrao", zoomFinal: +Math.min(2, enq.zoom * 1.04).toFixed(3) });
+        props.caixa = caixaNaCamera(conteudo, enq);
+        props.zoom = enq.zoom;
+      } else props.caixa = conteudo;
+    }
+    if (fichaM.nome === "cartao-de-passo" || fichaM.nome === "frase-chave") {
+      const frase = fichaM.nome === "frase-chave";
+      const pedido = frase ? { minW: 0.24, minH: 0.12, maxW: vertical0 ? 0.86 : 0.46, maxH: vertical0 ? 0.26 : 0.28 } : { minW: 0.2, minH: 0.12, maxW: vertical0 ? 0.7 : 0.36, maxH: vertical0 ? 0.22 : 0.26 };
+      let caixa = caixaLivre(tr, { ...pedido, lado: ladoM, perto: centroDe(rostoM) });
+      if (!caixa) {
+        // Sem área livre medida (vídeo antigo): do lado livre do rosto, acima da faixa da legenda.
+        const { maxW: w, maxH: h } = pedido;
+        caixa = vertical0 ? { x: +((1 - w) / 2).toFixed(4), y: faixaM === "topo" ? 0.08 : 0.5, w, h } : { x: ladoM === "esquerda" ? 0.04 : +(0.96 - w).toFixed(4), y: 0.18, w, h };
+      }
+      if (!semCobrir(caixa, fichaM.nome)) continue;
+      props.caixa = caixa;
+    }
+    let plano: "cheio" | "grafico" | "cartao" = fichaM.plano === "tela" ? "grafico" : fichaM.plano === "lado" ? "cartao" : "cheio";
+    if (m.plano === "grafico" && fichaM.plano !== "tela") plano = "grafico";
+    // COM TELA OU QUADRO EM CENA (06/10), a peça de lado não leva a pessoa para um cartão (o cartão esconderia o
+    // conteúdo): ela entra na folha da área livre, como a peça de tela.
+    if (plano === "cartao" && conteudo) plano = "grafico";
     // A FOLHA SOBRE A GRAVAÇÃO (regra 1): sem o cenário trocado, a peça de tela não cobre a pessoa.
     if (plano === "grafico" && !cenarioTrocado) {
       plano = "cheio";
       props.sobreAGravacao = true;
-      props.lado = vertical0 ? faixaLivre : ladoLivre;
-      props.folha = caixaDaFolha(ctx.rosto, vertical0, vertical0 ? faixaLivre : ladoLivre);
+      props.lado = vertical0 ? faixaM : ladoM;
+      // A folha na área livre do trecho (06/10): nunca sobre outro rosto, a tela ou o quadro.
+      const folha = caixaDaFolhaNoTrecho(tr, rostoM, vertical0, vertical0 ? faixaM : ladoM);
+      if (!folha) {
+        avisos.push(`${id}: sem área livre para a folha no trecho (rosto, tela ou quadro em todo lado), saiu`);
+        continue;
+      }
+      props.folha = folha;
     }
     if (plano === "cartao") {
-      const lado = props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
+      // A peça do lado livre do trecho; sem leitura, o lado que o diretor pediu.
+      const lado = tr ? ladoM : props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
       props.lado = lado;
     }
-    camadas.push({ id, peca: ficha.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: eventos.map((x) => +x.toFixed(3)), props, passes: passesDaPeca(ficha), ...(pecaContinua(ficha) ? { continua: true } : {}) });
+    camadas.push({ id, peca: fichaM.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: fichaM.entrada, saida: fichaM.saida, evento: fichaM.evento, eventos: eventos.map((x) => +x.toFixed(3)), props, passes: passesDaPeca(fichaM), ...(pecaContinua(fichaM) ? { continua: true } : {}) });
     if (plano === "grafico") planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "grafico" });
     if (plano === "cartao") {
       const caixa = caixaDoCartao(W, H, props.lado === "direita" ? "direita" : "esquerda");
-      planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "cartao", caixa, zoom: 1.15, x: x0, y: y0 });
+      planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "cartao", caixa, zoom: 1.15, x: xM, y: yM });
       camadas.push({ id: `${id}-moldura`, peca: "moldura-do-cartao", de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: 0.55, saida: 0.2, evento: 0.5, eventos: [], props: { ...caixa }, passes: ["frente"] });
     }
   }
@@ -261,11 +434,26 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     pedidos.push({ de: Math.max(0, a - 0.05), ate: Math.min(D, b + 0.2), zoom, x: Math.min(0.95, Math.max(0.05, c.foco?.x ?? x0)), y: Math.min(0.95, Math.max(0.05, c.foco?.y ?? y0)), movimento: c.movimento === "empurrao" ? "empurrao" : "fixo", zoomFinal: c.movimento === "empurrao" ? zoom * 1.06 : undefined });
   }
   const vertical = H > W;
-  let camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, null, vertical ? ctx.palavras : undefined, ctx.tema.visual === "documental"), pedidos);
+  let camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, null, vertical ? ctx.palavras : undefined, ctx.tema.visual === "documental"), [...pedidos, ...pedidosDaLeitura]);
+  // A CÂMERA PELO TEMPO (06/10): cada enquadramento do ritmo mira o rosto de quem fala no trecho dele; com tela ou
+  // quadro em cena a câmera fica aberta (o zoom cortaria o conteúdo); com a pessoa se mexendo muito, quase aberta.
+  const fixos = new Set<Enquadramento>([...pedidos, ...pedidosDaLeitura]);
+  if (ctx.leitura) {
+    camera = camera.map((c) => {
+      if (fixos.has(c)) return c;
+      const tr = trechoEm(ctx.leitura, c.de);
+      const r = rostoDoTrecho(tr, ctx.rosto);
+      const x = limitar(r.x + r.w / 2, 0.15, 0.85);
+      const y = limitar(r.y + r.h * 0.55, 0.2, 0.75);
+      if (regiaoDoConteudo(tr)) return { ...c, x, y, zoom: 1, zoomFinal: undefined, movimento: "fixo" as const };
+      if (movimentoEm(ctx.leitura, c.de, c.ate) === "muito") return { ...c, x, y, zoom: Math.min(c.zoom, 1.06), zoomFinal: c.zoomFinal ? Math.min(c.zoomFinal, 1.08) : undefined };
+      return { ...c, x, y };
+    });
+  }
   // O título atrás da pessoa mede a cabeça no quadro aberto: ali a câmera fica aberta (senão a cabeça cobre as letras).
   // A folha sobre a gravação também: fechada, o rosto andaria para baixo da folha.
   for (const c0 of camadas.filter((c) => c.peca === "titulo-atras" || c.props.sobreAGravacao))
-    camera = camera.map((c) => (c.de < c0.ate && c.ate > c0.de && !pedidos.includes(c) ? { ...c, zoom: 1, zoomFinal: c.zoomFinal ? 1.03 : undefined } : c));
+    camera = camera.map((c) => (c.de < c0.ate && c.ate > c0.de && !fixos.has(c) ? { ...c, zoom: 1, zoomFinal: c.zoomFinal ? 1.03 : undefined } : c));
   // O soco de câmera nas ênfases, fora dos planos.
   const socos: Enquadramento[] = [];
   let ultimo = -10;
@@ -274,9 +462,13 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   for (const s0 of (p.enfases ?? []).map((a) => t(a)).filter((x): x is number => x !== null).sort((a, b) => a - b)) {
     const de = Math.max(0, s0 - 0.03);
     const ate = Math.min(D, de + 1.1);
-    if (de - ultimo < 2.5 || planosOk.some((pl) => pl.de < ate && pl.ate > de) || pedidos.some((pl) => pl.de < ate && pl.ate > de) || abertas.some((c) => c.de < ate && c.ate > de)) continue;
+    if (de - ultimo < 2.5 || planosOk.some((pl) => pl.de < ate && pl.ate > de) || [...pedidos, ...pedidosDaLeitura].some((pl) => pl.de < ate && pl.ate > de) || abertas.some((c) => c.de < ate && c.ate > de)) continue;
+    // Sem soco sobre a tela ou o quadro (cortaria o conteúdo) nem com a pessoa se mexendo muito; o soco mira quem fala.
+    const trS = trechoEm(ctx.leitura, de);
+    if (ctx.leitura && (regiaoDoConteudo(trS) || movimentoEm(ctx.leitura, de, ate) === "muito")) continue;
+    const rS = rostoDoTrecho(trS, ctx.rosto);
     const z = Math.min(1.32, +((camera.find((c) => c.de <= de && c.ate > de)?.zoom ?? 1) * (ctx.tema.visual === "documental" ? 1.1 : 1.18)).toFixed(3));
-    socos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: x0, y: y0, movimento: "fixo" });
+    socos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: ctx.leitura ? limitar(rS.x + rS.w / 2, 0.15, 0.85) : x0, y: ctx.leitura ? limitar(rS.y + rS.h * 0.55, 0.2, 0.75) : y0, movimento: "fixo" });
     ultimo = de;
   }
   if (socos.length) camera = sobreporCamera(camera, socos);

@@ -14,8 +14,17 @@ import type {
   Tema,
   Visual,
 } from "@/lib/media/editor-sob-medida/tipos";
+import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import { ladoLivreDoTrecho, movimentoEm, regiaoDoConteudo, rostoDoTrecho, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**
+ * A POSIÇÃO PELO TEMPO (06/10): com a leitura do vídeo em `ctx.leitura`, o
+ * rosto de cada peça e de cada enquadramento é o de QUEM FALA no trecho lido
+ * (o título atrás vai atrás de quem fala, o cartão fica do lado livre), a
+ * câmera fica aberta com tela ou quadro em cena, e com movimento "muito" a
+ * peça encurta e o título atrás vira o sublinhado (o recorte falha). Sem
+ * leitura, o rosto medido num quadro, como antes.
+ *
  * O RESOLVEDOR DO EDITOR SOB MEDIDA (03/10/2026): a edição que o agente
  * escreveu (âncoras na fala) vira a edição que o worker desenha (segundos e
  * pixels). Tudo que é medível é decidido aqui, e não pelo modelo: o tempo
@@ -279,6 +288,8 @@ export type ContextoDaResolucao = {
    * a gravação fica como foi gravada. Antes, o fundo entrava por ser o estilo Vox, uma condição fixa por estilo.
    */
   cenario?: "gravacao" | "trocado";
+  /** A LEITURA DO VÍDEO INTEIRO (06/10), no tempo desta fala: o rosto e o lado de cada peça saem do trecho lido dela. */
+  leitura?: LeituraDoVideo | null;
 };
 
 export type MomentoResolvido = CamadaResolvida & { ficha: FichaDaPeca; plano: "cheio" | "grafico" | "cartao" };
@@ -292,7 +303,7 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   // 1. Os momentos, em segundos.
   const brutos: MomentoResolvido[] = [];
   (e.momentos ?? []).forEach((m, k) => {
-    const ficha = FICHAS[m.peca];
+    let ficha = FICHAS[m.peca];
     const id = String(m.id ?? `m${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `m${k + 1}`;
     if (!ficha) return avisos.push(`${id}: peça desconhecida "${m.peca}"`);
     // O ESTILO ESCOLHIDO MANDA (05/10): peça fora do catálogo do estilo não vai ao ar. No
@@ -308,7 +319,20 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     let ate = Math.min(D, Math.max(t1 + 0.25, de + ficha.duracao[0]));
     if (ate - de > ficha.duracao[1]) ate = de + ficha.duracao[1];
     if (ate - de < Math.min(1, ficha.duracao[0])) return avisos.push(`${id}: curto demais no fim do vídeo`);
-    const props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    let props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    // A LEITURA DO TRECHO (06/10): o rosto de quem fala neste instante e o lado livre medido.
+    const tr = trechoEm(ctx.leitura, de);
+    const rostoM = rostoDoTrecho(tr, ctx.rosto);
+    if (movimentoEm(ctx.leitura, de, ate) === "muito") {
+      ate = Math.min(ate, de + Math.max(ficha.duracao[0], 3.2));
+      if (ficha.nome === "titulo-atras" && FICHAS.sublinhado) {
+        // Nada atrás da pessoa que se mexe muito: o recorte falha. Vira o sublinhado com o mesmo texto.
+        ficha = FICHAS.sublinhado;
+        props = { texto: String(props.texto ?? props.titulo ?? "").replace(/\*\*/g, ""), lado: "centro" };
+        ate = Math.min(ate, de + ficha.duracao[1]);
+        avisos.push(`${id}: a pessoa se mexe muito, o título atrás virou sublinhado`);
+      }
+    }
     // As listas cortadas no teto da peça.
     if (ficha.eventosDe && Array.isArray(props[ficha.eventosDe])) props[ficha.eventosDe] = (props[ficha.eventosDe] as unknown[]).slice(0, ficha.maxItens ?? 6);
     const nItens = ficha.eventosDe ? (Array.isArray(props[ficha.eventosDe]) ? (props[ficha.eventosDe] as unknown[]).length : 0) : ficha.umEvento ? 1 : 0;
@@ -339,10 +363,22 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     // O título atrás da pessoa precisa saber onde a cabeça está: as letras
     // ficam acima dela e a pessoa corta só a base (prova de 03/10: com o
     // título no meio, a cabeça escondia a palavra inteira no 9:16).
-    if (ficha.nome === "titulo-atras") props.cabeca = +Math.max(0.05, ctx.rosto.y).toFixed(3);
-    // O lado do painel (a pessoa vai para o outro).
+    if (ficha.nome === "titulo-atras") {
+      props.cabeca = +Math.max(0.05, rostoM.y).toFixed(3);
+      // Atrás de QUEM FALA (06/10): com a leitura, o título se centra no rosto de quem fala neste trecho.
+      if (tr) props.centro = +(rostoM.x + rostoM.w / 2).toFixed(3);
+    }
+    // COM TELA OU QUADRO EM CENA (06/10), a peça de lado não leva a pessoa para um cartão (o cartão esconderia o
+    // conteúdo): fica "cheia", desenhada do lado livre, sobre a gravação.
+    if (plano === "cartao" && regiaoDoConteudo(tr)) {
+      plano = "cheio";
+      props.lado = ladoLivreDoTrecho(tr, rostoM);
+      if (ficha.nome === "icone") props.posicao = props.lado === "direita" ? "direita" : "topo-esquerda";
+      avisos.push(`${id}: tela ou quadro em cena, a peça de lado ficou sobre a gravação sem o cartão`);
+    }
+    // O lado do painel (a pessoa vai para o outro): com a leitura, o lado livre do trecho.
     if (plano === "cartao") {
-      const lado = props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
+      const lado = tr ? ladoLivreDoTrecho(tr, rostoM) : props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
       props.lado = lado;
       if (ficha.nome === "desenho" || ficha.nome === "icone") props.posicao = lado === "direita" ? "direita" : ficha.nome === "icone" ? "topo-esquerda" : "esquerda";
       if (ficha.nome === "titulo") props.posicao = "esquerda-meio";
@@ -655,6 +691,21 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
   }
   const corte = ctx.ritmo === "corte";
   let camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, ctx.estiloId, corte ? ctx.palavras : undefined, ctx.tema.visual === "documental"), pedidos);
+  // A CÂMERA PELO TEMPO (06/10): cada enquadramento do ritmo mira quem fala no trecho dele; com tela ou quadro em
+  // cena a câmera fica aberta (o zoom cortaria o conteúdo); com a pessoa se mexendo muito, quase aberta.
+  if (ctx.leitura) {
+    const lim = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+    camera = camera.map((c) => {
+      if (pedidos.includes(c)) return c;
+      const tr = trechoEm(ctx.leitura, c.de);
+      const r = rostoDoTrecho(tr, ctx.rosto);
+      const x = lim(r.x + r.w / 2, 0.15, 0.85);
+      const y = lim(r.y + r.h * 0.55, 0.2, 0.75);
+      if (regiaoDoConteudo(tr)) return { ...c, x, y, zoom: 1, zoomFinal: undefined, movimento: "fixo" as const };
+      if (movimentoEm(ctx.leitura, c.de, c.ate) === "muito") return { ...c, x, y, zoom: Math.min(c.zoom, 1.06), zoomFinal: c.zoomFinal ? Math.min(c.zoomFinal, 1.08) : undefined };
+      return { ...c, x, y };
+    });
+  }
   // Peça "sobre" com texto no topo: a câmera não fecha demais (o rosto não sobe para baixo do título).
   // No corte o título e a pergunta já descem para o peito (arejarCorte): só o título de trás segura a câmera.
   const seguram = corte ? ["titulo-atras"] : ["titulo", "capitulo", "pergunta-resposta", "titulo-atras"];
@@ -681,8 +732,12 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     const de = Math.max(0, s0 - 0.03);
     const ate = Math.min(D, de + 1.1);
     if (de - ultimoSoco < 2.5 || ate - de < 0.6 || ocupado(de, ate)) continue;
+    // Sem soco sobre a tela ou o quadro nem com a pessoa se mexendo muito (06/10); o soco mira quem fala.
+    const trS = trechoEm(ctx.leitura, de);
+    if (ctx.leitura && (regiaoDoConteudo(trS) || movimentoEm(ctx.leitura, de, ate) === "muito")) continue;
+    const rS = rostoDoTrecho(trS, ctx.rosto);
     const z = Math.min(1.32, +(zoomEm(camera, de) * (ctx.tema.visual === "documental" ? 1.1 : 1.18)).toFixed(3));
-    socosFeitos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: x0, y: y0, movimento: "fixo" });
+    socosFeitos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: ctx.leitura ? Math.min(0.85, Math.max(0.15, rS.x + rS.w / 2)) : x0, y: ctx.leitura ? Math.min(0.75, Math.max(0.2, rS.y + rS.h * 0.55)) : y0, movimento: "fixo" });
     ultimoSoco = de;
   }
   if (socosFeitos.length) camera = sobreporCamera(camera, socosFeitos);

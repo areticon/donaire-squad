@@ -59,6 +59,14 @@ export type VarianteDoElemento =
   | "citacao-versiculo"
   | "impacto"
   | "legenda-destaque"
+  // Os tipos de contexto (06/10): uma variante cada, desenhada pelo tema da família.
+  | "nome-de-quem-fala"
+  | "realce-de-quem-fala"
+  | "zoom-no-ponto"
+  | "destaque-na-tela"
+  | "cartao-de-passo"
+  | "frase-chave"
+  | "slide"
   | "inscrever";
 
 export type FichaDaFamilia = {
@@ -97,6 +105,14 @@ export const COMPONENTE_GENERICO: Record<VarianteDoElemento, string | null> = {
   "citacao-versiculo": "pergaminho",
   impacto: "frase-impacto",
   "legenda-destaque": "sublinhado",
+  // Os tipos de contexto (06/10, worker/remotion/src/sob-medida/pecas/contexto.tsx): um componente cada, na linguagem do vídeo.
+  "nome-de-quem-fala": "nome-de-quem-fala",
+  "realce-de-quem-fala": "realce-de-quem-fala",
+  "zoom-no-ponto": "zoom-no-ponto",
+  "destaque-na-tela": "destaque-na-tela",
+  "cartao-de-passo": "cartao-de-passo",
+  "frase-chave": "frase-chave",
+  slide: "slide",
   // A chamada de curtir e inscrever (05/10, noite): um componente só, desenhado na linguagem do vídeo.
   inscrever: "inscrever",
 };

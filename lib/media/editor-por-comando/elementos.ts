@@ -18,15 +18,50 @@ import type { VarianteDoElemento } from "@/lib/media/editor-por-comando/linguage
  * Módulo puro (a tela de aprovação usa a mesma estimativa).
  */
 
-export type TipoDeElemento = "texto-atras" | "icone" | "imagem" | "video" | "dado" | "lista" | "citacao" | "impacto" | "legenda-destaque" | "inscrever" | "nada";
+export type TipoDeElemento =
+  | "texto-atras"
+  | "icone"
+  | "imagem"
+  | "video"
+  | "dado"
+  | "lista"
+  | "citacao"
+  | "impacto"
+  | "legenda-destaque"
+  // OS TIPOS DE CONTEXTO (06/10): só entram quando a leitura do vídeo mostra que cabem (leitura-no-plano.ts, `tiposPossiveis`).
+  | "nome-de-quem-fala"
+  | "realce-de-quem-fala"
+  | "zoom-no-ponto"
+  | "destaque-na-tela"
+  | "cartao-de-passo"
+  | "frase-chave"
+  | "slide"
+  | "inscrever"
+  | "nada";
 
 /**
  * Os tipos que o JEV escolhe MOMENTO A MOMENTO. O "inscrever" (a chamada de
  * curtir e se inscrever, 05/10 à noite) fica fora desta lista de propósito:
  * ele não disputa com a fala; o JEV escolhe os 2 ou 3 momentos dele à parte
  * (plano-pelo-jev.ts, `decidirInscrever`), só nos vídeos com destino YouTube.
+ *
+ * Esta é a lista de SEMPRE (o vídeo sem leitura segue igual). Com a leitura
+ * do vídeo (06/10), `tiposPossiveis` acrescenta por trecho os tipos de
+ * contexto que a câmera permite (TIPOS_DO_CONTEXTO).
  */
 export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "dado", "lista", "citacao", "impacto", "legenda-destaque", "nada"];
+
+/**
+ * OS TIPOS DE CONTEXTO (06/10, regra do Bruno: o editor decide pelo contexto
+ * do vídeo inteiro e serve a qualquer vídeo, de pastor a médico). Cada um é
+ * desenhado na linguagem do comando, nunca condicionado a um estilo; o que
+ * decide se ele é oferecido ao JEV é a LEITURA do trecho (duas pessoas, tela,
+ * quadro, pessoa nomeada), e quem escolhe por momento é o JEV.
+ */
+export const TIPOS_DO_CONTEXTO: TipoDeElemento[] = ["nome-de-quem-fala", "realce-de-quem-fala", "zoom-no-ponto", "destaque-na-tela", "cartao-de-passo", "frase-chave", "slide"];
+
+/** Todos os tipos que podem sair de uma onda do JEV (os de sempre e os de contexto), sem "nada" e sem "inscrever". */
+export const TIPOS_DECIDIVEIS: Array<Exclude<TipoDeElemento, "nada" | "inscrever">> = [...TIPOS_DE_ELEMENTO, ...TIPOS_DO_CONTEXTO].filter((t): t is Exclude<TipoDeElemento, "nada" | "inscrever"> => t !== "nada" && t !== "inscrever");
 
 /** O que o JEV lê para escolher o tipo de cada momento (pergunta de escolha). */
 export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
@@ -39,6 +74,13 @@ export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
   citacao: "CITAÇÃO: a fala repete o que alguém disse, uma frase de autor, um versículo, uma manchete, uma orientação oficial.",
   impacto: "TELA CHEIA DE IMPACTO: a frase mais forte do trecho, a conclusão ou o alerta que merece tirar o rosto da tela por um instante.",
   "legenda-destaque": "LEGENDA DE DESTAQUE: uma palavra ou expressão curta que merece ser grifada sobre a pessoa, sem tirar a atenção dela.",
+  "nome-de-quem-fala": "NOME DE QUEM FALA (terço inferior): a pessoa que está falando ganha o nome e o papel dela numa tarja embaixo, perto dela. Para a primeira vez que cada pessoa fala numa conversa, podcast ou entrevista, ou quando a fala se apresenta.",
+  "realce-de-quem-fala": "REALCE DE QUEM FALA: com duas ou mais pessoas em cena, quem está falando ganha a luz (a moldura acesa em volta dela), sem escurecer ninguém. Para a troca de turno numa conversa ou debate.",
+  "zoom-no-ponto": "ZOOM NO PONTO: a câmera aproxima a região da tela compartilhada ou do quadro que a fala está explicando (um trecho do código, uma célula, um desenho no quadro), com uma moldura na região. Quando a fala diz \"aqui\", \"olha isso\", \"esse ponto\".",
+  "destaque-na-tela": "DESTAQUE NA TELA: uma moldura ou realce em volta da região da tela ou do quadro que a fala nomeia, sem aproximar a câmera (o resto continua visível).",
+  "cartao-de-passo": "CARTÃO DE PASSO, INGREDIENTE OU LUGAR: um cartão pequeno na área livre com o número do passo e o nome dele, o ingrediente e a quantidade dita, ou o nome do lugar. Para demonstração, receita, tutorial, vlog.",
+  "frase-chave": "FRASE-CHAVE: a frase inteira que resume o ponto, escrita num cartão na área livre, enquanto a pessoa segue falando (sem tirar a atenção dela). Para palestra, aula, sermão: a tese dita por extenso.",
+  slide: "SLIDE: um slide pequeno ao lado da pessoa com o título do ponto e 2 a 4 itens que a fala percorre (o item dito acende). Para palestra e aula, quando a fala organiza o conteúdo em tópicos.",
   inscrever: "CURTIR E INSCREVER: a chamada animada de curtir e se inscrever, logo depois de um momento forte (nunca é escolhida frase a frase; ver decidirInscrever).",
   nada: "NADA: a pessoa sozinha basta (transição, emoção, conversa, frase de ligação, ou um elemento acabou de sair).",
 };
@@ -54,6 +96,13 @@ export const NOME_DO_TIPO: Record<TipoDeElemento, string> = {
   citacao: "citação",
   impacto: "tela de impacto",
   "legenda-destaque": "legenda de destaque",
+  "nome-de-quem-fala": "nome de quem fala",
+  "realce-de-quem-fala": "realce de quem fala",
+  "zoom-no-ponto": "zoom no ponto",
+  "destaque-na-tela": "destaque na tela",
+  "cartao-de-passo": "cartão de passo",
+  "frase-chave": "frase-chave",
+  slide: "slide ao lado",
   inscrever: "curtir e se inscrever",
   nada: "só você",
 };
@@ -78,6 +127,13 @@ export function varianteDo(tipo: TipoDeElemento, fala: string, formaDaImagem: "j
     case "impacto":
     case "legenda-destaque":
     case "inscrever":
+    case "nome-de-quem-fala":
+    case "realce-de-quem-fala":
+    case "zoom-no-ponto":
+    case "destaque-na-tela":
+    case "cartao-de-passo":
+    case "frase-chave":
+    case "slide":
       return tipo;
     case "imagem":
       return formaDaImagem === "tela-cheia" ? "imagem-tela" : "imagem-janela";
@@ -162,6 +218,13 @@ export const DURACAO_DO_TIPO: Record<Exclude<TipoDeElemento, "nada">, [number, n
   citacao: [3, 7],
   impacto: [1.8, 4],
   "legenda-destaque": [1.2, 3],
+  "nome-de-quem-fala": [2.5, 5],
+  "realce-de-quem-fala": [2, 6],
+  "zoom-no-ponto": [2.5, 6],
+  "destaque-na-tela": [2, 5],
+  "cartao-de-passo": [2.5, 6],
+  "frase-chave": [3, 7],
+  slide: [3.5, 9],
   inscrever: [3, 5],
 };
 
