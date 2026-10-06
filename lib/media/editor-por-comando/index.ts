@@ -15,6 +15,7 @@ import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import { contarUsoDoDesignDoProjeto, linguagemDoDesignAtual } from "@/lib/biblioteca-de-design/registro";
 import { fonteDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando/comando-dos-estilos";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
+import { gerarFundosCombinados } from "@/lib/media/editor-por-comando/combinada";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -261,24 +262,28 @@ const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosD
  */
 async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ plano: PlanoDoDiretor; insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
   // As cenas que já existem (a correção que manteve a imagem) não são geradas de novo.
-  const novas = (plano.insercoes ?? []).filter((x) => !ja[String(x.id)]);
+  // Os FUNDOS DAS COMBINADAS (06/10) são vídeo gerado direto do texto (combinada.ts), sem imagem antes: saem à parte.
+  const todas = (plano.insercoes ?? []).filter((x) => !ja[String(x.id)]);
+  const fundos = todas.filter((x) => x.combinada);
+  const novas = todas.filter((x) => !x.combinada);
   // O plano em dois eixos (05/10, noite) já cabe no teto de custo por minuto: as imagens dele saem todas.
   const livre = Boolean(plano.tema?.linguagem);
   const tetoCenas = livre ? novas.length : Math.min(novas.length, Math.max(0, Math.floor(e.imagens / 3)));
   const tetoFotos = livre ? Math.max(e.imagens, plano.estimativa?.imagens ?? 0) : Math.max(0, e.imagens - tetoCenas);
-  const [fotos, cenas] = await Promise.all([
+  const [fotos, cenas, combinadas] = await Promise.all([
     prepararFotosDoVox(plano, { projectId: e.projectId, teto: tetoFotos, guarda: e.guardaDosRecortes }).catch((err) => ({ prontas: 0, custoUsd: 0, erros: [`fotos: ${String(err).slice(0, 120)}`] })),
     tetoCenas
       ? gerarInsercoes({ ...plano, momentos: [], insercoes: novas }, { formato: e.formato, projectId: e.projectId, teto: tetoCenas, local: e.local }).catch((err) => ({ insercoes: {}, custoUsd: 0, erros: [`cenas: ${String(err).slice(0, 120)}`] }))
       : Promise.resolve({ insercoes: {}, custoUsd: 0, erros: [] as string[] }),
+    gerarFundosCombinados(fundos, { formato: e.formato, projectId: e.projectId }).catch((err) => ({ insercoes: {}, custoUsd: 0, erros: [`fundos das combinadas: ${String(err).slice(0, 120)}`] })),
   ]);
   const faltaram = semFoto(plano);
   const limpo = tirarFotosSemImagem(plano);
   return {
     plano: limpo.plano,
-    insercoes: cenas.insercoes,
-    custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4),
-    erros: [...fotos.erros, ...cenas.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
+    insercoes: { ...cenas.insercoes, ...combinadas.insercoes },
+    custoUsd: +(fotos.custoUsd + cenas.custoUsd + combinadas.custoUsd).toFixed(4),
+    erros: [...fotos.erros, ...cenas.erros, ...combinadas.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
   };
 }
 

@@ -39,6 +39,7 @@ import {
 } from "@/lib/media/editor-por-comando/linguagem";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
+import { FUNDO, combinadaPorPalavras, decisaoDasRespostas, numeroDito, perguntasDaCombinada, promptDoFundoCombinado, segundosDoFundo, type DecisaoDaCombinada } from "@/lib/media/editor-por-comando/combinada";
 import { contextoDoTrecho, movimentoEm, resumoDaLeitura, tiposPossiveis, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
 import {
   corEmIngles,
@@ -238,6 +239,8 @@ export type MomentoDecidido = {
   origem?: "onda" | "cobertura" | "inscrever" | "existente" | "pedido";
   /** O que a câmera mostra neste momento, pela leitura do vídeo (06/10): o redator e a conferência leem. */
   emCena?: string;
+  /** A PEÇA COMBINADA (06/10): o fundo e a ligação que o JEV escolheu para este momento (combinada.ts). */
+  combinada?: DecisaoDaCombinada;
 };
 
 export type DecisaoDaLinguagem = {
@@ -831,12 +834,14 @@ function montarMomento(
     tipo = "imagem";
     forma = "tela-cheia";
   }
+  // A combinada é um vídeo de fundo: além do teto de vídeo por minuto, não cabe (o JEV tem outros tipos para o momento).
+  if (tipo === "combinada" && st.videos + 1 > orcamento.videos && !pedido) return null;
   const variante = varianteDo(tipo, u.texto, forma);
   if (!variante) return null;
   let peca = componenteDa(familia, variante);
   const ficha = peca ? FICHAS[peca] : null;
   if (peca && !ficha) peca = null;
-  const midia: "imagem" | "video" | null = tipo === "video" ? "video" : tipo === "imagem" ? "imagem" : null;
+  const midia: "imagem" | "video" | null = tipo === "video" || tipo === "combinada" ? "video" : tipo === "imagem" ? "imagem" : null;
   // Imagem em tela cheia e vídeo são inserções (cobrem a gravação); a peça de tela também.
   let tela = !peca || ficha?.plano === "tela";
   if (peca === "imagem-janela") tela = false;
@@ -849,8 +854,8 @@ function montarMomento(
   if (mexeMuito && tipo === "texto-atras") return null;
   // "Mais tempo" pedido: a peça vai ao máximo da ficha, sem o teto de tela do ritmo.
   const dMax = pedido?.maisTempo ? dMax0 : Math.min(tela ? Math.min(dMax0, R.telaMaxSeg) : dMax0, mexeMuito ? Math.max(dMin, 3.2) : Infinity);
-  // Lista e citação seguem até o fim do momento seguinte (os itens são ditos em sequência).
-  const j1 = (tipo === "lista" || tipo === "citacao") && U[j + 1] ? j + 1 : j;
+  // Lista, citação e combinada seguem até o fim do momento seguinte (os itens são ditos em sequência).
+  const j1 = (tipo === "lista" || tipo === "citacao" || tipo === "combinada") && U[j + 1] ? j + 1 : j;
   const inicio = u.inicio;
   const fim = Math.min(e.duracao, inicio + dMax, Math.max(inicio + dMin, U[j1].fim));
   if (fim - inicio < 0.8) return null;
@@ -867,7 +872,7 @@ function montarMomento(
   }
   // O componente escolhido pela linguagem pede foto de arquivo recortada (seja qual for a família).
   const pecaComFoto = Boolean(peca && COMPONENTES_COM_FOTO.has(peca));
-  const segundos = Math.min(5, Math.max(3, Math.ceil(fim - inicio)));
+  const segundos = tipo === "combinada" ? segundosDoFundo(fim - inicio) : Math.min(5, Math.max(3, Math.ceil(fim - inicio)));
   const custo = custoPrevisto(tipo, variante, segundos, pecaComFoto);
   // O teto de dinheiro vale para o que a IA decide sozinha; o que o cliente pediu com todas as letras entra.
   if (st.gasto + custo > orcamento.usd + 1e-6 && !pedido) {
@@ -1106,10 +1111,35 @@ export async function decidirPeloJev(e: EntradaDoPlanoPeloJev, ja?: DecisaoDaLin
     momentos.unshift({ id: "j0", tipo, variante: tipo, peca, midia: null, f0: u.k, f1: u.k, de: u.de, ate: u.ate, inicio: u.inicio, fim: Math.max(u.inicio + d[0], Math.min(u.fim, u.inicio + d[1])), tela: false, custo: 0, fala: u.texto, pedido: null });
   }
   const limpos = semCruzamento(momentos, avisos);
+  // AS COMBINADAS (06/10): o fundo e a ligação de cada uma, pelo JEV, num pedido só.
+  await decidirAsCombinadas(e, limpos, avisos);
   // CURTIR E INSCREVER (regra 3): o JEV escolhe os momentos, nos trechos livres que sobraram.
   const chamadas = await decidirInscrever(e, L, U, limpos, enfases, avisos);
   const todos = [...limpos, ...chamadas].sort((a, b) => a.inicio - b.inicio);
   return { momentos: todos, enfases, avisos, perguntas: perguntas.n, linguagem: L, regras: R, cobertura };
+}
+
+/**
+ * AS COMBINADAS PELO JEV (06/10): para cada momento do tipo "combinada", o
+ * fundo em movimento (vista aérea, mural, mesa, rede) e a ligação entre os
+ * itens (rota, fio ou nenhuma), num pedido só. Sem JEV (ou se ele falhar), a
+ * reserva por palavras (combinada.ts). O código não escolhe por estilo.
+ */
+export async function decidirAsCombinadas(e: EntradaDoPlanoPeloJev, momentos: MomentoDecidido[], avisos: string[]): Promise<void> {
+  const lista = momentos.filter((m) => m.tipo === "combinada" && !m.combinada);
+  if (!lista.length) return;
+  let r: Record<string, RespostaDoJev> = {};
+  if (jevDisponivel(e)) {
+    try {
+      r = await jevDe(e)(
+        { projectId: e.projectId, etapa: "editor-por-comando-combinada", state: contextoDoProjeto(e) },
+        Object.assign({}, ...lista.map((m) => perguntasDaCombinada(m.id, m.pedido ? `${m.fala} (pedido do cliente nesta cena: ${m.pedido})` : m.fala, m.emCena)))
+      );
+    } catch (err) {
+      avisos.push(`JEV falhou nas combinadas (vale a reserva por palavras): ${err instanceof Error ? err.message.slice(0, 100) : err}`);
+    }
+  }
+  for (const m of lista) m.combinada = decisaoDasRespostas(m.id, m.fala, r);
 }
 
 /**
@@ -1154,6 +1184,7 @@ Regras da CENA de imagem e de vídeo ("cena", em INGLÊS):
 - Quando houver a LEITURA DO VÍDEO (o cenário da gravação e o "EM CENA" de cada momento), a cena da imagem ou do vídeo CONVERSA com ela: o mesmo tipo de ambiente e de luz, os objetos que estão em cena quando fizer sentido, o assunto que a fala e a imagem mostram naquele momento; nunca uma cena que brigue com o que o espectador está vendo ao lado.
 - O NOME DE QUEM FALA ("nome", "papel") sai da leitura do vídeo ou da própria fala; nunca inventado. Sem nome na leitura nem na fala, use o papel ("o entrevistado", "a médica").
 - Fotos de arquivo das peças de papel ("descricao"): em INGLÊS, concreta (objeto, lugar, prédio, estátua genérica, figura anônima de época).
+- A PEÇA COMBINADA ("camada-exata"): o fundo é um vídeo gerado e as etiquetas são desenhadas por cima em código. Os "itens" são os lugares, as pessoas ou as partes que a fala cita, com as palavras do falante e na ordem dita (nunca inventados). A "cena" do fundo, em INGLÊS, descreve só o fundo em movimento do tipo pedido, para este nicho, SEM nenhum texto, nome, número, pino, seta ou linha desenhada (tudo isso é nosso, por cima). "numero" só quando a fala diz um número.
 - O CENÁRIO (id "cenario", só quando pedido): o fundo que o cliente pediu no comando para ficar atrás dele, em INGLÊS, sem pessoas, com espaço livre no centro para a pessoa.
 - O PEDIDO DO CLIENTE NUMA CENA É LEI. Quando um momento traz "PEDIDO DO CLIENTE", você escreve a cena e o texto a partir do pedido, palavra por palavra, sem interpretar para outra coisa: o objeto que ele pediu é o assunto ("a soccer ball in the center of the frame"), a cor que ele pediu entra com todas as letras ("green lettering"), o texto literal que ele deu vai como está. Nesse momento, a regra "sem texto na imagem" e a regra do estilo cedem ao pedido. Escreva também "pedidoEmIngles": o pedido do cliente traduzido literalmente para o inglês (o que aparece, a cor, o lugar).
 
@@ -1164,6 +1195,10 @@ function propsParaORedator(m: MomentoDecidido): string {
   const doPedido = m.pedidoDoCliente ? ", pedidoEmIngles (o pedido do cliente traduzido literalmente para o inglês)" : "";
   if (m.peca === "imagem-janela") return `cena (EM INGLÊS, a imagem deste momento), oQueAparece (português, até 8 palavras), legenda? (até 5 palavras do falante), lado? ("direita" | "esquerda" | "topo")${doPedido}`;
   if (!m.peca) return (m.midia === "video" ? "cena (EM INGLÊS, a ação em movimento deste momento, 1 ou 2 frases), oQueAparece (português, até 8 palavras)" : "cena (EM INGLÊS, a imagem em tela cheia deste momento), oQueAparece (português, até 8 palavras)") + doPedido;
+  if (m.peca === "camada-exata") {
+    const f = FUNDO[(m.combinada ?? combinadaPorPalavras(m.fala)).fundo];
+    return `${FICHAS["camada-exata"].props}, cena (EM INGLÊS, 1 ou 2 frases: o fundo deste momento, partindo de "${f.cena}", com o que a fala e o nicho pedem e o que se mexe DENTRO da cena (água, nuvem, luz, fumaça, gente ao longe); sem movimento de câmera, sem texto, sem nomes, sem pinos, sem linhas desenhadas), oQueAparece (português, até 8 palavras)${doPedido}`;
+  }
   if (m.peca === "icone") return `${FICHAS.icone.props} (posicao: ${m.onde === "acima-da-cabeca" ? '"topo"' : m.onde === "ao-lado" ? '"direita"' : m.onde === "centro" ? '"centro"' : '"topo-esquerda"'})${doPedido}`;
   return (FICHAS[m.peca]?.props ?? "texto") + doPedido;
 }
@@ -1172,7 +1207,8 @@ type MomentoParaRedator = MomentoDecidido;
 
 /** A linha de um momento no pedido ao redator; com `reforco`, o pedido do cliente vai no topo, depois de uma primeira versão que não o atendeu. */
 function linhaDoMomentoParaORedator(m: MomentoParaRedator, reforco = false): string {
-  const cabeca = `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"`;
+  const combinada = m.combinada ? `, fundo "${m.combinada.fundo}" e ligação "${m.combinada.ligacao}"` : "";
+  const cabeca = `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`}${combinada} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"`;
   const pedido = m.pedidoDoCliente ? `\n  ${reforco ? "ATENÇÃO: a primeira versão NÃO atendeu ao pedido do cliente. Escreva de novo a partir do pedido, literalmente.\n  " : ""}${instrucoesParaORedator(m.pedidoDoCliente)}` : m.pedido ? `\n  PEDIDO DO CLIENTE: "${m.pedido}"` : "";
   return `${cabeca}${pedido}${m.emCena ? `\n  ${m.emCena.slice(0, 500)}` : ""}\n  props: ${propsParaORedator(m)}`;
 }
@@ -1207,6 +1243,8 @@ function textoDasProps(props: Record<string, unknown>): string {
     const v = props[k];
     if (typeof v === "string" && v.trim()) return v.replace(/\*\*/g, "").trim();
   }
+  // As etiquetas da combinada (06/10): o texto que vai à tela são os rótulos dos itens.
+  if (Array.isArray(props.itens)) return (props.itens as Array<{ rotulo?: unknown }>).map((x) => (typeof x?.rotulo === "string" ? x.rotulo.trim() : "")).filter(Boolean).join(", ");
   return "";
 }
 
@@ -1280,6 +1318,19 @@ export type ConferenciaDoPedido = { atendido: "sim" | "nao" | "sem-conferencia";
 /** O que o momento vai fazer, em uma frase, para o JEV conferir contra o pedido. */
 function oQueOMomentoFaz(m: MomentoDecidido, props: Record<string, unknown>, ling: LinguagemDoVideo): string {
   const p = m.pedidoDoCliente!;
+  // A combinada (06/10) se descreve primeiro pelo que se VÊ: o fundo e o que o código desenha por cima.
+  if (m.combinada) {
+    const itens = Array.isArray(props.itens) ? (props.itens as Array<{ rotulo?: unknown }>).map((x) => String(x?.rotulo ?? "")).filter(Boolean) : [];
+    const ligacao = m.combinada.ligacao === "fio" ? `um fio ${p.cor ? corEmPortugues(p) : "na cor da marca"} ligando os itens` : m.combinada.ligacao === "rota" ? "uma linha passando pelos itens na ordem" : "";
+    return [
+      `ao fundo, um vídeo gerado de ${NOME_DO_FUNDO[m.combinada.fundo]}`,
+      `por cima, desenhado em código: ${FUNDO[m.combinada.fundo].marcador === "alfinete" ? "um alfinete" : "um ponto"} em cada item${ligacao ? `, ${ligacao}` : ""} e uma etiqueta com o nome de cada item (${itens.join(", ").slice(0, 200)})`,
+      typeof props.titulo === "string" && props.titulo.trim() ? `título: "${props.titulo.slice(0, 80)}"` : "",
+      p.cor ? `cor pedida usada nesta peça: ${corEmPortugues(p)}` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+  }
   const partes = [
     `elemento: ${NOME_DO_TIPO[m.tipo] ?? m.tipo}${m.peca ? ` (peça ${m.peca})` : m.midia === "video" ? " (vídeo gerado)" : " (imagem gerada em tela cheia)"}`,
     `posição: ${p.posicao ?? (m.onde ?? "a de sempre")}`,
@@ -1291,6 +1342,17 @@ function oQueOMomentoFaz(m: MomentoDecidido, props: Record<string, unknown>, lin
   ].filter(Boolean);
   return partes.join("; ");
 }
+
+/** A palavra principal da etiqueta (a mais longa, sem acento) aparece na fala do momento. */
+function itemDito(rotulo: string, fala: string): boolean {
+  const sem = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const f = sem(fala);
+  const principal = sem(rotulo).split(/[^a-z0-9]+/).filter((w) => w.length >= 3).sort((a, b) => b.length - a.length)[0];
+  return !principal || f.includes(principal.slice(0, Math.max(4, principal.length - 2)));
+}
+
+/** O nome de cada fundo da combinada como o JEV lê na conferência do pedido. */
+const NOME_DO_FUNDO: Record<keyof typeof FUNDO, string> = { "vista-aerea": "vista aérea de uma região", mural: "mural de investigação (quadro com papéis e documentos)", mesa: "mesa de trabalho vista de cima", rede: "luzes de uma cidade ou rede à noite" };
 
 /** O prompt final de uma imagem ou vídeo PEDIDO pelo cliente: a cena do redator e, com todas as letras, o pedido dele em inglês. */
 function promptDaMidiaDoPedido(cena: string, pedidoEmIngles: string, ling: LinguagemDoVideo, midia: "imagem" | "video"): string {
@@ -1404,6 +1466,27 @@ function materializar(lista: MomentoDecidido[], textos: Record<string, Record<st
       insercoes.push({ id: idImg, de: m.de, ate: m.ate, briefing: prompt("imagem"), midia: "imagem", janela: true, estilizada: true, oQueAparece, ...doPedido });
       delete props.cena;
       momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props: { ...props, midia: idImg, legenda: props.legenda ?? "", ...doPedido } });
+    } else if (m.peca === "camada-exata") {
+      // A PEÇA COMBINADA (06/10): o fundo em vídeo (inserção que nunca vira plano sozinha) e a camada exata que o liga.
+      const itens = (Array.isArray(props.itens) ? (props.itens as Array<{ rotulo?: unknown }>) : [])
+        .filter((x) => typeof x?.rotulo === "string" && x.rotulo.trim())
+        .slice(0, 5)
+        .map((x) => ({ rotulo: String(x.rotulo).replace(/\s+/g, " ").trim().slice(0, 40) }));
+      if (!cena || !itens.length) continue;
+      // SÓ O QUE É DITO DENTRO DA PEÇA (prova de 06/10: "os projetos" e "a igreja" acenderam antes de serem ditos,
+      // depois do fim do momento): a etiqueta fica quando a palavra principal dela está na fala do momento.
+      const ditos = itens.filter((x) => itemDito(x.rotulo, m.fala));
+      if (ditos.length < itens.length) itens.splice(0, itens.length, ...(ditos.length ? ditos : itens.slice(0, 1)));
+      const dec = m.combinada ?? combinadaPorPalavras(m.fala);
+      const idFundo = `${m.id}-fundo`;
+      // O pedido do cliente numa combinada é atendido pela CAMADA (as etiquetas, o fio, a cor pedida) e pela escolha do
+      // fundo pelo JEV; o pedido literal não vai ao modelo de vídeo, que desenharia o fio e os nomes inventados no fundo.
+      insercoes.push({ id: idFundo, de: m.de, ate: m.ate, briefing: promptDoFundoCombinado(cena, dec.fundo, ling), midia: "video", estilizada: true, combinada: true, segundos: segundosDoFundo(m.fim - m.inicio), oQueAparece, ...doPedido });
+      const numero = numeroDito(props.numero, m.fala);
+      delete props.cena;
+      delete props.oQueAparece;
+      delete props.numero;
+      momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props: { ...props, itens, ...(numero ? { numero } : {}), fundo: idFundo, tipoDoFundo: dec.fundo, ligacao: dec.ligacao, marcador: FUNDO[dec.fundo].marcador, ...doPedido } });
     } else if (!m.peca) {
       if (!cena) continue;
       const segundos = Math.min(5, Math.max(3, Math.ceil(m.fim - m.inicio)));
@@ -1517,7 +1600,7 @@ export function temposDoPlano(plano: PlanoDoDiretor, frases: Frase[], palavras: 
     saida.push({ id: String(m.id), tipo: el?.tipo ?? "impacto", inicio: a, fim: Math.max(b, a + (ficha?.duracao[0] ?? 2)), tela: ficha?.plano === "tela" });
   }
   for (const x of plano.insercoes ?? []) {
-    if ((x as { cenario?: boolean }).cenario || x.janela) continue;
+    if ((x as { cenario?: boolean }).cenario || x.janela || x.combinada) continue;
     const a = resolverAncora(x.de, frases, pal);
     const b = resolverAncora(x.ate, frases, pal);
     if (a === null || b === null) continue;
@@ -1579,6 +1662,7 @@ export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoP
   const jaTemInscrever = (plano.elementos ?? []).some((x) => x.tipo === "inscrever" && !removidos.has(x.id));
   const chamadas = jaTemInscrever ? [] : await decidirInscrever(e, L, U, st.momentos, enfases, avisos);
   const lista = [...novos, ...chamadas];
+  await decidirAsCombinadas(e, lista, avisos);
   const tempos: Record<string, number> = { cobertura: +((Date.now() - t0) / 1000).toFixed(1) };
   const semRemovidos = (p: PlanoDoDiretor): PlanoDoDiretor => ({
     ...p,

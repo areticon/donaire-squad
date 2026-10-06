@@ -148,6 +148,12 @@ export type InsercaoDoEditor = {
   estilizada?: boolean;
   /** Os segundos que o vídeo pedido deve ter (o plano já mediu). */
   segundos?: number;
+  /**
+   * O FUNDO DE UMA PEÇA COMBINADA (06/10, lib/media/editor-por-comando/combinada.ts):
+   * o vídeo gerado sem texto que a peça "camada-exata" liga por `props.fundo`.
+   * Não vira plano sozinho: o resolvedor põe o plano junto com a camada.
+   */
+  combinada?: boolean;
   /** O que aparece, em português, para a tela de aprovação. */
   oQueAparece?: string;
 };

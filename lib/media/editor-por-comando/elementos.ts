@@ -23,6 +23,8 @@ export type TipoDeElemento =
   | "icone"
   | "imagem"
   | "video"
+  // A PEÇA COMBINADA (06/10): vídeo de IA ao fundo e a camada exata do Remotion por cima (combinada.ts).
+  | "combinada"
   | "dado"
   | "lista"
   | "citacao"
@@ -49,7 +51,7 @@ export type TipoDeElemento =
  * do vídeo (06/10), `tiposPossiveis` acrescenta por trecho os tipos de
  * contexto que a câmera permite (TIPOS_DO_CONTEXTO).
  */
-export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "dado", "lista", "citacao", "impacto", "legenda-destaque", "nada"];
+export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "combinada", "dado", "lista", "citacao", "impacto", "legenda-destaque", "nada"];
 
 /**
  * OS TIPOS DE CONTEXTO (06/10, regra do Bruno: o editor decide pelo contexto
@@ -69,6 +71,8 @@ export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
   icone: "ÍCONE OU SÍMBOLO ANIMADO pequeno, no canto, acima da cabeça ou ao lado: a fala cita um objeto, um conceito ou um sentimento concreto que um símbolo mostra (dinheiro, tempo, coração, alerta, aprovado).",
   imagem: "IMAGEM INSERIDA (foto, ilustração ou objeto) em janela ou tela cheia: a fala descreve algo que se VÊ e que não precisa de movimento (um objeto, um lugar, um exemplo concreto, uma situação).",
   video: "B-ROLL EM VÍDEO: o momento pede MOVIMENTO, uma ação acontecendo, um lugar com vida, uma cena que a fala narra ou uma metáfora visual em movimento.",
+  combinada:
+    "VÍDEO GERADO AO FUNDO COM A CAMADA EXATA POR CIMA: a fala cita lugares, uma região, uma expansão ou um caminho (vista aérea que anda, com os pontos acendendo, a linha da rota e as etiquetas com os nomes ditos), ou liga pessoas, fatos e partes de uma história (mural com as etiquetas e o fio ligando). O fundo é cena em movimento; o que precisa ser exato (nome, número, ponto, linha, fio) é desenhado por cima. Para 2 a 5 itens concretos ditos no mesmo momento.",
   dado: "DADO OU NÚMERO ANIMADO: a fala diz um número, uma porcentagem, um valor, um prazo ou compara números.",
   lista: "LISTA OU PASSOS: a fala enumera itens, etapas, fases, sintomas, causas ou datas em sequência.",
   citacao: "CITAÇÃO: a fala repete o que alguém disse, uma frase de autor, um versículo, uma manchete, uma orientação oficial.",
@@ -91,6 +95,7 @@ export const NOME_DO_TIPO: Record<TipoDeElemento, string> = {
   icone: "ícone animado",
   imagem: "imagem",
   video: "B-roll em vídeo",
+  combinada: "vídeo com camada exata",
   dado: "número animado",
   lista: "lista ou passos",
   citacao: "citação",
@@ -124,6 +129,7 @@ export function varianteDo(tipo: TipoDeElemento, fala: string, formaDaImagem: "j
     case "texto-atras":
     case "icone":
     case "video":
+    case "combinada":
     case "impacto":
     case "legenda-destaque":
     case "inscrever":
@@ -213,6 +219,7 @@ export const DURACAO_DO_TIPO: Record<Exclude<TipoDeElemento, "nada">, [number, n
   icone: [2, 4.5],
   imagem: [2.5, 5],
   video: [3, 5],
+  combinada: [3.5, 5],
   dado: [2.5, 6],
   lista: [3.5, 9],
   citacao: [3, 7],
@@ -241,6 +248,8 @@ export const DOLAR_DA_IMAGEM = DOLAR_POR_IMAGEM[IMAGEM_DA_EDICAO];
  */
 export function custoPrevisto(tipo: TipoDeElemento, variante: VarianteDoElemento | null, segundos: number, pecaComFoto: boolean): number {
   if (tipo === "video") return DOLAR_DA_IMAGEM + dolarDoVideoDaEdicao(segundos);
+  // A combinada é só o vídeo de fundo (texto para vídeo, sem imagem antes); a camada é código, sem custo.
+  if (tipo === "combinada") return dolarDoVideoDaEdicao(segundos);
   if (tipo === "imagem") return variante === "imagem-janela" && pecaComFoto ? 2 * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) : DOLAR_DA_IMAGEM;
   // As peças com foto de arquivo (jornal, cronologia) pagam a foto delas.
   return pecaComFoto ? DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE : 0;
@@ -261,7 +270,7 @@ export type EstimativaDeCusto = {
 export const COMPONENTES_COM_FOTO = new Set(["colagem", "jornal", "mapa-antigo", "censura", "cronologia"]);
 
 type MomentoComFoto = { peca: string; props?: Record<string, unknown> };
-type InsercaoComMidia = { midia?: "imagem" | "video"; segundos?: number };
+type InsercaoComMidia = { midia?: "imagem" | "video"; segundos?: number; combinada?: boolean };
 
 /** As fotos de arquivo que uma peça de papel pede (o mesmo mapa de recortes-vox.ts, sem importar o servidor). */
 export function fotosDaPecaDePapel(m: MomentoComFoto): number {
@@ -280,8 +289,10 @@ export function estimarCusto(plano: { momentos?: MomentoComFoto[]; insercoes?: I
   const ins = plano.insercoes ?? [];
   const videos = ins.filter((x) => x.midia === "video");
   const segundosDeVideo = videos.reduce((s, x) => s + Math.min(15, Math.max(3, Math.ceil(x.segundos ?? 4))), 0);
-  const imagens = fotos + ins.length;
-  const usd = +(fotos * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) + ins.length * DOLAR_DA_IMAGEM + videos.reduce((s, x) => s + dolarDoVideoDaEdicao(x.segundos ?? 4), 0)).toFixed(3);
+  // O fundo da combinada é texto para vídeo: não paga a imagem antes (combinada.ts).
+  const comImagem = ins.filter((x) => !x.combinada).length;
+  const imagens = fotos + comImagem;
+  const usd = +(fotos * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) + comImagem * DOLAR_DA_IMAGEM + videos.reduce((s, x) => s + dolarDoVideoDaEdicao(x.segundos ?? 4), 0)).toFixed(3);
   const min = Math.max(duracao / 60, 1 / 6);
   return {
     imagens,

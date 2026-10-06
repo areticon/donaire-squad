@@ -156,6 +156,8 @@ export function pedeNada(pedido: string): boolean {
 export function tipoPorPalavras(pedido: string): TipoDeElemento | null {
   const p = pedido.toLowerCase();
   if (pedeNada(p)) return "nada";
+  // A combinada (06/10): vídeo de fundo com a camada exata por cima (satélite com pontos, mural com fio).
+  if (/sat[eé]lite|vista a[eé]rea|mural|fio vermelho|pontos no mapa|mapa com (os )?pontos|quadro de investiga/.test(p)) return "combinada";
   if (/v[ií]deo|b-?roll|cena em movimento|filmagem|em movimento/.test(p)) return "video";
   if (/imagem|foto|ilustra|desenho|figura/.test(p)) return "imagem";
   if (/n[uú]mero|dado|gr[aá]fico|porcentagem|estat[ií]stica/.test(p)) return "dado";

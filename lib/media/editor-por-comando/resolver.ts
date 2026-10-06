@@ -142,6 +142,14 @@ function sobreporCamera(base: Enquadramento[], pedidos: Enquadramento[]): Enquad
   return saida;
 }
 
+/**
+ * O EMPURRÃO QUE O WORKER PÕE NO VÍDEO GERADO (worker/src/edicao-sob-medida.mjs,
+ * a inserção em vídeo: zoompan de 1 a 1,1 no tempo do plano, do centro). A
+ * camada exata da combinada faz o mesmo empurrão, do centro, para os pontos e
+ * as etiquetas ficarem presos ao fundo (06/10).
+ */
+export const ZOOM_DO_FUNDO_NO_WORKER = 0.1;
+
 const PECAS_COM_FOTO: Record<string, string> = { colagem: "recortes", jornal: "foto", "mapa-antigo": "foto", censura: "figura", cronologia: "marcos" };
 
 /**
@@ -378,6 +386,22 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       if (!semCobrir(caixa, fichaM.nome)) continue;
       props.caixa = caixa;
     }
+    // A PEÇA COMBINADA (06/10): com o vídeo de fundo pronto, o fundo entra como plano de inserção (entra, fica e sai,
+    // como todo B-roll; o cenário do cliente não é trocado) e a camada exata vai por cima no quadro inteiro, com o
+    // mesmo empurrão do worker. Sem o vídeo, a camada cai na folha sobre a gravação, com o fundo próprio dela.
+    if (fichaM.nome === "camada-exata") {
+      const idFundo = String(props.fundo ?? "");
+      const fundo = ctx.insercoes[idFundo];
+      if (fundo?.url && fundo.tipo === "video") {
+        props.comFundo = true;
+        props.zoomDoFundo = ZOOM_DO_FUNDO_NO_WORKER;
+        camadas.push({ id, peca: fichaM.nome, de: +de.toFixed(3), ate: +ate.toFixed(3), entrada: fichaM.entrada, saida: fichaM.saida, evento: fichaM.evento, eventos: eventos.map((x) => +x.toFixed(3)), props, passes: passesDaPeca(fichaM), ...(pecaContinua(fichaM) ? { continua: true } : {}) });
+        planos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), tipo: "insercao", midia: idFundo });
+        continue;
+      }
+      props.comFundo = false;
+      avisos.push(`${id}: o vídeo de fundo da combinada não ficou pronto, a camada entrou na folha sobre a gravação`);
+    }
     let plano: "cheio" | "grafico" | "cartao" = fichaM.plano === "tela" ? "grafico" : fichaM.plano === "lado" ? "cartao" : "cheio";
     if (m.plano === "grafico" && fichaM.plano !== "tela") plano = "grafico";
     // COM TELA OU QUADRO EM CENA (06/10), a peça de lado não leva a pessoa para um cartão (o cartão esconderia o
@@ -425,8 +449,9 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   // No Vox não há cena de cinema em tela cheia: a imagem é a foto de arquivo dentro das peças de papel.
   for (const [k, ins] of (ctx.base && ESTILOS_DO_VOX.includes(ctx.base) && !livre ? [] : p.insercoes ?? []).entries()) {
     const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
-    // A imagem de janela entra pela peça "imagem-janela", sem plano de tela cheia; o cenário vai atrás da pessoa (item 4).
-    if (ins.janela || (ins as { cenario?: boolean }).cenario) continue;
+    // A imagem de janela entra pela peça "imagem-janela", sem plano de tela cheia; o cenário vai atrás da pessoa (item 4);
+    // o fundo da combinada entra junto com a camada exata dele (acima), nunca sozinho.
+    if (ins.janela || (ins as { cenario?: boolean }).cenario || ins.combinada) continue;
     if (!ctx.insercoes[id]) {
       avisos.push(`${id}: imagem não gerada, ficou de fora`);
       continue;

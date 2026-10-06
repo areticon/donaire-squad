@@ -48,6 +48,7 @@ export type VarianteDoElemento =
   | "imagem-janela"
   | "imagem-tela"
   | "video"
+  | "combinada"
   | "dado-numero"
   | "dado-comparacao"
   | "dado-porcentagem"
@@ -94,6 +95,8 @@ export const COMPONENTE_GENERICO: Record<VarianteDoElemento, string | null> = {
   "imagem-janela": "imagem-janela",
   "imagem-tela": null,
   video: null,
+  // A PEÇA COMBINADA (06/10): a camada exata (pontos, linha, número, fio, etiquetas) sobre o vídeo de fundo gerado.
+  combinada: "camada-exata",
   "dado-numero": "numero",
   "dado-comparacao": "barras",
   "dado-porcentagem": "progresso",
