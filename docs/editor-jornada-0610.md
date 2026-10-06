@@ -497,3 +497,12 @@ Cada prova é aprovada só se, olhando a folha de quadros a cada 1 s e o vídeo:
 7. Material do banco F: quem grava os vídeos simulados, e se vídeos de clientes podem ser usados com autorização.
 8. O que fazer com os caminhos antigos depois do banco aprovado: apagar (catálogo de peças, bíblias, conferência visual) ou manter desligados por um tempo.
 9. Prioridade: começar pelo completo horizontal (mais área livre) ou pelo vertical (o que mais vende)?
+
+## H. Decisões do Bruno (06/10, noite), depois deste documento
+
+- O prompt de cada elemento usa tudo o que se sabe sobre o vídeo, a empresa, a marca e o nicho para sugerir o que mais faz sentido naquele momento (consórcio puxa riqueza e conquista; culinária puxa outra linha; e assim por diante). O nicho entra no prompt como contexto, nunca como regra de código.
+- Logos de empresas e redes (Instagram, ChatGPT, YouTube etc.) são gerados pela IA, não arquivos oficiais.
+- Os chamados para ação (curtir, inscrever etc.) também são elementos gerados pela IA, e é a IA que decide se entram: vídeo curto não tem "curtir e inscrever", vídeo longo tem. Nada de CTA fixo.
+- Leitura automática só do texto de cada elemento gerado; errado gera de novo uma vez.
+- Vídeo longo: elementos mais espaçados, intercalados com B-roll gerado pela Higgsfield; densidade decidida pelo JEV pela duração.
+- O Remotion só posiciona, anima e desenha a legenda escolhida pelo cliente. Nenhum elemento visual criado por código.
