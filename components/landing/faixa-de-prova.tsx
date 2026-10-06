@@ -8,8 +8,9 @@ import { pecasDoPlano, REDES } from "@/lib/calculadora/custos";
  * As referências eram "30 dias de posts 100% prontos em 3 horas de trabalho" e
  * "3 horas do seu dia viram 30 conteúdos prontos e agendados". A conta real do
  * Starter: 4 gravações de 20 a 30 minutos (no máximo 2 horas no mês), mais a
- * aprovação, viram cerca de 44 peças; desde 02/10 a página diz 3 horas. Os números saem do código, não da mão:
- * peças de pecasDoPlano (a mesma leitura da calculadora), gravações do plano e
+ * aprovação; desde 02/10 a página diz 3 horas. Os números saem do código, não da mão:
+ * peças de pecasDoPlano (desde 06/10 lido de lib/entregas-do-plano.ts, o mesmo
+ * dos cartões de preço; antes era "cerca de 44", escrito à mão), gravações do plano e
  * redes da lista da calculadora. Mudou o plano, a faixa acompanha.
  *
  * Componente de servidor, sem JavaScript no navegador.
@@ -18,8 +19,8 @@ export function FaixaDeProva() {
   const starter = PLANOS_PUBLICOS[0];
   const pecas = pecasDoPlano(starter);
   // AS 3 HORAS (02/10, noite, pedido do Matheus, que prefere o número que sabe
-  // ser real): 4 gravações de até 30 minutos são 2 h; a aprovação das cerca de
-  // 44 peças, perto de 1 minuto e meio cada, fecha a terceira hora.
+  // ser real): 4 gravações de até 30 minutos são 2 h; a aprovação das peças,
+  // perto de 1 minuto e meio cada, fecha a terceira hora.
   const horasGravando = Math.round((starter.gravacoesPorMes * 30) / 60);
   const horas = horasGravando + 1;
   const numeros = [

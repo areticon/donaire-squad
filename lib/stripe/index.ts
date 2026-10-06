@@ -72,6 +72,10 @@ function daTabela(id: PlanoId) {
     gravacoesPorMes: p.gravacoesPorMes,
     marcas: p.marcas,
     features: p.features,
+    // Saldo e carteira de vídeo moram em lib/planos.ts desde 06/10, para a
+    // vitrine converter em minutos e peças sem importar o Stripe. Valores iguais.
+    credits: p.creditosPorMes,
+    videoCredits: p.creditosDeVideoPorMes,
   };
 }
 
@@ -91,7 +95,6 @@ export const PLANS = {
     annualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
     // Tabela de 27/09 (Starter). O custo de IA de quem usar tudo fica perto de
     // R$ 740 por mês contra R$ 2.997: 4x. Ver lib/planos.ts.
-    credits: 20000,
     // Vídeo por IA INCLUÍDO: 2 vídeos de 30 s por mês na qualidade CHEIA
     // (4 gerações de 520 = 2.080 cada). De manhã de 28/09 eram 4 (regra do
     // Starter gerar 4 no Cheio); à noite o Bruno cortou todos pela metade: o
@@ -103,37 +106,32 @@ export const PLANS = {
     // A reposição completa a carteira de vídeo até este número, sem apagar
     // pacote comprado à parte. Ver `concederCiclo` (lib/credits/ciclo.ts).
     // 28/09, à noite: metade (2 vídeos no Cheio). Ver lib/planos.ts.
-    videoCredits: 4160,
     extraCreditPrice: 0.12,
     // "Gravações por mês" é a unidade que o cliente compra (travada no código
     // desde 30/09). Com o preço de 01/10 uma gravação de 22 min com 3 cortes
     // e a sua semana de peças usa 3.174 créditos (era ~630): as 4 do Starter
     // somam ~12.700 dos 20.000. "projects" ainda não é aplicado; está aqui
     // para bater com "marcas" quando for.
-    limits: { projects: 1, postsPerMonth: -1, credits: 20000 },
+    limits: { projects: 1, postsPerMonth: -1, credits: planoPublico("pro").creditosPorMes },
   },
   business: {
     ...daTabela("business"),
     priceId: process.env.STRIPE_BUSINESS_PRICE_ID,
     annualPriceId: process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID,
     // Pro: R$ 1.530 de custo se usar tudo, contra R$ 3.997 (2,6x).
-    credits: 40000,
     // 4 vídeos de 30 s no Cheio (10 no Rápido). Era 16.640 até a noite de 28/09.
-    videoCredits: 8320,
     extraCreditPrice: 0.10,
-    limits: { projects: 2, postsPerMonth: -1, credits: 40000 },
+    limits: { projects: 2, postsPerMonth: -1, credits: planoPublico("business").creditosPorMes },
   },
   studio: {
     ...daTabela("studio"),
     priceId: process.env.STRIPE_STUDIO_PRICE_ID,
     annualPriceId: process.env.STRIPE_STUDIO_ANNUAL_PRICE_ID,
     // Enterprise: R$ 2.580 de custo se usar tudo, contra R$ 5.667 (2,2x).
-    credits: 60000,
     // 10 vídeos de 30 s no Cheio (26 no Rápido). Era 41.600 (20 no Cheio) até a
     // noite de 28/09, quando o vídeo por IA de todos os planos caiu pela metade.
-    videoCredits: 20800,
     extraCreditPrice: 0.08,
-    limits: { projects: 5, postsPerMonth: -1, credits: 60000 },
+    limits: { projects: 5, postsPerMonth: -1, credits: planoPublico("studio").creditosPorMes },
   },
 };
 
