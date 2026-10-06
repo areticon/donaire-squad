@@ -1,3 +1,4 @@
+import { GRAVACAO_UNICA, chaveDaGeracao } from "@/lib/media/geracao-unica";
 import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { createHash } from "node:crypto";
 import { head, put } from "@vercel/blob";
@@ -215,7 +216,7 @@ export function guardaNoBlob(): Guarda {
       await put(caminho(`${chave}.json`), JSON.stringify(dados), { ...midiaProduzida(), contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
     },
     async arquivo(nome, dados) {
-      return (await put(caminho(nome), dados, { ...midiaProduzida(), contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: true })).url;
+      return (await put(caminho(nome), dados, { ...midiaProduzida(), contentType: "video/mp4", ...GRAVACAO_UNICA })).url;
     },
   };
 }
@@ -227,7 +228,8 @@ const GUARDA_DO_BROLL =
 async function brollPelaHiggsfield(consulta: string, formato: "9:16" | "16:9", referencia: string, projectId: string | null | undefined, esperarMs: number): Promise<BrollEscolhido | null> {
   const { pedirGeracao, concluirSePronto } = await import("@/lib/media/higgsfield");
   const prompt = `${consulta}.${GUARDA_DO_BROLL}`;
-  const chave = `broll-pro-${createHash("sha1").update(`${prompt}|${formato}`).digest("hex").slice(0, 12)}`;
+  // CADA EDIÇÃO É ALGO NOVO (06/10): a chave leva a marca desta geração; o mesmo prompt em outra edição pede vídeo novo.
+  const chave = chaveDaGeracao(`broll-pro-${createHash("sha1").update(`${prompt}|${formato}`).digest("hex").slice(0, 12)}`);
   const g = await pedirGeracao({ modelo: "kling-pro", prompt, segundos: 3, proporcao: formato, referencia, chave });
   const limite = Date.now() + esperarMs;
   for (;;) {
@@ -320,7 +322,9 @@ export async function gerarBrolls(
   });
   const um = async ({ id, consulta, n, chave }: (typeof itens)[number]) => {
     try {
-      let escolhido = await guarda.ler(chave);
+      // CADA EDIÇÃO É ALGO NOVO (06/10): B-roll GERADO (Higgsfield, fal) nunca sai do cache; só o de banco (filmagem real) é lido.
+      const gerado = fonte === "higgsfield" || fonte === "fal";
+      let escolhido = gerado ? null : await guarda.ler(chave);
       if (!escolhido) {
         if (fonte === "higgsfield" || fonte === "fal") {
           escolhido =

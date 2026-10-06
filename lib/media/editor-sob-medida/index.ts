@@ -1,3 +1,4 @@
+import { GRAVACAO_UNICA, nomeUnico } from "@/lib/media/geracao-unica";
 import { put } from "@vercel/blob";
 import { createHash } from "node:crypto";
 import { gerarImagem, dataUrlToBuffer } from "@/lib/media/nano-banana";
@@ -89,8 +90,9 @@ export async function gerarInsercoes(
         const img = await gerarImagem(prompt, o.formato, "hd", { projectId: o.projectId ?? undefined, operation: "editor-sob-medida-insercao" }, { tipo: "colagem" });
         custo += img.custoUsd ?? 0;
         const dados = dataUrlToBuffer(img.dataUrl);
-        const nome = `insercao-${createHash("sha1").update(prompt).digest("hex").slice(0, 12)}.png`;
-        const url = o.local ? await o.local(nome, dados) : (await put(`editor-sob-medida/${nome}`, dados, { ...midiaProduzida(), contentType: "image/png", addRandomSuffix: false, allowOverwrite: true })).url;
+        // CADA EDIÇÃO É ALGO NOVO (06/10): nome único por geração, nunca o hash do prompt por cima de outra imagem.
+        const nome = nomeUnico("insercao", { video: o.projectId, momento: id, ext: "png" }).replace("/", "-");
+        const url = o.local ? await o.local(nome, dados) : (await put(`editor-sob-medida/${nome}`, dados, { ...midiaProduzida(), contentType: "image/png", ...GRAVACAO_UNICA })).url;
         insercoes[id] = { url, tipo: "imagem" };
       } catch (err) {
         erros.push(`${id}: ${err instanceof Error ? err.message.slice(0, 120) : err}`);

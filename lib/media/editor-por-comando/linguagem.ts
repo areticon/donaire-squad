@@ -69,7 +69,7 @@ export type VarianteDoElemento =
   | "cartao-de-passo"
   | "frase-chave"
   | "slide"
-  // As peças vetoriais (06/10, tarefa D): uma variante cada, desenhada pelo tema da família.
+  // Os elementos gerados por IA (06/10, noite): uma variante cada; o visual vem da Higgsfield, o nome só dá a posição.
   | "icone-com-frase"
   | "comparacao-lado-a-lado"
   | "cartoes-em-linha"
@@ -123,7 +123,7 @@ export const COMPONENTE_GENERICO: Record<VarianteDoElemento, string | null> = {
   "cartao-de-passo": "cartao-de-passo",
   "frase-chave": "frase-chave",
   slide: "slide",
-  // As peças vetoriais (06/10, tarefa D, worker/remotion/src/sob-medida/pecas/vetoriais.tsx): um componente cada, na linguagem do vídeo.
+  // Os elementos gerados por IA (06/10, noite, worker/remotion/src/sob-medida/pecas/gerado.tsx): a imagem recortada, posicionada e animada.
   "icone-com-frase": "icone-com-frase",
   "comparacao-lado-a-lado": "comparacao-lado-a-lado",
   "cartoes-em-linha": "cartoes-em-linha",
