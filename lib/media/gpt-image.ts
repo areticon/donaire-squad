@@ -1,3 +1,4 @@
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { custoDaImagemPorTokens, precoDaImagem, recordImagemPorTokens, type ContextoMidia, type UsoDaImagem } from "@/lib/media/usage";
 import type { ProporcaoPedida } from "@/lib/media/formatos-das-redes";
 
@@ -60,6 +61,8 @@ export class SemChaveDaOpenAI extends Error {
  */
 export class SemSaldoNaOpenAI extends Error {
   readonly semSaldo = true;
+  /** De quem é o saldo (lib/fornecedores/saldo.ts lê esta marca). */
+  readonly fornecedor = "openai";
   constructor() {
     super(
       "A conta da OpenAI está sem crédito, então o GPT Image 2 não gerou a lâmina. " +
@@ -175,7 +178,9 @@ export async function gerarImagemOpenAIComCusto(
      * confusão que fez a plataforma inteira parar em silêncio em 08/09, quando
      * a conta da Anthropic ficou sem saldo e todo erro virava "tente de novo".
      */
-    if (/insufficient_quota|no credits remaining/i.test(corpo)) {
+    // Desde 06/10 vira incidente e aviso ao admin, mesmo quando quem chamou
+    // cai no Google em silêncio (lib/fornecedores/aviso-de-saldo.ts).
+    if (await conferirResposta("openai", { status: res.status, corpo }, "arte pelo GPT Image")) {
       throw new SemSaldoNaOpenAI();
     }
     throw new Error(`GPT Image 2 recusou (HTTP ${res.status}): ${corpo.slice(0, 220)}`);
@@ -234,7 +239,7 @@ export async function editarImagemOpenAIComCusto(
   });
   if (!res.ok) {
     const corpo = await res.text();
-    if (/insufficient_quota|no credits remaining/i.test(corpo)) throw new SemSaldoNaOpenAI();
+    if (await conferirResposta("openai", { status: res.status, corpo }, "arte com foto de referência pelo GPT Image")) throw new SemSaldoNaOpenAI();
     throw new Error(`GPT Image 2 (edição) recusou (HTTP ${res.status}): ${corpo.slice(0, 220)}`);
   }
   const dados = (await res.json()) as { data?: Array<{ b64_json?: string }>; usage?: UsoDaImagem };

@@ -1,3 +1,4 @@
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { head, put } from "@vercel/blob";
@@ -87,7 +88,11 @@ export async function recortarFundo(imagem: Buffer, ctx?: { projectId?: string |
     body: JSON.stringify({ image_url: `data:image/jpeg;base64,${base.toString("base64")}`, model: "General Use (Heavy)", operating_resolution: "2048x2048", output_format: "png", refine_foreground: true }),
     signal: AbortSignal.timeout(120_000),
   });
-  if (!r.ok) throw new Error(`fal.ai HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
+  if (!r.ok) {
+    const corpoDoErro = await r.text();
+    await conferirResposta("fal", { status: r.status, corpo: corpoDoErro }, "recorte do editor sob medida no fal.ai");
+    throw new Error(`fal.ai HTTP ${r.status}: ${corpoDoErro.slice(0, 160)}`);
+  }
   const d = (await r.json()) as { image?: { url?: string } };
   if (!d.image?.url) throw new Error("fal.ai não devolveu a imagem");
   const png = Buffer.from(await (await fetch(d.image.url, { signal: AbortSignal.timeout(60_000) })).arrayBuffer());

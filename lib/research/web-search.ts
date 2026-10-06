@@ -1,4 +1,5 @@
 import { oQueSeFalaNoX } from "@/lib/research/x-search";
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * Roberto Radar — Real-time Research Module
@@ -55,8 +56,10 @@ async function searchGemini(
 
   if (!res.ok) {
     const err = await res.text();
+    await conferirResposta("google", { status: res.status, corpo: err }, "pesquisa na web pelo Gemini");
     throw new Error(`Gemini Search failed (${res.status}): ${err.slice(0, 300)}`);
   }
+  marcarChamadaOk("google");
 
   const data = (await res.json()) as GeminiResponse;
   if (data.error) throw new Error(`Gemini Search error: ${data.error.message}`);

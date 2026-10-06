@@ -1,4 +1,5 @@
 import { gravarCustoDeVideo } from "@/lib/media/usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import type { ContextoMidia } from "@/lib/media/usage";
 
 /**
@@ -186,6 +187,7 @@ export async function pedirVideo(pedido: PedidoDeVideo): Promise<string> {
 
   if (!res.ok) {
     const corpo = await res.text();
+    await conferirResposta("google", { status: res.status, corpo }, "vídeo por IA (Veo)");
     throw new Error(`O Veo recusou o pedido (HTTP ${res.status}): ${corpo.slice(0, 240)}`);
   }
 
@@ -278,6 +280,7 @@ export async function estenderVideo(pedido: PedidoDeExtensao): Promise<string> {
 
   if (!res.ok) {
     const corpo = await res.text();
+    await conferirResposta("google", { status: res.status, corpo }, "extensão do vídeo por IA (Veo)");
     throw new Error(`O Veo recusou a extensão (HTTP ${res.status}): ${corpo.slice(0, 240)}`);
   }
   const dados = (await res.json()) as { name?: string };

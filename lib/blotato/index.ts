@@ -1,3 +1,4 @@
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 /**
  * CLIENTE DA API REST DO BLOTATO (v2), religado em 30/09.
  *
@@ -65,6 +66,8 @@ async function chamar<T>(caminho: string, init: { method?: string; body?: unknow
   });
   const texto = await res.text();
   if (!res.ok) {
+    // Assinatura vencida ou pagamento recusado vira incidente e aviso ao admin (06/10).
+    await conferirResposta("blotato", { status: res.status, corpo: texto }, "publicação pelo Blotato");
     // A mensagem da API vem em `message` (e às vezes em `error`); o corpo
     // inteiro fica no erro para o log, cortado para não vazar página HTML.
     let msg = texto.slice(0, 300);
@@ -88,6 +91,7 @@ async function chamar<T>(caminho: string, init: { method?: string; body?: unknow
             : `Blotato ${res.status}`;
     throw new ErroDoBlotato(`${prefixo}: ${msg}`, res.status, texto.slice(0, 2000));
   }
+  marcarChamadaOk("blotato");
   return (texto ? JSON.parse(texto) : {}) as T;
 }
 

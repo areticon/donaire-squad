@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { ehErroDeSaldo } from "@/lib/claude";
 import { ehSemSaldoDaOpenAI } from "@/lib/media/gpt-image";
-import { enviarEmail } from "@/lib/email";
+import { avisarSemSaldo } from "@/lib/fornecedores/aviso-de-saldo";
+import { fornecedorSemSaldoDoErro, type Fornecedor } from "@/lib/fornecedores/saldo";
 
 /**
  * A FILA PARA QUANDO A PLATAFORMA FICA SEM SALDO DE API.
@@ -25,9 +26,11 @@ import { enviarEmail } from "@/lib/email";
  *    se não voltou, o primeiro erro pausa tudo de novo. Uma chamada recusada
  *    por saldo não custa nada, então a sondagem é de graça. Não existe botão
  *    de "retomar" para o Bruno esquecer de apertar.
- * 3. **Avisa quem paga a conta.** E-mail para os admins na primeira
- *    ocorrência, e de novo só depois de seis horas: a recarga leva um minuto,
- *    e um e-mail por passada seria um por minuto.
+ * 3. **Avisa quem paga a conta.** Desde 06/10 pelo aviso central
+ *    (lib/fornecedores/aviso-de-saldo.ts): sino e e-mail para os admins, um
+ *    por fornecedor a cada seis horas, e o aviso de que voltou quando a
+ *    primeira chamada passa. O cliente lê só um aviso neutro no log da
+ *    campanha, sem nome de fornecedor nem "saldo de API".
  *
  * O estado vive nos próprios trabalhos (`status: pausado`, com o motivo em
  * `error` como JSON), sem tabela nova: o que a fila precisa saber para
@@ -36,9 +39,6 @@ import { enviarEmail } from "@/lib/email";
 
 /** Quanto tempo a fila espera antes de tentar de novo. */
 export const PAUSA_MS = 10 * 60 * 1000;
-/** Intervalo mínimo entre dois e-mails de aviso. */
-const INTERVALO_DO_AVISO_MS = 6 * 60 * 60 * 1000;
-
 export type Provedor = "Anthropic" | "OpenAI";
 
 /** Este erro é falta de saldo em algum provedor de IA? */
@@ -56,8 +56,11 @@ export function ehFaltaDeSaldo(e: unknown): boolean {
  * conta errada. O nome e a mensagem dizem de quem é.
  */
 export function provedorDoErro(e: unknown): Provedor {
-  const texto = e instanceof Error ? `${e.name} ${e.message}` : String(e);
-  return /openai|gpt/i.test(texto) ? "OpenAI" : "Anthropic";
+  return fornecedorDoErroDaFila(e) === "openai" ? "OpenAI" : "Anthropic";
+}
+
+function fornecedorDoErroDaFila(e: unknown): Fornecedor {
+  return fornecedorSemSaldoDoErro(e) ?? "anthropic";
 }
 
 type Ledger = { saldoZerado: true; provedor: Provedor; em: string; avisadoEm: string | null };
@@ -82,22 +85,9 @@ export async function pausarAFila(trabalhoId: string, erro: unknown): Promise<nu
   const provedor = provedorDoErro(erro);
   const agora = new Date();
 
-  // O aviso já saiu nas últimas seis horas? A resposta está nos trabalhos
-  // que ainda carregam o ledger de uma pausa anterior.
-  const anteriores = await prisma.trabalho.findMany({
-    where: { error: { startsWith: '{"saldoZerado"' } },
-    select: { error: true },
-    take: 200,
-  });
-  const ultimoAviso = anteriores
-    .map((t) => lerLedger(t.error)?.avisadoEm)
-    .filter((x): x is string => Boolean(x))
-    .map((x) => new Date(x).getTime())
-    .sort((a, b) => b - a)[0];
-  const avisar = !ultimoAviso || agora.getTime() - ultimoAviso > INTERVALO_DO_AVISO_MS;
-  const avisadoEm = avisar ? agora.toISOString() : new Date(ultimoAviso!).toISOString();
-
-  const ledger: Ledger = { saldoZerado: true, provedor, em: agora.toISOString(), avisadoEm };
+  // O controle das seis horas mora no aviso central; o ledger só guarda
+  // quando a fila pausou (é o que a retomada precisa).
+  const ledger: Ledger = { saldoZerado: true, provedor, em: agora.toISOString(), avisadoEm: null };
   const motivo = JSON.stringify(ledger);
 
   // 1. O trabalho que descobriu: volta para pausado, e a tentativa não conta.
@@ -125,16 +115,20 @@ export async function pausarAFila(trabalhoId: string, erro: unknown): Promise<nu
     logs.push({
       agent: "Sistema",
       status: "warning",
+      // Neutro: o cliente nunca lê nome de fornecedor nem "saldo de API" (06/10).
       message:
-        `Pausado: a plataforma está sem saldo de API (${provedor}). Não é nada da sua campanha, e ela continua ` +
-        `de onde parou assim que o saldo voltar. O responsável já foi avisado.`,
+        "Pausado: uma etapa da geração está temporariamente indisponível. Não é nada da sua campanha, e ela " +
+        "continua de onde parou assim que voltar. A equipe já foi avisada.",
       timestamp: agora.toISOString(),
     });
     await prisma.pipelineRun.update({ where: { id: grupo }, data: { status: "paused", logs: logs as never } });
   }
 
   console.error(`[fila] PAUSADA: ${provedor} sem saldo. ${count + 1} trabalho(s) esperando a recarga.`);
-  if (avisar) await avisarOsAdmins(provedor, count + 1, erro);
+  await avisarSemSaldo(fornecedorDoErroDaFila(erro), {
+    onde: `fila de trabalhos: ${count + 1} trabalho(s) de campanha pausado(s), nenhum cliente cobrado por eles`,
+    detalhe: erro instanceof Error ? erro.message : String(erro),
+  });
   return count + 1;
 }
 
@@ -191,7 +185,7 @@ export async function retomarPausados(agora = new Date()): Promise<number> {
     logs.push({
       agent: "Sistema",
       status: "running",
-      message: "Tentando de novo: a fila voltou da pausa para ver se o saldo de API já foi recarregado.",
+      message: "Tentando de novo: a fila voltou da pausa para ver se a geração já está disponível.",
       timestamp: agora.toISOString(),
     });
     await prisma.pipelineRun.update({ where: { id: grupo }, data: { status: "running", logs: logs as never } });
@@ -203,31 +197,4 @@ export async function retomarPausados(agora = new Date()): Promise<number> {
 /** Quantos trabalhos estão esperando a recarga. Para a tela e para os testes. */
 export async function pausadosPorSaldo(): Promise<number> {
   return prisma.trabalho.count({ where: { status: "pausado" } });
-}
-
-async function avisarOsAdmins(provedor: Provedor, trabalhos: number, erro: unknown): Promise<void> {
-  const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { email: true } });
-  const detalhe = erro instanceof Error ? erro.message : String(erro);
-  const onde =
-    provedor === "Anthropic"
-      ? "console.anthropic.com, em Plans & Billing (e vale ligar o auto-reload)"
-      : "platform.openai.com/settings/organization/billing";
-  for (const a of admins) {
-    if (!a.email) continue;
-    await enviarEmail({
-      para: a.email,
-      assunto: `Demandou parada: a conta da ${provedor} está sem saldo`,
-      texto: [
-        `A plataforma parou de gerar conteúdo porque a conta da ${provedor} ficou sem crédito.`,
-        "",
-        `${trabalhos} trabalho(s) de campanha estão pausados esperando a recarga. Nenhum cliente foi cobrado por eles.`,
-        "",
-        `Recarregue em ${onde}.`,
-        "",
-        "A fila tenta de novo sozinha a cada dez minutos: assim que o saldo voltar, as campanhas continuam de onde pararam. Não precisa apertar nada.",
-        "",
-        `O erro, para conferência: ${detalhe.slice(0, 300)}`,
-      ].join("\n"),
-    });
-  }
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * O CLIENTE DO JEV (03/10/2026): o modelo System One da TypeSafe, que NÃO gera
@@ -97,6 +98,7 @@ async function pedir(state: InstrucaoDoJev, questions: Record<string, PerguntaDo
     if (!r.ok) {
       // O corpo do erro descreve o pedido; a chave nunca está nele.
       const corpo = (await r.text().catch(() => "")).slice(0, 300);
+      await conferirResposta("typesafe", { status: r.status, corpo }, "decisão do JEV");
       throw new Error(`JEV respondeu ${r.status}: ${corpo}`);
     }
     return (await r.json()) as { answers: Record<string, RespostaDoJev>; usage: { input_tokens: number; output_tokens: number }; model: string };
@@ -106,6 +108,7 @@ async function pedir(state: InstrucaoDoJev, questions: Record<string, PerguntaDo
 
 async function gravarUso(ctx: ContextoDoJev, model: string, usage: { input_tokens: number; output_tokens: number }): Promise<void> {
   const custo = (usage.input_tokens ?? 0) * PRECO_POR_TOKEN_DE_ENTRADA;
+  marcarChamadaOk("typesafe");
   if (ctx.uso) {
     ctx.uso.pedidos++;
     ctx.uso.inputTokens += usage.input_tokens ?? 0;

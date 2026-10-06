@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { oQueSeFalaNoX, resumoDoX, type PostDoX } from "@/lib/research/x-search";
 import type { OrigemDaIdeia } from "@/lib/editorial/tipos";
 
@@ -241,6 +242,7 @@ export async function buscaComGoogle(
       signal: AbortSignal.timeout(45_000),
     }
   ).catch(() => null);
+  if (res && !res.ok) await conferirResposta("google", { status: res.status, corpo: await res.text().catch(() => "") }, "radar da semana pelo Gemini");
   if (!res?.ok) return { texto: "", fontes: [], itens: [] };
   const d = (await res.json().catch(() => ({}))) as RespostaDoGemini;
   const c = d.candidates?.[0];

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { join } from "node:path";
 import { MODELO_DO_GERADOR, INSTRUCAO_DO_GERADOR, estimarSegundos } from "@/lib/media/gemeo";
 
@@ -69,7 +70,10 @@ async function erroEleven(r: Response, acao: string): Promise<ErroDoFornecedor> 
   if ((r.status === 401 || r.status === 403) && /permission/i.test(corpo)) {
     return new ErroDoFornecedor("elevenlabs", "sem-permissao", r.status, `ElevenLabs: a chave não tem permissão para ${acao}`);
   }
-  if (r.status === 402 || /quota|credits|limit/i.test(corpo)) {
+  // Saldo de verdade (quota_exceeded, 402) também vira incidente e aviso ao
+  // admin (06/10). A classificação antiga, mais larga, continua decidindo a espera.
+  const semSaldo = await conferirResposta("elevenlabs", { status: r.status, corpo }, `voz do gêmeo (${acao})`);
+  if (semSaldo || r.status === 402 || /quota|credits|limit/i.test(corpo)) {
     return new ErroDoFornecedor("elevenlabs", "sem-saldo", r.status, `ElevenLabs sem saldo para ${acao} (${r.status})`);
   }
   return new ErroDoFornecedor("elevenlabs", r.status >= 500 ? "rede" : "recusado", r.status, `ElevenLabs recusou ${acao} (${r.status}): ${corpo}`);
@@ -227,7 +231,8 @@ async function erroFal(r: Response, acao: string): Promise<ErroDoFornecedor> {
   const corpo = (await r.text().catch(() => "")).slice(0, 400);
   // "User is locked: Exhausted balance" (visto em 30/09 e 01/10): saldo do fal
   // acabou. Não é culpa do pedido; o passo espera em vez de desistir.
-  if (r.status === 403 && /locked|balance/i.test(corpo)) {
+  const semSaldo = await conferirResposta("fal", { status: r.status, corpo }, `gerador do gêmeo no fal.ai (${acao})`);
+  if (semSaldo || (r.status === 403 && /locked|balance/i.test(corpo))) {
     return new ErroDoFornecedor("fal", "sem-saldo", r.status, "fal.ai sem saldo (conta travada por saldo esgotado)");
   }
   if (r.status === 401 || r.status === 403) {

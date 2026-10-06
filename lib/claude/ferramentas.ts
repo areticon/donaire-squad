@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getClient, DEFAULT_MODEL, type AskOptions } from "@/lib/claude";
+import { getClient, DEFAULT_MODEL, traduzirErroDaApi, type AskOptions } from "@/lib/claude";
 import { recordUsage } from "@/lib/claude/usage";
 
 /**
@@ -90,7 +90,9 @@ export async function askClaudeComFerramentas(
       },
       { timeout: timeoutMs }
     );
-    const message = await stream.finalMessage();
+    const message = await stream.finalMessage().catch(async (e: unknown) => {
+      throw await traduzirErroDaApi(e, "chat do escritório");
+    });
     void recordUsage(model, message.usage, options?.usage);
 
     const pedidos = message.content.filter(
@@ -159,7 +161,9 @@ export async function askClaudeComFerramentas(
     },
     { timeout: timeoutMs }
   );
-  const ultima = await fecho.finalMessage();
+  const ultima = await fecho.finalMessage().catch(async (e: unknown) => {
+    throw await traduzirErroDaApi(e, "chat do escritório");
+  });
   void recordUsage(model, ultima.usage, options?.usage);
   const texto = ultima.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

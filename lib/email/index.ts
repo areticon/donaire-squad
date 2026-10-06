@@ -95,10 +95,17 @@ export async function enviarEmail(email: Email): Promise<boolean> {
         : {}),
     });
 
+    // A cota do Resend esgotada (daily_quota_exceeded, monthly_quota_exceeded)
+    // vira incidente no sino e no painel (06/10). Import tardio: o aviso
+    // central também manda e-mail por aqui.
+    const aviso = await import("@/lib/fornecedores/aviso-de-saldo");
     if (error) {
       console.error(`[email] Resend recusou "${email.assunto}": ${error.message}`);
+      const status = (error as { statusCode?: number | null }).statusCode ?? null;
+      await aviso.conferirResposta("resend", { status, corpo: { name: error.name, message: error.message } }, "envio de e-mail pelo Resend");
       return false;
     }
+    aviso.marcarChamadaOk("resend");
     console.log(`[email] "${email.assunto}" enviado para ${email.para} (${data?.id})`);
     return true;
   } catch (e) {

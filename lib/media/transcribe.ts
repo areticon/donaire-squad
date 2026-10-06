@@ -1,6 +1,7 @@
 import { get } from "@vercel/blob";
 import { MAX_KEYTERMS } from "./keyterms";
 import { recordTranscricao, type ContextoMidia } from "./usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * Transcrição de vídeo com marcação de tempo por palavra.
@@ -165,6 +166,7 @@ export async function transcribeBlob(
 
   if (!dgRes.ok) {
     const detail = await dgRes.text().catch(() => "");
+    await conferirResposta("deepgram", { status: dgRes.status, corpo: detail }, "transcrição do vídeo");
     throw new Error(
       `Deepgram respondeu ${dgRes.status}: ${detail.slice(0, 300)}`
     );
@@ -331,6 +333,7 @@ export async function transcribeBlobAsync(
 
   if (!dgRes.ok) {
     const detail = await dgRes.text().catch(() => "");
+    await conferirResposta("deepgram", { status: dgRes.status, corpo: detail }, "transcrição do vídeo");
     throw new Error(
       `Deepgram respondeu ${dgRes.status}: ${detail.slice(0, 300)}`
     );

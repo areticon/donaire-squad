@@ -7,6 +7,7 @@ import { aplicarTermos, parseTermos } from "@/lib/media/termos";
 import { MAX_KEYTERMS } from "@/lib/media/keyterms";
 import { interpretarResposta, type Word } from "@/lib/media/transcribe";
 import { recordTranscricao, type ContextoMidia } from "@/lib/media/usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
 import { dirigirMontagem, usarDiretorLimpo } from "@/lib/media/diretor-de-montagem";
@@ -1022,7 +1023,11 @@ export async function transcreverCompleto(url: string, termos: string | null, ct
     body: JSON.stringify({ url }),
     signal: AbortSignal.timeout(280_000),
   });
-  if (!r.ok) throw new Error(`Deepgram respondeu ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`);
+  if (!r.ok) {
+    const corpoDoErro = await r.text().catch(() => "");
+    await conferirResposta("deepgram", { status: r.status, corpo: corpoDoErro }, "transcrição do vídeo completo");
+    throw new Error(`Deepgram respondeu ${r.status}: ${corpoDoErro.slice(0, 200)}`);
+  }
   const resultado = interpretarResposta((await r.json()) as Parameters<typeof interpretarResposta>[0], "multi");
   recordTranscricao("nova-3-multi", resultado.durationSec, ctx);
   const palavras: Word[] = aplicarTermos(resultado.words, parseTermos(termos));
