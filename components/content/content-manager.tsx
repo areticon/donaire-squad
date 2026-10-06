@@ -4375,6 +4375,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     } else if (abrir === "tema") {
       setOrigemDoModal("tema");
       setShowSetupModal(true);
+    } else if (abrir === "pronto") {
+      // A quarta porta da aba Criar (06/10): o conteúdo pronto do cliente.
+      setConteudoProntoAberto({ data: null });
     }
     if (params.get("novaCampanha") === "1") setPrimeiraCampanha(true);
     // A BIBLIOTECA DE MATERIAIS (05/10) manda ?card=<id>&semana=<segunda>: o

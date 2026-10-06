@@ -30,6 +30,7 @@ export function PortasDoProjeto({ projectId }: { projectId: string }) {
         onVideo={() => router.push(`/projects/${projectId}/live?abrir=video`)}
         onGemeo={() => router.push(`/projects/${projectId}/gemeo`)}
         onTema={() => router.push(`/projects/${projectId}/live?abrir=tema`)}
+        onPronto={() => router.push(`/projects/${projectId}/live?abrir=pronto`)}
       />
 
       {/* SEUS MATERIAIS (03/10): fotos e vídeos do cliente, o uso mais comum.

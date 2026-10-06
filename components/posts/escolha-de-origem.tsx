@@ -32,7 +32,7 @@ import { gemeoAtivo } from "@/lib/media/gemeo";
  * posto num dia do quadro sem edição nenhuma. Pedido do Bruno: "ele clica
  * em adicionar conteúdo em qualquer dia da semana e tem as opções: vídeo,
  * gêmeo, IA, e um conteúdo pronto seu". Só aparece quando quem renderiza
- * passa `onPronto` (o quadro e a aba Posts); a aba Criar segue com três.
+ * passa `onPronto` (o quadro, a aba Posts e, desde 06/10, a aba Criar).
  */
 export function EscolhaDeOrigem({
   onVideo,
@@ -92,8 +92,9 @@ export function EscolhaDeOrigem({
             {titulo ?? "Como você quer criar esta semana?"}
           </h2>
           <p className="max-w-[620px] text-base leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            São três caminhos, e a escolha vale só para esta campanha. O resto (revisão,
-            agenda e publicação) é igual nos três.
+            {quatro
+              ? "São quatro caminhos, e a escolha vale só para esta campanha. O resto (revisão, agenda e publicação) é igual em todos."
+              : "São três caminhos, e a escolha vale só para esta campanha. O resto (revisão, agenda e publicação) é igual nos três."}
           </p>
         </div>
       ) : (
