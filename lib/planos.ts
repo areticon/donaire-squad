@@ -290,6 +290,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       // que é o que o servidor aplica; mudou lá, muda aqui.
       "2 acessos, contando o seu: você e mais uma pessoa do time",
       "1 marca ou porta-voz",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.pro),
       "4 gravações ou campanhas por mês, cerca de 44 peças",
       // A PROMESSA EM VÍDEOS é contada na qualidade CHEIA (28/09). O saldo é em
       // créditos de vídeo (4.160 aqui = 2 x 2.080). Reduzido pela metade no mesmo
@@ -307,7 +308,6 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       "2 vídeos por IA de 30 s por mês na qualidade Cheia (5 na Rápida), com narração em português",
       "Gravações de até 1 hora",
       "Pesquisa com fontes, revisão e publicação agendada",
-      linhaDasReferencias(REFERENCIAS_POR_PROJETO.pro),
       "LinkedIn, Instagram, Facebook, X, YouTube e TikTok",
       "Reunião de implantação para ensinar a voz da empresa",
     ],
@@ -329,6 +329,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     features: [
       "5 acessos, contando o seu, para vendedores, consultores ou corretores",
       "2 marcas ou porta-vozes",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.business),
       "8 gravações ou campanhas por mês, cerca de 90 peças",
       "4 vídeos por IA de 30 s por mês na qualidade Cheia (10 na Rápida)",
       // 01/10, noite: saiu "4 vídeos com edição de estúdio (em implantação)".
@@ -337,7 +338,6 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       "Gravações de até 2 horas",
       "Tudo do Starter",
       "Relatório mensal do que rendeu",
-      linhaDasReferencias(REFERENCIAS_POR_PROJETO.business),
     ],
     extras: [demandaDay(1), DEMANDA_CAST],
   },
@@ -358,13 +358,13 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     features: [
       "10 acessos, contando o seu, para o time comercial inteiro",
       "5 marcas ou porta-vozes, como o time de vendas",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.studio),
       "16 gravações ou campanhas por mês, cerca de 180 peças",
       "10 vídeos por IA de 30 s por mês na qualidade Cheia (26 na Rápida)",
       "O triplo de saldo do Starter, para o time inteiro gravar ou usar o gêmeo",
       "Gravações de até 5 horas, para podcast e evento",
       "Tudo do Pro",
       "Reunião mensal de estratégia e gerente dedicado",
-      linhaDasReferencias(REFERENCIAS_POR_PROJETO.studio),
     ],
     extras: [demandaDay(3), DEMANDA_CAST],
   },

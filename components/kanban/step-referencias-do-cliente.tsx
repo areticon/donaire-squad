@@ -256,7 +256,7 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
                       </p>
                       <p className="truncate text-[11px] text-[var(--text-muted)]">
                         {acimaDoPlano && !x.noEstudo
-                          ? "Fora do estudo: passa do que o seu plano inclui"
+                          ? "Fora do estudo, passa do seu plano"
                           : x.ultimoErro
                           ? `Última leitura: ${x.ultimoErro}`
                           : x.ultimaColeta

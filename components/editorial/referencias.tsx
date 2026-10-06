@@ -157,7 +157,13 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
   const resumoDosConfirmados = acimaDoPlano
     ? `${confirmados.length} referências (seu plano inclui ${teto})`
     : `${confirmados.length} de ${teto} confirmados neste projeto`;
-  const daConta = ` (${dados.confirmadosNaConta} de ${dados.limite.porConta} na conta)`;
+  // A conta também pode estar acima (o teto era 15 fixo até 06/10): "8 na conta
+  // (seu plano inclui 6)" em vez de "8 de 6".
+  const contaAcima = !dados.limite.semTetoNaConta && dados.confirmadosNaConta > dados.limite.porConta;
+  const naConta = contaAcima
+    ? `${dados.confirmadosNaConta} na conta (seu plano inclui ${dados.limite.porConta})`
+    : `${dados.confirmadosNaConta} de ${dados.limite.porConta} na conta`;
+  const daConta = acimaDoPlano || contaAcima ? `, ${naConta}` : ` (${naConta})`;
   const ligado = dados.ligadas.length > 0;
 
   return (
