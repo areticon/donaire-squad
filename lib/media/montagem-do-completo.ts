@@ -1177,7 +1177,34 @@ export async function marcarCompletoNaFila(videoJobId: string, opcoes: { forcar?
   const origem = hashCurto(base);
   if (!opcoes.forcar && m && m.origem === origem) return false;
   // O roteiro aprovado viaja junto: é dele que sai o plano (sem diretor de novo).
-  return trocarEstado(videoJobId, m ?? null, { estado: "na-fila", desde: agora(), origem, baseUrl: base, ...(m?.roteiro ? { roteiro: m.roteiro } : {}) });
+  // O ORIGINAL TAMBÉM (06/10, tarde): a passada 3 da refeita do Fé & Gestão
+  // saiu com completoOriginal null porque o estado novo não o carregava; a
+  // entrega então dependia de o completoUrl da hora ainda ser o original.
+  return trocarEstado(videoJobId, m ?? null, {
+    estado: "na-fila",
+    desde: agora(),
+    origem,
+    baseUrl: base,
+    ...(m?.roteiro ? { roteiro: m.roteiro } : {}),
+    completoOriginal: originalDaBase(base, m?.completoOriginal ?? null, v.completoUrl, v.completoBytes),
+  });
+}
+
+/**
+ * O original que acompanha a base da fila: o gravado, quando é a mesma base;
+ * senão a própria base, se não for um editado (com o tamanho quando é o
+ * completoUrl de agora). Um editado nunca vira original. Puro, para a prova.
+ */
+export function originalDaBase(
+  base: string,
+  gravado: { url: string; bytes: number | null } | null,
+  completoUrl: string | null,
+  completoBytes: bigint | number | null | undefined
+): { url: string; bytes: number | null } | null {
+  const editado = (url: string | null | undefined) => Boolean(url && /completo-editado-/.test(url));
+  if (gravado && gravado.url === base && !editado(gravado.url)) return gravado;
+  if (editado(base)) return gravado && !editado(gravado.url) ? gravado : null;
+  return { url: base, bytes: base === completoUrl && completoBytes != null ? Number(completoBytes) : null };
 }
 
 /** Recomeça do zero (o plano e as imagens saem de novo; imagem igual é reaproveitada pelo hash). */
