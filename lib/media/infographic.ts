@@ -16,8 +16,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ProporcaoPedida } from "./formatos-das-redes";
 import { coresDaMarca } from "@/lib/media/capa-composta";
-import type { MarcaDaArte } from "@/lib/media/arte-com-frase";
+import { exigirIdentidadeAprovada, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 import { montarInfograficoEmCodigo } from "@/lib/media/infografico-em-codigo";
+import { semNumerosRepetidos } from "@/lib/media/infografico-sem-repeticao";
+import { infograficoRepeteDado } from "@/lib/squad/coerencia-da-arte";
 
 /**
  * A direção de arte desta peça, decidida FORA daqui (lib/media/direcao-de-arte):
@@ -48,6 +50,8 @@ export interface RegrasDoInfografico {
   funil?: "tofu" | "mofu" | "bofu";
   /** Os documentos do projeto, para acertar nomes e termos da marca. */
   marca?: string;
+  /** O projeto, para o JEV conferir o conjunto (06/10) e o uso cair na conta certa. */
+  projectId?: string | null;
 }
 
 export interface ConteudoDoInfografico {
@@ -67,7 +71,9 @@ async function extractContent(
   postContent: string,
   niche: string,
   apiKey: string,
-  regras?: RegrasDoInfografico
+  regras?: RegrasDoInfografico,
+  /** A segunda tentativa, depois do veto do JEV: o que não repetir. */
+  evitar?: string
 ): Promise<ConteudoDoInfografico> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -101,6 +107,8 @@ ${regras?.marca ? `\nContexto da marca (para acertar nomes e termos, NÃO para v
 5. O título NÃO pode começar com rótulos de categoria como "IA:", "AI:", "Tech:", "Digital:", "Inovação:" ou similares. Escreva direto a manchete.
 ${semOferta}${porFunil}
 9. NUNCA abrevie palavra ("exper.", "qtd.", "info."): o texto vai inteiro para a peça. Se não couber no limite, reescreva mais curto com palavras inteiras.
+10. CADA DADO APARECE UMA VEZ SÓ no infográfico inteiro: o número do "highlight" NÃO volta no "stat" de uma seção nem em "keyNumbers", e duas seções não repetem o mesmo número nem a mesma ideia. Sem outro dado com fonte para uma seção, deixe o "stat" dela vazio.${evitar ? `
+11. A versão anterior REPETIU dado no conjunto (${evitar}). Escreva de novo sem nenhuma repetição.` : ""}
 
 Retorne APENAS JSON válido sem markdown:
 {
@@ -152,8 +160,16 @@ export async function desenharInfografico(
   proporcao: ProporcaoPedida,
   direcao: DirecaoDeArte
 ): Promise<string | null> {
+  // A TRAVA DA IDENTIDADE vale para o infográfico também (06/10): marca de
+  // projeto sem identidade aprovada não desenha, e o chamador que sabe esperar
+  // marca a peça como "aguardando a sua identidade visual".
+  if (direcao.marca) exigirIdentidadeAprovada(direcao.marca);
   const marca = direcao.marca ?? { familia: "impacto" as const, cores: coresDaMarca(null) };
-  const jpeg = await montarInfograficoEmCodigo(content, marca, proporcao);
+  // A guarda pura do número repetido vale em todo caminho (conteúdo antigo,
+  // refazer, chat): o mesmo número nunca sai em dois lugares da peça.
+  const { conteudo, removidos } = semNumerosRepetidos(content);
+  if (removidos.length) console.warn(`[Infographic] número repetido tirado da peça: ${removidos.join("; ")}`);
+  const jpeg = await montarInfograficoEmCodigo(conteudo, marca, proporcao);
   return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
 }
 
@@ -167,7 +183,28 @@ export async function extrairConteudoDoInfografico(
   apiKey: string,
   regras?: RegrasDoInfografico
 ): Promise<ConteudoDoInfografico> {
-  return extractContent(postContent, niche, apiKey, regras);
+  const primeira = await extractContent(postContent, niche, apiKey, regras);
+  // O JEV confere o CONJUNTO (06/10): o mesmo dado no destaque e num cartão,
+  // ou dois cartões dizendo a mesma coisa, é vetado e a extração roda de novo
+  // uma vez sabendo o que não repetir. O JEV decide; o Gemini só escreve.
+  const conjunto = (c: ConteudoDoInfografico) => ({
+    destaque: c.highlight?.value ? `${c.highlight.value} ${c.highlight.label ?? ""}`.trim() : undefined,
+    cartoes: (c.sections ?? []).map((s) => [s.heading, s.stat, s.body].filter(Boolean).join(" | ")),
+    rodape: (c.keyNumbers ?? []).map((n) => `${n.value} ${n.label ?? ""}`.trim()),
+  });
+  const veto = await infograficoRepeteDado({ projectId: regras?.projectId, conjunto: conjunto(primeira) });
+  let escolhida = primeira;
+  if (veto.repete) {
+    console.warn(`[Infographic] o JEV vetou o conjunto por dado repetido (${veto.nota?.toFixed(2)}); extraio de novo uma vez.`);
+    const repetidos = semNumerosRepetidos(primeira).removidos;
+    escolhida = await extractContent(postContent, niche, apiKey, regras, repetidos.length ? repetidos.join("; ") : "um dado ou ideia aparece em dois lugares").catch((e) => {
+      console.warn("[Infographic] a segunda extração falhou, fica a primeira com a guarda pura:", e instanceof Error ? e.message : e);
+      return primeira;
+    });
+  }
+  const { conteudo, removidos } = semNumerosRepetidos(escolhida);
+  if (removidos.length) console.warn(`[Infographic] número repetido tirado do conjunto: ${removidos.join("; ")}`);
+  return conteudo;
 }
 
 /**
@@ -189,7 +226,7 @@ export async function generateInfographic(
   },
   regras?: RegrasDoInfografico
 ): Promise<string> {
-  const content = await extractContent(postContent, niche, apiKey, regras);
+  const content = await extrairConteudoDoInfografico(postContent, niche, apiKey, regras);
   console.log(`[Infographic] Conteudo extraido - secoes: ${content.sections.length}, proporcao: ${proporcao}`);
 
   // Montado em codigo (ver desenharInfografico): nao ha modelo de imagem para

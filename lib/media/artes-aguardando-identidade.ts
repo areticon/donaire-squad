@@ -195,7 +195,7 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
     laminas = carrossel.urls.length;
   } else if (base.mediaType === "infographic") {
     const chave = process.env.GEMINI_API_KEY ?? "";
-    const conteudo = await extrairConteudoDoInfografico(texto, nicho ?? "negocios", chave, { funil: config?.funnelStage });
+    const conteudo = await extrairConteudoDoInfografico(texto, nicho ?? "negocios", chave, { funil: config?.funnelStage, projectId: args.projectId });
     const arte = await produzirArtePorRede({
       redes,
       contentType: "infographic",

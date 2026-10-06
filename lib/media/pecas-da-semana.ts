@@ -3,12 +3,13 @@ import { prisma } from "@/lib/db/prisma";
 import { askClaude } from "@/lib/claude";
 import { generateImage } from "@/lib/media/nano-banana";
 import { direcaoDaPeca, escolherEstilo, paletaDoProjeto } from "@/lib/media/direcao-de-arte";
-import { generateInfographic } from "@/lib/media/infographic";
+import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/infographic";
 import { cenaDaFrase, layoutDaPeca, marcaDaArte, modeloDaMarca, pecaComFraseEmCodigo } from "@/lib/media/arte-com-frase";
 import { avisoDoRecuo } from "@/lib/media/aviso-da-arte";
 import { fraseCompleta, fraseGarantida, pareceTruncada, TETO_DA_FRASE } from "@/lib/media/frase-da-arte";
 import { conferirArte } from "@/lib/media/conferencia-da-arte";
 import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
+import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import type { FormatoDaRede } from "@/lib/media/formatos-das-redes";
 import { formatoDaPeca, gruposDeFormato } from "@/lib/media/formatos-das-redes";
 import { FORMATO_DA_REDE } from "@/lib/pipeline/levar-para-outra-rede";
@@ -670,8 +671,14 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
      * arte e marcado, o card da Diana explica, e nada de imagem é pago. Quem
      * gera depois é lib/media/artes-aguardando-identidade.ts, pelo mesmo
      * caminho (`arteDoDia`). Antes de 05/10 este dia escapava da trava.
+     *
+     * 06/10: o INFOGRÁFICO também. Ele ficou de fora desta conta (só imagem e
+     * carrossel liam a marca aqui), e a campanha do Demandou de 06/10 saiu
+     * com a imagem e o carrossel esperando e o infográfico desenhado num
+     * estilo que ninguém escolheu (a família "colagem" herdada do estilo
+     * de VÍDEO Vox). Toda peça com arte passa pela mesma trava.
      */
-    const marcaDoDia = formato === "image" || formato === "carousel" ? await marcaDaArte(video.projectId, { runId: run.id }) : null;
+    const marcaDoDia = tipoGeraArte(formato) ? await marcaDaArte(video.projectId, { runId: run.id }) : null;
     if (marcaDoDia) marcaDoDia.videoJobId = video.id;
     const aguardandoIdentidade = Boolean(marcaDoDia && marcaDoDia.identidadeAprovada === false);
     const TEXTO_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. Nenhum crédito de imagem foi gasto; a arte sai depois da aprovação.`;
@@ -861,6 +868,26 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           });
           await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases } }));
         }
+      } else if (formato === "infographic" && aguardandoIdentidade) {
+        // Sem identidade aprovada o infográfico espera como a imagem e o
+        // carrossel: a legenda sai, o post nasce sem arte e marcado, e nada de
+        // extração nem de desenho roda. "Aprovar e gerar" desenha depois
+        // (lib/media/artes-aguardando-identidade.ts, ramo do infográfico).
+        const legenda = await aberturas.escrever(
+          DIAS[dia],
+          (proibidas) =>
+            escreverTexto(persona, prefixo, `${contexto}${proibidas}
+
+Esta legenda acompanha um INFOGRÁFICO com os dados do briefing (se o briefing não tem dado com fonte, o infográfico organiza as teses do vídeo). Cite no texto só o que está no briefing.`, principal, usage(redator.agentId)),
+          (t) => t,
+          { ajustar: semTopo }
+        );
+        const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "infographic", imageUrl: null, extra: { aguardandoIdentidade: true } });
+        await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
+        await gravarCard(AGENTES.diana, { content: `${TEXTO_AGUARDANDO}
+
+Infográfico com os dados do briefing do Roberto.`, mediaType: "infographic", mediaUrl: null, postId, extra: { rede: principal, aguardandoIdentidade: true } });
+        await levarParaAsOutras(postId, legenda, () => ({ mediaType: "infographic", imageUrl: null, extra: { aguardandoIdentidade: true } }));
       } else if (formato === "infographic") {
         const legenda = await aberturas.escrever(
           DIAS[dia],
@@ -883,24 +910,32 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           // também, pela mesma razão da esteira (18/09).
           preferido: (run.config as { mediaStyle?: string } | null)?.mediaStyle,
         });
-        const marca = await marcaDaArte(video.projectId);
+        const marca = marcaDoDia ?? (await marcaDaArte(video.projectId));
+        // UMA extração para todas as proporções (06/10): extrair por proporção
+        // pagava duas chamadas e dava dois infográficos com textos diferentes
+        // no mesmo dia (o do Instagram e o do LinkedIn não batiam).
+        const conteudo = await Promise.race([
+          extrairConteudoDoInfografico(fonte, video.project.niche ?? "negocios", geminiKey, { projectId: video.projectId }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Infografico passou de 120s")), 120_000)),
+        ]);
         // O formato sai da tabela das redes desde 19/09, e desde 30/09 é um
         // infográfico por PROPORÇÃO das redes do dia (Instagram em retrato, o
         // resto em paisagem); o recorte final deixa cada um no tamanho exato.
         const artes = await artesPorRede(async (formatoDaRede) => {
-          const bruta = await Promise.race([
-            // `marca` decide o infográfico desde 30/09: ele é montado em código
-            // com a família da linguagem e as cores do projeto (infographic.ts).
-            generateInfographic(fonte, video.project.niche ?? "negocios", geminiKey, formatoDaRede.proporcao, { estilo: estilo.prompt, paleta: paletaDoProjeto(video.project.colorPalette), marca }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Infografico passou de 120s")), 120_000)),
-          ]);
+          // `marca` decide o infográfico desde 30/09: ele é montado em código
+          // com a família da linguagem e as cores do projeto (infographic.ts).
+          const bruta = await desenharInfografico(conteudo, geminiKey, formatoDaRede.proporcao, { estilo: estilo.prompt, paleta: paletaDoProjeto(video.project.colorPalette), marca });
+          if (!bruta) throw new Error("Nao foi possivel montar o infografico.");
           return (await ajustarParaFormato(bruta, formatoDaRede)).dataUri;
         });
         const url = artes.get(principal) ?? [...artes.values()][0];
-        const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "infographic", imageUrl: url });
+        // O CONTEÚDO EXTRAÍDO FICA NO POST (06/10): recompor o infográfico (regra
+        // nova de caber, identidade aprovada depois) passa a ser composição local
+        // e grátis, sem extrair de novo (scripts/tmp/infografico-volta-a-espera-0610.mts).
+        const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "infographic", imageUrl: url, extra: { infografico: conteudo } });
         await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
         await gravarCard(AGENTES.diana, { content: "Infográfico com os dados do briefing do Roberto.", mediaType: "infographic", mediaUrl: url, postId, extra: { rede: principal } });
-        await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "infographic", imageUrl: artes.get(rede) ?? url }));
+        await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "infographic", imageUrl: artes.get(rede) ?? url, extra: { infografico: conteudo } }));
       }
       escritos++;
       // Card de espera que ninguém aproveitou sai (04/10): o "Lucas está

@@ -10,7 +10,7 @@ import {
   type ImagemGerada,
   type TipoDeImagem,
 } from "@/lib/media/imagem-higgsfield";
-import { ehSemSaldoDaOpenAI, gerarImagemOpenAIComCusto, temChaveDaOpenAI, type QualidadeDaOpenAI } from "@/lib/media/gpt-image";
+import { ehSemSaldoDaOpenAI, gerarImagemOpenAIComCusto, SemSaldoNaOpenAI, temChaveDaOpenAI, type QualidadeDaOpenAI } from "@/lib/media/gpt-image";
 /**
  * Geração de imagem. Desde 01/10 a PRIMEIRA opção é a Higgsfield, com o
  * modelo escolhido por tipo de imagem (lib/media/imagem-higgsfield.ts: GPT
@@ -421,7 +421,7 @@ export async function gerarImagem(
     }
   }
   if (!opcoes.outroModelo && ehDaOpenAI(gerador)) {
-    const r = await tentarOpenAI(prompt, aspectRatio, contexto, gerador === "openai-gpt-image-2-low" ? "low" : "medium");
+    const r = await tentarOpenAI(prompt, aspectRatio, contexto, gerador === "openai-gpt-image-2-low" ? "low" : "medium", { pararSemSaldo: tipo === "arte" });
     if (r) return r;
     // OpenAI na frente e fora do ar (01/10): o próximo mais barato é o GPT
     // Image 2.5 na Higgsfield (US$ 0,025), não o Google (US$ 0,101).
@@ -435,7 +435,7 @@ export async function gerarImagem(
   // (01/10): US$ 0,0064 medido contra US$ 0,101 do Nano Banana 2 em 2K. Só na arte,
   // que foi o que o Bruno pediu; colagem e fundo não passaram por prova nele.
   if (tipo === "arte" && gerador !== "google" && gerador !== "openai-gpt-image-2-low") {
-    const r = await tentarOpenAI(prompt, aspectRatio, contexto, "low");
+    const r = await tentarOpenAI(prompt, aspectRatio, contexto, "low", { pararSemSaldo: true });
     if (r) return r;
   }
   return gerarNoGoogle(prompt, aspectRatio, quality, contexto);
@@ -450,14 +450,38 @@ function proporcaoDaOpenAI(a: AspectRatio): "4:5" | "16:9" | "1:1" {
 /** Sem saldo na OpenAI não melhora sozinho: 15 min sem tentar, neste processo. */
 let openAISemSaldoAte = 0;
 
-async function tentarOpenAI(prompt: string, aspectRatio: AspectRatio, ctx: ContextoMidia, qualidade: QualidadeDaOpenAI): Promise<ImagemGerada | null> {
-  if (!temChaveDaOpenAI() || Date.now() < openAISemSaldoAte) return null;
+/**
+ * ARTE SEM SALDO PARA, NÃO TROCA DE MODELO CALADA (06/10/2026).
+ *
+ * Com `pararSemSaldo` (a arte do feed), a conta sem saldo LANÇA o erro de
+ * saldo em vez de devolver null e deixar a cascata seguir para outro modelo:
+ * a peça do cliente não sai num traço de reserva que ninguém escolheu. O erro
+ * de saldo sobe pela composição (arte-com-frase relança) e a fila espera o
+ * saldo voltar (lib/fila/saldo-zerado.ts). Os outros tipos (fundo, elemento,
+ * cenário, colagem do vídeo) seguem com o recuo de antes.
+ */
+async function tentarOpenAI(
+  prompt: string,
+  aspectRatio: AspectRatio,
+  ctx: ContextoMidia,
+  qualidade: QualidadeDaOpenAI,
+  opcoes: { pararSemSaldo?: boolean } = {}
+): Promise<ImagemGerada | null> {
+  if (!temChaveDaOpenAI()) return null;
+  if (Date.now() < openAISemSaldoAte) {
+    if (opcoes.pararSemSaldo) throw new SemSaldoNaOpenAI();
+    return null;
+  }
   try {
     return await gerarImagemOpenAIComCusto(prompt, proporcaoDaOpenAI(aspectRatio), ctx, qualidade);
   } catch (e) {
     if (ehSemSaldoDaOpenAI(e)) {
       openAISemSaldoAte = Date.now() + 15 * 60_000;
-      console.error("[imagem] OpenAI SEM SALDO: a arte vai ao Google por 15 min. Saldo em platform.openai.com/settings/organization/billing.");
+      if (opcoes.pararSemSaldo) {
+        console.error("[imagem] OpenAI SEM SALDO: a arte PARA (sem trocar de modelo) até o saldo voltar. Saldo em platform.openai.com/settings/organization/billing.");
+        throw e;
+      }
+      console.error("[imagem] OpenAI SEM SALDO: esta imagem (não é arte do feed) vai ao Google por 15 min. Saldo em platform.openai.com/settings/organization/billing.");
     } else {
       console.warn(`[imagem] OpenAI ${qualidade} falhou, sigo para o Google: ${e instanceof Error ? e.message : e}`);
     }

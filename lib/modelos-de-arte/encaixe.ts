@@ -21,6 +21,8 @@ export function larguraDoTexto(texto: string, fonte: FonteId, espacamento = 0): 
 export interface Encaixe {
   linhas: string[];
   corpo: number;
+  /** Não coube nem no corpo mínimo: a última linha ganhou reticência (e o log avisou). */
+  cortado?: boolean;
 }
 
 export function encaixar(o: {
@@ -71,7 +73,21 @@ export function encaixar(o: {
     }
     return { linhas: melhor.map((l) => l.join(" ")), corpo };
   }
-  return { linhas: quebrar(o.largura / minimo).map((l) => l.join(" ")), corpo: minimo };
+  // NO CORPO MÍNIMO E SEM CABER (06/10): antes as linhas saíam todas e
+  // passavam da caixa, por cima do que vinha embaixo. Agora ficam só as que
+  // cabem (e o máximo de linhas), a última com reticência, e o corte vai ao
+  // log. Vale para todo modelo do book: a regra de caber não é de um estilo.
+  const limite = o.largura / minimo;
+  const todas = quebrar(limite);
+  const cabem = Math.max(1, Math.min(o.maxLinhas ?? Infinity, Math.floor(o.altura / (minimo * o.entrelinha) + 1e-6)));
+  if (todas.length <= cabem) return { linhas: todas.map((l) => l.join(" ")), corpo: minimo };
+  const ficam = todas.slice(0, cabem);
+  let ultima = [...ficam[cabem - 1], ...todas[cabem]];
+  const comReticencia = (ws: string[]) => `${ws.join(" ").replace(/[\s,;:.\-]+$/, "")}…`;
+  while (ultima.length > 1 && larguraDoTexto(comReticencia(ultima), o.fonte, esp) + folga > limite) ultima = ultima.slice(0, -1);
+  ficam[cabem - 1] = [comReticencia(ultima)];
+  console.warn(`[encaixe] "${o.texto.slice(0, 60)}" não coube nem no corpo mínimo (${minimo}); ficaram ${cabem} linha(s), com reticência.`);
+  return { linhas: ficam.map((l) => l.join(" ")), corpo: minimo, cortado: true };
 }
 
 /** A palavra que leva o destaque: a que tem número primeiro, senão a mais longa (sem pontuação). */

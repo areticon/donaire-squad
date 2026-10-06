@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { AvisoDaIdentidade } from "@/components/modelos-de-arte/aviso-da-identidade";
+import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { MateriaisDaCampanha } from "@/components/materiais/materiais-da-campanha";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
 import { avisoDaCota, type CotaDoCliente } from "@/lib/media/cota-do-dia";
@@ -1372,6 +1374,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [materiaisDaCampanha, setMateriaisDaCampanha] = useState<string[]>([]);
   // A IDENTIDADE APROVADA (05/10): sem ela, a campanha sai com os textos e as artes ficam esperando, sem gastar. Null até o book responder.
   const [identidadeAprovada, setIdentidadeAprovada] = useState<boolean | null>(null);
+  // A campanha tem dia de arte (imagem, carrossel, infográfico)? É o que decide o aviso do estilo (06/10).
+  const campanhaTemArte = campaignMode === "single" ? tipoGeraArte(singleContentType) : Object.values(weeklySchedule).some((v) => tipoGeraArte(v));
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -2992,12 +2996,10 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
             </div>
           ) : (
             <div className="flex flex-col items-end gap-1">
-              {identidadeAprovada === false && (
-                // A trava da identidade (05/10): avisa antes de gerar, sem barrar os textos.
-                <p className="max-w-[260px] text-right text-[10px] leading-snug" style={{ color: "#ea580c" }}>
-                  Identidade visual sem aprovação: os textos saem e as artes ficam aguardando, sem gastar. Aprove no passo do estilo ou em Configurações.
-                </p>
-              )}
+              {/* A trava da identidade (05/10): avisa antes de gerar, sem barrar os textos.
+                  06/10: com o link direto para Modelos de arte, e lendo o estado
+                  sozinho quando o book não apareceu nesta campanha. */}
+              <AvisoDaIdentidade projectId={projectId} temArte={campanhaTemArte} aprovada={identidadeAprovada === null ? undefined : identidadeAprovada} compacto />
               <Button onClick={handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
                 <Zap className="w-4 h-4" />
                 {conferindoSobreposicao ? "Conferindo os dias..." : "Gerar campanha"}
