@@ -129,6 +129,19 @@ export function ordenarPorUso<T extends { usos: number; createdAt: string }>(lis
 }
 
 /** Filtra por tipo e por busca (nome, descrição e pedido, que chega vazio quando é de outro cliente). */
+/**
+ * NADA DUAS VEZES NA MESMA TELA (06/10): em Configurações > Modelos de arte o
+ * book já mostra cada modelo de imagem do catálogo, nas cores da marca. A
+ * biblioteca logo abaixo tira esses (design de imagem cujo catalogoId é um id
+ * do book) e fica com o que o book não tem: os estilos de vídeo e os designs
+ * escritos pelos clientes.
+ */
+export function foraDoBook<T extends Pick<DesignDaGaleria, "tipo" | "catalogoId">>(lista: T[], idsDoBook: Iterable<string> | null | undefined): T[] {
+  const ids = new Set(idsDoBook ?? []);
+  if (!ids.size) return lista;
+  return lista.filter((d) => !(d.tipo === "imagem" && d.catalogoId && ids.has(d.catalogoId)));
+}
+
 export function filtrarGaleria<T extends DesignDaGaleria>(lista: T[], tipo: TipoDeDesign | "todos", busca: string): T[] {
   const b = textoDeBusca(busca);
   return lista.filter((d) => (tipo === "todos" || d.tipo === tipo) && (!b || textoDeBusca(`${d.nome} ${d.descricao} ${d.pedidoOriginal}`).includes(b)));

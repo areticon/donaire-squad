@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { Check, Loader2, X, LayoutTemplate, Palette, Sparkles, AlertTriangle, ArrowLeft } from "lucide-react";
@@ -8,17 +8,17 @@ import { avisoDaTroca, fraseDaAprovacao, type OQueMudou } from "@/lib/modelos-de
 import { cn } from "@/lib/utils";
 import {
   LETRAS,
-  NEUTROS,
   ROTULO_DO_PAPEL,
   checarContraste,
+  opcoesDoPapel,
   type ChecagemDeContraste,
   type LetraId,
   type PapeisEscolhidos,
   type PapelDaCor,
 } from "@/lib/modelos-de-arte/identidade";
 import {
-  CATEGORIAS_DOS_MODELOS,
   MODELOS_DE_ARTE,
+  agruparPorUso,
   ROTULO_DO_FORMATO,
   TAMANHO_DO_FORMATO,
   modeloPorId,
@@ -26,6 +26,7 @@ import {
   type ModeloDeArte,
 } from "@/lib/modelos-de-arte/catalogo";
 import { desenharModelo, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
+import { contraste } from "@/lib/media/papeis-da-paleta";
 import { FONTES, URL_DAS_FONTES } from "@/lib/modelos-de-arte/fontes";
 import { textosDeExemplo } from "@/lib/modelos-de-arte/textos-de-exemplo";
 import { FOTOS_DA_IDENTIDADE, tratamentoDasFotos, type FotosDaIdentidade, type TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
@@ -58,6 +59,14 @@ import { FOTOS_DA_IDENTIDADE, tratamentoDasFotos, type FotosDaIdentidade, type T
  * destaque; a hierarquia da marca vem preenchida), vê a prévia ao vivo com o
  * texto dele nos modelos escolhidos, lê a checagem de contraste (4,5:1 para o
  * título) e aperta "Aprovar e gerar". Sem isso a esteira não gasta com arte.
+ *
+ * 06/10, O BOOK ORGANIZADO: a marca (letra, cores, fotos, aprovação) vem no
+ * INÍCIO da página; depois o book por uso (lib/modelos-de-arte/catalogo.ts,
+ * USOS_DOS_MODELOS), cada modelo UMA vez, já nas cores da marca, com o nome,
+ * o para quê, o selo de escolhido e a contagem por grupo e no topo. A segunda
+ * vitrine (prévia ao vivo dos escolhidos) saiu: o texto do cliente entra nos
+ * próprios cartões. As cores vêm da paleta salva em Configurações (fonte
+ * única, lib/modelos-de-arte/identidade.ts).
  */
 
 interface MarcaDaGaleria {
@@ -253,6 +262,8 @@ function CartaoDoModelo({
   aoAlternar,
   aoAbrir,
   letra,
+  titulo,
+  tratamento,
 }: {
   modelo: ModeloDeArte;
   marca: MarcaDaGaleria;
@@ -263,16 +274,21 @@ function CartaoDoModelo({
   aoAlternar: () => void;
   aoAbrir: () => void;
   letra: LetraId;
+  /** O título do cliente (a prévia com o texto dele vale para o book inteiro, 06/10). */
+  titulo?: string;
+  tratamento?: TratamentoDaFoto | null;
 }) {
   const [ref, w] = useLargura<HTMLDivElement>();
   return (
     <div
+      data-modelo-do-book={modelo.id}
+      data-escolhido={escolhido ? "sim" : "nao"}
       className={cn("group flex flex-col overflow-hidden rounded-xl border text-left transition", escolhido ? "ring-2 ring-orange-500" : "hover:border-orange-500/50")}
       style={{ borderColor: escolhido ? "var(--brand)" : "var(--border)", background: "var(--bg-surface)" }}
     >
       <button type="button" onClick={aoAbrir} className="relative block w-full" aria-label={`Ver o modelo ${modelo.nome}`}>
         <div ref={ref} className="flex aspect-[4/5] w-full items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={letra} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
+          <PreviaDoModelo modelo={modelo} formato={formatoDeVitrine(modelo)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={letra} titulo={titulo} tratamento={tratamento} caixa={{ largura: w * 0.92, altura: (w * 5) / 4 * 0.92 }} />
         </div>
         {escolhido && (
           <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-white shadow">
@@ -302,7 +318,13 @@ function CartaoDoModelo({
             )}
             style={escolhido ? undefined : { borderColor: "var(--border)", color: "var(--text-primary)" }}
           >
-            {escolhido ? "Escolhido" : "Escolher"}
+            {escolhido ? (
+              <span className="flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" /> Escolhido
+              </span>
+            ) : (
+              "Escolher"
+            )}
           </button>
         </div>
       </div>
@@ -451,9 +473,6 @@ function ConfirmacaoDaAprovacao({ projectId, frase, aoFicar, compacta }: { proje
   );
 }
 
-/** O título que o cliente digita para a prévia ao vivo; sem ele, o exemplo do nicho. */
-const TITULO_PADRAO_DA_PREVIA = "";
-
 /** Uma bolinha de cor escolhível, com o anel quando é a escolhida. */
 function Bolinha({ cor, escolhida, aoEscolher, rotulo, desabilitada }: { cor: string; escolhida: boolean; aoEscolher: () => void; rotulo: string; desabilitada: boolean }) {
   return (
@@ -467,20 +486,19 @@ function Bolinha({ cor, escolhida, aoEscolher, rotulo, desabilitada }: { cor: st
       className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-50", escolhida ? "ring-2 ring-orange-500 ring-offset-2" : "hover:scale-105")}
       style={{ background: cor, borderColor: "var(--border)", ["--tw-ring-offset-color" as string]: "var(--bg-card)" }}
     >
-      {escolhida && <Check className="h-4 w-4" style={{ color: cor.toLowerCase() === "#ffffff" || cor.toLowerCase() === "#fff" ? "#141414" : "#ffffff" }} />}
+      {escolhida && <Check className="h-4 w-4" style={{ color: contraste(cor, "#141414") > contraste(cor, "#ffffff") ? "#141414" : "#ffffff" }} />}
     </button>
   );
 }
 
 /**
- * A IDENTIDADE DO CLIENTE (05/10): letra, papéis das cores, prévia ao vivo
- * com o texto dele e a checagem de contraste, com o "Aprovar e gerar".
+ * A IDENTIDADE DO CLIENTE (05/10): letra, papéis das cores, o texto dele e a
+ * checagem de contraste, com o "Aprovar e gerar". Desde 06/10 fica no INÍCIO
+ * da página, antes do book, e não desenha uma segunda vitrine: o texto do
+ * cliente entra nos próprios cartões do book.
  */
 function IdentidadeDoCliente({
   identidade,
-  marca,
-  midia,
-  logoProporcao,
   escolha,
   podeMudar,
   estado,
@@ -493,11 +511,11 @@ function IdentidadeDoCliente({
   confirmacao,
   aoFecharConfirmacao,
   projectId,
+  titulo,
+  aoMudarTitulo,
+  aoVerEscolhidos,
 }: {
   identidade: IdentidadeDaTela;
-  marca: MarcaDaGaleria;
-  midia: MidiaDaGaleria;
-  logoProporcao: number | null;
   escolha: string[];
   podeMudar: boolean;
   estado: string;
@@ -511,16 +529,21 @@ function IdentidadeDoCliente({
   confirmacao?: string | null;
   aoFecharConfirmacao?: () => void;
   projectId: string;
+  /** O título do cliente: entra em todos os modelos do book logo abaixo (06/10). */
+  titulo: string;
+  aoMudarTitulo: (t: string) => void;
+  /** Mostra só os escolhidos no book. */
+  aoVerEscolhidos: () => void;
 }) {
-  const [titulo, setTitulo] = useState(TITULO_PADRAO_DA_PREVIA);
-  const [ref, w] = useLargura<HTMLDivElement>();
   const checagens = useMemo(() => checarContraste(identidade.papeis, identidade.paleta), [identidade.papeis, identidade.paleta]);
   const tituloReprovado = checagens.some((c) => c.papel === "titulo" && !c.ok);
-  // Os modelos da prévia ao vivo: os três primeiros escolhidos.
-  const modelosDaPrevia = escolha.map((id) => modeloPorId(id)).filter((m): m is ModeloDeArte => Boolean(m)).slice(0, 3);
-  const colunas = Math.max(1, modelosDaPrevia.length);
-  const larguraDaPrevia = w ? (w - 8 * (colunas - 1)) / colunas : 0;
-  const opcoesDe = (papel: PapelDaCor) => (papel === "titulo" ? [...identidade.paleta, ...NEUTROS] : identidade.paleta);
+  // Os escolhidos, só pelo nome: a prévia de cada um já está no book abaixo,
+  // nas cores da marca; repetir as imagens aqui era o "book duas vezes" (06/10).
+  const escolhidos = escolha.map((id) => modeloPorId(id)).filter((m): m is ModeloDeArte => Boolean(m));
+  const opcoesDe = (papel: PapelDaCor) => opcoesDoPapel(papel, identidade.paleta);
+  // Fotos (06/10, cores da marca só nos detalhes): naturais ou preto e branco.
+  // Tingir a foto na cor da marca só aparece para quem já tinha escolhido.
+  const opcoesDeFotos = (Object.keys(FOTOS_DA_IDENTIDADE) as FotosDaIdentidade[]).filter((id) => id !== "marca" || identidade.fotos === "marca");
   const podeAprovar = podeMudar && escolha.length > 0 && !tituloReprovado && !aprovando;
 
   return (
@@ -532,7 +555,7 @@ function IdentidadeDoCliente({
             Sua identidade: letra e cores
           </h3>
           <p className={cn(compacta ? "text-[10px]" : "text-xs", "mt-0.5")} style={{ color: "var(--text-muted)" }}>
-            Escolha a letra e diga onde cada cor da sua paleta entra. Veja a prévia com o seu texto e aprove: só depois os agentes gastam com arte.
+            As cores são as da sua paleta em Configurações, na aba Marca. Diga onde cada uma entra e escolha a letra: o book abaixo muda na hora. Aprove, e só depois os agentes gastam com arte.
           </p>
         </div>
         <span className="flex flex-wrap items-center gap-1.5">
@@ -630,7 +653,7 @@ function IdentidadeDoCliente({
           Fotos
         </p>
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Como as fotos entram nas artes">
-          {(Object.keys(FOTOS_DA_IDENTIDADE) as FotosDaIdentidade[]).map((id) => {
+          {opcoesDeFotos.map((id) => {
             const f = FOTOS_DA_IDENTIDADE[id];
             const ativa = identidade.fotos === id;
             return (
@@ -655,7 +678,7 @@ function IdentidadeDoCliente({
         </p>
       </div>
 
-      {/* A prévia ao vivo, nos modelos escolhidos, com o texto do cliente. */}
+      {/* O texto do cliente vale para o book inteiro (06/10): sem segunda vitrine aqui. */}
       <div>
         <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }} htmlFor="titulo-da-previa">
           Prévia com o seu texto
@@ -663,29 +686,34 @@ function IdentidadeDoCliente({
         <input
           id="titulo-da-previa"
           value={titulo}
-          onChange={(e) => setTitulo(e.target.value.slice(0, 90))}
-          placeholder="Escreva um título seu para ver na arte (opcional)"
-          className="mb-2 w-full rounded-lg border px-3 py-2 text-sm"
+          onChange={(e) => aoMudarTitulo(e.target.value.slice(0, 90))}
+          placeholder="Escreva um título seu para ver em todos os modelos abaixo (opcional)"
+          className="w-full rounded-lg border px-3 py-2 text-sm"
           style={{ background: "var(--bg-input, var(--bg-elevated))", borderColor: "var(--border)", color: "var(--text-primary)" }}
         />
-        <div ref={ref} className="w-full">
-          {modelosDaPrevia.length ? (
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))` }}>
-              {modelosDaPrevia.map((m) => (
-                <div key={m.id} className="flex flex-col items-center gap-1">
-                  <PreviaDoModelo modelo={m} formato={formatoDeVitrine(m)} marca={marca} midia={midia} logoProporcao={logoProporcao} letra={identidade.letra} titulo={titulo} tratamento={tratamentoDasFotos(identidade.fotos)} caixa={{ largura: larguraDaPrevia, altura: larguraDaPrevia * 1.25 }} />
-                  <span className="line-clamp-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    {m.nome}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="rounded-lg border px-3 py-4 text-center text-xs" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-              Escolha ao menos um modelo acima para ver a prévia com a sua letra e as suas cores.
-            </p>
-          )}
-        </div>
+      </div>
+
+      {/* Os escolhidos, pelo nome, com a contagem. */}
+      <div data-escolhidos-da-identidade>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Seus modelos ({escolhidos.length})
+        </p>
+        {escolhidos.length ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {escolhidos.map((m) => (
+              <span key={m.id} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ borderColor: "var(--brand)", color: "var(--text-primary)" }}>
+                <Check className="h-3 w-3 text-orange-500" /> {m.nome}
+              </span>
+            ))}
+            <button type="button" onClick={aoVerEscolhidos} className="px-1 text-[11px] font-semibold text-orange-500 hover:underline">
+              Ver só os escolhidos
+            </button>
+          </div>
+        ) : (
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Nenhum ainda. Escolha no book abaixo os modelos que combinam com você.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -731,7 +759,10 @@ export function GaleriaDeModelos({
   const [dados, setDados] = useState<{ marca: MarcaDaGaleria; podeMudar: boolean; midia: MidiaDaGaleria } | null>(null);
   const [escolha, setEscolha] = useState<string[]>([]);
   const [identidade, setIdentidade] = useState<IdentidadeDaTela | null>(null);
-  const [categoria, setCategoria] = useState<string>("Todos");
+  // O filtro do book (06/10): "todos", "escolhidos" ou o id de um uso.
+  const [filtro, setFiltro] = useState<string>("todos");
+  const [titulo, setTitulo] = useState("");
+  const tituloDoBook = useDeferredValue(titulo);
   const [aberto, setAberto] = useState<string | null>(null);
   const [estado, setEstado] = useState<"" | "guardando" | "guardado" | "erro">("");
   const [estadoDaIdentidade, setEstadoDaIdentidade] = useState<string>("");
@@ -906,13 +937,22 @@ export function GaleriaDeModelos({
   // As prévias já saem nos papéis escolhidos (fundo, título, destaque) e na letra.
   const marca: MarcaDaGaleria = identidade ? { ...dados.marca, cores: { ...dados.marca.cores, papeis: identidade.papeis } } : dados.marca;
   const letra: LetraId = identidade?.letra ?? "moderna";
-  const categorias = ["Todos", "Escolhidos", ...CATEGORIAS_DOS_MODELOS];
-  const lista = MODELOS_DE_ARTE.filter((m) => (categoria === "Todos" ? true : categoria === "Escolhidos" ? escolha.includes(m.id) : m.categoria === categoria));
+  const tratamento = identidade ? tratamentoDasFotos(identidade.fotos) : null;
+  // O BOOK POR USO (06/10): cada modelo uma vez, no grupo do que ele serve.
+  const grupos = agruparPorUso(MODELOS_DE_ARTE);
+  const gruposNaTela =
+    filtro === "todos"
+      ? grupos
+      : filtro === "escolhidos"
+        ? agruparPorUso(MODELOS_DE_ARTE.filter((m) => escolha.includes(m.id)))
+        : grupos.filter((g) => g.uso.id === filtro);
   const modeloAberto = aberto ? modeloPorId(aberto) : undefined;
   const compacta = variante === "compacta";
+  const avisoDoGuardar = !podeMudar ? "Só o dono da conta muda os modelos." : estado === "guardando" ? "Guardando..." : estado === "guardado" ? "Guardado no projeto." : estado === "erro" ? "Não consegui guardar; tente de novo." : "";
+  const papeis = [marca.cores.papeis?.fundo ?? marca.cores.escuro, marca.cores.papeis?.titulo ?? marca.cores.claro, marca.cores.papeis?.destaque ?? marca.cores.acento];
 
   return (
-    <section className="space-y-3" aria-labelledby="book-de-modelos">
+    <section className="space-y-4" aria-labelledby="book-de-modelos">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 id="book-de-modelos" className={cn("flex items-center gap-2 font-semibold", compacta ? "text-xs" : "text-lg")} style={{ color: "var(--text-primary)" }}>
@@ -920,74 +960,29 @@ export function GaleriaDeModelos({
             Book de modelos: sua arte vai ficar assim
           </h2>
           <p className={cn(compacta ? "text-[10px]" : "text-sm", "mt-0.5")} style={{ color: "var(--text-muted)" }}>
-            Cada modelo já nas suas cores, com o seu logo e um texto do seu nicho. Escolha um ou mais: as próximas artes saem nesses moldes, sem surpresa.
+            Primeiro a sua marca (letra e cores); depois cada modelo, uma vez só, já nas suas cores, separado pelo que ele serve. Escolha um ou mais: as próximas artes saem nesses moldes.
           </p>
         </div>
-        <div className="flex items-center gap-1.5" title="As cores nos papéis escolhidos: fundo, título e destaque">
-          {[marca.cores.papeis?.fundo ?? marca.cores.escuro, marca.cores.papeis?.titulo ?? marca.cores.claro, marca.cores.papeis?.destaque ?? marca.cores.acento].map((c, i) => (
-            <span key={`${c}-${i}`} className="h-5 w-5 rounded-full border" style={{ background: c, borderColor: "var(--border)" }} />
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {categorias.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setCategoria(c)}
-            className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors", categoria === c ? "bg-orange-500 text-white" : "border hover:border-orange-500/50")}
-            style={categoria === c ? undefined : { borderColor: "var(--border)", color: "var(--text-primary)" }}
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1" title="As cores nos papéis escolhidos: fundo, título e destaque" data-cores-do-book>
+            {papeis.map((c, i) => (
+              <span key={`${c}-${i}`} className="h-5 w-5 rounded-full border" style={{ background: c, borderColor: "var(--border)" }} />
+            ))}
+          </span>
+          <span
+            data-contagem-de-escolhidos={escolha.length}
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            style={escolha.length ? { background: "rgba(249,115,22,0.15)", color: "#ea580c" } : { background: "var(--bg-elevated)", color: "var(--text-muted)" }}
           >
-            {c}
-            {c === "Escolhidos" ? ` (${escolha.length})` : ""}
-          </button>
-        ))}
-      </div>
-
-      {lista.length === 0 ? (
-        <p className="rounded-lg border px-3 py-6 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          Nenhum modelo escolhido ainda. Toque em &quot;Escolher&quot; nos que combinam com a sua marca.
-        </p>
-      ) : (
-        <div className={cn("grid gap-3", compacta ? "max-h-[440px] grid-cols-2 overflow-y-auto pr-1 sm:grid-cols-3" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-4")}>
-          {lista.map((m) => (
-            <CartaoDoModelo
-              key={m.id}
-              modelo={m}
-              marca={marca}
-              midia={midia}
-              logoProporcao={logoProporcao}
-              escolhido={escolha.includes(m.id)}
-              podeMudar={podeMudar}
-              aoAlternar={() => alternar(m.id)}
-              aoAbrir={() => setAberto(m.id)}
-              letra={letra}
-            />
-          ))}
+            {escolha.length === 1 ? "1 escolhido" : `${escolha.length} escolhidos`}
+          </span>
         </div>
-      )}
-
-      <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
-        {escolha.length ? (
-          <>
-            <b style={{ color: "var(--text-primary)" }}>
-              {escolha.length} {escolha.length === 1 ? "modelo escolhido" : "modelos escolhidos"}:
-            </b>{" "}
-            {escolha.map((id) => modeloPorId(id)?.nome).filter(Boolean).join(", ")}. As artes alternam entre eles conforme o formato e o texto do dia.
-          </>
-        ) : (
-          "Sem modelo escolhido, nenhuma arte é gerada: escolha ao menos um e aprove a identidade abaixo."
-        )}
-        <span className="ml-2 opacity-80">{!podeMudar ? "Só o dono da conta muda os modelos." : estado === "guardando" ? "Guardando..." : estado === "guardado" ? "Guardado no projeto." : estado === "erro" ? "Não consegui guardar; tente de novo." : ""}</span>
       </div>
 
+      {/* 1. A MARCA NO INÍCIO (06/10): letra, cores, fotos e aprovação, antes do book. */}
       {identidade && (
         <IdentidadeDoCliente
           identidade={identidade}
-          marca={marca}
-          midia={midia}
-          logoProporcao={logoProporcao}
           escolha={escolha}
           podeMudar={podeMudar}
           estado={estadoDaIdentidade}
@@ -1000,8 +995,92 @@ export function GaleriaDeModelos({
           confirmacao={confirmacao}
           aoFecharConfirmacao={() => setConfirmacao(null)}
           projectId={projectId}
+          titulo={titulo}
+          aoMudarTitulo={setTitulo}
+          aoVerEscolhidos={() => setFiltro("escolhidos")}
         />
       )}
+
+      {/* 2. O BOOK, por uso, cada modelo uma vez. */}
+      <div className="space-y-3">
+        <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Filtrar o book">
+          {[
+            { id: "todos", nome: "Todos", n: MODELOS_DE_ARTE.length },
+            { id: "escolhidos", nome: "Escolhidos", n: escolha.length },
+            ...grupos.map((g) => ({ id: g.uso.id, nome: g.uso.nome, n: g.modelos.length })),
+          ].map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={filtro === c.id}
+              onClick={() => setFiltro(c.id)}
+              className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors", filtro === c.id ? "bg-orange-500 text-white" : "border hover:border-orange-500/50")}
+              style={filtro === c.id ? undefined : { borderColor: "var(--border)", color: "var(--text-primary)" }}
+            >
+              {c.nome} ({c.n})
+            </button>
+          ))}
+        </div>
+        {avisoDoGuardar && (
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {avisoDoGuardar}
+          </p>
+        )}
+
+        {gruposNaTela.length === 0 ? (
+          <p className="rounded-lg border px-3 py-6 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+            Nenhum modelo escolhido ainda. Toque em &quot;Escolher&quot; nos que combinam com a sua marca.
+          </p>
+        ) : (
+          <div className={cn("space-y-5", compacta && "max-h-[440px] overflow-y-auto pr-1")}>
+            {gruposNaTela.map(({ uso, modelos }) => {
+              const escolhidosNoGrupo = modelos.filter((m) => escolha.includes(m.id)).length;
+              return (
+                <section key={uso.id} aria-labelledby={`uso-${uso.id}`} data-uso-do-book={uso.id}>
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b pb-1.5" style={{ borderColor: "var(--border)" }}>
+                    <div className="min-w-0">
+                      <h3 id={`uso-${uso.id}`} className={cn("font-semibold", compacta ? "text-xs" : "text-sm")} style={{ color: "var(--text-primary)" }}>
+                        {uso.nome}
+                      </h3>
+                      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                        {uso.serve}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-medium" style={{ color: escolhidosNoGrupo ? "#ea580c" : "var(--text-muted)" }}>
+                      {escolhidosNoGrupo} de {modelos.length} escolhidos
+                    </span>
+                  </div>
+                  <div className={cn("grid gap-3", compacta ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-4")}>
+                    {modelos.map((m) => (
+                      <CartaoDoModelo
+                        key={m.id}
+                        modelo={m}
+                        marca={marca}
+                        midia={midia}
+                        logoProporcao={logoProporcao}
+                        escolhido={escolha.includes(m.id)}
+                        podeMudar={podeMudar}
+                        aoAlternar={() => alternar(m.id)}
+                        aoAbrir={() => setAberto(m.id)}
+                        letra={letra}
+                        titulo={tituloDoBook}
+                        tratamento={tratamento}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+
+        {escolha.length === 0 && (
+          <p className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+            Sem modelo escolhido, nenhuma arte é gerada: escolha ao menos um e aprove a identidade acima.
+          </p>
+        )}
+      </div>
 
       {modeloAberto && (
         <FichaDoModelo

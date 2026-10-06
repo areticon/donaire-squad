@@ -11,6 +11,10 @@ import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { RedesNasConfiguracoes } from "@/components/projects/redes-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
+import { MODELOS_DE_ARTE } from "@/lib/modelos-de-arte/catalogo";
+
+/** Os ids do book: a biblioteca na mesma aba não repete esses modelos (06/10). */
+const IDS_DO_BOOK = MODELOS_DE_ARTE.map((m) => m.id);
 import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
 import { GemeoNasConfiguracoes } from "@/components/gemeo/gemeo-nas-configuracoes";
 import type { CadastroDoGemeo } from "@/lib/media/gemeo";
@@ -319,12 +323,13 @@ export function ConfiguracaoDoProjeto({
       {/* O BOOK DE MODELOS (03/10): mudar de modelo depois mora aqui. */}
       {aba === "modelos" && (
         <>
-          {/* A BIBLIOTECA DE DESIGN (06/10): do mais usado ao menos, feita pelos pedidos dos clientes; escolher um ou escrever o seu. */}
-          <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <GaleriaDaBiblioteca projectId={projeto.id} />
-          </section>
-          <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+          {/* O BOOK primeiro (06/10): a marca no início e cada modelo uma vez, nas cores da marca. */}
+          <section className="rounded-xl border p-4 sm:p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
             <GaleriaDeModelos projectId={projeto.id} />
+          </section>
+          {/* A BIBLIOTECA DE DESIGN (06/10) abaixo, sem os modelos que o book já mostrou: estilos de vídeo e designs escritos pelos clientes. */}
+          <section className="rounded-xl border p-4 sm:p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+            <GaleriaDaBiblioteca projectId={projeto.id} idsDoBook={IDS_DO_BOOK} titulo="Mais designs: estilos de vídeo e pedidos dos clientes" />
           </section>
         </>
       )}
