@@ -67,7 +67,7 @@ export function ImagemJanela(c: Ctx) {
           style={{
             ...estiloDoTitulo(c, vertical ? 46 : 40),
             marginTop: 16 * u,
-            textAlign: vertical || lado === "topo" ? "center" : "left",
+            textAlign: vertical || lado === "topo" || lado === "centro" ? "center" : "left",
             color: pedida ?? (papel ? (tema.vox?.tinta ?? "#1b1a17") : "#ffffff"),
             background: papel && !pedida ? (tema.vox?.realce ?? rgba(tema.acento, 0.85)) : "transparent",
             display: papel ? "inline-block" : "block",
