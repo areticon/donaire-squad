@@ -87,7 +87,7 @@ import {
   type PlanoDoDiretor,
 } from "@/lib/media/editor-por-comando";
 import { conferirFalaDoCorte } from "@/lib/media/editor-por-comando/fala-conferida";
-import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { leituraNoCorte } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**

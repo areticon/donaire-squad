@@ -13,7 +13,7 @@ import { completarPlanoPeloJev, diretorPorLlm, escreverPlanoPeloJev, type Entrad
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import { contarUsoDoDesignDoProjeto } from "@/lib/biblioteca-de-design/registro";
-import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -466,6 +466,6 @@ export async function corrigirCompletoPorComando(
 }
 
 export { revisarPorComando } from "@/lib/media/editor-por-comando/revisor";
-export type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+export type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 export type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 export type { PlanoDoDiretor, NotaDoRevisor } from "@/lib/media/editor-por-comando/diretor";

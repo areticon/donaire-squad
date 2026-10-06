@@ -36,7 +36,7 @@ import {
   type VarianteDoElemento,
 } from "@/lib/media/editor-por-comando/linguagem";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
-import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { contextoDoTrecho, movimentoEm, resumoDaLeitura, tiposPossiveis, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**

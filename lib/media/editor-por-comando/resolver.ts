@@ -5,7 +5,7 @@ import { caixaDoCartao, cameraDeRitmo, frasesNumeradas, limparSvg, paginasDaLege
 import { posicionarLegenda } from "@/lib/media/editor-sob-medida/faixa-da-legenda";
 import type { CamadaResolvida, EdicaoResolvida, Enquadramento, MidiaDaInsercao, PlanoResolvido, Tema } from "@/lib/media/editor-sob-medida/tipos";
 import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
-import type { LeituraDoVideo, TrechoLido } from "@/lib/media/editor-por-comando/leitura-tipos";
+import type { LeituraDoVideo, TrechoLido } from "@/lib/media/leitura-do-video";
 import { componenteDa, familiaValida } from "@/lib/media/editor-por-comando/linguagem";
 import {
   caixaLivre,

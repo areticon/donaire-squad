@@ -1,5 +1,5 @@
 import type { TipoDeElemento } from "@/lib/media/editor-por-comando/elementos";
-import type { CaixaNoQuadro, LeituraDoVideo, PessoaLida, TrechoLido } from "@/lib/media/editor-por-comando/leitura-tipos";
+import type { CaixaNoQuadro, LeituraDoVideo, PessoaLida, TrechoLido } from "@/lib/media/leitura-do-video";
 
 /**
  * A LEITURA NO PLANO (06/10/2026): o que o editor tira da leitura do vídeo
