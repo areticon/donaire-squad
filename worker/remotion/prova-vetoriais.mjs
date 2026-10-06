@@ -17,7 +17,7 @@ const PECAS = [
   ["icone-com-frase", { rotulo: "Regra 01", icone: "despertador", frase: "Ponha um alarme para dormir", caixa: ABAIXO }, [], [0.5, 2]],
   ["icone-com-frase", { rotulo: "Regra 02", icone: "tv-desligada", frase: "Desligue a TV às **22h**", caixa: ABAIXO }, [], [2]],
   ["comparacao-lado-a-lado", { rotuloNao: "Não diga", rotuloSim: "Diga", pares: [{ nao: "Preço", sim: "Investimento" }, { nao: "Custo", sim: "Retorno" }, { nao: "Contrato", sim: "Acordo" }], caixa: ABAIXO }, [0.3, 1.1, 1.9], [1.3, 3]],
-  ["cartoes-em-linha", { itens: [{ titulo: "Gravar", icone: "claquete" }, { titulo: "Editar", icone: "tesoura" }, { titulo: "Publicar", icone: "foguete-lancamento" }], caixa: { x: 0.06, y: 0.76, w: 0.88, h: 0.17 } }, [0.2, 0.6, 1.0], [0.7, 2.5]],
+  ["cartoes-em-linha", { itens: [{ titulo: "Gravar", icone: "claquete" }, { titulo: "Editar", icone: "tesoura" }, { titulo: "Publicar", icone: "foguete" }], caixa: { x: 0.06, y: 0.76, w: 0.88, h: 0.17 } }, [0.2, 0.6, 1.0], [0.7, 2.5]],
   ["interface-de-edicao", { titulo: "meu-video-final.mp4", legenda: "a edição sai sozinha enquanto você grava", etapas: ["corte", "legenda", "zoom"], caixa: { x: 0.06, y: 0.72, w: 0.88, h: 0.26 } }, [0.6, 1.4, 2.2], [1.2, 2.6, 4]],
 ];
 const serveUrl = await bundleDoRemotion({ refazer: true });

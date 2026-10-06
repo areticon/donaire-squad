@@ -1,6 +1,6 @@
 import React from "react";
 import { escuroDoTema, estiloDoTitulo, limitar, lista, luz, misturar, progressoDoItem, rgba, saiSuave, texto, type Ctx } from "../base";
-import { brilho, itemAceso, molaFisica, sombraFunda, TextoCinetico } from "../kit";
+import { brilho, itemAceso, molaFisica, sombraFunda } from "../kit";
 import { ICONES } from "../icones";
 import { ICONES_DE_LINHA } from "../icones-de-linha";
 
@@ -130,7 +130,14 @@ export function IconeComFrase(c: Ctx) {
           <div style={{ width: lado * 0.18, height: 5 * u, borderRadius: 3 * u, background: a.acentoNoEscuro, transform: `scaleX(${saiSuave((c.t - 0.2) / 0.4)})` }} />
         )}
         <div style={{ ...estiloDoTitulo(c, tamFrase), textTransform: "uppercase", letterSpacing: "0.02em", textAlign: "center", color: a.tintaClara, maxWidth: "100%" }}>
-          <TextoCinetico c={c} texto={frase} estilo={{ justifyContent: "center" }} inicio={0.35} atraso={0.05} varrer={false} corDestaque={a.acentoNoEscuro} />
+          {palavrasComDestaque(frase).map((w, i) => {
+            const q = saiSuave((c.t - 0.35 - i * 0.05) / 0.3);
+            return (
+              <React.Fragment key={i}>
+                <span style={{ display: "inline-block", color: w.destaque ? a.acentoNoEscuro : a.tintaClara, opacity: q, transform: `translateY(${(1 - q) * 12 * u}px)` }}>{w.palavra}</span>{" "}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
     </div>
