@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { debitoIsento } from "@/lib/credits/isencao";
 import { auth } from "@/lib/auth/server";
 import { contaDoPlano } from "@/lib/equipe/conta";
 import { prisma } from "@/lib/db/prisma";
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     cadastro: cadastroParaTela(cadastro),
     videos: videos.map(videoParaTela),
     saldo: conta?.creditsBalance ?? 0,
-    acessoInterno: conta?.role === "admin",
+    acessoInterno: debitoIsento(conta?.role),
     nome: usuario?.name ?? "",
     projeto: d.project.name,
     // Quem gera os vídeos deste projeto (03/10): a tela mostra o preço dele.

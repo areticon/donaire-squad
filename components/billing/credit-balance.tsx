@@ -38,6 +38,9 @@ const NOMES: Record<string, string> = {
   video_job: "Trabalho de vídeo",
   renovacao: "Renovação do plano",
   recarga: "Créditos extras",
+  // 06/10: crédito dado pelo time da Demandou, e o acerto de saldo da conta.
+  concessao_admin: "Créditos concedidos",
+  reset_de_saldo: "Acerto de saldo",
   estorno: "Estorno",
   // A primeira parte devolvida quando a gravação não rende trecho (01/10).
   estorno_roteiro: "Estorno da gravação",

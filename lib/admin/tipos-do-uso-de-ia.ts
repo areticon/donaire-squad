@@ -305,6 +305,9 @@ const OPERACOES_DE_RECARGA = new Set([
   "ajuste_admin",
   "acerto_estorno_duplicado",
   "acesso_extra",
+  // 06/10: concessão do admin (não é receita nem consumo) e o reset de saldo.
+  "concessao_admin",
+  "reset_de_saldo",
 ]);
 
 export function operacaoEhRecarga(operation: string): boolean {

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { debitoIsento } from "@/lib/credits/isencao";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { PLANS } from "@/lib/stripe";
@@ -89,7 +90,7 @@ export async function GET() {
   // O CONSUMO SIMULADO (03/10): para admin, o que as linhas de valor zero
   // teriam cobrado no ciclo. Só leitura; o saldo continua sem se mover.
   const simulado =
-    user?.role === "admin" && !membro ? await consumoSimulado(contaId, cicloAtual(user.creditsResetAt ?? null).inicio) : null;
+    user && debitoIsento(user.role) && !membro ? await consumoSimulado(contaId, cicloAtual(user.creditsResetAt ?? null).inicio) : null;
 
   // Com os acessos extras da equipe somados (2.000 cada, 01/10).
   const doPlano = creditosDoCiclo(PLANS[user?.plan as keyof typeof PLANS]?.credits ?? 0, user?.acessosExtras ?? 0);
@@ -105,7 +106,7 @@ export async function GET() {
      * mostra "cobra 688 creditos" e o saldo parado, e quem olha conclui que a
      * cobranca quebrou. Foi o que aconteceu com o Bruno em 21/09.
      */
-    contaInterna: user?.role === "admin",
+    contaInterna: debitoIsento(user?.role),
     /**
      * O que a IA custou de verdade. É o número de calibrar preço, e o único
      * que diz alguma coisa para quem tem bypass de admin.

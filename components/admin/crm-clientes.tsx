@@ -6,6 +6,7 @@ import { NOME_DO_SEGMENTO, type Segmento } from "@/lib/admin/segmentos";
 // Só TIPOS de crm.ts: o import de tipo some na compilação, e o módulo, que lê
 // o banco, nunca chega ao navegador.
 import type { ClienteDoCrm, FichaDoCliente } from "@/lib/admin/crm";
+import { ConcederCreditos } from "@/components/admin/conceder-creditos";
 
 /**
  * O CRM DO PAINEL (pedido do Bruno em 23/09).
@@ -516,6 +517,8 @@ function Ficha({ id, onFechar }: { id: string; onFechar: () => void }) {
                 {Number(creditos) > 0 ? `Dar ${Number(creditos)} créditos` : Number(creditos) < 0 ? `Tirar ${-Number(creditos)} créditos` : "Ajustar créditos"}
               </button>
             </Secao>
+
+            <ConcederCreditos userId={id} membroDe={ficha.membroDe} aoConceder={(f) => { setFicha(f); router.refresh(); }} />
 
             {/* ACESSOS DE EQUIPE (01/10): ativação manual do acesso extra enquanto
                 o preço não existe no Stripe. Ver lib/admin/acoes.ts. */}
