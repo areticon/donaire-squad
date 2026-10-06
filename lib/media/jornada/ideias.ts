@@ -35,18 +35,20 @@ export type IdeiaCrua = {
 
 export const SISTEMA_DAS_IDEIAS = `Você é o redator de um editor de vídeo que serve qualquer nicho, do médico ao cozinheiro. Você ESCREVE ideias de elementos visuais para momentos da fala; você não decide quais entram (outro sistema decide).
 
-Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação, hesitação ou sem imagem possível fica sem ideia.
+Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação, hesitação ou sem imagem possível fica sem ideia. No vídeo curto vertical, quase toda frase com conteúdo merece ideia (o ritmo é rápido).
+
+A EMPRESA E O NICHO SÃO OS DO CONTEXTO. Marcas, logos, faixas e textos que a leitura vê no FUNDO da gravação são só cenário: nunca são a marca do cliente nem o assunto, e nunca entram nas ideias.
 
 Cada ideia:
 - "frase": o número da frase.
 - "gatilho": UMA palavra da própria frase, escrita como está, que chama o elemento (o elemento aparece quando ela é dita).
-- "descricao": em português, uma frase concreta e visual do que aparece (o objeto, a cena, a composição, a cor, o movimento), tirada do que a fala diz naquele momento e do que a leitura do vídeo mostra. Use o contexto da empresa, da marca e do nicho para escolher o imaginário que mais faz sentido para aquele público. Nada genérico ("ícone de sucesso"); nada que o vídeo já mostra.
+- "descricao": em português, uma frase concreta e visual do que aparece (o objeto, a cena, a composição, a cor, o movimento), tirada do que a fala diz naquele momento e do que a leitura do vídeo mostra. Use o contexto da empresa, da marca e do nicho para escolher o imaginário que mais faz sentido para aquele público. Nada genérico ("ícone de sucesso"); nada que o vídeo já mostra. Prefira o que se VÊ: um objeto, um logo, uma tela, uma cena, uma ilustração ligada ao que é dito; uma ideia que é só texto (palavra gigante, faixa com número) só quando o próprio texto é a prova daquele momento, e no máximo uma assim a cada três ideias.
 - "textoNaImagem": null, ou o texto EXATO que a arte deve trazer, até 5 palavras: só palavras ditas no momento, um número dito ou o nome de uma marca ou rede citada. Na chamada, a própria chamada curta.
 - "midia": "recorte" (um objeto, ícone ou logo isolado que entra sobre a gravação), "imagem" (uma composição que entra numa janela ou em tela cheia) ou "video" (B-roll em movimento, cena sem pessoa conhecida, com a voz por baixo).
 - "papel": "elemento"; ou "abertura" (só nas primeiras frases: um elemento de abertura que apresenta o tema do vídeo); ou "chamada" (curtir, inscrever, seguir, salvar): proponha chamada só se fizer sentido para o destino e a duração do vídeo (vídeo curto vertical não pede inscrever; vídeo longo no YouTube pode pedir).
 - "porque": uma linha com a ligação com a fala.
 
-Logos de redes sociais e de empresas citadas: descreva o logo como elemento (ele será gerado por IA). Nunca uma pessoa real reconhecível, nunca a pessoa que fala, nunca texto além do textoNaImagem. Português do Brasil, sem travessão (use vírgula ou dois pontos).
+Logos de redes sociais e de empresas citadas: descreva o logo como elemento (ele será gerado por IA). Nunca uma pessoa real reconhecível, nunca a pessoa que fala nem uma versão dela (gêmeo, clone, duplicata) com outro rosto, nunca texto além do textoNaImagem: se a ideia precisa de um número ou palavra na arte, escreva-o em textoNaImagem. Português do Brasil, sem travessão (use vírgula ou dois pontos).
 
 Responda só com JSON: {"ideias":[{"frase":1,"gatilho":"...","descricao":"...","textoNaImagem":null,"midia":"recorte","papel":"elemento","porque":"..."}]}`;
 
@@ -166,8 +168,12 @@ export async function escreverIdeias(o: { frases: Frase[]; palavras: Palavra[]; 
     while (proximo < blocos.length) {
       const b = blocos[proximo++];
       try {
-        const texto = await o.redator(SISTEMA_DAS_IDEIAS, pedidoDasIdeias(b, o.contexto, o.leitura));
-        ideias.push(...lerIdeias(texto, b, o.palavras, o.contexto));
+        let lidas = lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedidoDasIdeias(b, o.contexto, o.leitura)), b, o.palavras, o.contexto);
+        // Resposta sem JSON válido: o mesmo pedido de novo, uma vez.
+        if (!lidas.length) lidas = lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, `${pedidoDasIdeias(b, o.contexto, o.leitura)}
+
+Responda com JSON válido (aspas internas escapadas).`), b, o.palavras, o.contexto);
+        ideias.push(...lidas);
       } catch (e) {
         erros.push(`ideias do bloco ${b[0]?.indice ?? "?"}: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
       }

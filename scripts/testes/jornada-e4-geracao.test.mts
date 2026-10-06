@@ -61,7 +61,7 @@ function deps(o: { leituras?: string[]; higgsfieldFalha?: boolean } = {}): Depen
     imagemReserva: async () => { chamadas.push("nano-banana-pro"); return { dados: png, custoUsd: 0.134, modelo: "gemini-3-pro-image-preview" }; },
     video: async () => { chamadas.push("kling"); return { dados: Buffer.from("mp4"), custoUsd: 0.336, modelo: "kling-3.0-pro" }; },
     recortar: async (p) => { chamadas.push("recorte"); return { png: p, custoUsd: 0.003 }; },
-    lerTexto: async () => { chamadas.push("leitura"); return { texto: leituras.shift() ?? "12 por 8", custoUsd: 0.0004 }; },
+    lerTexto: async () => { chamadas.push("leitura"); return { texto: leituras.shift() ?? "", custoUsd: 0.0004 }; },
     jev: null,
     gravar: async (_d, id, ext) => { const n = nomeDaMidia({ videoId: "v", edicaoId: "e", elementoId: id, ext }); nomes.push(n); return `https://blob/${n}`; },
     medir: async () => 1,
@@ -105,6 +105,15 @@ test("B-roll só no formato B-roll; nomes únicos por geração; em paralelo", a
   assert.equal(r.gerados.find((g) => g.id === "b")?.tipo, "video");
   assert.equal(new Set(d.nomes).size, d.nomes.length);
   assert.ok(d.nomes.every((n) => /^edicao\/v\/e\//.test(n)));
+});
+
+test("texto inventado (nenhum texto pedido, a arte veio com letras): gera de novo sem texto; persistiu, sai com aviso", async () => {
+  const d = deps({ leituras: ["HORIZON", "HORIZON"] });
+  const g = await gerarElementoDaJornada({ ...entradasDosPrompts([el({ textoNaImagem: null })], null, "9:16")[0], t: 2 }, "An abstract glowing shape", d);
+  assert.equal(g.url, null);
+  assert.match(g.avisoCliente ?? "", /texto que ninguém pediu/);
+  const ok = await gerarElementoDaJornada({ ...entradasDosPrompts([el({ textoNaImagem: null })], null, "9:16")[0], t: 2 }, "An abstract glowing shape", deps({ leituras: ["HORIZON", ""] }));
+  assert.ok(ok.url && ok.rodadas === 2);
 });
 
 test("os fatos do texto: acento esquecido é erro", () => {

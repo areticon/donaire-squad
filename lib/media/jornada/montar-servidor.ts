@@ -118,7 +118,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   return {
     edicao: m.edicao,
     gerados: g.gerados,
-    avisosDoCliente: g.gerados.map((x) => x.avisoCliente).filter((x): x is string => Boolean(x)),
+    avisosDoCliente: [...g.gerados.map((x) => x.avisoCliente).filter((x): x is string => Boolean(x)), ...m.avisosDoCliente],
     avisosDoAdmin: [...erros, ...g.gerados.map((x) => x.avisoAdmin).filter((x): x is string => Boolean(x)), ...m.avisos],
     escolhas: m.escolhas,
     prompts,

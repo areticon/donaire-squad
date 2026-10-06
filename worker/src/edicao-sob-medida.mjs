@@ -1153,7 +1153,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     const ext = m.tipo === "video" ? "mp4" : (m.url.match(/\.(png|jpe?g|webp)(\?|$)/i)?.[1] ?? "jpg");
     const arq = join(pasta, `insercao-${id.replace(/[^a-z0-9-]/gi, "")}.${ext}`);
     try {
-      if (!existsSync(arq)) {
+      // A JORNADA (06/10, cada edição é nova): a mídia é sempre baixada de novo; nunca vale um arquivo de mesmo nome que já estava na pasta.
+      if (!existsSync(arq) || ed.jornada) {
         if (/^https?:/i.test(m.url)) await baixar(m.url, arq);
         else await copyFile(m.url, arq);
       }

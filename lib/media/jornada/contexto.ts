@@ -22,6 +22,8 @@ export type ContextoDaJornada = {
   formato: "9:16" | "16:9";
   /** Duração do vídeo editado, em s. */
   duracao: number;
+  /** A duração do vídeo inteiro quando o plano cobre só um trecho dele (a prova local); a densidade lê esta. */
+  duracaoTotal?: number;
   /** Onde o vídeo vai: o completo vai ao YouTube; o vertical curto às redes de vídeo curto. */
   destino: string;
 };

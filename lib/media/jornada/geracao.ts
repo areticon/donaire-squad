@@ -55,6 +55,8 @@ export type ElementoGerado = {
   avisoAdmin: string | null;
   avisoCliente: string | null;
   tempos: { gerar: number; recorte: number; leitura: number };
+  /** O que o Gemini leu na arte (a conferência do texto), quando houve texto pedido. */
+  textoLido?: string[];
 };
 
 const seg = (t0: number) => +((Date.now() - t0) / 1000).toFixed(1);
@@ -77,7 +79,8 @@ export async function gerarElementoDaJornada(e: EntradaDoPrompt & { t: number },
   let custo = 0;
   let avisoAdmin: string | null = null;
   let prompt = promptFinal(doSonnet, e);
-  const base = { id: e.id, formato: e.formato, prompt, avisoCliente: null as string | null, tempos };
+  const textoLido: string[] = [];
+  const base = { id: e.id, formato: e.formato, prompt, avisoCliente: null as string | null, tempos, textoLido };
   try {
     // B-ROLL EM VÍDEO: só quando o JEV escolheu o formato. Falhou: a imagem pelo segundo modelo, em tela cheia, com aviso ao admin.
     if (e.midia === "video") {
@@ -123,11 +126,28 @@ export async function gerarElementoDaJornada(e: EntradaDoPrompt & { t: number },
           avisoAdmin = `${avisoAdmin ? `${avisoAdmin}; ` : ""}recorte do ${e.id} falhou, entrou em janela`;
         }
       }
+      // TEXTO INVENTADO (sem texto pedido, a arte veio com letras): gera de novo sem texto, uma vez; persistiu, o elemento sai.
+      if (!e.textoNaImagem) {
+        const t2 = Date.now();
+        const lido = await deps.lerTexto(png).catch(() => null);
+        tempos.leitura += seg(t2);
+        custo += lido?.custoUsd ?? 0;
+        const inventado = String(lido?.texto ?? "").replace(/[^\p{L}\p{N}]/gu, "");
+        if (lido) textoLido.push(lido.texto);
+        if (inventado.length >= 2) {
+          if (rodada === 0) {
+            reforco = `The previous image had invented text ("${String(lido?.texto).slice(0, 80)}"). This image must contain NO letters, words or numbers at all.`;
+            continue;
+          }
+          return { ...base, prompt, url: null, tipo: null, proporcao: null, custoUsd: +custo.toFixed(4), modelo: m.modelo, rodadas: 2, avisoAdmin, avisoCliente: `No momento ${mmss(e.t)}, o elemento "${e.descricao.slice(0, 80)}" saiu do vídeo porque a arte veio com texto que ninguém pediu nas duas gerações. Peça de novo esse elemento.` };
+        }
+      }
       if (e.textoNaImagem) {
         const t2 = Date.now();
         const lido = await deps.lerTexto(png).catch(() => null);
         tempos.leitura += seg(t2);
         custo += lido?.custoUsd ?? 0;
+        if (lido) textoLido.push(lido.texto);
         const conf = lido ? await textoConfere(lido.texto, e.textoNaImagem, deps.jev ?? null, deps.projectId) : { ok: true, porQue: "leitura indisponível" };
         if (!conf.ok) {
           if (rodada === 0) {

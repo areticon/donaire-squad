@@ -4,7 +4,7 @@ import { DOLAR_POR_IMAGEM, DOLAR_POR_RECORTE, DOLAR_POR_SEGUNDO_DE_VIDEO } from 
 import type { ContextoDaJornada } from "@/lib/media/jornada/contexto";
 import type { IdeiaCrua } from "@/lib/media/jornada/ideias";
 import type { Frase } from "@/lib/media/jornada/linha-do-tempo";
-import { FORMATOS_DA_JORNADA, type ElementoProposto, type FormatoDaJornada, type MidiaDaJornada } from "@/lib/media/jornada/estado";
+import { FORMATOS_DA_JORNADA, type AmostraDaJornada, type ElementoProposto, type FormatoDaJornada, type MidiaDaJornada } from "@/lib/media/jornada/estado";
 
 /**
  * O PASSO 4 DA JORNADA, terceiro movimento (E2): as DECISÕES, todas pelo JEV.
@@ -33,7 +33,7 @@ export type OpcaoDeDensidade = { id: string; faixa: [number, number]; criterio: 
  * ganha opções mais espaçadas. Nenhum número preso a estilo.
  */
 export function opcoesDeDensidade(duracao: number, genero: GeneroDoVideo | null | undefined): OpcaoDeDensidade[] {
-  const niveis: Array<[number, number]> = duracao <= 90 ? [[3, 5], [5, 8], [8, 12]] : duracao <= 600 ? [[5, 8], [8, 15], [15, 25]] : [[12, 20], [20, 35], [35, 60]];
+  const niveis: Array<[number, number]> = duracao <= 180 ? [[3, 5], [5, 8], [8, 12]] : duracao <= 600 ? [[5, 8], [8, 15], [15, 25]] : [[12, 20], [20, 35], [35, 60]];
   const espacar = genero === "tela" || genero === "apresentacao-com-quadro" || genero === "demonstracao";
   const faixas = espacar ? [...niveis.slice(1), [niveis[2][1], Math.round(niveis[2][1] * 1.7)] as [number, number]] : niveis;
   const nomes = ["intensa", "media", "espacada"];
@@ -49,11 +49,12 @@ const cabe = (areas: TrechoLido["areaLivre"], w: number, h: number) => areas.som
  * (geometria, não escolha): janela e recorte só onde há espaço sem cobrir
  * pessoa, tela ou quadro; tela cheia para imagem; B-roll para vídeo.
  */
-export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | null, formato: "9:16" | "16:9"): FormatoDaJornada[] {
+export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | null, formato: "9:16" | "16:9", livre?: EspacoLivre | null): FormatoDaJornada[] {
   const areas = trecho?.areaLivre ?? [];
   const vertical = formato === "9:16";
-  const janela = cabe(areas, vertical ? 0.55 : 0.28, vertical ? 0.2 : 0.3);
-  const recorte = cabe(areas, vertical ? 0.35 : 0.18, vertical ? 0.15 : 0.22);
+  // Com a medição do rosto no momento (amostras), o espaço real decide: o elemento só entra sobre a gravação se couber GRANDE.
+  const janela = livre ? (vertical ? livre.lateral >= 0.5 || livre.topo >= 0.3 : livre.lateral >= 0.34) : cabe(areas, vertical ? 0.55 : 0.28, vertical ? 0.2 : 0.3);
+  const recorte = livre ? (vertical ? livre.lateral >= 0.42 || livre.topo >= 0.13 : livre.lateral >= 0.26 || livre.topo >= 0.28) : cabe(areas, vertical ? 0.35 : 0.18, vertical ? 0.15 : 0.22);
   if (midia === "video") return ["broll"];
   if (midia === "recorte") return [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : []), "tela-cheia"];
   return [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : []), "tela-cheia"];
@@ -98,13 +99,29 @@ function trechoEm(leitura: LeituraDoVideo | null, t: number): TrechoLido | null 
   return leitura.trechos.find((x) => t >= x.de && t < x.ate) ?? leitura.trechos.at(-1) ?? null;
 }
 
-export type MomentoComIdeias = { frase: Frase; ideias: IdeiaCrua[]; trecho: TrechoLido | null };
+export type EspacoLivre = { topo: number; lateral: number };
+export type MomentoComIdeias = { frase: Frase; ideias: IdeiaCrua[]; trecho: TrechoLido | null; livre?: EspacoLivre | null };
 
-/** Os momentos que têm ideia, com o trecho lido. */
-export function momentosComIdeias(frases: Frase[], ideias: IdeiaCrua[], leitura: LeituraDoVideo | null): MomentoComIdeias[] {
+/**
+ * O ESPAÇO LIVRE do momento pela medição (geometria): a faixa acima do rosto e a maior lateral fora dele, dentro da
+ * área segura, na união dos rostos de todas as amostras do momento. Sem amostra, null (vale a área livre lida).
+ */
+export function espacoLivre(amostras: AmostraDaJornada[] | null | undefined, de: number, ate: number, formato: "9:16" | "16:9"): EspacoLivre | null {
+  const dentro = (amostras ?? []).filter((a) => a.t >= de - 1.2 && a.t <= ate + 1.2 && a.rostos.length);
+  if (!dentro.length) return null;
+  const seg = formato === "9:16" ? { topo: 0.1, esquerda: 0.05, direita: 0.12 } : { topo: 0.06, esquerda: 0.04, direita: 0.04 };
+  const rostos = dentro.flatMap((a) => a.rostos);
+  const topo = Math.min(...rostos.map((r) => r.y - 0.018)) - seg.topo;
+  const esquerda = Math.min(...rostos.map((r) => r.x - 0.03)) - seg.esquerda;
+  const direita = 1 - seg.direita - Math.max(...rostos.map((r) => r.x + r.w + 0.03));
+  return { topo: Math.max(0, +topo.toFixed(3)), lateral: Math.max(0, +Math.max(esquerda, direita).toFixed(3)) };
+}
+
+/** Os momentos que têm ideia, com o trecho lido e o espaço livre medido. */
+export function momentosComIdeias(frases: Frase[], ideias: IdeiaCrua[], leitura: LeituraDoVideo | null, amostras?: AmostraDaJornada[] | null, formato: "9:16" | "16:9" = "16:9"): MomentoComIdeias[] {
   const porFrase = new Map<number, IdeiaCrua[]>();
   for (const i of ideias) porFrase.set(i.frase, [...(porFrase.get(i.frase) ?? []), i]);
-  return frases.filter((f) => porFrase.has(f.indice)).map((f) => ({ frase: f, ideias: porFrase.get(f.indice)!, trecho: trechoEm(leitura, f.inicio) }));
+  return frases.filter((f) => porFrase.has(f.indice)).map((f) => ({ frase: f, ideias: porFrase.get(f.indice)!, trecho: trechoEm(leitura, f.inicio), livre: espacoLivre(amostras, f.inicio, f.fim, formato) }));
 }
 
 const LETRAS = ["a", "b"];
@@ -130,7 +147,7 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
       instructions: { pergunta: "Qual destas ideias serve melhor a esta fala, a este público e a esta cena? Ou nenhuma.", fala: m.frase.texto, emCena: cena },
       criteria: { ...Object.fromEntries(m.ideias.map((x, j) => [LETRAS[j], `${x.descricao}${x.textoNaImagem ? ` (texto na arte: "${x.textoNaImagem}")` : ""}`])), nenhuma: "nenhuma serve: o momento fica com a gravação" },
     };
-    const possiveis = [...new Set(m.ideias.flatMap((x) => formatosPossiveis(x.midia, m.trecho, o.formato)))];
+    const possiveis = [...new Set(m.ideias.flatMap((x) => formatosPossiveis(x.midia, m.trecho, o.formato, m.livre)))];
     if (possiveis.length > 1) {
       q[`m${k}`] = {
         type: "choice",
@@ -144,8 +161,11 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
 
 // ─────────────────────────────── a escolha ───────────────────────────────
 
-const escolhaDe = (r: RespostaDoJev | undefined, opcoes: readonly string[], minimo = 0.3): string | null =>
-  r && r.type === "choice" && (r.confidence ?? 0) >= minimo && opcoes.includes(r.choice) ? r.choice : null;
+// A escolha do JEV vale mesmo com confiança baixa (é a opção mais provável dele); só a falta de resposta é falta.
+const escolhaDe = (r: RespostaDoJev | undefined, opcoes: readonly string[], _minimo = 0.3): string | null => {
+  void _minimo;
+  return r && r.type === "choice" && opcoes.includes(r.choice) ? r.choice : null;
+};
 
 const notaDe = (r: RespostaDoJev | undefined): number | null => (r && r.type === "score" && typeof r.score === "number" ? r.score : null);
 
@@ -164,9 +184,9 @@ export type DecisaoDoPlano = {
 export function planoDasRespostas(
   momentos: MomentoComIdeias[],
   r: Record<string, RespostaDoJev>,
-  o: { formato: "9:16" | "16:9"; duracao: number; genero: GeneroDoVideo | null; tetoUsd: number; novoId: (k: number) => string }
+  o: { formato: "9:16" | "16:9"; duracao: number; duracaoTotal?: number; genero: GeneroDoVideo | null; tetoUsd: number; novoId: (k: number) => string }
 ): DecisaoDoPlano {
-  const opcoes = opcoesDeDensidade(o.duracao, o.genero);
+  const opcoes = opcoesDeDensidade(o.duracaoTotal ?? o.duracao, o.genero);
   const idDens = escolhaDe(r.densidade, opcoes.map((x) => x.id), 0.2);
   // Sem a resposta do JEV, a do meio (só a geometria das opções; nada por estilo).
   const densidade = opcoes.find((x) => x.id === idDens) ?? opcoes[1];
@@ -175,24 +195,25 @@ export function planoDasRespostas(
   const cands: Cand[] = [];
   for (const m of momentos) {
     const k = m.frase.indice;
-    const forca = notaDe(r[`f${k}`]);
-    const letra = escolhaDe(r[`i${k}`], [...LETRAS.slice(0, m.ideias.length), "nenhuma"]);
-    if (forca === null || letra === null) {
-      descartados.push({ frase: k, motivo: "o JEV não respondeu" });
-      continue;
-    }
+    // Pergunta sem resposta do JEV (falha do lote) não descarta a ideia em silêncio: a força fica no meio e a ideia é a primeira, com o motivo anotado.
+    const semForca = notaDe(r[`f${k}`]) === null;
+    const semIdeia = escolhaDe(r[`i${k}`], [...LETRAS.slice(0, m.ideias.length), "nenhuma"]) === null;
+    const forca = notaDe(r[`f${k}`]) ?? 1.5;
+    const letra = escolhaDe(r[`i${k}`], [...LETRAS.slice(0, m.ideias.length), "nenhuma"]) ?? "a";
+    if (semForca || semIdeia) descartados.push({ frase: k, motivo: `o JEV não respondeu (${semForca ? "força" : "ideia"}); a ideia seguiu para a escolha com força média` });
     if (letra === "nenhuma" || forca < 1.5) {
       descartados.push({ frase: k, motivo: letra === "nenhuma" ? "o JEV disse nenhuma" : `força ${forca.toFixed(2)}` });
       continue;
     }
     const ideia = m.ideias[LETRAS.indexOf(letra)];
-    const possiveis = formatosPossiveis(ideia.midia, m.trecho, o.formato);
+    const possiveis = formatosPossiveis(ideia.midia, m.trecho, o.formato, m.livre);
     const escolhido = escolhaDe(r[`m${k}`], FORMATOS_DA_JORNADA as unknown as string[]) as FormatoDaJornada | null;
     const formato = escolhido && possiveis.includes(escolhido) ? escolhido : possiveis[0];
     cands.push({ m, ideia, formato, forca });
   }
   const meta = Math.max(1, Math.floor(o.duracao / ((densidade.faixa[0] + densidade.faixa[1]) / 2)));
-  const minimo = densidade.faixa[0];
+  // A densidade é uma MÉDIA: dois momentos fortes podem ficar mais perto que ela (nunca a menos de metade do piso, nem de 2,5 s).
+  const minimo = Math.max(2.5, densidade.faixa[0] / 2);
   const escolhidos: Cand[] = [];
   let custo = 0;
   for (const c of [...cands].sort((a, b) => b.forca - a.forca || a.ideia.gatilho.t - b.ideia.gatilho.t)) {
@@ -238,7 +259,9 @@ export async function decidirPlano(
   o: { contexto: ContextoDaJornada; leitura: LeituraDoVideo | null; jev: Jev; projectId?: string | null; novoId: (k: number) => string }
 ): Promise<DecisaoDoPlano> {
   const genero = o.leitura?.genero ?? null;
-  const perguntas = perguntasDoPlano(momentos, { formato: o.contexto.formato, duracao: o.contexto.duracao, genero });
+  // As opções de densidade são as da duração do vídeo inteiro; a quantidade, a do trecho planejado.
+  const total = o.contexto.duracaoTotal ?? o.contexto.duracao;
+  const perguntas = perguntasDoPlano(momentos, { formato: o.contexto.formato, duracao: total, genero });
   const estado = {
     tarefa: "decidir os elementos visuais de um vídeo, momento a momento, para o público deste nicho",
     empresa: o.contexto.marca,
@@ -248,5 +271,5 @@ export async function decidirPlano(
     leitura: o.leitura ? { genero: o.leitura.genero, cenario: o.leitura.cenario, resumo: o.leitura.resumo } : null,
   };
   const r = await o.jev({ projectId: o.projectId, etapa: "jornada-plano", state: estado }, perguntas);
-  return planoDasRespostas(momentos, r, { formato: o.contexto.formato, duracao: o.contexto.duracao, genero, tetoUsd: tetoDoVideoUsd(o.contexto.duracao), novoId: o.novoId });
+  return planoDasRespostas(momentos, r, { formato: o.contexto.formato, duracao: o.contexto.duracao, duracaoTotal: total, genero, tetoUsd: tetoDoVideoUsd(o.contexto.duracao), novoId: o.novoId });
 }

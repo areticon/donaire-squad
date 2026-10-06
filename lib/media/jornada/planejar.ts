@@ -28,6 +28,8 @@ export type PlanoFeito = {
   amostras: AmostraDaJornada[];
   avisos: string[];
   descartados: Array<{ frase: number; motivo: string }>;
+  /** Todas as ideias do Sonnet (as escolhidas e as não), para conferir. */
+  ideias: Array<{ frase: number; gatilho: string; descricao: string; textoNaImagem: string | null; midia: string; papel: string }>;
   custoLeituraUsd: number;
   tempos: Record<string, number>;
 };
@@ -66,7 +68,7 @@ export async function planejarJornada(
   marcar("ideias");
   // 3. AS DECISÕES (passo 4, JEV).
   const edicaoId = novaEdicaoId();
-  const momentos = momentosComIdeias(frases, ideias, leitura);
+  const momentos = momentosComIdeias(frases, ideias, leitura, amostras, e.contexto.formato);
   const d = momentos.length
     ? await decidirPlano(momentos, { contexto: e.contexto, leitura, jev: deps.jev, projectId: deps.projectId, novoId: (k) => `el${k + 1}` })
     : { densidade: { id: "media", faixa: [8, 15] as [number, number], criterio: "" }, elementos: [], descartados: [], custoTotalUsd: 0 };
@@ -82,5 +84,5 @@ export async function planejarJornada(
     formato: e.contexto.formato,
     duracao: e.contexto.duracao,
   };
-  return { plano, leitura, amostras, avisos, descartados: d.descartados, custoLeituraUsd, tempos };
+  return { plano, leitura, amostras, avisos, descartados: d.descartados, ideias: ideias.map((i) => ({ frase: i.frase, gatilho: i.gatilho.palavra, descricao: i.descricao, textoNaImagem: i.textoNaImagem, midia: i.midia, papel: i.papel })), custoLeituraUsd, tempos };
 }

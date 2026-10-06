@@ -6,6 +6,7 @@ import type { AmostraDaJornada, Caixa, ElementoAprovado } from "@/lib/media/jorn
 import type { Palavra } from "@/lib/media/jornada/linha-do-tempo";
 import { faixaPrincipalDaLegenda, legendaDesenhada, legendaDoEstiloFixo, paginasNoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
+import { mmss } from "@/lib/media/jornada/estado";
 
 /**
  * O PASSO 7 DA JORNADA (E5): "o JEV monta", explícito.
@@ -42,11 +43,12 @@ const area = (c: Caixa) => c.w * c.h;
 const intersecao = (a: Caixa, b: Caixa) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
 /** As caixas de rosto (com folga) de todas as amostras do intervalo, mais tela e quadro (nunca cobrir). */
-export function protegidasNoIntervalo(amostras: AmostraDaJornada[], de: number, ate: number, folga = 0.04): Caixa[] {
+export function protegidasNoIntervalo(amostras: AmostraDaJornada[], de: number, ate: number, folga = 0.03): Caixa[] {
   const dentro = amostras.filter((a) => a.t >= de - 1.2 && a.t <= ate + 1.2);
   const saida: Caixa[] = [];
   for (const a of dentro) {
-    for (const r of a.rostos) saida.push({ x: r.x - folga, y: r.y - folga * 1.5, w: r.w + 2 * folga, h: r.h + 3 * folga });
+    // A caixa do rosto medida já vai da testa ao queixo; a folga é pequena em cima (o cabelo pode ficar sob o elemento, o rosto nunca).
+    for (const r of a.rostos) saida.push({ x: r.x - folga, y: r.y - folga * 0.6, w: r.w + 2 * folga, h: r.h + folga * 1.6 });
     if (a.tela) saida.push(a.tela);
     if (a.quadro) saida.push(a.quadro);
   }
@@ -81,19 +83,22 @@ export function caixasCandidatas(o: {
 }): CaixaCandidata[] {
   const seg = AREA_SEGURA[o.formato];
   const vertical = o.formato === "9:16";
-  const larguras = vertical ? (o.janela ? [0.82, 0.72, 0.62, 0.54] : [0.66, 0.56, 0.48, 0.4]) : o.janela ? [0.44, 0.38, 0.32, 0.27] : [0.34, 0.28, 0.23, 0.19];
+  // O elemento deitado (faixa, logos em linha) pode ocupar a largura útil; o alto e estreito, menos.
+  const larguras = vertical ? (o.janela ? [0.82, 0.72, 0.62, 0.54, 0.46] : [0.83, 0.74, 0.66, 0.56, 0.48, 0.4, 0.33, 0.28, 0.24]) : o.janela ? [0.44, 0.38, 0.32, 0.27] : [0.5, 0.42, 0.34, 0.28, 0.23, 0.19, 0.16];
   const p = Math.max(0.2, Math.min(5, o.proporcao || 1));
   const validas: Array<{ c: Caixa; nota: number }> = [];
   for (const w of larguras) {
     const h = (w * o.W) / p / o.H;
-    if (h > 1 - seg.topo - seg.base || h < (vertical ? 0.1 : 0.16)) continue;
+    // Legível: a menor dimensão do elemento com pelo menos ~110 px no 1080 (um logo, uma faixa de texto grande).
+    if (h > 1 - seg.topo - seg.base || h * o.H < 110 * (o.H / (vertical ? 1920 : 1080)) * (vertical ? 1 : 1.3)) continue;
     for (let y = seg.topo; y + h <= 1 - seg.base + 1e-9; y += 0.02) {
       for (let x = seg.esquerda; x + w <= 1 - seg.direita + 1e-9; x += 0.02) {
         const c = { x: arred(x), y: arred(y), w: arred(w), h: arred(h) };
         if (o.protegidas.some((r) => cruza(c, r))) continue;
         if (o.legenda && c.y < o.legenda[1] && c.y + c.h > o.legenda[0]) continue;
         const corpo = o.corpos.length ? o.corpos.reduce((s, b) => s + intersecao(c, b), 0) / (o.corpos.length * area(c)) : 0;
-        validas.push({ c, nota: area(c) * (1 - 0.7 * Math.min(1, corpo)) });
+        // Cobrir o corpo (o peito, o braço) é permitido; só pesa um pouco. O rosto nunca.
+        validas.push({ c, nota: area(c) * (1 - 0.3 * Math.min(1, corpo)) });
       }
     }
   }
@@ -111,7 +116,11 @@ export function caixasCandidatas(o: {
     const atual = porRegiao.get(r);
     if (!atual || v.nota > atual.nota) porRegiao.set(r, v);
   }
+  // Nunca miniatura: só as caixas perto da maior (o elemento entra grande e legível, como no vídeo da landing).
+  const maior = Math.max(0, ...[...porRegiao.values()].map((v) => v.nota));
+  const piso = vertical ? 0.45 : 0.2;
   return [...porRegiao.entries()]
+    .filter(([, v]) => v.nota >= 0.6 * maior && v.c.w >= piso)
     .sort((a, b) => b[1].nota - a[1].nota)
     .slice(0, 5)
     .map(([onde, v], i) => ({ id: `c${i}`, caixa: v.c, onde: `${onde}, ${Math.round(v.c.w * 100)}% da largura` }));
@@ -208,7 +217,7 @@ export type EdicaoDaJornada = {
   logoUrl: null;
 };
 
-export type MontagemFeita = { edicao: EdicaoDaJornada; avisos: string[]; escolhas: Array<Record<string, unknown>>; trilha: boolean };
+export type MontagemFeita = { edicao: EdicaoDaJornada; avisos: string[]; avisosDoCliente: string[]; escolhas: Array<Record<string, unknown>>; trilha: boolean };
 
 const VOLUME: Record<Exclude<Som, "nenhum">, number> = { whoosh: 0.22, pop: 0.14, impacto: 0.24 };
 
@@ -237,6 +246,7 @@ export async function montarEdicao(o: {
   leituraDoTrecho?: (t: number) => string | null;
 }): Promise<MontagemFeita> {
   const avisos: string[] = [];
+  const avisosDoCliente: string[] = [];
   const rostoTipico = o.amostras.find((a) => a.rostos.length)?.rostos[0] ?? null;
   const leg = legendaDaJornada(o.legenda, o.palavras, o.formato, rostoTipico);
   const comMidia = o.elementos.filter((e) => e.gerado.url).sort((a, b) => a.t - b.t);
@@ -290,12 +300,18 @@ export async function montarEdicao(o: {
     }
     const som = escolha(r[`s_${id}`], Object.keys(SONS) as Som[]) ?? "nenhum";
     if (x.naCaixa) {
-      if (!x.caixas.length) {
-        // Nenhuma caixa fora do rosto cabe: a mídia entra em tela cheia (nunca sobre o rosto), com aviso.
-        avisos.push(`${id}: nenhuma caixa legível fora do rosto; entrou em tela cheia`);
+      if (!x.caixas.length && x.formato === "janela") {
+        // A janela sem lugar fora do rosto entra em tela cheia (a imagem é opaca e cobre a gravação inteira, nunca o rosto por cima).
+        avisos.push(`${id}: nenhuma caixa legível fora do rosto; a janela entrou em tela cheia`);
         insercoes[id] = { tipo: "imagem", url: x.e.gerado.url!, origem: "jornada" };
         ate = Math.min(ate, de + 3);
         planos.push({ tipo: "insercao", midia: id, de, ate });
+        escolhas.push({ id, formato: "tela-cheia", entrada, som, de, ate });
+      } else if (!x.caixas.length) {
+        // O recorte (transparente) não tem lugar legível fora do rosto: não entra por cima do rosto; o aviso vai ao cliente.
+        avisos.push(`${id}: nenhuma caixa legível fora do rosto no momento; o elemento ficou fora`);
+        avisosDoCliente.push(`No momento ${mmss(de)}, o elemento "${x.e.aprovado.descricao.slice(0, 80)}" ficou fora porque não havia lugar na tela sem cobrir o seu rosto. Peça de novo em outro momento.`);
+        continue;
       } else {
         const cid = escolha(r[`c_${id}`], x.caixas.map((c) => c.id)) ?? x.caixas[0].id;
         const caixa = x.caixas.find((c) => c.id === cid)!.caixa;
@@ -331,6 +347,7 @@ export async function montarEdicao(o: {
       logoUrl: null,
     },
     avisos,
+    avisosDoCliente,
     escolhas,
     trilha,
   };

@@ -21,7 +21,9 @@ const semAcento = (s: string) =>
 const normal = (s: string) => semAcento(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 /** Os fatos que o código mede (o JEV lê; sem o JEV, decidem sozinhos). */
-export function fatosDoTexto(lido: string, pedido: string) {
+export function fatosDoTexto(lido0: string, pedido: string) {
+  // O Gemini separa as linhas por " | ": a quebra de linha não é erro de grafia.
+  const lido = String(lido0 ?? "").replace(/\s*\|\s*/g, " ");
   const l = normal(lido);
   const p = normal(pedido);
   const presente = Boolean(p) && l.includes(p);
@@ -36,11 +38,14 @@ export function fatosDoTexto(lido: string, pedido: string) {
 export async function textoConfere(lido: string, pedido: string, jev: Jev | null, projectId?: string | null): Promise<{ ok: boolean; porQue: string }> {
   const f = fatosDoTexto(lido, pedido);
   const padrao = f.presente && f.acentoCerto && f.palavrasAMais.length <= 2;
+  // Medição exata, não decisão: igual letra por letra confere; o texto pedido ausente não confere. O JEV decide o caso duvidoso.
+  if (f.presente && f.acentoCerto && f.palavrasAMais.length === 0) return { ok: true, porQue: "igual ao pedido, letra por letra" };
+  if (!f.presente) return { ok: false, porQue: `o texto pedido não está na arte (lido: "${lido.slice(0, 80)}")` };
   if (!jev) return { ok: padrao, porQue: `pelos fatos (sem o JEV): ${JSON.stringify(f)}` };
   try {
     const r = await jev(
       { projectId, etapa: "jornada-leitura-do-texto", state: { regra: "o texto da imagem tem de ser igual ao pedido: grafia, acentos, números e nome de marca; palavra inventada a mais é erro" } },
-      { t: { type: "noul", instructions: { pergunta: "O texto lido na imagem confere com o texto pedido?", pedido, lido, fatos: f } } }
+      { t: { type: "noul", instructions: { pergunta: "O texto lido na imagem confere com o texto pedido?", pedido, lido: lido.replace(/\s*\|\s*/g, " / "), fatos: f } } }
     );
     const x = r.t;
     if (x && x.type === "noul" && typeof x.noul === "number") {

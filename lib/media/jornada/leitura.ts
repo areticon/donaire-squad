@@ -25,6 +25,8 @@ export async function lerParaAJornada(p: {
   projectId?: string | null;
   /** A prova local manda a medição e a visão já feitas (ou a leitura inteira). */
   medicao?: RespostaDaMedicao | null;
+  /** O proxy da visão em bytes (só a prova local). */
+  visaoBytes?: Uint8Array | null;
 }): Promise<LeituraDaJornada> {
   const avisos: string[] = [];
   let medida: RespostaDaMedicao | null = p.medicao ?? null;
@@ -36,6 +38,7 @@ export async function lerParaAJornada(p: {
     duracao: p.duracao,
     medicao: p.medicao ?? null,
     limites,
+    visaoBytes: p.visaoBytes ?? null,
     avisos,
     aoMedir: (m) => (medida = m),
   });

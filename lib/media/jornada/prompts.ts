@@ -36,7 +36,8 @@ export type EntradaDoPrompt = {
 export function proporcaoDoElemento(formato: ElementoAprovado["formato"], quadro: "9:16" | "16:9"): string {
   if (formato === "tela-cheia" || formato === "broll") return quadro;
   if (formato === "janela") return quadro === "9:16" ? "4:3" : "3:4";
-  return "1:1";
+  // No vertical o lugar livre costuma ser a faixa acima da cabeça: o recorte nasce bem deitado para caber nela grande.
+  return quadro === "9:16" ? "21:9" : "1:1";
 }
 
 function trechoEm(leitura: LeituraDoVideo | null, t: number): TrechoLido | null {
@@ -65,7 +66,7 @@ export function entradasDosPrompts(elementos: readonly ElementoAprovado[], leitu
 
 export const SISTEMA_DOS_PROMPTS = `You write image and video generation prompts for a video editor that serves any niche. For each element you get: the approved description (Portuguese), the client's literal requests, the exact text the artwork must carry, the speech at that moment (Portuguese), what the video shows at that moment, the format and the aspect ratio, and the context of the company, the brand and the niche.
 
-Write ONE prompt per element, in English, 60 to 140 words, as a director of photography and art director would: the concrete subject, composition, camera or framing, lighting, materials, palette (brand colors only as accents), mood fitted to that niche and audience, and for "video" the camera movement over 3 seconds. The prompt must deliver exactly the approved description and every client request. Never a real recognizable person, never the speaker, no extra text. Do not mention a style template. No em dash.
+Write ONE prompt per element, in English, 60 to 140 words, as a director of photography and art director would: the concrete subject, composition, camera or framing, lighting, materials, palette (brand colors only as accents), mood fitted to that niche and audience, and for "video" the camera movement over 3 seconds. The prompt must deliver exactly the approved description and every client request. The company and the niche are the ones in CONTEXT; brands, logos and signs visible in the background of the footage are just the setting, never the client's brand or the subject, and never go into the prompt. For format "recorte-sobre" the element will be cut out and placed over the footage: describe ONE isolated object, logo, badge or illustration on a plain flat light gray background, no scene, no environment behind it; when the aspect ratio is 21:9 compose the element as a wide, low horizontal arrangement (a row, a banner, objects side by side) that fills the width, because it sits in a horizontal strip above the person's head. For "janela" and "tela-cheia" describe a full composed image. When the text in the artwork is "none", describe NO letters, words or numbers at all: show the idea with objects, shapes and composition. In a 9:16 full-screen image keep the lower third free of text and key details (the captions sit there). Never a real recognizable person, never the speaker or a look-alike of the speaker, no extra text. Do not mention a style template. No em dash.
 
 Answer only JSON: {"prompts":{"<id>":"<prompt>"}}`;
 
@@ -78,13 +79,13 @@ export function pedidoDosPrompts(entradas: EntradaDoPrompt[], contexto: Contexto
       e.pedidos.length ? `  client requests (literal): ${e.pedidos.map((p) => `"${p}"`).join("; ")}` : null,
       `  text in the artwork: ${e.textoNaImagem ? `"${e.textoNaImagem}"` : "none"}`,
       `  speech at this moment: "${e.fala}"`,
-      e.cena ? `  the video shows: ${e.cena}` : null,
+      e.cena ? `  the footage shows (setting only, not the brand): ${e.cena}` : null,
       `  role: ${e.papel}; media: ${e.midia}; format: ${e.formato}; aspect ratio ${e.proporcao}`,
     ]
       .filter(Boolean)
       .join("\n")
   );
-  return `CONTEXT\n${contextoEmTexto(contexto)}\n${leitura ? `Video setting: ${leitura.cenario}.` : ""}\n\nELEMENTS\n${linhas.join("\n\n")}`;
+  return `CONTEXT\n${contextoEmTexto(contexto)}\n${leitura ? `Video setting (background only, not the brand): ${leitura.cenario}.` : ""}\n\nELEMENTS\n${linhas.join("\n\n")}`;
 }
 
 /**
@@ -120,8 +121,15 @@ export async function escreverPrompts(
   await Promise.all(
     blocos.map(async (b) => {
       try {
-        const texto = await o.redator(SISTEMA_DOS_PROMPTS, pedidoDosPrompts(b, o.contexto, o.leitura));
-        const j = primeiroJson(texto) as { prompts?: Record<string, unknown> };
+        // JSON quebrado (aspas dentro do prompt) pede o mesmo texto de novo, uma vez.
+        let j: { prompts?: Record<string, unknown> };
+        try {
+          j = primeiroJson(await o.redator(SISTEMA_DOS_PROMPTS, pedidoDosPrompts(b, o.contexto, o.leitura))) as typeof j;
+        } catch {
+          j = primeiroJson(await o.redator(SISTEMA_DOS_PROMPTS, `${pedidoDosPrompts(b, o.contexto, o.leitura)}
+
+Return strictly valid JSON: escape any double quote inside a prompt or use single quotes.`)) as typeof j;
+        }
         for (const e of b) {
           const p = String(j.prompts?.[e.id] ?? "").trim();
           if (p.length >= 40) prompts[e.id] = p;

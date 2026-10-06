@@ -931,6 +931,8 @@ export type PedidoDeLeitura = {
    * alinhadas às frases da fala). Sem elas, os trechos de 10 a 60 s de sempre.
    */
   limites?: Array<{ de: number; ate: number }> | null;
+  /** O proxy da visão em bytes (a prova local; na esteira vem a URL do worker). */
+  visaoBytes?: Uint8Array | null;
   /** Recebe a medição crua (a jornada guarda as amostras para o passo 7). */
   aoMedir?: (m: RespostaDaMedicao | null) => void;
 };
@@ -960,9 +962,9 @@ export async function lerVideo(p: PedidoDeLeitura): Promise<LeituraDoVideo> {
     : resumoSemMedida(duracao, "16:9", p.fala, { limites: p.limites });
   let visao: VisaoDoVideo | null = null;
   const querVisao = p.visao ?? leituraVisaoLigada();
-  if (querVisao && medicao?.proxyUrl) {
+  if (querVisao && (medicao?.proxyUrl || p.visaoBytes)) {
     try {
-      visao = await verComGemini({ url: medicao.proxyUrl }, resumo, p.fala, { projectId: p.projectId, ...(p.limites?.length ? { janelaSeg: 8 * 60 } : {}) });
+      visao = await verComGemini(p.visaoBytes ? { bytes: p.visaoBytes } : { url: medicao!.proxyUrl! }, resumo, p.fala, { projectId: p.projectId, ...(p.limites?.length ? { janelaSeg: 8 * 60 } : {}) });
     } catch (e) {
       avisos.push(`leitura: visão falhou (${e instanceof Error ? e.message : String(e)})`);
     }
