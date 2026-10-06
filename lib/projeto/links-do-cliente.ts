@@ -43,7 +43,13 @@ export type LinkDoCliente = {
   cta?: string;
 };
 
-export const MAX_LINKS = 12;
+/**
+ * Quantos links cabem. Era 12; subiu para 30 em 06/10, quando o Bruno pediu
+ * que o cliente cadastre, já no início do projeto, "quantas páginas quiser"
+ * (site, empresas, produtos, WhatsApp, loja). O teto existe só para a lista
+ * não virar despejo de URL no prompt dos redatores.
+ */
+export const MAX_LINKS = 30;
 
 /** Aceita "wa.me/55...", "www.site.com" e telefone puro no WhatsApp; devolve https ou nulo. */
 export function normalizarUrl(bruta: string, tipo?: TipoDeLink): string | null {
@@ -141,3 +147,48 @@ export function primeiroComentarioComLink(
   const linha = `${link.cta ?? link.rotulo}: ${link.url}`;
   return atual ? `${linha}\n\n${atual}` : linha;
 }
+
+/**
+ * O TIPO ADIVINHADO PELO ENDEREÇO (06/10): no início do projeto o cliente
+ * escreve só nome e URL, um por vez. O tipo sai do endereço quando é óbvio
+ * (WhatsApp); o resto fica "outro", e o rótulo é o nome que ele deu.
+ */
+export function tipoPeloEndereco(bruta: string): TipoDeLink {
+  const u = (bruta ?? "").trim().toLowerCase();
+  if (/(^|\/\/|\.)(wa\.me|api\.whatsapp\.com|whatsapp\.com)(\/|$)/.test(u) || /^[+\d\s().-]{8,}$/.test(u)) return "whatsapp";
+  return "outro";
+}
+
+/**
+ * O @ DO CANAL NO YOUTUBE (06/10). A conexão do YouTube grava o NOME do canal
+ * como username ("Bruno Donaire"), e com nome não dá para montar o endereço do
+ * canal sem adivinhar. O cliente pode escrever o @ uma vez; ele mora em
+ * `Project.config.arrobaDoYouTube`, sem o @, e o bloco de links da descrição
+ * (lib/media/elo-da-campanha.ts) monta https://www.youtube.com/@... com ele.
+ *
+ * Aceita "@canal", "canal" e o link "youtube.com/@canal". Devolve sem o @, ou
+ * nulo quando não parece um @ de verdade.
+ */
+export function normalizarArrobaDoYouTube(bruto: string | null | undefined): string | null {
+  let h = (bruto ?? "").trim();
+  if (!h) return null;
+  const doLink = h.match(/youtube\.com\/@([^/?#\s]+)/i);
+  if (doLink) h = doLink[1];
+  h = h.replace(/^@/, "");
+  return /^[A-Za-z0-9._-]{3,60}$/.test(h) ? h : null;
+}
+
+/** O @ do canal gravado em `Project.config`, sem o @, ou nulo. */
+export function lerArrobaDoYouTube(config: unknown): string | null {
+  const bruto = (config as { arrobaDoYouTube?: unknown } | null | undefined)?.arrobaDoYouTube;
+  return typeof bruto === "string" ? normalizarArrobaDoYouTube(bruto) : null;
+}
+
+/**
+ * As chaves do `config` que têm rota própria (app/api/projects/[id]/links).
+ * O PATCH do projeto troca o `config` inteiro com o que a tela tinha na mão,
+ * e o assistente do setup guarda o `config` de quando a página abriu: sem
+ * proteger estas chaves, cadastrar um link na primeira etapa e clicar em
+ * Próximo apagava o link.
+ */
+export const CHAVES_DOS_LINKS_NO_CONFIG = ["linksDoCliente", "arrobaDoYouTube"] as const;

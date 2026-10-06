@@ -143,7 +143,7 @@ export function LinksDoCliente({ projetoId, config }: { projetoId: string; confi
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" onClick={() => setLinhas((ls) => [...ls, novaLinha()])} disabled={linhas.length >= MAX_LINKS}>
             <Plus className="w-4 h-4" />
-            Adicionar link
+            {linhas.length ? "Adicionar outro link" : "Adicionar link"}
           </Button>
           <Button loading={salvando} onClick={() => void salvar()} data-salvar-links>
             Salvar

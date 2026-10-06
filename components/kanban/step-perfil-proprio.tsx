@@ -6,6 +6,7 @@ import { Loader2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { LinhaDeCusto, RelatorioDoPerfilNaTela } from "@/components/kanban/relatorio-do-perfil";
+import { SecaoDeLinksNoSetup } from "@/components/projects/links-no-setup";
 import type { RedeDeReferencia } from "@/lib/referencias/tipos";
 import type { RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import { ROTULO_DA_ETAPA_DO_PERFIL, type EtapaDoPerfilProprio, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
@@ -147,6 +148,9 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
         <span className="text-xs text-[var(--text-muted)]">Leva de 1 a 3 minutos. Pode seguir para a próxima etapa enquanto isso.</span>
       </div>
       {!dados?.relatorio && <LinhaDeCusto custo={dados?.estimativas?.perfil} rotulo="Custo deste estudo" />}
+
+      {/* Além das redes, os links do cliente, um de cada vez (06/10). */}
+      <SecaoDeLinksNoSetup projetoId={projectId} podeEditar={dados?.podeEditar ?? true} />
 
       {rodando && estado && (
         <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>

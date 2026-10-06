@@ -206,7 +206,7 @@ async function eloDoVideo(video: VideoParaEscrever, semana: SemanaDoVideo): Prom
   const completo = {
     titulo: postDoCompleto?.content.split("\n")[0]?.trim() || textoDoCompleto(trechos, video).split("\n")[0]?.trim() || null,
     url: postDoCompleto?.externalUrl ?? null,
-    canal: nomeDoCanal(video.project.socialAccounts),
+    canal: nomeDoCanal(video.project.socialAccounts, video.project.config),
   };
   return (dia, rede) => eloDaCampanha({ dia, rede, pecas, completo, angulos: radar?.angulos ?? [] });
 }

@@ -1,4 +1,4 @@
-import type { LinkDoCliente } from "@/lib/projeto/links-do-cliente";
+import { lerArrobaDoYouTube, type LinkDoCliente } from "@/lib/projeto/links-do-cliente";
 import { NOME_DA_REDE } from "@/lib/pipeline/redes";
 import {
   datasDoPlano,
@@ -83,25 +83,37 @@ function urlDoPerfil(rede: string, handle: string | null, usernameBruto: string 
   return null;
 }
 
-/** Um perfil por rede conectada, na ordem em que as contas vieram. */
-export function perfisDoCliente(contas: ContaDoCliente[]): PerfilDoCliente[] {
+/**
+ * Um perfil por rede conectada, na ordem em que as contas vieram.
+ *
+ * O `config` do projeto é opcional e serve ao YouTube (06/10): a conexão grava
+ * o NOME do canal como username, e sem @ o canal não tem endereço. Quando o
+ * cliente escreveu o @ do canal (`config.arrobaDoYouTube`, ver
+ * lib/projeto/links-do-cliente.ts), a conta do YouTube sem @ usa esse, e o
+ * nome do canal continua como nome.
+ */
+export function perfisDoCliente(contas: ContaDoCliente[], config?: unknown): PerfilDoCliente[] {
+  const arrobaDoYouTube = config === undefined ? null : lerArrobaDoYouTube(config);
   const vistos = new Set<string>();
   const perfis: PerfilDoCliente[] = [];
   for (const c of contas) {
     const rede = c.platform;
     if (!rede || vistos.has(rede)) continue;
-    const handle = handleValido(c.username);
-    const nome = (c.displayName ?? "").trim() || null;
+    const semArroba = rede === "youtube" && arrobaDoYouTube && !(c.username ?? "").trim().startsWith("@");
+    const username = semArroba ? `@${arrobaDoYouTube}` : c.username;
+    // O nome do canal que a conexão gravou no username não se perde.
+    const nome = (c.displayName ?? "").trim() || (semArroba ? (c.username ?? "").trim() || null : null);
+    const handle = handleValido(username);
     if (!handle && !nome) continue;
     vistos.add(rede);
-    perfis.push({ rede, rotulo: NOME_DA_REDE[rede] ?? rede, handle, nome, url: urlDoPerfil(rede, handle, c.username) });
+    perfis.push({ rede, rotulo: NOME_DA_REDE[rede] ?? rede, handle, nome, url: urlDoPerfil(rede, handle, username) });
   }
   return perfis;
 }
 
 /** O nome do canal do YouTube do cliente, para chamar o completo pelo nome quando não há link. */
-export function nomeDoCanal(contas: ContaDoCliente[]): string | null {
-  const yt = perfisDoCliente(contas).find((p) => p.rede === "youtube");
+export function nomeDoCanal(contas: ContaDoCliente[], config?: unknown): string | null {
+  const yt = perfisDoCliente(contas, config).find((p) => p.rede === "youtube");
   return yt?.nome ?? (yt?.handle ? `@${yt.handle}` : null);
 }
 
@@ -123,11 +135,11 @@ function linhaDoPerfil(p: PerfilDoCliente, comUrl: boolean): string {
  * A própria rede do post fica de fora da lista de perfis: ninguém lista o
  * Instagram na legenda do Instagram. Vazio quando não há o que listar.
  */
-export function blocoDeLinksDaDescricao(args: { rede: string; links: LinkDoCliente[]; contas: ContaDoCliente[] }): string {
+export function blocoDeLinksDaDescricao(args: { rede: string; links: LinkDoCliente[]; contas: ContaDoCliente[]; config?: unknown }): string {
   const { rede, links, contas } = args;
   if (rede === "twitter") return "";
   const comUrl = redeAceitaUrl(rede);
-  const perfis = perfisDoCliente(contas).filter((p) => p.rede !== rede);
+  const perfis = perfisDoCliente(contas, args.config).filter((p) => p.rede !== rede);
   const linhasDeLink = comUrl
     ? (rede === "youtube" ? links : links.slice(0, 1)).map((l) => `${l.cta ?? l.rotulo}: ${l.url}`)
     : [];
@@ -184,14 +196,14 @@ function tamanhoNoX(texto: string): number {
  * A DESCRIÇÃO DE UM CORTE: a legenda do redator, o convite ao completo e o
  * bloco de links da rede. No X, o convite só entra se couber nos 280.
  */
-export function descricaoDoCorte(args: ConviteArgs & { legenda: string; links: LinkDoCliente[]; contas: ContaDoCliente[] }): string {
+export function descricaoDoCorte(args: ConviteArgs & { legenda: string; links: LinkDoCliente[]; contas: ContaDoCliente[]; config?: unknown }): string {
   const legenda = args.legenda.trim();
   const convite = conviteAoCompleto(args);
   if (args.rede === "twitter") {
     const junto = `${legenda}\n\n${convite}`;
     return tamanhoNoX(junto) <= TETO_DO_X ? junto : legenda;
   }
-  const bloco = blocoDeLinksDaDescricao({ rede: args.rede, links: args.links, contas: args.contas });
+  const bloco = blocoDeLinksDaDescricao({ rede: args.rede, links: args.links, contas: args.contas, config: args.config });
   return [legenda, convite, bloco].filter(Boolean).join("\n\n");
 }
 

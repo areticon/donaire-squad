@@ -7,6 +7,7 @@ import { esquecerIdentidade } from "@/lib/media/identidade-visual";
 import { FICHAS_DOS_AGENTES } from "@/lib/squad/definicoes-dos-agentes";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { CAMPOS_DO_ENVIO, soODono } from "@/lib/equipe/permissoes";
+import { CHAVES_DOS_LINKS_NO_CONFIG } from "@/lib/projeto/links-do-cliente";
 
 /**
  * O squad que o projeto ganha na ativação: as fichas centrais (29/09). Até
@@ -58,6 +59,19 @@ export async function PATCH(
   const data: Partial<Record<AllowedField, unknown>> = {};
   for (const key of ALLOWED_FIELDS) {
     if (key in body) data[key] = body[key];
+  }
+
+  // OS LINKS DO CLIENTE TÊM ROTA PRÓPRIA (06/10). Quem manda `config` aqui
+  // manda o que tinha na mão quando a tela abriu; os links e o @ do YouTube
+  // ficam sempre como estão no banco (quem muda é /api/projects/[id]/links).
+  if (data.config && typeof data.config === "object" && !Array.isArray(data.config)) {
+    const noBanco = (project.config as Record<string, unknown> | null) ?? {};
+    const novo = { ...(data.config as Record<string, unknown>) };
+    for (const k of CHAVES_DOS_LINKS_NO_CONFIG) {
+      if (k in noBanco) novo[k] = noBanco[k];
+      else delete novo[k];
+    }
+    data.config = novo;
   }
 
   // MEMBRO DA EQUIPE (01/10, acabamento): grava só as escolhas da jornada de

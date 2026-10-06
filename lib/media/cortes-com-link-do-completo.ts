@@ -28,9 +28,9 @@ export async function ligarCortesAoCompleto(
   // só o convite muda, e o nome do canal serve às redes que não aceitam URL.
   const projeto = await prisma.project.findUnique({
     where: { id: post.projectId },
-    select: { socialAccounts: { where: { isActive: true }, select: { platform: true, username: true, displayName: true } } },
+    select: { config: true, socialAccounts: { where: { isActive: true }, select: { platform: true, username: true, displayName: true } } },
   });
-  const canal = nomeDoCanal(projeto?.socialAccounts ?? []);
+  const canal = nomeDoCanal(projeto?.socialAccounts ?? [], projeto?.config);
   // O título do completo é a primeira linha do post dele (a que vira o título no YouTube).
   const titulo = post.content.split("\n")[0]?.trim() || null;
 

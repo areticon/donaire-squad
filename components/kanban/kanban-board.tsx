@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { StepMarca } from "@/components/kanban/step-marca";
 import { StepReferencias } from "@/components/kanban/step-referencias";
 import { StepPerfilProprio } from "@/components/kanban/step-perfil-proprio";
+import { ArrobaDoYouTube } from "@/components/projects/links-no-setup";
 import { StepReferenciasDoCliente } from "@/components/kanban/step-referencias-do-cliente";
 import { PorqueDoSetup } from "@/components/kanban/porque-do-setup";
 import type { CampoDoSetup, RespostaDoPerfilProprio, SetupSugerido } from "@/lib/referencias/tipos-do-perfil-proprio";
@@ -1390,6 +1391,13 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   conectarDiretoUrl={conectarDireto ? net.connectUrl : null}
                   onPedido={(p) => setPedidos((prev) => [p, ...prev.filter((x) => x.rede !== p.rede)])}
                 />
+              </div>
+            )}
+
+            {/* O @ do canal (06/10): a conexão do YouTube grava só o nome do canal. */}
+            {net.platform === "youtube" && isConnected && (
+              <div className="mt-3">
+                <ArrobaDoYouTube key={daRede.map((c) => c.id).join(",")} projetoId={projectId} />
               </div>
             )}
 

@@ -126,9 +126,11 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
   const completo = {
     titulo: postDoCompleto?.content.split("\n")[0]?.trim() || textoDoCompleto(trechos, video).split("\n")[0]?.trim() || null,
     url: postDoCompleto?.externalUrl ?? null,
-    canal: nomeDoCanal(video.project?.socialAccounts ?? []),
+    canal: nomeDoCanal(video.project?.socialAccounts ?? [], video.project?.config),
     links: lerLinks(video.project?.config),
     contas: video.project?.socialAccounts ?? [],
+    // O @ do canal no YouTube que o cliente escreveu (06/10).
+    config: video.project?.config,
   };
 
   // O que a seleção PEDE: um card por (trecho marcado x destino de vídeo).

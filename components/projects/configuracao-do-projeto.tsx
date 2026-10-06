@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
+import { ArrobaDoYouTube } from "@/components/projects/links-no-setup";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
 import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
@@ -342,7 +343,10 @@ export function ConfiguracaoDoProjeto({
           titulo="Seus links"
           descricao="Site, loja, produtos, afiliados, WhatsApp e agenda. O squad coloca o link certo onde a rede aceita link, com uma chamada para a ação."
         >
-          <LinksDoCliente projetoId={projeto.id} config={projeto.config} />
+          <div className="flex flex-col gap-4">
+            <ArrobaDoYouTube projetoId={projeto.id} />
+            <LinksDoCliente projetoId={projeto.id} config={projeto.config} />
+          </div>
         </Secao>
       )}
 

@@ -76,7 +76,7 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
   // linha, na ordem de prioridade (lib/media/elo-da-campanha.ts).
   const conteudo = [
     textoDoCompleto(trechos, video),
-    blocoDeLinksDaDescricao({ rede: "youtube", links: lerLinks(video.project?.config), contas: video.project?.socialAccounts ?? [] }),
+    blocoDeLinksDaDescricao({ rede: "youtube", links: lerLinks(video.project?.config), contas: video.project?.socialAccounts ?? [], config: video.project?.config }),
   ]
     .filter(Boolean)
     .join("\n\n");
