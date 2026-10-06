@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, ExternalLink, ShieldCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { itensDoCartao } from "@/lib/entregas-do-plano";
 import { FUNDADOR, FUNDADOR_COBRANCA, GARANTIA_DIAS, PLANOS_PUBLICOS, fundadorBotao, fundadorVagas, mensalDoAnual, reais } from "@/lib/planos";
 import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
 import type { Assinatura } from "@/lib/stripe/assinatura";
@@ -271,7 +272,8 @@ export function PlanoECobranca({ assinatura }: { assinatura: Assinatura }) {
                 )}
 
                 <ul className="flex flex-col gap-2">
-                  {plan.features.map((f) => (
+                  {/* Números e lista de lib/entregas-do-plano.ts (06/10), os mesmos da vitrine. */}
+                  {itensDoCartao(plan).map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm">
                       <Check className="h-3.5 w-3.5 shrink-0 text-orange-400" />
                       <span style={{ color: "var(--text-primary)" }}>{f}</span>

@@ -6,8 +6,9 @@ import { Check, ShieldCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { GARANTIA_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
-import { ACESSO_EXTRA } from "@/lib/equipe/regras";
 import { ExtrasDoPlano } from "@/components/planos/extras-do-plano";
+import { ComoContamos, EntregasDoPlano } from "@/components/planos/entregas-do-plano";
+import { fraseDoAcessoExtra, listaDoCartao } from "@/lib/entregas-do-plano";
 
 /**
  * A tabela de preço da landing, na tabela de 27/09/2026 (com o Matheus
@@ -106,10 +107,14 @@ export function Pricing(_: { vagasDeFundador?: number }) {
                 Contratar o {plan.nome}
               </Link>
 
+              {/* Os números do plano (06/10): minutos, vídeos, peças, vídeo por
+                  IA, armazenamento e marcas, de lib/entregas-do-plano.ts. */}
+              <EntregasDoPlano plano={plan} />
+
               <ExtrasDoPlano plano={plan} />
 
               <ul className="space-y-3">
-                {plan.features.map((feature) => (
+                {listaDoCartao(plan).map((feature) => (
                   <li key={feature} className="flex items-start gap-2.5 text-sm">
                     <Check className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                     <span className="text-[var(--text-primary)]">{feature}</span>
@@ -121,13 +126,11 @@ export function Pricing(_: { vagasDeFundador?: number }) {
         </div>
 
         {/* O acesso extra (01/10, noite): quem tem mais vendedores que o plano
-            pergunta logo "e se eu tiver 11?". Os números saem de lib/equipe/regras,
-            o mesmo arquivo que o servidor usa para liberar o convite. */}
-        <p className="mt-8 text-center text-sm text-[var(--text-muted)] max-w-3xl mx-auto">
-          Precisa de mais gente? Cada acesso extra custa R$ {reais(ACESSO_EXTRA.precoMensal)} por mês e soma{" "}
-          {reais(ACESSO_EXTRA.creditosPorMes)} créditos e {ACESSO_EXTRA.gravacoesPorMes} gravação ao saldo. Todos os acessos usam o
-          saldo do plano, e você vê quanto cada pessoa gastou.
-        </p>
+            pergunta logo "e se eu tiver 11?". Desde 06/10 a frase não fala em
+            crédito; sai de lib/entregas-do-plano.ts, que lê lib/equipe/regras. */}
+        <p className="mt-8 text-center text-sm text-[var(--text-muted)] max-w-3xl mx-auto">{fraseDoAcessoExtra()}</p>
+
+        <ComoContamos className="mt-6" />
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}

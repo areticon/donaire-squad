@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { GARANTIA_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
 import { Rastro } from "@/components/landing/rastro";
 import { ExtrasDoPlano } from "@/components/planos/extras-do-plano";
+import { ComoContamos, EntregasDoPlano } from "@/components/planos/entregas-do-plano";
+import { fraseDoAcessoExtra, listaDoCartao } from "@/lib/entregas-do-plano";
 import { authClient } from "@/lib/auth/client";
 
 /**
@@ -132,9 +134,11 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
                   Contratar agora
                 </Link>
               )}
+              {/* Os números do plano (06/10), os mesmos da landing. */}
+              <EntregasDoPlano plano={plano} />
               <ExtrasDoPlano plano={plano} />
               <ul className="space-y-3">
-                {plano.features.map((f) => (
+                {listaDoCartao(plano).map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-sm">
                     <Check className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                     <span className="text-[var(--text-primary)]">{f}</span>
@@ -144,6 +148,9 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
             </div>
           ))}
         </div>
+
+        <p className="mt-8 text-center text-sm text-[var(--text-muted)] max-w-3xl mx-auto">{fraseDoAcessoExtra()}</p>
+        <ComoContamos className="mt-6" />
 
         <div className="mt-10 max-w-2xl mx-auto flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
           <ShieldCheck className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />

@@ -123,7 +123,24 @@ export type PlanoPublico = {
    * de transcrever.
    */
   arquivoMaximoGb: number;
+  /**
+   * O SALDO MENSAL DE PRODUÇÃO, em créditos (06/10). Morava só em
+   * `lib/stripe/index.ts` (`credits`), que a tela não pode importar; por isso
+   * a vitrine falava em "o dobro de saldo" sem número. Agora mora aqui e o
+   * Stripe deriva dele: um lugar só. O cliente NÃO vê este número no cartão;
+   * ele vira minutos, vídeos e peças em `lib/entregas-do-plano.ts`.
+   */
+  creditosPorMes: number;
+  /** A carteira separada do vídeo por IA, em créditos de vídeo (era `videoCredits`). */
+  creditosDeVideoPorMes: number;
   destaque: boolean;
+  /**
+   * Só o que NÃO é número (06/10). Acessos, marcas, minutos, vídeos, peças,
+   * vídeo por IA, armazenamento e duração da gravação saem de
+   * `lib/entregas-do-plano.ts`, calculados dos limites e do consumo reais.
+   * Escritos à mão aqui, eles já tinham divergido do código ("cerca de 44
+   * peças" contra 28 na semana sugerida; "1 marca" contra 2 aplicadas).
+   */
   features: string[];
   /**
    * Os ENTREGÁVEIS DE VALOR (02/10, pedido do Bruno): o que vem com o plano e
@@ -204,29 +221,18 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 48,
     duracaoMaximaMin: 60,
     arquivoMaximoGb: 4,
+    // Saldo e carteira de vídeo do Starter (vieram de lib/stripe/index.ts em
+    // 06/10, sem mudar valor). O porquê de cada número continua comentado lá.
+    creditosPorMes: 20000,
+    creditosDeVideoPorMes: 4160,
     destaque: false,
     features: [
-      // Os acessos (01/10, noite, pedido do Bruno: "colocar a quantidade de contas
-      // para cada plano"). O número vem de ACESSOS_INCLUSOS em lib/equipe/regras.ts,
-      // que é o que o servidor aplica; mudou lá, muda aqui.
-      "2 acessos, contando o seu: você e mais uma pessoa do time",
-      "1 marca ou porta-voz",
-      "4 gravações ou campanhas por mês, cerca de 44 peças",
-      // A PROMESSA EM VÍDEOS é contada na qualidade CHEIA (28/09). O saldo é em
-      // créditos de vídeo (4.160 aqui = 2 x 2.080). Reduzido pela metade no mesmo
-      // dia, decisão do Bruno: vídeo por IA custa caro e o resultado ainda não
-      // compensa; o incentivo passa a ser o cliente subir o próprio vídeo.
-      // Antes: 8.320 (4 x 2.080). Regra do Bruno: "um cliente starter
-      // no pior caso tem que conseguir gerar pelo menos 4 videos na qualidade alta".
-      // Quem escolhe o Rápido rende 2,7 vezes mais vídeos com o mesmo saldo:
-      // prometer "4 vídeos" sem dizer a qualidade é promessa que o saldo não cumpre.
-      // O custo por crédito é o mesmo nas duas, então a margem não muda.
-      // 01/10, noite: saiu "e vídeos seus sem limite". Cada gravação gasta
-      // créditos do saldo (3.174 numa de 22 min com 3 cortes), então havia limite.
+      // 06/10: as linhas de número (acessos, marca, gravações e peças, vídeos
+      // por IA, duração) saíram daqui e são calculadas em
+      // lib/entregas-do-plano.ts. O histórico das decisões está no git.
       "Três jeitos de começar: o seu vídeo, o seu gêmeo digital ou tudo com IA",
       "Vídeo completo editado e cortes verticais legendados, em 6 estilos de edição",
-      "2 vídeos por IA de 30 s por mês na qualidade Cheia (5 na Rápida), com narração em português",
-      "Gravações de até 1 hora",
+      "Vídeo por IA com narração em português",
       "Pesquisa com fontes, revisão e publicação agendada",
       "LinkedIn, Instagram, Facebook, X, YouTube e TikTok",
       "Reunião de implantação para ensinar a voz da empresa",
@@ -244,17 +250,13 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 96,
     duracaoMaximaMin: 120,
     arquivoMaximoGb: 8,
+    creditosPorMes: 40000,
+    creditosDeVideoPorMes: 8320,
     destaque: true,
     features: [
-      "5 acessos, contando o seu, para vendedores, consultores ou corretores",
-      "2 marcas ou porta-vozes",
-      "8 gravações ou campanhas por mês, cerca de 90 peças",
-      "4 vídeos por IA de 30 s por mês na qualidade Cheia (10 na Rápida)",
-      // 01/10, noite: saiu "4 vídeos com edição de estúdio (em implantação)".
-      // Não existia como recurso; os estilos de edição valem para todos os planos.
-      "O dobro de saldo do Starter para gravações longas e o gêmeo digital",
-      "Gravações de até 2 horas",
+      // 06/10: números em lib/entregas-do-plano.ts (ver o Starter).
       "Tudo do Starter",
+      "Acessos para vendedores, consultores ou corretores",
       "Relatório mensal do que rendeu",
     ],
     extras: [demandaDay(1), DEMANDA_CAST],
@@ -271,15 +273,14 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 192,
     duracaoMaximaMin: 300,
     arquivoMaximoGb: 20,
+    creditosPorMes: 60000,
+    creditosDeVideoPorMes: 20800,
     destaque: false,
     features: [
-      "10 acessos, contando o seu, para o time comercial inteiro",
-      "5 marcas ou porta-vozes, como o time de vendas",
-      "16 gravações ou campanhas por mês, cerca de 180 peças",
-      "10 vídeos por IA de 30 s por mês na qualidade Cheia (26 na Rápida)",
-      "O triplo de saldo do Starter, para o time inteiro gravar ou usar o gêmeo",
-      "Gravações de até 5 horas, para podcast e evento",
+      // 06/10: números em lib/entregas-do-plano.ts (ver o Starter).
       "Tudo do Pro",
+      "Acessos e marcas para o time comercial inteiro",
+      "Gravações longas, para podcast e evento",
       "Reunião mensal de estratégia e gerente dedicado",
     ],
     extras: [demandaDay(3), DEMANDA_CAST],

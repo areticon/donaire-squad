@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Clock, Film, PenLine, Scissors, Search, Send } from "lucide-react";
 import { contaDoStarter, emReais } from "@/lib/calculadora/custos";
+import { ENTREGAS as ENTREGAS_DO_PLANO } from "@/lib/entregas-do-plano";
 import { CtaDupla } from "@/components/landing/cta-dupla";
 
 /**
@@ -19,43 +20,72 @@ import { CtaDupla } from "@/components/landing/cta-dupla";
  * vídeo, de propósito: número conservador aguenta pergunta de cliente.
  */
 
-const ENTREGAS = [
+// AS QUANTIDADES SAEM DO PLANO (06/10). Até aqui eram 4, 20, 20, 4 e 44
+// escritos à mão, da conta de 02/09 (5 cortes por gravação), e a tabela de
+// preço logo abaixo passou a mostrar o que o saldo do Starter de fato cobre
+// (lib/entregas-do-plano.ts). As HORAS continuam sendo a premissa de 02/09,
+// agora por unidade, para acompanhar a quantidade: 1,25 h por completo, 0,40
+// a 0,65 h por corte, 0,35 a 0,50 h por peça escrita, 1 h por briefing e 2 a
+// 4 h para cada 44 publicações.
+const E = ENTREGAS_DO_PLANO.pro;
+const HORAS_POR_UNIDADE = {
+  completo: [1.25, 1.25],
+  corte: [0.4, 0.65],
+  peca: [0.35, 0.5],
+  briefing: [1, 1],
+  publicacao: [2 / 44, 4 / 44],
+} as const;
+
+function faixaDeHoras(qtd: number, [a, b]: readonly [number, number]): [number, number] {
+  return [Math.max(1, Math.round(qtd * a)), Math.max(1, Math.round(qtd * b))];
+}
+function horasNaTela([a, b]: [number, number]): string {
+  return a === b ? `${a} h` : `${a} a ${b} h`;
+}
+
+const ITENS = [
   {
     icon: Film,
-    quantidade: "4",
+    qtd: E.completos,
     titulo: "vídeos completos editados",
     texto: "Fala limpa, legenda, capa com o seu rosto e a camada de design da sua marca.",
-    horas: "5 h",
+    horas: faixaDeHoras(E.completos, HORAS_POR_UNIDADE.completo),
   },
   {
     icon: Scissors,
-    quantidade: "20",
+    qtd: E.cortes,
     titulo: "cortes verticais",
     texto: "Os melhores trechos em 9:16, com legenda queimada e capa própria, prontos para Reels, Shorts e TikTok.",
-    horas: "8 a 13 h",
+    horas: faixaDeHoras(E.cortes, HORAS_POR_UNIDADE.corte),
   },
   {
     icon: PenLine,
-    quantidade: "20",
+    qtd: E.pecasDoFeed,
     titulo: "peças escritas",
     texto: "Texto, imagem, carrossel, thread e enquete, no seu tom, para LinkedIn, Instagram, X, Facebook, YouTube e TikTok.",
-    horas: "7 a 10 h",
+    horas: faixaDeHoras(E.pecasDoFeed, HORAS_POR_UNIDADE.peca),
   },
   {
     icon: Search,
-    quantidade: "4",
+    qtd: E.gravacoes,
     titulo: "briefings de pesquisa",
     texto: "Fontes, dados e ângulo do dia, levantados na web antes de qualquer texto ser escrito.",
-    horas: "4 h",
+    horas: faixaDeHoras(E.gravacoes, HORAS_POR_UNIDADE.briefing),
   },
   {
     icon: Send,
-    quantidade: "44",
+    qtd: E.pecas,
     titulo: "publicações agendadas",
     texto: "Cada peça na rede certa, na hora certa, depois de você aprovar.",
-    horas: "2 a 4 h",
+    horas: faixaDeHoras(E.pecas, HORAS_POR_UNIDADE.publicacao),
   },
 ];
+const ENTREGAS = ITENS.map((i) => ({ ...i, quantidade: String(i.qtd), horas: horasNaTela(i.horas) }));
+const SOMA_DE_HORAS: [number, number] = [
+  ITENS.reduce((s, i) => s + i.horas[0], 0),
+  ITENS.reduce((s, i) => s + i.horas[1], 0),
+];
+const HORAS_DEVOLVIDAS = Math.round((SOMA_DE_HORAS[0] + SOMA_DE_HORAS[1]) / 2);
 
 // OS REAIS SAEM DA CALCULADORA (01/10, noite). Até aqui esta seção tinha a
 // conta própria de 02/09 (R$ 3.050 a R$ 6.070, "gestão completa por R$ 5.000"),
@@ -87,7 +117,7 @@ export function Valor() {
           <h2 className="text-4xl lg:text-5xl font-black text-[var(--text-primary)] mb-4">
             {/* 3 horas desde 02/10, noite: a mesma conta da hero e da faixa. */}
             3 horas suas no mês.{" "}
-            <span className="text-orange-500">30 horas de trabalho devolvidas.</span>
+            <span className="text-orange-500">Cerca de {HORAS_DEVOLVIDAS} horas de trabalho devolvidas.</span>
           </h2>
           {/* A ECONOMIA (02/10, noite, pedido do Matheus), em frases curtas e
               com os números da calculadora no volume do Starter. Ele propôs
@@ -144,9 +174,9 @@ export function Valor() {
         >
           <div className="lg:col-span-1 bg-[var(--bg-surface)] border border-orange-500/40 rounded-xl p-8">
             <p className="text-sm text-orange-400 font-semibold mb-2">Somando</p>
-            <p className="text-5xl font-black text-[var(--text-primary)] mb-2">26 a 36 h</p>
+            <p className="text-5xl font-black text-[var(--text-primary)] mb-2">{horasNaTela(SOMA_DE_HORAS)}</p>
             <p className="text-[var(--text-muted)] mb-6">
-              por mês, quase uma semana inteira de trabalho de uma pessoa, feita
+              por mês, perto de três dias de trabalho de uma pessoa, feitos
               enquanto você atende cliente.
             </p>
             <p className="text-sm text-orange-400 font-semibold mb-2">Comprar isso de gente</p>

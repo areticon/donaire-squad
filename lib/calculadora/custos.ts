@@ -1,4 +1,5 @@
 import { PLANOS_PUBLICOS, type PlanoPublico } from "@/lib/planos";
+import { ENTREGAS } from "@/lib/entregas-do-plano";
 
 /**
  * A CALCULADORA DA LANDING (01/10): quanto custa publicar no volume que a
@@ -262,21 +263,21 @@ function cenarioFreela(v: Volume): Cenario {
   };
 }
 
-/** Quantas peças cada plano promete, lido da própria frase do plano ("cerca de 44 peças"). */
+/**
+ * Quantas peças cada plano entrega por mês: vídeos completos, cortes e peças de
+ * feed. Até 06/10 era lido da frase do plano ("cerca de 44 peças"), escrita à
+ * mão e já fora do código; agora sai de lib/entregas-do-plano.ts.
+ */
 export function pecasDoPlano(p: PlanoPublico): number {
-  for (const f of p.features) {
-    const m = f.match(/cerca de ([\d.]+) peças/i);
-    if (m) return Number(m[1].replace(".", ""));
-  }
-  return 0;
+  return ENTREGAS[p.id].pecas;
 }
 
 /**
- * Cada gravação rende cerca de 5 cortes e um vídeo completo (é a conta do
- * Starter: 4 gravações, 20 cortes, 4 completos). Daí sai quantas gravações o
- * volume pede.
+ * Quantos cortes uma gravação rende na conta do plano (06/10: os cortes
+ * sugeridos, 3, em lib/entregas-do-plano.ts; até aqui eram 5 escritos à mão).
+ * Daí sai quantas gravações o volume pede.
  */
-const CORTES_POR_GRAVACAO = 5;
+const CORTES_POR_GRAVACAO = Math.max(1, ENTREGAS.pro.cortes / Math.max(1, ENTREGAS.pro.completos));
 
 export type PlanoIndicado = { plano: PlanoPublico; sobMedida: boolean };
 
@@ -304,12 +305,13 @@ export type Resultado = {
  * conta antiga de 02/09 (R$ 3.050 a R$ 6.070 e "gestão completa por R$ 5.000"),
  * aqui a agência saía por R$ 12.000. Agora as duas usam esta mesma função.
  *
- * O volume é o que o Starter promete: 4 gravações viram 4 completos, 20 cortes
- * e 20 peças escritas (10 textos e 10 artes), cerca de 44 peças. Três redes, e
- * não seis, para ficar do lado conservador.
+ * O volume é o que o Starter entrega, lido de lib/entregas-do-plano.ts (06/10;
+ * até aqui eram 44 peças escritas à mão, com 5 cortes por gravação que o preço
+ * de hoje não cobre). Três redes, e não seis, para ficar do lado conservador.
  */
 export const VOLUME_DO_STARTER: Volume = (() => {
-  const textos = 10, artes = 10, cortes = 20, longos = 4, redes = 3;
+  const e = ENTREGAS.pro;
+  const textos = e.textosDoFeed, artes = e.artesDoFeed, cortes = e.cortes, longos = e.completos, redes = 3;
   return { textos, artes, cortes, longos, pecas: textos + artes + cortes + longos, publicacoes: (textos + artes + cortes) * redes + longos };
 })();
 
