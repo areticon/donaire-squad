@@ -12,6 +12,7 @@ import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
 import { completarPlanoPeloJev, diretorPorLlm, escreverPlanoPeloJev, type EntradaDoPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
+import { contarUsoDoDesignDoProjeto } from "@/lib/biblioteca-de-design/registro";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -324,6 +325,8 @@ export async function escreverPlanoDoCompletoPorComando(e: EntradaDoPlano): Prom
   // No plano em dois eixos a família da linguagem dá a base; a classificação antiga só serve ao diretor Opus.
   const base0 = diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote";
   const p = await escreverPlanoDoVideo(e, base0);
+  // A biblioteca de design (06/10): um vídeo inteiro planejado com o comando é um uso real do design atual do projeto.
+  if (p.plano.momentos.length) void contarUsoDoDesignDoProjeto(e.projectId, "video", `${e.palavras.length}|${Math.round(e.duracao)}`);
   return { ...p, base: p.base ?? base0 };
 }
 
