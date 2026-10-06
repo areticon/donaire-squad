@@ -249,12 +249,16 @@ O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramen
 
 Responda só JSON: {"bloco":"..."}`;
 
-/** O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva com as palavras do comando. */
-export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: FamiliaVisual): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string }> {
+/**
+ * O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva
+ * com as palavras do comando. `redator` é o askClaude; a prova sem IA paga
+ * (scripts/testes/estilos-0610.test.mts) passa um simulado.
+ */
+export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: FamiliaVisual, redator: typeof askClaude = askClaude): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string }> {
   const cores = coresNoPrompt(e.paleta, e.cores);
   const reserva = blocoDeEstiloDeReserva(familia, e.comando.texto, e.nicho, cores);
   try {
-    const r = await askClaude(
+    const r = await redator(
       SISTEMA_DO_ESTILO,
       [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n"),
       { model: MODELO_DO_REDATOR, maxTokens: 4000, effort: "low", timeoutMs: 90_000, usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-estilo" } }
