@@ -6,8 +6,10 @@ import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo, PassosFoco
 import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
 import { Circulo, Desenho, IconeComRotulo, MolduraDoCartao, Seta, Sublinhado } from "./pecas/apontar";
 import { Busca, Chat, Ferramentas, GradeAzul, IlustracaoTraco, LegendaDestaque, MarcaBrilho, Material, Notebook, PalavraGigante, PilhaPassos, Seguir } from "./pecas/lousa";
-import { CarimboSobre, Censura, Colagem, Cronologia, FundoColagem, Jornal, MapaAntigo, MarcaTexto } from "./pecas/vox";
+import { CarimboSobre, Censura, Colagem, Cronologia, FundoColagem, Jornal, MapaAntigo, MarcaTexto, rasgado } from "./pecas/vox";
 import { ImagemJanela } from "./pecas/midia";
+import { Inscrever } from "./pecas/inscrever";
+import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
 /**
@@ -72,6 +74,8 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   cronologia: Cronologia,
   // A imagem gerada em janela, com a moldura da linguagem do vídeo (05/10, noite: editor por comando em dois eixos).
   "imagem-janela": ImagemJanela,
+  // A chamada de curtir e se inscrever (05/10, noite), nos momentos que o JEV escolheu, desenhada na linguagem do vídeo.
+  inscrever: Inscrever,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
@@ -133,6 +137,84 @@ const CSS_DAS_PASSADAS: Record<string, string> = {
     ".passe *{color:transparent!important;text-shadow:none!important;background:none!important;box-shadow:none!important;border-color:transparent!important;filter:none!important;backdrop-filter:none!important;-webkit-text-fill-color:transparent!important}.passe svg,.passe img{visibility:hidden!important}.passe [data-atras]{visibility:hidden!important}.passe [data-vidro]{background:#fff!important}",
 };
 
+/**
+ * A FOLHA SOBRE A GRAVAÇÃO (05/10, noite; regra 1 do Bruno): o cenário do
+ * cliente nunca é trocado sem pedido. Sem o pedido, a peça de TELA CHEIA
+ * (jornal, colagem, cartões, número, citação, mapa...) não cobre a pessoa: o
+ * resolvedor marca `props.sobreAGravacao` e ela é desenhada aqui, inteira e
+ * do mesmo jeito, dentro de uma folha menor no lado livre do rosto (no 9:16,
+ * na faixa livre), que entra com mola, fica e sai. A moldura da folha é a da
+ * LINGUAGEM do vídeo (papel rasgado no documental, vidro, bloco, filete
+ * dourado, neon): o tema só muda a aparência, nunca decide o que entra.
+ */
+function medidasDaFolha(p: PropsDasCamadas, lado: string, caixa?: unknown): { x: number; y: number; w: number; h: number } {
+  const W = p.largura;
+  const H = p.altura;
+  // A caixa que o resolvedor mediu pelo rosto (fração do quadro) manda; sem ela, as medidas padrão.
+  const cx = caixa && typeof caixa === "object" ? (caixa as { x?: number; y?: number; w?: number; h?: number }) : null;
+  if (cx && [cx.x, cx.y, cx.w, cx.h].every((v) => typeof v === "number" && Number.isFinite(v)) && cx.w! > 0.1 && cx.h! > 0.1) {
+    return { x: Math.round(cx.x! * W), y: Math.round(cx.y! * H), w: Math.round(cx.w! * W), h: Math.round(cx.h! * H) };
+  }
+  if (H > W) {
+    const w = Math.round(W * 0.92);
+    const h = Math.round(H * 0.44);
+    return { x: Math.round((W - w) / 2), y: lado === "topo" ? Math.round(H * 0.05) : Math.round(H * 0.5), w, h };
+  }
+  const w = Math.round(W * 0.56);
+  const h = Math.round(H * 0.78);
+  return { x: lado === "esquerda" ? Math.round(W * 0.035) : W - w - Math.round(W * 0.035), y: Math.round(H * 0.1), w, h };
+}
+
+function FolhaSobreAGravacao({ c, p, children }: { c: ContextoDaPeca; p: PropsDasCamadas; children: React.ReactNode }) {
+  const { tema } = c;
+  const u = c.u;
+  const m = medidasDaFolha(p, String(c.props.lado ?? ""), c.props.folha);
+  const papel = tema.visual === "documental";
+  const luxo = tema.acabamento === "luxo";
+  const neon = tema.linguagem === "neon";
+  const ouro = "#C9A24A";
+  const entra = molaFisica(c.t, 150, 16);
+  const sai = c.fica;
+  const semente = Math.round(m.x + m.y) % 13;
+  const borda = 10 * u;
+  const moldura: React.CSSProperties = papel
+    ? { background: "#f4eddc", clipPath: rasgado(m.w + 2 * borda, m.h + 2 * borda, semente, 14 * u) }
+    : luxo
+      ? { background: `linear-gradient(135deg, ${ouro}, ${misturar(ouro, "#ffffff", 0.35)}, ${ouro})`, borderRadius: 10 * u }
+      : neon
+        ? { background: tema.acento, borderRadius: 22 * u, boxShadow: brilhoDaFolha(tema.acento, u) }
+        : tema.visual === "impacto"
+          ? { background: "#0b0c0f", borderRadius: 18 * u, borderBottom: `${12 * u}px solid ${tema.acento}` }
+          : { background: rgba("#ffffff", 0.22), border: `${1.5 * u}px solid ${rgba("#ffffff", 0.4)}`, borderRadius: 28 * u, backdropFilter: `blur(${12 * u}px)` };
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: m.x - borda,
+        top: m.y - borda,
+        width: m.w + 2 * borda,
+        height: m.h + 2 * borda,
+        filter: `drop-shadow(0 ${26 * u}px ${48 * u}px rgba(0,0,0,.55)) drop-shadow(0 ${4 * u}px ${8 * u}px rgba(0,0,0,.35))`,
+        opacity: limitar(c.t / 0.1) * sai,
+        transform: `translateY(${((1 - entra) * 70 * u + (1 - sai) * 40 * u).toFixed(1)}px) scale(${(0.94 + 0.06 * entra).toFixed(3)}) rotate(${papel ? (semente % 2 ? -1.2 : 1) : 0}deg)`,
+        transformOrigin: "50% 60%",
+      }}
+    >
+      <div style={{ position: "absolute", inset: 0, ...moldura }} />
+      <div style={{ position: "absolute", left: borda, top: borda, width: m.w, height: m.h, overflow: "hidden", borderRadius: papel ? 0 : luxo ? 6 * u : neon ? 16 * u : tema.visual === "impacto" ? 10 * u : 22 * u }}>{children}</div>
+    </div>
+  );
+}
+
+const brilhoDaFolha = (cor: string, u: number) => `0 0 ${30 * u}px ${rgba(cor, 0.55)}, 0 0 ${80 * u}px ${rgba(cor, 0.25)}`;
+
+/** O contexto da peça dentro da folha: a largura e a altura passam a ser as da folha (a peça se desenha para ela). */
+function contextoNaFolha(ctx: ContextoDaPeca, p: PropsDasCamadas): ContextoDaPeca {
+  const m = medidasDaFolha(p, String(ctx.props.lado ?? ""), ctx.props.folha);
+  const vertical = m.h > m.w;
+  return { ...ctx, W: m.w, H: m.h, vertical, u: (Math.min(m.w, m.h) / 1080) * (vertical ? 1.3 : 1.12) };
+}
+
 export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
   carregarFontesDoTema();
   // O acento é o VIVO em todo acabamento (o mesmo matiz da marca, que brilha); a cor original segue em `acentoMarca`.
@@ -151,6 +233,18 @@ export const Camadas: React.FC<PropsDasCamadas> = (bruto) => {
         // As de tela crescem para ocupar a tela; no 9:16 também (prova de 03/10,
         // segunda volta: a comparação e a citação ocupavam só o terço de cima).
         const ctx = DE_TELA.has(c.peca) ? { ...ctx0, u: ctx0.u * (ctx0.vertical ? 1.2 : 1.28) } : ctx0;
+        // A folha sobre a gravação (regra 1): a peça de tela desenhada menor, no lado livre, sem cobrir a pessoa.
+        if (c.props.sobreAGravacao) {
+          const dentro = contextoNaFolha(ctx0, props);
+          const ctxF = DE_TELA.has(c.peca) ? { ...dentro, u: dentro.u * 1.18 } : dentro;
+          return (
+            <AbsoluteFill key={c.id} style={{ fontFamily: props.tema.fonteTexto }}>
+              <FolhaSobreAGravacao c={ctx0} p={props}>
+                <Peca {...ctxF} />
+              </FolhaSobreAGravacao>
+            </AbsoluteFill>
+          );
+        }
         return (
           <AbsoluteFill key={c.id} style={{ fontFamily: props.tema.fonteTexto }}>
             <Peca {...ctx} />

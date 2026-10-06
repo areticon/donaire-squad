@@ -49,6 +49,9 @@ const TELA = "tela" as const;
 export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa | typeof TELA | null {
   if (ehApoio(c)) return null;
   const pos = String((c.props ?? {}).posicao ?? "");
+  // A FOLHA SOBRE A GRAVAÇÃO (05/10, noite): a peça de tela desenhada numa faixa (topo ou baixo), a pessoa na outra.
+  if ((c.props ?? {}).sobreAGravacao) return String((c.props ?? {}).lado) === "topo" ? [0.03, 0.5] : [0.5, 0.95];
+  if (c.peca === "inscrever") return String((c.props ?? {}).lado) === "topo" ? [0.05, 0.2] : [0.78, 0.92];
   switch (c.peca) {
     // Sem texto próprio na faixa da legenda.
     case "seta":

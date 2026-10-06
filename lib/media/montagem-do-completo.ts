@@ -2010,6 +2010,8 @@ async function entradaDoPlanoDoCompleto(v: VideoDoCompleto, m: MontagemDoComplet
     imagens: tetoDeImagens("completo", m.fala!.duracao),
     // As sugestões cena a cena do roteiro (05/10) viram instrução obrigatória do trecho no diretor.
     pedidos: sugestoesDoCliente(m),
+    // O completo é o vídeo do YouTube (decisão de 23/08): a chamada de curtir e inscrever entra (05/10, noite).
+    youtube: true,
   };
 }
 
