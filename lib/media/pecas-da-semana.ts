@@ -1006,11 +1006,19 @@ export async function arteDoDia(
     });
   // A conferência olha a peça pronta: só a frase pode estar escrita, e
   // ninguém pode aparecer. Reprovada, sai de novo UMA vez com o motivo.
+  // NOS MODELOS "VOCÊ" A PESSOA É O CLIENTE (05/10): o modelo do book com o
+  // lugar de "você" (foto "recorte") sai com a pessoa de referência de
+  // propósito; reprovar por "tem pessoa" pagava a lâmina duas vezes e ainda
+  // pedia ao gerador para tirar o cliente da própria arte.
   let peca = await desenhar();
-  const veredito = await conferirArte(peca, { formato, textoEsperado: [frase], usarRegua: false, projectId: ctx.projectId, runId: ctx.runId });
+  const modeloDaPeca = await modeloDaMarca(marca, formato.largura, formato.altura, frase).catch(() => null);
+  const { fotoDoClienteEntra } = await import("@/lib/modelos-de-arte/prompts-com-foto");
+  const permitirPessoas = fotoDoClienteEntra(modeloDaPeca);
+  const { textoPermitidoComModelo } = await import("@/lib/modelos-de-arte/registro");
+  const veredito = await conferirArte(peca, { formato, textoEsperado: textoPermitidoComModelo([frase]), permitirPessoas, usarRegua: false, projectId: ctx.projectId, runId: ctx.runId });
   if (!veredito.aprovada) {
     console.warn(`[semana] arte reprovada, refazendo uma vez: ${veredito.motivo}`);
-    peca = await desenhar(`PREVIOUS ATTEMPT WAS REJECTED: ${veredito.motivo}. Remove every letter, number and person from the scene.`);
+    peca = await desenhar(`PREVIOUS ATTEMPT WAS REJECTED: ${veredito.motivo}. Remove every letter and number${permitirPessoas ? "" : " and person"} from the scene.`);
   }
   return peca;
 }

@@ -34,6 +34,9 @@ import {
 import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
 import { MENSAGEM_AGUARDANDO, ehIdentidadeNaoAprovada } from "@/lib/modelos-de-arte/identidade";
 import { conteudoDoCardAguardando, marcarEspera, tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
+import { ajustesValidos, descreverAjustes, fundirAjustes, lerAjustesDoPedido, deslocamentoDoTituloNoPedido, PASSO_DO_TITULO, type AjustesDaPeca } from "@/lib/modelos-de-arte/ajustes-da-peca";
+import { fotoDoClienteEntra, soTexto } from "@/lib/modelos-de-arte/prompts-com-foto";
+import { descreverIntercalacao, escolherFotosDasLaminas, pedidoDeIntercalar, type FotoDaLamina } from "@/lib/media/fotos-do-carrossel";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -56,6 +59,32 @@ import { conteudoDoCardAguardando, marcarEspera, tipoGeraArte } from "@/lib/mode
  * aconteceu em cada uma, em português de gente, no card em que o pedido foi
  * feito. Quem chama é a rota do chat, por `after()`: a resposta volta na hora
  * e a tela acompanha pelo GET da mesma rota.
+ *
+ * O SEGUNDO CASO DO DONO (05/10, noite), no card do Paulo do post único de X
+ * (carrossel de 5 lâminas gerado pelo "Aprovar e gerar", sem card da Diana,
+ * todas com a MESMA foto dele): "subi mais materiais meus, intercale as fotos
+ * no carrossel, e o texto ficou muito atrás de mim, precisa subir um
+ * pouquinho, além disso é legal colocar uma luz de fundo para dar efeito de
+ * profundidade". O Paulo respondeu "Este dia não tem imagem". Três defeitos:
+ *
+ *   1. a arte do dia era procurada SÓ pelo card da Diana; o post único de X
+ *      nunca passou pela Diana, então a arte que estava no post (imageUrl)
+ *      não existia para o pedido. Agora a arte vem do POST (imageUrl e
+ *      mediaType do post do dia e das redes), e sem card da Diana ele é
+ *      criado na hora, para guardar a arte e o histórico;
+ *   2. "intercale as fotos": a referência da pessoa era escolhida por frase,
+ *      sem olhar as lâminas vizinhas, e saía a mesma foto em todas. Agora o
+ *      carrossel usa uma foto DIFERENTE por lâmina (lib/media/fotos-do-carrossel.ts):
+ *      nunca a mesma em lâminas vizinhas, o JEV escolhe quando há mais de uma
+ *      candidata, e com uma foto só ela alterna com lâmina só de texto;
+ *   3. "texto mais para cima" e "luz de fundo" eram uma linha de prompt em
+ *      inglês para o modelo de imagem, que não desenha o título nem a luz
+ *      (são compostos em código). Agora viram PARÂMETROS da composição
+ *      (lib/modelos-de-arte/ajustes-da-peca.ts), gravados no metadata do post
+ *      para as próximas regerações.
+ *
+ * E a resposta conta o que mudou de verdade; "não tem imagem" só sai quando
+ * nenhum post do dia tem arte.
  */
 
 type Mensagem = { role: "user" | "assistant"; content: string; timestamp: string };
@@ -79,6 +108,10 @@ export type AcaoDoPedido =
       pretoEBranco?: boolean;
       /** "papel rasgado", "colagem", "recorte": a peça sai no modelo de colagem do book. */
       papel?: boolean;
+      /** "intercale as fotos": uma foto diferente do cliente por lâmina; com uma só, alterna com lâmina só de texto. */
+      intercalarFotos?: boolean;
+      /** Os ajustes de layout pedidos: título atrás da pessoa mais para cima ou para baixo, luz de fundo, sombra. */
+      ajustes?: AjustesDaPeca | null;
     }
   | { tipo: "data"; data: string; hora: string | null }
   | { tipo: "rede"; incluir: string[]; tirar: string[] };
@@ -153,28 +186,47 @@ export async function estadoDoPedido(cardId: string) {
 const HEX = /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/i;
 const PEDIDO_DE_ARTE = /\b(imagem|imagens|fotos?|artes?|gr[aá]fic\w*|infogr[aá]fic\w*|capas?|ilustra\w*|visual|design|cor|cores|layout|l[aâ]minas?|slides?)\b/i; // palavra inteira: "corrige" não é "cor"
 
-/** Sem o modelo (falhou ou demorou), a leitura por palavra: melhor que nada. */
-function entenderNaUnha(mensagem: string): AcaoDoPedido[] {
+/** Sem o modelo (falhou ou demorou), a leitura por palavra: melhor que nada. Exportada para a prova. */
+export function entenderNaUnha(mensagem: string): AcaoDoPedido[] {
   const acoes: AcaoDoPedido[] = [];
-  const temArte = PEDIDO_DE_ARTE.test(mensagem);
-  const temTexto = /\b(tira|tire|remov|texto|legenda|frase|escrev|reescrev|troca a palavra|corrig)/i.test(mensagem) || !temArte;
+  const temArte = PEDIDO_DE_ARTE.test(mensagem) || pedidoDeIntercalar(mensagem) || Boolean(lerAjustesDoPedido(mensagem));
+  // "O texto ficou atrás de mim, precisa subir" é o TÍTULO da arte (ajuste de
+  // layout), e não a legenda: a palavra "texto" sozinha não abre ação de texto.
+  const textoEhDoLayout = deslocamentoDoTituloNoPedido(mensagem) !== 0;
+  const temTexto = (textoEhDoLayout ? /\b(tira|tire|remov|legenda|escrev|reescrev|troca a palavra|corrig)/i : /\b(tira|tire|remov|texto|legenda|frase|escrev|reescrev|troca a palavra|corrig)/i).test(mensagem) || !temArte;
   if (temTexto) acoes.push({ tipo: "texto", instrucao: mensagem });
   if (temArte) acoes.push(comAsPistasDoTexto({ tipo: "arte", instrucao: mensagem, cor: mensagem.match(HEX)?.[0]?.toUpperCase() ?? null, lamina: null, marcaToda: false }, mensagem));
   return acoes;
 }
 
+/** O que o modelo pode responder além dos campos da ação, nos pedidos de layout. */
+type PistasDoModelo = { intercalarFotos?: unknown; tituloParaCima?: unknown; tituloParaBaixo?: unknown; luzDeFundo?: unknown; ajustes?: unknown };
+
 /**
  * As pistas lidas por palavra valem por cima do que o modelo respondeu: se o
  * cliente escreveu "somente preto e vermelho", é paleta estrita mesmo que o
- * JSON tenha vindo sem o campo.
+ * JSON tenha vindo sem o campo. Os ajustes de layout somam: o que o texto diz
+ * (com o grau, "um pouquinho") vale mais que o que o modelo marcou.
  */
-function comAsPistasDoTexto(a: Extract<AcaoDoPedido, { tipo: "arte" }>, mensagem: string): Extract<AcaoDoPedido, { tipo: "arte" }> {
+export function comAsPistasDoTexto(a: Extract<AcaoDoPedido, { tipo: "arte" }>, mensagem: string): Extract<AcaoDoPedido, { tipo: "arte" }> {
   const texto = `${a.instrucao}\n${mensagem}`;
+  const pistas = a as PistasDoModelo;
+  const doModelo: AjustesDaPeca = {
+    ...(ajustesValidos(pistas.ajustes) ?? {}),
+    ...(pistas.tituloParaCima === true ? { titulo: -PASSO_DO_TITULO } : pistas.tituloParaBaixo === true ? { titulo: PASSO_DO_TITULO } : {}),
+    ...(pistas.luzDeFundo === true ? { luz: "aro" as const } : {}),
+  };
+  const doTexto = lerAjustesDoPedido(texto) ?? {};
+  const ajustes = ajustesValidos({ ...doModelo, ...doTexto });
+  const { tituloParaCima: _c, tituloParaBaixo: _b, luzDeFundo: _l, ...semPistas } = a as Extract<AcaoDoPedido, { tipo: "arte" }> & PistasDoModelo;
+  void _c; void _b; void _l;
   return {
-    ...a,
+    ...(semPistas as Extract<AcaoDoPedido, { tipo: "arte" }>),
     paletaEstrita: Boolean(a.paletaEstrita) || pedidoDePaletaEstrita(texto),
     pretoEBranco: Boolean(a.pretoEBranco) || pedidoDePretoEBranco(texto),
     papel: Boolean(a.papel) || pedidoDePapel(texto),
+    intercalarFotos: pistas.intercalarFotos === true || pedidoDeIntercalar(texto),
+    ajustes,
   };
 }
 
@@ -191,7 +243,7 @@ export async function entenderPedido(args: {
 
 Tipos de ação (use quantas o pedido tiver, na ordem em que aparecem):
 - {"tipo":"texto","instrucao":"...","feito":"..."}: mudar o TEXTO/legenda do post (tirar palavra, mudar tom, encurtar, corrigir). A instrução repete só a parte do pedido sobre o texto. "feito" é o que vai ser feito contado ao cliente na primeira pessoa, no passado, curto e sem termo técnico, terminando antes de dizer onde (ex.: "tirei o 'minha preta' da legenda", "deixei o texto mais curto").
-- {"tipo":"arte","instrucao":"...","cor":"#RRGGBB ou null","lamina":número ou null,"marcaToda":true|false,"paletaEstrita":true|false,"pretoEBranco":true|false,"papel":true|false}: refazer a IMAGEM, o carrossel ou o infográfico. "cor" é a cor pedida em hex (converta nome de cor conhecido: escarlate #E3000F só se o cliente não deu o hex; se deu, use o dele). "lamina" só se o cliente nomeou UMA lâmina/slide (1, 2, 3...). "marcaToda" true só se ele pediu essa cor para a marca inteira ("sempre", "em tudo", "na marca"). "paletaEstrita" true quando ele exige que a arte use SÓ certas cores ("somente preto e vermelho", "só as cores da marca", "use só a paleta", "nada fora da paleta"); "mude para vermelho" não é estrito. "pretoEBranco" true só se pediu preto e branco literalmente. "papel" true se citou papel, papel rasgado, colagem, recorte ou fita adesiva.
+- {"tipo":"arte","instrucao":"...","cor":"#RRGGBB ou null","lamina":número ou null,"marcaToda":true|false,"paletaEstrita":true|false,"pretoEBranco":true|false,"papel":true|false,"intercalarFotos":true|false,"tituloParaCima":true|false,"tituloParaBaixo":true|false,"luzDeFundo":true|false}: refazer a IMAGEM, o carrossel ou o infográfico. "cor" é a cor pedida em hex (converta nome de cor conhecido: escarlate #E3000F só se o cliente não deu o hex; se deu, use o dele). "lamina" só se o cliente nomeou UMA lâmina/slide (1, 2, 3...). "marcaToda" true só se ele pediu essa cor para a marca inteira ("sempre", "em tudo", "na marca"). "paletaEstrita" true quando ele exige que a arte use SÓ certas cores ("somente preto e vermelho", "só as cores da marca", "use só a paleta", "nada fora da paleta"); "mude para vermelho" não é estrito. "pretoEBranco" true só se pediu preto e branco literalmente. "papel" true se citou papel, papel rasgado, colagem, recorte ou fita adesiva. "intercalarFotos" true se pediu para intercalar, alternar ou variar as fotos dele nas lâminas. "tituloParaCima"/"tituloParaBaixo" true quando o texto/título DA ARTE ("o texto atrás de mim", "a palavra") deve subir ou descer: isso é ajuste da ARTE, e NÃO ação de texto. "luzDeFundo" true se pediu luz de fundo, luz atrás, contraluz ou efeito de profundidade.
 - {"tipo":"data","data":"AAAA-MM-DD","hora":"HH:MM ou null"}: mudar o dia/horário de publicação. Resolva "sexta", "amanhã" etc. a partir de hoje.
 - {"tipo":"rede","incluir":["instagram"|"linkedin"|"facebook"|"twitter"|"threads"|"tiktok"|"youtube"],"tirar":[...]}: publicar também em outra rede, ou tirar de uma rede.
 
@@ -223,6 +275,8 @@ type Contexto = {
   mensagem: string;
   /** Lâmina selecionada na tela (0-based), quando o pedido veio de um carrossel. */
   slideIndex: number | null;
+  /** As ações já entendidas (o script que aplica um pedido aprovado passa aqui, sem a leitura pelo modelo). */
+  acoesProntas?: AcaoDoPedido[];
 };
 
 const DADOS = { project: true } as const;
@@ -240,15 +294,42 @@ export function marcaComCor(marca: MarcaDaArte, cor: string | null): MarcaDaArte
 }
 
 /** O que fica gravado no metadata do post e do card da Diana para as próximas regerações. */
-export type ArteGravada = { tratamento: TratamentoDaFoto | null; modeloDaArte: string | null };
+export type ArteGravada = { tratamento: TratamentoDaFoto | null; modeloDaArte: string | null; ajustes: AjustesDaPeca | null };
 
-/** O tratamento e o modelo já gravados num metadata (post ou card), validados. */
+/** O tratamento, o modelo e os ajustes já gravados num metadata (post ou card), validados. */
 export function arteGravadaEm(meta: unknown): ArteGravada {
   const m = (meta && typeof meta === "object" ? meta : {}) as Record<string, unknown>;
   return {
     tratamento: tratamentoValido(m.tratamento) ? m.tratamento : null,
     modeloDaArte: typeof m.modeloDaArte === "string" && modeloPorId(m.modeloDaArte) ? m.modeloDaArte : null,
+    ajustes: ajustesValidos(m.ajustes),
   };
+}
+
+/** O gravado do dia: o card da Diana primeiro, senão o post (o post único de X só tem o post). */
+export function arteGravadaDoDia(metaDaDiana: unknown, metaDoPost: unknown): ArteGravada {
+  const d = arteGravadaEm(metaDaDiana);
+  const p = arteGravadaEm(metaDoPost);
+  return { tratamento: d.tratamento ?? p.tratamento, modeloDaArte: d.modeloDaArte ?? p.modeloDaArte, ajustes: d.ajustes ?? p.ajustes };
+}
+
+/**
+ * A ARTE DO DIA PELOS POSTS (05/10): o formato e as lâminas atuais vêm do post
+ * que tem arte (imageUrl, ou tipo que gera arte), e o card da Diana só
+ * complementa. `temArte` é o que decide se há o que refazer: nunca "não tem
+ * imagem" quando um post do dia tem imageUrl. Puro, para a prova.
+ */
+export function arteDoDiaPelosPosts(
+  posts: Array<{ imageUrl: string | null; mediaType: string | null }>,
+  daDiana: { mediaType: string | null; mediaUrl: string | null } | null | undefined
+): { formato: string; laminas: string[]; temArte: boolean; postComArte: { imageUrl: string | null; mediaType: string | null } | null } {
+  const laminasDe = (url: string | null | undefined) => (url ?? "").split("|").filter((u) => u.trim().length > 10);
+  const postComArte = posts.find((p) => laminasDe(p.imageUrl).length) ?? posts.find((p) => tipoGeraArte(p.mediaType)) ?? null;
+  const formato = daDiana?.mediaType ?? postComArte?.mediaType ?? posts[0]?.mediaType ?? "text";
+  const doPost = laminasDe(postComArte?.imageUrl);
+  const laminas = doPost.length ? doPost : laminasDe(daDiana?.mediaUrl);
+  const temArte = laminas.length > 0 || Boolean(postComArte && tipoGeraArte(postComArte.mediaType)) || Boolean(daDiana?.mediaUrl);
+  return { formato, laminas, temArte, postComArte };
 }
 
 /**
@@ -262,23 +343,25 @@ export function marcaDoPedido(
   marca: MarcaDaArte,
   acao: Extract<AcaoDoPedido, { tipo: "arte" }>,
   gravado: ArteGravada
-): { marca: MarcaDaArte; decidido: ArteGravada; mudou: { tratamento: boolean; modelo: boolean } } {
+): { marca: MarcaDaArte; decidido: ArteGravada; mudou: { tratamento: boolean; modelo: boolean; ajustes: boolean } } {
   const comCor = marcaComCor(marca, acao.cor);
   // Paleta estrita e preto e branco dão "pb": a foto sem cor e a cor da marca
   // só nos acentos. Nunca duotone por pedido (a foto tingida foi reprovada em
   // 05/10); tingir é escolha explícita da identidade.
   const tratamento: TratamentoDaFoto | null = acao.pretoEBranco || acao.paletaEstrita ? "pb" : (gravado.tratamento ?? comCor.tratamento ?? null);
   const modeloDaArte = acao.papel ? MODELO_DE_PAPEL : gravado.modeloDaArte;
+  // Os ajustes de layout SOMAM ao que já estava: "sobe mais um pouco" parte do que já subiu.
+  const ajustes = fundirAjustes(gravado.ajustes, acao.ajustes);
   return {
-    marca: { ...comCor, tratamento, ...(modeloDaArte ? { modeloFixo: modeloDaArte } : {}) },
-    decidido: { tratamento, modeloDaArte },
-    mudou: { tratamento: tratamento !== gravado.tratamento, modelo: modeloDaArte !== gravado.modeloDaArte },
+    marca: { ...comCor, tratamento, ajustes, ...(modeloDaArte ? { modeloFixo: modeloDaArte } : {}) },
+    decidido: { tratamento, modeloDaArte, ajustes },
+    mudou: { tratamento: tratamento !== gravado.tratamento, modelo: modeloDaArte !== gravado.modeloDaArte, ajustes: Boolean(acao.ajustes) },
   };
 }
 
-/** Grava `tratamento` e `modeloDaArte` no metadata do post e do card, sem tocar no resto (jsonb_set, não SET). */
-async function gravarArteNoMetadata(alvos: { postIds: string[]; cardIds: string[] }, decidido: ArteGravada): Promise<void> {
-  const json = JSON.stringify({ tratamento: decidido.tratamento, modeloDaArte: decidido.modeloDaArte });
+/** Grava `tratamento`, `modeloDaArte`, `ajustes` (e as frases das lâminas, quando vieram de fora) no metadata do post e do card, sem tocar no resto (jsonb merge, não SET). */
+async function gravarArteNoMetadata(alvos: { postIds: string[]; cardIds: string[] }, decidido: ArteGravada, extra: Record<string, unknown> = {}): Promise<void> {
+  const json = JSON.stringify({ tratamento: decidido.tratamento, modeloDaArte: decidido.modeloDaArte, ajustes: decidido.ajustes, ...extra });
   for (const id of alvos.postIds) {
     await prisma.$executeRaw`UPDATE posts SET metadata = COALESCE(metadata, '{}'::jsonb) || ${json}::jsonb WHERE id = ${id}`;
   }
@@ -295,12 +378,20 @@ function direcaoParaOTratamento(t: TratamentoDaFoto | null): string {
     : "The photo will be converted in code to black and white (the brand colour goes only on accents added later): compose for strong tonal contrast and simple shapes; colour in the scene does not matter.";
 }
 
-/** O que de fato mudou na arte, contado ao cliente. */
-function contarOQueMudou(acao: Extract<AcaoDoPedido, { tipo: "arte" }>, decidido: ArteGravada, mudou: { tratamento: boolean; modelo: boolean }): string {
-  const partes: string[] = [];
+/** O que de fato mudou na arte, contado ao cliente. Exportado para a prova. */
+export function contarOQueMudou(
+  acao: Extract<AcaoDoPedido, { tipo: "arte" }>,
+  decidido: ArteGravada,
+  mudou: { tratamento: boolean; modelo: boolean; ajustes?: boolean },
+  /** O que mais mudou nesta peça (as fotos intercaladas do carrossel), já em português. */
+  outras: string[] = []
+): string {
+  const partes: string[] = [...outras];
   if (acao.cor) partes.push(`com a cor ${acao.cor}`);
   if (decidido.tratamento && (mudou.tratamento || acao.paletaEstrita || acao.pretoEBranco)) partes.push(`com as fotos ${NOME_DO_TRATAMENTO[decidido.tratamento]}`);
   if (decidido.modeloDaArte && (mudou.modelo || acao.papel)) partes.push(`no modelo ${modeloPorId(decidido.modeloDaArte)?.nome.toLowerCase() ?? "de papel"}`);
+  // Os ajustes de layout pedidos agora ("o título mais para cima", "a luz de fundo").
+  if (mudou.ajustes) partes.push(...descreverAjustes(acao.ajustes).map((a) => `com ${a}`));
   if (!partes.length) return "";
   return partes.length === 1 ? ` ${partes[0]}` : ` ${partes.slice(0, -1).join(", ")} e ${partes.at(-1)}`;
 }
@@ -313,6 +404,58 @@ export function frasesDoCarrossel(meta: Record<string, unknown> | null | undefin
     .split("\n")
     .map((l) => l.match(/^\s*\d+\.\s+(.+)$/)?.[1]?.trim())
     .filter((x): x is string => Boolean(x));
+}
+
+/** O texto do card da Diana para um carrossel, com a lista das frases. */
+export function conteudoDoCarrossel(frases: string[]): string {
+  return `Carrossel de ${frases.length} lâminas:\n${frases.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+}
+
+/** O pedido de refazer não achou as frases das lâminas: a resposta diz isso, e não "a arte não saiu". */
+export class SemFrasesDasLaminas extends Error {
+  constructor() {
+    super("as frases das lâminas não estão gravadas");
+    this.name = "SemFrasesDasLaminas";
+  }
+}
+
+/**
+ * AS FRASES DAS LÂMINAS, de onde houver (05/10): o card da Diana, o post
+ * (`metadata.slides`), ou o checkpoint do carrossel (lib/media/checkpoint-do-carrossel.ts)
+ * pelas chaves que a esteira e o "Aprovar e gerar" usam. O post único de X de
+ * 05/10 não tinha nada gravado: as frases só existiam no checkpoint.
+ * Devolve de onde vieram, para gravar no post quando não estavam lá.
+ */
+export async function frasesDasLaminas(o: {
+  daDiana: { metadata: unknown; content: string | null } | null;
+  posts: Array<{ metadata: unknown; content: string }>;
+  runId: string;
+  dayOfWeek: number;
+  total: number;
+}): Promise<{ frases: string[]; origem: "diana" | "post" | "checkpoint" } | null> {
+  const basta = (f: string[]) => f.length >= o.total && o.total > 0;
+  if (o.daDiana) {
+    const f = frasesDoCarrossel(o.daDiana.metadata as Record<string, unknown> | null, o.daDiana.content);
+    if (basta(f)) return { frases: f, origem: "diana" };
+  }
+  for (const p of o.posts) {
+    const f = frasesDoCarrossel(p.metadata as Record<string, unknown> | null, null);
+    if (basta(f)) return { frases: f, origem: "post" };
+  }
+  const { roteiroGuardado } = await import("@/lib/media/checkpoint-do-carrossel");
+  for (const chave of [`${o.runId}-identidade-${o.dayOfWeek}`, `${o.runId}-${o.dayOfWeek}`]) {
+    const roteiro = await roteiroGuardado(chave).catch(() => null);
+    const f = (roteiro ?? []).map((l) => l.frase).filter(Boolean);
+    if (basta(f)) return { frases: f.slice(0, o.total), origem: "checkpoint" };
+  }
+  return null;
+}
+
+/** A frase da resposta quando o carrossel foi refeito. Pura, para a prova. */
+export function fraseDoCarrosselRefeito(o: { total: number; alvo: number[]; feitas: number; oQueMudou: string }): string {
+  const falhas = o.alvo.length - o.feitas;
+  const quais = o.alvo.length === o.total ? (o.total === 1 ? "a lâmina" : `as ${o.total} lâminas`) : o.alvo.length === 1 ? `a lâmina ${o.alvo[0] + 1}` : `${o.alvo.length} lâminas`;
+  return `Refiz ${quais} do carrossel${o.oQueMudou}, e ${o.alvo.length === 1 && o.total > 1 ? "ela já está" : "elas já estão"} aqui no card${falhas ? `; ${falhas === 1 ? "uma não saiu e ficou como estava" : `${falhas} não saíram e ficaram como estavam`}` : ""}.`;
 }
 
 /**
@@ -344,7 +487,7 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
         : { runId, dayOfWeek: dia, status: { notIn: ["published", "publishing", "cancelled"] } },
       select: { id: true, platform: true, content: true, imageUrl: true, mediaType: true, metadata: true, scheduledAt: true, status: true, runId: true, dayOfWeek: true, socialAccountId: true },
     });
-    const daDiana = card.cardType === "media"
+    let daDiana: CardComProjeto | null = card.cardType === "media"
       ? card
       : await prisma.campaignCard.findFirst({
           where: { runId, dayOfWeek: dia, cardType: "media", NOT: { status: "archived" } },
@@ -352,19 +495,24 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
           orderBy: { createdAt: "desc" },
         });
     if (daDiana) revisao.add(daDiana.id);
-    const formatoDaPecaDoDia = daDiana?.mediaType ?? posts[0]?.mediaType ?? "text";
-    const laminasAtuais = (daDiana?.mediaUrl ?? posts[0]?.imageUrl ?? "").split("|").filter((u) => u.trim().length > 10);
+    // A ARTE DO DIA VEM DO POST (05/10): o card da Diana só complementa. O
+    // post único de X nunca passou pela Diana, e a arte dele estava no post.
+    const arteDoDiaAtual = arteDoDiaPelosPosts(posts, daDiana);
+    const formatoDaPecaDoDia = arteDoDiaAtual.formato;
+    const laminasAtuais = arteDoDiaAtual.laminas;
     const ehCarrossel = formatoDaPecaDoDia === "carousel" || laminasAtuais.length > 1;
     const quando = posts.find((p) => p.scheduledAt)?.scheduledAt ?? null;
 
-    const acoes = await entenderPedido({
-      mensagem: ctx.mensagem,
-      formato: ehCarrossel ? "carrossel" : formatoDaPecaDoDia === "infographic" ? "infográfico" : formatoDaPecaDoDia === "image" ? "imagem" : "post de texto",
-      laminas: laminasAtuais.length,
-      redes: [...new Set(posts.map((p) => p.platform))],
-      quando: quando ? quando.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : null,
-      usage: { projectId: card.projectId, runId },
-    });
+    const acoes = ctx.acoesProntas?.length
+      ? ctx.acoesProntas
+      : await entenderPedido({
+          mensagem: ctx.mensagem,
+          formato: ehCarrossel ? "carrossel" : formatoDaPecaDoDia === "infographic" ? "infográfico" : formatoDaPecaDoDia === "image" ? "imagem" : "post de texto",
+          laminas: laminasAtuais.length,
+          redes: [...new Set(posts.map((p) => p.platform))],
+          quando: quando ? quando.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : null,
+          usage: { projectId: card.projectId, runId },
+        });
 
     // As etapas que a tela mostra, antes de começar, para o cliente ver o plano.
     etapa("entender").estado = "feito";
@@ -434,10 +582,21 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
       // Confere ANTES de desenhar: o carrossel refaz lâmina a lâmina e engole
       // o erro de cada uma, então a trava precisa ser vista aqui, de uma vez.
       const travada = posts.some((p) => tipoGeraArte(p.mediaType)) && (await marcaDaArte(card.projectId).catch(() => null))?.identidadeAprovada === false;
+      // SEM CARD DA DIANA, MAS COM ARTE NO POST (05/10): o card nasce agora,
+      // para guardar a arte e o histórico; "não tem imagem" só quando nenhum
+      // post do dia tem arte.
+      if (!travada && !daDiana && arteDoDiaAtual.temArte && runId && dia) {
+        daDiana = await criarCardDaDiana({ card, runId, dia, quando, posts, arte: arteDoDiaAtual }).catch((e) => {
+          console.warn("[pedido-do-card] card da Diana para a arte do post:", e);
+          return null;
+        });
+        if (daDiana) revisao.add(daDiana.id);
+      }
       if (travada) {
         await deixarAguardando();
       } else if (!daDiana) {
         frases.push("Este dia não tem imagem, então não havia arte para refazer.");
+        for (const chave of pedido.etapas.map((e) => e.chave).filter((c) => c === "arte" || c.startsWith("lamina-"))) await marcar(chave, "falhou", "sem arte no dia");
       } else {
         try {
           const r = ehCarrossel
@@ -447,6 +606,9 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
         } catch (e) {
           if (ehIdentidadeNaoAprovada(e) || (e instanceof Error && e.message.startsWith(MENSAGEM_AGUARDANDO))) {
             await deixarAguardando();
+          } else if (e instanceof SemFrasesDasLaminas) {
+            frases.push("Não achei as frases das lâminas deste carrossel, então não consegui refazê-lo. Me diga as frases de cada lâmina, ou peça o carrossel de novo, que eu refaço com elas gravadas.");
+            for (const chave of pedido.etapas.map((e) => e.chave).filter((c) => c.startsWith("lamina-"))) await marcar(chave, "falhou", "sem as frases");
           } else {
             frases.push("A arte não saiu desta vez e ficou a que estava. Pode pedir de novo daqui a pouco.");
             console.warn("[pedido-do-card] arte:", e);
@@ -569,6 +731,46 @@ ${REGRA_DE_PESSOAS_E_NUMEROS}
 type CardComProjeto = Prisma.CampaignCardGetPayload<{ include: { project: true } }>;
 type PostDoDia = { id: string; platform: string; content: string; imageUrl: string | null; mediaType: string | null; metadata: unknown };
 
+/**
+ * O CARD DA DIANA QUE FALTAVA (05/10): o post único de X saiu com arte pelo
+ * "Aprovar e gerar" sem nunca ter um card de mídia. O pedido de arte precisa
+ * de um lugar para guardar a arte e o histórico, então ele nasce aqui, com a
+ * arte que o post já tem, as frases das lâminas (quando se acham) e o que já
+ * estava gravado no post (tratamento, modelo, ajustes).
+ */
+async function criarCardDaDiana(o: {
+  card: CardComProjeto;
+  runId: string;
+  dia: number;
+  quando: Date | null;
+  posts: PostDoDia[];
+  arte: ReturnType<typeof arteDoDiaPelosPosts>;
+}): Promise<CardComProjeto> {
+  const base = (o.arte.postComArte as PostDoDia | null) ?? o.posts[0];
+  const mediaType = o.arte.formato === "text" ? "image" : o.arte.formato;
+  const frases = mediaType === "carousel" ? await frasesDasLaminas({ daDiana: null, posts: o.posts, runId: o.runId, dayOfWeek: o.dia, total: o.arte.laminas.length }) : null;
+  const gravado = arteGravadaEm(base?.metadata);
+  const metadata: Record<string, unknown> = { rede: base?.platform, ...(frases ? { slides: frases.frases } : {}), tratamento: gravado.tratamento, modeloDaArte: gravado.modeloDaArte, ajustes: gravado.ajustes };
+  const conteudo = frases ? conteudoDoCarrossel(frases.frases) : mediaType === "infographic" ? "Infográfico do post." : `Arte do post${base?.platform ? ` do ${NOME_DA_REDE[base.platform] ?? base.platform}` : ""}.`;
+  return prisma.campaignCard.create({
+    data: {
+      runId: o.runId,
+      projectId: o.card.projectId,
+      agentId: "diana-design",
+      agentName: "Diana Design",
+      dayOfWeek: o.dia,
+      scheduledDate: o.quando,
+      cardType: "media",
+      mediaType,
+      content: conteudo,
+      mediaUrl: o.arte.laminas.length ? o.arte.laminas.join("|") : null,
+      postId: base?.id ?? null,
+      metadata: metadata as Prisma.InputJsonValue,
+    },
+    include: DADOS,
+  });
+}
+
 async function refazerCarrossel(o: {
   card: CardComProjeto;
   daDiana: CardComProjeto;
@@ -579,16 +781,17 @@ async function refazerCarrossel(o: {
   marcar: (chave: string, estado: EtapaDoPedido["estado"], detalhe?: string) => Promise<void>;
 }): Promise<string> {
   const { daDiana, acao } = o;
-  const meta = (daDiana.metadata as Record<string, unknown> | null) ?? (o.posts[0]?.metadata as Record<string, unknown> | null);
-  const frases = frasesDoCarrossel(meta, daDiana.content);
-  const total = o.laminasAtuais.length;
-  if (frases.length < total) throw new Error("as frases das lâminas não estão gravadas");
-  const alvo = alvoDasLaminas(acao, o.ctx, o.card.cardType, total);
   const runId = daDiana.runId;
   const dia = daDiana.dayOfWeek;
+  const total = o.laminasAtuais.length;
+  // As frases de onde houver: o card da Diana, o post, o checkpoint.
+  const achadas = await frasesDasLaminas({ daDiana, posts: o.posts, runId, dayOfWeek: dia, total });
+  if (!achadas) throw new SemFrasesDasLaminas();
+  const frases = achadas.frases;
+  const alvo = alvoDasLaminas(acao, o.ctx, o.card.cardType, total);
   const direcao = await direcaoDaPeca({ projectId: daDiana.projectId, runId, dayOfWeek: dia, infografico: false, preferido: null }).catch(() => ({ styleHint: "" }));
-  // O que já estava gravado (tratamento e modelo) vale até o pedido mudar.
-  const gravado = arteGravadaEm(daDiana.metadata);
+  // O que já estava gravado (tratamento, modelo, ajustes) vale até o pedido mudar.
+  const gravado = arteGravadaDoDia(daDiana.metadata, o.posts.find((p) => p.imageUrl)?.metadata);
   const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId }), acao, gravado);
   const estilo = [
     direcao.styleHint,
@@ -597,6 +800,56 @@ async function refazerCarrossel(o: {
     direcaoParaOTratamento(decidido.tratamento),
   ].filter(Boolean).join("\n");
   const plataforma = o.posts[0]?.platform ?? "instagram";
+  const formato = formatoDaPeca(plataforma, "carousel");
+  marca.contexto = marca.contexto ?? frases.join("\n");
+
+  // UM MODELO PARA O CARROSSEL INTEIRO (05/10): o gravado, ou o escolhido pela
+  // primeira lâmina como a esteira faz (com a foto da pessoa, um modelo
+  // "você"); lâmina a lâmina o book escolhia um modelo por frase e o
+  // carrossel saía como posts colados.
+  const { materiaisDaPessoa, escolherFotoDaPessoa, referenciaDoMaterial } = await import("@/lib/media/referencia-da-pessoa");
+  const fotosDaPessoa = materiaisDaPessoa(marca.materiais);
+  const comPagina = { ...marca, pagina: { i: 0, total } };
+  let modelo = marca.modeloFixo ? modeloPorId(marca.modeloFixo) ?? null : null;
+  if (!modelo && fotosDaPessoa.length) {
+    const { modeloParaOMaterial } = await import("@/lib/media/arte-com-frase");
+    const m = await modeloParaOMaterial(comPagina, fotosDaPessoa[0], formato.largura, formato.altura, frases[0]).catch(() => null);
+    if (m?.usar && m.modelo) modelo = m.modelo;
+  }
+  if (!modelo) {
+    const { modeloDaMarca } = await import("@/lib/media/arte-com-frase");
+    modelo = await modeloDaMarca(comPagina, formato.largura, formato.altura, frases[0]).catch(() => null);
+  }
+  if (modelo) {
+    marca.modeloFixo = modelo.id;
+    decidido.modeloDaArte = modelo.id;
+  }
+
+  // AS FOTOS INTERCALADAS (05/10, lib/media/fotos-do-carrossel.ts): só quando o
+  // modelo tem o lugar de "você"; uma foto diferente por lâmina, nunca a
+  // mesma em vizinhas; o JEV escolhe entre as candidatas pela frase.
+  const modeloPedePessoa = fotoDoClienteEntra(modelo);
+  const plano: FotoDaLamina[] = modeloPedePessoa && fotosDaPessoa.length
+    ? await escolherFotosDasLaminas({
+        frases,
+        fotos: fotosDaPessoa,
+        intercalar: Boolean(acao.intercalarFotos),
+        escolher: (frase, candidatas) => escolherFotoDaPessoa(candidatas, frase, daDiana.projectId),
+      })
+    : frases.map(() => null);
+  // A lâmina sem foto (a alternada) sai num modelo só texto do book, quando há.
+  const modeloSoTexto = (marca.modelos ?? []).map((id) => modeloPorId(id)).find((m) => m && soTexto(m)) ?? null;
+  const marcaDaLamina = async (i: number): Promise<MarcaDaArte> => {
+    const pagina = { i, total };
+    const foto = plano[i];
+    if (foto) {
+      const ref = await referenciaDoMaterial(foto).catch(() => null);
+      return { ...marca, pagina, ...(ref ? { referenciaDaPessoa: ref } : {}) };
+    }
+    if (modeloPedePessoa && fotosDaPessoa.length && modeloSoTexto) return { ...marca, pagina, modeloFixo: modeloSoTexto.id, referenciaDaPessoa: null, materiais: [] };
+    return { ...marca, pagina };
+  };
+
   const novas = [...o.laminasAtuais];
   let feitas = 0;
   await Promise.all(
@@ -607,10 +860,10 @@ async function refazerCarrossel(o: {
           { projectId: daDiana.projectId, project: { niche: daDiana.project.niche } },
           frases[i],
           estilo,
-          formatoDaPeca(plataforma, "carousel"),
+          formato,
           { projectId: daDiana.projectId, runId },
           frases[0],
-          marca
+          await marcaDaLamina(i)
         );
         feitas++;
         await o.marcar(`lamina-${i}`, "feito");
@@ -626,17 +879,17 @@ async function refazerCarrossel(o: {
   // o cliente ouve, e não "refiz".
   if (mediaUrl === o.laminasAtuais.join("|")) return "Tentei refazer as lâminas, mas o resultado saiu igual ao que já estava, então nada mudou no carrossel.";
   // O carrossel é 4:5 em todas as redes: as mesmas lâminas servem a todas.
-  await prisma.campaignCard.update({ where: { id: daDiana.id }, data: { mediaUrl } });
+  await prisma.campaignCard.update({ where: { id: daDiana.id }, data: { mediaUrl, content: achadas.origem === "diana" ? undefined : conteudoDoCarrossel(frases) } });
   const postsComArte = o.posts.filter((p) => p.mediaType === "carousel" || p.imageUrl);
   for (const p of postsComArte) {
     await prisma.post.update({ where: { id: p.id }, data: { imageUrl: mediaUrl, mediaType: "carousel" } });
   }
-  // O tratamento e o modelo ficam gravados: a próxima regeração respeita.
-  await gravarArteNoMetadata({ postIds: postsComArte.map((p) => p.id), cardIds: [daDiana.id] }, decidido).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
-  const oQueMudou = contarOQueMudou(acao, decidido, mudou);
-  const falhas = alvo.length - feitas;
-  const quais = alvo.length === total ? (total === 1 ? "a lâmina" : `as ${total} lâminas`) : alvo.length === 1 ? `a lâmina ${alvo[0] + 1}` : `${alvo.length} lâminas`;
-  return `Refiz ${quais} do carrossel${oQueMudou}, e ${alvo.length === 1 && total > 1 ? "ela já está" : "elas já estão"} aqui no card${falhas ? `; ${falhas === 1 ? "uma não saiu e ficou como estava" : `${falhas} não saíram e ficaram como estavam`}` : ""}.`;
+  // O tratamento, o modelo e os ajustes ficam gravados (e as frases, quando
+  // vieram do checkpoint): a próxima regeração respeita e não depende dele.
+  await gravarArteNoMetadata({ postIds: postsComArte.map((p) => p.id), cardIds: [daDiana.id] }, decidido, achadas.origem === "checkpoint" ? { slides: frases } : {}).catch((e) => console.warn("[pedido-do-card] metadata da arte:", e));
+  const intercalacao = descreverIntercalacao(alvo.map((i) => plano[i]));
+  const oQueMudou = contarOQueMudou(acao, decidido, mudou, intercalacao ? [`com ${intercalacao}`] : []);
+  return fraseDoCarrosselRefeito({ total, alvo, feitas, oQueMudou });
 }
 
 async function refazerArteUnica(o: {
@@ -650,7 +903,7 @@ async function refazerArteUnica(o: {
   const { daDiana, acao } = o;
   const base = o.posts[0];
   const textoDoPost = base?.content ?? "";
-  const gravado = arteGravadaEm(daDiana.metadata);
+  const gravado = arteGravadaDoDia(daDiana.metadata, o.posts.find((p) => p.imageUrl)?.metadata);
   const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId: daDiana.runId }), acao, gravado);
   const ehInfografico = o.formato === "infographic";
   const pedidoVisual = `${acao.instrucao}${acao.cor ? `. Use ${acao.cor} as the dominant accent color.` : ""}${decidido.tratamento ? ` ${direcaoParaOTratamento(decidido.tratamento)}` : ""}`;

@@ -8,6 +8,7 @@ import { modeloPorId, modeloDaPeca, formatoPeloTamanho, type ModeloDeArte, type 
 import { desenharModelo, zonaDaFoto, type CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
 import { TEXTO_FIXO_DOS_MODELOS_COM_FOTO } from "@/lib/modelos-de-arte/desenho-com-foto";
 import { efeitoDoModelo } from "@/lib/modelos-de-arte/pecas-do-desenho";
+import { efeitoComAjustes, type AjustesDaPeca } from "@/lib/modelos-de-arte/ajustes-da-peca";
 import { registrarTextoComposto } from "@/lib/modelos-de-arte/registro";
 import type { LetraId } from "@/lib/modelos-de-arte/identidade";
 
@@ -157,6 +158,8 @@ export interface PedidoDeComposicao {
   letra?: LetraId | null;
   /** O fundo gerado pelo modelo de imagem (modelo por prompt, 05/10): a colagem sem texto, no tamanho da peça. */
   fundoGerado?: Buffer | null;
+  /** Os ajustes de layout pedidos pelo cliente (05/10, lib/modelos-de-arte/ajustes-da-peca.ts): título mais para cima, luz atrás da pessoa. */
+  ajustes?: AjustesDaPeca | null;
 }
 
 /**
@@ -216,7 +219,8 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
   if (p.modelo.fotoPretoEBranco) {
     p = { ...p, foto: await semCor(p.foto, false), recorte: await semCor(p.recorte, true) };
   }
-  const efeito = efeitoDoModelo(p.modelo.arquetipo);
+  // O efeito do modelo com os ajustes da peça por cima (a luz e a sombra que o cliente pediu).
+  const efeito = efeitoComAjustes(efeitoDoModelo(p.modelo.arquetipo), p.ajustes);
   const u = Math.min(p.largura, p.altura) / 1080;
   if (p.foto && efeito.contrasteDaFoto) p = { ...p, foto: await contrasteNoPixel(p.foto, false) };
   if (p.recorte && efeito.pessoa?.contraste) p = { ...p, recorte: await contrasteNoPixel(p.recorte, true) };
@@ -271,6 +275,7 @@ export async function comporNoModelo(p: PedidoDeComposicao): Promise<Buffer> {
     fundoGerado,
     recorteSombra,
     letra: p.letra ?? null,
+    ajustes: p.ajustes ?? null,
   });
   const resposta = new ImageResponse(elemento as React.ReactElement, { width: p.largura, height: p.altura, fonts: await fontesDosModelos() });
   const png = Buffer.from(await resposta.arrayBuffer());

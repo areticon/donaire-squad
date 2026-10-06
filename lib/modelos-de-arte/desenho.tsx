@@ -6,6 +6,7 @@ import { CONTRASTE_MINIMO_DO_TEXTO, tipografiaDaLetra, type LetraId, type Papeis
 // Os modelos com foto de 05/10 moram em arquivo próprio; aqui só a chamada.
 import { desenharModeloNovo, zonaDaFotoNova } from "@/lib/modelos-de-arte/desenho-com-foto";
 import type { TratamentoDaFoto } from "@/lib/modelos-de-arte/tratamento";
+import { deslocamentoDoTitulo, type AjustesDaPeca } from "@/lib/modelos-de-arte/ajustes-da-peca";
 
 /**
  * O DESENHO DE CADA MODELO, UM SÓ PARA A PRÉVIA E PARA A ARTE (03/10/2026).
@@ -81,6 +82,12 @@ export interface EntradaDoDesenho {
    * (desenho-vox.tsx, modo "fundo gerado"); sem ele, desenha tudo em código.
    */
   fundoGerado?: string | null;
+  /**
+   * OS AJUSTES DA PEÇA (05/10, lib/modelos-de-arte/ajustes-da-peca.ts), pedidos
+   * pelo cliente no chat: o título atrás da pessoa mais para cima ou para
+   * baixo, a luz e a sombra atrás do recorte por cima do efeito do modelo.
+   */
+  ajustes?: AjustesDaPeca | null;
 }
 
 export interface Zona {
@@ -540,7 +547,8 @@ export function desenharModelo(e: EntradaDoDesenho): ReactNode {
       const z = { x: 0, y: 0, w: W, h: H };
       const [ar, ag, ab] = rgb(acento);
       const temRecorte = Boolean(e.recorte);
-      const tituloTop = Math.round(m * 1.1);
+      // O título sobe ou desce pelo ajuste pedido ("subir um pouquinho"), sem sair do quadro.
+      const tituloTop = Math.max(Math.round(m * 0.4), Math.round(m * 1.1) + deslocamentoDoTitulo(e.ajustes, H));
       const tituloAltura = Math.round(H * (alta ? 0.3 : 0.36));
       const baseH = Math.round(H * (alta ? 0.22 : 0.26));
       return raiz(

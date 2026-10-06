@@ -106,6 +106,13 @@ export type MarcaDaArte = {
   referenciaDaPessoa?: import("@/lib/media/referencia-da-pessoa").ReferenciaDaPessoa | null;
   /** O vídeo de que a peça nasce (semana do vídeo), de onde sai o quadro de referência quando não há foto. */
   videoJobId?: string | null;
+  /**
+   * OS AJUSTES DA PEÇA (05/10, lib/modelos-de-arte/ajustes-da-peca.ts): o
+   * título atrás da pessoa mais para cima ou para baixo, a luz e a sombra
+   * atrás do recorte. Vêm do pedido do chat e ficam gravados no metadata do
+   * post, para a regeração seguinte partir deles.
+   */
+  ajustes?: import("@/lib/modelos-de-arte/ajustes-da-peca").AjustesDaPeca | null;
 };
 
 /** A identidade do projeto em forma de marca da peça. */
@@ -626,6 +633,7 @@ export async function comporFraseNaArte(p: {
       recorte: p.recorte ?? null,
       letra: p.marca.letra ?? null,
       fundoGerado: p.fundoGerado ?? null,
+      ajustes: p.marca.ajustes ?? null,
     });
   }
   const W = p.largura;
@@ -935,8 +943,13 @@ export async function imagemDoModeloComPrompt(o: {
   let materialUsado: string | null = null;
   const pedePessoa = fotoDoClienteEntra(o.modelo);
   if (pedePessoa) {
-    const { referenciaDaPessoa } = await import("@/lib/media/referencia-da-pessoa");
-    const ref = o.marca.referenciaDaPessoa ?? (await referenciaDaPessoa({ materiais: o.marca.materiais, frase: o.frase, projectId: o.marca.projectId, videoJobId: o.marca.videoJobId }));
+    const { referenciaDaPessoa, referenciaDoMaterial } = await import("@/lib/media/referencia-da-pessoa");
+    // A FOTO JÁ ESCOLHIDA PARA ESTA LÂMINA vale primeiro (05/10): o carrossel
+    // intercala as fotos da pessoa (lib/media/fotos-do-carrossel.ts) e manda
+    // cada uma em `material`; escolher de novo aqui, pela frase, devolvia a
+    // mesma foto em todas as lâminas.
+    const daLamina = o.material?.etiquetas.includes("pessoa") && o.material.temRosto ? await referenciaDoMaterial(o.material) : null;
+    const ref = o.marca.referenciaDaPessoa ?? daLamina ?? (await referenciaDaPessoa({ materiais: o.marca.materiais, frase: o.frase, projectId: o.marca.projectId, videoJobId: o.marca.videoJobId }));
     if (!ref) {
       console.warn(`[arte-com-frase] o modelo "${o.modelo.id}" pede a foto do cliente e não há foto nem quadro com rosto; a peça não sai neste modelo`);
       return null;

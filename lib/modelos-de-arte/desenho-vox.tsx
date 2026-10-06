@@ -4,6 +4,7 @@ import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 import type { EntradaDoDesenho, Zona } from "@/lib/modelos-de-arte/desenho";
 import { Assinatura, Imagem, Pessoa, Seta, Texto, Vazio, Vinheta, base, contrasteEntre, efeitoDoModelo, flex, misturar, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
 import { CONTRASTE_MINIMO_DO_TEXTO } from "@/lib/modelos-de-arte/identidade";
+import { efeitoComAjustes } from "@/lib/modelos-de-arte/ajustes-da-peca";
 
 /**
  * A FAMÍLIA "VOX / COLAGEM EDITORIAL" DO BOOK (05/10/2026), para posts.
@@ -302,7 +303,8 @@ export function desenharModeloVox(e: EntradaDoDesenho): ReactNode | null {
   const semente = e.textos.titulo.length * 7 + W;
   const pb = Boolean(md.fotoPretoEBranco);
   // Os efeitos do modelo (05/10): sombra, luz, vinheta, contraste; um por modelo.
-  const efeito = efeitoDoModelo(md.arquetipo);
+  // Com os ajustes da peça por cima (a luz e a sombra que o cliente pediu, 05/10).
+  const efeito = efeitoComAjustes(efeitoDoModelo(md.arquetipo), e.ajustes);
   const coresDoEfeito = { acento: destaque, tinta };
   const inteira: Zona = { x: 0, y: 0, w: W, h: H };
 

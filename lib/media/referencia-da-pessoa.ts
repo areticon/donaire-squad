@@ -156,14 +156,25 @@ async function acharQuadro(videoJobId: string): Promise<ReferenciaDaPessoa | nul
 }
 
 /**
+ * A referência de UM material já escolhido (05/10): o carrossel intercalado
+ * decide a foto de cada lâmina antes (lib/media/fotos-do-carrossel.ts) e só
+ * precisa carregá-la. Null quando o arquivo não pôde ser lido.
+ */
+export async function referenciaDoMaterial(material: MaterialDaMarca): Promise<ReferenciaDaPessoa | null> {
+  const original = await lerMidia(material.url).catch(() => null);
+  if (!original) return null;
+  return { ...(await normalizarReferencia(original, ehPublica(material.url) ? material.url : null)), origem: "material", materialId: material.id };
+}
+
+/**
  * A referência da pessoa para uma peça: a foto da biblioteca, senão o quadro
  * do vídeo (quando a peça nasce de um vídeo). Null quando não há nenhuma.
  */
 export async function referenciaDaPessoa(o: { materiais?: MaterialDaMarca[]; frase: string; projectId?: string; videoJobId?: string | null }): Promise<ReferenciaDaPessoa | null> {
   const material = await escolherFotoDaPessoa(o.materiais ?? [], o.frase, o.projectId);
   if (material) {
-    const original = await lerMidia(material.url).catch(() => null);
-    if (original) return { ...(await normalizarReferencia(original, ehPublica(material.url) ? material.url : null)), origem: "material", materialId: material.id };
+    const ref = await referenciaDoMaterial(material);
+    if (ref) return ref;
   }
   if (o.videoJobId) return quadroDeReferenciaDoVideo(o.videoJobId);
   return null;

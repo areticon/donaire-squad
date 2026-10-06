@@ -6,6 +6,7 @@ import type { EntradaDoDesenho, Zona } from "@/lib/modelos-de-arte/desenho";
 import { mapaPontilhadoDataUri } from "@/lib/modelos-de-arte/mapa-pontilhado";
 import { Arraste, Assinatura, Imagem, Pessoa, Texto, Vazio, Vinheta, base, efeitoDoModelo, flex, luminancia, misturar, rgba, sobre } from "@/lib/modelos-de-arte/pecas-do-desenho";
 import { ARQUETIPOS_VOX, TEXTO_FIXO_DOS_MODELOS_VOX, desenharModeloVox, zonaDaFotoVox } from "@/lib/modelos-de-arte/desenho-vox";
+import { deslocamentoDoTitulo, efeitoComAjustes } from "@/lib/modelos-de-arte/ajustes-da-peca";
 
 /**
  * OS MODELOS COM FOTO DE 05/10/2026, o desenho.
@@ -91,7 +92,10 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
   const inteira: Zona = { x: 0, y: 0, w: W, h: H };
   const pb = Boolean(md.fotoPretoEBranco);
   const fotoInteira = (src: string | null | undefined) => (src ? <Imagem src={src} z={inteira} pb={pb} desfoque={efeito.fundo?.desfoque ?? 0} contraste={Boolean(efeito.contrasteDaFoto)} /> : <Vazio z={inteira} cor={tomDaFoto} />);
-  const efeito = efeitoDoModelo(md.arquetipo);
+  // O efeito do modelo com os ajustes da peça por cima (a luz de fundo e a
+  // sombra que o cliente pediu no chat); o título desloca pelo mesmo pedido.
+  const efeito = efeitoComAjustes(efeitoDoModelo(md.arquetipo), e.ajustes);
+  const sobeTitulo = deslocamentoDoTitulo(e.ajustes, H);
   const coresDoEfeito = { acento, tinta };
   const recorteNaFrente = (desloca = 0, escala = 1) =>
     e.recorte ? <Pessoa src={e.recorte} W={W} H={H} desloca={desloca} escala={escala} pb={pb} efeito={efeito.pessoa} cores={coresDoEfeito} sombraSrc={e.recorteSombra} /> : null;
@@ -121,7 +125,7 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
           {recorteNaFrente()}
           <div style={flex({ position: "absolute", left: 0, top: H - baseH, width: W, height: baseH, backgroundImage: `linear-gradient(180deg, ${rgba(fundo, 0)} 0%, ${rgba(fundo, 0.72)} 45%, ${rgba(fundo, 0.96)} 100%)` })} />
           {logoNoAlto("#000000")}
-          <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 0.4 - tituloH, width: larguraUtil, height: tituloH, flexDirection: "column", justifyContent: "flex-end" })}>
+          <div style={flex({ position: "absolute", left: m, top: H - m - logoH * 0.4 - tituloH + sobeTitulo, width: larguraUtil, height: tituloH, flexDirection: "column", justifyContent: "flex-end" })}>
             <Texto texto={t.titulo} fonte={tf} largura={larguraUtil} altura={tituloH} corpoMaximo={150 * u} corpoMinimo={56 * u} entrelinha={1.0} cor={tinta} caixaAlta={caixaAlta} destaque="bloco" corDestaque={acento} palavras={[palavra]} maxLinhas={4} />
           </div>
         </>,
@@ -197,7 +201,8 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
       // pessoa recortada; o resto da frase pequeno embaixo. Sem recorte, a
       // palavra fica por cima da foto.
       const palavraCaixa = Math.round(H * (alta ? 0.22 : 0.3));
-      const topoDaPalavra = Math.round(H * (alta ? 0.3 : 0.2));
+      // A palavra gigante sobe ou desce pelo ajuste ("o texto ficou atrás de mim, precisa subir"), sem sair do quadro.
+      const topoDaPalavra = Math.max(Math.round(m * 0.5), Math.round(H * (alta ? 0.3 : 0.2)) + sobeTitulo);
       const resto = t.titulo
         .split(/\s+/)
         .filter((w) => w.toLowerCase() !== palavra.toLowerCase())
@@ -311,7 +316,7 @@ export function desenharModeloNovo(e: EntradaDoDesenho): ReactNode | null {
             <img src={mapaPontilhadoDataUri(corMapa)} alt="" width={mapaW} height={mapaH} style={{ width: mapaW, height: mapaH }} />
           </div>
           {logoNoAlto(fundo)}
-          <div style={flex({ position: "absolute", left: m, top: m + logoH + 40 * u, width: Math.round(larguraUtil * (alta ? 1 : 0.92)), height: tituloH, flexDirection: "column" })}>
+          <div style={flex({ position: "absolute", left: m, top: Math.max(Math.round(m * 0.5), m + logoH + 40 * u + sobeTitulo), width: Math.round(larguraUtil * (alta ? 1 : 0.92)), height: tituloH, flexDirection: "column" })}>
             <Texto texto={t.titulo} fonte={tf} largura={Math.round(larguraUtil * (alta ? 1 : 0.92))} altura={tituloH} corpoMaximo={100 * u} corpoMinimo={40 * u} entrelinha={1.08} cor={tinta} caixaAlta={caixaAlta} destaque="cor" corDestaque={acentoLegivel} palavras={[palavra]} maxLinhas={4} />
           </div>
           {e.recorte ? (
