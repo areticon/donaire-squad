@@ -211,6 +211,8 @@ export type NovoContrato = {
   signatarioNome?: string | null;
   signatarioEmail?: string | null;
   signatarioDocumento?: string | null;
+  /** Cargo do representante legal (06/10): vai no quadro das partes como "Nome, Cargo". */
+  representanteCargo?: string | null;
   renovacaoAutomatica?: boolean;
   observacao?: string | null;
   renovadoDeId?: string | null;
@@ -334,6 +336,7 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
       signatarioEmail: n.signatarioEmail ?? u.email,
       acessosExtras: extras ?? u.acessosExtras,
       signatarioDocumento: n.signatarioDocumento ?? null,
+      representanteCargo: n.representanteCargo ?? null,
       renovacaoAutomatica: n.renovacaoAutomatica ?? true,
       observacao: n.observacao ?? null,
       renovadoDeId: n.renovadoDeId ?? null,
@@ -377,6 +380,8 @@ export type ContratoParaTexto = {
   endereco?: string | null;
   signatarioDocumento: string | null;
   signatarioNome: string | null;
+  /** Opcional: contrato de antes não tem, e o texto dele fica igual ao assinado. */
+  representanteCargo?: string | null;
   signatarioEmail: string | null;
   plano: string;
   valorCentavos: number;
@@ -396,6 +401,7 @@ export function textoDoContrato(c: ContratoParaTexto) {
     documento: c.signatarioDocumento,
     endereco: c.endereco ?? null,
     representante: c.signatarioNome,
+    cargo: c.representanteCargo ?? null,
     email: c.signatarioEmail,
     plano: nomeDoPlano(c.plano),
     valorCentavos: c.valorCentavos,
@@ -435,7 +441,7 @@ export function textoDoContrato(c: ContratoParaTexto) {
 
 /** Os dados do cliente como o modelo os vê, para saber o que falta. */
 export function dadosDoCliente(c: ContratoParaTexto) {
-  return { empresa: c.empresa, documento: c.signatarioDocumento, endereco: c.endereco ?? null, representante: c.signatarioNome, email: c.signatarioEmail };
+  return { empresa: c.empresa, documento: c.signatarioDocumento, endereco: c.endereco ?? null, representante: c.signatarioNome, cargo: c.representanteCargo ?? null, email: c.signatarioEmail };
 }
 
 /**
@@ -702,6 +708,7 @@ export async function renovarContrato(admin: Autor, id: string, valorCentavos?: 
     signatarioNome: c.signatarioNome,
     signatarioEmail: c.signatarioEmail,
     signatarioDocumento: c.signatarioDocumento,
+    representanteCargo: c.representanteCargo,
     renovacaoAutomatica: c.renovacaoAutomatica,
     acessosExtras: vale.acessosExtras,
     renovadoDeId: c.id,
@@ -770,6 +777,7 @@ export type MudancaDoContrato = {
   signatarioNome?: string | null;
   signatarioEmail?: string | null;
   signatarioDocumento?: string | null;
+  representanteCargo?: string | null;
   renovacaoAutomatica?: boolean;
   observacao?: string | null;
   /** undefined mantém a condição (refeita sobre o valor novo, se o preço mudar). */
@@ -796,6 +804,7 @@ const CAMPOS_DA_VERSAO = [
   "signatarioNome",
   "signatarioEmail",
   "signatarioDocumento",
+  "representanteCargo",
   "renovacaoAutomatica",
   "observacao",
   "condicaoDePagamento",
@@ -861,6 +870,7 @@ export async function editarContrato(admin: Autor, id: string, m: MudancaDoContr
     signatarioNome: m.signatarioNome === undefined ? c.signatarioNome : m.signatarioNome,
     signatarioEmail: m.signatarioEmail === undefined ? c.signatarioEmail : m.signatarioEmail,
     signatarioDocumento: m.signatarioDocumento === undefined ? c.signatarioDocumento : m.signatarioDocumento,
+    representanteCargo: m.representanteCargo === undefined ? c.representanteCargo : m.representanteCargo,
     renovacaoAutomatica: m.renovacaoAutomatica ?? c.renovacaoAutomatica,
     observacao: m.observacao === undefined ? c.observacao : m.observacao,
     // A CONDIÇÃO (05/10): a entrada e as parcelas ficam; a parcela é refeita

@@ -349,6 +349,7 @@ export async function fichaDoCliente(userId: string, agora = new Date()) {
       signatarioNome: c.signatarioNome,
       signatarioEmail: c.signatarioEmail,
       signatarioDocumento: c.signatarioDocumento,
+      representanteCargo: c.representanteCargo,
       provedor: c.provedor,
       provedorSituacao: c.provedorSituacao,
       linkDeAssinatura: c.linkDeAssinatura,

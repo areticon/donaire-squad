@@ -1,3 +1,4 @@
+import { representanteComCargo } from "@/lib/contratos/cargo";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { centavosEmReais } from "@/lib/contratos/situacao";
@@ -35,6 +36,8 @@ export type CapaDoContrato = {
   documento: string | null;
   endereco: string | null;
   representante: string | null;
+  /** O cargo do representante (06/10): a linha sai como "Nome, Cargo". */
+  cargo?: string | null;
   email: string | null;
   plano: string;
   valorCentavos: number;
@@ -188,7 +191,7 @@ function capaEmHtml(c: CapaDoContrato): string {
         ${linha("Razão social ou nome", c.empresa)}
         ${linha("CNPJ ou CPF", c.documento)}
         ${linha("Endereço", c.endereco)}
-        ${linha("Representante legal", c.representante)}
+        ${linha("Representante legal", representanteComCargo(c.representante, c.cargo))}
         ${linha("E-mail contratual", c.email)}
       </table>
     </div>

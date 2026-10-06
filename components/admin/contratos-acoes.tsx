@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { CamposDaCondicao, CamposDoPreco, EditarContrato, NovoAditivo, bloqueiaCondicao, condicaoInicial, contaDoPreco, corpoDaCondicao, corpoDoPreco } from "@/components/admin/contratos-preco";
+import { CampoDoCargo, CamposDaCondicao, CamposDoPreco, EditarContrato, NovoAditivo, bloqueiaCondicao, condicaoInicial, contaDoPreco, corpoDaCondicao, corpoDoPreco } from "@/components/admin/contratos-preco";
 import { valorInicialDoPreco, type ValorDoPreco } from "@/lib/contratos/preco";
 import { rotuloDaCondicao } from "@/lib/contratos/condicao";
 
@@ -76,6 +76,8 @@ export function NovoContrato({ contas, contaInicial, emissorDisponivel = false }
         signatarioNome: nome,
         signatarioEmail: email,
         signatarioDocumento: f.get("documento"),
+        representanteCargo: f.get("representanteCargo"),
+        representanteCargoOutro: f.get("representanteCargoOutro"),
         renovacaoAutomatica: f.get("renova") === "on",
         observacao: f.get("observacao"),
       });
@@ -145,6 +147,7 @@ export function NovoContrato({ contas, contaInicial, emissorDisponivel = false }
         Representante legal (nome de quem assina)
         <input name="nome" required autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
+      <CampoDoCargo />
       <label className={rotulo} style={corDoRotulo}>
         E-mail de quem assina{modo === "prospect" ? " (vira o login)" : ""}
         <input name="email" type="email" required autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />

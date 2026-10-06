@@ -1,3 +1,4 @@
+import { representanteComCargo } from "@/lib/contratos/cargo";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -32,6 +33,8 @@ export type DadosDoContrato = {
   documento: string | null;
   endereco?: string | null;
   representante: string | null;
+  /** O cargo do representante (06/10): entra como "Nome, Cargo"; sem ele, só o nome (contrato de antes). */
+  cargo?: string | null;
   email: string | null;
   plano: string;
   valorCentavos: number;
@@ -209,7 +212,7 @@ export function montarTexto(d: DadosDoContrato, md = lerModelo()): { texto: stri
     [/Raz[aã]o social ou nome completo/i, d.empresa?.trim() || NAO_INFORMADO],
     [/CNPJ ou CPF/i, d.documento?.trim() || NAO_INFORMADO],
     [/^Endere[cç]o$/i, d.endereco?.trim() || NAO_INFORMADO],
-    [/Representante legal/i, d.representante?.trim() || NAO_INFORMADO],
+    [/Representante legal/i, representanteComCargo(d.representante, d.cargo) ?? NAO_INFORMADO],
     [/E-mail para comunica/i, d.email?.trim() || NAO_INFORMADO],
     [/Plano contratado/i, d.plano],
     // Sem data combinada, vale a cláusula 5.1: os 12 meses contam da
@@ -255,6 +258,7 @@ export type DadosDoAditivo = {
   empresa: string | null;
   documento: string | null;
   representante: string | null;
+  cargo?: string | null;
   email: string | null;
   antes: CondicoesComerciais;
   depois: CondicoesComerciais;
@@ -302,7 +306,7 @@ export function montarAditivo(d: DadosDoAditivo): { texto: string; hash: string;
     "",
     "**DEMANDOU TECNOLOGIA DA INFORMACAO LTDA**, CNPJ 66.140.770/0001-48, doravante \"Demandou\", e",
     "",
-    `**${d.empresa ?? NAO_INFORMADO}**, CNPJ ou CPF ${d.documento ?? NAO_INFORMADO}, representado por ${d.representante ?? NAO_INFORMADO} (${d.email ?? NAO_INFORMADO}), doravante \"Cliente\",`,
+    `**${d.empresa ?? NAO_INFORMADO}**, CNPJ ou CPF ${d.documento ?? NAO_INFORMADO}, representado por ${representanteComCargo(d.representante, d.cargo) ?? NAO_INFORMADO} (${d.email ?? NAO_INFORMADO}), doravante \"Cliente\",`,
     "",
     `ajustam este aditivo ao Contrato Demandou nº ${n}${d.assinadoEm ? `, assinado em ${dataBR(d.assinadoEm)}` : ""}, formado pelas Condições Gerais de Contratação e pela Proposta Comercial.`,
     "",

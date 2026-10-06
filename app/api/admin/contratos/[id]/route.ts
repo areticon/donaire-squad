@@ -16,7 +16,7 @@ import {
 } from "@/lib/contratos/contratos";
 import { gerarLinkDePagamento, registrarPagamento } from "@/lib/contratos/pagamento";
 import { criarAditivo } from "@/lib/contratos/aditivos";
-import { condicaoDoCorpo, dataDoTexto, descontoDoCorpo } from "@/lib/contratos/formulario";
+import { cargoDoCorpo, condicaoDoCorpo, dataDoTexto, descontoDoCorpo } from "@/lib/contratos/formulario";
 
 /** "35.964,00", "35964,00" ou "35964.00" viram 35964. */
 function reaisDoTexto(v: unknown): number {
@@ -105,6 +105,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             signatarioNome: txt("signatarioNome"),
             signatarioEmail: txt("signatarioEmail"),
             signatarioDocumento: txt("signatarioDocumento"),
+            // undefined mantém o cargo gravado; o formulário de edição sempre manda o campo.
+            representanteCargo: "representanteCargo" in b ? cargoDoCorpo(b) : undefined,
             observacao: txt("observacao"),
             condicao: condicaoDoCorpo(b),
           })

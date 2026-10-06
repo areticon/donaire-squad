@@ -1472,6 +1472,8 @@ model Contrato {
   signatarioNome      String?
   signatarioEmail     String?
   signatarioDocumento String?
+  /// Cargo do representante legal ("Sócio-administrador", "Procurador", ...), para o quadro das partes.
+  representanteCargo  String?
   empresa             String?
   /// Endereço do cliente, para o quadro do preâmbulo do contrato.
   endereco            String?

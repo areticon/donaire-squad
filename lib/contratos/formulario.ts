@@ -1,5 +1,6 @@
 import type { CondicaoPedida, DescontoPedido } from "@/lib/contratos/contratos";
 import { CONDICAO_PARCELADA } from "@/lib/contratos/condicao";
+import { CARGO_OUTRO, cargoLimpo } from "@/lib/contratos/cargo";
 
 /**
  * A LEITURA DO FORMULÁRIO DO GESTOR (04/10/2026): as rotas de contrato, de
@@ -53,4 +54,14 @@ export function condicaoDoCorpo(b: Record<string, unknown>): CondicaoPedida | un
     formaDoRestante: typeof b.formaDoRestante === "string" ? b.formaDoRestante : null,
     primeiraParcelaEm: dataDoTexto(b.primeiraParcelaEm),
   };
+}
+
+/**
+ * O CARGO DO REPRESENTANTE do corpo (06/10): `representanteCargo` é um da
+ * lista ou o texto livre; se vier "outro", vale `representanteCargoOutro`.
+ * Vazio vira null (o texto fica só com o nome).
+ */
+export function cargoDoCorpo(b: Record<string, unknown>): string | null {
+  const escolha = typeof b.representanteCargo === "string" ? b.representanteCargo.trim() : "";
+  return cargoLimpo(escolha === CARGO_OUTRO ? b.representanteCargoOutro : escolha);
 }

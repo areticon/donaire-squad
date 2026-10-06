@@ -146,6 +146,7 @@ export function textoDoAditivo(a: Awaited<ReturnType<typeof carregar>>) {
     empresa: c.empresa,
     documento: c.signatarioDocumento,
     representante: c.signatarioNome,
+    cargo: c.representanteCargo,
     email: c.signatarioEmail,
     antes,
     depois,

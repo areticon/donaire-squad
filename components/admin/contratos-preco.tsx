@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { PLANOS_PUBLICOS } from "@/lib/planos";
+import { CARGOS_DO_REPRESENTANTE, CARGO_OUTRO, cargoNoSeletor } from "@/lib/contratos/cargo";
 import {
   ACESSO_EXTRA_ANUAL_CENTAVOS,
   MOTIVOS_DE_DESCONTO,
@@ -194,6 +195,38 @@ const campo = "w-full rounded-lg border px-3 py-2 text-sm";
 const estiloCampo = { borderColor: "var(--border)", background: "var(--bg-input)", color: "var(--text-primary)" };
 const rotulo = "text-xs font-medium";
 const corDoRotulo = { color: "var(--text-muted)" };
+
+/**
+ * O CARGO DO REPRESENTANTE (06/10): seletor com os cargos de sempre e "Outro"
+ * que abre o texto livre. O formulário de contrato novo e o de edição usam o
+ * mesmo campo; o corpo vai com `representanteCargo` e, no "Outro",
+ * `representanteCargoOutro` (lib/contratos/formulario.ts lê os dois).
+ */
+export function CampoDoCargo({ gravado = null }: { gravado?: string | null }) {
+  const inicial = cargoNoSeletor(gravado);
+  const [escolha, setEscolha] = useState(inicial.escolha);
+  return (
+    <>
+      <label className={rotulo} style={corDoRotulo}>
+        Cargo do representante
+        <select name="representanteCargo" value={escolha} onChange={(e) => setEscolha(e.target.value)} className={`${campo} mt-1`} style={estiloCampo}>
+          {CARGOS_DO_REPRESENTANTE.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+          <option value={CARGO_OUTRO}>Outro</option>
+        </select>
+      </label>
+      {escolha === CARGO_OUTRO && (
+        <label className={rotulo} style={corDoRotulo}>
+          Qual cargo
+          <input name="representanteCargoOutro" required maxLength={80} defaultValue={inicial.outro} autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
+        </label>
+      )}
+    </>
+  );
+}
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 async function chamar(url: string, corpo: Record<string, unknown> | FormData) {
@@ -399,7 +432,7 @@ export function EditarContrato({
   id: string;
   enviado: boolean;
   inicial: ValorDoPreco;
-  dados: { empresa: string | null; signatarioNome: string | null; signatarioEmail: string | null; signatarioDocumento: string | null; inicio: string | null };
+  dados: { empresa: string | null; signatarioNome: string | null; signatarioEmail: string | null; signatarioDocumento: string | null; representanteCargo?: string | null; inicio: string | null };
   aoFechar: () => void;
 }) {
   const router = useRouter();
@@ -419,6 +452,8 @@ export function EditarContrato({
         signatarioNome: f.get("nome"),
         signatarioEmail: f.get("email"),
         signatarioDocumento: f.get("documento"),
+        representanteCargo: f.get("representanteCargo"),
+        representanteCargoOutro: f.get("representanteCargoOutro"),
         inicioVigencia: f.get("inicio") ?? "",
       });
       toast.success(
@@ -455,6 +490,7 @@ export function EditarContrato({
         Nome de quem assina
         <input name="nome" defaultValue={dados.signatarioNome ?? ""} className={`${campo} mt-1`} style={estiloCampo} />
       </label>
+      <CampoDoCargo gravado={dados.representanteCargo ?? null} />
       <label className={rotulo} style={corDoRotulo}>
         E-mail de quem assina
         <input name="email" type="email" defaultValue={dados.signatarioEmail ?? ""} className={`${campo} mt-1`} style={estiloCampo} />

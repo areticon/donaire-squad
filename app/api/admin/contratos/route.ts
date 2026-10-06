@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { exigirAdmin } from "@/lib/admin/guarda";
 import { RecusaDoContrato, criarContrato } from "@/lib/contratos/contratos";
-import { condicaoDoCorpo, descontoDoCorpo } from "@/lib/contratos/formulario";
+import { cargoDoCorpo, condicaoDoCorpo, descontoDoCorpo } from "@/lib/contratos/formulario";
 
 /**
  * Cria um contrato (rascunho) para a conta de um cliente, ou para um PROSPECT
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       signatarioNome: s("signatarioNome"),
       signatarioEmail: s("signatarioEmail"),
       signatarioDocumento: s("signatarioDocumento"),
+      representanteCargo: cargoDoCorpo(b),
       renovacaoAutomatica: b.renovacaoAutomatica !== false,
       observacao: s("observacao"),
       // Entrada no Pix + parcelas no cartão (05/10); sem o campo, à vista.

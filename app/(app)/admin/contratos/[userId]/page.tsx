@@ -264,7 +264,7 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                       {c.acessosExtras > 0 ? ` · ${c.acessosExtras} acesso(s) extra(s)` : ""}
                     </p>
                     <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Quem assina: {c.signatarioNome ?? "?"} ({c.signatarioEmail ?? "?"}){c.signatarioDocumento ? `, ${c.signatarioDocumento}` : ""}
+                      Quem assina: {c.signatarioNome ?? "?"}{c.representanteCargo ? `, ${c.representanteCargo}` : ""} ({c.signatarioEmail ?? "?"}){c.signatarioDocumento ? `, ${c.signatarioDocumento}` : ""}
                       {c.modeloVersao ? ` · modelo ${c.modeloVersao}` : ""}
                       {c.textoHash ? ` · texto ${c.textoHash.slice(0, 10)}` : ""}
                       {c.versao > 1 ? ` · versão ${c.versao}` : ""}
@@ -346,7 +346,7 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                       c.situacao === "rascunho" || c.situacao === "enviado"
                         ? {
                             inicial: valorDoContrato(c),
-                            dados: { empresa: c.empresa, signatarioNome: c.signatarioNome, signatarioEmail: c.signatarioEmail, signatarioDocumento: c.signatarioDocumento, inicio: c.inicioIso },
+                            dados: { empresa: c.empresa, signatarioNome: c.signatarioNome, signatarioEmail: c.signatarioEmail, signatarioDocumento: c.signatarioDocumento, representanteCargo: c.representanteCargo, inicio: c.inicioIso },
                           }
                         : null
                     }
