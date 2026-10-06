@@ -10,7 +10,7 @@ import {
   APARENCIA_PADRAO_DO_USUARIO,
   type Aparencia,
 } from "@/lib/squad/aparencia-do-boneco";
-import { AGENTES, type Cena, type EstadoDoAgente, type SituacaoDoSquad } from "@/lib/squad/estado-do-squad";
+import { AGENTES, AGENTE_DEV, type Cena, type EstadoDoAgente, type SituacaoDoSquad } from "@/lib/squad/estado-do-squad";
 import { MenuDoAgente, type Turno } from "@/components/escritorio/menu-do-agente";
 import { arteDoAgente } from "@/lib/squad/estado-do-squad";
 
@@ -133,7 +133,20 @@ const MESAS: { x: number; z: number }[] = (() => {
     return { x, z: MESA_COMPRIDA.z + (lado === "fundo" ? -0.45 : 0.45) };
   });
 })();
-const ehDaMesaComprida = (i: number) => AGENTES[i]?.id !== "vera-veredito";
+/**
+ * A BAIA DO DEV DA DEMANDOU (06/10/2026), pedido do Bruno: "cria mais um
+ * boneco que é dev; ele pode trabalhar numa baia também, só que ele trabalha
+ * para a Demandou". Fica FORA de `AGENTES` (não tem bastão, não entra na mesa
+ * comprida nem no café): ganha o índice seguinte em `MESAS`, uma mesa própria
+ * dentro da baia de divisórias que saiu de cena em 29/09, na frente, entre o
+ * sofá do café e a sala da Vera, com a placa da Demandou.
+ */
+const INDICE_DO_DEV = AGENTES.length;
+const MESA_DO_DEV = { x: 2.3, z: 3.55 };
+MESAS[INDICE_DO_DEV] = MESA_DO_DEV;
+LADO[INDICE_DO_DEV] = "fundo";
+const FALA_DO_DEV = "Lendo o que os clientes pediram esta semana.";
+const ehDaMesaComprida = (i: number) => i < AGENTES.length && AGENTES[i]?.id !== "vera-veredito";
 /** 1 para quem olha para a câmera (fundo), −1 para quem fica de costas (frente). */
 const sentidoDe = (i: number) => (LADO[i] === "frente" ? -1 : 1);
 
@@ -311,6 +324,8 @@ const OBSTACULOS: Array<{ x: number; z: number; larg: number; prof: number }> = 
   { x: MESA_DA_VERA.x, z: MESA_DA_VERA.z - 0.2, larg: 2.0, prof: 1.4 },
   { x: NOSSA_MESA.x, z: NOSSA_MESA.z - 0.2, larg: 2.7, prof: 1.4 },
   { x: CAFE.x, z: CAFE.z, larg: 1.3, prof: 1.3 },
+  // a baia do Dev da Demandou (06/10): mesa, cadeira e as três divisórias, numa caixa só
+  { x: MESA_DO_DEV.x, z: MESA_DO_DEV.z - 0.3, larg: 2.4, prof: 1.8 },
   { x: 2.4, z: -1.8, larg: 0.7, prof: 0.7 }, // a planta
   // o sofá do café, o bebedouro e as plantas de canto
   { x: 0, z: 3.75, larg: 2.1, prof: 0.95 },
@@ -2277,6 +2292,57 @@ function Cena({
           </group>
         );
       })}
+
+      {/* O DEV DA DEMANDOU (06/10): baia própria com a placa da Demandou, sempre
+          trabalhando, sem bastão e sem peça. Trabalha para a plataforma, então
+          aparece no escritório de todo projeto. Clicar abre a ficha dele. */}
+      <group key={AGENTE_DEV.id}>
+        <group position={[MESA_DO_DEV.x, 0, MESA_DO_DEV.z]}>
+          <Baia tema={tema} cor={AGENTE_DEV.cor} />
+        </group>
+        <Mesa
+          indice={INDICE_DO_DEV}
+          cor={AGENTE_DEV.cor}
+          estado="trabalhando"
+          nome={AGENTE_DEV.nome}
+          papel={AGENTE_DEV.papel}
+          detalhe="melhora o produto para todo mundo"
+          tema={tema}
+          // Sem arte de massinha gerada ainda (06/10): a placa sai sem foto em vez de imagem quebrada.
+          foto={undefined}
+          aoClicar={() => onAbrirAgente(AGENTE_DEV.id)}
+        />
+        <Robo
+          indice={INDICE_DO_DEV}
+          cor={AGENTE_DEV.cor}
+          estado="trabalhando"
+          humor="neutro"
+          missao={null}
+          gesto={null}
+          aparencia={APARENCIA_DOS_AGENTES[AGENTE_DEV.id] ?? APARENCIA_PADRAO_DO_USUARIO}
+          reduzido={reduzido}
+          fala={FALA_DO_DEV}
+          tema={tema}
+          aoClicar={() => onAbrirAgente(AGENTE_DEV.id)}
+        />
+        {/* a placa da Demandou, no alto da divisória do fundo */}
+        <Html position={[MESA_DO_DEV.x, 1.45, MESA_DO_DEV.z - 1.12]} center distanceFactor={9} zIndexRange={[18, 0]} style={{ pointerEvents: "none" }}>
+          <div
+            style={{
+              padding: "3px 10px",
+              borderRadius: 999,
+              background: `color-mix(in srgb, ${tema.fundo} 88%, transparent)`,
+              border: `1px solid ${AGENTE_DEV.cor}`,
+              color: tema.texto,
+              fontSize: 11,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Demandou · trabalha para a plataforma
+          </div>
+        </Html>
+      </group>
 
       <EntradaDaCamera reduzido={reduzido} />
       {/* O ZOOM entrou em 18/09 a pedido do Bruno: a roda do mouse aproxima.

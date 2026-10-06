@@ -29,7 +29,7 @@ import {
  * Não importa nada que toque o banco.
  */
 
-type Enviado = { protocolo: string; whatsapp: string | null };
+type Enviado = { protocolo: string; whatsapp: string | null; respostaDoDev: string | null };
 
 export function Ajuda() {
   const pathname = usePathname();
@@ -114,9 +114,9 @@ export function Ajuda() {
       );
       if (print) fd.set("print", print);
       const r = await fetch("/api/suporte/chamados", { method: "POST", body: fd });
-      const d = (await r.json().catch(() => ({}))) as { protocolo?: string; whatsapp?: string | null; error?: string };
+      const d = (await r.json().catch(() => ({}))) as { protocolo?: string; whatsapp?: string | null; respostaDoDev?: string | null; error?: string };
       if (!r.ok || !d.protocolo) throw new Error(d.error ?? "Não consegui enviar o chamado. Tente de novo.");
-      setEnviado({ protocolo: d.protocolo, whatsapp: d.whatsapp ?? null });
+      setEnviado({ protocolo: d.protocolo, whatsapp: d.whatsapp ?? null, respostaDoDev: d.respostaDoDev ?? null });
       aoAbrir.current?.(d.protocolo);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui enviar o chamado.");
@@ -172,9 +172,19 @@ export function Ajuda() {
                   Chamado {enviado.protocolo} aberto
                 </h2>
                 <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-                  Recebemos o seu pedido. A resposta chega por e-mail e fica em Meus chamados.
+                  {enviado.respostaDoDev ? "Entrou na fila de melhoria do produto." : "Recebemos o seu pedido."} A resposta chega por e-mail e fica em Meus chamados.
                   {enviado.whatsapp ? " Se for urgente, fale agora com uma pessoa pelo WhatsApp:" : ""}
                 </p>
+                {/* O chamado direto no Dev (06/10): o Davi responde na hora. */}
+                {enviado.respostaDoDev && (
+                  <p
+                    data-resposta-do-dev
+                    className="mt-3 rounded-xl border px-3 py-2 text-left text-xs leading-relaxed"
+                    style={{ borderColor: "color-mix(in srgb, #0f766e 45%, transparent)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+                  >
+                    <b style={{ color: "#0f766e" }}>Davi Dev:</b> {enviado.respostaDoDev}
+                  </p>
+                )}
                 <div className="mt-5 flex flex-col gap-2">
                   {enviado.whatsapp && (
                     <a
@@ -235,6 +245,11 @@ export function Ajuda() {
                       );
                     })}
                   </div>
+                  {categoria === "melhoria" && (
+                    <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                      Vai direto para o Davi, dev da Demandou: conte o que a plataforma fez de errado ou o que faria o produto melhor para você. Ajuste de uma peça só é mais rápido pelo chat da própria peça.
+                    </p>
+                  )}
                 </fieldset>
 
                 <label className="mt-4 block text-sm font-medium" style={{ color: "var(--text-primary)" }} htmlFor="ajuda-texto">

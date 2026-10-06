@@ -23,6 +23,7 @@ import {
   LifeBuoy,
   Inbox,
   FileSignature,
+  Wrench,
 } from "lucide-react";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { cn } from "@/lib/utils";
@@ -117,6 +118,8 @@ export function Sidebar({
           },
           // O gestor de contratos anuais (02/10).
           { href: "/admin/contratos", label: "Contratos", icon: FileSignature },
+          // O Dev da Demandou (06/10): o que os clientes estão pedindo, por grupo, para aprovar a melhoria.
+          { href: "/admin/dev", label: "Dev", icon: Wrench, dica: "O que os clientes estão pedindo: o feedback do chat e dos chamados, agrupado" },
         ]
       : []),
   ];

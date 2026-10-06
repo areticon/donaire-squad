@@ -6,7 +6,10 @@ import { contaDoPlano, podeUsarProjetoPorId } from "@/lib/equipe/conta";
 import { midiaPrivada } from "@/lib/media/storage";
 import { PLANOS_PUBLICOS } from "@/lib/planos";
 import { diagnosticarPeca } from "@/lib/suporte/diagnostico";
+import { capturarFeedbackDoChamado } from "@/lib/feedback/captura";
 import {
+  CATEGORIA_DO_DEV,
+  RESPOSTA_DO_DEV,
   LIMITE_POR_HORA,
   NOME_DA_CATEGORIA,
   NOME_DO_STATUS,
@@ -77,6 +80,8 @@ export type ChamadoCriado = {
   protocolo: string;
   /** O link wa.me com a mensagem pronta; null sem SUPORTE_WHATSAPP. */
   whatsapp: string | null;
+  /** No chamado direto no Dev (06/10): o que o Davi respondeu na hora. */
+  respostaDoDev: string | null;
 };
 
 export async function criarChamado(args: {
@@ -174,6 +179,33 @@ export async function criarChamado(args: {
 
   if (diag) await diag.marcar(protocolo);
 
+  // O CHAMADO DIRETO NO DEV (06/10): o Davi responde na hora que o pedido
+  // entrou na fila de melhoria (texto fixo, sem IA por chamado), e o chamado
+  // fica "em andamento" até haver novidade. Todo chamado, de qualquer
+  // categoria, vira feedback do produto (classificado pelo JEV, sem travar).
+  let respostaDoDev: string | null = null;
+  if (args.categoria === CATEGORIA_DO_DEV) {
+    respostaDoDev = RESPOSTA_DO_DEV;
+    await prisma
+      .$transaction([
+        prisma.eventoDoChamado.create({ data: { chamadoId: chamado.id, tipo: "resposta", lado: "suporte", autorNome: "Davi Dev", texto: RESPOSTA_DO_DEV } }),
+        prisma.eventoDoChamado.create({ data: { chamadoId: chamado.id, tipo: "status", lado: "suporte", autorNome: "Davi Dev", de: "aberto", para: "andamento" } }),
+        prisma.chamado.update({ where: { id: chamado.id }, data: { status: "andamento", respondidoEm: new Date() } }),
+      ])
+      .catch((e) => console.error(`[suporte] resposta do Dev no ${protocolo} não gravou:`, e instanceof Error ? e.message : e));
+  }
+  void capturarFeedbackDoChamado({
+    chamadoId: chamado.id,
+    userId: args.userId,
+    texto,
+    categoria: args.categoria,
+    codigo,
+    projectId,
+    postId: diag ? postIdPedido : null,
+    videoId: contexto.videoId,
+    pagina: contexto.pagina,
+  });
+
   // Os avisos, depois de gravado. Nenhum deles lança.
   const categoriaNome = NOME_DA_CATEGORIA[args.categoria];
   const linhasDeContexto = [
@@ -209,7 +241,7 @@ export async function criarChamado(args: {
   }
   await Promise.allSettled(avisos);
 
-  return { id: chamado.id, numero: chamado.numero, protocolo, whatsapp: zap ? linkDoWhatsapp(zap, protocolo, texto) : null };
+  return { id: chamado.id, numero: chamado.numero, protocolo, whatsapp: zap ? linkDoWhatsapp(zap, protocolo, texto) : null, respostaDoDev };
 }
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { marcarEmRevisao, encerrarRevisao } from "@/lib/pipeline/revisao-do-card
 import { ehPedidoDeRefazerVideo, regerarVideoDoDia } from "@/lib/media/regerar-video";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { abrirPedido, estadoDoPedido, executarPedido } from "@/lib/media/pedido-do-card";
+import { capturarFeedbackDoChatDoCard } from "@/lib/feedback/captura";
 
 /** Detect if a media URL represents a video (GCS URL, external .mp4, or base64 video) */
 function detectIsVideo(mediaUrl?: string | null): boolean {
@@ -62,8 +63,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const emRevisao: string[] = [];
+  // O FEEDBACK DO PRODUTO (06/10): o corpo é lido de uma cópia, e o registro sai
+  // depois da resposta. O pedido composto (202) registra a si mesmo ao terminar
+  // (pedido-do-card.ts); os caminhos que respondem na hora registram aqui.
+  const copia = req.clone();
+  const desde = new Date().toISOString();
   try {
-    return await tratarChatDoCard(req, ctx, emRevisao);
+    const resposta = await tratarChatDoCard(req, ctx, emRevisao);
+    if (resposta.status === 200) {
+      after(async () => {
+        const [{ userId }, { id }, corpo] = await Promise.all([auth(), ctx.params, copia.json().catch(() => null) as Promise<{ message?: string } | null>]);
+        if (userId && corpo?.message?.trim()) await capturarFeedbackDoChatDoCard({ cardId: id, userId, mensagem: corpo.message.trim(), desde });
+      });
+    }
+    return resposta;
   } finally {
     if (emRevisao.length > 0) await encerrarRevisao(emRevisao);
   }
