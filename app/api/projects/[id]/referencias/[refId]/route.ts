@@ -3,15 +3,15 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
-import { MAX_REFERENCIAS_POR_CONTA } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { limiteDoProjeto } from "@/lib/referencias/limite";
 
 /**
  * Um perfil de referência (01/10). PATCH { status: "confirmado" | "recusado" | "sugerido" }.
  *
- * Só o dono confirma, no máximo 3 por PROJETO (03/10) e 10 confirmados por CONTA (somando todos os
- * projetos do dono): é o teto que cabe na margem de todos os planos no
- * cenário enxuto da pesquisa de 01/10 (cerca de R$ 34 por cliente por mês).
+ * Só o dono confirma, até o limite do PLANO do dono por projeto e somando os
+ * projetos da conta (06/10: Starter 3, Pro 6, Enterprise 10; ver
+ * referenciasDoPlano em lib/planos.ts). Confirmar é a única coisa que aumenta a
+ * lista: tirar dos confirmados e recusar sempre funcionam.
  * Recusar não apaga: o perfil recusado não volta nas próximas sugestões.
  */
 export const dynamic = "force-dynamic";
@@ -31,18 +31,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!["confirmado", "recusado", "sugerido"].includes(status ?? "")) return NextResponse.json({ error: "Status inválido." }, { status: 400 });
 
   if (status === "confirmado" && ref.status !== "confirmado") {
-    // Até 3 por PROJETO (03/10, decisão do Bruno), além do teto da conta.
+    // O limite do plano do dono (06/10), por projeto e somando a conta.
+    const limite = await limiteDoProjeto(id);
     const noProjeto = await prisma.referenciaPerfil.count({ where: { projectId: id, status: "confirmado" } });
-    if (noProjeto >= MAX_REFERENCIAS_POR_PROJETO) {
+    if (noProjeto >= limite.porProjeto) {
       return NextResponse.json(
-        { error: `Cada projeto estuda até ${MAX_REFERENCIAS_POR_PROJETO} perfis de referência. Tire um para confirmar outro.` },
+        { error: `O plano ${limite.plano} estuda até ${limite.porProjeto} perfis de referência por projeto. Tire um para confirmar outro.` },
         { status: 409 }
       );
     }
     const confirmados = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: projeto.userId } } });
-    if (confirmados >= MAX_REFERENCIAS_POR_CONTA) {
+    if (!limite.semTetoNaConta && confirmados >= limite.porConta) {
       return NextResponse.json(
-        { error: `A conta já tem ${MAX_REFERENCIAS_POR_CONTA} perfis de referência confirmados. Tire um para confirmar outro.` },
+        { error: `A conta já tem ${confirmados} perfis de referência confirmados, e o plano ${limite.plano} inclui ${limite.porConta}. Tire um para confirmar outro.` },
         { status: 409 }
       );
     }

@@ -12,6 +12,8 @@
  * As chaves "pro", "business" e "studio" ficam: são o valor gravado em
  * User.plan e o nome das variáveis de ambiente dos preços no Stripe.
  */
+import { marcasDaConta } from "@/lib/equipe/regras";
+
 export type PlanoId = "pro" | "business" | "studio";
 
 export const TRIAL_DAYS = 7;
@@ -123,6 +125,12 @@ export type PlanoPublico = {
    * de transcrever.
    */
   arquivoMaximoGb: number;
+  /**
+   * Quantos perfis de referência cada projeto estuda (decisão do Bruno, 06/10).
+   * Vem de REFERENCIAS_POR_PROJETO, logo abaixo; a regra completa (teste,
+   * admin, membro e o teto da conta) está em referenciasDoPlano.
+   */
+  referenciasPorProjeto: number;
   destaque: boolean;
   features: string[];
   /**
@@ -172,6 +180,76 @@ const DEMANDA_CAST: ExtraDoPlano = {
 export const EXTRAS_A_PARTIR_DO_PRO = "Demanda Day e Demanda Cast vêm a partir do Pro.";
 
 /**
+ * REFERÊNCIAS POR PROJETO, POR PLANO (06/10/2026, decisão do Bruno): 3 no
+ * Starter, 6 no Pro, 10 no Enterprise. Até aqui era 3 fixo para todo mundo
+ * (MAX_REFERENCIAS_POR_PROJETO), e projeto de antes do teto aparecia como
+ * "5 de 3". Este é o ÚNICO lugar do número: a tabela de planos, o servidor
+ * (lib/limites-do-plano.ts) e as telas leem daqui.
+ */
+export const REFERENCIAS_POR_PROJETO: Record<PlanoId, number> = {
+  pro: 3, // Starter
+  business: 6, // Pro
+  studio: 10, // Enterprise
+};
+
+/** A linha do cartão do plano, a mesma nas três telas que mostram planos. */
+export function linhaDasReferencias(n: number): string {
+  return `${n} perfis de referência estudados por projeto`;
+}
+
+/** O limite de referências que vale para uma conta, já resolvido. */
+export type LimiteDeReferencias = {
+  /** Perfis confirmados por projeto. */
+  porProjeto: number;
+  /** Perfis confirmados somando os projetos da conta (o que a tela mostra). */
+  porConta: number;
+  /** Conta interna: o servidor não barra pela conta; a tela mostra o do Enterprise. */
+  semTetoNaConta: boolean;
+  /** O nome do plano que deu o número ("Starter", "Pro", "Enterprise"). */
+  plano: string;
+};
+
+/**
+ * O LIMITE DE REFERÊNCIAS DE UMA CONTA (06/10), sem banco: o servidor resolve
+ * quem é a conta (membro usa o plano do dono, ver lib/equipe/conta.ts) e chama
+ * aqui com o plano, o papel e o teste.
+ *
+ * - Starter ("pro") 3, Pro ("business") 6, Enterprise ("studio") 10;
+ * - em teste grátis vale o Starter, qualquer que seja o plano escolhido: o
+ *   teste é para provar o produto, e cada referência a mais é leitura paga;
+ * - sem plano ("free") ou plano desconhecido também cai no Starter (o portão
+ *   de entrada já manda essa pessoa para /planos; aqui só não pode quebrar);
+ * - admin (acesso interno) fica com o número do Enterprise por projeto e sem
+ *   teto na conta, como nos outros limites do plano.
+ *
+ * O TETO DA CONTA é o do projeto vezes as marcas que a conta pode ter
+ * (marcasDaConta, que já soma os acessos inclusos e os extras): cada projeto
+ * permitido pode encher a sua cota, e nada além disso. Starter 3 x 2 = 6,
+ * Pro 6 x 5 = 30, Enterprise 10 x 10 = 100. Substitui o 15 fixo de 03/10.
+ */
+export function referenciasDoPlano(args: {
+  plan: string | null | undefined;
+  admin?: boolean;
+  emTeste?: boolean;
+  acessosExtras?: number;
+}): LimiteDeReferencias {
+  if (args.admin) {
+    const topo = planoPublico("studio");
+    return { porProjeto: topo.referenciasPorProjeto, porConta: topo.referenciasPorProjeto * marcasDaConta(topo.marcas, topo.id, 0), semTetoNaConta: true, plano: topo.nome };
+  }
+  const conhecido = PLANOS_PUBLICOS.find((p) => p.id === args.plan);
+  const vale = !conhecido || args.emTeste ? planoPublico("pro") : conhecido;
+  // No teste não há acesso extra cobrado; fora dele, cada extra é mais uma marca.
+  const extras = conhecido && !args.emTeste ? Math.max(0, args.acessosExtras ?? 0) : 0;
+  return {
+    porProjeto: vale.referenciasPorProjeto,
+    porConta: vale.referenciasPorProjeto * marcasDaConta(vale.marcas, vale.id, extras),
+    semTetoNaConta: false,
+    plano: vale.nome,
+  };
+}
+
+/**
  * A TABELA DE 27/09/2026, feita com o Matheus Gaberlini, que entrou como sócio.
  *
  * Público: empresas que faturam acima de R$ 100 mil por mês. Só contrato
@@ -204,6 +282,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 48,
     duracaoMaximaMin: 60,
     arquivoMaximoGb: 4,
+    referenciasPorProjeto: REFERENCIAS_POR_PROJETO.pro,
     destaque: false,
     features: [
       // Os acessos (01/10, noite, pedido do Bruno: "colocar a quantidade de contas
@@ -228,6 +307,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       "2 vídeos por IA de 30 s por mês na qualidade Cheia (5 na Rápida), com narração em português",
       "Gravações de até 1 hora",
       "Pesquisa com fontes, revisão e publicação agendada",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.pro),
       "LinkedIn, Instagram, Facebook, X, YouTube e TikTok",
       "Reunião de implantação para ensinar a voz da empresa",
     ],
@@ -244,6 +324,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 96,
     duracaoMaximaMin: 120,
     arquivoMaximoGb: 8,
+    referenciasPorProjeto: REFERENCIAS_POR_PROJETO.business,
     destaque: true,
     features: [
       "5 acessos, contando o seu, para vendedores, consultores ou corretores",
@@ -256,6 +337,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       "Gravações de até 2 horas",
       "Tudo do Starter",
       "Relatório mensal do que rendeu",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.business),
     ],
     extras: [demandaDay(1), DEMANDA_CAST],
   },
@@ -271,6 +353,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
     armazenamentoGb: 192,
     duracaoMaximaMin: 300,
     arquivoMaximoGb: 20,
+    referenciasPorProjeto: REFERENCIAS_POR_PROJETO.studio,
     destaque: false,
     features: [
       "10 acessos, contando o seu, para o time comercial inteiro",
@@ -281,6 +364,7 @@ export const PLANOS_PUBLICOS: PlanoPublico[] = [
       "Gravações de até 5 horas, para podcast e evento",
       "Tudo do Pro",
       "Reunião mensal de estratégia e gerente dedicado",
+      linhaDasReferencias(REFERENCIAS_POR_PROJETO.studio),
     ],
     extras: [demandaDay(3), DEMANDA_CAST],
   },

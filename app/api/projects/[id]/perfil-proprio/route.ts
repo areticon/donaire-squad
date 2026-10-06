@@ -19,12 +19,13 @@ import {
   rodarEstudoDoPerfil,
   salvarRedesDoCliente,
 } from "@/lib/referencias/perfil-proprio";
-import { MAX_REFERENCIAS_POR_CONTA, REDES_DE_REFERENCIA, type RedeDeReferencia } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO, conferirReferencia, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { REDES_DE_REFERENCIA, type RedeDeReferencia } from "@/lib/referencias/tipos";
+import { conferirReferencia, tetoBarraALista, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { idsQueOEstudoLe, limiteDoProjeto } from "@/lib/referencias/limite";
 
 /**
- * A JORNADA DE ENTRADA (03/10/2026): o perfil do próprio cliente, as até 3
- * referências dele, o de-para e o setup sugerido.
+ * A JORNADA DE ENTRADA (03/10/2026): o perfil do próprio cliente, as
+ * referências dele (até o limite do plano, 06/10), o de-para e o setup sugerido.
  *
  * GET: as redes do cliente, as referências, o estado do estudo do perfil, o
  * relatório, o de-para (calculado agora do banco) e o setup sugerido. A
@@ -34,7 +35,7 @@ import { MAX_REFERENCIAS_POR_PROJETO, conferirReferencia, type RespostaDoPerfilP
  * POST { acao } (só o dono):
  *   "estudar"      { redes: [{ rede, perfil }] } grava as redes e estuda o
  *                  perfil em `after` (202 na hora, a tela consulta o GET);
- *   "referencias"  { referencias: [{ rede, perfil }] } até 3: viram as
+ *   "referencias"  { referencias: [{ rede, perfil }] } até o limite do plano: viram as
  *                  confirmadas do projeto e o estudo delas sai pelas análises
  *                  (pedido "cliente": estudar, etiquetar, regras, tendências);
  *   "salvar-referencias" { referencias } a mesma lista e as mesmas travas,
@@ -73,6 +74,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     lerSetupSugerido(id),
     eAdmin(a.userId),
   ]);
+  // O limite do plano do dono (06/10). O estudo lê as mais recentes até ele.
+  const limite = await limiteDoProjeto(id);
+  const noEstudo = new Set(await idsQueOEstudoLe(id, limite.porProjeto));
   // A miniatura do post de maior engajamento (03/10): o relatório gravado antes
   // de 03/10 não tinha a capa; ela vem do post, enquanto o endereço da rede vale.
   if (relatorio?.melhorPost && relatorio.melhorPost.capa === undefined && relatorio.melhorPost.url) {
@@ -83,17 +87,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     relatorio.melhorPost.capa = typeof capa === "string" ? capa : null;
   }
   const doCliente = redes.map((r) => r.rede as RedeDeReferencia);
-  const dasRefs = refs.map((r) => r.rede as RedeDeReferencia);
+  const dasRefs = refs.filter((r) => noEstudo.has(r.id)).map((r) => r.rede as RedeDeReferencia);
   const resposta: RespostaDoPerfilProprio = {
     ligado: redesLigadas().length > 0,
     podeEditar: a.projeto.userId === a.userId,
     redes: redes.map((r) => ({ rede: r.rede as RedeDeReferencia, perfil: r.perfil })),
-    referencias: refs.map((r) => ({ id: r.id, rede: r.rede as RedeDeReferencia, perfil: r.perfil, ultimaColeta: r.ultimaColeta?.toISOString() ?? null, ultimoErro: r.ultimoErro })),
+    referencias: refs.map((r) => ({ id: r.id, rede: r.rede as RedeDeReferencia, perfil: r.perfil, ultimaColeta: r.ultimaColeta?.toISOString() ?? null, ultimoErro: r.ultimoErro, noEstudo: noEstudo.has(r.id) })),
     estado,
     parado,
     relatorio: relatorio && !admin ? { ...relatorio, custo: { apifyUsd: 0, iaUsd: 0, estimado: true } } : relatorio,
     dePara,
     setup: setup && !admin ? { ...setup, custo: { apifyUsd: 0, iaUsd: 0, estimado: true } } : setup,
+    limite: { ...limite, estudadas: noEstudo.size },
     estimativas: admin
       ? {
           perfil: estimarEstudoDoPerfil(doCliente.length ? doCliente : ["instagram"]),
@@ -156,8 +161,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // nenhuma também vale.
       const atuais = await prisma.referenciaPerfil.count({ where: { projectId: id, status: "confirmado" } });
       const aumenta = lista.length > atuais;
-      if (lista.length > MAX_REFERENCIAS_POR_PROJETO && aumenta) {
-        return NextResponse.json({ error: `São até ${MAX_REFERENCIAS_POR_PROJETO} referências por projeto. Remova uma para colocar outra no lugar.` }, { status: 400 });
+      // O limite vem do plano do dono (06/10: Starter 3, Pro 6, Enterprise 10).
+      const limite = await limiteDoProjeto(id);
+      if (tetoBarraALista(lista.length, atuais, limite.porProjeto)) {
+        return NextResponse.json({ error: `O plano ${limite.plano} inclui até ${limite.porProjeto} referências por projeto. Remova uma para colocar outra no lugar.` }, { status: 400 });
       }
       const proprias = await redesDoCliente(id);
       if (lista.some((x) => proprias.some((p) => p.rede === x.rede && p.perfil === x.perfil))) {
@@ -166,8 +173,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // O teto da conta (somando os projetos), sem contar as deste projeto
       // que serão trocadas. Conta admin (a nossa) não tem teto, como nos limites do plano.
       const naConta = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: a.projeto.userId }, NOT: { projectId: id } } });
-      if (naConta + lista.length > MAX_REFERENCIAS_POR_CONTA && aumenta && !(await eAdmin(a.userId))) {
-        return NextResponse.json({ error: `A conta já tem ${naConta} perfis de referência em outros projetos (o limite é ${MAX_REFERENCIAS_POR_CONTA}). Tire algum lá para estudar estes.` }, { status: 409 });
+      if (naConta + lista.length > limite.porConta && aumenta && !limite.semTetoNaConta) {
+        return NextResponse.json({ error: `A conta já tem ${naConta} perfis de referência em outros projetos (o plano ${limite.plano} inclui ${limite.porConta} somando os projetos). Tire algum lá para estudar estes.` }, { status: 409 });
       }
       // Trocar a lista no meio de um estudo misturaria perfis velhos e novos no mesmo resultado.
       if (soSalvar) {
