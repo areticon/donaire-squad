@@ -308,6 +308,8 @@ const OPERACOES_DE_RECARGA = new Set([
   // 06/10: concessão do admin (não é receita nem consumo) e o reset de saldo.
   "concessao_admin",
   "reset_de_saldo",
+  // 06/10: pacote de crédito avulso pago no Stripe (a receita vem da cobrança).
+  "compra_creditos",
 ]);
 
 export function operacaoEhRecarga(operation: string): boolean {

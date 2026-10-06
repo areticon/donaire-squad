@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
 import { creditosDaNota } from "@/lib/credits/nota-simulada";
+import { ComprarCreditos } from "@/components/billing/comprar-creditos";
 
 /**
  * Saldo e extrato de créditos.
@@ -41,6 +42,7 @@ const NOMES: Record<string, string> = {
   // 06/10: crédito dado pelo time da Demandou, e o acerto de saldo da conta.
   concessao_admin: "Créditos concedidos",
   reset_de_saldo: "Acerto de saldo",
+  compra_creditos: "Pacote de créditos",
   estorno: "Estorno",
   // A primeira parte devolvida quando a gravação não rende trecho (01/10).
   estorno_roteiro: "Estorno da gravação",
@@ -61,13 +63,30 @@ export function CreditBalance() {
   const [dados, setDados] = useState<Dados | null>(null);
   const [carregando, setCarregando] = useState(true);
 
+  // A volta do checkout do pacote (?creditos=ok) e o atalho de compra
+  // (?comprar=1, da barra lateral e da janela da campanha), 06/10.
+  // Lido no primeiro render do navegador; no servidor fica falso, e nada disso
+  // aparece antes de o saldo carregar, então não há diferença na hidratação.
+  const [volta] = useState<{ pago: boolean; comprar: boolean }>(() => {
+    if (typeof window === "undefined") return { pago: false, comprar: false };
+    const q = new URLSearchParams(window.location.search);
+    return { pago: q.get("creditos") === "ok", comprar: q.get("comprar") === "1" };
+  });
+
   useEffect(() => {
-    fetch("/api/credits")
-      .then((r) => r.json())
-      .then((d) => setDados(d))
-      .catch(() => undefined)
-      .finally(() => setCarregando(false));
-  }, []);
+    const ler = () =>
+      fetch("/api/credits")
+        .then((r) => r.json())
+        .then((d) => setDados(d))
+        .catch(() => undefined)
+        .finally(() => setCarregando(false));
+    void ler();
+    // O crédito entra pelo webhook, segundos depois da volta: lê de novo.
+    if (volta.pago) {
+      const t = setTimeout(() => void ler(), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [volta.pago]);
 
   if (carregando) {
     return (
@@ -123,15 +142,28 @@ export function CreditBalance() {
           pedir; acabando, avisa sem mandar comprar. */}
       {dados.equipe && dados.saldo <= 0 ? (
         <p className="text-sm text-orange-400 mb-2">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
-      ) : acabando ? (
+      ) : acabando && (dados.equipe || dados.saldo > 0) ? (
         <p className="text-sm text-orange-400 mb-2">
           {dados.equipe ? "Os créditos da equipe estão acabando." : "Seus créditos estão acabando."} Uma campanha semanal completa consome
           cerca de 450.
         </p>
       ) : null}
 
-      {/* O CONSUMO SIMULADO DO ADMIN (03/10): o saldo não se move, então o
-          total do ciclo e a divisão por operação são o que se calibra. */}
+      {volta.pago && (
+        <p className="text-sm mb-2" style={{ color: "#22c55e" }} data-volta-do-pacote>
+          Pagamento recebido. Os créditos do pacote entram no saldo em instantes, e o recibo vai para o seu e-mail.
+        </p>
+      )}
+
+      {/* OS PACOTES AVULSOS (06/10): o botão mora onde o saldo aparece e abre
+          sozinho quando o saldo está baixo ou acabou. Membro sem saldo já leu
+          acima a quem pedir; não repete. */}
+      {!(dados.equipe && dados.saldo <= 0) && (
+        <ComprarCreditos abertoDeInicio={volta.comprar || (!dados.equipe && (acabando || dados.saldo <= 0))} saldoZerado={dados.saldo <= 0} />
+      )}
+
+      {/* O CONSUMO SIMULADO DO ADMIN (03/10): só com ADMIN_SEM_DEBITO=1 desde
+          06/10, quando o saldo do admin não se move. */}
       {dados.consumoSimulado && (
         <div className="mt-4 rounded-lg border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }} data-consumo-simulado>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
