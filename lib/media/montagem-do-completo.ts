@@ -93,6 +93,7 @@ import {
   type PlanoPronto,
 } from "@/lib/media/editor-por-comando";
 import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
+import { esteiraDoCompleto } from "@/lib/media/jornada/estado";
 import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
 import {
   demonstracaoNaFala,
@@ -1307,7 +1308,9 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // `sobMedida`), e não para o plano por cenas. Se o caminho novo já
     // desistiu neste vídeo, segue a esteira de sempre (a reserva).
     const estiloDoVideo = contextoVisual(v).escolha.estiloId;
-    if ((editorPorComandoLigado() || editorSobMedidaLigado(estiloDoVideo)) && !lido.sobMedida?.desistiu) {
+    // O ROTEADOR (E0 da jornada): o único ponto que escolhe a esteira do completo.
+    const esteira = esteiraDoCompleto({ porComando: editorPorComandoLigado(), sobMedida: editorSobMedidaLigado(estiloDoVideo) });
+    if ((esteira === "por-comando" || esteira === "sob-medida") && !lido.sobMedida?.desistiu) {
       const falaAprovada = lido.roteiro?.completo?.fala?.palavras;
       const aberturaSm = falaAprovada?.length ? aberturaNaBase(lido.roteiro, falaAprovada, falaDoCompleto.palavras) : null;
       const frases = frasesNumeradas(falaDoCompleto.palavras);

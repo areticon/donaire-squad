@@ -82,6 +82,7 @@ import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { falaDoBloco } from "@/lib/media/montagem-do-completo";
 import { listaDaAprovacao } from "@/lib/media/decisao-dos-cortes";
+import { esteiraDoCompleto } from "@/lib/media/jornada/estado";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -584,6 +585,9 @@ export async function prepararRoteiro(
   // (lib/media/editor-por-comando/plano-pelo-jev.ts), gravado em
   // `completo.comando` para a tela cena a cena e para a montagem reaproveitar.
   const comandoLigado = editorPorComandoLigado();
+  // O ROTEADOR (E0 da jornada, lib/media/jornada/estado.ts): o único ponto que escolhe a esteira do completo.
+  // Com EDITOR_JORNADA=1 o completo segue a jornada oficial e nenhum caminho antigo planeja o completo.
+  const jornada = esteiraDoCompleto({ porComando: comandoLigado, sobMedida: false }) === "jornada";
   const revisar = revisorLigado() && !opcoes.semDiretor && !limpo && !comandoLigado;
   const pessoa = { x: 0.2, y: 0, w: 0.6, h: 1 };
   const rosto = { x: pessoa.x + pessoa.w * 0.3, y: pessoa.y + 0.1, w: pessoa.w * 0.4, h: 0.3 };
@@ -699,7 +703,7 @@ export async function prepararRoteiro(
   // 3. O completo: coberto do começo ao fim (cotas por minuto, mais denso no
   // começo; ritmo-da-edicao.ts), planejado por blocos, com a tela compartilhada.
   const fecho = { formato, familia: familiaDaLinguagem(normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle).estiloId), faixas: faixasC };
-  if (montagemDoCompletoLigada() && !r.completo?.plano && !r.completo?.erro && !r.completo?.comando) {
+  if (montagemDoCompletoLigada() && !jornada && !r.completo?.plano && !r.completo?.erro && !r.completo?.comando) {
     const fala = r.completo?.fala ?? (await falaDoCompleto(v, r.remocoes, termos));
     const insercoes = insercoesDoCompleto(fala.duracao, formato);
     const lido = comandoLigado ? null : await montagemDoCompletoAnterior(videoId);
@@ -823,7 +827,7 @@ export async function prepararRoteiro(
   // MrBeast): o diretor escolhe as frases mais fortes do tema pela fala do
   // completo; o cliente aprova e troca na tela. Momento em tela compartilhada
   // fica por último na fila (tela sem contexto não prende).
-  if (!r.abertura && r.completo?.fala?.palavras?.length && !opcoes.semDiretor) {
+  if (!jornada && !r.abertura && r.completo?.fala?.palavras?.length && !opcoes.semDiretor) {
     const fala = r.completo.fala;
     const radar = v.radar as { tema?: string; resumo?: string; teses?: Array<{ minuto: string; frase: string }> } | null;
     tarefas.unshift(async () => {

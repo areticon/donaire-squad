@@ -202,7 +202,7 @@ test("cada edição é algo novo: nome único por geração e nenhum reaproveita
   assert.notEqual(chaveDaGeracao("fundo-abc"), chaveDaGeracao("fundo-abc"));
   assert.deepEqual(GRAVACAO_UNICA, { addRandomSuffix: true });
   assert.equal(await guardaDoRecorteNoBlob().ler("rec-qualquer"), null, "a foto do Vox de outra edição nunca volta");
-  const fonte = (f: string) => readFileSync(f, "utf8");
+  const fonte = (f: string) => readFileSync(f, "utf8").replace(/\r\n/g, "\n");
   const ins = fonte("lib/media/editor-sob-medida/index.ts");
   assert.ok(!/insercao-\$\{createHash/.test(ins) && /GRAVACAO_UNICA/.test(ins), "a inserção não usa mais o hash do prompt");
   const broll = fonte("lib/media/editor-sob-medida/broll.ts");
