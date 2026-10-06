@@ -17,6 +17,7 @@ import { fonteDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { gerarFundosCombinados } from "@/lib/media/editor-por-comando/combinada";
 import { escolhaSincronizadaComComando } from "@/lib/media/estilo-do-comando";
+import { conferenciaVisualLigada, conferirImagensGeradas, idNoPlano, type ConferidaDaImagem, type InsercaoDoPlano } from "@/lib/media/conferencia-visual";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -270,6 +271,74 @@ function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: st
   };
 }
 
+/** As inserções tiradas pela conferência saem do plano, com a peça que só existia para mostrá-las ("<id>-img" da janela). */
+export function semInsercoes(plano: PlanoDoDiretor, tiradas: string[]): PlanoDoDiretor {
+  if (!tiradas.length) return plano;
+  const fora = new Set(tiradas);
+  const usaTirada = (m: { props?: Record<string, unknown> }) => fora.has(String(m.props?.midia ?? ""));
+  const donos = new Set((plano.momentos ?? []).filter(usaTirada).map((m) => String(m.id)));
+  return {
+    ...plano,
+    insercoes: (plano.insercoes ?? []).filter((x) => !fora.has(String(x.id))),
+    momentos: (plano.momentos ?? []).filter((m) => !usaTirada(m)),
+    elementos: (plano.elementos ?? []).filter((x) => !fora.has(x.id) && !donos.has(x.id)),
+  };
+}
+
+/** A conferência visual das cenas geradas (etapa 1), com a única refação pelo mesmo gerador. */
+async function conferirCenas(plano: PlanoDoDiretor, insercoes: Record<string, MidiaDaInsercao>, e: EntradaDoPlano): Promise<{ insercoes: Record<string, MidiaDaInsercao>; tiradas: string[]; conferidas: ConferidaDaImagem[]; custoUsd: number; erros: string[] }> {
+  if (!conferenciaVisualLigada() || !Object.keys(insercoes).length) return { insercoes, tiradas: [], conferidas: [], custoUsd: 0, erros: [] };
+  try {
+    const r = await conferirImagensGeradas({
+      insercoes,
+      plano: (plano.insercoes ?? []) as InsercaoDoPlano[],
+      palavras: e.palavras,
+      comando: e.comando.texto,
+      projectId: e.projectId,
+      gerar: async (ins) => {
+        const g = await gerarInsercoes({ ...plano, momentos: [], insercoes: [ins as never] }, { formato: e.formato, projectId: e.projectId, teto: 1, local: e.local });
+        return { midia: g.insercoes[String(ins.id)] ?? Object.values(g.insercoes)[0] ?? null, custoUsd: g.custoUsd };
+      },
+    });
+    const refeitas = r.conferidas.filter((c) => c.rodada === 1).length;
+    return { insercoes: r.insercoes, tiradas: r.tiradas, conferidas: r.conferidas, custoUsd: r.custoVisaoUsd + r.custoImagensUsd, erros: [...r.erros, `conferência visual: ${r.conferidas.filter((c) => c.rodada === 0).length} imagem(ns) olhada(s), ${refeitas} refeita(s), ${r.tiradas.length} tirada(s)`] };
+  } catch (err) {
+    return { insercoes, tiradas: [], conferidas: [], custoUsd: 0, erros: [`conferência visual das imagens falhou: ${String(err).slice(0, 120)}`] };
+  }
+}
+
+/**
+ * O REPLANEJAMENTO DOS MOMENTOS REPROVADOS na conferência do vídeo pronto
+ * (06/10, etapa 2): as peças reprovadas saem do plano e o JEV cobre só esses
+ * buracos (a mesma cobertura do plano reaproveitado; o redator só escreve os
+ * textos novos). Sem linguagem no plano, ou sem o JEV, a peça só sai.
+ */
+export async function replanejarMomentosPorComando(
+  e: EntradaDoPlano,
+  anterior: { base: string; plano: PlanoDoDiretor; insercoes: Record<string, MidiaDaInsercao>; custoImagensUsd: number },
+  reprovadas: string[]
+): Promise<PlanoPorComando & { tirados: string[] }> {
+  const t = Date.now();
+  const cores = coresDoComando(e.comando, e.marca);
+  const ids = new Set([...(anterior.plano.momentos ?? []).map((m) => String(m.id)), ...(anterior.plano.insercoes ?? []).map((x) => String(x.id))]);
+  const tirados = [...new Set(reprovadas.map((id) => idNoPlano(id, ids)).filter((x): x is string => Boolean(x)))];
+  const fora = new Set([...tirados, ...tirados.map((id) => `${id}-img`)]);
+  const sem: PlanoDoDiretor = {
+    ...anterior.plano,
+    momentos: (anterior.plano.momentos ?? []).filter((m) => !fora.has(String(m.id))),
+    insercoes: (anterior.plano.insercoes ?? []).filter((x) => !fora.has(String(x.id))),
+    elementos: (anterior.plano.elementos ?? []).filter((x) => !fora.has(x.id)),
+  };
+  const insercoes0 = Object.fromEntries(Object.entries(anterior.insercoes).filter(([id]) => !fora.has(id)));
+  const c = await completarPlanoPeloJev(sem, entradaPeloJev(e, anterior.base, cores)).catch((err) => ({ plano: sem, avisos: [`replanejamento falhou: ${err instanceof Error ? err.message.slice(0, 120) : err}`], tempos: {} as Record<string, number> }));
+  const sobra = Math.max(0, e.imagens - Math.round(anterior.custoImagensUsd / 0.065));
+  const img = await imagensDoPlano(c.plano, { ...e, imagens: sobra }, insercoes0);
+  const plano = img.plano;
+  const insercoes = { ...insercoes0, ...img.insercoes };
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null });
+  return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [`conferência visual: ${tirados.length} peça(s) reprovada(s) replanejada(s) (${tirados.join(", ")})`, ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos: { replanejamento: +((Date.now() - t) / 1000).toFixed(1) }, tirados };
+}
+
 /** Quantas fotos das peças de papel ficaram sem url (a peça sai sem a foto, ou não sai). */
 const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosDoMomento).filter((f) => !f.url).length;
 
@@ -279,7 +348,7 @@ const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosD
  * não foi gerada sai da peça (nunca a reserva do worker, que já representou
  * uma pessoa citada), e a peça que não existe sem foto sai inteira.
  */
-async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ plano: PlanoDoDiretor; insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
+async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ plano: PlanoDoDiretor; insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[]; conferidas?: ConferidaDaImagem[] }> {
   // As cenas que já existem (a correção que manteve a imagem) não são geradas de novo.
   // Os FUNDOS DAS COMBINADAS (06/10) são vídeo gerado direto do texto (combinada.ts), sem imagem antes: saem à parte.
   const todas = (plano.insercoes ?? []).filter((x) => !ja[String(x.id)]);
@@ -296,13 +365,16 @@ async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Reco
       : Promise.resolve({ insercoes: {}, custoUsd: 0, erros: [] as string[] }),
     gerarFundosCombinados(fundos, { formato: e.formato, projectId: e.projectId }).catch((err) => ({ insercoes: {}, custoUsd: 0, erros: [`fundos das combinadas: ${String(err).slice(0, 120)}`] })),
   ]);
+  // A CONFERÊNCIA VISUAL DA IMAGEM (06/10): o Gemini descreve cada cena gerada, o JEV aprova, refaz uma vez ou tira.
+  const conf = await conferirCenas(plano, cenas.insercoes, e);
   const faltaram = semFoto(plano);
-  const limpo = tirarFotosSemImagem(plano);
+  const limpo = tirarFotosSemImagem(semInsercoes(plano, conf.tiradas));
   return {
     plano: limpo.plano,
-    insercoes: { ...cenas.insercoes, ...combinadas.insercoes },
-    custoUsd: +(fotos.custoUsd + cenas.custoUsd + combinadas.custoUsd).toFixed(4),
-    erros: [...fotos.erros, ...cenas.erros, ...combinadas.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
+    insercoes: { ...conf.insercoes, ...combinadas.insercoes },
+    custoUsd: +(fotos.custoUsd + cenas.custoUsd + combinadas.custoUsd + conf.custoUsd).toFixed(4),
+    conferidas: conf.conferidas,
+    erros: [...fotos.erros, ...cenas.erros, ...combinadas.erros, ...conf.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
   };
 }
 

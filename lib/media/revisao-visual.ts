@@ -46,7 +46,20 @@ export type DefeitoVisual = {
   conserto: "cena-para-pessoa" | "tirar-momento" | "nenhum";
 };
 
-export type RodadaDaRevisao = { em: string; rodada: number; quadros: number; defeitos: DefeitoVisual[]; consertadas: number[]; momentosTirados: number[]; erro?: string | null };
+export type RodadaDaRevisao = {
+  em: string;
+  rodada: number;
+  quadros: number;
+  defeitos: DefeitoVisual[];
+  consertadas: number[];
+  momentosTirados: number[];
+  erro?: string | null;
+  /** A conferência visual do editor por comando (06/10, lib/media/conferencia-visual.ts): o que o olho descreveu, as peças que o JEV reprovou e o custo. */
+  problemas?: Array<{ t: number; momento: string | null; tipo: string; descricao: string }>;
+  reprovadas?: string[];
+  custoUsd?: number;
+  ms?: number;
+};
 
 export type EstadoDaRevisaoVisual = {
   /** Rodadas de conserto já feitas (teto 2). */
