@@ -1158,7 +1158,13 @@ export async function marcarCompletoNaFila(videoJobId: string, opcoes: { forcar?
   if (!v?.completoUrl) return false;
   const m = v.completoMontagem;
   if (m?.montadoUrl && v.completoUrl === m.montadoUrl && !opcoes.forcar) return false;
-  const base = m?.montadoUrl && v.completoUrl === m.montadoUrl ? m.completoOriginal?.url ?? m.baseUrl ?? v.completoUrl : v.completoUrl;
+  // A base de uma refeita nunca é um editado (06/10): do original gravado, ou
+  // da base da primeira montagem, nunca do arquivo com peças desenhadas.
+  const semEditado = (url: string | null | undefined) => (url && !/completo-editado-/.test(url) ? url : null);
+  const base =
+    m?.montadoUrl && v.completoUrl === m.montadoUrl
+      ? semEditado(m.completoOriginal?.url) ?? semEditado(m.baseUrl) ?? m.completoOriginal?.url ?? m.baseUrl ?? v.completoUrl
+      : v.completoUrl;
   const origem = hashCurto(base);
   if (!opcoes.forcar && m && m.origem === origem) return false;
   // O roteiro aprovado viaja junto: é dele que sai o plano (sem diretor de novo).
@@ -2276,7 +2282,17 @@ async function entregarCompleto(
 ): Promise<"trocado" | "ignorado"> {
   const videoJobId = v.id;
   const resultado = { montado, tempos: montado.tempos };
-  const original = v.completoUrl && v.completoUrl !== lido.montadoUrl ? { url: v.completoUrl, bytes: v.completoBytes ? Number(v.completoBytes) : null } : lido.completoOriginal ?? null;
+  // O ORIGINAL É GRAVADO UMA VEZ E NUNCA SOBRESCRITO (06/10): na segunda
+  // refeita do completo do Fé & Gestão, o completoUrl anterior era o PRIMEIRO
+  // editado, e ele virou "original"; a refeita seguinte montou peça em cima de
+  // peça, com a sincronia velha de volta. Um editado nunca é original.
+  const ehEditado = (url: string | null | undefined) => Boolean(url && /completo-editado-/.test(url));
+  const original =
+    lido.completoOriginal && !ehEditado(lido.completoOriginal.url)
+      ? lido.completoOriginal
+      : v.completoUrl && v.completoUrl !== lido.montadoUrl && !ehEditado(v.completoUrl)
+        ? { url: v.completoUrl, bytes: v.completoBytes ? Number(v.completoBytes) : null }
+        : lido.completoOriginal ?? null;
   const trocou = await trocarEstado(videoJobId, lido, {
     ...lido,
     estado: "pronto",
