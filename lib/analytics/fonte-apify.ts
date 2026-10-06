@@ -111,7 +111,8 @@ async function lerInstagram(projectId: string, g: Grupo, caixa: Caixa): Promise<
     lidos.set(a.postId, {
       tipo: "ok",
       fonte: g.fonte,
-      numeros: { curtidas: p.curtidas, comentarios: p.comentarios, visualizacoes: p.visualizacoes },
+      // Salvamento só quando o ator trouxer (o do Instagram não traz hoje).
+      numeros: { curtidas: p.curtidas, comentarios: p.comentarios, visualizacoes: p.visualizacoes, salvamentos: p.extras?.salvamentos ?? null },
       custoUsd: r.custoUsd / Math.max(1, casados.length),
     });
   }
@@ -149,7 +150,8 @@ async function lerTiktok(projectId: string, g: Grupo, caixa: Caixa): Promise<{ l
     lidos.set(a.postId, {
       tipo: "ok",
       fonte: g.fonte,
-      numeros: { visualizacoes: p.visualizacoes, curtidas: p.curtidas, comentarios: p.comentarios, compartilhamentos: p.compartilhamentos },
+      // collectCount do TikTok é o salvamento: já vinha na mesma leitura (06/10).
+      numeros: { visualizacoes: p.visualizacoes, curtidas: p.curtidas, comentarios: p.comentarios, compartilhamentos: p.compartilhamentos, salvamentos: p.extras?.salvamentos ?? null },
       custoUsd: r.custoUsd / Math.max(1, achados.size),
     });
   }

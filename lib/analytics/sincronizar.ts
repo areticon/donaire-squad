@@ -37,6 +37,30 @@ import { ONDE_SAIU, temNumero, type FonteDaLeitura, type NumerosLidos } from "@/
 
 export type ResultadoDaRede = { ok: number; falhou: number; motivo: string | null; fontes?: Record<string, number> };
 
+/**
+ * COMPLETAR PELO PERFIL PÚBLICO (06/10), DESLIGADO por padrão.
+ *
+ * Hoje a Apify só lê o post que as outras camadas NÃO mediram. No Instagram e
+ * no Facebook a API oficial responde só curtida e comentário (visualização,
+ * alcance e salvamento pedem a permissão de insights, em revisão na Meta),
+ * então o post "medido" pela API nunca ganha visualização, embora o perfil
+ * público mostre. Com METRICAS_APIFY_COMPLETAR=1, esses posts também entram na
+ * leitura do perfil público, só para somar o que faltou.
+ *
+ * Custa: cada leitura de perfil cobra por post lido (tabela em fonte-apify.ts).
+ * Continua valendo a trava de uma leitura por perfil a cada 20 h e o teto do
+ * mês (METRICAS_APIFY_MES_USD). Ligar só com o OK do Bruno para o valor.
+ */
+export function completarPeloPerfilPublico(env: Record<string, string | undefined> = process.env): boolean {
+  return env.METRICAS_APIFY_COMPLETAR === "1";
+}
+
+/** O post medido pela API que o perfil público ainda pode completar. */
+export function faltaNoPerfilPublico(platform: string, numeros: NumerosLidos | undefined): boolean {
+  if (!["instagram", "facebook", "tiktok"].includes(platform)) return false;
+  return !numeros || typeof numeros.visualizacoes !== "number";
+}
+
 class SemPermissao extends Error {}
 
 async function jsonOuErro(res: Response, rede: string): Promise<Record<string, unknown>> {
@@ -374,7 +398,12 @@ export async function sincronizarMetricas(
 
   /* 3. Perfil público (Apify), só para o que sobrou. */
   if (opcoes.usarApify !== false) {
-    const alvos: AlvoDaApify[] = faltam()
+    // Desligado por padrão: o medido pela API sem visualização também vai ao perfil público.
+    const paraCompletar = completarPeloPerfilPublico()
+      ? posts.filter((p) => medidos.has(p.id) && faltaNoPerfilPublico(p.platform, linhas.filter((l) => l.postId === p.id && l.status === "ok").at(-1)?.numeros))
+      : [];
+    const completar = new Set(paraCompletar.map((p) => p.id));
+    const alvos: AlvoDaApify[] = [...faltam(), ...paraCompletar]
       .filter((p) => ["linkedin", "instagram", "facebook", "tiktok"].includes(p.platform))
       .map((p) => {
         const conta = contaDo(p);
@@ -389,7 +418,13 @@ export async function sincronizarMetricas(
     if (alvos.length) {
       const r = await lerPelaApify(projectId, alvos, { forcar: opcoes.forcarApify });
       custoUsd += r.custoUsd;
+      // O que veio para completar soma uma leitura; o que não veio não vira pendente (o post já tem número).
+      for (const p of paraCompletar) {
+        const l = r.lidos.get(p.id);
+        if (l?.tipo === "ok") anotarOk(p, l.fonte, l.numeros, { custoUsd: l.custoUsd });
+      }
       for (const p of faltam()) {
+        if (completar.has(p.id)) continue;
         const l = r.lidos.get(p.id);
         if (!l) continue;
         if (l.tipo === "ok") anotarOk(p, l.fonte, l.numeros, { custoUsd: l.custoUsd });

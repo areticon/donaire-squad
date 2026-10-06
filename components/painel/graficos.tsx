@@ -84,27 +84,37 @@ export function BarrasPorSemana({ semanas }: { semanas: Array<{ rotulo: string; 
   );
 }
 
-/** Uma barra por rede: o valor principal e a nota ao lado. */
+/**
+ * Uma barra por rede: o valor principal e a nota ao lado.
+ *
+ * 06/10: valor nulo é rede com post no ar e nenhum medido. Ela aparece com
+ * "sem medição ainda" e sem barra, em vez de sumir ou virar barra de zero. O
+ * nome da rede fica escrito ao lado de cada barra (a cor não é a única pista),
+ * e o valor exato aparece ao passar o mouse.
+ */
 export function BarrasPorRede({
   linhas,
 }: {
-  linhas: Array<{ rede: string; valor: number; nota: string }>;
+  linhas: Array<{ rede: string; valor: number | null; nota: string; detalhe?: string | null }>;
 }) {
-  const maximo = Math.max(1, ...linhas.map((l) => l.valor));
+  const maximo = Math.max(1, ...linhas.map((l) => l.valor ?? 0));
   return (
     <div className="space-y-2.5">
       {linhas.map((l) => (
-        <div key={l.rede}>
+        <div key={l.rede} title={l.valor === null ? `${nomeDaRede(l.rede)}: sem medição ainda` : `${nomeDaRede(l.rede)}: ${num(l.valor)} ${l.nota}${l.detalhe ? `; ${l.detalhe}` : ""}`}>
           <div className="flex items-baseline justify-between gap-2 text-xs">
             <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{nomeDaRede(l.rede)}</span>
-            <span className="tabular-nums" style={{ color: "var(--text-muted)" }}>
-              <strong style={{ color: "var(--text-primary)" }}>{num(l.valor)}</strong> {l.nota}
+            <span className="tabular-nums text-right" style={{ color: "var(--text-muted)" }}>
+              {l.valor === null ? <em>sem medição ainda</em> : <strong style={{ color: "var(--text-primary)" }}>{num(l.valor)}</strong>} {l.nota}
             </span>
           </div>
           <div className="mt-1 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-input)" }}>
             {/* Degradê da cor da série, do meio-tom ao cheio (01/10). */}
-            <div className="h-full rounded-full" style={{ width: `${(l.valor / maximo) * 100}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${COR_DA_REDE[l.rede] ?? "var(--grafico-3)"} 55%, transparent), ${COR_DA_REDE[l.rede] ?? "var(--grafico-3)"})` }} />
+            {l.valor !== null && (
+              <div className="h-full rounded-full" style={{ width: `${(l.valor / maximo) * 100}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${COR_DA_REDE[l.rede] ?? "var(--grafico-3)"} 55%, transparent), ${COR_DA_REDE[l.rede] ?? "var(--grafico-3)"})` }} />
+            )}
           </div>
+          {l.detalhe && <p className="text-[11px] mt-0.5 tabular-nums" style={{ color: "var(--text-muted)" }}>{l.detalhe}</p>}
         </div>
       ))}
     </div>

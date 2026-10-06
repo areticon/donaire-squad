@@ -82,18 +82,35 @@ export function donoDaPeca(peca: { agentId?: string | null; cardType: string }):
 }
 
 /**
- * A arte de cada agente, no estilo 3D de massinha aprovado pelo Bruno em
- * 28/09/2026 (referências em docs/design/referencias-3d, geração em
- * scripts/tmp/gerar-elenco-3d-2809.mjs). Três versões por agente, todas com
- * fundo transparente: o busto pequeno (160 px) para círculos de lista, o busto
- * grande (512 px) para fichas, e a cena na mesa para o escritório.
+ * O ROSTO DE CADA AGENTE, igual ao da landing (06/10/2026, pedido do Bruno:
+ * "precisamos mudar as fotos dos agentes para as mesmas que usamos na landing
+ * page"). Um lugar só: o painel, o escritório, o Gestor, o kanban e as fichas
+ * leem daqui pelo `AvatarDoAgente`.
  *
- * O caminho é montado pelo id, então agente novo precisa da arte gerada com o
- * mesmo id; sem arte, quem desenha cai na inicial na cor do agente.
+ * - `avatar`: o retrato da landing (public/equipe/<id>.jpg, 800 px), o mesmo
+ *   de components/landing/equipe.tsx e squad-na-hero.tsx. São retratos
+ *   fictícios gerados por IA (scripts/tmp/retratos-equipe-0210.mts).
+ * - `avatarPequeno`: o mesmo retrato em 144 px (public/equipe/abertura), o que
+ *   a abertura do app já usa; pesa 2 a 3 KB.
+ * - `mesa`: a cena do boneco de massinha sentado na mesa (public/agentes), que
+ *   só o escritório de massinha desenha. Não existe retrato "na mesa", então a
+ *   cena continua a de 28/09.
+ *
+ * O caminho é montado pelo id. Agente sem retrato (o Davi, dev da plataforma)
+ * fica de fora de RETRATOS e cai no busto de massinha, ou na inicial.
  */
+const RETRATOS = new Set(AGENTES.map((a) => a.id));
+
 export function arteDoAgente(id: string): { avatar: string; avatarPequeno: string; mesa: string } | null {
   const agente = agentePorId(id);
   if (!agente) return null;
+  if (RETRATOS.has(agente.id)) {
+    return {
+      avatar: `/equipe/${agente.id}.jpg`,
+      avatarPequeno: `/equipe/abertura/${agente.id}.webp`,
+      mesa: `/agentes/${agente.id}-mesa.webp`,
+    };
+  }
   return {
     avatar: `/agentes/${agente.id}-avatar.webp`,
     avatarPequeno: `/agentes/${agente.id}-avatar-p.webp`,
