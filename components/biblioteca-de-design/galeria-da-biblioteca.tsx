@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Check, Clapperboard, Image as ImageIcon, Library, Loader2, PenLine, Search, Sparkles, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ROTULO_DO_TIPO, custoEstimadoDasPrevias, filtrarGaleria, ordenarPorUso, type DesignDaGaleria, type TipoDeDesign } from "@/lib/biblioteca-de-design/tipos";
+import { ROTULO_DO_TIPO, custoEstimadoDasPrevias, filtrarGaleria, foraDoBook, ordenarPorUso, type DesignDaGaleria, type TipoDeDesign } from "@/lib/biblioteca-de-design/tipos";
 
 /**
  * A GALERIA DA BIBLIOTECA DE DESIGN (06/10/2026).
@@ -43,7 +43,18 @@ function rotuloDeUsos(n: number): string {
   return `${n} ${n === 1 ? "uso" : "usos"}`;
 }
 
-export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Biblioteca de designs: feita por quem usa" }: { projectId?: string | null; exemplo?: boolean; titulo?: string }) {
+export function GaleriaDaBiblioteca({
+  projectId,
+  exemplo = false,
+  titulo = "Biblioteca de designs: feita por quem usa",
+  idsDoBook,
+}: {
+  projectId?: string | null;
+  exemplo?: boolean;
+  titulo?: string;
+  /** Os ids do book na mesma tela (06/10): esses modelos de imagem não aparecem de novo aqui. */
+  idsDoBook?: string[];
+}) {
   const [designs, setDesigns] = useState<DesignDaGaleria[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ehAdmin, setEhAdmin] = useState(false);
@@ -72,14 +83,14 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
       const r = await fetch(`/api/biblioteca-de-design?${q.toString()}`);
       const d = (await r.json().catch(() => ({}))) as { designs?: DesignDaGaleria[]; ehAdmin?: boolean; error?: string };
       if (!r.ok) throw new Error(d.error || "Não consegui carregar a biblioteca.");
-      setDesigns(ordenarPorUso(d.designs ?? []));
+      setDesigns(ordenarPorUso(foraDoBook(d.designs ?? [], idsDoBook)));
       setEhAdmin(Boolean(d.ehAdmin));
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui carregar a biblioteca.");
       setDesigns([]);
     }
-  }, [projectId, exemplo]);
+  }, [projectId, exemplo, idsDoBook]);
 
   useEffect(() => {
     void carregar();

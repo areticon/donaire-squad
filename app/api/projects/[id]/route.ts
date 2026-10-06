@@ -1,3 +1,4 @@
+import { alinharIdentidadeAPaleta } from "@/lib/modelos-de-arte/identidade-aprovada";
 import { auth } from "@/lib/auth/server";
 import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
@@ -95,6 +96,9 @@ export async function PATCH(
   // A identidade visual fica 10 min em cache: mudou cor, logo, nicho ou
   // manual, a próxima prévia e a próxima arte já saem na marca nova (05/10).
   if (["colorPalette", "logoUrl", "niche", "name", "brandManualUrl", "targetAudience"].some((k) => k in data)) esquecerIdentidade(id);
+  // A paleta salva é a fonte única da identidade (06/10): trocou a paleta, os
+  // papéis aprovados acompanham, e a aprovação só cai se alguma cor saiu.
+  if ("colorPalette" in data) await alinharIdentidadeAPaleta(id).catch((e) => console.error("[identidade] alinhar à paleta:", e));
 
   // Create default agents when project is activated for the first time
   if (body.status === "active") {

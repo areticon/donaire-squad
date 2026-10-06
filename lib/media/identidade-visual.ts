@@ -535,10 +535,14 @@ export async function identidadeDe(d: DadosDaIdentidade): Promise<IdentidadeVisu
   const setor = setorDoProjeto(d);
   const textos = d.textosDaMarca ?? [];
 
-  // As cores. O padrão do formulário conta como "não escolhida".
+  // As cores. FONTE ÚNICA (06/10): a paleta salva em Configurações manda
+  // sempre que existe, mesmo quando é igual ao padrão da plataforma (o
+  // projeto Demandou usa exatamente essas cores, e a regra antiga, que tratava
+  // o padrão como "não escolhida", mostrava na identidade as cores do setor,
+  // do manual ou do logo). Manual, logo e setor só valem sem paleta salva.
   let cores: CoresDaMarca | null = null;
   let origemDasCores: OrigemDasCores = "setor";
-  const daConfiguracao = (d.colorPalette ?? "").replace(/\s/g, "").toLowerCase() === PALETA_PADRAO_DA_PLATAFORMA.toLowerCase() ? null : coresDaPaleta(d.colorPalette);
+  const daConfiguracao = coresDaPaleta(d.colorPalette);
   if (daConfiguracao) {
     cores = daConfiguracao;
     origemDasCores = "configuracao";

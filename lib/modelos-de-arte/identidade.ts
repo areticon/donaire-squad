@@ -101,13 +101,47 @@ export function listaDaPaleta(paleta: string[] | string | null | undefined): str
 }
 
 /**
- * A paleta que o cliente pode distribuir nos papéis: a da configuração quando
- * ele escolheu uma; senão as três cores efetivas da identidade (manual, logo
- * ou setor), que é o que o book já mostra.
+ * A paleta que o cliente pode distribuir nos papéis. FONTE ÚNICA (06/10): a
+ * paleta salva em Configurações ("Suas cores") manda sempre que existe. Só
+ * sem paleta salva entram as três cores efetivas da identidade (manual, logo
+ * ou setor).
+ *
+ * O caso real de 06/10: o projeto Demandou salvou "#F97316,#1e1f22,#dbdee1",
+ * que é a mesma string do padrão da plataforma. A regra antiga tratava a
+ * paleta igual ao padrão como "não escolhida" e caía no manual, no logo ou no
+ * setor (que variam por processo, pelo cache de 10 min), e a tela da
+ * identidade mostrava outras cores, diferentes das de Configurações.
  */
-export function paletaParaOsPapeis(colorPalette: string | null | undefined, coresEfetivas: { acento: string; escuro: string; claro: string }, paletaPadrao: string): string[] {
-  const escolhida = (colorPalette ?? "").replace(/\s/g, "").toLowerCase() === paletaPadrao.replace(/\s/g, "").toLowerCase() ? [] : listaDaPaleta(colorPalette);
-  return escolhida.length ? escolhida : listaDaPaleta([coresEfetivas.acento, coresEfetivas.escuro, coresEfetivas.claro]);
+export function paletaParaOsPapeis(colorPalette: string | null | undefined, coresEfetivas: { acento: string; escuro: string; claro: string }): string[] {
+  const salva = listaDaPaleta(colorPalette);
+  return salva.length ? salva : listaDaPaleta([coresEfetivas.acento, coresEfetivas.escuro, coresEfetivas.claro]);
+}
+
+/** As cores que cada papel pode usar: o título também pode ser branco ou quase preto. */
+export function opcoesDoPapel(papel: PapelDaCor, paleta: string[]): string[] {
+  const lista = listaDaPaleta(paleta);
+  return papel === "titulo" ? listaDaPaleta([...lista, ...NEUTROS]) : lista;
+}
+
+/**
+ * Os papéis gravados encaixados na paleta de agora (06/10). O papel cuja cor
+ * continua na paleta fica; o que aponta para uma cor que saiu da paleta vira
+ * o padrão da hierarquia para aquele papel. `mudou` diz se alguma cor trocou:
+ * só aí a aprovação cai (trocar a paleta sem tirar as cores aprovadas não pede
+ * aprovação de novo).
+ */
+export function papeisNaPaleta(papeis: PapeisEscolhidos | null | undefined, paleta: string[]): { papeis: PapeisEscolhidos; mudou: boolean } {
+  const padrao = papeisPadrao(paleta);
+  const atuais = normalizarPapeis(papeis);
+  if (!atuais) return { papeis: padrao, mudou: true };
+  if (!listaDaPaleta(paleta).length) return { papeis: atuais, mudou: false };
+  // Branco e quase preto valem em qualquer papel (a sugestão de contraste pode oferecê-los).
+  const valem = new Set(listaDaPaleta([...paleta, ...NEUTROS]));
+  const novo = { ...atuais };
+  for (const papel of ["fundo", "titulo", "destaque"] as const) {
+    if (!valem.has(atuais[papel])) novo[papel] = padrao[papel];
+  }
+  return { papeis: novo, mudou: JSON.stringify(novo) !== JSON.stringify(atuais) };
 }
 
 /** A cor, entre as opções, que mais contrasta com o fundo. */
@@ -223,11 +257,7 @@ export interface IdentidadeVisualEscolhida {
 export function identidadeAprovada(registro: IdentidadeVisualEscolhida | null | undefined, modelosEscolhidos: string[] | null | undefined, paletaAtual?: string[]): boolean {
   if (!registro?.aprovadaEm || !letraValida(registro.letra) || !papeisValidos(registro.papeis)) return false;
   if (!modelosEscolhidos?.length) return false;
-  if (paletaAtual?.length) {
-    const opcoes = new Set([...listaDaPaleta(paletaAtual), ...NEUTROS]);
-    const p = normalizarPapeis(registro.papeis)!;
-    if (![p.fundo, p.titulo, p.destaque].every((c) => opcoes.has(c))) return false;
-  }
+  if (paletaAtual?.length && papeisNaPaleta(registro.papeis, paletaAtual).mudou) return false;
   return true;
 }
 

@@ -1275,6 +1275,56 @@ export const CATEGORIAS_DOS_MODELOS = [
   "Story e Reels",
 ];
 
+/**
+ * O BOOK ORGANIZADO POR USO (06/10/2026). Pedido do Bruno: "o book está
+ * confuso"; cada modelo aparece UMA vez, agrupado pelo que ele serve, com um
+ * nome claro e uma linha do para quê. Os grupos juntam as categorias do
+ * catálogo (cada categoria cai em um grupo só, então cada modelo também).
+ */
+export interface UsoDosModelos {
+  id: string;
+  nome: string;
+  /** Para que serve, em uma linha, como o cliente lê. */
+  serve: string;
+  categorias: string[];
+}
+
+export const USOS_DOS_MODELOS: UsoDosModelos[] = [
+  { id: "capa-e-frase", nome: "Capa e frase", serve: "Uma ideia forte em letra grande: abre o carrossel, para o dedo no feed, vira capa.", categorias: ["Só texto"] },
+  { id: "foto", nome: "Com foto", serve: "A foto conta a história e o texto entra junto: bastidor, produto, ambiente, você.", categorias: ["Com foto"] },
+  { id: "citacao", nome: "Citação", serve: "Uma frase sua ou de alguém, com aspas e assinatura: opinião e autoridade.", categorias: ["Citação"] },
+  { id: "carrossel", nome: "Carrossel: lista, passos e comparação", serve: "Conteúdo em partes: passo a passo, checklist, antes e depois, isto contra aquilo.", categorias: ["Listas e passos", "Comparação"] },
+  { id: "dado", nome: "Dado e número", serve: "Um número de verdade em destaque, com a fonte: a prova que convence.", categorias: ["Dados"] },
+  { id: "print", nome: "Print e conversa", serve: "Parece um post, um tweet ou uma conversa: leitura rápida e familiar.", categorias: ["Prints e conversas"] },
+  { id: "colagem", nome: "Colagem e papel", serve: "Recorte, papel, fita e marca-texto: jeito feito à mão, editorial.", categorias: ["Colagem e papel"] },
+  { id: "venda", nome: "Venda e prova", serve: "Oferta, depoimento e resultado: quando o post pede uma ação.", categorias: ["Venda e prova"] },
+  { id: "story", nome: "Story e capa de Reels", serve: "Em pé (9:16): o story do dia e a capa do Reels.", categorias: ["Story e Reels"] },
+];
+
+/** O grupo de quem não cai em nenhum uso (um modelo novo com categoria nova): aparece no fim, uma vez. */
+export const USO_OUTROS: UsoDosModelos = { id: "outros", nome: "Outros modelos", serve: "Modelos que ainda não têm um grupo próprio.", categorias: [] };
+
+/** O uso de um modelo: o grupo da categoria dele, ou "Outros". */
+export function usoDoModelo(m: Pick<ModeloDeArte, "categoria">): UsoDosModelos {
+  return USOS_DOS_MODELOS.find((u) => u.categorias.includes(m.categoria)) ?? USO_OUTROS;
+}
+
+/**
+ * Os modelos agrupados por uso, na ordem dos usos, cada modelo UMA vez (o
+ * mesmo id repetido na lista entra só na primeira vez). Grupo vazio sai.
+ */
+export function agruparPorUso<M extends Pick<ModeloDeArte, "id" | "categoria">>(modelos: M[]): Array<{ uso: UsoDosModelos; modelos: M[] }> {
+  const vistos = new Set<string>();
+  const grupos = new Map<string, { uso: UsoDosModelos; modelos: M[] }>();
+  for (const u of [...USOS_DOS_MODELOS, USO_OUTROS]) grupos.set(u.id, { uso: u, modelos: [] });
+  for (const m of modelos) {
+    if (vistos.has(m.id)) continue;
+    vistos.add(m.id);
+    grupos.get(usoDoModelo(m).id)!.modelos.push(m);
+  }
+  return [...grupos.values()].filter((g) => g.modelos.length > 0);
+}
+
 export const ROTULO_DO_FORMATO: Record<FormatoDoModelo, string> = {
   post: "Post único",
   carrossel: "Carrossel",

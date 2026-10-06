@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { PALETA_PADRAO_DA_PLATAFORMA, identidadeDoProjeto } from "@/lib/media/identidade-visual";
+import { identidadeDoProjeto } from "@/lib/media/identidade-visual";
 import { lerModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import {
   LETRA_PADRAO,
@@ -7,6 +7,7 @@ import {
   letraValida,
   normalizarPapeis,
   paletaParaOsPapeis,
+  papeisNaPaleta,
   papeisPadrao,
   type IdentidadeVisualEscolhida,
   type LetraId,
@@ -45,11 +46,18 @@ export async function lerIdentidadeVisual(projectId: string): Promise<Identidade
   };
 }
 
-/** A paleta que os papéis podem usar, do projeto (configuração, senão a identidade efetiva). */
+/**
+ * A paleta que os papéis podem usar: a salva em Configurações (fonte única,
+ * 06/10); só sem ela, a identidade efetiva (manual, logo ou setor). Com paleta
+ * salva, nem lê a identidade efetiva: o cache de 10 min por processo dela era
+ * o que fazia a tela mostrar cores diferentes a cada instância.
+ */
 export async function paletaDoProjetoParaOsPapeis(projectId: string, colorPalette?: string | null): Promise<string[]> {
-  const identidade = await identidadeDoProjeto(projectId);
   const paleta = colorPalette === undefined ? (await prisma.project.findUnique({ where: { id: projectId }, select: { colorPalette: true } }))?.colorPalette : colorPalette;
-  return paletaParaOsPapeis(paleta, identidade.cores, PALETA_PADRAO_DA_PLATAFORMA);
+  const salva = paletaParaOsPapeis(paleta, { acento: "", escuro: "", claro: "" });
+  if (salva.length) return salva;
+  const identidade = await identidadeDoProjeto(projectId);
+  return paletaParaOsPapeis(null, identidade.cores);
 }
 
 /**
@@ -64,7 +72,10 @@ export async function salvarIdentidadeVisual(
   const atual = await lerIdentidadeVisual(projectId);
   const letra: LetraId = letraValida(mudanca.letra) ? mudanca.letra : (atual?.letra ?? LETRA_PADRAO);
   const papeisNovos = normalizarPapeis(mudanca.papeis);
-  const papeis: PapeisEscolhidos = papeisNovos ?? atual?.papeis ?? papeisPadrao(await paletaDoProjetoParaOsPapeis(projectId));
+  // Só grava cor que existe na paleta salva de agora (06/10): um clique numa
+  // cor velha (tela aberta antes de trocar a paleta) não grava cor fantasma.
+  const paletaAgora = await paletaDoProjetoParaOsPapeis(projectId);
+  const papeis: PapeisEscolhidos = papeisNaPaleta(papeisNovos ?? atual?.papeis ?? papeisPadrao(paletaAgora), paletaAgora).papeis;
   // As fotos (05/10): trocar também derruba a aprovação, pela mesma regra da letra.
   const fotos: FotosDaIdentidade = fotosValidas(mudanca.fotos) ? mudanca.fotos : (atual?.fotos ?? FOTOS_PADRAO);
   const mudou =
@@ -107,10 +118,28 @@ export async function estadoDaIdentidade(projectId: string, colorPalette?: strin
   return {
     registro,
     letra: registro?.letra ?? LETRA_PADRAO,
-    papeis: registro?.papeis ?? papeisPadrao(paleta),
+    // Os papéis gravados encaixados na paleta salva: cor que saiu da paleta vira o padrão (e a aprovação cai).
+    papeis: registro ? papeisNaPaleta(registro.papeis, paleta).papeis : papeisPadrao(paleta),
     fotos: registro?.fotos ?? FOTOS_PADRAO,
     paleta,
     modelos,
     aprovada: identidadeAprovada(registro, modelos, paleta),
   };
+}
+
+/**
+ * A PALETA MUDOU EM CONFIGURAÇÕES (06/10): a identidade acompanha. Os papéis
+ * cuja cor continua na paleta ficam; os que apontavam para uma cor que saiu
+ * passam ao padrão da hierarquia, e só então a aprovação cai (pede aprovação
+ * de novo só quando algo realmente mudou). Sem identidade gravada, nada a
+ * fazer: a tela já lê a paleta salva.
+ */
+export async function alinharIdentidadeAPaleta(projectId: string): Promise<{ mudou: boolean }> {
+  const atual = await lerIdentidadeVisual(projectId);
+  if (!atual) return { mudou: false };
+  const paleta = await paletaDoProjetoParaOsPapeis(projectId);
+  const { papeis, mudou } = papeisNaPaleta(atual.papeis, paleta);
+  if (!mudou) return { mudou: false };
+  await salvarIdentidadeVisual(projectId, { papeis });
+  return { mudou: true };
 }

@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
-import { PALETA_PADRAO_DA_PLATAFORMA, esquecerIdentidade, identidadeDoProjeto } from "@/lib/media/identidade-visual";
+import { esquecerIdentidade, identidadeDoProjeto } from "@/lib/media/identidade-visual";
+import { listaDaPaleta } from "@/lib/modelos-de-arte/identidade";
 import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import { fotosDaVitrine, pessoasDeBanco, type PessoaDaPrevia } from "@/lib/modelos-de-arte/fotos-do-book";
 import { estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
@@ -99,8 +100,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // meio tempo (o Bruno trocou para o escarlate em 05/10), a prévia não pode
   // seguir na cor velha: confere com a paleta gravada e refaz quando diverge.
   let identidade = identidadeGuardada;
-  const primeira = (p.colorPalette ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
-  const divergiu = identidade.origemDasCores === "configuracao" ? primeira !== identidade.cores.acento.toLowerCase() : /^#[0-9a-f]{6}$/.test(primeira) && primeira !== PALETA_PADRAO_DA_PLATAFORMA.split(",")[0].toLowerCase();
+  // Fonte única (06/10): com paleta salva, a identidade tem que vir dela.
+  const salva = listaDaPaleta(p.colorPalette);
+  const divergiu = salva.length > 0 && (identidade.origemDasCores !== "configuracao" || !salva.includes(identidade.cores.acento.toLowerCase()));
   if (divergiu) {
     esquecerIdentidade(id);
     identidade = await identidadeDoProjeto(id);
