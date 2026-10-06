@@ -102,6 +102,22 @@ export function legendaDecidida(bruta: unknown, familia: FamiliaDaLegenda): Lege
   return { mostrar: true, estilo: LEGENDA_AUTOMATICA[familia], automatica: true };
 }
 
+/**
+ * A LEGENDA DOS CORTES, LIGADA POR PADRÃO (06/10, tarde). Corte é vídeo curto
+ * assistido sem som; o projeto de teste do Bruno saiu com os cortes mudos
+ * porque o "sem legenda" (pensado para o completo) valia para tudo. Agora:
+ *   - `legendaDosCortes` guardada (o cliente tirou ou fixou a legenda SÓ dos
+ *     cortes): vale ela;
+ *   - sem ela, os cortes seguem a legenda do projeto, MENOS o "sem": o "sem"
+ *     tira a legenda do completo, e os cortes continuam legendados no modo
+ *     automático.
+ */
+export function legendaDoCorteDecidida(legenda: unknown, legendaDosCortes: unknown, familia: FamiliaDaLegenda): LegendaDecidida {
+  if (legendaDosCortes && typeof legendaDosCortes === "object") return legendaDecidida(legendaDosCortes, familia);
+  if (normalizarLegenda(legenda).modo === "sem") return legendaDecidida({ modo: "auto" }, familia);
+  return legendaDecidida(legenda, familia);
+}
+
 /** A frase curta que as telas mostram ("Automática: palavra a palavra"). */
 export function resumoDaLegenda(bruta: unknown, automatica: EstiloDeLegenda | null): string {
   const e = normalizarLegenda(bruta);

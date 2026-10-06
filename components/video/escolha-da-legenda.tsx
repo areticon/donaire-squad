@@ -47,6 +47,8 @@ export function EscolhaDaLegenda({
   aoMudar?: (legenda: EscolhaDaLegenda, automatica: EstiloDeLegenda | null) => void;
 }) {
   const [legenda, setLegenda] = useState<EscolhaDaLegenda | null>(null);
+  // A legenda tirada TAMBÉM dos cortes (06/10, tarde): sem isso, o "sem legenda" vale só para o completo.
+  const [semNosCortes, setSemNosCortes] = useState(false);
   const [automatica, setAutomatica] = useState<EstiloDeLegenda | null>(null);
   const [marca, setMarca] = useState<Marca>(MARCA_PADRAO);
   const [abrindoEstilos, setAbrindoEstilos] = useState(false);
@@ -59,9 +61,10 @@ export function EscolhaDaLegenda({
     let vivo = true;
     fetch(`/api/projects/${projectId}/estilo-de-edicao`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { escolha?: { legenda?: unknown }; legendaAutomatica?: EstiloDeLegenda; marca?: Marca } | null) => {
+      .then((d: { escolha?: { legenda?: unknown; legendaDosCortes?: { modo?: string } | null }; legendaAutomatica?: EstiloDeLegenda; marca?: Marca } | null) => {
         if (!vivo) return;
         setLegenda(normalizarLegenda(d?.escolha?.legenda));
+        setSemNosCortes(d?.escolha?.legendaDosCortes?.modo === "sem");
         setAutomatica(d?.legendaAutomatica ?? null);
         if (d?.marca) setMarca(d.marca);
       })
@@ -92,13 +95,35 @@ export function EscolhaDaLegenda({
         body: JSON.stringify({ legenda: nova }),
       });
       if (!r.ok) throw new Error();
-      const d = (await r.json()) as { legenda?: unknown; legendaAutomatica?: EstiloDeLegenda };
+      const d = (await r.json()) as { legenda?: unknown; legendaDosCortes?: { modo?: string } | null; legendaAutomatica?: EstiloDeLegenda };
       setLegenda(normalizarLegenda(d.legenda ?? nova));
+      setSemNosCortes(d.legendaDosCortes?.modo === "sem");
       if (d.legendaAutomatica) setAutomatica(d.legendaAutomatica);
       setSalvo(true);
     } catch {
       setLegenda(antes);
       setErro("Não consegui guardar a legenda. Tente de novo.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function guardarCortes(tirar: boolean) {
+    setSalvando(true);
+    setSalvo(false);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/estilo-de-edicao`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ legendaDosCortes: tirar ? { modo: "sem" } : null }),
+      });
+      if (!r.ok) throw new Error();
+      const d = (await r.json()) as { legendaDosCortes?: { modo?: string } | null };
+      setSemNosCortes(d.legendaDosCortes?.modo === "sem");
+      setSalvo(true);
+    } catch {
+      setErro("Não consegui guardar a legenda dos cortes. Tente de novo.");
     } finally {
       setSalvando(false);
     }
@@ -116,7 +141,9 @@ export function EscolhaDaLegenda({
   const estiloAtual: EstiloDeLegenda | null = legenda.modo === "estilo" ? legenda.estilo ?? null : legenda.modo === "auto" ? automatica : null;
   const resumo =
     legenda.modo === "sem"
-      ? "Sem legenda"
+      ? semNosCortes
+        ? "Sem legenda"
+        : "Sem legenda no completo"
       : legenda.modo === "estilo"
         ? nomeDoEstiloDeLegenda(legenda.estilo)
         : `Automática${automatica ? `: ${nomeDoEstiloDeLegenda(automatica).toLowerCase()}` : ""}`;
@@ -146,7 +173,9 @@ export function EscolhaDaLegenda({
           </p>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
             {legenda.modo === "sem"
-              ? "Nenhum dos vídeos (cortes e completo) vai ter legenda."
+              ? semNosCortes
+                ? "Nenhum dos vídeos (cortes e completo) vai ter legenda."
+                : "O completo sai sem legenda; os cortes continuam com a legenda automática, porque vídeo curto é visto sem som."
               : legenda.modo === "auto"
                 ? "Escolhida pela linguagem do vídeo, nas cores da sua marca. Vale para os cortes e o completo."
                 : "Este estilo vale para os cortes e o completo, nas cores da sua marca."}
@@ -166,7 +195,7 @@ export function EscolhaDaLegenda({
   }
 
   const modos: Array<{ id: "sem" | "auto" | "estilo"; titulo: string; texto: string; Icone: typeof Ban }> = [
-    { id: "sem", titulo: "Sem legenda", texto: "O vídeo sai limpo, sem texto da fala em nenhum corte nem no completo.", Icone: Ban },
+    { id: "sem", titulo: "Sem legenda", texto: "O vídeo completo sai limpo, sem texto da fala. Os cortes continuam legendados (vídeo curto é visto sem som), a não ser que você tire abaixo.", Icone: Ban },
     {
       id: "auto",
       titulo: "Legenda automática",
@@ -223,6 +252,13 @@ export function EscolhaDaLegenda({
           );
         })}
       </div>
+
+      {legenda.modo === "sem" && (
+        <label className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+          <input type="checkbox" className="mt-0.5" checked={semNosCortes} disabled={salvando} onChange={(e) => void guardarCortes(e.target.checked)} />
+          <span>Tirar a legenda também dos cortes. Não recomendado: corte é visto no celular, quase sempre sem som.</span>
+        </label>
+      )}
 
       {escolhendoEstilo && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

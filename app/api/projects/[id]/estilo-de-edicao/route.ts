@@ -62,10 +62,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!(await donoDoProjeto(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const guardada = await prisma.project.findUnique({ where: { id }, select: { videoEstiloEscolha: true } });
+  const anterior = normalizarEscolha(guardada?.videoEstiloEscolha);
   const escolha = {
     ...normalizarEscolha(await req.json().catch(() => ({}))),
-    // A legenda que já estava, e não a do corpo (ver o comentário do topo).
-    legenda: normalizarLegenda((guardada?.videoEstiloEscolha as { legenda?: unknown } | null)?.legenda),
+    // A legenda que já estava, e não a do corpo (ver o comentário do topo); a dos cortes também (06/10, tarde).
+    legenda: anterior.legenda,
+    ...(anterior.legendaDosCortes ? { legendaDosCortes: anterior.legendaDosCortes } : {}),
   };
   const base = estiloDoCatalogo(escolha.estiloId)?.base ?? "acelerado";
   await prisma.project.update({ where: { id }, data: { videoEstiloEscolha: escolha as never, videoStyle: base } });
@@ -75,17 +77,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!(await donoDoProjeto(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const corpo = (await req.json().catch(() => ({}))) as { legenda?: unknown };
-  if (!corpo.legenda || typeof corpo.legenda !== "object") {
+  // `legendaDosCortes` (06/10, tarde): objeto fixa a legenda só dos cortes, null volta ao padrão (cortes legendados).
+  const corpo = (await req.json().catch(() => ({}))) as { legenda?: unknown; legendaDosCortes?: unknown };
+  const mudaLegenda = Boolean(corpo.legenda && typeof corpo.legenda === "object");
+  const mudaCortes = "legendaDosCortes" in corpo && (corpo.legendaDosCortes === null || typeof corpo.legendaDosCortes === "object");
+  if (!mudaLegenda && !mudaCortes) {
     return NextResponse.json({ error: "Diga se quer legenda e em qual estilo." }, { status: 400 });
   }
   const p = await prisma.project.findUnique({ where: { id }, select: { videoEstiloEscolha: true, videoStyle: true } });
   // A escolha normalizada, e não o Json cru: projeto que nunca abriu o
   // catálogo passa a ter a escolha guardada, com a mesma linguagem que o
   // padrão já dava (o `videoStyle` não muda).
-  const escolha = { ...normalizarEscolha(p?.videoEstiloEscolha, p?.videoStyle), legenda: normalizarLegenda(corpo.legenda) };
+  const { legendaDosCortes: cortesAntes, ...atual } = normalizarEscolha(p?.videoEstiloEscolha, p?.videoStyle);
+  const legenda = mudaLegenda ? normalizarLegenda(corpo.legenda) : atual.legenda;
+  // A legenda dos cortes à parte só existe junto do "sem" do projeto: trocar para automática ou estilo devolve os cortes à legenda do projeto.
+  const cortes = mudaCortes ? (corpo.legendaDosCortes ? normalizarLegenda(corpo.legendaDosCortes) : null) : legenda.modo === "sem" ? cortesAntes ?? null : null;
+  const escolha = { ...atual, legenda, ...(cortes ? { legendaDosCortes: cortes } : {}) };
   await prisma.project.update({ where: { id }, data: { videoEstiloEscolha: escolha as never } });
-  return NextResponse.json({ ok: true, legenda: escolha.legenda, legendaAutomatica: automaticaDa(escolha.estiloId) });
+  return NextResponse.json({ ok: true, legenda: escolha.legenda, legendaDosCortes: cortes, legendaAutomatica: automaticaDa(escolha.estiloId) });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -188,6 +188,12 @@ export type EscolhaDeEstilo = {
    */
   legenda: EscolhaDaLegenda;
   /**
+   * A legenda SÓ dos cortes (06/10, tarde), quando o cliente a separou da do
+   * completo. Ausente: os cortes seguem `legenda`, menos o "sem", que vale só
+   * para o completo (ver `legendaDoCorteDecidida`).
+   */
+  legendaDosCortes?: EscolhaDaLegenda;
+  /**
    * INSERÇÕES DE IA ligadas de propósito (03/10). O padrão de todo estilo é
    * o corte limpo profissional (cartelas, punch-in, legenda; nenhuma imagem
    * nem cena gerada): decisão do Bruno depois do custo e da demora do plano
@@ -263,6 +269,7 @@ export function normalizarEscolha(bruta: unknown, baseAtual?: string | null): Es
     texto: typeof b.texto === "string" ? b.texto.slice(0, 600) : undefined,
     interpretacao: typeof b.interpretacao === "string" ? b.interpretacao.slice(0, 1200) : undefined,
     legenda: normalizarLegenda(b.legenda),
+    ...(b.legendaDosCortes && typeof b.legendaDosCortes === "object" ? { legendaDosCortes: normalizarLegenda(b.legendaDosCortes) } : {}),
     ...(b.insercoesIA === true ? { insercoesIA: true } : {}),
   };
 }
