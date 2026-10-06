@@ -26,10 +26,37 @@ export function ImagemJanela(c: Ctx) {
   // (pedido do cliente), a caixa vem centrada do resolvedor e a janela fica no meio dela.
   const cx = p.caixa as { x?: number; y?: number; w?: number; h?: number } | undefined;
   const medida = cx && typeof cx === "object" && [cx.x, cx.y, cx.w, cx.h].every((v) => typeof v === "number" && Number.isFinite(v)) && cx.w! > 0.05 && cx.h! > 0.05 ? cx : null;
-  const largura = medida ? Math.min(medida.w! * W, (medida.h! * H - 40 * u) / 0.66) : vertical ? Math.min(m.largura, W * 0.78) : W * 0.4;
-  const altura = vertical && !medida ? largura * 0.72 : largura * 0.66;
-  const x = medida ? medida.x! * W + (medida.w! * W - largura) / 2 : vertical || lado === "topo" || lado === "centro" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
-  const y = medida ? (lado === "centro" ? medida.y! * H + Math.max(0, (medida.h! * H - altura - 40 * u) / 2) : medida.y! * H) : lado === "centro" ? (H - altura) / 2 - 40 * u : vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
+  const legenda = texto(p.legenda);
+  // O espaço da legenda embaixo da imagem (só quando há legenda: sem ela, a imagem ocupa a caixa toda).
+  const espacoDaLegenda = legenda ? (vertical ? 46 : 40) * u * 1.25 + 16 * u : 0;
+  // O TAMANHO MÍNIMO relativo ao quadro (06/10, cmux0hoxk: a janela virou miniatura no topo do vertical): a janela
+  // ocupa a caixa medida inteira na largura, com a altura dela, numa proporção entre a faixa larga e o quadrado
+  // (vertical) ou entre 2:1 e 5:4 (horizontal); nunca abaixo de 70% (vertical) ou 34% (horizontal) da largura do
+  // quadro, a menos que a própria caixa seja menor.
+  const minimo = (vertical ? 0.7 : 0.34) * W;
+  const [razaoMin, razaoMax] = vertical ? [0.42, 1] : [0.5, 0.8];
+  let largura: number;
+  let altura: number;
+  if (medida) {
+    const bw = medida.w! * W;
+    const bh = Math.max(0, medida.h! * H - espacoDaLegenda);
+    largura = bw;
+    altura = Math.min(bh, largura * razaoMax);
+    if (altura < largura * razaoMin) largura = Math.max(Math.min(bw, minimo), altura / razaoMin);
+    // No vertical, a caixa estreita de edição antiga (a de 22% que virou miniatura) se abre para os lados até o
+    // mínimo: a caixa medida fica acima ou abaixo do rosto, e abrir na horizontal não desce sobre ele.
+    if (vertical && largura < minimo) {
+      largura = minimo;
+      altura = Math.max(altura, Math.min(bh, largura * razaoMin));
+    }
+  } else {
+    largura = vertical ? Math.max(Math.min(m.largura, W * 0.86), minimo) : W * 0.4;
+    altura = largura * (vertical ? 0.72 : 0.66);
+  }
+  const blocoH = altura + espacoDaLegenda;
+  const x = medida ? limitar(medida.x! * W + (medida.w! * W - largura) / 2, Math.min(W * 0.05, (W - largura) / 2), Math.max(W * 0.95 - largura, (W - largura) / 2)) : vertical || lado === "topo" || lado === "centro" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
+  // Nunca colada na borda de cima do quadro (a caixa medida pode começar em 0): pelo menos 2,5% de respiro.
+  const y = medida ? Math.max(H * 0.025, medida.y! * H + Math.max(0, (medida.h! * H - blocoH) / 2)) : lado === "centro" ? (H - blocoH) / 2 : vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
   // A cor pedida pelo cliente (06/10) vai nas letras da legenda e na moldura que leva o acento.
   const pedida = corPedida(c);
   const s = molaFisica(c.t, 190, 14);
@@ -48,9 +75,8 @@ export function ImagemJanela(c: Ctx) {
         ? { padding: 3 * u, background: tema.acento, borderRadius: 18 * u, boxShadow: `${brilho(tema.acento, u, 1.2)}, ${sombraFunda(u, 0.8)}` }
         : tema.visual === "impacto"
           ? { padding: 8 * u, background: "#0b0c0f", borderRadius: 14 * u, boxShadow: sombraFunda(u, 1), borderBottom: `${10 * u}px solid ${tema.acento}` }
-          : { padding: 6 * u, background: rgba("#ffffff", 0.14), border: `${1.5 * u}px solid ${rgba("#ffffff", 0.35)}`, borderRadius: 26 * u, boxShadow: sombraFunda(u, 0.9), backdropFilter: `blur(${14 * u}px)` };
+          : { padding: 4 * u, background: rgba("#ffffff", 0.1), border: `${Math.max(1, 1.5 * u)}px solid ${rgba("#ffffff", 0.55)}`, borderRadius: 24 * u, boxShadow: sombraFunda(u, 0.7) };
   const raioDaFoto = papel ? 1 * u : luxo ? 4 * u : neon ? 15 * u : tema.visual === "impacto" ? 8 * u : 20 * u;
-  const legenda = texto(p.legenda);
   return (
     <div style={{ position: "absolute", left: x, top: y, width: largura, opacity: opacidade, transform: `translateY(${(1 - s) * 50 * u}px) scale(${0.9 + 0.1 * s})`, transformOrigin: "center top" }}>
       <div style={moldura}>
