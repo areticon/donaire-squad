@@ -45,7 +45,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EscolhaDaLegenda } from "@/components/video/escolha-da-legenda";
 import { ControleDoCorte } from "@/components/video/controle-do-corte";
-import { mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela, type TrechoDoCompletoNaTela } from "@/lib/media/roteiro-em-texto";
+import { listaDoCenaACena, mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela, type TrechoDoCompletoNaTela } from "@/lib/media/roteiro-em-texto";
 import { creditosNaTela } from "@/lib/media/limits";
 
 /**
@@ -1027,10 +1027,11 @@ function CenaACenaDoCompleto({
   naSugestao?: (trecho: TrechoDoCompletoNaTela, texto: string) => Promise<boolean>;
 }) {
   const trechos = completo.trechos ?? [];
-  const comEfeito = trechos.filter((t) => t.cena?.efeito || t.sugestao);
-  const longo = trechos.length > 24 && comEfeito.length > 0;
-  const [todas, setTodas] = useState(!longo);
-  const lista = todas ? trechos : comEfeito;
+  // null = o padrão (todas, ou só as com efeito num vídeo longo), decidido a cada tela e não só na primeira montagem.
+  const [escolha, setTodas] = useState<boolean | null>(null);
+  const { lista, longo, comEfeito: nComEfeito } = listaDoCenaACena(trechos, escolha);
+  const todas = lista.length === trechos.length;
+  const comEfeito = { length: nComEfeito };
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
