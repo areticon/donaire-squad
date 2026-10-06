@@ -1,5 +1,6 @@
 import { DOLAR_POR_IMAGEM, DOLAR_POR_RECORTE, IMAGEM_DA_EDICAO, dolarDoVideoDaEdicao } from "@/lib/credits/higgsfield-tabela";
 import type { VarianteDoElemento } from "@/lib/media/editor-por-comando/linguagem";
+import { TIPOS_GERADOS_POR_IA, custoDoElemento, ehPecaGerada } from "@/lib/media/editor-por-comando/elemento-gerado";
 
 /**
  * O TIPO DE ELEMENTO (05/10/2026, noite): o PRIMEIRO EIXO do editor por
@@ -38,7 +39,7 @@ export type TipoDeElemento =
   | "cartao-de-passo"
   | "frase-chave"
   | "slide"
-  // AS PEÇAS VETORIAIS (06/10, tarefa D): desenhadas em código, na cor da marca, sem custo (pecas/vetoriais.tsx no worker).
+  // OS ELEMENTOS GERADOS POR IA (06/10, noite): o visual nasce na Higgsfield, recortado e conferido (elemento-gerado.ts).
   | "icone-com-frase"
   | "comparacao-lado-a-lado"
   | "cartoes-em-linha"
@@ -47,8 +48,12 @@ export type TipoDeElemento =
   | "inscrever"
   | "nada";
 
-/** AS PEÇAS VETORIAIS (06/10, tarefa D): entram na lista de sempre, em qualquer linguagem (o tema só muda o acabamento). */
-export const TIPOS_VETORIAIS: TipoDeElemento[] = ["icone-com-frase", "comparacao-lado-a-lado", "cartoes-em-linha", "interface-de-edicao", "titulo-em-caixa"];
+/**
+ * OS ELEMENTOS GERADOS POR IA (06/10, noite, regra do Bruno): entram na lista de sempre, em qualquer linguagem. Eram as
+ * "peças vetoriais" desenhadas em código (tarefa D, mesma tarde), que saíram do worker: o visual de cada um é gerado na
+ * Higgsfield pelo prompt do redator, recortado e conferido (elemento-gerado.ts); o nome só dá a caixa no quadro.
+ */
+export const TIPOS_GERADOS: TipoDeElemento[] = [...TIPOS_GERADOS_POR_IA];
 
 /**
  * Os tipos que o JEV escolhe MOMENTO A MOMENTO. O "inscrever" (a chamada de
@@ -60,7 +65,7 @@ export const TIPOS_VETORIAIS: TipoDeElemento[] = ["icone-com-frase", "comparacao
  * do vídeo (06/10), `tiposPossiveis` acrescenta por trecho os tipos de
  * contexto que a câmera permite (TIPOS_DO_CONTEXTO).
  */
-export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "combinada", "dado", "lista", "citacao", "impacto", "legenda-destaque", ...TIPOS_VETORIAIS, "nada"];
+export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "combinada", "dado", "lista", "citacao", "impacto", "legenda-destaque", ...TIPOS_GERADOS, "nada"];
 
 /**
  * OS TIPOS DE CONTEXTO (06/10, regra do Bruno: o editor decide pelo contexto
@@ -95,15 +100,15 @@ export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
   "frase-chave": "FRASE-CHAVE: a frase inteira que resume o ponto, escrita num cartão na área livre, enquanto a pessoa segue falando (sem tirar a atenção dela). Para palestra, aula, sermão: a tese dita por extenso.",
   slide: "SLIDE: um slide pequeno ao lado da pessoa com o título do ponto e 2 a 4 itens que a fala percorre (o item dito acende). Para palestra e aula, quando a fala organiza o conteúdo em tópicos.",
   "icone-com-frase":
-    "ÍCONE GRANDE COM FRASE: um cartão escuro abaixo do rosto, com um ícone de linha grande e a frase curta em caixa alta (às vezes com o rótulo \"REGRA 01\"). Para uma regra, um hábito, um conselho ou um item de uma lista dita um de cada vez, quando um objeto ou símbolo concreto mostra a ideia (despertador, celular, TV, dinheiro, livro).",
+    "ÍCONE GRANDE COM FRASE (gerado por IA em alta resolução): um cartão com um ícone ou objeto grande e a frase curta embaixo (às vezes com o rótulo \"REGRA 01\"). Para uma regra, um hábito, um conselho ou um item de uma lista dita um de cada vez, quando um objeto ou símbolo concreto mostra a ideia (despertador, celular, TV, dinheiro, livro).",
   "comparacao-lado-a-lado":
-    "NÃO DIGA, DIGA ISTO: duas colunas abaixo do rosto, o errado em vermelho e o certo na cor da marca, cada par entrando quando é dito. Para a fala que troca uma palavra, uma frase, um hábito ou uma atitude por outra (\"em vez de X, faça Y\", \"pare de dizer X\").",
+    "NÃO DIGA, DIGA ISTO (gerado por IA): duas colunas, o errado marcado em vermelho e o certo na cor da marca. Para a fala que troca uma palavra, uma frase, um hábito ou uma atitude por outra (\"em vez de X, faça Y\", \"pare de dizer X\").",
   "cartoes-em-linha":
-    "CARTÕES LADO A LADO: 2 a 4 cartões claros com o nome e um ícone de cada, abaixo do rosto. Para ferramentas, aplicativos, opções, canais ou etapas que a fala cita juntos no mesmo fôlego.",
+    "CARTÕES LADO A LADO (gerados por IA, com o LOGO OFICIAL de cada marca citada): 2 a 4 cartões com o nome e o ícone ou o logo de cada. Para ferramentas, aplicativos, redes sociais, opções, canais ou etapas que a fala cita juntos no mesmo fôlego.",
   "interface-de-edicao":
-    "TELA DE UM EDITOR DE VÍDEO TRABALHANDO: a linha do tempo com os clipes, o cursor andando, um corte acontecendo e a legenda aparecendo, na cor da marca. Para a fala sobre edição de vídeo, automação, plataforma, software, ferramenta, produção de conteúdo ou fluxo de trabalho.",
+    "TELA DE UM EDITOR DE VÍDEO (gerada por IA): a linha do tempo com os clipes e a prévia com a legenda. Para a fala sobre edição de vídeo, automação, plataforma, software, ferramenta, produção de conteúdo ou fluxo de trabalho.",
   "titulo-em-caixa":
-    "TÍTULO NA CAIXA NO TOPO: o assunto numa caixa clara arredondada acima da cabeça, enquanto a pessoa fala. Para abrir um tema, uma lista ou uma série (\"3 erros de quem começa\", \"hábitos que ninguém te ensina\"), normalmente no começo do vídeo ou de um bloco.",
+    "TÍTULO NA CAIXA (gerado por IA): o assunto numa caixa arredondada acima da cabeça (nunca colada no topo do quadro), enquanto a pessoa fala. Para abrir um tema, uma lista ou uma série (\"3 erros de quem começa\", \"hábitos que ninguém te ensina\"), normalmente no começo do vídeo ou de um bloco.",
   inscrever: "CURTIR E INSCREVER: a chamada animada de curtir e se inscrever, logo depois de um momento forte (nunca é escolhida frase a frase; ver decidirInscrever).",
   nada: "NADA: a pessoa sozinha basta (transição, emoção, conversa, frase de ligação, ou um elemento acabou de sair).",
 };
@@ -285,6 +290,8 @@ export function custoPrevisto(tipo: TipoDeElemento, variante: VarianteDoElemento
   // A combinada é só o vídeo de fundo (texto para vídeo, sem imagem antes); a camada é código, sem custo.
   if (tipo === "combinada") return dolarDoVideoDaEdicao(segundos);
   if (tipo === "imagem") return variante === "imagem-janela" && pecaComFoto ? 2 * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) : DOLAR_DA_IMAGEM;
+  // Os elementos gerados por IA (06/10, noite): a imagem, o recorte e a conferência (sem contar a refação).
+  if (ehPecaGerada(tipo)) return custoDoElemento();
   // As peças com foto de arquivo (jornal, cronologia) pagam a foto delas.
   return pecaComFoto ? DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE : 0;
 }
@@ -325,8 +332,10 @@ export function estimarCusto(plano: { momentos?: MomentoComFoto[]; insercoes?: I
   const segundosDeVideo = videos.reduce((s, x) => s + Math.min(15, Math.max(3, Math.ceil(x.segundos ?? 4))), 0);
   // O fundo da combinada é texto para vídeo: não paga a imagem antes (combinada.ts).
   const comImagem = ins.filter((x) => !x.combinada).length;
-  const imagens = fotos + comImagem;
-  const usd = +(fotos * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) + comImagem * DOLAR_DA_IMAGEM + videos.reduce((s, x) => s + dolarDoVideoDaEdicao(x.segundos ?? 4), 0)).toFixed(3);
+  // Os elementos gerados por IA (06/10, noite): uma imagem e um recorte cada.
+  const gerados = (plano.momentos ?? []).filter((m) => ehPecaGerada(m.peca)).length;
+  const imagens = fotos + comImagem + gerados;
+  const usd = +(fotos * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) + comImagem * DOLAR_DA_IMAGEM + gerados * custoDoElemento() + videos.reduce((s, x) => s + dolarDoVideoDaEdicao(x.segundos ?? 4), 0)).toFixed(3);
   const min = Math.max(duracao / 60, 1 / 6);
   return {
     imagens,

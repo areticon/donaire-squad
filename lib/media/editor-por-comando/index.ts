@@ -19,7 +19,9 @@ import { fonteDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { gerarFundosCombinados } from "@/lib/media/editor-por-comando/combinada";
 import { escolhaSincronizadaComComando } from "@/lib/media/estilo-do-comando";
-import { conferenciaVisualLigada, conferirImagensGeradas, idNoPlano, type ConferidaDaImagem, type InsercaoDoPlano } from "@/lib/media/conferencia-visual";
+import { conferenciaVisualLigada, conferirImagensGeradas, falaDaInsercao, idNoPlano, type ConferidaDaImagem, type InsercaoDoPlano } from "@/lib/media/conferencia-visual";
+import { ehPecaGerada, prepararElementosGerados } from "@/lib/media/editor-por-comando/elemento-gerado";
+import { dependenciasDeVerdade } from "@/lib/media/editor-por-comando/elemento-gerado-servidor";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -374,15 +376,43 @@ async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Reco
   ]);
   // A CONFERÊNCIA VISUAL DA IMAGEM (06/10): o Gemini descreve cada cena gerada, o JEV aprova, refaz uma vez ou tira.
   const conf = await conferirCenas(plano, cenas.insercoes, e);
+  // OS ELEMENTOS GERADOS POR IA (06/10, noite): cada elemento visual nasce na Higgsfield, é recortado e conferido;
+  // o que não passa sai do plano (nada desenhado em código no lugar). Ver elemento-gerado.ts.
+  const elem = await elementosDoPlano(plano, e);
   const faltaram = semFoto(plano);
-  const limpo = tirarFotosSemImagem(semInsercoes(plano, conf.tiradas));
+  const limpo = tirarFotosSemImagem(semInsercoes(elem.plano, conf.tiradas));
   return {
     plano: limpo.plano,
     insercoes: { ...conf.insercoes, ...combinadas.insercoes },
-    custoUsd: +(fotos.custoUsd + cenas.custoUsd + combinadas.custoUsd + conf.custoUsd).toFixed(4),
+    custoUsd: +(fotos.custoUsd + cenas.custoUsd + combinadas.custoUsd + conf.custoUsd + elem.custoUsd).toFixed(4),
     conferidas: conf.conferidas,
-    erros: [...fotos.erros, ...cenas.erros, ...combinadas.erros, ...conf.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
+    erros: [...fotos.erros, ...cenas.erros, ...combinadas.erros, ...conf.erros, ...elem.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
   };
+}
+
+/**
+ * Os elementos gerados por IA do plano (06/10, noite): a esteira de verdade (Higgsfield, BiRefNet, Gemini, JEV).
+ * Os momentos que ficaram sem imagem saem do plano e dos `elementos` (o JEV cobre o buraco no replanejamento).
+ */
+async function elementosDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano): Promise<{ plano: PlanoDoDiretor; custoUsd: number; erros: string[] }> {
+  if (!(plano.momentos ?? []).some((m) => ehPecaGerada(String(m.peca)))) return { plano, custoUsd: 0, erros: [] };
+  const cores = coresDoComando(e.comando, e.marca);
+  try {
+    const r = await prepararElementosGerados(plano as { momentos?: Array<{ id?: string; peca: string; props?: Record<string, unknown>; de?: unknown; ate?: unknown }> }, {
+      cores,
+      formato: e.formato,
+      deps: dependenciasDeVerdade({ projectId: e.projectId, local: e.local }),
+      falaDe: (m) => (m.de ? falaDaInsercao({ de: String(m.de), ate: String(m.ate ?? m.de) }, e.palavras) : ""),
+    });
+    const fora = new Set(r.removidos);
+    const limpo = { ...(r.plano as PlanoDoDiretor), elementos: (plano.elementos ?? []).filter((x) => !fora.has(x.id)) };
+    const aprovados = r.prontos.filter((x) => x.url).length;
+    return { plano: limpo, custoUsd: r.custoUsd, erros: [...r.erros, `elementos gerados por IA: ${aprovados} aprovado(s), ${r.removidos.length} trocado(s) (${r.removidos.join(", ") || "nenhum"})`] };
+  } catch (err) {
+    // Sem a esteira, nenhum elemento entra: nada desenhado em código no lugar.
+    const fora = new Set((plano.momentos ?? []).filter((m) => ehPecaGerada(String(m.peca))).map((m) => String(m.id)));
+    return { plano: { ...plano, momentos: (plano.momentos ?? []).filter((m) => !fora.has(String(m.id))), elementos: (plano.elementos ?? []).filter((x) => !fora.has(x.id)) }, custoUsd: 0, erros: [`elementos gerados por IA falharam (${String(err).slice(0, 120)}); ${fora.size} saíram`] };
+  }
 }
 
 /** A entrada do plano pelo JEV (a mesma para escrever o plano e para completar o reaproveitado). */

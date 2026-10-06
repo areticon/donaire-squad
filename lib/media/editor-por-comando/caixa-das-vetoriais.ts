@@ -3,9 +3,14 @@ import type { TrechoLido } from "@/lib/media/leitura-do-video";
 import { caixaLivre, centroDe, cobreAlgo } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**
- * A CAIXA DAS PEÇAS VETORIAIS (06/10/2026, tarefa D): onde cada peça desenhada
- * em código (worker/remotion/src/sob-medida/pecas/vetoriais.tsx) fica no
- * quadro, em fração. Regra: nunca sobre o rosto. As de conteúdo vão ABAIXO do
+ * A CAIXA DOS ELEMENTOS GERADOS POR IA (06/10/2026; nasceu como a caixa das
+ * peças vetoriais da tarefa D, que eram desenhadas em código e saíram na mesma
+ * noite): onde a imagem recortada de cada elemento (worker/remotion/src/
+ * sob-medida/pecas/gerado.tsx) fica no quadro, em fração. O nome do tipo é só
+ * o esqueleto de posição: nada é desenhado.
+ *
+ * MARGEM SEGURA (06/10, noite, regra do Bruno): nada nos 10% de cima do
+ * quadro e nada a menos de 4% da borda (`naMargemSegura`). Regra: nunca sobre o rosto. As de conteúdo vão ABAIXO do
  * rosto (no 9:16, centradas, como nas referências do Bruno) ou do lado livre
  * (16:9); o título vai ACIMA da cabeça. Com a leitura do trecho, a caixa sai
  * da área livre medida; sem ela, da caixa do rosto. Devolve null quando não há
@@ -31,7 +36,29 @@ const r4 = (v: number) => +v.toFixed(4);
 const limitar = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /** A caixa da peça vetorial `nome` no trecho, abaixo (ou, o título, acima) do rosto de quem fala. */
+export const MARGEM_DO_TOPO = 0.1;
+export const MARGEM_DA_BORDA = 0.04;
+
+/** A caixa presa à margem segura: encolhe para dentro, nunca encosta na borda nem entra nos 10% de cima. */
+export function naMargemSegura(c: Retangulo | null): Retangulo | null {
+  if (!c) return null;
+  const x0 = Math.max(MARGEM_DA_BORDA, c.x);
+  const y0 = Math.max(MARGEM_DO_TOPO, c.y);
+  const x1 = Math.min(1 - MARGEM_DA_BORDA, c.x + c.w);
+  const y1 = Math.min(1 - MARGEM_DA_BORDA, c.y + c.h);
+  if (x1 - x0 < 0.05 || y1 - y0 < 0.03) return null;
+  return { x: r4(x0), y: r4(y0), w: r4(x1 - x0), h: r4(y1 - y0) };
+}
+
 export function caixaDaVetorial(nome: string, o: { vertical: boolean; rosto: Retangulo; tr?: TrechoLido | null; fator?: number; lado?: "esquerda" | "direita" }): Retangulo | null {
+  const c = caixaCrua(nome, o);
+  const segura = naMargemSegura(c);
+  // A margem não pode empurrar a caixa para cima do rosto.
+  if (segura && !o.tr && sobrepoe(segura, o.rosto)) return null;
+  return segura;
+}
+
+function caixaCrua(nome: string, o: { vertical: boolean; rosto: Retangulo; tr?: TrechoLido | null; fator?: number; lado?: "esquerda" | "direita" }): Retangulo | null {
   const t = TAMANHO_DAS_VETORIAIS[nome];
   if (!t) return null;
   const fator = o.fator ?? 1;
@@ -63,8 +90,8 @@ export function caixaDaVetorial(nome: string, o: { vertical: boolean; rosto: Ret
     const abaixo = rosto.y + rosto.h + 0.02;
     const acima = rosto.y - 0.02;
     if (titulo) {
-      const h = Math.min(maxH, Math.max(0, acima - 0.04));
-      if (h >= t.minimo[1]) return { x, y: r4(Math.max(0.04, acima - h - 0.02)), w, h: r4(h) };
+      const h = Math.min(maxH, Math.max(0, acima - MARGEM_DO_TOPO));
+      if (h >= t.minimo[1]) return { x, y: r4(Math.max(MARGEM_DO_TOPO, acima - h - 0.02)), w, h: r4(h) };
     } else {
       const h = Math.min(maxH, 0.97 - abaixo);
       if (h >= t.minimo[1]) return { x, y: r4(abaixo), w, h: r4(h) };
@@ -76,7 +103,7 @@ export function caixaDaVetorial(nome: string, o: { vertical: boolean; rosto: Ret
   // 16:9: o lado livre do rosto (o título, no alto do lado livre).
   const lado = o.lado ?? (rosto.x + rosto.w / 2 > 0.5 ? "esquerda" : "direita");
   const x = lado === "esquerda" ? 0.04 : r4(0.96 - w);
-  const caixa = { x, y: titulo ? 0.06 : r4(limitar(rosto.y + rosto.h * 0.3, 0.12, 0.96 - maxH)), w, h: maxH };
+  const caixa = { x, y: titulo ? MARGEM_DO_TOPO : r4(limitar(rosto.y + rosto.h * 0.3, 0.12, 0.96 - maxH)), w, h: maxH };
   return cobre(caixa) ? null : caixa;
 }
 

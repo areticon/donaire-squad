@@ -1,3 +1,4 @@
+import { chaveDaGeracao, nomeUnico } from "@/lib/media/geracao-unica";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { head, put } from "@vercel/blob";
@@ -313,6 +314,12 @@ async function guardar(caminho: string, dados: Buffer, contentType: string): Pro
   return url;
 }
 
+/** Mídia GERADA (06/10, cada edição é algo novo): sufixo aleatório, nunca por cima. */
+async function guardarUnico(caminho: string, dados: Buffer, contentType: string): Promise<string> {
+  const { url } = await put(caminho, dados, { ...midiaProduzida(), contentType, addRandomSuffix: true });
+  return url;
+}
+
 /**
  * Tira o verde chapado e devolve PNG com transparência, aparado no objeto.
  *
@@ -520,9 +527,8 @@ export async function cenarioVazio(o: OpcoesDosAssets, formato: Formato = "9:16"
   if (!r.ok) throw new Error(`quadro do corte respondeu HTTP ${r.status}`);
   const original = Buffer.from(await r.arrayBuffer());
   const instrucao = formato === "9:16" ? PROMPT_DO_CENARIO_VAZIO : PROMPT_DO_CENARIO_VAZIO_16X9;
-  const caminho = `montagem/cenario/${hash(original.toString("base64") + instrucao)}.jpg`;
-  const existe = await jaGuardado(caminho);
-  if (existe) return { url: existe, custo: 0 };
+  // CADA EDIÇÃO É ALGO NOVO (06/10): o cenário é gerado de novo a cada montagem, num nome único.
+  const caminho = nomeUnico("montagem/cenario", { video: o.referencia, momento: hash(original.toString("base64") + instrucao).slice(0, 8), ext: "jpg" });
   const quadro = await sharp(original).jpeg({ quality: 92 }).toBuffer();
   // A dica de onde a pessoa está ajuda o modelo a não deixar sobra (ombro,
   // cadeira com sombra) na borda do que ele apagou.
@@ -537,7 +543,7 @@ export async function cenarioVazio(o: OpcoesDosAssets, formato: Formato = "9:16"
   });
   if (!editado) throw new Error("nenhum modelo devolveu o cenário sem a pessoa");
   const pronto = await sharp(dataUrlToBuffer(editado.dataUrl)).jpeg({ quality: 90 }).toBuffer();
-  return { url: await guardar(caminho, pronto, "image/jpeg"), custo: editado.custoUsd };
+  return { url: await guardarUnico(caminho, pronto, "image/jpeg"), custo: editado.custoUsd };
 }
 
 const SISTEMA_DO_TEXTO = `Você confere imagens geradas para um vídeo. A regra: a imagem não pode ter NENHUMA palavra, letra ou número LEGÍVEL, em nenhuma língua (rótulos, legendas, títulos, nomes de período como "Morning", números num relógio ou calendário).
@@ -588,13 +594,13 @@ export async function gerarAssetsDaMontagem(plano: PlanoDeMontagem, o: OpcoesDos
         if (a.tipo === "cena-do-narrador") {
           const cenario = await cenarioVazio(o, plano.formato, higgsfieldAte);
           const prompt = promptDoCenarioDoNarrador(a.descricao, camera, a.efeito ?? "sumir");
-          const chave = `montagem-${a.id}-${hash(prompt + cenario.url)}`;
+          const chave = chaveDaGeracao(`montagem-${a.id}-${hash(prompt + cenario.url)}`);
           await pedirGeracao({ prompt, segundos, imagemUrl: cenario.url, referencia: o.referencia, chave });
           return { a, chave, custo: custoDaGeracao(MODELO_PADRAO, segundos) + cenario.custo, erro: undefined as string | undefined };
         }
         const efeito = a.efeito ?? null;
         const prompt = promptDaCenaEmMovimento(a.descricao, o.familia, o.marca, camera, segundos, efeito, plano.formato, o.estiloId, a.comPessoas);
-        const chave = `montagem-${a.id}-${hash(prompt)}`;
+        const chave = chaveDaGeracao(`montagem-${a.id}-${hash(prompt)}`);
         await pedirGeracao({ prompt, segundos, proporcao: plano.formato, referencia: o.referencia, chave });
         return { a, chave, custo: custoDaGeracao(MODELO_PADRAO, segundos), erro: undefined as string | undefined };
       } catch (e) {
@@ -606,12 +612,11 @@ export async function gerarAssetsDaMontagem(plano: PlanoDeMontagem, o: OpcoesDos
   // o fundo é cor chapada, e papel por baixo era Vox chumbado.
   const papel = (async () => {
     if (o.familia !== "colagem") return null;
-    const caminho = `montagem/papel/${hash(PROMPT_DO_PAPEL)}.jpg`;
-    const existe = await jaGuardado(caminho);
-    if (existe) return existe;
+    // CADA EDIÇÃO É ALGO NOVO (06/10): a textura de papel é gerada para esta montagem, nunca a de outro projeto.
+    const caminho = nomeUnico("montagem/papel", { video: o.referencia, momento: "papel", ext: "jpg" });
     try {
       const img = dataUrlToBuffer((await gerarImagem(PROMPT_DO_PAPEL, "9:16", "hd", { ...o.ctx, operation: "montagem-papel" }, { higgsfieldAte })).dataUrl);
-      return guardar(caminho, await sharp(img).jpeg({ quality: 88 }).toBuffer(), "image/jpeg");
+      return guardarUnico(caminho, await sharp(img).jpeg({ quality: 88 }).toBuffer(), "image/jpeg");
     } catch {
       return null;
     }
@@ -647,17 +652,13 @@ export async function gerarAssetsDaMontagem(plano: PlanoDeMontagem, o: OpcoesDos
     const lote = await Promise.all(
       imagens.slice(i, i + 3).map(async (a): Promise<AssetGerado> => {
         if (a.tipo === "elemento") {
-          const pronto = doCatalogo.get(a.descricao.trim().toLowerCase());
-          if (pronto) return { id: a.id, tipo: a.tipo, url: pronto, origem: "reaproveitado", custoEstimadoUsd: 0 };
+          // CADA EDIÇÃO É ALGO NOVO (06/10): o catálogo do projeto não devolve mais elemento de outra edição.
+          void doCatalogo;
         }
         const proporcao = proporcaoDoAsset(plano, a.id);
         const prompt = a.tipo === "elemento" ? promptDoElemento(a.descricao, o.familia, o.marca) : promptDaColagem(a.descricao, o.familia, o.marca, proporcao, o.estiloId, a.comPessoas);
-        const caminho = `montagem/assets/${hash(prompt + proporcao)}.${a.tipo === "elemento" ? "png" : "jpg"}`;
-        const existe = await jaGuardado(caminho);
-        if (existe) {
-          if (a.tipo === "elemento") novosNoCatalogo.push({ descricao: a.descricao, url: existe, criadoEm: new Date().toISOString() });
-          return { id: a.id, tipo: a.tipo, url: existe, origem: "reaproveitado", custoEstimadoUsd: 0 };
-        }
+        // CADA EDIÇÃO É ALGO NOVO (06/10): nome único por geração, nunca o hash do prompt (que devolvia a imagem de outro vídeo).
+        const caminho = nomeUnico("montagem/assets", { video: o.referencia, momento: a.id, ext: a.tipo === "elemento" ? "png" : "jpg" });
         try {
           // O custo é o de quem respondeu (Higgsfield ou o recuo no Google),
           // somado a cada tentativa.
@@ -682,7 +683,7 @@ export async function gerarAssetsDaMontagem(plano: PlanoDeMontagem, o: OpcoesDos
             }
           }
           const pronta = a.tipo === "elemento" ? await recortarPorCor(bruta) : await sharp(bruta).jpeg({ quality: 88 }).toBuffer();
-          const url = await guardar(caminho, pronta, a.tipo === "elemento" ? "image/png" : "image/jpeg");
+          const url = await guardarUnico(caminho, pronta, a.tipo === "elemento" ? "image/png" : "image/jpeg");
           if (a.tipo === "elemento") novosNoCatalogo.push({ descricao: a.descricao, url, criadoEm: new Date().toISOString() });
           return { id: a.id, tipo: a.tipo, url, origem: "gerado", custoEstimadoUsd: custo };
         } catch (e) {
