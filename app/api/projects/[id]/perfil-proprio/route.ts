@@ -151,7 +151,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (perfil && !lista.some((x) => x.rede === rede && x.perfil === perfil)) lista.push({ rede, perfil });
       }
       if (!lista.length && !soSalvar) return NextResponse.json({ error: "Escreva pelo menos uma referência (o @ ou o link do perfil)." }, { status: 400 });
-      if (lista.length > MAX_REFERENCIAS_POR_PROJETO) {
+      // O teto só barra quem AUMENTA a lista: projeto que ficou acima dele (de
+      // antes do teto) precisa conseguir remover uma de cada vez, e ficar sem
+      // nenhuma também vale.
+      const atuais = await prisma.referenciaPerfil.count({ where: { projectId: id, status: "confirmado" } });
+      const aumenta = lista.length > atuais;
+      if (lista.length > MAX_REFERENCIAS_POR_PROJETO && aumenta) {
         return NextResponse.json({ error: `São até ${MAX_REFERENCIAS_POR_PROJETO} referências por projeto. Remova uma para colocar outra no lugar.` }, { status: 400 });
       }
       const proprias = await redesDoCliente(id);
@@ -161,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // O teto da conta (somando os projetos), sem contar as deste projeto
       // que serão trocadas. Conta admin (a nossa) não tem teto, como nos limites do plano.
       const naConta = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: a.projeto.userId }, NOT: { projectId: id } } });
-      if (naConta + lista.length > MAX_REFERENCIAS_POR_CONTA && !(await eAdmin(a.userId))) {
+      if (naConta + lista.length > MAX_REFERENCIAS_POR_CONTA && aumenta && !(await eAdmin(a.userId))) {
         return NextResponse.json({ error: `A conta já tem ${naConta} perfis de referência em outros projetos (o limite é ${MAX_REFERENCIAS_POR_CONTA}). Tire algum lá para estudar estes.` }, { status: 409 });
       }
       // Trocar a lista no meio de um estudo misturaria perfis velhos e novos no mesmo resultado.
