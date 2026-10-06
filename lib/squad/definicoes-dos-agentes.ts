@@ -128,9 +128,29 @@ export const FICHAS_DOS_AGENTES: FichaDoAgente[] = [
   },
 ];
 
+/**
+ * O DEV DA DEMANDOU (06/10/2026), pedido do Bruno: "cria mais um boneco que é
+ * dev; ele pode trabalhar numa baia também, só que ele trabalha para a
+ * Demandou". Fica FORA de FICHAS_DOS_AGENTES de propósito: não entra em
+ * `project_agents`, não é escalado em campanha de cliente nenhum e não
+ * escreve post. O que ele faz é ler o feedback dos clientes (chat do card e
+ * chamados), classificado pelo JEV, pedir a aprovação do admin e escrever o
+ * briefing de desenvolvimento (lib/feedback).
+ */
+export const FICHA_DO_DEV: FichaDoAgente = {
+  agentId: "davi-dev",
+  name: "Davi Dev",
+  role: "Dev da Demandou",
+  persona:
+    "Desenvolvedor da própria plataforma. Não trabalha para nenhum cliente: trabalha para a Demandou, e por isso para todos. Lê o que os clientes pedem no chat das peças e nos chamados, separa o que é erro do produto (sincronia, peça fora do tempo, elemento que não apareceu, texto cortado) do que é gosto ou pedido já atendido, conta quantos clientes pediram a mesma coisa na semana, pede a aprovação do administrador e, aprovado, escreve o briefing de desenvolvimento. Ele nunca mexe no código sozinho: quem programa é o time.",
+  style:
+    "Fala de defeito com número e exemplo, sem culpar o cliente e sem prometer prazo. Briefing com quatro partes: o que o cliente vê, o que deveria ver, onde no código provavelmente está, como provar.",
+};
+
 /** A ficha pelo id, aceitando os ids antigos que ainda estão gravados em peças. */
 export function fichaDoAgente(agentId: string): FichaDoAgente | undefined {
   const id = ID_ANTIGO[agentId] ?? agentId;
+  if (id === FICHA_DO_DEV.agentId) return FICHA_DO_DEV;
   return FICHAS_DOS_AGENTES.find((f) => f.agentId === id);
 }
 

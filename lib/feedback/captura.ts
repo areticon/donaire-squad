@@ -1,0 +1,205 @@
+import { prisma } from "@/lib/db/prisma";
+import { classificarFeedback, type GrupoAberto } from "@/lib/feedback/classificar";
+import { modulosDoTipoDeCard, semEmail, tituloDoGrupo, type ContextoDoFeedback, type Origem } from "@/lib/feedback/regras";
+
+/**
+ * A CAPTURA DO FEEDBACK (06/10/2026): todo pedido do chat do card e todo
+ * chamado de suporte viram uma linha em `feedbacks_do_produto`, classificada
+ * e agrupada pelo JEV em seguida.
+ *
+ * NUNCA TRAVA O CHAT: quem chama dispara `void capturar...()` (ou dentro de
+ * `after()`); tudo aqui engole o próprio erro e vira log. Sem a tabela (a
+ * migração ainda não aplicada), o chat continua igual.
+ *
+ * Só servidor: toca o banco e o JEV.
+ */
+
+type Captura = {
+  origem: Origem;
+  userId: string;
+  texto: string;
+  projectId?: string | null;
+  cardId?: string | null;
+  postId?: string | null;
+  videoJobId?: string | null;
+  chamadoId?: string | null;
+  contexto?: ContextoDoFeedback | null;
+};
+
+/** Os grupos abertos com dois exemplos cada, para o JEV comparar. */
+async function gruposAbertos(): Promise<GrupoAberto[]> {
+  const grupos = await prisma.grupoDeFeedback.findMany({
+    where: { situacao: "aberto" },
+    orderBy: { atualizadoEm: "desc" },
+    take: 40,
+    select: { id: true, titulo: true, classificacao: true, feedbacks: { orderBy: { criadoEm: "desc" }, take: 2, select: { texto: true } } },
+  });
+  return grupos.map((g) => ({ id: g.id, titulo: g.titulo, classificacao: g.classificacao, exemplos: g.feedbacks.map((f) => f.texto) }));
+}
+
+/** Grava o feedback e classifica. Devolve o id, ou null quando não gravou. */
+export async function capturarFeedback(c: Captura): Promise<string | null> {
+  const texto = c.texto.trim().slice(0, 4000);
+  if (!texto || !c.userId) return null;
+  let id: string;
+  try {
+    const criado = await prisma.feedbackDoProduto.create({
+      data: {
+        origem: c.origem,
+        userId: c.userId,
+        texto,
+        projectId: c.projectId ?? null,
+        cardId: c.cardId ?? null,
+        postId: c.postId ?? null,
+        videoJobId: c.videoJobId ?? null,
+        chamadoId: c.chamadoId ?? null,
+        contexto: (c.contexto ?? null) as never,
+      },
+      select: { id: true },
+    });
+    id = criado.id;
+  } catch (e) {
+    console.warn("[feedback] não gravou (ignorado):", e instanceof Error ? e.message : e);
+    return null;
+  }
+
+  try {
+    const abertos = await gruposAbertos();
+    const r = await classificarFeedback({ feedback: { texto, origem: c.origem, contexto: c.contexto ?? null }, gruposAbertos: abertos, projectId: c.projectId ?? null });
+    if (!r.classificacao) {
+      await prisma.feedbackDoProduto.update({ where: { id }, data: { confianca: r.confianca, classificadoEm: new Date() } });
+      return id;
+    }
+    let grupoId: string | null = null;
+    if (r.grupo === "novo" || !r.grupo) {
+      const g = await prisma.grupoDeFeedback.create({ data: { titulo: tituloDoGrupo(texto), classificacao: r.classificacao }, select: { id: true } });
+      grupoId = g.id;
+    } else {
+      grupoId = r.grupo;
+      await prisma.grupoDeFeedback.update({ where: { id: grupoId }, data: { atualizadoEm: new Date() } }).catch(() => {});
+    }
+    await prisma.feedbackDoProduto.update({
+      where: { id },
+      data: { classificacao: r.classificacao, confianca: r.confianca, grupoId, classificadoEm: new Date() },
+    });
+  } catch (e) {
+    console.warn("[feedback] classificação não gravou (fica para depois):", e instanceof Error ? e.message : e);
+  }
+  return id;
+}
+
+type Mensagem = { role: string; content: string; timestamp?: string };
+
+/**
+ * O GANCHO DO CHAT DO CARD. Lê do card o que o cliente tinha aprovado antes
+ * (texto da peça, frase da arte, lâminas, cor da marca, estilo de vídeo) e o
+ * tipo da peça, e grava o pedido com a resposta da plataforma. Sem
+ * `resposta`, usa a última mensagem do assistente gravada no chat depois de
+ * `desde` (a rota chama assim para os caminhos que respondem na hora).
+ */
+export async function capturarFeedbackDoChatDoCard(a: {
+  cardId: string;
+  userId: string;
+  mensagem: string;
+  resposta?: string | null;
+  resultado?: "feito" | "parte" | "falhou" | null;
+  acoes?: string[] | null;
+  /** ISO: só conta resposta do assistente gravada depois disto. */
+  desde?: string | null;
+}): Promise<void> {
+  try {
+    const card = await prisma.campaignCard.findUnique({
+      where: { id: a.cardId },
+      select: {
+        id: true,
+        projectId: true,
+        postId: true,
+        cardType: true,
+        mediaType: true,
+        content: true,
+        metadata: true,
+        chatHistory: true,
+        project: { select: { colorPalette: true, videoStyle: true } },
+      },
+    });
+    if (!card) return;
+    const meta = (card.metadata as Record<string, unknown> | null) ?? {};
+    const historico = Array.isArray(card.chatHistory) ? (card.chatHistory as Mensagem[]) : [];
+    let resposta = a.resposta ?? null;
+    if (resposta === null) {
+      const ultima = [...historico].reverse().find((m) => m.role === "assistant" && (!a.desde || !m.timestamp || m.timestamp >= a.desde));
+      resposta = ultima?.content ?? null;
+    }
+    const videoJobId = typeof meta.videoJobId === "string" ? meta.videoJobId : null;
+    const slides = Array.isArray(meta.slides) ? (meta.slides as unknown[]).filter((s): s is string => typeof s === "string") : [];
+    const tipoDePeca =
+      card.cardType === "video_clip" ? "corte de vídeo"
+      : card.cardType === "video_completo" ? "vídeo completo"
+      : card.mediaType === "video" ? "vídeo"
+      : card.cardType === "media" ? (slides.length > 1 ? "carrossel" : "imagem")
+      : card.cardType === "publish" ? "publicação do dia"
+      : "post de texto";
+    const contexto: ContextoDoFeedback = {
+      tipoDePeca,
+      rede: typeof meta.platform === "string" ? meta.platform : null,
+      estilo: (typeof meta.modeloDaArte === "string" ? meta.modeloDaArte : null) ?? card.project?.videoStyle ?? null,
+      oQueAPlataformaFez: a.acoes ?? null,
+      respostaDaPlataforma: resposta ? semEmail(resposta).slice(0, 1200) : null,
+      resultado: a.resultado ?? null,
+      aprovadoAntes: {
+        textoDaPeca: card.content ? semEmail(card.content).slice(0, 600) : null,
+        fraseDaArte: typeof meta.frase === "string" ? meta.frase : null,
+        laminas: slides.length ? slides.join(" | ").slice(0, 600) : null,
+        corDaMarca: card.project?.colorPalette ?? null,
+        estiloDeVideo: card.project?.videoStyle ?? null,
+      },
+      modulos: modulosDoTipoDeCard(card.cardType, card.mediaType),
+    };
+    await capturarFeedback({
+      origem: "chat",
+      userId: a.userId,
+      texto: a.mensagem,
+      projectId: card.projectId,
+      cardId: card.id,
+      postId: card.postId,
+      videoJobId,
+      contexto,
+    });
+  } catch (e) {
+    console.warn("[feedback] gancho do chat falhou (ignorado):", e instanceof Error ? e.message : e);
+  }
+}
+
+/** O GANCHO DO CHAMADO: todo chamado vira feedback; o de "melhoria" é o chamado direto no Dev. */
+export async function capturarFeedbackDoChamado(a: {
+  chamadoId: string;
+  userId: string;
+  texto: string;
+  categoria: string;
+  codigo?: string | null;
+  projectId?: string | null;
+  postId?: string | null;
+  videoId?: string | null;
+  pagina?: string | null;
+}): Promise<void> {
+  try {
+    await capturarFeedback({
+      origem: "chamado",
+      userId: a.userId,
+      texto: a.texto,
+      projectId: a.projectId ?? null,
+      postId: a.postId ?? null,
+      videoJobId: a.videoId ?? null,
+      chamadoId: a.chamadoId,
+      contexto: {
+        tipoDePeca: "chamado",
+        categoriaDoChamado: a.categoria,
+        codigo: a.codigo ?? null,
+        oQueAPlataformaFez: a.pagina ? [`tela: ${a.pagina}`] : null,
+        modulos: a.videoId ? modulosDoTipoDeCard("video_clip") : a.postId ? modulosDoTipoDeCard("media") : ["app/(app)", "lib/suporte"],
+      },
+    });
+  } catch (e) {
+    console.warn("[feedback] gancho do chamado falhou (ignorado):", e instanceof Error ? e.message : e);
+  }
+}

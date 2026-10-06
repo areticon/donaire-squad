@@ -1849,3 +1849,68 @@ model DesignDoProjeto {
   @@index([projectId, tipo, updatedAt])
   @@map("designs_do_projeto")
 }
+
+/// UM FEEDBACK DO CLIENTE SOBRE O PRODUTO (06/10/2026), pedido do Bruno: o chat
+/// do card e o chamado de suporte retroalimentam a plataforma. Cada pedido do
+/// chat (mensagem do cliente, o que a plataforma respondeu e o resultado) e
+/// cada chamado viram uma linha aqui, classificada pelo JEV (nunca pelo
+/// Claude) em erro do produto, pedido de gosto, atendido como pedido ou
+/// dúvida de uso, e agrupada com os parecidos para contar "cinco clientes
+/// esta semana pediram isso". Ver lib/feedback.
+model FeedbackDoProduto {
+  id             String    @id @default(cuid())
+  projectId      String?
+  userId         String
+  cardId         String?
+  postId         String?
+  videoJobId     String?
+  chamadoId      String?
+  /// "chat" | "chamado"
+  origem         String
+  /// O que o cliente escreveu, como escreveu.
+  texto          String    @db.Text
+  /// Tipo de peça, estilo, o que a plataforma fez e respondeu, o que o cliente
+  /// tinha aprovado antes (a linha do roteiro, a cor da marca): o estado que o
+  /// JEV lê para classificar. Sem nome de cliente.
+  contexto       Json?
+  /// "erro_do_produto" | "pedido_de_gosto" | "atendido_como_pedido" | "duvida_de_uso" | null (ainda não classificado)
+  classificacao  String?
+  /// A confiança do JEV na classificação (0 a 1), para o painel mostrar a dúvida.
+  confianca      Float?
+  grupoId        String?
+  criadoEm       DateTime  @default(now())
+  classificadoEm DateTime?
+
+  grupo GrupoDeFeedback? @relation(fields: [grupoId], references: [id], onDelete: SetNull)
+
+  @@index([criadoEm])
+  @@index([grupoId, criadoEm])
+  @@index([classificacao, criadoEm])
+  @@index([userId, criadoEm])
+  @@map("feedbacks_do_produto")
+}
+
+/// UM GRUPO DE FEEDBACKS PARECIDOS (06/10/2026): "mesmo problema de X". O JEV
+/// junta cada feedback novo a um grupo aberto ou abre um novo; o painel do
+/// admin conta clientes e ocorrências por grupo; o Bruno aprova a melhoria
+/// ("aprovado") ou descarta ("nao_e_produto"); com a aprovação, o Davi Dev
+/// escreve o briefing de desenvolvimento e ele fica gravado aqui.
+model GrupoDeFeedback {
+  id            String    @id @default(cuid())
+  /// Uma linha que resume o problema, tirada do primeiro feedback (sem nome).
+  titulo        String
+  /// A classificação do grupo: a do primeiro feedback, confirmada pelos seguintes.
+  classificacao String
+  /// "aberto" | "aprovado" | "nao_e_produto" | "feito"
+  situacao      String    @default("aberto")
+  briefing      String?   @db.Text
+  aprovadoPorId String?
+  aprovadoEm    DateTime?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  feedbacks FeedbackDoProduto[]
+
+  @@index([situacao, atualizadoEm])
+  @@map("feedbacks_grupos")
+}

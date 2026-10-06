@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { X, Loader2, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AGENTES } from "@/lib/squad/estado-do-squad";
+import { AGENTES, AGENTE_DEV } from "@/lib/squad/estado-do-squad";
 import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
 import type { VereditoDaVera } from "@/lib/squad/veredito";
 import type { EtapaDoParecer } from "@/lib/squad/parecer-da-peca";
@@ -118,7 +118,9 @@ export function FichaDoAgente({
 }) {
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const fixo = AGENTES.find((a) => a.id === agentId);
+  // O Davi Dev (06/10) não está em AGENTES: trabalha para a Demandou, em todo projeto.
+  const fixo = AGENTES.find((a) => a.id === agentId) ?? (agentId === AGENTE_DEV.id ? AGENTE_DEV : undefined);
+  const ehODev = agentId === AGENTE_DEV.id;
 
   useEffect(() => {
     let vivo = true;
@@ -199,6 +201,21 @@ export function FichaDoAgente({
                   {falaAtual}
                 </span>
               </span>
+            </div>
+          )}
+
+          {/* O Dev trabalha para a Demandou, não para este projeto (06/10). */}
+          {ehODev && (
+            <div
+              className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
+              style={{ borderColor: "color-mix(in srgb, #0f766e 45%, transparent)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+            >
+              <span className="font-bold" style={{ color: "#0f766e" }}>
+                Trabalha para a Demandou.
+              </span>{" "}
+              Não entra na sua campanha nem escreve peça: ele lê o que você e os outros clientes pedem no chat das peças e nos chamados,
+              separa o que é erro do produto, e leva para o time melhorar a plataforma para todo mundo. Para falar com ele, abra um chamado
+              em &quot;Falar com o Dev (melhoria do produto)&quot;.
             </div>
           )}
 

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { AGENTES, donoDaPeca } from "@/lib/squad/estado-do-squad";
+import { AGENTES, AGENTE_DEV, donoDaPeca } from "@/lib/squad/estado-do-squad";
 import { fichaDoAgente, ID_ANTIGO } from "@/lib/squad/definicoes-dos-agentes";
 import { parecerDosCards } from "@/lib/squad/parecer-da-peca";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
@@ -25,7 +25,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id, agentId } = await params;
-  const fixo = AGENTES.find((a) => a.id === agentId);
+  // O Davi Dev (06/10) não está em AGENTES: trabalha para a Demandou, em todo projeto, sem peça.
+  const fixo = AGENTES.find((a) => a.id === agentId) ?? (agentId === AGENTE_DEV.id ? AGENTE_DEV : undefined);
   if (!fixo) return NextResponse.json({ error: "Agente desconhecido" }, { status: 404 });
 
   const project = await prisma.project.findUnique({ where: { id }, select: { id: true, userId: true } });

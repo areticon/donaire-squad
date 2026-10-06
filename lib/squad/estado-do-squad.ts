@@ -102,6 +102,15 @@ export function arteDoAgente(id: string): { avatar: string; avatarPequeno: strin
 }
 
 /**
+ * O DEV DA DEMANDOU (06/10/2026). Fora de `AGENTES` de propósito: a lista
+ * acima é o squad do CLIENTE (ordem do bastão, mesa comprida, project_agents,
+ * landing). O Davi trabalha para a plataforma: aparece no escritório de todo
+ * projeto, numa baia própria com a placa da Demandou, sem peça e sem bastão.
+ * Ver lib/squad/definicoes-dos-agentes.ts (FICHA_DO_DEV) e lib/feedback.
+ */
+export const AGENTE_DEV: Agente = { id: "davi-dev", artigo: "O", nome: "Davi Dev", primeiroNome: "Davi", papel: "Dev da Demandou", cor: "#0f766e", cardTypes: [] };
+
+/**
  * Acha o agente pelo id, aceitando os ids antigos que ainda circulam em peça
  * gravada e em tela velha ("daniela-design" era a Diana antes do nome atual, e
  * "tiago-twitter" era o X, que desde 29/09 é do Xavier).
@@ -109,6 +118,7 @@ export function arteDoAgente(id: string): { avatar: string; avatarPequeno: strin
 export function agentePorId(id: string | null | undefined): Agente | undefined {
   if (!id) return undefined;
   const normalizado = ID_ANTIGO[id] ?? id;
+  if (normalizado === AGENTE_DEV.id) return AGENTE_DEV;
   return AGENTES.find((a) => a.id === normalizado);
 }
 
