@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/server";
+import { debitoIsento } from "@/lib/credits/isencao";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -91,7 +92,7 @@ export default async function GemeoPage({
           cadastro: cadastroParaTela(cadastro),
           videos: videos.map(videoParaTela),
           saldo: conta?.creditsBalance ?? 0,
-          acessoInterno: conta?.role === "admin",
+          acessoInterno: debitoIsento(conta?.role),
           nome: usuario?.name ?? "",
           projeto: project.name,
           gerador: geradorDoCadastro(cadastro),

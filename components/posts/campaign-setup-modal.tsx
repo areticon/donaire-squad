@@ -2895,7 +2895,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                           {/* Membro da equipe não compra (01/10): sem o botão. */}
                           {!saldos?.dono && (
                             <a
-                              href="/billing"
+                              href="/settings?comprar=1#comprar-creditos"
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex-1 text-center text-xs font-semibold py-2 rounded-lg transition-all"

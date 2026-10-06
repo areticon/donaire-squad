@@ -4,7 +4,8 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { Users, Mail, Trash2, RotateCw, Pencil, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ACESSO_EXTRA, type EquipeNaTela, type MembroNoPainel, type PainelDaEquipe } from "@/lib/equipe/regras";
+import { ACESSO_EXTRA, TETO_DE_CREDITOS, TETO_DE_GRAVACOES, type EquipeNaTela, type MembroNoPainel, type PainelDaEquipe } from "@/lib/equipe/regras";
+import { ajudaDoTetoDeCreditos } from "@/lib/credits/o-que-rende";
 
 /**
  * A ABA EQUIPE das Configurações (01/10/2026).
@@ -60,8 +61,8 @@ export function Equipe({ inicial }: { inicial: EquipeNaTela }) {
           O que você gera sai da cota da conta da equipe. Plano, cobrança e convites ficam com quem administra a conta.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Uso rotulo="Seus créditos neste mês" usado={m.consumo.creditos} teto={m.tetoCreditos} />
-          <Uso rotulo="Suas gravações neste mês" usado={m.consumo.gravacoes} teto={m.tetoGravacoes} />
+          <Uso rotulo="Créditos que você usou neste mês" usado={m.consumo.creditos} teto={m.tetoCreditos} ajuda={ajudaDoTetoDeCreditos()} />
+          <Uso rotulo="Vídeos gravados que você enviou neste mês" usado={m.consumo.gravacoes} teto={m.tetoGravacoes} ajuda={TETO_DE_GRAVACOES.ajuda} />
         </div>
       </section>
     );
@@ -69,7 +70,7 @@ export function Equipe({ inicial }: { inicial: EquipeNaTela }) {
   return <PainelDoDono inicial={inicial} />;
 }
 
-function Uso({ rotulo, usado, teto }: { rotulo: string; usado: number; teto: number | null }) {
+function Uso({ rotulo, usado, teto, ajuda }: { rotulo: string; usado: number; teto: number | null; ajuda: string }) {
   return (
     <div className="rounded-lg border p-3 space-y-1.5" style={{ borderColor: "var(--border)" }}>
       <p className="text-xs" style={{ color: "var(--text-muted)" }}>{rotulo}</p>
@@ -79,6 +80,7 @@ function Uso({ rotulo, usado, teto }: { rotulo: string; usado: number; teto: num
       </p>
       {teto !== null && <Barra usado={usado} total={teto} />}
       {teto === null && <p className="text-xs" style={{ color: "var(--text-muted)" }}>Sem teto próprio: vale a cota da conta.</p>}
+      <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>{ajuda}</p>
     </div>
   );
 }
@@ -118,13 +120,17 @@ function CamposDoMembro({ f, setF, projetos }: { f: Form; setF: (f: Form) => voi
         )}
       </fieldset>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* A UNIDADE DE CADA TETO (06/10): o que o servidor conta, dito no
+            rótulo e numa linha de ajuda. Ver TETO_DE_GRAVACOES em lib/equipe/regras.ts. */}
         <label className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
-          <span>Teto de gravações por mês (opcional)</span>
-          <input inputMode="numeric" value={f.tetoGravacoes} onChange={(e) => setF({ ...f, tetoGravacoes: e.target.value.replace(/\D/g, "") })} placeholder="Sem teto" className={campo} style={entrada} />
+          <span className="font-medium" style={{ color: "var(--text-primary)" }}>{TETO_DE_GRAVACOES.rotulo}, opcional</span>
+          <input inputMode="numeric" aria-describedby="ajuda-teto-gravacoes" value={f.tetoGravacoes} onChange={(e) => setF({ ...f, tetoGravacoes: e.target.value.replace(/\D/g, "") })} placeholder="Sem teto" className={campo} style={entrada} />
+          <span id="ajuda-teto-gravacoes" className="block text-[11px] leading-snug">{TETO_DE_GRAVACOES.ajuda}</span>
         </label>
         <label className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
-          <span>Teto de créditos por mês (opcional)</span>
-          <input inputMode="numeric" value={f.tetoCreditos} onChange={(e) => setF({ ...f, tetoCreditos: e.target.value.replace(/\D/g, "") })} placeholder="Sem teto" className={campo} style={entrada} />
+          <span className="font-medium" style={{ color: "var(--text-primary)" }}>{TETO_DE_CREDITOS.rotulo}, opcional</span>
+          <input inputMode="numeric" aria-describedby="ajuda-teto-creditos" value={f.tetoCreditos} onChange={(e) => setF({ ...f, tetoCreditos: e.target.value.replace(/\D/g, "") })} placeholder="Sem teto" className={campo} style={entrada} />
+          <span id="ajuda-teto-creditos" className="block text-[11px] leading-snug">{ajudaDoTetoDeCreditos()}</span>
         </label>
       </div>
     </div>
@@ -193,7 +199,7 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
             <Barra usado={Math.max(0, c.creditosDoCiclo - c.creditos)} total={c.creditosDoCiclo} />
           </div>
           <div className="rounded-lg border p-3 space-y-1.5" style={{ borderColor: "var(--border)" }}>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Gravações da conta neste mês</p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Vídeos gravados enviados pela conta neste mês</p>
             <p className="text-lg font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
               {n(c.gravacoesUsadas)} <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>de {n(c.gravacoesDoCiclo)}</span>
             </p>
@@ -203,7 +209,7 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
         <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
           Todos da equipe gastam desta cota. Quando ela acaba, ninguém gera até a renovação{c.renovaEm ? ` (por volta de ${dia(c.renovaEm)})` : ""} ou uma recarga.
           Precisa de mais gente? Cada acesso extra custa R$ {ACESSO_EXTRA.precoMensal} por mês e soma {n(ACESSO_EXTRA.creditosPorMes)} créditos e{" "}
-          {ACESSO_EXTRA.gravacoesPorMes} gravação por mês à cota; peça ao time da Demandou.
+          {ACESSO_EXTRA.gravacoesPorMes} vídeo gravado por mês à cota; peça ao time da Demandou.
         </p>
       </section>
 
@@ -259,8 +265,8 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
             <thead>
               <tr className="text-left text-xs" style={{ color: "var(--text-muted)" }}>
                 <th className="pb-2 pr-3 font-medium">Pessoa</th>
-                <th className="pb-2 pr-3 font-medium">Créditos</th>
-                <th className="pb-2 pr-3 font-medium">Gravações</th>
+                <th className="pb-2 pr-3 font-medium">{TETO_DE_CREDITOS.curto}</th>
+                <th className="pb-2 pr-3 font-medium" title={TETO_DE_GRAVACOES.ajuda}>{TETO_DE_GRAVACOES.curto}</th>
                 <th className="pb-2 font-medium">Projetos</th>
               </tr>
             </thead>
@@ -288,6 +294,9 @@ function PainelDoDono({ inicial }: { inicial: PainelDaEquipe }) {
         {eq.membros.length === 0 && (
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>Ninguém na equipe ainda. Convide acima.</p>
         )}
+        <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+          {TETO_DE_GRAVACOES.curto}: {TETO_DE_GRAVACOES.ajuda.charAt(0).toLowerCase() + TETO_DE_GRAVACOES.ajuda.slice(1)} {TETO_DE_CREDITOS.curto}: o que saiu do saldo de produção, já descontado o que voltou em estorno.
+        </p>
       </section>
     </div>
   );

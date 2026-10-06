@@ -468,7 +468,7 @@ function SaldoNoMenu({ collapsed }: { collapsed: boolean }) {
     <Link
       // Membro da equipe (01/10, acabamento) não compra: o atalho leva ao
       // consumo dele na aba Equipe, e o título diz de quem é o saldo.
-      href={saldos.dono ? "/settings?aba=equipe" : "/settings"}
+      href={saldos.dono ? "/settings?aba=equipe" : baixo ? "/settings?comprar=1#comprar-creditos" : "/settings"}
       title={
         saldos.dono
           ? saldos.plano <= 0

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { SaldoInsuficiente } from "@/lib/credits";
 import { contaPagante, nomeDoDono } from "@/lib/equipe/conta";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
+import { debitoIsento } from "@/lib/credits/isencao";
 
 /**
  * A CARTEIRA DE VÍDEO, separada da carteira do plano.
@@ -57,13 +58,14 @@ export async function debitarVideo(args: {
   return prisma.$transaction(async (tx) => {
     // Quem paga é a conta (o dono, quando quem pediu é membro). Ver lib/equipe/conta.ts (01/10).
     const { contaId: userId, autorId } = await contaPagante(args.userId, tx);
-    // Admin é acesso interno: o trabalho acontece, o extrato registra a linha
-    // de valor zero e o saldo não se move. Mesma regra da carteira do plano.
+    // Admin sem débito só com ADMIN_SEM_DEBITO=1 (06/10): o trabalho acontece,
+    // o extrato registra a linha de valor zero e o saldo não se move. Mesma
+    // regra da carteira do plano (lib/credits/isencao.ts).
     const dono = await tx.user.findUnique({
       where: { id: userId },
       select: { role: true, videoCredits: true },
     });
-    if (dono?.role === "admin") {
+    if (dono && debitoIsento(dono.role)) {
       const t = await tx.creditTransaction.create({
         data: {
           userId,

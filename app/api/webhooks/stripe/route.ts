@@ -73,6 +73,19 @@ export async function POST(req: NextRequest) {
          * A QUANTIDADE VEM DO METADATA, e nao do valor pago: se um dia houver
          * cupom, o cliente continua recebendo o que o pacote prometeu.
          */
+        /**
+         * PACOTE DE CRÉDITO AVULSO (06/10): pagamento único que enche o saldo de
+         * produção. Sai cedo pelo mesmo motivo da compra de vídeo (não é
+         * assinatura nem passo de funil). Idempotente pelo id da sessão, dentro
+         * de lib/credits. A receita entra sozinha no painel: é uma cobrança
+         * paga no Stripe, que é o que lib/admin/receita-real.ts soma.
+         */
+        if (session.metadata?.tipo === "pacote_de_creditos") {
+          const { creditarPacoteDaSessao } = await import("@/lib/credits/pacotes-de-credito-servidor");
+          await creditarPacoteDaSessao(session);
+          break;
+        }
+
         if (session.metadata?.tipo === "creditos_de_video" && userId) {
           const creditos = Number(session.metadata.creditos ?? 0);
           if (creditos > 0 && !(await jaCreditado("compra_video", session.id))) {
@@ -132,6 +145,12 @@ export async function POST(req: NextRequest) {
         if (session.metadata?.tipo === "contrato") {
           const { pagamentoDoStripe } = await import("@/lib/contratos/pagamento");
           await pagamentoDoStripe(session);
+        }
+        // O pacote só aceita cartão hoje; se um meio assíncrono entrar, o
+        // crédito sai aqui, quando o pagamento compensar (06/10).
+        if (session.metadata?.tipo === "pacote_de_creditos") {
+          const { creditarPacoteDaSessao } = await import("@/lib/credits/pacotes-de-credito-servidor");
+          await creditarPacoteDaSessao(session);
         }
         break;
       }

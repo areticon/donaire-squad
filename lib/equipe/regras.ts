@@ -64,10 +64,37 @@ function plural(n: number, um: string, varios: string): string {
   return n === 1 ? um : varios;
 }
 
-/** A frase do teto de gravações do membro, aprovada no pedido de 01/10. */
+/**
+ * A UNIDADE DO TETO DE GRAVAÇÕES, escrita uma vez só (06/10).
+ *
+ * O que o servidor conta, conferido no código antes de escrever a frase: cada
+ * envio aceito grava UMA linha `gravacao_enviada` no extrato da conta, com o
+ * membro como autor (`registrarGravacao` em lib/limites-do-plano.ts), e o teto
+ * do membro conta essas linhas no ciclo (`consumoDoMembro`). Então:
+ *  - cada vídeo que a pessoa sobe conta 1, de qualquer duração (a duração tem
+ *    teto próprio, o do plano, e pesa nos créditos, não aqui);
+ *  - os cortes que saem do vídeo não contam: eles são créditos;
+ *  - vídeo cancelado depois de enviado continua contando: a linha do extrato
+ *    não é apagada, e é de propósito (a esteira já rodou o caro);
+ *  - o vídeo do gêmeo digital não conta no teto do membro: ele entra na esteira
+ *    sem passar por `registrarGravacao` e é pago em créditos.
+ */
+export const TETO_DE_GRAVACOES = {
+  rotulo: "Vídeos gravados por mês (envios)",
+  ajuda: "Cada vídeo que a pessoa sobe conta 1, de qualquer duração. Os cortes que saem dele não contam, e um vídeo cancelado depois de enviado continua contando.",
+  /** O nome curto da coluna e do consumo: "vídeos enviados". */
+  curto: "Vídeos enviados",
+} as const;
+
+export const TETO_DE_CREDITOS = {
+  rotulo: "Créditos por mês",
+  curto: "Créditos usados",
+} as const;
+
+/** A frase do teto de gravações do membro, aprovada no pedido de 01/10 e com a unidade de 06/10. */
 export function fraseDoTetoDeGravacoes(usadas: number, teto: number): string {
   const u = Math.min(usadas, teto);
-  return `Você já usou ${u} de ${teto} ${plural(teto, "gravação", "gravações")} que a sua equipe liberou para você este mês.`;
+  return `Você já enviou ${u} de ${teto} ${plural(teto, "vídeo gravado", "vídeos gravados")} que a sua equipe liberou para você este mês. Cada vídeo enviado conta 1, de qualquer duração.`;
 }
 
 /** A frase do teto de créditos do membro, no mesmo molde. */

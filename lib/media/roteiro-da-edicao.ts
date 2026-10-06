@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { debitoIsento } from "@/lib/credits/isencao";
 import { contaDoPlano } from "@/lib/equipe/conta";
 import { prisma } from "@/lib/db/prisma";
 import { debitar } from "@/lib/credits";
@@ -968,7 +969,7 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
       abertura: creditosDaAbertura(r, precoAntigo),
       novaIdeia: CREDITOS_POR_NOVA_IDEIA,
       saldo: dono?.creditsBalance ?? null,
-      interno: dono?.role === "admin",
+      interno: debitoIsento(dono?.role),
     },
     maxCortes: MAX_CORTES_APROVADOS,
     aprovadoEm: r?.aprovadoEm ?? null,

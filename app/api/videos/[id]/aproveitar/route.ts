@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { NextRequest, NextResponse, after } from "next/server";
+import { debitoIsento } from "@/lib/credits/isencao";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { projetoVisivel } from "@/lib/equipe/conta";
@@ -39,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
   ]);
   // Acesso interno não tem crédito debitado (12/09): a janela diz isso em vez do saldo.
-  return NextResponse.json({ ...existe, saldo: disponivel, acessoInterno: eu?.role === "admin" });
+  return NextResponse.json({ ...existe, saldo: disponivel, acessoInterno: debitoIsento(eu?.role) });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
