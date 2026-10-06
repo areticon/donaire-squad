@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
 import type { Trecho } from "@/lib/media/select-clips";
+import { trechosParaCortar } from "@/lib/media/decisao-dos-cortes";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
@@ -82,12 +83,14 @@ export async function POST(
     );
   }
 
-  const trechos = (video.clips as unknown as Trecho[]) ?? [];
   // A PORTA DO ROTEIRO (30/09): com a tela de roteiro ligada, nada corta sem
   // o cliente ter aprovado. Vídeo que chegou a "selected" antes desta regra
   // (sem roteiro nenhum) segue como antes, para não travar quem estava no
   // meio da esteira no dia da publicação.
   const roteiro = await lerRoteiroDoVideo(id);
+  // ZERO CORTES APROVADO É ZERO CORTES (06/10): com a decisão "só o completo"
+  // gravada, a lista ao worker vai vazia mesmo que `clips` tenha algo.
+  const trechos = trechosParaCortar((video.clips as unknown as Trecho[]) ?? [], roteiro);
   // SÓ O COMPLETO (02/10): o roteiro aprovado com zero cortes manda o worker
   // produzir só o vídeo completo (a lista de trechos vai vazia). Sem roteiro
   // aprovado, lista vazia continua sendo erro.

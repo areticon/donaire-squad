@@ -81,6 +81,7 @@ import type { ResumoDaRevisao } from "@/lib/media/revisao-tipos";
 import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { falaDoBloco } from "@/lib/media/montagem-do-completo";
+import { listaDaAprovacao } from "@/lib/media/decisao-dos-cortes";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -1339,12 +1340,20 @@ async function refazerTextos(v: VideoDoRoteiro): Promise<void> {
 /** Até quanto o vídeo já é curto o bastante para ir inteiro, sem cortes (02/10). */
 export const VIDEO_CURTO_SEG = 90;
 
-export async function aprovarRoteiro(videoId: string, userId: string, escolhidos: number[]): Promise<{ cobrado: number; cortes: number }> {
+export async function aprovarRoteiro(
+  videoId: string,
+  userId: string,
+  escolhidos: number[],
+  opcoes: { soCompleto?: boolean } = {}
+): Promise<{ cobrado: number; cortes: number; soCompleto: boolean }> {
   const v = await videoDoDono(videoId, userId);
   const r = await lerRoteiroDoVideo(videoId);
   if (!r) throw new RecusaDoRoteiro("Este vídeo ainda não tem roteiro.");
   const trechos = (v.clips as TrechoDoRoteiro[] | null) ?? [];
-  const lista = [...new Set(escolhidos)].filter((i) => Number.isInteger(i) && i >= 0 && i < trechos.length).sort((a, b) => a - b);
+  // ZERO CORTES APROVADO É ZERO CORTES (06/10): com `soCompleto` o pedido
+  // manda e a lista é vazia, venha o que vier em `escolhidos`.
+  const lista = listaDaAprovacao(escolhidos, Boolean(opcoes.soCompleto), trechos.length);
+  const soCompleto = lista.length === 0;
   // APROVAR SÓ O VÍDEO COMPLETO (02/10, pedido do Bruno: o vídeo do gêmeo de
   // 52 s não pede corte nenhum). Zero cortes vale: cobra só a parte do
   // completo e a esteira monta só ele (o cortar-callback trata a lista vazia).
@@ -1396,6 +1405,9 @@ export async function aprovarRoteiro(videoId: string, userId: string, escolhidos
   await gravarRoteiroDoVideo(videoId, {
     ...r,
     aprovadoEm: agora(),
+    // A decisão explícita: nenhum passo deduz mais "zero cortes" de `clips` vazio.
+    cortesAprovados: lista,
+    soCompleto,
     descartados,
     creditos: { ...(r.creditos ?? {}), aprovacao: quantidade },
   });
@@ -1413,5 +1425,5 @@ export async function aprovarRoteiro(videoId: string, userId: string, escolhidos
       creditsCharged: { increment: quantidade },
     },
   });
-  return { cobrado: quantidade, cortes: lista.length };
+  return { cobrado: quantidade, cortes: lista.length, soCompleto };
 }

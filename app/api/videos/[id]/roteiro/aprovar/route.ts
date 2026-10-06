@@ -17,9 +17,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  const corpo = (await req.json().catch(() => ({}))) as { escolhidos?: number[] };
+  const corpo = (await req.json().catch(() => ({}))) as { escolhidos?: number[]; soCompleto?: boolean };
   try {
-    const r = await aprovarRoteiro(id, userId, Array.isArray(corpo.escolhidos) ? corpo.escolhidos : []);
+    // "Aprovar só o vídeo completo" manda `soCompleto: true`: zero cortes, venha o que vier na lista (06/10).
+    const r = await aprovarRoteiro(id, userId, Array.isArray(corpo.escolhidos) ? corpo.escolhidos : [], { soCompleto: corpo.soCompleto === true });
     if (process.env.ROTEIRO_NAO_DESPACHAR !== "1") after(() => despacharPasso(id, "cortar"));
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {

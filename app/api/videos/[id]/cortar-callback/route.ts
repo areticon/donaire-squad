@@ -7,6 +7,8 @@ import type { Trecho } from "@/lib/media/select-clips";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { anexarCompletoAoQuadro } from "@/lib/media/completo-no-quadro";
 import { concluirSoCompleto } from "@/lib/media/so-completo";
+import { soCompletoAprovado } from "@/lib/media/decisao-dos-cortes";
+import { lerDecisaoDosCortes } from "@/lib/media/decisao-dos-cortes-banco";
 import { despacharPasso } from "@/lib/media/piloto-do-servidor";
 import { apagarMidias, urlsDaMidia } from "@/lib/media/faxina";
 import { marcarAberturasNaFila } from "@/lib/media/higgsfield-nos-cortes";
@@ -371,7 +373,9 @@ export async function POST(
   // o completo chegar, para nenhuma tela oferecer "Escrever os posts" de
   // cortes que não existem. Com o completo, o vídeo fica pronto, entra no
   // quadro (o card do completo e o rascunho do YouTube) e na edição.
-  if (!((video.clips as unknown as Trecho[]) ?? []).length) {
+  // Desde 06/10 vale também a decisão gravada (`roteiro.soCompleto`): com ela,
+  // trecho que apareceu em `clips` não vira corte nem card.
+  if (!((video.clips as unknown as Trecho[]) ?? []).length || soCompletoAprovado(await lerDecisaoDosCortes(id).catch(() => null))) {
     const r = await concluirSoCompleto(id, video, corpo);
     if (r.disparar) {
       after(() => despacharPasso(id, "capas-do-completo"));

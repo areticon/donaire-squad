@@ -16,6 +16,8 @@ import { selecionarTrechos, SemTrechoAproveitavel } from "@/lib/media/select-cli
 import { estornarPrimeiraParte, recobrarSeEstornado } from "@/lib/credits/estorno-do-roteiro";
 import { MAX_TENTATIVAS } from "@/lib/media/video-state";
 import { cobrarPrimeiraParte, lerRoteiroDoVideo, roteiroLigado } from "@/lib/media/roteiro-da-edicao";
+import { soCompletoAprovado } from "@/lib/media/decisao-dos-cortes";
+import { lerDecisaoDosCortes } from "@/lib/media/decisao-dos-cortes-banco";
 import { SaldoInsuficiente } from "@/lib/credits";
 import { diasDeVideoCurto, normalizarSemana, planoDoRun } from "@/lib/media/semana-do-video";
 
@@ -80,6 +82,15 @@ export async function POST(
       { error: "Esta etapa já falhou vezes demais. Fale com o suporte antes de tentar outra vez." },
       { status: 409 }
     );
+  }
+
+  // ZERO CORTES APROVADO É ZERO CORTES (06/10): o vídeo aprovado "só o
+  // completo" que falhou depois cai aqui na retomada (lista vazia parece
+  // "ainda não escolhido"). Não escolhe nada: segue para o corte, que manda
+  // ao worker só o completo.
+  if (soCompletoAprovado(await lerDecisaoDosCortes(id).catch(() => null))) {
+    after(() => despacharPasso(id, "cortar"));
+    return NextResponse.json({ ok: true, soCompleto: true, trechos: [] });
   }
 
   const transcript = video.transcript as {

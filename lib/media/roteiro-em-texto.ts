@@ -217,6 +217,14 @@ export type RoteiroDoVideo = {
   /** Custo de IA desta etapa, para o relatório. */
   custoUsd?: number;
   aprovadoEm?: string | null;
+  /**
+   * A decisão gravada na aprovação (06/10): os índices aprovados (no `clips`
+   * de antes da aprovação) e a marca de "só o vídeo completo". Com
+   * `soCompleto`, nenhum passo escolhe, corta ou põe corte no quadro
+   * (lib/media/decisao-dos-cortes.ts).
+   */
+  cortesAprovados?: number[];
+  soCompleto?: boolean;
   /** Os candidatos que o cliente NÃO escolheu, guardados fora de `clips` na aprovação. */
   descartados?: unknown[];
   creditos?: { roteiro?: number; aprovacao?: number; novasIdeias?: number };
