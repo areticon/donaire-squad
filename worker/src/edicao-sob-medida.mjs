@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, readdir, rm, writeFile, copyFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, mkdir, readdir, rm, writeFile, copyFile, link, rename, stat, statfs, utimes } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { aoCancelarOTrabalho, emendar, ffprobe, fpsDe, processoDoTrabalho, rodar, trabalhoCancelado } from "./ffmpeg.mjs";
@@ -30,6 +32,10 @@ import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
  *
  * Em lotes de ~60 s, como o completo editado (worker/src/montagem-do-completo.mjs).
  * `escala` < 1 faz a PRÉVIA (metade da resolução) que o revisor com visão olha.
+ *
+ * Desde 05/10 o lote é CONTADO EM QUADROS (corte por índice, relógio pela
+ * contagem, conferência da soma no fim): ver o comentário em `grafoDoLote`.
+ * Foi a boca fora de hora do completo de cmuvv0jje, um quadro perdido por lote.
  */
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +50,59 @@ const PASTA_DAS_FONTES = resolve(AQUI, "..", "fontes");
 const LOTE_SEG_FINAL = Math.max(10, Number(process.env.SOB_MEDIDA_LOTE_SEG ?? 30));
 const LOTE_SEG_PREVIA = 60;
 const PAR = (v) => Math.max(2, Math.round(v / 2) * 2);
+
+/**
+ * Quantos quadros de vídeo um arquivo tem (05/10): pelos PACOTES, sem
+ * decodificar (num .mp4 só de vídeo, um pacote é um quadro). É a conta que
+ * fecha o lote e o vídeo emendado contra o que o grafo prometeu.
+ */
+export function contarQuadros(arquivo) {
+  return new Promise((resolve, reject) => {
+    const p = spawn("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", arquivo]);
+    let s = "";
+    p.stdout.on("data", (d) => (s += d));
+    p.on("error", reject);
+    p.on("close", (c) => {
+      const n = Number(String(s).trim());
+      if (c !== 0 || !Number.isFinite(n)) return reject(new Error(`ffprobe não contou os quadros de ${basename(arquivo)}`));
+      resolve(n);
+    });
+  });
+}
+/**
+ * O CACHE DAS CAMADAS DA PRÉVIA (05/10). O completo de 17 min de
+ * cmuums24z passou por TRÊS prévias (rodadas 0, 1 e 2 do juiz) e cada uma
+ * desenhou as ~16 mil camadas de novo no Chrome (~15 min por prévia, 3/4
+ * disso no Remotion), embora o conserto entre uma rodada e outra troque umas
+ * 20 a 30 peças de 100. O quadro condensado só depende do instante, das
+ * camadas visíveis nele (na ordem) e do que vale para todos (tamanho, tema,
+ * logo, passada, escala): Camadas.tsx desenha `contexto(c, t)` e nada mais.
+ * Então cada quadro ganha uma chave com isso, e a prévia seguinte do mesmo
+ * vídeo só leva ao Chrome os trechos que mudaram. Só na prévia (o final é um
+ * só, em resolução cheia, e o disco não comporta guardar 16 mil quadros de
+ * 1080p); a pasta de cada vídeo sai depois de SOB_MEDIDA_CACHE_HORAS sem uso.
+ */
+const VERSAO_DO_CACHE = 1;
+const RAIZ_DO_CACHE = process.env.SOB_MEDIDA_CACHE_DIR || join(tmpdir(), "camadas-cache");
+const HORAS_DO_CACHE = Math.max(0.5, Number(process.env.SOB_MEDIDA_CACHE_HORAS) || 4);
+/** Disco livre mínimo para gravar no cache (o render em si precisa do resto). */
+const MB_LIVRES_PARA_O_CACHE = 6000;
+const cacheLigado = () => process.env.SOB_MEDIDA_CACHE !== "0";
+/** Inserções baixadas e normalizadas ao mesmo tempo (cada ffmpeg da normalização fica abaixo de 0,5 GB). */
+const MIDIAS_JUNTAS = Math.max(1, Math.min(8, Number(process.env.SOB_MEDIDA_MIDIAS_JUNTAS) || 4));
+
+/** Roda `fn` em cada item, no máximo `n` de cada vez. */
+async function emParalelo(itens, n, fn) {
+  let proximo = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, itens.length) }, async () => {
+      while (proximo < itens.length) {
+        if (trabalhoCancelado()) return;
+        await fn(itens[proximo++]);
+      }
+    })
+  );
+}
 
 // ─────────────────────────────── 1. a linha condensada ───────────────────────────────
 
@@ -140,28 +199,107 @@ export function transicoesDaEdicao(ed) {
 const passesDa = (c) => (Array.isArray(c.passes) && c.passes.length ? c.passes : ["frente"]);
 
 /**
+ * A chave de cada quadro condensado (o cache da prévia, acima): o instante
+ * EXATO que Camadas.tsx calcula (`t0 + k / fps`, a mesma conta de
+ * `tempoDoQuadro`), as camadas visíveis nele na ordem de desenho (as mesmas
+ * de `contexto`: de <= t < ate) e o `comum` (tamanho, tema, logo, passada,
+ * escala). Devolve uma chave por quadro, na ordem condensada.
+ */
+export function chavesDosQuadros(cs, trechos, fps, comum) {
+  const raiz = createHash("sha1").update(JSON.stringify({ v: VERSAO_DO_CACHE, ...comum })).digest("hex");
+  const daCamada = cs.map((c) => createHash("sha1").update(JSON.stringify(c)).digest("hex"));
+  const chaves = [];
+  for (const tr of trechos) {
+    for (let k = 0; k < tr.n; k++) {
+      const t = tr.t0 + k / fps;
+      const h = createHash("sha1").update(raiz).update(String(t));
+      cs.forEach((c, i) => {
+        if (t >= c.de && t < c.ate) h.update(daCamada[i]);
+      });
+      chaves.push(h.digest("hex"));
+    }
+  }
+  return chaves;
+}
+
+/** Hardlink (mesmo disco, sem cópia); sem suporte, cópia. Destino existente fica. */
+async function ligarArquivo(de, para) {
+  try {
+    await link(de, para);
+  } catch (e) {
+    if (e?.code === "EEXIST") return;
+    await copyFile(de, para);
+  }
+}
+
+/** Disco livre em MB onde fica o cache (null se não der para medir). */
+async function discoLivreMb(dir) {
+  try {
+    const s = await statfs(dir);
+    return Math.round((s.bavail * s.bsize) / 1048576);
+  } catch {
+    return null;
+  }
+}
+
+/** Apaga as pastas de cache de vídeo que ninguém usa há mais de HORAS_DO_CACHE. */
+async function limparCacheVelho() {
+  try {
+    const limite = Date.now() - HORAS_DO_CACHE * 3600_000;
+    for (const nome of await readdir(RAIZ_DO_CACHE)) {
+      const dir = join(RAIZ_DO_CACHE, nome);
+      const s = await stat(dir).catch(() => null);
+      if (s && s.mtimeMs < limite) await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch {
+    // Sem a raiz ainda: nada a limpar.
+  }
+}
+
+/** A pasta de cache das camadas deste pedido, ou null (final, cache desligado, sem id). */
+export function pastaDoCacheDasCamadas(pedido, escala) {
+  if (!cacheLigado() || !(escala < 1)) return null;
+  const id = String(pedido?.videoJobId ?? "").replace(/[^a-z0-9-]/gi, "");
+  return id ? join(RAIZ_DO_CACHE, id) : null;
+}
+
+/**
  * As camadas, desenhadas em até três PASSADAS (worker/remotion/src/sob-medida/
  * Camadas.tsx): "frente" (tudo), "atras" (o que vai por baixo da pessoa
  * recortada) e "vidro" (a máscara do desfoque). Cada passada tem a sua linha
  * condensada: só as camadas dela vão ao Chrome.
  */
-async function renderizarCamadas(edicao, pasta, escala, aoProgresso) {
+export async function renderizarCamadas(edicao, pasta, escala, aoProgresso, cache = null) {
   const { renderFrames, renderStill, selectComposition, makeCancelSignal } = await import("@remotion/renderer");
   // O PRAZO DO TRABALHO (04/10): estourado, o Chrome do Remotion é fechado
   // pelo sinal de cancelamento, em vez de deixar a promessa pendurada.
   const { cancelSignal, cancel } = makeCancelSignal();
   const soltarCancelamento = aoCancelarOTrabalho(cancel);
   try {
-    return await renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso);
+    return await renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso, cache);
   } finally {
     soltarCancelamento();
   }
 }
 
-async function renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso) {
+async function renderizarCamadasCom({ renderFrames, renderStill, selectComposition, cancelSignal }, edicao, pasta, escala, aoProgresso, cache) {
   const serveUrl = await bundleDoRemotion();
   const fps = edicao.fps;
   const opcoes = opcoesDoRender();
+  // AS ABAS DAS CAMADAS (05/10): a composição das camadas não tem vídeo (só
+  // HTML, SVG e imagens paradas), e a conta de 1,9 GB por aba da capacidade
+  // foi medida no corte com OffthreadVideo. SOB_MEDIDA_ABAS ajusta sem deploy
+  // de código; sem ela, o número de sempre.
+  const abas = Math.max(1, Math.min(16, Number(process.env.SOB_MEDIDA_ABAS) || opcoes.concurrency));
+  if (cache) {
+    await mkdir(RAIZ_DO_CACHE, { recursive: true }).catch(() => {});
+    await limparCacheVelho();
+    // A pasta do vídeo marca o último uso (a limpeza olha a data dela).
+    await mkdir(cache, { recursive: true }).catch(() => {});
+    await utimes(cache, new Date(), new Date()).catch(() => {});
+  }
+  const usarCache = cache && ((await discoLivreMb(RAIZ_DO_CACHE)) ?? 0) >= MB_LIVRES_PARA_O_CACHE ? cache : null;
+  const reuso = { quadros: 0, desenhados: 0 };
   const base = { largura: edicao.largura, altura: edicao.altura, fps, tema: edicao.tema, logoUrl: edicao.logoUrl ?? null };
   const W = PAR(edicao.largura * escala);
   const H = PAR(edicao.altura * escala);
@@ -178,24 +316,80 @@ async function renderizarCamadasCom({ renderFrames, renderStill, selectCompositi
     await mkdir(dirQ, { recursive: true });
     let arquivos = [];
     if (quadros > 0) {
-      const inputProps = { ...base, camadas: cs, trechos, passe };
-      const composition = await selectComposition({ serveUrl, id: "SobMedidaCamadas", inputProps, chromiumOptions: opcoes.chromiumOptions });
       const antes = feitos;
-      await renderFrames({
-        composition,
-        serveUrl,
-        inputProps,
-        outputDir: dirQ,
-        imageFormat: "png",
-        imageSequencePattern: "q-[frame].[ext]",
-        concurrency: opcoes.concurrency,
-        scale: escala,
-        chromiumOptions: opcoes.chromiumOptions,
-        timeoutInMilliseconds: 120_000,
-        cancelSignal,
-        onStart: () => {},
-        onFrameUpdate: (n) => aoProgresso?.((antes + n) / Math.max(1, totalQuadros)),
-      });
+      // Desenha `lista` (trechos da linha condensada) na pasta `saida`.
+      const desenhar = async (lista, saida) => {
+        const inputProps = { ...base, camadas: cs, trechos: lista, passe };
+        const composition = await selectComposition({ serveUrl, id: "SobMedidaCamadas", inputProps, chromiumOptions: opcoes.chromiumOptions });
+        await renderFrames({
+          composition,
+          serveUrl,
+          inputProps,
+          outputDir: saida,
+          imageFormat: "png",
+          imageSequencePattern: "q-[frame].[ext]",
+          concurrency: abas,
+          scale: escala,
+          chromiumOptions: opcoes.chromiumOptions,
+          timeoutInMilliseconds: 120_000,
+          cancelSignal,
+          onStart: () => {},
+          onFrameUpdate: (n) => aoProgresso?.((antes + n) / Math.max(1, totalQuadros)),
+        });
+      };
+      let feitoPeloCache = false;
+      if (usarCache) {
+        // Qualquer falha aqui cai no desenho inteiro, como sempre foi.
+        try {
+          const dirCache = join(usarCache, passe);
+          await mkdir(dirCache, { recursive: true });
+          const chaves = chavesDosQuadros(cs, trechos, fps, { largura: edicao.largura, altura: edicao.altura, W, H, fps, tema: edicao.tema, logoUrl: edicao.logoUrl ?? null, passe, escala });
+          // Trecho com TODOS os quadros no cache vem de lá; o resto vai ao Chrome
+          // numa linha condensada só com ele (o trecho guarda o próprio t0).
+          const faltam = [];
+          for (const tr of trechos) {
+            let todos = true;
+            for (let k = 0; k < tr.n && todos; k++) todos = existsSync(join(dirCache, `${chaves[tr.c0 + k]}.png`));
+            if (todos) {
+              for (let k = 0; k < tr.n; k++) await ligarArquivo(join(dirCache, `${chaves[tr.c0 + k]}.png`), join(dirQ, `q-${tr.c0 + k}.png`));
+              reuso.quadros += tr.n;
+            } else faltam.push(tr);
+          }
+          if (faltam.length) {
+            let c = 0;
+            const sub = faltam.map((tr) => {
+              const x = { c0: c, t0: tr.t0, n: tr.n };
+              c += tr.n;
+              return x;
+            });
+            const dirNovos = join(pasta, `${nomeDir}-novos`);
+            await rm(dirNovos, { recursive: true, force: true });
+            await mkdir(dirNovos, { recursive: true });
+            await desenhar(sub, dirNovos);
+            const novos = (await readdir(dirNovos)).filter((a) => /^q-\d+\.png$/.test(a)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+            if (novos.length !== c) throw new Error(`o Remotion devolveu ${novos.length} quadros novos de ${c}`);
+            let i = 0;
+            for (const tr of faltam) {
+              for (let k = 0; k < tr.n; k++, i++) {
+                const destino = join(dirQ, `q-${tr.c0 + k}.png`);
+                await rename(join(dirNovos, novos[i]), destino);
+                await ligarArquivo(destino, join(dirCache, `${chaves[tr.c0 + k]}.png`)).catch(() => {});
+              }
+            }
+            await rm(dirNovos, { recursive: true, force: true }).catch(() => {});
+            reuso.desenhados += c;
+          }
+          feitoPeloCache = true;
+        } catch (e) {
+          console.warn(`[sob-medida] cache das camadas (${passe}) falhou, desenha tudo: ${e?.message ?? e}`);
+          await rm(dirQ, { recursive: true, force: true });
+          await mkdir(dirQ, { recursive: true });
+        }
+      }
+      if (!feitoPeloCache) {
+        await desenhar(trechos, dirQ);
+        reuso.desenhados += quadros;
+      }
       feitos += quadros;
       arquivos = (await readdir(dirQ)).filter((a) => /^q-\d+\.png$/.test(a)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
       if (arquivos.length !== quadros) throw new Error(`o Remotion devolveu ${arquivos.length} quadros de ${quadros} (passada ${passe})`);
@@ -216,7 +410,7 @@ async function renderizarCamadasCom({ renderFrames, renderStill, selectCompositi
     await renderStill({ composition, serveUrl, inputProps, output: out, frame: 0, imageFormat: "png", scale: escala, chromiumOptions: opcoes.chromiumOptions, cancelSignal });
     fundos[chave ?? "liso"] = out;
   }
-  return { passadas, fundos, quadros: totalQuadros, todas };
+  return { passadas, fundos, quadros: totalQuadros, todas, reuso };
 }
 
 /**
@@ -394,9 +588,44 @@ export function grafoDoLote(edicao, lote, ctx) {
   // De que inserção veio cada entrada (índice do -i): quando o ffmpeg falha
   // citando "stream #N:0", é por aqui que a mídia culpada sai do lote (04/10).
   const origens = {};
-  const segs = segmentosDoLote(edicao, lote.de, lote.ate);
+  /**
+   * O LOTE CONTADO EM QUADROS (05/10, a boca fora de sincronia). O completo
+   * de cmuvv0jje saiu com a imagem 1,2 s adiantada em relação à voz no fim:
+   * medido contra a base, o vídeo perdia UM quadro por lote (34 emendas, 34
+   * quadros) e mais um em cada plano de um quadro só. Dois mecanismos, os
+   * dois no ffmpeg 5.1 do contêiner e nenhum no 9 do notebook:
+   *   1. o `alphamerge` (a pessoa recortada, em todo lote com peça atrás)
+   *      descarta o ÚLTIMO quadro do lote: 900 entram, 899 saem (provado com
+   *      o grafo real e o 5.1.1 estático; sem o alphamerge, 900);
+   *   2. um plano de um quadro só vale zero segundos para o `concat` (ele
+   *      estima a duração pela média, e com um quadro não há média), o plano
+   *      seguinte nasce em cima dele e o `fps` joga o quadro repetido fora.
+   * Antes, cada plano era cortado por TEMPO (trim=start:end em segundos),
+   * o `fps` depois do concat refazia o relógio, e o lote terminava por
+   * duração: perder um quadro não deixava rastro, só a boca fora de hora.
+   * Agora o lote é contado em quadros, do começo ao fim:
+   *   - a base e o matte entram com dois quadros de FOLGA depois do fim do
+   *     lote, para o quadro que algum filtro come ser um que não é nosso;
+   *   - cada plano é cortado por ÍNDICE de quadro (start_frame:end_frame),
+   *     com os índices somando exatamente os quadros do lote;
+   *   - depois do concat o relógio é a CONTAGEM (settb + setpts=N): o quadro
+   *     número N fica em N/fps, aconteça o que acontecer com as durações;
+   *   - o lote termina por quadro (end_frame), não por segundo;
+   *   - quem monta (montarSobMedida) CONTA os quadros de cada lote e do
+   *     vídeo emendado e para a entrega se a soma não bate.
+   * O áudio continua sendo o da base, inteiro: com o vídeo em contagem exata
+   * os dois andam juntos.
+   */
+  const q0 = Math.round(lote.de * fps);
+  const quadrosDoLote = Math.min(Math.round(lote.ate * fps), ctx.quadrosDaBase ?? Infinity) - q0;
+  const folga = +(2 / fps).toFixed(4);
+  // Os planos com o índice do primeiro e do último quadro (relativos ao lote);
+  // plano sem quadro inteiro não entra (os quadros dele já são dos vizinhos).
+  const segs = segmentosDoLote(edicao, lote.de, lote.ate)
+    .map((s) => ({ ...s, q0: Math.max(0, Math.round(s.de * fps) - q0), q1: Math.min(quadrosDoLote, Math.round(s.ate * fps) - q0) }))
+    .filter((s) => s.q1 > s.q0);
   const entradas = [
-    ["-ss", lote.de.toFixed(4), "-t", dur.toFixed(4), "-i", ctx.base],
+    ["-ss", lote.de.toFixed(4), "-t", (dur + folga).toFixed(4), "-i", ctx.base],
     // -reinit_filter 0 (03/10, segunda volta): o Remotion grava o quadro
     // OPACO do palco em rgb24 e o transparente em rgba; a troca no meio da
     // lista reiniciava o grafo inteiro e travava o ffmpeg.
@@ -411,7 +640,7 @@ export function grafoDoLote(edicao, lote, ctx) {
   // As passadas a mais (03/10, segunda volta): atrás da pessoa, a máscara do vidro e a pessoa recortada.
   const iAtras = lote.listaAtras ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaAtras]) - 1 : -1;
   const iVidro = lote.listaVidro ? entradas.push(["-reinit_filter", "0", "-f", "concat", "-safe", "0", "-i", lote.listaVidro]) - 1 : -1;
-  const iMatte = iAtras >= 0 && ctx.matte ? entradas.push(["-ss", lote.de.toFixed(4), "-t", dur.toFixed(4), "-i", ctx.matte]) - 1 : -1;
+  const iMatte = iAtras >= 0 && ctx.matte ? entradas.push(["-ss", lote.de.toFixed(4), "-t", (dur + folga).toFixed(4), "-i", ctx.matte]) - 1 : -1;
   // A PESSOA RECORTADA viaja como o ALFA da própria base: a câmera de cada
   // plano (zoom, empurrão) mexe na imagem e na máscara de uma vez só, e o
   // grafo não ganha uma segunda cadeia (a primeira versão, com a máscara em
@@ -434,13 +663,14 @@ export function grafoDoLote(edicao, lote, ctx) {
   };
   const rotulos = [];
   segs.forEach((s, k) => {
-    const a = (s.de - lote.de).toFixed(4);
-    const b = (s.ate - lote.de).toFixed(4);
-    const d = s.ate - s.de;
-    const n = Math.max(1, Math.round(d * fps));
+    // O plano em QUADROS: `n` é o que ele entrega, e `corte` tira exatamente
+    // esses quadros de um trecho da base (ver o cabeçalho do grafo).
+    const n = s.q1 - s.q0;
+    const d = n / fps;
+    const corte = `trim=start_frame=${s.q0}:end_frame=${s.q1}`;
     const r = `s${k}`;
     if (s.tipo === "cheio") {
-      const ent = `[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS`;
+      const ent = `[b${ib++}]${corte},setpts=PTS-STARTPTS`;
       if (s.movimento === "empurrao" && d > 0.6) {
         const z0 = Math.max(1, s.zoom || 1);
         const z1 = Math.max(z0, s.zoomFinal || z0 * 1.07);
@@ -480,10 +710,10 @@ export function grafoDoLote(edicao, lote, ctx) {
       // da base, coberto pelo fundo). A versão com o fundo em laço gerava os
       // quadros todos no começo do lote e eles esperavam a vez do cartão na
       // fila do overlay: foi o que levou o lote a 2,8 a 7,4 GB (03/10, terceira volta).
-      nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,format=yuv420p[ct${k}]`);
+      nos.push(`[b${ib++}]${corte},setpts=PTS-STARTPTS,format=yuv420p[ct${k}]`);
       nos.push(`[${iF}:v]scale=${W}:${H},format=yuv420p,setsar=1[cf${k}]`);
       nos.push(`[ct${k}][cf${k}]overlay=0:0,setsar=1[cb${k}]`);
-      nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,crop=${cw}:${ch}:${x}:${y},scale=${bw}:${bh}:flags=bicubic,format=yuva420p[cv${k}]`);
+      nos.push(`[b${ib++}]${corte},setpts=PTS-STARTPTS,crop=${cw}:${ch}:${x}:${y},scale=${bw}:${bh}:flags=bicubic,format=yuva420p[cv${k}]`);
       nos.push(`[${iM}:v]format=gray,scale=${bw}:${bh}[cm${k}]`);
       nos.push(`[cv${k}][cm${k}]alphamerge[ca${k}]`);
       nos.push(`[cb${k}][ca${k}]overlay=${bx}:${by}:shortest=1,format=yuv420p,setsar=1[${r}]`);
@@ -501,14 +731,16 @@ export function grafoDoLote(edicao, lote, ctx) {
         entradas.push(["-ss", Number(m.inicio ?? 0).toFixed(3), "-stream_loop", "-1", "-t", (d + 0.2).toFixed(4), "-reinit_filter", "0", "-i", m.arquivo]);
         const W2 = PAR(W * 1.1);
         const H2 = PAR(H * 1.1);
-        nos.push(`[${i}:v]fps=${fps},scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS${m.grade ? `,${m.grade}` : ""},zoompan=z='1+0.08*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
+        nos.push(`[${i}:v]fps=${fps},scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},setsar=1,trim=end_frame=${n},setpts=PTS-STARTPTS${m.grade ? `,${m.grade}` : ""},zoompan=z='1+0.08*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else if (m.tipo === "video") {
         const i = entradas.length;
         origens[i] = s.midia;
-        entradas.push(["-stream_loop", "-1", "-t", d.toFixed(4), "-reinit_filter", "0", "-i", m.arquivo]);
+        // Com folga de 0,2 s na leitura e o corte por quadro (05/10): o `fps`
+        // do 5.1 pode comer o último quadro lido, e o plano precisa dos `n` dele.
+        entradas.push(["-stream_loop", "-1", "-t", (d + 0.2).toFixed(4), "-reinit_filter", "0", "-i", m.arquivo]);
         // O empurrão por cima do vídeo (03/10, segunda volta): mesmo que o
         // Kling devolva a câmera quase parada, a inserção nunca fica imóvel.
-        nos.push(`[${i}:v]fps=${fps},scale=${PAR(W * 1.12)}:${PAR(H * 1.12)}:force_original_aspect_ratio=increase:flags=bicubic,crop=${PAR(W * 1.12)}:${PAR(H * 1.12)},setsar=1,trim=duration=${d.toFixed(4)},setpts=PTS-STARTPTS,zoompan=z='1+0.1*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
+        nos.push(`[${i}:v]fps=${fps},scale=${PAR(W * 1.12)}:${PAR(H * 1.12)}:force_original_aspect_ratio=increase:flags=bicubic,crop=${PAR(W * 1.12)}:${PAR(H * 1.12)},setsar=1,trim=end_frame=${n},setpts=PTS-STARTPTS,zoompan=z='1+0.1*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       } else {
         const i = imagemExtra(m.arquivo);
         origens[i] = s.midia;
@@ -518,14 +750,14 @@ export function grafoDoLote(edicao, lote, ctx) {
         // quadro, repetido pelo overlay sobre o trecho da base (que dá o tempo);
         // o zoompan anda quadro a quadro com ela, sem gerar nada adiantado.
         nos.push(`[${i}:v]scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},format=yuv420p,setsar=1[fi${k}]`);
-        nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,scale=${W2}:${H2}:flags=fast_bilinear,format=yuv420p,setsar=1[ft${k}]`);
+        nos.push(`[b${ib++}]${corte},setpts=PTS-STARTPTS,scale=${W2}:${H2}:flags=fast_bilinear,format=yuv420p,setsar=1[ft${k}]`);
         nos.push(`[ft${k}][fi${k}]overlay=0:0,zoompan=z='1+0.06*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       }
     } else {
       // "grafico" (e inserção que falhou): o fundo da marca; as camadas desenham o resto.
       const i = imagemExtra(fundos.liso);
       nos.push(`[${i}:v]scale=${W}:${H},format=yuv420p,setsar=1[fg${k}]`);
-      nos.push(`[b${ib++}]trim=start=${a}:end=${b},setpts=PTS-STARTPTS,format=yuv420p[gt${k}]`);
+      nos.push(`[b${ib++}]${corte},setpts=PTS-STARTPTS,format=yuv420p[gt${k}]`);
       nos.push(`[gt${k}][fg${k}]overlay=0:0,setsar=1,trim=end_frame=${n}[${r}]`);
     }
     // Com o alfa, todo plano entra no mesmo formato (o que não é câmera cheia fica opaco).
@@ -547,7 +779,10 @@ export function grafoDoLote(edicao, lote, ctx) {
   const zoomAtraves = bordasDeInsercao.length
     ? `,zoompan=z='1+${bordasDeInsercao.map(({ b, forca }) => `${forca}*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
     : "";
-  nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,fps=${fps},setpts=PTS-STARTPTS${zoomAtraves},format=${FMT}[base0]`);
+  // O RELÓGIO É A CONTAGEM (05/10): depois do concat, o quadro N fica em N/fps.
+  // Era `fps` + `setpts=PTS-STARTPTS`, e o `fps` jogava fora o quadro do plano
+  // de um quadro só (que o concat deixava sem duração). Ver o cabeçalho.
+  nos.push(`${rotulos.join("")}concat=n=${rotulos.length}:v=1:a=0,settb=1/${fps},setpts=N${zoomAtraves},format=${FMT}[base0]`);
   // SEM `fps` nas listas das camadas (03/10, terceira volta): a camada parada é
   // um PNG com a duração do trecho, e o `fps` o expandia de uma vez em centenas
   // de quadros RGBA de 8 MB na fila do overlay; foi o que levou um lote de 60 s
@@ -579,7 +814,7 @@ export function grafoDoLote(edicao, lote, ctx) {
     atual = "x3";
   }
   // GRÃO E VINHETA leves no fim (a textura de filme que tira o "digital chapado").
-  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=duration=${dur.toFixed(4)}[v]`);
+  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=end_frame=${quadrosDoLote}[v]`);
   // OS FIOS DOS DECODIFICADORES (04/10): cada -i abre um decodificador com um
   // fio por núcleo, e o lote do sob medida chega a 13 entradas. Medido no WSL
   // com o lote 8 da prévia de cmurtv2zg: 186 fios sem teto, 73 com 2 na base
@@ -587,7 +822,7 @@ export function grafoDoLote(edicao, lote, ctx) {
   // do contêiner o ffmpeg morria ao abrir o fio seguinte ("Failed to configure
   // output pad on auto_scale_N ... Resource temporarily unavailable", a falha
   // da prévia em produção; reproduzida com `ulimit -u 150`).
-  return { entradas: entradas.flatMap((e, k) => ["-threads", k === 0 ? "2" : "1", ...e]), grafo: nos.join(";\n"), origens };
+  return { entradas: entradas.flatMap((e, k) => ["-threads", k === 0 ? "2" : "1", ...e]), grafo: nos.join(";\n"), origens, quadros: quadrosDoLote };
 }
 
 /**
@@ -758,6 +993,10 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   } else await baixar(pedido.completoUrl, base);
   const dim = await ffprobe(base);
   const fps = fpsDe(base);
+  // Quantos quadros a base tem de verdade (05/10): o último lote termina onde
+  // a IMAGEM da base termina (a duração do formato é a do áudio, que pode
+  // passar uns quadros), e a soma dos lotes é conferida contra isso no fim.
+  const quadrosDaBase = await contarQuadros(base);
   const W = PAR(ed.largura * escala);
   const H = PAR(ed.altura * escala);
   if (Math.abs(dim.largura / dim.altura / (ed.largura / ed.altura) - 1) > 0.03) throw new Error(`base ${dim.largura}x${dim.altura} com edição ${ed.largura}x${ed.altura}: proporções diferentes`);
@@ -767,8 +1006,12 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // As inserções geradas e o B-roll, baixados e normalizados.
   const insercoes = {};
   const midiasTiradas = [];
-  for (const [id, m] of Object.entries(ed.insercoes ?? {})) {
-    if (!m?.url) continue;
+  // EM PARALELO (05/10): eram uma por vez, 104 s no completo de cmuums24z
+  // (49 B-rolls e fotos, cada um baixado, normalizado e medido na cor), e de
+  // novo em cada prévia. Cada uma é independente; 4 juntas, no máximo.
+  const pendentes = Object.entries(ed.insercoes ?? {}).filter(([, m]) => m?.url);
+  const prontas = new Map();
+  const umaInsercao = async ([id, m]) => {
     const ext = m.tipo === "video" ? "mp4" : (m.url.match(/\.(png|jpe?g|webp)(\?|$)/i)?.[1] ?? "jpg");
     const arq = join(pasta, `insercao-${id.replace(/[^a-z0-9-]/gi, "")}.${ext}`);
     try {
@@ -777,27 +1020,32 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
         else await copyFile(m.url, arq);
       }
       const usado = (ed.planos ?? []).filter((p) => p.tipo === "insercao" && p.midia === id).reduce((mx, p) => Math.max(mx, p.ate - p.de), 0);
-      insercoes[id] = await normalizarMidia({ tipo: m.tipo, arquivo: arq, origem: m.origem ?? null, inicio: Number(m.inicio) || 0 }, { W, H, fps, segundos: Math.max(3, usado) });
+      prontas.set(id, await normalizarMidia({ tipo: m.tipo, arquivo: arq, origem: m.origem ?? null, inicio: Number(m.inicio) || 0 }, { W, H, fps, segundos: Math.max(3, usado) }));
     } catch (e) {
-      delete insercoes[id];
+      prontas.set(id, null);
       midiasTiradas.push(`${id}: ${String(e?.message ?? e).slice(-200)}`);
       console.warn(`[sob-medida] inserção ${id} fora da edição (não baixou ou não normalizou): ${e?.message ?? e}`);
     }
-  }
+  };
+  await emParalelo(pendentes, MIDIAS_JUNTAS, umaInsercao);
+  // A ordem de antes (a da edição), para o resto do render não mudar nada.
+  for (const [id] of pendentes) if (prontas.get(id)) insercoes[id] = prontas.get(id);
   // A COR CASADA (03/10, terceira volta): o B-roll de banco vem com a cor do
   // autor; aqui ele anda metade do caminho até a cor média da gravação, com o
   // contraste e a saturação um pouco abaixo (o "look" do resto do vídeo).
   const brolls = Object.values(insercoes).filter((m) => m.origem === "banco" && m.tipo === "video");
   if (brolls.length) {
     const corDaBase = await corMedia(base, [0.2, 0.5, 0.8].map((f) => f * Math.min(ed.duracao, dim.duracaoSec))).catch(() => null);
-    for (const m of brolls) {
+    await emParalelo(brolls, MIDIAS_JUNTAS, async (m) => {
       const cor = await corMedia(m.arquivo, [m.inicio + 0.3, m.inicio + 1.2]).catch(() => null);
       m.grade = gradeParaCasar(cor, corDaBase);
-    }
+    });
   }
   marcar("insercoes");
 
-  const camadas = await renderizarCamadas({ ...ed, duracao }, pasta, escala, (p) => aoProgresso?.(0.6 * p));
+  const camadas = await renderizarCamadas({ ...ed, duracao }, pasta, escala, (p) => aoProgresso?.(0.6 * p), pastaDoCacheDasCamadas(pedido, escala));
+  // Quantos quadros vieram do cache da prévia anterior e quantos foram ao Chrome.
+  if (camadas.reuso.quadros) tempos.camadasDoCache = camadas.reuso.quadros;
   tempos.quadrosDeCamada = camadas.quadros;
   tempos.quadrosDoVideo = Math.round(duracao * ed.fps);
   tempos.passadas = Object.fromEntries(Object.entries(camadas.passadas).map(([k, v]) => [k, v.quadros]));
@@ -828,7 +1076,9 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // Lotes cortados em quadro inteiro.
   const lotes = [];
   const passo = Math.round((escala < 1 ? LOTE_SEG_PREVIA : LOTE_SEG_FINAL) * fps) / fps;
-  for (let a = 0; a < duracao - 1e-3; a += passo) lotes.push({ de: +a.toFixed(5), ate: +Math.min(duracao, a + passo).toFixed(5) });
+  // Lote que começa depois do último quadro da IMAGEM da base não existe (a
+  // duração do formato é a do áudio e pode passar da imagem).
+  for (let a = 0; a < duracao - 1e-3; a += passo) if (Math.round(a * fps) < quadrosDaBase) lotes.push({ de: +a.toFixed(5), ate: +Math.min(duracao, a + passo).toFixed(5) });
   const partes = [];
   const comLegenda = Boolean(ed.legenda?.paginas?.length);
   let feitos = 0;
@@ -864,8 +1114,9 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     // As mídias que ficaram fora (não normalizaram, ou quebraram este lote) viram câmera cheia.
     const fora = new Set([...Object.keys(ed.insercoes ?? {}).filter((id) => !insercoes[id]), ...(lote.ruins ?? [])]);
     const insercoesDoLote = Object.fromEntries(Object.entries(insercoes).filter(([id]) => !fora.has(id)));
-    const { entradas, grafo, origens } = grafoDoLote(semMidias(ed, fora), lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes: insercoesDoLote, base, mascara, matte });
+    const { entradas, grafo, origens, quadros } = grafoDoLote(semMidias(ed, fora), lote, { W, H, fps, escala, fundos: camadas.fundos, insercoes: insercoesDoLote, base, mascara, matte, quadrosDaBase });
     lote.origens = origens;
+    lote.quadros = quadros;
     await writeFile(join(pasta, `grafo-${i}.txt`), grafo, "utf8");
     await writeFile(join(pasta, `entradas-${i}.json`), JSON.stringify(entradas), "utf8");
     const saida = join(pasta, `lote-${String(i).padStart(3, "0")}.mp4`);
@@ -880,6 +1131,15 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       ],
       { cwd: pasta, timeoutMs: 40 * 60_000 }
     );
+    // A CONTA DO LOTE (05/10): o grafo prometeu `quadros`; o arquivo tem que
+    // ter exatamente isso. Um a menos é a boca fora de hora (ver grafoDoLote);
+    // aqui a entrega para e o motivo sobe, em vez de sair fora de sincronia.
+    // No ÚLTIMO lote não há folga depois do fim da base: o quadro que o
+    // alphamerge do 5.1 come é o derradeiro do vídeo, e um a menos ali não
+    // desloca nada. Só ali um quadro de tolerância.
+    const saiu = await contarQuadros(saida);
+    const ultimo = lote.ate >= duracao - 1e-3;
+    if (saiu !== quadros && !(ultimo && saiu === quadros - 1)) throw new Error(`lote ${i} (${lote.de.toFixed(2)} a ${lote.ate.toFixed(2)} s) saiu com ${saiu} quadros, o grafo prometeu ${quadros}: a imagem perderia a sincronia com a voz`);
     return saida;
   };
   /**
@@ -891,11 +1151,43 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
    * culpada (ou todas as do lote); sem mídia, sai o que vai atrás e o vidro.
    * Só então sobe.
    */
+  /**
+   * O LOTE SOZINHO (05/10). Os SIGKILL "com 4 GB livres" do completo de
+   * cmuums24z eram o OOM do contêiner com DOIS lotes no pico ao mesmo tempo:
+   * a memória livre é lida DEPOIS da morte, quando o ffmpeg morto já devolveu
+   * o que segurava (não é teto de processos, que dá "Resource temporarily
+   * unavailable" e tem tratamento próprio, nem o Chrome, já fechado nesta
+   * fase). Antes, o lote morto era refeito em duas metades, uma depois da
+   * outra, e a emenda no meio reinicia o empurrão do B-roll que cruza o meio.
+   * Agora ele é refeito INTEIRO e SOZINHO (a outra vaga termina o lote dela e
+   * espera); só se morrer sozinho vai às metades. Os lotes seguintes voltam a
+   * correr em par.
+   */
+  let ativos = 0;
+  let portao = null;
+  const sozinho = async (fn) => {
+    while (portao) await portao;
+    let abrir;
+    portao = new Promise((r) => (abrir = r));
+    try {
+      while (ativos > 0) await new Promise((r) => setTimeout(r, 1000));
+      return await fn();
+    } finally {
+      portao = null;
+      abrir();
+    }
+  };
   const fazerLote = async (lote, i, nivel = 0) => {
     const nome = String(i);
+    if (!lote.sozinho) while (portao) await portao;
     if (!(await esperarMemoria(MB_POR_LOTE, { ateMs: 10 * 60_000, rotulo: `lote ${nome}` }))) console.warn(`[sob-medida] lote ${nome} começa com ${memoriaLivreMb()} MB livres (pedia ${MB_POR_LOTE})`);
     try {
-      return await renderLote(lote, nome);
+      ativos++;
+      try {
+        return await renderLote(lote, nome);
+      } finally {
+        ativos--;
+      }
     } catch (e) {
       if (trabalhoCancelado()) throw e;
       const dur = lote.ate - lote.de;
@@ -910,7 +1202,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
           midiasTiradas.push(`lote ${nome}: refeito por falta de recurso`);
           console.warn(`[sob-medida] lote ${nome} sem recurso (${memoriaLivreMb()} MB livres); refaz igual`);
           await new Promise((r) => setTimeout(r, 5_000));
-          return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: true }, `${nome}r`, nivel);
+          return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: true, sozinho: lote.sozinho }, `${nome}r`, nivel);
         }
         const n = Number((String(e?.message ?? "").match(/stream #(\d+):\d+/i) ?? [])[1]);
         const culpada = Number.isFinite(n) ? lote.origens?.[n] : null;
@@ -922,21 +1214,26 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
           if (!lote.simples && (lote.listaAtras || lote.listaVidro)) {
             midiasTiradas.push(`lote ${nome}: sem as passadas de trás e do vidro (${String(e?.message ?? e).replace(/\s+/g, " ").slice(-160)})`);
             console.warn(`[sob-medida] lote ${nome} falhou sem mídia culpada; refaz só com a frente`);
-            return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: lote.repetido, simples: true }, `${nome}s`, nivel);
+            return await fazerLote({ de: lote.de, ate: lote.ate, ruins, repetido: lote.repetido, simples: true, sozinho: lote.sozinho }, `${nome}s`, nivel);
           }
           throw e;
         }
         midiasTiradas.push(`lote ${nome}: ${tirar.join(", ")} (${String(e?.message ?? e).replace(/\s+/g, " ").slice(-160)})`);
         console.warn(`[sob-medida] lote ${nome} falhou; refaz sem ${tirar.join(", ")}`);
-        return await fazerLote({ de: lote.de, ate: lote.ate, ruins: new Set([...ruins, ...tirar]), repetido: lote.repetido, simples: lote.simples }, `${nome}m`, nivel);
+        return await fazerLote({ de: lote.de, ate: lote.ate, ruins: new Set([...ruins, ...tirar]), repetido: lote.repetido, simples: lote.simples, sozinho: lote.sozinho }, `${nome}m`, nivel);
       }
       if (nivel >= 2 || dur < 8) throw e;
-      sinais.push(`lote ${nome} (${dur.toFixed(0)} s) morto por ${e.sinal} com ${memoriaLivreMb()} MB livres`);
+      sinais.push(`lote ${nome} (${dur.toFixed(0)} s) morto por ${e.sinal} com ${memoriaLivreMb()} MB livres${lote.sozinho ? " (sozinho)" : ""}`);
+      if (!lote.sozinho) {
+        // Primeiro, o mesmo lote inteiro, sem outro ao lado (acima).
+        console.warn(`[sob-medida] ${sinais.at(-1)}; refaz inteiro, sozinho`);
+        return await sozinho(() => fazerLote({ de: lote.de, ate: lote.ate, ruins: lote.ruins, simples: lote.simples, sozinho: true }, `${nome}x`, nivel));
+      }
       console.warn(`[sob-medida] ${sinais.at(-1)}; refaz em duas metades`);
       await esperarMemoria(Math.round(MB_POR_LOTE * 1.2), { ateMs: 10 * 60_000, rotulo: `lote ${nome} de novo` });
       const meio = +(Math.round(((lote.de + lote.ate) / 2) * fps) / fps).toFixed(5);
-      const a = await fazerLote({ de: lote.de, ate: meio, ruins: lote.ruins }, `${nome}a`, nivel + 1);
-      const b = await fazerLote({ de: meio, ate: lote.ate, ruins: lote.ruins }, `${nome}b`, nivel + 1);
+      const a = await fazerLote({ de: lote.de, ate: meio, ruins: lote.ruins, sozinho: true }, `${nome}a`, nivel + 1);
+      const b = await fazerLote({ de: meio, ate: lote.ate, ruins: lote.ruins, sozinho: true }, `${nome}b`, nivel + 1);
       const saida = join(pasta, `lote-${nome.padStart(3, "0")}-junto.mp4`);
       await emendar([a, b], saida, pasta);
       await rm(a, { force: true }).catch(() => {});
@@ -980,6 +1277,13 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   const soVideo = join(pasta, "so-video.mp4");
   if (partes.length === 1) await copyFile(partes[0], soVideo);
   else await emendar(partes, soVideo, pasta);
+  // A CONTA DO VÍDEO INTEIRO (05/10): a soma dos lotes contra o que a base
+  // tem no trecho editado. Se a emenda perdeu ou repetiu um quadro, para aqui.
+  const quadrosEsperados = Math.min(Math.round(duracao * fps), quadrosDaBase);
+  const quadrosDoVideo = await contarQuadros(soVideo);
+  tempos.quadros = { esperados: quadrosEsperados, emendados: quadrosDoVideo, base: quadrosDaBase, lotes: lotes.map((l) => l.quadros ?? null) };
+  // Um quadro a menos só no fim (o último lote, acima) não desloca a voz.
+  if (quadrosDoVideo !== quadrosEsperados && quadrosDoVideo !== quadrosEsperados - 1) throw new Error(`o vídeo emendado tem ${quadrosDoVideo} quadros e a base tem ${quadrosEsperados} no trecho editado: a imagem perderia a sincronia com a voz`);
   let saida = join(pasta, escala < 1 ? "previa.mp4" : "sob-medida.mp4");
   await rodar(["-i", soVideo, "-i", base, "-map", "0:v", "-map", "1:a?", "-t", duracao.toFixed(4), "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", saida], { cwd: pasta });
   marcar("emenda");
