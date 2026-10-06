@@ -7,6 +7,7 @@ import type { CamadaResolvida, EdicaoResolvida, Enquadramento, MidiaDaInsercao, 
 import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import type { LeituraDoVideo, TrechoLido } from "@/lib/media/leitura-do-video";
 import { componenteDa, familiaValida } from "@/lib/media/editor-por-comando/linguagem";
+import { caixaDaJanela, legendaDaJanela, textosDaPeca } from "@/lib/media/editor-por-comando/janela-de-imagem";
 import { pedidoDasProps, type PedidoNasProps } from "@/lib/media/editor-por-comando/pedido-do-cliente";
 import {
   caixaLivre,
@@ -293,10 +294,12 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         semCobrir(props.caixa as Retangulo, "a janela");
       } else if (tr) {
         // A janela vai para a área livre do trecho (nunca sobre a tela, o quadro ou um rosto).
-        const livre = caixaLivre(tr, { minW: 0.22, minH: 0.16, maxW: Math.min(0.94, (vertical0 ? 0.78 : 0.4) * fator), maxH: Math.min(0.6, (vertical0 ? 0.3 : 0.32) * fator), lado: pc?.posicao === "canto" || pc?.posicao === "acima-da-cabeca" ? ladoM : ladoM, perto: centroDe(rostoM) });
+        // Com o TAMANHO MÍNIMO relativo ao quadro (06/10, cmux0hoxk: a janela de 22% da largura virou miniatura):
+        // no vertical, 70% da largura ou a faixa acima ou abaixo do rosto; sem lugar que sirva, a janela sai.
+        const livre = caixaDaJanela(tr, rostoM, vertical0, fator, ladoM);
         if (livre) props.caixa = livre;
-        else if (conteudo) {
-          avisos.push(`${id}: sem área livre para a janela (tela ou quadro em cena), saiu`);
+        else {
+          avisos.push(`${id}: sem área livre do tamanho mínimo para a janela${conteudo ? " (tela ou quadro em cena)" : ""}, saiu`);
           continue;
         }
         props.lado = vertical0 || pc?.posicao === "acima-da-cabeca" ? "topo" : ladoM;
@@ -550,15 +553,25 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   }
   if (socos.length) camera = sobreporCamera(camera, socos);
 
+  // A LEGENDA DA JANELA (06/10, cmux0hoxk): sai quando outra peça com texto está na tela no mesmo tempo (o título
+  // já fala; a legenda repetia o título), quando não é trecho contínuo da fala, e quando começa no meio da frase.
+  for (const c of camadas) {
+    if (c.peca !== "imagem-janela" || !c.props.legenda) continue;
+    const outras = camadas.filter((o) => o !== c && o.de < c.ate && o.ate > c.de && !o.id.endsWith("-moldura")).flatMap((o) => textosDaPeca(o.props));
+    const r = legendaDaJanela(c.props.legenda, ctx.palavras, c.de, c.ate, outras, Boolean(ctx.comLegenda));
+    if (r.motivo) avisos.push(`${c.id}: legenda da janela tirada (${r.motivo === "legenda-da-fala" ? "a legenda da fala já diz a frase" : r.motivo === "titulo-na-tela" ? "já há título na tela" : r.motivo === "meio-da-frase" ? "começava no meio da frase" : "não é trecho da fala"})`);
+    c.props = { ...c.props, legenda: r.legenda };
+  }
+
   const edicao: EdicaoResolvida = {
     versao: 1,
     largura: W,
     altura: H,
-    // O FPS DAS CAMADAS (05/10): o Chrome desenha cada quadro com movimento, e no corte de
-    // 42 s as camadas a 30 fps levaram ~14 min no render local. A 15 fps (o padrão aqui) o
-    // Chrome desenha a metade; o vídeo continua no fps da gravação (o worker segura o quadro).
-    // EDITOR_POR_COMANDO_FPS volta para 30 sem deploy de código.
-    fps: Math.min(30, Math.max(10, Number(process.env.EDITOR_POR_COMANDO_FPS) || 15)),
+    // O FPS DAS CAMADAS (06/10): era 15 por padrão para poupar o Chrome, e no vídeo de celular a
+    // 29,58 cada quadro de peça ficava parado por dois do vídeo (as animações travavam). O worker
+    // agora desenha as camadas na taxa da gravação (fpsDasCamadas, em edicao-sob-medida.mjs); este
+    // número fica como referência da edição (30) e só o EDITOR_POR_COMANDO_FPS o muda.
+    fps: Math.min(30, Math.max(10, Number(process.env.EDITOR_POR_COMANDO_FPS) || 30)),
     duracao: D,
     tema: ctx.tema,
     logoUrl: ctx.logoUrl,

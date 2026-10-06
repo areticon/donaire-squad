@@ -104,6 +104,25 @@ async function emParalelo(itens, n, fn) {
   );
 }
 
+/**
+ * O FPS DAS CAMADAS (06/10, diagnóstico de cmux0hoxk): a edição chegava com
+ * fps 15 e o vídeo de celular a 29,58; o worker segurava cada quadro de camada
+ * por dois do vídeo e as animações das peças saíam travadas. Agora as camadas
+ * são desenhadas na taxa da BASE (o quadro k da camada cai no quadro k do
+ * vídeo, sem segurar); acima de 30 (gravação a 50 ou 60), num divisor inteiro
+ * dela que fique em até 30, para cada quadro de camada cair inteiro num grupo
+ * de quadros do vídeo. O fps que vem na edição não manda mais (era o teto do
+ * app para poupar o Chrome). SOB_MEDIDA_FPS_CAMADAS força outro número sem
+ * deploy de código, nunca acima da base. Só os quadros que se MEXEM vão ao
+ * Chrome (a linha condensada): o parado continua sendo um quadro só.
+ */
+export function fpsDasCamadas(fpsBase) {
+  const base = Number(fpsBase) > 0 ? Number(fpsBase) : 30;
+  const forcado = Number(process.env.SOB_MEDIDA_FPS_CAMADAS);
+  if (Number.isFinite(forcado) && forcado >= 5) return Math.min(forcado, base);
+  return base > 30.5 ? Math.round((base / Math.ceil(base / 30.5)) * 1000) / 1000 : base;
+}
+
 // ─────────────────────────────── 1. a linha condensada ───────────────────────────────
 
 /** Os intervalos em que a camada se mexe (entrada, cada passo, saída). */
@@ -646,11 +665,15 @@ export function grafoDoLote(edicao, lote, ctx) {
   // grafo não ganha uma segunda cadeia (a primeira versão, com a máscara em
   // paralelo, travou o ffmpeg na prova de 03/10).
   const comAlfa = iMatte >= 0;
+  // O QUADRO DERRADEIRO (06/10, cmux0hoxk saiu com 4160 de 4161): no último lote não há folga de leitura depois do
+  // fim da base, e o quadro que o alphamerge do 5.1 come era o último do vídeo. O `tpad` repete o último quadro da
+  // base e do matte duas vezes; o trim por índice no fim do lote corta a sobra, então nos outros lotes nada muda.
+  const FOLGA_NO_FIM = "tpad=stop_mode=clone:stop=2,";
   const FMT = comAlfa ? "yuva420p" : "yuv420p";
   if (comAlfa) {
-    nos.push(`[${iMatte}:v]fps=${fps},scale=${W}:${H}:flags=bicubic,format=gray,lut=y='clip((val-16)*255/219,0,255)',setpts=PTS-STARTPTS[mm]`);
-    nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuva420p,setpts=PTS-STARTPTS[b0a];[b0a][mm]alphamerge${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
-  } else nos.push(`[0:v]fps=${fps},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p,setpts=PTS-STARTPTS${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
+    nos.push(`[${iMatte}:v]fps=${fps},${FOLGA_NO_FIM}scale=${W}:${H}:flags=bicubic,format=gray,lut=y='clip((val-16)*255/219,0,255)',setpts=PTS-STARTPTS[mm]`);
+    nos.push(`[0:v]fps=${fps},${FOLGA_NO_FIM}scale=${W}:${H}:flags=bicubic,setsar=1,format=yuva420p,setpts=PTS-STARTPTS[b0a];[b0a][mm]alphamerge${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
+  } else nos.push(`[0:v]fps=${fps},${FOLGA_NO_FIM}scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p,setpts=PTS-STARTPTS${usosDaBase > 1 ? `,split=${usosDaBase}` : ""}${usosDaBase ? Array.from({ length: usosDaBase }, (_, i) => `[b${i}]`).join("") : ",nullsink"}`);
   let ib = 0;
   // A IMAGEM PARADA (fundo, máscara, foto) entra como UM quadro só e é repetida
   // pelo overlay ou pelo alphamerge, com o tempo dado por um trecho da base
@@ -1043,11 +1066,14 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   }
   marcar("insercoes");
 
-  const camadas = await renderizarCamadas({ ...ed, duracao }, pasta, escala, (p) => aoProgresso?.(0.6 * p), pastaDoCacheDasCamadas(pedido, escala));
+  const fpsCamadas = fpsDasCamadas(fps);
+  tempos.fpsDasCamadas = fpsCamadas;
+  tempos.fpsDaEdicao = ed.fps;
+  const camadas = await renderizarCamadas({ ...ed, duracao, fps: fpsCamadas }, pasta, escala, (p) => aoProgresso?.(0.6 * p), pastaDoCacheDasCamadas(pedido, escala));
   // Quantos quadros vieram do cache da prévia anterior e quantos foram ao Chrome.
   if (camadas.reuso.quadros) tempos.camadasDoCache = camadas.reuso.quadros;
   tempos.quadrosDeCamada = camadas.quadros;
-  tempos.quadrosDoVideo = Math.round(duracao * ed.fps);
+  tempos.quadrosDoVideo = Math.round(duracao * fps);
   tempos.passadas = Object.fromEntries(Object.entries(camadas.passadas).map(([k, v]) => [k, v.quadros]));
   marcar("camadas");
   // A pessoa recortada, só se há peça atrás dela.
