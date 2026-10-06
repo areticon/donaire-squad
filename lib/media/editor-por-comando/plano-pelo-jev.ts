@@ -10,6 +10,7 @@ import {
   COMPONENTES_COM_FOTO,
   CRITERIO_DO_TIPO,
   DURACAO_DO_TIPO,
+  TIPOS_DECIDIVEIS,
   TIPOS_DE_ELEMENTO,
   custoPrevisto,
   estimarCusto,
@@ -35,8 +36,28 @@ import {
   type VarianteDoElemento,
 } from "@/lib/media/editor-por-comando/linguagem";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
+import type { LeituraDoVideo } from "@/lib/media/editor-por-comando/leitura-tipos";
+import { contextoDoTrecho, movimentoEm, resumoDaLeitura, tiposPossiveis, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
 /**
+ * O CONTEXTO DO VÍDEO INTEIRO (06/10/2026, 01h; regra do Bruno: "a IA deve
+ * decidir a edição baseado no contexto do vídeo", "de pastor a médico"). Todo
+ * pedido ao JEV (linguagem, plano, cobertura, inscrever, conferência) e todo
+ * pedido ao redator recebem a LEITURA do vídeo (lib/media/leitura-do-video.ts,
+ * gravada em completoMontagem.leitura): o gênero, o cenário, as pessoas e, por
+ * momento, o trecho lido (o que acontece, o que a imagem mostra, quem está em
+ * cena e falando, tela ou quadro, movimento, área livre). Com ela:
+ *   - os tipos oferecidos ao JEV por momento são os que o trecho permite
+ *     (leitura-no-plano.ts, `tiposPossiveis`): nome e realce de quem fala na
+ *     conversa, zoom no ponto e destaque com tela ou quadro, cartão de passo,
+ *     frase-chave e slide em qualquer gênero; tela cheia e texto atrás saem
+ *     quando há tela ou quadro (cobririam o conteúdo);
+ *   - com movimento "muito", as peças ficam mais curtas e nada vai atrás da
+ *     pessoa (o recorte em movimento falha);
+ *   - o redator escreve a cena de cada imagem e vídeo a partir do cenário e
+ *     do que está em cena (nada de prompt genérico), e o JEV confere.
+ * Sem leitura (vídeo antigo), tudo segue como em 05/10.
+ *
  * O PLANO PELO JEV EM DOIS EIXOS (05/10/2026, noite). Regra dura do Bruno:
  * "não quero hardcoded em nada; o editor tem de ser tão bom para um médico
  * quanto para um dev de IA". A versão da tarde só deixava o plano usar as
@@ -129,6 +150,8 @@ export type EntradaDoPlanoPeloJev = {
   tetoUsdPorMinuto?: number;
   /** O vídeo vai para o YouTube (o completo sempre; o corte quando um destino dele é YouTube): a chamada de curtir e inscrever entra. */
   youtube?: boolean;
+  /** A LEITURA DO VÍDEO INTEIRO (06/10): gênero, cenário, pessoas e os trechos lidos, no tempo desta fala. Sem ela, tudo segue como antes. */
+  leitura?: LeituraDoVideo | null;
 };
 
 /** Um momento decidido pelo JEV, antes do texto. */
@@ -158,14 +181,17 @@ export type MomentoDecidido = {
   pedido?: string | null;
   /** Entrou pela cobertura (o buraco maior que a régua) ou pela chamada de inscrever, não pela onda. */
   origem?: "onda" | "cobertura" | "inscrever" | "existente";
+  /** O que a câmera mostra neste momento, pela leitura do vídeo (06/10): o redator e a conferência leem. */
+  emCena?: string;
 };
 
 export type DecisaoDaLinguagem = { familia: FamiliaVisual; densidade: Densidade; video: QuantoDeMidia; confianca: number | null; cenario: CenarioDaGravacao };
 
 // ─────────────────────────────── eixo 2: a linguagem ───────────────────────────────
 
+/** O contexto de TODO pedido ao JEV e ao redator: o comando, o nicho, a marca, o perfil e a leitura do vídeo inteiro (06/10). */
 const contextoDoProjeto = (e: EntradaDoPlanoPeloJev) =>
-  [`Comando do cliente: "${e.comando.texto}"`, e.nicho ? `Nicho e público do projeto: ${e.nicho}` : "", e.marca ? `Marca: ${e.marca}` : "", e.perfil ? e.perfil.slice(0, 600) : ""].filter(Boolean).join("\n");
+  [`Comando do cliente: "${e.comando.texto}"`, e.nicho ? `Nicho e público do projeto: ${e.nicho}` : "", e.marca ? `Marca: ${e.marca}` : "", e.perfil ? e.perfil.slice(0, 600) : "", resumoDaLeitura(e.leitura)].filter(Boolean).join("\n");
 
 /** O JEV escolhe a família da linguagem, a densidade, o quanto de vídeo e se o comando pede para trocar o cenário. */
 export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<DecisaoDaLinguagem> {
@@ -177,7 +203,7 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
       {
         familia: {
           type: "choice",
-          instructions: "Qual linguagem visual o comando do cliente pede para desenhar TODOS os elementos do vídeo (textos, ícones, imagens, vídeos)? Leve em conta o nicho e a marca quando o comando não diz.",
+          instructions: "Qual linguagem visual o comando do cliente pede para desenhar TODOS os elementos do vídeo (textos, ícones, imagens, vídeos)? Leve em conta o nicho, a marca e, quando houver, a leitura do vídeo (o gênero e o cenário da gravação) quando o comando não diz.",
           criteria: Object.fromEntries(FAMILIAS.map((f) => [f.id, f.criterio])),
         },
         densidade: {
@@ -219,7 +245,7 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
 
 const SISTEMA_DO_ESTILO = `Você escreve o BLOCO DE ESTILO de um vídeo: um parágrafo em INGLÊS, de 35 a 60 palavras, que vai no fim de TODO prompt de imagem e de vídeo gerado para este vídeo, para que todas as imagens e cenas tenham a mesma linguagem visual.
 
-O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramento, paleta), nunca a cena. Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
+O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramento, paleta), nunca a cena. Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Quando houver a leitura do vídeo (o cenário da gravação, o gênero), o acabamento conversa com ela: as imagens vão aparecer ao lado dessa gravação, com a luz e o ambiente dela. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
 
 Responda só JSON: {"bloco":"..."}`;
 
@@ -230,7 +256,7 @@ export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: F
   try {
     const r = await askClaude(
       SISTEMA_DO_ESTILO,
-      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, cores].filter(Boolean).join("\n"),
+      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n"),
       { model: MODELO_DO_REDATOR, maxTokens: 4000, effort: "low", timeoutMs: 90_000, usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-estilo" } }
     );
     const j = extrairJson(r) as { bloco?: unknown };
@@ -344,14 +370,25 @@ const pTipo = (r: RespostaDoJev | undefined): Record<string, number> => (r && r.
 /** O que o JEV respondeu sobre um momento (a memória que a cobertura reaproveita, sem perguntar de novo). */
 type Candidato = { j: number; u: MomentoDaFala; pedido: string | null; forcado: boolean; candidatos: Array<{ t: Exclude<TipoDeElemento, "nada">; p: number }>; pNada: number; forma: "janela" | "tela-cheia"; onde: "canto" | "acima-da-cabeca" | "ao-lado"; movimento: number };
 
-/** As perguntas de uma onda ao JEV (o tipo, a forma da imagem, o lugar do ícone, a ênfase e o movimento). */
-function perguntasDaOnda(U: MomentoDaFala[], onda: number[], recentes: string): Record<string, PerguntaDoJev> {
+/**
+ * As perguntas de uma onda ao JEV (o tipo, a forma da imagem, o lugar do
+ * ícone, a ênfase e o movimento). Com a leitura do vídeo (06/10), cada momento
+ * leva o trecho lido (o que acontece, o que a imagem mostra, quem está em
+ * cena, área livre) e os tipos oferecidos são os que o trecho permite.
+ */
+function perguntasDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: number[], recentes: string): Record<string, PerguntaDoJev> {
   const perguntas: Record<string, PerguntaDoJev> = {};
   for (const j of onda) {
     const ant = U[j - 1]?.texto ? `Fala anterior: "${U[j - 1].texto.slice(0, 160)}". ` : "";
-    const ctx = `${ant}MOMENTO AVALIADO (${U[j].inicio.toFixed(0)} s): "${U[j].texto.slice(0, 280)}".`;
-    perguntas[`tipo_${j}`] = { type: "choice", instructions: `${ctx} ${recentes} Qual elemento visual serve melhor a ESTE momento, para este nicho e este comando?`, criteria: { ...CRITERIO_DO_TIPO } };
-    delete (perguntas[`tipo_${j}`] as { criteria: Record<string, string> }).criteria.inscrever;
+    const tr = trechoEm(e.leitura, U[j].inicio);
+    const cena = contextoDoTrecho(e.leitura, tr);
+    const ctx = `${ant}MOMENTO AVALIADO (${U[j].inicio.toFixed(0)} s): "${U[j].texto.slice(0, 280)}".${cena ? ` ${cena}` : ""}`;
+    const tipos = tiposPossiveis(TIPOS_DE_ELEMENTO, e.leitura, tr);
+    perguntas[`tipo_${j}`] = {
+      type: "choice",
+      instructions: `${ctx} ${recentes} Qual elemento visual serve melhor a ESTE momento, para este nicho e este comando${cena ? ", pelo que a fala diz E pelo que a câmera mostra" : ""}?`,
+      criteria: Object.fromEntries(tipos.map((t) => [t, CRITERIO_DO_TIPO[t]])),
+    };
     perguntas[`forma_${j}`] = { type: "choice", instructions: `${ctx} Se este momento ganhasse uma IMAGEM, ela fica numa janela ao lado da pessoa ou ocupa a tela cheia?`, criteria: { janela: "janela ao lado da pessoa: a pessoa segue falando, a imagem ilustra", "tela-cheia": "tela cheia: a imagem é o assunto e merece a tela toda por alguns segundos" } };
     perguntas[`onde_${j}`] = { type: "choice", instructions: `${ctx} Se este momento ganhasse um ÍCONE animado, onde ele fica?`, criteria: { canto: "no canto de cima, discreto", "acima-da-cabeca": "acima da cabeça da pessoa, como um pensamento", "ao-lado": "ao lado da pessoa, grande, com o rótulo" } };
     perguntas[`enfase_${j}`] = { type: "noul", instructions: `${ctx} Há neste momento UMA palavra forte (o número, o nome, a palavra da tese, a virada) que mereça um soco de câmera?` };
@@ -373,8 +410,9 @@ function candidatosDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: nu
     const probs = pTipo(r[`tipo_${j}`]);
     if (!Object.keys(probs).length) continue;
     const pNada = probs.nada ?? 0;
-    let candidatos = TIPOS_DE_ELEMENTO.filter((t) => t !== "nada")
-      .map((t) => ({ t: t as Exclude<TipoDeElemento, "nada">, p: probs[t] ?? 0 }))
+    // Só os tipos que a pergunta ofereceu têm probabilidade; os outros ficam em zero e nunca entram.
+    let candidatos = TIPOS_DECIDIVEIS.map((t) => ({ t: t as Exclude<TipoDeElemento, "nada">, p: probs[t] ?? 0 }))
+      .filter((c) => c.p > 0)
       .sort((a, b) => b.p - a.p);
     const doPedido = pedido ? tipoDoPedido(pedido) : null;
     if (doPedido && doPedido !== "nada") candidatos = [{ t: doPedido, p: 1 }, ...candidatos.filter((c) => c.t !== doPedido)];
@@ -447,14 +485,14 @@ async function decidirBloco(
     if (!onda.length) continue;
     const perto = st.momentos.slice(-4).map((m) => `${m.tipo} em ${m.inicio.toFixed(0)} s`);
     const recentes = perto.length ? `Já entraram perto, nesta ordem: ${perto.join("; ")}. Varie: o mesmo tipo em sequência cansa.` : "Ainda não entrou nenhum elemento neste trecho.";
-    const perguntas = perguntasDaOnda(U, onda, recentes);
+    const perguntas = perguntasDaOnda(e, U, onda, recentes);
     let r: Record<string, RespostaDoJev> = {};
     try {
       r = await perguntarAoJev(
         {
           projectId: e.projectId,
           etapa: "editor-por-comando-plano",
-          state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[familia].nome}. Formato: ${e.formato}. Ritmo pedido: ${L.densidade}.\nRegra: decida pelo que o momento DIZ; imagem e vídeo só quando há algo concreto para ver; nada é escolha válida.`,
+          state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[familia].nome}. Formato: ${e.formato}. Ritmo pedido: ${L.densidade}.\nRegra: decida pelo que o momento DIZ${e.leitura ? " e pelo que a câmera MOSTRA (a leitura do trecho)" : ""}; imagem e vídeo só quando há algo concreto para ver; nada é escolha válida.`,
         },
         perguntas
       );
@@ -515,7 +553,12 @@ function montarMomento(
   let tela = !peca || ficha?.plano === "tela";
   if (peca === "imagem-janela") tela = false;
   const [dMin, dMax0] = ficha ? ficha.duracao : DURACAO_DO_TIPO[tipo];
-  const dMax = tela ? Math.min(dMax0, R.telaMaxSeg) : dMax0;
+  // A LEITURA DO TRECHO (06/10): com a pessoa se mexendo muito, nada vai atrás dela (o recorte em movimento falha)
+  // e a peça fica mais curta; o que a câmera mostra vai com o momento para o redator e para a conferência.
+  const tr = trechoEm(e.leitura, u.inicio);
+  const mexeMuito = movimentoEm(e.leitura, u.inicio, u.fim) === "muito";
+  if (mexeMuito && tipo === "texto-atras") return null;
+  const dMax = Math.min(tela ? Math.min(dMax0, R.telaMaxSeg) : dMax0, mexeMuito ? Math.max(dMin, 3.2) : Infinity);
   // Lista e citação seguem até o fim do momento seguinte (os itens são ditos em sequência).
   const j1 = (tipo === "lista" || tipo === "citacao") && U[j + 1] ? j + 1 : j;
   const inicio = u.inicio;
@@ -559,6 +602,7 @@ function montarMomento(
     fala: U.slice(j, j1 + 1).map((x) => x.texto).join(" "),
     falaEmVolta: U.slice(Math.max(0, j - 1), j1 + 2).map((x) => x.texto).join(" "),
     pedido,
+    ...(tr ? { emCena: contextoDoTrecho(e.leitura, tr) } : {}),
   };
 }
 
@@ -611,7 +655,7 @@ async function cobrirBuracos(
       try {
         const r = await perguntarAoJev(
           { projectId: e.projectId, etapa: "editor-por-comando-cobertura", state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[L.familia].nome}. Formato: ${e.formato}.\nEste trecho do vídeo está há muito tempo sem nenhum elemento na tela: escolha o elemento que melhor serve a cada momento.` },
-          perguntasDaOnda(U, faltam, "Este trecho está sem elemento há mais tempo do que o ritmo pedido permite.")
+          perguntasDaOnda(e, U, faltam, "Este trecho está sem elemento há mais tempo do que o ritmo pedido permite.")
         );
         perguntasFeitas.n += faltam.length * 5;
         candidatosDaOnda(e, U, faltam, r, enfases, memoria);
@@ -793,6 +837,8 @@ Regras da CENA de imagem e de vídeo ("cena", em INGLÊS):
 - Vídeo: descreva a AÇÃO e o movimento que acontece (o que se mexe), em 1 ou 2 frases.
 - Não descreva o estilo nem as cores (o bloco de estilo do vídeo é acrescentado depois). Sem texto na imagem. Nunca pessoa real, famosa ou identificável, nunca nome próprio; pessoas só anônimas, de costas, mãos, silhueta ou ao longe.
 - "oQueAparece": a mesma cena em português, até 8 palavras, para o cliente aprovar.
+- Quando houver a LEITURA DO VÍDEO (o cenário da gravação e o "EM CENA" de cada momento), a cena da imagem ou do vídeo CONVERSA com ela: o mesmo tipo de ambiente e de luz, os objetos que estão em cena quando fizer sentido, o assunto que a fala e a imagem mostram naquele momento; nunca uma cena que brigue com o que o espectador está vendo ao lado.
+- O NOME DE QUEM FALA ("nome", "papel") sai da leitura do vídeo ou da própria fala; nunca inventado. Sem nome na leitura nem na fala, use o papel ("o entrevistado", "a médica").
 - Fotos de arquivo das peças de papel ("descricao"): em INGLÊS, concreta (objeto, lugar, prédio, estátua genérica, figura anônima de época).
 - O CENÁRIO (id "cenario", só quando pedido): o fundo que o cliente pediu no comando para ficar atrás dele, em INGLÊS, sem pessoas, com espaço livre no centro para a pessoa.
 - Quando houver PEDIDO DO CLIENTE no momento, o texto atende ao pedido.
@@ -819,7 +865,7 @@ async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, li
     `# A FALA DESTE BLOCO\n${falaDoBloco}`,
     `# OS MOMENTOS (escreva só as props de cada um)\n${[
       ...(cenario ? ["- id cenario, o CENÁRIO que o cliente pediu no comando para ficar atrás dele o vídeo inteiro\n  props: cena (EM INGLÊS, o cenário pedido, sem pessoas, espaço livre no centro), oQueAparece (português, até 8 palavras)"] : []),
-      ...lista.map((m) => `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"${m.pedido ? `\n  PEDIDO DO CLIENTE: "${m.pedido}"` : ""}\n  props: ${propsParaORedator(m)}`),
+      ...lista.map((m) => `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"${m.pedido ? `\n  PEDIDO DO CLIENTE: "${m.pedido}"` : ""}${m.emCena ? `\n  ${m.emCena.slice(0, 500)}` : ""}\n  props: ${propsParaORedator(m)}`),
     ].join("\n")}`,
   ]
     .filter(Boolean)
@@ -839,7 +885,7 @@ async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, li
 
 /** O texto de uma peça, para a conferência (o primeiro campo de texto das props). */
 function textoDasProps(props: Record<string, unknown>): string {
-  for (const k of ["texto", "titulo", "manchete", "frase", "palavra", "rotulo", "legenda", "lugar"]) {
+  for (const k of ["texto", "titulo", "manchete", "frase", "palavra", "nome", "rotulo", "legenda", "lugar"]) {
     const v = props[k];
     if (typeof v === "string" && v.trim()) return v.replace(/\*\*/g, "").trim();
   }
@@ -884,7 +930,7 @@ async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo
       if (!props) continue;
       const texto = textoDasProps(props);
       if (texto) perguntas[`t_${m.id}`] = { type: "noul", instructions: `A fala do trecho é: "${(m.falaEmVolta ?? m.fala).slice(0, 420)}". O texto que vai à tela é: "${texto.slice(0, 160)}". Esse texto é curto, claro, nas palavras do falante, e não inventa dado, nome ou número que a fala não diz?` };
-      if (typeof props.cena === "string") perguntas[`c_${m.id}`] = { type: "noul", instructions: `Nicho do projeto: ${e.nicho ?? "não informado"}. A fala do trecho é: "${(m.falaEmVolta ?? m.fala).slice(0, 420)}". A ${m.midia === "video" ? "cena em vídeo" : "imagem"} pedida é: "${String(props.cena).slice(0, 300)}". Ela mostra algo concreto que faz sentido com esta fala e com este nicho (não é uma imagem genérica de banco)?` };
+      if (typeof props.cena === "string") perguntas[`c_${m.id}`] = { type: "noul", instructions: `Nicho do projeto: ${e.nicho ?? "não informado"}.${e.leitura?.cenario ? ` Cenário da gravação: ${e.leitura.cenario.slice(0, 160)}.` : ""}${m.emCena ? ` ${m.emCena.slice(0, 300)}` : ""} A fala do trecho é: "${(m.falaEmVolta ?? m.fala).slice(0, 420)}". A ${m.midia === "video" ? "cena em vídeo" : "imagem"} pedida é: "${String(props.cena).slice(0, 300)}". Ela mostra algo concreto que faz sentido com esta fala, com este nicho${m.emCena ? " e com o que está em cena na gravação" : ""} (não é uma imagem genérica de banco)?` };
     }
     if (Object.keys(perguntas).length) {
       try {

@@ -399,7 +399,11 @@ export function TituloAtras(c: Ctx) {
   }, []).slice(0, 3) : [txt];
   const maior = Math.max(...linhas.map((l) => l.length), 3);
   const fonte = tema.visual === "documental" ? "Playfair Display" : tema.fonteTitulo === "Geist" ? "Archivo Black" : tema.fonteTitulo;
-  const largura = vertical ? W * 0.92 : W * 0.9;
+  // ATRÁS DE QUEM FALA (06/10): com `props.centro` (fração do quadro, medido pela leitura do vídeo), o título se
+  // centra no rosto de quem fala e cabe entre ele e a borda mais perto; sem o campo, no centro do quadro.
+  const centro0 = Number(p.centro);
+  const centro = Number.isFinite(centro0) && centro0 > 0.05 && centro0 < 0.95 ? centro0 : 0.5;
+  const largura = Math.min(vertical ? W * 0.92 : W * 0.9, 2 * Math.min(centro, 1 - centro) * W * 0.96);
   // No 9:16 a cabeça mora no terço de cima (prova de 03/10: a segunda linha
   // sumia inteira atrás do rosto): o título fica ACIMA da cabeça, a pessoa só
   // corta a base das letras, e ele cabe na faixa de cima.
@@ -421,7 +425,7 @@ export function TituloAtras(c: Ctx) {
   return (
     <div style={{ position: "absolute", inset: 0, opacity: c.fica }}>
       {/* ATRÁS da pessoa: a palavra gigante. */}
-      <div data-atras="1" style={{ position: "absolute", left: 0, right: 0, top: cy, transform: `translateY(-50%) scale(${deriva})`, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div data-atras="1" style={{ position: "absolute", left: centro * W - largura / 2, width: largura, top: cy, transform: `translateY(-50%) scale(${deriva})`, display: "flex", flexDirection: "column", alignItems: "center" }}>
         {linhas.map((l, i) => {
           const letras = l.split("");
           return (

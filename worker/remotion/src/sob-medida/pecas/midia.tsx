@@ -21,10 +21,14 @@ export function ImagemJanela(c: Ctx) {
   if (!url) return null;
   const m = margens(c);
   const lado = texto(p.lado, vertical ? "topo" : "direita");
-  const largura = vertical ? Math.min(m.largura, W * 0.78) : W * 0.4;
-  const altura = vertical ? largura * 0.72 : largura * 0.66;
-  const x = vertical || lado === "topo" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
-  const y = vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
+  // A CAIXA DA LEITURA (06/10): o resolvedor mede a área livre do trecho (props.caixa, fração do quadro) e a janela
+  // cabe nela, nunca sobre rosto, tela ou quadro; sem a caixa, o lado pedido com as medidas de sempre.
+  const cx = p.caixa as { x?: number; y?: number; w?: number; h?: number } | undefined;
+  const medida = cx && typeof cx === "object" && [cx.x, cx.y, cx.w, cx.h].every((v) => typeof v === "number" && Number.isFinite(v)) && cx.w! > 0.05 && cx.h! > 0.05 ? cx : null;
+  const largura = medida ? Math.min(medida.w! * W, (medida.h! * H - 40 * u) / 0.66) : vertical ? Math.min(m.largura, W * 0.78) : W * 0.4;
+  const altura = vertical && !medida ? largura * 0.72 : largura * 0.66;
+  const x = medida ? medida.x! * W + (medida.w! * W - largura) / 2 : vertical || lado === "topo" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
+  const y = medida ? medida.y! * H : vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
   const s = molaFisica(c.t, 190, 14);
   const opacidade = limitar(c.t / 0.15) * c.fica;
   // O movimento lento da imagem (Ken Burns): a janela nunca fica parada.

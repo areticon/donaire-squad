@@ -9,6 +9,7 @@ import { Busca, Chat, Ferramentas, GradeAzul, IlustracaoTraco, LegendaDestaque, 
 import { CarimboSobre, Censura, Colagem, Cronologia, FundoColagem, Jornal, MapaAntigo, MarcaTexto, rasgado } from "./pecas/vox";
 import { ImagemJanela } from "./pecas/midia";
 import { Inscrever } from "./pecas/inscrever";
+import { CartaoDePasso, DestaqueNaTela, FraseChave, NomeDeQuemFala, RealceDeQuemFala, Slide, ZoomNoPonto } from "./pecas/contexto";
 import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -76,6 +77,14 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   "imagem-janela": ImagemJanela,
   // A chamada de curtir e se inscrever (05/10, noite), nos momentos que o JEV escolheu, desenhada na linguagem do vídeo.
   inscrever: Inscrever,
+  // As peças de contexto (06/10): o editor decide pelo contexto do vídeo inteiro (quem fala, tela, quadro, área livre).
+  "nome-de-quem-fala": NomeDeQuemFala,
+  "realce-de-quem-fala": RealceDeQuemFala,
+  "zoom-no-ponto": ZoomNoPonto,
+  "destaque-na-tela": DestaqueNaTela,
+  "cartao-de-passo": CartaoDePasso,
+  "frase-chave": FraseChave,
+  slide: Slide,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */

@@ -81,6 +81,7 @@ import {
   lerComandoDoProjeto,
   paletaDoProjeto,
   planejarCompletoPorComando,
+  type LeituraDoVideo,
   revisarPorComando,
   tetoDeImagens,
   type ComandoDoVideo,
@@ -1905,6 +1906,17 @@ async function entradaDoEditor(v: VideoDoCompleto, m: MontagemDoCompleto, quadro
   };
 }
 
+/**
+ * A LEITURA DO VÍDEO INTEIRO gravada na montagem (06/10, lib/media/leitura-do-video.ts
+ * escreve `completoMontagem.leitura` no contrato de lib/media/editor-por-comando/leitura-tipos.ts).
+ * Lida aqui pelo campo, sem depender do tipo da montagem (o módulo da leitura
+ * está sendo escrito em paralelo); sem ela, o editor segue como antes.
+ */
+function leituraDaMontagem(m: MontagemDoCompleto): LeituraDoVideo | null {
+  const l = (m as { leitura?: LeituraDoVideo | null }).leitura;
+  return l && typeof l === "object" && Array.isArray(l.trechos) ? l : null;
+}
+
 function resolverSobMedida(v: VideoDoCompleto, m: MontagemDoCompleto, editor: EdicaoDoEditor, insercoes: Record<string, MidiaDaInsercao>) {
   const sm = m.sobMedida!;
   const analise = m.analise!;
@@ -1917,6 +1929,7 @@ function resolverSobMedida(v: VideoDoCompleto, m: MontagemDoCompleto, editor: Ed
     altura: analise.altura,
     tema: { ...temaDoEstilo(sm.estiloId, marca), escuroLegenda: "#06111F" },
     rosto,
+    leitura: leituraDaMontagem(m),
     estiloId: sm.estiloId,
     // A legenda pequena do pitch, a menos que o cliente tenha escolhido "sem legenda".
     comLegenda: legenda.mostrar,
@@ -2000,6 +2013,8 @@ async function entradaDoPlanoDoCompleto(v: VideoDoCompleto, m: MontagemDoComplet
   const { marca, legenda } = contextoVisual(v);
   const { rosto } = geometriaNoQuadro(v.clips, analise);
   return {
+    // A LEITURA DO VÍDEO INTEIRO (06/10): gravada pela leitura em completoMontagem.leitura; o editor decide por ela.
+    leitura: leituraDaMontagem(m),
     palavras: m.fala!.palavras,
     duracao: m.fala!.duracao,
     formato: analise.altura > analise.largura ? "9:16" : "16:9",
