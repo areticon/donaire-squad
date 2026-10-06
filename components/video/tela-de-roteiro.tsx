@@ -371,6 +371,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
               maxCortes={tela.maxCortes}
               naAbertura={podeMexerNaAbertura ? (acaoDoGancho) => naAbertura({ alvo: "corte", trecho: c.indice, acao: acaoDoGancho }) : undefined}
               controle={podeControlar ? { videoId: tela.videoId, aoAplicar: aoControlar } : undefined}
+              naSugestao={tela.status === "roteiro" && !editando ? (t, texto) => acao(`/api/videos/${tela.videoId}/roteiro/sugestao`, { inicio: t.inicio, fim: t.fim, texto, trecho: c.indice }, `sugestao:c${c.indice}:${t.indice}`) : undefined}
             />
           ))}
         </div>
@@ -683,6 +684,7 @@ function CartaoDoCorte({
   maxCortes,
   naAbertura,
   controle,
+  naSugestao,
 }: {
   corte: CorteNaTela;
   escolhido: boolean;
@@ -699,12 +701,15 @@ function CartaoDoCorte({
   naAbertura?: (acao: "trocar" | "desligar" | "ligar") => Promise<boolean>;
   /** O controle do corte (03/10): começo, fim e trechos do meio, palavra por palavra. */
   controle?: { videoId: string; aoAplicar: (r: { modo: "roteiro" | "no-ar"; mensagem: string }) => void };
+  /** A sugestão do cliente num trecho do corte (06/10): o pedido numa cena é lei na montagem. */
+  naSugestao?: (trecho: TrechoDoCompletoNaTela, texto: string) => Promise<boolean>;
 }) {
   const [controlando, setControlando] = useState(false);
   // Aberto por escolha do cliente, ou por estar escolhido (o corte que vai ao ar mostra as cenas).
   const [abertoAMao, setVerCenas] = useState<boolean | null>(null);
   const verCenas = abertoAMao ?? escolhido;
   const efeitos = useMemo(() => (c.cenas ?? []).filter((x) => x.efeito).length, [c.cenas]);
+  const trechos = c.trechos ?? [];
   return (
     <div
       className="rounded-xl border p-3 sm:p-4 transition-colors"
@@ -810,6 +815,27 @@ function CartaoDoCorte({
                 {c.semCenas}
               </p>
             )
+          )}
+          {/* O CORTE CENA A CENA SEM PLANO (06/10): a fala em trechos, cada um com "sugerir ajuste ou efeito".
+              O pedido numa cena é lei: a montagem faz naquela cena o que o cliente escreveu. */}
+          {!c.cenas && trechos.length > 0 && (
+            <div className="mt-3">
+              <button type="button" onClick={() => setVerCenas(!verCenas)} className="text-sm font-medium text-orange-400 hover:underline">
+                {verCenas ? "Esconder a fala cena a cena" : `Ver a fala cena a cena (${trechos.length} ${trechos.length === 1 ? "trecho" : "trechos"}${c.sugestoes ? `, ${c.sugestoes} ${c.sugestoes === 1 ? "pedido seu" : "pedidos seus"}` : ""})`}
+              </button>
+              {verCenas && (
+                <div className="mt-2 space-y-2">
+                  {naSugestao && (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      Em cada trecho, escreva o que você quer ver naquele momento (uma imagem, um número, a cor das letras, onde fica, ou &quot;sem efeito aqui&quot;). O que você pedir numa cena é feito naquela cena, do jeito que você escreveu.
+                    </p>
+                  )}
+                  {trechos.map((t) => (
+                    <LinhaDoTrecho key={t.indice} trecho={t} naSugestao={naSugestao ? (texto) => naSugestao(t, texto) : undefined} trabalhando={ocupado === `sugestao:c${c.indice}:${t.indice}`} />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1086,13 +1112,28 @@ function LinhaDoTrecho({ trecho: t, naSugestao, trabalhando }: { trecho: TrechoD
         </p>
         <div className="min-w-0 flex-1">
           {t.pecas?.length ? (
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {t.pecas.map((p, k) => (
                 <li key={k} className="text-sm" style={{ color: "var(--text-primary)" }}>
+                  {/* A LINHA QUE VOCÊ APROVA (06/10): o tipo, o que aparece, a cor quando não é a da marca, onde, e o
+                      seu pedido quando a peça nasceu dele. O que está escrito aqui é o que vai sair. */}
                   <Video className="inline w-3.5 h-3.5 mr-1 -mt-0.5 opacity-50" />
-                  <span className="font-semibold">{p.rotulo}</span>
+                  <span className="font-semibold">{p.tipo && p.tipo !== p.rotulo ? `${p.tipo} (${p.rotulo})` : p.rotulo}</span>
                   {p.tela ? " (tela cheia)" : ""}
-                  {p.texto ? <span style={{ color: "var(--text-muted)" }}>: “{p.texto}”</span> : null}
+                  {p.descricao || p.texto ? <span style={{ color: "var(--text-muted)" }}>: “{p.descricao || p.texto}”</span> : null}
+                  {p.onde ? <span style={{ color: "var(--text-muted)" }}>, {p.onde}</span> : null}
+                  {p.cor ? (
+                    <span style={{ color: "var(--text-muted)" }}>
+                      , cor <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{p.cor}</span> (pedida por você, no lugar da cor da marca)
+                    </span>
+                  ) : null}
+                  {p.pedido ? (
+                    <span className="block text-[11px] mt-0.5" style={{ color: p.atendido === "nao" ? "var(--accent-orange)" : "var(--text-muted)" }}>
+                      <MessageSquareQuote className="inline w-3 h-3 mr-1 -mt-0.5 opacity-70" />
+                      Pedido seu: “{p.pedido}”
+                      {p.atendido === "sim" ? " (conferido: vai sair assim)" : p.atendido === "nao" ? ` (não deu para fazer exatamente assim${p.motivo ? `: ${p.motivo}` : ""})` : ""}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

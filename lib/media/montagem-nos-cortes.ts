@@ -44,7 +44,7 @@ function somDaTrilha(video: { project: { videoEstiloEscolha: unknown; videoStyle
   return { volume: estilo.som.volumeDaTrilha, abaixar: estilo.som.abaixarSobAVoz };
 }
 import { avisarAdminsDaMontagem } from "@/lib/media/aviso-da-montagem";
-import type { RoteiroDoCorte } from "@/lib/media/roteiro-em-texto";
+import { sugestoesNaFala, type RoteiroDoCorte } from "@/lib/media/roteiro-em-texto";
 import {
   concluirVideosDasInsercoes,
   consertarEdicao,
@@ -823,6 +823,9 @@ export async function entradaDoPlanoDoCorte(
     imagens: tetoDeImagens("corte"),
     // A chamada de curtir e inscrever (05/10, noite) só quando um destino do corte é o YouTube.
     youtube: ((t as { destinos?: string[] }).destinos ?? []).some((d) => DESTINOS_DE_CORTE.find((x) => x.id === d)?.plataforma === "youtube"),
+    // OS PEDIDOS DO CLIENTE CENA A CENA NO CORTE (06/10): as sugestões da tela de roteiro, levadas para a fala
+    // conferida deste corte pelo alinhamento por sequência de palavras. O pedido numa cena é lei.
+    pedidos: sugestoesNaFala(t.roteiro?.sugestoes, t.roteiro?.fala?.palavras ?? [], fala.palavras),
   };
 }
 

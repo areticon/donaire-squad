@@ -74,7 +74,12 @@ export async function gemeosNaFaixa(projectId: string): Promise<{ ativos: VideoA
 
 const ANDANDO = ["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"];
 
-type Trecho = { montagem?: { estado?: string; candidato?: unknown; revisaoVisual?: { pendente?: boolean } | null } | null };
+type Trecho = { montagem?: { estado?: string; candidato?: unknown; revisaoVisual?: { pendente?: boolean } | null; sobMedida?: { avisos?: unknown } | null } | null };
+
+/** Os avisos de pedido do cliente não atendido (06/10), de uma lista de avisos da montagem. */
+export function pedidosNaoAtendidosDosAvisos(avisos: unknown): string[] {
+  return (Array.isArray(avisos) ? avisos : []).filter((a): a is string => typeof a === "string" && /^pedido da cena .* não pôde ser atendido/.test(a)).map((a) => a.slice(0, 220));
+}
 
 export async function extrasDaLinha(
   projectId: string,
@@ -84,14 +89,15 @@ export async function extrasDaLinha(
   if (!videos.length) return r;
   const ids = videos.map((v) => v.id);
   const [montagens, rascunhos, cardsDoVideo] = await Promise.all([
-    prisma.$queryRaw<Array<{ id: string; estado: string | null; pendente: string | null; candidato: boolean | null; rodadas: string | null; segura: string | null; falha: string | null }>>`
+    prisma.$queryRaw<Array<{ id: string; estado: string | null; pendente: string | null; candidato: boolean | null; rodadas: string | null; segura: string | null; falha: string | null; avisos: unknown }>>`
       SELECT id,
              "completoMontagem" ->> 'estado' AS estado,
              "completoMontagem" -> 'revisaoVisual' ->> 'pendente' AS pendente,
              ("completoMontagem" -> 'candidato') IS NOT NULL AND "completoMontagem" -> 'candidato' <> 'null'::jsonb AS candidato,
              "completoMontagem" -> 'revisaoVisual' ->> 'rodadas' AS rodadas,
              "completoMontagem" -> 'revisaoVisual' ->> 'segura' AS segura,
-             "completoMontagem" ->> 'falhaTecnica' AS falha
+             "completoMontagem" ->> 'falhaTecnica' AS falha,
+             "completoMontagem" -> 'sobMedida' -> 'avisos' AS avisos
       FROM video_jobs WHERE id = ANY(${ids})`.catch(() => []),
     prisma.$queryRaw<Array<{ vid: string; n: number }>>`
       SELECT r.config ->> 'videoJobId' AS vid, count(p.id)::int AS n
@@ -145,7 +151,10 @@ export async function extrasDaLinha(
     const cortesEmRevisao = trechos.filter(revisandoCorte).length;
     const cortesEmEfeitos = trechos.filter((t) => ANDANDO.includes(t?.montagem?.estado ?? "") && !revisandoCorte(t)).length;
     const temMontagem = Boolean(m?.estado) || trechos.some((t) => t?.montagem?.estado);
+    // Os pedidos do cliente que a montagem não conseguiu atender (06/10), do completo e dos cortes.
+    const pedidosNaoAtendidos = [...pedidosNaoAtendidosDosAvisos(m?.avisos), ...trechos.flatMap((t, i) => pedidosNaoAtendidosDosAvisos(t?.montagem?.sobMedida?.avisos).map((a) => `corte ${i + 1}: ${a}`))].slice(0, 6);
     r.set(v.id, {
+      ...(pedidosNaoAtendidos.length ? { pedidosNaoAtendidos } : {}),
       roteiroLigado: roteiro,
       efeitosLigados: montagemLigada || temMontagem,
       revisaoLigada: revisao,

@@ -6,9 +6,10 @@ import { RecusaDoRoteiro } from "@/lib/media/roteiro-da-edicao";
 import { gravarSugestao, type PedidoDeSugestao } from "@/lib/media/sugestoes-do-completo";
 
 /**
- * "Sugerir ajuste ou efeito" numa cena do vídeo completo (05/10): grava o
- * texto curto no roteiro, sem IA e sem custo; texto vazio tira a sugestão.
- * O diretor lê na montagem. Devolve a tela inteira já refeita.
+ * "Sugerir ajuste ou efeito" numa cena do vídeo completo (05/10) ou de um
+ * corte (`trecho`, 06/10): grava o texto curto no roteiro, sem IA e sem
+ * custo; texto vazio tira a sugestão. Na montagem, o pedido numa cena é lei.
+ * Devolve a tela inteira já refeita.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Pedido incompleto." }, { status: 400 });
   }
   try {
-    const tela = await gravarSugestao(id, userId, { inicio: corpo.inicio, fim: corpo.fim, texto: String(corpo.texto ?? "") });
+    const tela = await gravarSugestao(id, userId, { inicio: corpo.inicio, fim: corpo.fim, texto: String(corpo.texto ?? ""), trecho: typeof corpo.trecho === "number" ? corpo.trecho : null });
     return NextResponse.json({ tela });
   } catch (e) {
     if (e instanceof RecusaDoRoteiro) return NextResponse.json({ error: e.message }, { status: e.status });

@@ -104,6 +104,39 @@ export const luz = (hex: string) => {
 export const escuroDoTema = (t: Tema) => (luz(t.escuro) > 0.35 ? "#0b1220" : misturar(t.escuro, "#05070c", 0.35));
 export const sobreOAcento = (t: Tema) => (luz(t.acento) > 0.62 ? "#111318" : "#ffffff");
 
+/** O pedido do cliente guardado nas props de uma camada (06/10): a cor, o tamanho e a posição que ele pediu. */
+export function pedidoDoCliente(props: Record<string, unknown> | null | undefined): { cor: string | null; tamanho: "pequeno" | "normal" | "grande"; posicao: string | null; texto: string | null } | null {
+  const v = props?.pedidoDoCliente;
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const cor = typeof o.cor === "string" && /^#[0-9a-f]{6}$/i.test(o.cor) ? o.cor : null;
+  return {
+    cor,
+    tamanho: o.tamanho === "grande" || o.tamanho === "pequeno" ? o.tamanho : "normal",
+    posicao: typeof o.posicao === "string" ? o.posicao : null,
+    texto: typeof o.texto === "string" && o.texto.trim() ? o.texto : null,
+  };
+}
+
+/**
+ * O TEMA COM A COR PEDIDA PELO CLIENTE (06/10): o acento (vivo), a cor da
+ * marca e os acentos do Vox passam a ser a cor pedida, só para a peça que a
+ * pediu. A letra por cima do realce segue legível (escura sobre cor clara).
+ */
+export function temaComACorPedida(tema: Tema, cor: string): Tema {
+  const acento = vivo(cor);
+  return {
+    ...tema,
+    acento,
+    acentoMarca: cor,
+    corPedida: cor,
+    vox: { ...(tema.vox ?? {}), realce: cor, tinta: cor, carimbo: cor, fio: cor, tintaNoRealce: luz(cor) > 0.62 ? "#111318" : "#ffffff" },
+  };
+}
+
+/** A cor pedida pelo cliente para esta peça, ou null (a cor da marca vale). */
+export const corPedida = (c: Ctx): string | null => c.tema.corPedida ?? null;
+
 // ─────────────────────────────── o kit ───────────────────────────────
 
 export type Ctx = ContextoDaPeca;

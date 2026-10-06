@@ -53,6 +53,13 @@ export type RoteiroDoCorte = {
   estiloId?: string;
   /** O que o revisor achou e corrigiu antes de o cliente ver (revisor-da-montagem.ts). */
   revisao?: ResumoDaRevisao | null;
+  /**
+   * AS SUGESTÕES DO CLIENTE CENA A CENA NO CORTE (06/10): o mesmo campo do
+   * completo, no tempo da fala deste corte. O pedido numa cena é lei: a
+   * montagem o leva para a fala do corte pronto e o editor por comando o
+   * atende naquele momento (ver lib/media/editor-por-comando/pedido-do-cliente.ts).
+   */
+  sugestoes?: SugestaoDaCena[];
 };
 
 /** O completo dentro do roteiro (fica em `completoMontagem.roteiro.completo`). */
@@ -737,6 +744,13 @@ export type CorteNaTela = {
   gancho?: GanchoNaTela | null;
   /** O que o revisor fez no plano antes de o cliente ver (01/10), em uma frase. */
   revisado?: string | null;
+  /**
+   * O CORTE CENA A CENA SEM PLANO (06/10, editor por comando): os trechos da
+   * fala do corte, cada um com o campo "sugerir ajuste ou efeito". O pedido
+   * numa cena é lei na montagem.
+   */
+  trechos?: TrechoDoCompletoNaTela[];
+  sugestoes?: number;
 };
 
 /** A revisão em uma frase para a tela (01/10): o cliente vê que alguém conferiu. */
@@ -763,8 +777,56 @@ export type TrechoDoCompletoNaTela = {
   cena: CenaNaTela | null;
   sugestao: string | null;
   /** As peças do editor por comando que entram neste trecho (05/10): o nome em português e o texto escrito. */
-  pecas?: Array<{ peca: string; rotulo: string; texto: string; inicio: number; tela: boolean }>;
+  pecas?: PecaDoComandoNaTela[];
 };
+
+/**
+ * UMA PEÇA DO EDITOR POR COMANDO NA LINHA QUE O CLIENTE APROVA (06/10; regra
+ * do Bruno: "se a linha do roteiro que ele aprovou dizia 'letra vermelha' e
+ * ele reclama depois que queria rosa, o erro é dele"). A linha diz o tipo, o
+ * que aparece (em português, escrito pelo redator), a cor quando não é a da
+ * marca, onde fica, e o pedido do cliente quando a peça nasceu dele.
+ */
+export type PecaDoComandoNaTela = {
+  peca: string;
+  rotulo: string;
+  texto: string;
+  inicio: number;
+  tela: boolean;
+  /** O tipo de elemento como o cliente lê ("imagem", "número animado"). */
+  tipo?: string | null;
+  /** O que aparece, em português (a cena da imagem, o texto da peça). */
+  descricao?: string | null;
+  /** A cor usada nesta peça quando NÃO é a da marca ("verde", "#1a73e8"). */
+  cor?: string | null;
+  /** Onde a peça fica ("no centro da tela", "à direita de você"). */
+  onde?: string | null;
+  /** O pedido do cliente que gerou a peça, como ele escreveu. */
+  pedido?: string | null;
+  /** O que a conferência pelo JEV concluiu sobre o pedido. */
+  atendido?: "sim" | "nao" | "sem-conferencia" | null;
+  motivo?: string | null;
+};
+
+/** O lado ou a posição de uma peça em português, pelas props que o plano e o resolvedor escrevem. */
+export function ondeDaPeca(props: Record<string, unknown> | null | undefined): string | null {
+  const p = props ?? {};
+  const pedido = p.pedidoDoCliente && typeof p.pedidoDoCliente === "object" ? (p.pedidoDoCliente as { posicao?: unknown }).posicao : null;
+  const v = String(pedido ?? p.posicao ?? p.lado ?? "");
+  const MAPA: Record<string, string> = {
+    centro: "no centro da tela",
+    canto: "no canto",
+    "acima-da-cabeca": "acima da sua cabeça",
+    "ao-lado": "ao seu lado",
+    direita: "à sua direita",
+    esquerda: "à sua esquerda",
+    topo: "no alto da tela",
+    "topo-esquerda": "no canto de cima",
+    baixo: "embaixo",
+    "esquerda-meio": "à esquerda",
+  };
+  return MAPA[v] ?? null;
+}
 
 export type CompletoNaTela = {
   duracao: number;
@@ -869,7 +931,15 @@ export function cortesNaTela(trechos: TrechoCru[], familia: Familia, montagemLig
     const r = t.roteiro;
     const plano = r?.plano ?? null;
     const cenas = plano && r ? plano.cenas.map((_, i) => cenaNaTela(plano, i, r.fala, familia, r.planoOriginal)) : null;
+    // O CORTE CENA A CENA SEM PLANO (06/10): os trechos da fala do corte, com a sugestão do cliente em cada um.
+    const palavras = r?.fala?.palavras ?? [];
+    const trechosDoCorte: TrechoDoCompletoNaTela[] | undefined =
+      !cenas && montagemLigada && palavras.length
+        ? trechosDaFala(palavras, r!.fala.duracao).map((x, i) => ({ indice: i, ...x, cena: null, sugestao: sugestaoDoTrecho(r?.sugestoes, x.inicio, x.fim)?.texto ?? null }))
+        : undefined;
+    const sugestoes = (r?.sugestoes ?? []).filter((s) => s.texto.trim()).length;
     return {
+      ...(trechosDoCorte ? { trechos: trechosDoCorte, sugestoes } : {}),
       indice,
       titulo: t.titulo ?? `Corte ${indice + 1}`,
       motivo: t.motivo ?? "",
@@ -888,7 +958,9 @@ export function cortesNaTela(trechos: TrechoCru[], familia: Familia, montagemLig
           ? "Este corte sai com a edição de fala e a legenda na sua linguagem, sem cenas geradas."
           : r?.erro
             ? `Não consegui planejar as cenas deste corte agora (${r.erro}). Se você escolher, o squad planeja depois da aprovação.`
-            : "Planejamos as cenas dos cortes mais fortes. Se você escolher este, o squad planeja as cenas dele depois da aprovação.",
+            : trechosDoCorte
+              ? "A edição deste corte é escrita pelo editor depois da aprovação, pelo comando do projeto. Abaixo, a fala cena a cena: o que você pedir numa cena é feito naquela cena."
+              : "Planejamos as cenas dos cortes mais fortes. Se você escolher este, o squad planeja as cenas dele depois da aprovação.",
     };
   });
 }

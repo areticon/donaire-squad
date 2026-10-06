@@ -1,6 +1,6 @@
 import React from "react";
 import { Img } from "remotion";
-import { estiloDoTitulo, limitar, margens, misturar, rgba, saiSuave, texto, type Ctx } from "../base";
+import { corPedida, estiloDoTitulo, limitar, margens, misturar, rgba, saiSuave, texto, type Ctx } from "../base";
 import { brilho, molaFisica, sombraFunda } from "../kit";
 
 /**
@@ -22,13 +22,16 @@ export function ImagemJanela(c: Ctx) {
   const m = margens(c);
   const lado = texto(p.lado, vertical ? "topo" : "direita");
   // A CAIXA DA LEITURA (06/10): o resolvedor mede a área livre do trecho (props.caixa, fração do quadro) e a janela
-  // cabe nela, nunca sobre rosto, tela ou quadro; sem a caixa, o lado pedido com as medidas de sempre.
+  // cabe nela, nunca sobre rosto, tela ou quadro; sem a caixa, o lado pedido com as medidas de sempre. No "centro"
+  // (pedido do cliente), a caixa vem centrada do resolvedor e a janela fica no meio dela.
   const cx = p.caixa as { x?: number; y?: number; w?: number; h?: number } | undefined;
   const medida = cx && typeof cx === "object" && [cx.x, cx.y, cx.w, cx.h].every((v) => typeof v === "number" && Number.isFinite(v)) && cx.w! > 0.05 && cx.h! > 0.05 ? cx : null;
   const largura = medida ? Math.min(medida.w! * W, (medida.h! * H - 40 * u) / 0.66) : vertical ? Math.min(m.largura, W * 0.78) : W * 0.4;
   const altura = vertical && !medida ? largura * 0.72 : largura * 0.66;
-  const x = medida ? medida.x! * W + (medida.w! * W - largura) / 2 : vertical || lado === "topo" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
-  const y = medida ? medida.y! * H : vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
+  const x = medida ? medida.x! * W + (medida.w! * W - largura) / 2 : vertical || lado === "topo" || lado === "centro" ? (W - largura) / 2 : lado === "esquerda" ? m.x : W - m.x - largura;
+  const y = medida ? (lado === "centro" ? medida.y! * H + Math.max(0, (medida.h! * H - altura - 40 * u) / 2) : medida.y! * H) : lado === "centro" ? (H - altura) / 2 - 40 * u : vertical || lado === "topo" ? m.topo : Math.max(m.topo, H * 0.16);
+  // A cor pedida pelo cliente (06/10) vai nas letras da legenda e na moldura que leva o acento.
+  const pedida = corPedida(c);
   const s = molaFisica(c.t, 190, 14);
   const opacidade = limitar(c.t / 0.15) * c.fica;
   // O movimento lento da imagem (Ken Burns): a janela nunca fica parada.
@@ -65,8 +68,8 @@ export function ImagemJanela(c: Ctx) {
             ...estiloDoTitulo(c, vertical ? 46 : 40),
             marginTop: 16 * u,
             textAlign: vertical || lado === "topo" ? "center" : "left",
-            color: papel ? (tema.vox?.tinta ?? "#1b1a17") : "#ffffff",
-            background: papel ? (tema.vox?.realce ?? rgba(tema.acento, 0.85)) : "transparent",
+            color: pedida ?? (papel ? (tema.vox?.tinta ?? "#1b1a17") : "#ffffff"),
+            background: papel && !pedida ? (tema.vox?.realce ?? rgba(tema.acento, 0.85)) : "transparent",
             display: papel ? "inline-block" : "block",
             padding: papel ? `${4 * u}px ${12 * u}px` : 0,
             textShadow: papel ? "none" : neon ? brilho(tema.acento, u, 0.7) : `0 ${3 * u}px ${14 * u}px rgba(0,0,0,.6)`,

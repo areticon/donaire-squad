@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { carregarFontesDoTema, escuroDoTema, limitar, misturar, rgba, saiSuave, vivo } from "./base";
+import { carregarFontesDoTema, escuroDoTema, limitar, misturar, pedidoDoCliente, rgba, saiSuave, temaComACorPedida, vivo } from "./base";
 import { Capitulo, Citacao, Fecho, FraseImpacto, PainelLateral, PalavraChave, Pergaminho, PerguntaResposta, RotuloInferior, Titulo, TituloAtras, Transicao } from "./pecas/texto";
 import { Cartoes, Checklist, Comparacao, Escada, Fluxo, LinhaDoTempo, PassosFoco } from "./pecas/estrutura";
 import { Barras, Cifrao, GraficoLinha, Mapa, NumeroDestaque, Progresso } from "./pecas/dados";
@@ -101,14 +101,24 @@ export function tempoDoQuadro(trechos: Trecho[], f: number, fps: number): number
   return t.t0 + Math.min(t.n - 1, Math.max(0, f - t.c0)) / fps;
 }
 
-/** O contexto de uma camada no instante `t` (null fora dela). */
+/**
+ * O contexto de uma camada no instante `t` (null fora dela).
+ *
+ * O PEDIDO DO CLIENTE NA PEÇA (06/10): quando a camada traz
+ * `props.pedidoDoCliente`, a cor pedida vira o tema DESTA peça (acento, cor
+ * da marca e acentos do Vox), e o tamanho pedido escala a unidade de medida
+ * (as peças desenham tudo por `u`). É genérico: nenhuma peça e nenhum estilo
+ * é citado; a cor da marca segue sendo a regra para o que a IA decide sozinha.
+ */
 export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas): ContextoDaPeca | null {
   if (t < camada.de || t >= camada.ate) return null;
   const local = t - camada.de;
   const dur = camada.ate - camada.de;
   // No 9:16 o quadro é alto: a peça precisa de letra maior para ler no celular
   // (prova de 03/10: o painel e a comparação saíram pequenos demais em pé).
-  const u = (Math.min(p.largura, p.altura) / 1080) * (p.altura > p.largura ? 1.3 : 1);
+  const pedido = pedidoDoCliente(camada.props);
+  const escala = pedido?.tamanho === "grande" ? 1.25 : pedido?.tamanho === "pequeno" ? 0.8 : 1;
+  const u = (Math.min(p.largura, p.altura) / 1080) * (p.altura > p.largura ? 1.3 : 1) * escala;
   return {
     t: local,
     dur,
@@ -117,7 +127,7 @@ export function contexto(camada: CamadaResolvida, t: number, p: PropsDasCamadas)
     passos: camada.eventos.map((e) => limitar((t - e) / Math.max(0.05, camada.evento))),
     eventosLocais: camada.eventos.map((e) => e - camada.de),
     props: camada.props,
-    tema: p.tema,
+    tema: pedido?.cor ? temaComACorPedida(p.tema, pedido.cor) : p.tema,
     W: p.largura,
     H: p.altura,
     vertical: p.altura > p.largura,

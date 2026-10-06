@@ -126,7 +126,8 @@ const SERIFA = '"Playfair Display", Georgia, serif';
 const VERMELHO = "#b3122e";
 const luxo = (c: Ctx) => c.tema.acabamento === "luxo";
 /** O acento das peças: o da marca no tecnológico, o dourado no luxo. */
-const acentoDa = (c: Ctx): string => (luxo(c) ? OURO : c.tema.acento);
+// A cor pedida pelo cliente nesta peça (06/10) vale por cima do ouro do luxo.
+const acentoDa = (c: Ctx): string => c.tema.corPedida ?? (luxo(c) ? OURO : c.tema.acento);
 const tintaDeOuro: React.CSSProperties = { background: OURO_METAL, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", textShadow: "none" };
 const brilhoDeOuro = (u: number, k = 1) => `drop-shadow(0 0 ${6 * u * k}px rgba(212,175,55,.5)) drop-shadow(0 ${3 * u}px ${10 * u}px rgba(0,0,0,.6)) drop-shadow(0 0 ${22 * u}px rgba(0,0,0,.55))`;
 const MARMORE = `url("data:image/svg+xml;utf8,${encodeURIComponent(

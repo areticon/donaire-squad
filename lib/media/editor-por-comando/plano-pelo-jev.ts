@@ -10,6 +10,7 @@ import {
   COMPONENTES_COM_FOTO,
   CRITERIO_DO_TIPO,
   DURACAO_DO_TIPO,
+  NOME_DO_TIPO,
   TIPOS_DECIDIVEIS,
   TIPOS_DE_ELEMENTO,
   custoPrevisto,
@@ -38,6 +39,38 @@ import {
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { contextoDoTrecho, movimentoEm, resumoDaLeitura, tiposPossiveis, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
+import {
+  corEmIngles,
+  corEmPortugues,
+  instrucoesParaORedator,
+  interpretacaoDasRespostas,
+  interpretarPorPalavras,
+  pedidoNasProps,
+  perguntasDoPedido,
+  resumoDaInterpretacao,
+  type OndeDoPedido,
+  type PedidoDoCliente,
+} from "@/lib/media/editor-por-comando/pedido-do-cliente";
+
+/**
+ * O PEDIDO DO CLIENTE NUMA CENA É LEI (06/10/2026, 02h20). O que mudou aqui:
+ *   - cada pedido cena a cena é INTERPRETADO PELO JEV (pedido-do-cliente.ts:
+ *     tipo entre os tipos possíveis do trecho, forma, onde, cor, tamanho,
+ *     texto literal, mais tempo), uma vez por pedido, antes das ondas; sem
+ *     JEV, a reserva por palavras;
+ *   - o pedido cai no UM momento da fala que ele mais cobre e entra ANTES da
+ *     onda, forçado (p = 1): o ritmo, a cota, o dinheiro e o teto de vídeo não
+ *     o derrubam; "sem efeito" deixa o momento limpo e a cobertura não o enche;
+ *   - a interpretação vira `props.pedidoDoCliente` da peça e da inserção (o
+ *     resolvedor e o worker leem: cor, tamanho, posição pedidos valem só ali);
+ *   - o redator recebe o pedido literal e escreve a cena a partir dele, e o
+ *     JEV CONFERE se o momento atende ao pedido; se não, uma segunda tentativa
+ *     com o pedido no topo; se ainda não, aviso "pedido da cena X não pôde ser
+ *     atendido" (sobMedida.avisos, que o card mostra);
+ *   - o plano aprovado é REAPROVEITADO mesmo com pedidos novos: só os trechos
+ *     pedidos são refeitos (`completarPlanoPeloJev`), e a linha que o cliente
+ *     aprovou nas outras cenas continua valendo.
+ */
 
 /**
  * O CONTEXTO DO VÍDEO INTEIRO (06/10/2026, 01h; regra do Bruno: "a IA deve
@@ -152,7 +185,18 @@ export type EntradaDoPlanoPeloJev = {
   youtube?: boolean;
   /** A LEITURA DO VÍDEO INTEIRO (06/10): gênero, cenário, pessoas e os trechos lidos, no tempo desta fala. Sem ela, tudo segue como antes. */
   leitura?: LeituraDoVideo | null;
+  /**
+   * A PROVA SEM IA PAGA (06/10): o JEV e o redator simulados. Só os testes
+   * puros passam isto; na esteira, ficam o cliente do JEV e o Claude.
+   */
+  simulacao?: { jev?: typeof perguntarAoJev; redator?: (sistema: string, pedido: string) => Promise<string> } | null;
 };
+
+/** O JEV deste pedido: o simulado da prova, ou o de verdade. */
+const jevDe = (e: EntradaDoPlanoPeloJev): typeof perguntarAoJev => e.simulacao?.jev ?? perguntarAoJev;
+const jevDisponivel = (e: EntradaDoPlanoPeloJev): boolean => Boolean(e.simulacao?.jev) || jevLigado();
+const redatorDe = (e: EntradaDoPlanoPeloJev, operacao: string, maxTokens: number, timeoutMs: number) =>
+  e.simulacao?.redator ?? ((sistema: string, pedido: string) => askClaude(sistema, pedido, { model: MODELO_DO_REDATOR, maxTokens, effort: "low", timeoutMs, usage: { projectId: e.projectId ?? undefined, operation: operacao } }));
 
 /** Um momento decidido pelo JEV, antes do texto. */
 export type MomentoDecidido = {
@@ -175,12 +219,14 @@ export type MomentoDecidido = {
   fim: number;
   tela: boolean;
   /** Onde o ícone fica, quando é ícone. */
-  onde?: "canto" | "acima-da-cabeca" | "ao-lado";
+  onde?: OndeDoPedido;
   custo: number;
-  /** O pedido do cliente que caiu aqui, quando houve. */
+  /** O pedido do cliente que caiu aqui, quando houve (o texto dele). */
   pedido?: string | null;
-  /** Entrou pela cobertura (o buraco maior que a régua) ou pela chamada de inscrever, não pela onda. */
-  origem?: "onda" | "cobertura" | "inscrever" | "existente";
+  /** A interpretação do pedido pelo JEV (06/10): vira `props.pedidoDoCliente` da peça. */
+  pedidoDoCliente?: PedidoDoCliente | null;
+  /** Entrou pela cobertura (o buraco maior que a régua), pela chamada de inscrever ou por pedido do cliente, não pela onda. */
+  origem?: "onda" | "cobertura" | "inscrever" | "existente" | "pedido";
   /** O que a câmera mostra neste momento, pela leitura do vídeo (06/10): o redator e a conferência leem. */
   emCena?: string;
 };
@@ -196,9 +242,9 @@ const contextoDoProjeto = (e: EntradaDoPlanoPeloJev) =>
 /** O JEV escolhe a família da linguagem, a densidade, o quanto de vídeo e se o comando pede para trocar o cenário. */
 export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<DecisaoDaLinguagem> {
   const recuo: DecisaoDaLinguagem = { familia: familiaPorPalavras(e.comando.texto), densidade: "medio", video: "algum", confianca: null, cenario: cenarioPorPalavras(e.comando.texto) };
-  if (!jevLigado()) return recuo;
+  if (!jevDisponivel(e)) return recuo;
   try {
-    const r = await perguntarAoJev(
+    const r = await jevDe(e)(
       { projectId: e.projectId, etapa: "editor-por-comando-linguagem", state: contextoDoProjeto(e) },
       {
         familia: {
@@ -254,10 +300,9 @@ export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: F
   const cores = coresNoPrompt(e.paleta, e.cores);
   const reserva = blocoDeEstiloDeReserva(familia, e.comando.texto, e.nicho, cores);
   try {
-    const r = await askClaude(
+    const r = await redatorDe(e, "editor-por-comando-estilo", 4000, 90_000)(
       SISTEMA_DO_ESTILO,
-      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n"),
-      { model: MODELO_DO_REDATOR, maxTokens: 4000, effort: "low", timeoutMs: 90_000, usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-estilo" } }
+      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n")
     );
     const j = extrairJson(r) as { bloco?: unknown };
     const bloco = typeof j?.bloco === "string" ? j.bloco.replace(/\s+/g, " ").replace(/\s*—\s*/g, ", ").trim() : "";
@@ -340,20 +385,95 @@ export function momentosDaFala(frases: Frase[], palavras?: Array<{ texto: string
   return saida;
 }
 
-/** Pedido do cliente que diz o tipo ("põe um vídeo", "uma foto aqui", "um número"). */
-function tipoDoPedido(pedido: string): TipoDeElemento | null {
-  const p = pedido.toLowerCase();
-  if (/v[ií]deo|b-?roll|cena em movimento|filmagem/.test(p)) return "video";
-  if (/imagem|foto|ilustra/.test(p)) return "imagem";
-  if (/n[uú]mero|dado|gr[aá]fico|porcentagem/.test(p)) return "dado";
-  if (/lista|passos|etapas/.test(p)) return "lista";
-  if (/cita[cç][aã]o|vers[ií]culo|manchete/.test(p)) return "citacao";
-  if (/[ií]cone|s[ií]mbolo|emoji/.test(p)) return "icone";
-  if (/atr[aá]s de mim|palavra gigante/.test(p)) return "texto-atras";
-  if (/impacto|tela cheia/.test(p)) return "impacto";
-  if (/destaque|grifa|marca-texto|sublinha/.test(p)) return "legenda-destaque";
-  return null;
+// ─────────────────────────────── o pedido do cliente (lei) ───────────────────────────────
+
+/** Um pedido do cliente já preso ao momento da fala que ele mais cobre, com a interpretação do JEV. */
+export type PedidoNoMomento = { j: number; pedido: PedidoDaCena; interp: PedidoDoCliente };
+
+/** O momento da fala que o pedido mais cobre (o que mais se sobrepõe; empate: o que começa antes). */
+function momentoDoPedido(U: MomentoDaFala[], p: PedidoDaCena): number {
+  let melhor = -1;
+  let maior = 0;
+  U.forEach((u, j) => {
+    const d = Math.min(u.fim, p.fim) - Math.max(u.inicio, p.inicio);
+    if (d > maior + 1e-6) {
+      maior = d;
+      melhor = j;
+    }
+  });
+  if (melhor >= 0) return melhor;
+  // Sem sobreposição (tempos deslizaram): o momento mais perto do começo do pedido.
+  return U.reduce((m, u, j) => (Math.abs(u.inicio - p.inicio) < Math.abs(U[m].inicio - p.inicio) ? j : m), 0);
 }
+
+/**
+ * A INTERPRETAÇÃO DOS PEDIDOS PELO JEV (06/10): uma pergunta por item de cada
+ * pedido (tipo, forma, onde, cor, tamanho, texto literal, mais tempo), num
+ * lote só; sem JEV (ou se ele falhar), a reserva por palavras. Dois pedidos
+ * no mesmo momento viram um só, com os textos juntos.
+ */
+export async function interpretarPedidos(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], avisos: string[]): Promise<Map<number, PedidoNoMomento>> {
+  const saida = new Map<number, PedidoNoMomento>();
+  const lista = (e.pedidos ?? []).filter((p) => p.texto.trim());
+  if (!lista.length || !U.length) return saida;
+  const porMomento = new Map<number, PedidoDaCena>();
+  for (const p of lista) {
+    const j = momentoDoPedido(U, p);
+    const ja = porMomento.get(j);
+    porMomento.set(j, ja ? { ...ja, inicio: Math.min(ja.inicio, p.inicio), fim: Math.max(ja.fim, p.fim), texto: `${ja.texto}; ${p.texto}` } : p);
+  }
+  const itens = [...porMomento.entries()];
+  const tipos = itens.map(([j]) => tiposPossiveis(TIPOS_DE_ELEMENTO, e.leitura, trechoEm(e.leitura, U[j].inicio)));
+  let r: Record<string, RespostaDoJev> = {};
+  if (jevDisponivel(e)) {
+    try {
+      r = await jevDe(e)(
+        { projectId: e.projectId, etapa: "editor-por-comando-pedido", state: `${contextoDoProjeto(e)}\nO cliente leu o roteiro cena a cena e deixou pedidos em cenas específicas. O pedido dele é lei naquela cena: interprete o que ele quer ver, não o que seria melhor.` },
+        Object.assign({}, ...itens.map(([j, p], i) => perguntasDoPedido(i, p.texto, p.fala || U[j].texto, tipos[i])))
+      );
+    } catch (err) {
+      avisos.push(`JEV falhou na interpretação dos pedidos (vale a reserva por palavras): ${err instanceof Error ? err.message.slice(0, 100) : err}`);
+    }
+  }
+  itens.forEach(([j, p], i) => {
+    const interp = Object.keys(r).length ? interpretacaoDasRespostas(i, p.texto, r, tipos[i]) : interpretarPorPalavras(p.texto);
+    saida.set(j, { j, pedido: p, interp });
+  });
+  return saida;
+}
+
+/** O candidato de um pedido: o tipo que o JEV interpretou com p = 1; forma e onde obedecem ao pedido. */
+function candidatoDoPedido(U: MomentoDaFala[], pm: PedidoNoMomento): Candidato | null {
+  const { interp } = pm;
+  if (interp.tipo === "nada" || interp.tipo === "inscrever") return null;
+  return {
+    j: pm.j,
+    u: U[pm.j],
+    pedido: interp.pedido,
+    pedidoDoCliente: interp,
+    forcado: true,
+    candidatos: [{ t: interp.tipo, p: 1 }],
+    pNada: 0,
+    forma: interp.forma,
+    onde: interp.posicao ?? "canto",
+    movimento: interp.tipo === "video" ? 1 : 0,
+  };
+}
+
+/** Os pedidos de um bloco entram ANTES da onda, forçados; o que não coube vira aviso (nunca some em silêncio). */
+function encaixarPedidos(e: EntradaDoPlanoPeloJev, R: RegrasDoRitmo, familia: FamiliaVisual, U: MomentoDaFala[], indices: number[], pedidos: Map<number, PedidoNoMomento>, st: Estado, orcamento: Orcamento, avisos: string[]): void {
+  for (const j of indices) {
+    const pm = pedidos.get(j);
+    if (!pm || st.momentos.some((m) => m.id === `j${j}`)) continue;
+    const c = candidatoDoPedido(U, pm);
+    if (!c) continue;
+    const m = encaixar(e, R, familia, U, c, st, orcamento, "onda");
+    if (m) registrar(st, { ...m, origem: "pedido" });
+    else avisos.push(`pedido da cena ${mmssDe(U[j].inicio)} não coube no plano ("${pm.interp.pedido.slice(0, 80)}": ${resumoDaInterpretacao(pm.interp)})`);
+  }
+}
+
+const mmssDe = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
 type Estado = {
   momentos: MomentoDecidido[];
@@ -368,7 +488,7 @@ type Orcamento = { usd: number; videos: number; duracao: number; inicio: number 
 const pTipo = (r: RespostaDoJev | undefined): Record<string, number> => (r && r.type === "choice" ? r.probabilities ?? { [r.choice]: 1 } : {});
 
 /** O que o JEV respondeu sobre um momento (a memória que a cobertura reaproveita, sem perguntar de novo). */
-type Candidato = { j: number; u: MomentoDaFala; pedido: string | null; forcado: boolean; candidatos: Array<{ t: Exclude<TipoDeElemento, "nada">; p: number }>; pNada: number; forma: "janela" | "tela-cheia"; onde: "canto" | "acima-da-cabeca" | "ao-lado"; movimento: number };
+type Candidato = { j: number; u: MomentoDaFala; pedido: string | null; pedidoDoCliente?: PedidoDoCliente | null; forcado: boolean; candidatos: Array<{ t: Exclude<TipoDeElemento, "nada">; p: number }>; pNada: number; forma: "janela" | "tela-cheia"; onde: OndeDoPedido; movimento: number };
 
 /**
  * As perguntas de uma onda ao JEV (o tipo, a forma da imagem, o lugar do
@@ -397,28 +517,29 @@ function perguntasDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: num
   return perguntas;
 }
 
-/** As respostas de uma onda viram candidatos (um por momento), guardados na memória. */
-function candidatosDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: number[], r: Record<string, RespostaDoJev>, enfases: string[], memoria: Map<number, Candidato>): Candidato[] {
-  const pedidoNo = (u: MomentoDaFala) => (e.pedidos ?? []).find((p) => p.inicio < u.fim && p.fim > u.inicio)?.texto ?? null;
+/**
+ * As respostas de uma onda viram candidatos (um por momento), guardados na
+ * memória. O momento com PEDIDO do cliente não entra aqui: ele já foi
+ * decidido pela interpretação do pedido (`encaixarPedidos`) e, se o pedido
+ * é "sem efeito", nada o enche.
+ */
+function candidatosDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: number[], r: Record<string, RespostaDoJev>, enfases: string[], memoria: Map<number, Candidato>, pedidos: Map<number, PedidoNoMomento>): Candidato[] {
   const depurar = process.env.EDITOR_DOIS_EIXOS_DEPURAR === "1";
   const saida: Candidato[] = [];
   for (const j of onda) {
     const u = U[j];
     if ((probabilidadeDeSim(r[`enfase_${j}`]) ?? 0) >= 0.6 && !enfases.includes(u.de)) enfases.push(u.de);
-    const pedido = pedidoNo(u);
-    if (pedido && /sem efeito|sem peça|sem nada|deixa limpo|s[oó] eu/i.test(pedido)) continue;
+    if (pedidos.has(j)) continue;
     const probs = pTipo(r[`tipo_${j}`]);
     if (!Object.keys(probs).length) continue;
     const pNada = probs.nada ?? 0;
     // Só os tipos que a pergunta ofereceu têm probabilidade; os outros ficam em zero e nunca entram.
-    let candidatos = TIPOS_DECIDIVEIS.map((t) => ({ t: t as Exclude<TipoDeElemento, "nada">, p: probs[t] ?? 0 }))
+    const candidatos = TIPOS_DECIDIVEIS.map((t) => ({ t: t as Exclude<TipoDeElemento, "nada">, p: probs[t] ?? 0 }))
       .filter((c) => c.p > 0)
       .sort((a, b) => b.p - a.p);
-    const doPedido = pedido ? tipoDoPedido(pedido) : null;
-    if (doPedido && doPedido !== "nada") candidatos = [{ t: doPedido, p: 1 }, ...candidatos.filter((c) => c.t !== doPedido)];
     if (!candidatos[0]) continue;
     if (depurar) console.log(`[dois-eixos] U${j} ${u.inicio.toFixed(1)}s nada=${pNada.toFixed(2)} ${candidatos.slice(0, 3).map((c) => `${c.t}=${c.p.toFixed(2)}`).join(" ")} "${u.texto.slice(0, 50)}"`);
-    const c: Candidato = { j, u, pedido, forcado: Boolean(pedido), candidatos, pNada, forma: decidirChoice(r[`forma_${j}`], FORMAS, "janela", 0.3), onde: decidirChoice(r[`onde_${j}`], ONDES, "canto", 0.3), movimento: probabilidadeDeSim(r[`movimento_${j}`]) ?? 0 };
+    const c: Candidato = { j, u, pedido: null, forcado: false, candidatos, pNada, forma: decidirChoice(r[`forma_${j}`], FORMAS, "janela", 0.3), onde: decidirChoice(r[`onde_${j}`], ONDES, "canto", 0.3), movimento: probabilidadeDeSim(r[`movimento_${j}`]) ?? 0 };
     memoria.set(j, c);
     saida.push(c);
   }
@@ -427,7 +548,8 @@ function candidatosDaOnda(e: EntradaDoPlanoPeloJev, U: MomentoDaFala[], onda: nu
 
 /** Tenta pôr um candidato no estado, com as regras do ritmo (ou as da cobertura, mais folgadas). */
 function encaixar(e: EntradaDoPlanoPeloJev, R: RegrasDoRitmo, familia: FamiliaVisual, U: MomentoDaFala[], c: Candidato, st: Estado, orcamento: Orcamento, modo: "onda" | "cobertura"): MomentoDecidido | null {
-  const { j, u, pedido, forcado, forma, onde, movimento } = c;
+  const { j, u, forcado, forma, onde, movimento } = c;
+  const pedido = c.pedidoDoCliente ?? null;
   // A IMAGEM QUE PEDE MOVIMENTO (o JEV respondeu) vira B-roll em vídeo enquanto houver teto: o vídeo vem antes, com a força da imagem.
   const candidatos = c.candidatos.flatMap((x) => (x.t === "imagem" && movimento >= 0.6 && st.videos < orcamento.videos ? [{ t: "video" as const, p: x.p }, x] : [x])).filter((x, i, l) => l.findIndex((y) => y.t === x.t) === i);
   const melhor = candidatos[0];
@@ -476,10 +598,13 @@ async function decidirBloco(
   perguntasFeitas: { n: number },
   enfases: string[],
   avisos: string[],
-  memoria: Map<number, Candidato>
+  memoria: Map<number, Candidato>,
+  pedidos: Map<number, PedidoNoMomento>
 ): Promise<MomentoDecidido[]> {
   const st: Estado = { momentos: [], segundosDeTela: 0, videos: 0, gasto: 0, porTipo: {} };
   const familia = L.familia;
+  // OS PEDIDOS DO CLIENTE PRIMEIRO (lei): entram antes da onda, e a onda decide o resto em volta deles.
+  encaixarPedidos(e, R, familia, U, indices, pedidos, st, orcamento, avisos);
   for (let w = 0; w < indices.length; w += ONDA) {
     const onda = indices.slice(w, w + ONDA).filter((j) => U[j].fim - U[j].inicio >= 0.6);
     if (!onda.length) continue;
@@ -488,7 +613,7 @@ async function decidirBloco(
     const perguntas = perguntasDaOnda(e, U, onda, recentes);
     let r: Record<string, RespostaDoJev> = {};
     try {
-      r = await perguntarAoJev(
+      r = await jevDe(e)(
         {
           projectId: e.projectId,
           etapa: "editor-por-comando-plano",
@@ -503,7 +628,7 @@ async function decidirBloco(
     perguntasFeitas.n += Object.keys(perguntas).length;
     // A ESCOLHA PELA FORÇA (prova do médico de 05/10): o momento mais claro da onda escolhe primeiro e
     // o espaço vale para os DOIS lados; na ordem do tempo, um legenda fraco ocupava o lugar do vídeo forte.
-    const daOnda = candidatosDaOnda(e, U, onda, r, enfases, memoria).filter((c) => {
+    const daOnda = candidatosDaOnda(e, U, onda, r, enfases, memoria, pedidos).filter((c) => {
       const melhor = c.candidatos[0];
       // O momento entra na disputa quando o tipo dele é claro: acima do limiar do ritmo, ou bem acima do "nada".
       return c.forcado || (melhor.p >= R.limiar && melhor.p >= c.pNada * 0.6) || (melhor.p >= 0.2 && melhor.p >= c.pNada * 1.5);
@@ -530,16 +655,16 @@ function montarMomento(
   j: number,
   tipo0: Exclude<TipoDeElemento, "nada">,
   forma0: "janela" | "tela-cheia",
-  onde: "canto" | "acima-da-cabeca" | "ao-lado",
-  pedido: string | null,
+  onde: OndeDoPedido,
+  pedido: PedidoDoCliente | null,
   st: Estado,
   orcamento: Orcamento
 ): MomentoDecidido | null {
   const u = U[j];
   let tipo = tipo0;
   let forma = forma0;
-  // O vídeo além do teto por minuto vira imagem em tela cheia (o momento pedia algo para ver).
-  if (tipo === "video" && st.videos + 1 > orcamento.videos) {
+  // O vídeo além do teto por minuto vira imagem em tela cheia (o momento pedia algo para ver). O vídeo PEDIDO pelo cliente fica.
+  if (tipo === "video" && st.videos + 1 > orcamento.videos && !pedido) {
     tipo = "imagem";
     forma = "tela-cheia";
   }
@@ -555,10 +680,12 @@ function montarMomento(
   const [dMin, dMax0] = ficha ? ficha.duracao : DURACAO_DO_TIPO[tipo];
   // A LEITURA DO TRECHO (06/10): com a pessoa se mexendo muito, nada vai atrás dela (o recorte em movimento falha)
   // e a peça fica mais curta; o que a câmera mostra vai com o momento para o redator e para a conferência.
+  // O que o cliente PEDIU com todas as letras passa por cima disso (ele sabe por que pediu).
   const tr = trechoEm(e.leitura, u.inicio);
-  const mexeMuito = movimentoEm(e.leitura, u.inicio, u.fim) === "muito";
+  const mexeMuito = movimentoEm(e.leitura, u.inicio, u.fim) === "muito" && !pedido;
   if (mexeMuito && tipo === "texto-atras") return null;
-  const dMax = Math.min(tela ? Math.min(dMax0, R.telaMaxSeg) : dMax0, mexeMuito ? Math.max(dMin, 3.2) : Infinity);
+  // "Mais tempo" pedido: a peça vai ao máximo da ficha, sem o teto de tela do ritmo.
+  const dMax = pedido?.maisTempo ? dMax0 : Math.min(tela ? Math.min(dMax0, R.telaMaxSeg) : dMax0, mexeMuito ? Math.max(dMin, 3.2) : Infinity);
   // Lista e citação seguem até o fim do momento seguinte (os itens são ditos em sequência).
   const j1 = (tipo === "lista" || tipo === "citacao") && U[j + 1] ? j + 1 : j;
   const inicio = u.inicio;
@@ -579,7 +706,8 @@ function montarMomento(
   const pecaComFoto = Boolean(peca && COMPONENTES_COM_FOTO.has(peca));
   const segundos = Math.min(5, Math.max(3, Math.ceil(fim - inicio)));
   const custo = custoPrevisto(tipo, variante, segundos, pecaComFoto);
-  if (st.gasto + custo > orcamento.usd + 1e-6) {
+  // O teto de dinheiro vale para o que a IA decide sozinha; o que o cliente pediu com todas as letras entra.
+  if (st.gasto + custo > orcamento.usd + 1e-6 && !pedido) {
     // Fora do dinheiro: o vídeo tenta a imagem; o que custa sai.
     if (tipo === "video") return montarMomento(e, R, familia, U, j, "imagem", "tela-cheia", onde, pedido, st, orcamento);
     if (custo > 0) return null;
@@ -597,11 +725,12 @@ function montarMomento(
     inicio,
     fim: +fim.toFixed(3),
     tela,
-    ...(tipo === "icone" ? { onde } : {}),
+    ...(tipo === "icone" ? { onde: pedido?.posicao ?? onde } : {}),
     custo,
     fala: U.slice(j, j1 + 1).map((x) => x.texto).join(" "),
     falaEmVolta: U.slice(Math.max(0, j - 1), j1 + 2).map((x) => x.texto).join(" "),
-    pedido,
+    pedido: pedido?.pedido ?? null,
+    ...(pedido ? { pedidoDoCliente: pedido } : {}),
     ...(tr ? { emCena: contextoDoTrecho(e.leitura, tr) } : {}),
   };
 }
@@ -638,27 +767,29 @@ async function cobrirBuracos(
   orcamento: Orcamento,
   perguntasFeitas: { n: number },
   enfases: string[],
-  avisos: string[]
+  avisos: string[],
+  pedidos: Map<number, PedidoNoMomento> = new Map()
 ): Promise<number> {
   let postos = 0;
   for (let rodada = 0; rodada < 6; rodada++) {
     const abertos = buracos(st.momentos, e.duracao, R.maiorSemTroca);
     if (!abertos.length) break;
     // Os momentos de cada buraco que o JEV ainda não avaliou: perguntados agora (até 6 por buraco, espalhados).
+    // O momento com pedido do cliente fica de fora: "sem efeito" é pedido, e a cobertura não o enche.
     const faltam: number[] = [];
     for (const [a, b] of abertos) {
-      const dentro = U.map((u, j) => j).filter((j) => U[j].inicio >= a + 0.5 && U[j].fim <= b - 0.5 && U[j].fim - U[j].inicio >= 0.6 && !memoria.has(j));
+      const dentro = U.map((u, j) => j).filter((j) => U[j].inicio >= a + 0.5 && U[j].fim <= b - 0.5 && U[j].fim - U[j].inicio >= 0.6 && !memoria.has(j) && !pedidos.has(j));
       const passo = Math.max(1, Math.floor(dentro.length / 6));
       faltam.push(...dentro.filter((_, i) => i % passo === 0).slice(0, 6));
     }
-    if (faltam.length && jevLigado()) {
+    if (faltam.length && jevDisponivel(e)) {
       try {
-        const r = await perguntarAoJev(
+        const r = await jevDe(e)(
           { projectId: e.projectId, etapa: "editor-por-comando-cobertura", state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[L.familia].nome}. Formato: ${e.formato}.\nEste trecho do vídeo está há muito tempo sem nenhum elemento na tela: escolha o elemento que melhor serve a cada momento.` },
           perguntasDaOnda(e, U, faltam, "Este trecho está sem elemento há mais tempo do que o ritmo pedido permite.")
         );
         perguntasFeitas.n += faltam.length * 5;
-        candidatosDaOnda(e, U, faltam, r, enfases, memoria);
+        candidatosDaOnda(e, U, faltam, r, enfases, memoria, pedidos);
       } catch (err) {
         avisos.push(`JEV falhou na cobertura: ${err instanceof Error ? err.message.slice(0, 100) : err}`);
       }
@@ -667,7 +798,7 @@ async function cobrirBuracos(
     for (const [a, b] of abertos) {
       // O melhor candidato do buraco, pela força do tipo que o JEV deu; perto do meio em caso de empate.
       const meio = (a + b) / 2;
-      const dentro = [...memoria.values()].filter((c) => c.u.inicio >= a + 0.5 && c.u.fim <= b - 0.5).sort((x, y) => y.candidatos[0].p - x.candidatos[0].p || Math.abs(x.u.inicio - meio) - Math.abs(y.u.inicio - meio));
+      const dentro = [...memoria.values()].filter((c) => c.u.inicio >= a + 0.5 && c.u.fim <= b - 0.5 && !pedidos.has(c.j)).sort((x, y) => y.candidatos[0].p - x.candidatos[0].p || Math.abs(x.u.inicio - meio) - Math.abs(y.u.inicio - meio));
       for (const c of dentro) {
         if (st.momentos.some((m) => m.id === `j${c.j}`)) continue;
         const m = encaixar(e, R, L.familia, U, c, st, orcamento, "cobertura");
@@ -710,7 +841,7 @@ function trechosLivres(momentos: Array<{ inicio: number; fim: number }>, duracao
  * (ou nenhum); o código só monta a peça, desenhada na linguagem do vídeo.
  */
 async function decidirInscrever(e: EntradaDoPlanoPeloJev, L: DecisaoDaLinguagem, U: MomentoDaFala[], momentos: MomentoDecidido[], enfases: string[], avisos: string[]): Promise<MomentoDecidido[]> {
-  if (!e.youtube || !jevLigado()) return [];
+  if (!e.youtube || !jevDisponivel(e)) return [];
   const [dMin, dMax] = FICHAS.inscrever?.duracao ?? DURACAO_DO_TIPO.inscrever;
   const vezes = e.duracao < 95 ? 1 : e.duracao < 360 ? 2 : 3;
   const livres = trechosLivres(momentos, e.duracao, INSCREVER_DEPOIS_DE, dMin + 1);
@@ -740,7 +871,7 @@ async function decidirInscrever(e: EntradaDoPlanoPeloJev, L: DecisaoDaLinguagem,
   }
   if (!Object.keys(perguntas).length) return [];
   try {
-    const r = await perguntarAoJev({ projectId: e.projectId, etapa: "editor-por-comando-inscrever", state: `${contextoDoProjeto(e)}\nO vídeo vai para o YouTube: a chamada de curtir e se inscrever entra ${vezes} vez(es), perto de momentos fortes.` }, perguntas);
+    const r = await jevDe(e)({ projectId: e.projectId, etapa: "editor-por-comando-inscrever", state: `${contextoDoProjeto(e)}\nO vídeo vai para o YouTube: a chamada de curtir e se inscrever entra ${vezes} vez(es), perto de momentos fortes.` }, perguntas);
     for (let k = 0; k < vezes; k++) {
       const resp = r[`r${k}`];
       if (!resp || resp.type !== "choice" || resp.choice === "nenhum" || (resp.confidence ?? 0) < 0.3) continue;
@@ -765,17 +896,21 @@ const PROPS_DO_INSCREVER = { chamada: "Curtir e se inscrever", rede: "youtube" }
  */
 export async function decidirPeloJev(e: EntradaDoPlanoPeloJev, ja?: DecisaoDaLinguagem): Promise<{ momentos: MomentoDecidido[]; enfases: string[]; avisos: string[]; perguntas: number; linguagem: DecisaoDaLinguagem; regras: RegrasDoRitmo; cobertura: number }> {
   const avisos: string[] = [];
+  const perguntas0 = { n: 0 };
   const L = ja ?? (await decidirLinguagem(e));
   const curto = e.duracao <= 95 || e.formato === "9:16";
   const teto = e.tetoUsdPorMinuto ?? tetoUsdPorMinuto();
   const R = regrasDoRitmo({ formato: e.formato, duracao: e.duracao, densidade: L.densidade, video: L.video, tetoUsdPorMinuto: teto, videosPorMinutoMax: videosPorMinutoMax(curto) });
-  if (!jevLigado()) return { momentos: [], enfases: [], avisos: ["JEV desligado: o vídeo sai sem elementos"], perguntas: 0, linguagem: L, regras: R, cobertura: 0 };
+  if (!jevDisponivel(e)) return { momentos: [], enfases: [], avisos: ["JEV desligado: o vídeo sai sem elementos"], perguntas: 0, linguagem: L, regras: R, cobertura: 0 };
   if (!e.frases.length) return { momentos: [], enfases: [], avisos: [], perguntas: 0, linguagem: L, regras: R, cobertura: 0 };
   const U = momentosDaFala(e.frases, e.palavras);
+  // OS PEDIDOS DO CLIENTE (lei): interpretados pelo JEV uma vez, antes de tudo; cada um preso ao momento que cobre.
+  const pedidos = await interpretarPedidos(e, U, avisos);
+  perguntas0.n += pedidos.size * 7;
   // Os blocos de ~5 min em paralelo, cada um com a parte proporcional do dinheiro e do teto de vídeo.
   const n = Math.max(1, Math.round(e.duracao / BLOCO_SEG));
   const blocos = Array.from({ length: n }, (_, b) => U.map((u, j) => ({ u, j })).filter(({ u }) => u.inicio >= (b * e.duracao) / n && (b === n - 1 || u.inicio < ((b + 1) * e.duracao) / n)).map(({ j }) => j));
-  const perguntas = { n: 0 };
+  const perguntas = perguntas0;
   const enfases: string[] = [];
   const minutos = Math.max(e.duracao / 60, 1 / 6);
   const memoria = new Map<number, Candidato>();
@@ -785,7 +920,7 @@ export async function decidirPeloJev(e: EntradaDoPlanoPeloJev, ja?: DecisaoDaLin
       const ini = U[indices[0]].inicio;
       const dur = U[indices[indices.length - 1]].fim - ini;
       const frac = dur / Math.max(1, e.duracao);
-      return decidirBloco(e, L, R, U, indices, { usd: teto * minutos * frac, videos: Math.floor(R.videosPorMinuto * minutos * frac + 0.5), duracao: Math.max(dur, 1), inicio: ini }, perguntas, enfases, avisos, memoria);
+      return decidirBloco(e, L, R, U, indices, { usd: teto * minutos * frac, videos: Math.floor(R.videosPorMinuto * minutos * frac + 0.5), duracao: Math.max(dur, 1), inicio: ini }, perguntas, enfases, avisos, memoria, pedidos);
     })
   );
   const st: Estado = { momentos: partes.flat().sort((a, b) => a.inicio - b.inicio), segundosDeTela: 0, videos: 0, gasto: 0, porTipo: {} };
@@ -796,30 +931,46 @@ export async function decidirPeloJev(e: EntradaDoPlanoPeloJev, ja?: DecisaoDaLin
     if (m.tela) st.segundosDeTela += m.fim - m.inicio;
   }
   // A COBERTURA (regra 2): os buracos maiores que a régua, com o que sobrou do dinheiro (e 15% a mais, para o buraco não ficar vazio por custo).
-  const cobertura = await cobrirBuracos(e, L, R, U, st, memoria, { usd: teto * minutos * 1.15, videos: Math.floor(R.videosPorMinuto * minutos + 0.5), duracao: e.duracao, inicio: 0 }, perguntas, enfases, avisos);
+  const cobertura = await cobrirBuracos(e, L, R, U, st, memoria, { usd: teto * minutos * 1.15, videos: Math.floor(R.videosPorMinuto * minutos + 0.5), duracao: e.duracao, inicio: 0 }, perguntas, enfases, avisos, pedidos);
   const momentos = st.momentos;
-  // O GANCHO DO CORTE (regra explícita): o vertical curto abre com texto na tela nos 3 primeiros segundos.
-  if (R.curto && U[0] && !momentos.some((m) => m.inicio < 3)) {
+  // O GANCHO DO CORTE (regra explícita): o vertical curto abre com texto na tela nos 3 primeiros segundos
+  // (não quando o cliente pediu a cena limpa ali).
+  if (R.curto && U[0] && !momentos.some((m) => m.inicio < 3) && !pedidos.has(0)) {
     const u = U[0];
     const tipo: "texto-atras" | "legenda-destaque" = momentos[0]?.tipo === "legenda-destaque" ? "texto-atras" : "legenda-destaque";
     const peca = componenteDa(L.familia, tipo)!;
     const d = FICHAS[peca]?.duracao ?? DURACAO_DO_TIPO[tipo];
     momentos.unshift({ id: "j0", tipo, variante: tipo, peca, midia: null, f0: u.k, f1: u.k, de: u.de, ate: u.ate, inicio: u.inicio, fim: Math.max(u.inicio + d[0], Math.min(u.fim, u.inicio + d[1])), tela: false, custo: 0, fala: u.texto, pedido: null });
   }
-  // Dois elementos não se cruzam: o que entra enquanto o anterior está na tela sai (o anterior manda).
+  const limpos = semCruzamento(momentos, avisos);
+  // CURTIR E INSCREVER (regra 3): o JEV escolhe os momentos, nos trechos livres que sobraram.
+  const chamadas = await decidirInscrever(e, L, U, limpos, enfases, avisos);
+  const todos = [...limpos, ...chamadas].sort((a, b) => a.inicio - b.inicio);
+  return { momentos: todos, enfases, avisos, perguntas: perguntas.n, linguagem: L, regras: R, cobertura };
+}
+
+/**
+ * Dois elementos não se cruzam: o que entra enquanto o anterior está na tela
+ * sai (o anterior manda). O PEDIDO do cliente é a exceção: ele manda, e o que
+ * a IA decidiu sozinha por cima dele é que sai.
+ */
+function semCruzamento(momentos: MomentoDecidido[], avisos: string[]): MomentoDecidido[] {
   const limpos: MomentoDecidido[] = [];
-  for (const m of momentos) {
+  for (const m of [...momentos].sort((a, b) => a.inicio - b.inicio)) {
     const ant = limpos[limpos.length - 1];
     if (ant && m.inicio < ant.fim + 0.2) {
+      if (m.pedidoDoCliente && !ant.pedidoDoCliente) {
+        avisos.push(`${ant.id}: cruzava o pedido do cliente em ${m.id}, saiu`);
+        limpos.pop();
+        limpos.push(m);
+        continue;
+      }
       avisos.push(`${m.id}: cruzava ${ant.id}, saiu`);
       continue;
     }
     limpos.push(m);
   }
-  // CURTIR E INSCREVER (regra 3): o JEV escolhe os momentos, nos trechos livres que sobraram.
-  const chamadas = await decidirInscrever(e, L, U, limpos, enfases, avisos);
-  const todos = [...limpos, ...chamadas].sort((a, b) => a.inicio - b.inicio);
-  return { momentos: todos, enfases, avisos, perguntas: perguntas.n, linguagem: L, regras: R, cobertura };
+  return limpos;
 }
 
 // ─────────────────────────────── o redator ───────────────────────────────
@@ -841,22 +992,30 @@ Regras da CENA de imagem e de vídeo ("cena", em INGLÊS):
 - O NOME DE QUEM FALA ("nome", "papel") sai da leitura do vídeo ou da própria fala; nunca inventado. Sem nome na leitura nem na fala, use o papel ("o entrevistado", "a médica").
 - Fotos de arquivo das peças de papel ("descricao"): em INGLÊS, concreta (objeto, lugar, prédio, estátua genérica, figura anônima de época).
 - O CENÁRIO (id "cenario", só quando pedido): o fundo que o cliente pediu no comando para ficar atrás dele, em INGLÊS, sem pessoas, com espaço livre no centro para a pessoa.
-- Quando houver PEDIDO DO CLIENTE no momento, o texto atende ao pedido.
+- O PEDIDO DO CLIENTE NUMA CENA É LEI. Quando um momento traz "PEDIDO DO CLIENTE", você escreve a cena e o texto a partir do pedido, palavra por palavra, sem interpretar para outra coisa: o objeto que ele pediu é o assunto ("a soccer ball in the center of the frame"), a cor que ele pediu entra com todas as letras ("green lettering"), o texto literal que ele deu vai como está. Nesse momento, a regra "sem texto na imagem" e a regra do estilo cedem ao pedido. Escreva também "pedidoEmIngles": o pedido do cliente traduzido literalmente para o inglês (o que aparece, a cor, o lugar).
 
 Responda só JSON: {"momentos":[{"id":"j12","props":{...}}]} com um item por momento recebido, na ordem.`;
 
 /** As props que o redator escreve para cada momento: a ficha da peça, ou a da inserção. */
 function propsParaORedator(m: MomentoDecidido): string {
-  if (m.peca === "imagem-janela") return 'cena (EM INGLÊS, a imagem deste momento), oQueAparece (português, até 8 palavras), legenda? (até 5 palavras do falante), lado? ("direita" | "esquerda" | "topo")';
-  if (!m.peca) return m.midia === "video" ? "cena (EM INGLÊS, a ação em movimento deste momento, 1 ou 2 frases), oQueAparece (português, até 8 palavras)" : "cena (EM INGLÊS, a imagem em tela cheia deste momento), oQueAparece (português, até 8 palavras)";
-  if (m.peca === "icone") return `${FICHAS.icone.props} (posicao: ${m.onde === "acima-da-cabeca" ? '"topo"' : m.onde === "ao-lado" ? '"direita"' : '"topo-esquerda"'})`;
-  return FICHAS[m.peca]?.props ?? "texto";
+  const doPedido = m.pedidoDoCliente ? ", pedidoEmIngles (o pedido do cliente traduzido literalmente para o inglês)" : "";
+  if (m.peca === "imagem-janela") return `cena (EM INGLÊS, a imagem deste momento), oQueAparece (português, até 8 palavras), legenda? (até 5 palavras do falante), lado? ("direita" | "esquerda" | "topo")${doPedido}`;
+  if (!m.peca) return (m.midia === "video" ? "cena (EM INGLÊS, a ação em movimento deste momento, 1 ou 2 frases), oQueAparece (português, até 8 palavras)" : "cena (EM INGLÊS, a imagem em tela cheia deste momento), oQueAparece (português, até 8 palavras)") + doPedido;
+  if (m.peca === "icone") return `${FICHAS.icone.props} (posicao: ${m.onde === "acima-da-cabeca" ? '"topo"' : m.onde === "ao-lado" ? '"direita"' : m.onde === "centro" ? '"centro"' : '"topo-esquerda"'})${doPedido}`;
+  return (FICHAS[m.peca]?.props ?? "texto") + doPedido;
 }
 
 type MomentoParaRedator = MomentoDecidido;
 
+/** A linha de um momento no pedido ao redator; com `reforco`, o pedido do cliente vai no topo, depois de uma primeira versão que não o atendeu. */
+function linhaDoMomentoParaORedator(m: MomentoParaRedator, reforco = false): string {
+  const cabeca = `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"`;
+  const pedido = m.pedidoDoCliente ? `\n  ${reforco ? "ATENÇÃO: a primeira versão NÃO atendeu ao pedido do cliente. Escreva de novo a partir do pedido, literalmente.\n  " : ""}${instrucoesParaORedator(m.pedidoDoCliente)}` : m.pedido ? `\n  PEDIDO DO CLIENTE: "${m.pedido}"` : "";
+  return `${cabeca}${pedido}${m.emCena ? `\n  ${m.emCena.slice(0, 500)}` : ""}\n  props: ${propsParaORedator(m)}`;
+}
+
 /** Uma chamada do redator para um bloco de momentos. */
-async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, lista: MomentoParaRedator[], falaDoBloco: string, cenario?: boolean): Promise<Record<string, Record<string, unknown>>> {
+async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, lista: MomentoParaRedator[], falaDoBloco: string, cenario?: boolean, reforco = false): Promise<Record<string, Record<string, unknown>>> {
   if (!lista.length && !cenario) return {};
   const pedido = [
     contextoDoProjeto(e),
@@ -865,18 +1024,12 @@ async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, li
     `# A FALA DESTE BLOCO\n${falaDoBloco}`,
     `# OS MOMENTOS (escreva só as props de cada um)\n${[
       ...(cenario ? ["- id cenario, o CENÁRIO que o cliente pediu no comando para ficar atrás dele o vídeo inteiro\n  props: cena (EM INGLÊS, o cenário pedido, sem pessoas, espaço livre no centro), oQueAparece (português, até 8 palavras)"] : []),
-      ...lista.map((m) => `- id ${m.id}, elemento "${m.tipo}"${m.peca ? `, peça "${m.peca}"` : `, ${m.midia === "video" ? "vídeo" : "imagem em tela cheia"}`} (${m.inicio.toFixed(0)} s a ${m.fim.toFixed(0)} s), sobre a fala: "${m.fala.slice(0, 300)}"${m.pedido ? `\n  PEDIDO DO CLIENTE: "${m.pedido}"` : ""}${m.emCena ? `\n  ${m.emCena.slice(0, 500)}` : ""}\n  props: ${propsParaORedator(m)}`),
+      ...lista.map((m) => linhaDoMomentoParaORedator(m, reforco)),
     ].join("\n")}`,
   ]
     .filter(Boolean)
     .join("\n\n");
-  const resposta = await askClaude(SISTEMA_DO_REDATOR, pedido, {
-    model: MODELO_DO_REDATOR,
-    maxTokens: 12000,
-    effort: "low",
-    timeoutMs: 180_000,
-    usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-redator" },
-  });
+  const resposta = await redatorDe(e, "editor-por-comando-redator", 12000, 180_000)(SISTEMA_DO_REDATOR, pedido);
   const j = extrairJson(resposta) as { momentos?: Array<{ id?: unknown; props?: unknown }> };
   const saida: Record<string, Record<string, unknown>> = {};
   for (const m of j?.momentos ?? []) if (typeof m?.id === "string" && m.props && typeof m.props === "object") saida[m.id] = m.props as Record<string, unknown>;
@@ -898,7 +1051,7 @@ function textoDasProps(props: Record<string, unknown>): string {
  * CONFERÊNCIA PELO JEV (o texto longo, confuso ou inventado sai; a cena
  * genérica ou fora do nicho também). Devolve os textos aprovados.
  */
-async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, lista: MomentoDecidido[], opcoes: { cenario?: boolean } = {}): Promise<{ textos: Record<string, Record<string, unknown>>; erros: string[]; semTexto: number; tempos: { redator: number; conferencia: number } }> {
+async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, lista: MomentoDecidido[], opcoes: { cenario?: boolean } = {}): Promise<{ textos: Record<string, Record<string, unknown>>; erros: string[]; semTexto: number; tempos: { redator: number; conferencia: number }; pedidos: Record<string, ConferenciaDoPedido> }> {
   let t = Date.now();
   const n = Math.max(1, Math.round(e.duracao / BLOCO_SEG));
   const blocos = Array.from({ length: n }, (_, k) => ({ de: (k * e.duracao) / n, ate: ((k + 1) * e.duracao) / n }));
@@ -906,14 +1059,14 @@ async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo
   const erros: string[] = [];
   for (const m of lista) if (m.tipo === "inscrever") textos[m.id] = { ...PROPS_DO_INSCREVER };
   const paraRedator = lista.filter((m) => m.tipo !== "inscrever");
+  const falaDoBloco = (b: { de: number; ate: number }) => e.frases.filter((f) => f.fim > b.de && f.inicio < b.ate).map((f) => `[${f.inicio.toFixed(0)}s] ${f.texto}`).join("\n");
   await Promise.all(
     blocos.map(async (b, k) => {
       const doBloco = paraRedator.filter((m) => m.inicio >= b.de && m.inicio < b.ate);
       const cenario = Boolean(opcoes.cenario && k === 0);
       if (!doBloco.length && !cenario) return;
-      const fala = e.frases.filter((f) => f.fim > b.de && f.inicio < b.ate).map((f) => `[${f.inicio.toFixed(0)}s] ${f.texto}`).join("\n");
       try {
-        Object.assign(textos, await redigirBloco(e, ling, doBloco, fala, cenario));
+        Object.assign(textos, await redigirBloco(e, ling, doBloco, falaDoBloco(b), cenario));
       } catch (err) {
         erros.push(`redator: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
       }
@@ -923,18 +1076,21 @@ async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo
   t = Date.now();
   const reprovados = new Set<string>();
   const motivos: string[] = [];
-  if (jevLigado()) {
+  // O momento com PEDIDO do cliente não passa pela reprovação genérica (texto curto, cena do nicho): o pedido é lei,
+  // e a conferência dele é a própria (`conferirPedidos`), que pergunta se o momento atende ao que o cliente escreveu.
+  const comPedido = new Set(paraRedator.filter((m) => m.pedidoDoCliente).map((m) => m.id));
+  if (jevDisponivel(e)) {
     const perguntas: Record<string, PerguntaDoJev> = {};
     for (const m of paraRedator) {
       const props = textos[m.id];
-      if (!props) continue;
+      if (!props || comPedido.has(m.id)) continue;
       const texto = textoDasProps(props);
       if (texto) perguntas[`t_${m.id}`] = { type: "noul", instructions: `A fala do trecho é: "${(m.falaEmVolta ?? m.fala).slice(0, 420)}". O texto que vai à tela é: "${texto.slice(0, 160)}". Esse texto é curto, claro, nas palavras do falante, e não inventa dado, nome ou número que a fala não diz?` };
       if (typeof props.cena === "string") perguntas[`c_${m.id}`] = { type: "noul", instructions: `Nicho do projeto: ${e.nicho ?? "não informado"}.${e.leitura?.cenario ? ` Cenário da gravação: ${e.leitura.cenario.slice(0, 160)}.` : ""}${m.emCena ? ` ${m.emCena.slice(0, 300)}` : ""} A fala do trecho é: "${(m.falaEmVolta ?? m.fala).slice(0, 420)}". A ${m.midia === "video" ? "cena em vídeo" : "imagem"} pedida é: "${String(props.cena).slice(0, 300)}". Ela mostra algo concreto que faz sentido com esta fala, com este nicho${m.emCena ? " e com o que está em cena na gravação" : ""} (não é uma imagem genérica de banco)?` };
     }
     if (Object.keys(perguntas).length) {
       try {
-        const r = await perguntarAoJev({ projectId: e.projectId, etapa: "editor-por-comando-conferencia", state: { comando: e.comando.texto, nicho: e.nicho ?? "" } }, perguntas);
+        const r = await jevDe(e)({ projectId: e.projectId, etapa: "editor-por-comando-conferencia", state: { comando: e.comando.texto, nicho: e.nicho ?? "" } }, perguntas);
         for (const [k, resp] of Object.entries(r)) if ((probabilidadeDeSim(resp) ?? 1) <= 0.35) {
           reprovados.add(k.slice(2));
           motivos.push(k.startsWith("c_") ? `${k.slice(2)} (cena)` : `${k.slice(2)} (texto)`);
@@ -946,13 +1102,123 @@ async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo
   }
   if (reprovados.size) erros.push(`conferência: ${reprovados.size} elemento(s) reprovado(s) pelo JEV saíram (${motivos.join(", ")})`);
   for (const id of reprovados) delete textos[id];
+  // A CONFERÊNCIA DO PEDIDO (06/10): o momento atende ao pedido do cliente? Se não, segunda tentativa com o pedido no topo.
+  const pedidos = await conferirPedidos(e, ling, paraRedator.filter((m) => comPedido.has(m.id)), textos, falaDoBloco, blocos, erros);
   tempos.conferencia = +((Date.now() - t) / 1000).toFixed(1);
   const semTexto = lista.filter((m) => !textos[m.id] && !reprovados.has(m.id)).length;
-  return { textos, erros, semTexto, tempos };
+  return { textos, erros, semTexto, tempos, pedidos };
+}
+
+/** O que a conferência do pedido concluiu sobre um momento (vai para `plano.elementos`). */
+export type ConferenciaDoPedido = { atendido: "sim" | "nao" | "sem-conferencia"; motivo: string | null };
+
+/** O que o momento vai fazer, em uma frase, para o JEV conferir contra o pedido. */
+function oQueOMomentoFaz(m: MomentoDecidido, props: Record<string, unknown>, ling: LinguagemDoVideo): string {
+  const p = m.pedidoDoCliente!;
+  const partes = [
+    `elemento: ${NOME_DO_TIPO[m.tipo] ?? m.tipo}${m.peca ? ` (peça ${m.peca})` : m.midia === "video" ? " (vídeo gerado)" : " (imagem gerada em tela cheia)"}`,
+    `posição: ${p.posicao ?? (m.onde ?? "a de sempre")}`,
+    p.cor ? `cor usada nesta peça: ${corEmPortugues(p)} (${p.cor}), por cima da cor da marca` : "cor: a da marca",
+    p.tamanho ? `tamanho: ${p.tamanho}` : "",
+    typeof props.cena === "string" ? `prompt da ${m.midia === "video" ? "cena em vídeo" : "imagem"} (inglês): "${promptDaMidiaDoPedido(String(props.cena), typeof props.pedidoEmIngles === "string" ? props.pedidoEmIngles : "", ling, m.midia === "video" ? "video" : "imagem").slice(0, 360)}"` : "",
+    textoDasProps(props) ? `texto na tela: "${textoDasProps(props).slice(0, 160)}"` : "",
+    typeof props.oQueAparece === "string" ? `o que aparece: "${String(props.oQueAparece).slice(0, 120)}"` : "",
+  ].filter(Boolean);
+  return partes.join("; ");
+}
+
+/** O prompt final de uma imagem ou vídeo PEDIDO pelo cliente: a cena do redator e, com todas as letras, o pedido dele em inglês. */
+function promptDaMidiaDoPedido(cena: string, pedidoEmIngles: string, ling: LinguagemDoVideo, midia: "imagem" | "video"): string {
+  const literal = pedidoEmIngles.replace(/\s+/g, " ").trim().replace(/\.$/, "");
+  const junta = literal && !cena.toLowerCase().includes(literal.toLowerCase().slice(0, 24)) ? `${cena.replace(/\.$/, "")}. Client request, must appear exactly as asked: ${literal}` : cena;
+  return promptDaMidia(junta, ling, midia);
+}
+
+/**
+ * A CONFERÊNCIA DO PEDIDO PELO JEV (06/10): para cada momento com pedido, "o
+ * momento atende ao pedido do cliente?" (pedido + tipo + props + prompt). Se
+ * não, o redator escreve de novo com o pedido literal no topo e o JEV confere
+ * outra vez; se ainda não, o aviso "pedido da cena X não pôde ser atendido"
+ * sai em `erros` (vira sobMedida.avisos, que o card mostra) e o elemento fica
+ * marcado como não atendido. Sem JEV, fica "sem-conferencia".
+ */
+async function conferirPedidos(
+  e: EntradaDoPlanoPeloJev,
+  ling: LinguagemDoVideo,
+  lista: MomentoDecidido[],
+  textos: Record<string, Record<string, unknown>>,
+  falaDoBloco: (b: { de: number; ate: number }) => string,
+  blocos: Array<{ de: number; ate: number }>,
+  erros: string[]
+): Promise<Record<string, ConferenciaDoPedido>> {
+  const saida: Record<string, ConferenciaDoPedido> = {};
+  if (!lista.length) return saida;
+  const perguntar = async (momentos: MomentoDecidido[]): Promise<Record<string, number | null>> => {
+    const perguntas: Record<string, PerguntaDoJev> = {};
+    for (const m of momentos) {
+      const props = textos[m.id];
+      if (!props) continue;
+      const p = m.pedidoDoCliente!;
+      perguntas[`p_${m.id}`] = {
+        type: "noul",
+        instructions: `O cliente pediu nesta cena, com as palavras dele: "${p.pedido.slice(0, 300)}". A fala da cena: "${m.fala.slice(0, 240)}". O que vai ser feito: ${oQueOMomentoFaz(m, props, ling).slice(0, 900)}. Isso atende ao pedido do cliente como ele escreveu (o que ele pediu para ver aparece; a cor, o tamanho e o lugar que ele pediu são os usados; o texto literal, se houver, é o dele)?`,
+      };
+    }
+    if (!Object.keys(perguntas).length) return {};
+    const r = await jevDe(e)({ projectId: e.projectId, etapa: "editor-por-comando-pedido-conferencia", state: { comando: e.comando.texto, regra: "o pedido do cliente numa cena é lei: o momento tem de mostrar o que ele pediu, do jeito que ele pediu" } }, perguntas);
+    return Object.fromEntries(momentos.map((m) => [m.id, probabilidadeDeSim(r[`p_${m.id}`])]));
+  };
+  if (!jevDisponivel(e)) {
+    for (const m of lista) if (textos[m.id]) saida[m.id] = { atendido: "sem-conferencia", motivo: null };
+    return saida;
+  }
+  const semTexto = lista.filter((m) => !textos[m.id]);
+  for (const m of semTexto) {
+    saida[m.id] = { atendido: "nao", motivo: "o redator não devolveu o texto deste momento" };
+    erros.push(`pedido da cena ${mmssDe(m.inicio)} não pôde ser atendido: o redator não devolveu o texto ("${m.pedidoDoCliente!.pedido.slice(0, 80)}")`);
+  }
+  let pendentes = lista.filter((m) => textos[m.id]);
+  for (let tentativa = 0; tentativa < 2 && pendentes.length; tentativa++) {
+    let notas: Record<string, number | null> = {};
+    try {
+      notas = await perguntar(pendentes);
+    } catch (err) {
+      erros.push(`conferência do pedido falhou: ${err instanceof Error ? err.message.slice(0, 100) : err}`);
+      for (const m of pendentes) saida[m.id] = { atendido: "sem-conferencia", motivo: null };
+      return saida;
+    }
+    const reprovados = pendentes.filter((m) => (notas[m.id] ?? 1) <= 0.35);
+    for (const m of pendentes) if (!reprovados.includes(m)) saida[m.id] = { atendido: "sim", motivo: null };
+    if (!reprovados.length) break;
+    if (tentativa === 0) {
+      // A SEGUNDA TENTATIVA: o redator de novo, só com os reprovados, com o pedido literal no topo.
+      await Promise.all(
+        blocos.map(async (b) => {
+          const doBloco = reprovados.filter((m) => m.inicio >= b.de && m.inicio < b.ate);
+          if (!doBloco.length) return;
+          try {
+            const novos = await redigirBloco(e, ling, doBloco, falaDoBloco(b), false, true);
+            for (const m of doBloco) if (novos[m.id]) textos[m.id] = novos[m.id];
+          } catch (err) {
+            erros.push(`redator (segunda tentativa do pedido): ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+          }
+        })
+      );
+      pendentes = reprovados;
+      continue;
+    }
+    for (const m of reprovados) {
+      const feito = oQueOMomentoFaz(m, textos[m.id] ?? {}, ling);
+      const motivo = `o JEV não reconheceu o pedido no que foi escrito (saiu: ${feito.slice(0, 200)})`;
+      saida[m.id] = { atendido: "nao", motivo };
+      erros.push(`pedido da cena ${mmssDe(m.inicio)} não pôde ser atendido: ${motivo} ("${m.pedidoDoCliente!.pedido.slice(0, 80)}")`);
+    }
+  }
+  return saida;
 }
 
 /** Os momentos com texto viram peças e inserções no formato do diretor (o prompt final de cada imagem e vídeo). */
-function materializar(lista: MomentoDecidido[], textos: Record<string, Record<string, unknown>>, ling: LinguagemDoVideo): { momentos: MomentoDoEditor[]; insercoes: Array<Record<string, unknown>>; elementos: ElementoDoPlano[] } {
+function materializar(lista: MomentoDecidido[], textos: Record<string, Record<string, unknown>>, ling: LinguagemDoVideo, conferidos: Record<string, ConferenciaDoPedido> = {}): { momentos: MomentoDoEditor[]; insercoes: Array<Record<string, unknown>>; elementos: ElementoDoPlano[] } {
   const momentos: MomentoDoEditor[] = [];
   const insercoes: Array<Record<string, unknown>> = [];
   const elementos: ElementoDoPlano[] = [];
@@ -962,23 +1228,47 @@ function materializar(lista: MomentoDecidido[], textos: Record<string, Record<st
     const props = { ...props0 };
     const cena = typeof props.cena === "string" ? props.cena : "";
     const oQueAparece = typeof props.oQueAparece === "string" ? props.oQueAparece : undefined;
+    const pedidoEmIngles = typeof props.pedidoEmIngles === "string" ? props.pedidoEmIngles : "";
+    delete props.pedidoEmIngles;
+    // O PEDIDO DO CLIENTE vai nas props da peça e na inserção (o resolvedor e o worker leem: cor, tamanho, posição).
+    const doPedido = m.pedidoDoCliente ? { pedidoDoCliente: pedidoNasProps(m.pedidoDoCliente) } : {};
+    const prompt = (midia: "imagem" | "video") => (m.pedidoDoCliente ? promptDaMidiaDoPedido(cena, pedidoEmIngles || pedidoEmInglesDeReserva(m.pedidoDoCliente), ling, midia) : promptDaMidia(cena, ling, midia));
     if (m.peca === "imagem-janela") {
       if (!cena) continue;
       const idImg = `${m.id}-img`;
-      insercoes.push({ id: idImg, de: m.de, ate: m.ate, briefing: promptDaMidia(cena, ling, "imagem"), midia: "imagem", janela: true, estilizada: true, oQueAparece });
+      insercoes.push({ id: idImg, de: m.de, ate: m.ate, briefing: prompt("imagem"), midia: "imagem", janela: true, estilizada: true, oQueAparece, ...doPedido });
       delete props.cena;
-      momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props: { ...props, midia: idImg, legenda: props.legenda ?? "" } });
+      momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props: { ...props, midia: idImg, legenda: props.legenda ?? "", ...doPedido } });
     } else if (!m.peca) {
       if (!cena) continue;
       const segundos = Math.min(5, Math.max(3, Math.ceil(m.fim - m.inicio)));
-      insercoes.push({ id: m.id, de: m.de, ate: m.ate, briefing: promptDaMidia(cena, ling, m.midia === "video" ? "video" : "imagem"), midia: m.midia ?? "imagem", estilizada: true, ...(m.midia === "video" ? { segundos } : {}), oQueAparece });
+      insercoes.push({ id: m.id, de: m.de, ate: m.ate, briefing: prompt(m.midia === "video" ? "video" : "imagem"), midia: m.midia ?? "imagem", estilizada: true, ...(m.midia === "video" ? { segundos } : {}), oQueAparece, ...doPedido });
     } else {
-      if (m.peca === "icone") props.posicao = m.onde === "acima-da-cabeca" ? "topo" : m.onde === "ao-lado" ? "direita" : "topo-esquerda";
-      momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props });
+      if (m.peca === "icone") props.posicao = m.onde === "acima-da-cabeca" ? "topo" : m.onde === "ao-lado" ? "direita" : m.onde === "centro" ? "centro" : "topo-esquerda";
+      // O texto literal do cliente vale como o texto da peça.
+      if (m.pedidoDoCliente?.texto && typeof props.texto === "string") props.texto = m.pedidoDoCliente.texto;
+      momentos.push({ id: m.id, peca: m.peca, de: m.de, ate: m.ate, props: { ...props, ...doPedido } });
     }
-    elementos.push({ id: m.id, tipo: m.tipo, variante: m.variante, inicio: +m.inicio.toFixed(2), fim: +m.fim.toFixed(2), peca: m.peca, midia: m.midia, fala: m.fala.slice(0, 200) });
+    const conf = conferidos[m.id];
+    elementos.push({
+      id: m.id,
+      tipo: m.tipo,
+      variante: m.variante,
+      inicio: +m.inicio.toFixed(2),
+      fim: +m.fim.toFixed(2),
+      peca: m.peca,
+      midia: m.midia,
+      fala: m.fala.slice(0, 200),
+      ...(m.pedidoDoCliente ? { pedido: m.pedidoDoCliente.pedido.slice(0, 300), pedidoDoCliente: pedidoNasProps(m.pedidoDoCliente), atendido: conf?.atendido ?? "sem-conferencia", motivo: conf?.motivo ?? null } : {}),
+    });
   }
   return { momentos, insercoes, elementos };
+}
+
+/** Sem o "pedidoEmIngles" do redator: o que dá para dizer em inglês a partir da interpretação (a cor, o lugar). */
+function pedidoEmInglesDeReserva(p: PedidoDoCliente): string {
+  const partes = [p.cor ? `${p.corNome && !p.corNome.startsWith("#") ? corEmIngles(p.corNome) : p.cor} lettering and accents` : "", p.posicao === "centro" ? "placed in the center of the frame" : ""].filter(Boolean);
+  return partes.join(", ");
 }
 
 /** A inserção do cenário pedido (o fundo gerado atrás da pessoa, o vídeo inteiro), quando o redator escreveu a cena. */
@@ -1011,7 +1301,7 @@ export async function escreverPlanoPeloJev(e: EntradaDoPlanoPeloJev): Promise<{ 
   tempos.redator = red.tempos.redator;
   tempos.conferencia = red.tempos.conferencia;
   const erros = [...(est.erro ? [`bloco de estilo: ${est.erro} (usada a reserva)`] : []), ...red.erros];
-  const mat = materializar(lista, red.textos, ling);
+  const mat = materializar(lista, red.textos, ling, red.pedidos);
   const cenario = L.cenario === "trocado" ? insercaoDoCenario(red.textos, ling, e.frases) : null;
   const bruto = {
     leitura: `Plano em dois eixos: ${d.momentos.length} elementos decididos pelo JEV (${d.perguntas} perguntas) na linguagem "${fam.nome}", ritmo ${d.linguagem.densidade}, vídeo ${d.linguagem.video}, cobertura ${d.cobertura}, cenário ${L.cenario}.`,
@@ -1082,7 +1372,7 @@ export function temposDoPlano(plano: PlanoDoDiretor, frases: Frase[], palavras: 
  */
 export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoPlanoPeloJev): Promise<{ plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number> }> {
   const ling = plano.linguagem;
-  if (!ling || !jevLigado() || !e.frases.length) return { plano, avisos: [], tempos: {} };
+  if (!ling || !jevDisponivel(e) || !e.frases.length) return { plano, avisos: [], tempos: {} };
   const t0 = Date.now();
   const avisos: string[] = [];
   const palavras = e.palavras ?? [];
@@ -1091,7 +1381,17 @@ export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoP
   const teto = e.tetoUsdPorMinuto ?? tetoUsdPorMinuto();
   const R = regrasDoRitmo({ formato: e.formato, duracao: e.duracao, densidade: L.densidade, video: L.video, tetoUsdPorMinuto: teto, videosPorMinutoMax: videosPorMinutoMax(curto) });
   const U = momentosDaFala(e.frases, palavras);
-  const existentes = temposDoPlano(plano, e.frases, palavras);
+  const perguntas = { n: 0 };
+  // OS PEDIDOS DO CLIENTE sobre o plano aprovado (06/10): os que o plano ainda não atende são interpretados pelo JEV e
+  // o trecho deles é refeito; o que a IA tinha decidido ali sai. As outras cenas ficam como o cliente aprovou.
+  const pedidos = await interpretarPedidos({ ...e, pedidos: pedidosNaoAtendidos(plano, e.pedidos) }, U, avisos);
+  perguntas.n += pedidos.size * 7;
+  const janelasDosPedidos = [...pedidos.values()].map((pm) => ({ de: Math.min(U[pm.j].inicio, pm.pedido.inicio), ate: Math.max(U[pm.j].fim, pm.pedido.fim) }));
+  const cruzaPedido = (inicio: number, fim: number) => janelasDosPedidos.some((w) => inicio < w.ate && fim > w.de);
+  const existentes0 = temposDoPlano(plano, e.frases, palavras);
+  const removidos = new Set(existentes0.filter((x) => cruzaPedido(x.inicio, x.fim)).map((x) => x.id));
+  if (removidos.size) avisos.push(`pedidos do cliente: ${removidos.size} elemento(s) decidido(s) pela IA saíram dos trechos pedidos (${[...removidos].join(", ")})`);
+  const existentes = existentes0.filter((x) => !removidos.has(x.id));
   const st: Estado = { momentos: [], segundosDeTela: 0, videos: 0, gasto: 0, porTipo: {} };
   for (const x of existentes) {
     const tipo = (x.tipo === "nada" ? "impacto" : x.tipo) as Exclude<TipoDeElemento, "nada">;
@@ -1102,30 +1402,46 @@ export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoP
   const antes = st.momentos.length;
   const minutos = Math.max(e.duracao / 60, 1 / 6);
   const gastoDoPlano = plano.estimativa?.usd ?? 0;
-  const perguntas = { n: 0 };
+  const orcamento: Orcamento = { usd: Math.max(0, teto * minutos * 1.15 - gastoDoPlano), videos: Math.max(0, Math.floor(R.videosPorMinuto * minutos * 0.3)), duracao: e.duracao, inicio: 0 };
+  // Os pedidos entram primeiro (lei), forçados; o pedido "sem efeito" só tira o que havia.
+  encaixarPedidos(e, R, L.familia, U, [...pedidos.keys()], pedidos, st, orcamento, avisos);
   const enfases = [...(plano.enfases ?? [])];
   const memoria = new Map<number, Candidato>();
-  const cobertura = await cobrirBuracos(e, L, R, U, st, memoria, { usd: Math.max(0, teto * minutos * 1.15 - gastoDoPlano), videos: Math.max(0, Math.floor(R.videosPorMinuto * minutos * 0.3)), duracao: e.duracao, inicio: 0 }, perguntas, enfases, avisos);
-  const novos = st.momentos.filter((m) => m.origem === "cobertura");
-  const jaTemInscrever = (plano.elementos ?? []).some((x) => x.tipo === "inscrever");
+  const cobertura = await cobrirBuracos(e, L, R, U, st, memoria, orcamento, perguntas, enfases, avisos, pedidos);
+  const novos = st.momentos.filter((m) => m.origem === "cobertura" || m.origem === "pedido");
+  const jaTemInscrever = (plano.elementos ?? []).some((x) => x.tipo === "inscrever" && !removidos.has(x.id));
   const chamadas = jaTemInscrever ? [] : await decidirInscrever(e, L, U, st.momentos, enfases, avisos);
   const lista = [...novos, ...chamadas];
   const tempos: Record<string, number> = { cobertura: +((Date.now() - t0) / 1000).toFixed(1) };
-  if (!lista.length) return { plano, avisos: [...avisos, `cobertura: nenhum elemento novo (${antes} existentes, ${perguntas.n} perguntas)`], tempos };
+  const semRemovidos = (p: PlanoDoDiretor): PlanoDoDiretor => ({
+    ...p,
+    momentos: (p.momentos ?? []).filter((m) => !removidos.has(String(m.id))),
+    insercoes: (p.insercoes ?? []).filter((x) => !removidos.has(String(x.id)) && !removidos.has(String(x.id).replace(/-img$/, ""))),
+    elementos: (p.elementos ?? []).filter((x) => !removidos.has(x.id)),
+  });
+  if (!lista.length) return { plano: removidos.size ? semRemovidos(plano) : plano, avisos: [...avisos, `cobertura: nenhum elemento novo (${antes} existentes, ${perguntas.n} perguntas)`], tempos };
   const red = await redigirEConferir(e, ling, lista);
   tempos.redator = red.tempos.redator;
   tempos.conferencia = red.tempos.conferencia;
-  const mat = materializar(lista, red.textos, ling);
-  const bruto = { ...plano, momentos: [...(plano.momentos ?? []), ...mat.momentos], insercoes: [...(plano.insercoes ?? []), ...mat.insercoes], enfases };
+  const mat = materializar(lista, red.textos, ling, red.pedidos);
+  const base = semRemovidos(plano);
+  const bruto = { ...base, momentos: [...(base.momentos ?? []), ...mat.momentos], insercoes: [...(base.insercoes ?? []), ...mat.insercoes], enfases };
   const v = validarPlano(bruto, FAMILIA[ling.familia].base, { livre: true });
   const validos = new Set([...v.plano.momentos.map((m) => String(m.id)), ...(v.plano.insercoes ?? []).map((x) => String(x.id))]);
   const novo: PlanoDoDiretor = {
     ...v.plano,
     linguagem: ling,
-    elementos: [...(plano.elementos ?? []), ...mat.elementos].filter((x) => validos.has(x.id)).sort((a, b) => a.inicio - b.inicio),
+    elementos: [...(base.elementos ?? []), ...mat.elementos].filter((x) => validos.has(x.id)).sort((a, b) => a.inicio - b.inicio),
     estimativa: estimarCusto(v.plano, e.duracao, R.tetoUsdPorMinuto),
-    leitura: `${plano.leitura ?? ""} Cobertura (05/10): ${cobertura} elemento(s) novo(s) nos buracos e ${chamadas.length} chamada(s) de inscrever, pelo JEV.`.trim(),
+    leitura: `${plano.leitura ?? ""} Cobertura (05/10): ${cobertura} elemento(s) novo(s) nos buracos e ${chamadas.length} chamada(s) de inscrever, pelo JEV.${pedidos.size ? ` Pedidos do cliente (06/10): ${pedidos.size} trecho(s) refeito(s) pelo pedido.` : ""}`.trim(),
   };
   return { plano: novo, avisos: [...avisos, ...red.erros, ...v.avisos, `cobertura: ${mat.momentos.length + mat.insercoes.length} elemento(s) novo(s) sobre ${antes} existentes (${perguntas.n} perguntas ao JEV)`].slice(0, 40), tempos };
+}
+
+/** Os pedidos que o plano AINDA não atende (o mesmo texto já gravado num elemento do trecho não é refeito). */
+export function pedidosNaoAtendidos(plano: PlanoDoDiretor, pedidos: PedidoDaCena[] | undefined): PedidoDaCena[] {
+  const feitos = (plano.elementos ?? []).filter((x) => x.pedido);
+  const norm = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
+  return (pedidos ?? []).filter((p) => !feitos.some((x) => x.inicio < p.fim + 1 && x.fim > p.inicio - 1 && norm(x.pedido ?? "").includes(norm(p.texto))));
 }
 

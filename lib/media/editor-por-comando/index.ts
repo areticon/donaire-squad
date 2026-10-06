@@ -296,7 +296,14 @@ function entradaPeloJev(e: EntradaDoPlano, base: string, cores: { acento: string
  * sem decidir de novo o que já estava decidido.
  */
 async function reaproveitar(pronto: PlanoPronto, e: EntradaDoPlano, cores: { acento: string; escuro: string; claro: string }): Promise<{ plano: PlanoDoDiretor; base: string; avisos: string[]; tempos: Record<string, number> }> {
-  if (diretorPorLlm()) return { plano: pronto.plano, base: pronto.base, avisos: ["plano do roteiro reaproveitado"], tempos: {} };
+  // O diretor Opus (comparação) não sabe refazer só um trecho: com pedido novo, o plano sai inteiro de novo.
+  if (diretorPorLlm()) {
+    if (e.pedidos?.length) {
+      const d = await escreverPlanoDoVideo(e, pronto.base);
+      return { plano: d.plano, base: d.base ?? pronto.base, avisos: ["plano refeito pelos pedidos do cliente (diretor Opus)", ...d.avisos], tempos: d.tempos };
+    }
+    return { plano: pronto.plano, base: pronto.base, avisos: ["plano do roteiro reaproveitado"], tempos: {} };
+  }
   const c = await completarPlanoPeloJev(pronto.plano, entradaPeloJev(e, pronto.base, cores)).catch((err) => ({ plano: pronto.plano, avisos: [`cobertura do plano reaproveitado falhou: ${err instanceof Error ? err.message.slice(0, 120) : err}`], tempos: {} }));
   return { plano: c.plano, base: pronto.base, avisos: ["plano do roteiro reaproveitado", ...c.avisos], tempos: c.tempos };
 }
@@ -347,8 +354,9 @@ export async function planejarPorComando(e: EntradaDoPlano, pronto?: PlanoPronto
     t = Date.now();
   };
   const cores = coresDoComando(e.comando, e.marca);
-  // O plano do roteiro é reaproveitado (sem decidir nem pagar de novo), a não ser que haja pedido novo do cliente.
-  const reusar = pronto && !e.pedidos?.length ? pronto : null;
+  // O plano do roteiro é reaproveitado (sem decidir nem pagar de novo). Com pedido novo do cliente cena a cena (06/10),
+  // SÓ os trechos pedidos são refeitos (completarPlanoPeloJev): a linha que o cliente aprovou nas outras cenas vale.
+  const reusar = pronto ?? null;
   const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
   const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? await reaproveitar(reusar, e, cores) : await escreverPlanoDoVideo(e, base0);
   const base = d.base ?? base0;
@@ -416,8 +424,9 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano, pronto?: Pla
   let t = Date.now();
   const cores = coresDoComando(e.comando, e.marca);
   const blocos = blocosDoCompleto(e.palavras, e.duracao);
-  // O plano do roteiro (já aprovado pelo cliente) é reaproveitado; com pedido novo cena a cena, o plano sai de novo com os pedidos.
-  const reusar = pronto && !e.pedidos?.length ? pronto : null;
+  // O plano do roteiro (já aprovado pelo cliente) é reaproveitado; com pedido novo cena a cena (06/10), só os trechos
+  // pedidos são refeitos pelo JEV e pelo redator (completarPlanoPeloJev), e o resto fica como o cliente aprovou.
+  const reusar = pronto ?? null;
   const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
   const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? await reaproveitar(reusar, e, cores) : await escreverPlanoDoVideo(e, base0);
   const base = d.base ?? base0;

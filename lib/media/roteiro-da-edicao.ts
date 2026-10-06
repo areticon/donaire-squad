@@ -55,18 +55,22 @@ import {
   cortesNaTela,
   editarIdeia,
   insercoesDoCompleto,
+  ondeDaPeca,
   palavrasDaCena,
   remapearPlano,
   removerEfeito,
   restaurarCena,
+  sugestoesNaFala,
   tempoDaCena,
   trocarCena,
   type FalaDoTrecho,
+  type PecaDoComandoNaTela,
   type RoteiroDoCompleto,
   type RoteiroDoCorte,
   type RoteiroDoVideo,
   type TelaDeRoteiro,
 } from "@/lib/media/roteiro-em-texto";
+import { corEmPortugues } from "@/lib/media/editor-por-comando/pedido-do-cliente";
 import type { PalavraNoCorte, PlanoDeMontagem } from "@/lib/media/plano-de-montagem";
 import type { Word } from "@/lib/media/transcribe";
 import { projetoVisivel } from "@/lib/equipe/conta";
@@ -705,6 +709,8 @@ export async function prepararRoteiro(
             projectId: v.projectId,
             imagens: tetoDeImagens("completo", fala.duracao),
             nicho: v.project.niche,
+            // As sugestões que o cliente já deixou cena a cena (06/10): o pedido é lei desde o primeiro plano.
+            pedidos: sugestoesNaFala(completo.sugestoes, fala.palavras, fala.palavras),
           });
           completo.comando = { texto: comando.texto, base: p.base, plano: p.plano.momentos.length ? p.plano : null, feitoEm: agora(), erro: p.erro ?? null, tempos: { ...p.tempos, total: +((Date.now() - t0) / 1000).toFixed(1) }, avisos: p.avisos.slice(0, 20) };
         } catch (e) {
@@ -1026,23 +1032,37 @@ function comPecasDoComando(tela: ReturnType<typeof completoNaTela>, c: RoteiroDo
     }
     return "";
   };
+  // A LINHA QUE O CLIENTE APROVA (06/10): tipo, o que aparece, a cor quando não é a da marca, onde, e o pedido dele.
+  const elementos = new Map((plano.elementos ?? []).map((el) => [String(el.id), el]));
+  const detalhes = (id: string, props: Record<string, unknown>): Pick<PecaDoComandoNaTela, "tipo" | "cor" | "onde" | "pedido" | "atendido" | "motivo"> => {
+    const el = elementos.get(id) ?? elementos.get(id.replace(/-img$/, ""));
+    const pedido = (props.pedidoDoCliente as { cor?: string; corNome?: string } | undefined) ?? el?.pedidoDoCliente ?? null;
+    return {
+      tipo: el ? NOME_DO_TIPO[el.tipo as TipoDeElemento] ?? el.tipo : null,
+      cor: corEmPortugues(pedido),
+      onde: ondeDaPeca({ ...props, ...(el?.pedidoDoCliente ? { pedidoDoCliente: el.pedidoDoCliente } : {}) }),
+      pedido: el?.pedido ?? null,
+      atendido: el?.pedido ? el.atendido ?? "sem-conferencia" : null,
+      motivo: el?.motivo ?? null,
+    };
+  };
   // As imagens e os vídeos gerados (dois eixos, 05/10 à noite) entram no cena a cena com o que aparece, em português.
   const daMidia = (plano.insercoes ?? [])
-    .filter((x) => !x.janela)
-    .map((x) => ({ inicio: resolverAncora(x.de, frases, c.fala.palavras), peca: x.midia === "video" ? "b-roll" : "imagem", texto: x.oQueAparece ?? "", rotulo: x.midia === "video" ? "B-roll em vídeo" : "imagem em tela cheia", tela: true }));
+    .filter((x) => !x.janela && !(x as { cenario?: boolean }).cenario)
+    .map((x) => ({ inicio: resolverAncora(x.de, frases, c.fala.palavras), peca: x.midia === "video" ? "b-roll" : "imagem", texto: x.oQueAparece ?? "", rotulo: x.midia === "video" ? "B-roll em vídeo" : "imagem em tela cheia", tela: true, ...detalhes(String(x.id), (x as unknown as Record<string, unknown>) ?? {}) }));
   const pecas = [
     ...(plano.momentos ?? []).map((m) => {
       const props = (m.props ?? {}) as Record<string, unknown>;
       const daJanela = m.peca === "imagem-janela" ? (plano.insercoes ?? []).find((x) => x.id === props.midia)?.oQueAparece : undefined;
-      return { inicio: resolverAncora(m.de, frases, c.fala.palavras), peca: m.peca, texto: daJanela ?? texto(props) };
+      return { inicio: resolverAncora(m.de, frases, c.fala.palavras), peca: m.peca, texto: daJanela ?? texto(props), ...detalhes(String(m.id), props) };
     }),
     ...daMidia,
   ]
-    .filter((x): x is { inicio: number; peca: string; texto: string } => x.inicio !== null)
-    .map((x) => ({ ...x, rotulo: ROTULO_DA_PECA[x.peca] ?? (x as { rotulo?: string }).rotulo ?? x.peca.replace(/-/g, " "), tela: (x as { tela?: boolean }).tela ?? FICHAS[x.peca]?.plano === "tela" }))
+    .filter((x): x is typeof x & { inicio: number } => x.inicio !== null)
+    .map((x) => ({ ...x, rotulo: ROTULO_DA_PECA[x.peca] ?? (x as { rotulo?: string }).rotulo ?? x.peca.replace(/-/g, " "), tela: (x as { tela?: boolean }).tela ?? FICHAS[x.peca]?.plano === "tela", descricao: x.texto || null }))
     .sort((a, b) => a.inicio - b.inicio);
   const trechos = tela.trechos.map((t) => {
-    const daqui = pecas.filter((p) => p.inicio >= t.inicio - 0.05 && p.inicio < t.fim - 0.05).map(({ peca, rotulo, texto, inicio, tela }) => ({ peca, rotulo, texto, inicio, tela }));
+    const daqui: PecaDoComandoNaTela[] = pecas.filter((p) => p.inicio >= t.inicio - 0.05 && p.inicio < t.fim - 0.05).map(({ peca, rotulo, texto, inicio, tela, tipo, descricao, cor, onde, pedido, atendido, motivo }) => ({ peca, rotulo, texto, inicio, tela, tipo, descricao, cor, onde, pedido, atendido, motivo }));
     return daqui.length ? { ...t, pecas: daqui } : t;
   });
   // A linguagem, os elementos por tipo e a estimativa de custo (antes de gerar).

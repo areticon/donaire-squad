@@ -7,6 +7,7 @@ import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import type { LinguagemDoVideo } from "@/lib/media/editor-por-comando/linguagem";
 import type { EstimativaDeCusto, TipoDeElemento } from "@/lib/media/editor-por-comando/elementos";
+import { pedidoDasProps, type PedidoNasProps } from "@/lib/media/editor-por-comando/pedido-do-cliente";
 
 /**
  * O DIRETOR DO EDITOR POR COMANDO (05/10/2026): o Opus lê a fala com os
@@ -35,8 +36,27 @@ export type PlanoDoDiretor = EdicaoDoEditor & {
   elementos?: ElementoDoPlano[];
 };
 
-/** Um elemento decidido: o tipo (eixo 1), a peça ou a inserção que o desenha na linguagem (eixo 2). */
-export type ElementoDoPlano = { id: string; tipo: TipoDeElemento; variante: string; inicio: number; fim: number; peca: string | null; midia: "imagem" | "video" | null; fala?: string };
+/**
+ * Um elemento decidido: o tipo (eixo 1), a peça ou a inserção que o desenha
+ * na linguagem (eixo 2) e, quando nasceu de um PEDIDO DO CLIENTE cena a cena
+ * (06/10), o pedido como ele escreveu, a interpretação que virou props e o
+ * que a conferência pelo JEV concluiu (a tela de roteiro mostra tudo isso na
+ * linha que o cliente aprova).
+ */
+export type ElementoDoPlano = {
+  id: string;
+  tipo: TipoDeElemento;
+  variante: string;
+  inicio: number;
+  fim: number;
+  peca: string | null;
+  midia: "imagem" | "video" | null;
+  fala?: string;
+  pedido?: string | null;
+  pedidoDoCliente?: PedidoNasProps | null;
+  atendido?: "sim" | "nao" | "sem-conferencia";
+  motivo?: string | null;
+};
 
 export type EntradaDoDiretor = {
   frases: Frase[];
@@ -328,6 +348,8 @@ export function validarPlano(bruto: unknown, base: string, opcoes: { livre?: boo
       ...(opcoes.livre && x.estilizada === true ? { estilizada: true } : {}),
       ...(opcoes.livre && Number(x.segundos) > 0 ? { segundos: Math.min(15, Math.max(3, Math.ceil(Number(x.segundos)))) } : {}),
       ...(opcoes.livre && typeof x.oQueAparece === "string" ? { oQueAparece: x.oQueAparece.slice(0, 120) } : {}),
+      // O pedido do cliente (06/10) viaja com a inserção: a tela e a conferência da imagem leem.
+      ...(opcoes.livre && pedidoDasProps(x) ? { pedidoDoCliente: pedidoDasProps(x)! } : {}),
     }));
   const enfases = (Array.isArray(j.enfases) ? j.enfases : []).map(String).filter((a) => ANCORA.test(a));
   return { plano: { leitura: typeof j.leitura === "string" ? j.leitura.slice(0, 600) : "", tema, momentos, camera, insercoes, enfases }, avisos };

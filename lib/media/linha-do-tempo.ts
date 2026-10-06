@@ -46,6 +46,12 @@ export type ExtrasDaLinha = {
     segura: boolean;
     falhaTecnica: boolean;
   } | null;
+  /**
+   * OS PEDIDOS DO CLIENTE QUE NÃO PUDERAM SER ATENDIDOS (06/10): os avisos
+   * "pedido da cena X não pôde ser atendido" da montagem do completo e dos
+   * cortes (sobMedida.avisos), para o card dizer antes de o vídeo chegar.
+   */
+  pedidosNaoAtendidos?: string[];
   /** Cortes com a montagem de efeitos rodando (fora da revisão). */
   cortesEmEfeitos: number;
   /** Cortes com o render pronto esperando a revisão visual. */
@@ -365,6 +371,9 @@ export function lerLinhaDoTempo(v: EntradaDaLinha, etapaLocal: string | null = n
       efeitos = "agora";
       notaDosEfeitos = `${cortesEmEfeitos} ${cortesEmEfeitos === 1 ? "corte" : "cortes"}`;
     }
+    // O PEDIDO DO CLIENTE QUE NÃO PÔDE SER ATENDIDO (06/10) aparece no card, no passo dos efeitos, antes da montagem.
+    const naoAtendidos = x?.pedidosNaoAtendidos ?? [];
+    if (!antes && naoAtendidos.length) notaDosEfeitos = [notaDosEfeitos, naoAtendidos.join("; ")].filter(Boolean).join(" · ");
     add("efeitos", efeitos, notaDosEfeitos);
     add("montagem", montagem, notaDaMontagem);
 

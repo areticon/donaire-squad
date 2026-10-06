@@ -18,6 +18,14 @@ export type Tema = {
   acento: string;
   /** A cor original da marca, só para o que é identidade. */
   acentoMarca?: string;
+  /**
+   * A COR PEDIDA PELO CLIENTE NESTA PEÇA (06/10): quando a camada traz
+   * `props.pedidoDoCliente.cor`, o contexto da peça recebe o tema com o
+   * acento, o acento da marca e os acentos do Vox nessa cor, e este campo
+   * marcado, para o acabamento que tem cor própria (o ouro do luxo) ceder a
+   * ela. Só nessa peça: a cor da marca é regra para o que a IA decide sozinha.
+   */
+  corPedida?: string;
   escuro: string;
   claro: string;
   /** Família do título e do texto, já carregadas (ver carregarFontesDoTema). */

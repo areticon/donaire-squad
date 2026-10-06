@@ -7,6 +7,7 @@ import type { CamadaResolvida, EdicaoResolvida, Enquadramento, MidiaDaInsercao, 
 import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import type { LeituraDoVideo, TrechoLido } from "@/lib/media/leitura-do-video";
 import { componenteDa, familiaValida } from "@/lib/media/editor-por-comando/linguagem";
+import { pedidoDasProps, type PedidoNasProps } from "@/lib/media/editor-por-comando/pedido-do-cliente";
 import {
   caixaLivre,
   caixaNaCamera,
@@ -143,6 +144,24 @@ function sobreporCamera(base: Enquadramento[], pedidos: Enquadramento[]): Enquad
 const PECAS_COM_FOTO: Record<string, string> = { colagem: "recortes", jornal: "foto", "mapa-antigo": "foto", censura: "figura", cronologia: "marcos" };
 
 /**
+ * O PEDIDO DO CLIENTE NA POSIÇÃO E NO TAMANHO (06/10): o que ele pediu com
+ * todas as letras vale por cima da área livre e da regra de sempre. O fator
+ * do tamanho alarga a caixa pedida; a posição "centro" põe a caixa no meio
+ * do quadro (mesmo que cubra a pessoa: ele sabe por que pediu, e o aviso
+ * registra). Genérico: nenhuma peça e nenhum estilo é citado pelo nome.
+ */
+export function fatorDoTamanho(p: Pick<PedidoNasProps, "tamanho"> | null | undefined): number {
+  return p?.tamanho === "grande" ? 1.3 : p?.tamanho === "pequeno" ? 0.8 : 1;
+}
+
+/** A caixa centrada no quadro (fração), com o tamanho pedido. */
+export function caixaNoCentro(vertical: boolean, fator: number, base: { w: number; h: number }): Retangulo {
+  const w = +Math.min(0.94, base.w * fator).toFixed(4);
+  const h = +Math.min(vertical ? 0.5 : 0.84, base.h * fator).toFixed(4);
+  return { x: +((1 - w) / 2).toFixed(4), y: +((vertical ? 0.42 : 0.5) - h / 2).toFixed(4), w, h };
+}
+
+/**
  * A CAIXA DA FOLHA sobre a gravação (fração do quadro): no 16:9, do lado livre
  * do rosto, larga até onde o rosto começa (o corpo pode ficar por baixo, o
  * rosto nunca); no 9:16, a faixa livre inteira. O worker desenha a peça
@@ -209,6 +228,10 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       continue;
     }
     let props = limparProps(m.props ?? {}) as Record<string, unknown>;
+    // O PEDIDO DO CLIENTE nesta peça (06/10): cor, tamanho e posição pedidos valem por cima das regras de sempre.
+    const pc = pedidoDasProps(props);
+    const fator = fatorDoTamanho(pc);
+    const noCentro = pc?.posicao === "centro";
     // A LEITURA DO TRECHO (06/10): a posição é decidida pelo TEMPO da peça, não por um quadro só. O rosto é o de
     // quem fala neste trecho, o lado livre é o da área livre medida, e nada cobre rosto, tela nem quadro.
     const tr = trechoEm(ctx.leitura, de);
@@ -234,9 +257,14 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         }
       }
     }
-    // Uma caixa que cobriria rosto, tela, quadro ou uma pessoa inteira tira a peça (com aviso).
+    // Uma caixa que cobriria rosto, tela, quadro ou uma pessoa inteira tira a peça (com aviso). A caixa PEDIDA pelo
+    // cliente no centro fica (ele sabe por que pediu), com o aviso.
     const semCobrir = (caixa: Retangulo, nome: string): boolean => {
       if (!tr || !(cobreAlgo(caixa, tr) || cobreUmaPessoa(caixa, tr))) return true;
+      if (noCentro) {
+        avisos.push(`${id}: ${nome} no centro por pedido do cliente cobre rosto, tela ou quadro no trecho (ficou, como pedido)`);
+        return true;
+      }
       avisos.push(`${id}: ${nome} cobriria rosto, tela ou quadro no trecho, saiu`);
       return false;
     };
@@ -249,16 +277,21 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       }
       props.url = midia.url;
       props.tipo = midia.tipo;
-      // A janela vai para a área livre do trecho (nunca sobre a tela, o quadro ou um rosto).
-      if (tr) {
-        const livre = caixaLivre(tr, { minW: 0.22, minH: 0.16, maxW: vertical0 ? 0.78 : 0.4, maxH: vertical0 ? 0.3 : 0.32, lado: ladoM, perto: centroDe(rostoM) });
+      if (noCentro) {
+        // No centro, por pedido: a caixa no meio do quadro, no tamanho pedido.
+        props.caixa = caixaNoCentro(vertical0, fator, vertical0 ? { w: 0.78, h: 0.36 } : { w: 0.42, h: 0.5 });
+        props.lado = "centro";
+        semCobrir(props.caixa as Retangulo, "a janela");
+      } else if (tr) {
+        // A janela vai para a área livre do trecho (nunca sobre a tela, o quadro ou um rosto).
+        const livre = caixaLivre(tr, { minW: 0.22, minH: 0.16, maxW: Math.min(0.94, (vertical0 ? 0.78 : 0.4) * fator), maxH: Math.min(0.6, (vertical0 ? 0.3 : 0.32) * fator), lado: pc?.posicao === "canto" || pc?.posicao === "acima-da-cabeca" ? ladoM : ladoM, perto: centroDe(rostoM) });
         if (livre) props.caixa = livre;
         else if (conteudo) {
           avisos.push(`${id}: sem área livre para a janela (tela ou quadro em cena), saiu`);
           continue;
         }
-        props.lado = vertical0 ? "topo" : ladoM;
-      }
+        props.lado = vertical0 || pc?.posicao === "acima-da-cabeca" ? "topo" : ladoM;
+      } else if (pc?.posicao === "acima-da-cabeca") props.lado = "topo";
     }
     if (fichaM.eventosDe && Array.isArray(props[fichaM.eventosDe])) props[fichaM.eventosDe] = (props[fichaM.eventosDe] as unknown[]).slice(0, fichaM.maxItens ?? 6);
     const nItens = fichaM.eventosDe ? (Array.isArray(props[fichaM.eventosDe]) ? (props[fichaM.eventosDe] as unknown[]).length : 0) : fichaM.umEvento ? 1 : 0;
@@ -280,13 +313,18 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       props.cabeca = +Math.max(0.05, rostoM.y).toFixed(3);
       // Atrás de QUEM FALA (06/10): com a leitura, o título se centra no rosto de quem fala neste trecho.
       if (tr) props.centro = +(rostoM.x + rostoM.w / 2).toFixed(3);
+      if (noCentro) props.centro = 0.5;
     }
     // A chamada de inscrever fica no canto de baixo que não tem rosto nem conteúdo no trecho.
     if (fichaM.nome === "inscrever") props.lado = vertical0 ? faixaM : zonaLivre(ZONAS_DO_INSCREVER, ladoM, tr);
     // O ícone, o sublinhado e o marca-texto têm posições fixas: a pedida, se não cobre ninguém no trecho; senão a livre.
-    if (fichaM.nome === "icone" && tr) props.posicao = zonaLivre(ZONAS_DO_ICONE, (["direita", "topo-esquerda", "topo"] as const).find((z) => z === props.posicao) ?? "topo-esquerda", tr);
-    if (fichaM.nome === "sublinhado" && tr) props.lado = zonaLivre(ZONAS_DO_SUBLINHADO, (["centro", "esquerda", "direita"] as const).find((z) => z === props.lado) ?? "centro", tr);
-    if (fichaM.nome === "marca-texto" && tr) props.posicao = zonaLivre(ZONAS_DO_MARCA_TEXTO, props.posicao === "centro" ? "centro" : "topo", tr);
+    // A posição PEDIDA pelo cliente não vai para a zona livre: fica onde ele pediu.
+    if (fichaM.nome === "icone" && tr && !pc?.posicao) props.posicao = zonaLivre(ZONAS_DO_ICONE, (["direita", "topo-esquerda", "topo"] as const).find((z) => z === props.posicao) ?? "topo-esquerda", tr);
+    if (fichaM.nome === "icone" && pc?.posicao) props.posicao = pc.posicao === "centro" ? "centro" : pc.posicao === "acima-da-cabeca" ? "topo" : pc.posicao === "ao-lado" ? "direita" : "topo-esquerda";
+    if (fichaM.nome === "sublinhado" && tr && !noCentro) props.lado = zonaLivre(ZONAS_DO_SUBLINHADO, (["centro", "esquerda", "direita"] as const).find((z) => z === props.lado) ?? "centro", tr);
+    if (fichaM.nome === "sublinhado" && noCentro) props.lado = "centro";
+    if (fichaM.nome === "marca-texto" && tr && !noCentro) props.posicao = zonaLivre(ZONAS_DO_MARCA_TEXTO, props.posicao === "centro" ? "centro" : "topo", tr);
+    if (fichaM.nome === "marca-texto" && noCentro) props.posicao = "centro";
     // AS PEÇAS DE CONTEXTO (06/10): a caixa de cada uma vem da leitura do trecho.
     if (fichaM.nome === "nome-de-quem-fala") {
       const fala = quemFala(tr);
@@ -327,8 +365,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     }
     if (fichaM.nome === "cartao-de-passo" || fichaM.nome === "frase-chave") {
       const frase = fichaM.nome === "frase-chave";
-      const pedido = frase ? { minW: 0.24, minH: 0.12, maxW: vertical0 ? 0.86 : 0.46, maxH: vertical0 ? 0.26 : 0.28 } : { minW: 0.2, minH: 0.12, maxW: vertical0 ? 0.7 : 0.36, maxH: vertical0 ? 0.22 : 0.26 };
-      let caixa = caixaLivre(tr, { ...pedido, lado: ladoM, perto: centroDe(rostoM) });
+      const pedido = frase ? { minW: 0.24, minH: 0.12, maxW: Math.min(0.94, (vertical0 ? 0.86 : 0.46) * fator), maxH: Math.min(0.6, (vertical0 ? 0.26 : 0.28) * fator) } : { minW: 0.2, minH: 0.12, maxW: Math.min(0.94, (vertical0 ? 0.7 : 0.36) * fator), maxH: Math.min(0.6, (vertical0 ? 0.22 : 0.26) * fator) };
+      let caixa = noCentro ? caixaNoCentro(vertical0, 1, { w: pedido.maxW, h: pedido.maxH }) : caixaLivre(tr, { ...pedido, lado: ladoM, perto: centroDe(rostoM) });
       if (!caixa) {
         // Sem área livre medida (vídeo antigo): do lado livre do rosto, acima da faixa da legenda.
         const { maxW: w, maxH: h } = pedido;
@@ -347,11 +385,22 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       plano = "cheio";
       props.sobreAGravacao = true;
       props.lado = vertical0 ? faixaM : ladoM;
-      // A folha na área livre do trecho (06/10): nunca sobre outro rosto, a tela ou o quadro.
-      const folha = caixaDaFolhaNoTrecho(tr, rostoM, vertical0, vertical0 ? faixaM : ladoM);
+      // A folha na área livre do trecho (06/10): nunca sobre outro rosto, a tela ou o quadro. No centro, por pedido
+      // do cliente, a folha vai para o meio do quadro no tamanho pedido.
+      const folha = noCentro ? caixaNoCentro(vertical0, fator, vertical0 ? { w: 0.86, h: 0.4 } : { w: 0.5, h: 0.72 }) : caixaDaFolhaNoTrecho(tr, rostoM, vertical0, vertical0 ? faixaM : ladoM);
       if (!folha) {
         avisos.push(`${id}: sem área livre para a folha no trecho (rosto, tela ou quadro em todo lado), saiu`);
         continue;
+      }
+      if (noCentro) semCobrir(folha, "a folha");
+      else if (fator !== 1) {
+        // O tamanho pedido alarga (ou encolhe) a folha em volta do centro dela, dentro do quadro.
+        const w = Math.min(0.94, folha.w * fator);
+        const h = Math.min(0.9, folha.h * fator);
+        folha.x = +limitar(folha.x + (folha.w - w) / 2, 0.02, 0.98 - w).toFixed(4);
+        folha.y = +limitar(folha.y + (folha.h - h) / 2, 0.02, 0.98 - h).toFixed(4);
+        folha.w = +w.toFixed(4);
+        folha.h = +h.toFixed(4);
       }
       props.folha = folha;
     }
