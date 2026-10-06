@@ -68,6 +68,12 @@ export type VarianteDoElemento =
   | "cartao-de-passo"
   | "frase-chave"
   | "slide"
+  // As peças vetoriais (06/10, tarefa D): uma variante cada, desenhada pelo tema da família.
+  | "icone-com-frase"
+  | "comparacao-lado-a-lado"
+  | "cartoes-em-linha"
+  | "interface-de-edicao"
+  | "titulo-em-caixa"
   | "inscrever";
 
 export type FichaDaFamilia = {
@@ -116,6 +122,12 @@ export const COMPONENTE_GENERICO: Record<VarianteDoElemento, string | null> = {
   "cartao-de-passo": "cartao-de-passo",
   "frase-chave": "frase-chave",
   slide: "slide",
+  // As peças vetoriais (06/10, tarefa D, worker/remotion/src/sob-medida/pecas/vetoriais.tsx): um componente cada, na linguagem do vídeo.
+  "icone-com-frase": "icone-com-frase",
+  "comparacao-lado-a-lado": "comparacao-lado-a-lado",
+  "cartoes-em-linha": "cartoes-em-linha",
+  "interface-de-edicao": "interface-de-edicao",
+  "titulo-em-caixa": "titulo-em-caixa",
   // A chamada de curtir e inscrever (05/10, noite): um componente só, desenhado na linguagem do vídeo.
   inscrever: "inscrever",
 };
