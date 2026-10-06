@@ -16,6 +16,7 @@ import { contarUsoDoDesignDoProjeto, linguagemDoDesignAtual } from "@/lib/biblio
 import { fonteDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando/comando-dos-estilos";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { gerarFundosCombinados } from "@/lib/media/editor-por-comando/combinada";
+import { escolhaSincronizadaComComando } from "@/lib/media/estilo-do-comando";
 
 /**
  * O EDITOR POR COMANDO (05/10/2026), atrás do interruptor EDITOR_POR_COMANDO=1.
@@ -68,6 +69,24 @@ export async function salvarComandoDoProjeto(projectId: string, c: ComandoDoVide
     UPDATE projects
     SET config = jsonb_set(CASE WHEN jsonb_typeof(config) = 'object' THEN config ELSE '{}'::jsonb END, '{comandoDoVideo}', ${json}::jsonb), "updatedAt" = now()
     WHERE id = ${projectId}`;
+  await sincronizarEscolhaAntiga(projectId, c);
+}
+
+/**
+ * O COMANDO MANDA (06/10, "ele mantém sempre o VOX"): o comando com a
+ * referência de um estilo do catálogo reescreve a escolha antiga
+ * (videoEstiloEscolha.estiloId e videoStyle) com o mesmo estilo, guardando a
+ * legenda e o resto. Os leitores que ainda olham só para a escolha antiga
+ * (efeitos sonoros, família visual, bloco de estilo, cabeçalho) passam a ver o
+ * estilo do comando. Comando próprio sem referência não mexe na escolha antiga.
+ */
+export async function sincronizarEscolhaAntiga(projectId: string, c: { texto: string; referencia?: string | null }): Promise<boolean> {
+  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { videoEstiloEscolha: true, videoStyle: true } });
+  if (!p) return false;
+  const nova = escolhaSincronizadaComComando(c, p.videoEstiloEscolha, p.videoStyle);
+  if (!nova) return false;
+  await prisma.project.update({ where: { id: projectId }, data: { videoEstiloEscolha: nova.escolha as never, videoStyle: nova.videoStyle } });
+  return true;
 }
 
 /**

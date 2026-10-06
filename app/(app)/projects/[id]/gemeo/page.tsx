@@ -10,6 +10,7 @@ import { geradorDoCadastro, lerCadastro, listarVideos } from "@/lib/media/gemeo-
 import { GemeoDoProjeto } from "@/components/gemeo/gemeo-do-projeto";
 import { ComoOSquadEdita } from "@/components/video/como-o-squad-edita";
 import { resumoDaEdicao } from "@/lib/media/edicao-escolhida";
+import { editorPorComandoLigado, lerComandoDoProjeto } from "@/lib/media/editor-por-comando";
 import { nomeDoDono, podeUsarProjeto } from "@/lib/equipe/conta";
 
 /**
@@ -78,7 +79,7 @@ export default async function GemeoPage({
           de gerar, com "Trocar" (o mesmo passo do modal "Nova campanha"). */}
       <ComoOSquadEdita
         projectId={id}
-        resumo={resumoDaEdicao(project)}
+        resumo={resumoDaEdicao({ ...project, comando: editorPorComandoLigado() ? await lerComandoDoProjeto(id).catch(() => null) : null })}
         estiloInicial={project.videoStyle}
         musica={project.videoMusicName ?? null}
         termos={project.videoTerms ?? null}

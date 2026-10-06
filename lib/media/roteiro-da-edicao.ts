@@ -306,6 +306,28 @@ export async function garantirRetomadasNoRoteiro(videoId: string): Promise<Rotei
   return { ...r, remocoes: lista, retomadasFeitas: true };
 }
 
+/**
+ * REFAZER O COMPLETO NO ESTILO NOVO (06/10, "trocar o estilo não muda as
+ * cenas"): o plano do completo pelo comando é gravado uma vez em
+ * `completo.comando`, e o roteiro só planeja o que falta. Trocar o comando
+ * depois deixava as cenas do estilo antigo para sempre (estado que sobrevive
+ * ao fato). Aqui o plano antigo sai (com o erro dele), o estilo do completo
+ * passa a ser o de agora e as sugestões do cliente ficam; a próxima rodada do
+ * roteiro planeja o completo de novo pelo comando atual. Não mexe na fala,
+ * na limpeza, nos cortes nem na abertura (nada disso depende do estilo).
+ * Devolve false quando não há plano por comando para refazer.
+ */
+export async function marcarCompletoParaRefazer(videoId: string, estiloAtual: string): Promise<boolean> {
+  const r = await lerRoteiroDoVideo(videoId);
+  if (!r || r.aprovadoEm || !r.completo?.comando) return false;
+  const { comando: _antigo, erro: _erro, ...resto } = r.completo;
+  void _antigo;
+  void _erro;
+  r.completo = { ...resto, plano: null, estiloId: estiloAtual };
+  await gravarRoteiroDoVideo(videoId, r);
+  return true;
+}
+
 async function gravarRoteiroDoVideo(id: string, r: RoteiroDoVideo): Promise<void> {
   const json = JSON.stringify(r);
   await prisma.$executeRaw`

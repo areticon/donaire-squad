@@ -6,6 +6,7 @@ import { ComoOSquadEdita } from "@/components/video/como-o-squad-edita";
 import { resumoDaEdicao } from "@/lib/media/edicao-escolhida";
 import { lerRoteiroDoVideo } from "@/lib/media/roteiro-da-edicao";
 import { prisma } from "@/lib/db/prisma";
+import { editorPorComandoLigado, lerComandoDoProjeto } from "@/lib/media/editor-por-comando";
 
 /**
  * A TELA DE ROTEIRO (30/09/2026): antes de gastar com imagem, cena, corte e
@@ -43,18 +44,24 @@ export default async function RoteiroPage({
     where: { id },
     select: { videoEstiloEscolha: true, videoStyle: true, videoMusicUrl: true, videoMusicName: true, videoTerms: true },
   });
-  const estiloDoRoteiro = (await lerRoteiroDoVideo(videoId))?.completo?.estiloId ?? null;
+  const roteiro = await lerRoteiroDoVideo(videoId);
+  const estiloDoRoteiro = roteiro?.completo?.estiloId ?? null;
+  // O comando manda no estilo (06/10): o cabeçalho lê dele, e o roteiro planejado com outro comando ganha o "Refazer".
+  const comando = editorPorComandoLigado() ? await lerComandoDoProjeto(id).catch(() => null) : null;
+  const comandoDoRoteiro = roteiro?.completo?.comando?.texto ?? null;
   return (
     <>
       {projeto && (
         <div className="mx-auto max-w-[1024px] px-4 pt-6 lg:px-8">
           <ComoOSquadEdita
             projectId={id}
-            resumo={resumoDaEdicao({ ...projeto, estiloDoRoteiro })}
+            resumo={resumoDaEdicao({ ...projeto, estiloDoRoteiro, comando, comandoDoRoteiro })}
             estiloInicial={projeto.videoStyle}
             musica={projeto.videoMusicName ?? null}
             termos={projeto.videoTerms ?? null}
             onde="roteiro"
+            videoId={videoId}
+            podeRefazer={tela.status === "roteiro" && !tela.aprovadoEm}
           />
         </div>
       )}

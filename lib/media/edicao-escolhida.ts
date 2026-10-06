@@ -1,5 +1,6 @@
 import { CUSTO_DAS_INSERCOES_IA, estiloDoCatalogo, normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
 import { resumoDaLegenda } from "@/lib/media/legenda-escolhida";
+import { estiloIdDoComando, roteiroDeOutroComando, trechoDoComando, type ComandoComReferencia } from "@/lib/media/estilo-do-comando";
 
 /**
  * COMO ESTE VÍDEO VAI SER EDITADO, em uma linha honesta (02/10/2026).
@@ -31,6 +32,11 @@ export type ResumoDaEdicao = {
   /** O roteiro foi planejado em outro estilo (o nome dele), quando difere do de agora. */
   planejadoEm?: string | null;
   /**
+   * O roteiro do completo foi planejado com outro COMANDO (06/10): a tela
+   * oferece "Refazer o roteiro no estilo novo". Só no editor por comando.
+   */
+  refazerRoteiro?: boolean;
+  /**
    * Como o diretor edita (03/10): o corte limpo profissional (padrão de todo
    * estilo) ou as inserções de IA ligadas na tela de estilos, com o custo.
    */
@@ -55,19 +61,36 @@ export function resumoDaEdicao(p: {
   videoMusicName?: string | null;
   /** O estilo em que o roteiro deste vídeo foi planejado, se já existe. */
   estiloDoRoteiro?: string | null;
+  /**
+   * O COMANDO DO VÍDEO (06/10): quando existe, é ele que manda no estilo (a
+   * referência do cartão da galeria). A escolha antiga só vale sem comando.
+   */
+  comando?: ComandoComReferencia;
+  /** O texto do comando com que o roteiro do completo foi planejado (`completo.comando.texto`). */
+  comandoDoRoteiro?: string | null;
 }): ResumoDaEdicao {
   const escolha = normalizarEscolha(p.videoEstiloEscolha, p.videoStyle);
-  const e = estiloDoCatalogo(escolha.estiloId);
-  const planejado = p.estiloDoRoteiro && p.estiloDoRoteiro !== escolha.estiloId ? estiloDoCatalogo(p.estiloDoRoteiro)?.nome ?? p.estiloDoRoteiro : null;
+  const doComando = estiloIdDoComando(p.comando);
+  const comandoProprio = Boolean(p.comando?.texto) && !doComando;
+  const estiloId = doComando ?? escolha.estiloId;
+  const e = estiloDoCatalogo(estiloId);
+  const refazer = roteiroDeOutroComando(p.comando, p.comandoDoRoteiro);
+  const planejado = refazer
+    ? `outro estilo ("${trechoDoComando(p.comandoDoRoteiro)}")`
+    : !p.comando && p.estiloDoRoteiro && p.estiloDoRoteiro !== estiloId
+      ? estiloDoCatalogo(p.estiloDoRoteiro)?.nome ?? p.estiloDoRoteiro
+      : null;
+  const nome = comandoProprio ? "comando próprio do projeto" : e?.nome ?? estiloId;
   return {
-    estiloId: escolha.estiloId,
-    estilo: e?.nome ?? escolha.estiloId,
-    referencia: e?.referencia ?? null,
-    doPadrao: true,
+    estiloId,
+    estilo: nome,
+    referencia: comandoProprio ? `"${trechoDoComando(p.comando?.texto)}"` : e?.referencia ?? null,
+    doPadrao: !p.comando,
     legenda: resumoDaLegenda((p.videoEstiloEscolha as { legenda?: unknown } | null)?.legenda, null),
     trilha: p.videoMusicUrl ? `Trilha nos cortes: ${p.videoMusicName || nomeDoArquivo(p.videoMusicUrl)} (o vídeo completo sai sem trilha)` : "Sem trilha de fundo: os cortes saem só com a voz",
-    efeitos: "Efeitos sonoros do estilo (whoosh, pop, impacto)",
+    efeitos: `Efeitos sonoros no estilo ${comandoProprio ? "do comando" : nome} (whoosh, pop, impacto)`,
     planejadoEm: planejado,
+    refazerRoteiro: refazer,
     insercoesIA: Boolean(escolha.insercoesIA),
     edicao: escolha.insercoesIA
       ? `Inserções de IA ligadas: imagens e cenas geradas na linguagem do estilo (${CUSTO_DAS_INSERCOES_IA.texto})`
