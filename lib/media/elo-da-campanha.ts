@@ -1,4 +1,4 @@
-import { lerArrobaDoYouTube, type LinkDoCliente } from "@/lib/projeto/links-do-cliente";
+import { enderecoDaRede, lerRedesEscritas, REDES_DO_PERFIL, type LinkDoCliente, type RedeDoPerfil } from "@/lib/projeto/links-do-cliente";
 import { NOME_DA_REDE } from "@/lib/pipeline/redes";
 import {
   datasDoPlano,
@@ -85,29 +85,47 @@ function urlDoPerfil(rede: string, handle: string | null, usernameBruto: string 
 }
 
 /**
- * Um perfil por rede conectada, na ordem em que as contas vieram.
+ * Um perfil por rede do cliente: as conectadas, na ordem em que as contas
+ * vieram, e depois as que ele só escreveu (sem conexão).
  *
- * O `config` do projeto é opcional e serve ao YouTube (06/10): a conexão grava
- * o NOME do canal como username, e sem @ o canal não tem endereço. Quando o
- * cliente escreveu o @ do canal (`config.arrobaDoYouTube`, ver
- * lib/projeto/links-do-cliente.ts), a conta do YouTube sem @ usa esse, e o
- * nome do canal continua como nome.
+ * O ENDEREÇO DE CADA REDE TEM UMA FONTE SÓ (06/10): o que o cliente escreveu
+ * nos perfis do setup ou de Configurações (`config.redesDoCliente`, e o @ do
+ * YouTube do campo antigo, ver `lerRedesEscritas` em
+ * lib/projeto/links-do-cliente.ts) vale primeiro; o que a conexão trouxe vale
+ * quando ele não escreveu nada naquela rede. O nome da conta conectada (o
+ * nome do canal, por exemplo) continua como nome.
  */
 export function perfisDoCliente(contas: ContaDoCliente[], config?: unknown): PerfilDoCliente[] {
-  const arrobaDoYouTube = config === undefined ? null : lerArrobaDoYouTube(config);
+  const escritas = config === undefined ? {} : lerRedesEscritas(config);
   const vistos = new Set<string>();
   const perfis: PerfilDoCliente[] = [];
+  const doEscrito = (rede: RedeDoPerfil, valor: string, nome: string | null) => {
+    const { handle, url } = enderecoDaRede(rede, valor);
+    perfis.push({ rede, rotulo: NOME_DA_REDE[rede] ?? rede, handle, nome, url });
+  };
   for (const c of contas) {
     const rede = c.platform;
     if (!rede || vistos.has(rede)) continue;
-    const semArroba = rede === "youtube" && arrobaDoYouTube && !(c.username ?? "").trim().startsWith("@");
-    const username = semArroba ? `@${arrobaDoYouTube}` : c.username;
-    // O nome do canal que a conexão gravou no username não se perde.
-    const nome = (c.displayName ?? "").trim() || (semArroba ? (c.username ?? "").trim() || null : null);
-    const handle = handleValido(username);
+    const escrito = (REDES_DO_PERFIL as readonly string[]).includes(rede) ? escritas[rede as RedeDoPerfil] : undefined;
+    if (escrito) {
+      // O nome do canal que a conexão do YouTube gravou no username não se perde.
+      const semArroba = !(c.username ?? "").trim().startsWith("@");
+      const nome = (c.displayName ?? "").trim() || (rede === "youtube" && semArroba ? (c.username ?? "").trim() || null : null);
+      vistos.add(rede);
+      doEscrito(rede as RedeDoPerfil, escrito, nome);
+      continue;
+    }
+    const nome = (c.displayName ?? "").trim() || null;
+    const handle = handleValido(c.username);
     if (!handle && !nome) continue;
     vistos.add(rede);
-    perfis.push({ rede, rotulo: NOME_DA_REDE[rede] ?? rede, handle, nome, url: urlDoPerfil(rede, handle, username) });
+    perfis.push({ rede, rotulo: NOME_DA_REDE[rede] ?? rede, handle, nome, url: urlDoPerfil(rede, handle, c.username) });
+  }
+  for (const rede of REDES_DO_PERFIL) {
+    const escrito = escritas[rede];
+    if (!escrito || vistos.has(rede)) continue;
+    vistos.add(rede);
+    doEscrito(rede, escrito, null);
   }
   return perfis;
 }
@@ -119,9 +137,10 @@ export function nomeDoCanal(contas: ContaDoCliente[], config?: unknown): string 
 }
 
 /** Como o perfil aparece numa linha da descrição: URL onde a rede aceita, @ onde não. */
-function linhaDoPerfil(p: PerfilDoCliente, comUrl: boolean): string {
+function linhaDoPerfil(p: PerfilDoCliente, comUrl: boolean): string | null {
   const valor = comUrl && p.url ? p.url : p.handle ? `@${p.handle}` : p.nome;
-  return `${p.rotulo}: ${valor}`;
+  // LinkedIn e Facebook escritos só têm link: onde link não vai, ficam de fora.
+  return valor ? `${p.rotulo}: ${valor}` : null;
 }
 
 /**
@@ -145,7 +164,7 @@ export function blocoDeLinksDaDescricao(args: { rede: string; links: LinkDoClien
   const linhasDeLink = comUrl
     ? links.map((l) => `${l.cta ?? l.rotulo}: ${l.url}`)
     : [];
-  const linhas = [...linhasDeLink, ...perfis.map((p) => linhaDoPerfil(p, comUrl))];
+  const linhas = [...linhasDeLink, ...perfis.map((p) => linhaDoPerfil(p, comUrl)).filter((l): l is string => Boolean(l))];
   if (!linhas.length) return "";
   return [linhasDeLink.length ? "Links:" : "Minhas redes:", ...linhas].join("\n");
 }

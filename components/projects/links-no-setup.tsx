@@ -6,7 +6,16 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LOGO_POR_REDE } from "@/components/social/logos-redes";
-import { MAX_LINKS, normalizarArrobaDoYouTube, normalizarUrl, tipoPeloEndereco, type LinkDoCliente } from "@/lib/projeto/links-do-cliente";
+import {
+  ERRO_DO_ENDERECO,
+  MAX_LINKS,
+  normalizarEnderecoDaRede,
+  normalizarUrl,
+  tipoPeloEndereco,
+  valorNoCampo,
+  type LinkDoCliente,
+  type RedesEscritas,
+} from "@/lib/projeto/links-do-cliente";
 
 /**
  * OS LINKS NO INÍCIO DO PROJETO (06/10, pedido do Bruno).
@@ -193,10 +202,15 @@ export function LinksNoSetup({ projetoId, podeEditar = true }: { projetoId: stri
 }
 
 /**
- * O @ DO CANAL NO YOUTUBE (06/10). A conexão do YouTube grava o nome do canal,
- * não o @, e sem o @ a descrição não consegue mostrar o endereço do canal. Este
- * campo aparece só quando há conta do YouTube conectada sem @ (ou quando o @
- * já foi escrito, para poder trocar), e grava em `config.arrobaDoYouTube`.
+ * O @ DO CANAL NO YOUTUBE NA ETAPA DE CONECTAR (06/10). A conexão do YouTube
+ * grava o nome do canal, não o @, e sem o @ a descrição não mostra o endereço
+ * do canal. Este campo aparece só ali, quando há conta do YouTube conectada
+ * sem @ e o cliente ainda não escreveu o YouTube nas redes dele.
+ *
+ * Desde a fonte única (06/10, components/projects/redes-do-cliente.tsx) ele
+ * grava no MESMO lugar dos campos das redes (`config.redesDoCliente.youtube`):
+ * não há mais um @ do YouTube à parte. No setup e em Configurações o YouTube
+ * é escrito junto das outras redes, e este campo não aparece lá.
  */
 export function ArrobaDoYouTube({ projetoId, podeEditar = true }: { projetoId: string; podeEditar?: boolean }) {
   const [canal, setCanal] = useState<string | null>(null);
@@ -216,11 +230,11 @@ export function ArrobaDoYouTube({ projetoId, podeEditar = true }: { projetoId: s
         (c) => c.platform === "youtube"
       );
       const semArroba = yt.find((c) => !(c.username ?? "").trim().startsWith("@"));
-      const atual = (links?.arrobaDoYouTube as string | null) ?? "";
-      gravado.current = atual;
-      setValor(atual ? `@${atual}` : "");
+      const escrito = ((links?.redes as RedesEscritas | undefined) ?? {}).youtube ?? "";
+      gravado.current = escrito;
+      setValor(escrito ? valorNoCampo("youtube", escrito) : "");
       setCanal(semArroba ? (semArroba.displayName ?? semArroba.username ?? null) : null);
-      setMostrar(Boolean(semArroba) || Boolean(atual));
+      setMostrar(Boolean(semArroba) && !escrito);
     });
     return () => {
       vivo = false;
@@ -229,23 +243,24 @@ export function ArrobaDoYouTube({ projetoId, podeEditar = true }: { projetoId: s
 
   const salvar = async () => {
     const bruto = valor.trim();
-    const arroba = bruto ? normalizarArrobaDoYouTube(bruto) : "";
-    if (bruto && !arroba) {
-      toast.error("Esse @ não parece o de um canal. Escreva como aparece no YouTube, por exemplo @seucanal.");
+    const endereco = bruto ? normalizarEnderecoDaRede("youtube", bruto) : "";
+    if (bruto && !endereco) {
+      toast.error(ERRO_DO_ENDERECO.youtube);
       return;
     }
-    if ((arroba ?? "") === gravado.current) return;
+    if ((endereco ?? "") === gravado.current) return;
     setEstado("salvando");
     try {
       const r = await fetch(`/api/projects/${projetoId}/links`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ arrobaDoYouTube: arroba ?? "" }),
+        body: JSON.stringify({ redes: { youtube: endereco ?? "" } }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error ?? "Não consegui salvar o @.");
-      gravado.current = d.arrobaDoYouTube ?? "";
-      setValor(d.arrobaDoYouTube ? `@${d.arrobaDoYouTube}` : "");
+      const novo = ((d.redes as RedesEscritas | undefined) ?? {}).youtube ?? "";
+      gravado.current = novo;
+      setValor(novo ? valorNoCampo("youtube", novo) : "");
       setEstado("salvo");
     } catch (e) {
       setEstado("parado");
@@ -263,7 +278,7 @@ export function ArrobaDoYouTube({ projetoId, podeEditar = true }: { projetoId: s
           <p className="text-xs font-medium text-[var(--text-primary)]">@ do seu canal no YouTube (opcional)</p>
           <p className="text-[11px] leading-snug text-[var(--text-muted)]">
             {canal ? `O YouTube conectou o canal "${canal}" pelo nome, sem o @.` : "O YouTube conectou o canal pelo nome, sem o @."} Com o @, as descrições
-            mostram o endereço do seu canal.
+            mostram o endereço do seu canal. Fica salvo junto das suas redes, em Configurações, Seus links.
           </p>
           <div className="flex items-center gap-2">
             <Input
@@ -300,11 +315,10 @@ export function SecaoDeLinksNoSetup({ projetoId, podeEditar = true }: { projetoI
           Seus links (opcional)
         </h3>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-          Além das redes, coloque as páginas para onde quer levar quem lê: site, empresa, produtos, WhatsApp, loja. Um de cada vez, quantos quiser. Eles
-          entram sozinhos nas descrições dos posts. Pode pular; depois é só ir em Configurações, Seus links, para adicionar ou remover.
+          Além das redes acima, coloque as páginas para onde quer levar quem lê: site, empresa, produtos, WhatsApp, loja. Um de cada vez, quantos
+          quiser. Eles entram sozinhos nas descrições dos posts. Pode pular; depois é só ir em Configurações, Seus links, para adicionar ou remover.
         </p>
       </div>
-      <ArrobaDoYouTube projetoId={projetoId} podeEditar={podeEditar} />
       <LinksNoSetup projetoId={projetoId} podeEditar={podeEditar} />
     </section>
   );

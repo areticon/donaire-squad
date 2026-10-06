@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Loader2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LOGO_POR_REDE, type RedeComLogo } from "@/components/social/logos-redes";
 import { LinhaDeCusto, RelatorioDoPerfilNaTela } from "@/components/kanban/relatorio-do-perfil";
 import { SecaoDeLinksNoSetup } from "@/components/projects/links-no-setup";
-import type { RedeDeReferencia } from "@/lib/referencias/tipos";
+import { CamposDasRedes, EstadoDasRedes, useRedesDoCliente } from "@/components/projects/redes-do-cliente";
+import { REDES_DO_CLIENTE } from "@/lib/referencias/tipos-do-perfil-proprio";
 import type { RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import { ROTULO_DA_ETAPA_DO_PERFIL, type EtapaDoPerfilProprio, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
 
@@ -21,22 +21,20 @@ import { ROTULO_DA_ETAPA_DO_PERFIL, type EtapaDoPerfilProprio, type RespostaDoPe
  * "Estudar agora" de 01/10). Não trava: dá para seguir e voltar depois.
  */
 
-const REDES: Array<{ rede: RedeDeReferencia; logo: RedeComLogo; nome: string; dica: string }> = [
-  { rede: "instagram", logo: "instagram", nome: "Instagram", dica: "@seuperfil ou instagram.com/seuperfil" },
-  { rede: "tiktok", logo: "tiktok", nome: "TikTok", dica: "@seuperfil" },
-  { rede: "youtube", logo: "youtube", nome: "YouTube", dica: "@seucanal ou o link do canal" },
-  { rede: "linkedin", logo: "linkedin", nome: "LinkedIn", dica: "link da página de empresa (/company/...)" },
-];
+/*
+ * As redes (06/10, fonte única): os campos são os mesmos de Configurações,
+ * Seus links (components/projects/redes-do-cliente.tsx), e gravam sozinhos no
+ * endereço que as descrições usam. O estudo lê só as redes que ele sabe ler
+ * (REDES_DO_CLIENTE); o Facebook fica salvo para as descrições.
+ */
 
 const ETAPAS: EtapaDoPerfilProprio[] = ["coletando", "etiquetando", "lendo"];
 
 export function StepPerfilProprio({ projectId }: { projectId: string }) {
   const [dados, setDados] = useState<RespostaDoPerfilProprio | null>(null);
-  const [campos, setCampos] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
   // As regras do projeto, para o "o que fazer" do relatório saber o que já virou regra.
   const [analise, setAnalise] = useState<RespostaDasAnalises | null>(null);
-  const preencheu = useRef(false);
 
   const carregarRegras = useCallback(async () => {
     const r = await fetch(`/api/projects/${projectId}/referencias/analises`).catch(() => null);
@@ -52,10 +50,6 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
     if (!r?.ok) return null;
     const d = (await r.json()) as RespostaDoPerfilProprio;
     setDados(d);
-    if (!preencheu.current) {
-      preencheu.current = true;
-      setCampos(Object.fromEntries(d.redes.map((x) => [x.rede, x.rede === "youtube" || x.rede === "linkedin" ? x.perfil : `@${x.perfil}`])));
-    }
     return d;
   }, [projectId]);
 
@@ -70,14 +64,18 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
     return () => clearInterval(t);
   }, [rodando, carregar]);
 
+  const redesNaTela = useRedesDoCliente(projectId, dados?.podeEditar ?? false);
+
   const estudar = async () => {
-    const redes = REDES.map((r) => ({ rede: r.rede, perfil: (campos[r.rede] ?? "").trim() })).filter((r) => r.perfil);
+    const redes = REDES_DO_CLIENTE.map((rede) => ({ rede, perfil: (redesNaTela.valores[rede as keyof typeof redesNaTela.valores] ?? "").trim() })).filter((r) => r.perfil);
     if (!redes.length) {
       toast.error("Escreva pelo menos uma rede: o @ ou o link do seu perfil.");
       return;
     }
     setEnviando(true);
     try {
+      // O que está nos campos fica salvo antes de o estudo começar.
+      await redesNaTela.gravarAgora();
       const r = await fetch(`/api/projects/${projectId}/perfil-proprio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,26 +116,14 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {REDES.map((r) => {
-          const Logo = LOGO_POR_REDE[r.logo];
-          return (
-            <label key={r.rede} className="flex min-w-0 items-center gap-3 rounded-xl border p-2.5" style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}>
-              <Logo />
-              <span className="min-w-0 flex-1">
-                <span className="block text-xs font-medium text-[var(--text-primary)]">{r.nome}</span>
-                <input
-                  value={campos[r.rede] ?? ""}
-                  onChange={(e) => setCampos((c) => ({ ...c, [r.rede]: e.target.value }))}
-                  placeholder={r.dica}
-                  disabled={!dados?.podeEditar || rodando}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]"
-                  style={{ color: "var(--text-primary)" }}
-                />
-              </span>
-            </label>
-          );
-        })}
+      <div className="space-y-1.5">
+        <CamposDasRedes redes={redesNaTela} desabilitado={!dados?.podeEditar || rodando} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+            Fica salvo sozinho e entra nas descrições dos posts. Para mudar depois: Configurações, Seus links.
+          </p>
+          <EstadoDasRedes estado={redesNaTela.estado} />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

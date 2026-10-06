@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
-import { ArrobaDoYouTube } from "@/components/projects/links-no-setup";
+import { RedesNasConfiguracoes } from "@/components/projects/redes-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
 import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
@@ -341,10 +341,12 @@ export function ConfiguracaoDoProjeto({
       {aba === "links" && (
         <Secao
           titulo="Seus links"
-          descricao="Site, loja, produtos, afiliados, WhatsApp e agenda. O squad coloca o link certo onde a rede aceita link, com uma chamada para a ação."
+          descricao="As suas redes e as suas páginas (site, loja, produtos, afiliados, WhatsApp e agenda). O squad coloca o link certo onde a rede aceita link, com uma chamada para a ação."
         >
           <div className="flex flex-col gap-4">
-            <ArrobaDoYouTube projetoId={projeto.id} />
+            {/* As redes (06/10, fonte única): os mesmos campos do topo do setup, gravando no mesmo lugar. */}
+            <RedesNasConfiguracoes projetoId={projeto.id} podeEditar={!somenteLeitura} />
+            <p className="-mb-2 text-sm font-medium text-[var(--text-primary)]">Suas páginas</p>
             <LinksDoCliente projetoId={projeto.id} config={projeto.config} />
           </div>
         </Secao>

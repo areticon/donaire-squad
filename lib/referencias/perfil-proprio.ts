@@ -82,7 +82,7 @@ export async function salvarRedesDoCliente(projectId: string, entrada: Array<{ r
     const bruto = (e.perfil ?? "").trim();
     if (!bruto || !REDES_DO_CLIENTE.includes(rede)) continue;
     if (rede === "linkedin" && !/linkedin\.com\/(company|school|showcase)\//i.test(bruto)) {
-      recusadas.push("LinkedIn: só dá para ler página de empresa (o link com /company/); perfil pessoal fica de fora");
+      recusadas.push("LinkedIn: o estudo só lê página de empresa (o link com /company/). O seu link continua salvo e entra nas descrições");
       continue;
     }
     const perfil = perfilCanonico(rede, bruto);
