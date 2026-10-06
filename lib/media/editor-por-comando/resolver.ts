@@ -89,10 +89,15 @@ const PECAS_COM_FOTO: Record<string, string> = { colagem: "recortes", jornal: "f
  */
 export function caixaDaFolha(rosto: Retangulo, vertical: boolean, lado: string): { x: number; y: number; w: number; h: number } {
   if (vertical) return { x: 0.04, y: lado === "topo" ? 0.05 : 0.5, w: 0.92, h: 0.44 };
+  // A FOLHA NUNCA ENCOSTA NO ROSTO (06/10): na refeita do completo do Fé &
+  // Gestão a folha ia até 2% do rosto medido num quadro só, e a pessoa, ao
+  // se inclinar, entrava embaixo dela. Agora a folga é de 8% do quadro e o
+  // mínimo de largura cai para 0,26: folha menor é melhor que folha no rosto.
   const margem = 0.035;
-  const livre = lado === "esquerda" ? rosto.x - 0.02 : 1 - (rosto.x + rosto.w) - 0.02;
-  const w = +Math.min(0.56, Math.max(0.36, livre - margem)).toFixed(3);
-  return { x: lado === "esquerda" ? margem : +(1 - margem - w).toFixed(3), y: 0.1, w, h: 0.78 };
+  const folga = 0.08;
+  const livre = lado === "esquerda" ? rosto.x - folga : 1 - (rosto.x + rosto.w) - folga;
+  const w = +Math.min(0.5, Math.max(0.26, livre - margem)).toFixed(3);
+  return { x: lado === "esquerda" ? margem : +(1 - margem - w).toFixed(3), y: 0.12, w, h: 0.72 };
 }
 
 export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): { edicao: EdicaoResolvida; avisos: string[] } {

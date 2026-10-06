@@ -430,7 +430,7 @@ export function TituloAtras(c: Ctx) {
                 const tk = c.t - 0.05 - (i * letras.length + k) * 0.03;
                 const s = molaFisica(tk, 200, 16);
                 return (
-                  <span key={k} style={{ display: "inline-block", overflow: "hidden", paddingBottom: "0.04em" }}>
+                  <span key={k} style={{ display: "inline-block", overflow: "hidden", paddingBottom: "0.04em", whiteSpace: "pre", ...(ch === " " ? { width: "0.3em" } : {}) }}>
                     <span style={{ display: "inline-block", transform: `translateY(${(1 - s) * 100}%)`, color: corDoTitulo, WebkitTextStroke: `${1.2 * u}px rgba(255,255,255,.22)`, textShadow: `0 ${2 * u}px 0 rgba(0,0,0,.35), 0 ${12 * u}px ${34 * u}px rgba(0,0,0,.6)` }}>{ch === " " ? " " : ch}</span>
                   </span>
                 );
