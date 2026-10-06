@@ -3,13 +3,13 @@ import { jevLigado, perguntarAoJev, decidirChoice } from "@/lib/jev/cliente";
 import { estiloDoCatalogo, type EscolhaDeEstilo } from "@/lib/media/catalogo-de-estilos";
 import { gerarInsercoes, frasesNumeradas, temaDoEstilo } from "@/lib/media/editor-sob-medida";
 import { blocosDoEditor } from "@/lib/media/editor-sob-medida/editor";
-import { fotosDoMomento, prepararFotosDoVox, type GuardaDoRecorte } from "@/lib/media/editor-sob-medida/recortes-vox";
+import { fotosDoMomento, prepararFotosDoVox, tirarFotosSemImagem, type GuardaDoRecorte } from "@/lib/media/editor-sob-medida/recortes-vox";
 import type { PalavraNoCorte, Retangulo } from "@/lib/media/plano-de-montagem";
 import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-sob-medida/tipos";
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import { corrigirPlano, escreverPlano, type EntradaDoDiretor, type NotaDoRevisor, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
-import { diretorPorLlm, escreverPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
+import { completarPlanoPeloJev, diretorPorLlm, escreverPlanoPeloJev, type EntradaDoPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 
@@ -145,8 +145,9 @@ export function temaDoComando(c: ComandoDoVideo, base: string, cores: { acento: 
     ...(plano?.tema?.visual ? { visual: plano.tema.visual } : {}),
     ...(plano?.tema?.acabamento ? { acabamento: plano.tema.acabamento } : {}),
     escuroLegenda: "#06111F",
-    // NO VOX a base é o papel envelhecido da peça; a marca entra pela hierarquia: o destaque no marca-texto, o escuro nos títulos e no carimbo.
-    ...(base === "vox" ? { vox: acentosDoVox(c.cores.tipo === "marca" ? paleta ?? [cores.acento, cores.escuro, cores.claro] : [c.cores.acento, c.cores.escuro, c.cores.claro]) } : {}),
+    // OS PAPÉIS DA MARCA NAS PEÇAS (realce, tinta, carimbo, fio), pela hierarquia da paleta: para TODA linguagem
+    // (05/10 à noite: antes só entravam quando a base era "vox", uma condição fixa por estilo; a peça decide como usa).
+    vox: acentosDoVox(c.cores.tipo === "marca" ? paleta ?? [cores.acento, cores.escuro, cores.claro] : [c.cores.acento, c.cores.escuro, c.cores.claro]),
   };
 }
 
@@ -195,6 +196,8 @@ export type EntradaDoPlano = {
   nicho?: string | null;
   /** O nome da marca do projeto. */
   marcaNome?: string | null;
+  /** O vídeo vai para o YouTube (o completo sempre; o corte quando um destino é YouTube): a chamada de curtir e inscrever entra (05/10, noite). */
+  youtube?: boolean;
 };
 
 export type PlanoPorComando = {
@@ -225,11 +228,16 @@ function entradaDoDiretor(e: EntradaDoPlano, cores: { acento: string; escuro: st
   };
 }
 
-/** Quantas fotos das peças de papel ficaram sem url (a peça usa a reserva do assunto). */
+/** Quantas fotos das peças de papel ficaram sem url (a peça sai sem a foto, ou não sai). */
 const semFoto = (plano: PlanoDoDiretor) => (plano.momentos ?? []).flatMap(fotosDoMomento).filter((f) => !f.url).length;
 
-/** As imagens que o plano pede, dentro do teto: as fotos das peças de papel e as cenas, em paralelo. */
-async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
+/**
+ * As imagens que o plano pede, dentro do teto: as fotos das peças de papel e
+ * as cenas, em paralelo. Devolve o plano LIMPO (05/10 à noite): a foto que
+ * não foi gerada sai da peça (nunca a reserva do worker, que já representou
+ * uma pessoa citada), e a peça que não existe sem foto sai inteira.
+ */
+async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Record<string, MidiaDaInsercao> = {}): Promise<{ plano: PlanoDoDiretor; insercoes: Record<string, MidiaDaInsercao>; custoUsd: number; erros: string[] }> {
   // As cenas que já existem (a correção que manteve a imagem) não são geradas de novo.
   const novas = (plano.insercoes ?? []).filter((x) => !ja[String(x.id)]);
   // O plano em dois eixos (05/10, noite) já cabe no teto de custo por minuto: as imagens dele saem todas.
@@ -242,7 +250,46 @@ async function imagensDoPlano(plano: PlanoDoDiretor, e: EntradaDoPlano, ja: Reco
       ? gerarInsercoes({ ...plano, momentos: [], insercoes: novas }, { formato: e.formato, projectId: e.projectId, teto: tetoCenas, local: e.local }).catch((err) => ({ insercoes: {}, custoUsd: 0, erros: [`cenas: ${String(err).slice(0, 120)}`] }))
       : Promise.resolve({ insercoes: {}, custoUsd: 0, erros: [] as string[] }),
   ]);
-  return { insercoes: cenas.insercoes, custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4), erros: [...fotos.erros, ...cenas.erros, ...(semFoto(plano) ? [`${semFoto(plano)} foto(s) sem imagem gerada: as peças de papel usam as fotos de reserva (worker/fontes/vox)`] : [])] };
+  const faltaram = semFoto(plano);
+  const limpo = tirarFotosSemImagem(plano);
+  return {
+    plano: limpo.plano,
+    insercoes: cenas.insercoes,
+    custoUsd: +(fotos.custoUsd + cenas.custoUsd).toFixed(4),
+    erros: [...fotos.erros, ...cenas.erros, ...(faltaram ? [`${faltaram} foto(s) sem imagem gerada saíram das peças${limpo.removidos.length ? `; ${limpo.removidos.length} peça(s) sem o que mostrar saíram (${limpo.removidos.join(", ")})` : ""}`] : [])],
+  };
+}
+
+/** A entrada do plano pelo JEV (a mesma para escrever o plano e para completar o reaproveitado). */
+function entradaPeloJev(e: EntradaDoPlano, base: string, cores: { acento: string; escuro: string; claro: string }): EntradaDoPlanoPeloJev {
+  return {
+    frases: frasesNumeradas(e.palavras),
+    palavras: e.palavras,
+    duracao: e.duracao,
+    formato: e.formato,
+    comando: e.comando,
+    base,
+    titulo: e.titulo,
+    perfil: e.perfil,
+    projectId: e.projectId,
+    pedidos: e.pedidos,
+    nicho: e.nicho,
+    marca: e.marcaNome,
+    paleta: e.comando.cores.tipo === "marca" ? e.paleta ?? null : [cores.acento, cores.escuro, cores.claro],
+    cores,
+    youtube: e.youtube,
+  };
+}
+
+/**
+ * O PLANO REAPROVEITADO DO ROTEIRO ganha a cobertura e a chamada de inscrever
+ * (05/10 à noite): as regras novas valem para o plano que o cliente aprovou,
+ * sem decidir de novo o que já estava decidido.
+ */
+async function reaproveitar(pronto: PlanoPronto, e: EntradaDoPlano, cores: { acento: string; escuro: string; claro: string }): Promise<{ plano: PlanoDoDiretor; base: string; avisos: string[]; tempos: Record<string, number> }> {
+  if (diretorPorLlm()) return { plano: pronto.plano, base: pronto.base, avisos: ["plano do roteiro reaproveitado"], tempos: {} };
+  const c = await completarPlanoPeloJev(pronto.plano, entradaPeloJev(e, pronto.base, cores)).catch((err) => ({ plano: pronto.plano, avisos: [`cobertura do plano reaproveitado falhou: ${err instanceof Error ? err.message.slice(0, 120) : err}`], tempos: {} }));
+  return { plano: c.plano, base: pronto.base, avisos: ["plano do roteiro reaproveitado", ...c.avisos], tempos: c.tempos };
 }
 
 /** O plano já escrito (no roteiro) que a montagem reaproveita em vez de decidir de novo. */
@@ -259,22 +306,7 @@ export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Pro
   const cores = coresDoComando(e.comando, e.marca);
   if (!diretorPorLlm()) {
     // Os dois eixos (05/10, noite): a linguagem e os elementos pelo JEV; a base volta da família escolhida.
-    return escreverPlanoPeloJev({
-      frases: frasesNumeradas(e.palavras),
-      palavras: e.palavras,
-      duracao: e.duracao,
-      formato: e.formato,
-      comando: e.comando,
-      base,
-      titulo: e.titulo,
-      perfil: e.perfil,
-      projectId: e.projectId,
-      pedidos: e.pedidos,
-      nicho: e.nicho,
-      marca: e.marcaNome,
-      paleta: e.comando.cores.tipo === "marca" ? e.paleta ?? null : [cores.acento, cores.escuro, cores.claro],
-      cores,
-    });
+    return escreverPlanoPeloJev(entradaPeloJev(e, base, cores));
   }
   const t = Date.now();
   const blocos = e.duracao > 95 ? blocosDoCompleto(e.palavras, e.duracao) : [];
@@ -307,16 +339,17 @@ export async function planejarPorComando(e: EntradaDoPlano, pronto?: PlanoPronto
   // O plano do roteiro é reaproveitado (sem decidir nem pagar de novo), a não ser que haja pedido novo do cliente.
   const reusar = pronto && !e.pedidos?.length ? pronto : null;
   const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
-  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined } : await escreverPlanoDoVideo(e, base0);
+  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? await reaproveitar(reusar, e, cores) : await escreverPlanoDoVideo(e, base0);
   const base = d.base ?? base0;
   Object.assign(tempos, d.tempos);
   marcar("diretor");
   if (!d.plano.momentos.length) throw new Error(`o diretor não devolveu plano (${d.erro ?? "sem momentos"})`);
   const img = await imagensDoPlano(d.plano, e);
+  const plano = img.plano;
   marcar("imagens");
-  const r = resolverPorComando(d.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, d.plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
   marcar("resolver");
-  return { base, plano: d.plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
+  return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
 
 /** A correção: o diretor refaz o plano com as notas, as imagens novas (dentro do que sobrou do teto) e a resolução. */
@@ -335,10 +368,11 @@ export async function corrigirPorComando(
   // As fotos já pagas voltam pelo cache (mesmo pedido, mesmo hash); as novas cabem no que sobrou do teto.
   const sobra = Math.max(0, e.imagens - Math.round(anterior.custoImagensUsd / 0.065));
   const img = await imagensDoPlano(c.plano, { ...e, imagens: sobra }, anterior.insercoes);
+  const plano = img.plano;
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
-  const r = resolverPorComando(c.plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, c.plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
-  return { base: anterior.base, plano: c.plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...(c.erro ? [`correção: ${c.erro}`] : []), ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
+  return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...(c.erro ? [`correção: ${c.erro}`] : []), ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
 
 // ─────────────────────────────── o completo (blocos em paralelo) ───────────────────────────────
@@ -374,14 +408,14 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano, pronto?: Pla
   // O plano do roteiro (já aprovado pelo cliente) é reaproveitado; com pedido novo cena a cena, o plano sai de novo com os pedidos.
   const reusar = pronto && !e.pedidos?.length ? pronto : null;
   const base0 = reusar?.base ?? (diretorPorLlm() ? await classificarComando(e.comando.texto, e.projectId) : "keynote");
-  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? { plano: reusar.plano, avisos: ["plano do roteiro reaproveitado"], tempos: {}, erro: undefined } : await escreverPlanoDoVideo(e, base0);
+  const d: { plano: PlanoDoDiretor; base?: string; avisos: string[]; tempos: Record<string, number>; erro?: string } = reusar ? await reaproveitar(reusar, e, cores) : await escreverPlanoDoVideo(e, base0);
   const base = d.base ?? base0;
   Object.assign(tempos, d.tempos);
   tempos.diretor = +((Date.now() - t) / 1000).toFixed(1);
   t = Date.now();
-  const plano = d.plano;
-  if (!plano.momentos.length) throw new Error(`nenhum plano para o completo (${d.erro ?? "sem momentos"})`);
-  const img = await imagensDoPlano(plano, e);
+  if (!d.plano.momentos.length) throw new Error(`nenhum plano para o completo (${d.erro ?? "sem momentos"})`);
+  const img = await imagensDoPlano(d.plano, e);
+  const plano = img.plano;
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
   const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes });
   const errosDosBlocos = d.avisos.filter((a) => /^bloco \d+:/.test(a));
@@ -412,9 +446,9 @@ export async function corrigirCompletoPorComando(
       return corrigirPlano({ ...base0, quadros: [], bloco: { f0: b.f0, f1: b.f1, k, total: blocos.length } }, doBloco(k), notas.filter((n) => blocoDe(n.t) === k), resumo);
     })
   );
-  const plano = juntarPlanos(novos.map((x) => x.plano));
   const sobra = Math.max(0, e.imagens - Math.round(anterior.custoImagensUsd / 0.065));
-  const img = await imagensDoPlano(plano, { ...e, imagens: sobra }, anterior.insercoes);
+  const img = await imagensDoPlano(juntarPlanos(novos.map((x) => x.plano)), { ...e, imagens: sobra }, anterior.insercoes);
+  const plano = img.plano;
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
   const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes });
   return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...novos.flatMap((x) => x.avisos), ...img.erros, ...r.avisos].slice(0, 40), tempos: { correcao: +((Date.now() - t) / 1000).toFixed(1) } };

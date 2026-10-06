@@ -1,6 +1,6 @@
 import React from "react";
 import { Img } from "remotion";
-import { corDoTexto, corFraca, estiloDoApoio, estiloDoTitulo, limitar, lista, margens, misturar, posicionar, rgba, saiSuave, sobreOAcento, texto, vivo as vivoDe, type Ctx } from "../base";
+import { corDoTexto, corFraca, escuroDoTema, estiloDoApoio, estiloDoTitulo, limitar, lista, luz, margens, misturar, posicionar, rgba, saiSuave, sobreOAcento, texto, vivo as vivoDe, type Ctx } from "../base";
 import { acaso, brilho, Cantoneiras, entradaMola, EtiquetaHud, molaFisica, Palco, TextoCinetico, Vidro } from "../kit";
 
 /**
@@ -413,7 +413,11 @@ export function TituloAtras(c: Ctx) {
   const cy = Number.isFinite(cabeca) && cabeca > 0
     ? Math.max(altura / 2 + H * 0.03, Math.min(H * 0.45, H * (cabeca + (vertical ? 0.04 : 0.07)) - altura / 2))
     : vertical ? H * (linhas.length > 1 ? 0.21 : 0.2) : H * 0.42;
-  const claro = misturar(tema.acento, "#ffffff", 0.55);
+  // A COR DO TÍTULO (05/10 à noite): a cor da marca como ela é (acentoMarca), ou o escuro quando a marca é clara
+  // demais para ler; nunca o degradê branco-rosa com brilho do acento avivado (o "ESSENCIAL" rosado e lavado do
+  // vídeo cmuvv0jje). Sombra funda e um fio claro para ler sobre qualquer gravação.
+  const marca = tema.acentoMarca ?? tema.acento;
+  const corDoTitulo = luz(marca) > 0.72 ? escuroDoTema(tema) : marca;
   return (
     <div style={{ position: "absolute", inset: 0, opacity: c.fica }}>
       {/* ATRÁS da pessoa: a palavra gigante. */}
@@ -427,7 +431,7 @@ export function TituloAtras(c: Ctx) {
                 const s = molaFisica(tk, 200, 16);
                 return (
                   <span key={k} style={{ display: "inline-block", overflow: "hidden", paddingBottom: "0.04em" }}>
-                    <span style={{ display: "inline-block", transform: `translateY(${(1 - s) * 100}%)`, background: `linear-gradient(180deg, #ffffff 0%, #ffffff 50%, ${claro} 100%)`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: `drop-shadow(0 0 ${22 * u}px ${rgba(vivoDe(tema.acento), 0.85)}) drop-shadow(0 ${10 * u}px ${30 * u}px rgba(0,0,0,.5))` }}>{ch === " " ? " " : ch}</span>
+                    <span style={{ display: "inline-block", transform: `translateY(${(1 - s) * 100}%)`, color: corDoTitulo, WebkitTextStroke: `${1.2 * u}px rgba(255,255,255,.22)`, textShadow: `0 ${2 * u}px 0 rgba(0,0,0,.35), 0 ${12 * u}px ${34 * u}px rgba(0,0,0,.6)` }}>{ch === " " ? " " : ch}</span>
                   </span>
                 );
               })}

@@ -316,11 +316,20 @@ export const PECAS: FichaDaPeca[] = [
     quando: "A palavra de VEREDITO dita com força (\"proibido\", \"errado\", \"aprovado\", \"mentira\"): o carimbo vermelho que BATE no quadro, sobre a pessoa.",
     props: 'texto (1 ou 2 palavras do falante), lado? ("direita" | "esquerda", o lado vazio)',
   },
-  // A camada de apoio do Vox: o resolvedor põe, o editor não escreve.
+  // O CENÁRIO TROCADO (05/10, noite): o resolvedor põe SÓ quando o comando pediu com todas as letras para trocar o fundo
+  // (linguagem.cenario === "trocado"); o editor não escreve. Desenhado na linguagem do vídeo: a imagem gerada do cenário
+  // pedido (props.url) ou, sem ela, a colagem de papel (papel) ou o fundo da marca.
   {
-    nome: "fundo-colagem", plano: "sobre", passes: ["atras"], estilos: ESTILOS_DO_VOX, entrada: 0.05, saida: 0.05, evento: 0.5, duracao: [0.6, 600],
-    quando: "(automática) a colagem de papel atrás da pessoa recortada em todo trecho com a pessoa cheia.",
+    nome: "fundo-colagem", plano: "sobre", passes: ["atras"], entrada: 0.05, saida: 0.05, evento: 0.5, duracao: [0.6, 600],
+    quando: "(automática) o cenário atrás da pessoa recortada, só quando o comando pediu para trocar o fundo.",
     props: "nenhuma",
+  },
+  // A CHAMADA DE CURTIR E INSCREVER (05/10, noite): o JEV escolhe os momentos (2 a 3 num vídeo longo, perto de um momento
+  // forte, nunca nos primeiros 15 s), só nos vídeos com destino YouTube. Desenhada em código, na linguagem do vídeo.
+  {
+    nome: "inscrever", plano: "sobre", passes: ["frente"], entrada: 0.7, saida: 0.35, evento: 0.6, duracao: [3, 5], umEvento: true,
+    quando: "(automática) a animação de curtir e se inscrever sobre a gravação, perto de um momento forte; o evento é o clique.",
+    props: 'chamada? (até 4 palavras), lado? ("direita" | "esquerda")',
   },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],

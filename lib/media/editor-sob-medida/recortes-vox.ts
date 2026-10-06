@@ -24,8 +24,11 @@ import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-med
  * figura ou estátua é trocado pela descrição genérica do assunto. A tarja de
  * censura só vai em estátua ou figura fictícia.
  *
- * Sem a foto (sem saldo, falha, Blob privado), a peça usa o recorte de
- * RESERVA do mesmo assunto, empacotado no worker (worker/fontes/vox).
+ * SEM A FOTO (sem saldo, falha, Blob privado), A PEÇA SAI SEM FOTO, só com o
+ * texto, ou não sai (05/10 à noite, regra do Bruno: no vídeo cmuvv0jje a
+ * "figura" de reserva, um senhor de bigode, representou "Bruno de 15 anos";
+ * uma reserva nunca pode representar uma pessoa citada). Os recortes de
+ * worker/fontes/vox não entram mais em peça nenhuma; ver `tirarFotosSemImagem`.
  */
 
 export type AssuntoDoRecorte = "estatua" | "figura" | "predio" | "objeto" | "documento" | "lugar";
@@ -194,13 +197,14 @@ export function fotosDoMomento(m: MomentoDoEditor): FotoDoVox[] {
  * teto ou falha fica sem url e a peça usa a reserva do assunto.
  */
 export async function prepararFotosDoVox(e: EdicaoDoEditor, o: { projectId?: string | null; guarda?: GuardaDoRecorte; teto?: number } = {}): Promise<{ prontas: number; custoUsd: number; erros: string[] }> {
-  const fotos = (e.momentos ?? []).flatMap(fotosDoMomento).filter((f) => !f.url).slice(0, 12);
+  // Teto de fotos NOVAS por chamada (VOX_FOTOS_POR_EDICAO, padrão 6): no recuo do Google cada uma custa ~US$ 0,10.
+  const teto = o.teto ?? Number(process.env.VOX_FOTOS_POR_EDICAO ?? 6);
+  // A fila vai até o teto (05/10 à noite): o corte fixo em 12 deixou 18 fotos do completo de 17 min sem imagem.
+  const fotos = (e.momentos ?? []).flatMap(fotosDoMomento).filter((f) => !f.url).slice(0, Math.max(12, teto));
   const erros: string[] = [];
   let custo = 0;
   let prontas = 0;
   let novas = 0;
-  // Teto de fotos NOVAS por chamada (VOX_FOTOS_POR_EDICAO, padrão 6): no recuo do Google cada uma custa ~US$ 0,10.
-  const teto = o.teto ?? Number(process.env.VOX_FOTOS_POR_EDICAO ?? 6);
   const fila = [...fotos];
   const trabalhar = async () => {
     for (let f = fila.shift(); f; f = fila.shift()) {
@@ -220,4 +224,54 @@ export async function prepararFotosDoVox(e: EdicaoDoEditor, o: { projectId?: str
   };
   await Promise.all([trabalhar(), trabalhar()]);
   return { prontas, custoUsd: +custo.toFixed(4), erros };
+}
+
+/**
+ * AS FOTOS SEM IMAGEM GERADA SAEM DO PLANO (05/10, noite): a peça fica só com
+ * o texto; a que não existe sem foto (censura: a tarja precisa de um rosto)
+ * sai inteira. Devolve o plano novo e o que mudou. Módulo puro.
+ */
+export function tirarFotosSemImagem<T extends { momentos: MomentoDoEditor[] }>(e: T): { plano: T; semFoto: number; removidos: string[] } {
+  let semFoto = 0;
+  const removidos: string[] = [];
+  const temUrl = (f: unknown) => Boolean(f && typeof f === "object" && typeof (f as FotoDoVox).url === "string" && (f as FotoDoVox).url);
+  const momentos = (e.momentos ?? []).flatMap((m) => {
+    const campo = PECAS_COM_FOTO[m.peca];
+    if (!campo || !m.props) return [m];
+    const props = { ...(m.props as Record<string, unknown>) };
+    const v = props[campo];
+    if (m.peca === "cronologia" && Array.isArray(v)) {
+      props[campo] = v.map((x) => {
+        if (!x || typeof x !== "object" || !(x as { foto?: unknown }).foto) return x;
+        if (temUrl((x as { foto?: unknown }).foto)) return x;
+        semFoto++;
+        const { foto: _f, ...resto } = x as Record<string, unknown>;
+        void _f;
+        return resto;
+      });
+      return [{ ...m, props }];
+    }
+    if (Array.isArray(v)) {
+      const comUrl = v.filter(temUrl);
+      semFoto += v.length - comUrl.length;
+      props[campo] = comUrl;
+      // A colagem sem nenhum recorte e sem mapa não tem o que mostrar.
+      if (m.peca === "colagem" && !comUrl.length && !props.mapa) {
+        removidos.push(String(m.id ?? m.peca));
+        return [];
+      }
+      return [{ ...m, props }];
+    }
+    if (v && typeof v === "object" && !temUrl(v)) {
+      semFoto++;
+      delete props[campo];
+      if (m.peca === "censura") {
+        removidos.push(String(m.id ?? m.peca));
+        return [];
+      }
+      return [{ ...m, props }];
+    }
+    return [m];
+  });
+  return { plano: { ...e, momentos }, semFoto, removidos };
 }

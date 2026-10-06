@@ -58,7 +58,8 @@ export type VarianteDoElemento =
   | "citacao"
   | "citacao-versiculo"
   | "impacto"
-  | "legenda-destaque";
+  | "legenda-destaque"
+  | "inscrever";
 
 export type FichaDaFamilia = {
   id: FamiliaVisual;
@@ -96,6 +97,8 @@ export const COMPONENTE_GENERICO: Record<VarianteDoElemento, string | null> = {
   "citacao-versiculo": "pergaminho",
   impacto: "frase-impacto",
   "legenda-destaque": "sublinhado",
+  // A chamada de curtir e inscrever (05/10, noite): um componente só, desenhado na linguagem do vídeo.
+  inscrever: "inscrever",
 };
 
 export const FAMILIAS: FichaDaFamilia[] = [
@@ -238,10 +241,34 @@ export function blocoDeEstiloDeReserva(familia: FamiliaVisual, comando: string, 
   return [`Visual language: ${f.semente}.`, `As the client described it (Portuguese): "${comando.replace(/\s+/g, " ").slice(0, 280)}".`, nicho ? `Audience and field: ${nicho.slice(0, 120)}.` : "", coresTexto].filter(Boolean).join(" ");
 }
 
+/**
+ * O CENÁRIO DA GRAVAÇÃO (05/10, noite; regra do Bruno depois do vídeo
+ * cmuvv0jje): o cenário do cliente NUNCA é trocado sem pedido explícito.
+ * "gravacao": a gravação fica como foi gravada e as artes entram, ficam e
+ * saem por cima dela. "trocado": o comando pediu, com todas as letras, para
+ * trocar o fundo ou pôr a pessoa num cenário ("troque o meu fundo", "me
+ * coloque numa biblioteca antiga"); só então existe um fundo atrás da pessoa
+ * recortada. Quem decide é o JEV, lendo o comando; isto é a reserva sem ele.
+ */
+export type CenarioDaGravacao = "gravacao" | "trocado";
+
+export function cenarioPorPalavras(comando: string): CenarioDaGravacao {
+  const t = comando.toLowerCase();
+  const pede =
+    /tro(c|qu)\w*\s+(o\s+|a\s+)?(meu\s+|minha\s+)?(fundo|cen[aá]rio|parede)/.test(t) ||
+    /(me\s+)?(colo(c|qu)\w*|p[oõ]e|ponha|bota\w*|insira|situe)(-me)?\s+(a\s+pessoa\s+|me\s+|eu\s+)?(em|num|numa|dentro de)\s+(um\s+|uma\s+)?(cen[aá]rio|fundo|ambiente|estúdio|estudio)/.test(t) ||
+    /(fundo|cen[aá]rio)\s+(novo|diferente|trocado|virtual|gerado)/.test(t) ||
+    /substitu\w*\s+(o\s+)?(fundo|cen[aá]rio)/.test(t) ||
+    /(atr[aá]s de mim|por tr[aá]s de mim)\s+(um|uma)\s+(cen[aá]rio|fundo)/.test(t);
+  return pede ? "trocado" : "gravacao";
+}
+
 /** O que a linguagem decidida carrega para o plano (gravado com ele; a tela lê). */
 export type LinguagemDoVideo = {
   familia: FamiliaVisual;
   nome: string;
+  /** O cenário da gravação: sem o campo (planos de antes de 05/10 à noite), a gravação fica como foi gravada. */
+  cenario?: CenarioDaGravacao;
   /** O bloco que vai em TODO prompt de imagem e vídeo (inglês). */
   blocoDeEstilo: string;
   /** Quem escreveu o bloco: o redator, ou a reserva do código. */

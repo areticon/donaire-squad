@@ -22,9 +22,18 @@ import { acaso, molaFisica } from "../kit";
  *   carimbo       o carimbo vermelho que bate, sobre a pessoa
  *
  * As fotos vêm da Higgsfield, recortadas no BiRefNet e guardadas no Blob
- * público (lib/media/editor-sob-medida/recortes-vox.ts); sem a foto, a peça
- * usa o recorte de reserva do assunto (worker/fontes/vox). As animações de
- * papel andam a 12 quadros por segundo (o engasgo da Vox); a câmera, contínua.
+ * público (lib/media/editor-sob-medida/recortes-vox.ts). SEM A FOTO (não
+ * gerada ou que não carrega), A PEÇA SAI SEM FOTO (05/10 à noite, regra do
+ * Bruno: no vídeo cmuvv0jje o recorte de reserva "figura", um senhor de
+ * bigode, representou "Bruno de 15 anos"; uma reserva nunca pode representar
+ * uma pessoa citada). Os arquivos de worker/fontes/vox ficam só para o papel,
+ * o manuscrito e o mapa. As animações de papel andam a 12 quadros por segundo
+ * (o engasgo da Vox); a câmera, contínua.
+ *
+ * O CENÁRIO (05/10, noite): a gravação do cliente nunca é trocada sem pedido.
+ * Sem o pedido, estas peças de tela chegam numa FOLHA sobre a gravação
+ * (Camadas.tsx, props.sobreAGravacao: o mesmo desenho, menor, no lado livre
+ * do rosto). Com o pedido, a tela cheia e o FundoColagem valem como antes.
  */
 
 /**
@@ -67,29 +76,21 @@ const semAsteriscos = (s: string) => s.replace(/\*\*/g, "");
 type Olhos = { x: number; y: number; w: number };
 type Foto = { assunto?: string; descricao?: string; url?: string; olhos?: Olhos | null; censura?: boolean };
 
-/** Os recortes de reserva (empacotados no worker) e os olhos medidos neles. */
-const RESERVA: Record<string, string> = {
-  estatua: "vox/estatua.webp",
-  figura: "vox/figura.webp",
-  predio: "vox/predio.webp",
-  documento: "vox/documento.webp",
-  objeto: "vox/documento.webp",
-  lugar: "vox/predio.webp",
-};
-const OLHOS_DA_RESERVA: Record<string, Olhos> = {
-  estatua: { x: 0.5, y: 0.27, w: 0.33 },
-  figura: { x: 0.47, y: 0.185, w: 0.22 },
-};
 const comRosto = (a: string) => a === "estatua" || a === "figura";
 /** O instante (s da peça) do evento k, ou o padrão quando a peça não tem evento. */
 const eventoOu = (c: Ctx, k: number, padrao: number) => c.eventosLocais?.[k] ?? padrao;
 
 // ─────────────────────────────── a foto que pode faltar ───────────────────────────────
 
-const estadoDaFoto = new Map<string, "ok" | "falhou">();
+type EstadoDaFoto = { ok: boolean; w: number; h: number };
+const estadoDaFoto = new Map<string, EstadoDaFoto>();
 
-/** Sonda a URL da foto gerada: se não carregar, a peça usa a reserva (nunca derruba o render). */
-function useFotoCarregada(src: string | undefined): boolean {
+/**
+ * Sonda a URL da foto gerada e mede a proporção dela: se não carregar, a peça
+ * sai SEM a foto (nunca a reserva, nunca derruba o render). Devolve a medida
+ * (largura e altura naturais) quando carregou, null quando não.
+ */
+function useFotoCarregada(src: string | undefined): EstadoDaFoto | null {
   const [, mexer] = useState(0);
   const [espera] = useState(() => (src && !estadoDaFoto.has(src) ? delayRender(`foto vox ${src.slice(-24)}`, { timeoutInMilliseconds: 45_000 }) : null));
   useEffect(() => {
@@ -100,7 +101,7 @@ function useFotoCarregada(src: string | undefined): boolean {
     const im = new Image();
     im.crossOrigin = "anonymous";
     const fim = (ok: boolean) => {
-      estadoDaFoto.set(src, ok ? "ok" : "falhou");
+      estadoDaFoto.set(src, { ok, w: im.naturalWidth || 1, h: im.naturalHeight || 1 });
       mexer((x) => x + 1);
       requestAnimationFrame(() => requestAnimationFrame(() => espera !== null && continueRender(espera)));
     };
@@ -108,13 +109,14 @@ function useFotoCarregada(src: string | undefined): boolean {
     im.onerror = () => fim(false);
     im.src = src;
   }, [src, espera]);
-  return Boolean(src) && estadoDaFoto.get(src!) === "ok";
+  const e = src ? estadoDaFoto.get(src) : undefined;
+  return e?.ok ? e : null;
 }
 
-function fonteDaFoto(f: Foto | undefined, ok: boolean): { src: string; olhos: Olhos | null; assunto: string } {
-  const assunto = String(f?.assunto ?? "objeto");
-  if (ok && f?.url) return { src: f.url, olhos: f.olhos ?? null, assunto };
-  return { src: staticFile(RESERVA[assunto] ?? RESERVA.objeto), olhos: OLHOS_DA_RESERVA[assunto] ?? null, assunto };
+/** A foto pronta para desenhar: a url que carregou, com os olhos e a medida; null sem foto (a peça segue sem ela). */
+function fonteDaFoto(f: Foto | undefined, medida: EstadoDaFoto | null): { src: string; olhos: Olhos | null; assunto: string; proporcao: number } | null {
+  if (!medida || !f?.url) return null;
+  return { src: f.url, olhos: f.olhos ?? null, assunto: String(f.assunto ?? "objeto"), proporcao: medida.w / Math.max(1, medida.h) };
 }
 
 // ─────────────────────────────── filtros: borda de papel, tinta, grão ───────────────────────────────
@@ -167,8 +169,8 @@ function Grao({ c, forca = 1 }: { c: Ctx; forca?: number }) {
 
 // ─────────────────────────────── geometria do papel ───────────────────────────────
 
-/** O contorno rasgado de uma folha w x h (px), em polígono para clip-path. */
-function rasgado(w: number, h: number, semente: number, amp: number, lados = "trbl"): string {
+/** O contorno rasgado de uma folha w x h (px), em polígono para clip-path (a folha sobre a gravação, em Camadas.tsx, usa o mesmo). */
+export function rasgado(w: number, h: number, semente: number, amp: number, lados = "trbl"): string {
   const pts: string[] = [];
   const passo = Math.max(8, amp * 1.6);
   const borda = (k: number, lado: string) => (lados.includes(lado) ? (acaso(k + semente * 31, 1.7) - 0.15) * amp : 0);
@@ -224,15 +226,29 @@ function queda(t: number, inicio: number, rot: number, s: number): { visivel: bo
   };
 }
 
-/** A entrada da tela inteira: a folha de papel varre da esquerda com a borda rasgada. */
+/**
+ * A entrada da tela inteira: a folha de papel varre da esquerda com a borda
+ * rasgada; a SAÍDA varre de volta (05/10 à noite): a saída por opacidade
+ * deixava a pessoa aparecer transparente através do papel por um instante
+ * (quadro de 915 s do vídeo cmuvv0jje). O papel nunca fica translúcido.
+ */
 function varredura(c: Ctx): React.CSSProperties {
-  if (c.entra >= 1) return c.fica < 1 ? { opacity: c.fica } : {};
-  const x = c.W * (doze(c.entra * 0.6) / 0.6) * 1.12;
-  const pts: string[] = ["0px 0px"];
   const n = 18;
-  for (let i = 0; i <= n; i++) pts.push(`${(x + (acaso(i, 3.3) - 0.5) * 60).toFixed(1)}px ${((c.H * i) / n).toFixed(1)}px`);
-  pts.push(`0px ${c.H}px`);
-  return { clipPath: `polygon(${pts.join(",")})`, opacity: c.fica };
+  if (c.entra < 1) {
+    const x = c.W * (doze(c.entra * 0.6) / 0.6) * 1.12;
+    const pts: string[] = ["0px 0px"];
+    for (let i = 0; i <= n; i++) pts.push(`${(x + (acaso(i, 3.3) - 0.5) * 60).toFixed(1)}px ${((c.H * i) / n).toFixed(1)}px`);
+    pts.push(`0px ${c.H}px`);
+    return { clipPath: `polygon(${pts.join(",")})` };
+  }
+  if (c.fica < 1) {
+    const x = c.W * (1 - doze(c.fica * 0.6) / 0.6) * 1.12 - 0.06 * c.W;
+    const pts: string[] = [`${c.W}px 0px`];
+    for (let i = 0; i <= n; i++) pts.push(`${(x + (acaso(i, 3.3) - 0.5) * 60).toFixed(1)}px ${((c.H * i) / n).toFixed(1)}px`);
+    pts.push(`${c.W}px ${c.H}px`);
+    return { clipPath: `polygon(${pts.join(",")})` };
+  }
+  return {};
 }
 
 // ─────────────────────────────── as partes ───────────────────────────────
@@ -254,14 +270,21 @@ function Papel({ c, cam, manuscrito }: { c: Ctx; cam: (d: number) => React.CSSPr
   );
 }
 
-/** Um recorte de foto de arquivo: P&B de alta resolução, borda de papel rasgada, sombra de verdade; tarja nos olhos quando pedida. */
-function Recorte({ foto, altura, s, tarja = 0, sombra = 1 }: { foto: Foto | undefined; altura: number; s: number; tarja?: number; sombra?: number }) {
-  const ok = useFotoCarregada(foto?.url);
-  const f = fonteDaFoto(foto, ok);
+/**
+ * Um recorte de foto de arquivo: P&B de alta resolução, borda de papel
+ * rasgada, sombra de verdade; tarja nos olhos quando pedida. `larguraMax`
+ * (05/10 à noite): a foto larga (a Bíblia aberta) não passa da área dela e
+ * nunca cobre a manchete; a altura desce para caber. Sem foto, nada.
+ */
+function Recorte({ foto, altura, s, tarja = 0, sombra = 1, larguraMax }: { foto: Foto | undefined; altura: number; s: number; tarja?: number; sombra?: number; larguraMax?: number }) {
+  const medida = useFotoCarregada(foto?.url);
+  const f = fonteDaFoto(foto, medida);
+  if (!f) return null;
+  const alturaReal = larguraMax ? Math.min(altura, larguraMax / Math.max(0.2, f.proporcao)) : altura;
   const olhos = f.olhos;
   const pTarja = limitar(tarja);
   return (
-    <div style={{ position: "relative", height: altura, display: "inline-block", filter: `drop-shadow(0 ${10 * s * sombra}px ${14 * s * sombra}px rgba(20,12,4,.5)) drop-shadow(0 ${2 * s}px ${3 * s}px rgba(0,0,0,.35))` }}>
+    <div style={{ position: "relative", height: alturaReal, display: "inline-block", filter: `drop-shadow(0 ${10 * s * sombra}px ${14 * s * sombra}px rgba(20,12,4,.5)) drop-shadow(0 ${2 * s}px ${3 * s}px rgba(0,0,0,.35))` }}>
       <Img src={f.src} style={{ height: "100%", width: "auto", display: "block", filter: "grayscale(1) contrast(1.2) brightness(1.04) sepia(.14) url(#vox-borda)" }} />
       {/* O MEIO-TOM da foto impressa (a assinatura da colagem Vox): pontos de tinta só dentro do recorte. */}
       <div
@@ -600,9 +623,10 @@ export function Jornal(c: Ctx) {
         </div>
       </div>
       {foto && q?.visivel ? (
-        <div style={{ position: "absolute", right: vertical ? -0.04 * W : 0.0 * W, bottom: vertical ? 0.02 * H : -0.04 * H, height: vertical ? 0.36 * H : 0.78 * H, ...cam(1.3) }}>
+        // A foto fica na área livre à direita do jornal (05/10 à noite): a largura dela é limitada ao que sobra ao lado da manchete.
+        <div style={{ position: "absolute", right: vertical ? 0.02 * W : 0.01 * W, bottom: vertical ? 0.02 * H : 0.0 * H, height: vertical ? 0.34 * H : 0.7 * H, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", ...cam(1.3) }}>
           <div style={q.estilo}>
-            <Recorte foto={foto} altura={vertical ? 0.36 * H : 0.78 * H} s={s} sombra={q.sombra} tarja={foto.censura ? (c.t - 1.3) / 0.35 : 0} />
+            <Recorte foto={foto} altura={vertical ? 0.34 * H : 0.7 * H} larguraMax={vertical ? 0.46 * W : 0.37 * W} s={s} sombra={q.sombra} tarja={foto.censura ? (c.t - 1.3) / 0.35 : 0} />
           </div>
         </div>
       ) : null}
@@ -613,8 +637,9 @@ export function Jornal(c: Ctx) {
 
 /** A foto impressa no jornal: meio-tom (pontos) e tinta. */
 function FotoMeioTom({ foto, s }: { foto: Foto; s: number }) {
-  const ok = useFotoCarregada(foto.url);
-  const f = fonteDaFoto(foto, ok);
+  const medida = useFotoCarregada(foto.url);
+  const f = fonteDaFoto(foto, medida);
+  if (!f) return null;
   return (
     <>
       <Img src={f.src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "grayscale(1) contrast(1.5) brightness(.95)" }} />
@@ -671,8 +696,9 @@ export function MapaAntigo(c: Ctx) {
 
 /** A foto de lugar como cópia em papel fotográfico, borda branca e fita. */
 function FotoImpressa({ foto, largura, s }: { foto: Foto; largura: number; s: number }) {
-  const ok = useFotoCarregada(foto.url);
-  const f = fonteDaFoto(foto, ok);
+  const medida = useFotoCarregada(foto.url);
+  const f = fonteDaFoto(foto, medida);
+  if (!f) return null;
   return (
     <div style={{ width: largura, background: "#f4eee0", padding: largura * 0.04, paddingBottom: largura * 0.1, boxShadow: `0 ${14 * s}px ${26 * s}px rgba(20,12,4,.5), 0 ${2 * s}px ${4 * s}px rgba(0,0,0,.3)`, position: "relative" }}>
       <Img src={f.src} style={{ width: "100%", display: "block", aspectRatio: "4 / 3", objectFit: "cover", filter: "grayscale(1) contrast(1.15) sepia(.2)" }} />
@@ -853,24 +879,35 @@ export function Cronologia(c: Ctx) {
 }
 
 /**
- * FUNDO DE COLAGEM (04/10, segunda volta da prova): o juiz derrubava o Vox
- * nos trechos de "cabeça falando" (nota 3 a 4 contra 8 nas telas de papel).
- * No Vox a pessoa vive DENTRO da colagem, como no quadro de treino: esta
- * camada vai na passada "atras" (por baixo da pessoa recortada) e troca a
- * parede da gravação por papel envelhecido, manuscrito, um pedaço de mapa e
- * dois recortes de arquivo nas bordas, atrás da pessoa. O resolvedor põe
- * sozinho em todo trecho com a pessoa cheia (camada de apoio).
+ * O CENÁRIO TROCADO atrás da pessoa recortada (04/10, segunda volta da prova;
+ * 05/10 à noite, SÓ COM PEDIDO EXPLÍCITO do cliente para trocar o fundo). Esta
+ * camada vai na passada "atras" (por baixo da pessoa recortada). Com a imagem
+ * gerada do cenário pedido (props.url, na linguagem do vídeo), é ela, com uma
+ * vinheta. Sem a imagem, a colagem de papel: papel envelhecido, manuscrito, um
+ * pedaço de mapa e dois recortes de arquivo nas bordas (os que as peças já
+ * pagaram; sem foto gerada, sem recorte). O resolvedor põe sozinho em todo
+ * trecho com a pessoa cheia (camada de apoio), nunca sem o pedido.
  */
 export function FundoColagem(c: Ctx) {
   usarAcentos(c);
   const { W, H, vertical } = c;
   const s = Math.min(W, H) / 1080;
   const k = Math.round(Number(c.props.semente ?? 0));
-  const fotos = lista<Foto>(c.props.recortes);
-  const f1: Foto = fotos[k % Math.max(1, fotos.length)] ?? { assunto: ["predio", "estatua", "documento"][k % 3] };
-  const f2: Foto = fotos[(k + 1) % Math.max(1, fotos.length)] ?? { assunto: ["documento", "predio", "figura"][k % 3] };
+  const url = texto(c.props.url);
+  const fotos = lista<Foto>(c.props.recortes).filter((f) => typeof f?.url === "string" && f.url);
+  const f1: Foto | null = fotos.length ? fotos[k % fotos.length] : null;
+  const f2: Foto | null = fotos.length > 1 ? fotos[(k + 1) % fotos.length] : null;
   const esquerdaMapa = k % 2 === 0;
   const parado = () => ({}) as React.CSSProperties;
+  if (url) {
+    const deriva = 1.03 + 0.03 * limitar(c.t / Math.max(1, c.dur));
+    return (
+      <AbsoluteFill data-atras="" style={{ overflow: "hidden", background: "#111" }}>
+        <Img src={url} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${deriva.toFixed(4)})` }} />
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 80% 75% at 50% 45%, transparent 55%, rgba(0,0,0,.45) 100%)" }} />
+      </AbsoluteFill>
+    );
+  }
   return (
     // data-atras: a passada "atras" só mostra o que leva a marca (Camadas.tsx).
     <AbsoluteFill data-atras="" style={{ overflow: "hidden" }}>
@@ -879,12 +916,16 @@ export function FundoColagem(c: Ctx) {
       <div style={{ position: "absolute", left: esquerdaMapa ? -0.08 * W : undefined, right: esquerdaMapa ? undefined : -0.08 * W, top: vertical ? 0.03 * H : -0.06 * H, transform: `rotate(${esquerdaMapa ? -3 : 3}deg)` }}>
         <MapaRasgado w={vertical ? 0.62 * W : 0.42 * W} h={vertical ? 0.2 * H : 0.46 * H} s={s} semente={k + 11} alvo={{ x: 0.5, y: 0.5 }} circulo={0} />
       </div>
-      <div style={{ position: "absolute", left: -0.06 * W, bottom: vertical ? 0.06 * H : -0.04 * H, height: (vertical ? 0.3 : 0.62) * H, transform: "rotate(-3deg)" }}>
-        {String(f1.assunto) === "lugar" ? <FotoImpressa foto={f1} largura={(vertical ? 0.5 : 0.3) * W} s={s} /> : <Recorte foto={f1} altura={(vertical ? 0.3 : 0.62) * H} s={s} />}
-      </div>
-      <div style={{ position: "absolute", ...(esquerdaMapa ? { right: 0.02 * W } : { left: 0.02 * W }), top: vertical ? 0.03 * H : 0.06 * H, height: (vertical ? 0.22 : 0.48) * H, transform: `rotate(${esquerdaMapa ? 4 : -4}deg)` }}>
-        {String(f2.assunto) === "lugar" ? <FotoImpressa foto={f2} largura={(vertical ? 0.38 : 0.24) * W} s={s} /> : <Recorte foto={f2} altura={(vertical ? 0.22 : 0.48) * H} s={s} />}
-      </div>
+      {f1 ? (
+        <div style={{ position: "absolute", left: -0.06 * W, bottom: vertical ? 0.06 * H : -0.04 * H, height: (vertical ? 0.3 : 0.62) * H, transform: "rotate(-3deg)" }}>
+          {String(f1.assunto) === "lugar" ? <FotoImpressa foto={f1} largura={(vertical ? 0.5 : 0.3) * W} s={s} /> : <Recorte foto={f1} altura={(vertical ? 0.3 : 0.62) * H} s={s} />}
+        </div>
+      ) : null}
+      {f2 ? (
+        <div style={{ position: "absolute", ...(esquerdaMapa ? { right: 0.02 * W } : { left: 0.02 * W }), top: vertical ? 0.03 * H : 0.06 * H, height: (vertical ? 0.22 : 0.48) * H, transform: `rotate(${esquerdaMapa ? 4 : -4}deg)` }}>
+          {String(f2.assunto) === "lugar" ? <FotoImpressa foto={f2} largura={(vertical ? 0.38 : 0.24) * W} s={s} /> : <Recorte foto={f2} altura={(vertical ? 0.22 : 0.48) * H} s={s} />}
+        </div>
+      ) : null}
       <Grao c={c} forca={0.8} />
     </AbsoluteFill>
   );

@@ -18,8 +18,14 @@ import type { VarianteDoElemento } from "@/lib/media/editor-por-comando/linguage
  * Módulo puro (a tela de aprovação usa a mesma estimativa).
  */
 
-export type TipoDeElemento = "texto-atras" | "icone" | "imagem" | "video" | "dado" | "lista" | "citacao" | "impacto" | "legenda-destaque" | "nada";
+export type TipoDeElemento = "texto-atras" | "icone" | "imagem" | "video" | "dado" | "lista" | "citacao" | "impacto" | "legenda-destaque" | "inscrever" | "nada";
 
+/**
+ * Os tipos que o JEV escolhe MOMENTO A MOMENTO. O "inscrever" (a chamada de
+ * curtir e se inscrever, 05/10 à noite) fica fora desta lista de propósito:
+ * ele não disputa com a fala; o JEV escolhe os 2 ou 3 momentos dele à parte
+ * (plano-pelo-jev.ts, `decidirInscrever`), só nos vídeos com destino YouTube.
+ */
 export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "dado", "lista", "citacao", "impacto", "legenda-destaque", "nada"];
 
 /** O que o JEV lê para escolher o tipo de cada momento (pergunta de escolha). */
@@ -33,6 +39,7 @@ export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
   citacao: "CITAÇÃO: a fala repete o que alguém disse, uma frase de autor, um versículo, uma manchete, uma orientação oficial.",
   impacto: "TELA CHEIA DE IMPACTO: a frase mais forte do trecho, a conclusão ou o alerta que merece tirar o rosto da tela por um instante.",
   "legenda-destaque": "LEGENDA DE DESTAQUE: uma palavra ou expressão curta que merece ser grifada sobre a pessoa, sem tirar a atenção dela.",
+  inscrever: "CURTIR E INSCREVER: a chamada animada de curtir e se inscrever, logo depois de um momento forte (nunca é escolhida frase a frase; ver decidirInscrever).",
   nada: "NADA: a pessoa sozinha basta (transição, emoção, conversa, frase de ligação, ou um elemento acabou de sair).",
 };
 
@@ -47,6 +54,7 @@ export const NOME_DO_TIPO: Record<TipoDeElemento, string> = {
   citacao: "citação",
   impacto: "tela de impacto",
   "legenda-destaque": "legenda de destaque",
+  inscrever: "curtir e se inscrever",
   nada: "só você",
 };
 
@@ -69,6 +77,7 @@ export function varianteDo(tipo: TipoDeElemento, fala: string, formaDaImagem: "j
     case "video":
     case "impacto":
     case "legenda-destaque":
+    case "inscrever":
       return tipo;
     case "imagem":
       return formaDaImagem === "tela-cheia" ? "imagem-tela" : "imagem-janela";
@@ -109,6 +118,13 @@ export type RegrasDoRitmo = {
   tetoUsdPorMinuto: number;
   /** Probabilidade mínima do tipo escolhido para entrar. */
   limiar: number;
+  /**
+   * A RÉGUA DA COBERTURA (05/10, noite): o maior trecho (s) que o vídeo pode
+   * ficar sem nenhum elemento entrando ou saindo. No vídeo de 17 min de 05/10
+   * o plano deixou 203 s seguidos sem peça; a medida `maiorSemTroca` já
+   * existia no relatório, agora ela é regra do plano (ver `cobrirBuracos`).
+   */
+  maiorSemTroca: number;
 };
 
 /**
@@ -130,6 +146,8 @@ export function regrasDoRitmo(o: { formato: "9:16" | "16:9"; duracao: number; de
     videosPorMinuto: +(o.videosPorMinutoMax * fatorVideo).toFixed(2),
     tetoUsdPorMinuto: o.tetoUsdPorMinuto,
     limiar: { calmo: 0.3, medio: 0.25, rapido: 0.2 }[o.densidade],
+    // Duas vezes e meia o intervalo médio pedido, entre 8 s (corte) e 45 s (longo calmo).
+    maiorSemTroca: +Math.min(curto ? 12 : 45, Math.max(curto ? 6 : 15, (60 / porMinuto) * 2.5)).toFixed(1),
   };
 }
 
@@ -144,6 +162,7 @@ export const DURACAO_DO_TIPO: Record<Exclude<TipoDeElemento, "nada">, [number, n
   citacao: [3, 7],
   impacto: [1.8, 4],
   "legenda-destaque": [1.2, 3],
+  inscrever: [3, 5],
 };
 
 // ─────────────────────────────── o custo ───────────────────────────────
@@ -152,14 +171,16 @@ export const DOLAR_DA_IMAGEM = DOLAR_POR_IMAGEM[IMAGEM_DA_EDICAO];
 
 /**
  * O CUSTO PREVISTO de um elemento antes do texto (o JEV respeita o teto ao
- * escolher): imagem é uma imagem; a janela de papel são duas fotos de arquivo
- * recortadas; vídeo é a imagem de reserva mais os segundos do Kling 3.0 Pro.
+ * escolher): imagem é uma imagem; a janela que é peça com foto de arquivo são
+ * duas fotos recortadas; vídeo é a imagem de reserva mais os segundos do
+ * Kling 3.0 Pro. `pecaComFoto`: o componente escolhido pela linguagem pede
+ * foto de arquivo recortada (PECAS_COM_FOTO), seja qual for a família.
  */
-export function custoPrevisto(tipo: TipoDeElemento, variante: VarianteDoElemento | null, segundos: number, pecaDePapel: boolean): number {
+export function custoPrevisto(tipo: TipoDeElemento, variante: VarianteDoElemento | null, segundos: number, pecaComFoto: boolean): number {
   if (tipo === "video") return DOLAR_DA_IMAGEM + dolarDoVideoDaEdicao(segundos);
-  if (tipo === "imagem") return variante === "imagem-janela" && pecaDePapel ? 2 * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) : DOLAR_DA_IMAGEM;
-  // As peças de papel com foto (jornal, cronologia) pagam a foto delas.
-  return pecaDePapel ? DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE : 0;
+  if (tipo === "imagem") return variante === "imagem-janela" && pecaComFoto ? 2 * (DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE) : DOLAR_DA_IMAGEM;
+  // As peças com foto de arquivo (jornal, cronologia) pagam a foto delas.
+  return pecaComFoto ? DOLAR_DA_IMAGEM + DOLAR_POR_RECORTE : 0;
 }
 
 export type EstimativaDeCusto = {
@@ -172,6 +193,9 @@ export type EstimativaDeCusto = {
   /** A tabela usada, para a tela dizer de onde veio o preço. */
   precos: { imagemUsd: number; videoUsdPorSegundo: number; modeloDeImagem: string; modeloDeVideo: string };
 };
+
+/** Os componentes que pedem foto de arquivo recortada (o mesmo mapa de recortes-vox.ts, sem importar o servidor). */
+export const COMPONENTES_COM_FOTO = new Set(["colagem", "jornal", "mapa-antigo", "censura", "cronologia"]);
 
 type MomentoComFoto = { peca: string; props?: Record<string, unknown> };
 type InsercaoComMidia = { midia?: "imagem" | "video"; segundos?: number };

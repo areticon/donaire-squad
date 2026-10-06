@@ -1,3 +1,4 @@
+import { DESTINOS_DE_CORTE } from "@/lib/media/destinos";
 import { decidirRetomadas } from "@/lib/media/decidir-retomadas";
 import { pedidoDaGuarda, type MantidoPeloUsuario } from "@/lib/media/guarda-da-fala";
 import { ganchoEmFraseInteira, limparSoco } from "@/lib/media/abertura-do-roteiro";
@@ -799,6 +800,8 @@ export async function entradaDoPlanoDoCorte(
     quadros,
     projectId: video.projectId,
     imagens: tetoDeImagens("corte"),
+    // A chamada de curtir e inscrever (05/10, noite) só quando um destino do corte é o YouTube.
+    youtube: ((t as { destinos?: string[] }).destinos ?? []).some((d) => DESTINOS_DE_CORTE.find((x) => x.id === d)?.plataforma === "youtube"),
   };
 }
 

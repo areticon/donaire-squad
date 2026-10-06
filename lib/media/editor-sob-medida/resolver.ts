@@ -273,6 +273,12 @@ export type ContextoDaResolucao = {
   insercoes: Record<string, MidiaDaInsercao>;
   /** "corte": o vídeo curto vertical (câmera a cada 2 a 3,6 s, B-roll depois dos 2 s do gancho). */
   ritmo?: "corte" | "longo";
+  /**
+   * O CENÁRIO (05/10, noite; regra 1 do Bruno): o fundo atrás da pessoa recortada só com o pedido explícito do
+   * cliente ("trocado"). Este caminho (o editor sob medida sem comando) não tem como saber o pedido: sem o campo,
+   * a gravação fica como foi gravada. Antes, o fundo entrava por ser o estilo Vox, uma condição fixa por estilo.
+   */
+  cenario?: "gravacao" | "trocado";
 };
 
 export type MomentoResolvido = CamadaResolvida & { ficha: FichaDaPeca; plano: "cheio" | "grafico" | "cartao" };
@@ -609,14 +615,14 @@ export function resolverEdicao(e: EdicaoDoEditor, ctx: ContextoDaResolucao): { e
     }
   }
 
-  // 4f. O VOX: A PESSOA DENTRO DA COLAGEM (04/10, segunda volta da prova). O
-  // juiz dava 3 a 4 aos trechos de cabeça falando e 8 às telas de papel. Em
-  // todo trecho com a pessoa cheia, o FUNDO DE COLAGEM vai por baixo da
-  // pessoa recortada (passada "atras"): papel, manuscrito, mapa e dois
-  // recortes de arquivo nas bordas, os mesmos que as peças do vídeo já
-  // pagaram (sem foto nova). Um trecho de fundo por trecho cheio, cada um com
-  // outra composição.
-  if (ESTILOS_DO_VOX.includes(ctx.estiloId ?? "") && FICHAS["fundo-colagem"]) {
+  // 4f. O CENÁRIO TROCADO (04/10, segunda volta da prova; 05/10 à noite, só
+  // com pedido). Em todo trecho com a pessoa cheia, o FUNDO vai por baixo da
+  // pessoa recortada (passada "atras"), desenhado na linguagem do vídeo com os
+  // recortes que as peças já pagaram (sem foto nova). Um trecho de fundo por
+  // trecho cheio, cada um com outra composição. SÓ quando o cliente pediu a
+  // troca do cenário (ctx.cenario): a condição antiga "é o estilo Vox" era
+  // uma regra fixa por estilo e trocava o cenário sem pedido.
+  if (ctx.cenario === "trocado" && FICHAS["fundo-colagem"]) {
     const ficha = FICHAS["fundo-colagem"];
     const fotos = (e.momentos ?? []).flatMap((m) => {
       const campo = ({ colagem: "recortes", jornal: "foto", "mapa-antigo": "foto", censura: "figura", cronologia: "marcos" } as Record<string, string>)[m.peca];

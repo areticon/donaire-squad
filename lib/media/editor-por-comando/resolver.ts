@@ -22,6 +22,18 @@ import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
  *   - a ÚNICA checagem de sobreposição: a legenda sobe para o topo ou some
  *     quando o texto de uma peça ocupa a faixa dela (posicionarLegenda).
  *
+ * O CENÁRIO (05/10, noite; regra 1 do Bruno): a gravação fica como foi
+ * gravada, a não ser que o comando tenha pedido a troca com todas as letras
+ * (plano.linguagem.cenario === "trocado", decidido pelo JEV). Sem o pedido:
+ *   - nenhum fundo atrás da pessoa (o "fundo-colagem" não entra);
+ *   - as peças de TELA CHEIA (jornal, colagem, cartões, número, citação...)
+ *     não cobrem a gravação: viram uma FOLHA sobre ela (props.sobreAGravacao,
+ *     no lado livre do rosto; no 9:16, na faixa livre), que entra, fica e sai
+ *     por cima da pessoa, desenhada do mesmo jeito, só menor; a câmera fica
+ *     aberta enquanto a folha está na tela.
+ * Com o pedido, a tela cheia e o fundo valem como antes, e o fundo é a
+ * imagem gerada do cenário pedido (inserção "cenario") na linguagem do vídeo.
+ *
  * Módulo puro.
  */
 
@@ -69,6 +81,20 @@ function sobreporCamera(base: Enquadramento[], pedidos: Enquadramento[]): Enquad
 
 const PECAS_COM_FOTO: Record<string, string> = { colagem: "recortes", jornal: "foto", "mapa-antigo": "foto", censura: "figura", cronologia: "marcos" };
 
+/**
+ * A CAIXA DA FOLHA sobre a gravação (fração do quadro): no 16:9, do lado livre
+ * do rosto, larga até onde o rosto começa (o corpo pode ficar por baixo, o
+ * rosto nunca); no 9:16, a faixa livre inteira. O worker desenha a peça
+ * dentro dela (Camadas.tsx).
+ */
+export function caixaDaFolha(rosto: Retangulo, vertical: boolean, lado: string): { x: number; y: number; w: number; h: number } {
+  if (vertical) return { x: 0.04, y: lado === "topo" ? 0.05 : 0.5, w: 0.92, h: 0.44 };
+  const margem = 0.035;
+  const livre = lado === "esquerda" ? rosto.x - 0.02 : 1 - (rosto.x + rosto.w) - 0.02;
+  const w = +Math.min(0.56, Math.max(0.36, livre - margem)).toFixed(3);
+  return { x: lado === "esquerda" ? margem : +(1 - margem - w).toFixed(3), y: 0.1, w, h: 0.78 };
+}
+
 export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): { edicao: EdicaoResolvida; avisos: string[] } {
   const avisos: string[] = [];
   const frases = frasesNumeradas(ctx.palavras);
@@ -84,6 +110,12 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   const planos: PlanoResolvido[] = [];
   // O PLANO LIVRE (dois eixos, 05/10 à noite): com a linguagem no tema, nenhuma peça é trocada pelo estilo e a imagem em tela cheia vale em toda linguagem.
   const livre = Boolean(p.tema?.linguagem);
+  // O cenário trocado só com o pedido explícito (regra 1); plano sem o campo (de antes de 05/10 à noite) fica com a gravação.
+  const cenarioTrocado = p.linguagem?.cenario === "trocado";
+  // O lado livre do rosto (16:9) e a faixa livre (9:16): onde a folha e a chamada de inscrever entram sem tapar a pessoa.
+  const vertical0 = H > W;
+  const ladoLivre: "esquerda" | "direita" = x0 > 0.5 ? "esquerda" : "direita";
+  const faixaLivre: "topo" | "baixo" = ctx.rosto.y + ctx.rosto.h / 2 > 0.5 ? "topo" : "baixo";
   for (const [k, m0] of (p.momentos ?? []).entries()) {
     const ajuste = ctx.base && !livre ? pecaNoEstiloDoComando(m0, ctx.base) : { momento: m0 };
     if (ajuste.aviso) avisos.push(ajuste.aviso);
@@ -136,8 +168,16 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       for (let i = 0; i < faltam; i++) eventos.push(Math.min(ate - 0.4, ini + passo * (i + (eventos.length ? 1 : 0))));
     }
     if (ficha.nome === "titulo-atras") props.cabeca = +Math.max(0.05, ctx.rosto.y).toFixed(3);
+    if (ficha.nome === "inscrever") props.lado = vertical0 ? faixaLivre : ladoLivre;
     let plano: "cheio" | "grafico" | "cartao" = ficha.plano === "tela" ? "grafico" : ficha.plano === "lado" ? "cartao" : "cheio";
     if (m.plano === "grafico" && ficha.plano !== "tela") plano = "grafico";
+    // A FOLHA SOBRE A GRAVAÇÃO (regra 1): sem o cenário trocado, a peça de tela não cobre a pessoa.
+    if (plano === "grafico" && !cenarioTrocado) {
+      plano = "cheio";
+      props.sobreAGravacao = true;
+      props.lado = vertical0 ? faixaLivre : ladoLivre;
+      props.folha = caixaDaFolha(ctx.rosto, vertical0, vertical0 ? faixaLivre : ladoLivre);
+    }
     if (plano === "cartao") {
       const lado = props.lado === "direita" || props.posicao === "direita" ? "direita" : "esquerda";
       props.lado = lado;
@@ -155,8 +195,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   // No Vox não há cena de cinema em tela cheia: a imagem é a foto de arquivo dentro das peças de papel.
   for (const [k, ins] of (ctx.base && ESTILOS_DO_VOX.includes(ctx.base) && !livre ? [] : p.insercoes ?? []).entries()) {
     const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
-    // A imagem de janela entra pela peça "imagem-janela", sem plano de tela cheia.
-    if (ins.janela) continue;
+    // A imagem de janela entra pela peça "imagem-janela", sem plano de tela cheia; o cenário vai atrás da pessoa (item 4).
+    if (ins.janela || (ins as { cenario?: boolean }).cenario) continue;
     if (!ctx.insercoes[id]) {
       avisos.push(`${id}: imagem não gerada, ficou de fora`);
       continue;
@@ -181,9 +221,11 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   }
   const planosOk = planos.filter((x) => x.ate - x.de >= 0.1);
 
-  // 4. O fundo de colagem atrás da pessoa, quando o diretor pediu (os recortes que as peças já pagaram).
-  if (p.tema?.fundoColagem && FICHAS["fundo-colagem"]) {
+  // 4. O CENÁRIO atrás da pessoa recortada, SÓ com o pedido explícito do comando (regra 1 de 05/10 à noite):
+  // a imagem gerada do cenário pedido; sem ela, o worker desenha o fundo na linguagem do vídeo com os recortes que as peças já pagaram.
+  if (cenarioTrocado && FICHAS["fundo-colagem"]) {
     const ficha = FICHAS["fundo-colagem"];
+    const cenarioUrl = ctx.insercoes.cenario?.url ?? null;
     const fotos = (p.momentos ?? []).flatMap((m) => {
       const campo = PECAS_COM_FOTO[m.peca];
       const v0 = campo ? (m.props as Record<string, unknown> | undefined)?.[campo] : null;
@@ -200,7 +242,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       cursor = Math.max(cursor, pl.ate);
     }
     if (D - cursor > 0.3) trechos.push([cursor, D]);
-    for (const [a, b] of trechos) camadas.push({ id: `fundo-${Math.round(a * 10)}`, peca: "fundo-colagem", de: +a.toFixed(3), ate: +b.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { semente: k++, recortes }, passes: ["atras"] });
+    for (const [a, b] of trechos) camadas.push({ id: `fundo-${Math.round(a * 10)}`, peca: "fundo-colagem", de: +a.toFixed(3), ate: +b.toFixed(3), entrada: ficha.entrada, saida: ficha.saida, evento: ficha.evento, eventos: [], props: { semente: k++, recortes, ...(cenarioUrl ? { url: cenarioUrl } : {}) }, passes: ["atras"] });
   }
   camadas.sort((a, b) => a.de - b.de);
 
@@ -216,15 +258,18 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
   const vertical = H > W;
   let camera = sobreporCamera(cameraDeRitmo(frases, D, ctx.rosto, null, vertical ? ctx.palavras : undefined, ctx.tema.visual === "documental"), pedidos);
   // O título atrás da pessoa mede a cabeça no quadro aberto: ali a câmera fica aberta (senão a cabeça cobre as letras).
-  for (const c0 of camadas.filter((c) => c.peca === "titulo-atras"))
+  // A folha sobre a gravação também: fechada, o rosto andaria para baixo da folha.
+  for (const c0 of camadas.filter((c) => c.peca === "titulo-atras" || c.props.sobreAGravacao))
     camera = camera.map((c) => (c.de < c0.ate && c.ate > c0.de && !pedidos.includes(c) ? { ...c, zoom: 1, zoomFinal: c.zoomFinal ? 1.03 : undefined } : c));
   // O soco de câmera nas ênfases, fora dos planos.
   const socos: Enquadramento[] = [];
   let ultimo = -10;
+  // Sem soco onde a câmera precisa ficar aberta (o título atrás da pessoa e a folha sobre a gravação).
+  const abertas = camadas.filter((c) => c.peca === "titulo-atras" || c.props.sobreAGravacao);
   for (const s0 of (p.enfases ?? []).map((a) => t(a)).filter((x): x is number => x !== null).sort((a, b) => a - b)) {
     const de = Math.max(0, s0 - 0.03);
     const ate = Math.min(D, de + 1.1);
-    if (de - ultimo < 2.5 || planosOk.some((pl) => pl.de < ate && pl.ate > de) || pedidos.some((pl) => pl.de < ate && pl.ate > de)) continue;
+    if (de - ultimo < 2.5 || planosOk.some((pl) => pl.de < ate && pl.ate > de) || pedidos.some((pl) => pl.de < ate && pl.ate > de) || abertas.some((c) => c.de < ate && c.ate > de)) continue;
     const z = Math.min(1.32, +((camera.find((c) => c.de <= de && c.ate > de)?.zoom ?? 1) * (ctx.tema.visual === "documental" ? 1.1 : 1.18)).toFixed(3));
     socos.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: z, x: x0, y: y0, movimento: "fixo" });
     ultimo = de;
