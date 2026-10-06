@@ -4,7 +4,18 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
-import { lerArrobaDoYouTube, lerLinks, MAX_LINKS, normalizarArrobaDoYouTube } from "@/lib/projeto/links-do-cliente";
+import {
+  ERRO_DO_ENDERECO,
+  lerArrobaDoYouTube,
+  lerLinks,
+  lerRedesEscritas,
+  MAX_LINKS,
+  normalizarArrobaDoYouTube,
+  normalizarEnderecoDaRede,
+  REDES_DO_PERFIL,
+  type RedeDoPerfil,
+} from "@/lib/projeto/links-do-cliente";
+import { STATUS_DO_PERFIL_PROPRIO } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
  * OS LINKS DO CLIENTE (03/10): grava a lista inteira em
@@ -26,10 +37,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // 06/10: a mesma rota grava o @ do canal no YouTube (`arrobaDoYouTube`),
   // e cada campo é opcional: o assistente do setup manda só o que mudou.
-  const body = (await req.json().catch(() => ({}))) as { links?: unknown; arrobaDoYouTube?: unknown };
+  // 06/10 (fonte única): também grava as redes do cliente (`redes`, um objeto
+  // { instagram, tiktok, youtube, linkedin, facebook }), só as que vieram;
+  // texto vazio apaga aquela rede. Só grava: nada aqui dispara estudo.
+  const body = (await req.json().catch(() => ({}))) as { links?: unknown; arrobaDoYouTube?: unknown; redes?: unknown };
   const temLinks = "links" in body;
   const temArroba = "arrobaDoYouTube" in body;
-  if (!temLinks && !temArroba) return NextResponse.json({ error: "Envie a lista de links." }, { status: 400 });
+  const temRedes = "redes" in body;
+  if (!temLinks && !temArroba && !temRedes) return NextResponse.json({ error: "Envie a lista de links." }, { status: 400 });
 
   const atual = (project.config as Record<string, unknown> | null) ?? {};
   const config: Record<string, unknown> = { ...atual };
@@ -51,8 +66,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
+  if (temRedes) {
+    if (!body.redes || typeof body.redes !== "object" || Array.isArray(body.redes)) {
+      return NextResponse.json({ error: "Envie as redes." }, { status: 400 });
+    }
+    const vindas = body.redes as Record<string, unknown>;
+    const redes: Record<string, string> = { ...(lerRedesEscritas({ redesDoCliente: atual.redesDoCliente }) as Record<string, string>) };
+    for (const rede of REDES_DO_PERFIL) {
+      if (!(rede in vindas)) continue;
+      const bruto = typeof vindas[rede] === "string" ? (vindas[rede] as string).trim() : "";
+      if (!bruto) delete redes[rede];
+      else {
+        const valor = normalizarEnderecoDaRede(rede as RedeDoPerfil, bruto);
+        if (!valor) return NextResponse.json({ error: ERRO_DO_ENDERECO[rede], rede }, { status: 400 });
+        redes[rede] = valor;
+      }
+      // O YouTube escrito aqui substitui o campo antigo do @ (que deixa de
+      // existir): sem isto, apagar o YouTube em cima faria o @ velho voltar.
+      if (rede === "youtube") delete config.arrobaDoYouTube;
+    }
+    if (Object.keys(redes).length) config.redesDoCliente = redes;
+    else delete config.redesDoCliente;
+  }
+
   await prisma.project.update({ where: { id }, data: { config: config as Prisma.InputJsonValue } });
-  return NextResponse.json({ links: lerLinks(config), arrobaDoYouTube: lerArrobaDoYouTube(config), recusados });
+  return NextResponse.json({ links: lerLinks(config), arrobaDoYouTube: lerArrobaDoYouTube(config), redes: lerRedesEscritas(config), recusados });
 }
 
 /**
@@ -66,5 +104,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const project = await prisma.project.findUnique({ where: { id } });
   if (!project || !(await podeUsarProjeto(userId, project))) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ links: lerLinks(project.config), arrobaDoYouTube: lerArrobaDoYouTube(project.config) });
+  // Os perfis já estudados (gravados pelo Estudar o meu perfil antes da fonte
+  // única) vão à parte: a tela mostra cada um na rede que ainda não foi
+  // escrita, e o dono, ao abrir, grava em `redesDoCliente` (nada se perde).
+  const estudados = await prisma.referenciaPerfil
+    .findMany({ where: { projectId: id, status: STATUS_DO_PERFIL_PROPRIO }, select: { rede: true, perfil: true }, orderBy: { createdAt: "asc" } })
+    .catch(() => []);
+  const estudadas: Record<string, string> = {};
+  for (const e of estudados) {
+    if (!(REDES_DO_PERFIL as readonly string[]).includes(e.rede) || estudadas[e.rede]) continue;
+    const valor = normalizarEnderecoDaRede(e.rede as RedeDoPerfil, e.perfil);
+    if (valor) estudadas[e.rede] = valor;
+  }
+  return NextResponse.json({
+    links: lerLinks(project.config),
+    arrobaDoYouTube: lerArrobaDoYouTube(project.config),
+    redes: lerRedesEscritas(project.config),
+    estudadas,
+  });
 }

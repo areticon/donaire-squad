@@ -191,4 +191,134 @@ export function lerArrobaDoYouTube(config: unknown): string | null {
  * proteger estas chaves, cadastrar um link na primeira etapa e clicar em
  * Próximo apagava o link.
  */
-export const CHAVES_DOS_LINKS_NO_CONFIG = ["linksDoCliente", "arrobaDoYouTube"] as const;
+export const CHAVES_DOS_LINKS_NO_CONFIG = ["linksDoCliente", "arrobaDoYouTube", "redesDoCliente"] as const;
+
+// ── As redes do cliente: uma fonte só para o endereço de cada rede ──────────
+
+/**
+ * AS REDES DO CLIENTE, UMA FONTE SÓ (06/10, pedido do Bruno: "se preencher a
+ * parte de cima, os links das redes já devem ficar salvos").
+ *
+ * Antes havia dois lugares: os perfis de cima do setup (que só eram gravados
+ * quando a pessoa clicava em Estudar o meu perfil, e iam só para o estudo) e
+ * o campo do @ do YouTube embaixo (`config.arrobaDoYouTube`, o único que as
+ * descrições liam). Agora o que o cliente escreve nos perfis mora em
+ * `Project.config.redesDoCliente`, grava sozinho (setup e Configurações, a
+ * mesma tela), e é ESTE o endereço que as descrições usam
+ * (lib/media/elo-da-campanha.ts).
+ *
+ * A prioridade de cada rede é uma só:
+ *   1. o que o cliente escreveu (`config.redesDoCliente`);
+ *   2. o @ do YouTube gravado pelo campo antigo (`config.arrobaDoYouTube`),
+ *      para não perder o que já foi escrito ali;
+ *   3. o que a conexão da rede trouxe (o @ da conta conectada).
+ *
+ * O estudo do perfil (pago) lê outra coisa: os perfis gravados quando a pessoa
+ * clica em Estudar (referencias_perfis, status "proprio"). Gravar aqui nunca
+ * dispara estudo.
+ *
+ * Como cada rede é guardada, já arrumada:
+ *   - instagram e tiktok: o @ sem o @ ("prdonaire");
+ *   - youtube: "@canal" ou "channel/UC..." (o canal antigo, sem @);
+ *   - linkedin: o link inteiro do perfil ou da página (/in/, /company/...);
+ *   - facebook: o link inteiro da página ou do perfil.
+ */
+export const REDES_DO_PERFIL = ["instagram", "tiktok", "youtube", "linkedin", "facebook"] as const;
+export type RedeDoPerfil = (typeof REDES_DO_PERFIL)[number];
+export type RedesEscritas = Partial<Record<RedeDoPerfil, string>>;
+
+export const ROTULO_DA_REDE_DO_PERFIL: Record<RedeDoPerfil, string> = {
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  facebook: "Facebook",
+};
+
+/** A mensagem de quando o endereço não parece da rede, para a tela e a rota. */
+export const ERRO_DO_ENDERECO: Record<RedeDoPerfil, string> = {
+  instagram: "Esse @ do Instagram não parece certo. Escreva como aparece no perfil, por exemplo @seuperfil.",
+  tiktok: "Esse @ do TikTok não parece certo. Escreva como aparece no perfil, por exemplo @seuperfil.",
+  youtube: "Esse @ não parece o de um canal. Escreva como aparece no YouTube, por exemplo @seucanal, ou cole o link do canal.",
+  linkedin: "Cole o link do LinkedIn inteiro, por exemplo linkedin.com/in/seunome ou linkedin.com/company/suaempresa.",
+  facebook: "Cole o link do Facebook, por exemplo facebook.com/suapagina.",
+};
+
+const semUrl = (h: string, dominio: RegExp) => h.replace(/^https?:\/\//i, "").replace(/^(www\.|m\.)/i, "").replace(dominio, "");
+
+/**
+ * Arruma o que o cliente escreveu numa rede. Devolve o valor guardado (ver
+ * acima) ou nulo quando não parece um endereço daquela rede.
+ */
+export function normalizarEnderecoDaRede(rede: RedeDoPerfil, bruto: string | null | undefined): string | null {
+  const e = (bruto ?? "").trim();
+  if (!e) return null;
+  if (rede === "instagram" || rede === "tiktok") {
+    const dominio = rede === "instagram" ? /^instagram\.com\//i : /^tiktok\.com\//i;
+    const h = semUrl(e, dominio).replace(/^@/, "").replace(/[/?#].*$/, "").toLowerCase();
+    if (/\.(com|net)/.test(h)) return null;
+    return /^[a-z0-9._]{2,30}$/.test(h) ? h : null;
+  }
+  if (rede === "youtube") {
+    const canal = e.match(/youtube\.com\/channel\/(UC[\w-]{10,})/i) ?? e.match(/^(UC[\w-]{20,})$/);
+    if (canal) return `channel/${canal[1]}`;
+    const doLink = e.match(/youtube\.com\/@([^/?#\s]+)/i);
+    if (/youtube\.com|youtu\.be/i.test(e) && !doLink) return null;
+    const h = (doLink ? doLink[1] : e).replace(/^@/, "");
+    return /^[A-Za-z0-9._-]{3,60}$/.test(h) ? `@${h}` : null;
+  }
+  if (rede === "linkedin") {
+    const m = e.match(/linkedin\.com\/(in|company|school|showcase)\/([^/?#\s]+)/i);
+    return m ? `https://www.linkedin.com/${m[1].toLowerCase()}/${m[2]}` : null;
+  }
+  // facebook
+  const id = e.match(/facebook\.com\/profile\.php\?id=(\d+)/i);
+  if (id) return `https://www.facebook.com/profile.php?id=${id[1]}`;
+  const temDominio = /(facebook\.com|fb\.com)\//i.test(e);
+  if (/^https?:\/\//i.test(e) && !temDominio) return null;
+  const caminho = temDominio ? e.replace(/^.*?(facebook\.com|fb\.com)\//i, "") : e.replace(/^@/, "");
+  const pagina = caminho.replace(/[?#].*$/, "").replace(/\/+$/, "");
+  return /^[A-Za-z0-9.\-]{2,80}(\/[A-Za-z0-9.\-]+)?$/.test(pagina) ? `https://www.facebook.com/${pagina}` : null;
+}
+
+/**
+ * O que o cliente escreveu nas redes, lido do `config`. O @ do YouTube do
+ * campo antigo entra quando o YouTube não foi escrito (prioridade 2).
+ */
+export function lerRedesEscritas(config: unknown): RedesEscritas {
+  const c = (config as { redesDoCliente?: unknown; arrobaDoYouTube?: unknown } | null | undefined) ?? {};
+  const bruto = c.redesDoCliente && typeof c.redesDoCliente === "object" && !Array.isArray(c.redesDoCliente) ? (c.redesDoCliente as Record<string, unknown>) : {};
+  const redes: RedesEscritas = {};
+  for (const rede of REDES_DO_PERFIL) {
+    const v = bruto[rede];
+    const n = typeof v === "string" ? normalizarEnderecoDaRede(rede, v) : null;
+    if (n) redes[rede] = n;
+  }
+  if (!redes.youtube) {
+    const antigo = lerArrobaDoYouTube(config);
+    if (antigo) redes.youtube = `@${antigo}`;
+  }
+  return redes;
+}
+
+/**
+ * O @ e o endereço público de uma rede escrita. O @ só existe onde a rede tem
+ * um (Instagram, TikTok, YouTube com @); LinkedIn e Facebook são só link.
+ */
+export function enderecoDaRede(rede: RedeDoPerfil, valor: string): { handle: string | null; url: string } {
+  if (rede === "instagram") return { handle: valor, url: `https://www.instagram.com/${valor}` };
+  if (rede === "tiktok") return { handle: valor, url: `https://www.tiktok.com/@${valor}` };
+  if (rede === "youtube") {
+    return valor.startsWith("@")
+      ? { handle: valor.slice(1), url: `https://www.youtube.com/${valor}` }
+      : { handle: null, url: `https://www.youtube.com/${valor}` };
+  }
+  return { handle: null, url: valor };
+}
+
+/** Como o valor guardado volta para o campo da tela ("@prdonaire", o link do LinkedIn). */
+export function valorNoCampo(rede: RedeDoPerfil, valor: string): string {
+  if (rede === "instagram" || rede === "tiktok") return `@${valor}`;
+  if (rede === "youtube") return valor.startsWith("@") ? valor : `https://www.youtube.com/${valor}`;
+  return valor;
+}
