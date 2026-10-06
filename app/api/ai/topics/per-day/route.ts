@@ -29,6 +29,9 @@ import { radarDaSemana, temasJaUsados, blocosDeNovidade, REGRAS_DE_NOVIDADE, rep
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 
+/** O rótulo de cada linha do pedido à IA: letra, para não se confundir com a data do dia. */
+const ROTULOS = ["A", "B", "C", "D", "E", "F", "G"];
+
 interface DayInput {
   dayOfWeek: string; // "1"-"7"
   dayName: string;
@@ -192,9 +195,9 @@ ${REGRAS_DE_NOVIDADE}
 - Adapte ao formato do dia (imagem = visual e impactante, enquete = polarizante, etc.)
 
 FORMATO DA RESPOSTA, uma linha por dia, sem markdown, sem numeração, sem comentários:
-${days.map((d) => `${d.dayOfWeek}|tema para ${d.dayName}`).join("\n")}
+${days.map((d, i) => `${ROTULOS[i]}|tema para ${d.dayName}`).join("\n")}
 
-A primeira coisa da linha é o número do dia, depois uma barra vertical, depois o tema. Nada antes da primeira linha e nada depois da última.`;
+A primeira coisa da linha é a LETRA da linha (A, B, C...), exatamente como acima, nunca a data nem o número do dia; depois uma barra vertical; depois o tema. Nada antes da primeira linha e nada depois da última.`;
 
   /**
    * O parse, com as duas coisas que faltavam.
@@ -219,10 +222,10 @@ A primeira coisa da linha é o número do dia, depois uma barra vertical, depois
      * Uma linha por dia não tem esse problema: não há nada para escapar.
      */
     for (const linha of texto.split("\n")) {
-      const m = linha.match(/^\s*"?([1-7])"?\s*[|:]\s*(.+?)\s*$/);
+      const m = linha.match(/^\s*"?([A-Ga-g])"?\s*[|:]\s*(.+?)\s*$/);
       if (!m) continue;
       const tema = m[2].replace(/^["'\s]+|["',\s]+$/g, "").trim();
-      if (tema.length > 5) temas[m[1]] = tema;
+      if (tema.length > 5) temas[m[1].toUpperCase()] = tema;
     }
     if (Object.keys(temas).length > 0) return temas;
 
@@ -305,5 +308,13 @@ Devolva só as linhas destes dias: ${repetidos.map((r) => r.dia).join(", ")}.`;
   }
   // Sem travessão: regra de escrita do Bruno, e o modelo escreve com ele.
   for (const d of Object.keys(temas)) temas[d] = temas[d].replace(/\s*[—–]\s*/g, ", ").replace(/,\s*,/g, ",");
-  return NextResponse.json({ topicsPerDay: temas, radar: radar ? { fontes: radar.fontes.length, geradoEm: radar.geradoEm } : null });
+  // As linhas voltam pela LETRA (06/10): o rótulo do dia leva a data ("Terça 6"), e com o número
+  // do dia na linha a IA respondia "6|..." (a data) e nenhum campo era preenchido. A letra volta
+  // aqui para a chave do dia que a tela usa.
+  const porDia: Record<string, string> = {};
+  days.forEach((d, i) => {
+    const t = temas![ROTULOS[i]];
+    if (t) porDia[d.dayOfWeek] = t;
+  });
+  return NextResponse.json({ topicsPerDay: porDia, radar: radar ? { fontes: radar.fontes.length, geradoEm: radar.geradoEm } : null });
 }
