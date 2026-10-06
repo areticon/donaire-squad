@@ -1245,7 +1245,21 @@ export const MODELOS_DE_ARTE: ModeloDeArte[] = [
 ];
 
 export function modeloPorId(id: string | null | undefined): ModeloDeArte | undefined {
-  return MODELOS_DE_ARTE.find((m) => m.id === id);
+  return MODELOS_DE_ARTE.find((m) => m.id === id) ?? (id ? MODELOS_DO_CLIENTE.get(id) : undefined);
+}
+
+/**
+ * OS MODELOS DO CLIENTE (06/10, tarde): o design de imagem escrito por ele na
+ * biblioteca vira modelo ("design-<id>", lib/modelos-de-arte/modelo-do-cliente.ts).
+ * O catálogo é estático; a marca da peça registra o modelo aqui, no processo,
+ * e `modeloPorId` o acha dali em diante.
+ */
+// No globalThis: o mesmo registro mesmo quando o módulo é carregado duas vezes (ESM e CommonJS, recarga do next dev).
+const MODELOS_DO_CLIENTE: Map<string, ModeloDeArte> = ((globalThis as { __modelosDoCliente?: Map<string, ModeloDeArte> }).__modelosDoCliente ??= new Map());
+
+export function registrarModeloDoCliente(m: ModeloDeArte): void {
+  MODELOS_DO_CLIENTE.set(m.id, m);
+  if (MODELOS_DO_CLIENTE.size > 500) MODELOS_DO_CLIENTE.delete(MODELOS_DO_CLIENTE.keys().next().value as string);
 }
 
 export const CATEGORIAS_DOS_MODELOS = [

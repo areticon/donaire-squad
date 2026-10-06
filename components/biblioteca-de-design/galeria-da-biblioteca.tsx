@@ -113,7 +113,7 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
     setEnviando(true);
     try {
       const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: tipoDoPedido, pedido: pedido.trim() }) });
-      const d = (await r.json().catch(() => ({}))) as { design?: DesignDaGaleria; veredito?: string; error?: string };
+      const d = (await r.json().catch(() => ({}))) as { design?: DesignDaGaleria; veredito?: string; efeito?: string; error?: string };
       if (!r.ok || !d.design) throw new Error(d.error || "Não consegui registrar o pedido.");
       const frase =
         d.veredito === "igual"
@@ -123,7 +123,8 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
             : d.veredito === "repetido"
               ? `Você já tinha pedido este design: "${d.design.nome}".`
               : `Entrou na biblioteca como "${d.design.nome}".`;
-      toast.success(frase, { duration: 6000 });
+      // O que o design faz nas artes (06/10, tarde): a imagem escrita vira o modelo das próximas artes.
+      toast.success(d.efeito ? `${frase} ${d.efeito}` : frase, { duration: 8000 });
       setPedido("");
       setEscrevendo(false);
       await carregar();
