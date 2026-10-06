@@ -82,7 +82,8 @@ import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
 import { bibliaDoEstilo } from "@/lib/media/biblias";
 import { falaDoBloco } from "@/lib/media/montagem-do-completo";
 import { listaDaAprovacao } from "@/lib/media/decisao-dos-cortes";
-import { esteiraDoCompleto } from "@/lib/media/jornada/estado";
+import { esteiraDoCompleto, estadoNovo } from "@/lib/media/jornada/estado";
+import { prepararPlanoDaJornada } from "@/lib/media/jornada/roteiro";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -821,6 +822,36 @@ export async function prepararRoteiro(
         });
       }
     }
+  }
+
+  // 3a. A JORNADA OFICIAL (E2, lib/media/jornada): a leitura do vídeo ANTES do plano
+  // (Gemini descreve), as ideias (Sonnet escreve) e as decisões (JEV decide), num
+  // plano por elemento que o cliente aprova ou revisa na tela. Uma tarefa só.
+  if (montagemDoCompletoLigada() && jornada && !opcoes.semDiretor && !r.jornada?.plano && !r.jornada?.erro) {
+    const fala = r.completo?.fala ?? (await falaDoCompleto(v, r.remocoes, termos));
+    if (!r.completo) {
+      r.completo = { fala, blocos: [], plano: null, insercoes: 0, estiloId: estiloAtual };
+      await gravarRoteiroDoVideo(videoId, r);
+    }
+    tarefas.push(async () => {
+      const estado = r.jornada ?? estadoNovo();
+      try {
+        const feito = await prepararPlanoDaJornada({
+          videoId: v.id,
+          projectId: v.projectId,
+          url: v.blobUrl,
+          palavrasOriginais: aplicarTermos(palavrasDoVideo(v), parseTermos(termos)).map((w) => ({ texto: w.word, inicio: w.start, fim: w.end })),
+          duracaoOriginal: duracao,
+          manter: manterDoCompleto(v, r.remocoes, termos),
+          fala,
+          formato,
+        });
+        r.jornada = { ...estado, ...feito };
+      } catch (e) {
+        r.jornada = { ...estado, erro: e instanceof Error ? e.message.slice(0, 200) : "falhou" };
+      }
+      await gravar(() => gravarRoteiroDoVideo(videoId, r));
+    });
   }
 
   // 3b. A ABERTURA com os melhores momentos do completo (01/10, estilo
