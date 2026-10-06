@@ -38,6 +38,7 @@ import { conteudoDoCardAguardando, marcarEspera, tipoGeraArte } from "@/lib/mode
 import { ajustesValidos, descreverAjustes, fundirAjustes, lerAjustesDoPedido, deslocamentoDoTituloNoPedido, PASSO_DO_TITULO, type AjustesDaPeca } from "@/lib/modelos-de-arte/ajustes-da-peca";
 import { fotoDoClienteEntra, soTexto } from "@/lib/modelos-de-arte/prompts-com-foto";
 import { descreverIntercalacao, escolherFotosDasLaminas, pedidoDeIntercalar, type FotoDaLamina } from "@/lib/media/fotos-do-carrossel";
+import { capturarFeedbackDoChatDoCard } from "@/lib/feedback/captura";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -666,7 +667,10 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
     // Nunca um "Pronto" genérico (05/10): cada frase conta o que de fato
     // mudou, e quando nada mudou, diz isso. Só a parte feita ganha aviso.
     const abertura = falhou && !tudoFalhou ? "Fiz parte. " : "";
-    await acrescentarNoChat(card.id, [{ role: "assistant", content: `${abertura}${frases.join(" ")}`.trim(), timestamp: agora() }]);
+    const respostaFinal = `${abertura}${frases.join(" ")}`.trim();
+    await acrescentarNoChat(card.id, [{ role: "assistant", content: respostaFinal, timestamp: agora() }]);
+    // O feedback do produto (06/10): o pedido, a resposta e o resultado viram registro, sem travar o chat.
+    void capturarFeedbackDoChatDoCard({ cardId: card.id, userId: ctx.userId, mensagem: ctx.mensagem, resposta: respostaFinal, resultado: tudoFalhou ? "falhou" : falhou ? "parte" : "feito", acoes: acoes.map((a) => a.tipo) });
     // A marca de revisão sai ANTES do "feito": a tela para de consultar quando
     // lê "feito", e o que ela ler nessa hora é o que fica no cabeçalho.
     await encerrarRevisao([...revisao]);
@@ -677,13 +681,9 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
     for (const et of pedido.etapas) if (et.estado === "fazendo" || et.estado === "esperando") et.estado = "falhou";
     await encerrarRevisao([...revisao]).catch(() => {});
     await salvar();
-    await acrescentarNoChat(card.id, [
-      {
-        role: "assistant",
-        content: `${frases.length ? frases.join(" ") + " " : ""}Tive um problema no meio e parei. O que já estava pronto ficou salvo; pode mandar o pedido de novo para eu terminar.`,
-        timestamp: agora(),
-      },
-    ]).catch(() => {});
+    const respostaDaFalha = `${frases.length ? frases.join(" ") + " " : ""}Tive um problema no meio e parei. O que já estava pronto ficou salvo; pode mandar o pedido de novo para eu terminar.`;
+    await acrescentarNoChat(card.id, [{ role: "assistant", content: respostaDaFalha, timestamp: agora() }]).catch(() => {});
+    void capturarFeedbackDoChatDoCard({ cardId: card.id, userId: ctx.userId, mensagem: ctx.mensagem, resposta: respostaDaFalha, resultado: "falhou" });
   } finally {
     await encerrarRevisao([...revisao]);
   }

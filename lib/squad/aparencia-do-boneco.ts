@@ -73,6 +73,8 @@ export const APARENCIA_DOS_AGENTES: Record<string, Aparencia> = {
   "vitor-video": { corpo: "homem", pele: "#d7a07a", cabelo: "curto", corDoCabelo: "#2a1f18", roupa: "#f43f5e", calca: "#374151", oculos: false, barba: true, acessorio: "bone", corDoAcessorio: "#2b2b33" },
   "vera-veredito": { corpo: "mulher", pele: "#efc2a4", cabelo: "coque", corDoCabelo: "#b4532a", roupa: "#eab308", calca: "#374151", oculos: true, barba: false, acessorio: "nenhum", corDoAcessorio: "#2b2b33" },
   "paulo-publicador": { corpo: "homem", pele: "#d49a72", cabelo: "curto", corDoCabelo: "#161616", roupa: "#22c55e", calca: "#1f2937", oculos: false, barba: false, acessorio: "headset", corDoAcessorio: "#1f2937" },
+  // O Dev da Demandou (06/10): verde-petróleo da plataforma, óculos, fone no pescoço.
+  "davi-dev": { corpo: "homem", pele: "#e8b995", cabelo: "cacheado", corDoCabelo: "#3b2a20", roupa: "#0f766e", calca: "#1f2937", oculos: true, barba: false, acessorio: "fonePescoco", corDoAcessorio: "#111827" },
 };
 
 /**

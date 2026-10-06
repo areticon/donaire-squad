@@ -22,8 +22,10 @@ import {
   Trash2,
   Archive,
   RotateCcw,
+  FileUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { JanelaDoConteudoPronto } from "@/components/posts/janela-do-conteudo-pronto";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -190,6 +192,16 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
   const [generating, setGenerating] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
+  /**
+   * "NOVO POST COM ARQUIVO PRONTO" (06/10): a mesma janela do quadro, aqui na
+   * aba Posts. Ao salvar, a página recarrega do servidor (router.refresh) e a
+   * lista acompanha as props novas, que até hoje só valiam na primeira
+   * pintura.
+   */
+  const [conteudoProntoAberto, setConteudoProntoAberto] = useState(false);
+  useEffect(() => {
+    setPosts(initialPosts);
+  }, [initialPosts]);
 
   // Restore active pipeline run on page load
   useEffect(() => {
@@ -533,11 +545,28 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
             <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Posts</h1>
             <p className="mt-1" style={{ color: "var(--text-muted)" }}>{project.name}</p>
           </div>
-          <Button onClick={openCampaignModal} loading={generating} disabled={generating}>
-            <Zap className="w-4 h-4" />
-            {generating ? "Gerando campanha..." : "Gerar campanha da semana"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setConteudoProntoAberto(true)} data-novo-post-com-arquivo>
+              <FileUp className="w-4 h-4" />
+              Novo post com arquivo pronto
+            </Button>
+            <Button onClick={openCampaignModal} loading={generating} disabled={generating}>
+              <Zap className="w-4 h-4" />
+              {generating ? "Gerando campanha..." : "Gerar campanha da semana"}
+            </Button>
+          </div>
         </div>
+        <JanelaDoConteudoPronto
+          aberto={conteudoProntoAberto}
+          projectId={project.id}
+          contas={socialAccounts}
+          onFechar={() => setConteudoProntoAberto(false)}
+          onCriado={() => {
+            setConteudoProntoAberto(false);
+            setFilter("draft");
+            router.refresh();
+          }}
+        />
 
         {(showTopicInput || topic) && !generating && (
           <div className="space-y-3">

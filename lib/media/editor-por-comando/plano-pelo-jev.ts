@@ -5,6 +5,7 @@ import { FICHAS } from "@/lib/media/editor-sob-medida/pecas";
 import { resolverAncora, type Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { MomentoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
 import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
+import { LINGUAGEM_DOS_ESTILOS, linguagemDoEstilo } from "@/lib/media/editor-por-comando/comando-dos-estilos";
 import { validarPlano, type ElementoDoPlano, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import {
   COMPONENTES_COM_FOTO,
@@ -231,7 +232,18 @@ export type MomentoDecidido = {
   emCena?: string;
 };
 
-export type DecisaoDaLinguagem = { familia: FamiliaVisual; densidade: Densidade; video: QuantoDeMidia; confianca: number | null; cenario: CenarioDaGravacao };
+export type DecisaoDaLinguagem = {
+  familia: FamiliaVisual;
+  densidade: Densidade;
+  video: QuantoDeMidia;
+  confianca: number | null;
+  cenario: CenarioDaGravacao;
+  /** O estilo do catálogo cuja ficha pesquisada é a base do bloco e das peças (06/10): da referência do comando, ou identificado pelo JEV. */
+  estilo?: string | null;
+};
+
+/** A linguagem do vídeo com a ficha do estilo do catálogo (06/10): o id e as peças em inglês, para o redator dos momentos. */
+type LinguagemComFicha = LinguagemDoVideo & { estiloDoCatalogo?: string | null; pecasDoEstilo?: string | null };
 
 // ─────────────────────────────── eixo 2: a linguagem ───────────────────────────────
 
@@ -241,7 +253,8 @@ const contextoDoProjeto = (e: EntradaDoPlanoPeloJev) =>
 
 /** O JEV escolhe a família da linguagem, a densidade, o quanto de vídeo e se o comando pede para trocar o cenário. */
 export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<DecisaoDaLinguagem> {
-  const recuo: DecisaoDaLinguagem = { familia: familiaPorPalavras(e.comando.texto), densidade: "medio", video: "algum", confianca: null, cenario: cenarioPorPalavras(e.comando.texto) };
+  const daReferencia = estiloDoComando(e.comando);
+  const recuo: DecisaoDaLinguagem = { familia: familiaPorPalavras(e.comando.texto), densidade: "medio", video: "algum", confianca: null, cenario: cenarioPorPalavras(e.comando.texto), estilo: daReferencia };
   if (!jevDisponivel(e)) return recuo;
   try {
     const r = await jevDe(e)(
@@ -252,6 +265,17 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
           instructions: "Qual linguagem visual o comando do cliente pede para desenhar TODOS os elementos do vídeo (textos, ícones, imagens, vídeos)? Leve em conta o nicho, a marca e, quando houver, a leitura do vídeo (o gênero e o cenário da gravação) quando o comando não diz.",
           criteria: Object.fromEntries(FAMILIAS.map((f) => [f.id, f.criterio])),
         },
+        // O ESTILO DO CATÁLOGO pelo texto do comando (06/10): só quando a referência não diz; a ficha pesquisada dele
+        // vira a base do bloco de imagem e das peças. É dado da ficha entrando no prompt, não condição no código.
+        ...(daReferencia
+          ? {}
+          : {
+              estilo: {
+                type: "choice" as const,
+                instructions: "O comando do cliente descreve um destes estilos do catálogo (a linguagem, as peças e o ritmo batem com a ficha)? Se descreve uma linguagem própria que não é nenhum deles, responda nenhum.",
+                criteria: { ...Object.fromEntries(Object.entries(LINGUAGEM_DOS_ESTILOS).map(([id, f]) => [id, f.comando.slice(0, 220)])), nenhum: "nenhum destes: o comando descreve outra linguagem" },
+              },
+            }),
         densidade: {
           type: "choice",
           instructions: "Que ritmo de elementos na tela o comando pede (ou combina com o nicho)?",
@@ -276,6 +300,8 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
     const familia = decidirChoice(r.familia, FAMILIAS.map((f) => f.id), recuo.familia, 0.3);
     const semVideo = (probabilidadeDeSim(r.semVideo) ?? 0) >= 0.7;
     const trocar = probabilidadeDeSim(r.trocarCenario);
+    // O estilo identificado pelo JEV só vale com confiança firme (metade); "nenhum" é resposta.
+    const identificado = daReferencia ?? (r.estilo ? decidirChoice(r.estilo, [...Object.keys(LINGUAGEM_DOS_ESTILOS), "nenhum"], "nenhum", 0.5) : "nenhum");
     return {
       familia,
       densidade: decidirChoice(r.densidade, ["calmo", "medio", "rapido"] as const, "medio", 0.3),
@@ -283,6 +309,7 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
       confianca: fam ? +(fam.confidence ?? 0).toFixed(2) : null,
       // Sem resposta do JEV, a reserva por palavras; com resposta, só o "sim" firme troca.
       cenario: trocar === null ? recuo.cenario : trocar >= 0.7 ? "trocado" : "gravacao",
+      estilo: identificado && identificado !== "nenhum" ? identificado : null,
     };
   } catch {
     return recuo;
@@ -293,23 +320,52 @@ const SISTEMA_DO_ESTILO = `Você escreve o BLOCO DE ESTILO de um vídeo: um par�
 
 O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramento, paleta), nunca a cena. Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Quando houver a leitura do vídeo (o cenário da gravação, o gênero), o acabamento conversa com ela: as imagens vão aparecer ao lado dessa gravação, com a luz e o ambiente dela. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
 
+Quando houver A LINGUAGEM PESQUISADA DO ESTILO (a ficha do estilo do catálogo que o comando veio), o bloco NASCE dela: mantém os materiais, a luz, o grão, a composição e o que evitar da ficha, e adapta à marca e ao nicho; nunca a substitui por uma descrição genérica da família.
+
 Responda só JSON: {"bloco":"..."}`;
 
-/** O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva com as palavras do comando. */
-export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: FamiliaVisual): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string }> {
+/**
+ * O ESTILO DO CATÁLOGO por trás do comando (06/10, manhã): a miniatura clicada
+ * grava `comando.referencia` com o id do catálogo; quando ele tem ficha
+ * pesquisada (LINGUAGEM_DOS_ESTILOS), ela é a base obrigatória do bloco de
+ * estilo e das peças. Sem referência, o JEV pode identificar o estilo pelo
+ * texto do comando (`decidirLinguagem`). Null: segue como sempre.
+ */
+export function estiloDoComando(comando: Pick<ComandoDoVideo, "referencia">): string | null {
+  const id = comando.referencia ?? null;
+  return id && linguagemDoEstilo(id) ? id : null;
+}
+
+/** A ficha do estilo no pedido ao redator (o bloco de imagem e as peças, em inglês), como base obrigatória. */
+function fichaDoEstiloNoPedido(estilo: string | null | undefined): string {
+  const f = linguagemDoEstilo(estilo);
+  if (!f || !estilo) return "";
+  return [`# A LINGUAGEM PESQUISADA DO ESTILO "${estilo}" (base obrigatória: adapte à marca e ao nicho, não substitua)`, `Bloco de imagem e B-roll: ${f.bloco}`, `Como cada elemento se desenha: ${f.pecas}`].join("\n");
+}
+
+/**
+ * O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva
+ * com as palavras do comando. `redator` é o askClaude; a prova sem IA paga
+ * (scripts/testes/estilos-0610.test.mts) passa um simulado. `estilo`: o id do
+ * catálogo cuja ficha pesquisada entra como base obrigatória (06/10); sem
+ * ele, o da referência do comando; sem nenhum, só a semente da família.
+ */
+export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: FamiliaVisual, redator: typeof askClaude = askClaude, estilo?: string | null): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string; estilo?: string | null }> {
   const cores = coresNoPrompt(e.paleta, e.cores);
   const reserva = blocoDeEstiloDeReserva(familia, e.comando.texto, e.nicho, cores);
+  const doCatalogo = estilo && linguagemDoEstilo(estilo) ? estilo : estiloDoComando(e.comando);
+  const chamar = e.simulacao?.redator ?? ((sistema: string, pedido: string) => redator(sistema, pedido, { model: MODELO_DO_REDATOR, maxTokens: 4000, effort: "low", timeoutMs: 90_000, usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-estilo" } }));
   try {
-    const r = await redatorDe(e, "editor-por-comando-estilo", 4000, 90_000)(
+    const r = await chamar(
       SISTEMA_DO_ESTILO,
-      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n")
+      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, fichaDoEstiloNoPedido(doCatalogo), e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n")
     );
     const j = extrairJson(r) as { bloco?: unknown };
     const bloco = typeof j?.bloco === "string" ? j.bloco.replace(/\s+/g, " ").replace(/\s*—\s*/g, ", ").trim() : "";
-    if (bloco.split(" ").length < 12) return { bloco: reserva, origem: "reserva", erro: "bloco curto demais" };
-    return { bloco: `${bloco.slice(0, 700)}${/#[0-9a-f]{6}/i.test(bloco) ? "" : ` ${cores}`}`.trim(), origem: "redator" };
+    if (bloco.split(" ").length < 12) return { bloco: reserva, origem: "reserva", erro: "bloco curto demais", estilo: doCatalogo };
+    return { bloco: `${bloco.slice(0, 700)}${/#[0-9a-f]{6}/i.test(bloco) ? "" : ` ${cores}`}`.trim(), origem: "redator", estilo: doCatalogo };
   } catch (err) {
-    return { bloco: reserva, origem: "reserva", erro: err instanceof Error ? err.message.slice(0, 120) : String(err) };
+    return { bloco: reserva, origem: "reserva", erro: err instanceof Error ? err.message.slice(0, 120) : String(err), estilo: doCatalogo };
   }
 }
 
@@ -1015,12 +1071,14 @@ function linhaDoMomentoParaORedator(m: MomentoParaRedator, reforco = false): str
 }
 
 /** Uma chamada do redator para um bloco de momentos. */
-async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo, lista: MomentoParaRedator[], falaDoBloco: string, cenario?: boolean, reforco = false): Promise<Record<string, Record<string, unknown>>> {
+async function redigirBloco(e: EntradaDoPlanoPeloJev, ling: LinguagemComFicha, lista: MomentoParaRedator[], falaDoBloco: string, cenario?: boolean, reforco = false): Promise<Record<string, Record<string, unknown>>> {
   if (!lista.length && !cenario) return {};
   const pedido = [
     contextoDoProjeto(e),
     e.titulo ? `TÍTULO: ${e.titulo}` : "",
     `LINGUAGEM VISUAL: ${ling.nome}. Bloco de estilo (acrescentado depois a toda cena): ${ling.blocoDeEstilo}`,
+    // A ficha do estilo do catálogo (06/10): como cada elemento se desenha nessa linguagem, base obrigatória do texto e da cena.
+    ling.estiloDoCatalogo && ling.pecasDoEstilo ? `COMO CADA ELEMENTO SE DESENHA NO ESTILO "${ling.estiloDoCatalogo}" (base obrigatória; adapte à marca e ao nicho): ${ling.pecasDoEstilo}` : "",
     `# A FALA DESTE BLOCO\n${falaDoBloco}`,
     `# OS MOMENTOS (escreva só as props de cada um)\n${[
       ...(cenario ? ["- id cenario, o CENÁRIO que o cliente pediu no comando para ficar atrás dele o vídeo inteiro\n  props: cena (EM INGLÊS, o cenário pedido, sem pessoas, espaço livre no centro), oQueAparece (português, até 8 palavras)"] : []),
@@ -1293,9 +1351,11 @@ export async function escreverPlanoPeloJev(e: EntradaDoPlanoPeloJev): Promise<{ 
   const fam = FAMILIA[familia];
   const [d, est] = await Promise.all([
     decidirPeloJev(e, L).then((x) => ((tempos.jev = +((Date.now() - t) / 1000).toFixed(1)), x)),
-    escreverBlocoDeEstilo(e, familia).then((x) => ((tempos.estilo = +((Date.now() - t) / 1000).toFixed(1)), x)),
+    escreverBlocoDeEstilo(e, familia, askClaude, L.estilo).then((x) => ((tempos.estilo = +((Date.now() - t) / 1000).toFixed(1)), x)),
   ]);
-  const ling: LinguagemDoVideo = { familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null };
+  // A ficha do estilo do catálogo (06/10) viaja na linguagem: as peças em inglês vão ao redator de cada momento.
+  const ficha = linguagemDoEstilo(est.estilo);
+  const ling: LinguagemComFicha = { familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null, ...(ficha && est.estilo ? { estiloDoCatalogo: est.estilo, pecasDoEstilo: ficha.pecas } : {}) };
   const lista = d.momentos;
   const red = await redigirEConferir(e, ling, lista, { cenario: L.cenario === "trocado" });
   tempos.redator = red.tempos.redator;
@@ -1304,7 +1364,7 @@ export async function escreverPlanoPeloJev(e: EntradaDoPlanoPeloJev): Promise<{ 
   const mat = materializar(lista, red.textos, ling, red.pedidos);
   const cenario = L.cenario === "trocado" ? insercaoDoCenario(red.textos, ling, e.frases) : null;
   const bruto = {
-    leitura: `Plano em dois eixos: ${d.momentos.length} elementos decididos pelo JEV (${d.perguntas} perguntas) na linguagem "${fam.nome}", ritmo ${d.linguagem.densidade}, vídeo ${d.linguagem.video}, cobertura ${d.cobertura}, cenário ${L.cenario}.`,
+    leitura: `Plano em dois eixos: ${d.momentos.length} elementos decididos pelo JEV (${d.perguntas} perguntas) na linguagem "${fam.nome}"${est.estilo ? ` (ficha do estilo ${est.estilo})` : ""}, ritmo ${d.linguagem.densidade}, vídeo ${d.linguagem.video}, cobertura ${d.cobertura}, cenário ${L.cenario}.`,
     // O fundo atrás da pessoa SÓ com o pedido explícito (regra 1): nunca pela família.
     tema: { visual: fam.visual, acabamento: fam.acabamento, fundoColagem: L.cenario === "trocado", linguagem: familia },
     momentos: mat.momentos,

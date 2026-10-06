@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play, Scissors, Eye, Palette, RefreshCw } from "lucide-react";
+import { Check, Clock, Loader2, Plus, AlertCircle, X, Building2, UserRound, Archive, ChevronLeft, ChevronRight, Maximize2, Play, Scissors, Eye, Palette, RefreshCw, Video, Lightbulb, FileUp } from "lucide-react";
 import { ROTULO_DO_BOTAO_ESCOLHER, type EsperaDaIdentidade } from "@/lib/modelos-de-arte/espera-da-identidade";
 import type { EsperaDoCorte } from "@/lib/media/espera-do-corte";
 import { cn } from "@/lib/utils";
@@ -681,6 +681,71 @@ export function VisorDeMidia({ midia, titulo, onFechar }: { midia: MidiaDaPeca; 
   );
 }
 
+/**
+ * AS QUATRO PORTAS DO DIA (06/10, pedido do Bruno às 02h20).
+ *
+ * "Ele clica em adicionar conteúdo em qualquer dia da semana e tem as
+ * opções: vídeo, gêmeo, IA, e um conteúdo pronto seu." Os nomes são os
+ * dele. As três primeiras ligam ao que já abre hoje (a jornada do vídeo, a
+ * tela do gêmeo, a janela do tema); a quarta é a janela do conteúdo pronto.
+ * Quem abre cada uma é a tela que monta o quadro; aqui só se desenha o menu.
+ */
+export type PortaDoDia = "video" | "gemeo" | "ia" | "pronto";
+
+const PORTAS_DO_DIA: Array<{ porta: PortaDoDia; rotulo: string; detalhe: string; Icone: typeof Video }> = [
+  { porta: "video", rotulo: "Editar um vídeo", detalhe: "criar uma campanha a partir de um vídeo", Icone: Video },
+  { porta: "gemeo", rotulo: "Gêmeo digital", detalhe: "o seu rosto e a sua voz falam o roteiro", Icone: UserRound },
+  { porta: "ia", rotulo: "Fazer tudo com IA", detalhe: "tema, texto, arte e vídeo pelo squad", Icone: Lightbulb },
+  { porta: "pronto", rotulo: "Subir um conteúdo pronto meu", detalhe: "a sua arte ou o seu vídeo, sem edição", Icone: FileUp },
+];
+
+function MenuDoDia({ aberto, onEscolher, onFechar }: { aberto: boolean; onEscolher: (porta: PortaDoDia) => void; onFechar: () => void }) {
+  useEffect(() => {
+    if (!aberto) return;
+    const tecla = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") onFechar();
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [aberto, onFechar]);
+  if (!aberto) return null;
+  return (
+    <div
+      data-menu-do-dia
+      role="menu"
+      aria-label="O que pôr neste dia"
+      // No fluxo do cartão, e não por cima dele: o cartão corta o que sai
+      // dele (overflow-hidden), e o menu absoluto saía cortado no topo.
+      className="relative flex flex-col gap-0.5 rounded-lg border p-1 shadow-xl"
+      style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+    >
+      {PORTAS_DO_DIA.map(({ porta, rotulo, detalhe, Icone }) => (
+        <button
+          key={porta}
+          type="button"
+          role="menuitem"
+          data-porta={porta}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onEscolher(porta);
+          }}
+          className="flex items-start gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-orange-500/10"
+        >
+          <Icone className="mt-[2px] h-3 w-3 shrink-0 text-orange-400" />
+          <span className="min-w-0">
+            <span className="block text-[11px] font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
+              {rotulo}
+            </span>
+            <span className="block text-[9.5px] leading-tight" style={{ color: "var(--text-muted)" }}>
+              {detalhe}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SemanaDoQuadro({
   dias,
   onAbrirDia,
@@ -697,8 +762,11 @@ export function SemanaDoQuadro({
   projectId?: string;
   /** "Tentar de novo" a arte que falhou depois da aprovação da identidade (05/10). */
   onTentarArte?: (pecaId: string) => void;
-  /** Clicar no vazio de um dia: é por onde se põe algo naquele dia. */
-  onAbrirDia: (dayOfWeek: number) => void;
+  /**
+   * Clicar no vazio de um dia abre as quatro portas (06/10); a escolhida chega
+   * aqui com o dia. Ver `PortaDoDia`.
+   */
+  onAbrirDia: (dayOfWeek: number, porta: PortaDoDia) => void;
   onAbrirPeca: (pecaId: string) => void;
   /** Arquivar os posts com falha da peça (01/10). Sem ele, o botão não aparece. */
   onArquivarPeca?: (pecaId: string) => void;
@@ -712,6 +780,8 @@ export function SemanaDoQuadro({
   // A peça cuja mídia está aberta no visor. Estado da semana, e não do
   // cartão, porque o visor cobre a tela inteira.
   const [visor, setVisor] = useState<PecaDoDia | null>(null);
+  // O dia cujo menu das quatro portas está aberto (06/10).
+  const [menuDoDia, setMenuDoDia] = useState<number | null>(null);
   return (
     <>
     {visor?.midia && <VisorDeMidia midia={visor.midia} titulo={visor.titulo} onFechar={() => setVisor(null)} />}
@@ -797,15 +867,28 @@ export function SemanaDoQuadro({
               ))}
             </div>
           ) : dia.andamento && dia.andamento.fase !== "pronto" ? null : (
-            <button
-              type="button"
-              onClick={() => onAbrirDia(dia.dayOfWeek)}
-              className="relative mt-auto flex w-full items-center justify-center gap-1 rounded-lg border border-dashed px-2 py-2 text-[11px] text-[var(--text-muted)] transition-colors hover:border-orange-500/50 hover:text-orange-400"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <Plus className="h-3 w-3" />
-              pôr algo aqui
-            </button>
+            <>
+              <button
+                type="button"
+                data-por-algo-aqui
+                aria-haspopup="menu"
+                aria-expanded={menuDoDia === dia.dayOfWeek}
+                onClick={() => setMenuDoDia((atual) => (atual === dia.dayOfWeek ? null : dia.dayOfWeek))}
+                className="relative mt-auto flex w-full items-center justify-center gap-1 rounded-lg border border-dashed px-2 py-2 text-[11px] text-[var(--text-muted)] transition-colors hover:border-orange-500/50 hover:text-orange-400"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <Plus className="h-3 w-3" />
+                pôr algo aqui
+              </button>
+              <MenuDoDia
+                aberto={menuDoDia === dia.dayOfWeek}
+                onFechar={() => setMenuDoDia(null)}
+                onEscolher={(porta) => {
+                  setMenuDoDia(null);
+                  onAbrirDia(dia.dayOfWeek, porta);
+                }}
+              />
+            </>
           )}
         </motion.div>
       ))}

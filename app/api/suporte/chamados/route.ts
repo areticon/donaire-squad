@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       contexto,
       print: print instanceof File && print.size > 0 ? print : null,
     });
-    return NextResponse.json({ id: r.id, numero: r.numero, protocolo: r.protocolo, whatsapp: r.whatsapp });
+    return NextResponse.json({ id: r.id, numero: r.numero, protocolo: r.protocolo, whatsapp: r.whatsapp, respostaDoDev: r.respostaDoDev });
   } catch (e) {
     if (e instanceof RecusaDoChamado) return NextResponse.json({ error: e.message }, { status: e.status });
     console.error("[suporte] chamado não gravou:", e);

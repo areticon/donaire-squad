@@ -53,7 +53,9 @@ import { EditorDeTextos } from "@/components/content/editor-de-textos";
 import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
 import { TRADUCAO_DOS_CODIGOS, chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFrase } from "@/lib/publish/codigos";
 import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
-import { SemanaDoQuadro, proximaPeca, type DiaDaSemana, type PecaDoDia, type EstadoDaPeca } from "@/components/content/semana-do-quadro";
+import { SemanaDoQuadro, proximaPeca, type DiaDaSemana, type PecaDoDia, type EstadoDaPeca, type PortaDoDia } from "@/components/content/semana-do-quadro";
+import { JanelaDoConteudoPronto } from "@/components/posts/janela-do-conteudo-pronto";
+import { fraseDaRecorrencia, type Recorrencia } from "@/lib/posts/conteudo-pronto";
 import { andamentoDosDias } from "@/lib/pipeline/andamento-dos-dias";
 import { esperasDoCorteNoDia, type PlanoDoVideo } from "@/lib/media/espera-do-corte";
 import { FichaDoAgente, type TrabalhoDoAgente } from "@/components/escritorio/ficha-do-agente";
@@ -3322,6 +3324,44 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 Paulo, restrito ao post deste card. */}
             {(isPublish || acoesNoCardDoVideo) && (
               <div className="space-y-3">
+                {/* O CONTEÚDO PRONTO DO CLIENTE (06/10): a peça não passou pelo
+                    squad, e quando é série (toda semana, todo mês) o cliente
+                    cancela a série inteira daqui, num clique. O que já saiu fica. */}
+                {(localCard.metadata as { conteudoPronto?: boolean } | null)?.conteudoPronto && (
+                  <div
+                    data-serie-do-conteudo-pronto
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-2.5"
+                    style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+                  >
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      <b className="font-semibold" style={{ color: "var(--text-primary)" }}>Conteúdo pronto seu</b>
+                      {fraseDaRecorrencia((localCard.metadata as { recorrencia?: Recorrencia } | null)?.recorrencia) ? `, ${fraseDaRecorrencia((localCard.metadata as { recorrencia?: Recorrencia } | null)?.recorrencia)}` : ""}. Nada foi editado.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={approving}
+                      onClick={async () => {
+                        const serie = Boolean((localCard.metadata as { recorrencia?: unknown } | null)?.recorrencia);
+                        if (!window.confirm(serie ? "Cancelar a série inteira? As datas que ainda não saíram vão para o arquivo de Posts; o que já foi publicado fica." : "Cancelar esta peça? Os posts que ainda não saíram vão para o arquivo de Posts.")) return;
+                        try {
+                          const r = await fetch(`/api/projects/${projectId}/conteudo-pronto?runId=${localCard.runId}`, { method: "DELETE" });
+                          const d = (await r.json().catch(() => ({}))) as { error?: string; cancelados?: number; ficaram?: number };
+                          if (!r.ok) throw new Error(d.error ?? "erro");
+                          toast.success(`${serie ? "Série cancelada" : "Peça cancelada"}: ${d.cancelados ?? 0} post(s) saíram da fila${d.ficaram ? `, ${d.ficaram} já publicado(s) ficaram` : ""}.`);
+                          onWeekRefresh?.();
+                          onClose();
+                        } catch (e) {
+                          toast.error(e instanceof Error && e.message !== "erro" ? e.message : "Não consegui cancelar agora.");
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      {(localCard.metadata as { recorrencia?: unknown } | null)?.recorrencia ? "Cancelar a série" : "Cancelar a peça"}
+                    </button>
+                  </div>
+                )}
                 {/* Scheduled time banner */}
                 <div
                   className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
@@ -4309,6 +4349,12 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [menuAberto, setMenuAberto] = useState(false);
   const [gravacoesEnviadas, setGravacoesEnviadas] = useState(0);
   const [comecarNoVideo, setComecarNoVideo] = useState(false);
+  /**
+   * A JANELA DO CONTEÚDO PRONTO (06/10): aberta pela quarta porta do dia
+   * ("Subir um conteúdo pronto meu") ou pela jornada. Guarda o dia clicado
+   * ("AAAA-MM-DD") para a janela propor a data; nulo é fechada.
+   */
+  const [conteudoProntoAberto, setConteudoProntoAberto] = useState<{ data: string | null } | null>(null);
   const [videosAoVivo, setVideosAoVivo] = useState<VideoAoVivo[]>(videos);
   const [corteGuardadoAberto, setCorteGuardadoAberto] = useState<
     { videoId: string; corte: CorteGuardado } | null
@@ -5030,6 +5076,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     // a chave é o corte (vídeo + trecho), não o card de cada rede. Até aqui o
     // mesmo corte virava quatro cards no mesmo dia. Ver lib/posts/peca-do-video.ts.
     const doVideo = chaveDaPecaDoVideo(p.metadata) ?? chaveDaPecaDoVideo(card?.metadata);
+    // O CONTEÚDO PRONTO DO CLIENTE (06/10) é uma peça de post, também quando
+    // o vídeo dele vai ao YouTube: não é corte da esteira, não tem videoJob,
+    // e a regra do YouTube abaixo o mandaria procurar um vídeo que não existe.
+    if ((p.metadata as { origem?: unknown } | null)?.origem === "cliente") return { chave: "post", tipo: "Post" };
     if (doVideo?.startsWith("completo:")) return { chave: doVideo, tipo: "Vídeo completo" };
     if (doVideo) return { chave: doVideo, tipo: "Corte de vídeo" };
     if (card?.cardType === "video_completo") return { chave: `video:${card.id}`, tipo: "Vídeo completo" };
@@ -5719,6 +5769,24 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           setOrigemDoModal("tema");
           setShowSetupModal(true);
         }}
+        // A quarta porta na jornada (06/10): o conteúdo pronto do cliente.
+        onEscolherPronto={() => setConteudoProntoAberto({ data: null })}
+      />
+
+      {/* O CONTEÚDO PRONTO DO CLIENTE (06/10): a janela da quarta porta. Ao
+          salvar, a semana aberta recarrega e a peça aparece no dia, esperando
+          a aprovação pelo card do Paulo, como qualquer outra. */}
+      <JanelaDoConteudoPronto
+        aberto={conteudoProntoAberto !== null}
+        projectId={projectId}
+        contas={socialAccounts.filter((a) => a.isActive !== false)}
+        dataInicial={conteudoProntoAberto?.data ?? null}
+        onFechar={() => setConteudoProntoAberto(null)}
+        onCriado={() => {
+          setConteudoProntoAberto(null);
+          void loadCardsForWeek(weekStartIso);
+          pedirLeituraDoSino();
+        }}
       />
 
       {/* A tela cheia das duas portas saiu em 18/09: a escolha da origem passou
@@ -5933,7 +6001,24 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         // "Tentar de novo" a arte que falhou depois da aprovação (05/10): o
         // mesmo POST do "Aprovar e gerar", que responde na hora e desenha depois.
         onTentarArte={() => void tentarArteDeNovo()}
-        onAbrirDia={() => openNewCampaign()}
+        // AS QUATRO PORTAS DO DIA (06/10): cada uma liga ao que já abre hoje.
+        // "Editar um vídeo" é a jornada do vídeo no passo seguinte à escolha
+        // (o mesmo ?abrir=video da aba Criar); "Gêmeo digital" é a tela do
+        // gêmeo; "Fazer tudo com IA" é a janela do tema (?abrir=tema); e
+        // "Subir um conteúdo pronto meu" é a janela nova, já no dia clicado.
+        onAbrirDia={(dayOfWeek, porta) => {
+          if (porta === "video") {
+            setComecarNoVideo(true);
+            setEnviarAberto(true);
+          } else if (porta === "gemeo") {
+            window.location.href = `/projects/${projectId}/gemeo`;
+          } else if (porta === "ia") {
+            setOrigemDoModal("tema");
+            setShowSetupModal(true);
+          } else {
+            setConteudoProntoAberto({ data: toIsoDate(addDays(selectedMonday, dayOfWeek - 1)) });
+          }
+        }}
         // O cartão de espera do corte leva à faixa do vídeo, onde a gravação e
         // os cortes estão (05/10).
         onVerVideo={() => document.querySelector("[data-esteira]")?.scrollIntoView({ behavior: "smooth", block: "start" })}

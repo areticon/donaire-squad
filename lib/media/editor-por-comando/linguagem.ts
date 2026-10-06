@@ -121,23 +121,25 @@ export const FAMILIAS: FichaDaFamilia[] = [
   {
     id: "papel",
     nome: "Papel recortado (colagem editorial)",
-    criterio: "colagem de papel recortado, jornal, mapa antigo, fotos de arquivo, documentário explicativo editorial (Vox, Johnny Harris)",
+    criterio: "colagem de papel recortado, jornal, mapa antigo, fotos de arquivo, mural de investigação, documentário explicativo editorial (Vox, Johnny Harris, crime real, Wes Anderson)",
     visual: "documental",
     base: "vox",
     fonte: "playfair",
     componentes: { "imagem-janela": "colagem", "lista-datas": "cronologia", citacao: "jornal", "citacao-versiculo": "jornal", impacto: "jornal", "legenda-destaque": "marca-texto" },
-    semente: "paper cutout collage, aged paper texture, torn edges, halftone print, archival documentary look",
+    semente:
+      "editorial paper-cutout collage, scanned crumpled cream paper with fibre grain and folds, black and white halftone photographs hand cut with a white border and a short shadow, torn newspaper fragments with tiny unreadable letterpress, translucent tape, pen scribbles and hand-drawn arrows, one dry-brush highlighter sweep, elements layered at a slight tilt with real shadows; never vector, never 3D, no gloss",
   },
   {
     id: "vidro",
     nome: "Tecnológico limpo (painéis de vidro)",
-    criterio: "tecnológico, didático, limpo, passo a passo, painéis de vidro, interface, produto digital, SaaS, aula organizada",
+    criterio: "tecnológico, didático, limpo, passo a passo, painéis de vidro, interface, produto digital, SaaS, aula organizada com cartões (Ali Abdaal, podcast em vídeo)",
     visual: "vidro",
     acabamento: "tecnologico",
     base: "keynote",
     fonte: "geist",
     componentes: {},
-    semente: "clean modern tech aesthetic, frosted glass panels, soft gradients, crisp product lighting",
+    semente:
+      "clean modern tech look, dark cool background with soft gradients, frosted glass panels with thin light borders, crisp product and screen lighting, subtle depth and reflections, geometric sans typography; no paper, no neon tubes, no clutter",
   },
   {
     id: "neon",
@@ -148,7 +150,8 @@ export const FAMILIAS: FichaDaFamilia[] = [
     base: "keynote",
     fonte: "geist",
     componentes: {},
-    semente: "futuristic neon look, dark background, glowing light trails, holographic interface elements, high contrast",
+    semente:
+      "futuristic neon look, near-black background, glowing light trails and holographic interface elements in the brand colour, wet reflective surfaces, volumetric haze, high contrast, cyan and magenta rim light; no paper, no daylight, no cartoon",
   },
   {
     id: "luxo",
@@ -159,59 +162,65 @@ export const FAMILIAS: FichaDaFamilia[] = [
     base: "consorcio",
     fonte: "oswald",
     componentes: { impacto: "palavra-gigante", "lista-passos": "pilha-passos", "lista-itens": "pilha-passos" },
-    semente: "luxury editorial look, deep black and metallic gold accents, elegant soft light, premium materials, lots of negative space",
+    semente:
+      "premium luxury editorial look, deep matte black, the brand colour as brushed metal and thin metallic lines, elegant low-key light with a soft rim, polished stone, dark wood, leather and glass, lots of negative space, condensed uppercase type; no saturated colour, no clutter, no fake gold sparkle",
   },
   {
     id: "giz",
     nome: "Lousa e diagramas",
-    criterio: "lousa, quadro, diagramas desenhados à mão, frameworks, aula de negócios, Dan Martell",
+    criterio: "lousa, quadro branco, diagramas desenhados à mão, frameworks, aula de negócios (Dan Martell, whiteboard explainer)",
     visual: "vidro",
     acabamento: "tecnologico",
     base: "lousa",
     fonte: "geist",
     componentes: { impacto: "palavra-gigante", "lista-passos": "pilha-passos", "imagem-janela": "imagem-janela" },
-    semente: "hand drawn chalk and marker diagram style, sketch lines on a board, simple shapes, educational",
+    semente:
+      "hand-drawn board diagram look, a flat board (dark slate or clean white, as the command says), thin marker strokes drawn by hand (loops, ladders, arrows, axes), simple line icons, rounded frames and numbered tiles, the brand colour only for underlines and highlights; no cluttered photographs, no paper grain, no cartoon characters, no 3D",
   },
   {
     id: "realista",
     nome: "Realista e documental",
-    criterio: "realista, fotográfico, documental, acolhedor, humano, clínica, saúde, natureza, cinema sóbrio, reportagem",
+    criterio: "realista, fotográfico, documental, acolhedor, humano, clínica, saúde, natureza, cinema sóbrio, reportagem, entrevista, depoimento, institucional (BBC, National Geographic, 60 Minutes)",
     visual: "documental",
     base: "documentario",
     fonte: "playfair",
     componentes: {},
-    semente: "realistic photographic look, natural soft light, warm and human, shallow depth of field, documentary",
+    semente:
+      "realistic documentary photography, full-frame camera, available natural light, honest true-to-life colour, fine grain, shallow depth of field on details, real places and real work, people anonymous and unposed; no stock gloss, no HDR, no illustration, no neon",
   },
   {
     id: "traco",
     nome: "Charge, cartoon e ilustração",
-    criterio: "charge, cartoon, desenho animado, ilustração, quadrinhos, humor, traço de caneta, infantil",
+    criterio: "charge, cartoon, desenho animado, ilustração vetorial plana, quadrinhos, humor, traço de caneta, infantil, animação explicativa (Kurzgesagt)",
     visual: "impacto",
     base: "keynote",
     fonte: "archivo",
     componentes: {},
-    semente: "flat cartoon illustration, bold ink outlines, playful editorial cartoon style, simple shapes",
+    semente:
+      "flat editorial cartoon illustration, bold clean ink outlines or rounded flat vector shapes, simple two-tone shading, playful simplified characters without detailed faces, solid colour backgrounds in the brand palette; no photographs, no 3D render, no grain",
   },
   {
     id: "minimalista",
     nome: "Minimalista corporativo",
-    criterio: "minimalista, corporativo, B2B, relatório, sóbrio, pouco texto, muito respiro, keynote da Apple",
+    criterio: "minimalista, corporativo, B2B, relatório, sóbrio, pouco texto, muito respiro, uma frase por tela (keynote da Apple, palestra TED, carrossel animado)",
     visual: "vidro",
     acabamento: "tecnologico",
     base: "keynote",
     fonte: "geist",
     componentes: {},
-    semente: "minimalist corporate look, plenty of negative space, soft neutral background, one clear subject",
+    semente:
+      "minimalist corporate look, off-white or pale grey background, generous negative space, one clear subject, thin line icons, flat charts in the brand colour, clean geometric sans, soft even light; no clutter, no textures, no neon, no cartoon",
   },
   {
     id: "impacto",
     nome: "Alta retenção (impacto)",
-    criterio: "impacto, retenção, viral, Hormozi, MrBeast, texto grande e rápido, energia alta, cores fortes",
+    criterio: "impacto, retenção, viral, Hormozi, MrBeast, vlog, TikTok nativo, tipografia animada, tela dividida, VHS, texto grande e rápido, energia alta, cores fortes",
     visual: "impacto",
     base: "hormozi",
     fonte: "archivo",
     componentes: {},
-    semente: "bold high energy look, punchy saturated colors, dramatic contrast, dynamic composition",
+    semente:
+      "bold high-energy short-form look, bright saturated high-contrast colour, punchy direct light, one big literal subject centred, heavy rounded or condensed type with thick outlines, colour blocks; no muted grades, no paper, no thin elegant type, no empty space",
   },
 ];
 

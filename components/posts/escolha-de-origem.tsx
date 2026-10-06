@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Lightbulb, UserRound, Video, Sparkles } from "lucide-react";
+import { Lightbulb, UserRound, Video, Sparkles, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { gemeoAtivo } from "@/lib/media/gemeo";
 
@@ -25,11 +25,20 @@ import { gemeoAtivo } from "@/lib/media/gemeo";
  *
  * `variante="tela"` é a versão cheia, com título, para a aba Criar e a primeira
  * campanha. `variante="janela"` é a versão compacta, dentro da jornada.
+ *
+ * ## A quarta porta, desde 06/10
+ *
+ * "Conteúdo pronto seu": a arte do Canva ou o vídeo que o cliente já tem,
+ * posto num dia do quadro sem edição nenhuma. Pedido do Bruno: "ele clica
+ * em adicionar conteúdo em qualquer dia da semana e tem as opções: vídeo,
+ * gêmeo, IA, e um conteúdo pronto seu". Só aparece quando quem renderiza
+ * passa `onPronto` (o quadro e a aba Posts); a aba Criar segue com três.
  */
 export function EscolhaDeOrigem({
   onVideo,
   onTema,
   onGemeo,
+  onPronto,
   variante = "janela",
   titulo,
 }: {
@@ -37,11 +46,14 @@ export function EscolhaDeOrigem({
   onTema: () => void;
   /** Sem callback, a porta do gêmeo aparece como "em breve", sem clique. */
   onGemeo?: () => void;
+  /** A porta do conteúdo pronto (06/10). Sem callback, ela não aparece. */
+  onPronto?: () => void;
   variante?: "tela" | "janela";
   /** Título da versão cheia. O padrão é o da primeira campanha. */
   titulo?: string;
 }) {
   const cheia = variante === "tela";
+  const quatro = Boolean(onPronto);
 
   /**
    * MEMBRO DA EQUIPE (01/10, acabamento): o gêmeo é cadastrado por quem
@@ -95,7 +107,7 @@ export function EscolhaDeOrigem({
         </div>
       )}
 
-      <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-3", cheia && "w-full max-w-[1080px]")}>
+      <div className={cn("grid grid-cols-1 gap-4", quatro ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3", cheia && "w-full max-w-[1080px]")}>
         {/* Porta 1: o vídeo do cliente. Destacada e recomendada: vídeo é o produto
             (22/08), e é o caminho que mais engaja e menos custa (29/09). */}
         <Porta
@@ -147,6 +159,20 @@ export function EscolhaDeOrigem({
           acao="Começar com IA"
           onClick={onTema}
         />
+
+        {/* Porta 4 (06/10): o conteúdo que o cliente já tem pronto. Não passa
+            por redator, Diana nem esteira: sobe, ganha legenda (dele ou da
+            IA) e espera a aprovação no quadro. */}
+        {onPronto && (
+          <Porta
+            icone={<FileUp className="h-[22px] w-[22px]" style={{ color: "var(--text-muted)" }} />}
+            titulo="Conteúdo pronto seu"
+            texto="Suba aqui as suas artes e os seus vídeos prontos (a arte do evento feita no Canva, o vídeo que você já gravou e editou). Nada é editado: entra no quadro como está, e a IA pode escrever a legenda."
+            itens={["imagem", "carrossel", "vídeo pronto"]}
+            acao="Subir o meu conteúdo"
+            onClick={onPronto}
+          />
+        )}
       </div>
 
       {/* A SUGESTÃO DA PLATAFORMA, à vista (29/09). Não é trava: é o conselho

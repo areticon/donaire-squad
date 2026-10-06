@@ -6,7 +6,11 @@
  * daqui; o servidor importa as mesmas regras para nunca divergir delas.
  */
 
-export const CATEGORIAS = ["problema", "duvida", "cobranca", "sugestao"] as const;
+/**
+ * "melhoria" (06/10) é o CHAMADO DIRETO NO DEV: entra na fila de melhoria do
+ * produto (lib/feedback) e o Davi Dev responde na hora que entrou na fila.
+ */
+export const CATEGORIAS = ["problema", "duvida", "cobranca", "sugestao", "melhoria"] as const;
 export type Categoria = (typeof CATEGORIAS)[number];
 
 export const NOME_DA_CATEGORIA: Record<Categoria, string> = {
@@ -14,7 +18,14 @@ export const NOME_DA_CATEGORIA: Record<Categoria, string> = {
   duvida: "Dúvida",
   cobranca: "Cobrança",
   sugestao: "Sugestão",
+  melhoria: "Falar com o Dev (melhoria do produto)",
 };
+
+export const CATEGORIA_DO_DEV: Categoria = "melhoria";
+
+/** O que o Davi Dev responde a cada chamado de melhoria (texto fixo: sem IA por chamado). */
+export const RESPOSTA_DO_DEV =
+  "Aqui é o Davi, dev da Demandou. O seu pedido entrou na fila de melhoria do produto, junto com os de outros clientes que pediram algo parecido. Eu separo o que é erro nosso do que é ajuste da peça, levo para aprovação e volto aqui quando houver novidade. Se for um ajuste só desta peça, o chat dela continua sendo o caminho mais rápido.";
 
 export const STATUS = ["aberto", "andamento", "resolvido"] as const;
 export type StatusDoChamado = (typeof STATUS)[number];
