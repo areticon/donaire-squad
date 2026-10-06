@@ -56,7 +56,8 @@ export type PerfilDoCliente = {
  * outras (LinkedIn, Instagram, TikTok) seguem a regra de 03/10 em
  * lib/projeto/links-do-cliente.ts: nenhuma URL no texto.
  */
-const REDES_COM_URL = new Set(["youtube", "facebook", "twitter"]);
+// Onde o link digitado vira link clicável (regra do Bruno de 06/10: link completo onde é clicável, @ onde não é).
+const REDES_COM_URL = new Set(["youtube", "facebook", "linkedin", "twitter"]);
 
 export function redeAceitaUrl(rede: string): boolean {
   return REDES_COM_URL.has(rede);
@@ -127,10 +128,11 @@ function linhaDoPerfil(p: PerfilDoCliente, comUrl: boolean): string {
  * O BLOCO DO FIM DA DESCRIÇÃO: as redes do cliente e os links cadastrados,
  * um por linha, no que a rede do post aceita.
  *
- *   - YouTube: todos os links (o principal primeiro) e os perfis com endereço;
- *   - Facebook: um link só (o principal) e os perfis pelo @;
- *   - LinkedIn, Instagram e TikTok: só os perfis pelo @ (nenhuma URL);
+ *   - YouTube, Facebook e LinkedIn (link clicável no texto): todos os links
+ *     (o principal primeiro) e os perfis com endereço completo;
+ *   - Instagram e TikTok (link não clica na legenda): só os perfis pelo @;
  *   - X: nada (280 caracteres não comportam bloco).
+ * Regra do Bruno (06/10): link completo onde é clicável, @ onde não é.
  *
  * A própria rede do post fica de fora da lista de perfis: ninguém lista o
  * Instagram na legenda do Instagram. Vazio quando não há o que listar.
@@ -141,9 +143,9 @@ export function blocoDeLinksDaDescricao(args: { rede: string; links: LinkDoClien
   const comUrl = redeAceitaUrl(rede);
   const perfis = perfisDoCliente(contas, args.config).filter((p) => p.rede !== rede);
   const linhasDeLink = comUrl
-    ? (rede === "youtube" ? links : links.slice(0, 1)).map((l) => `${l.cta ?? l.rotulo}: ${l.url}`)
+    ? links.map((l) => `${l.cta ?? l.rotulo}: ${l.url}`)
     : [];
-  const linhas = [...linhasDeLink, ...perfis.map((p) => linhaDoPerfil(p, rede === "youtube"))];
+  const linhas = [...linhasDeLink, ...perfis.map((p) => linhaDoPerfil(p, comUrl))];
   if (!linhas.length) return "";
   return [linhasDeLink.length ? "Links:" : "Minhas redes:", ...linhas].join("\n");
 }
