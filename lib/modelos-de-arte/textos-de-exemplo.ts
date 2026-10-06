@@ -32,6 +32,8 @@ interface Exemplo {
   opcoes: [string, string];
   chamada: string;
   curto: string;
+  /** A pergunta da enquete, quando o "E você, {curto}?" não soa natural. */
+  enquete?: string;
 }
 
 const EXEMPLOS: Record<string, Exemplo> = {
@@ -410,6 +412,40 @@ const EXEMPLOS: Record<string, Exemplo> = {
     chamada: "Fale com a gente",
     curto: "Atenda bem",
   },
+  /**
+   * A PRÉVIA DA BIBLIOTECA DE DESIGN (06/10): um jogo só, coerente de ponta a
+   * ponta com a frase neutra, para todos os modelos da galeria mostrarem a
+   * mesma ideia (a regra da Vera: o texto da arte conversa com a manchete).
+   * Antes a prévia trocava só o título e deixava o apoio e os itens do jogo de
+   * "negocios" ("Indicação é o marketing mais barato..." embaixo de "O
+   * essencial bem feito..."). O número não é estatística: é contagem da ideia.
+   */
+  previa: {
+    titulo: "O essencial bem feito vale mais que o volume",
+    apoio: "Menos coisas, cada uma com cuidado, rendem mais do que muitas feitas às pressas.",
+    itens: ["Escolher o que importa", "Fazer com atenção", "Revisar antes de entregar", "Cortar o que sobra"],
+    numero: "1",
+    numeroFrase: "ideia por peça, dita com clareza, fica na memória de quem lê",
+    porcento: "100%",
+    porcentoFrase: "da atenção numa coisa só rende mais do que metade em duas",
+    antes: ["Dez tarefas pela metade", "Pressa em tudo"],
+    depois: ["Três tarefas bem feitas", "Cuidado no que importa"],
+    mito: "Fazer mais é sempre melhor",
+    verdade: "Fazer bem o essencial é o que dá resultado",
+    evite: ["Abraçar tudo de uma vez", "Entregar sem revisar"],
+    faca: ["Escolher três prioridades", "Terminar antes de começar outra"],
+    citacao: "O essencial bem feito vale mais que o volume.",
+    autor: "Equipe da marca",
+    pergunta: "Como escolher o que é essencial?",
+    resposta: "Comece pelo que o seu cliente mais sente falta e faça isso muito bem.",
+    termo: "Essencial",
+    definicao: "O que não pode faltar: aquilo que, bem feito, sustenta todo o resto.",
+    depoimento: "Fizeram menos peças, todas com cuidado. Foi o que mais trouxe cliente.",
+    opcoes: ["Menos e melhor", "Mais e rápido"],
+    chamada: "Fale com a gente",
+    curto: "O essencial bem feito",
+    enquete: "Você prefere fazer menos e melhor?",
+  },
 };
 
 /** O exemplo do setor (pelo id da identidade visual), com queda para negócios. */
@@ -442,7 +478,7 @@ export function textosDeExemplo(modelo: ModeloDeArte, setorId: string): TextosDa
     case "verbete":
       return { titulo: e.termo, apoio: e.definicao };
     case "enquete":
-      return { titulo: `E você, ${e.curto.toLowerCase()}?`, opcoes: e.opcoes };
+      return { titulo: e.enquete ?? `E você, ${e.curto.toLowerCase()}?`, opcoes: e.opcoes };
     case "caixa-pergunta":
       return { titulo: "Qual a sua maior dúvida sobre isso?" };
     case "oferta":
