@@ -38,8 +38,17 @@ export type TipoDeElemento =
   | "cartao-de-passo"
   | "frase-chave"
   | "slide"
+  // AS PEÇAS VETORIAIS (06/10, tarefa D): desenhadas em código, na cor da marca, sem custo (pecas/vetoriais.tsx no worker).
+  | "icone-com-frase"
+  | "comparacao-lado-a-lado"
+  | "cartoes-em-linha"
+  | "interface-de-edicao"
+  | "titulo-em-caixa"
   | "inscrever"
   | "nada";
+
+/** AS PEÇAS VETORIAIS (06/10, tarefa D): entram na lista de sempre, em qualquer linguagem (o tema só muda o acabamento). */
+export const TIPOS_VETORIAIS: TipoDeElemento[] = ["icone-com-frase", "comparacao-lado-a-lado", "cartoes-em-linha", "interface-de-edicao", "titulo-em-caixa"];
 
 /**
  * Os tipos que o JEV escolhe MOMENTO A MOMENTO. O "inscrever" (a chamada de
@@ -51,7 +60,7 @@ export type TipoDeElemento =
  * do vídeo (06/10), `tiposPossiveis` acrescenta por trecho os tipos de
  * contexto que a câmera permite (TIPOS_DO_CONTEXTO).
  */
-export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "combinada", "dado", "lista", "citacao", "impacto", "legenda-destaque", "nada"];
+export const TIPOS_DE_ELEMENTO: TipoDeElemento[] = ["texto-atras", "icone", "imagem", "video", "combinada", "dado", "lista", "citacao", "impacto", "legenda-destaque", ...TIPOS_VETORIAIS, "nada"];
 
 /**
  * OS TIPOS DE CONTEXTO (06/10, regra do Bruno: o editor decide pelo contexto
@@ -85,6 +94,16 @@ export const CRITERIO_DO_TIPO: Record<TipoDeElemento, string> = {
   "cartao-de-passo": "CARTÃO DE PASSO, INGREDIENTE OU LUGAR: um cartão pequeno na área livre com o número do passo e o nome dele, o ingrediente e a quantidade dita, ou o nome do lugar. Para demonstração, receita, tutorial, vlog.",
   "frase-chave": "FRASE-CHAVE: a frase inteira que resume o ponto, escrita num cartão na área livre, enquanto a pessoa segue falando (sem tirar a atenção dela). Para palestra, aula, sermão: a tese dita por extenso.",
   slide: "SLIDE: um slide pequeno ao lado da pessoa com o título do ponto e 2 a 4 itens que a fala percorre (o item dito acende). Para palestra e aula, quando a fala organiza o conteúdo em tópicos.",
+  "icone-com-frase":
+    "ÍCONE GRANDE COM FRASE: um cartão escuro abaixo do rosto, com um ícone de linha grande e a frase curta em caixa alta (às vezes com o rótulo \"REGRA 01\"). Para uma regra, um hábito, um conselho ou um item de uma lista dita um de cada vez, quando um objeto ou símbolo concreto mostra a ideia (despertador, celular, TV, dinheiro, livro).",
+  "comparacao-lado-a-lado":
+    "NÃO DIGA, DIGA ISTO: duas colunas abaixo do rosto, o errado em vermelho e o certo na cor da marca, cada par entrando quando é dito. Para a fala que troca uma palavra, uma frase, um hábito ou uma atitude por outra (\"em vez de X, faça Y\", \"pare de dizer X\").",
+  "cartoes-em-linha":
+    "CARTÕES LADO A LADO: 2 a 4 cartões claros com o nome e um ícone de cada, abaixo do rosto. Para ferramentas, aplicativos, opções, canais ou etapas que a fala cita juntos no mesmo fôlego.",
+  "interface-de-edicao":
+    "TELA DE UM EDITOR DE VÍDEO TRABALHANDO: a linha do tempo com os clipes, o cursor andando, um corte acontecendo e a legenda aparecendo, na cor da marca. Para a fala sobre edição de vídeo, automação, plataforma, software, ferramenta, produção de conteúdo ou fluxo de trabalho.",
+  "titulo-em-caixa":
+    "TÍTULO NA CAIXA NO TOPO: o assunto numa caixa clara arredondada acima da cabeça, enquanto a pessoa fala. Para abrir um tema, uma lista ou uma série (\"3 erros de quem começa\", \"hábitos que ninguém te ensina\"), normalmente no começo do vídeo ou de um bloco.",
   inscrever: "CURTIR E INSCREVER: a chamada animada de curtir e se inscrever, logo depois de um momento forte (nunca é escolhida frase a frase; ver decidirInscrever).",
   nada: "NADA: a pessoa sozinha basta (transição, emoção, conversa, frase de ligação, ou um elemento acabou de sair).",
 };
@@ -108,6 +127,11 @@ export const NOME_DO_TIPO: Record<TipoDeElemento, string> = {
   "cartao-de-passo": "cartão de passo",
   "frase-chave": "frase-chave",
   slide: "slide ao lado",
+  "icone-com-frase": "ícone com frase",
+  "comparacao-lado-a-lado": "não diga, diga isto",
+  "cartoes-em-linha": "cartões lado a lado",
+  "interface-de-edicao": "tela de edição animada",
+  "titulo-em-caixa": "título na caixa",
   inscrever: "curtir e se inscrever",
   nada: "só você",
 };
@@ -140,6 +164,11 @@ export function varianteDo(tipo: TipoDeElemento, fala: string, formaDaImagem: "j
     case "cartao-de-passo":
     case "frase-chave":
     case "slide":
+    case "icone-com-frase":
+    case "comparacao-lado-a-lado":
+    case "cartoes-em-linha":
+    case "interface-de-edicao":
+    case "titulo-em-caixa":
       return tipo;
     case "imagem":
       return formaDaImagem === "tela-cheia" ? "imagem-tela" : "imagem-janela";
@@ -232,6 +261,11 @@ export const DURACAO_DO_TIPO: Record<Exclude<TipoDeElemento, "nada">, [number, n
   "cartao-de-passo": [2.5, 6],
   "frase-chave": [3, 7],
   slide: [3.5, 9],
+  "icone-com-frase": [2.5, 5],
+  "comparacao-lado-a-lado": [3, 8],
+  "cartoes-em-linha": [2.5, 6],
+  "interface-de-edicao": [3, 7],
+  "titulo-em-caixa": [2.5, 8],
   inscrever: [3, 5],
 };
 

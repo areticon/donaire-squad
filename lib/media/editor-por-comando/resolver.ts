@@ -9,6 +9,7 @@ import type { LeituraDoVideo, TrechoLido } from "@/lib/media/leitura-do-video";
 import { componenteDa, familiaValida } from "@/lib/media/editor-por-comando/linguagem";
 import { caixaDaJanela, legendaDaJanela, textosDaPeca } from "@/lib/media/editor-por-comando/janela-de-imagem";
 import { pedidoDasProps, type PedidoNasProps } from "@/lib/media/editor-por-comando/pedido-do-cliente";
+import { TAMANHO_DAS_VETORIAIS, caixaDaVetorial, ehVetorial } from "@/lib/media/editor-por-comando/caixa-das-vetoriais";
 import {
   caixaLivre,
   caixaNaCamera,
@@ -403,6 +404,17 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         // Sem área livre medida (vídeo antigo): do lado livre do rosto, acima da faixa da legenda.
         const { maxW: w, maxH: h } = pedido;
         caixa = vertical0 ? { x: +((1 - w) / 2).toFixed(4), y: faixaM === "topo" ? 0.08 : 0.5, w, h } : { x: ladoM === "esquerda" ? 0.04 : +(0.96 - w).toFixed(4), y: 0.18, w, h };
+      }
+      if (!semCobrir(caixa, fichaM.nome)) continue;
+      props.caixa = caixa;
+    }
+    // AS PEÇAS VETORIAIS (06/10, tarefa D): abaixo do rosto (o título, acima da cabeça), nunca sobre ele.
+    if (ehVetorial(fichaM.nome)) {
+      const t = TAMANHO_DAS_VETORIAIS[fichaM.nome];
+      const caixa = noCentro ? caixaNoCentro(vertical0, fator, { w: (vertical0 ? t.vertical : t.horizontal)[0], h: (vertical0 ? t.vertical : t.horizontal)[1] }) : caixaDaVetorial(fichaM.nome, { vertical: vertical0, rosto: rostoM, tr, fator, lado: ladoM });
+      if (!caixa) {
+        avisos.push(`${id}: sem lugar para ${fichaM.nome} fora do rosto no trecho, saiu`);
+        continue;
       }
       if (!semCobrir(caixa, fichaM.nome)) continue;
       props.caixa = caixa;

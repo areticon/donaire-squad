@@ -11,6 +11,7 @@ import { ImagemJanela } from "./pecas/midia";
 import { Inscrever } from "./pecas/inscrever";
 import { CartaoDePasso, DestaqueNaTela, FraseChave, NomeDeQuemFala, RealceDeQuemFala, Slide, ZoomNoPonto } from "./pecas/contexto";
 import { CamadaExata } from "./pecas/combinadas";
+import { CartoesEmLinha, ComparacaoLadoALado, IconeComFrase, InterfaceDeEdicao, TituloEmCaixa } from "./pecas/vetoriais";
 import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -88,6 +89,12 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   slide: Slide,
   // A peça combinada (06/10): a camada exata (pontos, linha, número, fio, etiquetas) sobre o vídeo de fundo gerado.
   "camada-exata": CamadaExata,
+  // As peças vetoriais (06/10, tarefa D): ícone grande com frase, não diga e diga, cartões lado a lado, a tela de um editor e o título na caixa.
+  "icone-com-frase": IconeComFrase,
+  "comparacao-lado-a-lado": ComparacaoLadoALado,
+  "cartoes-em-linha": CartoesEmLinha,
+  "interface-de-edicao": InterfaceDeEdicao,
+  "titulo-em-caixa": TituloEmCaixa,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */

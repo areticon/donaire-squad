@@ -379,6 +379,35 @@ export const PECAS: FichaDaPeca[] = [
     quando: "(editor por comando, 06/10) a camada exata sobre o vídeo de fundo gerado: os pontos ou alfinetes com as etiquetas dos itens ditos (lugares, pessoas, partes), a linha da rota ou o fio ligando, o número dito. Cada item acende quando é dito.",
     props: 'itens [{rotulo (até 3 palavras: o lugar, a pessoa ou a parte que a fala cita)}] (2 a 5, na ordem dita), titulo? (até 5 palavras do falante), numero? {valor (só o número DITO), prefixo?, sufixo?, rotulo? (até 3 palavras)}',
   },
+  // ─── AS PEÇAS VETORIAIS (06/10, tarefa D): desenhadas em código, nítidas em 1080x1920, na cor da marca e na fonte do
+  // projeto (worker/remotion/src/sob-medida/pecas/vetoriais.tsx). O resolvedor põe a caixa (props.caixa) na área livre do
+  // trecho, abaixo ou acima do rosto, nunca sobre ele. O ícone: o redator sugere o nome, o JEV escolhe entre os candidatos
+  // (lib/media/editor-por-comando/icone-pelo-jev.ts), do catálogo de lib/media/editor-por-comando/icones-de-linha.ts.
+  {
+    nome: "icone-com-frase", plano: "sobre", passes: ["frente"], entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
+    quando: "(vetorial) um cartão escuro com um ícone de linha grande e a frase curta embaixo, em caixa alta: uma regra, um hábito, um conselho, um item de uma lista dita um de cada vez (REGRA 01, HÁBITO 2).",
+    props: 'frase (a ideia dita, até 6 palavras), rotulo? (até 2 palavras: "Regra 01", "Hábito 2", só quando a fala numera ou nomeia), icone (o nome do catálogo de ícones de linha que melhor mostra a frase), iconesAlternativos? (até 3 outros nomes do catálogo que também serviriam)',
+  },
+  {
+    nome: "comparacao-lado-a-lado", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 8], eventosDe: "pares", maxItens: 4,
+    quando: '(vetorial) "não diga / diga em vez disso": duas colunas de barras, a do erro em vermelho e a do certo na cor da marca; cada par entra quando é dito. Para a fala que troca uma palavra, um hábito ou uma atitude por outra.',
+    props: 'pares [{nao (até 3 palavras: o que NÃO fazer ou dizer), sim (até 3 palavras: o que fazer ou dizer no lugar)}] (1 a 4, só o que a fala diz, na ordem dita), rotuloNao? (até 3 palavras, padrão "Não diga"), rotuloSim? (até 3 palavras, padrão "Diga")',
+  },
+  {
+    nome: "cartoes-em-linha", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 6], eventosDe: "itens", maxItens: 4,
+    quando: "(vetorial) 2 a 4 cartões claros lado a lado, cada um com o nome em cima e um ícone de linha: ferramentas, opções, etapas ou canais que a fala cita juntos.",
+    props: "itens [{titulo (1 ou 2 palavras: o nome dito), icone (o nome do catálogo de ícones de linha), iconesAlternativos? (até 2 outros nomes)}] (2 a 4, na ordem dita)",
+  },
+  {
+    nome: "interface-de-edicao", plano: "sobre", passes: ["frente"], continua: true, entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [3, 7], eventosDe: "etapas", maxItens: 3,
+    quando: "(vetorial) a tela de um editor de vídeo trabalhando, em código: a linha do tempo com os clipes, o cursor andando, um corte acontecendo e a legenda aparecendo na prévia. Para a fala sobre edição, automação, plataforma, software, fluxo de trabalho, produção de conteúdo.",
+    props: 'titulo? (até 4 palavras: o nome do arquivo ou do projeto, ex.: "video-da-semana.mp4"), legenda? (até 8 palavras da própria fala, que aparecem como legenda na prévia), etapas? [até 3, 1 ou 2 palavras cada: o que a fala diz que a ferramenta faz, ex.: "corte", "legenda", "zoom"]',
+  },
+  {
+    nome: "titulo-em-caixa", plano: "sobre", passes: ["frente"], entrada: 0.5, saida: 0.3, evento: 0.6, duracao: [2.5, 8],
+    quando: "(vetorial) o título do assunto numa caixa clara arredondada no topo do quadro, acima da cabeça: abre um tema, uma lista ou uma série (\"Hábitos que ninguém te ensina\").",
+    props: "texto (o assunto como a fala diz, até 7 palavras, **destaque** em 1 palavra)",
+  },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],
     quando: "As últimas palavras do vídeo (a chamada final): a marca do cliente, a frase final e a chamada para ação dita.",
