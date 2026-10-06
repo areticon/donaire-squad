@@ -20,6 +20,7 @@ import {
   type GrupoDeCobranca,
   type LinhaDeConta,
   type LinhaDePlano,
+  type LinhaDeProjeto,
   type PeriodoDeIa,
 } from "@/lib/admin/tipos-do-uso-de-ia";
 
@@ -62,8 +63,15 @@ const meiaNoiteLocal = (dia: string) => new Date(`${dia}T00:00:00-03:00`);
  * o dia de hoje conta inteiro (como no resto do painel); no mês, do dia 1 até
  * agora. `dias` é a base da receita proporcional (mensalidade / 30 por dia).
  */
-export function janelaDoPeriodo(periodo: PeriodoDeIa, agora = new Date()): { desde: Date; ate: Date; dias: number; rotulo: string } {
+export function janelaDoPeriodo(periodo: PeriodoDeIa | number, agora = new Date()): { desde: Date; ate: Date; dias: number; rotulo: string } {
   const hoje = diaLocal(agora);
+  // Um número de dias (05/10, à noite): o painel inteiro passou a ter UM
+  // período só, o do seletor de cima, e esta seção segue a mesma janela que
+  // os gráficos (meia-noite de São Paulo do primeiro dia até agora).
+  if (typeof periodo === "number") {
+    const desde = meiaNoiteLocal(diaLocal(new Date(agora.getTime() - (periodo - 1) * DIA_MS)));
+    return { desde, ate: agora, dias: periodo, rotulo: `últimos ${periodo} dias` };
+  }
   if (periodo === "mes") {
     const desde = meiaNoiteLocal(`${hoje.slice(0, 7)}-01`);
     const dias = Number(hoje.slice(8, 10));
@@ -94,11 +102,23 @@ async function temColunaDeInterna(): Promise<boolean> {
 
 type Conta = { id: string; email: string; name: string | null; plan: string; role: string; interna: boolean; creditsResetAt: Date | null };
 
-export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Promise<DadosDoUsoDeIa> {
+export async function lerUsoDeIa(
+  periodo: PeriodoDeIa | number,
+  agora = new Date(),
+  opcoes: {
+    /**
+     * A RECEITA REAL por conta no período (05/10, à noite): pagamento
+     * confirmado, lido por lib/admin/receita-real.ts. Sem ela, a receita de
+     * toda conta é zero, porque mensalidade de tabela não é receita.
+     */
+    receitaRealPorConta?: Record<string, number>;
+  } = {}
+): Promise<DadosDoUsoDeIa> {
   const janela = janelaDoPeriodo(periodo, agora);
   const { desde, ate, dias } = janela;
   const colunaDeInterna = await temColunaDeInterna();
   const expressaoInterna = colunaDeInterna ? `("contaInterna" OR role = 'admin')` : `(role = 'admin')`;
+  const receitaReal = opcoes.receitaRealPorConta ?? {};
 
   const [contasCruas, projetos, usos, extrato, contratos] = await Promise.all([
     // As contas inteiras cabem numa consulta: são dezenas, não milhares.
@@ -142,9 +162,10 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
       .catch(() => [] as Array<{ userId: string; valorCentavos: number; plano: string }>),
   ]);
 
-  // Sem a coluna, a reserva é a lista de e-mails da migração.
+  // A lista de e-mails da migração vale sempre, com ou sem a coluna: a
+  // conta do Bruno no Gmail é da equipe mesmo que alguém desmarque a coluna.
   const contas = new Map<string, Conta>(
-    contasCruas.map((c) => [c.id, { ...c, interna: c.interna || (!colunaDeInterna && emailPareceInterno(c.email)) }])
+    contasCruas.map((c) => [c.id, { ...c, interna: c.interna || emailPareceInterno(c.email) }])
   );
   const donoDoProjeto = new Map(projetos.map((p) => [p.id, p]));
   const categoriaDoProjeto = (projectId: string | null): { categoria: Categoria; conta: Conta | null; projeto: string } => {
@@ -205,12 +226,22 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
   // ── O extrato: créditos cobrados por conta e por projeto/grupo ───────────
   const creditosPorConta = new Map<string, { cobrados: number; custariam: number }>();
   const cobrancaPorProjetoEGrupo = new Map<string, { cobrancas: number; creditos: number; custariam: number; projectId: string }>();
+  // Por conta E projeto, com as duas carteiras (05/10, à noite): é a resposta
+  // a "quantos créditos o Fé & Gestão consumiu, e quanto isso custou de IA".
+  const creditosPorContaEProjeto = new Map<string, { userId: string; projectId: string | null; plano: number; video: number; custariam: number; linhas: number }>();
   for (const e of extrato) {
     if (operacaoEhRecarga(e.operation)) continue;
     const c = creditosPorConta.get(e.userId) ?? { cobrados: 0, custariam: 0 };
     c.cobrados += Number(e.liquido);
     c.custariam += Number(e.custaria);
     creditosPorConta.set(e.userId, c);
+    const chaveCP = `${e.userId}|${e.projectId ?? ""}`;
+    const cp = creditosPorContaEProjeto.get(chaveCP) ?? { userId: e.userId, projectId: e.projectId, plano: 0, video: 0, custariam: 0, linhas: 0 };
+    if (e.carteira === "video") cp.video += Number(e.liquido);
+    else cp.plano += Number(e.liquido);
+    cp.custariam += Number(e.custaria);
+    cp.linhas += Number(e.n);
+    creditosPorContaEProjeto.set(chaveCP, cp);
     const grupo = grupoDaCobranca(e.operation);
     if (grupo && e.projectId) {
       const chave = `${e.projectId}|${grupo}`;
@@ -236,7 +267,10 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
     const custo = custoPorConta.get(conta.id) ?? { usd: 0, n: 0 };
     const cred = creditosPorConta.get(conta.id) ?? { cobrados: 0, custariam: 0 };
     const custoReais = custo.usd * DOLAR;
-    const receitaReais = conta.interna ? 0 : (mensalidade(conta) * dias) / 30;
+    // Receita é só o que entrou confirmado (05/10, à noite). A mensalidade do
+    // plano ou do contrato, proporcional aos dias, fica como projeção.
+    const receitaReais = conta.interna ? 0 : (receitaReal[conta.id] ?? 0);
+    const receitaProjetadaReais = conta.interna ? 0 : (mensalidade(conta) * dias) / 30;
     const margemReais = receitaReais - custoReais;
     const margemPct = receitaReais > 0 ? margemReais / receitaReais : null;
     const custoPorCredito = cred.cobrados > 0 ? custoReais / cred.cobrados : null;
@@ -244,7 +278,7 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
     if (!conta.interna) {
       if (margemPct !== null && margemPct < MARGEM_MINIMA_DESENHADA)
         alerta = `margem de ${Math.round(margemPct * 100)}%, abaixo dos ${Math.round(MARGEM_MINIMA_DESENHADA * 100)}% desenhados`;
-      else if (receitaReais === 0 && custoReais > 0) alerta = "custo sem receita: conta sem plano nem contrato";
+      else if (receitaReais === 0 && custoReais > 0) alerta = "custo sem pagamento confirmado no período";
       else if (custoPorCredito !== null && custoPorCredito > TETO_DE_CUSTO_POR_CREDITO)
         alerta = `R$ ${custoPorCredito.toFixed(3)} de IA por crédito, acima da régua de R$ ${TETO_DE_CUSTO_POR_CREDITO.toFixed(3)}`;
     }
@@ -263,11 +297,72 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
       custoDesenhadoReais: cred.cobrados * TETO_DE_CUSTO_POR_CREDITO,
       custoPorCredito,
       receitaReais,
+      receitaProjetadaReais,
       margemReais,
       margemPct,
       alerta,
     };
   };
+
+  // ── Os créditos por conta e projeto, com o custo real do mesmo projeto ───
+  const custoPorProjeto = new Map<string, { usd: number; n: number }>();
+  for (const u of usos) {
+    if (!u.projectId) continue;
+    const atual = custoPorProjeto.get(u.projectId) ?? { usd: 0, n: 0 };
+    atual.usd += Number(u.usd);
+    atual.n += Number(u.n);
+    custoPorProjeto.set(u.projectId, atual);
+  }
+  const porProjeto: LinhaDeProjeto[] = [];
+  const projetosComExtrato = new Set<string>();
+  for (const cp of creditosPorContaEProjeto.values()) {
+    const conta = contas.get(cp.userId);
+    const p = cp.projectId ? donoDoProjeto.get(cp.projectId) : undefined;
+    const custo = cp.projectId ? (custoPorProjeto.get(cp.projectId) ?? { usd: 0, n: 0 }) : { usd: 0, n: 0 };
+    if (cp.projectId) projetosComExtrato.add(cp.projectId);
+    const creditos = cp.plano + cp.video;
+    const naRegua = creditos + cp.custariam;
+    porProjeto.push({
+      projectId: cp.projectId,
+      projeto: p?.name ?? (cp.projectId ? `projeto apagado (${cp.projectId.slice(-6)})` : "sem projeto"),
+      contaId: cp.userId,
+      email: conta?.email ?? "conta apagada",
+      nome: conta?.name ?? null,
+      categoria: conta?.interna ? "dev" : "cliente",
+      creditosPlano: cp.plano,
+      creditosVideo: cp.video,
+      creditosQueCustariam: cp.custariam,
+      linhas: cp.linhas,
+      chamadas: custo.n,
+      custoUsd: custo.usd,
+      custoReais: custo.usd * DOLAR,
+      custoPorCredito: naRegua > 0 ? (custo.usd * DOLAR) / naRegua : null,
+    });
+  }
+  // Projeto que gastou IA sem nenhuma linha no extrato também aparece: é o
+  // crédito que não foi cobrado, e esconder isso seria esconder o vazamento.
+  for (const [projectId, custo] of custoPorProjeto) {
+    if (projetosComExtrato.has(projectId) || custo.usd <= 0) continue;
+    const p = donoDoProjeto.get(projectId);
+    const conta = p ? contas.get(p.userId) : undefined;
+    porProjeto.push({
+      projectId,
+      projeto: p?.name ?? `projeto apagado (${projectId.slice(-6)})`,
+      contaId: conta?.id ?? null,
+      email: conta?.email ?? "sem dono",
+      nome: conta?.name ?? null,
+      categoria: !p ? "orfao" : conta?.interna ? "dev" : "cliente",
+      creditosPlano: 0,
+      creditosVideo: 0,
+      creditosQueCustariam: 0,
+      linhas: 0,
+      chamadas: custo.n,
+      custoUsd: custo.usd,
+      custoReais: custo.usd * DOLAR,
+      custoPorCredito: null,
+    });
+  }
+  porProjeto.sort((a, b) => b.creditosPlano + b.creditosVideo + b.creditosQueCustariam - (a.creditosPlano + a.creditosVideo + a.creditosQueCustariam) || b.custoUsd - a.custoUsd);
 
   // Entra na lista quem gastou IA ou foi cobrado no período, ou quem paga
   // plano (cliente pagante sem uso é margem de 100%, e isso também é informação).
@@ -370,5 +465,6 @@ export async function lerUsoDeIa(periodo: PeriodoDeIa, agora = new Date()): Prom
     orfao,
     porPlano,
     cruzamento,
+    porProjeto,
   };
 }

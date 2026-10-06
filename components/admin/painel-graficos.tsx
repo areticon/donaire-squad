@@ -55,6 +55,59 @@ export function Cartao({
   );
 }
 
+/**
+ * A DOBRA (05/10, à noite): o drill down do painel executivo. Fechada mostra
+ * o título e UMA frase com os números que mandam; aberta mostra o detalhe.
+ * É `<details>` puro: sem JavaScript, abre e fecha também sem hidratação, e
+ * `?abrir=` na URL não existe de propósito: o estado é do leitor.
+ */
+export function Dobra({
+  titulo,
+  resumo,
+  aberta = false,
+  id,
+  children,
+}: {
+  titulo: string;
+  /** A frase que fica visível com a dobra fechada: os números, não a explicação. */
+  resumo?: React.ReactNode;
+  aberta?: boolean;
+  id?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      id={id}
+      open={aberta}
+      className="group rounded-2xl border scroll-mt-4"
+      style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", boxShadow: "var(--shadow)" }}
+    >
+      <summary className="cursor-pointer list-none px-4 py-3 sm:px-5 flex items-start gap-3 select-none [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden
+          className="mt-[3px] shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-md text-xs font-bold transition-transform group-open:rotate-90"
+          style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}
+        >
+          ›
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+            {titulo}
+          </span>
+          {resumo && (
+            <span className="block text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {resumo}
+            </span>
+          )}
+        </span>
+      </summary>
+      <div className="px-4 pb-4 sm:px-5 sm:pb-5 space-y-5 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+        {children}
+      </div>
+    </details>
+  );
+}
+
 /** O estado vazio: diz o que falta e o que vai aparecer aqui. */
 export function Vazio({ titulo, texto, compacto = false }: { titulo: string; texto: string; compacto?: boolean }) {
   return (

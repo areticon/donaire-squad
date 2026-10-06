@@ -84,7 +84,16 @@ const COR_DA_REDE_NO_PAINEL: Record<string, string> = {
 };
 const ORDEM_DAS_REDES = ["linkedin", "instagram", "youtube", "tiktok", "facebook", "twitter"];
 
-export async function lerGraficos(dias: Periodo, mrr: number, agora = new Date()): Promise<DadosDosGraficos> {
+export async function lerGraficos(
+  dias: Periodo,
+  /**
+   * A RECEITA REAL (05/10, à noite): os pagamentos confirmados do período,
+   * cada um no dia em que entrou. Antes a série era a mensalidade de tabela
+   * dividida por 30, que desenhava uma receita que ninguém tinha pago.
+   */
+  pagamentos: Array<{ quando: string; reais: number }>,
+  agora = new Date()
+): Promise<DadosDosGraficos> {
   const eixo = eixoDoTempo(dias, agora);
   const { desde, baldes } = eixo;
   const n = baldes.length;
@@ -142,21 +151,25 @@ export async function lerGraficos(dias: Periodo, mrr: number, agora = new Date()
     { chave: "realizadas", nome: "Demonstrações realizadas", cor: "var(--painel-4)", valores: somaNoBalde(realizadas.map((r) => r.inicio)) },
   ];
 
-  // ── O dinheiro: receita proporcional contra o custo de IA ────────────────
-  // A receita do dia é a mensalidade somada dividida por 30: não é caixa
-  // (o Stripe cobra de uma vez), é o quanto do mês aquele dia "pagou", e é a
-  // mesma base em que a margem do painel sempre foi calculada.
-  const custoComProjeto = zeros(n);
+  // ── O dinheiro: receita real contra o custo de IA ────────────────────────
+  // A receita entra no dia em que o pagamento foi confirmado; o custo entra
+  // inteiro, com e sem projeto, porque o fornecedor cobra os dois.
+  const custoDoDia = zeros(n);
   let custoForaDeProjeto = 0;
   for (const c of custos) {
     const b = eixo.balde(c.dia);
     if (b === undefined) continue;
-    if (c.comProjeto) custoComProjeto[b] += Number(c.usd) * DOLAR;
-    else custoForaDeProjeto += Number(c.usd) * DOLAR;
+    custoDoDia[b] += Number(c.usd) * DOLAR;
+    if (!c.comProjeto) custoForaDeProjeto += Number(c.usd) * DOLAR;
+  }
+  const receitaDoDia = zeros(n);
+  for (const p of pagamentos) {
+    const b = noBalde(new Date(p.quando));
+    if (b !== undefined) receitaDoDia[b] += p.reais;
   }
   const dinheiro: SerieNoTempo[] = [
-    { chave: "receita", nome: "Receita proporcional", cor: "var(--painel-1)", valores: eixo.diasPorBalde.map((d) => (mrr / 30) * d) },
-    { chave: "custo", nome: "Custo de IA", cor: "var(--painel-2)", valores: custoComProjeto },
+    { chave: "receita", nome: "Receita real", cor: "var(--painel-1)", valores: receitaDoDia },
+    { chave: "custo", nome: "Custo de IA", cor: "var(--painel-2)", valores: custoDoDia },
   ];
 
   // ── Os créditos: as duas carteiras ───────────────────────────────────────
