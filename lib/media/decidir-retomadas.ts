@@ -28,11 +28,27 @@ import type { Word } from "@/lib/media/transcribe";
  *   que fica (lista, ênfase, reformulação). O JEV fora do ar manda tudo ao
  *   Claude. Na dúvida que sobra, NÃO corta.
  *
+ * ## O JEV DECIDE TUDO (06/10, tarde; regra do Bruno de 05/10: "deixe LLM
+ * somente para texto que precisa ser criado, não escolhas, decisões, nada")
+ *
+ * Desde 06/10 o Claude não decide mais nada aqui, nem a dúvida:
+ * - a dúvida do JEV não corta (a tomada repetida é defeito pequeno, a frase
+ *   boa apagada é defeito grande); na GUARDA DA SAÍDA, onde a regra do Bruno
+ *   é "na dúvida corte a tentativa incompleta", corta quando o próprio JEV
+ *   pende para "refez" (r >= 0,5 e refez ou hesitação >= 0,5), sempre com a
+ *   prova em código por cima;
+ * - o JEV fora do ar não chama o Claude: sai só o que o código prova;
+ * - a muleta vai ao JEV por padrão (antes, LIMPEZA_PELO_JEV=1 era preciso).
+ * LIMITE CONHECIDO, sem suavizar: na medição de 03/10 o JEV sozinho acertou 2
+ * das 11 tomadas erradas (o Claude desempatava o meio) e cortou 18 muletas
+ * contra 47 do Claude no vídeo de 19 min. Os interruptores abaixo devolvem o
+ * Claude se a primeira gravação real mostrar a falta.
+ *
  * ## Interruptores
  * - RETOMADAS_LIGADAS=0: desliga a detecção inteira (volta ao 02/10).
- * - RETOMADAS_PELO_JEV=0: decide tudo no Claude.
- * - RETOMADAS_DUVIDA_NO_CLAUDE=0: a dúvida do JEV fica sem corte (JEV sozinho).
- * - LIMPEZA_PELO_JEV=1: a muleta vai ao JEV. Desligado por padrão (03/10): o JEV cortou 18 muletas contra 47 do Claude no vídeo de 19 min, e a diferença de custo é US$ 0,10 por vídeo.
+ * - RETOMADAS_PELO_JEV=0: decide tudo no Claude (o caminho de antes de 03/10).
+ * - RETOMADAS_DUVIDA_NO_CLAUDE=1: a dúvida do JEV e a queda dele voltam ao Claude (o caminho de 03/10 a 06/10).
+ * - LIMPEZA_PELO_JEV=0: a muleta volta ao Claude.
  */
 
 export type DecisaoDeRetomada = CandidatoDeRetomada & {
@@ -57,6 +73,27 @@ export type ResultadoDasRetomadas = {
 
 export function retomadasLigadas(): boolean {
   return process.env.RETOMADAS_LIGADAS !== "0";
+}
+
+/** O Claude só decide retomada com o interruptor explícito (06/10, tarde). */
+export function claudeNasRetomadas(): { tudo: boolean; duvida: boolean } {
+  return { tudo: process.env.RETOMADAS_PELO_JEV === "0", duvida: process.env.RETOMADAS_DUVIDA_NO_CLAUDE === "1" };
+}
+
+/** A muleta é do JEV por padrão (06/10, tarde); LIMPEZA_PELO_JEV=0 devolve ao Claude. */
+export function limpezaNoClaude(): boolean {
+  return process.env.LIMPEZA_PELO_JEV === "0";
+}
+
+/**
+ * A DÚVIDA DO JEV, decidida pelo próprio JEV (06/10, tarde): fora da guarda
+ * da saída, a dúvida não corta. Na guarda (`naDuvidaCorta`), corta quando ele
+ * pende para "refez": r >= 0,5 e refez + hesitação >= 0,5. A prova em código
+ * (`provaDeRetomada`) ainda veta depois. Puro, para a prova.
+ */
+export function cortaNaDuvida(r: number | null, pRefez: number | null, naDuvidaCorta: boolean): boolean {
+  if (!naDuvidaCorta || r === null || pRefez === null) return false;
+  return r >= 0.5 && pRefez >= 0.5;
 }
 
 const CORTA_R = 0.7;
@@ -188,7 +225,9 @@ export async function decidirRetomadas(
 
   // 1. O JEV, em lote: corta o que é certo, descarta o que é certo.
   const duvida: DecisaoDeRetomada[] = [];
-  const peloJev = jevLigado() && process.env.RETOMADAS_PELO_JEV !== "0";
+  const pRefezDe = new Map<string, number>();
+  const claude = claudeNasRetomadas();
+  const peloJev = jevLigado() && !claude.tudo;
   if (peloJev && paraDecidir.length) {
     try {
       await emPoucos(
@@ -216,6 +255,7 @@ export async function decidirRetomadas(
               continue;
             }
             const pRefez = (esc.probabilities?.refez ?? 0) + (esc.probabilities?.hesitacao ?? 0);
+            pRefezDe.set(c.id, pRefez);
             c.escolha = `${esc.choice} ${(esc.confidence ?? 0).toFixed(2)}`;
             if (c.r >= CORTA_R) {
               c.quem = "jev";
@@ -228,11 +268,13 @@ export async function decidirRetomadas(
         })
       );
     } catch (e) {
-      console.error("[retomadas] JEV falhou, tudo vai ao Claude:", e instanceof Error ? e.message : e);
+      console.error(`[retomadas] JEV falhou; ${claude.duvida ? "tudo vai ao Claude" : "sai só o que o código prova"}:`, e instanceof Error ? e.message : e);
       duvida.length = 0;
+      pRefezDe.clear();
       for (const c of paraDecidir) {
         c.quem = "nenhum";
         c.corta = false;
+        c.r = null;
         duvida.push(c);
       }
     }
@@ -240,9 +282,18 @@ export async function decidirRetomadas(
     duvida.push(...paraDecidir);
   }
 
-  // 2. O Claude, só para a dúvida (ou tudo, com o JEV desligado).
+  // 2. A DÚVIDA (06/10, tarde): decidida pelo JEV, pela leitura que ele já deu.
+  // O Claude só entra com o interruptor explícito (ou com tudo no Claude).
   let claudeChamadas = 0;
-  const comClaude = !peloJev || process.env.RETOMADAS_DUVIDA_NO_CLAUDE !== "0";
+  const comClaude = claude.tudo || claude.duvida;
+  if (!comClaude) {
+    for (const c of duvida) {
+      if (cortaNaDuvida(c.r, pRefezDe.get(c.id) ?? null, Boolean(ctx.naDuvidaCorta))) {
+        c.quem = "jev";
+        c.corta = true;
+      }
+    }
+  }
   for (let i = 0; comClaude && i < duvida.length; i += 40) {
     const lote = duvida.slice(i, i + 40);
     try {
@@ -314,7 +365,7 @@ export async function muletasPeloJev(
   palavras: Word[],
   ctx: { projectId?: string | null; uso?: UsoDoJev } = {}
 ): Promise<Array<{ de: number; ate: number; motivo: string }> | null> {
-  if (!jevLigado() || process.env.LIMPEZA_PELO_JEV !== "1") return null;
+  if (!jevLigado() || limpezaNoClaude()) return null;
   const itens: Array<{ de: number; ate: number; gaguejo?: boolean }> = [];
   palavras.forEach((w, i) => {
     const k = chave(w.word);
@@ -372,8 +423,9 @@ export async function muletasPeloJev(
       })
     );
   } catch (e) {
-    console.error("[limpeza] JEV falhou, a muleta volta ao Claude:", e instanceof Error ? e.message : e);
-    return null;
+    // O JEV fora do ar não chama o Claude (06/10, tarde): a muleta fica, e as garantidas por código já saíram.
+    console.error("[limpeza] JEV falhou, as muletas ambíguas ficam nesta passada:", e instanceof Error ? e.message : e);
+    return [];
   }
   return decididos.sort((a, b) => a.de - b.de);
 }
