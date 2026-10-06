@@ -9,6 +9,8 @@ import type { EdicaoResolvida, MidiaDaInsercao, Tema } from "@/lib/media/editor-
 import { fichaDaFonte, normalizarComando, REFERENCIAS_DE_COMANDO, type ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import { corrigirPlano, escreverPlano, type EntradaDoDiretor, type NotaDoRevisor, type PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
 import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
+import { legendaQueVale } from "@/lib/media/editor-por-comando/estilo-manda";
+import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { completarPlanoPeloJev, diretorPorLlm, escreverPlanoPeloJev, type EntradaDoPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
@@ -213,6 +215,11 @@ export type EntradaDoPlano = {
   paleta?: string[] | null;
   rosto: Retangulo;
   comLegenda: boolean;
+  /**
+   * O ESTILO DE LEGENDA QUE O CLIENTE FIXOU (06/10, noite): só ele passa por cima da legenda do estilo do vídeo.
+   * Null ou ausente (a escolha "Automática"): a legenda segue o estilo (estilo-manda.ts).
+   */
+  legendaFixa?: EstiloDeLegenda | null;
   logoUrl: string | null;
   titulo?: string | null;
   perfil?: string | null;
@@ -478,7 +485,7 @@ export async function planejarPorComando(e: EntradaDoPlano, pronto?: PlanoPronto
   const img = await imagensDoPlano(d.plano, e);
   const plano = img.plano;
   marcar("imagens");
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes, leitura: e.leitura ?? null });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes, leitura: e.leitura ?? null, legenda: legendaQueVale(e.legendaFixa, plano.linguagem?.legenda, e.comando.texto) });
   marcar("resolver");
   return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
@@ -502,7 +509,7 @@ export async function corrigirPorComando(
   const plano = img.plano;
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null, legenda: legendaQueVale(e.legendaFixa, plano.linguagem?.legenda, e.comando.texto) });
   return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...(c.erro ? [`correção: ${c.erro}`] : []), ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos };
 }
 
@@ -549,7 +556,7 @@ export async function planejarCompletoPorComando(e: EntradaDoPlano, pronto?: Pla
   const img = await imagensDoPlano(d.plano, e);
   const plano = img.plano;
   tempos.imagens = +((Date.now() - t) / 1000).toFixed(1);
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes, leitura: e.leitura ?? null });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base, tema: temaDoComando(e.comando, base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes: img.insercoes, leitura: e.leitura ?? null, legenda: legendaQueVale(e.legendaFixa, plano.linguagem?.legenda, e.comando.texto) });
   const errosDosBlocos = d.avisos.filter((a) => /^bloco \d+:/.test(a));
   return { base, plano, edicao: r.edicao, insercoes: img.insercoes, custoImagensUsd: img.custoUsd, avisos: [...d.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos, blocos: blocos.length, errosDosBlocos };
 }
@@ -582,7 +589,7 @@ export async function corrigirCompletoPorComando(
   const img = await imagensDoPlano(juntarPlanos(novos.map((x) => x.plano)), { ...e, imagens: sobra }, anterior.insercoes);
   const plano = img.plano;
   const insercoes = { ...anterior.insercoes, ...img.insercoes };
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null, legenda: legendaQueVale(e.legendaFixa, plano.linguagem?.legenda, e.comando.texto) });
   return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [...novos.flatMap((x) => x.avisos), ...img.erros, ...r.avisos].slice(0, 40), tempos: { correcao: +((Date.now() - t) / 1000).toFixed(1) } };
 }
 

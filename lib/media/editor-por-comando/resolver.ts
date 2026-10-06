@@ -25,6 +25,7 @@ import {
   trechoEm,
   zonaLivre,
 } from "@/lib/media/editor-por-comando/leitura-no-plano";
+import { legendaDesenhada, paginasNoEstilo, pecaNaFrente, type LegendaDoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
 
 /**
  * A POSIÇÃO PELO TEMPO, NÃO POR UM QUADRO (06/10/2026; regra do Bruno: o
@@ -87,6 +88,12 @@ export type ContextoDoComando = {
   base?: string | null;
   /** A LEITURA DO VÍDEO INTEIRO (06/10), no tempo desta fala: a posição de cada peça sai do trecho lido dela. */
   leitura?: LeituraDoVideo | null;
+  /**
+   * A LEGENDA DO ESTILO (06/10, noite; estilo-manda.ts): a posição, o tamanho, a letra e as palavras por vez que o
+   * comando do estilo pede (decididas pelo JEV no plano), ou as do estilo de legenda fixado pelo cliente. Sem ela, a
+   * legenda pequena de sempre.
+   */
+  legenda?: LegendaDoEstilo | null;
 };
 
 const limitar = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -252,10 +259,21 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     const xM = limitar(rostoM.x + rostoM.w / 2, 0.15, 0.85);
     const yM = limitar(rostoM.y + rostoM.h * 0.55, 0.2, 0.75);
     let fichaM = ficha;
+    let naFrente = false;
     if (mexeMuito) {
       // Com a pessoa se mexendo muito a peça fica curta, e nada vai atrás dela (o recorte em movimento falha).
       ate = Math.min(ate, de + Math.max(ficha.duracao[0], 3.2));
-      if (ficha.nome === "titulo-atras") {
+      // A VERSÃO NA FRENTE (06/10, noite; estilo-manda.ts): o título atrás não vira sublinhado. Vai para a frente da
+      // pessoa na versão que o JEV escolheu no plano (caixa no topo, cartão abaixo do rosto, título no topo), se ela
+      // couber sem cobrir o rosto; senão a seguinte que couber. Só sem nenhuma, a legenda de destaque da linguagem.
+      const frente = ficha.nome === "titulo-atras" ? pecaNaFrente(props, rostoM, vertical0, tr ? (c) => cobreAlgo(c, tr) : undefined) : null;
+      if (frente && FICHAS[frente.peca]) {
+        fichaM = FICHAS[frente.peca];
+        props = frente.props;
+        naFrente = true;
+        ate = Math.min(Math.max(ate, de + fichaM.duracao[0]), de + fichaM.duracao[1], D);
+        avisos.push(`${id}: a pessoa se mexe muito, o título atrás foi para a frente (${frente.versao}${frente.doJev ? ", escolha do JEV" : ""})`);
+      } else if (ficha.nome === "titulo-atras") {
         const alt = componenteDa(familiaValida(p.tema?.linguagem), "legenda-destaque");
         const fichaAlt = alt ? FICHAS[alt] : null;
         if (fichaAlt) {
@@ -304,7 +322,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     }
     if (fichaM.eventosDe && Array.isArray(props[fichaM.eventosDe])) props[fichaM.eventosDe] = (props[fichaM.eventosDe] as unknown[]).slice(0, fichaM.maxItens ?? 6);
     const nItens = fichaM.eventosDe ? (Array.isArray(props[fichaM.eventosDe]) ? (props[fichaM.eventosDe] as unknown[]).length : 0) : fichaM.umEvento ? 1 : 0;
-    const eventos = (m.eventos ?? [])
+    const eventos = (naFrente ? [] : m.eventos ?? [])
       .map((a) => t(a))
       .filter((x): x is number => x !== null)
       .map((x) => Math.max(de + 0.25, x - 0.05))
@@ -374,7 +392,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         props.zoom = enq.zoom;
       } else props.caixa = conteudo;
     }
-    if (fichaM.nome === "cartao-de-passo" || fichaM.nome === "frase-chave") {
+    if (!naFrente && (fichaM.nome === "cartao-de-passo" || fichaM.nome === "frase-chave")) {
       const frase = fichaM.nome === "frase-chave";
       const pedido = frase ? { minW: 0.24, minH: 0.12, maxW: Math.min(0.94, (vertical0 ? 0.86 : 0.46) * fator), maxH: Math.min(0.6, (vertical0 ? 0.26 : 0.28) * fator) } : { minW: 0.2, minH: 0.12, maxW: Math.min(0.94, (vertical0 ? 0.7 : 0.36) * fator), maxH: Math.min(0.6, (vertical0 ? 0.22 : 0.26) * fator) };
       let caixa = noCentro ? caixaNoCentro(vertical0, 1, { w: pedido.maxW, h: pedido.maxH }) : caixaLivre(tr, { ...pedido, lado: ladoM, perto: centroDe(rostoM) });
@@ -415,12 +433,23 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       // A folha na área livre do trecho (06/10): nunca sobre outro rosto, a tela ou o quadro. No centro, por pedido
       // do cliente, a folha vai para o meio do quadro no tamanho pedido.
       const folha = noCentro ? caixaNoCentro(vertical0, fator, vertical0 ? { w: 0.86, h: 0.4 } : { w: 0.5, h: 0.72 }) : caixaDaFolhaNoTrecho(tr, rostoM, vertical0, vertical0 ? faixaM : ladoM);
-      if (!folha) {
-        avisos.push(`${id}: sem área livre para a folha no trecho (rosto, tela ou quadro em todo lado), saiu`);
+      // Sem área livre para a folha, a peça vai para a FRENTE (06/10, noite): a versão que o JEV escolheu no plano,
+      // se couber sem cobrir o rosto; só sem nenhuma versão que caiba ela sai.
+      const frente = folha ? null : pecaNaFrente(props, rostoM, vertical0, tr ? (c) => cobreAlgo(c, tr) : undefined);
+      if (!folha && !(frente && FICHAS[frente.peca])) {
+        avisos.push(`${id}: sem área livre para a folha no trecho (rosto, tela ou quadro em todo lado) nem versão na frente que caiba, saiu`);
         continue;
       }
-      if (noCentro) semCobrir(folha, "a folha");
-      else if (fator !== 1) {
+      if (!folha && frente) {
+        const original = fichaM.nome;
+        fichaM = FICHAS[frente.peca];
+        props = frente.props;
+        naFrente = true;
+        eventos.length = 0;
+        ate = Math.min(Math.max(ate, de + fichaM.duracao[0]), de + fichaM.duracao[1], D);
+        avisos.push(`${id}: sem área livre para a folha de ${original}, foi para a frente (${frente.versao}${frente.doJev ? ", escolha do JEV" : ""})`);
+      } else if (folha && noCentro) semCobrir(folha, "a folha");
+      else if (folha && fator !== 1) {
         // O tamanho pedido alarga (ou encolhe) a folha em volta do centro dela, dentro do quadro.
         const w = Math.min(0.94, folha.w * fator);
         const h = Math.min(0.9, folha.h * fator);
@@ -429,7 +458,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         folha.w = +w.toFixed(4);
         folha.h = +h.toFixed(4);
       }
-      props.folha = folha;
+      if (folha) props.folha = folha;
+      else plano = "cheio";
     }
     if (plano === "cartao") {
       // A peça do lado livre do trecho; sem leitura, o lado que o diretor pediu.
@@ -565,7 +595,8 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
     camadas,
     planos: planosOk,
     camera,
-    legenda: ctx.comLegenda ? { paginas: paginasDaLegenda(ctx.palavras) } : null,
+    // A legenda no estilo (06/10, noite): as páginas com as palavras por vez dele e o desenho que o worker segue.
+    legenda: ctx.comLegenda ? (ctx.legenda ? { paginas: paginasNoEstilo(ctx.palavras, ctx.legenda, vertical), estilo: legendaDesenhada(ctx.legenda, ctx.rosto, vertical) } : { paginas: paginasDaLegenda(ctx.palavras) }) : null,
     insercoes: ctx.insercoes,
     palco: true,
   };

@@ -816,6 +816,8 @@ export async function entradaDoPlanoDoCorte(
     paleta: paletaDoProjeto(video.project.colorPalette),
     rosto: sm.rosto ?? { x: 0.3, y: 0.2, w: 0.4, h: 0.25 },
     comLegenda: ctx.legenda.mostrar,
+    // A legenda do estilo vale na "Automática"; só o estilo de legenda fixado pelo cliente passa por cima (06/10, noite).
+    legendaFixa: ctx.legenda.mostrar && !ctx.legenda.automatica ? ctx.legenda.estilo : null,
     logoUrl: video.project.logoUrl ?? null,
     titulo: t.titulo ?? null,
     perfil: perfilNoPrompt(perfil),

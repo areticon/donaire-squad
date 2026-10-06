@@ -498,19 +498,46 @@ const assCor = (hex, alfa = 0) => {
   return `&H${alfa.toString(16).padStart(2, "0").toUpperCase()}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
 };
 
-/** A legenda pequena e limpa do pitch: frase curta, Geist SemiBold, caixa escura da marca, no terço de baixo. */
+/**
+ * O DESENHO DA LEGENDA NO ESTILO (06/10, noite; lib/media/editor-por-comando/estilo-manda.ts): com
+ * `edicao.legenda.estilo`, a letra, o tamanho e a posição que o estilo pede (a condensada grande no meio,
+ * logo abaixo do rosto, com contorno; a limpa na caixa escura). Sem o campo, a legenda de sempre.
+ */
+export function desenhoDaLegenda(estilo, W, H) {
+  const vertical = H > W;
+  const ey = H / (vertical ? 1920 : 1080);
+  if (!estilo) return { fonte: "Geist SemiBold", tam: Math.round((vertical ? 54 : 50) * ey), contorno: false, alinhamento: 2, margemV: Math.round(vertical ? H * 0.2 : 40 * ey), caixaAlta: false };
+  const tamanhos = { grande: vertical ? 92 : 76, medio: vertical ? 70 : 60, pequeno: vertical ? 54 : 50 };
+  const fonte = estilo.letra === "condensada" ? "Anton" : estilo.letra === "serifa" ? "PT Serif" : "Geist SemiBold";
+  const tam = Math.round((tamanhos[estilo.tamanho] ?? tamanhos.medio) * ey);
+  // A letra condensada (ou a legenda grande) vai com contorno preto grosso, sem caixa: o desenho das legendas de retenção.
+  const contorno = estilo.letra === "condensada" || estilo.tamanho === "grande";
+  const caixaAlta = Boolean(estilo.caixaAlta);
+  if (estilo.posicao === "centro") return { fonte, tam, contorno, alinhamento: 8, margemV: Math.round(H * (Number(estilo.y) || 0.58)), caixaAlta };
+  if (estilo.posicao === "topo") return { fonte, tam, contorno, alinhamento: 8, margemV: Math.round(vertical ? H * 0.035 : 40 * ey), caixaAlta };
+  return { fonte, tam, contorno, alinhamento: 2, margemV: Math.round(vertical ? H * 0.17 : 40 * ey), caixaAlta };
+}
+
+/** A legenda do editor: a pequena e limpa do pitch (Geist SemiBold, caixa escura da marca, no terço de baixo), ou a do estilo. */
 export function legendaSobMedida(edicao, W, H, desloc, duracao) {
   const vertical = H > W;
   const ey = H / (vertical ? 1920 : 1080);
-  const tam = Math.round((vertical ? 54 : 50) * ey);
-  const margemV = Math.round(vertical ? H * 0.2 : 40 * ey);
+  const d = desenhoDaLegenda(edicao.legenda?.estilo ?? null, W, H);
+  const tam = d.tam;
+  const caixa = assCor(edicao.tema?.escuroLegenda ?? "#06111F", 0x28);
+  const negrito = d.fonte === "PT Serif" ? -1 : 0;
+  // Com contorno: borda 1 (contorno e sombra), texto branco, contorno preto. Sem: borda 3 (a caixa escura de sempre).
+  const corpo = (alin, margem) =>
+    d.contorno
+      ? `${d.fonte},${tam},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,${negrito},0,0,0,100,100,${d.fonte === "Anton" ? 1 : 0},0,1,${Math.max(3, Math.round(tam * 0.085))},${Math.round(3 * ey)},${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`
+      : `${d.fonte},${tam},&H00FFFFFF,&H00FFFFFF,${caixa},&H00000000,${negrito},0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,${alin},${Math.round(80 * ey)},${Math.round(80 * ey)},${margem},1`;
   const linhas = [
     "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Leg,Geist SemiBold,${tam},&H00FFFFFF,&H00FFFFFF,${assCor(edicao.tema?.escuroLegenda ?? "#06111F", 0x28)},&H00000000,0,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,2,${Math.round(80 * ey)},${Math.round(80 * ey)},${margemV},1`,
-    // A FAIXA DE CIMA (05/10): a mesma legenda, acima da cabeça, quando uma peça com texto ocupa a de baixo.
-    `Style: LegTopo,Geist SemiBold,${tam},&H00FFFFFF,&H00FFFFFF,${assCor(edicao.tema?.escuroLegenda ?? "#06111F", 0x28)},&H00000000,0,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,8,${Math.round(80 * ey)},${Math.round(80 * ey)},${Math.round(vertical ? H * 0.035 : 40 * ey)},1`,
+    `Style: Leg,${corpo(d.alinhamento, d.margemV)}`,
+    // A FAIXA DE CIMA (05/10): a mesma legenda, acima da cabeça, quando uma peça com texto ocupa a posição principal.
+    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.035 : 40 * ey))}`,
     "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   for (const p of edicao.legenda?.paginas ?? []) {
@@ -518,7 +545,8 @@ export function legendaSobMedida(edicao, W, H, desloc, duracao) {
     // ZONAS EXCLUSIVAS (05/10, lib/media/editor-sob-medida/faixa-da-legenda.ts): o app decide a faixa
     // de cada página pelas peças na tela; "oculta" é quando a peça já é o texto daquele instante.
     if (p.faixa === "oculta") continue;
-    const texto = String(p.texto).replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+    const texto0 = String(p.texto).replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+    const texto = d.caixaAlta ? texto0.toLocaleUpperCase("pt-BR") : texto0;
     if (!texto) continue;
     linhas.push(`Dialogue: 0,${assTempo(p.inicio - desloc)},${assTempo(Math.min(duracao, p.fim - desloc))},${p.faixa === "topo" ? "LegTopo" : "Leg"},,0,0,0,,${texto}`);
   }

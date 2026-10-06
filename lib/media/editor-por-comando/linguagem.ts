@@ -1,3 +1,4 @@
+import type { LegendaDoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
 import { papeisDaPaleta } from "@/lib/media/papeis-da-paleta";
 import type { Visual } from "@/lib/media/editor-sob-medida/tipos";
 import type { FonteDoComando } from "@/lib/media/editor-por-comando/comando";
@@ -304,6 +305,8 @@ export type LinguagemDoVideo = {
   fonte: FonteDoComando;
   cores: string;
   nicho?: string | null;
+  /** A legenda que o comando do estilo pede, decidida pelo JEV (06/10, noite; estilo-manda.ts). Sem o campo, lida do texto do comando. */
+  legenda?: LegendaDoEstilo | null;
 };
 
 /**
