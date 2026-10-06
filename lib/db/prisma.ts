@@ -1,11 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { travarAmbiente } from "@/lib/ambiente/trava-do-banco.mjs";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function createPrismaClient(): PrismaClient {
+  // A trava dos ambientes (06/10): dev nunca abre o banco de produção e a
+  // produção nunca abre outro banco. Só lê variáveis; nenhum comando ao banco.
+  travarAmbiente(process.env, { origem: "app" });
+
   // Em runtime usamos a connection string do pooler do Supabase (porta 6543).
   // As migrations usam DIRECT_URL (porta 5432), configurada em prisma.config.ts.
   const connectionString =
