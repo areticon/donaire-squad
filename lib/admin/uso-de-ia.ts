@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { planoPublico, type PlanoId } from "@/lib/planos";
 import {
-  emailPareceInterno,
+  emailDoDominioDaEquipe,
   familiaDaOperacao,
   fornecedorDoModelo,
   grupoDaCobranca,
@@ -162,10 +162,12 @@ export async function lerUsoDeIa(
       .catch(() => [] as Array<{ userId: string; valorCentavos: number; plano: string }>),
   ]);
 
-  // A lista de e-mails da migração vale sempre, com ou sem a coluna: a
-  // conta do Bruno no Gmail é da equipe mesmo que alguém desmarque a coluna.
+  // O domínio da casa vale sempre, com ou sem a coluna. E-mail de pessoa
+  // específica não entra mais aqui (06/10): a conta de teste do Bruno, com
+  // desconto total, usa como cliente e conta como cliente; quem decide que
+  // uma conta de fora do domínio é da equipe é a coluna `contaInterna`.
   const contas = new Map<string, Conta>(
-    contasCruas.map((c) => [c.id, { ...c, interna: c.interna || emailPareceInterno(c.email) }])
+    contasCruas.map((c) => [c.id, { ...c, interna: c.interna || emailDoDominioDaEquipe(c.email) }])
   );
   const donoDoProjeto = new Map(projetos.map((p) => [p.id, p]));
   const categoriaDoProjeto = (projectId: string | null): { categoria: Categoria; conta: Conta | null; projeto: string } => {

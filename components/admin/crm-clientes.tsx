@@ -392,7 +392,7 @@ function Ficha({ id, onFechar }: { id: string; onFechar: () => void }) {
                 {ficha.creditos.toLocaleString("pt-BR")} créditos · {ficha.creditosDeVideo} de vídeo · {ficha.publicados} peça(s) publicada(s) · {ficha.projetos.length} marca(s)
               </p>
               <p className="text-xs mt-1" style={fraco}>
-                Plano liberado no produto: {ficha.plano === "free" ? "nenhum" : ficha.plano} · acesso {ficha.papel === "admin" ? "interno (admin)" : "de cliente"}
+                Plano liberado no produto: {ficha.plano === "free" ? "nenhum" : ficha.plano} · acesso {ficha.papel === "admin" ? "interno (admin)" : "de cliente"} · no painel conta como {ficha.daEquipe ? "equipe" : "cliente"}
               </p>
             </Secao>
 
@@ -608,7 +608,24 @@ function Ficha({ id, onFechar }: { id: string; onFechar: () => void }) {
                 <button disabled={ocupado} onClick={() => agir({ acao: "link_de_senha" }, "Link de senha enviado para o e-mail da conta.")} className={botaoSecundario} style={entrada}>
                   Mandar link de senha
                 </button>
+                <button
+                  disabled={ocupado}
+                  onClick={() =>
+                    agir(
+                      { acao: "equipe", equipe: !ficha.contaInterna },
+                      ficha.contaInterna ? "Agora o custo de IA desta conta conta como cliente no painel." : "Agora o custo de IA desta conta conta como equipe no painel."
+                    )
+                  }
+                  className={botaoSecundario}
+                  style={entrada}
+                >
+                  {ficha.contaInterna ? "Contar como cliente no painel" : "Contar como equipe no painel"}
+                </button>
               </div>
+              <p className="text-xs mt-2" style={fraco}>
+                Equipe ou cliente só muda de quem é o custo de IA no painel; não mexe em acesso nem em cobrança. Conta de teste que usa como cliente, mesmo com desconto total, conta como cliente.
+                {ficha.daEquipe && !ficha.contaInterna ? " Esta conta é equipe pelo papel de admin ou pelo e-mail da casa, e continua equipe mesmo desmarcada." : ""}
+              </p>
             </Secao>
 
             <Secao titulo="Excluir a conta">

@@ -81,3 +81,43 @@ export const reais = (n: number, casas = 0) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: casas, minimumFractionDigits: casas });
 
 export const numero = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A COMPARAÇÃO COM O PERÍODO ANTERIOR (06/10, painel no estilo do Stripe)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Uma série no período do seletor e a mesma série no período anterior do
+ * mesmo tamanho, balde a balde: o balde 0 de `anterior` é o primeiro dia (ou
+ * semana) da janela anterior. É o que desenha a linha tracejada.
+ */
+export type SerieComparada = { atual: number[]; anterior: number[] };
+
+export type ComparacaoDoPainel = {
+  /** Os baldes da janela atual (rótulos do eixo). */
+  baldes: Balde[];
+  /** Os baldes da janela anterior, para o balão dizer de que dia é o tracejado. */
+  baldesAnteriores: Balde[];
+  /** "07/09 a 06/10", para a frase "contra 07/09 a 06/10". */
+  rotuloAnterior: string;
+  /** Custo real de IA, em reais, por balde: tudo, com e sem projeto. */
+  custo: SerieComparada;
+  /** A parte do custo que é de cliente (projeto de conta fora da equipe). */
+  custoDeCliente: SerieComparada;
+  /** Receita real (pagamento confirmado), em reais, por balde. */
+  receita: SerieComparada;
+  /** Créditos consumidos, líquidos de estorno, sem recarga, nas duas carteiras. */
+  creditos: SerieComparada;
+  /** Cadastros de gente (e-mail confirmado, sem robô, sem admin). */
+  cadastros: SerieComparada;
+};
+
+/**
+ * A variação contra o período anterior, como o Stripe escreve: "+12,4%".
+ * Sem base (anterior zero) não existe porcentagem honesta: volta null, e a
+ * tela escreve "novo" quando há valor agora, ou nada quando os dois são zero.
+ */
+export function variacao(atual: number, anterior: number): number | null {
+  if (!anterior) return null;
+  return (atual - anterior) / Math.abs(anterior);
+}

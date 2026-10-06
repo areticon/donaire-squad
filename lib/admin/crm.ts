@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db/prisma";
 import { planoPublico, type PlanoId } from "@/lib/planos";
 import { pareceRobo, lerContatos } from "@/lib/admin/painel";
+import { contaEhDaEquipe } from "@/lib/admin/tipos-do-uso-de-ia";
 
 /**
  * O CRM DO PAINEL: quem é quem, e em que pé está com a Demandou.
@@ -319,6 +320,14 @@ export type FichaDoCliente = {
   email: string;
   nome: string | null;
   papel: string;
+  /**
+   * A marca de CONTA DA EQUIPE no banco (06/10): o painel conta o custo de IA
+   * dela como equipe, e nunca como receita. Conta de teste que usa como
+   * cliente, mesmo com desconto total, fica desmarcada.
+   */
+  contaInterna: boolean;
+  /** Equipe pela regra inteira: admin, marca no banco ou domínio da casa. */
+  daEquipe: boolean;
   plano: string;
   creditos: number;
   creditosDeVideo: number;
@@ -347,6 +356,7 @@ export async function lerFicha(userId: string): Promise<FichaDoCliente | null> {
       email: true,
       name: true,
       role: true,
+      contaInterna: true,
       plan: true,
       creditsBalance: true,
       videoCredits: true,
@@ -402,6 +412,8 @@ export async function lerFicha(userId: string): Promise<FichaDoCliente | null> {
     email: u.email,
     nome: u.name,
     papel: u.role,
+    contaInterna: u.contaInterna,
+    daEquipe: contaEhDaEquipe(u),
     plano: u.plan,
     creditos: u.creditsBalance,
     creditosDeVideo: u.videoCredits,

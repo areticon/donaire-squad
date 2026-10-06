@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { planoPublico, type PlanoId } from "@/lib/planos";
-import { emailPareceInterno } from "@/lib/admin/tipos-do-uso-de-ia";
+import { contaEhDaEquipe, emailDoDominioDaEquipe } from "@/lib/admin/tipos-do-uso-de-ia";
 import { contratosDoPainel, type ContratoNaLista } from "@/lib/contratos/painel";
 
 /**
@@ -23,7 +23,7 @@ import { contratosDoPainel, type ContratoNaLista } from "@/lib/contratos/painel"
  *    entra duas vezes.
  *
  * Fica FORA, e a tela diz quanto ficou fora e por quê:
- *  - conta da equipe (admin, `contaInterna`, @demandou.com, Gmail do Bruno);
+ *  - conta da equipe (admin, `contaInterna` ou e-mail @demandou.com);
  *  - pagamento por fora sem comprovante.
  *
  * Tudo o que é plano, contrato assinado e mensalidade é PROJEÇÃO, e sai
@@ -100,9 +100,8 @@ export type ReceitaReal = {
 
 type Conta = { id: string; email: string; name: string | null; plan: string; role: string; contaInterna: boolean; stripeCustomerId: string | null };
 
-export function contaEhDaEquipe(c: { email: string; role: string; contaInterna: boolean }): boolean {
-  return c.role === "admin" || c.contaInterna || emailPareceInterno(c.email);
-}
+// A regra de equipe mora em tipos-do-uso-de-ia.ts, uma só para o painel inteiro.
+export { contaEhDaEquipe };
 
 async function cobrancasDoStripe(desdeHistorico: Date) {
   const { getStripe } = await import("@/lib/stripe");
@@ -210,7 +209,7 @@ export async function lerReceitaReal(desde: Date, ate: Date, agora = new Date())
       if (naJanela(quando)) fora.push({ motivo: "equipe", quando: quando.toISOString(), reais, conta: rotuloDaConta, descricao });
       continue;
     }
-    if (!conta && c.email && emailPareceInterno(c.email)) {
+    if (!conta && c.email && emailDoDominioDaEquipe(c.email)) {
       if (naJanela(quando)) fora.push({ motivo: "equipe", quando: quando.toISOString(), reais, conta: rotuloDaConta, descricao });
       continue;
     }
