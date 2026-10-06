@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { resumoDaEdicao } from "@/lib/media/edicao-escolhida";
 import { escolhaSincronizadaComComando, estiloIdDoComando, estiloQueVale, roteiroDeOutroComando } from "@/lib/media/estilo-do-comando";
 import { CATALOGO_DE_ESTILOS, estiloDoCatalogo } from "@/lib/media/catalogo-de-estilos";
+import { completoNaTela, listaDoCenaACena } from "@/lib/media/roteiro-em-texto";
 
 // O projeto do relato: escolha antiga no Vox, comando novo na "Autoridade high ticket".
 const escolhaVox = { estiloId: "vox", camera: ["dolly-in"], efeitos: ["recorte"], legenda: { modo: "sem" }, insercoesIA: true };
@@ -80,4 +81,33 @@ test("(c) roteiro planejado com outro comando fica marcado para refazer, com o b
 test("nenhum texto novo da tela leva travessão", () => {
   const r = resumoDaEdicao({ videoEstiloEscolha: escolhaVox, videoStyle: "editorial", comando: comandoHighTicket, comandoDoRoteiro: textoVox });
   assert.doesNotMatch(JSON.stringify(r), /—/);
+});
+
+// (d) O cena a cena do completo não depende da abertura.
+function falaDe(n: number) {
+  const palavras = Array.from({ length: n }, (_, i) => ({ texto: i % 8 === 7 ? `fim${i}.` : `palavra${i}`, inicio: i * 0.5, fim: i * 0.5 + 0.4 }));
+  return { palavras, duracao: n * 0.5 };
+}
+
+test("(d) cena a cena do completo com a abertura LIGADA é o mesmo que com ela desligada", () => {
+  const fala = falaDe(400);
+  const completo = { fala, blocos: [], plano: null, insercoes: 0, estiloId: "consorcio" };
+  const momento = { de: 10, ate: 17, inicio: 5, fim: 8.9, frase: "frase forte", soco: "FORTE" };
+  const ligada = { momentos: [momento], reservas: [], feitoEm: "2026-10-06T17:37:00Z" };
+  const comAbertura = completoNaTela(completo as never, "sobrio", true, 200, { abertura: ligada as never });
+  const semAbertura = completoNaTela(completo as never, "sobrio", true, 200, { abertura: { ...ligada, desligada: true } as never });
+  assert.ok((comAbertura.trechos?.length ?? 0) > 0, "com a abertura ligada, o cena a cena aparece");
+  assert.equal(comAbertura.abertura?.ativa, true);
+  assert.deepEqual(comAbertura.trechos, semAbertura.trechos);
+});
+
+test("(d) num vídeo longo, as peças do comando contam como efeito: nada some do cena a cena", () => {
+  const trechos = Array.from({ length: 30 }, (_, i) => ({ indice: i, cena: null, pecas: i % 3 === 0 ? [{ peca: "titulo" }] : undefined, sugestao: i === 4 ? "um zoom" : null }));
+  const { lista, longo, comEfeito } = listaDoCenaACena(trechos as never[], null);
+  assert.equal(longo, true);
+  assert.equal(comEfeito, 11, "10 com peça e 1 com sugestão");
+  assert.equal(lista.length, 11);
+  assert.equal(listaDoCenaACena(trechos as never[], true).lista.length, 30);
+  const todasComPeca = trechos.map((t) => ({ ...t, pecas: [{ peca: "titulo" }] }));
+  assert.equal(listaDoCenaACena(todasComPeca as never[], null).lista.length, 30);
 });

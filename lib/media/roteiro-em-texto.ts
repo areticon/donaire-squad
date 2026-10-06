@@ -781,6 +781,24 @@ export type TrechoDoCompletoNaTela = {
 };
 
 /**
+ * Um trecho do cena a cena "tem efeito" quando tem cena com efeito, peça do
+ * editor por comando ou sugestão do cliente (06/10). Antes só a cena do plano
+ * antigo e a sugestão contavam: no editor por comando (cena sempre null) um
+ * vídeo longo com uma sugestão abria filtrado só nela, e as peças sumiam.
+ */
+export function trechoComEfeito(t: Pick<TrechoDoCompletoNaTela, "cena" | "sugestao" | "pecas">): boolean {
+  return Boolean(t.cena?.efeito || t.sugestao || t.pecas?.length);
+}
+
+/** A lista do cena a cena do completo: filtrada nas cenas com efeito só num vídeo longo e quando o cliente não pediu todas. */
+export function listaDoCenaACena<T extends Pick<TrechoDoCompletoNaTela, "cena" | "sugestao" | "pecas">>(trechos: T[], todas: boolean | null): { lista: T[]; longo: boolean; comEfeito: number } {
+  const comEfeito = trechos.filter(trechoComEfeito);
+  const longo = trechos.length > 24 && comEfeito.length > 0 && comEfeito.length < trechos.length;
+  const verTodas = todas ?? !longo;
+  return { lista: verTodas || !longo ? trechos : comEfeito, longo, comEfeito: comEfeito.length };
+}
+
+/**
  * UMA PEÇA DO EDITOR POR COMANDO NA LINHA QUE O CLIENTE APROVA (06/10; regra
  * do Bruno: "se a linha do roteiro que ele aprovou dizia 'letra vermelha' e
  * ele reclama depois que queria rosa, o erro é dele"). A linha diz o tipo, o
