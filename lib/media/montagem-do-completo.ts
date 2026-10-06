@@ -90,7 +90,7 @@ import {
   type PlanoPronto,
 } from "@/lib/media/editor-por-comando";
 import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
-import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
+import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
 import {
   demonstracaoNaFala,
   insercoesDoPlano,
