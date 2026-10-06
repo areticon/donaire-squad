@@ -43,6 +43,9 @@ export const FAIXAS_DA_LEGENDA_9X16: Record<"baixo" | "topo", Faixa> = {
 
 const TELA = "tela" as const;
 
+/** A folga em volta da caixa medida da peça (fração da altura). */
+const FOLGA = 0.02;
+
 /**
  * A faixa que a peça ocupa no 9:16, ou "tela" (ocupa o quadro inteiro), ou
  * null (não tem texto que brigue com a legenda: seta, círculo, apoio).
@@ -54,7 +57,11 @@ export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa |
   if ((c.props ?? {}).sobreAGravacao) return String((c.props ?? {}).lado) === "topo" ? [0.03, 0.5] : [0.5, 0.95];
   // A PEÇA COM CAIXA MEDIDA (06/10, noite): a caixa que o resolvedor deu (área livre, versão na frente) é a faixa dela.
   const cx = (c.props ?? {}).caixa as { y?: unknown; h?: unknown } | undefined;
-  if (cx && typeof cx.y === "number" && typeof cx.h === "number" && c.peca !== "zoom-no-ponto" && c.peca !== "destaque-na-tela" && c.peca !== "realce-de-quem-fala") return [cx.y, cx.y + cx.h];
+  // Com folga de 0,02 em cada lado (06/10, noite; vídeo cmux4417u): sombra, borda e a entrada animada passam da caixa,
+  // e a legenda encostada na peça já lia como "legenda sobreposta ao texto da peça". Vale para TODA peça com caixa:
+  // as vetoriais (titulo-em-caixa, cartoes-em-linha, icone-com-frase, comparacao-lado-a-lado, interface-de-edicao),
+  // as versões na frente (caixa no topo, cartão embaixo, título no topo), o nome de quem fala, a frase-chave.
+  if (cx && typeof cx.y === "number" && typeof cx.h === "number" && c.peca !== "zoom-no-ponto" && c.peca !== "destaque-na-tela" && c.peca !== "realce-de-quem-fala") return [+Math.max(0, cx.y - FOLGA).toFixed(4), +Math.min(1, cx.y + cx.h + FOLGA).toFixed(4)];
   if (c.peca === "inscrever") return String((c.props ?? {}).lado) === "topo" ? [0.05, 0.2] : [0.78, 0.92];
   switch (c.peca) {
     // Sem texto próprio na faixa da legenda.
@@ -92,6 +99,9 @@ export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa |
     case "fecho":
       return TELA;
   }
+  // A vetorial sem caixa medida (plano antigo): pela altura máxima dela, abaixo do rosto (o título, no alto).
+  if (c.peca === "titulo-em-caixa") return [0.04, 0.2];
+  if (VETORIAIS_DE_CONTEUDO.has(c.peca)) return [0.45, 0.82];
   const ficha = FICHAS[c.peca];
   if (!ficha) return [0.55, 0.88];
   if (ficha.plano === "tela") return TELA;
@@ -99,6 +109,8 @@ export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa |
   if (ficha.plano === "lado") return [0.08, 0.66];
   return [0.55, 0.88];
 }
+
+const VETORIAIS_DE_CONTEUDO = new Set(["icone-com-frase", "comparacao-lado-a-lado", "cartoes-em-linha", "interface-de-edicao"]);
 
 const cruza = (a: Faixa, b: Faixa) => a[0] < b[1] && b[0] < a[1];
 
@@ -142,3 +154,4 @@ export function posicionarLegenda(ed: EdicaoResolvida): { edicao: EdicaoResolvid
   });
   return { edicao: { ...ed, legenda: { ...ed.legenda, paginas } }, movidas, ocultas };
 }
+

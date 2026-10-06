@@ -98,13 +98,14 @@ export type EdicaoResolvida = {
    * campo, embaixo (o lugar de sempre).
    */
   legenda: {
-    paginas: Array<{ inicio: number; fim: number; texto: string; faixa?: "baixo" | "topo" | "oculta" }>;
+    /** `palavras` (06/10, noite): o tempo de cada palavra, quando o cliente fixou um estilo de legenda (o worker acende a falada). */
+    paginas: Array<{ inicio: number; fim: number; texto: string; faixa?: "baixo" | "topo" | "oculta"; palavras?: Array<{ texto: string; inicio: number; fim: number }> }>;
     /**
      * O DESENHO DA LEGENDA NO ESTILO (06/10, noite; lib/media/editor-por-comando/estilo-manda.ts): posição, tamanho,
      * letra e caixa alta que o estilo pede. "baixo" na faixa da página quer dizer a posição principal do estilo; sem o
      * campo, a legenda pequena de sempre no terço de baixo.
      */
-    estilo?: { posicao: "centro" | "baixo" | "topo"; tamanho: "grande" | "medio" | "pequeno"; letra: "condensada" | "limpa" | "serifa"; caixaAlta: boolean; y?: number };
+    estilo?: { posicao: "centro" | "baixo" | "topo"; tamanho: "grande" | "medio" | "pequeno"; letra: "condensada" | "limpa" | "serifa"; caixaAlta: boolean; y?: number; desenho?: "palavra" | "caixa" | "marca-texto" | "limpa" | "papel" };
   } | null;
   insercoes: Record<string, MidiaDaInsercao>;
   /** As telas cheias têm PALCO próprio (opaco, com câmera): o worker deixa a gravação por baixo em vez do fundo parado. */
