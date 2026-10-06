@@ -45,7 +45,7 @@ import { AvisoDaMontagem, type FalhaDaMontagem } from "@/components/video/aviso-
 import { alcanceDaReprovacao, rotuloDaReprovacao, avisoDaReprovacao, ESTADOS_MORTOS } from "@/lib/content/reprovacao";
 import { etiquetaDaPeca } from "@/lib/posts/etiqueta-da-peca";
 import { cardsDaPeca, chaveDaPeca, familiaDaChave } from "@/lib/posts/cards-da-peca";
-import { chaveDaPecaDoVideo, postsDaMesmaPeca } from "@/lib/posts/peca-do-video";
+import { chaveDaPecaDoVideo, pecaDoPost, postsDaMesmaPeca } from "@/lib/posts/peca-do-video";
 import { custoDeRefazerPeca } from "@/lib/credits/estimativa";
 import { formatoDoPost } from "@/lib/publish/formato-de-destino";
 import { DestinosDoDia } from "@/components/posts/destinos-do-dia";
@@ -2167,10 +2167,18 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
   async function handleCancelarPeca() {
     setApproving(true);
     try {
+      // SÓ OS POSTS DESTA PEÇA (05/10, 21:05): o card do Paulo não tem post
+      // ligado, então `dayPosts` é o dia inteiro da campanha, e mandar tudo
+      // levou o YouTube do vídeo completo junto com o carrossel. Sem post de
+      // referência, o card fala pela peça de texto do dia; o servidor confere
+      // de novo (lib/pipeline/cancelar-campanha.ts).
+      const postIds = localCard.postId
+        ? postsDaMesmaPeca(dayPosts, localCard.postId).map((p) => p.id)
+        : dayPosts.filter((p) => pecaDoPost(p) === "texto").map((p) => p.id);
       const res = await fetch(`/api/campaign-cards/${localCard.id}/cancelar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postIds: dayPosts.map((p) => p.id) }),
+        body: JSON.stringify({ postIds }),
       });
       const d = (await res.json().catch(() => ({}))) as { error?: string; quadro?: { postsCancelados: number }; ficou?: string | null };
       if (!res.ok) throw new Error(d.error ?? "erro");
