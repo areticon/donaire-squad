@@ -68,6 +68,7 @@ export function JornadaDaCampanha({
   onFechar,
   onEnviado,
   onEscolherTema,
+  onEscolherPronto,
   comecarNoVideo = false,
 }: {
   aberto: boolean;
@@ -84,6 +85,8 @@ export function JornadaDaCampanha({
   onEnviado: () => void;
   /** A porta do tema delega para a janela que já existe. */
   onEscolherTema: () => void;
+  /** A quarta porta (06/10): o conteúdo pronto do cliente. Sem ela, três portas. */
+  onEscolherPronto?: () => void;
   /**
    * Quem já escolheu "Editar o meu vídeo" na aba Criar (29/09) não precisa ver
    * a escolha de novo: a jornada abre no passo seguinte.
@@ -255,6 +258,14 @@ export function JornadaDaCampanha({
                         onEscolherTema();
                       }}
                       onGemeo={() => router.push(`/projects/${projectId}/gemeo`)}
+                      onPronto={
+                        onEscolherPronto
+                          ? () => {
+                              onFechar();
+                              onEscolherPronto();
+                            }
+                          : undefined
+                      }
                     />
                   )}
 
