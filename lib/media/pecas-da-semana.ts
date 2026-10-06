@@ -17,6 +17,8 @@ import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
 import { ajustarParaFormato } from "@/lib/media/margem-de-seguranca";
 import { limparMarcadores, montarPrefixoCacheavel, textoDaRede } from "@/lib/media/write-posts";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
+import { eloDaCampanha, nomeDoCanal, pecasDoPlano, regraDeLinkNaAdaptacao } from "@/lib/media/elo-da-campanha";
+import { textoDoCompleto } from "@/lib/media/completo-no-quadro";
 import { AberturasDaSemana, aberturaDe } from "@/lib/media/aberturas-da-semana";
 import { escreverLegendaDoCarrossel } from "@/lib/media/carrossel-do-video";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
@@ -30,7 +32,9 @@ import {
   type FormatoDoDia,
   type FormatoEscrito,
   type RedeDoPlano,
+  type SemanaDoVideo,
 } from "@/lib/media/semana-do-video";
+import type { Trecho } from "@/lib/media/select-clips";
 import { IDS_DOS_REDATORES, principalDoDia, redatorDaRede, type RedatorDaRede } from "@/lib/media/redator-da-rede";
 import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import type { Prisma } from "@prisma/client";
@@ -84,6 +88,8 @@ export async function carregarVideo(videoJobId: string) {
       transcript: true,
       radar: true,
       clips: true,
+      // O título do completo sai do mesmo texto do post dele (elo da campanha, 05/10).
+      durationSec: true,
       project: {
         select: {
           name: true,
@@ -94,7 +100,8 @@ export async function carregarVideo(videoJobId: string) {
           // Os links do cliente (03/10), que os redatores distribuem por rede.
           config: true,
           videoSemana: true,
-          socialAccounts: { where: { isActive: true }, select: { platform: true, id: true } },
+          // O @ e o nome das contas: o canal do YouTube é chamado pelo nome enquanto o completo não tem link (05/10).
+          socialAccounts: { where: { isActive: true }, select: { platform: true, id: true, username: true, displayName: true } },
           agents: {
             where: { agentId: { in: [...IDS_DOS_REDATORES, "tiago-twitter", "diana-design"] } },
             select: { agentId: true, name: true, role: true, persona: true, style: true },
@@ -173,6 +180,35 @@ export function planoDaSemana(dias: Array<{ dia: number; formato: FormatoDoDia; 
       return `- ${DIAS[d]} (${ROTULO_DO_FORMATO[f]}${onde}): ${a ?? "tese própria do dia"}`;
     })
     .join("\n");
+}
+
+/**
+ * O ELO DA CAMPANHA para cada dia (05/10, noite): quem cada peça chama é
+ * regra de código (o vídeo completo sempre, e a peça do dia anterior no
+ * plano), e o redator escreve a chamada na mesma chamada que escreve a peça.
+ * O completo entra pelo post dele (título na primeira linha, link só depois
+ * de publicado); antes de o post existir, pelo mesmo texto que ele vai ter.
+ * Ver lib/media/elo-da-campanha.ts.
+ */
+async function eloDoVideo(video: VideoParaEscrever, semana: SemanaDoVideo): Promise<(dia: number, rede: string) => string> {
+  const postDoCompleto = await prisma.post.findFirst({
+    where: {
+      projectId: video.projectId,
+      platform: "youtube",
+      AND: [{ metadata: { path: ["videoJobId"], equals: video.id } }, { metadata: { path: ["gravacaoCompleta"], equals: true } }],
+    },
+    select: { content: true, externalUrl: true },
+  });
+  const trechos = ((video.clips as unknown as Array<Trecho & { publicar?: boolean; texto?: { titulo?: string } }> | null) ?? []);
+  const cortes = trechos.filter((t) => t.publicar !== false).map((t) => t.texto?.titulo?.trim() || t.titulo?.trim() || "").filter(Boolean);
+  const pecas = pecasDoPlano(semana, cortes);
+  const radar = video.radar as unknown as Radar | null;
+  const completo = {
+    titulo: postDoCompleto?.content.split("\n")[0]?.trim() || textoDoCompleto(trechos, video).split("\n")[0]?.trim() || null,
+    url: postDoCompleto?.externalUrl ?? null,
+    canal: nomeDoCanal(video.project.socialAccounts),
+  };
+  return (dia, rede) => eloDaCampanha({ dia, rede, pecas, completo, angulos: radar?.angulos ?? [] });
 }
 
 /**
@@ -270,6 +306,7 @@ export async function reescreverAberturasRepetidas(
   const radar = video.radar as unknown as Radar | null;
   const prefixo = prefixoDoVideo(video);
   const plano = planoDaSemana(dias, radar);
+  const elo = await eloDoVideo(video, planoDoRun(run.config, video.project.videoSemana));
   const lucas = video.project.agents.find((a) => a.agentId === "lucas-linkedin");
   const tiago = video.project.agents.find((a) => a.agentId === "xavier-x") ?? fichaComoAgente("xavier-x");
   const personaDaRede = (rede: string) => {
@@ -290,9 +327,11 @@ export async function reescreverAberturasRepetidas(
       (c) => c.dayOfWeek === dia && c.postId && (c.metadata as { derivado?: boolean } | null)?.derivado && c.agentId !== AGENTES.diana.agentId
     );
     if (!formato || !card?.postId) continue;
-    const contexto = contextoDoDia(dia, formato, radar, plano);
+    // O elo da campanha vai junto do contexto, na rede do post (05/10).
+    const contextoNa = (rede: string) => contextoDoDia(dia, formato, radar, plano) + elo(dia, rede);
     const antes = aberturaDe(card.content ?? "");
     if (formato === "thread") {
+      const contexto = contextoNa("twitter");
       const texto = await aberturas.escrever(DIAS[dia], (p) => escreverThread(tiago, prefixo, contexto + p, usage(AGENTES.tiago.agentId)), (t) => t);
       await prisma.post.update({ where: { id: card.postId }, data: { content: texto } });
       const meta = { ...((card.metadata as Record<string, unknown> | null) ?? {}), tweets: separarTweets(texto).length };
@@ -300,6 +339,7 @@ export async function reescreverAberturasRepetidas(
       feitos.push({ dia, antes, depois: aberturaDe(texto) });
     } else if (formato === "poll") {
       const post = await prisma.post.findUnique({ where: { id: card.postId }, select: { platform: true, metadata: true } });
+      const contexto = contextoNa(post?.platform ?? "linkedin");
       const enquete = await aberturas.escrever(DIAS[dia], (p) => escreverEnquete(lucas, prefixo, contexto + p, post?.platform ?? "linkedin", usage(AGENTES.lucas.agentId)), (e) => e.intro);
       const legivel = textoDaEnquete(enquete);
       await prisma.post.update({
@@ -313,6 +353,7 @@ export async function reescreverAberturasRepetidas(
       feitos.push({ dia, antes, depois: aberturaDe(enquete.intro) });
     } else if (formato === "text") {
       const post = await prisma.post.findUnique({ where: { id: card.postId }, select: { platform: true } });
+      const contexto = contextoNa(post?.platform ?? "linkedin");
       const texto = await aberturas.escrever(
         DIAS[dia],
         (p) => escreverTexto(personaDaRede(post?.platform ?? "linkedin"), prefixo, contexto + p, post?.platform ?? "linkedin", usage(redatorDaRede(post?.platform ?? "linkedin").agentId)),
@@ -374,6 +415,7 @@ async function adaptarParaRede(
 - ${formato.instrucao}
 - Não acrescente fatos, números, fontes nem promessas que não estejam no post original.
 - Não prometa mídia que o post não tem: nada de "vídeo nos comentários", "gravei", "link na bio".
+- ${regraDeLinkNaAdaptacao(para)}
 - Devolva SÓ o texto adaptado, sem comentário e sem explicar o que mudou.
 ${aviso}
 POST ORIGINAL (${NOME_DA_REDE[de] ?? de}):
@@ -426,6 +468,8 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   // rodada anterior. Cada dia novo é proibido de repetir qualquer uma delas.
   const aberturas = new AberturasDaSemana(aberturasJaUsadas(video, cardsDoVideo));
   const plano = planoDaSemana(dias, radar);
+  // Quem cada peça chama (o completo e a peça anterior), decidido em código (05/10).
+  const elo = await eloDoVideo(video, semana);
 
   // A DATA de cada dia sai do início congelado no run (30/09), e não mais da
   // segunda da semana: com a campanha começando na quarta, a terça é a da
@@ -611,7 +655,10 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
       return artes;
     };
 
-    const contexto = contextoDoDia(dia, formato, radar, plano, tese);
+    // O pedido do dia leva o elo da campanha (quem esta peça chama) na rede
+    // principal; as frases das lâminas não levam, porque chamada não é lâmina.
+    const contextoSemElo = contextoDoDia(dia, formato, radar, plano, tese);
+    const contexto = contextoSemElo + elo(dia, principal);
     // Cada peça passa pela fila de aberturas: se abrir igual a outro dia, é
     // escrita de novo sabendo quais ganchos estão tomados (ver aberturas-da-semana.ts).
     const semTopo = (t: string, tirar: (x: string) => string | null) => tirar(t);
@@ -744,6 +791,8 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           // dele. Com a fonte ao lado, cada um fica com o dono certo.
           ...(radar?.dados ?? []).map((d) => `Dado: ${d.valor}, ${d.oQueMede} (fonte: ${d.fonte})`),
           ...(radar?.achados ?? []).map((x) => `Achado: ${x.titulo} (fonte: ${x.fonte}${x.data ? `, ${x.data}` : ""})`),
+          // A legenda do carrossel também chama o completo e a peça anterior (05/10).
+          elo(dia, principal).trim(),
         ].filter(Boolean);
         // Frases e legenda saem juntas pela fila de aberturas, ANTES das
         // lâminas: se a legenda repetir o gancho de outro dia, reescrever as
@@ -751,7 +800,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         const escrito = await aberturas.escrever(
           DIAS[dia],
           async (proibidas) => {
-            const frases = await frasesDosSlides(diana, prefixo, contexto + proibidas, usage(AGENTES.diana.agentId));
+            const frases = await frasesDosSlides(diana, prefixo, contextoSemElo + proibidas, usage(AGENTES.diana.agentId));
             const legenda = await escreverLegendaDoCarrossel({
               frases,
               contexto: contextoDaLegenda,
@@ -775,7 +824,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           if (c.coerente === false) {
             console.warn(`[pecas-da-semana][${video.id}] dia ${dia}: as frases das lâminas não conversam com a legenda (${c.nota?.toFixed(2)}); elas nascem da legenda.`);
             try {
-              frases = await frasesDosSlides(diana, prefixo, `${contexto}\n\nLEGENDA JÁ ESCRITA DESTE CARROSSEL (as frases dos slides nascem dela, na mesma ideia):\n${legenda}`, usage(AGENTES.diana.agentId));
+              frases = await frasesDosSlides(diana, prefixo, `${contextoSemElo}\n\nLEGENDA JÁ ESCRITA DESTE CARROSSEL (as frases dos slides nascem dela, na mesma ideia):\n${legenda}`, usage(AGENTES.diana.agentId));
             } catch (e) {
               console.error(`[pecas-da-semana][${video.id}] dia ${dia}: as frases novas não saíram, ficam as da tese:`, e instanceof Error ? e.message : e);
             }

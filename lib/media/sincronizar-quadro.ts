@@ -3,6 +3,9 @@ import type { Trecho } from "@/lib/media/select-clips";
 import { destinoPorId } from "@/lib/media/destinos";
 import { diaDoTrecho, diaDoTrechoNoPlano } from "@/lib/media/quadro-do-video";
 import { dataDoDia, DESTINO_DE_CORTE_DA_REDE, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
+import { textoDoCompleto } from "@/lib/media/completo-no-quadro";
+import { descricaoDoCorte, nomeDoCanal } from "@/lib/media/elo-da-campanha";
+import { lerLinks } from "@/lib/projeto/links-do-cliente";
 
 /**
  * Faz o Gestor de Conteúdo ESPELHAR a seleção da aba Vídeo.
@@ -58,7 +61,23 @@ function legendaDoDestino(t: TrechoDoQuadro, plataforma: string): string {
 export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void> {
   const video = await prisma.videoJob.findUnique({
     where: { id: videoJobId },
-    select: { id: true, projectId: true, clips: true },
+    select: {
+      id: true,
+      projectId: true,
+      clips: true,
+      durationSec: true,
+      originalName: true,
+      radar: true,
+      // O título do completo, os links e as redes do cliente: a descrição de
+      // cada corte convida para o completo e fecha com o bloco de links (05/10).
+      project: {
+        select: {
+          name: true,
+          config: true,
+          socialAccounts: { where: { isActive: true }, select: { platform: true, username: true, displayName: true } },
+        },
+      },
+    },
   });
   if (!video) return;
 
@@ -90,6 +109,27 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
     where: { runId: run.id, cardType: "video_clip" },
     select: { id: true, status: true, postId: true, dayOfWeek: true, metadata: true },
   });
+
+  // O vídeo completo que os cortes chamam (05/10): o título é a primeira linha
+  // do post dele (ou o mesmo texto que o post vai ter, quando ele ainda não
+  // está no quadro) e o link só existe depois de publicado. Antes disso o
+  // convite chama pelo nome do canal, e a publicação do completo troca pelo
+  // link (lib/media/cortes-com-link-do-completo.ts).
+  const postDoCompleto = await prisma.post.findFirst({
+    where: {
+      projectId: video.projectId,
+      platform: "youtube",
+      AND: [{ metadata: { path: ["videoJobId"], equals: video.id } }, { metadata: { path: ["gravacaoCompleta"], equals: true } }],
+    },
+    select: { content: true, externalUrl: true },
+  });
+  const completo = {
+    titulo: postDoCompleto?.content.split("\n")[0]?.trim() || textoDoCompleto(trechos, video).split("\n")[0]?.trim() || null,
+    url: postDoCompleto?.externalUrl ?? null,
+    canal: nomeDoCanal(video.project?.socialAccounts ?? []),
+    links: lerLinks(video.project?.config),
+    contas: video.project?.socialAccounts ?? [],
+  };
 
   // O que a seleção PEDE: um card por (trecho marcado x destino de vídeo).
   // Com dia de vídeo curto no plano, os destinos são as redes daquele dia.
@@ -152,7 +192,8 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
       diaDoPlano(pedido.indice)?.dia ??
       (plano.inicio ? diaDoTrechoNoPlano(trechos, pedido.indice, plano.inicio) : diaDoTrecho(trechos, pedido.indice));
     const data = dataDoDia(alvo, dayOfWeek);
-    const legenda = legendaDoDestino(pedido.t, destino.plataforma);
+    // A legenda do redator, o convite ao completo e o bloco de links da rede.
+    const legenda = descricaoDoCorte({ ...completo, rede: destino.plataforma, legenda: legendaDoDestino(pedido.t, destino.plataforma) });
     const post = await prisma.post.create({
       data: {
         projectId: video.projectId,

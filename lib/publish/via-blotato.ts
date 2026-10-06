@@ -23,6 +23,7 @@ import {
   parseLinkedInArticleContent,
 } from "@/lib/articles/linkedin-article";
 import { abrirMidia, ehPublica } from "@/lib/media/storage";
+import { ligarCortesAoCompleto } from "@/lib/media/cortes-com-link-do-completo";
 
 /**
  * PUBLICAR PELO BLOTATO, gravando no post o MESMO que a API própria grava
@@ -420,7 +421,7 @@ function semErro(metadata: unknown): Record<string, unknown> {
 }
 
 async function gravarPublicado(postId: string, conta: SocialAccount, envio: StatusDoEnvio, avisos: string[]): Promise<Resultado> {
-  const atual = await prisma.post.findUnique({ where: { id: postId }, select: { metadata: true, imageUrl: true, mediaType: true } });
+  const atual = await prisma.post.findUnique({ where: { id: postId }, select: { projectId: true, platform: true, content: true, metadata: true, imageUrl: true, mediaType: true } });
   const externalUrl = envio.publicUrl ?? null;
   const externalId = idDaRedePeloLink(conta.platform, externalUrl) ?? `${PREFIXO_DO_ENVIO}${envio.postSubmissionId}`;
   const metadata = semErro(atual?.metadata);
@@ -441,6 +442,12 @@ async function gravarPublicado(postId: string, conta: SocialAccount, envio: Stat
     },
   });
   if (!externalUrl) avisos.push("A rede confirmou a publicação, mas não devolveu o link do post.");
+  // O completo no ar leva o link aos cortes (05/10), como na API própria.
+  if (conta.platform === "youtube" && externalUrl && atual) {
+    await ligarCortesAoCompleto({ id: postId, ...atual }, externalUrl).catch((e) =>
+      console.warn(`[ponte][${postId}] os cortes ficaram sem o link do completo:`, e instanceof Error ? e.message : e)
+    );
+  }
   return { url: externalUrl, externalId, aviso: avisos.length ? avisos.join(" ") : undefined };
 }
 

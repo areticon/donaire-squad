@@ -3,7 +3,8 @@ import type { Trecho } from "@/lib/media/select-clips";
 import { DESTINO_COMPLETO } from "@/lib/media/destinos";
 import { montarPostDeVideo, montarPostSemCortes, tituloDaGravacao } from "@/lib/media/youtube-post";
 import type { Radar } from "@/lib/media/radar-do-video";
-import { lerLinks, secaoDeLinksDoYouTube } from "@/lib/projeto/links-do-cliente";
+import { lerLinks } from "@/lib/projeto/links-do-cliente";
+import { blocoDeLinksDaDescricao } from "@/lib/media/elo-da-campanha";
 import { dataDoDia, diaDaSemanaDe, planoDoRun } from "@/lib/media/semana-do-video";
 
 /**
@@ -30,7 +31,14 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
       clips: true,
       originalName: true,
       radar: true,
-      project: { select: { name: true, config: true } },
+      project: {
+        select: {
+          name: true,
+          config: true,
+          // As redes do cliente, que fecham a descrição junto dos links (05/10).
+          socialAccounts: { where: { isActive: true }, select: { platform: true, username: true, displayName: true } },
+        },
+      },
     },
   });
   if (!video?.completoUrl) return false;
@@ -63,9 +71,15 @@ export async function anexarCompletoAoQuadro(videoJobId: string): Promise<boolea
   const diaDoCompleto = inicio ? diaDaSemanaDe(inicio) : 1;
   const data = dataDoDia({ inicio, weekStart: run.weekStart }, diaDoCompleto, 9);
 
-  // Os links do cliente no fim da descrição (03/10): o YouTube é a rede que
-  // mais aceita link, e a lista sai sem IA, na ordem de prioridade.
-  const conteudo = [textoDoCompleto(trechos, video), secaoDeLinksDoYouTube(lerLinks(video.project?.config))].filter(Boolean).join("\n\n");
+  // Os links do cliente e as redes dele no fim da descrição (03/10 e 05/10):
+  // o YouTube é a rede que mais aceita link, e o bloco sai sem IA, um por
+  // linha, na ordem de prioridade (lib/media/elo-da-campanha.ts).
+  const conteudo = [
+    textoDoCompleto(trechos, video),
+    blocoDeLinksDaDescricao({ rede: "youtube", links: lerLinks(video.project?.config), contas: video.project?.socialAccounts ?? [] }),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   let postId: string | null = null;
   // O filtro exige gravacaoCompleta: só videoJobId casava com os posts dos
   // CORTES de YouTube Shorts, e o card do completo saiu ligado ao post do

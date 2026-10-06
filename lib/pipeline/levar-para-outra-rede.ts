@@ -7,6 +7,7 @@ import { debitar, saldo, SaldoInsuficiente } from "@/lib/credits";
 import { CREDIT_COSTS } from "@/lib/stripe";
 import { LINKEDIN_MAX_COMMENTARY_CHARS } from "@/lib/oauth/linkedin";
 import { formatoValido } from "@/lib/publish/formato-de-destino";
+import { regraDeLinkNaAdaptacao } from "@/lib/media/elo-da-campanha";
 
 /**
  * O POST QUE JÁ SAIU PODE IR PARA OUTRA REDE.
@@ -151,6 +152,7 @@ ${mencoes.map((m) => `   • ${m.frase}`).join("\n")}
 - ${formato.instrucao}
 - Não acrescente fatos, números, fontes nem promessas que não estejam no post original.
 - Não prometa mídia que o post não tem: nada de "vídeo nos comentários", "gravei", "link na bio".
+- ${regraDeLinkNaAdaptacao(destino.platform)}
 - Devolva SÓ o texto adaptado, sem comentário e sem explicar o que mudou.
 ${avisoDeRede}
 POST ORIGINAL (${NOME_DA_REDE[original.platform] ?? original.platform}):
