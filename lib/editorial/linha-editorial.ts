@@ -5,6 +5,7 @@ import { palavrasDaCena } from "@/lib/media/roteiro-do-video";
 import { montarRodada, registrarRodada, type Rodada, type Vaga } from "@/lib/editorial/fontes-da-linha";
 import { ROTULO_DA_ORIGEM, type CenaDoRoteiro, type FonteDaIdeia, type OrigemDaIdeia, type PapelDaCena } from "@/lib/editorial/tipos";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { blocoDaMemoriaDoCliente } from "@/lib/cerebro/contexto";
 
 /**
  * A LINHA EDITORIAL (29/09/2026): ideias de vídeo e roteiros por cena.
@@ -217,7 +218,7 @@ export async function gerarIdeias(projectId: string, userId: string, quantas = 8
   const trechosPorId = new Map(rodada.trechos.map((t) => [t.id, t]));
   const padroesPorChave = new Map(rodada.padroes.map((p) => [p.chave, p]));
 
-  const sistema = `Você é o Roberto, editor de pauta de um canal de vídeo de ${ctx.name}. Propõe pautas de VÍDEO que a própria pessoa grava falando para a câmera, cada uma nascida de um fato do cardápio. Nunca use travessão: use vírgula, dois-pontos ou parênteses. Nunca invente fato, número ou fonte.${await blocoDasRegrasDoProjeto(projectId, ["roteiro"])}`;
+  const sistema = `Você é o Roberto, editor de pauta de um canal de vídeo de ${ctx.name}. Propõe pautas de VÍDEO que a própria pessoa grava falando para a câmera, cada uma nascida de um fato do cardápio. Nunca use travessão: use vírgula, dois-pontos ou parênteses. Nunca invente fato, número ou fonte.${await blocoDasRegrasDoProjeto(projectId, ["roteiro"])}${await blocoDaMemoriaDoCliente(projectId, "texto")}`;
 
   const aceitas: Array<{ ideia: IdeiaDoModelo; vaga: Vaga; item: string }> = [];
   const recusadas: string[] = [];
@@ -315,7 +316,7 @@ export async function escreverRoteiro(roteiroId: string, duracao: number): Promi
   const palavras = palavrasDaCena(porCena);
   const f = (r.fonte ?? {}) as FonteDaIdeia;
 
-  const sistema = `Você escreve roteiros de vídeo para a pessoa gravar falando para a câmera, com a voz dela. Nunca use travessão: use vírgula, dois-pontos ou parênteses. Nunca invente número, pesquisa ou caso: onde um dado ajudaria, escreva [DADO: o que buscar] para a pessoa completar.${await blocoDasRegrasDoProjeto(r.projectId, ["roteiro"])}`;
+  const sistema = `Você escreve roteiros de vídeo para a pessoa gravar falando para a câmera, com a voz dela. Nunca use travessão: use vírgula, dois-pontos ou parênteses. Nunca invente número, pesquisa ou caso: onde um dado ajudaria, escreva [DADO: o que buscar] para a pessoa completar.${await blocoDasRegrasDoProjeto(r.projectId, ["roteiro"])}${await blocoDaMemoriaDoCliente(r.projectId, "texto")}`;
   const pedido = `PAUTA: ${r.titulo}
 POR QUE AGORA: ${r.gancho ?? ""}
 ${f.angulo ? `ÂNGULO (o recorte que esta pauta tem e as outras não): ${f.angulo}\n` : ""}${f.abertura ? `PRIMEIRA FRASE SUGERIDA (pode melhorar, sem perder a ideia): ${f.abertura}\n` : ""}NICHO: ${ctx.niche ?? "negócios"} | PÚBLICO: ${ctx.targetAudience ?? "empresários"} | TOM: ${ctx.voice ?? "direto e próximo"}

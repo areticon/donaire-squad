@@ -1,7 +1,9 @@
 import { auth } from "@/lib/auth/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { registrarAtoNaPeca } from "@/lib/cerebro/captura";
+import type { AtoDaPeca } from "@/lib/cerebro/tipos";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -74,6 +76,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await prisma.post.update({
       where: { id: card.postId },
       data: { content },
+    });
+  }
+
+  // O SEGUNDO CÉREBRO (06/10): o ato do cliente na peça vira nota dele (uma por
+  // peça, com o histórico), lida pelo JEV depois da resposta. Nunca trava aqui.
+  const ATO_DO_STATUS: Record<string, AtoDaPeca> = { approved: "aprovou", rejected: "recusou", needs_revision: "pediu_revisao", archived: "arquivou" };
+  const atos: AtoDaPeca[] = [];
+  if (content !== undefined && content !== card.content) atos.push("editou_texto");
+  if (status !== undefined && status !== card.status && ATO_DO_STATUS[status]) atos.push(ATO_DO_STATUS[status]);
+  if (atos.length) {
+    after(async () => {
+      for (const ato of atos) await registrarAtoNaPeca({ projectId: card.projectId, ato, cardId: id, postId: card.postId });
     });
   }
 

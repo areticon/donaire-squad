@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { registrarNota } from "@/lib/cerebro/captura";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -46,6 +47,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       value: { reason, cardType, agentId: card.agentId, dayOfWeek: card.dayOfWeek, timestamp: new Date().toISOString() },
     },
   });
+
+  // O SEGUNDO CÉREBRO (06/10): a recusa com motivo é nota do cliente; o JEV lê
+  // depois da resposta se ela vale para as próximas peças.
+  after(() => registrarNota(card.projectId, `recusa:${key}`));
 
   return NextResponse.json({ ok: true });
 }

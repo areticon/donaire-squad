@@ -20,6 +20,7 @@ import { ehPedidoDeRefazerVideo, regerarVideoDoDia } from "@/lib/media/regerar-v
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { abrirPedido, estadoDoPedido, executarPedido } from "@/lib/media/pedido-do-card";
 import { capturarFeedbackDoChatDoCard } from "@/lib/feedback/captura";
+import { blocoDaMemoriaDoCliente } from "@/lib/cerebro/contexto";
 
 /** Detect if a media URL represents a video (GCS URL, external .mp4, or base64 video) */
 function detectIsVideo(mediaUrl?: string | null): boolean {
@@ -95,7 +96,10 @@ async function tratarChatDoCard(
   if (!message?.trim()) return NextResponse.json({ error: "message required" }, { status: 400 });
 
   const DADOS_DO_CARD = {
-    project: { include: { memories: true, contexts: true } },
+    // Sem as memórias: a memória do cliente entra pelo bloco do cérebro
+    // (blocoDaMemoriaDoCliente), e carregar todas as linhas do projeto aqui
+    // trazia os estudos e os registros inteiros a cada mensagem do chat.
+    project: { include: { contexts: true } },
     post: true,
     run: { select: { config: true } },
   } as const;
@@ -281,10 +285,14 @@ async function tratarChatDoCard(
     .map((c) => `## ${c.title}\n${c.compiled}`)
     .join("\n\n");
 
-  const preferences = card.project.memories
-    .filter((m) => m.type === "preference")
-    .map((m) => `- ${m.key}: ${JSON.stringify(m.value)}`)
-    .join("\n");
+  // A MEMÓRIA DO CLIENTE (06/10, lib/cerebro/contexto.ts): o que o JEV marcou
+  // como preferência duradoura, do tema desta peça, mais os últimos pedidos do
+  // chat (que este chat já lia, agora com teto: antes ia a lista inteira, em
+  // JSON, e crescia sem fim).
+  const alvoDaMemoria = card.cardType === "media" ? "arte" : card.cardType === "video_clip" || card.cardType === "video_completo" ? "video" : "texto";
+  const preferences = (await blocoDaMemoriaDoCliente(card.projectId, alvoDaMemoria, { comPedidosDoChat: true }))
+    .replace(/^\s*MEMÓRIA DO CLIENTE[^\n]*\n/, "")
+    .trim();
 
   const historyContext = chatHistory.length > 0
     ? `\n\nHistórico de ajustes:\n${chatHistory.map((m) => `${m.role === "user" ? "Usuário" : "IA"}: ${m.content.slice(0, 200)}`).join("\n")}`

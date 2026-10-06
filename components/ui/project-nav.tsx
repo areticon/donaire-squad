@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit, Plus, NotebookPen } from "lucide-react";
+import { FileText, Settings, Radio, PencilLine, BarChart2, BrainCircuit, Plus, NotebookPen, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ProjectNav({
@@ -72,6 +72,15 @@ export function ProjectNav({
       label: "Resultados",
       icon: BarChart2,
       show: isActive,
+    },
+    // O SEGUNDO CÉREBRO (06/10): depois de medir, lembrar. Tudo o que foi
+    // pedido, aprovado, recusado e decidido no projeto, em notas ligadas. Vale
+    // também em setup (o setup já é memória) e para o membro, que consulta.
+    {
+      href: `/projects/${projectId}/cerebro`,
+      label: "Segundo cérebro",
+      icon: Network,
+      show: true,
     },
     {
       href: `/projects/${projectId}/settings`,

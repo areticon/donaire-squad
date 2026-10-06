@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { jevLigado } from "@/lib/jev/cliente";
 import { classificarFeedback, type GrupoAberto } from "@/lib/feedback/classificar";
+import { registrarNota } from "@/lib/cerebro/captura";
 import { JANELA_DA_REPESCAGEM_MS, modulosDoTipoDeCard, precisaDeRepescagem, semEmail, tituloDoGrupo, type ContextoDoFeedback, type Origem } from "@/lib/feedback/regras";
 
 /**
@@ -65,6 +66,9 @@ export async function capturarFeedback(c: Captura): Promise<string | null> {
   }
 
   await classificarEGravar({ id, texto, origem: c.origem, contexto: c.contexto ?? null, projectId: c.projectId ?? null });
+  // O SEGUNDO CÉREBRO DO CLIENTE (06/10): o mesmo pedido vira nota da memória
+  // dele (sem cópia: a nota lê esta linha). registrarNota engole o próprio erro.
+  if (c.projectId) await registrarNota(c.projectId, `feedback:${id}`);
   return id;
 }
 

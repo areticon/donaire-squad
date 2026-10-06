@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
+import { registrarNota } from "@/lib/cerebro/captura";
 import { criarRegraDoCliente } from "@/lib/referencias/regras";
 
 /**
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const corpo = (await req.json().catch(() => ({}))) as { texto?: string; alvos?: string[]; porque?: string };
   try {
     const regra = await criarRegraDoCliente(id, String(corpo.texto ?? ""), Array.isArray(corpo.alvos) ? corpo.alvos : [], typeof corpo.porque === "string" ? corpo.porque : undefined);
+    // O SEGUNDO CÉREBRO (06/10): a regra escrita pelo dono vira nota lida pelo JEV.
+    after(() => registrarNota(id, `regra:${regra.id}`));
     return NextResponse.json({ ok: true, regra });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Não consegui salvar a regra." }, { status: 400 });

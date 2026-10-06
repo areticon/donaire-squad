@@ -53,6 +53,7 @@ import { motivoDoParecer, oQueFazerDoCliente } from "@/lib/squad/correcao-da-ver
 import { veraConfereNaCampanha, veraRevisaNaCampanha } from "@/lib/squad/vera-pelo-jev";
 import { fraseDeSaldoDoMembro, podeUsarProjeto } from "@/lib/equipe/conta";
 import { blocoDasRegrasDoProjeto } from "@/lib/referencias/regras";
+import { blocoDaMemoriaDoCliente } from "@/lib/cerebro/contexto";
 import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
@@ -1850,7 +1851,11 @@ async function runPipeline(
   // OS LINKS DO CLIENTE (03/10, lib/projeto/links-do-cliente.ts): como DADO,
   // com a regra de cada rede. Estáveis na campanha, por isso no prefixo.
   const linksDoCliente = blocoDosLinks(lerLinks(project.config));
-  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto + estudoDosPerfis + linksDoCliente);
+  // A MEMÓRIA DO CLIENTE (06/10, lib/cerebro/contexto.ts): o que ele já pediu,
+  // recusou e decidiu e que o JEV marcou como valendo para as próximas peças.
+  // Lida a cada fatia, como as regras; vazia enquanto nada foi marcado.
+  const memoriaDoCliente = await blocoDaMemoriaDoCliente(project.id, "texto");
+  const cachedPrefix = buildCachedPrefix(contextDocs, naoCitar, regrasDoProjeto + memoriaDoCliente + estudoDosPerfis + linksDoCliente);
 
   // As lições da Vera (29/09): o erro de cada agente volta para ele antes de
   // escrever. Lidas uma vez por fatia; falha aqui só tira as lições.

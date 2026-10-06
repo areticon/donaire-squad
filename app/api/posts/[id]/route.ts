@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { esconderDiaSemPosts, reabrirDia } from "@/lib/posts/espelhar-no-gestor";
 import { formatoValido } from "@/lib/publish/formato-de-destino";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { registrarAtoNaPeca } from "@/lib/cerebro/captura";
+import type { AtoDaPeca } from "@/lib/cerebro/tipos";
 import { arteCoerenteComOTexto } from "@/lib/squad/coerencia-da-arte";
 import { abrirPedido, executarPedido } from "@/lib/media/pedido-do-card";
 
@@ -192,6 +194,21 @@ export async function PATCH(
   const saiuDoArquivo = post.status === "cancelled" && updated.status !== "cancelled";
   if (virouArquivado) await esconderDiaSemPosts(updated.runId, updated.dayOfWeek);
   if (saiuDoArquivo) await reabrirDia(updated.runId, updated.dayOfWeek);
+
+  // O SEGUNDO CÉREBRO (06/10): editar, agendar, voltar a rascunho e arquivar
+  // viram a nota da peça, depois da resposta. A edição vem antes, para o
+  // estado da nota ser o do último gesto.
+  const atos: AtoDaPeca[] = [];
+  if (typeof body.content === "string" && body.content !== post.content) atos.push("editou_texto");
+  if (updated.status === "scheduled" && post.status !== "scheduled") atos.push("agendou");
+  if (body.cancelSchedule && post.status === "scheduled") atos.push("voltou_rascunho");
+  if (virouArquivado) atos.push("arquivou");
+  if (saiuDoArquivo) atos.push("desarquivou");
+  if (atos.length) {
+    after(async () => {
+      for (const ato of atos) await registrarAtoNaPeca({ projectId: post.projectId, ato, postId: id });
+    });
+  }
 
   return NextResponse.json({ post: updated });
 }
