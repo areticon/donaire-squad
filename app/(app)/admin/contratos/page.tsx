@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { exigirAdmin } from "@/lib/admin/guarda";
 import { prisma } from "@/lib/db/prisma";
 import { contratosDoPainel, descontosDoMes } from "@/lib/contratos/painel";
+import { listaDeCobrancas, resumoDasCobrancas } from "@/lib/contratos/cobrancas";
 import { TETO_COM_APROVACAO, TETO_SEM_APROVACAO, porcentagem } from "@/lib/contratos/preco";
 import { provedorDeAssinatura } from "@/lib/contratos/assinatura";
 import { parcelamentoDoEmissorDisponivel } from "@/lib/contratos/links-de-pagamento";
@@ -64,6 +65,9 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
   const data = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "a definir");
   // OS DESCONTOS DO MÊS (04/10): total e por vendedor, e o que espera o dono.
   const descontos = descontosDoMes(contratos, agora);
+  // AS COBRANÇAS (05/10): enviados sem assinatura, assinados sem pagamento e
+  // parcelas em atraso, com o acompanhamento (FUP) vencido em destaque.
+  const cobrancas = resumoDasCobrancas(await listaDeCobrancas(agora));
 
   return (
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
@@ -89,6 +93,17 @@ export default async function ContratosPage({ searchParams }: { searchParams: Pr
           Voltar ao painel
         </Link>
       </header>
+
+      <Link
+        href="/admin/contratos/cobrancas"
+        className="block rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-[var(--realce-2)]"
+        style={{ borderColor: cobrancas.vencidas ? "var(--badge-danger-text)" : "var(--border)", color: cobrancas.vencidas ? "var(--badge-danger-text)" : "var(--text-primary)", background: "var(--bg-elevated)" }}
+        data-alerta-de-cobranca={cobrancas.vencidas}
+      >
+        Cobranças: {cobrancas.total} contrato(s) em cobrança
+        {cobrancas.vencidas ? `, ${cobrancas.vencidas} com o acompanhamento (FUP) vencido: ligue hoje.` : cobrancas.total ? ", nenhum acompanhamento vencido." : "."}
+        {cobrancas.semTelefone ? ` ${cobrancas.semTelefone} sem telefone.` : ""} Abrir a aba de cobranças.
+      </Link>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <Numero rotulo="Pagos e ativos" valor={String(emVigor.length)} nota={`${centavosEmReais(valorEmVigor)} por ano`} />

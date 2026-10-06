@@ -10,6 +10,8 @@ import { COR_DO_STATUS_DO_CONTRATO, NOME_DA_FORMA, NOME_DO_STATUS_DO_CONTRATO, c
 import { BarraEmpilhada, BarrasHorizontais, Cartao, Medidor, Numero, Rosca, Vazio } from "@/components/admin/painel-graficos";
 import { AcoesDoContrato } from "@/components/admin/contratos-acoes";
 import { AcoesDoAditivo, DecisaoDoDesconto } from "@/components/admin/contratos-preco";
+import { CobrancaDoContrato } from "@/components/admin/contratos-cobrancas";
+import { cobrancasDaConta, opcoesDeCloser } from "@/lib/contratos/cobrancas";
 import { aprovadorDoDesconto, ehAprovador } from "@/lib/contratos/contratos";
 import { MOTIVOS_DE_DESCONTO, ehMotivoDeDesconto, porcentagem, valorDoContrato } from "@/lib/contratos/preco";
 
@@ -64,6 +66,11 @@ const NOME_DO_EVENTO: Record<string, string> = {
   aditivo_link_de_pagamento: "Link de pagamento do aditivo gerado",
   aditivo_aplicado: "Aditivo aplicado na conta",
   aditivo_cancelado: "Aditivo cancelado",
+  fup: "Acompanhamento da cobrança registrado",
+  fup_automatico: "E-mail de acompanhamento automático",
+  contato_de_cobranca: "Contato da cobrança definido",
+  fup_pausado: "Acompanhamento automático pausado",
+  fup_retomado: "Acompanhamento automático retomado",
 };
 
 const NOME_DO_STATUS_DO_ADITIVO: Record<string, string> = {
@@ -95,6 +102,8 @@ function resumoDoEvento(tipo: string, d: unknown): string {
   if (tipo === "aditivo_pagamento") return `nº ${String(x.ordem)}: ${String(x.valor ?? "")} por ${NOME_DA_FORMA[String(x.forma)] ?? String(x.forma ?? "")}`;
   if (tipo === "aditivo_aplicado") return `nº ${String(x.ordem)}: plano ${String(x.plano)}, ${String(x.acessosExtras)} extra(s), ${Number(x.creditos ?? 0).toLocaleString("pt-BR")} créditos somados`;
   if ((tipo === "aditivo_enviado" || tipo === "aditivo_assinado" || tipo === "aditivo_cancelado") && x.ordem) return `nº ${String(x.ordem)}`;
+  if (tipo === "fup" || tipo === "fup_automatico") return [String(x.canal ?? ""), x.passo ? `passo ${String(x.passo)}` : "", String(x.resultado ?? ""), String(x.observacao ?? "")].filter(Boolean).join(", ");
+  if (tipo === "contato_de_cobranca") return [x.telefone ? `telefone ${String(x.telefone)}` : "", x.closerNome ? `closer ${String(x.closerNome)}` : ""].filter(Boolean).join(", ");
   return "";
 }
 
@@ -103,6 +112,8 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
   const { userId } = await params;
   const f = await fichaDoCliente(userId);
   if (!f) notFound();
+  // AS COBRANÇAS desta conta (05/10): o bloco de acompanhamento em cada contrato enviado sem assinatura, assinado sem pagamento ou com parcela em atraso.
+  const [cobrancas, closers] = await Promise.all([cobrancasDaConta(userId), opcoesDeCloser()]);
   const provedor = provedorDeAssinatura();
   const eu = await exigirAdmin();
   const souDono = eu ? ehAprovador(eu) : false;
@@ -327,6 +338,11 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                 {c.esperaAprovacao && (
                   <div className="mt-3">
                     <DecisaoDoDesconto url={`/api/admin/contratos/${c.id}`} souDono={souDono} aprovador={aprovador} percentual={c.descontoPercentual} />
+                  </div>
+                )}
+                {cobrancas.has(c.id) && (
+                  <div className="mt-3">
+                    <CobrancaDoContrato cobranca={cobrancas.get(c.id)!} closers={closers} />
                   </div>
                 )}
                 {c.inicio && c.fim && (

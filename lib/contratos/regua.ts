@@ -107,5 +107,10 @@ export async function avancarContratos(agora = new Date()): Promise<{ olhados: n
     console.error("[contratos] reposição dos contratos falhou:", e);
     return 0;
   });
+  // As COBRANÇAS (05/10): o e-mail de acompanhamento dos contratos enviados
+  // sem assinatura e assinados sem pagamento, na cadência e em horário
+  // comercial. Falha não derruba a régua. Ver lib/contratos/cobrancas.ts.
+  const { avancarCobrancas } = await import("@/lib/contratos/cobrancas");
+  await avancarCobrancas(agora).catch((e) => console.error("[contratos] régua das cobranças falhou:", e));
   return { olhados: contratos.length + comecando.length, mudancas, avisos, repostos };
 }
