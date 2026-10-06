@@ -105,10 +105,34 @@ export function modulosDoTipoDeCard(cardType: string | null | undefined, mediaTy
   return ["lib/media/pedido-do-card.ts", "lib/media/write-posts.ts", "lib/squad"];
 }
 
-/** O e-mail nunca vai para o estado do JEV nem para o painel. */
-export function semEmail(texto: string): string {
-  return texto.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[e-mail]");
+/**
+ * DADO PESSOAL NUNCA VAI PARA O ESTADO DO JEV NEM PARA O PAINEL (06/10): o
+ * e-mail desde o começo; desde a tarde de 06/10 também CNPJ, CPF e telefone,
+ * que passavam inteiros. A ordem importa: CNPJ antes de CPF (o CPF casaria
+ * dentro dele) e os dois antes do telefone. Tempo ("1:05"), dinheiro
+ * ("R$ 1.234,00") e porcentagem não são tocados.
+ */
+export function semDadosPessoais(texto: string): string {
+  return (
+    texto
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[e-mail]")
+      // CNPJ: 12.345.678/0001-90 ou 14 dígitos seguidos.
+      .replace(/(?<![\d\w])\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}(?![\d\w])/g, "[cnpj]")
+      // CPF: 123.456.789-09 ou 11 dígitos seguidos que não sejam celular com DDD (esse cai no telefone).
+      .replace(/(?<![\d\w])\d{3}\.\d{3}\.\d{3}-?\d{2}(?![\d\w])/g, "[cpf]")
+      .replace(/(?<![\d\w])\d{3}\d{3}\d{3}-\d{2}(?![\d\w])/g, "[cpf]")
+      // Telefone: +55, DDD com ou sem parênteses, 4 ou 5 dígitos, separador opcional, 4 dígitos.
+      .replace(/(?<![\d\w])(?:\+?55[\s.-]?)?(?:\(\d{2}\)\s?|\d{2}[\s.-])\d{4,5}[\s.-]?\d{4}(?![\d\w])/g, "[telefone]")
+      .replace(/(?<![\d\w])\d{4,5}-\d{4}(?![\d\w])/g, "[telefone]")
+      // 10 ou 11 dígitos seguidos começando por DDD (sem zero na frente): celular ou fixo colado.
+      .replace(/(?<![\d\w])(?:\+?55)?[1-9]{2}9?\d{8}(?![\d\w])/g, (m) => (m.replace(/\D/g, "").length >= 10 ? "[telefone]" : m))
+      // O que sobrou com 11 dígitos seguidos é CPF sem pontuação.
+      .replace(/(?<![\d\w])\d{11}(?![\d\w])/g, "[cpf]")
+  );
 }
+
+/** Nome antigo, mantido: hoje mascara e-mail, CNPJ, CPF e telefone. */
+export const semEmail = semDadosPessoais;
 
 /** O título do grupo: a primeira linha do texto do cliente, curta, sem e-mail. */
 export function tituloDoGrupo(texto: string): string {

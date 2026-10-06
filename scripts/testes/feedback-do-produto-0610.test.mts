@@ -229,6 +229,29 @@ test("o prompt do briefing tem as quatro partes, os módulos e nenhum e-mail", (
   assert.ok(!sistema.includes(travessao) && !usuario.includes(travessao), "sem travessão");
 });
 
+// ─── telefone, CPF e CNPJ mascarados (06/10, tarde) ───
+
+test("telefone, CPF e CNPJ saem mascarados; tempo, dinheiro, data e porcentagem ficam", () => {
+  const casos: Array<[string, string]> = [
+    ["me liga no (11) 91234-5678", "me liga no [telefone]"],
+    ["whats +55 11 91234-5678 ok", "whats [telefone] ok"],
+    ["fixo 11 3456-7890", "fixo [telefone]"],
+    ["celular 11912345678", "celular [telefone]"],
+    ["só o número 91234-5678", "só o número [telefone]"],
+    ["cpf 123.456.789-09", "cpf [cpf]"],
+    ["cpf 12345678909", "cpf [cpf]"],
+    ["cnpj 12.345.678/0001-90", "cnpj [cnpj]"],
+    ["cnpj 12345678000190", "cnpj [cnpj]"],
+    ["e-mail ana@x.com e cpf 123.456.789-09", "e-mail [e-mail] e cpf [cpf]"],
+  ];
+  for (const [entrada, saida] of casos) assert.equal(semEmail(entrada), saida, entrada);
+  const intocado = "aos 1:05 do vídeo, R$ 1.234,00, 30% mais, em 06/10/2026 e 2026-10-06, nota 9,5, 120 créditos";
+  assert.equal(semEmail(intocado), intocado);
+  // E chega mascarado ao estado do JEV.
+  const estado = JSON.stringify(estadoDoFeedback({ texto: "liga (11) 91234-5678, cpf 123.456.789-09", origem: "chamado", contexto: null }, []));
+  assert.ok(!estado.includes("91234") && !estado.includes("456.789"), estado);
+});
+
 // ─── o plano do vídeo no contexto (06/10, tarde) ───
 
 test("o plano aprovado do vídeo vira linhas com tempo, cor, lugar e pedido, e chega inteiro ao JEV", async () => {
