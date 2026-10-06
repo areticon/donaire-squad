@@ -7,6 +7,7 @@ import { referenciaDoEstilo, textoDaReferencia } from "@/lib/media/referencias-d
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
 import type { EdicaoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
 import { fotosDoMomento, prepararFotosDoVox } from "@/lib/media/editor-sob-medida/recortes-vox";
+import { TETO_DO_BRIEFING_ESTILIZADO } from "@/lib/media/editor-por-comando/linguagem";
 
 /**
  * O EDITOR SOB MEDIDA (03/10/2026): o caminho novo da edição, atrás do
@@ -83,7 +84,7 @@ export async function gerarInsercoes(
     pedidos.map(async (ins, k) => {
       const id = String(ins.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `i${k + 1}`;
       // O briefing estilizado (editor por comando em dois eixos, 05/10) já traz o bloco de estilo da linguagem e a guarda: nada de forçar "foto".
-      const prompt = ins.estilizada ? String(ins.briefing ?? "").slice(0, 1600) : `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DA_INSERCAO}`;
+      const prompt = ins.estilizada ? String(ins.briefing ?? "").slice(0, TETO_DO_BRIEFING_ESTILIZADO) : `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DA_INSERCAO}`;
       try {
         const img = await gerarImagem(prompt, o.formato, "hd", { projectId: o.projectId ?? undefined, operation: "editor-sob-medida-insercao" }, { tipo: "colagem" });
         custo += img.custoUsd ?? 0;
@@ -178,7 +179,7 @@ export async function pedirVideosDasInsercoes(
   const escolhidas = espalhar(lista, o.teto);
   await Promise.all(
     escolhidas.map(async ({ ins, id }) => {
-      const prompt = ins.estilizada ? String(ins.briefing ?? "").slice(0, 1600) : `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DO_VIDEO}`;
+      const prompt = ins.estilizada ? String(ins.briefing ?? "").slice(0, TETO_DO_BRIEFING_ESTILIZADO) : `${String(ins.briefing ?? "").slice(0, 900)}${GUARDA_DO_VIDEO}`;
       const segundos = Math.min(ins.segundos ? 15 : 5, Math.max(3, Math.ceil(o.duracoes?.[id] ?? ins.segundos ?? 4)));
       const chave = `sob-medida-${id}-${createHash("sha1").update(`${prompt}|${segundos}|${o.formato}`).digest("hex").slice(0, 10)}`;
       try {

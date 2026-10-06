@@ -187,6 +187,14 @@ export type EntradaDoPlanoPeloJev = {
   /** A LEITURA DO VÍDEO INTEIRO (06/10): gênero, cenário, pessoas e os trechos lidos, no tempo desta fala. Sem ela, tudo segue como antes. */
   leitura?: LeituraDoVideo | null;
   /**
+   * O DESIGN DE VÍDEO DO PROJETO NA BIBLIOTECA (06/10, card 714): a linguagem
+   * em inglês que o Claude escreveu a partir do comando escrito do cliente
+   * (designs_da_biblioteca), só quando a ligação é mais nova que o comando
+   * (o design é desse comando). Sem ficha do catálogo, ela é a base do bloco
+   * de estilo, lida inteira.
+   */
+  designGravado?: { linguagem: string; nome?: string | null } | null;
+  /**
    * A PROVA SEM IA PAGA (06/10): o JEV e o redator simulados. Só os testes
    * puros passam isto; na esteira, ficam o cliente do JEV e o Claude.
    */
@@ -243,7 +251,26 @@ export type DecisaoDaLinguagem = {
 };
 
 /** A linguagem do vídeo com a ficha do estilo do catálogo (06/10): o id e as peças em inglês, para o redator dos momentos. */
-type LinguagemComFicha = LinguagemDoVideo & { estiloDoCatalogo?: string | null; pecasDoEstilo?: string | null };
+type LinguagemComFicha = LinguagemDoVideo & { estiloDoCatalogo?: string | null; pecasDoEstilo?: string | null; baseDoBloco?: "ficha" | "biblioteca" | null };
+
+/**
+ * A FICHA NA LINGUAGEM (card 714): o id do estilo e as peças em inglês,
+ * lidas direto de LINGUAGEM_DOS_ESTILOS. Vale para o plano novo e para o
+ * plano reaproveitado de antes de 06/10, que não gravou as peças: elas são
+ * relidas pelo estilo do comando. Sem ficha, a linguagem segue como veio.
+ */
+export function linguagemComFicha(ling: LinguagemDoVideo, estilo: string | null | undefined): LinguagemComFicha {
+  const atual = ling as LinguagemComFicha;
+  const id = atual.estiloDoCatalogo && linguagemDoEstilo(atual.estiloDoCatalogo) ? atual.estiloDoCatalogo : estilo && linguagemDoEstilo(estilo) ? estilo : null;
+  const ficha = linguagemDoEstilo(id);
+  return ficha && id ? { ...atual, estiloDoCatalogo: id, pecasDoEstilo: ficha.pecas } : atual;
+}
+
+/** A sugestão de ritmo da ficha ao JEV (nunca regra), para os pedidos de decisão; vazio sem ficha. */
+function ritmoDaFichaAoJev(estilo: string | null | undefined): string {
+  const f = linguagemDoEstilo(estilo);
+  return f && estilo ? `\nSugestão de ritmo do estilo "${estilo}" (só sugestão, nunca regra; o momento manda): ${f.ritmo}.` : "";
+}
 
 // ─────────────────────────────── eixo 2: a linguagem ───────────────────────────────
 
@@ -320,9 +347,21 @@ const SISTEMA_DO_ESTILO = `Você escreve o BLOCO DE ESTILO de um vídeo: um par�
 
 O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramento, paleta), nunca a cena. Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Quando houver a leitura do vídeo (o cenário da gravação, o gênero), o acabamento conversa com ela: as imagens vão aparecer ao lado dessa gravação, com a luz e o ambiente dela. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
 
-Quando houver A LINGUAGEM PESQUISADA DO ESTILO (a ficha do estilo do catálogo que o comando veio), o bloco NASCE dela: mantém os materiais, a luz, o grão, a composição e o que evitar da ficha, e adapta à marca e ao nicho; nunca a substitui por uma descrição genérica da família.
+Quando houver A LINGUAGEM PESQUISADA DO ESTILO (a ficha do estilo do catálogo que o comando veio), o bloco NASCE dela e pode ir de 60 a 130 palavras, para nada da ficha se perder: mantém os materiais, a luz, o grão, a composição e a lista do que evitar da ficha, e muda só o que o comando do cliente pede diferente (o comando do cliente vale sobre a ficha) e o que a marca e o nicho pedem; nunca a substitui por uma descrição genérica da família.
 
 Responda só JSON: {"bloco":"..."}`;
+
+/**
+ * O AJUSTE AO CLIENTE (card 714): quando a base do bloco vai INTEIRA (a
+ * ficha do estilo da miniatura sem edição, ou a linguagem do design do
+ * projeto na biblioteca), o redator não reescreve a base; escreve só uma ou
+ * duas frases que levam aquela linguagem ao nicho, ao público e à gravação.
+ */
+const SISTEMA_DO_AJUSTE = `Você recebe o BLOCO DE ESTILO pronto de um vídeo (em inglês): a linguagem visual que vai, INTEIRA, no fim de todo prompt de imagem e de vídeo gerado para este vídeo. Você NÃO reescreve esse bloco.
+
+Escreva só o AJUSTE: uma ou duas frases em INGLÊS, de 15 a 45 palavras, que entram logo depois do bloco e dizem como essa linguagem encontra ESTE cliente: os assuntos, os lugares e os objetos do nicho dele, o público e, quando houver a leitura do vídeo, a luz e o ambiente da gravação ao lado da qual as imagens vão aparecer. Nunca contradiga o bloco, nunca repita o que ele já diz, nunca descreva uma cena específica. Sem cores (as da marca entram depois), sem nome de marca de terceiros, sem artista vivo, sem pessoa real, sem travessão.
+
+Responda só JSON: {"ajuste":"..."}`;
 
 /**
  * O ESTILO DO CATÁLOGO por trás do comando (06/10, manhã): a miniatura clicada
@@ -344,28 +383,96 @@ function fichaDoEstiloNoPedido(estilo: string | null | undefined): string {
 }
 
 /**
- * O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva
- * com as palavras do comando. `redator` é o askClaude; a prova sem IA paga
- * (scripts/testes/estilos-0610.test.mts) passa um simulado. `estilo`: o id do
- * catálogo cuja ficha pesquisada entra como base obrigatória (06/10); sem
- * ele, o da referência do comando; sem nenhum, só a semente da família.
+ * DE ONDE VEM A BASE DO BLOCO DE ESTILO (card 714), lida direto, sem passar
+ * pelo texto do comando:
+ *   - "ficha": o estilo do catálogo (o `estilo` decidido pelo JEV ou a
+ *     referência do comando) tem ficha pesquisada; vai INTEIRA quando o
+ *     comando é o da miniatura sem edição (origem "referencia" com a mesma
+ *     referência); com o comando editado ou só identificado pelo JEV, o
+ *     redator reescreve a partir dela (o comando do cliente vale sobre a ficha);
+ *   - "biblioteca": sem ficha, a linguagem do design de vídeo do projeto
+ *     (escrita pelo Claude a partir deste comando), INTEIRA;
+ *   - null: só a semente da família, como antes.
+ * Nenhuma condição por estilo: a ficha é conteúdo, a origem do comando é dado.
  */
-export async function escreverBlocoDeEstilo(e: EntradaDoPlanoPeloJev, familia: FamiliaVisual, redator: typeof askClaude = askClaude, estilo?: string | null): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string; estilo?: string | null }> {
-  const cores = coresNoPrompt(e.paleta, e.cores);
-  const reserva = blocoDeEstiloDeReserva(familia, e.comando.texto, e.nicho, cores);
+export type BaseDoBloco = { texto: string; de: "ficha" | "biblioteca"; estilo: string | null; inteira: boolean };
+
+export function baseDoBlocoDeEstilo(e: Pick<EntradaDoPlanoPeloJev, "comando" | "designGravado">, estilo?: string | null): BaseDoBloco | null {
   const doCatalogo = estilo && linguagemDoEstilo(estilo) ? estilo : estiloDoComando(e.comando);
+  const ficha = linguagemDoEstilo(doCatalogo);
+  if (ficha && doCatalogo) return { texto: ficha.bloco, de: "ficha", estilo: doCatalogo, inteira: e.comando.origem === "referencia" && e.comando.referencia === doCatalogo };
+  const gravada = limparBloco(e.designGravado?.linguagem ?? "").slice(0, 900);
+  if (gravada.split(" ").length >= 12) return { texto: gravada, de: "biblioteca", estilo: null, inteira: true };
+  return null;
+}
+
+/** Espaços juntos e nenhum travessão (vira vírgula). */
+function limparBloco(t: string): string {
+  return String(t ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*[\u2014\u2013]\s*/g, ", ")
+    .replace(/\s+-\s+/g, ", ")
+    .trim();
+}
+
+/** As partes do bloco num parágrafo só, cada uma terminada em ponto. */
+function juntarBloco(...partes: string[]): string {
+  return partes
+    .map((p) => limparBloco(p))
+    .filter(Boolean)
+    .map((p) => (/[.!?]$/.test(p) ? p : `${p}.`))
+    .join(" ");
+}
+
+/**
+ * O redator escreve o bloco de estilo (uma chamada curta); sem ele, a reserva.
+ * `redator` é o askClaude; a prova sem IA paga (scripts/testes/estilos-0610 e
+ * fichas-no-editor-0610) passa um simulado. `estilo`: o id do catálogo cuja
+ * ficha pesquisada é a base (06/10); sem ele, o da referência do comando; sem
+ * nenhum, a linguagem do design do projeto na biblioteca; sem nada, só a
+ * semente da família.
+ *
+ * Com a base INTEIRA (card 714), o bloco é a base palavra por palavra, mais o
+ * ajuste ao cliente que o redator escreve, mais as cores da marca; sem o
+ * redator, a base e as cores (a ficha nunca se perde).
+ */
+export async function escreverBlocoDeEstilo(
+  e: EntradaDoPlanoPeloJev,
+  familia: FamiliaVisual,
+  redator: typeof askClaude = askClaude,
+  estilo?: string | null
+): Promise<{ bloco: string; origem: "redator" | "reserva"; erro?: string; estilo?: string | null; base?: "ficha" | "biblioteca" | null }> {
+  const cores = coresNoPrompt(e.paleta, e.cores);
+  const base = baseDoBlocoDeEstilo(e, estilo);
+  const doCatalogo = base?.estilo ?? null;
+  const de = base?.de ?? null;
   const chamar = e.simulacao?.redator ?? ((sistema: string, pedido: string) => redator(sistema, pedido, { model: MODELO_DO_REDATOR, maxTokens: 4000, effort: "low", timeoutMs: 90_000, usage: { projectId: e.projectId ?? undefined, operation: "editor-por-comando-estilo" } }));
+  const gravacao = e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "";
+
+  // A base inteira: o redator só escreve o ajuste ao cliente.
+  if (base?.inteira) {
+    const reserva = juntarBloco(base.texto, cores);
+    try {
+      const r = await chamar(SISTEMA_DO_AJUSTE, [contextoDoProjeto(e), `# O BLOCO DE ESTILO (pronto; vai inteiro, não reescreva)\n${base.texto}`, gravacao].filter(Boolean).join("\n"));
+      const j = extrairJson(r) as { ajuste?: unknown };
+      const ajuste = typeof j?.ajuste === "string" ? limparBloco(j.ajuste) : "";
+      if (ajuste.split(" ").length < 6) return { bloco: reserva, origem: "reserva", erro: "ajuste curto demais", estilo: doCatalogo, base: de };
+      return { bloco: juntarBloco(base.texto, ajuste.slice(0, 300), cores), origem: "redator", estilo: doCatalogo, base: de };
+    } catch (err) {
+      return { bloco: reserva, origem: "reserva", erro: err instanceof Error ? err.message.slice(0, 120) : String(err), estilo: doCatalogo, base: de };
+    }
+  }
+
+  // A base reescrita (comando editado ou estilo identificado pelo JEV), ou só a família.
+  const reserva = base ? juntarBloco(base.texto, `As the client described it (Portuguese), which wins over the finish above where they differ: "${e.comando.texto.replace(/\s+/g, " ").slice(0, 280)}"`, cores) : blocoDeEstiloDeReserva(familia, e.comando.texto, e.nicho, cores);
   try {
-    const r = await chamar(
-      SISTEMA_DO_ESTILO,
-      [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, fichaDoEstiloNoPedido(doCatalogo), e.leitura?.cenario ? `A gravação ao lado da qual as imagens vão aparecer: ${e.leitura.cenario.slice(0, 220)}.` : "", cores].filter(Boolean).join("\n")
-    );
+    const r = await chamar(SISTEMA_DO_ESTILO, [contextoDoProjeto(e), `Família visual escolhida: ${FAMILIA[familia].nome} (sementes: ${FAMILIA[familia].semente}).`, fichaDoEstiloNoPedido(doCatalogo), gravacao, cores].filter(Boolean).join("\n"));
     const j = extrairJson(r) as { bloco?: unknown };
-    const bloco = typeof j?.bloco === "string" ? j.bloco.replace(/\s+/g, " ").replace(/\s*—\s*/g, ", ").trim() : "";
-    if (bloco.split(" ").length < 12) return { bloco: reserva, origem: "reserva", erro: "bloco curto demais", estilo: doCatalogo };
-    return { bloco: `${bloco.slice(0, 700)}${/#[0-9a-f]{6}/i.test(bloco) ? "" : ` ${cores}`}`.trim(), origem: "redator", estilo: doCatalogo };
+    const bloco = typeof j?.bloco === "string" ? limparBloco(j.bloco) : "";
+    if (bloco.split(" ").length < 12) return { bloco: reserva, origem: "reserva", erro: "bloco curto demais", estilo: doCatalogo, base: de };
+    return { bloco: `${bloco.slice(0, base ? 1100 : 700)}${/#[0-9a-f]{6}/i.test(bloco) ? "" : ` ${cores}`}`.trim(), origem: "redator", estilo: doCatalogo, base: de };
   } catch (err) {
-    return { bloco: reserva, origem: "reserva", erro: err instanceof Error ? err.message.slice(0, 120) : String(err), estilo: doCatalogo };
+    return { bloco: reserva, origem: "reserva", erro: err instanceof Error ? err.message.slice(0, 120) : String(err), estilo: doCatalogo, base: de };
   }
 }
 
@@ -673,7 +780,7 @@ async function decidirBloco(
         {
           projectId: e.projectId,
           etapa: "editor-por-comando-plano",
-          state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[familia].nome}. Formato: ${e.formato}. Ritmo pedido: ${L.densidade}.\nRegra: decida pelo que o momento DIZ${e.leitura ? " e pelo que a câmera MOSTRA (a leitura do trecho)" : ""}; imagem e vídeo só quando há algo concreto para ver; nada é escolha válida.`,
+          state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[familia].nome}. Formato: ${e.formato}. Ritmo pedido: ${L.densidade}.${ritmoDaFichaAoJev(L.estilo)}\nRegra: decida pelo que o momento DIZ${e.leitura ? " e pelo que a câmera MOSTRA (a leitura do trecho)" : ""}; imagem e vídeo só quando há algo concreto para ver; nada é escolha válida.`,
         },
         perguntas
       );
@@ -841,7 +948,7 @@ async function cobrirBuracos(
     if (faltam.length && jevDisponivel(e)) {
       try {
         const r = await jevDe(e)(
-          { projectId: e.projectId, etapa: "editor-por-comando-cobertura", state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[L.familia].nome}. Formato: ${e.formato}.\nEste trecho do vídeo está há muito tempo sem nenhum elemento na tela: escolha o elemento que melhor serve a cada momento.` },
+          { projectId: e.projectId, etapa: "editor-por-comando-cobertura", state: `${contextoDoProjeto(e)}\nLinguagem visual: ${FAMILIA[L.familia].nome}. Formato: ${e.formato}.${ritmoDaFichaAoJev(L.estilo)}\nEste trecho do vídeo está há muito tempo sem nenhum elemento na tela: escolha o elemento que melhor serve a cada momento.` },
           perguntasDaOnda(e, U, faltam, "Este trecho está sem elemento há mais tempo do que o ritmo pedido permite.")
         );
         perguntasFeitas.n += faltam.length * 5;
@@ -1353,9 +1460,8 @@ export async function escreverPlanoPeloJev(e: EntradaDoPlanoPeloJev): Promise<{ 
     decidirPeloJev(e, L).then((x) => ((tempos.jev = +((Date.now() - t) / 1000).toFixed(1)), x)),
     escreverBlocoDeEstilo(e, familia, askClaude, L.estilo).then((x) => ((tempos.estilo = +((Date.now() - t) / 1000).toFixed(1)), x)),
   ]);
-  // A ficha do estilo do catálogo (06/10) viaja na linguagem: as peças em inglês vão ao redator de cada momento.
-  const ficha = linguagemDoEstilo(est.estilo);
-  const ling: LinguagemComFicha = { familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null, ...(ficha && est.estilo ? { estiloDoCatalogo: est.estilo, pecasDoEstilo: ficha.pecas } : {}) };
+  // A ficha do estilo do catálogo (06/10; card 714) viaja na linguagem, lida direto: as peças em inglês vão ao redator de cada momento.
+  const ling = linguagemComFicha({ familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null, ...(est.base ? { baseDoBloco: est.base } : {}) } as LinguagemComFicha, est.estilo);
   const lista = d.momentos;
   const red = await redigirEConferir(e, ling, lista, { cenario: L.cenario === "trocado" });
   tempos.redator = red.tempos.redator;
@@ -1431,12 +1537,13 @@ export function temposDoPlano(plano: PlanoDoDiretor, frases: Frase[], palavras: 
  * plano ficam. Sem JEV, ou sem linguagem no plano, devolve o plano como veio.
  */
 export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoPlanoPeloJev): Promise<{ plano: PlanoDoDiretor; avisos: string[]; tempos: Record<string, number> }> {
-  const ling = plano.linguagem;
+  // O plano de antes de 06/10 não gravou as peças da ficha: relidas pelo estilo do comando (card 714).
+  const ling = plano.linguagem ? linguagemComFicha(plano.linguagem, estiloDoComando(e.comando)) : null;
   if (!ling || !jevDisponivel(e) || !e.frases.length) return { plano, avisos: [], tempos: {} };
   const t0 = Date.now();
   const avisos: string[] = [];
   const palavras = e.palavras ?? [];
-  const L: DecisaoDaLinguagem = { familia: ling.familia, densidade: "medio", video: "algum", confianca: null, cenario: ling.cenario ?? "gravacao" };
+  const L: DecisaoDaLinguagem = { familia: ling.familia, densidade: "medio", video: "algum", confianca: null, cenario: ling.cenario ?? "gravacao", estilo: ling.estiloDoCatalogo ?? null };
   const curto = e.duracao <= 95 || e.formato === "9:16";
   const teto = e.tetoUsdPorMinuto ?? tetoUsdPorMinuto();
   const R = regrasDoRitmo({ formato: e.formato, duracao: e.duracao, densidade: L.densidade, video: L.video, tetoUsdPorMinuto: teto, videosPorMinutoMax: videosPorMinutoMax(curto) });

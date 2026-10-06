@@ -201,6 +201,27 @@ export async function designAtualDoProjeto(projectId: string, tipo: TipoDeDesign
   return elo ? paraAGaleria(elo.design, projectId, new Set([elo.design.id])) : null;
 }
 
+/**
+ * A LINGUAGEM DO DESIGN ATUAL DO PROJETO para o editor (card 714): a do
+ * design ligado mais recente naquele tipo, só quando a ligação é tão nova
+ * quanto o comando (`desde`, o atualizadoEm do comando gravado): a rota do
+ * comando liga o design logo depois de gravar o texto, e um design mais
+ * velho que o comando é de outro texto. Null sem ligação, sem banco ou
+ * com a ligação velha; nunca lança.
+ */
+export async function linguagemDoDesignAtual(projectId: string | null | undefined, tipo: TipoDeDesign, desde?: string | null): Promise<{ linguagem: string; nome: string; catalogoId: string | null } | null> {
+  if (!projectId) return null;
+  try {
+    const elo = await prisma.designDoProjeto.findFirst({ where: { projectId, tipo }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true, design: { select: { linguagem: true, nome: true, catalogoId: true } } } });
+    if (!elo?.design?.linguagem) return null;
+    const corte = desde ? Date.parse(desde) : NaN;
+    if (!Number.isFinite(corte) || elo.updatedAt.getTime() < corte) return null;
+    return { linguagem: elo.design.linguagem, nome: elo.design.nome, catalogoId: elo.design.catalogoId ?? null };
+  } catch {
+    return null;
+  }
+}
+
 /** Os designs deste projeto, os mais recentes primeiro. */
 export async function designsDoProjeto(projectId: string): Promise<DesignDaGaleria[]> {
   const elos = await prisma.designDoProjeto.findMany({ where: { projectId }, orderBy: { updatedAt: "desc" }, select: { design: { select: SELECAO } } }).catch(() => []);

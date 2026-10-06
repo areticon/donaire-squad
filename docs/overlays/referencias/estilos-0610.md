@@ -19,7 +19,7 @@ Regras que valeram em tudo: nada hardcoded por estilo (o estilo é só linguagem
 4. `promptDaMidia` = a cena deste trecho (o redator escreve por momento) + o bloco de estilo + a guarda (sem texto, sem pessoa real, câmera sempre em movimento no vídeo).
 5. A biblioteca de design grava, por estilo, o comando como `pedidoOriginal` e o bloco pesquisado como `linguagem` (teto 900).
 
-Pendente (sem custo): `escreverBlocoDeEstilo` ainda não lê `LINGUAGEM_DOS_ESTILOS[id].bloco` diretamente (a ficha chega ao redator pelo comando e pela semente da família); o caminho direto é a pendência "bloco de estilo pela biblioteca" da RETOMADA. A ficha `pecas` (como cada elemento se desenha, em inglês) está exportada e pronta para entrar no pedido do redator quando essa pendência for feita.
+Feito no card 714 (06/10, tarde): `escreverBlocoDeEstilo` lê a ficha direto por `baseDoBlocoDeEstilo`. Miniatura sem edição: o bloco da ficha vai INTEIRO, palavra por palavra, e o redator só escreve o ajuste ao cliente (nicho, público, gravação), mais as cores; sem o redator, a ficha e as cores. Comando editado ou estilo identificado pelo JEV: o redator reescreve a partir da ficha inteira (bloco e peças), e o comando do cliente vale sobre ela. Sem ficha: a linguagem do design de vídeo do projeto na biblioteca, inteira, quando a ligação é tão nova quanto o comando. As peças da ficha vão ao redator dos momentos (também no plano reaproveitado de antes de 06/10) e o ritmo vai ao JEV como sugestão. O teto do prompt estilizado subiu de 1600 para 2400 (o antigo cortava o fim do bloco e a guarda). Prova: scripts/testes/fichas-no-editor-0610.test.mts.
 
 ## O exemplo do Bruno: "estilo mapa, falo de demografia, faz uma animação no mapa"
 
@@ -93,7 +93,7 @@ Cada semente ganhou materiais, luz, grão, composição e o que evitar (antes er
 
 ## Decisões
 
-- O comando em português carrega o comportamento por elemento (é o que o JEV e o redator leem hoje); o bloco em inglês carrega o acabamento das imagens (é o que a biblioteca grava); `pecas` em inglês fica exportado para o redator quando a pendência "bloco de estilo pela biblioteca" for feita.
+- O comando em português carrega o comportamento por elemento (é o que o JEV e o redator leem hoje); o bloco em inglês carrega o acabamento das imagens (é o que a biblioteca grava); `pecas` em inglês vai ao redator dos momentos (card 714).
 - Teto de 650 caracteres por comando de estilo: com cores (até 170), nicho e público (até 2 x 170) e a sugestão de ritmo (até 350) cabe nos 1500 da tela, provado com nicho e público longos para os 26.
 - Teto de 900 no bloco: o teto da linguagem da biblioteca (`TETO.linguagem`).
 - A família de cada estilo é dado da ficha (conteúdo), e as palavras do comando levam à mesma família pela reserva sem JEV (provado para os 26). Duas armadilhas achadas e corrigidas: "quadro" no consórcio (caía em giz) e "passo a passo" e "tecnologia" no minimalista (caíam em vidro); "telejornal" na BBC (caía em papel por "jornal").
@@ -101,8 +101,8 @@ Cada semente ganhou materiais, luz, grão, composição e o que evitar (antes er
 
 ## Pendências (sem suavizar)
 
-- As 79 sementes já gravadas no banco em 06/10 de madrugada continuam com a linguagem antiga: `garantirSemente` só cria, não atualiza. Precisa de um script de atualização (UPDATE em designs_da_biblioteca por tipo e catalogoId, só origem "semente"), que escreve no banco e por isso não rodou aqui.
-- `escreverBlocoDeEstilo` não lê a ficha do estilo diretamente; a ficha chega pelo comando e pela semente da família. O caminho direto (quando o comando veio de uma miniatura ou de um design da biblioteca, usar o `bloco` gravado e só pedir ao redator o ajuste ao nicho) é a pendência "bloco de estilo pela biblioteca".
+- Resolvido: as 79 sementes do banco batem com o código (conferido em 06/10 à tarde, só leitura: 72 atualizadas por scripts/tmp/atualizar-sementes-0610.mts e as 7 da família Vox de imagem, que a pesquisa não mudou, já estavam iguais).
+- Resolvido no card 714: o caminho direto da ficha e do design da biblioteca (ver o topo).
 - Peças que a pesquisa pede e o worker não tem: mapa de satélite ou relevo com pontos de densidade e setas de fluxo (hoje só o mapa antigo rasgado da família papel); mural de prova com fio vermelho; tema claro para quadro branco, Wes Anderson e Ali Abdaal; contador de fita e scanlines do VHS; barra de progresso do carrossel. Tudo isso é componente Remotion, não prompt.
 - Nenhuma imagem foi gerada: as prévias custam e esperam OK (49 da biblioteca, US$ 2,45 a 4,90).
 - A família neon não tem estilo do catálogo; só entra pelo comando escrito.
