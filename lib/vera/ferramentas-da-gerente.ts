@@ -5,6 +5,9 @@ import type { Ferramenta } from "@/lib/claude/ferramentas";
 import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
 import { NOME_DA_REDE } from "@/lib/pipeline/redes";
 import { listarRegras, parecencaDaRegra } from "@/lib/referencias/regras";
+import { carregarNotas } from "@/lib/cerebro/carregar";
+import { buscarNotas, cortar, dataCurta as dataDaNota } from "@/lib/cerebro/montagem";
+import { ROTULO_DA_ESFERA } from "@/lib/cerebro/tipos";
 import { ALVOS_DA_REGRA, ROTULO_DO_ALVO, type AlvoDaRegra, type RegraDoProjeto } from "@/lib/referencias/tipos-das-analises";
 import {
   DIAS_DA_SEMANA,
@@ -310,6 +313,30 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
       descricao: "Lista as regras do projeto (as que alimentam os redatores, a arte e a edição), com id, estado e para quem valem.",
       entrada: { type: "object", properties: {}, required: [] },
       rodar: async () => listaDeRegras(await listarRegras(projectId)),
+    },
+
+    {
+      // O SEGUNDO CÉREBRO (06/10): o que o cliente já pediu, aprovou, recusou e
+      // decidiu. Só leitura; a Vera consulta antes de preparar um pedido que
+      // pode bater com algo que ele já disse (lib/cerebro).
+      nome: "ver_memoria",
+      descricao:
+        "Procura no segundo cérebro do projeto: o que o cliente já pediu nos chats, aprovou, recusou (com o motivo), decidiu com você, as regras, o tom e os materiais. Use antes de mudar algo que ele pode já ter pedido ou recusado, e quando ele perguntar \"o que eu já pedi sobre X\". Devolve as notas mais recentes que casam com a busca.",
+      entrada: {
+        type: "object",
+        properties: { busca: { type: "string", description: "Palavras a procurar (ex.: \"emoji\", \"cor\", \"LinkedIn\"). Vazio traz as mais recentes." } },
+        required: [],
+      },
+      rodar: async (a) => {
+        const busca = typeof a.busca === "string" ? a.busca : "";
+        const achadas = buscarNotas(await carregarNotas(projectId), busca)
+          .sort((x, y) => (y.quando ?? "").localeCompare(x.quando ?? ""))
+          .slice(0, 15);
+        if (!achadas.length) return busca ? `Nada na memória do projeto sobre "${busca}".` : "A memória do projeto ainda está vazia.";
+        return achadas
+          .map((n) => `- ${n.esfera ? ROTULO_DA_ESFERA[n.esfera] : "Nota"}${n.quando ? `, ${dataDaNota(n.quando)}` : ""}${n.duradoura ? " (vale para as próximas peças)" : ""}: ${n.titulo}. ${cortar(n.texto.replace(/\s+/g, " "), 220)}`)
+          .join("\n");
+      },
     },
 
     {

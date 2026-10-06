@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { DIAS_PARA_DESFAZER, type EstadoDoPedido, type ItemDoPedido, type PedidoNaTela } from "@/lib/vera/tipos";
+import { registrarNota } from "@/lib/cerebro/captura";
 
 /**
  * OS PEDIDOS DA VERA (04/10/2026): o que muda, o antes, o depois, quem pediu e
@@ -263,6 +264,9 @@ export async function aplicarPedido(p: PedidoDaVera, executar: ExecutorDeAcao): 
     escritasDasAcoes,
   };
   await gravarPedido(final);
+  // O SEGUNDO CÉREBRO (06/10): o pedido aplicado vira nota do cliente, lida
+  // pelo JEV. Nunca trava a Vera: registrarNota engole o próprio erro.
+  if (final.status === "aplicado") void registrarNota(final.projectId, `vera:${final.id}`);
   return final;
 }
 
@@ -295,5 +299,6 @@ export async function desfazerPedido(p: PedidoDaVera): Promise<PedidoDaVera> {
       .join(" "),
   };
   await gravarPedido(final);
+  void registrarNota(final.projectId, `vera:${final.id}`);
   return final;
 }

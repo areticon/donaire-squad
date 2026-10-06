@@ -22,5 +22,6 @@ export function mapaDaTela(projectId: string): string {
     `- Começar campanha nova ou mandar vídeo: menu Criar (${p}/criar).`,
     `- Resultados dos posts: menu Resultados (${p}/analytics).`,
     `- Conversar com o squad: o escritório fica no Gestor; anda até a mesa de um agente e clica.`,
+    `- A memória do projeto (tudo o que foi pedido, aprovado, recusado e decidido, em notas ligadas): menu "Segundo cérebro" (${p}/cerebro). Clicar numa nota abre o texto, com Corrigir e Apagar (só o dono); "Baixar cópia" leva a memória inteira.`,
   ].join("\n");
 }

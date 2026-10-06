@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { classificarFeedback, type GrupoAberto } from "@/lib/feedback/classificar";
 import { modulosDoTipoDeCard, semEmail, tituloDoGrupo, type ContextoDoFeedback, type Origem } from "@/lib/feedback/regras";
+import { registrarNota } from "@/lib/cerebro/captura";
 
 /**
  * A CAPTURA DO FEEDBACK (06/10/2026): todo pedido do chat do card e todo
@@ -68,6 +69,7 @@ export async function capturarFeedback(c: Captura): Promise<string | null> {
     const r = await classificarFeedback({ feedback: { texto, origem: c.origem, contexto: c.contexto ?? null }, gruposAbertos: abertos, projectId: c.projectId ?? null });
     if (!r.classificacao) {
       await prisma.feedbackDoProduto.update({ where: { id }, data: { confianca: r.confianca, classificadoEm: new Date() } });
+      if (c.projectId) await registrarNota(c.projectId, `feedback:${id}`);
       return id;
     }
     let grupoId: string | null = null;
@@ -85,6 +87,9 @@ export async function capturarFeedback(c: Captura): Promise<string | null> {
   } catch (e) {
     console.warn("[feedback] classificação não gravou (fica para depois):", e instanceof Error ? e.message : e);
   }
+  // O SEGUNDO CÉREBRO DO CLIENTE (06/10): o mesmo pedido vira nota da memória
+  // dele (sem cópia: a nota lê esta linha). registrarNota engole o próprio erro.
+  if (c.projectId) await registrarNota(c.projectId, `feedback:${id}`);
   return id;
 }
 

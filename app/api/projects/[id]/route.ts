@@ -6,6 +6,7 @@ import { revogarGemeo } from "@/lib/media/gemeo-servidor";
 import { esquecerIdentidade } from "@/lib/media/identidade-visual";
 import { FICHAS_DOS_AGENTES } from "@/lib/squad/definicoes-dos-agentes";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { apagarMemoriaDoProjeto } from "@/lib/cerebro/edicao";
 import { CAMPOS_DO_ENVIO, soODono } from "@/lib/equipe/permissoes";
 import { CHAVES_DOS_LINKS_NO_CONFIG } from "@/lib/projeto/links-do-cliente";
 
@@ -130,6 +131,9 @@ export async function DELETE(
   // ElevenLabs e os arquivos de rosto e voz no storage não. Revoga antes, que
   // é o que apaga os dois; falhar aqui não impede apagar o projeto.
   await revogarGemeo(id, "Projeto apagado.").catch((e) => console.error(`[gemeo][${id}] revogar ao apagar o projeto:`, e));
+  // A MEMÓRIA DO PROJETO (06/10, termos): o que não sai em cascata com o
+  // projeto (feedback do produto, elo com a biblioteca de design) sai aqui.
+  await apagarMemoriaDoProjeto(id).catch((e) => console.error(`[cerebro][${id}] apagar a memória ao apagar o projeto:`, e));
   await prisma.project.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }
