@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CATALOGO_DE_ESTILOS } from "@/lib/media/catalogo-de-estilos";
 import { LINGUAGEM_DOS_ESTILOS, comandoDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando/comando-dos-estilos";
-import { FAMILIA, FAMILIAS, blocoDeEstiloDeReserva, coresNoPrompt, familiaPorPalavras, promptDaMidia } from "@/lib/media/editor-por-comando/linguagem";
+import { FAMILIA, FAMILIAS, ROTULO_DO_TRATAMENTO, blocoDeEstiloDeReserva, coresNoPrompt, familiaPorPalavras, promptDaMidia } from "@/lib/media/editor-por-comando/linguagem";
 import { escreverBlocoDeEstilo, type EntradaDoPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { sementesDaBiblioteca } from "@/lib/biblioteca-de-design/semente";
 import { TETO } from "@/lib/biblioteca-de-design/tipos";
@@ -35,7 +35,8 @@ test("os 26 estilos do catálogo têm ficha de linguagem, nos tetos e sem traves
     assert.ok(f, `sem ficha: ${e.id}`);
     assert.ok(f.comando.length <= 650, `${e.id}: comando com ${f.comando.length} caracteres (teto 650)`);
     assert.ok(f.bloco.length <= TETO.linguagem, `${e.id}: bloco com ${f.bloco.length} caracteres (teto ${TETO.linguagem})`);
-    assert.ok(f.bloco.split(" ").length >= 40, `${e.id}: bloco curto demais`);
+    const palavras = f.bloco.split(/\s+/).length;
+    assert.ok(palavras >= 30 && palavras <= 65, `${e.id}: bloco com ${palavras} palavras (só tratamento, uns 50 a 60)`);
     assert.ok(/avoid/i.test(f.bloco), `${e.id}: bloco sem a lista do que evitar`);
     assert.ok(f.pecas.split(" ").length >= 40, `${e.id}: peças curtas demais`);
     assert.ok(f.referencias.length >= 2, `${e.id}: menos de duas referências`);
@@ -46,6 +47,24 @@ test("os 26 estilos do catálogo têm ficha de linguagem, nos tetos e sem traves
     }
   }
   assert.equal(Object.keys(LINGUAGEM_DOS_ESTILOS).length, 26);
+});
+
+/**
+ * O BLOCO É SÓ TRATAMENTO (06/10/2026, tarde): o bloco do consorcio listava
+ * escritório, documento, interior de carro, aperto de mão, palco e cidade à
+ * noite, e as 7 imagens do vídeo saíram isso. Nenhum bloco nomeia objeto ou
+ * lugar como assunto; a "Avoid" fica curta.
+ */
+const ASSUNTOS = /(office|desk|handshake|car|cars|interior|stage|city|cities|street|streets|newspaper|map|maps|document|documents|laptop|screen|screens|book|books|plant|plants|microphone|microphones|headphones|money|clock|airport|coffee|cork|folder|folders|window at night|corridor|machine|machines|tools|meeting room|confetti|cassette|product photo)/i;
+
+test("os 26 blocos são só tratamento visual: sem objeto nem lugar como assunto, Avoid curta", () => {
+  for (const e of CATALOGO_DE_ESTILOS) {
+    const b = LINGUAGEM_DOS_ESTILOS[e.id].bloco;
+    const achado = b.match(ASSUNTOS);
+    assert.ok(!achado, `${e.id}: o bloco nomeia "${achado?.[0]}" como assunto`);
+    const evitar = b.split(/avoid:/i)[1] ?? "";
+    assert.ok(evitar.split(",").length <= 8, `${e.id}: Avoid longa (${evitar.split(",").length} itens)`);
+  }
 });
 
 test("as palavras do comando levam à família da ficha pela reserva sem o JEV", () => {
@@ -157,5 +176,17 @@ test("escreverBlocoDeEstilo com o redator simulado: o bloco de 5 estilos, e a re
     const prompt = promptDaMidia("A runner's knee being examined on a clinic table, hands only", { blocoDeEstilo: r.bloco }, "imagem");
     assert.match(prompt, /No text, no letters/);
     console.log(`\n=== ${id} (família ${familia}) ===\nREDATOR SIMULADO: ${r.bloco}\nRESERVA SEM REDATOR: ${reserva.bloco}\nBLOCO PESQUISADO (biblioteca): ${LINGUAGEM_DOS_ESTILOS[id].bloco}\n`);
+  }
+});
+
+test("o prompt da mídia: a cena primeiro como assunto, o bloco marcado como só tratamento, a guarda contra grade e colagem", () => {
+  const cena = "A laptop screen showing a video editing timeline with clips being cut, close-up. Hands resting on the trackpad";
+  const bloco = LINGUAGEM_DOS_ESTILOS.consorcio.bloco;
+  for (const midia of ["imagem", "video"] as const) {
+    const p = promptDaMidia(cena, { blocoDeEstilo: bloco }, midia);
+    assert.ok(p.startsWith(cena), "a cena não abre o prompt");
+    assert.ok(p.indexOf(ROTULO_DO_TRATAMENTO) > cena.length && p.indexOf(ROTULO_DO_TRATAMENTO) < p.indexOf(bloco), "o rótulo do tratamento não fica entre a cena e o bloco");
+    assert.match(p, /not a grid, not a split panel, not a collage of separate pictures/);
+    assert.ok(!TRAVESSAO.test(p));
   }
 });

@@ -321,13 +321,22 @@ export type LinguagemDoVideo = {
 export const TETO_DO_BRIEFING_ESTILIZADO = 2400;
 
 export const GUARDA_DA_IMAGEM_ESTILIZADA =
-  " No text, no letters, no captions, no logos, no watermark. No recognizable real person and no famous or historical figure; people only anonymous, from behind, in silhouette, as hands or far away. Nothing sensual.";
+  " One single image of one scene, not a grid, not a split panel, not a collage of separate pictures. No text, no letters, no captions, no logos, no watermark. No recognizable real person and no famous or historical figure; people only anonymous, from behind, in silhouette, as hands or far away. Nothing sensual.";
 
 export const GUARDA_DO_VIDEO_ESTILIZADO =
   " The camera moves continuously and visibly from the first to the last frame (slow push-in, dolly, orbit or parallax), never a static shot." + GUARDA_DA_IMAGEM_ESTILIZADA;
 
-/** O prompt final de uma imagem ou vídeo: a cena escrita para ESTE trecho + o bloco de estilo do vídeo + a guarda. */
+/**
+ * O prompt final de uma imagem ou vídeo: a cena escrita para ESTE trecho
+ * PRIMEIRO, como o assunto; depois o bloco de estilo do vídeo, marcado como
+ * só tratamento; depois a guarda. Diagnóstico de 06/10/2026: com o bloco
+ * listando objetos e a cena numa frase curta, o modelo de imagem desenhava o
+ * bloco e ignorava a cena. A ordem e o rótulo dizem ao modelo o que manda: o
+ * QUE aparece vem da fala, o estilo só muda COMO é desenhado.
+ */
+export const ROTULO_DO_TRATAMENTO = "Visual treatment only, it never changes or adds to the subject above:";
+
 export function promptDaMidia(cena: string, linguagem: Pick<LinguagemDoVideo, "blocoDeEstilo">, midia: "imagem" | "video"): string {
-  const c = cena.replace(/\s+/g, " ").replace(/\s*—\s*/g, ", ").trim().replace(/\.$/, "").slice(0, 600);
-  return `${c}. ${linguagem.blocoDeEstilo.trim()}${midia === "video" ? GUARDA_DO_VIDEO_ESTILIZADO : GUARDA_DA_IMAGEM_ESTILIZADA}`;
+  const c = cena.replace(/\s+/g, " ").replace(/\s*[—–]\s*/g, ", ").trim().replace(/\.$/, "").slice(0, 600);
+  return `${c}. ${ROTULO_DO_TRATAMENTO} ${linguagem.blocoDeEstilo.trim()}${midia === "video" ? GUARDA_DO_VIDEO_ESTILIZADO : GUARDA_DA_IMAGEM_ESTILIZADA}`;
 }

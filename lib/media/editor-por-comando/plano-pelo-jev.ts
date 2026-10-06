@@ -348,9 +348,9 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
 
 const SISTEMA_DO_ESTILO = `Você escreve o BLOCO DE ESTILO de um vídeo: um parágrafo em INGLÊS, de 35 a 60 palavras, que vai no fim de TODO prompt de imagem e de vídeo gerado para este vídeo, para que todas as imagens e cenas tenham a mesma linguagem visual.
 
-O bloco descreve SÓ o acabamento (técnica, material, luz, textura, enquadramento, paleta), nunca a cena. Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Quando houver a leitura do vídeo (o cenário da gravação, o gênero), o acabamento conversa com ela: as imagens vão aparecer ao lado dessa gravação, com a luz e o ambiente dela. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
+O bloco descreve SÓ o tratamento visual (técnica, luz, cor, textura, lente, grão, composição, material de acabamento), nunca a cena e NUNCA objeto, lugar ou assunto (nada de escritório, mesa, documento, aperto de mão, carro, palco, cidade, jornal, mapa, tela, produto): o QUE aparece vem da cena de cada momento, que vai antes do bloco; o estilo só muda COMO é desenhado. A lista do que evitar é curta (até 6 itens). Ele traduz o comando do cliente com fidelidade, combina com o nicho e com a marca, e cita as cores da marca como acento nos detalhes. Quando houver a leitura do vídeo (o cenário da gravação, o gênero), o acabamento conversa com ela: as imagens vão aparecer ao lado dessa gravação, com a luz e o ambiente dela. Sem nome de marca de terceiros, sem nome de artista vivo, sem pessoa real.
 
-Quando houver A LINGUAGEM PESQUISADA DO ESTILO (a ficha do estilo do catálogo que o comando veio), o bloco NASCE dela e pode ir de 60 a 130 palavras, para nada da ficha se perder: mantém os materiais, a luz, o grão, a composição e a lista do que evitar da ficha, e muda só o que o comando do cliente pede diferente (o comando do cliente vale sobre a ficha) e o que a marca e o nicho pedem; nunca a substitui por uma descrição genérica da família.
+Quando houver A LINGUAGEM PESQUISADA DO ESTILO (a ficha do estilo do catálogo que o comando veio), o bloco NASCE dela e fica nos mesmos 35 a 60 palavras: mantém a luz, a cor, o grão, a composição, o acabamento e a lista do que evitar da ficha, e muda só o que o comando do cliente pede diferente (o comando do cliente vale sobre a ficha) e o que a marca e o nicho pedem; nunca a substitui por uma descrição genérica da família.
 
 Responda só JSON: {"bloco":"..."}`;
 
@@ -362,7 +362,7 @@ Responda só JSON: {"bloco":"..."}`;
  */
 const SISTEMA_DO_AJUSTE = `Você recebe o BLOCO DE ESTILO pronto de um vídeo (em inglês): a linguagem visual que vai, INTEIRA, no fim de todo prompt de imagem e de vídeo gerado para este vídeo. Você NÃO reescreve esse bloco.
 
-Escreva só o AJUSTE: uma ou duas frases em INGLÊS, de 15 a 45 palavras, que entram logo depois do bloco e dizem como essa linguagem encontra ESTE cliente: os assuntos, os lugares e os objetos do nicho dele, o público e, quando houver a leitura do vídeo, a luz e o ambiente da gravação ao lado da qual as imagens vão aparecer. Nunca contradiga o bloco, nunca repita o que ele já diz, nunca descreva uma cena específica. Sem cores (as da marca entram depois), sem nome de marca de terceiros, sem artista vivo, sem pessoa real, sem travessão.
+Escreva só o AJUSTE: uma ou duas frases em INGLÊS, de 15 a 45 palavras, que entram logo depois do bloco e dizem como o TRATAMENTO dessa linguagem encontra ESTE cliente: o tom e a temperatura de cor, o contraste, a luz e, quando houver a leitura do vídeo, a luz e o clima da gravação ao lado da qual as imagens vão aparecer. SÓ tratamento: NUNCA objeto, lugar ou assunto (nada de escritório, mesa, documento, carro, palco, cidade, produto), porque o QUE aparece vem da cena de cada momento e um objeto aqui vira o assunto de todas as imagens. Nunca contradiga o bloco, nunca repita o que ele já diz, nunca descreva uma cena. Sem cores (as da marca entram depois), sem nome de marca de terceiros, sem artista vivo, sem pessoa real, sem travessão.
 
 Responda só JSON: {"ajuste":"..."}`;
 
@@ -1177,8 +1177,9 @@ Regras do texto na tela:
 - Ícone: "nome" é um dos nomes da lista da ficha.
 
 Regras da CENA de imagem e de vídeo ("cena", em INGLÊS):
-- A cena concreta DESTE momento: o que aparece na imagem (ou o que acontece no vídeo) que faz sentido com a fala, com o NICHO do projeto e com a marca. Nunca imagem genérica (nada de "business people", "abstract background", "success concept").
-- Vídeo: descreva a AÇÃO e o movimento que acontece (o que se mexe), em 1 ou 2 frases.
+- A cena é o ASSUNTO da imagem e vai PRIMEIRO no prompt; o bloco de estilo que vem depois só muda COMO ela é desenhada, nunca O QUE aparece. Por isso a cena tem 2 ou 3 frases concretas, tiradas da fala DESTE momento e da leitura do vídeo, com o objeto específico daquele momento, o lugar e o que está acontecendo. Exemplo: a fala "edição de vídeo" vira "A laptop screen showing a video editing timeline with clips being cut, close-up. Hands resting on the trackpad, the playhead moving over the cuts.", nunca "a person working".
+- Nunca imagem genérica (nada de "business people", "abstract background", "success concept", "office", "handshake"); nunca tire a cena do bloco de estilo: o objeto vem da fala.
+- Vídeo: descreva a AÇÃO e o movimento que acontece (o que se mexe), em 2 ou 3 frases.
 - Não descreva o estilo nem as cores (o bloco de estilo do vídeo é acrescentado depois). Sem texto na imagem. Nunca pessoa real, famosa ou identificável, nunca nome próprio; pessoas só anônimas, de costas, mãos, silhueta ou ao longe.
 - "oQueAparece": a mesma cena em português, até 8 palavras, para o cliente aprovar.
 - Quando houver a LEITURA DO VÍDEO (o cenário da gravação e o "EM CENA" de cada momento), a cena da imagem ou do vídeo CONVERSA com ela: o mesmo tipo de ambiente e de luz, os objetos que estão em cena quando fizer sentido, o assunto que a fala e a imagem mostram naquele momento; nunca uma cena que brigue com o que o espectador está vendo ao lado.
@@ -1194,7 +1195,7 @@ Responda só JSON: {"momentos":[{"id":"j12","props":{...}}]} com um item por mom
 function propsParaORedator(m: MomentoDecidido): string {
   const doPedido = m.pedidoDoCliente ? ", pedidoEmIngles (o pedido do cliente traduzido literalmente para o inglês)" : "";
   if (m.peca === "imagem-janela") return `cena (EM INGLÊS, a imagem deste momento), oQueAparece (português, até 8 palavras), legenda? (até 5 palavras do falante), lado? ("direita" | "esquerda" | "topo")${doPedido}`;
-  if (!m.peca) return (m.midia === "video" ? "cena (EM INGLÊS, a ação em movimento deste momento, 1 ou 2 frases), oQueAparece (português, até 8 palavras)" : "cena (EM INGLÊS, a imagem em tela cheia deste momento), oQueAparece (português, até 8 palavras)") + doPedido;
+  if (!m.peca) return (m.midia === "video" ? "cena (EM INGLÊS, 2 ou 3 frases concretas: a ação em movimento deste momento, com o objeto específico que a fala cita), oQueAparece (português, até 8 palavras)" : "cena (EM INGLÊS, 2 ou 3 frases concretas: a imagem em tela cheia deste momento, com o objeto específico que a fala cita), oQueAparece (português, até 8 palavras)") + doPedido;
   if (m.peca === "camada-exata") {
     const f = FUNDO[(m.combinada ?? combinadaPorPalavras(m.fala)).fundo];
     return `${FICHAS["camada-exata"].props}, cena (EM INGLÊS, 1 ou 2 frases: o fundo deste momento, partindo de "${f.cena}", com o que a fala e o nicho pedem e o que se mexe DENTRO da cena (água, nuvem, luz, fumaça, gente ao longe); sem movimento de câmera, sem texto, sem nomes, sem pinos, sem linhas desenhadas), oQueAparece (português, até 8 palavras)${doPedido}`;
