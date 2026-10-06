@@ -16,7 +16,7 @@ import { ICONES_DE_LINHA } from "@/lib/media/editor-por-comando/icones-de-linha"
 import { candidatosDoIcone, escolherIconesPeloJev } from "@/lib/media/editor-por-comando/icone-pelo-jev";
 import type { perguntarAoJev } from "@/lib/jev/cliente";
 
-const TRAVESSAO = /[—–]/;
+const TRAVESSAO = new RegExp("[\\u2014\\u2013]");
 
 test("cada tipo vetorial está inteiro no catálogo, em toda família", () => {
   assert.equal(TIPOS_VETORIAIS.length, 5);
