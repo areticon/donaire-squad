@@ -195,6 +195,8 @@ export function linhaCondensada(camadas, duracao, fps) {
  * cheias tem a própria entrada (íris, cortina de luz, zoom) e não leva.
  */
 export function transicoesDaEdicao(ed) {
+  // A JORNADA OFICIAL (06/10): sem transição chamativa; a gravação do cliente passa intacta.
+  if (ed.jornada) return [];
   const saida = [];
   const bordas = [];
   for (const p of ed.planos ?? []) {
@@ -909,7 +911,8 @@ export function grafoDoLote(edicao, lote, ctx) {
       return [s.de - lote.de, s.ate - lote.de].map((b) => ({ b, forca }));
     })
     .filter(({ b }) => b > 0.2 && b < dur - 0.2);
-  const zoomAtraves = bordasDeInsercao.length
+  // A JORNADA OFICIAL (06/10): sem o zoom através nas bordas das inserções.
+  const zoomAtraves = bordasDeInsercao.length && !edicao.jornada
     ? `,zoompan=z='1+${bordasDeInsercao.map(({ b, forca }) => `${forca}*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
     : "";
   // O RELÓGIO É A CONTAGEM (05/10): depois do concat, o quadro N fica em N/fps.
@@ -947,7 +950,9 @@ export function grafoDoLote(edicao, lote, ctx) {
     atual = "x3";
   }
   // GRÃO E VINHETA leves no fim (a textura de filme que tira o "digital chapado").
-  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=end_frame=${quadrosDoLote}[v]`);
+  // A JORNADA OFICIAL (06/10): a gravação do cliente passa intacta, sem grão, sem vinheta, sem correção de cor.
+  const textura = edicao.jornada ? "" : "vignette=angle=0.42,noise=c0s=5:c0f=t+u,";
+  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,${textura}${lote.legenda ? `subtitles=${lote.legenda}:fontsdir=fontes,` : ""}format=yuv420p,trim=end_frame=${quadrosDoLote}[v]`);
   // OS FIOS DOS DECODIFICADORES (04/10): cada -i abre um decodificador com um
   // fio por núcleo, e o lote do sob medida chega a 13 entradas. Medido no WSL
   // com o lote 8 da prévia de cmurtv2zg: 186 fios sem teto, 73 com 2 na base
@@ -1429,7 +1434,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // Falhar aqui não derruba nada: o corte sai com a voz só.
   // O SOM DAS PEÇAS (03/10, segunda volta) vai junto, com ou sem trilha:
   // whoosh, impacto, riser e tique no instante de cada entrada, abaixo da voz.
-  const eventos = escala >= 1 && pedido.efeitos !== false ? efeitosDaEdicao(camadas.todas) : [];
+  // A JORNADA OFICIAL (06/10): os sons de entrada são os que a IA decidiu (edicao.sons), nunca a regra por peça.
+  const eventos = escala >= 1 && pedido.efeitos !== false ? (ed.jornada ? (Array.isArray(ed.sons) ? ed.sons : []) : efeitosDaEdicao(camadas.todas)) : [];
   tempos.efeitos = eventos.length;
   if (escala >= 1 && (pedido.trilha?.url || eventos.length)) {
     try {
@@ -1453,7 +1459,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // zoom, flash e o texto de soco. Falhar aqui não derruba a edição.
   const g = pedido.gancho;
   let ganchoSeg = 0;
-  if (escala >= 1 && g && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
+  // A JORNADA OFICIAL: a abertura é um elemento gerado decidido no passo 4, nunca o gancho desenhado em código.
+  if (escala >= 1 && g && !ed.jornada && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
     try {
       const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
       const abertura = await montarAberturaDeImpacto(saida, [{ inicio: g.inicio, fim: g.fim, soco: g.soco }], pasta, {
@@ -1476,7 +1483,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
 
   // A abertura com os melhores momentos (o gancho do JEV), só no final.
   let aberturaSeg = 0;
-  if (escala >= 1 && pedido.abertura?.momentos?.length) {
+  if (escala >= 1 && pedido.abertura?.momentos?.length && !ed.jornada) {
     try {
       const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
       const abertura = await montarAberturaDeImpacto(base, pedido.abertura.momentos, pasta, {

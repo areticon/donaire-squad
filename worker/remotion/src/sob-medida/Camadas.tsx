@@ -12,6 +12,7 @@ import { Inscrever } from "./pecas/inscrever";
 import { CartaoDePasso, DestaqueNaTela, FraseChave, NomeDeQuemFala, RealceDeQuemFala, Slide, ZoomNoPonto } from "./pecas/contexto";
 import { CamadaExata } from "./pecas/combinadas";
 import { ElementoGerado } from "./pecas/gerado";
+import { MidiaNaCaixa } from "../jornada/MidiaNaCaixa";
 import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -97,6 +98,8 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   "interface-de-edicao": ElementoGerado,
   "titulo-em-caixa": ElementoGerado,
   "elemento-gerado": ElementoGerado,
+  // A JORNADA OFICIAL (06/10): a única peça da esteira nova; só posiciona e anima a mídia gerada (jornada/MidiaNaCaixa.tsx).
+  "jornada-midia": MidiaNaCaixa,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
