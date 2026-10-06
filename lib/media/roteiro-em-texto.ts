@@ -1019,3 +1019,45 @@ export function completoNaTela(
   for (const x of insercoes) if (x.efeito) porMinuto[Math.min(minutos - 1, Math.floor(x.inicio / 60))]++;
   return { duracao: c.fala.duracao, insercoes, cenas: plano.cenas.length, semCenas: null, abertura, telas: extra.telas, porMinuto, trechos, sugestoes };
 }
+
+// ─────────────────────────────── o plano aprovado em linhas ───────────────────────────────
+
+/** Uma peça do editor por comando na linha que o cliente leu: "imagem em janela: bola de futebol, cor verde, no centro (pedido seu: ...)". */
+function linhaDaPeca(p: PecaDoComandoNaTela): string {
+  const partes = [p.tipo ?? p.rotulo, p.descricao || p.texto || "", p.cor ? `cor ${p.cor}` : "", p.onde ?? ""].filter((x) => x && x.trim());
+  const pedido = p.pedido ? ` (pedido seu: "${p.pedido}"${p.atendido === "nao" ? ", conferência disse que não foi atendido" : ""})` : "";
+  return `${partes.join(", ")}${pedido}`;
+}
+
+/** Uma cena do plano antigo: o que a tela mostra, o que entra e o pedido do cliente nela. */
+function linhaDaCena(c: CenaNaTela): string {
+  const pedido = c.pedido ? ` (pedido seu: "${c.pedido.texto}", ${c.pedido.atendido === "sim" ? "atendido" : c.pedido.atendido === "parcial" ? "atendido em parte" : "não atendido"})` : "";
+  return `${c.descricao}${c.ajuste === "removido" ? " [efeito removido pelo cliente]" : ""}${pedido}`;
+}
+
+/**
+ * O PLANO DO VÍDEO QUE O CLIENTE APROVOU, EM LINHAS (06/10): o mesmo texto da
+ * tela de roteiro, "0:05 a 0:09: ...", para o feedback do Dev saber o que a
+ * linha aprovada dizia ("a letra saiu vermelha" contra "a linha dizia
+ * vermelho"). Só os trechos com peça ou cena com efeito, e a sugestão que o
+ * cliente deixou. Puro: a captura do feedback monta a tela e chama aqui.
+ */
+export function linhasDoPlanoAprovado(alvo: { trechos?: TrechoDoCompletoNaTela[] | null; cenas?: CenaNaTela[] | null }, teto = 40): string[] {
+  const linhas: string[] = [];
+  if (alvo.cenas?.length) {
+    for (const c of alvo.cenas) {
+      if (!c.efeito && !c.pedido && c.ajuste !== "removido") continue;
+      linhas.push(`${mmss(c.inicio)} a ${mmss(c.fim)}: ${linhaDaCena(c)}`);
+    }
+  } else {
+    for (const t of alvo.trechos ?? []) {
+      const pecas = (t.pecas ?? []).map(linhaDaPeca).filter(Boolean);
+      const cena = t.cena && (t.cena.efeito || t.cena.pedido) ? linhaDaCena(t.cena) : "";
+      const conteudo = [cena, ...pecas].filter(Boolean);
+      if (t.sugestao) conteudo.push(`sugestão do cliente: "${t.sugestao}"`);
+      if (!conteudo.length) continue;
+      linhas.push(`${mmss(t.inicio)} a ${mmss(t.fim)}: ${conteudo.join("; ")}`);
+    }
+  }
+  return linhas.slice(0, teto);
+}

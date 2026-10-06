@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
+import { jevLigado } from "@/lib/jev/cliente";
 import { classificarFeedback, type GrupoAberto } from "@/lib/feedback/classificar";
-import { modulosDoTipoDeCard, semEmail, tituloDoGrupo, type ContextoDoFeedback, type Origem } from "@/lib/feedback/regras";
+import { JANELA_DA_REPESCAGEM_MS, modulosDoTipoDeCard, precisaDeRepescagem, semEmail, tituloDoGrupo, type ContextoDoFeedback, type Origem } from "@/lib/feedback/regras";
 
 /**
  * A CAPTURA DO FEEDBACK (06/10/2026): todo pedido do chat do card e todo
@@ -63,29 +64,82 @@ export async function capturarFeedback(c: Captura): Promise<string | null> {
     return null;
   }
 
+  await classificarEGravar({ id, texto, origem: c.origem, contexto: c.contexto ?? null, projectId: c.projectId ?? null });
+  return id;
+}
+
+/**
+ * Classifica pelo JEV e grava (classe, confiança, grupo). Com o JEV
+ * desligado ou falhando, nada é gravado e `classificadoEm` fica nulo: a
+ * repescagem tenta de novo. O "não sei" do JEV grava a hora da tentativa.
+ * Devolve a classe gravada, "nao-sei" ou null (não tentou ou falhou).
+ */
+async function classificarEGravar(f: { id: string; texto: string; origem: Origem; contexto: ContextoDoFeedback | null; projectId: string | null }): Promise<string | "nao-sei" | null> {
   try {
+    if (!jevLigado()) return null;
     const abertos = await gruposAbertos();
-    const r = await classificarFeedback({ feedback: { texto, origem: c.origem, contexto: c.contexto ?? null }, gruposAbertos: abertos, projectId: c.projectId ?? null });
+    const r = await classificarFeedback({ feedback: { texto: f.texto, origem: f.origem, contexto: f.contexto }, gruposAbertos: abertos, projectId: f.projectId });
     if (!r.classificacao) {
-      await prisma.feedbackDoProduto.update({ where: { id }, data: { confianca: r.confianca, classificadoEm: new Date() } });
-      return id;
+      // Sem confiança é "não sei" de verdade; confiança nula é o JEV que não respondeu (fica para a repescagem).
+      if (r.confianca === null) return null;
+      await prisma.feedbackDoProduto.update({ where: { id: f.id }, data: { confianca: r.confianca, classificadoEm: new Date() } });
+      return "nao-sei";
     }
     let grupoId: string | null = null;
     if (r.grupo === "novo" || !r.grupo) {
-      const g = await prisma.grupoDeFeedback.create({ data: { titulo: tituloDoGrupo(texto), classificacao: r.classificacao }, select: { id: true } });
+      const g = await prisma.grupoDeFeedback.create({ data: { titulo: tituloDoGrupo(f.texto), classificacao: r.classificacao }, select: { id: true } });
       grupoId = g.id;
     } else {
       grupoId = r.grupo;
       await prisma.grupoDeFeedback.update({ where: { id: grupoId }, data: { atualizadoEm: new Date() } }).catch(() => {});
     }
     await prisma.feedbackDoProduto.update({
-      where: { id },
+      where: { id: f.id },
       data: { classificacao: r.classificacao, confianca: r.confianca, grupoId, classificadoEm: new Date() },
     });
+    return r.classificacao;
   } catch (e) {
-    console.warn("[feedback] classificação não gravou (fica para depois):", e instanceof Error ? e.message : e);
+    console.warn("[feedback] classificação não gravou (fica para a repescagem):", e instanceof Error ? e.message : e);
+    return null;
   }
-  return id;
+}
+
+/**
+ * A REPESCAGEM DO FEEDBACK SEM CLASSE (06/10, tarde): o feedback que ficou
+ * sem classificação volta para o JEV (nunca para o Claude). Quem entra está
+ * em `precisaDeRepescagem` (regras.ts): o que o JEV nunca classificou (estava
+ * desligado ou falhou) e o "não sei" da captura, uma vez, depois que os
+ * grupos cresceram. Roda no cron de 5 min, com teto por passada.
+ */
+export async function repescarFeedbacksSemClasse(o: { teto?: number; agora?: Date } = {}): Promise<{ tentados: number; classificados: number; naoSei: number; falhas: number }> {
+  const agora = o.agora ?? new Date();
+  const saida = { tentados: 0, classificados: 0, naoSei: 0, falhas: 0 };
+  if (!jevLigado()) return saida;
+  const candidatos = await prisma.feedbackDoProduto
+    .findMany({
+      where: { classificacao: null, criadoEm: { gte: new Date(agora.getTime() - JANELA_DA_REPESCAGEM_MS) } },
+      orderBy: { criadoEm: "asc" },
+      take: 100,
+      select: { id: true, texto: true, origem: true, contexto: true, projectId: true, criadoEm: true, classificadoEm: true },
+    })
+    .catch((e) => {
+      console.warn("[feedback] repescagem não leu a fila (ignorado):", e instanceof Error ? e.message : e);
+      return [];
+    });
+  for (const f of candidatos.filter((x) => precisaDeRepescagem(x, agora)).slice(0, o.teto ?? 20)) {
+    saida.tentados++;
+    const r = await classificarEGravar({ id: f.id, texto: f.texto, origem: f.origem === "chamado" ? "chamado" : "chat", contexto: (f.contexto as ContextoDoFeedback | null) ?? null, projectId: f.projectId });
+    if (r === "nao-sei") {
+      saida.naoSei++;
+    } else if (r) {
+      saida.classificados++;
+    } else {
+      saida.falhas++;
+      // A hora da tentativa fica gravada: o mesmo feedback só volta depois do intervalo (nada de laço a cada 5 min).
+      await prisma.feedbackDoProduto.update({ where: { id: f.id }, data: { classificadoEm: agora } }).catch(() => {});
+    }
+  }
+  return saida;
 }
 
 type Mensagem = { role: string; content: string; timestamp?: string };
@@ -131,6 +185,23 @@ export async function capturarFeedbackDoChatDoCard(a: {
       resposta = ultima?.content ?? null;
     }
     const videoJobId = typeof meta.videoJobId === "string" ? meta.videoJobId : null;
+    // O PLANO DO VÍDEO QUE O CLIENTE APROVOU (06/10): as linhas da tela de
+    // roteiro do completo ou do corte deste card. É o que separa "a letra saiu
+    // vermelha e eu queria rosa" com a linha dizendo vermelho (atendido como
+    // pedido) de um erro do produto. Import tardio: o roteiro puxa a esteira
+    // inteira e não pode entrar no ciclo do chat.
+    let planoDoVideo: string | null = null;
+    if (videoJobId) {
+      try {
+        const { planoAprovadoDoVideo } = await import("@/lib/media/roteiro-da-edicao");
+        planoDoVideo = await planoAprovadoDoVideo(videoJobId, {
+          completo: meta.completo === true || card.cardType === "video_completo",
+          trechoIndice: typeof meta.trechoIndice === "number" ? meta.trechoIndice : null,
+        });
+      } catch (e) {
+        console.warn("[feedback] plano do vídeo não lido (segue sem):", e instanceof Error ? e.message : e);
+      }
+    }
     const slides = Array.isArray(meta.slides) ? (meta.slides as unknown[]).filter((s): s is string => typeof s === "string") : [];
     const tipoDePeca =
       card.cardType === "video_clip" ? "corte de vídeo"
@@ -152,6 +223,7 @@ export async function capturarFeedbackDoChatDoCard(a: {
         laminas: slides.length ? slides.join(" | ").slice(0, 600) : null,
         corDaMarca: card.project?.colorPalette ?? null,
         estiloDeVideo: card.project?.videoStyle ?? null,
+        planoDoVideo: planoDoVideo ? semEmail(planoDoVideo) : null,
       },
       modulos: modulosDoTipoDeCard(card.cardType, card.mediaType),
     };

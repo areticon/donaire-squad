@@ -20,6 +20,7 @@ import {
   movimentoEm,
   quemFala,
   regiaoDoConteudo,
+  regiaoDoPonto,
   rostoDoTrecho,
   trechoEm,
   zonaLivre,
@@ -351,7 +352,9 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
         avisos.push(`${id}: sem tela nem quadro na leitura, ${fichaM.nome} saiu`);
         continue;
       }
-      const enq = fichaM.nome === "zoom-no-ponto" ? enquadramentoDoPonto(conteudo) : null;
+      // A SUB-CAIXA (06/10, tarde): o zoom mira o ponto que a fala aponta neste momento, quando a leitura o traz.
+      const alvoDoZoom = fichaM.nome === "zoom-no-ponto" ? regiaoDoPonto(tr, de, ate) ?? conteudo : conteudo;
+      const enq = fichaM.nome === "zoom-no-ponto" ? enquadramentoDoPonto(alvoDoZoom) : null;
       if (fichaM.nome === "zoom-no-ponto" && !enq) {
         // A região já ocupa o quadro (a tela inteira, o quadro inteiro): aproximar cortaria; fica o destaque sem zoom.
         avisos.push(`${id}: a região da tela ou do quadro já é grande, o zoom no ponto virou destaque na tela`);
@@ -359,7 +362,7 @@ export function resolverPorComando(p: PlanoDoDiretor, ctx: ContextoDoComando): {
       }
       if (enq) {
         pedidosDaLeitura.push({ de: +de.toFixed(3), ate: +ate.toFixed(3), zoom: enq.zoom, x: enq.x, y: enq.y, movimento: "empurrao", zoomFinal: +Math.min(2, enq.zoom * 1.04).toFixed(3) });
-        props.caixa = caixaNaCamera(conteudo, enq);
+        props.caixa = caixaNaCamera(alvoDoZoom, enq);
         props.zoom = enq.zoom;
       } else props.caixa = conteudo;
     }

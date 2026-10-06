@@ -228,3 +228,74 @@ test("o prompt do briefing tem as quatro partes, os módulos e nenhum e-mail", (
   const travessao = String.fromCharCode(0x2014);
   assert.ok(!sistema.includes(travessao) && !usuario.includes(travessao), "sem travessão");
 });
+
+// ─── a repescagem do feedback sem classe (06/10, tarde) ───
+
+test("repescagem: o nunca tentado entra; o tentado sem classe volta depois de 6 h; com 3 dias para", async () => {
+  const { precisaDeRepescagem } = await import("@/lib/feedback/regras");
+  const agora = new Date("2026-10-06T18:00:00Z");
+  const h = (n: number) => new Date(agora.getTime() - n * 3_600_000);
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(1), classificadoEm: null }, agora), true, "JEV desligado na captura");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: new Date(agora.getTime() - 30_000), classificadoEm: null }, agora), false, "a captura ainda pode estar classificando");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(10), classificadoEm: h(9) }, agora), true, "não sei de 9 h atrás");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(3), classificadoEm: h(2) }, agora), false, "tentado há 2 h: espera");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(80), classificadoEm: null }, agora), false, "mais de 3 dias: fica no painel");
+  assert.equal(precisaDeRepescagem({ classificacao: "erro_do_produto", criadoEm: h(1), classificadoEm: h(1) }, agora), false);
+});
+
+test("repescagem: o \"não sei\" do JEV traz confiança; a falha (sem resposta) não, e por isso volta para a fila", async () => {
+  const naoSei = await classificarFeedback({ feedback: { texto: "achei estranho", origem: "chat", contexto: null }, gruposAbertos: [], perguntar: jevFixo({ classificacao: { choice: "erro_do_produto", confidence: 0.3 } }) });
+  assert.equal(naoSei.classificacao, null);
+  assert.equal(naoSei.confianca, 0.3);
+  const caiu = await classificarFeedback({ feedback: { texto: "achei estranho", origem: "chat", contexto: null }, gruposAbertos: [], perguntar: async () => { throw new Error("JEV fora do ar"); } });
+  assert.equal(caiu.classificacao, null);
+  assert.equal(caiu.confianca, null);
+});
+
+// ─── telefone, CPF e CNPJ mascarados (06/10, tarde) ───
+
+test("telefone, CPF e CNPJ saem mascarados; tempo, dinheiro, data e porcentagem ficam", () => {
+  const casos: Array<[string, string]> = [
+    ["me liga no (11) 91234-5678", "me liga no [telefone]"],
+    ["whats +55 11 91234-5678 ok", "whats [telefone] ok"],
+    ["fixo 11 3456-7890", "fixo [telefone]"],
+    ["celular 11912345678", "celular [telefone]"],
+    ["só o número 91234-5678", "só o número [telefone]"],
+    ["cpf 123.456.789-09", "cpf [cpf]"],
+    ["cpf 12345678909", "cpf [cpf]"],
+    ["cnpj 12.345.678/0001-90", "cnpj [cnpj]"],
+    ["cnpj 12345678000190", "cnpj [cnpj]"],
+    ["e-mail ana@x.com e cpf 123.456.789-09", "e-mail [e-mail] e cpf [cpf]"],
+  ];
+  for (const [entrada, saida] of casos) assert.equal(semEmail(entrada), saida, entrada);
+  const intocado = "aos 1:05 do vídeo, R$ 1.234,00, 30% mais, em 06/10/2026 e 2026-10-06, nota 9,5, 120 créditos";
+  assert.equal(semEmail(intocado), intocado);
+  // E chega mascarado ao estado do JEV.
+  const estado = JSON.stringify(estadoDoFeedback({ texto: "liga (11) 91234-5678, cpf 123.456.789-09", origem: "chamado", contexto: null }, []));
+  assert.ok(!estado.includes("91234") && !estado.includes("456.789"), estado);
+});
+
+// ─── o plano do vídeo no contexto (06/10, tarde) ───
+
+test("o plano aprovado do vídeo vira linhas com tempo, cor, lugar e pedido, e chega inteiro ao JEV", async () => {
+  const { linhasDoPlanoAprovado } = await import("@/lib/media/roteiro-em-texto");
+  const linhas = linhasDoPlanoAprovado({
+    trechos: [
+      { indice: 0, de: 0, ate: 10, inicio: 0, fim: 14, fala: "abertura", cena: null, sugestao: null },
+      {
+        indice: 1, de: 11, ate: 30, inicio: 65, fim: 80, fala: "a bola", cena: null, sugestao: "quero a bola maior",
+        pecas: [{ peca: "imagem-janela", rotulo: "imagem em janela", texto: "bola de futebol", inicio: 66, tela: false, tipo: "imagem", descricao: "bola de futebol", cor: "vermelho", onde: "no centro da tela", pedido: "bola no meio com letra vermelha", atendido: "sim", motivo: null }],
+      },
+    ],
+  });
+  assert.equal(linhas.length, 1, "trecho sem peça nem sugestão fica de fora");
+  assert.ok(linhas[0].startsWith("1:05 a 1:20: imagem, bola de futebol, cor vermelho, no centro da tela"), linhas[0]);
+  assert.ok(linhas[0].includes('pedido seu: "bola no meio com letra vermelha"'));
+  assert.ok(linhas[0].includes('sugestão do cliente: "quero a bola maior"'));
+
+  const plano = Array.from({ length: 60 }, (_, i) => `${i}:00 a ${i}:10: título "frase ${i}" em vermelho`).join("\n");
+  const estado = estadoDoFeedback({ texto: "queria rosa", origem: "chat", contexto: { aprovadoAntes: { planoDoVideo: plano, textoDaPeca: "y".repeat(900) } } }, []) as { o_que_o_cliente_tinha_aprovado_antes: Record<string, string> };
+  assert.ok(estado.o_que_o_cliente_tinha_aprovado_antes.planoDoVideo.length > 600, "o plano passa do teto de 600 de um texto de peça");
+  assert.ok(estado.o_que_o_cliente_tinha_aprovado_antes.planoDoVideo.length <= 3000);
+  assert.equal(estado.o_que_o_cliente_tinha_aprovado_antes.textoDaPeca.length, 600);
+});

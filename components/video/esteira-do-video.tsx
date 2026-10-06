@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
-import { STATUS_CANCELADO, TEXTO_DA_CONFIRMACAO } from "@/lib/media/cancelamento";
+import { STATUS_CANCELADO, textoDaConfirmacao } from "@/lib/media/cancelamento";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
 import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type LeituraDaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
@@ -1106,7 +1106,9 @@ function CartaoDoVideo({
   // gerado e com os créditos.
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   const [cancelando, setCancelando] = useState(false);
-  const cancelavel = !pronto && !falhou && !completoFalhou;
+  // O pronto também se cancela (06/10, tarde): o X "tirar da lista" só some
+  // da tela; cancelar tira do quadro as peças que não foram ao ar.
+  const cancelavel = !falhou && !completoFalhou;
   const confirmarCancelamento = async () => {
     setCancelando(true);
     const cancelou = await aoCancelar();
@@ -1305,10 +1307,12 @@ function CartaoDoVideo({
           data-confirmar-cancelamento
         >
           <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
-            {TEXTO_DA_CONFIRMACAO}
+            {textoDaConfirmacao(Boolean(pronto))}
           </p>
           <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
-            {gemeo && v.status === "gemeo"
+            {pronto
+              ? "Os cards deste vídeo que ainda não foram publicados são arquivados. Publicado e agendado ficam como estão; para tirar um agendado, arquive o card dele."
+              : gemeo && v.status === "gemeo"
               ? "O gêmeo para de gravar este vídeo; o que o gerador já estava fazendo termina sozinho e vai para o lixo."
               : esperando === "roteiro"
                 ? "O roteiro deixa de esperar a sua aprovação, e a segunda parte da edição não é cobrada. A primeira parte, já feita, fica cobrada."

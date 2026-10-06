@@ -62,7 +62,8 @@ export function estadoDoFeedback(f: FeedbackParaClassificar, grupos: GrupoAberto
   const aprovado = Object.fromEntries(
     Object.entries(c.aprovadoAntes ?? {})
       .filter(([, v]) => typeof v === "string" && v.trim())
-      .map(([k, v]) => [k, semEmail(String(v)).slice(0, 600)])
+      // O plano do vídeo é o roteiro inteiro em linhas: cabe mais que um texto de peça.
+      .map(([k, v]) => [k, semEmail(String(v)).slice(0, k === "planoDoVideo" ? 3000 : 600)])
   );
   return {
     contexto:
@@ -96,7 +97,7 @@ export function perguntasDaClassificacao(grupos: GrupoAberto[]): Record<string, 
     classificacao: {
       type: "choice",
       instructions:
-        "Leia `pedido_do_cliente`, `o_que_a_plataforma_fez` e `o_que_o_cliente_tinha_aprovado_antes`. Em qual classe o pedido cai? Escolha `atendido_como_pedido` quando o que saiu é o que estava aprovado antes (por exemplo, o cliente reclama da cor e a linha aprovada dizia essa cor). Escolha `erro_do_produto` só quando a plataforma falhou em algo que prometeu: sincronia, tempo, elemento que não apareceu, texto cortado, erro ou travamento.",
+        "Leia `pedido_do_cliente`, `o_que_a_plataforma_fez` e `o_que_o_cliente_tinha_aprovado_antes`. Em qual classe o pedido cai? Escolha `atendido_como_pedido` quando o que saiu é o que estava aprovado antes (por exemplo, o cliente reclama da cor e a linha aprovada dizia essa cor; em vídeo, `planoDoVideo` traz as linhas do roteiro que ele aprovou, com o tempo de cada uma). Escolha `erro_do_produto` só quando a plataforma falhou em algo que prometeu: sincronia, tempo, elemento que não apareceu, texto cortado, erro ou travamento.",
       criteria: Object.fromEntries(CLASSIFICACOES.map((c) => [c, CRITERIO_DA_CLASSIFICACAO[c]])),
     },
   };

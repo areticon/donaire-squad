@@ -1,7 +1,7 @@
 import { ESTILOS, type Estilo } from "@/lib/media/estilos";
 import { estiloDoCatalogo, normalizarEscolha, type EscolhaDeEstilo } from "@/lib/media/catalogo-de-estilos";
 import { coresDaMarca, familiaDaLinguagem, type CoresDaMarca, type FamiliaDaCapa } from "@/lib/media/capa-composta";
-import { legendaDecidida, type EstiloDeLegenda, type LegendaDecidida } from "@/lib/media/legenda-escolhida";
+import { legendaDecidida, legendaDoCorteDecidida, type EstiloDeLegenda, type LegendaDecidida } from "@/lib/media/legenda-escolhida";
 
 /**
  * A LINGUAGEM ESCOLHIDA VIRANDO EDIÇÃO (30/09/2026).
@@ -85,7 +85,9 @@ const SO_COM_IA = new Set([
 export function edicaoDaLinguagem(
   escolhaBruta: unknown,
   videoStyle: string | null | undefined,
-  colorPalette: string | null | undefined
+  colorPalette: string | null | undefined,
+  /** "corte" (06/10, tarde): a legenda dos cortes, ligada por padrão (ver `legendaDoCorteDecidida`). */
+  alvo: "corte" | "completo" = "completo"
 ): { escolha: EscolhaDeEstilo; estilo: Estilo; tratamento: TratamentoDaEdicao; legenda: LegendaDecidida } {
   const escolha = normalizarEscolha(escolhaBruta, videoStyle);
   const doCatalogo = estiloDoCatalogo(escolha.estiloId);
@@ -96,7 +98,7 @@ export function edicaoDaLinguagem(
   // "auto" segue pelo caminho de antes, byte a byte; o estilo fixado pelo
   // cliente troca SÓ o desenho da legenda, e o ritmo e o som continuam os da
   // linguagem.
-  const decidida = legendaDecidida(escolha.legenda, familia);
+  const decidida = alvo === "corte" ? legendaDoCorteDecidida(escolha.legenda, escolha.legendaDosCortes, familia) : legendaDecidida(escolha.legenda, familia);
 
   // A LEGENDA DA LINGUAGEM, sempre com a cor da marca no destaque.
   let legenda: Estilo["legenda"];

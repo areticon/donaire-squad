@@ -22,7 +22,7 @@ import { dirigirMontagem } from "@/lib/media/diretor-de-montagem";
 import { gerarAssetsDaMontagem, recortesDoProjeto, urlsDosAssets, type AssetGerado } from "@/lib/media/assets-da-montagem";
 import { concluirSePronto } from "@/lib/media/higgsfield";
 import { ASSETS_EM_VIDEO, resolverMontagem, type PalavraNoCorte, type PlanoDeMontagem, type Retangulo } from "@/lib/media/plano-de-montagem";
-import { legendaDecidida } from "@/lib/media/legenda-escolhida";
+import { legendaDoCorteDecidida } from "@/lib/media/legenda-escolhida";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import type { EdicaoDoTrecho } from "@/lib/media/edicao-gravada";
 import type { MontagemDoCorte } from "@/lib/media/estado-da-montagem";
@@ -342,7 +342,8 @@ function contexto(video: VideoDoPasso, t: TrechoComMontagem) {
   const familia = familiaDaLinguagem(escolha.estiloId);
   // A legenda escolhida (30/09) é lida AGORA, na hora de montar: quem trocou
   // para "sem legenda" depois de aprovar o roteiro ainda recebe o corte sem.
-  return { pessoa, rosto, escolha, familia, marca: coresDaMarca(video.project.colorPalette), legenda: legendaDecidida(escolha.legenda, familia) };
+  // A legenda dos cortes, ligada por padrão (06/10, tarde): o "sem" do projeto vale só para o completo.
+  return { pessoa, rosto, escolha, familia, marca: coresDaMarca(video.project.colorPalette), legenda: legendaDoCorteDecidida(escolha.legenda, escolha.legendaDosCortes, familia) };
 }
 
 /** Teto de texto no corte curto (02/10): 5 por minuto, 6 s entre dois. */

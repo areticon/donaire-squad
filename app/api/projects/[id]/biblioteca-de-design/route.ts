@@ -26,8 +26,9 @@ import { lerComandoDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-
  *   daquele design vira o comando do projeto (letra e cores ficam as de
  *   antes). Imagem de semente: o modelo do book entra nos escolhidos (e a
  *   identidade precisa ser aprovada de novo, como sempre). Imagem feita por
- *   cliente: só fica ligada ao projeto; a esteira ainda não desenha modelo de
- *   imagem fora do book (pendência registrada no HANDOFF).
+ *   cliente (06/10, tarde): vira o modelo das artes pelo prompt dele
+ *   (lib/modelos-de-arte/modelo-do-cliente.ts), enquanto for o design de
+ *   imagem mais recente e vier depois da última escolha no book.
  * PATCH { designId, publico }: o AUTOR tira o design da galeria (publico
  *   false) ou pede para devolver (o JEV confere a ficha de novo).
  * Só o dono muda, como a direção visual.
@@ -70,8 +71,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (corpo.tipo === "video") {
       const atual = await lerComandoDoProjeto(id);
       await salvarComandoDoProjeto(id, { texto: resultado.design.pedidoOriginal, fonte: atual?.fonte ?? "geist", cores: atual?.cores ?? { tipo: "marca" }, origem: "escrito", referencia: null });
+      return NextResponse.json(resultado);
     }
-    return NextResponse.json(resultado);
+    // Imagem (06/10, tarde): o JEV achou igual a um modelo do book, então ele
+    // entra nos escolhidos como na galeria; senão o design escrito vira o
+    // modelo das artes pelo prompt do cliente.
+    return NextResponse.json({ ...resultado, efeito: await efeitoDoDesignDeImagem(id, resultado.design) });
   } catch (e) {
     console.error("[biblioteca-de-design] pedido:", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Não consegui registrar o pedido agora. Tente de novo em instantes." }, { status: 500 });
@@ -96,18 +101,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       // O texto que vira comando: o pedido só se é deste projeto ou da semente; de outro cliente, o nome e a descrição do visual.
       await salvarComandoDoProjeto(id, { texto: textoParaOComando(design), fonte: atual?.fonte ?? "geist", cores: atual?.cores ?? { tipo: "marca" }, origem: design.catalogoId ? "referencia" : "escrito", referencia: design.catalogoId });
       efeito = "O comando do vídeo passou a ser este design. Vale para os próximos cortes.";
-    } else if (design.catalogoId) {
-      const escolha = await lerModelosEscolhidos(id);
-      const ids = escolha?.ids ?? [];
-      if (!ids.includes(design.catalogoId)) {
-        await salvarModelosEscolhidos(id, [...ids, design.catalogoId]);
-        await salvarIdentidadeVisual(id, { modelosMudaram: true });
-        efeito = "O modelo entrou nos seus modelos de arte. Aprove a identidade de novo em Modelos para as artes saírem nele.";
-      } else {
-        efeito = "Este modelo já estava entre os seus modelos de arte.";
-      }
     } else {
-      efeito = "Design ligado ao projeto. A esteira de artes ainda desenha só os modelos do book; este entra quando o modelo por prompt do cliente for ligado.";
+      efeito = await efeitoDoDesignDeImagem(id, design);
     }
     return NextResponse.json({ ok: true, design: { ...design, doProjeto: true }, efeito });
   } catch (e) {
@@ -132,4 +127,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     console.error("[biblioteca-de-design] visibilidade:", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Não consegui mudar onde o design aparece." }, { status: 500 });
   }
+}
+
+/**
+ * O que um design de imagem ligado ao projeto faz nas artes. Modelo do book:
+ * entra nos escolhidos (e a identidade é aprovada de novo, como sempre).
+ * Escrito por cliente (06/10, tarde): as próximas artes saem nele, pelo
+ * prompt dele, até o cliente escolher outro design ou modelos do book.
+ */
+async function efeitoDoDesignDeImagem(projectId: string, design: { catalogoId: string | null }): Promise<string> {
+  if (design.catalogoId) {
+    const escolha = await lerModelosEscolhidos(projectId);
+    const ids = escolha?.ids ?? [];
+    if (ids.includes(design.catalogoId)) return "Este modelo já estava entre os seus modelos de arte.";
+    await salvarModelosEscolhidos(projectId, [...ids, design.catalogoId]);
+    await salvarIdentidadeVisual(projectId, { modelosMudaram: true });
+    return "O modelo entrou nos seus modelos de arte. Aprove a identidade de novo em Modelos para as artes saírem nele.";
+  }
+  return "As próximas artes saem neste design, pelo que você escreveu: a imagem é gerada na linguagem dele e a manchete entra na sua letra. Para voltar aos modelos do book, escolha um deles em Modelos.";
 }

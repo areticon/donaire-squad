@@ -131,7 +131,10 @@ export async function montarPedidoDeCorte(
   // A LINGUAGEM inteira que o cliente escolheu (30/09), e não só o perfil de
   // legenda: a legenda sai na linguagem e nas cores da marca, e o tratamento
   // (câmera, look, efeitos) vai ao worker. Ver lib/media/linguagem-da-edicao.ts.
-  const { estilo, tratamento, legenda } = edicaoDaLinguagem(video.escolha, video.estilo, video.colorPalette);
+  // A legenda dos CORTES é ligada por padrão (06/10, tarde): o "sem legenda"
+  // do projeto tira só a do completo (lib/media/legenda-escolhida.ts).
+  const { estilo, tratamento, legenda } = edicaoDaLinguagem(video.escolha, video.estilo, video.colorPalette, "corte");
+  const legendaDoCompleto = edicaoDaLinguagem(video.escolha, video.estilo, video.colorPalette, "completo").legenda;
   // "Sem legenda" (30/09, lib/media/legenda-escolhida.ts): o pedido sai sem
   // NENHUM arquivo de legenda, nem a fala nem as frases de destaque, que moram
   // no mesmo arquivo. O worker já trata legenda vazia como "nada a queimar",
@@ -275,7 +278,7 @@ export async function montarPedidoDeCorte(
   // meio de outra fala. Com a montagem do completo ligada, o texto na tela é
   // dela, sincronizado palavra a palavra; a base sai limpa.
   void montarLegendasDestaque;
-  const legendasAss = process.env.MONTAGEM_DO_COMPLETO === "1" || !comLegenda ? null : montarLegendasDestaque(trechos, remocoes, {
+  const legendasAss = process.env.MONTAGEM_DO_COMPLETO === "1" || !legendaDoCompleto.mostrar ? null : montarLegendasDestaque(trechos, remocoes, {
     fonte: estilo.legenda.fonte,
     frases: todosOsEfeitos
       .filter((e) => e.tipo === "frase")

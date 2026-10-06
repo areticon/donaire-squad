@@ -59,7 +59,16 @@ export type TrechoLido = {
   mostra: string[]; // objetos/coisas relevantes em cena (panela, slide, livro, gráfico...)
   falaDe: string; // do que a fala trata neste trecho, uma linha
   areaLivre: CaixaNoQuadro[]; // regiões onde uma peça pode entrar sem tapar pessoa, tela ou quadro
+  /**
+   * OS PONTOS DA TELA OU DO QUADRO QUE A FALA APONTA (06/10, tarde): a linha
+   * do código, a célula, o desenho, o tópico do slide de que a fala trata,
+   * com o segundo em que ela trata e a caixa no quadro inteiro (sempre dentro
+   * da tela ou do quadro do trecho). A visão descreve; o zoom no ponto mira
+   * aqui em vez da tela inteira. Ausente em leitura antiga ou sem visão.
+   */
+  pontos?: PontoLido[];
 };
+export type PontoLido = { t: number; caixa: CaixaNoQuadro; oQue: string };
 export type GeneroDoVideo = "pessoa-falando" | "apresentacao-com-quadro" | "conversa" | "podcast" | "palestra" | "tela" | "vlog" | "demonstracao" | "outro";
 export type LeituraDoVideo = {
   versao: 1;
@@ -535,7 +544,7 @@ export type VisaoDoVideo = {
   generoConfianca: number;
   cenario: string;
   pessoas: PessoaLida[];
-  trechos: Array<{ i: number; acontece: string; mostra: string[]; falaDe: string; temTela: boolean; temQuadro: boolean; quemFala: string[] }>;
+  trechos: Array<{ i: number; acontece: string; mostra: string[]; falaDe: string; temTela: boolean; temQuadro: boolean; quemFala: string[]; pontos?: PontoLido[] }>;
   resumo: string;
   custoUsd: number;
   tokens: { entrada: number; saida: number };
@@ -623,6 +632,14 @@ const ESQUEMA_DA_VISAO = {
           temTela: { type: "BOOLEAN" },
           temQuadro: { type: "BOOLEAN" },
           quemFala: { type: "ARRAY", items: { type: "STRING" } },
+          pontos: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: { segundo: { type: "NUMBER" }, x: { type: "NUMBER" }, y: { type: "NUMBER" }, w: { type: "NUMBER" }, h: { type: "NUMBER" }, oQue: { type: "STRING" } },
+              required: ["segundo", "x", "y", "w", "h", "oQue"],
+            },
+          },
         },
         required: ["i", "acontece", "mostra", "falaDe", "temTela", "temQuadro", "quemFala"],
       },
@@ -658,7 +675,7 @@ REGRAS:
 - Nunca invente nome: "nome" só se o nome for dito na fala ou aparecer escrito na tela; senão null. "papel" é o que a pessoa faz no vídeo (apresentador, convidado, aluno...), ou null.
 - "genero": o que o vídeo É (uma pessoa falando para a câmera; apresentação com quadro ou lousa; conversa entre duas ou mais pessoas; podcast com microfones; palestra filmada de longe com plateia; tela compartilhada ou slides dominando; vlog com câmera na mão mostrando lugares; demonstração de algo com as mãos, cozinha, oficina, produto; outro). "generoConfianca" de 0 a 1.
 - "cenario": o lugar e o que se vê nele, uma linha concreta (móveis, cores, objetos, luz).
-- Por trecho: "acontece" é o que a IMAGEM mostra naquele trecho, uma linha de até 20 palavras (quem faz o quê, gesto, movimento, troca de plano); "mostra" lista objetos ou coisas relevantes visíveis (livro, slide, gráfico, panela, produto, quadro, tela...), vazia se nada; "falaDe" é do que a FALA trata ali, uma linha de até 25 palavras (use a transcrição); "temTela" se há tela compartilhada ou slide visível; "temQuadro" se há quadro branco, lousa ou flipchart visível; "quemFala" os ids de quem fala no trecho.
+- Por trecho: "acontece" é o que a IMAGEM mostra naquele trecho, uma linha de até 20 palavras (quem faz o quê, gesto, movimento, troca de plano); "mostra" lista objetos ou coisas relevantes visíveis (livro, slide, gráfico, panela, produto, quadro, tela...), vazia se nada; "falaDe" é do que a FALA trata ali, uma linha de até 25 palavras (use a transcrição); "temTela" se há tela compartilhada ou slide visível; "temQuadro" se há quadro branco, lousa ou flipchart visível; "quemFala" os ids de quem fala no trecho; "pontos" só quando há tela ou quadro: as regiões ESPECÍFICAS dele de que a fala trata (uma linha de código, uma célula, um tópico do slide, um desenho ou palavra no quadro), até 4 por trecho, cada uma com o "segundo" do arquivo em que a fala trata dela, a caixa em fração do quadro inteiro (x e y do canto de cima à esquerda, w e h, de 0 a 1) e "oQue" em até 8 palavras; vazia se a fala não aponta nada específico.
 - Português do Brasil, frases diretas, sem travessão (use vírgula ou dois pontos).
 - "resumo": o vídeo em 2 ou 3 linhas, imagem e fala.
 
@@ -757,6 +774,7 @@ export async function verComGemini(
         temTela: Boolean(t.temTela),
         temQuadro: Boolean(t.temQuadro),
         quemFala: Array.isArray(t.quemFala) ? (t.quemFala as unknown[]).map(String) : [],
+        pontos: pontosDaVisao(t.pontos),
       });
     }
   }
@@ -800,6 +818,42 @@ async function gravarUsoDaVisao(modelo: string, tokens: { entrada: number; saida
  * viu no trecho; quem fala segue a visão quando ela diz. Sem visão: gênero
  * "outro" com confiança baixa, como manda o contrato.
  */
+/** Os pontos crus da visão: números válidos, caixa dentro do quadro e com tamanho, até 4. Puro. */
+export function pontosDaVisao(cru: unknown): PontoLido[] {
+  if (!Array.isArray(cru)) return [];
+  const saida: PontoLido[] = [];
+  for (const p of cru as Array<Record<string, unknown>>) {
+    const [t, x, y, w, h] = [p?.segundo, p?.x, p?.y, p?.w, p?.h].map(Number);
+    if (![t, x, y, w, h].every(Number.isFinite) || t < 0 || w < 0.02 || h < 0.02 || x < 0 || y < 0 || x >= 1 || y >= 1) continue;
+    const cw = Math.min(w, 1 - x);
+    const ch = Math.min(h, 1 - y);
+    if (cw < 0.02 || ch < 0.02) continue;
+    saida.push({ t: arred(t), caixa: { x: arred(x), y: arred(y), w: arred(cw), h: arred(ch) }, oQue: String(p.oQue ?? "").trim().replace(/[.\s]+$/, "").slice(0, 80) });
+    if (saida.length >= 4) break;
+  }
+  return saida;
+}
+
+/**
+ * Só os pontos que caem na tela ou no quadro do trecho (recortados a ele) e
+ * no tempo do trecho (com 1 s de folga, preso às bordas). Sem tela nem quadro,
+ * nenhum ponto. Puro.
+ */
+export function pontosNoConteudo(pontos: PontoLido[] | null | undefined, conteudo: CaixaNoQuadro | null | undefined, de: number, ate: number): PontoLido[] {
+  if (!conteudo || !pontos?.length) return [];
+  const saida: PontoLido[] = [];
+  for (const p of pontos) {
+    if (p.t < de - 1 || p.t > ate + 1) continue;
+    const x0 = Math.max(p.caixa.x, conteudo.x);
+    const y0 = Math.max(p.caixa.y, conteudo.y);
+    const x1 = Math.min(p.caixa.x + p.caixa.w, conteudo.x + conteudo.w);
+    const y1 = Math.min(p.caixa.y + p.caixa.h, conteudo.y + conteudo.h);
+    if (x1 - x0 < 0.02 || y1 - y0 < 0.02) continue;
+    saida.push({ t: arred(Math.min(Math.max(p.t, de), ate)), caixa: { x: arred(x0), y: arred(y0), w: arred(x1 - x0), h: arred(y1 - y0) }, oQue: p.oQue });
+  }
+  return saida;
+}
+
 export function juntarLeitura(r: ResumoDaMedicao, visao: VisaoDoVideo | null, fontes: { medicao: boolean }): LeituraDoVideo {
   const porIndice = new Map((visao?.trechos ?? []).map((t) => [t.i, t]));
   const trechos: TrechoLido[] = r.trechos.map((t, i) => {
@@ -815,6 +869,7 @@ export function juntarLeitura(r: ResumoDaMedicao, visao: VisaoDoVideo | null, fo
     if (t.quadro && !v.temQuadro && v.temTela && !tela) [tela, quadro] = [t.quadro, null];
     const mostra = [...new Set([...v.mostra, ...(quadro && !v.mostra.some((m) => /quadro|lousa|flip/i.test(m)) ? ["quadro"] : []), ...(tela && !v.mostra.some((m) => /tela|slide/i.test(m)) ? ["tela"] : [])])];
     const ocupadas = [...pessoasEmCena.map((p) => p.caixa), ...(tela ? [tela] : []), ...(quadro ? [quadro] : [])];
+    const pontos = pontosNoConteudo(v.pontos, tela ?? quadro ?? null, t.de, t.ate);
     return {
       ...t,
       pessoasEmCena,
@@ -824,6 +879,7 @@ export function juntarLeitura(r: ResumoDaMedicao, visao: VisaoDoVideo | null, fo
       mostra,
       falaDe: v.falaDe || t.falaDe,
       areaLivre: tela !== t.tela || quadro !== t.quadro ? areasLivres(ocupadas, r.formato) : t.areaLivre,
+      ...(pontos.length ? { pontos } : {}),
     };
   });
   const pessoas: PessoaLida[] = r.pessoas.map((p) => {
@@ -915,7 +971,10 @@ export function trechoEm(leitura: LeituraDoVideo, t: number): TrechoLido | null 
 export function leituraNoIntervalo(leitura: LeituraDoVideo, de: number, ate: number, relativo = true): LeituraDoVideo {
   const trechos = leitura.trechos
     .filter((t) => t.ate > de && t.de < ate)
-    .map((t) => ({ ...t, de: arred(Math.max(t.de, de) - (relativo ? de : 0)), ate: arred(Math.min(t.ate, ate) - (relativo ? de : 0)) }));
+    .map((t) => {
+      const pontos = (t.pontos ?? []).filter((p) => p.t >= de && p.t < ate).map((p) => ({ ...p, t: arred(p.t - (relativo ? de : 0)) }));
+      return { ...t, de: arred(Math.max(t.de, de) - (relativo ? de : 0)), ate: arred(Math.min(t.ate, ate) - (relativo ? de : 0)), pontos };
+    });
   const ids = new Set(trechos.flatMap((t) => t.pessoasEmCena.map((p) => p.id)));
   return { ...leitura, trechos, pessoas: leitura.pessoas.filter((p) => ids.has(p.id) || !leitura.pessoas.some((q) => ids.has(q.id))) };
 }
@@ -946,7 +1005,8 @@ export function leituraEmTexto(leitura: LeituraDoVideo, opcoes: { trechos?: bool
       const quem = t.pessoasEmCena.map((p) => `${p.id}${p.falando ? "*" : ""} ${caixaEmTexto(p.caixa)}`).join(", ") || "ninguém";
       const fixo = [t.tela ? `tela ${caixaEmTexto(t.tela)}` : null, t.quadro ? `quadro ${caixaEmTexto(t.quadro)}` : null].filter(Boolean).join(", ");
       const livre = t.areaLivre.map(caixaEmTexto).join(" | ") || "nenhuma";
-      linhas.push(`[${mmss(t.de)}-${mmss(t.ate)}] ${t.acontece}. Fala: ${t.falaDe}. Em cena: ${quem}${fixo ? `; ${fixo}` : ""}. Mostra: ${t.mostra.join(", ") || "nada"}. Movimento ${t.movimento}. Livre: ${livre}.`);
+      const pontos = (t.pontos ?? []).map((p) => `${mmss(p.t)} ${p.oQue}`).join("; ");
+      linhas.push(`[${mmss(t.de)}-${mmss(t.ate)}] ${t.acontece}. Fala: ${t.falaDe}. Em cena: ${quem}${fixo ? `; ${fixo}` : ""}. Mostra: ${t.mostra.join(", ") || "nada"}.${pontos ? ` A fala aponta: ${pontos}.` : ""} Movimento ${t.movimento}. Livre: ${livre}.`);
     }
   }
   return linhas.join("\n");

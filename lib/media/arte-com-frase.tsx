@@ -156,11 +156,33 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
     // As fotos como o cliente aprovou: naturais, preto e branco ou nas cores da marca.
     marca.tratamento = tratamentoDasFotos(identidade.fotos);
   }
-  if (!escolha && !materiais.length) return marca;
+  // O MODELO POR PROMPT DO CLIENTE (06/10, tarde): o design de imagem que ele
+  // escreveu na biblioteca, quando é o mais recente e veio depois da última
+  // escolha no book, vira o modelo das artes (o pedido dele é respeitado).
+  const doCliente = await modeloDoDesignDoCliente(projectId, escolha?.em ?? null).catch((e) => {
+    console.warn("[arte-com-frase] o design do cliente não foi lido (segue o book):", e instanceof Error ? e.message : e);
+    return null;
+  });
+  if (!escolha && !materiais.length && !doCliente) return marca;
   const { lerMidia } = await import("@/lib/media/storage");
   const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
   const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
-  return { ...marca, modelos: escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+  return { ...marca, modelos: doCliente ? [doCliente] : escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/**
+ * O id do modelo do design do cliente que vale para as artes deste projeto,
+ * já registrado no catálogo do processo; null quando vale o book.
+ */
+async function modeloDoDesignDoCliente(projectId: string, escolhaDoBookEm: string | null): Promise<string | null> {
+  const { designDeImagemMaisRecente } = await import("@/lib/biblioteca-de-design/registro");
+  const { designDoClienteVale, modeloDoDesign, registrarModeloDoCliente } = await import("@/lib/modelos-de-arte/modelo-do-cliente");
+  const atual = await designDeImagemMaisRecente(projectId);
+  if (!atual || !designDoClienteVale({ catalogoId: atual.design.catalogoId, ligadoEm: atual.ligadoEm, escolhaDoBookEm })) return null;
+  const modelo = modeloDoDesign(atual.design);
+  if (!modelo) return null;
+  registrarModeloDoCliente(modelo);
+  return modelo.id;
 }
 
 /**
@@ -621,7 +643,15 @@ export async function comporFraseNaArte(p: {
   if (modelo) {
     const { comporNoModelo } = await import("@/lib/modelos-de-arte/compor");
     // A biblioteca de design (06/10): a arte composta neste molde é um uso real do modelo (uma vez por frase, o carrossel conta uma).
-    void import("@/lib/biblioteca-de-design/registro").then(({ contarUsoDoCatalogo }) => contarUsoDoCatalogo({ tipo: "imagem", catalogoId: modelo.id, projectId: p.marca.projectId, chave: p.frase })).catch(() => {});
+    // O design escrito pelo cliente (06/10, tarde) conta no próprio design, não numa semente do book.
+    const designId = modelo.id.startsWith("design-") ? modelo.id.slice("design-".length) : null;
+    void import("@/lib/biblioteca-de-design/registro")
+      .then(({ contarUsoDoCatalogo, contarUsoDoDesign }) =>
+        designId
+          ? contarUsoDoDesign({ designId, projectId: p.marca.projectId, chave: p.frase })
+          : contarUsoDoCatalogo({ tipo: "imagem", catalogoId: modelo.id, projectId: p.marca.projectId, chave: p.frase })
+      )
+      .catch(() => {});
     return comporNoModelo({
       modelo,
       textos: await textosDaPecaNoModelo(modelo, p.frase, p.marca),

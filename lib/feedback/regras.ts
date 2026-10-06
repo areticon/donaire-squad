@@ -66,6 +66,27 @@ export function melhoraOProduto(c: string | null | undefined): boolean {
 export const CONFIANCA_MINIMA = 0.5;
 
 /**
+ * A REPESCAGEM (06/10, tarde): o feedback sem classe volta para o JEV.
+ * `classificadoEm` é a hora da última tentativa (com ou sem classe).
+ *   - Nunca tentado (o JEV estava desligado ou caiu na captura): entra assim
+ *     que tem 2 min de idade (a captura ainda pode estar classificando).
+ *   - Tentado sem classe ("não sei" ou falha): volta depois de 6 h da última
+ *     tentativa, porque os grupos abertos mudam e o JEV pode ter voltado.
+ *   - Com mais de 3 dias, para: fica sem classe no painel, à vista do admin.
+ */
+export const JANELA_DA_REPESCAGEM_MS = 3 * 86_400_000;
+export const IDADE_MINIMA_DA_REPESCAGEM_MS = 2 * 60_000;
+export const INTERVALO_DA_REPESCAGEM_MS = 6 * 3_600_000;
+
+export function precisaDeRepescagem(f: { classificacao?: string | null; criadoEm: Date; classificadoEm: Date | null }, agora = new Date()): boolean {
+  if (f.classificacao) return false;
+  const idade = agora.getTime() - f.criadoEm.getTime();
+  if (idade > JANELA_DA_REPESCAGEM_MS || idade < IDADE_MINIMA_DA_REPESCAGEM_MS) return false;
+  if (!f.classificadoEm) return true;
+  return agora.getTime() - f.classificadoEm.getTime() >= INTERVALO_DA_REPESCAGEM_MS;
+}
+
+/**
  * O contexto que vai junto com o texto do cliente: o que a plataforma fez,
  * o que respondeu, e o que o cliente TINHA APROVADO antes (é o que separa
  * "erro do produto" de "atendido como pedido"). Sem nome de cliente.
@@ -105,10 +126,34 @@ export function modulosDoTipoDeCard(cardType: string | null | undefined, mediaTy
   return ["lib/media/pedido-do-card.ts", "lib/media/write-posts.ts", "lib/squad"];
 }
 
-/** O e-mail nunca vai para o estado do JEV nem para o painel. */
-export function semEmail(texto: string): string {
-  return texto.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[e-mail]");
+/**
+ * DADO PESSOAL NUNCA VAI PARA O ESTADO DO JEV NEM PARA O PAINEL (06/10): o
+ * e-mail desde o começo; desde a tarde de 06/10 também CNPJ, CPF e telefone,
+ * que passavam inteiros. A ordem importa: CNPJ antes de CPF (o CPF casaria
+ * dentro dele) e os dois antes do telefone. Tempo ("1:05"), dinheiro
+ * ("R$ 1.234,00") e porcentagem não são tocados.
+ */
+export function semDadosPessoais(texto: string): string {
+  return (
+    texto
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[e-mail]")
+      // CNPJ: 12.345.678/0001-90 ou 14 dígitos seguidos.
+      .replace(/(?<![\d\w])\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}(?![\d\w])/g, "[cnpj]")
+      // CPF: 123.456.789-09 ou 11 dígitos seguidos que não sejam celular com DDD (esse cai no telefone).
+      .replace(/(?<![\d\w])\d{3}\.\d{3}\.\d{3}-?\d{2}(?![\d\w])/g, "[cpf]")
+      .replace(/(?<![\d\w])\d{3}\d{3}\d{3}-\d{2}(?![\d\w])/g, "[cpf]")
+      // Telefone: +55, DDD com ou sem parênteses, 4 ou 5 dígitos, separador opcional, 4 dígitos.
+      .replace(/(?<![\d\w])(?:\+?55[\s.-]?)?(?:\(\d{2}\)\s?|\d{2}[\s.-])\d{4,5}[\s.-]?\d{4}(?![\d\w])/g, "[telefone]")
+      .replace(/(?<![\d\w])\d{4,5}-\d{4}(?![\d\w])/g, "[telefone]")
+      // 10 ou 11 dígitos seguidos começando por DDD (sem zero na frente): celular ou fixo colado.
+      .replace(/(?<![\d\w])(?:\+?55)?[1-9]{2}9?\d{8}(?![\d\w])/g, (m) => (m.replace(/\D/g, "").length >= 10 ? "[telefone]" : m))
+      // O que sobrou com 11 dígitos seguidos é CPF sem pontuação.
+      .replace(/(?<![\d\w])\d{11}(?![\d\w])/g, "[cpf]")
+  );
 }
+
+/** Nome antigo, mantido: hoje mascara e-mail, CNPJ, CPF e telefone. */
+export const semEmail = semDadosPessoais;
 
 /** O título do grupo: a primeira linha do texto do cliente, curta, sem e-mail. */
 export function tituloDoGrupo(texto: string): string {

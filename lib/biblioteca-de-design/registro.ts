@@ -294,6 +294,29 @@ export async function designsDoProjeto(projectId: string): Promise<DesignDaGaler
   return elos.map((e) => paraAGaleria(e.design, { projectId }, ids));
 }
 
+/**
+ * O DESIGN DE IMAGEM MAIS RECENTE DO PROJETO, com a hora em que foi ligado
+ * (06/10, tarde): a marca da peça decide por ele se as artes saem no modelo
+ * por prompt do cliente (lib/modelos-de-arte/modelo-do-cliente.ts).
+ */
+export async function designDeImagemMaisRecente(projectId: string): Promise<{ design: DesignDaGaleria; ligadoEm: Date } | null> {
+  const elo = await prisma.designDoProjeto
+    .findFirst({ where: { projectId, tipo: "imagem" }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true, design: { select: SELECAO } } })
+    .catch(() => null);
+  return elo?.design ? { design: paraAGaleria(elo.design, { projectId }), ligadoEm: elo.updatedAt } : null;
+}
+
+/** (d) Um uso real do design do cliente numa arte: conta no design e no elo do projeto, uma vez por frase. */
+export async function contarUsoDoDesign(o: { designId: string; projectId?: string | null; chave: string }): Promise<void> {
+  if (jaContado(`${o.projectId ?? "-"}|design|${o.designId}|${o.chave}`)) return;
+  try {
+    await prisma.designDaBiblioteca.update({ where: { id: o.designId }, data: { usos: { increment: 1 } } });
+    if (o.projectId) await prisma.designDoProjeto.updateMany({ where: { projectId: o.projectId, designId: o.designId }, data: { usos: { increment: 1 } } });
+  } catch (e) {
+    console.warn("[biblioteca-de-design] uso do design não contado:", e instanceof Error ? e.message.slice(0, 120) : e);
+  }
+}
+
 // ─────────────────────────────── os usos ───────────────────────────────
 
 /** A mesma campanha ou o mesmo vídeo não conta duas vezes neste processo. */

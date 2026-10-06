@@ -10,6 +10,7 @@ import { executeOAuthPostPublish } from "@/lib/publish/oauth-post";
 import { vaiPeloBlotato } from "@/lib/publish/roteador";
 import { conferirEnviosPendentes, PREFIXO_DO_ENVIO } from "@/lib/publish/via-blotato";
 import { medirPostsVencidos } from "@/lib/analytics/agenda-de-medicao";
+import { repescarFeedbacksSemClasse } from "@/lib/feedback/captura";
 
 /**
  * Cron: publica posts com status `scheduled` e horário já passado (OAuth LinkedIn/X).
@@ -121,11 +122,22 @@ export async function GET(req: NextRequest) {
     return null;
   });
 
+  /**
+   * A repescagem do feedback sem classe (06/10, tarde): o que o JEV não
+   * classificou na captura volta para ele, até 20 por passada
+   * (lib/feedback/captura.ts). Por último e sem derrubar nada.
+   */
+  const repescagem = await repescarFeedbacksSemClasse({ teto: 20 }).catch((e) => {
+    console.error("[cron] repescagem do feedback falhou:", e instanceof Error ? e.message : e);
+    return null;
+  });
+
   return NextResponse.json({
     processed: scheduledPosts.length,
     results,
     ...(envios.length ? { envios } : {}),
     ...(medicao && medicao.vencidos ? { medicao } : {}),
+    ...(repescagem && repescagem.tentados ? { repescagem } : {}),
     timestamp: now.toISOString(),
   });
 }

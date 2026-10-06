@@ -354,6 +354,37 @@ export function caixaNaCamera(caixa: Retangulo, enq: { zoom: number; x: number; 
  * para aproximar (zoom abaixo de 1,08: a tela inteira compartilhada, o quadro
  * inteiro): aí o que cabe é o destaque sem zoom, e o resolvedor troca.
  */
+/**
+ * A SUB-CAIXA DO ZOOM NO PONTO (06/10, tarde): até aqui o zoom mirava a tela
+ * ou o quadro inteiros. Agora mira o ponto que a fala aponta naquele momento
+ * (a linha do código, a célula, o tópico), quando a leitura o traz: o ponto
+ * dentro do conteúdo cujo segundo cai na peça (1 s antes vale), o mais perto
+ * do começo dela. A caixa cresce até um mínimo (para a moldura não virar um
+ * risco e o zoom não passar do teto), sempre dentro do conteúdo. Sem ponto,
+ * devolve o conteúdo inteiro, como antes. Null sem conteúdo.
+ */
+export function regiaoDoPonto(tr: TrechoLido | null | undefined, de: number, ate: number, minimo = 0.18): Retangulo | null {
+  const conteudo = regiaoDoConteudo(tr);
+  if (!conteudo) return null;
+  const candidatos = (tr?.pontos ?? [])
+    .filter((p) => caixaValida(p.caixa) && Number.isFinite(p.t) && p.t >= de - 1 && p.t <= ate)
+    .map((p) => ({ p, dentro: intersecao(p.caixa, conteudo) }))
+    .filter((x): x is { p: (typeof x)["p"]; dentro: Retangulo } => Boolean(x.dentro))
+    .sort((a, b) => Math.abs(a.p.t - de) - Math.abs(b.p.t - de));
+  const alvo = candidatos[0]?.dentro;
+  if (!alvo) return conteudo;
+  const w = Math.min(conteudo.w, Math.max(alvo.w, minimo));
+  const h = Math.min(conteudo.h, Math.max(alvo.h, minimo));
+  const cx = alvo.x + alvo.w / 2;
+  const cy = alvo.y + alvo.h / 2;
+  return {
+    x: arred(limitar(cx - w / 2, conteudo.x, conteudo.x + conteudo.w - w)),
+    y: arred(limitar(cy - h / 2, conteudo.y, conteudo.y + conteudo.h - h)),
+    w: arred(w),
+    h: arred(h),
+  };
+}
+
 export function enquadramentoDoPonto(regiao: Retangulo): { zoom: number; x: number; y: number } | null {
   const w = Math.max(0.05, regiao.w);
   const h = Math.max(0.05, regiao.h);
@@ -403,6 +434,11 @@ export function leituraNoCorte(l: LeituraDoVideo, quadro: Retangulo, inicioDoCor
         tela: caixaValida(t.tela) ? caixaNoQuadro(t.tela, quadro) : null,
         quadro: caixaValida(t.quadro) ? caixaNoQuadro(t.quadro, quadro) : null,
         areaLivre: (t.areaLivre ?? []).filter(caixaValida).map((x) => caixaNoQuadro(x, quadro)).filter((x): x is Retangulo => Boolean(x && area(x) > 0.01)),
+        // Os pontos que a fala aponta, no tempo e no quadro do corte (06/10, tarde).
+        pontos: (t.pontos ?? [])
+          .filter((p) => p.t >= a && p.t < b && caixaValida(p.caixa))
+          .map((p) => ({ ...p, t: +(acumulado + (p.t - de)).toFixed(3), caixa: caixaNoQuadro(p.caixa, quadro) }))
+          .filter((p): p is typeof p & { caixa: Retangulo } => Boolean(p.caixa)),
       });
     }
     acumulado += m.ate - m.de;
