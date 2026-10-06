@@ -308,6 +308,15 @@ export type LinguagemDoVideo = {
  * d'água, sem pessoa real reconhecível. Não diz "fotográfico": quem decide o
  * acabamento é o bloco de estilo (papel, cartoon, neon...).
  */
+/**
+ * O TETO DO PROMPT ESTILIZADO (card 714): a cena, o bloco de estilo e a
+ * guarda. Com a ficha do estilo inteira no bloco (até 900 da ficha, o
+ * ajuste e as cores), o prompt passa de 1600; o teto antigo cortava o fim
+ * do bloco e a guarda. 2400 cabe no limite do Kling (2500) e folga nos de
+ * imagem (5000 ou mais).
+ */
+export const TETO_DO_BRIEFING_ESTILIZADO = 2400;
+
 export const GUARDA_DA_IMAGEM_ESTILIZADA =
   " No text, no letters, no captions, no logos, no watermark. No recognizable real person and no famous or historical figure; people only anonymous, from behind, in silhouette, as hands or far away. Nothing sensual.";
 

@@ -5,7 +5,7 @@ import type { Frase } from "@/lib/media/editor-sob-medida/resolver";
 import type { EdicaoDoEditor, MomentoDoEditor, Visual } from "@/lib/media/editor-sob-medida/tipos";
 import type { ComandoDoVideo } from "@/lib/media/editor-por-comando/comando";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
-import type { LinguagemDoVideo } from "@/lib/media/editor-por-comando/linguagem";
+import { TETO_DO_BRIEFING_ESTILIZADO, type LinguagemDoVideo } from "@/lib/media/editor-por-comando/linguagem";
 import type { EstimativaDeCusto, TipoDeElemento } from "@/lib/media/editor-por-comando/elementos";
 import { pedidoDasProps, type PedidoNasProps } from "@/lib/media/editor-por-comando/pedido-do-cliente";
 
@@ -342,7 +342,7 @@ export function validarPlano(bruto: unknown, base: string, opcoes: { livre?: boo
       id: String(x.id ?? `i${k + 1}`).replace(/[^a-z0-9-]/gi, "").slice(0, 20) || `i${k + 1}`,
       de: String(x.de),
       ate: String(x.ate),
-      briefing: String(x.briefing).slice(0, opcoes.livre ? 1600 : 900),
+      briefing: String(x.briefing).slice(0, opcoes.livre ? TETO_DO_BRIEFING_ESTILIZADO : 900),
       ...(opcoes.livre && (x.midia === "video" || x.midia === "imagem") ? { midia: x.midia as "imagem" | "video" } : {}),
       ...(opcoes.livre && x.janela === true ? { janela: true } : {}),
       ...(opcoes.livre && x.estilizada === true ? { estilizada: true } : {}),

@@ -12,7 +12,8 @@ import { resolverPorComando } from "@/lib/media/editor-por-comando/resolver";
 import { completarPlanoPeloJev, diretorPorLlm, escreverPlanoPeloJev, type EntradaDoPlanoPeloJev } from "@/lib/media/editor-por-comando/plano-pelo-jev";
 import { acentosDoVox } from "@/lib/media/acentos-do-vox";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
-import { contarUsoDoDesignDoProjeto } from "@/lib/biblioteca-de-design/registro";
+import { contarUsoDoDesignDoProjeto, linguagemDoDesignAtual } from "@/lib/biblioteca-de-design/registro";
+import { fonteDoEstilo, linguagemDoEstilo } from "@/lib/media/editor-por-comando/comando-dos-estilos";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 
 /**
@@ -68,9 +69,22 @@ export async function salvarComandoDoProjeto(projectId: string, c: ComandoDoVide
     WHERE id = ${projectId}`;
 }
 
-/** Projeto sem comando com a flag ligada: o comando sai do estilo escolhido antes (a referência pronta mais parecida). */
+/**
+ * Projeto sem comando com a flag ligada: o comando sai do estilo escolhido antes.
+ * Com ficha pesquisada (card 714), o comando é o da ficha e a referência é o
+ * estilo, para o bloco e as peças da ficha chegarem inteiros ao editor; o texto
+ * que o cliente escreveu na escolha entra junto e vale sobre a ficha. Sem
+ * ficha, a referência pronta mais parecida, como antes.
+ */
 export function comandoPadrao(escolha: EscolhaDeEstilo): ComandoDoVideo {
   const id = escolha.estiloId;
+  const ficha = linguagemDoEstilo(id);
+  const doCatalogo = estiloDoCatalogo(id);
+  if (ficha && doCatalogo) {
+    const proprio = escolha.texto?.replace(/\s+/g, " ").trim() ?? "";
+    const texto = proprio ? `${ficha.comando} ${proprio}`.slice(0, 1500) : ficha.comando;
+    return { texto, fonte: fonteDoEstilo(doCatalogo), cores: { tipo: "marca" }, origem: proprio ? "escrito" : "referencia", referencia: doCatalogo.id };
+  }
   const ref =
     id === "vox" || id === "documentario" || id === "johnny-harris"
       ? REFERENCIAS_DE_COMANDO[0]
@@ -322,7 +336,9 @@ export async function escreverPlanoDoVideo(e: EntradaDoPlano, base: string): Pro
   const cores = coresDoComando(e.comando, e.marca);
   if (!diretorPorLlm()) {
     // Os dois eixos (05/10, noite): a linguagem e os elementos pelo JEV; a base volta da família escolhida.
-    return escreverPlanoPeloJev(entradaPeloJev(e, base, cores));
+    // O design de vídeo do projeto na biblioteca (card 714): a linguagem dele é a base do bloco quando não há ficha do catálogo.
+    const gravado = await linguagemDoDesignAtual(e.projectId, "video", e.comando.atualizadoEm);
+    return escreverPlanoPeloJev({ ...entradaPeloJev(e, base, cores), designGravado: gravado });
   }
   const t = Date.now();
   const blocos = e.duracao > 95 ? blocosDoCompleto(e.palavras, e.duracao) : [];
