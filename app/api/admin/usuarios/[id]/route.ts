@@ -9,6 +9,7 @@ import {
   cancelarNoFim,
   definirAcessosExtras,
   excluirConta,
+  marcarEquipe,
   mudarNome,
   mudarPapel,
   planoDeCortesia,
@@ -44,6 +45,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         break;
       case "papel":
         await mudarPapel(admin, id, b.papel === "admin" ? "admin" : "user");
+        break;
+      case "equipe":
+        await marcarEquipe(admin, id, b.equipe === true);
         break;
       case "nome":
         await mudarNome(admin, id, texto("nome"));

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { planoPublico, type PlanoId } from "@/lib/planos";
 import { contaPareceRobo } from "@/lib/anti-robo/regras";
-import { emailPareceInterno } from "@/lib/admin/tipos-do-uso-de-ia";
+import { contaEhDaEquipe } from "@/lib/admin/tipos-do-uso-de-ia";
 
 /**
  * O PAINEL DE ADMIN, e por que ele deixou de ser opcional.
@@ -35,8 +35,9 @@ export type LinhaDoPainel = {
   planoNome: string;
   papel: string;
   /**
-   * Conta da EQUIPE (05/10): admin, `contaInterna`, @demandou.com ou o Gmail
-   * do Bruno. Gera custo, nunca receita, e fica fora de pagante e de margem.
+   * Conta da EQUIPE (05/10; regra única desde 06/10): admin, `contaInterna`
+   * ou @demandou.com. Gera custo, nunca receita, e fica fora de pagante e de
+   * margem. Conta com desconto que usa como cliente é cliente.
    */
   interna: boolean;
   /** Mensalidade do plano, em reais. 0 para quem não tem plano. É TABELA, não caixa. */
@@ -180,7 +181,7 @@ export async function lerPainel(
   });
   const robo = (u: (typeof users)[number]) =>
     pareceRobo({ email: u.email, name: u.name, emailVerified: u.emailVerified, projetos: u.projects.length, roboEm: u.roboEm });
-  const interna = (u: { email: string; role: string; contaInterna: boolean }) => u.role === "admin" || u.contaInterna || emailPareceInterno(u.email);
+  const interna = (u: { email: string; role: string; contaInterna: boolean }) => contaEhDaEquipe(u);
 
   const projetoDoDono = new Map<string, string>();
   for (const u of users) for (const p of u.projects) projetoDoDono.set(p.id, u.id);
@@ -335,9 +336,9 @@ const ORDEM_DO_FUNIL = ["visita", "demo", "contato", "cadastro", "checkout", "as
  * da tela. Lido direto das contas, o numero vale tambem para o passado: as 86
  * contas de robo de setembro saem dele sem precisar reescrever evento nenhum.
  */
-export async function cadastrosDeGente(desde: Date) {
+export async function cadastrosDeGente(desde: Date, ate?: Date) {
   const contas = await prisma.user.findMany({
-    where: { createdAt: { gte: desde }, emailVerified: true },
+    where: { createdAt: ate ? { gte: desde, lt: ate } : { gte: desde }, emailVerified: true },
     select: {
       id: true, email: true, name: true, emailVerified: true, role: true, roboEm: true, createdAt: true,
       origem: true, campanha: true, projects: { select: { id: true } },
@@ -351,13 +352,19 @@ export async function cadastrosDeGente(desde: Date) {
   );
 }
 
-export async function lerFunil(desde: Date): Promise<PassoDoFunil[]> {
+/**
+ * `ate` (06/10): o fim da janela, para o painel ler o PERÍODO ANTERIOR do
+ * mesmo tamanho e comparar o funil, no estilo do Stripe. Sem `ate`, vai até
+ * agora, como sempre foi.
+ */
+export async function lerFunil(desde: Date, ate?: Date): Promise<PassoDoFunil[]> {
+  const janela = ate ? { gte: desde, lt: ate } : { gte: desde };
   const [eventos, cadastros] = await Promise.all([
     prisma.funnelEvent.findMany({
-      where: { createdAt: { gte: desde } },
+      where: { createdAt: janela },
       select: { evento: true, ipHash: true, userId: true },
     }),
-    cadastrosDeGente(desde),
+    cadastrosDeGente(desde, ate),
   ]);
 
   const linhas: PassoDoFunil[] = [];

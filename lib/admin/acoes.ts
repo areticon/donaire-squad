@@ -80,6 +80,22 @@ export async function mudarPapel(admin: Admin, userId: string, papel: "admin" | 
   await registrar(admin, u, "papel", { de: u.role, para: papel });
 }
 
+/**
+ * CONTA DA EQUIPE OU CLIENTE (06/10), a marca `contaInterna`.
+ *
+ * Não é acesso (isso é o papel de admin): só diz ao painel de quem é o custo
+ * de IA da conta. Conta de teste que prova o produto como cliente, mesmo com
+ * desconto total, fica desmarcada e aparece como cliente no gráfico de uso de
+ * IA; a receita dela continua zero porque não há pagamento.
+ */
+export async function marcarEquipe(admin: Admin, userId: string, equipe: boolean) {
+  const u = await alvo(userId);
+  const atual = await prisma.user.findUnique({ where: { id: userId }, select: { contaInterna: true } });
+  if (atual?.contaInterna === equipe) return;
+  await prisma.user.update({ where: { id: userId }, data: { contaInterna: equipe } });
+  await registrar(admin, u, "conta_da_equipe", { de: Boolean(atual?.contaInterna), para: equipe });
+}
+
 export async function mudarNome(admin: Admin, userId: string, nome: string) {
   const u = await alvo(userId);
   await prisma.user.update({ where: { id: userId }, data: { name: nome.trim() || null } });

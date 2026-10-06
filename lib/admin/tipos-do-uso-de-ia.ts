@@ -43,20 +43,32 @@ export const TETO_DE_CUSTO_DO_PLANO: Record<string, number> = {
 };
 
 /**
- * Os e-mails que a migração marca como conta interna. A mesma lista vale como
- * RESERVA no painel enquanto a coluna `contaInterna` não existe no banco (a
- * migração de 05/10 ainda não rodou em produção): a tela não pode quebrar por
- * causa de uma coluna, e também não pode fingir que o teste do Bruno é cliente.
+ * O DOMÍNIO DA EQUIPE: e-mail da casa é sempre equipe, mesmo sem a marca no
+ * banco (conta nova de alguém do time nasce com `contaInterna` falso).
+ *
+ * Até 06/10 havia aqui também uma lista de e-mails EXATOS, com o Gmail do
+ * Bruno, aplicada por cima do banco. Era o defeito do gráfico "Cliente ou
+ * equipe": o Gmail é a conta de teste para provar o produto COMO CLIENTE (100%
+ * de desconto, sem papel de admin), e todo o uso de IA dela caía em equipe, por
+ * isso a fatia de cliente ficava zerada. Pessoa específica não se escreve no
+ * código: quem decide se uma conta de fora do domínio é da equipe é a coluna
+ * `contaInterna` (botão na ficha do cliente) ou o papel de admin.
  */
-export const EMAILS_INTERNOS_PADRAO = {
-  dominios: ["demandou.com"],
-  exatos: ["bruno.donaire88@gmail.com"],
-};
+export const DOMINIOS_DA_EQUIPE = ["demandou.com"];
 
-export function emailPareceInterno(email: string): boolean {
+export function emailDoDominioDaEquipe(email: string): boolean {
   const e = email.trim().toLowerCase();
-  if (EMAILS_INTERNOS_PADRAO.exatos.includes(e)) return true;
-  return EMAILS_INTERNOS_PADRAO.dominios.some((d) => e.endsWith(`@${d}`));
+  return DOMINIOS_DA_EQUIPE.some((d) => e.endsWith(`@${d}`));
+}
+
+/**
+ * CONTA DA EQUIPE, a regra única do painel (06/10): papel de admin, marca
+ * `contaInterna` no banco ou e-mail do domínio da casa. Desconto, cortesia ou
+ * plano sem pagamento NÃO fazem de ninguém equipe: quem usa como cliente é
+ * cliente no custo, e só não gera receita porque não pagou.
+ */
+export function contaEhDaEquipe(c: { email: string; role: string; contaInterna?: boolean | null }): boolean {
+  return c.role === "admin" || Boolean(c.contaInterna) || emailDoDominioDaEquipe(c.email);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,7 +459,7 @@ export type DadosDoUsoDeIa = {
   rotuloDoPeriodo: string;
   dias: number;
   dolar: number;
-  /** A coluna `contaInterna` já existe no banco? Senão a classificação usa a lista de e-mails. */
+  /** A coluna `contaInterna` já existe no banco? Senão a classificação usa só o papel e o domínio da casa. */
   colunaDeInterna: boolean;
   totalUsd: number;
   porCategoria: Array<{ categoria: Categoria; usd: number; n: number }>;

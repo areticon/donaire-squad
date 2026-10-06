@@ -420,21 +420,21 @@ export function Rosca({
 }
 
 /** Uma barra só, partida nas partes de um todo, com a legenda embaixo. */
-export function BarraEmpilhada({ partes, rotulo }: { partes: Fatia[]; rotulo: string }) {
+export function BarraEmpilhada({ partes, rotulo, formatar = numero }: { partes: Fatia[]; rotulo: string; formatar?: (n: number) => string }) {
   const total = partes.reduce((s, p) => s + p.valor, 0);
   return (
     <div>
       <div
         className="flex h-3 w-full overflow-hidden rounded-full gap-[2px]"
         role="img"
-        aria-label={`${rotulo}: ${partes.map((p) => `${p.nome} ${p.valor}`).join(", ")}`}
+        aria-label={`${rotulo}: ${partes.map((p) => `${p.nome} ${formatar(p.valor)}`).join(", ")}`}
         style={{ background: "var(--bg-input)" }}
       >
         {total > 0 &&
           partes
             .filter((p) => p.valor > 0)
             .map((p) => (
-              <div key={p.nome} title={`${p.nome}: ${p.valor}`} style={{ width: `${(p.valor / total) * 100}%`, background: p.cor }} />
+              <div key={p.nome} title={`${p.nome}: ${formatar(p.valor)}`} style={{ width: `${(p.valor / total) * 100}%`, background: p.cor }} />
             ))}
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
@@ -443,7 +443,7 @@ export function BarraEmpilhada({ partes, rotulo }: { partes: Fatia[]; rotulo: st
             <span className="h-2 w-2 rounded-[2px]" style={{ background: p.cor }} />
             {p.nome}
             <strong className="tabular-nums" style={{ color: "var(--text-primary)" }}>
-              {p.valor}
+              {formatar(p.valor)}
             </strong>
           </li>
         ))}

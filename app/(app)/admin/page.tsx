@@ -6,7 +6,8 @@ import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { lerPainel, lerFunil, lerOrigens, lerContatos, lerAssinaturas } from "@/lib/admin/painel";
 import { eixoDoTempo, lerGraficos } from "@/lib/admin/graficos-do-painel";
-import { periodoDaUrl, reais, numero, soma, type DadosNoTempo } from "@/lib/admin/tipos-do-painel";
+import { periodoDaUrl, reais, numero, soma, type ComparacaoDoPainel, type DadosDosGraficos, type DadosNoTempo } from "@/lib/admin/tipos-do-painel";
+import { janelaAnterior, lerComparacao } from "@/lib/admin/comparacao-do-painel";
 import { tetoDeVideosPorDia } from "@/lib/media/cota-do-dia";
 import { lerUsoDeIa } from "@/lib/admin/uso-de-ia";
 import { cotacao, dolares, reaisPorCredito, TETO_DE_CUSTO_POR_CREDITO } from "@/lib/admin/tipos-do-uso-de-ia";
@@ -14,6 +15,7 @@ import { lerReceitaReal, type ReceitaReal } from "@/lib/admin/receita-real";
 import { NOME_DO_GRUPO as NOME_DO_GRUPO_DO_CONTRATO } from "@/lib/contratos/situacao";
 import { FalhasDePublicacao } from "@/components/admin/falhas-de-publicacao";
 import { GraficoNoTempo } from "@/components/admin/grafico-no-tempo";
+import { AbreDobraPeloEndereco, FunilComparado, GraficoComparado, Indicador, type EtapaDoFunil } from "@/components/admin/painel-stripe";
 import {
   ContasDoTime,
   CreditosFuncionando,
@@ -27,9 +29,7 @@ import {
   BarrasHorizontais,
   Cartao,
   Dobra,
-  Funil,
   Medidor,
-  Numero,
   Origens,
   Rosca,
   SeletorDePeriodo,
@@ -56,6 +56,12 @@ import {
  * Server component de propósito: as consultas agregadas descem prontas, sem
  * rota nova. Só os gráficos no tempo são componentes de cliente.
  *
+ * O ESTILO DO STRIPE (06/10): cada número da primeira dobra vem com a
+ * variação contra o período anterior do mesmo tamanho e uma linha pequena com
+ * o anterior tracejado; logo abaixo, os gráficos grandes com o mesmo
+ * tracejado e o FUNIL de volta à vista, com a conversão entre as etapas e a
+ * do período anterior. Clicar num número abre a dobra do detalhe.
+ *
  * QUEM ENTRA: só `role === "admin"`, lido do banco e não de uma lista de
  * e-mails no ambiente. Quem não é admin recebe 404 e não 403: a existência da
  * rota não é assunto de quem não pode entrar.
@@ -79,11 +85,19 @@ export default async function AdminPage({
   // Uma janela só para tudo: a meia-noite de São Paulo do primeiro dia.
   const { desde } = eixoDoTempo(dias, agora);
 
+  // O período anterior, do mesmo tamanho, encostado no atual (06/10).
+  const { desdeAnterior } = janelaAnterior(dias, agora);
+
   // A receita real vem primeiro porque a margem por conta precisa dela.
-  const receita = await lerReceitaReal(desde, agora, agora);
-  const [painel, funilReal, origensReais, contatos, assinaturasReais, usoDeIa, graficosReais] = await Promise.all([
+  const [receita, receitaAnterior] = await Promise.all([
+    lerReceitaReal(desde, agora, agora),
+    lerReceitaReal(desdeAnterior, desde, agora),
+  ]);
+  const [painel, funilReal, funilAnteriorReal, comparacaoReal, origensReais, contatos, assinaturasReais, usoDeIa, graficosReais] = await Promise.all([
     lerPainel(agora, dias, desde),
     lerFunil(desde),
+    lerFunil(desdeAnterior, desde),
+    lerComparacao(dias, agora, { atuais: receita.pagamentos, anteriores: receitaAnterior.pagamentos }),
     lerOrigens(desde),
     lerContatos(40),
     lerAssinaturas(),
@@ -111,6 +125,10 @@ export default async function AdminPage({
   const ex = exemplo ? (await import("@/lib/admin/exemplo-do-painel")).painelDeExemplo(dias, agora) : null;
   const { linhas, resumo } = ex ? { linhas: ex.linhas, resumo: ex.resumo } : painel;
   const funil = ex?.funil ?? funilReal;
+  // Em exemplo, o período anterior é o próprio exemplo um pouco menor: dado
+  // inventado não compara com o banco de verdade.
+  const funilAnterior = ex ? ex.funil.map((p) => ({ ...p, pessoas: Math.round(p.pessoas * 0.8), eventos: Math.round(p.eventos * 0.8) })) : funilAnteriorReal;
+  const comparacao: ComparacaoDoPainel = ex ? comparacaoDeExemplo(ex.graficos, comparacaoReal) : comparacaoReal;
   const origens = ex?.origens ?? origensReais;
   const assinaturas = ex?.assinaturas ?? assinaturasReais;
   const graficos = ex?.graficos ?? graficosReais;
@@ -121,6 +139,12 @@ export default async function AdminPage({
     new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const temDado = (d: DadosNoTempo) => d.series.some((s) => soma(s.valores) > 0);
   const passo = (nome: string) => funil.find((p) => p.passo === nome);
+  const passoAnterior = (nome: string) => funilAnterior.find((p) => p.passo === nome);
+  const etapasDoFunil: EtapaDoFunil[] = ETAPAS_DO_FUNIL.map((e) => ({
+    ...e,
+    pessoas: passo(e.chave)?.pessoas ?? 0,
+    anterior: passoAnterior(e.chave)?.pessoas ?? 0,
+  }));
   const visitas = passo("visita")?.pessoas ?? 0;
   const sobreVisitas = (n: number) => (visitas > 0 ? `${Math.round((n / visitas) * 100)}% das visitas` : "pessoas");
   const dolar = usoDeIa.dolar;
@@ -134,6 +158,10 @@ export default async function AdminPage({
   const custoDeCliente = (usoDeIa.porCategoria.find((c) => c.categoria === "cliente")?.usd ?? 0) * dolar;
   const custoDaEquipe = custoReal - custoDeCliente;
   const margem = receitaReal - custoReal;
+  // O período anterior, com as mesmas definições (06/10).
+  const receitaAnteriorReal = ex ? soma(comparacao.receita.anterior) : receitaAnterior.totalReais;
+  const custoAnterior = soma(comparacao.custo.anterior);
+  const margemAnterior = receitaAnteriorReal - custoAnterior;
   const creditosConsumidos = usoDeIa.porProjeto.reduce((s, p) => s + p.creditosPlano + p.creditosVideo, 0);
   const creditosQueCustariam = usoDeIa.porProjeto.reduce((s, p) => s + p.creditosQueCustariam, 0);
   const custoComProjeto = usoDeIa.porProjeto.reduce((s, p) => s + p.custoReais, 0);
@@ -172,36 +200,43 @@ export default async function AdminPage({
     ({ equipe: "conta da equipe", sem_comprovante: "por fora, sem comprovante", sem_conta: "sem conta ligada" })[motivo];
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
-      <header className="space-y-3">
-        <div>
-          <p className="rotulo mb-1">Gestão da plataforma</p>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
-            Painel
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Últimos {dias} dias, no horário de São Paulo. Receita é só pagamento confirmado; custo é o que os fornecedores de inteligência artificial cobraram, em dólar a {cotacao(dolar)}. Conta da equipe gera custo e nunca receita.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <SeletorDePeriodo atual={dias} extra={seletorExtra} />
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/admin/agenda" className="rounded-lg border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10">
-              Demonstrações{totalDeProximas ? ` (${totalDeProximas})` : ""}
-            </Link>
-            <Link href="/admin/chamados" className="rounded-lg border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10">
-              Chamados
-            </Link>
-            <Link href="/admin/contratos" className="rounded-lg border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10">
-              Contratos
-            </Link>
-            <Link href="/admin/redes" className="rounded-lg border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10">
-              Redes dos clientes
-            </Link>
-            <Link href="/admin/clientes" className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto space-y-6">
+      <AbreDobraPeloEndereco />
+      <header className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="rotulo mb-1">Gestão da plataforma</p>
+            <h1 className="text-[1.75rem] font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
+              Painel
+            </h1>
+          </div>
+          <nav aria-label="Telas de gestão" className="flex flex-wrap items-center gap-2">
+            {[
+              { href: "/admin/agenda", nome: `Demonstrações${totalDeProximas ? ` (${totalDeProximas})` : ""}` },
+              { href: "/admin/chamados", nome: "Chamados" },
+              { href: "/admin/contratos", nome: "Contratos" },
+              { href: "/admin/redes", nome: "Redes dos clientes" },
+            ].map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--realce-2)]"
+                style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--bg-elevated)" }}
+              >
+                {l.nome}
+              </Link>
+            ))}
+            <Link href="/admin/clientes" className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">
               Clientes e ações
             </Link>
-          </div>
+          </nav>
+        </div>
+        {/* O filtro manda na tela inteira, numa linha só, acima de tudo. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <SeletorDePeriodo atual={dias} extra={seletorExtra} />
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Comparado com {comparacao.rotuloAnterior}, os {dias} dias anteriores. Horário de São Paulo; dólar a {cotacao(dolar)}.
+          </p>
         </div>
       </header>
 
@@ -220,74 +255,197 @@ export default async function AdminPage({
         </p>
       )}
 
-      {/* A PRIMEIRA DOBRA: os seis números que mandam. */}
-      <section aria-label="Visão executiva" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <Numero
+      {/* A PRIMEIRA DOBRA: os seis números que mandam, cada um com a variação
+          contra o período anterior; o clique abre o detalhe. */}
+      <section aria-label="Visão executiva" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <Indicador
+          destaque
           rotulo="Receita real"
           valor={reais(receitaReal, 2)}
+          atual={receitaReal}
+          anterior={receitaAnteriorReal}
+          serie={comparacao.receita.atual}
+          serieAnterior={comparacao.receita.anterior}
+          acumulado
+          dobra="receita"
           nota={
             exemplo
               ? "exemplo"
               : receita.pagamentos.length > 0
-                ? `${receita.pagamentos.length} pagamento(s) confirmado(s) no período`
-                : "nenhum pagamento confirmado no período"
+                ? `${receita.pagamentos.length} pagamento(s) confirmado(s); antes ${reais(receitaAnteriorReal, 2)}`
+                : `nenhum pagamento confirmado no período; antes ${reais(receitaAnteriorReal, 2)}`
           }
-        >
-          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Cartão pago no Stripe, Pix e transferência com comprovante. Plano e contrato sem pagamento não entram.
-          </p>
-        </Numero>
-        <Numero rotulo="Custo real de IA" valor={reais(custoReal, 2)} nota={`${dolares(custoUsd)} · cliente ${reais(custoDeCliente, 2)} · equipe ${reais(custoDaEquipe, 2)}`}>
-          <BarraEmpilhada
-            rotulo="Custo por quem gastou"
-            partes={[
-              { nome: "Clientes", valor: Math.round(custoDeCliente), cor: "var(--painel-1)" },
-              { nome: "Equipe", valor: Math.round(custoDaEquipe), cor: "var(--painel-2)" },
-            ]}
-          />
-        </Numero>
-        <Numero
+        />
+        <Indicador
+          destaque
+          rotulo="Custo real de IA"
+          valor={reais(custoReal, 2)}
+          atual={custoReal}
+          anterior={custoAnterior}
+          subirEhBom={false}
+          serie={comparacao.custo.atual}
+          serieAnterior={comparacao.custo.anterior}
+          acumulado
+          dobra="custo"
+          nota={`${dolares(custoUsd)}; antes ${reais(custoAnterior, 2)}`}
+          detalhe={
+            <BarraEmpilhada
+              rotulo="Custo por quem gastou"
+              formatar={(v) => reais(v)}
+              partes={[
+                { nome: "Clientes", valor: custoDeCliente, cor: "var(--painel-1)" },
+                { nome: "Equipe", valor: custoDaEquipe, cor: "var(--painel-2)" },
+              ]}
+            />
+          }
+        />
+        <Indicador
+          destaque
           rotulo="Margem"
           valor={reais(margem, 2)}
+          atual={margem}
+          anterior={margemAnterior}
+          dobra="margem"
           nota={
             <span style={{ color: margem < 0 ? "var(--badge-danger-text)" : "var(--badge-success-text)" }}>
               {receitaReal > 0 ? `${Math.round((margem / receitaReal) * 100)}% da receita real` : margem < 0 ? "prejuízo: custo sem receita" : "sem receita nem custo"}
             </span>
           }
-        >
-          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Receita real menos custo real de IA. Sem infraestrutura nem imposto.
-          </p>
-        </Numero>
-        <Numero
+          detalhe={
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              Receita real menos custo real de IA, sem infraestrutura nem imposto. Antes: {reais(margemAnterior, 2)}.
+            </p>
+          }
+        />
+        <Indicador
           rotulo="Créditos consumidos"
           valor={numero(creditosConsumidos)}
-          nota={`${contasComCredito} conta(s) e ${projetosComCredito} projeto(s)${creditosQueCustariam > 0 ? ` · mais ${numero(creditosQueCustariam)} simulados na conta de admin, que debita zero` : ""}`}
-        >
-          <p className="text-[11px] tabular-nums" style={{ color: custoPorCredito !== null && custoPorCredito > TETO_DE_CUSTO_POR_CREDITO ? "var(--badge-danger-text)" : "var(--text-muted)" }}>
-            {custoPorCredito === null
-              ? "Sem crédito consumido para medir o custo por crédito."
-              : `${reaisPorCredito(custoPorCredito)} de IA por crédito, contra a régua de ${reaisPorCredito(TETO_DE_CUSTO_POR_CREDITO)}.`}
-          </p>
-        </Numero>
-        <Numero rotulo="Clientes pagantes" valor={String(pagantes)} nota="contas fora da equipe, com plano em vigor e pagamento confirmado">
-          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            {assinaturas.leu
-              ? `No Stripe: ${assinaturas.ativas} assinatura(s) ativa(s), ${assinaturas.emTeste} em teste, ${assinaturas.saindo} saindo.`
-              : "Não consegui ler as assinaturas do Stripe."}
-          </p>
-        </Numero>
-        <Numero
+          atual={soma(comparacao.creditos.atual)}
+          anterior={soma(comparacao.creditos.anterior)}
+          serie={comparacao.creditos.atual}
+          serieAnterior={comparacao.creditos.anterior}
+          dobra="creditos"
+          nota={`${contasComCredito} conta(s) e ${projetosComCredito} projeto(s)${creditosQueCustariam > 0 ? `; mais ${numero(creditosQueCustariam)} simulados na conta de admin` : ""}`}
+          detalhe={
+            <p className="text-[11px] tabular-nums" style={{ color: custoPorCredito !== null && custoPorCredito > TETO_DE_CUSTO_POR_CREDITO ? "var(--badge-danger-text)" : "var(--text-muted)" }}>
+              {custoPorCredito === null
+                ? "Sem crédito consumido para medir o custo por crédito."
+                : `${reaisPorCredito(custoPorCredito)} de IA por crédito, contra a régua de ${reaisPorCredito(TETO_DE_CUSTO_POR_CREDITO)}.`}
+            </p>
+          }
+        />
+        <Indicador
+          rotulo="Clientes pagantes"
+          valor={String(pagantes)}
+          atual={pagantes}
+          dobra="margem"
+          nota="fora da equipe, com plano em vigor e pagamento confirmado"
+          detalhe={
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              {assinaturas.leu
+                ? `No Stripe: ${assinaturas.ativas} assinatura(s) ativa(s), ${assinaturas.emTeste} em teste, ${assinaturas.saindo} saindo.`
+                : "Não consegui ler as assinaturas do Stripe."}
+            </p>
+          }
+        />
+        <Indicador
           rotulo="Contratos em aberto"
           valor={String(contratos.emAberto)}
+          atual={contratos.emAberto}
+          dobra="receita"
           nota={`${contratos.enviados} enviado(s) · ${contratos.aguardandoPagamento} aguardando pagamento · ${contratos.rascunhos} rascunho(s)`}
-        >
-          <p className="text-[11px] tabular-nums" style={{ color: "var(--text-muted)" }}>
-            {reais(contratos.emAbertoCentavos / 100)} contratados sem pagamento (projeção, não é caixa) · {contratos.ativos} pago(s) e ativo(s)
-            {contratos.daEquipe > 0 ? ` · ${contratos.daEquipe} de conta da equipe fora da conta` : ""}.
-          </p>
-        </Numero>
+          detalhe={
+            <p className="text-[11px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+              {reais(contratos.emAbertoCentavos / 100)} contratados sem pagamento (projeção, não é caixa) · {contratos.ativos} pago(s) e ativo(s)
+              {contratos.daEquipe > 0 ? ` · ${contratos.daEquipe} de conta da equipe fora da conta` : ""}.
+            </p>
+          }
+        />
       </section>
+
+      {/* OS GRÁFICOS GRANDES, com o período anterior tracejado. */}
+      <section aria-label="Tendências do período" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <GraficoComparado
+          titulo="Custo de IA, somado no período"
+          atual={comparacao.custo.atual}
+          anterior={comparacao.custo.anterior}
+          baldes={comparacao.baldes}
+          baldesAnteriores={comparacao.baldesAnteriores}
+          rotuloAnterior={comparacao.rotuloAnterior}
+          formato="reais"
+          acumulado
+          subirEhBom={false}
+          cor="var(--painel-2)"
+          nomeDaLinha="Total (clientes e equipe)"
+          partes={{ nome: "Clientes", valores: comparacao.custoDeCliente.atual, cor: "var(--painel-1)", nomeDoResto: "Equipe e sem projeto" }}
+          dobra="custo"
+          nota={`Clientes no período: ${reais(soma(comparacao.custoDeCliente.atual), 2)}; antes ${reais(soma(comparacao.custoDeCliente.anterior), 2)}. Cliente é quem usa como cliente, com ou sem desconto; equipe é papel de admin, conta marcada como da equipe ou e-mail da casa.`}
+        />
+        <GraficoComparado
+          titulo="Receita real, somada no período"
+          atual={comparacao.receita.atual}
+          anterior={comparacao.receita.anterior}
+          baldes={comparacao.baldes}
+          baldesAnteriores={comparacao.baldesAnteriores}
+          rotuloAnterior={comparacao.rotuloAnterior}
+          formato="reais"
+          acumulado
+          dobra="receita"
+          nota="Só pagamento confirmado: cartão pago no Stripe, Pix e transferência com comprovante. Plano e contrato sem pagamento ficam na projeção, dentro do detalhe."
+        />
+        <GraficoComparado
+          titulo={graficos.porSemana ? "Créditos consumidos por semana" : "Créditos consumidos por dia"}
+          atual={comparacao.creditos.atual}
+          anterior={comparacao.creditos.anterior}
+          baldes={comparacao.baldes}
+          baldesAnteriores={comparacao.baldesAnteriores}
+          rotuloAnterior={comparacao.rotuloAnterior}
+          altura={170}
+          dobra="creditos"
+          nota="As duas carteiras, plano e vídeo, líquidas de estorno e sem recarga. A conta de admin debita zero e não aparece aqui."
+        />
+        <GraficoComparado
+          titulo={graficos.porSemana ? "Cadastros confirmados por semana" : "Cadastros confirmados por dia"}
+          atual={comparacao.cadastros.atual}
+          anterior={comparacao.cadastros.anterior}
+          baldes={comparacao.baldes}
+          baldesAnteriores={comparacao.baldesAnteriores}
+          rotuloAnterior={comparacao.rotuloAnterior}
+          altura={170}
+          dobra="vendas"
+          nota="E-mail confirmado, sem cara de robô e sem acesso de admin."
+        />
+      </section>
+
+      {/* O FUNIL, de volta à vista (06/10). */}
+      <Cartao
+        titulo="Funil de vendas"
+        subtitulo={`Pessoas, e não cliques: anônimo conta por endereço de internet (IP), quem tem conta conta pela conta. Cada etapa comparada com ${comparacao.rotuloAnterior}.`}
+      >
+        <FunilComparado etapas={etapasDoFunil} rotuloAnterior={comparacao.rotuloAnterior} />
+        {/* As portas laterais não são fila: a pessoa pode testar a demo e
+            nunca visitar, ou pedir demonstração sem deixar contato. */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { nome: "Testou a demo pública", agora: passo("demo")?.pessoas ?? 0, antes: passoAnterior("demo")?.pessoas ?? 0 },
+            { nome: "Deixou contato", agora: passo("contato")?.pessoas ?? 0, antes: passoAnterior("contato")?.pessoas ?? 0 },
+            { nome: "Marcou demonstração", agora: graficos.demonstracoes.marcadas, antes: null },
+          ].map((porta) => (
+            <div key={porta.nome} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {porta.nome}
+              </p>
+              <p className="text-lg font-semibold tabular-nums" style={{ color: "var(--text-primary)" }}>
+                {numero(porta.agora)}
+              </p>
+              <p className="text-[11px] tabular-nums" style={{ color: "var(--text-muted)" }}>
+                {sobreVisitas(porta.agora)}
+                {porta.antes !== null ? ` · antes ${numero(porta.antes)}` : ""}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Cartao>
 
       {/* A OPERAÇÃO DE HOJE, numa linha leve: o que precisa de olho agora,
           sem competir com os seis números de cima. */}
@@ -461,7 +619,7 @@ export default async function AdminPage({
                   />
                 ) : (
                   <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                    Nenhuma conta fora da equipe tem plano hoje. As contas da equipe (Gmail do Bruno, @demandou.com) têm plano e não contam.
+                    Nenhuma conta fora da equipe tem plano hoje. As contas da equipe (admin, marcadas como da equipe ou com e-mail @demandou.com) têm plano e não contam.
                   </p>
                 )}
               </div>
@@ -527,26 +685,11 @@ export default async function AdminPage({
 
       <Dobra
         id="vendas"
-        titulo="Vendas: funil, quem chegou, de onde veio e quem deixou contato"
+        titulo="Vendas: contas, quem chegou, de onde veio e quem deixou contato"
         resumo={`${visitas} visita(s) · ${passo("cadastro")?.pessoas ?? 0} cadastro(s) confirmado(s) · ${graficos.demonstracoes.marcadas} demonstração(ões) marcada(s) · ${contatos.length} contato(s) na fila`}
       >
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <Cartao
-            className="lg:col-span-3"
-            titulo="O funil"
-            subtitulo="Pessoas, e não cliques: anônimo conta por IP, quem tem conta conta por conta. Cadastro conta só e-mail confirmado e sem cara de robô. A ativação vem depois da assinatura porque sem plano não se entra na plataforma."
-          >
-            <Funil
-              dias={dias}
-              passos={funil}
-              portas={[
-                { nome: "Testou a demo pública", pessoas: passo("demo")?.pessoas ?? 0, nota: `${passo("demo")?.eventos ?? 0} evento(s), ${sobreVisitas(passo("demo")?.pessoas ?? 0)}` },
-                { nome: "Deixou contato", pessoas: passo("contato")?.pessoas ?? 0, nota: sobreVisitas(passo("contato")?.pessoas ?? 0) },
-                { nome: "Marcou demonstração", pessoas: graficos.demonstracoes.marcadas, nota: sobreVisitas(graficos.demonstracoes.marcadas) },
-              ]}
-            />
-          </Cartao>
-          <Cartao className="lg:col-span-2" titulo="Contas e demonstrações" subtitulo="As contas por situação, e o que aconteceu com as demonstrações do período.">
+        <div className="grid grid-cols-1 gap-5">
+          <Cartao titulo="Contas e demonstrações" subtitulo="As contas por situação, e o que aconteceu com as demonstrações do período.">
             <p className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
               {resumo.usuarios} conta(s), {resumo.ativos} ativa(s) no período
             </p>
@@ -803,4 +946,33 @@ export default async function AdminPage({
       </Dobra>
     </div>
   );
+}
+
+/** As etapas principais do funil, na ordem real (sem plano não se entra na plataforma). */
+const ETAPAS_DO_FUNIL: Array<Pick<EtapaDoFunil, "chave" | "nome" | "explica">> = [
+  { chave: "visita", nome: "Visitas", explica: "pessoas diferentes na página inicial" },
+  { chave: "cadastro", nome: "Cadastro confirmado", explica: "e-mail confirmado, sem robô e sem admin" },
+  { chave: "checkout", nome: "Abriu o pagamento", explica: "chegaram à tela de pagamento" },
+  { chave: "assinatura", nome: "Assinatura", explica: "assinaram (teste com cartão conta)" },
+  { chave: "ativação", nome: "Ativação", explica: "1ª campanha gerada ou 1º vídeo enviado" },
+];
+
+/**
+ * A comparação em modo de exemplo: as séries do próprio exemplo, e o período
+ * anterior como 80% delas. Só no `next dev` com ?exemplo=1.
+ */
+function comparacaoDeExemplo(g: DadosDosGraficos, base: ComparacaoDoPainel): ComparacaoDoPainel {
+  const da = (d: DadosNoTempo, chave?: string) =>
+    chave ? (d.series.find((s) => s.chave === chave)?.valores ?? []) : d.baldes.map((_, i) => d.series.reduce((t, s) => t + s.valores[i], 0));
+  const par = (v: number[]) => ({ atual: v, anterior: v.map((x, i) => x * (0.65 + 0.3 * Math.abs(Math.sin(i + 1)))) });
+  const custo = da(g.dinheiro, "custo");
+  return {
+    ...base,
+    baldes: g.dinheiro.baldes,
+    custo: par(custo),
+    custoDeCliente: par(custo.map((v) => v * 0.6)),
+    receita: par(da(g.dinheiro, "receita")),
+    creditos: par(da(g.creditos)),
+    cadastros: par(da(g.movimento, "cadastros")),
+  };
 }
