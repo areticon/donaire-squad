@@ -66,6 +66,27 @@ export function melhoraOProduto(c: string | null | undefined): boolean {
 export const CONFIANCA_MINIMA = 0.5;
 
 /**
+ * A REPESCAGEM (06/10, tarde): o feedback sem classe volta para o JEV.
+ * `classificadoEm` é a hora da última tentativa (com ou sem classe).
+ *   - Nunca tentado (o JEV estava desligado ou caiu na captura): entra assim
+ *     que tem 2 min de idade (a captura ainda pode estar classificando).
+ *   - Tentado sem classe ("não sei" ou falha): volta depois de 6 h da última
+ *     tentativa, porque os grupos abertos mudam e o JEV pode ter voltado.
+ *   - Com mais de 3 dias, para: fica sem classe no painel, à vista do admin.
+ */
+export const JANELA_DA_REPESCAGEM_MS = 3 * 86_400_000;
+export const IDADE_MINIMA_DA_REPESCAGEM_MS = 2 * 60_000;
+export const INTERVALO_DA_REPESCAGEM_MS = 6 * 3_600_000;
+
+export function precisaDeRepescagem(f: { classificacao?: string | null; criadoEm: Date; classificadoEm: Date | null }, agora = new Date()): boolean {
+  if (f.classificacao) return false;
+  const idade = agora.getTime() - f.criadoEm.getTime();
+  if (idade > JANELA_DA_REPESCAGEM_MS || idade < IDADE_MINIMA_DA_REPESCAGEM_MS) return false;
+  if (!f.classificadoEm) return true;
+  return agora.getTime() - f.classificadoEm.getTime() >= INTERVALO_DA_REPESCAGEM_MS;
+}
+
+/**
  * O contexto que vai junto com o texto do cliente: o que a plataforma fez,
  * o que respondeu, e o que o cliente TINHA APROVADO antes (é o que separa
  * "erro do produto" de "atendido como pedido"). Sem nome de cliente.

@@ -229,6 +229,29 @@ test("o prompt do briefing tem as quatro partes, os módulos e nenhum e-mail", (
   assert.ok(!sistema.includes(travessao) && !usuario.includes(travessao), "sem travessão");
 });
 
+// ─── a repescagem do feedback sem classe (06/10, tarde) ───
+
+test("repescagem: o nunca tentado entra; o tentado sem classe volta depois de 6 h; com 3 dias para", async () => {
+  const { precisaDeRepescagem } = await import("@/lib/feedback/regras");
+  const agora = new Date("2026-10-06T18:00:00Z");
+  const h = (n: number) => new Date(agora.getTime() - n * 3_600_000);
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(1), classificadoEm: null }, agora), true, "JEV desligado na captura");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: new Date(agora.getTime() - 30_000), classificadoEm: null }, agora), false, "a captura ainda pode estar classificando");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(10), classificadoEm: h(9) }, agora), true, "não sei de 9 h atrás");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(3), classificadoEm: h(2) }, agora), false, "tentado há 2 h: espera");
+  assert.equal(precisaDeRepescagem({ classificacao: null, criadoEm: h(80), classificadoEm: null }, agora), false, "mais de 3 dias: fica no painel");
+  assert.equal(precisaDeRepescagem({ classificacao: "erro_do_produto", criadoEm: h(1), classificadoEm: h(1) }, agora), false);
+});
+
+test("repescagem: o \"não sei\" do JEV traz confiança; a falha (sem resposta) não, e por isso volta para a fila", async () => {
+  const naoSei = await classificarFeedback({ feedback: { texto: "achei estranho", origem: "chat", contexto: null }, gruposAbertos: [], perguntar: jevFixo({ classificacao: { choice: "erro_do_produto", confidence: 0.3 } }) });
+  assert.equal(naoSei.classificacao, null);
+  assert.equal(naoSei.confianca, 0.3);
+  const caiu = await classificarFeedback({ feedback: { texto: "achei estranho", origem: "chat", contexto: null }, gruposAbertos: [], perguntar: async () => { throw new Error("JEV fora do ar"); } });
+  assert.equal(caiu.classificacao, null);
+  assert.equal(caiu.confianca, null);
+});
+
 // ─── telefone, CPF e CNPJ mascarados (06/10, tarde) ───
 
 test("telefone, CPF e CNPJ saem mascarados; tempo, dinheiro, data e porcentagem ficam", () => {
