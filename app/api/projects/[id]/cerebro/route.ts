@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
-import { soODono } from "@/lib/equipe/permissoes";
 import { carregarFontes } from "@/lib/cerebro/carregar";
 import { cerebroEmMarkdown, montarCerebro } from "@/lib/cerebro/montagem";
 
 /**
  * GET: o segundo cérebro do projeto (notas e ligações) para a tela do grafo.
  * GET ?baixar=md | json: a CÓPIA da memória inteira, sem o teto da tela, como
- * arquivo (os termos: o cliente pede cópia). A cópia é só do dono.
+ * arquivo (os termos: o cliente pede cópia). Só admin gera; entrega pelo suporte.
  *
  * Só leitura: nada aqui grava.
  */
@@ -24,8 +23,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const baixar = req.nextUrl.searchParams.get("baixar");
   if (baixar) {
-    const negado = await soODono(userId, projeto, "baixar a cópia da memória do projeto");
-    if (negado) return negado;
+    // A cópia sai SÓ PELA EQUIPE (06/10, decisão do Bruno): a memória é o custo
+    // de saída do cliente, então não há botão de autoatendimento. O direito de
+    // pedir cópia (LGPD, art. 18; termos 11.6) é atendido pelo suporte: o
+    // cliente pede, um admin gera aqui e entrega.
+    const eu = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (eu?.role !== "admin") return NextResponse.json({ error: "A cópia da memória é enviada pelo suporte: abra um chamado pedindo a cópia." }, { status: 403 });
   }
 
   const fontes = await carregarFontes(id);

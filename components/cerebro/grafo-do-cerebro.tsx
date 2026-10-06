@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Maximize2, Search, X } from "lucide-react";
+import { Maximize2, Search, X } from "lucide-react";
 import { criarSimulacao, type MolaDaForca, type NoDaForca, type Simulacao } from "@/components/cerebro/forca";
 import { buscarNotas, dataCurta } from "@/lib/cerebro/montagem";
 import { COR_DA_ESFERA, ESFERAS, ROTULO_DA_ESFERA, acoesDaNota, type CerebroNaTela, type Esfera, type LigacaoDoCerebro, type NotaDoCerebro } from "@/lib/cerebro/tipos";
@@ -558,17 +558,7 @@ export function GrafoDoCerebro({ projectId, inicial, souDono }: { projectId: str
           <span className="font-mono text-xs tabular-nums" style={{ color: "var(--text-muted)" }} data-testid="contagem-do-cerebro">
             {totalDeNotas} {totalDeNotas === 1 ? "nota" : "notas"} · {totalDeLigacoes} {totalDeLigacoes === 1 ? "ligação" : "ligações"}
           </span>
-          {souDono && !vazio && (
-            <a
-              href={`/api/projects/${projectId}/cerebro?baixar=md`}
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-orange-500"
-              style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
-              title="Baixar a memória inteira em texto"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Baixar cópia
-            </a>
-          )}
+          {/* Sem botão de baixar (06/10): a cópia é pedida ao suporte e gerada por um admin pela rota ?baixar=md. */}
         </div>
       </div>
 
