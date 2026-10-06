@@ -9,6 +9,7 @@ import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
+import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
 import { BibliotecaDeMateriais } from "@/components/materiais/biblioteca-de-materiais";
 import { GemeoNasConfiguracoes } from "@/components/gemeo/gemeo-nas-configuracoes";
 import type { CadastroDoGemeo } from "@/lib/media/gemeo";
@@ -316,9 +317,15 @@ export function ConfiguracaoDoProjeto({
 
       {/* O BOOK DE MODELOS (03/10): mudar de modelo depois mora aqui. */}
       {aba === "modelos" && (
-        <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-          <GaleriaDeModelos projectId={projeto.id} />
-        </section>
+        <>
+          {/* A BIBLIOTECA DE DESIGN (06/10): do mais usado ao menos, feita pelos pedidos dos clientes; escolher um ou escrever o seu. */}
+          <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+            <GaleriaDaBiblioteca projectId={projeto.id} />
+          </section>
+          <section className="rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+            <GaleriaDeModelos projectId={projeto.id} />
+          </section>
+        </>
       )}
 
       {aba === "gemeo" && <GemeoNasConfiguracoes projectId={projeto.id} cadastro={gemeo?.cadastro ?? null} />}

@@ -116,10 +116,14 @@ export function ComandoDoVideo({ projectId, reserva }: { projectId: string; rese
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texto: texto.trim(), fonte, cores, origem, referencia }),
       });
-      const d = await r.json().catch(() => ({}));
+      const d = (await r.json().catch(() => ({}))) as { error?: string; biblioteca?: { design?: { nome?: string }; veredito?: string } | null };
       if (!r.ok) throw new Error(d.error || "Não consegui salvar.");
       setSalvo(JSON.stringify([texto.trim(), fonte, cores]));
-      toast.success("Comando salvo. Vale para os próximos cortes.");
+      // A biblioteca de design (06/10): o comando escrito entrou na biblioteca (ou já existia lá), e a tela diz com que nome.
+      const nome = d.biblioteca?.design?.nome;
+      const v = d.biblioteca?.veredito;
+      const naBiblioteca = nome && v && v !== "catalogo" ? (v === "igual" || v === "repetido" ? ` Já existia na biblioteca de designs como "${nome}".` : ` Entrou na biblioteca de designs como "${nome}"${v === "variacao" ? ", variação de um que já existia" : ""}.`) : "";
+      toast.success(`Comando salvo. Vale para os próximos cortes.${naBiblioteca}`, { duration: naBiblioteca ? 7000 : 4000 });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não consegui salvar.");
     } finally {

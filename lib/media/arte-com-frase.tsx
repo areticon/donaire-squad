@@ -620,6 +620,8 @@ export async function comporFraseNaArte(p: {
   const modelo = await modeloDaMarca(p.marca, p.largura, p.altura, p.frase);
   if (modelo) {
     const { comporNoModelo } = await import("@/lib/modelos-de-arte/compor");
+    // A biblioteca de design (06/10): a arte composta neste molde é um uso real do modelo (uma vez por frase, o carrossel conta uma).
+    void import("@/lib/biblioteca-de-design/registro").then(({ contarUsoDoCatalogo }) => contarUsoDoCatalogo({ tipo: "imagem", catalogoId: modelo.id, projectId: p.marca.projectId, chave: p.frase })).catch(() => {});
     return comporNoModelo({
       modelo,
       textos: await textosDaPecaNoModelo(modelo, p.frase, p.marca),

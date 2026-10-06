@@ -33,6 +33,9 @@ const PUBLIC_ROUTES: RegExp[] = [
   // A volta do login da rede (04/10): no celular ela cai no navegador de
   // dentro do app do Instagram/Facebook, sem sessão. Ver app/conectado/page.tsx.
   /^\/conectado/,
+  // As telas de exemplo (06/10, biblioteca de design) só existem no `next dev`
+  // (a página responde 404 fora dele) e mostram dados em memória, sem sessão.
+  /^\/exemplos\//,
 ];
 
 export function proxy(req: NextRequest) {
