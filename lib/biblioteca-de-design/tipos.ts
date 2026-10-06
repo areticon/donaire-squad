@@ -56,7 +56,30 @@ export interface DesignDaGaleria {
   doProjeto?: boolean;
   /** O cliente deste projeto escreveu este pedido. */
   meu?: boolean;
+  /** Está na galeria de todos (falso: só no projeto de quem pediu). */
+  publico: boolean;
   createdAt: string;
+}
+
+/**
+ * O PEDIDO CRU SÓ PARA QUEM O ESCREVEU (06/10, vazamento): o texto como o
+ * cliente escreveu pode ter marca, nome, rosto ou contato. Os outros clientes
+ * veem só a ficha (nome, descrição, linguagem), escrita a partir dos trechos
+ * que o JEV disse que são só visual. A semente (o catálogo) não tem dado de
+ * cliente e mostra o pedido.
+ */
+export function podeVerOPedido(d: Pick<DesignDaGaleria, "origem" | "meu">): boolean {
+  return d.origem === "semente" || d.meu === true;
+}
+
+/**
+ * O texto que vira o comando do vídeo de quem escolhe um design: o pedido,
+ * quando é dele ou da semente; a descrição do visual, quando o design veio de
+ * outro cliente. Nunca o pedido cru de outra pessoa.
+ */
+export function textoParaOComando(d: Pick<DesignDaGaleria, "origem" | "meu" | "pedidoOriginal" | "descricao" | "nome">): string {
+  if (podeVerOPedido(d) && d.pedidoOriginal.trim()) return d.pedidoOriginal;
+  return `${d.nome}: ${d.descricao}`;
 }
 
 /** O que o redator escreve a partir do pedido (uma chamada). */
@@ -105,7 +128,7 @@ export function ordenarPorUso<T extends { usos: number; createdAt: string }>(lis
   return [...lista].sort((a, b) => b.usos - a.usos || (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 }
 
-/** Filtra por tipo e por busca (nome, descrição e pedido). */
+/** Filtra por tipo e por busca (nome, descrição e pedido, que chega vazio quando é de outro cliente). */
 export function filtrarGaleria<T extends DesignDaGaleria>(lista: T[], tipo: TipoDeDesign | "todos", busca: string): T[] {
   const b = textoDeBusca(busca);
   return lista.filter((d) => (tipo === "todos" || d.tipo === tipo) && (!b || textoDeBusca(`${d.nome} ${d.descricao} ${d.pedidoOriginal}`).includes(b)));

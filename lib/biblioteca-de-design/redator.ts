@@ -34,7 +34,8 @@ Regras:
 - A cor da marca entra só nos detalhes e acentos, nunca tingindo a foto inteira. Escreva "brand colors only as small accents" na linguagem.
 - Fidelidade ao pedido: traduza o que o cliente quis, sem inventar outro estilo.
 - Sem travessão (o sinal "—") em texto nenhum; use vírgula ou dois-pontos.
-- Sem pessoa real reconhecível, sem artista vivo, sem marca de terceiros.`;
+- Sem pessoa real reconhecível, sem artista vivo, sem marca de terceiros.
+- A ficha vai para OUTROS clientes: nunca escreva nome de marca, empresa, produto, pessoa, rosto específico, contato (telefone, e-mail, @, site, endereço, cidade) nem frase que o cliente quer na peça, mesmo que apareça no pedido. Descreva só o visual.`;
 
 export type EntradaDoRedator = {
   tipo: TipoDeDesign;

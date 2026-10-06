@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
+import { podeUsarProjetoPorId } from "@/lib/equipe/conta";
 import { bibliotecaDeExemplo } from "@/lib/biblioteca-de-design/exemplo";
 import { listarBiblioteca } from "@/lib/biblioteca-de-design/registro";
 import { filtrarGaleria, tipoValido } from "@/lib/biblioteca-de-design/tipos";
@@ -10,8 +11,9 @@ import { filtrarGaleria, tipoValido } from "@/lib/biblioteca-de-design/tipos";
 /**
  * A GALERIA DA BIBLIOTECA DE DESIGN (06/10/2026): GET devolve as entradas do
  * mais usado ao menos, com filtro por tipo (?tipo=video|imagem) e busca
- * (?busca=), e marca as que o projeto já usa (?projectId=). O nome de quem
- * criou nunca sai. `ehAdmin` diz à tela se mostra a ação "gerar prévias
+ * (?busca=), e marca as que o projeto já usa (?projectId=, conferido contra
+ * o usuário). O nome de quem criou nunca sai, e o pedido cru de outro
+ * cliente também não (lib/biblioteca-de-design/registro.ts). `ehAdmin` diz à tela se mostra a ação "gerar prévias
  * pendentes".
  *
  * `?exemplo=1` só no `next dev`: a biblioteca de exemplo em memória
@@ -27,7 +29,9 @@ export async function GET(req: NextRequest) {
   }
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const projectId = sp.get("projectId");
+  // O projeto só vale se o usuário pode usá-lo: senão o ?projectId= de outro abriria as entradas que não são públicas dele.
+  const pedido = sp.get("projectId");
+  const projectId = pedido && (await podeUsarProjetoPorId(userId, pedido).catch(() => false)) ? pedido : null;
   try {
     const [designs, eu] = await Promise.all([
       listarBiblioteca({ tipo, busca, projectId, userId }),

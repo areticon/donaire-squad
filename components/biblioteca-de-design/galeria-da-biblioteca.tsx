@@ -23,6 +23,11 @@ import { ROTULO_DO_TIPO, custoEstimadoDasPrevias, filtrarGaleria, ordenarPorUso,
  *     só gera com a confirmação.
  * O nome de quem criou nunca aparece: só "feito por um cliente".
  *
+ * PRIVACIDADE (06/10, vazamento): o pedido como foi escrito só aparece para
+ * quem o escreveu (a rota manda vazio para os outros); o cliente pode marcar
+ * "só no meu projeto" ao escrever, e tirar da galeria (ou pedir para voltar)
+ * o design que ele pediu.
+ *
  * `exemplo`: só no `next dev`, lê `?exemplo=1` da rota (dados em memória) e
  * não grava nada; as ações viram avisos.
  */
@@ -48,7 +53,9 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
   const [escrevendo, setEscrevendo] = useState(false);
   const [tipoDoPedido, setTipoDoPedido] = useState<TipoDeDesign>("video");
   const [pedido, setPedido] = useState("");
+  const [soNoMeuProjeto, setSoNoMeuProjeto] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [mudandoVisibilidade, setMudandoVisibilidade] = useState(false);
   const [usando, setUsando] = useState<string | null>(null);
   const [pendentes, setPendentes] = useState<Pendentes | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -112,19 +119,28 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
     }
     setEnviando(true);
     try {
-      const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: tipoDoPedido, pedido: pedido.trim() }) });
-      const d = (await r.json().catch(() => ({}))) as { design?: DesignDaGaleria; veredito?: string; error?: string };
+      const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: tipoDoPedido, pedido: pedido.trim(), soNoMeuProjeto }) });
+      const d = (await r.json().catch(() => ({}))) as { design?: DesignDaGaleria; veredito?: string; soNoProjeto?: string | null; error?: string };
       if (!r.ok || !d.design) throw new Error(d.error || "Não consegui registrar o pedido.");
+      const ondeFicou =
+        d.soNoProjeto === "pedido-do-cliente"
+          ? " Ficou só no seu projeto, como você pediu."
+          : d.soNoProjeto === "so-dado-do-cliente" || d.soNoProjeto === "ficha-com-dado-do-cliente"
+            ? " Ficou só no seu projeto: o pedido falava da sua marca ou de alguém, e isso não vai para a galeria."
+            : d.soNoProjeto === "sem-conferencia"
+              ? " Ficou só no seu projeto: não deu para conferir agora se o pedido tinha algo da sua marca."
+              : "";
       const frase =
         d.veredito === "igual"
           ? `Esse design já existia na biblioteca como "${d.design.nome}": ligado ao seu projeto.`
           : d.veredito === "variacao"
-            ? `Entrou na biblioteca como "${d.design.nome}", variação de um design que já existia.`
+            ? `Entrou como "${d.design.nome}", variação de um design que já existia.${ondeFicou}`
             : d.veredito === "repetido"
               ? `Você já tinha pedido este design: "${d.design.nome}".`
-              : `Entrou na biblioteca como "${d.design.nome}".`;
-      toast.success(frase, { duration: 6000 });
+              : `Entrou como "${d.design.nome}".${ondeFicou}`;
+      toast.success(frase, { duration: 7000 });
       setPedido("");
+      setSoNoMeuProjeto(false);
       setEscrevendo(false);
       await carregar();
     } catch (e) {
@@ -151,6 +167,27 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
       toast.error(e instanceof Error ? e.message : "Não consegui usar este design.");
     } finally {
       setUsando(null);
+    }
+  }
+
+  async function mudarVisibilidade(d: DesignDaGaleria, publico: boolean) {
+    if (exemplo || !projectId) {
+      toast("No exemplo nada é gravado. No projeto, o design sai da galeria dos outros e continua no seu.", { id: "biblioteca-exemplo" });
+      return;
+    }
+    setMudandoVisibilidade(true);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ designId: d.id, publico }) });
+      const j = (await r.json().catch(() => ({}))) as { publico?: boolean; efeito?: string; error?: string };
+      if (!r.ok) throw new Error(j.error || "Não consegui mudar onde o design aparece.");
+      toast.success(j.efeito || "Feito.", { duration: 6000 });
+      const novo = Boolean(j.publico);
+      setDesigns((lista) => (lista ? lista.map((x) => (x.id === d.id ? { ...x, publico: novo } : x)) : lista));
+      setAberto((a) => (a && a.id === d.id ? { ...a, publico: novo } : a));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui mudar onde o design aparece.");
+    } finally {
+      setMudandoVisibilidade(false);
     }
   }
 
@@ -191,7 +228,7 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
             {titulo}
           </h2>
           <p className="mt-0.5 text-sm" style={{ color: "var(--text-muted)" }}>
-            Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu, que entra aqui para todo mundo, sem o seu nome.
+            Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu: só a descrição do visual entra aqui para todo mundo, sem o seu nome, a sua marca ou o seu contato. Se preferir, ele fica só no seu projeto.
           </p>
         </div>
         <button type="button" onClick={() => setEscrevendo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-white">
@@ -220,12 +257,18 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
             className="w-full resize-y rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
             style={{ borderColor: "var(--border)", background: "var(--bg-input)", color: "var(--text-primary)" }}
           />
+          <label className="flex items-start gap-2 text-xs" style={{ color: "var(--text-primary)" }}>
+            <input type="checkbox" checked={soNoMeuProjeto} onChange={(e) => setSoNoMeuProjeto(e.target.checked)} className="mt-0.5 accent-orange-500" />
+            <span>
+              <b>Só no meu projeto.</b> <span style={{ color: "var(--text-muted)" }}>Não entra na galeria dos outros clientes. Sem marcar, só a descrição do visual entra lá: o que for da sua marca, de alguém ou de contato fica de fora.</span>
+            </span>
+          </label>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
               A IA compara com a biblioteca, escreve o nome e a descrição e guarda a linguagem para os melhores modelos de imagem. A cor da marca entra só nos detalhes.
             </p>
             <button type="button" onClick={() => void enviarPedido()} disabled={enviando} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50">
-              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Entrar na biblioteca
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {soNoMeuProjeto ? "Guardar no meu projeto" : "Entrar na biblioteca"}
             </button>
           </div>
         </div>
@@ -296,7 +339,16 @@ export function GaleriaDaBiblioteca({ projectId, exemplo = false, titulo = "Bibl
         </div>
       )}
 
-      {aberto && <FichaDoDesign design={aberto} usando={usando === aberto.id} aoFechar={() => setAberto(null)} aoUsar={() => void usar(aberto)} />}
+      {aberto && (
+        <FichaDoDesign
+          design={aberto}
+          usando={usando === aberto.id}
+          mudando={mudandoVisibilidade}
+          aoFechar={() => setAberto(null)}
+          aoUsar={() => void usar(aberto)}
+          aoMudarVisibilidade={(publico) => void mudarVisibilidade(aberto, publico)}
+        />
+      )}
     </section>
   );
 }
@@ -328,6 +380,11 @@ function Selos({ design }: { design: DesignDaGaleria }) {
       {design.origem === "cliente" && (
         <span className={cn(selo, "inline-flex items-center gap-0.5")} style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
           <Users className="h-3 w-3" /> {design.meu ? "Seu pedido" : "Feito por um cliente"}
+        </span>
+      )}
+      {design.origem === "cliente" && design.meu && !design.publico && (
+        <span className={selo} style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+          Só no seu projeto
         </span>
       )}
       {design.agrupadoEmId && (
@@ -376,7 +433,22 @@ function CartaoDoDesign({ design, posicao, usando, aoAbrir, aoUsar }: { design: 
   );
 }
 
-function FichaDoDesign({ design, usando, aoFechar, aoUsar }: { design: DesignDaGaleria; usando: boolean; aoFechar: () => void; aoUsar: () => void }) {
+function FichaDoDesign({
+  design,
+  usando,
+  mudando,
+  aoFechar,
+  aoUsar,
+  aoMudarVisibilidade,
+}: {
+  design: DesignDaGaleria;
+  usando: boolean;
+  mudando: boolean;
+  aoFechar: () => void;
+  aoUsar: () => void;
+  aoMudarVisibilidade: (publico: boolean) => void;
+}) {
+  const doAutor = design.origem === "cliente" && design.meu === true;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.55)" }} onClick={aoFechar} role="dialog" aria-modal="true" aria-label={design.nome}>
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }} onClick={(e) => e.stopPropagation()}>
@@ -400,12 +472,15 @@ function FichaDoDesign({ design, usando, aoFechar, aoUsar }: { design: DesignDaG
           <Previa design={design} grande />
         </div>
         <div className="space-y-3 p-4 text-sm">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              O pedido, como foi escrito
-            </p>
-            <p style={{ color: "var(--text-primary)" }}>{design.pedidoOriginal}</p>
-          </div>
+          {/* O pedido cru só chega para quem o escreveu (ou na semente do catálogo); para os outros a rota manda vazio. */}
+          {design.pedidoOriginal.trim() && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                {doAutor ? "O seu pedido, como você escreveu (só você vê)" : "O pedido, como foi escrito"}
+              </p>
+              <p style={{ color: "var(--text-primary)" }}>{design.pedidoOriginal}</p>
+            </div>
+          )}
           <div>
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
               A linguagem que os modelos de imagem recebem (em inglês)
@@ -414,7 +489,19 @@ function FichaDoDesign({ design, usando, aoFechar, aoUsar }: { design: DesignDaG
               {design.linguagem}
             </p>
           </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {doAutor && (
+              <button
+                type="button"
+                onClick={() => aoMudarVisibilidade(!design.publico)}
+                disabled={mudando}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+                style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+              >
+                {mudando && <Loader2 className="h-4 w-4 animate-spin" />}
+                {design.publico ? "Tirar da galeria" : "Pôr na galeria"}
+              </button>
+            )}
             <button type="button" onClick={aoUsar} disabled={usando} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {usando ? <Loader2 className="h-4 w-4 animate-spin" /> : design.doProjeto ? <Check className="h-4 w-4" /> : null}
               {design.doProjeto ? "Já está no seu projeto" : design.tipo === "video" ? "Usar nos meus vídeos" : "Usar nas minhas artes"}

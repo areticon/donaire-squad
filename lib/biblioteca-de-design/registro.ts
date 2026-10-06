@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
 import { compararComABiblioteca, TETO_DE_CANDIDATOS } from "@/lib/biblioteca-de-design/comparacao";
 import { escreverFichaDoDesign } from "@/lib/biblioteca-de-design/redator";
+import { fichaEstaLimpa, MARCA_DA_RESERVA, separarVisualDoCliente } from "@/lib/biblioteca-de-design/privacidade";
 import { sementePorCatalogo } from "@/lib/biblioteca-de-design/semente";
-import { filtrarGaleria, semTravessao, TETO, tipoValido, type DesignDaGaleria, type TipoDeDesign, type VereditoDaComparacao } from "@/lib/biblioteca-de-design/tipos";
+import { filtrarGaleria, podeVerOPedido, semTravessao, TETO, tipoValido, type DesignDaGaleria, type TipoDeDesign, type VereditoDaComparacao } from "@/lib/biblioteca-de-design/tipos";
 
 /**
  * O REGISTRO DA BIBLIOTECA DE DESIGN NO BANCO (06/10/2026).
@@ -19,6 +20,13 @@ import { filtrarGaleria, semTravessao, TETO, tipoValido, type DesignDaGaleria, t
  *       arte composta naquele modelo.
  * E a LEITURA da galeria: do mais usado ao menos, pública para todos, sem o
  * nome de quem criou (`criadoPorUserId` nunca sai daqui para a tela).
+ *
+ * PRIVACIDADE (06/10, vazamento): o pedido cru só volta para quem o escreveu
+ * (`podeVerOPedido`); a entrada só fica pública quando o JEV separou o visual
+ * do dado do cliente e conferiu a ficha escrita (lib/biblioteca-de-design/
+ * privacidade.ts). "Só no meu projeto" e a retirada pelo autor deixam
+ * `publico` falso. Entrada não pública só aparece para o projeto ou o usuário
+ * que a criou, e só pode ser escolhida por eles.
  *
  * Toda contagem de uso engole erro: a biblioteca nunca derruba a esteira
  * (inclusive enquanto a migração não foi aplicada).
@@ -37,6 +45,8 @@ type LinhaDoDesign = {
   agrupadoEmId: string | null;
   catalogoId: string | null;
   criadoPorProjectId: string | null;
+  criadoPorUserId: string | null;
+  publico: boolean;
   createdAt: Date;
 };
 
@@ -53,24 +63,37 @@ const SELECAO = {
   agrupadoEmId: true,
   catalogoId: true,
   criadoPorProjectId: true,
+  criadoPorUserId: true,
+  publico: true,
   createdAt: true,
 } as const;
 
-function paraAGaleria(d: LinhaDoDesign, projectId?: string | null, doProjeto?: Set<string>): DesignDaGaleria {
+/** Quem está olhando: o projeto (já conferido pela rota) e o usuário. */
+export type QuemVe = { projectId?: string | null; userId?: string | null };
+
+function ehDoAutor(d: Pick<LinhaDoDesign, "criadoPorProjectId" | "criadoPorUserId">, quem: QuemVe): boolean {
+  return Boolean((quem.projectId && d.criadoPorProjectId === quem.projectId) || (quem.userId && d.criadoPorUserId === quem.userId));
+}
+
+function paraAGaleria(d: LinhaDoDesign, quem: QuemVe = {}, doProjeto?: Set<string>): DesignDaGaleria {
+  const origem = d.origem === "semente" ? "semente" : "cliente";
+  const meu = ehDoAutor(d, quem);
   return {
     id: d.id,
     tipo: tipoValido(d.tipo) ? d.tipo : "imagem",
     nome: d.nome,
     descricao: d.descricao,
-    pedidoOriginal: d.pedidoOriginal,
+    // O pedido cru só para quem o escreveu (ou da semente): pode ter marca, nome, rosto ou contato.
+    pedidoOriginal: podeVerOPedido({ origem, meu }) ? d.pedidoOriginal : "",
     linguagem: d.linguagem,
     previaUrl: d.previaUrl,
     usos: d.usos,
-    origem: d.origem === "semente" ? "semente" : "cliente",
+    origem,
     agrupadoEmId: d.agrupadoEmId,
     catalogoId: d.catalogoId,
     doProjeto: doProjeto ? doProjeto.has(d.id) : undefined,
-    meu: projectId ? d.criadoPorProjectId === projectId : undefined,
+    meu: quem.projectId || quem.userId ? meu : undefined,
+    publico: d.publico,
     createdAt: d.createdAt.toISOString(),
   };
 }
@@ -88,13 +111,15 @@ export async function listarBiblioteca(o: { tipo?: TipoDeDesign | "todos"; busca
     select: SELECAO,
   });
   const doProjeto = o.projectId ? new Set((await prisma.designDoProjeto.findMany({ where: { projectId: o.projectId }, select: { designId: true } })).map((x) => x.designId)) : undefined;
-  const lista = linhas.map((d) => paraAGaleria(d, o.projectId, doProjeto));
+  const lista = linhas.map((d) => paraAGaleria(d, { projectId: o.projectId, userId: o.userId }, doProjeto));
   return o.busca ? filtrarGaleria(lista, "todos", o.busca) : lista;
 }
 
-export async function lerDesign(id: string): Promise<DesignDaGaleria | null> {
+/** Um design, só se quem pede pode vê-lo: público, ou criado por este projeto ou usuário. */
+export async function lerDesign(id: string, quem: QuemVe = {}): Promise<DesignDaGaleria | null> {
   const d = await prisma.designDaBiblioteca.findUnique({ where: { id }, select: SELECAO });
-  return d ? paraAGaleria(d) : null;
+  if (!d || (!d.publico && !ehDoAutor(d, quem))) return null;
+  return paraAGaleria(d, quem);
 }
 
 /**
@@ -126,13 +151,17 @@ export async function ligarAoProjeto(o: { projectId: string; designId: string; t
   });
 }
 
-export type ResultadoDoPedido = { design: DesignDaGaleria; veredito: VereditoDaComparacao["veredito"] | "repetido"; fichaPor?: "redator" | "reserva" };
+/** Por que a entrada ficou só no projeto (null quando entrou na galeria). */
+export type MotivoDeFicarNoProjeto = "pedido-do-cliente" | "so-dado-do-cliente" | "ficha-com-dado-do-cliente" | "sem-conferencia" | null;
+
+export type ResultadoDoPedido = { design: DesignDaGaleria; veredito: VereditoDaComparacao["veredito"] | "repetido"; fichaPor?: "redator" | "reserva"; soNoProjeto?: MotivoDeFicarNoProjeto };
 
 /**
  * O FLUXO DE ENTRADA de um pedido escrito pelo cliente (o campo livre do
  * comando de vídeo, o pedido de arte). Null quando o texto é curto demais.
  */
-export async function registrarPedidoDeDesign(o: { projectId: string; userId: string; tipo: TipoDeDesign; pedido: string; nicho?: string | null; publico?: string | null }): Promise<ResultadoDoPedido | null> {
+export async function registrarPedidoDeDesign(o: { projectId: string; userId: string; tipo: TipoDeDesign; pedido: string; nicho?: string | null; publico?: string | null; soNoMeuProjeto?: boolean }): Promise<ResultadoDoPedido | null> {
+  const quem: QuemVe = { projectId: o.projectId, userId: o.userId };
   const pedido = semTravessao(o.pedido).slice(0, TETO.pedido);
   if (pedido.length < 12) return null;
 
@@ -144,7 +173,7 @@ export async function registrarPedidoDeDesign(o: { projectId: string; userId: st
   });
   if (repetido) {
     await ligarAoProjeto({ projectId: o.projectId, designId: repetido.designId, tipo: o.tipo, comoEntrou: "pedido" });
-    const d = await lerDesign(repetido.designId);
+    const d = await lerDesign(repetido.designId, quem);
     return d ? { design: d, veredito: "repetido" } : null;
   }
 
@@ -159,15 +188,30 @@ export async function registrarPedidoDeDesign(o: { projectId: string; userId: st
 
   if (veredito.veredito === "igual") {
     await ligarAoProjeto({ projectId: o.projectId, designId: veredito.designId, tipo: o.tipo, comoEntrou: "pedido" });
-    const d = await lerDesign(veredito.designId);
+    const d = await lerDesign(veredito.designId, quem);
     return d ? { design: d, veredito: "igual" } : null;
   }
 
-  // (b) O Claude escreve a ficha (nome, descrição, linguagem), uma chamada.
-  const referencia = veredito.veredito === "variacao" ? candidatos.find((c) => c.id === veredito.designId) ?? null : null;
-  const { ficha, origem } = await escreverFichaDoDesign({ tipo: o.tipo, pedido, nicho: o.nicho, publico: o.publico, variacaoDe: referencia, projectId: o.projectId });
+  // (b) PRIVACIDADE: o JEV separa os trechos que são só visual dos que são do
+  // cliente; a ficha pública é escrita só com os visuais. "Só no meu projeto"
+  // pula a separação: a ficha sai do pedido inteiro e não vai para a galeria.
+  const separacao = o.soNoMeuProjeto ? null : await separarVisualDoCliente({ pedido, projectId: o.projectId });
+  const candidataAGaleria = Boolean(separacao?.peloJev && separacao.visual.length);
+  const textoDaFicha = candidataAGaleria && separacao ? separacao.visual.join(". ") : pedido;
 
-  // (c) Grava e liga ao projeto. O nome do cliente nunca entra na linha.
+  // (c) O Claude escreve a ficha (nome, descrição, linguagem), uma chamada. Na candidata à galeria, sem o nicho e o público do projeto.
+  const referencia = veredito.veredito === "variacao" ? candidatos.find((c) => c.id === veredito.designId) ?? null : null;
+  const { ficha, origem } = await escreverFichaDoDesign({ tipo: o.tipo, pedido: textoDaFicha, nicho: candidataAGaleria ? null : o.nicho, publico: candidataAGaleria ? null : o.publico, variacaoDe: referencia, projectId: o.projectId });
+
+  // (d) O JEV confere a ficha escrita antes de publicar. A reserva copia o pedido cru: nunca é pública.
+  let soNoProjeto: MotivoDeFicarNoProjeto = null;
+  if (o.soNoMeuProjeto) soNoProjeto = "pedido-do-cliente";
+  else if (!separacao?.peloJev) soNoProjeto = "sem-conferencia";
+  else if (!separacao.visual.length) soNoProjeto = "so-dado-do-cliente";
+  else if (origem !== "redator" || ficha.linguagem.includes(MARCA_DA_RESERVA)) soNoProjeto = "sem-conferencia";
+  else if (!(await fichaEstaLimpa({ ...ficha, projectId: o.projectId }))) soNoProjeto = "ficha-com-dado-do-cliente";
+
+  // (e) Grava e liga ao projeto. O nome do cliente nunca entra na linha.
   const criado = await prisma.designDaBiblioteca.create({
     data: {
       tipo: o.tipo,
@@ -176,7 +220,7 @@ export async function registrarPedidoDeDesign(o: { projectId: string; userId: st
       pedidoOriginal: pedido,
       linguagem: ficha.linguagem,
       origem: "cliente",
-      publico: true,
+      publico: soNoProjeto === null,
       criadoPorProjectId: o.projectId,
       criadoPorUserId: o.userId,
       agrupadoEmId: referencia?.id ?? null,
@@ -184,7 +228,28 @@ export async function registrarPedidoDeDesign(o: { projectId: string; userId: st
     select: SELECAO,
   });
   await ligarAoProjeto({ projectId: o.projectId, designId: criado.id, tipo: o.tipo, comoEntrou: "pedido" });
-  return { design: paraAGaleria(criado, o.projectId, new Set([criado.id])), veredito: veredito.veredito, fichaPor: origem };
+  return { design: paraAGaleria(criado, quem, new Set([criado.id])), veredito: veredito.veredito, fichaPor: origem, soNoProjeto };
+}
+
+/**
+ * O AUTOR TIRA (OU DEVOLVE) O DESIGN DA GALERIA. Tirar é sempre permitido ao
+ * projeto que criou. Devolver passa de novo pela conferência do JEV na ficha
+ * (a ficha de reserva, que copia o pedido cru, nunca volta). Quem já escolheu
+ * o design continua com ele no projeto; só some da galeria dos outros.
+ */
+export async function mudarVisibilidadeNaGaleria(o: { projectId: string; designId: string; publico: boolean }): Promise<{ ok: true; publico: boolean } | { ok: false; erro: string }> {
+  const d = await prisma.designDaBiblioteca.findUnique({ where: { id: o.designId }, select: SELECAO });
+  if (!d || d.origem !== "cliente" || d.criadoPorProjectId !== o.projectId) return { ok: false, erro: "Só o projeto que pediu este design pode mudar onde ele aparece." };
+  if (!o.publico) {
+    await prisma.designDaBiblioteca.update({ where: { id: d.id }, data: { publico: false } });
+    return { ok: true, publico: false };
+  }
+  if (d.linguagem.includes(MARCA_DA_RESERVA)) return { ok: false, erro: "Este design foi registrado sem a ficha da IA e fica só no seu projeto. Escreva o pedido de novo para ele entrar na galeria." };
+  if (!(await fichaEstaLimpa({ nome: d.nome, descricao: d.descricao, linguagem: d.linguagem, projectId: o.projectId }))) {
+    return { ok: false, erro: "A ficha deste design cita algo da sua marca ou de alguém, então ele fica só no seu projeto." };
+  }
+  await prisma.designDaBiblioteca.update({ where: { id: d.id }, data: { publico: true } });
+  return { ok: true, publico: true };
 }
 
 /** A miniatura de estilo ou o modelo do book escolhido: liga a semente ao projeto. */
@@ -192,13 +257,13 @@ export async function ligarCatalogoAoProjeto(o: { projectId: string; tipo: TipoD
   const s = await garantirSemente(o.tipo, o.catalogoId);
   if (!s) return null;
   await ligarAoProjeto({ projectId: o.projectId, designId: s.id, tipo: o.tipo, comoEntrou: o.comoEntrou ?? "referencia" });
-  return paraAGaleria(s, o.projectId, new Set([s.id]));
+  return paraAGaleria(s, { projectId: o.projectId }, new Set([s.id]));
 }
 
 /** O design atual do projeto naquele tipo: a ligação mais recente. */
 export async function designAtualDoProjeto(projectId: string, tipo: TipoDeDesign): Promise<DesignDaGaleria | null> {
   const elo = await prisma.designDoProjeto.findFirst({ where: { projectId, tipo }, orderBy: { updatedAt: "desc" }, select: { design: { select: SELECAO } } }).catch(() => null);
-  return elo ? paraAGaleria(elo.design, projectId, new Set([elo.design.id])) : null;
+  return elo ? paraAGaleria(elo.design, { projectId }, new Set([elo.design.id])) : null;
 }
 
 /**
@@ -226,7 +291,7 @@ export async function linguagemDoDesignAtual(projectId: string | null | undefine
 export async function designsDoProjeto(projectId: string): Promise<DesignDaGaleria[]> {
   const elos = await prisma.designDoProjeto.findMany({ where: { projectId }, orderBy: { updatedAt: "desc" }, select: { design: { select: SELECAO } } }).catch(() => []);
   const ids = new Set(elos.map((e) => e.design.id));
-  return elos.map((e) => paraAGaleria(e.design, projectId, ids));
+  return elos.map((e) => paraAGaleria(e.design, { projectId }, ids));
 }
 
 // ─────────────────────────────── os usos ───────────────────────────────

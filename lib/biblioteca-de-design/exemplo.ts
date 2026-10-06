@@ -17,7 +17,7 @@ function usoEstavel(chave: string, teto: number): number {
   return h % teto;
 }
 
-const PEDIDOS_DE_CLIENTES: Array<Omit<DesignDaGaleria, "id" | "createdAt" | "origem" | "catalogoId" | "agrupadoEmId"> & { agrupadoEm?: string }> = [
+const PEDIDOS_DE_CLIENTES: Array<Omit<DesignDaGaleria, "id" | "createdAt" | "origem" | "catalogoId" | "agrupadoEmId" | "publico"> & { agrupadoEm?: string }> = [
   {
     tipo: "video",
     nome: "Consultório claro com lousa de vidro",
@@ -75,6 +75,7 @@ export function bibliotecaDeExemplo(): DesignDaGaleria[] {
     origem: "semente",
     agrupadoEmId: null,
     catalogoId: s.catalogoId,
+    publico: true,
     doProjeto: ["vox", "voce-na-frente-do-titulo", "frase-marca-texto"].includes(s.catalogoId),
     createdAt: new Date(base - i * 3_600_000).toISOString(),
   }));
@@ -83,7 +84,6 @@ export function bibliotecaDeExemplo(): DesignDaGaleria[] {
     tipo: p.tipo,
     nome: p.nome,
     descricao: p.descricao,
-    pedidoOriginal: p.pedidoOriginal,
     linguagem: p.linguagem,
     previaUrl: p.previaUrl,
     usos: p.usos,
@@ -92,6 +92,9 @@ export function bibliotecaDeExemplo(): DesignDaGaleria[] {
     catalogoId: null,
     doProjeto: p.doProjeto,
     meu: p.meu,
+    publico: true,
+    // Como a rota manda: o pedido cru só para quem o escreveu.
+    pedidoOriginal: p.meu ? p.pedidoOriginal : "",
     createdAt: new Date(base + (i + 1) * 7_200_000).toISOString(),
   }));
   return ordenarPorUso([...sementes, ...clientes]);
