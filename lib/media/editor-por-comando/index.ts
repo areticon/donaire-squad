@@ -342,7 +342,7 @@ export async function replanejarMomentosPorComando(
   const img = await imagensDoPlano(c.plano, { ...e, imagens: sobra }, insercoes0);
   const plano = img.plano;
   const insercoes = { ...insercoes0, ...img.insercoes };
-  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null, legenda: legendaQueVale(e.legendaFixa, plano.linguagem?.legenda, e.comando.texto) });
+  const r = resolverPorComando(plano, { palavras: e.palavras, duracao: e.duracao, largura: e.formato === "9:16" ? 1080 : 1920, altura: e.formato === "9:16" ? 1920 : 1080, base: anterior.base, tema: temaDoComando(e.comando, anterior.base, cores, plano, e.paleta), rosto: e.rosto, comLegenda: e.comLegenda, logoUrl: e.logoUrl, insercoes, leitura: e.leitura ?? null });
   return { base: anterior.base, plano, edicao: r.edicao, insercoes, custoImagensUsd: +(anterior.custoImagensUsd + img.custoUsd).toFixed(4), avisos: [`conferência visual: ${tirados.length} peça(s) reprovada(s) replanejada(s) (${tirados.join(", ")})`, ...c.avisos, ...img.erros, ...r.avisos].slice(0, 40), tempos: { replanejamento: +((Date.now() - t) / 1000).toFixed(1) }, tirados };
 }
 

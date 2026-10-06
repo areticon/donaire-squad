@@ -244,12 +244,8 @@ export const CRITERIO_DA_FRENTE: Record<VersaoNaFrente, string> = {
 
 /** A peça depende de recorte ou de área livre (pode ser barrada pela guarda), e por isso leva uma versão na frente escolhida no plano. */
 export function precisaDeVersaoNaFrente(peca: string, planoDaFicha: string | undefined): boolean {
-  // E as peças de caixa medida (06/10, noite): a vetorial e o cartão que não couberem pela posição viram a versão na frente.
-  return peca === "titulo-atras" || planoDaFicha === "tela" || planoDaFicha === "lado" || PECAS_DE_CAIXA.has(peca);
+  return peca === "titulo-atras" || planoDaFicha === "tela" || planoDaFicha === "lado";
 }
-
-/** As peças posicionadas por caixa medida no trecho (podem não caber sem cobrir o rosto). */
-const PECAS_DE_CAIXA = new Set(["icone-com-frase", "comparacao-lado-a-lado", "cartoes-em-linha", "interface-de-edicao", "titulo-em-caixa", "cartao-de-passo", "frase-chave"]);
 
 /** A pergunta ao JEV: qual versão na frente, se esta peça não puder entrar como planejada. */
 export function perguntaDaFrente(peca: string, texto: string, fala: string): PerguntaDoJev {

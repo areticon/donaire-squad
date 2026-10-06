@@ -48,8 +48,7 @@ import { enquadramentoDaBase, noQuadroEnquadrado, type EnquadramentoDoCompleto }
 import { avisarAdminsDaMontagem } from "@/lib/media/aviso-da-montagem";
 import { estornarEdicaoNaoEntregue } from "@/lib/credits/estorno-da-edicao";
 import { detectarDemonstracao, quadrosPeloWorker, type ObterQuadros } from "@/lib/media/demonstracao";
-import { conferenciaVisualLigada, conferirVideoPronto, elementosDaEdicao, soOsMomentos, versaoQueVaiAoAr } from "@/lib/media/conferencia-visual";
-import { desviarLegenda } from "@/lib/media/editor-sob-medida/faixa-da-legenda";
+import { conferenciaVisualLigada, conferirVideoPronto } from "@/lib/media/conferencia-visual";
 import { consertosDaRevisao, RODADAS_DE_CONSERTO, revisaoVisualLigada, revisarVideoPronto, type EstadoDaRevisaoVisual } from "@/lib/media/revisao-visual";
 import { conferirAssets } from "@/lib/media/conferencia-da-imagem";
 import { perfilDoProjeto, perfilNoPrompt } from "@/lib/media/perfil-do-projeto";
@@ -2172,22 +2171,7 @@ async function conferirCompletoPronto(v: VideoDoCompleto, lido: MontagemDoComple
   const sm = lido.sobMedida!;
   const c = sm.comando!;
   const rv = lido.revisaoVisual ?? { rodadas: 0, pendente: false, historico: [] };
-  const obterQuadros = quadrosPeloWorker(sm.previaUrl!, vertical ? 360 : 512);
-  // A CONFERÊNCIA DEPOIS DA CORREÇÃO (06/10, noite): o corrigido volta ao olho só nos momentos corrigidos; se piorou
-  // (mais defeitos, ou os mesmos com menos elementos), vai ao ar o render conferido de antes.
-  if (rv.depois) {
-    const d = rv.depois;
-    const rev = await conferirVideoPronto({ edicao: soOsMomentos(sm.edicao!, d.momentos), palavras: lido.fala!.palavras, comando: c.comando.texto, obterQuadros, projectId: v.projectId, passo: 1e9 });
-    const depois = { elementos: elementosDaEdicao(sm.edicao!), defeitos: rev.reprovadas.length };
-    const escolha = rev.erro && !rev.quadros ? "corrigida" : versaoQueVaiAoAr(d.antes, depois);
-    const rodada = { em: agora(), rodada: rv.rodadas + 1, quadros: rev.quadros, defeitos: [], consertadas: [], momentosTirados: [], erro: rev.erro, problemas: rev.problemas.slice(0, 60), reprovadas: rev.reprovadas.map((r) => r.momento), custoUsd: rev.custoUsd, ms: rev.ms };
-    const historico = [...rv.historico, rodada].slice(-6);
-    const motivo = `${rv.motivo ?? "conferência visual"}; conferência do corrigido (${d.momentos.length} momento(s)): antes ${d.antes.defeitos} defeito(s) e ${d.antes.elementos} elemento(s), depois ${depois.defeitos} e ${depois.elementos}; foi ao ar ${escolha === "corrigida" ? "o corrigido" : "o render de antes (o corrigido piorou)"}`;
-    const montado = escolha === "corrigida" ? c.montado! : { url: d.anterior.url, bytes: d.anterior.bytes ?? 0, tempos: d.anterior.tempos as Record<string, number> | undefined };
-    await entregarCompleto(v, { ...tomado, revisaoVisual: { rodadas: rv.rodadas, historico, pendente: false, final: true, depois: null, motivo } }, montado);
-    return;
-  }
-  const rev = await conferirVideoPronto({ edicao: sm.edicao!, palavras: lido.fala!.palavras, comando: c.comando.texto, obterQuadros, projectId: v.projectId });
+  const rev = await conferirVideoPronto({ edicao: sm.edicao!, palavras: lido.fala!.palavras, comando: c.comando.texto, obterQuadros: quadrosPeloWorker(sm.previaUrl!, vertical ? 360 : 512), projectId: v.projectId });
   const rodada = { em: agora(), rodada: rv.rodadas + 1, quadros: rev.quadros, defeitos: [], consertadas: [], momentosTirados: [], erro: rev.erro, problemas: rev.problemas.slice(0, 60), reprovadas: rev.reprovadas.map((r) => r.momento), custoUsd: rev.custoUsd, ms: rev.ms };
   const historico = [...rv.historico, rodada].slice(-6);
   if (!rev.reprovadas.length || c.correcoes >= 1) {
@@ -2195,38 +2179,18 @@ async function conferirCompletoPronto(v: VideoDoCompleto, lido: MontagemDoComple
     await entregarCompleto(v, { ...tomado, revisaoVisual: { rodadas: rv.rodadas, historico, pendente: false, final: true, motivo } }, c.montado!);
     return;
   }
-  // O CONSERTO CERTO (06/10, noite; vídeo cmux4417u): legenda sobre a peça faz a LEGENDA desviar (a peça fica);
-  // só o defeito da própria peça a tira e replaneja. O JEV escolheu o conserto de cada uma (conferencia-visual.ts).
-  const daLegenda = rev.reprovadas.filter((r) => r.conserto === "legenda").map((r) => r.momento);
-  const daPeca = rev.reprovadas.filter((r) => r.conserto === "peca").map((r) => r.momento);
-  let p: { plano: typeof c.plano; insercoes: Record<string, MidiaDaInsercao>; edicao: EdicaoResolvida; custoImagensUsd: number; avisos: string[]; tirados: string[] };
-  if (daPeca.length) {
-    try {
-      const entrada = await entradaDoPlanoDoCompleto(v, lido, c.comando, []);
-      p = await replanejarMomentosPorComando(entrada, { base: c.base, plano: c.plano, insercoes: sm.insercoes ?? {}, custoImagensUsd: sm.custoImagensUsd ?? 0 }, daPeca);
-    } catch (e) {
-      // O replanejamento falhando não joga fora o render pronto: ele vai ao ar com o motivo escrito.
-      const motivo = `conferência visual: ${rev.reprovadas.length} peça(s) reprovada(s), mas o replanejamento falhou (${e instanceof Error ? e.message.slice(0, 120) : e}); foi ao ar o render conferido`;
-      await entregarCompleto(v, { ...tomado, revisaoVisual: { rodadas: rv.rodadas, historico, pendente: false, final: true, motivo } }, c.montado!);
-      return;
-    }
-  } else p = { plano: c.plano, insercoes: sm.insercoes ?? {}, edicao: sm.edicao!, custoImagensUsd: sm.custoImagensUsd ?? 0, avisos: [], tirados: [] };
-  const desvio = desviarLegenda(p.edicao, daLegenda);
-  const edicao = desvio.edicao;
-  // Os momentos a conferir de novo: os que tiveram a legenda desviada e as peças novas do replanejamento.
-  const antigas = new Set(sm.edicao!.camadas.map((x) => x.id));
-  const novas = edicao.camadas.filter((x) => !antigas.has(x.id)).map((x) => x.id);
-  const momentos = [...new Set([...daLegenda, ...novas])];
-  const avisoDoDesvio = daLegenda.length ? `conferência visual: legenda desviada de ${daLegenda.length} peça(s) (${desvio.movidas} página(s) mudaram de faixa, ${desvio.ocultas} escondida(s) sob a peça)` : null;
-  const novo: EstadoDoSobMedida = { ...sm, editor: p.plano, insercoes: p.insercoes, edicao, fase: "final", rodada: sm.rodada + 1, custoImagensUsd: p.custoImagensUsd, medidas: medidasDaEdicao(edicao), avisos: [...(sm.avisos ?? []), ...p.avisos, ...(avisoDoDesvio ? [avisoDoDesvio] : [])].slice(-30), comando: { ...c, plano: p.plano, montado: null, correcoes: c.correcoes + 1 } };
-  const partes = [daLegenda.length ? `legenda desviada de ${daLegenda.length} (${daLegenda.join(", ")})` : "", daPeca.length ? `${daPeca.length} replanejada(s) (${p.tirados.join(", ")})` : ""].filter(Boolean).join("; ");
-  const revisaoVisual = {
-    rodadas: rv.rodadas + 1,
-    historico,
-    pendente: false,
-    motivo: `conferência visual: ${rev.reprovadas.length} peça(s) reprovada(s), ${partes}`,
-    depois: momentos.length ? { momentos, anterior: { url: c.montado!.url, bytes: c.montado!.bytes, tempos: c.montado!.tempos }, antes: { elementos: elementosDaEdicao(sm.edicao!), defeitos: rev.reprovadas.length } } : null,
-  };
+  let p: Awaited<ReturnType<typeof replanejarMomentosPorComando>>;
+  try {
+    const entrada = await entradaDoPlanoDoCompleto(v, lido, c.comando, []);
+    p = await replanejarMomentosPorComando(entrada, { base: c.base, plano: c.plano, insercoes: sm.insercoes ?? {}, custoImagensUsd: sm.custoImagensUsd ?? 0 }, rev.reprovadas.map((r) => r.momento));
+  } catch (e) {
+    // O replanejamento falhando não joga fora o render pronto: ele vai ao ar com o motivo escrito.
+    const motivo = `conferência visual: ${rev.reprovadas.length} peça(s) reprovada(s), mas o replanejamento falhou (${e instanceof Error ? e.message.slice(0, 120) : e}); foi ao ar o render conferido`;
+    await entregarCompleto(v, { ...tomado, revisaoVisual: { rodadas: rv.rodadas, historico, pendente: false, final: true, motivo } }, c.montado!);
+    return;
+  }
+  const novo: EstadoDoSobMedida = { ...sm, editor: p.plano, insercoes: p.insercoes, edicao: p.edicao, fase: "final", rodada: sm.rodada + 1, custoImagensUsd: p.custoImagensUsd, medidas: medidasDaEdicao(p.edicao), avisos: [...(sm.avisos ?? []), ...p.avisos].slice(-30), comando: { ...c, plano: p.plano, montado: null, correcoes: c.correcoes + 1 } };
+  const revisaoVisual = { rodadas: rv.rodadas + 1, historico, pendente: false, motivo: `conferência visual: ${rev.reprovadas.length} peça(s) reprovada(s), replanejadas (${p.tirados.join(", ")})` };
   await enviarSobMedida(v, { ...tomado, trabalhando: false, tentativas: 0, sobMedida: novo, revisaoVisual }, tomado);
 }
 
@@ -2424,8 +2388,7 @@ export async function concluirMontagemDoCompleto(
     // O EDITOR POR COMANDO (05/10): o primeiro final vai ao revisor (que entrega ou manda corrigir); o corrigido vai ao ar.
     // Sem rodada de correção (o padrão desde 05/10 à tarde), o final vai ao ar sem passar pelo revisor por LLM.
     // A CONFERÊNCIA VISUAL (06/10): o primeiro final sempre passa pelo olho (1 rodada de correção no máximo).
-    // E o corrigido pela conferência volta ao olho uma vez, só nos momentos corrigidos (`revisaoVisual.depois`).
-    if (lido.sobMedida.comando && (lido.sobMedida.comando.correcoes < correcoesDoCompleto() || (conferenciaVisualLigada() && (lido.sobMedida.comando.correcoes === 0 || Boolean(lido.revisaoVisual?.depois?.momentos?.length))))) {
+    if (lido.sobMedida.comando && (lido.sobMedida.comando.correcoes < correcoesDoCompleto() || (conferenciaVisualLigada() && lido.sobMedida.comando.correcoes === 0))) {
       const montado = { url: resultado.montado.url, bytes: resultado.montado.bytes, tempos: resultado.tempos };
       const ok = await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), trabalhando: false, sobMedida: { ...lido.sobMedida, fase: "revisar", previaUrl: resultado.montado.url, comando: { ...lido.sobMedida.comando, montado } } });
       return ok ? "revisando" : "ignorado";
