@@ -228,3 +228,28 @@ test("o prompt do briefing tem as quatro partes, os módulos e nenhum e-mail", (
   const travessao = String.fromCharCode(0x2014);
   assert.ok(!sistema.includes(travessao) && !usuario.includes(travessao), "sem travessão");
 });
+
+// ─── o plano do vídeo no contexto (06/10, tarde) ───
+
+test("o plano aprovado do vídeo vira linhas com tempo, cor, lugar e pedido, e chega inteiro ao JEV", async () => {
+  const { linhasDoPlanoAprovado } = await import("@/lib/media/roteiro-em-texto");
+  const linhas = linhasDoPlanoAprovado({
+    trechos: [
+      { indice: 0, de: 0, ate: 10, inicio: 0, fim: 14, fala: "abertura", cena: null, sugestao: null },
+      {
+        indice: 1, de: 11, ate: 30, inicio: 65, fim: 80, fala: "a bola", cena: null, sugestao: "quero a bola maior",
+        pecas: [{ peca: "imagem-janela", rotulo: "imagem em janela", texto: "bola de futebol", inicio: 66, tela: false, tipo: "imagem", descricao: "bola de futebol", cor: "vermelho", onde: "no centro da tela", pedido: "bola no meio com letra vermelha", atendido: "sim", motivo: null }],
+      },
+    ],
+  });
+  assert.equal(linhas.length, 1, "trecho sem peça nem sugestão fica de fora");
+  assert.ok(linhas[0].startsWith("1:05 a 1:20: imagem, bola de futebol, cor vermelho, no centro da tela"), linhas[0]);
+  assert.ok(linhas[0].includes('pedido seu: "bola no meio com letra vermelha"'));
+  assert.ok(linhas[0].includes('sugestão do cliente: "quero a bola maior"'));
+
+  const plano = Array.from({ length: 60 }, (_, i) => `${i}:00 a ${i}:10: título "frase ${i}" em vermelho`).join("\n");
+  const estado = estadoDoFeedback({ texto: "queria rosa", origem: "chat", contexto: { aprovadoAntes: { planoDoVideo: plano, textoDaPeca: "y".repeat(900) } } }, []) as { o_que_o_cliente_tinha_aprovado_antes: Record<string, string> };
+  assert.ok(estado.o_que_o_cliente_tinha_aprovado_antes.planoDoVideo.length > 600, "o plano passa do teto de 600 de um texto de peça");
+  assert.ok(estado.o_que_o_cliente_tinha_aprovado_antes.planoDoVideo.length <= 3000);
+  assert.equal(estado.o_que_o_cliente_tinha_aprovado_antes.textoDaPeca.length, 600);
+});

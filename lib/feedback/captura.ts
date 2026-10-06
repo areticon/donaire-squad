@@ -131,6 +131,23 @@ export async function capturarFeedbackDoChatDoCard(a: {
       resposta = ultima?.content ?? null;
     }
     const videoJobId = typeof meta.videoJobId === "string" ? meta.videoJobId : null;
+    // O PLANO DO VÍDEO QUE O CLIENTE APROVOU (06/10): as linhas da tela de
+    // roteiro do completo ou do corte deste card. É o que separa "a letra saiu
+    // vermelha e eu queria rosa" com a linha dizendo vermelho (atendido como
+    // pedido) de um erro do produto. Import tardio: o roteiro puxa a esteira
+    // inteira e não pode entrar no ciclo do chat.
+    let planoDoVideo: string | null = null;
+    if (videoJobId) {
+      try {
+        const { planoAprovadoDoVideo } = await import("@/lib/media/roteiro-da-edicao");
+        planoDoVideo = await planoAprovadoDoVideo(videoJobId, {
+          completo: meta.completo === true || card.cardType === "video_completo",
+          trechoIndice: typeof meta.trechoIndice === "number" ? meta.trechoIndice : null,
+        });
+      } catch (e) {
+        console.warn("[feedback] plano do vídeo não lido (segue sem):", e instanceof Error ? e.message : e);
+      }
+    }
     const slides = Array.isArray(meta.slides) ? (meta.slides as unknown[]).filter((s): s is string => typeof s === "string") : [];
     const tipoDePeca =
       card.cardType === "video_clip" ? "corte de vídeo"
@@ -152,6 +169,7 @@ export async function capturarFeedbackDoChatDoCard(a: {
         laminas: slides.length ? slides.join(" | ").slice(0, 600) : null,
         corDaMarca: card.project?.colorPalette ?? null,
         estiloDeVideo: card.project?.videoStyle ?? null,
+        planoDoVideo: planoDoVideo ? semEmail(planoDoVideo) : null,
       },
       modulos: modulosDoTipoDeCard(card.cardType, card.mediaType),
     };

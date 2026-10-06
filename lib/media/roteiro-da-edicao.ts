@@ -55,6 +55,7 @@ import {
   cortesNaTela,
   editarIdeia,
   insercoesDoCompleto,
+  linhasDoPlanoAprovado,
   ondeDaPeca,
   palavrasDaCena,
   remapearPlano,
@@ -985,6 +986,32 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
           .map((x) => x.i)
           .sort((a, b) => a - b),
   };
+}
+
+/**
+ * O PLANO APROVADO DE UM VÍDEO PARA O FEEDBACK DO DEV (06/10): as linhas que
+ * o cliente leu na tela de roteiro, do completo ou de um corte (`trechoIndice`
+ * em `clips`). Sem roteiro, ou sem nada planejado, devolve null. Não confere
+ * dono: quem chama já leu o card do próprio cliente.
+ */
+export async function planoAprovadoDoVideo(videoId: string, alvo: { completo: boolean; trechoIndice?: number | null }): Promise<string | null> {
+  const v = await lerVideo(videoId);
+  if (!v) return null;
+  const r = await lerRoteiroDoVideo(videoId);
+  const familia = familiaDaLinguagem(normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle).estiloId);
+  let linhas: string[] = [];
+  if (alvo.completo) {
+    if (!r?.completo) return null;
+    const tela = comPecasDoComando(completoNaTela(r.completo, familia, montagemDoCompletoLigada(), v.durationSec ?? 0), r.completo);
+    linhas = linhasDoPlanoAprovado({ trechos: tela.trechos });
+  } else {
+    const i = alvo.trechoIndice;
+    const trechos = (v.clips as TrechoDoRoteiro[] | null) ?? [];
+    if (typeof i !== "number" || !trechos[i]) return null;
+    const corte = cortesNaTela([trechos[i]], familia, montagemNaEdicaoLigada())[0];
+    linhas = linhasDoPlanoAprovado({ cenas: corte.cenas, trechos: corte.trechos });
+  }
+  return linhas.length ? linhas.join("\n") : null;
 }
 
 /** O nome de cada peça do editor por comando como o cliente lê. */
