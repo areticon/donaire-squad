@@ -250,7 +250,8 @@ const textoLimpo = (v: unknown) => (typeof v === "string" || typeof v === "numbe
 /** O texto principal e o de apoio de qualquer peça (o que a versão na frente escreve). */
 export function textosDaPeca(props: Record<string, unknown>): { principal: string; apoio: string } {
   const valor = textoLimpo(props.valor);
-  const numero = valor ? `${textoLimpo(props.prefixo)}${valor}${textoLimpo(props.sufixo)}`.trim() : "";
+  const cru = (v: unknown) => (typeof v === "string" ? v : "");
+  const numero = valor ? `${cru(props.prefixo)}${valor}${cru(props.sufixo)}`.replace(/\s+/g, " ").trim() : "";
   const principal = numero || ["texto", "titulo", "manchete", "frase", "palavra", "nome", "pergunta", "afirmacao"].map((k) => textoLimpo(props[k])).find(Boolean) || "";
   const itens = Array.isArray(props.itens) ? (props.itens as unknown[]).map((x) => (typeof x === "object" && x ? textoLimpo((x as Record<string, unknown>).texto ?? (x as Record<string, unknown>).titulo) : textoLimpo(x))).filter(Boolean) : [];
   const apoio = ["apoio", "rotulo", "descricao", "antes", "subtitulo", "resposta"].map((k) => textoLimpo(props[k])).find((x) => x && x !== principal) || itens.slice(0, 2).join(", ");
