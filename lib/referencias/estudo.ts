@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { idsQueOEstudoLe } from "@/lib/referencias/limite";
 import { coletarReferencia, dadosDoInstagram } from "@/lib/referencias/coletar";
 import { ATORES } from "@/lib/referencias/apify";
 import { Caixa, RETENCAO_DIAS, maxItensPorPerfil, redesLigadas } from "@/lib/referencias/config";
@@ -162,10 +163,14 @@ export async function estudarReferencias(
   const avisos: string[] = [];
   const apagados = await limparReferenciasVelhas();
   const projeto = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { niche: true, targetAudience: true } });
+  // Só as que cabem no plano (06/10): as mais recentes, até o limite. Projeto
+  // de antes da regra guarda as outras, mas o estudo não paga para lê-las.
+  const noLimite = await idsQueOEstudoLe(projectId);
   const perfis = await prisma.referenciaPerfil.findMany({
     where: {
       projectId,
       status: "confirmado",
+      id: { in: noLimite },
       ...(opcoes?.soSemColetaDesde ? { OR: [{ ultimaColeta: null }, { ultimaColeta: { lt: opcoes.soSemColetaDesde } }] } : {}),
     },
     orderBy: { updatedAt: "asc" },

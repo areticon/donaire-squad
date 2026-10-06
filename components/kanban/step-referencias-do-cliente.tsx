@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DeParaNaTela, LinhaDeCusto } from "@/components/kanban/relatorio-do-perfil";
 import { ROTULO_DA_ETAPA, type RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import type { EstudoNaTela, RedeDeReferencia } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO, conferirReferencia, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { conferirReferencia, type RespostaDoPerfilProprio } from "@/lib/referencias/tipos-do-perfil-proprio";
 
 /**
  * A SEGUNDA TELA DA JORNADA DE ENTRADA (03/10/2026): "Agora diga quais são as
@@ -27,6 +27,12 @@ import { MAX_REFERENCIAS_POR_PROJETO, conferirReferencia, type RespostaDoPerfilP
  * adicionar a outra. Cada mudança grava na hora SEM estudar (acao
  * "salvar-referencias"); o estudo novo só sai quando a pessoa clica em
  * "Refazer o estudo", com o custo escrito ao lado do botão.
+ *
+ * O LIMITE VEM DO PLANO (06/10): Starter 3, Pro 6, Enterprise 10, mandado
+ * pelo servidor em `dados.limite`; esta tela nunca escreve o número. Projeto
+ * de antes da regra com mais referências do que o plano inclui mostra todas,
+ * diz quantas o plano inclui e quais ficam fora do estudo (o estudo lê as mais
+ * recentes, até o limite). Remover sempre funciona.
  *
  * A removida volta a "sugerido", como já fazia a troca da lista: os posts
  * lidos dela ficam guardados até a retenção de 90 dias apagar, e o de-para e
@@ -138,6 +144,9 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
   };
 
   const salvas: Linha[] = (dados?.referencias ?? []).map((x) => ({ rede: x.rede, perfil: x.perfil }));
+  // O limite do plano, que o servidor manda pronto (06/10). Null até carregar.
+  const teto = dados?.limite.porProjeto ?? null;
+  const acimaDoPlano = teto !== null && salvas.length > teto;
 
   const remover = async (id: string) => {
     const ok = await salvarLista((dados?.referencias ?? []).filter((x) => x.id !== id).map((x) => ({ rede: x.rede, perfil: x.perfil })));
@@ -157,8 +166,8 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
       setErroDaNova("Essa referência já está na lista.");
       return;
     }
-    if (salvas.length >= MAX_REFERENCIAS_POR_PROJETO) {
-      setErroDaNova(`O projeto já tem ${MAX_REFERENCIAS_POR_PROJETO} referências. Remova uma para colocar esta no lugar.`);
+    if (teto !== null && salvas.length >= teto) {
+      setErroDaNova(`O seu plano inclui ${teto} referências por projeto. Remova uma para colocar esta no lugar.`);
       return;
     }
     setErroDaNova(null);
@@ -194,7 +203,7 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
           Agora diga quais são as suas referências
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
-          Até {MAX_REFERENCIAS_POR_PROJETO} perfis de sucesso no seu segmento, de quem você gostaria de ter os resultados. Eu estudo os posts deles e
+          {teto !== null ? `Até ${teto} perfis` : "Perfis"} de sucesso no seu segmento, de quem você gostaria de ter os resultados. Eu estudo os posts deles e
           mostro, com números, o que eles fazem que você ainda não faz. Molde sim, cópia não: o time aprende a forma, nunca o texto de ninguém.
         </p>
       </div>
@@ -210,10 +219,19 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
         <div className="space-y-3 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           <div className="flex flex-wrap items-baseline justify-between gap-1">
             <p className="text-sm font-semibold text-[var(--text-primary)]">
-              Suas referências ({dados.referencias.length} de {MAX_REFERENCIAS_POR_PROJETO})
+              {acimaDoPlano
+                ? `${dados.referencias.length} referências (seu plano inclui ${teto})`
+                : `Suas referências (${dados.referencias.length} de ${teto})`}
             </p>
             {dados.podeEditar && <p className="text-xs text-[var(--text-muted)]">Para trocar, remova uma e adicione a outra.</p>}
           </div>
+
+          {acimaDoPlano && (
+            <p className="rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+              Este projeto é de antes do limite do plano. As que passam de {teto} continuam aqui até você remover, e remover sempre funciona. O estudo
+              lê só as {dados.limite.estudadas} mais recentes.
+            </p>
+          )}
 
           <ul className="space-y-2">
             {dados.referencias.map((x) => {
@@ -237,7 +255,9 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
                         )}
                       </p>
                       <p className="truncate text-[11px] text-[var(--text-muted)]">
-                        {x.ultimoErro
+                        {acimaDoPlano && !x.noEstudo
+                          ? "Fora do estudo, passa do seu plano"
+                          : x.ultimoErro
                           ? `Última leitura: ${x.ultimoErro}`
                           : x.ultimaColeta
                             ? `Estudada em ${new Date(x.ultimaColeta).toLocaleDateString("pt-BR")}`
@@ -278,7 +298,7 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
           </ul>
 
           {dados.podeEditar &&
-            (dados.referencias.length < MAX_REFERENCIAS_POR_PROJETO ? (
+            (teto !== null && dados.referencias.length < teto ? (
               <form
                 className="space-y-1.5"
                 onSubmit={(e) => {
@@ -323,9 +343,9 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
                 </div>
                 {erroDaNova && <p className="text-xs text-red-600 dark:text-red-400">{erroDaNova}</p>}
               </form>
-            ) : (
+            ) : acimaDoPlano ? null : (
               <p className="text-xs text-[var(--text-muted)]">
-                Chegou ao limite de {MAX_REFERENCIAS_POR_PROJETO} referências deste projeto. Para trocar, remova uma e o campo de adicionar aparece.
+                Chegou às {teto} referências que o seu plano inclui. Para trocar, remova uma e o campo de adicionar aparece.
               </p>
             ))}
           {rodando && dados.podeEditar && <p className="text-xs text-[var(--text-muted)]">Há um estudo rodando. Dá para mudar a lista assim que ele terminar.</p>}
@@ -392,14 +412,14 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
             )}
           </div>
         ))}
-        {linhas.length < MAX_REFERENCIAS_POR_PROJETO && (
+        {teto !== null && linhas.length < teto && (
           <button
             type="button"
             onClick={() => setLinhas((ls) => [...ls, { rede: "instagram", perfil: "" }])}
             disabled={rodando}
             className="text-sm font-medium text-orange-500 hover:underline"
           >
-            + adicionar referência ({linhas.length} de {MAX_REFERENCIAS_POR_PROJETO})
+            + adicionar referência ({linhas.length} de {teto})
           </button>
         )}
       </div>

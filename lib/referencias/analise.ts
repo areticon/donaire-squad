@@ -9,8 +9,7 @@ import { achadosDoProjeto } from "@/lib/referencias/achados";
 import { proporRegras, CUSTO_DAS_PROPOSTAS_USD } from "@/lib/referencias/regras";
 import { buscarTendencias, estimativaDasTendencias, lerTendencias, liberadaEm } from "@/lib/referencias/tendencias";
 import { cabeNoMes, tetoPorExecucaoUsd } from "@/lib/referencias/tetos";
-import { MAX_REFERENCIAS_POR_CONTA } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO } from "@/lib/referencias/tipos-do-perfil-proprio";
+import { idsQueOEstudoLe, limiteDoProjeto } from "@/lib/referencias/limite";
 import type { EstadoDaAnalise, EtapaDaAnalise } from "@/lib/referencias/tipos-das-analises";
 
 /**
@@ -45,8 +44,8 @@ const CHAVE = "estado";
 const PRAZO_MS = 830_000;
 /** Etapas que pedem uma execução só para elas (o estudo). */
 const PESADAS: EtapaDaAnalise[] = ["estudar"];
-/** Quantos perfis a criação confirma sozinha (o cliente tira qualquer um depois). Era 4; 3 desde 03/10 (decisão do Bruno). */
-const CONFIRMAR_NA_CRIACAO = MAX_REFERENCIAS_POR_PROJETO;
+// Quantos perfis a criação confirma sozinha: o limite do plano (06/10; era 3
+// fixo desde 03/10, e 4 antes disso). O cliente tira qualquer um depois.
 
 const onde = (projectId: string) => ({ projectId_type_key: { projectId, type: TIPO, key: CHAVE } });
 
@@ -173,12 +172,14 @@ async function rodarEtapa(projectId: string, etapa: EtapaDaAnalise, estado: Esta
       return { avisos: r.sugeridos ? [] : ["não achei perfis novos do seu nicho agora; você pode indicar os seus no painel"], apifyUsd: r.custoUsd };
     }
     case "confirmar": {
+      const limite = await limiteDoProjeto(projectId);
       const confirmados = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado" } });
-      if (confirmados >= MAX_REFERENCIAS_POR_PROJETO) return { avisos: [] };
+      if (confirmados >= limite.porProjeto) return { avisos: [] };
       const projeto = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { userId: true } });
       const naConta = await prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: projeto.userId } } });
-      const vagas = Math.min(CONFIRMAR_NA_CRIACAO - confirmados, MAX_REFERENCIAS_POR_CONTA - naConta);
-      if (vagas <= 0) return { avisos: [`a conta já tem ${MAX_REFERENCIAS_POR_CONTA} perfis confirmados; o estudo usa os que já estão lá`] };
+      const daConta = limite.semTetoNaConta ? Infinity : limite.porConta - naConta;
+      const vagas = Math.min(limite.porProjeto - confirmados, daConta);
+      if (vagas <= 0) return { avisos: [`a conta já tem ${naConta} perfis confirmados, o limite do plano ${limite.plano}; o estudo usa os que já estão lá`] };
       const ligadas = redesLigadas();
       const sugeridos = await prisma.referenciaPerfil.findMany({ where: { projectId, status: "sugerido", origem: "roberto" }, orderBy: { seguidores: "desc" } });
       // Uma rede de cada antes de repetir: o estudo compara formatos de redes diferentes.
@@ -194,12 +195,14 @@ async function rodarEtapa(projectId: string, etapa: EtapaDaAnalise, estado: Esta
       return { avisos: escolhidos.length ? [`confirmei ${escolhidos.length} perfis sugeridos pelo Roberto; tire qualquer um em Linha editorial, Perfis de referência`] : [] };
     }
     case "estudar": {
-      const perfis = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado" } });
-      if (!perfis) return { avisos: ["nenhum perfil confirmado para estudar ainda"] };
+      // Só as que cabem no plano, as mais recentes (06/10): projeto de antes da
+      // regra guarda as outras, mas o estudo não paga para lê-las.
+      const noLimite = await idsQueOEstudoLe(projectId);
+      if (!noLimite.length) return { avisos: ["nenhum perfil confirmado para estudar ainda"] };
       // Perfil lido há menos de 6 h não paga de novo (03/10: por PERFIL, e não
       // pelo último estudo; a jornada troca as referências e só as novas são lidas).
       const desde = new Date(Date.now() - 6 * 3600_000);
-      const pendentes = await prisma.referenciaPerfil.count({ where: { projectId, status: "confirmado", OR: [{ ultimaColeta: null }, { ultimaColeta: { lt: desde } }] } });
+      const pendentes = await prisma.referenciaPerfil.count({ where: { id: { in: noLimite }, OR: [{ ultimaColeta: null }, { ultimaColeta: { lt: desde } }] } });
       if (!pendentes) return { avisos: [] };
       const mes = await cabeNoMes(0.25);
       if (!mes.cabe) return { avisos: ["o estudo ficou para depois: o limite de leitura do mês acabou (código REF-MES)"] };

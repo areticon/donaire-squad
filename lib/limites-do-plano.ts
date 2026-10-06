@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
-import { PLANOS_PUBLICOS, planoPublico, type PlanoId } from "@/lib/planos";
+import { PLANOS_PUBLICOS, planoPublico, referenciasDoPlano, type LimiteDeReferencias, type PlanoId } from "@/lib/planos";
 import {
   CAMPANHAS_NO_TESTE,
   DIAS_DE_CAMPANHA_NO_TESTE,
@@ -719,4 +719,29 @@ export async function limiteDoTeste(userIdDeQuemPede: string, agora = new Date()
     segundosDeVideo: SEGUNDOS_DE_VIDEO_NO_TESTE,
     videos: VIDEOS_NO_TESTE,
   };
+}
+
+/**
+ * O LIMITE DE REFERÊNCIAS desta conta (06/10/2026): por projeto e somando os
+ * projetos. A regra (os números, o teste, o admin, o teto da conta) mora em
+ * referenciasDoPlano, sem banco; aqui só se lê quem é a conta.
+ *
+ * Membro da equipe usa o plano do DONO (contaDoPlano). As rotas chamam com o
+ * dono do projeto, que é o mesmo dono, mas a conversão fica aqui para valer
+ * em qualquer caminho.
+ */
+export async function limiteDeReferencias(userIdDeQuemPede: string, agora = new Date()): Promise<LimiteDeReferencias> {
+  const userId = await contaDoPlano(userIdDeQuemPede);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { plan: true, role: true, trialEndsAt: true, acessosExtras: true },
+  });
+  if (!user) return referenciasDoPlano({ plan: null });
+  return referenciasDoPlano({
+    plan: user.plan,
+    admin: user.role === "admin",
+    // A mesma régua de limiteDoTeste: data vencida vale como fora do teste.
+    emTeste: Boolean(user.trialEndsAt && user.trialEndsAt > agora),
+    acessosExtras: user.acessosExtras,
+  });
 }

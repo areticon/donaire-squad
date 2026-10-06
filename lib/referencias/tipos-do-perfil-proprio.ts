@@ -1,4 +1,5 @@
 import type { RedeDeReferencia } from "@/lib/referencias/tipos";
+import type { LimiteDeReferencias } from "@/lib/planos";
 import type { ExemploDoAchado, GraficoDoPainel } from "@/lib/referencias/tipos-das-analises";
 
 /**
@@ -9,7 +10,7 @@ import type { ExemploDoAchado, GraficoDoPainel } from "@/lib/referencias/tipos-d
  *      CLIENTE com a mesma coleta das referências e entrega um relatório em
  *      gráficos (quantos posts, o melhor post com data e link, o que rende,
  *      cores, estilo, linguagem, quem é, produto, objetivo);
- *   2. "Agora diga até 3 referências": estuda as referências e faz o DE-PARA,
+ *   2. "Agora diga as suas referências" (até o limite do plano desde 06/10): estuda as referências e faz o DE-PARA,
  *      o que elas fazem que você não faz, com números;
  *   3. o setup vem PREENCHIDO a partir dos dois estudos, com o porquê de cada
  *      campo ("vou treinar o time assim porque o diagnóstico mostrou X").
@@ -24,8 +25,19 @@ import type { ExemploDoAchado, GraficoDoPainel } from "@/lib/referencias/tipos-d
 /** As redes que o cliente informa na primeira tela (X fica de fora: a leitura paga por post). */
 export const REDES_DO_CLIENTE: RedeDeReferencia[] = ["instagram", "tiktok", "youtube", "linkedin"];
 
-/** Até 3 referências por projeto (decisão do Bruno em 03/10): estudo focado e barato. */
-export const MAX_REFERENCIAS_POR_PROJETO = 3;
+// O limite de referências por projeto deixou de ser 3 fixo em 06/10: vem do
+// plano (REFERENCIAS_POR_PROJETO e referenciasDoPlano em lib/planos.ts), e o
+// servidor manda o número pronto em RespostaDoPerfilProprio.limite.
+
+/**
+ * O TETO SÓ BARRA QUEM AUMENTA A LISTA (c6ef046, mantido em 06/10): projeto
+ * que ficou acima do limite do plano (de antes da regra, ou depois de descer
+ * de plano) precisa conseguir remover uma de cada vez, trocar uma por outra e
+ * ficar sem nenhuma. Devolve true quando a lista nova deve ser recusada.
+ */
+export function tetoBarraALista(nova: number, atuais: number, teto: number): boolean {
+  return nova > teto && nova > atuais;
+}
 
 export const STATUS_DO_PERFIL_PROPRIO = "proprio";
 
@@ -219,12 +231,19 @@ export type RespostaDoPerfilProprio = {
   ligado: boolean;
   podeEditar: boolean;
   redes: Array<{ rede: RedeDeReferencia; perfil: string }>;
-  referencias: Array<{ id: string; rede: RedeDeReferencia; perfil: string; ultimaColeta: string | null; ultimoErro: string | null }>;
+  /** `noEstudo`: entra no próximo estudo (as mais recentes, até o limite do plano; 06/10). */
+  referencias: Array<{ id: string; rede: RedeDeReferencia; perfil: string; ultimaColeta: string | null; ultimoErro: string | null; noEstudo: boolean }>;
   estado: EstadoDoPerfilProprio | null;
   parado: boolean;
   relatorio: RelatorioDoPerfil | null;
   dePara: DeParaDoPerfil | null;
   setup: SetupSugerido | null;
+  /**
+   * O limite do plano do dono (06/10). A tela lê daqui e nunca escreve o
+   * número. `estudadas`: quantas o estudo lê (as mais recentes, até o limite);
+   * menor que referencias.length só em projeto que ficou acima do limite.
+   */
+  limite: LimiteDeReferencias & { estudadas: number };
   /** Estimativa antes de gastar: o que cada estudo custa (só admin vê). */
   estimativas: { perfil: CustoDoEstudo; referencias: CustoDoEstudo; setup: CustoDoEstudo } | null;
 };

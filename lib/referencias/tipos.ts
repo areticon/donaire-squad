@@ -19,8 +19,9 @@ export const ROTULO_DA_REDE: Record<RedeDeReferencia, string> = {
   x: "X",
 };
 
-/** Teto de perfis confirmados por conta (do dono), somando os projetos. */
-export const MAX_REFERENCIAS_POR_CONTA = 15; // era 10; subiu para 15 em 03/10 (Bruno): 5 projetos com 3 referências cada
+// O teto de perfis confirmados por conta (era 15 fixo desde 03/10) vem do
+// plano desde 06/10: o limite por projeto vezes as marcas da conta (ver
+// referenciasDoPlano em lib/planos.ts).
 
 export type StatusDaReferencia = "sugerido" | "confirmado" | "recusado";
 

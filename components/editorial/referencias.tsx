@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { AnalisesDasReferencias } from "@/components/editorial/analises-das-referencias";
 import { Detalhes } from "@/components/editorial/painel-do-estudo";
 import {
-  MAX_REFERENCIAS_POR_CONTA,
   REDES_DE_REFERENCIA,
   ROTULO_DA_REDE,
   type CartaoDePadrao,
@@ -15,13 +14,14 @@ import {
   type PerfilDeReferenciaNaTela,
   type RedeDeReferencia,
 } from "@/lib/referencias/tipos";
-import { MAX_REFERENCIAS_POR_PROJETO } from "@/lib/referencias/tipos-do-perfil-proprio";
+import type { LimiteDeReferencias } from "@/lib/planos";
 
 /**
  * OS PERFIS DE REFERÊNCIA, DENTRO DA LINHA EDITORIAL (01/10).
  *
  * O Roberto sugere perfis famosos e relevantes do nicho; o dono confirma até
- * 3 por projeto (03/10) e 10 por conta; "Estudar agora" coleta os posts deles e acha os MOLDES que
+ * o limite do plano, por projeto e na conta (06/10, `dados.limite`, mandado
+ * pelo servidor; esta tela nunca escreve o número); "Estudar agora" coleta os posts deles e acha os MOLDES que
  * rendem (formato, gancho, estrutura, duração). Os cartões de padrão viram
  * uma das fontes das ideias ("padrão de referência"). Molde sim, conteúdo não:
  * o squad nunca recebe o texto de quem fez.
@@ -43,6 +43,8 @@ type Dados = {
   padroes: CartaoDePadrao[];
   gastoDoMesUsd: number;
   confirmadosNaConta: number;
+  /** O limite do plano do dono (06/10). */
+  limite: LimiteDeReferencias;
   /** O último "Estudar agora" (andamento, resumo ou motivo da falha). */
   estudo: EstudoNaTela | null;
 };
@@ -148,6 +150,20 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
   if (!dados || (dados.ligadas.length === 0 && dados.perfis.length === 0)) return null;
   const confirmados = dados.perfis.filter((p) => p.status === "confirmado");
   const sugeridos = dados.perfis.filter((p) => p.status === "sugerido");
+  // O limite do plano (06/10). Projeto de antes da regra pode estar acima dele:
+  // nada some, a tela só diz quanto o plano inclui.
+  const teto = dados.limite.porProjeto;
+  const acimaDoPlano = confirmados.length > teto;
+  const resumoDosConfirmados = acimaDoPlano
+    ? `${confirmados.length} referências (seu plano inclui ${teto})`
+    : `${confirmados.length} de ${teto} confirmados neste projeto`;
+  // A conta também pode estar acima (o teto era 15 fixo até 06/10): "8 na conta
+  // (seu plano inclui 6)" em vez de "8 de 6".
+  const contaAcima = !dados.limite.semTetoNaConta && dados.confirmadosNaConta > dados.limite.porConta;
+  const naConta = contaAcima
+    ? `${dados.confirmadosNaConta} na conta (seu plano inclui ${dados.limite.porConta})`
+    : `${dados.confirmadosNaConta} de ${dados.limite.porConta} na conta`;
+  const daConta = acimaDoPlano || contaAcima ? `, ${naConta}` : ` (${naConta})`;
   const ligado = dados.ligadas.length > 0;
 
   return (
@@ -159,7 +175,8 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
             Perfis de referência do seu nicho
           </span>
           <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
-            {confirmados.length} de {MAX_REFERENCIAS_POR_PROJETO} confirmados neste projeto ({dados.confirmadosNaConta} de {MAX_REFERENCIAS_POR_CONTA} na conta)
+            {resumoDosConfirmados}
+            {daConta}
             {sugeridos.length ? `, ${sugeridos.length} sugestões do Roberto` : ""}
             {dados.padroes.length ? `, ${dados.padroes.length} padrões medidos` : ""}
             {estudando ? ", estudando agora" : ""}
@@ -197,7 +214,7 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
               ))}
               {!confirmados.length && (
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Nenhum perfil confirmado ainda. Confirme até {MAX_REFERENCIAS_POR_PROJETO} nos detalhes abaixo.
+                  Nenhum perfil confirmado ainda. Confirme até {teto} nos detalhes abaixo.
                 </span>
               )}
             </div>
@@ -213,6 +230,13 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
               </button>
             )}
           </div>
+
+          {acimaDoPlano && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              Este projeto é de antes do limite do plano: tem {confirmados.length} referências e o seu plano inclui {teto}. As que passam continuam aqui
+              até você tirar, e tirar sempre funciona. O estudo lê só as {teto} mais recentes.
+            </p>
+          )}
 
           {estudo && (
             <div
@@ -252,7 +276,7 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
           <div className="space-y-2">
             <Detalhes
               titulo="Perfis estudados e sugestões do Roberto"
-              resumo={`${confirmados.length} de ${MAX_REFERENCIAS_POR_PROJETO} confirmados neste projeto (${dados.confirmadosNaConta} de ${MAX_REFERENCIAS_POR_CONTA} na conta)${sugeridos.length ? `, ${sugeridos.length} sugestões` : ""}`}
+              resumo={`${resumoDosConfirmados}${daConta}${sugeridos.length ? `, ${sugeridos.length} sugestões` : ""}`}
             >
               <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
                 O Roberto estuda o <b>formato</b> do que dá certo nesses perfis (gancho, estrutura, duração, tipo de post) e usa como uma das fontes das suas
@@ -350,7 +374,7 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
                               </div>
                               {dados.podeEditar && (
                                 <div className="flex shrink-0 gap-1">
-                                  {p.status === "sugerido" && confirmados.length < MAX_REFERENCIAS_POR_PROJETO && (
+                                  {p.status === "sugerido" && confirmados.length < teto && (
                                     <button type="button" title="Confirmar" onClick={() => void mudar(p.id, "confirmado")} className="rounded p-1 text-green-600 hover:bg-green-500/10">
                                       <Check className="h-4 w-4" />
                                     </button>

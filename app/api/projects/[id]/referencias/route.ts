@@ -10,6 +10,7 @@ import { gastoDoMes } from "@/lib/referencias/estudo";
 import { comecarEstudo, lerEstudo, rodarEstudo } from "@/lib/referencias/andamento";
 import { padroesDoProjeto } from "@/lib/editorial/fontes-da-linha";
 import { REDES_DE_REFERENCIA, type RedeDeReferencia } from "@/lib/referencias/tipos";
+import { idsQueOEstudoLe, limiteDoProjeto } from "@/lib/referencias/limite";
 
 /**
  * OS PERFIS DE REFERÊNCIA DO PROJETO (01/10, trilho de referências).
@@ -47,12 +48,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!a) return NextResponse.json({ error: "Not found" }, { status: 404 });
   // A consulta curta da tela enquanto o estudo roda: só o andamento.
   if (req.nextUrl.searchParams.get("estudo") === "1") return NextResponse.json({ estudo: await lerEstudo(id) });
-  const [perfis, padroes, gasto, confirmadosNaConta, estudo] = await Promise.all([
+  const [perfis, padroes, gasto, confirmadosNaConta, estudo, limite] = await Promise.all([
     prisma.referenciaPerfil.findMany({ where: { projectId: id, status: { in: ["sugerido", "confirmado"] } }, orderBy: [{ status: "asc" }, { seguidores: "desc" }] }),
     padroesDoProjeto(id),
     gastoDoMes(id),
     prisma.referenciaPerfil.count({ where: { status: "confirmado", project: { userId: a.projeto.userId } } }),
     lerEstudo(id),
+    limiteDoProjeto(id),
   ]);
   return NextResponse.json({
     ligadas: redesLigadas(),
@@ -62,6 +64,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     gastoDoMesUsd: gasto,
     confirmadosNaConta,
     estudo,
+    // O limite do plano do dono (06/10): a tela nunca escreve o número fixo.
+    limite,
   });
 }
 
@@ -97,7 +101,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ ok: true, perfil: r });
     }
     if (corpo.acao === "estudar") {
-      const total = await prisma.referenciaPerfil.count({ where: { projectId: id, status: "confirmado" } });
+      // O estudo lê no máximo o limite do plano, as mais recentes (06/10).
+      const total = (await idsQueOEstudoLe(id)).length;
       if (!total) return NextResponse.json({ error: "Confirme pelo menos um perfil antes de estudar." }, { status: 400 });
       const andamento = await comecarEstudo(id, total);
       if (!andamento) {
