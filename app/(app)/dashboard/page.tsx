@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { numerosDoPainel } from "@/lib/painel/numeros-do-painel";
 import { BarrasPorSemana, BarrasPorRede, Variacao } from "@/components/painel/graficos";
-import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
+import { CartaoDoAgente } from "@/components/painel/cartao-do-agente";
+import { numeroCurto } from "@/lib/painel/resultado-das-redes";
 import { NOMES_DAS_REDES } from "@/lib/posts/estado";
 
 /**
@@ -126,37 +127,42 @@ export default async function DashboardPage() {
           nunca passava de 5. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
-          { rotulo: "Posts publicados", valor: numeros.kpis.publicados30, anterior: numeros.kpis.publicadosAnt as number | null, nota: "nos últimos 30 dias" },
-          { rotulo: "Engajamento", valor: numeros.kpis.engajamento30, anterior: numeros.kpis.engajamentoAnt as number | null, nota: `curtidas, comentários e compartilhamentos em ${numeros.kpis.medidos30} posts medidos` },
+          { rotulo: "Posts publicados", valor: numeros.kpis.publicados30 as number | null, anterior: numeros.kpis.publicadosAnt as number | null, nota: "nos últimos 30 dias" },
+          { rotulo: "Engajamento", valor: numeros.kpis.medidos30 ? numeros.kpis.engajamento30 : null, anterior: numeros.kpis.medidos30 ? (numeros.kpis.engajamentoAnt as number | null) : null, nota: numeros.kpis.medidos30 ? `curtidas, comentários, compartilhamentos e salvamentos em ${numeros.kpis.medidos30} de ${numeros.kpis.publicados30} posts medidos` : "nenhum post dos últimos 30 dias foi medido ainda" },
           { rotulo: "Campanhas", valor: numeros.kpis.campanhas30, anterior: numeros.kpis.campanhasAnt as number | null, nota: "rodadas nos últimos 30 dias" },
           { rotulo: "Créditos usados", valor: numeros.kpis.creditosPlano30, anterior: null as number | null, nota: numeros.kpis.creditosVideo30 ? `mais ${numeros.kpis.creditosVideo30.toLocaleString("pt-BR")} de vídeo, em 30 dias` : "em 30 dias" },
         ].map((k) => (
           <div key={k.rotulo} className="rounded-2xl border p-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--shadow)" }}>
             <p className="rotulo">{k.rotulo}</p>
-            <p className="text-3xl font-semibold tracking-tight tabular-nums mt-2" style={{ color: "var(--text-primary)" }}>{k.valor.toLocaleString("pt-BR")}</p>
-            <div className="mt-1 min-h-[16px]">{k.anterior !== null ? <Variacao atual={k.valor} anterior={k.anterior} /> : null}</div>
+            {k.valor === null ? (
+              <p className="text-lg font-semibold mt-3 mb-1" style={{ color: "var(--text-muted)" }}>sem medição ainda</p>
+            ) : (
+              <p className="text-3xl font-semibold tracking-tight tabular-nums mt-2" style={{ color: "var(--text-primary)" }}>{k.valor.toLocaleString("pt-BR")}</p>
+            )}
+            <div className="mt-1 min-h-[16px]">{k.anterior !== null && k.valor !== null ? <Variacao atual={k.valor} anterior={k.anterior} /> : null}</div>
             <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{k.nota}</p>
           </div>
         ))}
       </div>
 
-      {/* O squad: cada agente com o que fez no mês. */}
+      {/* O squad: cada agente com o que fez no mês. Desde 06/10 o especialista
+          de rede mostra o RESULTADO da rede dele, lido das leituras reais
+          (API oficial, Blotato, perfil público pela Apify); ver
+          components/painel/cartao-do-agente.tsx. */}
       <div className="rounded-2xl border p-4 mb-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--shadow)" }}>
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
           <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>O seu squad nos últimos 30 dias</h2>
           <Link href={projects[0] ? `/projects/${projects[0].id}/live` : "/projects"} className="whitespace-nowrap text-xs text-orange-500 hover:underline">ver o escritório</Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
           {numeros.agentes.map((a) => (
-            <div key={a.id} className="flex flex-col items-center text-center rounded-lg px-2 py-3" style={{ background: "var(--bg-input)" }}>
-              <AvatarDoAgente agenteId={a.id} tamanho={44} />
-              <p className="text-xs font-semibold mt-1.5 leading-tight" style={{ color: "var(--text-primary)" }}>{a.nome.split(" ")[0]}</p>
-              <p className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>{a.papel}</p>
-              <p className="text-xl font-black tabular-nums mt-1" style={{ color: a.cor }}>{a.numero.toLocaleString("pt-BR")}</p>
-              <p className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>{a.unidade}</p>
-            </div>
+            <CartaoDoAgente key={a.id} a={a} />
           ))}
         </div>
+        <p className="text-[11px] mt-3 leading-snug" style={{ color: "var(--text-muted)" }}>
+          Números dos posts que o squad publicou, lidos nas próprias redes (API oficial ou perfil público). &quot;Sem medição&quot; quer dizer que nenhuma
+          fonte trouxe aquele número ainda: não é zero. Passe o mouse num cartão para ver de onde veio.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
@@ -167,17 +173,20 @@ export default async function DashboardPage() {
         </div>
         <div className="lg:col-span-2 rounded-2xl border p-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)", boxShadow: "var(--shadow)" }}>
           <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Qual rede rende mais</h2>
-          <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>Engajamento médio por post medido, nos últimos 90 dias.</p>
+          <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>Interações por post medido (curtidas, comentários, compartilhamentos e salvamentos), nos últimos 30 dias.</p>
           {numeros.porRede.length ? (
             <BarrasPorRede
               linhas={numeros.porRede.map((r) => ({
                 rede: r.rede,
-                valor: Math.round(r.media * 10) / 10,
-                nota: `por post · ${r.medidos} de ${r.posts} medidos`,
+                valor: r.media === null ? null : Math.round(r.media * 10) / 10,
+                nota: r.media === null ? `${r.publicados} no ar, nenhum medido` : `por post · ${r.medidos} de ${r.publicados} medidos`,
+                detalhe: r.vistos
+                  ? `${numeroCurto(r.vistos.valor / Math.max(1, r.postsComCampo[r.vistos.campo] ?? 1))} ${r.vistos.campo === "visualizacoes" ? "visualizações" : r.vistos.campo === "impressoes" ? "impressões" : "pessoas alcançadas"} por post`
+                  : r.medidos ? "alcance: sem medição ainda" : null,
               }))}
             />
           ) : (
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Publique e sincronize as métricas em Analytics para ver este gráfico.</p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Nenhum post no ar nos últimos 30 dias. Os números de cada post são lidos 2 horas, 1, 3, 7 e 30 dias depois de publicar.</p>
           )}
           <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>
             {numeros.kpis.contas} conta{numeros.kpis.contas === 1 ? "" : "s"} conectada{numeros.kpis.contas === 1 ? "" : "s"} em {numeros.kpis.redes.length} rede{numeros.kpis.redes.length === 1 ? "" : "s"}.
@@ -214,7 +223,11 @@ export default async function DashboardPage() {
                     </td>
                     <td className="py-2 text-right" style={{ color: "var(--text-primary)" }}>{pr.publicados30}</td>
                     <td className="py-2 text-right" style={{ color: "var(--text-primary)" }}>{pr.agendados}</td>
-                    <td className="py-2 text-right font-semibold" style={{ color: "var(--text-primary)" }}>{pr.engajamento30.toLocaleString("pt-BR")}</td>
+                    {pr.engajamento30 === null ? (
+                      <td className="py-2 text-right italic" style={{ color: "var(--text-muted)" }}>{pr.publicados30 ? "sem medição" : ""}</td>
+                    ) : (
+                      <td className="py-2 text-right font-semibold" style={{ color: "var(--text-primary)" }}>{pr.engajamento30.toLocaleString("pt-BR")}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -233,7 +246,8 @@ export default async function DashboardPage() {
                     <p className="text-xs leading-snug line-clamp-2" style={{ color: "var(--text-primary)" }}>{m.titulo}</p>
                     <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                       <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{NOMES_DAS_REDES[m.rede] ?? m.rede}</span>
-                      {" · "}{m.curtidas} curtida{m.curtidas === 1 ? "" : "s"} · {m.comentarios} comentário{m.comentarios === 1 ? "" : "s"}
+                      {m.curtidas !== null ? <>{" · "}{m.curtidas} curtida{m.curtidas === 1 ? "" : "s"}</> : null}
+                      {m.comentarios !== null ? <>{" · "}{m.comentarios} comentário{m.comentarios === 1 ? "" : "s"}</> : null}
                       {m.projeto ? ` · ${m.projeto}` : ""}
                       {m.url ? <> · <a href={m.url} target="_blank" rel="noreferrer" className="hover:text-orange-500">abrir</a></> : null}
                     </p>
