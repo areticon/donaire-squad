@@ -90,6 +90,7 @@ import {
   type PlanoPronto,
 } from "@/lib/media/editor-por-comando";
 import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
+import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type LeituraDoVideo, type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
 import {
   demonstracaoNaFala,
   insercoesDoPlano,
@@ -289,6 +290,13 @@ export type MontagemDoCompleto = {
    * completo voltou à esteira de sempre (a reserva).
    */
   sobMedida?: EstadoDoSobMedida | null;
+  /**
+   * A LEITURA DO VÍDEO (06/10, lib/media/leitura-do-video.ts): gênero,
+   * cenário, pessoas, tela, quadro, áreas livres e o que acontece, trecho a
+   * trecho. Gravada pelo `preparar` antes de "dirigindo"; os cortes do mesmo
+   * vídeo leem daqui (`leituraGravada`). Null quando a leitura falhou.
+   */
+  leitura?: LeituraDoVideo | null;
 };
 
 export type EstadoDoSobMedida = {
@@ -1193,9 +1201,22 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
   if (!(await trocarEstado(v.id, lido, tomado))) return;
   try {
     const base = lido.baseUrl ?? v.completoUrl!;
-    const [fala, medida] = await Promise.all([
+    // A LEITURA DO VÍDEO (06/10, lib/media/leitura-do-video.ts): a medição no
+    // worker corre junto da transcrição e da análise; a visão vem depois, com
+    // a fala pronta. Falha de leitura nunca derruba a montagem: vira aviso.
+    // Nova tentativa do passo (ou refeita) com a leitura já gravada: ela vale
+    // (o vídeo é o mesmo) e a visão não é paga de novo.
+    const avisosDaLeitura: string[] = [];
+    const leituraGuardada = lido.leitura?.versao === 1 ? lido.leitura : null;
+    const [fala, medida, medicao] = await Promise.all([
       transcreverCompleto(base, v.videoTerms, { projectId: v.projectId, operation: "montagem-completo-fala" }),
       analisarNoWorker(base),
+      leituraGuardada
+        ? Promise.resolve<RespostaDaMedicao>({ medida: null, proxyUrl: null })
+        : medirNoWorker(base, { proxy: leituraVisaoLigada() }).catch((e: unknown): RespostaDaMedicao => {
+            avisosDaLeitura.push(`leitura: medição no worker falhou (${e instanceof Error ? e.message : String(e)})`);
+            return { medida: null, proxyUrl: null };
+          }),
     ]);
     // GRAVAÇÃO EM PÉ (celular): o completo dela sai EM PÉ, 9:16, do jeito que
     // foi gravado (worker/src/ffmpeg.mjs, prepararCompleto). Até 30/09 ela
@@ -1231,6 +1252,22 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     }
     const blocos = blocosDaFala(fala.palavras, analise.duracao || fala.duracao);
     const falaDoCompleto = { palavras: fala.palavras, duracao: analise.duracao || fala.duracao };
+    // A leitura só depois da defesa do formato acima: vídeo que para em
+    // "sem-montagem" não paga visão. Sem visão disponível, sai só da medição.
+    const leitura: LeituraDoVideo | null =
+      leituraGuardada ??
+      (await lerVideoParaLeitura({
+        url: base,
+        fala: falaDoCompleto,
+        projectId: v.projectId,
+        duracao: falaDoCompleto.duracao,
+        medicao,
+        avisos: avisosDaLeitura,
+      }).catch((e: unknown) => {
+        avisosDaLeitura.push(`leitura: falhou (${e instanceof Error ? e.message : String(e)})`);
+        return null;
+      }));
+    if (avisosDaLeitura.length) console.warn(`[montagem-do-completo][${v.id}] ${avisosDaLeitura.join("; ")}`);
     // O EDITOR SOB MEDIDA (03/10): com o interruptor ligado e o estilo com
     // referência, o completo vai para o editor (passo "dirigindo" com
     // `sobMedida`), e não para o plano por cenas. Se o caminho novo já
@@ -1248,8 +1285,16 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
         analise,
         blocos,
         abertura: aberturaSm,
+        leitura,
         motivo: null,
-        sobMedida: { fase: "editar", estiloId: estiloDoVideo, blocos: blocosDoEditor(frases, falaDoCompleto.duracao), rodada: 0, historico: [] },
+        sobMedida: {
+          fase: "editar",
+          estiloId: estiloDoVideo,
+          blocos: blocosDoEditor(frases, falaDoCompleto.duracao),
+          rodada: 0,
+          historico: [],
+          ...(avisosDaLeitura.length ? { avisos: avisosDaLeitura.slice(0, 10) } : {}),
+        },
       });
       return;
     }
@@ -1297,10 +1342,11 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
         blocos,
         plano: guardado.plano,
         abertura,
+        leitura,
         guardas: guardado.resumo,
         resumo: {
           cobertura: coberturaDoPlano(guardado.plano, falaDoCompleto.palavras, falaDoCompleto.duracao),
-          avisos: [...ajustado.avisos, ...guardado.avisos].slice(0, 30),
+          avisos: [...avisosDaLeitura, ...ajustado.avisos, ...guardado.avisos].slice(0, 30),
           doRoteiro: true,
           abertura: abertura ? `${abertura.length} momentos, ${abertura.reduce((s, m) => s + m.fim - m.inicio, 0).toFixed(1)} s` : null,
         },
@@ -1312,7 +1358,18 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // (sem roteiro aprovado, ou `replanejar`): ela viaja no estado até o worker.
     const fala0 = lido.roteiro?.completo?.fala?.palavras;
     const abertura = fala0?.length ? aberturaNaBase(lido.roteiro, fala0, falaDoCompleto.palavras) : null;
-    await trocarEstado(v.id, tomado, { ...tomado, estado: "dirigindo", desde: agora(), fala: falaDoCompleto, analise, blocos, abertura, motivo: null });
+    await trocarEstado(v.id, tomado, {
+      ...tomado,
+      estado: "dirigindo",
+      desde: agora(),
+      fala: falaDoCompleto,
+      analise,
+      blocos,
+      abertura,
+      leitura,
+      motivo: null,
+      ...(avisosDaLeitura.length ? { resumo: { ...(tomado.resumo ?? {}), avisos: avisosDaLeitura.slice(0, 10) } } : {}),
+    });
   } catch (e) {
     await falhouNoPasso(v.id, lido, tomado, e, "preparar o completo");
   }
