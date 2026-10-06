@@ -1,5 +1,6 @@
 import { FICHAS, ehApoio } from "@/lib/media/editor-sob-medida/pecas";
 import type { CamadaResolvida, EdicaoResolvida } from "@/lib/media/editor-sob-medida/tipos";
+import { faixaPrincipalDaLegenda } from "@/lib/media/editor-por-comando/estilo-manda";
 
 /**
  * ZONAS EXCLUSIVAS DA LEGENDA NO 9:16 (05/10/2026).
@@ -51,6 +52,9 @@ export function faixaDaPeca(c: Pick<CamadaResolvida, "peca" | "props">): Faixa |
   const pos = String((c.props ?? {}).posicao ?? "");
   // A FOLHA SOBRE A GRAVAÇÃO (05/10, noite): a peça de tela desenhada numa faixa (topo ou baixo), a pessoa na outra.
   if ((c.props ?? {}).sobreAGravacao) return String((c.props ?? {}).lado) === "topo" ? [0.03, 0.5] : [0.5, 0.95];
+  // A PEÇA COM CAIXA MEDIDA (06/10, noite): a caixa que o resolvedor deu (área livre, versão na frente) é a faixa dela.
+  const cx = (c.props ?? {}).caixa as { y?: unknown; h?: unknown } | undefined;
+  if (cx && typeof cx.y === "number" && typeof cx.h === "number" && c.peca !== "zoom-no-ponto" && c.peca !== "destaque-na-tela" && c.peca !== "realce-de-quem-fala") return [cx.y, cx.y + cx.h];
   if (c.peca === "inscrever") return String((c.props ?? {}).lado) === "topo" ? [0.05, 0.2] : [0.78, 0.92];
   switch (c.peca) {
     // Sem texto próprio na faixa da legenda.
@@ -102,7 +106,9 @@ const cruza = (a: Faixa, b: Faixa) => a[0] < b[1] && b[0] < a[1];
 export function faixaDaPagina(
   pagina: { inicio: number; fim: number },
   camadas: Array<Pick<CamadaResolvida, "peca" | "props" | "de" | "ate">>,
-  planos: Array<{ de: number; ate: number; tipo: string }>
+  planos: Array<{ de: number; ate: number; tipo: string }>,
+  /** A faixa da posição principal do estilo (estilo-manda.ts); sem ela, a de baixo de sempre. */
+  principal: Faixa = FAIXAS_DA_LEGENDA_9X16.baixo
 ): FaixaDaLegenda {
   const { inicio, fim } = pagina;
   // Tela cheia (o plano gráfico): a peça cobre o quadro, a legenda some.
@@ -114,7 +120,7 @@ export function faixaDaPagina(
     if (f === TELA) return "oculta";
     if (f) ocupadas.push(f);
   }
-  if (!ocupadas.some((f) => cruza(f, FAIXAS_DA_LEGENDA_9X16.baixo))) return "baixo";
+  if (!ocupadas.some((f) => cruza(f, principal))) return "baixo";
   if (!ocupadas.some((f) => cruza(f, FAIXAS_DA_LEGENDA_9X16.topo))) return "topo";
   return "oculta";
 }
@@ -129,7 +135,7 @@ export function posicionarLegenda(ed: EdicaoResolvida): { edicao: EdicaoResolvid
   let movidas = 0;
   let ocultas = 0;
   const paginas = ed.legenda.paginas.map((p) => {
-    const faixa = faixaDaPagina(p, ed.camadas, ed.planos ?? []);
+    const faixa = faixaDaPagina(p, ed.camadas, ed.planos ?? [], faixaPrincipalDaLegenda(ed.legenda?.estilo) ?? FAIXAS_DA_LEGENDA_9X16.baixo);
     if (faixa === "topo") movidas++;
     if (faixa === "oculta") ocultas++;
     return { ...p, faixa };

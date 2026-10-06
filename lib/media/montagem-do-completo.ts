@@ -2112,6 +2112,8 @@ async function entradaDoPlanoDoCompleto(v: VideoDoCompleto, m: MontagemDoComplet
     paleta: paletaDoProjeto(v.colorPalette),
     rosto,
     comLegenda: legenda.mostrar,
+    // A legenda do estilo vale na "Automática"; só o estilo de legenda fixado pelo cliente passa por cima (06/10, noite).
+    legendaFixa: legenda.mostrar && !legenda.automatica ? legenda.estilo : null,
     logoUrl: v.logoUrl ?? null,
     titulo: resumoDoVideo(v.clips) || null,
     perfil: perfilNoPrompt(perfil),

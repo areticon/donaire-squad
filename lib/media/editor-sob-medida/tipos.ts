@@ -97,7 +97,15 @@ export type EdicaoResolvida = {
    * página vai no 9:16 para não cair em cima do texto de uma peça. Sem o
    * campo, embaixo (o lugar de sempre).
    */
-  legenda: { paginas: Array<{ inicio: number; fim: number; texto: string; faixa?: "baixo" | "topo" | "oculta" }> } | null;
+  legenda: {
+    paginas: Array<{ inicio: number; fim: number; texto: string; faixa?: "baixo" | "topo" | "oculta" }>;
+    /**
+     * O DESENHO DA LEGENDA NO ESTILO (06/10, noite; lib/media/editor-por-comando/estilo-manda.ts): posição, tamanho,
+     * letra e caixa alta que o estilo pede. "baixo" na faixa da página quer dizer a posição principal do estilo; sem o
+     * campo, a legenda pequena de sempre no terço de baixo.
+     */
+    estilo?: { posicao: "centro" | "baixo" | "topo"; tamanho: "grande" | "medio" | "pequeno"; letra: "condensada" | "limpa" | "serifa"; caixaAlta: boolean; y?: number };
+  } | null;
   insercoes: Record<string, MidiaDaInsercao>;
   /** As telas cheias têm PALCO próprio (opaco, com câmera): o worker deixa a gravação por baixo em vez do fundo parado. */
   palco?: boolean;

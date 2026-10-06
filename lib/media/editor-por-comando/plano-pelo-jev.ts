@@ -39,6 +39,20 @@ import {
 } from "@/lib/media/editor-por-comando/linguagem";
 import type { PedidoDaCena } from "@/lib/media/roteiro-em-texto";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
+import {
+  candidatasATese,
+  legendaDasRespostas,
+  legendaPorPalavras,
+  perguntaDaFrente,
+  perguntaDaTese,
+  perguntasDaLegenda,
+  precisaDeVersaoNaFrente,
+  teseDaResposta,
+  teseServe,
+  textosDaPeca,
+  versaoDaResposta,
+  type LegendaDoEstilo,
+} from "@/lib/media/editor-por-comando/estilo-manda";
 import { FUNDO, combinadaPorPalavras, decisaoDasRespostas, numeroDito, perguntasDaCombinada, promptDoFundoCombinado, segundosDoFundo, type DecisaoDaCombinada } from "@/lib/media/editor-por-comando/combinada";
 import { contextoDoTrecho, movimentoEm, resumoDaLeitura, tiposPossiveis, trechoEm } from "@/lib/media/editor-por-comando/leitura-no-plano";
 import {
@@ -251,6 +265,8 @@ export type DecisaoDaLinguagem = {
   cenario: CenarioDaGravacao;
   /** O estilo do catálogo cuja ficha pesquisada é a base do bloco e das peças (06/10): da referência do comando, ou identificado pelo JEV. */
   estilo?: string | null;
+  /** A legenda que o comando pede (06/10, noite; estilo-manda.ts): posição, tamanho, letra e palavras por vez, lidas pelo JEV. */
+  legenda?: LegendaDoEstilo | null;
 };
 
 /** A linguagem do vídeo com a ficha do estilo do catálogo (06/10): o id e as peças em inglês, para o redator dos momentos. */
@@ -284,7 +300,7 @@ const contextoDoProjeto = (e: EntradaDoPlanoPeloJev) =>
 /** O JEV escolhe a família da linguagem, a densidade, o quanto de vídeo e se o comando pede para trocar o cenário. */
 export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<DecisaoDaLinguagem> {
   const daReferencia = estiloDoComando(e.comando);
-  const recuo: DecisaoDaLinguagem = { familia: familiaPorPalavras(e.comando.texto), densidade: "medio", video: "algum", confianca: null, cenario: cenarioPorPalavras(e.comando.texto), estilo: daReferencia };
+  const recuo: DecisaoDaLinguagem = { familia: familiaPorPalavras(e.comando.texto), densidade: "medio", video: "algum", confianca: null, cenario: cenarioPorPalavras(e.comando.texto), estilo: daReferencia, legenda: legendaPorPalavras(e.comando.texto) };
   if (!jevDisponivel(e)) return recuo;
   try {
     const r = await jevDe(e)(
@@ -324,6 +340,8 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
           instructions:
             "O comando do cliente PEDE EXPLICITAMENTE para trocar o fundo ou o cenário da gravação, ou para colocar a pessoa dentro de um cenário (por exemplo: \"troque o meu fundo\", \"me coloque numa biblioteca antiga\", \"quero um cenário de estúdio atrás de mim\")? Descrever um estilo visual, uma colagem, papel, neon ou um acabamento para as artes NÃO é pedir para trocar o cenário: responda sim só quando o texto pede a troca do fundo em que a pessoa aparece.",
         },
+        // A LEGENDA DO ESTILO (06/10, noite): posição, tamanho, letra e palavras por vez que o comando pede.
+        ...perguntasDaLegenda(),
       }
     );
     const fam = r.familia?.type === "choice" ? r.familia : null;
@@ -340,6 +358,7 @@ export async function decidirLinguagem(e: EntradaDoPlanoPeloJev): Promise<Decisa
       // Sem resposta do JEV, a reserva por palavras; com resposta, só o "sim" firme troca.
       cenario: trocar === null ? recuo.cenario : trocar >= 0.7 ? "trocado" : "gravacao",
       estilo: identificado && identificado !== "nenhum" ? identificado : null,
+      legenda: legendaDasRespostas(r, recuo.legenda ?? null),
     };
   } catch {
     return recuo;
@@ -1544,13 +1563,16 @@ export async function escreverPlanoPeloJev(e: EntradaDoPlanoPeloJev): Promise<{ 
     escreverBlocoDeEstilo(e, familia, askClaude, L.estilo).then((x) => ((tempos.estilo = +((Date.now() - t) / 1000).toFixed(1)), x)),
   ]);
   // A ficha do estilo do catálogo (06/10; card 714) viaja na linguagem, lida direto: as peças em inglês vão ao redator de cada momento.
-  const ling = linguagemComFicha({ familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null, ...(est.base ? { baseDoBloco: est.base } : {}) } as LinguagemComFicha, est.estilo);
+  const ling = linguagemComFicha({ familia, cenario: L.cenario, nome: fam.nome, blocoDeEstilo: est.bloco, origemDoBloco: est.origem, fonte: e.comando.fonte, cores: coresNoPrompt(e.paleta, e.cores), nicho: e.nicho ?? null, legenda: L.legenda ?? null, ...(est.base ? { baseDoBloco: est.base } : {}) } as LinguagemComFicha, est.estilo);
   const lista = d.momentos;
   const red = await redigirEConferir(e, ling, lista, { cenario: L.cenario === "trocado" });
   tempos.redator = red.tempos.redator;
   tempos.conferencia = red.tempos.conferencia;
   const erros = [...(est.erro ? [`bloco de estilo: ${est.erro} (usada a reserva)`] : []), ...red.erros];
+  // A tese e as versões na frente (06/10, noite; estilo-manda.ts): o JEV escolhe, com critério e candidatas da fala.
+  await escolherTeses(e, lista, red.textos, erros);
   const mat = materializar(lista, red.textos, ling, red.pedidos);
+  await decidirVersoesNaFrente(e, mat.momentos, lista, L.cenario === "trocado", erros);
   const cenario = L.cenario === "trocado" ? insercaoDoCenario(red.textos, ling, e.frases) : null;
   const bruto = {
     leitura: `Plano em dois eixos: ${d.momentos.length} elementos decididos pelo JEV (${d.perguntas} perguntas) na linguagem "${fam.nome}"${est.estilo ? ` (ficha do estilo ${est.estilo})` : ""}, ritmo ${d.linguagem.densidade}, vídeo ${d.linguagem.video}, cobertura ${d.cobertura}, cenário ${L.cenario}.`,
@@ -1674,7 +1696,9 @@ export async function completarPlanoPeloJev(plano: PlanoDoDiretor, e: EntradaDoP
   const red = await redigirEConferir(e, ling, lista);
   tempos.redator = red.tempos.redator;
   tempos.conferencia = red.tempos.conferencia;
+  await escolherTeses(e, lista, red.textos, avisos);
   const mat = materializar(lista, red.textos, ling, red.pedidos);
+  await decidirVersoesNaFrente(e, mat.momentos, lista, ling.cenario === "trocado", avisos);
   const base = semRemovidos(plano);
   const bruto = { ...base, momentos: [...(base.momentos ?? []), ...mat.momentos], insercoes: [...(base.insercoes ?? []), ...mat.insercoes], enfases };
   const v = validarPlano(bruto, FAMILIA[ling.familia].base, { livre: true });
@@ -1696,3 +1720,91 @@ export function pedidosNaoAtendidos(plano: PlanoDoDiretor, pedidos: PedidoDaCena
   return (pedidos ?? []).filter((p) => !feitos.some((x) => x.inicio < p.fim + 1 && x.fim > p.inicio - 1 && norm(x.pedido ?? "").includes(norm(p.texto))));
 }
 
+
+// ─────────────────────────────── a tese e a versão na frente (06/10, noite) ───────────────────────────────
+
+/**
+ * A PALAVRA-TESE PELO JEV (06/10, noite; o vídeo cmux0hoxk saiu com "OLHA
+ * ISSO" como tese). Para cada texto atrás da pessoa, as candidatas saem da
+ * fala do momento (números e palavras com significado; interjeição nunca
+ * entra), e o JEV escolhe com o critério (`CRITERIO_DA_TESE`). O texto do
+ * redator entra como candidata só se servir de tese. Sem JEV, o texto do
+ * redator fica se servir; senão, a primeira candidata.
+ */
+export async function escolherTeses(e: EntradaDoPlanoPeloJev, lista: MomentoDecidido[], textos: Record<string, Record<string, unknown>>, avisos: string[]): Promise<void> {
+  const alvos = lista.filter((m) => m.peca === "titulo-atras" && textos[m.id] && !m.pedidoDoCliente);
+  if (!alvos.length) return;
+  const maiuscula = (x: string) => x.toLocaleUpperCase("pt-BR");
+  const textoAtual = (id: string) => String(textos[id]?.texto ?? "").replace(/\*\*/g, "").trim();
+  const candidatas = new Map<string, string[]>();
+  for (const m of alvos) {
+    const atual = textoAtual(m.id);
+    const daFala = candidatasATese(m.fala, 6);
+    const todas = [...(atual && teseServe(atual) ? [maiuscula(atual)] : []), ...daFala.filter((c) => c !== maiuscula(atual))].slice(0, 7);
+    if (todas.length) candidatas.set(m.id, todas);
+  }
+  let r: Record<string, RespostaDoJev> = {};
+  if (jevDisponivel(e) && candidatas.size) {
+    const perguntas: Record<string, PerguntaDoJev> = {};
+    for (const m of alvos) {
+      const c = candidatas.get(m.id);
+      if (c && c.length > 1) perguntas[`tese_${m.id}`] = perguntaDaTese(m.falaEmVolta ?? m.fala, c);
+    }
+    if (Object.keys(perguntas).length) {
+      try {
+        r = await jevDe(e)({ projectId: e.projectId, etapa: "editor-por-comando-tese", state: { comando: e.comando.texto, nicho: e.nicho ?? "" } }, perguntas);
+      } catch (err) {
+        avisos.push(`tese: o JEV falhou (${err instanceof Error ? err.message.slice(0, 80) : err}), ficou a reserva`);
+      }
+    }
+  }
+  for (const m of alvos) {
+    const c = candidatas.get(m.id);
+    const atual = textoAtual(m.id);
+    const doJev = c ? (c.length === 1 ? c[0] : teseDaResposta(r[`tese_${m.id}`], c)) : null;
+    const escolhida = doJev ?? (teseServe(atual) ? atual : c?.[0] ?? null);
+    if (!escolhida) {
+      // Sem palavra que sirva de tese, o texto atrás não entra com uma interjeição: sai.
+      delete textos[m.id];
+      avisos.push(`${m.id}: sem palavra com significado na fala para a tese, o texto atrás saiu`);
+      continue;
+    }
+    if (maiuscula(escolhida) !== maiuscula(atual)) {
+      avisos.push(`${m.id}: tese "${atual}" trocada por "${escolhida}"${doJev ? " (escolha do JEV)" : ""}`);
+      textos[m.id] = { ...textos[m.id], texto: escolhida };
+    }
+  }
+}
+
+/**
+ * A VERSÃO NA FRENTE PELO JEV (06/10, noite): para cada peça que depende de
+ * recorte ou de área livre (o título atrás; as peças de folha sem o cenário
+ * trocado), o JEV escolhe a versão na FRENTE que o resolvedor usa se a guarda
+ * barrar a peça (a pessoa se mexe, falta área livre). Fica em
+ * `props.naFrente`; o resolvedor confere a geometria. Nenhum estilo é citado.
+ */
+export async function decidirVersoesNaFrente(e: EntradaDoPlanoPeloJev, momentos: MomentoDoEditor[], lista: MomentoDecidido[], cenarioTrocado: boolean, avisos: string[]): Promise<void> {
+  if (!jevDisponivel(e)) return;
+  const falaDe = new Map(lista.map((m) => [m.id, m.falaEmVolta ?? m.fala]));
+  const alvos = momentos
+    .filter((m) => {
+      const ficha = FICHAS[m.peca];
+      const props = (m.props ?? {}) as Record<string, unknown>;
+      if (!ficha || props.naFrente) return false;
+      if (m.peca !== "titulo-atras" && cenarioTrocado) return false;
+      return precisaDeVersaoNaFrente(m.peca, ficha.plano) && Boolean(textosDaPeca(props).principal);
+    })
+    .slice(0, 30);
+  if (!alvos.length) return;
+  const perguntas: Record<string, PerguntaDoJev> = {};
+  for (const m of alvos) perguntas[`frente_${m.id}`] = perguntaDaFrente(m.peca, textosDaPeca((m.props ?? {}) as Record<string, unknown>).principal, falaDe.get(String(m.id)) ?? "");
+  try {
+    const r = await jevDe(e)({ projectId: e.projectId, etapa: "editor-por-comando-na-frente", state: { comando: e.comando.texto, nicho: e.nicho ?? "" } }, perguntas);
+    for (const m of alvos) {
+      const v = versaoDaResposta(r[`frente_${m.id}`]);
+      if (v) m.props = { ...(m.props ?? {}), naFrente: v };
+    }
+  } catch (err) {
+    avisos.push(`versão na frente: o JEV falhou (${err instanceof Error ? err.message.slice(0, 80) : err}), fica a geometria`);
+  }
+}
