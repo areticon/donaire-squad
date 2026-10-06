@@ -12,8 +12,9 @@ import type { VideoDoGemeo } from "@/lib/media/gemeo";
  * e o servidor (`cancelar-video.ts`) lê as decisões. Nada aqui toca o banco.
  *
  * O que vale, em uma frase cada:
- *   - cancela o que espera o cliente ou está andando; o que já está pronto
- *     (peças no quadro) não se cancela, se arquiva peça por peça;
+ *   - cancela o que espera o cliente, o que está andando e, desde 06/10, o
+ *     pronto (as peças que não foram ao ar saem do quadro; publicado e
+ *     agendado ficam);
  *   - o que já foi gerado é descartado, e o que estava rodando no worker ou no
  *     gerador termina sozinho e é descartado na chegada (os callbacks ignoram
  *     o vídeo cancelado);
@@ -53,19 +54,33 @@ export function idDoGemeoNaFaixa(id: string): string | null {
 }
 
 /**
- * Dá para cancelar esta gravação? O que espera o cliente (roteiro) e o que
- * está andando, sim. O que falhou também: cancelar é mais forte que dispensar
- * (fecha o quadro) e a pessoa pode preferir. O pronto, não.
+ * O PRONTO TAMBÉM SE CANCELA (06/10, tarde): até aqui o vídeo pronto só tinha
+ * o X "tirar da lista", que some da tela e volta ao recarregar, com as peças
+ * paradas no quadro. Agora cancelar o pronto tira do quadro o que ainda não
+ * foi ao ar; o que já foi publicado ou está agendado continua (para tirar um
+ * agendado, arquive o card dele), e nada é devolvido nem cobrado.
+ */
+export const TEXTO_DA_CONFIRMACAO_PRONTO =
+  "Cancelar este vídeo pronto? As peças dele que ainda não foram publicadas saem do quadro. O que já foi publicado ou está agendado continua, e nada mais é cobrado.";
+
+/** O vídeo está pronto (peças no quadro) e nada mais roda nele. */
+export function videoPronto(v: { status: string; finishedAt: Date | string | null; edicaoAndando: boolean }): boolean {
+  return v.status === "ready" && Boolean(v.finishedAt) && !v.edicaoAndando;
+}
+
+/** A confirmação certa para o cartão: a do pronto, ou a de sempre. */
+export function textoDaConfirmacao(pronto: boolean): string {
+  return pronto ? TEXTO_DA_CONFIRMACAO_PRONTO : TEXTO_DA_CONFIRMACAO;
+}
+
+/**
+ * Dá para cancelar esta gravação? O que espera o cliente (roteiro), o que
+ * está andando e o pronto (06/10), sim. O que falhou também: cancelar é mais
+ * forte que dispensar (fecha o quadro) e a pessoa pode preferir. Só o já
+ * cancelado, não.
  */
 export function podeCancelarGravacao(v: { status: string; finishedAt: Date | string | null; edicaoAndando: boolean }): Veredicto {
   if (v.status === STATUS_CANCELADO) return { pode: false, status: 409, motivo: "Este vídeo já foi cancelado." };
-  if (v.status === "ready" && v.finishedAt && !v.edicaoAndando) {
-    return {
-      pode: false,
-      status: 409,
-      motivo: "Este vídeo já está pronto, com as peças no quadro. Para tirar uma peça do ar, arquive o card dela.",
-    };
-  }
   return { pode: true };
 }
 

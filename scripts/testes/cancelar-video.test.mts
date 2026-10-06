@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import {
   STATUS_CANCELADO,
   TEXTO_DA_CONFIRMACAO,
+  TEXTO_DA_CONFIRMACAO_PRONTO,
+  textoDaConfirmacao,
+  videoPronto,
   acertoDaReservaNoCancelamento,
   avisoDoQueTerminaSozinho,
   creditosDaGravacaoCancelada,
@@ -32,15 +35,20 @@ test("o id da linha do gêmeo na faixa é reconhecido; o da gravação, não", (
   assert.equal(idDoGemeoNaFaixa("gemeo-"), null);
 });
 
-test("cancela o que espera o cliente (roteiro) e o que anda; não cancela o pronto nem o já cancelado", () => {
+test("cancela o que espera o cliente (roteiro), o que anda e o pronto (06/10); não cancela o já cancelado", () => {
   assert.deepEqual(podeCancelarGravacao({ status: "roteiro", finishedAt: null, edicaoAndando: false }), { pode: true });
   assert.deepEqual(podeCancelarGravacao({ status: "cutting", finishedAt: null, edicaoAndando: false }), { pode: true });
   assert.deepEqual(podeCancelarGravacao({ status: "ready", finishedAt: null, edicaoAndando: false }), { pode: true });
   // Pronto, mas a montagem de efeitos ainda roda: ainda é "em andamento".
   assert.deepEqual(podeCancelarGravacao({ status: "ready", finishedAt: new Date(), edicaoAndando: true }), { pode: true });
-  const pronto = podeCancelarGravacao({ status: "ready", finishedAt: new Date(), edicaoAndando: false });
-  assert.equal(pronto.pode, false);
-  if (!pronto.pode) assert.equal(pronto.status, 409);
+  // O pronto (06/10, tarde): cancela, com a confirmação própria.
+  assert.deepEqual(podeCancelarGravacao({ status: "ready", finishedAt: new Date(), edicaoAndando: false }), { pode: true });
+  assert.equal(videoPronto({ status: "ready", finishedAt: new Date(), edicaoAndando: false }), true);
+  assert.equal(videoPronto({ status: "ready", finishedAt: new Date(), edicaoAndando: true }), false);
+  assert.equal(textoDaConfirmacao(true), TEXTO_DA_CONFIRMACAO_PRONTO);
+  assert.equal(textoDaConfirmacao(false), TEXTO_DA_CONFIRMACAO);
+  assert.match(TEXTO_DA_CONFIRMACAO_PRONTO, /publicado ou está agendado continua/);
+  assert.ok(!TEXTO_DA_CONFIRMACAO_PRONTO.includes(String.fromCharCode(0x2014)), "sem travessão");
   const ja = podeCancelarGravacao({ status: STATUS_CANCELADO, finishedAt: null, edicaoAndando: false });
   assert.equal(ja.pode, false);
 });
@@ -209,13 +217,17 @@ test("gravação cortando no worker: cancela e avisa que o corte termina sozinho
   if (r.ok) assert.match(r.aviso ?? "", /termina sozinho e é descartado/);
 });
 
-test("gravação pronta: recusa com 409 e não mexe em nada", async () => {
+test("gravação pronta (06/10): cancela, fecha o quadro e diz que nada mais é cobrado", async () => {
   const { d, c } = deps({ gravacao: { ...gravacaoNoRoteiro, status: "ready", finishedAt: new Date() } });
   const r = await cancelarVideo(gravacaoNoRoteiro.id, "u1", d);
-  assert.equal(r.ok, false);
-  if (!r.ok) assert.equal(r.status, 409);
-  assert.equal(c.marcadas.length, 0);
-  assert.equal(c.quadros.length, 0);
+  assert.equal(r.ok, true);
+  assert.equal(c.marcadas.length, 1);
+  assert.equal(c.quadros.length, 1);
+  if (r.ok) {
+    assert.equal(r.aviso, null);
+    assert.equal(r.creditosDevolvidos, 0);
+    if (gravacaoNoRoteiro.creditsCharged > 0) assert.match(r.creditos, /nada mais é cobrado/);
+  }
 });
 
 test("gravação de outro projeto (ou inexistente): 404", async () => {
