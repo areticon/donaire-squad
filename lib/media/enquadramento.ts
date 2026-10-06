@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { recordUsage } from "@/lib/claude/usage";
-import { DEFAULT_MODEL } from "@/lib/claude";
+import { DEFAULT_MODEL, traduzirErroDaApi } from "@/lib/claude";
 
 /**
  * O agente que olha a gravação e decide como enquadrar cada corte.
@@ -185,7 +185,9 @@ export async function decidirEnquadramento(
     },
     { timeout: 300_000 }
   );
-  const message = await stream.finalMessage();
+  const message = await stream.finalMessage().catch(async (e: unknown) => {
+    throw await traduzirErroDaApi(e, "enquadramento do vídeo");
+  });
 
   // O consumo é gravado AQUI, e não no worker, porque a conta de custo do
   // projeto vive num lugar só. Worker chamando o modelo por fora seria gasto

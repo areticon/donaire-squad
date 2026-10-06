@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { recordUsage, type UsageContext } from "@/lib/claude/usage";
+import { AVISO_NEUTRO_AO_CLIENTE } from "@/lib/fornecedores/saldo";
 
 let _client: Anthropic | null = null;
 
@@ -203,7 +204,7 @@ export async function askClaude(
   try {
     message = await stream.finalMessage();
   } catch (e) {
-    throw traduzirErroDaApi(e);
+    throw await traduzirErroDaApi(e);
   }
 
   void recordUsage(model, message.usage, options?.usage);
@@ -225,6 +226,8 @@ export async function askClaude(
  */
 export class SemSaldoNaApi extends Error {
   readonly semSaldo = true;
+  /** De quem é o saldo (lib/fornecedores/saldo.ts lê esta marca). */
+  readonly fornecedor = "anthropic";
   constructor(mensagem: string) {
     super(mensagem);
     this.name = "SemSaldoNaApi";
@@ -237,16 +240,22 @@ export function ehErroDeSaldo(e: unknown): boolean {
   );
 }
 
-function traduzirErroDaApi(e: unknown): Error {
+/**
+ * Desde 06/10 a falta de saldo também vira incidente e aviso ao admin
+ * (lib/fornecedores/aviso-de-saldo.ts), por qualquer caminho que chame o
+ * modelo. A mensagem do erro é NEUTRA: ela pode chegar à tela do cliente, e o
+ * cliente nunca lê nome de fornecedor nem "saldo de API" (regra de 21/09).
+ */
+export async function traduzirErroDaApi(e: unknown, onde = "texto pelo Claude"): Promise<Error> {
   const mensagem = e instanceof Error ? e.message : String(e);
   if (/credit balance is too low|insufficient.*credit/i.test(mensagem)) {
     console.error(
       "[claude] A CONTA DA ANTHROPIC ESTA SEM SALDO. Todo agente, corte e demo " +
         "vao falhar ate a recarga. console.anthropic.com, Billing."
     );
-    return new SemSaldoNaApi(
-      "A plataforma esta sem saldo de API. Avise o suporte: nada vai funcionar ate a recarga."
-    );
+    const { avisarSemSaldo } = await import("@/lib/fornecedores/aviso-de-saldo");
+    await avisarSemSaldo("anthropic", { onde, detalhe: mensagem });
+    return new SemSaldoNaApi(AVISO_NEUTRO_AO_CLIENTE);
   }
   return e instanceof Error ? e : new Error(mensagem);
 }
@@ -316,17 +325,21 @@ export async function streamClaude(
     messages: [{ role: "user", content: userMessage }],
   });
 
-  for await (const event of stream) {
-    if (
-      event.type === "content_block_delta" &&
-      event.delta.type === "text_delta"
-    ) {
-      fullText += event.delta.text;
-      onChunk(event.delta.text);
+  let final;
+  try {
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        fullText += event.delta.text;
+        onChunk(event.delta.text);
+      }
     }
+    final = await stream.finalMessage();
+  } catch (e) {
+    throw await traduzirErroDaApi(e);
   }
-
-  const final = await stream.finalMessage();
   void recordUsage(model, final.usage, options?.usage);
 
   return fullText;
@@ -384,7 +397,7 @@ export async function askClaudeComPdf(
   try {
     message = await stream.finalMessage();
   } catch (e) {
-    throw traduzirErroDaApi(e);
+    throw await traduzirErroDaApi(e);
   }
   void recordUsage(model, message.usage, options?.usage);
   return extrairTexto(message.content, message.stop_reason, maxTokens);
@@ -434,7 +447,7 @@ export async function askClaudeComImagem(
   try {
     message = await stream.finalMessage();
   } catch (e) {
-    throw traduzirErroDaApi(e);
+    throw await traduzirErroDaApi(e);
   }
   void recordUsage(model, message.usage, options?.usage);
   return extrairTexto(message.content, message.stop_reason, maxTokens);
@@ -475,7 +488,7 @@ export async function askClaudeComImagens(
   try {
     message = await stream.finalMessage();
   } catch (e) {
-    throw traduzirErroDaApi(e);
+    throw await traduzirErroDaApi(e);
   }
   void recordUsage(model, message.usage, options?.usage);
   return extrairTexto(message.content, message.stop_reason, maxTokens);

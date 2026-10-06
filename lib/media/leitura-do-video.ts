@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
 
@@ -735,7 +736,11 @@ export async function verComGemini(
           signal: AbortSignal.timeout(600_000),
         });
       }
-      if (!r.ok) throw new Error(`Gemini ${modelo} respondeu ${r.status}: ${(await r.text().catch(() => "")).slice(0, 300)}`);
+      if (!r.ok) {
+        const corpoDoErro = await r.text().catch(() => "");
+        await conferirResposta("google", { status: r.status, corpo: corpoDoErro }, "leitura do vídeo pelo Gemini");
+        throw new Error(`Gemini ${modelo} respondeu ${r.status}: ${corpoDoErro.slice(0, 300)}`);
+      }
       const j2 = (await r.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
@@ -792,6 +797,7 @@ export async function verComGemini(
 }
 
 async function gravarUsoDaVisao(modelo: string, tokens: { entrada: number; saida: number }, custoUsd: number, ctx: { projectId?: string | null; operation?: string }): Promise<void> {
+  marcarChamadaOk("google");
   try {
     await prisma.aiUsage.create({
       data: {

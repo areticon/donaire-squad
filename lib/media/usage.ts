@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
+import { fornecedorDoModeloGravado } from "@/lib/fornecedores/saldo";
 
 /**
  * Instrumentação de custo de mídia: Gemini, Veo e Deepgram.
@@ -64,6 +66,8 @@ async function gravar(
   costUsd: number,
   ctx: ContextoMidia
 ): Promise<void> {
+  // A chamada passou: fecha o incidente de saldo do fornecedor, se havia.
+  marcarChamadaOk(fornecedorDoModeloGravado(model));
   try {
     await prisma.aiUsage.create({
       data: {
@@ -130,6 +134,7 @@ export function recordImagemPorTokens(model: string, uso: UsoDaImagem | undefine
     return;
   }
   const custo = custoDaImagemPorTokens(uso);
+  marcarChamadaOk(fornecedorDoModeloGravado(model));
   void (async () => {
     try {
       await prisma.aiUsage.create({

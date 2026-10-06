@@ -1,3 +1,4 @@
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { createHash } from "node:crypto";
 import { head, put } from "@vercel/blob";
 import { midiaProduzida } from "@/lib/media/storage";
@@ -249,7 +250,11 @@ async function brollPeloFal(consulta: string, formato: "9:16" | "16:9", guarda: 
     body: JSON.stringify({ prompt: `${consulta}.${GUARDA_DO_BROLL}`, duration: "5", aspect_ratio: formato, negative_prompt: "text, watermark, logo, face close-up, blur, distortion" }),
     signal: AbortSignal.timeout(60_000),
   });
-  if (!r.ok) throw new Error(`fal.ai recusou o B-roll (HTTP ${r.status}): ${(await r.text()).slice(0, 160)}`);
+  if (!r.ok) {
+    const corpoDoErro = await r.text();
+    await conferirResposta("fal", { status: r.status, corpo: corpoDoErro }, "b-roll do editor sob medida no fal.ai");
+    throw new Error(`fal.ai recusou o B-roll (HTTP ${r.status}): ${corpoDoErro.slice(0, 160)}`);
+  }
   const d = (await r.json()) as { status_url?: string; response_url?: string };
   if (!d.status_url || !d.response_url) throw new Error("fal.ai não devolveu o pedido");
   const limite = Date.now() + esperarMs;

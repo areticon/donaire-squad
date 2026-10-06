@@ -14,6 +14,7 @@ import { cotacao, dolares, reaisPorCredito, TETO_DE_CUSTO_POR_CREDITO } from "@/
 import { lerReceitaReal, type ReceitaReal } from "@/lib/admin/receita-real";
 import { NOME_DO_GRUPO as NOME_DO_GRUPO_DO_CONTRATO } from "@/lib/contratos/situacao";
 import { FalhasDePublicacao } from "@/components/admin/falhas-de-publicacao";
+import { FaixaDeSaldo } from "@/components/admin/faixa-de-saldo";
 import { GraficoNoTempo } from "@/components/admin/grafico-no-tempo";
 import { AbreDobraPeloEndereco, FunilComparado, GraficoComparado, Indicador, type EtapaDoFunil } from "@/components/admin/painel-stripe";
 import {
@@ -202,6 +203,7 @@ export default async function AdminPage({
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto space-y-6">
       <AbreDobraPeloEndereco />
+      <FaixaDeSaldo />
       <header className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * Preço por milhão de tokens, em dólar, conforme a tabela pública da Anthropic.
@@ -76,6 +77,10 @@ export async function recordUsage(
   usage: AnthropicUsage,
   context?: UsageContext
 ): Promise<void> {
+  // A chamada passou: se a conta estava marcada sem saldo, este é o aviso de
+  // que voltou (lib/fornecedores/aviso-de-saldo.ts). Antes do `context`,
+  // porque chamada sem contexto também prova que o saldo voltou.
+  marcarChamadaOk("anthropic");
   if (!context) return;
 
   try {

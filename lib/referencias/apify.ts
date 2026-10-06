@@ -1,3 +1,4 @@
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 /**
  * A APIFY, por API (01/10). Roda um ator com teto de itens e de gasto, espera
  * terminar e devolve os itens e o custo da execução.
@@ -69,6 +70,8 @@ export async function rodarAtor<T = Record<string, unknown>>(
     });
     const corpo = (await r.json().catch(() => ({}))) as { data?: ExecucaoDaApify; error?: { type?: string; message?: string } };
     let run = corpo.data;
+    if (!r.ok) await conferirResposta("apify", { status: r.status, corpo }, `leitura pública pela Apify (${ator})`);
+    else marcarChamadaOk("apify");
     if (!r.ok || !run) return { itens: [], custoUsd: 0, status: "erro", erro: `${r.status} ${corpo.error?.type ?? ""} ${corpo.error?.message ?? ""}`.trim().slice(0, 300) };
 
     while (!TERMINAIS.includes(run.status) && Date.now() < prazo) {

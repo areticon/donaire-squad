@@ -5,6 +5,7 @@ import { cabecalho } from "@/lib/media/higgsfield";
 import { DOLAR_POR_IMAGEM } from "@/lib/credits/higgsfield-tabela";
 import { midiaProduzida } from "@/lib/media/storage";
 import { gravarCustoDeImagem, type ContextoMidia } from "@/lib/media/usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * A IMAGEM PELA HIGGSFIELD (01/10/2026), com o Google como RECUO.
@@ -493,7 +494,10 @@ export async function gerarNaHiggsfield(p: {
       const resposta = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       if (!r.ok || !resposta.request_id) {
         const detalhe = String(resposta.detail ?? resposta.message ?? JSON.stringify(resposta)).slice(0, 200);
-        if ([401, 402, 403].includes(r.status) || /credit|balance|insufficient|saldo/i.test(detalhe)) {
+        // Saldo zerado vira incidente e aviso ao admin (06/10); chave recusada
+        // (401/403 sem texto de saldo) só abre o recuo, como antes.
+        const semSaldo = await conferirResposta("higgsfield", { status: r.status, corpo: resposta }, `imagem da Higgsfield (${p.gerador})`);
+        if (semSaldo || [401, 402, 403].includes(r.status) || /credit|balance|insufficient|saldo/i.test(detalhe)) {
           abrirRecuo(`HTTP ${r.status}: ${detalhe}`, RECUO_POR_SALDO_MS);
         } else if (r.status === 429) {
           abrirRecuo(`HTTP 429: ${detalhe}`, RECUO_POR_TAXA_MS);

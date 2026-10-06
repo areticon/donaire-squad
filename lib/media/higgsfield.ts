@@ -1,6 +1,7 @@
 import { put, head } from "@vercel/blob";
 import { midiaProduzida } from "@/lib/media/storage";
 import { gravarCustoDeVideo, type ContextoMidia } from "@/lib/media/usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { normalizarEscolha, type EscolhaDeEstilo } from "@/lib/media/catalogo-de-estilos";
 import { DOLAR_POR_SEGUNDO_DE_VIDEO, DOLAR_POR_SEGUNDO_DE_VIDEO_COM_SOM, geracoesPorCorte } from "@/lib/credits/higgsfield-tabela";
 
@@ -396,7 +397,9 @@ export async function pedirGeracao(p: NovoPedido): Promise<PedidoGuardado> {
   });
   const corpo = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok) {
-    // 403 é saldo da conta da API; é assunto do Bruno, não do cliente.
+    // 403 é saldo da conta da API; é assunto do Bruno, não do cliente. Desde
+    // 06/10 vira incidente e aviso ao admin (lib/fornecedores/aviso-de-saldo.ts).
+    await conferirResposta("higgsfield", { status: r.status, corpo }, "vídeo da Higgsfield na edição");
     throw new Error(`Higgsfield recusou o pedido (HTTP ${r.status}): ${String(corpo.detail ?? "").slice(0, 200)}`);
   }
   const requestId = String(corpo.request_id ?? "");

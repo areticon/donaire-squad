@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
 
 /**
  * O COMANDO FALADO (05/10/2026): o áudio curto gravado na tela vai à Deepgram
@@ -27,7 +28,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     body: audio,
     signal: AbortSignal.timeout(45_000),
   }).catch(() => null);
+  if (r && !r.ok) await conferirResposta("deepgram", { status: r.status, corpo: await r.text().catch(() => "") }, "comando falado do vídeo");
   if (!r?.ok) return NextResponse.json({ error: "Não consegui transcrever. Tente de novo ou escreva o comando." }, { status: 502 });
+  marcarChamadaOk("deepgram");
   const d = (await r.json()) as { results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> } };
   const texto = (d.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "").trim();
   if (!texto) return NextResponse.json({ error: "Não entendi o áudio. Grave de novo, mais perto do microfone." }, { status: 422 });

@@ -1,3 +1,4 @@
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import {
   GERADORES,
   INSTRUCAO_DO_GERADOR,
@@ -107,7 +108,8 @@ async function erroHeygen(r: Response, acao: string): Promise<ErroDoFornecedor> 
   if (codigo === "resource_limit_reached" || /resource_limit_reached/i.test(bruto)) {
     return new ErroDoFornecedor("heygen", "limite", r.status, `HeyGen sem vaga para ${acao} (resource_limit_reached): ${corpo}`);
   }
-  if (r.status === 402 || /insufficient|balance|credit|quota/i.test(bruto)) {
+  const semSaldo = await conferirResposta("heygen", { status: r.status, corpo: bruto }, `gêmeo digital na HeyGen (${acao})`);
+  if (semSaldo || r.status === 402 || /insufficient|balance|credit|quota/i.test(bruto)) {
     return new ErroDoFornecedor("heygen", "sem-saldo", r.status, `HeyGen sem saldo para ${acao}`);
   }
   if (r.status === 401 || r.status === 403) return new ErroDoFornecedor("heygen", "sem-permissao", r.status, `HeyGen recusou a chave ao ${acao} (${r.status})`);

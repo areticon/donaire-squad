@@ -1,4 +1,5 @@
 import { gravarCustoDeImagem, precoDaImagem, type ContextoMidia } from "@/lib/media/usage";
+import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import {
   FICHAS,
   RecuoParaOGoogle,
@@ -136,6 +137,7 @@ async function tryImagen3ViaApiKey(prompt: string, aspectRatio: AspectRatio, api
 
       if (!res.ok) {
         const errText = await res.text();
+        await conferirResposta("google", { status: res.status, corpo: errText }, "imagem pelo Imagen");
         if (res.status === 404) {
           console.warn(`[Imagen3 API][${model}] 404 — modelo não disponível, tentando próximo`);
           continue;
@@ -220,6 +222,7 @@ async function tryGeminiFlashImage(
       );
 
       if (!res.ok) {
+        if (res.status === 429 || res.status === 403) await conferirResposta("google", { status: res.status, corpo: await res.text().catch(() => "") }, "imagem pelo Gemini");
         if (res.status === 404) { console.warn(`[Gemini Flash Image][${model}] 404 — pulando`); continue; }
         if (res.status === 429) { console.warn(`[Gemini Flash Image][${model}] 429 — quota`); return null; }
         console.warn(`[Gemini Flash Image][${model}] HTTP ${res.status}`);
@@ -279,6 +282,7 @@ async function tryVertexImagen3(prompt: string, aspectRatio: AspectRatio, ctx?: 
 
         if (!res.ok) {
           const errText = await res.text();
+          await conferirResposta("google", { status: res.status, corpo: errText }, "imagem pelo Vertex Imagen");
           if (res.status === 404) { console.warn(`[Vertex Imagen][${model}] 404`); continue; }
           if (res.status === 403) { console.warn(`[Vertex Imagen][${model}] 403 — permissão negada`); return null; }
           if (res.status === 429) { console.warn(`[Vertex Imagen][${model}] 429 — quota`); return null; }
@@ -644,6 +648,7 @@ export async function comporNoGoogle(
       );
 
       if (!res.ok) {
+        if (res.status === 429 || res.status === 403) await conferirResposta("google", { status: res.status, corpo: await res.text().catch(() => "") }, "composição de arte pelo Gemini");
         if (res.status === 404 || res.status === 429) continue;
         console.warn(`[comporSobreImagem][${model}] HTTP ${res.status}`);
         continue;

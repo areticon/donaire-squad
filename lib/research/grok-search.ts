@@ -1,3 +1,5 @@
+import { conferirResposta, marcarChamadaOk } from "@/lib/fornecedores/aviso-de-saldo";
+
 /**
  * Grok Live Search Module (xAI)
  *
@@ -60,8 +62,10 @@ export async function searchGrok(
 
   if (!res.ok) {
     const err = await res.text();
+    await conferirResposta("xai", { status: res.status, corpo: err }, "busca de tendências pelo Grok");
     throw new Error(`Grok Search failed (${res.status}): ${err.slice(0, 300)}`);
   }
+  marcarChamadaOk("xai");
 
   const data = (await res.json()) as XAIResponse;
 
