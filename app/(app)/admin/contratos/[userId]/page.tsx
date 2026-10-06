@@ -273,7 +273,7 @@ export default async function FichaDeContratoPage({ params }: { params: Promise<
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
                     <span className="h-2 w-2 rounded-full" style={{ background: COR_DO_STATUS_DO_CONTRATO[c.situacao] }} />
                     {NOME_DO_STATUS_DO_CONTRATO[c.situacao]}
-                    {c.provedorSituacao === "aguardando_provedor" ? " · aguardando provedor" : c.provedorSituacao ? ` · ${c.provedor ?? "provedor"}: ${c.provedorSituacao}` : ""}
+                    {c.provedorSituacao === "aguardando_provedor" ? " · aguardando provedor" : c.provedorSituacao === "aguardando_demandou" ? " · cliente assinou, falta a Demandou" : c.provedorSituacao ? ` · ${c.provedor ?? "provedor"}: ${c.provedorSituacao}` : ""}
                   </span>
                 </div>
                 {c.precoTabelaCentavos ? (

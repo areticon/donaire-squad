@@ -1,6 +1,6 @@
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db/prisma";
-import { provedorDeAssinatura, FalhaDoProvedor } from "@/lib/contratos/assinatura";
+import { provedorDeAssinatura, signatariosDoDocumento, FalhaDoProvedor } from "@/lib/contratos/assinatura";
 import {
   RecusaDoContrato,
   aprovadorDoDesconto,
@@ -189,7 +189,8 @@ export async function enviarAditivo(admin: Autor, aditivoId: string) {
       titulo: `Aditivo nº ${a.ordem} ao contrato Demandou nº ${String(c.numero).padStart(4, "0")}, ${c.empresa ?? c.user.name ?? c.user.email}`,
       markdown: t.texto,
       externoId: a.id,
-      signatarios: [{ nome: c.signatarioNome, email: c.signatarioEmail }],
+      // O aditivo segue o contrato (05/10): a Demandou assina depois do cliente, quando configurada.
+      signatarios: signatariosDoDocumento({ nome: c.signatarioNome, email: c.signatarioEmail }),
     });
     await prisma.aditivoDoContrato.update({
       where: { id: a.id },

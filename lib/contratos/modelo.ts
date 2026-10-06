@@ -153,9 +153,40 @@ export function textoDaProposta(d: { plano: string; acessosExtras: number; propo
   ].join("\n");
 }
 
-export function lerModelo(): string {
-  return readFileSync(ARQUIVO, "utf8");
+/**
+ * AS ANOTAÇÕES DE REVISÃO (05/10): o modelo em Documents traz notas entre
+ * colchetes para quem revisa ("[CONFIRMAR razão social...]", "[CONFIRMAR o
+ * nome do encarregado.]"). O Bruno viu o contrato nº 1 na ZapSign com elas e
+ * reclamou, com razão: nota de revisão não vai para o cliente. Saem daqui
+ * todas as notas que começam com um verbo de revisão em maiúsculas; os
+ * marcadores "[PREENCHER]" do quadro são tratados em montarTexto.
+ */
+export function limparAnotacoes(md: string): string {
+  return md
+    .replace(/[ \t]*\[(?:CONFIRMAR|REVISAR|VERIFICAR|CHECAR|AJUSTAR|NOTA)\b[^\]]*\]/g, "")
+    .replace(/[ \t]+$/gm, "");
 }
+
+export function lerModelo(): string {
+  return limparAnotacoes(readFileSync(ARQUIVO, "utf8"));
+}
+
+/** Os dados do cliente que o contrato não sai sem (05/10): o quadro do preâmbulo nunca vai com "[PREENCHER]". */
+export const CAMPOS_OBRIGATORIOS: Array<[keyof Pick<DadosDoContrato, "empresa" | "documento" | "endereco" | "representante" | "email">, string]> = [
+  ["empresa", "razão social ou nome completo"],
+  ["documento", "CNPJ ou CPF"],
+  ["endereco", "endereço"],
+  ["representante", "representante legal"],
+  ["email", "e-mail para comunicações contratuais"],
+];
+
+/** Os nomes, por extenso, do que ainda falta preencher no contrato. Vazio quando está completo. */
+export function camposQueFaltam(d: Pick<DadosDoContrato, "empresa" | "documento" | "endereco" | "representante" | "email">): string[] {
+  return CAMPOS_OBRIGATORIOS.filter(([campo]) => !String(d[campo] ?? "").trim()).map(([, nome]) => nome);
+}
+
+/** O que aparece no lugar de um dado que falta, só na prévia do rascunho: o envio é barrado antes. */
+const NAO_INFORMADO = "não informado";
 
 /** A versão do modelo: a linha "Versão x, de ..." do topo, ou "sem versão". */
 export function versaoDoModelo(md: string): string {
@@ -175,11 +206,11 @@ const dataBR = (d: Date | null) => (d ? d.toLocaleDateString("pt-BR", { timeZone
  */
 export function montarTexto(d: DadosDoContrato, md = lerModelo()): { texto: string; hash: string; versao: string; minuta: boolean } {
   const valores: Array<[RegExp, string]> = [
-    [/Raz[aã]o social ou nome completo/i, d.empresa ?? "[PREENCHER]"],
-    [/CNPJ ou CPF/i, d.documento ?? "[PREENCHER]"],
-    [/^Endere[cç]o$/i, d.endereco ?? "[PREENCHER]"],
-    [/Representante legal/i, d.representante ?? "[PREENCHER]"],
-    [/E-mail para comunica/i, d.email ?? "[PREENCHER]"],
+    [/Raz[aã]o social ou nome completo/i, d.empresa?.trim() || NAO_INFORMADO],
+    [/CNPJ ou CPF/i, d.documento?.trim() || NAO_INFORMADO],
+    [/^Endere[cç]o$/i, d.endereco?.trim() || NAO_INFORMADO],
+    [/Representante legal/i, d.representante?.trim() || NAO_INFORMADO],
+    [/E-mail para comunica/i, d.email?.trim() || NAO_INFORMADO],
     [/Plano contratado/i, d.plano],
     // Sem data combinada, vale a cláusula 5.1: os 12 meses contam da
     // confirmação do pagamento (04/10, contrato de prospect).
@@ -271,7 +302,7 @@ export function montarAditivo(d: DadosDoAditivo): { texto: string; hash: string;
     "",
     "**DEMANDOU TECNOLOGIA DA INFORMACAO LTDA**, CNPJ 66.140.770/0001-48, doravante \"Demandou\", e",
     "",
-    `**${d.empresa ?? "[PREENCHER]"}**, ${d.documento ? `CNPJ ou CPF ${d.documento}` : "CNPJ ou CPF [PREENCHER]"}, representado por ${d.representante ?? "[PREENCHER]"} (${d.email ?? "[PREENCHER]"}), doravante \"Cliente\",`,
+    `**${d.empresa ?? NAO_INFORMADO}**, CNPJ ou CPF ${d.documento ?? NAO_INFORMADO}, representado por ${d.representante ?? NAO_INFORMADO} (${d.email ?? NAO_INFORMADO}), doravante \"Cliente\",`,
     "",
     `ajustam este aditivo ao Contrato Demandou nº ${n}${d.assinadoEm ? `, assinado em ${dataBR(d.assinadoEm)}` : ""}, formado pelas Condições Gerais de Contratação e pela Proposta Comercial.`,
     "",

@@ -1,11 +1,13 @@
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db/prisma";
-import { provedorDeAssinatura, FalhaDoProvedor } from "@/lib/contratos/assinatura";
-import { montarTexto } from "@/lib/contratos/modelo";
+import { provedorDeAssinatura, signatariosDoDocumento, FalhaDoProvedor } from "@/lib/contratos/assinatura";
+import { camposQueFaltam, montarTexto } from "@/lib/contratos/modelo";
+import type { CapaDoContrato } from "@/lib/contratos/html";
+import { guardarPdfEnviado, pdfDoContrato } from "@/lib/contratos/pdf";
 import { centavosEmReais, fimDaVigencia, situacaoDoContrato } from "@/lib/contratos/situacao";
 import { midiaPrivada } from "@/lib/media/storage";
 import { PLANOS_PUBLICOS } from "@/lib/planos";
-import { CONDICAO_PARCELADA, calcularParcelamento, ehParcelado, ajustarDiaDaCobranca, ehFormaDaEntrada, ehFormaDoRestante, formasDoContrato, restanteDoContrato, FORMAS_DA_ENTRADA, FORMAS_DO_RESTANTE } from "@/lib/contratos/condicao";
+import { CONDICAO_PARCELADA, calcularParcelamento, condicaoPorExtenso, ehParcelado, ajustarDiaDaCobranca, ehFormaDaEntrada, ehFormaDoRestante, formasDoContrato, restanteDoContrato, FORMAS_DA_ENTRADA, FORMAS_DO_RESTANTE } from "@/lib/contratos/condicao";
 import { chavePix, linksDoContrato, parcelamentoDoEmissorDisponivel } from "@/lib/contratos/links-de-pagamento";
 import {
   APROVADORES_PADRAO,
@@ -359,8 +361,10 @@ export async function criarContrato(admin: Autor, n: NovoContrato) {
   return c;
 }
 
-export function textoDoContrato(c: {
+/** O que o texto e o PDF do contrato precisam saber dele. */
+export type ContratoParaTexto = {
   id?: string;
+  versao?: number;
   condicaoDePagamento?: string | null;
   entradaCentavos?: number | null;
   formaDaEntrada?: string | null;
@@ -382,7 +386,9 @@ export function textoDoContrato(c: {
   descontoCentavos?: number;
   descontoMotivo?: string | null;
   fundador?: boolean;
-}) {
+};
+
+export function textoDoContrato(c: ContratoParaTexto) {
   const tabela = c.precoTabelaCentavos ? precoDeTabela(c.plano, c.acessosExtras ?? 0) : null;
   return montarTexto({
     numero: c.numero,
@@ -427,16 +433,72 @@ export function textoDoContrato(c: {
   });
 }
 
+/** Os dados do cliente como o modelo os vê, para saber o que falta. */
+export function dadosDoCliente(c: ContratoParaTexto) {
+  return { empresa: c.empresa, documento: c.signatarioDocumento, endereco: c.endereco ?? null, representante: c.signatarioNome, email: c.signatarioEmail };
+}
+
+/**
+ * A CAPA DO PDF (05/10): o que vai na primeira página e no rodapé. A condição
+ * de pagamento por extenso é a mesma do texto (lib/contratos/condicao.ts).
+ */
+export function capaDoContrato(c: ContratoParaTexto, t: { hash: string; versao: string }, teste = false): CapaDoContrato {
+  const parcelado = ehParcelado(c) && c.entradaCentavos && c.parcelas && c.parcelaCentavos;
+  return {
+    numero: c.numero,
+    versao: c.versao ?? 1,
+    versaoDoModelo: t.versao,
+    hash: t.hash,
+    ...dadosDoCliente(c),
+    plano: nomeDoPlano(c.plano),
+    valorCentavos: c.valorCentavos,
+    inicioVigencia: c.inicioVigencia,
+    acessosExtras: c.acessosExtras ?? 0,
+    condicao: parcelado
+      ? condicaoPorExtenso({
+          entradaCentavos: c.entradaCentavos as number,
+          restanteCentavos: restanteDoContrato({ valorCentavos: c.valorCentavos, entradaCentavos: c.entradaCentavos as number }),
+          parcelas: c.parcelas as number,
+          parcelaCentavos: c.parcelaCentavos as number,
+          primeiraParcelaEm: c.primeiraParcelaEm ?? null,
+          ...formasDoContrato(c),
+        })
+      : null,
+    teste,
+  };
+}
+
+/**
+ * O CONTRATO PRONTO PARA SAIR (05/10): o texto, o hash e, quando o worker
+ * imprime, o PDF diagramado. Serve ao envio e ao "Ver o texto" do admin, que
+ * mostram exatamente o mesmo documento.
+ */
+export async function documentoDoContrato(c: ContratoParaTexto, opcoes: { teste?: boolean } = {}) {
+  const t = textoDoContrato(c);
+  const capa = capaDoContrato(c, t, opcoes.teste);
+  const pdf = await pdfDoContrato(capa, t.texto);
+  return { ...t, capa, pdf };
+}
+
 /**
  * ENVIAR PARA ASSINAR. Sem provedor ligado, o contrato fica "aguardando
- * provedor" (e nada quebra); com provedor, vai o texto montado, o hash dele
- * fica gravado e o signatário recebe o e-mail do provedor.
+ * provedor" (e nada quebra); com provedor, vai o PDF da Demandou (ou o texto
+ * em Markdown, se o worker não imprimir), o hash do texto fica gravado e os
+ * signatários recebem o e-mail do provedor.
  */
 export async function enviarParaAssinar(admin: Autor, id: string) {
   const c = await prisma.contrato.findUnique({ where: { id }, include: { user: { select: { email: true, name: true } } } });
   if (!c) throw new RecusaDoContrato("Contrato não encontrado.", 404);
   if (c.status !== "rascunho" && c.status !== "enviado") throw new RecusaDoContrato("Só rascunho ou contrato enviado podem ser (re)enviados.");
   if (!c.signatarioEmail || !c.signatarioNome) throw new RecusaDoContrato("Preencha o nome e o e-mail de quem assina.");
+  // O QUADRO DO CLIENTE NUNCA SAI INCOMPLETO (05/10): sem razão social, CNPJ
+  // ou CPF, endereço, representante e e-mail, o envio é barrado com a lista,
+  // como o desconto sem aprovação. Antes, ia "[PREENCHER]" para o cliente.
+  const faltam = camposQueFaltam(dadosDoCliente(c));
+  if (faltam.length) {
+    await registrar(id, admin, "envio_barrado_dados", { faltam });
+    throw new RecusaDoContrato(`Faltam dados do cliente no contrato: ${faltam.join(", ")}. Edite (versão nova) e preencha antes de enviar.`, 409);
+  }
   // O TETO DO DESCONTO (04/10): acima do teto livre, só sai com a aprovação de um sócio na trilha.
   if (esperaAprovacao(c)) {
     const pct = porcentagem((c.descontoCentavos / (c.precoTabelaCentavos ?? 1)) * 100);
@@ -458,12 +520,18 @@ export async function enviarParaAssinar(admin: Autor, id: string) {
     await registrar(id, admin, "envio_barrado_minuta", { versao: t.versao });
     throw new RecusaDoContrato("O modelo ainda é a minuta para revisão jurídica. Troque o texto revisado antes de enviar para assinatura de verdade.");
   }
+  // O PDF DA DEMANDOU (05/10): impresso pelo worker; sem ele, vai o Markdown.
+  const pdf = await pdfDoContrato(capaDoContrato(c, t, provedor.ambiente === "teste"), t.texto);
+  const pdfUrl = pdf ? await guardarPdfEnviado(id, c.versao, t.hash, pdf) : null;
+  // O cliente primeiro; a Demandou, quando configurada, assina depois.
+  const signatarios = signatariosDoDocumento({ nome: c.signatarioNome, email: c.signatarioEmail });
   try {
     const r = await provedor.enviar({
       titulo: `Contrato Demandou nº ${String(c.numero).padStart(4, "0")}, ${c.empresa ?? c.user.name ?? c.user.email}`,
       markdown: t.texto,
+      pdf,
       externoId: c.id,
-      signatarios: [{ nome: c.signatarioNome, email: c.signatarioEmail }],
+      signatarios,
     });
     await prisma.contrato.update({
       where: { id },
@@ -477,7 +545,17 @@ export async function enviarParaAssinar(admin: Autor, id: string) {
         textoHash: t.hash,
       },
     });
-    await registrar(id, admin, "enviado", { provedor: provedor.nome, ambiente: provedor.ambiente, documento: r.documentoId, versao: t.versao, hash: t.hash, para: c.signatarioEmail });
+    await registrar(id, admin, "enviado", {
+      provedor: provedor.nome,
+      ambiente: provedor.ambiente,
+      documento: r.documentoId,
+      versao: t.versao,
+      hash: t.hash,
+      para: c.signatarioEmail,
+      formato: pdf ? "pdf" : "markdown",
+      pdfUrl: pdfUrl ?? undefined,
+      signatarios: signatarios.map((s) => s.email),
+    });
     return { situacao: "enviado" as const, link: r.linkDeAssinatura };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -574,6 +652,15 @@ export async function sincronizarComProvedor(autor: Autor, id: string) {
   if (s.situacao === "recusado" && c.provedorSituacao !== "recusado") {
     await prisma.contrato.update({ where: { id }, data: { provedorSituacao: "recusado" } });
     await registrar(id, autor, "recusado_pelo_signatario", {});
+  }
+  // DOIS SIGNATÁRIOS (05/10): o cliente assinou e falta a Demandou. O contrato
+  // continua "enviado"; a trilha e o painel dizem de quem é a vez.
+  if (s.situacao === "enviado" && c.status === "enviado" && s.assinaturas && s.assinaturas.total > 1 && s.assinaturas.feitas > 0 && s.assinaturas.feitas < s.assinaturas.total) {
+    if (c.provedorSituacao !== "aguardando_demandou") {
+      await prisma.contrato.update({ where: { id }, data: { provedorSituacao: "aguardando_demandou" } });
+      await registrar(id, autor, "assinatura_parcial", { feitas: s.assinaturas.feitas, total: s.assinaturas.total, falta: "a assinatura da Demandou" });
+    }
+    return { status: c.status, provedor: "aguardando_demandou" as const };
   }
   return { status: c.status, provedor: s.situacao };
 }

@@ -16,6 +16,13 @@
  *   ZAPSIGN_AMBIENTE=sandbox | producao   (padrão: sandbox)
  *   ASSINATURA_WEBHOOK_SEGREDO=<texto longo qualquer, o mesmo cadastrado no webhook>
  *
+ * A ASSINATURA DA DEMANDOU (05/10), opcional: com as duas variáveis abaixo, o
+ * documento vai com dois signatários (o cliente primeiro, a Demandou depois)
+ * e só vira "assinado" quando os dois assinarem.
+ *
+ *   CONTRATOS_ASSINANTE_NOME=<quem assina pela Demandou>
+ *   CONTRATOS_ASSINANTE_EMAIL=<e-mail dessa pessoa>
+ *
  * Só servidor: usa o token.
  */
 
@@ -24,10 +31,18 @@ export type Signatario = { nome: string; email: string };
 export type EnvioParaAssinar = {
   /** Nome do documento no provedor. */
   titulo: string;
-  /** O texto do contrato em Markdown. */
+  /** O texto do contrato em Markdown: o que vai quando não há PDF, e a reserva se o PDF falhar. */
   markdown: string;
+  /**
+   * O PDF DA DEMANDOU (05/10): o contrato diagramado por nós (capa com a
+   * logomarca, tabelas de verdade, rodapé com página N de M), gerado em
+   * lib/contratos/pdf.ts. Com ele, o provedor recebe o arquivo pronto e não
+   * desenha nada a partir do Markdown.
+   */
+  pdf?: Buffer | null;
   /** O id do contrato aqui, para o webhook achar de volta. */
   externoId: string;
+  /** Na ordem de assinar: o cliente primeiro; a Demandou, quando configurada, depois. */
   signatarios: Signatario[];
 };
 
@@ -38,11 +53,42 @@ export type ResultadoDoEnvio = {
 };
 
 export type SituacaoNoProvedor = {
+  /** "assinado" só quando TODOS os signatários assinaram (05/10). */
   situacao: "enviado" | "assinado" | "recusado";
   /** URL temporária do PDF assinado (a da ZapSign expira em 60 minutos). */
   pdfAssinadoUrl: string | null;
   assinadoEm: Date | null;
+  /** Quantos já assinaram, de quantos. Para a trilha dizer "falta a Demandou". */
+  assinaturas?: { feitas: number; total: number };
 };
+
+/**
+ * A ASSINATURA DA DEMANDOU (05/10): o segundo signatário, opcional. Com
+ * CONTRATOS_ASSINANTE_NOME e CONTRATOS_ASSINANTE_EMAIL definidos, todo
+ * documento sai com dois signatários, o cliente primeiro e a Demandou depois,
+ * e só vira "assinado" quando os dois assinarem. Sem as variáveis, continua
+ * um só, como sempre foi.
+ */
+export function assinanteDaDemandou(): Signatario | null {
+  const nome = process.env.CONTRATOS_ASSINANTE_NOME?.trim();
+  const email = process.env.CONTRATOS_ASSINANTE_EMAIL?.trim().toLowerCase();
+  if (!nome || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return { nome, email };
+}
+
+/** Os signatários de um documento: o cliente e, quando configurada, a Demandou. */
+export function signatariosDoDocumento(cliente: Signatario): Signatario[] {
+  const demandou = assinanteDaDemandou();
+  // A mesma pessoa dos dois lados (teste com o próprio e-mail) assina uma vez só.
+  if (!demandou || demandou.email === cliente.email.trim().toLowerCase()) return [cliente];
+  return [cliente, demandou];
+}
+
+/** A marca na tela de assinatura da ZapSign: a logomarca pública e o laranja da Demandou. */
+function marcaDaDemandou() {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
+  return { brand_name: "Demandou", brand_primary_color: "#ef6122", brand_logo: `${base}/logo.png` };
+}
 
 export interface ProvedorDeAssinatura {
   nome: string;
@@ -87,26 +133,39 @@ function zapsign(): ProvedorDeAssinatura | null {
     signers?: Array<{ sign_url?: string; status?: string; signed_at?: string | null }>;
   };
 
+  // A API responde em inglês ("signed") e a documentação dos SDKs em
+  // português ("assinado"); aceitar os dois custa nada e evita um contrato
+  // que nunca vira assinado por causa de uma palavra.
+  const docAssinado = (s: string) => s === "signed" || s === "assinado";
+  const docRecusado = (s: string) => s === "refused" || s === "recusado";
+  const signatarioAssinou = (s: { status?: string; signed_at?: string | null }) => Boolean(s.signed_at) || s.status === "signed" || s.status === "assinou";
+
   return {
     nome: "zapsign",
     ambiente: producao ? "producao" : "teste",
     async enviar(e) {
+      const ordenado = e.signatarios.length > 1;
       const doc = await pedir<Doc>("/docs/", {
         method: "POST",
         body: JSON.stringify({
           name: e.titulo.slice(0, 250),
-          markdown_text: e.markdown,
+          // O PDF da Demandou (05/10) quando existe; o Markdown é a reserva.
+          ...(e.pdf ? { base64_pdf: e.pdf.toString("base64") } : { markdown_text: e.markdown }),
           lang: "pt-br",
           external_id: e.externoId,
+          ...marcaDaDemandou(),
           // Recusar com motivo é melhor que o silêncio: o motivo vem no webhook.
           allow_refuse_signature: true,
-          signers: e.signatarios.map((s) => ({
+          // Dois signatários assinam em ordem: o cliente primeiro, a Demandou depois.
+          signature_order_active: ordenado,
+          signers: e.signatarios.map((s, i) => ({
             name: s.nome,
             email: s.email,
             // Assinatura na tela com código por e-mail: sem custo e com uma
             // segunda prova de identidade (o e-mail é de quem assina).
             auth_mode: "assinaturaTela-tokenEmail",
             send_automatic_email: true,
+            ...(ordenado ? { order_group: i } : {}),
           })),
         }),
       });
@@ -114,13 +173,18 @@ function zapsign(): ProvedorDeAssinatura | null {
     },
     async consultar(documentoId) {
       const doc = await pedir<Doc>(`/docs/${encodeURIComponent(documentoId)}/`);
-      const assinado = doc.status === "signed";
-      const recusado = doc.status === "refused";
-      const ultima = doc.signers?.map((s) => s.signed_at).filter(Boolean).sort().at(-1) ?? null;
+      const signers = doc.signers ?? [];
+      const feitas = signers.filter(signatarioAssinou).length;
+      // O documento só é "assinado" quando o provedor fecha E todos assinaram (05/10):
+      // com a Demandou como segunda signatária, a assinatura do cliente sozinha não basta.
+      const assinado = docAssinado(doc.status) && (signers.length === 0 || feitas === signers.length);
+      const recusado = docRecusado(doc.status);
+      const ultima = signers.map((s) => s.signed_at).filter(Boolean).sort().at(-1) ?? null;
       return {
         situacao: assinado ? "assinado" : recusado ? "recusado" : "enviado",
         pdfAssinadoUrl: assinado ? (doc.signed_file ?? null) : null,
         assinadoEm: assinado ? new Date(ultima ?? doc.last_update_at ?? Date.now()) : null,
+        assinaturas: { feitas, total: signers.length },
       };
     },
     async cancelar(documentoId) {

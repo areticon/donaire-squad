@@ -36,6 +36,7 @@ import {
 } from "./ffmpeg.mjs";
 import { gerarMatte, acharCaixaDaPessoa, quadroDaCapa, instantesEspalhados } from "./segmentacao.mjs";
 import { guardarFala } from "./guarda-da-fala.mjs";
+import { imprimirHtml } from "./contrato-pdf.mjs";
 import { esperarMemoria, memoriaLivreMb } from "./memoria.mjs";
 import { CAPACIDADE, comFatia, resumoDaCapacidade } from "./capacidade.mjs";
 
@@ -1612,6 +1613,37 @@ const servidor = createServer((req, res) => {
   // ar e recebe o próximo pedido.
   if (desligando && req.method === "POST") {
     return responder(503, { error: "Worker reiniciando; tente de novo em instantes." });
+  }
+
+  // /contrato-pdf (05/10): imprime a página HTML do contrato com o Chrome do
+  // Remotion e responde o PDF na hora (segundos). Assinada como o resto; o
+  // corpo é {html, cabecalho, rodape}. Não entra na fila dos vídeos: é leve e
+  // o app espera a resposta para mandar o PDF ao provedor de assinatura.
+  if (req.method === "POST" && req.url?.startsWith("/contrato-pdf")) {
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (typeof pedido.html !== "string" || !pedido.html.trim()) return responder(400, { error: "Falta o html" });
+      try {
+        const pdf = await imprimirHtml({ html: pedido.html, cabecalho: pedido.cabecalho, rodape: pedido.rodape });
+        res.writeHead(200, { "Content-Type": "application/pdf", "Content-Length": pdf.length });
+        res.end(pdf);
+      } catch (e) {
+        console.error("[contrato-pdf] falhou:", e);
+        responder(500, { error: e instanceof Error ? e.message : "falhou" });
+      }
+    });
+    return;
   }
 
   const ehAudio = req.method === "POST" && req.url?.startsWith("/audio");

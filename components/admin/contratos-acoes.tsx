@@ -140,25 +140,26 @@ export function NovoContrato({ contas, contaInicial, emissorDisponivel = false }
           entrada.
         </p>
       )}
+      {/* OS DADOS DO QUADRO DO CLIENTE SÃO OBRIGATÓRIOS (05/10): o contrato nunca sai com "[PREENCHER]". */}
       <label className={rotulo} style={corDoRotulo}>
-        Nome de quem assina
-        <input name="nome" required={modo === "prospect"} autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
+        Representante legal (nome de quem assina)
+        <input name="nome" required autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <label className={rotulo} style={corDoRotulo}>
         E-mail de quem assina{modo === "prospect" ? " (vira o login)" : ""}
-        <input name="email" type="email" required={modo === "prospect"} autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
+        <input name="email" type="email" required autoComplete="off" className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <label className={rotulo} style={corDoRotulo}>
-        Empresa (razão social)
-        <input name="empresa" className={`${campo} mt-1`} style={estiloCampo} />
+        Razão social ou nome completo
+        <input name="empresa" required className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <label className={rotulo} style={corDoRotulo}>
         CNPJ ou CPF
-        <input name="documento" required={modo === "prospect"} className={`${campo} mt-1`} style={estiloCampo} />
+        <input name="documento" required className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <label className={`sm:col-span-2 ${rotulo}`} style={corDoRotulo}>
-        Endereço
-        <input name="endereco" className={`${campo} mt-1`} style={estiloCampo} />
+        Endereço completo (rua, número, bairro, cidade/UF, CEP)
+        <input name="endereco" required className={`${campo} mt-1`} style={estiloCampo} />
       </label>
       <CamposDoPreco valor={preco} mudar={setPreco} />
       <CamposDaCondicao valor={condicao} mudar={setCondicao} totalCentavos={contaDoPreco(preco).finalCentavos} emissorDisponivel={emissorDisponivel} />
