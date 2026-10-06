@@ -52,7 +52,7 @@ export function painelDeExemplo(dias: Periodo, agora = new Date()) {
     dinheiro: {
       baldes: eixo.baldes,
       series: [
-        { chave: "receita", nome: "Receita proporcional", cor: "var(--painel-1)", valores: eixo.diasPorBalde.map((d) => (mrr / 30) * d) },
+        { chave: "receita", nome: "Receita real (exemplo)", cor: "var(--painel-1)", valores: eixo.diasPorBalde.map((d) => (mrr / 30) * d) },
         { chave: "custo", nome: "Custo de IA", cor: "var(--painel-2)", valores: custo },
       ],
     },
@@ -119,6 +119,7 @@ export function painelDeExemplo(dias: Periodo, agora = new Date()) {
     plano,
     planoNome,
     papel: "user",
+    interna: false,
     mensalidade,
     creditos: 400 + i * 120,
     creditosDeVideo: 200 * (i % 3),

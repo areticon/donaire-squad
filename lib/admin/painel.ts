@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { planoPublico, type PlanoId } from "@/lib/planos";
 import { contaPareceRobo } from "@/lib/anti-robo/regras";
+import { emailPareceInterno } from "@/lib/admin/tipos-do-uso-de-ia";
 
 /**
  * O PAINEL DE ADMIN, e por que ele deixou de ser opcional.
@@ -33,7 +34,12 @@ export type LinhaDoPainel = {
   plano: string;
   planoNome: string;
   papel: string;
-  /** Mensalidade do plano, em reais. 0 para quem não tem plano. */
+  /**
+   * Conta da EQUIPE (05/10): admin, `contaInterna`, @demandou.com ou o Gmail
+   * do Bruno. Gera custo, nunca receita, e fica fora de pagante e de margem.
+   */
+  interna: boolean;
+  /** Mensalidade do plano, em reais. 0 para quem não tem plano. É TABELA, não caixa. */
   mensalidade: number;
   creditos: number;
   creditosDeVideo: number;
@@ -58,8 +64,12 @@ export type LinhaDoPainel = {
 export type ResumoDoPainel = {
   usuarios: number;
   ativos: number;
+  /** Contas fora da equipe com plano em vigor. NÃO é pagante: quem pagou de verdade mora em lib/admin/receita-real.ts. */
   pagantes: number;
-  /** Receita recorrente mensal somada, em reais. */
+  /**
+   * Mensalidade de tabela somada das contas fora da equipe com plano, em
+   * reais. É PROJEÇÃO (05/10): a tela só pode mostrar isto com esse rótulo.
+   */
   mrr: number;
   /** Custo de IA na janela, em reais. */
   custoIaReais: number;
@@ -164,11 +174,13 @@ export async function lerPainel(
       createdAt: true,
       emailVerified: true,
       roboEm: true,
+      contaInterna: true,
       projects: { select: { id: true } },
     },
   });
   const robo = (u: (typeof users)[number]) =>
     pareceRobo({ email: u.email, name: u.name, emailVerified: u.emailVerified, projetos: u.projects.length, roboEm: u.roboEm });
+  const interna = (u: { email: string; role: string; contaInterna: boolean }) => u.role === "admin" || u.contaInterna || emailPareceInterno(u.email);
 
   const projetoDoDono = new Map<string, string>();
   for (const u of users) for (const p of u.projects) projetoDoDono.set(p.id, u.id);
@@ -233,6 +245,7 @@ export async function lerPainel(
       plano: u.plan,
       planoNome: u.plan === "free" ? "Sem plano" : (planoPublico(u.plan as PlanoId)?.nome ?? u.plan),
       papel: u.role,
+      interna: interna(u),
       mensalidade,
       creditos: u.creditsBalance,
       creditosDeVideo: u.videoCredits,
@@ -258,18 +271,20 @@ export async function lerPainel(
     select: { model: true },
   });
 
-  const pagantes = linhas.filter((l) => l.mensalidade > 0 && l.papel !== "admin");
+  // Conta da equipe nunca entra aqui (05/10): até então o Gmail do Bruno,
+  // com plano Pro e papel "user", somava R$ 3.997 de "receita" por mês.
+  const comPlano = linhas.filter((l) => l.mensalidade > 0 && !l.interna);
   const resumo: ResumoDoPainel = {
     usuarios: linhas.length,
     ativos: linhas.filter((l) => l.ativo).length,
-    pagantes: pagantes.length,
-    mrr: pagantes.reduce((s, l) => s + l.mensalidade, 0),
+    pagantes: comPlano.length,
+    mrr: comPlano.reduce((s, l) => s + l.mensalidade, 0),
     custoIaReais: linhas.reduce((s, l) => s + l.custoIaReais, 0),
     armazenamentoGb: linhas.reduce((s, l) => s + l.armazenamentoGb, 0),
     videosHoje: usosDeHoje.filter((u) => /veo/i.test(u.model ?? "")).length,
     janelaDias: dias,
     suspeitas: users.filter(robo).length,
-    confirmadas: users.filter((u) => u.emailVerified && u.role !== "admin" && !robo(u)).length,
+    confirmadas: users.filter((u) => u.emailVerified && !interna(u) && !robo(u)).length,
     semConfirmar: users.filter((u) => !u.emailVerified && !robo(u)).length,
   };
 

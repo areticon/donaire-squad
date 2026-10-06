@@ -324,6 +324,7 @@ export function grupoDaCobranca(operation: string): GrupoDeCobranca | null {
     case "campanha":
     case "post_text":
     case "post_image":
+    case "arte_apos_identidade":
     case "refazer_peca":
     case "levar_para_outra_rede":
     case "reescrever_campo":
@@ -374,8 +375,10 @@ export type LinhaDeConta = {
   custoDesenhadoReais: number;
   /** Custo real por crédito cobrado, em reais. Null sem crédito cobrado. */
   custoPorCredito: number | null;
-  /** Receita do plano ou do contrato no período, proporcional aos dias. */
+  /** Receita REAL no período: pagamento confirmado (Stripe pago, ou por fora com comprovante). */
   receitaReais: number;
+  /** PROJEÇÃO: a mensalidade do plano ou do contrato, proporcional aos dias. Não é caixa. */
+  receitaProjetadaReais: number;
   margemReais: number;
   /** Margem sobre a receita, de 0 a 1. Null sem receita. */
   margemPct: number | null;
@@ -397,6 +400,33 @@ export type LinhaDePlano = {
   alerta: string | null;
 };
 
+/**
+ * OS CRÉDITOS POR CONTA E PROJETO (05/10, à noite): o que cada projeto
+ * consumiu nas duas carteiras, lado a lado com o custo real de IA do mesmo
+ * projeto no mesmo período, e o custo por crédito contra a régua.
+ */
+export type LinhaDeProjeto = {
+  projectId: string | null;
+  projeto: string;
+  contaId: string | null;
+  email: string;
+  nome: string | null;
+  categoria: Categoria;
+  /** Créditos consumidos na carteira do plano, líquidos de estorno. */
+  creditosPlano: number;
+  /** Créditos consumidos na carteira de vídeo, líquidos de estorno. */
+  creditosVideo: number;
+  /** O que a conta da equipe teria pago (linhas a zero com "custaria N"). */
+  creditosQueCustariam: number;
+  /** Linhas de consumo no extrato. */
+  linhas: number;
+  chamadas: number;
+  custoUsd: number;
+  custoReais: number;
+  /** Custo real por crédito (consumido mais o que custaria). Null sem crédito. */
+  custoPorCredito: number | null;
+};
+
 export type CruzamentoPorGrupo = {
   grupo: GrupoDeCobranca;
   nome: string;
@@ -412,7 +442,8 @@ export type CruzamentoPorGrupo = {
 };
 
 export type DadosDoUsoDeIa = {
-  periodo: PeriodoDeIa;
+  /** O período pedido: um dos três nomeados, ou o número de dias do seletor do painel. */
+  periodo: PeriodoDeIa | number;
   rotuloDoPeriodo: string;
   dias: number;
   dolar: number;
@@ -429,9 +460,17 @@ export type DadosDoUsoDeIa = {
   orfao: { usd: number; n: number };
   porPlano: LinhaDePlano[];
   cruzamento: CruzamentoPorGrupo[];
+  porProjeto: LinhaDeProjeto[];
 };
 
 export const dolares = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "USD", maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
 export const pct = (n: number | null) => (n === null ? "sem base" : `${Math.round(n * 100)}%`);
+
+/** Reais com três casas, para o custo por crédito: "R$ 0,057", e não "R$ 0.057". */
+export const reaisPorCredito = (n: number) =>
+  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 3, maximumFractionDigits: 3 });
+
+/** O dólar do ambiente, escrito à brasileira: "5,40". */
+export const cotacao = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
