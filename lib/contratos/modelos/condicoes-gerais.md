@@ -2,7 +2,9 @@
 
 Licença de uso da plataforma Demandou, software de conteúdo com inteligência artificial
 
-Versão 1.2, de 04 de outubro de 2026
+Versão 1.3, de 06 de outubro de 2026
+
+[REVISAR COM ADVOGADO ANTES DE ASSINAR: a versão 1.3 acrescenta as cláusulas 1.1(p) a 1.1(r), 11.9 a 11.11, 13.2(d), 17.4 a 17.8 e o fornecedor TypeSafe no Anexo II, e muda as cláusulas 11.5, 11.7 e 13.9. Nenhuma delas passou por advogado. Esta anotação e as demais entre colchetes que começam com REVISAR saem sozinhas do texto que vai para o Cliente.]
 
 ## PREÂMBULO
 
@@ -44,6 +46,9 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 - (m) **Fornecedores**: as empresas de tecnologia que a Demandou usa para operar a Plataforma, listadas no Anexo II.
 - (n) **Proposta Comercial**: o documento ou a página de checkout que traz o Plano, o preço e eventuais condições específicas daquela contratação.
 - (o) **Benefícios Presenciais**: o Demanda Day e o Demanda Cast, descritos na cláusula 18.
+- (p) **Interações**: o que o Cliente e os seus Membros fazem na Plataforma além de enviar conteúdo, como pedidos, ajustes, aprovações, recusas, comentários no chat, chamados de suporte e pedidos de design. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+- (q) **Memória do Projeto**: o registro das Interações, das configurações, dos materiais, das campanhas, das pesquisas e dos resultados das publicações de cada projeto, que a Plataforma consulta para personalizar o Conteúdo Gerado daquele projeto (cláusula 11.9). [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+- (r) **Biblioteca de Design**: a galeria de modelos de vídeo e de imagem disponível a todos os clientes da Plataforma, com prévias, formada pelos modelos da Demandou e pelas descrições de visual registradas a partir dos pedidos de design dos clientes (cláusulas 17.4 a 17.8). [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
 
 ## 2. DOCUMENTOS DO CONTRATO E ACEITE
 
@@ -219,13 +224,25 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 
 **11.4. Propriedade do Conteúdo Gerado.** O Conteúdo do Cliente é do Cliente. O Conteúdo Gerado a partir dele também pertence ao Cliente, na medida em que a lei permitir proteção sobre ele. A Demandou transfere ao Cliente quaisquer direitos que possa ter sobre o Conteúdo Gerado e não reivindica propriedade sobre ele.
 
-**11.5. Licença à Demandou.** O Cliente concede à Demandou licença limitada, não exclusiva, gratuita e pelo prazo do contrato, apenas para armazenar, processar, transmitir aos Fornecedores e publicar nas Redes Conectadas, quando o Cliente mandar, o Conteúdo do Cliente e o Conteúdo Gerado, com a única finalidade de operar a Plataforma para o próprio Cliente.
+**11.5. Licença à Demandou.** O Cliente concede à Demandou licença limitada, não exclusiva, gratuita e pelo prazo do contrato, apenas para armazenar, processar, transmitir aos Fornecedores e publicar nas Redes Conectadas, quando o Cliente mandar, o Conteúdo do Cliente e o Conteúdo Gerado, com a única finalidade de operar a Plataforma para o próprio Cliente, ressalvados apenas os usos das cláusulas 11.10 e 17.4 a 17.8. [REVISAR COM ADVOGADO ANTES DE ASSINAR: ressalva nova da versão 1.3.]
 
 **11.6. Sem treino de modelos.** A Demandou não usa o Conteúdo do Cliente nem o Conteúdo Gerado para treinar modelos de inteligência artificial, próprios ou de terceiros, sem consentimento expresso e separado do Cliente. A Demandou contrata e configura os Fornecedores para que não usem esses dados para treinar modelos, sempre que o Fornecedor oferecer essa opção, e informa na Política de Privacidade qualquer Fornecedor que não a ofereça.
 
-**11.7.** A Demandou pode usar dados de uso agregados e anonimizados, como volume de operações, tempo de processamento e taxas de erro, para medir e melhorar a Plataforma, sem acesso ao conteúdo das peças.
+**11.7.** A Demandou pode usar dados de uso agregados, como volume de operações, tempo de processamento e taxas de erro, para medir e melhorar a Plataforma. O uso de trechos das Interações para melhorar a Plataforma segue a cláusula 11.10. Melhorar a Plataforma, nos termos dessas cláusulas, não é treinar modelo e não se confunde com a cláusula 11.6. [REVISAR COM ADVOGADO ANTES DE ASSINAR: redação nova da versão 1.3; a anterior dizia que a melhoria era feita sem acesso ao conteúdo das peças.]
 
 **11.8. Uso de marca e imagem pela Demandou.** A Demandou não usa o nome, a marca, a imagem, a voz ou o conteúdo do Cliente em sua própria divulgação sem autorização específica e por escrito, que o Cliente pode negar ou revogar sem qualquer efeito no contrato.
+
+**11.9. Memória do Projeto.** A Plataforma registra a Memória do Projeto para que cada novo roteiro, arte, edição ou campanha parta do que o Cliente aprovou e recusou antes. A Memória do Projeto é Conteúdo do Cliente: é exclusiva da conta do Cliente, nunca é mostrada a outro cliente e nunca é usada para gerar conteúdo para terceiros. O Cliente pode consultá-la, corrigir e apagar itens, na Plataforma quando o recurso estiver disponível ou pelo e-mail contato@demandou.com, e pode pedir cópia dela em formato legível. Ela é eliminada com o restante do Conteúdo do Cliente, na forma da cláusula 13.9. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+**11.10. Melhoria da Plataforma a partir das Interações.** O Cliente autoriza a Demandou a usar trechos das Interações, como comentários do chat, chamados de suporte, pedidos de design e padrões de aprovação e recusa, para corrigir erros, ajustar as instruções e os padrões da Plataforma e decidir o que desenvolver, em benefício de todos os clientes, observado o seguinte: [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+- (a) os trechos são classificados e agrupados por um modelo automático de decisão, e a equipe da Demandou os vê sem o nome da conta, sem e-mail e sem telefone; o vínculo com a conta é mantido apenas para responder ao Cliente e para atender pedidos de exclusão;
+- (b) nunca são usados para esse fim a marca, o logotipo, o rosto, a voz, o Gêmeo Digital, as gravações, as fotos e os materiais do Cliente, nem o Conteúdo Gerado;
+- (c) os trechos nunca são mostrados a outro cliente, vendidos, cedidos ou enviados a Fornecedor para treinar modelo, e a cláusula 11.6 continua valendo integralmente;
+- (d) os trechos são guardados por até 24 (vinte e quatro) meses da coleta ou até o fim do prazo da cláusula 13.9, o que vier primeiro; depois disso, restam apenas contagens sem texto, que não identificam o Cliente nem pessoa alguma;
+- (e) nada nesse uso gera efeito sobre a conta, o Plano, o preço ou o Conteúdo do Cliente.
+
+**11.11. Oposição.** O Cliente pode, a qualquer momento e sem justificar, pedir pelo e-mail contato@demandou.com que as suas Interações deixem de ser usadas na forma da cláusula 11.10, sem mudança de preço, de Plano ou de qualquer outra condição. A oposição não desliga a Memória do Projeto, que serve apenas ao próprio Cliente, e vale também para os Membros da conta. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
 
 ## 12. GÊMEO DIGITAL
 
@@ -252,6 +269,7 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 - (a) **A Demandou é controladora** dos dados de cadastro, de cobrança, de acesso e de uso da conta, tratados para executar o contrato e cumprir a lei, conforme a Política de Privacidade.
 - (b) **O Cliente é controlador e a Demandou é operadora** dos dados pessoais contidos no Conteúdo do Cliente e no Conteúdo Gerado, como pessoas que aparecem nas gravações, clientes do Cliente citados em posts e dados de Membros. A Demandou trata esses dados apenas conforme as instruções do Cliente, dadas pelo uso da Plataforma e por este contrato.
 - (c) **Gêmeo Digital**: o consentimento para o rosto e a voz é dado pela própria pessoa titular, diretamente à Demandou, na autorização gravada, e a Demandou atua como controladora desses dados, nos termos da cláusula 12 e da Política de Privacidade. O Cliente responde por garantir que a pessoa que grava a autorização é quem diz ser.
+- (d) **Melhoria da Plataforma e Biblioteca de Design**: nos usos das cláusulas 11.10 e 17.4 a 17.8, a Demandou trata os trechos das Interações e as descrições de visual para finalidade própria e atua como controladora desses dados, com base no legítimo interesse (art. 7º, IX, da LGPD), limitada aos cuidados daquelas cláusulas e ao direito de oposição da cláusula 11.11. Na Memória do Projeto (cláusula 11.9), a Demandou continua operadora, como na alínea (b). [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
 
 **13.3. Bases legais do Cliente.** Como controlador, o Cliente garante que tem base legal para enviar à Plataforma os dados pessoais do Conteúdo do Cliente e que informou os titulares quando necessário.
 
@@ -265,7 +283,7 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 
 **13.8. Direitos dos titulares.** A Demandou ajuda o Cliente a atender pedidos de titulares sobre dados do Conteúdo do Cliente. Pedidos que chegarem diretamente à Demandou sobre esses dados são encaminhados ao Cliente.
 
-**13.9. Eliminação ao fim do contrato.** Encerrado o contrato e passado o prazo de 30 (trinta) dias para o Cliente baixar o seu conteúdo (cláusula 9.11), a Demandou elimina o Conteúdo do Cliente, o Conteúdo Gerado e os tokens de acesso às Redes Conectadas em até 60 (sessenta) dias, inclusive nos Fornecedores sob o seu controle. Ficam guardados apenas os dados que a lei obriga a manter, como registros fiscais (5 anos) e registros de acesso à aplicação (6 meses, pelo Marco Civil da Internet, Lei nº 12.965/2014). Os dados do Gêmeo Digital são apagados imediatamente no encerramento.
+**13.9. Eliminação ao fim do contrato.** Encerrado o contrato e passado o prazo de 30 (trinta) dias para o Cliente baixar o seu conteúdo (cláusula 9.11), a Demandou elimina o Conteúdo do Cliente, o Conteúdo Gerado e os tokens de acesso às Redes Conectadas em até 60 (sessenta) dias, inclusive nos Fornecedores sob o seu controle. Ficam guardados apenas os dados que a lei obriga a manter, como registros fiscais (5 anos) e registros de acesso à aplicação (6 meses, pelo Marco Civil da Internet, Lei nº 12.965/2014). Os dados do Gêmeo Digital são apagados imediatamente no encerramento. A Memória do Projeto segue o prazo desta cláusula; os trechos de Interações seguem a cláusula 11.10(d); e as descrições de visual já incluídas na Biblioteca de Design permanecem nela, por não conterem dado do Cliente, salvo retirada na forma da cláusula 17.7. [REVISAR COM ADVOGADO ANTES DE ASSINAR: frase nova da versão 1.3.]
 
 **13.10. Encarregado.** O canal do encarregado de dados da Demandou é contato@demandou.com. [CONFIRMAR o nome do encarregado.]
 
@@ -312,6 +330,16 @@ Quem aceita estas Condições em nome de uma empresa declara ter poderes para re
 **17.2.** É proibido ao Cliente e aos Membros: (a) copiar, modificar, descompilar ou fazer engenharia reversa da Plataforma; (b) usar a Plataforma para criar produto concorrente ou extrair as suas instruções e métodos internos; (c) revender, sublicenciar ou oferecer a Plataforma a terceiros, salvo autorização por escrito; e (d) contornar limites, filtros ou travas de segurança.
 
 **17.3. Marca do Cliente.** O Cliente mantém todos os direitos sobre a sua marca, logotipo, identidade visual e materiais. Ele concede à Demandou licença limitada para usá-los apenas dentro da Plataforma, para gerar o conteúdo do próprio Cliente, durante a Vigência. O Cliente garante que tem o direito de usar as marcas e materiais que envia.
+
+**17.4. Biblioteca de Design.** A Plataforma oferece a todos os clientes a Biblioteca de Design, ordenada do modelo mais usado ao menos usado, cada um com uma prévia. Quando o Cliente escreve um pedido de design, a Plataforma registra na Biblioteca de Design apenas a descrição do visual: um nome curto, uma descrição e as instruções de estilo, como técnica, luz, cores genéricas, enquadramento e ritmo. A prévia é gerada com conteúdo de exemplo, como uma pessoa anônima e uma frase de exemplo. A galeria não mostra quem originou o modelo. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+**17.5. O que é exclusivo do Cliente.** Nunca vão para a Biblioteca de Design, nem para o projeto de outro cliente: a marca, o logotipo, o nome empresarial, as cores e a identidade visual próprias do Cliente; o rosto, a voz e o Gêmeo Digital de qualquer pessoa; as gravações, as fotos, os materiais e os textos das peças; a Memória do Projeto; e qualquer dado de contato ou dado pessoal. Se o pedido de design citar marca, pessoa ou contato, esses trechos ficam apenas no projeto do Cliente. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+**17.6. Licença sobre a descrição do visual.** Ao escrever um pedido de design, o Cliente concede à Demandou e aos demais clientes da Plataforma licença gratuita, não exclusiva, válida em todo o território e sem prazo, inclusive após o fim deste contrato, para usar, adaptar e exibir na Plataforma a descrição do visual registrada a partir dele, ressalvada a retirada da cláusula 17.7. O Cliente garante que o pedido não reproduz obra protegida de terceiros. As peças que cada cliente gera com um modelo da Biblioteca de Design pertencem a esse cliente (cláusula 11.4), e peças de visual parecido geradas por clientes diferentes a partir do mesmo modelo não configuram violação de direito de nenhuma das partes. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+**17.7. Retirada e modelo só do Cliente.** O Cliente pode: (a) pedir que um design fique apenas no seu projeto, sem ir para a Biblioteca de Design; e (b) retirar da galeria, a qualquer momento, um modelo que nasceu do seu pedido, que sai da galeria em até 15 (quinze) dias e não pode mais ser escolhido por outros clientes. Quem já usava o modelo antes da retirada pode continuar usando-o nas peças e nos projetos em que ele já estava. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
+
+**17.8. Uso da galeria pelo Cliente.** Durante a Vigência, o Cliente pode usar qualquer modelo da Biblioteca de Design nas próprias peças, sem custo além do consumo normal do Plano. [REVISAR COM ADVOGADO ANTES DE ASSINAR: cláusula nova da versão 1.3, de 06/10/2026, ainda sem revisão jurídica.]
 
 ## 18. BENEFÍCIOS PRESENCIAIS: DEMANDA DAY E DEMANDA CAST
 
@@ -425,6 +453,7 @@ O número aproximado de peças por Gravação (cerca de 11) é uma estimativa de
 | Anthropic | Modelos de linguagem para pesquisa, roteiro e redação | Textos, transcrições e instruções do projeto |
 | OpenAI | Geração de imagens do carrossel | Textos e instruções das artes |
 | Google | Modelos de linguagem, imagem e vídeo (Gemini e Veo) | Textos, instruções e imagens de referência |
+| TypeSafe | Modelo de decisão (escolha e classificação) usado na edição, na conferência das artes, na Biblioteca de Design e na classificação das Interações; não escreve texto | Trechos de transcrição, de textos, de pedidos e de comentários necessários para cada pergunta |
 | Higgsfield | Efeitos e cenas na edição dos cortes | Quadros dos vídeos do Cliente |
 | fal.ai | Vídeo do Gêmeo Digital | Foto do rosto e áudio de cada trecho |
 | ElevenLabs | Voz do Gêmeo Digital | Amostra de voz e texto de cada vídeo |

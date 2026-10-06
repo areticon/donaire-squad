@@ -37,7 +37,7 @@ export default function PrivacyPage() {
             Política de Privacidade
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 02/10/2026
+            Última atualização: 06/10/2026
           </p>
         </div>
 
@@ -136,7 +136,7 @@ export default function PrivacyPage() {
                   Se você pedir para receber os textos por e-mail, o e-mail e o nome que você informar ficam gravados na mesma rodada, ou seja, vinculados ao texto que você escreveu. O telefone é opcional: ele só é gravado se você preencher o campo e marcar a caixa de consentimento para contato por WhatsApp, que vem desmarcada.
                 </p>
                 <p className="mt-2 text-sm">
-                  Finalidades: entregar a você os textos gerados e, havendo consentimento, falar com você sobre a plataforma. Base legal: consentimento (art. 7º, I, da LGPD), manifestado quando você preenche o formulário, e registrado separadamente para o contato por WhatsApp. Você pode revogar o consentimento e pedir a exclusão a qualquer momento pelo contato da seção 12.
+                  Finalidades: entregar a você os textos gerados e, havendo consentimento, falar com você sobre a plataforma. Base legal: consentimento (art. 7º, I, da LGPD), manifestado quando você preenche o formulário, e registrado separadamente para o contato por WhatsApp. Você pode revogar o consentimento e pedir a exclusão a qualquer momento pelo contato da seção 13.
                 </p>
               </div>
               <div>
@@ -182,6 +182,43 @@ export default function PrivacyPage() {
                   Não gravamos comentários, nomes ou perfis de quem curtiu, comentou ou foi marcado: guardamos só a publicação e os números da conta de referência ou do seu post. A base legal é o legítimo interesse (art. 7º, IX, da LGPD), limitado a dados que os próprios titulares tornaram públicos (art. 7º, § 4º), e a finalidade é só a análise de conteúdo para o seu projeto. O conteúdo coletado serve de referência e não é republicado.
                 </p>
               </div>
+              {/* O PRODUTO APRENDE COM QUEM USA (06/10/2026): iguais aos itens
+                  11.6 a 11.8 dos Termos e às cláusulas 11.9 a 11.11, 13.2(d) e
+                  17.4 a 17.8 das Condições Gerais (versão 1.3). */}
+              <div id="interacoes" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.11 Suas interações e a memória do seu projeto</h3>
+                <p className="text-sm">
+                  Guardamos o que você e a sua equipe fazem na plataforma: configurações, pedidos, ajustes, aprovações, recusas, comentários no chat dos cards, chamados de suporte, materiais enviados, campanhas, pesquisas e os resultados das publicações. Isso forma a memória do seu projeto, que a plataforma consulta para que o próximo roteiro, a próxima arte e a próxima edição já partam do que você aprovou e recusou antes.
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li><strong className="text-[var(--text-primary)]">Finalidade:</strong> personalizar o conteúdo do seu próprio projeto. A memória é exclusiva da sua conta, nunca é mostrada a outro cliente e nunca é usada para gerar conteúdo para outra pessoa.</li>
+                  <li><strong className="text-[var(--text-primary)]">Papel e base legal:</strong> a memória faz parte do conteúdo do cliente. Para os dados pessoais que estão nela, a demandou atua como operadora (seção 1); para os seus dados de usuário, a base é a execução do contrato (art. 7º, V, da LGPD).</li>
+                  <li><strong className="text-[var(--text-primary)]">Seus controles:</strong> consultar, corrigir e apagar itens da memória, na plataforma quando o recurso estiver disponível ou pelo e-mail da seção 13, e pedir uma cópia dela.</li>
+                  <li><strong className="text-[var(--text-primary)]">Retenção:</strong> enquanto o contrato estiver ativo; no encerramento, segue os mesmos 30 dias para baixar e até 60 dias para eliminar do restante do conteúdo (seção 6).</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.12 Comentários e pedidos que melhoram o produto para todos</h3>
+                <p className="text-sm">
+                  Os comentários do chat, os chamados de suporte, os pedidos de design e os padrões de aprovação e recusa também ajudam a melhorar a demandou para todos os clientes. Um modelo automático de decisão classifica cada comentário (erro do produto, pedido de ajuste, dúvida de uso) e agrupa os parecidos, e a equipe usa esses grupos para corrigir erros, ajustar as instruções e os padrões da plataforma e decidir o que construir. Essa classificação não gera nenhum efeito sobre a sua conta, o seu plano ou o seu conteúdo.
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li><strong className="text-[var(--text-primary)]">O que a equipe vê:</strong> o trecho do comentário e o tipo de tela em que ele foi feito, sem o nome da conta e sem e-mail ou telefone. O registro guarda a qual conta pertence só para podermos responder a você e apagar o que você pedir.</li>
+                  <li><strong className="text-[var(--text-primary)]">O que nunca entra:</strong> a sua marca, o seu logotipo, rosto, voz, gêmeo digital, gravações, fotos e materiais. Não mostramos o comentário de um cliente a outro, não vendemos esses dados e não os usamos para treinar modelos de inteligência artificial (item 5.3).</li>
+                  <li><strong className="text-[var(--text-primary)]">Papel e base legal:</strong> nesse uso a demandou é controladora dos trechos de comentário, e a base é o legítimo interesse (art. 7º, IX, da LGPD) de melhorar o serviço que você contratou, com a coleta reduzida ao mínimo e os cuidados acima.</li>
+                  <li><strong className="text-[var(--text-primary)]">Como não participar:</strong> você pode se opor a esse uso a qualquer momento pelo e-mail da seção 13, sem mudança de preço nem de plano. A oposição não desliga a memória do seu projeto (item 2.11), que serve só a você.</li>
+                  <li><strong className="text-[var(--text-primary)]">Retenção:</strong> os trechos ficam por até 24 meses, ou até o fim do contrato somado aos prazos da seção 6, o que vier primeiro. Depois, ficam só contagens sem texto, que não identificam ninguém.</li>
+                </ul>
+              </div>
+              <div id="biblioteca" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.13 Biblioteca de design</h3>
+                <p className="text-sm">
+                  A biblioteca de design é a galeria de modelos de vídeo e de imagem que fica disponível para todos os clientes. Quando você descreve um design, registramos nela apenas a descrição do visual: um nome curto, uma descrição e as instruções de estilo. A prévia é gerada com conteúdo de exemplo, como uma pessoa anônima e uma frase de exemplo, e a galeria não mostra quem criou o modelo.
+                </p>
+                <p className="mt-2 text-sm">
+                  Nunca vão para a biblioteca: a sua marca, logotipo, nome da empresa, cores e identidade visual próprias, o rosto, a voz e o gêmeo digital de qualquer pessoa, as suas gravações, fotos, materiais, textos das peças, a memória do projeto e qualquer dado de contato. Se o pedido citar marca, pessoa ou contato, esses trechos ficam só no seu projeto. Você pode pedir que um design fique só no seu projeto e pode retirar da galeria um design que nasceu do seu pedido, como descrito no item 11.8 dos Termos de Uso.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -202,7 +239,9 @@ export default function PrivacyPage() {
                 "Gerar os vídeos do seu gêmeo digital, quando você o cadastrar e autorizar (item 2.9)",
                 "Publicar conteúdo nas redes sociais conectadas, conforme sua solicitação",
                 "Enviar notificações sobre o serviço, atualizações e alertas relacionados à sua conta",
-                "Melhorar continuamente a plataforma e desenvolver novos recursos, apenas com dados de uso agregados e anonimizados, sem treinar modelos com o seu conteúdo (item 5.3)",
+                "Manter a memória do seu projeto, para que o conteúdo seguinte parta do que você aprovou e recusou antes (item 2.11)",
+                "Melhorar continuamente a plataforma e desenvolver novos recursos, com dados de uso agregados e com trechos de comentários e pedidos sem identificação, sem treinar modelos com o seu conteúdo (itens 2.12 e 5.3)",
+                "Manter a biblioteca de design, só com a descrição do visual e nunca com a sua marca, rosto, voz ou materiais (item 2.13)",
                 "Detectar e prevenir fraudes, abusos e violações de segurança",
                 "Cumprir obrigações legais e regulatórias aplicáveis",
                 "Exercer ou defender direitos em processos administrativos ou judiciais",
@@ -226,11 +265,11 @@ export default function PrivacyPage() {
             <div className="space-y-3">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Execução de contrato (art. 7º, V)</p>
-                <p>Tratamento necessário para a prestação dos serviços contratados, incluindo autenticação, armazenamento de dados, publicação de conteúdo e processamento de pagamentos.</p>
+                <p>Tratamento necessário para a prestação dos serviços contratados, incluindo autenticação, armazenamento de dados, memória do projeto (item 2.11), publicação de conteúdo e processamento de pagamentos.</p>
               </div>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Legítimo interesse (art. 7º, IX)</p>
-                <p>Melhorias contínuas da plataforma, segurança, prevenção a fraudes e comunicações sobre o serviço, desde que não violem seus direitos e liberdades fundamentais.</p>
+                <p>Melhorias contínuas da plataforma, inclusive a partir dos seus comentários, chamados e pedidos de design, sem identificação (item 2.12), a biblioteca de design (item 2.13), segurança, prevenção a fraudes e comunicações sobre o serviço, desde que não violem seus direitos e liberdades fundamentais. Você pode se opor ao uso dos seus comentários para melhorar o produto a qualquer momento, sem mudança de preço nem de plano.</p>
               </div>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-4 text-sm">
                 <p className="mb-1 font-medium text-[var(--text-primary)]">Consentimento (art. 7º, I)</p>
@@ -280,6 +319,11 @@ export default function PrivacyPage() {
                   name: "Google (Gemini e Veo)",
                   role: "Inteligência artificial: texto, imagem e vídeo",
                   detail: "Recebe textos, instruções e imagens de referência para gerar textos, imagens e os vídeos por inteligência artificial.",
+                },
+                {
+                  name: "TypeSafe",
+                  role: "Inteligência artificial: modelo de decisão",
+                  detail: "Não escreve texto: responde perguntas de escolha e classificação sobre o seu projeto, como quais trechos da gravação entram na edição, se a arte confere com o texto, se um pedido de design já existe na biblioteca e de que tipo é um comentário do chat. Recebe só o trecho necessário para cada pergunta.",
                 },
                 {
                   name: "Higgsfield",
@@ -403,7 +447,7 @@ export default function PrivacyPage() {
               Não usamos o seu conteúdo nem o conteúdo gerado para treinar modelos de inteligência artificial, nossos ou de terceiros, sem o seu consentimento expresso e separado. Contratamos e configuramos os fornecedores para não usarem os seus dados para treinar modelos. Na transcrição, por exemplo, cada pedido à Deepgram vai marcado para ficar fora do programa de treino dela.
             </p>
             <p className="text-sm">
-              Para medir e melhorar a plataforma, usamos apenas dados de uso agregados e anonimizados, como volume de operações, tempo de processamento e taxas de erro, sem acesso ao conteúdo das peças.
+              Treinar um modelo é diferente de melhorar a plataforma. Para medir e melhorar a demandou, usamos dados de uso agregados, como volume de operações, tempo de processamento e taxas de erro, e os trechos de comentários, chamados e pedidos de design descritos no item 2.12, sem identificação, para corrigir erros, ajustar as nossas instruções e os nossos padrões e decidir o que construir. Nenhum desses dados é enviado a um fornecedor para treinar modelo.
             </p>
           </section>
 
@@ -449,6 +493,24 @@ export default function PrivacyPage() {
               <li className="flex gap-2">
                 <span className="mt-1 text-orange-500 shrink-0">•</span>
                 <span>
+                  <strong className="text-[var(--text-primary)]">Memória do projeto:</strong> enquanto o contrato estiver ativo; no encerramento, segue o prazo do conteúdo (30 dias para baixar e até 60 para eliminar), e você pode apagar itens antes disso (item 2.11).
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
+                  <strong className="text-[var(--text-primary)]">Trechos de comentários, chamados e pedidos usados para melhorar o produto:</strong> por até 24 (vinte e quatro) meses, ou até o fim do contrato somado ao prazo do conteúdo, o que vier primeiro, ou antes, se você se opuser; depois, ficam só contagens sem texto (item 2.12).
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
+                  <strong className="text-[var(--text-primary)]">Modelos da biblioteca de design:</strong> enquanto a biblioteca existir, porque guardam só a descrição do visual, sem dado pessoal, salvo se você retirar da galeria um modelo que nasceu do seu pedido (item 2.13).
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="mt-1 text-orange-500 shrink-0">•</span>
+                <span>
                   <strong className="text-[var(--text-primary)]">Contato deixado na demonstração pública:</strong> por 24 (vinte e quatro) meses contados do último contato entre nós, ou até você revogar o consentimento ou pedir a exclusão, o que vier primeiro.
                 </span>
               </li>
@@ -473,7 +535,7 @@ export default function PrivacyPage() {
                 { right: "Anonimização ou exclusão", desc: "Solicitar a eliminação de dados desnecessários ou tratados em desconformidade." },
                 { right: "Portabilidade", desc: "Receber seus dados em formato estruturado e interoperável." },
                 { right: "Revogação do consentimento", desc: "Retirar o consentimento a qualquer momento, sem prejuízo das atividades anteriores." },
-                { right: "Oposição", desc: "Opor-se ao tratamento realizado com fundamento em outras bases legais, em casos de descumprimento." },
+                { right: "Oposição", desc: "Opor-se ao tratamento realizado com fundamento em outras bases legais, em casos de descumprimento, e ao uso dos seus comentários para melhorar o produto (item 2.12), sem precisar dar motivo." },
                 { right: "Informação", desc: "Saber com quais entidades seus dados são compartilhados." },
                 { right: "Revisão de decisões automatizadas", desc: "Solicitar revisão de decisões tomadas exclusivamente por meios automatizados." },
               ].map((item) => (
@@ -649,10 +711,10 @@ export default function PrivacyPage() {
           {/* 12 */}
           <section>
             <h2 className="mb-4 text-xl font-semibold text-[var(--text-primary)]">
-              13. Contato e DPO
+              13. Contato e Encarregado de Dados
             </h2>
             <p className="mb-3 text-sm">
-              Para dúvidas, solicitações relacionadas aos seus dados pessoais ou para exercer seus direitos como titular, entre em contato com nosso Encarregado pelo Tratamento de Dados Pessoais (DPO):
+              Para dúvidas, solicitações relacionadas aos seus dados pessoais ou para exercer seus direitos como titular, entre em contato com nosso Encarregado pelo Tratamento de Dados Pessoais (o DPO, sigla em inglês de Data Protection Officer):
             </p>
             <div className="rounded-lg border border-[var(--border)] bg-[var(--realce-1)] p-5 text-sm space-y-1">
               <p><span className="text-[var(--text-muted)]">Empresa:</span> DEMANDOU TECNOLOGIA DA INFORMACAO LTDA</p>

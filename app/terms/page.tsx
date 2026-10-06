@@ -37,7 +37,7 @@ export default function TermsPage() {
             Termos de Uso e Condições de Serviço
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Última atualização: 04/10/2026
+            Última atualização: 06/10/2026
           </p>
         </div>
 
@@ -623,7 +623,7 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">11.3 Licença limitada</h3>
                 <p>
-                  O Usuário concede à demandou uma licença limitada, não exclusiva, gratuita e pelo prazo do contrato, apenas para armazenar, processar, transmitir aos fornecedores e publicar nas redes conectadas, quando o Usuário mandar, o seu conteúdo e o conteúdo gerado, com a única finalidade de operar a plataforma para o próprio Usuário. A marca, o logotipo e a identidade visual do Usuário são usados só dentro da plataforma, para gerar o conteúdo dele.
+                  O Usuário concede à demandou uma licença limitada, não exclusiva, gratuita e pelo prazo do contrato, apenas para armazenar, processar, transmitir aos fornecedores e publicar nas redes conectadas, quando o Usuário mandar, o seu conteúdo e o conteúdo gerado, com a única finalidade de operar a plataforma para o próprio Usuário, ressalvados apenas os usos descritos nos itens 11.7 e 11.8. A marca, o logotipo e a identidade visual do Usuário são usados só dentro da plataforma, para gerar o conteúdo dele.
                 </p>
               </div>
               <div>
@@ -633,13 +633,85 @@ export default function TermsPage() {
                   <Link href="/privacy#treino" className="text-orange-500 hover:underline">
                     Política de Privacidade
                   </Link>
-                  ). Para medir e melhorar a plataforma, usa apenas dados de uso agregados e anonimizados, como volume de operações e taxas de erro, sem acesso ao conteúdo das peças.
+                  ). Melhorar a plataforma a partir do que o Usuário pede, ajusta, aprova ou recusa não é treinar modelo: é corrigir erros, ajustar as instruções e os padrões da própria demandou e decidir o que construir, nos limites do item 11.7.
                 </p>
               </div>
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">11.5 Marca e imagem do Usuário</h3>
                 <p>
                   A demandou não usa o nome, a marca, a imagem, a voz ou o conteúdo do Usuário na sua própria divulgação sem autorização específica e por escrito, que o Usuário pode negar ou revogar sem qualquer efeito no contrato.
+                </p>
+              </div>
+              {/* O PRODUTO APRENDE COM QUEM USA (06/10/2026): memória do
+                  projeto, melhoria a partir das interações e biblioteca de
+                  design. Iguais às cláusulas 11.9 a 11.11 e 17.4 a 17.8 das
+                  Condições Gerais (versão 1.3) e aos itens 2.11 a 2.13 da
+                  Política de Privacidade. Resumo para o advogado em
+                  docs/termos-interacao-e-biblioteca-para-advogado.md. */}
+              <div id="memoria" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">11.6 A memória do seu projeto</h3>
+                <p>
+                  Tudo o que o Usuário e a sua equipe fazem na plataforma alimenta a memória do próprio projeto: configurações, pedidos, ajustes, aprovações, recusas, comentários no chat, materiais enviados, campanhas, pesquisas e os resultados das publicações. É essa memória que faz a plataforma acertar mais a cada uso, porque o próximo roteiro, a próxima arte e a próxima edição já partem do que o Usuário aprovou e recusou antes.
+                </p>
+                <p className="mt-2">
+                  A memória faz parte do conteúdo do Usuário (item 11.2): é exclusiva da conta dele, nunca é mostrada a outro cliente e nunca é usada para gerar conteúdo para outra pessoa. O Usuário pode consultar o que está guardado, corrigir e apagar itens, na plataforma quando o recurso estiver disponível ou pelo e-mail de contato, e pode pedir uma cópia dela. Ela é apagada junto com o restante do conteúdo no encerramento do contrato (item 14.3).
+                </p>
+              </div>
+              <div id="melhoria" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">11.7 Como as suas interações melhoram a demandou para todos</h3>
+                <p>
+                  Os comentários do chat, os chamados de suporte, os pedidos de design e os padrões de aprovação e recusa também ajudam a demandou a melhorar o produto para todos os clientes. Um sistema automático classifica cada comentário (erro do produto, pedido de ajuste, dúvida de uso) e junta os parecidos, para a equipe saber, por exemplo, que vários clientes pediram a mesma coisa na semana. Com isso a demandou corrige erros, ajusta as suas instruções e os seus padrões e decide o que construir.
+                </p>
+                <p className="mt-2">Nesse uso, a demandou se compromete a:</p>
+                <ul className="mt-2 space-y-2 list-none">
+                  {[
+                    "mostrar à equipe só o trecho do comentário, sem o nome da conta e sem e-mail ou telefone, e usar o vínculo com a conta apenas para responder ao Usuário e para apagar o que ele pedir;",
+                    "nunca usar a marca, o logotipo, o rosto, a voz, o gêmeo digital, as gravações, as fotos ou os materiais do Usuário para melhorar o produto para outros clientes;",
+                    "nunca mostrar o comentário ou o conteúdo de um cliente a outro cliente, nunca vender esses dados e nunca usá-los para treinar modelos de inteligência artificial, próprios ou de terceiros (item 11.4);",
+                    "guardar os trechos de comentário por até 24 meses, ou até o fim do contrato somado aos prazos do item 14.3, o que vier primeiro; depois, ficam só contagens sem texto, que não identificam ninguém.",
+                  ].map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 text-orange-500 shrink-0">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2">
+                  O Usuário pode se opor a esse uso a qualquer momento, pelo e-mail de contato, sem mudança de preço nem de plano. A oposição não desliga a memória do item 11.6, que serve só ao próprio Usuário. Os detalhes, a base legal e os prazos estão na{" "}
+                  <Link href="/privacy#interacoes" className="text-orange-500 hover:underline">
+                    Política de Privacidade
+                  </Link>
+                  .
+                </p>
+              </div>
+              <div id="biblioteca" className="scroll-mt-24">
+                <h3 className="mb-1 font-medium text-[var(--text-primary)]">11.8 Biblioteca de design</h3>
+                <p>
+                  A biblioteca de design é a galeria de modelos de vídeo (como o vídeo é editado) e de imagem (como a arte é desenhada) que fica disponível para todos os clientes, com uma prévia de cada modelo, do mais usado ao menos usado. Ela nasce dos modelos da própria demandou e dos pedidos de design que os clientes escrevem.
+                </p>
+                <p className="mt-2">
+                  Quando o Usuário descreve um design, a plataforma registra na biblioteca apenas a descrição do visual: um nome curto, uma descrição e as instruções de estilo (técnica, luz, cores genéricas, enquadramento, ritmo). A prévia é gerada com conteúdo de exemplo, como uma pessoa anônima e uma frase de exemplo. A galeria não mostra quem criou o modelo.
+                </p>
+                <p className="mt-2">
+                  <strong className="text-[var(--text-primary)]">Nunca vão para a biblioteca, nem para o projeto de outro cliente:</strong> a marca, o logotipo, o nome da empresa, as cores e a identidade visual próprias do Usuário, o rosto, a voz e o gêmeo digital de qualquer pessoa, as gravações, as fotos, os materiais, os textos das peças, a memória do projeto e qualquer dado de contato. Se um pedido de design citar marca, pessoa ou contato, esses trechos ficam só no projeto do Usuário.
+                </p>
+                <p className="mt-2">
+                  Ao escrever um pedido de design, o Usuário concede à demandou e aos demais clientes uma licença gratuita, não exclusiva e sem prazo para usar, adaptar e exibir na plataforma a descrição do visual registrada a partir dele, inclusive depois do fim do contrato. O Usuário garante que o pedido não copia obra protegida de terceiros. O Usuário pode:
+                </p>
+                <ul className="mt-2 space-y-2 list-none">
+                  {[
+                    "pedir que um design fique só no seu projeto, sem ir para a galeria;",
+                    "retirar da galeria um design que nasceu do seu pedido, a qualquer momento: ele sai da galeria em até 15 dias e não pode mais ser escolhido por outros clientes, e quem já o usava pode continuar usando nas peças e nos projetos em que ele já estava;",
+                    "usar livremente qualquer modelo da galeria nas próprias peças, durante o contrato, sem custo além do consumo normal do plano.",
+                  ].map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 text-orange-500 shrink-0">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2">
+                  As peças que o Usuário gera com um modelo da galeria continuam sendo dele (item 11.2). Como o modelo é um estilo compartilhado, outros clientes podem gerar peças com visual parecido, e isso não é violação de nenhuma das partes.
                 </p>
               </div>
             </div>
@@ -718,7 +790,7 @@ export default function TermsPage() {
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">14.3 Exclusão de dados</h3>
                 <p>
                   Após o encerramento do contrato, o Usuário tem 30 (trinta) dias para baixar o seu conteúdo. Depois disso, a demandou elimina o conteúdo, o conteúdo gerado e os acessos às redes conectadas em até 60 (sessenta) dias, num total de até{" "}
-                  <strong className="text-[var(--text-primary)]">90 (noventa) dias</strong>, ressalvados os dados que devem ser mantidos por obrigação legal (conforme Política de Privacidade, seção 6). Os dados do gêmeo digital são apagados no encerramento, sem esperar esse prazo.
+                  <strong className="text-[var(--text-primary)]">90 (noventa) dias</strong>, ressalvados os dados que devem ser mantidos por obrigação legal (conforme Política de Privacidade, seção 6). A memória do projeto (item 11.6) segue esse mesmo prazo. Os dados do gêmeo digital são apagados no encerramento, sem esperar esse prazo. Os modelos que já estão na biblioteca de design continuam nela, porque não carregam dado do Usuário, salvo se ele os retirar (item 11.8).
                 </p>
               </div>
             </div>
