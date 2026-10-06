@@ -119,6 +119,13 @@ export type EstadoDaJornada = {
   avisos?: string[];
   custoUsd?: number;
   tempos?: Record<string, number>;
+  /**
+   * O AJUSTE PEDIDO NO CARD (E6): as mídias DESTA edição que ficam (os
+   * elementos que o pedido não tocou); só os afetados são gerados de novo.
+   */
+  midiasMantidas?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }> | null;
+  /** O texto do ajuste pedido no card, literal. */
+  ajuste?: { texto: string; em: string; afetados: string[] } | null;
 };
 
 /** Uma amostra da medição (fração do quadro), compacta. */

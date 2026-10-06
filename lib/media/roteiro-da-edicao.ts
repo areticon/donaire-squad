@@ -88,6 +88,8 @@ import { jornadaNaTela } from "@/lib/media/jornada/tela";
 import { aprovarJornada, pedirElementoNovo, pedirMudanca, PlanoCongelado, removerElemento, restaurarElemento } from "@/lib/media/jornada/revisao";
 import { jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import { frasesDaFala } from "@/lib/media/jornada/linha-do-tempo";
+import { ajusteNoPlano } from "@/lib/media/jornada/ajuste";
+import { editorJornadaLigado } from "@/lib/media/jornada/estado";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -1322,6 +1324,27 @@ export async function ajustarElementoDaJornada(videoId: string, userId: string, 
     throw e;
   }
   return (await montarTela(videoId, userId))!;
+}
+
+/**
+ * O AJUSTE PEDIDO NO CARD DO VÍDEO PRONTO (E6, jornada): o texto do cliente
+ * vira pedido no elemento a que se refere (o JEV acha qual), o plano é
+ * reaberto na tela de roteiro (passo 5) e, aprovado de novo, só os elementos
+ * afetados são gerados de novo (a cobrança da aprovação não se repete).
+ * Devolve false quando não é um vídeo da jornada aprovado.
+ */
+export async function reabrirJornadaComAjuste(videoId: string, texto: string): Promise<boolean> {
+  if (!editorJornadaLigado()) return false;
+  const r = await lerRoteiroDoVideo(videoId);
+  const v = await lerVideo(videoId);
+  if (!v || !r?.jornada?.aprovado || !r.completo?.fala?.palavras?.length) return false;
+  const linhas = await prisma.$queryRaw<Array<{ m: { midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }> } | null }>>`
+    SELECT "completoMontagem" -> 'jornada' AS m FROM video_jobs WHERE id = ${videoId}`;
+  const palavras = r.completo.fala.palavras;
+  const feito = await ajusteNoPlano(r.jornada, texto, { jev: jevDaJornada(), redator: redatorDaJornada(v.projectId, "jornada-ajuste"), projectId: v.projectId, palavras, frases: frasesDaFala(palavras), midiasDaEdicao: linhas[0]?.m?.midias ?? {} });
+  await gravarRoteiroDoVideo(videoId, { ...r, jornada: feito.estado, aprovadoEm: null });
+  await prisma.videoJob.update({ where: { id: videoId }, data: { status: "roteiro", startedAt: null } });
+  return true;
 }
 
 export type AcaoNaAbertura = {

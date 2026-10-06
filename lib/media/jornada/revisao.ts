@@ -241,7 +241,7 @@ function congelar<T>(o: T): T {
 export function aprovarJornada(estado: EstadoDaJornada, agora = new Date().toISOString()): EstadoDaJornada {
   if (estado.aprovado) return estado;
   if (!estado.plano) throw new Error("sem plano para aprovar");
-  return { ...clonar(estado), aprovado: { em: agora, elementos: elementosDaAprovacao(estado) } };
+  return { ...clonar(estado), aprovado: { em: agora, elementos: elementosDaAprovacao(estado) }, ajuste: estado.ajuste ?? null };
 }
 
 /** O que vai ao ar: exatamente a lista aprovada, congelada. Antes da aprovação, lança. */

@@ -327,6 +327,8 @@ export type EstadoDaJornadaNaMontagem = {
   tempos?: Record<string, number>;
   reenviar?: boolean;
   falhas?: number;
+  /** As mídias desta edição, por elemento (o ajuste do card mantém as que o pedido não tocou). */
+  midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }>;
 };
 
 export type EstadoDoSobMedida = {
@@ -2056,7 +2058,7 @@ async function gerarEMontarPelaJornada(v: VideoDoCompleto, lido: MontagemDoCompl
     const contexto = await contextoDoProjeto(v.projectId, formato, fala.duracao);
     const leg = normalizarLegenda((v.videoEstiloEscolha as { legenda?: unknown } | null)?.legenda);
     const m = await montarPelaJornada({
-      estado: { aprovado: rj?.aprovado ?? null, leitura: rj?.leitura ?? null },
+      estado: { aprovado: rj?.aprovado ?? null, leitura: rj?.leitura ?? null, midiasMantidas: rj?.midiasMantidas ?? null },
       falaDoPlano: lido.roteiro?.completo?.fala?.palavras ?? fala.palavras,
       falaDoRender: fala.palavras,
       duracao: fala.duracao,
@@ -2083,6 +2085,7 @@ async function gerarEMontarPelaJornada(v: VideoDoCompleto, lido: MontagemDoCompl
       escolhas: m.escolhas,
       custoUsd: m.custoUsd.geracao,
       tempos: m.tempos,
+      midias: Object.fromEntries(m.gerados.filter((g) => g.url && g.tipo).map((g) => [g.id, { url: g.url!, tipo: g.tipo!, formato: g.formato, proporcao: g.proporcao }])),
     };
     await enviarPelaJornada(v, { ...tomado, trabalhando: false, jornada }, tomado);
   } catch (e) {

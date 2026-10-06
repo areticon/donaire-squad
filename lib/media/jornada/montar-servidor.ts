@@ -19,7 +19,7 @@ import type { AmostraDaJornada, EstadoDaJornada } from "@/lib/media/jornada/esta
  */
 
 export type EntradaDaMontagemDaJornada = {
-  estado: Pick<EstadoDaJornada, "aprovado" | "leitura">;
+  estado: Pick<EstadoDaJornada, "aprovado" | "leitura" | "midiasMantidas">;
   /** A fala em que o plano foi escrito (a do roteiro) e a fala do arquivo que vai ao render. */
   falaDoPlano: Palavra[];
   falaDoRender: Palavra[];
@@ -84,11 +84,17 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   const entradas = entradasDosPrompts(aprovados, e.estado.leitura ?? null, e.formato);
   const { prompts, erros } = await escreverPrompts(entradas, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId });
   marcar("prompts");
+  // O AJUSTE DO CARD (E6): as mídias desta edição que o pedido não tocou ficam; só as afetadas são geradas de novo.
+  const mantidas = e.estado.midiasMantidas ?? {};
   const g = await gerarTodos(
-    entradas.map((x) => ({ ...x, t: porId.get(x.id)?.t ?? 0 })),
+    entradas.filter((x) => !mantidas[x.id]).map((x) => ({ ...x, t: porId.get(x.id)?.t ?? 0 })),
     prompts,
     e.geracao
   );
+  for (const [id, m] of Object.entries(mantidas)) {
+    if (!entradas.some((x) => x.id === id)) continue;
+    g.gerados.push({ id, url: m.url, tipo: m.tipo, formato: m.formato as ElementoGerado["formato"], proporcao: m.proporcao, custoUsd: 0, modelo: "mantida desta edição", rodadas: 0, prompt: "", avisoAdmin: null, avisoCliente: null, tempos: { gerar: 0, recorte: 0, leitura: 0 } });
+  }
   marcar("geracao");
   const geradoDe = new Map(g.gerados.map((x) => [x.id, x]));
   // PASSO 7: as opções pelo código, a escolha pelo JEV, a edição.
