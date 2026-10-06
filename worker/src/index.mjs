@@ -1798,6 +1798,87 @@ const servidor = createServer((req, res) => {
     });
     return;
   }
+  // /ler-video (06/10): A LEITURA DO VÍDEO, camada de medição sem IA paga
+  // (src/leitura-do-video.mjs e src/leitura.py): pessoas, rostos, boca,
+  // tela, quadro e movimento por amostra, mais o proxy leve (360p, 1 fps,
+  // áudio) que o app manda para a visão. Síncrona, com a gravação no mesmo
+  // cache dos cortes (`obterOriginal`). Medição e proxy correm juntos e cada
+  // um falha sozinho: a resposta traz o que deu certo e os erros do resto.
+  if (req.method === "POST" && req.url?.startsWith("/ler-video")) {
+    res.on("error", () => {});
+    req.socket.on("error", () => {});
+    const pedacos = [];
+    req.on("data", (d) => pedacos.push(d));
+    req.on("end", async () => {
+      const corpoCru = Buffer.concat(pedacos).toString("utf8");
+      if (!assinaturaValida(corpoCru, req.headers["x-demandou-assinatura"])) {
+        return responder(401, { error: "Assinatura inválida" });
+      }
+      let pedido;
+      try {
+        pedido = JSON.parse(corpoCru);
+      } catch {
+        return responder(400, { error: "Corpo não é JSON" });
+      }
+      if (!pedido.sourceUrl) return responder(400, { error: "Falta sourceUrl" });
+      const pasta = await mkdtemp(join(tmpdir(), "leitura-"));
+      amostrasEmAndamento += 1;
+      const t0 = Date.now();
+      const erros = [];
+      const tempos = {};
+      try {
+        const original = await obterOriginal(pedido.sourceUrl);
+        tempos.download = Date.now() - t0;
+        const { cadenciaDosQuadrosChave, medirVideo, modoPelaCadencia, proxyParaVisao, TETO_DA_LEITURA_SEG } = await import("./leitura-do-video.mjs");
+        const cadencia = await cadenciaDosQuadrosChave(original);
+        const modo = modoPelaCadencia(cadencia);
+        const ate = Math.min(Number(pedido.ate) > 0 ? Number(pedido.ate) : TETO_DA_LEITURA_SEG, TETO_DA_LEITURA_SEG);
+        const chave = createHmac("sha256", "leitura").update(pedido.sourceUrl).digest("hex").slice(0, 12);
+        const [medida, proxyUrl] = await Promise.all([
+          (async () => {
+            const t = Date.now();
+            try {
+              const m = await medirVideo(original, pasta, { ate, modo });
+              tempos.medicao = Date.now() - t;
+              return m;
+            } catch (e) {
+              erros.push(`medição: ${e instanceof Error ? e.message : e}`);
+              return null;
+            }
+          })(),
+          (async () => {
+            if (pedido.proxy === false) return null;
+            const t = Date.now();
+            try {
+              const arquivo = await proxyParaVisao(original, join(pasta, "proxy.mp4"), { ate, modo });
+              tempos.proxy = Date.now() - t;
+              const { url } = await subir(arquivo, `leitura/${chave}-proxy.mp4`, "video/mp4");
+              tempos.proxyEnvio = Date.now() - t - tempos.proxy;
+              return url;
+            } catch (e) {
+              erros.push(`proxy: ${e instanceof Error ? e.message : e}`);
+              return null;
+            }
+          })(),
+        ]);
+        tempos.total = Date.now() - t0;
+        responder(200, { medida, proxyUrl, cadencia: +cadencia.toFixed(2), modo, erros, tempos });
+      } catch (e) {
+        responder(500, { error: e instanceof Error ? e.message : "leitura falhou" });
+      } finally {
+        amostrasEmAndamento -= 1;
+        rm(pasta, { recursive: true, force: true }).catch(() => {});
+        // Mesma regra do /amostras-de-tela: a gravação só fica no cache se uma
+        // montagem vai usá-la já.
+        if (!montagemRodando && !filaDaMontagem.length) {
+          const guardado = originais.get(pedido.sourceUrl);
+          originais.delete(pedido.sourceUrl);
+          guardado?.then((arquivo) => rm(arquivo, { force: true })).catch(() => {});
+        }
+      }
+    });
+    return;
+  }
   // /medir-referencia (01/10): mede um vídeo de referência do nicho (cortes,
   // cena, fala, andamento e uma folha de contato para a visão) e APAGA o
   // vídeo na hora (src/medir-referencia.mjs). Síncrona, como o /recortar.
