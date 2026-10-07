@@ -21,6 +21,12 @@ export type FalhaDaMontagem = {
   tipo?: "falha" | "segura";
   /** Créditos devolvidos por esta peça (linha "estorno_edicao" do extrato). */
   devolvidos?: number;
+  /**
+   * Pedir de novo não resolve (08/10, o completo aprovado sem o plano da
+   * jornada): sem o botão, e com a frase própria do que houve.
+   */
+  semNovaTentativa?: boolean;
+  detalhe?: string | null;
 };
 
 /**
@@ -38,6 +44,17 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
   if (!visiveis.length) return null;
   const devolvido = visiveis.reduce((s, f) => s + (f.devolvidos ?? 0), 0);
   const soSeguras = visiveis.every((f) => f.tipo === "segura");
+  // A falha sem nova tentativa não leva a frase padrão ("tentamos três vezes",
+  // "pode pedir de novo"): ela diz o que houve, e o botão some (08/10).
+  const semNova = visiveis.filter((f) => f.semNovaTentativa);
+  const todasSemNova = semNova.length === visiveis.length;
+  const detalhe = soSeguras
+    ? DETALHE_DA_SEGURA
+    : todasSemNova
+      ? (semNova[0]?.detalhe ?? DETALHE_DA_FALHA)
+      : semNova.length
+        ? "Uma parte das montagens de efeitos não saiu. Onde houver o botão, você pode pedir de novo sem pagar nada; a equipe já foi avisada de todas."
+        : DETALHE_DA_FALHA;
   return (
     <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-5 py-4 space-y-3">
       <div className="flex items-start gap-3">
@@ -47,7 +64,7 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
             {soSeguras ? ROTULO_DA_SEGURA : ROTULO_DA_FALHA}.
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            {soSeguras ? DETALHE_DA_SEGURA : DETALHE_DA_FALHA}
+            {detalhe}
           </p>
           {devolvido > 0 ? (
             <p className="text-xs mt-1 font-medium" style={{ color: "var(--text-primary)" }}>
@@ -64,8 +81,9 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
               <span style={{ color: "var(--text-muted)" }}> · {f.nome}</span>
               {f.tipo === "segura" ? <span style={{ color: "var(--text-muted)" }}> · versão sem inserções</span> : null}
               {f.devolvidos ? <span style={{ color: "var(--text-muted)" }}> · {f.devolvidos.toLocaleString("pt-BR")} créditos devolvidos</span> : null}
+              {f.semNovaTentativa && !todasSemNova && f.detalhe ? <span className="block text-xs whitespace-normal" style={{ color: "var(--text-muted)" }}>{f.detalhe}</span> : null}
             </span>
-            <TentarMontagem
+            {f.semNovaTentativa ? null : <TentarMontagem
               videoJobId={f.videoJobId}
               alvo={f.alvo}
               compacto
@@ -73,7 +91,7 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
                 setPedidas((p) => [...p, chave(f)]);
                 aoPedir?.();
               }}
-            />
+            />}
           </li>
         ))}
       </ul>

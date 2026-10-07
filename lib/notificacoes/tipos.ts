@@ -48,6 +48,9 @@ export const CODIGO_DA_ETAPA = {
   write: "VID-TXT",
   completo: "VID-CMP",
   efeitos: "VID-EFX",
+  // A semana escrita a partir do vídeo (08/10): o dia que falhou três vezes
+  // para de ser tentado sozinho e vira chamado com este código.
+  semana: "VID-SEM",
 } as const;
 
 /** O nome da etapa no texto do aviso ("A transcrição parou"). */
@@ -59,7 +62,27 @@ export const NOME_DA_ETAPA_NO_AVISO: Record<keyof typeof CODIGO_DA_ETAPA, string
   write: "A redação dos posts",
   completo: "O vídeo completo",
   efeitos: "A montagem dos efeitos",
+  semana: "A semana escrita a partir do vídeo",
 };
+
+/**
+ * O CÓDIGO DA CAMPANHA QUE FALHOU (08/10). Até aqui só o vídeo tinha código: a
+ * campanha do Igor de 07/10 fechou com zero peças e ninguém soube, nem o
+ * cliente (só a faixa do Gestor, para quem abrisse) nem a equipe. O cliente
+ * informa o código no chamado; o motivo técnico vai no e-mail da equipe.
+ * Quem escolhe o código é `descreverFalhaDaCampanha` (lib/pipeline/falha-da-campanha.ts).
+ */
+export const CODIGO_DA_CAMPANHA = {
+  /** Nenhum dia entregou peça. */
+  semPeca: "CAM-SEM",
+  /** Parte dos dias entregou, parte não. */
+  parcial: "CAM-PAR",
+  /** A campanha nem começou: sem squad, sem rede conectada ou sem dia para gerar. */
+  configuracao: "CAM-CFG",
+  /** Os dias passaram do tempo do servidor em todas as tentativas. */
+  prazo: "CAM-PRA",
+} as const;
+export type CodigoDaCampanha = (typeof CODIGO_DA_CAMPANHA)[keyof typeof CODIGO_DA_CAMPANHA];
 
 /** O evento de janela que pede ao sino para olhar de novo (a faixa do vídeo dispara quando o estado muda). */
 export const EVENTO_DO_SINO = "demandou:notificacoes";

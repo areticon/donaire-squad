@@ -11,7 +11,7 @@
  * corte tinha uma cópia na rota e outra no script de teste: o produto era
  * consertado, o teste continuava com o desenho velho, e dizia que funcionava.
  */
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { enfileirar, cutucar, estadoDoGrupo } from "@/lib/fila/trabalhos";
 import { direcaoDaPeca } from "@/lib/media/direcao-de-arte";
@@ -58,6 +58,9 @@ import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import { blocoDoEstudoDosPerfis } from "@/lib/referencias/estudo-na-campanha";
 import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 import { janelaDaCampanha, substituiRascunhos } from "@/lib/pipeline/sobreposicao-de-campanha";
+import { avisarFalhaDaCampanha } from "@/lib/notificacoes/avisos";
+import { cardParaReaproveitar, diaJaEntregue } from "@/lib/pipeline/card-do-dia";
+import { AVISO_DE_NAO_REVISADO, PARECER_SEM_REVISAO } from "@/lib/squad/sem-revisao";
 
 // O teto de tempo vive nas ROTAS (`/api/cron/fila`), e nao mais aqui: desde
 // 10/09 o motor gera UM dia por chamada, e cada dia tem os seus 800 s. Antes,
@@ -877,6 +880,37 @@ async function saveCard(data: {
     }
   }
 
+  /**
+   * UM CARD POR AGENTE E DIA, MESMO NA NOVA TENTATIVA (08/10). A fila refaz o
+   * dia do zero quando ele falha, e até aqui cada tentativa criava os cards de
+   * novo: 15 cards de pesquisa iguais no quadro do Igor (5 dias x 3
+   * tentativas). Agora o card da tentativa anterior (mesma execução, dia,
+   * agente, tipo e rede) é reaproveitado e escrito por cima. Ver
+   * lib/pipeline/card-do-dia.ts.
+   */
+  const candidatos = await prisma.campaignCard.findMany({
+    where: { runId: rest.runId, dayOfWeek: rest.dayOfWeek, agentId: rest.agentId, cardType: rest.cardType },
+    select: { id: true, scheduledDate: true, metadata: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const anterior = cardParaReaproveitar(candidatos, { scheduledDate: rest.scheduledDate ?? null, metadata });
+  if (anterior) {
+    return prisma.campaignCard.update({
+      where: { id: anterior.id },
+      data: {
+        agentName: rest.agentName,
+        scheduledDate: rest.scheduledDate ?? null,
+        mediaType: rest.mediaType ?? null,
+        content: rest.content ?? null,
+        mediaUrl: rest.mediaUrl ?? null,
+        // O post da tentativa anterior continua ligado até o desta chegar.
+        ...(rest.postId ? { postId: rest.postId } : {}),
+        status: rest.status ?? "pending",
+        metadata: metadata !== undefined ? (metadata as Prisma.InputJsonValue) : Prisma.DbNull,
+      },
+    });
+  }
+
   return prisma.campaignCard.create({
     data: {
       ...rest,
@@ -1556,6 +1590,14 @@ export async function fecharCampanha(runId: string): Promise<void> {
         : `Campanha ${config.campaignMode} concluída! ${postsDaCampanha.length} posts criados para aprovação.`,
     status: semNada ? "error" : "completed",
   });
+
+  // NUNCA EM SILÊNCIO (08/10): a campanha do Igor de 07/10 fechou com zero
+  // peças e ninguém soube. O cliente recebe no sino o código e o que fazer; a
+  // equipe, o e-mail com o erro de cada dia. O observador do cron confere com
+  // a mesma chave, para o caminho que fechou sem passar por aqui.
+  if (semNada || falhados) {
+    await avisarFalhaDaCampanha(runId).catch((e) => console.error(`[pipeline] aviso da campanha ${runId} falhou:`, e));
+  }
 }
 
 /**
@@ -2391,6 +2433,18 @@ Sem cabeçalho, sem resumo do tema, sem elogio, sem "o que está bom". Comece co
     const dayName = nomeDoDia(config.weekStart, dayOfWeek, weekOffset);
     const scheduledDate = getScheduledAt(dayOfWeek, weekOffset);
     const dayKey = `${dayOfWeek}-${weekOffset}`;
+
+    // O DIA QUE JÁ VIROU POST NUMA TENTATIVA ANTERIOR (08/10): o que falha
+    // DEPOIS de gravar os posts (o card do Paulo, o vídeo na fila) devolve o
+    // dia à fila, e refazer pagaria texto e arte de novo e duplicaria os
+    // rascunhos. O dia entregue fica como está.
+    if (fatia.fase === "dia") {
+      const postsJaFeitos = await prisma.post.findMany({ where: { runId, dayOfWeek }, select: { scheduledAt: true } });
+      if (diaJaEntregue(postsJaFeitos, scheduledDate)) {
+        await appendLog(runId, { agent: "Sistema", message: `${dayName} já tinha as peças de uma tentativa anterior; não refiz para não duplicar.`, status: "warning" });
+        continue;
+      }
+    }
     // Use per-day topic if provided (from modal).
     // If not, add a day-specific angle so each day's content has a distinct focus
     // even when the global topic is the same — prevents Twitter threads from repeating.
@@ -3727,6 +3781,16 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
         p.scheduledDate.toDateString() === scheduledDate.toDateString()
     );
 
+    /**
+     * A REVISÃO QUE NÃO RODOU (08/10). A Vera cai no Claude quando o JEV não
+     * responde, e o Claude também pode falhar (529, teto de tokens). Até aqui
+     * o erro subia ao catch do dia e a fila refazia o dia inteiro, pagando
+     * texto e arte de novo, e na terceira vez o dia sumia. O texto já escrito
+     * e pago não morre por causa da revisão: as peças seguem marcadas como
+     * "não revisado", com o aviso no card da Vera e no post. Falta de saldo
+     * continua subindo, porque é ela que pausa a fila.
+     */
+    let revisaoIndisponivel: string | null = null;
     if (reviewer && (liPost || twPost)) {
       const dayMedia = mediaByDayKey[dayKey];
 
@@ -3813,27 +3877,42 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
       if (primeiraPeloJev) {
         await appendLog(runId, { agent: "Vera Veredito", message: `${dayName}: revisei as ${pecasDaPrimeira.length} peça(s) pelo JEV: ${primeiraPeloJev.veredito}.`, status: "running" });
       }
-      const firstOutput =
-        primeiraPeloJev?.parecer ??
-        (await runAgent(
-          reviewer,
-          tarefaDaPrimeira,
-          `${contextWithResearch}\n\nTema da campanha: ${topic}`,
-          runId,
-          funnelInstruction,
-          prefixoDaCampanha,
-          project.id,
-          // 16000 para a Vera, e nao os 8192 do padrao: o checklist dela cresceu com
-          // as duas reguas medidas (limites da rede e lastro dos numeros), e em
-          // 09/09 ela gastou o teto inteiro pensando na quarta e derrubou o dia.
-          // O padrao ja e 16.000 desde 10/09; a Vera foi a primeira a precisar.
-        ));
+      let firstOutput: string;
+      if (primeiraPeloJev) {
+        firstOutput = primeiraPeloJev.parecer;
+      } else {
+        try {
+          firstOutput = await runAgent(
+            reviewer,
+            tarefaDaPrimeira,
+            `${contextWithResearch}\n\nTema da campanha: ${topic}`,
+            runId,
+            funnelInstruction,
+            prefixoDaCampanha,
+            project.id,
+            // 16000 para a Vera, e nao os 8192 do padrao: o checklist dela cresceu com
+            // as duas reguas medidas (limites da rede e lastro dos numeros), e em
+            // 09/09 ela gastou o teto inteiro pensando na quarta e derrubou o dia.
+            // O padrao ja e 16.000 desde 10/09; a Vera foi a primeira a precisar.
+          );
+        } catch (err) {
+          if (ehErroDeSaldo(err)) throw err;
+          revisaoIndisponivel = err instanceof Error ? err.message : String(err);
+          console.error(`[pipeline] run ${runId} dia ${dayOfWeek}: revisão da Vera indisponível:`, err);
+          firstOutput = PARECER_SEM_REVISAO;
+          await appendLog(runId, {
+            agent: "Vera Veredito",
+            message: `A revisão de ${dayName} não rodou agora. As peças seguem para você marcadas como não revisadas: confira antes de aprovar.`,
+            status: "warning",
+          });
+        }
+      }
 
       const { verdict } = parseVeraVerdict(firstOutput);
 
       // A GERENTE ANOTA QUEM ERROU (29/09). Toda reprovação vira lição para o
       // agente culpado, e a lição entra no prompt dele nas próximas campanhas.
-      const culpados = verdict.startsWith("REPROVADO") ? culpadosDaReprovacao(firstOutput, verdict) : [];
+      const culpados = !revisaoIndisponivel && verdict.startsWith("REPROVADO") ? culpadosDaReprovacao(firstOutput, verdict) : [];
       for (const culpadoId of culpados) {
         await gravarLicao(project.id, { agentId: culpadoId, motivo: primeiraQueixa(firstOutput), runId });
       }
@@ -3856,7 +3935,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
       let tentativas = 0;
       const historico: TentativaDaCorrecao[] = [];
       const motivoInicial = motivoDoParecer(firstOutput);
-      while (tentativas < MAX_TENTATIVAS_DA_VERA && vereditoPedeCorrecao(rodada.verdict, parecerDaVez)) {
+      while (!revisaoIndisponivel && tentativas < MAX_TENTATIVAS_DA_VERA && vereditoPedeCorrecao(rodada.verdict, parecerDaVez)) {
         // Ressalva que é defeito (texto quebrado, dado sem fonte) é texto.
         const corrigeTexto = rodada.needsTextRetry || rodada.verdict === "APROVADO_COM_RESSALVAS";
         const corrigeArte = rodada.needsMediaRetry && refazerArteDoDia !== null;
@@ -4103,17 +4182,34 @@ ${d.content}
             status: "running",
           });
         }
-        parecerDaVez =
-          conferida.parecer ??
-          (await runAgent(
-            reviewer,
-            tarefaDaVolta,
-            `${contextWithResearch}\n\nTema da campanha: ${topic}`,
-            runId,
-            funnelInstruction,
-            prefixoDaCampanha,
-            project.id,
-          ));
+        if (conferida.parecer) {
+          parecerDaVez = conferida.parecer;
+        } else {
+          try {
+            parecerDaVez = await runAgent(
+              reviewer,
+              tarefaDaVolta,
+              `${contextWithResearch}\n\nTema da campanha: ${topic}`,
+              runId,
+              funnelInstruction,
+              prefixoDaCampanha,
+              project.id,
+            );
+          } catch (err) {
+            // A revisão da volta caiu (08/10): a correção já foi feita e paga, e
+            // não se sabe se resolveu. A peça corrigida segue como não revisada,
+            // em vez de o dia inteiro voltar à fila.
+            if (ehErroDeSaldo(err)) throw err;
+            revisaoIndisponivel = err instanceof Error ? err.message : String(err);
+            console.error(`[pipeline] run ${runId} dia ${dayOfWeek}: revisão da volta indisponível:`, err);
+            await appendLog(runId, {
+              agent: "Vera Veredito",
+              message: `A revisão de ${dayName} depois da correção não rodou agora. As peças corrigidas seguem marcadas como não revisadas: confira antes de aprovar.`,
+              status: "warning",
+            });
+            break;
+          }
+        }
         rodada = parseVeraVerdict(parecerDaVez);
         historico.push({ tentativa: tentativas, quem, veredito: rodada.verdict, queixa: motivoDoParecer(parecerDaVez) });
       }
@@ -4121,10 +4217,12 @@ ${d.content}
       // O desfecho: corrigido pelo squad, ou sem conserto e com o que fazer.
       // Só REPROVADO que sobrou chega ao cliente como pendência; ressalva que
       // sobrou é aprovação com sugestão, como sempre foi (regra de 21/09).
-      const corrigido = tentativas > 0 && !vereditoPedeCorrecao(rodada.verdict, parecerDaVez);
-      const precisaDoCliente = rodada.verdict.startsWith("REPROVADO");
+      // Sem revisão (08/10) não há desfecho a contar: nem "corrigido", nem "o
+      // squad refez e não resolveu". O que se sabe é só que ninguém revisou.
+      const corrigido = !revisaoIndisponivel && tentativas > 0 && !vereditoPedeCorrecao(rodada.verdict, parecerDaVez);
+      const precisaDoCliente = !revisaoIndisponivel && rodada.verdict.startsWith("REPROVADO");
       const correcao: CorrecaoDaVera | null =
-        tentativas > 0 || precisaDoCliente
+        !revisaoIndisponivel && (tentativas > 0 || precisaDoCliente)
           ? {
               estado: precisaDoCliente ? "sem_conserto" : "corrigido",
               tentativa: tentativas,
@@ -4156,6 +4254,7 @@ ${d.content}
         scheduledDate,
         cardType: "preview",
         content: [
+          revisaoIndisponivel ? `${AVISO_DE_NAO_REVISADO}\n` : "",
           hasMediaError ? "⚠ ATENÇÃO: Mídia não gerada — deve ser corrigida antes de publicar.\n" : "",
           corrigido ? `✅ Corrigido pelo squad em ${tentativas === 1 ? "1 tentativa" : `${tentativas} tentativas`}, com base no parecer da Vera.\n` : "",
           precisaDoCliente && correcao?.oQueFazer ? `PRECISA DE VOCÊ\n${correcao.oQueFazer}\n` : "",
@@ -4172,7 +4271,7 @@ ${d.content}
            */
           corrigido ? "\nVEREDITO: CORRIGIDO" : "",
         ].filter(Boolean).join("\n"),
-        ...(correcao ? { metadata: { correcaoDaVera: correcao } } : {}),
+        ...(correcao ? { metadata: { correcaoDaVera: correcao } } : revisaoIndisponivel ? { metadata: { naoRevisado: true } } : {}),
         ...(cardStatus === "needs_revision" ? { status: "needs_revision" } : {}),
       });
 
@@ -4292,6 +4391,9 @@ ${d.content}
               // A trava da identidade (05/10): a arte ficou esperando a
               // aprovação; o fecho cobra só o texto, e a arte é cobrada quando sair.
               ...(dayMedia?.aguardandoIdentidade ? { aguardandoIdentidade: true } : {}),
+              // A revisão da Vera não rodou neste dia (08/10): a peça vai ao
+              // quadro marcada, e a tela avisa antes de aprovar.
+              ...(revisaoIndisponivel ? { naoRevisado: true } : {}),
             }) as Prisma.InputJsonValue,
             dayOfWeek: dp.dayOfWeek,
             status: "draft",

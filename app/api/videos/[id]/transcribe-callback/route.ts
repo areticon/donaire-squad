@@ -121,8 +121,12 @@ export async function POST(
         console.error(`[transcricao][${id}] re-despacho também falhou:`, reErr);
       }
     }
+    // A frase só promete o que acontece (08/10): a nova tentativa sozinha é a
+    // do vigia das falhas (vigiarFalhas), e ela só vale para a primeira falha.
     const message =
-      "A transcrição falhou desta vez. Nada se perdeu: vamos tentar de novo sozinhos.";
+      video.attempts < 2
+        ? "A transcrição falhou desta vez. Nada se perdeu: vamos tentar de novo sozinhos em instantes."
+        : "A transcrição falhou de novo. Nada se perdeu, e a equipe já foi avisada.";
     await prisma.videoJob.update({
       where: { id },
       data: { status: "failed", startedAt: null, error: message },

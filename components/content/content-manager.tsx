@@ -36,6 +36,7 @@ import { EnviarGravacao } from "@/components/video/enviar-gravacao";
 import { estadoDoPost, resumoDoDia, horaCurta, CORES, type PostParaEstado, type ResumoDoDia } from "@/lib/posts/estado";
 import { horarioParaAprovar, rotuloDoHorario, diaEHora, paraCampos, deCampos } from "@/lib/posts/horario-da-peca";
 import { cardEmProducao } from "@/lib/squad/peca-em-producao";
+import { naoRevisado } from "@/lib/squad/sem-revisao";
 import { esperaDaPeca } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { lerRevisaoDoCorte, type RevisaoDoCorte } from "@/lib/media/estado-da-revisao-do-corte";
 import { lerAberturaIa } from "@/lib/media/estado-da-abertura-ia";
@@ -103,6 +104,8 @@ interface PipelineRun {
   weekStart: string | null;
   /** A última mensagem de erro gravada na execução (08/10), quando houver. */
   motivo?: string | null;
+  /** O código da falha da campanha (08/10, CAM-*), o mesmo do sino. */
+  codigo?: string | null;
 }
 
 interface SocialAccount {
@@ -3023,6 +3026,20 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 cobrança do Google, os créditos voltaram, e a peça ficou com o
                 quadro dentro, calada. Falha de fornecedor que o cliente paga
                 em silêncio é a pior das telas mudas. */}
+            {/* ── A PEÇA QUE NINGUÉM REVISOU (08/10) ──
+                A revisão da Vera caiu e o dia seguiu em vez de ser refeito
+                (lib/squad/sem-revisao.ts). O aviso fica onde se aprova. */}
+            {dayPosts.some((p) => naoRevisado(p.metadata)) && (
+              <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }}>
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-amber-400">Não revisado pela Vera</p>
+                  <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>
+                    A revisão deste dia não rodou, e as peças vieram sem a conferência dela. Confira o texto e a arte antes de aprovar.
+                  </p>
+                </div>
+              </div>
+            )}
             {(() => {
               type MarcaDeFalha = {
                 codigo?: string;
@@ -5845,7 +5862,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                 {lastFailedRun.status === "cancelled"
                   ? "Você cancelou a geração. Os posts já criados foram mantidos."
                   : lastFailedRun.motivo
-                    ? `${lastFailedRun.motivo} Código para o suporte: ${lastFailedRun.id.slice(-8)}.`
+                    ? `${lastFailedRun.motivo} Código para o suporte: ${lastFailedRun.codigo ? `${lastFailedRun.codigo} (${lastFailedRun.id.slice(-8)})` : lastFailedRun.id.slice(-8)}.`
                     : "A geração parou antes de terminar. Os posts já criados foram mantidos. Você pode gerar novamente com o mesmo tema."}
                 {lastFailedRun.topic ? <><br /><span className="font-medium" style={{ color: "var(--text-primary)" }}>Tema: {lastFailedRun.topic}</span></> : null}
               </p>

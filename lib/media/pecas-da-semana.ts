@@ -39,6 +39,9 @@ import type { Trecho } from "@/lib/media/select-clips";
 import { IDS_DOS_REDATORES, principalDoDia, redatorDaRede, type RedatorDaRede } from "@/lib/media/redator-da-rede";
 import { REGRA_DE_PESSOAS_E_NUMEROS } from "@/lib/media/regras-de-redacao";
 import type { Prisma } from "@prisma/client";
+import { diaJaEscrito, tentativasDoDia, textoDoAvisoDoDia, TETO_DE_TENTATIVAS_DO_DIA } from "@/lib/media/falha-do-dia-da-semana";
+import { CODIGO_DA_ETAPA } from "@/lib/notificacoes/tipos";
+import { avisarDiaQueDesistiu } from "@/lib/media/retomar-semana-do-video";
 
 export { principalDoDia };
 
@@ -504,7 +507,10 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
     // desfazendo a exclusão. Card de espera ("Lucas está escrevendo...") é o
     // único sinal de dia por escrever.
     const ESPERA = /^\S+ está (escrevendo|criando|montando)/;
-    if (derivadosDoDia.some((c) => c.postId || (c.content && !ESPERA.test(c.content.trim())))) return;
+    // O AVISO de um dia que falhou NÃO conta como escrito enquanto houver
+    // tentativa (08/10): antes ele contava, e o dia ficava com o aviso para
+    // sempre. Ver lib/media/falha-do-dia-da-semana.ts.
+    if (diaJaEscrito(derivadosDoDia, ESPERA)) return;
 
     const data = dataDoDia(alvo, dia);
     const angulo = radar?.angulos.find((a) => a.dia === dia)?.texto ?? "";
@@ -553,6 +559,11 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
       if (existente) usados.add(existente.id);
       const metadata = { ...((existente?.metadata as Record<string, unknown> | null) ?? {}), ...metaBase, ...(dados.extra ?? {}) };
       delete (metadata as { aguardando?: boolean }).aguardando;
+      // A peça que saiu na nova tentativa (08/10) deixa de carregar a falha
+      // da anterior: o card do AVISO é reaproveitado e vira a peça.
+      if (!dados.extra?.falha) {
+        for (const k of ["falha", "tentativasDoDia", "ultimaRetomadaEm"]) delete (metadata as Record<string, unknown>)[k];
+      }
       const base = {
         content: dados.content,
         mediaType: dados.mediaType,
@@ -948,13 +959,28 @@ Infográfico com os dados do briefing do Roberto.`, mediaType: "infographic", me
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[semana][${videoJobId}] ${DIAS[dia]} (${formato}) falhou:`, e);
       // O card fica com o aviso, e não some: sumir é o que o Bruno leu como
-      // "travou" no sábado de 02/09. Rodar de novo tenta outra vez.
+      // "travou" no sábado de 02/09. Desde 08/10 o aviso conta as tentativas
+      // e diz só o que vai acontecer: o cron tenta o dia de novo até o teto
+      // (lib/media/retomar-semana-do-video.ts); no teto, a equipe recebe o
+      // e-mail e o cliente o código. O erro técnico fica em `metadata.falha`.
       const dono = formato === "thread" || (formato === "text" && principal === "twitter") ? AGENTES.tiago : formato === "carousel" ? AGENTES.diana : redator;
+      const tentativas = Math.max(0, ...derivadosDoDia.map((c) => tentativasDoDia(c.metadata))) + 1;
+      const rotulo = ROTULO_DO_FORMATO[formato].toLowerCase();
       await gravarCard(dono, {
-        content: `AVISO: não consegui montar ${ROTULO_DO_FORMATO[formato].toLowerCase()} de ${DIAS[dia]} (${msg.slice(0, 160)}). A esteira tenta de novo sozinha; se persistir, peça pelo chat deste card.`,
+        content: textoDoAvisoDoDia({ rotulo, dia: DIAS[dia], tentativas, codigo: CODIGO_DA_ETAPA.semana }),
         mediaType: "text",
-        extra: { falha: msg.slice(0, 300) },
+        extra: { falha: msg.slice(0, 300), tentativasDoDia: tentativas, ultimaRetomadaEm: null },
       }).catch(() => {});
+      // O card de espera que sobrou (a Diana "criando" ao lado do AVISO) sai:
+      // ninguém vai preencher, e "criando" para sempre é estado que sobrevive
+      // ao fato. A nova tentativa cria o card que precisar.
+      const sobras = derivadosDoDia.filter((c) => !usados.has(c.id) && !c.postId && ESPERA.test((c.content ?? "").trim()));
+      if (sobras.length) await prisma.campaignCard.deleteMany({ where: { id: { in: sobras.map((c) => c.id) }, postId: null } }).catch(() => {});
+      if (tentativas >= TETO_DE_TENTATIVAS_DO_DIA) {
+        await avisarDiaQueDesistiu({ videoJobId, runId: run.id, dia, rotulo, nomeDoDia: DIAS[dia], motivo: msg, tentativas }).catch((err) =>
+          console.error(`[semana][${videoJobId}] aviso do dia que desistiu falhou:`, err)
+        );
+      }
     }
   }));
 

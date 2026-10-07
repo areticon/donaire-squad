@@ -266,6 +266,14 @@ export type MontagemDoCompleto = {
    * Liga o aviso claro e o botão "Tentar a montagem de novo" na tela.
    */
   falhaTecnica?: boolean;
+  /**
+   * A falha que pedir de novo NÃO resolve (08/10): o completo aprovado sem o
+   * plano da jornada volta a cair no mesmo lugar. A tela esconde o botão
+   * "Tentar a montagem de novo" e mostra `detalheDoCliente`, que diz o que
+   * houve e o que fazer, em vez da frase padrão ("tentamos três vezes").
+   */
+  semNovaTentativa?: boolean;
+  detalheDoCliente?: string | null;
   /** Quando os admins foram avisados por e-mail desta desistência. */
   avisadoEm?: string | null;
   /**
@@ -1133,14 +1141,26 @@ async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null,
     // O card leva também `desde`, o motivo e a marca de falha técnica (01/10,
     // parte 240): só com o estado, o card do completo que desistiu dizia
     // "Corte sem a edição completa" sem explicar nem oferecer saída.
-    const espelho = JSON.stringify({ estado: novo.estado, desde: novo.desde, motivo: novo.motivo ?? null, falhaTecnica: Boolean(novo.falhaTecnica) });
+    const espelho = JSON.stringify({
+      estado: novo.estado,
+      desde: novo.desde,
+      motivo: novo.motivo ?? null,
+      falhaTecnica: Boolean(novo.falhaTecnica),
+      // A falha sem nova tentativa leva a própria frase ao card (08/10).
+      ...(novo.semNovaTentativa ? { semNovaTentativa: true, detalheDoCliente: novo.detalheDoCliente ?? null } : {}),
+    });
     await prisma.$executeRaw`
       UPDATE campaign_cards SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('montagem', ${espelho}::jsonb)
       WHERE metadata ->> 'videoJobId' = ${videoJobId} AND (metadata ->> 'completo')::boolean IS TRUE`.catch(() => 0);
     // A DESISTÊNCIA POR ERRO TÉCNICO avisa os admins, uma vez por desistência
     // (a troca para "sem-montagem" só acontece uma vez por rodada).
     if (novo.estado === "sem-montagem" && novo.falhaTecnica && lido?.estado !== "sem-montagem") {
-      await avisarAdminsDaMontagem({ videoJobId, alvo: "completo", motivo: novo.motivo ?? "sem detalhe" }).catch((e) =>
+      await avisarAdminsDaMontagem({
+        videoJobId,
+        alvo: "completo",
+        motivo: novo.motivo ?? "sem detalhe",
+        ...(novo.semNovaTentativa ? { semNovaTentativa: true } : {}),
+      }).catch((e) =>
         console.error(`[montagem-do-completo][${videoJobId}] aviso aos admins falhou:`, e)
       );
       // A DEVOLUÇÃO (02/10): a montagem não foi entregue por erro nosso.
@@ -1345,6 +1365,12 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
         desde: agora(),
         analise,
         motivo: `O quadro da gravação (${analise.largura}x${analise.altura}) não é 16:9 nem 9:16: o vídeo completo sai com a edição de fala, sem a montagem de efeitos.`,
+        // É falha, e não "não se aplica" (08/10): o cliente pagou a edição e
+        // não vai recebê-la. Com a marca, a equipe é avisada e a edição volta
+        // em créditos; pedir de novo cairia aqui outra vez, então sem botão.
+        falhaTecnica: true,
+        semNovaTentativa: true,
+        detalheDoCliente: "O formato desta gravação não entrou na montagem de efeitos, e o vídeo completo saiu só com a fala editada. Os créditos da edição voltaram para a sua conta e a equipe já foi avisada.",
       });
       return;
     }
@@ -1377,7 +1403,29 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // A JORNADA OFICIAL (E5): o plano aprovado (congelado) vai aos passos 6 e 7; nenhum caminho antigo entra.
     if (esteira === "jornada") {
       if (!naJornada) {
-        await trocarEstado(v.id, tomado, { ...tomado, estado: "sem-montagem", desde: agora(), fala: falaDoCompleto, analise, motivo: "Este vídeo foi aprovado sem o plano da jornada do editor: o completo segue com a fala editada." });
+        // NUNCA "VÍDEO PRONTO" CALADO (08/10): sem o plano aprovado, o completo
+        // ia a "sem-montagem" sem a marca de falha, e o observador mandava
+        // "vídeo pronto" de um vídeo sem nenhum efeito, sem estorno nem aviso à
+        // equipe. É falha: a marca liga o e-mail da equipe e a devolução da
+        // edição (trocarEstado). Pedir de novo não resolve (o plano só nasce
+        // na tela do roteiro), então o cliente lê o que houve, sem o botão.
+        await trocarEstado(v.id, tomado, {
+          ...tomado,
+          estado: "sem-montagem",
+          desde: agora(),
+          fala: falaDoCompleto,
+          analise,
+          motivo: `O completo foi aprovado sem o plano de efeitos da jornada: saiu só com a fala editada. ${
+            lido.roteiro?.jornada?.erro
+              ? `Erro do plano: ${lido.roteiro.jornada.erro.slice(0, 200)}`
+              : lido.roteiro?.jornada?.plano
+                ? "O plano existia, mas não foi aprovado."
+                : "O plano não chegou a ficar pronto."
+          }`,
+          falhaTecnica: true,
+          semNovaTentativa: true,
+          detalheDoCliente: "O plano de efeitos deste vídeo não ficou pronto antes da aprovação, e o vídeo completo saiu só com a fala editada. Os créditos da edição voltaram para a sua conta e a equipe já foi avisada.",
+        });
         return;
       }
       await trocarEstado(v.id, tomado, {
@@ -2076,8 +2124,9 @@ async function falhouNaJornada(id: string, lido: MontagemDoCompleto, motivo: str
     await trocarEstado(id, lido, { ...lido, desde: agora(), trabalhando: false, esperarAte: depois(ESPERA_ENTRE_TENTATIVAS_MS), jornada: { ...(lido.jornada as EstadoDaJornadaNaMontagem), falhas } });
     return;
   }
-  await trocarEstado(id, lido, { ...lido, estado: "sem-montagem", desde: agora(), trabalhando: false, motivo: `A edição não ficou pronta (${motivo.slice(0, 160)}).`, falhaTecnica: true, jornada: lido.jornada ? { ...lido.jornada, falhas } : null });
-  await avisarAdminsDaMontagem({ videoJobId: id, alvo: "completo", motivo: `jornada: ${motivo}` }).catch(() => {});
+  // O e-mail da equipe sai de dentro de trocarEstado (a troca para "sem-montagem"
+  // com falha técnica). A chamada que morava aqui mandava o mesmo aviso em dobro (08/10).
+  await trocarEstado(id, lido, { ...lido, estado: "sem-montagem", desde: agora(), trabalhando: false, motivo: `A edição não ficou pronta (jornada: ${motivo.slice(0, 160)}).`, falhaTecnica: true, jornada: lido.jornada ? { ...lido.jornada, falhas } : null });
 }
 
 /** "dirigindo" na jornada: os prompts e a geração (passo 6), a montagem pelo JEV (passo 7) e o envio do render. */
@@ -2811,6 +2860,11 @@ export async function tentarMontagemDoCompletoDeNovo(videoJobId: string): Promis
   // Parado além do prazo do render conta como morto (estado que sobrevive ao fato).
   // 60 min: o prazo em que a tela deixa de mostrar "montando" (estado-da-montagem.ts).
   if (andando && idade < 60 * 60_000) return { ok: false, caminho: null, motivo: "A montagem já está rodando. O card avisa quando terminar." };
+  // A falha que pedir de novo não resolve (08/10): repetir cairia no mesmo
+  // lugar e mandaria outro e-mail à equipe pelo mesmo fato.
+  if (m.estado === "sem-montagem" && m.semNovaTentativa) {
+    return { ok: false, caminho: null, motivo: m.detalheDoCliente ?? "Pedir de novo não resolve esta falha; a equipe já foi avisada." };
+  }
   if (m.plano && m.fala && m.analise && m.assets) {
     // Pedir de novo depois da VERSÃO SEGURA (02/10): o plano com as inserções
     // volta e a revisão visual recomeça; a devolução já feita fica (cortesia).
@@ -2825,6 +2879,8 @@ export async function tentarMontagemDoCompletoDeNovo(videoJobId: string): Promis
       esperarAte: null,
       motivo: null,
       falhaTecnica: false,
+      semNovaTentativa: false,
+      detalheDoCliente: null,
       trabalhando: false,
     });
     return { ok, caminho: "reenvio" };

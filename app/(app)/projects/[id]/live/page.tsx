@@ -11,6 +11,7 @@ import type { FalhaDaMontagem } from "@/components/video/aviso-da-montagem";
 import { estornosDaEdicao, refDoEstorno } from "@/lib/credits/estorno-da-edicao";
 import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
 import { temCapasGeradas } from "@/lib/media/estilos-de-capa";
+import { descreverFalhaDaCampanha } from "@/lib/pipeline/falha-da-campanha";
 
 function getMonday(d: Date): Date {
   const day = d.getUTCDay();
@@ -77,20 +78,25 @@ export default async function LivePage({
   const roteiros = new Map<string, { existe: boolean; aprovado: boolean }>();
   // A montagem do completo que DESISTIU por erro técnico (01/10, parte 240).
   const completoFalhou = new Set<string>();
+  // A falha do completo que pedir de novo não resolve (08/10): a frase própria, sem o botão.
+  const completoSemNova = new Map<string, string | null>();
   // O completo que foi ao ar na VERSÃO SEGURA (02/10, revisão visual sem conserto).
   const completoSeguro = new Set<string>();
   if (videos.length) {
-    const linhas = await prisma.$queryRaw<{ id: string; estado: string | null; tem_roteiro: boolean | null; aprovado: string | null; falha: string | null; segura: string | null }[]>`
+    const linhas = await prisma.$queryRaw<{ id: string; estado: string | null; tem_roteiro: boolean | null; aprovado: string | null; falha: string | null; segura: string | null; sem_nova: string | null; detalhe: string | null }[]>`
       SELECT id, "completoMontagem" ->> 'estado' AS estado,
              ("completoMontagem" -> 'roteiro') IS NOT NULL AS tem_roteiro,
              "completoMontagem" -> 'roteiro' ->> 'aprovadoEm' AS aprovado,
              "completoMontagem" ->> 'falhaTecnica' AS falha,
-             "completoMontagem" -> 'revisaoVisual' ->> 'segura' AS segura
+             "completoMontagem" -> 'revisaoVisual' ->> 'segura' AS segura,
+             "completoMontagem" ->> 'semNovaTentativa' AS sem_nova,
+             "completoMontagem" ->> 'detalheDoCliente' AS detalhe
       FROM video_jobs WHERE id = ANY(${videos.map((v) => v.id)})`.catch(() => []);
     for (const l of linhas) {
       if (l.estado) estadoDoCompleto.set(l.id, l.estado);
       roteiros.set(l.id, { existe: Boolean(l.tem_roteiro), aprovado: Boolean(l.aprovado) });
       if (l.estado === "sem-montagem" && l.falha === "true") completoFalhou.add(l.id);
+      if (l.estado === "sem-montagem" && l.falha === "true" && l.sem_nova === "true") completoSemNova.set(l.id, l.detalhe);
       if (l.estado === "pronto" && l.segura === "true") completoSeguro.add(l.id);
     }
   }
@@ -105,7 +111,14 @@ export default async function LivePage({
       .filter(({ t }) => (t?.montagem?.estado === "sem-montagem" && t.montagem.falhaTecnica) || (t?.montagem?.estado === "pronto" && t.montagem.revisaoVisual?.segura))
       .map(({ t, i }) => ({ videoJobId: v.id, nome, alvo: i, titulo: t.titulo ?? null, tipo: t.montagem?.estado === "pronto" ? "segura" : "falha", devolvidos: devolvidos.get(refDoEstorno(v.id, i)) ?? 0 }) as FalhaDaMontagem);
     const completo: FalhaDaMontagem[] = completoFalhou.has(v.id) || completoSeguro.has(v.id)
-      ? [{ videoJobId: v.id, nome, alvo: "completo", tipo: completoSeguro.has(v.id) ? "segura" : "falha", devolvidos: devolvidos.get(refDoEstorno(v.id, "completo")) ?? 0 }]
+      ? [{
+          videoJobId: v.id,
+          nome,
+          alvo: "completo",
+          tipo: completoSeguro.has(v.id) ? "segura" : "falha",
+          devolvidos: devolvidos.get(refDoEstorno(v.id, "completo")) ?? 0,
+          ...(completoSemNova.has(v.id) ? { semNovaTentativa: true, detalhe: completoSemNova.get(v.id) ?? null } : {}),
+        }]
       : [];
     return [...completo, ...cortes];
   });
@@ -155,7 +168,8 @@ export default async function LivePage({
   });
   const motivoDaFalha = (logs: unknown): string | null => {
     const lista = Array.isArray(logs) ? (logs as Array<{ status?: string; message?: string }>) : [];
-    const erro = [...lista].reverse().find((l) => l?.status === "error" && typeof l.message === "string");
+    // "failed" também (08/10): sem squad, sem rede e sem dia gravam a frase com esse nível.
+    const erro = [...lista].reverse().find((l) => (l?.status === "error" || l?.status === "failed") && typeof l.message === "string");
     return erro?.message?.slice(0, 400) ?? null;
   };
   const [activeRun, lastFailedRun] = await Promise.all([
@@ -191,6 +205,19 @@ export default async function LivePage({
     // do registro, que já é escrita para o cliente.
     motivo: motivoDaFalha(r.logs),
   });
+  // O CÓDIGO E A FRASE DA FALHA (08/10), os mesmos do sino: a faixa dizia "veja os
+  // avisos acima" sem aviso nenhum acima, e o código era só o fim do id.
+  const falhaDaUltima = lastFailedRun?.status === "failed"
+    ? descreverFalhaDaCampanha({
+        status: lastFailedRun.status,
+        totalPosts: (lastFailedRun.output as { totalPosts?: number } | null)?.totalPosts ?? 0,
+        diasQueFalharam: (lastFailedRun.output as { diasQueFalharam?: number } | null)?.diasQueFalharam ?? 0,
+        trabalhosQueFalharam: await prisma.trabalho
+          .findMany({ where: { grupo: lastFailedRun.id, status: "falhou" }, select: { tipo: true, attempts: true, error: true } })
+          .catch(() => []),
+        ultimaMensagemDeErro: motivoDaFalha(lastFailedRun.logs),
+      })
+    : null;
 
   return (
     <ContentManager
@@ -210,7 +237,11 @@ export default async function LivePage({
         chatHistory: Array.isArray(c.chatHistory) ? (c.chatHistory as { role: "user" | "assistant"; content: string; timestamp: string }[]) : [],
       }))}
       activeRun={activeRun ? serializeRun(activeRun) : null}
-      lastFailedRun={lastFailedRun ? serializeRun(lastFailedRun) : null}
+      lastFailedRun={
+        lastFailedRun
+          ? { ...serializeRun(lastFailedRun), ...(falhaDaUltima ? { motivo: `${falhaDaUltima.titulo}. ${falhaDaUltima.texto}`, codigo: falhaDaUltima.codigo } : {}) }
+          : null
+      }
       videos={[...gemeos.ativos, ...videos.map((v) => {
         const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
           publicar?: boolean;

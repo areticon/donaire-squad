@@ -189,9 +189,13 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
   const alvo = { inicio: plano.inicio, weekStart: run.weekStart ?? segundaDaSemana() };
   const existentes = await prisma.campaignCard.findMany({
     where: { runId: run.id },
-    select: { agentId: true, dayOfWeek: true },
+    select: { agentId: true, dayOfWeek: true, metadata: true },
   });
   const tem = (agentId: string, dia: number) => existentes.some((c) => c.agentId === agentId && c.dayOfWeek === dia);
+  // O DIA COM AVISO DE FALHA não ganha card de espera de novo (08/10): a falha
+  // apaga a espera que sobrou ("Diana está criando" ao lado do AVISO), e o
+  // agendar, que roda a cada vez que a tela acha o vídeo parado, a recriava.
+  const diaComFalha = (dia: number) => existentes.some((c) => c.dayOfWeek === dia && (c.metadata as { falha?: unknown } | null)?.falha);
 
   // O Roberto pesquisa no PRIMEIRO dia do plano (hoje), e não na segunda:
   // com a campanha começando na quarta, o card dele na segunda ficava no
@@ -221,6 +225,7 @@ export async function abrirQuadroDoVideo(videoJobId: string): Promise<{ runId: s
     // A DATA do dia dentro do plano (30/09): com início na quarta, a terça é
     // a da semana seguinte, e não a de ontem.
     const data = dataDoDia(alvo, dia);
+    if (diaComFalha(dia)) continue;
     for (const e of esperaDoDia(formato, redes)) {
       if (tem(e.agentId, dia)) continue;
       await prisma.campaignCard.create({
