@@ -52,14 +52,6 @@ const PRAZO = /passou do prazo/i;
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 
 /**
- * O que dizer desta campanha, ou null quando não houve falha a avisar.
- *
- * A ordem importa: "não começou" (sem squad, sem rede, sem dia) não tem
- * trabalho falhado nenhum, o motivo está só no log e é escrito para o
- * cliente; "prazo" é quando TODO dia que falhou morreu por tempo; o resto é
- * "nenhuma peça" ou "parte dos dias".
- */
-/**
  * Quantos DIAS falharam. Conta pelos trabalhos de dia, e não pelo número do
  * fecho: `estadoDoGrupo` soma qualquer trabalho falhado do grupo, inclusive o
  * vídeo por IA, e o vídeo que não saiu já é dito na própria peça (videoFalhou).
@@ -70,25 +62,40 @@ export function diasQueFalharamDe(f: Pick<FatosDaCampanha, "diasQueFalharam" | "
   return f.trabalhosQueFalharam.filter((t) => t.tipo === "campanha-dia").length;
 }
 
+/**
+ * O que dizer desta campanha, ou null quando não houve falha a avisar.
+ *
+ * A ordem importa: a falha de configuração (sem squad, sem rede, sem dia) não
+ * tem dia falhado na fila, o motivo está só no log e é escrito para o
+ * cliente; "prazo" é quando TODO dia que falhou morreu por tempo; o resto é
+ * "nenhuma peça" ou "parte dos dias".
+ */
 export function descreverFalhaDaCampanha(f: FatosDaCampanha): FalhaDaCampanha | null {
   const falhou = f.status === "failed";
   const dias = diasQueFalharamDe(f);
   if (!falhou && dias === 0) return null;
   if (f.status !== "failed" && f.status !== "completed") return null;
 
-  if (falhou && f.trabalhosQueFalharam.length === 0 && f.totalPosts === 0) {
+  // A FALHA DE CONFIGURAÇÃO PODE VIR NO MEIO (revisão de 08/10): a rede que
+  // caiu na quarta marca a execução como falha dentro do dia, depois de
+  // segunda e terça terem virado post. Com peças no quadro, "não começou" e
+  // "não gerou nenhuma peça" seriam mentira; a frase conta as que saíram. O
+  // fecho não cobra execução falhada, então "nada foi cobrado" vale nos dois.
+  if (falhou && dias === 0) {
+    const motivo = f.ultimaMensagemDeErro?.trim() || (f.totalPosts > 0 ? "A campanha parou no meio." : "A campanha parou antes do primeiro dia.");
+    const jaSairam = f.totalPosts > 0 ? ` ${plural(f.totalPosts, "A peça que já saiu está", `As ${f.totalPosts} peças que já saíram estão`)} no quadro esperando o seu ok.` : "";
     return {
       codigo: CODIGO_DA_CAMPANHA.configuracao,
-      titulo: "A campanha não começou",
-      texto: `${f.ultimaMensagemDeErro?.trim() || "A campanha parou antes do primeiro dia."} Nada foi cobrado.`,
-      parcial: false,
+      titulo: f.totalPosts > 0 ? "A campanha parou no meio" : "A campanha não começou",
+      texto: `${motivo}${jaSairam}${/nada foi cobrado/i.test(motivo) ? "" : " Nada foi cobrado."}`,
+      parcial: f.totalPosts > 0,
     };
   }
 
   const erros = f.trabalhosQueFalharam.filter((t) => !t.tipo.startsWith("video-ia")).map((t) => t.error ?? "");
   const todosPorPrazo = erros.length > 0 && erros.every((e) => PRAZO.test(e));
 
-  if (falhou || f.totalPosts === 0) {
+  if (f.totalPosts === 0) {
     return {
       codigo: todosPorPrazo ? CODIGO_DA_CAMPANHA.prazo : CODIGO_DA_CAMPANHA.semPeca,
       titulo: "A campanha não gerou nenhuma peça",

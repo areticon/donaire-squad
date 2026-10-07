@@ -60,7 +60,7 @@ import { blocoDosLinks, lerLinks } from "@/lib/projeto/links-do-cliente";
 import { janelaDaCampanha, substituiRascunhos } from "@/lib/pipeline/sobreposicao-de-campanha";
 import { avisarFalhaDaCampanha } from "@/lib/notificacoes/avisos";
 import { cardParaReaproveitar, diaJaEntregue } from "@/lib/pipeline/card-do-dia";
-import { AVISO_DE_NAO_REVISADO, PARECER_SEM_REVISAO } from "@/lib/squad/sem-revisao";
+import { AVISO_DE_NAO_REVISADO, FECHO_SEM_REVISAO, PARECER_SEM_REVISAO } from "@/lib/squad/sem-revisao";
 
 // O teto de tempo vive nas ROTAS (`/api/cron/fila`), e nao mais aqui: desde
 // 10/09 o motor gera UM dia por chamada, e cada dia tem os seus 800 s. Antes,
@@ -4259,7 +4259,11 @@ ${d.content}
           corrigido ? `✅ Corrigido pelo squad em ${tentativas === 1 ? "1 tentativa" : `${tentativas} tentativas`}, com base no parecer da Vera.\n` : "",
           precisaDoCliente && correcao?.oQueFazer ? `PRECISA DE VOCÊ\n${correcao.oQueFazer}\n` : "",
           `LinkedIn:\n${liContentFinal ?? "—"}\n\nX (Twitter):\n${twContentFinal ?? "—"}\n\nVeredito da Vera:\n${firstOutput}`,
-          tentativas > 0 ? `\nRevisão da Vera depois da correção ${tentativas}:\n${parecerDaVez}` : "",
+          // A revisão da volta que caiu (revisão de 08/10) não tem parecer: o
+          // `parecerDaVez` ainda é o de ANTES da correção, e escrevê-lo aqui
+          // como "depois da correção" atribuía à Vera uma reprovação que ela
+          // não fez da peça corrigida.
+          tentativas > 0 ? `\nRevisão da Vera depois da correção ${tentativas}:\n${revisaoIndisponivel ? PARECER_SEM_REVISAO : parecerDaVez}` : "",
           /**
            * O DESFECHO, escrito no fim, depois da reprovação inteira.
            *
@@ -4270,6 +4274,8 @@ ${d.content}
            * aqui é o que aconteceu com ela.
            */
           corrigido ? "\nVEREDITO: CORRIGIDO" : "",
+          // Sem revisão, o último veredito do card é "nenhum" (lib/squad/sem-revisao.ts).
+          revisaoIndisponivel ? `\n${FECHO_SEM_REVISAO}` : "",
         ].filter(Boolean).join("\n"),
         ...(correcao ? { metadata: { correcaoDaVera: correcao } } : revisaoIndisponivel ? { metadata: { naoRevisado: true } } : {}),
         ...(cardStatus === "needs_revision" ? { status: "needs_revision" } : {}),

@@ -62,7 +62,9 @@ export const NOME_DA_ETAPA_NO_AVISO: Record<keyof typeof CODIGO_DA_ETAPA, string
   write: "A redação dos posts",
   completo: "O vídeo completo",
   efeitos: "A montagem dos efeitos",
-  semana: "A semana escrita a partir do vídeo",
+  // "Um dia", e não "A semana" (revisão de 08/10): o título vira "... parou",
+  // e o resto da semana segue no quadro; só aquele dia desistiu.
+  semana: "Um dia da semana escrita a partir do vídeo",
 };
 
 /**

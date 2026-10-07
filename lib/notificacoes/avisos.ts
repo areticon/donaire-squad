@@ -251,8 +251,10 @@ export async function avisarFalhaDaCampanha(runId: string): Promise<void> {
   await avisarAdmins({
     chave: `campanha-falhou:${runId}`,
     titulo: `${falha.titulo} (${falha.codigo})`,
-    texto: `${run.project.name}: ${falha.parcial ? `${diasQueFalharamDe(fatos)} dia(s) falharam` : "nenhuma peça"}. O motivo técnico foi por e-mail.`,
-    assunto: `Campanha ${falha.parcial ? "com dias falhados" : "falhou"} (${falha.codigo}): ${run.project.name}`,
+    // Os números, e não "parcial ou nenhuma": a falha de configuração no meio
+    // da semana tem peça no quadro e nenhum dia falhado na fila (08/10).
+    texto: `${run.project.name}: ${fatos.totalPosts} peça(s) entregue(s), ${diasQueFalharamDe(fatos)} dia(s) falhado(s). O motivo técnico foi por e-mail.`,
+    assunto: `Campanha ${fatos.totalPosts > 0 ? "com falha" : "falhou"} (${falha.codigo}): ${run.project.name}`,
     corpo: textoDaFalhaParaAEquipe({
       falha,
       runId,

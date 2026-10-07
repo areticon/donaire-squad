@@ -52,7 +52,7 @@ export async function avisarAdminsDaMontagem(p: {
         `Último motivo: ${p.motivo.slice(0, 600)}`,
         "",
         p.semNovaTentativa
-          ? "O cliente vê o aviso de que os efeitos não saíram e que os créditos da edição voltaram, sem o botão de tentar de novo. O que faltou está no motivo acima."
+          ? "O cliente vê o aviso de que os efeitos não saíram e que não paga por eles (a devolução sai sozinha quando houve cobrança), sem o botão de tentar de novo. O que faltou está no motivo acima."
           : "O cliente vê o aviso \"A montagem de efeitos falhou; o vídeo abaixo tem só a edição de fala\" e o botão \"Tentar a montagem de novo\", que não cobra nada. Vale olhar os registros do worker no Railway antes.",
       ].join("\n"),
     }).catch(() => false);

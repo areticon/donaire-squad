@@ -1368,9 +1368,13 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
         // É falha, e não "não se aplica" (08/10): o cliente pagou a edição e
         // não vai recebê-la. Com a marca, a equipe é avisada e a edição volta
         // em créditos; pedir de novo cairia aqui outra vez, então sem botão.
+        // A frase não diz "os créditos voltaram" (revisão de 08/10): a devolução
+        // só acontece quando houve cobrança (estornarEdicaoNaoEntregue), e na
+        // conta sem cobrança a promessa seria falsa. O valor devolvido, quando
+        // existe, a tela mostra ao lado (AvisoDaMontagem).
         falhaTecnica: true,
         semNovaTentativa: true,
-        detalheDoCliente: "O formato desta gravação não entrou na montagem de efeitos, e o vídeo completo saiu só com a fala editada. Os créditos da edição voltaram para a sua conta e a equipe já foi avisada.",
+        detalheDoCliente: "O formato desta gravação não entrou na montagem de efeitos, e o vídeo completo saiu só com a fala editada. Você não paga pela montagem de efeitos que não saiu, e a equipe já foi avisada.",
       });
       return;
     }
@@ -1424,7 +1428,7 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
           }`,
           falhaTecnica: true,
           semNovaTentativa: true,
-          detalheDoCliente: "O plano de efeitos deste vídeo não ficou pronto antes da aprovação, e o vídeo completo saiu só com a fala editada. Os créditos da edição voltaram para a sua conta e a equipe já foi avisada.",
+          detalheDoCliente: "O plano de efeitos deste vídeo não ficou pronto antes da aprovação, e o vídeo completo saiu só com a fala editada. Você não paga pela montagem de efeitos que não saiu, e a equipe já foi avisada.",
         });
         return;
       }

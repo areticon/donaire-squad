@@ -11,7 +11,8 @@ import { readFileSync } from "node:fs";
 import { descreverFalhaDaCampanha, diasQueFalharamDe, textoDaFalhaParaAEquipe, type FatosDaCampanha } from "@/lib/pipeline/falha-da-campanha";
 import { CODIGO_DA_CAMPANHA } from "@/lib/notificacoes/tipos";
 import { cardParaReaproveitar, diaJaEntregue, JANELA_DO_MESMO_DIA_MS } from "@/lib/pipeline/card-do-dia";
-import { AVISO_DE_NAO_REVISADO, PARECER_SEM_REVISAO, naoRevisado } from "@/lib/squad/sem-revisao";
+import { AVISO_DE_NAO_REVISADO, FECHO_SEM_REVISAO, PARECER_SEM_REVISAO, naoRevisado } from "@/lib/squad/sem-revisao";
+import { lerVeredito } from "@/lib/squad/veredito";
 
 const { avisarAdmins } = await import("@/lib/notificacoes/aviso-aos-admins");
 type DepositoDosAdmins = import("@/lib/notificacoes/aviso-aos-admins").DepositoDosAdmins;
@@ -53,6 +54,55 @@ test("sem squad, sem rede ou sem dia (nenhum trabalho falhado) é CAM-CFG, com o
   assert.equal(f.codigo, "CAM-CFG");
   assert.match(f.texto, /Nenhuma rede conectada/);
   assert.match(f.texto, /Nada foi cobrado/);
+});
+
+// Revisão de 08/10: a rede que cai no meio da semana marca a execução como
+// falha DENTRO do dia, depois de outros dias terem virado post. A frase não
+// pode dizer "não começou" nem "nenhuma peça" com peças no quadro.
+test("a falha de configuração no meio da semana conta as peças que saíram", () => {
+  const f = descreverFalhaDaCampanha({
+    status: "failed",
+    totalPosts: 2,
+    diasQueFalharam: 0,
+    trabalhosQueFalharam: [],
+    ultimaMensagemDeErro: "Nenhuma rede conectada para escrever (pedidas: Instagram). Conecte uma rede em Configurações do projeto e gere de novo.",
+  })!;
+  assert.equal(f.codigo, "CAM-CFG");
+  assert.equal(f.titulo, "A campanha parou no meio");
+  assert.match(f.texto, /As 2 peças que já saíram estão no quadro/);
+  assert.doesNotMatch(f.titulo + f.texto, /não começou|nenhuma peça/);
+  assert.match(f.texto, /Nada foi cobrado\.$/);
+});
+
+test("a execução falhada com peças e dias falhados é parcial, e nunca 'nenhuma peça'", () => {
+  const f = descreverFalhaDaCampanha({
+    status: "failed",
+    totalPosts: 3,
+    diasQueFalharam: 0,
+    trabalhosQueFalharam: [{ tipo: "campanha-dia", dia: 4, attempts: 3, error: "x" }],
+    ultimaMensagemDeErro: null,
+  })!;
+  assert.equal(f.codigo, "CAM-PAR");
+  assert.equal(f.parcial, true);
+  assert.doesNotMatch(f.titulo, /nenhuma peça/);
+  assert.match(f.texto, /3 peças estão no quadro/);
+});
+
+test("a execução falhada só com o vídeo por IA falhado não fala em '0 dias'", () => {
+  const f = descreverFalhaDaCampanha({
+    status: "failed",
+    totalPosts: 1,
+    diasQueFalharam: 1,
+    trabalhosQueFalharam: [{ tipo: "video-ia", attempts: 3, error: "Veo recusou" }],
+    ultimaMensagemDeErro: "Este projeto está sem squad (nenhum agente cadastrado), então nada pôde ser escrito.",
+  })!;
+  assert.equal(f.codigo, "CAM-CFG");
+  assert.doesNotMatch(f.titulo + f.texto, /\b0 dia/);
+});
+
+test("o motivo do log que já diz 'nada foi cobrado' não ganha a frase em dobro", () => {
+  const f = descreverFalhaDaCampanha({ status: "failed", totalPosts: 0, diasQueFalharam: 0, trabalhosQueFalharam: [], ultimaMensagemDeErro: "Parou. Nada foi cobrado." })!;
+  assert.equal((f.texto.match(/nada foi cobrado/gi) ?? []).length, 1);
 });
 
 test("todos os dias mortos por tempo é CAM-PRA", () => {
@@ -194,6 +244,30 @@ test("o dia que já virou post numa tentativa anterior não é refeito", () => {
 
 // ─── a revisão que não rodou ───
 
+// Revisão de 08/10: quando cai a revisão da VOLTA, o card guarda a reprovação
+// da primeira. Sem o fecho, a tela (último VEREDITO) lia "reprovado pela Vera"
+// numa peça já corrigida e que ninguém revisou de novo.
+test("o card da Vera sem a revisão da volta não é lido como reprovado", () => {
+  const card = [
+    AVISO_DE_NAO_REVISADO,
+    "LinkedIn:\ntexto corrigido",
+    "Veredito da Vera:\n1. Número sem fonte.\n\nVEREDITO: REPROVADO_TEXTO",
+    `Revisão da Vera depois da correção 1:\n${PARECER_SEM_REVISAO}`,
+    FECHO_SEM_REVISAO,
+  ].join("\n");
+  assert.equal(lerVeredito(card).chave, "sem-veredito");
+  // Sem o fecho, a leitura seria a reprovação antiga: é isso que o fecho evita.
+  assert.equal(lerVeredito(card.replace(FECHO_SEM_REVISAO, "")).chave, "reprovado");
+  // O card da primeira revisão que caiu também não tem veredito.
+  assert.equal(lerVeredito(`Veredito da Vera:\n${PARECER_SEM_REVISAO}\n${FECHO_SEM_REVISAO}`).chave, "sem-veredito");
+});
+
+test("o card da volta que caiu escreve o 'não revisado', e não o parecer de antes da correção", () => {
+  const ex = ler("lib/pipeline/executar.ts");
+  assert.match(ex, /Revisão da Vera depois da correção \$\{tentativas\}:\\n\$\{revisaoIndisponivel \? PARECER_SEM_REVISAO : parecerDaVez\}/);
+  assert.match(ex, /revisaoIndisponivel \? `\\n\$\{FECHO_SEM_REVISAO\}` : ""/);
+});
+
 test("o parecer sem revisão não carrega veredito nem reprovação, e a marca é lida", () => {
   assert.doesNotMatch(PARECER_SEM_REVISAO, /VEREDITO/i);
   assert.doesNotMatch(PARECER_SEM_REVISAO.toLowerCase(), /reprovado/);
@@ -222,7 +296,8 @@ test("o dia confere se já tem post antes de refazer", () => {
 
 test("as duas revisões da Vera pelo Claude estão protegidas, e só o saldo sobe", () => {
   const inicio = EXECUTAR.indexOf("let revisaoIndisponivel: string | null = null;");
-  const fim = EXECUTAR.indexOf("// ── Paulo — Publish Card");
+  // A âncora sem o travessão do comentário original (a regra do dono vale para texto novo, teste incluso).
+  const fim = EXECUTAR.indexOf("// ── Paulo ");
   assert.ok(inicio > 0 && fim > inicio);
   const trecho = EXECUTAR.slice(inicio, fim);
   assert.equal((trecho.match(/if \(ehErroDeSaldo\(err\)\) throw err;/g) ?? []).length, 2);

@@ -71,7 +71,8 @@ test("o card do dia só promete o que acontece, e nunca mostra o erro técnico",
 
 test("a semana do vídeo tem código próprio no sino", () => {
   assert.equal(CODIGO_DA_ETAPA.semana, "VID-SEM");
-  assert.ok(NOME_DA_ETAPA_NO_AVISO.semana.length > 5);
+  // O título é "<nome> parou": quem parou é UM dia, o resto da semana segue (revisão de 08/10).
+  assert.match(NOME_DA_ETAPA_NO_AVISO.semana, /^Um dia /);
 });
 
 test("a esteira usa a regra nova, conta a tentativa e chama a equipe no teto", () => {
@@ -207,6 +208,14 @@ test("o completo sem o plano da jornada é falha técnica, e o e-mail da equipe 
   assert.match(ramo, /detalheDoCliente:/);
   // Uma chamada só ao aviso dos admins: a de dentro de trocarEstado.
   assert.equal((m.match(/await avisarAdminsDaMontagem\(/g) ?? []).length, 1);
+  // A frase do cliente não promete devolução que pode não existir (revisão de
+  // 08/10): a devolução só sai quando houve cobrança.
+  const detalhes = [...m.matchAll(/detalheDoCliente: "([^"]+)"/g)].map((x) => x[1]);
+  assert.ok(detalhes.length >= 2);
+  for (const d of detalhes) {
+    assert.doesNotMatch(d, /cr[eé]ditos .*voltaram/i, d);
+    assert.doesNotMatch(d, TRAVESSAO, d);
+  }
   // Pedir de novo uma falha sem nova tentativa não roda de novo.
   assert.match(m, /if \(m\.estado === "sem-montagem" && m\.semNovaTentativa\) \{/);
   // O sino usa a frase própria em vez de prometer o botão.
