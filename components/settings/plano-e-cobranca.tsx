@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Check, ExternalLink, ShieldCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { itensDoCartao } from "@/lib/entregas-do-plano";
-import { FUNDADOR, FUNDADOR_COBRANCA, GARANTIA_DIAS, PLANOS_PUBLICOS, fundadorBotao, fundadorVagas, mensalDoAnual, reais } from "@/lib/planos";
+import { FUNDADOR, FUNDADOR_COBRANCA, ARREPENDIMENTO_DIAS, PLANOS_PUBLICOS, fundadorBotao, fundadorVagas, mensalDoAnual, reais } from "@/lib/planos";
 import { useVagasDeFundador } from "@/lib/use-vagas-de-fundador";
 import type { Assinatura } from "@/lib/stripe/assinatura";
 import toast from "react-hot-toast";
@@ -320,7 +320,7 @@ export function PlanoECobranca({ assinatura }: { assinatura: Assinatura }) {
         )}
       </section>
 
-      {/* Garantia */}
+      {/* Arrependimento de 7 dias (a garantia de 30 dias saiu na versão 1.4 do contrato, 06/10) */}
       <div
         className="flex items-start gap-3 rounded-xl border p-4"
         style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
@@ -328,9 +328,9 @@ export function PlanoECobranca({ assinatura }: { assinatura: Assinatura }) {
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" />
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
-            Garantia de {GARANTIA_DIAS} dias.
+            {ARREPENDIMENTO_DIAS} dias para desistir.
           </span>{" "}
-          Se nos primeiros {GARANTIA_DIAS} dias você não publicar nada que aprovou, devolvemos tudo.
+          Se desistir nos primeiros {ARREPENDIMENTO_DIAS} dias depois do pagamento, devolvemos tudo, sem precisar dar motivo.
         </p>
       </div>
 

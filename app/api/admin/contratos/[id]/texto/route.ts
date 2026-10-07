@@ -26,7 +26,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const soTexto = req.nextUrl.searchParams.get("formato") === "texto";
   // Os acessos extras são os do contrato (04/10), e não os da conta hoje.
   const d = soTexto ? { ...(await import("@/lib/contratos/contratos")).textoDoContrato(c), pdf: null } : await documentoDoContrato(c, { teste: provedorDeAssinatura()?.ambiente === "teste" });
-  const cabecalhos = { "X-Hash-Do-Texto": d.hash, "X-Versao-Do-Modelo": encodeURIComponent(d.versao), "Cache-Control": "no-store" };
+  // X-Texto-Confere (06/10): "sim" quando o texto remontado é o que saiu para
+  // assinatura, "nao" quando mudou, "nao-enviado" quando ainda não saiu.
+  const confere = (d as { confere?: boolean | null }).confere;
+  const cabecalhos = { "X-Hash-Do-Texto": d.hash, "X-Versao-Do-Modelo": encodeURIComponent(d.versao), "X-Texto-Confere": confere === true ? "sim" : confere === false ? "nao" : "nao-enviado", "Cache-Control": "no-store" };
   if (d.pdf) {
     return new NextResponse(new Uint8Array(d.pdf), {
       headers: { ...cabecalhos, "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="contrato-demandou-${String(c.numero).padStart(4, "0")}.pdf"` },

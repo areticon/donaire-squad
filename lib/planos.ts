@@ -18,8 +18,13 @@ export type PlanoId = "pro" | "business" | "studio";
 
 export const TRIAL_DAYS = 7;
 
-/** Nos primeiros 30 dias, se não publicar nada que aprovou, devolvemos tudo. */
-export const GARANTIA_DIAS = 30;
+/**
+ * O ARREPENDIMENTO (06/10/2026): nos primeiros 7 dias depois do pagamento, quem
+ * desiste recebe tudo de volta, sem dar motivo (art. 49 do Código de Defesa do
+ * Consumidor, cláusula 7 do contrato). Substitui a garantia de 30 dias "se não
+ * publicar nada", que saiu do contrato na versão 1.4 por decisão do Bruno.
+ */
+export const ARREPENDIMENTO_DIAS = 7;
 
 /**
  * Fundador: os 10 primeiros no Autoridade travam R$ 397 por mês para sempre,

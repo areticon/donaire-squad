@@ -187,8 +187,8 @@ export function emailDeConfirmacao(nome: string, url: string, vagasDeFundador = 
       "O plano que vocês montaram na demonstração, em contrato anual."
     ),
     item(
-      "Garantia de 30 dias",
-      "Se nos primeiros 30 dias a empresa não publicar nada que aprovou, devolvemos tudo."
+      "7 dias para desistir",
+      "Se a empresa desistir nos primeiros 7 dias depois do pagamento, devolvemos tudo, sem precisar dar motivo."
     ),
     item(
       "Você conta sobre a empresa uma vez",

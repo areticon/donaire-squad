@@ -7,7 +7,7 @@ import { IdentificacaoCurta } from "@/components/identificacao-legal";
 import { Button } from "@/components/ui/button";
 import { BrandMarkAnimated } from "@/components/brand-mark-animated";
 import { cn } from "@/lib/utils";
-import { GARANTIA_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
+import { ARREPENDIMENTO_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
 import { Rastro } from "@/components/landing/rastro";
 import { ExtrasDoPlano } from "@/components/planos/extras-do-plano";
 import { ComoContamos, EntregasDoPlano } from "@/components/planos/entregas-do-plano";
@@ -79,7 +79,7 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
           </h1>
           <p className="text-lg text-[var(--text-muted)] max-w-2xl mx-auto">
             Contrato anual, pago à vista: autoridade se constrói com constância, e é a partir do terceiro mês que ela
-            começa a trazer cliente. Nos primeiros {GARANTIA_DIAS} dias, se a empresa não publicar nada que aprovou,
+            começa a trazer cliente. Nos primeiros {ARREPENDIMENTO_DIAS} dias depois do pagamento, se a empresa desistir,
             devolvemos tudo.
           </p>
         </div>
@@ -155,9 +155,9 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
         <div className="mt-10 max-w-2xl mx-auto flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
           <ShieldCheck className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
           <p className="text-sm text-[var(--text-muted)]">
-            <span className="font-semibold text-[var(--text-primary)]">Garantia de {GARANTIA_DIAS} dias.</span> Se nos
-            primeiros {GARANTIA_DIAS} dias a empresa não publicar nada que aprovou, devolvemos tudo. Além dela vale o
-            arrependimento de 7 dias, como manda a lei.
+            <span className="font-semibold text-[var(--text-primary)]">{ARREPENDIMENTO_DIAS} dias para desistir.</span> Se
+            a empresa desistir nos primeiros {ARREPENDIMENTO_DIAS} dias depois do pagamento, devolvemos tudo, sem precisar
+            dar motivo, como manda o Código de Defesa do Consumidor.
           </p>
         </div>
 
