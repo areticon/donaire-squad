@@ -1341,7 +1341,7 @@ export async function reabrirJornadaComAjuste(videoId: string, texto: string): P
   const linhas = await prisma.$queryRaw<Array<{ m: { midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }> } | null }>>`
     SELECT "completoMontagem" -> 'jornada' AS m FROM video_jobs WHERE id = ${videoId}`;
   const palavras = r.completo.fala.palavras;
-  const feito = await ajusteNoPlano(r.jornada, texto, { jev: jevDaJornada(), redator: redatorDaJornada(v.projectId, "jornada-ajuste"), projectId: v.projectId, palavras, frases: frasesDaFala(palavras), midiasDaEdicao: linhas[0]?.m?.midias ?? {} });
+  const feito = await ajusteNoPlano(r.jornada, texto, { jev: jevDaJornada(), redator: redatorDaJornada(v.projectId, "jornada-ajuste"), projectId: v.projectId, palavras, frases: frasesDaFala(palavras), midiasDaEdicao: Object.fromEntries(Object.entries(linhas[0]?.m?.midias ?? {}).filter(([, x]) => x.url && x.tipo)) as never });
   await gravarRoteiroDoVideo(videoId, { ...r, jornada: feito.estado, aprovadoEm: null });
   await prisma.videoJob.update({ where: { id: videoId }, data: { status: "roteiro", startedAt: null } });
   return true;

@@ -94,6 +94,8 @@ export const SEGUNDOS_DO_VIDEO = {
 export const DOLAR_POR_IMAGEM = {
   "higgsfield-gpt-image-2.5-low": 0.025,
   "higgsfield-gpt-image-2.5-medium": 0.06,
+  // HIGH (07/10, jornada do editor em qualidade alta por decisão do Bruno): 2,8x o medium na prova A/B de 02/10; estimativa, a conferir no painel.
+  "higgsfield-gpt-image-2.5-high": 0.168,
   "higgsfield-recraft-v4.1": 0.035,
   "higgsfield-grok-imagine-2.0": 0.08,
 } as const;

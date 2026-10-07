@@ -16,7 +16,7 @@ import type { DependenciasDaGeracao, MidiaGerada } from "@/lib/media/jornada/ger
  * As dependências DE VERDADE da geração da jornada (passo 6). Toda chamada
  * aqui é PAGA: só a montagem da jornada e as provas autorizadas usam.
  *
- *   - imagem: Higgsfield, GPT Image 2.5 qualidade média (JORNADA_IMAGEM troca
+ *   - imagem: Higgsfield, GPT Image 2.5 qualidade ALTA desde 07/10 (JORNADA_IMAGEM troca
  *     por outro id da Higgsfield sem deploy);
  *   - reserva: Nano Banana Pro (gemini-3-pro-image-preview), com aviso ao admin;
  *   - vídeo: Higgsfield, Kling 3.0 Pro texto para vídeo (pede HIGGSFIELD_NA_EDICAO=1);
@@ -29,7 +29,7 @@ const dataUrlParaBuffer = (d: string) => Buffer.from(d.slice(d.indexOf(",") + 1)
 
 export function modeloDaImagemDaJornada(): IdDaHiggsfield {
   const v = process.env.JORNADA_IMAGEM?.trim();
-  return v && v in FICHAS ? (v as IdDaHiggsfield) : "higgsfield-gpt-image-2.5-medium";
+  return v && v in FICHAS ? (v as IdDaHiggsfield) : "higgsfield-gpt-image-2.5-high";
 }
 
 /** Nano Banana Pro, direto (o segundo melhor modelo, decisão 2 do Bruno). */

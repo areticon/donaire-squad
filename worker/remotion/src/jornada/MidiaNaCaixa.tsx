@@ -8,8 +8,12 @@ import type { ContextoDaPeca as Ctx } from "../sob-medida/tipos";
  * gerada por IA (a imagem da janela ou o recorte que entra sobre a gravação)
  * na caixa que o código calculou e o JEV escolheu (fora do rosto, dentro da
  * área segura, fora da faixa da legenda), e anima a entrada e a saída com a
- * animação escolhida pelo JEV. Nada de moldura, cartão, ícone ou texto em
- * código: o que aparece é o que a Higgsfield gerou.
+ * animação escolhida pelo JEV. O conteúdo é o que a Higgsfield gerou.
+ *
+ * PROFUNDIDADE E MOVIMENTO (07/10, a receita da landing): a mídia nunca fica
+ * parada (deriva lenta de 5% e 1,5% de subida até a saída, como a câmera do
+ * pitch), e a janela ganha a moldura de vidro com sombra funda do pitch. O
+ * texto vem numa camada à parte (TextoDaJornada).
  */
 
 type Caixa = { x: number; y: number; w: number; h: number };
@@ -57,10 +61,18 @@ export function MidiaNaCaixa(c: Ctx) {
     transform = `scale(${(0.6 + 0.4 * e - 0.04 * (1 - sai)).toFixed(4)})`;
   }
   const janela = Boolean(c.props.janela);
-  const sombra = `drop-shadow(0 ${12 * c.u}px ${28 * c.u}px rgba(0,0,0,0.38))`;
+  const deriva = limitar(c.t / Math.max(1, c.dur));
+  transform += ` scale(${(1 + 0.05 * deriva).toFixed(4)}) translateY(${(-0.015 * h * deriva).toFixed(1)}px)`;
+  const sombra = `drop-shadow(0 ${24 * c.u}px ${40 * c.u}px rgba(0,0,0,0.5))`;
   return (
     <div style={{ position: "absolute", left: x, top: y, width: w, height: h, opacity: limitar(c.t / 0.12) * sai, transform, transformOrigin: "50% 55%", filter: [filtro, sombra].filter(Boolean).join(" ") }}>
-      <Img src={url} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: janela ? 18 * c.u : 0, overflow: "hidden" }} />
+      {janela ? (
+        <div style={{ width: "100%", height: "100%", borderRadius: 22 * c.u, overflow: "hidden", border: `${Math.max(1, 1.5 * c.u)}px solid rgba(255,255,255,0.16)`, boxShadow: `0 ${24 * c.u}px ${60 * c.u}px rgba(0,0,0,0.45)` }}>
+          <Img src={url} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${(1.02 + 0.06 * deriva).toFixed(4)})` }} />
+        </div>
+      ) : (
+        <Img src={url} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      )}
     </div>
   );
 }

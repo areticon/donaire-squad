@@ -8,6 +8,7 @@ import { gerarTodos, type DependenciasDaGeracao, type ElementoGerado } from "@/l
 import { montarEdicao, type EdicaoDaJornada, type LegendaDaJornada } from "@/lib/media/jornada/montagem";
 import { frasesDaFala, levarIndice, type Palavra } from "@/lib/media/jornada/linha-do-tempo";
 import { elementosAprovados } from "@/lib/media/jornada/revisao";
+import { escreverTextos, type TextoDoElemento } from "@/lib/media/jornada/textos";
 import type { AmostraDaJornada, EstadoDaJornada } from "@/lib/media/jornada/estado";
 
 /**
@@ -46,6 +47,8 @@ export type MontagemDaJornada = {
   avisosDoAdmin: string[];
   escolhas: Array<Record<string, unknown>>;
   prompts: Record<string, string>;
+  /** O texto em camada que o Claude escreveu, por elemento (07/10). */
+  textos: Record<string, TextoDoElemento>;
   trilha: boolean;
   custoUsd: { geracao: number };
   tempos: Record<string, number>;
@@ -82,7 +85,20 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   const porId = new Map(tempoDe.map((x) => [x.id, x]));
   // PASSO 6: um prompt por elemento (Sonnet) e a geração (Higgsfield), em paralelo.
   const entradas = entradasDosPrompts(aprovados, e.estado.leitura ?? null, e.formato);
-  const { prompts, erros } = await escreverPrompts(entradas, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId });
+  // O TEXTO EM CAMADA (07/10), escrito junto com os prompts: a fala A PARTIR da palavra que chama o elemento (o que foi dito antes
+  // não pode virar item: o elemento ainda não está na tela) e o que vem logo depois (os itens enumerados).
+  const falaEm = (de: number, ate: number) => e.falaDoRender.filter((p) => p.inicio >= de - 0.05 && p.inicio < ate).map((p) => p.texto).join(" ");
+  const [{ prompts, erros }, txt] = await Promise.all([
+    escreverPrompts(entradas, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId }),
+    escreverTextos(
+      entradas.map((x) => {
+        const tp = porId.get(x.id);
+        return { id: x.id, descricao: x.descricao, textoNaImagem: x.textoNaImagem, fala: tp ? falaEm(tp.t - 0.15, Math.max(tp.fraseAte, tp.t + 7)) : x.fala };
+      }),
+      { contexto: e.contexto, redator: e.redator }
+    ).catch((err) => ({ textos: {} as Record<string, TextoDoElemento>, erros: [`textos: ${err instanceof Error ? err.message.slice(0, 120) : err}`] })),
+  ]);
+  erros.push(...txt.erros);
   marcar("prompts");
   // O AJUSTE DO CARD (E6): as mídias desta edição que o pedido não tocou ficam; só as afetadas são geradas de novo.
   const mantidas = e.estado.midiasMantidas ?? {};
@@ -118,6 +134,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     projectId: e.projectId,
     temTrilha: e.temTrilha,
     leituraDoTrecho: (x) => trechoEmTexto(e.estado.leitura ?? null, x),
+    textos: txt.textos,
   });
   marcar("montagem");
   return {
@@ -127,6 +144,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     avisosDoAdmin: [...erros, ...g.gerados.map((x) => x.avisoAdmin).filter((x): x is string => Boolean(x)), ...m.avisos],
     escolhas: m.escolhas,
     prompts,
+    textos: txt.textos,
     trilha: m.trilha,
     custoUsd: { geracao: g.custoUsd },
     tempos,

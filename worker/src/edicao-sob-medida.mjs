@@ -886,7 +886,11 @@ export function grafoDoLote(edicao, lote, ctx) {
         // o zoompan anda quadro a quadro com ela, sem gerar nada adiantado.
         nos.push(`[${i}:v]scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W2}:${H2},format=yuv420p,setsar=1[fi${k}]`);
         nos.push(`[b${ib++}]${corte},setpts=PTS-STARTPTS,scale=${W2}:${H2}:flags=fast_bilinear,format=yuv420p,setsar=1[ft${k}]`);
-        nos.push(`[ft${k}][fi${k}]overlay=0:0,zoompan=z='1+0.06*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
+        // A JORNADA (07/10, a câmera da landing): 14% de aproximação suavizada com um leve passeio para cima, nunca parada.
+        const zp = edicao.jornada
+          ? `zoompan=z='1+0.14*(on/${n})*(on/${n})*(3-2*on/${n})':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2-ih*0.03*on/${n}'`
+          : `zoompan=z='1+0.06*on/${n}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2'`;
+        nos.push(`[ft${k}][fi${k}]overlay=0:0,${zp},setsar=1,format=yuv420p,trim=end_frame=${n}[${r}]`);
       }
     } else {
       // "grafico" (e inserção que falhou): o fundo da marca; as camadas desenham o resto.

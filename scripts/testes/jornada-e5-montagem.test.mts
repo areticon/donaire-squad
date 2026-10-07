@@ -1,7 +1,7 @@
 // E5 da jornada: passo 7, opções pelo código, escolha pelo JEV, render só com "mídia na caixa" e a legenda.
 //   - nenhuma caixa cruza o rosto em amostra alguma do intervalo; caixa dentro da área segura (nada nos 10% de cima do vertical);
 //   - entrada a até 0,15 s do gatilho; a legenda segue a escolha do cliente (e a caixa cede a ela);
-//   - nenhum elemento desenhado em código: a única peça é "jornada-midia", e a composição dela não importa peça de pecas/*;
+//   - a mídia entra pela peça "jornada-midia" (sem importar peça de pecas/*); desde 07/10 o texto em camada é a peça "jornada-texto" (ver e7);
 //   - o grafo do ffmpeg da jornada sem vignette, noise nem transição; sons só os que a IA decidiu;
 //   - a montagem lê só a lista aprovada; nenhuma chamada da seção C no caminho novo.
 // Rodar: npx tsx --test scripts/testes/jornada-e5-montagem.test.mts

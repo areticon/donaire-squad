@@ -7,6 +7,7 @@ import type { Palavra } from "@/lib/media/jornada/linha-do-tempo";
 import { faixaPrincipalDaLegenda, legendaDesenhada, legendaDoEstiloFixo, paginasNoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
+import type { TextoDoElemento } from "@/lib/media/jornada/textos";
 
 /**
  * O PASSO 7 DA JORNADA (E5): "o JEV monta", explícito.
@@ -185,6 +186,70 @@ export function legendaDaJornada(l: LegendaDaJornada, palavras: Palavra[], forma
   return { legenda: { paginas: paginasDoPitch(palavras) }, faixa: vertical ? [0.68, 0.83] : [0.83, 0.97] };
 }
 
+// ─────────────────────────────── o texto em camada (07/10) ───────────────────────────────
+
+const normalPalavra = (s: string) =>
+  String(s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+/**
+ * O INSTANTE DE CADA ITEM, pela palavra falada (o q() da landing): a primeira
+ * vez que a palavra é dita entre `de` e `limite`, menos 0,1 s. Itens sem a
+ * palavra na janela saem; dois itens nunca a menos de 0,6 s um do outro.
+ */
+export function temposDosItens(itens: TextoDoElemento["itens"], palavras: Palavra[], de: number, limite: number): Array<{ texto: string; t: number }> {
+  const saida: Array<{ texto: string; t: number }> = [];
+  let depois = de + 0.35;
+  for (const it of itens) {
+    const alvo = normalPalavra(it.palavra.split(/\s+/)[0]);
+    // A palavra pode ser a do próprio gatilho (dita na entrada): o item entra logo depois do título.
+    const p = palavras.find((w) => w.inicio >= (saida.length ? depois - 0.15 : de - 0.2) && w.inicio < limite - 0.8 && normalPalavra(w.texto) === alvo);
+    if (!p) continue;
+    const t = Math.max(depois, p.inicio - 0.1);
+    saida.push({ texto: it.texto, t: arred(t) });
+    depois = t + 0.6;
+  }
+  return saida;
+}
+
+/** A altura aproximada do texto (fração do quadro): o título em duas linhas e cada item. */
+function alturaDoTexto(nItens: number, vertical: boolean, H: number, W: number): number {
+  const u = (Math.min(W, H) / 1080) * (vertical ? 1.3 : 1);
+  return ((vertical ? 50 : 58) * u * 1.06 * 2 + 44 * u + nItens * ((vertical ? 34 : 36) * u * 1.15 + 44 * u)) / H;
+}
+
+/**
+ * ONDE O TEXTO FICA (geometria): na tela cheia, no alto à esquerda (como a
+ * landing); sobre a gravação, encostado na caixa da mídia (acima ou abaixo,
+ * nunca por cima dela), sempre com a ALTURA INTEIRA do texto fora
+ * do rosto, da tela, do quadro e da faixa da legenda. Não coube com todos os
+ * itens, tenta com menos; nem o título cabe, null (o texto fica fora).
+ */
+export function ancoraDoTexto(o: { formato: "9:16" | "16:9"; W: number; H: number; caixa: Caixa | null; protegidas: Caixa[]; legenda: FaixaDaLegenda; nItens: number }): { x: number; y: number; w: number; itens: number } | null {
+  const seg = AREA_SEGURA[o.formato];
+  const vertical = o.formato === "9:16";
+  if (!o.caixa) return { x: vertical ? 0.06 : 0.05, y: vertical ? 0.11 : 0.08, w: vertical ? 0.86 : 0.5, itens: o.nItens };
+  const c = o.caixa;
+  const w = Math.max(c.w, vertical ? 0.7 : 0.36);
+  const x = Math.min(Math.max(seg.esquerda, c.x), 1 - seg.direita - w);
+  const livre = (r: Caixa) =>
+    r.y >= seg.topo - 1e-9 && r.y + r.h <= 1 - seg.base + 1e-9 && !o.protegidas.some((p) => cruza(r, p)) && !(o.legenda && r.y < o.legenda[1] && r.y + r.h > o.legenda[0]);
+  for (let n = o.nItens; n >= 0; n--) {
+    const h = alturaDoTexto(n, vertical, o.H, o.W);
+    // Nunca por cima da própria mídia (prova de 07/10: o vidro tampou o recorte); sem lugar ao lado dela, o texto fica fora.
+    for (const r of [
+      { x, y: c.y - h - 0.012, w, h },
+      { x, y: c.y + c.h + 0.012, w, h },
+    ]) {
+      if (livre(r)) return { x: arred(r.x), y: arred(r.y), w: arred(r.w), itens: n };
+    }
+  }
+  return null;
+}
+
 // ─────────────────────────────── a escolha do JEV e a edição ───────────────────────────────
 
 export const ANIMACOES = { deslizar: "entra deslizando do lado livre e sai suave", crescer: "cresce do centro da caixa com mola curta", desfoque: "surge do desfoque para o nítido" } as const;
@@ -245,6 +310,8 @@ export async function montarEdicao(o: {
   projectId?: string | null;
   temTrilha: boolean;
   leituraDoTrecho?: (t: number) => string | null;
+  /** O texto em camada que o Claude escreveu, por elemento (07/10); o JEV decide se entra. */
+  textos?: Record<string, TextoDoElemento>;
 }): Promise<MontagemFeita> {
   const avisos: string[] = [];
   const avisosDoCliente: string[] = [];
@@ -273,6 +340,13 @@ export async function montarEdicao(o: {
     if (x.naCaixa) perguntas[`a_${id}`] = { type: "choice", instructions: { pergunta: "Como o elemento entra?", ...sobre }, criteria: { ...ANIMACOES } };
     perguntas[`e_${id}`] = { type: "choice", instructions: { pergunta: "O elemento entra na palavra que o chama ou no começo da frase?", palavra: x.e.aprovado.gatilho.palavra, ...sobre }, criteria: { gatilho: `na palavra "${x.e.aprovado.gatilho.palavra}"`, frase: "no começo da frase" } };
     perguntas[`s_${id}`] = { type: "choice", instructions: { pergunta: "Que som acompanha a entrada deste elemento?", ...sobre }, criteria: { ...SONS } };
+    const tx = o.textos?.[id];
+    if (tx)
+      perguntas[`t_${id}`] = {
+        type: "choice",
+        instructions: { pergunta: "O texto escrito para este momento entra por cima do elemento, num painel de vidro, com os itens aparecendo na palavra falada (como num vídeo de apresentação)?", titulo: tx.titulo, itens: tx.itens.map((i) => i.texto), ...sobre },
+        criteria: { com: "com o texto: reforça a ideia e dá ritmo ao momento", sem: "sem o texto: a mídia fala sozinha ou o texto repete a imagem" },
+      };
   }
   if (o.temTrilha) perguntas.trilha = { type: "choice", instructions: { pergunta: "O vídeo leva a trilha musical do projeto por baixo da voz?", duracao: Math.round(o.duracao), formato: o.formato }, criteria: { com: "com a trilha baixinha por baixo da voz", sem: "sem trilha: só a voz" } };
   let r: Record<string, RespostaDoJev> = {};
@@ -320,7 +394,8 @@ export async function montarEdicao(o: {
         const caixa = x.caixas.find((c) => c.id === cid)!.caixa;
         const animacao = escolha(r[`a_${id}`], Object.keys(ANIMACOES) as Animacao[]) ?? "crescer";
         const lado = caixa.x + caixa.w / 2 < 0.5 ? "esquerda" : "direita";
-        camadas.push({ id, peca: "jornada-midia", de, ate, entrada: 0.45, saida: 0.35, evento: 0.5, eventos: [], passes: ["frente"], props: { imagem: x.e.gerado.url, caixa, animacao, lado, proporcaoDaImagem: x.e.gerado.proporcao ?? null, janela: x.formato === "janela" } });
+        // "continua" (07/10): a mídia deriva o tempo todo; sem isto o render condensado desenha um quadro só e a congela.
+        camadas.push({ id, peca: "jornada-midia", de, ate, entrada: 0.45, saida: 0.35, evento: 0.5, eventos: [], continua: true, passes: ["frente"], props: { imagem: x.e.gerado.url, caixa, animacao, lado, proporcaoDaImagem: x.e.gerado.proporcao ?? null, janela: x.formato === "janela" } });
         escolhas.push({ id, caixa: cid, onde: x.caixas.find((c) => c.id === cid)!.onde, animacao, entrada, som, de, ate });
       }
     } else {
@@ -329,6 +404,39 @@ export async function montarEdicao(o: {
       escolhas.push({ id, formato: x.formato, entrada, som, de, ate });
     }
     if (som !== "nenhum") sons.push({ t: arred(Math.max(0, de - 0.05)), som, volume: VOLUME[som] });
+    // O TEXTO EM CAMADA (07/10): o que o Claude escreveu, se o JEV quis; os itens na palavra falada.
+    const tx = o.textos?.[id];
+    if (tx && (escolha(r[`t_${id}`], ["com", "sem"] as const) ?? "com") === "com") {
+      const prox = opcoes[opcoes.indexOf(x) + 1]?.e.t;
+      // Na tela cheia a pessoa some: o texto a segura no máximo 6 s; sobre a gravação, até 9 s.
+      const naTela = !(camadas.find((cc) => cc.id === id)?.props as { caixa?: Caixa } | undefined)?.caixa;
+      const limite = Math.min(o.duracao - 0.05, prox !== undefined ? prox - 0.35 : Infinity, de + (naTela ? 6 : 9));
+      const itens = temposDosItens(tx.itens, o.palavras, de, limite).map((i) => ({ texto: i.texto, t: arred(i.t - de) }));
+      const caixaDaMidia = (camadas.find((cc) => cc.id === id)?.props as { caixa?: Caixa } | undefined)?.caixa ?? null;
+      const telaCheia = !caixaDaMidia;
+      const ancora = ancoraDoTexto({ formato: o.formato, W: o.W, H: o.H, caixa: caixaDaMidia, protegidas: telaCheia ? [] : protegidasNoIntervalo(o.amostras, de, limite), legenda: leg.faixa, nItens: itens.length });
+      const esc = escolhas.at(-1);
+      if (ancora) {
+        const cabem = itens.slice(0, ancora.itens);
+        // A mídia acompanha o texto até o último item que entrou (só quando o texto entra).
+        const fimDoTexto = cabem.length ? Math.min(limite, Math.max(ate, de + cabem.at(-1)!.t + 1.6)) : ate;
+        if (fimDoTexto > ate + 0.05) {
+          // A mídia acompanha o texto até o último item.
+          const ult = planos.at(-1);
+          if (ult && ult.midia === id) ult.ate = arred(fimDoTexto);
+          const cam = camadas.find((cc) => cc.id === id);
+          if (cam) cam.ate = arred(fimDoTexto);
+          ate = arred(fimDoTexto);
+          if (esc && esc.id === id) esc.ate = ate;
+        }
+        // Cada item é um EVENTO da camada (07/10): o render condensado só redesenha a camada na entrada, nos eventos e na saída.
+        camadas.push({ id: `${id}-texto`, peca: "jornada-texto", de, ate, entrada: 0.35, saida: 0.22, evento: 0.4, eventos: cabem.map((i) => arred(de + i.t)), passes: ["frente", "vidro"], props: { titulo: tx.titulo, destaque: tx.destaque, itens: cabem, ancora: { x: ancora.x, y: ancora.y, w: ancora.w }, escurecer: telaCheia } });
+        if (esc && esc.id === id) Object.assign(esc, { texto: { titulo: tx.titulo, itens: cabem.map((i) => i.texto) } });
+      } else {
+        avisos.push(`${id}: o texto não coube fora do rosto e ficou fora`);
+        if (esc && esc.id === id) Object.assign(esc, { texto: null });
+      }
+    }
     fimAnterior = ate;
   }
   const trilha = o.temTrilha && escolha(r.trilha, ["com", "sem"] as const) === "com";

@@ -328,8 +328,33 @@ export type EstadoDaJornadaNaMontagem = {
   reenviar?: boolean;
   falhas?: number;
   /** As mídias desta edição, por elemento (o ajuste do card mantém as que o pedido não tocou). */
-  midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }>;
+  midias?: Record<string, MidiaDaJornadaGravada>;
 };
+
+/** Uma mídia da jornada como fica gravada (07/10): o que foi pedido, a quem, em que qualidade e por quanto, mesmo quando falhou. */
+export type MidiaDaJornadaGravada = {
+  url: string | null;
+  tipo: "imagem" | "recorte" | "video" | null;
+  formato: string;
+  proporcao: number | null;
+  prompt?: string;
+  modelo?: string | null;
+  qualidade?: string | null;
+  custoUsd?: number;
+  rodadas?: number;
+  texto?: unknown;
+  falhou?: string | null;
+};
+
+/** A qualidade pelo nome do modelo gravado (o GPT Image traz low/medium/high no id). */
+export function qualidadeDoModelo(modelo: string | null | undefined): string | null {
+  const m = String(modelo ?? "");
+  const q = /(low|medium|high)/.exec(m)?.[1];
+  if (q) return { low: "baixa", medium: "média", high: "alta" }[q]!;
+  if (/kling/i.test(m)) return "vídeo Kling 3.0 Pro";
+  if (/gemini-3-pro-image/i.test(m)) return "Nano Banana Pro 2K";
+  return m ? "padrão do modelo" : null;
+}
 
 export type EstadoDoSobMedida = {
   fase: "editar" | "previa" | "revisar" | "final";
@@ -2085,7 +2110,13 @@ async function gerarEMontarPelaJornada(v: VideoDoCompleto, lido: MontagemDoCompl
       escolhas: m.escolhas,
       custoUsd: m.custoUsd.geracao,
       tempos: m.tempos,
-      midias: Object.fromEntries(m.gerados.filter((g) => g.url && g.tipo).map((g) => [g.id, { url: g.url!, tipo: g.tipo!, formato: g.formato, proporcao: g.proporcao }])),
+      // O REGISTRO DE CADA ELEMENTO (07/10, pedido do Bruno): prompt, modelo, qualidade e custo, inclusive o que falhou.
+      midias: Object.fromEntries(
+        m.gerados.map((g) => [
+          g.id,
+          { url: g.url, tipo: g.tipo, formato: g.formato, proporcao: g.proporcao, prompt: g.prompt, modelo: g.modelo, qualidade: qualidadeDoModelo(g.modelo), custoUsd: g.custoUsd, rodadas: g.rodadas, texto: m.textos[g.id] ?? null, falhou: g.url ? null : g.avisoCliente ?? g.avisoAdmin },
+        ])
+      ),
     };
     await enviarPelaJornada(v, { ...tomado, trabalhando: false, jornada }, tomado);
   } catch (e) {

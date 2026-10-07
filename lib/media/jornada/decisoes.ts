@@ -83,7 +83,7 @@ export const SEGUNDOS_DO_BROLL = 3;
 
 /** A estimativa de UM elemento pela tabela única de preços. */
 export function custoDoElementoDaJornada(midia: MidiaDaJornada, comTexto: boolean): number {
-  const imagem = DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-medium"];
+  const imagem = DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-high"];
   const leitura = comTexto ? 0.002 : 0;
   if (midia === "video") return +(SEGUNDOS_DO_BROLL * DOLAR_POR_SEGUNDO_DE_VIDEO["kling-pro"]).toFixed(4);
   if (midia === "recorte") return +(imagem + DOLAR_POR_RECORTE + leitura).toFixed(4);
@@ -92,7 +92,9 @@ export function custoDoElementoDaJornada(midia: MidiaDaJornada, comTexto: boolea
 
 /** O teto de custo das mídias por vídeo (mostrado ao cliente na tela do passo 5). */
 export function tetoDoVideoUsd(duracao: number): number {
-  const porMinuto = Number(process.env.JORNADA_TETO_USD_POR_MINUTO ?? 0.6);
+  // 1,7 desde 07/10: a imagem foi para a qualidade ALTA (2,8x o preço do medium) e o teto subiu na mesma
+  // proporção, para a quantidade de elementos não cair com a troca (o Bruno pediu qualidade alta, sem corte).
+  const porMinuto = Number(process.env.JORNADA_TETO_USD_POR_MINUTO ?? 1.7);
   return +Math.max(1, (duracao / 60) * porMinuto).toFixed(2);
 }
 

@@ -85,7 +85,7 @@ const BASE = "https://api.higgsfield.ai";
 
 export type TipoDeImagem = "colagem" | "arte" | "fundo" | "elemento" | "cenario";
 
-export type IdDaHiggsfield = "higgsfield-gpt-image-2.5-low" | "higgsfield-gpt-image-2.5-medium" | "higgsfield-recraft-v4.1" | "higgsfield-grok-imagine-2.0";
+export type IdDaHiggsfield = "higgsfield-gpt-image-2.5-low" | "higgsfield-gpt-image-2.5-medium" | "higgsfield-gpt-image-2.5-high" | "higgsfield-recraft-v4.1" | "higgsfield-grok-imagine-2.0";
 /** A OpenAI direta (lib/media/gpt-image.ts): o medium era o caminho da arte até 01/10. */
 export type IdDaOpenAI = "openai-gpt-image-2-low" | "openai-gpt-image-2-medium";
 export type GeradorDeImagem = IdDaHiggsfield | IdDaOpenAI | "google";
@@ -151,6 +151,23 @@ export const FICHAS: Record<IdDaHiggsfield, FichaDaImagem> = {
       prompt: p.prompt,
       resolution: "2k",
       quality: "medium",
+      aspect_ratio: p.proporcaoAceita,
+      enhance_prompt: false,
+      ...(p.imagemUrl ? { image_urls: [p.imagemUrl] } : {}),
+    }),
+  },
+  /** HIGH (07/10): a imagem dos elementos da jornada do editor (o Bruno pediu qualidade alta; corte de custo só com ele). */
+  "higgsfield-gpt-image-2.5-high": {
+    endpoint: "marketing-studio/image/sunburst",
+    precoUsd: DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-high"],
+    edita: true,
+    limiteDoPrompt: 5000,
+    proporcoes: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    prazoMs: 180_000,
+    corpo: (p) => ({
+      prompt: p.prompt,
+      resolution: "2k",
+      quality: "high",
       aspect_ratio: p.proporcaoAceita,
       enhance_prompt: false,
       ...(p.imagemUrl ? { image_urls: [p.imagemUrl] } : {}),
