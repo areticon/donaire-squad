@@ -114,6 +114,131 @@ export function normalizarFicha(f: Partial<FichaDoDesign> | null | undefined): F
   return { nome, descricao, linguagem };
 }
 
+// ─────────────────────── o modelo é só o modelo ───────────────────────
+
+/**
+ * O MODELO É SÓ O MODELO (08/10/2026). Regra do Bruno, literal: "incentivar o
+ * usuário criar o seu estilo, a partir de um texto ou um áudio, e isso vai
+ * alimentar a biblioteca para todos os demais (nunca usar fotos reais, dados
+ * reais nos modelos); essa parte só cria o modelo, depois no quadro a IA
+ * coloca o conteúdo dentro do modelo".
+ *
+ * O que entra na biblioteca de todos é o MOLDE: a linguagem visual, o layout,
+ * a tipografia e as cores como papéis (destaque, fundo, título), nunca o
+ * conteúdo. A foto real e o dado do cliente (nome, marca, número, contato,
+ * rosto, produto fotografado) entram só no quadro, post a post, quando a IA
+ * preenche o modelo escolhido.
+ *
+ * Quem separa o visual do dado do cliente é o JEV (privacidade.ts). Aqui fica
+ * a regra final, pura, que decide o que é gravado e se é público:
+ *   - a entrada pública guarda como pedido SÓ os trechos que o JEV disse que
+ *     são visual (o pedido cru, com marca e contato, fica fora da linha);
+ *   - nenhuma prévia nasce com a entrada (a prévia é gerada depois, pelo
+ *     admin, com texto de exemplo e sem foto de ninguém);
+ *   - uma rede de segurança em código: texto com contato, link, arquivo de
+ *     imagem ou o nome do projeto ou de quem pediu nunca é público, mesmo que
+ *     a conferência tenha passado. Ela só tira da galeria, nunca publica.
+ */
+
+/** A ficha de reserva (sem o redator) copia o pedido cru e é marcada com isto: nunca é pública. */
+export const MARCA_DA_RESERVA = "As the client described it";
+
+/** Por que a entrada ficou só no projeto (null quando entrou na galeria). */
+export type MotivoDeFicarNoProjeto = "pedido-do-cliente" | "so-dado-do-cliente" | "ficha-com-dado-do-cliente" | "sem-conferencia" | null;
+
+/** O que se sabe de quem pediu, para a rede de segurança: o nome do projeto, o de quem pediu, o e-mail. */
+export interface DadosDoCliente {
+  nomes?: Array<string | null | undefined>;
+}
+
+/** Contato, link e arquivo de imagem: nunca são descrição de visual. */
+const PADROES_DE_DADO: Array<[RegExp, string]> = [
+  [/[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "e-mail"],
+  [/(^|[\s(])@[\w.]{2,}/, "perfil de rede"],
+  [/\bhttps?:\/\/|\bwww\.|\b[\w-]+\.(com|com\.br|br|net|org|io|app|me)\b/i, "site ou link"],
+  [/\bblob:|\b[\w-]+\.(jpe?g|png|webp|gif|heic)\b/i, "arquivo de imagem"],
+  [/\+?\d[\d\s().-]{7,}\d/, "telefone"],
+];
+
+/** Palavras genéricas de nome de negócio, que sozinhas não identificam ninguém. */
+const PALAVRAS_GENERICAS = new Set(
+  "clinica estudio studio consultoria marketing digital negocios academia escola empresa projeto grupo agencia store design conteudo oficial brasil servicos solucoes advocacia imoveis consorcios consorcio".split(" ")
+);
+
+/**
+ * O texto carrega dado do cliente? Devolve o motivo (para o log) ou null.
+ * Nome do projeto e de quem pediu contam inteiros; do nome da pessoa, cada
+ * palavra de 4 letras ou mais; do nome do projeto, as palavras de 5 letras ou
+ * mais que não são genéricas. Puro.
+ */
+export function dadoDoClienteNoTexto(texto: string, dados?: DadosDoCliente | null): string | null {
+  const t = String(texto ?? "");
+  for (const [re, motivo] of PADROES_DE_DADO) if (re.test(t)) return motivo;
+  const alvo = ` ${textoDeBusca(t).replace(/[^a-z0-9]+/g, " ")} `;
+  const nomes = (dados?.nomes ?? []).map((n) => textoDeBusca(String(n ?? "")).replace(/[^a-z0-9]+/g, " ").trim()).filter((n) => n.length >= 3);
+  for (const [i, nome] of nomes.entries()) {
+    if (alvo.includes(` ${nome} `)) return "nome do cliente";
+    // O primeiro nome é o do projeto (genérico às vezes); os outros são de pessoa.
+    const minimo = i === 0 ? 5 : 4;
+    for (const palavra of nome.split(" ")) {
+      if (palavra.length >= minimo && !PALAVRAS_GENERICAS.has(palavra) && alvo.includes(` ${palavra} `)) return "nome do cliente";
+    }
+  }
+  return null;
+}
+
+/** A ficha escrita pela IA, como a entrada a recebe. */
+export interface EntradaParaAGaleria {
+  /** O pedido cru, como o cliente escreveu (ou falou). */
+  pedido: string;
+  soNoMeuProjeto?: boolean;
+  /** A separação do JEV; null quando ela não rodou (só no meu projeto). */
+  separacao: { visual: string[]; peloJev: boolean } | null;
+  ficha: FichaDoDesign;
+  fichaPor: "redator" | "reserva";
+  /** A conferência do JEV na ficha escrita (falso: não conferiu ou citou o cliente). */
+  fichaLimpa: boolean;
+  dados?: DadosDoCliente | null;
+}
+
+/** O que é gravado na biblioteca. */
+export interface EntradaDecidida {
+  publico: boolean;
+  motivo: MotivoDeFicarNoProjeto;
+  /** O pedido que vai para a linha: na pública, só os trechos de visual. */
+  pedidoGravado: string;
+  nome: string;
+  descricao: string;
+  linguagem: string;
+  /** Sempre nula ao nascer: o modelo não leva foto de ninguém. */
+  previaUrl: null;
+}
+
+/** O pedido que fica na linha pública: só os trechos que o JEV disse que são visual. Puro. */
+export function pedidoSoVisual(visual: string[]): string {
+  return semTravessao(visual.map((v) => v.replace(/[.;\s]+$/, "")).join(". ")).slice(0, TETO.pedido);
+}
+
+/**
+ * A REGRA FINAL de uma entrada nova (08/10). Só é pública quando TUDO passa:
+ * o cliente não pediu "só no meu projeto", o JEV separou e achou visual, a
+ * ficha é do redator (a reserva copia o pedido cru), o JEV conferiu a ficha
+ * e a rede de segurança não achou dado do cliente na ficha nem no pedido
+ * visual. Pública, a linha guarda só o pedido visual. Puro.
+ */
+export function entradaParaAGaleria(e: EntradaParaAGaleria): EntradaDecidida {
+  const base = { nome: e.ficha.nome, descricao: e.ficha.descricao, linguagem: e.ficha.linguagem, previaUrl: null } as const;
+  const privada = (motivo: Exclude<MotivoDeFicarNoProjeto, null>): EntradaDecidida => ({ ...base, publico: false, motivo, pedidoGravado: semTravessao(e.pedido).slice(0, TETO.pedido) });
+  if (e.soNoMeuProjeto) return privada("pedido-do-cliente");
+  if (!e.separacao?.peloJev) return privada("sem-conferencia");
+  if (!e.separacao.visual.length) return privada("so-dado-do-cliente");
+  if (e.fichaPor !== "redator" || e.ficha.linguagem.includes(MARCA_DA_RESERVA)) return privada("sem-conferencia");
+  const visual = pedidoSoVisual(e.separacao.visual);
+  if ([e.ficha.nome, e.ficha.descricao, e.ficha.linguagem, visual].some((t) => dadoDoClienteNoTexto(t, e.dados))) return privada("ficha-com-dado-do-cliente");
+  if (!e.fichaLimpa) return privada("ficha-com-dado-do-cliente");
+  return { ...base, publico: true, motivo: null, pedidoGravado: visual };
+}
+
 /** A busca na galeria: sem acento, minúsculas. */
 export function textoDeBusca(t: string): string {
   return String(t ?? "")

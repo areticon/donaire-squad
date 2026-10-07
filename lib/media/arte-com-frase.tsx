@@ -99,13 +99,12 @@ export type MarcaDaArte = {
   materiais?: import("@/lib/materiais/escolha").MaterialDaMarca[];
   /**
    * A REFERÊNCIA DA PESSOA (05/10, lib/media/referencia-da-pessoa.ts): a foto
-   * real do cliente, ou o melhor quadro do vídeo, que o gerador recebe como
-   * imagem de referência nos modelos com o lugar de "você". Só referência:
-   * nunca vai crua para a arte.
+   * real do cliente que o gerador recebe como imagem de referência nos
+   * modelos com o lugar de "você". Só referência: nunca vai crua para a arte.
+   * 08/10: só foto da Biblioteca de materiais; o quadro do vídeo saiu (e o
+   * campo `videoJobId` da marca, que levava a ele, também).
    */
   referenciaDaPessoa?: import("@/lib/media/referencia-da-pessoa").ReferenciaDaPessoa | null;
-  /** O vídeo de que a peça nasce (semana do vídeo), de onde sai o quadro de referência quando não há foto. */
-  videoJobId?: string | null;
   /**
    * OS AJUSTES DA PEÇA (05/10, lib/modelos-de-arte/ajustes-da-peca.ts): o
    * título atrás da pessoa mais para cima ou para baixo, a luz e a sombra
@@ -120,8 +119,24 @@ export function marcaDaIdentidade(identidade: IdentidadeVisual): MarcaDaArte {
   return { familia: identidade.familia, cores: identidade.cores, tipografia: identidade.tipografia, identidade };
 }
 
-/** A marca do projeto: família respeitando a escolha, cores efetivas, letra e setor. */
-export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: string }): Promise<MarcaDaArte> {
+/**
+ * A marca do projeto: família respeitando a escolha, cores efetivas, letra e setor.
+ *
+ * `modeloDoPost` (08/10/2026, a escolha por post): o modelo que a pessoa
+ * escolheu PARA ESTE POST na janela da campanha ou na semana do vídeo
+ * (lib/estilo-dos-posts/tipos.ts). Regra do Bruno: "essa parte só cria o
+ * modelo, depois no quadro a IA coloca o conteúdo dentro do modelo
+ * selecionado ou criado". Com ele:
+ *   - o modelo do post MANDA na arte (é o único da marca, no lugar do book e
+ *     do estilo do projeto), e a IA preenche com o conteúdo do dia;
+ *   - escolher é aprovar aquele post: a arte sai com a letra e os papéis das
+ *     cores da identidade (os gravados, ou o padrão da paleta da Marca);
+ *   - `marca: true` (infográfico, vídeo por IA, capa) aprova o dia sem trocar
+ *     o modelo: vale o estilo do projeto, ou a composição da família.
+ * Modelo que o projeto não enxerga mais (apagado, ou de outro cliente e fora
+ * da galeria) não vale: a peça volta à regra do projeto, com a trava de sempre.
+ */
+export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: string; modeloDoPost?: import("@/lib/estilo-dos-posts/tipos").ModeloDoPost | null }): Promise<MarcaDaArte> {
   if (!projectId) {
     // Sem projeto não há identidade: a marca neutra do setor genérico, e não
     // mais o laranja da Demandou.
@@ -143,8 +158,14 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
   ]);
   if (materiais.length) marca.materiais = materiais;
   marca.projectId = projectId;
-  marca.identidadeAprovada = Boolean(identidade?.aprovada);
-  if (identidade?.aprovada) {
+  // O MODELO ESCOLHIDO PARA ESTE POST (08/10): valer é aprovar este post.
+  const doPost = opcoes?.modeloDoPost ? await modeloEscolhidoParaOPost(projectId, opcoes.modeloDoPost).catch((e) => {
+    console.warn("[arte-com-frase] o modelo do post não foi lido (vale a regra do projeto):", e instanceof Error ? e.message : e);
+    return null;
+  }) : null;
+  const { modelosDaPeca, pecaAprovada } = await import("@/lib/estilo-dos-posts/tipos");
+  marca.identidadeAprovada = pecaAprovada({ identidadeAprovada: identidade?.aprovada, escolhidoParaOPost: Boolean(doPost) });
+  if (identidade && (identidade.aprovada || doPost)) {
     // As cores EXATAMENTE nos papéis aprovados: o fundo é o fundo, o título é
     // o título, o destaque é o destaque. Nenhum agente escolhe outra cor da
     // paleta para o fundo (a queixa de 05/10: fundo laranja que ninguém pediu).
@@ -159,15 +180,48 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
   // O MODELO POR PROMPT DO CLIENTE (06/10, tarde): o design de imagem que ele
   // escreveu na biblioteca, quando é o mais recente e veio depois da última
   // escolha no book, vira o modelo das artes (o pedido dele é respeitado).
-  const doCliente = await modeloDoDesignDoCliente(projectId, escolha?.em ?? null).catch((e) => {
-    console.warn("[arte-com-frase] o design do cliente não foi lido (segue o book):", e instanceof Error ? e.message : e);
-    return null;
-  });
-  if (!escolha && !materiais.length && !doCliente) return marca;
+  // 08/10: o design APROVADO como estilo dos posts (o quadro de chat ou a
+  // escolha na biblioteca) manda primeiro, gravado na identidade; a regra do
+  // mais recente fica para os designs escritos antes de 08/10.
+  const designAprovado = identidade?.aprovada ? identidade.design : null;
+  const doCliente = doPost?.modeloId
+    ? null
+    : await (designAprovado ? modeloDoDesignAprovado(projectId, designAprovado) : modeloDoDesignDoCliente(projectId, escolha?.em ?? null)).catch((e) => {
+        console.warn("[arte-com-frase] o design do cliente não foi lido (segue o book):", e instanceof Error ? e.message : e);
+        return null;
+      });
+  const modelos = modelosDaPeca({ doPost: doPost?.modeloId, doProjeto: doCliente, book: escolha?.ids });
+  if (!modelos?.length && !materiais.length) return marca;
   const { lerMidia } = await import("@/lib/media/storage");
   const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
   const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
-  return { ...marca, modelos: doCliente ? [doCliente] : escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+  return { ...marca, modelos, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/**
+ * O modelo escolhido para um post (08/10), já registrado no catálogo do
+ * processo. `modeloId` é o id do book (ou "design-<id>" do design criado por
+ * cliente); sem ele, o dia só foi confirmado na marca. Null quando a escolha
+ * não vale (o design sumiu, é de vídeo ou o projeto não o enxerga).
+ */
+async function modeloEscolhidoParaOPost(projectId: string, escolhido: import("@/lib/estilo-dos-posts/tipos").ModeloDoPost): Promise<{ modeloId: string | null } | null> {
+  const { modeloPorId } = await import("@/lib/modelos-de-arte/catalogo");
+  if (escolhido.marca && !escolhido.designId && !escolhido.catalogoId) return { modeloId: null };
+  // O modelo do book vale pelo id do catálogo (a semente pode nem existir no banco ainda).
+  if (escolhido.catalogoId && modeloPorId(escolhido.catalogoId)) return { modeloId: escolhido.catalogoId };
+  if (!escolhido.designId) return null;
+  const { designDoPost } = await import("@/lib/estilo-dos-posts/servidor");
+  const design = await designDoPost(projectId, escolhido.designId);
+  if (!design) {
+    console.warn(`[arte-com-frase] o modelo escolhido para o post (${escolhido.designId}) não existe mais para este projeto; vale a regra do projeto`);
+    return null;
+  }
+  if (design.catalogoId) return modeloPorId(design.catalogoId) ? { modeloId: design.catalogoId } : null;
+  const { modeloDoDesign, registrarModeloDoCliente } = await import("@/lib/modelos-de-arte/modelo-do-cliente");
+  const modelo = modeloDoDesign(design);
+  if (!modelo) return null;
+  registrarModeloDoCliente(modelo);
+  return { modeloId: modelo.id };
 }
 
 /**
@@ -180,6 +234,25 @@ async function modeloDoDesignDoCliente(projectId: string, escolhaDoBookEm: strin
   const atual = await designDeImagemMaisRecente(projectId);
   if (!atual || !designDoClienteVale({ catalogoId: atual.design.catalogoId, ligadoEm: atual.ligadoEm, escolhaDoBookEm })) return null;
   const modelo = modeloDoDesign(atual.design);
+  if (!modelo) return null;
+  registrarModeloDoCliente(modelo);
+  return modelo.id;
+}
+
+/**
+ * O modelo do design aprovado como estilo dos posts (08/10), já registrado no
+ * catálogo do processo. Null quando o design não existe mais ou não tem
+ * linguagem: aí vale o book (ou a composição da família).
+ */
+async function modeloDoDesignAprovado(projectId: string, designId: string): Promise<string | null> {
+  const { designsDoProjeto } = await import("@/lib/biblioteca-de-design/registro");
+  const { modeloDoDesign, registrarModeloDoCliente } = await import("@/lib/modelos-de-arte/modelo-do-cliente");
+  // Entre os ligados ao projeto: ligado, ele vale mesmo se o autor o tirou da galeria.
+  const design = (await designsDoProjeto(projectId)).find((d) => d.id === designId);
+  if (!design) return null;
+  // Design da semente (modelo do book) aprovado pela biblioteca: o id do book já está nos escolhidos.
+  if (design.catalogoId) return null;
+  const modelo = modeloDoDesign(design);
   if (!modelo) return null;
   registrarModeloDoCliente(modelo);
   return modelo.id;
@@ -281,6 +354,8 @@ export async function arteComMaterialDoCliente(o: {
     recorte,
   });
   registrarPecaComMaterial(o.frase);
+  const { registrarFotoDaPeca } = await import("@/lib/media/foto-da-peca");
+  registrarFotoDaPeca(o.frase, { fonte: "material", materialId: material.id });
   const chaveDoUso = `${material.id}|${o.frase}`;
   if (!usosMarcados.has(chaveDoUso)) {
     usosMarcados.add(chaveDoUso);
@@ -930,18 +1005,21 @@ function proporcaoDaPeca(largura: number, altura: number): ProporcaoPedida {
  * (que o modelo NÃO escreve), a palavra em destaque e a descrição da foto. A
  * foto do cliente (biblioteca de materiais) entra como imagem de referência
  * pela edição (GPT Image 2.5 na Higgsfield ou Nano Banana, o tipo "colagem");
- * sem material, o mesmo desenhista de sempre gera a colagem com um figurante
- * anônimo. O custo é o de uma imagem, gravado como sempre; o crédito da peça
- * é o normal. Null quando o fundo não veio por falha que não é de saldo.
+ * sem material, o mesmo desenhista de sempre gera a colagem sem pessoa
+ * (08/10: um objeto da ideia, e não mais um figurante). O custo é o de uma
+ * imagem, gravado como sempre; o crédito da peça é o normal. Null quando o
+ * fundo não veio por falha que não é de saldo.
  */
 /**
  * A IMAGEM DO MODELO COM PROMPT (05/10, regra geral): todo modelo que não é só
  * texto gera o visual pelo melhor modelo de imagem da conta, na ordem
  * configurável de lib/media/gerador-com-referencia.ts (GPT Image 2, Gemini,
  * Higgsfield por último), com o prompt do modelo (catálogo ou
- * lib/modelos-de-arte/prompts-com-foto.ts). A foto REAL do cliente (ou o
- * melhor quadro do vídeo) entra como referência SÓ nos modelos com o lugar de
- * "você" (foto "recorte"); nos outros, o material do cliente só entra quando
+ * lib/modelos-de-arte/prompts-com-foto.ts). A foto REAL do cliente (só da
+ * Biblioteca de materiais desde 08/10, nunca o quadro do vídeo) entra como
+ * referência SÓ nos modelos com o lugar de "você" (foto "recorte"); sem ela,
+ * a colagem sai com um objeto no lugar da pessoa e o retrato sai pela
+ * composição sem gente. Nos outros, o material do cliente só entra quando
  * não é pessoa (produto, local) e o modelo tem foto. Devolve a imagem e, nos
  * modelos "você", a pessoa recortada dela (BiRefNet), para o título passar
  * atrás. Null quando o modelo pede a pessoa e não há referência nenhuma, ou
@@ -981,15 +1059,22 @@ export async function imagemDoModeloComPrompt(o: {
     // cada uma em `material`; escolher de novo aqui, pela frase, devolvia a
     // mesma foto em todas as lâminas.
     const daLamina = o.material?.etiquetas.includes("pessoa") && o.material.temRosto ? await referenciaDoMaterial(o.material) : null;
-    const ref = o.marca.referenciaDaPessoa ?? daLamina ?? (await referenciaDaPessoa({ materiais: o.marca.materiais, frase: o.frase, projectId: o.marca.projectId, videoJobId: o.marca.videoJobId }));
-    if (!ref) {
-      console.warn(`[arte-com-frase] o modelo "${o.modelo.id}" pede a foto do cliente e não há foto nem quadro com rosto; a peça não sai neste modelo`);
+    const ref = o.marca.referenciaDaPessoa ?? daLamina ?? (await referenciaDaPessoa({ materiais: o.marca.materiais, frase: o.frase, projectId: o.marca.projectId }));
+    if (ref) {
+      referencia = ref;
+      materialUsado = ref.materialId ?? null;
+      const m = ref.materialId ? o.marca.materiais?.find((x) => x.id === ref.materialId) : null;
+      descricaoDaFoto = m ? [m.palavrasEn.join(", "), m.descricao].filter(Boolean).join("; ") : "the person in the reference photograph";
+    } else if (!fundoInteiroDoModelo(o.modelo)) {
+      // SEM FOTO DO CLIENTE, SEM PESSOA (08/10): o retrato com o título atrás
+      // não tem o que retratar. A peça segue pela composição do modelo com
+      // uma cena sem gente (desenharComFraseEmCodigo), nunca com o print do
+      // vídeo nem com um figurante inventado.
+      console.warn(`[arte-com-frase] o modelo "${o.modelo.id}" pede a foto do cliente e a biblioteca não tem foto da pessoa; a peça sai sem pessoa`);
       return null;
     }
-    referencia = ref;
-    materialUsado = ref.materialId ?? null;
-    const m = ref.materialId ? o.marca.materiais?.find((x) => x.id === ref.materialId) : null;
-    descricaoDaFoto = m ? [m.palavrasEn.join(", "), m.descricao].filter(Boolean).join("; ") : "the person in the reference photograph";
+    // Colagem (família Vox) sem foto do cliente: a mesma composição, com um
+    // objeto no lugar da pessoa (fotoDoPrompt em prompt-do-modelo.ts).
   } else if (o.modelo.foto !== "nenhuma") {
     let material = o.material ?? null;
     if (material?.etiquetas.includes("pessoa")) material = null;
@@ -1025,7 +1110,7 @@ export async function imagemDoModeloComPrompt(o: {
     }
     // A pessoa recortada da imagem gerada, para o título passar atrás dela.
     let recorte: Buffer | null = null;
-    if (pedePessoa && !fundoInteiroDoModelo(o.modelo)) {
+    if (pedePessoa && referencia && !fundoInteiroDoModelo(o.modelo)) {
       const { recortarPessoaNoFal } = await import("@/lib/materiais/servidor");
       const jpeg = await sharp(imagem).jpeg({ quality: 92 }).toBuffer();
       recorte = await recortarPessoaNoFal(jpeg, { projectId: o.marca.projectId, operation: "modelo_por_prompt_recorte" }).catch((e) => {
@@ -1034,6 +1119,9 @@ export async function imagemDoModeloComPrompt(o: {
       });
     }
     limparRecuo(o.frase);
+    // Qual foto entrou (08/10): a do cliente, pela biblioteca, ou nenhuma (a cena é gerada).
+    const { registrarFotoDaPeca } = await import("@/lib/media/foto-da-peca");
+    registrarFotoDaPeca(o.frase, materialUsado ? { fonte: "material", materialId: materialUsado } : { fonte: "gerada" });
     return { imagem, recorte, modeloDeImagem: r.modelo, fundoInteiro: fundoInteiroDoModelo(o.modelo) };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1101,19 +1189,27 @@ export function desenharComFraseEmCodigo(
     }
     // MODELO DO BOOK (03/10): modelo sem foto não paga imagem nenhuma; modelo
     // com foto pede a cena na proporção da zona da foto, na direção dele.
+    // 08/10: a cena é sempre gerada SEM GENTE (direcaoDaFotoDoModelo); a única
+    // foto real que entra é a da Biblioteca de materiais, no caminho acima.
+    const { registrarFotoDaPeca } = await import("@/lib/media/foto-da-peca");
     const modelo = await modeloDaMarca(marca, largura, altura, frase);
     if (modelo) {
       const { proporcaoDaFotoDoModelo, direcaoDaFotoDoModelo } = await import("@/lib/modelos-de-arte/compor");
       const proporcaoDaFoto = proporcaoDaFotoDoModelo(modelo, largura, altura);
       let foto: Buffer | null = null;
       if (proporcaoDaFoto) {
+        // O modelo "você" sem foto do cliente chega aqui (08/10): a direção
+        // dele fala em retrato, e a linha final manda a cena sair sem gente.
+        const { SEM_PESSOA } = await import("@/lib/modelos-de-arte/prompt-do-modelo");
+        const semGente = modelo.foto === "recorte" ? SEM_PESSOA : "";
         try {
-          foto = bufferDe(await desenhista(`${prompt}${direcaoDaFotoDoModelo(modelo)}`, proporcaoDaFoto));
+          foto = bufferDe(await desenhista(`${prompt}${direcaoDaFotoDoModelo(modelo)}${semGente}`, proporcaoDaFoto));
         } catch (err) {
           if (ehErroDeSaldo(err) || ehSemSaldoDaOpenAI(err) || err instanceof SemChaveDaOpenAI) throw err;
           console.warn("[arte-com-frase] a foto do modelo não veio, a peça sai com o tom da marca:", err instanceof Error ? err.message : err);
         }
       }
+      registrarFotoDaPeca(frase, { fonte: foto ? "gerada" : "nenhuma" });
       const jpeg = await comporFraseNaArte({ arte: foto, frase, marca, largura, altura });
       return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
     }
@@ -1132,6 +1228,7 @@ export function desenharComFraseEmCodigo(
       if (ehErroDeSaldo(err) || ehSemSaldoDaOpenAI(err) || err instanceof SemChaveDaOpenAI) throw err;
       console.warn("[arte-com-frase] a arte não veio, a peça sai só com a frase:", msg);
     }
+    registrarFotoDaPeca(frase, { fonte: arte ? "gerada" : "nenhuma" });
     const jpeg = await comporFraseNaArte({ arte, frase, marca, largura, altura });
     return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
   };

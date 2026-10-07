@@ -11,6 +11,7 @@ import { FORMATO_DA_REDE } from "@/lib/pipeline/levar-para-outra-rede";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { generateImage } from "@/lib/media/nano-banana";
 import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto } from "@/lib/media/arte-com-frase";
+import { modeloGravadoNosPosts } from "@/lib/estilo-dos-posts/tipos";
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
 import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/infographic";
 import { lerNaoCitar } from "@/lib/pipeline/restricoes";
@@ -185,7 +186,8 @@ ${brief ? `\n=== PESQUISA DA CAMPANHA ===\n${brief.slice(0, 12_000)}\n=== FIM DA
        * sai sem letra nem gente, e o infográfico é montado em código com os
        * dados do texto novo. Ver lib/media/arte-com-frase.tsx.
        */
-      const marca = await marcaDaArte(post.projectId);
+      // O modelo escolhido para este post (08/10) manda também no refazer.
+      const marca = await marcaDaArte(post.projectId, { modeloDoPost: modeloGravadoNosPosts([post]) });
       const ehInfografico = post.mediaType === "infographic";
       const conteudo = ehInfografico && process.env.GEMINI_API_KEY
         ? await extrairConteudoDoInfografico(limpo.texto, post.project.niche ?? "negocios", process.env.GEMINI_API_KEY)

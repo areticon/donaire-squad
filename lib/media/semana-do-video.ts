@@ -34,6 +34,7 @@
 
 import { FUSO_PADRAO } from "@/lib/fuso";
 import { formatoDaPeca, REDES_COM_CARROSSEL } from "@/lib/media/formatos-das-redes";
+import { modeloParaOFormato, oQueOPostPede, ROTULO_DO_POST, type FormatoDoPost, type ModeloDoPost, type PostVisual } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * QUANTOS DIAS O PLANO COBRE a partir da data de início. O Bruno pediu "5
@@ -62,7 +63,13 @@ export type RedeDoPlano = "linkedin" | "twitter" | "instagram" | "facebook" | "t
 
 export type ChaveDoDia = "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
-export type DiaDoPlano = { formato: FormatoDoDia; redes: RedeDoPlano[] };
+/**
+ * Um dia do plano. `modelo` (08/10, lib/estilo-dos-posts/tipos.ts): a escolha
+ * daquele post, o modelo da foto e do carrossel ou o estilo de edição do
+ * vídeo curto. Trocar o formato do dia tira a escolha (a de um carrossel não
+ * é a de um vídeo curto); trocar as redes mantém.
+ */
+export type DiaDoPlano = { formato: FormatoDoDia; redes: RedeDoPlano[]; modelo?: ModeloDoPost | null };
 
 /**
  * O plano guardado no projeto (`Project.videoSemana`) e congelado no run
@@ -250,7 +257,9 @@ export function normalizarSemana(bruto: unknown, conectadas?: readonly string[],
           .filter((r) => !tirarDesconectadas || !conectadas || conectadas.length === 0 || conectadas.includes(r))
       : [];
     if (!redes.length) redes = redesSugeridas(formato, conectadas);
-    dias[chave] = { formato, redes: ordenarRedes(redes) };
+    // A escolha do post (08/10) fica só se ainda serve ao formato do dia.
+    const modelo = modeloParaOFormato((v as { modelo?: unknown } | null)?.modelo, formatoResolvido(formato, dia));
+    dias[chave] = modelo ? { formato, redes: ordenarRedes(redes), modelo } : { formato, redes: ordenarRedes(redes) };
   }
   const inicio = typeof fonte.inicio === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fonte.inicio) ? fonte.inicio : null;
   return { inicio: novo ? inicio : null, dias };
@@ -364,6 +373,58 @@ export function resolverLivre(dia: number): FormatoEscrito {
   return ordem[(((dia - 2) % ordem.length) + ordem.length) % ordem.length];
 }
 
+/** O formato que o dia sai de verdade: o "livre" resolvido, o resto como foi escolhido. */
+export function formatoResolvido(formato: FormatoDoDia, dia: number): Exclude<FormatoDoDia, "free"> {
+  return formato === "free" ? resolverLivre(dia) : formato;
+}
+
+/**
+ * OS POSTS VISUAIS DA SEMANA (08/10), em ordem de data: cada dia com foto,
+ * carrossel, infográfico ou vídeo curto, com o rótulo do dia e o formato que
+ * ele sai de verdade. É a lista da escolha do modelo de cada post.
+ */
+export function postsVisuaisDaSemana(semana: SemanaDoVideo, hoje: string = hojeEmSaoPaulo()): PostVisual[] {
+  const inicio = inicioEfetivo(semana, hoje);
+  const posts: PostVisual[] = [];
+  for (const d of datasDoPlano(inicio)) {
+    const doDia = semana.dias[String(d.dia) as ChaveDoDia];
+    if (!doDia) continue;
+    const formato = formatoResolvido(doDia.formato, d.dia);
+    if (!oQueOPostPede(formato)) continue;
+    const nome = d.nome.charAt(0).toUpperCase() + d.nome.slice(1);
+    posts.push({ chave: String(d.dia), rotulo: `${nome}, ${d.iso.slice(8, 10)}/${d.iso.slice(5, 7)}`, formato: formato as FormatoDoPost });
+  }
+  return posts;
+}
+
+/** As escolhas guardadas nos dias, pela chave do dia. */
+export function modelosDaSemana(semana: SemanaDoVideo): Record<string, ModeloDoPost> {
+  const out: Record<string, ModeloDoPost> = {};
+  for (const [chave, d] of Object.entries(semana.dias)) if (d?.modelo) out[chave] = d.modelo;
+  return out;
+}
+
+/** A semana com as escolhas novas nos dias (só as que servem ao formato de cada um). */
+export function semanaComModelos(semana: SemanaDoVideo, modelos: Record<string, ModeloDoPost | null | undefined>): SemanaDoVideo {
+  const dias: SemanaDoVideo["dias"] = {};
+  for (const [chave, d] of Object.entries(semana.dias) as Array<[ChaveDoDia, DiaDoPlano | null | undefined]>) {
+    if (!d) {
+      dias[chave] = d ?? null;
+      continue;
+    }
+    const m = modeloParaOFormato(modelos[chave], formatoResolvido(d.formato, Number(chave)));
+    const { modelo: _antigo, ...resto } = d;
+    void _antigo;
+    dias[chave] = m ? { ...resto, modelo: m } : resto;
+  }
+  return { ...semana, dias };
+}
+
+/** Como a linha do dia chama o formato. */
+export function rotuloDoPostVisual(formato: FormatoDoPost): string {
+  return ROTULO_DO_POST[formato];
+}
+
 /**
  * As redes que valem para o formato RESOLVIDO do dia: as marcadas que o
  * formato aceita, ou, se nenhuma serve (o livre que virou thread com o
@@ -407,6 +468,8 @@ export type DiaEscrito = {
   formato: FormatoEscrito;
   escolhido: FormatoDoDia;
   redes: RedeDoPlano[];
+  /** O modelo escolhido para este post (08/10), quando serve ao formato resolvido. */
+  modelo?: ModeloDoPost | null;
 };
 
 /**
@@ -422,19 +485,43 @@ export function diasDaSemana(semana: SemanaDoVideo): DiaEscrito[] {
     const d = semana.dias[String(dia) as ChaveDoDia];
     if (!d || d.formato === "short") continue;
     const formato = d.formato === "free" ? resolverLivre(dia) : d.formato;
-    dias.push({ dia, formato, escolhido: d.formato, redes: redesDoDia(formato, d.redes) });
+    const modelo = modeloParaOFormato(d.modelo, formato);
+    dias.push({ dia, formato, escolhido: d.formato, redes: redesDoDia(formato, d.redes), ...(modelo ? { modelo } : {}) });
   }
   return dias;
 }
 
-/** Os dias de vídeo curto, em ordem de data: o primeiro corte vai no primeiro deles. */
-export function diasDeVideoCurto(semana: SemanaDoVideo): Array<{ dia: number; redes: RedeDoPlano[] }> {
-  const dias: Array<{ dia: number; redes: RedeDoPlano[] }> = [];
+/**
+ * Os dias de vídeo curto, em ordem de data: o primeiro corte vai no primeiro
+ * deles. `estiloId` (08/10): o estilo de edição escolhido para aquele dia.
+ */
+export function diasDeVideoCurto(semana: SemanaDoVideo): Array<{ dia: number; redes: RedeDoPlano[]; estiloId?: string | null }> {
+  const dias: Array<{ dia: number; redes: RedeDoPlano[]; estiloId?: string | null }> = [];
   for (const { dia } of ordemDosDias(semana.inicio)) {
     const d = semana.dias[String(dia) as ChaveDoDia];
-    if (d?.formato === "short") dias.push({ dia, redes: redesDoDia("short", d.redes) });
+    if (d?.formato !== "short") continue;
+    const estiloId = modeloParaOFormato(d.modelo, "short")?.estiloId ?? null;
+    dias.push({ dia, redes: redesDoDia("short", d.redes), ...(estiloId ? { estiloId } : {}) });
   }
   return dias;
+}
+
+/**
+ * O DIA DE UM CORTE (08/10): a mesma conta da sincronização do quadro
+ * (lib/media/sincronizar-quadro.ts). Os cortes aprovados (marcados para
+ * publicar e com o vertical pronto), em ordem, caem nos dias de vídeo curto
+ * em ordem de data, dando a volta quando há mais cortes que dias. Null quando
+ * o corte não está aprovado ou o plano não tem dia de vídeo curto.
+ */
+export function diaDoCorte<D>(
+  trechos: Array<{ publicar?: boolean | null; midia?: { vertical?: unknown } | null } | null | undefined>,
+  indice: number,
+  dias: D[]
+): D | null {
+  if (!dias.length) return null;
+  const aprovados = trechos.map((t, i) => ({ t, i })).filter(({ t }) => t && t.publicar !== false && t.midia?.vertical).map(({ i }) => i);
+  const k = aprovados.indexOf(indice);
+  return k < 0 ? null : dias[k % dias.length];
 }
 
 function ordemDosDias(inicio: string | null): Array<{ dia: number }> {

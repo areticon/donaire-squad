@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, Film, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { oQueOPostPede } from "@/lib/estilo-dos-posts/tipos";
 import { RedeIcone } from "@/components/social/rede-icone";
-import { AvisoDaIdentidade } from "@/components/modelos-de-arte/aviso-da-identidade";
-import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import {
   creditosDaSemana,
   datasDoPlano,
@@ -17,6 +16,7 @@ import {
   normalizarSemana,
   ordenarRedes,
   planoParaGravar,
+  postsVisuaisDaSemana,
   redesDoFormato,
   rotuloDaRedeNoFormato,
   type ChaveDoDia,
@@ -48,6 +48,7 @@ export function SemanaDoVideoPlanejador({
   projectId,
   inicial,
   redesConectadas,
+  aoMudar,
 }: {
   projectId: string;
   /** Project.videoSemana como veio do banco (pode ser nulo). */
@@ -58,6 +59,11 @@ export function SemanaDoVideoPlanejador({
    * Indefinido: não filtra (tela que não carrega as contas).
    */
   redesConectadas?: string[];
+  /**
+   * A semana mudou (08/10): a jornada da campanha acompanha, para o passo do
+   * modelo de cada post ver os mesmos dias (e as escolhas deles) que este.
+   */
+  aoMudar?: (semana: SemanaDoVideo) => void;
 }) {
   const conectadas = redesConectadas;
   const [semana, setSemana] = useState<SemanaDoVideo>(() => normalizarSemana(inicial, conectadas));
@@ -99,6 +105,21 @@ export function SemanaDoVideoPlanejador({
   const doPlano = datas.map((d) => semana.dias[String(d.dia) as ChaveDoDia]).filter(Boolean);
   const diasComPost = doPlano.length;
   const diasDeCorte = doPlano.filter((d) => d?.formato === "short").length;
+  // Os dias que escolhem modelo no passo seguinte (foto, carrossel, vídeo curto); o infográfico sai na marca.
+  const comModelo = postsVisuaisDaSemana(semana, hoje).filter((p) => oQueOPostPede(p.formato) !== "marca").length;
+  // Quem chama recria a função a cada desenho; avisar só quando a semana muda.
+  const aoMudarAtual = useRef(aoMudar);
+  useEffect(() => {
+    aoMudarAtual.current = aoMudar;
+  });
+  const primeira = useRef(true);
+  useEffect(() => {
+    if (primeira.current) {
+      primeira.current = false;
+      return;
+    }
+    aoMudarAtual.current?.(semana);
+  }, [semana]);
 
   const conectada = (r: RedeDoPlano) => !conectadas || conectadas.includes(r);
 
@@ -299,8 +320,12 @@ export function SemanaDoVideoPlanejador({
           </span>
         )}
       </p>
-      {/* O estilo é perguntado ANTES (06/10): dia de arte sem identidade aprovada sai só com o texto. */}
-      <AvisoDaIdentidade projectId={projectId} temArte={doPlano.some((d) => d && tipoGeraArte(d.formato))} />
+      {/* O modelo de cada post (08/10): perguntado no passo seguinte, antes do envio. */}
+      {comModelo > 0 && (
+        <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          {comModelo === 1 ? "O dia com foto, carrossel ou vídeo curto ganha o seu modelo" : `Os ${comModelo} dias com foto, carrossel ou vídeo curto ganham cada um o seu modelo`} no próximo passo, antes do envio.
+        </p>
+      )}
     </section>
   );
 }

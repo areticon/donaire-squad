@@ -30,6 +30,11 @@ import { ROTULO_DO_TIPO, custoEstimadoDasPrevias, filtrarGaleria, foraDoBook, or
  *
  * `exemplo`: só no `next dev`, lê `?exemplo=1` da rota (dados em memória) e
  * não grava nada; as ações viram avisos.
+ *
+ * O PASSO DO ESTILO DOS POSTS (08/10, components/estilo-dos-posts): a mesma
+ * galeria, só com os designs de imagem (`tipoFixo`), sem o formulário de
+ * escrever (o chat do passo faz isso, `semEscrever`) e com a escolha indo
+ * para quem chamou (`aoEscolher`), que aprova o estilo na hora.
  */
 
 type Filtro = TipoDeDesign | "todos";
@@ -48,17 +53,38 @@ export function GaleriaDaBiblioteca({
   exemplo = false,
   titulo = "Biblioteca de designs: feita por quem usa",
   idsDoBook,
+  tipoFixo,
+  semEscrever = false,
+  aoEscolher,
+  descricao,
+  filtrar,
+  rotuloDoUsar,
 }: {
   projectId?: string | null;
   exemplo?: boolean;
   titulo?: string;
   /** Os ids do book na mesma tela (06/10): esses modelos de imagem não aparecem de novo aqui. */
   idsDoBook?: string[];
+  /** Só um tipo (08/10, o passo do estilo dos posts: só imagem), sem os filtros de tipo. */
+  tipoFixo?: TipoDeDesign;
+  /** Sem o "Escrever o meu design" (08/10): quem chama tem o próprio chat. */
+  semEscrever?: boolean;
+  /** A escolha vai para quem chama (08/10), no lugar do PUT da biblioteca do projeto. */
+  aoEscolher?: (d: DesignDaGaleria) => Promise<void>;
+  /** O texto abaixo do título, quando quem chama quer outro. */
+  descricao?: string;
+  /**
+   * Só os designs que servem a quem chama (08/10, a escolha por post: o
+   * carrossel só vê os modelos que têm carrossel).
+   */
+  filtrar?: (d: DesignDaGaleria) => boolean;
+  /** O texto do botão de escolher (08/10, "Usar neste post"), no lugar de "Usar este" e "No seu projeto". */
+  rotuloDoUsar?: string;
 }) {
   const [designs, setDesigns] = useState<DesignDaGaleria[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ehAdmin, setEhAdmin] = useState(false);
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtro, setFiltro] = useState<Filtro>(tipoFixo ?? "todos");
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<DesignDaGaleria | null>(null);
   const [escrevendo, setEscrevendo] = useState(false);
@@ -76,6 +102,7 @@ export function GaleriaDaBiblioteca({
     try {
       const q = new URLSearchParams();
       if (projectId) q.set("projectId", projectId);
+      if (tipoFixo) q.set("tipo", tipoFixo);
       if (exemplo) {
         q.set("exemplo", "1");
         q.set("admin", "1");
@@ -90,7 +117,7 @@ export function GaleriaDaBiblioteca({
       setErro(e instanceof Error ? e.message : "Não consegui carregar a biblioteca.");
       setDesigns([]);
     }
-  }, [projectId, exemplo, idsDoBook]);
+  }, [projectId, exemplo, idsDoBook, tipoFixo]);
 
   useEffect(() => {
     void carregar();
@@ -112,7 +139,7 @@ export function GaleriaDaBiblioteca({
       .catch(() => {});
   }, [ehAdmin, designs, exemplo]);
 
-  const lista = useMemo(() => (designs ? filtrarGaleria(designs, filtro, busca) : []), [designs, filtro, busca]);
+  const lista = useMemo(() => (designs ? filtrarGaleria(filtrar ? designs.filter(filtrar) : designs, filtro, busca) : []), [designs, filtro, busca, filtrar]);
   const contagem = useMemo(() => {
     const c: Record<Filtro, number> = { todos: designs?.length ?? 0, video: 0, imagem: 0 };
     for (const d of designs ?? []) c[d.tipo]++;
@@ -168,6 +195,18 @@ export function GaleriaDaBiblioteca({
       return;
     }
     setUsando(d.id);
+    if (aoEscolher) {
+      try {
+        await aoEscolher(d);
+        setDesigns((lista) => (lista ? lista.map((x) => (x.id === d.id ? { ...x, doProjeto: true } : x)) : lista));
+        setAberto(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não consegui usar este design.");
+      } finally {
+        setUsando(null);
+      }
+      return;
+    }
     try {
       const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ designId: d.id }) });
       const j = (await r.json().catch(() => ({}))) as { efeito?: string; error?: string };
@@ -240,15 +279,18 @@ export function GaleriaDaBiblioteca({
             {titulo}
           </h2>
           <p className="mt-0.5 text-sm" style={{ color: "var(--text-muted)" }}>
-            Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu: só a descrição do visual entra aqui para todo mundo, sem o seu nome, a sua marca ou o seu contato. Se preferir, ele fica só no seu projeto.
+            {descricao ??
+              "Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu: só a descrição do visual entra aqui para todo mundo, sem o seu nome, a sua marca ou o seu contato. Se preferir, ele fica só no seu projeto."}
           </p>
         </div>
-        <button type="button" onClick={() => setEscrevendo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-white">
-          <PenLine className="h-4 w-4" /> Escrever o meu design
-        </button>
+        {!semEscrever && (
+          <button type="button" onClick={() => setEscrevendo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-white">
+            <PenLine className="h-4 w-4" /> Escrever o meu design
+          </button>
+        )}
       </div>
 
-      {escrevendo && (
+      {escrevendo && !semEscrever && (
         <div className="space-y-2 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
             Descreva o design que você quer
@@ -287,7 +329,7 @@ export function GaleriaDaBiblioteca({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1.5">
+        <div className={cn("flex gap-1.5", tipoFixo && "hidden")}>
           {(["todos", "video", "imagem"] as Filtro[]).map((f) => (
             <button key={f} type="button" onClick={() => setFiltro(f)} className="shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors" style={chip(filtro === f)} aria-pressed={filtro === f}>
               {ROTULO_DO_FILTRO[f]} ({contagem[f]})
@@ -341,12 +383,12 @@ export function GaleriaDaBiblioteca({
         </p>
       ) : lista.length === 0 ? (
         <p className="rounded-lg border px-3 py-6 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          Nenhum design com esse filtro. Escreva o seu: ele entra aqui.
+          {semEscrever ? "Nenhum design com esse filtro." : "Nenhum design com esse filtro. Escreva o seu: ele entra aqui."}
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
           {lista.map((d, i) => (
-            <CartaoDoDesign key={d.id} design={d} posicao={i + 1} usando={usando === d.id} aoAbrir={() => setAberto(d)} aoUsar={() => void usar(d)} />
+            <CartaoDoDesign key={d.id} design={d} posicao={i + 1} usando={usando === d.id} rotuloDoUsar={rotuloDoUsar} aoAbrir={() => setAberto(d)} aoUsar={() => void usar(d)} />
           ))}
         </div>
       )}
@@ -358,6 +400,7 @@ export function GaleriaDaBiblioteca({
           mudando={mudandoVisibilidade}
           aoFechar={() => setAberto(null)}
           aoUsar={() => void usar(aberto)}
+          rotuloDoUsar={rotuloDoUsar}
           aoMudarVisibilidade={(publico) => void mudarVisibilidade(aberto, publico)}
         />
       )}
@@ -408,7 +451,7 @@ function Selos({ design }: { design: DesignDaGaleria }) {
   );
 }
 
-function CartaoDoDesign({ design, posicao, usando, aoAbrir, aoUsar }: { design: DesignDaGaleria; posicao: number; usando: boolean; aoAbrir: () => void; aoUsar: () => void }) {
+function CartaoDoDesign({ design, posicao, usando, rotuloDoUsar, aoAbrir, aoUsar }: { design: DesignDaGaleria; posicao: number; usando: boolean; rotuloDoUsar?: string; aoAbrir: () => void; aoUsar: () => void }) {
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border" style={{ borderColor: design.doProjeto ? "#f97316" : "var(--border)", background: "var(--bg-surface)" }}>
       <button type="button" onClick={aoAbrir} className="relative block w-full text-left" aria-label={`Abrir ${design.nome}`}>
@@ -430,11 +473,11 @@ function CartaoDoDesign({ design, posicao, usando, aoAbrir, aoUsar }: { design: 
             type="button"
             onClick={aoUsar}
             disabled={usando}
-            className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold", design.doProjeto ? "border" : "bg-orange-500 text-white")}
-            style={design.doProjeto ? { borderColor: "#f97316", color: "#f97316" } : undefined}
+            className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold", design.doProjeto && !rotuloDoUsar ? "border" : "bg-orange-500 text-white")}
+            style={design.doProjeto && !rotuloDoUsar ? { borderColor: "#f97316", color: "#f97316" } : undefined}
           >
-            {usando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : design.doProjeto ? <Check className="h-3.5 w-3.5" /> : null}
-            {design.doProjeto ? "No seu projeto" : "Usar este"}
+            {usando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : design.doProjeto && !rotuloDoUsar ? <Check className="h-3.5 w-3.5" /> : null}
+            {rotuloDoUsar ?? (design.doProjeto ? "No seu projeto" : "Usar este")}
           </button>
           <button type="button" onClick={aoAbrir} className="text-xs font-medium underline-offset-2 hover:underline" style={{ color: "var(--text-muted)" }}>
             Ver ficha
@@ -451,6 +494,7 @@ function FichaDoDesign({
   mudando,
   aoFechar,
   aoUsar,
+  rotuloDoUsar,
   aoMudarVisibilidade,
 }: {
   design: DesignDaGaleria;
@@ -458,6 +502,7 @@ function FichaDoDesign({
   mudando: boolean;
   aoFechar: () => void;
   aoUsar: () => void;
+  rotuloDoUsar?: string;
   aoMudarVisibilidade: (publico: boolean) => void;
 }) {
   const doAutor = design.origem === "cliente" && design.meu === true;
@@ -516,7 +561,7 @@ function FichaDoDesign({
             )}
             <button type="button" onClick={aoUsar} disabled={usando} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {usando ? <Loader2 className="h-4 w-4 animate-spin" /> : design.doProjeto ? <Check className="h-4 w-4" /> : null}
-              {design.doProjeto ? "Já está no seu projeto" : design.tipo === "video" ? "Usar nos meus vídeos" : "Usar nas minhas artes"}
+              {rotuloDoUsar ?? (design.doProjeto ? "Já está no seu projeto" : design.tipo === "video" ? "Usar nos meus vídeos" : "Usar nas minhas artes")}
             </button>
           </div>
         </div>

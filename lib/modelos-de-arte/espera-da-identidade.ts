@@ -27,7 +27,8 @@ import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
  */
 
 /** O texto do card da Diana quando a arte espera a identidade. A tela reconhece pelo começo. */
-export const TEXTO_DO_CARD_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. Nenhum crédito de imagem foi gasto; a arte sai depois da aprovação.`;
+// 08/10: o estilo é escrito no chat ou escolhido na biblioteca (aba Estilo dos posts), e já fica aprovado.
+export const TEXTO_DO_CARD_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escreva como quer o estilo dos posts ou escolha um da biblioteca em Configurações (aba Estilo dos posts). Nenhum crédito de imagem foi gasto; a arte sai depois da escolha.`;
 
 /** O rótulo do botão que leva à escolha, igual em todo card. */
 export const ROTULO_DO_BOTAO_ESCOLHER = "Escolher e aprovar";

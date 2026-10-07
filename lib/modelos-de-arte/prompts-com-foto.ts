@@ -14,8 +14,10 @@ import type { ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
  *     inteiro em código, sem imagem paga;
  *   - `promptDoModelo(modelo)`: o prompt do modelo (o do catálogo, ou o deste
  *     arquivo); null só nos modelos só texto;
- *   - `fotoDoClienteEntra(modelo)`: a foto REAL do cliente (biblioteca ou o
- *     melhor quadro do vídeo) só entra como referência do gerador quando o
+ *   - `fotoDoClienteEntra(modelo)`: a foto REAL do cliente (só a Biblioteca
+ *     de materiais desde 08/10; o quadro do vídeo saiu, regra do Bruno: "só
+ *     use foto em post se for foto enviada pelo usuário") só entra como
+ *     referência do gerador quando o
  *     modelo tem o lugar de "você" (foto "recorte"). Nos outros, a foto do
  *     cliente não aparece: "quando eu falei que queria usar essa foto em algum
  *     post?" (Bruno, 05/10);
@@ -132,8 +134,9 @@ export function promptDoModelo(modelo: Pick<ModeloDeArte, "id" | "foto" | "promp
 }
 
 /**
- * A foto REAL do cliente (biblioteca de materiais ou o melhor quadro do vídeo)
- * só entra quando o modelo tem o lugar de "você": foto "recorte". Nos demais
+ * A foto REAL do cliente (só a biblioteca de materiais desde 08/10, nunca o
+ * quadro do vídeo) só entra quando o modelo tem o lugar de "você": foto
+ * "recorte". Nos demais
  * modelos a foto do cliente nunca aparece, nem como referência.
  */
 export function fotoDoClienteEntra(modelo: Pick<ModeloDeArte, "foto"> | null | undefined): boolean {

@@ -4,6 +4,7 @@ import { custoDaMidia } from "@/lib/credits/estimativa";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { generateImage } from "@/lib/media/nano-banana";
 import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto } from "@/lib/media/arte-com-frase";
+import { modeloGravadoNosPosts } from "@/lib/estilo-dos-posts/tipos";
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
 import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/infographic";
 import { arteDoDia } from "@/lib/media/pecas-da-semana";
@@ -257,7 +258,8 @@ async function regerarCarrossel(args: { projectId: string; userId: string }, gru
 
   const projeto = await prisma.project.findUniqueOrThrow({ where: { id: args.projectId }, select: { niche: true } });
   // A marca lida agora (a cor nova já gravada) e a direção de arte do dia, que também lê a paleta de agora.
-  const marca = await marcaDaArte(args.projectId, { runId });
+  // O modelo escolhido para o post (08/10) continua mandando no redesenho.
+  const marca = await marcaDaArte(args.projectId, { runId, modeloDoPost: modeloGravadoNosPosts([base]) });
   const direcao = await direcaoDaPeca({ projectId: args.projectId, runId, dayOfWeek: dia, infografico: false, preferido: null }).catch(() => ({ styleHint: "" }));
   const formato = formatoDaPeca(base.platform, "carousel");
   const { urls, feitas } = await redesenharLaminas(frases, atuais, (frase) =>

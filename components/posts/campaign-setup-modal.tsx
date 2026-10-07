@@ -12,9 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
-import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
-import { AvisoDaIdentidade } from "@/components/modelos-de-arte/aviso-da-identidade";
-import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
+import { ModelosDosPosts } from "@/components/estilo-dos-posts/modelos-dos-posts";
+import { modelosParaGravar, oQueOPostPede, postsSemModelo, type FormatoDoPost, type ModelosDosPosts as EscolhasDosPosts, type PostVisual } from "@/lib/estilo-dos-posts/tipos";
 import { MateriaisDaCampanha } from "@/components/materiais/materiais-da-campanha";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
 import { avisoDaCota, type CotaDoCliente } from "@/lib/media/cota-do-dia";
@@ -152,6 +151,12 @@ export interface CampaignConfig {
    * lib/materiais/escolha.ts (lido do config da execução pelo id do run).
    */
   materiaisDaCampanha?: string[];
+  /**
+   * O MODELO DE CADA POST (08/10, lib/estilo-dos-posts/tipos.ts): a escolha
+   * de cada dia com peça visual, pela chave do dia. A esteira desenha a arte
+   * daquele dia dentro dele (lib/pipeline/executar.ts).
+   */
+  modelosDosPosts?: EscolhasDosPosts;
 }
 
 export interface ContaConectada {
@@ -1372,10 +1377,6 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [origens, setOrigens] = useState<Record<string, OrigemDoDia>>({});
   // Os materiais da biblioteca marcados para esta campanha (03/10).
   const [materiaisDaCampanha, setMateriaisDaCampanha] = useState<string[]>([]);
-  // A IDENTIDADE APROVADA (05/10): sem ela, a campanha sai com os textos e as artes ficam esperando, sem gastar. Null até o book responder.
-  const [identidadeAprovada, setIdentidadeAprovada] = useState<boolean | null>(null);
-  // A campanha tem dia de arte (imagem, carrossel, infográfico)? É o que decide o aviso do estilo (06/10).
-  const campanhaTemArte = campaignMode === "single" ? tipoGeraArte(singleContentType) : Object.values(weeklySchedule).some((v) => tipoGeraArte(v));
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -1428,6 +1429,45 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   );
   // Os rotulos dos sete dias, calculados da data de inicio. Muda junto com ela.
   const DIAS = useMemo(() => diasDaCampanha(selectedWeekStart), [selectedWeekStart]);
+
+  /**
+   * O MODELO DE CADA POST, ESCOLHIDO ANTES DE GERAR (08/10). O Bruno: "o
+   * modelo precisa ser escolhido por post (quarta é um carrossel, precisa
+   * escolher o modelo), quinta é uma foto (escolher modelo) etc". Cada dia com
+   * peça visual gerada pela IA aparece com o tipo e o modelo dele (preenchido
+   * com o último usado naquele tipo; a pessoa vê e troca). A aprovação antes
+   * de gerar passa a ser esta: todo dia visual com a sua escolha. Dia com
+   * material próprio do cliente não tem arte gerada, então não entra.
+   * Substitui a trava do estilo do projeto (precisaEscolherEstilo): escolher o
+   * modelo do post é aprovar aquele post, para o dono e para o membro.
+   */
+  const [modelosDosPosts, setModelosDosPosts] = useState<EscolhasDosPosts>({});
+  // A leitura dos modelos falhou: a janela não tranca (o servidor segura a arte sem modelo, sem gastar).
+  const [modelosFalharam, setModelosFalharam] = useState(false);
+  const [pedindoEstilo, setPedindoEstilo] = useState(false);
+  const postsVisuais = useMemo<PostVisual[]>(() => {
+    const comArteDaIA = (k: string) => origens[k]?.modo !== "meu";
+    if (campaignMode === "single") {
+      const k = String(singleDay);
+      return oQueOPostPede(singleContentType) && comArteDaIA(k) ? [{ chave: k, rotulo: WEEK_DAYS.find((d) => d.dayNum === singleDay)?.label ?? "O post", formato: singleContentType as FormatoDoPost }] : [];
+    }
+    // A recorrente gera dias fixos (lib/pipeline/executar.ts, diasDaCampanha):
+    // o único com arte é a imagem do dia 3. A lista pergunta por ele.
+    if (campaignMode === "recurring") return [{ chave: "3", rotulo: "A imagem de cada semana", formato: "image" }];
+    return DIAS.filter((d) => oQueOPostPede(weeklySchedule[d.key]) && comArteDaIA(d.key)).map((d) => ({ chave: d.key, rotulo: d.label, formato: weeklySchedule[d.key] as FormatoDoPost }));
+  }, [campaignMode, singleDay, singleContentType, DIAS, weeklySchedule, origens]);
+  const faltamModelos = modelosFalharam ? [] : postsSemModelo(postsVisuais, modelosDosPosts);
+  const listaDosModelos = (explicacao?: string) =>
+    projectId ? (
+      <ModelosDosPosts
+        projectId={projectId}
+        posts={postsVisuais}
+        valor={modelosDosPosts}
+        aoMudar={setModelosDosPosts}
+        aoCarregar={(ok) => setModelosFalharam(!ok)}
+        explicacao={explicacao}
+      />
+    ) : null;
   const [customDateInput, setCustomDateInput] = useState<string>("");
   const weekStart = selectedWeekStart;
 
@@ -1618,6 +1658,11 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
         ? laminasDoCarrossel
         : undefined,
       videoQualidade: videoWarning ? videoQualidade : undefined,
+      // O modelo de cada post (08/10): só os dias visuais desta campanha, e só a escolha que serve ao formato do dia.
+      modelosDosPosts: (() => {
+        const m = modelosParaGravar(postsVisuais, modelosDosPosts);
+        return Object.keys(m).length ? m : undefined;
+      })(),
     });
   }
 
@@ -1841,6 +1886,17 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               onTema={() => setOrigem("tema")}
               onGemeo={() => router.push(`/projects/${projectId}/gemeo`)}
             />
+          ) : pedindoEstilo && projectId ? (
+            // O PASSO DOS MODELOS (08/10): todo dia visual com o seu modelo, e a campanha gera.
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Antes de gerar: o modelo de cada post</h3>
+                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                  Cada dia com foto ou carrossel tem o seu modelo: crie o seu falando ou escrevendo, ou escolha um da biblioteca. Infográfico e vídeo saem nas cores e na letra da sua marca. Com todos escolhidos, é só gerar.
+                </p>
+              </div>
+              {listaDosModelos("No quadro, a IA coloca o conteúdo de cada dia dentro do modelo escolhido para ele.")}
+            </div>
           ) : (
           <AnimatePresence mode="wait">
 
@@ -1916,8 +1972,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O MODELO DE CADA POST (08/10): criado falando ou escrevendo, ou escolhido da biblioteca, dia a dia. */}
+                    {listaDosModelos()}
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2079,8 +2135,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O MODELO DE CADA POST (08/10): criado falando ou escrevendo, ou escolhido da biblioteca, dia a dia. */}
+                    {listaDosModelos()}
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2265,8 +2321,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O MODELO DE CADA POST (08/10): criado falando ou escrevendo, ou escolhido da biblioteca, dia a dia. */}
+                    {listaDosModelos()}
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
@@ -2952,13 +3008,25 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
         <div className="flex items-center justify-between px-6 py-4 border-t shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
           <Button
             variant="ghost"
-            onClick={origem === null ? onClose : step === 0 ? () => setOrigem(null) : prevStep}
+            onClick={origem === null ? onClose : pedindoEstilo ? () => setPedindoEstilo(false) : step === 0 ? () => setOrigem(null) : prevStep}
             style={{ color: "var(--text-muted)" }}
           >
             {origem === null ? "Cancelar" : <><ChevronLeft className="w-4 h-4" />Voltar</>}
           </Button>
 
-          {origem === null ? null : !isLastStep ? (
+          {origem === null ? null : pedindoEstilo ? (
+            <div className="flex flex-col items-end gap-1">
+              {faltamModelos.length > 0 && (
+                <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "#ea580c" }}>
+                  Falta o modelo de {faltamModelos.map((p) => p.rotulo).join(", ")}.
+                </p>
+              )}
+              <Button onClick={() => { setPedindoEstilo(false); handleConfirm(); }} disabled={conferindoSobreposicao || faltamModelos.length > 0} className="bg-orange-500 hover:bg-orange-600">
+                <Zap className="w-4 h-4" />
+                Gerar campanha
+              </Button>
+            </div>
+          ) : !isLastStep ? (
             <Button onClick={nextStep}>
               Próximo
               <ChevronRight className="w-4 h-4" />
@@ -2996,13 +3064,17 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
             </div>
           ) : (
             <div className="flex flex-col items-end gap-1">
-              {/* A trava da identidade (05/10): avisa antes de gerar, sem barrar os textos.
-                  06/10: com o link direto para Modelos de arte, e lendo o estado
-                  sozinho quando o book não apareceu nesta campanha. */}
-              <AvisoDaIdentidade projectId={projectId} temArte={campanhaTemArte} aprovada={identidadeAprovada === null ? undefined : identidadeAprovada} compacto />
-              <Button onClick={handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
+              {/* A trava da identidade (05/10) virou passo (08/10) e, no mesmo dia,
+                  a escolha por post: com dia visual sem modelo, o botão abre a
+                  lista dos modelos, e a campanha gera com todos escolhidos. */}
+              {faltamModelos.length > 0 && (
+                <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "#ea580c" }}>
+                  Falta o modelo de {faltamModelos.map((p) => p.rotulo).join(", ")}: você cria o seu ou escolhe da biblioteca, e a campanha já sai nele.
+                </p>
+              )}
+              <Button onClick={faltamModelos.length > 0 ? () => setPedindoEstilo(true) : handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
                 <Zap className="w-4 h-4" />
-                {conferindoSobreposicao ? "Conferindo os dias..." : "Gerar campanha"}
+                {conferindoSobreposicao ? "Conferindo os dias..." : faltamModelos.length > 0 ? "Escolher os modelos e gerar" : "Gerar campanha"}
               </Button>
             </div>
           )}

@@ -8,6 +8,7 @@ import { limparMarcadores } from "@/lib/media/write-posts";
 import { textoDoRadar, type Radar } from "@/lib/media/radar-do-video";
 import { REGRAS_DE_TEXTO, separarTweets, fraseDaArte, arteDoDia } from "@/lib/media/pecas-da-semana";
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
+import { metadataDaFoto } from "@/lib/media/foto-da-peca";
 import { arteCoerenteComOTexto } from "@/lib/squad/coerencia-da-arte";
 import { formatoDaPeca as formatoDaRede } from "@/lib/media/formatos-das-redes";
 import { revisarDiaDoVideo, postsDoDiaDaVera, ROTULO_DO_VEREDITO, STATUS_FORA_DA_REVISAO, type RevisaoDoDia } from "@/lib/media/vera-do-video";
@@ -435,6 +436,8 @@ export async function corrigirDiaDoVideo(args: {
               try {
                 imageUrl = await refazerArte(ctx, t.post, frase);
                 postMeta.frase = frase;
+                // Qual foto entrou na arte refeita (08/10, revisão): a da biblioteca, gerada ou nenhuma.
+                Object.assign(postMeta, metadataDaFoto([frase]));
               } catch (e) {
                 console.error(`[correcao][${video.id}] a Diana não refez a arte do dia ${card.dayOfWeek}:`, e);
               }

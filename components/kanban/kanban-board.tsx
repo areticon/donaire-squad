@@ -25,9 +25,11 @@ import {
   Search,
   ScanSearch,
   GitCompareArrows,
+  Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepMarca } from "@/components/kanban/step-marca";
+import { StepMateriais } from "@/components/kanban/step-materiais";
 import { StepReferencias } from "@/components/kanban/step-referencias";
 import { StepPerfilProprio } from "@/components/kanban/step-perfil-proprio";
 import { ArrobaDoYouTube } from "@/components/projects/links-no-setup";
@@ -79,17 +81,23 @@ interface Project {
  * A tela é escolhida pela CHAVE, não pelo número: até aqui os índices eram a
  * única coisa que amarrava a tela à etapa, e mexer em STEPS trocava as telas
  * de lugar em silêncio (o aviso de 17/09).
+ *
+ * 08/10: a etapa "Fotos e estilo" entra logo depois da Marca (decisão do
+ * Bruno: fotos e estilo dos posts "no início da configuração do projeto").
+ * `setupStep` é número no banco: quem estava no meio do assistente, da Voz em
+ * diante, volta uma etapa (cai nesta, que é nova para ele) e segue.
  */
 const STEPS = [
   { id: 0, chave: "perfil", icon: ScanSearch, label: "Seu perfil", color: "text-pink-400" },
   { id: 1, chave: "referencias", icon: GitCompareArrows, label: "Referências", color: "text-pink-400" },
   { id: 2, chave: "marca", icon: Palette, label: "Marca", color: "text-pink-400" },
-  { id: 3, chave: "voz", icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
-  { id: 4, chave: "ideacao", icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
-  { id: 5, chave: "agenda", icon: Calendar, label: "Agenda", color: "text-cyan-400" },
-  { id: 6, chave: "regras", icon: Search, label: "Regras", color: "text-pink-400" },
-  { id: 7, chave: "redes", icon: Share2, label: "Conectar redes", color: "text-green-400" },
-  { id: 8, chave: "ativacao", icon: Rocket, label: "Ativação", color: "text-orange-400" },
+  { id: 3, chave: "materiais", icon: Images, label: "Fotos e estilo", color: "text-pink-400" },
+  { id: 4, chave: "voz", icon: Mic2, label: "Voz & Estilo", color: "text-purple-400" },
+  { id: 5, chave: "ideacao", icon: Lightbulb, label: "Ideação", color: "text-yellow-400" },
+  { id: 6, chave: "agenda", icon: Calendar, label: "Agenda", color: "text-cyan-400" },
+  { id: 7, chave: "regras", icon: Search, label: "Regras", color: "text-pink-400" },
+  { id: 8, chave: "redes", icon: Share2, label: "Conectar redes", color: "text-green-400" },
+  { id: 9, chave: "ativacao", icon: Rocket, label: "Ativação", color: "text-orange-400" },
 ] as const;
 
 type ChaveDaEtapa = (typeof STEPS)[number]["chave"];
@@ -651,6 +659,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               sugestaoDasCapas={setupSugerido?.campos.colorPalette ? { cores: setupSugerido.campos.colorPalette, porque: setupSugerido.porque.colorPalette } : null}
             />
           )}
+          {chave === "materiais" && <StepMateriais projectId={project.id} />}
           {chave === "voz" && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}
           {chave === "ideacao" && <StepIdeation form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} />}
           {chave === "agenda" && <StepSchedule form={form} set={set} askAI={askAI} />}

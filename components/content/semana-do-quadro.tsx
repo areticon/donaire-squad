@@ -369,7 +369,7 @@ function AvisoDaIdentidade({ espera, projectId, onTentarArte }: { espera: Espera
     <div className="space-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-aviso-da-identidade={espera.estado}>
       <p className="flex items-start gap-1 text-[10px] leading-snug" style={{ color: falhou ? "#f87171" : "var(--text-muted)" }}>
         {falhou ? <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> : <Palette className="mt-[1px] h-3 w-3 shrink-0 text-amber-400" />}
-        <span>{falhou ? `A arte não saiu: ${espera.motivo ?? "a geração falhou"}. Nada foi cobrado.` : "Aguardando a sua identidade visual: escolha o modelo, a letra e as cores e aprove. Nada é gasto antes disso."}</span>
+        <span>{falhou ? `A arte não saiu: ${espera.motivo ?? "a geração falhou"}. Nada foi cobrado.` : "Aguardando o estilo dos posts: escreva como quer ou escolha um da biblioteca. Nada é gasto antes disso."}</span>
       </p>
       {falhou && onTentarArte ? (
         <button

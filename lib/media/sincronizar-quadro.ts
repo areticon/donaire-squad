@@ -4,7 +4,7 @@ import { podeTerCardDeCorte } from "@/lib/media/decisao-dos-cortes";
 import { lerDecisaoDosCortes } from "@/lib/media/decisao-dos-cortes-banco";
 import { destinoPorId } from "@/lib/media/destinos";
 import { diaDoTrecho, diaDoTrechoNoPlano } from "@/lib/media/quadro-do-video";
-import { dataDoDia, DESTINO_DE_CORTE_DA_REDE, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
+import { dataDoDia, DESTINO_DE_CORTE_DA_REDE, diaDoCorte, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
 import { textoDoCompleto } from "@/lib/media/completo-no-quadro";
 import { descricaoDoCorte, nomeDoCanal } from "@/lib/media/elo-da-campanha";
 import { lerLinks } from "@/lib/projeto/links-do-cliente";
@@ -101,15 +101,10 @@ export async function sincronizarQuadroDoVideo(videoJobId: string): Promise<void
   const plano = planoDoRun(run.config);
   const alvo = { inicio: plano.inicio, weekStart: run.weekStart };
   const diasDeCorte = diasDeVideoCurto(plano);
-  // A posição de cada corte aprovado (0, 1, 2...), que escolhe o dia de vídeo curto dele.
-  const aprovados = trechos
-    .map((t, i) => ({ t, i }))
-    .filter(({ t }) => t.publicar !== false && t.midia?.vertical)
-    .map(({ i }) => i);
-  const diaDoPlano = (indice: number) => {
-    const k = aprovados.indexOf(indice);
-    return k < 0 || !diasDeCorte.length ? null : diasDeCorte[k % diasDeCorte.length];
-  };
+  // A posição de cada corte aprovado (0, 1, 2...), que escolhe o dia de vídeo
+  // curto dele. A conta mora em `diaDoCorte` (08/10): a montagem usa a mesma
+  // para achar o estilo de edição escolhido para o dia do corte.
+  const diaDoPlano = (indice: number) => diaDoCorte(trechos, indice, diasDeCorte);
 
   const cards = await prisma.campaignCard.findMany({
     where: { runId: run.id, cardType: "video_clip" },

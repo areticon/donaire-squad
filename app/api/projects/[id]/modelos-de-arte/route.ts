@@ -7,7 +7,7 @@ import { esquecerIdentidade, identidadeDoProjeto } from "@/lib/media/identidade-
 import { listaDaPaleta } from "@/lib/modelos-de-arte/identidade";
 import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import { fotosDaVitrine, pessoasDeBanco, type PessoaDaPrevia } from "@/lib/modelos-de-arte/fotos-do-book";
-import { estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
+import { estadoDaIdentidade, lerIdentidadeVisual, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
 import { artesAguardandoIdentidade, gerarGruposMarcados, iniciarGeracaoDasArtes } from "@/lib/media/artes-aguardando-identidade";
 import { contarArtesEsperando } from "@/lib/modelos-de-arte/espera-da-identidade";
 
@@ -86,6 +86,8 @@ async function identidadeParaATela(projectId: string, colorPalette: string | nul
     aguardando: esperando,
     /** Quantas artes o "Aprovar e gerar" está desenhando agora. */
     gerando: Math.max(0, contarArtesEsperando(todas) - esperando),
+    /** O design da biblioteca aprovado como estilo dos posts (08/10). */
+    design: estado.design,
   };
 }
 
@@ -147,7 +149,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     modelosMudaram = antes !== JSON.stringify(escolha?.ids ?? []);
   }
   const aprovar = corpo.aprovar === true;
-  if (aprovar && !escolha?.ids.length) return NextResponse.json({ error: "Escolha ao menos um modelo de arte antes de aprovar." }, { status: 400 });
+  // O design escrito ou escolhido na biblioteca vale como estilo (08/10): quem
+  // tem um aprovado e só mexeu na letra ou nas cores aprova sem modelo do book.
+  const comDesign = aprovar && !modelosMudaram && Boolean((await lerIdentidadeVisual(id))?.design);
+  if (aprovar && !escolha?.ids.length && !comDesign) return NextResponse.json({ error: "Escolha ao menos um modelo de arte (ou escreva o estilo dos posts) antes de aprovar." }, { status: 400 });
   // Qualquer mudança (modelo, letra ou papéis) derruba a aprovação; só o
   // "Aprovar e gerar" carimba de novo, com o que está na tela agora.
   if (aprovar || modelosMudaram || corpo.letra !== undefined || corpo.papeis !== undefined || corpo.fotos !== undefined) {

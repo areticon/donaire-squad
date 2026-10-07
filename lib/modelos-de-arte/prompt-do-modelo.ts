@@ -1,7 +1,7 @@
 import type { FormatoDoModelo, ModeloDeArte } from "@/lib/modelos-de-arte/catalogo";
 import type { CoresDoDesenho } from "@/lib/modelos-de-arte/desenho";
 import { palavraDeDestaque } from "@/lib/modelos-de-arte/encaixe";
-import { FIGURANTE_ANONIMO, OBJETO_ANONIMO } from "@/lib/modelos-de-arte/prompts-vox";
+import { OBJETO_ANONIMO } from "@/lib/modelos-de-arte/prompts-vox";
 
 /**
  * O MODELO POR PROMPT (05/10/2026): preenche o `prompt` do catálogo com as
@@ -52,13 +52,37 @@ export interface VariaveisDoPrompt {
   titulo: string;
   /** A palavra em destaque; sem ela, a regra de `palavraDeDestaque`. */
   palavra?: string;
-  /** A descrição da foto do cliente, em inglês (da biblioteca de materiais). Sem ela, o figurante anônimo. */
+  /**
+   * A descrição da foto do cliente, em inglês (da biblioteca de materiais).
+   * Sem ela, a peça sai SEM PESSOA (08/10): um objeto ou símbolo da ideia no
+   * lugar da foto, nunca um figurante inventado nem o quadro do vídeo.
+   */
   foto?: string | null;
   formato: FormatoDoModelo;
 }
 
 /** Os modelos cujo lugar da foto é um objeto, documento ou tela, e não uma pessoa. */
 const FOTO_DE_OBJETO = new Set(["papel-com-foto-rasgada", "frase-com-carimbo-e-foto"]);
+
+/**
+ * SÓ FOTO ENVIADA PELO CLIENTE (08/10/2026). Regra do Bruno: "só use foto em
+ * post se for foto enviada pelo usuário". Até aqui, sem foto do cliente, o
+ * lugar da foto recebia um figurante anônimo (uma pessoa inventada) e, nas
+ * peças do vídeo, o print da gravação. Agora, sem foto do cliente, o lugar da
+ * foto vira um OBJETO ou símbolo da ideia, e o prompt proíbe gente: a
+ * composição do modelo continua (colagem, recorte, faixa), sem pessoa.
+ */
+export const OBJETO_SEM_PESSOA = "one object or symbol that stands for the headline's idea, photographed on its own (no person, no face, no hands, no body)";
+
+/** A linha que vai no fim do prompt quando não há foto do cliente: ninguém na peça. */
+export const SEM_PESSOA = "\nNo people anywhere: no person, face, silhouette, hands or body, real or invented. Every cutout and photograph in the composition is an object, a place or a symbol.";
+
+/** O prompt com a foto do cliente (descrição em `foto`) ou, sem ela, sem pessoa nenhuma. Puro. */
+export function fotoDoPrompt(modeloId: string, foto: string | null | undefined): { foto: string; semPessoa: boolean } {
+  const descricao = foto?.trim();
+  if (descricao) return { foto: `the person or subject from the reference photo (${descricao.slice(0, 240)})`, semPessoa: false };
+  return { foto: FOTO_DE_OBJETO.has(modeloId) ? OBJETO_ANONIMO : OBJETO_SEM_PESSOA, semPessoa: true };
+}
 
 /** O prompt do modelo com as variáveis da peça preenchidas. */
 export function preencherPromptDoModelo(modelo: ModeloDeArte & { prompt: string }, v: VariaveisDoPrompt): string {
@@ -67,8 +91,7 @@ export function preencherPromptDoModelo(modelo: ModeloDeArte & { prompt: string 
   const fundo = papeis?.fundo || v.cores.escuro;
   const corDoTitulo = papeis?.titulo || v.cores.claro;
   const paleta = `${nomeDaCorPuro(destaque)} as the accent, ${nomeDaCorPuro(fundo)} and ${nomeDaCorPuro(corDoTitulo)} as the brand's other colours`;
-  const fotoPadrao = FOTO_DE_OBJETO.has(modelo.id) ? OBJETO_ANONIMO : FIGURANTE_ANONIMO;
-  const foto = v.foto?.trim() ? `the person or subject from the reference photo (${v.foto.trim().slice(0, 240)})` : fotoPadrao;
+  const { foto, semPessoa } = fotoDoPrompt(modelo.id, v.foto);
   const valores: Record<string, string> = {
     destaque: nomeDaCorPuro(destaque),
     fundo: nomeDaCorPuro(fundo),
@@ -79,7 +102,9 @@ export function preencherPromptDoModelo(modelo: ModeloDeArte & { prompt: string 
     foto,
     formato: ROTULO_EM_INGLES[v.formato] ?? ROTULO_EM_INGLES.post,
   };
-  return modelo.prompt.replace(/\{(\w+)\}/g, (tudo, chave: string) => valores[chave] ?? tudo);
+  const preenchido = modelo.prompt.replace(/\{(\w+)\}/g, (tudo, chave: string) => valores[chave] ?? tudo);
+  // Só quando o modelo tem o lugar da foto: o modelo só de cena já diz "No people".
+  return semPessoa && modelo.prompt.includes("{foto}") ? `${preenchido}${SEM_PESSOA}` : preenchido;
 }
 
 /**
