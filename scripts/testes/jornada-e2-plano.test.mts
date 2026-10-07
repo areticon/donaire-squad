@@ -85,7 +85,7 @@ test("textoNaImagem só com palavras ditas, número dito ou marca citada", () =>
   const porGatilho = Object.fromEntries(ideias.map((i) => [i.gatilho.palavra, i.textoNaImagem]));
   assert.equal(porGatilho["farinha"], "48 horas", "número dito por extenso vale");
   assert.equal(porGatilho["integral"], "farinha integral");
-  assert.equal(porGatilho["quente"], null, "'fervendo' não foi dito: o texto cai");
+  assert.equal(porGatilho["quente"], undefined, "'fervendo' não foi dito: a ideia feita em volta desse texto cai inteira");
   assert.equal(porGatilho["Instagram."] ?? porGatilho["Instagram"], "Instagram", "marca citada vale");
   assert.equal(textoPermitido("Padaria Dona Rosa", "qualquer fala", { papel: "elemento", marca: "Padaria Dona Rosa" }), "Padaria Dona Rosa", "a marca do projeto vale");
   assert.equal(textoPermitido("Inscreva-se", "qualquer fala", { papel: "chamada" }), "Inscreva-se", "a chamada curta vale");

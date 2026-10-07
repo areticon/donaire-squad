@@ -54,10 +54,14 @@ export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | nu
   const vertical = formato === "9:16";
   // Com a medição do rosto no momento (amostras), o espaço real decide: o elemento só entra sobre a gravação se couber GRANDE.
   const janela = livre ? (vertical ? livre.lateral >= 0.5 || livre.topo >= 0.3 : livre.lateral >= 0.34) : cabe(areas, vertical ? 0.55 : 0.28, vertical ? 0.2 : 0.3);
-  const recorte = livre ? (vertical ? livre.lateral >= 0.42 || livre.topo >= 0.13 : livre.lateral >= 0.26 || livre.topo >= 0.28) : cabe(areas, vertical ? 0.35 : 0.18, vertical ? 0.15 : 0.22);
-  if (midia === "video") return ["broll"];
-  if (midia === "recorte") return [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : []), "tela-cheia"];
-  return [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : []), "tela-cheia"];
+  // No vertical, o recorte só vale onde ele entra GRANDE (lateral larga ou faixa alta acima da cabeça); senão a ideia vira imagem em tela cheia.
+  const recorte = livre ? (vertical ? livre.lateral >= 0.45 || livre.topo >= 0.2 : livre.lateral >= 0.28 || livre.topo >= 0.3) : cabe(areas, vertical ? 0.45 : 0.2, vertical ? 0.2 : 0.24);
+  // Tela compartilhada ou quadro no trecho: nada os cobre (nem tela cheia, nem B-roll); só o que cabe ao lado.
+  const conteudo = Boolean(trecho?.tela || trecho?.quadro);
+  const cheia = conteudo ? [] : (["tela-cheia"] as const);
+  if (midia === "video") return conteudo ? [] : ["broll"];
+  if (midia === "recorte") return [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : []), ...cheia];
+  return [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : []), ...cheia];
 }
 
 /** A mídia que o formato pede (o recorte entra sobre a gravação; a janela e a tela cheia levam a composição; o B-roll é vídeo). */
@@ -112,8 +116,11 @@ export function espacoLivre(amostras: AmostraDaJornada[] | null | undefined, de:
   const seg = formato === "9:16" ? { topo: 0.1, esquerda: 0.05, direita: 0.12 } : { topo: 0.06, esquerda: 0.04, direita: 0.04 };
   const rostos = dentro.flatMap((a) => a.rostos);
   const topo = Math.min(...rostos.map((r) => r.y - 0.018)) - seg.topo;
-  const esquerda = Math.min(...rostos.map((r) => r.x - 0.03)) - seg.esquerda;
-  const direita = 1 - seg.direita - Math.max(...rostos.map((r) => r.x + r.w + 0.03));
+  // A lateral livre é a de fora do CORPO (o passo 7 não põe elemento sobre a pessoa), com a mesma tolerância de beirada.
+  const corpos = dentro.flatMap((a) => a.corpos);
+  const pessoa = corpos.length ? corpos : rostos;
+  const esquerda = Math.min(...pessoa.map((r) => r.x + r.w * 0.08)) - seg.esquerda;
+  const direita = 1 - seg.direita - Math.max(...pessoa.map((r) => r.x + r.w * 0.92));
   return { topo: Math.max(0, +topo.toFixed(3)), lateral: Math.max(0, +Math.max(esquerda, direita).toFixed(3)) };
 }
 
@@ -134,7 +141,8 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
     instructions: { pergunta: "Qual o ritmo de elementos visuais deste vídeo (segundos médios entre um elemento e o seguinte)?", duracaoSegundos: Math.round(o.duracao), formato: o.formato, generoLido: o.genero ?? "outro" },
     criteria: Object.fromEntries(opcoesDeDensidade(o.duracao, o.genero).map((x) => [x.id, x.criterio])),
   };
-  for (const m of momentos) {
+  momentos.forEach((m, j) => {
+    const anterior = momentos[j - 1]?.ideias.map((x) => x.descricao) ?? [];
     const k = m.frase.indice;
     const cena = m.trecho ? { acontece: m.trecho.acontece, mostra: m.trecho.mostra, movimento: m.trecho.movimento } : null;
     q[`f${k}`] = {
@@ -144,8 +152,8 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
     };
     q[`i${k}`] = {
       type: "choice",
-      instructions: { pergunta: "Qual destas ideias serve melhor a esta fala, a este público e a esta cena? Ou nenhuma.", fala: m.frase.texto, emCena: cena },
-      criteria: { ...Object.fromEntries(m.ideias.map((x, j) => [LETRAS[j], `${x.descricao}${x.textoNaImagem ? ` (texto na arte: "${x.textoNaImagem}")` : ""}`])), nenhuma: "nenhuma serve: o momento fica com a gravação" },
+      instructions: { pergunta: "Qual destas ideias serve melhor a esta fala, a este público e a esta cena? Ou nenhuma. Uma ideia que repete o assunto do momento anterior do mesmo jeito não serve.", fala: m.frase.texto, emCena: cena, ideiasDoMomentoAnterior: anterior },
+      criteria: { ...Object.fromEntries(m.ideias.map((x, i) => [LETRAS[i], `${x.descricao}${x.textoNaImagem ? ` (texto na arte: "${x.textoNaImagem}")` : ""}`])), nenhuma: "nenhuma serve, ou repete o assunto do momento anterior: o momento fica com a gravação" },
     };
     const possiveis = [...new Set(m.ideias.flatMap((x) => formatosPossiveis(x.midia, m.trecho, o.formato, m.livre)))];
     if (possiveis.length > 1) {
@@ -155,7 +163,7 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
         criteria: Object.fromEntries(possiveis.map((f) => [f, CRITERIO_DO_FORMATO[f]])),
       };
     }
-  }
+  });
   return q;
 }
 
@@ -207,6 +215,10 @@ export function planoDasRespostas(
     }
     const ideia = m.ideias[LETRAS.indexOf(letra)];
     const possiveis = formatosPossiveis(ideia.midia, m.trecho, o.formato, m.livre);
+    if (!possiveis.length) {
+      descartados.push({ frase: k, motivo: "a tela ou o quadro ocupam o momento e não há lugar ao lado" });
+      continue;
+    }
     const escolhido = escolhaDe(r[`m${k}`], FORMATOS_DA_JORNADA as unknown as string[]) as FormatoDaJornada | null;
     const formato = escolhido && possiveis.includes(escolhido) ? escolhido : possiveis[0];
     cands.push({ m, ideia, formato, forca });

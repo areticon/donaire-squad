@@ -16,7 +16,7 @@ import { grafoDoLote, transicoesDaEdicao } from "../../worker/src/edicao-sob-med
 const cruza = (a: { x: number; y: number; w: number; h: number }, b: typeof a) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 // A pessoa se mexe: o rosto anda da esquerda para o centro no intervalo.
-const amostras: AmostraDaJornada[] = Array.from({ length: 12 }, (_, i) => ({ t: i * 2, rostos: [{ x: 0.3 + i * 0.01, y: 0.18, w: 0.32, h: 0.18 }], corpos: [{ x: 0.15, y: 0.15, w: 0.7, h: 0.85 }] }));
+const amostras: AmostraDaJornada[] = Array.from({ length: 12 }, (_, i) => ({ t: i * 2, rostos: [{ x: 0.3 + i * 0.01, y: 0.34, w: 0.32, h: 0.16 }], corpos: [{ x: 0.25, y: 0.52, w: 0.5, h: 0.48 }] }));
 
 test("nenhuma caixa cruza o rosto em amostra alguma; todas dentro da área segura e fora da legenda", () => {
   for (const formato of ["9:16", "16:9"] as const) {
@@ -24,7 +24,7 @@ test("nenhuma caixa cruza o rosto em amostra alguma; todas dentro da área segur
     const H = formato === "9:16" ? 1920 : 1080;
     const protegidas = protegidasNoIntervalo(amostras, 4, 12);
     const legenda: [number, number] = formato === "9:16" ? [0.68, 0.83] : [0.83, 0.97];
-    const cs = caixasCandidatas({ formato, W, H, proporcao: 1, protegidas, corpos: amostras[0].corpos, legenda, janela: false });
+    const cs = caixasCandidatas({ formato, W, H, proporcao: 2.5, protegidas, corpos: amostras[0].corpos, legenda, janela: false });
     assert.ok(cs.length >= 1, `${formato}: ao menos uma opção`);
     const seg = AREA_SEGURA[formato];
     for (const { caixa: c } of cs) {
@@ -55,7 +55,7 @@ test("a legenda segue a escolha do cliente", () => {
 });
 
 const aprovado = (id: string, formato: ElementoAprovado["formato"], t: number): ElementoAprovado => ({ id, momento: { indice: 0, de: t - 0.5, ate: t + 2, frase: "frase" }, gatilho: { palavra: "x", indice: 0, t }, descricao: "d", textoNaImagem: null, midia: formato === "broll" ? "video" : formato === "recorte-sobre" ? "recorte" : "imagem", formato, porque: "", custoUsd: 0, origem: "ia", papel: "elemento", pedidos: [] });
-const gerado = (id: string, formato: ElementoAprovado["formato"], url: string | null = `https://blob/${id}.webp`): ElementoGerado => ({ id, url, tipo: formato === "broll" ? "video" : formato === "recorte-sobre" ? "recorte" : "imagem", formato, proporcao: 1, custoUsd: 0.06, modelo: "m", rodadas: 1, prompt: "p", avisoAdmin: null, avisoCliente: null, tempos: { gerar: 0, recorte: 0, leitura: 0 } });
+const gerado = (id: string, formato: ElementoAprovado["formato"], url: string | null = `https://blob/${id}.webp`): ElementoGerado => ({ id, url, tipo: formato === "broll" ? "video" : formato === "recorte-sobre" ? "recorte" : "imagem", formato, proporcao: formato === "recorte-sobre" ? 2.5 : 1, custoUsd: 0.06, modelo: "m", rodadas: 1, prompt: "p", avisoAdmin: null, avisoCliente: null, tempos: { gerar: 0, recorte: 0, leitura: 0 } });
 
 test("a edição: só 'jornada-midia' nas camadas, tela cheia e B-roll como inserção, sons só os escolhidos, elemento sem mídia fica fora", async () => {
   const els: ElementoParaMontar[] = [

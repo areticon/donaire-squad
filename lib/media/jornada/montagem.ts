@@ -34,7 +34,7 @@ import { mmss } from "@/lib/media/jornada/estado";
 /** As margens de interface das redes, em fração do quadro (uma tabela só). Nada nos 10% de cima do vertical. */
 export const AREA_SEGURA: Record<"9:16" | "16:9", { topo: number; base: number; esquerda: number; direita: number }> = {
   "9:16": { topo: 0.1, base: 0.18, esquerda: 0.05, direita: 0.12 },
-  "16:9": { topo: 0.06, base: 0.08, esquerda: 0.04, direita: 0.04 },
+  "16:9": { topo: 0.08, base: 0.08, esquerda: 0.05, direita: 0.05 },
 };
 
 const arred = (n: number) => Math.round(n * 1000) / 1000;
@@ -97,8 +97,9 @@ export function caixasCandidatas(o: {
         if (o.protegidas.some((r) => cruza(c, r))) continue;
         if (o.legenda && c.y < o.legenda[1] && c.y + c.h > o.legenda[0]) continue;
         const corpo = o.corpos.length ? o.corpos.reduce((s, b) => s + intersecao(c, b), 0) / (o.corpos.length * area(c)) : 0;
-        // Cobrir o corpo (o peito, o braço) é permitido; só pesa um pouco. O rosto nunca.
-        validas.push({ c, nota: area(c) * (1 - 0.3 * Math.min(1, corpo)) });
+        // O elemento não entra sobre a pessoa: no máximo uma beirada do corpo (15% da caixa). O rosto nunca.
+        if (corpo > 0.15) continue;
+        validas.push({ c, nota: area(c) * (1 - corpo) });
       }
     }
   }
@@ -300,7 +301,9 @@ export async function montarEdicao(o: {
     }
     const som = escolha(r[`s_${id}`], Object.keys(SONS) as Som[]) ?? "nenhum";
     if (x.naCaixa) {
-      if (!x.caixas.length && x.formato === "janela") {
+      const proporcaoDoQuadro = o.W / o.H;
+      const cabeInteira = Math.abs((x.e.gerado.proporcao ?? 0) / proporcaoDoQuadro - 1) <= 0.2;
+      if (!x.caixas.length && x.formato === "janela" && cabeInteira) {
         // A janela sem lugar fora do rosto entra em tela cheia (a imagem é opaca e cobre a gravação inteira, nunca o rosto por cima).
         avisos.push(`${id}: nenhuma caixa legível fora do rosto; a janela entrou em tela cheia`);
         insercoes[id] = { tipo: "imagem", url: x.e.gerado.url!, origem: "jornada" };
@@ -310,7 +313,7 @@ export async function montarEdicao(o: {
       } else if (!x.caixas.length) {
         // O recorte (transparente) não tem lugar legível fora do rosto: não entra por cima do rosto; o aviso vai ao cliente.
         avisos.push(`${id}: nenhuma caixa legível fora do rosto no momento; o elemento ficou fora`);
-        avisosDoCliente.push(`No momento ${mmss(de)}, o elemento "${x.e.aprovado.descricao.slice(0, 80)}" ficou fora porque não havia lugar na tela sem cobrir o seu rosto. Peça de novo em outro momento.`);
+        avisosDoCliente.push(`No momento ${mmss(de)}, o elemento "${x.e.aprovado.descricao.slice(0, 80)}" ficou fora porque não havia lugar na tela sem cobrir você. Peça de novo em outro momento.`);
         continue;
       } else {
         const cid = escolha(r[`c_${id}`], x.caixas.map((c) => c.id)) ?? x.caixas[0].id;
