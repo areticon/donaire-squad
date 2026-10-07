@@ -22,6 +22,10 @@ import { ROTULO_DO_BOTAO_ESCOLHER } from "@/lib/modelos-de-arte/espera-da-identi
  *
  * `aprovada` vindo de fora (o book já carregado na mesma tela) evita outra
  * leitura; sem ele, o aviso lê o estado do projeto sozinho.
+ *
+ * 08/10: o aviso não é mais o único caminho. A janela da campanha e a
+ * jornada do vídeo abrem o passo do estilo dos posts antes de gerar
+ * (components/estilo-dos-posts), e o texto diz isso.
  */
 export function AvisoDaIdentidade({ projectId, temArte, aprovada: deFora, compacto }: { projectId: string; temArte: boolean; aprovada?: boolean | null; compacto?: boolean }) {
   const [lida, setLida] = useState<boolean | null>(null);
@@ -48,14 +52,14 @@ export function AvisoDaIdentidade({ projectId, temArte, aprovada: deFora, compac
       <p className={compacto ? "text-[10px] leading-snug" : "flex items-start gap-2 text-xs leading-snug"} style={{ color: "#ea580c" }}>
         {!compacto && <Palette className="mt-0.5 h-4 w-4 shrink-0" />}
         <span>
-          O estilo das artes ainda não foi escolhido. Os dias com imagem, carrossel ou infográfico saem só com o texto e a arte espera você escolher o modelo, a letra e as cores e aprovar. Nenhum crédito de imagem é gasto até lá.
+          O estilo dos posts ainda não foi escolhido. Antes de gerar, você escreve como quer ou escolhe um da biblioteca, e os dias com imagem, carrossel ou infográfico saem nele. Nenhum crédito de imagem é gasto até lá.
         </span>
       </p>
       <Link
         href={`/projects/${projectId}/settings?aba=modelos`}
         className="inline-flex shrink-0 items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-orange-600"
       >
-        {ROTULO_DO_BOTAO_ESCOLHER} em Modelos de arte
+        {ROTULO_DO_BOTAO_ESCOLHER} o estilo dos posts
       </Link>
     </div>
   );

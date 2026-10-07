@@ -48,6 +48,7 @@ export function SemanaDoVideoPlanejador({
   projectId,
   inicial,
   redesConectadas,
+  aoMudarArte,
 }: {
   projectId: string;
   /** Project.videoSemana como veio do banco (pode ser nulo). */
@@ -58,6 +59,11 @@ export function SemanaDoVideoPlanejador({
    * Indefinido: não filtra (tela que não carrega as contas).
    */
   redesConectadas?: string[];
+  /**
+   * O plano tem dia de arte? (08/10) A jornada da campanha acompanha, para
+   * saber se o passo do estilo dos posts precisa aparecer antes do envio.
+   */
+  aoMudarArte?: (temArte: boolean) => void;
 }) {
   const conectadas = redesConectadas;
   const [semana, setSemana] = useState<SemanaDoVideo>(() => normalizarSemana(inicial, conectadas));
@@ -99,6 +105,10 @@ export function SemanaDoVideoPlanejador({
   const doPlano = datas.map((d) => semana.dias[String(d.dia) as ChaveDoDia]).filter(Boolean);
   const diasComPost = doPlano.length;
   const diasDeCorte = doPlano.filter((d) => d?.formato === "short").length;
+  const temArte = doPlano.some((d) => d && tipoGeraArte(d.formato));
+  useEffect(() => {
+    aoMudarArte?.(temArte);
+  }, [temArte]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const conectada = (r: RedeDoPlano) => !conectadas || conectadas.includes(r);
 
@@ -300,7 +310,7 @@ export function SemanaDoVideoPlanejador({
         )}
       </p>
       {/* O estilo é perguntado ANTES (06/10): dia de arte sem identidade aprovada sai só com o texto. */}
-      <AvisoDaIdentidade projectId={projectId} temArte={doPlano.some((d) => d && tipoGeraArte(d.formato))} />
+      <AvisoDaIdentidade projectId={projectId} temArte={temArte} />
     </section>
   );
 }

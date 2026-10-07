@@ -247,18 +247,44 @@ export interface IdentidadeVisualEscolhida {
   aprovadaEm?: string | null;
   /** Os modelos que estavam escolhidos na aprovação, para a tela mostrar. */
   modelos?: string[];
+  /**
+   * O DESIGN ESCRITO PELO CLIENTE COMO ESTILO DOS POSTS (08/10/2026): o id da
+   * entrada da biblioteca de design (tipo imagem) que ele escreveu no quadro
+   * de chat ou escolheu da biblioteca. Até aqui a aprovação exigia um modelo
+   * do book, e quem escrevia o próprio estilo ficava com as artes
+   * "aguardando a sua identidade visual" para sempre. Com o design gravado,
+   * ele É o estilo aprovado, sem modelo do book.
+   */
+  design?: string | null;
 }
 
 /**
  * A identidade está aprovada quando há aprovação gravada, ao menos um modelo
  * escolhido e os papéis ainda apontam para cores da paleta de agora (trocou
  * a paleta, a aprovação cai: a cor aprovada não existe mais).
+ *
+ * 08/10: o design escrito (ou escolhido) na biblioteca vale no lugar do
+ * modelo do book. Decisão do Bruno: "isso precisa ser um quadro de chat para
+ * o usuário escrever como ele quer o estilo dos posts, ou ele pode escolher
+ * estilos da biblioteca"; escrever ou escolher é a aprovação.
  */
 export function identidadeAprovada(registro: IdentidadeVisualEscolhida | null | undefined, modelosEscolhidos: string[] | null | undefined, paletaAtual?: string[]): boolean {
   if (!registro?.aprovadaEm || !letraValida(registro.letra) || !papeisValidos(registro.papeis)) return false;
-  if (!modelosEscolhidos?.length) return false;
+  if (!modelosEscolhidos?.length && !registro.design) return false;
   if (paletaAtual?.length && papeisNaPaleta(registro.papeis, paletaAtual).mudou) return false;
   return true;
+}
+
+/**
+ * O design que fica gravado depois de uma mudança (08/10). Pedido explícito
+ * (string ou null) manda; trocar os modelos do book volta para o book (quem
+ * escolheu o book depois do design quer o book); sem nada disso, fica o que
+ * estava. Puro, para a prova.
+ */
+export function designDepoisDaMudanca(atual: string | null | undefined, mudanca: { design?: string | null; modelosMudaram?: boolean }): string | null {
+  if (mudanca.design !== undefined) return mudanca.design || null;
+  if (mudanca.modelosMudaram) return null;
+  return atual ?? null;
 }
 
 export const MENSAGEM_AGUARDANDO = "Aguardando a sua identidade visual";
@@ -266,7 +292,7 @@ export const MENSAGEM_AGUARDANDO = "Aguardando a sua identidade visual";
 /** O erro que a geração paga lança quando a identidade não foi aprovada. */
 export class IdentidadeNaoAprovada extends Error {
   constructor(detalhe?: string) {
-    super(`${MENSAGEM_AGUARDANDO}: escolha o modelo, a letra e as cores e aprove antes de gerar artes${detalhe ? ` (${detalhe})` : ""}. Nenhum crédito de imagem foi gasto.`);
+    super(`${MENSAGEM_AGUARDANDO}: escreva como quer o estilo dos posts ou escolha um da biblioteca antes de gerar artes${detalhe ? ` (${detalhe})` : ""}. Nenhum crédito de imagem foi gasto.`);
     this.name = "IdentidadeNaoAprovada";
   }
 }

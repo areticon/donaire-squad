@@ -3,6 +3,7 @@ import { identidadeDoProjeto } from "@/lib/media/identidade-visual";
 import { lerModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import {
   LETRA_PADRAO,
+  designDepoisDaMudanca,
   identidadeAprovada,
   letraValida,
   normalizarPapeis,
@@ -43,6 +44,8 @@ export async function lerIdentidadeVisual(projectId: string): Promise<Identidade
     fotos: fotosValidas(v.fotos) ? v.fotos : FOTOS_PADRAO,
     aprovadaEm: typeof v.aprovadaEm === "string" ? v.aprovadaEm : null,
     modelos: Array.isArray(v.modelos) ? v.modelos.filter((x): x is string => typeof x === "string") : [],
+    // O design da biblioteca como estilo dos posts (08/10); ausente nos registros antigos.
+    design: typeof v.design === "string" && v.design ? v.design : null,
   };
 }
 
@@ -64,10 +67,15 @@ export async function paletaDoProjetoParaOsPapeis(projectId: string, colorPalett
  * Grava letra e papéis (o que vier) e, com `aprovar`, carimba a aprovação com
  * os modelos de agora. Sem `aprovar`, qualquer mudança apaga o carimbo.
  * `modelosMudaram` é a escolha de modelos avisando que mudou: só derruba.
+ *
+ * `design` (08/10): o design da biblioteca que vira o estilo dos posts (o
+ * cliente escreveu no quadro de chat ou escolheu da biblioteca); null volta
+ * para o book. Com `aprovar` e design, a aprovação vale sem modelo do book.
+ * Trocar os modelos do book tira o design (quem mexe no book quer o book).
  */
 export async function salvarIdentidadeVisual(
   projectId: string,
-  mudanca: { letra?: unknown; papeis?: unknown; fotos?: unknown; aprovar?: boolean; modelosMudaram?: boolean }
+  mudanca: { letra?: unknown; papeis?: unknown; fotos?: unknown; aprovar?: boolean; modelosMudaram?: boolean; design?: string | null }
 ): Promise<IdentidadeVisualEscolhida> {
   const atual = await lerIdentidadeVisual(projectId);
   const letra: LetraId = letraValida(mudanca.letra) ? mudanca.letra : (atual?.letra ?? LETRA_PADRAO);
@@ -78,8 +86,10 @@ export async function salvarIdentidadeVisual(
   const papeis: PapeisEscolhidos = papeisNaPaleta(papeisNovos ?? atual?.papeis ?? papeisPadrao(paletaAgora), paletaAgora).papeis;
   // As fotos (05/10): trocar também derruba a aprovação, pela mesma regra da letra.
   const fotos: FotosDaIdentidade = fotosValidas(mudanca.fotos) ? mudanca.fotos : (atual?.fotos ?? FOTOS_PADRAO);
+  const design = designDepoisDaMudanca(atual?.design, mudanca);
   const mudou =
     Boolean(mudanca.modelosMudaram) ||
+    design !== (atual?.design ?? null) ||
     letra !== atual?.letra ||
     fotos !== (atual?.fotos ?? FOTOS_PADRAO) ||
     JSON.stringify(papeis) !== JSON.stringify(atual?.papeis ?? null);
@@ -90,6 +100,7 @@ export async function salvarIdentidadeVisual(
     fotos,
     aprovadaEm: mudanca.aprovar ? new Date().toISOString() : mudou ? null : (atual?.aprovadaEm ?? null),
     modelos: mudanca.aprovar ? (escolha?.ids ?? []) : (atual?.modelos ?? []),
+    design,
   };
   await prisma.projectMemory.upsert({
     where: { projectId_type_key: { projectId, type: TIPO_DA_IDENTIDADE, key: CHAVE_DA_IDENTIDADE } },
@@ -109,6 +120,8 @@ export interface EstadoDaIdentidade {
   paleta: string[];
   modelos: string[];
   aprovada: boolean;
+  /** O design da biblioteca que é o estilo dos posts (08/10), ou null quando vale o book. */
+  design: string | null;
 }
 
 /** Tudo o que a tela e a geração precisam saber da identidade de um projeto. */
@@ -124,6 +137,7 @@ export async function estadoDaIdentidade(projectId: string, colorPalette?: strin
     paleta,
     modelos,
     aprovada: identidadeAprovada(registro, modelos, paleta),
+    design: registro?.design ?? null,
   };
 }
 

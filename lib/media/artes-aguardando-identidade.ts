@@ -10,6 +10,7 @@ import { desenharInfografico, extrairConteudoDoInfografico } from "@/lib/media/i
 import { desenharCarrossel, laminasPermitidas, redesQueAceitamCarrossel, roteiroDoCarrossel } from "@/lib/media/carrossel";
 import { direcaoDaPeca } from "@/lib/media/direcao-de-arte";
 import { MENSAGEM_AGUARDANDO } from "@/lib/modelos-de-arte/identidade";
+import { metadataDaFoto } from "@/lib/media/foto-da-peca";
 import { estadoDaIdentidade } from "@/lib/modelos-de-arte/identidade-aprovada";
 import { chaveDoGrupo, esperaDaIdentidade, marcarFalha, marcarGerando, semEspera as tirarMarcas } from "@/lib/modelos-de-arte/espera-da-identidade";
 
@@ -149,11 +150,13 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
   let principal: string | undefined;
   let porRede: Record<string, string> = {};
   let laminas: number | undefined;
+  // As manchetes desenhadas, para gravar qual foto entrou em cada uma (08/10).
+  let manchetes: string[] = [];
 
   // O DIA DE VÍDEO (05/10): a peça derivada do vídeo (origem "video") sai pelo
   // MESMO caminho da semana do vídeo (`arteDoDia`): a frase gravada no post
-  // (nunca truncada), o quadro do vídeo só como referência, o modelo do book
-  // aprovado. Aqui a trava já está aberta.
+  // (nunca truncada) e o estilo aprovado. Aqui a trava já está aberta. Desde
+  // 08/10 o vídeo não entra mais como foto: só a Biblioteca de materiais.
   const metaDoVideo = posts[0].metadata as { origem?: string; frase?: string; slides?: unknown; videoJobId?: string } | null;
   if (metaDoVideo?.origem === "video") {
     const { arteDoDia, tetoDePalavrasDoModelo } = await import("@/lib/media/pecas-da-semana");
@@ -166,6 +169,7 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
       if (!slides.length) throw new Error("o carrossel do vídeo não tem as frases das lâminas gravadas");
       const formato = formatoDaPeca(posts[0].platform, "carousel");
       const urls = await Promise.all(slides.map((frase) => arteDoDia(video, frase, estiloVisual, formato, ctxDoVideo, slides[0], marca)));
+      manchetes = slides;
       principal = urls.join("|");
       porRede = Object.fromEntries(redes.map((r) => [r, principal!]));
       laminas = urls.length;
@@ -181,6 +185,7 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
         porRede[p.platform] = await porProporcao.get(f.proporcao)!;
       }
       principal = porRede[posts[0].platform];
+      manchetes = [frase];
       for (const p of posts) await prisma.post.update({ where: { id: p.id }, data: { metadata: { ...((p.metadata as Record<string, unknown> | null) ?? {}), frase } as Prisma.InputJsonValue } }).catch(() => {});
     }
   } else if (base.mediaType === "carousel") {
@@ -190,6 +195,7 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
     const chave = `${runId ?? "avulso"}-identidade-${base.dayOfWeek ?? 0}`;
     const roteiro = await roteiroDoCarrossel({ textoDoPost: texto, laminas: pedidas, estiloVisual, nicho, projectId: args.projectId, runId, chave });
     const carrossel = await desenharCarrossel({ roteiro, estiloVisual, permitirGemini: true, projectId: args.projectId, runId, chave, marca });
+    manchetes = roteiro.map((l) => l.frase);
     principal = carrossel.urls.join("|");
     porRede = Object.fromEntries(redes.map((r) => [r, principal!]));
     laminas = carrossel.urls.length;
@@ -226,6 +232,7 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
     });
     principal = arte.principal;
     porRede = arte.porRede;
+    manchetes = [peca.manchete];
   }
   if (!principal && !Object.keys(porRede).length) throw new Error("a arte não saiu");
 
@@ -245,10 +252,12 @@ async function gerarGrupo(args: { projectId: string; userId: string }, grupo: Ar
   }
 
   let gravadas = 0;
+  // Qual foto entrou (08/10): a da biblioteca, gerada ou nenhuma; nunca o quadro do vídeo.
+  const foto = metadataDaFoto(manchetes);
   for (const p of posts) {
     const nova = porRede[p.platform] ?? principal;
     if (!nova) continue;
-    await prisma.post.update({ where: { id: p.id }, data: { imageUrl: nova, metadata: semEspera(p.metadata) } });
+    await prisma.post.update({ where: { id: p.id }, data: { imageUrl: nova, metadata: { ...(semEspera(p.metadata) as Record<string, unknown>), ...foto } as Prisma.InputJsonValue } });
     gravadas++;
   }
   // O card da Diana do dia deixa de esperar e mostra a arte.

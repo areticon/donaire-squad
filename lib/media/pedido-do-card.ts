@@ -596,7 +596,7 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
             .catch((e) => console.warn("[pedido-do-card] card da Diana aguardando:", e));
         }
         for (const chave of pedido.etapas.map((e) => e.chave).filter((c) => c === "arte" || c.startsWith("lamina-"))) await marcar(chave, "falhou", "aguardando a identidade visual");
-        frases.push(`${MENSAGEM_AGUARDANDO}: escolha o modelo de arte, a letra e as cores em Configurações (aba Modelos) e aprove. A arte sai depois da aprovação, e só então é cobrada.`);
+        frases.push(`${MENSAGEM_AGUARDANDO}: escreva como quer o estilo dos posts ou escolha um da biblioteca em Configurações (aba Estilo dos posts). A arte sai depois da escolha, e só então é cobrada.`);
       };
       // Confere ANTES de desenhar: o carrossel refaz lâmina a lâmina e engole
       // o erro de cada uma, então a trava precisa ser vista aqui, de uma vez.

@@ -11,6 +11,7 @@ import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { RedesNasConfiguracoes } from "@/components/projects/redes-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
+import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
 import { MODELOS_DE_ARTE } from "@/lib/modelos-de-arte/catalogo";
 
 /** Os ids do book: a biblioteca na mesma aba não repete esses modelos (06/10). */
@@ -62,7 +63,8 @@ type Projeto = {
 const ABAS = [
   { id: "redes", rotulo: "Redes sociais" },
   { id: "marca", rotulo: "Marca e voz" },
-  { id: "modelos", rotulo: "Modelos de arte" },
+  // 08/10: "Estilo dos posts" (o id fica "modelos", para os links de sempre).
+  { id: "modelos", rotulo: "Estilo dos posts" },
   { id: "materiais", rotulo: "Seus materiais" },
   { id: "video", rotulo: "Vídeo e semana" },
   { id: "links", rotulo: "Seus links" },
@@ -323,6 +325,8 @@ export function ConfiguracaoDoProjeto({
       {/* O BOOK DE MODELOS (03/10): mudar de modelo depois mora aqui. */}
       {aba === "modelos" && (
         <>
+          {/* O ESTILO DOS POSTS (08/10): escrever no chat ou escolher da biblioteca, e já fica aprovado. */}
+          <EstiloDosPosts projectId={projeto.id} sempreAberto />
           {/* O BOOK primeiro (06/10): a marca no início e cada modelo uma vez, nas cores da marca. */}
           <section className="rounded-xl border p-4 sm:p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
             <GaleriaDeModelos projectId={projeto.id} />

@@ -30,6 +30,11 @@ import { ROTULO_DO_TIPO, custoEstimadoDasPrevias, filtrarGaleria, foraDoBook, or
  *
  * `exemplo`: só no `next dev`, lê `?exemplo=1` da rota (dados em memória) e
  * não grava nada; as ações viram avisos.
+ *
+ * O PASSO DO ESTILO DOS POSTS (08/10, components/estilo-dos-posts): a mesma
+ * galeria, só com os designs de imagem (`tipoFixo`), sem o formulário de
+ * escrever (o chat do passo faz isso, `semEscrever`) e com a escolha indo
+ * para quem chamou (`aoEscolher`), que aprova o estilo na hora.
  */
 
 type Filtro = TipoDeDesign | "todos";
@@ -48,17 +53,29 @@ export function GaleriaDaBiblioteca({
   exemplo = false,
   titulo = "Biblioteca de designs: feita por quem usa",
   idsDoBook,
+  tipoFixo,
+  semEscrever = false,
+  aoEscolher,
+  descricao,
 }: {
   projectId?: string | null;
   exemplo?: boolean;
   titulo?: string;
   /** Os ids do book na mesma tela (06/10): esses modelos de imagem não aparecem de novo aqui. */
   idsDoBook?: string[];
+  /** Só um tipo (08/10, o passo do estilo dos posts: só imagem), sem os filtros de tipo. */
+  tipoFixo?: TipoDeDesign;
+  /** Sem o "Escrever o meu design" (08/10): quem chama tem o próprio chat. */
+  semEscrever?: boolean;
+  /** A escolha vai para quem chama (08/10), no lugar do PUT da biblioteca do projeto. */
+  aoEscolher?: (d: DesignDaGaleria) => Promise<void>;
+  /** O texto abaixo do título, quando quem chama quer outro. */
+  descricao?: string;
 }) {
   const [designs, setDesigns] = useState<DesignDaGaleria[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ehAdmin, setEhAdmin] = useState(false);
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtro, setFiltro] = useState<Filtro>(tipoFixo ?? "todos");
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<DesignDaGaleria | null>(null);
   const [escrevendo, setEscrevendo] = useState(false);
@@ -76,6 +93,7 @@ export function GaleriaDaBiblioteca({
     try {
       const q = new URLSearchParams();
       if (projectId) q.set("projectId", projectId);
+      if (tipoFixo) q.set("tipo", tipoFixo);
       if (exemplo) {
         q.set("exemplo", "1");
         q.set("admin", "1");
@@ -90,7 +108,7 @@ export function GaleriaDaBiblioteca({
       setErro(e instanceof Error ? e.message : "Não consegui carregar a biblioteca.");
       setDesigns([]);
     }
-  }, [projectId, exemplo, idsDoBook]);
+  }, [projectId, exemplo, idsDoBook, tipoFixo]);
 
   useEffect(() => {
     void carregar();
@@ -168,6 +186,18 @@ export function GaleriaDaBiblioteca({
       return;
     }
     setUsando(d.id);
+    if (aoEscolher) {
+      try {
+        await aoEscolher(d);
+        setDesigns((lista) => (lista ? lista.map((x) => (x.id === d.id ? { ...x, doProjeto: true } : x)) : lista));
+        setAberto(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não consegui usar este design.");
+      } finally {
+        setUsando(null);
+      }
+      return;
+    }
     try {
       const r = await fetch(`/api/projects/${projectId}/biblioteca-de-design`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ designId: d.id }) });
       const j = (await r.json().catch(() => ({}))) as { efeito?: string; error?: string };
@@ -240,15 +270,18 @@ export function GaleriaDaBiblioteca({
             {titulo}
           </h2>
           <p className="mt-0.5 text-sm" style={{ color: "var(--text-muted)" }}>
-            Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu: só a descrição do visual entra aqui para todo mundo, sem o seu nome, a sua marca ou o seu contato. Se preferir, ele fica só no seu projeto.
+            {descricao ??
+              "Do mais usado ao menos. Cada design nasceu de um pedido: o nosso catálogo ou o que outros clientes escreveram. Escolha um ou escreva o seu: só a descrição do visual entra aqui para todo mundo, sem o seu nome, a sua marca ou o seu contato. Se preferir, ele fica só no seu projeto."}
           </p>
         </div>
-        <button type="button" onClick={() => setEscrevendo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-white">
-          <PenLine className="h-4 w-4" /> Escrever o meu design
-        </button>
+        {!semEscrever && (
+          <button type="button" onClick={() => setEscrevendo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-white">
+            <PenLine className="h-4 w-4" /> Escrever o meu design
+          </button>
+        )}
       </div>
 
-      {escrevendo && (
+      {escrevendo && !semEscrever && (
         <div className="space-y-2 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
           <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
             Descreva o design que você quer
@@ -287,7 +320,7 @@ export function GaleriaDaBiblioteca({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1.5">
+        <div className={cn("flex gap-1.5", tipoFixo && "hidden")}>
           {(["todos", "video", "imagem"] as Filtro[]).map((f) => (
             <button key={f} type="button" onClick={() => setFiltro(f)} className="shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors" style={chip(filtro === f)} aria-pressed={filtro === f}>
               {ROTULO_DO_FILTRO[f]} ({contagem[f]})

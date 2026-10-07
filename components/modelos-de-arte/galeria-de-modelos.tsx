@@ -446,6 +446,8 @@ interface IdentidadeDaTela {
   aguardando: number;
   /** Quantas artes o "Aprovar e gerar" está desenhando agora (05/10). */
   gerando?: number;
+  /** O design da biblioteca que é o estilo dos posts (08/10): com ele, aprova sem modelo do book. */
+  design?: string | null;
 }
 
 /**
@@ -544,7 +546,8 @@ function IdentidadeDoCliente({
   // Fotos (06/10, cores da marca só nos detalhes): naturais ou preto e branco.
   // Tingir a foto na cor da marca só aparece para quem já tinha escolhido.
   const opcoesDeFotos = (Object.keys(FOTOS_DA_IDENTIDADE) as FotosDaIdentidade[]).filter((id) => id !== "marca" || identidade.fotos === "marca");
-  const podeAprovar = podeMudar && escolha.length > 0 && !tituloReprovado && !aprovando;
+  // 08/10: o design escrito (ou escolhido) na biblioteca vale como estilo; a letra e as cores aprovam sem modelo do book.
+  const podeAprovar = podeMudar && (escolha.length > 0 || Boolean(identidade.design)) && !tituloReprovado && !aprovando;
 
   return (
     <section className="space-y-3 rounded-xl border p-3 sm:p-4" style={{ borderColor: identidade.aprovada ? "var(--brand)" : "var(--border)", background: "var(--bg-surface)" }} aria-labelledby="identidade-do-cliente">
@@ -731,8 +734,8 @@ function IdentidadeDoCliente({
             ? "Só o dono da conta aprova a identidade."
             : estado
               ? estado
-              : escolha.length === 0
-                ? "Falta escolher um modelo."
+              : escolha.length === 0 && !identidade.design
+                ? "Falta escolher um modelo (ou escrever o estilo dos posts acima)."
                 : tituloReprovado
                   ? "Troque a cor do título ou do fundo antes de aprovar."
                   : identidade.aprovada

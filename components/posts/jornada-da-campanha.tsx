@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, Pencil, X } from "lucide-react";
+import { ChevronLeft, Loader2, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EscolhaDeOrigem } from "@/components/posts/escolha-de-origem";
 import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
 import { SemanaDoVideoPlanejador } from "@/components/video/semana-do-video";
 import { VideoUpload } from "@/components/video/video-upload";
+import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
 import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
+import { normalizarSemana } from "@/lib/media/semana-do-video";
+import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
+import { precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * A jornada de criar uma campanha, em passos, igual à de criar um projeto.
@@ -45,6 +49,16 @@ import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
  * envio**, com uma linha dizendo o que está valendo e um botão para rever.
  * Perguntar as mesmas quatro coisas toda semana transformaria a jornada em
  * pedágio, e pedágio semanal é o tipo de atrito que faz alguém parar de gravar.
+ *
+ * ## O estilo dos posts (08/10)
+ *
+ * O caso do Igor: o projeto já tinha estilo de edição, a jornada pulava para o
+ * envio, a semana padrão tinha imagem e carrossel, e o único aviso do estilo
+ * das artes morava no passo da semana, que foi pulado. As artes nasceram
+ * "aguardando a sua identidade visual" e ele só descobriu no quadro. Agora há
+ * o passo "Como ficam os posts" antes do envio, e o pulo NÃO passa por cima
+ * dele enquanto houver dia de arte e o estilo não estiver aprovado. Aprovado
+ * (pelo chat ou pela biblioteca), a jornada segue sozinha para o envio.
  */
 
 type Origem = "video" | "tema";
@@ -54,8 +68,16 @@ const PASSOS_DO_VIDEO = [
   { chave: "estilo", titulo: "Como o squad edita" },
   { chave: "trilha", titulo: "Trilha e termos do seu negócio" },
   { chave: "semana", titulo: "O que sai em cada dia" },
+  { chave: "posts", titulo: "Como ficam os posts" },
   { chave: "envio", titulo: "Envie a gravação" },
 ] as const;
+
+const PASSO_DOS_POSTS = PASSOS_DO_VIDEO.findIndex((p) => p.chave === "posts");
+
+/** A semana do vídeo tem dia de arte (imagem, carrossel, infográfico)? */
+function semanaTemArte(semana: unknown): boolean {
+  return Object.values(normalizarSemana(semana).dias).some((d) => d && tipoGeraArte(d.formato));
+}
 
 export function JornadaDaCampanha({
   aberto,
@@ -94,6 +116,36 @@ export function JornadaDaCampanha({
   comecarNoVideo?: boolean;
 }) {
   const router = useRouter();
+
+  /**
+   * O ESTILO DOS POSTS ANTES DO ENVIO (08/10). `estiloDosPosts` é null até o
+   * estado chegar; se a leitura falhar, nada trava (o servidor ainda segura a
+   * arte sem gastar). Enquanto a primeira leitura não volta (`estiloLido`),
+   * o envio espera: sem isso o cartão de envio podia aparecer e sumir no meio
+   * de um upload, quando o estado chegasse dizendo que falta o estilo.
+   * A semana acompanha o planejador do passo anterior, que salva sozinho.
+   */
+  const [estiloDosPosts, setEstiloDosPosts] = useState<boolean | null>(null);
+  const [estiloLido, setEstiloLido] = useState(false);
+  const [comArte, setComArte] = useState(() => semanaTemArte(semana));
+  useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    fetch(`/api/projects/${projectId}/estilo-dos-posts`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { aprovada?: unknown } | null) => {
+        if (vivo && d && typeof d.aprovada === "boolean") setEstiloDosPosts(d.aprovada);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (vivo) setEstiloLido(true);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [aberto, projectId]);
+  const faltaOEstilo = precisaEscolherEstilo({ temArte: comArte, aprovada: estiloDosPosts });
+
   const passoInicial = comecarNoVideo ? (estilo ? PASSOS_DO_VIDEO.length - 1 : 1) : 0;
   const [passo, setPasso] = useState(passoInicial);
   // Cada abertura recomeça do passo certo. Ajuste durante o render, e não em
@@ -139,6 +191,10 @@ export function JornadaDaCampanha({
   }, [aberto]);
   const pulaParaOEnvio = jaConfigurado || semGravacao;
   if (semGravacao && passo > 0 && passo < PASSOS_DO_VIDEO.length - 1) setPasso(PASSOS_DO_VIDEO.length - 1);
+  // O pulo não passa por cima do estilo dos posts (08/10): chegou ao envio
+  // com dia de arte e o estilo sem aprovação, volta para o passo do estilo.
+  // Sem gravação disponível nada é gerado, então não há o que escolher.
+  if (!semGravacao && faltaOEstilo && passo === PASSOS_DO_VIDEO.length - 1) setPasso(PASSO_DOS_POSTS);
 
   /**
    * Reabrir a jornada reabre no COMEÇO, e não onde parou da última vez: quem
@@ -156,8 +212,14 @@ export function JornadaDaCampanha({
 
   function avancar() {
     // O PULO: do passo 1 direto para o envio, quando já há estilo no projeto.
-    // A pessoa continua podendo rever, pelo botão da linha de resumo.
+    // A pessoa continua podendo rever, pelo botão da linha de resumo. Com o
+    // estilo dos posts faltando, o pulo para no passo dele (08/10).
     if (passo === 0 && pulaParaOEnvio) {
+      setPasso(faltaOEstilo && !semGravacao ? PASSO_DOS_POSTS : total - 1);
+      return;
+    }
+    // Da semana, o passo dos posts só aparece quando falta o estilo.
+    if (passo === PASSO_DOS_POSTS - 1 && !faltaOEstilo) {
       setPasso(total - 1);
       return;
     }
@@ -169,6 +231,11 @@ export function JornadaDaCampanha({
     // voltaria para o planejador da semana, uma tela que ele nunca viu.
     if (passo === total - 1 && pulaParaOEnvio) {
       setPasso(0);
+      return;
+    }
+    // Do envio, sem o passo dos posts no caminho, volta para a semana.
+    if (passo === total - 1 && !faltaOEstilo) {
+      setPasso(PASSO_DOS_POSTS - 1);
       return;
     }
     if (passo === 0) {
@@ -290,10 +357,30 @@ export function JornadaDaCampanha({
                   )}
 
                   {passo === 3 && (
-                    <SemanaDoVideoPlanejador projectId={projectId} inicial={semana} redesConectadas={redesConectadas} />
+                    <SemanaDoVideoPlanejador
+                      projectId={projectId}
+                      inicial={semana}
+                      redesConectadas={redesConectadas}
+                      aoMudarArte={setComArte}
+                    />
                   )}
 
-                  {passo === 4 && (
+                  {passo === PASSO_DOS_POSTS && (
+                    <div className="space-y-3">
+                      <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+                        A sua semana tem dias com imagem, carrossel ou infográfico, e o estilo das artes ainda não foi escolhido. Escreva como você quer ou escolha um da biblioteca: aprovado, seguimos para o envio. Prefere sem arte? Volte e troque esses dias por texto.
+                      </p>
+                      <EstiloDosPosts
+                        projectId={projectId}
+                        aoAprovar={() => {
+                          setEstiloDosPosts(true);
+                          setPasso(total - 1);
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {passo === total - 1 && (
                     <div className="space-y-4">
                       {/* O RESUMO de quem pulou. Sem ele, o pulo esconderia
                           quatro decisões que valem para esta gravação, e a
@@ -318,7 +405,13 @@ export function JornadaDaCampanha({
                           </Button>
                         </div>
                       )}
-                      <VideoUpload projectId={projectId} onEnviado={onEnviado} />
+                      {comArte && !semGravacao && !estiloLido ? (
+                        <p className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Conferindo o estilo dos posts...
+                        </p>
+                      ) : (
+                        <VideoUpload projectId={projectId} onEnviado={onEnviado} />
+                      )}
                     </div>
                   )}
                 </motion.div>
@@ -342,7 +435,12 @@ export function JornadaDaCampanha({
               {/* O passo 0 avança pelo clique na porta, e o último não tem
                   "continuar": quem avança dali é o upload terminando. Um botão
                   que não faz nada em duas das cinco telas ensina a ignorá-lo. */}
-              {passo > 0 && passo < total - 1 && <Button onClick={avancar}>Continuar</Button>}
+              {passo > 0 && passo < total - 1 && (
+                // No passo dos posts, só segue com o estilo aprovado (08/10).
+                <Button onClick={avancar} disabled={passo === PASSO_DOS_POSTS && faltaOEstilo}>
+                  Continuar
+                </Button>
+              )}
               {passo === total - 1 && (
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                   A jornada termina quando a gravação subir.

@@ -9,8 +9,7 @@ import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
 import { designsDoProjeto, lerDesign, ligarAoProjeto, mudarVisibilidadeNaGaleria, registrarPedidoDeDesign } from "@/lib/biblioteca-de-design/registro";
 import { textoParaOComando, tipoValido } from "@/lib/biblioteca-de-design/tipos";
-import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
-import { salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
+import { aprovarEstiloPeloDesign } from "@/lib/estilo-dos-posts/servidor";
 import { lerComandoDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-por-comando";
 
 /**
@@ -24,11 +23,11 @@ import { lerComandoDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-
  *   projeto (o editor obedece ao comando).
  * PUT { designId }: o cliente ESCOLHEU um design da galeria. Vídeo: o pedido
  *   daquele design vira o comando do projeto (letra e cores ficam as de
- *   antes). Imagem de semente: o modelo do book entra nos escolhidos (e a
- *   identidade precisa ser aprovada de novo, como sempre). Imagem feita por
- *   cliente (06/10, tarde): vira o modelo das artes pelo prompt dele
- *   (lib/modelos-de-arte/modelo-do-cliente.ts), enquanto for o design de
- *   imagem mais recente e vier depois da última escolha no book.
+ *   antes). Imagem de semente: o modelo do book entra nos escolhidos. Imagem
+ *   feita por cliente (06/10, tarde): vira o modelo das artes pelo prompt
+ *   dele (lib/modelos-de-arte/modelo-do-cliente.ts). Desde 08/10, escrever
+ *   ou escolher um design de imagem APROVA o estilo dos posts (a trava das
+ *   artes abre), como no quadro de chat do estilo.
  * PATCH { designId, publico }: o AUTOR tira o design da galeria (publico
  *   false) ou pede para devolver (o JEV confere a ficha de novo).
  * Só o dono muda, como a direção visual.
@@ -131,18 +130,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 /**
  * O que um design de imagem ligado ao projeto faz nas artes. Modelo do book:
- * entra nos escolhidos (e a identidade é aprovada de novo, como sempre).
- * Escrito por cliente (06/10, tarde): as próximas artes saem nele, pelo
- * prompt dele, até o cliente escolher outro design ou modelos do book.
+ * entra nos escolhidos. Escrito por cliente (06/10, tarde): as próximas artes
+ * saem nele, pelo prompt dele, até o cliente escolher outro design ou modelos
+ * do book.
+ *
+ * 08/10, ESCREVER OU ESCOLHER É APROVAR: a identidade exigia um modelo do
+ * book, e o design escrito pelo cliente nunca destravava a arte (a rota dizia
+ * "as próximas artes saem neste design" e a trava continuava fechada). Agora
+ * o design de imagem ligado aqui vira o estilo aprovado dos posts
+ * (lib/estilo-dos-posts/servidor.ts), o mesmo do quadro de chat.
  */
-async function efeitoDoDesignDeImagem(projectId: string, design: { catalogoId: string | null }): Promise<string> {
-  if (design.catalogoId) {
-    const escolha = await lerModelosEscolhidos(projectId);
-    const ids = escolha?.ids ?? [];
-    if (ids.includes(design.catalogoId)) return "Este modelo já estava entre os seus modelos de arte.";
-    await salvarModelosEscolhidos(projectId, [...ids, design.catalogoId]);
-    await salvarIdentidadeVisual(projectId, { modelosMudaram: true });
-    return "O modelo entrou nos seus modelos de arte. Aprove a identidade de novo em Modelos para as artes saírem nele.";
-  }
-  return "As próximas artes saem neste design, pelo que você escreveu: a imagem é gerada na linguagem dele e a manchete entra na sua letra. Para voltar aos modelos do book, escolha um deles em Modelos.";
+async function efeitoDoDesignDeImagem(projectId: string, design: { id: string; nome: string; tipo: "video" | "imagem"; catalogoId: string | null; linguagem: string }): Promise<string> {
+  const { efeito } = await aprovarEstiloPeloDesign(projectId, design);
+  return efeito;
 }

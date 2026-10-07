@@ -24,6 +24,7 @@ import { ehSemSaldoDaOpenAI } from "@/lib/media/gpt-image";
 import { generateImage } from "@/lib/media/nano-banana";
 import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/infographic";
 import { mancheteDaPeca, desenharPecaDeFeed } from "@/lib/media/peca-de-feed";
+import { metadataDaFoto } from "@/lib/media/foto-da-peca";
 import { marcaDaArte, promptDaArteSemTexto, desenharComFraseEmCodigo } from "@/lib/media/arte-com-frase";
 import { TEXTO_DO_CARD_AGUARDANDO, diaPedeArte, pecaBaseDoDia } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
@@ -2214,6 +2215,8 @@ const mediaByDayKey: Record<string, {
   visualStyle?: string;
   /** A TRAVA DA IDENTIDADE (05/10): o dia ficou sem arte de propósito, sem gastar, até o cliente aprovar modelo, letra e cores. */
   aguardandoIdentidade?: boolean;
+  /** Qual foto entrou na arte (08/10, lib/media/foto-da-peca.ts): `fotoDaPeca` ou `fotosDasLaminas`. */
+  foto?: ReturnType<typeof metadataDaFoto>;
 }> = {};
   const hasApiKey = !!process.env.GEMINI_API_KEY;
   const liAccount = project.socialAccounts.find((a) => a.platform === "linkedin");
@@ -3031,7 +3034,7 @@ ${postDoLinkedIn.content}`,
         mediaByDayKey[dayKey] = { ...(mediaByDayKey[dayKey] ?? {}), aguardandoIdentidade: true };
         await appendLog(runId, {
           agent: "Diana Design",
-          message: `${mediaTypeLabel[0].toUpperCase()}${mediaTypeLabel.slice(1)} de ${dayName} NÃO foi gerado(a): aguardando a sua identidade visual (modelo de arte, letra e cores). Nenhum crédito de imagem foi gasto. Aprove em Configurações, aba Modelos, e as artes saem.`,
+          message: `${mediaTypeLabel[0].toUpperCase()}${mediaTypeLabel.slice(1)} de ${dayName} NÃO foi gerado(a): aguardando o estilo dos posts. Nenhum crédito de imagem foi gasto. Escreva como quer ou escolha um da biblioteca em Configurações, aba Estilo dos posts, e as artes saem.`,
           status: "warning",
         });
         if (isVideoType) {
@@ -3376,7 +3379,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   ),
                 });
                 dianaFinalUrl = arte.principal;
-                mediaByDayKey[dayKey] = { imageUrl: dianaFinalUrl, imagemPorRede: arte.porRede, imagePrompt: visualPrompt };
+                mediaByDayKey[dayKey] = { imageUrl: dianaFinalUrl, imagemPorRede: arte.porRede, imagePrompt: visualPrompt, foto: metadataDaFoto([pecaDoQuadro.manchete]) };
               } catch (erroDoQuadro) {
                 // Saldo zerado não é "falha ao gerar": é a plataforma parada, e a fila precisa saber.
                 if (ehErroDeSaldo(erroDoQuadro) || ehSemSaldoDaOpenAI(erroDoQuadro)) throw erroDoQuadro;
@@ -3552,6 +3555,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 // usam a mesma proporção, então não há o que variar.
                 imagemPorRede: Object.fromEntries(redesDoDia.map((r) => [r, dianaFinalUrl!])),
                 imagePrompt: visualPrompt,
+                foto: metadataDaFoto(roteiro.map((l) => l.frase)),
               };
               for (const aviso of carrossel.avisos) {
                 await appendLog(runId, { agent: "Diana Design", message: aviso, status: "running" });
@@ -3646,6 +3650,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 imagemPorRede: arte.porRede,
                 conferenciaDaArte: arte.algumaReprovada ? arte.avisos.join(" ") : undefined,
                 imagePrompt: visualPrompt,
+                foto: metadataDaFoto([peca.manchete]),
               };
               refazerArteDoDia = async (motivo: string) => {
                 const avisosDaRefeita: string[] = [];
@@ -3673,6 +3678,7 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                   imageUrl: refeita.principal,
                   imagemPorRede: refeita.porRede,
                   conferenciaDaArte: refeita.algumaReprovada ? refeita.avisos.join(" ") : undefined,
+                  foto: metadataDaFoto([peca.manchete]),
                 };
                 if (dianaCardId) await prisma.campaignCard.update({ where: { id: dianaCardId }, data: { mediaUrl: refeita.principal } });
                 return true;
@@ -4292,6 +4298,8 @@ ${d.content}
               // A trava da identidade (05/10): a arte ficou esperando a
               // aprovação; o fecho cobra só o texto, e a arte é cobrada quando sair.
               ...(dayMedia?.aguardandoIdentidade ? { aguardandoIdentidade: true } : {}),
+              // Qual foto entrou na arte (08/10): só a da Biblioteca de materiais é foto real.
+              ...(dayMedia?.imageUrl && dayMedia.foto ? dayMedia.foto : {}),
             }) as Prisma.InputJsonValue,
             dayOfWeek: dp.dayOfWeek,
             status: "draft",

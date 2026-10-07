@@ -12,8 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
-import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
-import { AvisoDaIdentidade } from "@/components/modelos-de-arte/aviso-da-identidade";
+import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
+import { precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
 import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { MateriaisDaCampanha } from "@/components/materiais/materiais-da-campanha";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
@@ -1372,10 +1372,33 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
   const [origens, setOrigens] = useState<Record<string, OrigemDoDia>>({});
   // Os materiais da biblioteca marcados para esta campanha (03/10).
   const [materiaisDaCampanha, setMateriaisDaCampanha] = useState<string[]>([]);
-  // A IDENTIDADE APROVADA (05/10): sem ela, a campanha sai com os textos e as artes ficam esperando, sem gastar. Null até o book responder.
+  // A IDENTIDADE APROVADA (05/10): sem ela, a campanha sai com os textos e as artes ficam esperando, sem gastar. Null até o estado chegar.
   const [identidadeAprovada, setIdentidadeAprovada] = useState<boolean | null>(null);
   // A campanha tem dia de arte (imagem, carrossel, infográfico)? É o que decide o aviso do estilo (06/10).
   const campanhaTemArte = campaignMode === "single" ? tipoGeraArte(singleContentType) : Object.values(weeklySchedule).some((v) => tipoGeraArte(v));
+  /**
+   * O ESTILO DOS POSTS É RESOLVIDO AQUI, ANTES DE GERAR (08/10). O Bruno: "o
+   * usuário gera a campanha toda e só no final descobre que está faltando
+   * aprovar o estilo, as artes; está muito confuso". Até aqui o "Gerar
+   * campanha" saía com um aviso de 10 px ao lado, e as artes esperavam no
+   * quadro. Agora, com dia de arte e o estilo sem aprovação, o botão abre o
+   * passo do estilo (chat ou biblioteca) e, aprovado, a geração segue sozinha.
+   */
+  const [pedindoEstilo, setPedindoEstilo] = useState(false);
+  useEffect(() => {
+    if (!projectId) return;
+    let vivo = true;
+    fetch(`/api/projects/${projectId}/estilo-dos-posts`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { aprovada?: unknown } | null) => {
+        if (vivo && d && typeof d.aprovada === "boolean") setIdentidadeAprovada(d.aprovada);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [projectId]);
+  const faltaOEstilo = precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada });
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -1841,6 +1864,24 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               onTema={() => setOrigem("tema")}
               onGemeo={() => router.push(`/projects/${projectId}/gemeo`)}
             />
+          ) : pedindoEstilo && projectId ? (
+            // O PASSO DO ESTILO (08/10): aprovado aqui, a campanha gera na hora.
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Antes de gerar: como os seus posts devem ficar?</h3>
+                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                  Esta campanha tem dias com imagem, carrossel ou infográfico, e o estilo das artes ainda não foi escolhido. Escreva como você quer ou escolha um estilo da biblioteca: assim que ele ficar aprovado, a campanha começa a ser gerada.
+                </p>
+              </div>
+              <EstiloDosPosts
+                projectId={projectId}
+                aoAprovar={() => {
+                  setIdentidadeAprovada(true);
+                  setPedindoEstilo(false);
+                  handleConfirm();
+                }}
+              />
+            </div>
           ) : (
           <AnimatePresence mode="wait">
 
@@ -1916,8 +1957,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O ESTILO DOS POSTS (08/10): escrever no chat ou escolher da biblioteca, no lugar do book compacto. */}
+                    <EstiloDosPosts projectId={projectId} aoAprovar={() => setIdentidadeAprovada(true)} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2079,8 +2120,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O ESTILO DOS POSTS (08/10): escrever no chat ou escolher da biblioteca, no lugar do book compacto. */}
+                    <EstiloDosPosts projectId={projectId} aoAprovar={() => setIdentidadeAprovada(true)} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
@@ -2265,8 +2306,8 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       </p>
                     </div>
                     <LinhaDaLinguagem projectId={projectId} />
-                    {/* O book de modelos (03/10): o molde da arte, já na marca. */}
-                    <GaleriaDeModelos projectId={projectId} variante="compacta" aoMudarAprovacao={setIdentidadeAprovada} />
+                    {/* O ESTILO DOS POSTS (08/10): escrever no chat ou escolher da biblioteca, no lugar do book compacto. */}
+                    <EstiloDosPosts projectId={projectId} aoAprovar={() => setIdentidadeAprovada(true)} />
                     {/* A biblioteca de materiais (03/10): as fotos reais desta campanha. */}
                     <MateriaisDaCampanha projectId={projectId} valor={materiaisDaCampanha} aoMudar={setMateriaisDaCampanha} />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
@@ -2952,13 +2993,17 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
         <div className="flex items-center justify-between px-6 py-4 border-t shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
           <Button
             variant="ghost"
-            onClick={origem === null ? onClose : step === 0 ? () => setOrigem(null) : prevStep}
+            onClick={origem === null ? onClose : pedindoEstilo ? () => setPedindoEstilo(false) : step === 0 ? () => setOrigem(null) : prevStep}
             style={{ color: "var(--text-muted)" }}
           >
             {origem === null ? "Cancelar" : <><ChevronLeft className="w-4 h-4" />Voltar</>}
           </Button>
 
-          {origem === null ? null : !isLastStep ? (
+          {origem === null ? null : pedindoEstilo ? (
+            <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+              A campanha começa a ser gerada assim que o estilo ficar aprovado.
+            </p>
+          ) : !isLastStep ? (
             <Button onClick={nextStep}>
               Próximo
               <ChevronRight className="w-4 h-4" />
@@ -2996,13 +3041,17 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
             </div>
           ) : (
             <div className="flex flex-col items-end gap-1">
-              {/* A trava da identidade (05/10): avisa antes de gerar, sem barrar os textos.
-                  06/10: com o link direto para Modelos de arte, e lendo o estado
-                  sozinho quando o book não apareceu nesta campanha. */}
-              <AvisoDaIdentidade projectId={projectId} temArte={campanhaTemArte} aprovada={identidadeAprovada === null ? undefined : identidadeAprovada} compacto />
-              <Button onClick={handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
+              {/* A trava da identidade (05/10) virou passo (08/10): sem estilo
+                  aprovado e com dia de arte, o botão abre o passo do estilo, e
+                  a campanha gera assim que ele for aprovado. */}
+              {faltaOEstilo && (
+                <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "#ea580c" }}>
+                  Falta o estilo dos posts: você escreve como quer ou escolhe da biblioteca, e a campanha já sai nele.
+                </p>
+              )}
+              <Button onClick={faltaOEstilo ? () => setPedindoEstilo(true) : handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">
                 <Zap className="w-4 h-4" />
-                {conferindoSobreposicao ? "Conferindo os dias..." : "Gerar campanha"}
+                {conferindoSobreposicao ? "Conferindo os dias..." : faltaOEstilo ? "Escolher o estilo e gerar" : "Gerar campanha"}
               </Button>
             </div>
           )}
