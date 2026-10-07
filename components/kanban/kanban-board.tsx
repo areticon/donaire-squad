@@ -95,9 +95,14 @@ const STEPS = [
 type ChaveDaEtapa = (typeof STEPS)[number]["chave"];
 const indiceDa = (chave: ChaveDaEtapa) => STEPS.findIndex((s) => s.chave === chave);
 
-/** Os campos do setup que cada etapa mostra com o porquê. */
+/**
+ * Os campos do setup que cada etapa mostra com o porquê.
+ *
+ * As cores saíram daqui em 08/10: a sugestão das capas aparece dentro do
+ * seletor de cores (components/marca/seletor-de-cores.tsx), com o porquê e
+ * "Usar estas", e não preenche mais a etapa sozinha.
+ */
 const PORQUE_DA_ETAPA: Partial<Record<ChaveDaEtapa, CampoDoSetup[]>> = {
-  marca: ["colorPalette"],
   voz: ["voice"],
   ideacao: ["niche", "targetAudience", "description", "references", "linhaEditorial"],
   agenda: ["postFrequency"],
@@ -175,7 +180,12 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     niche: project.niche ?? "",
     targetAudience: project.targetAudience ?? "",
     voice: project.voice ?? "",
-    colorPalette: project.colorPalette ?? "#F97316,#1e1f22,#dbdee1",
+    // SEM PADRÃO (08/10): até aqui o vazio virava o laranja da Demandou, e o
+    // "Próximo" da etapa 0 gravava esse laranja como se fosse escolha. Pela
+    // fonte única de 06/10 a paleta salva manda sempre, então o logo e o
+    // manual do cliente nunca viravam cor. Vazio quer dizer "não escolheu", e
+    // a arte usa o logo, o manual ou o setor (lib/media/identidade-visual.ts).
+    colorPalette: project.colorPalette ?? "",
     postFrequency: project.postFrequency ?? "3x por semana",
     timezone: project.timezone ?? "America/Sao_Paulo",
     // Vive dentro de config (Json) para não exigir migration: são os perfis
@@ -209,7 +219,6 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
   const [montandoSetup, setMontandoSetup] = useState(false);
   const jaBuscouSetup = useRef(false);
   const DE_FABRICA: Record<string, string> = {
-    colorPalette: project.colorPalette ? "" : "#F97316,#1e1f22,#dbdee1",
     postFrequency: project.postFrequency ? "" : "3x por semana",
   };
   const aplicarSetup = useCallback((sug: SetupSugerido) => {
@@ -217,6 +226,9 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
     setForm((prev) => {
       const prox = { ...prev } as Record<string, string>;
       for (const [campo, valor] of Object.entries(sug.campos)) {
+        // As cores das capas não preenchem (08/10): em perfil com foto de
+        // pessoa elas são pele, roupa e parede. Viram sugestão no seletor.
+        if (campo === "colorPalette") continue;
         if (!valor || !(campo in prox)) continue;
         const atual = String(prox[campo] ?? "").trim();
         if (!atual || atual === DE_FABRICA[campo]) prox[campo] = valor;
@@ -342,11 +354,17 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
       pedirEstudoDoNicho = Boolean(g && g.ligado && !(g.referencias ?? []).length);
     }
     try {
+      // A paleta NÃO vai no "Próximo" (08/10): o seletor de cores da etapa
+      // Marca grava sozinho, com os papéis do book. Mandar o formulário aqui
+      // gravava o laranja de fábrica já na etapa 0, ou apagava a escolha
+      // feita no seletor com um valor velho.
+      const { colorPalette: _paleta, ...semPaleta } = form;
+      void _paleta;
       const res = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
+          ...semPaleta,
           // `references` não é coluna: persiste dentro do config (Json),
           // preservando o que já existir lá.
           config: {
@@ -626,11 +644,11 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
           {chave === "marca" && (
             <StepMarca
               projectId={project.id}
-              form={form}
               set={set}
               logoInicial={project.logoUrl ?? null}
               manualInicial={project.brandManualName ?? null}
               documentosIniciais={project.contexts ?? []}
+              sugestaoDasCapas={setupSugerido?.campos.colorPalette ? { cores: setupSugerido.campos.colorPalette, porque: setupSugerido.porque.colorPalette } : null}
             />
           )}
           {chave === "voz" && <StepVoice form={form} set={set} preencherIA={preencherIA} aiLoading={aiLoading} projectId={project.id} />}

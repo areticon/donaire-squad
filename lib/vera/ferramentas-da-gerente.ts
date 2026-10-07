@@ -34,6 +34,7 @@ import { instanteLocalSeguro } from "@/lib/fuso";
 import { diaEHora } from "@/lib/posts/horario-da-peca";
 import { artesPendentes, agruparArtes, custoDasArtes, resumoDasArtes } from "@/lib/vera/regerar-arte";
 import type { AcaoDoPedido, Escrita, Mudanca } from "@/lib/vera/pedidos";
+import { normalizarPaleta } from "@/lib/marca/cores-da-marca";
 
 /**
  * AS FERRAMENTAS DA VERA GERENTE (04/10/2026).
@@ -294,7 +295,9 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
           `NICHO: ${p.niche ?? "(vazio)"}`,
           `PÚBLICO: ${p.targetAudience ?? "(vazio)"}`,
           `TOM DE VOZ:\n${p.voice ?? "(vazio)"}`,
-          `CORES (primária primeiro): ${p.colorPalette ?? "(padrão da plataforma)"}`,
+          // Sem paleta salva desde 08/10 é o normal (o assistente não grava
+          // mais o laranja da Demandou): a arte usa o logo, o manual ou o setor.
+          `CORES (primária primeiro): ${p.colorPalette ?? "(não escolhidas: a arte usa as do logo, do manual ou do setor)"}`,
           `LINHA EDITORIAL:\n${typeof cfg.linhaEditorial === "string" && cfg.linhaEditorial.trim() ? cfg.linhaEditorial : "(vazia)"}`,
           `LINKS: ${links.length ? links.map((l) => `${l.rotulo} (${l.tipo}, prioridade ${l.prioridade}): ${l.url}`).join("; ") : "(nenhum)"}`,
           `REDES CONECTADAS: ${conectadas.map((r) => NOME_DA_REDE[r] ?? r).join(", ") || "(nenhuma)"}`,
@@ -589,7 +592,10 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
         const p = await projeto();
         const antes = p.colorPalette;
         const antesLista = (antes ?? "").split(",").map((c) => hexValido(c)).filter((c): c is string => Boolean(c));
-        const depois = cores.join(",");
+        // Grava normalizada (08/10), como a rota do projeto: "#rrggbb"
+        // minúsculo e sem repetida. O "depois" do pedido é o que fica no
+        // banco, e é com ele que o desfazer confere se nada mudou no meio.
+        const depois = normalizarPaleta(cores).cores.join(",");
         const escuro = cores.find((c, i) => i > 0 && luminancia(c) < 0.2) ?? "#1E1F22";
         const cBranco = contraste(cores[0], "#FFFFFF");
         const cEscuro = contraste(cores[0], escuro);
@@ -601,7 +607,7 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
               : `Contraste ok para título: ${razao(cBranco)} com branco e ${razao(cEscuro)} com o escuro.`;
         anotar({
           titulo: "Cores da marca",
-          antes: antes ?? "(padrão da plataforma)",
+          antes: antes ?? "(não escolhidas: as do logo, do manual ou do setor)",
           depois,
           cores: { antes: antesLista, depois: cores },
           aviso,
