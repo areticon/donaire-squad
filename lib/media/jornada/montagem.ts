@@ -8,7 +8,7 @@ import { ALTURA_DA_LEGENDA, legendaDesenhada, legendaDoEstiloFixo, paginasNoEsti
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
 import type { TextoDoElemento } from "@/lib/media/jornada/textos";
-import { partesDoNumero } from "@/lib/media/jornada/numeros";
+import { numeroNaLegenda, partesDoNumero } from "@/lib/media/jornada/numeros";
 
 /**
  * O PASSO 7 DA JORNADA (E5): "o JEV monta", explícito.
@@ -51,8 +51,12 @@ export function protegidasNoIntervalo(amostras: AmostraDaJornada[], de: number, 
   for (const a of dentro) {
     // A caixa do rosto medida já vai da testa ao queixo; a folga é pequena em cima (o cabelo pode ficar sob o elemento, o rosto nunca).
     for (const r of a.rostos) saida.push({ x: r.x - folga, y: r.y - folga * 0.6, w: r.w + 2 * folga, h: r.h + folga * 1.6 });
-    if (a.tela) saida.push(a.tela);
-    if (a.quadro) saida.push(a.quadro);
+    // TELA OU QUADRO ATRÁS DO ROSTO É FUNDO (08/10): no vídeo do Igor, o mapa-múndi da parede saiu medido como
+    // "quadro" de 0 a 57% da altura, e nada mais coube na tela. A lousa ou a tela que a pessoa apresenta fica ao
+    // lado dela; a que contém o rosto é cenário e pode ser coberta.
+    const atrasDoRosto = (c: Caixa) => a.rostos.some((r) => r.x + r.w / 2 > c.x && r.x + r.w / 2 < c.x + c.w && r.y + r.h / 2 > c.y && r.y + r.h / 2 < c.y + c.h);
+    if (a.tela && !atrasDoRosto(a.tela)) saida.push(a.tela);
+    if (a.quadro && !atrasDoRosto(a.quadro)) saida.push(a.quadro);
   }
   return saida;
 }
@@ -388,7 +392,8 @@ export async function montarEdicao(o: {
 }): Promise<MontagemFeita> {
   const avisos: string[] = [];
   const avisosDoCliente: string[] = [];
-  const leg = legendaDaJornada(o.legenda, o.palavras, o.formato, o.amostras);
+  // A legenda com os números legíveis (08/10: "DE 424757" no vídeo do Igor).
+  const leg = legendaDaJornada(o.legenda, o.palavras.map((p) => ({ ...p, texto: numeroNaLegenda(p.texto) })), o.formato, o.amostras);
   // O gráfico (07/10) não tem mídia: entra pelo texto que o Claude escreveu.
   const comMidia = o.elementos.filter((e) => e.gerado.url || (e.gerado.formato === "grafico" && o.textos?.[e.aprovado.id])).sort((a, b) => a.t - b.t);
   for (const e of o.elementos) if (e.gerado.formato === "grafico" && !o.textos?.[e.aprovado.id]) avisos.push(`${e.aprovado.id}: gráfico sem texto escrito, ficou fora`);

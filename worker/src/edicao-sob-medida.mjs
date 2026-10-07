@@ -63,7 +63,8 @@ export function contarQuadros(arquivo) {
     p.stdout.on("data", (d) => (s += d));
     p.on("error", reject);
     p.on("close", (c) => {
-      const n = Number(String(s).trim());
+      // Só o primeiro número (08/10): com a rotação do iPhone gravada, o ffprobe devolve "1350," e o Number dava NaN.
+      const n = Number(String(s).trim().split(/[,\s]/)[0]);
       if (c !== 0 || !Number.isFinite(n)) return reject(new Error(`ffprobe não contou os quadros de ${basename(arquivo)}`));
       resolve(n);
     });

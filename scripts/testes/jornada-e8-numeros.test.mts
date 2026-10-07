@@ -33,3 +33,11 @@ test("número só se o valor exato foi dito", () => {
   assert.equal(conferirTexto({ titulo: "Parcela que cabia no bolso", numero: "2.645" }, fala)!.numero, "2.645");
   assert.equal(conferirTexto({ titulo: "Parcela que cabia no bolso", numero: "2.900" }, "dois anos depois ele dobrou")!.numero, undefined);
 });
+
+test("número na legenda legível", async () => {
+  const { numeroNaLegenda } = await import("@/lib/media/jornada/numeros");
+  assert.equal(numeroNaLegenda("424757"), "424.757");
+  assert.equal(numeroNaLegenda("152638,"), "152.638,");
+  assert.equal(numeroNaLegenda("2026"), "2026", "ano fica como está");
+  assert.equal(numeroNaLegenda("moto"), "moto");
+});

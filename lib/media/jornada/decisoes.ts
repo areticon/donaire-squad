@@ -288,12 +288,31 @@ export function planoDasRespostas(
     descartados.push({ frase: melhor.m.frase.indice, motivo: "entrou como abertura obrigatória dos primeiros 6 s" });
   }
   // NO MÁXIMO UM GRÁFICO A CADA TRÊS ELEMENTOS (08/10, Bruno: "parece feito em código"; no Igor, 6 de 6 e 6 de 7
-  // elementos foram gráficos de código). Os gráficos excedentes mais fracos saem; a abertura fica.
-  const tetoDeGraficos = Math.max(1, Math.ceil(escolhidos.length / 3));
-  const graficos = escolhidos.filter((e) => e.formato === "grafico" && e.ideia.papel !== "abertura").sort((a, b) => a.forca - b.forca);
-  for (const g of graficos.slice(0, Math.max(0, escolhidos.filter((e) => e.formato === "grafico").length - tetoDeGraficos))) {
-    escolhidos.splice(escolhidos.indexOf(g), 1);
-    descartados.push({ frase: g.m.frase.indice, motivo: "gráficos de código acima do teto de um a cada três elementos" });
+  // elementos foram gráficos de código). O excedente TROCA pela ideia de IA do mesmo momento (o redator escreve as
+  // duas); sem ela, o gráfico mais fraco sai. A abertura é a última a trocar e nunca sai.
+  const tetoDeGraficos = Math.max(1, Math.floor(escolhidos.length / 3));
+  let excesso = escolhidos.filter((e) => e.formato === "grafico").length - tetoDeGraficos;
+  const graficos = escolhidos
+    .filter((e) => e.formato === "grafico")
+    .sort((a, b) => Number(a.ideia.papel === "abertura") - Number(b.ideia.papel === "abertura") || a.forca - b.forca);
+  for (const g of graficos) {
+    if (excesso <= 0) break;
+    // Sem ideia de IA no momento, uma é derivada do próprio gráfico: o objeto do assunto gerado por IA, e o número ou
+    // a frase entram como texto em camada por cima (o redator do texto recebe a fala), a receita da landing.
+    const alternativa =
+      g.m.ideias.find((x) => x.midia !== "grafico") ??
+      (g.ideia.papel !== "abertura" ? { ...g.ideia, midia: "recorte" as const, textoNaImagem: null, descricao: `Objeto ou símbolo concreto gerado por IA, isolado, que representa este momento: ${g.ideia.descricao}`.slice(0, 400) } : undefined);
+    const possiveis = alternativa ? formatosPossiveis(alternativa.midia, g.m.trecho, o.formato, g.m.livre, (o.duracaoTotal ?? o.duracao) > 180) : [];
+    const i = escolhidos.indexOf(g);
+    if (alternativa && possiveis.length) {
+      escolhidos[i] = { ...g, ideia: { ...alternativa, papel: g.ideia.papel }, formato: possiveis[0] };
+      custo += custoDoElementoDaJornada(midiaDoFormato(possiveis[0]), Boolean(alternativa.textoNaImagem));
+      descartados.push({ frase: g.m.frase.indice, motivo: "gráfico trocado pela ideia gerada por IA do mesmo momento (teto de um gráfico a cada três)" });
+    } else if (g.ideia.papel !== "abertura") {
+      escolhidos.splice(i, 1);
+      descartados.push({ frase: g.m.frase.indice, motivo: "gráficos de código acima do teto de um a cada três elementos" });
+    } else continue;
+    excesso--;
   }
   escolhidos.sort((a, b) => a.ideia.gatilho.t - b.ideia.gatilho.t);
   const elementos: ElementoProposto[] = escolhidos.map((c, i) => {

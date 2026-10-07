@@ -41,7 +41,7 @@ Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação ou hesita�
 RITMO E RETENÇÃO (regra do dono): no vídeo curto, TODA frase com conteúdo merece ideia; o espectador precisa ver algo novo a cada 2 a 4 segundos, sempre COM a pessoa na tela, falando, e o efeito aparecendo junto com ela (ao lado, acima da cabeça, sobre o peito). Quanto mais longo o vídeo, mais espaçados os efeitos. A PRIMEIRA ou a segunda frase (os primeiros 6 segundos) sempre ganha uma ideia de impacto com papel "abertura": o gancho visual que segura o espectador. No vídeo curto não proponha "video" (B-roll tira a pessoa da tela). No vídeo longo, os elementos ficam mais espaçados e intercalados com B-roll em vídeo: proponha "video" nos momentos que contam uma história, descrevem uma cena ou pedem movimento (uma em cada três ideias, mais ou menos).
 
 O QUE A PESSOA FALA APARECE (regra do dono): falou de moto, aparece uma moto; de carro, um carro; de casa, uma casa; de chave, de contrato, de cofre, de relógio, aparece o objeto. Esses elementos são GERADOS POR IA ("recorte": o objeto isolado que entra ao lado da pessoa, sobre o ombro, acima da cabeça ou sobre o peito; "imagem": uma composição numa janela ao lado dela), com acabamento de foto ou ilustração 3D de qualidade, nunca desenho de código. A maioria das ideias é "recorte" ou "imagem".
-O "grafico" (desenhado em código) é só para quando o próprio TEXTO é o conteúdo: um número que a pessoa disse (o valor exato), uma lista que ela enumera item a item, uma pergunta ou frase de impacto curta. No máximo uma ideia em cada três é "grafico", e nunca no lugar de um objeto que foi dito.
+O "grafico" (desenhado em código) é só para quando o próprio TEXTO é o conteúdo: um número que a pessoa disse (o valor exato), uma lista que ela enumera item a item, uma pergunta ou frase de impacto curta. No máximo uma ideia em cada três é "grafico", e nunca no lugar de um objeto que foi dito. Toda frase em que você propõe um "grafico" leva TAMBÉM uma segunda ideia gerada por IA ("recorte" ou "imagem") do mesmo assunto (o dinheiro, a carta de crédito, o calendário, o objeto), para o sistema poder trocar quando houver gráfico demais.
 
 A EMPRESA E O NICHO SÃO OS DO CONTEXTO. Marcas, logos, faixas e textos que a leitura vê no FUNDO da gravação são só cenário: nunca são a marca do cliente nem o assunto, e nunca entram nas ideias.
 
@@ -197,6 +197,22 @@ Responda com JSON válido (aspas internas escapadas).`), b, o.palavras, o.contex
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, blocos.length) }, trabalhar));
+  // A ABERTURA GARANTIDA (08/10): no vídeo do Igor o redator não escreveu ideia nenhuma para os primeiros 6 s, e a
+  // abertura obrigatória ficou sem candidato. Sem ideia ali, um pedido só para a abertura, gerada por IA.
+  const primeiras = o.frases.filter((f) => f.inicio < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS);
+  if (primeiras.length && !ideias.some((i) => i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS)) {
+    try {
+      const pedido = `${pedidoDasIdeias(primeiras, o.contexto, o.leitura)}
+
+ATENÇÃO: escreva UMA ideia de ABERTURA (papel "abertura") para estas frases, que são os primeiros segundos do vídeo: o gancho visual de impacto que segura o espectador, gerado por IA ("recorte" ou "imagem"), mostrando o assunto do vídeo (o objeto, a cena, o símbolo concreto do tema) para o público deste nicho. O gatilho é uma palavra destas frases.`;
+      ideias.push(...lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedido), primeiras, o.palavras, o.contexto).filter((i) => i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS).slice(0, 1).map((i) => ({ ...i, papel: "abertura" as const })));
+    } catch (e) {
+      erros.push(`ideia de abertura: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    }
+  }
   ideias.sort((a, b) => a.gatilho.t - b.gatilho.t);
   return { ideias, erros };
 }
+
+/** A janela da abertura (a mesma de decisoes.ts, SEGUNDOS_DA_ABERTURA; repetida aqui para não criar ciclo de import). */
+const SEGUNDOS_DA_ABERTURA_DAS_IDEIAS = 6;

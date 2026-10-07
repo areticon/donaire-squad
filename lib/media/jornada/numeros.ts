@@ -91,3 +91,12 @@ export function partesDoNumero(numero: string): { antes: string; valor: number; 
   const casas = Number.isInteger(valor) ? 0 : Math.min(2, String(valor).split(".")[1]?.length ?? 0);
   return { antes: m[1], valor, casas, depois: m[3] };
 }
+
+/** A palavra da legenda com o número legível: "424757" vira "424.757" e "424757," vira "424.757," (ano de 4 dígitos fica como está). */
+export function numeroNaLegenda(texto: string): string {
+  return String(texto ?? "").replace(/^(\D*)(\d{4,})(\D*)$/, (todo, antes: string, d: string, depois: string) => {
+    const v = Number(d);
+    if (d.length === 4 && v >= 1900 && v <= 2100) return todo;
+    return `${antes}${v.toLocaleString("pt-BR")}${depois}`;
+  });
+}
