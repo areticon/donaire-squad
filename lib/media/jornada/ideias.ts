@@ -49,6 +49,8 @@ Nada de "recorte de papel", "colagem", "carimbo", "ícone" ou "símbolo" genéri
 O QUE A PESSOA FALA APARECE (regra do dono): falou de moto, aparece uma moto; de carro, um carro; de casa, uma casa; de chave, de contrato, de cofre, de relógio, aparece o objeto. Esses elementos são GERADOS POR IA ("recorte": o objeto isolado que entra ao lado da pessoa, sobre o ombro, acima da cabeça ou sobre o peito; "imagem": uma composição numa janela ao lado dela), com acabamento de foto ou ilustração 3D de qualidade, nunca desenho de código. A maioria das ideias é "recorte" ou "imagem".
 O "grafico" (desenhado em código) é só para quando o próprio TEXTO é o conteúdo: um número que a pessoa disse (o valor exato), uma lista que ela enumera item a item, uma pergunta ou frase de impacto curta. No máximo uma ideia em cada três é "grafico", e nunca no lugar de um objeto que foi dito. Toda frase em que você propõe um "grafico" leva TAMBÉM uma segunda ideia gerada por IA ("recorte" ou "imagem") do mesmo assunto (o dinheiro, a carta de crédito, o calendário, o objeto), para o sistema poder trocar quando houver gráfico demais.
 
+O ESTILO DO CLIENTE decide COMO cada elemento aparece (cor, tom, acabamento, quanto texto, o que ele proibiu com todas as letras), não SE o vídeo tem elementos: um estilo minimalista pede elementos limpos e premium, não menos ideias.
+
 A EMPRESA E O NICHO SÃO OS DO CONTEXTO. Marcas, logos, faixas e textos que a leitura vê no FUNDO da gravação são só cenário: nunca são a marca do cliente nem o assunto, e nunca entram nas ideias.
 
 Cada ideia:
@@ -203,17 +205,66 @@ Responda com JSON válido (aspas internas escapadas).`), b, o.palavras, o.contex
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, blocos.length) }, trabalhar));
+  const duracao = (o.frases.at(-1)?.fim ?? 0) - (o.frases[0]?.inicio ?? 0);
+  const curto = duracao > 0 && duracao <= 180;
+  // AS FRASES QUE FICARAM SEM IDEIA (08/10): no curto, toda frase com conteúdo merece ideia, e o redator deixava
+  // várias vazias (no Igor, a mesma fala deu 13 ideias numa rodada e 9 noutra, com 4 de 11 frases sem nada).
+  const vazias = curto ? o.frases.filter((f) => f.ate - f.de + 1 >= 4 && !ideias.some((i) => i.frase === f.indice)) : [];
+  if (vazias.length) {
+    try {
+      const pedido = `${pedidoDasIdeias(vazias, o.contexto, o.leitura)}
+
+ATENÇÃO: estas frases ficaram sem ideia. Escreva 1 ou 2 ideias para CADA uma, de preferência geradas por IA ("recorte", "imagem" ou "video"), mostrando o que a frase diz para o público deste nicho, dentro do estilo do cliente.`;
+      ideias.push(...lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedido), vazias, o.palavras, o.contexto));
+    } catch (e) {
+      erros.push(`ideias das frases vazias: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    }
+  }
   // A ABERTURA GARANTIDA (08/10): no vídeo do Igor o redator não escreveu ideia nenhuma para os primeiros 6 s, e a
   // abertura obrigatória ficou sem candidato. Sem ideia ali, um pedido só para a abertura, gerada por IA.
   const primeiras = o.frases.filter((f) => f.inicio < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS);
-  if (primeiras.length && !ideias.some((i) => i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS)) {
+  // Também quando o que existe ali é só gráfico de código: a abertura de impacto é gerada por IA (08/10).
+  if (primeiras.length && !ideias.some((i) => i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS && i.midia !== "grafico")) {
     try {
       const pedido = `${pedidoDasIdeias(primeiras, o.contexto, o.leitura)}
 
-ATENÇÃO: escreva UMA ideia de ABERTURA (papel "abertura") para estas frases, que são os primeiros segundos do vídeo: o gancho visual de impacto que segura o espectador, gerado por IA ("recorte" ou "imagem"), mostrando o assunto do vídeo (o objeto, a cena, o símbolo concreto do tema) para o público deste nicho. O gatilho é uma palavra destas frases.`;
-      ideias.push(...lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedido), primeiras, o.palavras, o.contexto).filter((i) => i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS).slice(0, 1).map((i) => ({ ...i, papel: "abertura" as const })));
+ATENÇÃO: escreva UMA ideia de ABERTURA (papel "abertura") para estas frases, que são os primeiros segundos do vídeo: o gancho visual de impacto que segura o espectador, gerado por IA ("recorte" ou "imagem"), mostrando o assunto do vídeo (o objeto, a cena, o símbolo concreto do tema) para o público deste nicho. O gatilho é uma palavra destas frases, dita nos primeiros 6 segundos.${(() => {
+        const seguintes = ideias.filter((i) => i.gatilho.t < 20).map((i) => `- ${i.descricao}`);
+        return seguintes.length ? `\nNão repita o objeto nem o assunto destas ideias, que já entram logo depois:\n${seguintes.join("\n")}` : "";
+      })()}`;
+      // O gatilho que o redator escolhe pode ser dito depois dos 6 s (no Igor, "consórcio" aos 7,6 s, numa frase que
+      // começa aos 3 s): a abertura vai para a primeira palavra da frase dita na janela.
+      const naJanela = (i: IdeiaCrua): IdeiaCrua | null => {
+        if (i.gatilho.t < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS) return i;
+        const f = primeiras.find((x) => x.indice === i.frase);
+        if (!f) return null;
+        let k = f.de;
+        while (k < f.ate && o.palavras[k].inicio < 0.5) k++;
+        const p = o.palavras[k];
+        return p && p.inicio < SEGUNDOS_DA_ABERTURA_DAS_IDEIAS ? { ...i, gatilho: { palavra: p.texto.replace(/[.,!?;:]+$/, ""), indice: k, t: p.inicio } } : null;
+      };
+      const lidas = lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedido), primeiras, o.palavras, o.contexto);
+      ideias.push(...lidas.map(naJanela).filter((i): i is IdeiaCrua => Boolean(i)).slice(0, 1).map((i) => ({ ...i, papel: "abertura" as const })));
+      if (!lidas.length) erros.push("ideia de abertura: o redator não devolveu ideia válida");
     } catch (e) {
       erros.push(`ideia de abertura: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    }
+  }
+  // AS CENAS REALISTAS GARANTIDAS (08/10, Bruno: "cadê os vídeos realistas top no meio, de família feliz, moto"): no
+  // Igor, com o estilo do cliente pedindo palavra-tese e número em faixa, o redator não propôs cena nenhuma em vídeo.
+  // No vídeo curto, abaixo de uma cena a cada 20 s, um pedido só para elas; o JEV decide se entram, como as outras.
+  const queridas = curto ? Math.max(1, Math.floor(duracao / 20)) : 0;
+  const faltamCenas = queridas - ideias.filter((i) => i.midia === "video").length;
+  const meio = o.frases.filter((f) => f.inicio >= SEGUNDOS_DA_ABERTURA_DAS_IDEIAS);
+  if (faltamCenas > 0 && meio.length) {
+    try {
+      const pedido = `${pedidoDasIdeias(meio, o.contexto, o.leitura)}
+
+ATENÇÃO: escreva ${faltamCenas + 1} ideias de CENA REALISTA EM VÍDEO (midia "video", papel "elemento"), cada uma numa frase diferente, nos momentos que contam uma conquista, uma dor, uma cena ou uma história. É o B-roll cinematográfico gerado por IA que corta para a cena por 2 a 3 segundos e volta para a pessoa: como cena de filme ou de comercial de TV, gente real e anônima, luz natural, emoção, mostrando o que a frase conta (quem, onde, o quê) para o público deste nicho e dentro do estilo do cliente. Sem texto na cena (textoNaImagem null). O gatilho é uma palavra da própria frase. Todas as ideias desta resposta com "midia": "video"; não escreva nenhuma ideia de outro tipo.`;
+      const cenas = lerIdeias(await o.redator(SISTEMA_DAS_IDEIAS, pedido), meio, o.palavras, o.contexto).filter((i) => i.midia === "video");
+      ideias.push(...cenas.map((i) => ({ ...i, papel: "elemento" as const, textoNaImagem: null })));
+    } catch (e) {
+      erros.push(`cenas em vídeo: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
     }
   }
   ideias.sort((a, b) => a.gatilho.t - b.gatilho.t);
