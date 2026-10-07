@@ -90,6 +90,7 @@ import { jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import { frasesDaFala } from "@/lib/media/jornada/linha-do-tempo";
 import { ajusteNoPlano } from "@/lib/media/jornada/ajuste";
 import { editorJornadaLigado } from "@/lib/media/jornada/estado";
+import { corteDoCompletoAndando } from "@/lib/media/corte-do-completo";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -337,7 +338,7 @@ export async function marcarCompletoParaRefazer(videoId: string, estiloAtual: st
   return true;
 }
 
-async function gravarRoteiroDoVideo(id: string, r: RoteiroDoVideo): Promise<void> {
+export async function gravarRoteiroDoVideo(id: string, r: RoteiroDoVideo): Promise<void> {
   const json = JSON.stringify(r);
   await prisma.$executeRaw`
     UPDATE video_jobs
@@ -428,7 +429,7 @@ export async function aprovacaoCobrada(videoId: string): Promise<boolean> {
 
 // ─────────────────────────────── a fala de cada trecho ───────────────────────────────
 
-function palavrasDoVideo(v: VideoDoRoteiro): Word[] {
+function palavrasDoVideo(v: Pick<VideoDoRoteiro, "transcript">): Word[] {
   return (((v.transcript as { words?: Word[] } | null)?.words ?? []) as Word[]);
 }
 
@@ -463,26 +464,31 @@ async function falaDoTrecho(
   return { inicio, fim, manter, texto, fala: { palavras: f.palavras, duracao: f.duracao } };
 }
 
-async function falaDoCompleto(v: VideoDoRoteiro, remocoes: Array<{ de: number; ate: number }>, termos: string | null): Promise<FalaDoTrecho> {
+async function falaDoCompleto(v: VideoDoRoteiro, r: Pick<RoteiroDoVideo, "remocoes" | "completoDoCliente">, termos: string | null): Promise<FalaDoTrecho> {
   const brutas = palavrasDoVideo(v);
   const dur = v.durationSec ?? (brutas.at(-1)?.end ?? 0);
-  const manter = manterDoCompleto(v, remocoes, termos);
+  const manter = manterDoCompleto(v, r, termos);
   const f = await falaDoCorte({ palavras: brutas, termos, inicio: 0, fim: dur, duracaoDaGravacao: dur, edicao: { inicio: 0, fim: dur, manter, em: agora() } });
   return { palavras: f.palavras, duracao: f.duracao };
 }
 
-/** Os pedaços mantidos do completo (tempo da gravação): a mesma conta da fala acima, sem IA. */
-function manterDoCompleto(v: VideoDoRoteiro, remocoes: Array<{ de: number; ate: number }>, termos: string | null): Array<{ de: number; ate: number }> {
+/**
+ * Os pedaços mantidos do completo (tempo da gravação): a mesma conta da fala
+ * acima, sem IA. Com o corte do cliente (08/10, `completoDoCliente`), são os
+ * pedaços que ele escolheu no controle, exatamente os que o player tocou.
+ */
+export function manterDoCompleto(v: Pick<VideoDoRoteiro, "transcript" | "durationSec">, r: Pick<RoteiroDoVideo, "remocoes" | "completoDoCliente">, termos: string | null): Array<{ de: number; ate: number }> {
+  if (r.completoDoCliente?.manter?.length) return r.completoDoCliente.manter;
   const palavras = aplicarTermos(palavrasDoVideo(v), parseTermos(termos));
   const dur = v.durationSec ?? (palavras.at(-1)?.end ?? 0);
-  return intervalosDoTrecho(remocoes, 0, dur, palavras);
+  return intervalosDoTrecho(r.remocoes, 0, dur, palavras);
 }
 
 /** As faixas de tela da gravação no tempo da fala do completo (01/10). */
 function faixasDoCompleto(v: VideoDoRoteiro, r: RoteiroDoVideo, termos: string | null): FaixaDeTela[] {
   if (!r.telas?.faixas?.length) return [];
   const dur = v.durationSec ?? 0;
-  return faixasNoTrecho(r.telas.faixas, 0, dur, manterDoCompleto(v, r.remocoes, termos));
+  return faixasNoTrecho(r.telas.faixas, 0, dur, manterDoCompleto(v, r, termos));
 }
 
 /** O formato do completo pela medida do quadro (gravação em pé monta 9:16); sem medida, 16:9. */
@@ -711,7 +717,7 @@ export async function prepararRoteiro(
   // começo; ritmo-da-edicao.ts), planejado por blocos, com a tela compartilhada.
   const fecho = { formato, familia: familiaDaLinguagem(normalizarEscolha(v.project.videoEstiloEscolha, v.project.videoStyle).estiloId), faixas: faixasC };
   if (montagemDoCompletoLigada() && !jornada && !r.completo?.plano && !r.completo?.erro && !r.completo?.comando) {
-    const fala = r.completo?.fala ?? (await falaDoCompleto(v, r.remocoes, termos));
+    const fala = r.completo?.fala ?? (await falaDoCompleto(v, r, termos));
     const insercoes = insercoesDoCompleto(fala.duracao, formato);
     const lido = comandoLigado ? null : await montagemDoCompletoAnterior(videoId);
     // Plano de outro estilo não volta (01/10): o diretor planeja de novo.
@@ -834,7 +840,7 @@ export async function prepararRoteiro(
   // (Gemini descreve), as ideias (Sonnet escreve) e as decisões (JEV decide), num
   // plano por elemento que o cliente aprova ou revisa na tela. Uma tarefa só.
   if (montagemDoCompletoLigada() && jornada && !opcoes.semDiretor && !r.jornada?.plano && !r.jornada?.erro) {
-    const fala = r.completo?.fala ?? (await falaDoCompleto(v, r.remocoes, termos));
+    const fala = r.completo?.fala ?? (await falaDoCompleto(v, r, termos));
     if (!r.completo) {
       r.completo = { fala, blocos: [], plano: null, insercoes: 0, estiloId: estiloAtual };
       await gravarRoteiroDoVideo(videoId, r);
@@ -848,7 +854,7 @@ export async function prepararRoteiro(
           url: v.blobUrl,
           palavrasOriginais: aplicarTermos(palavrasDoVideo(v), parseTermos(termos)).map((w) => ({ texto: w.word, inicio: w.start, fim: w.end })),
           duracaoOriginal: duracao,
-          manter: manterDoCompleto(v, r.remocoes, termos),
+          manter: manterDoCompleto(v, r, termos),
           fala,
           formato,
         });
@@ -1338,6 +1344,9 @@ export async function reabrirJornadaComAjuste(videoId: string, texto: string): P
   const r = await lerRoteiroDoVideo(videoId);
   const v = await lerVideo(videoId);
   if (!v || !r?.jornada?.aprovado || !r.completo?.fala?.palavras?.length) return false;
+  // O CORTE DO CLIENTE NO COMPLETO andando (revisão de 08/10): reabrir agora tiraria a aprovação da montagem que vai
+  // receber a base do corte, e ela voltaria atrás levando o pedido junto. O pedido fica no card, como os outros.
+  if (corteDoCompletoAndando(r.completoDoCliente)) return false;
   const linhas = await prisma.$queryRaw<Array<{ m: { midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }> } | null }>>`
     SELECT "completoMontagem" -> 'jornada' AS m FROM video_jobs WHERE id = ${videoId}`;
   const palavras = r.completo.fala.palavras;
@@ -1423,7 +1432,7 @@ async function refazerTextos(v: VideoDoRoteiro): Promise<void> {
     });
   }
   if (r.completo) {
-    const fala = await falaDoCompleto(v, r.remocoes, v.project.videoTerms);
+    const fala = await falaDoCompleto(v, r, v.project.videoTerms);
     const mudouLista = fala.palavras.length !== r.completo.fala.palavras.length;
     const c = r.completo;
     await gravarRoteiroDoVideo(v.id, {

@@ -5,6 +5,7 @@ import { aberturaNaTela, ganchoNaTela, type AberturaDoCompleto, type AberturaNaT
 import type { TelasDaGravacao } from "@/lib/media/faixas-de-tela";
 import type { ResumoDaRevisao } from "@/lib/media/revisao-tipos";
 import type { PlanoDoDiretor } from "@/lib/media/editor-por-comando/diretor";
+import type { CompletoDoCliente } from "@/lib/media/corte-do-completo";
 import { cotasDoCompleto } from "@/lib/media/ritmo-da-edicao";
 
 /**
@@ -205,6 +206,13 @@ export type RoteiroDoVideo = {
    * EXATAMENTE com o texto que o cliente leu e aprovou.
    */
   remocoes: Array<{ de: number; ate: number; motivo?: string }>;
+  /**
+   * O CORTE DO CLIENTE NO VÍDEO COMPLETO (08/10, lib/media/corte-do-completo.ts):
+   * começo, fim e trechos do meio que ele escolheu no controle do corte. É um
+   * registro só do completo: `remocoes` acima continua sendo a limpeza da IA,
+   * a base dos cortes. Sem ele, o completo é a gravação menos `remocoes`.
+   */
+  completoDoCliente?: CompletoDoCliente | null;
   /** A limpeza já rodou (a lista pode ser vazia de verdade, numa fala limpa). */
   limpezaFeita?: boolean;
   /**

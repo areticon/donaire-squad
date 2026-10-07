@@ -155,6 +155,8 @@ export async function POST(
       // O texto que o cliente leu e aprovou: sem limpeza por IA de novo.
       remocoesProntas: aprovado ? aprovado.remocoes : null,
       retomadasNasProntas: Boolean(aprovado?.retomadasFeitas),
+      // O corte que o cliente fez no completo antes de aprovar (08/10): só o completo sai com ele.
+      remocoesDoCompleto: aprovado?.completoDoCliente?.remocoes ?? null,
     },
     { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
   );

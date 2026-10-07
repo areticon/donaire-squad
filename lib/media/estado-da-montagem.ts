@@ -123,7 +123,8 @@ export function lerMontagem(
             : "Renderizando o vídeo com as cenas, os recortes e a legenda.";
     return { estado: m.estado, trabalhando, rotulo: "Vitor e Diana montando a edição", detalhe };
   }
-  if (m.estado === "pronto") return { estado: m.estado, trabalhando: false, rotulo: "Edição completa pronta", detalhe: null };
+  // O motivo num "pronto" (08/10) só existe quando um corte do cliente no completo não saiu e a edição de antes voltou: o card diz.
+  if (m.estado === "pronto") return { estado: m.estado, trabalhando: false, rotulo: "Edição completa pronta", detalhe: m.motivo ?? null };
   // NUNCA "FINALIZADO" SEM EDIÇÃO EM SILÊNCIO (01/10, parte 240): o Bruno leu
   // "edição finalizada" num completo que tinha voltado sem efeitos porque o
   // render quebrou. Falha técnica é dita com todas as letras, com a saída.

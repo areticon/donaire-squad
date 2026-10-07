@@ -38,6 +38,7 @@ import {
   CREDITOS_POR_NOVA_IDEIA,
 } from "@/lib/media/limits";
 import type { MontagemDoCompleto } from "@/lib/media/montagem-do-completo";
+import { corteDoCompletoAndando } from "@/lib/media/corte-do-completo";
 import type { Word } from "@/lib/media/transcribe";
 import { projetoVisivel } from "@/lib/equipe/conta";
 
@@ -361,7 +362,9 @@ export async function contextoDoCompleto(video: VideoLido): Promise<ContextoDoCo
     fala,
     planoOriginal: m?.planoOriginal ?? null,
     montagemDesde: m?.desde ?? null,
-    montagemTrabalhando: Boolean(m && TRABALHANDO_NO_COMPLETO.includes(m.estado) && idade < 3 * 3600_000),
+    // O corte do cliente no completo (revisão de 08/10) também trava: enquanto o worker refaz a base, a montagem ainda diz
+    // "pronto", e um ajuste agora tiraria a montagem do ar antes de a base chegar (aí ela tomaria o lugar do editado).
+    montagemTrabalhando: Boolean(m && TRABALHANDO_NO_COMPLETO.includes(m.estado) && idade < 3 * 3600_000) || corteDoCompletoAndando(m?.roteiro?.completoDoCliente),
     assetsProntos: (m?.assets ?? []).filter((a) => a.url),
     familia: familiaDoVideo(video),
   };
@@ -567,7 +570,7 @@ const SISTEMA = (alvo: "corte" | "completo") => `Você é o Vitor, editor de ví
 
 ${alvo === "corte" ? `- comecarNaPalavra / terminarNaPalavra: índice (da lista FALA) da PRIMEIRA palavra que deve ficar no corte / da ÚLTIMA palavra que deve ficar. "Termine depois de 'ferramentas'" põe o índice de "ferramentas" em terminarNaPalavra. "Comece em 'Jesus entrou'" põe o índice de "Jesus" em comecarNaPalavra. Pedido em segundos usa a coluna de tempo no ar: "corta os 3 primeiros segundos" é a primeira palavra que começa depois de 0:03; "termina 2 s antes" é a última palavra que termina 2 s antes do fim; "encerra no segundo 37" é a última palavra que termina até 0:37. A palavra pode estar ANTES ou DEPOIS do corte atual quando o cliente quer esticar. Deixe null o que não muda.
 - tirar: trechos do MEIO a tirar, [{"de":índice,"ate":índice}], inclusive, com palavras que hoje estão no ar. "Tira a parte em que eu erro e repito": ache a frase errada ou repetida e marque a versão que sai (fica a última versão boa). "Corta de 'né' até 'então'": de = "né" e ate = a palavra ANTES de "então" (a frase volta em "então"), a não ser que o cliente diga que "então" também sai.
-` : `- No vídeo completo não dá para mudar onde começa e termina nem tirar trecho da fala pelo chat: se o cliente pedir isso, responda com "pergunta" explicando em uma frase que pelo chat do completo dá para mudar cenas e efeitos, e pergunte se ele quer isso.
+` : `- No vídeo completo, mudar onde começa e termina ou tirar trecho da fala é feito no botão "Controlar o corte do vídeo completo", neste card (palavra por palavra, ouvindo antes): se o cliente pedir isso, responda com "pergunta" explicando em uma frase que esse ajuste fica nesse botão e que pelo chat dá para mudar cenas e efeitos, e pergunte se ele quer mudar alguma cena.
 `}- cenas: mudanças em cenas da lista CENAS: [{"cena":número ou null,"em":segundo do vídeo ou null,"acao":"remover"|"editar"|"nova-ideia"|"restaurar","texto":"..."}]. "remover" tira o efeito da cena (fica a pessoa em tela cheia, sem nada por cima). "editar" troca o que aparece na cena pelo "texto": escreva em português, concreto, o que deve aparecer (ex.: "um barco a vela no mar"). "nova-ideia" pede outra ideia ao diretor ("texto" = o que o cliente quer, se disse). "restaurar" volta a cena como era antes do ajuste. Use "cena" quando souber o número; use "em" (segundos) quando o cliente citar um momento e nenhuma cena da lista estiver nele. "Tira a imagem do Moisés": todas as cenas cuja descrição mostra Moisés.
 - semEfeito: {"de":segundos,"ate":segundos} quando o cliente pede um intervalo sem efeito ("sem efeito nos primeiros 10 segundos" = {"de":0,"ate":10}).
 - capa: o pedido resumido, se for sobre a CAPA (a miniatura).

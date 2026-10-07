@@ -151,3 +151,63 @@ export function levarIndice(mapa: number[], indice: number): number {
   if (!mapa.length) return indice;
   return mapa[Math.max(0, Math.min(mapa.length - 1, indice))] ?? indice;
 }
+
+// ─────────────────────────────── o corte do cliente no completo (08/10) ───────────────────────────────
+
+/**
+ * O MAPA EXATO ENTRE DUAS FALAS DA MESMA GRAVAÇÃO (08/10, controle do corte
+ * no vídeo completo). Cada fala é uma lista de índices na transcrição inteira
+ * (a palavra 12 da fala é a palavra 4.310 da gravação; `indicesDaFala`, em
+ * lib/media/ajuste-pelo-chat.ts). Para cada palavra da fala antiga, a posição
+ * dela na fala nova, ou null se ela saiu.
+ *
+ * Por que conta de índice e não alinhamento de texto: `mapaDePalavras` casa
+ * palavra por texto numa janela de 12 à frente e, depois de um corte grande,
+ * casa "que", "e", "o" do lado errado; na simulação do mapa de 08/10, tirar
+ * 150 palavras do começo deixou 73 palavras mal levadas, até 64 posições fora.
+ * Aqui não há texto: o que ficou é a mesma palavra da gravação, o que saiu é
+ * null, e o que o cliente devolveu entra sem empurrar ninguém para o lado errado.
+ */
+export function mapaExatoEntreFalas(velhos: readonly number[], novos: readonly number[]): Array<number | null> {
+  const pos = new Map(novos.map((g, k) => [g, k]));
+  return velhos.map((g) => pos.get(g) ?? null);
+}
+
+/**
+ * A inversa de `tempoEditado`: o instante da GRAVAÇÃO que está no instante
+ * `t` do tempo editado. Na emenda o mesmo `t` é o fim de um pedaço e o começo
+ * do seguinte: `lado` "inicio" fica com o seguinte, "fim" com o anterior.
+ * Antes do começo ou depois do fim, a ponta mais perto. Null sem pedaço.
+ */
+export function tempoNaGravacao(t: number, manter: Pedaco[], lado: "inicio" | "fim" = "inicio"): number | null {
+  if (!manter.length) return null;
+  let acumulado = 0;
+  for (let k = 0; k < manter.length; k++) {
+    const p = manter[k];
+    const dur = p.ate - p.de;
+    const fimDoPedaco = acumulado + dur;
+    const aqui = lado === "fim" ? t <= fimDoPedaco + 1e-9 : t < fimDoPedaco - 1e-9;
+    if (aqui || k === manter.length - 1) return arred(p.de + Math.max(0, Math.min(dur, t - acumulado)));
+    acumulado = fimDoPedaco;
+  }
+  return null;
+}
+
+/**
+ * Um instante do tempo editado ANTIGO levado ao tempo editado NOVO, passando
+ * pela gravação (a leitura do vídeo e as amostras só existem no tempo editado).
+ * `estrito`: o instante cujo pedaço da gravação saiu no corte novo volta null
+ * (a amostra daquele quadro não existe mais); sem ele, cai no começo do pedaço
+ * mantido seguinte, como em `tempoEditado` (a borda de um trecho lido).
+ */
+export function reprojetarNoTempo(
+  t: number,
+  manterVelho: Pedaco[],
+  manterNovo: Pedaco[],
+  o: { lado?: "inicio" | "fim"; estrito?: boolean } = {}
+): number | null {
+  const g = tempoNaGravacao(t, manterVelho, o.lado ?? "inicio");
+  if (g === null) return null;
+  if (o.estrito && !manterNovo.some((p) => g >= p.de - 1e-3 && g <= p.ate + 1e-3)) return null;
+  return tempoEditado(g, manterNovo);
+}

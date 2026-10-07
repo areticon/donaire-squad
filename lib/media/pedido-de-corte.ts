@@ -102,6 +102,13 @@ export type VideoParaCortar = {
    * retomadas entram aqui, por cima das prontas.
    */
   retomadasNasProntas?: boolean;
+  /**
+   * O CORTE DO CLIENTE NO COMPLETO (08/10, `roteiro.completoDoCliente.remocoes`):
+   * o complemento exato do que ele escolheu no controle, de 0 à duração. Vale
+   * SÓ para o corpo `remocoes` do vídeo completo; os trechos continuam com a
+   * limpeza de sempre, porque o corte do completo não é dos cortes.
+   */
+  remocoesDoCompleto?: Array<{ de: number; ate: number; motivo?: string }> | null;
 };
 
 export type ResumoDoPedido = {
@@ -152,6 +159,10 @@ export async function montarPedidoDeCorte(
     limpeza.remocoes = (await retomadasSobre(limpeza.remocoes, palavras, { id: video.id, projectId: video.projectId })).remocoes;
   }
   const { remocoes } = limpeza;
+  // O completo com o corte do cliente (08/10): o que ele escolheu no controle, e nada mais.
+  const remocoesDoCompleto = video.remocoesDoCompleto?.length
+    ? video.remocoesDoCompleto.map((r) => ({ de: r.de, ate: r.ate, motivo: r.motivo ?? "corte do cliente" }))
+    : remocoes;
   const pausas = { length: limpeza.pausas };
   const fala = { length: limpeza.hesitacoes };
 
@@ -278,7 +289,7 @@ export async function montarPedidoDeCorte(
   // meio de outra fala. Com a montagem do completo ligada, o texto na tela é
   // dela, sincronizado palavra a palavra; a base sai limpa.
   void montarLegendasDestaque;
-  const legendasAss = process.env.MONTAGEM_DO_COMPLETO === "1" || !legendaDoCompleto.mostrar ? null : montarLegendasDestaque(trechos, remocoes, {
+  const legendasAss = process.env.MONTAGEM_DO_COMPLETO === "1" || !legendaDoCompleto.mostrar ? null : montarLegendasDestaque(trechos, remocoesDoCompleto, {
     fonte: estilo.legenda.fonte,
     frases: todosOsEfeitos
       .filter((e) => e.tipo === "frase")
@@ -303,13 +314,14 @@ export async function montarPedidoDeCorte(
     },
     tratamento,
     trechos: paraOWorker,
-    remocoes: remocoes.map((r) => ({ de: r.de, ate: r.ate })),
+    remocoes: remocoesDoCompleto.map((r) => ({ de: r.de, ate: r.ate })),
     emojisDoCompleto: [],
     ganchos: ganchos.map((g) => ({ inicio: g.inicio, fim: g.fim })),
     legendasAss,
     // A GUARDA NA SAÍDA (03/10): o worker confere a fala da base limpa do
     // completo no próprio arquivo e apara o que sobrar de tomada refeita.
-    guardaDaFala: pedidoDaGuarda(video.id, "base do completo", opcoes.appUrl),
+    // `completo` (08/10): a guarda não tira o que o cliente devolveu de propósito no controle do completo.
+    guardaDaFala: pedidoDaGuarda(video.id, "base do completo", opcoes.appUrl, "completo"),
     enquadramentoUrl: `${opcoes.appUrl}/api/videos/${video.id}/enquadrar`,
     callbackUrl: `${opcoes.appUrl}/api/videos/${video.id}/cortar-callback`,
   });

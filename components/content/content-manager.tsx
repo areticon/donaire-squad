@@ -2882,7 +2882,24 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         devolver trechos do meio, ouvir antes e aplicar só neste
                         corte. O chat do Vitor continua valendo. */}
                     {(() => {
-                      const metaAjuste = localCard.metadata as { videoJobId?: string; trechoIndice?: number } | null;
+                      const metaAjuste = localCard.metadata as { videoJobId?: string; trechoIndice?: number; completo?: boolean } | null;
+                      // O VÍDEO COMPLETO (08/10): o mesmo controle, para tirar o começo, o fim ou um trecho do meio.
+                      if (metaAjuste?.videoJobId && metaAjuste.completo === true) {
+                        return (
+                          <div className="space-y-1.5">
+                            <AbrirControleDoCorte
+                              videoId={metaAjuste.videoJobId}
+                              completo
+                              aoAplicar={(r) => {
+                                if (r.modo === "no-ar") toast.success("Refazendo o vídeo completo com o seu corte. O vídeo de agora continua no ar até o novo ficar pronto.");
+                              }}
+                            />
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                              Começo, fim e trechos do meio do vídeo inteiro, palavra por palavra.
+                            </p>
+                          </div>
+                        );
+                      }
                       if (!metaAjuste?.videoJobId || typeof metaAjuste.trechoIndice !== "number") return null;
                       return (
                         <div className="space-y-1.5">
@@ -4137,13 +4154,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               {/* "Voltar à edição" (30/09): o vídeo inteiro (cortes e completo)
                   reaberto na tela de roteiro, para quem prefere ver tudo de uma
                   vez em vez de pedir pelo chat. Link comum: a tela é do servidor. */}
-              {localCard.cardType === "video_clip" && (localCard.metadata as { videoJobId?: string } | null)?.videoJobId && (
+              {(localCard.cardType === "video_clip" || localCard.cardType === "video_completo") && (localCard.metadata as { videoJobId?: string } | null)?.videoJobId && (
                 <a
                   href={`/projects/${projectId}/video/${(localCard.metadata as { videoJobId: string }).videoJobId}/roteiro?editar=1`}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-400 hover:underline"
                 >
                   <Pencil className="w-3 h-3" />
-                  Voltar à edição do vídeo: palavras, começo e fim dos cortes, cenas
+                  Voltar à edição do vídeo: palavras, começo e fim dos cortes e do completo, cenas
                 </a>
               )}
               {isMedia && !localCard.mediaUrl && (

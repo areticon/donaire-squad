@@ -6,11 +6,8 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from "next/server";
 import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
 import { prisma } from "@/lib/db/prisma";
-import type { Trecho } from "@/lib/media/select-clips";
-import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
-import { montarPedidoDeCorte } from "@/lib/media/pedido-de-corte";
+import { corpoDoSoCompleto, enviarSoOCompleto } from "@/lib/media/pedido-do-completo";
 import { estimativaDaRodadaSegundos } from "@/lib/media/video-state";
-import type { Word } from "@/lib/media/transcribe";
 import { garantirRetomadasNoRoteiro } from "@/lib/media/roteiro-da-edicao";
 
 /**
@@ -64,34 +61,13 @@ export async function POST(
     );
   }
 
-  const trechos = (video.clips as unknown as Trecho[]) ?? [];
-  const transcript = video.transcript as { words?: Word[] } | null;
   // O texto que o cliente aprovou (como no /cortar), com as retomadas por cima
   // quando o roteiro é de antes de 03/10. Sem roteiro aprovado, a limpeza
-  // roda inteira de novo, como antes.
+  // roda inteira de novo, como antes. Com o corte do cliente no completo
+  // (08/10), é ele que vale: o pedido é montado num lugar só
+  // (lib/media/pedido-do-completo.ts), o mesmo do controle do corte.
   const roteiro = await garantirRetomadasNoRoteiro(id);
-  const aprovado = roteiro?.aprovadoEm ? roteiro : null;
-  const { corpo } = await montarPedidoDeCorte(
-    {
-      id,
-      blobUrl: video.blobUrl,
-      durationSec: video.durationSec ?? 0,
-      projectId: video.projectId,
-      trechos,
-      palavras: transcript?.words ?? [],
-      estilo: video.project?.videoStyle ?? null,
-      musicaUrl: video.project?.videoMusicUrl ?? null,
-      termos: video.project?.videoTerms ?? null,
-      escolha: video.project?.videoEstiloEscolha ?? null,
-      colorPalette: video.project?.colorPalette ?? null,
-      remocoesProntas: aprovado ? aprovado.remocoes : null,
-      retomadasNasProntas: Boolean(aprovado?.retomadasFeitas),
-    },
-    { appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com" }
-  );
-  const pedido = JSON.parse(corpo) as Record<string, unknown>;
-  pedido.soCompleto = true;
-  const texto = JSON.stringify(pedido);
+  const texto = await corpoDoSoCompleto(video, roteiro, process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com");
 
   // A contagem regressiva da faixa: o completo sozinho leva perto de 0,6
   // minuto por minuto de gravação (passe 1 em ultrafast mais o acabamento em
@@ -103,13 +79,7 @@ export async function POST(
   const rodadaEm = new Date(Date.now() - Math.max(0, promessa - soOCompleto) * 1000);
 
   try {
-    const r = await fetch(`${base.replace(/\/$/, "")}/cortar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", [CABECALHO_ASSINATURA]: assinarCorpo(texto) },
-      body: texto,
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!r.ok) throw new Error(`worker respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    await enviarSoOCompleto(texto);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Falha ao acionar o worker";
     return NextResponse.json({ error: `Não consegui pedir o vídeo completo de novo: ${message}` }, { status: 502 });

@@ -159,6 +159,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
   // Na reedição aberta fica de fora: ela tem o rascunho dela.
   const podeControlar = tela.status === "roteiro" || (["cut", "writing", "ready"].includes(tela.status) && aprovado && !editando);
   const [controlado, setControlado] = useState<string | null>(null);
+  const [controlandoCompleto, setControlandoCompleto] = useState(false);
   const aoControlar = (r: { modo: "roteiro" | "no-ar"; mensagem: string }) => {
     setControlado(r.modo === "no-ar" ? r.mensagem : null);
     router.refresh();
@@ -392,6 +393,25 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
               : ""
           }`}
         >
+          {/* O CONTROLE DO CORTE NO COMPLETO (08/10): começo, fim e trechos do
+              meio do vídeo inteiro, com os mesmos recursos dos cortes. Antes da
+              aprovação fica no roteiro; com o vídeo pronto, refaz só o completo. */}
+          {podeControlar && (
+            <div className="mb-4">
+              {controlandoCompleto ? (
+                <ControleDoCorte videoId={tela.videoId} completo aoAplicar={aoControlar} aoFechar={() => setControlandoCompleto(false)} />
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <Button size="sm" variant="outline" className="h-9 w-full sm:w-auto" onClick={() => setControlandoCompleto(true)}>
+                    <Scissors className="w-4 h-4" /> Controlar o corte do vídeo completo
+                  </Button>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Tire o começo, o fim ou um trecho do meio que passou, palavra por palavra.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {/* A JORNADA OFICIAL (EDITOR_JORNADA=1): o plano por elemento, com aprovar, remover e pedir mudança. */}
           {tela.jornada && (
             <JornadaDoCompleto

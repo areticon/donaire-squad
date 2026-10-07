@@ -6,8 +6,16 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { corpoAssinadoConfere, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
-import { conferirFala, guardaDaFalaLigada, janelasMantidasPeloUsuario, type MantidoPeloUsuario } from "@/lib/media/guarda-da-fala";
+import { alvoDaGuarda, conferirFala, guardaDaFalaLigada, janelasMantidasPeloUsuario, type MantidoPeloUsuario } from "@/lib/media/guarda-da-fala";
 import { transcreverCompleto } from "@/lib/media/montagem-do-completo";
+
+/** O que o cliente devolveu no controle do completo (08/10): fica no roteiro, coluna fora do schema do Prisma. */
+async function mantidosDoCompleto(id: string): Promise<MantidoPeloUsuario[]> {
+  const linhas = await prisma.$queryRaw<Array<{ m: MantidoPeloUsuario[] | null }>>`
+    SELECT "completoMontagem" #> '{roteiro,completoDoCliente,mantidosPeloUsuario}' AS m FROM video_jobs WHERE id = ${id}`;
+  const m = linhas[0]?.m;
+  return Array.isArray(m) ? m : [];
+}
 
 /**
  * A GUARDA NA SAÍDA (03/10), a porta que o WORKER chama depois do render
@@ -42,13 +50,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const fala = await transcreverCompleto(corpo.url, video.project?.videoTerms ?? null, { projectId: video.projectId, operation: "guarda-da-fala" });
     const palavras = fala.palavras.map((w) => ({ word: w.texto, start: w.inicio, end: w.fim, confidence: 1 }));
     // O CONTROLE DO CORTE (03/10): o que o cliente devolveu de propósito
-    // neste corte (`?corte=` na URL) entra como janela protegida.
-    const corte = Number(req.nextUrl.searchParams.get("corte"));
-    const mantidos = Number.isInteger(corte) && corte >= 0
-      ? ((((video.clips as unknown as Array<{ mantidosPeloUsuario?: MantidoPeloUsuario[] | null }> | null) ?? [])[corte]?.mantidosPeloUsuario) ?? [])
-      : [];
+    // neste corte (`?corte=` na URL) entra como janela protegida. No vídeo
+    // completo (08/10), o que ele devolveu no controle do completo.
+    const alvo = alvoDaGuarda(req.nextUrl.searchParams);
+    const mantidos = alvo === "completo"
+      ? await mantidosDoCompleto(id)
+      : ((((video.clips as unknown as Array<{ mantidosPeloUsuario?: MantidoPeloUsuario[] | null }> | null) ?? [])[alvo]?.mantidosPeloUsuario) ?? []);
     const doCliente = mantidos.length ? janelasMantidasPeloUsuario(palavras, mantidos) : [];
-    if (mantidos.length) console.log(`[guarda-da-fala][${id}] corte ${corte}: ${mantidos.length} trecho(s) mantidos pelo usuário, ${doCliente.length} achado(s) no arquivo`);
+    if (mantidos.length) console.log(`[guarda-da-fala][${id}] ${alvo === "completo" ? "completo" : `corte ${alvo}`}: ${mantidos.length} trecho(s) mantidos pelo usuário, ${doCliente.length} achado(s) no arquivo`);
     const r = await conferirFala(palavras, { projectId: video.projectId, protegido: [...(corpo.protegido ?? []), ...doCliente] });
     console.log(
       `[guarda-da-fala][${id}] ${corpo.rotulo ?? ""} ${palavras.length} palavras, ${r.remover.length} a tirar` +

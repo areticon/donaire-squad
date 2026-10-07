@@ -18,7 +18,8 @@ const { avisarAdmins } = await import("@/lib/notificacoes/aviso-aos-admins");
 type DepositoDosAdmins = import("@/lib/notificacoes/aviso-aos-admins").DepositoDosAdmins;
 type Email = import("@/lib/email").Email;
 
-const ler = (p: string) => readFileSync(p, "utf8");
+// Sem o CR do checkout do Windows: os testes procuram trechos com LF.
+const ler = (p: string) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 /** O travessão, montado pelo código do caractere para o arquivo não conter nenhum. */
 const TRAVESSAO = new RegExp(String.fromCharCode(0x2014));
 

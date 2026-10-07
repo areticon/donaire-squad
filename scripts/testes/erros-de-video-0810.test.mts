@@ -24,7 +24,8 @@ import { MORTE, mensagemDeDesistencia } from "@/lib/media/video-state";
 import { lerMontagem, DETALHE_DA_FALHA } from "@/lib/media/estado-da-montagem";
 import { CODIGO_DA_ETAPA, NOME_DA_ETAPA_NO_AVISO } from "@/lib/notificacoes/tipos";
 
-const ler = (p: string) => readFileSync(p, "utf8");
+// Sem o CR do checkout do Windows: os testes procuram trechos com LF.
+const ler = (p: string) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 const TRAVESSAO = new RegExp(String.fromCharCode(0x2014));
 const ESPERA = /^\S+ está (escrevendo|criando|montando)/;
 
