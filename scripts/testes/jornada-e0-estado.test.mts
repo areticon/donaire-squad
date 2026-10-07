@@ -53,3 +53,10 @@ test("sem travessão nos textos da jornada", () => {
   assert.equal(semTravessao("a — b"), "a, b");
   for (const { f, t } of fontes()) assert.ok(!/—/.test(t), `${f} tem travessão`);
 });
+
+test("E8: os requisitos para ligar a jornada são ditos, nunca um recuo silencioso", async () => {
+  const { requisitosDaJornada } = await import("@/lib/media/jornada/estado");
+  assert.equal(requisitosDaJornada({ TYPESAFE_API_KEY: "x", GEMINI_API_KEY: "x", HF_CREDENTIALS: "x", FAL_KEY: "x", ANTHROPIC_API_KEY: "x" }).length, 0);
+  assert.equal(requisitosDaJornada({}).length, 5);
+  assert.match(readFileSync("lib/media/jornada/roteiro.ts", "utf8"), /requisitosDaJornada\(\)/);
+});

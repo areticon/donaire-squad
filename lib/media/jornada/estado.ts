@@ -29,6 +29,20 @@ export function editorJornadaLigado(): boolean {
   return process.env.EDITOR_JORNADA === "1";
 }
 
+/**
+ * O QUE A JORNADA PRECISA PARA LIGAR (E8): as chaves sem as quais um passo dela não roda. Faltando alguma, o
+ * roteiro grava o erro dito (nada de cair em silêncio na esteira antiga). HIGGSFIELD_NA_EDICAO só pesa no B-roll.
+ */
+export function requisitosDaJornada(env: Record<string, string | undefined> = process.env): string[] {
+  const faltam: string[] = [];
+  if (!env.TYPESAFE_API_KEY || env.JEV_LIGADO === "0") faltam.push("TYPESAFE_API_KEY (o JEV decide os passos 4, 5 e 7)");
+  if (!env.GEMINI_API_KEY) faltam.push("GEMINI_API_KEY (leitura do vídeo e do texto, e a reserva Nano Banana Pro)");
+  if (!env.HF_CREDENTIALS) faltam.push("HF_CREDENTIALS (Higgsfield)");
+  if (!env.FAL_KEY) faltam.push("FAL_KEY (recorte do fundo)");
+  if (!env.ANTHROPIC_API_KEY) faltam.push("ANTHROPIC_API_KEY (o Sonnet escreve ideias e prompts)");
+  return faltam;
+}
+
 export type EsteiraDoCompleto = "jornada" | "por-comando" | "sob-medida" | "antiga";
 
 /**
