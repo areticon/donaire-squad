@@ -1469,6 +1469,14 @@ export async function aprovarRoteiro(
   // Sem o completo planejado (pelo plano antigo ou pelo editor por comando, 06/10) não há o que aprovar.
   if (!lista.length && !r.completo?.plano && !r.completo?.comando && !r.jornada?.plano?.elementos?.length) throw new RecusaDoRoteiro("Escolha pelo menos um corte: este vídeo não tem o completo planejado.", 400);
   if (lista.length > MAX_CORTES_APROVADOS) throw new RecusaDoRoteiro(`Escolha no máximo ${MAX_CORTES_APROVADOS} cortes.`, 400);
+  // SEM PLANO DE EFEITOS, NADA DE APROVAR (08/10): com a jornada ligada, o completo (e agora os cortes) só ganham
+  // efeito pelo plano aprovado. Aprovar com o plano ainda lendo, com erro ou vazio entregava o vídeo "pronto" sem
+  // efeito nenhum, já cobrado (o mapa de 08/10). Agora a aprovação espera o plano, ou diz o que falta.
+  if (editorJornadaLigado()) {
+    const j = r.jornada;
+    if (!j?.plano && !j?.erro) throw new RecusaDoRoteiro("O plano de efeitos do vídeo ainda está sendo preparado. Espere alguns segundos e aprove de novo.", 409);
+    if (j?.erro && !j.plano?.elementos?.length) throw new RecusaDoRoteiro("O plano de efeitos não ficou pronto. Peça um elemento ou refaça o plano antes de aprovar, para o vídeo não sair sem efeito.", 409);
+  }
 
   // Toma a aprovação antes de cobrar: dois cliques seguidos, e só um passa.
   const tomado = await prisma.videoJob.updateMany({

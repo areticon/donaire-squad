@@ -535,7 +535,7 @@ export function desenhoDaLegenda(estilo, W, H) {
   const contorno = estilo.letra === "condensada" || estilo.tamanho === "grande";
   const caixaAlta = Boolean(estilo.caixaAlta);
   if (estilo.posicao === "centro") return { fonte, tam, contorno, alinhamento: 8, margemV: Math.round(H * (Number(estilo.y) || 0.58)), caixaAlta };
-  if (estilo.posicao === "topo") return { fonte, tam, contorno, alinhamento: 8, margemV: Math.round(vertical ? H * 0.035 : 40 * ey), caixaAlta };
+  if (estilo.posicao === "topo") return { fonte, tam, contorno, alinhamento: 8, margemV: Math.round(vertical ? H * 0.11 : 40 * ey), caixaAlta };
   return { fonte, tam, contorno, alinhamento: 2, margemV: Math.round(vertical ? H * 0.17 : 40 * ey), caixaAlta };
 }
 
@@ -581,7 +581,7 @@ export function legendaDoDesenho(edicao, W, H, desloc, duracao) {
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Leg,${corpo(d.alinhamento, d.margemV)}`,
-    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.035 : 40 * ey))}`,
+    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.11 : 40 * ey))}`,
     "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   const acento = assCor(acentoHex);
@@ -640,7 +640,7 @@ export function legendaSobMedida(edicao, W, H, desloc, duracao) {
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Leg,${corpo(d.alinhamento, d.margemV)}`,
     // A FAIXA DE CIMA (05/10): a mesma legenda, acima da cabeça, quando uma peça com texto ocupa a posição principal.
-    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.035 : 40 * ey))}`,
+    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.11 : 40 * ey))}`,
     "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   for (const p of edicao.legenda?.paginas ?? []) {

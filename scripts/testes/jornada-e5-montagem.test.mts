@@ -46,12 +46,25 @@ test("entrada a até 0,15 s do gatilho", () => {
 
 test("a legenda segue a escolha do cliente", () => {
   const palavras = "eu gosto muito de pão quente de manhã".split(" ").map((w, i) => ({ texto: w, inicio: i * 0.4, fim: i * 0.4 + 0.3 }));
-  assert.deepEqual(legendaDaJornada({ mostrar: false }, palavras, "9:16", null), { legenda: null, faixa: null });
-  const papel = legendaDaJornada({ mostrar: true, estilo: "papel", automatica: false }, palavras, "9:16", null);
+  assert.deepEqual(legendaDaJornada({ mostrar: false }, palavras, "9:16", []), { legenda: null, faixa: null });
+  const papel = legendaDaJornada({ mostrar: true, estilo: "papel", automatica: false }, palavras, "9:16", []);
   assert.equal((papel.legenda!.estilo as { desenho?: string }).desenho, "papel");
   assert.ok(papel.legenda!.paginas.length >= 2);
-  const auto = legendaDaJornada({ mostrar: true, estilo: "limpa", automatica: true }, palavras, "16:9", null);
+  const auto = legendaDaJornada({ mostrar: true, estilo: "limpa", automatica: true }, palavras, "16:9", []);
   assert.equal(auto.legenda!.estilo, undefined, "a Automática é a do vídeo da landing, igual para todo nicho");
+});
+
+test("a legenda fica onde a medição manda, nunca no meio por estilo (08/10, vídeo do Igor)", () => {
+  const palavras = "eu gosto muito de pão quente de manhã".split(" ").map((w, i) => ({ texto: w, inicio: i * 0.4, fim: i * 0.4 + 0.3 }));
+  const amostra = (y: number, h: number) => ({ t: 0, rostos: [{ x: 0.3, y, w: 0.4, h }], corpos: [], tela: null, quadro: null });
+  // O estilo "palavra" cravava "centro" (meio do peito). Rosto no alto: a legenda vai para baixo.
+  const palavra = legendaDaJornada({ mostrar: true, estilo: "palavra", automatica: false }, palavras, "9:16", [amostra(0.2, 0.25), amostra(0.22, 0.25)]);
+  assert.equal((palavra.legenda!.estilo as { posicao?: string }).posicao, "baixo");
+  assert.ok(palavra.faixa![0] > 0.6, JSON.stringify(palavra.faixa));
+  // Rosto descendo até a faixa de baixo: a legenda sobe para a área segura de cima, fora do rosto.
+  const baixo = legendaDaJornada({ mostrar: true, estilo: "palavra", automatica: false }, palavras, "9:16", [amostra(0.35, 0.45), amostra(0.36, 0.44)]);
+  assert.equal((baixo.legenda!.estilo as { posicao?: string }).posicao, "topo");
+  assert.ok(baixo.faixa![0] >= 0.07 && baixo.faixa![1] < 0.35);
 });
 
 const aprovado = (id: string, formato: ElementoAprovado["formato"], t: number): ElementoAprovado => ({ id, momento: { indice: 0, de: t - 0.5, ate: t + 2, frase: "frase" }, gatilho: { palavra: "x", indice: 0, t }, descricao: "d", textoNaImagem: null, midia: formato === "broll" ? "video" : formato === "recorte-sobre" ? "recorte" : "imagem", formato, porque: "", custoUsd: 0, origem: "ia", papel: "elemento", pedidos: [] });

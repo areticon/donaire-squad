@@ -81,7 +81,8 @@ test("worker: a página 'topo' sai no estilo de cima e a 'oculta' não sai", () 
     { inicio: 6, fim: 7, texto: "antigo sem faixa" },
   ]);
   const ass = legendaSobMedida(ed, 1080, 1920, 0, 20) as string;
-  assert.match(ass, /Style: LegTopo,.*,8,\d+,\d+,67,1/);
+  // 08/10: a faixa de cima fica dentro da área segura do vertical (11% da altura = 211 px), não sob a interface do Reels.
+  assert.match(ass, /Style: LegTopo,.*,8,\d+,\d+,211,1/);
   assert.match(ass, /,Leg,,0,0,0,,embaixo/);
   assert.match(ass, /,LegTopo,,0,0,0,,em cima/);
   assert.doesNotMatch(ass, /some/);

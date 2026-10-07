@@ -139,7 +139,9 @@ export async function gerarElementoDaJornada(e: EntradaDoPrompt & { t: number },
             reforco = `The previous image had invented text ("${String(lido?.texto).slice(0, 80)}"). This image must contain NO letters, words or numbers at all.`;
             continue;
           }
-          return { ...base, prompt, url: null, tipo: null, proporcao: null, custoUsd: +custo.toFixed(4), modelo: m.modelo, rodadas: 2, avisoAdmin, avisoCliente: `No momento ${mmss(e.t)}, o elemento "${e.descricao.slice(0, 80)}" saiu do vídeo porque a arte veio com texto que ninguém pediu nas duas gerações. Peça de novo esse elemento.` };
+          // A segunda arte ainda com letra (marca no tanque da moto, placa, painel): o objeto fica (08/10, Bruno: "falou
+          // de moto e não trouxe moto"; a regra antiga tirava o elemento inteiro). Só o admin é avisado.
+          avisoAdmin = `${avisoAdmin ? `${avisoAdmin}; ` : ""}${e.id}: a arte manteve texto não pedido ("${String(lido?.texto).slice(0, 60)}") nas duas gerações; entrou assim`;
         }
       }
       if (e.textoNaImagem) {

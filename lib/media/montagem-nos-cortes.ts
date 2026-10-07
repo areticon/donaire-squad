@@ -87,6 +87,12 @@ import {
   type PlanoDoDiretor,
 } from "@/lib/media/editor-por-comando";
 import { conferirFalaDoCorte } from "@/lib/media/editor-por-comando/fala-conferida";
+import { editorJornadaLigado, type ElementoAprovado } from "@/lib/media/jornada/estado";
+import { elementosNoCorte } from "@/lib/media/jornada/corte";
+import { montarCortePelaJornada, type MidiasDoCompleto } from "@/lib/media/jornada/corte-servidor";
+import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
+import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
+import { normalizarLegenda } from "@/lib/media/legenda-escolhida";
 import type { LeituraDoVideo } from "@/lib/media/leitura-do-video";
 import { leituraNoCorte } from "@/lib/media/editor-por-comando/leitura-no-plano";
 
@@ -625,6 +631,9 @@ export async function pedidoDoCorte(video: VideoDoPasso, indice: number, t: Trec
 export type SobMedidaDoCorte = {
   fase: "editar" | "previa" | "revisar" | "final";
   estiloId: string;
+  /** 08/10: o corte foi editado pela jornada (o plano aprovado do vídeo); a trilha é a decisão do JEV. */
+  jornada?: boolean;
+  trilhaDaJornada?: boolean;
   fala?: { manter: { de: number; ate: number }[]; palavras: PalavraNoCorte[]; duracao: number } | null;
   /** O quadro 9:16 dentro da gravação (fração) e o rosto já nele. */
   quadro?: Retangulo | null;
@@ -685,7 +694,8 @@ function sobMedidaDe(m: MontagemDoCorte | null | undefined): SobMedidaDoCorte | 
 /** O corte vai pelo editor sob medida? Ligado, estilo com referência, e o caminho novo não desistiu neste corte. */
 export function corteVaiSobMedida(video: Pick<VideoDoPasso, "project">, m: MontagemDoCorte | null | undefined): boolean {
   const escolha = normalizarEscolha(video.project.videoEstiloEscolha, video.project.videoStyle);
-  return (editorPorComandoLigado() || editorSobMedidaLigado(escolha.estiloId)) && !sobMedidaDe(m)?.desistiu;
+  // 08/10: com a jornada ligada, o corte também vai pelo editor novo (o plano aprovado do vídeo).
+  return (editorJornadaLigado() || editorPorComandoLigado() || editorSobMedidaLigado(escolha.estiloId)) && !sobMedidaDe(m)?.desistiu;
 }
 
 /** O caminho novo desiste e o corte volta à fila, para a montagem de sempre (a reserva). */
@@ -871,6 +881,102 @@ function verticalCru(t: TrechoComMontagem, lido: MontagemDoCorte): string | null
   return t.midia?.verticalOriginal?.url && lido.montadoUrl && t.midia?.vertical?.url === lido.montadoUrl ? t.midia.verticalOriginal.url : t.midia?.vertical?.url ?? null;
 }
 
+/** O que a jornada do vídeo deixou para os cortes: o plano aprovado, a fala do plano, as mídias e o estado do completo. */
+async function jornadaDoVideo(id: string): Promise<{
+  aprovados: ElementoAprovado[];
+  leitura: LeituraDoVideo | null;
+  falaDoPlano: Array<{ texto: string; inicio: number; fim: number }>;
+  midias: MidiasDoCompleto;
+  completoGerando: boolean;
+} | null> {
+  const l = (
+    await prisma.$queryRaw<
+      Array<{
+        rj: { aprovado?: { elementos?: ElementoAprovado[] } | null; leitura?: LeituraDoVideo | null } | null;
+        fala: Array<{ texto: string; inicio: number; fim: number }> | null;
+        midias: MidiasDoCompleto | null;
+        estado: string | null;
+        fase: string | null;
+      }>
+    >`
+      SELECT "completoMontagem" -> 'roteiro' -> 'jornada' AS rj,
+             "completoMontagem" -> 'roteiro' -> 'completo' -> 'fala' -> 'palavras' AS fala,
+             "completoMontagem" -> 'jornada' -> 'midias' AS midias,
+             "completoMontagem" ->> 'estado' AS estado,
+             "completoMontagem" -> 'jornada' ->> 'fase' AS fase
+      FROM video_jobs WHERE id = ${id}`
+  )[0];
+  const aprovados = l?.rj?.aprovado?.elementos ?? [];
+  if (!aprovados.length || !l?.fala?.length) return null;
+  const completoGerando = ["na-fila", "preparando", "dirigindo"].includes(String(l.estado)) || l.fase === "gerar";
+  return { aprovados, leitura: l.rj?.leitura ?? null, falaDoPlano: l.fala, midias: l.midias ?? {}, completoGerando };
+}
+
+/** Quanto o corte espera o completo gerar as mídias antes de gerar ele mesmo (pagando de novo). */
+const ESPERA_PELAS_MIDIAS_DO_COMPLETO_MS = 12 * 60_000;
+
+/**
+ * O CORTE PELA JORNADA (08/10/2026; ver lib/media/jornada/corte.ts). Devolve true quando cuidou do corte (enviou
+ * ou ficou esperando as mídias do completo); false quando o vídeo não tem plano aprovado e o corte segue pelo
+ * editor de antes.
+ */
+async function editarCortePelaJornada(
+  video: VideoDoPasso,
+  indice: number,
+  t: TrechoComMontagem,
+  lido: MontagemDoCorte,
+  tomado: MontagemDoCorte,
+  sm: SobMedidaDoCorte,
+  ctx: ReturnType<typeof contexto>
+): Promise<boolean> {
+  const j = await jornadaDoVideo(video.id);
+  if (!j) return false;
+  const conf = await conferirFalaDoCorte(sm.fala!, { projectId: video.projectId, mantidos: (t as TrechoComMontagem & { mantidosPeloUsuario?: MantidoPeloUsuario[] | null }).mantidosPeloUsuario ?? null });
+  const fala = conf.fala;
+  // O completo ainda gerando as mídias que o corte usa: espera (até 12 min) para não pagar a mesma imagem duas vezes.
+  const noCorte = elementosNoCorte(j.aprovados, j.falaDoPlano, fala.palavras, fala.duracao);
+  const semMidia = noCorte.filter((x) => x.aprovado.formato !== "grafico" && !j.midias[x.aprovado.id]?.url);
+  const esperaDesde = (lido as MontagemDoCorte & { esperaDaJornadaDesde?: string }).esperaDaJornadaDesde ?? agora();
+  if (semMidia.length && j.completoGerando && Date.now() - new Date(esperaDesde).getTime() < ESPERA_PELAS_MIDIAS_DO_COMPLETO_MS) {
+    await trocarEstado(video.id, indice, tomado, { ...lido, estado: "na-fila", trabalhando: false, esperarAte: depois(60_000), esperaDaJornadaDesde: esperaDesde } as MontagemDoCorte);
+    return true;
+  }
+  const leg = normalizarLegenda((video.project.videoEstiloEscolha as { legenda?: unknown } | null)?.legenda);
+  const contextoJ = await contextoDoProjeto(video.projectId, "9:16", fala.duracao);
+  const feito = await montarCortePelaJornada({
+    aprovados: j.aprovados,
+    falaDoPlano: j.falaDoPlano,
+    falaDoCorte: fala.palavras,
+    duracao: fala.duracao,
+    fps: 30,
+    midiasDoCompleto: j.midias,
+    leitura: j.leitura,
+    rosto: sm.rosto ?? null,
+    pessoa: sm.quadro ? noQuadroDoCorte(ctx.pessoa, sm.quadro) : ctx.pessoa,
+    contexto: contextoJ,
+    legenda: leg.modo === "sem" ? { mostrar: false } : leg.modo === "estilo" && leg.estilo ? { mostrar: true, estilo: leg.estilo, automatica: false } : { mostrar: true, estilo: "limpa", automatica: true },
+    temTrilha: Boolean(video.project.videoMusicUrl),
+    redator: redatorDaJornada(video.projectId, "jornada-corte"),
+    jev: jevDaJornada(),
+    geracao: dependenciasDaGeracao({ projectId: video.projectId, videoId: video.id, edicaoId: `corte-${indice}` }),
+    projectId: video.projectId,
+  });
+  const novo: SobMedidaDoCorte = {
+    ...sm,
+    fala,
+    gancho: null,
+    estiloId: ctx.escolha.estiloId,
+    edicao: feito.edicao as unknown as SobMedidaDoCorte["edicao"],
+    fase: "final",
+    jornada: true,
+    trilhaDaJornada: feito.trilha,
+    custoImagensUsd: feito.custoUsd,
+    avisos: [`jornada: ${feito.elementos} elemento(s) do plano aprovado no corte`, ...conf.sobras.map((s) => `fala conferida: saiu "${s.texto}" (${s.motivo})`), ...feito.avisos].slice(0, 30),
+  };
+  await enviarCorteSobMedida(video, indice, t, { ...tomado, trabalhando: false, custoUsd: feito.custoUsd, sobMedida: novo }, tomado);
+  return true;
+}
+
 /** na-fila -> dirigindo: a fala, o editor, as inserções e a resolução; depois a prévia vai ao worker. */
 async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: TrechoComMontagem, lido: MontagemDoCorte): Promise<void> {
   // "dirigindo" parado (a função morreu no meio do editor): não paga o editor
@@ -911,6 +1017,11 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
     const gancho = aprovado?.gancho && !aprovado.gancho.desligado ? ganchoEmFraseInteira(fala.palavras, { inicio: aprovado.gancho.inicio, fim: aprovado.gancho.fim, soco: limparSoco(aprovado.gancho.soco) ?? "" }) : null;
     const sm: SobMedidaDoCorte = { ...sm0, fala, quadro, rosto: noQuadroDoCorte(ctx.rosto, quadro), gancho };
     const cru = verticalCru(t, lido);
+    // O CORTE PELA JORNADA (08/10): o plano aprovado do vídeo, as mídias do completo, a mesma montagem.
+    if (editorJornadaLigado()) {
+      const feito = await editarCortePelaJornada(video, indice, t, lido, tomado, sm, ctx);
+      if (feito) return;
+    }
     // O EDITOR POR COMANDO (05/10): o diretor escreve o plano pelo comando do cliente; o final sai direto.
     if (editorPorComandoLigado()) {
       // A FALA CONFERIDA (05/10): a mesma conferência de retake da guarda na
@@ -1075,7 +1186,7 @@ export function pedidoDoCorteSobMedida(video: VideoDoPasso, indice: number, t: T
     edicao: sm.edicao,
     escala: final ? 1 : 0.5,
     gancho: final && sm.gancho ? { ...sm.gancho, familia: ctx.familia, acento: sm.edicao?.tema?.acento ?? ctx.marca.acento, escuro: ctx.marca.escuro, passagem: bibliaDoEstilo(sm.estiloId).abertura.passagem } : null,
-    trilha: final && video.project.videoMusicUrl ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
+    trilha: final && video.project.videoMusicUrl && (!sm.jornada || sm.trilhaDaJornada) ? { url: video.project.videoMusicUrl, ...somDaTrilha(video) } : null,
     // A GUARDA NA SAÍDA (03/10): só o final; a prévia não vai ao cliente.
     guardaDaFala: final ? pedidoDaGuarda(video.id, `corte ${indice} sob medida`, base, indice) : null,
     callbackUrl: `${base}/api/videos/${video.id}/montar-callback`,

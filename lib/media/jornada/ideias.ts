@@ -40,7 +40,8 @@ Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação ou hesita�
 
 RITMO E RETENÇÃO (regra do dono): no vídeo curto, TODA frase com conteúdo merece ideia; o espectador precisa ver algo novo a cada 2 a 4 segundos, sempre COM a pessoa na tela, falando, e o efeito aparecendo junto com ela (ao lado, acima da cabeça, sobre o peito). Quanto mais longo o vídeo, mais espaçados os efeitos. A PRIMEIRA ou a segunda frase (os primeiros 6 segundos) sempre ganha uma ideia de impacto com papel "abertura": o gancho visual que segura o espectador. No vídeo curto não proponha "video" (B-roll tira a pessoa da tela). No vídeo longo, os elementos ficam mais espaçados e intercalados com B-roll em vídeo: proponha "video" nos momentos que contam uma história, descrevem uma cena ou pedem movimento (uma em cada três ideias, mais ou menos).
 
-O "grafico" é o efeito mais rápido e mais usado: desenhado na hora, ao lado da pessoa, sem tirá-la da tela. Ele pode ser o que o momento pedir para reter e dar acabamento profissional: um título de impacto, um número que cresce, um contador, um cronômetro ou relógio, uma lista que aparece item a item, uma linha do tempo, um ícone com uma palavra, uma comparação, uma pergunta, uma citação. Não há lista fechada: descreva o que o momento pede. Misture "grafico" com "recorte" e "imagem" (que são gerados por IA e mostram o objeto, o logo, a cena).
+O QUE A PESSOA FALA APARECE (regra do dono): falou de moto, aparece uma moto; de carro, um carro; de casa, uma casa; de chave, de contrato, de cofre, de relógio, aparece o objeto. Esses elementos são GERADOS POR IA ("recorte": o objeto isolado que entra ao lado da pessoa, sobre o ombro, acima da cabeça ou sobre o peito; "imagem": uma composição numa janela ao lado dela), com acabamento de foto ou ilustração 3D de qualidade, nunca desenho de código. A maioria das ideias é "recorte" ou "imagem".
+O "grafico" (desenhado em código) é só para quando o próprio TEXTO é o conteúdo: um número que a pessoa disse (o valor exato), uma lista que ela enumera item a item, uma pergunta ou frase de impacto curta. No máximo uma ideia em cada três é "grafico", e nunca no lugar de um objeto que foi dito.
 
 A EMPRESA E O NICHO SÃO OS DO CONTEXTO. Marcas, logos, faixas e textos que a leitura vê no FUNDO da gravação são só cenário: nunca são a marca do cliente nem o assunto, e nunca entram nas ideias.
 
@@ -49,8 +50,8 @@ Cada ideia:
 - "gatilho": UMA palavra da própria frase, escrita como está, que chama o elemento (o elemento aparece quando ela é dita).
 - "descricao": em português, uma frase concreta e visual do que aparece (o objeto, a cena, a composição, a cor, o movimento), tirada do que a fala diz naquele momento e do que a leitura do vídeo mostra. Use o contexto da empresa, da marca e do nicho para escolher o imaginário que mais faz sentido para aquele público. Ideias seguidas nunca repetem o mesmo assunto do mesmo jeito: varie o ângulo (o objeto, o detalhe, o gesto, a consequência). Nada genérico ("ícone de sucesso"), nada abstrato (barras, formas, cartão vazio), nada que o vídeo já mostra. Prefira o que se VÊ: um objeto, um logo, uma tela, uma cena, uma ilustração ligada ao que é dito; uma ideia que é só texto (palavra gigante, faixa com número) só quando o próprio texto é a prova daquele momento, e no máximo uma assim a cada três ideias.
 - "textoNaImagem": null, ou o texto EXATO que a arte deve trazer, até 5 palavras: só palavras ditas no momento, um número dito ou o nome de uma marca ou rede citada. Na chamada, a própria chamada curta.
-- "midia": "grafico" (desenhado em código ao lado da pessoa: texto, número, ícone, cronômetro, lista, linha do tempo, o que o momento pedir), "recorte" (um objeto, ícone ou logo gerado por IA, isolado, que entra sobre a gravação), "imagem" (uma composição gerada que entra numa janela ao lado da pessoa) ou "video" (B-roll em movimento, só no vídeo longo).
-- "papel": "elemento"; ou "abertura" (só nas primeiras frases: um elemento de abertura que apresenta o tema do vídeo); ou "chamada" (curtir, inscrever, seguir, salvar): proponha chamada só se fizer sentido para o destino e a duração do vídeo (vídeo curto vertical não pede inscrever; vídeo longo no YouTube pode pedir).
+- "midia": "recorte" (um objeto, ícone 3D ou logo gerado por IA, isolado, que entra sobre a gravação junto da pessoa), "imagem" (uma composição gerada que entra numa janela ao lado da pessoa), "grafico" (só número dito, lista enumerada ou frase curta de impacto, desenhado em código) ou "video" (B-roll em movimento, só no vídeo longo).
+- "papel": "elemento"; ou "abertura" (só nas primeiras frases: um elemento de abertura que apresenta o tema do vídeo, de preferência o objeto ou a cena do assunto gerado por IA); ou "chamada" (seguir, salvar, comentar): só no vídeo longo, e sempre como imagem gerada, nunca desenhada em código.
 - "porque": uma linha com a ligação com a fala.
 
 Logos de redes sociais e de empresas citadas: descreva o logo como elemento (ele será gerado por IA). Nunca uma pessoa real reconhecível, nunca a pessoa que fala nem uma versão dela (gêmeo, clone, duplicata) com outro rosto, nunca texto além do textoNaImagem: se a ideia precisa de um número ou palavra na arte, escreva-o em textoNaImagem. Português do Brasil, sem travessão (use vírgula ou dois pontos).
@@ -134,6 +135,8 @@ export function lerIdeias(texto: string, frases: Frase[], palavras: Palavra[], c
     if (descricao.length < 12) continue;
     const midia: MidiaDaJornada = x.midia === "video" ? "video" : x.midia === "recorte" ? "recorte" : x.midia === "grafico" ? "grafico" : "imagem";
     const papel: PapelDoElemento = x.papel === "abertura" ? "abertura" : x.papel === "chamada" ? "chamada" : "elemento";
+    // A chamada nunca é desenhada em código (08/10: o "curtir e se inscrever" de código era a peça mais amadora).
+    const midiaFinal: MidiaDaJornada = papel === "chamada" && midia === "grafico" ? "imagem" : midia;
     const vizinhas = frases.filter((g) => Math.abs(g.indice - f.indice) <= 1).map((g) => g.texto).join(" ");
     const texto = textoPermitido(x.textoNaImagem as string | null, vizinhas, { papel, marca: contexto.marca });
     // A ideia que mostra um texto (frase, citação, manchete, título) sem dizer qual vira cartão vazio: cai.
@@ -146,7 +149,7 @@ export function lerIdeias(texto: string, frases: Frase[], palavras: Palavra[], c
       gatilho: { palavra: palavras[indice].texto.replace(/[.,!?;:]+$/, ""), indice, t: palavras[indice].inicio },
       descricao,
       textoNaImagem: texto,
-      midia,
+      midia: midiaFinal,
       papel,
       porque: semTravessao(String(x.porque ?? "").trim()).slice(0, 200),
     });

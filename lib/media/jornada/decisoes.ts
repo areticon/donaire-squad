@@ -68,8 +68,9 @@ export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | nu
     midia === "recorte" ? [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : [])] : [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : [])];
   // VÍDEO CURTO (07/10, Bruno): o efeito entra COM a pessoa na tela; sem tela cheia e sem B-roll (só no vídeo longo).
   if (!longo) {
-    // Sem lugar para a imagem ao lado, o momento vira gráfico (desenhado no espaço que houver), nunca tela cheia.
-    return sobre.length ? sobre : ["grafico"];
+    // Sem lugar folgado ao lado, o OBJETO entra como recorte sobre o corpo (nunca sobre o rosto), e não vira texto
+    // (08/10: no Igor, a moto dita virou painel de texto em código porque o rosto ocupava o quadro).
+    return sobre.length ? sobre : ["recorte-sobre"];
   }
   const cheia = conteudo ? [] : (["tela-cheia"] as const);
   if (midia === "video") return conteudo ? [] : ["broll"];
@@ -285,6 +286,14 @@ export function planoDasRespostas(
     custo += custoDoElementoDaJornada(midiaDoFormato(melhor.formato), Boolean(melhor.ideia.textoNaImagem));
     escolhidos.push({ ...melhor, ideia: { ...melhor.ideia, papel: melhor.ideia.papel === "chamada" ? "chamada" : "abertura" } });
     descartados.push({ frase: melhor.m.frase.indice, motivo: "entrou como abertura obrigatória dos primeiros 6 s" });
+  }
+  // NO MÁXIMO UM GRÁFICO A CADA TRÊS ELEMENTOS (08/10, Bruno: "parece feito em código"; no Igor, 6 de 6 e 6 de 7
+  // elementos foram gráficos de código). Os gráficos excedentes mais fracos saem; a abertura fica.
+  const tetoDeGraficos = Math.max(1, Math.ceil(escolhidos.length / 3));
+  const graficos = escolhidos.filter((e) => e.formato === "grafico" && e.ideia.papel !== "abertura").sort((a, b) => a.forca - b.forca);
+  for (const g of graficos.slice(0, Math.max(0, escolhidos.filter((e) => e.formato === "grafico").length - tetoDeGraficos))) {
+    escolhidos.splice(escolhidos.indexOf(g), 1);
+    descartados.push({ frase: g.m.frase.indice, motivo: "gráficos de código acima do teto de um a cada três elementos" });
   }
   escolhidos.sort((a, b) => a.ideia.gatilho.t - b.ideia.gatilho.t);
   const elementos: ElementoProposto[] = escolhidos.map((c, i) => {

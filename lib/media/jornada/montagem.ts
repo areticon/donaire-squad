@@ -4,7 +4,7 @@ import type { CoresDaJornada } from "@/lib/media/jornada/contexto";
 import type { ElementoGerado } from "@/lib/media/jornada/geracao";
 import type { AmostraDaJornada, Caixa, ElementoAprovado } from "@/lib/media/jornada/estado";
 import type { Palavra } from "@/lib/media/jornada/linha-do-tempo";
-import { faixaPrincipalDaLegenda, legendaDesenhada, legendaDoEstiloFixo, paginasNoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
+import { ALTURA_DA_LEGENDA, legendaDesenhada, legendaDoEstiloFixo, paginasNoEstilo } from "@/lib/media/editor-por-comando/estilo-manda";
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
 import type { TextoDoElemento } from "@/lib/media/jornada/textos";
@@ -82,11 +82,13 @@ export function caixasCandidatas(o: {
   corpos: Caixa[];
   legenda: FaixaDaLegenda;
   janela: boolean;
+  /** 08/10: segunda tentativa, quando a régua normal não achou lugar; cobre mais corpo e aceita caixa menor, nunca o rosto. */
+  relaxado?: boolean;
 }): CaixaCandidata[] {
   const seg = AREA_SEGURA[o.formato];
   const vertical = o.formato === "9:16";
   // O elemento deitado (faixa, logos em linha) pode ocupar a largura útil; o alto e estreito, menos.
-  const larguras = vertical ? (o.janela ? [0.82, 0.72, 0.62, 0.54, 0.46] : [0.83, 0.74, 0.66, 0.56, 0.48, 0.4, 0.33, 0.28, 0.24]) : o.janela ? [0.44, 0.38, 0.32, 0.27] : [0.5, 0.42, 0.34, 0.28, 0.23, 0.19, 0.16];
+  const larguras = vertical ? (o.janela ? [0.82, 0.72, 0.62, 0.54, 0.46, ...(o.relaxado ? [0.4, 0.34] : [])] : [0.83, 0.74, 0.66, 0.56, 0.48, 0.4, 0.33, 0.28, 0.24]) : o.janela ? [0.44, 0.38, 0.32, 0.27] : [0.5, 0.42, 0.34, 0.28, 0.23, 0.19, 0.16];
   const p = Math.max(0.2, Math.min(5, o.proporcao || 1));
   const validas: Array<{ c: Caixa; nota: number }> = [];
   for (const w of larguras) {
@@ -100,7 +102,7 @@ export function caixasCandidatas(o: {
         if (o.legenda && c.y < o.legenda[1] && c.y + c.h > o.legenda[0]) continue;
         const corpo = o.corpos.length ? o.corpos.reduce((s, b) => s + intersecao(c, b), 0) / (o.corpos.length * area(c)) : 0;
         // 07/10 (Bruno): o elemento entra COM a pessoa na tela e pode cobrir o corpo (até 55% da caixa); o rosto nunca.
-        if (corpo > 0.55) continue;
+        if (corpo > (o.relaxado ? 0.9 : 0.55)) continue;
         validas.push({ c, nota: area(c) * (1 - corpo) });
       }
     }
@@ -121,7 +123,7 @@ export function caixasCandidatas(o: {
   }
   // Nunca miniatura: só as caixas perto da maior (o elemento entra grande e legível, como no vídeo da landing).
   const maior = Math.max(0, ...[...porRegiao.values()].map((v) => v.nota));
-  const piso = vertical ? 0.45 : 0.2;
+  const piso = vertical ? (o.relaxado ? 0.3 : 0.45) : 0.2;
   return [...porRegiao.entries()]
     .filter(([, v]) => v.nota >= 0.6 * maior && v.c.w >= piso)
     .sort((a, b) => b[1].nota - a[1].nota)
@@ -175,16 +177,55 @@ export function paginasDoPitch(palavras: Palavra[]): Array<{ inicio: number; fim
  * Automática é a do vídeo da landing, igual para todo nicho. Devolve o que vai
  * ao worker e a faixa que ela ocupa (a caixa do elemento é que cede).
  */
-export function legendaDaJornada(l: LegendaDaJornada, palavras: Palavra[], formato: "9:16" | "16:9", rosto: Caixa | null): { legenda: { paginas: Array<Record<string, unknown>>; estilo?: Record<string, unknown> } | null; faixa: FaixaDaLegenda } {
+/**
+ * ONDE A LEGENDA FICA, PELA MEDIÇÃO (08/10). Até aqui a posição vinha do estilo: o "palavra" e todo comando com
+ * "no meio" cravavam "centro", e a legenda ia para o peito (vídeo do Igor, 07/10). Agora a medição do rosto ao
+ * longo do vídeo inteiro decide: a faixa de baixo (acima da interface das redes) quando o rosto termina antes
+ * dela; senão a de cima, dentro da área segura; senão a de baixo mesmo (cobrindo o peito, nunca o rosto).
+ * O estilo só muda o DESENHO da legenda. Puro.
+ */
+export function posicaoDaLegenda(amostras: AmostraDaJornada[], formato: "9:16" | "16:9", altura: number): { posicao: "baixo" | "topo"; faixa: [number, number] } {
+  const seg = AREA_SEGURA[formato];
+  const fimDeBaixo = formato === "9:16" ? 0.83 : 0.95;
+  const baixo: [number, number] = [arred(fimDeBaixo - altura), fimDeBaixo];
+  const topo: [number, number] = [seg.topo + 0.01, arred(seg.topo + 0.01 + altura)];
+  const rostos = amostras.flatMap((a) => a.rostos);
+  if (!rostos.length) return { posicao: "baixo", faixa: baixo };
+  const quantil = (v: number[], q: number) => [...v].sort((a, b) => a - b)[Math.min(v.length - 1, Math.max(0, Math.floor(q * (v.length - 1))))];
+  const fimDoRosto = quantil(rostos.map((r) => r.y + r.h), 0.85);
+  const comecoDoRosto = quantil(rostos.map((r) => r.y), 0.15);
+  if (fimDoRosto + 0.02 <= baixo[0]) return { posicao: "baixo", faixa: baixo };
+  if (comecoDoRosto - 0.02 >= topo[1]) return { posicao: "topo", faixa: topo };
+  return { posicao: "baixo", faixa: baixo };
+}
+
+/**
+ * A LEGENDA QUE O CLIENTE ESCOLHEU, sempre: "sem" não queima nada; o estilo
+ * fixado (palavra, caixa, marca-texto, papel, limpa) vai com o desenho dele; a
+ * Automática é a do vídeo da landing, igual para todo nicho. A POSIÇÃO vem da
+ * medição (posicaoDaLegenda), nunca do estilo. Devolve o que vai ao worker e
+ * a faixa que ela ocupa (a caixa do elemento é que cede).
+ */
+export function legendaDaJornada(l: LegendaDaJornada, palavras: Palavra[], formato: "9:16" | "16:9", amostras: AmostraDaJornada[]): { legenda: { paginas: Array<Record<string, unknown>>; estilo?: Record<string, unknown> } | null; faixa: FaixaDaLegenda } {
   const vertical = formato === "9:16";
   if (!l.mostrar) return { legenda: null, faixa: null };
+  const rosto = amostras.find((a) => a.rostos.length)?.rostos[0] ?? null;
   if (!l.automatica) {
     const est = legendaDoEstiloFixo(l.estilo);
     const desenho = legendaDesenhada(est, rosto ?? { x: 0.35, y: 0.15, w: 0.3, h: 0.3 }, vertical);
-    const faixa = faixaPrincipalDaLegenda(desenho);
-    return { legenda: { paginas: paginasNoEstilo(palavras, est, vertical), estilo: desenho as unknown as Record<string, unknown> }, faixa: faixa ? [Math.max(0, faixa[0] - 0.03), Math.min(1, faixa[1] + 0.03)] : null };
+    const lugar = posicaoDaLegenda(amostras, formato, ALTURA_DA_LEGENDA[desenho.tamanho] ?? 0.11);
+    const { y: _y, ...semY } = desenho as typeof desenho & { y?: number };
+    void _y;
+    return {
+      legenda: { paginas: paginasNoEstilo(palavras, est, vertical), estilo: { ...semY, posicao: lugar.posicao } as unknown as Record<string, unknown> },
+      faixa: [Math.max(0, lugar.faixa[0] - 0.03), Math.min(1, lugar.faixa[1] + 0.03)],
+    };
   }
-  return { legenda: { paginas: paginasDoPitch(palavras) }, faixa: vertical ? [0.68, 0.83] : [0.83, 0.97] };
+  const lugar = posicaoDaLegenda(amostras, formato, vertical ? 0.1 : 0.09);
+  return {
+    legenda: { paginas: paginasDoPitch(palavras).map((p) => (lugar.posicao === "topo" ? { ...p, faixa: "topo" } : p)) },
+    faixa: [Math.max(0, lugar.faixa[0] - 0.03), Math.min(1, lugar.faixa[1] + 0.03)],
+  };
 }
 
 // ─────────────────────────────── o texto em camada (07/10) ───────────────────────────────
@@ -347,8 +388,7 @@ export async function montarEdicao(o: {
 }): Promise<MontagemFeita> {
   const avisos: string[] = [];
   const avisosDoCliente: string[] = [];
-  const rostoTipico = o.amostras.find((a) => a.rostos.length)?.rostos[0] ?? null;
-  const leg = legendaDaJornada(o.legenda, o.palavras, o.formato, rostoTipico);
+  const leg = legendaDaJornada(o.legenda, o.palavras, o.formato, o.amostras);
   // O gráfico (07/10) não tem mídia: entra pelo texto que o Claude escreveu.
   const comMidia = o.elementos.filter((e) => e.gerado.url || (e.gerado.formato === "grafico" && o.textos?.[e.aprovado.id])).sort((a, b) => a.t - b.t);
   for (const e of o.elementos) if (e.gerado.formato === "grafico" && !o.textos?.[e.aprovado.id]) avisos.push(`${e.aprovado.id}: gráfico sem texto escrito, ficou fora`);
@@ -360,9 +400,10 @@ export async function montarEdicao(o: {
     const naCaixa = formato === "recorte-sobre" || formato === "janela";
     const de = Math.min(tempos.gatilho.de, tempos.frase.de);
     const ate = Math.max(tempos.gatilho.ate, tempos.frase.ate);
-    let caixas = naCaixa
-      ? caixasCandidatas({ formato: o.formato, W: o.W, H: o.H, proporcao: e.gerado.proporcao ?? 1, protegidas: protegidasNoIntervalo(o.amostras, de, ate), corpos: corposNoIntervalo(o.amostras, de, ate), legenda: leg.faixa, janela: formato === "janela" })
-      : [];
+    const medidaDaCaixa = { formato: o.formato, W: o.W, H: o.H, proporcao: e.gerado.proporcao ?? 1, protegidas: protegidasNoIntervalo(o.amostras, de, ate), corpos: corposNoIntervalo(o.amostras, de, ate), legenda: leg.faixa, janela: formato === "janela" };
+    let caixas = naCaixa ? caixasCandidatas(medidaDaCaixa) : [];
+    // Sem lugar folgado, a segunda régua (08/10): o objeto entra sobre o corpo em vez de sair do vídeo.
+    if (naCaixa && !caixas.length) caixas = caixasCandidatas({ ...medidaDaCaixa, relaxado: true });
     return { e, formato, tempos, naCaixa, caixas };
   });
   // 2. A ESCOLHA (JEV), num lote só.

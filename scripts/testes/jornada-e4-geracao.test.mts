@@ -107,11 +107,13 @@ test("B-roll só no formato B-roll; nomes únicos por geração; em paralelo", a
   assert.ok(d.nomes.every((n) => /^edicao\/v\/e\//.test(n)));
 });
 
-test("texto inventado (nenhum texto pedido, a arte veio com letras): gera de novo sem texto; persistiu, sai com aviso", async () => {
+test("texto inventado (nenhum texto pedido, a arte veio com letras): gera de novo sem texto; persistiu, o objeto FICA com aviso ao admin (08/10)", async () => {
   const d = deps({ leituras: ["HORIZON", "HORIZON"] });
   const g = await gerarElementoDaJornada({ ...entradasDosPrompts([el({ textoNaImagem: null })], null, "9:16")[0], t: 2 }, "An abstract glowing shape", d);
-  assert.equal(g.url, null);
-  assert.match(g.avisoCliente ?? "", /texto que ninguém pediu/);
+  assert.ok(g.url, "a moto com a marca no tanque fica no vídeo");
+  assert.equal(g.rodadas, 2);
+  assert.equal(g.avisoCliente, null);
+  assert.match(g.avisoAdmin ?? "", /texto não pedido/);
   const ok = await gerarElementoDaJornada({ ...entradasDosPrompts([el({ textoNaImagem: null })], null, "9:16")[0], t: 2 }, "An abstract glowing shape", deps({ leituras: ["HORIZON", ""] }));
   assert.ok(ok.url && ok.rodadas === 2);
 });

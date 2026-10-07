@@ -95,6 +95,8 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
   // A abertura dos melhores momentos (01/10) entra no total, e some dele se o cliente desligar.
   const aberturaCreditos = tela.creditos.abertura ?? 0;
   const aPagar = tela.creditos.completo + aberturaCreditos + n * tela.creditos.porCorte;
+  // O plano de efeitos ainda lendo, ou com erro e vazio: o servidor recusa a aprovação (08/10), e a tela já diz por quê.
+  const planoPendente = Boolean(tela.jornada && (tela.jornada.lendo || (tela.jornada.erro && !tela.jornada.elementos.length)));
 
   async function acao(url: string, corpo: unknown, chave: string): Promise<boolean> {
     setErro(null);
@@ -554,7 +556,13 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
                 </p>
               )}
             </div>
-            <Button size="lg" className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2" onClick={() => void aprovar(escolhidos)} disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado)}>
+            {/* O PLANO DE EFEITOS ANTES DE APROVAR (08/10): aprovar com o plano lendo ou com erro entregava o vídeo sem efeito. */}
+            {planoPendente && (
+              <p className="text-xs font-medium text-amber-600" role="status">
+                {tela.jornada?.lendo ? "Espere o plano de efeitos ficar pronto para aprovar (2 a 4 minutos)." : "O plano de efeitos não ficou pronto: peça um elemento acima antes de aprovar."}
+              </p>
+            )}
+            <Button size="lg" className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2" onClick={() => void aprovar(escolhidos)} disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado) || planoPendente}>
               {aprovando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {n === 0 ? "Aprovar só o vídeo completo" : "Aprovar e gerar"} ({creditosNaTela(aPagar)} créditos)
             </Button>
