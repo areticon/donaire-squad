@@ -39,13 +39,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!p || !(await podeUsarProjeto(userId, p))) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const salva = normalizarPaleta(p.colorPalette).cores;
-  // A identidade fica 10 min em cache por processo: sem paleta salva, ela tem
-  // que vir do logo, do manual ou do setor, e não de uma paleta que saiu.
-  let identidade = await identidadeDoProjeto(id);
-  if (!salva.length && identidade.origemDasCores === "configuracao") {
-    esquecerIdentidade(id);
-    identidade = await identidadeDoProjeto(id);
-  }
+  // A identidade fica 10 min em cache POR PROCESSO. Sem paleta salva, as cores
+  // que a tela mostra são as da identidade (logo, manual ou setor), e o cache
+  // podia estar velho: o upload do logo esquece a identidade só na instância
+  // que recebeu o upload, e o seletor, lido noutra, seguia nas cores do setor
+  // (revisão de 08/10). Aqui ela é sempre refeita: custa ler o logo, sem IA.
+  if (!salva.length) esquecerIdentidade(id);
+  const identidade = await identidadeDoProjeto(id);
   const [estado, aguardando, sugestoes] = await Promise.all([
     estadoDaIdentidade(id, p.colorPalette),
     artesAguardandoIdentidade(id).then(contarArtesEsperando).catch(() => 0),

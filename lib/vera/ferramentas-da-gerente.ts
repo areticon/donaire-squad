@@ -295,7 +295,9 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
           `NICHO: ${p.niche ?? "(vazio)"}`,
           `PÚBLICO: ${p.targetAudience ?? "(vazio)"}`,
           `TOM DE VOZ:\n${p.voice ?? "(vazio)"}`,
-          `CORES (primária primeiro): ${p.colorPalette ?? "(padrão da plataforma)"}`,
+          // Sem paleta salva desde 08/10 é o normal (o assistente não grava
+          // mais o laranja da Demandou): a arte usa o logo, o manual ou o setor.
+          `CORES (primária primeiro): ${p.colorPalette ?? "(não escolhidas: a arte usa as do logo, do manual ou do setor)"}`,
           `LINHA EDITORIAL:\n${typeof cfg.linhaEditorial === "string" && cfg.linhaEditorial.trim() ? cfg.linhaEditorial : "(vazia)"}`,
           `LINKS: ${links.length ? links.map((l) => `${l.rotulo} (${l.tipo}, prioridade ${l.prioridade}): ${l.url}`).join("; ") : "(nenhum)"}`,
           `REDES CONECTADAS: ${conectadas.map((r) => NOME_DA_REDE[r] ?? r).join(", ") || "(nenhuma)"}`,
@@ -605,7 +607,7 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
               : `Contraste ok para título: ${razao(cBranco)} com branco e ${razao(cEscuro)} com o escuro.`;
         anotar({
           titulo: "Cores da marca",
-          antes: antes ?? "(padrão da plataforma)",
+          antes: antes ?? "(não escolhidas: as do logo, do manual ou do setor)",
           depois,
           cores: { antes: antesLista, depois: cores },
           aviso,

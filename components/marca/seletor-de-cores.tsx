@@ -11,6 +11,7 @@ import {
   chaveDasVagas,
   destaqueNoVideo,
   ehPaletaDeFabrica,
+  esperaDeGravacao,
   normalizarHex,
   normalizarPaleta,
   paletaDasVagas,
@@ -122,6 +123,15 @@ export function SeletorDeCores({
   const vagasGravadas = useRef<Vaga[]>([]);
   const tocou = useRef(false);
   const ultimaGravacao = useRef(0);
+  // O aviso ao setup numa ref (revisão de 08/10): a etapa Marca passa uma
+  // função nova a cada render, e com ela nas dependências da gravação cada
+  // render do assistente rearmava a espera de 600 ms.
+  const aoGravarRef = useRef(aoGravar);
+  useEffect(() => {
+    aoGravarRef.current = aoGravar;
+  });
+  /** A espera de 600 ms da gravação sozinha, que sai na hora se a tela fechar antes. */
+  const [espera] = useState(() => esperaDeGravacao(600));
 
   const montarLista = useCallback((v: VagasDeCor): Vaga[] => {
     return [
@@ -169,7 +179,7 @@ export function SeletorDeCores({
   const podeMudar = Boolean(dados?.podeMudar);
 
   const gravar = useCallback(
-    async (v: VagasDeCor, lista: Vaga[]) => {
+    async (v: VagasDeCor, lista: Vaga[], saindo = false) => {
       const paleta = paletaDasVagas(v);
       if (!paleta.length) return;
       const papeis = papeisDasVagas(v);
@@ -180,6 +190,9 @@ export function SeletorDeCores({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ colorPalette: paleta.join(","), ...(papeis ? { papeisDaMarca: papeis } : {}) }),
+          // Saindo da tela (fechou a aba no meio da espera), o navegador
+          // termina o pedido mesmo com a página indo embora.
+          keepalive: saindo,
         });
         const corpo = (await r.json().catch(() => ({}))) as {
           error?: string;
@@ -207,22 +220,39 @@ export function SeletorDeCores({
               }
             : d
         );
-        aoGravar?.(paleta.join(","));
+        aoGravarRef.current?.(paleta.join(","));
       } catch (e) {
         if (minha !== ultimaGravacao.current) return;
         setEstado("erro");
         setMensagemDeErro(e instanceof Error ? e.message : "Não consegui guardar as cores.");
       }
     },
-    [projectId, aoGravar]
+    [projectId]
   );
 
   // Grava sozinho, com um pequeno atraso: um arraste no seletor vira um PATCH.
   useEffect(() => {
-    if (!dados || !podeMudar || !mudou || segurando || !atuais.principal) return;
-    const t = setTimeout(() => void gravar(atuais, vagas), 600);
-    return () => clearTimeout(t);
-  }, [dados, podeMudar, mudou, segurando, atuais, vagas, gravar]);
+    if (!dados || !podeMudar || !mudou || segurando || !atuais.principal) {
+      espera.cancelar();
+      return;
+    }
+    espera.agendar((saindo) => void gravar(atuais, vagas, saindo));
+  }, [espera, dados, podeMudar, mudou, segurando, atuais, vagas, gravar]);
+
+  // A TROCA DOS ÚLTIMOS 600 MS NÃO SE PERDE (revisão de 08/10). O "Próximo"
+  // do assistente não manda mais a paleta, e a etapa Marca (como a aba de
+  // Configurações) sai da tela ao avançar: a cor mexida logo antes do clique
+  // ficava esperando um tempo que o desmontar cancelava, e nunca era gravada.
+  // Ao desmontar, ou ao fechar a aba, a gravação que esperava sai na hora. A
+  // troca que está segurando a aprovação não sai: ela espera a pessoa decidir.
+  useEffect(() => {
+    const sair = () => espera.soltarAgora();
+    window.addEventListener("pagehide", sair);
+    return () => {
+      window.removeEventListener("pagehide", sair);
+      sair();
+    };
+  }, [espera]);
 
   /** Toda edição da pessoa passa por aqui: marca que ela mexeu e tira o "desfazer" da sugestão. */
   const editar = useCallback((f: (l: Vaga[]) => Vaga[], manterAnterior = false) => {
@@ -350,9 +380,14 @@ export function SeletorDeCores({
           {estado === "erro" && (
             <>
               {mensagemDeErro || "Não consegui guardar."}
-              <button type="button" onClick={() => void gravar(atuais, vagas)} className="font-semibold underline">
-                Tentar de novo
-              </button>
+              {/* Com a troca segurando a aprovação, quem decide é o aviso
+                  (Desfazer ou Trocar mesmo assim): tentar de novo daqui
+                  gravava sem perguntar (revisão de 08/10). */}
+              {!segurando && (
+                <button type="button" onClick={() => void gravar(atuais, vagas)} className="font-semibold underline">
+                  Tentar de novo
+                </button>
+              )}
             </>
           )}
         </span>

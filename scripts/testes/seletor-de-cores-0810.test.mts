@@ -6,7 +6,7 @@
 // primeiro arraste) e o assistente não grava mais o laranja da Demandou.
 // Nada aqui toca banco, IA, rede ou imagem paga.
 // Rodar: npx tsx --test scripts/testes/seletor-de-cores-0810.test.mts
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -14,6 +14,7 @@ import {
   PALETA_DE_FABRICA,
   destaqueNoVideo,
   ehPaletaDeFabrica,
+  esperaDeGravacao,
   normalizarHex,
   normalizarPaleta,
   paletaDasVagas,
@@ -174,4 +175,86 @@ test("guarda: o assistente e Configurações não gravam mais o laranja da Deman
   assert.match(quadro, /\.\.\.semPaleta,/);
   const config = readFileSync("components/projects/configuracao-do-projeto.tsx", "utf8");
   assert.doesNotMatch(config, /colorPalette: projeto\.colorPalette \?\? "#/);
+});
+
+// ── Revisão de 08/10 ─────────────────────────────────────────────────────────
+
+test("espera da gravação: só a última mexida sai, uma vez, depois do tempo", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const saidas: Array<{ qual: string; saindo: boolean }> = [];
+    const e = esperaDeGravacao(600);
+    e.agendar((saindo) => saidas.push({ qual: "primeira", saindo }));
+    mock.timers.tick(300);
+    e.agendar((saindo) => saidas.push({ qual: "segunda", saindo }));
+    mock.timers.tick(599);
+    assert.deepEqual(saidas, [], "o relógio reinicia a cada mexida");
+    assert.equal(e.esperando, true);
+    mock.timers.tick(1);
+    assert.deepEqual(saidas, [{ qual: "segunda", saindo: false }]);
+    assert.equal(e.esperando, false);
+    mock.timers.tick(5000);
+    assert.equal(saidas.length, 1, "não sai duas vezes");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("espera da gravação: a tela saindo manda na hora o que esperava (o defeito do Próximo)", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const saidas: boolean[] = [];
+    const e = esperaDeGravacao(600);
+    e.agendar((saindo) => saidas.push(saindo));
+    mock.timers.tick(100);
+    // A etapa Marca desmonta 100 ms depois da troca: antes, o relógio era
+    // cancelado e a cor nunca chegava ao banco.
+    e.soltarAgora();
+    assert.deepEqual(saidas, [true], "sai na hora, avisando que é saída (keepalive)");
+    mock.timers.tick(5000);
+    assert.deepEqual(saidas, [true], "o relógio antigo não manda de novo");
+    // Sem nada pendente, sair não grava nada.
+    e.soltarAgora();
+    assert.deepEqual(saidas, [true]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("espera da gravação: a troca cancelada (segurando a aprovação) não sai nem ao fechar a tela", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const saidas: boolean[] = [];
+    const e = esperaDeGravacao(600);
+    e.agendar((saindo) => saidas.push(saindo));
+    e.cancelar();
+    e.soltarAgora();
+    mock.timers.tick(5000);
+    assert.deepEqual(saidas, []);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("guarda: o seletor solta a gravação pendente ao desmontar e ao fechar a aba, e não grava por cima do aviso", () => {
+  const codigo = readFileSync("components/marca/seletor-de-cores.tsx", "utf8");
+  // A espera vive no estado e sai no desmontar e no pagehide.
+  assert.match(codigo, /esperaDeGravacao\(600\)/);
+  assert.match(codigo, /addEventListener\("pagehide", sair\)/);
+  assert.match(codigo, /removeEventListener\("pagehide", sair\);\s*sair\(\);/);
+  assert.match(codigo, /keepalive: saindo/);
+  // O efeito da gravação sozinha não tem mais um clearTimeout próprio, que era o que perdia a troca.
+  assert.doesNotMatch(codigo, /setTimeout\(\(\) => void gravar/);
+  // "Tentar de novo" some enquanto a troca segura a aprovação.
+  assert.match(codigo, /\{!segurando && \(\s*<button[^>]*onClick=\{\(\) => void gravar\(atuais, vagas\)\}/);
+  // O aviso ao setup não entra nas dependências da gravação (a etapa passa uma função nova a cada render).
+  assert.match(codigo, /aoGravarRef\.current\?\.\(/);
+  assert.doesNotMatch(codigo, /\[projectId, aoGravar\]/);
+});
+
+test("guarda: sem paleta salva, a rota das cores refaz a identidade (o logo novo vale em qualquer instância)", () => {
+  const rota = readFileSync("app/api/projects/[id]/cores/route.ts", "utf8");
+  assert.match(rota, /if \(!salva\.length\) esquecerIdentidade\(id\);\s*const identidade = await identidadeDoProjeto\(id\);/);
+  // E a Vera não chama mais de "padrão da plataforma" o projeto que ainda não escolheu cor.
+  assert.doesNotMatch(readFileSync("lib/vera/ferramentas-da-gerente.ts", "utf8"), /"\(padrão da plataforma\)"/);
 });

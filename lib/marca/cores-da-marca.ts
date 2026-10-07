@@ -250,6 +250,51 @@ export interface CoresDaTela {
   podeMudar: boolean;
 }
 
+/**
+ * A ESPERA DA GRAVAÇÃO SOZINHA (revisão de 08/10). O seletor grava 600 ms
+ * depois da última mexida (um arraste vira um PATCH só). Só que a etapa Marca
+ * do assistente e a aba de Configurações saem da tela ao avançar, e o
+ * "Próximo" não manda mais a paleta: a cor mexida logo antes do clique ficava
+ * na espera, o desmontar cancelava o relógio e ela nunca era gravada.
+ *
+ * Aqui a espera guarda o que está pendente: agendar de novo troca o pendente
+ * (e reinicia o relógio), cancelar descarta (a troca que segura a aprovação
+ * não sai sozinha), e soltarAgora manda na hora o que esperava, avisando que
+ * é saída (a tela usa keepalive para o pedido sobreviver à aba fechando).
+ */
+export function esperaDeGravacao(ms: number) {
+  let relogio: ReturnType<typeof setTimeout> | null = null;
+  let pendente: ((saindo: boolean) => void) | null = null;
+  const parar = () => {
+    if (relogio !== null) clearTimeout(relogio);
+    relogio = null;
+  };
+  const soltar = (saindo: boolean) => {
+    const f = pendente;
+    pendente = null;
+    parar();
+    f?.(saindo);
+  };
+  return {
+    agendar(f: (saindo: boolean) => void) {
+      parar();
+      pendente = f;
+      relogio = setTimeout(() => soltar(false), ms);
+    },
+    cancelar() {
+      parar();
+      pendente = null;
+    },
+    /** Manda na hora o que estava esperando (a tela vai sair). Sem pendente, nada. */
+    soltarAgora() {
+      soltar(true);
+    },
+    get esperando() {
+      return pendente !== null;
+    },
+  };
+}
+
 /** A chave do que está gravado: muda quando a paleta ou os papéis mudam. */
 export function chaveDasVagas(v: VagasDeCor): string {
   return JSON.stringify({ p: paletaDasVagas(v), r: papeisDasVagas(v) });
