@@ -3,6 +3,8 @@ import { emailDeRoteiroPronto } from "@/lib/email";
 import { emailDePecasDoVideo, emailDeSemanaPronta, emailDeVideoPronto } from "@/lib/email/avisos";
 import { enderecoDaPlataforma, notificar } from "@/lib/notificacoes";
 import { CODIGO_DA_ETAPA, NOME_DA_ETAPA_NO_AVISO } from "@/lib/notificacoes/tipos";
+import { avisarAdmins } from "@/lib/notificacoes/aviso-aos-admins";
+import { descreverFalhaDaCampanha, diasQueFalharamDe, textoDaFalhaParaAEquipe, type FatosDaCampanha } from "@/lib/pipeline/falha-da-campanha";
 
 /**
  * CADA FATO QUE VIRA AVISO (02/10/2026), com a chave que o torna único.
@@ -186,6 +188,84 @@ export async function avisarSemanaPronta(runId: string): Promise<void> {
     link: caminho,
     chave: `campanha:${runId}`,
     email: (dono) => emailDeSemanaPronta({ nome: dono.nome, projeto: run.project.name, pecas, link: `${enderecoDaPlataforma()}${caminho}` }),
+  });
+}
+
+/**
+ * A CAMPANHA QUE FALHOU, INTEIRA OU EM PARTE (08/10). O cliente recebe no sino
+ * o que mudou para ele e o código (sem e-mail: a regra de 02/10 deixa o e-mail
+ * do cliente para aprovação e entrega); a equipe recebe sino e e-mail com o
+ * motivo técnico de cada trabalho. Chamado no fecho da campanha e pelo
+ * observador do cron, com a mesma chave: avisa uma vez.
+ */
+export async function avisarFalhaDaCampanha(runId: string): Promise<void> {
+  const run = await prisma.pipelineRun.findUnique({
+    where: { id: runId },
+    select: { id: true, status: true, topic: true, config: true, output: true, logs: true, project: { select: { id: true, name: true, userId: true } } },
+  });
+  if (!run) return;
+  // O quadro do vídeo também é um PipelineRun: a falha dele avisa pelo vídeo.
+  if ((run.config as { videoJobId?: string } | null)?.videoJobId) return;
+  const output = (run.output ?? {}) as { totalPosts?: number; diasQueFalharam?: number };
+  // Concluída sem trabalho falhado: nada a avisar, e o observador passa aqui a cada minuto.
+  if (run.status === "completed" && !output.diasQueFalharam) return;
+  if (run.status !== "completed" && run.status !== "failed") return;
+  const trabalhos = await prisma.trabalho.findMany({
+    where: { grupo: runId, status: "falhou" },
+    select: { tipo: true, payload: true, attempts: true, error: true },
+    orderBy: { ordem: "asc" },
+  });
+  const logs = (Array.isArray(run.logs) ? run.logs : []) as Array<{ status?: string; message?: string }>;
+  const comAviso = logs.filter((l) => (l?.status === "error" || l?.status === "failed" || l?.status === "warning") && typeof l.message === "string");
+  const fatos: FatosDaCampanha = {
+    status: run.status,
+    totalPosts: output.totalPosts ?? (await prisma.post.count({ where: { runId } })),
+    diasQueFalharam: output.diasQueFalharam ?? 0,
+    trabalhosQueFalharam: trabalhos.map((t) => ({
+      tipo: t.tipo,
+      dia: Number((t.payload as { dayOfWeek?: unknown } | null)?.dayOfWeek) || null,
+      attempts: t.attempts,
+      error: t.error,
+    })),
+    ultimaMensagemDeErro: [...comAviso].reverse().find((l) => l.status === "error" || l.status === "failed")?.message ?? null,
+  };
+  const falha = descreverFalhaDaCampanha(fatos);
+  if (!falha) return;
+
+  const quemPediu =
+    (await prisma.trabalho.findFirst({ where: { grupo: runId }, orderBy: { createdAt: "asc" }, select: { userId: true } }))?.userId ??
+    run.project.userId;
+  const caminho = `/projects/${run.project.id}/live`;
+  await notificar({
+    userId: quemPediu,
+    projectId: run.project.id,
+    tipo: "falha",
+    titulo: falha.titulo,
+    texto: `${run.project.name}: ${falha.texto}`,
+    link: caminho,
+    codigo: falha.codigo,
+    chave: `falha:campanha:${runId}`,
+  });
+
+  const cliente = await prisma.user.findUnique({ where: { id: quemPediu }, select: { email: true } });
+  await avisarAdmins({
+    chave: `campanha-falhou:${runId}`,
+    titulo: `${falha.titulo} (${falha.codigo})`,
+    // Os números, e não "parcial ou nenhuma": a falha de configuração no meio
+    // da semana tem peça no quadro e nenhum dia falhado na fila (08/10).
+    texto: `${run.project.name}: ${fatos.totalPosts} peça(s) entregue(s), ${diasQueFalharamDe(fatos)} dia(s) falhado(s). O motivo técnico foi por e-mail.`,
+    assunto: `Campanha ${fatos.totalPosts > 0 ? "com falha" : "falhou"} (${falha.codigo}): ${run.project.name}`,
+    corpo: textoDaFalhaParaAEquipe({
+      falha,
+      runId,
+      projeto: run.project.name,
+      projectId: run.project.id,
+      cliente: cliente?.email ?? quemPediu,
+      tema: run.topic,
+      fatos,
+      ultimasLinhas: comAviso.slice(-6).map((l) => l.message!),
+      base: enderecoDaPlataforma(),
+    }),
   });
 }
 

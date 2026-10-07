@@ -17,7 +17,8 @@ import { retomarRevisoesParadas } from "@/lib/media/revisao-do-corte";
 import { avancarGemeos } from "@/lib/media/gemeo-passo";
 import { avancarRegua } from "@/lib/agenda/regua";
 import { avancarContratos } from "@/lib/contratos/regua";
-import { vigiarEtapas } from "@/lib/media/vigia-das-etapas";
+import { vigiarEtapas, vigiarFalhas } from "@/lib/media/vigia-das-etapas";
+import { retomarSemanasQueFalharam } from "@/lib/media/retomar-semana-do-video";
 import { observarAvisos } from "@/lib/notificacoes/observador";
 
 /**
@@ -75,6 +76,16 @@ export async function POST(req: NextRequest) {
     return null;
   });
 
+  // AS FALHAS EXPLÍCITAS DO VÍDEO (08/10): uma nova tentativa pelo servidor e o
+  // e-mail à equipe na segunda falha. Antes do observador, para o cliente não
+  // ler "parou" de uma etapa que o servidor está tentando de novo. Rápido: uma
+  // consulta e, quando há falha, um despacho ao piloto. Ver `vigiarFalhas` em
+  // lib/media/vigia-das-etapas.ts.
+  const falhasDoVideo = await vigiarFalhas().catch((e) => {
+    console.error("[fila] vigia das falhas falhou:", e);
+    return null;
+  });
+
   // OS AVISOS DO SINO E OS E-MAILS (02/10): rápido (três consultas e, de vez
   // em quando, um aviso), e logo depois do vigia para a falha que ele acabou
   // de declarar já sair no sino. Ver lib/notificacoes/observador.ts.
@@ -120,6 +131,14 @@ export async function POST(req: NextRequest) {
     console.error("[fila] retomar revisões falhou:", e);
     return null;
   });
+  // OS DIAS DA SEMANA DO VÍDEO QUE FALHARAM (08/10): o card "AVISO" prometia
+  // nova tentativa e nada tentava. Rápido: duas consultas e, quando há dia
+  // para tentar, um despacho ao piloto (que trabalha na rota dele, não aqui).
+  // Ver lib/media/retomar-semana-do-video.ts.
+  const semanas = await retomarSemanasQueFalharam().catch((e) => {
+    console.error("[fila] retomar dias da semana do vídeo falhou:", e);
+    return null;
+  });
   const r = await passadaDaFila({ orcamentoMs: Math.max(120_000, 780_000 - (Date.now() - inicio)) });
 
   // Rodou alguma coisa? Cutuca de novo, para a fila nao andar no ritmo do cron
@@ -127,7 +146,7 @@ export async function POST(req: NextRequest) {
   // cutuca ninguem, entao isto termina sozinho.
   if (r.rodados > 0) cutucar();
 
-  return NextResponse.json({ ok: true, ...r, ...(vigia && (vigia.olhados || vigia.retomados.length) ? { vigia } : {}), aberturasIa: hf, montagens, completos, revisoes, gemeos, ...(regua && (regua.pulados || Object.keys(regua.enviados).length) ? { regua } : {}) });
+  return NextResponse.json({ ok: true, ...r, ...(vigia && (vigia.olhados || vigia.retomados.length) ? { vigia } : {}), ...(semanas?.despachados.length ? { semanas } : {}), ...(falhasDoVideo && (falhasDoVideo.retomados.length || falhasDoVideo.avisados.length) ? { falhasDoVideo } : {}), aberturasIa: hf, montagens, completos, revisoes, gemeos, ...(regua && (regua.pulados || Object.keys(regua.enviados).length) ? { regua } : {}) });
 }
 
 // O cron da Vercel chama com GET.

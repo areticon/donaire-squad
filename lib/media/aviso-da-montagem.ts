@@ -14,7 +14,17 @@ import { enviarEmail } from "@/lib/email";
  * Só servidor (lê o banco e manda e-mail); falhar aqui nunca derruba a troca
  * de estado que chamou.
  */
-export async function avisarAdminsDaMontagem(p: { videoJobId: string; alvo: "completo" | number; motivo: string }): Promise<void> {
+export async function avisarAdminsDaMontagem(p: {
+  videoJobId: string;
+  alvo: "completo" | number;
+  motivo: string;
+  /**
+   * A falha que não passa por novas tentativas nem tem o botão do cliente
+   * (08/10: o completo aprovado sem o plano da jornada). O e-mail não pode
+   * dizer "falhou três vezes" nem prometer o botão.
+   */
+  semNovaTentativa?: boolean;
+}): Promise<void> {
   const v = await prisma.videoJob.findUnique({
     where: { id: p.videoJobId },
     select: { originalName: true, projectId: true, userId: true },
@@ -30,16 +40,20 @@ export async function avisarAdminsDaMontagem(p: { videoJobId: string; alvo: "com
     if (!a.email) continue;
     await enviarEmail({
       para: a.email,
-      assunto: `Montagem de efeitos desistiu: ${peca} de ${v.originalName ?? "uma gravação"}`,
+      assunto: `Montagem de efeitos ${p.semNovaTentativa ? "não rodou" : "desistiu"}: ${peca} de ${v.originalName ?? "uma gravação"}`,
       texto: [
-        `A montagem de efeitos de ${peca} do vídeo ${p.videoJobId} falhou três vezes (a última com os parâmetros leves) e parou.`,
+        p.semNovaTentativa
+          ? `A montagem de efeitos de ${peca} do vídeo ${p.videoJobId} não rodou: o vídeo saiu só com a fala editada, e pedir de novo não resolve sozinho.`
+          : `A montagem de efeitos de ${peca} do vídeo ${p.videoJobId} falhou três vezes (a última com os parâmetros leves) e parou.`,
         "",
         `Arquivo: ${v.originalName ?? "(sem nome)"}`,
         `Cliente: ${dono?.email ?? v.userId}`,
         `Projeto: ${base}/projects/${v.projectId}/live`,
         `Último motivo: ${p.motivo.slice(0, 600)}`,
         "",
-        "O cliente vê o aviso \"A montagem de efeitos falhou; o vídeo abaixo tem só a edição de fala\" e o botão \"Tentar a montagem de novo\", que não cobra nada. Vale olhar os registros do worker no Railway antes.",
+        p.semNovaTentativa
+          ? "O cliente vê o aviso de que os efeitos não saíram e que não paga por eles (a devolução sai sozinha quando houve cobrança), sem o botão de tentar de novo. O que faltou está no motivo acima."
+          : "O cliente vê o aviso \"A montagem de efeitos falhou; o vídeo abaixo tem só a edição de fala\" e o botão \"Tentar a montagem de novo\", que não cobra nada. Vale olhar os registros do worker no Railway antes.",
       ].join("\n"),
     }).catch(() => false);
   }

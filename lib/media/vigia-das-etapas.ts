@@ -14,6 +14,10 @@ import {
 } from "@/lib/media/video-state";
 import { assinarCorpo, CABECALHO_ASSINATURA } from "@/lib/media/worker-token";
 import { enviarEmail } from "@/lib/email";
+import { Prisma } from "@prisma/client";
+import { decidirFalhaExplicita, ESPERA_DA_FALHA_S, JANELA_DA_FALHA_S, type FalhaTratada } from "@/lib/media/falha-explicita-do-video";
+import { avisarAdmins } from "@/lib/notificacoes/aviso-aos-admins";
+import { CODIGO_DA_ETAPA } from "@/lib/notificacoes/tipos";
 
 /**
  * O VIGIA DAS ETAPAS (01/10): quem retoma, NO SERVIDOR, a etapa de vídeo que
@@ -388,6 +392,155 @@ export async function contarRetomadaExtra(videoId: string, chave: "completo" | "
 export async function lerParaRetomar(videoId: string): Promise<LinhaDoVideo | null> {
   const [v] = await candidatos({ ids: [videoId], limite: 1 });
   return v ?? null;
+}
+
+// ─────────────────────────── as falhas explícitas (08/10) ───────────────────────────
+
+type LinhaDaFalha = {
+  id: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  updatedAt: Date;
+  durationSec: number | null;
+  projectId: string;
+  userId: string;
+  originalName: string | null;
+  clips: unknown;
+  aprovado: string | null;
+  tratada: FalhaTratada | null;
+};
+
+export type ResultadoDasFalhas = {
+  retomados: Array<{ id: string; etapa: string }>;
+  avisados: Array<{ id: string; etapa: string }>;
+};
+
+export type OpcoesDasFalhas = {
+  ids?: string[];
+  agora?: Date;
+  limite?: number;
+  /** Trocáveis na prova: despachar de verdade mandaria a produção trabalhar. */
+  despachar?: (videoId: string, passo: PassoDoPiloto) => Promise<boolean>;
+  consultarWorker?: (videoId: string) => Promise<EstadoNoWorker>;
+  avisarEquipe?: (v: LinhaDaFalha, etapa: string) => Promise<void>;
+};
+
+async function avisarEquipeDaFalha(v: LinhaDaFalha, etapa: string): Promise<void> {
+  const dono = await prisma.user.findUnique({ where: { id: v.userId }, select: { email: true } });
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
+  const codigo = CODIGO_DA_ETAPA[etapa as keyof typeof CODIGO_DA_ETAPA] ?? "VID";
+  await avisarAdmins({
+    chave: `falha-video:${v.id}:${v.updatedAt.toISOString()}`,
+    titulo: `Vídeo falhou de novo (${codigo})`,
+    texto: `${v.originalName ?? "Gravação"}: a etapa falhou ${v.attempts} vez(es), já com a nova tentativa do servidor. O motivo foi por e-mail.`,
+    assunto: `Vídeo falhou de novo (${codigo}): ${v.originalName ?? v.id}`,
+    corpo: [
+      `A etapa "${etapa}" do vídeo ${v.id} falhou ${v.attempts} vez(es), a última depois da nova tentativa automática, e não vai repetir sozinha.`,
+      "",
+      `Arquivo: ${v.originalName ?? "(sem nome)"}`,
+      `Cliente: ${dono?.email ?? v.userId}`,
+      `Projeto: ${base}/projects/${v.projectId}/live`,
+      `Erro gravado: ${(v.error ?? "(sem erro gravado)").slice(0, 800)}`,
+      "",
+      v.attempts >= MAX_TENTATIVAS
+        ? "O cliente não tem mais o botão de tentar de novo (três tentativas). Vale olhar os registros do worker no Railway e da Vercel."
+        : "O cliente vê o aviso com o código e o botão de tentar de novo. Vale olhar os registros do worker no Railway e da Vercel antes de ele clicar.",
+    ].join("\n"),
+  });
+}
+
+/**
+ * AS FALHAS EXPLÍCITAS DO VÍDEO (08/10): o vídeo em "failed" por um erro
+ * gravado (não por prazo). A primeira falha ganha uma nova tentativa pelo
+ * servidor; a segunda manda o e-mail à equipe. A decisão é pura
+ * (lib/media/falha-explicita-do-video.ts); aqui moram a tomada atômica e o
+ * despacho. A tomada grava `retomadas.falhaExplicita` com a marca da falha
+ * (o `updatedAt` dela) SEM mexer no `updatedAt`, para o sino e a tela
+ * continuarem medindo a falha pelo instante em que ela aconteceu.
+ *
+ * Nunca lança: o cron segue com o resto.
+ */
+export async function vigiarFalhas(opcoes: OpcoesDasFalhas = {}): Promise<ResultadoDasFalhas> {
+  const r: ResultadoDasFalhas = { retomados: [], avisados: [] };
+  const agora = opcoes.agora ?? new Date();
+  let linhas: LinhaDaFalha[] = [];
+  try {
+    const desde = new Date(agora.getTime() - JANELA_DA_FALHA_S * 1000);
+    const ate = new Date(agora.getTime() - ESPERA_DA_FALHA_S * 1000);
+    linhas = await prisma.$queryRaw<LinhaDaFalha[]>`
+      SELECT id, status, attempts, error, "updatedAt", "durationSec", "projectId", "userId", "originalName", clips,
+             "completoMontagem" -> 'roteiro' ->> 'aprovadoEm' AS aprovado,
+             retomadas -> 'falhaExplicita' AS tratada
+      FROM video_jobs
+      WHERE status = 'failed'
+        AND "updatedAt" > ${desde} AND "updatedAt" < ${ate}
+        ${opcoes.ids ? Prisma.sql`AND id = ANY(${opcoes.ids})` : Prisma.empty}
+      ORDER BY "updatedAt" DESC
+      LIMIT ${opcoes.limite ?? 10}`;
+  } catch (e) {
+    console.error("[vigia] leitura das falhas falhou:", e);
+    return r;
+  }
+
+  if (!linhas.length) return r;
+  // Import tardio: o vigia também roda na rota de status e nos callbacks, e o
+  // módulo do roteiro puxa o editor inteiro. Só a falha precisa dele.
+  const { roteiroLigado } = await import("@/lib/media/roteiro-da-edicao");
+  for (const v of linhas) {
+    try {
+      const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{ midia?: { vertical?: unknown } | null }>;
+      const temTrechos = trechos.length > 0;
+      const temCortes = trechos.some((t) => t?.midia?.vertical);
+      const decisao = decidirFalhaExplicita(
+        {
+          status: v.status,
+          attempts: v.attempts,
+          error: v.error,
+          updatedAt: v.updatedAt,
+          temTranscricao: v.durationSec !== null,
+          temTrechos,
+          temCortes,
+          roteiroPendente: roteiroLigado() && temTrechos && !temCortes && !v.aprovado,
+          tratada: v.tratada,
+        },
+        agora
+      );
+      if (decisao.acao === "nada") continue;
+      // O corte que o worker ainda está fazendo (a rota marcou "failed" depois
+      // de o worker aceitar, por timeout de 30 s): repetir cortaria duas vezes.
+      if (decisao.acao === "retomar" && decisao.etapa === "cortar") {
+        const noWorker = await (opcoes.consultarWorker ?? corteNoWorker)(v.id).catch(() => "desconhecido" as const);
+        if (noWorker === "vivo") continue;
+      }
+      const registro: FalhaTratada = { marca: decisao.marca, acao: decisao.acao === "retomar" ? "retomada" : "avisada", em: agora.toISOString() };
+      const pegou = await prisma.$executeRaw`
+        UPDATE video_jobs SET
+          retomadas = jsonb_set(COALESCE(retomadas, '{}'::jsonb), ${caminho("falhaExplicita")}::text[], ${JSON.stringify(registro)}::jsonb, true)
+        WHERE id = ${v.id} AND status = 'failed'
+          AND "updatedAt" = ${decisao.marca}::timestamp
+          AND COALESCE(retomadas -> 'falhaExplicita' ->> 'marca', '') <> ${decisao.marca}`;
+      if (pegou === 0) continue;
+      if (decisao.acao === "retomar") {
+        const saiu = await (opcoes.despachar ?? despacharPasso)(v.id, decisao.passo).catch(() => false);
+        if (!saiu) {
+          // O despacho não saiu: solta a marca para a próxima passada tentar.
+          await prisma.$executeRaw`
+            UPDATE video_jobs SET retomadas = retomadas - 'falhaExplicita'
+            WHERE id = ${v.id} AND retomadas -> 'falhaExplicita' ->> 'marca' = ${decisao.marca}`.catch(() => 0);
+          continue;
+        }
+        console.warn(`[vigia][${v.id}] falha explícita em "${decisao.etapa}": nova tentativa pelo servidor (${decisao.passo})`);
+        r.retomados.push({ id: v.id, etapa: decisao.etapa });
+      } else {
+        await (opcoes.avisarEquipe ?? avisarEquipeDaFalha)(v, decisao.etapa).catch((e) => console.error(`[vigia][${v.id}] aviso da falha falhou:`, e));
+        r.avisados.push({ id: v.id, etapa: decisao.etapa });
+      }
+    } catch (e) {
+      console.error(`[vigia][${v.id}] falha explícita:`, e);
+    }
+  }
+  return r;
 }
 
 /**

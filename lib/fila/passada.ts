@@ -4,6 +4,7 @@ import {
   concluir,
   falhar,
   estadoDoGrupo,
+  MAX_TENTATIVAS,
   type TrabalhoReservado,
 } from "@/lib/fila/trabalhos";
 import { rodarTrabalhoDaCampanha, fecharCampanha } from "@/lib/pipeline/executar";
@@ -228,7 +229,12 @@ async function registrarFalhaNaExecucao(runId: string, tipo: string, tentativa: 
   logs.push({
     agent: "Sistema",
     status: "warning",
-    message: `Tentativa ${tentativa} d${etapa} falhou e vai repetir: ${motivo.slice(0, 200)}`,
+    // A última tentativa não repete (08/10): o log da campanha do Igor dizia "vai repetir" na
+    // terceira, e a fila já tinha marcado o dia como falhou. A frase só promete o que acontece.
+    message:
+      tentativa >= MAX_TENTATIVAS
+        ? `Tentativa ${tentativa} d${etapa} falhou e foi a última, não repete mais: ${motivo.slice(0, 200)}`
+        : `Tentativa ${tentativa} d${etapa} falhou e vai repetir: ${motivo.slice(0, 200)}`,
     timestamp: new Date().toISOString(),
   });
   await prisma.pipelineRun.update({ where: { id: runId }, data: { logs: logs as never } });

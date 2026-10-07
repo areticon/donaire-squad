@@ -51,6 +51,12 @@ export type MontagemDoCorte = {
    * aviso claro e o botão "Tentar a montagem de novo" na tela.
    */
   falhaTecnica?: boolean;
+  /**
+   * Pedir de novo não resolve esta falha (08/10, o completo aprovado sem o
+   * plano da jornada): sem o botão, e com a frase própria em `detalheDoCliente`.
+   */
+  semNovaTentativa?: boolean;
+  detalheDoCliente?: string | null;
   /** Quando os admins foram avisados por e-mail desta desistência (uma vez). */
   avisadoEm?: string | null;
   /** A conferência das imagens contra o perfil do projeto (02/10). */
@@ -121,7 +127,13 @@ export function lerMontagem(
   // NUNCA "FINALIZADO" SEM EDIÇÃO EM SILÊNCIO (01/10, parte 240): o Bruno leu
   // "edição finalizada" num completo que tinha voltado sem efeitos porque o
   // render quebrou. Falha técnica é dita com todas as letras, com a saída.
-  if (m.falhaTecnica) return { estado: m.estado, trabalhando: false, rotulo: ROTULO_DA_FALHA, detalhe: DETALHE_DA_FALHA, podeTentarDeNovo: true };
+  if (m.falhaTecnica) {
+    // A falha sem nova tentativa diz o que houve de verdade (08/10): a frase
+    // padrão fala em "três tentativas" e oferece o botão, e nenhum dos dois
+    // vale para ela.
+    if (m.semNovaTentativa) return { estado: m.estado, trabalhando: false, rotulo: ROTULO_DA_FALHA, detalhe: m.detalheDoCliente ?? m.motivo ?? DETALHE_DA_FALHA, podeTentarDeNovo: false };
+    return { estado: m.estado, trabalhando: false, rotulo: ROTULO_DA_FALHA, detalhe: DETALHE_DA_FALHA, podeTentarDeNovo: true };
+  }
   // Estado parado além do prazo também é falha, e não "montando" para sempre.
   if (TRABALHANDO.includes(m.estado)) {
     return { estado: "sem-montagem", trabalhando: false, rotulo: ROTULO_DA_FALHA, detalhe: "A montagem parou no meio e não voltou. Você pode pedir de novo sem pagar nada.", podeTentarDeNovo: true };
