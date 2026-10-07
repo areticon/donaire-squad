@@ -18,8 +18,10 @@ import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
  * componentes que já existiam:
  *   - as FOTOS (a Biblioteca de materiais): da pessoa, do produto, do lugar.
  *     São as ÚNICAS fotos reais que entram nos posts;
- *   - o ESTILO DOS POSTS: escrever no chat ou escolher da biblioteca, e já
- *     fica aprovado.
+ *   - o ESTILO DOS POSTS: criar falando ou escrevendo, ou escolher da
+ *     biblioteca, e já fica aprovado. 08/10, à tarde: é o modelo que vem
+ *     preenchido em cada post da campanha (components/estilo-dos-posts/
+ *     modelos-dos-posts.tsx), onde a pessoa troca post a post.
  * Nada aqui trava o avanço: quem pular é perguntado de novo antes da primeira
  * campanha com arte (a janela da campanha e a jornada do vídeo).
  */
@@ -46,7 +48,7 @@ export function StepMateriais({ projectId }: { projectId: string }) {
       <EstiloDosPosts
         projectId={projectId}
         sempreAberto
-        explicacao="Escreva do seu jeito ou escolha um estilo da biblioteca. Escolheu, está aprovado: as artes das campanhas já saem nele."
+        explicacao="Fale ou escreva do seu jeito, ou escolha um estilo da biblioteca. Na campanha, cada post escolhe o seu modelo antes de gerar, e este estilo vem como sugestão até você usar outro."
       />
     </div>
   );

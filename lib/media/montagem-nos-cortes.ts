@@ -17,6 +17,8 @@ import {
 } from "@/lib/media/limpeza";
 import { noTempoDoCorte } from "@/lib/media/legenda-falada";
 import { normalizarEscolha } from "@/lib/media/catalogo-de-estilos";
+import { escolhaNoEstiloDoDia } from "@/lib/media/estilo-do-comando";
+import { diaDoCorte, diasDeVideoCurto, planoDoRun } from "@/lib/media/semana-do-video";
 import { coresDaMarca, familiaDaLinguagem } from "@/lib/media/capa-composta";
 import { dirigirMontagem } from "@/lib/media/diretor-de-montagem";
 import { gerarAssetsDaMontagem, recortesDoProjeto, urlsDosAssets, type AssetGerado } from "@/lib/media/assets-da-montagem";
@@ -322,8 +324,30 @@ export type VideoDoPasso = {
   durationSec: number | null;
   clips: unknown;
   transcript: unknown;
-  project: { niche: string | null; colorPalette: string | null; logoUrl: string | null; videoEstiloEscolha: unknown; videoStyle: string | null; videoTerms: string | null; videoMusicUrl?: string | null };
+  project: { niche: string | null; colorPalette: string | null; logoUrl: string | null; videoEstiloEscolha: unknown; videoStyle: string | null; videoTerms: string | null; videoMusicUrl?: string | null; videoSemana?: unknown };
+  /**
+   * O estilo de edição escolhido para o DIA deste corte (08/10), quando ele é
+   * outro que o do projeto: a escolha do projeto já vem reescrita nele
+   * (`videoNoEstiloDoDia`), e o editor por comando usa o comando do estilo do
+   * dia no lugar do comando do projeto.
+   */
+  estiloDoDia?: string | null;
 };
+
+/**
+ * O VÍDEO NO ESTILO DO DIA DO CORTE (08/10/2026). Regra do Bruno: "sexta é um
+ * vídeo curto (short, reel e tiktok) escolher o estilo". O corte que cai num
+ * dia de vídeo curto (a mesma conta do quadro, `diaDoCorte`) é montado no
+ * estilo de edição escolhido para aquele dia: uma cópia do vídeo com a
+ * escolha do projeto reescrita, para todo passo da montagem (diretor, editor,
+ * revisão) ler o mesmo estilo sem saber de onde ele veio. Dia sem escolha, ou
+ * com o mesmo estilo do projeto: o vídeo como estava. Puro.
+ */
+export function videoNoEstiloDoDia<V extends Pick<VideoDoPasso, "project"> & { estiloDoDia?: string | null }>(video: V, estiloDoDia: string | null | undefined): V {
+  const outro = escolhaNoEstiloDoDia(video.project.videoEstiloEscolha, video.project.videoStyle, estiloDoDia);
+  if (!outro) return video;
+  return { ...video, estiloDoDia: outro.escolha.estiloId, project: { ...video.project, videoEstiloEscolha: outro.escolha, videoStyle: outro.videoStyle } };
+}
 
 /**
  * As MESMAS bordas do corte simples (lib/media/bordas-do-corte.ts), e não uma
@@ -921,7 +945,9 @@ async function editarCorteSobMedida(video: VideoDoPasso, indice: number, t: Trec
       const smConf: SobMedidaDoCorte = { ...sm, fala: conf.fala, gancho: ganchoConf };
       const avisosDaFala = [...conf.sobras.map((s) => `fala conferida: saiu "${s.texto}" (${s.motivo}, ${s.quem})`), ...(conf.erro ? [conf.erro] : [])];
       const quadros4 = cru ? await comPrazo(quadrosPeloWorker(cru, 320)([0.2, 0.4, 0.6, 0.8].map((f) => +(f * conf.fala.duracao).toFixed(2))), PRAZO_DOS_QUADROS_MS, []) : [];
-      const comando = (await lerComandoDoProjeto(video.projectId).catch(() => null)) ?? comandoPadrao(ctx.escolha);
+      // O dia do corte pediu outro estilo de edição (08/10): o comando é o
+      // daquele estilo, e não o comando do projeto (que é de outro estilo).
+      const comando = video.estiloDoDia ? comandoPadrao(ctx.escolha) : ((await lerComandoDoProjeto(video.projectId).catch(() => null)) ?? comandoPadrao(ctx.escolha));
       const p = await planejarPorComando(await entradaDoPlanoDoCorte(video, t, smConf, comando, quadros4));
       p.avisos = [...avisosDaFala, ...p.avisos];
       const novo: SobMedidaDoCorte = {
@@ -1228,16 +1254,23 @@ export async function avancarMontagens(opcoes: { orcamentoMs?: number } = {}): P
     LIMIT 30`;
   for (const { id } of ids) {
     if (Date.now() - inicio > orcamento) break;
-    const video = (await prisma.videoJob.findUnique({
+    const videoDoProjeto = (await prisma.videoJob.findUnique({
       where: { id },
       select: {
         id: true, projectId: true, blobUrl: true, durationSec: true, clips: true, transcript: true,
-        project: { select: { niche: true, colorPalette: true, logoUrl: true, videoEstiloEscolha: true, videoStyle: true, videoTerms: true, videoMusicUrl: true } },
+        project: { select: { niche: true, colorPalette: true, logoUrl: true, videoEstiloEscolha: true, videoStyle: true, videoTerms: true, videoMusicUrl: true, videoSemana: true } },
       },
     })) as VideoDoPasso | null;
-    if (!video) continue;
-    const trechos = (video.clips as TrechoComMontagem[] | null) ?? [];
+    if (!videoDoProjeto) continue;
+    const trechos = (videoDoProjeto.clips as TrechoComMontagem[] | null) ?? [];
+    // O ESTILO DE CADA DIA DE VÍDEO CURTO (08/10): o plano congelado no run
+    // deste vídeo (ou, antes do quadro, a semana do projeto).
+    const run = await prisma.pipelineRun
+      .findFirst({ where: { projectId: videoDoProjeto.projectId, archived: false, config: { path: ["videoJobId"], equals: videoDoProjeto.id } }, select: { config: true } })
+      .catch(() => null);
+    const diasCurtos = diasDeVideoCurto(planoDoRun(run?.config, videoDoProjeto.project.videoSemana));
     for (const [i, t] of trechos.entries()) {
+      const video = videoNoEstiloDoDia(videoDoProjeto, diaDoCorte(trechos, i, diasCurtos)?.estiloId);
       // O diretor e as imagens levam de 2 a 6 min (com a revisão do diretor):
       // só começa um corte novo nos primeiros 90 s da passada, para a soma com
       // a fila de campanhas caber no teto de 800 s do cron.

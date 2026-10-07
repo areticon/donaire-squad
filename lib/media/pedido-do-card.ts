@@ -40,6 +40,7 @@ import { fotoDoClienteEntra, soTexto } from "@/lib/modelos-de-arte/prompts-com-f
 import { descreverIntercalacao, escolherFotosDasLaminas, pedidoDeIntercalar, type FotoDaLamina } from "@/lib/media/fotos-do-carrossel";
 import { capturarFeedbackDoChatDoCard } from "@/lib/feedback/captura";
 import { fotosDasLaminasRefeitas, metadataDaFoto } from "@/lib/media/foto-da-peca";
+import { modeloDoPostValido, type ModeloDoPost } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -601,7 +602,7 @@ export async function executarPedido(ctx: Contexto): Promise<void> {
       };
       // Confere ANTES de desenhar: o carrossel refaz lâmina a lâmina e engole
       // o erro de cada uma, então a trava precisa ser vista aqui, de uma vez.
-      const travada = posts.some((p) => tipoGeraArte(p.mediaType)) && (await marcaDaArte(card.projectId).catch(() => null))?.identidadeAprovada === false;
+      const travada = posts.some((p) => tipoGeraArte(p.mediaType)) && (await marcaDaArte(card.projectId, { modeloDoPost: modeloDosPosts(posts) }).catch(() => null))?.identidadeAprovada === false;
       // SEM CARD DA DIANA, MAS COM ARTE NO POST (05/10): o card nasce agora,
       // para guardar a arte e o histórico; "não tem imagem" só quando nenhum
       // post do dia tem arte.
@@ -751,6 +752,20 @@ type CardComProjeto = Prisma.CampaignCardGetPayload<{ include: { project: true }
 type PostDoDia = { id: string; platform: string; content: string; imageUrl: string | null; mediaType: string | null; metadata: unknown };
 
 /**
+ * O MODELO ESCOLHIDO PARA O POST (08/10), gravado no metadata pela esteira:
+ * o refazer pelo chat do card parte dele, como a primeira arte partiu. Um
+ * modelo pedido no chat ("no modelo de papel") continua passando por cima
+ * (marcaDoPedido). Null quando o post não tem escolha gravada.
+ */
+function modeloDosPosts(posts: Array<{ metadata: unknown }>): ModeloDoPost | null {
+  for (const p of posts) {
+    const m = modeloDoPostValido((p.metadata as { modeloDoPost?: unknown } | null)?.modeloDoPost);
+    if (m && (m.designId || m.catalogoId)) return m;
+  }
+  return null;
+}
+
+/**
  * O CARD DA DIANA QUE FALTAVA (05/10): o post único de X saiu com arte pelo
  * "Aprovar e gerar" sem nunca ter um card de mídia. O pedido de arte precisa
  * de um lugar para guardar a arte e o histórico, então ele nasce aqui, com a
@@ -811,7 +826,7 @@ async function refazerCarrossel(o: {
   const direcao = await direcaoDaPeca({ projectId: daDiana.projectId, runId, dayOfWeek: dia, infografico: false, preferido: null }).catch(() => ({ styleHint: "" }));
   // O que já estava gravado (tratamento, modelo, ajustes) vale até o pedido mudar.
   const gravado = arteGravadaDoDia(daDiana.metadata, o.posts.find((p) => p.imageUrl)?.metadata);
-  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId }), acao, gravado);
+  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId, modeloDoPost: modeloDosPosts(o.posts) }), acao, gravado);
   const estilo = [
     direcao.styleHint,
     `CLIENT REQUEST FOR THIS CAROUSEL: ${acao.instrucao}`,
@@ -928,7 +943,7 @@ async function refazerArteUnica(o: {
   const base = o.posts[0];
   const textoDoPost = base?.content ?? "";
   const gravado = arteGravadaDoDia(daDiana.metadata, o.posts.find((p) => p.imageUrl)?.metadata);
-  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId: daDiana.runId }), acao, gravado);
+  const { marca, decidido, mudou } = marcaDoPedido(await marcaDaArte(daDiana.projectId, { runId: daDiana.runId, modeloDoPost: modeloDosPosts(o.posts) }), acao, gravado);
   const ehInfografico = o.formato === "infographic";
   const pedidoVisual = `${acao.instrucao}${acao.cor ? `. Use ${acao.cor} as the dominant accent color.` : ""}${decidido.tratamento ? ` ${direcaoParaOTratamento(decidido.tratamento)}` : ""}`;
   try {

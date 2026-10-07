@@ -57,6 +57,8 @@ export function GaleriaDaBiblioteca({
   semEscrever = false,
   aoEscolher,
   descricao,
+  filtrar,
+  rotuloDoUsar,
 }: {
   projectId?: string | null;
   exemplo?: boolean;
@@ -71,6 +73,13 @@ export function GaleriaDaBiblioteca({
   aoEscolher?: (d: DesignDaGaleria) => Promise<void>;
   /** O texto abaixo do título, quando quem chama quer outro. */
   descricao?: string;
+  /**
+   * Só os designs que servem a quem chama (08/10, a escolha por post: o
+   * carrossel só vê os modelos que têm carrossel).
+   */
+  filtrar?: (d: DesignDaGaleria) => boolean;
+  /** O texto do botão de escolher (08/10, "Usar neste post"), no lugar de "Usar este" e "No seu projeto". */
+  rotuloDoUsar?: string;
 }) {
   const [designs, setDesigns] = useState<DesignDaGaleria[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -130,7 +139,7 @@ export function GaleriaDaBiblioteca({
       .catch(() => {});
   }, [ehAdmin, designs, exemplo]);
 
-  const lista = useMemo(() => (designs ? filtrarGaleria(designs, filtro, busca) : []), [designs, filtro, busca]);
+  const lista = useMemo(() => (designs ? filtrarGaleria(filtrar ? designs.filter(filtrar) : designs, filtro, busca) : []), [designs, filtro, busca, filtrar]);
   const contagem = useMemo(() => {
     const c: Record<Filtro, number> = { todos: designs?.length ?? 0, video: 0, imagem: 0 };
     for (const d of designs ?? []) c[d.tipo]++;
@@ -374,12 +383,12 @@ export function GaleriaDaBiblioteca({
         </p>
       ) : lista.length === 0 ? (
         <p className="rounded-lg border px-3 py-6 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          Nenhum design com esse filtro. Escreva o seu: ele entra aqui.
+          {semEscrever ? "Nenhum design com esse filtro." : "Nenhum design com esse filtro. Escreva o seu: ele entra aqui."}
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
           {lista.map((d, i) => (
-            <CartaoDoDesign key={d.id} design={d} posicao={i + 1} usando={usando === d.id} aoAbrir={() => setAberto(d)} aoUsar={() => void usar(d)} />
+            <CartaoDoDesign key={d.id} design={d} posicao={i + 1} usando={usando === d.id} rotuloDoUsar={rotuloDoUsar} aoAbrir={() => setAberto(d)} aoUsar={() => void usar(d)} />
           ))}
         </div>
       )}
@@ -391,6 +400,7 @@ export function GaleriaDaBiblioteca({
           mudando={mudandoVisibilidade}
           aoFechar={() => setAberto(null)}
           aoUsar={() => void usar(aberto)}
+          rotuloDoUsar={rotuloDoUsar}
           aoMudarVisibilidade={(publico) => void mudarVisibilidade(aberto, publico)}
         />
       )}
@@ -441,7 +451,7 @@ function Selos({ design }: { design: DesignDaGaleria }) {
   );
 }
 
-function CartaoDoDesign({ design, posicao, usando, aoAbrir, aoUsar }: { design: DesignDaGaleria; posicao: number; usando: boolean; aoAbrir: () => void; aoUsar: () => void }) {
+function CartaoDoDesign({ design, posicao, usando, rotuloDoUsar, aoAbrir, aoUsar }: { design: DesignDaGaleria; posicao: number; usando: boolean; rotuloDoUsar?: string; aoAbrir: () => void; aoUsar: () => void }) {
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border" style={{ borderColor: design.doProjeto ? "#f97316" : "var(--border)", background: "var(--bg-surface)" }}>
       <button type="button" onClick={aoAbrir} className="relative block w-full text-left" aria-label={`Abrir ${design.nome}`}>
@@ -463,11 +473,11 @@ function CartaoDoDesign({ design, posicao, usando, aoAbrir, aoUsar }: { design: 
             type="button"
             onClick={aoUsar}
             disabled={usando}
-            className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold", design.doProjeto ? "border" : "bg-orange-500 text-white")}
-            style={design.doProjeto ? { borderColor: "#f97316", color: "#f97316" } : undefined}
+            className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold", design.doProjeto && !rotuloDoUsar ? "border" : "bg-orange-500 text-white")}
+            style={design.doProjeto && !rotuloDoUsar ? { borderColor: "#f97316", color: "#f97316" } : undefined}
           >
-            {usando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : design.doProjeto ? <Check className="h-3.5 w-3.5" /> : null}
-            {design.doProjeto ? "No seu projeto" : "Usar este"}
+            {usando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : design.doProjeto && !rotuloDoUsar ? <Check className="h-3.5 w-3.5" /> : null}
+            {rotuloDoUsar ?? (design.doProjeto ? "No seu projeto" : "Usar este")}
           </button>
           <button type="button" onClick={aoAbrir} className="text-xs font-medium underline-offset-2 hover:underline" style={{ color: "var(--text-muted)" }}>
             Ver ficha
@@ -484,6 +494,7 @@ function FichaDoDesign({
   mudando,
   aoFechar,
   aoUsar,
+  rotuloDoUsar,
   aoMudarVisibilidade,
 }: {
   design: DesignDaGaleria;
@@ -491,6 +502,7 @@ function FichaDoDesign({
   mudando: boolean;
   aoFechar: () => void;
   aoUsar: () => void;
+  rotuloDoUsar?: string;
   aoMudarVisibilidade: (publico: boolean) => void;
 }) {
   const doAutor = design.origem === "cliente" && design.meu === true;
@@ -549,7 +561,7 @@ function FichaDoDesign({
             )}
             <button type="button" onClick={aoUsar} disabled={usando} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {usando ? <Loader2 className="h-4 w-4 animate-spin" /> : design.doProjeto ? <Check className="h-4 w-4" /> : null}
-              {design.doProjeto ? "Já está no seu projeto" : design.tipo === "video" ? "Usar nos meus vídeos" : "Usar nas minhas artes"}
+              {rotuloDoUsar ?? (design.doProjeto ? "Já está no seu projeto" : design.tipo === "video" ? "Usar nos meus vídeos" : "Usar nas minhas artes")}
             </button>
           </div>
         </div>

@@ -1,11 +1,15 @@
-import { designsDoProjeto } from "@/lib/biblioteca-de-design/registro";
+import { prisma } from "@/lib/db/prisma";
+import { designsDoProjeto, lerDesign } from "@/lib/biblioteca-de-design/registro";
 import type { DesignDaGaleria } from "@/lib/biblioteca-de-design/tipos";
 import { artesAguardandoIdentidade } from "@/lib/media/artes-aguardando-identidade";
+import { estiloDoCatalogo } from "@/lib/media/catalogo-de-estilos";
+import { estiloQueVale } from "@/lib/media/estilo-do-comando";
+import { normalizarComando } from "@/lib/media/editor-por-comando/comando";
 import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
 import { lerModelosEscolhidos, salvarModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import { contarArtesEsperando } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
-import type { EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/tipos";
+import { modeloDoPostValido, type EstadoDoEstiloDosPosts, type ModeloDoPost, type UltimosModelos } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * O ESTILO DOS POSTS NO BANCO (08/10/2026): escrever ou escolher um design de
@@ -18,6 +22,10 @@ import type { EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/tipos";
  * Sem coluna nova: o design aprovado vai no registro da identidade
  * (ProjectMemory estilo/identidade-visual, campo `design`), e a letra e os
  * papéis das cores seguem os gravados (ou o padrão da paleta da Marca).
+ *
+ * 08/10, a escolha por post: o último modelo usado em cada tipo de post
+ * (foto, carrossel, vídeo curto) fica em ProjectMemory estilo/modelos-dos-posts,
+ * e é com ele que a escolha do dia vem preenchida.
  */
 
 type DesignParaAprovar = Pick<DesignDaGaleria, "id" | "nome" | "tipo" | "catalogoId" | "linguagem">;
@@ -50,9 +58,76 @@ export async function designAprovadoDoProjeto(projectId: string, designId: strin
   return ligados.find((d) => d.id === designId) ?? null;
 }
 
+/**
+ * O design que um post pode usar: o que o projeto enxerga na biblioteca
+ * (público, ou criado por ele) ou o que já está ligado a ele (o autor tirou
+ * da galeria depois). Null quando não existe ou é de vídeo.
+ */
+export async function designDoPost(projectId: string, designId: string): Promise<DesignDaGaleria | null> {
+  const d = (await lerDesign(designId, { projectId }).catch(() => null)) ?? (await designAprovadoDoProjeto(projectId, designId));
+  return d && d.tipo === "imagem" ? d : null;
+}
+
+// ─────────────────────────── o último modelo por tipo ───────────────────────────
+
+const TIPO_DOS_ULTIMOS = "estilo";
+const CHAVE_DOS_ULTIMOS = "modelos-dos-posts";
+const TIPOS_DOS_ULTIMOS = ["image", "carousel", "short"] as const;
+export type TipoDoUltimo = (typeof TIPOS_DOS_ULTIMOS)[number];
+
+export function tipoDoUltimoValido(v: unknown): v is TipoDoUltimo {
+  return typeof v === "string" && (TIPOS_DOS_ULTIMOS as readonly string[]).includes(v);
+}
+
+export async function lerUltimosModelos(projectId: string): Promise<UltimosModelos> {
+  const m = await prisma.projectMemory
+    .findUnique({ where: { projectId_type_key: { projectId, type: TIPO_DOS_ULTIMOS, key: CHAVE_DOS_ULTIMOS } }, select: { value: true } })
+    .catch(() => null);
+  const v = (m?.value ?? {}) as Record<string, unknown>;
+  const out: UltimosModelos = {};
+  for (const t of TIPOS_DOS_ULTIMOS) {
+    const modelo = modeloDoPostValido(v[t]);
+    if (modelo) out[t] = modelo;
+  }
+  return out;
+}
+
+/** Grava o último modelo usado num tipo de post (a escolha do dia vem preenchida com ele na próxima vez). */
+export async function salvarUltimoModelo(projectId: string, tipo: TipoDoUltimo, modelo: ModeloDoPost): Promise<UltimosModelos> {
+  const atuais = await lerUltimosModelos(projectId);
+  const valido = modeloDoPostValido(modelo);
+  if (!valido) return atuais;
+  const novos: UltimosModelos = { ...atuais, [tipo]: valido };
+  await prisma.projectMemory.upsert({
+    where: { projectId_type_key: { projectId, type: TIPO_DOS_ULTIMOS, key: CHAVE_DOS_ULTIMOS } },
+    create: { projectId, type: TIPO_DOS_ULTIMOS, key: CHAVE_DOS_ULTIMOS, value: novos as never },
+    update: { value: novos as never },
+  });
+  return novos;
+}
+
+/**
+ * O estilo de edição que vale hoje no projeto (o do comando, quando ele
+ * aponta um estilo do catálogo; senão a escolha da jornada), para o vídeo
+ * curto vir preenchido com ele.
+ */
+export async function edicaoDoProjeto(projectId: string): Promise<ModeloDoPost | null> {
+  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { videoEstiloEscolha: true, videoStyle: true, config: true } }).catch(() => null);
+  if (!p) return null;
+  const comando = normalizarComando((p.config as { comandoDoVideo?: unknown } | null)?.comandoDoVideo ?? null);
+  const estiloId = estiloQueVale(comando, p.videoEstiloEscolha, p.videoStyle);
+  const e = estiloDoCatalogo(estiloId);
+  return e ? { estiloId: e.id, nome: e.nome } : null;
+}
+
 /** O estado que o passo do estilo mostra. */
 export async function estadoDoEstiloDosPosts(projectId: string, podeMudar: boolean): Promise<EstadoDoEstiloDosPosts> {
-  const [estado, aguardando] = await Promise.all([estadoDaIdentidade(projectId), artesAguardandoIdentidade(projectId).catch(() => [])]);
+  const [estado, aguardando, ultimos, edicao] = await Promise.all([
+    estadoDaIdentidade(projectId),
+    artesAguardandoIdentidade(projectId).catch(() => []),
+    lerUltimosModelos(projectId),
+    edicaoDoProjeto(projectId),
+  ]);
   const design = await designAprovadoDoProjeto(projectId, estado.design);
   return {
     aprovada: estado.aprovada,
@@ -61,5 +136,7 @@ export async function estadoDoEstiloDosPosts(projectId: string, podeMudar: boole
     modelos: design ? [] : estado.modelos.map((id) => ({ id, nome: modeloPorId(id)?.nome ?? id })),
     aguardando: contarArtesEsperando(aguardando),
     podeMudar,
+    ultimos,
+    edicao,
   };
 }

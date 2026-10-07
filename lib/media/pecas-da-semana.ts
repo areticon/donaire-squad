@@ -495,7 +495,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
   if (dias.filter((d) => !cardsDoVideo.some((c) => c.dayOfWeek === d.dia && c.postId)).length > 1) {
     await aquecerPrefixo(prefixo, { runId: run.id, projectId: video.projectId });
   }
-  await Promise.all(dias.map(async ({ dia, formato, escolhido, redes }) => {
+  await Promise.all(dias.map(async ({ dia, formato, escolhido, redes, modelo }) => {
     const derivadosDoDia = cardsDoVideo.filter(
       (c) => c.dayOfWeek === dia && (c.metadata as { derivado?: boolean } | null)?.derivado
     );
@@ -682,7 +682,11 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
     // 08/10: a marca do dia não leva mais o vídeo. Era por ele que a arte
     // achava o print da gravação para usar como foto da pessoa; só foto da
     // Biblioteca de materiais entra num post (lib/media/referencia-da-pessoa.ts).
-    const marcaDoDia = tipoGeraArte(formato) ? await marcaDaArte(video.projectId, { runId: run.id }) : null;
+    // O MODELO DO POST (08/10): o escolhido para este dia na jornada manda na
+    // arte, e escolher é aprovar este post (lib/media/arte-com-frase.tsx).
+    const marcaDoDia = tipoGeraArte(formato) ? await marcaDaArte(video.projectId, { runId: run.id, modeloDoPost: modelo ?? null }) : null;
+    // Gravado no post: o refazer do chat do card parte do mesmo modelo.
+    const doModelo = modelo && !modelo.marca ? { modeloDoPost: modelo } : {};
     const aguardandoIdentidade = Boolean(marcaDoDia && marcaDoDia.identidadeAprovada === false);
     const TEXTO_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escreva como quer o estilo dos posts ou escolha um da biblioteca em Configurações (aba Estilo dos posts). Nenhum crédito de imagem foi gasto; a arte sai depois da escolha.`;
     /** O card da Diana: o aviso do recuo para o desenho em código vem antes do conteúdo. */
@@ -787,10 +791,10 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
           const url = artes.get(principal) ?? [...artes.values()][0];
           // Qual foto entrou na arte (08/10): a da biblioteca, gerada ou nenhuma; nunca o quadro do vídeo.
           const foto = metadataDaFoto([frase]);
-          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: url, extra: { frase, ...foto } });
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "image", imageUrl: url, extra: { frase, ...foto, ...doModelo } });
           await gravarCard(redator, { content: legenda, mediaType: "text", postId, extra: { rede: principal } });
           await gravarCard(AGENTES.diana, { content: conteudoDaDiana(`Imagem com a frase: "${frase}"`, [frase]), mediaType: "image", mediaUrl: url, postId, extra: { rede: principal, frase, ...foto } });
-          await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "image", imageUrl: artes.get(rede) ?? url, extra: { frase, ...foto } }));
+          await levarParaAsOutras(postId, legenda, (rede) => ({ mediaType: "image", imageUrl: artes.get(rede) ?? url, extra: { frase, ...foto, ...doModelo } }));
         }
       } else if (formato === "carousel") {
         const contextoDaLegenda = [
@@ -860,7 +864,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
             frases.map((frase) => arteDoDia(video, frase, direcao.styleHint, formatoDaPeca(principal, "carousel"), { projectId: video.projectId, runId: run.id }, frases[0], marcaDoDia ?? undefined))
           );
           const fotos = metadataDaFoto(frases);
-          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases, ...fotos } });
+          const postId = await criarPost({ platform: principal, socialAccountId: contaDe(principal), content: legenda, mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases, ...fotos, ...doModelo } });
           // A legenda também ganha o card do redator, como no dia de imagem.
           // Sem ele, o quadro não tinha de onde tirar o título da peça e o
           // sábado de 29/09 apareceu só como "Post" (a tela titula pelo redator).
@@ -872,7 +876,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
             postId,
             extra: { rede: principal, slides: frases, ...fotos },
           });
-          await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases, ...fotos } }));
+          await levarParaAsOutras(postId, legenda, () => ({ mediaType: "carousel", imageUrl: urls.join("|"), extra: { carrossel: true, slides: frases, ...fotos, ...doModelo } }));
         }
       } else if (formato === "infographic" && aguardandoIdentidade) {
         // Sem identidade aprovada o infográfico espera como a imagem e o

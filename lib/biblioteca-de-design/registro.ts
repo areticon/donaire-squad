@@ -1,9 +1,23 @@
 import { prisma } from "@/lib/db/prisma";
 import { compararComABiblioteca, TETO_DE_CANDIDATOS } from "@/lib/biblioteca-de-design/comparacao";
 import { escreverFichaDoDesign } from "@/lib/biblioteca-de-design/redator";
-import { fichaEstaLimpa, MARCA_DA_RESERVA, separarVisualDoCliente } from "@/lib/biblioteca-de-design/privacidade";
+import { fichaEstaLimpa, separarVisualDoCliente } from "@/lib/biblioteca-de-design/privacidade";
 import { sementePorCatalogo } from "@/lib/biblioteca-de-design/semente";
-import { filtrarGaleria, podeVerOPedido, semTravessao, TETO, tipoValido, type DesignDaGaleria, type TipoDeDesign, type VereditoDaComparacao } from "@/lib/biblioteca-de-design/tipos";
+import {
+  entradaParaAGaleria,
+  filtrarGaleria,
+  MARCA_DA_RESERVA,
+  pedidoSoVisual,
+  podeVerOPedido,
+  semTravessao,
+  TETO,
+  tipoValido,
+  type DadosDoCliente,
+  type DesignDaGaleria,
+  type MotivoDeFicarNoProjeto,
+  type TipoDeDesign,
+  type VereditoDaComparacao,
+} from "@/lib/biblioteca-de-design/tipos";
 
 /**
  * O REGISTRO DA BIBLIOTECA DE DESIGN NO BANCO (06/10/2026).
@@ -32,7 +46,7 @@ import { filtrarGaleria, podeVerOPedido, semTravessao, TETO, tipoValido, type De
  * (inclusive enquanto a migração não foi aplicada).
  */
 
-type LinhaDoDesign = {
+export type LinhaDoDesign = {
   id: string;
   tipo: string;
   nome: string;
@@ -151,84 +165,158 @@ export async function ligarAoProjeto(o: { projectId: string; designId: string; t
   });
 }
 
-/** Por que a entrada ficou só no projeto (null quando entrou na galeria). */
-export type MotivoDeFicarNoProjeto = "pedido-do-cliente" | "so-dado-do-cliente" | "ficha-com-dado-do-cliente" | "sem-conferencia" | null;
+export type { MotivoDeFicarNoProjeto } from "@/lib/biblioteca-de-design/tipos";
 
 export type ResultadoDoPedido = { design: DesignDaGaleria; veredito: VereditoDaComparacao["veredito"] | "repetido"; fichaPor?: "redator" | "reserva"; soNoProjeto?: MotivoDeFicarNoProjeto };
 
+/** O que a entrada nova grava: a ficha, o pedido (só o visual, na pública) e quem pediu, que nunca sai para a tela. */
+export type LinhaNova = {
+  tipo: TipoDeDesign;
+  nome: string;
+  descricao: string;
+  pedidoOriginal: string;
+  linguagem: string;
+  previaUrl: null;
+  origem: "cliente";
+  publico: boolean;
+  criadoPorProjectId: string;
+  criadoPorUserId: string;
+  agrupadoEmId: string | null;
+};
+
 /**
- * O FLUXO DE ENTRADA de um pedido escrito pelo cliente (o campo livre do
- * comando de vídeo, o pedido de arte). Null quando o texto é curto demais.
+ * O DEPÓSITO DA BIBLIOTECA (08/10): as poucas leituras e gravações do fluxo
+ * de entrada, atrás de uma interface. O padrão é o banco; a prova troca por
+ * um depósito em memória e roda o fluxo inteiro sem banco, sem JEV e sem IA
+ * (scripts/testes/estilo-por-post-0810.test.mts).
  */
-export async function registrarPedidoDeDesign(o: { projectId: string; userId: string; tipo: TipoDeDesign; pedido: string; nicho?: string | null; publico?: string | null; soNoMeuProjeto?: boolean }): Promise<ResultadoDoPedido | null> {
+export interface DepositoDaBiblioteca {
+  /** O design deste projeto com exatamente este pedido gravado (o cliente mandou o mesmo texto de novo). */
+  repetido(projectId: string, tipo: TipoDeDesign, pedido: string): Promise<string | null>;
+  candidatos(projectId: string, tipo: TipoDeDesign): Promise<Array<{ id: string; nome: string; descricao: string; linguagem: string }>>;
+  criar(linha: LinhaNova): Promise<LinhaDoDesign>;
+  ligar(o: { projectId: string; designId: string; tipo: TipoDeDesign; comoEntrou: ComoEntrou }): Promise<void>;
+  ler(id: string, quem: QuemVe): Promise<DesignDaGaleria | null>;
+  /** O nome do projeto e o de quem pediu, para a rede de segurança do dado do cliente. */
+  dadosDoCliente(projectId: string, userId: string): Promise<DadosDoCliente>;
+}
+
+export interface ServicosDoRegistro {
+  deposito: DepositoDaBiblioteca;
+  comparar: typeof compararComABiblioteca;
+  separar: typeof separarVisualDoCliente;
+  escrever: typeof escreverFichaDoDesign;
+  conferir: typeof fichaEstaLimpa;
+}
+
+const depositoNoBanco: DepositoDaBiblioteca = {
+  async repetido(projectId, tipo, pedido) {
+    const r = await prisma.designDoProjeto.findFirst({ where: { projectId, tipo, design: { pedidoOriginal: pedido } }, select: { designId: true }, orderBy: { updatedAt: "desc" } });
+    return r?.designId ?? null;
+  },
+  candidatos(projectId, tipo) {
+    return prisma.designDaBiblioteca.findMany({
+      where: { tipo, OR: [{ publico: true }, { criadoPorProjectId: projectId }] },
+      orderBy: [{ usos: "desc" }, { createdAt: "desc" }],
+      take: TETO_DE_CANDIDATOS,
+      select: { id: true, nome: true, descricao: true, linguagem: true },
+    });
+  },
+  criar(linha) {
+    return prisma.designDaBiblioteca.create({ data: linha, select: SELECAO });
+  },
+  ligar: (o) => ligarAoProjeto(o),
+  ler: (id, quem) => lerDesign(id, quem),
+  async dadosDoCliente(projectId, userId) {
+    const [p, u] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }).catch(() => null),
+      userId ? prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }).catch(() => null) : null,
+    ]);
+    return { nomes: [p?.name, u?.name, u?.email?.split("@")[0]] };
+  },
+};
+
+const SERVICOS_DE_VERDADE: ServicosDoRegistro = {
+  deposito: depositoNoBanco,
+  comparar: compararComABiblioteca,
+  separar: separarVisualDoCliente,
+  escrever: escreverFichaDoDesign,
+  conferir: fichaEstaLimpa,
+};
+
+/**
+ * O FLUXO DE ENTRADA de um pedido do cliente (o campo livre do comando de
+ * vídeo, o pedido de arte, o estilo criado por texto ou por áudio). Null
+ * quando o texto é curto demais.
+ *
+ * 08/10, "nunca usar fotos reais, dados reais nos modelos": a decisão do que
+ * é gravado e do que é público é a regra pura `entradaParaAGaleria`. Pública,
+ * a linha guarda só o pedido visual (o cru fica fora dela); nenhuma prévia
+ * nasce aqui; e a rede de segurança tira da galeria o que tiver contato,
+ * link, arquivo de imagem ou o nome do projeto ou de quem pediu. O padrão
+ * continua sendo compartilhar: tudo o que passa entra na biblioteca de todos.
+ */
+export async function registrarPedidoDeDesign(
+  o: { projectId: string; userId: string; tipo: TipoDeDesign; pedido: string; nicho?: string | null; publico?: string | null; soNoMeuProjeto?: boolean },
+  servicos: ServicosDoRegistro = SERVICOS_DE_VERDADE
+): Promise<ResultadoDoPedido | null> {
+  const { deposito } = servicos;
   const quem: QuemVe = { projectId: o.projectId, userId: o.userId };
   const pedido = semTravessao(o.pedido).slice(0, TETO.pedido);
   if (pedido.length < 12) return null;
 
   // O mesmo texto de novo (o cliente só trocou a letra ou as cores): nada de IA, só religa.
-  const repetido = await prisma.designDoProjeto.findFirst({
-    where: { projectId: o.projectId, tipo: o.tipo, design: { pedidoOriginal: pedido } },
-    select: { designId: true },
-    orderBy: { updatedAt: "desc" },
-  });
+  const repetido = await deposito.repetido(o.projectId, o.tipo, pedido);
   if (repetido) {
-    await ligarAoProjeto({ projectId: o.projectId, designId: repetido.designId, tipo: o.tipo, comoEntrou: "pedido" });
-    const d = await lerDesign(repetido.designId, quem);
+    await deposito.ligar({ projectId: o.projectId, designId: repetido, tipo: o.tipo, comoEntrou: "pedido" });
+    const d = await deposito.ler(repetido, quem);
     return d ? { design: d, veredito: "repetido" } : null;
   }
 
   // (a) O JEV compara com as entradas mais usadas do tipo.
-  const candidatos = await prisma.designDaBiblioteca.findMany({
-    where: { tipo: o.tipo, OR: [{ publico: true }, { criadoPorProjectId: o.projectId }] },
-    orderBy: [{ usos: "desc" }, { createdAt: "desc" }],
-    take: TETO_DE_CANDIDATOS,
-    select: { id: true, nome: true, descricao: true, linguagem: true },
-  });
-  const veredito = await compararComABiblioteca({ tipo: o.tipo, pedido, candidatos, projectId: o.projectId });
+  const candidatos = await deposito.candidatos(o.projectId, o.tipo);
+  const veredito = await servicos.comparar({ tipo: o.tipo, pedido, candidatos, projectId: o.projectId });
 
   if (veredito.veredito === "igual") {
-    await ligarAoProjeto({ projectId: o.projectId, designId: veredito.designId, tipo: o.tipo, comoEntrou: "pedido" });
-    const d = await lerDesign(veredito.designId, quem);
+    await deposito.ligar({ projectId: o.projectId, designId: veredito.designId, tipo: o.tipo, comoEntrou: "pedido" });
+    const d = await deposito.ler(veredito.designId, quem);
     return d ? { design: d, veredito: "igual" } : null;
   }
 
   // (b) PRIVACIDADE: o JEV separa os trechos que são só visual dos que são do
   // cliente; a ficha pública é escrita só com os visuais. "Só no meu projeto"
   // pula a separação: a ficha sai do pedido inteiro e não vai para a galeria.
-  const separacao = o.soNoMeuProjeto ? null : await separarVisualDoCliente({ pedido, projectId: o.projectId });
+  const separacao = o.soNoMeuProjeto ? null : await servicos.separar({ pedido, projectId: o.projectId });
   const candidataAGaleria = Boolean(separacao?.peloJev && separacao.visual.length);
-  const textoDaFicha = candidataAGaleria && separacao ? separacao.visual.join(". ") : pedido;
+  const textoDaFicha = candidataAGaleria && separacao ? pedidoSoVisual(separacao.visual) : pedido;
 
   // (c) O Claude escreve a ficha (nome, descrição, linguagem), uma chamada. Na candidata à galeria, sem o nicho e o público do projeto.
   const referencia = veredito.veredito === "variacao" ? candidatos.find((c) => c.id === veredito.designId) ?? null : null;
-  const { ficha, origem } = await escreverFichaDoDesign({ tipo: o.tipo, pedido: textoDaFicha, nicho: candidataAGaleria ? null : o.nicho, publico: candidataAGaleria ? null : o.publico, variacaoDe: referencia, projectId: o.projectId });
+  const { ficha, origem } = await servicos.escrever({ tipo: o.tipo, pedido: textoDaFicha, nicho: candidataAGaleria ? null : o.nicho, publico: candidataAGaleria ? null : o.publico, variacaoDe: referencia, projectId: o.projectId });
 
-  // (d) O JEV confere a ficha escrita antes de publicar. A reserva copia o pedido cru: nunca é pública.
-  let soNoProjeto: MotivoDeFicarNoProjeto = null;
-  if (o.soNoMeuProjeto) soNoProjeto = "pedido-do-cliente";
-  else if (!separacao?.peloJev) soNoProjeto = "sem-conferencia";
-  else if (!separacao.visual.length) soNoProjeto = "so-dado-do-cliente";
-  else if (origem !== "redator" || ficha.linguagem.includes(MARCA_DA_RESERVA)) soNoProjeto = "sem-conferencia";
-  else if (!(await fichaEstaLimpa({ ...ficha, projectId: o.projectId }))) soNoProjeto = "ficha-com-dado-do-cliente";
+  // (d) A regra final: primeiro sem gastar a conferência (a rede de segurança
+  // em código e o resto); só a candidata que passou vai ao JEV conferir a ficha.
+  const dados = await deposito.dadosDoCliente(o.projectId, o.userId).catch((): DadosDoCliente => ({ nomes: [] }));
+  const entrada = { pedido, soNoMeuProjeto: o.soNoMeuProjeto, separacao, ficha, fichaPor: origem, dados };
+  const semConferir = entradaParaAGaleria({ ...entrada, fichaLimpa: true });
+  const decidida = semConferir.publico ? entradaParaAGaleria({ ...entrada, fichaLimpa: await servicos.conferir({ ...ficha, projectId: o.projectId }) }) : semConferir;
 
   // (e) Grava e liga ao projeto. O nome do cliente nunca entra na linha.
-  const criado = await prisma.designDaBiblioteca.create({
-    data: {
-      tipo: o.tipo,
-      nome: ficha.nome,
-      descricao: ficha.descricao,
-      pedidoOriginal: pedido,
-      linguagem: ficha.linguagem,
-      origem: "cliente",
-      publico: soNoProjeto === null,
-      criadoPorProjectId: o.projectId,
-      criadoPorUserId: o.userId,
-      agrupadoEmId: referencia?.id ?? null,
-    },
-    select: SELECAO,
+  const criado = await deposito.criar({
+    tipo: o.tipo,
+    nome: decidida.nome,
+    descricao: decidida.descricao,
+    pedidoOriginal: decidida.pedidoGravado,
+    linguagem: decidida.linguagem,
+    previaUrl: decidida.previaUrl,
+    origem: "cliente",
+    publico: decidida.publico,
+    criadoPorProjectId: o.projectId,
+    criadoPorUserId: o.userId,
+    agrupadoEmId: referencia?.id ?? null,
   });
-  await ligarAoProjeto({ projectId: o.projectId, designId: criado.id, tipo: o.tipo, comoEntrou: "pedido" });
-  return { design: paraAGaleria(criado, quem, new Set([criado.id])), veredito: veredito.veredito, fichaPor: origem, soNoProjeto };
+  await deposito.ligar({ projectId: o.projectId, designId: criado.id, tipo: o.tipo, comoEntrou: "pedido" });
+  return { design: paraAGaleria(criado, quem, new Set([criado.id])), veredito: veredito.veredito, fichaPor: origem, soNoProjeto: decidida.motivo };
 }
 
 /**
@@ -236,6 +324,11 @@ export async function registrarPedidoDeDesign(o: { projectId: string; userId: st
  * projeto que criou. Devolver passa de novo pela conferência do JEV na ficha
  * (a ficha de reserva, que copia o pedido cru, nunca volta). Quem já escolheu
  * o design continua com ele no projeto; só some da galeria dos outros.
+ *
+ * 08/10: devolver também passa pela separação do JEV e pela rede de
+ * segurança do dado do cliente, e a linha pública fica só com o pedido
+ * visual. A entrada que nasceu "só no meu projeto" guarda o pedido cru, e
+ * ele não pode ir junto para a galeria.
  */
 export async function mudarVisibilidadeNaGaleria(o: { projectId: string; designId: string; publico: boolean }): Promise<{ ok: true; publico: boolean } | { ok: false; erro: string }> {
   const d = await prisma.designDaBiblioteca.findUnique({ where: { id: o.designId }, select: SELECAO });
@@ -245,10 +338,22 @@ export async function mudarVisibilidadeNaGaleria(o: { projectId: string; designI
     return { ok: true, publico: false };
   }
   if (d.linguagem.includes(MARCA_DA_RESERVA)) return { ok: false, erro: "Este design foi registrado sem a ficha da IA e fica só no seu projeto. Escreva o pedido de novo para ele entrar na galeria." };
-  if (!(await fichaEstaLimpa({ nome: d.nome, descricao: d.descricao, linguagem: d.linguagem, projectId: o.projectId }))) {
-    return { ok: false, erro: "A ficha deste design cita algo da sua marca ou de alguém, então ele fica só no seu projeto." };
+  const separacao = await separarVisualDoCliente({ pedido: d.pedidoOriginal, projectId: o.projectId });
+  const dados = await depositoNoBanco.dadosDoCliente(o.projectId, d.criadoPorUserId ?? "").catch((): DadosDoCliente => ({ nomes: [] }));
+  const ficha = { nome: d.nome, descricao: d.descricao, linguagem: d.linguagem };
+  const entrada = { pedido: d.pedidoOriginal, separacao, ficha, fichaPor: "redator" as const, dados };
+  const semConferir = entradaParaAGaleria({ ...entrada, fichaLimpa: true });
+  const decidida = semConferir.publico ? entradaParaAGaleria({ ...entrada, fichaLimpa: await fichaEstaLimpa({ ...ficha, projectId: o.projectId }) }) : semConferir;
+  if (!decidida.publico) {
+    return {
+      ok: false,
+      erro:
+        decidida.motivo === "sem-conferencia"
+          ? "Não deu para conferir agora se o design tem algo da sua marca. Tente de novo em instantes."
+          : "A ficha deste design cita algo da sua marca ou de alguém, então ele fica só no seu projeto.",
+    };
   }
-  await prisma.designDaBiblioteca.update({ where: { id: d.id }, data: { publico: true } });
+  await prisma.designDaBiblioteca.update({ where: { id: d.id }, data: { publico: true, pedidoOriginal: decidida.pedidoGravado } });
   return { ok: true, publico: true };
 }
 

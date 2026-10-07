@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { Check, Images, Library, Loader2, MessageSquareText, Palette, Pencil, Send, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Check, Images, Library, Loader2, Palette, Pencil, Sparkles, Wand2 } from "lucide-react";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
+import { CriarEstilo } from "@/components/estilo-dos-posts/criar-estilo";
 import type { DesignDaGaleria } from "@/lib/biblioteca-de-design/tipos";
 import { resumoDoEstilo, type EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/tipos";
 
@@ -18,12 +18,17 @@ import { resumoDoEstilo, type EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-po
  * descobre que está faltando aprovar o estilo, as artes; está muito confuso".
  *
  * Duas portas, e as duas aprovam na hora:
- *   - ESCREVER: um quadro de chat. A primeira mensagem é o estilo, as
- *     seguintes são ajustes ("mais escuro", "sem pessoa"); cada envio vira o
- *     pedido da biblioteca de design (o JEV compara, o Claude escreve a
- *     ficha) e o design passa a ser o estilo aprovado;
- *   - ESCOLHER: a galeria da biblioteca, só com os designs de imagem.
- * Sem aprovar em outro lugar: escrever ou escolher já destrava a arte.
+ *   - CRIAR (08/10, a primeira, de propósito): falando ou escrevendo, num
+ *     quadro de chat (components/estilo-dos-posts/criar-estilo.tsx). Regra do
+ *     Bruno: "promover, incentivar o usuário criar o seu estilo, a partir de
+ *     um texto ou um áudio, e isso vai alimentar a biblioteca para todos os
+ *     demais". O modelo criado entra na biblioteca de todos (só o visual) e
+ *     passa a ser o estilo aprovado do projeto;
+ *   - ESCOLHER: a galeria da biblioteca, só com os designs de imagem, como
+ *     alternativa.
+ * Sem aprovar em outro lugar: criar ou escolher já destrava a arte. Na
+ * campanha, cada post ainda escolhe o seu modelo (modelos-dos-posts.tsx), e
+ * este estilo é o que vem preenchido.
  *
  * O mesmo componente mora no assistente do projeto (etapa Fotos e estilo),
  * na janela da campanha (antes de gerar), na jornada do vídeo (antes de
@@ -31,28 +36,7 @@ import { resumoDoEstilo, type EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-po
  * (a campanha gera, a jornada vai para o envio).
  */
 
-type Porta = "chat" | "biblioteca";
-type Mensagem = { de: "cliente" | "squad"; texto: string };
-
-// 08/10, revisão: sem prometer "foto sua" aqui. O estilo escrito vira a
-// linguagem da imagem gerada; foto real da pessoa só entra pela Biblioteca
-// de materiais (a linha no rodapé do passo diz isso).
-const BOAS_VINDAS =
-  "Como você quer que os seus posts fiquem? Conte do jeito que vier: o clima, as cores, se quer ilustração, colagem, fotografia de cena, só tipografia, algo que você viu e gostou. Eu monto o estilo e ele já vale para as próximas artes.";
-
-/**
- * O tamanho mínimo do que se escreve (08/10, revisão): a primeira mensagem é
- * o estilo e precisa de uma frase (a rota recusa menos de 12 letras); depois
- * dela, ajuste curto vale ("azul", "sem pessoa").
- */
-const MINIMO_DO_PEDIDO = 12;
-const MINIMO_DO_AJUSTE = 3;
-
-const EXEMPLOS = [
-  "Fundo escuro, letra grande e branca, a cor da marca só no destaque",
-  "Ilustração leve, cores claras, nada de foto de banco",
-  "Colagem de papel com recortes, estilo revista",
-];
+type Porta = "criar" | "biblioteca";
 
 export function EstiloDosPosts({
   projectId,
@@ -80,14 +64,9 @@ export function EstiloDosPosts({
   const [estado, setEstado] = useState<EstadoDoEstiloDosPosts | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aberto, setAberto] = useState(sempreAberto);
-  const [porta, setPorta] = useState<Porta>("chat");
-  const [conversa, setConversa] = useState<Mensagem[]>([{ de: "squad", texto: BOAS_VINDAS }]);
-  const [texto, setTexto] = useState("");
-  const [soNoMeuProjeto, setSoNoMeuProjeto] = useState(false);
-  const [enviando, setEnviando] = useState(false);
+  const [porta, setPorta] = useState<Porta>("criar");
   const [gerando, setGerando] = useState(false);
   const [reaprovando, setReaprovando] = useState(false);
-  const fimDaConversa = useRef<HTMLDivElement>(null);
   // Quem chama recria a função a cada desenho; a leitura não deve repetir por isso.
   const aoLerAtual = useRef(aoLer);
   useEffect(() => {
@@ -111,10 +90,6 @@ export function EstiloDosPosts({
     void carregar();
   }, [carregar]);
 
-  useEffect(() => {
-    fimDaConversa.current?.scrollIntoView({ block: "nearest" });
-  }, [conversa.length]);
-
   const aprovado = useCallback(
     (novo: EstadoDoEstiloDosPosts) => {
       setEstado(novo);
@@ -122,48 +97,6 @@ export function EstiloDosPosts({
     },
     [aoAprovar]
   );
-
-  const jaTemPedido = conversa.some((m) => m.de === "cliente");
-  const minimo = jaTemPedido ? MINIMO_DO_AJUSTE : MINIMO_DO_PEDIDO;
-
-  async function enviar(mensagem?: string) {
-    const nova = (mensagem ?? texto).trim();
-    if (nova.length < minimo) {
-      toast.error("Conte com pelo menos uma frase como você quer os posts.");
-      return;
-    }
-    const doCliente = [...conversa.filter((m) => m.de === "cliente").map((m) => m.texto), nova];
-    setConversa((c) => [...c, { de: "cliente", texto: nova }]);
-    setTexto("");
-    setEnviando(true);
-    try {
-      const r = await fetch(`/api/projects/${projectId}/estilo-dos-posts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversa: doCliente, soNoMeuProjeto }),
-      });
-      const d = (await r.json().catch(() => ({}))) as { design?: DesignDaGaleria; aprovado?: boolean; efeito?: string; estado?: EstadoDoEstiloDosPosts; error?: string };
-      if (!r.ok || !d.design) throw new Error(d.error || "Não consegui registrar o estilo.");
-      const ficha = `Ficou assim: ${d.design.nome}. ${d.design.descricao}`.trim();
-      const resposta = d.aprovado
-        ? `${ficha}\n\n${d.efeito ?? "Estilo aprovado."}\n\nQuer ajustar? Escreva aqui, por exemplo: "mais escuro", "sem pessoa", "mais colorido".`
-        : `${ficha}\n\n${d.efeito ?? "Não consegui aprovar este estilo."}`;
-      setConversa((c) => [...c, { de: "squad", texto: resposta }]);
-      if (d.estado) aprovado(d.estado);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Não consegui registrar o estilo.";
-      // A mensagem que falhou sai da conversa (08/10, revisão): ela volta para
-      // a caixa de texto, e reenviada entrava duas vezes no pedido.
-      setConversa((c) => {
-        const i = c.map((m) => m.de).lastIndexOf("cliente");
-        const sem = i >= 0 ? [...c.slice(0, i), ...c.slice(i + 1)] : c;
-        return [...sem, { de: "squad", texto: `${msg} O que você escreveu continua aqui: tente de novo.` }];
-      });
-      setTexto(nova);
-    } finally {
-      setEnviando(false);
-    }
-  }
 
   async function escolher(d: Pick<DesignDaGaleria, "id">) {
     const r = await fetch(`/api/projects/${projectId}/estilo-dos-posts`, {
@@ -283,11 +216,11 @@ export function EstiloDosPosts({
 
       {mostrarPortas && (
         <>
-          <div className="flex gap-1.5" role="tablist" aria-label="Como escolher o estilo">
+          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Como chegar ao estilo">
             {(
               [
-                ["chat", "Escrever como eu quero", MessageSquareText],
-                ["biblioteca", "Escolher da biblioteca", Library],
+                ["criar", "Crie o seu estilo, falando ou escrevendo", Wand2],
+                ["biblioteca", "Ou escolha da biblioteca", Library],
               ] as const
             ).map(([id, rotulo, Icone]) => (
               <button
@@ -304,64 +237,13 @@ export function EstiloDosPosts({
             ))}
           </div>
 
-          {porta === "chat" ? (
-            <div className="space-y-2">
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }} aria-live="polite">
-                {conversa.map((m, i) => (
-                  <div key={i} className={cn("flex", m.de === "cliente" ? "justify-end" : "justify-start")}>
-                    <p
-                      className="max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-snug"
-                      style={m.de === "cliente" ? { background: "#f97316", color: "#fff" } : { background: "var(--bg-elevated)", color: "var(--text-primary)" }}
-                    >
-                      {m.texto}
-                    </p>
-                  </div>
-                ))}
-                {enviando && (
-                  <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Montando o estilo (leva uns segundos)
-                  </div>
-                )}
-                <div ref={fimDaConversa} />
-              </div>
-              {!jaTemPedido && (
-                <div className="flex flex-wrap gap-1.5">
-                  {EXEMPLOS.map((ex) => (
-                    <button key={ex} type="button" onClick={() => setTexto(ex)} className="rounded-full border px-2.5 py-1 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-                      {ex}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={texto}
-                  onChange={(e) => setTexto(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !enviando) {
-                      e.preventDefault();
-                      void enviar();
-                    }
-                  }}
-                  rows={2}
-                  maxLength={600}
-                  placeholder={jaTemPedido ? "Quer ajustar? Ex.: mais escuro, sem pessoa, mais colorido" : "Escreva como você quer os seus posts"}
-                  aria-label="Como você quer os seus posts"
-                  className="min-w-0 flex-1 resize-y rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
-                  style={{ borderColor: "var(--border)", background: "var(--bg-input)", color: "var(--text-primary)" }}
-                />
-                <button type="button" onClick={() => void enviar()} disabled={enviando || texto.trim().length < minimo} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3 text-sm font-semibold text-white disabled:opacity-50" aria-label="Enviar">
-                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="hidden sm:inline">Enviar</span>
-                </button>
-              </div>
-              <label className="flex items-start gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
-                <input type="checkbox" checked={soNoMeuProjeto} onChange={(e) => setSoNoMeuProjeto(e.target.checked)} className="mt-0.5 accent-orange-500" />
-                <span>
-                  <b style={{ color: "var(--text-primary)" }}>Só no meu projeto.</b> Sem marcar, só a descrição do visual entra na biblioteca de todos, sem o seu nome, a sua marca ou o seu contato.
-                </span>
-              </label>
-            </div>
+          {porta === "criar" ? (
+            <CriarEstilo
+              projectId={projectId}
+              aoCriar={(r) => {
+                if (r.estado) aprovado(r.estado);
+              }}
+            />
           ) : (
             <GaleriaDaBiblioteca
               projectId={projectId}

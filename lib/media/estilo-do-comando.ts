@@ -49,6 +49,33 @@ export function escolhaSincronizadaComComando(
   return { escolha: { ...atual, estiloId: id }, videoStyle: base };
 }
 
+/**
+ * O ESTILO DE EDIÇÃO DO DIA DO CORTE (08/10/2026). Regra do Bruno: "sexta é um
+ * vídeo curto (short, reel e tiktok) escolher o estilo". Cada dia de vídeo
+ * curto da semana leva o seu estilo de edição (lib/media/semana-do-video.ts,
+ * `modelo.estiloId`), e o corte que cai naquele dia é editado nele.
+ *
+ * Devolve a escolha do projeto reescrita no estilo do dia (as camadas que a
+ * linguagem nova não aceita saem; o texto e a leitura do diretor, que eram do
+ * estilo do projeto, também), ou null quando o dia não pede estilo, pede um
+ * que não existe ou pede o mesmo do projeto (aí vale tudo como estava,
+ * inclusive o comando). A legenda escolhida no projeto continua. Puro.
+ */
+export function escolhaNoEstiloDoDia(
+  escolhaBruta: unknown,
+  videoStyle: string | null | undefined,
+  estiloDoDia: string | null | undefined
+): { escolha: EscolhaDeEstilo; videoStyle: string } | null {
+  const e = estiloDoDia ? estiloDoCatalogo(estiloDoDia) : undefined;
+  if (!e) return null;
+  const atual = normalizarEscolha(escolhaBruta, videoStyle ?? null);
+  if (atual.estiloId === e.id) return null;
+  const { texto: _texto, interpretacao: _leitura, ...resto } = atual;
+  void _texto;
+  void _leitura;
+  return { escolha: normalizarEscolha({ ...resto, estiloId: e.id }), videoStyle: e.base };
+}
+
 const limpo = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 
 /** O começo do texto do comando, para a tela dizer qual era (sem cortar no meio da palavra). */

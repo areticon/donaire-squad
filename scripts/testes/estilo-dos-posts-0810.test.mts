@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { designDepoisDaMudanca, identidadeAprovada } from "@/lib/modelos-de-arte/identidade";
-import { pedidoDaConversa, precisaEscolherEstilo, resumoDoEstilo } from "@/lib/estilo-dos-posts/tipos";
+import { pedidoDaConversa, postsSemModelo, resumoDoEstilo } from "@/lib/estilo-dos-posts/tipos";
 import { OBJETO_SEM_PESSOA, SEM_PESSOA, fotoDoPrompt, preencherPromptDoModelo } from "@/lib/modelos-de-arte/prompt-do-modelo";
 import { FIGURANTE_ANONIMO, OBJETO_ANONIMO } from "@/lib/modelos-de-arte/prompts-vox";
 import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
@@ -64,11 +64,13 @@ test("o pedido do chat cabe no teto: saem os ajustes mais antigos, nunca o prime
   assert.ok(longo.length <= 200 && longo.includes("sem pessoa"), longo);
 });
 
-test("a campanha só para no passo do estilo quando há arte e o estilo sabidamente não está aprovado", () => {
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: false }), true);
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: true }), false);
-  assert.equal(precisaEscolherEstilo({ temArte: false, aprovada: false }), false, "só texto não precisa de estilo de arte");
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: null }), false, "estado ainda chegando não trava");
+// 08/10, à tarde: a trava do estilo do projeto virou a escolha por post
+// (scripts/testes/estilo-por-post-0810.test.mts tem a regra inteira).
+test("a campanha só para antes de gerar quando um dia visual está sem a sua escolha", () => {
+  const posts = [{ chave: "3", rotulo: "Quarta", formato: "carousel" as const }];
+  assert.equal(postsSemModelo(posts, {}).length, 1, "carrossel sem modelo segura a geração");
+  assert.equal(postsSemModelo(posts, { "3": { catalogoId: "foto-inteira-degrade", nome: "Foto inteira" } }).length, 0);
+  assert.equal(postsSemModelo([], {}).length, 0, "só texto não precisa de modelo de arte");
 });
 
 test("a linha do estilo diz como os posts saem", () => {
@@ -136,11 +138,11 @@ test("cada arte registra qual foto entrou: biblioteca, gerada ou nenhuma", () =>
 
 // ── (a) e (d) As telas: o passo aparece antes de gerar e no assistente ─────
 
-test("a janela da campanha abre o passo do estilo no lugar de gerar quando ele falta", () => {
+test("a janela da campanha abre o passo dos modelos no lugar de gerar quando falta algum", () => {
   const modal = fonte("components/posts/campaign-setup-modal.tsx");
-  assert.ok(modal.includes("precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada, podeMudar: podeMudarEstilo })"));
-  assert.ok(/onClick=\{faltaOEstilo \? \(\) => setPedindoEstilo\(true\) : handleConfirm\}/.test(modal), "o botão abre o passo");
-  assert.ok(/setPedindoEstilo\(false\);\s*handleConfirm\(\);/.test(modal), "aprovado, a campanha gera sozinha");
+  assert.ok(modal.includes("postsSemModelo(postsVisuais, modelosDosPosts)"));
+  assert.ok(/onClick=\{faltamModelos\.length > 0 \? \(\) => setPedindoEstilo\(true\) : handleConfirm\}/.test(modal), "o botão abre o passo");
+  assert.ok(/setPedindoEstilo\(false\);\s*handleConfirm\(\);/.test(modal), "escolhidos, a campanha gera daqui");
   assert.ok(!modal.includes("<AvisoDaIdentidade"), "o aviso de 10 px saiu do rodapé");
 });
 
@@ -149,8 +151,8 @@ test("a jornada do vídeo tem o passo dos posts antes do envio, e o pulo não pa
   const posts = jornada.indexOf('chave: "posts"');
   const envio = jornada.indexOf('chave: "envio"');
   assert.ok(posts > 0 && posts < envio, "posts vem antes do envio");
-  assert.ok(jornada.includes("faltaOEstilo && passo === PASSOS_DO_VIDEO.length - 1) setPasso(PASSO_DOS_POSTS)"));
-  assert.ok(jornada.includes("setPasso(faltaOEstilo && !semGravacao ? PASSO_DOS_POSTS : total - 1)"));
+  assert.ok(jornada.includes("faltamModelos.length > 0 && passo === PASSOS_DO_VIDEO.length - 1) setPasso(PASSO_DOS_POSTS)"));
+  assert.ok(jornada.includes("setPasso(faltamModelos.length > 0 && !semGravacao ? PASSO_DOS_POSTS : total - 1)"));
 });
 
 test("o assistente do projeto pede fotos e estilo logo depois da Marca", () => {
@@ -170,6 +172,8 @@ test("nenhum texto novo usa travessão", () => {
     "lib/estilo-dos-posts/servidor.ts",
     "lib/media/foto-da-peca.ts",
     "components/estilo-dos-posts/estilo-dos-posts.tsx",
+    "components/estilo-dos-posts/criar-estilo.tsx",
+    "components/estilo-dos-posts/modelos-dos-posts.tsx",
     "components/kanban/step-materiais.tsx",
     "app/api/projects/[id]/estilo-dos-posts/route.ts",
   ]) {

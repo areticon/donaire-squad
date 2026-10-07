@@ -93,5 +93,5 @@ export async function fichaEstaLimpa(e: { nome: string; descricao: string; lingu
   }
 }
 
-/** A ficha de reserva (sem o redator) copia o pedido cru: nunca é pública. */
-export const MARCA_DA_RESERVA = "As the client described it";
+/** A ficha de reserva (sem o redator) copia o pedido cru: nunca é pública. Mora em tipos.ts (08/10), para a regra pura da entrada. */
+export { MARCA_DA_RESERVA } from "@/lib/biblioteca-de-design/tipos";

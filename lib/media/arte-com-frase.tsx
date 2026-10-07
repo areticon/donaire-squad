@@ -119,8 +119,24 @@ export function marcaDaIdentidade(identidade: IdentidadeVisual): MarcaDaArte {
   return { familia: identidade.familia, cores: identidade.cores, tipografia: identidade.tipografia, identidade };
 }
 
-/** A marca do projeto: família respeitando a escolha, cores efetivas, letra e setor. */
-export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: string }): Promise<MarcaDaArte> {
+/**
+ * A marca do projeto: família respeitando a escolha, cores efetivas, letra e setor.
+ *
+ * `modeloDoPost` (08/10/2026, a escolha por post): o modelo que a pessoa
+ * escolheu PARA ESTE POST na janela da campanha ou na semana do vídeo
+ * (lib/estilo-dos-posts/tipos.ts). Regra do Bruno: "essa parte só cria o
+ * modelo, depois no quadro a IA coloca o conteúdo dentro do modelo
+ * selecionado ou criado". Com ele:
+ *   - o modelo do post MANDA na arte (é o único da marca, no lugar do book e
+ *     do estilo do projeto), e a IA preenche com o conteúdo do dia;
+ *   - escolher é aprovar aquele post: a arte sai com a letra e os papéis das
+ *     cores da identidade (os gravados, ou o padrão da paleta da Marca);
+ *   - `marca: true` (infográfico, vídeo por IA, capa) aprova o dia sem trocar
+ *     o modelo: vale o estilo do projeto, ou a composição da família.
+ * Modelo que o projeto não enxerga mais (apagado, ou de outro cliente e fora
+ * da galeria) não vale: a peça volta à regra do projeto, com a trava de sempre.
+ */
+export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: string; modeloDoPost?: import("@/lib/estilo-dos-posts/tipos").ModeloDoPost | null }): Promise<MarcaDaArte> {
   if (!projectId) {
     // Sem projeto não há identidade: a marca neutra do setor genérico, e não
     // mais o laranja da Demandou.
@@ -142,8 +158,14 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
   ]);
   if (materiais.length) marca.materiais = materiais;
   marca.projectId = projectId;
-  marca.identidadeAprovada = Boolean(identidade?.aprovada);
-  if (identidade?.aprovada) {
+  // O MODELO ESCOLHIDO PARA ESTE POST (08/10): valer é aprovar este post.
+  const doPost = opcoes?.modeloDoPost ? await modeloEscolhidoParaOPost(projectId, opcoes.modeloDoPost).catch((e) => {
+    console.warn("[arte-com-frase] o modelo do post não foi lido (vale a regra do projeto):", e instanceof Error ? e.message : e);
+    return null;
+  }) : null;
+  const { modelosDaPeca, pecaAprovada } = await import("@/lib/estilo-dos-posts/tipos");
+  marca.identidadeAprovada = pecaAprovada({ identidadeAprovada: identidade?.aprovada, escolhidoParaOPost: Boolean(doPost) });
+  if (identidade && (identidade.aprovada || doPost)) {
     // As cores EXATAMENTE nos papéis aprovados: o fundo é o fundo, o título é
     // o título, o destaque é o destaque. Nenhum agente escolhe outra cor da
     // paleta para o fundo (a queixa de 05/10: fundo laranja que ninguém pediu).
@@ -162,15 +184,44 @@ export async function marcaDaArte(projectId?: string | null, opcoes?: { runId?: 
   // escolha na biblioteca) manda primeiro, gravado na identidade; a regra do
   // mais recente fica para os designs escritos antes de 08/10.
   const designAprovado = identidade?.aprovada ? identidade.design : null;
-  const doCliente = await (designAprovado ? modeloDoDesignAprovado(projectId, designAprovado) : modeloDoDesignDoCliente(projectId, escolha?.em ?? null)).catch((e) => {
-    console.warn("[arte-com-frase] o design do cliente não foi lido (segue o book):", e instanceof Error ? e.message : e);
-    return null;
-  });
-  if (!escolha && !materiais.length && !doCliente) return marca;
+  const doCliente = doPost?.modeloId
+    ? null
+    : await (designAprovado ? modeloDoDesignAprovado(projectId, designAprovado) : modeloDoDesignDoCliente(projectId, escolha?.em ?? null)).catch((e) => {
+        console.warn("[arte-com-frase] o design do cliente não foi lido (segue o book):", e instanceof Error ? e.message : e);
+        return null;
+      });
+  const modelos = modelosDaPeca({ doPost: doPost?.modeloId, doProjeto: doCliente, book: escolha?.ids });
+  if (!modelos?.length && !materiais.length) return marca;
   const { lerMidia } = await import("@/lib/media/storage");
   const { logoParaArte } = await import("@/lib/modelos-de-arte/compor");
   const logo = p?.logoUrl ? await lerMidia(p.logoUrl).catch(() => null) : null;
-  return { ...marca, modelos: doCliente ? [doCliente] : escolha?.ids, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+  return { ...marca, modelos, nomeDaMarca: p?.name ?? "", logoDoModelo: await logoParaArte(logo), projectId };
+}
+
+/**
+ * O modelo escolhido para um post (08/10), já registrado no catálogo do
+ * processo. `modeloId` é o id do book (ou "design-<id>" do design criado por
+ * cliente); sem ele, o dia só foi confirmado na marca. Null quando a escolha
+ * não vale (o design sumiu, é de vídeo ou o projeto não o enxerga).
+ */
+async function modeloEscolhidoParaOPost(projectId: string, escolhido: import("@/lib/estilo-dos-posts/tipos").ModeloDoPost): Promise<{ modeloId: string | null } | null> {
+  const { modeloPorId } = await import("@/lib/modelos-de-arte/catalogo");
+  if (escolhido.marca && !escolhido.designId && !escolhido.catalogoId) return { modeloId: null };
+  // O modelo do book vale pelo id do catálogo (a semente pode nem existir no banco ainda).
+  if (escolhido.catalogoId && modeloPorId(escolhido.catalogoId)) return { modeloId: escolhido.catalogoId };
+  if (!escolhido.designId) return null;
+  const { designDoPost } = await import("@/lib/estilo-dos-posts/servidor");
+  const design = await designDoPost(projectId, escolhido.designId);
+  if (!design) {
+    console.warn(`[arte-com-frase] o modelo escolhido para o post (${escolhido.designId}) não existe mais para este projeto; vale a regra do projeto`);
+    return null;
+  }
+  if (design.catalogoId) return modeloPorId(design.catalogoId) ? { modeloId: design.catalogoId } : null;
+  const { modeloDoDesign, registrarModeloDoCliente } = await import("@/lib/modelos-de-arte/modelo-do-cliente");
+  const modelo = modeloDoDesign(design);
+  if (!modelo) return null;
+  registrarModeloDoCliente(modelo);
+  return { modeloId: modelo.id };
 }
 
 /**

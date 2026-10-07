@@ -8,38 +8,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { artesEsperamODono, precisaEscolherEstilo, resumoDoEstilo } from "@/lib/estilo-dos-posts/tipos";
+import { postsSemModelo, resumoDoEstilo } from "@/lib/estilo-dos-posts/tipos";
 import { fotosDasLaminasRefeitas, registrarFotoDaPeca } from "@/lib/media/foto-da-peca";
 import { designQueVale } from "@/lib/modelos-de-arte/identidade";
 
 const fonte = (caminho: string) => readFileSync(new URL(`../../${caminho}`, import.meta.url), "utf8");
 
-test("o membro da equipe não fica trancado no passo do estilo: gera, e a arte espera o dono", () => {
-  // Dono (ou estado sem a informação): o passo aparece antes de gerar.
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: false, podeMudar: true }), true);
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: false }), true, "sem saber quem é, vale a regra do dono");
-  // Membro: não para no passo que ele não pode cumprir.
-  assert.equal(precisaEscolherEstilo({ temArte: true, aprovada: false, podeMudar: false }), false);
-  // E a tela avisa que a arte espera o dono, só quando é esse o caso.
-  assert.equal(artesEsperamODono({ temArte: true, aprovada: false, podeMudar: false }), true);
-  assert.equal(artesEsperamODono({ temArte: true, aprovada: true, podeMudar: false }), false, "aprovado, nada espera");
-  assert.equal(artesEsperamODono({ temArte: false, aprovada: false, podeMudar: false }), false, "só texto, nada espera");
-  assert.equal(artesEsperamODono({ temArte: true, aprovada: false, podeMudar: true }), false, "o dono resolve no passo");
-  assert.equal(artesEsperamODono({ temArte: true, aprovada: null, podeMudar: false }), false, "estado chegando não avisa");
+// 08/10, à tarde: a trava do estilo do projeto (só o dono cumpria) virou a
+// escolha do modelo de cada post, que o membro também faz. A regra de não
+// trancar o membro continua, agora sem nem perguntar quem ele é.
+test("o membro da equipe não fica trancado: a escolha do post não depende de quem escolhe", () => {
+  const posts = [{ chave: "4", rotulo: "Quinta", formato: "image" as const }];
+  assert.equal(postsSemModelo(posts, { "4": { designId: "cmdesign1", nome: "Aquarela" } }).length, 0, "escolhido por qualquer um, segue");
+  // A rota deixa o membro CRIAR um modelo para o post; o estilo do projeto continua do dono.
+  const rota = fonte("app/api/projects/[id]/estilo-dos-posts/route.ts");
+  assert.ok(/if \(!paraOPost\) \{\s*const recusa = await soODono\(/.test(rota), "só o estilo do projeto é do dono");
+  assert.ok(rota.includes("if (paraOPost) {"), "para o post, cria sem aprovar o estilo do projeto");
+  // O último usado de cada tipo (PATCH) não pede o dono.
+  const patch = rota.slice(rota.indexOf("export async function PATCH"));
+  assert.ok(!patch.includes("soODono"), "guardar o último modelo usado não é configuração do dono");
 });
 
-test("a janela da campanha e a jornada do vídeo passam quem pode mudar para a regra", () => {
+test("a janela da campanha e a jornada do vídeo não leem mais quem pode mudar para trancar", () => {
   const modal = fonte("components/posts/campaign-setup-modal.tsx");
-  assert.ok(modal.includes("podeMudar: podeMudarEstilo"), "a janela lê quem pode mudar");
-  assert.ok(modal.includes("{esperaODono && ("), "a janela avisa o membro");
+  assert.ok(!modal.includes("podeMudarEstilo") && !modal.includes("esperaODono"), "a janela não tem mais o caminho só do dono");
   const jornada = fonte("components/posts/jornada-da-campanha.tsx");
-  assert.ok(jornada.includes("precisaEscolherEstilo({ temArte: comArte, aprovada: estiloDosPosts, podeMudar: podeMudarEstilo })"));
-  assert.ok(jornada.includes("{esperaODono && !semGravacao && ("), "a jornada avisa o membro no envio");
+  assert.ok(!jornada.includes("podeMudarEstilo") && !jornada.includes("esperaODono"));
+  assert.ok(jornada.includes("postsSemModelo(postsDaSemana, modelosDaSemana(semanaAtual))"), "a jornada confere os dias da semana");
 });
 
-test("a jornada relê o estilo a cada abertura antes de mostrar o envio", () => {
+test("o envio não pisca: a conferência dos modelos sai da semana na tela, sem esperar a rede", () => {
   const jornada = fonte("components/posts/jornada-da-campanha.tsx");
-  assert.ok(/if \(aberto\) \{\s*setPasso\(passoInicial\);\s*setEstiloLido\(false\);/.test(jornada), "reabrir zera a leitura");
+  assert.ok(!jornada.includes("estiloLido"), "nada de leitura do servidor antes do cartão de envio");
+  assert.ok(jornada.includes("const postsDaSemana = postsVisuaisDaSemana(semanaAtual);"));
 });
 
 test("aprovação que caiu com o design gravado: a linha diz a verdade", () => {
@@ -67,11 +68,14 @@ test("o design aprovado manda só se veio depois da última escolha do book (a V
   assert.ok(leitura.includes("design: aprovada ? designQueVale(registro, escolha?.em) : (registro?.design ?? null)"));
 });
 
-test("o passo avisa quem abriu quando o estilo já chegou aprovado (sem passo sem saída)", () => {
+test("sem passo sem saída: a lista dos modelos que não carrega não tranca a geração", () => {
   const modal = fonte("components/posts/campaign-setup-modal.tsx");
   const jornada = fonte("components/posts/jornada-da-campanha.tsx");
-  assert.ok(/aoLer=\{\(e\) => \{[\s\S]*?if \(e\.aprovada\) \{\s*setIdentidadeAprovada\(true\);\s*setPedindoEstilo\(false\);/.test(modal));
-  assert.ok(/aoLer=\{\(e\) => \{[\s\S]*?if \(e\.aprovada\) setEstiloDosPosts\(true\);/.test(jornada));
+  assert.ok(modal.includes("aoCarregar={(ok) => setModelosFalharam(!ok)}") && modal.includes("const faltamModelos = modelosFalharam ? [] :"));
+  assert.ok(jornada.includes("aoCarregar={(ok) => setModelosFalharam(!ok)}") && jornada.includes("const faltamModelos = modelosFalharam ? [] :"));
+  // A lista avisa que dá para seguir e oferece tentar de novo.
+  const lista = fonte("components/estilo-dos-posts/modelos-dos-posts.tsx");
+  assert.ok(lista.includes("Você ainda pode seguir") && lista.includes("Tentar de novo"));
 });
 
 test("refazer só algumas lâminas: as refeitas pelo registro novo, as outras como estavam", () => {
@@ -103,7 +107,8 @@ test("o carrossel sem foto do cliente registra a cena gerada de cada lâmina", (
 });
 
 test("o chat pede uma frase no primeiro envio e aceita ajuste curto depois", () => {
-  const passo = fonte("components/estilo-dos-posts/estilo-dos-posts.tsx");
+  // 08/10, à tarde: o chat saiu para o componente de criar (falando ou escrevendo).
+  const passo = fonte("components/estilo-dos-posts/criar-estilo.tsx");
   assert.ok(passo.includes("const MINIMO_DO_PEDIDO = 12;"), "o mesmo mínimo da rota");
   assert.ok(passo.includes("const minimo = jaTemPedido ? MINIMO_DO_AJUSTE : MINIMO_DO_PEDIDO;"));
   // A rota recusa pedido com menos de 12 letras: o mínimo da tela não pode ser menor.
@@ -118,6 +123,7 @@ test("nenhum texto da revisão usa travessão", () => {
     "lib/estilo-dos-posts/tipos.ts",
     "lib/media/foto-da-peca.ts",
     "components/estilo-dos-posts/estilo-dos-posts.tsx",
+    "components/estilo-dos-posts/criar-estilo.tsx",
     "components/posts/jornada-da-campanha.tsx",
     "app/api/projects/[id]/estilo-dos-posts/route.ts",
     "scripts/testes/estilo-dos-posts-revisao-0810.test.mts",

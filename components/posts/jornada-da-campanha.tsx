@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, Loader2, Pencil, X } from "lucide-react";
+import { ChevronLeft, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EscolhaDeOrigem } from "@/components/posts/escolha-de-origem";
 import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
 import { SemanaDoVideoPlanejador } from "@/components/video/semana-do-video";
 import { VideoUpload } from "@/components/video/video-upload";
-import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
+import { ModelosDosPosts } from "@/components/estilo-dos-posts/modelos-dos-posts";
 import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
-import { normalizarSemana } from "@/lib/media/semana-do-video";
-import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
-import { artesEsperamODono, precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
+import { modelosDaSemana, normalizarSemana, planoParaGravar, postsVisuaisDaSemana, semanaComModelos, type SemanaDoVideo } from "@/lib/media/semana-do-video";
+import { postsSemModelo } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * A jornada de criar uma campanha, em passos, igual à de criar um projeto.
@@ -59,6 +59,19 @@ import { artesEsperamODono, precisaEscolherEstilo } from "@/lib/estilo-dos-posts
  * o passo "Como ficam os posts" antes do envio, e o pulo NÃO passa por cima
  * dele enquanto houver dia de arte e o estilo não estiver aprovado. Aprovado
  * (pelo chat ou pela biblioteca), a jornada segue sozinha para o envio.
+ *
+ * ## O modelo de cada post (08/10, à tarde)
+ *
+ * Regra do Bruno: "o modelo precisa ser escolhido por post (quarta é um
+ * carrossel, precisa escolher o modelo), quinta é uma foto (escolher modelo)
+ * etc... sexta é um vídeo curto (short, reel e tiktok) escolher o estilo". O
+ * passo dos posts virou "O modelo de cada post": cada dia com peça visual
+ * mostra o tipo e o modelo dele (o vídeo curto, o estilo de edição), já
+ * preenchido com o último usado naquele tipo. A escolha mora no dia, dentro
+ * de `videoSemana` (sem coluna nova), e vai congelada no run. O passo aparece
+ * sempre que a semana tem dia visual (a pessoa vê o que vai sair), e o pulo e
+ * o "Continuar" só seguem com todos os dias escolhidos. Membro e dono
+ * escolhem igual: o modelo do post não muda o estilo do projeto.
  */
 
 type Origem = "video" | "tema";
@@ -68,16 +81,11 @@ const PASSOS_DO_VIDEO = [
   { chave: "estilo", titulo: "Como o squad edita" },
   { chave: "trilha", titulo: "Trilha e termos do seu negócio" },
   { chave: "semana", titulo: "O que sai em cada dia" },
-  { chave: "posts", titulo: "Como ficam os posts" },
+  { chave: "posts", titulo: "O modelo de cada post" },
   { chave: "envio", titulo: "Envie a gravação" },
 ] as const;
 
 const PASSO_DOS_POSTS = PASSOS_DO_VIDEO.findIndex((p) => p.chave === "posts");
-
-/** A semana do vídeo tem dia de arte (imagem, carrossel, infográfico)? */
-function semanaTemArte(semana: unknown): boolean {
-  return Object.values(normalizarSemana(semana).dias).some((d) => d && tipoGeraArte(d.formato));
-}
 
 export function JornadaDaCampanha({
   aberto,
@@ -118,54 +126,57 @@ export function JornadaDaCampanha({
   const router = useRouter();
 
   /**
-   * O ESTILO DOS POSTS ANTES DO ENVIO (08/10). `estiloDosPosts` é null até o
-   * estado chegar; se a leitura falhar, nada trava (o servidor ainda segura a
-   * arte sem gastar). Enquanto a primeira leitura não volta (`estiloLido`),
-   * o envio espera: sem isso o cartão de envio podia aparecer e sumir no meio
-   * de um upload, quando o estado chegasse dizendo que falta o estilo.
-   * A semana acompanha o planejador do passo anterior, que salva sozinho.
+   * A SEMANA DESTA JORNADA (08/10): o planejador do passo da semana avisa cada
+   * troca (e salva sozinho), e o passo dos modelos grava a escolha de cada dia
+   * no mesmo `videoSemana`. Fica aqui, e não só no planejador, para os dois
+   * passos verem a mesma semana: voltar do passo dos modelos para o da semana
+   * mostrava o plano da abertura, sem o que a pessoa tinha acabado de trocar.
+   * Muda quando o projeto manda outra semana (a tela recarregou).
    */
-  const [estiloDosPosts, setEstiloDosPosts] = useState<boolean | null>(null);
-  const [estiloLido, setEstiloLido] = useState(false);
-  // Só o dono escolhe o estilo (08/10, revisão): o membro sobe o vídeo como
-  // antes e a arte espera a escolha do dono (lib/equipe/permissoes.ts).
-  const [podeMudarEstilo, setPodeMudarEstilo] = useState<boolean | null>(null);
-  const [comArte, setComArte] = useState(() => semanaTemArte(semana));
-  useEffect(() => {
-    if (!aberto) return;
-    let vivo = true;
-    fetch(`/api/projects/${projectId}/estilo-dos-posts`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { aprovada?: unknown; podeMudar?: unknown } | null) => {
-        if (!vivo || !d) return;
-        if (typeof d.aprovada === "boolean") setEstiloDosPosts(d.aprovada);
-        if (typeof d.podeMudar === "boolean") setPodeMudarEstilo(d.podeMudar);
+  const [semanaAtual, setSemanaAtual] = useState<SemanaDoVideo>(() => normalizarSemana(semana));
+  const [semanaDoProjeto, setSemanaDoProjeto] = useState(semana);
+  if (semana !== semanaDoProjeto) {
+    setSemanaDoProjeto(semana);
+    setSemanaAtual(normalizarSemana(semana));
+  }
+  const ultimaSalva = useRef(JSON.stringify(planoParaGravar(normalizarSemana(semana))));
+  const filaDeGravacao = useRef<Promise<unknown>>(Promise.resolve());
+  /** Grava a semana no projeto, uma gravação depois da outra (a ordem dos cliques é a ordem no banco). */
+  function salvarSemana(s: SemanaDoVideo) {
+    const plano = JSON.stringify(planoParaGravar(s));
+    if (plano === ultimaSalva.current) return;
+    ultimaSalva.current = plano;
+    filaDeGravacao.current = filaDeGravacao.current
+      .then(() => fetch(`/api/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoSemana: JSON.parse(plano) }) }))
+      .then((r) => {
+        if (r && !r.ok) throw new Error();
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (vivo) setEstiloLido(true);
+      .catch(() => {
+        ultimaSalva.current = "";
+        toast.error("Não consegui guardar o modelo de cada dia. A escolha continua na tela; troque de novo para tentar.", { id: "modelos-da-semana" });
       });
-    return () => {
-      vivo = false;
-    };
-  }, [aberto, projectId]);
-  const faltaOEstilo = precisaEscolherEstilo({ temArte: comArte, aprovada: estiloDosPosts, podeMudar: podeMudarEstilo });
-  const esperaODono = artesEsperamODono({ temArte: comArte, aprovada: estiloDosPosts, podeMudar: podeMudarEstilo });
+  }
+
+  /**
+   * O MODELO DE CADA POST ANTES DO ENVIO (08/10). Os posts visuais da semana
+   * e os que ainda não têm escolha. Se a leitura dos modelos falhar, nada
+   * tranca: o dia sem modelo espera a escolha no servidor, sem gastar.
+   */
+  const postsDaSemana = postsVisuaisDaSemana(semanaAtual);
+  const [modelosFalharam, setModelosFalharam] = useState(false);
+  const faltamModelos = modelosFalharam ? [] : postsSemModelo(postsDaSemana, modelosDaSemana(semanaAtual));
+  const temPostsVisuais = postsDaSemana.length > 0;
 
   const passoInicial = comecarNoVideo ? (estilo ? PASSOS_DO_VIDEO.length - 1 : 1) : 0;
   const [passo, setPasso] = useState(passoInicial);
   // Cada abertura recomeça do passo certo. Ajuste durante o render, e não em
   // efeito: é o jeito do React de derivar estado de uma prop que mudou.
-  // 08/10, revisão: a leitura do estilo também recomeça. Com o "lido" da
-  // abertura anterior, o envio aparecia na hora e sumia quando a leitura nova
-  // chegava dizendo que a aprovação tinha caído (no meio de um upload).
+  // 08/10: o envio não espera mais leitura nenhuma do servidor (a conferência
+  // dos modelos sai da semana na tela), então o cartão de envio não pisca.
   const [abertoAntes, setAbertoAntes] = useState(aberto);
   if (aberto !== abertoAntes) {
     setAbertoAntes(aberto);
-    if (aberto) {
-      setPasso(passoInicial);
-      setEstiloLido(false);
-    }
+    if (aberto) setPasso(passoInicial);
   }
 
   /**
@@ -203,10 +214,10 @@ export function JornadaDaCampanha({
   }, [aberto]);
   const pulaParaOEnvio = jaConfigurado || semGravacao;
   if (semGravacao && passo > 0 && passo < PASSOS_DO_VIDEO.length - 1) setPasso(PASSOS_DO_VIDEO.length - 1);
-  // O pulo não passa por cima do estilo dos posts (08/10): chegou ao envio
-  // com dia de arte e o estilo sem aprovação, volta para o passo do estilo.
-  // Sem gravação disponível nada é gerado, então não há o que escolher.
-  if (!semGravacao && faltaOEstilo && passo === PASSOS_DO_VIDEO.length - 1) setPasso(PASSO_DOS_POSTS);
+  // O pulo não passa por cima do modelo de cada post (08/10): chegou ao envio
+  // com dia visual sem escolha, volta para o passo dos modelos. Sem gravação
+  // disponível nada é gerado, então não há o que escolher.
+  if (!semGravacao && faltamModelos.length > 0 && passo === PASSOS_DO_VIDEO.length - 1) setPasso(PASSO_DOS_POSTS);
 
   /**
    * Reabrir a jornada reabre no COMEÇO, e não onde parou da última vez: quem
@@ -227,12 +238,15 @@ export function JornadaDaCampanha({
     // A pessoa continua podendo rever, pelo botão da linha de resumo. Com o
     // estilo dos posts faltando, o pulo para no passo dele (08/10).
     if (passo === 0 && pulaParaOEnvio) {
-      setPasso(faltaOEstilo && !semGravacao ? PASSO_DOS_POSTS : total - 1);
+      setPasso(faltamModelos.length > 0 && !semGravacao ? PASSO_DOS_POSTS : total - 1);
       return;
     }
-    // Da semana, o passo dos posts só aparece quando falta o estilo.
-    if (passo === PASSO_DOS_POSTS - 1 && !faltaOEstilo) {
-      setPasso(total - 1);
+    // Da semana, o que ficou na tela vai para o projeto (o planejador grava
+    // com atraso, e sair do passo cancelava a última troca), e o passo dos
+    // modelos aparece sempre que a semana tem dia visual.
+    if (passo === PASSO_DOS_POSTS - 1) {
+      salvarSemana(semanaAtual);
+      setPasso(temPostsVisuais ? PASSO_DOS_POSTS : total - 1);
       return;
     }
     setPasso((p) => Math.min(p + 1, total - 1));
@@ -245,8 +259,8 @@ export function JornadaDaCampanha({
       setPasso(0);
       return;
     }
-    // Do envio, sem o passo dos posts no caminho, volta para a semana.
-    if (passo === total - 1 && !faltaOEstilo) {
+    // Do envio, sem dia visual na semana, volta direto para a semana.
+    if (passo === total - 1 && !temPostsVisuais) {
       setPasso(PASSO_DOS_POSTS - 1);
       return;
     }
@@ -371,29 +385,29 @@ export function JornadaDaCampanha({
                   {passo === 3 && (
                     <SemanaDoVideoPlanejador
                       projectId={projectId}
-                      inicial={semana}
+                      inicial={semanaAtual}
                       redesConectadas={redesConectadas}
-                      aoMudarArte={setComArte}
+                      // O planejador grava sozinho, com atraso; ao sair do passo a
+                      // jornada grava de novo o que ficou na tela (avancar).
+                      aoMudar={setSemanaAtual}
                     />
                   )}
 
                   {passo === PASSO_DOS_POSTS && (
                     <div className="space-y-3">
                       <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-                        A sua semana tem dias com imagem, carrossel ou infográfico, e o estilo das artes ainda não foi escolhido. Escreva como você quer ou escolha um da biblioteca: aprovado, seguimos para o envio. Prefere sem arte? Volte e troque esses dias por texto.
+                        Cada dia com foto, carrossel ou vídeo curto tem o seu modelo, e no quadro a IA coloca o conteúdo daquele dia dentro dele. Veio preenchido com o último modelo usado em cada tipo de post (ou com o estilo do projeto): confira, troque o que quiser e siga para o envio. Prefere sem arte? Volte e troque esses dias por texto.
                       </p>
-                      <EstiloDosPosts
+                      <ModelosDosPosts
                         projectId={projectId}
-                        aoAprovar={() => {
-                          setEstiloDosPosts(true);
-                          setPasso(total - 1);
+                        posts={postsDaSemana}
+                        valor={modelosDaSemana(semanaAtual)}
+                        aoMudar={(m) => {
+                          const nova = semanaComModelos(semanaAtual, m);
+                          setSemanaAtual(nova);
+                          salvarSemana(nova);
                         }}
-                        aoLer={(e) => {
-                          // Aprovado em outro lugar depois da abertura (08/10,
-                          // revisão): sem isto o Continuar ficava travado com o
-                          // passo dizendo "Aprovado".
-                          if (e.aprovada) setEstiloDosPosts(true);
-                        }}
+                        aoCarregar={(ok) => setModelosFalharam(!ok)}
                       />
                     </div>
                   )}
@@ -423,18 +437,27 @@ export function JornadaDaCampanha({
                           </Button>
                         </div>
                       )}
-                      {esperaODono && !semGravacao && (
-                        <p className="text-[13px]" style={{ color: "#ea580c" }}>
-                          O dono da conta ainda não escolheu o estilo dos posts: os textos da semana saem, e as artes esperam a escolha dele, sem gastar crédito de imagem.
-                        </p>
+                      {/* O que cada post vai usar (08/10), com o mesmo "Rever" do resumo. */}
+                      {temPostsVisuais && !semGravacao && (
+                        <div
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
+                          style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}
+                        >
+                          <p className="min-w-0 flex-1 text-[13px]" style={{ color: "var(--text-primary)" }}>
+                            {postsDaSemana
+                              .map((p) => {
+                                const m = modelosDaSemana(semanaAtual)[p.chave];
+                                return `${p.rotulo.split(",")[0]}: ${m?.marca ? "nas cores da marca" : m?.nome ?? "sem modelo"}`;
+                              })
+                              .join(" · ")}
+                          </p>
+                          <Button variant="outline" size="sm" onClick={() => setPasso(PASSO_DOS_POSTS)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            Rever
+                          </Button>
+                        </div>
                       )}
-                      {comArte && !semGravacao && !estiloLido ? (
-                        <p className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                          <Loader2 className="h-4 w-4 animate-spin" /> Conferindo o estilo dos posts...
-                        </p>
-                      ) : (
-                        <VideoUpload projectId={projectId} onEnviado={onEnviado} />
-                      )}
+                      <VideoUpload projectId={projectId} onEnviado={onEnviado} />
                     </div>
                   )}
                 </motion.div>
@@ -459,8 +482,8 @@ export function JornadaDaCampanha({
                   "continuar": quem avança dali é o upload terminando. Um botão
                   que não faz nada em duas das cinco telas ensina a ignorá-lo. */}
               {passo > 0 && passo < total - 1 && (
-                // No passo dos posts, só segue com o estilo aprovado (08/10).
-                <Button onClick={avancar} disabled={passo === PASSO_DOS_POSTS && faltaOEstilo}>
+                // No passo dos modelos, só segue com todo dia visual escolhido (08/10).
+                <Button onClick={avancar} disabled={passo === PASSO_DOS_POSTS && faltamModelos.length > 0}>
                   Continuar
                 </Button>
               )}

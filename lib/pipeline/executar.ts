@@ -26,6 +26,7 @@ import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/i
 import { mancheteDaPeca, desenharPecaDeFeed } from "@/lib/media/peca-de-feed";
 import { metadataDaFoto } from "@/lib/media/foto-da-peca";
 import { marcaDaArte, promptDaArteSemTexto, desenharComFraseEmCodigo } from "@/lib/media/arte-com-frase";
+import { modeloParaOFormato } from "@/lib/estilo-dos-posts/tipos";
 import { TEXTO_DO_CARD_AGUARDANDO, diaPedeArte, pecaBaseDoDia } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { roteiroDoCarrossel, desenharCarrossel, redesQueAceitamCarrossel, laminasPermitidas } from "@/lib/media/carrossel";
@@ -197,6 +198,14 @@ interface CampaignConfig {
   midiaDoCliente?: Record<string, { tipo: "imagem" | "carrossel" | "video"; urls: string[] }>;
   /** Um destino ou vários por rede (28/09). Ler com `destinosDaRede`. */
   formatosPorRede?: Record<string, string | string[]>;
+  /**
+   * O MODELO DE CADA POST (08/10, lib/estilo-dos-posts/tipos.ts): a escolha
+   * feita na janela para cada dia com peça visual (o modelo da foto e do
+   * carrossel; a confirmação na marca do infográfico e do vídeo por IA).
+   * Chave: o dia da semana ("1" a "7"). Ler com `modeloParaOFormato`, que
+   * descarta a escolha que não serve ao formato resolvido do dia.
+   */
+  modelosDosPosts?: Record<string, unknown>;
 }
 
 /**
@@ -3006,7 +3015,19 @@ ${postDoLinkedIn.content}`,
       const styleHintEn = direcao.styleHint;
       // A família da linguagem e as cores da marca: a manchete e o infográfico
       // são compostos em código com elas desde 30/09 (lib/media/arte-com-frase).
-      const marcaDaPeca = await marcaDaArte(project.id);
+      //
+      // O MODELO DO POST (08/10): a escolha feita na janela para ESTE dia manda
+      // na arte, e escolher é aprovar este post (lib/media/arte-com-frase.tsx).
+      // Sem escolha (campanha antiga, dia livre), vale a regra do projeto.
+      const modeloDoDia = modeloParaOFormato(config.modelosDosPosts?.[String(dayOfWeek)], resolvedType);
+      const marcaDaPeca = await marcaDaArte(project.id, { runId, modeloDoPost: modeloDoDia });
+      if (modeloDoDia) {
+        await appendLog(runId, {
+          agent: "Diana Design",
+          message: modeloDoDia.marca ? `${dayName}: sai nas cores e na letra da sua marca, como confirmado na janela.` : `${dayName}: a arte sai no modelo escolhido para este post${modeloDoDia.nome ? ` ("${modeloDoDia.nome}")` : ""}.`,
+          status: "running",
+        });
+      }
       mediaByDayKey[dayKey] = { ...(mediaByDayKey[dayKey] ?? {}), visualStyle: direcao.visualStyle };
       const maxNarrWords = maxNarrationWordsForDuration(videoDuration);
       const mediaTypeLabel = isVideoType
@@ -3534,6 +3555,9 @@ Formato: uma descrição detalhada em inglês, sem marcadores, sem listas.`,
                 projectId: project.id,
                 runId,
                 chave: chaveDoCarrossel,
+                // A marca DESTE dia (08/10): sem ela o carrossel lia a marca do
+                // projeto de novo e o modelo escolhido para o post não chegava.
+                marca: marcaDaPeca,
                 prazoEm: fatia.fase === "dia" ? fatia.prazoEm : undefined,
                 // Uma linha por lâmina. Antes disto, o log ficava 800 segundos
                 // mudo entre "roteiro pronto" e a morte da função, e era
@@ -4300,6 +4324,11 @@ ${d.content}
               ...(dayMedia?.aguardandoIdentidade ? { aguardandoIdentidade: true } : {}),
               // Qual foto entrou na arte (08/10): só a da Biblioteca de materiais é foto real.
               ...(dayMedia?.imageUrl && dayMedia.foto ? dayMedia.foto : {}),
+              // O modelo escolhido para este post (08/10): o refazer do chat do card parte dele.
+              ...(() => {
+                const m = modeloParaOFormato(config.modelosDosPosts?.[String(dp.dayOfWeek)], dp.mediaType);
+                return m && !m.marca ? { modeloDoPost: m } : {};
+              })(),
             }) as Prisma.InputJsonValue,
             dayOfWeek: dp.dayOfWeek,
             status: "draft",

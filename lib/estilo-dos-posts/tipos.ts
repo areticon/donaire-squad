@@ -9,12 +9,15 @@ import { TETO } from "@/lib/biblioteca-de-design/tipos";
  *   - "o usuário gera a campanha toda e só no final descobre que está
  *     faltando aprovar o estilo, as artes; está muito confuso".
  *
- * Então o estilo dos posts é UM passo, com duas portas (escrever no chat ou
- * escolher da biblioteca), e escrever ou escolher JÁ É a aprovação: o
- * registro mora na identidade aprovada (lib/modelos-de-arte/identidade.ts,
- * campo `design`). O passo aparece no assistente do projeto, antes de gerar
- * a campanha por tema e antes de enviar a gravação, sempre que há dia de
- * arte e o estilo não está aprovado.
+ * Então o estilo dos posts é UM passo, com duas portas (criar falando ou
+ * escrevendo, ou escolher da biblioteca), e criar ou escolher JÁ É a
+ * aprovação: o registro mora na identidade aprovada (lib/modelos-de-arte/
+ * identidade.ts, campo `design`). O passo aparece no assistente do projeto e
+ * em Configurações.
+ *
+ * 08/10, à tarde (as regras novas do Bruno): o estilo do projeto é o que vem
+ * PREENCHIDO; quem manda em cada arte é o modelo escolhido para cada post,
+ * antes de gerar (a seção "o modelo de cada post", abaixo).
  *
  * Quem escreve a ficha do design a partir do chat é o Claude (o redator da
  * biblioteca); quem compara com a biblioteca é o JEV. Aqui só se junta o que
@@ -43,6 +46,224 @@ export interface EstadoDoEstiloDosPosts {
   aguardando: number;
   /** Só o dono muda o estilo, como a direção visual. */
   podeMudar: boolean;
+  /**
+   * O último modelo usado em cada tipo de post (08/10, escolha por post): é
+   * com ele que a escolha de cada dia vem preenchida, e a pessoa vê e troca.
+   */
+  ultimos?: UltimosModelos;
+  /** O estilo de edição que vale hoje no projeto, para o vídeo curto vir preenchido. */
+  edicao?: ModeloDoPost | null;
+}
+
+// ─────────────────────────── o modelo de cada post ───────────────────────────
+
+/**
+ * O MODELO É ESCOLHIDO POR POST (08/10/2026). Decisão do Bruno, literal: "o
+ * modelo precisa ser escolhido por post (quarta é um carrossel, precisa
+ * escolher o modelo), quinta é uma foto (escolher modelo) etc... sexta é um
+ * vídeo curto (short, reel e tiktok) escolher o estilo"; e "essa parte só cria
+ * o modelo, depois no quadro a IA coloca o conteúdo dentro do modelo
+ * selecionado ou criado".
+ *
+ * Então cada dia com peça visual leva a sua escolha, guardada onde a campanha
+ * já guarda a configuração dos dias (o config do run na campanha por tema, o
+ * `videoSemana` do projeto na semana do vídeo), sem coluna nova:
+ *   - foto e carrossel: um MODELO da biblioteca (um design de imagem: do book,
+ *     com `catalogoId`, ou criado por um cliente, com `designId`);
+ *   - vídeo curto: o ESTILO DE EDIÇÃO do catálogo (`estiloId`), o mesmo que a
+ *     jornada do vídeo já escolhe para o projeto;
+ *   - infográfico, vídeo por IA e capa de artigo: não há modelo a escolher (o
+ *     infográfico é desenhado em código), e o dia sai nas cores e na letra da
+ *     marca (`marca: true`, a confirmação daquele dia).
+ * A aprovação antes de gerar passa a ser esta: todo dia visual com a sua
+ * escolha. Módulo puro: a tela importa daqui.
+ */
+
+/** Os formatos de post que têm peça visual. */
+export type FormatoDoPost = "image" | "carousel" | "infographic" | "video" | "article" | "short";
+
+/** O que cada formato pede: um modelo de arte, um estilo de edição ou só a marca. */
+export type OQueOPostPede = "modelo" | "edicao" | "marca";
+
+export function oQueOPostPede(formato: string | null | undefined): OQueOPostPede | null {
+  if (formato === "image" || formato === "carousel") return "modelo";
+  if (formato === "short") return "edicao";
+  if (formato === "infographic" || formato === "video" || formato === "article") return "marca";
+  return null;
+}
+
+/** Como a tela chama cada formato na linha do dia. */
+export const ROTULO_DO_POST: Record<FormatoDoPost, string> = {
+  image: "Foto",
+  carousel: "Carrossel",
+  infographic: "Infográfico",
+  video: "Vídeo por IA",
+  article: "Capa do artigo",
+  short: "Vídeo curto (Shorts, Reels, TikTok)",
+};
+
+/** A escolha de um post. Só um dos três campos manda, conforme o formato. */
+export interface ModeloDoPost {
+  /** O design da biblioteca (imagem), criado por um cliente ou semente do book. */
+  designId?: string | null;
+  /** O modelo do book, quando o design é semente dele (o id do catálogo). */
+  catalogoId?: string | null;
+  /** O estilo de edição do vídeo curto (lib/media/catalogo-de-estilos.ts). */
+  estiloId?: string | null;
+  /** Infográfico, vídeo por IA e capa: o dia confirmado nas cores e na letra da marca. */
+  marca?: boolean;
+  /** O nome que a tela mostra. */
+  nome?: string | null;
+}
+
+/** As escolhas da campanha, pela chave do dia ("1" a "7"). */
+export type ModelosDosPosts = Record<string, ModeloDoPost>;
+
+/** O último modelo usado em cada tipo de post do projeto. */
+export type UltimosModelos = Partial<Record<"image" | "carousel" | "short", ModeloDoPost>>;
+
+const ID_VALIDO = /^[A-Za-z0-9_-]{1,80}$/;
+
+/** Lê uma escolha que veio da tela ou do banco; null quando não serve para nada. Puro. */
+export function modeloDoPostValido(bruto: unknown): ModeloDoPost | null {
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return null;
+  const b = bruto as Record<string, unknown>;
+  const id = (v: unknown) => (typeof v === "string" && ID_VALIDO.test(v) ? v : null);
+  const nome = typeof b.nome === "string" && b.nome.trim() ? b.nome.replace(/\s+/g, " ").trim().slice(0, 80) : null;
+  const m: ModeloDoPost = {};
+  const designId = id(b.designId);
+  const catalogoId = id(b.catalogoId);
+  const estiloId = id(b.estiloId);
+  if (designId) m.designId = designId;
+  if (catalogoId) m.catalogoId = catalogoId;
+  if (estiloId) m.estiloId = estiloId;
+  if (b.marca === true) m.marca = true;
+  if (!m.designId && !m.catalogoId && !m.estiloId && !m.marca) return null;
+  if (nome) m.nome = nome;
+  return m;
+}
+
+/** A escolha serve ao que o post pede? Modelo para foto e carrossel, edição para o curto, marca para o resto. Puro. */
+export function modeloServeAoPost(m: ModeloDoPost | null | undefined, pede: OQueOPostPede | null): boolean {
+  if (!m || !pede) return false;
+  if (pede === "modelo") return Boolean(m.designId || m.catalogoId);
+  if (pede === "edicao") return Boolean(m.estiloId);
+  return m.marca === true;
+}
+
+/** A escolha de um dia, só se ela serve ao formato daquele dia; senão null. Puro. */
+export function modeloParaOFormato(bruto: unknown, formato: string | null | undefined): ModeloDoPost | null {
+  const m = modeloDoPostValido(bruto);
+  return m && modeloServeAoPost(m, oQueOPostPede(formato)) ? m : null;
+}
+
+/** Um post visual da campanha, como a lista dos modelos mostra. */
+export interface PostVisual {
+  /** A chave do dia ("1" a "7"). */
+  chave: string;
+  /** "Quarta", "Qua 08/10": quem chama decide. */
+  rotulo: string;
+  formato: FormatoDoPost;
+}
+
+/** Os posts que ainda não têm a escolha que o formato pede. Puro. */
+export function postsSemModelo(posts: PostVisual[], modelos: ModelosDosPosts | null | undefined): PostVisual[] {
+  return posts.filter((p) => !modeloServeAoPost(modelos?.[p.chave], oQueOPostPede(p.formato)));
+}
+
+/** Só as escolhas dos posts que existem, e que servem ao formato deles (o que vai para a esteira). Puro. */
+export function modelosParaGravar(posts: PostVisual[], modelos: ModelosDosPosts | null | undefined): ModelosDosPosts {
+  const out: ModelosDosPosts = {};
+  for (const p of posts) {
+    const m = modeloParaOFormato(modelos?.[p.chave], p.formato);
+    if (m) out[p.chave] = m;
+  }
+  return out;
+}
+
+/**
+ * A ESCOLHA JÁ PREENCHIDA, que a pessoa vê e troca: o dia sem escolha recebe o
+ * último modelo usado naquele tipo de post (o carrossel, o do carrossel; a
+ * foto, o da foto); sem ele, o estilo dos posts aprovado no projeto (o que foi
+ * criado ou escolhido em Fotos e estilo); o vídeo curto, o último estilo de
+ * edição, senão o do projeto. Infográfico e vídeo por IA saem confirmados na
+ * marca. Dia que já tem escolha válida não muda. Puro.
+ */
+export function preencherModelos(
+  posts: PostVisual[],
+  atuais: ModelosDosPosts | null | undefined,
+  o: { ultimos?: UltimosModelos | null; padraoDaImagem?: ModeloDoPost | null; padraoDaEdicao?: ModeloDoPost | null }
+): ModelosDosPosts {
+  const out: ModelosDosPosts = { ...(atuais ?? {}) };
+  for (const p of posts) {
+    const pede = oQueOPostPede(p.formato);
+    if (modeloServeAoPost(out[p.chave], pede)) continue;
+    let sugerido: ModeloDoPost | null | undefined = null;
+    if (pede === "modelo") {
+      const tipo = p.formato === "carousel" ? "carousel" : "image";
+      sugerido = o.ultimos?.[tipo] ?? o.padraoDaImagem;
+    } else if (pede === "edicao") {
+      sugerido = o.ultimos?.short ?? o.padraoDaEdicao;
+    } else if (pede === "marca") {
+      sugerido = { marca: true, nome: "Nas cores e na letra da sua marca" };
+    }
+    const valido = modeloParaOFormato(sugerido, p.formato);
+    if (valido) out[p.chave] = valido;
+    else delete out[p.chave];
+  }
+  return out;
+}
+
+/**
+ * OS MODELOS DA ARTE DE UM POST (08/10): o escolhido para o post manda e é o
+ * único; sem ele, o design aprovado do projeto; sem ele, os modelos do book.
+ * É a regra que lib/media/arte-com-frase.tsx (marcaDaArte) aplica. Puro.
+ */
+export function modelosDaPeca(o: { doPost?: string | null; doProjeto?: string | null; book?: string[] | null }): string[] | undefined {
+  if (o.doPost) return [o.doPost];
+  if (o.doProjeto) return [o.doProjeto];
+  return o.book?.length ? o.book : undefined;
+}
+
+/** A peça pode gastar com a arte? Com a identidade aprovada no projeto, ou com a escolha feita para o post. Puro. */
+export function pecaAprovada(o: { identidadeAprovada: boolean | null | undefined; escolhidoParaOPost: boolean }): boolean {
+  return Boolean(o.identidadeAprovada) || o.escolhidoParaOPost;
+}
+
+/**
+ * O estilo dos posts aprovado no projeto como escolha de um post: o design
+ * criado (ou escolhido) em Fotos e estilo, ou o primeiro modelo do book
+ * aprovado. Null sem aprovação: aí a pessoa escolhe. Puro.
+ */
+export function padraoDaImagemDoEstado(e: Pick<EstadoDoEstiloDosPosts, "aprovada" | "design" | "modelos"> | null | undefined): ModeloDoPost | null {
+  if (!e?.aprovada) return null;
+  if (e.design) return { designId: e.design.id, nome: e.design.nome };
+  const m = e.modelos[0];
+  return m ? { catalogoId: m.id, nome: m.nome } : null;
+}
+
+/** A escolha de um post a partir de um design da galeria. Puro. */
+export function escolhaDoDesign(d: { id: string; nome: string; catalogoId?: string | null }): ModeloDoPost {
+  return { designId: d.id, ...(d.catalogoId ? { catalogoId: d.catalogoId } : {}), nome: d.nome };
+}
+
+/**
+ * O design serve àquele tipo de post? O modelo do book diz os formatos dele
+ * (post, carrossel, story); o design criado por cliente é uma imagem inteira
+ * com a manchete por cima e serve aos dois. Vídeo nunca serve a post de
+ * imagem. `formatosDoBook` vem de quem chama (o catálogo), para este módulo
+ * não carregar o book inteiro. Puro.
+ */
+export function designServeAoPost(
+  d: { tipo: string; catalogoId?: string | null },
+  formato: FormatoDoPost,
+  formatosDoBook?: (catalogoId: string) => readonly string[] | null | undefined
+): boolean {
+  if (d.tipo !== "imagem") return false;
+  if (!d.catalogoId || !formatosDoBook) return true;
+  const formatos = formatosDoBook(d.catalogoId);
+  if (!formatos) return true;
+  return formato === "carousel" ? formatos.includes("carrossel") : formatos.includes("post");
 }
 
 /**
@@ -82,23 +303,10 @@ export function resumoDoEstilo(e: Pick<EstadoDoEstiloDosPosts, "aprovada" | "des
   return `Seus posts saem nos modelos ${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}.`;
 }
 
-/**
- * A campanha (ou a semana do vídeo) precisa do passo do estilo antes de
- * gerar? Só quando há dia de arte e o estilo sabidamente NÃO está aprovado.
- * Enquanto o estado não chegou (null), não trava: o servidor ainda segura a
- * arte, sem gastar, como rede de segurança.
- *
- * `podeMudar` (08/10, revisão): o MEMBRO da equipe gera campanha e sobe
- * vídeo, mas só o dono escolhe o estilo (lib/equipe/permissoes.ts). Parar o
- * membro num passo que ele não pode cumprir trancava a campanha e o envio
- * inteiros; para ele, os textos saem e a arte espera a escolha do dono, como
- * antes, e a tela avisa.
+/*
+ * A trava do estilo do projeto antes de gerar (precisaEscolherEstilo e
+ * artesEsperamODono, 08/10 de manhã) saiu à tarde: a aprovação antes de gerar
+ * passou a ser a escolha do modelo de cada post (`postsSemModelo`), que o
+ * membro da equipe também faz. Ninguém fica parado num passo que não pode
+ * cumprir, e a arte do membro não espera mais o dono.
  */
-export function precisaEscolherEstilo(o: { temArte: boolean; aprovada: boolean | null | undefined; podeMudar?: boolean | null }): boolean {
-  return o.temArte && o.aprovada === false && o.podeMudar !== false;
-}
-
-/** O membro segue sem o estilo (a arte espera o dono): a tela precisa dizer isso. Puro. */
-export function artesEsperamODono(o: { temArte: boolean; aprovada: boolean | null | undefined; podeMudar?: boolean | null }): boolean {
-  return o.temArte && o.aprovada === false && o.podeMudar === false;
-}
