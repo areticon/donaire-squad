@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, ShieldCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { GARANTIA_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
+import { ARREPENDIMENTO_DIAS, PLANOS_PUBLICOS, reais } from "@/lib/planos";
 import { ExtrasDoPlano } from "@/components/planos/extras-do-plano";
 import { ComoContamos, EntregasDoPlano } from "@/components/planos/entregas-do-plano";
 import { fraseDoAcessoExtra, listaDoCartao } from "@/lib/entregas-do-plano";
@@ -140,10 +140,10 @@ export function Pricing(_: { vagasDeFundador?: number }) {
         >
           <ShieldCheck className="w-6 h-6 text-orange-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-[var(--text-primary)]">Garantia de {GARANTIA_DIAS} dias, sem letra miúda</p>
+            <p className="font-bold text-[var(--text-primary)]">{ARREPENDIMENTO_DIAS} dias para desistir, sem letra miúda</p>
             <p className="text-sm text-[var(--text-muted)] mt-1">
-              Nos primeiros {GARANTIA_DIAS} dias, se a sua empresa não publicar nada que aprovou, devolvemos tudo o que
-              foi pago.
+              Nos primeiros {ARREPENDIMENTO_DIAS} dias depois do pagamento, se a sua empresa desistir, devolvemos tudo o
+              que foi pago, sem precisar dar motivo, como manda o Código de Defesa do Consumidor.
             </p>
           </div>
         </motion.div>

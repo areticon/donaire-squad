@@ -84,10 +84,19 @@ export function signatariosDoDocumento(cliente: Signatario): Signatario[] {
   return [cliente, demandou];
 }
 
-/** A marca na tela de assinatura da ZapSign: a logomarca pública e o laranja da Demandou. */
+/**
+ * A marca na tela de assinatura da ZapSign: o laranja da Demandou e a mesma
+ * marca da landing (06/10/2026), o monograma "dp" em degradê sem o disco
+ * grafite. public/brand-mark-on-light.png é o arquivo oficial em PNG para
+ * fundo claro (a tela da ZapSign é clara); o /logo.png de antes era o
+ * monograma antigo dentro do disco escuro, que a landing não usa mais. A
+ * ZapSign pede imagem por URL pública, por isso PNG e não o SVG.
+ */
+export const LOGO_DA_ASSINATURA = "/brand-mark-on-light.png";
+
 function marcaDaDemandou() {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
-  return { brand_name: "Demandou", brand_primary_color: "#ef6122", brand_logo: `${base}/logo.png` };
+  return { brand_name: "Demandou", brand_primary_color: "#ef6122", brand_logo: `${base}${LOGO_DA_ASSINATURA}` };
 }
 
 export interface ProvedorDeAssinatura {

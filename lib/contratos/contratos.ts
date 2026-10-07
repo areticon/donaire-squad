@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db/prisma";
 import { provedorDeAssinatura, signatariosDoDocumento, FalhaDoProvedor } from "@/lib/contratos/assinatura";
-import { camposQueFaltam, montarTexto } from "@/lib/contratos/modelo";
+import { camposQueFaltam, lerModeloDaVersao, montarTexto } from "@/lib/contratos/modelo";
 import type { CapaDoContrato } from "@/lib/contratos/html";
 import { guardarPdfEnviado, pdfDoContrato } from "@/lib/contratos/pdf";
 import { centavosEmReais, fimDaVigencia, situacaoDoContrato } from "@/lib/contratos/situacao";
@@ -391,9 +391,28 @@ export type ContratoParaTexto = {
   descontoCentavos?: number;
   descontoMotivo?: string | null;
   fundador?: boolean;
+  /**
+   * A versão do modelo com que o contrato saiu (06/10). Gravada no envio e
+   * mantida na versão nova: o texto é sempre remontado do modelo dela, e o
+   * modelo do dia só vale para contrato que ainda não saiu.
+   */
+  modeloVersao?: string | null;
+  /** O hash do texto que saiu para assinatura, para conferir a remontagem. */
+  textoHash?: string | null;
 };
 
+/**
+ * O TEXTO DO CONTRATO. Contrato que já saiu é montado do modelo da versão
+ * gravada nele (lib/contratos/modelos/historico), nunca do modelo do dia:
+ * trocar o modelo não muda contrato enviado. `confere` diz se o hash
+ * remontado é o gravado no envio (null quando ainda não saiu).
+ */
 export function textoDoContrato(c: ContratoParaTexto) {
+  const t = montarTextoDoContrato(c);
+  return { ...t, confere: c.textoHash ? t.hash === c.textoHash : null };
+}
+
+function montarTextoDoContrato(c: ContratoParaTexto) {
   const tabela = c.precoTabelaCentavos ? precoDeTabela(c.plano, c.acessosExtras ?? 0) : null;
   return montarTexto({
     numero: c.numero,
@@ -436,7 +455,7 @@ export function textoDoContrato(c: ContratoParaTexto) {
             chavePix: chavePix(),
           }
         : null,
-  });
+  }, lerModeloDaVersao(c.modeloVersao));
 }
 
 /** Os dados do cliente como o modelo os vê, para saber o que falta. */
@@ -515,6 +534,13 @@ export async function enviarParaAssinar(admin: Autor, id: string) {
   // pagamento (cláusula 5.1), e é isso que a ativação grava (04/10).
 
   const t = textoDoContrato(c);
+  // A TRAVA DO TEXTO ENVIADO (06/10): o reenvio do mesmo contrato tem de sair
+  // com o mesmo texto. Hash diferente do gravado quer dizer que algo mudou por
+  // fora (modelo, link, chave Pix), e o cliente receberia outro documento.
+  if (t.confere === false) {
+    await registrar(id, admin, "envio_barrado_texto_mudou", { versao: t.versao, gravado: c.textoHash, remontado: t.hash });
+    throw new RecusaDoContrato("O texto remontado deste contrato não é o mesmo que saiu para assinatura (o hash mudou). Nada foi enviado; confira a trilha antes de reenviar.", 409);
+  }
   const provedor = provedorDeAssinatura();
   if (!provedor) {
     await prisma.contrato.update({ where: { id }, data: { provedorSituacao: "aguardando_provedor", modeloVersao: t.versao, textoHash: t.hash } });
@@ -913,7 +939,9 @@ export async function editarContrato(admin: Autor, id: string, m: MudancaDoContr
       ...novo,
       versao: c.versao + 1,
       status: "rascunho",
-      ...(estavaEnviado || c.provedorSituacao ? { provedorDocumentoId: null, provedorSituacao: null, linkDeAssinatura: null, provedor: null, textoHash: null, modeloVersao: null } : {}),
+      // O modeloVersao FICA (06/10): a versão nova de um contrato que já saiu
+      // continua no modelo com que ele saiu; só contrato novo pega o do dia.
+      ...(estavaEnviado || c.provedorSituacao ? { provedorDocumentoId: null, provedorSituacao: null, linkDeAssinatura: null, provedor: null, textoHash: null } : {}),
     },
   });
   await registrar(id, admin, "nova_versao", { de: c.versao, para: c.versao + 1, mudou, anterior, ...(precoMudou ? resumoDoPreco(preco) : {}) });

@@ -263,8 +263,8 @@ export async function lerCrm(): Promise<{ clientes: ClienteDoCrm[]; leuStripe: b
  * Termos de Uso, itens 5.5 a 5.7 (versão de 23/09):
  *   5.5  arrependimento: 7 dias corridos a contar da PRIMEIRA COBRANÇA de cada
  *        nova contratação, reembolso integral;
- *   5.6  garantia: 30 dias da primeira cobrança, SE a pessoa não publicou nada
- *        que ela mesma aprovou, uma vez por usuário, reembolso integral;
+ *   5.6  (a garantia de 30 dias "se não publicou nada" SAIU em 06/10/2026,
+ *        com o contrato 1.4: fica só o arrependimento de 7 dias da lei);
  *   5.7  fora disso, não há reembolso proporcional, e situação excepcional é
  *        decidida caso a caso.
  *
@@ -277,7 +277,7 @@ export type Reembolso = {
   /** Soma paga nesta contratação, em reais. */
   pago: number;
   diasDesdeACobranca: number | null;
-  regra: "arrependimento" | "garantia" | "fora_da_regra" | "nada_pago";
+  regra: "arrependimento" | "fora_da_regra" | "nada_pago";
   explicacao: string;
 };
 
@@ -302,16 +302,12 @@ export function regraDeReembolso(args: {
   if (dias <= 7) {
     return { ...base, regra: "arrependimento", explicacao: `Dia ${dias} depois da primeira cobrança: dentro dos 7 dias do art. 49 do CDC (termos 5.5). Reembolso integral é direito dele.` };
   }
-  if (dias <= 30 && args.publicados === 0) {
-    return { ...base, regra: "garantia", explicacao: `Dia ${dias} e nenhuma peça publicada: dentro da garantia de 30 dias (termos 5.6). Reembolso integral, uma vez por usuário.` };
-  }
+  // Sem a garantia de 30 dias (06/10): passado o 7º dia, publicou ou não, é
+  // fora da regra. `publicados` fica na assinatura para a ficha seguir igual.
   return {
     ...base,
     regra: "fora_da_regra",
-    explicacao:
-      dias <= 30
-        ? `Dia ${dias}, mas já publicou ${args.publicados} peça(s): a garantia não vale (termos 5.6). O normal é cancelar no fim do período (5.4). Reembolso só como exceção, com motivo.`
-        : `Dia ${dias}: fora do arrependimento e da garantia. O normal é cancelar no fim do período (5.4). Reembolso só como exceção, com motivo (5.7).`,
+    explicacao: `Dia ${dias}: fora dos 7 dias de arrependimento. O normal é cancelar no fim do período (5.4). Reembolso só como exceção, com motivo (5.7).`,
   };
 }
 

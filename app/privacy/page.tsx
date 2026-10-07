@@ -184,7 +184,7 @@ export default function PrivacyPage() {
               </div>
               {/* O PRODUTO APRENDE COM QUEM USA (06/10/2026): iguais aos itens
                   11.6 a 11.8 dos Termos e às cláusulas 11.9 a 11.11, 13.2(d) e
-                  17.4 a 17.8 das Condições Gerais (versão 1.3). */}
+                  17.4 a 17.8 das Condições Gerais (versão 1.3; na 1.4, de 06/10, são 10.9 a 10.11, 12.2(d) e 16.4 a 16.8). */}
               <div id="interacoes" className="scroll-mt-24">
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">2.11 Suas interações e a memória do seu projeto</h3>
                 <p className="text-sm">

@@ -178,12 +178,12 @@ export async function cancelarNoFim(admin: Admin, userId: string, desfazer: bool
 /**
  * REEMBOLSO INTEGRAL E CANCELAMENTO IMEDIATO.
  *
- * O que volta é o que foi pago NESTA contratação (termos 5.5 e 5.6), cobrança
+ * O que volta é o que foi pago NESTA contratação (termos 5.5), cobrança
  * por cobrança, pelo mesmo meio de pagamento. A assinatura é encerrada na hora
  * e o plano cai para "free" já aqui, sem esperar o webhook, para a tela do
  * admin não mostrar um cliente reembolsado com plano ativo.
  *
- * Fora do arrependimento e da garantia, o reembolso é exceção (5.7) e só sai
+ * Fora dos 7 dias de arrependimento, o reembolso é exceção (5.7) e só sai
  * com `excecao` marcada e motivo escrito.
  */
 export async function reembolsarECancelar(admin: Admin, userId: string, motivo: string, excecao: boolean) {
@@ -193,7 +193,7 @@ export async function reembolsarECancelar(admin: Admin, userId: string, motivo: 
   if (!motivo.trim()) throw new RecusaDoAdmin("Escreva o motivo do reembolso.");
   const regra = ficha.reembolso.regra;
   if (regra === "fora_da_regra" && !excecao) {
-    throw new RecusaDoAdmin("Fora do arrependimento e da garantia. Para reembolsar mesmo assim, marque como exceção.");
+    throw new RecusaDoAdmin("Fora dos 7 dias de arrependimento. Para reembolsar mesmo assim, marque como exceção.");
   }
 
   const { getStripe } = await import("@/lib/stripe");

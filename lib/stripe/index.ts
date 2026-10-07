@@ -52,7 +52,8 @@ export { TRIAL_DAYS } from "@/lib/planos";
 //   número um de churn. Os créditos continuam existindo por baixo (limits e
 //   CREDIT_COSTS mandam no consumo) e saem da cara do cliente.
 // - Garantia de 30 dias: se não publicar nada que aprovou, devolvemos tudo.
-//   É o que sustenta preço alto sem caso na mão.
+//   SAIU em 06/10/2026 (contrato 1.4): fica só o arrependimento de 7 dias da
+//   lei (lib/planos.ts, ARREPENDIMENTO_DIAS).
 // - Oferta de fundador de verdade: os 10 primeiros no Autoridade travam
 //   R$ 397 para sempre. Em 14/09 ela virou ANUAL e deixou de ser cupom: um
 //   price próprio de R$ 4.764 por ano (FUNDADOR_PRICE_ID abaixo), sem código

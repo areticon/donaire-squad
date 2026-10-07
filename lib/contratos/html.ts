@@ -60,14 +60,41 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 const dataBR = (d: Date | null) => (d ? d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "long", year: "numeric" }) : null);
 
-/** A logomarca para fundo claro, embutida na página (o PDF não busca nada na rede). */
+/**
+ * A LOGOMARCA DO CONTRATO É A DA LANDING (06/10/2026): o monograma "dp" em
+ * degradê laranja (o arquivo oficial public/brand-mark.svg, o mesmo que
+ * components/brand-mark.tsx copia e que a navbar da landing anima) ao lado do
+ * nome "demandou." em Montserrat negrito, como em components/landing/navbar.tsx.
+ * Antes ia public/logo-light.svg, o logotipo antigo em grafite, que a landing
+ * não usa mais. Nada é redesenhado: o SVG vai como está no arquivo oficial.
+ *
+ * Embutida na página (o PDF não busca nada na rede). O arquivo entra na função
+ * da Vercel pelo outputFileTracingIncludes do next.config.ts.
+ */
 let logoEmCache: string | null = null;
 export function logomarcaEmbutida(): string {
   if (logoEmCache) return logoEmCache;
-  const arquivo = path.join(process.cwd(), "public", "logo-light.svg");
+  const arquivo = path.join(process.cwd(), "public", "brand-mark.svg");
   const svg = readFileSync(arquivo, "utf8").replace(/^﻿/, "");
   logoEmCache = `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
   return logoEmCache;
+}
+
+/**
+ * A letra do nome "demandou." (Montserrat), embutida para o PDF sair igual em
+ * qualquer máquina. Usa o arquivo que já existe para as capas compostas; se
+ * ele não estiver lá, o nome sai na letra de reserva, e o contrato não para.
+ */
+let fonteDoNomeEmCache: string | null = null;
+export function fonteDoNome(): string {
+  if (fonteDoNomeEmCache !== null) return fonteDoNomeEmCache;
+  try {
+    const ttf = readFileSync(path.join(process.cwd(), "lib", "media", "fontes-da-capa", "modelos", "Montserrat-800.ttf"));
+    fonteDoNomeEmCache = `@font-face { font-family: "Montserrat Marca"; font-weight: 700; src: url(data:font/ttf;base64,${ttf.toString("base64")}) format("truetype"); }`;
+  } catch {
+    fonteDoNomeEmCache = "";
+  }
+  return fonteDoNomeEmCache;
 }
 
 /** Negrito e links dentro de uma linha já escapada. */
@@ -167,7 +194,7 @@ function capaEmHtml(c: CapaDoContrato): string {
   return `
 <section class="capa">
   <div class="topo">
-    <img class="logo" src="${logomarcaEmbutida()}" alt="Demandou" />
+    <div class="marca"><img class="logo" src="${logomarcaEmbutida()}" alt="" /><span class="nome-da-marca">demandou.</span></div>
     ${c.teste ? '<span class="selo-teste">Ambiente de teste, sem validade jurídica</span>' : ""}
   </div>
   <div class="titulo">
@@ -233,7 +260,9 @@ table.t tr { break-inside: avoid; page-break-inside: avoid; }
 thead { display: table-header-group; }
 .capa { break-after: page; page-break-after: always; min-height: 240mm; display: flex; flex-direction: column; }
 .capa .topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26mm; }
-.capa .logo { height: 16mm; width: auto; }
+.capa .marca { display: flex; align-items: center; gap: 1.5mm; }
+.capa .logo { height: 17mm; width: 17mm; margin-left: -2.5mm; }
+.capa .nome-da-marca { font-family: "Montserrat Marca", "Montserrat", "Liberation Sans", Arial, sans-serif; font-weight: 700; font-size: 22pt; line-height: 1; color: var(--tinta); text-transform: lowercase; letter-spacing: -0.01em; }
 .selo-teste { font-size: 8pt; font-weight: 600; color: #a43a0c; border: 1px solid #a43a0c; border-radius: 4pt; padding: 2pt 6pt; text-transform: uppercase; letter-spacing: 0.04em; }
 .capa .titulo { margin-bottom: 14mm; }
 .capa .sobre { color: var(--cinza); font-size: 10pt; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4pt; text-align: left; }
@@ -266,7 +295,7 @@ export function htmlDoContrato(capa: CapaDoContrato, markdown: string, fontesCss
 <head>
 <meta charset="utf-8" />
 <title>Contrato Demandou nº ${n}</title>
-<style>${fontesCss}${CSS}</style>
+<style>${fontesCss}${fonteDoNome()}${CSS}</style>
 </head>
 <body>
 ${capaEmHtml(capa)}

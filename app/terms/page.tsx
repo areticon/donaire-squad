@@ -166,10 +166,11 @@ export default function TermsPage() {
             </h2>
             <div className="space-y-4 text-sm">
               {/* Seção 5 reescrita em 02/10/2026 para bater com a minuta das
-                  Condições Gerais de Contratação (cláusulas 4, 5, 6, 7, 8, 9 e
-                  18). A regra de reembolso do painel (lib/admin/crm.ts) ainda
-                  conhece só arrependimento e garantia; a janela da renovação
-                  (5.3) e o reembolso parcial (5.7) são feitos à mão até lá. */}
+                  Condições Gerais de Contratação (cláusulas 4, 5, 6, 7, 8 e 17
+                  da versão 1.4, de 06/10/2026, que tirou a garantia de 30
+                  dias). A regra de reembolso do painel (lib/admin/crm.ts)
+                  conhece só o arrependimento; a janela da renovação (5.3) e o
+                  reembolso parcial (5.7) são feitos à mão até lá. */}
               <div>
                 <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.1 Planos, preço e reajuste</h3>
                 <p>
@@ -229,20 +230,19 @@ export default function TermsPage() {
                 </p>
               </div>
               <div>
-                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.6 Garantia de 30 dias</h3>
-                <p className="mb-2">
-                  Além do arrependimento, a demandou oferece uma garantia própria: se, nos{" "}
-                  <strong className="text-[var(--text-primary)]">30 (trinta) dias corridos a contar da confirmação do primeiro pagamento</strong>, o Usuário não tiver publicado nenhuma peça que ele mesmo aprovou, poderá cancelar com{" "}
-                  <strong className="text-[var(--text-primary)]">reembolso integral</strong> do valor pago naquela contratação, pelo mesmo caminho e no mesmo prazo do item 5.5.
-                </p>
+                {/* A garantia de 30 dias "se não publicar nada" saiu em 06/10/2026,
+                    junto com a versão 1.4 das Condições Gerais. O número 5.6 fica
+                    para as referências dos itens seguintes não mudarem, e diz
+                    o que vale para quem contratou antes. */}
+                <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.6 Sem garantia além do arrependimento</h3>
                 <p>
-                  Conta como publicação tanto a publicação pela plataforma de uma peça aprovada quanto o uso público, por outro meio, de conteúdo gerado pela plataforma. A garantia vale uma vez por Usuário (mesmo CNPJ ou CPF e empresas do mesmo grupo), na primeira contratação, e não se aplica a renovações. Ela se soma à garantia legal do Código de Defesa do Consumidor, sem substituí-la.
+                  Desde 06/10/2026, o direito de desistir com reembolso integral é o arrependimento de 7 dias do item 5.5, previsto em lei. A garantia própria de 30 dias que a demandou oferecia antes dessa data foi encerrada para as novas contratações. Quem contratou antes continua com as condições que aceitou na contratação. Nada disso afeta a garantia legal do Código de Defesa do Consumidor.
                 </p>
               </div>
               <div>
                 <h3 className="mb-2 font-medium text-[var(--text-primary)]">5.7 Encerramento antecipado, com reembolso proporcional</h3>
                 <p className="mb-2">
-                  Depois dos prazos dos itens 5.5 e 5.6, se o Usuário preferir encerrar o contrato antes do fim dos 12 meses e receber de volta o período restante, o reembolso é calculado assim:
+                  Depois do prazo do item 5.5, se o Usuário preferir encerrar o contrato antes do fim dos 12 meses e receber de volta o período restante, o reembolso é calculado assim:
                 </p>
                 <ul className="mb-2 space-y-2 list-none">
                   {[
@@ -291,7 +291,7 @@ export default function TermsPage() {
                 </p>
                 <ul className="space-y-2 list-none">
                   {[
-                    "São liberados a partir do 31º dia da contratação. O Usuário pode pedir a liberação antes, a partir do 8º dia, ciente de que, ao usar um deles, deixa de ter direito à garantia do item 5.6 (o arrependimento do item 5.5 não muda).",
+                    "São liberados a partir do 8º dia da contratação, depois do prazo de arrependimento do item 5.5.",
                     "Devem ser usados dentro do ano de contrato em que foram concedidos, não acumulam para o ano seguinte e não viram dinheiro, créditos ou desconto se não forem usados.",
                     "Demanda Day: data, local e programação definidos pela demandou e divulgados com pelo menos 30 dias de antecedência. O ingresso é nominal e pode ser passado a outro sócio, administrador ou colaborador da empresa do Usuário, avisando até 5 dias antes; não pode ser vendido nem cedido a terceiros. O ingresso não usado na data se perde. Se nenhuma edição acontecer no ano de contrato, o ingresso vale para a edição seguinte.",
                     "Demanda Cast: a gravação acontece em estúdio parceiro indicado pela demandou ou nas salas do escritório parceiro no Helbor Patteo Mogilar (Torre 3, salas 212 e 213, Av. Prefeito Carlos Ferreira Lopes, 635, Vila Mogilar, Mogi das Cruzes/SP). O endereço é informado no agendamento, feito com pelo menos 10 dias úteis de antecedência; a demandou pode trocar o local avisando com pelo menos 10 dias de antecedência, e o Usuário pode remarcar se o novo local não servir. O Usuário pode remarcar uma vez com 48 horas de aviso; falta sem aviso faz o benefício se perder.",
@@ -644,8 +644,9 @@ export default function TermsPage() {
               </div>
               {/* O PRODUTO APRENDE COM QUEM USA (06/10/2026): memória do
                   projeto, melhoria a partir das interações e biblioteca de
-                  design. Iguais às cláusulas 11.9 a 11.11 e 17.4 a 17.8 das
-                  Condições Gerais (versão 1.3) e aos itens 2.11 a 2.13 da
+                  design. Iguais às cláusulas 10.9 a 10.11 e 16.4 a 16.8 das
+                  Condições Gerais (versão 1.4; eram 11.9 a 11.11 e 17.4 a 17.8
+                  na 1.3) e aos itens 2.11 a 2.13 da
                   Política de Privacidade. Resumo para o advogado em
                   docs/termos-interacao-e-biblioteca-para-advogado.md. */}
               <div id="memoria" className="scroll-mt-24">
@@ -777,7 +778,7 @@ export default function TermsPage() {
               <div>
                 <h3 className="mb-1 font-medium text-[var(--text-primary)]">14.1 Pelo Usuário</h3>
                 <p>
-                  O Usuário pode, a qualquer momento, pedir a não renovação, mantendo o acesso até o fim dos 12 meses já pagos (item 5.4), ou encerrar antes com reembolso proporcional (item 5.7), quando o acesso termina no fim do ciclo mensal em curso. Os casos de arrependimento, garantia e encerramento sem multa estão nos itens 5.5, 5.6 e 5.8.
+                  O Usuário pode, a qualquer momento, pedir a não renovação, mantendo o acesso até o fim dos 12 meses já pagos (item 5.4), ou encerrar antes com reembolso proporcional (item 5.7), quando o acesso termina no fim do ciclo mensal em curso. Os casos de arrependimento e de encerramento sem multa estão nos itens 5.5 e 5.8.
                 </p>
               </div>
               <div>

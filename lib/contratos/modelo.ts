@@ -75,9 +75,9 @@ function paragrafoDaEntrada(c: CondicaoNoTexto): string {
 }
 
 /** Como o restante é cobrado, por extenso, para o texto do contrato. */
-function paragrafoDoRestante(c: CondicaoNoTexto): string {
+function paragrafoDoRestante(c: CondicaoNoTexto, clausulaDoCancelamento = "9"): string {
   if (c.formaDoRestante === "cartao_recorrente") {
-    return `O restante é cobrado automaticamente, uma parcela por mês, no cartão de crédito que o Cliente cadastrar pelo Stripe: cada mês cobra só a parcela daquele mês, e a cobrança se encerra sozinha depois da ${c.parcelas}ª parcela. Não é o parcelamento do emissor do cartão da cláusula 6.3. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada, com o cartão das parcelas cadastrado. Parcela não paga no vencimento segue as cláusulas 6.5 e 9.6.`;
+    return `O restante é cobrado automaticamente, uma parcela por mês, no cartão de crédito que o Cliente cadastrar pelo Stripe: cada mês cobra só a parcela daquele mês, e a cobrança se encerra sozinha depois da ${c.parcelas}ª parcela. Não é o parcelamento do emissor do cartão da cláusula 6.3. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada, com o cartão das parcelas cadastrado. Parcela não paga no vencimento segue as cláusulas 6.5 e ${clausulaDoCancelamento}.6.`;
   }
   if (c.formaDoRestante === "cartao_parcelado_emissor") {
     return `O restante é pago de uma vez no cartão de crédito pelo link do Stripe, com o parcelamento do emissor do cartão (cláusula 6.3) em até ${c.parcelas} vezes, escolhido pelo Cliente na tela de pagamento; o emissor reserva o total no limite do cartão. O acesso é liberado (cláusula 6.4) e a Vigência conta (cláusula 5.1) a partir da confirmação da entrada e do restante.`;
@@ -91,7 +91,7 @@ function paragrafoDoRestante(c: CondicaoNoTexto): string {
  * Proposta Comercial") e, pela cláusula 2.2, prevalece sobre o "anual e à
  * vista" das condições gerais.
  */
-export function textoDaCondicao(c: CondicaoNoTexto): string {
+export function textoDaCondicao(c: CondicaoNoTexto, clausulaDoCancelamento = "9"): string {
   const linkDoRestante = c.formaDoRestante === "cartao_recorrente" ? `Cadastrar o cartão das parcelas (restante): ${c.links.restante}` : `Pagar o restante: ${c.links.restante}`;
   return [
     "### Condição de pagamento",
@@ -100,7 +100,7 @@ export function textoDaCondicao(c: CondicaoNoTexto): string {
     "",
     paragrafoDaEntrada(c),
     "",
-    paragrafoDoRestante(c),
+    paragrafoDoRestante(c, clausulaDoCancelamento),
     "",
     ...(c.links.entrada ? [`Pagar a entrada: ${c.links.entrada}`, ""] : []),
     linkDoRestante,
@@ -170,8 +170,67 @@ export function limparAnotacoes(md: string): string {
     .replace(/[ \t]+$/gm, "");
 }
 
+/**
+ * Lê um arquivo de modelo. A quebra de linha vira "\n" sempre: o git guarda o
+ * modelo com LF (é o que a Vercel lê), e o checkout do Windows o devolve com
+ * CRLF; sem isso, o hash calculado na máquina do Bruno não bate com o de
+ * produção.
+ */
+function lerArquivoDeModelo(arquivo: string): string {
+  return limparAnotacoes(readFileSync(arquivo, "utf8").replace(/\r\n/g, "\n"));
+}
+
 export function lerModelo(): string {
-  return limparAnotacoes(readFileSync(ARQUIVO, "utf8"));
+  return lerArquivoDeModelo(ARQUIVO);
+}
+
+/**
+ * OS MODELOS JÁ USADOS (06/10/2026): contrato que já saiu para assinatura
+ * guarda a versão do modelo (`modeloVersao`) e o hash do texto (`textoHash`),
+ * e o texto dele é sempre remontado do modelo DAQUELA versão, nunca do modelo
+ * do dia. Foi o que permitiu trocar o modelo para a 1.4 (sem a garantia de 30
+ * dias) sem mexer no contrato que o cliente já recebeu: reenvio, "Ver o
+ * texto", PDF e versão nova continuam na versão com que ele saiu.
+ *
+ * Cada versão vira um arquivo em lib/contratos/modelos/historico/ no dia em
+ * que o modelo muda, copiado sem nenhuma edição. A chave é o número da linha
+ * "Versão x, de ..." do topo.
+ */
+const HISTORICO: Record<string, string> = {
+  "1.2": "condicoes-gerais-1.2.md",
+  "1.3": "condicoes-gerais-1.3.md",
+};
+
+export class ModeloNaoGuardado extends Error {}
+
+/** O número da versão ("1.3") a partir da linha "Versão 1.3, de 06 de outubro de 2026". */
+export function numeroDaVersao(versao: string | null | undefined): string | null {
+  return versao?.match(/Vers[aã]o\s+(\d+(?:\.\d+)*)/)?.[1] ?? null;
+}
+
+/**
+ * O modelo com que um contrato deve ser montado: o da versão gravada nele, se
+ * houver; senão (contrato que ainda não saiu), o modelo atual. Versão gravada
+ * que não está guardada é erro: nada é remontado com outro texto.
+ */
+export function lerModeloDaVersao(versaoGravada: string | null | undefined): string {
+  const atual = lerModelo();
+  if (!versaoGravada || versaoDoModelo(atual) === versaoGravada) return atual;
+  const n = numeroDaVersao(versaoGravada);
+  const arquivo = n ? HISTORICO[n] : undefined;
+  if (!arquivo) {
+    throw new ModeloNaoGuardado(`O contrato saiu na "${versaoGravada}", e esse texto não está guardado em lib/contratos/modelos/historico. Ele não é remontado com outro modelo.`);
+  }
+  const md = lerArquivoDeModelo(path.join(path.dirname(ARQUIVO), "historico", arquivo));
+  if (versaoDoModelo(md) !== versaoGravada) {
+    throw new ModeloNaoGuardado(`O arquivo ${arquivo} diz "${versaoDoModelo(md)}", e o contrato saiu na "${versaoGravada}".`);
+  }
+  return md;
+}
+
+/** O número da cláusula de cancelamento do modelo (9 até a versão 1.3, 8 desde a 1.4). */
+export function clausulaDoCancelamento(md: string): string {
+  return md.match(/^## (\d+)\. CANCELAMENTO E RESCIS/m)?.[1] ?? "9";
 }
 
 /** Os dados do cliente que o contrato não sai sem (05/10): o quadro do preâmbulo nunca vai com "[PREENCHER]". */
@@ -233,7 +292,7 @@ export function montarTexto(d: DadosDoContrato, md = lerModelo()): { texto: stri
   // achada, vai no fim, para nunca sumir do texto assinado.
   const proposta =
     (d.proposta ? textoDaProposta({ plano: d.plano, acessosExtras: d.acessosExtras, proposta: d.proposta, parcelado: Boolean(d.condicao) }) : d.condicao ? "## PROPOSTA COMERCIAL\n\n" : "") +
-    (d.condicao ? textoDaCondicao(d.condicao) : "");
+    (d.condicao ? textoDaCondicao(d.condicao, clausulaDoCancelamento(md)) : "");
   const comProposta = !proposta ? preenchido : /^## 1\. /m.test(preenchido) ? preenchido.replace(/^## 1\. /m, `${proposta}\n## 1. `) : `${preenchido}\n\n${proposta}`;
   const texto = comProposta + `\n\nContrato nº ${String(d.numero).padStart(4, "0")}.\n`;
   return { texto, hash: createHash("sha256").update(texto).digest("hex"), versao: versaoDoModelo(md), minuta: ehMinuta(md) };

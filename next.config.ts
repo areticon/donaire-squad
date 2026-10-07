@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     // O modelo do contrato (02/10) também é lido do disco: lib/contratos/modelo.ts.
     // Os quadros reais dos estilos lousa e vox (03/10) são o lado a lado do juiz da prévia: lib/media/editor-sob-medida/revisor.ts.
-    "/api/**/*": ["./lib/media/fontes-da-capa/**/*", "./lib/contratos/modelos/**/*", "./docs/overlays/referencias/dan-martell/**/*", "./docs/overlays/referencias/vox/**/*"],
+    "/api/**/*": ["./lib/media/fontes-da-capa/**/*", "./lib/contratos/modelos/**/*", "./public/brand-mark.svg", "./docs/overlays/referencias/dan-martell/**/*", "./docs/overlays/referencias/vox/**/*"],
   },
   async headers() {
     return [
