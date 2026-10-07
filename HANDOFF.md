@@ -19757,3 +19757,4 @@ sozinho", Claude como diretor + Remotion + Higgsfield). Tudo abaixo publicado
 - PROVA (1º minuto do vídeo do WhatsApp): de 5 efeitos (1º aos 17 s, quase todos em tela cheia) para 13 (1º aos 3,4 s), todos com a pessoa na tela; 9 gráficos e 4 recortes; custo da montagem cerca de US$ 0,70. Folhas: scratchpad 7d44153b.../provas-landing/cmp6, cmp7, cmp8.jpg. Testes 418 de 418.
 - PENDÊNCIAS: o rosto grande no vertical deixa só a faixa do alto (15%), e o gráfico sai menor que o da landing; o texto extra sobre o recorte quase nunca cabe (o recorte já é o efeito); cronômetro ainda pequeno.
 - PUBLICAR: cópia limpa em AppData\Local\Temp\demandou-deploy\producao-ba98292; worker primeiro (/saude ocioso), depois o app.
+- 07/10 ~10h: PUBLICADO por mim com a aprovação do Bruno (ba98292): worker 464d70d6 SUCCESS (/saude ocioso antes), app donaire-squad-1aos-ij6csqppd, alias demandou.com. Falta a prova num vídeo real subido pela conta.
