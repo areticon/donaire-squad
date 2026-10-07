@@ -1,0 +1,38 @@
+{
+  "dor-mesa": {
+    "requestId": "917a732a-01da-484a-8f3e-9cc40d7fd784",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:35.663Z",
+    "arquivo": "cena-dor-mesa.mp4"
+  },
+  "custo": {
+    "requestId": "76f94b9c-2eca-4ced-856a-a947752e2252",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:35.984Z",
+    "arquivo": "cena-custo.mp4"
+  },
+  "camera": {
+    "requestId": "de593c59-cfa1-41a8-9e67-df33ac79e0f9",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:36.304Z",
+    "arquivo": "cena-camera.mp4"
+  },
+  "gemeo": {
+    "requestId": "4dd1e489-c35e-495c-882b-928de41f3b18",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:36.601Z",
+    "arquivo": "cena-gemeo.mp4"
+  },
+  "do-zero": {
+    "requestId": "52621992-922d-4e88-8448-2c63849baa04",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:36.881Z",
+    "arquivo": "cena-do-zero.mp4"
+  },
+  "chamada": {
+    "requestId": "62d60a09-ed6c-4c73-ab5d-abc574d5d5c1",
+    "custoUsd": 0.56,
+    "pedidaEm": "2026-10-01T01:51:37.170Z",
+    "arquivo": "cena-chamada.mp4"
+  }
+}
