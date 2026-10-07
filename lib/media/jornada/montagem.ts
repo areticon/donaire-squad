@@ -8,7 +8,7 @@ import { ALTURA_DA_LEGENDA, legendaDesenhada, legendaDoEstiloFixo, paginasNoEsti
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
 import type { TextoDoElemento } from "@/lib/media/jornada/textos";
-import { numeroNaLegenda, partesDoNumero } from "@/lib/media/jornada/numeros";
+import { numeroNaLegenda, partesDoNumero, valorDoNumero } from "@/lib/media/jornada/numeros";
 import type { DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 
 /**
@@ -106,9 +106,11 @@ export function caixasCandidatas(o: {
         if (o.protegidas.some((r) => cruza(c, r))) continue;
         if (o.legenda && c.y < o.legenda[1] && c.y + c.h > o.legenda[0]) continue;
         const corpo = o.corpos.length ? o.corpos.reduce((s, b) => s + intersecao(c, b), 0) / (o.corpos.length * area(c)) : 0;
-        // 07/10 (Bruno): o elemento entra COM a pessoa na tela e pode cobrir o corpo (até 55% da caixa); o rosto nunca.
-        if (corpo > (o.relaxado ? 0.9 : 0.55)) continue;
-        validas.push({ c, nota: area(c) * (1 - corpo) });
+        // 07/10 (Bruno): o elemento entra COM a pessoa na tela e pode cobrir o corpo; o rosto nunca. O OBJETO RECORTADO
+        // (sem fundo) flutua na frente do peito como na landing: até 85% da caixa sobre o corpo (08/10: no Igor, com 55%,
+        // só a faixa de cima da cabeça sobrava e todo objeto entrava pequeno lá). A janela, que tem fundo, até 55%.
+        if (corpo > (o.relaxado ? 0.9 : o.janela ? 0.55 : 0.85)) continue;
+        validas.push({ c, nota: area(c) * (1 - (o.janela ? 1 : 0.4) * corpo) });
       }
     }
   }
@@ -130,7 +132,8 @@ export function caixasCandidatas(o: {
   const maior = Math.max(0, ...[...porRegiao.values()].map((v) => v.nota));
   const piso = vertical ? (o.relaxado ? 0.3 : 0.45) : 0.2;
   return [...porRegiao.entries()]
-    .filter(([, v]) => v.nota >= 0.6 * maior && v.c.w >= piso)
+    // 80% da maior (08/10: com 60%, o JEV escolhia no Igor a caixa de 48% no alto da cabeça e todo objeto saía pequeno).
+    .filter(([, v]) => v.nota >= (o.relaxado ? 0.6 : 0.8) * maior && v.c.w >= piso)
     .sort((a, b) => b[1].nota - a[1].nota)
     .slice(0, 5)
     .map(([onde, v], i) => ({ id: `c${i}`, caixa: v.c, onde: `${onde}, ${Math.round(v.c.w * 100)}% da largura` }));
@@ -304,18 +307,27 @@ export function ancoraDoTexto(o: { formato: "9:16" | "16:9"; W: number; H: numbe
  * do lado livre. Sem lugar com todos os itens, tenta com menos; nem o título
  * cabe, null.
  */
-export function lugarDoGrafico(o: { formato: "9:16" | "16:9"; W: number; H: number; protegidas: Caixa[]; legenda: FaixaDaLegenda; nItens: number; grande?: boolean }): { x: number; y: number; w: number; itens: number; escala: number } | null {
+export function lugarDoGrafico(o: { formato: "9:16" | "16:9"; W: number; H: number; protegidas: Caixa[]; legenda: FaixaDaLegenda; nItens: number; grande?: boolean; soNumero?: boolean }): { x: number; y: number; w: number; itens: number; escala: number } | null {
   const seg = AREA_SEGURA[o.formato];
   const vertical = o.formato === "9:16";
   const u = (Math.min(o.W, o.H) / 1080) * (vertical ? 1.3 : 1);
-  const colunas = vertical ? [{ x: 0.06, w: 0.86 }] : [{ x: seg.esquerda, w: 0.4 }, { x: 1 - seg.direita - 0.4, w: 0.4 }];
+  // No vertical, a largura útil e, sem ela, uma das metades (08/10: no Igor, o rosto no meio e o tablet embaixo à
+  // direita só deixavam meia largura livre, e o número dito caía).
+  const colunas = vertical ? [{ x: 0.06, w: 0.86 }, { x: 0.05, w: 0.5 }, { x: 0.45, w: 0.5 }] : [{ x: seg.esquerda, w: 0.4 }, { x: 1 - seg.direita - 0.4, w: 0.4 }];
   // Rosto grande no vertical deixa só uma faixa no alto (prova de 07/10: 15% da altura): o gráfico encolhe até 62%
   // (o título ainda passa de 38 px num quadro de 1080) e solta itens antes de ficar fora.
-  for (const escala of [1, 0.85, 0.72, 0.62]) {
+  // O número sozinho ainda desce a 52% (08/10: no Igor, a legenda "palavra" reserva 19% da altura e a faixa entre o
+  // queixo e ela tinha 9%); a 52% ele segue com mais de 140 px de letra.
+  // Com número, a coluna vem antes da escala: a letra do número é presa à LARGURA (em meia largura, "R$ 424.757"
+  // ficava com 86 px; na largura toda a 52%, com 142 px). Sem número, a escala vem antes, como sempre.
+  const escalas = o.soNumero ? [1, 0.85, 0.72, 0.62, 0.52] : [1, 0.85, 0.72, 0.62];
+  const ordem = o.grande || o.soNumero ? colunas.flatMap((c) => escalas.map((escala) => ({ escala, cols: [c] }))) : escalas.map((escala) => ({ escala, cols: colunas }));
+  for (const { escala, cols } of ordem) {
     for (let n = o.nItens; n >= 0; n--) {
       // O número de impacto (08/10) é grande: até 210 u de letra mais a folga.
-      const h = (alturaDoTexto(n, vertical, o.H, o.W) + (o.grande ? (230 * u) / o.H : 0)) * escala;
-      for (const c of colunas) {
+      // Só o número (08/10): sem a linha do título, quando os dois não cabem juntos; o número dito nunca é o que sai.
+      const h = (o.soNumero ? (230 * u) / o.H : alturaDoTexto(n, vertical, o.H, o.W) + (o.grande ? (230 * u) / o.H : 0)) * escala;
+      for (const c of cols) {
         for (let y = seg.topo; y + h <= 1 - seg.base + 1e-9; y += 0.01) {
           const r = { x: c.x, y, w: c.w, h };
           if (o.protegidas.some((p) => cruza(r, p))) continue;
@@ -460,7 +472,13 @@ export async function montarEdicao(o: {
     const som = escolha(r[`s_${id}`], Object.keys(SONS) as Som[]) ?? "nenhum";
     if (x.formato === "grafico") {
       // O GRÁFICO EM CÓDIGO (07/10): ao lado da pessoa, que segue na tela; o lugar é o primeiro livre de rosto e legenda (pode cobrir o corpo).
-      const tx = o.textos![id];
+      // O NÚMERO DO PLANO manda (08/10): o redator do texto lê a fala dos 7 s seguintes e, no Igor, pôs "29" (meses)
+      // no gráfico do R$ 424.757. O número dito que o plano escreveu no elemento é o que conta na tela; o título do
+      // redator que falava de outro número sai, para não pôr o número certo com a frase errada.
+      const txBruto = o.textos![id];
+      const doPlano = /\d/.test(x.e.aprovado.textoNaImagem ?? "") ? String(x.e.aprovado.textoNaImagem).trim() : null;
+      const outroNumero = Boolean(doPlano && txBruto.numero && valorDoNumero(String(txBruto.numero).replace(/^\D+/, "")) !== partesDoNumero(doPlano)?.valor);
+      const tx = doPlano ? { ...txBruto, numero: doPlano, tipo: /cronometro|relogio|prazo|tempo/.test(txBruto.tipo ?? "") ? txBruto.tipo : "numero", ...(outroNumero ? { titulo: "", destaque: "" } : {}) } : txBruto;
       const prox = opcoes[opcoes.indexOf(x) + 1]?.e.t;
       const limite = Math.min(o.duracao - 0.05, prox !== undefined ? prox - 0.35 : Infinity, de + 8);
       const itens = temposDosItens(tx.itens, o.palavras, de, limite).map((i) => ({ texto: i.texto, t: arred(i.t - de) }));
@@ -468,16 +486,20 @@ export async function montarEdicao(o: {
       const fimComItens = itens.length ? Math.min(limite, Math.max(ate, de + itens.at(-1)!.t + 1.6)) : ate;
       // Só o número e o cronômetro pedem uma linha a mais; o ícone vai na linha do título.
       const base = { formato: o.formato, W: o.W, H: o.H, legenda: leg.faixa, grande: Boolean(tx.numero || /cronometro|relogio|prazo|tempo/.test(tx.tipo ?? "")) };
-      const lugar =
+      const protegidas = protegidasNoIntervalo(o.amostras, de, ate);
+      const comTudo =
         lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, fimComItens), nItens: itens.length }) ??
-        lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: 0 }) ??
-        lugarDoGrafico({ ...base, grande: false, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: 0 });
-      if (!lugar) {
+        lugarDoGrafico({ ...base, protegidas, nItens: 0 });
+      // Sem lugar para o número E o título, sai o TÍTULO (08/10: antes saía o número, e o gráfico do R$ 2.645 virou
+      // a pílula "O valor pago por mês").
+      const soNumero = !comTudo && tx.numero ? lugarDoGrafico({ ...base, protegidas, nItens: 0, soNumero: true }) : null;
+      const lugar = comTudo ?? soNumero ?? lugarDoGrafico({ ...base, grande: false, protegidas, nItens: 0 });
+      if (!lugar || (!comTudo && !soNumero && !tx.titulo)) {
         avisos.push(`${id}: o gráfico não coube fora do rosto e da legenda; ficou fora`);
         continue;
       }
-      const cabem = itens.slice(0, lugar.itens);
-      const semCabeca = base.grande && !lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: lugar.itens });
+      const cabem = soNumero ? [] : itens.slice(0, lugar.itens);
+      const semCabeca = base.grande && !comTudo && !soNumero;
       ate = cabem.length ? Math.min(limite, Math.max(ate, de + cabem.at(-1)!.t + 1.6)) : ate;
       camadas.push({
         id,
@@ -491,9 +513,9 @@ export async function montarEdicao(o: {
         // O número que conta e o ícone que pulsa se mexem o tempo todo.
         ...(tx.numero || tx.icone || /cronometro|relogio|contador/.test(tx.tipo ?? "") ? { continua: true } : {}),
         passes: ["frente", "vidro"],
-        props: { grafico: true, direcao: o.direcao ?? null, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, numeroPartes: !semCabeca && tx.numero ? partesDoNumero(tx.numero) : null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
+        props: { grafico: true, direcao: o.direcao ?? null, tipo: tx.tipo ?? "titulo", titulo: soNumero ? "" : tx.titulo, destaque: soNumero ? "" : tx.destaque, numero: semCabeca ? null : tx.numero ?? null, numeroPartes: !semCabeca && tx.numero ? partesDoNumero(tx.numero) : null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
       });
-      escolhas.push({ id, formato: "grafico", tipo: tx.tipo ?? "titulo", entrada, som, de, ate: arred(ate), texto: { titulo: tx.titulo, numero: tx.numero ?? null, icone: tx.icone ?? null, itens: cabem.map((i) => i.texto) } });
+      escolhas.push({ id, formato: "grafico", tipo: tx.tipo ?? "titulo", entrada, som, de, ate: arred(ate), texto: { titulo: soNumero ? "" : tx.titulo, numero: semCabeca ? null : tx.numero ?? null, icone: tx.icone ?? null, itens: cabem.map((i) => i.texto) } });
       if (som !== "nenhum") sons.push({ t: arred(Math.max(0, de - 0.05)), som, volume: VOLUME[som] });
       fimAnterior = ate;
       continue;

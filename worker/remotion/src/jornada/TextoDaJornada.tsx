@@ -80,7 +80,8 @@ function Icone({ nome, tam, cor }: { nome: string; tam: number; cor: string }) {
 export function TextoDaJornada(c: Ctx) {
   const titulo = String(c.props.titulo ?? "").trim();
   const itens = (Array.isArray(c.props.itens) ? (c.props.itens as Item[]) : []).filter((x) => x && String(x.texto ?? "").trim());
-  if (!titulo && !itens.length) return null;
+  // O número dito entra mesmo sem título (08/10: sem lugar para os dois, sai o título, nunca o número).
+  if (!titulo && !itens.length && !(c.props.grafico && c.props.numero)) return null;
   const destaque = String(c.props.destaque ?? "").trim();
   const a = c.props.ancora as Ancora | undefined;
   const ancora: Ancora = a && [a.x, a.y, a.w].every((v) => typeof v === "number" && Number.isFinite(v)) ? a : { x: 0.06, y: c.vertical ? 0.11 : 0.08, w: c.vertical ? 0.86 : 0.5 };
@@ -141,7 +142,8 @@ export function TextoDaJornada(c: Ctx) {
           color: "transparent",
           WebkitTextFillColor: "transparent",
           fontVariantNumeric: "tabular-nums",
-          filter: `drop-shadow(0 ${6 * u}px ${18 * u}px rgba(0,0,0,0.55)) drop-shadow(0 0 ${22 * u}px ${rgba(brilhoDoNumero, 0.45)})`,
+          // A sombra escura larga segura o número em fundo claro (08/10: o degradê claro sumia na parede branca do Igor).
+          filter: `drop-shadow(0 0 ${3 * u}px rgba(0,0,0,0.85)) drop-shadow(0 ${6 * u}px ${18 * u}px rgba(0,0,0,0.6)) drop-shadow(0 0 ${22 * u}px ${rgba(brilhoDoNumero, 0.45)})`,
         }}
       >
         {partes ? `${partes.antes}${(partes.valor * subida).toLocaleString("pt-BR", { minimumFractionDigits: partes.casas, maximumFractionDigits: partes.casas })}${partes.depois}` : numero}
