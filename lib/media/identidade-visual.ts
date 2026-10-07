@@ -379,8 +379,11 @@ function coresDaPaleta(texto: string | null | undefined): CoresDaMarca | null {
   return completarCores(p.destaque, p.escuro, p.claro);
 }
 
-/** Completa o que faltar a partir do tom do acento, em vez de cair no carvão de todo mundo. */
-function completarCores(acento: string, escuro?: string, claro?: string): CoresDaMarca {
+/**
+ * Completa o que faltar a partir do tom do acento, em vez de cair no carvão de todo mundo.
+ * Exportada em 08/10 para a sugestão "do seu logo" do seletor de cores (lib/marca/sugestoes-de-cores.ts).
+ */
+export function completarCores(acento: string, escuro?: string, claro?: string): CoresDaMarca {
   const c = acento.replace("#", "");
   const full = c.length === 3 ? c.split("").map((x) => x + x).join("") : c;
   const { h } = hslDe(parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16));
@@ -638,8 +641,8 @@ export function identidadeDoProjeto(projectId: string): Promise<IdentidadeVisual
   return valor;
 }
 
-/** As linhas do manual que falam de cor, paleta, fonte ou tipografia, e as vizinhas. */
-function trechoVisual(texto: string): string {
+/** As linhas do manual que falam de cor, paleta, fonte ou tipografia, e as vizinhas. Exportada em 08/10 para o seletor de cores. */
+export function trechoVisual(texto: string): string {
   const linhas = texto.split(/\r?\n/);
   const saida: string[] = [];
   linhas.forEach((l, i) => {

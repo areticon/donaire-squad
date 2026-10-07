@@ -125,6 +125,16 @@ async function gravarValor(projectId: string, e: Escrita, valor: unknown): Promi
   switch (e.onde) {
     case "projeto":
       await prisma.project.update({ where: { id: projectId }, data: { [e.campo]: valor ?? null } as Prisma.ProjectUpdateInput });
+      // A COR PELA VERA FAZ O QUE A ROTA DO PROJETO FAZ (08/10): esquece a
+      // identidade em cache (10 min) e alinha os papéis do book à paleta nova.
+      // Até aqui a prévia e as artes seguiam na cor antiga, e os papéis
+      // aprovados apontavam para uma cor que tinha saído. Import na hora: o
+      // módulo da identidade traz o sharp, que o resto da Vera não usa.
+      if (e.campo === "colorPalette") {
+        const [{ esquecerIdentidade }, { alinharIdentidadeAPaleta }] = await Promise.all([import("@/lib/media/identidade-visual"), import("@/lib/modelos-de-arte/identidade-aprovada")]);
+        esquecerIdentidade(projectId);
+        await alinharIdentidadeAPaleta(projectId).catch((erro) => console.error("[vera] alinhar a identidade à paleta:", erro));
+      }
       return;
     case "config": {
       // Lido na hora: o config guarda outras coisas ao lado (referências,

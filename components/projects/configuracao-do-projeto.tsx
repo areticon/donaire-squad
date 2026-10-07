@@ -11,6 +11,7 @@ import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { RedesNasConfiguracoes } from "@/components/projects/redes-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
+import { SeletorDeCores } from "@/components/marca/seletor-de-cores";
 import { MODELOS_DE_ARTE } from "@/lib/modelos-de-arte/catalogo";
 
 /** Os ids do book: a biblioteca na mesma aba não repete esses modelos (06/10). */
@@ -50,6 +51,8 @@ type Projeto = {
   targetAudience: string | null;
   voice: string | null;
   colorPalette: string | null;
+  /** O logo (08/10): o seletor de cores sugere as cores dele. */
+  logoUrl?: string | null;
   videoStyle: string | null;
   capaEstilo: string | null;
   videoMusicName: string | null;
@@ -195,7 +198,6 @@ export function ConfiguracaoDoProjeto({
     niche: projeto.niche ?? "",
     targetAudience: projeto.targetAudience ?? "",
     voice: projeto.voice ?? "",
-    colorPalette: projeto.colorPalette ?? "#F97316,#1e1f22,#dbdee1",
     videoStyle: projeto.videoStyle ?? "acelerado",
     capaEstilo: projeto.capaEstilo ?? "impacto",
     videoTerms: projeto.videoTerms ?? "",
@@ -268,8 +270,6 @@ export function ConfiguracaoDoProjeto({
       setPreenchendo(null);
     }
   }
-
-  const cores = form.colorPalette.split(",").map((c) => c.trim()).filter(Boolean);
 
   const pedeConfirmacao = faltaUmPasso(situacaoDoGemeo(gemeo?.cadastro ?? null));
 
@@ -460,36 +460,12 @@ export function ConfiguracaoDoProjeto({
             </div>
           </Secao>
 
-          <Secao titulo="Suas cores" descricao="Usadas nas imagens, nos carrosséis e na legenda dos cortes.">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Input
-                  label="Paleta, separada por vírgula"
-                  value={form.colorPalette}
-                  onChange={(e) => set("colorPalette", e.target.value)}
-                  className="font-mono"
-                  placeholder="#F97316,#1e1f22,#dbdee1"
-                />
-              </div>
-              <div className="flex gap-2">
-                {cores.slice(0, 5).map((cor, i) => (
-                  <div
-                    key={`${cor}-${i}`}
-                    className="h-10 w-10 rounded-lg border"
-                    style={{ background: cor, borderColor: "var(--border)" }}
-                    title={cor}
-                  />
-                ))}
-              </div>
-            </div>
-            <div>
-              <Button
-                loading={salvando === "cores"}
-                onClick={() => salvar("cores", { colorPalette: form.colorPalette })}
-              >
-                Salvar
-              </Button>
-            </div>
+          {/* O seletor único (08/10), o mesmo da etapa Marca do setup: papel de
+              cada cor, sugestões do logo, prévia e gravação sozinha. Sai o
+              campo de texto com o laranja da Demandou como padrão e o Salvar
+              à parte. */}
+          <Secao titulo="Suas cores" descricao="Usadas nas imagens, nos carrosséis e na legenda dos cortes. Diga o papel de cada uma.">
+            <SeletorDeCores projectId={projeto.id} logoUrl={projeto.logoUrl ?? null} />
           </Secao>
 
           <div

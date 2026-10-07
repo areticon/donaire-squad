@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { AlertTriangle, Check, FileText, Image as ImageIcon, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Check, FileText, Image as ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SeletorDeCores } from "@/components/marca/seletor-de-cores";
 
 /**
  * A etapa Marca do assistente, no lugar da antiga Design.
@@ -96,18 +97,19 @@ const TIPOS: Array<{ id: string; rotulo: string; dica: string }> = [
 
 export function StepMarca({
   projectId,
-  form,
   set,
   logoInicial,
   manualInicial,
   documentosIniciais,
+  sugestaoDasCapas,
 }: {
   projectId: string;
-  form: Record<string, string>;
   set: (f: string, v: string) => void;
   logoInicial: string | null;
   manualInicial: string | null;
   documentosIniciais: Documento[];
+  /** As cores das capas que o diagnóstico sugeriu (03/10): desde 08/10 entram como sugestão, não preenchidas. */
+  sugestaoDasCapas?: { cores: string; porque?: string } | null;
 }) {
   const [logo, setLogo] = useState<string | null>(logoInicial);
   const [manual, setManual] = useState<string | null>(manualInicial);
@@ -126,13 +128,6 @@ export function StepMarca({
   const inputLogo = useRef<HTMLInputElement>(null);
   const inputManual = useRef<HTMLInputElement>(null);
   const inputDoc = useRef<HTMLInputElement>(null);
-
-  const cores = form.colorPalette.split(",").map((c) => c.trim()).filter(Boolean);
-  const trocarCor = (i: number, valor: string) => {
-    const novas = [...cores];
-    novas[i] = valor;
-    set("colorPalette", novas.join(","));
-  };
 
   /**
    * O LOGO vai por outro caminho desde 17/09: rota propria, upload pela funcao,
@@ -370,47 +365,18 @@ export function StepMarca({
         </p>
       </div>
 
-      {/* Cores */}
+      {/* Cores (08/10): o seletor único, o mesmo de Configurações. Ele grava
+          sozinho, com os papéis, e por isso o "Próximo" do assistente não
+          manda mais a paleta (ver saveAndNext em kanban-board.tsx). O logo vai
+          junto para as sugestões se refazerem quando ele sobe. */}
       <section className="rounded-xl border p-6 space-y-4" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
         <div>
           <p className="text-base font-bold text-[var(--text-primary)]">Suas cores</p>
-          <p className="text-sm text-[var(--text-muted)] mt-1">Clique numa cor para trocar. Vão para imagens, carrosséis e legendas.</p>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            Diga o papel de cada cor. Vão para imagens, carrosséis e legendas. Sem escolha, usamos as do seu logo ou do seu manual.
+          </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          {cores.map((cor, i) => (
-            <label key={`${cor}-${i}`} className="flex flex-col items-center gap-1.5 cursor-pointer">
-              <span
-                className="block h-14 w-14 rounded-xl border"
-                style={{ background: cor, borderColor: i === 0 ? "var(--accent-orange)" : "var(--border)", borderWidth: i === 0 ? 2 : 1 }}
-              />
-              <input
-                type="color"
-                value={/^#[0-9a-f]{6}$/i.test(cor) ? cor : "#000000"}
-                onChange={(e) => trocarCor(i, e.target.value)}
-                className="sr-only"
-              />
-              <span className="text-[11px] font-mono text-[var(--text-muted)]">{cor.toUpperCase()}</span>
-            </label>
-          ))}
-          {cores.length < 5 && (
-            <button
-              type="button"
-              onClick={() => set("colorPalette", [...cores, "#888888"].join(","))}
-              className="flex flex-col items-center gap-1.5"
-            >
-              <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-dashed" style={{ borderColor: "var(--border)" }}>
-                <Plus className="h-4 w-4 text-[var(--text-muted)]" />
-              </span>
-              <span className="text-[11px] text-[var(--text-muted)]">adicionar</span>
-            </button>
-          )}
-        </div>
-        <Input
-          label="Ou cole os hex, separados por vírgula"
-          value={form.colorPalette}
-          onChange={(e) => set("colorPalette", e.target.value)}
-          className="font-mono"
-        />
+        <SeletorDeCores projectId={projectId} logoUrl={logo} sugestaoDasCapas={sugestaoDasCapas} aoGravar={(paleta) => set("colorPalette", paleta)} />
       </section>
 
       {/* Logo e manual */}

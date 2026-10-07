@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { midiaProduzida, ehPublica } from "@/lib/media/storage";
 import { projetoVisivel } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
+import { esquecerIdentidade } from "@/lib/media/identidade-visual";
 
 /**
  * O logo do projeto, que precisa ser VISIVEL.
@@ -73,6 +74,9 @@ export async function POST(
   });
 
   await prisma.project.update({ where: { id }, data: { logoUrl: blob.url } });
+  // A identidade fica 10 min em cache (08/10): sem isto, quem ainda não
+  // escolheu cor subia o logo e o seletor seguia mostrando as cores de antes.
+  esquecerIdentidade(id);
   await apagarSeForNossa(projeto.logoUrl);
 
   return NextResponse.json({ ok: true, url: blob.url });
@@ -96,6 +100,7 @@ export async function DELETE(
   if (recusa) return recusa;
 
   await prisma.project.update({ where: { id }, data: { logoUrl: null } });
+  esquecerIdentidade(id);
   await apagarSeForNossa(projeto.logoUrl);
 
   return NextResponse.json({ ok: true });

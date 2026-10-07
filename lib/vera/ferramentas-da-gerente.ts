@@ -34,6 +34,7 @@ import { instanteLocalSeguro } from "@/lib/fuso";
 import { diaEHora } from "@/lib/posts/horario-da-peca";
 import { artesPendentes, agruparArtes, custoDasArtes, resumoDasArtes } from "@/lib/vera/regerar-arte";
 import type { AcaoDoPedido, Escrita, Mudanca } from "@/lib/vera/pedidos";
+import { normalizarPaleta } from "@/lib/marca/cores-da-marca";
 
 /**
  * AS FERRAMENTAS DA VERA GERENTE (04/10/2026).
@@ -589,7 +590,10 @@ export function ferramentasDaGerente(ctx: ContextoDaGerente): Ferramenta[] {
         const p = await projeto();
         const antes = p.colorPalette;
         const antesLista = (antes ?? "").split(",").map((c) => hexValido(c)).filter((c): c is string => Boolean(c));
-        const depois = cores.join(",");
+        // Grava normalizada (08/10), como a rota do projeto: "#rrggbb"
+        // minúsculo e sem repetida. O "depois" do pedido é o que fica no
+        // banco, e é com ele que o desfazer confere se nada mudou no meio.
+        const depois = normalizarPaleta(cores).cores.join(",");
         const escuro = cores.find((c, i) => i > 0 && luminancia(c) < 0.2) ?? "#1E1F22";
         const cBranco = contraste(cores[0], "#FFFFFF");
         const cEscuro = contraste(cores[0], escuro);

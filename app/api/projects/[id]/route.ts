@@ -1,4 +1,6 @@
-import { alinharIdentidadeAPaleta } from "@/lib/modelos-de-arte/identidade-aprovada";
+import { alinharIdentidadeAPaleta, estadoDaIdentidade, salvarIdentidadeVisual } from "@/lib/modelos-de-arte/identidade-aprovada";
+import { normalizarPapeis } from "@/lib/modelos-de-arte/identidade";
+import { MAXIMO_DE_CORES, normalizarPaleta } from "@/lib/marca/cores-da-marca";
 import { auth } from "@/lib/auth/server";
 import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
@@ -88,6 +90,33 @@ export async function PATCH(
     }
   }
 
+  // A PALETA GRAVA NORMALIZADA (08/10). Até aqui a string ia crua, e cada
+  // leitor filtrava de um jeito (um aceitava sem #, outro exigia #rrggbb):
+  // uma cor "quase certa" valia numa peça, sumia noutra e deslocava o papel
+  // das outras. Agora vai "#rrggbb" minúsculo, sem repetida, até o máximo do
+  // seletor; vazio vira null (sem escolha: a arte usa logo, manual ou setor).
+  if ("colorPalette" in data) {
+    const bruta = data.colorPalette;
+    const vazia = bruta === null || bruta === undefined || (typeof bruta === "string" && !bruta.trim()) || (Array.isArray(bruta) && !bruta.length);
+    if (vazia) data.colorPalette = null;
+    else if (typeof bruta !== "string" && !Array.isArray(bruta)) {
+      return NextResponse.json({ error: "Mande as cores como texto, separadas por vírgula." }, { status: 400 });
+    } else {
+      const { cores, invalidas } = normalizarPaleta(bruta as string | string[]);
+      if (invalidas.length) {
+        return NextResponse.json(
+          { error: `Não reconheci ${invalidas.map((c) => `"${c}"`).join(", ")} como cor. Use 6 dígitos, como #F97316 (com ou sem #).` },
+          { status: 400 }
+        );
+      }
+      data.colorPalette = cores.slice(0, MAXIMO_DE_CORES).join(",") || null;
+    }
+  }
+  // Os papéis do book (fundo, título, destaque) que o seletor de cores manda
+  // junto (08/10): só valem com a paleta, que é o que passa pela regra do dono.
+  const papeisDaMarca = "colorPalette" in data && "papeisDaMarca" in body ? normalizarPapeis(body.papeisDaMarca) : null;
+  const aprovadaAntes = "colorPalette" in data ? (await estadoDaIdentidade(id, project.colorPalette).catch(() => null))?.aprovada ?? false : false;
+
   const updated = await prisma.project.update({
     where: { id },
     data: data as Prisma.ProjectUpdateInput,
@@ -98,7 +127,18 @@ export async function PATCH(
   if (["colorPalette", "logoUrl", "niche", "name", "brandManualUrl", "targetAudience"].some((k) => k in data)) esquecerIdentidade(id);
   // A paleta salva é a fonte única da identidade (06/10): trocou a paleta, os
   // papéis aprovados acompanham, e a aprovação só cai se alguma cor saiu.
-  if ("colorPalette" in data) await alinharIdentidadeAPaleta(id).catch((e) => console.error("[identidade] alinhar à paleta:", e));
+  //
+  // 08/10: com os papéis do seletor, o book recebe exatamente o que a tela
+  // chamou de Principal, Fundo e Texto (salvarIdentidadeVisual só derruba a
+  // aprovação se algum papel mudou de cor). A resposta diz se a aprovação
+  // caiu, para a tela avisar onde a pessoa está.
+  let identidade: { aprovadaAntes: boolean; aprovadaAgora: boolean; papeis: unknown } | undefined;
+  if ("colorPalette" in data) {
+    if (papeisDaMarca) await salvarIdentidadeVisual(id, { papeis: papeisDaMarca }).catch((e) => console.error("[identidade] papéis do seletor:", e));
+    else await alinharIdentidadeAPaleta(id).catch((e) => console.error("[identidade] alinhar à paleta:", e));
+    const depois = await estadoDaIdentidade(id).catch(() => null);
+    identidade = { aprovadaAntes, aprovadaAgora: depois?.aprovada ?? false, papeis: depois?.registro ? depois.papeis : null };
+  }
 
   // Create default agents when project is activated for the first time
   if (body.status === "active") {
@@ -110,7 +150,7 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ project: updated });
+  return NextResponse.json({ project: updated, ...(identidade ? { identidade } : {}) });
 }
 
 export async function DELETE(
