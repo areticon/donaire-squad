@@ -50,8 +50,8 @@ test("o roteador é chamado no roteiro e na montagem do completo", () => {
 });
 
 test("sem travessão nos textos da jornada", () => {
-  assert.equal(semTravessao("a — b"), "a, b");
-  for (const { f, t } of fontes()) assert.ok(!/—/.test(t), `${f} tem travessão`);
+  assert.equal(semTravessao("a " + String.fromCharCode(0x2014) + " b"), "a, b");
+  for (const { f, t } of fontes()) assert.ok(!t.includes(String.fromCharCode(0x2014)), `${f} tem travessão`);
 });
 
 test("E8: os requisitos para ligar a jornada são ditos, nunca um recuo silencioso", async () => {
