@@ -48,7 +48,13 @@ export function diaJaEscrito(cards: Array<{ postId: string | null; content: stri
 }
 
 /** O texto do card do dia que falhou, sem o erro técnico (ele fica em `metadata.falha`, para a equipe). */
-export function textoDoAvisoDoDia(p: { rotulo: string; dia: string; tentativas: number; codigo: string }): string {
+export function textoDoAvisoDoDia(p: { rotulo: string; dia: string; tentativas: number; codigo: string; postJaCriado?: boolean }): string {
+  // A falha DEPOIS do post (revisão de 08/10, o card que não gravou no banco):
+  // a peça existe, e tentar de novo a duplicaria. Nem "não consegui montar",
+  // nem "três tentativas": o que houve de verdade.
+  if (p.postJaCriado) {
+    return `AVISO: ${p.rotulo} de ${p.dia} foi criado, mas não terminou de ser montado no quadro. Não tentamos de novo sozinhos para não duplicar a peça, e a equipe já foi avisada. Se faltar algo, abra um chamado com o código ${p.codigo}.`;
+  }
   if (p.tentativas >= TETO_DE_TENTATIVAS_DO_DIA) {
     return `AVISO: não consegui montar ${p.rotulo} de ${p.dia} depois de ${TETO_DE_TENTATIVAS_DO_DIA} tentativas. Paramos de tentar sozinhos e a equipe já foi avisada com o motivo. O resto da semana não depende deste dia; se quiser esta peça, abra um chamado com o código ${p.codigo}.`;
   }

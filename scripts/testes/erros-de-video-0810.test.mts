@@ -69,6 +69,24 @@ test("o card do dia só promete o que acontece, e nunca mostra o erro técnico",
   assert.doesNotMatch(antes + teto, TRAVESSAO);
 });
 
+// Revisão de 08/10: o dia que falha DEPOIS de virar post (o card que não
+// gravou) não pode ser reaberto, senão a peça sai em dobro e é paga de novo.
+// O aviso vai direto ao teto, com a frase do que houve.
+test("o dia que falhou depois de virar post vai ao teto e não promete nova tentativa", () => {
+  const t = textoDoAvisoDoDia({ rotulo: "post de texto", dia: "Segunda", tentativas: TETO_DE_TENTATIVAS_DO_DIA, codigo: "VID-SEM", postJaCriado: true });
+  assert.match(t, /^AVISO: /);
+  assert.match(t, /foi criado/);
+  assert.match(t, /para não duplicar/);
+  assert.doesNotMatch(t, /tenta de novo sozinha|tentativas\. Paramos/);
+  assert.doesNotMatch(t, TRAVESSAO);
+  // No teto o dia conta como escrito: a esteira não reescreve a peça.
+  assert.equal(diaJaEscrito([{ postId: null, content: t, metadata: { falha: "x", tentativasDoDia: TETO_DE_TENTATIVAS_DO_DIA } }], ESPERA), true);
+  const pecas = ler("lib/media/pecas-da-semana.ts");
+  assert.match(pecas, /postDoDia \?\?= post\.id;/);
+  assert.match(pecas, /const tentativas = postJaCriado\s*\?\s*TETO_DE_TENTATIVAS_DO_DIA/);
+  assert.match(ler("lib/media/retomar-semana-do-video.ts"), /postJaCriado\?: string \| null;/);
+});
+
 test("a semana do vídeo tem código próprio no sino", () => {
   assert.equal(CODIGO_DA_ETAPA.semana, "VID-SEM");
   // O título é "<nome> parou": quem parou é UM dia, o resto da semana segue (revisão de 08/10).

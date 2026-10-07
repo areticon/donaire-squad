@@ -595,6 +595,10 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
       return criado.id;
     };
 
+    // A peça deste dia já virou post NESTA rodada? (revisão de 08/10) O que
+    // falha depois do post (gravar o card, no banco) não pode reabrir o dia:
+    // reescrever duplicaria a peça e pagaria de novo. Ver o catch do dia.
+    let postDoDia: string | null = null;
     const criarPost = async (dados: {
       platform: string;
       socialAccountId: string | null;
@@ -619,6 +623,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
         },
         select: { id: true },
       });
+      postDoDia ??= post.id;
       return post.id;
     };
 
@@ -964,10 +969,16 @@ Infográfico com os dados do briefing do Roberto.`, mediaType: "infographic", me
       // (lib/media/retomar-semana-do-video.ts); no teto, a equipe recebe o
       // e-mail e o cliente o código. O erro técnico fica em `metadata.falha`.
       const dono = formato === "thread" || (formato === "text" && principal === "twitter") ? AGENTES.tiago : formato === "carousel" ? AGENTES.diana : redator;
-      const tentativas = Math.max(0, ...derivadosDoDia.map((c) => tentativasDoDia(c.metadata))) + 1;
+      // Com o post já criado nesta rodada (revisão de 08/10), o dia vai direto
+      // ao teto: uma nova tentativa reescreveria a peça que já existe. O aviso
+      // diz isso, e a equipe recebe o e-mail na hora.
+      const postJaCriado = Boolean(postDoDia);
+      const tentativas = postJaCriado
+        ? TETO_DE_TENTATIVAS_DO_DIA
+        : Math.max(0, ...derivadosDoDia.map((c) => tentativasDoDia(c.metadata))) + 1;
       const rotulo = ROTULO_DO_FORMATO[formato].toLowerCase();
       await gravarCard(dono, {
-        content: textoDoAvisoDoDia({ rotulo, dia: DIAS[dia], tentativas, codigo: CODIGO_DA_ETAPA.semana }),
+        content: textoDoAvisoDoDia({ rotulo, dia: DIAS[dia], tentativas, codigo: CODIGO_DA_ETAPA.semana, postJaCriado }),
         mediaType: "text",
         extra: { falha: msg.slice(0, 300), tentativasDoDia: tentativas, ultimaRetomadaEm: null },
       }).catch(() => {});
@@ -977,7 +988,7 @@ Infográfico com os dados do briefing do Roberto.`, mediaType: "infographic", me
       const sobras = derivadosDoDia.filter((c) => !usados.has(c.id) && !c.postId && ESPERA.test((c.content ?? "").trim()));
       if (sobras.length) await prisma.campaignCard.deleteMany({ where: { id: { in: sobras.map((c) => c.id) }, postId: null } }).catch(() => {});
       if (tentativas >= TETO_DE_TENTATIVAS_DO_DIA) {
-        await avisarDiaQueDesistiu({ videoJobId, runId: run.id, dia, rotulo, nomeDoDia: DIAS[dia], motivo: msg, tentativas }).catch((err) =>
+        await avisarDiaQueDesistiu({ videoJobId, runId: run.id, dia, rotulo, nomeDoDia: DIAS[dia], motivo: msg, tentativas, postJaCriado: postDoDia }).catch((err) =>
           console.error(`[semana][${videoJobId}] aviso do dia que desistiu falhou:`, err)
         );
       }

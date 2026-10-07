@@ -72,6 +72,9 @@ export async function retomarSemanasQueFalharam(
  * O DIA QUE BATEU NO TETO: o cliente recebe no sino o código (o card já diz o
  * mesmo); a equipe, sino e e-mail com o motivo técnico. Uma vez por dia de
  * cada execução (chave única).
+ *
+ * `postJaCriado` (revisão de 08/10): o dia falhou DEPOIS de virar post (o card
+ * não gravou). Não houve três tentativas, e a peça existe: as frases dizem isso.
  */
 export async function avisarDiaQueDesistiu(p: {
   videoJobId: string;
@@ -81,12 +84,16 @@ export async function avisarDiaQueDesistiu(p: {
   nomeDoDia: string;
   motivo: string;
   tentativas: number;
+  postJaCriado?: string | null;
 }): Promise<void> {
+  const oQue = p.postJaCriado
+    ? { cliente: `${p.rotulo} de ${p.nomeDoDia} foi criado, mas não terminou de ser montado no quadro.`, pedido: "se faltar algo nesta peça", equipe: `falhou depois de virar post (${p.postJaCriado})` }
+    : { cliente: `${p.rotulo} de ${p.nomeDoDia} não saiu depois de ${p.tentativas} tentativas.`, pedido: "se quiser esta peça", equipe: `falhou ${p.tentativas} vezes` };
   await avisarFalhaDoVideo({
     videoId: p.videoJobId,
     etapa: "semana",
     marca: `${p.runId}:${p.dia}`,
-    detalhe: `${p.rotulo} de ${p.nomeDoDia} não saiu depois de ${p.tentativas} tentativas. O resto da semana segue no quadro. A equipe já foi avisada; se quiser esta peça, abra um chamado com o código.`,
+    detalhe: `${oQue.cliente} O resto da semana segue no quadro. A equipe já foi avisada; ${oQue.pedido}, abra um chamado com o código.`,
   });
   const v = await prisma.videoJob.findUnique({ where: { id: p.videoJobId }, select: { originalName: true, projectId: true, userId: true } });
   if (!v) return;
@@ -95,10 +102,10 @@ export async function avisarDiaQueDesistiu(p: {
   await avisarAdmins({
     chave: `semana-do-video:${p.runId}:${p.dia}`,
     titulo: `Dia da semana do vídeo desistiu (${CODIGO_DA_ETAPA.semana})`,
-    texto: `${v.originalName ?? "Gravação"}: ${p.rotulo} de ${p.nomeDoDia} falhou ${p.tentativas} vezes. O motivo foi por e-mail.`,
-    assunto: `Semana do vídeo: ${p.rotulo} de ${p.nomeDoDia} falhou ${p.tentativas} vezes (${v.originalName ?? p.videoJobId})`,
+    texto: `${v.originalName ?? "Gravação"}: ${p.rotulo} de ${p.nomeDoDia} ${oQue.equipe}. O motivo foi por e-mail.`,
+    assunto: `Semana do vídeo: ${p.rotulo} de ${p.nomeDoDia} ${oQue.equipe} (${v.originalName ?? p.videoJobId})`,
     corpo: [
-      `O dia ${p.nomeDoDia} (${p.rotulo}) da semana escrita a partir do vídeo ${p.videoJobId} falhou ${p.tentativas} vezes e parou de ser tentado sozinho.`,
+      `O dia ${p.nomeDoDia} (${p.rotulo}) da semana escrita a partir do vídeo ${p.videoJobId} ${oQue.equipe} e parou de ser tentado sozinho.`,
       "",
       `Arquivo: ${v.originalName ?? "(sem nome)"}`,
       `Cliente: ${dono?.email ?? v.userId}`,
