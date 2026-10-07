@@ -3,6 +3,7 @@ import type { LeituraDoVideo, TrechoLido } from "@/lib/media/leitura-do-video";
 import { contextoEmTexto, type ContextoDaJornada } from "@/lib/media/jornada/contexto";
 import type { Frase, Palavra } from "@/lib/media/jornada/linha-do-tempo";
 import { semTravessao, type MidiaDaJornada, type PapelDoElemento } from "@/lib/media/jornada/estado";
+import { numeroFoiDito } from "@/lib/media/jornada/numeros";
 
 /**
  * O PASSO 4 DA JORNADA, primeiro movimento (E2): as IDEIAS de elemento,
@@ -100,6 +101,9 @@ export function textoPermitido(texto: string | null | undefined, fala: string, o
   const f = ` ${normal(fala)} `;
   const marca = normal(o.marca ?? "");
   const temNumero = /\d/.test(fala) || NUMEROS_FALADOS.test(normal(fala));
+  // Número na arte só com o VALOR EXATO dito (08/10): antes bastava a fala ter algum número.
+  const numerosDoTexto = [...t.matchAll(/\d[\d.,]*/g)].map((m) => m[0]);
+  if (numerosDoTexto.some((n) => !numeroFoiDito(n, fala))) return null;
   const ok = palavras.every((w) => f.includes(` ${w} `) || (marca && ` ${marca} `.includes(` ${w} `)) || (/^\d+$/.test(w) && temNumero) || (w.length <= 2 && f.includes(w)));
   return ok ? t : null;
 }

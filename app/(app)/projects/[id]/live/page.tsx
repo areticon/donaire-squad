@@ -153,6 +153,11 @@ export default async function LivePage({
     orderBy: { startedAt: "desc" },
     select: { startedAt: true },
   });
+  const motivoDaFalha = (logs: unknown): string | null => {
+    const lista = Array.isArray(logs) ? (logs as Array<{ status?: string; message?: string }>) : [];
+    const erro = [...lista].reverse().find((l) => l?.status === "error" && typeof l.message === "string");
+    return erro?.message?.slice(0, 400) ?? null;
+  };
   const [activeRun, lastFailedRun] = await Promise.all([
     prisma.pipelineRun.findFirst({
       // "paused" entrou em 19/09: a fila pausa por saldo de API e retoma
@@ -181,6 +186,10 @@ export default async function LivePage({
     topic: r.topic,
     campaignMode: r.campaignMode,
     weekStart: r.weekStart?.toISOString() ?? null,
+    // O MOTIVO DE VERDADE (08/10): a faixa dizia "timeout, troca de aba ou erro" mesmo quando a execução
+    // gravou o motivo (campanha do Igor de 07/10: "nenhum redator entregou"). Vai a última mensagem de erro
+    // do registro, que já é escrita para o cliente.
+    motivo: motivoDaFalha(r.logs),
   });
 
   return (

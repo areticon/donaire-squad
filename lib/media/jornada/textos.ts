@@ -4,6 +4,7 @@ import type { Redator } from "@/lib/media/jornada/ideias";
 import { semTravessao } from "@/lib/media/jornada/estado";
 import type { EntradaDoPrompt } from "@/lib/media/jornada/prompts";
 import { NOMES_DOS_ICONES } from "@/lib/media/jornada/icones";
+import { numeroFoiDito } from "@/lib/media/jornada/numeros";
 
 /**
  * O TEXTO EM CAMADA DE CADA ELEMENTO (07/10/2026), a receita do vídeo da
@@ -88,9 +89,9 @@ export function conferirTexto(cru: unknown, fala: string): TextoDoElemento | nul
   const tipo = String(extra.tipo ?? "").trim().toLowerCase().slice(0, 30);
   const numero = semTravessao(String(extra.numero ?? "").trim()).slice(0, 12);
   const icone = String(extra.icone ?? "").trim();
-  // O número só vale se tem dígito e foi dito (o mesmo dígito na fala, ou um número por extenso nela).
-  const digitos = numero.replace(/\D+/g, "");
-  const numeroDito = Boolean(digitos) && (f.includes(digitos) || /\b(um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|doze|vinte|trinta|cem|mil)\b/.test(f));
+  // O número só vale se o VALOR EXATO foi dito, em dígito ou por extenso (08/10: "2.645" passou porque qualquer
+  // número por extenso na fala contava como prova).
+  const numeroDito = Boolean(numero) && numeroFoiDito(numero, fala);
   return { titulo, destaque, itens, ...(tipo ? { tipo } : {}), ...(numeroDito ? { numero } : {}), ...(NOMES_DOS_ICONES.includes(icone) ? { icone } : {}) };
 }
 

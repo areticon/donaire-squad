@@ -53,15 +53,18 @@ function tituloComDestaque(titulo: string, destaque: string, grad: string): Reac
   );
 }
 
-/** "24h" -> conta de 0 a 24 e mantém o "h"; "88%" -> 0 a 88 com "%"; sem dígito, o texto como veio. */
-function numeroContando(numero: string, t: number): string {
-  const m = /^(\D*)(\d+(?:[.,]\d+)?)(.*)$/.exec(numero.trim());
-  if (!m) return numero;
-  const alvo = Number(m[2].replace(",", "."));
+type PartesDoNumero = { antes: string; valor: number; casas: number; depois: string };
+
+/**
+ * O número contando de 0 até o valor DITO, no formato brasileiro ("2.645", "88%", "24h"). As partes vêm
+ * prontas da montagem (lib/media/jornada/numeros.ts): até 08/10 o desenho lia "2.645" como 2,645 e mostrava
+ * "2,6" na tela (vídeo do Igor).
+ */
+function numeroContando(numero: string, partes: PartesDoNumero | null, t: number): string {
+  if (!partes) return numero;
   const p = saiSuave(limitar((t - 0.15) / 0.9));
-  const casas = m[2].includes(",") || m[2].includes(".") ? 1 : 0;
-  const v = (alvo * p).toFixed(casas).replace(".", ",");
-  return `${m[1]}${v}${m[3]}`;
+  const v = (partes.valor * p).toLocaleString("pt-BR", { minimumFractionDigits: partes.casas, maximumFractionDigits: partes.casas });
+  return `${partes.antes}${v}${partes.depois}`;
 }
 
 function Icone({ nome, tam, cor }: { nome: string; tam: number; cor: string }) {
@@ -125,7 +128,7 @@ export function TextoDaJornada(c: Ctx) {
       ) : null}
       {numero ? (
         <div style={{ fontWeight: 700, fontSize: (c.vertical ? 104 : 112) * u, lineHeight: 1, letterSpacing: "-0.03em", backgroundImage: grad, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", fontVariantNumeric: "tabular-nums" }}>
-          {numeroContando(numero, t)}
+          {numeroContando(numero, (c.props.numeroPartes as PartesDoNumero | null) ?? null, t)}
         </div>
       ) : null}
     </div>

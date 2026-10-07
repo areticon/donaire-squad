@@ -1133,6 +1133,13 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
       await rm(emendado, { force: true }).catch(() => {});
     }
   } else await baixar(pedido.completoUrl, base);
+  // A BASE FORA DO PADRÃO (08/10): o quadrado (gêmeo 1080x1080) e o celular 4:3 entram no quadro padrão com o
+  // fundo desfocado ANTES de montar, como no caminho antigo (montagem-do-completo.mjs). Sem isto o render da
+  // jornada recusava a proporção e o completo saía SEM NENHUM EFEITO (vídeo do Igor, cmuy5oqn7, 07/10).
+  if (pedido.enquadramento?.conteudo && !pedido.baseArquivo) {
+    const { enquadrarBase } = await import("./montagem-do-completo.mjs");
+    base = await enquadrarBase(base, pedido.enquadramento, pasta, fpsDe(base));
+  }
   const dim = await ffprobe(base);
   const fps = fpsDe(base);
   // Quantos quadros a base tem de verdade (05/10): o último lote termina onde

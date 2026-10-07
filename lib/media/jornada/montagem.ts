@@ -8,6 +8,7 @@ import { faixaPrincipalDaLegenda, legendaDesenhada, legendaDoEstiloFixo, paginas
 import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
 import type { TextoDoElemento } from "@/lib/media/jornada/textos";
+import { partesDoNumero } from "@/lib/media/jornada/numeros";
 
 /**
  * O PASSO 7 DA JORNADA (E5): "o JEV monta", explícito.
@@ -440,7 +441,7 @@ export async function montarEdicao(o: {
         // O número que conta e o ícone que pulsa se mexem o tempo todo.
         ...(tx.numero || tx.icone || /cronometro|relogio|contador/.test(tx.tipo ?? "") ? { continua: true } : {}),
         passes: ["frente", "vidro"],
-        props: { grafico: true, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
+        props: { grafico: true, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, numeroPartes: !semCabeca && tx.numero ? partesDoNumero(tx.numero) : null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
       });
       escolhas.push({ id, formato: "grafico", tipo: tx.tipo ?? "titulo", entrada, som, de, ate: arred(ate), texto: { titulo: tx.titulo, numero: tx.numero ?? null, icone: tx.icone ?? null, itens: cabem.map((i) => i.texto) } });
       if (som !== "nenhum") sons.push({ t: arred(Math.max(0, de - 0.05)), som, volume: VOLUME[som] });

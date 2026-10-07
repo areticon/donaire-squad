@@ -101,6 +101,8 @@ interface PipelineRun {
   topic: string | null;
   campaignMode: string;
   weekStart: string | null;
+  /** A última mensagem de erro gravada na execução (08/10), quando houver. */
+  motivo?: string | null;
 }
 
 interface SocialAccount {
@@ -5842,7 +5844,9 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                 {lastFailedRun.status === "cancelled"
                   ? "Você cancelou a geração. Os posts já criados foram mantidos."
-                  : "A geração parou (timeout, troca de aba ou erro). Os posts já criados foram mantidos. Você pode gerar novamente com o mesmo tema."}
+                  : lastFailedRun.motivo
+                    ? `${lastFailedRun.motivo} Código para o suporte: ${lastFailedRun.id.slice(-8)}.`
+                    : "A geração parou antes de terminar. Os posts já criados foram mantidos. Você pode gerar novamente com o mesmo tema."}
                 {lastFailedRun.topic ? <><br /><span className="font-medium" style={{ color: "var(--text-primary)" }}>Tema: {lastFailedRun.topic}</span></> : null}
               </p>
             </div>

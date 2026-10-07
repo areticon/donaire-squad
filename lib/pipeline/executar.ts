@@ -2474,7 +2474,12 @@ Sem cabeçalho, sem resumo do tema, sem elogio, sem "o que está bom". Comece co
     const [liResult, twResult] = await Promise.allSettled([
       // ── Lucas — LinkedIn ──────────────────────────────────────────────────
       (async () => {
-        if (!shouldWriteLinkedin || !linkedinWriter) return null;
+        // A BASE DAS DERIVADAS (08/10): Instagram, Facebook e TikTok são adaptados do texto do Lucas. Campanha
+        // só de Instagram (sem LinkedIn) não escrevia base nenhuma, e o laço das derivadas parava no primeiro
+        // passo: 5 dias falhados em 0,1 s cada, "nenhum redator entregou" (campanha do Igor, 07/10). Agora o
+        // Lucas escreve a base mesmo sem LinkedIn na campanha; ela só não vira card nem post do LinkedIn.
+        const soBase = !shouldWriteLinkedin && derivadas.length > 0;
+        if ((!shouldWriteLinkedin && !soBase) || !linkedinWriter) return null;
         let linkedinContent: string;
         let linkedinMetadata: Record<string, unknown> | undefined;
 
@@ -2626,6 +2631,7 @@ ${linkedinContent}`,
           }
         }
 
+        if (soBase) return { content: linkedinContent, metadata: linkedinMetadata, card: null, soBase: true as const };
         const card = await saveCard({
           runId,
           projectId: project.id,
@@ -2639,7 +2645,7 @@ ${linkedinContent}`,
           ...(linkedinMetadata ? { metadata: linkedinMetadata } : {}),
         });
 
-        return { content: linkedinContent, metadata: linkedinMetadata, card };
+        return { content: linkedinContent, metadata: linkedinMetadata, card, soBase: false as const };
       })(),
 
       // ── Tiago — Twitter ───────────────────────────────────────────────────
@@ -2775,7 +2781,7 @@ ${twitterContent}`,
     }
 
     // Collect results into dayPosts and uniqueness log
-    if (liResult.status === "fulfilled" && liResult.value) {
+    if (liResult.status === "fulfilled" && liResult.value && !liResult.value.soBase && liResult.value.card) {
       const { content, metadata, card } = liResult.value;
       dayPosts.push({ day: dayName, platform: "linkedin", content, mediaType: resolvedType, dayOfWeek, scheduledDate, cardId: card.id, metadata });
       writtenPostsLog.push(`[${dayName} - LinkedIn] ${content.slice(0, 120).replace(/\n/g, " ")}…`);

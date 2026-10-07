@@ -1201,6 +1201,13 @@ export function geometriaDaPessoa(clips: unknown): { rosto: Retangulo; pessoa: R
  * gravação original, e o quadro agora tem faixas em volta: sem levar a caixa
  * para dentro do quadro, o diretor, a legenda e o zoom mirariam fora do rosto.
  */
+/** As amostras da jornada (rosto, corpo, tela, quadro) levadas ao quadro enquadrado; sem enquadramento, como vieram. */
+export function amostrasNoQuadro(amostras: AmostraDaJornada[], e: EnquadramentoDoCompleto | null): AmostraDaJornada[] {
+  if (!e) return amostras;
+  const leva = (c: Retangulo | null | undefined) => (c ? noQuadroEnquadrado(c, e) : null);
+  return amostras.map((a) => ({ ...a, rostos: a.rostos.map((r) => noQuadroEnquadrado(r, e)), corpos: a.corpos.map((r) => noQuadroEnquadrado(r, e)), tela: leva(a.tela), quadro: leva(a.quadro) }));
+}
+
 export function geometriaNoQuadro(clips: unknown, analise?: Pick<AnaliseDoCompleto, "enquadramento"> | null): { rosto: Retangulo; pessoa: Retangulo } {
   const g = geometriaDaPessoa(clips);
   const e = analise?.enquadramento;
@@ -1383,7 +1390,9 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
         abertura: null,
         leitura,
         motivo: null,
-        jornada: { fase: "gerar", amostras: amostrasNoTempoEditado(medicao.medida, null) },
+        // As caixas de rosto e corpo no quadro que vai ao render (08/10): na base enquadrada (o quadrado dentro do
+        // vertical) elas mudam de lugar; medidas no quadro original, o elemento cairia sobre o rosto.
+        jornada: { fase: "gerar", amostras: amostrasNoQuadro(amostrasNoTempoEditado(medicao.medida, null), analise.enquadramento ?? null) },
       });
       return;
     }
@@ -2138,6 +2147,8 @@ async function enviarPelaJornada(v: VideoDoCompleto, estado: MontagemDoCompleto,
       videoJobId: v.id,
       completoUrl: estado.baseUrl ?? v.completoUrl,
       edicao: j.edicao,
+      // A base fora do padrão entra no quadro antes de montar (08/10): sem o campo, o worker recusava o quadrado.
+      enquadramento: lido.analise?.enquadramento ?? null,
       escala: 1,
       abertura: null,
       guardaDaFala: null,
