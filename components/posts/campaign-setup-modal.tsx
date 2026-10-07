@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
 import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
-import { precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
+import { artesEsperamODono, precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
 import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { MateriaisDaCampanha } from "@/components/materiais/materiais-da-campanha";
 import { MEDIA_STYLE_OPTIONS, type MediaStyleId } from "@/lib/media/media-style";
@@ -1385,20 +1385,26 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
    * passo do estilo (chat ou biblioteca) e, aprovado, a geração segue sozinha.
    */
   const [pedindoEstilo, setPedindoEstilo] = useState(false);
+  // Só o dono escolhe o estilo (08/10, revisão): o membro da equipe gera a
+  // campanha como antes, e a arte espera a escolha do dono.
+  const [podeMudarEstilo, setPodeMudarEstilo] = useState<boolean | null>(null);
   useEffect(() => {
     if (!projectId) return;
     let vivo = true;
     fetch(`/api/projects/${projectId}/estilo-dos-posts`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { aprovada?: unknown } | null) => {
-        if (vivo && d && typeof d.aprovada === "boolean") setIdentidadeAprovada(d.aprovada);
+      .then((d: { aprovada?: unknown; podeMudar?: unknown } | null) => {
+        if (!vivo || !d) return;
+        if (typeof d.aprovada === "boolean") setIdentidadeAprovada(d.aprovada);
+        if (typeof d.podeMudar === "boolean") setPodeMudarEstilo(d.podeMudar);
       })
       .catch(() => {});
     return () => {
       vivo = false;
     };
   }, [projectId]);
-  const faltaOEstilo = precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada });
+  const faltaOEstilo = precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada, podeMudar: podeMudarEstilo });
+  const esperaODono = artesEsperamODono({ temArte: campanhaTemArte, aprovada: identidadeAprovada, podeMudar: podeMudarEstilo });
   const diaComVideoProprio = (key: string) => origens[key]?.modo === "meu";
   const diasDeVideo =
     campaignMode === "single"
@@ -1879,6 +1885,16 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                   setIdentidadeAprovada(true);
                   setPedindoEstilo(false);
                   handleConfirm();
+                }}
+                aoLer={(e) => {
+                  // Aprovado em outra aba enquanto esta janela estava aberta
+                  // (08/10, revisão): sem isto o passo mostrava "Aprovado" sem
+                  // botão para seguir, e o Voltar devolvia ao mesmo passo.
+                  if (e.aprovada) {
+                    setIdentidadeAprovada(true);
+                    setPedindoEstilo(false);
+                    toast.success("O estilo dos posts já estava aprovado. Confira e gere a campanha.", { id: "estilo-dos-posts" });
+                  }
                 }}
               />
             </div>
@@ -3047,6 +3063,11 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               {faltaOEstilo && (
                 <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "#ea580c" }}>
                   Falta o estilo dos posts: você escreve como quer ou escolhe da biblioteca, e a campanha já sai nele.
+                </p>
+              )}
+              {esperaODono && (
+                <p className="max-w-[320px] text-right text-[11px] leading-snug" style={{ color: "#ea580c" }}>
+                  O dono da conta ainda não escolheu o estilo dos posts: os textos saem agora, e as artes esperam a escolha dele, sem gastar crédito de imagem.
                 </p>
               )}
               <Button onClick={faltaOEstilo ? () => setPedindoEstilo(true) : handleConfirm} disabled={conferindoSobreposicao} className="bg-orange-500 hover:bg-orange-600">

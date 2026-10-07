@@ -138,7 +138,7 @@ test("cada arte registra qual foto entrou: biblioteca, gerada ou nenhuma", () =>
 
 test("a janela da campanha abre o passo do estilo no lugar de gerar quando ele falta", () => {
   const modal = fonte("components/posts/campaign-setup-modal.tsx");
-  assert.ok(modal.includes("precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada })"));
+  assert.ok(modal.includes("precisaEscolherEstilo({ temArte: campanhaTemArte, aprovada: identidadeAprovada, podeMudar: podeMudarEstilo })"));
   assert.ok(/onClick=\{faltaOEstilo \? \(\) => setPedindoEstilo\(true\) : handleConfirm\}/.test(modal), "o botão abre o passo");
   assert.ok(/setPedindoEstilo\(false\);\s*handleConfirm\(\);/.test(modal), "aprovado, a campanha gera sozinha");
   assert.ok(!modal.includes("<AvisoDaIdentidade"), "o aviso de 10 px saiu do rodapé");
@@ -173,6 +173,6 @@ test("nenhum texto novo usa travessão", () => {
     "components/kanban/step-materiais.tsx",
     "app/api/projects/[id]/estilo-dos-posts/route.ts",
   ]) {
-    assert.ok(!fonte(arquivo).includes("—"), arquivo);
+    assert.ok(!fonte(arquivo).includes(String.fromCharCode(0x2014)), arquivo);
   }
 });

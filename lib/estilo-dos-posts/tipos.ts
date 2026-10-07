@@ -71,7 +71,10 @@ export function pedidoDaConversa(mensagens: string[], teto: number = TETO.pedido
 
 /** A linha que diz como os posts saem hoje. */
 export function resumoDoEstilo(e: Pick<EstadoDoEstiloDosPosts, "aprovada" | "design" | "modelos"> | null | undefined): string {
-  if (!e?.aprovada) return "O estilo dos posts ainda não foi escolhido.";
+  // Design gravado sem aprovação (08/10, revisão): a aprovação caiu depois de
+  // uma mudança na marca (cores, letra). Dizer "ainda não foi escolhido" com a
+  // descrição do design logo ao lado era mentira na tela.
+  if (!e?.aprovada) return e?.design ? `O estilo "${e.design.nome}" precisa ser aprovado de novo: a marca mudou depois da escolha.` : "O estilo dos posts ainda não foi escolhido.";
   if (e.design) return `Seus posts saem no estilo "${e.design.nome}".`;
   const nomes = e.modelos.map((m) => `"${m.nome}"`);
   if (!nomes.length) return "Seus posts saem no estilo aprovado.";
@@ -84,7 +87,18 @@ export function resumoDoEstilo(e: Pick<EstadoDoEstiloDosPosts, "aprovada" | "des
  * gerar? Só quando há dia de arte e o estilo sabidamente NÃO está aprovado.
  * Enquanto o estado não chegou (null), não trava: o servidor ainda segura a
  * arte, sem gastar, como rede de segurança.
+ *
+ * `podeMudar` (08/10, revisão): o MEMBRO da equipe gera campanha e sobe
+ * vídeo, mas só o dono escolhe o estilo (lib/equipe/permissoes.ts). Parar o
+ * membro num passo que ele não pode cumprir trancava a campanha e o envio
+ * inteiros; para ele, os textos saem e a arte espera a escolha do dono, como
+ * antes, e a tela avisa.
  */
-export function precisaEscolherEstilo(o: { temArte: boolean; aprovada: boolean | null | undefined }): boolean {
-  return o.temArte && o.aprovada === false;
+export function precisaEscolherEstilo(o: { temArte: boolean; aprovada: boolean | null | undefined; podeMudar?: boolean | null }): boolean {
+  return o.temArte && o.aprovada === false && o.podeMudar !== false;
+}
+
+/** O membro segue sem o estilo (a arte espera o dono): a tela precisa dizer isso. Puro. */
+export function artesEsperamODono(o: { temArte: boolean; aprovada: boolean | null | undefined; podeMudar?: boolean | null }): boolean {
+  return o.temArte && o.aprovada === false && o.podeMudar === false;
 }

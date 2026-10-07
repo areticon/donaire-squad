@@ -14,7 +14,7 @@ import { EstiloDosPosts } from "@/components/estilo-dos-posts/estilo-dos-posts";
 import { LISTA_DE_ESTILOS, type NomeDoEstilo } from "@/lib/media/estilos";
 import { normalizarSemana } from "@/lib/media/semana-do-video";
 import { tipoGeraArte } from "@/lib/modelos-de-arte/espera-da-identidade";
-import { precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
+import { artesEsperamODono, precisaEscolherEstilo } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * A jornada de criar uma campanha, em passos, igual à de criar um projeto.
@@ -127,14 +127,19 @@ export function JornadaDaCampanha({
    */
   const [estiloDosPosts, setEstiloDosPosts] = useState<boolean | null>(null);
   const [estiloLido, setEstiloLido] = useState(false);
+  // Só o dono escolhe o estilo (08/10, revisão): o membro sobe o vídeo como
+  // antes e a arte espera a escolha do dono (lib/equipe/permissoes.ts).
+  const [podeMudarEstilo, setPodeMudarEstilo] = useState<boolean | null>(null);
   const [comArte, setComArte] = useState(() => semanaTemArte(semana));
   useEffect(() => {
     if (!aberto) return;
     let vivo = true;
     fetch(`/api/projects/${projectId}/estilo-dos-posts`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { aprovada?: unknown } | null) => {
-        if (vivo && d && typeof d.aprovada === "boolean") setEstiloDosPosts(d.aprovada);
+      .then((d: { aprovada?: unknown; podeMudar?: unknown } | null) => {
+        if (!vivo || !d) return;
+        if (typeof d.aprovada === "boolean") setEstiloDosPosts(d.aprovada);
+        if (typeof d.podeMudar === "boolean") setPodeMudarEstilo(d.podeMudar);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -144,16 +149,23 @@ export function JornadaDaCampanha({
       vivo = false;
     };
   }, [aberto, projectId]);
-  const faltaOEstilo = precisaEscolherEstilo({ temArte: comArte, aprovada: estiloDosPosts });
+  const faltaOEstilo = precisaEscolherEstilo({ temArte: comArte, aprovada: estiloDosPosts, podeMudar: podeMudarEstilo });
+  const esperaODono = artesEsperamODono({ temArte: comArte, aprovada: estiloDosPosts, podeMudar: podeMudarEstilo });
 
   const passoInicial = comecarNoVideo ? (estilo ? PASSOS_DO_VIDEO.length - 1 : 1) : 0;
   const [passo, setPasso] = useState(passoInicial);
   // Cada abertura recomeça do passo certo. Ajuste durante o render, e não em
   // efeito: é o jeito do React de derivar estado de uma prop que mudou.
+  // 08/10, revisão: a leitura do estilo também recomeça. Com o "lido" da
+  // abertura anterior, o envio aparecia na hora e sumia quando a leitura nova
+  // chegava dizendo que a aprovação tinha caído (no meio de um upload).
   const [abertoAntes, setAbertoAntes] = useState(aberto);
   if (aberto !== abertoAntes) {
     setAbertoAntes(aberto);
-    if (aberto) setPasso(passoInicial);
+    if (aberto) {
+      setPasso(passoInicial);
+      setEstiloLido(false);
+    }
   }
 
   /**
@@ -376,6 +388,12 @@ export function JornadaDaCampanha({
                           setEstiloDosPosts(true);
                           setPasso(total - 1);
                         }}
+                        aoLer={(e) => {
+                          // Aprovado em outro lugar depois da abertura (08/10,
+                          // revisão): sem isto o Continuar ficava travado com o
+                          // passo dizendo "Aprovado".
+                          if (e.aprovada) setEstiloDosPosts(true);
+                        }}
                       />
                     </div>
                   )}
@@ -404,6 +422,11 @@ export function JornadaDaCampanha({
                             Rever
                           </Button>
                         </div>
+                      )}
+                      {esperaODono && !semGravacao && (
+                        <p className="text-[13px]" style={{ color: "#ea580c" }}>
+                          O dono da conta ainda não escolheu o estilo dos posts: os textos da semana saem, e as artes esperam a escolha dele, sem gastar crédito de imagem.
+                        </p>
                       )}
                       {comArte && !semGravacao && !estiloLido ? (
                         <p className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-muted)" }}>

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { soODono } from "@/lib/equipe/permissoes";
 import { ligarAoProjeto, lerDesign, registrarPedidoDeDesign } from "@/lib/biblioteca-de-design/registro";
-import { aprovarEstiloPeloDesign, estadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/servidor";
+import { aprovarEstiloPeloDesign, designAprovadoDoProjeto, estadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/servidor";
 import { pedidoDaConversa } from "@/lib/estilo-dos-posts/tipos";
 
 /**
@@ -76,8 +76,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const recusa = await soODono(r.userId, r.project, "escolher o estilo dos posts");
   if (recusa) return recusa;
   const corpo = (await req.json().catch(() => ({}))) as { designId?: unknown };
-  // Só o que este projeto pode ver: público, ou pedido por ele.
-  const design = typeof corpo.designId === "string" ? await lerDesign(corpo.designId, { projectId: id, userId: r.userId }).catch(() => null) : null;
+  // Só o que este projeto pode ver: público, pedido por ele, ou já ligado a
+  // ele (08/10, revisão: o "Aprovar de novo" de um design que o autor tirou
+  // da galeria depois de este projeto escolher; ligado, ele continua valendo).
+  const designId = typeof corpo.designId === "string" ? corpo.designId : null;
+  const design = designId ? ((await lerDesign(designId, { projectId: id, userId: r.userId }).catch(() => null)) ?? (await designAprovadoDoProjeto(id, designId))) : null;
   if (!design) return NextResponse.json({ error: "Esse design não existe mais na biblioteca." }, { status: 404 });
   if (design.tipo !== "imagem") return NextResponse.json({ error: "Esse design é de vídeo. Para os posts, escolha um design de imagem." }, { status: 400 });
   try {

@@ -34,8 +34,19 @@ import { resumoDoEstilo, type EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-po
 type Porta = "chat" | "biblioteca";
 type Mensagem = { de: "cliente" | "squad"; texto: string };
 
+// 08/10, revisão: sem prometer "foto sua" aqui. O estilo escrito vira a
+// linguagem da imagem gerada; foto real da pessoa só entra pela Biblioteca
+// de materiais (a linha no rodapé do passo diz isso).
 const BOAS_VINDAS =
-  "Como você quer que os seus posts fiquem? Conte do jeito que vier: o clima, as cores, se quer foto sua, ilustração, colagem, só tipografia, algo que você viu e gostou. Eu monto o estilo e ele já vale para as próximas artes.";
+  "Como você quer que os seus posts fiquem? Conte do jeito que vier: o clima, as cores, se quer ilustração, colagem, fotografia de cena, só tipografia, algo que você viu e gostou. Eu monto o estilo e ele já vale para as próximas artes.";
+
+/**
+ * O tamanho mínimo do que se escreve (08/10, revisão): a primeira mensagem é
+ * o estilo e precisa de uma frase (a rota recusa menos de 12 letras); depois
+ * dela, ajuste curto vale ("azul", "sem pessoa").
+ */
+const MINIMO_DO_PEDIDO = 12;
+const MINIMO_DO_AJUSTE = 3;
 
 const EXEMPLOS = [
   "Fundo escuro, letra grande e branca, a cor da marca só no destaque",
@@ -46,6 +57,7 @@ const EXEMPLOS = [
 export function EstiloDosPosts({
   projectId,
   aoAprovar,
+  aoLer,
   titulo = "Estilo dos posts",
   explicacao,
   sempreAberto = false,
@@ -53,6 +65,12 @@ export function EstiloDosPosts({
   projectId: string;
   /** O estilo ficou aprovado (pelo chat ou pela biblioteca). */
   aoAprovar?: (estado: EstadoDoEstiloDosPosts) => void;
+  /**
+   * O estado chegou do servidor (08/10, revisão). Quem abriu o passo porque o
+   * estilo faltava fica sabendo se ele já foi aprovado em outro lugar e segue,
+   * em vez de mostrar "Aprovado" sem caminho para continuar.
+   */
+  aoLer?: (estado: EstadoDoEstiloDosPosts) => void;
   titulo?: string;
   /** Uma linha sobre por que o passo aparece aqui. */
   explicacao?: string;
@@ -68,7 +86,13 @@ export function EstiloDosPosts({
   const [soNoMeuProjeto, setSoNoMeuProjeto] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [gerando, setGerando] = useState(false);
+  const [reaprovando, setReaprovando] = useState(false);
   const fimDaConversa = useRef<HTMLDivElement>(null);
+  // Quem chama recria a função a cada desenho; a leitura não deve repetir por isso.
+  const aoLerAtual = useRef(aoLer);
+  useEffect(() => {
+    aoLerAtual.current = aoLer;
+  });
 
   const carregar = useCallback(async () => {
     try {
@@ -77,6 +101,7 @@ export function EstiloDosPosts({
       if (!r.ok) throw new Error(d.error || "Não consegui ler o estilo dos posts.");
       setEstado(d);
       setErro(null);
+      aoLerAtual.current?.(d);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui ler o estilo dos posts.");
     }
@@ -98,9 +123,12 @@ export function EstiloDosPosts({
     [aoAprovar]
   );
 
+  const jaTemPedido = conversa.some((m) => m.de === "cliente");
+  const minimo = jaTemPedido ? MINIMO_DO_AJUSTE : MINIMO_DO_PEDIDO;
+
   async function enviar(mensagem?: string) {
     const nova = (mensagem ?? texto).trim();
-    if (nova.length < 6) {
+    if (nova.length < minimo) {
       toast.error("Conte com pelo menos uma frase como você quer os posts.");
       return;
     }
@@ -124,14 +152,20 @@ export function EstiloDosPosts({
       if (d.estado) aprovado(d.estado);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Não consegui registrar o estilo.";
-      setConversa((c) => [...c, { de: "squad", texto: `${msg} O que você escreveu continua aqui: tente de novo.` }]);
+      // A mensagem que falhou sai da conversa (08/10, revisão): ela volta para
+      // a caixa de texto, e reenviada entrava duas vezes no pedido.
+      setConversa((c) => {
+        const i = c.map((m) => m.de).lastIndexOf("cliente");
+        const sem = i >= 0 ? [...c.slice(0, i), ...c.slice(i + 1)] : c;
+        return [...sem, { de: "squad", texto: `${msg} O que você escreveu continua aqui: tente de novo.` }];
+      });
       setTexto(nova);
     } finally {
       setEnviando(false);
     }
   }
 
-  async function escolher(d: DesignDaGaleria) {
+  async function escolher(d: Pick<DesignDaGaleria, "id">) {
     const r = await fetch(`/api/projects/${projectId}/estilo-dos-posts`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -142,6 +176,24 @@ export function EstiloDosPosts({
     if (j.aprovado) toast.success(j.efeito || "Estilo aprovado.", { id: "estilo-dos-posts", duration: 6000 });
     else toast.error(j.efeito || "Não consegui aprovar este estilo.", { id: "estilo-dos-posts" });
     if (j.estado) aprovado(j.estado);
+  }
+
+  /**
+   * A APROVAÇÃO CAIU, O DESIGN FICOU (08/10, revisão): trocar as cores da
+   * marca (ou a letra) derruba a aprovação, mas o design escolhido continua
+   * gravado. Um clique aprova o mesmo estilo de novo, com as cores de agora,
+   * sem obrigar a pessoa a reescrever o que já tinha escrito.
+   */
+  async function usarDeNovo() {
+    if (!estado?.design) return;
+    setReaprovando(true);
+    try {
+      await escolher({ id: estado.design.id });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não consegui aprovar este estilo de novo.", { id: "estilo-dos-posts" });
+    } finally {
+      setReaprovando(false);
+    }
   }
 
   /** As artes de campanhas antigas que esperavam o estilo: o mesmo "gerar" de Modelos de arte. */
@@ -207,6 +259,17 @@ export function EstiloDosPosts({
         </p>
       )}
 
+      {estado.podeMudar && !estado.aprovada && estado.design && (
+        <button
+          type="button"
+          onClick={() => void usarDeNovo()}
+          disabled={reaprovando}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {reaprovando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Aprovar &ldquo;{estado.design.nome}&rdquo; de novo
+        </button>
+      )}
+
       {estado.aprovada && estado.aguardando > 0 && estado.podeMudar && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
           <span>
@@ -261,7 +324,7 @@ export function EstiloDosPosts({
                 )}
                 <div ref={fimDaConversa} />
               </div>
-              {conversa.length === 1 && (
+              {!jaTemPedido && (
                 <div className="flex flex-wrap gap-1.5">
                   {EXEMPLOS.map((ex) => (
                     <button key={ex} type="button" onClick={() => setTexto(ex)} className="rounded-full border px-2.5 py-1 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
@@ -282,12 +345,12 @@ export function EstiloDosPosts({
                   }}
                   rows={2}
                   maxLength={600}
-                  placeholder={conversa.length > 1 ? "Quer ajustar? Ex.: mais escuro, sem pessoa, mais colorido" : "Escreva como você quer os seus posts"}
+                  placeholder={jaTemPedido ? "Quer ajustar? Ex.: mais escuro, sem pessoa, mais colorido" : "Escreva como você quer os seus posts"}
                   aria-label="Como você quer os seus posts"
                   className="min-w-0 flex-1 resize-y rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
                   style={{ borderColor: "var(--border)", background: "var(--bg-input)", color: "var(--text-primary)" }}
                 />
-                <button type="button" onClick={() => void enviar()} disabled={enviando || texto.trim().length < 6} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3 text-sm font-semibold text-white disabled:opacity-50" aria-label="Enviar">
+                <button type="button" onClick={() => void enviar()} disabled={enviando || texto.trim().length < minimo} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3 text-sm font-semibold text-white disabled:opacity-50" aria-label="Enviar">
                   {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="hidden sm:inline">Enviar</span>
                 </button>

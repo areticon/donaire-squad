@@ -60,3 +60,23 @@ export function metadataDaFoto(manchetes: string[]): { fotoDaPeca?: FotoDaPeca; 
   if (manchetes.length === 1) return { fotoDaPeca: lista[0]! };
   return { fotosDasLaminas: lista.map((f) => f ?? { fonte: "nenhuma" }) };
 }
+
+/** Uma foto gravada no metadata, conferida (o JSON do banco não tem tipo). */
+function fotoGravada(v: unknown): FotoDaPeca | null {
+  const f = v as Partial<FotoDaPeca> | null;
+  if (!f || (f.fonte !== "material" && f.fonte !== "gerada" && f.fonte !== "nenhuma")) return null;
+  return f.fonte === "material" && typeof f.materialId === "string" && f.materialId ? { fonte: "material", materialId: f.materialId } : { fonte: f.fonte === "material" ? "nenhuma" : f.fonte };
+}
+
+/**
+ * AS FOTOS DAS LÂMINAS DEPOIS DE REFAZER SÓ ALGUMAS (08/10, revisão): o chat
+ * do card refaz as lâminas pedidas e deixa as outras. As refeitas valem pelo
+ * registro novo; as outras, pelo que já estava gravado no post. Sem nada a
+ * dizer (nenhum registro e nada gravado), null: o post fica como estava.
+ */
+export function fotosDasLaminasRefeitas(frases: string[], refeitas: number[], antes: unknown): FotoDaPeca[] | null {
+  const gravadas = Array.isArray(antes) ? antes.map(fotoGravada) : [];
+  const novas = new Map(refeitas.map((i) => [i, fotoDaPeca(frases[i])] as const));
+  if (![...novas.values()].some(Boolean) && !gravadas.some(Boolean)) return null;
+  return frases.map((_, i) => (novas.has(i) ? novas.get(i) : gravadas[i]) ?? { fonte: "nenhuma" });
+}

@@ -12,6 +12,7 @@ import {
 import { arteComMaterialDoCliente, comporFraseNaArte, exigirIdentidadeAprovada, layoutDaPeca, marcaDaArte, modeloDaMarca, modeloParaOMaterial, pecaNoModeloComPrompt, promptDaArteSemTexto, proporcaoDaArte, type MarcaDaArte } from "@/lib/media/arte-com-frase";
 import { promptDoModelo } from "@/lib/modelos-de-arte/prompts-com-foto";
 import { avisoDoRecuo } from "@/lib/media/aviso-da-arte";
+import { registrarFotoDaPeca } from "@/lib/media/foto-da-peca";
 import type { MaterialDaMarca } from "@/lib/materiais/escolha";
 
 /**
@@ -351,6 +352,10 @@ export async function desenharCarrossel(opcoes: {
         altura: formato.altura,
       });
       uri = (await ajustarParaFormato(composta, formato)).dataUri;
+      // Qual foto entrou nesta lâmina (08/10, revisão): a cena gerada ou
+      // nenhuma. Sem isto, o carrossel sem foto do cliente (o caso comum)
+      // não gravava nada em `fotosDasLaminas`.
+      registrarFotoDaPeca(opcoes.roteiro[i].frase, { fonte: arte ? "gerada" : "nenhuma" });
     }
 
     // Guardar ANTES de devolver, e não no fim do carrossel inteiro: se a
