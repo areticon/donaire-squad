@@ -14,6 +14,7 @@ import { apagarMidias, urlsDaMidia } from "@/lib/media/faxina";
 import { marcarAberturasNaFila } from "@/lib/media/higgsfield-nos-cortes";
 import { marcarMontagensNaFila, montagemNaEdicaoLigada } from "@/lib/media/montagem-nos-cortes";
 import { marcarCompletoNaFila } from "@/lib/media/montagem-do-completo";
+import { desfazerCorteDoCompletoSemBase, receberBaseDoCorteDoCompleto } from "@/lib/media/controle-do-completo-servidor";
 import { cutucar } from "@/lib/fila/trabalhos";
 import { contarRetomadaExtra, lerParaRetomar, retomarEtapa } from "@/lib/media/vigia-das-etapas";
 import { enviarRecorteDoTrecho } from "@/lib/media/refazer";
@@ -57,6 +58,8 @@ async function tratarReinicio(id: string, status: string, aviso: AvisoDeReinicio
   //    chegado): pede o completo de novo, sem recortar nada.
   if (aviso.soCompleto || aviso.parcialEnviado) {
     const n = await contarRetomadaExtra(id, "completo");
+    // O corte do cliente no completo (08/10) que parou três vezes: o completo de antes segue no ar, sem erro a mostrar.
+    if (n === null && (await desfazerCorteDoCompletoSemBase(id, "o worker reiniciou três vezes no meio"))) return "completo-desistiu";
     if (n === null) {
       // Terceira vez: a faixa do Gestor mostra "o vídeo completo não ficou
       // pronto" com o botão de refazer (ela lê "completo:" no erro).
@@ -289,6 +292,12 @@ export async function POST(
       console.error(
         `[cortar-callback][${id}] o completo nao veio: ${atrasado.erros.join("; ")}`
       );
+      // O CORTE DO CLIENTE NO COMPLETO (08/10) que não saiu: o completo de
+      // antes continua no ar, então não há erro de completo a mostrar; o
+      // roteiro volta ao de antes do corte e a refação é devolvida.
+      if (await desfazerCorteDoCompletoSemBase(id, atrasado.erros.join("; "))) {
+        return NextResponse.json({ ok: true, recorteDoCompletoDesfeito: true });
+      }
       await prisma.videoJob.update({
         where: { id },
         data: { error: atrasado.erros.join("; ").slice(0, 900) },
@@ -302,6 +311,12 @@ export async function POST(
     // parcial ter APAGADO o antigo; quando o novo falhou, o cliente ficou sem
     // nenhum dos dois.
     if (atrasado.completo?.url && atrasado.completo.url !== video.completoUrl) {
+      // O CORTE DO CLIENTE NO COMPLETO (08/10): com o editado no ar, a base
+      // nova não toma o lugar dele; vai direto para a montagem, e o editado só
+      // sai quando o novo ficar pronto (lib/media/corte-do-completo.ts).
+      if (await receberBaseDoCorteDoCompleto(id, video.completoUrl, atrasado.completo)) {
+        return NextResponse.json({ ok: true, recorteDoCompleto: true });
+      }
       const anterior = video.completoUrl;
       await prisma.videoJob.update({
         where: { id },

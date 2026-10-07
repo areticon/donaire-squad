@@ -96,6 +96,8 @@ import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
 import { editorJornadaLigado, esteiraDoCompleto, type AmostraDaJornada } from "@/lib/media/jornada/estado";
 import { amostrasNoTempoEditado } from "@/lib/media/jornada/linha-do-tempo";
 import { montarPelaJornada } from "@/lib/media/jornada/montar-servidor";
+import { estadoComRecorte, montagemDoRecorte, type RecorteNaMontagem } from "@/lib/media/corte-do-completo";
+import { estornarRefacaoDoCompleto } from "@/lib/credits/estorno-da-refacao";
 import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
 import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import type { EdicaoDaJornada } from "@/lib/media/jornada/montagem";
@@ -255,6 +257,14 @@ export type MontagemDoCompleto = {
    * diretor de novo. Ver lib/media/roteiro-da-edicao.ts.
    */
   roteiro?: RoteiroDoVideo;
+  /**
+   * O CORTE DO CLIENTE NO COMPLETO (08/10, lib/media/corte-do-completo.ts): a
+   * base na fila é a de um corte que ele aplicou no completo já editado; o
+   * editado de antes continua no ar, e `anterior` é o estado que volta se esta
+   * montagem não sair. `recorteQueNaoSaiu`: a última tentativa voltou atrás.
+   */
+  recorteDoCliente?: RecorteNaMontagem | null;
+  recorteQueNaoSaiu?: { em: string; motivo: string | null } | null;
   /**
    * A abertura aprovada, levada para o tempo da BASE (01/10): os momentos
    * que o worker emenda na frente do completo editado, com efeito.
@@ -1120,7 +1130,11 @@ export async function analisarNoWorker(completoUrl: string): Promise<AnaliseDoCo
  * vezes. SQL cru porque a coluna é nova e o cliente do Prisma pode estar
  * gerado sem ela (mesmo motivo do jsonb dos cortes).
  */
-async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null, novo: MontagemDoCompleto): Promise<boolean> {
+async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null, pedido: MontagemDoCompleto): Promise<boolean> {
+  // O CORTE DO CLIENTE NO COMPLETO (08/10): pronto fecha a refação; sem
+  // montagem devolve o que estava no ar (o editado, a fala e os elementos de
+  // antes), em vez de deixar o cliente sem edição nenhuma.
+  const { estado: novo, desfeito } = estadoComRecorte(pedido);
   const json = JSON.stringify(novo);
   const n = await prisma.$executeRaw`
     UPDATE video_jobs SET "completoMontagem" = ${json}::jsonb
@@ -1139,17 +1153,25 @@ async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null,
       WHERE metadata ->> 'videoJobId' = ${videoJobId} AND (metadata ->> 'completo')::boolean IS TRUE`.catch(() => 0);
     // A DESISTÊNCIA POR ERRO TÉCNICO avisa os admins, uma vez por desistência
     // (a troca para "sem-montagem" só acontece uma vez por rodada).
-    if (novo.estado === "sem-montagem" && novo.falhaTecnica && lido?.estado !== "sem-montagem") {
-      await avisarAdminsDaMontagem({ videoJobId, alvo: "completo", motivo: novo.motivo ?? "sem detalhe" }).catch((e) =>
+    if (pedido.estado === "sem-montagem" && pedido.falhaTecnica && lido?.estado !== "sem-montagem") {
+      await avisarAdminsDaMontagem({ videoJobId, alvo: "completo", motivo: `${desfeito ? "corte do cliente não aplicado: " : ""}${pedido.motivo ?? "sem detalhe"}` }).catch((e) =>
         console.error(`[montagem-do-completo][${videoJobId}] aviso aos admins falhou:`, e)
       );
-      // A DEVOLUÇÃO (02/10): a montagem não foi entregue por erro nosso.
-      await estornarEdicaoNaoEntregue({
-        videoId: videoJobId,
-        alvo: "completo",
-        motivo: novo.motivo ?? "a montagem de efeitos falhou",
-        comAbertura: Boolean(novo.roteiro?.abertura && aberturaAtiva(novo.roteiro.abertura)),
-      }).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução falhou:`, e));
+      // A DEVOLUÇÃO (02/10): a montagem não foi entregue por erro nosso. No
+      // corte do cliente (08/10) a montagem de antes está no ar: não se devolve
+      // a edição, só a refação (abaixo).
+      if (!desfeito) {
+        await estornarEdicaoNaoEntregue({
+          videoId: videoJobId,
+          alvo: "completo",
+          motivo: novo.motivo ?? "a montagem de efeitos falhou",
+          comAbertura: Boolean(novo.roteiro?.abertura && aberturaAtiva(novo.roteiro.abertura)),
+        }).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução falhou:`, e));
+      }
+    }
+    if (desfeito) {
+      console.warn(`[montagem-do-completo][${videoJobId}] o corte do cliente não saiu (${pedido.motivo ?? "sem motivo"}); o completo de antes continua no ar`);
+      await estornarRefacaoDoCompleto(videoJobId, desfeito).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução da refação falhou:`, e));
     }
   }
   return n > 0;
@@ -1230,11 +1252,18 @@ export function resumoDoVideo(clips: unknown): string {
  * Chamado quando um completo NOVO chega (cortar-callback). Só marca. Não
  * marca de novo a mesma base, nem a própria edição (que vira `completoUrl`).
  */
-export async function marcarCompletoNaFila(videoJobId: string, opcoes: { forcar?: boolean } = {}): Promise<boolean> {
+export async function marcarCompletoNaFila(videoJobId: string, opcoes: { forcar?: boolean; base?: { url: string; bytes: number | null } } = {}): Promise<boolean> {
   if (!montagemDoCompletoLigada() && !opcoes.forcar) return false;
   const v = await lerVideo(videoJobId);
   if (!v?.completoUrl) return false;
   const m = v.completoMontagem;
+  // O CORTE DO CLIENTE NO COMPLETO (08/10): a base nova não toma o lugar do
+  // editado; ela entra na fila direto, e o editado fica no ar até a montagem
+  // nova ficar pronta (ou volta inteiro, se ela não sair).
+  if (opcoes.base) {
+    if (!m) return false;
+    return trocarEstado(videoJobId, m, montagemDoRecorte(m, opcoes.base, { origem: hashCurto(opcoes.base.url), agora: agora() }) as MontagemDoCompleto);
+  }
   if (m?.montadoUrl && v.completoUrl === m.montadoUrl && !opcoes.forcar) return false;
   // A base de uma refeita nunca é um editado (06/10): do original gravado, ou
   // da base da primeira montagem, nunca do arquivo com peças desenhadas.

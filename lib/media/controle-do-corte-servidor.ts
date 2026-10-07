@@ -20,6 +20,7 @@ import { reedicaoAberta } from "@/lib/media/reedicao";
 import type { GanchoDoCorte, MomentoDaAbertura } from "@/lib/media/abertura-do-roteiro";
 import type { PalavraNoCorte } from "@/lib/media/plano-de-montagem";
 import type { Remocao } from "@/lib/media/edicao";
+import { moverMomento } from "@/lib/media/corte-do-completo";
 import {
   calcularCorte,
   CREDITOS_POR_REFACAO_DO_CORTE,
@@ -31,6 +32,7 @@ import {
   motivoDaIA,
   REFACOES_GRATIS_POR_CORTE,
   resumoDaMudanca,
+  vizinhasNoAr,
   type ControleDoCorte,
   type EscolhaDoCorte,
   type PalavraDoControle,
@@ -195,15 +197,7 @@ function mapaEntreFalas(
   return velhos.map((g) => pos.get(g) ?? null);
 }
 
-/** Um momento do gancho levado para a fala nova; null se alguma palavra dele saiu. */
-function moverMomento(m: MomentoDaAbertura, mapa: Array<number | null>, novas: PalavraNoCorte[]): MomentoDaAbertura | null {
-  const de = mapa[m.de];
-  const ate = mapa[m.ate];
-  if (de == null || ate == null || ate - de !== m.ate - m.de) return null;
-  for (let k = m.de; k <= m.ate; k++) if (mapa[k] == null) return null;
-  return { ...m, de, ate, inicio: +Math.max(0, novas[de].inicio - 0.05).toFixed(3), fim: +(novas[ate].fim + 0.05).toFixed(3) };
-}
-
+// O momento do gancho na fala nova: a mesma conta da abertura do completo (08/10, lib/media/corte-do-completo.ts).
 function moverGancho(g: GanchoDoCorte | null | undefined, mapa: Array<number | null> | null, novas: PalavraNoCorte[]): GanchoDoCorte | null {
   if (!g || !mapa) return null;
   const principal = moverMomento(g, mapa, novas);
@@ -214,12 +208,7 @@ function moverGancho(g: GanchoDoCorte | null | undefined, mapa: Array<number | n
 
 /** As palavras no ar em volta de um trecho devolvido: é por elas que a guarda acha o trecho no arquivo pronto. */
 function vizinhas(l: Lido, noAr: Set<number>, de: number, ate: number): { antes: string; depois: string } {
-  const P = l.palavras;
-  const antes: string[] = [];
-  const depois: string[] = [];
-  for (let k = P.length - 1; k >= 0 && antes.length < 2; k--) if (P[k].fim <= de + 0.01 && noAr.has(P[k].i)) antes.unshift(P[k].texto);
-  for (let k = 0; k < P.length && depois.length < 2; k++) if (P[k].inicio >= ate - 0.01 && noAr.has(P[k].i)) depois.push(P[k].texto);
-  return { antes: antes.join(" "), depois: depois.join(" ") };
+  return vizinhasNoAr(l.palavras, noAr, de, ate);
 }
 
 // ─────────────────────────────── aplicar ───────────────────────────────

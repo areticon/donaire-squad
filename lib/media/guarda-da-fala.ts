@@ -80,12 +80,26 @@ export async function conferirFala(
  * O campo `guardaDaFala` dos pedidos de render FINAL ao worker. Nulo com a
  * guarda desligada (GUARDA_DA_FALA=0); worker antigo ignora o campo.
  */
-export function pedidoDaGuarda(videoId: string, rotulo: string, appUrl?: string, corte?: number): { url: string; rotulo: string } | null {
+export function pedidoDaGuarda(videoId: string, rotulo: string, appUrl?: string, corte?: number | "completo"): { url: string; rotulo: string } | null {
   if (!guardaDaFalaLigada()) return null;
   const app = (appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
   // O índice do corte vai na URL (03/10), e não no corpo: o corpo quem monta é
-  // o worker, e assim a regra vale sem publicar o worker.
-  return { url: `${app}/api/videos/${videoId}/guarda-da-fala${typeof corte === "number" ? `?corte=${corte}` : ""}`, rotulo };
+  // o worker, e assim a regra vale sem publicar o worker. O completo (08/10)
+  // vai com `?completo=1`: a rota lê o que o cliente devolveu no controle dele.
+  const consulta = corte === "completo" ? "?completo=1" : typeof corte === "number" ? `?corte=${corte}` : "";
+  return { url: `${app}/api/videos/${videoId}/guarda-da-fala${consulta}`, rotulo };
+}
+
+/**
+ * De quem são os trechos protegidos de um pedido da guarda (08/10): o corte
+ * pelo índice, ou o vídeo completo. Pedido sem `?corte=` é sempre do completo
+ * (a base, o editado e o sob medida); os da montagem do completo vêm sem
+ * marca nenhuma desde 03/10, e continuam valendo sem mudar aquele pedido.
+ */
+export function alvoDaGuarda(params: { get(nome: string): string | null; has(nome: string): boolean }): number | "completo" {
+  const corte = Number(params.get("corte"));
+  if (params.has("corte") && Number.isInteger(corte) && corte >= 0) return corte;
+  return "completo";
 }
 
 /** O que o cliente devolveu no controle do corte (`clips[i].mantidosPeloUsuario`). */

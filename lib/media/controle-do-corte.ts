@@ -53,6 +53,29 @@ export const FOLGA_DA_JANELA_SEG = 25;
 export const DURACAO_MINIMA_DO_CORTE_SEG = 10;
 export const DURACAO_MAXIMA_DO_CORTE_SEG = 180;
 
+/**
+ * OS LIMITES POR ALVO (08/10): o mesmo controle serve ao corte curto e ao
+ * vídeo completo. O completo mostra a gravação inteira (não há janela em
+ * volta: o cliente tira o começo, o fim ou um trecho do meio), tem o mesmo
+ * mínimo e não tem máximo (ele é o vídeo inteiro).
+ */
+export const LIMITES_DO_CONTROLE = {
+  corte: { folgaSeg: FOLGA_DA_JANELA_SEG, minimoSeg: DURACAO_MINIMA_DO_CORTE_SEG, maximoSeg: DURACAO_MAXIMA_DO_CORTE_SEG },
+  completo: { folgaSeg: Infinity, minimoSeg: DURACAO_MINIMA_DO_CORTE_SEG, maximoSeg: Infinity },
+} as const;
+
+/** Refações gratuitas do vídeo completo depois da entrega (a mesma régua dos cortes). */
+export const REFACOES_GRATIS_DO_COMPLETO = 3;
+/**
+ * Créditos de uma refação do completo além das gratuitas. ZERO = SEM PREÇO
+ * APROVADO (08/10): a refação do completo transcreve a base nova, confere a
+ * fala duas vezes e roda a montagem de novo (sem gerar mídia: a desta edição
+ * é mantida), e esse custo ainda não foi medido num vídeo real. Até o Bruno
+ * aprovar o valor medido, a quarta refação é recusada com o motivo, em vez de
+ * cobrar um número inventado.
+ */
+export const CREDITOS_POR_REFACAO_DO_COMPLETO = 0;
+
 export type Intervalo = { de: number; ate: number };
 
 /** Uma palavra da janela do corte, no tempo da gravação. `i` é o índice na transcrição inteira. */
@@ -76,9 +99,26 @@ export type EscolhaDoCorte = {
   finoFim: number;
 };
 
+/**
+ * Um elemento da edição do completo (a jornada) visto pelo controle (08/10):
+ * as palavras da gravação do momento dele, para a tela marcar onde ele entra e
+ * avisar ANTES de aplicar que um corte o tira (o momento inteiro saiu).
+ */
+export type ElementoNoControle = {
+  id: string;
+  descricao: string;
+  /** Índices da transcrição: a palavra que chama o elemento e as do momento dele. */
+  gatilho: number;
+  palavras: number[];
+  /** O instante da gravação em que ele entra (para a faixa do tempo). */
+  t: number;
+};
+
 /** O que a tela recebe para desenhar o controle de um corte. */
 export type ControleDoCorte = {
   videoId: string;
+  /** "corte": um corte curto (`indice` em `clips`); "completo": o vídeo inteiro (`indice` -1). */
+  alvo?: "corte" | "completo";
   indice: number;
   titulo: string;
   palavras: PalavraDoControle[];
@@ -100,6 +140,10 @@ export type ControleDoCorte = {
   fonteUrl: string;
   /** Um quadro do corte, para o player não abrir preto enquanto a gravação carrega. */
   posterUrl: string | null;
+  /** Só no completo: os elementos da edição, para marcar e avisar o que um corte tira. */
+  elementos?: ElementoNoControle[];
+  /** Um aviso sobre o último ajuste (o corte do completo que não saiu e voltou atrás). */
+  aviso?: string | null;
 };
 
 /** O resultado da conta para uma escolha. */
@@ -310,6 +354,99 @@ export function escolhaDoCorte(palavras: PalavraDoControle[], bordas: { inicio: 
     finoInicio: limitarFino(bordas.inicio - calc.inicio),
     finoFim: limitarFino(bordas.fim - calc.fim),
   };
+}
+
+// ─────────────────────────────── o vídeo completo (08/10) ───────────────────────────────
+
+const arred3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * A escolha que está valendo no VÍDEO COMPLETO, lida dos pedaços que vão ao
+ * ar (tempo da gravação): as bordas são o começo do primeiro pedaço e o fim do
+ * último, e o resto é a mesma leitura do corte. Lida do que está no ar, e não
+ * de uma escolha guardada, pelo mesmo motivo do corte: uma troca de termo que
+ * junta palavras muda os índices, e os tempos continuam valendo.
+ */
+export function escolhaDoCompleto(palavras: PalavraDoControle[], manter: Intervalo[]): EscolhaDoCorte {
+  const inicio = manter[0]?.de ?? 0;
+  const fim = manter[manter.length - 1]?.ate ?? palavras[palavras.length - 1]?.fim ?? 0;
+  return escolhaDoCorte(palavras, { inicio, fim }, manter.map((m) => ({ de: m.de - inicio, ate: m.ate - inicio })));
+}
+
+/**
+ * Os pedaços da gravação que o completo leva ao ar, para o roteiro e a fala
+ * (os mesmos que o player toca).
+ *
+ * A EMENDA NÃO DEIXA PALAVRA FANTASMA (08/10): `emendarNoSilencio` começa a
+ * remoção EXATAMENTE no começo da palavra tirada quando o silêncio antes dela
+ * é longo, e a fala conta a palavra pelo começo dela num pedaço mantido, com
+ * a ponta incluída (`falaDoCorte`, `indicesDaFala`). Sem este ajuste, a palavra
+ * que o cliente tirou continuaria na fala, encostada na emenda, e o elemento
+ * dela não andaria para a palavra viva. O pedaço passa a fechar 2 ms antes
+ * dela (menos de um quadro): a palavra sai da fala e do vídeo.
+ */
+export function manterDoCompletoNoAr(c: Pick<CorteCalculado, "inicio" | "manter">, palavras?: Array<Pick<PalavraDoControle, "inicio">>): Intervalo[] {
+  const abs = trechosParaTocar(c).map((m) => ({ de: arred3(m.de), ate: arred3(m.ate) }));
+  if (!palavras?.length) return abs;
+  let k = 0;
+  return abs.map((m) => {
+    while (k < palavras.length && palavras[k].inicio < m.ate - 0.0015) k++;
+    const p = palavras[k];
+    return p && Math.abs(p.inicio - m.ate) <= 0.0015 && p.inicio > m.de + 0.01 ? { de: m.de, ate: arred3(p.inicio - 0.002) } : m;
+  });
+}
+
+/**
+ * As remoções do VÍDEO COMPLETO para o worker: o COMPLEMENTO exato do que vai
+ * ao ar, de 0 à duração da gravação. O completo não tem começo nem fim próprios
+ * no worker (ele emenda de 0 à duração menos as remoções, worker/src/ffmpeg.mjs,
+ * `intervalosQueFicam`), então o começo e o fim que o cliente escolheu viram
+ * remoção de 0 até o começo e do fim até a duração. Por ser o complemento, o
+ * que o worker emenda é exatamente o que o player tocou.
+ */
+export function remocoesDoCompleto(c: Pick<CorteCalculado, "inicio" | "manter" | "remocoes">, duracao: number, palavras?: Array<Pick<PalavraDoControle, "inicio">>): Remocao[] {
+  const fica = manterDoCompletoNoAr(c, palavras);
+  const motivo = (de: number, ate: number) => {
+    if (de <= 0.001) return "antes do começo escolhido";
+    if (ate >= duracao - 0.001) return "depois do fim escolhido";
+    return c.remocoes.find((x) => x.ate > de && x.de < ate)?.motivo ?? "limpeza";
+  };
+  const saida: Remocao[] = [];
+  let t = 0;
+  for (const f of fica) {
+    if (f.de - t > 0.001) saida.push({ de: arred3(t), ate: arred3(f.de), motivo: motivo(t, f.de) });
+    t = Math.max(t, f.ate);
+  }
+  if (duracao - t > 0.001) saida.push({ de: arred3(t), ate: arred3(duracao), motivo: motivo(t, duracao) });
+  return saida;
+}
+
+/**
+ * As palavras (índices da transcrição) que ficam na FALA do completo numa
+ * escolha: o critério de `falaDoCorte` e da legenda (o começo da palavra cai
+ * num pedaço mantido), sobre os mesmos pedaços que o servidor grava
+ * (`manterDoCompletoNoAr`). É por esta lista que a jornada acompanha o corte,
+ * então a tela avisa pela mesma.
+ */
+export function palavrasNaFala(palavras: PalavraDoControle[], c: Pick<CorteCalculado, "inicio" | "manter">): Set<number> {
+  const manter = manterDoCompletoNoAr(c, palavras);
+  const s = new Set<number>();
+  for (const p of palavras) if (noTempoDoCorte(p.inicio, 0, manter) !== null) s.add(p.i);
+  return s;
+}
+
+/** Os elementos que uma escolha tira: nenhuma palavra do momento deles fica na fala (a regra de lib/media/jornada/corte.ts). */
+export function elementosQueSaem(elementos: ElementoNoControle[], naFala: Set<number>): ElementoNoControle[] {
+  return elementos.filter((el) => !el.palavras.some((i) => naFala.has(i)));
+}
+
+/** As palavras no ar em volta de um trecho devolvido: é por elas que a guarda da fala acha o trecho no arquivo pronto. */
+export function vizinhasNoAr(palavras: PalavraDoControle[], noAr: Set<number>, de: number, ate: number): { antes: string; depois: string } {
+  const antes: string[] = [];
+  const depois: string[] = [];
+  for (let k = palavras.length - 1; k >= 0 && antes.length < 2; k--) if (palavras[k].fim <= de + 0.01 && noAr.has(palavras[k].i)) antes.unshift(palavras[k].texto);
+  for (let k = 0; k < palavras.length && depois.length < 2; k++) if (palavras[k].inicio >= ate - 0.01 && noAr.has(palavras[k].i)) depois.push(palavras[k].texto);
+  return { antes: antes.join(" "), depois: depois.join(" ") };
 }
 
 /** O que mudou entre duas escolhas, em português, para o resumo antes de aplicar. */
