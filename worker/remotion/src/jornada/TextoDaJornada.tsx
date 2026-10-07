@@ -98,7 +98,15 @@ export function TextoDaJornada(c: Ctx) {
   const acento = c.tema.acento;
   const escuro = c.tema.escuro || "#06111f";
   const claro = "#e8eef6";
-  const grad = `linear-gradient(100deg, ${misturar(acento, "#ffffff", 0.55)}, ${acento})`;
+  // A DIREÇÃO DESTA EDIÇÃO (08/10): as cores, o peso e a energia que o Claude escreveu e o JEV escolheu para este
+  // vídeo. Sem direção, o degradê da cor da marca, como antes. Nada aqui é cravado por nicho ou por tipo de número.
+  const direcao = (c.props.direcao as { cores?: string[]; brilho?: string; peso?: number; energia?: string } | null) ?? null;
+  const coresDaDirecao = Array.isArray(direcao?.cores) && direcao!.cores!.length >= 2 ? direcao!.cores! : null;
+  const grad = coresDaDirecao ? `linear-gradient(100deg, ${coresDaDirecao.join(", ")})` : `linear-gradient(100deg, ${misturar(acento, "#ffffff", 0.55)}, ${acento})`;
+  const gradNumero = coresDaDirecao ? `linear-gradient(180deg, ${coresDaDirecao.join(", ")})` : grad;
+  const brilhoDoNumero = direcao?.brilho ?? acento;
+  const pesoDaDirecao = Math.max(500, Math.min(900, Number(direcao?.peso) || 800));
+  const energia = direcao?.energia === "contida" ? 0 : direcao?.energia === "alta" ? 2 : 1;
   const vidro: React.CSSProperties = {
     background: rgba(misturar(escuro, "#000000", 0.25), 0.9),
     border: `${Math.max(1, u)}px solid rgba(255,255,255,0.13)`,
@@ -111,7 +119,36 @@ export function TextoDaJornada(c: Ctx) {
   const temCabeca = grafico && (numero || cronometro);
   const iconeNoTitulo = grafico && !temCabeca && Boolean(icone && ICONES[icone]);
   const p = pop(t);
-  const cabeca = temCabeca ? (
+  // O NÚMERO DE IMPACTO (08/10): sem caixa, do tamanho que a largura deixa, contando de 0 até o valor DITO com
+  // desaceleração no fim, nas cores e na energia da direção desta edição (o dourado do pedido do Bruno foi um
+  // exemplo para um vídeo, não regra: a direção decide).
+  const partes = (c.props.numeroPartes as PartesDoNumero | null) ?? null;
+  const textoFinal = partes ? `${partes.antes}${partes.valor.toLocaleString("pt-BR", { minimumFractionDigits: partes.casas, maximumFractionDigits: partes.casas })}${partes.depois}` : numero;
+  const larguraUtil = ancora.w * c.W * 0.96;
+  const tamNumero = Math.min((c.vertical ? 210 : 190) * u, larguraUtil / Math.max(3, textoFinal.length * 0.6));
+  const subida = 1 - Math.pow(1 - limitar((t - 0.1) / [1.7, 1.3, 0.9][energia]), 4);
+  const numeroDeImpacto = grafico && numero && !cronometro ? (
+    <div style={{ width: "100%", display: "flex", justifyContent: "center", transform: `scale(${([0.9, 0.75, 0.6][energia] + [0.1, 0.25, 0.4][energia] * p).toFixed(4)})`, transformOrigin: "50% 60%", opacity: limitar(t / 0.12) }}>
+      <div
+        style={{
+          fontWeight: pesoDaDirecao,
+          fontSize: tamNumero,
+          lineHeight: 1,
+          letterSpacing: "-0.02em",
+          backgroundImage: gradNumero,
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          color: "transparent",
+          WebkitTextFillColor: "transparent",
+          fontVariantNumeric: "tabular-nums",
+          filter: `drop-shadow(0 ${6 * u}px ${18 * u}px rgba(0,0,0,0.55)) drop-shadow(0 0 ${22 * u}px ${rgba(brilhoDoNumero, 0.45)})`,
+        }}
+      >
+        {partes ? `${partes.antes}${(partes.valor * subida).toLocaleString("pt-BR", { minimumFractionDigits: partes.casas, maximumFractionDigits: partes.casas })}${partes.depois}` : numero}
+      </div>
+    </div>
+  ) : null;
+  const cabeca = numeroDeImpacto ?? (temCabeca ? (
     <div data-vidro="" style={{ ...vidro, display: "flex", alignItems: "center", gap: 20 * u, padding: `${16 * u}px ${26 * u}px`, transform: `scale(${(0.6 + 0.4 * p).toFixed(4)})`, transformOrigin: "0% 50%", opacity: limitar(t / 0.15) }}>
       {cronometro ? (
         <div style={{ position: "relative", width: 96 * u, height: 96 * u, flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: rgba(acento, 0.16) }}>
@@ -132,7 +169,7 @@ export function TextoDaJornada(c: Ctx) {
         </div>
       ) : null}
     </div>
-  ) : null;
+  ) : null);
   // A linha do tempo: um fio que cresce do primeiro ao último item que já entrou.
   const entrados = itens.filter((it) => t >= it.t).length;
   return (

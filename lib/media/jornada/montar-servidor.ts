@@ -9,6 +9,7 @@ import { montarEdicao, type EdicaoDaJornada, type LegendaDaJornada } from "@/lib
 import { frasesDaFala, levarIndice, type Palavra } from "@/lib/media/jornada/linha-do-tempo";
 import { elementosAprovados } from "@/lib/media/jornada/revisao";
 import { escreverTextos, type TextoDoElemento } from "@/lib/media/jornada/textos";
+import { direcaoDaEdicao, type DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 import type { AmostraDaJornada, EstadoDaJornada } from "@/lib/media/jornada/estado";
 
 /**
@@ -38,6 +39,8 @@ export type EntradaDaMontagemDaJornada = {
   jev: Jev | null;
   geracao: DependenciasDaGeracao;
   projectId?: string | null;
+  /** A direção já escolhida (os cortes usam a do completo); ausente, é escrita e escolhida aqui. */
+  direcao?: DirecaoDaEdicao | null;
 };
 
 export type MontagemDaJornada = {
@@ -49,6 +52,8 @@ export type MontagemDaJornada = {
   prompts: Record<string, string>;
   /** O texto em camada que o Claude escreveu, por elemento (07/10). */
   textos: Record<string, TextoDoElemento>;
+  /** A direção visual escolhida para esta edição (08/10). */
+  direcao: DirecaoDaEdicao | null;
   trilha: boolean;
   custoUsd: { geracao: number };
   tempos: Record<string, number>;
@@ -89,6 +94,9 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   // O TEXTO EM CAMADA (07/10), escrito junto com os prompts: a fala A PARTIR da palavra que chama o elemento (o que foi dito antes
   // não pode virar item: o elemento ainda não está na tela) e o que vem logo depois (os itens enumerados).
   const falaEm = (de: number, ate: number) => e.falaDoRender.filter((p) => p.inicio >= de - 0.05 && p.inicio < ate).map((p) => p.texto).join(" ");
+  // A DIREÇÃO VISUAL DESTA EDIÇÃO (08/10): escrita pelo Claude, escolhida pelo JEV, nunca cravada no código.
+  const resumoDaFala = e.falaDoRender.map((p) => p.texto).join(" ");
+  const direcaoFeita = e.direcao !== undefined ? Promise.resolve({ direcao: e.direcao, propostas: [], aviso: null as string | null }) : direcaoDaEdicao({ contexto: e.contexto, resumo: resumoDaFala, redator: e.redator, jev: e.jev, projectId: e.projectId });
   const [{ prompts, erros }, txt] = await Promise.all([
     // O gráfico (07/10) é desenhado em código: não tem prompt de imagem nem geração.
     escreverPrompts(paraGerar, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId }),
@@ -101,6 +109,8 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     ).catch((err) => ({ textos: {} as Record<string, TextoDoElemento>, erros: [`textos: ${err instanceof Error ? err.message.slice(0, 120) : err}`] })),
   ]);
   erros.push(...txt.erros);
+  const dir = await direcaoFeita;
+  if (dir.aviso) erros.push(dir.aviso);
   marcar("prompts");
   // O AJUSTE DO CARD (E6): as mídias desta edição que o pedido não tocou ficam; só as afetadas são geradas de novo.
   const mantidas = e.estado.midiasMantidas ?? {};
@@ -139,6 +149,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     temTrilha: e.temTrilha,
     leituraDoTrecho: (x) => trechoEmTexto(e.estado.leitura ?? null, x),
     textos: txt.textos,
+    direcao: dir.direcao,
   });
   marcar("montagem");
   return {
@@ -149,6 +160,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     escolhas: m.escolhas,
     prompts,
     textos: txt.textos,
+    direcao: dir.direcao,
     trilha: m.trilha,
     custoUsd: { geracao: g.custoUsd },
     tempos,

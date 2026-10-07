@@ -4,6 +4,7 @@
 // Rodar: npx tsx --test scripts/testes/jornada-e8-numeros.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { numeroFoiDito, numerosPorExtenso, partesDoNumero, valorDoNumero } from "@/lib/media/jornada/numeros";
 import { conferirTexto } from "@/lib/media/jornada/textos";
 
@@ -40,4 +41,15 @@ test("número na legenda legível", async () => {
   assert.equal(numeroNaLegenda("152638,"), "152.638,");
   assert.equal(numeroNaLegenda("2026"), "2026", "ano fica como está");
   assert.equal(numeroNaLegenda("moto"), "moto");
+});
+
+test("direção visual da edição: lida e conferida, nunca cravada (08/10)", async () => {
+  const { conferirDirecao } = await import("@/lib/media/jornada/direcao");
+  const d = conferirDirecao({ nome: "Conquista sóbria", cores: ["#fff6d5", "#d9a63a", "zzz"], brilho: "#f7d77e", peso: 870, energia: "alta", porque: "x" })!;
+  assert.deepEqual(d.cores, ["#fff6d5", "#d9a63a"], "cor inválida sai");
+  assert.equal(d.peso, 900);
+  assert.equal(d.energia, "alta");
+  assert.equal(conferirDirecao({ cores: ["#ffffff"] }), null, "uma cor só não é degradê");
+  const r = readFileSync("worker/remotion/src/jornada/TextoDaJornada.tsx", "utf8");
+  assert.doesNotMatch(r, /dinheiro\s*\?/, "nenhuma regra fixa de cor por tipo de número no desenho");
 });

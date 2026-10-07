@@ -111,7 +111,8 @@ test("densidade: opções só da duração e do gênero; formatos pela área liv
   assert.deepEqual(formatosPossiveis("recorte", { de: 0, ate: 1, pessoasEmCena: [], movimento: "pouco", acontece: "", mostra: [], falaDe: "", areaLivre: [] }, "9:16"), ["tela-cheia"], "sem área livre, só tela cheia");
   // Vídeo curto: com a pessoa na tela (o gráfico sempre cabe; B-roll vira imagem ao lado; tela cheia só sem lugar).
   assert.deepEqual(formatosPossiveis("grafico", null, "9:16", null, false), ["grafico"]);
-  assert.deepEqual(formatosPossiveis("video", null, "9:16", { topo: 0.05, lateral: 0, baixo: 0.3 }, false), ["janela", "recorte-sobre"]);
+  // 08/10 (Bruno): o B-roll realista volta ao vídeo curto, com teto de um a cada 20 s no plano.
+  assert.deepEqual(formatosPossiveis("video", null, "9:16", { topo: 0.05, lateral: 0, baixo: 0.3 }, false), ["broll"]);
   assert.deepEqual(formatosPossiveis("imagem", null, "9:16", { topo: 0.25, lateral: 0, baixo: 0.1 }, false), ["recorte-sobre"]);
   assert.ok(!formatosPossiveis("imagem", null, "9:16", { topo: 0.25, lateral: 0, baixo: 0.1 }, false).includes("tela-cheia"));
   const pedido = pedidoDasIdeias(frasesDaFala(palavras), contexto, null);

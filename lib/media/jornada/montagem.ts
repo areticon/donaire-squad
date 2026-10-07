@@ -9,6 +9,7 @@ import type { EstiloDeLegenda } from "@/lib/media/legenda-escolhida";
 import { mmss } from "@/lib/media/jornada/estado";
 import type { TextoDoElemento } from "@/lib/media/jornada/textos";
 import { numeroNaLegenda, partesDoNumero } from "@/lib/media/jornada/numeros";
+import type { DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 
 /**
  * O PASSO 7 DA JORNADA (E5): "o JEV monta", explícito.
@@ -312,7 +313,8 @@ export function lugarDoGrafico(o: { formato: "9:16" | "16:9"; W: number; H: numb
   // (o título ainda passa de 38 px num quadro de 1080) e solta itens antes de ficar fora.
   for (const escala of [1, 0.85, 0.72, 0.62]) {
     for (let n = o.nItens; n >= 0; n--) {
-      const h = (alturaDoTexto(n, vertical, o.H, o.W) + (o.grande ? (150 * u) / o.H : 0)) * escala;
+      // O número de impacto (08/10) é grande: até 210 u de letra mais a folga.
+      const h = (alturaDoTexto(n, vertical, o.H, o.W) + (o.grande ? (230 * u) / o.H : 0)) * escala;
       for (const c of colunas) {
         for (let y = seg.topo; y + h <= 1 - seg.base + 1e-9; y += 0.01) {
           const r = { x: c.x, y, w: c.w, h };
@@ -389,6 +391,8 @@ export async function montarEdicao(o: {
   leituraDoTrecho?: (t: number) => string | null;
   /** O texto em camada que o Claude escreveu, por elemento (07/10); o JEV decide se entra. */
   textos?: Record<string, TextoDoElemento>;
+  /** A direção visual desta edição (08/10), escrita pelo Claude e escolhida pelo JEV; null: a cor da marca. */
+  direcao?: DirecaoDaEdicao | null;
 }): Promise<MontagemFeita> {
   const avisos: string[] = [];
   const avisosDoCliente: string[] = [];
@@ -487,7 +491,7 @@ export async function montarEdicao(o: {
         // O número que conta e o ícone que pulsa se mexem o tempo todo.
         ...(tx.numero || tx.icone || /cronometro|relogio|contador/.test(tx.tipo ?? "") ? { continua: true } : {}),
         passes: ["frente", "vidro"],
-        props: { grafico: true, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, numeroPartes: !semCabeca && tx.numero ? partesDoNumero(tx.numero) : null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
+        props: { grafico: true, direcao: o.direcao ?? null, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, numeroPartes: !semCabeca && tx.numero ? partesDoNumero(tx.numero) : null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
       });
       escolhas.push({ id, formato: "grafico", tipo: tx.tipo ?? "titulo", entrada, som, de, ate: arred(ate), texto: { titulo: tx.titulo, numero: tx.numero ?? null, icone: tx.icone ?? null, itens: cabem.map((i) => i.texto) } });
       if (som !== "nenhum") sons.push({ t: arred(Math.max(0, de - 0.05)), som, volume: VOLUME[som] });
@@ -550,7 +554,7 @@ export async function montarEdicao(o: {
           if (esc && esc.id === id) esc.ate = ate;
         }
         // Cada item é um EVENTO da camada (07/10): o render condensado só redesenha a camada na entrada, nos eventos e na saída.
-        camadas.push({ id: `${id}-texto`, peca: "jornada-texto", de, ate, entrada: 0.35, saida: 0.22, evento: 0.4, eventos: cabem.map((i) => arred(de + i.t)), passes: ["frente", "vidro"], props: { titulo: tx.titulo, destaque: tx.destaque, itens: cabem, ancora: { x: ancora.x, y: ancora.y, w: ancora.w }, escurecer: telaCheia } });
+        camadas.push({ id: `${id}-texto`, peca: "jornada-texto", de, ate, entrada: 0.35, saida: 0.22, evento: 0.4, eventos: cabem.map((i) => arred(de + i.t)), passes: ["frente", "vidro"], props: { titulo: tx.titulo, destaque: tx.destaque, itens: cabem, ancora: { x: ancora.x, y: ancora.y, w: ancora.w }, escurecer: telaCheia, direcao: o.direcao ?? null } });
         if (esc && esc.id === id) Object.assign(esc, { texto: { titulo: tx.titulo, itens: cabem.map((i) => i.texto) } });
       } else {
         avisos.push(`${id}: o texto não coube fora do rosto e ficou fora`);

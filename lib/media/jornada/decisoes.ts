@@ -66,8 +66,11 @@ export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | nu
   const conteudo = Boolean(trecho?.tela || trecho?.quadro);
   const sobre: FormatoDaJornada[] =
     midia === "recorte" ? [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : [])] : [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : [])];
-  // VÍDEO CURTO (07/10, Bruno): o efeito entra COM a pessoa na tela; sem tela cheia e sem B-roll (só no vídeo longo).
+  // VÍDEO CURTO (07/10, Bruno): o efeito entra COM a pessoa na tela; sem tela cheia de imagem parada. O B-roll
+  // REALISTA em vídeo volta (08/10, Bruno: "cadê os vídeos realistas no meio, família feliz, moto"), curto e com teto
+  // de um a cada 20 s (planoDasRespostas), para cortar para a cena e voltar para a pessoa.
   if (!longo) {
+    if (midia === "video" && !conteudo) return ["broll"];
     // Sem lugar folgado ao lado, o OBJETO entra como recorte sobre o corpo (nunca sobre o rosto), e não vira texto
     // (08/10: no Igor, a moto dita virou painel de texto em código porque o rosto ocupava o quadro).
     return sobre.length ? sobre : ["recorte-sobre"];
@@ -286,6 +289,24 @@ export function planoDasRespostas(
     custo += custoDoElementoDaJornada(midiaDoFormato(melhor.formato), Boolean(melhor.ideia.textoNaImagem));
     escolhidos.push({ ...melhor, ideia: { ...melhor.ideia, papel: melhor.ideia.papel === "chamada" ? "chamada" : "abertura" } });
     descartados.push({ frase: melhor.m.frase.indice, motivo: "entrou como abertura obrigatória dos primeiros 6 s" });
+  }
+  // O B-ROLL NO VÍDEO CURTO (08/10): no máximo um a cada 20 s; o excedente mais fraco troca pela outra ideia do
+  // momento (o objeto junto da pessoa) ou sai. A pessoa fica na tela a maior parte do tempo.
+  if ((o.duracaoTotal ?? o.duracao) <= 180) {
+    const tetoDeBroll = Math.max(1, Math.floor(o.duracao / 20));
+    const brolls = escolhidos.filter((e) => e.formato === "broll").sort((a, b) => a.forca - b.forca);
+    for (const b of brolls.slice(0, Math.max(0, brolls.length - tetoDeBroll))) {
+      const i = escolhidos.indexOf(b);
+      const outra = b.m.ideias.find((x) => x.midia !== "video");
+      const pos = outra ? formatosPossiveis(outra.midia, b.m.trecho, o.formato, b.m.livre, false) : [];
+      if (outra && pos.length) {
+        escolhidos[i] = { ...b, ideia: { ...outra, papel: b.ideia.papel }, formato: pos[0] };
+        descartados.push({ frase: b.m.frase.indice, motivo: "B-roll acima do teto de um a cada 20 s: entrou a outra ideia do momento" });
+      } else {
+        escolhidos.splice(i, 1);
+        descartados.push({ frase: b.m.frase.indice, motivo: "B-roll acima do teto de um a cada 20 s" });
+      }
+    }
   }
   // NO MÁXIMO UM GRÁFICO A CADA TRÊS ELEMENTOS (08/10, Bruno: "parece feito em código"; no Igor, 6 de 6 e 6 de 7
   // elementos foram gráficos de código). O excedente TROCA pela ideia de IA do mesmo momento (o redator escreve as

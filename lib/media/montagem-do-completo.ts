@@ -99,6 +99,7 @@ import { montarPelaJornada } from "@/lib/media/jornada/montar-servidor";
 import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
 import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import type { EdicaoDaJornada } from "@/lib/media/jornada/montagem";
+import type { DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 import { normalizarLegenda } from "@/lib/media/legenda-escolhida";
 import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
 import {
@@ -327,6 +328,7 @@ export type EstadoDaJornadaNaMontagem = {
   tempos?: Record<string, number>;
   reenviar?: boolean;
   falhas?: number;
+  direcao?: DirecaoDaEdicao | null;
   /** As mídias desta edição, por elemento (o ajuste do card mantém as que o pedido não tocou). */
   midias?: Record<string, MidiaDaJornadaGravada>;
 };
@@ -2117,6 +2119,8 @@ async function gerarEMontarPelaJornada(v: VideoDoCompleto, lido: MontagemDoCompl
       avisosDoCliente: m.avisosDoCliente,
       avisosDoAdmin: m.avisosDoAdmin.slice(0, 40),
       escolhas: m.escolhas,
+      // A direção visual da edição (08/10): os cortes do mesmo vídeo usam esta.
+      direcao: m.direcao,
       custoUsd: m.custoUsd.geracao,
       tempos: m.tempos,
       // O REGISTRO DE CADA ELEMENTO (07/10, pedido do Bruno): prompt, modelo, qualidade e custo, inclusive o que falhou.

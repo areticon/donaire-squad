@@ -90,6 +90,7 @@ import { conferirFalaDoCorte } from "@/lib/media/editor-por-comando/fala-conferi
 import { editorJornadaLigado, type ElementoAprovado } from "@/lib/media/jornada/estado";
 import { elementosNoCorte } from "@/lib/media/jornada/corte";
 import { montarCortePelaJornada, type MidiasDoCompleto } from "@/lib/media/jornada/corte-servidor";
+import type { DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
 import { normalizarLegenda } from "@/lib/media/legenda-escolhida";
@@ -887,6 +888,7 @@ async function jornadaDoVideo(id: string): Promise<{
   leitura: LeituraDoVideo | null;
   falaDoPlano: Array<{ texto: string; inicio: number; fim: number }>;
   midias: MidiasDoCompleto;
+  direcao: DirecaoDaEdicao | null;
   completoGerando: boolean;
 } | null> {
   const l = (
@@ -895,6 +897,7 @@ async function jornadaDoVideo(id: string): Promise<{
         rj: { aprovado?: { elementos?: ElementoAprovado[] } | null; leitura?: LeituraDoVideo | null } | null;
         fala: Array<{ texto: string; inicio: number; fim: number }> | null;
         midias: MidiasDoCompleto | null;
+        direcao: DirecaoDaEdicao | null;
         estado: string | null;
         fase: string | null;
       }>
@@ -902,6 +905,7 @@ async function jornadaDoVideo(id: string): Promise<{
       SELECT "completoMontagem" -> 'roteiro' -> 'jornada' AS rj,
              "completoMontagem" -> 'roteiro' -> 'completo' -> 'fala' -> 'palavras' AS fala,
              "completoMontagem" -> 'jornada' -> 'midias' AS midias,
+             "completoMontagem" -> 'jornada' -> 'direcao' AS direcao,
              "completoMontagem" ->> 'estado' AS estado,
              "completoMontagem" -> 'jornada' ->> 'fase' AS fase
       FROM video_jobs WHERE id = ${id}`
@@ -909,7 +913,7 @@ async function jornadaDoVideo(id: string): Promise<{
   const aprovados = l?.rj?.aprovado?.elementos ?? [];
   if (!aprovados.length || !l?.fala?.length) return null;
   const completoGerando = ["na-fila", "preparando", "dirigindo"].includes(String(l.estado)) || l.fase === "gerar";
-  return { aprovados, leitura: l.rj?.leitura ?? null, falaDoPlano: l.fala, midias: l.midias ?? {}, completoGerando };
+  return { aprovados, leitura: l.rj?.leitura ?? null, falaDoPlano: l.fala, midias: l.midias ?? {}, direcao: l.direcao ?? null, completoGerando };
 }
 
 /** Quanto o corte espera o completo gerar as mídias antes de gerar ele mesmo (pagando de novo). */
@@ -960,6 +964,7 @@ async function editarCortePelaJornada(
     jev: jevDaJornada(),
     geracao: dependenciasDaGeracao({ projectId: video.projectId, videoId: video.id, edicaoId: `corte-${indice}` }),
     projectId: video.projectId,
+    direcao: j.direcao,
   });
   const novo: SobMedidaDoCorte = {
     ...sm,

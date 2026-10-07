@@ -9,6 +9,7 @@ import { gerarTodos, type DependenciasDaGeracao, type ElementoGerado } from "@/l
 import { escreverTextos } from "@/lib/media/jornada/textos";
 import { montarEdicao, type EdicaoDaJornada, type LegendaDaJornada } from "@/lib/media/jornada/montagem";
 import { amostrasDoCorte, elementosNoCorte, geradoDoCompleto, paraMontarNoCorte } from "@/lib/media/jornada/corte";
+import type { DirecaoDaEdicao } from "@/lib/media/jornada/direcao";
 
 /**
  * O CORTE PELA JORNADA, do plano aprovado à edição que o worker renderiza
@@ -46,6 +47,8 @@ export async function montarCortePelaJornada(o: {
   jev: Jev | null;
   geracao: DependenciasDaGeracao;
   projectId: string;
+  /** A direção visual do completo (08/10): o corte mantém a identidade do vídeo. */
+  direcao?: DirecaoDaEdicao | null;
 }): Promise<CorteMontado> {
   const avisos: string[] = [];
   const W = 1080;
@@ -96,6 +99,7 @@ export async function montarCortePelaJornada(o: {
     projectId: o.projectId,
     temTrilha: o.temTrilha,
     textos: txt.textos,
+    direcao: o.direcao ?? null,
   });
   return { edicao: m.edicao, elementos: elementos.length, gerados: [...gerados.values()], avisos: [...avisos, ...m.avisos], escolhas: m.escolhas, trilha: m.trilha, custoUsd: +custoUsd.toFixed(4) };
 }
