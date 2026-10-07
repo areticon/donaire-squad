@@ -142,6 +142,29 @@ Return strictly valid JSON: escape any double quote inside a prompt or use singl
       }
     })
   );
+  // UM POR UM, EM TEXTO SIMPLES (07/10): no primeiro vídeo real da jornada o JSON do bloco veio
+  // quebrado nas duas tentativas e os 9 elementos ficaram sem prompt; o vídeo saiu só com a legenda.
+  // O elemento que ainda está sem prompt pede o seu sozinho, em texto puro, que não tem o que quebrar.
+  const semPrompt = entradas.filter((e) => !prompts[e.id]);
+  await Promise.all(
+    semPrompt.map(async (e) => {
+      try {
+        const texto = await o.redator(
+          SISTEMA_DOS_PROMPTS,
+          `${pedidoDosPrompts([e], o.contexto, o.leitura)}\n\nAnswer with ONLY the image prompt for ${e.id}, in English, as plain text in one paragraph. No JSON, no quotes, no id, no preamble.`
+        );
+        const p = String(texto ?? "")
+          .replace(/```[a-z]*/gi, "")
+          .replace(/^\s*(?:prompt\s*:|[a-z0-9]+\s*[:|]\s)/i, "")
+          .replace(/^["'\s]+|["'\s]+$/g, "")
+          .trim();
+        if (p.length >= 40) prompts[e.id] = p;
+        else erros.push(`${e.id}: o Sonnet não escreveu o prompt nem sozinho`);
+      } catch (err) {
+        erros.push(`${e.id}: prompt sozinho falhou (${err instanceof Error ? err.message.slice(0, 100) : err})`);
+      }
+    })
+  );
   // O PEDIDO DO CLIENTE CHEGA AO PROMPT: o JEV confere; se não atende, o Sonnet reescreve uma vez.
   const comPedido = entradas.filter((e) => e.pedidos.length && prompts[e.id]);
   if (o.jev && comPedido.length) {

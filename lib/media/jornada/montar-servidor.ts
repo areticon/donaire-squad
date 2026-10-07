@@ -96,6 +96,11 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
     g.gerados.push({ id, url: m.url, tipo: m.tipo, formato: m.formato as ElementoGerado["formato"], proporcao: m.proporcao, custoUsd: 0, modelo: "mantida desta edição", rodadas: 0, prompt: "", avisoAdmin: null, avisoCliente: null, tempos: { gerar: 0, recorte: 0, leitura: 0 } });
   }
   marcar("geracao");
+  // NUNCA ENTREGAR VAZIO EM SILÊNCIO (07/10): plano aprovado com elementos e nenhuma mídia gerada é
+  // falha da esteira, não um vídeo. Para aqui com o motivo, para o admin ver e o vídeo poder ser refeito.
+  if (aprovados.length > 0 && !g.gerados.some((x) => x.url)) {
+    throw new Error(`nenhum dos ${aprovados.length} elementos aprovados foi gerado (${[...erros, ...g.gerados.map((x) => x.avisoAdmin).filter(Boolean)].slice(0, 3).join("; ")})`);
+  }
   const geradoDe = new Map(g.gerados.map((x) => [x.id, x]));
   // PASSO 7: as opções pelo código, a escolha pelo JEV, a edição.
   const m = await montarEdicao({
