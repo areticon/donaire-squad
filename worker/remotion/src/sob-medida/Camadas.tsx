@@ -11,7 +11,8 @@ import { ImagemJanela } from "./pecas/midia";
 import { Inscrever } from "./pecas/inscrever";
 import { CartaoDePasso, DestaqueNaTela, FraseChave, NomeDeQuemFala, RealceDeQuemFala, Slide, ZoomNoPonto } from "./pecas/contexto";
 import { CamadaExata } from "./pecas/combinadas";
-import { CartoesEmLinha, ComparacaoLadoALado, IconeComFrase, InterfaceDeEdicao, TituloEmCaixa } from "./pecas/vetoriais";
+import { ElementoGerado } from "./pecas/gerado";
+import { MidiaNaCaixa } from "../jornada/MidiaNaCaixa";
 import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -89,12 +90,16 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   slide: Slide,
   // A peça combinada (06/10): a camada exata (pontos, linha, número, fio, etiquetas) sobre o vídeo de fundo gerado.
   "camada-exata": CamadaExata,
-  // As peças vetoriais (06/10, tarefa D): ícone grande com frase, não diga e diga, cartões lado a lado, a tela de um editor e o título na caixa.
-  "icone-com-frase": IconeComFrase,
-  "comparacao-lado-a-lado": ComparacaoLadoALado,
-  "cartoes-em-linha": CartoesEmLinha,
-  "interface-de-edicao": InterfaceDeEdicao,
-  "titulo-em-caixa": TituloEmCaixa,
+  // OS ELEMENTOS GERADOS POR IA (06/10, regra do Bruno): o visual vem da Higgsfield, recortado; o código só posiciona e anima.
+  // Os cinco nomes são só o esqueleto de posição (a caixa e a âncora); nada é desenhado aqui (pecas/gerado.tsx).
+  "icone-com-frase": ElementoGerado,
+  "comparacao-lado-a-lado": ElementoGerado,
+  "cartoes-em-linha": ElementoGerado,
+  "interface-de-edicao": ElementoGerado,
+  "titulo-em-caixa": ElementoGerado,
+  "elemento-gerado": ElementoGerado,
+  // A JORNADA OFICIAL (06/10): a única peça da esteira nova; só posiciona e anima a mídia gerada (jornada/MidiaNaCaixa.tsx).
+  "jornada-midia": MidiaNaCaixa,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */

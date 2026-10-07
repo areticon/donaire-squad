@@ -379,34 +379,35 @@ export const PECAS: FichaDaPeca[] = [
     quando: "(editor por comando, 06/10) a camada exata sobre o vídeo de fundo gerado: os pontos ou alfinetes com as etiquetas dos itens ditos (lugares, pessoas, partes), a linha da rota ou o fio ligando, o número dito. Cada item acende quando é dito.",
     props: 'itens [{rotulo (até 3 palavras: o lugar, a pessoa ou a parte que a fala cita)}] (2 a 5, na ordem dita), titulo? (até 5 palavras do falante), numero? {valor (só o número DITO), prefixo?, sufixo?, rotulo? (até 3 palavras)}',
   },
-  // ─── AS PEÇAS VETORIAIS (06/10, tarefa D): desenhadas em código, nítidas em 1080x1920, na cor da marca e na fonte do
-  // projeto (worker/remotion/src/sob-medida/pecas/vetoriais.tsx). O resolvedor põe a caixa (props.caixa) na área livre do
-  // trecho, abaixo ou acima do rosto, nunca sobre ele. O ícone: o redator sugere o nome, o JEV escolhe entre os candidatos
-  // (lib/media/editor-por-comando/icone-pelo-jev.ts), do catálogo de lib/media/editor-por-comando/icones-de-linha.ts.
+  // ─── OS ELEMENTOS GERADOS POR IA (06/10/2026, noite, regra do Bruno): TODO elemento visual da edição nasce na
+  // Higgsfield (GPT Image 2.5), em fundo liso, recortado no BiRefNet e conferido pelo Gemini e pelo JEV antes de entrar
+  // (lib/media/editor-por-comando/elemento-gerado.ts). O redator escreve o prompt detalhado em inglês e os textos exatos;
+  // o código acrescenta as cores da marca em hex, o fundo liso, a alta resolução e "no misspellings". O worker só
+  // posiciona a imagem recortada na caixa medida (props.caixa) e anima a entrada (worker/remotion/src/sob-medida/pecas/gerado.tsx).
   {
     nome: "icone-com-frase", plano: "sobre", passes: ["frente"], entrada: 0.8, saida: 0.3, evento: 0.6, duracao: [2.5, 5],
-    quando: "(vetorial) um cartão escuro com um ícone de linha grande e a frase curta embaixo, em caixa alta: uma regra, um hábito, um conselho, um item de uma lista dita um de cada vez (REGRA 01, HÁBITO 2).",
-    props: 'frase (a ideia dita, até 6 palavras), rotulo? (até 2 palavras: "Regra 01", "Hábito 2", só quando a fala numera ou nomeia), icone (o nome do catálogo de ícones de linha que melhor mostra a frase), iconesAlternativos? (até 3 outros nomes do catálogo que também serviriam)',
+    quando: "(gerado por IA) um cartão com um ícone ou objeto grande, de alta resolução, e a frase curta embaixo: uma regra, um hábito, um conselho, um item de uma lista dita um de cada vez (REGRA 01, HÁBITO 2).",
+    props: 'frase (a ideia dita, até 6 palavras), rotulo? (até 2 palavras: "Regra 01", "Hábito 2", só quando a fala numera ou nomeia), marcas? [as marcas que a fala cita pelo nome], prompt (EM INGLÊS, detalhado, 60 a 160 palavras: a composição do elemento inteiro como um designer pediria a um modelo de imagem; cada cartão, coluna ou caixa com o que tem dentro; o TEXTO EXATO de cada letreiro entre aspas, em português, como está nas props; o LOGO OFICIAL de cada marca citada pelo nome (ex.: "the official YouTube logo", "the official Instagram logo"), nunca um ícone genérico no lugar; ícones e objetos descritos com detalhe; sem pessoa, sem mão, sem fundo de cena)',
   },
   {
-    nome: "comparacao-lado-a-lado", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 8], eventosDe: "pares", maxItens: 4,
-    quando: '(vetorial) "não diga / diga em vez disso": duas colunas de barras, a do erro em vermelho e a do certo na cor da marca; cada par entra quando é dito. Para a fala que troca uma palavra, um hábito ou uma atitude por outra.',
-    props: 'pares [{nao (até 3 palavras: o que NÃO fazer ou dizer), sim (até 3 palavras: o que fazer ou dizer no lugar)}] (1 a 4, só o que a fala diz, na ordem dita), rotuloNao? (até 3 palavras, padrão "Não diga"), rotuloSim? (até 3 palavras, padrão "Diga")',
+    nome: "comparacao-lado-a-lado", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [3, 8], maxItens: 4,
+    quando: '(gerado por IA) "não diga / diga em vez disso": duas colunas, a do erro marcada em vermelho e a do certo na cor da marca. Para a fala que troca uma palavra, um hábito ou uma atitude por outra.',
+    props: 'pares [{nao (até 3 palavras: o que NÃO fazer ou dizer), sim (até 3 palavras: o que fazer ou dizer no lugar)}] (1 a 4, só o que a fala diz, na ordem dita), rotuloNao? (até 3 palavras, padrão "Não diga"), rotuloSim? (até 3 palavras, padrão "Diga"), marcas? [as marcas citadas], prompt (EM INGLÊS, detalhado, 60 a 160 palavras: a composição do elemento inteiro como um designer pediria a um modelo de imagem; cada cartão, coluna ou caixa com o que tem dentro; o TEXTO EXATO de cada letreiro entre aspas, em português, como está nas props; o LOGO OFICIAL de cada marca citada pelo nome (ex.: "the official YouTube logo", "the official Instagram logo"), nunca um ícone genérico no lugar; ícones e objetos descritos com detalhe; sem pessoa, sem mão, sem fundo de cena)',
   },
   {
-    nome: "cartoes-em-linha", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 6], eventosDe: "itens", maxItens: 4,
-    quando: "(vetorial) 2 a 4 cartões claros lado a lado, cada um com o nome em cima e um ícone de linha: ferramentas, opções, etapas ou canais que a fala cita juntos.",
-    props: "itens [{titulo (1 ou 2 palavras: o nome dito), icone (o nome do catálogo de ícones de linha), iconesAlternativos? (até 2 outros nomes)}] (2 a 4, na ordem dita)",
+    nome: "cartoes-em-linha", plano: "sobre", passes: ["frente"], entrada: 0.6, saida: 0.3, evento: 0.6, duracao: [2.5, 6], maxItens: 4,
+    quando: "(gerado por IA) 2 a 4 cartões lado a lado, cada um com o nome e o ícone ou o LOGO OFICIAL do que a fala cita: ferramentas, aplicativos, redes sociais, opções, etapas ou canais ditos juntos.",
+    props: "itens [{titulo (1 ou 2 palavras: o nome dito)}] (2 a 4, na ordem dita), marcas? [as marcas citadas, ex.: YouTube, Instagram, TikTok], " + 'prompt (EM INGLÊS, detalhado, 60 a 160 palavras: a composição do elemento inteiro como um designer pediria a um modelo de imagem; cada cartão, coluna ou caixa com o que tem dentro; o TEXTO EXATO de cada letreiro entre aspas, em português, como está nas props; o LOGO OFICIAL de cada marca citada pelo nome (ex.: "the official YouTube logo", "the official Instagram logo"), nunca um ícone genérico no lugar; ícones e objetos descritos com detalhe; sem pessoa, sem mão, sem fundo de cena)',
   },
   {
-    nome: "interface-de-edicao", plano: "sobre", passes: ["frente"], continua: true, entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [3, 7], eventosDe: "etapas", maxItens: 3,
-    quando: "(vetorial) a tela de um editor de vídeo trabalhando, em código: a linha do tempo com os clipes, o cursor andando, um corte acontecendo e a legenda aparecendo na prévia. Para a fala sobre edição, automação, plataforma, software, fluxo de trabalho, produção de conteúdo.",
-    props: 'titulo? (até 4 palavras: o nome do arquivo ou do projeto, ex.: "video-da-semana.mp4"), legenda? (até 8 palavras da própria fala, que aparecem como legenda na prévia), etapas? [até 3, 1 ou 2 palavras cada: o que a fala diz que a ferramenta faz, ex.: "corte", "legenda", "zoom"]',
+    nome: "interface-de-edicao", plano: "sobre", passes: ["frente"], entrada: 0.7, saida: 0.3, evento: 0.6, duracao: [3, 7], maxItens: 3,
+    quando: "(gerado por IA, imagem ou vídeo curto) a tela de um editor de vídeo trabalhando: a linha do tempo com os clipes, a prévia com a legenda. Para a fala sobre edição, automação, plataforma, software, fluxo de trabalho, produção de conteúdo.",
+    props: 'titulo? (até 4 palavras: o nome do arquivo ou do projeto), legenda? (até 8 palavras da própria fala, que aparecem como legenda na prévia), etapas? [até 3, 1 ou 2 palavras cada], marcas? [as marcas citadas], movimento? (true quando o momento pede a tela se mexendo), prompt (EM INGLÊS, detalhado, 60 a 160 palavras: a composição do elemento inteiro como um designer pediria a um modelo de imagem; cada cartão, coluna ou caixa com o que tem dentro; o TEXTO EXATO de cada letreiro entre aspas, em português, como está nas props; o LOGO OFICIAL de cada marca citada pelo nome (ex.: "the official YouTube logo", "the official Instagram logo"), nunca um ícone genérico no lugar; ícones e objetos descritos com detalhe; sem pessoa, sem mão, sem fundo de cena)',
   },
   {
     nome: "titulo-em-caixa", plano: "sobre", passes: ["frente"], entrada: 0.5, saida: 0.3, evento: 0.6, duracao: [2.5, 8],
-    quando: "(vetorial) o título do assunto numa caixa clara arredondada no topo do quadro, acima da cabeça: abre um tema, uma lista ou uma série (\"Hábitos que ninguém te ensina\").",
-    props: "texto (o assunto como a fala diz, até 7 palavras, **destaque** em 1 palavra)",
+    quando: "(gerado por IA) o título do assunto numa caixa arredondada acima da cabeça (nunca nos 10% de cima do quadro): abre um tema, uma lista ou uma série (\"Hábitos que ninguém te ensina\").",
+    props: "texto (o assunto como a fala diz, até 7 palavras), marcas? [as marcas citadas], " + 'prompt (EM INGLÊS, detalhado, 60 a 160 palavras: a composição do elemento inteiro como um designer pediria a um modelo de imagem; cada cartão, coluna ou caixa com o que tem dentro; o TEXTO EXATO de cada letreiro entre aspas, em português, como está nas props; o LOGO OFICIAL de cada marca citada pelo nome (ex.: "the official YouTube logo", "the official Instagram logo"), nunca um ícone genérico no lugar; ícones e objetos descritos com detalhe; sem pessoa, sem mão, sem fundo de cena)',
   },
   {
     nome: "fecho", plano: "tela", entrada: 1.2, saida: 0.4, evento: 0.6, duracao: [3, 6],

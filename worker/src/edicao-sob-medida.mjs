@@ -195,6 +195,8 @@ export function linhaCondensada(camadas, duracao, fps) {
  * cheias tem a própria entrada (íris, cortina de luz, zoom) e não leva.
  */
 export function transicoesDaEdicao(ed) {
+  // A JORNADA OFICIAL (06/10): sem transição chamativa; a gravação do cliente passa intacta.
+  if (ed.jornada) return [];
   const saida = [];
   const bordas = [];
   for (const p of ed.planos ?? []) {
@@ -537,8 +539,90 @@ export function desenhoDaLegenda(estilo, W, H) {
   return { fonte, tam, contorno, alinhamento: 2, margemV: Math.round(vertical ? H * 0.17 : 40 * ey), caixaAlta };
 }
 
+const DESENHOS_DO_CLIENTE = new Set(["palavra", "caixa", "marca-texto", "limpa", "papel"]);
+
+/**
+ * O ESTILO DE LEGENDA ESCOLHIDO PELO CLIENTE (06/10, noite; vídeo cmux4417u: escolheu "Recorte de papel" e saiu a
+ * pílula pequena de sempre). Mesmo desenho da legenda do caminho antigo (montagem-do-completo.mjs legendaEmAss,
+ * que é o ASS da legenda do Remotion dos cortes): "papel" é a tira clara de papel com texto escuro e sombra;
+ * "caixa" é a frase na faixa escura da marca com a palavra dita no acento; "marca-texto" grifa na cor da marca
+ * cada palavra já dita; "palavra" é a palavra grande em caixa alta no centro, a dita no acento; "limpa" é a frase
+ * branca com contorno e sombra, a dita no acento. A posição (e a faixa de cada página) segue a do editor.
+ */
+export function legendaDoDesenho(edicao, W, H, desloc, duracao) {
+  const vertical = H > W;
+  const ey = H / (vertical ? 1920 : 1080);
+  const est = edicao.legenda.estilo;
+  const desenho = est.desenho;
+  const d = desenhoDaLegenda(est, W, H);
+  const papel = desenho === "papel";
+  const caixa = desenho === "caixa";
+  const grifo = desenho === "marca-texto";
+  const palavra = desenho === "palavra";
+  const limpa = desenho === "limpa";
+  const base = Math.round((vertical ? (palavra ? 112 : limpa ? 58 : caixa || grifo ? 80 : 78) : palavra ? 74 : 58) * ey);
+  const acentoHex = edicao.tema?.acento || "#F97316";
+  const escuroHex = edicao.tema?.escuroLegenda || edicao.tema?.escuro || "#15171A";
+  const sobreOAcento = (() => {
+    const h = String(acentoHex).replace("#", "").padEnd(6, "0");
+    const l = (0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16)) / 255;
+    return l > 0.6 ? "#16171A" : "#FFFFFF";
+  })();
+  const cor6 = (hex) => `&H${assCor(hex).slice(-6)}&`;
+  const fonte = palavra ? "Anton" : "Liberation Sans";
+  const corpo = (alin, margem) =>
+    papel
+      ? `${fonte},${base},${assCor("#16171A")},${assCor("#16171A")},${assCor("#FBFAF5")},${assCor("#000000", 0x90)},-1,0,0,0,100,100,0,0,3,${Math.round(12 * ey)},${Math.round(3 * ey)},${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`
+      : caixa || grifo
+      ? `${fonte},${base},${assCor("#FFFFFF")},${assCor("#FFFFFF")},${assCor(escuroHex, grifo ? 0x70 : 0x10)},${assCor("#000000", 0x90)},-1,0,0,0,100,100,0,0,3,${Math.round(14 * ey)},0,${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`
+      : `${fonte},${base},${assCor("#FFFFFF")},${assCor("#FFFFFF")},${assCor("#000000")},${assCor("#000000", 0x60)},${palavra ? 0 : -1},0,0,0,100,100,${palavra ? 1 : 0},0,1,${Math.round((palavra ? 6 : 4) * ey)},${Math.round(2 * ey)},${alin},${Math.round(70 * ey)},${Math.round(70 * ey)},${margem},1`;
+  const linhas = [
+    "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Leg,${corpo(d.alinhamento, d.margemV)}`,
+    `Style: LegTopo,${corpo(8, Math.round(vertical ? H * 0.035 : 40 * ey))}`,
+    "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+  const acento = assCor(acentoHex);
+  const larg = W - Math.round(140 * ey);
+  const limparTexto = (t) => String(t).replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+  for (const p of edicao.legenda?.paginas ?? []) {
+    if (p.fim <= desloc || p.inicio >= desloc + duracao || p.faixa === "oculta") continue;
+    const estilo = p.faixa === "topo" ? "LegTopo" : "Leg";
+    const ws = (Array.isArray(p.palavras) && p.palavras.length ? p.palavras : [{ texto: p.texto, inicio: p.inicio, fim: p.fim }])
+      .map((w) => ({ ...w, texto: limparTexto(palavra ? String(w.texto).toLocaleUpperCase("pt-BR") : w.texto) }))
+      .filter((w) => w.texto);
+    if (!ws.length) continue;
+    // Até duas linhas na largura útil: a letra encolhe na página longa (a mesma conta do caminho antigo).
+    const letras = ws.reduce((s, w) => s + w.texto.length + 1, 0);
+    const tam = Math.round(Math.min(base, (larg * 2) / Math.max(8, letras * (palavra ? 0.62 : 0.56))));
+    ws.forEach((w, i) => {
+      const de = i === 0 ? p.inicio : w.inicio;
+      const ate = ws[i + 1]?.inicio ?? p.fim;
+      if (ate <= de) return;
+      const texto = ws
+        .map((v, k) => {
+          if (grifo) return k <= i ? `{\\3c${cor6(acentoHex)}\\3a&H00&\\1c${cor6(sobreOAcento)}}${v.texto}{\\r}` : v.texto;
+          if (k === i) return `{\\c${acento}&}${v.texto}{\\c}`;
+          // A que ainda vem fica apagada no papel e no limpo (\1a e não \alpha: o \alpha apaga a caixa de papel).
+          if (k > i && (papel || limpa)) return `{\\1a&H90&}${v.texto}{\\1a&H00&}`;
+          return v.texto;
+        })
+        .join(" ");
+      const a = Math.max(0, de - desloc);
+      const b = Math.min(duracao, ate - desloc);
+      if (b <= a) return;
+      linhas.push(`Dialogue: 0,${assTempo(a)},${assTempo(b)},${estilo},,0,0,0,,{\\fs${tam}}${texto}`);
+    });
+  }
+  return linhas.join("\n") + "\n";
+}
+
 /** A legenda do editor: a pequena e limpa do pitch (Geist SemiBold, caixa escura da marca, no terço de baixo), ou a do estilo. */
 export function legendaSobMedida(edicao, W, H, desloc, duracao) {
+  // O estilo de legenda fixado pelo cliente tem o desenho dele (papel, caixa, marca-texto, palavra, limpa).
+  if (DESENHOS_DO_CLIENTE.has(edicao.legenda?.estilo?.desenho)) return legendaDoDesenho(edicao, W, H, desloc, duracao);
   const vertical = H > W;
   const ey = H / (vertical ? 1920 : 1080);
   const d = desenhoDaLegenda(edicao.legenda?.estilo ?? null, W, H);
@@ -827,7 +911,8 @@ export function grafoDoLote(edicao, lote, ctx) {
       return [s.de - lote.de, s.ate - lote.de].map((b) => ({ b, forca }));
     })
     .filter(({ b }) => b > 0.2 && b < dur - 0.2);
-  const zoomAtraves = bordasDeInsercao.length
+  // A JORNADA OFICIAL (06/10): sem o zoom através nas bordas das inserções.
+  const zoomAtraves = bordasDeInsercao.length && !edicao.jornada
     ? `,zoompan=z='1+${bordasDeInsercao.map(({ b, forca }) => `${forca}*(between(it,${(b - 0.35).toFixed(3)},${b.toFixed(3)})*pow((it-${(b - 0.35).toFixed(3)})/0.35,2)+between(it,${b.toFixed(3)},${(b + 0.45).toFixed(3)})*pow(1-(it-${b.toFixed(3)})/0.45,2))`).join("+")}':d=1:s=${W}x${H}:fps=${fps}:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2',setsar=1`
     : "";
   // O RELÓGIO É A CONTAGEM (05/10): depois do concat, o quadro N fica em N/fps.
@@ -865,7 +950,9 @@ export function grafoDoLote(edicao, lote, ctx) {
     atual = "x3";
   }
   // GRÃO E VINHETA leves no fim (a textura de filme que tira o "digital chapado").
-  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,vignette=angle=0.42,noise=c0s=5:c0f=t+u${lote.legenda ? `,subtitles=${lote.legenda}:fontsdir=fontes` : ""},format=yuv420p,trim=end_frame=${quadrosDoLote}[v]`);
+  // A JORNADA OFICIAL (06/10): a gravação do cliente passa intacta, sem grão, sem vinheta, sem correção de cor.
+  const textura = edicao.jornada ? "" : "vignette=angle=0.42,noise=c0s=5:c0f=t+u,";
+  nos.push(`[${atual}][ov]overlay=0:0:eof_action=pass:format=auto,${textura}${lote.legenda ? `subtitles=${lote.legenda}:fontsdir=fontes,` : ""}format=yuv420p,trim=end_frame=${quadrosDoLote}[v]`);
   // OS FIOS DOS DECODIFICADORES (04/10): cada -i abre um decodificador com um
   // fio por núcleo, e o lote do sob medida chega a 13 entradas. Medido no WSL
   // com o lote 8 da prévia de cmurtv2zg: 186 fios sem teto, 73 com 2 na base
@@ -1066,7 +1153,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
     const ext = m.tipo === "video" ? "mp4" : (m.url.match(/\.(png|jpe?g|webp)(\?|$)/i)?.[1] ?? "jpg");
     const arq = join(pasta, `insercao-${id.replace(/[^a-z0-9-]/gi, "")}.${ext}`);
     try {
-      if (!existsSync(arq)) {
+      // A JORNADA (06/10, cada edição é nova): a mídia é sempre baixada de novo; nunca vale um arquivo de mesmo nome que já estava na pasta.
+      if (!existsSync(arq) || ed.jornada) {
         if (/^https?:/i.test(m.url)) await baixar(m.url, arq);
         else await copyFile(m.url, arq);
       }
@@ -1347,7 +1435,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // Falhar aqui não derruba nada: o corte sai com a voz só.
   // O SOM DAS PEÇAS (03/10, segunda volta) vai junto, com ou sem trilha:
   // whoosh, impacto, riser e tique no instante de cada entrada, abaixo da voz.
-  const eventos = escala >= 1 && pedido.efeitos !== false ? efeitosDaEdicao(camadas.todas) : [];
+  // A JORNADA OFICIAL (06/10): os sons de entrada são os que a IA decidiu (edicao.sons), nunca a regra por peça.
+  const eventos = escala >= 1 && pedido.efeitos !== false ? (ed.jornada ? (Array.isArray(ed.sons) ? ed.sons : []) : efeitosDaEdicao(camadas.todas)) : [];
   tempos.efeitos = eventos.length;
   if (escala >= 1 && (pedido.trilha?.url || eventos.length)) {
     try {
@@ -1371,7 +1460,8 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
   // zoom, flash e o texto de soco. Falhar aqui não derruba a edição.
   const g = pedido.gancho;
   let ganchoSeg = 0;
-  if (escala >= 1 && g && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
+  // A JORNADA OFICIAL: a abertura é um elemento gerado decidido no passo 4, nunca o gancho desenhado em código.
+  if (escala >= 1 && g && !ed.jornada && Number.isFinite(g.inicio) && Number.isFinite(g.fim) && g.fim - g.inicio >= 1.5 && g.fim <= duracao + 0.5) {
     try {
       const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
       const abertura = await montarAberturaDeImpacto(saida, [{ inicio: g.inicio, fim: g.fim, soco: g.soco }], pasta, {
@@ -1394,7 +1484,7 @@ export async function montarSobMedida(pedido, pasta, { baixar, aoProgresso } = {
 
   // A abertura com os melhores momentos (o gancho do JEV), só no final.
   let aberturaSeg = 0;
-  if (escala >= 1 && pedido.abertura?.momentos?.length) {
+  if (escala >= 1 && pedido.abertura?.momentos?.length && !ed.jornada) {
     try {
       const { montarAberturaDeImpacto, prefixarAbertura } = await import("./abertura-de-impacto.mjs");
       const abertura = await montarAberturaDeImpacto(base, pedido.abertura.momentos, pasta, {

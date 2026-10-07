@@ -93,6 +93,13 @@ import {
   type PlanoPronto,
 } from "@/lib/media/editor-por-comando";
 import { levarEdicaoParaFalaNova } from "@/lib/media/edicao-na-fala-nova";
+import { editorJornadaLigado, esteiraDoCompleto, type AmostraDaJornada } from "@/lib/media/jornada/estado";
+import { amostrasNoTempoEditado } from "@/lib/media/jornada/linha-do-tempo";
+import { montarPelaJornada } from "@/lib/media/jornada/montar-servidor";
+import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
+import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
+import type { EdicaoDaJornada } from "@/lib/media/jornada/montagem";
+import { normalizarLegenda } from "@/lib/media/legenda-escolhida";
 import { lerVideo as lerVideoParaLeitura, leituraVisaoLigada, medirNoWorker, type RespostaDaMedicao } from "@/lib/media/leitura-do-video";
 import {
   demonstracaoNaFala,
@@ -300,6 +307,28 @@ export type MontagemDoCompleto = {
    * vídeo leem daqui (`leituraGravada`). Null quando a leitura falhou.
    */
   leitura?: LeituraDoVideo | null;
+  /**
+   * A JORNADA OFICIAL NA MONTAGEM (06/10, lib/media/jornada, EDITOR_JORNADA=1):
+   * a medição do arquivo (rosto e corpo para o passo 7), a edição pronta para
+   * o worker e os avisos (o do cliente diz o momento do elemento que saiu).
+   */
+  jornada?: EstadoDaJornadaNaMontagem | null;
+};
+
+export type EstadoDaJornadaNaMontagem = {
+  fase: "gerar" | "render";
+  amostras: AmostraDaJornada[];
+  edicao?: EdicaoDaJornada | null;
+  trilha?: boolean;
+  avisosDoCliente?: string[];
+  avisosDoAdmin?: string[];
+  escolhas?: Array<Record<string, unknown>>;
+  custoUsd?: number;
+  tempos?: Record<string, number>;
+  reenviar?: boolean;
+  falhas?: number;
+  /** As mídias desta edição, por elemento (o ajuste do card mantém as que o pedido não tocou). */
+  midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }>;
 };
 
 export type EstadoDoSobMedida = {
@@ -1114,12 +1143,13 @@ type VideoDoCompleto = {
   videoEstiloEscolha: unknown;
   videoStyle: string | null;
   videoTerms: string | null;
+  videoMusicUrl?: string | null;
 };
 
 async function lerVideo(id: string): Promise<VideoDoCompleto | null> {
   const linhas = await prisma.$queryRaw<VideoDoCompleto[]>`
     SELECT v.id, v."projectId", v."completoUrl", v."completoBytes", v.clips, v."completoMontagem",
-           p.niche, p."colorPalette", p."logoUrl", p."videoEstiloEscolha", p."videoStyle", p."videoTerms"
+           p.niche, p."colorPalette", p."logoUrl", p."videoEstiloEscolha", p."videoStyle", p."videoTerms", p."videoMusicUrl"
     FROM video_jobs v JOIN projects p ON p.id = v."projectId"
     WHERE v.id = ${id}`;
   return linhas[0] ?? null;
@@ -1242,12 +1272,14 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // (o vídeo é o mesmo) e a visão não é paga de novo.
     const avisosDaLeitura: string[] = [];
     const leituraGuardada = lido.leitura?.versao === 1 ? lido.leitura : null;
+    // A JORNADA (E5): a leitura com visão já foi feita antes do plano; aqui só a medição do arquivo (rosto e corpo), sem visão paga.
+    const naJornada = editorJornadaLigado() && Boolean(lido.roteiro?.jornada?.aprovado);
     const [fala, medida, medicao] = await Promise.all([
       transcreverCompleto(base, v.videoTerms, { projectId: v.projectId, operation: "montagem-completo-fala" }),
       analisarNoWorker(base),
-      leituraGuardada
+      leituraGuardada && !naJornada
         ? Promise.resolve<RespostaDaMedicao>({ medida: null, proxyUrl: null })
-        : medirNoWorker(base, { proxy: leituraVisaoLigada() }).catch((e: unknown): RespostaDaMedicao => {
+        : medirNoWorker(base, { proxy: !naJornada && leituraVisaoLigada() }).catch((e: unknown): RespostaDaMedicao => {
             avisosDaLeitura.push(`leitura: medição no worker falhou (${e instanceof Error ? e.message : String(e)})`);
             return { medida: null, proxyUrl: null };
           }),
@@ -1288,8 +1320,9 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     const falaDoCompleto = { palavras: fala.palavras, duracao: analise.duracao || fala.duracao };
     // A leitura só depois da defesa do formato acima: vídeo que para em
     // "sem-montagem" não paga visão. Sem visão disponível, sai só da medição.
-    const leitura: LeituraDoVideo | null =
-      leituraGuardada ??
+    const leitura: LeituraDoVideo | null = naJornada
+      ? lido.roteiro?.jornada?.leitura ?? null
+      : leituraGuardada ??
       (await lerVideoParaLeitura({
         url: base,
         fala: falaDoCompleto,
@@ -1307,7 +1340,29 @@ async function preparar(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<v
     // `sobMedida`), e não para o plano por cenas. Se o caminho novo já
     // desistiu neste vídeo, segue a esteira de sempre (a reserva).
     const estiloDoVideo = contextoVisual(v).escolha.estiloId;
-    if ((editorPorComandoLigado() || editorSobMedidaLigado(estiloDoVideo)) && !lido.sobMedida?.desistiu) {
+    // O ROTEADOR (E0 da jornada): o único ponto que escolhe a esteira do completo.
+    const esteira = esteiraDoCompleto({ porComando: editorPorComandoLigado(), sobMedida: editorSobMedidaLigado(estiloDoVideo) });
+    // A JORNADA OFICIAL (E5): o plano aprovado (congelado) vai aos passos 6 e 7; nenhum caminho antigo entra.
+    if (esteira === "jornada") {
+      if (!naJornada) {
+        await trocarEstado(v.id, tomado, { ...tomado, estado: "sem-montagem", desde: agora(), fala: falaDoCompleto, analise, motivo: "Este vídeo foi aprovado sem o plano da jornada do editor: o completo segue com a fala editada." });
+        return;
+      }
+      await trocarEstado(v.id, tomado, {
+        ...tomado,
+        estado: "dirigindo",
+        desde: agora(),
+        fala: falaDoCompleto,
+        analise,
+        blocos,
+        abertura: null,
+        leitura,
+        motivo: null,
+        jornada: { fase: "gerar", amostras: amostrasNoTempoEditado(medicao.medida, null) },
+      });
+      return;
+    }
+    if ((esteira === "por-comando" || esteira === "sob-medida") && !lido.sobMedida?.desistiu) {
       const falaAprovada = lido.roteiro?.completo?.fala?.palavras;
       const aberturaSm = falaAprovada?.length ? aberturaNaBase(lido.roteiro, falaAprovada, falaDoCompleto.palavras) : null;
       const frases = frasesNumeradas(falaDoCompleto.palavras);
@@ -1895,7 +1950,19 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
     const idade = Date.now() - new Date(m.desde).getTime();
     const esperando = Boolean(m.esperarAte && Date.now() < new Date(m.esperarAte).getTime());
     try {
-      if (m.estado === "na-fila" && !esperando) {
+      if (m.jornada && m.estado === "dirigindo" && !esperando && (!m.trabalhando || idade > PASSO_MORTO_MS)) {
+        // A JORNADA (E5): passos 6 e 7 e o envio do render.
+        r.olhados++;
+        await gerarEMontarPelaJornada(v, m);
+      } else if (m.jornada && m.estado === "montando" && m.jornada.reenviar && m.jornada.edicao && !esperando) {
+        r.olhados++;
+        await enviarPelaJornada(v, { ...m, jornada: { ...m.jornada, reenviar: false } }, m);
+      } else if (m.jornada && m.estado === "montando" && idade > prazoDaMontagemMs(m.jornada.edicao?.duracao ?? m.fala?.duracao, true) && !(await aindaEsperaOWorker(v.id, m.chave, idade))) {
+        r.olhados++;
+        await falhouNaJornada(v.id, m, "o render da jornada não terminou no prazo");
+      } else if (m.jornada) {
+        // Jornada em andamento: nenhum outro caminho mexe neste vídeo.
+      } else if (m.estado === "na-fila" && !esperando) {
         r.olhados++;
         await preparar(v, m);
       } else if (m.estado === "preparando" && idade > PASSO_MORTO_MS) {
@@ -1960,6 +2027,105 @@ export async function avancarMontagemDoCompleto(opcoes: { orcamentoMs?: number }
 }
 
 // ─────────────────────────────── 2b. o editor sob medida ───────────────────────────────
+
+// ─────────────────────────────── 2c. a jornada oficial (E5) ───────────────────────────────
+
+/** Uma falha da jornada: tenta de novo (até 3 vezes no total); depois para com o motivo dito e os admins avisados. Nunca cai na esteira antiga. */
+async function falhouNaJornada(id: string, lido: MontagemDoCompleto, motivo: string): Promise<void> {
+  const falhas = (lido.jornada?.falhas ?? 0) + 1;
+  console.error(`[montagem-do-completo][${id}] jornada: ${motivo} (falha ${falhas})`);
+  if (falhas < MAX_TENTATIVAS && lido.jornada?.edicao) {
+    await trocarEstado(id, lido, { ...lido, desde: agora(), trabalhando: false, esperarAte: depois(ESPERA_ENTRE_TENTATIVAS_MS), jornada: { ...lido.jornada, falhas, reenviar: true } });
+    return;
+  }
+  if (falhas < MAX_TENTATIVAS && lido.estado === "dirigindo") {
+    await trocarEstado(id, lido, { ...lido, desde: agora(), trabalhando: false, esperarAte: depois(ESPERA_ENTRE_TENTATIVAS_MS), jornada: { ...(lido.jornada as EstadoDaJornadaNaMontagem), falhas } });
+    return;
+  }
+  await trocarEstado(id, lido, { ...lido, estado: "sem-montagem", desde: agora(), trabalhando: false, motivo: `A edição não ficou pronta (${motivo.slice(0, 160)}).`, falhaTecnica: true, jornada: lido.jornada ? { ...lido.jornada, falhas } : null });
+  await avisarAdminsDaMontagem({ videoJobId: id, alvo: "completo", motivo: `jornada: ${motivo}` }).catch(() => {});
+}
+
+/** "dirigindo" na jornada: os prompts e a geração (passo 6), a montagem pelo JEV (passo 7) e o envio do render. */
+async function gerarEMontarPelaJornada(v: VideoDoCompleto, lido: MontagemDoCompleto): Promise<void> {
+  const tomado: MontagemDoCompleto = { ...lido, desde: agora(), trabalhando: true };
+  if (!(await trocarEstado(v.id, lido, tomado))) return;
+  try {
+    const rj = lido.roteiro?.jornada;
+    const analise = lido.analise!;
+    const formato = analise.altura > analise.largura ? "9:16" : "16:9";
+    const fala = lido.fala!;
+    const contexto = await contextoDoProjeto(v.projectId, formato, fala.duracao);
+    const leg = normalizarLegenda((v.videoEstiloEscolha as { legenda?: unknown } | null)?.legenda);
+    const m = await montarPelaJornada({
+      estado: { aprovado: rj?.aprovado ?? null, leitura: rj?.leitura ?? null, midiasMantidas: rj?.midiasMantidas ?? null },
+      falaDoPlano: lido.roteiro?.completo?.fala?.palavras ?? fala.palavras,
+      falaDoRender: fala.palavras,
+      duracao: fala.duracao,
+      formato,
+      W: analise.largura,
+      H: analise.altura,
+      fps: analise.fps || 30,
+      amostras: lido.jornada?.amostras ?? [],
+      contexto,
+      legenda: leg.modo === "sem" ? { mostrar: false } : leg.modo === "estilo" && leg.estilo ? { mostrar: true, estilo: leg.estilo, automatica: false } : { mostrar: true, estilo: "limpa", automatica: true },
+      temTrilha: Boolean(v.videoMusicUrl),
+      redator: redatorDaJornada(v.projectId, "jornada-prompts"),
+      jev: jevDaJornada(),
+      geracao: dependenciasDaGeracao({ projectId: v.projectId, videoId: v.id, edicaoId: rj?.edicaoId ?? "sem-edicao" }),
+      projectId: v.projectId,
+    });
+    const jornada: EstadoDaJornadaNaMontagem = {
+      ...(lido.jornada as EstadoDaJornadaNaMontagem),
+      fase: "render",
+      edicao: m.edicao,
+      trilha: m.trilha,
+      avisosDoCliente: m.avisosDoCliente,
+      avisosDoAdmin: m.avisosDoAdmin.slice(0, 40),
+      escolhas: m.escolhas,
+      custoUsd: m.custoUsd.geracao,
+      tempos: m.tempos,
+      midias: Object.fromEntries(m.gerados.filter((g) => g.url && g.tipo).map((g) => [g.id, { url: g.url!, tipo: g.tipo!, formato: g.formato, proporcao: g.proporcao }])),
+    };
+    await enviarPelaJornada(v, { ...tomado, trabalhando: false, jornada }, tomado);
+  } catch (e) {
+    await falhouNaJornada(v.id, { ...tomado, trabalhando: false }, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** O render da jornada: só o final, sem prévia e sem segundo render automático. */
+async function enviarPelaJornada(v: VideoDoCompleto, estado: MontagemDoCompleto, lido: MontagemDoCompleto): Promise<void> {
+  const j = estado.jornada!;
+  const tomado: MontagemDoCompleto = { ...estado, estado: "montando", desde: agora(), tentativas: (estado.tentativas ?? 0) + 1, candidato: null };
+  if (!(await trocarEstado(v.id, lido, tomado))) return;
+  try {
+    const app = (process.env.NEXT_PUBLIC_APP_URL ?? "https://demandou.com").replace(/\/$/, "");
+    const edicaoId = lido.roteiro?.jornada?.edicaoId ?? "e";
+    const chave = `cortes/${v.id}/completo-editado-${edicaoId}-${(tomado.tentativas ?? 1)}.mp4`;
+    const texto = JSON.stringify({
+      chave,
+      videoJobId: v.id,
+      completoUrl: estado.baseUrl ?? v.completoUrl,
+      edicao: j.edicao,
+      escala: 1,
+      abertura: null,
+      guardaDaFala: null,
+      trilha: j.trilha && v.videoMusicUrl ? { url: v.videoMusicUrl, volume: 0.12, abaixar: true } : null,
+      callbackUrl: `${app}/api/videos/${v.id}/montar-completo-callback`,
+      retorno: { desde: tomado.desde },
+    });
+    const r = await fetch(`${urlDoWorker()}/montar-completo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [CABECALHO_ASSINATURA]: assinarCorpo(texto) },
+      body: texto,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (r.status !== 202) throw new Error(`worker recusou a edição da jornada (HTTP ${r.status})`);
+    await trocarEstado(v.id, tomado, { ...tomado, chave });
+  } catch (e) {
+    await falhouNaJornada(v.id, tomado, e instanceof Error ? e.message : "envio falhou");
+  }
+}
 
 /** A edição sob medida desiste e o completo volta à esteira de sempre (a reserva), do começo. */
 async function desistirDoSobMedida(id: string, lido: MontagemDoCompleto, motivo: string): Promise<void> {
@@ -2356,6 +2522,18 @@ export async function concluirMontagemDoCompleto(
       motivo: null,
     });
     return "falhou";
+  }
+  // A JORNADA (E5): sem reserva escondida. Reinício reenvia; falha tenta de novo (até 3) e depois diz que falhou; pronto vai ao ar.
+  if (lido.jornada) {
+    if (resultado.reiniciado) {
+      await trocarEstado(videoJobId, lido, { ...lido, desde: agora(), tentativas: Math.max(0, (lido.tentativas ?? 1) - 1), jornada: { ...lido.jornada, reenviar: true } });
+      return "falhou";
+    }
+    if (!resultado.ok || !resultado.montado?.url) {
+      await falhouNaJornada(videoJobId, lido, `o render falhou (${resumoDoErro(resultado.erro ?? "sem detalhe")})`);
+      return "falhou";
+    }
+    return entregarCompleto(v, { ...lido, revisaoVisual: null, resumo: { ...(lido.resumo ?? {}), avisosDoCliente: lido.jornada.avisosDoCliente ?? [] } }, { url: resultado.montado.url, bytes: resultado.montado.bytes, tempos: resultado.tempos });
   }
   // A edição sob medida que falha no render desiste para a reserva (voltar a
   // "gerando" mandaria ao worker um plano que não existe).

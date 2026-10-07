@@ -4,15 +4,19 @@ import { prisma } from "@/lib/db/prisma";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { registrarAtoNaPeca } from "@/lib/cerebro/captura";
 import type { AtoDaPeca } from "@/lib/cerebro/tipos";
+import { editorJornadaLigado } from "@/lib/media/jornada/estado";
+import { reabrirJornadaComAjuste } from "@/lib/media/roteiro-da-edicao";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { content, status, valeParaODia } = (await req.json()) as {
+  const { content, status, valeParaODia, pedido } = (await req.json()) as {
     content?: string;
     status?: string;
+    /** O texto do "pedir ajuste" (E6 da jornada do editor): no card do vídeo completo, volta ao passo 5 com ele. */
+    pedido?: string;
     /**
      * Aplica o status a TODOS os cards do mesmo dia da mesma execução (21/09).
      *
@@ -91,5 +95,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  return NextResponse.json({ card: updated, tambem });
+  // O AJUSTE DO VÍDEO PRONTO (E6, EDITOR_JORNADA=1): "pedir ajuste" com texto no card do completo volta ao passo 5.
+  const meta = (card.metadata ?? {}) as { completo?: boolean; videoJobId?: string };
+  let ajuste = false;
+  if (status === "needs_revision" && pedido?.trim() && meta.completo && meta.videoJobId && editorJornadaLigado()) {
+    ajuste = await reabrirJornadaComAjuste(meta.videoJobId, pedido).catch((e) => {
+      console.error(`[campaign-cards][${id}] ajuste da jornada:`, e);
+      return false;
+    });
+  }
+
+  return NextResponse.json({ card: updated, tambem, ajuste });
 }

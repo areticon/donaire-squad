@@ -476,8 +476,8 @@ export async function concluirSePronto(
     const blob = await put(`higgsfield/${referencia.replace(/[^a-zA-Z0-9_-]/g, "")}/${chave.replace(/[^a-zA-Z0-9_-]/g, "")}.mp4`, mp4, {
       ...midiaProduzida(),
       contentType: "video/mp4",
-      addRandomSuffix: false,
-      allowOverwrite: true,
+      // CADA EDIÇÃO É ALGO NOVO (06/10): o arquivo nunca cai por cima de outro (a url fica no pedido guardado).
+      addRandomSuffix: true,
     });
     novo.blobUrl = blob.url;
     if (!novo.custoGravado) {

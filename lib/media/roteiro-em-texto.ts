@@ -1,3 +1,5 @@
+import type { EstadoDaJornada } from "@/lib/media/jornada/estado";
+import type { JornadaNaTela } from "@/lib/media/jornada/tela";
 import type { CenaDoPlano, ElementoDoPlano, PalavraNoCorte, PlanoDeMontagem, AssetDoPlano, Formato } from "@/lib/media/plano-de-montagem";
 import { aberturaNaTela, ganchoNaTela, type AberturaDoCompleto, type AberturaNaTela, type GanchoDoCorte, type GanchoNaTela } from "@/lib/media/abertura-do-roteiro";
 import type { TelasDaGravacao } from "@/lib/media/faixas-de-tela";
@@ -244,6 +246,12 @@ export type RoteiroDoVideo = {
    * aprovação, cada corte que fica leva o seu para `roteiro.gancho`.
    */
   ganchos?: Record<string, GanchoDoCorte>;
+  /**
+   * A JORNADA OFICIAL DO EDITOR (06/10, lib/media/jornada, EDITOR_JORNADA=1):
+   * a leitura do vídeo antes do plano, o plano por elemento (ideias do Sonnet,
+   * decisões do JEV), as revisões do cliente e a aprovação que congela.
+   */
+  jornada?: EstadoDaJornada | null;
 };
 
 // ─────────────────────────────── números ───────────────────────────────
@@ -918,6 +926,8 @@ export type TelaDeRoteiro = {
   videoCurto?: boolean;
   /** "Voltar à edição" de um vídeo já aprovado (30/09): ver lib/media/reedicao.ts. */
   reedicao?: ReedicaoNaTela | null;
+  /** A JORNADA OFICIAL (EDITOR_JORNADA=1): o plano por elemento do completo, para aprovar ou revisar. */
+  jornada?: JornadaNaTela | null;
 };
 
 export type ReedicaoNaTela = {

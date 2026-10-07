@@ -1,7 +1,8 @@
+import { GRAVACAO_UNICA, marcaDaGeracao } from "@/lib/media/geracao-unica";
 import { conferirResposta } from "@/lib/fornecedores/aviso-de-saldo";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { head, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { midiaProduzida } from "@/lib/media/storage";
 import type { EdicaoDoEditor, MomentoDoEditor } from "@/lib/media/editor-sob-medida/tipos";
 
@@ -134,20 +135,16 @@ export function guardaDoRecorteNoBlob(): GuardaDoRecorte {
   const caminho = (n: string) => `editor-sob-medida/vox/${n}`;
   const opcoes = midiaProduzida();
   return {
-    async ler(chave) {
-      try {
-        const meta = await head(caminho(`${chave}.json`), { token: opcoes.token });
-        const r = await fetch(meta.url, { cache: "no-store" });
-        return r.ok ? ((await r.json()) as { url: string; olhos: RecorteGuardado["olhos"] }) : null;
-      } catch {
-        return null;
-      }
+    // CADA EDIÇÃO É ALGO NOVO (06/10): a foto de outra edição nunca volta; toda foto pedida é gerada agora.
+    async ler() {
+      return null;
     },
     async gravar(chave, webp, olhos) {
       // Blob privado o Chrome do worker não lê: sem o público, a peça fica com a reserva.
       if (opcoes.access !== "public") return null;
-      const { url } = await put(caminho(`${chave}.webp`), webp, { ...opcoes, contentType: "image/webp", addRandomSuffix: false, allowOverwrite: true });
-      await put(caminho(`${chave}.json`), JSON.stringify({ url, olhos }), { ...opcoes, contentType: "application/json", addRandomSuffix: false, allowOverwrite: true });
+      // Nome único por geração (06/10): nunca por cima da foto de outra edição.
+      const { url } = await put(caminho(`${chave}-${marcaDaGeracao()}.webp`), webp, { ...opcoes, contentType: "image/webp", ...GRAVACAO_UNICA });
+      void olhos;
       return url;
     },
   };

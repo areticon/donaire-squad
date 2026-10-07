@@ -1,6 +1,5 @@
 import { askClaude } from "@/lib/claude";
 import { extrairJson } from "@/lib/media/diretor-de-montagem";
-import { escolherIconesPeloJev } from "@/lib/media/editor-por-comando/icone-pelo-jev";
 import { decidirChoice, jevLigado, perguntarAoJev, probabilidadeDeSim, type PerguntaDoJev, type RespostaDoJev } from "@/lib/jev/cliente";
 import { FICHAS } from "@/lib/media/editor-sob-medida/pecas";
 import { resolverAncora, type Frase } from "@/lib/media/editor-sob-medida/resolver";
@@ -1326,8 +1325,8 @@ async function redigirEConferir(e: EntradaDoPlanoPeloJev, ling: LinguagemDoVideo
   }
   if (reprovados.size) erros.push(`conferência: ${reprovados.size} elemento(s) reprovado(s) pelo JEV saíram (${motivos.join(", ")})`);
   for (const id of reprovados) delete textos[id];
-  // O ÍCONE DAS PEÇAS VETORIAIS (06/10, tarefa D): o redator sugeriu, o JEV escolhe entre os candidatos do catálogo.
-  await escolherIconesPeloJev(paraRedator, textos, jevDisponivel(e) ? jevDe(e) : null, { projectId: e.projectId, nicho: e.nicho }, erros);
+  // OS ELEMENTOS GERADOS POR IA (06/10, noite): o ícone não é mais escolhido de um catálogo em código; o redator descreve
+  // o elemento inteiro no prompt e a Higgsfield o desenha (lib/media/editor-por-comando/elemento-gerado.ts).
   // A CONFERÊNCIA DO PEDIDO (06/10): o momento atende ao pedido do cliente? Se não, segunda tentativa com o pedido no topo.
   const pedidos = await conferirPedidos(e, ling, paraRedator.filter((m) => comPedido.has(m.id)), textos, falaDoBloco, blocos, erros);
   tempos.conferencia = +((Date.now() - t) / 1000).toFixed(1);

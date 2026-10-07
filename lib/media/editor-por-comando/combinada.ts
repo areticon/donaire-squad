@@ -1,3 +1,4 @@
+import { chaveDaGeracao } from "@/lib/media/geracao-unica";
 import { createHash } from "node:crypto";
 import type { PerguntaDoJev, RespostaDoJev } from "@/lib/jev/cliente";
 import { decidirChoice } from "@/lib/jev/cliente";
@@ -219,7 +220,8 @@ export async function gerarFundosCombinados(
       const id = String(ins.id ?? `c${k + 1}`).replace(/[^a-z0-9-]/gi, "") || `c${k + 1}`;
       const segundos = Math.min(5, Math.max(3, Math.ceil(ins.segundos ?? 4)));
       const prompt = String(ins.briefing ?? "").slice(0, 1600);
-      const chave = `fundo-${createHash("sha1").update(`${prompt}|${segundos}|${o.formato}`).digest("hex").slice(0, 16)}`;
+      // CADA EDIÇÃO É ALGO NOVO (06/10): a marca desta geração na chave; outra edição com o mesmo prompt pede fundo novo.
+      const chave = chaveDaGeracao(`fundo-${createHash("sha1").update(`${prompt}|${segundos}|${o.formato}`).digest("hex").slice(0, 16)}`);
       try {
         const g = await pedirGeracao({ modelo: "kling-pro", prompt, segundos, proporcao: o.formato, referencia, chave });
         pedidos.push({ id, chave, custo: g.custoEstimadoUsd });

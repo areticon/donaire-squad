@@ -422,7 +422,7 @@ export type ResumoDaMedicao = {
  * quem mais mexe a boca (desvio do jawOpen), e com uma pessoa só é ela quando
  * há fala transcrita no trecho.
  */
-export function resumirMedida(medida: MedidaDoWorker, fala: FalaLida | null): ResumoDaMedicao {
+export function resumirMedida(medida: MedidaDoWorker, fala: FalaLida | null, opcoes: { limites?: Array<{ de: number; ate: number }> | null } = {}): ResumoDaMedicao {
   const formato = formatoDaMedida(medida.largura, medida.altura);
   const palavras = fala?.palavras ?? [];
   const duracao = medida.duracao || fala?.duracao || (medida.amostras.at(-1)?.t ?? 0);
@@ -431,7 +431,8 @@ export function resumirMedida(medida: MedidaDoWorker, fala: FalaLida | null): Re
     .filter((l) => l.presencas >= Math.max(2, amostras.length * 0.1))
     .map((l) => ({ id: l.id, nome: null, papel: null, descricao: `pessoa ${posicaoEmTexto(l.centro)}${l.tamanho > 0.7 ? ", em plano fechado" : l.tamanho < 0.35 ? ", longe da câmera" : ""}` }));
   const idsValidos = new Set(pessoas.map((p) => p.id));
-  const limites = dividirEmTrechos(amostras, duracao, palavras);
+  // TRECHOS FINOS (jornada, E1): quem chama manda as fronteiras (4 a 10 s alinhadas às frases).
+  const limites = opcoes.limites?.length ? opcoes.limites : dividirEmTrechos(amostras, duracao, palavras);
   let comTela = 0;
   let comQuadro = 0;
   const trechos: TrechoLido[] = limites.map((lim) => {
@@ -505,17 +506,17 @@ export function resumirMedida(medida: MedidaDoWorker, fala: FalaLida | null): Re
  * livre menos o terço central (a pessoa costuma estar ali). É o mínimo para a
  * visão alinhar e para a montagem seguir.
  */
-export function resumoSemMedida(duracao: number, formato: LeituraDoVideo["formato"], fala: FalaLida | null): ResumoDaMedicao {
+export function resumoSemMedida(duracao: number, formato: LeituraDoVideo["formato"], fala: FalaLida | null, opcoes: { limites?: Array<{ de: number; ate: number }> | null } = {}): ResumoDaMedicao {
   const palavras = fala?.palavras ?? [];
-  const limites: Array<{ de: number; ate: number }> = [];
-  let de = 0;
+  const limites: Array<{ de: number; ate: number }> = opcoes.limites?.length ? [...opcoes.limites] : [];
+  let de = opcoes.limites?.length ? duracao : 0;
   while (duracao - de > 45) {
     let corte = pausaPerto(palavras, de + 40, de + TRECHO_MIN_SEG, de + TRECHO_MAX_SEG);
     if (!(corte > de + TRECHO_MIN_SEG)) corte = de + 40;
     limites.push({ de: arred(de), ate: arred(corte) });
     de = corte;
   }
-  limites.push({ de: arred(de), ate: arred(duracao) });
+  if (!opcoes.limites?.length) limites.push({ de: arred(de), ate: arred(duracao) });
   const centro: CaixaNoQuadro = formato === "9:16" ? { x: 0.15, y: 0.2, w: 0.7, h: 0.6 } : { x: 0.3, y: 0.15, w: 0.4, h: 0.85 };
   const trechos: TrechoLido[] = limites
     .filter((l) => l.ate > l.de)
@@ -694,7 +695,7 @@ export async function verComGemini(
   fonte: { url?: string; bytes?: Uint8Array },
   resumo: ResumoDaMedicao,
   fala: FalaLida | null,
-  ctx: { projectId?: string | null; modelo?: string; operation?: string }
+  ctx: { projectId?: string | null; modelo?: string; operation?: string; janelaSeg?: number }
 ): Promise<VisaoDoVideo> {
   const modelo = ctx.modelo ?? modeloDaVisao();
   let bytes = fonte.bytes;
@@ -705,7 +706,8 @@ export async function verComGemini(
     bytes = new Uint8Array(await r.arrayBuffer());
   }
   const arquivo = await subirParaOGemini(bytes, `leitura-${Date.now()}.mp4`);
-  const JANELA = 30 * 60;
+  // Trechos finos (jornada) pedem janelas menores: a resposta por janela cabe no teto de saída.
+  const JANELA = ctx.janelaSeg ?? 30 * 60;
   const total = resumo.trechos.at(-1)?.ate ?? 0;
   const janelas: Array<{ de: number; ate: number }> = [];
   for (let de = 0; de < Math.max(total, 1); de += JANELA) janelas.push({ de, ate: Math.min(total, de + JANELA) });
@@ -924,6 +926,15 @@ export type PedidoDeLeitura = {
   /** Força a visão ligada ou desligada (padrão: `leituraVisaoLigada()`). */
   visao?: boolean;
   avisos?: string[];
+  /**
+   * TRECHOS FINOS (jornada, E1): as fronteiras dos trechos (4 a 10 s,
+   * alinhadas às frases da fala). Sem elas, os trechos de 10 a 60 s de sempre.
+   */
+  limites?: Array<{ de: number; ate: number }> | null;
+  /** O proxy da visão em bytes (a prova local; na esteira vem a URL do worker). */
+  visaoBytes?: Uint8Array | null;
+  /** Recebe a medição crua (a jornada guarda as amostras para o passo 7). */
+  aoMedir?: (m: RespostaDaMedicao | null) => void;
 };
 
 /**
@@ -943,16 +954,17 @@ export async function lerVideo(p: PedidoDeLeitura): Promise<LeituraDoVideo> {
     }
   }
   for (const erro of medicao?.erros ?? []) avisos.push(`leitura: ${erro}`);
+  p.aoMedir?.(medicao);
   const duracao = p.ate ?? medicao?.medida?.duracao ?? p.duracao ?? p.fala?.duracao ?? 0;
   if (!duracao) throw new Error("leitura sem duração conhecida");
   const resumo = medicao?.medida
-    ? resumirMedida({ ...medicao.medida, duracao: Math.min(medicao.medida.duracao || duracao, duracao) }, p.fala)
-    : resumoSemMedida(duracao, "16:9", p.fala);
+    ? resumirMedida({ ...medicao.medida, duracao: Math.min(medicao.medida.duracao || duracao, duracao) }, p.fala, { limites: p.limites })
+    : resumoSemMedida(duracao, "16:9", p.fala, { limites: p.limites });
   let visao: VisaoDoVideo | null = null;
   const querVisao = p.visao ?? leituraVisaoLigada();
-  if (querVisao && medicao?.proxyUrl) {
+  if (querVisao && (medicao?.proxyUrl || p.visaoBytes)) {
     try {
-      visao = await verComGemini({ url: medicao.proxyUrl }, resumo, p.fala, { projectId: p.projectId });
+      visao = await verComGemini(p.visaoBytes ? { bytes: p.visaoBytes } : { url: medicao!.proxyUrl! }, resumo, p.fala, { projectId: p.projectId, ...(p.limites?.length ? { janelaSeg: 8 * 60 } : {}) });
     } catch (e) {
       avisos.push(`leitura: visão falhou (${e instanceof Error ? e.message : String(e)})`);
     }
