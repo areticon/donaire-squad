@@ -1451,6 +1451,9 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
       const k = String(singleDay);
       return oQueOPostPede(singleContentType) && comArteDaIA(k) ? [{ chave: k, rotulo: WEEK_DAYS.find((d) => d.dayNum === singleDay)?.label ?? "O post", formato: singleContentType as FormatoDoPost }] : [];
     }
+    // A recorrente gera dias fixos (lib/pipeline/executar.ts, diasDaCampanha):
+    // o único com arte é a imagem do dia 3. A lista pergunta por ele.
+    if (campaignMode === "recurring") return [{ chave: "3", rotulo: "A imagem de cada semana", formato: "image" }];
     return DIAS.filter((d) => oQueOPostPede(weeklySchedule[d.key]) && comArteDaIA(d.key)).map((d) => ({ chave: d.key, rotulo: d.label, formato: weeklySchedule[d.key] as FormatoDoPost }));
   }, [campaignMode, singleDay, singleContentType, DIAS, weeklySchedule, origens]);
   const faltamModelos = modelosFalharam ? [] : postsSemModelo(postsVisuais, modelosDosPosts);
@@ -1889,7 +1892,7 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
               <div>
                 <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Antes de gerar: o modelo de cada post</h3>
                 <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                  Cada dia com foto, carrossel, infográfico ou vídeo tem o seu modelo. Crie o seu falando ou escrevendo, ou escolha um da biblioteca. Com todos escolhidos, é só gerar.
+                  Cada dia com foto ou carrossel tem o seu modelo: crie o seu falando ou escrevendo, ou escolha um da biblioteca. Infográfico e vídeo saem nas cores e na letra da sua marca. Com todos escolhidos, é só gerar.
                 </p>
               </div>
               {listaDosModelos("No quadro, a IA coloca o conteúdo de cada dia dentro do modelo escolhido para ele.")}

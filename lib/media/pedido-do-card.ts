@@ -40,7 +40,7 @@ import { fotoDoClienteEntra, soTexto } from "@/lib/modelos-de-arte/prompts-com-f
 import { descreverIntercalacao, escolherFotosDasLaminas, pedidoDeIntercalar, type FotoDaLamina } from "@/lib/media/fotos-do-carrossel";
 import { capturarFeedbackDoChatDoCard } from "@/lib/feedback/captura";
 import { fotosDasLaminasRefeitas, metadataDaFoto } from "@/lib/media/foto-da-peca";
-import { modeloDoPostValido, type ModeloDoPost } from "@/lib/estilo-dos-posts/tipos";
+import { modeloGravadoNosPosts } from "@/lib/estilo-dos-posts/tipos";
 
 /**
  * O PEDIDO COMPOSTO DO CHAT DO CARD, feito como tarefa no servidor (05/10).
@@ -757,13 +757,7 @@ type PostDoDia = { id: string; platform: string; content: string; imageUrl: stri
  * modelo pedido no chat ("no modelo de papel") continua passando por cima
  * (marcaDoPedido). Null quando o post não tem escolha gravada.
  */
-function modeloDosPosts(posts: Array<{ metadata: unknown }>): ModeloDoPost | null {
-  for (const p of posts) {
-    const m = modeloDoPostValido((p.metadata as { modeloDoPost?: unknown } | null)?.modeloDoPost);
-    if (m && (m.designId || m.catalogoId)) return m;
-  }
-  return null;
-}
+const modeloDosPosts = modeloGravadoNosPosts;
 
 /**
  * O CARD DA DIANA QUE FALTAVA (05/10): o post único de X saiu com arte pelo

@@ -5,7 +5,7 @@ import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { normalizarComando } from "@/lib/media/editor-por-comando/comando";
 import { editorPorComandoLigado, lerComandoDoProjeto, paletaDoProjeto, salvarComandoDoProjeto } from "@/lib/media/editor-por-comando";
 import { coresDaMarca } from "@/lib/media/capa-composta";
-import { ligarCatalogoAoProjeto, registrarPedidoDeDesign, type ResultadoDoPedido } from "@/lib/biblioteca-de-design/registro";
+import { designAtualDoProjeto, ligarCatalogoAoProjeto, registrarPedidoDeDesign, type ResultadoDoPedido } from "@/lib/biblioteca-de-design/registro";
 import type { DesignDaGaleria } from "@/lib/biblioteca-de-design/tipos";
 
 /**
@@ -54,6 +54,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (r.erro) return r.erro;
   const comando = normalizarComando(await req.json().catch(() => null));
   if (!comando) return NextResponse.json({ error: "Escreva o comando do vídeo (pelo menos algumas palavras)." }, { status: 400 });
+  // O comando de antes (08/10): o mesmo texto não volta ao registro da biblioteca (abaixo).
+  const anterior = await lerComandoDoProjeto(id).catch(() => null);
   await salvarComandoDoProjeto(id, comando);
   // A biblioteca de design (06/10): a miniatura clicada liga a semente do estilo; o texto do cliente vira um pedido (JEV compara, Claude escreve).
   let biblioteca: { design: DesignDaGaleria; veredito: ResultadoDoPedido["veredito"] | "catalogo" } | null = null;
@@ -62,6 +64,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (comando.origem === "referencia" && comando.referencia) {
       const d = await ligarCatalogoAoProjeto({ projectId: id, tipo: "video", catalogoId: comando.referencia, comoEntrou: "referencia" });
       biblioteca = d ? { design: d, veredito: "catalogo" } : null;
+    } else if (userId && anterior?.texto === comando.texto) {
+      // O MESMO TEXTO DE ANTES (08/10): o cliente só trocou a letra ou as cores.
+      // Nada de IA: a entrada pública da biblioteca guarda só o visual do pedido
+      // (lib/biblioteca-de-design/tipos.ts, entradaParaAGaleria), e o
+      // "repetido" do registro, que comparava o texto cru, não a acha mais.
+      const d = await designAtualDoProjeto(id, "video");
+      biblioteca = d ? { design: d, veredito: "repetido" } : null;
     } else if (userId) {
       biblioteca = await registrarPedidoDeDesign({ projectId: id, userId, tipo: "video", pedido: comando.texto, nicho: r.project.niche, publico: r.project.targetAudience });
     }

@@ -686,7 +686,7 @@ export async function escreverSemanaDoVideo(videoJobId: string): Promise<{ escri
     // arte, e escolher é aprovar este post (lib/media/arte-com-frase.tsx).
     const marcaDoDia = tipoGeraArte(formato) ? await marcaDaArte(video.projectId, { runId: run.id, modeloDoPost: modelo ?? null }) : null;
     // Gravado no post: o refazer do chat do card parte do mesmo modelo.
-    const doModelo = modelo && !modelo.marca ? { modeloDoPost: modelo } : {};
+    const doModelo = modelo ? { modeloDoPost: modelo } : {};
     const aguardandoIdentidade = Boolean(marcaDoDia && marcaDoDia.identidadeAprovada === false);
     const TEXTO_AGUARDANDO = `${MENSAGEM_AGUARDANDO}: escreva como quer o estilo dos posts ou escolha um da biblioteca em Configurações (aba Estilo dos posts). Nenhum crédito de imagem foi gasto; a arte sai depois da escolha.`;
     /** O card da Diana: o aviso do recuo para o desenho em código vem antes do conteúdo. */

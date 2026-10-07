@@ -259,6 +259,11 @@ export function JornadaDaCampanha({
       setPasso(0);
       return;
     }
+    // O mesmo no passo dos modelos, quando o pulo parou nele (08/10).
+    if (passo === PASSO_DOS_POSTS && pulaParaOEnvio) {
+      setPasso(0);
+      return;
+    }
     // Do envio, sem dia visual na semana, volta direto para a semana.
     if (passo === total - 1 && !temPostsVisuais) {
       setPasso(PASSO_DOS_POSTS - 1);

@@ -157,6 +157,32 @@ export function modeloParaOFormato(bruto: unknown, formato: string | null | unde
   return m && modeloServeAoPost(m, oQueOPostPede(formato)) ? m : null;
 }
 
+/**
+ * O modelo gravado no post pela esteira (08/10, `metadata.modeloDoPost`): todo
+ * refazer da arte (chat do card, refazer a peça, a Vera redesenhando) parte
+ * dele, como a primeira arte partiu. O primeiro post do dia que tiver. Puro.
+ */
+export function modeloGravadoNosPosts(posts: Array<{ metadata?: unknown }>): ModeloDoPost | null {
+  for (const p of posts) {
+    const m = modeloDoPostValido((p.metadata as { modeloDoPost?: unknown } | null)?.modeloDoPost);
+    if (m) return m;
+  }
+  return null;
+}
+
+/**
+ * A ESCOLHA DE UM DIA NA CAMPANHA POR TEMA (08/10), como a esteira lê do
+ * config. Na semana, pela chave do dia (a mesma do `weeklySchedule`). No post
+ * único, a única escolha que veio: o dia dele é recalculado pela data marcada
+ * (lib/pipeline/executar.ts, diasDaCampanha), e a chave da janela pode não
+ * bater com ele perto da meia-noite. Puro.
+ */
+export function escolhaDoDiaNaCampanha(config: { campaignMode?: string | null; modelosDosPosts?: Record<string, unknown> | null }, dayOfWeek: number): unknown {
+  const escolhas = config.modelosDosPosts ?? {};
+  if (config.campaignMode === "single") return Object.values(escolhas)[0];
+  return escolhas[String(dayOfWeek)];
+}
+
 /** Um post visual da campanha, como a lista dos modelos mostra. */
 export interface PostVisual {
   /** A chave do dia ("1" a "7"). */

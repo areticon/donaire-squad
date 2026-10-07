@@ -11,6 +11,7 @@ import { escolherEstilo, paletaDoProjeto } from "@/lib/media/direcao-de-arte";
 import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/infographic";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { desenharComFraseEmCodigo, marcaDaArte, promptDaArteSemTexto } from "@/lib/media/arte-com-frase";
+import { modeloGravadoNosPosts } from "@/lib/estilo-dos-posts/tipos";
 import { mancheteDaPeca } from "@/lib/media/peca-de-feed";
 import { ajustarVideoPeloChat } from "@/lib/media/ajuste-pelo-chat";
 import { pecaPublicavel } from "@/lib/pipeline/guarda-de-texto";
@@ -353,18 +354,15 @@ async function tratarChatDoCard(
     let arteRefeitaPorRede: Record<string, string> | null = null;
 
     /** As redes que este dia publica, para saber quantos formatos refazer. */
-    const redesDoDia = card.runId && card.dayOfWeek
-      ? Array.from(
-          new Set(
-            (
-              await prisma.post.findMany({
-                where: { runId: card.runId, dayOfWeek: card.dayOfWeek },
-                select: { platform: true },
-              })
-            ).map((p) => p.platform)
-          )
-        )
+    const postsDoDiaDoCard = card.runId && card.dayOfWeek
+      ? await prisma.post.findMany({
+          where: { runId: card.runId, dayOfWeek: card.dayOfWeek },
+          select: { platform: true, metadata: true },
+        })
       : [];
+    const redesDoDia = Array.from(new Set(postsDoDiaDoCard.map((p) => p.platform)));
+    // O modelo escolhido para o post (08/10): o refazer pelo chat parte dele.
+    const modeloDoPost = modeloGravadoNosPosts(postsDoDiaDoCard);
 
     // ── Infographic: regenerate using post content (+ user style hint) ───────
     if (isInfographic) {
@@ -416,7 +414,7 @@ async function tratarChatDoCard(
                 estilo: estilo.prompt,
                 paleta: paletaDoProjeto(card.project.colorPalette),
                 // Montado em código desde 30/09, com a família e as cores da marca.
-                marca: await marcaDaArte(card.projectId),
+                marca: await marcaDaArte(card.projectId, { modeloDoPost }),
               });
               if (!url) throw new Error("o modelo não devolveu o infográfico");
               return url;
@@ -473,7 +471,7 @@ No explanations, no prefixes, just the prompt text.`;
            * desenha só a cena pedida, sem letra e sem gente.
            */
           const meta = (card.metadata as { frase?: string; slides?: string[] } | null) ?? {};
-          const marca = await marcaDaArte(card.projectId);
+          const marca = await marcaDaArte(card.projectId, { modeloDoPost });
           const frase =
             (targetSlide !== null ? meta.slides?.[targetSlide] : meta.frase) ??
             (await mancheteDaPeca({

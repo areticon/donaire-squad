@@ -228,11 +228,12 @@ const depositoNoBanco: DepositoDaBiblioteca = {
   ligar: (o) => ligarAoProjeto(o),
   ler: (id, quem) => lerDesign(id, quem),
   async dadosDoCliente(projectId, userId) {
+    // O projeto (a marca), quem pediu (o dono ou o membro da equipe) e o dono.
     const [p, u] = await Promise.all([
-      prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }).catch(() => null),
+      prisma.project.findUnique({ where: { id: projectId }, select: { name: true, user: { select: { name: true, email: true } } } }).catch(() => null),
       userId ? prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }).catch(() => null) : null,
     ]);
-    return { nomes: [p?.name, u?.name, u?.email?.split("@")[0]] };
+    return { nomes: [p?.name, u?.name, u?.email?.split("@")[0], p?.user?.name, p?.user?.email?.split("@")[0]] };
   },
 };
 

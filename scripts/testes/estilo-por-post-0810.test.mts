@@ -17,6 +17,8 @@ import { textoDaFala, transcreverFalaCurta } from "@/lib/media/fala-curta";
 import {
   designServeAoPost,
   escolhaDoDesign,
+  escolhaDoDiaNaCampanha,
+  modeloGravadoNosPosts,
   modelosDaPeca,
   modelosParaGravar,
   oQueOPostPede,
@@ -413,7 +415,7 @@ test("o modelo criado pelo cliente vira o molde, e a IA coloca o conteúdo do di
 
 test("a esteira entrega o modelo de cada post à arte, e o refazer parte dele", () => {
   const esteira = fonte("lib/pipeline/executar.ts");
-  assert.ok(esteira.includes("modeloParaOFormato(config.modelosDosPosts?.[String(dayOfWeek)], resolvedType)"));
+  assert.ok(esteira.includes("modeloParaOFormato(escolhaDoDiaNaCampanha(config, dayOfWeek), resolvedType)"));
   assert.ok(esteira.includes("marcaDaArte(project.id, { runId, modeloDoPost: modeloDoDia })"));
   assert.ok(/chave: chaveDoCarrossel,[\s\S]{0,300}marca: marcaDaPeca,/.test(esteira), "o carrossel recebe a marca do dia (antes lia a do projeto de novo)");
   const semana = fonte("lib/media/pecas-da-semana.ts");
@@ -457,6 +459,52 @@ test("o vídeo curto é montado no estilo de edição escolhido para o dia dele"
   assert.ok(montagem.includes("const video = videoNoEstiloDoDia(videoDoProjeto, diaDoCorte(trechos, i, diasCurtos)?.estiloId);"));
   assert.ok(montagem.includes("const comando = video.estiloDoDia ? comandoPadrao(ctx.escolha) :"));
   assert.ok(fonte("lib/media/sincronizar-quadro.ts").includes("diaDoCorte(trechos, indice, diasDeCorte)"), "o quadro e a montagem contam igual");
+});
+
+// ─────────────── a revisão cética do ramo (08/10) ───────────────
+
+test("revisão: o post único acha a sua escolha mesmo quando o dia recalculado não bate com a chave da janela", () => {
+  const unico = { campaignMode: "single", modelosDosPosts: { "4": { designId: "cmunico", nome: "Único" } } };
+  assert.deepEqual(escolhaDoDiaNaCampanha(unico, 5), { designId: "cmunico", nome: "Único" }, "a data marcada caiu na sexta; a escolha é a do post");
+  const semana = { campaignMode: "weekly", modelosDosPosts: { "3": { catalogoId: "foto-inteira-degrade" } } };
+  assert.deepEqual(escolhaDoDiaNaCampanha(semana, 3), { catalogoId: "foto-inteira-degrade" });
+  assert.equal(escolhaDoDiaNaCampanha(semana, 4), undefined);
+  assert.equal(escolhaDoDiaNaCampanha({ campaignMode: "weekly" }, 3), undefined, "campanha antiga, sem escolha");
+  assert.ok(fonte("lib/pipeline/executar.ts").includes("modeloParaOFormato(escolhaDoDiaNaCampanha(config, dayOfWeek), resolvedType)"));
+});
+
+test("revisão: a recorrente pergunta pelo dia de arte que a esteira gera de verdade", () => {
+  const modal = fonte("components/posts/campaign-setup-modal.tsx");
+  assert.ok(modal.includes('if (campaignMode === "recurring") return [{ chave: "3", rotulo: "A imagem de cada semana", formato: "image" }];'));
+  assert.ok(fonte("lib/pipeline/executar.ts").includes('{ dayOfWeek: 3, contentType: "image" as ContentType, weekOffset: 0 }'), "a recorrente gera a imagem no dia 3");
+});
+
+test("revisão: todo refazer da arte parte do modelo do post, inclusive o infográfico confirmado na marca", () => {
+  assert.deepEqual(modeloGravadoNosPosts([{ metadata: null }, { metadata: { modeloDoPost: { marca: true } } }]), { marca: true });
+  assert.deepEqual(modeloGravadoNosPosts([{ metadata: { modeloDoPost: { designId: "cmx", nome: "X" } } }]), { designId: "cmx", nome: "X" });
+  assert.equal(modeloGravadoNosPosts([{ metadata: { modeloDoPost: { nada: 1 } } }]), null);
+  assert.ok(fonte("lib/pipeline/refazer-peca.ts").includes("marcaDaArte(post.projectId, { modeloDoPost: modeloGravadoNosPosts([post]) })"));
+  assert.ok(fonte("lib/vera/regerar-arte.ts").includes("modeloDoPost: modeloGravadoNosPosts([base])"));
+  const chat = fonte("app/api/campaign-cards/[id]/chat/route.ts");
+  assert.equal((chat.match(/marcaDaArte\(card\.projectId, \{ modeloDoPost \}\)/g) ?? []).length, 2, "o infográfico e a arte refeitos pelo chat");
+  // A esteira grava a escolha no post, também a da marca (o refazer do infográfico não volta a esperar).
+  assert.ok(fonte("lib/pipeline/executar.ts").includes("return m ? { modeloDoPost: m } : {};"));
+  assert.ok(fonte("lib/media/pecas-da-semana.ts").includes("const doModelo = modelo ? { modeloDoPost: modelo } : {};"));
+});
+
+test("revisão: salvar o mesmo comando de vídeo (só letra ou cores) não paga IA de novo", () => {
+  // A entrada pública guarda só o visual, então o "repetido" do registro não acha mais o texto cru.
+  const rota = fonte("app/api/projects/[id]/comando-do-video/route.ts");
+  assert.ok(rota.includes("const anterior = await lerComandoDoProjeto(id).catch(() => null);"));
+  assert.ok(/\} else if \(userId && anterior\?\.texto === comando\.texto\) \{[\s\S]{0,500}designAtualDoProjeto\(id, "video"\)/.test(rota));
+});
+
+test("revisão: o Voltar do passo dos modelos desfaz o pulo, como o do envio", () => {
+  const jornada = fonte("components/posts/jornada-da-campanha.tsx");
+  assert.ok(/if \(passo === PASSO_DOS_POSTS && pulaParaOEnvio\) \{\s*setPasso\(0\);/.test(jornada));
+  // Sair do passo da semana grava o que ficou na tela (o planejador grava com atraso).
+  assert.ok(/if \(passo === PASSO_DOS_POSTS - 1\) \{\s*salvarSemana\(semanaAtual\);/.test(jornada));
+  assert.ok(!jornada.includes("ultimaSalva.current = JSON.stringify(planoParaGravar(s));"), "o aviso do planejador não marca como gravado o que talvez não foi");
 });
 
 test("nenhum texto novo usa travessão", () => {

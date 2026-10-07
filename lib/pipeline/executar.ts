@@ -26,7 +26,7 @@ import { extrairConteudoDoInfografico, desenharInfografico } from "@/lib/media/i
 import { mancheteDaPeca, desenharPecaDeFeed } from "@/lib/media/peca-de-feed";
 import { metadataDaFoto } from "@/lib/media/foto-da-peca";
 import { marcaDaArte, promptDaArteSemTexto, desenharComFraseEmCodigo } from "@/lib/media/arte-com-frase";
-import { modeloParaOFormato } from "@/lib/estilo-dos-posts/tipos";
+import { escolhaDoDiaNaCampanha, modeloParaOFormato } from "@/lib/estilo-dos-posts/tipos";
 import { TEXTO_DO_CARD_AGUARDANDO, diaPedeArte, pecaBaseDoDia } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { produzirArtePorRede } from "@/lib/media/arte-por-rede";
 import { roteiroDoCarrossel, desenharCarrossel, redesQueAceitamCarrossel, laminasPermitidas } from "@/lib/media/carrossel";
@@ -3019,7 +3019,7 @@ ${postDoLinkedIn.content}`,
       // O MODELO DO POST (08/10): a escolha feita na janela para ESTE dia manda
       // na arte, e escolher é aprovar este post (lib/media/arte-com-frase.tsx).
       // Sem escolha (campanha antiga, dia livre), vale a regra do projeto.
-      const modeloDoDia = modeloParaOFormato(config.modelosDosPosts?.[String(dayOfWeek)], resolvedType);
+      const modeloDoDia = modeloParaOFormato(escolhaDoDiaNaCampanha(config, dayOfWeek), resolvedType);
       const marcaDaPeca = await marcaDaArte(project.id, { runId, modeloDoPost: modeloDoDia });
       if (modeloDoDia) {
         await appendLog(runId, {
@@ -4326,8 +4326,8 @@ ${d.content}
               ...(dayMedia?.imageUrl && dayMedia.foto ? dayMedia.foto : {}),
               // O modelo escolhido para este post (08/10): o refazer do chat do card parte dele.
               ...(() => {
-                const m = modeloParaOFormato(config.modelosDosPosts?.[String(dp.dayOfWeek)], dp.mediaType);
-                return m && !m.marca ? { modeloDoPost: m } : {};
+                const m = modeloParaOFormato(escolhaDoDiaNaCampanha(config, dp.dayOfWeek), dp.mediaType);
+                return m ? { modeloDoPost: m } : {};
               })(),
             }) as Prisma.InputJsonValue,
             dayOfWeek: dp.dayOfWeek,
