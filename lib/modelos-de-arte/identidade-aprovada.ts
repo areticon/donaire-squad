@@ -4,6 +4,7 @@ import { lerModelosEscolhidos } from "@/lib/modelos-de-arte/escolha";
 import {
   LETRA_PADRAO,
   designDepoisDaMudanca,
+  designQueVale,
   identidadeAprovada,
   letraValida,
   normalizarPapeis,
@@ -128,6 +129,7 @@ export interface EstadoDaIdentidade {
 export async function estadoDaIdentidade(projectId: string, colorPalette?: string | null): Promise<EstadoDaIdentidade> {
   const [registro, escolha, paleta] = await Promise.all([lerIdentidadeVisual(projectId), lerModelosEscolhidos(projectId).catch(() => null), paletaDoProjetoParaOsPapeis(projectId, colorPalette)]);
   const modelos = escolha?.ids ?? [];
+  const aprovada = identidadeAprovada(registro, modelos, paleta);
   return {
     registro,
     letra: registro?.letra ?? LETRA_PADRAO,
@@ -136,8 +138,11 @@ export async function estadoDaIdentidade(projectId: string, colorPalette?: strin
     fotos: registro?.fotos ?? FOTOS_PADRAO,
     paleta,
     modelos,
-    aprovada: identidadeAprovada(registro, modelos, paleta),
-    design: registro?.design ?? null,
+    aprovada,
+    // Aprovada, vale o design só se a aprovação veio depois da última escolha
+    // do book (08/10, revisão: a Vera troca o book direto na memória). Sem
+    // aprovação, o design gravado aparece para o "Aprovar de novo".
+    design: aprovada ? designQueVale(registro, escolha?.em) : (registro?.design ?? null),
   };
 }
 

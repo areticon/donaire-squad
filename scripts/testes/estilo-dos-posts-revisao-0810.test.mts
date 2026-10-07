@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { artesEsperamODono, precisaEscolherEstilo, resumoDoEstilo } from "@/lib/estilo-dos-posts/tipos";
 import { fotosDasLaminasRefeitas, registrarFotoDaPeca } from "@/lib/media/foto-da-peca";
+import { designQueVale } from "@/lib/modelos-de-arte/identidade";
 
 const fonte = (caminho: string) => readFileSync(new URL(`../../${caminho}`, import.meta.url), "utf8");
 
@@ -52,6 +53,18 @@ test("aprovação que caiu com o design gravado: a linha diz a verdade", () => {
   assert.ok(passo.includes("estado.podeMudar && !estado.aprovada && estado.design"));
   const rota = fonte("app/api/projects/[id]/estilo-dos-posts/route.ts");
   assert.ok(rota.includes("?? (await designAprovadoDoProjeto(id, designId))"));
+});
+
+test("o design aprovado manda só se veio depois da última escolha do book (a Vera troca o book direto)", () => {
+  const registro = { design: "d1", aprovadaEm: "2026-10-08T10:00:00Z" };
+  assert.equal(designQueVale(registro, "2026-10-07T09:00:00Z"), "d1", "book escolhido antes: vale o design");
+  assert.equal(designQueVale(registro, null), "d1", "sem book: vale o design");
+  assert.equal(designQueVale(registro, "2026-10-08T11:00:00Z"), null, "book trocado depois (pela Vera): vale o book");
+  assert.equal(designQueVale({ design: null, aprovadaEm: registro.aprovadaEm }, null), null);
+  assert.equal(designQueVale(registro, "data torta"), "d1", "data ilegível não derruba o que o cliente aprovou");
+  // A leitura do estado usa a régua só com a identidade aprovada (sem ela, o design aparece para o "Aprovar de novo").
+  const leitura = fonte("lib/modelos-de-arte/identidade-aprovada.ts");
+  assert.ok(leitura.includes("design: aprovada ? designQueVale(registro, escolha?.em) : (registro?.design ?? null)"));
 });
 
 test("o passo avisa quem abriu quando o estilo já chegou aprovado (sem passo sem saída)", () => {

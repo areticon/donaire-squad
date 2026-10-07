@@ -287,6 +287,23 @@ export function designDepoisDaMudanca(atual: string | null | undefined, mudanca:
   return atual ?? null;
 }
 
+/**
+ * O DESIGN APROVADO AINDA MANDA? (08/10, revisão) Só quando a aprovação veio
+ * DEPOIS da última escolha do book. A tela já tira o design quando o cliente
+ * mexe no book (designDepoisDaMudanca), mas a Vera troca os modelos direto na
+ * memória (mudar_modelos_de_arte) e o design continuava mandando em silêncio:
+ * a troca pedida não chegava às artes. É a mesma régua do design escrito
+ * antes de 08/10 (designDoClienteVale: ligado depois da escolha do book).
+ * Puro, para a prova.
+ */
+export function designQueVale(registro: Pick<IdentidadeVisualEscolhida, "design" | "aprovadaEm"> | null | undefined, escolhaDoBookEm?: string | null): string | null {
+  if (!registro?.design) return null;
+  const aprovadaEm = registro.aprovadaEm ? Date.parse(registro.aprovadaEm) : NaN;
+  const bookEm = escolhaDoBookEm ? Date.parse(escolhaDoBookEm) : NaN;
+  if (Number.isFinite(aprovadaEm) && Number.isFinite(bookEm) && bookEm > aprovadaEm) return null;
+  return registro.design;
+}
+
 export const MENSAGEM_AGUARDANDO = "Aguardando a sua identidade visual";
 
 /** O erro que a geração paga lança quando a identidade não foi aprovada. */
