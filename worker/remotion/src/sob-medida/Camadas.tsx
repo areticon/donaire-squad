@@ -14,6 +14,7 @@ import { CamadaExata } from "./pecas/combinadas";
 import { ElementoGerado } from "./pecas/gerado";
 import { MidiaNaCaixa } from "../jornada/MidiaNaCaixa";
 import { TextoDaJornada } from "../jornada/TextoDaJornada";
+import { MotionEscrito } from "../jornada/MotionEscrito";
 import { molaFisica, sombraFunda } from "./kit";
 import type { CamadaResolvida, ContextoDaPeca, PropsDasCamadas, PropsDoFundo, Trecho } from "./tipos";
 
@@ -103,6 +104,8 @@ export const PECAS: Record<string, (c: ContextoDaPeca) => React.ReactElement | n
   "jornada-midia": MidiaNaCaixa,
   // O TEXTO EM CAMADA (07/10): título e itens em vidro por cima da mídia, na palavra falada (a receita da landing).
   "jornada-texto": TextoDaJornada,
+  // O MOTION ESCRITO NA HORA (08/10, protótipo): a animação que o Claude escreveu para aquele momento (jornada/MotionEscrito.tsx).
+  "jornada-motion": MotionEscrito,
 };
 
 /** O instante (s, tempo da base) que o quadro condensado `f` mostra. */
