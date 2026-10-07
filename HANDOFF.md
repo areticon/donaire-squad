@@ -19727,3 +19727,10 @@ sozinho", Claude como diretor + Remotion + Higgsfield). Tudo abaixo publicado
 - INFOGRÁFICO Nano Banana Pro: branch infografico-nano-banana (6cb849f) NÃO publicada; 4:5 bom, 16:9 reprovado 2x na leitura do texto, fundo com objetos de consórcio vindos do texto do estilo.
 - SEPARAÇÃO DE CONTAS (card 716): Bruno vai migrar fornecedores para o cartão e as contas da Demandou; passo a passo na página do card 716 e na conversa de 07/10. Avisar o Claude antes de cada transferência (confere /saude e religa a linha de comando).
 - CUSTO DE PROVAS: US$ 5,00 do editor + US$ 0,46 infográfico + US$ 0,19 elementos (orçamento US$ 10/semana aprovado).
+
+## 07/10/2026: diagnóstico do vídeo cmuxladtl e prioridade única
+- PRIORIDADE ÚNICA: o editor de vídeo chegar na qualidade da landing (pitch-v4-0110). Receita de referência: docs/referencia-landing/v4/montar_pitch4.py e docs/referencia-landing/cenas-registro.json.
+- DIAGNÓSTICO (Bruno, 07/10): o vídeo cmuxladtl saiu com 7 elementos, todos em tela cheia ou B-roll; imagens GPT Image 2.5 em qualidade média; prompt e modelo de cada elemento NÃO gravados; nenhuma sobreposição, nenhum movimento, nenhuma profundidade.
+- O QUE FALTA EM RELAÇÃO À LANDING: a landing compõe em camadas (base em movimento, painel em vidro por cima, texto em HTML entrando na palavra falada, câmera andando sobre tela real em 2x); o editor entrega elemento solto trocando a tela inteira.
+- MÉTODO DEFINIDO: explicar a receita, decisão do Bruno sobre texto animado desenhado em código por cima das cenas de IA ANTES de codar, aplicar num vídeo real (cmuxladtl ou cmux4417u) com quadros lado a lado com a pitch-v4 nos mesmos segundos, só generalizar depois do OK. Gravar prompt, modelo, qualidade e custo de cada elemento em completoMontagem.jornada.midias. Imagem em qualidade alta; corte de custo só perguntando. Um agente só no editor, uma mudança por vez.
+- PENDENTE: troca do origin para https://github.com/demandou/demandou.git e push da backup-0210 (f6f7788 e este registro estão só locais); o push foi barrado pela permissão automática nesta sessão.
