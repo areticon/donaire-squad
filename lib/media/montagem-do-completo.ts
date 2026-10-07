@@ -98,6 +98,7 @@ import { amostrasNoTempoEditado } from "@/lib/media/jornada/linha-do-tempo";
 import { montarPelaJornada } from "@/lib/media/jornada/montar-servidor";
 import { estadoComRecorte, montagemDoRecorte, type RecorteNaMontagem } from "@/lib/media/corte-do-completo";
 import { estornarRefacaoDoCompleto } from "@/lib/credits/estorno-da-refacao";
+import { apagarMidias } from "@/lib/media/faxina";
 import { dependenciasDaGeracao } from "@/lib/media/jornada/geracao-servidor";
 import { contextoDoProjeto, jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import type { EdicaoDaJornada } from "@/lib/media/jornada/montagem";
@@ -1134,7 +1135,7 @@ async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null,
   // O CORTE DO CLIENTE NO COMPLETO (08/10): pronto fecha a refação; sem
   // montagem devolve o que estava no ar (o editado, a fala e os elementos de
   // antes), em vez de deixar o cliente sem edição nenhuma.
-  const { estado: novo, desfeito } = estadoComRecorte(pedido);
+  const { estado: novo, desfeito, voltou } = estadoComRecorte(pedido);
   const json = JSON.stringify(novo);
   const n = await prisma.$executeRaw`
     UPDATE video_jobs SET "completoMontagem" = ${json}::jsonb
@@ -1154,13 +1155,14 @@ async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null,
     // A DESISTÊNCIA POR ERRO TÉCNICO avisa os admins, uma vez por desistência
     // (a troca para "sem-montagem" só acontece uma vez por rodada).
     if (pedido.estado === "sem-montagem" && pedido.falhaTecnica && lido?.estado !== "sem-montagem") {
-      await avisarAdminsDaMontagem({ videoJobId, alvo: "completo", motivo: `${desfeito ? "corte do cliente não aplicado: " : ""}${pedido.motivo ?? "sem detalhe"}` }).catch((e) =>
+      await avisarAdminsDaMontagem({ videoJobId, alvo: "completo", motivo: `${voltou ? "corte do cliente não aplicado: " : ""}${pedido.motivo ?? "sem detalhe"}` }).catch((e) =>
         console.error(`[montagem-do-completo][${videoJobId}] aviso aos admins falhou:`, e)
       );
       // A DEVOLUÇÃO (02/10): a montagem não foi entregue por erro nosso. No
       // corte do cliente (08/10) a montagem de antes está no ar: não se devolve
-      // a edição, só a refação (abaixo).
-      if (!desfeito) {
+      // a edição, só a refação (abaixo). Pela marca `voltou`, e não pela
+      // refação: a marca da refação pode ter se perdido no caminho.
+      if (!voltou) {
         await estornarEdicaoNaoEntregue({
           videoId: videoJobId,
           alvo: "completo",
@@ -1169,9 +1171,12 @@ async function trocarEstado(videoJobId: string, lido: MontagemDoCompleto | null,
         }).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução falhou:`, e));
       }
     }
-    if (desfeito) {
+    if (voltou) {
       console.warn(`[montagem-do-completo][${videoJobId}] o corte do cliente não saiu (${pedido.motivo ?? "sem motivo"}); o completo de antes continua no ar`);
-      await estornarRefacaoDoCompleto(videoJobId, desfeito).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução da refação falhou:`, e));
+      if (desfeito) await estornarRefacaoDoCompleto(videoJobId, desfeito).catch((e) => console.error(`[montagem-do-completo][${videoJobId}] devolução da refação falhou:`, e));
+      // A base do corte que não saiu não é de ninguém agora (revisão de 08/10): o estado que voltou aponta para a base de antes.
+      const orfa = pedido.baseUrl && pedido.baseUrl !== novo.baseUrl && pedido.baseUrl !== novo.completoOriginal?.url ? pedido.baseUrl : null;
+      if (orfa) await apagarMidias([orfa], `completo/${videoJobId}`).catch(() => 0);
     }
   }
   return n > 0;
@@ -2727,6 +2732,12 @@ async function entregarCompleto(
       where: { imageUrl: { in: antigas }, status: { notIn: ["published", "publishing"] } },
       data: { imageUrl: resultado.montado.url },
     });
+  }
+  // O CORTE DO CLIENTE NO COMPLETO (revisão de 08/10): o editado de antes ficou
+  // no ar até aqui, e agora o novo tomou o lugar dele. O arquivo velho sai, como
+  // o cortar-callback faz com o completo anterior quando a base nova chega.
+  if (lido.recorteDoCliente && lido.montadoUrl && lido.montadoUrl === v.completoUrl && lido.montadoUrl !== resultado.montado.url) {
+    await apagarMidias([lido.montadoUrl], `completo/${videoJobId}`).catch(() => 0);
   }
   // O AVISO DE PRONTO (30/09, pedido do Bruno): a faixa promete "você recebe um
   // e-mail quando terminar", e o completo é a peça que mais demora. Uma vez,

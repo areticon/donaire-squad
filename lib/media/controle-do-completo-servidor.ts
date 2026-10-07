@@ -40,10 +40,13 @@ import {
   type PalavraDoControle,
 } from "@/lib/media/controle-do-corte";
 import {
+  baseDoCorte,
   comCorteQueNaoSaiu,
   editadoNoAr,
   levarTrecho,
   moverAbertura,
+  REFAZENDO_VALE_MS,
+  roteiroAntesDoCorte,
   semRefazendo,
   type CompletoDoCliente,
   type RefazendoOCompleto,
@@ -80,8 +83,6 @@ import {
 
 const PRODUZINDO = ["roteirizando", "aprovando", "selected", "cutting", "transcribing", "selecting", "pending", "uploading"];
 const MONTAGEM_ANDANDO = ["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"];
-/** Uma refação do completo leva perto de 0,6 min por minuto de gravação na base, mais a montagem: passado disto, ela não trava mais o controle. */
-const REFAZENDO_VALE_MS = 4 * 3600_000;
 
 type MidiaDaEdicao = { url: string | null; tipo: "imagem" | "recorte" | "video" | null; formato: string; proporcao: number | null };
 
@@ -418,7 +419,8 @@ export async function aplicarControleDoCompleto(
         ),
       }
     : j;
-  const refazendo: RefazendoOCompleto = { em: agora, base: null, refacao: refacoes, creditos, userId, roteiroAnterior: semRefazendo(l.r) as Record<string, unknown> };
+  // O que volta se este corte não sair é o que está no ar: com uma refação velha que nunca voltou, o roteiro de antes dela (revisão de 08/10).
+  const refazendo: RefazendoOCompleto = { em: agora, base: null, refacao: refacoes, creditos, userId, roteiroAnterior: roteiroAntesDoCorte(l.r) as unknown as Record<string, unknown> };
   const novo: RoteiroDoVideo = { ...levado.roteiro, jornada, completoDoCliente: completoDoCliente(refacoes, { refazendo, ultima: { ...registro, creditos } }) };
 
   // O roteiro primeiro (o pedido ao worker é montado dele), e volta se o worker recusar: nada muda e nada é cobrado.
@@ -474,14 +476,26 @@ export async function aplicarControleDoCompleto(
  * quando tratou (a rota não troca o `completoUrl`). Sem editado no ar (a
  * montagem desligada ou nunca saiu), a base com o corte vai ao ar como sempre,
  * e a marca da refação sai aqui.
+ *
+ * O AVISO REPETIDO (revisão de 08/10): com o editado no ar, o `completoUrl`
+ * nunca é a base do corte, então a rota não reconhece pela URL um aviso que o
+ * worker repetiu (ele repete quando a resposta demora ou falha), nem a
+ * segunda base do mesmo corte. Sem esta conta, o repetido tomava o lugar do
+ * editado e apagava o arquivo dele (`baseDoCorte`, lib/media/corte-do-completo.ts).
  */
 export async function receberBaseDoCorteDoCompleto(videoId: string, completoUrl: string | null, base: { url: string; bytes?: number | null }): Promise<boolean> {
   const r = await lerRoteiroDoVideo(videoId);
-  const ref = r?.completoDoCliente?.refazendo;
-  if (!ref || ref.base) return false;
-  const linhas = await prisma.$queryRaw<Array<{ estado: string | null; montadoUrl: string | null }>>`
-    SELECT "completoMontagem" ->> 'estado' AS estado, "completoMontagem" ->> 'montadoUrl' AS "montadoUrl" FROM video_jobs WHERE id = ${videoId}`;
+  const linhas = await prisma.$queryRaw<Array<{ estado: string | null; montadoUrl: string | null; baseUrl: string | null; original: string | null }>>`
+    SELECT "completoMontagem" ->> 'estado' AS estado, "completoMontagem" ->> 'montadoUrl' AS "montadoUrl",
+           "completoMontagem" ->> 'baseUrl' AS "baseUrl", "completoMontagem" #>> '{completoOriginal,url}' AS original
+    FROM video_jobs WHERE id = ${videoId}`;
   const m = linhas[0];
+  const tipo = baseDoCorte(base.url, r?.completoDoCliente, m ? { baseUrl: m.baseUrl, completoOriginal: m.original ? { url: m.original } : null } : null);
+  if (tipo === "repetida" || tipo === "segunda") {
+    console.warn(`[controle-do-completo][${videoId}] base ${tipo === "repetida" ? "repetida" : "a mais do mesmo corte"} ignorada; o completo no ar não muda`);
+    return true;
+  }
+  if (tipo === "comum") return false;
   if (montagemDoCompletoLigada() && m && editadoNoAr({ estado: m.estado ?? "", montadoUrl: m.montadoUrl ?? undefined }, completoUrl)) {
     if (await marcarCompletoNaFila(videoId, { base: { url: base.url, bytes: base.bytes ?? null } })) {
       // A retomada depois de um reinício do worker passa pela rota de refazer o completo, que zera o fim da rodada.

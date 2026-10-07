@@ -313,6 +313,7 @@ test("a base do corte entra na fila sem tirar o editado do ar; pronto fecha, fal
   const falhou = estadoComRecorte({ ...fila, estado: "sem-montagem", desde: "d4", motivo: "render quebrou", falhaTecnica: true } as any);
   const voltou = falhou.estado as any;
   assert.equal(falhou.desfeito?.refacao, 1);
+  assert.equal(falhou.voltou, true);
   assert.equal(voltou.estado, "pronto");
   assert.equal(voltou.desde, "d4", "o desde é novo: o card vê a troca");
   assert.equal(voltou.montadoUrl, "https://blob/completo-editado-1.mp4");
@@ -324,7 +325,7 @@ test("a base do corte entra na fila sem tirar o editado do ar; pronto fecha, fal
 
   // Sem nada de corte, a troca é a de sempre.
   const comum = { estado: "sem-montagem", desde: "d5" };
-  assert.deepEqual(estadoComRecorte(comum as any), { estado: comum, desfeito: null });
+  assert.deepEqual(estadoComRecorte(comum as any), { estado: comum, desfeito: null, voltou: false });
   assert.equal(comCorteQueNaoSaiu(null, { em: "x", motivo: null }), null);
 });
 
@@ -361,7 +362,7 @@ test("no código: cada ponta usa o registro próprio do completo, e a base do co
   const troca = cb.indexOf("completoUrl: atrasado.completo.url");
   assert.ok(recebe > 0 && troca > recebe, "a base do corte é tratada antes de qualquer troca do completoUrl");
   assert.ok(cb.indexOf("desfazerCorteDoCompletoSemBase(id, atrasado.erros") > 0, "o completo que não veio desfaz o corte em vez de gravar erro");
-  assert.match(ler("lib/media/montagem-do-completo.ts"), /const \{ estado: novo, desfeito \} = estadoComRecorte\(pedido\)/);
+  assert.match(ler("lib/media/montagem-do-completo.ts"), /const \{ estado: novo, desfeito, voltou \} = estadoComRecorte\(pedido\)/);
   assert.match(ler("lib/media/roteiro-da-edicao.ts"), /if \(r\.completoDoCliente\?\.manter\?\.length\) return r\.completoDoCliente\.manter;/);
   assert.match(ler("app/api/videos/[id]/guarda-da-fala/route.ts"), /mantidosDoCompleto\(id\)/);
 });

@@ -135,12 +135,14 @@ export function levarJornadaParaFalaNova(estado: EstadoDaJornada, c: CorteNaJorn
   const agora = c.agora ?? new Date().toISOString();
   const sairam = new Map<string, ElementoQueSaiu>();
   let movidos = 0;
+  // O que o cliente já tinha removido na revisão não "sai pelo corte" (revisão de 08/10): a mensagem dizia que saiu um elemento que ele mesmo já tinha tirado.
+  const jaRemovido = (id: string) => e.revisao[id]?.acao === "removido";
   const levarLista = <T extends ElementoProposto>(lista: T[], descricaoDe: (el: T) => string): T[] => {
     const saida: T[] = [];
     for (const el of lista) {
       const novo = levarElemento(el, c, frasesNovas);
       if (!novo) {
-        if (!sairam.has(el.id)) sairam.set(el.id, { id: el.id, descricao: descricaoDe(el), frase: el.momento.frase, inicio: el.gatilho.t });
+        if (!sairam.has(el.id) && !jaRemovido(el.id)) sairam.set(el.id, { id: el.id, descricao: descricaoDe(el), frase: el.momento.frase, inicio: el.gatilho.t });
         continue;
       }
       if (novo.gatilho.indice !== el.gatilho.indice || novo.momento.indice !== el.momento.indice) movidos++;

@@ -61,16 +61,80 @@ export type CompletoDoCliente = {
   refacoes: number;
   ultima: { em: string; escolha: EscolhaDoCorte; mudancas: string[]; duracao: number; creditos?: number; sairam?: string[] } | null;
   refazendo?: RefazendoOCompleto | null;
-  /** A última refação voltou atrás (a base ou a montagem falhou): o controle diz ao cliente. */
-  naoSaiu?: { em: string; motivo: string | null } | null;
+  /**
+   * A última refação voltou atrás (a base ou a montagem falhou): o controle diz
+   * ao cliente. `base`: o arquivo daquele corte, para um aviso repetido do
+   * worker não pô-lo no ar depois (`baseDoCorte`).
+   */
+  naoSaiu?: { em: string; motivo: string | null; base?: string | null } | null;
 };
+
+/**
+ * Por quanto tempo a marca da refação vale (08/10): uma refação do completo
+ * leva perto de 0,6 min por minuto de gravação na base, mais a montagem.
+ * Passado isto, o trabalho morreu sem aviso e a marca não trava mais nada.
+ */
+export const REFAZENDO_VALE_MS = 4 * 3600_000;
+
+/**
+ * UM CORTE DO CLIENTE NO COMPLETO ESTÁ ANDANDO (revisão de 08/10): o worker
+ * refaz a base ou a montagem edita em cima dela. Enquanto anda, nada mais
+ * mexe na edição do completo (o chat do Vitor, a volta à edição, o ajuste
+ * pedido no card): a base do corte só não tira o editado do ar se a montagem
+ * de agora ainda for a que está no ar quando ela chegar.
+ */
+export function corteDoCompletoAndando(cdc: Pick<CompletoDoCliente, "refazendo"> | null | undefined, agora = Date.now()): boolean {
+  const r = cdc?.refazendo;
+  return Boolean(r && agora - new Date(r.em).getTime() < REFAZENDO_VALE_MS);
+}
+
+/**
+ * O roteiro que está no ar antes de um corte novo, para voltar se ele não
+ * sair (revisão de 08/10). Com uma refação velha que nunca voltou (o worker
+ * morreu sem aviso), o que está no ar é o roteiro de ANTES dela, e não o dela:
+ * voltar para o dela poria na tela uma fala que nunca foi ao ar.
+ */
+export function roteiroAntesDoCorte<R extends { completoDoCliente?: CompletoDoCliente | null }>(r: R): R {
+  const cdc = r.completoDoCliente;
+  if (!cdc?.refazendo) return r;
+  if (cdc.refazendo.roteiroAnterior) return cdc.refazendo.roteiroAnterior as unknown as R;
+  return { ...r, completoDoCliente: { ...cdc, refazendo: null } };
+}
+
+/**
+ * A BASE QUE O WORKER DEVOLVEU, vista pelo corte do cliente (revisão de
+ * 08/10). Com o editado no ar, o `completoUrl` nunca é a base do corte, então
+ * a rota não reconhece um aviso repetido pela URL, e um repetido tomaria o
+ * lugar do editado e apagaria o arquivo dele. O worker repete o aviso quando a
+ * resposta demora ou falha (worker/src/index.mjs, `avisar`), e o pedido só do
+ * completo pode sair duas vezes (a retomada depois de um reinício, o botão de
+ * refazer o completo).
+ *
+ * - "do-corte": a base do corte em andamento, que ainda não chegou: vai para a montagem;
+ * - "repetida": uma base que este vídeo já recebeu (a da montagem, a do corte
+ *   em andamento ou a do corte que não saiu): nada muda;
+ * - "segunda": outra base do MESMO corte, que já tem a sua na montagem: nada
+ *   muda (o arquivo extra pode sair);
+ * - "comum": nenhuma das anteriores, o caminho de sempre.
+ */
+export function baseDoCorte(
+  base: string,
+  cdc: Pick<CompletoDoCliente, "refazendo" | "naoSaiu"> | null | undefined,
+  montagem: { baseUrl?: string | null; completoOriginal?: { url: string } | null } | null | undefined,
+  agora = Date.now()
+): "do-corte" | "repetida" | "segunda" | "comum" {
+  const ref = cdc?.refazendo;
+  if (ref?.base === base || cdc?.naoSaiu?.base === base || montagem?.baseUrl === base || montagem?.completoOriginal?.url === base) return "repetida";
+  if (!corteDoCompletoAndando(cdc, agora)) return "comum";
+  return ref?.base ? "segunda" : "do-corte";
+}
 
 /**
  * O roteiro de antes com a marca de que o último corte não saiu. Sem corte
  * anterior, nasce um registro vazio (sem `manter`, o completo continua sendo a
  * gravação menos a limpeza) só para levar o aviso.
  */
-export function comCorteQueNaoSaiu<R extends { completoDoCliente?: CompletoDoCliente | null } | null | undefined>(r: R, naoSaiu: { em: string; motivo: string | null }): R {
+export function comCorteQueNaoSaiu<R extends { completoDoCliente?: CompletoDoCliente | null } | null | undefined>(r: R, naoSaiu: { em: string; motivo: string | null; base?: string | null }): R {
   if (!r) return r;
   const cdc: CompletoDoCliente = r.completoDoCliente ?? { manter: [], remocoes: [], doCliente: [], mantidosPeloUsuario: [], refacoes: 0, ultima: null };
   return { ...r, completoDoCliente: { ...cdc, refazendo: null, naoSaiu } };
@@ -188,16 +252,26 @@ export function montagemDoRecorte<M extends MontagemComRecorte>(
  *   no ar, a fala e os elementos de antes), com o motivo dito, e devolve a
  *   refação para quem chama estornar.
  * - Qualquer outro: como veio.
+ *
+ * `voltou` diz que o corte foi desfeito, mesmo quando a marca da refação se
+ * perdeu no caminho (revisão de 08/10): sem ela, quem chama devolvia a edição
+ * inteira de um vídeo cuja edição de antes voltou ao ar.
  */
-export function estadoComRecorte<M extends MontagemComRecorte>(novo: M): { estado: M; desfeito: RefazendoOCompleto | null } {
+export function estadoComRecorte<M extends MontagemComRecorte>(novo: M): { estado: M; desfeito: RefazendoOCompleto | null; voltou: boolean } {
   const r = novo.recorteDoCliente;
-  if (!r) return { estado: novo, desfeito: null };
-  if (novo.estado === "pronto") return { estado: { ...novo, recorteDoCliente: null, roteiro: semRefazendo(novo.roteiro) }, desfeito: null };
-  if (novo.estado !== "sem-montagem") return { estado: novo, desfeito: null };
+  if (!r) {
+    // A montagem do corte foi tomada por outra (a refeita forçada pelo admin) e saiu com a mesma base: a marca da refação não vale mais.
+    const ref = novo.roteiro?.completoDoCliente?.refazendo;
+    if (novo.estado === "pronto" && ref?.base && ref.base === (novo as Record<string, unknown>).baseUrl) return { estado: { ...novo, roteiro: semRefazendo(novo.roteiro) }, desfeito: null, voltou: false };
+    return { estado: novo, desfeito: null, voltou: false };
+  }
+  if (novo.estado === "pronto") return { estado: { ...novo, recorteDoCliente: null, roteiro: semRefazendo(novo.roteiro) }, desfeito: null, voltou: false };
+  if (novo.estado !== "sem-montagem") return { estado: novo, desfeito: null, voltou: false };
   const refazendo = novo.roteiro?.completoDoCliente?.refazendo ?? null;
-  const naoSaiu = { em: novo.desde, motivo: novo.motivo ?? null };
+  const base = refazendo?.base ?? (typeof (novo as Record<string, unknown>).baseUrl === "string" ? ((novo as Record<string, unknown>).baseUrl as string) : null);
+  const naoSaiu = { em: novo.desde, motivo: novo.motivo ?? null, base };
   const roteiroAnterior = comCorteQueNaoSaiu((refazendo?.roteiroAnterior as M["roteiro"] | null | undefined) ?? semRefazendo(novo.roteiro), naoSaiu);
-  if (!r.anterior) return { estado: { ...novo, recorteDoCliente: null, roteiro: roteiroAnterior }, desfeito: refazendo };
+  if (!r.anterior) return { estado: { ...novo, recorteDoCliente: null, roteiro: roteiroAnterior }, desfeito: refazendo, voltou: true };
   const voltou = {
     ...(r.anterior as Partial<M>),
     desde: novo.desde,
@@ -206,5 +280,5 @@ export function estadoComRecorte<M extends MontagemComRecorte>(novo: M): { estad
     recorteDoCliente: null,
     recorteQueNaoSaiu: naoSaiu,
   } as unknown as M;
-  return { estado: voltou, desfeito: refazendo };
+  return { estado: voltou, desfeito: refazendo, voltou: true };
 }

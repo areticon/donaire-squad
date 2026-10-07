@@ -38,6 +38,7 @@ import {
   CREDITOS_POR_NOVA_IDEIA,
 } from "@/lib/media/limits";
 import type { MontagemDoCompleto } from "@/lib/media/montagem-do-completo";
+import { corteDoCompletoAndando } from "@/lib/media/corte-do-completo";
 import type { Word } from "@/lib/media/transcribe";
 import { projetoVisivel } from "@/lib/equipe/conta";
 
@@ -361,7 +362,9 @@ export async function contextoDoCompleto(video: VideoLido): Promise<ContextoDoCo
     fala,
     planoOriginal: m?.planoOriginal ?? null,
     montagemDesde: m?.desde ?? null,
-    montagemTrabalhando: Boolean(m && TRABALHANDO_NO_COMPLETO.includes(m.estado) && idade < 3 * 3600_000),
+    // O corte do cliente no completo (revisão de 08/10) também trava: enquanto o worker refaz a base, a montagem ainda diz
+    // "pronto", e um ajuste agora tiraria a montagem do ar antes de a base chegar (aí ela tomaria o lugar do editado).
+    montagemTrabalhando: Boolean(m && TRABALHANDO_NO_COMPLETO.includes(m.estado) && idade < 3 * 3600_000) || corteDoCompletoAndando(m?.roteiro?.completoDoCliente),
     assetsProntos: (m?.assets ?? []).filter((a) => a.url),
     familia: familiaDoVideo(video),
   };

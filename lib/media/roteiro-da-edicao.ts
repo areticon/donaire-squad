@@ -90,6 +90,7 @@ import { jevDaJornada, redatorDaJornada } from "@/lib/media/jornada/servidor";
 import { frasesDaFala } from "@/lib/media/jornada/linha-do-tempo";
 import { ajusteNoPlano } from "@/lib/media/jornada/ajuste";
 import { editorJornadaLigado } from "@/lib/media/jornada/estado";
+import { corteDoCompletoAndando } from "@/lib/media/corte-do-completo";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -1343,6 +1344,9 @@ export async function reabrirJornadaComAjuste(videoId: string, texto: string): P
   const r = await lerRoteiroDoVideo(videoId);
   const v = await lerVideo(videoId);
   if (!v || !r?.jornada?.aprovado || !r.completo?.fala?.palavras?.length) return false;
+  // O CORTE DO CLIENTE NO COMPLETO andando (revisão de 08/10): reabrir agora tiraria a aprovação da montagem que vai
+  // receber a base do corte, e ela voltaria atrás levando o pedido junto. O pedido fica no card, como os outros.
+  if (corteDoCompletoAndando(r.completoDoCliente)) return false;
   const linhas = await prisma.$queryRaw<Array<{ m: { midias?: Record<string, { url: string; tipo: "imagem" | "recorte" | "video"; formato: string; proporcao: number | null }> } | null }>>`
     SELECT "completoMontagem" -> 'jornada' AS m FROM video_jobs WHERE id = ${videoId}`;
   const palavras = r.completo.fala.palavras;
