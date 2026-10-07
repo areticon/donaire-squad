@@ -98,8 +98,8 @@ export function caixasCandidatas(o: {
         if (o.protegidas.some((r) => cruza(c, r))) continue;
         if (o.legenda && c.y < o.legenda[1] && c.y + c.h > o.legenda[0]) continue;
         const corpo = o.corpos.length ? o.corpos.reduce((s, b) => s + intersecao(c, b), 0) / (o.corpos.length * area(c)) : 0;
-        // O elemento não entra sobre a pessoa: no máximo uma beirada do corpo (15% da caixa). O rosto nunca.
-        if (corpo > 0.15) continue;
+        // 07/10 (Bruno): o elemento entra COM a pessoa na tela e pode cobrir o corpo (até 55% da caixa); o rosto nunca.
+        if (corpo > 0.55) continue;
         validas.push({ c, nota: area(c) * (1 - corpo) });
       }
     }
@@ -131,7 +131,7 @@ export function caixasCandidatas(o: {
 // ─────────────────────────────── o tempo ───────────────────────────────
 
 /** O teto e o piso de tela de cada formato (s): recorte e janela ficam a frase; tela cheia e B-roll são curtos. */
-const DURACAO: Record<ElementoAprovado["formato"], [number, number]> = { "recorte-sobre": [2, 4.5], janela: [2.2, 5], "tela-cheia": [2, 3.5], broll: [2.5, 3] };
+const DURACAO: Record<ElementoAprovado["formato"], [number, number]> = { "recorte-sobre": [2, 4.5], janela: [2.2, 5], "tela-cheia": [2, 3.5], broll: [2.5, 3], grafico: [2.2, 4.5] };
 
 export type OpcaoDeTempo = { gatilho: { de: number; ate: number }; frase: { de: number; ate: number } };
 
@@ -250,6 +250,37 @@ export function ancoraDoTexto(o: { formato: "9:16" | "16:9"; W: number; H: numbe
   return null;
 }
 
+/**
+ * ONDE O GRÁFICO FICA (07/10, geometria): a pessoa segue na tela, e o gráfico
+ * ocupa a primeira faixa livre de rosto, tela, quadro e legenda (pode cobrir o
+ * corpo): no vertical, de cima para baixo na largura útil; no deitado, a coluna
+ * do lado livre. Sem lugar com todos os itens, tenta com menos; nem o título
+ * cabe, null.
+ */
+export function lugarDoGrafico(o: { formato: "9:16" | "16:9"; W: number; H: number; protegidas: Caixa[]; legenda: FaixaDaLegenda; nItens: number; grande?: boolean }): { x: number; y: number; w: number; itens: number; escala: number } | null {
+  const seg = AREA_SEGURA[o.formato];
+  const vertical = o.formato === "9:16";
+  const u = (Math.min(o.W, o.H) / 1080) * (vertical ? 1.3 : 1);
+  const colunas = vertical ? [{ x: 0.06, w: 0.86 }] : [{ x: seg.esquerda, w: 0.4 }, { x: 1 - seg.direita - 0.4, w: 0.4 }];
+  // Rosto grande no vertical deixa só uma faixa no alto (prova de 07/10: 15% da altura): o gráfico encolhe até 62%
+  // (o título ainda passa de 38 px num quadro de 1080) e solta itens antes de ficar fora.
+  for (const escala of [1, 0.85, 0.72, 0.62]) {
+    for (let n = o.nItens; n >= 0; n--) {
+      const h = (alturaDoTexto(n, vertical, o.H, o.W) + (o.grande ? (150 * u) / o.H : 0)) * escala;
+      for (const c of colunas) {
+        for (let y = seg.topo; y + h <= 1 - seg.base + 1e-9; y += 0.01) {
+          const r = { x: c.x, y, w: c.w, h };
+          if (o.protegidas.some((p) => cruza(r, p))) continue;
+          if (o.legenda && r.y < o.legenda[1] && r.y + r.h > o.legenda[0]) continue;
+          return { x: arred(c.x), y: arred(y), w: arred(c.w), itens: n, escala };
+        }
+      }
+      if (escala < 1 && n === o.nItens && n > 1) continue;
+    }
+  }
+  return null;
+}
+
 // ─────────────────────────────── a escolha do JEV e a edição ───────────────────────────────
 
 export const ANIMACOES = { deslizar: "entra deslizando do lado livre e sai suave", crescer: "cresce do centro da caixa com mola curta", desfoque: "surge do desfoque para o nítido" } as const;
@@ -317,7 +348,9 @@ export async function montarEdicao(o: {
   const avisosDoCliente: string[] = [];
   const rostoTipico = o.amostras.find((a) => a.rostos.length)?.rostos[0] ?? null;
   const leg = legendaDaJornada(o.legenda, o.palavras, o.formato, rostoTipico);
-  const comMidia = o.elementos.filter((e) => e.gerado.url).sort((a, b) => a.t - b.t);
+  // O gráfico (07/10) não tem mídia: entra pelo texto que o Claude escreveu.
+  const comMidia = o.elementos.filter((e) => e.gerado.url || (e.gerado.formato === "grafico" && o.textos?.[e.aprovado.id])).sort((a, b) => a.t - b.t);
+  for (const e of o.elementos) if (e.gerado.formato === "grafico" && !o.textos?.[e.aprovado.id]) avisos.push(`${e.aprovado.id}: gráfico sem texto escrito, ficou fora`);
   // 1. AS OPÇÕES (código).
   const opcoes = comMidia.map((e, i) => {
     const proximo = comMidia[i + 1]?.t ?? null;
@@ -341,7 +374,7 @@ export async function montarEdicao(o: {
     perguntas[`e_${id}`] = { type: "choice", instructions: { pergunta: "O elemento entra na palavra que o chama ou no começo da frase?", palavra: x.e.aprovado.gatilho.palavra, ...sobre }, criteria: { gatilho: `na palavra "${x.e.aprovado.gatilho.palavra}"`, frase: "no começo da frase" } };
     perguntas[`s_${id}`] = { type: "choice", instructions: { pergunta: "Que som acompanha a entrada deste elemento?", ...sobre }, criteria: { ...SONS } };
     const tx = o.textos?.[id];
-    if (tx)
+    if (tx && x.formato !== "grafico")
       perguntas[`t_${id}`] = {
         type: "choice",
         instructions: { pergunta: "O texto escrito para este momento entra por cima do elemento, num painel de vidro, com os itens aparecendo na palavra falada (como num vídeo de apresentação)?", titulo: tx.titulo, itens: tx.itens.map((i) => i.texto), ...sobre },
@@ -374,6 +407,46 @@ export async function montarEdicao(o: {
       continue;
     }
     const som = escolha(r[`s_${id}`], Object.keys(SONS) as Som[]) ?? "nenhum";
+    if (x.formato === "grafico") {
+      // O GRÁFICO EM CÓDIGO (07/10): ao lado da pessoa, que segue na tela; o lugar é o primeiro livre de rosto e legenda (pode cobrir o corpo).
+      const tx = o.textos![id];
+      const prox = opcoes[opcoes.indexOf(x) + 1]?.e.t;
+      const limite = Math.min(o.duracao - 0.05, prox !== undefined ? prox - 0.35 : Infinity, de + 8);
+      const itens = temposDosItens(tx.itens, o.palavras, de, limite).map((i) => ({ texto: i.texto, t: arred(i.t - de) }));
+      // O rosto medido só no tempo em que o gráfico fica na tela (com os itens, ou só o título): mais adiante ele pode subir no quadro.
+      const fimComItens = itens.length ? Math.min(limite, Math.max(ate, de + itens.at(-1)!.t + 1.6)) : ate;
+      // Só o número e o cronômetro pedem uma linha a mais; o ícone vai na linha do título.
+      const base = { formato: o.formato, W: o.W, H: o.H, legenda: leg.faixa, grande: Boolean(tx.numero || /cronometro|relogio|prazo|tempo/.test(tx.tipo ?? "")) };
+      const lugar =
+        lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, fimComItens), nItens: itens.length }) ??
+        lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: 0 }) ??
+        lugarDoGrafico({ ...base, grande: false, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: 0 });
+      if (!lugar) {
+        avisos.push(`${id}: o gráfico não coube fora do rosto e da legenda; ficou fora`);
+        continue;
+      }
+      const cabem = itens.slice(0, lugar.itens);
+      const semCabeca = base.grande && !lugarDoGrafico({ ...base, protegidas: protegidasNoIntervalo(o.amostras, de, ate), nItens: lugar.itens });
+      ate = cabem.length ? Math.min(limite, Math.max(ate, de + cabem.at(-1)!.t + 1.6)) : ate;
+      camadas.push({
+        id,
+        peca: "jornada-texto",
+        de,
+        ate: arred(ate),
+        entrada: 0.4,
+        saida: 0.25,
+        evento: 0.4,
+        eventos: cabem.map((i) => arred(de + i.t)),
+        // O número que conta e o ícone que pulsa se mexem o tempo todo.
+        ...(tx.numero || tx.icone || /cronometro|relogio|contador/.test(tx.tipo ?? "") ? { continua: true } : {}),
+        passes: ["frente", "vidro"],
+        props: { grafico: true, tipo: tx.tipo ?? "titulo", titulo: tx.titulo, destaque: tx.destaque, numero: semCabeca ? null : tx.numero ?? null, icone: tx.icone ?? null, ...(semCabeca ? { tipo: "titulo" } : {}), itens: cabem, ancora: { x: lugar.x, y: lugar.y, w: lugar.w }, escala: lugar.escala, escurecer: false },
+      });
+      escolhas.push({ id, formato: "grafico", tipo: tx.tipo ?? "titulo", entrada, som, de, ate: arred(ate), texto: { titulo: tx.titulo, numero: tx.numero ?? null, icone: tx.icone ?? null, itens: cabem.map((i) => i.texto) } });
+      if (som !== "nenhum") sons.push({ t: arred(Math.max(0, de - 0.05)), som, volume: VOLUME[som] });
+      fimAnterior = ate;
+      continue;
+    }
     if (x.naCaixa) {
       const proporcaoDoQuadro = o.W / o.H;
       const cabeInteira = Math.abs((x.e.gerado.proporcao ?? 0) / proporcaoDoQuadro - 1) <= 0.2;

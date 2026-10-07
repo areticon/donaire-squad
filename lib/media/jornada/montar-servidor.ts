@@ -85,15 +85,17 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   const porId = new Map(tempoDe.map((x) => [x.id, x]));
   // PASSO 6: um prompt por elemento (Sonnet) e a geração (Higgsfield), em paralelo.
   const entradas = entradasDosPrompts(aprovados, e.estado.leitura ?? null, e.formato);
+  const paraGerar = entradas.filter((x) => x.midia !== "grafico");
   // O TEXTO EM CAMADA (07/10), escrito junto com os prompts: a fala A PARTIR da palavra que chama o elemento (o que foi dito antes
   // não pode virar item: o elemento ainda não está na tela) e o que vem logo depois (os itens enumerados).
   const falaEm = (de: number, ate: number) => e.falaDoRender.filter((p) => p.inicio >= de - 0.05 && p.inicio < ate).map((p) => p.texto).join(" ");
   const [{ prompts, erros }, txt] = await Promise.all([
-    escreverPrompts(entradas, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId }),
+    // O gráfico (07/10) é desenhado em código: não tem prompt de imagem nem geração.
+    escreverPrompts(paraGerar, { contexto: e.contexto, leitura: e.estado.leitura ?? null, redator: e.redator, jev: e.jev, projectId: e.projectId }),
     escreverTextos(
       entradas.map((x) => {
         const tp = porId.get(x.id);
-        return { id: x.id, descricao: x.descricao, textoNaImagem: x.textoNaImagem, fala: tp ? falaEm(tp.t - 0.15, Math.max(tp.fraseAte, tp.t + 7)) : x.fala };
+        return { id: x.id, descricao: x.descricao, textoNaImagem: x.textoNaImagem, grafico: x.midia === "grafico", fala: tp ? falaEm(tp.t - 0.15, Math.max(tp.fraseAte, tp.t + 7)) : x.fala };
       }),
       { contexto: e.contexto, redator: e.redator }
     ).catch((err) => ({ textos: {} as Record<string, TextoDoElemento>, erros: [`textos: ${err instanceof Error ? err.message.slice(0, 120) : err}`] })),
@@ -103,7 +105,7 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   // O AJUSTE DO CARD (E6): as mídias desta edição que o pedido não tocou ficam; só as afetadas são geradas de novo.
   const mantidas = e.estado.midiasMantidas ?? {};
   const g = await gerarTodos(
-    entradas.filter((x) => !mantidas[x.id]).map((x) => ({ ...x, t: porId.get(x.id)?.t ?? 0 })),
+    paraGerar.filter((x) => !mantidas[x.id]).map((x) => ({ ...x, t: porId.get(x.id)?.t ?? 0 })),
     prompts,
     e.geracao
   );
@@ -114,8 +116,10 @@ export async function montarPelaJornada(e: EntradaDaMontagemDaJornada): Promise<
   marcar("geracao");
   // NUNCA ENTREGAR VAZIO EM SILÊNCIO (07/10): plano aprovado com elementos e nenhuma mídia gerada é
   // falha da esteira, não um vídeo. Para aqui com o motivo, para o admin ver e o vídeo poder ser refeito.
-  if (aprovados.length > 0 && !g.gerados.some((x) => x.url)) {
-    throw new Error(`nenhum dos ${aprovados.length} elementos aprovados foi gerado (${[...erros, ...g.gerados.map((x) => x.avisoAdmin).filter(Boolean)].slice(0, 3).join("; ")})`);
+  // Os gráficos não têm mídia: entram como "gerados" sem url, e a montagem os desenha pelo texto.
+  for (const x of entradas.filter((y) => y.midia === "grafico")) g.gerados.push({ id: x.id, url: null, tipo: null, formato: "grafico", proporcao: null, custoUsd: 0, modelo: "grafico em código", rodadas: 0, prompt: "", avisoAdmin: null, avisoCliente: null, tempos: { gerar: 0, recorte: 0, leitura: 0 } });
+  if (paraGerar.length > 0 && !g.gerados.some((x) => x.url) && !entradas.some((x) => x.midia === "grafico")) {
+    throw new Error(`nenhum dos ${paraGerar.length} elementos aprovados foi gerado (${[...erros, ...g.gerados.map((x) => x.avisoAdmin).filter(Boolean)].slice(0, 3).join("; ")})`);
   }
   const geradoDe = new Map(g.gerados.map((x) => [x.id, x]));
   // PASSO 7: as opções pelo código, a escolha pelo JEV, a edição.

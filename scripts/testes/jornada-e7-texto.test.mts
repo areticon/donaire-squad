@@ -49,3 +49,19 @@ test("o texto sobre a gravação não cruza o rosto nem a legenda", () => {
   // Sem lugar nenhum fora do rosto: o texto fica fora.
   assert.equal(ancoraDoTexto({ formato: "9:16", W: 1080, H: 1920, caixa, protegidas: [{ x: 0, y: 0, w: 1, h: 1 }], legenda: null, nItens: 1 }), null);
 });
+
+test("gráfico (07/10): ícones iguais ao worker, lugar fora do rosto e da legenda, número só se dito", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { NOMES_DOS_ICONES } = await import("@/lib/media/jornada/icones");
+  const { lugarDoGrafico } = await import("@/lib/media/jornada/montagem");
+  const w = readFileSync("worker/remotion/src/sob-medida/icones.ts", "utf8");
+  assert.deepEqual([...NOMES_DOS_ICONES], Object.keys(JSON.parse(w.slice(w.indexOf("= {") + 2, w.lastIndexOf("};") + 1))));
+  const rosto = { x: 0.25, y: 0.12, w: 0.5, h: 0.3 };
+  const l = lugarDoGrafico({ formato: "9:16", W: 1080, H: 1920, protegidas: [rosto], legenda: [0.68, 0.83], nItens: 2, grande: true })!;
+  assert.ok(l && l.y >= rosto.y + rosto.h, `o gráfico precisa ficar abaixo do rosto: ${JSON.stringify(l)}`);
+  assert.ok(l.y + 0.05 < 0.68);
+  const fala = "a gente trabalha 24 horas por dia";
+  assert.equal(conferirTexto({ titulo: "Sem pausa", numero: "24h", tipo: "cronometro", icone: "relogio" }, fala)!.numero, "24h");
+  assert.equal(conferirTexto({ titulo: "Sem pausa", numero: "88%" }, fala)!.numero, undefined, "número não dito sai");
+  assert.equal(conferirTexto({ titulo: "Sem pausa", icone: "inventado" }, fala)!.icone, undefined);
+});

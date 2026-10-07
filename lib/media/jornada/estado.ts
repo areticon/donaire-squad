@@ -61,10 +61,11 @@ export function esteiraDoCompleto(o: { porComando: boolean; sobMedida: boolean }
 // ─────────────────────────────── o contrato ───────────────────────────────
 
 /** Como a mídia gerada entra no vídeo (onde e como; nunca o que ela mostra). */
-export const FORMATOS_DA_JORNADA = ["tela-cheia", "janela", "recorte-sobre", "broll"] as const;
+/** "grafico" (07/10): desenhado em código ao lado da pessoa (texto, número, ícone, cronômetro, lista, linha do tempo); nenhuma geração. */
+export const FORMATOS_DA_JORNADA = ["tela-cheia", "janela", "recorte-sobre", "broll", "grafico"] as const;
 export type FormatoDaJornada = (typeof FORMATOS_DA_JORNADA)[number];
 
-export const MIDIAS_DA_JORNADA = ["imagem", "recorte", "video"] as const;
+export const MIDIAS_DA_JORNADA = ["imagem", "recorte", "video", "grafico"] as const;
 export type MidiaDaJornada = (typeof MIDIAS_DA_JORNADA)[number];
 
 /** O papel do elemento: o comum, a abertura do vídeo e a chamada (curtir, inscrever), todos decididos pela IA. */

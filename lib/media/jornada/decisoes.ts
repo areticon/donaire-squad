@@ -33,7 +33,9 @@ export type OpcaoDeDensidade = { id: string; faixa: [number, number]; criterio: 
  * ganha opções mais espaçadas. Nenhum número preso a estilo.
  */
 export function opcoesDeDensidade(duracao: number, genero: GeneroDoVideo | null | undefined): OpcaoDeDensidade[] {
-  const niveis: Array<[number, number]> = duracao <= 180 ? [[3, 5], [5, 8], [8, 12]] : duracao <= 600 ? [[5, 8], [8, 15], [15, 25]] : [[12, 20], [20, 35], [35, 60]];
+  // 07/10 (Bruno): vídeo curto pede efeito o tempo todo; quanto mais longo, mais espaçado.
+  const niveis: Array<[number, number]> =
+    duracao <= 75 ? [[2, 3.5], [2.5, 4.5], [3.5, 6]] : duracao <= 180 ? [[2.5, 4.5], [3.5, 6], [5, 8]] : duracao <= 600 ? [[5, 8], [8, 15], [15, 25]] : [[12, 20], [20, 35], [35, 60]];
   const espacar = genero === "tela" || genero === "apresentacao-com-quadro" || genero === "demonstracao";
   const faixas = espacar ? [...niveis.slice(1), [niveis[2][1], Math.round(niveis[2][1] * 1.7)] as [number, number]] : niveis;
   const nomes = ["intensa", "media", "espacada"];
@@ -49,24 +51,34 @@ const cabe = (areas: TrechoLido["areaLivre"], w: number, h: number) => areas.som
  * (geometria, não escolha): janela e recorte só onde há espaço sem cobrir
  * pessoa, tela ou quadro; tela cheia para imagem; B-roll para vídeo.
  */
-export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | null, formato: "9:16" | "16:9", livre?: EspacoLivre | null): FormatoDaJornada[] {
+export function formatosPossiveis(midia: MidiaDaJornada, trecho: TrechoLido | null, formato: "9:16" | "16:9", livre?: EspacoLivre | null, longo = true): FormatoDaJornada[] {
+  // O GRÁFICO (07/10) é desenhado em código e se acomoda no espaço que houver (acima da cabeça, sobre o peito, ao lado): sempre cabe.
+  if (midia === "grafico") return ["grafico"];
   const areas = trecho?.areaLivre ?? [];
   const vertical = formato === "9:16";
   // Com a medição do rosto no momento (amostras), o espaço real decide: o elemento só entra sobre a gravação se couber GRANDE.
-  const janela = livre ? (vertical ? livre.lateral >= 0.5 || livre.topo >= 0.3 : livre.lateral >= 0.34) : cabe(areas, vertical ? 0.55 : 0.28, vertical ? 0.2 : 0.3);
+  // 07/10: o elemento pode cobrir o corpo (nunca o rosto); a faixa entre o queixo e a legenda também vale.
+  const baixo = livre?.baixo ?? 0;
+  const janela = livre ? (vertical ? livre.lateral >= 0.5 || livre.topo >= 0.3 || baixo >= 0.24 : livre.lateral >= 0.34 || baixo >= 0.3) : cabe(areas, vertical ? 0.55 : 0.28, vertical ? 0.2 : 0.3);
   // No vertical, o recorte só vale onde ele entra GRANDE (lateral larga ou faixa alta acima da cabeça); senão a ideia vira imagem em tela cheia.
-  const recorte = livre ? (vertical ? livre.lateral >= 0.45 || livre.topo >= 0.2 : livre.lateral >= 0.28 || livre.topo >= 0.3) : cabe(areas, vertical ? 0.45 : 0.2, vertical ? 0.2 : 0.24);
+  const recorte = livre ? (vertical ? livre.lateral >= 0.45 || livre.topo >= 0.12 || baixo >= 0.16 : livre.lateral >= 0.28 || livre.topo >= 0.3 || baixo >= 0.24) : cabe(areas, vertical ? 0.45 : 0.2, vertical ? 0.2 : 0.24);
   // Tela compartilhada ou quadro no trecho: nada os cobre (nem tela cheia, nem B-roll); só o que cabe ao lado.
   const conteudo = Boolean(trecho?.tela || trecho?.quadro);
+  const sobre: FormatoDaJornada[] =
+    midia === "recorte" ? [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : [])] : [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : [])];
+  // VÍDEO CURTO (07/10, Bruno): o efeito entra COM a pessoa na tela; sem tela cheia e sem B-roll (só no vídeo longo).
+  if (!longo) {
+    // Sem lugar para a imagem ao lado, o momento vira gráfico (desenhado no espaço que houver), nunca tela cheia.
+    return sobre.length ? sobre : ["grafico"];
+  }
   const cheia = conteudo ? [] : (["tela-cheia"] as const);
   if (midia === "video") return conteudo ? [] : ["broll"];
-  if (midia === "recorte") return [...(recorte ? (["recorte-sobre"] as const) : []), ...(janela ? (["janela"] as const) : []), ...cheia];
-  return [...(janela ? (["janela"] as const) : []), ...(recorte ? (["recorte-sobre"] as const) : []), ...cheia];
+  return [...sobre, ...cheia];
 }
 
 /** A mídia que o formato pede (o recorte entra sobre a gravação; a janela e a tela cheia levam a composição; o B-roll é vídeo). */
 export function midiaDoFormato(f: FormatoDaJornada): MidiaDaJornada {
-  return f === "recorte-sobre" ? "recorte" : f === "broll" ? "video" : "imagem";
+  return f === "recorte-sobre" ? "recorte" : f === "broll" ? "video" : f === "grafico" ? "grafico" : "imagem";
 }
 
 export const CRITERIO_DO_FORMATO: Record<FormatoDaJornada, string> = {
@@ -74,9 +86,13 @@ export const CRITERIO_DO_FORMATO: Record<FormatoDaJornada, string> = {
   janela: "a imagem numa janela ao lado da pessoa, que segue em cena: para ilustrar sem tirar a pessoa",
   "recorte-sobre": "o objeto, ícone ou logo recortado entra sobre a gravação, na área livre: para o detalhe, a marca, o número",
   broll: "B-roll em vídeo, tela cheia, com a voz por baixo: para respirar e mostrar o assunto em movimento",
+  grafico: "gráfico desenhado ao lado da pessoa (texto, número, ícone, cronômetro, lista, linha do tempo): a pessoa segue falando na tela",
 };
 
 // ─────────────────────────────── o custo ───────────────────────────────
+
+/** A janela da abertura obrigatória (07/10): algo de impacto sempre entra nos primeiros 6 s. */
+export const SEGUNDOS_DA_ABERTURA = 6;
 
 /** Segundos de B-roll gerado por elemento (o Kling cobra no mínimo 3 s). */
 export const SEGUNDOS_DO_BROLL = 3;
@@ -85,6 +101,7 @@ export const SEGUNDOS_DO_BROLL = 3;
 export function custoDoElementoDaJornada(midia: MidiaDaJornada, comTexto: boolean): number {
   const imagem = DOLAR_POR_IMAGEM["higgsfield-gpt-image-2.5-high"];
   const leitura = comTexto ? 0.002 : 0;
+  if (midia === "grafico") return 0;
   if (midia === "video") return +(SEGUNDOS_DO_BROLL * DOLAR_POR_SEGUNDO_DE_VIDEO["kling-pro"]).toFixed(4);
   if (midia === "recorte") return +(imagem + DOLAR_POR_RECORTE + leitura).toFixed(4);
   return +(imagem + leitura).toFixed(4);
@@ -105,7 +122,7 @@ function trechoEm(leitura: LeituraDoVideo | null, t: number): TrechoLido | null 
   return leitura.trechos.find((x) => t >= x.de && t < x.ate) ?? leitura.trechos.at(-1) ?? null;
 }
 
-export type EspacoLivre = { topo: number; lateral: number };
+export type EspacoLivre = { topo: number; lateral: number; baixo?: number };
 export type MomentoComIdeias = { frase: Frase; ideias: IdeiaCrua[]; trecho: TrechoLido | null; livre?: EspacoLivre | null };
 
 /**
@@ -123,7 +140,10 @@ export function espacoLivre(amostras: AmostraDaJornada[] | null | undefined, de:
   const pessoa = corpos.length ? corpos : rostos;
   const esquerda = Math.min(...pessoa.map((r) => r.x + r.w * 0.08)) - seg.esquerda;
   const direita = 1 - seg.direita - Math.max(...pessoa.map((r) => r.x + r.w * 0.92));
-  return { topo: Math.max(0, +topo.toFixed(3)), lateral: Math.max(0, +Math.max(esquerda, direita).toFixed(3)) };
+  // A faixa entre o queixo e a legenda (07/10): pode cobrir o corpo, nunca o rosto.
+  const fimDoRosto = Math.max(...rostos.map((r) => r.y + r.h)) + 0.02;
+  const baixo = (formato === "9:16" ? 0.68 : 0.83) - fimDoRosto;
+  return { topo: Math.max(0, +topo.toFixed(3)), lateral: Math.max(0, +Math.max(esquerda, direita).toFixed(3)), baixo: Math.max(0, +baixo.toFixed(3)) };
 }
 
 /** Os momentos que têm ideia, com o trecho lido e o espaço livre medido. */
@@ -157,7 +177,7 @@ export function perguntasDoPlano(momentos: MomentoComIdeias[], o: { formato: "9:
       instructions: { pergunta: "Qual destas ideias serve melhor a esta fala, a este público e a esta cena? Ou nenhuma. Uma ideia que repete o assunto do momento anterior do mesmo jeito não serve.", fala: m.frase.texto, emCena: cena, ideiasDoMomentoAnterior: anterior },
       criteria: { ...Object.fromEntries(m.ideias.map((x, i) => [LETRAS[i], `${x.descricao}${x.textoNaImagem ? ` (texto na arte: "${x.textoNaImagem}")` : ""}`])), nenhuma: "nenhuma serve, ou repete o assunto do momento anterior: o momento fica com a gravação" },
     };
-    const possiveis = [...new Set(m.ideias.flatMap((x) => formatosPossiveis(x.midia, m.trecho, o.formato, m.livre)))];
+    const possiveis = [...new Set(m.ideias.flatMap((x) => formatosPossiveis(x.midia, m.trecho, o.formato, m.livre, o.duracao > 180)))];
     if (possiveis.length > 1) {
       q[`m${k}`] = {
         type: "choice",
@@ -203,6 +223,7 @@ export function planoDasRespostas(
   const descartados: DecisaoDoPlano["descartados"] = [];
   type Cand = { m: MomentoComIdeias; ideia: IdeiaCrua; formato: FormatoDaJornada; forca: number };
   const cands: Cand[] = [];
+  const primeiros: Cand[] = [];
   for (const m of momentos) {
     const k = m.frase.indice;
     // Pergunta sem resposta do JEV (falha do lote) não descarta a ideia em silêncio: a força fica no meio e a ideia é a primeira, com o motivo anotado.
@@ -211,12 +232,20 @@ export function planoDasRespostas(
     const forca = notaDe(r[`f${k}`]) ?? 1.5;
     const letra = escolhaDe(r[`i${k}`], [...LETRAS.slice(0, m.ideias.length), "nenhuma"]) ?? "a";
     if (semForca || semIdeia) descartados.push({ frase: k, motivo: `o JEV não respondeu (${semForca ? "força" : "ideia"}); a ideia seguiu para a escolha com força média` });
-    if (letra === "nenhuma" || forca < 1.5) {
+    // OS PRIMEIROS 6 s (07/10): guardados mesmo com força baixa, para a abertura obrigatória.
+    const ideiaCedo = m.ideias.filter((x) => x.gatilho.t < SEGUNDOS_DA_ABERTURA).sort((a, b) => Number(b.papel === "abertura") - Number(a.papel === "abertura"))[0];
+    if (ideiaCedo) {
+      const pos = formatosPossiveis(ideiaCedo.midia, m.trecho, o.formato, m.livre, (o.duracaoTotal ?? o.duracao) > 180);
+      if (pos.length) primeiros.push({ m, ideia: ideiaCedo, formato: pos[0], forca });
+    }
+    // No vídeo curto, "pede pouco" já entra (07/10, Bruno: mais efeitos); no longo, só o que pede.
+    const piso = (o.duracaoTotal ?? o.duracao) <= 180 ? 0.9 : 1.5;
+    if (letra === "nenhuma" || forca < piso) {
       descartados.push({ frase: k, motivo: letra === "nenhuma" ? "o JEV disse nenhuma" : `força ${forca.toFixed(2)}` });
       continue;
     }
     const ideia = m.ideias[LETRAS.indexOf(letra)];
-    const possiveis = formatosPossiveis(ideia.midia, m.trecho, o.formato, m.livre);
+    const possiveis = formatosPossiveis(ideia.midia, m.trecho, o.formato, m.livre, (o.duracaoTotal ?? o.duracao) > 180);
     if (!possiveis.length) {
       descartados.push({ frase: k, motivo: "a tela ou o quadro ocupam o momento e não há lugar ao lado" });
       continue;
@@ -246,6 +275,16 @@ export function planoDasRespostas(
     }
     custo += preco;
     escolhidos.push(c);
+  }
+  // A ABERTURA OBRIGATÓRIA (07/10, Bruno): nos primeiros 6 s sempre entra algo de impacto. Se nada escolhido cai ali,
+  // entra o candidato mais forte da janela, mesmo com a densidade cheia (o gráfico não custa geração).
+  if (!escolhidos.some((e) => e.ideia.gatilho.t < SEGUNDOS_DA_ABERTURA) && primeiros.length) {
+    const melhor = [...primeiros].sort((a, b) => b.forca - a.forca || a.ideia.gatilho.t - b.ideia.gatilho.t)[0];
+    const longe = escolhidos.filter((e) => Math.abs(e.ideia.gatilho.t - melhor.ideia.gatilho.t) < 2);
+    for (const l of longe) escolhidos.splice(escolhidos.indexOf(l), 1);
+    custo += custoDoElementoDaJornada(midiaDoFormato(melhor.formato), Boolean(melhor.ideia.textoNaImagem));
+    escolhidos.push({ ...melhor, ideia: { ...melhor.ideia, papel: melhor.ideia.papel === "chamada" ? "chamada" : "abertura" } });
+    descartados.push({ frase: melhor.m.frase.indice, motivo: "entrou como abertura obrigatória dos primeiros 6 s" });
   }
   escolhidos.sort((a, b) => a.ideia.gatilho.t - b.ideia.gatilho.t);
   const elementos: ElementoProposto[] = escolhidos.map((c, i) => {

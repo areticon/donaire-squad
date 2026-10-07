@@ -91,8 +91,8 @@ test("textoNaImagem só com palavras ditas, número dito ou marca citada", () =>
   assert.equal(textoPermitido("Inscreva-se", "qualquer fala", { papel: "chamada" }), "Inscreva-se", "a chamada curta vale");
 });
 
-test("nenhuma peça desenhada em código no catálogo da jornada: só os 4 formatos de mídia, e nenhum import do catálogo antigo", () => {
-  assert.deepEqual([...FORMATOS_DA_JORNADA], ["tela-cheia", "janela", "recorte-sobre", "broll"]);
+test("catálogo da jornada: os 4 formatos de mídia e o gráfico em código (07/10), e nenhum import do catálogo antigo", () => {
+  assert.deepEqual([...FORMATOS_DA_JORNADA], ["tela-cheia", "janela", "recorte-sobre", "broll", "grafico"]);
   for (const f of readdirSync("lib/media/jornada").filter((x) => x.endsWith(".ts"))) {
     const s = readFileSync(`lib/media/jornada/${f}`, "utf8");
     for (const proibido of ["editor-sob-medida/pecas", "comando-dos-estilos", "biblias", "editor-por-comando/linguagem", "editor-por-comando/elementos", "icones-de-linha", "plano-pelo-jev", "conferencia-visual", "guardas-do-completo", "diretor-de-montagem", "assets-da-montagem", "catalogo-de-estilos", "recortes-vox\"", "acentos-do-vox"]) {
@@ -102,11 +102,36 @@ test("nenhuma peça desenhada em código no catálogo da jornada: só os 4 forma
 });
 
 test("densidade: opções só da duração e do gênero; formatos pela área livre", () => {
-  assert.deepEqual(opcoesDeDensidade(60, "pessoa-falando").map((x) => x.faixa), [[3, 5], [5, 8], [8, 12]]);
+  // 07/10 (Bruno): vídeo curto com efeito o tempo todo; mais longo, mais espaçado.
+  assert.deepEqual(opcoesDeDensidade(60, "pessoa-falando").map((x) => x.faixa), [[2, 3.5], [2.5, 4.5], [3.5, 6]]);
+  assert.ok(opcoesDeDensidade(150, "pessoa-falando")[1].faixa[0] > opcoesDeDensidade(60, "pessoa-falando")[1].faixa[0]);
   assert.deepEqual(opcoesDeDensidade(1200, "pessoa-falando").map((x) => x.faixa), [[12, 20], [20, 35], [35, 60]]);
   assert.ok(opcoesDeDensidade(60, "tela")[0].faixa[0] > opcoesDeDensidade(60, "pessoa-falando")[0].faixa[0], "tela é mais espaçado");
   assert.deepEqual(formatosPossiveis("video", null, "16:9"), ["broll"]);
   assert.deepEqual(formatosPossiveis("recorte", { de: 0, ate: 1, pessoasEmCena: [], movimento: "pouco", acontece: "", mostra: [], falaDe: "", areaLivre: [] }, "9:16"), ["tela-cheia"], "sem área livre, só tela cheia");
+  // Vídeo curto: com a pessoa na tela (o gráfico sempre cabe; B-roll vira imagem ao lado; tela cheia só sem lugar).
+  assert.deepEqual(formatosPossiveis("grafico", null, "9:16", null, false), ["grafico"]);
+  assert.deepEqual(formatosPossiveis("video", null, "9:16", { topo: 0.05, lateral: 0, baixo: 0.3 }, false), ["janela", "recorte-sobre"]);
+  assert.deepEqual(formatosPossiveis("imagem", null, "9:16", { topo: 0.25, lateral: 0, baixo: 0.1 }, false), ["recorte-sobre"]);
+  assert.ok(!formatosPossiveis("imagem", null, "9:16", { topo: 0.25, lateral: 0, baixo: 0.1 }, false).includes("tela-cheia"));
   const pedido = pedidoDasIdeias(frasesDaFala(palavras), contexto, null);
   assert.ok(pedido.includes("Nicho: culinária caseira"));
+});
+
+test("abertura obrigatória: algo de impacto sempre entra nos primeiros 6 s (07/10)", async () => {
+  const { planoDasRespostas } = await import("@/lib/media/jornada/decisoes");
+  const frase = (indice: number, inicio: number) => ({ indice, de: indice * 10, ate: indice * 10 + 5, inicio, fim: inicio + 3, texto: `frase ${indice}` });
+  const ideia = (f: number, t: number, midia: "grafico" | "imagem") => ({ frase: f, gatilho: { palavra: "x", indice: f * 10, t }, descricao: `ideia da frase ${f}`, textoNaImagem: null, midia, papel: "elemento" as const, porque: "" });
+  const momentos = [
+    { frase: frase(0, 1), ideias: [ideia(0, 2, "grafico")], trecho: null, livre: null },
+    { frase: frase(1, 12), ideias: [ideia(1, 13, "grafico")], trecho: null, livre: null },
+  ];
+  // O JEV deu força baixa ao começo: mesmo assim a abertura entra.
+  const r = { f0: { type: "score", score: 0.4 }, i0: { type: "choice", choice: "a", confidence: 0.9 }, f1: { type: "score", score: 2.6 }, i1: { type: "choice", choice: "a", confidence: 0.9 } } as unknown as Record<string, RespostaDoJev>;
+  const d = planoDasRespostas(momentos as never, r, { formato: "9:16", duracao: 40, genero: "pessoa-falando", tetoUsd: 1, novoId: (k) => `el${k + 1}` });
+  const cedo = d.elementos.find((e) => e.gatilho.t < 6);
+  assert.ok(cedo, "nenhum elemento nos primeiros 6 s");
+  assert.equal(cedo!.papel, "abertura");
+  assert.equal(cedo!.formato, "grafico");
+  assert.equal(cedo!.custoUsd, 0, "o gráfico não custa geração");
 });

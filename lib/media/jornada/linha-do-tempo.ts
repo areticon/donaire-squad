@@ -86,7 +86,8 @@ export type Frase = { indice: number; de: number; ate: number; inicio: number; f
 
 /**
  * AS FRASES DA FALA: cada uma é um momento candidato do passo 4. Fecha na
- * pontuação final, na pausa de 0,6 s ou em 22 palavras; frase de menos de
+ * pontuação final, na pausa de 0,6 s, na vírgula depois de 2,5 s ou em 12
+ * palavras (07/10: o vídeo curto pede efeito a cada 2 a 4 s); frase de menos de
  * 0,8 s junta com a seguinte. Nada é escolhido aqui.
  */
 export function frasesDaFala(palavras: Palavra[]): Frase[] {
@@ -94,7 +95,9 @@ export function frasesDaFala(palavras: Palavra[]): Frase[] {
   let de = 0;
   for (let i = 0; i < palavras.length; i++) {
     const pausa = i + 1 < palavras.length ? palavras[i + 1].inicio - palavras[i].fim : Infinity;
-    const fecha = i === palavras.length - 1 || /[.!?…]["”]?$/.test(palavras[i].texto) || pausa >= 0.6 || i - de + 1 >= 22;
+    // 07/10 (Bruno, ritmo): momentos mais curtos; fecha também na vírgula depois de 2,5 s e em 12 palavras (era 22).
+    const longa = palavras[i].fim - palavras[de].inicio >= 2.5;
+    const fecha = i === palavras.length - 1 || /[.!?…]["”]?$/.test(palavras[i].texto) || pausa >= 0.6 || (longa && /[,;:]$/.test(palavras[i].texto)) || i - de + 1 >= 12;
     if (!fecha) continue;
     cruas.push({ de, ate: i });
     de = i + 1;

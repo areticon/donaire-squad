@@ -13,6 +13,7 @@ export const NOME_DO_FORMATO: Record<FormatoDaJornada, string> = {
   janela: "imagem em janela ao seu lado",
   "recorte-sobre": "elemento recortado sobre a gravação",
   broll: "B-roll em vídeo",
+  grafico: "gráfico animado ao seu lado (texto, número, ícone, cronômetro, lista, linha do tempo)",
 };
 
 export type ElementoNaTela = {

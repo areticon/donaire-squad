@@ -3,6 +3,7 @@ import { contextoEmTexto, type ContextoDaJornada } from "@/lib/media/jornada/con
 import type { Redator } from "@/lib/media/jornada/ideias";
 import { semTravessao } from "@/lib/media/jornada/estado";
 import type { EntradaDoPrompt } from "@/lib/media/jornada/prompts";
+import { NOMES_DOS_ICONES } from "@/lib/media/jornada/icones";
 
 /**
  * O TEXTO EM CAMADA DE CADA ELEMENTO (07/10/2026), a receita do vídeo da
@@ -15,7 +16,17 @@ import type { EntradaDoPrompt } from "@/lib/media/jornada/prompts";
  */
 
 export type ItemDoTexto = { texto: string; palavra: string };
-export type TextoDoElemento = { titulo: string; destaque: string; itens: ItemDoTexto[] };
+export type TextoDoElemento = {
+  titulo: string;
+  destaque: string;
+  itens: ItemDoTexto[];
+  /** Só no gráfico (07/10): a forma que o momento pede, em texto livre ("numero", "cronometro", "lista", "linha-do-tempo", "icone", "comparacao"...). O desenho conhece as comuns; a desconhecida vira título com itens. */
+  tipo?: string;
+  /** O número dito (o desenho conta de 0 até ele), como foi dito ("24h", "88%", "7"). */
+  numero?: string;
+  /** Um ícone da lista do worker, quando ajuda. */
+  icone?: string;
+};
 
 export const SISTEMA_DOS_TEXTOS = `Você é o redator do texto que entra POR CIMA dos elementos visuais de um vídeo, desenhado em código num painel de vidro, como num vídeo de apresentação bem editado. Você só escreve; outro sistema decide se entra.
 
@@ -26,15 +37,31 @@ Escreva para cada elemento:
 - "destaque": um trecho EXATO do título (1 a 3 palavras, copiado letra por letra) que leva a cor de destaque: a palavra que carrega o sentido.
 - "itens": de 0 a 3 itens curtos (até 4 palavras cada), cada um com "palavra": UMA palavra que está escrita na fala dada, no ponto em que o item deve aparecer (o item entra quando ela é dita). Os itens dão o RITMO do vídeo: algo novo aparece a cada 1,5 a 2 s, como numa boa apresentação. Sempre que a fala enumera tarefas, problemas, passos, nomes ou consequências, ou traz duas ou mais ideias concretas em sequência, escreva os itens, um por ideia, na ordem em que são ditas (as palavras de cada item em ordem de fala, a primeira pelo menos meio segundo depois do começo). Só deixe sem itens quando a fala daquele trecho tem uma ideia só. Nunca invente o que a pessoa não disse. A fala vem de transcrição automática e pode ter letra trocada ("feras" no lugar de "férias"): no "texto" do item e no título escreva a palavra que a pessoa quis dizer, com a grafia certa; só o campo "palavra" é copiado exatamente como está na fala.
 
+Quando o elemento é um GRÁFICO (desenhado em código ao lado da pessoa, sem imagem), ele É o texto: escreva também
+- "tipo": a forma que o momento pede, em uma palavra: "titulo", "numero" (um número dito, que cresce na tela), "cronometro" (tempo, prazo, horas), "lista" (itens enumerados), "linha-do-tempo" (passos ou etapas em ordem), "icone" (um ícone com a frase), "comparacao" (antes e depois, isto ou aquilo), "pergunta", "citacao", ou outra que o momento pedir;
+- "numero": só quando a pessoa disse um número ou uma quantidade ("24h", "7", "88%", "3x"), como foi dito;
+- "icone": um nome da LISTA DE ÍCONES, quando um ícone reforça a ideia.
+O gráfico precisa de impacto: título curto e forte, e os itens no ritmo da fala.
+
 Sem travessão (use vírgula ou dois pontos). Sem emoji. Sem aspas no título.
 
-Responda só com JSON: {"textos":{"<id>":{"titulo":"...","destaque":"...","itens":[{"texto":"...","palavra":"..."}]}}}`;
+Responda só com JSON: {"textos":{"<id>":{"titulo":"...","destaque":"...","itens":[{"texto":"...","palavra":"..."}],"tipo":"...","numero":"...","icone":"..."}}}`;
 
-export type EntradaDoTexto = Pick<EntradaDoPrompt, "id" | "descricao" | "textoNaImagem"> & { fala: string };
+export type EntradaDoTexto = Pick<EntradaDoPrompt, "id" | "descricao" | "textoNaImagem"> & { fala: string; grafico?: boolean };
 
 export function pedidoDosTextos(entradas: EntradaDoTexto[], contexto: ContextoDaJornada): string {
-  const linhas = entradas.map((e) => [`ID ${e.id}`, `  fala: "${e.fala}"`, `  elemento: ${e.descricao}`, `  texto que a arte já traz: ${e.textoNaImagem ? `"${e.textoNaImagem}"` : "nenhum"}`].join("\n"));
-  return `CONTEXTO\n${contextoEmTexto(contexto)}\n\nELEMENTOS\n${linhas.join("\n\n")}`;
+  const linhas = entradas.map((e) =>
+    [
+      `ID ${e.id}${e.grafico ? " (GRÁFICO: desenhado em código, sem imagem)" : ""}`,
+      `  fala: "${e.fala}"`,
+      `  elemento: ${e.descricao}`,
+      e.grafico ? null : `  texto que a arte já traz: ${e.textoNaImagem ? `"${e.textoNaImagem}"` : "nenhum"}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+  const icones = entradas.some((e) => e.grafico) ? `\n\nLISTA DE ÍCONES: ${NOMES_DOS_ICONES.join(", ")}` : "";
+  return `CONTEXTO\n${contextoEmTexto(contexto)}\n\nELEMENTOS\n${linhas.join("\n\n")}${icones}`;
 }
 
 const normal = (s: string) =>
@@ -57,7 +84,14 @@ export function conferirTexto(cru: unknown, fala: string): TextoDoElemento | nul
     .map((i) => ({ texto: semTravessao(String((i as ItemDoTexto)?.texto ?? "").trim()), palavra: String((i as ItemDoTexto)?.palavra ?? "").trim() }))
     .filter((i) => i.texto && i.texto.split(/\s+/).length <= 5 && i.texto.length <= 34 && normal(i.palavra) && f.includes(` ${normal(i.palavra).split(" ")[0]} `))
     .slice(0, 3);
-  return { titulo, destaque, itens };
+  const extra = x as { tipo?: unknown; numero?: unknown; icone?: unknown };
+  const tipo = String(extra.tipo ?? "").trim().toLowerCase().slice(0, 30);
+  const numero = semTravessao(String(extra.numero ?? "").trim()).slice(0, 12);
+  const icone = String(extra.icone ?? "").trim();
+  // O número só vale se tem dígito e foi dito (o mesmo dígito na fala, ou um número por extenso nela).
+  const digitos = numero.replace(/\D+/g, "");
+  const numeroDito = Boolean(digitos) && (f.includes(digitos) || /\b(um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|doze|vinte|trinta|cem|mil)\b/.test(f));
+  return { titulo, destaque, itens, ...(tipo ? { tipo } : {}), ...(numeroDito ? { numero } : {}), ...(NOMES_DOS_ICONES.includes(icone) ? { icone } : {}) };
 }
 
 /** Os textos de todos os elementos: uma chamada por bloco de 10; falhou, o elemento segue sem texto (nunca derruba a montagem). */

@@ -35,7 +35,11 @@ export type IdeiaCrua = {
 
 export const SISTEMA_DAS_IDEIAS = `Você é o redator de um editor de vídeo que serve qualquer nicho, do médico ao cozinheiro. Você ESCREVE ideias de elementos visuais para momentos da fala; você não decide quais entram (outro sistema decide).
 
-Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação, hesitação ou sem imagem possível fica sem ideia. No vídeo curto vertical, quase toda frase com conteúdo merece ideia (o ritmo é rápido). No vídeo longo, os elementos ficam mais espaçados e intercalados com B-roll em vídeo: proponha "video" nos momentos que contam uma história, descrevem uma cena ou pedem movimento (uma em cada três ideias, mais ou menos).
+Para cada frase numerada, escreva de 0 a 2 ideias. Frase de ligação ou hesitação fica sem ideia.
+
+RITMO E RETENÇÃO (regra do dono): no vídeo curto, TODA frase com conteúdo merece ideia; o espectador precisa ver algo novo a cada 2 a 4 segundos, sempre COM a pessoa na tela, falando, e o efeito aparecendo junto com ela (ao lado, acima da cabeça, sobre o peito). Quanto mais longo o vídeo, mais espaçados os efeitos. A PRIMEIRA ou a segunda frase (os primeiros 6 segundos) sempre ganha uma ideia de impacto com papel "abertura": o gancho visual que segura o espectador. No vídeo curto não proponha "video" (B-roll tira a pessoa da tela). No vídeo longo, os elementos ficam mais espaçados e intercalados com B-roll em vídeo: proponha "video" nos momentos que contam uma história, descrevem uma cena ou pedem movimento (uma em cada três ideias, mais ou menos).
+
+O "grafico" é o efeito mais rápido e mais usado: desenhado na hora, ao lado da pessoa, sem tirá-la da tela. Ele pode ser o que o momento pedir para reter e dar acabamento profissional: um título de impacto, um número que cresce, um contador, um cronômetro ou relógio, uma lista que aparece item a item, uma linha do tempo, um ícone com uma palavra, uma comparação, uma pergunta, uma citação. Não há lista fechada: descreva o que o momento pede. Misture "grafico" com "recorte" e "imagem" (que são gerados por IA e mostram o objeto, o logo, a cena).
 
 A EMPRESA E O NICHO SÃO OS DO CONTEXTO. Marcas, logos, faixas e textos que a leitura vê no FUNDO da gravação são só cenário: nunca são a marca do cliente nem o assunto, e nunca entram nas ideias.
 
@@ -44,7 +48,7 @@ Cada ideia:
 - "gatilho": UMA palavra da própria frase, escrita como está, que chama o elemento (o elemento aparece quando ela é dita).
 - "descricao": em português, uma frase concreta e visual do que aparece (o objeto, a cena, a composição, a cor, o movimento), tirada do que a fala diz naquele momento e do que a leitura do vídeo mostra. Use o contexto da empresa, da marca e do nicho para escolher o imaginário que mais faz sentido para aquele público. Ideias seguidas nunca repetem o mesmo assunto do mesmo jeito: varie o ângulo (o objeto, o detalhe, o gesto, a consequência). Nada genérico ("ícone de sucesso"), nada abstrato (barras, formas, cartão vazio), nada que o vídeo já mostra. Prefira o que se VÊ: um objeto, um logo, uma tela, uma cena, uma ilustração ligada ao que é dito; uma ideia que é só texto (palavra gigante, faixa com número) só quando o próprio texto é a prova daquele momento, e no máximo uma assim a cada três ideias.
 - "textoNaImagem": null, ou o texto EXATO que a arte deve trazer, até 5 palavras: só palavras ditas no momento, um número dito ou o nome de uma marca ou rede citada. Na chamada, a própria chamada curta.
-- "midia": "recorte" (um objeto, ícone ou logo isolado que entra sobre a gravação), "imagem" (uma composição que entra numa janela ou em tela cheia) ou "video" (B-roll em movimento, cena sem pessoa conhecida, com a voz por baixo).
+- "midia": "grafico" (desenhado em código ao lado da pessoa: texto, número, ícone, cronômetro, lista, linha do tempo, o que o momento pedir), "recorte" (um objeto, ícone ou logo gerado por IA, isolado, que entra sobre a gravação), "imagem" (uma composição gerada que entra numa janela ao lado da pessoa) ou "video" (B-roll em movimento, só no vídeo longo).
 - "papel": "elemento"; ou "abertura" (só nas primeiras frases: um elemento de abertura que apresenta o tema do vídeo); ou "chamada" (curtir, inscrever, seguir, salvar): proponha chamada só se fizer sentido para o destino e a duração do vídeo (vídeo curto vertical não pede inscrever; vídeo longo no YouTube pode pedir).
 - "porque": uma linha com a ligação com a fala.
 
@@ -124,14 +128,15 @@ export function lerIdeias(texto: string, frases: Frase[], palavras: Palavra[], c
     if (indice < 0) continue;
     const descricao = semTravessao(String(x.descricao ?? "").trim()).slice(0, 400);
     if (descricao.length < 12) continue;
-    const midia: MidiaDaJornada = x.midia === "video" ? "video" : x.midia === "recorte" ? "recorte" : "imagem";
+    const midia: MidiaDaJornada = x.midia === "video" ? "video" : x.midia === "recorte" ? "recorte" : x.midia === "grafico" ? "grafico" : "imagem";
     const papel: PapelDoElemento = x.papel === "abertura" ? "abertura" : x.papel === "chamada" ? "chamada" : "elemento";
     const vizinhas = frases.filter((g) => Math.abs(g.indice - f.indice) <= 1).map((g) => g.texto).join(" ");
     const texto = textoPermitido(x.textoNaImagem as string | null, vizinhas, { papel, marca: contexto.marca });
     // A ideia que mostra um texto (frase, citação, manchete, título) sem dizer qual vira cartão vazio: cai.
-    if (!texto && /(frase|cita[cç][aã]o|manchete|t[ií]tulo|palavra|texto|escrit[ao]|legenda|letreiro|nome)/i.test(String(x.descricao ?? ""))) continue;
+    // (O gráfico é texto desenhado em código, escrito depois pelo redator do texto: não passa por este filtro.)
+    if (midia !== "grafico" && !texto && /(frase|cita[cç][aã]o|manchete|t[ií]tulo|palavra|texto|escrit[ao]|legenda|letreiro|nome)/i.test(String(x.descricao ?? ""))) continue;
     // A ideia feita EM VOLTA de um texto que não pode entrar (não foi dito, longo demais) cai inteira: sem o texto ela não significa nada.
-    if (String(x.textoNaImagem ?? "").trim() && !texto) continue;
+    if (midia !== "grafico" && String(x.textoNaImagem ?? "").trim() && !texto) continue;
     saida.push({
       frase: f.indice,
       gatilho: { palavra: palavras[indice].texto.replace(/[.,!?;:]+$/, ""), indice, t: palavras[indice].inicio },

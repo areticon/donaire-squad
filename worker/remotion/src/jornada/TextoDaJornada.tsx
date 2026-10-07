@@ -1,5 +1,6 @@
 import React from "react";
 import { limitar, misturar, rgba, saiSuave } from "../sob-medida/base";
+import { ICONES } from "../sob-medida/icones";
 import type { ContextoDaPeca as Ctx } from "../sob-medida/tipos";
 
 /**
@@ -15,6 +16,12 @@ import type { ContextoDaPeca as Ctx } from "../sob-medida/tipos";
  *   - na tela cheia, a cena escurece por trás do texto (a landing escurece e
  *     dessatura toda cena de IA que carrega texto).
  *
+ * O GRÁFICO (07/10, mesma tarde): quando `props.grafico`, a peça é o próprio
+ * efeito ao lado da pessoa, sem mídia: o número que conta de 0 até o valor
+ * dito, o ícone que entra com mola e pulsa, o cronômetro com o anel correndo,
+ * a linha do tempo que cresce até o item da vez. O tipo vem do Claude em texto
+ * livre; o que o desenho não conhece vira título com itens.
+ *
  * O que está escrito vem do Claude (só escreve) e se entra, do JEV; o código
  * só desenha. Nenhum número aqui depende de estilo: o tema muda cor e letra.
  */
@@ -25,6 +32,12 @@ type Ancora = { x: number; y: number; w: number };
 const entrada = (t: number, de: number, u: number) => {
   const p = limitar((t - de) / 0.35);
   return { opacity: limitar((t - de) / 0.28), transform: `translateY(${((1 - saiSuave(p)) * 26 * u).toFixed(1)}px)` };
+};
+
+/** Mola com um passo além (o "pop" do ícone e do número). */
+const pop = (t: number) => {
+  const x = limitar(t / 0.5);
+  return x >= 1 ? 1 : 1 - Math.cos(x * Math.PI * 2.2) * Math.exp(-5.2 * x);
 };
 
 function tituloComDestaque(titulo: string, destaque: string, grad: string): React.ReactNode {
@@ -40,6 +53,27 @@ function tituloComDestaque(titulo: string, destaque: string, grad: string): Reac
   );
 }
 
+/** "24h" -> conta de 0 a 24 e mantém o "h"; "88%" -> 0 a 88 com "%"; sem dígito, o texto como veio. */
+function numeroContando(numero: string, t: number): string {
+  const m = /^(\D*)(\d+(?:[.,]\d+)?)(.*)$/.exec(numero.trim());
+  if (!m) return numero;
+  const alvo = Number(m[2].replace(",", "."));
+  const p = saiSuave(limitar((t - 0.15) / 0.9));
+  const casas = m[2].includes(",") || m[2].includes(".") ? 1 : 0;
+  const v = (alvo * p).toFixed(casas).replace(".", ",");
+  return `${m[1]}${v}${m[3]}`;
+}
+
+function Icone({ nome, tam, cor }: { nome: string; tam: number; cor: string }) {
+  const nos = ICONES[nome];
+  if (!nos) return null;
+  return (
+    <svg width={tam} height={tam} viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      {nos.map(([tag, attrs], k) => React.createElement(tag, { key: k, ...attrs }))}
+    </svg>
+  );
+}
+
 export function TextoDaJornada(c: Ctx) {
   const titulo = String(c.props.titulo ?? "").trim();
   const itens = (Array.isArray(c.props.itens) ? (c.props.itens as Item[]) : []).filter((x) => x && String(x.texto ?? "").trim());
@@ -48,7 +82,14 @@ export function TextoDaJornada(c: Ctx) {
   const a = c.props.ancora as Ancora | undefined;
   const ancora: Ancora = a && [a.x, a.y, a.w].every((v) => typeof v === "number" && Number.isFinite(v)) ? a : { x: 0.06, y: c.vertical ? 0.11 : 0.08, w: c.vertical ? 0.86 : 0.5 };
   const escurecer = Boolean(c.props.escurecer);
-  const u = c.u;
+  const grafico = Boolean(c.props.grafico);
+  const tipo = String(c.props.tipo ?? "titulo");
+  const numero = typeof c.props.numero === "string" && c.props.numero ? c.props.numero : "";
+  const icone = typeof c.props.icone === "string" ? c.props.icone : "";
+  const cronometro = /cronometro|relogio|prazo|tempo/.test(tipo);
+  const linha = /linha|passo|etapa/.test(tipo);
+  // A escala que a montagem mediu para caber fora do rosto (07/10): tudo é desenhado por `u`.
+  const u = c.u * (Number(c.props.escala) > 0 ? Math.min(1, Number(c.props.escala)) : 1);
   const t = c.t;
   const sai = c.fica;
   const acento = c.tema.acento;
@@ -62,6 +103,35 @@ export function TextoDaJornada(c: Ctx) {
     boxShadow: `0 ${24 * u}px ${60 * u}px rgba(0,0,0,0.45)`,
   };
   const tam = (c.vertical ? 50 : 58) * u * (titulo.length > 34 ? 0.84 : 1);
+  // O destaque do gráfico: o número que conta ou o ícone (com o anel do cronômetro), entrando com mola antes do título.
+  // O ícone sozinho vai NA LINHA do título (07/10: numa linha própria, encolhido para caber, virava um quadradinho apagado).
+  const temCabeca = grafico && (numero || cronometro);
+  const iconeNoTitulo = grafico && !temCabeca && Boolean(icone && ICONES[icone]);
+  const p = pop(t);
+  const cabeca = temCabeca ? (
+    <div data-vidro="" style={{ ...vidro, display: "flex", alignItems: "center", gap: 20 * u, padding: `${16 * u}px ${26 * u}px`, transform: `scale(${(0.6 + 0.4 * p).toFixed(4)})`, transformOrigin: "0% 50%", opacity: limitar(t / 0.15) }}>
+      {cronometro ? (
+        <div style={{ position: "relative", width: 96 * u, height: 96 * u, flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: rgba(acento, 0.16) }}>
+          {cronometro ? (
+            <svg width={96 * u} height={96 * u} viewBox="0 0 100 100" style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+              <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="6" />
+              <circle cx="50" cy="50" r="45" fill="none" stroke={acento} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${(283 * limitar(t / Math.max(1, c.dur))).toFixed(1)} 283`} />
+            </svg>
+          ) : null}
+          <div style={{ transform: `scale(${(1 + 0.06 * Math.sin(t * 4)).toFixed(4)})` }}>
+            <Icone nome={icone || (cronometro ? "relogio" : "")} tam={52 * u} cor="#ffffff" />
+          </div>
+        </div>
+      ) : null}
+      {numero ? (
+        <div style={{ fontWeight: 700, fontSize: (c.vertical ? 104 : 112) * u, lineHeight: 1, letterSpacing: "-0.03em", backgroundImage: grad, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", fontVariantNumeric: "tabular-nums" }}>
+          {numeroContando(numero, t)}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+  // A linha do tempo: um fio que cresce do primeiro ao último item que já entrou.
+  const entrados = itens.filter((it) => t >= it.t).length;
   return (
     <div style={{ position: "absolute", inset: 0, opacity: sai, fontFamily: c.tema.fonteTitulo || "Geist", color: claro }}>
       {escurecer ? (
@@ -76,21 +146,49 @@ export function TextoDaJornada(c: Ctx) {
         />
       ) : null}
       <div style={{ position: "absolute", left: ancora.x * c.W, top: ancora.y * c.H, width: ancora.w * c.W, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 16 * u }}>
+        {cabeca}
         {titulo ? (
-          <div data-vidro="" style={{ ...vidro, ...entrada(t, 0, u), padding: `${22 * u}px ${30 * u}px`, maxWidth: "100%" }}>
-            <div style={{ fontWeight: c.tema.pesoTitulo || 600, fontSize: tam, lineHeight: 1.06, letterSpacing: "-0.025em" }}>{tituloComDestaque(titulo, destaque, grad)}</div>
+          <div data-vidro="" style={{ ...vidro, ...entrada(t, temCabeca ? 0.25 : 0, u), padding: `${22 * u}px ${30 * u}px`, maxWidth: "100%" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 18 * u }}>
+              {iconeNoTitulo ? (
+                <span style={{ flex: "0 0 auto", width: tam * 1.35, height: tam * 1.35, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", background: grad, transform: `scale(${(0.5 + 0.5 * p).toFixed(4)}) rotate(${((1 - p) * -20).toFixed(1)}deg)` }}>
+                  <Icone nome={icone} tam={tam * 0.8} cor="#ffffff" />
+                </span>
+              ) : null}
+              <div style={{ fontWeight: c.tema.pesoTitulo || 600, fontSize: tam, lineHeight: 1.06, letterSpacing: "-0.025em" }}>{tituloComDestaque(titulo, destaque, grad)}</div>
+            </div>
           </div>
         ) : null}
-        {itens.slice(0, 3).map((it, k) => (
-          <div
-            key={k}
-            data-vidro=""
-            style={{ ...vidro, ...entrada(t, Math.max(0.05, it.t), u), borderRadius: 18 * u, padding: `${14 * u}px ${22 * u}px`, display: "flex", alignItems: "center", gap: 14 * u, opacity: t < it.t ? 0 : entrada(t, it.t, u).opacity }}
-          >
-            <span style={{ width: 12 * u, height: 12 * u, borderRadius: "50%", background: grad, flex: "0 0 auto", boxShadow: `0 0 ${12 * u}px ${rgba(acento, 0.7)}` }} />
-            <span style={{ fontWeight: 600, fontSize: (c.vertical ? 34 : 36) * u, lineHeight: 1.15 }}>{String(it.texto)}</span>
-          </div>
-        ))}
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 16 * u, paddingLeft: linha ? 34 * u : 0 }}>
+          {linha && itens.length ? (
+            <div
+              style={{
+                position: "absolute",
+                left: 11 * u,
+                top: 30 * u,
+                width: 3 * u,
+                borderRadius: 2 * u,
+                background: grad,
+                height: `${Math.max(0, entrados - 1) * (72 * u)}px`,
+                transition: "none",
+              }}
+            />
+          ) : null}
+          {itens.slice(0, 3).map((it, k) => (
+            <div
+              key={k}
+              data-vidro=""
+              style={{ ...vidro, ...entrada(t, Math.max(0.05, it.t), u), position: "relative", borderRadius: 18 * u, padding: `${14 * u}px ${22 * u}px`, display: "flex", alignItems: "center", gap: 14 * u, opacity: t < it.t ? 0 : entrada(t, it.t, u).opacity }}
+            >
+              {linha ? (
+                <span style={{ position: "absolute", left: -34 * u + 4 * u, width: 18 * u, height: 18 * u, borderRadius: "50%", background: grad, boxShadow: `0 0 ${12 * u}px ${rgba(acento, 0.7)}` }} />
+              ) : (
+                <span style={{ width: 12 * u, height: 12 * u, borderRadius: "50%", background: grad, flex: "0 0 auto", boxShadow: `0 0 ${12 * u}px ${rgba(acento, 0.7)}` }} />
+              )}
+              <span style={{ fontWeight: 600, fontSize: (c.vertical ? 34 : 36) * u, lineHeight: 1.15 }}>{String(it.texto)}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
