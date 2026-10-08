@@ -11,10 +11,18 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CHAVES_DO_SINO_COM_FAIXA,
+  PREFIXOS_COM_FIM,
   PREFIXOS_DAS_TELAS,
   PREFIXOS_DA_SEMENTE,
   PREFIXOS_DO_SINO,
+  PREFIXOS_SEM_FIM,
   chaveDaArteQueFalhou,
+  chaveDoCorteNaoAplicado,
+  chaveDoEstiloAguardando,
+  chaveDoGemeoFaltaUmPasso,
+  chaveDoPlanoPendente,
+  ehChaveDasTelas,
   chaveDaCampanha,
   chaveDaMontagem,
   chaveDaMontagemSegura,
@@ -34,14 +42,19 @@ import {
   type VideoParaChave,
 } from "@/lib/avisos/chaves";
 import {
+  COTA_DOS_SEM_FIM,
   descartadasEntre,
   descartar,
   descartarLidas,
+  descartarNotificacoes,
   desfazerDescarte,
   faltaATabela,
+  restaurarNotificacoes,
   sementeDoCliente,
   TETO_DAS_LIDAS,
+  TETO_POR_PESSOA,
 } from "@/lib/avisos/descartes";
+import { esperaDaIdentidade } from "@/lib/modelos-de-arte/espera-da-identidade";
 import { criarFilaDosDescartes, estaDescartada, unirSemente } from "@/lib/avisos/fila-dos-descartes";
 import { descartesEmMemoria } from "./descartes-em-memoria";
 
@@ -402,7 +415,7 @@ test("o conjunto da tela: esconde a falha descartada, mostra a ocorrência nova,
 
 /** [arquivo, o que precisa aparecer nele]. */
 const SUPERFICIES: Array<[string, RegExp[]]> = [
-  ["components/video/aviso-da-montagem.tsx", [/<BotaoDescartar/, /texto="Descartar todas"/, /descartes\.ehDescartado\(f\.chave\)/, /data-lista-de-avisos/]],
+  ["components/video/aviso-da-montagem.tsx", [/<BotaoDescartar/, /texto="Descartar todas"/, /descartes\.ehDescartado\(f\.chave\)/, /data-lista-de-avisos/, /variasPecas \? null :/]],
   ["components/content/content-manager.tsx", [
     /chaveDaCampanha\(lastFailedRun\.id, lastFailedRun\.status\)/,
     /banner-dismissed-\$\{runDaFaixa\}/,
@@ -419,9 +432,14 @@ const SUPERFICIES: Array<[string, RegExp[]]> = [
     /LinhaDaPublicacaoRecolhida/,
   ]],
   ["components/video/esteira-do-video.tsx", [
-    /rotulo="Dispensar e apagar o vídeo"/,
+    // O X de todo cartão só descarta (o vídeo que parou inclusive); apagar é
+    // o botão próprio, com a confirmação, só para o dono.
+    /<BotaoDescartar chave=\{descarte\.chave\} descricaoId=\{idDoTitulo\}/,
+    /aoApagar=\{podeApagar \? \(\) => apagar\(v\) : undefined\}/,
+    /data-acao="apagar-video"/,
+    /data-confirmar-apagar/,
+    /Sim, apagar o vídeo/,
     /"Vídeo apagado\."/,
-    /O vídeo tem peça publicada ou agendada e não foi apagado; o aviso saiu da lista\./,
     /chaveDoVigia\(/,
     /CHAVE_PODE_SAIR/,
     /setSemConexaoDescartada\(true\)/,
@@ -430,24 +448,45 @@ const SUPERFICIES: Array<[string, RegExp[]]> = [
     /recolhido=/,
   ]],
   ["components/video/aproveitar-roteiro.tsx", [/<BotaoDescartar/]],
-  ["components/escritorio/escritorio.tsx", [/chaveDaVisitaDaPeca\(/, /chaveDaSugestao\(/, /rotulo="Dispensar a visita"/, /CHAVE_DOS_CONTROLES/, /setFalaDaMesa\(null\)/]],
+  ["components/escritorio/escritorio.tsx", [
+    /chaveDaVisitaDaPeca\(/,
+    /chaveDaSugestao\(/,
+    /rotulo="Dispensar a visita"/,
+    /CHAVE_DOS_CONTROLES/,
+    /aoFecharFalaDaMesa=\{\(\) => setFalaDaMesa\(null\)\}/,
+    // A visita e a fala não cobrem o "Personalizar meu avatar"; a dica não segura o toque.
+    /left-3 top-14 z-10[^"]*sm:right-3 sm:top-3/,
+    /pointer-events-none absolute bottom-2 right-3/,
+    /className="pointer-events-auto"/,
+    // O dono da peça pela mesma regra da contagem do squad.
+    /donoDaPeca\(p\)\?\.id === agentId/,
+  ]],
+  ["components/escritorio/escritorio-do-squad.tsx", [/rotulo="Fechar a fala"/, /aoDescartar=\{aoFecharFala\}/]],
   ["components/escritorio/escritorio-de-massinha.tsx", [/aoFecharFalaDaMesa/]],
   ["components/content/semana-do-quadro.tsx", [/chaveDoEstiloAguardando\(/, /chaveDaArteQueFalhou\(/, /modo=\{botao \? "recolher" : "sumir"\}/, /useDescarte\(andamento\.parado \? chave : null\)/]],
   ["components/posts/falha-da-publicacao.tsx", [/<Descartavel chave=\{chave\} modo="recolher"/, /<BotaoDescartar/]],
   ["components/posts/posts-panel.tsx", [/CHAVE_DA_APROVACAO_OBRIGATORIA/, /CHAVE_DE_SALVAR_A_MIDIA/, /chaveDaReconexaoDoPost\(/, /chave=\{post\.chaveDaFalha\}/]],
   ["components/billing/faixa-do-plano.tsx", [/chaveDoAlertaDoPlano\(/, /<BotaoDescartar/]],
-  ["components/billing/credit-balance.tsx", [/chaveDosCreditosAcabando\(/, /chaveDaCompraAutomatica\(/, /searchParams\.delete\("creditos"\)/]],
+  ["components/billing/credit-balance.tsx", [/chaveDosCreditosAcabando\(/, /chaveDaCompraAutomatica\(/, /searchParams\.delete\("creditos"\)/, /"sem-recarga", "zerado"\)/]],
   ["components/billing/comprar-creditos.tsx", [/chaveDoAutomatico/, /descartes\.descartar\(\[chaveDoAutomatico\]/]],
   ["components/admin/faixa-de-saldo-na-tela.tsx", [/chaveDoSaldoDoFornecedor\(/, /data-saldo-recolhido/]],
   ["components/admin/agenda-do-time.tsx", [/searchParams\.delete\("google"\)/, /<BotaoDescartar/]],
   ["components/gemeo/selo-do-gemeo.tsx", [/<BotaoDescartar/, /<\/Link>\s*<BotaoDescartar/]],
   ["app/(app)/projects/[id]/layout.tsx", [/chaveDoGemeoFaltaUmPasso\(/, /hojeDoLembrete\(/]],
-  ["components/gemeo/gemeo-do-projeto.tsx", [/chaveDoResumoDoGemeo\(/, /chaveDaSituacaoDoGemeo\(/]],
+  ["components/gemeo/gemeo-do-projeto.tsx", [/chaveDoResumoDoGemeo\(/, /chaveDaSituacaoDoGemeo\(/, /data-foto-recusada/, /data-foto-checagens/, /chaveDaSituacaoDoGemeo\(projectId, "video", v\.estado/]],
   ["components/gemeo/gemeo-nas-configuracoes.tsx", [/chaveDoGemeoNasConfiguracoes\(/, /<BotaoDescartar/]],
-  ["components/kanban/kanban-board.tsx", [/"edicao-projeto-ativo"/, /"veio-do-documento"/, /texto="Fechar aviso"/]],
+  ["components/kanban/kanban-board.tsx", [/"edicao-projeto-ativo"/, /"veio-do-documento"/, /texto="Fechar aviso"/, /chaveDaDica\("pular-redes", projectId\)/, /aoDescartar=\{\(\) => setAiReply\(""\)\}/]],
   ["components/kanban/step-perfil-proprio.tsx", [/chaveDoEstudo\(/, /"estudo-desligado"/]],
   ["components/kanban/step-referencias.tsx", [/"estudo-desligado"/]],
-  ["components/kanban/step-referencias-do-cliente.tsx", [/chaveDoAcimaDoPlano\(/, /chaveDoEstudo\(/]],
+  ["components/kanban/step-referencias-do-cliente.tsx", [/chaveDoAcimaDoPlano\(/, /chaveDoEstudo\(/, /chaveDaDica\("estudo-desligado", projectId\)/]],
+  ["components/posts/escolha-de-origem.tsx", [/chaveDaDica\("intercalar"\)/, /<BotaoDescartar/]],
+  ["components/video/controle-do-corte.tsx", [/chaveDoCorteNaoAplicado\(videoId, dados\.aviso\)/, /aoDescartar=\{\(\) => setErro\(null\)\}/]],
+  ["components/video/video-upload.tsx", [/aoDescartar=\{\(\) => setErro\(null\)\}/]],
+  ["components/kanban/setup-preview.tsx", [/aoDescartar=\{\(\) => setErro\(null\)\}/]],
+  ["components/settings/avisos-por-email.tsx", [/aoDescartar=\{\(\) => setErro\(null\)\}/]],
+  // O X do erro de guardar não faz a linha dizer "Guardado" sem ter guardado.
+  ["components/video/catalogo-de-estilos.tsx", [/setErroFechado\(true\)/, /erro && !erroFechado/]],
+  ["components/video/semana-do-video.tsx", [/setErroFechado\(true\)/, /erroFechado \? null/]],
   ["components/editorial/referencias.tsx", [/chaveDoAcimaDoPlano\(/, /chaveDoEstudo\(projectId, estudo\.iniciadoEm, "falhou"\)/]],
   ["components/editorial/analises-das-referencias.tsx", [/chaveDoEstudo\(/, /modo=\{continuar \? "recolher" : "sumir"\}/]],
   ["components/marca/seletor-de-cores.tsx", [/chaveDasCoresDeFabrica\(/, /chaveDeConfirmarCores\(/, /chaveDaCorNoVideo\(/, /chaveDaAprovacaoQueCaiu\(/, /setErroDeLeituraFechado\(true\)/]],
@@ -459,8 +498,18 @@ const SUPERFICIES: Array<[string, RegExp[]]> = [
   ["components/planos/pedido-de-upgrade.tsx", [/chaveDaCota\(/]],
   ["components/social/social-connect-panel.tsx", [/chaveDaContaAReconectar\(/, /"instagram-conta-logada"/, /window\.history\.replaceState/]],
   ["components/social/pagina-empresa-linkedin.tsx", [/chaveDasPaginasDoLinkedin\(/]],
-  ["components/social/conexao-assistida.tsx", [/chaveDaConexaoAssistida\(/]],
-  ["components/video/tela-de-roteiro.tsx", [/chaveDoAvisoDoRoteiro\(/, /chaveDoEstiloNovo\(/, /chaveDoPlanoPendente\(/, /chaveDoPedidoDaCena\(/, /esperando o plano de efeitos/, /aria-describedby=\{planoPendente \? "motivo-do-aprovar"/]],
+  ["components/social/conexao-assistida.tsx", [/chaveDaConexaoAssistida\(/, /data-recolhida/, /Conexão assistida pedida em/]],
+  ["components/video/tela-de-roteiro.tsx", [
+    /chaveDoAvisoDoRoteiro\(/,
+    /chaveDoEstiloNovo\(/,
+    /chaveDoPlanoPendente\(/,
+    /chaveDoPedidoDaCena\(/,
+    /esperando o plano de efeitos/,
+    /aria-describedby=\{planoPendente \? "motivo-do-aprovar"/,
+    // O "parou" leva a marca da falha; o erro do plano na seção tem X.
+    /chaveDoAvisoDoRoteiro\(tela\.videoId, "parou", marcaDaFalha\)/,
+    /chaveDoPlanoPendente\(videoDaTela, "secao-erro", jornada\.erro\)/,
+  ]],
   ["components/video/como-o-squad-edita.tsx", [/chaveDoEstiloQueMudou\(/]],
   ["components/equipe/aviso-so-o-dono.tsx", [/"somente-leitura"/, /Somente leitura/]],
   ["components/training/training-panel.tsx", [/"treinamento-como-funciona"/]],
@@ -542,4 +591,182 @@ test("a migração é aditiva, idempotente e com os nomes que o Prisma gera", ()
   const schema = ler("prisma/schema.prisma");
   assert.match(schema, /model AvisoDescartado \{[\s\S]*@@unique\(\[userId, chave\]\)[\s\S]*@@index\(\[userId, descartadoEm\]\)[\s\S]*@@map\("avisos_descartados"\)/);
   assert.match(schema, /avisosDescartados AvisoDescartado\[\]/);
+});
+
+// ─── a revisão de 07/10 (os achados dos revisores) ───
+
+test("a rota das telas aceita só as chaves das telas: a do sino entra pelo sino, pelo id", () => {
+  assert.equal(ehChaveDasTelas("dica:pode-sair"), true);
+  assert.equal(ehChaveDasTelas("falha:efeitos:v1:2026-10-07T14:00:00.000Z"), true, "a montagem tem faixa: as duas pontas");
+  assert.equal(ehChaveDasTelas("falha:campanha:r1"), true);
+  for (const c of ["roteiro:v1:r1", "saldo:openai:x", "admin:qualquer", "falha:transcribe:v1:x", "estorno:t1"]) assert.equal(ehChaveDasTelas(c), false, c);
+  for (const p of PREFIXOS_DAS_TELAS) assert.ok(ehChaveDasTelas(`${p}:x`), p);
+  assert.deepEqual([...CHAVES_DO_SINO_COM_FAIXA], ["falha:efeitos:", "falha:campanha:"], "a SQL do Limpar as lidas deixa de fora exatamente estas duas");
+});
+
+test("a rota recusa a chave só do sino com 400 (não enche a tabela com sufixo inventado)", async () => {
+  const { responderAosDescartes } = await import("@/lib/avisos/rota-dos-descartes");
+  const b = descartesEmMemoria();
+  const r = await responderAosDescartes({ metodo: "POST", userId: "u1", contentType: "application/json", corpo: async () => ({ chaves: ["roteiro:inventado:1"] }) }, b.deposito);
+  assert.equal(r.status, 400);
+  assert.equal(b.descartes.length, 0);
+});
+
+test("o teto: com 5000 das telas COM fim natural, as mais antigas saem e o descarte novo é lembrado", async () => {
+  const b = descartesEmMemoria();
+  for (let i = 0; i < TETO_POR_PESSOA; i++) b.descartes.push({ id: `x${i}`, userId: "u1", chave: `video:falhou:v${i}:r:transcribe:1`, descartadoEm: new Date(Date.UTC(2026, 0, 1) + i * 1000) });
+  b.descartes.push({ id: "dica-velha", userId: "u1", chave: "dica:pode-sair", descartadoEm: new Date(Date.UTC(2025, 0, 1)) });
+  assert.deepEqual(await descartar("u1", ["publicacao-falhou:p1:abcd1234"], b.deposito), { lembrado: true });
+  assert.ok(b.descartes.some((d) => d.chave === "publicacao-falhou:p1:abcd1234"));
+  assert.ok(!b.descartes.some((d) => d.chave === "video:falhou:v0:r:transcribe:1"), "a mais antiga com fim natural saiu");
+  assert.ok(b.descartes.some((d) => d.chave === "dica:pode-sair"), "a dica (sem fim) nunca sai, por mais antiga");
+  assert.ok(b.descartes.filter((d) => d.userId === "u1").length <= TETO_POR_PESSOA);
+});
+
+test("o teto: as chaves só do sino não contam, e só os avisos sem fim travam o descarte", async () => {
+  const b = descartesEmMemoria({ notificacoes: [{ userId: "u1", chave: "roteiro:v1:r1" }] });
+  for (let i = 0; i < TETO_POR_PESSOA; i++) b.descartes.push({ id: `d${i}`, userId: "u1", chave: `dica:x${i}`, descartadoEm: new Date(0) });
+  // Só avisos sem fim: o descarte novo de tela vale só na tela.
+  assert.deepEqual(await silenciar(() => descartar("u1", ["video:pecas:v1:r1"], b.deposito)), { lembrado: false });
+  // A notificação do sino descartada pelo X dela: chave só do sino, não conta no teto.
+  const id = b.notificacoes[0].id;
+  assert.deepEqual(await descartarNotificacoes("u1", [id], b.deposito), { chaves: ["roteiro:v1:r1"], lembrado: true });
+  // E os 600 estornos do Limpar as lidas não empurram nada: não contam.
+  const c = descartesEmMemoria({ notificacoes: Array.from({ length: 600 }, (_, i) => ({ userId: "u1", chave: `estorno:t${i}`, lidaEm: new Date() })) });
+  await descartarLidas("u1", c.deposito);
+  assert.equal(await c.deposito.quantas("u1", PREFIXOS_DA_SEMENTE), 0);
+});
+
+test("a semente tem cota para os avisos sem fim: a dica antiga não sai empurrada por 2000 recentes", async () => {
+  const b = descartesEmMemoria();
+  b.descartes.push({ id: "antiga", userId: "u1", chave: "dica:pode-sair", descartadoEm: new Date(Date.UTC(2026, 0, 1)) });
+  b.descartes.push({ id: "cores", userId: "u1", chave: "cores-de-fabrica:p1", descartadoEm: new Date(Date.UTC(2026, 0, 2)) });
+  for (let i = 0; i < 2100; i++) b.descartes.push({ id: `v${i}`, userId: "u1", chave: `video:pronto:v${i}:r`, descartadoEm: new Date(Date.UTC(2026, 9, 1) + i * 1000) });
+  const semente = await sementeDoCliente("u1", b.deposito);
+  assert.ok(semente.includes("dica:pode-sair") && semente.includes("cores-de-fabrica:p1"));
+  assert.ok(semente.length <= 2000 + COTA_DOS_SEM_FIM);
+  assert.equal(new Set(semente).size, semente.length, "sem repetida");
+  // As duas listas não se cruzam e juntas são a semente inteira.
+  assert.ok(PREFIXOS_SEM_FIM.every((p) => PREFIXOS_DA_SEMENTE.includes(p)));
+  assert.equal(PREFIXOS_SEM_FIM.length + PREFIXOS_COM_FIM.length, PREFIXOS_DA_SEMENTE.length);
+});
+
+test("Limpar as lidas deixa de fora a montagem e a campanha que falharam (a faixa do Gestor fica)", async () => {
+  const montagem = "falha:efeitos:v1:2026-10-07T14:00:00.000Z";
+  const b = descartesEmMemoria({
+    notificacoes: [
+      { userId: "u1", chave: montagem, lidaEm: new Date() },
+      { userId: "u1", chave: "falha:campanha:r1", lidaEm: new Date() },
+      { userId: "u1", chave: "estorno:t1", lidaEm: new Date() },
+    ],
+  });
+  assert.deepEqual(await descartarLidas("u1", b.deposito), { quantas: 1, lembrado: true });
+  assert.deepEqual(
+    b.descartes.map((d) => d.chave),
+    ["estorno:t1"]
+  );
+  const sql = ler("lib/avisos/descartes.ts");
+  assert.match(sql, /"chave" NOT LIKE \$\{`\$\{faixa1\}%`\} AND "chave" NOT LIKE \$\{`\$\{faixa2\}%`\}/);
+  assert.match(sql, /const \[faixa1, faixa2\] = CHAVES_DO_SINO_COM_FAIXA;/);
+});
+
+test("o Desfazer do sino devolve o item como estava: a não lida volta não lida", async () => {
+  const b = descartesEmMemoria({ notificacoes: [{ userId: "u1", chave: "roteiro:v1:r1" }] });
+  const id = b.notificacoes[0].id;
+  await descartarNotificacoes("u1", [id], b.deposito);
+  assert.equal(b.notificacoes[0].lidaEm, null, "o descarte pelo sino não marca como lida");
+  assert.deepEqual(await restaurarNotificacoes("u1", [id], b.deposito), { chaves: ["roteiro:v1:r1"], lembrado: true });
+  assert.equal(b.notificacoes[0].lidaEm, null);
+  assert.equal(b.descartes.length, 0);
+  // O descarte pela TELA continua marcando a notificação do mesmo fato como lida.
+  const c = descartesEmMemoria({ notificacoes: [{ userId: "u1", chave: "falha:campanha:r1" }] });
+  await descartar("u1", ["falha:campanha:r1"], c.deposito);
+  assert.ok(c.notificacoes[0].lidaEm);
+});
+
+test("o restaurar que falha no servidor diz lembrado:false (a tela avisa)", async () => {
+  const b = descartesEmMemoria({ notificacoes: [{ userId: "u1", chave: "roteiro:v1:r1" }] });
+  const dep = b.quebrado(new Error("Connection terminated unexpectedly"));
+  const r = await silenciar(() => restaurarNotificacoes("u1", [b.notificacoes[0].id], dep));
+  assert.deepEqual(r, { chaves: ["roteiro:v1:r1"], lembrado: false });
+});
+
+test("a fila: o 'só nesta tela' não aparece para o aviso já desfeito, e o Desfazer que falha avisa", async () => {
+  // 1) O POST falha DEPOIS de a pessoa ter desfeito: nada de "Descartado só nesta tela".
+  let soltar: (ok: boolean) => void = () => {};
+  const fila = criarFilaDosDescartes((metodo) => (metodo === "POST" ? new Promise<boolean>((r) => (soltar = r)) : Promise.resolve(true)));
+  const pedido = fila.descartar(["dica:a"])!;
+  fila.desfazer(["dica:a"]);
+  await new Promise((r) => setTimeout(r, 0));
+  soltar(false);
+  assert.equal(await pedido.soNaTela, false, "já desfeito: o aviso está de volta, o toast seria mentira");
+  // 2) Sem Desfazer, o POST que falha avisa.
+  const fila2 = criarFilaDosDescartes(async () => false);
+  assert.equal(await fila2.descartar(["dica:b"])!.soNaTela, true);
+  // 3) O DELETE que falha depois de um POST lembrado avisa; sem POST lembrado, não.
+  const fila3 = criarFilaDosDescartes(async (metodo) => metodo === "POST");
+  await fila3.descartar(["dica:c"])!.lembrado;
+  assert.equal(await fila3.desfazer(["dica:c"]).falhou, true);
+  const fila4 = criarFilaDosDescartes(async () => false);
+  await fila4.descartar(["dica:d"])!.lembrado;
+  assert.equal(await fila4.desfazer(["dica:d"]).falhou, false, "nada foi lembrado: nada some ao recarregar");
+  // 4) A chave que veio da semente (descartada em outra visita): o DELETE que falha avisa.
+  const fila5 = criarFilaDosDescartes(async () => false);
+  assert.equal(await fila5.desfazer(["dica:da-semente"]).falhou, true);
+  assert.equal(await fila5.desfazer(["dica:da-semente"], { soNaTela: true }).falhou, false);
+});
+
+test("o provider usa a fila para os dois toasts honestos, e a importação do descarte antigo é silenciosa", () => {
+  const provider = ler("components/ui/descartar.tsx");
+  assert.match(provider, /pedido\.soNaTela\.then/);
+  assert.match(provider, /FRASE_DESFAZER_SO_NESTA_TELA/);
+  assert.match(provider, /if \(!silencioso\) anunciar\("Aviso descartado\."\)/);
+  const gestor = ler("components/content/content-manager.tsx");
+  assert.match(gestor, /\{ desfazivel: false, silencioso: true \}\)\.then\(\(lembrado\) =>/);
+  // A entrada antiga só sai depois de o servidor lembrar.
+  assert.doesNotMatch(gestor, /if \(tinha\) localStorage\.removeItem\(antiga\);/);
+});
+
+test("o sino: o Desfazer espera o descarte do mesmo item, e o vazio explica para quem nunca recebeu nada", () => {
+  const sino = ler("components/notificacoes/sino.tsx");
+  assert.match(sino, /await pendentes\.current\.get\(n\.id\)\?\.catch\(\(\) => \{\}\);/);
+  assert.match(sino, /if \(ultimaOp\.current\.get\(n\.id\) !== "descartar"\) return;/);
+  assert.match(sino, /Nada por aqui ainda\. Avisamos quando o roteiro pedir a sua aprovação e quando o vídeo ficar pronto\./);
+  assert.match(sino, /n\.lida && !n\.temFaixa/);
+});
+
+test("o selo do gêmeo não leva o id do fornecedor ao navegador", () => {
+  const grupo = "grupo-do-fornecedor-123";
+  const k = chaveDoGemeoFaltaUmPasso("p1", grupo)!;
+  assert.ok(k && !k.includes(grupo), k);
+  assert.equal(k, `gemeo-falta-um-passo:p1:${marca(grupo)}`);
+  assert.equal(chaveDoGemeoFaltaUmPasso("p1", grupo, true), `gemeo-falta-um-passo:p1:${marca(grupo)}:lembrete`);
+  assert.equal(chaveDoGemeoFaltaUmPasso("p1", null), null);
+});
+
+test("as ocorrências novas voltam: o plano com erro novo, o corte não aplicado e a espera do estilo por lote", () => {
+  assert.notEqual(chaveDoPlanoPendente("v1", "erro", "falhou A"), chaveDoPlanoPendente("v1", "erro", "falhou B"));
+  assert.equal(chaveDoPlanoPendente("v1", "lendo"), "plano-pendente:v1:lendo");
+  const a = chaveDoCorteNaoAplicado("v1", "O seu último corte não pôde ser aplicado: motivo A");
+  const b = chaveDoCorteNaoAplicado("v1", "O seu último corte não pôde ser aplicado: motivo B");
+  assert.ok(a && b && a !== b && ehChaveDasTelas(a));
+  assert.equal(chaveDoCorteNaoAplicado("v1", null), null);
+  assert.notEqual(chaveDoEstiloAguardando("p1", "run1"), chaveDoEstiloAguardando("p1", "run2"));
+  assert.equal(chaveDoEstiloAguardando("p1", null), null);
+  // O lote da espera: a campanha, senão o vídeo, senão o próprio post.
+  const meta = { aguardandoIdentidade: true };
+  assert.deepEqual(esperaDaIdentidade({ id: "post1", runId: "run1", metadata: meta }), { estado: "aguardando", lote: "run1" });
+  assert.deepEqual(esperaDaIdentidade({ id: "post1", metadata: { ...meta, videoJobId: "vid1" } }), { estado: "aguardando", lote: "vid1" });
+  assert.deepEqual(esperaDaIdentidade({ id: "post1", metadata: meta }), { estado: "aguardando", lote: "post1" });
+  // O "parou" da tela de roteiro leva a marca da falha (rodada, tentativa e erro).
+  assert.match(ler("lib/media/roteiro-da-edicao.ts"), /falha: v\.status === "failed" \? marcaDoAviso\(/);
+  assert.match(ler("lib/media/roteiro-da-edicao.ts"), /\$\{video\.attempts\}\|\$\{video\.error \?\? ""\}/);
+});
+
+test("apagar o vídeo que parou é só do dono: o servidor recusa o membro com 403", () => {
+  const rota = ler("app/api/videos/[id]/dispensar/route.ts");
+  assert.match(rota, /if \(!acesso\.interno && video\.project\.userId !== acesso\.userId\)/);
+  assert.match(rota, /status: 403/);
+  assert.match(ler("app/(app)/projects/[id]/live/page.tsx"), /souDono=\{project\.userId === userId\}/);
+  assert.doesNotMatch(ler("components/video/esteira-do-video.tsx"), /Dispensar e apagar o vídeo/);
 });

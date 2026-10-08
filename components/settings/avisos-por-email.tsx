@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Mail } from "lucide-react";
+import { BotaoDescartar } from "@/components/ui/descartar";
 
 /**
  * O INTERRUPTOR DOS E-MAILS DE AVISO (02/10/2026). Desligado, a pessoa deixa
@@ -51,7 +52,13 @@ export function AvisosPorEmail({ inicial }: { inicial: boolean }) {
             <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
               Pedidos de aprovação chegam sempre: sem eles o trabalho fica parado esperando você.
             </p>
-            {erro && <p className="text-xs mt-2 text-orange-400">{erro}</p>}
+            {/* O interruptor já voltou ao que estava: o X só tira a frase (07/10). */}
+            {erro && (
+              <p className="flex items-start gap-1 text-xs mt-2 text-orange-400">
+                <span className="flex-1">{erro}</span>
+                <BotaoDescartar compacto aoDescartar={() => setErro(null)} className="-my-1" />
+              </p>
+            )}
           </div>
         </div>
         <button

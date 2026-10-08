@@ -99,16 +99,37 @@ export const PREFIXOS_DAS_TELAS = [
   "estilo-mudou",
   "propostas-roberto",
   "portao",
+  "corte-nao-aplicado",
 ] as const;
 
 /**
- * O que vai na semente do cliente (o conjunto que a tela recebe ao abrir): as
- * chaves das telas, mais as duas do sino que também têm faixa (a montagem e a
- * campanha que falharam). As outras chaves do sino ficam de fora: o servidor
- * já as filtra na lista do sino, e elas não podem empurrar para fora do teto
- * as chaves que as telas precisam.
+ * As duas chaves do sino que também têm faixa na tela (a montagem e a campanha
+ * que falharam): descartar num lugar tira do outro. O "Limpar as lidas" do sino
+ * deixa estas de fora, para não sumir com a faixa que a pessoa não descartou.
  */
-export const PREFIXOS_DA_SEMENTE: readonly string[] = [...PREFIXOS_DAS_TELAS.map((p) => `${p}:`), "falha:efeitos:", "falha:campanha:"];
+export const CHAVES_DO_SINO_COM_FAIXA: readonly string[] = ["falha:efeitos:", "falha:campanha:"];
+
+/**
+ * O que vai na semente do cliente (o conjunto que a tela recebe ao abrir): as
+ * chaves das telas, mais as duas do sino que também têm faixa. As outras
+ * chaves do sino ficam de fora: o servidor já as filtra na lista do sino, e
+ * elas não podem empurrar para fora do teto as chaves que as telas precisam.
+ * É também o que a rota /api/avisos/descartes aceita (`ehChaveDasTelas`).
+ */
+export const PREFIXOS_DA_SEMENTE: readonly string[] = [...PREFIXOS_DAS_TELAS.map((p) => `${p}:`), ...CHAVES_DO_SINO_COM_FAIXA];
+
+/**
+ * Os avisos SEM FIM NATURAL: dicas fixas e escolhas que não mudam sozinhas. O
+ * descarte deles vale para sempre, então eles têm cota própria na semente e
+ * nunca saem para abrir espaço no teto da pessoa.
+ */
+export const PREFIXOS_SEM_FIM: readonly string[] = ["dica:", "cores-de-fabrica:", "confirmar-cores:", "jornada-projeto-vazio:", "portao:", "acima-do-plano:"];
+
+/**
+ * Os da semente que TÊM fim natural (a falha, a visita, a ocorrência marcada):
+ * no teto, os mais antigos destes saem primeiro, e o descarte novo cabe.
+ */
+export const PREFIXOS_COM_FIM: readonly string[] = PREFIXOS_DA_SEMENTE.filter((p) => !PREFIXOS_SEM_FIM.includes(p));
 
 const TODOS = new Set<string>([...PREFIXOS_DO_SINO, ...PREFIXOS_DAS_TELAS]);
 
@@ -161,6 +182,15 @@ export function ehChaveDeAviso(c: unknown): c is string {
   const i = c.indexOf(":");
   if (i <= 0 || i === c.length - 1) return false;
   return TODOS.has(c.slice(0, i));
+}
+
+/**
+ * É uma chave que as TELAS gravam? A rota /api/avisos/descartes aceita só
+ * estas: as chaves só do sino entram pelo sino, pelo id de uma notificação que
+ * existe, e por isso não enchem a tabela com sufixo inventado.
+ */
+export function ehChaveDasTelas(c: unknown): c is string {
+  return ehChaveDeAviso(c) && PREFIXOS_DA_SEMENTE.some((p) => c.startsWith(p));
 }
 
 // ─── A montagem de efeitos (a faixa do print, o card da peça e o sino) ───
@@ -280,8 +310,14 @@ export function chaveDaSugestao(sugestaoId: string): string | null {
 
 // ─── Quadro e modal do card ───
 
-export function chaveDoEstiloAguardando(projectId: string): string | null {
-  return montar("estilo-aguardando", projectId);
+/**
+ * "Aguardando o estilo dos posts", por projeto e por LOTE de peças que espera
+ * (a campanha, ou o vídeo, de onde as peças vieram): um X esconde a frase nos
+ * cartões daquele lote, e a espera nova (a aprovação caiu numa troca de cores
+ * e outra leva de peças nasceu esperando) volta a explicar o botão.
+ */
+export function chaveDoEstiloAguardando(projectId: string, lote: string | null | undefined): string | null {
+  return montar("estilo-aguardando", projectId, lote);
 }
 
 /** A arte que não saiu: a marca é `arteFalhou.em` (lib/modelos-de-arte/espera-da-identidade.ts). */
@@ -342,8 +378,9 @@ export function chaveDoAlertaDoPlano(motivo: string | null | undefined, marcaDoA
   return montar("plano-alerta", motivo, marcaDoAlerta);
 }
 
-export function chaveDosCreditosAcabando(marcaDaRecarga: string | null | undefined): string | null {
-  return montar("creditos-acabando", marcaDaRecarga);
+/** Os créditos acabando (ou, para o membro da equipe, zerados), lembrado até a próxima recarga. */
+export function chaveDosCreditosAcabando(marcaDaRecarga: string | null | undefined, faixa: "acabando" | "zerado" = "acabando"): string | null {
+  return faixa === "zerado" ? montar("creditos-acabando", marcaDaRecarga, "zerado") : montar("creditos-acabando", marcaDaRecarga);
 }
 
 export function chaveDaCompraAutomatica(marcaDaRecarga: string | null | undefined, faixa: "acabando" | "zerado"): string | null {
@@ -358,8 +395,15 @@ export function chaveDoSaldoDoFornecedor(incidenteId: string): string | null {
 
 // ─── Gêmeo ───
 
-export function chaveDoGemeoFaltaUmPasso(projectId: string, grupoId: string | null | undefined, lembrete = false): string | null {
-  return lembrete ? montar("gemeo-falta-um-passo", projectId, grupoId, "lembrete") : montar("gemeo-falta-um-passo", projectId, grupoId);
+/**
+ * O selo "Falta um passo no gêmeo". A ocorrência (o grupo do treino, ou a
+ * origem) entra só como `marca()`: a chave desce ao navegador, e o id do
+ * fornecedor nunca desce (a mesma regra de cadastroParaTela).
+ */
+export function chaveDoGemeoFaltaUmPasso(projectId: string, ocorrencia: string | null | undefined, lembrete = false): string | null {
+  if (!ocorrencia) return null;
+  const m = marca(ocorrencia);
+  return lembrete ? montar("gemeo-falta-um-passo", projectId, m, "lembrete") : montar("gemeo-falta-um-passo", projectId, m);
 }
 
 /**
@@ -442,13 +486,23 @@ export function chaveDoEstiloNovo(videoId: string, estilo: string | null | undef
   return montar("estilo-novo", videoId, estilo);
 }
 
-export function chaveDoPlanoPendente(videoId: string, estado: string): string | null {
-  return montar("plano-pendente", videoId, estado);
+/** O plano de efeitos lendo ou com erro. Com erro, a `marca()` do erro: um erro novo volta. */
+export function chaveDoPlanoPendente(videoId: string, estado: string, ocorrencia?: string | null): string | null {
+  return ocorrencia ? montar("plano-pendente", videoId, estado, marca(ocorrencia)) : montar("plano-pendente", videoId, estado);
 }
 
 export function chaveDoPedidoDaCena(videoId: string, indice: number, pedido: string | null | undefined): string | null {
   if (!pedido) return null;
   return montar("cena-pedido", videoId, indice, marca(pedido));
+}
+
+/**
+ * "O seu último corte no vídeo completo não pôde ser aplicado" (o controle do
+ * corte): a ocorrência é a `marca()` do aviso, que leva o motivo daquela vez.
+ */
+export function chaveDoCorteNaoAplicado(videoId: string, aviso: string | null | undefined): string | null {
+  if (!aviso) return null;
+  return montar("corte-nao-aplicado", videoId, marca(aviso));
 }
 
 export function chaveDoEstiloQueMudou(videoId: string, planejadoEm: string | null | undefined, estilo: string | null | undefined): string | null {

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   AGENTES,
+  donoDaPeca,
   situacaoDoSquad,
   type LogDaEsteira,
   type PecaDoSquad,
@@ -392,9 +393,13 @@ export function Escritorio({
    */
   const descartes = useDescartes();
   const [visitaNaTela, setVisitaNaTela] = useState(false);
+  // A mesma regra da contagem de `situacaoDoSquad`: o dono pela `donoDaPeca`
+  // (que traduz os ids antigos e cai no tipo), sobre as peças que já estão na
+  // sala. Pelo `agentId` cru, a peça de id antigo não tinha chave e o agente
+  // parava de visitar sem ninguém ter dispensado.
   const pendentesDoAgente = useCallback(
-    (agentId: string) => pecas.filter((p) => p.agentId === agentId && !p.emProducao && (p.status === "pending" || p.status === "needs_revision")),
-    [pecas]
+    (agentId: string) => pecasNaSala.filter((p) => donoDaPeca(p)?.id === agentId && !p.emProducao && (p.status === "pending" || p.status === "needs_revision")),
+    [pecasNaSala]
   );
   const chavesDaVisita = useCallback(
     (v: { agentId: string; sugestao?: Sugestao }) =>
@@ -598,6 +603,7 @@ export function Escritorio({
             titulo={titulo}
             tema={tema}
             falaDaMesa={falaDaMesa}
+            aoFecharFalaDaMesa={() => setFalaDaMesa(null)}
             reduzido={false}
             onAbrirAgente={abrir}
             conversas={conversas}
@@ -721,37 +727,36 @@ export function Escritorio({
             pelo clique, que funciona também no celular, e o teclado vem
             depois, para quem já está dentro da cena. */}
         {modo === "3d" && !descartes.ehDescartado(CHAVE_DOS_CONTROLES) && (
+          // A dica não segura o toque (07/10): o clique e o arraste passam
+          // direto para a cena; só o X recebe o toque.
           <span
-            className="absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-md py-0.5 pl-2 pr-0.5 text-[10px]"
+            className="pointer-events-none absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-md py-0.5 pl-2 pr-0.5 text-[10px]"
             style={{ color: "var(--text-muted)", background: "color-mix(in srgb, var(--bg-surface) 80%, transparent)" }}
           >
-            <span className="pointer-events-none">clique no chão para andar · E fala · X senta na sua mesa · C toma café · WASD · arraste para olhar</span>
-            <BotaoDescartar compacto chave={CHAVE_DOS_CONTROLES} />
+            <span>clique no chão para andar · E fala · X senta na sua mesa · C toma café · WASD · arraste para olhar</span>
+            <BotaoDescartar compacto chave={CHAVE_DOS_CONTROLES} className="pointer-events-auto" />
           </span>
         )}
-        {/* A VISITA NA SUA SALA, com o X em HTML sobre a cena (07/10). */}
+        {/* A VISITA NA SUA SALA, com o X em HTML sobre a cena (07/10). No
+            celular ela desce para baixo do "Personalizar meu avatar": na mesma
+            faixa do topo ela cobria o botão e tomava o toque dele. */}
         {modo === "3d" && visita && visitaNaTela && !sugestaoAberta && (
           <div
-            className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-lg border py-0.5 pl-2.5 pr-0.5 text-xs shadow-[var(--shadow)]"
+            className="absolute left-3 top-14 z-10 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-lg border py-0.5 pl-2.5 pr-0.5 text-xs shadow-[var(--shadow)] sm:left-auto sm:right-3 sm:top-3"
             style={{ background: "var(--bg-surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
             data-visita
           >
-            <span>{AGENTES.find((a) => a.id === visita.agentId)?.primeiroNome ?? "O squad"} veio até a sua sala</span>
+            <span className="min-w-0">{AGENTES.find((a) => a.id === visita.agentId)?.primeiroNome ?? "O squad"} veio até a sua sala</span>
             <BotaoDescartar rotulo="Dispensar a visita" aoDescartar={() => dispensarVisita(visita)} />
           </div>
         )}
-        {/* A fala da sua mesa, com o X só local (07/10): ela some sozinha em
-            até 16 s, mas quem quer manda embora antes. */}
+        {/* A fala da sua mesa (07/10): o X mora no próprio balão da cena (uma
+            pílula aqui repetia a mesma frase e cobria o botão do avatar no
+            celular). Para o leitor de tela, a frase é anunciada aqui. */}
         {modo === "3d" && falaDaMesa && (
-          <div
-            className="absolute left-1/2 top-3 z-10 inline-flex max-w-[min(420px,80%)] -translate-x-1/2 items-center gap-1 rounded-lg border py-0.5 pl-2.5 pr-0.5 text-xs shadow-[var(--shadow)]"
-            style={{ background: "var(--bg-surface)", borderColor: "var(--accent-orange)", color: "var(--text-primary)" }}
-            role="status"
-            data-fala-da-mesa
-          >
-            <span>{falaDaMesa}</span>
-            <BotaoDescartar compacto aoDescartar={() => setFalaDaMesa(null)} />
-          </div>
+          <p className="sr-only" role="status" data-fala-da-mesa>
+            {falaDaMesa}
+          </p>
         )}
       </div>
       {(runId || bastao) && ultimaFala && (

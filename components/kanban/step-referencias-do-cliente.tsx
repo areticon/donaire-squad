@@ -374,7 +374,12 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
                 <RefreshCw className="h-4 w-4" />
                 Refazer o estudo
               </Button>
-              {!dados.ligado && <p className="text-xs text-amber-700 dark:text-amber-400">O estudo de referências está desligado nesta conta agora.</p>}
+              {/* A mesma chave dos outros três avisos iguais (07/10): descartar uma vez vale em todos. */}
+              {!dados.ligado && (
+                <AvisoDescartavel chave={chaveDaDica("estudo-desligado", projectId)} className="text-xs text-amber-700 dark:text-amber-400">
+                  O estudo de referências está desligado nesta conta agora.
+                </AvisoDescartavel>
+              )}
             </div>
           )}
         </div>

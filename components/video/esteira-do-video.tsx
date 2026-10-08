@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
+import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, Trash2, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
 import { STATUS_CANCELADO, textoDaConfirmacao } from "@/lib/media/cancelamento";
@@ -12,7 +12,7 @@ import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
 import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type LeituraDaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
 import { CODIGO_DA_ETAPA, pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
 import toast from "react-hot-toast";
-import { BotaoDescartar, useDescarte, useDescartes, type Descartes } from "@/components/ui/descartar";
+import { BotaoDescartar, useDescarte, useDescartes } from "@/components/ui/descartar";
 import { chaveDaDica, chaveDoVigia, chavesCandidatasDoVideo } from "@/lib/avisos/chaves";
 
 /**
@@ -223,9 +223,15 @@ export function EsteiraDoVideo({
   sinalDeRecarga = 0,
   aoAbrirPeca,
   aoIrAoQuadro,
+  podeApagar = false,
 }: {
   projectId: string;
   videosIniciais: VideoAoVivo[];
+  /**
+   * Quem vê é o DONO do projeto (07/10): só ele tem o "Apagar o vídeo" no
+   * cartão do vídeo que parou. O membro tem o X, que descarta só para ele.
+   */
+  podeApagar?: boolean;
   /**
    * O estado fresco das gravações, a cada consulta, mais o aviso de que algum
    * status MUDOU. É o que faz os cards aparecerem no quadro sem recarregar a
@@ -261,7 +267,7 @@ export function EsteiraDoVideo({
    * Fica até a pessoa fechar; não é erro, então não some quando o estado anda.
    */
   const [avisoDaAcao, setAvisoDaAcao] = useState<string | null>(null);
-  /** Os vídeos que saíram desta visita: o cancelado e o apagado pelo "Dispensar". */
+  /** Os vídeos que saíram desta visita: o cancelado e o apagado. */
   const [dispensados, setDispensados] = useState<string[]>([]);
   // O DESCARTE DOS CARTÕES (07/10): lembrado no servidor por pessoa. A consulta
   // dos vídeos traz o conjunto exato das chaves descartadas a cada 4 s, e ele
@@ -492,6 +498,28 @@ export function EsteiraDoVideo({
         void consultar();
         forcarRecarga();
       }
+    },
+    [consultar, forcarRecarga]
+  );
+
+  /**
+   * APAGAR O VÍDEO QUE PAROU (só o dono, depois do "Sim, apagar" no cartão).
+   * Devolve se apagou: o cartão sai e o quadro recarrega.
+   */
+  const apagar = useCallback(
+    async (v: VideoAoVivo): Promise<boolean> => {
+      setErroDaAcao(null);
+      const r = await apagarVideoQueParou(v);
+      if (!r.ok) {
+        setErroDaAcao(r.erro);
+        return false;
+      }
+      setDispensados((d) => [...d, v.id]);
+      toast("Vídeo apagado.");
+      pedirLeituraDoSino();
+      void consultar();
+      forcarRecarga();
+      return true;
     },
     [consultar, forcarRecarga]
   );
@@ -747,7 +775,7 @@ export function EsteiraDoVideo({
       aoRepetir={(rota) => void executar(v.id, rota)}
       descarte={descarteDe[v.id] ?? null}
       recolhido={Boolean(descarteDe[v.id]?.modo === "recolher" && descartes.ehDescartado(descarteDe[v.id]!.chave))}
-      aoDispensar={() => void dispensarVideoQueParou(v, descarteDe[v.id]?.chave ?? null, descartes, setDispensados)}
+      aoApagar={podeApagar ? () => apagar(v) : undefined}
       aoAproveitar={() => setAproveitar(v.id)}
       aoCancelar={() => cancelar(v.id)}
       avisoFixo={avisoDaEtapa(v)}
@@ -1027,39 +1055,21 @@ function irAoQuadro() {
 }
 
 /**
- * "DISPENSAR E APAGAR O VÍDEO" QUE PAROU (03/10, pedido do Bruno: "se
- * dispensei, precisa deletar"; rótulo honesto em 07/10). O cartão some na hora
- * e o servidor apaga primeiro. Apagou: "Vídeo apagado.", sem Desfazer e sem
- * descarte gravado (não há o que lembrar). Não apagou (409: há peça publicada
- * ou agendada; ou erro): o aviso é descartado, com Desfazer, e não volta ao
- * recarregar.
+ * "APAGAR O VÍDEO" QUE PAROU (03/10, pedido do Bruno: "se dispensei, precisa
+ * deletar"). Desde 07/10 separado do X: o X do cartão só descarta o aviso
+ * (por pessoa, com Desfazer, como em toda a plataforma), e apagar é este
+ * botão próprio, com texto, lixeira e a confirmação dentro do cartão, só para
+ * o dono do projeto (o servidor recusa o membro). Apagar não tem Desfazer: a
+ * confirmação diz isso antes.
  */
-async function dispensarVideoQueParou(
-  v: VideoAoVivo,
-  chave: string | null,
-  descartes: Descartes,
-  setDispensados: (f: (d: string[]) => string[]) => void
-) {
-  setDispensados((d) => [...d, v.id]);
-  let status = 0;
+async function apagarVideoQueParou(v: VideoAoVivo): Promise<{ ok: true } | { ok: false; erro: string }> {
   try {
-    status = (await fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" })).status;
+    const r = await fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" });
+    if (r.ok) return { ok: true };
+    const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, erro: corpo.error ?? `A plataforma recusou com código ${r.status}.` };
   } catch {
-    status = 0;
-  }
-  if (status >= 200 && status < 300) {
-    toast("Vídeo apagado.");
-    return;
-  }
-  if (chave) {
-    descartes.descartar([chave], {
-      mensagem:
-        status === 409
-          ? "O vídeo tem peça publicada ou agendada e não foi apagado; o aviso saiu da lista."
-          : "Não consegui apagar o vídeo agora; o aviso saiu da lista.",
-    });
-    // Quem esconde agora é o descarte: o Desfazer traz o cartão de volta.
-    setDispensados((d) => d.filter((x) => x !== v.id));
+    return { ok: false, erro: "Não consegui falar com a plataforma. Confira a conexão e tente de novo." };
   }
 }
 
@@ -1078,7 +1088,7 @@ function CartaoDoVideo({
   agora,
   semConexao,
   aoRepetir,
-  aoDispensar,
+  aoApagar,
   aoAproveitar,
   aoCancelar,
   avisoFixo,
@@ -1098,7 +1108,8 @@ function CartaoDoVideo({
   agora: number;
   semConexao: boolean;
   aoRepetir: (rota: string) => void;
-  aoDispensar: () => void;
+  /** Apaga o vídeo que parou, depois da confirmação; só o dono tem (07/10). Devolve se apagou. */
+  aoApagar?: () => Promise<boolean>;
   /** Abre o "Aproveitar o roteiro" deste vídeo (02/10). */
   aoAproveitar: () => void;
   /** Cancela este vídeo no servidor, depois da confirmação (05/10). Devolve se cancelou. */
@@ -1199,7 +1210,7 @@ function CartaoDoVideo({
   // O relato do Bruno: o vídeo do gêmeo ficou parado em "o roteiro espera a
   // sua aprovação" sem jeito de sair. O botão existe para o que espera o
   // cliente ou está andando (o gêmeo gravando inclusive); o pronto se arquiva
-  // peça por peça, e o que parou tem o "dispensar". A confirmação é dentro do
+  // peça por peça, e o que parou tem o "Apagar o vídeo" (só o dono). A confirmação é dentro do
   // cartão, não a janela do navegador: ela diz o que acontece com o que já foi
   // gerado e com os créditos.
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
@@ -1212,6 +1223,18 @@ function CartaoDoVideo({
     const cancelou = await aoCancelar();
     setCancelando(false);
     if (!cancelou) setConfirmandoCancelar(false);
+  };
+  // ── APAGAR O VÍDEO QUE PAROU (07/10) ─────────────────────────────────────
+  // Separado do X: o X só tira o aviso da lista de quem clicou. Apagar é de
+  // vez, só para o dono, e pede o "Sim" dentro do cartão.
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const confirmarApagar = async () => {
+    if (!aoApagar) return;
+    setApagando(true);
+    const apagou = await aoApagar();
+    setApagando(false);
+    if (!apagou) setConfirmandoApagar(false);
   };
   const primeiraParaAprovar = pecas.filter((p) => p.paraAprovar).sort((a, b) => a.data.localeCompare(b.data))[0] ?? null;
   const irAsPecas = () => (aoIrAoQuadro ? aoIrAoQuadro(primeiraParaAprovar?.data) : irAoQuadro());
@@ -1399,21 +1422,13 @@ function CartaoDoVideo({
               <span className="min-[400px]:hidden">Cancelar</span>
             </button>
           )}
-          {/* O X (07/10). No vídeo que parou ele APAGA o vídeo quando dá, e o
-              nome diz isso; nos outros só tira o aviso da lista, lembrado por
-              pessoa. No celular sobe para o canto do cartão: na fileira dos
-              botões ele passava da borda em 360 px. */}
+          {/* O X (07/10): em TODO cartão, o vídeo que parou inclusive, só tira o
+              aviso da lista de quem clicou, lembrado por pessoa e com
+              Desfazer. Apagar o vídeo é outra ação, em "detalhes". No celular
+              o X sobe para o canto do cartão: na fileira dos botões ele
+              passava da borda em 360 px. */}
           {dispensavel && descarte && (
-            descarte.tipo === "falhou" ? (
-              <BotaoDescartar
-                rotulo="Dispensar e apagar o vídeo"
-                aoDescartar={aoDispensar}
-                descricaoId={idDoTitulo}
-                className="absolute right-0 top-0 sm:static"
-              />
-            ) : (
-              <BotaoDescartar chave={descarte.chave} descricaoId={idDoTitulo} className="absolute right-0 top-0 sm:static" />
-            )
+            <BotaoDescartar chave={descarte.chave} descricaoId={idDoTitulo} className="absolute right-0 top-0 sm:static" />
           )}
         </div>
       </div>
@@ -1483,6 +1498,61 @@ function CartaoDoVideo({
                 >
                   Abrir chamado
                 </button>
+              )}
+              {/* APAGAR O VÍDEO (07/10): só o dono, com texto e lixeira, e a
+                  confirmação aqui mesmo. */}
+              {falhou && aoApagar && !confirmandoApagar && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoApagar(true)}
+                    aria-expanded={false}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:border-red-500/60 hover:text-red-400 transition-colors"
+                    style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                    data-acao="apagar-video"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Apagar o vídeo
+                  </button>
+                </div>
+              )}
+              {falhou && aoApagar && confirmandoApagar && (
+                <div
+                  className="rounded-xl border px-3 py-3 space-y-2.5"
+                  style={{ borderColor: "rgba(239,68,68,.45)", background: "color-mix(in srgb, #ef4444 7%, transparent)" }}
+                  role="alertdialog"
+                  aria-label="Apagar o vídeo"
+                  data-confirmar-apagar
+                >
+                  <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+                    Apagar este vídeo de vez?
+                  </p>
+                  <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
+                    A gravação sai da plataforma, e as peças dela que não foram publicadas nem agendadas são canceladas. Não dá para desfazer. Para só tirar o aviso da lista, use o X do cartão.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void confirmarApagar()}
+                      disabled={apagando}
+                      className="inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors whitespace-nowrap disabled:opacity-60"
+                      data-acao="confirmar-apagar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {apagando ? "Apagando..." : "Sim, apagar o vídeo"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmandoApagar(false)}
+                      disabled={apagando}
+                      className={classeDoSecundario}
+                      style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                      data-acao="manter-video-parado"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}

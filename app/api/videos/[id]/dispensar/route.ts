@@ -12,13 +12,21 @@ import { acessoAoVideo } from "@/lib/media/piloto-do-servidor";
  * Apaga de vez só o vídeo PARADO EM FALHA e que não deixou nada publicado nem
  * agendado; o que já foi cobrado e não entregue foi devolvido pela régua de
  * estorno no momento da falha. Vídeo em andamento ou pronto não se apaga por aqui.
+ *
+ * SÓ O DONO DO PROJETO (07/10): o membro da equipe vê o cartão, mas apagar
+ * tira o vídeo de todo mundo. Para ele, o X do cartão descarta o aviso só na
+ * lista dele (lib/avisos). Na tela, o "Apagar o vídeo" só aparece para o dono,
+ * com a confirmação antes.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const acesso = await acessoAoVideo(req, id);
   if (!acesso) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const video = await prisma.videoJob.findFirst({ where: acesso.where, select: { id: true, status: true } });
+  const video = await prisma.videoJob.findFirst({ where: acesso.where, select: { id: true, status: true, project: { select: { userId: true } } } });
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
+  if (!acesso.interno && video.project.userId !== acesso.userId) {
+    return NextResponse.json({ error: "Só quem administra a conta apaga um vídeo. O X do cartão tira o aviso só da sua lista." }, { status: 403 });
+  }
   if (video.status !== "failed") {
     return NextResponse.json({ error: "Só dá para apagar daqui um vídeo que parou. Este ainda está em andamento ou pronto." }, { status: 409 });
   }

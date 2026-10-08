@@ -91,6 +91,7 @@ import { frasesDaFala } from "@/lib/media/jornada/linha-do-tempo";
 import { ajusteNoPlano } from "@/lib/media/jornada/ajuste";
 import { editorJornadaLigado } from "@/lib/media/jornada/estado";
 import { corteDoCompletoAndando } from "@/lib/media/corte-do-completo";
+import { marca as marcaDoAviso } from "@/lib/avisos/chaves";
 
 /**
  * O plano antigo pode ser reaproveitado no estilo de agora? (01/10, "trocar
@@ -993,7 +994,9 @@ export function fecharCompleto(
 export async function montarTela(videoId: string, userId: string): Promise<TelaDeRoteiro | null> {
   const video = await prisma.videoJob.findFirst({
     where: { id: videoId, project: projetoVisivel(userId) },
-    select: { id: true },
+    // A rodada, a tentativa e o erro marcam a falha (07/10): o aviso "O
+    // roteiro parou no meio" descartado volta numa falha nova.
+    select: { id: true, attempts: true, error: true, rodadaEm: true, createdAt: true },
   });
   if (!video) return null;
   const v = (await lerVideo(videoId))!;
@@ -1047,6 +1050,7 @@ export async function montarTela(videoId: string, userId: string): Promise<TelaD
     },
     maxCortes: MAX_CORTES_APROVADOS,
     aprovadoEm: r?.aprovadoEm ?? null,
+    falha: v.status === "failed" ? marcaDoAviso(`${(video.rodadaEm ?? video.createdAt).toISOString()}|${video.attempts}|${video.error ?? ""}`) : null,
     videoCurto: (v.durationSec ?? 0) > 0 && (v.durationSec ?? 0) <= VIDEO_CURTO_SEG,
     // Antes da aprovação, a sugestão: os mais fortes pela nota (3); cabem até 8.
     // O vídeo que já é curto (02/10, o gêmeo de 52 s) vem sem corte marcado.

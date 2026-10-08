@@ -377,10 +377,12 @@ function AvisoDaIdentidade({ espera, projectId, onTentarArte }: { espera: Espera
   if (espera.estado === "gerando") return null;
   const falhou = espera.estado === "falhou";
   // DESCARTÁVEL (07/10): a frase sai e o botão fica (modo recolher). O
-  // "aguardando" é por projeto (um X esconde a frase em todos os cartões); a
-  // escolha continua em Configurações > Modelos e na janela de nova campanha.
-  // A arte que falhou é por post e pela marca da falha.
-  const chave = falhou ? (espera.postId ? chaveDaArteQueFalhou(espera.postId, espera.em) : null) : projectId ? chaveDoEstiloAguardando(projectId) : null;
+  // "aguardando" é por projeto e por lote (um X esconde a frase nos cartões da
+  // mesma campanha ou do mesmo vídeo; a leva nova, depois de a aprovação
+  // cair, volta a explicar o botão); a escolha continua em Configurações >
+  // Modelos e na janela de nova campanha. A arte que falhou é por post e pela
+  // marca da falha.
+  const chave = falhou ? (espera.postId ? chaveDaArteQueFalhou(espera.postId, espera.em) : null) : projectId ? chaveDoEstiloAguardando(projectId, espera.lote) : null;
   const botao =
     falhou && onTentarArte ? (
       <button

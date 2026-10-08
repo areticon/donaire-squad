@@ -91,7 +91,7 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
   const variasPecas = visiveis.length > 1;
 
   return (
-    <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-5 py-4 space-y-3" data-lista-de-avisos data-aviso="montagem">
+    <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 sm:px-5 py-4 space-y-3" data-lista-de-avisos data-aviso="montagem">
       <div className="flex items-start gap-3">
         <AlertTriangle className="w-[18px] h-[18px] text-orange-400 shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
@@ -107,11 +107,10 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
             </p>
           ) : null}
         </div>
-        {/* Uma peça: o X fica no canto da faixa. Várias: "Descartar todas",
-            com texto, e um X em cada peça. */}
-        {variasPecas ? (
-          <BotaoDescartar texto="Descartar todas" aoDescartar={() => descartarPecas(visiveis)} className="-mt-2 -mr-2" />
-        ) : (
+        {/* Uma peça: o X fica no canto da faixa. Várias: um X em cada peça e
+            o "Descartar todas" no rodapé, numa linha própria: na linha do
+            título ele espremia o texto numa coluna de 140 px no celular. */}
+        {variasPecas ? null : (
           <BotaoDescartar aoDescartar={() => descartarPecas(visiveis)} descricaoId={idDoTitulo} className="-mt-2 -mr-3" />
         )}
       </div>
@@ -143,6 +142,11 @@ export function AvisoDaMontagem({ falhas, aoPedir }: { falhas: FalhaDaMontagem[]
           );
         })}
       </ul>
+      {variasPecas ? (
+        <div className="flex justify-end">
+          <BotaoDescartar texto="Descartar todas" aoDescartar={() => descartarPecas(visiveis)} descricaoId={idDoTitulo} className="-mb-1 -mr-2" />
+        </div>
+      ) : null}
     </div>
   );
 }

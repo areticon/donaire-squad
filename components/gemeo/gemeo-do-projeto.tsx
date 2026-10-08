@@ -23,7 +23,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { BotaoDescartar, Descartavel, FraseDescartavel } from "@/components/ui/descartar";
 import { chaveDaSituacaoDoGemeo, chaveDoResumoDoGemeo, ocorrenciaDoGemeo } from "@/lib/avisos/chaves";
 import {
   CENARIOS,
@@ -513,14 +513,37 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
             </div>
             {c?.foto?.estado === "preparando" && <Situacao tom="andando" texto="Conferindo a foto: resolução, rosto e enquadramento..." />}
             {c?.foto?.estado === "falhou" && <Situacao tom="andando" texto={c.foto.motivo ?? "Conferindo a foto de novo em instantes..."} />}
-            {(c?.foto?.checagens ?? []).map((k) => (
-              <Situacao key={k.id} tom={k.resultado === "ok" ? "ok" : k.resultado === "aviso" ? "espera" : "erro"} texto={k.texto} />
-            ))}
-            {c?.foto?.estado === "recusada" && (
-              <>
-                {!c.foto.checagens?.length && <Situacao tom="erro" texto={c.foto.motivo ?? "A foto não serviu."} chave={chaveDaSituacaoDoGemeo(projectId, "foto", "recusada", c.foto.origem)} />}
-                <p className="text-sm text-orange-400">A foto não valeu. Corrija o que está marcado acima e envie outra.</p>
-              </>
+            {/* A FOTO RECUSADA se descarta INTEIRA (07/10): as checagens, o
+                motivo e a frase, com um X só e a chave da origem da foto. A
+                recusa quase sempre vem com checagens, e antes só o caso sem
+                elas tinha o X. Uma foto nova (outra origem) volta a mostrar. */}
+            {c?.foto?.estado === "recusada" ? (
+              <Descartavel chave={chaveDaSituacaoDoGemeo(projectId, "foto", "recusada", c.foto.origem)}>
+                <div className="flex items-start gap-1.5" data-foto-recusada>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    {(c.foto.checagens ?? []).map((k) => (
+                      <Situacao key={k.id} tom={k.resultado === "ok" ? "ok" : k.resultado === "aviso" ? "espera" : "erro"} texto={k.texto} />
+                    ))}
+                    {!c.foto.checagens?.length && <Situacao tom="erro" texto={c.foto.motivo ?? "A foto não serviu."} />}
+                    <p className="text-sm text-orange-400">A foto não valeu. Corrija o que está marcado acima e envie outra.</p>
+                  </div>
+                  <BotaoDescartar compacto className="-my-0.5" />
+                </div>
+              </Descartavel>
+            ) : c?.foto?.checagens?.some((k) => k.resultado !== "ok") ? (
+              // As checagens com aviso de uma foto que valeu: o mesmo X, pela origem.
+              <Descartavel chave={chaveDaSituacaoDoGemeo(projectId, "foto", `checagens-${c.foto.estado}`, c.foto.origem)}>
+                <div className="flex items-start gap-1.5" data-foto-checagens>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    {c.foto.checagens.map((k) => (
+                      <Situacao key={k.id} tom={k.resultado === "ok" ? "ok" : k.resultado === "aviso" ? "espera" : "erro"} texto={k.texto} />
+                    ))}
+                  </div>
+                  <BotaoDescartar compacto className="-my-0.5" />
+                </div>
+              </Descartavel>
+            ) : (
+              (c?.foto?.checagens ?? []).map((k) => <Situacao key={k.id} tom="ok" texto={k.texto} />)
             )}
             {fotoPronta && !c?.foto?.checagens?.length && <Situacao tom="ok" texto={c?.foto?.origem.startsWith("treino:") ? "Imagem tirada do vídeo de treino. Uma foto enviada fica melhor." : "Foto pronta para o gerador."} />}
             {/* O GÊMEO DE FOTO NO GERADOR (05/10): criado pelo servidor assim
@@ -1214,7 +1237,12 @@ function ListaDeVideos({ projectId, videos, onMudou }: { projectId: string; vide
                 </p>
                 {/* `break-words`: o motivo pode trazer um caminho ou código sem espaço, que
                     alargava a página inteira no celular (506px numa tela de 390, 05/10). */}
-                {v.motivo && <p className="break-words text-xs text-orange-400">{v.motivo}</p>}
+                {/* O motivo de quem falhou ou foi cancelado se descarta (07/10), por vídeo e pelo motivo. */}
+                {v.motivo && (
+                  <FraseDescartavel chave={chaveDaSituacaoDoGemeo(projectId, "video", v.estado, `${v.id}|${v.motivo}`)} className="block break-words text-xs text-orange-400">
+                    {v.motivo}
+                  </FraseDescartavel>
+                )}
               </div>
               <span
                 className={cn(

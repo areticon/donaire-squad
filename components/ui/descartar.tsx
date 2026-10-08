@@ -19,7 +19,9 @@ import { criarFilaDosDescartes, estaDescartada, unirSemente } from "@/lib/avisos
  * - DESCARTAR É OTIMISTA: some na hora, grava no servidor (POST
  *   /api/avisos/descartes) e mostra "Aviso descartado." com Desfazer por 6 s.
  *   Sem a tabela (202), com erro de rede ou 500, o aviso fica escondido nesta
- *   visita e o toast diz a verdade: "Descartado só nesta tela".
+ *   visita e o toast diz a verdade: "Descartado só nesta tela" (só enquanto o
+ *   aviso continua descartado: depois do Desfazer, nada). O Desfazer que não
+ *   chega ao servidor também avisa que o aviso pode sumir ao recarregar.
  * - FILA POR CHAVE: descartar e desfazer da mesma chave saem em ordem; o
  *   DELETE espera o POST anterior responder, senão o POST lento gravaria por
  *   último e o aviso desfeito sumiria no próximo carregamento.
@@ -40,15 +42,23 @@ import { criarFilaDosDescartes, estaDescartada, unirSemente } from "@/lib/avisos
 
 type Opcoes = {
   desfazivel?: boolean;
-  /** A frase do toast, quando não é "Aviso descartado." (o vídeo que não pôde ser apagado). */
+  /** A frase do toast, quando não é "Aviso descartado.". */
   mensagem?: string;
+  /**
+   * Sem toast e sem anúncio, nem o "Descartado só nesta tela": o descarte que
+   * a pessoa não fez agora (a importação do descarte antigo do navegador).
+   */
+  silencioso?: boolean;
 };
 
 export type Descartes = {
   /** Esta chave está descartada (ou escondida) nesta tela? */
   ehDescartado(chave: string | null | undefined): boolean;
-  /** Descarta e lembra no servidor. Otimista, com Desfazer quando `desfazivel` (padrão). */
-  descartar(chaves: readonly string[], opcoes?: Opcoes): void;
+  /**
+   * Descarta e lembra no servidor. Otimista, com Desfazer quando `desfazivel`
+   * (padrão). A promessa diz se o servidor lembrou (false sem provider).
+   */
+  descartar(chaves: readonly string[], opcoes?: Opcoes): Promise<boolean>;
   /**
    * Desfaz o descarte, no servidor também. `soNaTela`: o servidor já desfez
    * por outro caminho (o sino restaura pelo id), e aqui só a tela volta.
@@ -124,6 +134,8 @@ export function mostrarToastDoDescarte(p: { mensagem?: string; aoDesfazer: () =>
 
 /** O toast honesto de quando o descarte não foi lembrado no servidor. */
 export const FRASE_SO_NESTA_TELA = "Descartado só nesta tela; pode voltar ao recarregar.";
+/** O toast honesto de quando o Desfazer não chegou ao servidor (o descarte continua lá). */
+export const FRASE_DESFAZER_SO_NESTA_TELA = "Não consegui desfazer no servidor; o aviso pode sumir ao recarregar.";
 
 function ToastDoDescarte({ id, mensagem, aoDesfazer }: { id: string; mensagem?: string; aoDesfazer: () => void }) {
   return (
@@ -154,33 +166,42 @@ function ProviderRaiz({ iniciais, children }: { iniciais?: readonly string[]; ch
   const anunciar = useCallback((texto: string) => setAnuncio((a) => ({ texto, n: a.n + 1 })), []);
 
   const descartar = useCallback(
-    (chaves: readonly string[], opcoes?: Opcoes) => {
+    (chaves: readonly string[], opcoes?: Opcoes): Promise<boolean> => {
       // O segundo clique da mesma chave, com o primeiro na fila, não pesa.
       const pedido = fila.descartar(chaves);
-      if (!pedido) return;
+      if (!pedido) return Promise.resolve(true);
       const { novas } = pedido;
       setEstado((s) => ({ ...s, descartadas: comMais(s.descartadas, novas), desfeitas: semEstas(s.desfeitas, novas) }));
-      anunciar("Aviso descartado.");
-      const desfazivel = opcoes?.desfazivel ?? true;
+      const silencioso = opcoes?.silencioso ?? false;
+      if (!silencioso) anunciar("Aviso descartado.");
+      const desfazivel = !silencioso && (opcoes?.desfazivel ?? true);
       const idDoToast = desfazivel
         ? mostrarToastDoDescarte({ mensagem: opcoes?.mensagem, aoDesfazer: () => desfazerRef.current(novas) })
         : undefined;
-      void pedido.lembrado.then((lembrado) => {
-        if (!lembrado) toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
-        pedirLeituraDoSino();
+      // "Só nesta tela" só enquanto o aviso continua descartado: com o
+      // Desfazer clicado antes de o POST falhar, o aviso já voltou.
+      void pedido.soNaTela.then((soNaTela) => {
+        if (soNaTela && !silencioso) toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
       });
+      void pedido.lembrado.then(() => pedirLeituraDoSino());
+      return pedido.lembrado;
     },
     [anunciar, fila]
   );
 
   const desfazer = useCallback(
     (chaves: readonly string[], opcoes?: { soNaTela?: boolean }) => {
-      const { lista, feito } = fila.desfazer(chaves, opcoes);
+      const { lista, falhou } = fila.desfazer(chaves, opcoes);
       if (!lista.length) return;
       setEstado((s) => ({ ...s, descartadas: semEstas(s.descartadas, lista), desfeitas: comMais(s.desfeitas, lista), locais: semEstas(s.locais, lista) }));
       anunciar("Aviso de volta.");
       if (opcoes?.soNaTela) return;
-      void feito.then(() => pedirLeituraDoSino());
+      // O Desfazer que não chegou ao servidor não fica em silêncio: o aviso
+      // está de volta na tela, mas o descarte continua lá.
+      void falhou.then((f) => {
+        if (f) toast(FRASE_DESFAZER_SO_NESTA_TELA, { duration: 6000 });
+        pedirLeituraDoSino();
+      });
     },
     [anunciar, fila]
   );
@@ -252,7 +273,10 @@ export function useDescartes(): Descartes {
   const reserva = useMemo<Descartes>(
     () => ({
       ehDescartado: (c) => Boolean(c) && locais.has(c as string),
-      descartar: (cs) => setLocais((s) => comMais(s, cs)),
+      descartar: (cs) => {
+        setLocais((s) => comMais(s, cs));
+        return Promise.resolve(false);
+      },
       desfazer: (cs) => setLocais((s) => semEstas(s, cs)),
       registrar: (cs) => setLocais((s) => comMais(s, cs)),
       esconderLocal: (cs) => setLocais((s) => comMais(s, cs)),
@@ -271,7 +295,7 @@ export function useDescarte(chave: string | null | undefined): { descartado: boo
   const d = useDescartes();
   const [local, setLocal] = useState(false);
   if (!chave) return { descartado: local, descartar: () => setLocal(true), desfazer: () => setLocal(false) };
-  return { descartado: d.ehDescartado(chave), descartar: (o) => d.descartar([chave], o), desfazer: () => d.desfazer([chave]) };
+  return { descartado: d.ehDescartado(chave), descartar: (o) => void d.descartar([chave], o), desfazer: () => d.desfazer([chave]) };
 }
 
 /** O aviso em volta do botão: o X sem props descarta o aviso em que está. */
@@ -363,7 +387,7 @@ export function BotaoDescartar({
     const botao = e.currentTarget;
     const lista = [...(chaves ?? []), ...(chave ? [chave] : [])].filter((c): c is string => Boolean(c));
     if (aoDescartar) aoDescartar();
-    else if (lista.length) d.descartar(lista, { desfazivel });
+    else if (lista.length) void d.descartar(lista, { desfazivel });
     else doAviso?.descartar();
     moverOFoco(botao);
   }

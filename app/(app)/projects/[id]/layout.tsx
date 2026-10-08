@@ -34,7 +34,9 @@ export default async function ProjectLayout({
   const cadastroDoGemeo = project.userId === userId ? await lerCadastro(id).catch(() => null) : null;
   const gemeoEspera = Boolean(cadastroDoGemeo) && faltaUmPasso(situacaoDoGemeo(cadastroDoGemeo));
   // A chave do descarte do selo (07/10): o grupo do gêmeo; perto do link
-  // vencer, a chave do lembrete, e o selo volta.
+  // vencer, a chave do lembrete, e o selo volta. O grupo é id do fornecedor e
+  // entra só como marca opaca (chaveDoGemeoFaltaUmPasso): a chave desce ao
+  // navegador, o id não.
   const chaveDoSelo = gemeoEspera
     ? chaveDoGemeoFaltaUmPasso(id, cadastroDoGemeo?.avatar?.grupoId ?? cadastroDoGemeo?.avatar?.origem ?? "sem-grupo", hojeDoLembrete(cadastroDoGemeo?.avatar))
     : null;

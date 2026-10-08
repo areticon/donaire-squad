@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { Lightbulb, UserRound, Video, Sparkles, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { gemeoAtivo } from "@/lib/media/gemeo";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 
 /**
  * As TRÊS portas da campanha: o seu vídeo, o seu gêmeo digital, ou tudo com IA.
@@ -177,18 +179,23 @@ export function EscolhaDeOrigem({
       </div>
 
       {/* A SUGESTÃO DA PLATAFORMA, à vista (29/09). Não é trava: é o conselho
-          de quem vê os números de todos os clientes. */}
-      <div
-        className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", cheia && "w-full max-w-[1080px]")}
-        style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
-      >
-        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
-        <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          <strong style={{ color: "var(--text-primary)" }}>A nossa sugestão: intercale.</strong> Nas
-          semanas em que você grava, comece pelo vídeo: ele rende mais engajamento e custa menos
-          créditos. Nas outras, o gêmeo digital ou a IA mantêm a sua presença no ar.
-        </p>
-      </div>
+          de quem vê os números de todos os clientes. Dica fixa, descartável
+          por pessoa (07/10): descartada numa porta, sai das três (Criar,
+          jornada e janela da campanha). */}
+      <Descartavel chave={chaveDaDica("intercalar")}>
+        <div
+          className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", cheia && "w-full max-w-[1080px]")}
+          style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+        >
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+          <p className="flex-1 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            <strong style={{ color: "var(--text-primary)" }}>A nossa sugestão: intercale.</strong> Nas
+            semanas em que você grava, comece pelo vídeo: ele rende mais engajamento e custa menos
+            créditos. Nas outras, o gêmeo digital ou a IA mantêm a sua presença no ar.
+          </p>
+          <BotaoDescartar compacto className="-my-0.5 -mr-1" />
+        </div>
+      </Descartavel>
     </div>
   );
 }

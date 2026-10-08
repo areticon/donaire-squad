@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { faltaATabela } from "@/lib/avisos/descartes";
+import { CHAVES_DO_SINO_COM_FAIXA } from "@/lib/avisos/chaves";
 import { enviarEmail, type Email } from "@/lib/email";
 import { TIPOS_DE_APROVACAO, type NotificacaoNaTela, type TipoDeNotificacao } from "@/lib/notificacoes/tipos";
 
@@ -127,16 +128,22 @@ export type LinhaDoSino = {
   codigo: string | null;
   lidaEm: Date | null;
   createdAt: Date;
+  /** A chave do fato: diz se ele também tem faixa na tela (o "Limpar as lidas" não a leva). */
+  chave?: string;
 };
 
 /**
  * Trocável nos testes (07/10). `comDescartes` é a consulta crua com o NOT
  * EXISTS em avisos_descartados (lista e contagem); `semDescartes` é a de
- * sempre, para quando a crua falha por qualquer motivo.
+ * sempre, para quando a crua falha por qualquer motivo. `todas`: maior que
+ * zero quando a pessoa tem alguma notificação, descartada ou não (o sino vazio
+ * por descarte diz "Nada novo"; o de quem nunca recebeu nada explica para que
+ * ele serve).
  */
+type LidoDoSino = { linhas: LinhaDoSino[]; naoLidas: number; todas?: number };
 export type DepositoDoSino = {
-  comDescartes(userId: string, limite: number): Promise<{ linhas: LinhaDoSino[]; naoLidas: number }>;
-  semDescartes(userId: string, limite: number): Promise<{ linhas: LinhaDoSino[]; naoLidas: number }>;
+  comDescartes(userId: string, limite: number): Promise<LidoDoSino>;
+  semDescartes(userId: string, limite: number): Promise<LidoDoSino>;
 };
 
 function depositoDoSinoPadrao(): DepositoDoSino {
@@ -145,9 +152,9 @@ function depositoDoSinoPadrao(): DepositoDoSino {
       // O NOT EXISTS usa o índice único (userId, chave) de avisos_descartados,
       // e cobre o "descartei a faixa antes de o cron criar a notificação": a
       // notificação que nasce depois do descarte já nasce fora da lista.
-      const [linhas, contagem] = await Promise.all([
+      const [linhas, contagem, todas] = await Promise.all([
         prisma.$queryRaw<LinhaDoSino[]>`
-          SELECT n."id", n."tipo", n."titulo", n."texto", n."link", n."codigo", n."lidaEm", n."createdAt"
+          SELECT n."id", n."tipo", n."titulo", n."texto", n."link", n."codigo", n."lidaEm", n."createdAt", n."chave"
           FROM "notificacoes" n
           WHERE n."userId" = ${userId}
             AND NOT EXISTS (SELECT 1 FROM "avisos_descartados" d WHERE d."userId" = n."userId" AND d."chave" = n."chave")
@@ -158,8 +165,10 @@ function depositoDoSinoPadrao(): DepositoDoSino {
           FROM "notificacoes" n
           WHERE n."userId" = ${userId} AND n."lidaEm" IS NULL
             AND NOT EXISTS (SELECT 1 FROM "avisos_descartados" d WHERE d."userId" = n."userId" AND d."chave" = n."chave")`,
+        // Tem alguma, descartada ou não? (o sino vazio por descarte diz "Nada novo").
+        prisma.notificacao.findFirst({ where: { userId }, select: { id: true } }),
       ]);
-      return { linhas, naoLidas: Number(contagem[0]?.n ?? 0) };
+      return { linhas, naoLidas: Number(contagem[0]?.n ?? 0), todas: todas ? 1 : 0 };
     },
     async semDescartes(userId, limite) {
       const [linhas, naoLidas] = await Promise.all([
@@ -167,11 +176,11 @@ function depositoDoSinoPadrao(): DepositoDoSino {
           where: { userId },
           orderBy: { createdAt: "desc" },
           take: limite,
-          select: { id: true, tipo: true, titulo: true, texto: true, link: true, codigo: true, lidaEm: true, createdAt: true },
+          select: { id: true, tipo: true, titulo: true, texto: true, link: true, codigo: true, lidaEm: true, createdAt: true, chave: true },
         }),
         prisma.notificacao.count({ where: { userId, lidaEm: null } }),
       ]);
-      return { linhas, naoLidas };
+      return { linhas, naoLidas, todas: linhas.length };
     },
   };
 }
@@ -184,8 +193,12 @@ let jaAvisouDoSino = false;
  * descartes ainda não existe, SQL recusado, pooler), registra e volta às duas
  * consultas de sempre: o sino nunca fica vazio por causa do descarte.
  */
-export async function notificacoesDe(userId: string, limite = 30, dep: DepositoDoSino = depositoDoSinoPadrao()): Promise<{ itens: NotificacaoNaTela[]; naoLidas: number }> {
-  let lido: { linhas: LinhaDoSino[]; naoLidas: number };
+export async function notificacoesDe(
+  userId: string,
+  limite = 30,
+  dep: DepositoDoSino = depositoDoSinoPadrao()
+): Promise<{ itens: NotificacaoNaTela[]; naoLidas: number; temAlguma: boolean }> {
+  let lido: LidoDoSino;
   try {
     lido = await dep.comDescartes(userId, limite);
   } catch (e) {
@@ -210,8 +223,10 @@ export async function notificacoesDe(userId: string, limite = 30, dep: DepositoD
       codigo: n.codigo,
       lida: Boolean(n.lidaEm),
       criadaEm: n.createdAt.toISOString(),
+      ...(n.chave && CHAVES_DO_SINO_COM_FAIXA.some((p) => n.chave!.startsWith(p)) ? { temFaixa: true } : {}),
     })),
     naoLidas,
+    temAlguma: (lido.todas ?? linhas.length) > 0,
   };
 }
 

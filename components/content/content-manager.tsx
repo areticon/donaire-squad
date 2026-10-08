@@ -164,6 +164,11 @@ interface ContentManagerProps {
    * cliente achava que a edição tinha terminado.
    */
   falhasDaMontagem?: FalhaDaMontagem[];
+  /**
+   * Quem vê é o dono do projeto (07/10): só ele apaga o vídeo que parou. O
+   * membro da equipe descarta o aviso, só para ele.
+   */
+  souDono?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -4455,7 +4460,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana, falhasDaMontagem }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana, falhasDaMontagem, souDono = false }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [postsSemana, setPostsSemana] = useState<PostParaEstado[]>(postsDaSemana ?? []);
@@ -4609,8 +4614,12 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [faixaDaCampanhaEscondida, setFaixaDaCampanhaEscondida] = useState(false);
   const failedBannerDismissed =
     !lastFailedRun || faixaDaCampanhaEscondida || (chaveDaFaixaDaCampanha ? descartes.ehDescartado(chaveDaFaixaDaCampanha) : false);
-  // O descarte antigo, do localStorage ("banner-dismissed-<run>"), sobe uma vez
-  // para o servidor com a chave do status certo, e a entrada local é apagada.
+  // O descarte antigo, do localStorage ("banner-dismissed-<run>"), sobe para o
+  // servidor com a chave do status certo, em silêncio (sem toast nem anúncio:
+  // a pessoa não clicou nada agora). A entrada local só sai quando o servidor
+  // LEMBROU; até lá ela continua valendo nesta tela, e a próxima visita tenta
+  // de novo (sem a tabela, com a rede caída ou no teto, o descarte antigo não
+  // se perde).
   const runDaFaixa = lastFailedRun?.id ?? null;
   useEffect(() => {
     if (!runDaFaixa || !chaveDaFaixaDaCampanha) return;
@@ -4618,11 +4627,18 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     let tinha = false;
     try {
       tinha = localStorage.getItem(antiga) === "1";
-      if (tinha) localStorage.removeItem(antiga);
     } catch {
       /* armazenamento bloqueado: nada a importar */
     }
-    if (tinha) descartes.descartar([chaveDaFaixaDaCampanha], { desfazivel: false });
+    if (!tinha) return;
+    void descartes.descartar([chaveDaFaixaDaCampanha], { desfazivel: false, silencioso: true }).then((lembrado) => {
+      if (!lembrado) return;
+      try {
+        localStorage.removeItem(antiga);
+      } catch {
+        /* sem armazenamento: a próxima visita tenta de novo, e o servidor ignora a repetida */
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runDaFaixa, chaveDaFaixaDaCampanha]);
 
@@ -5571,7 +5587,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         quando: primeiro.scheduledAt ? new Date(primeiro.scheduledAt).getTime() : 0,
         origem,
         estado,
-        identidade: esperaDaPeca(g.posts.map((p) => ({ id: p.id, imageUrl: p.imageUrl, metadata: p.metadata }))),
+        identidade: esperaDaPeca(g.posts.map((p) => ({ id: p.id, runId: p.runId, imageUrl: p.imageUrl, metadata: p.metadata }))),
         // CANCELÁVEL pelo cartão (05/10): tem card para cancelar, não está
         // publicada e o squad não está no meio dela (cancelar o que a esteira
         // ainda escreve não a para; para isso existe o cancelar da geração).
@@ -5928,6 +5944,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         // semana das peças (05/10).
         aoAbrirPeca={abrirPecaDoVideo}
         aoIrAoQuadro={irAoQuadroNaSemana}
+        podeApagar={souDono}
       />
 
       {/* A montagem de efeitos que desistiu, dita com todas as letras e com a

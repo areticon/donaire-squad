@@ -32,6 +32,11 @@ export type NotificacaoNaTela = {
   codigo: string | null;
   lida: boolean;
   criadaEm: string;
+  /**
+   * O fato também é faixa na tela (a montagem ou a campanha que falhou, 07/10):
+   * o "Limpar as lidas" não o leva; sai só pelo X dele, que tira a faixa junto.
+   */
+  temFaixa?: boolean;
 };
 
 /**

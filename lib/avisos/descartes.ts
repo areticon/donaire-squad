@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { PREFIXOS_DA_SEMENTE } from "@/lib/avisos/chaves";
+import { CHAVES_DO_SINO_COM_FAIXA, PREFIXOS_COM_FIM, PREFIXOS_DA_SEMENTE, PREFIXOS_SEM_FIM } from "@/lib/avisos/chaves";
 
 /**
  * O DESCARTE DOS AVISOS, NO SERVIDOR (07/10/2026).
@@ -17,8 +17,9 @@ import { PREFIXOS_DA_SEMENTE } from "@/lib/avisos/chaves";
  * ## A LINHA DO SINO NUNCA É APAGADA
  *
  * A chave única de notificacoes é a trava do e-mail (lib/notificacoes): apagar
- * a linha deixaria o mesmo fato avisar de novo. Descartar grava a linha aqui e
- * marca a notificação como lida; o sino filtra pelo NOT EXISTS.
+ * a linha deixaria o mesmo fato avisar de novo. Descartar grava a linha aqui
+ * (pela tela, marca também a notificação do mesmo fato como lida); o sino
+ * filtra pelo NOT EXISTS.
  *
  * ## A TABELA PODE AINDA NÃO EXISTIR
  *
@@ -33,10 +34,19 @@ import { PREFIXOS_DA_SEMENTE } from "@/lib/avisos/chaves";
 
 /** Quantas chaves uma consulta pergunta de uma vez (o IN). */
 export const TETO_POR_CONSULTA = 500;
-/** Quantas chaves a semente leva para o cliente. */
+/** Quantas chaves com fim natural a semente leva para o cliente (as mais recentes). */
 export const TETO_DA_SEMENTE = 2000;
-/** Quantas linhas uma pessoa pode ter: um prefixo válido com sufixo livre não enche a tabela. */
+/** A cota da semente para os avisos sem fim natural (dicas, cores de fábrica), à parte das recentes. */
+export const COTA_DOS_SEM_FIM = 500;
+/**
+ * Quantas linhas DAS TELAS uma pessoa pode ter. As chaves só do sino não
+ * contam: elas entram pelo id de uma notificação que existe (o sino e o
+ * "Limpar as lidas"), e a rota das telas não as aceita, então não há sufixo
+ * inventado que encha a tabela por ali.
+ */
 export const TETO_POR_PESSOA = 5000;
+/** Quantas saem de uma vez quando a pessoa chega ao teto: folga para o teto não pesar a cada descarte. */
+export const FOLGA_DO_TETO = 100;
 /** Quantas notificações lidas o "Limpar as lidas" descarta de uma vez. */
 export const TETO_DAS_LIDAS = 500;
 
@@ -45,8 +55,10 @@ export type DepositoDosDescartes = {
   descartadas(userId: string, chaves: string[]): Promise<string[]>;
   /** As chaves da pessoa que começam por algum destes prefixos, mais recentes primeiro. */
   comPrefixo(userId: string, prefixos: readonly string[], limite: number): Promise<string[]>;
-  /** Quantas linhas a pessoa já tem. */
-  quantas(userId: string): Promise<number>;
+  /** Quantas linhas da pessoa começam por algum destes prefixos. */
+  quantas(userId: string, prefixos: readonly string[]): Promise<number>;
+  /** Apaga as `quantas` linhas MAIS ANTIGAS da pessoa entre estes prefixos. Devolve quantas saíram. */
+  apagarMaisAntigas(userId: string, quantas: number, prefixos: readonly string[]): Promise<number>;
   /** Grava (ON CONFLICT DO NOTHING). Devolve quantas linhas novas. */
   gravar(userId: string, chaves: string[]): Promise<number>;
   /** Marca como lidas as notificações da pessoa com estas chaves (só as ainda não lidas). */
@@ -55,9 +67,14 @@ export type DepositoDosDescartes = {
   apagar(userId: string, chaves: string[]): Promise<number>;
   /** As chaves das notificações com estes ids, SÓ das linhas da própria pessoa. */
   chavesDasNotificacoes(userId: string, ids: string[]): Promise<string[]>;
-  /** Descarta as `limite` notificações lidas mais recentes da pessoa. Devolve quantas linhas novas. */
+  /**
+   * Descarta as `limite` notificações lidas mais recentes da pessoa, MENOS as
+   * que têm faixa na tela (CHAVES_DO_SINO_COM_FAIXA). Devolve quantas linhas novas.
+   */
   gravarLidas(userId: string, limite: number): Promise<number>;
 };
+
+const algumPrefixo = (prefixos: readonly string[]) => prefixos.map((p) => ({ chave: { startsWith: p } }));
 
 function depositoPadrao(): DepositoDosDescartes {
   return {
@@ -67,14 +84,26 @@ function depositoPadrao(): DepositoDosDescartes {
     },
     async comPrefixo(userId, prefixos, limite) {
       const linhas = await prisma.avisoDescartado.findMany({
-        where: { userId, OR: prefixos.map((p) => ({ chave: { startsWith: p } })) },
+        where: { userId, OR: algumPrefixo(prefixos) },
         orderBy: { descartadoEm: "desc" },
         take: limite,
         select: { chave: true },
       });
       return linhas.map((l) => l.chave);
     },
-    quantas: (userId) => prisma.avisoDescartado.count({ where: { userId } }),
+    quantas: (userId, prefixos) => prisma.avisoDescartado.count({ where: { userId, OR: algumPrefixo(prefixos) } }),
+    async apagarMaisAntigas(userId, quantas, prefixos) {
+      if (quantas <= 0) return 0;
+      const velhas = await prisma.avisoDescartado.findMany({
+        where: { userId, OR: algumPrefixo(prefixos) },
+        orderBy: { descartadoEm: "asc" },
+        take: quantas,
+        select: { id: true },
+      });
+      if (!velhas.length) return 0;
+      const r = await prisma.avisoDescartado.deleteMany({ where: { userId, id: { in: velhas.map((v) => v.id) } } });
+      return r.count;
+    },
     async gravar(userId, chaves) {
       const r = await prisma.avisoDescartado.createMany({ data: chaves.map((chave) => ({ userId, chave })), skipDuplicates: true });
       return r.count;
@@ -94,12 +123,17 @@ function depositoPadrao(): DepositoDosDescartes {
     async gravarLidas(userId, limite) {
       // UMA instrução, sem ler as lidas na memória: as mais recentes, com o id
       // gerado pelo Postgres (a PK é TEXT e aceita o uuid ao lado do cuid).
+      // As duas chaves que também são faixa na tela (a montagem e a campanha
+      // que falharam) ficam de fora: limpar o sino não some com a faixa do
+      // Gestor que a pessoa não descartou. O teste confere que são só duas.
+      const [faixa1, faixa2] = CHAVES_DO_SINO_COM_FAIXA;
       return prisma.$executeRaw`
         INSERT INTO "avisos_descartados" ("id", "userId", "chave", "descartadoEm")
         SELECT gen_random_uuid()::text, n."userId", n."chave", CURRENT_TIMESTAMP
         FROM (
           SELECT "userId", "chave" FROM "notificacoes"
           WHERE "userId" = ${userId} AND "lidaEm" IS NOT NULL
+            AND "chave" NOT LIKE ${`${faixa1}%`} AND "chave" NOT LIKE ${`${faixa2}%`}
           ORDER BY "createdAt" DESC
           LIMIT ${limite}
         ) n
@@ -170,36 +204,58 @@ export async function descartadasEntre(userId: string, chaves: readonly string[]
 
 /**
  * A SEMENTE DO CLIENTE: as chaves das telas que a pessoa descartou, sem corte
- * de data (aviso sem fim natural, como as cores de fábrica, não pode voltar
- * depois de um mês), as mais recentes primeiro, até 2000. As chaves só do sino
- * ficam de fora: o servidor já as filtra na lista do sino, e um "Limpar as
- * lidas" com centenas delas não pode empurrar para fora as que as telas usam.
+ * de data. Duas leituras: os avisos SEM FIM NATURAL (dicas, cores de fábrica)
+ * têm cota própria, para nunca saírem da semente empurrados pelos recentes (o
+ * aviso descartado há meses voltaria); os outros vão os mais recentes
+ * primeiro, até 2000. As chaves só do sino ficam de fora: o servidor já as
+ * filtra na lista do sino.
  */
 export async function sementeDoCliente(userId: string, dep: DepositoDosDescartes = depositoPadrao()): Promise<string[]> {
   if (!userId) return [];
   try {
-    return await dep.comPrefixo(userId, PREFIXOS_DA_SEMENTE, TETO_DA_SEMENTE);
+    const [semFim, recentes] = await Promise.all([dep.comPrefixo(userId, PREFIXOS_SEM_FIM, COTA_DOS_SEM_FIM), dep.comPrefixo(userId, PREFIXOS_COM_FIM, TETO_DA_SEMENTE)]);
+    return [...new Set([...semFim, ...recentes])];
   } catch (e) {
     registrarFalhaDosDescartes("sementeDoCliente", e);
     return [];
   }
 }
 
+const daTela = (c: string) => PREFIXOS_DA_SEMENTE.some((p) => c.startsWith(p));
+
 /**
  * Descarta, para ESTA pessoa (nunca para o dono do projeto: o membro que
  * descarta não some com o aviso do dono). Idempotente. Marca como lidas as
- * notificações do sino com as mesmas chaves, só quando ainda não lidas.
- * `lembrado: false` quando não gravou (tabela ausente, teto da pessoa, erro):
- * a tela esconde só nesta visita.
+ * notificações do sino com as mesmas chaves, só quando ainda não lidas (o
+ * descarte pelo próprio sino passa `marcarLidas: false`: o NOT EXISTS já tira
+ * o item da lista e da contagem, e o Desfazer devolve o item como estava).
+ *
+ * O TETO: as chaves das telas contam até 5000 por pessoa. No teto, as mais
+ * antigas COM FIM NATURAL saem primeiro (com folga), e o descarte novo cabe;
+ * dica e aviso sem fim nunca saem. `lembrado: false` só quando não gravou
+ * (tabela ausente, teto só de avisos sem fim, erro): a tela esconde só nesta visita.
  */
-export async function descartar(userId: string, chaves: readonly string[], dep: DepositoDosDescartes = depositoPadrao()): Promise<{ lembrado: boolean }> {
+export async function descartar(
+  userId: string,
+  chaves: readonly string[],
+  dep: DepositoDosDescartes = depositoPadrao(),
+  opcoes: { marcarLidas?: boolean } = {}
+): Promise<{ lembrado: boolean }> {
   const lista = unicas(chaves);
   if (!userId) return { lembrado: false };
   if (!lista.length) return { lembrado: true };
   let lembrado = false;
   try {
-    if ((await dep.quantas(userId)) >= TETO_POR_PESSOA) {
-      console.warn(`[avisos] ${userId} chegou ao teto de ${TETO_POR_PESSOA} descartes; o novo vale só na tela.`);
+    const contam = lista.filter(daTela).length;
+    let cabe = true;
+    if (contam) {
+      let ocupadas = await dep.quantas(userId, PREFIXOS_DA_SEMENTE);
+      const excesso = ocupadas + contam - TETO_POR_PESSOA;
+      if (excesso > 0) ocupadas -= await dep.apagarMaisAntigas(userId, excesso + FOLGA_DO_TETO, PREFIXOS_COM_FIM);
+      cabe = ocupadas + contam <= TETO_POR_PESSOA;
+    }
+    if (!cabe) {
+      console.warn(`[avisos] ${userId} chegou ao teto de ${TETO_POR_PESSOA} descartes sem fim natural; o novo vale só na tela.`);
     } else {
       await dep.gravar(userId, lista);
       lembrado = true;
@@ -209,10 +265,12 @@ export async function descartar(userId: string, chaves: readonly string[], dep: 
   }
   // O sino do mesmo fato sai do contador mesmo sem a tabela: marcar como lida
   // não apaga nada e não depende dela.
-  try {
-    await dep.marcarLidas(userId, lista);
-  } catch (e) {
-    console.error("[avisos] marcar lidas no descarte falhou:", e instanceof Error ? e.message : e);
+  if (opcoes.marcarLidas !== false) {
+    try {
+      await dep.marcarLidas(userId, lista);
+    } catch (e) {
+      console.error("[avisos] marcar lidas no descarte falhou:", e instanceof Error ? e.message : e);
+    }
   }
   return { lembrado };
 }
@@ -231,7 +289,10 @@ export async function desfazerDescarte(userId: string, chaves: readonly string[]
   }
 }
 
-/** O descarte pelo sino: lê as chaves SÓ das linhas da própria pessoa e descarta. */
+/**
+ * O descarte pelo sino: lê as chaves SÓ das linhas da própria pessoa e
+ * descarta, sem marcar como lida (o Desfazer devolve a não lida não lida).
+ */
 export async function descartarNotificacoes(
   userId: string,
   ids: readonly string[],
@@ -247,29 +308,37 @@ export async function descartarNotificacoes(
     return { chaves: [], lembrado: false };
   }
   if (!chaves.length) return { chaves: [], lembrado: true };
-  const r = await descartar(userId, chaves, dep);
+  const r = await descartar(userId, chaves, dep, { marcarLidas: false });
   return { chaves, lembrado: r.lembrado };
 }
 
-/** O desfazer do sino: pelo id, só nas linhas da própria pessoa. */
-export async function restaurarNotificacoes(userId: string, ids: readonly string[], dep: DepositoDosDescartes = depositoPadrao()): Promise<{ chaves: string[] }> {
+/**
+ * O desfazer do sino: pelo id, só nas linhas da própria pessoa. `lembrado:
+ * false` quando o servidor não desfez (a tela avisa que o item pode sumir de
+ * novo ao recarregar).
+ */
+export async function restaurarNotificacoes(userId: string, ids: readonly string[], dep: DepositoDosDescartes = depositoPadrao()): Promise<{ chaves: string[]; lembrado: boolean }> {
   const lista = unicas(ids);
-  if (!userId || !lista.length) return { chaves: [] };
+  if (!userId || !lista.length) return { chaves: [], lembrado: true };
   try {
     const chaves = await dep.chavesDasNotificacoes(userId, lista.slice(0, TETO_POR_CONSULTA));
-    if (chaves.length) await desfazerDescarte(userId, chaves, dep);
-    return { chaves };
+    if (!chaves.length) return { chaves, lembrado: true };
+    const r = await desfazerDescarte(userId, chaves, dep);
+    return { chaves, lembrado: r.lembrado };
   } catch (e) {
     console.error("[avisos] restaurar notificações falhou:", e instanceof Error ? e.message : e);
-    return { chaves: [] };
+    return { chaves: [], lembrado: false };
   }
 }
 
-/** "Limpar as lidas" do sino: as 500 lidas mais recentes, numa instrução só. */
+/**
+ * "Limpar as lidas" do sino: as 500 lidas mais recentes, numa instrução só,
+ * menos as que também são faixa na tela (essas saem só pelo X de cada uma).
+ * Sem teto: as chaves só do sino vêm de notificações que existem.
+ */
 export async function descartarLidas(userId: string, dep: DepositoDosDescartes = depositoPadrao()): Promise<{ quantas: number; lembrado: boolean }> {
   if (!userId) return { quantas: 0, lembrado: false };
   try {
-    if ((await dep.quantas(userId)) >= TETO_POR_PESSOA) return { quantas: 0, lembrado: false };
     const quantas = await dep.gravarLidas(userId, TETO_DAS_LIDAS);
     return { quantas, lembrado: true };
   } catch (e) {

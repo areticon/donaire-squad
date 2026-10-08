@@ -114,8 +114,40 @@ test("{restaurar} traz o item de volta (o Desfazer do sino é pelo id)", async (
   await responderAoSino({ userId: "u1", corpo: { descartar: [id] } }, { descartes: b.deposito });
   assert.equal((await notificacoesDe("u1", 30, b.sino)).itens.length, 0);
   const r = await responderAoSino({ userId: "u1", corpo: { restaurar: [id] } }, { descartes: b.deposito });
-  assert.deepEqual(r.corpo, { ok: true, chaves: ["cancelado:v1:r1"] });
-  assert.equal((await notificacoesDe("u1", 30, b.sino)).itens.length, 1);
+  assert.deepEqual(r.corpo, { ok: true, chaves: ["cancelado:v1:r1"], lembrado: true });
+  const depois = await notificacoesDe("u1", 30, b.sino);
+  assert.equal(depois.itens.length, 1);
+  // Voltou como estava: não lida, e o contador sobe de novo.
+  assert.equal(depois.itens[0].lida, false);
+  assert.equal(depois.naoLidas, 1);
+});
+
+test("o sino marca o fato que também é faixa (temFaixa) e diz se a pessoa tem alguma notificação", async () => {
+  const b = descartesEmMemoria({
+    notificacoes: [
+      { userId: "u1", chave: "falha:efeitos:v1:2026-10-07T14:00:00.000Z", lidaEm: new Date() },
+      { userId: "u1", chave: "estorno:t1", lidaEm: new Date() },
+    ],
+  });
+  const lido = await notificacoesDe("u1", 30, b.sino);
+  assert.deepEqual(
+    lido.itens.map((n) => Boolean(n.temFaixa)).sort(),
+    [false, true]
+  );
+  assert.equal(lido.temAlguma, true);
+  // Depois do Limpar as lidas, a montagem continua no sino (sai só pelo X dela, junto com a faixa).
+  await responderAoSino({ userId: "u1", corpo: { descartarLidas: true } }, { descartes: b.deposito });
+  const depois = await notificacoesDe("u1", 30, b.sino);
+  assert.deepEqual(
+    depois.itens.map((n) => n.temFaixa),
+    [true]
+  );
+  // Tudo descartado: a lista vazia sabe que a pessoa já recebeu alguma (o "Nada novo").
+  await responderAoSino({ userId: "u1", corpo: { descartar: [b.notificacoes[0].id] } }, { descartes: b.deposito });
+  const vazio = await notificacoesDe("u1", 30, b.sino);
+  assert.equal(vazio.itens.length, 0);
+  assert.equal(vazio.temAlguma, true);
+  assert.equal((await notificacoesDe("nunca-recebeu", 30, b.sino)).temAlguma, false);
 });
 
 test("{descartarLidas} tira as lidas do sino, e {ids}/{todas} continuam marcando como lidas", async () => {

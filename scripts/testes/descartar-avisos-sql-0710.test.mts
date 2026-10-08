@@ -63,13 +63,16 @@ test("a SQL do descarte no banco de dev: migração duas vezes, NOT EXISTS, ON C
     assert.equal(await prisma.avisoDescartado.count({ where: { userId: pessoa.id, chave } }), 1);
     assert.deepEqual([...(await descartadasEntre(pessoa.id, [chave, "dica:nunca"]))], [chave]);
 
-    // 4) O "Limpar as lidas": as 500 mais recentes, numa instrução.
+    // 4) O "Limpar as lidas": as 500 mais recentes, numa instrução, menos as
+    //    que também são faixa na tela (a campanha que falhou, lida, fica).
     await prisma.notificacao.createMany({
       data: Array.from({ length: 600 }, (_, i) => ({ userId: pessoa.id, tipo: "estorno", titulo: "Devolvemos", texto: "teste", chave: `estorno:teste-${i}`, lidaEm: new Date() })),
     });
+    await prisma.notificacao.create({ data: { userId: pessoa.id, tipo: "falha", titulo: "A campanha parou", texto: "teste", chave: "falha:campanha:teste", lidaEm: new Date() } });
     const r = await descartarLidas(pessoa.id);
     assert.equal(r.lembrado, true);
     assert.equal(r.quantas, 500);
+    assert.equal(await prisma.avisoDescartado.count({ where: { userId: pessoa.id, chave: "falha:campanha:teste" } }), 0, "a faixa da campanha não sai pelo Limpar as lidas");
     assert.equal(
       (await descartarLidas(pessoa.id)).quantas,
       0,

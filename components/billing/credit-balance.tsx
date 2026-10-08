@@ -147,7 +147,14 @@ export function CreditBalance() {
       {/* Membro da equipe (01/10, acabamento): sem saldo, a frase diz a quem
           pedir; acabando, avisa sem mandar comprar. */}
       {dados.equipe && dados.saldo <= 0 ? (
-        <p className="text-sm text-orange-400 mb-2">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
+        // Descartável também (07/10), como o mesmo alerta na faixa do plano:
+        // lembrado até a próxima recarga do dono.
+        <Descartavel chave={chaveDosCreditosAcabando(dados.ultimaRecarga ?? "sem-recarga", "zerado")}>
+          <div className="flex items-start gap-1 mb-2">
+            <p className="flex-1 text-sm text-orange-400">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
+            <BotaoDescartar compacto />
+          </div>
+        </Descartavel>
       ) : acabando && (dados.equipe || dados.saldo > 0) ? (
         // Descartável (07/10), lembrado até a próxima recarga.
         <Descartavel chave={chaveDosCreditosAcabando(dados.ultimaRecarga ?? "sem-recarga")}>

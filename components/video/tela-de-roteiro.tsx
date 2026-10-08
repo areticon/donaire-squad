@@ -215,6 +215,9 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
 
   // A marca dos avisos desta tela (07/10): a aprovação, ou o estado, do roteiro.
   const marcaDaRodada = tela.aprovadoEm ?? tela.status;
+  // A falha tem a marca dela (a rodada, a tentativa e o erro): o "parou"
+  // descartado volta quando o vídeo para de novo depois do tentar de novo.
+  const marcaDaFalha = tela.falha ?? marcaDaRodada;
   // O motivo do Aprovar travado, no próprio botão e no aria-describedby dele:
   // o aviso do plano pendente recolhe, mas a pessoa nunca fica sem saber.
   const motivoDoPlano = tela.jornada?.lendo
@@ -270,7 +273,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
         </Aviso>
       )}
       {tela.status === "failed" && !aprovado && (
-        <Aviso tipo="erro" chave={chaveDoAvisoDoRoteiro(tela.videoId, "parou", marcaDaRodada)}>
+        <Aviso tipo="erro" chave={chaveDoAvisoDoRoteiro(tela.videoId, "parou", marcaDaFalha)}>
           O roteiro parou no meio. Volte ao Gestor e toque em tentar de novo: o que já foi planejado fica guardado.
         </Aviso>
       )}
@@ -605,7 +608,7 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
                 o próprio botão travado e para o aria-describedby dele. */}
             {planoPendente && (
               <Descartavel
-                chave={chaveDoPlanoPendente(tela.videoId, tela.jornada?.lendo ? "lendo" : "erro")}
+                chave={tela.jornada?.lendo ? chaveDoPlanoPendente(tela.videoId, "lendo") : chaveDoPlanoPendente(tela.videoId, "erro", tela.jornada?.erro)}
                 modo="recolher"
                 compacto={<span id="motivo-do-aprovar" className="sr-only">{motivoDoPlano}</span>}
               >
@@ -655,7 +658,8 @@ function Secao({ titulo, subtitulo, children }: { titulo: string; subtitulo?: st
 /**
  * Um aviso do topo da tela. DESCARTÁVEL (07/10): com `chave` (string), o X
  * lembra o descarte; com `chave={null}`, o X esconde só nesta visita; com
- * `aoDescartar`, a ação é outra (o erro de uma ação some do estado).
+ * `aoDescartar`, a ação é outra (o erro de uma ação some do estado). Com
+ * `compacto`, o descartado recolhe nele em vez de sumir.
  */
 function Aviso({
   tipo,
@@ -663,12 +667,14 @@ function Aviso({
   parado = false,
   chave,
   aoDescartar,
+  compacto,
 }: {
   tipo: "andando" | "ok" | "erro";
   children: React.ReactNode;
   parado?: boolean;
   chave?: string | null;
   aoDescartar?: () => void;
+  compacto?: React.ReactNode;
 }) {
   const descartavel = chave !== undefined || Boolean(aoDescartar);
   const estilo =
@@ -679,7 +685,7 @@ function Aviso({
         : "border-orange-500/40 bg-orange-500/10 text-orange-300";
   const Icone = tipo === "erro" ? AlertCircle : tipo === "ok" ? Check : parado ? Pencil : Loader2;
   return (
-    <Descartavel chave={chave ?? null}>
+    <Descartavel chave={chave ?? null} modo={compacto ? "recolher" : "sumir"} compacto={compacto}>
       <div className={`mt-4 rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${estilo}`} role={tipo === "erro" ? "alert" : undefined}>
         <Icone className={`w-4 h-4 mt-0.5 shrink-0 ${tipo === "andando" && !parado ? "animate-spin" : ""}`} />
         <span className="flex-1">{children}</span>
@@ -1643,8 +1649,24 @@ function JornadaDoCompleto({
   const [pedindo, setPedindo] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [novoEm, setNovoEm] = useState<number | null>(null);
+  const videoDaTela = useContext(VideoDaTela);
   if (jornada.lendo) return <Aviso tipo="andando">Lendo o vídeo e escolhendo os elementos de cada momento. Leva de 2 a 4 minutos.</Aviso>;
-  if (jornada.erro && !jornada.elementos.length) return <Aviso tipo="erro">Não consegui montar o plano deste vídeo ({jornada.erro}).</Aviso>;
+  // O erro do plano se descarta (07/10), lembrado pela marca do erro: um erro
+  // novo volta. Descartado, fica uma linha discreta, para a seção não ficar vazia.
+  if (jornada.erro && !jornada.elementos.length)
+    return (
+      <Aviso
+        tipo="erro"
+        chave={videoDaTela ? chaveDoPlanoPendente(videoDaTela, "secao-erro", jornada.erro) : null}
+        compacto={
+          <p className="text-xs" style={{ color: "var(--text-muted)" }} data-plano-com-erro-recolhido>
+            O plano deste vídeo não ficou pronto.
+          </p>
+        }
+      >
+        Não consegui montar o plano deste vídeo ({jornada.erro}).
+      </Aviso>
+    );
   const vivos = jornada.elementos.filter((e) => e.estado !== "removido");
   return (
     <div className="space-y-2">

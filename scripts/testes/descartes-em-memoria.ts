@@ -5,6 +5,7 @@
 // de verdade roda em scripts/testes/descartar-avisos-sql-0710.test.mts, só no
 // banco de dev.
 import type { DepositoDosDescartes } from "@/lib/avisos/descartes";
+import { CHAVES_DO_SINO_COM_FAIXA } from "@/lib/avisos/chaves";
 import type { DepositoDoNotificar, DepositoDoSino, LinhaDoSino } from "@/lib/notificacoes";
 
 export type NotificacaoEmMemoria = LinhaDoSino & { userId: string; chave: string; emailEm: Date | null };
@@ -45,8 +46,17 @@ export function descartesEmMemoria(inicio: { notificacoes?: Array<Partial<Notifi
         .slice(0, limite)
         .map((d) => d.chave);
     },
-    async quantas(userId) {
-      return descartes.filter((d) => d.userId === userId).length;
+    async quantas(userId, prefixos) {
+      return descartes.filter((d) => d.userId === userId && prefixos.some((p) => d.chave.startsWith(p))).length;
+    },
+    async apagarMaisAntigas(userId, quantas, prefixos) {
+      chamadas.push("apagarMaisAntigas");
+      const velhas = descartes
+        .filter((d) => d.userId === userId && prefixos.some((p) => d.chave.startsWith(p)))
+        .sort((a, b) => a.descartadoEm.getTime() - b.descartadoEm.getTime())
+        .slice(0, Math.max(0, quantas));
+      for (const v of velhas) descartes.splice(descartes.indexOf(v), 1);
+      return velhas.length;
     },
     async gravar(userId, chaves) {
       chamadas.push("gravar");
@@ -80,8 +90,9 @@ export function descartesEmMemoria(inicio: { notificacoes?: Array<Partial<Notifi
     },
     async gravarLidas(userId, limite) {
       chamadas.push("gravarLidas");
+      // Como a SQL: menos as que também são faixa na tela (NOT LIKE).
       const lidas = notificacoes
-        .filter((n) => n.userId === userId && n.lidaEm)
+        .filter((n) => n.userId === userId && n.lidaEm && !CHAVES_DO_SINO_COM_FAIXA.some((p) => n.chave.startsWith(p)))
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, limite);
       return deposito.gravar(userId, lidas.map((n) => n.chave));
@@ -95,6 +106,7 @@ export function descartesEmMemoria(inicio: { notificacoes?: Array<Partial<Notifi
       return {
         linhas: [...minhas].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limite),
         naoLidas: minhas.filter((n) => !n.lidaEm).length,
+        todas: notificacoes.filter((n) => n.userId === userId).length,
       };
     },
     async semDescartes(userId, limite) {
@@ -139,6 +151,7 @@ export function descartesEmMemoria(inicio: { notificacoes?: Array<Partial<Notifi
       descartadas: lanca,
       comPrefixo: lanca,
       quantas: lanca,
+      apagarMaisAntigas: lanca,
       gravar: lanca,
       marcarLidas: deposito.marcarLidas,
       apagar: lanca,

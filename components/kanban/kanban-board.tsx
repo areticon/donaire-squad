@@ -678,7 +678,10 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
             <div className="mt-6 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl">
               <div className="flex items-center gap-2 mb-2 text-orange-400 text-sm font-medium">
                 <Bot className="w-4 h-4" />
-                Assistente IA
+                <span className="flex-1">Assistente IA</span>
+                {/* A resposta é efêmera: o X só a tira daqui (07/10); antes ela
+                    seguia por todas as etapas até um pedido novo. */}
+                {!aiLoading && <BotaoDescartar compacto rotulo="Fechar a resposta" aoDescartar={() => setAiReply("")} className="-my-1 -mr-1" />}
               </div>
               {aiLoading ? (
                 <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm">
@@ -1354,9 +1357,15 @@ function StepNetworks({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      <div className="p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl text-sm text-orange-400">
-        💡 Você pode pular agora e conectar depois. Sem redes conectadas, os agentes criam os posts mas <strong>não publicam automaticamente</strong>.
-      </div>
+      {/* Dica fixa, descartável por pessoa e por projeto (07/10). */}
+      <Descartavel chave={chaveDaDica("pular-redes", projectId)}>
+        <div className="flex items-start gap-2 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl text-sm text-orange-400">
+          <p className="flex-1">
+            💡 Você pode pular agora e conectar depois. Sem redes conectadas, os agentes criam os posts mas <strong>não publicam automaticamente</strong>.
+          </p>
+          <BotaoDescartar compacto className="-my-0.5 -mr-1" />
+        </div>
+      </Descartavel>
 
       <div className="grid grid-cols-1 gap-3">
         {NETWORKS.map((net) => {

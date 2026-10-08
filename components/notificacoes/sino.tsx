@@ -69,6 +69,20 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
   const mutacoes = useRef(0);
   /** A geração da última leitura pedida e da última aplicada. */
   const geracoes = useRef({ ultima: 0, aplicada: 0 });
+  /**
+   * A FILA POR ID (07/10, a mesma regra de lib/avisos/fila-dos-descartes.ts):
+   * o POST do descarte de cada item fica aqui, e o Desfazer espera ele
+   * responder antes de mandar o restaurar. Sem isto, com a rede lenta, o
+   * restaurar chegava primeiro, o descarte gravava por último, e o item
+   * desfeito sumia de novo no próximo carregamento.
+   */
+  const pendentes = useRef<Map<string, Promise<unknown>>>(new Map());
+  /** A última operação de cada id: a resposta atrasada do descarte não reabre o toast de um item já desfeito. */
+  const ultimaOp = useRef<Map<string, "descartar" | "restaurar">>(new Map());
+  /** O descarte de cada id foi lembrado no servidor? (o Desfazer que falha só avisa quando foi). */
+  const lembrados = useRef<Map<string, boolean>>(new Map());
+  /** A pessoa tem alguma notificação, descartada ou não (o texto do sino vazio). */
+  const [temAlguma, setTemAlguma] = useState(false);
 
   const ler = useCallback(async () => {
     const geracao = ++geracoes.current.ultima;
@@ -76,7 +90,7 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
     try {
       const r = await fetch("/api/notificacoes", { cache: "no-store" });
       if (!r.ok) return;
-      const d = (await r.json()) as { itens?: NotificacaoNaTela[]; naoLidas?: number };
+      const d = (await r.json()) as { itens?: NotificacaoNaTela[]; naoLidas?: number; temAlguma?: boolean };
       // A leitura que saiu antes de uma mudança chega com o mundo de antes:
       // aplicá-la faria o item descartado piscar de volta.
       if (mutacoes.current !== mutacoesNoInicio || geracao < geracoes.current.aplicada) return;
@@ -85,6 +99,7 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
       const fora = lista.filter((n) => escondidos.current.has(n.id));
       setItens(lista.filter((n) => !escondidos.current.has(n.id)));
       setNaoLidas(Math.max(0, (d.naoLidas ?? 0) - fora.filter((n) => !n.lida).length));
+      setTemAlguma((t) => t || Boolean(d.temAlguma) || lista.length > 0);
       setAgora(Date.now());
     } catch {
       /* rede oscilando: a próxima consulta tenta de novo */
@@ -155,49 +170,73 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
   async function descartarItem(n: NotificacaoNaTela) {
     mutacoes.current++;
     escondidos.current.add(n.id);
+    ultimaOp.current.set(n.id, "descartar");
     setItens((a) => a.filter((x) => x.id !== n.id));
     if (!n.lida) setNaoLidas((c) => Math.max(0, c - 1));
     descartes.anunciar("Aviso descartado.");
     const idDoToast = mostrarToastDoDescarte({ aoDesfazer: () => void restaurarItem(n) });
-    try {
-      const r = await fetch("/api/notificacoes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descartar: [n.id] }),
-      });
-      const d = (await r.json().catch(() => ({}))) as { chaves?: string[]; lembrado?: boolean };
-      // A faixa do mesmo fato (a montagem, a campanha) sai da tela agora.
-      if (d.chaves?.length) descartes.registrar(d.chaves);
-      if (!r.ok || d.lembrado === false) toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
-    } catch {
-      toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
-    }
+    const pedido = (async () => {
+      try {
+        const r = await fetch("/api/notificacoes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ descartar: [n.id] }),
+        });
+        const d = (await r.json().catch(() => ({}))) as { chaves?: string[]; lembrado?: boolean };
+        const lembrou = r.ok && d.lembrado !== false;
+        lembrados.current.set(n.id, lembrou);
+        // Desfeito enquanto o pedido andava: nada de faixa saindo nem de toast.
+        if (ultimaOp.current.get(n.id) !== "descartar") return;
+        // A faixa do mesmo fato (a montagem, a campanha) sai da tela agora.
+        if (d.chaves?.length) descartes.registrar(d.chaves);
+        if (!lembrou) toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
+      } catch {
+        lembrados.current.set(n.id, false);
+        if (ultimaOp.current.get(n.id) === "descartar") toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
+      }
+    })();
+    pendentes.current.set(n.id, pedido);
+    await pedido;
   }
 
-  /** O Desfazer do item: pelo id, sem passar pela rota das telas. */
+  /** O Desfazer do item: pelo id, sem passar pela rota das telas, e só depois do descarte responder. */
   async function restaurarItem(n: NotificacaoNaTela) {
     mutacoes.current++;
     escondidos.current.delete(n.id);
+    ultimaOp.current.set(n.id, "restaurar");
+    // O item volta na hora, como estava (lido ou não): o descarte pelo sino não marca como lida.
+    setItens((a) => (a.some((x) => x.id === n.id) ? a : [...a, n].sort((x, y) => y.criadaEm.localeCompare(x.criadaEm))));
+    if (!n.lida) setNaoLidas((c) => c + 1);
     descartes.anunciar("Aviso de volta.");
+    await pendentes.current.get(n.id)?.catch(() => {});
+    // Outro descarte do mesmo item depois deste Desfazer: ele manda.
+    if (ultimaOp.current.get(n.id) !== "restaurar") return;
+    let desfeito = false;
     try {
       const r = await fetch("/api/notificacoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ restaurar: [n.id] }),
       });
-      const d = (await r.json().catch(() => ({}))) as { chaves?: string[] };
+      const d = (await r.json().catch(() => ({}))) as { chaves?: string[]; lembrado?: boolean };
+      desfeito = r.ok && d.lembrado !== false;
       if (d.chaves?.length) descartes.desfazer(d.chaves, { soNaTela: true });
     } catch {
-      /* a próxima leitura conta a verdade */
+      desfeito = false;
     }
+    // A leitura logo abaixo mostra a verdade do servidor: sem o desfazer lá, o
+    // item sai de novo. Só avisa quando o descarte tinha sido lembrado (sem a
+    // tabela, nada foi gravado, e o item volta de qualquer jeito).
+    if (!desfeito && lembrados.current.get(n.id) !== false) toast("Não consegui desfazer agora; o aviso continua descartado.", { duration: 6000 });
     void ler();
   }
 
-  /** "Limpar as lidas": as lidas saem do sino (as 500 mais recentes, no servidor). */
+  /** "Limpar as lidas": as lidas saem do sino (as 500 mais recentes, no servidor), menos as que também são faixa na tela. */
   async function limparLidas() {
     mutacoes.current++;
-    for (const n of itens) if (n.lida) escondidos.current.add(n.id);
-    setItens((a) => a.filter((n) => !n.lida));
+    const sai = (n: NotificacaoNaTela) => n.lida && !n.temFaixa;
+    for (const n of itens) if (sai(n)) escondidos.current.add(n.id);
+    setItens((a) => a.filter((n) => !sai(n)));
     descartes.anunciar("Notificações lidas descartadas.");
     try {
       const r = await fetch("/api/notificacoes", {
@@ -305,9 +344,13 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
                 </div>
               </div>
               <ul className="overflow-y-auto" data-lista-de-avisos>
+                {/* Vazio por descarte: "Nada novo". Quem nunca recebeu nada
+                    lê para que o sino serve (a frase de 02/10). */}
                 {itens.length === 0 && (
                   <li className="px-4 py-6 text-sm text-center" style={{ color: "var(--text-muted)" }}>
-                    Nada novo por aqui.
+                    {temAlguma
+                      ? "Nada novo por aqui."
+                      : "Nada por aqui ainda. Avisamos quando o roteiro pedir a sua aprovação e quando o vídeo ficar pronto."}
                   </li>
                 )}
                 {itens.map((n) => (
@@ -372,7 +415,7 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
                   </li>
                 ))}
               </ul>
-              {itens.some((n) => n.lida) && (
+              {itens.some((n) => n.lida && !n.temFaixa) && (
                 <div className="flex justify-end border-t px-3 py-2" style={{ borderColor: "var(--border)" }}>
                   <button type="button" onClick={() => void limparLidas()} className="text-xs font-medium px-2 py-1 rounded-md hover:bg-[var(--realce-2)]" style={{ color: "var(--text-muted)" }} data-limpar-lidas>
                     Limpar as lidas

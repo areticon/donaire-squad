@@ -8,8 +8,9 @@ import { descartarLidas, descartarNotificacoes, restaurarNotificacoes, type Depo
  * - {ids} e {todas}: marca como lidas, como sempre;
  * - {descartar:[ids]}: tira do sino (a linha fica: é a trava do e-mail) e
  *   devolve as chaves, para a tela tirar a faixa do mesmo fato sem recarregar;
- * - {restaurar:[ids]}: o desfazer do item, pelo id;
- * - {descartarLidas:true}: o "Limpar as lidas".
+ * - {restaurar:[ids]}: o desfazer do item, pelo id (o item volta lido ou não
+ *   lido como estava: o descarte pelo sino não marca como lida);
+ * - {descartarLidas:true}: o "Limpar as lidas", menos as que têm faixa na tela.
  */
 
 export type DepositosDoSino = {
@@ -42,7 +43,7 @@ export async function responderAoSino(
     const ids = listaDeIds(corpo.restaurar);
     if (!ids.length) return { status: 400, corpo: { error: "Diga quais (restaurar)." } };
     const r = await restaurarNotificacoes(p.userId, ids, dep.descartes);
-    return { status: 200, corpo: { ok: true, chaves: r.chaves } };
+    return { status: 200, corpo: { ok: true, chaves: r.chaves, lembrado: r.lembrado } };
   }
   if (corpo.descartarLidas === true) {
     const r = await descartarLidas(p.userId, dep.descartes);

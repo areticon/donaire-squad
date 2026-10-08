@@ -362,6 +362,7 @@ export default async function LivePage({
         videoTermos={project.videoTerms}
         videoSemana={project.videoSemana ?? null}
         falhasDaMontagem={falhasDaMontagem}
+        souDono={project.userId === userId}
       />
     </DescartesProvider>
   );
