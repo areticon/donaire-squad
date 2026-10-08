@@ -4,9 +4,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { ProjectNav } from "@/components/ui/project-nav";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
-import { ShieldCheck } from "lucide-react";
 import { lerCadastro } from "@/lib/media/gemeo-servidor";
-import { faltaUmPasso, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
+import { faltaUmPasso, hojeDoLembrete, situacaoDoGemeo } from "@/lib/media/gemeo-situacao";
+import { SeloDoGemeo } from "@/components/gemeo/selo-do-gemeo";
+import { chaveDoGemeoFaltaUmPasso } from "@/lib/avisos/chaves";
 import { GerenteVera } from "@/components/vera/gerente-vera";
 
 export default async function ProjectLayout({
@@ -30,7 +31,13 @@ export default async function ProjectLayout({
   // O SELO "FALTA UM PASSO" (03/10): o gêmeo treinado esperando a pessoa
   // confirmar no gerador. Visível em qualquer aba do projeto, até ela
   // confirmar; só para o dono, que é quem gravou e quem confirma.
-  const gemeoEspera = project.userId === userId && faltaUmPasso(situacaoDoGemeo(await lerCadastro(id).catch(() => null)));
+  const cadastroDoGemeo = project.userId === userId ? await lerCadastro(id).catch(() => null) : null;
+  const gemeoEspera = Boolean(cadastroDoGemeo) && faltaUmPasso(situacaoDoGemeo(cadastroDoGemeo));
+  // A chave do descarte do selo (07/10): o grupo do gêmeo; perto do link
+  // vencer, a chave do lembrete, e o selo volta.
+  const chaveDoSelo = gemeoEspera
+    ? chaveDoGemeoFaltaUmPasso(id, cadastroDoGemeo?.avatar?.grupoId ?? cadastroDoGemeo?.avatar?.origem ?? "sem-grupo", hojeDoLembrete(cadastroDoGemeo?.avatar))
+    : null;
 
   return (
     <div className="min-h-screen">
@@ -62,19 +69,7 @@ export default async function ProjectLayout({
                 {project.name}
               </span>
             </div>
-            {gemeoEspera && (
-              <Link
-                href={`/projects/${id}/gemeo#ultimo-passo`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-orange-500 transition-colors hover:bg-orange-500/10"
-                style={{ borderColor: "rgb(249 115 22 / 0.55)" }}
-                title="O seu gêmeo digital espera você confirmar pela câmera"
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <span>
-                  Falta um passo<span className="hidden sm:inline"> no gêmeo</span>
-                </span>
-              </Link>
-            )}
+            {gemeoEspera && <SeloDoGemeo projectId={id} chave={chaveDoSelo} />}
           </div>
           <ProjectNav projectId={id} isActive={project.status === "active"} souMembro={project.userId !== userId} />
         </div>

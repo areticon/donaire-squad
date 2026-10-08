@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { AlertTriangle, Check, ChevronDown, ExternalLink, Lightbulb, Loader2, Music, Plus, RotateCw, Sparkles, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDoEstudo } from "@/lib/avisos/chaves";
 import { Exemplo, PainelExecutivoDasReferencias } from "@/components/editorial/graficos-das-referencias";
 import { ListaDeRegras } from "@/components/editorial/regras-do-projeto";
 import {
@@ -304,19 +306,31 @@ export function AnalisesDasReferencias({ projectId, modo = "painel" }: { project
           </span>
         </div>
       )}
-      {estado && (d.parado || estado.status === "erro") && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 flex-1">
-            {estado.erro ?? `A análise parou no meio, na etapa "${ROTULO_DA_ETAPA[estado.etapa]}". O que já foi feito ficou guardado.`}
-          </span>
-          {d.podeEditar && (
-            <button type="button" disabled={pedindo !== null} onClick={() => void pedir("continuar")} className="inline-flex items-center gap-1 rounded-lg border border-amber-500/50 px-3 py-1.5 text-xs font-semibold">
-              <RotateCw className="h-3.5 w-3.5" /> Continuar de onde parou
-            </button>
-          )}
-        </div>
-      )}
+      {estado && (d.parado || estado.status === "erro") && (() => {
+        // Descartável no modo recolher (07/10): a frase sai e o "Continuar de
+        // onde parou" fica.
+        const continuar = d.podeEditar ? (
+          <button type="button" disabled={pedindo !== null} onClick={() => void pedir("continuar")} className="inline-flex items-center gap-1 rounded-lg border border-amber-500/50 px-3 py-1.5 text-xs font-semibold">
+            <RotateCw className="h-3.5 w-3.5" /> Continuar de onde parou
+          </button>
+        ) : null;
+        return (
+          <Descartavel
+            chave={chaveDoEstudo(projectId, estado.pedidoEm, d.parado ? "parado" : "erro")}
+            modo={continuar ? "recolher" : "sumir"}
+            compacto={continuar ? <div className="flex justify-end">{continuar}</div> : null}
+          >
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1">
+                {estado.erro ?? `A análise parou no meio, na etapa "${ROTULO_DA_ETAPA[estado.etapa]}". O que já foi feito ficou guardado.`}
+              </span>
+              {continuar}
+              <BotaoDescartar compacto />
+            </div>
+          </Descartavel>
+        );
+      })()}
 
       {!temEstudo ? (
         <p className="rounded-lg border border-dashed p-3 text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SocialConnectPanel } from "@/components/social/social-connect-panel";
 import { AvisoSoODono } from "@/components/equipe/aviso-so-o-dono";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 import { LinksDoCliente } from "@/components/projects/links-do-cliente";
 import { RedesNasConfiguracoes } from "@/components/projects/redes-do-cliente";
 import { GaleriaDeModelos } from "@/components/modelos-de-arte/galeria-de-modelos";
@@ -280,7 +282,7 @@ export function ConfiguracaoDoProjeto({
 
   return (
     <div className="flex flex-col gap-6">
-      {somenteLeitura && <AvisoSoODono dono={somenteLeitura.dono} oQue="as configurações deste projeto" />}
+      {somenteLeitura && <AvisoSoODono dono={somenteLeitura.dono} oQue="as configurações deste projeto" projectId={projeto.id} tela="configuracoes" />}
       {/* Em grade 2x2 no celular (03/10): em fila, a quarta aba ficava fora da
           tela e a terceira cortada no meio da palavra ("Vídeo e s"). */}
       <div className="grid grid-cols-2 gap-1 border-b sm:flex sm:overflow-x-auto" style={{ borderColor: "var(--border)" }}>
@@ -472,18 +474,21 @@ export function ConfiguracaoDoProjeto({
             <SeletorDeCores projectId={projeto.id} logoUrl={projeto.logoUrl ?? null} />
           </Secao>
 
+          <Descartavel chave={chaveDaDica("refazer-setup")}>
           <div
             className="flex items-center gap-3 rounded-xl border p-4"
             style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
           >
             <Info className="h-[18px] w-[18px] shrink-0" style={{ color: "var(--text-muted)" }} />
-            <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+            <p className="flex-1 text-[13px]" style={{ color: "var(--text-muted)" }}>
               Prefere rever tudo do começo, com o assistente perguntando etapa por etapa?{" "}
               <a href={`/projects/${projeto.id}/setup`} className="font-semibold text-orange-400">
                 Refazer o setup guiado
               </a>
             </p>
+            <BotaoDescartar compacto />
           </div>
+          </Descartavel>
         </>
       )}
 

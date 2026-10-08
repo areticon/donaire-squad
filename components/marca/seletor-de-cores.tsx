@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Check, Loader2, Pipette, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaAprovacaoQueCaiu, chaveDaCorNoVideo, chaveDasCoresDeFabrica, chaveDeConfirmarCores } from "@/lib/avisos/chaves";
 import { medidaDaCor } from "@/lib/media/papeis-da-paleta";
 import { NEUTROS, checarContraste, type ChecagemDeContraste, type PapeisEscolhidos, type PapelDaCor } from "@/lib/modelos-de-arte/identidade";
 import {
@@ -110,7 +112,11 @@ export function SeletorDeCores({
   const [estado, setEstado] = useState<"" | "guardando" | "guardado" | "erro">("");
   const [mensagemDeErro, setMensagemDeErro] = useState("");
   const [confirmouDerrubar, setConfirmouDerrubar] = useState(false);
-  const [aprovacaoCaiu, setAprovacaoCaiu] = useState(false);
+  // O instante em que a troca derrubou a aprovação (07/10): a marca do aviso,
+  // para o descarte valer para esta troca e uma troca nova avisar de novo.
+  const [aprovacaoCaiu, setAprovacaoCaiu] = useState<string | null>(null);
+  /** O erro de leitura fechado pelo X (07/10): só local. */
+  const [erroDeLeituraFechado, setErroDeLeituraFechado] = useState(false);
   const [anterior, setAnterior] = useState<Vaga[] | null>(null);
   const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
@@ -207,7 +213,7 @@ export function SeletorDeCores({
         setMensagemDeErro("");
         setConfirmouDerrubar(false);
         const ident = corpo.identidade;
-        if (ident?.aprovadaAntes && !ident.aprovadaAgora) setAprovacaoCaiu(true);
+        if (ident?.aprovadaAntes && !ident.aprovadaAgora) setAprovacaoCaiu(new Date().toISOString());
         setDados((d) =>
           d
             ? {
@@ -341,9 +347,11 @@ export function SeletorDeCores({
   }, [atuais, dados]);
 
   if (falhaAoCarregar && !dados) {
+    if (erroDeLeituraFechado) return null;
     return (
       <p className="flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
-        <AlertTriangle className="h-4 w-4 text-yellow-500" /> Não consegui carregar as suas cores. Recarregue a página.
+        <AlertTriangle className="h-4 w-4 text-yellow-500" /> <span className="flex-1">Não consegui carregar as suas cores. Recarregue a página.</span>
+        <BotaoDescartar compacto aoDescartar={() => setErroDeLeituraFechado(true)} />
       </p>
     );
   }
@@ -394,30 +402,61 @@ export function SeletorDeCores({
       </div>
 
       {/* Sem escolha ainda: dizer de onde vêm as cores e deixar confirmar num clique. */}
+      {/* Descartável no modo recolher (07/10): a frase sai, o botão fica. */}
       {!dados.escolhida && podeMudar && !mudou && atuais.principal && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
-          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-            Estas são {dados.efetivas.rotulo}. Ficam como suas quando você confirmar ou mudar uma delas.
-          </p>
-          <Button size="sm" onClick={() => void gravar(atuais, vagas)} loading={estado === "guardando"}>
-            Confirmar estas cores
-          </Button>
-        </div>
+        <Descartavel
+          chave={chaveDeConfirmarCores(projectId)}
+          modo="recolher"
+          compacto={
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => void gravar(atuais, vagas)} loading={estado === "guardando"}>
+                Confirmar estas cores
+              </Button>
+            </div>
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
+            <p className="min-w-0 flex-1 text-sm" style={{ color: "var(--text-primary)" }}>
+              Estas são {dados.efetivas.rotulo}. Ficam como suas quando você confirmar ou mudar uma delas.
+            </p>
+            <Button size="sm" onClick={() => void gravar(atuais, vagas)} loading={estado === "guardando"}>
+              Confirmar estas cores
+            </Button>
+            <BotaoDescartar compacto />
+          </div>
+        </Descartavel>
       )}
 
       {/* As de fábrica: o laranja da Demandou que o assistente gravava sozinho até 08/10. */}
+      {/* Descartável (07/10): sem fim natural, o descarte vale de vez; o
+          "Usar as do logo" fica, recolhido. */}
       {dados.deFabrica && !mudou && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: "rgba(161,98,7,.12)", borderColor: "rgba(250,204,21,.35)" }}>
-          <p className="flex items-start gap-2 text-sm" style={{ color: "var(--text-primary)" }}>
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
-            Estas são as cores de fábrica da Demandou, e não as da sua marca. Escolha as suas{doLogo ? " ou use as do seu logo" : ""}.
-          </p>
-          {doLogo && podeMudar && (
-            <Button size="sm" variant="outline" onClick={() => usarCores(doLogo.cores)}>
-              Usar as do logo
-            </Button>
-          )}
-        </div>
+        <Descartavel
+          chave={chaveDasCoresDeFabrica(projectId)}
+          modo={doLogo && podeMudar ? "recolher" : "sumir"}
+          compacto={
+            doLogo && podeMudar ? (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => usarCores(doLogo.cores)}>
+                  Usar as do logo
+                </Button>
+              </div>
+            ) : null
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: "rgba(161,98,7,.12)", borderColor: "rgba(250,204,21,.35)" }}>
+            <p className="flex min-w-0 flex-1 items-start gap-2 text-sm" style={{ color: "var(--text-primary)" }}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+              Estas são as cores de fábrica da Demandou, e não as da sua marca. Escolha as suas{doLogo ? " ou use as do seu logo" : ""}.
+            </p>
+            {doLogo && podeMudar && (
+              <Button size="sm" variant="outline" onClick={() => usarCores(doLogo.cores)}>
+                Usar as do logo
+              </Button>
+            )}
+            <BotaoDescartar compacto />
+          </div>
+        </Descartavel>
       )}
 
       {/* A troca que derrubaria a identidade aprovada espera a pessoa decidir.
@@ -639,28 +678,35 @@ export function SeletorDeCores({
           )}
           {/* O vídeo lê pela hierarquia: quando ela escolhe outra cor, a tela diz. */}
           {principal && noVideo && noVideo !== principal && (
-            <p className="flex items-start gap-1.5 text-[11.5px] leading-snug" style={{ color: "var(--text-muted)" }}>
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
-              <span>
-                No vídeo, a palavra acesa da legenda sai em{" "}
-                <span className="inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: noVideo }} /> {noVideo.toUpperCase()}: a Principal é{" "}
-                {medidaDaCor(principal).l < 0.5 ? "escura" : "clara"} demais para destaque.
-              </span>
-            </p>
+            <Descartavel chave={chaveDaCorNoVideo(projectId, noVideo)}>
+              <p className="flex items-start gap-1.5 text-[11.5px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
+                <span className="flex-1">
+                  No vídeo, a palavra acesa da legenda sai em{" "}
+                  <span className="inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: noVideo }} /> {noVideo.toUpperCase()}: a Principal é{" "}
+                  {medidaDaCor(principal).l < 0.5 ? "escura" : "clara"} demais para destaque.
+                </span>
+                <BotaoDescartar compacto className="-my-1" />
+              </p>
+            </Descartavel>
           )}
         </aside>
       </div>
 
+      {/* Descartável (07/10): a reaprovação continua em Modelos. */}
       {aprovacaoCaiu && (
+        <Descartavel chave={chaveDaAprovacaoQueCaiu(projectId, aprovacaoCaiu)}>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
-          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+          <p className="min-w-0 flex-1 text-sm" style={{ color: "var(--text-primary)" }}>
             Cores trocadas. Aprove a identidade de novo para as artes saírem nas cores novas
             {dados.identidade.aguardando > 0 ? ` (${dados.identidade.aguardando === 1 ? "1 arte esperando" : `${dados.identidade.aguardando} artes esperando`})` : ""}.
           </p>
           <a href={`/projects/${projectId}/settings?aba=modelos`} className="text-sm font-semibold text-orange-500 hover:underline">
             Aprovar em Modelos de arte
           </a>
+          <BotaoDescartar compacto />
         </div>
+        </Descartavel>
       )}
 
       {!podeMudar && (

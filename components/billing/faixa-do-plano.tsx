@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { Sparkles, Clock } from "lucide-react";
 import type { PlanoNaTela } from "@/lib/plano-na-tela";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
+import { BotaoDescartar, useDescartes } from "@/components/ui/descartar";
+import { chaveDoAlertaDoPlano } from "@/lib/avisos/chaves";
 
 /**
  * A faixa do plano, no navegador. Nasce com o retrato que o servidor mandou
@@ -30,7 +32,13 @@ export function FaixaDoPlano({ inicial }: { inicial: PlanoNaTela }) {
   }, []);
   const numero = (n: number) => n.toLocaleString("pt-BR");
 
-  const emAlerta = !p.admin && (p.creditos <= 0 || (p.emTeste && (p.diasDeTesteRestantes ?? 9) <= 2));
+  // O ALERTA SE DESCARTA (07/10): sai o laranja e a frase, e a faixa neutra,
+  // com o saldo e o botão do plano, fica (é a referência fixa de créditos).
+  // Volta com marca nova: outra recarga que zerou, ou o teste no último dia.
+  const descartes = useDescartes();
+  const chaveDoAlerta = p.alerta ? chaveDoAlertaDoPlano(p.alerta.motivo, p.alerta.marca) : null;
+  const alertaDescartado = Boolean(chaveDoAlerta && descartes.ehDescartado(chaveDoAlerta));
+  const emAlerta = !p.admin && !alertaDescartado && (p.creditos <= 0 || (p.emTeste && (p.diasDeTesteRestantes ?? 9) <= 2));
 
   return (
     <div
@@ -81,12 +89,12 @@ export function FaixaDoPlano({ inicial }: { inicial: PlanoNaTela }) {
       {/* MEMBRO DA EQUIPE (01/10): de quem é a conta e, se houver, o teto dele.
           Com o saldo zerado, a frase de quem resolve, pelo nome, no lugar do
           botão de compra que o dono veria (acabamento de 01/10). */}
-      {p.equipe && p.creditos <= 0 && !p.admin && (
-        <span className="ml-auto text-xs font-medium" style={{ color: "var(--marca-laranja-texto)" }} role="status">
+      {p.equipe && emAlerta && p.creditos <= 0 && (
+        <span className="ml-auto text-xs font-medium" style={{ color: "var(--marca-laranja-texto)" }} role="status" id="frase-do-alerta-do-plano">
           {fraseDosCreditosDaEquipe(p.equipe.dono)}
         </span>
       )}
-      {p.equipe && !(p.creditos <= 0 && !p.admin) && (
+      {p.equipe && !(emAlerta && p.creditos <= 0) && (
         <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>
           Conta de <strong style={{ color: "var(--text-primary)", fontWeight: 600 }}>{p.equipe.dono}</strong>
           {p.equipe.tetoCreditos !== null
@@ -106,6 +114,7 @@ export function FaixaDoPlano({ inicial }: { inicial: PlanoNaTela }) {
           {p.acao.rotulo}
         </Link>
       )}
+      {emAlerta && chaveDoAlerta && <BotaoDescartar chave={chaveDoAlerta} rotulo="Descartar o alerta" className="-my-2 -mr-2" />}
     </div>
   );
 }

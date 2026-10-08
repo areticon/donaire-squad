@@ -12,6 +12,9 @@ import { estornosDaEdicao, refDoEstorno } from "@/lib/credits/estorno-da-edicao"
 import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
 import { temCapasGeradas } from "@/lib/media/estilos-de-capa";
 import { descreverFalhaDaCampanha } from "@/lib/pipeline/falha-da-campanha";
+import { DescartesProvider } from "@/components/ui/descartar";
+import { descartadasEntre } from "@/lib/avisos/descartes";
+import { chaveDaCampanha, chaveDaMontagem, chaveDaMontagemSegura, listaDasChavesDoVideo } from "@/lib/avisos/chaves";
 
 function getMonday(d: Date): Date {
   const day = d.getUTCDay();
@@ -82,15 +85,20 @@ export default async function LivePage({
   const completoSemNova = new Map<string, string | null>();
   // O completo que foi ao ar na VERSÃO SEGURA (02/10, revisão visual sem conserto).
   const completoSeguro = new Set<string>();
+  // O `desde` da montagem do completo (07/10), em TEXTO CRU: é a marca da
+  // ocorrência na chave do descarte, e precisa bater byte a byte com a que o
+  // observador do sino grava (lib/notificacoes/observador.ts lê o mesmo ->>).
+  const desdeDoCompleto = new Map<string, string>();
   if (videos.length) {
-    const linhas = await prisma.$queryRaw<{ id: string; estado: string | null; tem_roteiro: boolean | null; aprovado: string | null; falha: string | null; segura: string | null; sem_nova: string | null; detalhe: string | null }[]>`
+    const linhas = await prisma.$queryRaw<{ id: string; estado: string | null; tem_roteiro: boolean | null; aprovado: string | null; falha: string | null; segura: string | null; sem_nova: string | null; detalhe: string | null; desde: string | null }[]>`
       SELECT id, "completoMontagem" ->> 'estado' AS estado,
              ("completoMontagem" -> 'roteiro') IS NOT NULL AS tem_roteiro,
              "completoMontagem" -> 'roteiro' ->> 'aprovadoEm' AS aprovado,
              "completoMontagem" ->> 'falhaTecnica' AS falha,
              "completoMontagem" -> 'revisaoVisual' ->> 'segura' AS segura,
              "completoMontagem" ->> 'semNovaTentativa' AS sem_nova,
-             "completoMontagem" ->> 'detalheDoCliente' AS detalhe
+             "completoMontagem" ->> 'detalheDoCliente' AS detalhe,
+             "completoMontagem" ->> 'desde' AS desde
       FROM video_jobs WHERE id = ANY(${videos.map((v) => v.id)})`.catch(() => []);
     for (const l of linhas) {
       if (l.estado) estadoDoCompleto.set(l.id, l.estado);
@@ -98,6 +106,7 @@ export default async function LivePage({
       if (l.estado === "sem-montagem" && l.falha === "true") completoFalhou.add(l.id);
       if (l.estado === "sem-montagem" && l.falha === "true" && l.sem_nova === "true") completoSemNova.set(l.id, l.detalhe);
       if (l.estado === "pronto" && l.segura === "true") completoSeguro.add(l.id);
+      if (l.desde) desdeDoCompleto.set(l.id, l.desde);
     }
   }
   // O aviso acima do quadro: cada peça (completo ou corte) cuja montagem de
@@ -106,10 +115,23 @@ export default async function LivePage({
   const devolvidos = await estornosDaEdicao(videos.map((v) => v.id)).catch(() => new Map<string, number>());
   const falhasDaMontagem: FalhaDaMontagem[] = videos.flatMap((v) => {
     const nome = v.originalName ?? "Gravação";
-    const cortes = ((Array.isArray(v.clips) ? v.clips : []) as Array<{ titulo?: string; montagem?: { estado?: string; falhaTecnica?: boolean; revisaoVisual?: { segura?: boolean } | null } }>)
+    const cortes = ((Array.isArray(v.clips) ? v.clips : []) as Array<{ titulo?: string; montagem?: { estado?: string; desde?: string; falhaTecnica?: boolean; revisaoVisual?: { segura?: boolean } | null } }>)
       .map((t, i) => ({ t, i }))
       .filter(({ t }) => (t?.montagem?.estado === "sem-montagem" && t.montagem.falhaTecnica) || (t?.montagem?.estado === "pronto" && t.montagem.revisaoVisual?.segura))
-      .map(({ t, i }) => ({ videoJobId: v.id, nome, alvo: i, titulo: t.titulo ?? null, tipo: t.montagem?.estado === "pronto" ? "segura" : "falha", devolvidos: devolvidos.get(refDoEstorno(v.id, i)) ?? 0 }) as FalhaDaMontagem);
+      .map(({ t, i }) => {
+        const segura = t.montagem?.estado === "pronto";
+        const desde = t.montagem?.desde ?? null;
+        return {
+          videoJobId: v.id,
+          nome,
+          alvo: i,
+          titulo: t.titulo ?? null,
+          tipo: segura ? "segura" : "falha",
+          devolvidos: devolvidos.get(refDoEstorno(v.id, i)) ?? 0,
+          desde,
+          chave: segura ? chaveDaMontagemSegura(v.id, i, desde) : chaveDaMontagem(v.id, i, desde),
+        } as FalhaDaMontagem;
+      });
     const completo: FalhaDaMontagem[] = completoFalhou.has(v.id) || completoSeguro.has(v.id)
       ? [{
           videoJobId: v.id,
@@ -117,6 +139,10 @@ export default async function LivePage({
           alvo: "completo",
           tipo: completoSeguro.has(v.id) ? "segura" : "falha",
           devolvidos: devolvidos.get(refDoEstorno(v.id, "completo")) ?? 0,
+          desde: desdeDoCompleto.get(v.id) ?? null,
+          chave: completoSeguro.has(v.id)
+            ? chaveDaMontagemSegura(v.id, "completo", desdeDoCompleto.get(v.id))
+            : chaveDaMontagem(v.id, "completo", desdeDoCompleto.get(v.id)),
           ...(completoSemNova.has(v.id) ? { semNovaTentativa: true, detalhe: completoSemNova.get(v.id) ?? null } : {}),
         }]
       : [];
@@ -219,107 +245,124 @@ export default async function LivePage({
       })
     : null;
 
-  return (
-    <ContentManager
-      projectId={id}
-      projectName={project.name}
-      postFrequency={project.postFrequency}
-      postsDaSemana={postsDaSemana.map((p) => ({
-        ...p,
-        scheduledAt: p.scheduledAt?.toISOString() ?? null,
-        publishedAt: p.publishedAt?.toISOString() ?? null,
-      }))}
-      socialAccounts={project.socialAccounts}
-      initialCards={cards.map((c) => ({
-        ...c,
-        scheduledDate: c.scheduledDate?.toISOString() ?? null,
-        createdAt: c.createdAt.toISOString(),
-        chatHistory: Array.isArray(c.chatHistory) ? (c.chatHistory as { role: "user" | "assistant"; content: string; timestamp: string }[]) : [],
-      }))}
-      activeRun={activeRun ? serializeRun(activeRun) : null}
-      lastFailedRun={
-        lastFailedRun
-          ? { ...serializeRun(lastFailedRun), ...(falhaDaUltima ? { motivo: `${falhaDaUltima.titulo}. ${falhaDaUltima.texto}`, codigo: falhaDaUltima.codigo } : {}) }
-          : null
-      }
-      videos={[...gemeos.ativos, ...videos.map((v) => {
-        const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
-          publicar?: boolean;
-          posts?: unknown;
-          midia?: { vertical?: unknown };
-        }>;
-        const comMidia = trechos.filter((t) => t.midia?.vertical);
+  const videosNaFaixa = [...gemeos.ativos, ...videos.map((v) => {
+    const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
+      publicar?: boolean;
+      posts?: unknown;
+      midia?: { vertical?: unknown };
+    }>;
+    const comMidia = trechos.filter((t) => t.midia?.vertical);
+    return {
+      id: v.id,
+      status: v.status,
+      error: v.error,
+      attempts: v.attempts,
+      durationSec: v.durationSec,
+      criadoEm: v.createdAt.toISOString(),
+      // A contagem regressiva parte da rodada atual já na primeira pintura
+      // (30/09); o resto do estado da rodada chega na primeira consulta.
+      inicioDaRodada: (v.rodadaEm ?? v.createdAt).toISOString(),
+      // Sem isto a faixa "pronto em N minutos" contava até agora e o número
+      // subia a cada recarga (30/09: 32, 37, 41 minutos).
+      terminadoEm: v.finishedAt?.toISOString() ?? null,
+      originalName: v.originalName,
+      trechosEscolhidos: trechos.length,
+      cortesProntos: comMidia.length,
+      cortesQueVaoAoAr: comMidia.filter((t) => t.publicar !== false).length,
+  // Edições ainda rodando (30/09): a faixa só diz "pronto" quando a
+  // montagem dos cortes e do completo terminou, e não quando o corte
+  // simples chegou. Antes ela dizia pronto com o completo sem edição.
+  edicoesEmAndamento:
+    (trechos as Array<{ montagem?: { estado?: string } }>).filter((t) => ["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(t.montagem?.estado ?? "")).length +
+    (["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(estadoDoCompleto.get(v.id) ?? "") ||
+    // O INTERVALO entre a gravação limpa chegar e a montagem entrar na
+    // fila (30/09): sem estado ainda, a faixa dizia "pronto" e o card do
+    // completo sumia do quadro por um instante. Vídeo recente, completo
+    // pronto, montagem ligada e nenhum estado: ainda é edição.
+    (Boolean(v.completoUrl) && !estadoDoCompleto.get(v.id) && process.env.MONTAGEM_DO_COMPLETO === "1" && Date.now() - v.createdAt.getTime() < 6 * 3600_000)
+      ? 1
+      : 0),
+  etapaDoCompleto: estadoDoCompleto.get(v.id) ?? null,
+      temTranscricao: v.durationSec !== null,
+      temTrechos: trechos.length > 0,
+      temCortes: comMidia.length > 0,
+      temTrechosComPosts: trechos.some((t) => t.posts),
+      temCompleto: Boolean(v.completoUrl),
+      roteiro: roteiros.get(v.id) ?? null,
+      roteiroPendente: roteiroPendenteDe({
+        status: v.status,
+        temTrechos: trechos.length > 0,
+        temCortes: comMidia.length > 0,
+        roteiroLigado: ligado,
+        roteiroAprovado: Boolean(roteiros.get(v.id)?.aprovado),
+      }),
+      capas: temCapasGeradas(v.capas),
+      radar: (() => {
+        const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
+        if (!r) return null;
         return {
-          id: v.id,
-          status: v.status,
-          error: v.error,
-          attempts: v.attempts,
-          durationSec: v.durationSec,
-          criadoEm: v.createdAt.toISOString(),
-          // A contagem regressiva parte da rodada atual já na primeira pintura
-          // (30/09); o resto do estado da rodada chega na primeira consulta.
-          inicioDaRodada: (v.rodadaEm ?? v.createdAt).toISOString(),
-          // Sem isto a faixa "pronto em N minutos" contava até agora e o número
-          // subia a cada recarga (30/09: 32, 37, 41 minutos).
-          terminadoEm: v.finishedAt?.toISOString() ?? null,
-          originalName: v.originalName,
-          trechosEscolhidos: trechos.length,
-          cortesProntos: comMidia.length,
-          cortesQueVaoAoAr: comMidia.filter((t) => t.publicar !== false).length,
-      // Edições ainda rodando (30/09): a faixa só diz "pronto" quando a
-      // montagem dos cortes e do completo terminou, e não quando o corte
-      // simples chegou. Antes ela dizia pronto com o completo sem edição.
-      edicoesEmAndamento:
-        (trechos as Array<{ montagem?: { estado?: string } }>).filter((t) => ["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(t.montagem?.estado ?? "")).length +
-        (["na-fila", "preparando", "dirigindo", "ilustrando", "gerando", "montando"].includes(estadoDoCompleto.get(v.id) ?? "") ||
-        // O INTERVALO entre a gravação limpa chegar e a montagem entrar na
-        // fila (30/09): sem estado ainda, a faixa dizia "pronto" e o card do
-        // completo sumia do quadro por um instante. Vídeo recente, completo
-        // pronto, montagem ligada e nenhum estado: ainda é edição.
-        (Boolean(v.completoUrl) && !estadoDoCompleto.get(v.id) && process.env.MONTAGEM_DO_COMPLETO === "1" && Date.now() - v.createdAt.getTime() < 6 * 3600_000)
-          ? 1
-          : 0),
-      etapaDoCompleto: estadoDoCompleto.get(v.id) ?? null,
-          temTranscricao: v.durationSec !== null,
-          temTrechos: trechos.length > 0,
-          temCortes: comMidia.length > 0,
-          temTrechosComPosts: trechos.some((t) => t.posts),
-          temCompleto: Boolean(v.completoUrl),
-          roteiro: roteiros.get(v.id) ?? null,
-          roteiroPendente: roteiroPendenteDe({
-            status: v.status,
-            temTrechos: trechos.length > 0,
-            temCortes: comMidia.length > 0,
-            roteiroLigado: ligado,
-            roteiroAprovado: Boolean(roteiros.get(v.id)?.aprovado),
-          }),
-          capas: temCapasGeradas(v.capas),
-          radar: (() => {
-            const r = v.radar as { teses?: unknown[]; achados?: unknown[]; dados?: unknown[]; fontes?: unknown[] } | null;
-            if (!r) return null;
-            return {
-              teses: r.teses?.length ?? 0,
-              achados: r.achados?.length ?? 0,
-              dados: r.dados?.length ?? 0,
-              fontes: r.fontes?.length ?? 0,
-            };
-          })(),
-          // Nulo aqui de propósito: o cronômetro da faixa conta do envio, e a
-          // primeira consulta traz o resto. Ler o relógio na renderização do
-          // servidor a tornaria impura.
-          rodandoHaSegundos:
-            estaTrabalhando(v.status) && v.startedAt
-              ? Math.max(0, Math.round((Date.now() - v.startedAt.getTime()) / 1000))
-              : null,
-          linha: extras.get(v.id) ?? null,
-          gemeo: gemeos.porVideoJob.get(v.id) ?? null,
+          teses: r.teses?.length ?? 0,
+          achados: r.achados?.length ?? 0,
+          dados: r.dados?.length ?? 0,
+          fontes: r.fontes?.length ?? 0,
         };
-      })]}
-      videoEstilo={project.videoStyle}
-      videoMusica={project.videoMusicName}
-      videoTermos={project.videoTerms}
-      videoSemana={project.videoSemana ?? null}
-      falhasDaMontagem={falhasDaMontagem}
-    />
+      })(),
+      // Nulo aqui de propósito: o cronômetro da faixa conta do envio, e a
+      // primeira consulta traz o resto. Ler o relógio na renderização do
+      // servidor a tornaria impura.
+      rodandoHaSegundos:
+        estaTrabalhando(v.status) && v.startedAt
+          ? Math.max(0, Math.round((Date.now() - v.startedAt.getTime()) / 1000))
+          : null,
+      linha: extras.get(v.id) ?? null,
+      gemeo: gemeos.porVideoJob.get(v.id) ?? null,
+    };
+  })];
+
+  // O DESCARTE DOS AVISOS DESTA TELA (07/10): UMA pergunta ao banco com todas as
+  // chaves que esta página pode desenhar (a faixa da montagem, a campanha que
+  // falhou e as cinco possíveis de cada cartão de vídeo). O servidor não tira
+  // nada das props: o conjunto vai para o provider, e quem esconde é o
+  // componente, igual no servidor e no navegador (sem divergência de
+  // hidratação, e o Desfazer funciona depois de um refresh). Erro vira vazio.
+  const chavesDaTela = [
+    ...falhasDaMontagem.map((f) => f.chave),
+    lastFailedRun ? chaveDaCampanha(lastFailedRun.id, lastFailedRun.status) : null,
+    ...videosNaFaixa.flatMap((v) => ("temTranscricao" in v ? listaDasChavesDoVideo(v) : [])),
+  ].filter((c): c is string => Boolean(c));
+  const descartadosDaTela = [...(await descartadasEntre(userId, chavesDaTela))];
+
+  return (
+    <DescartesProvider iniciais={descartadosDaTela}>
+      <ContentManager
+        projectId={id}
+        projectName={project.name}
+        postFrequency={project.postFrequency}
+        postsDaSemana={postsDaSemana.map((p) => ({
+          ...p,
+          scheduledAt: p.scheduledAt?.toISOString() ?? null,
+          publishedAt: p.publishedAt?.toISOString() ?? null,
+        }))}
+        socialAccounts={project.socialAccounts}
+        initialCards={cards.map((c) => ({
+          ...c,
+          scheduledDate: c.scheduledDate?.toISOString() ?? null,
+          createdAt: c.createdAt.toISOString(),
+          chatHistory: Array.isArray(c.chatHistory) ? (c.chatHistory as { role: "user" | "assistant"; content: string; timestamp: string }[]) : [],
+        }))}
+        activeRun={activeRun ? serializeRun(activeRun) : null}
+        lastFailedRun={
+          lastFailedRun
+            ? { ...serializeRun(lastFailedRun), ...(falhaDaUltima ? { motivo: `${falhaDaUltima.titulo}. ${falhaDaUltima.texto}`, codigo: falhaDaUltima.codigo } : {}) }
+            : null
+        }
+        videos={videosNaFaixa}
+        videoEstilo={project.videoStyle}
+        videoMusica={project.videoMusicName}
+        videoTermos={project.videoTerms}
+        videoSemana={project.videoSemana ?? null}
+        falhasDaMontagem={falhasDaMontagem}
+      />
+    </DescartesProvider>
   );
 }

@@ -23,6 +23,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaSituacaoDoGemeo, chaveDoResumoDoGemeo, ocorrenciaDoGemeo } from "@/lib/avisos/chaves";
 import {
   CENARIOS,
   LADO_MINIMO_DA_FOTO,
@@ -423,6 +425,9 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
     <div className="flex flex-col gap-6">
       {/* O RESUMO: pronto, ou o que falta. Com o gêmeo esperando a
           confirmação no gerador (03/10), o resumo vira o passo que falta. */}
+      {/* O resumo se descarta (07/10): a seção do passo que falta, logo
+          abaixo, é a ação, e continua. */}
+      <Descartavel chave={chaveDoResumoDoGemeo(projectId, ultimoPasso ? "ultimo-passo" : ativo ? "pronto" : "falta", ocorrenciaDoGemeo(c))}>
       {ultimoPasso ? (
         <div
           className="flex items-start gap-3 rounded-xl border px-4 py-3"
@@ -435,6 +440,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               Ir para o último passo
             </a>
           </p>
+          <BotaoDescartar compacto className="ml-auto" />
         </div>
       ) : (
         <div
@@ -453,8 +459,10 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               </>
             )}
           </p>
+          <BotaoDescartar compacto className="ml-auto" />
         </div>
       )}
+      </Descartavel>
 
       {/* PASSO 1: A FOTO (05/10). Uma só, de alta qualidade: é ela que o
           gerador anima, e a foto decide metade do resultado. */}
@@ -510,7 +518,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
             ))}
             {c?.foto?.estado === "recusada" && (
               <>
-                {!c.foto.checagens?.length && <Situacao tom="erro" texto={c.foto.motivo ?? "A foto não serviu."} />}
+                {!c.foto.checagens?.length && <Situacao tom="erro" texto={c.foto.motivo ?? "A foto não serviu."} chave={chaveDaSituacaoDoGemeo(projectId, "foto", "recusada", c.foto.origem)} />}
                 <p className="text-sm text-orange-400">A foto não valeu. Corrija o que está marcado acima e envie outra.</p>
               </>
             )}
@@ -520,6 +528,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
             {c?.avatarFoto && (
               <Situacao
                 tom={c.avatarFoto.estado === "pronto" ? "ok" : c.avatarFoto.estado === "falhou" ? "erro" : "andando"}
+                chave={c.avatarFoto.estado === "falhou" ? chaveDaSituacaoDoGemeo(projectId, "avatar-foto", "falhou", `${c.foto?.origem ?? ""}|${c.avatarFoto.motivo ?? ""}`) : null}
                 texto={
                   {
                     criando: "Preparando o seu gêmeo no gerador a partir da foto. Leva um minuto.",
@@ -581,6 +590,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
           {c?.voz && !(c.vozAprovada && c.voz.estado === "pronta" && c.voz.aprovadaEm) && (
             <Situacao
               tom={c.voz.estado === "pronta" ? "espera" : ["curta", "falhou"].includes(c.voz.estado) ? "erro" : c.voz.estado === "sem-permissao" ? "espera" : "andando"}
+              chave={["curta", "falhou"].includes(c.voz.estado) ? chaveDaSituacaoDoGemeo(projectId, "voz", c.voz.estado, `${c.voz.motivo ?? ""}|${c.voz.segundos ?? ""}`) : null}
               texto={
                 {
                   convertendo: "Conferindo a gravação da voz...",
@@ -662,6 +672,7 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
         {c?.autorizacao && (
           <Situacao
             tom={c.autorizacao.estado === "valida" ? "ok" : c.autorizacao.estado === "recusada" ? "erro" : "andando"}
+            chave={c.autorizacao.estado === "recusada" ? chaveDaSituacaoDoGemeo(projectId, "autorizacao", "recusada", `${c.autorizacao.gravadaEm ?? ""}|${c.autorizacao.motivo ?? ""}`) : null}
             texto={
               {
                 conferindo: "Conferindo se a frase foi dita...",
@@ -747,7 +758,13 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
                 {(c.treino.checagens ?? []).map((k) => (
                   <Situacao key={k.id} tom={k.resultado === "ok" ? "ok" : k.resultado === "aviso" ? "espera" : "erro"} texto={k.texto} />
                 ))}
-                {c.treino.estado === "falhou" && <Situacao tom="erro" texto={c.treino.motivo ?? "Não consegui conferir o vídeo. Grave de novo."} />}
+                {c.treino.estado === "falhou" && (
+                  <Situacao
+                    tom="erro"
+                    texto={c.treino.motivo ?? "Não consegui conferir o vídeo. Grave de novo."}
+                    chave={chaveDaSituacaoDoGemeo(projectId, "treino", "falhou", `${c.treino.gravadoEm ?? ""}|${c.treino.motivo ?? ""}`)}
+                  />
+                )}
                 {c.treino.estado === "recusado" && (
                   <p className="text-sm text-orange-400">O vídeo não valeu. Corrija o que está marcado acima e grave de novo.</p>
                 )}
@@ -797,6 +814,9 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
             {c?.avatar && (
               <Situacao
                 tom={c.avatar.estado === "pronto" ? "ok" : c.avatar.estado === "falhou" ? (c.avatar.semVaga ? "espera" : "erro") : c.avatar.estado === "consentimento" ? "espera" : "andando"}
+                // A falha do treino se descarta (07/10); sem vaga, o "Tentar de
+                // novo" logo abaixo fica (é a ação, e o aviso recolhe nele).
+                chave={c.avatar.estado === "falhou" ? chaveDaSituacaoDoGemeo(projectId, "avatar", c.avatar.semVaga ? "sem-vaga" : "falhou", c.avatar.origem) : null}
                 texto={
                   {
                     enviando: "Enviando o vídeo para treinar o seu gêmeo...",
@@ -826,9 +846,14 @@ export function GemeoDoProjeto({ projectId, inicial, roteiroInicial }: { project
               </div>
             )}
             {estado.erroTecnico && c?.avatar?.estado === "falhou" && (
-              <p className="break-words text-xs" style={{ color: "var(--text-muted)" }}>
-                Só para admin: {estado.erroTecnico}
-              </p>
+              <Descartavel chave={null}>
+                <div className="flex items-start gap-1">
+                  <p className="flex-1 break-words text-xs" style={{ color: "var(--text-muted)" }}>
+                    Só para admin: {estado.erroTecnico}
+                  </p>
+                  <BotaoDescartar compacto />
+                </div>
+              </Descartavel>
             )}
           </div>
         )}
@@ -903,14 +928,22 @@ function Passo({
   );
 }
 
-function Situacao({ tom, texto }: { tom: "ok" | "erro" | "andando" | "espera"; texto: string }) {
+/**
+ * Uma linha de situação de um passo do gêmeo. Com `chave` (07/10: as falhas
+ * que não se resolvem sozinhas), ganha o X: o aviso some, e a ação do passo
+ * ("Tentar de novo", enviar de novo) continua onde está.
+ */
+function Situacao({ tom, texto, chave }: { tom: "ok" | "erro" | "andando" | "espera"; texto: string; chave?: string | null }) {
   const Icone = tom === "ok" ? CheckCircle2 : tom === "erro" ? AlertTriangle : tom === "espera" ? Clock : Loader2;
-  return (
+  const linha = (
     <p className={cn("flex items-start gap-1.5 text-sm", tom === "ok" ? "text-green-500" : tom === "erro" ? "text-orange-400" : "")} style={tom === "andando" || tom === "espera" ? { color: "var(--text-muted)" } : undefined}>
       <Icone className={cn("mt-0.5 h-4 w-4 shrink-0", tom === "andando" && "animate-spin")} />
-      <span>{texto}</span>
+      <span className="flex-1">{texto}</span>
+      {chave && <BotaoDescartar compacto className="-my-0.5" />}
     </p>
   );
+  if (!chave) return linha;
+  return <Descartavel chave={chave}>{linha}</Descartavel>;
 }
 
 function GerarVideo({

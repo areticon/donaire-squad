@@ -47,7 +47,7 @@ export default async function ProjectSetupPage({
         <h1 className="text-3xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
           Setup do projeto
         </h1>
-        <AvisoSoODono dono={dono} oQue="o setup deste projeto" />
+        <AvisoSoODono dono={dono} oQue="o setup deste projeto" projectId={id} tela="setup" />
         <div className="flex flex-wrap gap-3">
           <Link
             href={`/projects/${id}/criar`}

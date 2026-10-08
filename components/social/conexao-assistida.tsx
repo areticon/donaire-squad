@@ -3,6 +3,8 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Headset, CheckCircle2 } from "lucide-react";
+import { BotaoDescartar, useDescarte } from "@/components/ui/descartar";
+import { chaveDaConexaoAssistida } from "@/lib/avisos/chaves";
 import { Button } from "@/components/ui/button";
 import { NOME_DA_REDE, O_QUE_PREPARAR, POR_QUE_ASSISTIDA, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
@@ -72,6 +74,9 @@ export function ConexaoAssistida({
   const quando = pedido
     ? new Date(pedido.pedidoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
+  // O "Pedido enviado" se descarta (07/10): é status, e a conexão continua no painel de redes.
+  const avisoDoPedido = useDescarte(pedido ? chaveDaConexaoAssistida(rede, pedido.pedidoEm) : null);
+  if (pedido && avisoDoPedido.descartado) return null;
 
   return (
     <div
@@ -107,6 +112,7 @@ export function ConexaoAssistida({
             {temConta ? "Pedir outra" : "Conexão assistida"}
           </Button>
         )}
+        {pedido && <BotaoDescartar compacto aoDescartar={() => avisoDoPedido.descartar()} />}
       </div>
 
       {!pedido && aberta && (

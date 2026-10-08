@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AvisoDescartavel } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDoEstudo, marca } from "@/lib/avisos/chaves";
 import toast from "react-hot-toast";
 import { Loader2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -111,9 +113,9 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
       </div>
 
       {dados && !dados.ligado && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <AvisoDescartavel chave={chaveDaDica("estudo-desligado", projectId)} className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           A leitura de perfis está desligada nesta conta. Pode seguir e preencher o setup à mão.
-        </p>
+        </AvisoDescartavel>
       )}
 
       <div className="space-y-1.5">
@@ -162,13 +164,14 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
         </div>
       )}
 
+      {/* Parado e erro se descartam (07/10); o "Estudar de novo" fica logo acima. */}
       {dados?.parado && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <AvisoDescartavel chave={chaveDoEstudo(projectId, estado?.pedidoEm ?? "perfil", "parado")} className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           O estudo parou no meio (passou do tempo máximo). O que já foi lido ficou guardado: clique em Estudar de novo.
-        </p>
+        </AvisoDescartavel>
       )}
       {estado?.status === "erro" && estado.erro && (
-        <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">
+        <AvisoDescartavel chave={chaveDoEstudo(projectId, estado.pedidoEm ?? marca(estado.erro), "erro")} className="rounded-lg bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">
           <p>{estado.erro}</p>
           {estado.avisos.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-xs">
@@ -177,7 +180,7 @@ export function StepPerfilProprio({ projectId }: { projectId: string }) {
               ))}
             </ul>
           )}
-        </div>
+        </AvisoDescartavel>
       )}
 
       {dados?.relatorio && !rodando && (

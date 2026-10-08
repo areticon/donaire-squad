@@ -2,6 +2,8 @@
 
 import { Building2 } from "lucide-react";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDasPaginasDoLinkedin } from "@/lib/avisos/chaves";
 import { PAGINA_DO_LINKEDIN, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
 /**
@@ -113,15 +115,28 @@ export function PaginaDeEmpresaLinkedIn({
         )}
       </div>
 
+      {/* O beco se descarta (07/10) e recolhe na conexão assistida, que é a saída. */}
       {beco && (
+        <Descartavel
+          chave={chaveDasPaginasDoLinkedin(projectId, !appLiberado ? "nao-liberado" : (resultado ?? "sem-resultado"))}
+          modo="recolher"
+          compacto={
+            <div className="mt-3">
+              <ConexaoAssistida compacta projectId={projectId} rede="linkedin" temConta={false} pedido={pedido} conectarDiretoUrl={null} onPedido={onPedido} />
+            </div>
+          }
+        >
         <div className="mt-3 space-y-2">
-          <p className="text-xs leading-relaxed text-[var(--text-primary)]">
+          <div className="flex items-start gap-1">
+          <p className="flex-1 text-xs leading-relaxed text-[var(--text-primary)]">
             {!appLiberado
               ? "A conexão direta de páginas do LinkedIn ainda não está liberada para a sua conta. O time conecta a página com você:"
               : resultado === "nenhuma"
                 ? "O LinkedIn não devolveu nenhuma página em que o seu perfil seja administrador. Na página da empresa no LinkedIn, em Ferramentas de administrador, confira se você é Superadministrador ou Administrador de conteúdo e tente de novo. Se for e a página ainda não vier, o time conecta com você:"
                 : "O LinkedIn não concluiu a autorização da página. Tente de novo; se a recusa continuar, o time conecta com você:"}
           </p>
+          <BotaoDescartar compacto className="-my-1" />
+          </div>
           <ConexaoAssistida
             compacta
             projectId={projectId}
@@ -132,6 +147,7 @@ export function PaginaDeEmpresaLinkedIn({
             onPedido={onPedido}
           />
         </div>
+        </Descartavel>
       )}
     </div>
   );

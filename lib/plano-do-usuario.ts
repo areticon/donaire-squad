@@ -30,6 +30,18 @@ function diasAte(fim: string, agora: Date): number {
   return Math.max(0, Math.ceil((new Date(fim).getTime() - agora.getTime()) / 86_400_000));
 }
 
+/**
+ * A marca do alerta de saldo zerado (07/10): a última linha POSITIVA do extrato
+ * da conta. Toda recarga gera marca nova; zerar de novo no mesmo ciclo, depois
+ * de comprar, traz o alerta de volta. Leitura pura; falha vira "sem-recarga".
+ */
+async function marcaDaUltimaRecarga(contaId: string): Promise<string> {
+  const t = await prisma.creditTransaction
+    .findFirst({ where: { userId: contaId, amount: { gt: 0 } }, orderBy: { createdAt: "desc" }, select: { id: true } })
+    .catch(() => null);
+  return t?.id ?? "sem-recarga";
+}
+
 export async function planoDoUsuario(userIdDeQuemVe: string, agora = new Date()): Promise<PlanoNaTela> {
   // MEMBRO DA EQUIPE (01/10): o plano e o saldo são os da conta do dono, que é
   // de onde o trabalho dele sai. A faixa diz isso e não oferece compra.
@@ -66,6 +78,7 @@ export async function planoDoUsuario(userIdDeQuemVe: string, agora = new Date())
       diasDeTesteRestantes: null,
       acao: null,
       equipe: { dono: user.name || user.email, tetoCreditos: membro.tetoCreditos, creditosUsados: creditos },
+      alerta: user.role !== "admin" && user.creditsBalance <= 0 ? { motivo: "saldo-zerado", marca: await marcaDaUltimaRecarga(userId) } : null,
     };
   }
 
@@ -103,6 +116,16 @@ export async function planoDoUsuario(userIdDeQuemVe: string, agora = new Date())
         ? { rotulo: "Comprar créditos", href: "/billing" }
         : { rotulo: "Fazer upgrade", href: "/planos" };
 
+  const diasDeTesteRestantes = teste.terminaEm ? diasAte(teste.terminaEm, agora) : null;
+  // O alerta da faixa, com a marca da ocorrência (07/10). A mesma regra de
+  // antes (saldo zerado, ou teste com 2 dias ou menos); a marca é nova.
+  const alerta: PlanoNaTela["alerta"] =
+    user.creditsBalance <= 0
+      ? { motivo: "saldo-zerado", marca: await marcaDaUltimaRecarga(userId) }
+      : teste.emTeste && (diasDeTesteRestantes ?? 9) <= 2
+        ? { motivo: "fim-do-teste", marca: `${teste.terminaEm ?? "sem-fim"}-${diasDeTesteRestantes ?? 0}` }
+        : null;
+
   return {
     nome,
     planoId: user.plan,
@@ -110,7 +133,8 @@ export async function planoDoUsuario(userIdDeQuemVe: string, agora = new Date())
     creditosDeVideo: user.videoCredits,
     admin: false,
     emTeste: teste.emTeste,
-    diasDeTesteRestantes: teste.terminaEm ? diasAte(teste.terminaEm, agora) : null,
+    diasDeTesteRestantes,
     acao,
+    alerta,
   };
 }

@@ -6,6 +6,8 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Loader2, ShieldCheck, S
 import type { CadastroDoGemeo } from "@/lib/media/gemeo";
 import { situacaoDoGemeo, type SituacaoDoGemeo } from "@/lib/media/gemeo-situacao";
 import { ConfirmacaoDoGemeo } from "@/components/gemeo/confirmacao-do-gemeo";
+import { BotaoDescartar, useDescarte } from "@/components/ui/descartar";
+import { chaveDoGemeoNasConfiguracoes, ocorrenciaDoGemeo } from "@/lib/avisos/chaves";
 
 /**
  * O GÊMEO NAS CONFIGURAÇÕES DO PROJETO (03/10/2026).
@@ -33,6 +35,10 @@ export function GemeoNasConfiguracoes({ projectId, cadastro }: { projectId: stri
   const s = situacaoDoGemeo(cad);
   const espera = s.fase === "falta-um-passo" || s.fase === "link-vencido";
   const rotulo = s.fase === "sem-gemeo" ? "Criar o meu gêmeo" : s.fase === "pronto" || s.fase === "reserva" ? "Gerar um vídeo com o gêmeo" : "Abrir a tela do gêmeo";
+  // DESCARTÁVEL (07/10), no modo recolher: a frase sai e o botão do passo
+  // ("Confirmar" ou "Pedir um link novo") fica.
+  const situacaoDescarte = useDescarte(chaveDoGemeoNasConfiguracoes(projectId, s.fase, ocorrenciaDoGemeo(cad)));
+  const recolhido = situacaoDescarte.descartado;
 
   return (
     <section className="flex flex-col gap-5 rounded-xl border p-6" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
@@ -50,17 +56,20 @@ export function GemeoNasConfiguracoes({ projectId, cadastro }: { projectId: stri
         style={{ background: "var(--bg-elevated)", borderColor: espera ? "rgb(249 115 22 / 0.55)" : s.tom === "ok" ? "rgb(34 197 94 / 0.4)" : "var(--border)" }}
       >
         <Icone s={s} />
-        <div className="flex min-w-0 flex-col gap-2.5">
-          <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              {s.titulo}
-            </p>
-            <p className="mt-0.5 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-              {s.texto}
-            </p>
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+          {!recolhido && (
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }} id="situacao-do-gemeo">
+                {s.titulo}
+              </p>
+              <p className="mt-0.5 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                {s.texto}
+              </p>
+            </div>
+          )}
           <ConfirmacaoDoGemeo projectId={projectId} situacao={s} onRenovou={(c) => c && setCad(c)} />
         </div>
+        {!recolhido && <BotaoDescartar aoDescartar={() => situacaoDescarte.descartar()} descricaoId="situacao-do-gemeo" className="-my-2 -mr-2" />}
       </div>
 
       <Link

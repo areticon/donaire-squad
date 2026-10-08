@@ -9,6 +9,8 @@ import { CheckCircle2, Share2, Trash2, ExternalLink, Building2, User, RefreshCw 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { BotaoDescartar, Descartavel, useDescarte } from "@/components/ui/descartar";
+import { chaveDaContaAReconectar, chaveDaDica } from "@/lib/avisos/chaves";
 import { ConexaoAssistida } from "@/components/social/conexao-assistida";
 import { PaginaDeEmpresaLinkedIn } from "@/components/social/pagina-empresa-linkedin";
 import { PAGINA_DO_LINKEDIN, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
@@ -180,6 +182,15 @@ export function SocialConnectPanel({
       toast.error(motivo ? `Erro ao conectar TikTok: ${motivo}` : "Erro ao conectar TikTok. Tente novamente.");
     } else if (searchParams.get("instagram") === "error") {
       toast.error("Erro ao conectar Instagram. A conta precisa ser profissional (Business ou Creator).");
+    }
+    // OS PARÂMETROS DA VOLTA DO OAUTH SAEM DA URL (07/10), como no setup
+    // (kanban-board.tsx): sem isto, o toast voltava a cada recarga. O X de
+    // cada toast vem do Toaster (components/ui/avisos-rapidos.tsx).
+    const u = new URL(window.location.href);
+    const daVolta = ["linkedin", "pages", "pages_count", "twitter", "instagram", "facebook", "youtube", "tiktok", "motivo"];
+    if (daVolta.some((k) => u.searchParams.has(k))) {
+      for (const k of daVolta) u.searchParams.delete(k);
+      window.history.replaceState(window.history.state, "", u.toString());
     }
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -530,11 +541,18 @@ export function SocialConnectPanel({
           e pronto. Quem tem o perfil pessoal logado conecta o perfil pessoal
           achando que escolheu errado em algum lugar.
         */}
-        {!ehAssistida("instagram") && <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          O Instagram conecta a conta que estiver logada neste navegador e não oferece lista para
-          escolher. Para conectar outra, abra uma janela anônima (ou saia do Instagram) e entre com a
-          conta que você quer conectar antes de clicar.
-        </p>}
+        {!ehAssistida("instagram") && (
+          <Descartavel chave={chaveDaDica("instagram-conta-logada")}>
+            <p className="flex items-start gap-1 text-xs mt-3 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              <span className="flex-1">
+                O Instagram conecta a conta que estiver logada neste navegador e não oferece lista para
+                escolher. Para conectar outra, abra uma janela anônima (ou saia do Instagram) e entre com a
+                conta que você quer conectar antes de clicar.
+              </span>
+              <BotaoDescartar compacto className="-my-1" />
+            </p>
+          </Descartavel>
+        )}
       </div>
 
       {/* ── Facebook ─────────────────────────────────────────────────────── */}
@@ -697,6 +715,9 @@ function AccountRow({
   // A rede recusou o token na última publicação. É um fato da rede, não a
   // chave liga e desliga: por isso tem borda própria e não mexe no `isActive`.
   const precisaReconectar = Boolean(account.needsReconnectAt);
+  // DESCARTÁVEL NO MODO RECOLHER (07/10): a frase do motivo sai, e a borda e o
+  // selo "reconectar" ficam, porque são o estado da conta.
+  const motivoDaConta = useDescarte(precisaReconectar ? chaveDaContaAReconectar(account.id, account.needsReconnectAt ? new Date(account.needsReconnectAt).toISOString() : null) : null);
 
   return (
     <div
@@ -723,10 +744,13 @@ function AccountRow({
         <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
           {account.displayName ?? account.username ?? account.platform}
         </p>
-        {precisaReconectar ? (
-          <p className="text-xs truncate text-red-400">
-            {motivoEmPortugues(account.needsReconnectReason)}
-            {quando(account.needsReconnectAt) && `, em ${quando(account.needsReconnectAt)}`}
+        {precisaReconectar && !motivoDaConta.descartado ? (
+          <p className="flex items-center gap-1 text-xs text-red-400">
+            <span className="truncate">
+              {motivoEmPortugues(account.needsReconnectReason)}
+              {quando(account.needsReconnectAt) && `, em ${quando(account.needsReconnectAt)}`}
+            </span>
+            <BotaoDescartar compacto aoDescartar={() => motivoDaConta.descartar()} />
           </p>
         ) : (
           <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>

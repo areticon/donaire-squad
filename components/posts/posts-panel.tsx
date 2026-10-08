@@ -33,6 +33,12 @@ import { PipelineLive } from "./pipeline-live";
 import { CampaignSetupModal, type CampaignConfig } from "./campaign-setup-modal";
 import { JanelaDoTikTok } from "@/components/social/janela-do-tiktok";
 import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDaReconexaoDoPost } from "@/lib/avisos/chaves";
+
+/** As dicas fixas da aba Posts (07/10): descarte permanente por pessoa. */
+const CHAVE_DA_APROVACAO_OBRIGATORIA = chaveDaDica("posts-aprovacao-obrigatoria");
+const CHAVE_DE_SALVAR_A_MIDIA = chaveDaDica("salvar-midia");
 import type { CodigoDePublicacao } from "@/lib/publish/codigos";
 
 interface Post {
@@ -52,6 +58,8 @@ interface Post {
   socialAccount: { displayName: string | null; platform: string } | null;
   /** O código PUB-* da falha, já lido no servidor (só em post que falhou). */
   falhaDaPublicacao?: { codigo: CodigoDePublicacao; protocolo: string | null; motivoDaRede: string | null } | null;
+  /** A chave do descarte da falha (07/10), montada no servidor. */
+  chaveDaFalha?: string | null;
 }
 
 interface SocialAccount {
@@ -63,8 +71,11 @@ interface SocialAccount {
 
 /** Uma rede que a propria rede recusou, para o post que falhou poder explicar. */
 interface RedeParaReconectar {
+  /** A conta (07/10): com o instante, é a chave do descarte do aviso. */
+  id?: string;
   platform: string;
   needsReconnectReason: string | null;
+  needsReconnectAt?: string | null;
 }
 
 function pickSocialAccount(post: Post, accounts: SocialAccount[]): SocialAccount | undefined {
@@ -634,14 +645,18 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
         )}
       </div>
 
-      {/* Approval notice */}
-      <div className="mb-6 p-4 bg-green-900/10 border border-green-800/30 rounded-xl flex items-start gap-3">
-        <ShieldCheck className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-green-400">Aprovação obrigatória</p>
-          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Nenhum post será publicado sem sua aprovação explícita. Revise cada post e clique em &quot;Aprovar e publicar&quot; quando estiver pronto.</p>
+      {/* Approval notice: uma dica fixa, que se descarta de vez (07/10). A
+          regra continua valendo: nada publica sem aprovar. */}
+      <Descartavel chave={CHAVE_DA_APROVACAO_OBRIGATORIA}>
+        <div className="mb-6 p-4 bg-green-900/10 border border-green-800/30 rounded-xl flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-green-400">Aprovação obrigatória</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Nenhum post será publicado sem sua aprovação explícita. Revise cada post e clique em &quot;Aprovar e publicar&quot; quando estiver pronto.</p>
+          </div>
+          <BotaoDescartar className="-my-2 -mr-2" />
         </div>
-      </div>
+      </Descartavel>
 
       {/* Pipeline live view */}
       {generating && activeRunId && (
@@ -881,10 +896,13 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
                                   <span>Esta é a sua gravação, do jeito que vai para o canal</span>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5 text-xs text-amber-400/80">
-                                  <AlertCircle className="w-3 h-3 shrink-0" />
-                                  <span>Salve a mídia antes de publicar, ela será removida do servidor após publicação</span>
-                                </div>
+                                <Descartavel chave={CHAVE_DE_SALVAR_A_MIDIA}>
+                                  <div className="flex items-center gap-1.5 text-xs text-amber-400/80">
+                                    <AlertCircle className="w-3 h-3 shrink-0" />
+                                    <span>Salve a mídia antes de publicar, ela será removida do servidor após publicação</span>
+                                    <BotaoDescartar compacto />
+                                  </div>
+                                </Descartavel>
                               )}
                               <Button
                                 size="sm"
@@ -943,6 +961,20 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
                             banner só aparece quando a rede realmente recusou
                             aquela rede (gravado em needsReconnectAt). */}
                         {post.status === "failed" && precisaReconectar && (
+                          // Crítico (07/10): descartado, recolhe e o "Reconectar" fica.
+                          // Também continua em Configurações do projeto > Redes.
+                          <Descartavel
+                            chave={chaveDaReconexaoDoPost(post.id, precisaReconectar.id ?? post.socialAccountId, precisaReconectar.needsReconnectAt)}
+                            modo="recolher"
+                            compacto={
+                              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-2 border" style={{ borderColor: "var(--border)" }} data-reconectar-recolhido>
+                                <span className="text-xs" style={{ color: "var(--text-muted)" }}>A rede pede reconexão.</span>
+                                <a href={`/projects/${project.id}/settings`} className="text-[11px] font-semibold text-orange-400 hover:text-orange-300">
+                                  Reconectar {PLATFORM_LABELS[post.platform] ?? post.platform}
+                                </a>
+                              </div>
+                            }
+                          >
                           <div
                             className="flex items-start gap-2.5 rounded-xl px-4 py-3 border"
                             style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
@@ -962,7 +994,9 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
                                 Reconectar {PLATFORM_LABELS[post.platform] ?? post.platform}
                               </a>
                             </div>
+                            <BotaoDescartar compacto />
                           </div>
+                          </Descartavel>
                         )}
 
                         {/* A FALHA COM CÓDIGO (01/10): o que aconteceu, o que
@@ -974,6 +1008,8 @@ export function PostsPanel({ project, posts: initialPosts, socialAccounts, redes
                             codigo={post.falhaDaPublicacao.codigo}
                             protocolo={post.falhaDaPublicacao.protocolo}
                             motivoDaRede={post.falhaDaPublicacao.motivoDaRede}
+                            chave={post.chaveDaFalha}
+                            rede={PLATFORM_LABELS[post.platform] ?? post.platform}
                           />
                         )}
 

@@ -11,6 +11,8 @@ import { RedeIcone } from "@/components/social/rede-icone";
 import { estadoDoPost, horaCurta, NOMES_DAS_REDES, type PostParaEstado } from "@/lib/posts/estado";
 import type { EtiquetaDaPeca } from "@/lib/posts/etiqueta-da-peca";
 import type { AndamentoDoDia } from "@/lib/pipeline/andamento-dos-dias";
+import { BotaoDescartar, Descartavel, useDescarte } from "@/components/ui/descartar";
+import { chaveDaArteQueFalhou, chaveDoEstiloAguardando } from "@/lib/avisos/chaves";
 
 /**
  * A semana, um cartão por dia, e dentro de cada dia as PEÇAS PRONTAS.
@@ -133,6 +135,11 @@ export type DiaDaSemana = {
   /** Em que ponto a geração deste dia está (28/09). Nulo sem campanha. */
   andamento?: AndamentoDoDia | null;
   /**
+   * A chave do descarte da frase "Sem novidade há N min" (07/10):
+   * "andamento-parado:<run>:<dia>:<fase>". A linha de progresso fica.
+   */
+  chaveDoAndamentoParado?: string | null;
+  /**
    * O lugar guardado do corte (05/10): o plano marca vídeo curto neste dia e
    * o corte ainda não chegou. Ver lib/media/espera-do-corte.ts.
    */
@@ -236,8 +243,11 @@ function CartaoDaEsperaDoCorte({
  * propósito) e PARADO (âmbar, com os minutos sem novidade). Pronto não mostra
  * faixa: a peça no cartão já é a resposta.
  */
-function FaixaDoAndamento({ a }: { a: AndamentoDoDia }) {
-  if (a.fase === "pronto") return null;
+function FaixaDoAndamento({ a: andamento, chave }: { a: AndamentoDoDia; chave?: string | null }) {
+  // A frase do "parado" se descarta (07/10); o progresso é estado e fica.
+  const frase = useDescarte(andamento.parado ? chave : null);
+  if (andamento.fase === "pronto") return null;
+  const a = frase.descartado ? { ...andamento, parado: false } : andamento;
   const naFila = a.fase === "fila";
   const cor = a.parado ? "#f59e0b" : naFila ? "var(--text-muted)" : "var(--accent-orange)";
   return (
@@ -253,7 +263,7 @@ function FaixaDoAndamento({ a }: { a: AndamentoDoDia }) {
       ) : (
         <Loader2 className="mt-[1px] h-3 w-3 shrink-0 animate-spin" style={{ color: cor }} />
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[10.5px] font-semibold leading-tight" style={{ color: a.parado ? "#b45309" : "var(--text-primary)" }}>
           {a.detalhe}
         </p>
@@ -263,6 +273,7 @@ function FaixaDoAndamento({ a }: { a: AndamentoDoDia }) {
           </p>
         )}
       </div>
+      {a.parado && <BotaoDescartar compacto aoDescartar={() => frase.descartar()} className="-my-1 -mr-1" />}
       {!naFila && !a.parado && (
         // A barrinha que corre: movimento é o que diz "está andando".
         <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden rounded-b-md">
@@ -365,29 +376,51 @@ function SeloDaRede({ plataforma, contas }: { plataforma: string; contas: Destin
 function AvisoDaIdentidade({ espera, projectId, onTentarArte }: { espera: EsperaDaIdentidade; projectId?: string; onTentarArte?: () => void }) {
   if (espera.estado === "gerando") return null;
   const falhou = espera.estado === "falhou";
+  // DESCARTÁVEL (07/10): a frase sai e o botão fica (modo recolher). O
+  // "aguardando" é por projeto (um X esconde a frase em todos os cartões); a
+  // escolha continua em Configurações > Modelos e na janela de nova campanha.
+  // A arte que falhou é por post e pela marca da falha.
+  const chave = falhou ? (espera.postId ? chaveDaArteQueFalhou(espera.postId, espera.em) : null) : projectId ? chaveDoEstiloAguardando(projectId) : null;
+  const botao =
+    falhou && onTentarArte ? (
+      <button
+        type="button"
+        onClick={onTentarArte}
+        className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
+      >
+        <RefreshCw className="h-3 w-3" /> Tentar de novo
+      </button>
+    ) : projectId ? (
+      <Link
+        href={`/projects/${projectId}/settings?aba=modelos`}
+        className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
+      >
+        {ROTULO_DO_BOTAO_ESCOLHER} <ChevronRight className="h-3 w-3" />
+      </Link>
+    ) : null;
   return (
-    <div className="space-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-aviso-da-identidade={espera.estado}>
-      <p className="flex items-start gap-1 text-[10px] leading-snug" style={{ color: falhou ? "#f87171" : "var(--text-muted)" }}>
-        {falhou ? <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> : <Palette className="mt-[1px] h-3 w-3 shrink-0 text-amber-400" />}
-        <span>{falhou ? `A arte não saiu: ${espera.motivo ?? "a geração falhou"}. Nada foi cobrado.` : "Aguardando o estilo dos posts: escreva como quer ou escolha um da biblioteca. Nada é gasto antes disso."}</span>
-      </p>
-      {falhou && onTentarArte ? (
-        <button
-          type="button"
-          onClick={onTentarArte}
-          className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
-        >
-          <RefreshCw className="h-3 w-3" /> Tentar de novo
-        </button>
-      ) : projectId ? (
-        <Link
-          href={`/projects/${projectId}/settings?aba=modelos`}
-          className="flex w-full items-center justify-center gap-1 rounded-md bg-orange-500 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-orange-600"
-        >
-          {ROTULO_DO_BOTAO_ESCOLHER} <ChevronRight className="h-3 w-3" />
-        </Link>
-      ) : null}
-    </div>
+    <Descartavel
+      chave={chave}
+      modo={botao ? "recolher" : "sumir"}
+      compacto={
+        botao ? (
+          <div className="border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-aviso-da-identidade-recolhido={espera.estado}>
+            {botao}
+          </div>
+        ) : null
+      }
+    >
+      <div className="space-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }} data-aviso-da-identidade={espera.estado}>
+        <div className="flex items-start gap-1">
+          <p className="flex flex-1 items-start gap-1 text-[10px] leading-snug" style={{ color: falhou ? "#f87171" : "var(--text-muted)" }}>
+            {falhou ? <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> : <Palette className="mt-[1px] h-3 w-3 shrink-0 text-amber-400" />}
+            <span>{falhou ? `A arte não saiu: ${espera.motivo ?? "a geração falhou"}. Nada foi cobrado.` : "Aguardando o estilo dos posts: escreva como quer ou escolha um da biblioteca. Nada é gasto antes disso."}</span>
+          </p>
+          <BotaoDescartar compacto className="-my-1 -mr-1" />
+        </div>
+        {botao}
+      </div>
+    </Descartavel>
   );
 }
 
@@ -852,7 +885,7 @@ export function SemanaDoQuadro({
             </span>
           )}
 
-          {dia.andamento && <FaixaDoAndamento a={dia.andamento} />}
+          {dia.andamento && <FaixaDoAndamento a={dia.andamento} chave={dia.chaveDoAndamentoParado} />}
 
           {dia.pecas.length > 0 || dia.esperasDoCorte?.length ? (
             <div className="relative flex flex-col gap-2">

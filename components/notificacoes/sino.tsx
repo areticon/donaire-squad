@@ -7,6 +7,8 @@ import { AlertTriangle, Bell, CheckCircle2, ClipboardCheck, Coins, LifeBuoy, Shi
 import { cn } from "@/lib/utils";
 import { EVENTO_DO_SINO, haQuanto, type NotificacaoNaTela } from "@/lib/notificacoes/tipos";
 import { abrirChamado } from "@/lib/suporte/abrir-chamado";
+import toast from "react-hot-toast";
+import { BotaoDescartar, FRASE_SO_NESTA_TELA, mostrarToastDoDescarte, useDescartes } from "@/components/ui/descartar";
 
 /**
  * O SINO DA PLATAFORMA (02/10/2026).
@@ -24,6 +26,17 @@ import { abrirChamado } from "@/lib/suporte/abrir-chamado";
  * EVENTO_DO_SINO), o que na prática é "na hora" para quem está olhando.
  *
  * Componente de cliente puro: não importa nada que toque o banco.
+ *
+ * DESCARTAR (07/10, pedido do Bruno: "toda notificação precisa ter a opção de
+ * descartar"): cada item tem o X, irmão do item e não dentro dele. O item sai
+ * na hora e entra no conjunto `escondidos`, aplicado a TODA leitura enquanto
+ * durar a visita (sem a tabela dos descartes, o servidor ainda o devolveria).
+ * A linha no banco nunca é apagada: ela é a trava do e-mail. A rota devolve as
+ * chaves do fato, e a faixa do mesmo fato (a montagem, a campanha) some da
+ * tela sem recarregar. Cada leitura leva um número de geração: a resposta de
+ * uma leitura que começou antes da última mudança é ignorada, para o item
+ * descartado não piscar de volta. Os itens de aprovação também descartam: a
+ * ação continua no Gestor e no selo do gêmeo, e o e-mail deles já saiu.
  */
 
 const INTERVALO_MS = 30_000;
@@ -49,14 +62,29 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
   const [agora, setAgora] = useState(() => Date.now());
   const botao = useRef<HTMLButtonElement>(null);
   const painel = useRef<HTMLDivElement>(null);
+  const descartes = useDescartes();
+  /** Os ids descartados nesta visita: saem de toda resposta do servidor. */
+  const escondidos = useRef<Set<string>>(new Set());
+  /** Sobe a cada mudança feita aqui (descartar, restaurar, marcar). */
+  const mutacoes = useRef(0);
+  /** A geração da última leitura pedida e da última aplicada. */
+  const geracoes = useRef({ ultima: 0, aplicada: 0 });
 
   const ler = useCallback(async () => {
+    const geracao = ++geracoes.current.ultima;
+    const mutacoesNoInicio = mutacoes.current;
     try {
       const r = await fetch("/api/notificacoes", { cache: "no-store" });
       if (!r.ok) return;
       const d = (await r.json()) as { itens?: NotificacaoNaTela[]; naoLidas?: number };
-      setItens(d.itens ?? []);
-      setNaoLidas(d.naoLidas ?? 0);
+      // A leitura que saiu antes de uma mudança chega com o mundo de antes:
+      // aplicá-la faria o item descartado piscar de volta.
+      if (mutacoes.current !== mutacoesNoInicio || geracao < geracoes.current.aplicada) return;
+      geracoes.current.aplicada = geracao;
+      const lista = d.itens ?? [];
+      const fora = lista.filter((n) => escondidos.current.has(n.id));
+      setItens(lista.filter((n) => !escondidos.current.has(n.id)));
+      setNaoLidas(Math.max(0, (d.naoLidas ?? 0) - fora.filter((n) => !n.lida).length));
       setAgora(Date.now());
     } catch {
       /* rede oscilando: a próxima consulta tenta de novo */
@@ -113,6 +141,7 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
   }
 
   async function marcar(ids?: string[]) {
+    mutacoes.current++;
     setItens((a) => a.map((n) => (!ids || ids.includes(n.id) ? { ...n, lida: true } : n)));
     setNaoLidas((n) => (ids ? Math.max(0, n - ids.filter((id) => itens.some((i) => i.id === id && !i.lida)).length) : 0));
     await fetch("/api/notificacoes", {
@@ -120,6 +149,67 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ids ? { ids } : { todas: true }),
     }).catch(() => {});
+  }
+
+  /** Tira o item do sino (a linha fica no banco) e devolve as chaves do fato para a tela. */
+  async function descartarItem(n: NotificacaoNaTela) {
+    mutacoes.current++;
+    escondidos.current.add(n.id);
+    setItens((a) => a.filter((x) => x.id !== n.id));
+    if (!n.lida) setNaoLidas((c) => Math.max(0, c - 1));
+    descartes.anunciar("Aviso descartado.");
+    const idDoToast = mostrarToastDoDescarte({ aoDesfazer: () => void restaurarItem(n) });
+    try {
+      const r = await fetch("/api/notificacoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descartar: [n.id] }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { chaves?: string[]; lembrado?: boolean };
+      // A faixa do mesmo fato (a montagem, a campanha) sai da tela agora.
+      if (d.chaves?.length) descartes.registrar(d.chaves);
+      if (!r.ok || d.lembrado === false) toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
+    } catch {
+      toast(FRASE_SO_NESTA_TELA, { id: idDoToast, duration: 6000 });
+    }
+  }
+
+  /** O Desfazer do item: pelo id, sem passar pela rota das telas. */
+  async function restaurarItem(n: NotificacaoNaTela) {
+    mutacoes.current++;
+    escondidos.current.delete(n.id);
+    descartes.anunciar("Aviso de volta.");
+    try {
+      const r = await fetch("/api/notificacoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurar: [n.id] }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { chaves?: string[] };
+      if (d.chaves?.length) descartes.desfazer(d.chaves, { soNaTela: true });
+    } catch {
+      /* a próxima leitura conta a verdade */
+    }
+    void ler();
+  }
+
+  /** "Limpar as lidas": as lidas saem do sino (as 500 mais recentes, no servidor). */
+  async function limparLidas() {
+    mutacoes.current++;
+    for (const n of itens) if (n.lida) escondidos.current.add(n.id);
+    setItens((a) => a.filter((n) => !n.lida));
+    descartes.anunciar("Notificações lidas descartadas.");
+    try {
+      const r = await fetch("/api/notificacoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descartarLidas: true }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { lembrado?: boolean };
+      if (!r.ok || d.lembrado === false) toast(FRASE_SO_NESTA_TELA, { duration: 6000 });
+    } catch {
+      toast(FRASE_SO_NESTA_TELA, { duration: 6000 });
+    }
   }
 
   function abrirNotificacao(n: NotificacaoNaTela) {
@@ -214,21 +304,20 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
                   </button>
                 </div>
               </div>
-              <ul className="overflow-y-auto">
+              <ul className="overflow-y-auto" data-lista-de-avisos>
                 {itens.length === 0 && (
                   <li className="px-4 py-6 text-sm text-center" style={{ color: "var(--text-muted)" }}>
-                    Nada por aqui ainda. Avisamos quando o roteiro pedir a sua aprovação e quando o vídeo ficar pronto.
+                    Nada novo por aqui.
                   </li>
                 )}
                 {itens.map((n) => (
-                  <li key={n.id} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                  <li key={n.id} className="flex items-start border-b last:border-b-0" style={{ borderColor: "var(--border)", background: n.lida ? undefined : "var(--realce-1)" }}>
                     <div
                       role="button"
                       tabIndex={0}
                       onClick={() => abrirNotificacao(n)}
                       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && abrirNotificacao(n)}
-                      className="flex gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-[var(--realce-1)]"
-                      style={{ background: n.lida ? undefined : "var(--realce-1)" }}
+                      className="flex flex-1 min-w-0 gap-3 pl-4 pr-1 py-3 cursor-pointer transition-colors hover:bg-[var(--realce-1)]"
                       data-lida={n.lida ? "1" : "0"}
                     >
                       <span className="mt-0.5 shrink-0">
@@ -236,7 +325,7 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className={cn("text-sm leading-snug", n.lida ? "font-medium" : "font-semibold")} style={{ color: "var(--text-primary)" }}>
+                          <p className={cn("text-sm leading-snug", n.lida ? "font-medium" : "font-semibold")} style={{ color: "var(--text-primary)" }} id={`notificacao-${n.id}`}>
                             {n.titulo}
                           </p>
                           {!n.lida && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: "var(--marca-laranja)" }} aria-label="não lida" />}
@@ -277,9 +366,19 @@ export function SinoDeNotificacoes({ collapsed = false, variante = "barra" }: { 
                         </div>
                       </div>
                     </div>
+                    {/* O X, IRMÃO do item (07/10): dentro do role=button ele seria um
+                        botão aninhado e o clique navegaria. */}
+                    <BotaoDescartar compacto aoDescartar={() => void descartarItem(n)} descricaoId={`notificacao-${n.id}`} className="mt-2.5 mr-2" />
                   </li>
                 ))}
               </ul>
+              {itens.some((n) => n.lida) && (
+                <div className="flex justify-end border-t px-3 py-2" style={{ borderColor: "var(--border)" }}>
+                  <button type="button" onClick={() => void limparLidas()} className="text-xs font-medium px-2 py-1 rounded-md hover:bg-[var(--realce-2)]" style={{ color: "var(--text-muted)" }} data-limpar-lidas>
+                    Limpar as lidas
+                  </button>
+                </div>
+              )}
             </div>,
             document.body
           )

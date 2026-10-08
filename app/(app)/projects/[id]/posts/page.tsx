@@ -5,6 +5,7 @@ import { PostsPanel } from "@/components/posts/posts-panel";
 import { whereSocialAccountCanPublish } from "@/lib/social/account-filters";
 import { podeUsarProjeto } from "@/lib/equipe/conta";
 import { chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFrase } from "@/lib/publish/codigos";
+import { chaveDoPostQueFalhou } from "@/lib/avisos/chaves";
 
 export default async function PostsPage({
   params,
@@ -35,7 +36,8 @@ export default async function PostsPage({
   // que o filtro tirou da frente.
   const paraReconectar = await prisma.socialAccount.findMany({
     where: { projectId: id, needsReconnectAt: { not: null } },
-    select: { platform: true, needsReconnectReason: true },
+    // O id e o instante (07/10): a chave do descarte do aviso de reconexão.
+    select: { id: true, platform: true, needsReconnectReason: true, needsReconnectAt: true },
   });
 
   const posts = await prisma.post.findMany({
@@ -69,6 +71,8 @@ export default async function PostsPage({
       p.status === "failed" && codigoDaFalha(metadata)
         ? { codigo: codigoDaFalha(metadata)!, protocolo: chamadoDaFalha(metadata), motivoDaRede: motivoDaRedeNaFrase(metadata) }
         : null,
+    // A chave do descarte da falha (07/10), montada aqui: o metadata não desce.
+    chaveDaFalha: p.status === "failed" ? chaveDoPostQueFalhou(p.id, metadata) : null,
   }));
 
   return (
@@ -76,7 +80,7 @@ export default async function PostsPage({
       project={project}
       posts={postsDaTela}
       socialAccounts={project.socialAccounts}
-      redesParaReconectar={paraReconectar}
+      redesParaReconectar={paraReconectar.map((r) => ({ ...r, needsReconnectAt: r.needsReconnectAt?.toISOString() ?? null }))}
     />
   );
 }

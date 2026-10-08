@@ -21,4 +21,12 @@ export type PlanoNaTela = {
    * diz de quem é a conta em vez de oferecer upgrade (membro não vê cobrança).
    */
   equipe?: { dono: string; tetoCreditos: number | null; creditosUsados: number } | null;
+  /**
+   * O ALERTA DA FAIXA (07/10), montado no servidor: o motivo e a marca da
+   * ocorrência, que viram a chave do descarte ("plano-alerta:<motivo>:<marca>").
+   * Saldo zerado: a marca é a última recarga da conta (do dono, para o membro),
+   * então toda recarga traz o alerta de volta quando zerar de novo. Fim do
+   * teste: a data do fim mais os dias restantes. Null sem alerta.
+   */
+  alerta?: { motivo: "saldo-zerado" | "fim-do-teste"; marca: string } | null;
 };

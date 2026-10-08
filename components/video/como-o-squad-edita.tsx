@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Captions, Loader2, Music, RefreshCw, Scissors, Sparkles, Volume2, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDoEstiloQueMudou } from "@/lib/avisos/chaves";
 import { EstiloDoProjeto } from "@/components/video/estilo-do-projeto";
 import type { ResumoDaEdicao } from "@/lib/media/edicao-escolhida";
 
@@ -93,6 +95,21 @@ export function ComoOSquadEdita({
         ))}
       </ul>
       {resumo.refazerRoteiro ? (
+        // Descartável no modo recolher (07/10): a frase sai, o "Refazer" fica.
+        <Descartavel
+          chave={chaveDoEstiloQueMudou(videoId ?? "sem-video", resumo.planejadoEm, resumo.estilo)}
+          modo={podeRefazer && videoId ? "recolher" : "sumir"}
+          compacto={
+            podeRefazer && videoId ? (
+              <div className="mt-3 flex justify-end">
+                <Button size="sm" disabled={refazendo} onClick={() => void refazer()}>
+                  {refazendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Refazer o roteiro no estilo novo
+                </Button>
+              </div>
+            ) : null
+          }
+        >
         <div className="mt-3 flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center" style={{ borderColor: "var(--accent-orange)" }}>
           <p className="flex-1 text-xs" style={{ color: "var(--text-primary)" }}>
             <Sparkles className="mr-1 inline h-3.5 w-3.5 -mt-0.5" style={{ color: "var(--accent-orange)" }} />
@@ -105,7 +122,9 @@ export function ComoOSquadEdita({
               Refazer o roteiro no estilo novo
             </Button>
           )}
+          <BotaoDescartar compacto className="self-end sm:self-center" />
         </div>
+        </Descartavel>
       ) : resumo.planejadoEm ? (
         <p className="mt-2 text-xs" style={{ color: "var(--accent-orange)" }}>
           <Sparkles className="mr-1 inline h-3.5 w-3.5 -mt-0.5" />

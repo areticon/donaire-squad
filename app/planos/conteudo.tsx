@@ -1,6 +1,43 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AvisoDescartavel, DescartesProvider, useDescartes } from "@/components/ui/descartar";
+import { chaveDoPortao } from "@/lib/avisos/chaves";
+
+const CHAVE_DO_PORTAO = chaveDoPortao("planos") as string;
+
+/**
+ * O AVISO DO PORTÃO, DESCARTÁVEL (07/10). A página fica fora do grupo (app) e
+ * não abre a sessão no servidor (ver page.tsx): o provider é próprio, e quem
+ * tem sessão pergunta a chave exata ao servidor antes de desenhar o aviso. A
+ * ação são os próprios planos da página, logo abaixo.
+ */
+function AvisoDoPortao({ logado }: { logado: boolean }) {
+  const descartes = useDescartes();
+  const [conferido, setConferido] = useState(!logado);
+  useEffect(() => {
+    if (!logado) return;
+    let vivo = true;
+    fetch(`/api/avisos/descartes?c=${encodeURIComponent(CHAVE_DO_PORTAO)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { descartadas?: string[] } | null) => {
+        if (vivo && d?.descartadas?.length) descartes.registrar(d.descartadas);
+      })
+      .catch(() => {})
+      .finally(() => vivo && setConferido(true));
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logado]);
+  if (!conferido) return null;
+  return (
+    <AvisoDescartavel chave={CHAVE_DO_PORTAO} className="max-w-xl mx-auto mb-8 p-4 rounded-xl border border-orange-500/25 bg-orange-500/5 text-sm text-orange-300 text-center">
+      Sua conta está pronta. Falta contratar o plano combinado na demonstração para a equipe começar a trabalhar.
+    </AvisoDescartavel>
+  );
+}
 import Link from "next/link";
 import { Check, ShieldCheck, Zap } from "lucide-react";
 import { IdentificacaoCurta } from "@/components/identificacao-legal";
@@ -32,7 +69,7 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
   // (lib/onboarding/portao.ts). Sem explicar por que, a pessoa acha que o login
   // falhou.
   const veioDoPortao = useSearchParams().get("assinar") === "1";
-  const { data: sessao } = authClient.useSession();
+  const { data: sessao, isPending: sessaoCarregando } = authClient.useSession();
   const logado = Boolean(sessao?.user);
 
   return (
@@ -63,10 +100,10 @@ export function PlanosConteudo({ vitrine }: { vitrine: boolean }) {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 lg:py-16">
-        {veioDoPortao && (
-          <div className="max-w-xl mx-auto mb-8 p-4 rounded-xl border border-orange-500/25 bg-orange-500/5 text-sm text-orange-300 text-center">
-            Sua conta está pronta. Falta contratar o plano combinado na demonstração para a equipe começar a trabalhar.
-          </div>
+        {veioDoPortao && !sessaoCarregando && (
+          <DescartesProvider>
+            <AvisoDoPortao logado={logado} />
+          </DescartesProvider>
         )}
         <div className="text-center mb-12">
           {/* Selo em vidro cinza e destaque em degradê laranja (01/10): o título fala da conta que o dono faz

@@ -112,6 +112,8 @@ model User {
   emailsDeAviso  Boolean   @default(true)
   /// O sino da plataforma (02/10). Ver Notificacao.
   notificacoes   Notificacao[]
+  /// Os avisos que a pessoa descartou (07/10). Ver AvisoDescartado.
+  avisosDescartados AvisoDescartado[]
 
   @@map("users")
 }
@@ -1724,6 +1726,28 @@ model Notificacao {
   @@unique([userId, chave])
   @@index([userId, createdAt])
   @@map("notificacoes")
+}
+
+/// O DESCARTE DOS AVISOS (07/10/2026). Pedido do Bruno: "toda notificação
+/// precisa ter a opção de descartar". Cada linha é UM descarte de UMA pessoa
+/// para UMA ocorrência de um fato. A chave segue a convenção de
+/// Notificacao.chave (lib/avisos/chaves.ts), então a montagem e a campanha
+/// descartadas na faixa saem também do sino, e vice-versa. A linha do sino
+/// nunca é apagada: ela é a trava que impede o e-mail repetido. Tabela à
+/// parte, e não coluna em notificacoes, para o código antigo não cair (P2022)
+/// no intervalo entre a migração e o deploy.
+model AvisoDescartado {
+  id           String   @id @default(cuid())
+  userId       String
+  /// O fato, por extenso, na convenção de Notificacao.chave. Único por pessoa.
+  chave        String
+  descartadoEm DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chave])
+  @@index([userId, descartadoEm])
+  @@map("avisos_descartados")
 }
 
 /// A BIBLIOTECA DE MATERIAIS DO CLIENTE (03/10/2026, pedido do Bruno).

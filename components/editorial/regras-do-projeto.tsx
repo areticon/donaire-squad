@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Check, ChevronDown, ListChecks, Loader2, Pencil, Plus, Power, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FraseDescartavel } from "@/components/ui/descartar";
+import { chaveDasPropostasDoRoberto } from "@/lib/avisos/chaves";
 import { MiniGraficoDoAchado } from "@/components/editorial/graficos-das-referencias";
 import {
   ALVOS_DA_REGRA,
@@ -381,7 +383,14 @@ export function RegrasDoProjetoPainel({ projectId }: { projectId: string }) {
         <Sparkles className="h-4 w-4 text-orange-500" /> Regras do projeto
       </h2>
       <p className="mb-3 mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
-        {d ? `${valendo} valendo${propostas ? `, ${propostas} propostas do Roberto esperando você` : ""}. ` : ""}
+        {d ? `${valendo} valendo` : ""}
+        {/* Só a frase das propostas se descarta (07/10); Aprovar e Recusar ficam na lista. */}
+        {d && propostas ? (
+          <FraseDescartavel chave={chaveDasPropostasDoRoberto(projectId, d.regras.filter((r) => r.status === "proposta").map((r) => r.id))}>
+            {`, ${propostas} propostas do Roberto esperando você`}
+          </FraseDescartavel>
+        ) : null}
+        {d ? ". " : ""}
         As propostas nascem do estudo das referências, em Linha editorial; aqui você aprova, edita, desliga ou escreve as suas.
       </p>
       {!d ? (

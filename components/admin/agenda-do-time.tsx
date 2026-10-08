@@ -6,6 +6,7 @@ import { CalendarClock, Plus, Save, Trash2, RefreshCw, Link2, AlertTriangle } fr
 import { NOMES_DOS_DIAS, JANELAS_PADRAO, janelasDoTexto, textoDoDia, type Janela } from "@/lib/agenda/janelas";
 import { FAIXAS_FATURAMENTO, TAMANHOS_TIME } from "@/lib/calculadora/formulario";
 import { dataEmSP, horaEmSP, rotuloDoDia } from "@/lib/agenda/tempo";
+import { BotaoDescartar } from "@/components/ui/descartar";
 
 /**
  * A AGENDA DO TIME NO ADMIN (01/10). Cliente só para editar: tudo desce pronto
@@ -85,14 +86,30 @@ export function AgendaDoTime({ pessoas, reunioes, google, aviso, whatsappLigado 
   whatsappLigado?: boolean;
 }) {
   const [aba, setAba] = useState<"proximas" | "passadas">("proximas");
+  /** O aviso da volta do Google (?google=) fechado pelo X (07/10): só local. */
+  const [avisoFechado, setAvisoFechado] = useState(false);
   const agora = Date.now();
   const proximas = reunioes.filter((r) => r.status === "marcada" && new Date(r.inicio).getTime() > agora - 3600000);
   const passadas = reunioes.filter((r) => !proximas.includes(r)).reverse();
 
   return (
     <div className="space-y-10">
-      {aviso && (
-        <p className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3 text-sm text-[var(--text-primary)]">{aviso}</p>
+      {aviso && !avisoFechado && (
+        <div className="flex items-start gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3">
+          <p className="flex-1 text-sm text-[var(--text-primary)]">{aviso}</p>
+          <BotaoDescartar
+            className="-my-2 -mr-2"
+            aoDescartar={() => {
+              setAvisoFechado(true);
+              // Sem o ?google= na URL, recarregar não traz o aviso de volta.
+              const u = new URL(window.location.href);
+              if (u.searchParams.has("google")) {
+                u.searchParams.delete("google");
+                window.history.replaceState(window.history.state, "", u.toString());
+              }
+            }}
+          />
+        </div>
       )}
 
       <section>

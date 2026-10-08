@@ -26,7 +26,7 @@ export default async function TrainingPage({ params }: { params: Promise<{ id: s
     return (
       <div className="flex flex-col gap-4">
         <div className="px-6 pt-6 lg:px-8">
-          <AvisoSoODono dono={dono} oQue="os documentos que treinam o squad" />
+          <AvisoSoODono dono={dono} oQue="os documentos que treinam o squad" projectId={project.id} tela="treinamento" />
         </div>
         <div inert aria-disabled style={{ opacity: 0.8 }}>
           <TrainingPanel project={project} initialContexts={project.contexts} />

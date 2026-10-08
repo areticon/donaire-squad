@@ -44,6 +44,8 @@ const COR_DO_ESTADO: Record<EstadoDoAgente, string> = {
   ocioso: "var(--text-muted)",
 };
 
+import { BotaoDescartar } from "@/components/ui/descartar";
+
 export function EscritorioDeMassinha({
   situacao,
   cena,
@@ -53,10 +55,13 @@ export function EscritorioDeMassinha({
   pensando,
   onPerguntar,
   onComentarSobre,
+  aoFecharFalaDaMesa,
 }: {
   situacao: SituacaoDoSquad;
   cena: CenaAtiva | null;
   falaDaMesa: string | null;
+  /** Fecha a fala da sua mesa (07/10): X só local, a fala some sozinha de qualquer jeito. */
+  aoFecharFalaDaMesa?: () => void;
   onAbrirAgente: (agentId: string) => void;
   conversas: Record<string, Turno[]>;
   pensando: string | null;
@@ -243,10 +248,11 @@ export function EscritorioDeMassinha({
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="absolute -top-16 right-0 z-20 w-[200px] rounded-xl border px-2.5 py-1.5 text-[11px] leading-snug shadow-[var(--shadow)]"
+                  className="absolute -top-16 right-0 z-20 flex w-[200px] items-start gap-1 rounded-xl border py-1.5 pl-2.5 pr-1 text-[11px] leading-snug shadow-[var(--shadow)]"
                   style={{ background: "var(--bg-surface)", borderColor: "var(--accent-orange)", color: "var(--text-primary)" }}
                 >
-                  {falaDaMesa}
+                  <span className="flex-1">{falaDaMesa}</span>
+                  {aoFecharFalaDaMesa && <BotaoDescartar compacto aoDescartar={aoFecharFalaDaMesa} />}
                 </motion.div>
               )}
             </AnimatePresence>
