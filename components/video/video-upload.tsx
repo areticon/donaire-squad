@@ -22,6 +22,7 @@ import {
 import { CREDITOS_POR_GERACAO_HIGGSFIELD } from "@/lib/credits/higgsfield-tabela";
 import { FaixaDeCota, PedidoDeUpgrade, type Estouro } from "@/components/planos/pedido-de-upgrade";
 import { AvisoDeWifi, MedidorDeEnvio } from "@/components/video/medidor-de-envio";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import { ARQUIVO_GRANDE_BYTES, emDadosMoveis } from "@/lib/media/velocidade-do-envio";
 
 /**
@@ -453,7 +454,13 @@ export function VideoUpload({
         </motion.div>
       )}
 
-      {erro && <p className="text-sm text-orange-400 mt-4">{erro}</p>}
+      {/* O erro do envio: X só local (07/10). */}
+      {erro && (
+        <p className="flex items-start gap-1 text-sm text-orange-400 mt-4">
+          <span className="flex-1">{erro}</span>
+          <BotaoDescartar compacto aoDescartar={() => setErro(null)} className="-my-0.5" />
+        </p>
+      )}
 
       <p className="text-xs text-[var(--text-muted)] mt-5">
         Dica que economiza o seu tempo: grave a 4 Mbps (

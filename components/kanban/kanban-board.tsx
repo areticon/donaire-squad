@@ -28,6 +28,8 @@ import {
   Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel, useDescarte } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 import { StepMarca } from "@/components/kanban/step-marca";
 import { StepMateriais } from "@/components/kanban/step-materiais";
 import { StepReferencias } from "@/components/kanban/step-referencias";
@@ -165,7 +167,10 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
   })();
 
   const [currentStep, setCurrentStep] = useState(initialStep);
-  const [warningDismissed, setWarningDismissed] = useState(false);
+  // O "Entendi" do aviso de projeto ativo fica lembrado por pessoa (07/10);
+  // antes voltava a cada visita.
+  const avisoDeEdicao = useDescarte(chaveDaDica("edicao-projeto-ativo", project.id));
+  const warningDismissed = avisoDeEdicao.descartado;
 
   // Show success toast when returning from OAuth and clean up URL params
   useEffect(() => {
@@ -550,9 +555,7 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
               Alterações no nicho, tom de voz ou público-alvo podem afetar a consistência editorial dos próximos posts gerados. Edite com cuidado e salve apenas o que for realmente necessário.
             </p>
           </div>
-          <button onClick={() => setWarningDismissed(true)} className="rounded-lg border px-3 py-1 text-xs font-semibold shrink-0" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
-            Entendi
-          </button>
+          <BotaoDescartar texto="Entendi" aoDescartar={() => avisoDeEdicao.descartar()} className="border" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }} />
         </div>
       )}
 
@@ -630,12 +633,15 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
             </div>
           )}
           {!lendoDocumentos && veioDoDocumento.length > 0 && currentStep >= indiceDa("voz") && (
-            <div
-              className="mb-4 rounded-lg border px-3 py-2 text-[13px]"
-              style={{ borderColor: "color-mix(in srgb, var(--acento) 35%, transparent)", color: "var(--text-muted)" }}
-            >
-              Preenchemos a partir dos seus documentos. Leia e corrija o que não estiver do seu jeito.
-            </div>
+            <Descartavel chave={chaveDaDica("veio-do-documento", project.id)}>
+              <div
+                className="mb-4 flex items-start gap-2 rounded-lg border py-2 pl-3 pr-1 text-[13px]"
+                style={{ borderColor: "color-mix(in srgb, var(--acento) 35%, transparent)", color: "var(--text-muted)" }}
+              >
+                <span className="flex-1">Preenchemos a partir dos seus documentos. Leia e corrija o que não estiver do seu jeito.</span>
+                <BotaoDescartar compacto />
+              </div>
+            </Descartavel>
           )}
           {camposDoPorque && (
             <PorqueDoSetup
@@ -672,7 +678,10 @@ export function KanbanBoard({ project, editMode = false }: KanbanBoardProps) {
             <div className="mt-6 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl">
               <div className="flex items-center gap-2 mb-2 text-orange-400 text-sm font-medium">
                 <Bot className="w-4 h-4" />
-                Assistente IA
+                <span className="flex-1">Assistente IA</span>
+                {/* A resposta é efêmera: o X só a tira daqui (07/10); antes ela
+                    seguia por todas as etapas até um pedido novo. */}
+                {!aiLoading && <BotaoDescartar compacto rotulo="Fechar a resposta" aoDescartar={() => setAiReply("")} className="-my-1 -mr-1" />}
               </div>
               {aiLoading ? (
                 <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm">
@@ -1348,9 +1357,15 @@ function StepNetworks({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      <div className="p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl text-sm text-orange-400">
-        💡 Você pode pular agora e conectar depois. Sem redes conectadas, os agentes criam os posts mas <strong>não publicam automaticamente</strong>.
-      </div>
+      {/* Dica fixa, descartável por pessoa e por projeto (07/10). */}
+      <Descartavel chave={chaveDaDica("pular-redes", projectId)}>
+        <div className="flex items-start gap-2 p-4 bg-orange-500/5 border border-orange-500/20 rounded-xl text-sm text-orange-400">
+          <p className="flex-1">
+            💡 Você pode pular agora e conectar depois. Sem redes conectadas, os agentes criam os posts mas <strong>não publicam automaticamente</strong>.
+          </p>
+          <BotaoDescartar compacto className="-my-0.5 -mr-1" />
+        </div>
+      </Descartavel>
 
       <div className="grid grid-cols-1 gap-3">
         {NETWORKS.map((net) => {
@@ -1461,19 +1476,18 @@ function StepNetworks({ projectId }: { projectId: string }) {
                   >
                     Tentar de novo
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => {
+                  {/* O X padrão (07/10), só local: limpa a tentativa anotada na sessão. */}
+                  <BotaoDescartar
+                    texto="Fechar aviso"
+                    aoDescartar={() => {
                       try {
                         sessionStorage.removeItem(CHAVE_CONECTANDO);
                       } catch {}
                       setPresoEm(null);
                     }}
-                    className="px-3 py-1.5 rounded-lg border text-[var(--text-muted)]"
+                    className="border"
                     style={{ borderColor: "var(--border)" }}
-                  >
-                    Fechar aviso
-                  </button>
+                  />
                 </div>
                 <p className="text-[var(--text-muted)]">
                   No celular, se o app do {net.label} abrir sozinho, termine a autorização nele e volte para esta tela:

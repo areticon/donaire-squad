@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Montserrat } from "next/font/google";
-import { Toaster } from "react-hot-toast";
+import { AvisosRapidos } from "@/components/ui/avisos-rapidos";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { PixelsDeAnuncio } from "@/components/analytics/pixels-de-anuncio";
 import { pixelsConfigurados } from "@/lib/pixels";
@@ -112,16 +112,9 @@ export default function RootLayout({
             aviso aparece. Ver lib/pixels.ts para o porquê do consentimento.
           */}
           <PixelsDeAnuncio pixels={pixelsConfigurados()} />
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              style: {
-                background: "var(--bg-elevated)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border)",
-              },
-            }}
-          />
+          {/* Os toasts, com o X de descartar em cada um (07/10): ver
+              components/ui/avisos-rapidos.tsx. */}
+          <AvisosRapidos />
         </ThemeProvider>
       </body>
     </html>

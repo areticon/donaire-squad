@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -43,6 +43,11 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDoAvisoDoRoteiro, chaveDoEstiloNovo, chaveDoPedidoDaCena, chaveDoPlanoPendente } from "@/lib/avisos/chaves";
+
+/** O vídeo da tela (07/10): a linha da cena monta a chave do descarte do pedido com ele. */
+const VideoDaTela = createContext<string>("");
 import { EscolhaDaLegenda } from "@/components/video/escolha-da-legenda";
 import { ControleDoCorte } from "@/components/video/controle-do-corte";
 import { listaDoCenaACena, mmss, type CenaNaTela, type CompletoNaTela, type CorteNaTela, type IconeDaPeca, type PecaDaCena, type TelaDeRoteiro as Tela, type TrechoDoCompletoNaTela } from "@/lib/media/roteiro-em-texto";
@@ -208,7 +213,19 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
     }
   }
 
+  // A marca dos avisos desta tela (07/10): a aprovação, ou o estado, do roteiro.
+  const marcaDaRodada = tela.aprovadoEm ?? tela.status;
+  // A falha tem a marca dela (a rodada, a tentativa e o erro): o "parou"
+  // descartado volta quando o vídeo para de novo depois do tentar de novo.
+  const marcaDaFalha = tela.falha ?? marcaDaRodada;
+  // O motivo do Aprovar travado, no próprio botão e no aria-describedby dele:
+  // o aviso do plano pendente recolhe, mas a pessoa nunca fica sem saber.
+  const motivoDoPlano = tela.jornada?.lendo
+    ? "Espere o plano de efeitos ficar pronto para aprovar (2 a 4 minutos)."
+    : "O plano de efeitos não ficou pronto: peça um elemento acima antes de aprovar.";
+
   return (
+    <VideoDaTela.Provider value={tela.videoId}>
     <div className="px-4 lg:px-8 pt-6 max-w-5xl mx-auto">
       <Link
         href={`/projects/${tela.projectId}/live`}
@@ -251,23 +268,23 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
       )}
 
       {tela.status === "roteirizando" && (
-        <Aviso tipo="andando">
+        <Aviso tipo="andando" chave={null}>
           Ainda estou montando o roteiro: limpando a fala e planejando as cenas. Esta página se atualiza sozinha.
         </Aviso>
       )}
       {tela.status === "failed" && !aprovado && (
-        <Aviso tipo="erro">
+        <Aviso tipo="erro" chave={chaveDoAvisoDoRoteiro(tela.videoId, "parou", marcaDaFalha)}>
           O roteiro parou no meio. Volte ao Gestor e toque em tentar de novo: o que já foi planejado fica guardado.
         </Aviso>
       )}
       {aprovado && !reed && (
-        <Aviso tipo="ok">
+        <Aviso tipo="ok" chave={chaveDoAvisoDoRoteiro(tela.videoId, "aprovado", marcaDaRodada)}>
           Roteiro aprovado. O squad já está gerando os cortes e o vídeo completo com as cenas que você aprovou; o
           andamento aparece no Gestor.
         </Aviso>
       )}
       {refeito && (
-        <Aviso tipo="ok">
+        <Aviso tipo="ok" chave={null}>
           Mandei refazer só o que mudou: {refeito.join("; ")}. O card de cada peça mostra que o squad está fazendo, e
           a versão nova entra sozinha quando ficar pronta.
         </Aviso>
@@ -290,18 +307,15 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
         </div>
       )}
       {editando && (
-        <Aviso tipo="andando" parado>
+        <Aviso tipo="andando" parado chave={chaveDoAvisoDoRoteiro(tela.videoId, "editando", marcaDaRodada)}>
           Você está editando um vídeo já aprovado. Corrija palavras, mude o começo e o fim dos cortes e as cenas: nada
           muda no ar até você tocar em Refazer com estes ajustes, e só o que mudou é refeito.
         </Aviso>
       )}
       {/* O projeto mudou de estilo depois do plano (01/10): replanejar os cortes no estilo novo. */}
-      {editando && reed?.estiloNovo && (
-        <div className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: "var(--brand)", background: "var(--bg-elevated)" }}>
-          <p className="text-sm flex-1" style={{ color: "var(--text-primary)" }}>
-            O estilo do projeto agora é <b>{reed.estiloNovo.nome}</b>, e {reed.estiloNovo.cortes.length === 1 ? "1 corte deste vídeo foi planejado" : `${reed.estiloNovo.cortes.length} cortes deste vídeo foram planejados`} no estilo
-            anterior. O diretor pode planejar de novo no estilo novo; você confere as cenas aqui antes de refazer.
-          </p>
+      {editando && reed?.estiloNovo && (() => {
+        // Descartável no modo recolher (07/10): a frase sai, o botão fica.
+        const replanejar = (
           <Button
             disabled={ocupado === "replanejar"}
             onClick={() => void acao(`/api/videos/${tela.videoId}/roteiro/replanejar`, {}, "replanejar")}
@@ -309,10 +323,23 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
             {ocupado === "replanejar" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
             {ocupado === "replanejar" ? "O diretor está replanejando" : "Replanejar no estilo novo"}
           </Button>
+        );
+        return (
+        <Descartavel chave={chaveDoEstiloNovo(tela.videoId, reed.estiloNovo.nome)} modo="recolher" compacto={<div className="mt-4 flex justify-end">{replanejar}</div>}>
+        <div className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: "var(--brand)", background: "var(--bg-elevated)" }}>
+          <p className="text-sm flex-1" style={{ color: "var(--text-primary)" }}>
+            O estilo do projeto agora é <b>{reed.estiloNovo.nome}</b>, e {reed.estiloNovo.cortes.length === 1 ? "1 corte deste vídeo foi planejado" : `${reed.estiloNovo.cortes.length} cortes deste vídeo foram planejados`} no estilo
+            anterior. O diretor pode planejar de novo no estilo novo; você confere as cenas aqui antes de refazer.
+          </p>
+          {replanejar}
+          <BotaoDescartar compacto className="self-end sm:self-center" />
         </div>
-      )}
-      {erro && <Aviso tipo="erro">{erro}</Aviso>}
-      {controlado && <Aviso tipo="ok">{controlado}</Aviso>}
+        </Descartavel>
+        );
+      })()}
+      {/* O erro e o "controlado" são desta ação: X só local (07/10). */}
+      {erro && <Aviso tipo="erro" aoDescartar={() => setErro(null)}>{erro}</Aviso>}
+      {controlado && <Aviso tipo="ok" chave={null}>{controlado}</Aviso>}
 
       {/* ── Linha editorial ── */}
       <Secao titulo="A linha editorial do vídeo">
@@ -577,19 +604,36 @@ export function TelaDeRoteiro({ inicial, abrirEdicao = false }: { inicial: Tela;
               )}
             </div>
             {/* O PLANO DE EFEITOS ANTES DE APROVAR (08/10): aprovar com o plano lendo ou com erro entregava o vídeo sem efeito. */}
+            {/* Crítico, no modo recolher (07/10): a frase sai e o motivo vai para
+                o próprio botão travado e para o aria-describedby dele. */}
             {planoPendente && (
-              <p className="text-xs font-medium text-amber-600" role="status">
-                {tela.jornada?.lendo ? "Espere o plano de efeitos ficar pronto para aprovar (2 a 4 minutos)." : "O plano de efeitos não ficou pronto: peça um elemento acima antes de aprovar."}
-              </p>
+              <Descartavel
+                chave={tela.jornada?.lendo ? chaveDoPlanoPendente(tela.videoId, "lendo") : chaveDoPlanoPendente(tela.videoId, "erro", tela.jornada?.erro)}
+                modo="recolher"
+                compacto={<span id="motivo-do-aprovar" className="sr-only">{motivoDoPlano}</span>}
+              >
+                <p className="flex items-start gap-1 text-xs font-medium text-amber-600" role="status">
+                  <span className="flex-1" id="motivo-do-aprovar">{motivoDoPlano}</span>
+                  <BotaoDescartar compacto className="-my-1" />
+                </p>
+              </Descartavel>
             )}
-            <Button size="lg" className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2" onClick={() => void aprovar(escolhidos)} disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado) || planoPendente}>
+            <Button
+              size="lg"
+              className="w-full sm:w-auto h-auto min-h-11 whitespace-normal py-2"
+              onClick={() => void aprovar(escolhidos)}
+              disabled={(!n && !tela.completo) || aprovando || Boolean(ocupado) || planoPendente}
+              aria-describedby={planoPendente ? "motivo-do-aprovar" : undefined}
+            >
               {aprovando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {n === 0 ? "Aprovar só o vídeo completo" : "Aprovar e gerar"} ({creditosNaTela(aPagar)} créditos)
+              {planoPendente ? " · esperando o plano de efeitos" : ""}
             </Button>
           </div>
         </div>
       )}
     </div>
+    </VideoDaTela.Provider>
   );
 }
 
@@ -611,7 +655,28 @@ function Secao({ titulo, subtitulo, children }: { titulo: string; subtitulo?: st
   );
 }
 
-function Aviso({ tipo, children, parado = false }: { tipo: "andando" | "ok" | "erro"; children: React.ReactNode; parado?: boolean }) {
+/**
+ * Um aviso do topo da tela. DESCARTÁVEL (07/10): com `chave` (string), o X
+ * lembra o descarte; com `chave={null}`, o X esconde só nesta visita; com
+ * `aoDescartar`, a ação é outra (o erro de uma ação some do estado). Com
+ * `compacto`, o descartado recolhe nele em vez de sumir.
+ */
+function Aviso({
+  tipo,
+  children,
+  parado = false,
+  chave,
+  aoDescartar,
+  compacto,
+}: {
+  tipo: "andando" | "ok" | "erro";
+  children: React.ReactNode;
+  parado?: boolean;
+  chave?: string | null;
+  aoDescartar?: () => void;
+  compacto?: React.ReactNode;
+}) {
+  const descartavel = chave !== undefined || Boolean(aoDescartar);
   const estilo =
     tipo === "erro"
       ? "border-red-500/40 bg-red-500/10 text-red-300"
@@ -620,10 +685,13 @@ function Aviso({ tipo, children, parado = false }: { tipo: "andando" | "ok" | "e
         : "border-orange-500/40 bg-orange-500/10 text-orange-300";
   const Icone = tipo === "erro" ? AlertCircle : tipo === "ok" ? Check : parado ? Pencil : Loader2;
   return (
-    <div className={`mt-4 rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${estilo}`} role={tipo === "erro" ? "alert" : undefined}>
-      <Icone className={`w-4 h-4 mt-0.5 shrink-0 ${tipo === "andando" && !parado ? "animate-spin" : ""}`} />
-      <span>{children}</span>
-    </div>
+    <Descartavel chave={chave ?? null} modo={compacto ? "recolher" : "sumir"} compacto={compacto}>
+      <div className={`mt-4 rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${estilo}`} role={tipo === "erro" ? "alert" : undefined}>
+        <Icone className={`w-4 h-4 mt-0.5 shrink-0 ${tipo === "andando" && !parado ? "animate-spin" : ""}`} />
+        <span className="flex-1">{children}</span>
+        {descartavel && <BotaoDescartar compacto aoDescartar={aoDescartar} className="-my-0.5 -mr-1" />}
+      </div>
+    </Descartavel>
   );
 }
 
@@ -1398,6 +1466,7 @@ export function LinhaDaCena({
   trabalhandoNaSugestao?: boolean;
 }) {
   const [modo, setModo] = useState<"ver" | "editar" | "ideia">("ver");
+  const videoDaTela = useContext(VideoDaTela);
   const [texto, setTexto] = useState("");
   const trabalhando = Boolean(ocupado?.startsWith(`${chave}:`));
   const rotuloDoEditar = cena.edicao.tipo === "imagem" ? "Mudar a imagem" : cena.edicao.tipo === "texto" ? "Mudar o texto" : "Pôr uma imagem aqui";
@@ -1445,10 +1514,16 @@ export function LinhaDaCena({
                   Vai ser feito assim.
                 </p>
               ) : (
-                <p style={{ color: "var(--accent-orange)" }}>
-                  <AlertCircle className="inline w-3 h-3 mr-1 -mt-0.5" />
-                  Não deu para fazer exatamente assim: {cena.pedido.motivo ?? "o diretor fez o mais perto possível"}.
-                </p>
+                // Descartável (07/10): a nota do pedido não atendido some; o pedido fica.
+                <Descartavel chave={chaveDoPedidoDaCena(videoDaTela || "tela", cena.indice, `${chave}|${cena.pedido.texto}`)}>
+                  <p className="flex items-start gap-1" style={{ color: "var(--accent-orange)" }}>
+                    <span className="flex-1">
+                      <AlertCircle className="inline w-3 h-3 mr-1 -mt-0.5" />
+                      Não deu para fazer exatamente assim: {cena.pedido.motivo ?? "o diretor fez o mais perto possível"}.
+                    </span>
+                    <BotaoDescartar compacto className="-my-1" />
+                  </p>
+                </Descartavel>
               )}
             </div>
           )}
@@ -1574,8 +1649,24 @@ function JornadaDoCompleto({
   const [pedindo, setPedindo] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [novoEm, setNovoEm] = useState<number | null>(null);
+  const videoDaTela = useContext(VideoDaTela);
   if (jornada.lendo) return <Aviso tipo="andando">Lendo o vídeo e escolhendo os elementos de cada momento. Leva de 2 a 4 minutos.</Aviso>;
-  if (jornada.erro && !jornada.elementos.length) return <Aviso tipo="erro">Não consegui montar o plano deste vídeo ({jornada.erro}).</Aviso>;
+  // O erro do plano se descarta (07/10), lembrado pela marca do erro: um erro
+  // novo volta. Descartado, fica uma linha discreta, para a seção não ficar vazia.
+  if (jornada.erro && !jornada.elementos.length)
+    return (
+      <Aviso
+        tipo="erro"
+        chave={videoDaTela ? chaveDoPlanoPendente(videoDaTela, "secao-erro", jornada.erro) : null}
+        compacto={
+          <p className="text-xs" style={{ color: "var(--text-muted)" }} data-plano-com-erro-recolhido>
+            O plano deste vídeo não ficou pronto.
+          </p>
+        }
+      >
+        Não consegui montar o plano deste vídeo ({jornada.erro}).
+      </Aviso>
+    );
   const vivos = jornada.elementos.filter((e) => e.estado !== "removido");
   return (
     <div className="space-y-2">

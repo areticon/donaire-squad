@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 import { Check, Images, Library, Loader2, Palette, Pencil, Sparkles, Wand2 } from "lucide-react";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
 import { CriarEstilo } from "@/components/estilo-dos-posts/criar-estilo";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDasArtesEsperando } from "@/lib/avisos/chaves";
 import type { DesignDaGaleria } from "@/lib/biblioteca-de-design/tipos";
 import { resumoDoEstilo, type EstadoDoEstiloDosPosts } from "@/lib/estilo-dos-posts/tipos";
 
@@ -203,16 +205,25 @@ export function EstiloDosPosts({
         </button>
       )}
 
-      {estado.aprovada && estado.aguardando > 0 && estado.podeMudar && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-          <span>
-            {estado.aguardando === 1 ? "1 arte de uma campanha anterior esperava o estilo." : `${estado.aguardando} artes de campanhas anteriores esperavam o estilo.`}
-          </span>
-          <button type="button" onClick={() => void gerarAsQueEsperavam()} disabled={gerando} className="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white disabled:opacity-50">
+      {/* Descartável no modo recolher (07/10): a frase sai, o "Gerar agora" fica. */}
+      {estado.aprovada && estado.aguardando > 0 && estado.podeMudar && (() => {
+        const gerarAgora = (
+          <button type="button" onClick={() => void gerarAsQueEsperavam()} disabled={gerando} className="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
             {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Gerar agora
           </button>
-        </div>
-      )}
+        );
+        return (
+          <Descartavel chave={chaveDasArtesEsperando(projectId, estado.aprovadaEm ?? "sem-aprovacao")} modo="recolher" compacto={<div className="flex justify-end">{gerarAgora}</div>}>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
+              <span className="min-w-0 flex-1">
+                {estado.aguardando === 1 ? "1 arte de uma campanha anterior esperava o estilo." : `${estado.aguardando} artes de campanhas anteriores esperavam o estilo.`}
+              </span>
+              {gerarAgora}
+              <BotaoDescartar compacto />
+            </div>
+          </Descartavel>
+        );
+      })()}
 
       {mostrarPortas && (
         <>

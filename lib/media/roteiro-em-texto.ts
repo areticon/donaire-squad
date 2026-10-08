@@ -926,6 +926,12 @@ export type TelaDeRoteiro = {
   };
   maxCortes: number;
   aprovadoEm: string | null;
+  /**
+   * A marca da FALHA atual (07/10), só com o status "failed": muda a cada vez
+   * que o vídeo para de novo (a rodada, a tentativa e o erro). É a ocorrência
+   * do aviso "O roteiro parou no meio": descartado, uma falha nova volta.
+   */
+  falha?: string | null;
   escolhidos: number[];
   /**
    * O vídeo já é curto (até 90 s, 02/10): a tela sugere publicar ele inteiro,

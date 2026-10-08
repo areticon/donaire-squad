@@ -138,5 +138,16 @@ export async function GET() {
       ...t,
       createdAt: t.createdAt.toISOString(),
     })),
+    /**
+     * A última recarga da conta (07/10): a marca do aviso "créditos
+     * acabando" e do painel de compra que abre sozinho. Toda recarga traz os
+     * dois de volta quando o saldo baixar de novo.
+     */
+    ultimaRecarga:
+      (
+        await prisma.creditTransaction
+          .findFirst({ where: { userId: contaId, amount: { gt: 0 } }, orderBy: { createdAt: "desc" }, select: { id: true } })
+          .catch(() => null)
+      )?.id ?? "sem-recarga",
   });
 }

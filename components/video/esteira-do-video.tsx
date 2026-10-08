@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, UserRound, Video, WifiOff, X } from "lucide-react";
+import { AlertCircle, Ban, BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, Info, Minus, PlayCircle, RotateCcw, ShieldCheck, Sparkles, Trash2, UserRound, Video, WifiOff, X } from "lucide-react";
 import { AproveitarRoteiro } from "@/components/video/aproveitar-roteiro";
 import { etapaDeRetomada, proximaAcao } from "@/lib/media/video-state";
 import { STATUS_CANCELADO, textoDaConfirmacao } from "@/lib/media/cancelamento";
@@ -11,6 +11,9 @@ import { abrirChamado } from "@/lib/suporte/abrir-chamado";
 import { segundosDaEdicao } from "@/lib/media/tempos-medidos";
 import { lerLinhaDoTempo, linhaQueSoAvanca, mesmaMemoria, type ExtrasDaLinha, type GemeoNaLinha, type LeituraDaLinha, type MemoriaDaLinha, type Passo } from "@/lib/media/linha-do-tempo";
 import { CODIGO_DA_ETAPA, pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
+import toast from "react-hot-toast";
+import { BotaoDescartar, useDescarte, useDescartes } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDoVigia, chavesCandidatasDoVideo } from "@/lib/avisos/chaves";
 
 /**
  * A faixa do piloto automático, dentro do Gestor de Conteúdo.
@@ -123,6 +126,11 @@ export type CorteGuardado = {
   video: string;
 };
 
+/** As dicas fixas da lista dos vídeos (07/10): descarte permanente por pessoa. */
+const CHAVE_PODE_SAIR = chaveDaDica("pode-sair") as string;
+const CHAVE_NADA_SEM_OK = chaveDaDica("nada-sai-sem-ok") as string;
+const CHAVE_COMPLETO_POR_ULTIMO = chaveDaDica("completo-por-ultimo") as string;
+
 /** De quanto em quanto tempo perguntar ao servidor se algo mudou. */
 const INTERVALO_MS = 4000;
 
@@ -173,6 +181,26 @@ function emAndamento(v: VideoAoVivo): boolean {
   return true;
 }
 
+/**
+ * O AVISO QUE O CARTÃO É, e como ele se descarta (07/10). Quem decide o tipo
+ * é a leitura que só avança (a mesma que desenha o cartão); a chave é uma das
+ * cinco candidatas do vídeo (lib/avisos/chaves.ts), que o servidor também
+ * pergunta ao banco. `recolher`: o cartão é a única porta da ação (aprovar o
+ * roteiro, refazer o completo) e vira uma linha com o botão; `sumir`: a ação
+ * continua em outro lugar (as peças no quadro, o completo no quadro).
+ */
+function descarteDoCartao(v: VideoAoVivo, l: LeituraDaLinha): { chave: string; modo: "sumir" | "recolher"; tipo: "falhou" | "completo-falhou" | "roteiro" | "pecas" | "pronto" } | null {
+  const k = chavesCandidatasDoVideo(v);
+  const falhou = v.status === "failed";
+  const completoFalhou = Boolean(v.completoFalhou && !v.temCompleto) && !falhou;
+  if (falhou) return { chave: k.falhou, modo: "sumir", tipo: "falhou" };
+  if (completoFalhou) return { chave: k.completoFalhou, modo: "recolher", tipo: "completo-falhou" };
+  if (l.esperandoVoce === "roteiro") return { chave: k.roteiro, modo: "recolher", tipo: "roteiro" };
+  if (l.esperandoVoce === "pecas") return { chave: k.pecas, modo: "sumir", tipo: "pecas" };
+  if (l.fim) return { chave: k.pronto, modo: "sumir", tipo: "pronto" };
+  return null;
+}
+
 /** Instante (ms) em que a rodada atual começou. */
 function inicioDe(v: VideoAoVivo): number {
   return new Date(v.inicioDaRodada ?? v.criadoEm).getTime();
@@ -195,9 +223,15 @@ export function EsteiraDoVideo({
   sinalDeRecarga = 0,
   aoAbrirPeca,
   aoIrAoQuadro,
+  podeApagar = false,
 }: {
   projectId: string;
   videosIniciais: VideoAoVivo[];
+  /**
+   * Quem vê é o DONO do projeto (07/10): só ele tem o "Apagar o vídeo" no
+   * cartão do vídeo que parou. O membro tem o X, que descarta só para ele.
+   */
+  podeApagar?: boolean;
   /**
    * O estado fresco das gravações, a cada consulta, mais o aviso de que algum
    * status MUDOU. É o que faz os cards aparecerem no quadro sem recarregar a
@@ -233,7 +267,18 @@ export function EsteiraDoVideo({
    * Fica até a pessoa fechar; não é erro, então não some quando o estado anda.
    */
   const [avisoDaAcao, setAvisoDaAcao] = useState<string | null>(null);
+  /** Os vídeos que saíram desta visita: o cancelado e o apagado. */
   const [dispensados, setDispensados] = useState<string[]>([]);
+  // O DESCARTE DOS CARTÕES (07/10): lembrado no servidor por pessoa. A consulta
+  // dos vídeos traz o conjunto exato das chaves descartadas a cada 4 s, e ele
+  // entra no provider (o mesmo do sino e da página).
+  const descartes = useDescartes();
+  const registrarRef = useRef(descartes.registrar);
+  useEffect(() => {
+    registrarRef.current = descartes.registrar;
+  });
+  /** A faixa "Sem conexão" escondida pela pessoa: volta na próxima queda. */
+  const [semConexaoDescartada, setSemConexaoDescartada] = useState(false);
   /**
    * O AVISO DO VIGIA, FIXO POR ETAPA (02/10, incidente das 21h): o texto do
    * "passou do tempo normal" ou da retomada fica o mesmo enquanto a etapa for
@@ -336,7 +381,8 @@ export function EsteiraDoVideo({
       falhasSeguidas.current = 0;
       setSemConexao(false);
       if (!r.ok) return;
-      const { videos: frescos } = (await r.json()) as { videos: VideoAoVivo[] };
+      const { videos: frescos, descartados } = (await r.json()) as { videos: VideoAoVivo[]; descartados?: string[] };
+      if (descartados?.length) registrarRef.current(descartados);
       // Só avisa o quadro quando um status realmente mudou. Sem esta guarda
       // seria uma recarga da semana a cada quatro segundos, para sempre.
       // Desde 02/10 a "assinatura" inclui a edição com efeitos: ela anda com o
@@ -452,6 +498,28 @@ export function EsteiraDoVideo({
         void consultar();
         forcarRecarga();
       }
+    },
+    [consultar, forcarRecarga]
+  );
+
+  /**
+   * APAGAR O VÍDEO QUE PAROU (só o dono, depois do "Sim, apagar" no cartão).
+   * Devolve se apagou: o cartão sai e o quadro recarrega.
+   */
+  const apagar = useCallback(
+    async (v: VideoAoVivo): Promise<boolean> => {
+      setErroDaAcao(null);
+      const r = await apagarVideoQueParou(v);
+      if (!r.ok) {
+        setErroDaAcao(r.erro);
+        return false;
+      }
+      setDispensados((d) => [...d, v.id]);
+      toast("Vídeo apagado.");
+      pedirLeituraDoSino();
+      void consultar();
+      forcarRecarga();
+      return true;
     },
     [consultar, forcarRecarga]
   );
@@ -657,17 +725,28 @@ export function EsteiraDoVideo({
   const [recolhidos, setRecolhidos] = useState<Record<Grupo, boolean>>({ voce: false, andamento: false, prontos: false });
   const [anterioresAbertos, setAnterioresAbertos] = useState(false);
 
-  if (emFaixa.length === 0 && !erroDaAcao && !avisoDaAcao && !aproveitar) return null;
+  // O cartão descartado (07/10): o que tem a ação em outro lugar sai da lista;
+  // o que é a única porta da ação fica, recolhido numa linha com o botão.
+  const descarteDe: Record<string, ReturnType<typeof descarteDoCartao>> = {};
+  for (const v of emFaixa) descarteDe[v.id] = descarteDoCartao(v, leituras[v.id]);
+  const naFaixa = emFaixa.filter((v) => {
+    const d = descarteDe[v.id];
+    return !(d && d.modo === "sumir" && descartes.ehDescartado(d.chave));
+  });
+
+  if (naFaixa.length === 0 && !erroDaAcao && !avisoDaAcao && !aproveitar) return null;
 
   // A faixa de sem conexão só faz sentido com algo andando: é ela que diz ao
-  // cliente que o trabalho continua do lado de cá.
-  const mostrarSemConexao = semConexao && emFaixa.some(emAndamento);
+  // cliente que o trabalho continua do lado de cá. O X (07/10) esconde até a
+  // próxima queda: quando a conexão volta, o descarte se desfaz sozinho.
+  if (!semConexao && semConexaoDescartada) setSemConexaoDescartada(false);
+  const mostrarSemConexao = semConexao && !semConexaoDescartada && emFaixa.some(emAndamento);
 
   // ── OS GRUPOS (03/10, "tem 3 linhas do tempo aqui, que confusão") ─────────
   // Um cartão compacto por vídeo, e os cartões juntos pelo que pedem: primeiro
   // o que espera o cliente, depois o que está andando, por fim o que ficou pronto.
   const porGrupo: Record<Grupo, VideoAoVivo[]> = { voce: [], andamento: [], prontos: [] };
-  for (const v of emFaixa) porGrupo[grupoDe(v, leituras[v.id])].push(v);
+  for (const v of naFaixa) porGrupo[grupoDe(v, leituras[v.id])].push(v);
   const pesoNaFila = (v: VideoAoVivo) =>
     v.status === "failed" || (v.completoFalhou && !v.temCompleto) ? 0 : leituras[v.id].esperandoVoce === "roteiro" ? 1 : 2;
   porGrupo.voce.sort((a, b) => pesoNaFila(a) - pesoNaFila(b) || inicioDe(a) - inicioDe(b));
@@ -681,6 +760,9 @@ export function EsteiraDoVideo({
   const andandoSemCompleto = porGrupo.andamento.some((v) => !v.temCompleto);
   const pecasEsperando = porGrupo.voce.some((v) => leituras[v.id].esperandoVoce === "pecas");
   const algumGemeoGravando = porGrupo.andamento.some((v) => leituras[v.id].relogio === "gemeo");
+  const dicaPodeSair = podeSair && !descartes.ehDescartado(CHAVE_PODE_SAIR);
+  const dicaNadaSemOk = pecasEsperando && !descartes.ehDescartado(CHAVE_NADA_SEM_OK);
+  const dicaCompletoPorUltimo = andandoSemCompleto && !descartes.ehDescartado(CHAVE_COMPLETO_POR_ULTIMO);
 
   const cartao = (v: VideoAoVivo) => (
     <CartaoDoVideo
@@ -691,12 +773,9 @@ export function EsteiraDoVideo({
       agora={agora}
       semConexao={semConexao}
       aoRepetir={(rota) => void executar(v.id, rota)}
-      aoDispensar={() => {
-        // Some da tela na hora; o vídeo que parou é apagado de vez no servidor
-        // (03/10), para não voltar ao recarregar.
-        setDispensados((d) => [...d, v.id]);
-        if (v.status === "failed") void fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" }).catch(() => {});
-      }}
+      descarte={descarteDe[v.id] ?? null}
+      recolhido={Boolean(descarteDe[v.id]?.modo === "recolher" && descartes.ehDescartado(descarteDe[v.id]!.chave))}
+      aoApagar={podeApagar ? () => apagar(v) : undefined}
       aoAproveitar={() => setAproveitar(v.id)}
       aoCancelar={() => cancelar(v.id)}
       avisoFixo={avisoDaEtapa(v)}
@@ -716,19 +795,23 @@ export function EsteiraDoVideo({
           data-faixa="sem-conexao"
         >
           <WifiOff className="w-[18px] h-[18px] text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-sm" style={{ color: "var(--text-primary)" }}>
+          <p className="text-sm flex-1 min-w-0" style={{ color: "var(--text-primary)" }}>
             <span className="font-semibold">Sem conexão com a internet.</span>{" "}
             A edição continua nos nossos servidores; quando a conexão voltar, a tela atualiza sozinha.
           </p>
+          {/* Só nesta visita, até a próxima queda: não há fato para lembrar. */}
+          <BotaoDescartar aoDescartar={() => setSemConexaoDescartada(true)} className="-my-2 -mr-2" />
         </div>
       )}
       {erroDaAcao && (
-        <p
-          className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3 text-sm text-orange-300"
+        <div
+          className="flex items-start gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 px-4 py-3"
           role="alert"
+          data-faixa="erro-da-acao"
         >
-          {erroDaAcao}
-        </p>
+          <p className="flex-1 min-w-0 text-sm text-orange-300">{erroDaAcao}</p>
+          <BotaoDescartar aoDescartar={() => setErroDaAcao(null)} className="-my-2 -mr-2" />
+        </div>
       )}
       {avisoDaAcao && (
         <div
@@ -742,19 +825,11 @@ export function EsteiraDoVideo({
           <p className="text-sm flex-1 min-w-0" style={{ color: "var(--text-primary)" }}>
             {avisoDaAcao}
           </p>
-          <button
-            type="button"
-            onClick={() => setAvisoDaAcao(null)}
-            aria-label="Fechar"
-            className="p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors shrink-0"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <BotaoDescartar aoDescartar={() => setAvisoDaAcao(null)} className="-my-2 -mr-2" />
         </div>
       )}
 
-      {emFaixa.length > 0 && (
+      {naFaixa.length > 0 && (
         <section
           className="rounded-2xl border p-3 sm:p-4 space-y-3"
           style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
@@ -778,30 +853,35 @@ export function EsteiraDoVideo({
           {/* UMA VEZ SÓ (03/10): antes "Pode fechar esta tela", "Nada sai nas
               redes sem o seu ok" e "o vídeo completo chega por último" se
               repetiam dentro de cada vídeo. */}
-          {(podeSair || pecasEsperando || andandoSemCompleto) && (
-            <ul className="space-y-1.5 rounded-xl px-3 py-2.5" style={{ background: "var(--realce-1)" }} data-avisos-da-lista>
-              {podeSair && (
+          {/* As dicas se descartam uma a uma, de vez, por pessoa (07/10); a
+              lista some quando as três foram descartadas. */}
+          {(dicaPodeSair || dicaNadaSemOk || dicaCompletoPorUltimo) && (
+            <ul className="space-y-1.5 rounded-xl px-3 py-2.5" style={{ background: "var(--realce-1)" }} data-avisos-da-lista data-lista-de-avisos>
+              {dicaPodeSair && (
                 <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-primary)" }} data-pode-sair>
                   <BellRing className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
-                  <span>
+                  <span className="flex-1">
                     <span className="font-semibold">Pode fechar esta tela.</span>{" "}
                     <span style={{ color: "var(--text-muted)" }}>Vamos te avisar aqui e por e-mail quando precisarmos de você ou quando estiver pronto.</span>
                   </span>
+                  <BotaoDescartar compacto chave={CHAVE_PODE_SAIR} className="-my-1" />
                 </li>
               )}
-              {pecasEsperando && (
+              {dicaNadaSemOk && (
                 <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
                   <ShieldCheck className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
-                  <span>Nada sai nas redes sem o seu ok.</span>
+                  <span className="flex-1">Nada sai nas redes sem o seu ok.</span>
+                  <BotaoDescartar compacto chave={CHAVE_NADA_SEM_OK} className="-my-1" />
                 </li>
               )}
-              {andandoSemCompleto && (
+              {dicaCompletoPorUltimo && (
                 <li className="flex items-start gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
                   <Video className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
-                  <span>
+                  <span className="flex-1">
                     {algumGemeoGravando ? "O vídeo do gêmeo entra na edição como uma gravação sua. " : ""}
                     Cada peça cai no quadro abaixo assim que fica pronta; o vídeo completo chega por último, e o lugar dele já está guardado.
                   </span>
+                  <BotaoDescartar compacto chave={CHAVE_COMPLETO_POR_ULTIMO} className="-my-1" />
                 </li>
               )}
             </ul>
@@ -975,6 +1055,25 @@ function irAoQuadro() {
 }
 
 /**
+ * "APAGAR O VÍDEO" QUE PAROU (03/10, pedido do Bruno: "se dispensei, precisa
+ * deletar"). Desde 07/10 separado do X: o X do cartão só descarta o aviso
+ * (por pessoa, com Desfazer, como em toda a plataforma), e apagar é este
+ * botão próprio, com texto, lixeira e a confirmação dentro do cartão, só para
+ * o dono do projeto (o servidor recusa o membro). Apagar não tem Desfazer: a
+ * confirmação diz isso antes.
+ */
+async function apagarVideoQueParou(v: VideoAoVivo): Promise<{ ok: true } | { ok: false; erro: string }> {
+  try {
+    const r = await fetch(`/api/videos/${v.id}/dispensar`, { method: "POST" });
+    if (r.ok) return { ok: true };
+    const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, erro: corpo.error ?? `A plataforma recusou com código ${r.status}.` };
+  } catch {
+    return { ok: false, erro: "Não consegui falar com a plataforma. Confira a conexão e tente de novo." };
+  }
+}
+
+/**
  * UM CARTÃO POR VÍDEO (03/10). Antes cada vídeo era uma faixa inteira, com 14
  * a 17 marcos lado a lado, título, parágrafo e rodapé; três vídeos viravam
  * três linhas do tempo empilhadas e o Bruno não sabia qual era qual. Agora o
@@ -989,21 +1088,28 @@ function CartaoDoVideo({
   agora,
   semConexao,
   aoRepetir,
-  aoDispensar,
+  aoApagar,
   aoAproveitar,
   aoCancelar,
   avisoFixo,
   aoAbrirPeca,
   aoIrAoQuadro,
+  descarte,
+  recolhido,
 }: {
   projectId: string;
   video: VideoAoVivo;
+  /** O aviso que o cartão é e a chave do descarte (07/10); null em andamento. */
+  descarte: ReturnType<typeof descarteDoCartao>;
+  /** Descartado no modo recolher: só a linha com o botão da ação. */
+  recolhido: boolean;
   /** A leitura que só avança, guardada pelo pai (linhaQueSoAvanca). */
   linha: LeituraDaLinha;
   agora: number;
   semConexao: boolean;
   aoRepetir: (rota: string) => void;
-  aoDispensar: () => void;
+  /** Apaga o vídeo que parou, depois da confirmação; só o dono tem (07/10). Devolve se apagou. */
+  aoApagar?: () => Promise<boolean>;
   /** Abre o "Aproveitar o roteiro" deste vídeo (02/10). */
   aoAproveitar: () => void;
   /** Cancela este vídeo no servidor, depois da confirmação (05/10). Devolve se cancelou. */
@@ -1041,7 +1147,10 @@ function CartaoDoVideo({
   // O relógio PARA quando a esteira termina (08/09): sem `terminadoEm` (vídeos
   // antigos) fica o decorrido, que ao menos não mente sobre a ordem de grandeza.
   const ateOFim = v.terminadoEm ? Math.max(0, Math.round((new Date(v.terminadoEm).getTime() - inicioDe(v)) / 1000)) : decorrido;
-  const avisoDoVigia = semConexao ? null : avisoFixo;
+  const avisoDoVigiaFixo = semConexao ? null : avisoFixo;
+  // O aviso do vigia se descarta (07/10); volta quando muda a etapa ou a tentativa.
+  const vigia = useDescarte(avisoDoVigiaFixo ? chaveDoVigia(v.id, v.status, v.retomada?.n ?? "prazo") : null);
+  const avisoDoVigia = vigia.descartado ? null : avisoDoVigiaFixo;
   const codigoDaFalha = falhou ? CODIGO_DA_ETAPA[etapaDeRetomada(v)] : null;
   const acaoDaFalha = falhou ? proximaAcao(v) : null;
 
@@ -1101,7 +1210,7 @@ function CartaoDoVideo({
   // O relato do Bruno: o vídeo do gêmeo ficou parado em "o roteiro espera a
   // sua aprovação" sem jeito de sair. O botão existe para o que espera o
   // cliente ou está andando (o gêmeo gravando inclusive); o pronto se arquiva
-  // peça por peça, e o que parou tem o "dispensar". A confirmação é dentro do
+  // peça por peça, e o que parou tem o "Apagar o vídeo" (só o dono). A confirmação é dentro do
   // cartão, não a janela do navegador: ela diz o que acontece com o que já foi
   // gerado e com os créditos.
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
@@ -1114,6 +1223,18 @@ function CartaoDoVideo({
     const cancelou = await aoCancelar();
     setCancelando(false);
     if (!cancelou) setConfirmandoCancelar(false);
+  };
+  // ── APAGAR O VÍDEO QUE PAROU (07/10) ─────────────────────────────────────
+  // Separado do X: o X só tira o aviso da lista de quem clicou. Apagar é de
+  // vez, só para o dono, e pede o "Sim" dentro do cartão.
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const confirmarApagar = async () => {
+    if (!aoApagar) return;
+    setApagando(true);
+    const apagou = await aoApagar();
+    setApagando(false);
+    if (!apagou) setConfirmandoApagar(false);
   };
   const primeiraParaAprovar = pecas.filter((p) => p.paraAprovar).sort((a, b) => a.data.localeCompare(b.data))[0] ?? null;
   const irAsPecas = () => (aoIrAoQuadro ? aoIrAoQuadro(primeiraParaAprovar?.data) : irAoQuadro());
@@ -1150,7 +1271,27 @@ function CartaoDoVideo({
   const tipoDeFaixa = falhou ? "falhou" : completoFalhou ? "completo-falhou" : pronto ? "pronto" : "linha-do-tempo";
   const Icone = falhou || completoFalhou ? AlertCircle : pronto ? CheckCircle2 : gemeo ? UserRound : Video;
   const corDoIcone = falhou ? "text-red-400" : completoFalhou ? "text-orange-400" : pronto ? "text-green-500" : esperando ? "text-amber-500" : "text-orange-500";
-  const dispensavel = pronto || esperando === "pecas" || falhou || completoFalhou;
+  const dispensavel = Boolean(descarte);
+  const idDoTitulo = `titulo-do-video-${v.id}`;
+
+  // RECOLHIDO (07/10): o cartão descartado que é a única porta da ação vira
+  // uma linha, sem a cor de alerta, com o botão.
+  if (recolhido) {
+    return (
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
+        style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+        data-faixa={`${tipoDeFaixa}-recolhida`}
+        data-video={v.id}
+      >
+        <p className="text-xs min-w-0 truncate" style={{ color: "var(--text-muted)" }} title={nome}>
+          <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{titulo}</span>
+          {completoFalhou ? ": o vídeo completo não ficou pronto" : ": roteiro esperando"}
+        </p>
+        {principal}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1174,9 +1315,10 @@ function CartaoDoVideo({
           </div>
           <div className="min-w-0 flex-1">
             <p
-              className={`text-[13px] sm:text-sm font-semibold leading-snug line-clamp-2 sm:line-clamp-1 break-words ${dispensavel ? "pr-6 sm:pr-0" : ""}`}
+              className={`text-[13px] sm:text-sm font-semibold leading-snug line-clamp-2 sm:line-clamp-1 break-words ${dispensavel ? "pr-8 sm:pr-0" : ""}`}
               style={{ color: "var(--text-primary)" }}
               title={nome}
+              id={idDoTitulo}
             >
               {titulo}
             </p>
@@ -1280,19 +1422,13 @@ function CartaoDoVideo({
               <span className="min-[400px]:hidden">Cancelar</span>
             </button>
           )}
-          {dispensavel && (
-            <button
-              type="button"
-              onClick={aoDispensar}
-              title={falhou || completoFalhou ? "Dispensar" : "Tirar da lista"}
-              aria-label={falhou || completoFalhou ? "Dispensar" : "Tirar da lista"}
-              // No celular o X sobe para o canto do cartão: na fileira dos
-              // botões ele passava da borda em 360 px.
-              className="absolute right-1.5 top-1.5 sm:static p-1.5 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <X className="w-4 h-4" />
-            </button>
+          {/* O X (07/10): em TODO cartão, o vídeo que parou inclusive, só tira o
+              aviso da lista de quem clicou, lembrado por pessoa e com
+              Desfazer. Apagar o vídeo é outra ação, em "detalhes". No celular
+              o X sobe para o canto do cartão: na fileira dos botões ele
+              passava da borda em 360 px. */}
+          {dispensavel && descarte && (
+            <BotaoDescartar chave={descarte.chave} descricaoId={idDoTitulo} className="absolute right-0 top-0 sm:static" />
           )}
         </div>
       </div>
@@ -1363,6 +1499,61 @@ function CartaoDoVideo({
                   Abrir chamado
                 </button>
               )}
+              {/* APAGAR O VÍDEO (07/10): só o dono, com texto e lixeira, e a
+                  confirmação aqui mesmo. */}
+              {falhou && aoApagar && !confirmandoApagar && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoApagar(true)}
+                    aria-expanded={false}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:border-red-500/60 hover:text-red-400 transition-colors"
+                    style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                    data-acao="apagar-video"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Apagar o vídeo
+                  </button>
+                </div>
+              )}
+              {falhou && aoApagar && confirmandoApagar && (
+                <div
+                  className="rounded-xl border px-3 py-3 space-y-2.5"
+                  style={{ borderColor: "rgba(239,68,68,.45)", background: "color-mix(in srgb, #ef4444 7%, transparent)" }}
+                  role="alertdialog"
+                  aria-label="Apagar o vídeo"
+                  data-confirmar-apagar
+                >
+                  <p className="text-sm font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+                    Apagar este vídeo de vez?
+                  </p>
+                  <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
+                    A gravação sai da plataforma, e as peças dela que não foram publicadas nem agendadas são canceladas. Não dá para desfazer. Para só tirar o aviso da lista, use o X do cartão.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void confirmarApagar()}
+                      disabled={apagando}
+                      className="inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors whitespace-nowrap disabled:opacity-60"
+                      data-acao="confirmar-apagar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {apagando ? "Apagando..." : "Sim, apagar o vídeo"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmandoApagar(false)}
+                      disabled={apagando}
+                      className={classeDoSecundario}
+                      style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                      data-acao="manter-video-parado"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1373,7 +1564,11 @@ function CartaoDoVideo({
             <p className="text-xs" style={{ color: "var(--text-primary)" }} data-agora>
               <span className="font-semibold">Agora:</span> {linha.agora}
               {avisoDoVigia ? (
-                <span style={{ color: "var(--text-muted)" }} data-retomada> {avisoDoVigia}</span>
+                <span style={{ color: "var(--text-muted)" }} data-retomada>
+                  {" "}
+                  {avisoDoVigia}
+                  <BotaoDescartar compacto aoDescartar={() => vigia.descartar()} className="ml-1 align-middle" />
+                </span>
               ) : (atrasou || atrasandoNaEtapa) && !semConexao ? (
                 <span style={{ color: "var(--text-muted)" }}> Esta etapa está levando mais que o previsto, e segue andando.</span>
               ) : null}

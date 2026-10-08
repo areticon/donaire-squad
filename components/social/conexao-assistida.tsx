@@ -3,6 +3,8 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Headset, CheckCircle2 } from "lucide-react";
+import { BotaoDescartar, useDescarte } from "@/components/ui/descartar";
+import { chaveDaConexaoAssistida } from "@/lib/avisos/chaves";
 import { Button } from "@/components/ui/button";
 import { NOME_DA_REDE, O_QUE_PREPARAR, POR_QUE_ASSISTIDA, type PedidoDeConexao } from "@/lib/social/textos-da-conexao";
 
@@ -72,6 +74,24 @@ export function ConexaoAssistida({
   const quando = pedido
     ? new Date(pedido.pedidoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
+  // O "Pedido enviado" se descarta (07/10) no modo RECOLHER: sai o texto longo
+  // e a cor, e fica uma linha discreta com a data. Sumir de vez deixava a
+  // seção da rede vazia (sem conta, o painel não mostra o "Conectar" na rede
+  // assistida), sem dizer que há um pedido aberto.
+  const avisoDoPedido = useDescarte(pedido ? chaveDaConexaoAssistida(rede, pedido.pedidoEm) : null);
+  if (pedido && avisoDoPedido.descartado) {
+    return (
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${compacta ? "" : "mb-3"}`} style={{ color: "var(--text-muted)" }} data-conexao-assistida={rede} data-recolhida>
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span>Conexão assistida pedida em {quando}.</span>
+        {conectarDiretoUrl && (
+          <a href={conectarDiretoUrl} className="text-[11px] underline hover:text-orange-400">
+            Admin: conectar direto
+          </a>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -107,6 +127,7 @@ export function ConexaoAssistida({
             {temConta ? "Pedir outra" : "Conexão assistida"}
           </Button>
         )}
+        {pedido && <BotaoDescartar compacto aoDescartar={() => avisoDoPedido.descartar()} />}
       </div>
 
       {!pedido && aberta && (

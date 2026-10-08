@@ -10,6 +10,8 @@ import { varrerExpirados } from "@/lib/media/video-sweep";
 import { projetoVisivel } from "@/lib/equipe/conta";
 import { extrasDaLinha, gemeosNaFaixa } from "@/lib/media/linha-do-tempo-servidor";
 import { temCapasGeradas } from "@/lib/media/estilos-de-capa";
+import { descartadasEntre } from "@/lib/avisos/descartes";
+import { listaDasChavesDoVideo } from "@/lib/avisos/chaves";
 
 /**
  * O estado dos vídeos de um projeto, enxuto, para a tela consultar de tempos em
@@ -109,8 +111,7 @@ export async function GET(req: NextRequest) {
 
   const agora = Date.now();
 
-  return NextResponse.json({
-    videos: [...gemeos.ativos, ...videos.map((v) => {
+  const lista = [...gemeos.ativos, ...videos.map((v) => {
       const trechos = (Array.isArray(v.clips) ? v.clips : []) as Array<{
         publicar?: boolean;
         posts?: unknown;
@@ -274,6 +275,14 @@ export async function GET(req: NextRequest) {
       linha: extras.get(v.id) ?? null,
       gemeo: gemeos.porVideoJob.get(v.id) ?? null,
       };
-    })],
-  });
+    })];
+
+  // OS CARTÕES DESCARTADOS (07/10): o conjunto exato, para a faixa registrar no
+  // provider a cada consulta. A lista é o projeto inteiro (sem take), e o vídeo
+  // que parou fica na faixa sem prazo: a semente do layout não bastaria. São as
+  // cinco chaves possíveis de cada cartão (quem escolhe a do momento é a tela),
+  // numa consulta só, e sempre de quem está logado. Erro vira vazio.
+  const descartados = await descartadasEntre(userId, lista.flatMap((v) => ("temTranscricao" in v ? listaDasChavesDoVideo(v) : [])));
+
+  return NextResponse.json({ videos: lista, descartados: [...descartados] });
 }

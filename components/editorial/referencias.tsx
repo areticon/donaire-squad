@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, ExternalLink, Loader2, Plus, Search, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AvisoDescartavel, BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDoAcimaDoPlano, chaveDoEstudo } from "@/lib/avisos/chaves";
 import { AnalisesDasReferencias } from "@/components/editorial/analises-das-referencias";
 import { Detalhes } from "@/components/editorial/painel-do-estudo";
 import {
@@ -188,9 +190,9 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
       {aberto && (
         <div className="space-y-4 border-t p-3 sm:p-4" style={{ borderColor: "var(--border)" }}>
           {!ligado && (
-            <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+            <AvisoDescartavel chave={chaveDaDica("estudo-desligado", projectId)} className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
               O estudo de referências está desligado nesta conta. Os perfis ficam guardados até ele ser ligado.
-            </p>
+            </AvisoDescartavel>
           )}
 
           {/* A FAIXA DO ESTUDO (03/10): os perfis estudados, o último estudo numa linha e o botão. O resto da gestão fica nos detalhes. */}
@@ -232,13 +234,16 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
           </div>
 
           {acimaDoPlano && (
-            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            <AvisoDescartavel chave={chaveDoAcimaDoPlano(projectId, String(teto))} className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
               Este projeto é de antes do limite do plano: tem {confirmados.length} referências e o seu plano inclui {teto}. As que passam continuam aqui
               até você tirar, e tirar sempre funciona. O estudo lê só as {teto} mais recentes.
-            </p>
+            </AvisoDescartavel>
           )}
 
           {estudo && (
+            // O estudo que falhou se descarta (07/10); "Estudar agora" fica no
+            // botão acima. O estudando e o pronto são estado, sem X.
+            <Descartavel chave={estudo.estado === "falhou" ? chaveDoEstudo(projectId, estudo.iniciadoEm, "falhou") : null}>
             <div
               className={cn(
                 "rounded-lg px-3 py-2 text-xs",
@@ -265,8 +270,10 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
                       ? estudo.erro
                       : `Último estudo${estudo.terminadoEm ? ` (${new Date(estudo.terminadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : ""}: ${estudo.resumo ?? "concluído."}`}
                 </span>
+                {estudo.estado === "falhou" && <BotaoDescartar compacto className="ml-auto -my-1" />}
               </p>
             </div>
+            </Descartavel>
           )}
 
           {/* O PAINEL EXECUTIVO: números, gráficos, o que fazer e os detalhes (regras, tendências, achados). */}
@@ -327,11 +334,13 @@ export function PerfisDeReferencia({ projectId }: { projectId: string }) {
                 </div>
               )}
               {estudo && estudo.estado !== "estudando" && estudo.avisos.length > 0 && (
-                <ul className="mb-3 list-disc space-y-0.5 pl-5 text-xs" style={{ color: "var(--text-muted)" }}>
-                  {estudo.avisos.map((a) => (
-                    <li key={a}>{a}</li>
-                  ))}
-                </ul>
+                <AvisoDescartavel chave={chaveDoEstudo(projectId, estudo.iniciadoEm, "avisos")} className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <ul className="list-disc space-y-0.5 pl-5">
+                    {estudo.avisos.map((a) => (
+                      <li key={a}>{a}</li>
+                    ))}
+                  </ul>
+                </AvisoDescartavel>
               )}
               <div className="space-y-3">
                 {[

@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, FileUp, Loader2, Repeat, Sparkles, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import { AvisoDescartavel, BotaoDescartar } from "@/components/ui/descartar";
 import { RedeIcone } from "@/components/social/rede-icone";
 import { cn } from "@/lib/utils";
 import { NOMES_DAS_REDES } from "@/lib/posts/estado";
@@ -603,12 +604,15 @@ export function JanelaDoConteudoPronto({
                           {lugares
                             .filter(({ f, v }) => destinos.has(chaveDoDestino(c.id, f)) && v && v.avisos.length > 0)
                             .map(({ f, v }) => (
-                              <p key={f} className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-amber-400">
-                                <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" />
-                                <span>
-                                  <b className="font-semibold">{rotuloDoFormatoNaRede(c.platform, f)}:</b> {v!.avisos.join(" ")}
-                                </span>
-                              </p>
+                              // O aviso que não bloqueia ganha X só local (07/10); o bloqueio fica.
+                              <AvisoDescartavel key={f} chave={null} className="mt-1.5 text-[11.5px] text-amber-400">
+                                <p className="flex items-start gap-1.5">
+                                  <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" />
+                                  <span>
+                                    <b className="font-semibold">{rotuloDoFormatoNaRede(c.platform, f)}:</b> {v!.avisos.join(" ")}
+                                  </span>
+                                </p>
+                              </AvisoDescartavel>
                             ))}
                         </li>
                       );
@@ -723,7 +727,8 @@ export function JanelaDoConteudoPronto({
 
               {erro && (
                 <p className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-300" role="alert">
-                  <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" /> {erro}
+                  <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" /> <span className="flex-1">{erro}</span>
+                  <BotaoDescartar compacto aoDescartar={() => setErro(null)} className="-my-1" />
                 </p>
               )}
             </div>

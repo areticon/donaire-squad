@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import { useAntiRobo } from "@/components/anti-robo/use-anti-robo";
 import { CABECALHO_DA_PROVA } from "@/lib/anti-robo/regras";
 
@@ -396,8 +397,22 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-            {error}
+          <p className="flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" role="alert">
+            <span className="flex-1">{error}</span>
+            {/* X só local (07/10): fecha o erro e tira o ?error= da URL, para
+                recarregar não trazer de volta o erro do login social. */}
+            <BotaoDescartar
+              compacto
+              className="-my-0.5"
+              aoDescartar={() => {
+                setError(null);
+                const u = new URL(window.location.href);
+                if (u.searchParams.has("error")) {
+                  u.searchParams.delete("error");
+                  window.history.replaceState(window.history.state, "", u.toString());
+                }
+              }}
+            />
           </p>
         )}
 

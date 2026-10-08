@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ExternalLink, GitCompareArrows, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvisoDescartavel } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDoAcimaDoPlano, chaveDoEstudo, marca } from "@/lib/avisos/chaves";
 import { DeParaNaTela, LinhaDeCusto } from "@/components/kanban/relatorio-do-perfil";
 import { ROTULO_DA_ETAPA, type RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 import type { EstudoNaTela, RedeDeReferencia } from "@/lib/referencias/tipos";
@@ -209,9 +211,9 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
       </div>
 
       {semPerfil && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <AvisoDescartavel chave={chaveDaDica("sem-perfil-estudado", projectId)} className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           Para comparar, eu preciso do seu perfil estudado. Volte uma etapa e estude o seu perfil (pode fazer as duas coisas ao mesmo tempo).
-        </p>
+        </AvisoDescartavel>
       )}
 
       {/* AS REFERÊNCIAS JÁ GRAVADAS (05/10): remover, adicionar e refazer o estudo. */}
@@ -227,10 +229,10 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
           </div>
 
           {acimaDoPlano && (
-            <p className="rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <AvisoDescartavel chave={chaveDoAcimaDoPlano(projectId, String(teto))} className="rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
               Este projeto é de antes do limite do plano. As que passam de {teto} continuam aqui até você remover, e remover sempre funciona. O estudo
               lê só as {dados.limite.estudadas} mais recentes.
-            </p>
+            </AvisoDescartavel>
           )}
 
           <ul className="space-y-2">
@@ -372,7 +374,12 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
                 <RefreshCw className="h-4 w-4" />
                 Refazer o estudo
               </Button>
-              {!dados.ligado && <p className="text-xs text-amber-700 dark:text-amber-400">O estudo de referências está desligado nesta conta agora.</p>}
+              {/* A mesma chave dos outros três avisos iguais (07/10): descartar uma vez vale em todos. */}
+              {!dados.ligado && (
+                <AvisoDescartavel chave={chaveDaDica("estudo-desligado", projectId)} className="text-xs text-amber-700 dark:text-amber-400">
+                  O estudo de referências está desligado nesta conta agora.
+                </AvisoDescartavel>
+              )}
             </div>
           )}
         </div>
@@ -446,10 +453,16 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
         </div>
       )}
       {analise?.estado?.status === "erro" && analise.estado.erro && (
-        <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">{analise.estado.erro}</p>
+        <AvisoDescartavel chave={chaveDoEstudo(projectId, analise.estado.pedidoEm ?? marca(analise.estado.erro), "erro")} className="rounded-lg bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">
+          {analise.estado.erro}
+        </AvisoDescartavel>
       )}
       {dados?.referencias.some((r) => r.ultimoErro) && (
-        <ul className="list-disc space-y-0.5 pl-5 text-xs text-[var(--text-muted)]">
+        <AvisoDescartavel
+          chave={chaveDoEstudo(projectId, marca(dados.referencias.filter((r) => r.ultimoErro).map((r) => `${r.id}:${r.ultimoErro}`).join(",")), "avisos")}
+          className="text-xs text-[var(--text-muted)]"
+        >
+        <ul className="list-disc space-y-0.5 pl-5">
           {dados.referencias
             .filter((r) => r.ultimoErro)
             .map((r) => (
@@ -458,6 +471,7 @@ export function StepReferenciasDoCliente({ projectId }: { projectId: string }) {
               </li>
             ))}
         </ul>
+        </AvisoDescartavel>
       )}
 
       {dados?.dePara && !estudando && (

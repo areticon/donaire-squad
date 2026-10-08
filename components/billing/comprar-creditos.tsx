@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import type { Elegibilidade, PacoteNaTela } from "@/lib/credits/pacotes-de-credito";
+import { useDescartes } from "@/components/ui/descartar";
 
 /**
  * "COMPRAR MAIS CRÉDITOS" (06/10/2026), onde o saldo aparece.
@@ -20,13 +21,34 @@ type Dados = { pacotes: PacoteNaTela[]; elegibilidade: Elegibilidade };
 
 const n = (v: number) => v.toLocaleString("pt-BR");
 
-export function ComprarCreditos({ abertoDeInicio, saldoZerado }: { abertoDeInicio: boolean; saldoZerado: boolean }) {
+export function ComprarCreditos({
+  abertoDeInicio: abertoPedido,
+  saldoZerado,
+  chaveDoAutomatico,
+}: {
+  abertoDeInicio: boolean;
+  saldoZerado: boolean;
+  /**
+   * O painel abriu SOZINHO (saldo baixo ou zerado, 07/10): fechar grava o
+   * descarte com esta chave, e ele não reabre sozinho até a próxima recarga
+   * ou a troca de faixa (acabando para zerado). "Comprar mais créditos" e o
+   * atalho ?comprar=1 continuam abrindo.
+   */
+  chaveDoAutomatico?: string | null;
+}) {
+  const descartes = useDescartes();
+  const abertoDeInicio = abertoPedido && !(chaveDoAutomatico && descartes.ehDescartado(chaveDoAutomatico));
   const [aberto, setAberto] = useState(abertoDeInicio);
+  const [abriuSozinho, setAbriuSozinho] = useState(Boolean(abertoDeInicio && chaveDoAutomatico));
   const [dados, setDados] = useState<Dados | null>(null);
   const [comprando, setComprando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => setAberto((a) => a || abertoDeInicio), [abertoDeInicio]);
+  useEffect(() => {
+    if (!abertoDeInicio) return;
+    setAberto(true);
+    if (chaveDoAutomatico) setAbriuSozinho(true);
+  }, [abertoDeInicio, chaveDoAutomatico]);
 
   useEffect(() => {
     let vivo = true;
@@ -74,7 +96,10 @@ export function ComprarCreditos({ abertoDeInicio, saldoZerado }: { abertoDeInici
       {!aberto ? (
         <button
           type="button"
-          onClick={() => setAberto(true)}
+          onClick={() => {
+            setAbriuSozinho(false);
+            setAberto(true);
+          }}
           className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors hover:border-orange-500"
           style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
         >
@@ -86,7 +111,17 @@ export function ComprarCreditos({ abertoDeInicio, saldoZerado }: { abertoDeInici
             <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
               {saldoZerado ? "Seus créditos acabaram" : "Comprar mais créditos"}
             </h3>
-            <button type="button" onClick={() => setAberto(false)} className="text-xs underline" style={{ color: "var(--text-muted)" }}>
+            <button
+              type="button"
+              onClick={() => {
+                // Fechar o que abriu sozinho fica lembrado (sem toast: é um painel).
+                if (abriuSozinho && chaveDoAutomatico) descartes.descartar([chaveDoAutomatico], { desfazivel: false });
+                setAbriuSozinho(false);
+                setAberto(false);
+              }}
+              className="text-xs underline"
+              style={{ color: "var(--text-muted)" }}
+            >
               Fechar
             </button>
           </div>

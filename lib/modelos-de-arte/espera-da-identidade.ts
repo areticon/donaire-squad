@@ -105,6 +105,19 @@ export interface EsperaDaIdentidade {
   estado: EstadoDaEspera;
   /** O motivo da falha, quando falhou. */
   motivo?: string;
+  /**
+   * Quando falhou (07/10): o post e a marca da ocorrência (`arteFalhou.em`, ou
+   * o começo da geração que passou do teto). É a chave do descarte do aviso
+   * "A arte não saiu" (lib/avisos/chaves.ts): uma falha nova volta a aparecer.
+   */
+  postId?: string;
+  em?: string;
+  /**
+   * Quando aguarda (07/10): o LOTE de onde a peça veio (a campanha, ou o
+   * vídeo, ou o próprio post avulso). É a ocorrência do aviso "Aguardando o
+   * estilo dos posts": a leva nova, depois de a aprovação cair, volta a explicar.
+   */
+  lote?: string;
 }
 
 /** Depois disto sem terminar, a geração conta como falha: o cliente ganha o "Tentar de novo" em vez de um "fazendo" eterno. */
@@ -114,26 +127,30 @@ export const TETO_DA_GERACAO_MS = 20 * 60 * 1000;
  * Como a tela lê a espera de um post: nulo quando a arte existe ou o post
  * nunca esperou. "gerando" vira "falhou" quando passou do teto sem terminar.
  */
-export function esperaDaIdentidade(post: { imageUrl?: string | null; metadata?: unknown }, agora: Date = new Date()): EsperaDaIdentidade | null {
+export function esperaDaIdentidade(post: { id?: string; runId?: string | null; imageUrl?: string | null; metadata?: unknown }, agora: Date = new Date()): EsperaDaIdentidade | null {
   if (post.imageUrl) return null;
-  const m = objeto(post.metadata) as { aguardandoIdentidade?: unknown; gerandoArte?: { desde?: unknown }; arteFalhou?: { motivo?: unknown } };
+  const m = objeto(post.metadata) as { aguardandoIdentidade?: unknown; gerandoArte?: { desde?: unknown }; arteFalhou?: { motivo?: unknown; em?: unknown }; videoJobId?: unknown };
   if (m.aguardandoIdentidade !== true) return null;
+  // De qual post e desde quando (07/10), só quando a tela mandou o id.
+  const ocorrencia = (em: unknown) => (post.id ? { postId: post.id, ...(typeof em === "string" ? { em } : {}) } : {});
   if (m.arteFalhou && typeof m.arteFalhou === "object") {
-    return { estado: "falhou", motivo: typeof m.arteFalhou.motivo === "string" ? m.arteFalhou.motivo : "a arte não saiu" };
+    return { estado: "falhou", motivo: typeof m.arteFalhou.motivo === "string" ? m.arteFalhou.motivo : "a arte não saiu", ...ocorrencia(m.arteFalhou.em) };
   }
   if (m.gerandoArte && typeof m.gerandoArte === "object") {
     const desde = typeof m.gerandoArte.desde === "string" ? new Date(m.gerandoArte.desde).getTime() : NaN;
-    if (Number.isNaN(desde) || agora.getTime() - desde > TETO_DA_GERACAO_MS) return { estado: "falhou", motivo: "a geração não terminou no tempo esperado" };
+    if (Number.isNaN(desde) || agora.getTime() - desde > TETO_DA_GERACAO_MS) return { estado: "falhou", motivo: "a geração não terminou no tempo esperado", ...ocorrencia(m.gerandoArte.desde) };
     return { estado: "gerando" };
   }
-  return { estado: "aguardando" };
+  // O lote (07/10), só quando a tela mandou o id: a campanha, o vídeo ou o post.
+  if (!post.id) return { estado: "aguardando" };
+  return { estado: "aguardando", lote: post.runId || (typeof m.videoJobId === "string" && m.videoJobId) || post.id };
 }
 
 /**
  * A espera que manda numa peça com vários posts (as redes do dia): falhou
  * ganha de gerando, que ganha de aguardando.
  */
-export function esperaDaPeca(posts: Array<{ imageUrl?: string | null; metadata?: unknown }>, agora: Date = new Date()): EsperaDaIdentidade | null {
+export function esperaDaPeca(posts: Array<{ id?: string; runId?: string | null; imageUrl?: string | null; metadata?: unknown }>, agora: Date = new Date()): EsperaDaIdentidade | null {
   const esperas = posts.map((p) => esperaDaIdentidade(p, agora)).filter((e): e is EsperaDaIdentidade => Boolean(e));
   if (!esperas.length) return null;
   return esperas.find((e) => e.estado === "falhou") ?? esperas.find((e) => e.estado === "gerando") ?? esperas[0];

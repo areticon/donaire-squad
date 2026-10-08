@@ -5,6 +5,8 @@ import { AppShell } from "@/components/ui/app-shell";
 import { destinoDeEntrada } from "@/lib/onboarding/portao";
 import { BannerDoPlano } from "@/components/billing/banner-do-plano";
 import { prisma } from "@/lib/db/prisma";
+import { DescartesProvider } from "@/components/ui/descartar";
+import { sementeDoCliente } from "@/lib/avisos/descartes";
 
 export default async function AppLayout({
   children,
@@ -49,7 +51,14 @@ export default async function AppLayout({
   // O item "Painel" do menu só existe para admin. O papel é lido aqui, no
   // servidor, porque a sessão do navegador não carrega o papel e o menu é
   // componente de cliente.
-  const eu = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  //
+  // A SEMENTE DOS DESCARTES (07/10) vem na mesma leva: as chaves das telas que
+  // a pessoa descartou, para cada aviso já nascer escondido, sem piscar. Erro
+  // vira lista vazia (lib/avisos/descartes.ts nunca lança).
+  const [eu, descartados] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
+    sementeDoCliente(userId),
+  ]);
   const ehAdmin = eu?.role === "admin";
   // O NÚMERO AO LADO DE "DEMONSTRAÇÕES" (01/10): reuniões marcadas que começam da última
   // hora até 7 dias à frente. Só roda para admin, para cliente não pagar uma
@@ -61,12 +70,14 @@ export default async function AppLayout({
   const chamadosAbertos = ehAdmin ? await prisma.chamado.count({ where: { status: "aberto" } }).catch(() => 0) : 0;
 
   return (
-    <AppShell ehAdmin={ehAdmin} demonstracoesProximas={demonstracoesProximas} chamadosAbertos={chamadosAbertos}>
-      <div className="px-4 pt-4 sm:px-6 sm:pt-6">
-        <BannerDoPlano userId={userId} />
-      </div>
-      {children}
-    </AppShell>
+    <DescartesProvider iniciais={descartados}>
+      <AppShell ehAdmin={ehAdmin} demonstracoesProximas={demonstracoesProximas} chamadosAbertos={chamadosAbertos}>
+        <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+          <BannerDoPlano userId={userId} />
+        </div>
+        {children}
+      </AppShell>
+    </DescartesProvider>
   );
 }
 

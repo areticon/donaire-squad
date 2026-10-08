@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
+import { BotaoDescartar } from "@/components/ui/descartar";
 
 /**
  * Prévia do primeiro post, dentro do passo Voz e Estilo.
@@ -82,7 +83,13 @@ export function SetupPreview({
         </p>
       )}
 
-      {erro && <p className="text-sm text-orange-400 mt-3">{erro}</p>}
+      {/* O erro desta prévia: X só local (07/10). */}
+      {erro && (
+        <p className="flex items-start gap-1 text-sm text-orange-400 mt-3">
+          <span className="flex-1">{erro}</span>
+          <BotaoDescartar compacto aoDescartar={() => setErro(null)} className="-my-0.5" />
+        </p>
+      )}
 
       <AnimatePresence>
         {post && (

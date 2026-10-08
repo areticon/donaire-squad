@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Check, ChevronLeft, ChevronRight, Ear, Loader2, Pause, Play, RotateCcw, Scissors, SkipBack, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvisoDescartavel, BotaoDescartar } from "@/components/ui/descartar";
+import { chaveDoCorteNaoAplicado } from "@/lib/avisos/chaves";
 import {
   blocoDaIA,
   calcularCorte,
@@ -402,10 +404,15 @@ export function ControleDoCorte({
         </p>
       </div>
 
+      {/* O aviso do servidor (o último corte que não pôde ser aplicado) se
+          descarta (07/10), lembrado pela marca do aviso: um motivo novo volta. */}
       {dados.aviso && (
-        <p className="text-xs rounded-lg border px-2.5 py-2 text-amber-500 border-amber-500/40" role="status">
-          {dados.aviso}
-        </p>
+        <AvisoDescartavel
+          chave={chaveDoCorteNaoAplicado(videoId, dados.aviso)}
+          className="text-xs rounded-lg border px-2.5 py-2 text-amber-500 border-amber-500/40"
+        >
+          <p role="status">{dados.aviso}</p>
+        </AvisoDescartavel>
       )}
 
       {/* O player: a gravação, pulando o que sai. */}
@@ -715,8 +722,10 @@ export function ControleDoCorte({
           </p>
         )}
         {erro && (
-          <p className="text-xs font-medium text-red-500" role="alert">
-            {erro}
+          <p className="flex items-start gap-1 text-xs font-medium text-red-500" role="alert">
+            <span className="flex-1">{erro}</span>
+            {/* O erro desta ação: X só local (07/10). */}
+            <BotaoDescartar compacto aoDescartar={() => setErro(null)} className="-my-1" />
           </p>
         )}
         <div className="flex items-center gap-2 flex-wrap justify-end">

@@ -19,6 +19,20 @@ import { FUSO_PADRAO } from "@/lib/fuso";
 import { lerRevisao, type RevisaoEmAndamento } from "@/lib/pipeline/revisao";
 import { pedidoEmCurso, pedidoParado, rotuloDaEtapa, type PedidoDoCard } from "@/lib/media/pedido-do-card-estado";
 import { pedirLeituraDoSino } from "@/lib/notificacoes/tipos";
+import { BotaoDescartar, Descartavel, useDescartes } from "@/components/ui/descartar";
+import {
+  chaveDaAberturaIa,
+  chaveDaCampanha,
+  chaveDaJornadaDoProjetoVazio,
+  chaveDaMontagem,
+  chaveDaRevisaoDoCorte,
+  chaveDoAndamentoParado,
+  chaveDoDiaReprovado,
+  chaveDoMotivoDaMontagem,
+  chaveDoNaoRevisado,
+  chaveDoPedidoQueParou,
+  chaveDoVideoDaPeca,
+} from "@/lib/avisos/chaves";
 
 // Sem SSR: o escritorio decide WebGL e tema no primeiro render, e isso so
 // existe no navegador. O three.js so e baixado nesta aba, e so aqui.
@@ -51,7 +65,7 @@ import { custoDeRefazerPeca } from "@/lib/credits/estimativa";
 import { formatoDoPost } from "@/lib/publish/formato-de-destino";
 import { DestinosDoDia } from "@/components/posts/destinos-do-dia";
 import { EditorDeTextos } from "@/components/content/editor-de-textos";
-import { FalhaDaPublicacao } from "@/components/posts/falha-da-publicacao";
+import { FalhaDaPublicacao, LinhaDaPublicacaoRecolhida, chaveDoPostQueFalhou } from "@/components/posts/falha-da-publicacao";
 import { TRADUCAO_DOS_CODIGOS, chamadoDaFalha, codigoDaFalha, motivoDaRedeNaFrase } from "@/lib/publish/codigos";
 import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
 import { SemanaDoQuadro, proximaPeca, type DiaDaSemana, type PecaDoDia, type EstadoDaPeca, type PortaDoDia } from "@/components/content/semana-do-quadro";
@@ -150,6 +164,11 @@ interface ContentManagerProps {
    * cliente achava que a edição tinha terminado.
    */
   falhasDaMontagem?: FalhaDaMontagem[];
+  /**
+   * Quem vê é o dono do projeto (07/10): só ele apaga o vídeo que parou. O
+   * membro da equipe descarta o aviso, só para ele.
+   */
+  souDono?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2741,82 +2760,132 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                         (localCard.metadata as { revisaoDoCorte?: RevisaoDoCorte } | null)?.revisaoDoCorte
                       );
                       if (!leitura || leitura.estado === "aprovado") return null;
-                      return (
+                      // O estado final sem conserto se descarta (07/10); o "refazendo" é
+                      // trabalho andando e fica sem X.
+                      const revisao = (localCard.metadata as { revisaoDoCorte?: RevisaoDoCorte } | null)?.revisaoDoCorte;
+                      const bloco = (
                         <div
                           className="rounded-xl border px-3 py-2 text-sm space-y-1"
                           style={{
                             borderColor: leitura.trabalhando ? "#c084fc" : "var(--accent-orange)",
                             color: leitura.trabalhando ? "#c084fc" : "var(--accent-orange)",
                           }}
+                          data-aviso="revisao-do-corte"
                         >
-                          <p className="flex items-center gap-2 font-medium">
-                            {leitura.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {leitura.rotulo}
-                          </p>
+                          <div className="flex items-start gap-2">
+                            <p className="flex flex-1 items-center gap-2 font-medium">
+                              {leitura.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {leitura.rotulo}
+                            </p>
+                            {!leitura.trabalhando && <BotaoDescartar compacto />}
+                          </div>
                           {leitura.detalhe && <p style={{ color: "var(--text-muted)" }}>{leitura.detalhe}</p>}
                         </div>
                       );
+                      if (leitura.trabalhando) return bloco;
+                      return <Descartavel chave={chaveDaRevisaoDoCorte(localCard.id, revisao ? `${revisao.refacoes}-${revisao.desde}` : null)}>{bloco}</Descartavel>;
                     })()}
                     {/* A edição completa, espelhada no card como `montagem`
                         (lib/media/montagem-nos-cortes.ts). */}
                     {(() => {
-                      const mo = lerMontagem((localCard.metadata as { montagem?: unknown } | null)?.montagem);
+                      const brutoMo = (localCard.metadata as { montagem?: { desde?: string } } | null)?.montagem;
+                      const mo = lerMontagem(brutoMo);
                       if (!mo) return null;
                       const metaMo = localCard.metadata as { videoJobId?: string; completo?: boolean; trechoIndice?: number } | null;
-                      return (
+                      const alvoMo: "completo" | number | null = metaMo?.completo === true ? "completo" : typeof metaMo?.trechoIndice === "number" ? metaMo.trechoIndice : null;
+                      const podeTentar = Boolean(mo.podeTentarDeNovo && metaMo?.videoJobId && alvoMo !== null);
+                      const tentar = podeTentar ? (
+                        <TentarMontagem
+                          videoJobId={metaMo!.videoJobId!}
+                          alvo={alvoMo!}
+                          compacto
+                          aoPedir={() => {
+                            const updated = {
+                              ...localCard,
+                              metadata: { ...(localCard.metadata ?? {}), montagem: { estado: "gerando", desde: new Date().toISOString(), motivo: null, falhaTecnica: false } },
+                            };
+                            setLocalCard(updated);
+                            onCardUpdate(updated);
+                          }}
+                        />
+                      ) : null;
+                      // O que se descarta (07/10): a falha técnica (a MESMA chave da faixa
+                      // acima do quadro e do sino: descartar lá recolhe aqui) e o motivo de
+                      // um corte sem a edição completa. Trabalho andando e o pronto sem
+                      // motivo são estado, sem X. Com o botão de tentar de novo, o aviso
+                      // RECOLHE e o botão fica: é aqui que a ação mora depois da faixa.
+                      const temAviso = !mo.trabalhando && (mo.podeTentarDeNovo !== undefined || Boolean(mo.detalhe));
+                      const chaveMo = !temAviso
+                        ? null
+                        : mo.podeTentarDeNovo !== undefined && metaMo?.videoJobId && alvoMo !== null
+                          ? chaveDaMontagem(metaMo.videoJobId, alvoMo, brutoMo?.desde)
+                          : chaveDoMotivoDaMontagem(localCard.id, brutoMo?.desde);
+                      const bloco = (
                         <div
                           className="rounded-xl border px-3 py-2 text-sm space-y-1"
                           style={{
                             borderColor: mo.trabalhando ? "#c084fc" : mo.podeTentarDeNovo ? "var(--accent-orange)" : "var(--border)",
                             color: mo.trabalhando ? "#c084fc" : mo.estado === "pronto" ? "#4ade80" : mo.podeTentarDeNovo ? "var(--accent-orange)" : "var(--text-muted)",
                           }}
+                          data-aviso="montagem-do-card"
                         >
-                          <p className="flex items-center gap-2 font-medium">
-                            {mo.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {mo.rotulo}
-                          </p>
+                          <div className="flex items-start gap-2">
+                            <p className="flex flex-1 items-center gap-2 font-medium">
+                              {mo.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {mo.rotulo}
+                            </p>
+                            {temAviso && <BotaoDescartar compacto />}
+                          </div>
                           {mo.detalhe && <p style={{ color: "var(--text-muted)" }}>{mo.detalhe}</p>}
                           {/* A saída da falha técnica (01/10, parte 240), sem cobrar. */}
-                          {mo.podeTentarDeNovo && metaMo?.videoJobId && (metaMo.completo === true || typeof metaMo.trechoIndice === "number") && (
-                            <div className="pt-1">
-                              <TentarMontagem
-                                videoJobId={metaMo.videoJobId}
-                                alvo={metaMo.completo === true ? "completo" : (metaMo.trechoIndice as number)}
-                                compacto
-                                aoPedir={() => {
-                                  const updated = {
-                                    ...localCard,
-                                    metadata: { ...(localCard.metadata ?? {}), montagem: { estado: "gerando", desde: new Date().toISOString(), motivo: null, falhaTecnica: false } },
-                                  };
-                                  setLocalCard(updated);
-                                  onCardUpdate(updated);
-                                }}
-                              />
-                            </div>
-                          )}
+                          {tentar && <div className="pt-1">{tentar}</div>}
                         </div>
+                      );
+                      if (!temAviso) return bloco;
+                      return (
+                        <Descartavel
+                          chave={chaveMo}
+                          modo={tentar ? "recolher" : "sumir"}
+                          compacto={
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} data-aviso="montagem-recolhida">
+                              <span>Montagem de efeitos falhou</span>
+                              {tentar}
+                            </div>
+                          }
+                        >
+                          {bloco}
+                        </Descartavel>
                       );
                     })()}
                     {/* A abertura por IA (Higgsfield), espelhada no card como
                         `aberturaIa` (lib/media/higgsfield-nos-cortes.ts). */}
                     {(() => {
-                      const ia = lerAberturaIa((localCard.metadata as { aberturaIa?: unknown } | null)?.aberturaIa);
+                      const brutoIa = (localCard.metadata as { aberturaIa?: { desde?: string } } | null)?.aberturaIa;
+                      const ia = lerAberturaIa(brutoIa);
                       if (!ia) return null;
-                      return (
+                      // O estado final sem a abertura se descarta (07/10); gerando e pronto são estado.
+                      const finalSemConserto = !ia.trabalhando && ia.estado !== "pronto";
+                      const bloco = (
                         <div
                           className="rounded-xl border px-3 py-2 text-sm space-y-1"
                           style={{
                             borderColor: ia.trabalhando ? "#c084fc" : "var(--border)",
                             color: ia.trabalhando ? "#c084fc" : ia.estado === "pronto" ? "#4ade80" : "var(--text-muted)",
                           }}
+                          data-aviso="abertura-ia"
                         >
-                          <p className="flex items-center gap-2 font-medium">
-                            {ia.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {ia.rotulo}
-                          </p>
+                          <div className="flex items-start gap-2">
+                            <p className="flex flex-1 items-center gap-2 font-medium">
+                              {ia.trabalhando && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {ia.rotulo}
+                            </p>
+                            {finalSemConserto && <BotaoDescartar compacto />}
+                          </div>
                           {ia.detalhe && <p style={{ color: "var(--text-muted)" }}>{ia.detalhe}</p>}
                         </div>
                       );
+                      if (!finalSemConserto) return bloco;
+                      return <Descartavel chave={chaveDaAberturaIa(localCard.id, ia.estado, brutoIa?.desde)}>{bloco}</Descartavel>;
                     })()}
                     {(() => {
                       const meta = localCard.metadata as { destinoRotulo?: string } | null;
@@ -3047,15 +3116,18 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 A revisão da Vera caiu e o dia seguiu em vez de ser refeito
                 (lib/squad/sem-revisao.ts). O aviso fica onde se aprova. */}
             {dayPosts.some((p) => naoRevisado(p.metadata)) && (
-              <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }}>
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-amber-400">Não revisado pela Vera</p>
-                  <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>
-                    A revisão deste dia não rodou, e as peças vieram sem a conferência dela. Confira o texto e a arte antes de aprovar.
-                  </p>
+              <Descartavel chave={chaveDoNaoRevisado(localCard.id, dayPosts.filter((p) => naoRevisado(p.metadata)).map((p) => p.id))}>
+                <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }} data-aviso="nao-revisado">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-amber-400">Não revisado pela Vera</p>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>
+                      A revisão deste dia não rodou, e as peças vieram sem a conferência dela. Confira o texto e a arte antes de aprovar.
+                    </p>
+                  </div>
+                  <BotaoDescartar compacto />
                 </div>
-              </div>
+              </Descartavel>
             )}
             {(() => {
               type MarcaDeFalha = {
@@ -3077,8 +3149,52 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
               const falha = (peca?.metadata as { videoFalhou?: MarcaDeFalha } | null)?.videoFalhou;
               if (!peca || !falha?.motivo) return null;
               const protocolo = falha.chamado?.protocolo ?? chamadoAberto;
-              return (
-                <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }}>
+              // As saídas da peça sem vídeo (o código, o chamado e publicar como
+              // imagem), as mesmas no aviso inteiro e no recolhido (07/10).
+              const acoesDaFalha = (
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      {falha.codigo && !falha.refazendo && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-[2px] rounded font-mono"
+                          style={{ background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                        >
+                          {falha.codigo}
+                        </span>
+                      )}
+                      {!falha.resolveSozinho &&
+                        (protocolo ? (
+                          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                            Chamado aberto: <b className="font-mono">{protocolo}</b>. Você recebe a resposta por e-mail.
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={abrindoChamado}
+                            onClick={() => void abrirChamado(peca.id, falha.codigo)}
+                            className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-amber-500/50 hover:text-amber-400 disabled:opacity-50"
+                            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          >
+                            {abrindoChamado ? "Abrindo…" : "Abrir chamado"}
+                          </button>
+                        ))}
+                      {/* A SAÍDA (21/09): o dia publica como imagem, o trabalho sai
+                          da fila e o crédito de vídeo volta. */}
+                      {localCard.runId && localCard.dayOfWeek && (
+                        <button
+                          type="button"
+                          disabled={publicandoComoImagem}
+                          onClick={() => void publicarDiaComoImagem()}
+                          className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-orange-500/50 hover:text-orange-400 disabled:opacity-50"
+                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                          title="Publica a arte de abertura como imagem, tira o vídeo da fila e devolve os créditos de vídeo."
+                        >
+                          {publicandoComoImagem ? "Trocando…" : "Publicar como imagem"}
+                        </button>
+                      )}
+                    </div>
+              );
+              const avisoDaFalha = (
+                <div className="rounded-xl px-4 py-3 border border-amber-500/30 flex gap-2.5" style={{ background: "rgba(245,158,11,0.06)" }} data-aviso="video-da-peca">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
                     {/* ESPERANDO e NÃO VEIO são estados diferentes (21/09, noite).
@@ -3105,53 +3221,26 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     {/* O CÓDIGO, e não o diagnóstico. O que ele significa é
                         assunto interno: o cliente informa o código e quem lê o
                         resto é quem pode resolver (pedido do Bruno, 21/09). */}
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {falha.codigo && !falha.refazendo && (
-                        <span
-                          className="text-[10px] font-semibold px-1.5 py-[2px] rounded font-mono"
-                          style={{ background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
-                        >
-                          {falha.codigo}
-                        </span>
-                      )}
-                      {!falha.resolveSozinho &&
-                        (protocolo ? (
-                          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                            Chamado aberto: <b className="font-mono">{protocolo}</b>. Você recebe a resposta por e-mail.
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={abrindoChamado}
-                            onClick={() => void abrirChamado(peca.id, falha.codigo)}
-                            className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-amber-500/50 hover:text-amber-400 disabled:opacity-50"
-                            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                          >
-                            {abrindoChamado ? "Abrindo…" : "Abrir chamado"}
-                          </button>
-                        ))}
-                      {/* A SAIDA (21/09): "o usuario fica sem opcao".
-                          O quadro de abertura ja e uma peca de feed inteira,
-                          com manchete e formato de cada rede, e e assim que o
-                          dia sai quando o saldo de video acaba ANTES. Aqui a
-                          mesma saida e oferecida DEPOIS, quando o video foi
-                          tentado e nao veio: o dia publica como imagem, o
-                          trabalho sai da fila e o credito de video volta. */}
-                      {localCard.runId && localCard.dayOfWeek && (
-                        <button
-                          type="button"
-                          disabled={publicandoComoImagem}
-                          onClick={() => void publicarDiaComoImagem()}
-                          className="text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-orange-500/50 hover:text-orange-400 disabled:opacity-50"
-                          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                          title="Publica a arte de abertura como imagem, tira o vídeo da fila e devolve os créditos de vídeo."
-                        >
-                          {publicandoComoImagem ? "Trocando…" : "Publicar como imagem"}
-                        </button>
-                      )}
-                    </div>
+                    {acoesDaFalha}
                   </div>
+                  {!falha.refazendo && <BotaoDescartar compacto />}
                 </div>
+              );
+              // O vídeo sendo gerado de novo é trabalho andando: sem X.
+              if (falha.refazendo) return avisoDaFalha;
+              return (
+                <Descartavel
+                  chave={chaveDoVideoDaPeca(peca.id, falha.codigo, falha.tentativa)}
+                  modo="recolher"
+                  compacto={
+                    <div className="rounded-xl px-4 py-2 border" style={{ borderColor: "var(--border)" }} data-aviso="video-da-peca-recolhido">
+                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>O vídeo desta peça não saiu.</p>
+                      {acoesDaFalha}
+                    </div>
+                  }
+                >
+                  {avisoDaFalha}
+                </Descartavel>
               );
             })()}
 
@@ -3327,8 +3416,11 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                   motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
                   onChamado={() => void refreshDayPosts()}
                   onArquivar={arquivar}
+                  chave={chaveDoPostQueFalhou(p.id, p.metadata)}
+                  rede={nomeDaRede(p.platform)}
                 />
               ) : (
+                <Descartavel chave={chaveDoPostQueFalhou(p.id, p.metadata)} modo="recolher" compacto={<LinhaDaPublicacaoRecolhida rede={nomeDaRede(p.platform)} onArquivar={arquivar} />}>
                 <div
                   className="flex items-center gap-2.5 rounded-xl px-4 py-3 border"
                   style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
@@ -3348,7 +3440,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     <Archive className="w-3 h-3" />
                     Arquivar
                   </button>
+                  <BotaoDescartar compacto />
                 </div>
+                </Descartavel>
               );
             })()}
 
@@ -3600,10 +3694,17 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
                           onChamado={() => void refreshDayPosts()}
                           onArquivar={() => arquivarPost(p)}
+                          chave={chaveDoPostQueFalhou(p.id, p.metadata)}
+                          rede={nomeDaRede(p.platform)}
                         />
                       ) : (
-                        <div
+                        <Descartavel
                           key={`falha-aprovado-${p.id}`}
+                          chave={chaveDoPostQueFalhou(p.id, p.metadata)}
+                          modo="recolher"
+                          compacto={<LinhaDaPublicacaoRecolhida rede={nomeDaRede(p.platform)} onArquivar={() => arquivarPost(p)} />}
+                        >
+                        <div
                           className="flex items-center gap-2.5 rounded-xl px-4 py-3 border"
                           style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
                         >
@@ -3624,7 +3725,9 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                             <Archive className="w-3 h-3" />
                             Arquivar
                           </button>
+                          <BotaoDescartar compacto />
                         </div>
+                        </Descartavel>
                       )
                     )}
 
@@ -3650,18 +3753,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                        */
                       const reprovados = postsDoDia.filter((p) => p.status === "rejected");
                       const custoTotal = reprovados.reduce((s, p) => s + custoDeRefazer(p), 0);
-                      return (
-                        <div className="rounded-xl px-4 py-3 border border-red-500/30 space-y-2.5" style={{ background: "rgba(239,68,68,0.06)" }}>
-                          <div className="flex items-center gap-2.5">
-                            <X className="w-4 h-4 text-red-400 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-red-400">Dia reprovado</p>
-                              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                                Só este dia. O resto da campanha continua de pé.
-                              </p>
-                            </div>
-                          </div>
-                          {reprovados.length > 0 && (
+                      // Descartável (07/10): o aviso recolhe e o "Gerar de novo" fica.
+                      const gerarDeNovo = reprovados.length > 0 && (
                             <button
                               type="button"
                               disabled={approving || refazendo !== null}
@@ -3674,8 +3767,23 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                                 ? "Gerando de novo…"
                                 : `Gerar ${reprovados.length === 1 ? "a peça" : `as ${reprovados.length} peças`} de novo, com o mesmo tema · ${custoTotal} créditos`}
                             </button>
-                          )}
+                      );
+                      return (
+                        <Descartavel chave={chaveDoDiaReprovado(localCard.id, reprovados.map((p) => p.id))} modo={gerarDeNovo ? "recolher" : "sumir"} compacto={gerarDeNovo}>
+                        <div className="rounded-xl px-4 py-3 border border-red-500/30 space-y-2.5" style={{ background: "rgba(239,68,68,0.06)" }} data-aviso="dia-reprovado">
+                          <div className="flex items-center gap-2.5">
+                            <X className="w-4 h-4 text-red-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-red-400">Dia reprovado</p>
+                              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                                Só este dia. O resto da campanha continua de pé.
+                              </p>
+                            </div>
+                            <BotaoDescartar compacto />
+                          </div>
+                          {gerarDeNovo}
                         </div>
+                        </Descartavel>
                       );
                     })()}
 
@@ -3735,6 +3843,8 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                           motivoDaRede={motivoDaRedeNaFrase(p.metadata)}
                           onChamado={() => void refreshDayPosts()}
                           onArquivar={() => arquivarPost(p)}
+                          chave={chaveDoPostQueFalhou(p.id, p.metadata)}
+                          rede={nomeDaRede(p.platform)}
                         />
                       ))}
 
@@ -4194,7 +4304,10 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
               {/* O ANDAMENTO DO PEDIDO (05/10): cada etapa com o seu estado, lida
                   do servidor; fechar e reabrir o modal mostra o mesmo. */}
+              {/* O pedido que parou se descarta (07/10); mandar de novo continua
+                  no campo do chat. O andamento é trabalho andando, sem X. */}
               {(pedidoAndando || pedidoQueParou) && (
+                <Descartavel chave={!pedidoAndando && pedidoQueParou ? chaveDoPedidoQueParou(localCard.id, pedidoQueParou.id) : null}>
                 <div
                   className="text-xs rounded-xl px-3 py-2 mr-6 space-y-1"
                   style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}
@@ -4202,9 +4315,12 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                 >
                   <span className="font-medium opacity-60 text-[10px] block">{localCard.agentName}</span>
                   {pedidoQueParou ? (
-                    <p style={{ color: "var(--text-muted)" }}>
-                      O pedido parou no meio e não terminou. O que já estava pronto ficou salvo; mande de novo para eu terminar.
-                    </p>
+                    <div className="flex items-start gap-2">
+                      <p className="flex-1" style={{ color: "var(--text-muted)" }}>
+                        O pedido parou no meio e não terminou. O que já estava pronto ficou salvo; mande de novo para eu terminar.
+                      </p>
+                      {!pedidoAndando && <BotaoDescartar compacto />}
+                    </div>
                   ) : (
                     (pedidoAndando?.etapas ?? []).map((e) => (
                       <div key={e.chave} className="flex items-center gap-2">
@@ -4230,6 +4346,7 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
                     </p>
                   )}
                 </div>
+                </Descartavel>
               )}
 
               {/* Carousel slide context indicator */}
@@ -4343,13 +4460,13 @@ function CardDetailModal({ card, agentRow, projectId, socialAccounts, onClose, o
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana, falhasDaMontagem }: ContentManagerProps) {
+export function ContentManager({ projectId, projectName, initialCards, activeRun, lastFailedRun, socialAccounts, videos, videoEstilo, videoMusica, videoTermos, videoSemana, postFrequency, postsDaSemana, falhasDaMontagem, souDono = false }: ContentManagerProps) {
   const [selectedMonday, setSelectedMonday] = useState<Date>(getMonday(new Date()));
   const [cards, setCards] = useState<CampaignCard[]>(initialCards);
   const [postsSemana, setPostsSemana] = useState<PostParaEstado[]>(postsDaSemana ?? []);
   // A campanha da semana, com o registro: é dele que sai o andamento de cada
   // dia no calendário (28/09). A rota de status já mandava, e a tela ignorava.
-  const [runDaSemana, setRunDaSemana] = useState<{ status: string; logs: unknown } | null>(null);
+  const [runDaSemana, setRunDaSemana] = useState<{ id?: string; status: string; logs: unknown } | null>(null);
   // Os planos de vídeo que tocam a semana aberta (05/10): é deles que sai o
   // lugar guardado do corte nos dias de vídeo curto (lib/media/espera-do-corte.ts).
   const [planosDoVideo, setPlanosDoVideo] = useState<PlanoDoVideo[]>([]);
@@ -4379,9 +4496,22 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   // fica trabalhando sozinha lá embaixo", com o planejador da semana do vídeo
   // perguntando de novo dia e formato que a janela da campanha já tinha
   // perguntado. O painel só deve aparecer quando a origem é vídeo.
-  const [enviarAberto, setEnviarAberto] = useState(
-    videos.length === 0 && initialCards.length === 0 && activeRun?.status !== "running"
+  //
+  // DESCARTÁVEL (07/10): a jornada que abre SOZINHA no projeto vazio lembra
+  // quando a pessoa a fecha, e não reabre a cada visita. Aberta pelo botão ou
+  // por ?abrir=video, fechar não grava nada.
+  const descartes = useDescartes();
+  const chaveDaJornada = chaveDaJornadaDoProjetoVazio(projectId);
+  const [jornadaAbriuSozinha, setJornadaAbriuSozinha] = useState(
+    () => videos.length === 0 && initialCards.length === 0 && activeRun?.status !== "running" && !descartes.ehDescartado(chaveDaJornada)
   );
+  const [enviarAberto, setEnviarAberto] = useState(jornadaAbriuSozinha);
+  /** Fechar a jornada: se ela abriu sozinha, o descarte fica lembrado (sem toast: é uma janela). */
+  const fecharJornada = () => {
+    if (jornadaAbriuSozinha && chaveDaJornada) descartes.descartar([chaveDaJornada], { desfazivel: false });
+    setJornadaAbriuSozinha(false);
+    setEnviarAberto(false);
+  };
   const [menuAberto, setMenuAberto] = useState(false);
   const [gravacoesEnviadas, setGravacoesEnviadas] = useState(0);
   const [comecarNoVideo, setComecarNoVideo] = useState(false);
@@ -4407,6 +4537,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
     const abrir = params.get("abrir");
     if (abrir === "video") {
       setComecarNoVideo(true);
+      setJornadaAbriuSozinha(false);
       setEnviarAberto(true);
     } else if (abrir === "tema") {
       setOrigemDoModal("tema");
@@ -4473,18 +4604,52 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
   const [confirmarFalhas, setConfirmarFalhas] = useState(false);
   // A confirmação de "Cancelar a campanha desta semana", no mesmo menu (05/10).
   const [confirmarCancelarCampanha, setConfirmarCancelarCampanha] = useState(false);
-  // Persist dismissed state in localStorage keyed by run ID so it survives page reloads
-  const DISMISSED_KEY = lastFailedRun ? `banner-dismissed-${lastFailedRun.id}` : null;
-  const [failedBannerDismissed, setFailedBannerDismissed] = useState<boolean>(() => {
-    if (!lastFailedRun) return true;
-    try { return localStorage.getItem(`banner-dismissed-${lastFailedRun.id}`) === "1"; } catch { return false; }
-  });
-
-  function dismissFailedBanner() {
-    setFailedBannerDismissed(true);
-    if (DISMISSED_KEY) {
-      try { localStorage.setItem(DISMISSED_KEY, "1"); } catch { /* ignore */ }
+  // A FAIXA DA CAMPANHA QUE FALHOU (ou foi cancelada) se descarta pelo mesmo
+  // mecanismo de todos os avisos (07/10): lembrado no servidor, por pessoa, e
+  // com a mesma chave do sino ("falha:campanha:<run>"). Antes era um
+  // localStorage lido no inicializador do estado: o servidor desenhava a faixa
+  // e o navegador a escondia, e a hidratação divergia; e o descarte valia só
+  // naquele navegador.
+  const chaveDaFaixaDaCampanha = lastFailedRun ? chaveDaCampanha(lastFailedRun.id, lastFailedRun.status) : null;
+  const [faixaDaCampanhaEscondida, setFaixaDaCampanhaEscondida] = useState(false);
+  const failedBannerDismissed =
+    !lastFailedRun || faixaDaCampanhaEscondida || (chaveDaFaixaDaCampanha ? descartes.ehDescartado(chaveDaFaixaDaCampanha) : false);
+  // O descarte antigo, do localStorage ("banner-dismissed-<run>"), sobe para o
+  // servidor com a chave do status certo, em silêncio (sem toast nem anúncio:
+  // a pessoa não clicou nada agora). A entrada local só sai quando o servidor
+  // LEMBROU; até lá ela continua valendo nesta tela, e a próxima visita tenta
+  // de novo (sem a tabela, com a rede caída ou no teto, o descarte antigo não
+  // se perde).
+  const runDaFaixa = lastFailedRun?.id ?? null;
+  useEffect(() => {
+    if (!runDaFaixa || !chaveDaFaixaDaCampanha) return;
+    const antiga = `banner-dismissed-${runDaFaixa}`;
+    let tinha = false;
+    try {
+      tinha = localStorage.getItem(antiga) === "1";
+    } catch {
+      /* armazenamento bloqueado: nada a importar */
     }
+    if (!tinha) return;
+    void descartes.descartar([chaveDaFaixaDaCampanha], { desfazivel: false, silencioso: true }).then((lembrado) => {
+      if (!lembrado) return;
+      try {
+        localStorage.removeItem(antiga);
+      } catch {
+        /* sem armazenamento: a próxima visita tenta de novo, e o servidor ignora a repetida */
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runDaFaixa, chaveDaFaixaDaCampanha]);
+
+  /**
+   * Arquivar e cancelar a semana escondem a faixa porque o fato ACABOU: só
+   * nesta visita, sem gravar descarte e sem o toast de "Aviso descartado",
+   * que a pessoa não pediu. Quem grava o descarte é só o X da faixa.
+   */
+  function dismissFailedBanner() {
+    if (chaveDaFaixaDaCampanha) descartes.esconderLocal([chaveDaFaixaDaCampanha]);
+    else setFaixaDaCampanhaEscondida(true);
   }
 
   // Os posts que falharam na semana aberta (01/10): a lista do menu de três pontos.
@@ -4499,7 +4664,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       const data = await res.json();
       setCards(data.cards ?? []);
       setPostsSemana(data.posts ?? []);
-      setRunDaSemana(data.run ? { status: data.run.status, logs: data.run.logs } : null);
+      setRunDaSemana(data.run ? { id: data.run.id, status: data.run.status, logs: data.run.logs } : null);
       setPlanosDoVideo(Array.isArray(data.planosDoVideo) ? data.planosDoVideo : []);
     } catch {
       // silent
@@ -4590,6 +4755,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
    */
   function openNewCampaign() {
     setOrigemDoModal(undefined);
+    setJornadaAbriuSozinha(false);
     setEnviarAberto(true);
   }
 
@@ -5421,7 +5587,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         quando: primeiro.scheduledAt ? new Date(primeiro.scheduledAt).getTime() : 0,
         origem,
         estado,
-        identidade: esperaDaPeca(g.posts.map((p) => ({ imageUrl: p.imageUrl, metadata: p.metadata }))),
+        identidade: esperaDaPeca(g.posts.map((p) => ({ id: p.id, runId: p.runId, imageUrl: p.imageUrl, metadata: p.metadata }))),
         // CANCELÁVEL pelo cartão (05/10): tem card para cancelar, não está
         // publicada e o squad não está no meio dela (cancelar o que a esteira
         // ainda escreve não a para; para isso existe o cancelar da geração).
@@ -5508,6 +5674,10 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
       formato,
       pecas,
       andamento: andamento[day.dayOfWeek] ?? null,
+      chaveDoAndamentoParado:
+        runDaSemana?.id && andamento[day.dayOfWeek]?.parado
+          ? chaveDoAndamentoParado(runDaSemana.id, day.dayOfWeek, andamento[day.dayOfWeek]!.fase)
+          : null,
       esperasDoCorte,
     };
   });
@@ -5774,6 +5944,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         // semana das peças (05/10).
         aoAbrirPeca={abrirPecaDoVideo}
         aoIrAoQuadro={irAoQuadroNaSemana}
+        podeApagar={souDono}
       />
 
       {/* A montagem de efeitos que desistiu, dita com todas as letras e com a
@@ -5796,10 +5967,11 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
         redesConectadas={socialAccounts.filter((a) => a.isActive !== false).map((a) => a.platform)}
         comecarNoVideo={comecarNoVideo}
         onFechar={() => {
-          setEnviarAberto(false);
+          fecharJornada();
           setComecarNoVideo(false);
         }}
         onEnviado={() => {
+          setJornadaAbriuSozinha(false);
           setEnviarAberto(false);
           setComecarNoVideo(false);
           setGravacoesEnviadas((n) => n + 1);
@@ -5872,7 +6044,7 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
           >
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-red-300">
+              <p className="text-sm font-medium text-red-300" id="titulo-da-faixa-da-campanha">
                 {lastFailedRun.status === "cancelled" ? "Geração cancelada" : "Geração interrompida"}
               </p>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -5896,15 +6068,13 @@ export function ContentManager({ projectId, projectName, initialCards, activeRun
                 Tentar novamente
               </button>
             )}
-            {/* Dismiss button */}
-            <button
-              onClick={() => dismissFailedBanner()}
-              title="Fechar"
-              className="shrink-0 p-1 rounded-lg hover:bg-[var(--realce-2)] transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {/* O X lembrado por pessoa (07/10); sem chave, só nesta visita. */}
+            <BotaoDescartar
+              chave={chaveDaFaixaDaCampanha}
+              aoDescartar={chaveDaFaixaDaCampanha ? undefined : () => setFaixaDaCampanhaEscondida(true)}
+              descricaoId="titulo-da-faixa-da-campanha"
+              className="-mt-2 -mr-2"
+            />
           </motion.div>
         )}
       </AnimatePresence>

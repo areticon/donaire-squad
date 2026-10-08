@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   AGENTES,
+  donoDaPeca,
   situacaoDoSquad,
   type LogDaEsteira,
   type PecaDoSquad,
@@ -13,12 +14,17 @@ import {
 import type { CenaAtiva, Gesto, Tema } from "@/components/escritorio/escritorio-do-squad";
 import type { Turno } from "@/components/escritorio/menu-do-agente";
 import { EscritorioDeMassinha } from "@/components/escritorio/escritorio-de-massinha";
-import { UserRoundPen, X } from "lucide-react";
+import { UserRoundPen } from "lucide-react";
 import { AvatarDoAgente } from "@/components/escritorio/avatar-do-agente";
 import type { Sugestao } from "@/lib/squad/tipo-da-sugestao";
 import { APARENCIA_PADRAO_DO_USUARIO, type Aparencia } from "@/lib/squad/aparencia-do-boneco";
 import { bastaoDoVideo, videoDaVez, type VideoParaOBastao } from "@/lib/squad/bastao-do-video";
 import { useUmaAUma } from "@/components/escritorio/pecas-uma-a-uma";
+import { BotaoDescartar, useDescartes } from "@/components/ui/descartar";
+import { chaveDaDica, chaveDaSugestao, chaveDaVisitaDaPeca } from "@/lib/avisos/chaves";
+
+/** A dica dos controles da cena 3D (07/10): descarte permanente por pessoa. */
+const CHAVE_DOS_CONTROLES = chaveDaDica("controles-escritorio") as string;
 
 /**
  * O escritório, do lado de fora da cena.
@@ -375,6 +381,47 @@ export function Escritorio({
    */
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
   const [visita, setVisita] = useState<{ agentId: string; sugestao?: Sugestao } | null>(null);
+  /**
+   * A VISITA SE DESCARTA (07/10, o print do Bruno: "não consigo mandar
+   * embora"). O balão voltava a cada 40 s enquanto houvesse peça esperando. O
+   * X sobre a cena grava uma chave por PEÇA pendente daquele agente
+   * ("visita-peca:<agente>:<peça>"): a visita só volta quando aparece peça
+   * pendente sem chave, ou seja, uma peça nova. Aprovar uma peça não traz a
+   * visita de volta. Na sugestão, a chave é a dela, sem gravar recusa: o
+   * "Agora não" continua sendo a recusa que o squad aprende. As peças
+   * continuam no quadro, com "esperando você".
+   */
+  const descartes = useDescartes();
+  const [visitaNaTela, setVisitaNaTela] = useState(false);
+  // A mesma regra da contagem de `situacaoDoSquad`: o dono pela `donoDaPeca`
+  // (que traduz os ids antigos e cai no tipo), sobre as peças que já estão na
+  // sala. Pelo `agentId` cru, a peça de id antigo não tinha chave e o agente
+  // parava de visitar sem ninguém ter dispensado.
+  const pendentesDoAgente = useCallback(
+    (agentId: string) => pecasNaSala.filter((p) => donoDaPeca(p)?.id === agentId && !p.emProducao && (p.status === "pending" || p.status === "needs_revision")),
+    [pecasNaSala]
+  );
+  const chavesDaVisita = useCallback(
+    (v: { agentId: string; sugestao?: Sugestao }) =>
+      (v.sugestao ? [chaveDaSugestao(v.sugestao.id)] : pendentesDoAgente(v.agentId).map((p) => chaveDaVisitaDaPeca(v.agentId, p.id))).filter(
+        (c): c is string => Boolean(c)
+      ),
+    [pendentesDoAgente]
+  );
+  // Em refs: o relógio das visitas não pode recomeçar a cada desenho do
+  // Gestor (as peças chegam num array novo a cada desenho).
+  const descartesRef = useRef(descartes);
+  const chavesDaVisitaRef = useRef(chavesDaVisita);
+  useEffect(() => {
+    descartesRef.current = descartes;
+    chavesDaVisitaRef.current = chavesDaVisita;
+  });
+  function dispensarVisita(v: { agentId: string; sugestao?: Sugestao }) {
+    descartes.descartar(chavesDaVisita(v));
+    setVisita(null);
+    setVisitaNaTela(false);
+    setCena(null);
+  }
   const [sugestaoAberta, setSugestaoAberta] = useState<Sugestao | null>(null);
   const [decidindo, setDecidindo] = useState(false);
   const vezDaVisita = useRef(0);
@@ -399,13 +446,18 @@ export function Escritorio({
   useEffect(() => {
     if (modo !== "3d" || runId || haVideoAndando) return;
     const visitar = (primeira = false) => {
+      const d = descartesRef.current;
       const pedidos = situacao.agentes
         .filter((s) => s.pendentes > 0 && s.estado !== "trabalhando")
+        // Só quem tem peça pendente ainda não dispensada vem à sala.
+        .filter((s) => chavesDaVisitaRef.current({ agentId: s.agente.id }).some((c) => !d.ehDescartado(c)))
         .map((s) => ({
           agentId: s.agente.id,
           fala: `${s.pendentes === 1 ? "Tenho 1 peça" : `Tenho ${s.pendentes} peças`} esperando você. Me dá um retorno?`,
         }));
-      const comSugestao = sugestoes.map((s) => ({ agentId: s.agenteId, fala: s.fala, sugestao: s as Sugestao | undefined }));
+      const comSugestao = sugestoes
+        .filter((s) => !d.ehDescartado(chaveDaSugestao(s.id)))
+        .map((s) => ({ agentId: s.agenteId, fala: s.fala, sugestao: s as Sugestao | undefined }));
       // Sugestão e pedido de retorno se revezam; a primeira visita é sempre
       // uma sugestão quando existe, porque é a que muda o projeto.
       const vez = vezDaVisita.current;
@@ -416,6 +468,8 @@ export function Escritorio({
       vezDaVisita.current += 1;
       contador.current += 1;
       setVisita({ agentId: escolha.agentId, sugestao: escolha.sugestao });
+      setVisitaNaTela(true);
+      setTimeout(() => setVisitaNaTela(false), 14_000);
       setCena({ de: escolha.agentId, para: "voce", humor: "entrega", fala: escolha.fala, n: contador.current, demora: 14 });
     };
     // A primeira visita vem logo, para a sala não parecer parada; depois, com folga.
@@ -549,6 +603,7 @@ export function Escritorio({
             titulo={titulo}
             tema={tema}
             falaDaMesa={falaDaMesa}
+            aoFecharFalaDaMesa={() => setFalaDaMesa(null)}
             reduzido={false}
             onAbrirAgente={abrir}
             conversas={conversas}
@@ -588,9 +643,17 @@ export function Escritorio({
                     {sugestaoAberta.fala}
                   </p>
                 </div>
-                <button type="button" onClick={() => setSugestaoAberta(null)} aria-label="Fechar" style={{ color: "var(--text-muted)" }}>
-                  <X className="h-4 w-4" />
-                </button>
+                {/* O X fecha e dispensa a VISITA desta sugestão, sem gravar
+                    recusa (07/10): "Agora não" continua sendo a recusa. */}
+                <BotaoDescartar
+                  rotulo="Fechar e dispensar a visita"
+                  aoDescartar={() => {
+                    const s = sugestaoAberta;
+                    setSugestaoAberta(null);
+                    dispensarVisita({ agentId: s.agenteId, sugestao: s });
+                  }}
+                  className="-mt-2 -mr-2"
+                />
               </div>
               <p className="mt-4 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 {sugestaoAberta.porque}
@@ -649,6 +712,7 @@ export function Escritorio({
             situacao={situacao}
             cena={cena}
             falaDaMesa={falaDaMesa}
+            aoFecharFalaDaMesa={() => setFalaDaMesa(null)}
             onAbrirAgente={abrir}
             conversas={conversas}
             pensando={pensando}
@@ -662,13 +726,37 @@ export function Escritorio({
             ninguém clica no chão de um painel por conta própria. Ela começa
             pelo clique, que funciona também no celular, e o teclado vem
             depois, para quem já está dentro da cena. */}
-        {modo === "3d" && (
+        {modo === "3d" && !descartes.ehDescartado(CHAVE_DOS_CONTROLES) && (
+          // A dica não segura o toque (07/10): o clique e o arraste passam
+          // direto para a cena; só o X recebe o toque.
           <span
-            className="pointer-events-none absolute bottom-2 right-3 rounded-md px-2 py-0.5 text-[10px]"
+            className="pointer-events-none absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-md py-0.5 pl-2 pr-0.5 text-[10px]"
             style={{ color: "var(--text-muted)", background: "color-mix(in srgb, var(--bg-surface) 80%, transparent)" }}
           >
-            clique no chão para andar · E fala · X senta na sua mesa · C toma café · WASD · arraste para olhar
+            <span>clique no chão para andar · E fala · X senta na sua mesa · C toma café · WASD · arraste para olhar</span>
+            <BotaoDescartar compacto chave={CHAVE_DOS_CONTROLES} className="pointer-events-auto" />
           </span>
+        )}
+        {/* A VISITA NA SUA SALA, com o X em HTML sobre a cena (07/10). No
+            celular ela desce para baixo do "Personalizar meu avatar": na mesma
+            faixa do topo ela cobria o botão e tomava o toque dele. */}
+        {modo === "3d" && visita && visitaNaTela && !sugestaoAberta && (
+          <div
+            className="absolute left-3 top-14 z-10 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-lg border py-0.5 pl-2.5 pr-0.5 text-xs shadow-[var(--shadow)] sm:left-auto sm:right-3 sm:top-3"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+            data-visita
+          >
+            <span className="min-w-0">{AGENTES.find((a) => a.id === visita.agentId)?.primeiroNome ?? "O squad"} veio até a sua sala</span>
+            <BotaoDescartar rotulo="Dispensar a visita" aoDescartar={() => dispensarVisita(visita)} />
+          </div>
+        )}
+        {/* A fala da sua mesa (07/10): o X mora no próprio balão da cena (uma
+            pílula aqui repetia a mesma frase e cobria o botão do avatar no
+            celular). Para o leitor de tela, a frase é anunciada aqui. */}
+        {modo === "3d" && falaDaMesa && (
+          <p className="sr-only" role="status" data-fala-da-mesa>
+            {falaDaMesa}
+          </p>
         )}
       </div>
       {(runId || bastao) && ultimaFala && (

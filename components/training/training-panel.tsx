@@ -16,6 +16,8 @@ import {
   Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
@@ -282,17 +284,20 @@ export function TrainingPanel({ project, initialContexts }: TrainingPanelProps) 
         </p>
       </div>
 
-      {/* Info banner */}
+      {/* Info banner: dica fixa, descartada de vez por pessoa (07/10). */}
+      <Descartavel chave={chaveDaDica("treinamento-como-funciona")}>
       <div className="rounded-xl border p-4 flex gap-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
         <Eye className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-        <div>
+        <div className="flex-1">
           <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Como funciona</p>
           <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
             Você fornece textos descritivos: manuais de marca, regras, posts de referência, tom de voz. A IA (Claude) compila em um documento estruturado.
             Nas próximas campanhas, esse contexto é injetado automaticamente no prompt de todos os agentes do squad, do Roberto ao Paulo, com a Vera conferindo.
           </p>
         </div>
+        <BotaoDescartar className="-my-2 -mr-2" />
       </div>
+      </Descartavel>
 
       {/* Existing contexts */}
       {contexts.length > 0 && (

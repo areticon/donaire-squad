@@ -10,6 +10,8 @@ import {
   BarChart2, FileText, List, PieChart, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvisoDescartavel, BotaoDescartar, Descartavel, FraseDescartavel } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 import { PlanejadorSemanal } from "@/components/posts/planejador-semanal";
 import { cn } from "@/lib/utils";
 import { ModelosDosPosts } from "@/components/estilo-dos-posts/modelos-dos-posts";
@@ -580,7 +582,8 @@ export function OpcoesDoVideo({
                   (quinzenal ? ` (${diasDeVideo} por semana, durante 2 semanas)` : "") +
                   `, ${creditosDeVideoPorDia} créditos cada (${geracoesPorVideo === 1 ? "1 geração" : `${geracoesPorVideo} gerações do Veo`}): ${creditosDeVideo} no total. Você tem ${saldos.video}.`}
               {saldos !== null && saldos.video < creditosDeVideo && (
-                <> Faltam {creditosDeVideo - saldos.video}: sem eles, os dias de vídeo saem como imagem.</>
+                // X só local (07/10): vale até fechar a janela.
+                <FraseDescartavel> Faltam {creditosDeVideo - saldos.video}: sem eles, os dias de vídeo saem como imagem.</FraseDescartavel>
               )}
             </p>
             {/* A COTA DO GERADOR, que NAO e o saldo (21/09).
@@ -599,9 +602,9 @@ export function OpcoesDoVideo({
                 cota?.doCliente
               );
               return aviso ? (
-                <p className="text-xs mt-2 font-semibold leading-relaxed" style={{ color: "#fbbf24" }}>
+                <AvisoDescartavel chave={null} className="text-xs mt-2 font-semibold leading-relaxed" style={{ color: "#fbbf24" }}>
                   {aviso}
-                </p>
+                </AvisoDescartavel>
               ) : null;
             })()}
           </div>
@@ -900,15 +903,16 @@ export function FormatoPorRede({
         })}
       </div>
 
+      {/* X só local (07/10): o aviso vale até fechar a janela. */}
       {avisos.map((a) => (
-        <p key={a} className="text-[10px] mt-1.5 leading-snug" style={{ color: "var(--text-muted)" }}>
+        <AvisoDescartavel key={a} chave={null} className="text-[10px] mt-1.5 leading-snug" style={{ color: "var(--text-muted)" }}>
           {a}
-        </p>
+        </AvisoDescartavel>
       ))}
       {misturado && temVideo && (
-        <p className="text-[10px] mt-1.5 leading-snug text-amber-400">
+        <AvisoDescartavel chave={null} className="text-[10px] mt-1.5 leading-snug text-amber-400">
           O dia gera UM vídeo para todas as redes: como uma delas vai de reel ou story, ele sai em pé (9:16) também no feed das outras. Gerar dois vídeos custaria o dobro.
-        </p>
+        </AvisoDescartavel>
       )}
     </div>
   );
@@ -2978,7 +2982,9 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                   </div>
                 )}
 
+                {/* Dica fixa (07/10): descartada de vez, por pessoa. */}
                 {videoWarning && !isSingle && (
+                  <Descartavel chave={chaveDaDica("aviso-dias-de-video")}>
                   <div className="flex items-start gap-2 p-3 rounded-xl border border-yellow-800/40 bg-yellow-900/10">
                     <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
                     {/* O AVISO ESTAVA MENTINDO DESDE 19/09.
@@ -2995,7 +3001,9 @@ export function CampaignSetupModal({ onConfirm, onClose, defaultWeekStart, proje
                       {" "}você pode fechar a aba. O vídeo aparece no card quando fica pronto
                       {geracoesPorVideo > 1 ? `, e um de ${videoDuration}s são ${geracoesPorVideo} gerações encadeadas` : ""}.
                     </p>
+                    <BotaoDescartar compacto className="ml-auto -my-1" />
                   </div>
+                  </Descartavel>
                 )}
               </motion.div>
             )}

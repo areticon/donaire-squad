@@ -5,6 +5,8 @@ import { useState } from "react";
 import { ArrowRight, Tag, Video } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaCota } from "@/lib/avisos/chaves";
 import { reais, planoPublico, type PlanoId } from "@/lib/planos";
 import { diaEMes } from "@/lib/frase-da-cota";
 
@@ -303,12 +305,14 @@ export function FaixaDeCota({
   sugestao: { planoId: PlanoId; nome: string } | null;
 }) {
   const router = useRouter();
+  // Descartável (07/10): volta quando muda o número de gravações restantes ou o ciclo.
   return (
+    <Descartavel chave={chaveDaCota(renovaEm ?? "sem-ciclo", restantes)}>
     <div
       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
       style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}
     >
-      <p className="text-[13.5px] text-[var(--text-primary)]">
+      <p className="min-w-0 flex-1 text-[13.5px] text-[var(--text-primary)]">
         {restantes === 1 ? "Última gravação deste mês." : `Faltam ${restantes} gravações neste mês.`}{" "}
         {renovaEm && (
           <span className="text-[var(--text-muted)]">
@@ -321,6 +325,8 @@ export function FaixaDeCota({
           Ver o {sugestao.nome}
         </Button>
       )}
+      <BotaoDescartar compacto />
     </div>
+    </Descartavel>
   );
 }

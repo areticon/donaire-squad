@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import toast from "react-hot-toast";
-import { Check, Loader2, Sparkles, X } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import {
   OPCOES_DE_APROVEITAR,
   REDES_DE_APROVEITAR,
@@ -122,9 +123,8 @@ export function AproveitarRoteiro({ projectId, videoId, nome, aoFechar }: { proj
           </div>
         </div>
         {aoFechar && (
-          <button onClick={aoFechar} title="Fechar" className="p-1 rounded-lg hover:bg-[var(--realce-2)]" style={{ color: "var(--text-muted)" }}>
-            <X className="w-4 h-4" />
-          </button>
+          // O X padrão dos avisos (07/10); continua tirando o ?aproveitar= da URL.
+          <BotaoDescartar rotulo="Fechar" aoDescartar={aoFechar} className="-mt-2 -mr-2" />
         )}
       </div>
 

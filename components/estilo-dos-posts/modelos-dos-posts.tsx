@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { Check, Clapperboard, Library, Loader2, Palette, Pencil, RefreshCw, Wand2 } from "lucide-react";
 import { GaleriaDaBiblioteca } from "@/components/biblioteca-de-design/galeria-da-biblioteca";
 import { CriarEstilo } from "@/components/estilo-dos-posts/criar-estilo";
+import { AvisoDescartavel } from "@/components/ui/descartar";
 import type { DesignDaGaleria } from "@/lib/biblioteca-de-design/tipos";
 import { CATALOGO_DE_ESTILOS, estiloEmDestaque } from "@/lib/media/catalogo-de-estilos";
 import { modeloPorId } from "@/lib/modelos-de-arte/catalogo";
@@ -157,13 +158,16 @@ export function ModelosDosPosts({
         </p>
       </div>
 
+      {/* X só local (07/10): o erro é desta janela. */}
       {erro && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          <span>{erro} Você ainda pode seguir: o dia sem modelo sai no estilo do projeto ou, sem estilo aprovado, espera a escolha sem gastar crédito de imagem.</span>
-          <button type="button" onClick={() => void carregar()} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
-            <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
-          </button>
-        </div>
+        <AvisoDescartavel key={erro} chave={null} className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{erro} Você ainda pode seguir: o dia sem modelo sai no estilo do projeto ou, sem estilo aprovado, espera a escolha sem gastar crédito de imagem.</span>
+            <button type="button" onClick={() => void carregar()} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
+              <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
+            </button>
+          </div>
+        </AvisoDescartavel>
       )}
 
       <ul className="divide-y" style={{ borderColor: "var(--border)" }}>

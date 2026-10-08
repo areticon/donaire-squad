@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Search } from "lucide-react";
+import { AvisoDescartavel } from "@/components/ui/descartar";
+import { chaveDaDica } from "@/lib/avisos/chaves";
 import { AnalisesDasReferencias } from "@/components/editorial/analises-das-referencias";
 import type { RespostaDasAnalises } from "@/lib/referencias/tipos-das-analises";
 
@@ -65,9 +67,9 @@ export function StepReferencias({ projectId }: { projectId: string }) {
         </div>
       )}
       {estado === "desligado" && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <AvisoDescartavel chave={chaveDaDica("estudo-desligado", projectId)} className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           O estudo de referências está desligado nesta conta. Pode seguir: quando ele for ligado, as análises aparecem em Linha editorial.
-        </p>
+        </AvisoDescartavel>
       )}
       {estado === "pronto" && <AnalisesDasReferencias projectId={projectId} modo="criacao" />}
     </div>

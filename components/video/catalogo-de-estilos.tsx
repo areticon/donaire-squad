@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, PenLine, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import {
   CATALOGO_DE_ESTILOS,
   CUSTO_DAS_INSERCOES_IA,
@@ -68,6 +69,9 @@ export function CatalogoDeEstilos({
   const [lendo, setLendo] = useState(false);
   const [leitura, setLeitura] = useState<EscolhaDeEstilo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // O X do erro (07/10) esconde só a frase: a linha não passa a dizer
+  // "Guardado no projeto" sem ter guardado. Um erro novo aparece de novo.
+  const [erroFechado, setErroFechado] = useState(false);
   const salvoPorUltimo = useRef<string>("");
   const [legenda, setLegenda] = useState<{ escolha: EscolhaDaLegenda; automatica: EstiloDeLegenda | null } | null>(null);
   const [legendaAutomatica, setLegendaAutomatica] = useState<EstiloDeLegenda | null>(null);
@@ -112,6 +116,7 @@ export function CatalogoDeEstilos({
         setErro(null);
       } catch {
         setErro("Não consegui guardar o estilo. A escolha continua na tela; tente de novo.");
+        setErroFechado(false);
       } finally {
         setSalvando(false);
       }
@@ -134,6 +139,7 @@ export function CatalogoDeEstilos({
       setLeitura(d.escolha);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui ler o estilo.");
+      setErroFechado(false);
     } finally {
       setLendo(false);
     }
@@ -447,7 +453,12 @@ export function CatalogoDeEstilos({
             ? "."
             : ""}
         <span className="ml-2 opacity-80">{salvando ? "Guardando..." : erro ? "" : "Guardado no projeto."}</span>
-        {erro && <span className="ml-2 text-orange-400">{erro}</span>}
+        {erro && !erroFechado && (
+          <span className="ml-2 text-orange-400">
+            {erro}
+            <BotaoDescartar compacto aoDescartar={() => setErroFechado(true)} className="ml-1 align-middle" />
+          </span>
+        )}
       </div>
     </div>
   );

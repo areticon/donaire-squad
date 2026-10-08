@@ -12,6 +12,7 @@ import {
 } from "@/lib/squad/aparencia-do-boneco";
 import { AGENTES, AGENTE_DEV, type Cena, type EstadoDoAgente, type SituacaoDoSquad } from "@/lib/squad/estado-do-squad";
 import { MenuDoAgente, type Turno } from "@/components/escritorio/menu-do-agente";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import { arteDoAgente } from "@/lib/squad/estado-do-squad";
 
 /**
@@ -1396,11 +1397,14 @@ function NossaMesa({
   tema,
   titulo,
   fala,
+  aoFecharFala,
   aoClicar,
 }: {
   tema: Tema;
   titulo: string;
   fala: string | null;
+  /** O X do balão (07/10): só ele recebe o toque; o resto do balão deixa passar para a cena. */
+  aoFecharFala?: () => void;
   /** Clicar na própria mesa é o caminho de volta: você anda até ela e senta. */
   aoClicar?: () => void;
 }) {
@@ -1449,8 +1453,17 @@ function NossaMesa({
       </Html>
       {fala && (
         <Html position={[0, 1.75, -0.2]} distanceFactor={7} zIndexRange={[22, 0]} style={{ pointerEvents: "none" }}>
-          <div style={{ transform: "translate(-50%, -100%)" }}>
+          <div style={{ transform: "translate(-50%, -100%)", display: "flex", alignItems: "flex-start", gap: 2 }}>
             <Balao texto={fala} tema={tema} />
+            {aoFecharFala ? (
+              <BotaoDescartar
+                compacto
+                rotulo="Fechar a fala"
+                aoDescartar={aoFecharFala}
+                className="pointer-events-auto"
+                style={{ background: tema.texto, color: tema.fundo, boxShadow: "0 6px 18px rgba(0,0,0,.35)" }}
+              />
+            ) : null}
           </div>
         </Html>
       )}
@@ -1806,6 +1819,7 @@ function Cena({
   gesto,
   titulo,
   falaDaMesa,
+  aoFecharFalaDaMesa,
   tema,
   reduzido,
   onAbrirAgente,
@@ -1820,6 +1834,7 @@ function Cena({
   gesto: Gesto | null;
   titulo: string;
   falaDaMesa: string | null;
+  aoFecharFalaDaMesa?: () => void;
   tema: Tema;
   reduzido: boolean;
   onAbrirAgente: (agentId: string) => void;
@@ -2137,7 +2152,7 @@ function Cena({
       <SalaDeVidro sala={SUA_SALA} rotulo="A sua sala" cor={tema.laranja} tema={tema} />
       <ContactShadows position={[0, 0.03, -1.3]} opacity={0.38} scale={18} blur={2.6} far={3} resolution={1024} frames={reduzido ? 1 : Infinity} />
 
-      <NossaMesa tema={tema} titulo={titulo} fala={falaDaMesa} aoClicar={voltarParaMinhaMesa} />
+      <NossaMesa tema={tema} titulo={titulo} fala={falaDaMesa} aoFecharFala={aoFecharFalaDaMesa} aoClicar={voltarParaMinhaMesa} />
       {/* VOCÊ, e agora você anda.
 
           Pedido do Bruno em 18/09, na sequência do avatar que só existia
@@ -2429,6 +2444,8 @@ export function EscritorioDoSquad(props: {
   gesto: Gesto | null;
   titulo: string;
   falaDaMesa: string | null;
+  /** O X do balão da sua mesa (07/10): fecha a fala antes de ela sumir sozinha. */
+  aoFecharFalaDaMesa?: () => void;
   tema: Tema;
   reduzido: boolean;
   onAbrirAgente: (agentId: string) => void;

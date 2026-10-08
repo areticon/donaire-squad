@@ -5,6 +5,8 @@ import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
 import { fraseDosCreditosDaEquipe } from "@/lib/equipe/regras";
 import { creditosDaNota } from "@/lib/credits/nota-simulada";
 import { ComprarCreditos } from "@/components/billing/comprar-creditos";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+import { chaveDaCompraAutomatica, chaveDosCreditosAcabando } from "@/lib/avisos/chaves";
 
 /**
  * Saldo e extrato de créditos.
@@ -32,6 +34,8 @@ type Dados = {
   equipe?: { dono: string } | null;
   /** Só admin (03/10): o que o ciclo teria cobrado, somado das linhas de valor zero. */
   consumoSimulado?: { total: number; desde: string; porOperacao: Array<{ operacao: string; creditos: number }> } | null;
+  /** A última recarga da conta (07/10): a marca dos avisos de saldo baixo. */
+  ultimaRecarga?: string | null;
 };
 
 const NOMES: Record<string, string> = {
@@ -67,6 +71,8 @@ export function CreditBalance() {
   // (?comprar=1, da barra lateral e da janela da campanha), 06/10.
   // Lido no primeiro render do navegador; no servidor fica falso, e nada disso
   // aparece antes de o saldo carregar, então não há diferença na hidratação.
+  /** "Pagamento recebido" fechado pelo X (07/10): só local, e o ?creditos=ok sai da URL. */
+  const [pagoFechado, setPagoFechado] = useState(false);
   const [volta] = useState<{ pago: boolean; comprar: boolean }>(() => {
     if (typeof window === "undefined") return { pago: false, comprar: false };
     const q = new URLSearchParams(window.location.search);
@@ -141,25 +147,60 @@ export function CreditBalance() {
       {/* Membro da equipe (01/10, acabamento): sem saldo, a frase diz a quem
           pedir; acabando, avisa sem mandar comprar. */}
       {dados.equipe && dados.saldo <= 0 ? (
-        <p className="text-sm text-orange-400 mb-2">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
+        // Descartável também (07/10), como o mesmo alerta na faixa do plano:
+        // lembrado até a próxima recarga do dono.
+        <Descartavel chave={chaveDosCreditosAcabando(dados.ultimaRecarga ?? "sem-recarga", "zerado")}>
+          <div className="flex items-start gap-1 mb-2">
+            <p className="flex-1 text-sm text-orange-400">{fraseDosCreditosDaEquipe(dados.equipe.dono)}</p>
+            <BotaoDescartar compacto />
+          </div>
+        </Descartavel>
       ) : acabando && (dados.equipe || dados.saldo > 0) ? (
-        <p className="text-sm text-orange-400 mb-2">
-          {dados.equipe ? "Os créditos da equipe estão acabando." : "Seus créditos estão acabando."} Uma campanha semanal completa consome
-          cerca de 450.
-        </p>
+        // Descartável (07/10), lembrado até a próxima recarga.
+        <Descartavel chave={chaveDosCreditosAcabando(dados.ultimaRecarga ?? "sem-recarga")}>
+          <div className="flex items-start gap-1 mb-2">
+            <p className="flex-1 text-sm text-orange-400">
+              {dados.equipe ? "Os créditos da equipe estão acabando." : "Seus créditos estão acabando."} Uma campanha semanal completa consome
+              cerca de 450.
+            </p>
+            <BotaoDescartar compacto />
+          </div>
+        </Descartavel>
       ) : null}
 
-      {volta.pago && (
-        <p className="text-sm mb-2" style={{ color: "#22c55e" }} data-volta-do-pacote>
-          Pagamento recebido. Os créditos do pacote entram no saldo em instantes, e o recibo vai para o seu e-mail.
-        </p>
+      {volta.pago && !pagoFechado && (
+        <div className="flex items-start gap-1 mb-2" data-volta-do-pacote>
+          <p className="flex-1 text-sm" style={{ color: "#22c55e" }}>
+            Pagamento recebido. Os créditos do pacote entram no saldo em instantes, e o recibo vai para o seu e-mail.
+          </p>
+          <BotaoDescartar
+            compacto
+            aoDescartar={() => {
+              setPagoFechado(true);
+              // Sem o ?creditos=ok na URL, recarregar não traz o aviso de volta.
+              const u = new URL(window.location.href);
+              if (u.searchParams.has("creditos")) {
+                u.searchParams.delete("creditos");
+                window.history.replaceState(window.history.state, "", u.toString());
+              }
+            }}
+          />
+        </div>
       )}
 
       {/* OS PACOTES AVULSOS (06/10): o botão mora onde o saldo aparece e abre
           sozinho quando o saldo está baixo ou acabou. Membro sem saldo já leu
           acima a quem pedir; não repete. */}
       {!(dados.equipe && dados.saldo <= 0) && (
-        <ComprarCreditos abertoDeInicio={volta.comprar || (!dados.equipe && (acabando || dados.saldo <= 0))} saldoZerado={dados.saldo <= 0} />
+        <ComprarCreditos
+          abertoDeInicio={volta.comprar || (!dados.equipe && (acabando || dados.saldo <= 0))}
+          saldoZerado={dados.saldo <= 0}
+          chaveDoAutomatico={
+            !volta.comprar && !dados.equipe && (acabando || dados.saldo <= 0)
+              ? chaveDaCompraAutomatica(dados.ultimaRecarga ?? "sem-recarga", dados.saldo <= 0 ? "zerado" : "acabando")
+              : null
+          }
+        />
       )}
 
       {/* O CONSUMO SIMULADO DO ADMIN (03/10): só com ADMIN_SEM_DEBITO=1 desde

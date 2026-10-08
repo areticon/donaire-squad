@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Gauge, Wifi } from "lucide-react";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import {
   ARQUIVO_GRANDE_BYTES,
   ENVIO_LONGO_S,
@@ -81,6 +82,9 @@ export function MedidorDeEnvio({ enviados, total }: { enviados: number; total: n
  * franquia); sem saber o tipo de rede, é só conselho para arquivo grande.
  */
 export function AvisoDeWifi({ movel }: { movel: boolean }) {
+  // X só local (07/10): o conselho é deste arquivo, não há fato para lembrar.
+  const [fechado, setFechado] = useState(false);
+  if (fechado) return null;
   return (
     <p
       className="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs"
@@ -88,9 +92,12 @@ export function AvisoDeWifi({ movel }: { movel: boolean }) {
       data-aviso-wifi
     >
       <Wifi className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-400" />
-      {movel
-        ? "Você está em dados móveis. Um arquivo deste tamanho consome boa parte da franquia e demora mais: se puder, troque para o wi-fi antes de enviar."
-        : "Arquivo longo: prefira o wi-fi em vez dos dados móveis do celular. É mais rápido e não gasta a sua franquia."}
+      <span className="flex-1">
+        {movel
+          ? "Você está em dados móveis. Um arquivo deste tamanho consome boa parte da franquia e demora mais: se puder, troque para o wi-fi antes de enviar."
+          : "Arquivo longo: prefira o wi-fi em vez dos dados móveis do celular. É mais rápido e não gasta a sua franquia."}
+      </span>
+      <BotaoDescartar compacto aoDescartar={() => setFechado(true)} className="-my-1" />
     </p>
   );
 }

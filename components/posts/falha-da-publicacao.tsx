@@ -4,6 +4,42 @@ import { useState } from "react";
 import { AlertCircle, Archive } from "lucide-react";
 import { TRADUCAO_DOS_CODIGOS, type CodigoDePublicacao } from "@/lib/publish/codigos";
 import { abrirChamado as abrirJanelaDeChamado } from "@/lib/suporte/abrir-chamado";
+import { BotaoDescartar, Descartavel } from "@/components/ui/descartar";
+
+/**
+ * A CHAVE DO DESCARTE da falha de publicação de um post (07/10), em
+ * lib/avisos/chaves.ts: a marca é a do erro gravado (ou do código da ponte), a
+ * mesma regra de ocorrência de `chamadoDaFalha`: uma falha nova muda a frase,
+ * e o aviso volta. Nunca o updatedAt, que muda a cada métrica ou sincronização.
+ */
+export { chaveDoPostQueFalhou } from "@/lib/avisos/chaves";
+
+/**
+ * O AVISO RECOLHIDO (07/10): descartado o cartão da falha, fica uma linha sem
+ * cor de alerta, com o Arquivar quando há. O post continua "falhou" no quadro
+ * e em Posts.
+ */
+export function LinhaDaPublicacaoRecolhida({ rede, onArquivar }: { rede?: string | null; onArquivar?: () => Promise<void> | void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-2 border" style={{ borderColor: "var(--border)" }} data-falha-recolhida>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        A publicação {rede ? `no ${rede} ` : ""}falhou.
+      </p>
+      {onArquivar && (
+        <button
+          type="button"
+          onClick={() => void onArquivar()}
+          className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md border transition-all hover:border-red-400/50 hover:text-red-400"
+          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+          title="Tira este post do Gestor. Tem volta: Posts, aba Arquivados."
+        >
+          <Archive className="w-3 h-3" />
+          Arquivar
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * O CARTÃO DA FALHA DE PUBLICAÇÃO (01/10/2026): o código PUB-* traduzido.
@@ -26,6 +62,8 @@ export function FalhaDaPublicacao({
   compacto,
   onChamado,
   onArquivar,
+  chave,
+  rede,
 }: {
   postId: string;
   codigo: CodigoDePublicacao;
@@ -43,6 +81,13 @@ export function FalhaDaPublicacao({
    * cuida do toast e de atualizar o quadro.
    */
   onArquivar?: () => Promise<void> | void;
+  /**
+   * A chave do descarte (07/10, `chaveDoPostQueFalhou`). Descartado, o cartão
+   * recolhe numa linha com o Arquivar. Sem chave, o X esconde só nesta visita.
+   */
+  chave?: string | null;
+  /** O nome da rede, para a linha recolhida ("A publicação no LinkedIn falhou"). */
+  rede?: string | null;
 }) {
   const t = TRADUCAO_DOS_CODIGOS[codigo];
   const [protocolo, setProtocolo] = useState<string | null>(protocoloInicial ?? null);
@@ -67,6 +112,7 @@ export function FalhaDaPublicacao({
   }
 
   return (
+    <Descartavel chave={chave} modo="recolher" compacto={<LinhaDaPublicacaoRecolhida rede={rede} onArquivar={onArquivar} />}>
     <div
       className="flex items-start gap-2.5 rounded-xl px-4 py-3 border"
       style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(185,28,28,0.06)" }}
@@ -131,6 +177,8 @@ export function FalhaDaPublicacao({
           )}
         </div>
       </div>
+      <BotaoDescartar compacto />
     </div>
+    </Descartavel>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, Film, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BotaoDescartar } from "@/components/ui/descartar";
 import { oQueOPostPede } from "@/lib/estilo-dos-posts/tipos";
 import { RedeIcone } from "@/components/social/rede-icone";
 import {
@@ -69,6 +70,9 @@ export function SemanaDoVideoPlanejador({
   const [semana, setSemana] = useState<SemanaDoVideo>(() => normalizarSemana(inicial, conectadas));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // O X do erro (07/10) esconde só a frase: a linha não passa a dizer
+  // "Guardado no projeto" sem ter guardado. Um erro novo aparece de novo.
+  const [erroFechado, setErroFechado] = useState(false);
   // O ponto de partida do "já guardado" é o plano JÁ NORMALIZADO: abrir a tela
   // não pode gravar nada no projeto só porque o formato antigo foi lido.
   const ultimaSalva = useRef<string>(JSON.stringify(planoParaGravar(normalizarSemana(inicial, conectadas))));
@@ -94,6 +98,7 @@ export function SemanaDoVideoPlanejador({
         ultimaSalva.current = atual;
       } catch {
         setErro("Não consegui guardar os dias. A escolha continua na tela; tente trocar de novo.");
+        setErroFechado(false);
       } finally {
         setSalvando(false);
       }
@@ -313,7 +318,12 @@ export function SemanaDoVideoPlanejador({
         {salvando ? (
           <span className="opacity-70">Guardando...</span>
         ) : erro ? (
-          <span className="text-orange-300">{erro}</span>
+          erroFechado ? null : (
+            <span className="text-orange-300">
+              {erro}
+              <BotaoDescartar compacto aoDescartar={() => setErroFechado(true)} className="ml-1 align-middle" />
+            </span>
+          )
         ) : (
           <span className="inline-flex items-center gap-1 opacity-70">
             <Check className="w-3 h-3" /> Guardado no projeto
